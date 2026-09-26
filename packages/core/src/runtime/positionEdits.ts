@@ -123,6 +123,11 @@ export const readCurrentTranslate = (el: StylableElement): string => {
  */
 const lastAppliedTranslate = new WeakMap<StylableElement, string>();
 
+/** For an element whose inline style was reset: its next application runs as the first did. */
+export function forgetPositionEdit(el: StylableElement): void {
+  lastAppliedTranslate.delete(el);
+}
+
 /**
  * Apply one element's position edit. Idempotent — the pre-edit translate is
  * captured exactly once (into EDIT_ORIGINAL_TRANSLATE_ATTR, empty string

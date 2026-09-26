@@ -1,4 +1,5 @@
 import postcss, { type AtRule, type Node, type Rule } from "postcss";
+import { SCENE_PARTS_META } from "../sceneParts";
 
 const AUTHORED_ROOT_ID_ATTR = "data-hf-authored-id";
 const INNER_ROOT_ATTR = "data-hf-inner-root";
@@ -645,8 +646,33 @@ ${source.replace(/<\/(script)/gi, "<\\/$1")}
       console.error(__hfErrorLabel, __hfCompId, _err);
     }
   };
+  // What the script started on the global gsap timeline, by any route, for a scene swap to revert.
+  // Only a page with a scene manifest can swap; elsewhere the first script stores null and none records.
+  var __hfRecordAnimations = function(run) {
+    if (window.__hfSceneAnimations === undefined) {
+      window.__hfSceneAnimations = window.document.querySelector(${jsonScriptLiteral(`meta[name="${SCENE_PARTS_META}"]`)})
+        ? {}
+        : null;
+    }
+    var byComp = window.__hfSceneAnimations;
+    var globalTimeline = __hfBaseGsap && __hfBaseGsap.globalTimeline;
+    if (!byComp || !globalTimeline || !__hfTimelineCompId) return run();
+    var before = globalTimeline.getChildren(false);
+    // A set completes as it is made and would leave the timeline before the diff below.
+    var autoRemove = globalTimeline.autoRemoveChildren;
+    globalTimeline.autoRemoveChildren = false;
+    run();
+    globalTimeline.autoRemoveChildren = autoRemove;
+    var recorded = (byComp[__hfTimelineCompId] = byComp[__hfTimelineCompId] || []);
+    globalTimeline.getChildren(false).forEach(function(animation) {
+      if (before.indexOf(animation) >= 0) return;
+      recorded.push(animation);
+      // Dropped as the timeline drops a finished tween (it keeps a paused one); moved back, a tween re-adds itself.
+      if (autoRemove && !animation.getChildren && animation.totalProgress() === 1) globalTimeline.remove(animation);
+    });
+  };
   __hfFindRoot();
-  __hfRun();
+  __hfRecordAnimations(__hfRun);
 })();`;
 }
 

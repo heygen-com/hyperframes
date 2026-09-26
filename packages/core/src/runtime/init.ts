@@ -62,7 +62,11 @@ import {
   SCENE_PARTS_META,
   type SceneParts,
 } from "../sceneParts";
-import { applyPositionEdits, installPositionEditsSeekReapply } from "./positionEdits";
+import {
+  applyPositionEdits,
+  forgetPositionEdit,
+  installPositionEditsSeekReapply,
+} from "./positionEdits";
 import { applyVariableBindings, unproxiedMediaSrc } from "./applyVariableBindings";
 import { createColorGradingRuntime, type RuntimeColorGradingApi } from "./colorGrading";
 import { COLOR_GRADING_AUTHORED_OPACITY_ATTR } from "../colorGrading";
@@ -89,6 +93,7 @@ import type {
   RuntimeSeekOptions,
   RuntimeTimelineChildLike,
   RuntimeTimelineLike,
+  SceneAnimation,
 } from "./types";
 import type { PlayerAPI } from "../core.types";
 import { swallow } from "./diagnostics";
@@ -237,6 +242,37 @@ const authoredShape = (el: Element): string =>
     el.innerHTML,
   ]);
 
+// Each video and audio as written, recorded as the page parses: a scene script can write to it before init.
+const authoredMedia = new WeakMap<Element, string>();
+const isMedia = (el: Element) => el.localName === "video" || el.localName === "audio";
+const recordAuthoredMedia = (node: Node) => {
+  if (!isElementNode(node)) return;
+  // The parser adds one childless element at a time, so most nodes stop at the first check.
+  const media = isMedia(node)
+    ? [node]
+    : node.firstElementChild
+      ? node.querySelectorAll("video, audio")
+      : [];
+  for (const el of media) if (!authoredMedia.has(el)) authoredMedia.set(el, authoredShape(el));
+};
+let authoredMediaObserver: MutationObserver | null = null;
+
+/** On a page with a scene manifest, records media as it parses, before scene scripts run; init stops it. */
+export function installAuthoredMediaCapture(): void {
+  if (typeof MutationObserver === "undefined" || !readSceneParts(document)) return;
+  recordAuthoredMedia(document.documentElement);
+  authoredMediaObserver = new MutationObserver((records) => {
+    for (const record of records) {
+      record.addedNodes.forEach(recordAuthoredMedia);
+      // The parser can yield inside a <video>, so its <source> children may arrive after it.
+      const { target } = record;
+      if (isElementNode(target) && isMedia(target))
+        authoredMedia.set(target, authoredShape(target));
+    }
+  });
+  authoredMediaObserver.observe(document.documentElement, { childList: true, subtree: true });
+}
+
 // URL attributes a scene swap checks besides src, poster and srcset, by tag.
 const MEDIA_URL_ATTRS = new Map([
   ["image", ["href", "xlink:href"]],
@@ -249,12 +285,9 @@ const RUNTIME_FILLER = "hf-runtime-filler";
 
 export function initSandboxRuntimeModular(): void {
   const state = createRuntimeState();
-  // Each video and audio as written, captured before the runtime writes to it; a swap keeps only these.
-  const authoredMedia = new WeakMap<Element, string>();
-  if (readSceneParts(document)) {
-    for (const el of document.querySelectorAll("video, audio"))
-      authoredMedia.set(el, authoredShape(el));
-  }
+  authoredMediaObserver?.disconnect();
+  authoredMediaObserver = null;
+  if (readSceneParts(document)) recordAuthoredMedia(document.documentElement);
   // Runtime-data handlers may replace the timeline object they mutate. Keep the
   // reconciliation callback late-bound because the reporter is installed before
   // the timeline resolver/binder is declared below. Delivery cannot complete
@@ -3191,18 +3224,71 @@ export function initSandboxRuntimeModular(): void {
     return urls;
   };
   let sceneSwapGeneration = 0;
-  // A video or audio the edit left as written keeps playing: the old element takes its copy's place.
-  const keepUnchangedMedia = (oldHost: Element, host: Element) => {
+  // A video or audio the edit left as written keeps playing, unless the scene's scripts changed: what the
+  // old script wrote to it directly is unknown. A rebuilt one is recorded from the new markup.
+  const keepUnchangedMedia = (oldHost: Element, host: Element, sameScripts: boolean) => {
     const byShape = new Map<string, Element[]>();
-    for (const el of oldHost.querySelectorAll("video, audio")) {
+    for (const el of sameScripts ? oldHost.querySelectorAll("video, audio") : []) {
       const shape = authoredMedia.get(el);
       // Its grading canvas sits beside it in the old scene and cannot follow it.
       if (!shape || colorGradingRuntime?.isGraded(el)) continue;
       byShape.set(shape, [...(byShape.get(shape) ?? []), el]);
     }
     for (const el of host.querySelectorAll("video, audio")) {
-      const kept = byShape.get(authoredShape(el))?.shift();
-      if (kept) el.replaceWith(kept);
+      const shape = authoredShape(el);
+      const kept = byShape.get(shape)?.shift();
+      if (!kept) {
+        authoredMedia.set(el, shape);
+        continue;
+      }
+      el.replaceWith(kept);
+      // Back as written, the tween cache emptied, so the new script's tweens read what a fresh load's do.
+      window.gsap?.set?.(kept, { clearProps: "all" });
+      const style = el.getAttribute("style");
+      if (style === null) kept.removeAttribute("style");
+      else kept.setAttribute("style", style);
+      // The swap's closing pass puts its move back, as a load's first pass does.
+      forgetPositionEdit(kept as HTMLElement);
+    }
+  };
+  const compositionIdsIn = (host: Element) =>
+    [host, ...host.querySelectorAll("[data-composition-id]")].flatMap(
+      (el) => el.getAttribute("data-composition-id") || [],
+    );
+  // gsap binds a tween to elements, so one from outside the scene would go on moving the replaced copy.
+  const refuseOutsideTweens = (
+    name: string,
+    host: Element,
+    timelines: Record<string, RuntimeTimelineLike | undefined>,
+    sceneAnimations: Record<string, SceneAnimation[]>,
+  ) => {
+    const own = new Set<unknown>(
+      compositionIdsIn(host).flatMap((id) => [timelines[id], ...(sceneAnimations[id] ?? [])]),
+    );
+    const inScene = new Set<unknown>([host, ...host.querySelectorAll("*")]);
+    for (const tween of window.gsap?.globalTimeline?.getChildren?.(true, true, false) ?? []) {
+      if (!tween.targets?.().some((target) => inScene.has(target))) continue;
+      let owner: RuntimeTimelineChildLike | undefined = tween;
+      while (owner && !own.has(owner)) owner = owner.parent;
+      if (!owner) {
+        throw new Error(
+          `scene ${name} cannot be swapped: an animation outside it moves its elements`,
+        );
+      }
+    }
+    // A revert can leave a value on what the swap keeps; kept media are reset, page nodes outside are refused.
+    const outside = (target: unknown) =>
+      typeof (target as Node | null)?.nodeType === "number" && !inScene.has(target);
+    for (const animation of own as Set<SceneAnimation | undefined>) {
+      for (const tween of animation
+        ? [animation, ...(animation.getChildren?.(true, true, false) ?? [])]
+        : []) {
+        if (tween.targets?.().some(outside)) {
+          throw new Error(
+            `scene ${name} cannot be swapped: its animations write outside the scene`,
+          );
+        }
+      }
     }
   };
   // Swap edited scenes in place from a rebuilt preview document. Refuses before changing anything unless
@@ -3254,7 +3340,7 @@ export function initSandboxRuntimeModular(): void {
       if (styleCount(oldParts) !== styleCount(newParts)) {
         throw new Error(`scene ${name} cannot be swapped: its styles moved`);
       }
-      return { oldParts, newParts, oldHost, newHost };
+      return { name, oldParts, newParts, oldHost, newHost };
     });
     // Fetched before the first write, so a stalled or failed request leaves the page as it was.
     const captionOverrides = swaps.some(({ newHost }) => newHost.querySelector(".caption-group"))
@@ -3264,30 +3350,56 @@ export function initSandboxRuntimeModular(): void {
     if (generation !== sceneSwapGeneration) {
       throw new Error("the preview changed while this swap waited");
     }
+    // A data handler can replace a scene's parts during the wait; the swap would then act on detached copies.
+    if (swaps.some(({ oldParts }) => oldParts.some((el) => !el.isConnected))) {
+      throw new Error("a scene changed while this swap waited");
+    }
+    // Read at each use: a data handler or an animation's callback may replace the registry mid-swap.
+    const timelines = () =>
+      (window.__timelines ??= {}) as Record<string, RuntimeTimelineLike | undefined>;
+    const sceneAnimations = () => (window.__hfSceneAnimations ??= {});
+    const refuseAnyOutsideTweens = () => {
+      for (const { name, oldHost } of swaps)
+        refuseOutsideTweens(name, oldHost, timelines(), sceneAnimations());
+    };
+    // Checked after the wait, which a tween could start in, and before anything changes.
+    refuseAnyOutsideTweens();
     sceneSwapGeneration += 1;
-    const timelines = (window.__timelines ??= {}) as Record<
-      string,
-      RuntimeTimelineLike | undefined
-    >;
     const root = state.capturedTimeline as
       | (RuntimeTimelineLike & { remove?: (child: unknown) => unknown })
       | null;
     // Overrides re-dim every word they touch, so only the swapped scenes' captions get them.
     const captionHosts: Element[] = [];
     const swappedHosts: Element[] = [];
-    for (const { oldParts, newParts, oldHost, newHost } of swaps) {
-      for (const el of [oldHost, ...oldHost.querySelectorAll("[data-composition-id]")]) {
-        const id = el.getAttribute("data-composition-id");
-        const previous = id ? timelines[id] : undefined;
-        if (!id || !previous) continue;
-        const old = previous as { revert?: () => void; kill?: () => void };
-        if (old.revert) old.revert();
-        else previous.totalTime?.(0, true);
-        root?.remove?.(previous);
-        // revert() has already killed it; a second kill() fires onInterrupt again.
-        if (!old.revert) old.kill?.();
-        delete timelines[id];
+    const oldIds = swaps.flatMap(({ oldHost }) => compositionIdsIn(oldHost));
+    const stopped = new Set<unknown>();
+    const stopOldAnimations = () => {
+      for (const id of oldIds) {
+        // Newest first: each revert restores what the animation before it wrote.
+        for (const previous of [
+          ...(sceneAnimations()[id] ?? []).slice().reverse(),
+          timelines()[id],
+        ]) {
+          if (!previous || stopped.has(previous)) continue;
+          stopped.add(previous);
+          const old = previous as SceneAnimation;
+          if (old.revert) old.revert();
+          else old.totalTime?.(0, true);
+          root?.remove?.(previous);
+          // revert() has already killed it; a second kill() fires onInterrupt again.
+          if (!old.revert) old.kill?.();
+        }
       }
+    };
+    stopOldAnimations();
+    // A revert fires the animation's onInterrupt, which can register or start animations; stop and check those too.
+    stopOldAnimations();
+    refuseAnyOutsideTweens();
+    for (const id of oldIds) {
+      delete timelines()[id];
+      delete sceneAnimations()[id];
+    }
+    for (const { oldParts, newParts, oldHost, newHost } of swaps) {
       // Each new style takes its own old one's place: same-named @keyframes resolve by order.
       const newStyles = newParts.filter((el) => el.tagName === "STYLE");
       oldParts
@@ -3295,10 +3407,15 @@ export function initSandboxRuntimeModular(): void {
         .forEach((el, i) => el.replaceWith(document.importNode(newStyles[i]!, true)));
       for (const el of oldParts) if (el !== oldHost) el.remove();
       const host = document.importNode(newHost, true);
-      keepUnchangedMedia(oldHost, host);
+      const scripts = (parts: Element[]) =>
+        parts.flatMap((el) => (el.tagName === "SCRIPT" ? el.outerHTML : [])).join("");
+      keepUnchangedMedia(oldHost, host, scripts(oldParts) === scripts(newParts));
       oldHost.replaceWith(host);
       swappedHosts.push(host);
       if (host.querySelector(".caption-group")) captionHosts.push(host);
+    }
+    // Run once every host is replaced, so no new script binds to a scene still to be swapped.
+    for (const { newParts } of swaps) {
       for (const el of newParts) {
         if (el.tagName !== "SCRIPT") continue;
         // An imported <script> never runs; a created one does.
@@ -3307,8 +3424,6 @@ export function initSandboxRuntimeModular(): void {
         script.textContent = el.textContent;
         document.body.appendChild(script);
       }
-      for (const el of host.querySelectorAll("video, audio"))
-        if (!authoredMedia.has(el)) authoredMedia.set(el, authoredShape(el));
     }
     document
       .querySelector(`meta[name="${SCENE_PARTS_META}"]`)
@@ -3321,7 +3436,7 @@ export function initSandboxRuntimeModular(): void {
       for (const host of captionHosts) {
         for (const el of [host, ...host.querySelectorAll("[data-composition-id]")]) {
           const id = el.getAttribute("data-composition-id");
-          if (id) timelines[id]?.totalTime?.(0, true);
+          if (id) window.__timelines?.[id]?.totalTime?.(0, true);
         }
       }
     };

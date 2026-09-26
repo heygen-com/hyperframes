@@ -1,8 +1,11 @@
+import { readFileSync } from "node:fs";
+import { dirname, join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { initSandboxRuntimeModular } from "./init";
+import { initSandboxRuntimeModular, installAuthoredMediaCapture } from "./init";
 import type { RuntimeTimelineLike } from "./types";
 import { resetRuntimeDataForTests } from "./runtimeData";
 import { probeAndCacheElementVolume } from "./mediaVolumeEnvelope.js";
+import { wrapScopedCompositionScript } from "../compiler/compositionScoping";
 
 vi.mock("./mediaVolumeEnvelope.js", async (importOriginal) => {
   const actual = await importOriginal<typeof import("./mediaVolumeEnvelope.js")>();
@@ -19,6 +22,17 @@ vi.mock("./colorGrading", async (importOriginal) => {
     }),
   };
 });
+
+// The library itself, the repo's vendored 3.15.0, for what a stand-in would only assume.
+const vendoredGsap = () =>
+  join(
+    dirname(expect.getState().testPath!),
+    "../../../../skills/music-to-video/references/motion-primitives/assets/gsap.min.js",
+  );
+type RealGsap = {
+  ticker: { sleep: () => void };
+  getProperty: (target: Element, property: string) => unknown;
+};
 
 type Tl = RuntimeTimelineLike & { kill: ReturnType<typeof vi.fn>; label: string };
 
@@ -67,6 +81,7 @@ interface Scene {
   label: string;
   hash: string;
   extraAttrs?: string;
+  script?: string;
 }
 
 function preview(scenes: Scene[], shared = "s1", sharedMarkup = "") {
@@ -87,7 +102,10 @@ function preview(scenes: Scene[], shared = "s1", sharedMarkup = "") {
       .join("") +
     `</div>` +
     scenes
-      .map((s) => `<script data-hf-scene="${s.id}">${sceneScript(s.id, s.label)}</script>`)
+      .map(
+        (s) =>
+          `<script data-hf-scene="${s.id}">${sceneScript(s.id, s.label)}${s.script ?? ""}</script>`,
+      )
       .join("");
   return {
     head,
@@ -114,7 +132,7 @@ const B: Scene = {
 };
 const A2: Scene = { ...A1, body: "<p>A two</p>", css: ".a{color:green}", label: "a2", hash: "ha2" };
 
-function boot(scenes: Scene[], root: Tl, editHead = (head: string) => head) {
+function mount(scenes: Scene[], root: Tl, editHead = (head: string) => head) {
   const { head, body } = preview(scenes);
   document.head.innerHTML = editHead(head);
   document.body.innerHTML = body;
@@ -128,6 +146,10 @@ function boot(scenes: Scene[], root: Tl, editHead = (head: string) => head) {
       new Function(node.textContent ?? "")();
     return node;
   };
+}
+
+function boot(scenes: Scene[], root: Tl, editHead = (head: string) => head) {
+  mount(scenes, root, editHead);
   initSandboxRuntimeModular();
 }
 
@@ -187,6 +209,8 @@ describe("__hfSwapScenes", () => {
     document.body.innerHTML = "";
     delete scoped.__hfVariablesByComp;
     delete window.__HF_MEDIA_CODEC_MAP__;
+    delete window.__hfSceneAnimations;
+    vi.unstubAllGlobals();
     vi.restoreAllMocks();
   });
 
@@ -449,36 +473,134 @@ describe("__hfSwapScenes", () => {
     expect(video?.getAttribute("preload")).toBe("auto");
   });
 
+  it("does not watch a page without a scene manifest as it parses", () => {
+    const observe = vi.spyOn(MutationObserver.prototype, "observe");
+    installAuthoredMediaCapture();
+    expect(observe).not.toHaveBeenCalled();
+  });
+
+  it("stops watching the page it parses once the runtime starts", () => {
+    const observe = vi.spyOn(MutationObserver.prototype, "observe");
+    const disconnect = vi.spyOn(MutationObserver.prototype, "disconnect");
+    document.head.innerHTML = preview([A1, B]).head;
+    installAuthoredMediaCapture();
+    const watcher = observe.mock.contexts[0];
+    boot([A1, B], trackingRoot().root);
+    expect(watcher).toBeDefined();
+    expect(disconnect.mock.contexts).toContain(watcher);
+  });
+
+  it("keeps a video a scene script wrote to while the page parsed", async () => {
+    const { root } = trackingRoot();
+    quietMedia();
+    const scene = (text: string, hash: string): Scene => ({
+      ...A1,
+      hash,
+      body: `<p>${text}</p><video src="clip.mp4"></video>`,
+    });
+    document.head.innerHTML = preview([A1, B]).head;
+    installAuthoredMediaCapture();
+    mount([scene("A one", "ha1"), B], root);
+    await tick();
+    const video = sceneHost("a").querySelector("video")!;
+    // A tl.from() in the scene script writes its start value when the timeline is built.
+    video.style.opacity = "0";
+    initSandboxRuntimeModular();
+    await tick();
+    await window.__hfSwapScenes!(preview([scene("A two", "ha2"), B]).html);
+    expect(sceneHost("a").querySelector("video")).toBe(video);
+  });
+
+  it("records a video's <source> children that the parser adds after the video itself", async () => {
+    const { root } = trackingRoot();
+    quietMedia();
+    const scene = (text: string, hash: string): Scene => ({
+      ...A1,
+      hash,
+      body: `<p>${text}</p><video><source src="clip.mp4"></video>`,
+    });
+    document.head.innerHTML = preview([A1, B]).head;
+    installAuthoredMediaCapture();
+    mount([scene("A one", "ha1"), B], root);
+    const video = sceneHost("a").querySelector("video")!;
+    const source = video.querySelector("source")!;
+    // The parser yields with the video's children still to come.
+    source.remove();
+    await tick();
+    video.appendChild(source);
+    await tick();
+    initSandboxRuntimeModular();
+    await tick();
+    await window.__hfSwapScenes!(preview([scene("A two", "ha2"), B]).html);
+    expect(sceneHost("a").querySelector("video")).toBe(video);
+  });
+
+  it("keeps a rebuilt video through the next edit though its scene script writes to it", async () => {
+    const { root } = trackingRoot();
+    quietMedia();
+    const scene = (text: string, attrs: string, hash: string): Scene => ({
+      ...A1,
+      hash,
+      body: `<p>${text}</p><video src="clip.mp4" ${attrs}></video>`,
+      script: `document.querySelector('[data-hf-scene="a"] video').style.opacity = "0";`,
+    });
+    boot([scene("A one", "", "ha1"), B], root);
+    await tick();
+    await window.__hfSwapScenes!(preview([scene("A two", "muted", "ha2"), B]).html);
+    const rebuilt = sceneHost("a").querySelector("video");
+    await window.__hfSwapScenes!(preview([scene("A three", "muted", "ha3"), B]).html);
+    expect(sceneHost("a").querySelector("video")).toBe(rebuilt);
+  });
+
+  it("rebuilds a video whose scene script the edit changed, dropping what the old script wrote to it", async () => {
+    const { root } = trackingRoot();
+    quietMedia();
+    const write = `const v = document.querySelector('[data-hf-scene="a"] video'); v.style.opacity = "0"; v.muted = true;`;
+    const scene = (text: string, script: string, hash: string): Scene => ({
+      ...A1,
+      hash,
+      body: `<p>${text}</p><video src="clip.mp4"></video>`,
+      script,
+    });
+    boot([scene("A one", write, "ha1"), B], root);
+    new Function(document.querySelector('script[data-hf-scene="a"]')!.textContent!)();
+    await tick();
+    await window.__hfSwapScenes!(preview([scene("A two", "", "ha2"), B]).html);
+    const video = sceneHost("a").querySelector("video")!;
+    expect([video.style.opacity, video.muted]).toEqual(["", false]);
+  });
+
   it.each([
-    ["rewinds and kills an old timeline that cannot revert", false, "1", 1],
+    ["rewinds and kills an old timeline that cannot revert", false, "", 1],
     ["reverts an old timeline that can, dropping the inline values it wrote", true, "", 0],
   ])(
     "%s, so a kept video carries none of its tweens' values",
     async (_, canRevert, opacity, kills) => {
       const { root } = trackingRoot();
       quietMedia();
-      const scene = (text: string, label: string, hash: string): Scene => ({
+      const scene = (text: string, hash: string): Scene => ({
         ...A1,
-        label,
         hash,
         body: `<p>${text}</p><video src="clip.mp4" data-start="1">one</video>`,
       });
-      boot([scene("A one", "a1", "ha1"), B], root);
+      boot([scene("A one", "ha1"), B], root);
       await tick();
       const video = sceneHost("a").querySelector("video")!;
-      const seek = made.a1!.totalTime.bind(made.a1);
+      const old = made.a1!;
+      const seek = old.totalTime.bind(old);
       const fadeOverTwentySeconds = (t?: number) => (
         t !== undefined && (video.style.opacity = String(1 - t / 20)), seek(t)
       );
-      made.a1!.totalTime = fadeOverTwentySeconds as Tl["totalTime"];
-      if (canRevert)
-        Object.assign(made.a1!, { revert: () => video.style.removeProperty("opacity") });
-      made.a1!.totalTime(10);
-      await window.__hfSwapScenes!(preview([scene("A two", "a2", "ha2"), B]).html);
+      old.totalTime = fadeOverTwentySeconds as Tl["totalTime"];
+      if (canRevert) Object.assign(old, { revert: () => video.style.removeProperty("opacity") });
+      old.totalTime(10);
+      // The same script registers a fresh timeline.
+      made.a1 = made.a2!;
+      await window.__hfSwapScenes!(preview([scene("A two", "ha2"), B]).html);
       expect(sceneHost("a").querySelector("video")).toBe(video);
       expect(video.style.opacity).toBe(opacity);
       // GSAP's revert() kills the timeline itself; a second kill() fires its onInterrupt again.
-      expect(made.a1!.kill).toHaveBeenCalledTimes(kills);
+      expect(old.kill).toHaveBeenCalledTimes(kills);
     },
   );
 
@@ -531,6 +653,50 @@ describe("__hfSwapScenes", () => {
     probe.mockReset();
   });
 
+  it("re-probes the volume of media kept through the swap against the new timeline", async () => {
+    const { root } = trackingRoot();
+    quietMedia();
+    const withAudio = (s: Scene, text: string): Scene => ({
+      ...s,
+      body: `<p>${text}</p><audio src="music.mp3" data-start="1" data-duration="2"></audio>`,
+    });
+    const probe = vi.mocked(probeAndCacheElementVolume);
+    probe.mockImplementation((el, _timeline, _duration, cache) => void cache.set(el, []));
+    boot([withAudio(A1, "A one"), B], root);
+    await tick();
+    const audio = sceneHost("a").querySelector("audio")!;
+    const probedAudio = () => probe.mock.calls.filter(([el]) => el === audio).length;
+    expect(probedAudio()).toBeGreaterThan(0);
+    probe.mockClear();
+    await window.__hfSwapScenes!(preview([withAudio({ ...A1, hash: "ha2" }, "A two"), B]).html);
+    expect(sceneHost("a").querySelector("audio")).toBe(audio);
+    expect(probedAudio()).toBeGreaterThan(0);
+    probe.mockReset();
+  });
+
+  it("gives the swapped scene's host its per-instance CSS variables", async () => {
+    const { root } = trackingRoot();
+    scoped.__hfVariablesByComp = { a: { accent: "#ff0000" } };
+    boot([A1, B], root);
+    await tick();
+    await window.__hfSwapScenes!(preview([A2, B]).html);
+    expect((sceneHost("a") as HTMLElement).style.getPropertyValue("--accent")).toBe("#ff0000");
+  });
+
+  it("adds no asset error listener to the swapped scene, which would keep it after it is swapped out", async () => {
+    const { root } = trackingRoot();
+    const withImage = (s: Scene): Scene => ({ ...s, body: `${s.body}<img src="logo.png">` });
+    boot([withImage(A1), B], root);
+    await tick();
+    const listen = vi.spyOn(EventTarget.prototype, "addEventListener");
+    await window.__hfSwapScenes!(preview([withImage(A2), B]).html);
+    const img = sceneHost("a").querySelector("img");
+    const onImg = listen.mock.contexts.filter(
+      (el, i) => el === img && listen.mock.calls[i]![0] === "error",
+    );
+    expect(onImg).toHaveLength(0);
+  });
+
   it("re-applies a moved element's position edit after the swap", async () => {
     const { root } = trackingRoot();
     boot([A1, B], root);
@@ -539,6 +705,24 @@ describe("__hfSwapScenes", () => {
     await window.__hfSwapScenes!(preview([moved, B]).html);
     const p = document.querySelector('[data-hf-scene="a"]:not(style):not(script) p') as HTMLElement;
     expect(p.style.translate).toContain("30");
+  });
+
+  it("keeps a moved video where it was moved, as a fresh load puts it, through an edit beside it", async () => {
+    const { root } = trackingRoot();
+    quietMedia();
+    const moved = 'data-x="40" data-y="7" data-hf-edit-base-x="0" data-hf-edit-base-y="0"';
+    const scene = (text: string, hash: string): Scene => ({
+      ...A1,
+      hash,
+      body: `<p>${text}</p><video src="clip.mp4" ${moved}></video>`,
+    });
+    boot([scene("A one", "ha1"), B], root);
+    await tick();
+    const video = sceneHost("a").querySelector("video")!;
+    expect(video.style.getPropertyValue("translate")).toBe("40px 7px");
+    await window.__hfSwapScenes!(preview([scene("A two", "ha2"), B]).html);
+    expect(sceneHost("a").querySelector("video")).toBe(video);
+    expect(video.style.getPropertyValue("translate")).toBe("40px 7px");
   });
 
   it("rejects a scene the bundler marked as not swappable, naming why", async () => {
@@ -553,6 +737,226 @@ describe("__hfSwapScenes", () => {
       "scene a cannot be swapped: its script uses addEventListener",
     );
     expect(made.a1!.kill).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    ["the root timeline", "host", (root: Tl) => root],
+    ["the root timeline", "text", (root: Tl) => root],
+    ["another scene's timeline", "text", () => made.b],
+  ])("refuses, changing nothing, when %s tweens the scene's %s", async (_, target, owner) => {
+    const { root } = trackingRoot();
+    const tweened = () => (target === "host" ? sceneHost("a") : sceneHost("a").querySelector("p"));
+    const tween = { parent: owner(root), targets: () => [tweened()] };
+    (window as unknown as { gsap: unknown }).gsap = {
+      set: () => {},
+      globalTimeline: { getChildren: () => [tween] },
+    };
+    boot([A1, B], root);
+    await tick();
+    const before = document.documentElement.innerHTML;
+    await expect(window.__hfSwapScenes!(preview([A2, B]).html)).rejects.toThrow(
+      "scene a cannot be swapped: an animation outside it moves its elements",
+    );
+    expect(document.documentElement.innerHTML).toBe(before);
+    expect(made.a1!.kill).not.toHaveBeenCalled();
+  });
+
+  it("swaps a scene whose elements only its own and its nested scenes' timelines tween", async () => {
+    const { root } = trackingRoot();
+    const nested = (s: Scene): Scene => ({
+      ...s,
+      body: `${s.body}<div data-composition-id="n"><i>n</i></div>`,
+    });
+    const own = { parent: made.a1, targets: () => [sceneHost("a")] };
+    const inNested = { parent: { parent: made.n1 }, targets: () => [sceneHost("a")] };
+    const elsewhere = { parent: root, targets: () => [sceneHost("b")] };
+    (window as unknown as { gsap: unknown }).gsap = {
+      set: () => {},
+      globalTimeline: { getChildren: () => [own, inNested, elsewhere] },
+    };
+    boot([nested(A1), B], root);
+    window.__timelines!.n = made.n1;
+    await tick();
+    await window.__hfSwapScenes!(preview([nested(A2), B]).html);
+    expect(sceneHost("a").querySelector("p")?.textContent).toBe("A two");
+  });
+
+  it.each([
+    ["a timeline it never registers", `gsap.timeline().to("p", { x: 100 });`],
+    ["gsap under another name", `const g = gsap; g.to("p", { x: 100 });`],
+    ["gsap by a computed key", `gsap["to"]("p", { x: 100 });`],
+    ["the unscoped global", `globalThis.gsap.to("p", { x: 100 });`],
+  ])(
+    "stops what the old scene script started through %s, so one copy runs after the swap",
+    async (_, source) => {
+      const { root } = trackingRoot();
+      const running = new Set<object>();
+      const globalTimeline = { getChildren: () => [...running] };
+      const start = () => {
+        const p = sceneHost("a").querySelector("p");
+        const animation = {
+          parent: globalTimeline,
+          targets: () => [p],
+          to: () => animation,
+          revert: () => void running.delete(animation),
+        };
+        running.add(animation);
+        return animation;
+      };
+      vi.stubGlobal("gsap", {
+        set: () => {},
+        globalTimeline,
+        timeline: start,
+        to: start,
+      });
+      const scene = (s: Scene): Scene => ({
+        ...s,
+        script: wrapScopedCompositionScript(source, "a"),
+      });
+      boot([scene(A1), B], root);
+      new Function(document.querySelector('script[data-hf-scene="a"]')!.textContent!)();
+      await tick();
+      expect(running.size).toBe(1);
+      await window.__hfSwapScenes!(preview([scene(A2), B]).html);
+      expect(running.size).toBe(1);
+      expect(window.__hfSceneAnimations?.a).toHaveLength(1);
+    },
+  );
+
+  it("reverts a scene's timeline once though its script also recorded it", async () => {
+    const { root } = trackingRoot();
+    const revert = vi.fn();
+    Object.assign(made.a1!, { revert });
+    boot([A1, B], root);
+    await tick();
+    window.__hfSceneAnimations = { a: [made.a1!] };
+    await window.__hfSwapScenes!(preview([A2, B]).html);
+    expect(revert).toHaveBeenCalledTimes(1);
+  });
+
+  it("reverts a scene's recorded animations newest first, so each restores what the one before it wrote", async () => {
+    const { root } = trackingRoot();
+    const order: string[] = [];
+    const animation = (name: string) => ({ revert: () => void order.push(name) });
+    Object.assign(made.a1!, animation("timeline"));
+    boot([A1, B], root);
+    await tick();
+    window.__hfSceneAnimations = { a: [made.a1!, animation("first set"), animation("second set")] };
+    await window.__hfSwapScenes!(preview([A2, B]).html);
+    expect(order).toEqual(["second set", "first set", "timeline"]);
+  });
+
+  const writesOutside = "scene a cannot be swapped: its animations write outside the scene";
+  const asFresh = "swapped, as a fresh load, video kept";
+  const thenFrom = `tl.from(k, { x: 0, duration: 1 });`;
+  const shapes = {
+    "a free from()": `gsap.from(k, { x: "+=50", duration: 1 }); ${thenFrom}`,
+    "a free fromTo()": `gsap.fromTo(k, { x: "+=50" }, { x: "+=0", duration: 1 }); ${thenFrom}`,
+    "a tween moved to its end": `gsap.to(k, { x: "+=50", duration: 0.5 }).progress(1); ${thenFrom}`,
+    "a second timeline's from()": `gsap.timeline({ paused: true }).from(k, { x: "+=50", duration: 1 }); ${thenFrom}`,
+    "a relative set": `gsap.set(k, { x: "+=50" }); ${thenFrom}`,
+    "a nested timeline's to() before its from()": `tl.add(gsap.timeline().to(k, { x: 10, duration: 0.5 }).from(k, { x: 0, duration: 1 }), 0);`,
+  };
+  it.each([
+    ...Object.entries(shapes).flatMap(([shape, body]) => [
+      [shape, "video", body, asFresh],
+      [shape, "#kept", body, writesOutside],
+    ]),
+    [
+      "a to() before a from() on one property",
+      "video",
+      `tl.to(k, { opacity: 0.5, duration: 0.5 }, 0).from(k, { opacity: 0, duration: 1 }, 0.5);`,
+      asFresh,
+    ],
+    [
+      "a fade in, then out",
+      "video",
+      `tl.from(k, { opacity: 0, duration: 1 }, 0).to(k, { opacity: 0, duration: 1 }, 1.5);`,
+      asFresh,
+    ],
+    ["a lone set", "video", `gsap.set(k, { x: 50 });`, asFresh],
+    ["a lone timeline from()", "video", `tl.from(k, { x: 50, duration: 1 });`, asFresh],
+    [
+      "a set on its text and a timeline from()",
+      "video",
+      `gsap.set("p", { x: 20 }); tl.from(k, { x: 50, duration: 1 });`,
+      asFresh,
+    ],
+    [
+      "one timeline moving it twice",
+      "video",
+      `tl.from(k, { x: 50, duration: 1 }).to(k, { x: "+=30", duration: 1 });`,
+      asFresh,
+    ],
+    ["a lone timeline to()", "#kept", `tl.to(k, { x: 10, duration: 1 });`, writesOutside],
+    [
+      "a padding tween on an empty object",
+      "video",
+      `tl.to({}, { duration: 2 }); tl.from(k, { x: 50, duration: 1 }, 0);`,
+      asFresh,
+    ],
+    [
+      "a counter on a local object",
+      "video",
+      `const state = { n: 0 }; tl.to(state, { n: 10, duration: 1, onUpdate: () => void (k.dataset.n = String(Math.round(state.n))) }); tl.from(k, { x: 50, duration: 1 }, 0);`,
+      asFresh,
+    ],
+    [
+      "a move the record missed, as a callback's",
+      "video",
+      `globalThis.__missed = () => gsap.set(k, { x: 30 }); tl.from(k, { opacity: 0, duration: 1 });`,
+      asFresh,
+    ],
+  ])("a scene script with %s on %s", async (_, el, body, expected) => {
+    const exports: { gsap?: RealGsap } = {};
+    // Its ticker takes the frame callback as it loads, and this file's runs at once: give it one that never ticks.
+    const frame = window.requestAnimationFrame;
+    window.requestAnimationFrame = () => 0;
+    new Function("exports", "module", readFileSync(vendoredGsap(), "utf8"))(exports, { exports });
+    window.requestAnimationFrame = frame;
+    const gsap = exports.gsap!;
+    vi.stubGlobal("gsap", gsap);
+    quietMedia();
+    const source = `const k = globalThis.document.querySelector(${JSON.stringify(el)});
+const tl = gsap.timeline({ paused: true });
+${body}
+window.__timelines.a = tl;`;
+    const scene = (text: string, hash: string): Scene => ({
+      ...A1,
+      hash,
+      body: `<p>${text}</p><video src="clip.mp4" style="opacity: 0.5"></video>`,
+      script: wrapScopedCompositionScript(source, "a"),
+    });
+    boot([scene("A one", "ha1"), B], trackingRoot().root);
+    document.body.insertAdjacentHTML("beforeend", '<div id="kept"></div>');
+    new Function(document.querySelector('script[data-hf-scene="a"]')!.textContent!)();
+    // The old page is a fresh load of the same script.
+    const along = () => {
+      const timeline = window.__timelines!.a!;
+      const k = document.querySelector(el)!;
+      return [0, 0.25, 0.5, 0.75, 1]
+        .map((at) => {
+          timeline.totalTime!(at * timeline.duration());
+          return `${gsap.getProperty(k, "x")}/${gsap.getProperty(k, "opacity")}`;
+        })
+        .join(" ");
+    };
+    const fresh = along();
+    (globalThis as { __missed?: () => void }).__missed?.();
+    const video = sceneHost("a").querySelector("video");
+    const swapped = await window.__hfSwapScenes!(preview([scene("A two", "ha2"), B]).html).then(
+      () => {
+        const values = along();
+        const kept = sceneHost("a").querySelector("video") === video ? ", video kept" : "";
+        return values === fresh
+          ? `swapped, as a fresh load${kept}`
+          : `swapped: ${values} against ${fresh}`;
+      },
+      (error: Error) => error.message,
+    );
+    gsap.ticker.sleep();
+    delete (globalThis as { __missed?: () => void }).__missed;
+    expect(swapped).toBe(expected);
   });
 
   it("rejects a scene with more than one host rather than dropping one", async () => {
@@ -639,6 +1043,86 @@ describe("__hfSwapScenes", () => {
     for (let i = 0; i < 5; i++) await tick();
     expect(document.documentElement.innerHTML).toBe(before);
     expect(made.a1!.kill).not.toHaveBeenCalled();
+  });
+
+  it("refuses a swap when an outside animation starts on the scene while its caption overrides load", async () => {
+    const { swap, before, answer } = await bootWithPendingCaptions();
+    const tween = { targets: () => [sceneHost("a")] };
+    Object.assign(window.gsap!, { globalTimeline: { getChildren: () => [tween] } });
+    answer(new Response("null", { status: 404 }));
+    await expect(swap).rejects.toThrow("an animation outside it moves its elements");
+    expect(document.documentElement.innerHTML).toBe(before);
+    expect(made.a1!.kill).not.toHaveBeenCalled();
+  });
+
+  it("checks the timeline registry as it is after the caption wait, which a data handler may replace", async () => {
+    const { swap, before, answer } = await bootWithPendingCaptions();
+    const movesB = { targets: () => [sceneHost("b")], getChildren: () => [] };
+    // As a runtime-data handler may: a new registry object, whose scene-a timeline moves scene b.
+    window.__timelines = { ...window.__timelines, a: movesB as unknown as RuntimeTimelineLike };
+    answer(new Response("null", { status: 404 }));
+    await expect(swap).rejects.toThrow("its animations write outside the scene");
+    expect(document.documentElement.innerHTML).toBe(before);
+  });
+
+  it("refuses a swap whose scene was replaced while its caption overrides loaded", async () => {
+    const { swap, answer } = await bootWithPendingCaptions();
+    const live = sceneHost("a");
+    live.replaceWith(live.cloneNode(true));
+    const manifest = () =>
+      document.querySelector('meta[name="hf-scene-parts"]')?.getAttribute("content");
+    const before = manifest();
+    answer(new Response("null", { status: 404 }));
+    await expect(swap).rejects.toThrow("a scene changed while this swap waited");
+    expect(manifest()).toBe(before);
+  });
+
+  it("refuses when stopping a scene's timeline replaces the registry with one moving another scene", async () => {
+    const { root } = trackingRoot();
+    (window as unknown as { gsap: unknown }).gsap = { set: () => {} };
+    const movesB = { targets: () => [sceneHost("b")], getChildren: () => [] };
+    // As an onInterrupt that revert() fires can: a new registry whose scene-a timeline moves scene b.
+    const replaceRegistry = () =>
+      void (window.__timelines = {
+        ...window.__timelines,
+        a: movesB as unknown as RuntimeTimelineLike,
+      });
+    Object.assign(made.a1!, { revert: replaceRegistry });
+    boot([A1, B], root);
+    await tick();
+    await expect(window.__hfSwapScenes!(preview([A2, B]).html)).rejects.toThrow(
+      "its animations write outside the scene",
+    );
+    delete (window as unknown as { gsap?: unknown }).gsap;
+  });
+
+  it("runs the new scene scripts once every edited scene is replaced, so none binds to one still to go", async () => {
+    const { root } = trackingRoot();
+    const bound: Element[] = [];
+    (window as unknown as { __bind: () => void }).__bind = () => bound.push(sceneHost("b"));
+    boot([A1, B], root);
+    await tick();
+    const B2: Scene = { ...B, body: "<p>B two</p>", hash: "hb2" };
+    await window.__hfSwapScenes!(preview([{ ...A2, script: "window.__bind?.();" }, B2]).html);
+    expect(bound.map((el) => el.isConnected)).toEqual([true]);
+  });
+
+  it("refuses, for the caller's reload, when stopping one scene starts an animation on another it swaps", async () => {
+    const { root } = trackingRoot();
+    const running: object[] = [];
+    (window as unknown as { gsap: unknown }).gsap = {
+      set: () => {},
+      globalTimeline: { getChildren: () => [...running] },
+    };
+    // As the old timeline's onInterrupt can when revert() interrupts it.
+    const startOnB = () => void running.push({ targets: () => [sceneHost("b")] });
+    Object.assign(made.a1!, { revert: startOnB });
+    boot([A1, B], root);
+    await tick();
+    const B2: Scene = { ...B, body: "<p>B two</p>", hash: "hb2" };
+    await expect(window.__hfSwapScenes!(preview([A2, B2]).html)).rejects.toThrow(
+      "scene b cannot be swapped",
+    );
   });
 
   it("rejects a swap another swap overtook while its caption overrides loaded", async () => {
