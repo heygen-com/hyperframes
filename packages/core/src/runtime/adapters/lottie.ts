@@ -63,7 +63,7 @@ export function createLottieAdapter(params?: {
   const secondsIntoComposition = (anim: unknown, pageTime: number): number =>
     Math.max(0, pageTime - compositionStartSeconds(anim));
 
-  const adapter: RuntimeDeterministicAdapter = {
+  return {
     name: "lottie",
 
     discover: () => {
@@ -167,39 +167,38 @@ export function createLottieAdapter(params?: {
       // Just let them be garbage collected naturally.
     },
 
-    getInferredDurationSeconds: () => latestInstanceEnd((_, seconds) => seconds),
+    getInferredDurationSeconds: () => latestInstanceEnd((_, length) => length),
 
     // Plays from its composition's start, as seek anchors it; a removed scene's instance stays registered.
     getAnimationCycleEndSeconds: () =>
-      latestInstanceEnd((anim, seconds) =>
+      latestInstanceEnd((anim, length) =>
         (lottieElement(anim) as Node | undefined)?.isConnected === false
           ? null
-          : compositionStartSeconds(anim) + seconds,
+          : compositionStartSeconds(anim) + length,
       ),
   };
-  return adapter;
 }
 
 /** Max of `endOf(instance, its length)` over registered instances; null skips an instance. */
 function latestInstanceEnd(
-  endOf: (anim: LottieWebAnimation | DotLottiePlayer, seconds: number) => number | null,
+  endOf: (anim: LottieWebAnimation | DotLottiePlayer, length: number) => number | null,
 ): number | null {
   const instances = (window as LottieWindow).__hfLottie;
   if (!instances || instances.length === 0) return null;
   let maxSeconds = 0;
   let sawAny = false;
   for (const anim of instances) {
-    let seconds: number | null = null;
+    let end: number | null = null;
     try {
       const length = inferAnimationDurationSeconds(anim);
-      seconds = length == null ? null : endOf(anim, length);
+      end = length == null ? null : endOf(anim, length);
     } catch (err) {
       // ignore per-animation failures — keep going for other instances
       swallow("runtime.adapters.lottie.site4", err);
     }
-    if (seconds == null) continue;
+    if (end == null) continue;
     sawAny = true;
-    maxSeconds = Math.max(maxSeconds, seconds);
+    maxSeconds = Math.max(maxSeconds, end);
   }
   // Not-yet-loaded animations report totalFrames=0 — return null (not 0)
   // so the caller doesn't treat "still loading" as "genuinely zero

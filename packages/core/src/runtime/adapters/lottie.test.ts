@@ -47,6 +47,7 @@ describe("lottie adapter", () => {
   afterEach(() => {
     delete lottieWindow.lottie;
     delete lottieWindow.__hfLottie;
+    document.body.innerHTML = "";
   });
 
   it("has correct name", () => {
@@ -104,7 +105,6 @@ describe("lottie adapter", () => {
       expect(dot.setCurrentRawFrameValue).toHaveBeenCalledWith(30);
       adapter.seek({ time: 1 });
       expect(anim.goToAndStop).toHaveBeenLastCalledWith(0, false);
-      document.body.innerHTML = "";
     });
 
     it("keeps page time for a player in a composition that starts at 0", () => {
@@ -113,7 +113,6 @@ describe("lottie adapter", () => {
       lottieWindow.__hfLottie = [anim];
       adapter.seek({ time: 2 });
       expect(anim.goToAndStop).toHaveBeenCalledWith(2000, false);
-      document.body.innerHTML = "";
     });
 
     it("seeks lottie-web with goToAndStop in ms", () => {
@@ -304,13 +303,19 @@ describe("lottie adapter", () => {
       const adapter = createLottieAdapter();
       expect(adapter.getInferredDurationSeconds?.()).toBeNull();
     });
+
+    it("reports a player's own length, ignoring its composition's start and counting removed ones", () => {
+      const { adapter, player } = mountedAt("5");
+      lottieWindow.__hfLottie = [{ ...createLottieWebAnim({ totalFrames: 60 }), wrapper: player }];
+      expect(adapter.getInferredDurationSeconds?.()).toBe(2);
+      const gone = document.body.appendChild(document.createElement("div"));
+      gone.remove();
+      lottieWindow.__hfLottie.push({ ...createLottieWebAnim({ totalFrames: 90 }), wrapper: gone });
+      expect(adapter.getInferredDurationSeconds?.()).toBe(3);
+    });
   });
 
   describe("getAnimationCycleEndSeconds", () => {
-    afterEach(() => {
-      document.body.innerHTML = "";
-    });
-
     it("ends one loop after the start of the player's composition", () => {
       const { adapter, player } = mountedAt("5");
       lottieWindow.__hfLottie = [{ ...createLottieWebAnim({ totalFrames: 60 }), wrapper: player }];
