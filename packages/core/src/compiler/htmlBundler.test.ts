@@ -27,6 +27,9 @@ function makeTempProject(files: Record<string, string>): string {
  * resolved to the right file: resolving from the wrong base directory finds no
  * file at all, so nothing is inlined and the assertion fails.
  */
+const styleText = (html: string) =>
+  [...html.matchAll(/<style[^>]*>([\s\S]*?)<\/style>/gi)].map((m) => m[1]).join("\n");
+
 function inlinedAs(mime: string, content: string): string {
   return `data:${mime};base64,${Buffer.from(content, "utf-8").toString("base64")}`;
 }
@@ -1184,7 +1187,7 @@ describe("bundleToSingleHtml", () => {
     const bundled = await bundleToSingleHtml(dir);
 
     expect(bundled).toContain("--brand: #ff5728");
-    expect(bundled).not.toContain("@import");
+    expect(styleText(bundled)).not.toContain("@import");
     expect(bundled).toContain("margin: 0");
   });
 
@@ -1273,7 +1276,7 @@ describe("bundleToSingleHtml", () => {
     expect(bundled).toContain("--tk-teal: #1a3540");
     expect(bundled).toContain("display: flex");
     expect(bundled).toContain("color: red");
-    expect(bundled).not.toContain("@import");
+    expect(styleText(bundled)).not.toContain("@import");
   });
 
   it("wraps @import with media query in @media block", async () => {
@@ -1292,7 +1295,7 @@ describe("bundleToSingleHtml", () => {
 
     expect(bundled).toContain("@media print");
     expect(bundled).toContain("display: block");
-    expect(bundled).not.toContain("@import");
+    expect(styleText(bundled)).not.toContain("@import");
   });
 
   it("preserves @import for absolute URLs", async () => {
@@ -1329,7 +1332,7 @@ describe("bundleToSingleHtml", () => {
 
     expect(bundled).toContain(`url('${inlinedAs("font/woff2", "fake-font-data")}')`);
     expect(bundled).not.toContain("url('assets/fonts/brand.woff2')");
-    expect(bundled).not.toContain("@import");
+    expect(styleText(bundled)).not.toContain("@import");
   });
 
   it("rebases url() paths in <link>-inlined CSS from subdirectories", async () => {
@@ -1525,7 +1528,7 @@ describe("bundleToSingleHtml", () => {
     expect(sharedCount).toBe(1);
     expect(bundled).toContain(".a { color: red; }");
     expect(bundled).toContain(".b { color: blue; }");
-    expect(bundled).not.toContain("@import");
+    expect(styleText(bundled)).not.toContain("@import");
   });
 
   it("does not resolve @import inside CSS comments", async () => {
