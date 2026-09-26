@@ -39,6 +39,8 @@ const DIAGNOSTIC_UNAVAILABLE_CODE = "runtime_media_proxy_unavailable";
 
 type ProxyTrigger = "proactive" | "reactive" | "tertiary";
 
+// `swappedElements` gates every trigger, so a second undecodable-video signal never re-swaps.
+
 // Elements that already got the "can't help you" diagnostic (cross-origin,
 // or the proxy itself failing) — one-shot per element, independent of
 // `swappedElements` so the proxy-failed case (which fires AFTER a real swap)
