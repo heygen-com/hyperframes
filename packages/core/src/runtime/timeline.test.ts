@@ -521,12 +521,19 @@ describe("collectRuntimeTimelinePayload", () => {
   });
 
   it("reports the real length of a film shorter than one second", () => {
-    document.body.innerHTML = `<div data-composition-id="main" data-duration="0.5"><div id="clip" data-start="0" data-duration="0.5"></div></div>`;
-    (window as TimelineTestWindow).__timelines = { main: { duration: () => 0.5 } };
+    document.body.innerHTML = `<div data-composition-id="main" data-duration="0.2"><div id="clip" data-start="0" data-duration="0.2"></div></div>`;
+    (window as TimelineTestWindow).__timelines = { main: { duration: () => 0.2 } };
 
     const result = collectRuntimeTimelinePayload(defaultParams);
-    expect(result.durationSeconds).toBe(0.5);
-    expect(result.durationInFrames).toBe(15);
+    expect(result.durationSeconds).toBe(0.2);
+    expect(result.durationInFrames).toBe(6);
+  });
+
+  it("reports the real length of a sub-second root with no timed clips", () => {
+    document.body.innerHTML = `<div data-composition-id="main" data-duration="0.2"></div>`;
+
+    const result = collectRuntimeTimelinePayload(defaultParams);
+    expect(result.durationSeconds).toBe(0.2);
   });
 
   it("defaults composition dimensions to 1920x1080", () => {
