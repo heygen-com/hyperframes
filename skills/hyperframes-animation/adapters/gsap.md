@@ -70,7 +70,7 @@ HyperFrames is stricter than vanilla GSAP. Animate only:
 
 **Forbidden** (breaks the renderer or the clip lifecycle):
 
-- `display`, raw `visibility` **on a clip element**: never duration-tween these. HyperFrames owns a clip's visibility and `lint` rejects it. Use `autoAlpha` (opacity plus endpoint visibility) or a zero-duration timeline set at an explicit boundary. Animating a clip element's other visual properties is fine and the shipped catalog does it throughout; what is forbidden is taking over its visibility.
+- `display`, `visibility` or `autoAlpha` **on a clip element**: HyperFrames owns a clip's visibility, and `lint` rejects any GSAP write of these, a zero-duration `tl.set()` included (`gsap_animates_clip_element`). Fade the clip with `opacity`, or animate a child element inside it. Animating a clip element's other visual properties is fine and the shipped catalog does it throughout; what is forbidden is taking over its visibility.
 - Anything driven by `Math.random()`, `Date.now()`, `performance.now()`, or event handlers — animation state must be deterministic from time alone.
 
 > **Note**: the list above is a **denylist**, not an allowlist. Properties outside it, including `width`, `height`, `filter`, `clipPath` and `strokeDashoffset`, are legitimate targets; prefer transforms and opacity where you have the choice, for performance rather than correctness. See `hyperframes-core/references/determinism-rules.md` for the full deterministic-render contract.

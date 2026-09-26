@@ -40,8 +40,8 @@ bed. Use when the user wants their footage present but the message must stay rea
 - **Clips are muted; the root owns audio.** Mount each `<video class="clip">` **muted**, as a
   direct child of the frame root (never nested in another timed element, or the renderer
   freezes it). The BGM is the only audio in v1.
-- **Crossfades animate `opacity`/`autoAlpha`**, never `visibility`/`display` on a `.clip`
-  (the framework owns clip visibility — that trips `gsap_animates_clip_element`).
+- **Crossfades animate `opacity`** on a `.clip`, never `autoAlpha`, `visibility` or `display`
+  (the framework owns clip visibility — those trip `gsap_animates_clip_element`).
 - **Backgrounds dim ~30–50%** so any foreground text stays legible.
 - Anchors are **track seconds from `audiomap.json`**; the worker subtracts the frame start
   to get frame-local time.
