@@ -270,6 +270,27 @@ describe("useAutomationLanes saves report what happened", () => {
     expect(usePlayerStore.getState().elements[0]?.automation).toBe(landed);
   });
 
+  it("keeps a newer live drag's preview when an older save's recovery lands", async () => {
+    const { startCommit, preview, writeProjectFile, iframe, reads, holdRead } = mountLanes(music);
+    const at = (v: number) => ({
+      version: 1 as const,
+      lanes: [{ target: "volume", points: [{ t: 0, v }] }],
+    });
+    const releaseRecovery = holdRead(2);
+    writeProjectFile.mockRejectedValueOnce(new Error("offline"));
+    preview(at(0.9));
+    const older = startCommit(at(0.9));
+    await act(() => vi.waitFor(() => expect(reads()).toBe(2)));
+    preview(at(0.7));
+    releaseRecovery();
+    await act(async () => {
+      await older;
+    });
+    expect(iframe.contentDocument!.getElementById("music")?.getAttribute("data-automation")).toBe(
+      serializeAutomation(at(0.7)),
+    );
+  });
+
   it("settles on a queued save that lands after an earlier one fails", async () => {
     const { startCommit, preview, writeProjectFile, iframe, setFile } = mountLanes(music);
     let failFirst = () => {};
