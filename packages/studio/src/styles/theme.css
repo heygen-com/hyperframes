@@ -208,7 +208,14 @@
   --duration-press: 120ms;
   --duration-hover: 150ms;
   --duration-expand: 160ms;
-  --duration-open: 180ms;
+  /* Menus, popovers, and dropdowns. Open is ease-out; close is shorter and ease-in. */
+  --duration-open: 120ms;
+  --duration-close: 90ms;
+  /* Tooltips use the same enter shape on a shorter open. */
+  --duration-tooltip: 100ms;
+  /* Visible on the first frame. Never enter from scale 0 or opacity 0. */
+  --popup-enter-opacity: 0.8;
+  --popup-enter-scale: 0.97;
 
   /* ------------------------------------------------------------------ icon */
 
