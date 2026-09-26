@@ -450,6 +450,36 @@ describe("openProjectHistory", () => {
     },
   );
 
+  it("refuses the working folder as a checkout written as an empty path, and writes nothing there", async () => {
+    const name = `hf-checkout-probe-${process.pid}.html`;
+    cleanup.push(() => rmSync(join(process.cwd(), name), { force: true }));
+    const { history, write } = await project({ [name]: "v1" });
+    const entry = await change(history, you, "Second", () => write(name, "v2"));
+
+    await expect(history.checkout(entry.id, "before", "")).rejects.toThrow("empty folder only");
+    expect(existsSync(join(process.cwd(), name))).toBe(false);
+  });
+
+  // Windows needs a privilege to create symlinks.
+  it.skipIf(process.platform === "win32")(
+    "refuses a nonempty checkout folder reached through a link and `..`",
+    async () => {
+      const { history, write } = await project({ "index.html": "v1" });
+      const entry = await change(history, you, "Second", () => write("index.html", "v2"));
+      const out = tempDir("hf-history-out-");
+      const other = tempDir("hf-history-other-");
+      mkdirSync(join(other, "sub"));
+      symlinkSync(join(other, "sub"), join(out, "link"), "dir");
+      mkdirSync(join(out, "co"));
+      writeFileSync(join(out, "co", "index.html"), "kept");
+
+      await expect(history.checkout(entry.id, "before", `${out}/link/../co`)).rejects.toThrow(
+        "empty folder only",
+      );
+      expect(inside(join(out, "co"), "index.html")).toBe("kept");
+    },
+  );
+
   it("refuses a checkout folder inside the project, however it is reached", async () => {
     const { history, write, projectDir, has } = await project({ "index.html": "v1" });
     const entry = await change(history, you, "Second", () => write("index.html", "v2"));

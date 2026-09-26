@@ -883,16 +883,17 @@ class Engine {
         this.queue(async () => {
           this.entry(entryId);
           if (!existsSync(this.dir)) throw new Error(`The project folder is gone: ${this.dir}`);
-          if (isWithin(this.dir, emptyDir))
-            throw new Error(`Checkout writes outside the project only: ${emptyDir}`);
-          if ((await readdir(emptyDir).catch(missingIsEmpty)).length > 0)
-            throw new Error(`Checkout writes into an empty folder only: ${emptyDir}`);
+          const dest = resolve(emptyDir);
+          if (isWithin(this.dir, dest))
+            throw new Error(`Checkout writes outside the project only: ${dest}`);
+          if ((await readdir(dest).catch(missingIsEmpty)).length > 0)
+            throw new Error(`Checkout writes into an empty folder only: ${dest}`);
           const files = manifestAround(this.log, entryId, side)!;
           try {
-            for (const [path, hash] of files) await this.blobs.writeTo(hash, join(emptyDir, path));
+            for (const [path, hash] of files) await this.blobs.writeTo(hash, join(dest, path));
           } catch (error) {
-            for (const name of await readdir(emptyDir).catch(() => []))
-              await rm(join(emptyDir, name), { recursive: true, force: true });
+            for (const name of await readdir(dest).catch(() => []))
+              await rm(join(dest, name), { recursive: true, force: true });
             throw error;
           }
         }),
