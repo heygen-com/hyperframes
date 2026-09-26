@@ -24,7 +24,7 @@ export function projectForTimelineSave(
   return projectId ?? { status: "failed", reason: "No project is open" };
 }
 
-export function timelineEditRefusal(
+function timelineEditRefusal(
   canEdit: CanEditTimelineElement | undefined,
   targets: readonly TimelineElement[],
 ): string | null {
@@ -36,20 +36,30 @@ export function timelineEditRefusal(
 }
 
 /**
- * Refuses a write when any target element is blocked, toasting the host's
- * reason. Absent `canEdit` never refuses, so Studio itself is unchanged.
+ * The host's reason to refuse a write when any target element is blocked, toasted,
+ * or null. Absent `canEdit` never refuses, so Studio itself is unchanged.
  */
-export function useTimelineEditGate(
+export function useTimelineEditRefusal(
   canEdit: CanEditTimelineElement | undefined,
   showToast: (message: string, tone?: "error" | "info") => void,
 ) {
   return useCallback(
-    (targets: readonly TimelineElement[]): boolean => {
+    (targets: readonly TimelineElement[]): string | null => {
       const reason = timelineEditRefusal(canEdit, targets);
-      if (reason === null) return true;
-      showToast(reason, "error");
-      return false;
+      if (reason !== null) showToast(reason, "error");
+      return reason;
     },
     [canEdit, showToast],
+  );
+}
+
+export function useTimelineEditGate(
+  canEdit: CanEditTimelineElement | undefined,
+  showToast: (message: string, tone?: "error" | "info") => void,
+) {
+  const refuse = useTimelineEditRefusal(canEdit, showToast);
+  return useCallback(
+    (targets: readonly TimelineElement[]): boolean => refuse(targets) === null,
+    [refuse],
   );
 }

@@ -155,7 +155,7 @@ export function useSetElementAttribute({
         });
         liveBeforeRef.current.delete(liveKey);
         if (written) return { status: "saved" };
-        return { status: "failed", reason: "This clip could not be found in its file" };
+        return { status: "failed", reason: "This clip has no id to save it by" };
       } catch (error) {
         console.error("[Timeline] Failed to set element attribute", error);
         const message = error instanceof Error ? error.message : "Failed to update effect";

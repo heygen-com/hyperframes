@@ -168,7 +168,7 @@ async function setAudioGroupAttribute({
   writeProjectFile,
   recordEdit,
   pendingTimelineEditPathRef,
-}: SetAudioGroupAttributeInput): Promise<string[]> {
+}: SetAudioGroupAttributeInput): Promise<string[] | null> {
   // The file that actually CONTAINS the group element, not just the active
   // composition. A hand-authored sub-composition can declare both the members
   // and their `<hf-audio-group>`, and until sub-comp children inherited
@@ -180,7 +180,7 @@ async function setAudioGroupAttribute({
   const groupEl = previewIframe?.contentDocument?.getElementById(groupId) ?? null;
   const targetPath = resolveGroupSourceFile(groupEl) || activeCompPath || "index.html";
   const patchTarget = buildPatchTarget({ domId: groupId });
-  if (!patchTarget) return [];
+  if (!patchTarget) return null;
 
   return persistElementAttribute({
     projectId,
@@ -268,7 +268,7 @@ export function useSetAudioGroupAttribute({
       const pid = projectForTimelineSave(isRecordingRef?.current, projectIdRef.current, showToast);
       if (typeof pid !== "string") return pid;
       try {
-        await setAudioGroupAttribute({
+        const written = await setAudioGroupAttribute({
           projectId: pid,
           activeCompPath,
           groupId,
@@ -281,6 +281,7 @@ export function useSetAudioGroupAttribute({
           pendingTimelineEditPathRef,
         });
         liveBeforeRef.current.delete(audioGroupAttributeLiveKey(groupId, attr));
+        if (!written) return { status: "failed", reason: "This group has no id to save it by" };
         syncStoredGroupAttribute(groupId, attr, value);
         return { status: "saved" };
       } catch (error) {
