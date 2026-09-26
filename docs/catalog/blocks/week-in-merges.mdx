@@ -1,0 +1,540 @@
+---
+title: "Week in Merges"
+description: "Each author's avatar bounces across their row at a speed set by how many pull requests they merged"
+mode: "frame"
+---
+
+import { CatalogDetail, CatalogSlot } from "/snippets/catalog-detail.jsx";
+import { InstallCommand } from "/snippets/install-command.jsx";
+
+<CatalogDetail
+  previewSrc="/public/catalog/blocks/week-in-merges.json"
+  compositionId="week-in-merges"
+  compositionSrc="compositions/week-in-merges.html"
+  title="Week in Merges"
+  description="Each author's avatar bounces across their row at a speed set by how many pull requests they merged"
+  variables={[{"id":"eyebrow","type":"string","label":"Eyebrow","default":"ACME / WEEK IN MERGES"},{"id":"title","type":"string","label":"Title","default":"Pull requests merged this week"},{"id":"period","type":"string","label":"Period","default":"1 September - 7 September 2026 · America/Los_Angeles"},{"id":"total","type":"string","label":"Total","default":"12 PRs"},{"id":"footer","type":"string","label":"Footer","default":"Speed proportional to merges · By PR author"},{"id":"source","type":"string","label":"Source line","default":"Example org · 1 repo · Bots · 0"},{"id":"rows","type":"string","label":"Rows (JSON array of name, merges, avatar)","default":"[{\"name\":\"Ada\",\"merges\":12,\"avatar\":\"\"},{\"name\":\"Bao\",\"merges\":7,\"avatar\":\"\"},{\"name\":\"Cam\",\"merges\":4,\"avatar\":\"\"},{\"name\":\"Dee\",\"merges\":2,\"avatar\":\"\"},{\"name\":\"Eli\",\"merges\":1,\"avatar\":\"\"}]"}]}
+  meta={{"duration":16,"width":1080,"height":1350,"category":"Data","badge":"Stable","codeLines":431}}
+  attribution={{"path":"registry/blocks/week-in-merges","tags":["data","chart","ranking","leaderboard"]}}
+  hasCode
+  rawUrl="https://raw.githubusercontent.com/heygen-com/hyperframes/main/registry/blocks/week-in-merges/week-in-merges.html"
+>
+
+<CatalogSlot slot="code">
+
+```html week-in-merges.html
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=1080, height=1350" />
+    <title>Week in Merges</title>
+    <script src="https://cdn.jsdelivr.net/npm/gsap@3.14.2/dist/gsap.min.js"></script>
+    <style>
+      *,
+      *::before,
+      *::after {
+        margin: 0;
+        padding: 0;
+        box-sizing: border-box;
+      }
+      html,
+      body {
+        width: 1080px;
+        height: 1350px;
+        overflow: hidden;
+        background-color: #ffffff;
+      }
+    </style>
+  </head>
+  <body>
+    <div
+      id="wim-root"
+      data-composition-id="week-in-merges"
+      data-width="1080"
+      data-height="1350"
+      data-start="0"
+      data-duration="16"
+      data-composition-variables='[
+        {"id":"eyebrow","type":"string","label":"Eyebrow","default":"ACME / WEEK IN MERGES"},
+        {"id":"title","type":"string","label":"Title","default":"Pull requests merged this week"},
+        {"id":"period","type":"string","label":"Period","default":"1 September - 7 September 2026 · America/Los_Angeles"},
+        {"id":"total","type":"string","label":"Total","default":"12 PRs"},
+        {"id":"footer","type":"string","label":"Footer","default":"Speed proportional to merges · By PR author"},
+        {"id":"source","type":"string","label":"Source line","default":"Example org · 1 repo · Bots · 0"},
+        {"id":"rows","type":"string","label":"Rows (JSON array of name, merges, avatar)","default":"[{\"name\":\"Ada\",\"merges\":12,\"avatar\":\"\"},{\"name\":\"Bao\",\"merges\":7,\"avatar\":\"\"},{\"name\":\"Cam\",\"merges\":4,\"avatar\":\"\"},{\"name\":\"Dee\",\"merges\":2,\"avatar\":\"\"},{\"name\":\"Eli\",\"merges\":1,\"avatar\":\"\"}]"}
+      ]'
+    >
+      <div id="wim-stage" class="clip" data-start="0" data-duration="16" data-track-index="0">
+        <p id="wim-eyebrow"></p>
+        <h1 id="wim-title"></h1>
+        <div id="wim-sub">
+          <p id="wim-period"></p>
+          <p id="wim-total"></p>
+        </div>
+        <div id="wim-rows"></div>
+        <div id="wim-rule"></div>
+        <p id="wim-footer"></p>
+        <p id="wim-source"></p>
+      </div>
+
+      <style>
+        #wim-root {
+          position: relative;
+          width: 1080px;
+          height: 1350px;
+          overflow: hidden;
+          background: #ffffff;
+          color: #141414;
+          font-family: Inter, sans-serif;
+        }
+
+        #wim-stage {
+          position: absolute;
+          inset: 0;
+          display: flex;
+          flex-direction: column;
+          padding: 64px 72px 52px;
+        }
+
+        #wim-eyebrow {
+          font-size: 13px;
+          font-weight: 600;
+          letter-spacing: 0.16em;
+          text-transform: uppercase;
+          color: rgba(20, 20, 20, 0.55);
+        }
+
+        #wim-title {
+          margin-top: 16px;
+          font-size: 52px;
+          font-weight: 600;
+          letter-spacing: -0.035em;
+          line-height: 1.05;
+        }
+
+        #wim-sub {
+          display: flex;
+          justify-content: space-between;
+          align-items: baseline;
+          gap: 24px;
+          margin-top: 16px;
+        }
+
+        #wim-period {
+          font-size: 20px;
+          line-height: 1.3;
+          color: rgba(20, 20, 20, 0.55);
+        }
+
+        #wim-total {
+          flex: none;
+          font-size: 22px;
+          font-weight: 600;
+          white-space: nowrap;
+        }
+
+        #wim-rows {
+          flex: 1;
+          display: flex;
+          flex-direction: column;
+          min-height: 0;
+          margin-top: 28px;
+        }
+
+        .wim-row {
+          flex: 1;
+          display: flex;
+          align-items: center;
+          gap: 28px;
+          min-height: 0;
+        }
+
+        .wim-meta {
+          width: 280px;
+          flex: none;
+          min-width: 0;
+        }
+
+        .wim-name,
+        .wim-count {
+          overflow: hidden;
+          text-overflow: ellipsis;
+          white-space: nowrap;
+        }
+
+        .wim-name {
+          font-size: 36px;
+          font-weight: 600;
+          letter-spacing: -0.02em;
+          line-height: 1.1;
+        }
+
+        .wim-count {
+          margin-top: 4px;
+          font-size: 16px;
+          line-height: 1.2;
+          color: rgba(20, 20, 20, 0.55);
+        }
+
+        .wim-lane {
+          position: relative;
+          flex: 1;
+          align-self: stretch;
+          min-width: 0;
+        }
+
+        .wim-avatar {
+          position: absolute;
+          left: 0;
+          top: 50%;
+          width: var(--wim-avatar, 88px);
+          height: var(--wim-avatar, 88px);
+          margin-top: calc(var(--wim-avatar, 88px) / -2);
+          border-radius: 50%;
+          overflow: hidden;
+        }
+
+        .wim-avatar-lead {
+          background: rgba(20, 20, 20, 0.72);
+        }
+
+        .wim-avatar-rest {
+          background: rgba(20, 20, 20, 0.45);
+        }
+
+        .wim-avatar img {
+          display: block;
+          width: 100%;
+          height: 100%;
+          object-fit: cover;
+        }
+
+        .wim-initials {
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          width: 100%;
+          height: 100%;
+          color: #ffffff;
+          font-weight: 600;
+          letter-spacing: -0.03em;
+        }
+
+        #wim-rule {
+          height: 1px;
+          margin: 12px 0 18px;
+          background: rgba(20, 20, 20, 0.14);
+        }
+
+        #wim-footer,
+        #wim-source {
+          font-size: 16px;
+          line-height: 1.4;
+          color: rgba(20, 20, 20, 0.55);
+        }
+
+        #wim-source {
+          margin-top: 4px;
+        }
+      </style>
+
+      <script>
+        (function () {
+          "use strict";
+
+          var FLOOR_SPEED = 10;
+          var LEADER_SPEED = 300;
+
+          function readVars() {
+            var out = {};
+            var root = document.getElementById("wim-root");
+            try {
+              JSON.parse(root.getAttribute("data-composition-variables")).forEach(function (d) {
+                out[d.id] = d.default;
+              });
+            } catch (err) {
+              // Declaration unreadable; the literal fallbacks below still render.
+            }
+            var hf = window.__hyperframes;
+            var overrides =
+              hf && typeof hf.getVariables === "function" ? hf.getVariables() : window.__hfVariables;
+            if (overrides && typeof overrides === "object") {
+              for (var key in overrides) {
+                if (overrides[key] !== undefined) out[key] = overrides[key];
+              }
+            }
+            return out;
+          }
+
+          function num(value, fallback, lo, hi) {
+            var n = typeof value === "number" ? value : Number.parseFloat(value);
+            if (!Number.isFinite(n)) n = fallback;
+            return Math.min(hi, Math.max(lo, n));
+          }
+
+          function str(value, fallback) {
+            return typeof value === "string" && value.length > 0 ? value : fallback;
+          }
+
+          var FALLBACK_ROWS = [
+            { name: "Ada", merges: 12, avatar: "" },
+            { name: "Bao", merges: 7, avatar: "" },
+            { name: "Cam", merges: 4, avatar: "" },
+            { name: "Dee", merges: 2, avatar: "" },
+            { name: "Eli", merges: 1, avatar: "" },
+          ];
+
+          function parseRows(text) {
+            var raw;
+            try {
+              raw = JSON.parse(String(text));
+            } catch (err) {
+              return null;
+            }
+            if (!Array.isArray(raw)) return null;
+            var out = [];
+            for (var i = 0; i < raw.length; i++) {
+              var row = raw[i];
+              if (!row || typeof row.name !== "string" || row.name.trim().length === 0) continue;
+              var merges = Math.round(num(row.merges, 0, 0, 100000));
+              var avatar = typeof row.avatar === "string" ? row.avatar : "";
+              out.push({ name: row.name.trim(), merges: merges, avatar: avatar });
+            }
+            return out.length > 0 ? out : null;
+          }
+
+          function mergeLabel(merges) {
+            return merges + (merges === 1 ? " merge" : " merges");
+          }
+
+          function initials(name) {
+            var parts = name.trim().split(/\s+/);
+            if (parts.length >= 2) {
+              return (parts[0].charAt(0) + parts[parts.length - 1].charAt(0)).toUpperCase();
+            }
+            return (parts[0] || "?").charAt(0).toUpperCase();
+          }
+
+          // Linear between a floor and the leader pace, so 1 merge still travels
+          // and a higher count is never slower.
+          function speedFor(merges, minM, maxM) {
+            if (!(maxM > minM)) return LEADER_SPEED;
+            var u = (merges - minM) / (maxM - minM);
+            return FLOOR_SPEED + (LEADER_SPEED - FLOOR_SPEED) * u;
+          }
+
+          function bounceX(distance, span) {
+            var cycle = span * 2;
+            if (!(cycle > 0)) return 0;
+            var phase = distance % cycle;
+            if (phase < 0) phase += cycle;
+            return phase <= span ? phase : cycle - phase;
+          }
+
+          var root = document.getElementById("wim-root");
+          var V = readVars();
+          var DURATION = num(root.getAttribute("data-duration"), 16, 0.1, 600);
+          var rows = parseRows(V.rows) || FALLBACK_ROWS;
+          var minM = rows[0].merges;
+          var maxM = rows[0].merges;
+          for (var i = 1; i < rows.length; i++) {
+            if (rows[i].merges < minM) minM = rows[i].merges;
+            if (rows[i].merges > maxM) maxM = rows[i].merges;
+          }
+
+          document.getElementById("wim-eyebrow").textContent = str(V.eyebrow, "ACME / WEEK IN MERGES");
+          document.getElementById("wim-title").textContent = str(
+            V.title,
+            "Pull requests merged this week",
+          );
+          document.getElementById("wim-period").textContent = str(V.period, "");
+          document.getElementById("wim-total").textContent = str(V.total, "");
+          document.getElementById("wim-footer").textContent = str(
+            V.footer,
+            "Speed proportional to merges · By PR author",
+          );
+          document.getElementById("wim-source").textContent = str(V.source, "");
+
+          var mount = document.getElementById("wim-rows");
+          var avatars = [];
+          for (var r = 0; r < rows.length; r++) {
+            var row = rows[r];
+            var rowEl = document.createElement("div");
+            rowEl.className = "wim-row";
+            rowEl.id = "wim-row-" + r;
+
+            var meta = document.createElement("div");
+            meta.className = "wim-meta";
+            var nameEl = document.createElement("div");
+            nameEl.className = "wim-name";
+            nameEl.id = "wim-name-" + r;
+            nameEl.textContent = row.name;
+            var countEl = document.createElement("div");
+            countEl.className = "wim-count";
+            countEl.id = "wim-count-" + r;
+            countEl.textContent = mergeLabel(row.merges);
+            meta.appendChild(nameEl);
+            meta.appendChild(countEl);
+
+            var lane = document.createElement("div");
+            lane.className = "wim-lane";
+            lane.id = "wim-lane-" + r;
+
+            var avatar = document.createElement("div");
+            avatar.className =
+              "wim-avatar " + (row.merges === maxM ? "wim-avatar-lead" : "wim-avatar-rest");
+            avatar.id = "wim-avatar-" + r;
+
+            if (row.avatar) {
+              var img = document.createElement("img");
+              img.id = "wim-avatar-img-" + r;
+              img.alt = "";
+              img.src = row.avatar;
+              avatar.appendChild(img);
+            } else {
+              var letters = document.createElement("div");
+              letters.className = "wim-initials";
+              letters.id = "wim-initials-" + r;
+              letters.textContent = initials(row.name);
+              avatar.appendChild(letters);
+            }
+
+            lane.appendChild(avatar);
+            rowEl.appendChild(meta);
+            rowEl.appendChild(lane);
+            mount.appendChild(rowEl);
+            avatars.push({ el: avatar, nameEl: nameEl, speed: speedFor(row.merges, minM, maxM) });
+          }
+
+          var rowH = avatars.length ? document.getElementById("wim-row-0").clientHeight : 120;
+          var avatarPx = Math.max(36, Math.min(96, Math.floor(rowH * 0.62)));
+          var namePx = Math.max(18, Math.min(36, Math.floor(rowH * 0.26)));
+          var countPx = Math.max(13, Math.min(16, Math.floor(namePx * 0.48)));
+          root.style.setProperty("--wim-avatar", avatarPx + "px");
+          for (var a = 0; a < avatars.length; a++) {
+            avatars[a].nameEl.style.fontSize = namePx + "px";
+            avatars[a].el.querySelector(".wim-initials") &&
+              (avatars[a].el.querySelector(".wim-initials").style.fontSize =
+                Math.round(avatarPx * 0.4) + "px");
+            var count = document.getElementById("wim-count-" + a);
+            if (count) count.style.fontSize = countPx + "px";
+          }
+
+          var laneW = avatars.length ? document.getElementById("wim-lane-0").clientWidth : 560;
+          var span = Math.max(0, laneW - avatarPx);
+
+          function render(t) {
+            for (var i = 0; i < avatars.length; i++) {
+              var x = bounceX(avatars[i].speed * t, span);
+              avatars[i].el.style.transform = "translateX(" + x.toFixed(2) + "px)";
+            }
+          }
+
+          // GSAP seek calls the setter. A timeline onUpdate does not run on seek.
+          var driver = { _t: 0 };
+          Object.defineProperty(driver, "t", {
+            get: function () {
+              return this._t;
+            },
+            set: function (value) {
+              this._t = value;
+              render(value);
+            },
+          });
+
+          var tl = gsap.timeline({ paused: true });
+          tl.to(driver, { t: DURATION, duration: DURATION, ease: "none" }, 0);
+          render(0);
+
+          window.__timelines = window.__timelines || {};
+          window.__timelines["week-in-merges"] = tl;
+        })();
+      </script>
+    </div>
+  </body>
+</html>
+```
+
+</CatalogSlot>
+
+<CatalogSlot slot="install">
+
+<InstallCommand command="npx hyperframes add week-in-merges" item="week-in-merges" />
+
+That writes one file: `compositions/week-in-merges.html`.
+
+</CatalogSlot>
+
+<CatalogSlot slot="docs">
+
+## Add it to your video
+
+It runs for 16 seconds at 1080×1350. Paste this into your composition:
+
+```html index.html
+<div
+  data-composition-id="week-in-merges"
+  data-composition-src="compositions/week-in-merges.html"
+  data-start="0"
+  data-duration="16"
+  data-track-index="1"
+  data-width="1080"
+  data-height="1350"
+></div>
+```
+
+Move it in time with `data-start`. Put it on a different timeline row with
+`data-track-index`. See [data attributes](/concepts/data-attributes) for the rest.
+
+## Change how it looks
+
+Set these CSS variables on the block:
+
+- `eyebrow` — Eyebrow. Defaults to `ACME / WEEK IN MERGES`.
+- `title` — Title. Defaults to `Pull requests merged this week`.
+- `period` — Period. Defaults to `1 September - 7 September 2026 · America/Los_Angeles`.
+- `total` — Total. Defaults to `12 PRs`.
+- `footer` — Footer. Defaults to `Speed proportional to merges · By PR author`.
+- `source` — Source line. Defaults to `Example org · 1 repo · Bots · 0`.
+- `rows` — Rows (JSON array of name, merges, avatar). Defaults to `[{"name":"Ada","merges":12,"avatar":""},{"name":"Bao","merges":7,"avatar":""},{"name":"Cam","merges":4,"avatar":""},{"name":"Dee","merges":2,"avatar":""},{"name":"Eli","merges":1,"avatar":""}]`.
+
+## Variables
+
+Every one of these has a default, so the piece works untouched. Set the ones you
+want to change on the element:
+
+| Variable | Default | Accepts | What it does |
+| --- | --- | --- | --- |
+| `eyebrow` | `ACME / WEEK IN MERGES` | string |  |
+| `title` | `Pull requests merged this week` | string |  |
+| `period` | `1 September - 7 September 2026 · America/Los_Angeles` | string |  |
+| `total` | `12 PRs` | string |  |
+| `footer` | `Speed proportional to merges · By PR author` | string |  |
+| `source` | `Example org · 1 repo · Bots · 0` | string |  |
+| `rows` | `[{"name":"Ada","merges":12,"avatar":""},{"name":"Bao","merges":7,"avatar":""},{"name":"Cam","merges":4,"avatar":""},{"name":"Dee","merges":2,"avatar":""},{"name":"Eli","merges":1,"avatar":""}]` | string |  |
+
+Set them with `data-variable-values` on the element that mounts it. These are the
+defaults, so this behaves exactly like the preview above until you change one:
+
+```html wrap
+<div
+  data-composition-id="week-in-merges"
+  data-composition-src="compositions/week-in-merges.html"
+  data-variable-values='{"eyebrow":"ACME / WEEK IN MERGES","title":"Pull requests merged this week","period":"1 September - 7 September 2026 · America/Los_Angeles","total":"12 PRs","footer":"Speed proportional to merges · By PR author","source":"Example org · 1 repo · Bots · 0","rows":"[{\"name\":\"Ada\",\"merges\":12,\"avatar\":\"\"},{\"name\":\"Bao\",\"merges\":7,\"avatar\":\"\"},{\"name\":\"Cam\",\"merges\":4,\"avatar\":\"\"},{\"name\":\"Dee\",\"merges\":2,\"avatar\":\"\"},{\"name\":\"Eli\",\"merges\":1,\"avatar\":\"\"}]"}'
+></div>
+```
+
+{/* hf:generated-footer */}
+
+Tagged `data` `chart` `ranking` `leaderboard`.
+
+## Related topics
+
+- [Browse the complete Catalog](/catalog)
+- [Add assets and Catalog items in Studio](/studio/assets-and-blocks)
+- [Build a richer composition](/go-further)
+
+</CatalogSlot>
+
+</CatalogDetail>

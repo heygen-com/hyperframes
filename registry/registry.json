@@ -708,6 +708,10 @@
       "type": "hyperframes:block"
     },
     {
+      "name": "week-in-merges",
+      "type": "hyperframes:block"
+    },
+    {
       "name": "weight-wave",
       "type": "hyperframes:block"
     },
@@ -1669,6 +1673,6 @@
     }
   ],
   "catalogArtifact": {
-    "revision": "fc655a7cbb3bd455b9c6cb55df3fdf6b35da2cbcb25474068ec796fddd3c8b55"
+    "revision": "eda107eecb902f204b6308c85794d269d5d53a8583c12008b3972f3efacb312a"
   }
 }

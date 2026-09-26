@@ -1,0 +1,108 @@
+{
+  "$schema": "https://hyperframes.heygen.com/schema/registry-item.json",
+  "name": "week-in-merges",
+  "type": "hyperframes:block",
+  "title": "Week in Merges",
+  "description": "Each author's avatar bounces across their row at a speed set by how many pull requests they merged",
+  "tags": ["data", "chart", "ranking", "leaderboard"],
+  "dimensions": {
+    "width": 1080,
+    "height": 1350
+  },
+  "duration": 16,
+  "variables": [
+    {
+      "id": "eyebrow",
+      "type": "string",
+      "label": "Eyebrow",
+      "default": "ACME / WEEK IN MERGES"
+    },
+    {
+      "id": "title",
+      "type": "string",
+      "label": "Title",
+      "default": "Pull requests merged this week"
+    },
+    {
+      "id": "period",
+      "type": "string",
+      "label": "Period",
+      "default": "1 September - 7 September 2026 · America/Los_Angeles"
+    },
+    {
+      "id": "total",
+      "type": "string",
+      "label": "Total",
+      "default": "12 PRs"
+    },
+    {
+      "id": "footer",
+      "type": "string",
+      "label": "Footer",
+      "default": "Speed proportional to merges · By PR author"
+    },
+    {
+      "id": "source",
+      "type": "string",
+      "label": "Source line",
+      "default": "Example org · 1 repo · Bots · 0"
+    },
+    {
+      "id": "rows",
+      "type": "string",
+      "label": "Rows (JSON array of name, merges, avatar)",
+      "default": "[{\"name\":\"Ada\",\"merges\":12,\"avatar\":\"\"},{\"name\":\"Bao\",\"merges\":7,\"avatar\":\"\"},{\"name\":\"Cam\",\"merges\":4,\"avatar\":\"\"},{\"name\":\"Dee\",\"merges\":2,\"avatar\":\"\"},{\"name\":\"Eli\",\"merges\":1,\"avatar\":\"\"}]"
+    }
+  ],
+  "files": [
+    {
+      "path": "week-in-merges.html",
+      "target": "compositions/week-in-merges.html",
+      "type": "hyperframes:composition"
+    }
+  ],
+  "params": [
+    {
+      "key": "eyebrow",
+      "label": "Eyebrow",
+      "type": "text",
+      "default": "ACME / WEEK IN MERGES"
+    },
+    {
+      "key": "title",
+      "label": "Title",
+      "type": "text",
+      "default": "Pull requests merged this week"
+    },
+    {
+      "key": "period",
+      "label": "Period",
+      "type": "text",
+      "default": "1 September - 7 September 2026 · America/Los_Angeles"
+    },
+    {
+      "key": "total",
+      "label": "Total",
+      "type": "text",
+      "default": "12 PRs"
+    },
+    {
+      "key": "footer",
+      "label": "Footer",
+      "type": "text",
+      "default": "Speed proportional to merges · By PR author"
+    },
+    {
+      "key": "source",
+      "label": "Source line",
+      "type": "text",
+      "default": "Example org · 1 repo · Bots · 0"
+    },
+    {
+      "key": "rows",
+      "label": "Rows (JSON array of name, merges, avatar)",
+      "type": "text",
+      "default": "[{\"name\":\"Ada\",\"merges\":12,\"avatar\":\"\"},{\"name\":\"Bao\",\"merges\":7,\"avatar\":\"\"},{\"name\":\"Cam\",\"merges\":4,\"avatar\":\"\"},{\"name\":\"Dee\",\"merges\":2,\"avatar\":\"\"},{\"name\":\"Eli\",\"merges\":1,\"avatar\":\"\"}]"
+    }
+  ]
+}
