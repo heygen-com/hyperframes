@@ -224,6 +224,7 @@ describe("useAutomationLanes saves report what happened", () => {
     expect(iframe.contentDocument!.getElementById("music")?.getAttribute("data-automation")).toBe(
       saved,
     );
+    expect(usePlayerStore.getState().elements[0]?.automation).toBe(saved);
   });
 
   it("puts a group's dragged preview and mirror back when a recording refuses the release", async () => {

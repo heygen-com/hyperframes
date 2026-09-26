@@ -114,8 +114,8 @@ export function pastePoints(
  * can tell that selection apart from one the user drew and chain after it
  * instead of overwriting it.
  */
-export function markLastPaste(mark: AutomationPasteMark): void {
-  lastPaste = { ...mark };
+export function markLastPaste(mark: AutomationPasteMark | null): void {
+  lastPaste = mark ? { ...mark } : null;
 }
 
 /** True when `mark` is exactly the span the last paste left selected. */

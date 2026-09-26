@@ -240,7 +240,9 @@ function handlePaste(
 
   e.preventDefault();
   e.stopImmediatePropagation();
-  void paste.binding.onCommit(withLane(paste.binding.automation, { target: paste.target, points }));
+  const saved = paste.binding.onCommit(
+    withLane(paste.binding.automation, { target: paste.target, points }),
+  );
   // Select the pasted span — the only feedback that it landed — and mark it, so
   // an immediate second Cmd+V recognises this selection as the paste's own and
   // chains right after it instead of overwriting it.
@@ -254,9 +256,26 @@ function handlePaste(
     v0: paste.range.min,
     v1: paste.range.max,
   };
+  const chainedFrom = sel && isLastPasteSpan(sel) ? sel : null;
   state.setAutomationSelection(mark);
   markLastPaste(mark);
+  void saved.then((outcome) => {
+    if (outcome && outcome.status !== "saved") unmarkPaste(mark, sel, chainedFrom);
+  });
   return true;
+}
+
+/** A paste that did not land gives back the selection and chain it replaced. */
+function unmarkPaste(
+  mark: AutomationSelection,
+  previous: AutomationSelection | null,
+  chainedFrom: AutomationSelection | null,
+): void {
+  if (!isLastPasteSpan(mark)) return;
+  const state = usePlayerStore.getState();
+  if (previous) state.setAutomationSelection(previous);
+  else state.clearAutomationSelection();
+  markLastPaste(chainedFrom);
 }
 
 /** Cmd/Ctrl+C on the active selection. Returns false when the chord doesn't

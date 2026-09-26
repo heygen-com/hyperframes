@@ -126,8 +126,10 @@ export function useSetElementAttribute({
       if (!liveBeforeRef.current.has(key)) return () => {};
       const before = liveBeforeRef.current.get(key) ?? null;
       liveBeforeRef.current.delete(key);
-      return () =>
+      return () => {
         patchLiveElementAttribute(previewIframeRef.current, element, attr, before, activeCompPath);
+        syncStoredAutomationFromPreview(previewIframeRef.current?.contentDocument);
+      };
     },
     [previewIframeRef, activeCompPath],
   );

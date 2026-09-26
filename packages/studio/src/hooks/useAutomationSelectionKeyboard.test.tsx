@@ -77,7 +77,7 @@ describe("useAutomationSelectionKeyboard", () => {
   });
 
   const setup = (binding: Partial<AutomationLaneBinding>) => {
-    const onCommit = vi.fn();
+    const onCommit = vi.fn().mockResolvedValue(undefined);
     const automation = {
       version: 1,
       lanes: [
@@ -265,6 +265,28 @@ describe("useAutomationSelectionKeyboard", () => {
       v0: 0,
       v1: VOLUME_RANGE.max,
     });
+  });
+
+  it("gives back the selection and the chain when the paste's save is refused", async () => {
+    clearAutomationClipboard();
+    usePlayerStore.setState({
+      elements: [{ ...bgmElement, duration: 10 }],
+      selectedElementId: "bgm",
+    });
+    const original = wholeAxis({ elementKey: "bgm", target: "volume", t0: 2, t1: 4 });
+    usePlayerStore.getState().setAutomationSelection(original);
+    const onCommit = vi.fn().mockResolvedValue({ status: "refused", reason: "Locked" });
+    setup({ onCommit });
+    combo("c");
+    combo("v");
+    await act(async () => {});
+    expect(usePlayerStore.getState().automationSelection).toEqual(original);
+    combo("v");
+    const again = (onCommit.mock.calls.at(-1)?.[0]?.lanes?.[0]?.points ?? []).map(
+      (p: { t: number }) => p.t,
+    );
+    expect(again).toContain(2);
+    expect(again).not.toContain(6);
   });
 
   it("chains a second Cmd+V after the first instead of overwriting it", () => {
