@@ -348,36 +348,68 @@ describe("useAutomationLanes saves report what happened", () => {
     },
   );
 
-  it("never settles on a value that was not saved when a refused save cannot read the file back", async () => {
-    const { startCommit, preview, writeProjectFile, iframe, failRead, setRecording } =
-      mountLanes(music);
-    const at = (v: number) => ({
-      version: 1 as const,
-      lanes: [{ target: "volume", points: [{ t: 0, v }] }],
-    });
-    let failOlder = () => {};
-    writeProjectFile.mockImplementationOnce(
-      () =>
-        new Promise<void>((_resolve, reject) => {
-          failOlder = () => reject(new Error("offline"));
-        }),
-    );
-    preview(at(0.9));
-    const older = startCommit(at(0.9));
-    await act(() => vi.waitFor(() => expect(writeProjectFile).toHaveBeenCalledTimes(1)));
-    preview(at(0.7));
-    setRecording(true);
-    const refused = startCommit(at(0.7));
-    failRead(2);
-    failOlder();
-    await act(async () => {
-      await Promise.all([older, refused]);
-    });
-    expect(iframe.contentDocument!.getElementById("music")?.hasAttribute("data-automation")).toBe(
-      false,
-    );
-    expect(usePlayerStore.getState().elements[0]?.automation).toBeUndefined();
-  });
+  it.each([{ olderReadsBack: true }, { olderReadsBack: false }])(
+    "never settles on a value that was not saved when a refused save cannot read the file back (older reads back: $olderReadsBack)",
+    async ({ olderReadsBack }) => {
+      const { startCommit, preview, writeProjectFile, iframe, failRead, setRecording } =
+        mountLanes(music);
+      const at = (v: number) => ({
+        version: 1 as const,
+        lanes: [{ target: "volume", points: [{ t: 0, v }] }],
+      });
+      let failOlder = () => {};
+      writeProjectFile.mockImplementationOnce(
+        () =>
+          new Promise<void>((_resolve, reject) => {
+            failOlder = () => reject(new Error("offline"));
+          }),
+      );
+      preview(at(0.9));
+      const older = startCommit(at(0.9));
+      await act(() => vi.waitFor(() => expect(writeProjectFile).toHaveBeenCalledTimes(1)));
+      preview(at(0.7));
+      setRecording(true);
+      const refused = startCommit(at(0.7));
+      failRead(2);
+      if (!olderReadsBack) failRead(3);
+      failOlder();
+      await act(async () => {
+        await Promise.all([older, refused]);
+      });
+      expect(iframe.contentDocument!.getElementById("music")?.hasAttribute("data-automation")).toBe(
+        false,
+      );
+      expect(usePlayerStore.getState().elements[0]?.automation).toBeUndefined();
+    },
+  );
+
+  it.each([
+    { lane: "clip", target: music, field: "automation", trigger: "offline" },
+    { lane: "clip", target: music, field: "automation", trigger: "element gone" },
+    { lane: "group", target: group, field: "audioGroupAutomation", trigger: "offline" },
+    { lane: "group", target: group, field: "audioGroupAutomation", trigger: "element gone" },
+  ] as const)(
+    "puts a $lane drag back when its first save fails ($trigger) and cannot read the file back",
+    async ({ target, field, trigger }) => {
+      const { commit, preview, writeProjectFile, iframe, setFile, failRead } = mountLanes(target);
+      const at = (v: number) => ({
+        version: 1 as const,
+        lanes: [{ target: "volume", points: [{ t: 0, v }] }],
+      });
+      if (trigger === "offline") {
+        writeProjectFile.mockRejectedValueOnce(new Error("offline"));
+        failRead(2);
+      } else {
+        setFile("<html><body></body></html>");
+      }
+      preview(at(0.9));
+      expect(await commit(at(0.9))).toMatchObject({ status: "failed" });
+      expect(
+        iframe.contentDocument!.getElementById(target.id)?.hasAttribute("data-automation"),
+      ).toBe(false);
+      expect(usePlayerStore.getState().elements[0]?.[field]).toBeUndefined();
+    },
+  );
 
   it("leaves the store to a newer pending save when an older one lands", async () => {
     const { startCommit, writeProjectFile, setFile, holdRead } = mountLanes(music);
