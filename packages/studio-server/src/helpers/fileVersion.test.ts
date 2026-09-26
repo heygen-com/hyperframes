@@ -1,4 +1,4 @@
-import { mkdtempSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
@@ -57,6 +57,12 @@ describe("file versions and write receipts", () => {
         recordFileWriteReceipt(file, { path: "index.html", version, writeToken: "redo" });
         writeFileSync(file, "b");
         expect(identifyFileWrite(file, version)?.writeToken).toBe("redo");
+
+        const nested = join(linked, "gone", "index.html");
+        recordFileWriteReceipt(nested, { path: "gone/index.html", version, writeToken: "restore" });
+        mkdirSync(join(real, "gone"));
+        writeFileSync(nested, "b");
+        expect(identifyFileWrite(nested, version)?.writeToken).toBe("restore");
       } finally {
         rmSync(linked, { force: true });
         rmSync(real, { recursive: true, force: true });

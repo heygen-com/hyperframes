@@ -38,6 +38,7 @@ it.skipIf(process.platform === "win32")(
     stampFileHfIds(file);
 
     expect(readFileSync(swap.to, "utf-8")).toBe("outside");
+    expect(readFileSync(file, "utf-8")).toContain("data-hf-id");
     expect(lstatSync(file).isSymbolicLink()).toBe(false);
   },
 );

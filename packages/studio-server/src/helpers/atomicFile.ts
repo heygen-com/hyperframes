@@ -37,10 +37,7 @@ export function realFilePath(filePath: string): string {
   try {
     return fs.realpathSync(filePath);
   } catch {
-    try {
-      return join(fs.realpathSync(dirname(filePath)), basename(filePath));
-    } catch {
-      return filePath;
-    }
+    const dir = dirname(filePath);
+    return dir === filePath ? filePath : join(realFilePath(dir), basename(filePath));
   }
 }
