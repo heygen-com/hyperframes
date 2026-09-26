@@ -93,6 +93,37 @@ describe("decodeVideoThumbnail", () => {
     expect(decoded).toEqual([[2, 4, 8]]);
   });
 
+  it("keeps a slot's own time when its keyframe is more than half a slot earlier", async () => {
+    getKeyPacket.mockImplementation(async () => ({ timestamp: 0 }));
+    const decoded: number[][] = [];
+    canvasesAtTimestamps.mockImplementation(async function* (timestamps: number[]) {
+      decoded.push(timestamps);
+      for (const _ of timestamps) yield { canvas: document.createElement("canvas") };
+    });
+    await decodeVideoThumbnail(
+      { source: "/clip.mp4", sourceStart: 0, sourceRangeDuration: 10, frameCount: 3 },
+      new AbortController().signal,
+    );
+    await decodeVideoThumbnail(
+      { source: "/clip.mp4", sourceStart: 0, sourceRangeDuration: 10, frameCount: 1 },
+      new AbortController().signal,
+    );
+    expect(decoded).toEqual([[0, 5, 10], [5]]);
+  });
+
+  it("stops before decoding when cancelled during the keyframe lookups", async () => {
+    const controller = new AbortController();
+    getKeyPacket.mockImplementation(async () => (controller.abort(), null));
+    await expect(
+      decodeVideoThumbnail(
+        { source: "/clip.mp4", sourceStart: 0, sourceRangeDuration: 10, frameCount: 3 },
+        controller.signal,
+      ),
+    ).rejects.toThrow("Aborted");
+    expect(getKeyPacket).toHaveBeenCalledTimes(1);
+    expect(canvasesAtTimestamps).not.toHaveBeenCalled();
+  });
+
   it("releases input and degrades when the source has no video track", async () => {
     input.getPrimaryVideoTrack.mockResolvedValue(null);
     await expect(

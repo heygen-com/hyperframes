@@ -152,14 +152,16 @@ export async function decodeVideoThumbnail(
       Math.min(request.frameCount, budgets.richPreviewFrameCount),
     );
     // A frame at its keyframe decodes alone; one between keyframes decodes the whole run before it.
+    // A slot takes its keyframe only within half a slot, so every tile still shows its own stretch.
     const keys = new mediabunny.EncodedPacketSink(track);
-    const decodeAt = await Promise.all(
-      timestamps.map(async (time) => {
-        const key = await keys.getKeyPacket(time, { metadataOnly: true });
-        return key && key.timestamp >= sourceStart ? key.timestamp : time;
-      }),
-    );
-    throwIfAborted(signal);
+    const slack = duration / Math.max(2, timestamps.length - 1) / 2;
+    const decodeAt: number[] = [];
+    for (const time of timestamps) {
+      const key = await keys.getKeyPacket(time, { metadataOnly: true });
+      throwIfAborted(signal);
+      const near = key && key.timestamp >= sourceStart && time - key.timestamp <= slack;
+      decodeAt.push(near ? key.timestamp : time);
+    }
     const aspect = displayWidth / displayHeight;
     const target = targetDimensions(aspect, budgets);
     const sink = new mediabunny.CanvasSink(track, {
