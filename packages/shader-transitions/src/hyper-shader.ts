@@ -1384,7 +1384,7 @@ export function init(config: HyperShaderConfig): GsapTimeline {
             return;
           }
           canvasEl.style.display =
-            !prewarming && cache?.ready && !cache.dirty && cache.textureReady ? "block" : "none";
+            cache?.ready && !cache.dirty && cache.textureReady ? "block" : "none";
           paintScenePairState(fromId, toId, "1", "1");
         });
       },
@@ -1408,7 +1408,6 @@ export function init(config: HyperShaderConfig): GsapTimeline {
 
     tl.call(
       () => {
-        if (prewarming) return;
         suppressSceneMutationTracking(() => {
           state.active = false;
           state.transitionIndex = -1;

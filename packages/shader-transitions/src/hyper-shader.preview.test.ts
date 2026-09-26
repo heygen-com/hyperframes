@@ -72,6 +72,7 @@ describe("preview outside a transition", () => {
       transitions: [{ time: 4.4, duration: 0.8, shader: "domain-warp" }],
     });
     // The runtime starts after the film's script and hides both while the prewarm runs.
+    await Promise.resolve();
     for (const id of ["s4", "s5"]) {
       (document.getElementById(id) as HTMLElement).style.visibility = "hidden";
     }
