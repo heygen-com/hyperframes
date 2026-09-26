@@ -3184,7 +3184,7 @@ export function initSandboxRuntimeModular(): void {
     [host, ...host.querySelectorAll("[data-composition-id]")].flatMap(
       (el) => el.getAttribute("data-composition-id") || [],
     );
-  // GSAP binds a tween to elements, so one from outside the scene would go on moving the replaced copy.
+  // gsap binds a tween to elements, so one from outside the scene would go on moving the replaced copy.
   const refuseOutsideTweens = (
     name: string,
     host: Element,
@@ -3194,7 +3194,9 @@ export function initSandboxRuntimeModular(): void {
     const own = new Set<unknown>(
       compositionIdsIn(host).flatMap((id) => [timelines[id], ...(sceneAnimations[id] ?? [])]),
     );
-    for (const tween of window.gsap?.getTweensOf?.([host, ...host.querySelectorAll("*")]) ?? []) {
+    const inScene = new Set<unknown>([host, ...host.querySelectorAll("*")]);
+    for (const tween of window.gsap?.globalTimeline?.getChildren?.(true, true, false) ?? []) {
+      if (!tween.targets?.().some((target) => inScene.has(target))) continue;
       let owner: RuntimeTimelineChildLike | undefined = tween;
       while (owner && !own.has(owner)) owner = owner.parent;
       if (!owner) {

@@ -317,7 +317,6 @@ describe("__hfSwapScenes", () => {
     const { root } = trackingRoot();
     const order: string[] = [];
     const tween = {
-      parent: made.b,
       vars: { color: "#dim" },
       startTime: () => 0,
       invalidate: () => void order.push("rewrite"),
@@ -697,10 +696,10 @@ describe("__hfSwapScenes", () => {
   ])("refuses, changing nothing, when %s tweens the scene's %s", async (_, target, owner) => {
     const { root } = trackingRoot();
     const tweened = () => (target === "host" ? sceneHost("a") : sceneHost("a").querySelector("p"));
-    const tween = { parent: owner(root) };
+    const tween = { parent: owner(root), targets: () => [tweened()] };
     (window as unknown as { gsap: unknown }).gsap = {
       set: () => {},
-      getTweensOf: (targets: Element[]) => (targets.includes(tweened()!) ? [tween] : []),
+      globalTimeline: { getChildren: () => [tween] },
     };
     boot([A1, B], root);
     await tick();
@@ -718,12 +717,12 @@ describe("__hfSwapScenes", () => {
       ...s,
       body: `${s.body}<div data-composition-id="n"><i>n</i></div>`,
     });
-    const own = { parent: made.a1 };
-    const inNested = { parent: { parent: made.n1 } };
+    const own = { parent: made.a1, targets: () => [sceneHost("a")] };
+    const inNested = { parent: { parent: made.n1 }, targets: () => [sceneHost("a")] };
+    const elsewhere = { parent: root, targets: () => [sceneHost("b")] };
     (window as unknown as { gsap: unknown }).gsap = {
       set: () => {},
-      getTweensOf: (targets: Element[]) =>
-        targets.includes(sceneHost("a")) ? [own, inNested] : [],
+      globalTimeline: { getChildren: () => [own, inNested, elsewhere] },
     };
     boot([nested(A1), B], root);
     window.__timelines!.n = made.n1;
@@ -744,18 +743,18 @@ describe("__hfSwapScenes", () => {
       const running = new Set<object>();
       const globalTimeline = { getChildren: () => [...running] };
       const start = () => {
+        const p = sceneHost("a").querySelector("p");
         const animation = {
           parent: globalTimeline,
+          targets: () => [p],
           to: () => animation,
           revert: () => void running.delete(animation),
         };
         running.add(animation);
         return animation;
       };
-      // Every animation here moves the scene's <p>.
       vi.stubGlobal("gsap", {
         set: () => {},
-        getTweensOf: () => [...running],
         globalTimeline,
         timeline: start,
         to: start,

@@ -82,7 +82,7 @@ declare global {
     __playerReady?: boolean;
     __renderReady?: boolean;
     __hfRuntimeTeardown?: (() => void) | null;
-    /** What each composition's scripts started on GSAP's global timeline, by composition id. */
+    /** What each composition's scripts started on gsap's global timeline, by composition id. */
     __hfSceneAnimations?: Record<string, SceneAnimation[]> | null;
     /** Swap edited scenes from a rebuilt preview document; refuses before changing anything when it cannot. */
     __hfSwapScenes?: (html: string) => Promise<void>;
@@ -136,7 +136,13 @@ declare global {
         ...args: unknown[]
       ) => ((progress: number) => number) | null;
       registerPlugin?: (plugin: unknown) => void;
-      getTweensOf?: (targets: Element[]) => RuntimeTimelineChildLike[];
+      globalTimeline?: {
+        getChildren?: (
+          nested?: boolean,
+          tweens?: boolean,
+          timelines?: boolean,
+        ) => RuntimeTimelineChildLike[];
+      };
       ticker?: {
         tick: () => void;
       };
