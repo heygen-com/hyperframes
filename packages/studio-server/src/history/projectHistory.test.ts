@@ -874,6 +874,33 @@ describe("openProjectHistory", () => {
     expect(read("index.html")).toBe(saved);
   });
 
+  it("cuts a claim at a restored save, not at bytes an earlier claim already used", async () => {
+    const { history, write, read, projectDir } = await project({ "index.html": "W" });
+    const studioWrites = (content: string, overwrote: string) => {
+      write("index.html", content);
+      recordFileWriteReceipt(join(projectDir, "index.html"), {
+        path: "index.html",
+        version: fileContentVersion(content),
+        writeToken: "studio",
+        overwrote,
+      });
+    };
+    const told = (content: string) => ({
+      overwrote: { "index.html": fileContentVersion(content) },
+    });
+    studioWrites("X", "W");
+    await history.claim(you, "First", ["index.html"], told("W"));
+    studioWrites("Y", "X");
+    await history.claim(you, "Second", ["index.html"], told("X"));
+    // An editor restores X; Studio, still holding Y, patches it before the history sees X.
+    write("index.html", "X");
+    studioWrites("Z", "X");
+
+    const third = await history.claim(you, "Third", ["index.html"], told("Y"));
+    expect((await history.undo(third!.id, { who: you })).ok).toBe(true);
+    expect(read("index.html")).toBe("X");
+  });
+
   it("keeps the history of a small edit in a project larger than its budget", async () => {
     const { history, write } = await project(
       { "media.bin": Buffer.alloc(4096, 1), "index.html": "a" },

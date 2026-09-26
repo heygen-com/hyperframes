@@ -2785,6 +2785,7 @@ export function registerFileRoutes(api: Hono, adapter: StudioApiAdapter): void {
             path: file.path,
             version: fileContentVersion(file.after),
             writeToken,
+            overwrote: file.before,
           });
         }
       } catch (error) {

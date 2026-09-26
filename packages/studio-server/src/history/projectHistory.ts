@@ -18,6 +18,7 @@ import {
   bytesOverwrittenBy,
   DELETED_VERSION,
   fileContentVersion,
+  forgetOverwrittenBytes,
   hashOfVersion,
   hashVersion,
   recordFileWriteReceipt,
@@ -520,6 +521,7 @@ class Engine {
       const told = at.get(change.path);
       cuts.push((await this.overwrittenBy(change, told)) ?? told);
     }
+    for (const { change } of hits) forgetOverwrittenBytes(join(this.dir, change.path));
     return hits.flatMap(({ group, change }, i) => this.cutOut(group, change, cuts[i]) ?? []);
   }
 
@@ -528,7 +530,9 @@ class Engine {
     const absPath = join(this.dir, change.path);
     const seen = new Set<string>();
     let bytes: string | Uint8Array | undefined;
-    for (let hash = change.after; hash && !seen.has(hash); ) {
+    for (let hash = change.after; hash; ) {
+      // A loop (X, Y, back to X) says nothing about what was there first: the client's word stands.
+      if (seen.has(hash)) return undefined;
       seen.add(hash);
       const replaced = bytesOverwrittenBy(absPath, hashVersion(hash));
       if (replaced === undefined) break;

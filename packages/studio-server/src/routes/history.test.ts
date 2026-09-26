@@ -134,6 +134,11 @@ describe("history routes", () => {
     ["a save that landed between Studio's read and its write", ["save B", "patch"], "B"],
     ["its start, when Studio wrote the edit as two patches", ["patch", "patch"], "A"],
     ["a save before Studio's patch and its whole-file follow-up", ["save B", "patch", "put"], "B"],
+    [
+      "its start, when Studio's patches came back to earlier bytes",
+      ["patch", "patch", "unpatch"],
+      "A",
+    ],
   ])("undo Studio's element edit back to %s", async (_, steps, undoneTo) => {
     const { projectDir, history } = await demoProject();
     const index = join(projectDir, "index.html");
@@ -153,10 +158,16 @@ describe("history routes", () => {
       if (step === "save B") writeFileSync(index, saved("B"));
       const current = readFileSync(index, "utf-8");
       const written =
-        step === "patch"
+        step === "patch" || step === "unpatch"
           ? await post("/file-mutations/patch-element/index.html", {
               target: { id: "title" },
-              operations: [{ type: "inline-style", property: "z-index", value: String(++zIndex) }],
+              operations: [
+                {
+                  type: "inline-style",
+                  property: "z-index",
+                  value: String(step === "patch" ? ++zIndex : --zIndex),
+                },
+              ],
             })
           : step === "put"
             ? await api.request("/projects/demo/files/index.html", {

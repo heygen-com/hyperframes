@@ -5,11 +5,12 @@ export interface FileWriteReceipt {
   path: string;
   version: string;
   writeToken: string;
-  overwrote?: string | Uint8Array;
 }
 
 interface StoredReceipt extends FileWriteReceipt {
   recordedAt: number;
+  /** The bytes this write replaced, so the project history can keep a save that landed just before it. */
+  overwrote?: string | Uint8Array;
 }
 
 const RECEIPT_TTL_MS = 10_000;
@@ -49,7 +50,10 @@ export function createWriteToken(requestToken?: string): string {
   return token && token.length <= 200 ? token : randomUUID();
 }
 
-export function recordFileWriteReceipt(filePath: string, receipt: FileWriteReceipt): void {
+export function recordFileWriteReceipt(
+  filePath: string,
+  receipt: Omit<StoredReceipt, "recordedAt">,
+): void {
   const absPath = realFilePath(filePath);
   const now = Date.now();
   // Every path's expired receipts go, not just this one's: a receipt can hold a whole file's bytes.
@@ -94,6 +98,11 @@ export function bytesOverwrittenBy(
   version: string,
 ): string | Uint8Array | undefined {
   return newestReceipt(realFilePath(filePath), version)?.overwrote;
+}
+
+/** Drops the replaced bytes a claim has used, so a later claim can't walk back through them. */
+export function forgetOverwrittenBytes(filePath: string): void {
+  for (const receipt of receipts.get(realFilePath(filePath)) ?? []) delete receipt.overwrote;
 }
 
 function newestReceipt(absPath: string, expectedVersion: string): StoredReceipt | undefined {
