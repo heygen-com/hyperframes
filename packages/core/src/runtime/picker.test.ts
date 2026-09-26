@@ -139,6 +139,28 @@ describe("createPickerModule", () => {
       expect(api.isActive()).toBe(false);
     });
 
+    it("labels a heading by its visible text, and by its role only when it has none", () => {
+      const picker = createPickerModule({ postMessage: createMockPostMessage() });
+      picker.installPickerApi();
+      const title = document.createElement("h2");
+      title.textContent = "  Launch \n day  ";
+      const empty = document.createElement("h4");
+      document.body.append(title, empty);
+      const labelsUnder = (stack: Element[]) => {
+        const restore = emulateHitTest(() => stack);
+        try {
+          return (window as any).__HF_PICKER_API
+            .getCandidatesAtPoint(10, 10)
+            .map((c: any) => c.label);
+        } finally {
+          restore();
+        }
+      };
+
+      expect(labelsUnder([title])).toEqual(["Launch day"]);
+      expect(labelsUnder([empty])).toEqual(["Heading"]);
+    });
+
     it("getCandidatesAtPoint returns empty for invalid coords", () => {
       const picker = createPickerModule({ postMessage: createMockPostMessage() });
       picker.installPickerApi();
