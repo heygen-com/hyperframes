@@ -8,6 +8,17 @@ vi.mock("./mediaVolumeEnvelope.js", async (importOriginal) => {
   const actual = await importOriginal<typeof import("./mediaVolumeEnvelope.js")>();
   return { ...actual, probeAndCacheElementVolume: vi.fn(actual.probeAndCacheElementVolume) };
 });
+// jsdom has no WebGL, so no element ever gets graded: stand in for the grading runtime's answer.
+vi.mock("./colorGrading", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("./colorGrading")>();
+  return {
+    ...actual,
+    createColorGradingRuntime: (...args: Parameters<typeof actual.createColorGradingRuntime>) => ({
+      ...actual.createColorGradingRuntime(...args),
+      isGraded: (el: Element) => el.hasAttribute("data-color-grading"),
+    }),
+  };
+});
 
 type Tl = RuntimeTimelineLike & { kill: ReturnType<typeof vi.fn>; label: string };
 
@@ -259,7 +270,7 @@ describe("__hfSwapScenes", () => {
     const load = vi.spyOn(HTMLMediaElement.prototype, "load").mockImplementation(() => {});
     const video = (text: string) => ({
       ...A1,
-      body: `<video><source src="https://example.com/a.mp4"></video><p>${text}</p>`,
+      body: `<video title="${text}"><source src="https://example.com/a.mp4"></video><p>${text}</p>`,
     });
     boot([video("one"), B], root);
     await tick();
@@ -420,31 +431,52 @@ describe("__hfSwapScenes", () => {
     expect(p.textContent).toBe("Hel");
   });
 
-  it("keeps the same video element through an edit beside it and applies an edit to it", async () => {
+  it("keeps the same video element through an edit beside it", async () => {
     const { root } = trackingRoot();
     quietMedia();
     const scene = (text: string, video: string, hash: string): Scene => ({
       ...A1,
       hash,
-      body: `<p>${text}</p><video src="clip.mp4" ${video}</video>`,
+      body: `<p>${text}</p><video src="clip.mp4" data-start="1" ${video}>one</video>`,
     });
-    boot([scene("A one", 'data-start="1" loop>one', "ha1"), B], root);
+    // The attribute the grading runtime stamps on every video as the page parses.
+    boot([scene("A one", 'data-hf-authored-opacity=""', "ha1"), B], root);
     await tick();
     const video = sceneHost("a").querySelector("video");
-    await window.__hfSwapScenes!(
-      preview([scene("A two", 'data-start="1" loop>one', "ha2"), B]).html,
-    );
+    await window.__hfSwapScenes!(preview([scene("A two", "", "ha2"), B]).html);
     expect(sceneHost("a").querySelector("p")?.textContent).toBe("A two");
     expect(sceneHost("a").querySelector("video")).toBe(video);
-    const edit = 'data-start="1.5" style="opacity: 0.5">two';
-    await window.__hfSwapScenes!(preview([scene("A two", edit, "ha3"), B]).html);
-    expect(sceneHost("a").querySelector("video")).toBe(video);
-    expect(video?.getAttribute("data-start")).toBe("1.5");
-    expect(video?.style.opacity).toBe("0.5");
-    expect(video?.hasAttribute("loop")).toBe(false);
-    expect(video?.textContent).toBe("two");
-    expect(video?.getAttribute("src")).toBe("clip.mp4");
     expect(video?.getAttribute("preload")).toBe("auto");
+  });
+
+  it.each([
+    ["muted is added", "muted"],
+    ["its timing and style change", 'data-start="1.5" style="opacity: 0.5"'],
+    ["its fallback content changes", "", "two"],
+    ["it is colour graded", `data-color-grading='{"adjust":{"exposure":1.5}}'`, "one", true],
+  ])("rebuilds a video fresh when %s", async (_, edit, content = "one", graded = false) => {
+    const { root } = trackingRoot();
+    quietMedia();
+    const scene = (text: string, attrs: string, inner: string, hash: string): Scene => ({
+      ...A1,
+      hash,
+      body: `<p>${text}</p><video src="clip.mp4" ${attrs}>${inner}</video>`,
+    });
+    boot([scene("A one", graded ? edit : "", "one", "ha1"), B], root);
+    await tick();
+    const video = sceneHost("a").querySelector("video");
+    await window.__hfSwapScenes!(preview([scene("A two", edit, content, "ha2"), B]).html);
+    const rebuilt = sceneHost("a").querySelector("video");
+    expect(rebuilt).not.toBe(video);
+    const written = document.createElement("template");
+    written.innerHTML = `<video ${edit}></video>`;
+    for (const { name } of written.content.firstElementChild!.attributes)
+      expect(rebuilt?.hasAttribute(name)).toBe(true);
+    expect(rebuilt?.textContent).toBe(content);
+    await window.__hfSwapScenes!(preview([scene("A three", edit, content, "ha3"), B]).html);
+    const again = sceneHost("a").querySelector("video");
+    if (graded) expect(again).not.toBe(rebuilt);
+    else expect(again).toBe(rebuilt);
   });
 
   it("probes the swapped scene's media for volume once the scene is in the root timeline", async () => {

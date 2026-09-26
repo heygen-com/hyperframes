@@ -249,6 +249,8 @@ export interface RuntimeColorGradingApi {
     rawCompare: unknown,
   ) => boolean;
   setSourceVisibility: (target: Element, visible: boolean) => boolean;
+  /** Whether the element is drawn through a grading canvas right now. */
+  isGraded: (target: Element) => boolean;
   getStatus: (
     target: HfColorGradingTarget | string | null | undefined,
   ) => RuntimeColorGradingStatus;
@@ -3708,6 +3710,9 @@ export function createColorGradingRuntime(pausedMediaLease?: {
     return true;
   };
 
+  const isGraded = (target: Element): boolean =>
+    isColorGradingMediaElement(target) && entries.has(target);
+
   // fallow-ignore-next-line complexity
   const getStatus = (
     target: HfColorGradingTarget | string | null | undefined,
@@ -3832,6 +3837,7 @@ export function createColorGradingRuntime(pausedMediaLease?: {
     setGrading,
     setCompare,
     setSourceVisibility,
+    isGraded,
     getStatus,
     renderPreviews,
     startPreviewPlayback,

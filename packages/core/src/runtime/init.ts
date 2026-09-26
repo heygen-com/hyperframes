@@ -56,6 +56,7 @@ import {
 import { applyPositionEdits, installPositionEditsSeekReapply } from "./positionEdits";
 import { applyVariableBindings, unproxiedMediaSrc } from "./applyVariableBindings";
 import { createColorGradingRuntime, type RuntimeColorGradingApi } from "./colorGrading";
+import { COLOR_GRADING_AUTHORED_OPACITY_ATTR } from "../colorGrading";
 import { initVfx, paintVfx } from "./vfx";
 import { TransportClock } from "./clock";
 import { WebAudioTransport } from "./webAudioTransport";
@@ -216,6 +217,15 @@ function readSceneParts(doc: Document): SceneParts | null {
   }
 }
 
+// A media element's attributes and content, less the grading capture stamped on it at parse time.
+const authoredShape = (el: Element): string =>
+  JSON.stringify([
+    Array.from(el.attributes, (a) => [a.name, a.value]).filter(
+      ([name]) => name !== COLOR_GRADING_AUTHORED_OPACITY_ATTR,
+    ),
+    el.innerHTML,
+  ]);
+
 // URL attributes a scene swap checks besides src, poster and srcset, by tag.
 const MEDIA_URL_ATTRS = new Map([
   ["image", ["href", "xlink:href"]],
@@ -226,6 +236,12 @@ const SLOW_IDLE_HEARTBEAT_MS = 1000;
 
 export function initSandboxRuntimeModular(): void {
   const state = createRuntimeState();
+  // Each video and audio as written, captured before the runtime writes to it; a swap keeps only these.
+  const authoredMedia = new WeakMap<Element, string>();
+  if (readSceneParts(document)) {
+    for (const el of document.querySelectorAll("video, audio"))
+      authoredMedia.set(el, authoredShape(el));
+  }
   // Runtime-data handlers may replace the timeline object they mutate. Keep the
   // reconciliation callback late-bound because the reporter is installed before
   // the timeline resolver/binder is declared below. Delivery cannot complete
@@ -3117,25 +3133,18 @@ export function initSandboxRuntimeModular(): void {
     }
     return urls;
   };
-  // A video or audio the edit left alone keeps playing: it takes its new copy's place and attributes.
+  // A video or audio the edit left as written keeps playing: the old element takes its copy's place.
   const keepUnchangedMedia = (oldHost: Element, host: Element) => {
-    const bySrc = new Map<string, Element[]>();
+    const byShape = new Map<string, Element[]>();
     for (const el of oldHost.querySelectorAll("video, audio")) {
-      const src = unproxiedMediaSrc(el);
-      if (src) bySrc.set(src, [...(bySrc.get(src) ?? []), el]);
+      const shape = authoredMedia.get(el);
+      // Its grading canvas sits beside it in the old scene and cannot follow it.
+      if (!shape || colorGradingRuntime?.isGraded(el)) continue;
+      byShape.set(shape, [...(byShape.get(shape) ?? []), el]);
     }
     for (const el of host.querySelectorAll("video, audio")) {
-      const src = unproxiedMediaSrc(el);
-      const kept = src ? bySrc.get(src)?.shift() : undefined;
-      if (!kept) continue;
-      // The runtime sets preload once, when it first binds the element.
-      const own = (name: string) => name === "src" || name === "preload";
-      for (const { name } of Array.from(kept.attributes))
-        if (!own(name) && !el.hasAttribute(name)) kept.removeAttribute(name);
-      for (const { name, value } of Array.from(el.attributes))
-        if (!own(name)) kept.setAttribute(name, value);
-      kept.replaceChildren(...el.childNodes);
-      el.replaceWith(kept);
+      const kept = byShape.get(authoredShape(el))?.shift();
+      if (kept) el.replaceWith(kept);
     }
   };
   // Swap edited scenes in place from a rebuilt preview document. Refuses before changing anything unless
@@ -3232,6 +3241,8 @@ export function initSandboxRuntimeModular(): void {
         script.textContent = el.textContent;
         document.body.appendChild(script);
       }
+      for (const el of host.querySelectorAll("video, audio"))
+        if (!authoredMedia.has(el)) authoredMedia.set(el, authoredShape(el));
     }
     document
       .querySelector(`meta[name="${SCENE_PARTS_META}"]`)
