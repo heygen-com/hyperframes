@@ -3196,8 +3196,9 @@ export function initSandboxRuntimeModular(): void {
     },
     isPlaying: () => clock.isPlaying(),
     setPlaybackRate: (rate) => {
+      // Clock first: a read between the two would map media time at the old rate.
+      clock.setRate(rate);
       applyPlaybackRate(rate);
-      clock.setRate(state.playbackRate);
       applyWebAudioRate();
     },
     getPlaybackRate: () => state.playbackRate,
@@ -3897,8 +3898,10 @@ export function initSandboxRuntimeModular(): void {
           }
         } else {
           const audioEls = document.querySelectorAll("audio[data-start]");
+          // The clip the playhead follows keeps it while it plays; one that starts later must not take over.
+          const followed = clock.audioElement();
           let foundActive = false;
-          for (const rawEl of audioEls) {
+          for (const rawEl of followed ? [followed, ...audioEls] : audioEls) {
             if (!isMediaElement(rawEl) || !rawEl.isConnected) continue;
             if (isSilencedByHidden(rawEl)) continue;
             const start = resolveAbsoluteMediaStartSeconds(rawEl);
@@ -3906,7 +3909,7 @@ export function initSandboxRuntimeModular(): void {
             const end = durAttr != null && durAttr > 0 ? start + durAttr : Infinity;
             const mediaStart = readElementPlaybackStart(rawEl);
             if (Number.isFinite(start) && isInClipWindow(state.currentTime, start, end)) {
-              if (!rawEl.paused) {
+              if (!rawEl.paused && !rawEl.error) {
                 clock.attachAudioSource({
                   el: rawEl,
                   compositionStart: start,
@@ -4247,8 +4250,8 @@ export function initSandboxRuntimeModular(): void {
       }
     },
     onSetPlaybackRate: (rate) => {
+      state.transportClock?.setRate(rate);
       applyPlaybackRate(rate);
-      if (state.transportClock) state.transportClock.setRate(state.playbackRate);
       applyWebAudioRate();
     },
     onSetIdleHeartbeat: (slow) => {

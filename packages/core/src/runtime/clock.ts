@@ -1,4 +1,5 @@
 import { timeAtSourceTime, type RateSpec } from "../speedRamp.js";
+import { MEDIA_HARD_SYNC_SECONDS } from "./media.js";
 
 export type TransportClockSnapshot = {
   time: number;
@@ -23,6 +24,8 @@ export type AudioClockSource =
 /** GSAP's own `lagSmoothing` default — see the PR body for why this clock needs its own copy. */
 const STALL_THRESHOLD_MS = 500;
 const STALL_ADJUSTED_LAG_MS = 33;
+/** `HTMLMediaElement.HAVE_FUTURE_DATA`, spelled out so the clock runs without a DOM. */
+const HAVE_FUTURE_DATA = 3;
 
 export class TransportClock {
   private _baseTime = 0;
@@ -33,6 +36,8 @@ export class TransportClock {
   private _audioSource: AudioClockSource | null = null;
   /** Wall-clock time of the last `now()` read while playing; null while paused. */
   private _lastReadMs: number | null = null;
+  /** The time the last read reported while playing; audio may hold it, never push it back. */
+  private _lastNow = 0;
 
   constructor(opts?: {
     initialTime?: number;
@@ -58,22 +63,16 @@ export class TransportClock {
       if ("currentTimeSeconds" in this._audioSource) {
         audioTime = this._audioSource.currentTimeSeconds;
       } else {
-        const { el, compositionStart, mediaStart, rate } = this._audioSource;
-        if (!el.paused && Number.isFinite(el.currentTime)) {
-          audioTime =
-            typeof rate === "object"
-              ? timeAtSourceTime(rate, el.currentTime - mediaStart) + compositionStart
-              : ((el.currentTime - mediaStart) / (el.playbackRate > 0 ? el.playbackRate : 1)) *
-                  this._rate +
-                compositionStart;
-        }
+        audioTime = this._elementTime(this._audioSource);
       }
       if (audioTime !== null) {
+        const t = Number.isFinite(this._duration) ? Math.min(audioTime, this._duration) : audioTime;
+        // Re-anchored so a fallback read continues from here, not from the last play().
+        this._baseTime = Math.max(0, t);
+        this._playStartMs = this._nowMs();
         this._lastReadMs = null;
-        if (Number.isFinite(this._duration) && audioTime >= this._duration) {
-          return this._duration;
-        }
-        return Math.max(0, audioTime);
+        this._lastNow = this._baseTime;
+        return this._baseTime;
       }
     }
 
@@ -81,10 +80,29 @@ export class TransportClock {
     this._applyStallCorrection();
     const elapsed = (this._nowMs() - this._playStartMs) / 1000;
     const t = this._baseTime + elapsed * this._rate;
-    if (Number.isFinite(this._duration) && t >= this._duration) {
-      return this._duration;
-    }
-    return Math.max(0, t);
+    this._lastNow = Math.max(0, Number.isFinite(this._duration) ? Math.min(t, this._duration) : t);
+    return this._lastNow;
+  }
+
+  /**
+   * The element's composition time, or null when it cannot lead the playhead.
+   * Audio may pull the playhead forward, or hold it while it catches up (a clip
+   * still starting, seeking or buffering), but never push it back.
+   */
+  private _elementTime(source: Extract<AudioClockSource, { el: HTMLMediaElement }>): number | null {
+    const { el, compositionStart, mediaStart, rate } = source;
+    if (el.paused || !Number.isFinite(el.currentTime)) return null;
+    if (el.seeking) return this._lastNow;
+    const time =
+      typeof rate === "object"
+        ? timeAtSourceTime(rate, el.currentTime - mediaStart) + compositionStart
+        : ((el.currentTime - mediaStart) / (el.playbackRate > 0 ? el.playbackRate : 1)) *
+            this._rate +
+          compositionStart;
+    if (time >= this._lastNow) return time;
+    // A jump back past a hard sync (a native loop wrap) is not where the audio is heard.
+    const buffering = el.readyState < HAVE_FUTURE_DATA;
+    return buffering || this._lastNow - time <= MEDIA_HARD_SYNC_SECONDS ? this._lastNow : null;
   }
 
   /** Folds a >500ms gap since the last read into `_playStartMs` so it's never reported as played time. */
@@ -104,6 +122,7 @@ export class TransportClock {
     if (this._playStartMs !== null) return false;
     if (Number.isFinite(this._duration) && this._baseTime >= this._duration) return false;
     this._playStartMs = this._nowMs();
+    this._lastNow = this._baseTime;
     // Not a stall: the gap since the clock was last read (possibly a long
     // paused idle) says nothing about lost playback time, since none was
     // playing. `_applyStallCorrection` treats null as "nothing to compare
@@ -124,6 +143,7 @@ export class TransportClock {
       ? Math.max(0, Math.min(timeSeconds, this._duration))
       : Math.max(0, timeSeconds);
     this._baseTime = clamped;
+    this._lastNow = clamped;
     if (this._playStartMs !== null) {
       this._playStartMs = this._nowMs();
       // Same reasoning as `play()`: the seek itself, not any elapsed gap
@@ -174,6 +194,11 @@ export class TransportClock {
       this._lastReadMs = null;
     }
     this._audioSource = null;
+  }
+
+  /** The element the playhead currently follows, if the source is one. */
+  audioElement(): HTMLMediaElement | null {
+    return this._audioSource && "el" in this._audioSource ? this._audioSource.el : null;
   }
 
   hasAudioSource(): boolean {

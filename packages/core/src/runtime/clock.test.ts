@@ -316,6 +316,78 @@ describe("TransportClock", () => {
       expect(clock.getSource()).toBe("monotonic");
     });
 
+    it("holds, never rewinds, the playhead for a clip that started late, then follows it", () => {
+      const { clock, advance } = createClock({ duration: 30 });
+      clock.play();
+      advancePolled(clock, advance, 6300);
+      const sfx = createMockAudioEl(0, false); // at its start, 50 ms behind the playhead
+      clock.attachAudioSource({ el: sfx, compositionStart: 6.25, mediaStart: 0 });
+      expect(clock.now()).toBeCloseTo(6.3, 5);
+      advance(100);
+      sfx.currentTime = 0.02;
+      expect(clock.now()).toBeCloseTo(6.3, 5);
+      advance(100);
+      sfx.currentTime = 0.12;
+      expect(clock.now()).toBeCloseTo(6.37, 5);
+    });
+
+    it("holds the playhead while its element seeks", () => {
+      const { clock, advance } = createClock({ duration: 30 });
+      clock.play();
+      advancePolled(clock, advance, 2000);
+      const voice = Object.assign(createMockAudioEl(0, false), { seeking: true });
+      clock.attachAudioSource({ el: voice, compositionStart: 2, mediaStart: 0 });
+      advance(150);
+      expect(clock.now()).toBeCloseTo(2, 5);
+    });
+
+    it("holds the playhead on an element that is buffering behind it", () => {
+      const { clock, advance } = createClock({ duration: 30 });
+      clock.play();
+      advancePolled(clock, advance, 6300);
+      const voice = Object.assign(createMockAudioEl(0, false), { readyState: 1 });
+      clock.attachAudioSource({ el: voice, compositionStart: 5, mediaStart: 0 });
+      advance(500);
+      expect(clock.now()).toBeCloseTo(6.3, 5);
+    });
+
+    it("does not follow a jump back past a hard sync, such as a native loop wrap", () => {
+      const { clock, advance } = createClock({ duration: 30 });
+      clock.play();
+      const bed = createMockAudioEl(5, false);
+      clock.attachAudioSource({ el: bed, compositionStart: 0, mediaStart: 0 });
+      expect(clock.now()).toBe(5);
+      advance(16);
+      bed.currentTime = 1; // wrapped to its loop start
+      expect(clock.now()).toBeCloseTo(5.016, 5);
+    });
+
+    it("continues from the last audio time when the element drops out", () => {
+      const { clock, advance } = createClock({ duration: 30 });
+      clock.play();
+      advancePolled(clock, advance, 4000);
+      const voice = createMockAudioEl(5, false);
+      clock.attachAudioSource({ el: voice, compositionStart: 0, mediaStart: 0 });
+      expect(clock.now()).toBe(5);
+      Object.assign(voice, { paused: true });
+      advance(16);
+      expect(clock.now()).toBeCloseTo(5.016, 5);
+    });
+
+    it("lets a seek move the playhead back past a held time", () => {
+      const { clock, advance } = createClock({ duration: 30 });
+      clock.play();
+      const voice = createMockAudioEl(5, false);
+      clock.attachAudioSource({ el: voice, compositionStart: 0, mediaStart: 0 });
+      expect(clock.now()).toBe(5);
+      clock.detachAudioSource();
+      clock.seek(2);
+      voice.currentTime = 2;
+      clock.attachAudioSource({ el: voice, compositionStart: 0, mediaStart: 0 });
+      advance(16);
+      expect(clock.now()).toBe(2);
+    });
+
     it("clamps audio-derived time to duration", () => {
       const { clock } = createClock({ duration: 10 });
       const audioEl = createMockAudioEl(15.0, false);

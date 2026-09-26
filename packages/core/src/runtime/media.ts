@@ -247,6 +247,9 @@ export function hasMediaSyncStateForTest(el: HTMLMediaElement): boolean {
   );
 }
 
+/** Drift past which media sync seeks an element outright instead of easing it back. */
+export const MEDIA_HARD_SYNC_SECONDS = 0.5;
+
 // fallow-ignore-next-line complexity
 export function syncRuntimeMedia(params: {
   clips: RuntimeMediaClip[];
@@ -474,7 +477,7 @@ export function syncRuntimeMedia(params: {
         (isHeldVideoTail && drift > 0.001) ||
         (el.ended && canSeekEndedMediaBackward && drift > 0.001) ||
         staleAudioOnFirstTick ||
-        (drift > 0.5 && (firstTickOfClip || offsetJumped || catastrophicDrift));
+        (drift > MEDIA_HARD_SYNC_SECONDS && (firstTickOfClip || offsetJumped || catastrophicDrift));
       // Playing videos use the browser's decoder for timing. Seeking one resets the decoder: a
       // ~150ms freeze while it re-buffers, as the monotonic clock advances, which loops into a
       // seek→freeze→drift→seek stutter. So a playing video skips strict and force sync; only hard
