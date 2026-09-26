@@ -222,6 +222,33 @@ describe("parked transport loop", () => {
     });
   });
 
+  it.each([
+    ["under a second", "0.2", 0.2, 6],
+    ["one 60 fps frame", "0.016666666666666666", 1 / 60, Math.round(30 / 60)],
+  ])(
+    "stops a film declared %s long at that length, and says so",
+    (_label, declared, seconds, frame) => {
+      let nowMs = 1000;
+      vi.spyOn(performance, "now").mockImplementation(() => nowMs);
+      document.body.innerHTML = `<div id="root" data-composition-id="main" data-root="true" data-start="0" data-duration="${declared}"></div>`;
+      window.__timelines = { main: createMockTimeline(5) };
+      initSandboxRuntimeModular();
+      quiesce();
+
+      window.__player!.play();
+      for (let step = 0; step < 200 && window.__player!.isPlaying(); step += 1) {
+        nowMs += 10;
+        raf.step(10);
+      }
+
+      const states = posted.filter((m) => m["type"] === "state");
+      expect(states.at(-1)).toMatchObject({ isPlaying: false, ended: true, frame });
+      expect(window.__player!.getDuration()).toBeCloseTo(seconds, 9);
+      const timeline = posted.filter((m) => m["type"] === "timeline").at(-1);
+      expect(timeline?.["durationSeconds"]).toBeCloseTo(seconds, 9);
+    },
+  );
+
   it("keeps asking for animation frames while playing", () => {
     mount();
     initSandboxRuntimeModular();

@@ -1464,6 +1464,25 @@ describe("HyperframesPlayer loop end-state handling", () => {
     expect(player._currentTime).toBe(player._duration);
   });
 
+  it("takes a length under a second from the runtime and ends there", () => {
+    const ended = vi.fn();
+    player.addEventListener("ended", ended);
+    player.loop = false;
+    player._onMessage(
+      new MessageEvent("message", {
+        source: frameWindow,
+        data: { source: "hf-preview", type: "timeline", durationSeconds: 0.2, durationInFrames: 6 },
+      }),
+    );
+    expect(player.duration).toBe(0.2);
+    player._paused = false;
+
+    postState(6, false, 0.2, true);
+
+    expect(ended).toHaveBeenCalledTimes(1);
+    expect(player.currentTime).toBe(0.2);
+  });
+
   it("loops a film whose length falls between two frames", () => {
     const seek = vi.spyOn(player, "seek");
     player.loop = true;

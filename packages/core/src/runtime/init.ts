@@ -1226,7 +1226,8 @@ export function initSandboxRuntimeModular(): void {
     const declaredDuration = parseStrictFiniteTimingNumber(
       resolveRootCompositionElement()?.getAttribute("data-duration"),
     );
-    if (isUsableTimelineDuration(declaredDuration)) {
+    // Any positive length counts, even one frame: the render accepts it too.
+    if (declaredDuration !== null && declaredDuration > 0) {
       if (window.__hf?.durationSource) delete window.__hf.durationSource;
       return declaredDuration;
     }
