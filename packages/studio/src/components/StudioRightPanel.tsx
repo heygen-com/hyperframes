@@ -421,7 +421,7 @@ export function StudioRightPanel({
           <CaptionPropertyPanel iframeRef={previewIframeRef} />
         ) : (
           <>
-            <RightPanelTabs tabs={inspectorTabs} />
+            <RightPanelTabs tabs={inspectorTabs} activateOnFocus={STUDIO_FLAT_INSPECTOR_ENABLED} />
             <div className="min-h-0 min-w-0 flex-1 overflow-hidden">
               {rightPanelTab === "block-params" && activeBlockParams ? (
                 <BlockParamsPanel

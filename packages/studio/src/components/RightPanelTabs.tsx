@@ -19,7 +19,14 @@ export interface RightPanelTabDescriptor {
 /** The look `aria-selected` gives the selected tab, for a second open pane. */
 const SELECTED_LOOK = "bg-hover text-text-0";
 
-export function RightPanelTabs({ tabs }: { tabs: readonly RightPanelTabDescriptor[] }) {
+export function RightPanelTabs({
+  tabs,
+  activateOnFocus = true,
+}: {
+  tabs: readonly RightPanelTabDescriptor[];
+  /** False when `onSelect` toggles a pane, so an arrow key only moves focus. */
+  activateOnFocus?: boolean;
+}) {
   // `null` when the layout holds a tab this strip does not show (block params),
   // which leaves every tab unselected, exactly as the old buttons did.
   const value = tabs.find((tab) => tab.active)?.id ?? null;
@@ -33,6 +40,7 @@ export function RightPanelTabs({ tabs }: { tabs: readonly RightPanelTabDescripto
     >
       <TabsList
         aria-label="Inspector panels"
+        activateOnFocus={activateOnFocus}
         className="flex min-w-0 items-center gap-1 overflow-hidden rounded-none border-b border-border-strong bg-transparent px-3 py-2"
       >
         {tabs.map((tab) => (
