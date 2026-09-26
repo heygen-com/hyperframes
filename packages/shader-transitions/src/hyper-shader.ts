@@ -1245,6 +1245,13 @@ export function init(config: HyperShaderConfig): GsapTimeline {
     typeof tl.totalTime === "function"
       ? (tl.totalTime.bind(tl) as (...args: unknown[]) => GsapTimeline | number)
       : null;
+  const reRendersInPlace = tl as unknown as Record<string, unknown>;
+  for (const method of ["timeScale", "paused", "reversed"]) {
+    const original = reRendersInPlace[method];
+    if (typeof original === "function") {
+      reRendersInPlace[method] = asOwnSeek(original.bind(tl) as (...args: unknown[]) => unknown);
+    }
+  }
   const readActualTimelineTime = (): number => {
     const value = originalTime();
     return typeof value === "number" && Number.isFinite(value) ? value : 0;

@@ -29,6 +29,7 @@ function stubGsap() {
       return tl;
     },
     seek: (t: number) => tl.time(t),
+    timeScale: (scale?: number) => (scale === undefined ? 1 : (tl.totalTime(now, true), tl)),
     call: (fn: () => void, _args: null, at: number) => (calls.push({ fn, at }), tl),
     set: () => tl,
     to: () => tl,
@@ -159,6 +160,11 @@ describe("preview outside a transition", () => {
   });
 });
 
+type SpeedTimeline = ShaderTimeline & {
+  timeScale: (scale?: number) => unknown;
+  totalTime: (t?: number) => unknown;
+};
+
 describe("a runtime seek while the prewarm runs", () => {
   it("is where the prewarm leaves the playhead", async () => {
     stubGsap();
@@ -180,5 +186,28 @@ describe("a runtime seek while the prewarm runs", () => {
     expect(tl.totalTime()).toBe(1);
     tl.time(0.2);
     expect(crossings).toBe(1);
+  });
+
+  it("is not moved by a speed change while the prewarm sits on a capture frame", async () => {
+    stubGsap();
+    stubWebGl();
+    let tl: SpeedTimeline | undefined;
+    let changedSpeed = false;
+    vi.spyOn(console, "warn").mockImplementation((message: unknown) => {
+      if (!changedSpeed && String(message).includes("Transition capture failed")) {
+        changedSpeed = true;
+        tl?.timeScale(2);
+      }
+    });
+    mountScenes(["s4", "s5"]);
+    tl = init({
+      bgColor: "#000",
+      scenes: ["s4", "s5"],
+      transitions: [{ time: 4.4, duration: 0.8, shader: "domain-warp" }],
+    }) as unknown as SpeedTimeline;
+    await prewarmDone();
+
+    expect(changedSpeed).toBe(true);
+    expect(tl?.totalTime()).toBe(0);
   });
 });
