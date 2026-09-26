@@ -62,7 +62,7 @@ interface GsapStatic {
  * vars through untouched, so this costs a declaring composition nothing at runtime.
  *
  * It exists because the fallback below has to GUESS. Classifying by colour equality breaks outright
- * when a composition's two states share a colour: every tween matches the dim baseline, and the
+ * when a composition's two states share a colour: every tween matches the rest colour, and the
  * active override is silently dropped. A declaration is the composition telling us what it built,
  * rather than us inferring it from what it happens to look like.
  */
@@ -163,33 +163,39 @@ function definedProps(override: CaptionOverride, keys: (keyof CaptionOverride)[]
   );
 }
 
-// Undeclared tweens are dim when their colour equals this reference, taken from a tween
-// declared "dim" or else the first undeclared one, never from one declared "active".
-function dimBaselineOf(colorTweens: GsapTween[]): string {
-  const dimReference =
-    colorTweens.find((tw) => declaredCaptionState(tw) === "dim") ??
-    colorTweens.find((tw) => declaredCaptionState(tw) === undefined);
-  return dimReference ? String(dimReference.vars.color) : "";
+// The colour the browser paints on `el` with `color` inline, so any spelling compares equal.
+// An empty `color` reads the stylesheet colour past whatever GSAP has rendered inline.
+function paintedColor(el: HTMLElement, color: string): string {
+  const inline = el.style.color;
+  el.style.color = color;
+  const painted = getComputedStyle(el).color;
+  el.style.color = inline;
+  return painted;
 }
 
-// A declaration wins over the colour guess, per tween, so a composition can declare
-// some tweens and leave others to the fallback.
-const tweenState = (tw: GsapTween, dimBaseline: string): "dim" | "active" =>
-  declaredCaptionState(tw) ?? (String(tw.vars.color) === dimBaseline ? "dim" : "active");
+// What the word shows before it is spoken: its first colour tween's start colour (a fromTo()),
+// else its stylesheet colour.
+function restColorOf(el: HTMLElement, colorTweens: GsapTween[]): string {
+  const startAt = colorTweens[0]?.vars.startAt as { color?: unknown } | undefined;
+  return paintedColor(el, startAt?.color === undefined ? "" : String(startAt.color));
+}
+
+// A declaration wins, per tween; otherwise a tween back to the word's rest colour is dim.
+const tweenState = (tw: GsapTween, el: HTMLElement, rest: string): "dim" | "active" =>
+  declaredCaptionState(tw) ?? (paintedColor(el, String(tw.vars.color)) === rest ? "dim" : "active");
 
 function rewriteColorTweens(gsap: GsapStatic, el: HTMLElement, override: CaptionOverride): void {
   const colorTweens = gsap
     .getTweensOf(el)
     .filter((tw) => tw.vars.color !== undefined)
     .sort((a, b) => a.startTime() - b.startTime());
-  const dimBaseline = dimBaselineOf(colorTweens);
+  const rest = restColorOf(el, colorTweens);
 
   for (const tw of colorTweens) {
-    const state = tweenState(tw, dimBaseline);
-    const color = state === "dim" ? override.dimColor : override.activeColor;
-    if (!color) continue;
-    tw.vars.color = color;
-    // A from() re-read after invalidate() would end on the dim colour set below.
+    const color = tweenState(tw, el, rest) === "dim" ? override.dimColor : override.activeColor;
+    if (color) tw.vars.color = color;
+    // Each re-reads its start from the word the dim colour below re-colours, rewritten or not.
+    // A from() re-read that way would end on that dim colour instead.
     if (!tw.vars.runBackwards) tw.invalidate?.();
   }
 
