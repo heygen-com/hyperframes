@@ -495,10 +495,11 @@ function recordMutationReceipt(
   filePath: string,
   absPath: string,
   html: string,
+  overwrote?: string,
 ): { version: string; writeToken: string } {
   const version = fileContentVersion(html);
   const writeToken = createWriteToken(c.req.header("X-Hyperframes-Write-Token"));
-  recordFileWriteReceipt(absPath, { path: filePath, version, writeToken });
+  recordFileWriteReceipt(absPath, { path: filePath, version, writeToken, overwrote });
   return { version, writeToken };
 }
 
@@ -508,9 +509,10 @@ function writeFileWithReceipt(
   absPath: string,
   html: string,
 ): { version: string; writeToken: string } {
+  const overwrote = readFileSync(absPath, "utf-8");
   replaceFileAtomically(absPath, html, statSync(absPath).mode);
   // The synchronous write cannot yield before its receipt is recorded; keep this block await-free.
-  return recordMutationReceipt(c, filePath, absPath, html);
+  return recordMutationReceipt(c, filePath, absPath, html, overwrote);
 }
 
 function writeMutationResult(

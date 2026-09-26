@@ -5,6 +5,7 @@ export interface FileWriteReceipt {
   path: string;
   version: string;
   writeToken: string;
+  overwrote?: string;
 }
 
 interface StoredReceipt extends FileWriteReceipt {
@@ -79,7 +80,18 @@ export function identifyFileWrite(
   filePath: string,
   expectedVersion: string,
 ): FileWriteReceipt | null {
-  const absPath = realFilePath(filePath);
+  const receipt = newestReceipt(realFilePath(filePath), expectedVersion);
+  if (!receipt) return null;
+  const { path, version, writeToken } = receipt;
+  return { path, version, writeToken };
+}
+
+/** The bytes the API write of `version` replaced, while its receipt lives. */
+export function bytesOverwrittenBy(filePath: string, version: string): string | undefined {
+  return newestReceipt(realFilePath(filePath), version)?.overwrote;
+}
+
+function newestReceipt(absPath: string, expectedVersion: string): StoredReceipt | undefined {
   const now = Date.now();
   const current = (receipts.get(absPath) ?? []).filter(
     (entry) => now - entry.recordedAt < RECEIPT_TTL_MS,
@@ -94,9 +106,7 @@ export function identifyFileWrite(
   for (let i = current.length - 1; i >= 0 && !receipt; i -= 1) {
     if (current[i]?.version === expectedVersion) receipt = current[i];
   }
-  if (!receipt) return null;
-  const { path, version, writeToken } = receipt;
-  return { path, version, writeToken };
+  return receipt;
 }
 
 /**

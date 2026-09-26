@@ -130,6 +130,39 @@ describe("history routes", () => {
     expect((await (await call("")).json()).back).toMatchObject({ label: "Dragged Title" });
   });
 
+  it("undo Studio's element edit back to a save that landed between Studio's read and its write", async () => {
+    const { projectDir, history } = await demoProject();
+    const index = join(projectDir, "index.html");
+    const saved = (text: string) => `<h1 id="title">${text}</h1>`;
+    writeFileSync(index, saved("A"));
+    await history.flush();
+    const api = createStudioApi({
+      listProjects: () => [],
+      resolveProject: (id: string) => (id === "demo" ? { id, dir: projectDir } : null),
+      history: () => history,
+    } as unknown as StudioApiAdapter);
+    const post = (path: string, body: object) =>
+      api.request(`/projects/demo${path}`, { method: "POST", body: JSON.stringify(body) });
+
+    writeFileSync(index, saved("B"));
+    const edit = [{ type: "inline-style", property: "z-index", value: "2" }];
+    const patched = await post("/file-mutations/patch-element/index.html", {
+      target: { id: "title" },
+      operations: edit,
+    });
+    expect(patched.status).toBe(200);
+    await post("/history/claim", {
+      label: "Moved Title",
+      paths: ["index.html"],
+      overwrote: { "index.html": fileContentVersion(saved("A")) },
+    });
+    expect(await (await post("/history/step", { direction: "back" })).json()).toMatchObject({
+      ok: true,
+      entry: { label: "Undid: Moved Title" },
+    });
+    expect(readFileSync(index, "utf-8")).toBe(saved("B"));
+  });
+
   it("label an undo's writes with Studio's write token, so their echo reads as Studio's own", async () => {
     const { projectDir, call } = await demoProject();
     writeFileSync(join(projectDir, "index.html"), "B");

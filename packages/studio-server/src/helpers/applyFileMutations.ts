@@ -105,6 +105,7 @@ function applyOneMutation(
     path: mutation.sourceFile,
     version,
     writeToken,
+    overwrote: before,
   });
   return {
     ...mutation,

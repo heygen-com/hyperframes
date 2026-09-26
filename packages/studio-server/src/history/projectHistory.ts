@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import { readdir, rm, rmdir } from "node:fs/promises";
+import { readdir, rm, rmdir, writeFile } from "node:fs/promises";
 import {
   type Dirent,
   type Stats,
@@ -15,6 +15,7 @@ import { homedir } from "node:os";
 import { dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
 import { replaceFileAtomically } from "../helpers/atomicFile.js";
 import {
+  bytesOverwrittenBy,
   DELETED_VERSION,
   hashOfVersion,
   hashVersion,
@@ -439,7 +440,7 @@ class Engine {
     { coalesceKey, idleMs, overwrote = {} }: ClaimOptions,
   ): Promise<{ id: string } | null> {
     await this.sweep();
-    const taken = this.takeClaimed(who, paths, overwrote);
+    const taken = await this.takeClaimed(who, paths, overwrote);
     if (!taken.length) return this.claimNothing(coalesceKey);
     const held = this.heldFor(coalesceKey, taken);
     if (!held) await this.commitClaim();
@@ -493,11 +494,11 @@ class Engine {
   }
 
   /** Takes `paths`' uncommitted changes from others, cut at what `who` overwrote. */
-  takeClaimed(
+  async takeClaimed(
     who: HistoryWho,
     paths: readonly string[],
     overwrote: Readonly<Record<string, string>>,
-  ): HistoryFileChange[] {
+  ): Promise<HistoryFileChange[]> {
     const wanted = new Set(paths.map((path) => this.logPath(path)));
     const at = new Map(
       Object.entries(overwrote).map(([path, version]) => [
@@ -511,11 +512,26 @@ class Engine {
     for (const group of groups) {
       for (const change of [...group.changes.values()]) {
         if (!wanted.has(change.path)) continue;
-        const claimed = this.cutOut(group, change, at.get(change.path));
+        const cut = (await this.overwrittenBy(change)) ?? at.get(change.path);
+        const claimed = this.cutOut(group, change, cut);
         if (claimed) taken.push(claimed);
       }
     }
     return taken;
+  }
+
+  /** What the server's own write of `change.after` replaced, from its receipt, stored so an undo can restore it. */
+  async overwrittenBy(change: HistoryFileChange): Promise<string | undefined> {
+    if (!change.after) return undefined;
+    const bytes = bytesOverwrittenBy(join(this.dir, change.path), hashVersion(change.after));
+    if (bytes === undefined) return undefined;
+    const staged = join(this.home, `overwrote-${randomUUID()}`);
+    await writeFile(staged, bytes);
+    try {
+      return await this.blobs.put(staged);
+    } finally {
+      await rm(staged, { force: true });
+    }
   }
 
   cutOut(group: Group, change: HistoryFileChange, cut: string | undefined) {
