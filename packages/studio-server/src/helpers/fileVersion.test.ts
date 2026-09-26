@@ -1,5 +1,9 @@
+import { mkdtempSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
+  DELETED_VERSION,
   identifyFileWrite,
   fileContentVersion,
   recordFileWriteReceipt,
@@ -30,6 +34,35 @@ describe("file versions and write receipts", () => {
     expect(identifyFileWrite("/project/index.html", receipt.version)).toEqual(receipt);
     expect(identifyFileWrite("/project/index.html", fileContentVersion("other"))).toBeNull();
   });
+
+  // Windows needs a privilege to create symlinks.
+  it.skipIf(process.platform === "win32")(
+    "recognises a deletion and a creation in a linked folder, recorded before the file changes",
+    () => {
+      const real = mkdtempSync(join(tmpdir(), "hf-receipt-"));
+      const linked = `${real}-link`;
+      symlinkSync(real, linked, "dir");
+      try {
+        const file = join(linked, "index.html");
+        writeFileSync(file, "a");
+        recordFileWriteReceipt(file, {
+          path: "index.html",
+          version: DELETED_VERSION,
+          writeToken: "undo",
+        });
+        rmSync(file);
+        expect(identifyFileWrite(file, DELETED_VERSION)?.writeToken).toBe("undo");
+
+        const version = fileContentVersion("b");
+        recordFileWriteReceipt(file, { path: "index.html", version, writeToken: "redo" });
+        writeFileSync(file, "b");
+        expect(identifyFileWrite(file, version)?.writeToken).toBe("redo");
+      } finally {
+        rmSync(linked, { force: true });
+        rmSync(real, { recursive: true, force: true });
+      }
+    },
+  );
 
   it("stops recognising a write once the receipt TTL has passed", () => {
     vi.useFakeTimers();

@@ -157,16 +157,13 @@ describe("element edits with another writer racing them", () => {
     expect(read()).toBe(saved("x"));
   });
 
-  it.each(Object.entries(ROUTES))(
+  // Windows needs a privilege to create symlinks.
+  it.skipIf(process.platform === "win32").each(Object.entries(ROUTES))(
     "%s edits a linked file through its link and keeps the link",
     async (_, [route, body]) => {
       const { post, path, read } = project();
       const alias = join(path, "..", "alias.html");
-      try {
-        symlinkSync(path, alias);
-      } catch {
-        return;
-      }
+      symlinkSync(path, alias);
       const aliased = JSON.parse(JSON.stringify(body).replaceAll("index.html", "alias.html"));
 
       expect((await post(route.replace("index.html", "alias.html"), aliased)).status).toBe(200);

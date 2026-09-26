@@ -13,28 +13,24 @@ describe("replaceFileAtomically", () => {
     dirs.length = 0;
   });
 
-  it.each([
-    [true, "new", "old", true],
-    [false, "old", "new", false],
+  // Windows needs a privilege to create symlinks.
+  it.skipIf(process.platform === "win32").each([
+    [true, "new"],
+    [false, "old"],
   ])(
     "with followLinks %s writes a linked file's target or replaces the link",
-    (followLinks, targetAfter, linkAfter, stillLink) => {
+    (followLinks, targetAfter) => {
       const dir = mkdtempSync(join(tmpdir(), "atomic-file-test-"));
       dirs.push(dir);
       const target = join(dir, "target.html");
       const link = join(dir, "link.html");
       writeFileSync(target, "old");
-      try {
-        symlinkSync(target, link);
-      } catch {
-        return;
-      }
+      symlinkSync(target, link);
 
       replaceFileAtomically(link, "new", 0o644, undefined, { followLinks });
 
       expect(readFileSync(target, "utf-8")).toBe(targetAfter);
-      expect(lstatSync(link).isSymbolicLink()).toBe(stillLink);
-      if (!stillLink) expect(readFileSync(link, "utf-8")).toBe(linkAfter);
+      expect(lstatSync(link).isSymbolicLink()).toBe(followLinks);
     },
   );
 

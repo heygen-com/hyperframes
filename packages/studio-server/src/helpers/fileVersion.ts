@@ -1,5 +1,5 @@
 import { createHash, randomUUID } from "node:crypto";
-import { realpathSync } from "node:fs";
+import { realFilePath } from "./atomicFile.js";
 
 export interface FileWriteReceipt {
   path: string;
@@ -48,17 +48,8 @@ export function createWriteToken(requestToken?: string): string {
   return token && token.length <= 200 ? token : randomUUID();
 }
 
-/** Receipts are keyed by the real path, so a write through a link matches the watcher's report of its target. */
-function receiptKey(absPath: string): string {
-  try {
-    return realpathSync(absPath);
-  } catch {
-    return absPath;
-  }
-}
-
 export function recordFileWriteReceipt(filePath: string, receipt: FileWriteReceipt): void {
-  const absPath = receiptKey(filePath);
+  const absPath = realFilePath(filePath);
   const now = Date.now();
   const current = (receipts.get(absPath) ?? []).filter(
     (entry) => now - entry.recordedAt < RECEIPT_TTL_MS,
@@ -68,7 +59,7 @@ export function recordFileWriteReceipt(filePath: string, receipt: FileWriteRecei
 }
 
 export function clearFileWriteReceipt(filePath: string, version: string, writeToken: string): void {
-  const absPath = receiptKey(filePath);
+  const absPath = realFilePath(filePath);
   const current = (receipts.get(absPath) ?? []).filter(
     (entry) => entry.version !== version || entry.writeToken !== writeToken,
   );
@@ -88,7 +79,7 @@ export function identifyFileWrite(
   filePath: string,
   expectedVersion: string,
 ): FileWriteReceipt | null {
-  const absPath = receiptKey(filePath);
+  const absPath = realFilePath(filePath);
   const now = Date.now();
   const current = (receipts.get(absPath) ?? []).filter(
     (entry) => now - entry.recordedAt < RECEIPT_TTL_MS,

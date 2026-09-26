@@ -1,12 +1,13 @@
 import * as fs from "node:fs";
 import { randomUUID } from "node:crypto";
+import { basename, dirname, join } from "node:path";
 
 type AtomicFileSystem = Pick<
   typeof fs,
   "writeFileSync" | "chmodSync" | "renameSync" | "unlinkSync"
 >;
 
-/** Replace a file only after the complete sibling temp file is written; a symlink's target is replaced, not the link. */
+/** Replace a file only after the complete sibling temp file is written; a symlink's target is replaced unless followLinks is false. */
 export function replaceFileAtomically(
   filePath: string,
   content: string | Uint8Array,
@@ -14,7 +15,7 @@ export function replaceFileAtomically(
   operations: AtomicFileSystem = fs,
   { followLinks = true }: { followLinks?: boolean } = {},
 ): void {
-  const target = followLinks ? existingTarget(filePath) : filePath;
+  const target = followLinks ? realFilePath(filePath) : filePath;
   const tempPath = `${target}.${process.pid}.${randomUUID()}.tmp`;
   try {
     operations.writeFileSync(tempPath, content, { encoding: "utf-8", mode });
@@ -31,10 +32,15 @@ export function replaceFileAtomically(
   }
 }
 
-function existingTarget(filePath: string): string {
+/** The file's real path; for a file not there (yet, or any more), its folder's real path joined with its name. */
+export function realFilePath(filePath: string): string {
   try {
     return fs.realpathSync(filePath);
   } catch {
-    return filePath;
+    try {
+      return join(fs.realpathSync(dirname(filePath)), basename(filePath));
+    } catch {
+      return filePath;
+    }
   }
 }
