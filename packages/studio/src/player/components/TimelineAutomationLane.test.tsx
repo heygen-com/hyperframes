@@ -338,6 +338,24 @@ describe("TimelineAutomationLane", () => {
     );
   });
 
+  it("drops the dragged position when the save does not land", async () => {
+    const onCommit = vi.fn(async () => ({ status: "refused" as const, reason: "Locked" }));
+    const { container } = render(
+      <TimelineAutomationLane {...laneProps({ automation: ramp, onCommit })} />,
+    );
+    const svg = container.querySelector("svg")!;
+    stubBox(svg, { left: 0, top: 0, width: 400, height: 48 });
+    const before = Number(container.querySelectorAll("circle")[0]!.getAttribute("cx"));
+    fire(svg, "pointerdown", { clientX: 0, clientY: 6 });
+    fire(svg, "pointermove", { clientX: 160, clientY: 40 });
+    fire(svg, "pointerup", { clientX: 160, clientY: 40 });
+    await act(async () => {});
+    expect(Number(container.querySelectorAll("circle")[0]!.getAttribute("cx"))).toBeCloseTo(
+      before,
+      5,
+    );
+  });
+
   it("follows the prop again once the store catches up", () => {
     const { container, rerender } = renderRerenderable(
       <TimelineAutomationLane {...laneProps({ automation: ramp })} />,

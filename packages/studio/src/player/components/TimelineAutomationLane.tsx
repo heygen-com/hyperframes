@@ -27,6 +27,7 @@ import {
   type HfAutomationLane,
   type HfAutomationPoint,
 } from "@hyperframes/core/audio-automation";
+import type { TimelineEditOutcome } from "../../hooks/timelineEditPermission";
 import { envelopePath, fromUnit, laneFor, PAD_X, toUnit, withLane } from "./automationLaneGeometry";
 import { useAutomationLaneGestures } from "./useAutomationLaneGestures";
 import { AutomationValueInput } from "./AutomationValueInput";
@@ -182,7 +183,7 @@ export interface TimelineAutomationLaneProps {
   /** Continuous write while dragging; does not persist. */
   onPreview(automation: HfAutomation): void;
   /** Gesture-end write; this is the one that persists and lands in undo. */
-  onCommit(automation: HfAutomation): void;
+  onCommit(automation: HfAutomation): Promise<TimelineEditOutcome | void> | void;
   /**
    * Clip-local times a dragged point snaps to — the beat grid, shifted into this
    * clip's frame. Its own neighbouring points are added on top.
@@ -293,8 +294,12 @@ export function TimelineAutomationLane({
       // Draw from the draft immediately; the write is what eventually agrees.
       setDraft({ points, basedOn: automation });
       const next = withLane(automation, { target, points });
-      if (persist) onCommit(next);
-      else onPreview(next);
+      if (!persist) return onPreview(next);
+      void Promise.resolve(onCommit(next)).then((outcome) => {
+        if (outcome && outcome.status !== "saved") {
+          setDraft((current) => (current?.points === points ? null : current));
+        }
+      });
     },
     [automation, target, onCommit, onPreview],
   );

@@ -1,5 +1,9 @@
 import { useCallback, useRef } from "react";
-import { projectForTimelineSave, type TimelineEditOutcome } from "./timelineEditPermission";
+import {
+  failedTimelineSave,
+  projectForTimelineSave,
+  type TimelineEditOutcome,
+} from "./timelineEditPermission";
 import { HF_AUDIO_FX_ATTR } from "@hyperframes/core/audio-fx";
 import { HF_AUDIO_AUTOMATION_ATTR } from "@hyperframes/core/audio-automation";
 import { usePlayerStore } from "../player";
@@ -266,7 +270,13 @@ export function useSetAudioGroupAttribute({
       label: string,
     ): Promise<TimelineEditOutcome> => {
       const pid = projectForTimelineSave(isRecordingRef?.current, projectIdRef.current, showToast);
-      if (typeof pid !== "string") return pid;
+      // Put back what `setLive` previewed and mirrored, so the preview and the
+      // store agree with the file again.
+      const unsaved = (outcome: TimelineEditOutcome): TimelineEditOutcome => {
+        revertLive(groupId, attr);
+        return outcome;
+      };
+      if (typeof pid !== "string") return unsaved(pid);
       try {
         const written = await setAudioGroupAttribute({
           projectId: pid,
@@ -280,29 +290,19 @@ export function useSetAudioGroupAttribute({
           recordEdit,
           pendingTimelineEditPathRef,
         });
+        if (!written)
+          return unsaved(failedTimelineSave("This group has no id to save it by", showToast));
         liveBeforeRef.current.delete(audioGroupAttributeLiveKey(groupId, attr));
-        if (!written) return { status: "failed", reason: "This group has no id to save it by" };
         syncStoredGroupAttribute(groupId, attr, value);
         return { status: "saved" };
       } catch (error) {
-        // `persistElementAttribute` leaves the live DOM at the previous value
-        // however it failed — it unwinds a failed save, and an unresolvable
-        // target now throws before patching at all. But `setLive` mirrored the
-        // in-progress value into the store on every drag frame — so without
-        // this the fader reads 0.4 while
-        // the preview and the file are both back at 1.0, and nothing re-parses
-        // to correct it (a live patch causing no parse is this mirror's whole
-        // premise). Re-mirror from the DOM, which is now authoritative again.
-        const live = previewIframeRef.current?.contentDocument?.getElementById(groupId);
-        syncStoredGroupAttribute(groupId, attr, live?.getAttribute(attr) ?? null);
         console.error("[Timeline] Failed to set group attribute", error);
         const message = error instanceof Error ? error.message : "Failed to update group";
-        showToast(message);
-        liveBeforeRef.current.delete(audioGroupAttributeLiveKey(groupId, attr));
-        return { status: "failed", reason: message };
+        return unsaved(failedTimelineSave(message, showToast));
       }
     },
     [
+      revertLive,
       activeCompPath,
       previewIframeRef,
       writeProjectFile,

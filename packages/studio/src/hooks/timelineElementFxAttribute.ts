@@ -18,7 +18,11 @@ import type {
   MutableRef,
   UseTimelineElementVisibilityEditingInput,
 } from "./timelineTrackVisibility";
-import { projectForTimelineSave, type TimelineEditOutcome } from "./timelineEditPermission";
+import {
+  failedTimelineSave,
+  projectForTimelineSave,
+  type TimelineEditOutcome,
+} from "./timelineEditPermission";
 import { syncStoredAutomationFromPreview } from "../player/lib/automationStoreSync";
 
 function patchLiveElementAttribute(
@@ -139,8 +143,11 @@ export function useSetElementAttribute({
       label: string,
     ): Promise<TimelineEditOutcome> => {
       const pid = projectForTimelineSave(isRecordingRef?.current, projectIdRef.current, showToast);
-      if (typeof pid !== "string") return pid;
-      const liveKey = elementAttributeLiveKey(element, activeCompPath, attr);
+      const unsaved = (outcome: TimelineEditOutcome): TimelineEditOutcome => {
+        revertLive(element, attr);
+        return outcome;
+      };
+      if (typeof pid !== "string") return unsaved(pid);
       try {
         const written = await setElementAttribute({
           projectId: pid,
@@ -154,21 +161,19 @@ export function useSetElementAttribute({
           recordEdit,
           pendingTimelineEditPathRef,
         });
-        liveBeforeRef.current.delete(liveKey);
-        if (written) {
-          syncStoredAutomationFromPreview(previewIframeRef.current?.contentDocument);
-          return { status: "saved" };
-        }
-        return { status: "failed", reason: "This clip has no id to save it by" };
+        if (!written)
+          return unsaved(failedTimelineSave("This clip has no id to save it by", showToast));
+        liveBeforeRef.current.delete(elementAttributeLiveKey(element, activeCompPath, attr));
+        syncStoredAutomationFromPreview(previewIframeRef.current?.contentDocument);
+        return { status: "saved" };
       } catch (error) {
         console.error("[Timeline] Failed to set element attribute", error);
         const message = error instanceof Error ? error.message : "Failed to update effect";
-        showToast(message);
-        liveBeforeRef.current.delete(liveKey);
-        return { status: "failed", reason: message };
+        return unsaved(failedTimelineSave(message, showToast));
       }
     },
     [
+      revertLive,
       activeCompPath,
       previewIframeRef,
       writeProjectFile,

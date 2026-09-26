@@ -30,15 +30,6 @@ interface DataAttributeCommitOptions {
   refreshAfter?: boolean;
   onSettled?: (ok: boolean) => void;
   /**
-   * Undo grouping for a gesture that spans several commits.
-   *
-   * Without it the key is derived from the prefix, attribute and element, and the
-   * window is history's own 300ms — so a drag's moves and the release that ends it
-   * landed in different entries, and a drag slower than the window split further.
-   * A caller that knows a gesture is in progress passes one key for all of it.
-   */
-  coalesce?: { key: string; ms: number };
-  /**
    * Apply to the preview and stop there — no file write, no history entry.
    *
    * What a gesture wants from every pointermove: the preview document and the
@@ -150,9 +141,7 @@ export function useDomEditAttributeCommits({
       if (!domEditSelection) return;
       const iframe = previewIframeRef.current;
       const fullAttr = resolveFullAttrName(attr, true);
-      const commitKey =
-        options.coalesce?.key ??
-        `${options.coalescePrefix}:${attr}:${getDomEditTargetKey(domEditSelection)}`;
+      const commitKey = `${options.coalescePrefix}:${attr}:${getDomEditTargetKey(domEditSelection)}`;
       const isLatestCommit = bumpDomEditCommitMapVersion(
         domAttributeCommitVersionRef.current,
         commitKey,
@@ -184,7 +173,6 @@ export function useDomEditAttributeCommits({
               persistDomEditOperations(domEditSelection, [op], {
                 label: options.label,
                 coalesceKey: commitKey,
-                ...(options.coalesce ? { coalesceMs: options.coalesce.ms } : {}),
                 skipRefresh: options.skipRefresh,
               }),
         shouldRevert: () => isLatestCommit(),
@@ -338,14 +326,13 @@ export function useDomEditAttributeCommits({
       attr: string,
       value: string | null,
       onSettled?: (ok: boolean) => void,
-      live?: { coalesce?: { key: string; ms: number }; previewOnly?: boolean },
+      live?: { previewOnly?: boolean },
     ) => {
       await commitDataAttribute(attr, value, {
         label: `Edit ${attr.replace(/^(data-)?/, "").replace(/-/g, " ")}`,
         coalescePrefix: "attr-live",
         skipRefresh: true,
         onSettled,
-        ...(live?.coalesce ? { coalesce: live.coalesce } : {}),
         ...(live?.previewOnly ? { previewOnly: true } : {}),
       });
     },
@@ -362,13 +349,12 @@ export function useDomEditAttributeCommits({
    * edit computes from a pre-edit value and appears to do nothing.
    */
   const handleDomAttributeQuietCommit = useCallback(
-    async (attr: string, value: string | null, coalesce?: { key: string; ms: number }) => {
+    async (attr: string, value: string | null) => {
       await commitDataAttribute(attr, value, {
         label: `Edit ${attr.replace(/^(data-)?/, "").replace(/-/g, " ")}`,
         coalescePrefix: "attr-quiet",
         skipRefresh: true,
         refreshAfter: true,
-        ...(coalesce ? { coalesce } : {}),
       });
     },
     [commitDataAttribute],

@@ -6,8 +6,8 @@
  * an envelope afterwards writes to the preview document and the source file, and the
  * store would go on holding the value it was born with until a reload.
  *
- * One reader, called from the two places a change lands: the resync every dom-edit
- * attribute commit already runs, and the soft restore an undo or redo applies. It
+ * One reader, called where a change lands: the resync every dom-edit attribute
+ * commit runs, a landed timeline clip save, and an undo or redo's soft restore. It
  * reads the preview rather than being told, because those callers know a file
  * changed, not which attribute — and because three separate writers shipped without
  * remembering to sync, which is what a single sink prevents.

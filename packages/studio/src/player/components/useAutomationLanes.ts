@@ -14,7 +14,6 @@
 import { useCallback, useMemo } from "react";
 import {
   HF_AUDIO_AUTOMATION_ATTR,
-  serializeAutomation,
   type HfAutomation,
   type HfAutomationLane,
 } from "@hyperframes/core/audio-automation";
@@ -28,6 +27,7 @@ import type { TimelineEditOutcome } from "../../hooks/timelineEditPermission";
 import { getTimelineElementIdentity } from "../lib/timelineElementHelpers";
 import { usePlayerStore, type TimelineElement } from "../store/playerStore";
 import type { AutomationSelection } from "../store/automationSelectionSlice";
+import { automationAttrValue } from "../../components/editor/propertyPanelAutomation";
 import { elementAutomation, elementFxChain } from "./automationLaneData";
 import { isGroupAutomationElement } from "./groupAutomationElement";
 import type { TimelineEditCallbacks } from "./timelineCallbacks";
@@ -65,10 +65,6 @@ export interface UseAutomationLanesResult {
 
 const AUTOMATION_LABEL = "Edit automation";
 
-function automationValue(next: HfAutomation): string | null {
-  return next.lanes.length > 0 ? serializeAutomation(next) : null;
-}
-
 /** A group's lanes save on the group, gated by its members; a clip's on the clip. */
 function automationWriters(edit: TimelineEditCallbacks, element: TimelineElement) {
   if (isGroupAutomationElement(element)) {
@@ -93,7 +89,7 @@ export function useAutomationLanes(): UseAutomationLanesResult {
   // Optional: the player also runs outside Studio, where there is no edit
   // session. There the lanes render read-only, which is the right fallback.
   const domEdit = useDomEditActionsContextOptional();
-  const domEditSelection = useDomEditSelectionContextOptional()?.domEditSelection ?? null;
+  const domEditSelectionRef = useDomEditSelectionContextOptional()?.domEditSelectionRef;
   const timelineEdit = useTimelineEditContextOptional();
   const automationSelection = usePlayerStore((s) => s.automationSelection);
   const setAutomationSelection = usePlayerStore((s) => s.setAutomationSelection);
@@ -111,15 +107,14 @@ export function useAutomationLanes(): UseAutomationLanesResult {
         automation,
         lanes: automation.lanes,
         chain,
-        // Preview only: the preview and the running audio follow the pointer, and
-        // the release is the one write that reaches the file and the undo stack.
-        onPreview: (next) => writers?.live(automationValue(next)),
+        onPreview: (next) => writers?.live(automationAttrValue(next) || null),
         onCommit: async (next) => {
           if (!writers) return;
-          const outcome = await writers.save(automationValue(next));
+          const outcome = await writers.save(automationAttrValue(next) || null);
           // The FX panel reads the selection snapshot; a stale one makes its next
           // edit start from the automation this one replaced.
-          if (domEditSelection) void domEdit?.refreshDomEditSelectionFromPreview(domEditSelection);
+          const selection = domEditSelectionRef?.current;
+          if (selection) void domEdit?.refreshDomEditSelectionFromPreview(selection);
           return outcome;
         },
         // Deliberately not awaited before an edit: the lane goes live when the
@@ -142,7 +137,7 @@ export function useAutomationLanes(): UseAutomationLanesResult {
     },
     [
       domEdit,
-      domEditSelection,
+      domEditSelectionRef,
       timelineEdit,
       automationSelection,
       setAutomationSelection,

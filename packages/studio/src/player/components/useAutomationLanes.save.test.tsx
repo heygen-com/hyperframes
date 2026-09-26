@@ -1,5 +1,5 @@
 // @vitest-environment happy-dom
-import { act, useRef } from "react";
+import { act } from "react";
 import { createRoot } from "react-dom/client";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { DomEditProvider } from "../../contexts/DomEditContext";
@@ -15,7 +15,9 @@ import { useAutomationLanes, type AutomationLaneBinding } from "./useAutomationL
 type CanEdit = NonNullable<Parameters<typeof useTimelineEditing>[0]["canEdit"]>;
 type DomEditValue = Parameters<typeof DomEditProvider>[0]["value"];
 
-const SOURCE = '<audio id="music" data-start="0" data-duration="12" data-track-index="0"></audio>';
+const SOURCE =
+  '<audio id="music" data-start="0" data-duration="12" data-track-index="0"></audio>' +
+  '<hf-audio-group id="hf-group"></hf-audio-group>';
 const LOCKED = { blocked: true as const, reason: "Reserved by an agent" };
 const NEXT = { version: 1 as const, lanes: [{ target: "volume", points: [{ t: 0, v: 0.5 }] }] };
 
@@ -36,7 +38,7 @@ afterEach(() => {
   vi.unstubAllGlobals();
 });
 
-function mountLanes(target: TimelineElement, canEdit?: CanEdit) {
+function mountLanes(target: TimelineElement, canEdit?: CanEdit, recording = false) {
   vi.stubGlobal(
     "fetch",
     vi.fn(async (input: Parameters<typeof fetch>[0]) =>
@@ -50,6 +52,7 @@ function mountLanes(target: TimelineElement, canEdit?: CanEdit) {
   const writeProjectFile = vi.fn(async (_path: string, _content: string) => {});
   const refresh = vi.fn(async () => {});
   const selection = { id: target.id };
+  const previewIframeRef = { current: iframe };
   let binding: AutomationLaneBinding | null = null;
 
   function Probe() {
@@ -57,7 +60,6 @@ function mountLanes(target: TimelineElement, canEdit?: CanEdit) {
     return null;
   }
   function Host() {
-    const previewIframeRef = useRef<HTMLIFrameElement | null>(iframe);
     const editing = useTimelineEditing({
       projectId: "p1",
       activeCompPath: "index.html",
@@ -70,11 +72,11 @@ function mountLanes(target: TimelineElement, canEdit?: CanEdit) {
       pendingTimelineEditPathRef: { current: new Set<string>() },
       uploadProjectFiles: async () => [],
       canEdit,
+      isRecordingRef: { current: recording },
     });
     const domEdit = {
-      domEditSelection: selection,
+      domEditSelectionRef: { current: selection },
       refreshDomEditSelectionFromPreview: refresh,
-      handleTimelineElementSelect: vi.fn(),
     } as unknown as DomEditValue;
     return (
       <DomEditProvider value={domEdit}>
@@ -102,7 +104,8 @@ function mountLanes(target: TimelineElement, canEdit?: CanEdit) {
     });
     return outcome;
   };
-  return { commit, writeProjectFile, refresh, selection, iframe };
+  const preview = () => act(() => binding!.onPreview(NEXT));
+  return { commit, preview, writeProjectFile, refresh, selection, iframe };
 }
 
 describe("useAutomationLanes saves report what happened", () => {
@@ -121,6 +124,28 @@ describe("useAutomationLanes saves report what happened", () => {
     expect(usePlayerStore.getState().elements[0]?.automation).toBeUndefined();
   });
 
+  it("puts a dragged preview back when the lock refuses the release", async () => {
+    const { commit, iframe, preview } = mountLanes(music, () => LOCKED);
+    preview();
+    const node = iframe.contentDocument!.getElementById("music");
+    expect(node?.getAttribute("data-automation")).toContain('"volume"');
+    await commit();
+    expect(node?.hasAttribute("data-automation")).toBe(false);
+  });
+
+  it("puts a dragged preview back when a recording refuses the release", async () => {
+    const { commit, iframe, preview, writeProjectFile } = mountLanes(music, undefined, true);
+    preview();
+    expect(await commit()).toEqual({
+      status: "refused",
+      reason: "Cannot edit timeline while recording",
+    });
+    expect(iframe.contentDocument!.getElementById("music")?.hasAttribute("data-automation")).toBe(
+      false,
+    );
+    expect(writeProjectFile).not.toHaveBeenCalled();
+  });
+
   it("resolves an automation edit whose write fails as failed", async () => {
     const { commit, writeProjectFile, iframe } = mountLanes(music);
     writeProjectFile.mockRejectedValue(new Error("disk full"));
@@ -134,14 +159,21 @@ describe("useAutomationLanes saves report what happened", () => {
   });
 
   it("refuses a group lane edit when a member is locked", async () => {
-    const group = groupAutomationElement(
-      { id: "hf-group", label: "Music", anchorKey: 0, automation: undefined, fxChain: undefined },
-      12,
-    );
+    const group = groupAutomationElement({ id: "hf-group", label: "Music", anchorKey: 0 }, 12);
     const { commit, writeProjectFile } = mountLanes(group, (el) =>
       el.id === "music" ? LOCKED : true,
     );
     expect(await commit()).toEqual({ status: "refused", reason: "Reserved by an agent" });
     expect(writeProjectFile).not.toHaveBeenCalled();
+  });
+
+  it("saves a group lane on the group and mirrors it to the members", async () => {
+    const group = groupAutomationElement({ id: "hf-group", label: "Music", anchorKey: 0 }, 12);
+    const { commit, writeProjectFile } = mountLanes(group);
+    expect(await commit()).toEqual({ status: "saved" });
+    expect(writeProjectFile.mock.calls[0]?.[1]).toMatch(
+      /<hf-audio-group id="hf-group" data-automation=/,
+    );
+    expect(usePlayerStore.getState().elements[0]?.audioGroupAutomation).toContain('"volume"');
   });
 });
