@@ -655,14 +655,16 @@ export async function renderChunk(
     job.totalFrames = framesInChunk;
     job.duration = (framesInChunk * plan.dimensions.fpsDen) / plan.dimensions.fpsNum;
 
+    // Chrome's BeginFrame capture can omit a freshly injected video frame on a
+    // worker's first screenshot even after img.decode() reports success. The
+    // page screenshot path waits for the compositor and avoids that race.
+    const forceScreenshotForVideo = (planVideos?.extracted.length ?? 0) > 0;
+    const initialForceScreenshot = encoder.forceScreenshot || forceScreenshotForVideo;
     const cfg: EngineConfig = {
       ...resolveConfig(),
       browserGpuMode: "software",
-      forceScreenshot: encoder.forceScreenshot,
-      // `encoder.forceScreenshot=false` is a locked distributed-render
-      // decision, not the engine default. Carry that explicit opt-out through
-      // the software-GPU clamp so buildChromeArgs includes BeginFrameControl.
-      forceScreenshotExplicitlyOptedOut: !encoder.forceScreenshot,
+      forceScreenshot: initialForceScreenshot,
+      forceScreenshotExplicitlyOptedOut: !initialForceScreenshot,
     };
 
     // Build the immutable frame lookup once. Each browser session/worker gets
@@ -761,7 +763,7 @@ export async function renderChunk(
     let captureMode: CaptureMode | undefined;
     const capturePerfs: CapturePerfSummary[] = [];
     const captureAttempts: Parameters<typeof runCaptureStage>[0]["captureAttempts"] = [];
-    let forceScreenshotForChunk = encoder.forceScreenshot;
+    let forceScreenshotForChunk = initialForceScreenshot;
     try {
       if (chunkWorkerCount === 1 || !forceScreenshotForChunk) {
         // Sequential capture reuses this session. Parallel BeginFrame capture
