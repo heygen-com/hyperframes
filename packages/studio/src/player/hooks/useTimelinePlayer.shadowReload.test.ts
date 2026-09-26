@@ -630,3 +630,149 @@ function stubVisibility(initial: DocumentVisibilityState) {
     document.dispatchEvent(new Event("visibilitychange"));
   };
 }
+
+describe("useTimelinePlayer scene swap", () => {
+  function liveFilm(swap?: (html: string) => Promise<void>) {
+    const { adapter, win } = makeAdapterWindow();
+    const iframe = makeFakeIframe(swap ? { ...win, __hfSwapScenes: swap } : win);
+    iframe.src = "http://localhost/api/projects/demo/preview";
+    const harness = renderTimelinePlayerHarness();
+    act(() => {
+      harness.getApi().iframeRef.current = iframe;
+      harness.getApi().onIframeLoad();
+    });
+    return { ...harness, adapter };
+  }
+  function playingFilm(swap: (html: string) => Promise<void>) {
+    const film = liveFilm(swap);
+    usePlayerStore.setState({ timelineReady: true });
+    act(() => film.getApi().play());
+    film.adapter.pause.mockClear();
+    return film;
+  }
+  const roles = (api: ReturnType<ReturnType<typeof liveFilm>["getApi"]>) =>
+    api.previewSlots.map((slot) => slot.role);
+  const settle = () => act(async () => void (await new Promise((r) => setTimeout(r, 0))));
+
+  it("swaps the rebuilt preview's scenes into the live preview with no shadow reload", async () => {
+    const swap = vi.fn(async () => {});
+    vi.spyOn(globalThis, "fetch").mockResolvedValue(new Response("<html>v2</html>"));
+    const { getApi } = liveFilm(swap);
+    act(() => getApi().refreshPlayer());
+    await settle();
+    expect(swap).toHaveBeenCalledWith("<html>v2</html>");
+    expect(roles(getApi())).toEqual(["live"]);
+  });
+
+  it("falls back to the full reload when the preview refuses the swap", async () => {
+    vi.spyOn(globalThis, "fetch").mockResolvedValue(new Response("<html>v2</html>"));
+    const { getApi } = liveFilm(async () => {
+      throw new Error("the film changed outside its scenes");
+    });
+    act(() => getApi().refreshPlayer());
+    await settle();
+    expect(roles(getApi())).toEqual(["live", "shadow"]);
+  });
+
+  it("reloads the whole film at once when the preview cannot swap", () => {
+    const fetchSpy = vi.spyOn(globalThis, "fetch");
+    const { getApi } = liveFilm();
+    act(() => getApi().refreshPlayer());
+    expect(fetchSpy).not.toHaveBeenCalled();
+    expect(roles(getApi())).toEqual(["live", "shadow"]);
+  });
+
+  it("never swaps in an older document that arrives after a newer reload started", async () => {
+    const swap = vi.fn(async () => {});
+    const replies: Array<(r: Response) => void> = [];
+    vi.spyOn(globalThis, "fetch").mockImplementation(
+      () => new Promise<Response>((resolve) => replies.push(resolve)),
+    );
+    const { getApi } = liveFilm(swap);
+    act(() => getApi().refreshPlayer());
+    act(() => getApi().refreshPlayer());
+    replies[1]!(new Response("<html>v3</html>"));
+    await settle();
+    replies[0]!(new Response("<html>v2</html>"));
+    await settle();
+    expect(swap.mock.calls).toEqual([["<html>v3</html>"]]);
+    expect(roles(getApi())).toEqual(["live"]);
+  });
+
+  it("drops a pending swap's fallback once the preview was replaced, e.g. by a composition switch", async () => {
+    let refuse!: (e: Error) => void;
+    const swap = vi.fn(() => new Promise<void>((_, reject) => (refuse = reject)));
+    vi.spyOn(globalThis, "fetch").mockResolvedValue(new Response("<html>v2</html>"));
+    const { getApi } = liveFilm(swap);
+    act(() => getApi().refreshPlayer());
+    await settle();
+    expect(swap).toHaveBeenCalledTimes(1);
+    act(() => getApi().resetPreviewSlots());
+    const next = makeFakeIframe(makeAdapterWindow().win);
+    next.src = "http://localhost/api/projects/demo/preview/comp/compositions/intro.html";
+    act(() => {
+      getApi().iframeRef.current = next;
+      getApi().onIframeLoad();
+    });
+    refuse(new Error("the preview was torn down during the swap"));
+    await settle();
+    expect(roles(getApi())).toEqual(["live"]);
+  });
+
+  it("skips the swap for an edit made while a full reload is in flight", async () => {
+    const fetchSpy = vi
+      .spyOn(globalThis, "fetch")
+      .mockResolvedValue(new Response("<html>v2</html>"));
+    const { getApi } = liveFilm(async () => {
+      throw new Error("the film changed outside its scenes");
+    });
+    act(() => getApi().refreshPlayer());
+    await settle();
+    expect(roles(getApi())).toEqual(["live", "shadow"]);
+    const firstShadow = getApi().previewSlots[1]!.gen;
+    fetchSpy.mockClear();
+    act(() => getApi().refreshPlayer());
+    expect(fetchSpy).not.toHaveBeenCalled();
+    expect(getApi().previewSlots[1]!.gen).toBeGreaterThan(firstShadow);
+  });
+
+  it("keeps a playing film playing through a swap, ready to swap the next edit", async () => {
+    const fetchSpy = vi
+      .spyOn(globalThis, "fetch")
+      .mockImplementation(async () => new Response("<html>v2</html>"));
+    const swap = vi.fn(async () => {});
+    const { getApi, adapter } = playingFilm(swap);
+    act(() => getApi().refreshPlayer());
+    await settle();
+    expect(adapter.pause).not.toHaveBeenCalled();
+    expect(usePlayerStore.getState().isPlaying).toBe(true);
+    expect(roles(getApi())).toEqual(["live"]);
+    act(() => getApi().refreshPlayer());
+    await settle();
+    expect(fetchSpy).toHaveBeenCalledTimes(2);
+    expect(swap).toHaveBeenCalledTimes(2);
+  });
+
+  it("keeps a playing film playing through a refused swap, from where the live frame had reached", async () => {
+    vi.spyOn(globalThis, "fetch").mockResolvedValue(new Response("<html>v2</html>"));
+    const { getApi, adapter } = playingFilm(async () => {
+      throw new Error("the film changed outside its scenes");
+    });
+    adapter.seek(3);
+    act(() => getApi().refreshPlayer());
+    // The live frame plays on while the swap is tried; the fallback reload starts from here.
+    adapter.seek(4.5);
+    await settle();
+    expect(adapter.pause).not.toHaveBeenCalled();
+    expect(usePlayerStore.getState().isPlaying).toBe(true);
+    const gen = getApi().previewSlots.find((s) => s.role === "shadow")!.gen;
+    const shadow = makeShadowWithSpies();
+    act(() => {
+      getApi().setShadowIframeNode(shadow.iframe);
+      getApi().onShadowIframeLoad(gen);
+      getApi().onShadowReadyChange(gen, true);
+    });
+    expect(shadow.adapter.getTime()).toBe(4.5);
+    expect(shadow.adapter.isPlaying()).toBe(true);
+  });
+});

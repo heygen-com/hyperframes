@@ -1,5 +1,6 @@
 import { mediaMetadataUrl } from "../../utils/studioHelpers";
 import { useLivePreviewIframe } from "../../player/store/previewIframeStore";
+import { onPreviewContentReplaced } from "../../player/sceneSwap";
 import { useCallback, useEffect, useMemo, useRef, useState, type RefObject } from "react";
 import {
   HF_COLOR_GRADING_ATTR,
@@ -445,11 +446,11 @@ export function useColorGradingController({
       if (!acceptStudioRuntimeMessage(data)) return;
       refreshAndReplay();
     };
-    iframe.addEventListener("load", refreshAndReplay);
     window.addEventListener("message", onMessage);
     const timer = window.setTimeout(refreshAndReplay, 80);
+    const stopReplay = onPreviewContentReplaced(iframe, refreshAndReplay);
     return () => {
-      iframe.removeEventListener("load", refreshAndReplay);
+      stopReplay();
       window.removeEventListener("message", onMessage);
       window.clearTimeout(timer);
     };
