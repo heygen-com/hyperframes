@@ -1,3 +1,5 @@
+import { readFileSync } from "node:fs";
+import { dirname, join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { initSandboxRuntimeModular, installAuthoredMediaCapture } from "./init";
 import type { RuntimeTimelineLike } from "./types";
@@ -20,6 +22,17 @@ vi.mock("./colorGrading", async (importOriginal) => {
     }),
   };
 });
+
+// The library itself, the repo's vendored 3.15.0, for what a stand-in would only assume.
+const vendoredGsap = () =>
+  join(
+    dirname(expect.getState().testPath!),
+    "../../../../skills/music-to-video/references/motion-primitives/assets/gsap.min.js",
+  );
+type RealGsap = {
+  ticker: { sleep: () => void };
+  getProperty: (target: Element, property: string) => unknown;
+};
 
 type Tl = RuntimeTimelineLike & { kill: ReturnType<typeof vi.fn>; label: string };
 
@@ -814,6 +827,49 @@ describe("__hfSwapScenes", () => {
     await window.__hfSwapScenes!(preview([A2, B]).html);
     expect(order).toEqual(["second set", "first set", "timeline"]);
   });
+
+  const keptSet = "scene a cannot be swapped: its script sets a value on an element the swap keeps";
+  it.each([
+    ["refuses", "an element outside it", "#kept", keptSet],
+    ["refuses", "a video it keeps", "video", keptSet],
+    ["swaps", "its own text", "p", "swapped: x=50 at the end, x=50 on a fresh load"],
+  ])(
+    "%s a scene whose script sets a value on %s, which reverting in record order can leave",
+    async (_, __, el, expected) => {
+      const exports: { gsap?: RealGsap } = {};
+      // Its ticker takes the frame callback as it loads, and this file's runs at once: give it one that never ticks.
+      const frame = window.requestAnimationFrame;
+      window.requestAnimationFrame = () => 0;
+      new Function("exports", "module", readFileSync(vendoredGsap(), "utf8"))(exports, { exports });
+      window.requestAnimationFrame = frame;
+      const gsap = exports.gsap!;
+      vi.stubGlobal("gsap", gsap);
+      quietMedia();
+      const source = `const v = globalThis.document.querySelector(${JSON.stringify(el)});
+const tl = gsap.timeline({ paused: true });
+gsap.set(v, { x: "+=50" });
+tl.from(v, { x: 0, duration: 1 });
+window.__timelines.a = tl;`;
+      const scene = (text: string, hash: string): Scene => ({
+        ...A1,
+        hash,
+        body: `<p>${text}</p><video src="clip.mp4"></video>`,
+        script: wrapScopedCompositionScript(source, "a"),
+      });
+      boot([scene("A one", "ha1"), B], trackingRoot().root);
+      document.body.insertAdjacentHTML("beforeend", '<div id="kept"></div>');
+      new Function(document.querySelector('script[data-hf-scene="a"]')!.textContent!)();
+      const swapped = await window.__hfSwapScenes!(preview([scene("A two", "ha2"), B]).html).then(
+        () => {
+          window.__timelines!.a!.totalTime!(1);
+          return `swapped: x=${gsap.getProperty(document.querySelector(el)!, "x")} at the end, x=50 on a fresh load`;
+        },
+        (error: Error) => error.message,
+      );
+      gsap.ticker.sleep();
+      expect(swapped).toBe(expected);
+    },
+  );
 
   it("rejects a scene with more than one host rather than dropping one", async () => {
     const { root } = trackingRoot();

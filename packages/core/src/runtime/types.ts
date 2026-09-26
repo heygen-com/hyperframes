@@ -293,6 +293,9 @@ export type RuntimeTimelineChildLike = {
 
 /** A timeline or tween a composition script started, as a scene swap stops it. */
 export type SceneAnimation = {
+  targets?: () => unknown[];
+  duration?: () => number;
+  getChildren?: unknown;
   revert?: () => void;
   kill?: () => void;
   totalTime?: (timeSeconds?: number, suppressEvents?: boolean) => unknown;

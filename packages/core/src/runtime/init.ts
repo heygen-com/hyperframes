@@ -3205,6 +3205,19 @@ export function initSandboxRuntimeModular(): void {
         );
       }
     }
+    // A set's revert is right only if nothing that read its value is reverted after it, an order the record lacks.
+    const survives = (target: unknown) =>
+      typeof target !== "function" && (!inScene.has(target) || isMedia(target as Element));
+    for (const id of compositionIdsIn(host)) {
+      for (const animation of sceneAnimations[id] ?? []) {
+        if (animation.getChildren || animation.duration?.() !== 0) continue;
+        if (animation.targets?.().some(survives)) {
+          throw new Error(
+            `scene ${name} cannot be swapped: its script sets a value on an element the swap keeps`,
+          );
+        }
+      }
+    }
   };
   // Swap edited scenes in place from a rebuilt preview document. Refuses before changing anything unless
   // the documents differ only inside existing scenes; a later failure is left to the caller's reload.
