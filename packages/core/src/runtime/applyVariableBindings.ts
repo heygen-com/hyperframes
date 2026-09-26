@@ -132,16 +132,9 @@ function findTopRoot(doc: Document): Element | null {
   );
 }
 
-function applyCssCustomProperties(doc: Document, cache: ScopeValuesCache): void {
-  // Top-level root plus every inlined sub-composition root; custom props
-  // inherit, so descendants of each root see its scope's values.
-  const roots = new Set<Element>();
-  const topRoot = findTopRoot(doc);
-  if (topRoot) roots.add(topRoot);
-  for (const el of Array.from(doc.querySelectorAll("[data-composition-id]"))) {
-    roots.add(el);
-  }
-  for (const root of roots) {
+// Custom props inherit, so each composition root carries its own scope's values.
+function applyCssCustomProperties(roots: Iterable<Element>, cache: ScopeValuesCache): void {
+  for (const root of new Set(roots)) {
     const values = valuesForElement(root, cache);
     for (const [id, value] of Object.entries(values)) {
       const css = cssValueFor(value);
@@ -177,16 +170,22 @@ export function unproxiedMediaSrc(el: Element): string | null {
   return variableSrcFor(el, new Map()) ?? unproxiedSrc(el);
 }
 
-export function applyVariableBindings(doc: Document): void {
+/** Applies the bindings in `doc`, or only those inside `within` and `within` itself. */
+export function applyVariableBindings(doc: Document, within?: Element): void {
   const cache: ScopeValuesCache = new Map();
-  applyCssCustomProperties(doc, cache);
+  const all = (selector: string): Element[] =>
+    within
+      ? [...(within.matches(selector) ? [within] : []), ...within.querySelectorAll(selector)]
+      : Array.from(doc.querySelectorAll(selector));
+  const topRoot = within ? null : findTopRoot(doc);
+  applyCssCustomProperties([...(topRoot ? [topRoot] : []), ...all("[data-composition-id]")], cache);
 
-  for (const el of Array.from(doc.querySelectorAll("[data-var-src]"))) {
+  for (const el of all("[data-var-src]")) {
     const url = variableSrcFor(el, cache);
-    if (url !== null && el.getAttribute("src") !== url) el.setAttribute("src", url);
+    if (url !== null && unproxiedSrc(el) !== url) el.setAttribute("src", url);
   }
 
-  for (const el of Array.from(doc.querySelectorAll("[data-var-text]"))) {
+  for (const el of all("[data-var-text]")) {
     const id = el.getAttribute("data-var-text")?.trim();
     if (!id) continue;
     const value = valuesForElement(el, cache)[id];

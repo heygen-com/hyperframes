@@ -3193,6 +3193,8 @@ export function initSandboxRuntimeModular(): void {
     document
       .querySelector(`meta[name="${SCENE_PARTS_META}"]`)
       ?.setAttribute("content", JSON.stringify(nextParts));
+    // Boot's order: bindings settle each src before media binding proxies and loads it.
+    for (const host of swappedHosts) applyVariableBindings(document, host);
     bindMediaMetadataListeners();
     // Rewound before the rewrite, so each rewritten tween re-reads its start from the reset word.
     const rewindCaptionTimelines = () => {
@@ -3206,7 +3208,6 @@ export function initSandboxRuntimeModular(): void {
     const captionsApplied = captionHosts.length
       ? applyCaptionOverrides(captionHosts, rewindCaptionTimelines)
       : Promise.resolve();
-    applyVariableBindings(document);
     initVfx(document.body, state.canonicalFps);
     await captionsApplied;
     if (state.tornDown) throw new Error("the preview was torn down during the swap");

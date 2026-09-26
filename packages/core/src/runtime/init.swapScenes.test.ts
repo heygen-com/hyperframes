@@ -128,6 +128,16 @@ const sceneHost = (id: string) =>
 const scoped = window as unknown as {
   __hfVariablesByComp?: Record<string, Record<string, unknown>>;
 };
+const quietMedia = () => {
+  vi.spyOn(HTMLMediaElement.prototype, "pause").mockImplementation(() => {});
+  vi.spyOn(HTMLMediaElement.prototype, "load").mockImplementation(() => {});
+};
+const proxyHostile = () => {
+  window.__HF_MEDIA_CODEC_MAP__ = {
+    "/clip.mov": { codecName: "prores", browserHostile: true, representativeMime: null },
+  };
+  return new URL("clip.mov?hf-proxy=h264", document.baseURI).href;
+};
 const cssText = () =>
   [...document.head.querySelectorAll("style")].map((s) => s.textContent).join("");
 
@@ -150,6 +160,7 @@ describe("__hfSwapScenes", () => {
     document.head.innerHTML = "";
     document.body.innerHTML = "";
     delete scoped.__hfVariablesByComp;
+    delete window.__HF_MEDIA_CODEC_MAP__;
     vi.restoreAllMocks();
   });
 
@@ -327,6 +338,49 @@ describe("__hfSwapScenes", () => {
     await expect(window.__hfSwapScenes!(preview([withOther, B]).html)).rejects.toThrow(
       "it loads media",
     );
+  });
+
+  it("leaves a proxied video in a scene the edit did not touch on its proxy", async () => {
+    const { root } = trackingRoot();
+    quietMedia();
+    const proxied = proxyHostile();
+    scoped.__hfVariablesByComp = { b: { clip: "clip.mov" } };
+    const withVideo = { ...B, body: '<video data-var-src="clip" src="clip.mov"></video>' };
+    boot([A1, withVideo], root);
+    await tick();
+    const video = sceneHost("b").querySelector("video")!;
+    expect(video.src).toBe(proxied);
+    await window.__hfSwapScenes!(preview([A2, withVideo]).html);
+    expect(video.src).toBe(proxied);
+  });
+
+  it("keeps a proxied video in the edited scene on its proxy, and proxies a new copy of it", async () => {
+    const { root } = trackingRoot();
+    quietMedia();
+    const proxied = proxyHostile();
+    scoped.__hfVariablesByComp = { a: { clip: "clip.mov" } };
+    const video = '<video data-var-src="clip" src="placeholder.mp4"></video>';
+    boot([{ ...A1, body: `<p>A one</p>${video}` }, B], root);
+    await tick();
+    await window.__hfSwapScenes!(
+      preview([{ ...A2, body: `<p>A two</p>${video}${video}` }, B]).html,
+    );
+    const videos = Array.from(sceneHost("a").querySelectorAll("video"));
+    expect(videos.map((v) => v.src)).toEqual([proxied, proxied]);
+  });
+
+  it("leaves the bound text of a scene the edit did not touch as it is", async () => {
+    const { root } = trackingRoot();
+    scoped.__hfVariablesByComp = { b: { title: "Hello" } };
+    const titled = { ...B, body: '<p data-var-text="title">x</p>' };
+    boot([A1, titled], root);
+    await tick();
+    const p = sceneHost("b").querySelector("p")!;
+    expect(p.textContent).toBe("Hello");
+    // A text tween part way through.
+    p.textContent = "Hel";
+    await window.__hfSwapScenes!(preview([A2, titled]).html);
+    expect(p.textContent).toBe("Hel");
   });
 
   it("probes the swapped scene's media for volume once the scene is in the root timeline", async () => {
