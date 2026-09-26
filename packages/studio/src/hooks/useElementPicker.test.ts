@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import React, { act } from "react";
+import React, { act, useState } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { ensureHfIds } from "@hyperframes/parsers/hf-ids";
 import { runtimeProtocolMetadata } from "@hyperframes/core/runtime/protocol";
@@ -37,10 +37,20 @@ function mountPicker(files: Record<string, string>, selector = "h1", mounted = "
   const iframe = mountPreview(mounted);
   const synced: Record<string, string>[] = [];
   let api: ReturnType<typeof useElementPicker> | null = null;
+  let setHostFiles: (next: Record<string, string>) => void = () => {};
+  // Like a Studio host: it holds the files in state and rerenders after each write.
   function Harness() {
+    const [workspaceFiles, setFiles] = useState(files);
+    setHostFiles = setFiles;
     api = useElementPicker(
       { current: iframe },
-      { workspaceFiles: files, onSyncFiles: (changed) => synced.push(changed) },
+      {
+        workspaceFiles,
+        onSyncFiles: (changed) => {
+          synced.push(changed);
+          setFiles((prev) => ({ ...prev, ...changed }));
+        },
+      },
     );
     return null;
   }
@@ -60,7 +70,11 @@ function mountPicker(files: Record<string, string>, selector = "h1", mounted = "
     );
   });
   const picker = () => api as ReturnType<typeof useElementPicker>;
-  return { picker, synced };
+  return {
+    picker,
+    synced,
+    setHostFiles: (next: Record<string, string>) => act(() => setHostFiles(next)),
+  };
 }
 
 describe("an edit to a picked element without an id", () => {
@@ -103,6 +117,25 @@ describe("an edit to a picked element without an id", () => {
     const inRoot = mountPicker(files, "h1", host);
     act(() => inRoot.picker().setStyle("color", "red"));
     expect(inRoot.synced.map((changed) => Object.keys(changed))).toEqual([["index.html"]]);
+  });
+
+  it("keeps both of two edits made before the host rerenders", () => {
+    const { picker, synced } = mountPicker({ "index.html": SAVED });
+    act(() => {
+      picker().setStyle("color", "red");
+      picker().setStyle("background", "blue");
+    });
+    expect(synced.at(-1)?.["index.html"]).toMatch(/<h1 [^>]*style="color: red; background: blue"/);
+  });
+
+  it("builds the next edit on a file the host changed meanwhile", () => {
+    const { picker, synced, setHostFiles } = mountPicker({ "index.html": SAVED });
+    act(() => picker().setStyle("color", "red"));
+    setHostFiles({ "index.html": SAVED.replace(">Title<", ">Renamed<") });
+    act(() => picker().setStyle("background", "blue"));
+    const written = synced.at(-1)?.["index.html"] ?? "";
+    expect(written).toContain(">Renamed</h1>");
+    expect(written).not.toContain("color: red");
   });
 
   it("writes nothing when no saved file holds the element", () => {

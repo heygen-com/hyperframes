@@ -132,6 +132,7 @@ export function useElementPicker(
   // Ref for options to avoid stale closures in debounced callback
   const optionsRef = useRef(options);
   optionsRef.current = options;
+  const pendingWritesRef = useRef(new Map<string, PendingWrite>());
 
   // Sync immediately (not debounced) — save on every change for reliability
   const syncToSource = useCallback(
@@ -140,12 +141,16 @@ export function useElementPicker(
       if (!opts?.workspaceFiles || !opts.onSyncFiles) return;
       // No id: the preview's hf-id names the element, in the file it was served from.
       const hfId = live.getAttribute("data-hf-id");
+      const pending = pendingWritesRef.current;
+      const files = withPendingWrites(opts.workspaceFiles, pending);
       const patch = picked.id
-        ? patchById(opts.workspaceFiles, picked.id, picked.selector, op)
+        ? patchById(files, picked.id, picked.selector, op)
         : hfId
-          ? patchByHfId(opts.workspaceFiles, hfId, ownSourceFile(live, iframe), op)
+          ? patchByHfId(files, hfId, ownSourceFile(live, iframe), op)
           : null;
-      if (patch && patch.after !== patch.before) opts.onSyncFiles({ [patch.path]: patch.after });
+      if (!patch || patch.after === patch.before) return;
+      recordPendingWrite(pending, patch.path, opts.workspaceFiles[patch.path], patch.after);
+      opts.onSyncFiles({ [patch.path]: patch.after });
     },
     [],
   );
@@ -253,6 +258,43 @@ export function useElementPicker(
 }
 
 type PickedElementInfo = Partial<Omit<PickedElement, "computedStyles">>;
+
+// workspaceFiles lags this hook's own writes until the host rerenders.
+interface PendingWrite {
+  sources: Set<string>;
+  latest: string;
+}
+
+function withPendingWrites(
+  files: Record<string, string>,
+  pending: Map<string, PendingWrite>,
+): Record<string, string> {
+  const merged = { ...files };
+  for (const [path, write] of pending) {
+    const hostSource = files[path];
+    if (hostSource !== undefined && hostSource !== write.latest && write.sources.has(hostSource)) {
+      merged[path] = write.latest;
+    } else {
+      pending.delete(path);
+    }
+  }
+  return merged;
+}
+
+function recordPendingWrite(
+  pending: Map<string, PendingWrite>,
+  path: string,
+  hostSource: string | undefined,
+  after: string,
+): void {
+  const write = pending.get(path) ?? {
+    sources: new Set(hostSource === undefined ? [] : [hostSource]),
+    latest: after,
+  };
+  write.sources.add(after);
+  write.latest = after;
+  pending.set(path, write);
+}
 
 // A default per field of the runtime's element info.
 // fallow-ignore-next-line complexity
