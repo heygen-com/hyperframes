@@ -116,6 +116,7 @@ class HyperframesPlayer extends HTMLElement {
 
   private _ready = false;
   private _readyDocument: Document | null = null;
+  private _connected = false;
   private _assetsReady = false;
   private _painted = false;
   private _pendingPlay = false;
@@ -200,11 +201,12 @@ class HyperframesPlayer extends HTMLElement {
     this.resizeObserver = new ResizeObserver(() => this._rescale());
     this._onMessage = this._onMessage.bind(this);
     this._onIframeLoad = this._onIframeLoad.bind(this);
-    // Before any host can listen, so a host's load listener reads state this load already set.
+    // Before any host can listen; _onIframeLoad skips the blank-document load before connect.
     this.iframe.addEventListener("load", this._onIframeLoad);
   }
 
   connectedCallback() {
+    this._connected = true;
     this._applySandboxOriginPolicy();
     this.resizeObserver.observe(this);
     window.addEventListener("message", this._onMessage);
@@ -226,6 +228,7 @@ class HyperframesPlayer extends HTMLElement {
   }
 
   disconnectedCallback() {
+    this._connected = false;
     this._sendControl("pause");
     this._stopIframeMedia();
     this.resizeObserver.disconnect();
@@ -1278,6 +1281,7 @@ class HyperframesPlayer extends HTMLElement {
   }
 
   private _onIframeLoad() {
+    if (!this._connected) return;
     // The runtime posts its timeline at DOMContentLoaded, before `load`, and every
     // host-initiated navigation clears `_ready` first. So a ready player already holds this
     // document's handshake (an opaque origin reads as null); a paused runtime never posts it again.

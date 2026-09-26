@@ -3331,6 +3331,17 @@ describe("HyperframesPlayer asset-ready gate", () => {
       data: { source: "hf-preview", ...data },
     } as unknown as MessageEvent);
 
+  it("ignores its iframe's blank-document load that arrives before it is connected", () => {
+    const player = document.createElement("hyperframes-player") as PlayerInternal & {
+      probe: { start(): void };
+    };
+    const start = vi.spyOn(player.probe, "start");
+
+    player.iframe.dispatchEvent(new Event("load"));
+
+    expect(start).not.toHaveBeenCalled();
+  });
+
   it("handles its iframe's load before a host's load listener runs", async () => {
     const player = document.createElement("hyperframes-player") as PlayerInternal & {
       _readyDocument: Document | null;
