@@ -178,6 +178,19 @@ describe("mediaReadinessInput", () => {
     video.dispatchEvent(new Event("canplay"));
     await expect(pending).resolves.toBeUndefined();
   });
+
+  it("neither waits for nor decodes a later scene's image, even in the full scan", () => {
+    const doc = docWith(
+      '<div data-start="30" data-duration="5"><img id="later" src="later.png"></div>',
+    );
+    const image = doc.querySelector<HTMLImageElement>("#later")!;
+    Object.defineProperty(image, "complete", { value: false });
+    image.decode = vi.fn().mockResolvedValue(undefined);
+
+    expect(scanPendingCompositionAssets(doc, { scope: "all" }).pendingImages).toEqual([]);
+    expect(mediaReadinessInput(doc, new AbortController().signal, { scope: "all" })).toBeNull();
+    expect(image.decode).not.toHaveBeenCalled();
+  });
 });
 
 describe("computeReadinessInput", () => {

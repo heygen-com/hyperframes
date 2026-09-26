@@ -108,7 +108,7 @@ export function scanPendingCompositionAssets(
     .filter((el) => shouldIncludeAsset(el, scope, resolver, runtimeWindow?.__timelines ?? {}))
     .filter((el) => el.readyState < HAVE_FUTURE_DATA);
   const pendingImages = Array.from(doc.querySelectorAll("img"))
-    .filter((img) => shouldIncludeAsset(img, scope, resolver, runtimeWindow?.__timelines ?? {}))
+    .filter((img) => isActiveAtFirstFrame(img, resolver, runtimeWindow?.__timelines ?? {}))
     .filter((img) => !img.complete);
   const fontsLoading = doc.fonts?.status === "loading";
   return { pendingMedia, pendingImages, fontsLoading };
