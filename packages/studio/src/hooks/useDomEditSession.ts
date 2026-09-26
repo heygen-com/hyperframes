@@ -511,6 +511,7 @@ export function useDomEditSession({
     handlePreviewCanvasPointerLeave,
     applyDomSelection,
     clearDomSelection,
+    refreshDomEditSelectionFromPreview,
     handleDomStyleCommit,
     handleDomStyleCommitForSelection,
     handleDomAttributeCommit,

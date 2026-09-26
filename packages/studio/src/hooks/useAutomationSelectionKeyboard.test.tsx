@@ -102,7 +102,6 @@ describe("useAutomationSelectionKeyboard", () => {
         onCommit,
         onSelect: vi.fn(),
         readOnly: false,
-        commitTargetKey: "bgm",
         selection: null,
         onRangeSelect: vi.fn(),
         onRangeClear: vi.fn(),
@@ -345,22 +344,6 @@ describe("useAutomationSelectionKeyboard", () => {
       v0: 0,
       v1: VOLUME_RANGE.max,
     });
-  });
-
-  it("refuses to paste when the dom-edit layer would write to a different clip", () => {
-    // selectedElementId says "bgm" but the commit channel is still on the
-    // previously selected clip — writing here would serialize bgm's automation
-    // onto that other clip and leave bgm untouched.
-    clearAutomationClipboard();
-    copyRange(null, { target: "volume", points: [{ t: 0, v: 0.5 }] }, VOLUME_RANGE, 0, 2);
-    usePlayerStore.setState({ elements: [bgmElement], selectedElementId: "bgm" });
-    usePlayerStore
-      .getState()
-      .setAutomationSelection(wholeAxis({ elementKey: "bgm", target: "volume", t0: 2, t1: 4 }));
-    const { onCommit } = setup({ commitTargetKey: "some-other-clip" });
-    const e = combo("v");
-    expect(e.defaultPrevented).toBe(false);
-    expect(onCommit).not.toHaveBeenCalled();
   });
 
   it("does not paste from a playhead outside the clip", () => {

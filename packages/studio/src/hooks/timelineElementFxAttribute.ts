@@ -19,6 +19,7 @@ import type {
   UseTimelineElementVisibilityEditingInput,
 } from "./timelineTrackVisibility";
 import { projectForTimelineSave, type TimelineEditOutcome } from "./timelineEditPermission";
+import { syncStoredAutomationFromPreview } from "../player/lib/automationStoreSync";
 
 function patchLiveElementAttribute(
   iframe: HTMLIFrameElement | null,
@@ -154,7 +155,10 @@ export function useSetElementAttribute({
           pendingTimelineEditPathRef,
         });
         liveBeforeRef.current.delete(liveKey);
-        if (written) return { status: "saved" };
+        if (written) {
+          syncStoredAutomationFromPreview(previewIframeRef.current?.contentDocument);
+          return { status: "saved" };
+        }
         return { status: "failed", reason: "This clip has no id to save it by" };
       } catch (error) {
         console.error("[Timeline] Failed to set element attribute", error);

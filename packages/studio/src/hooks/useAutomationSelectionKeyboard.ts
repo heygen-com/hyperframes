@@ -108,7 +108,7 @@ function resolveDeleteWrite(
   state: PlayerState,
   lanes: UseAutomationLanesResult,
   sel: AutomationSelection,
-): { onCommit(next: HfAutomation): void; next: HfAutomation } | null {
+): { onCommit: AutomationLaneBinding["onCommit"]; next: HfAutomation } | null {
   const ctx = resolveSelectionContext(state, lanes, sel);
   if (!ctx) return null;
   const points = ctx.lane.points.filter((p) => !pointInSelection(p, sel));
@@ -139,18 +139,7 @@ function pasteTargetName(
 
 /**
  * Where Cmd+V lands, or null when nothing is selected, the clip's lanes are
- * read-only, it has no automation lane to fall back to, or the dom-edit layer
- * would write the result to a DIFFERENT clip.
- *
- * That last guard is the one with teeth. `binding.onCommit` persists through
- * handleDomAttributeQuietCommit, which targets whatever the dom-edit layer
- * currently has selected — not the element `bind()` was handed (see the
- * doc-comment on `onSelect` in useAutomationLanes). Selecting a clip in the
- * timeline sets `selectedElementId` synchronously but resolves the dom-edit
- * selection asynchronously, so clicking clip B and immediately pressing Cmd+V
- * would serialize B's automation onto A. Every other lane path is a pointer
- * gesture on the lane itself, which cannot run before the selection lands;
- * paste is the only one that can, so it refuses rather than write blind.
+ * read-only, or it has no automation lane to fall back to.
  */
 function resolvePasteTarget(
   state: PlayerState,
@@ -169,7 +158,6 @@ function resolvePasteTarget(
   const elementKey = elementKeyOf(element);
   const binding = lanes.bind(element, true);
   if (binding.readOnly) return null;
-  if (binding.commitTargetKey !== elementKey) return null;
   const target = pasteTargetName(binding, elementKey, sel);
   if (!target) return null;
   const range = resolveAutomationRange(target, binding.chain ?? undefined);
@@ -252,7 +240,7 @@ function handlePaste(
 
   e.preventDefault();
   e.stopImmediatePropagation();
-  paste.binding.onCommit(withLane(paste.binding.automation, { target: paste.target, points }));
+  void paste.binding.onCommit(withLane(paste.binding.automation, { target: paste.target, points }));
   // Select the pasted span — the only feedback that it landed — and mark it, so
   // an immediate second Cmd+V recognises this selection as the paste's own and
   // chains right after it instead of overwriting it.
@@ -300,8 +288,7 @@ function handleCopy(
  *
  * Store and clipboard only, no lane binding, so the dispatcher can call it
  * without holding the binding factory. That leaves one accepted residual: the
- * predicate cannot see a read-only lane, an unresolvable target, or the
- * dom-edit target mismatch `resolvePasteTarget` guards, so in those rare cases
+ * predicate cannot see a read-only lane or an unresolvable target, so in those rare cases
  * the keystroke is a no-op instead of falling through to clip copy/paste. A
  * dead key beats today's double write.
  */
@@ -333,7 +320,7 @@ function handleDelete(
   if (!write) return false;
   e.preventDefault();
   e.stopImmediatePropagation();
-  write.onCommit(write.next);
+  void write.onCommit(write.next);
   return true;
 }
 
