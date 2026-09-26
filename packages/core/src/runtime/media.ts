@@ -250,7 +250,7 @@ export function hasMediaSyncStateForTest(el: HTMLMediaElement): boolean {
 }
 
 /** Drift a playing audio element may carry before sync pulls it back onto the playhead. */
-export const MEDIA_SYNC_TOLERANCE_SECONDS = 0.04;
+const MEDIA_SYNC_TOLERANCE_SECONDS = 0.04;
 
 /**
  * A playing video cannot be seeked back into sync without resetting its
@@ -530,7 +530,8 @@ export function syncRuntimeMedia(params: {
       try {
         // A hard sync lands the video on the playhead, so its pre-seek offset says nothing.
         if (!isPlayingVideo || hardSync) videoSteering.delete(el);
-        const rate = isPlayingVideo && !hardSync ? steeredVideoRate(el, offset, baseRate) : baseRate;
+        const rate =
+          isPlayingVideo && !hardSync ? steeredVideoRate(el, offset, baseRate) : baseRate;
         // Some engines read a rate back at lower precision; an equal-enough rate is not rewritten.
         if (Math.abs(el.playbackRate - rate) > 1e-6) el.playbackRate = rate;
       } catch (err) {
