@@ -769,8 +769,20 @@ describe("__hfSwapScenes", () => {
       expect(running.size).toBe(1);
       await window.__hfSwapScenes!(preview([scene(A2), B]).html);
       expect(running.size).toBe(1);
+      expect(window.__hfSceneAnimations?.a).toHaveLength(1);
     },
   );
+
+  it("reverts a scene's timeline once though its script also recorded it", async () => {
+    const { root } = trackingRoot();
+    const revert = vi.fn();
+    Object.assign(made.a1!, { revert });
+    boot([A1, B], root);
+    await tick();
+    window.__hfSceneAnimations = { a: [made.a1!] };
+    await window.__hfSwapScenes!(preview([A2, B]).html);
+    expect(revert).toHaveBeenCalledTimes(1);
+  });
 
   it("rejects a scene with more than one host rather than dropping one", async () => {
     const { root } = trackingRoot();
