@@ -8,3 +8,25 @@ export { Tab, TabPanel, Tabs, TabsList } from "./Tabs";
 export { HyperframesLoader, StatusFrame } from "./HyperframesLoader";
 export type { HyperframesLoaderProps } from "./HyperframesLoader";
 export { Tooltip } from "./Tooltip";
+export {
+  ContextMenu,
+  Menu,
+  MenuItem,
+  MenuRadioGroup,
+  MenuRadioItem,
+  MenuSeparator,
+  MenuShortcut,
+  popupSurface,
+} from "./Menu";
+export type { MenuItemTone, PopupPreviewState } from "./Menu";
+export { Popover } from "./Popover";
+export { Input, fieldBase, fieldText } from "./Input";
+export type { InputProps } from "./Input";
+export { NumberField } from "./NumberField";
+export type { NumberFieldProps } from "./NumberField";
+export { Select } from "./Select";
+export type { SelectOption, SelectProps } from "./Select";
+export { Slider } from "./Slider";
+export type { SliderProps } from "./Slider";
+export { Toggle } from "./Toggle";
+export type { ToggleProps } from "./Toggle";

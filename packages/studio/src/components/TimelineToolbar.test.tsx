@@ -8,6 +8,14 @@ import { usePlayerStore } from "../player/store/playerStore";
 import { makeSelection } from "../hooks/domSelectionTestHarness";
 import { TimelineToolbar } from "./TimelineToolbar";
 
+vi.mock("../contexts/StudioContext", () => ({
+  useStudioShellContext: () => ({
+    editHistory: { canUndo: false, canRedo: false },
+    handleUndo: vi.fn(),
+    handleRedo: vi.fn(),
+  }),
+}));
+
 (globalThis as unknown as { IS_REACT_ACT_ENVIRONMENT: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
 afterEach(() => {

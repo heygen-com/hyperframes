@@ -6,6 +6,14 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { CompositionsTab } from "./sidebar/CompositionsTab";
 import { TimelineToolbar } from "./TimelineToolbar";
 
+vi.mock("../contexts/StudioContext", () => ({
+  useStudioShellContext: () => ({
+    editHistory: { canUndo: false, canRedo: false },
+    handleUndo: vi.fn(),
+    handleRedo: vi.fn(),
+  }),
+}));
+
 // WCAG 2.2 (2.5.8) requires a 24x24 CSS pixel pointer target. happy-dom has no
 // CSS engine, so getBoundingClientRect() is 0x0 for everything here and the size
 // itself cannot be measured — these assert the utility classes that PRODUCE the

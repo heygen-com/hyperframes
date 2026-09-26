@@ -26,7 +26,10 @@ afterEach(() => {
 });
 
 /** The harness owns the active state too, so a selection moves as it does in the real panel. */
-function mount(initialActive: string[]): {
+function mount(
+  initialActive: string[],
+  activateOnFocus = true,
+): {
   host: HTMLElement;
   selections: ReturnType<typeof vi.fn>;
 } {
@@ -44,7 +47,7 @@ function mount(initialActive: string[]): {
         setActive([id]);
       },
     }));
-    return <RightPanelTabs tabs={tabs} />;
+    return <RightPanelTabs tabs={tabs} activateOnFocus={activateOnFocus} />;
   }
 
   const host = document.createElement("div");
@@ -86,6 +89,16 @@ it("moves from Design to Layers with ArrowRight and asks the panel to switch", a
 
   expect(document.activeElement).toBe(tab(host, "layers"));
   expect(selections).toHaveBeenCalledWith("layers");
+});
+
+it("only moves focus on an arrow key when selection would toggle a pane", async () => {
+  const { host, selections } = mount(["design"], false);
+  act(() => tab(host, "design").focus());
+
+  await arrow("ArrowRight");
+
+  expect(document.activeElement).toBe(tab(host, "layers"));
+  expect(selections).not.toHaveBeenCalled();
 });
 
 it("jumps to the first and last tab with Home and End", async () => {

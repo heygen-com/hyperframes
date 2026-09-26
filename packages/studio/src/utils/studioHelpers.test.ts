@@ -2,6 +2,7 @@
 
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
+  historyTooltipLabel,
   findMatchingTimelineElementId,
   findTimelineIdByAncestor,
   resolveDroppedAssetDimensions,
@@ -215,5 +216,22 @@ describe("resolveElementTrack", () => {
 
   it("falls back to the resolved track, rounded, when nothing was authored", () => {
     expect(resolveElementTrack({ authoredTrack: undefined, track: 3.6 })).toBe(4);
+  });
+});
+
+describe("historyTooltipLabel", () => {
+  // A disabled control gets no pointer events, so its tooltip cannot be opened
+  // to read. The wording is checked here instead of through the DOM.
+  it("names the action that would be undone", () => {
+    expect(historyTooltipLabel("undo", "Move layer")).toMatch(/^Undo Move layer \(.+\)$/);
+  });
+
+  it("names the action that would be redone", () => {
+    expect(historyTooltipLabel("redo", "Move layer")).toMatch(/^Redo Move layer \(.+\)$/);
+  });
+
+  it("keeps the shortcut when the history is empty", () => {
+    expect(historyTooltipLabel("undo", undefined)).toMatch(/^Undo \(.+\)$/);
+    expect(historyTooltipLabel("redo", null)).toMatch(/^Redo \(.+\)$/);
   });
 });

@@ -17,6 +17,8 @@ const PLAYBACK_SHORTCUT_IGNORED_SELECTOR = [
   "[role='checkbox']",
   "[role='combobox']",
   "[role='menuitem']",
+  // Base UI's menu radio item is a `<div>`, so `button` above no longer catches it.
+  "[role='menuitemradio']",
   "[role='radio']",
   "[role='slider']",
   "[role='spinbutton']",
