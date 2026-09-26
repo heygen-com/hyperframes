@@ -1,5 +1,6 @@
 // fallow-ignore-file code-duplication complexity
 import { installRuntimeControlBridge, postRuntimeMessage, setRuntimeProtocolFps } from "./bridge";
+import { instantTolerance } from "../clipFacts";
 import { isInClipWindow } from "./clipWindow";
 import { revealTimedClipsAfterFirstPass } from "./timedClipHide";
 import { initRuntimeAnalytics, emitAnalyticsEvent } from "./analytics";
@@ -2668,7 +2669,7 @@ export function initSandboxRuntimeModular(): void {
    * The media elements this pass must visit, and the argument that the rest can
    * be skipped.
    *
-   * `isActive` requires `start <= t < end`, so a clip whose window excludes the
+   * `isActive` requires `isInClipWindow`, so a clip whose window excludes the
    * new time is inactive there no matter what its element state is. A clip that
    * is in neither the previous in-window set nor the set of windows whose
    * endpoint the transport just crossed was therefore out of window BEFORE and
@@ -2686,8 +2687,10 @@ export function initSandboxRuntimeModular(): void {
   ): Array<HTMLVideoElement | HTMLAudioElement> => {
     const fromSeconds = lastSyncedMediaTimeSeconds;
     if (fromSeconds === null) return index.clips.map((clip) => clip.el);
-    const lo = Math.min(fromSeconds, toSeconds);
-    const hi = Math.max(fromSeconds, toSeconds);
+    const sameInstantMargin =
+      2 * instantTolerance(Math.max(Math.abs(fromSeconds), Math.abs(toSeconds)));
+    const lo = Math.min(fromSeconds, toSeconds) - sameInstantMargin;
+    const hi = Math.max(fromSeconds, toSeconds) + sameInstantMargin;
     const visiting = new Set<HTMLVideoElement | HTMLAudioElement>();
     for (const clip of mediaClipsInWindow) visiting.add(clip.el);
     for (const clip of clipsWithEndpointBetween(index.byStart, (c) => c.start, lo, hi)) {

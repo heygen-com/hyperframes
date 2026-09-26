@@ -21,6 +21,7 @@ import {
   sourceTimeAt,
   timeAtSourceTime,
   type RateSpec,
+  hasClipStarted,
   parseStrictFiniteTimingNumber,
   readMediaStart,
   toFps,
@@ -2198,8 +2199,8 @@ function getFrameIndexAtTime(
   holdLastFrame = false,
   playbackRate: RateSpec = 1,
 ): number | null {
-  let localTime = globalTime - videoStart;
-  if (localTime < 0) return null;
+  if (!hasClipStarted(globalTime, videoStart)) return null;
+  let localTime = Math.max(0, globalTime - videoStart);
   const normalizedPlaybackRate = normalizeRateSpec(playbackRate);
   const loopDuration = timeAtSourceTime(
     normalizedPlaybackRate,
@@ -2313,7 +2314,7 @@ export class FrameLookupTable {
   getFrame(videoId: string, globalTime: number): string | null {
     const video = this.videos.get(videoId);
     if (!video) return null;
-    if (globalTime < video.start || globalTime > video.end) return null;
+    if (!hasClipStarted(globalTime, video.start) || globalTime > video.end) return null;
     const frameIndex = getFrameIndexAtTime(
       video.extracted,
       globalTime,
@@ -2342,10 +2343,11 @@ export class FrameLookupTable {
       this.activeVideoIds.clear();
       this.startCursor = 0;
       for (const entry of this.orderedVideos) {
-        if (entry.start <= globalTime && globalTime <= entry.end) {
+        const started = hasClipStarted(globalTime, entry.start);
+        if (started && globalTime <= entry.end) {
           this.activeVideoIds.add(entry.videoId);
         }
-        if (entry.start <= globalTime) {
+        if (started) {
           this.startCursor += 1;
         } else {
           break;
@@ -2358,7 +2360,7 @@ export class FrameLookupTable {
     while (this.startCursor < this.orderedVideos.length) {
       const candidate = this.orderedVideos[this.startCursor];
       if (!candidate) break;
-      if (candidate.start > globalTime) {
+      if (!hasClipStarted(globalTime, candidate.start)) {
         break;
       }
       if (globalTime <= candidate.end) {
@@ -2369,7 +2371,7 @@ export class FrameLookupTable {
 
     for (const videoId of Array.from(this.activeVideoIds)) {
       const video = this.videos.get(videoId);
-      if (!video || globalTime < video.start || globalTime > video.end) {
+      if (!video || !hasClipStarted(globalTime, video.start) || globalTime > video.end) {
         this.activeVideoIds.delete(videoId);
       }
     }

@@ -159,6 +159,24 @@ describe("resolveSnapshotVideoFrameTime", () => {
     ).toBeCloseTo(15 - 1 / 30, 6);
   });
 
+  it.each([
+    [0.3, 0.1 + 0.2],
+    [26.2, 19.8 + 6.4],
+  ])(
+    "samples the first frame of a clip starting on a float sum at %s, as the preview does",
+    (globalTime, clipStart) => {
+      expect(
+        resolveSnapshotVideoFrameTime({
+          globalTime,
+          clipStart,
+          clipDuration: 0.2,
+          relativeTime: globalTime - clipStart,
+          sourceDuration: 10,
+        }),
+      ).toBe(0);
+    },
+  );
+
   it("keeps ordinary in-window media timestamps unchanged", () => {
     expect(
       resolveSnapshotVideoFrameTime({

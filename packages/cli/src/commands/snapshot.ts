@@ -15,6 +15,7 @@ import {
   type ZoomTarget,
 } from "../capture/captureCompositionFrame.js";
 import {
+  hasClipStarted,
   readElementRateSpec,
   sourceTimeAt,
   timeAtSourceTime,
@@ -94,11 +95,14 @@ export function resolveSnapshotVideoFrameTime(input: {
   relativeTime: number;
   sourceDuration: number;
 }): number | null {
-  const { globalTime, clipStart, clipDuration, relativeTime, sourceDuration } = input;
+  const { globalTime, clipStart, clipDuration, sourceDuration } = input;
   const clipEnd = clipStart + clipDuration;
   const clipEndTolerance = 1e-9;
-  if (globalTime < clipStart || globalTime > clipEnd + clipEndTolerance || relativeTime < 0)
+  if (!hasClipStarted(globalTime, clipStart) || globalTime > clipEnd + clipEndTolerance)
     return null;
+  const relativeTime =
+    globalTime < clipStart ? Math.max(0, input.relativeTime) : input.relativeTime;
+  if (relativeTime < 0) return null;
 
   const atClipEnd = Math.abs(globalTime - clipEnd) <= clipEndTolerance;
   if (!atClipEnd) return relativeTime;

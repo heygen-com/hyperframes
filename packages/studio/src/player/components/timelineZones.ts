@@ -1,3 +1,4 @@
+import { spansOverlap } from "@hyperframes/core/clip-facts";
 import type { TimelineElement } from "../store/playerStore";
 import { isAudioTimelineElement } from "../../utils/timelineInspector";
 import { isTransitionPair } from "./timelineTransitionSeams";
@@ -23,11 +24,9 @@ export function isMainTrackElement(el: TimelineElement): boolean {
 
 const keyOf = (el: TimelineElement) => el.key ?? el.id;
 
-const EPS = 1e-6;
-
 /** Two clips overlap when their half-open [start, end) intervals intersect. */
 function overlaps(a: TimelineElement, b: TimelineElement): boolean {
-  return a.start < b.start + b.duration - EPS && b.start < a.start + a.duration - EPS;
+  return spansOverlap(a.start, a.start + a.duration, b.start, b.start + b.duration);
 }
 
 /** Deterministic order on the stable clip id (never the mutated lane/track). */

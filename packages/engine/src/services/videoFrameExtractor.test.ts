@@ -948,6 +948,31 @@ describe("FrameLookupTable", () => {
     expect(table.getActiveFramePayloads(4.5).get("hero")?.frameIndex).toBe(15);
   });
 
+  it("shows a copy starting on a float sum at that instant, as the preview does", () => {
+    const copyStart = 0.1 + 0.2;
+    const clip = (id: string, start: number) => ({
+      id,
+      src: `${id}.webm`,
+      start,
+      end: start + 0.2,
+      mediaStart: 0,
+      loop: false,
+      hasAudio: false,
+    });
+    const frames = (videoId: string) => ({ ...fakeExtracted(30, 30), videoId });
+    const table = () =>
+      createFrameLookupTable(
+        [clip("a", 0.1), clip("copy", copyStart)],
+        [frames("a"), frames("copy")],
+      );
+
+    expect(table().getActiveFramePayloads(0.3).get("copy")?.frameIndex).toBe(0);
+    const stepping = table();
+    stepping.getActiveFramePayloads(0.2);
+    expect(stepping.getActiveFramePayloads(0.3).get("copy")?.frameIndex).toBe(0);
+    expect(getFrameAtTime(frames("copy"), 0.3, copyStart)).toBe("frame-0.jpg");
+  });
+
   it("selects source frames at the authored constant playback rate", () => {
     const videos = parseVideoElements(
       '<video id="hero" src="clip.webm" data-start="0" data-duration="2" data-playback-rate="2"></video>',

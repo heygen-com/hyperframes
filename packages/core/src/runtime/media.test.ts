@@ -376,6 +376,14 @@ describe("syncRuntimeMedia", () => {
     document.body.innerHTML = "";
   });
 
+  it("seeks a clip whose start is a float sum to its first frame, never before it", () => {
+    const clip = createMockClip({ start: 19.8 + 0.1, end: 25 });
+    Object.defineProperty(clip.el, "readyState", { value: 4, writable: true });
+    clip.el.currentTime = 3;
+    syncRuntimeMedia({ clips: [clip], timeSeconds: 19.9, playing: false, playbackRate: 1 });
+    expect(clip.el.currentTime).toBe(0);
+  });
+
   describe("speed ramp", () => {
     it("seeks to the integrated source time and plays at the instantaneous rate", () => {
       const rate = {
@@ -1030,6 +1038,23 @@ describe("syncRuntimeMedia", () => {
     syncRuntimeMedia({ ...seek, timeSeconds: 5 });
     expect(clip.el.currentTime).toBe(2.5);
     expect(clip.el.play).not.toHaveBeenCalled();
+  });
+
+  it("holds a video ending on a float sum at the composition end on its last frame", () => {
+    const clip = createMockClip({
+      start: 19.8,
+      end: 19.8 + 6.4,
+      duration: 6.4,
+      sourceDuration: 10,
+    });
+    syncRuntimeMedia({
+      clips: [clip],
+      timeSeconds: 26.2,
+      playing: false,
+      playbackRate: 1,
+      getCompositionDuration: () => 26.2,
+    });
+    expect(clip.el.currentTime).toBeCloseTo(6.4, 9);
   });
 
   it("holds a speed-ramped video that runs to the composition end at the source time of its own end", () => {
