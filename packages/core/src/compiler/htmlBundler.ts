@@ -1,4 +1,5 @@
 import { inlineScriptRuns } from "./scriptRuns";
+import { SCENE_PART_ATTR } from "../sceneParts";
 import {
   ensureExternalScriptTag,
   readExternalScriptAttributes,
@@ -31,7 +32,7 @@ import {
 import { validateHyperframeHtmlContract } from "./staticGuard";
 import { getHyperframeRuntimeScript } from "../generated/runtime-inline";
 import { readDeclaredDefaults } from "../runtime/getVariables";
-import { inlineSubCompositions } from "./inlineSubCompositions";
+import { inlineSubCompositions, refuseSwapsReachedByRootScripts } from "./inlineSubCompositions";
 import { queryByAttr } from "../utils/cssSelector";
 import { isSafePath, resolveWithinProject } from "../safePath.js";
 import { ensureHfIds } from "@hyperframes/parsers/hf-ids";
@@ -656,34 +657,67 @@ function autoHealMissingCompositionIds(document: Document): void {
   }
 }
 
-function coalesceHeadStylesAndBodyScripts(document: Document): void {
-  const headStyleEls = [...document.querySelectorAll("head style")];
-  if (headStyleEls.length > 1) {
-    const imports: string[] = [];
-    const cssParts: string[] = [];
-    const seenImports = new Set<string>();
-    for (const el of headStyleEls) {
-      const raw = (el.textContent || "").trim();
-      if (!raw) continue;
-      const nonImportCss = raw.replace(CSS_IMPORT_RE, (match) => {
-        const cleaned = match.trim();
-        if (!seenImports.has(cleaned)) {
-          seenImports.add(cleaned);
-          imports.push(cleaned);
-        }
-        return "";
-      });
-      const trimmed = nonImportCss.trim();
-      if (trimmed) cssParts.push(trimmed);
-    }
-    const merged = [...imports, ...cssParts].join("\n\n").trim();
-    if (merged) {
-      headStyleEls[0]!.textContent = merged;
-      for (let i = 1; i < headStyleEls.length; i++) headStyleEls[i]!.remove();
-    }
+/** Join stylesheets into one, moving every distinct `@import` to the front, where CSS allows it. */
+function joinCssHoistingImports(sheets: string[]): string {
+  const imports = new Set<string>();
+  const cssParts: string[] = [];
+  for (const sheet of sheets) {
+    const rest = sheet.trim().replace(CSS_IMPORT_RE, (match) => {
+      imports.add(match.trim());
+      return "";
+    });
+    if (rest.trim()) cssParts.push(rest.trim());
   }
+  return [...imports, ...cssParts].join("\n\n").trim();
+}
 
-  const isPinned = (el: Element) => el.hasAttribute(RUNTIME_BOOTSTRAP_ATTR);
+// A render joins every head style into one sheet at the first one's place, each distinct @import first.
+function placeSceneStylesLikeRender(document: Document): void {
+  const styles = [...document.querySelectorAll("head style")];
+  const imports = new Set<string>();
+  for (const el of styles) {
+    el.textContent = (el.textContent || "")
+      .replace(CSS_IMPORT_RE, (match) => (imports.add(match.trim()), ""))
+      .trim();
+  }
+  styles.slice(1).reduce((previous, el) => (previous.after(el), el), styles[0]!);
+  if (imports.size === 0) return;
+  const hoisted = [...imports].join("\n\n");
+  const first = styles[0]!;
+  if (!first.hasAttribute(SCENE_PART_ATTR)) {
+    first.textContent = [hoisted, first.textContent].filter(Boolean).join("\n\n");
+    return;
+  }
+  const holder = document.createElement("style");
+  holder.textContent = hoisted;
+  first.before(holder);
+}
+
+type PartRun<T> = { scene?: string; chunks: T[] };
+
+function pushRun<T>(runs: PartRun<T>[], scene: string | undefined, chunk: T): void {
+  const last = runs.at(-1);
+  if (last && last.scene === scene) last.chunks.push(chunk);
+  else runs.push({ scene, chunks: [chunk] });
+}
+
+function coalesceHeadStylesAndBodyScripts(document: Document): void {
+  const allHeadStyles = [...document.querySelectorAll("head style")];
+  const untaggedRuns: Element[][] = [[]];
+  for (const el of allHeadStyles) {
+    if (el.hasAttribute(SCENE_PART_ATTR)) untaggedRuns.push([]);
+    else untaggedRuns.at(-1)!.push(el);
+  }
+  for (const run of allHeadStyles.length > 1 ? untaggedRuns : []) {
+    const merged = joinCssHoistingImports(run.map((el) => el.textContent || ""));
+    if (!merged) continue;
+    run[0]!.textContent = merged;
+    for (const el of run.slice(1)) el.remove();
+  }
+  if (untaggedRuns.length > 1) placeSceneStylesLikeRender(document);
+
+  const isPinned = (el: Element) =>
+    el.hasAttribute(RUNTIME_BOOTSTRAP_ATTR) || el.hasAttribute(SCENE_PART_ATTR);
   for (const { members, anchor } of inlineScriptRuns(
     [...document.querySelectorAll("body script")],
     isPinned,
@@ -790,6 +824,8 @@ export interface BundleOptions {
    * `inlineColorGradingLuts` narrows LUTs further; it cannot inline a LUT this option excluded.
    */
   inlineAssets?: boolean;
+  /** Preview only: tag each scene's host, styles and scripts (`data-hf-scene`) so one can be swapped. */
+  sceneParts?: boolean;
   /** Warn when the compiled HTML breaks the HyperFrames contract (default true). */
   staticGuard?: boolean;
 }
@@ -969,6 +1005,20 @@ export async function bundleToSingleHtml(
     }
   }
 
+  // Read before sub-compositions add theirs: only the root's own scripts can reach into scenes.
+  const rootScripts = options?.sceneParts
+    ? [
+        ...document.querySelectorAll(`script:not([${RUNTIME_BOOTSTRAP_ATTR}])`),
+        ...[...document.querySelectorAll("template")].flatMap((t) => [
+          ...(t as HTMLTemplateElement).content.querySelectorAll("script"),
+        ]),
+      ].map((el) => {
+        const src = el.getAttribute("src");
+        const path = src && isRelativeUrl(src) ? resolveEntryPath(src) : null;
+        return src ? (path && safeReadFile(path)) || "" : el.textContent || "";
+      })
+    : [];
+
   // Inline sub-compositions (via shared function)
   const trackedCompositionHosts = getBundledTrackedCompositionHosts(document);
   const hostIdentityByElement = assignBundledRuntimeCompositionIds(trackedCompositionHosts);
@@ -985,7 +1035,7 @@ export async function bundleToSingleHtml(
     parseHtml: parseHTMLContent,
     hostIdentityMap: hostIdentityByElement,
     rewriteInlineStyles: true,
-    // A sub-composition's SIBLING assets (`_shared.css` next to it) must be
+    // A sub-composition's SIBLING assets (a stylesheet next to it) must be
     // re-pointed at its own directory when its content moves to the root
     // document; project-root refs with no such sibling stay as authored.
     assetExists: (path: string) => {
@@ -993,6 +1043,7 @@ export async function bundleToSingleHtml(
       return resolved !== null && existsSync(resolved);
     },
     flattenInnerRoot: prepareFlattenedInnerRoot,
+    tagScenes: options?.sceneParts === true,
     readVariableDefaults: readDeclaredDefaults,
     parseHostVariables: parseHostVariableValues,
     buildScopeSelector: (compId: string) => cssAttributeSelector("data-composition-id", compId),
@@ -1003,7 +1054,11 @@ export async function bundleToSingleHtml(
       );
     },
   });
-  const compStyleChunks: string[] = [...subCompResult.styles];
+  refuseSwapsReachedByRootScripts(document, rootScripts);
+  const styleRuns: PartRun<string>[] = [];
+  subCompResult.styles.forEach((css, i) => pushRun(styleRuns, subCompResult.styleScenes[i], css));
+  const scriptRuns: PartRun<DeferredScriptChunk>[] = [];
+  const compStyleChunks: string[] = [];
   const compScriptChunks: DeferredScriptChunk[] = [];
   const compExternalLinks = [...subCompResult.externalLinks];
   const compVariablesByComp: Record<string, Record<string, unknown>> = {
@@ -1012,7 +1067,7 @@ export async function bundleToSingleHtml(
   const seenCompScriptSrcs = new Set<string>();
   for (const scriptItem of subCompResult.scriptItems) {
     if (scriptItem.kind === "inline") {
-      compScriptChunks.push(scriptItem.content);
+      pushRun(scriptRuns, scriptItem.scene, scriptItem.content);
       continue;
     }
     const extSrc = scriptItem.src;
@@ -1027,9 +1082,9 @@ export async function bundleToSingleHtml(
       const jsPath = resolveEntryPath(extSrc);
       const js = jsPath ? safeReadFile(jsPath) : null;
       if (js != null) {
-        compScriptChunks.push(() =>
-          preserveLocalScriptIntegrity(document, extSrc, resolveEntryPath) ? "" : js,
-        );
+        const chunk = () =>
+          preserveLocalScriptIntegrity(document, extSrc, resolveEntryPath) ? "" : js;
+        pushRun(scriptRuns, scriptItem.scene, chunk);
         continue;
       }
     }
@@ -1198,21 +1253,26 @@ export async function bundleToSingleHtml(
     }
   }
 
-  if (compStyleChunks.length) {
-    const style = document.createElement("style");
-    style.textContent = compStyleChunks.join("\n\n");
-    document.head.appendChild(style);
-  }
+  for (const css of compStyleChunks) pushRun(styleRuns, undefined, css);
+  for (const chunk of compScriptChunks) pushRun(scriptRuns, undefined, chunk);
   const variablesByCompScript = buildVariablesByCompScript(compVariablesByComp);
   if (variablesByCompScript) {
-    compScriptChunks.unshift(variablesByCompScript);
+    if (scriptRuns[0] && !scriptRuns[0].scene) scriptRuns[0].chunks.unshift(variablesByCompScript);
+    else scriptRuns.unshift({ chunks: [variablesByCompScript] });
   }
-  if (compScriptChunks.length) {
-    const compScript = document.createElement("script");
-    compScript.textContent = joinJsChunks(
-      compScriptChunks.map((chunk) => (typeof chunk === "string" ? chunk : chunk())),
+  for (const { scene, chunks } of styleRuns) {
+    const style = document.createElement("style");
+    if (scene) style.setAttribute(SCENE_PART_ATTR, scene);
+    style.textContent = scene ? joinCssHoistingImports(chunks) : chunks.join("\n\n");
+    document.head.appendChild(style);
+  }
+  for (const { scene, chunks } of scriptRuns) {
+    const script = document.createElement("script");
+    if (scene) script.setAttribute(SCENE_PART_ATTR, scene);
+    script.textContent = joinJsChunks(
+      chunks.map((chunk) => (typeof chunk === "string" ? chunk : chunk())),
     );
-    document.body.appendChild(compScript);
+    document.body.appendChild(script);
   }
   emitMountedModuleScripts(document, subCompResult.importMaps, subCompResult.moduleScripts);
 

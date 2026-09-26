@@ -236,6 +236,48 @@ describe("registerPreviewRoutes", () => {
     expect(html).toContain("compositions/scene.html");
   });
 
+  it("serves scene parts with a manifest whose shared hash ignores the project signature", async () => {
+    const projectDir = createProjectDir();
+    mkdirSync(join(projectDir, "compositions"), { recursive: true });
+    writeFileSync(
+      join(projectDir, "index.html"),
+      `<!doctype html><html><head></head><body><div data-composition-id="main" data-width="1280" data-height="720" data-duration="2">
+<div data-composition-id="a" data-composition-src="compositions/a.html" data-start="0" data-duration="2"></div></div></body></html>`,
+    );
+    const scene = (text: string) =>
+      writeFileSync(
+        join(projectDir, "compositions/a.html"),
+        `<template><div data-composition-id="a"><p>${text}</p></div></template>`,
+      );
+    const { bundleToSingleHtml } = await import("@hyperframes/core/compiler");
+    const app = new Hono();
+    registerPreviewRoutes(
+      app,
+      createAdapter(projectDir, {
+        bundle: (dir, options) =>
+          bundleToSingleHtml(dir, { ...PREVIEW_BUNDLE_OPTIONS, ...options }),
+      }),
+    );
+    const served = async () => {
+      const html = await (await app.request("http://localhost/projects/demo/preview")).text();
+      const content = /<meta name="hf-scene-parts" content="([^"]+)">/.exec(html)?.[1] ?? "";
+      const signature = /<meta name="hyperframes-project-signature" content="([^"]+)">/.exec(
+        html,
+      )?.[1];
+      return { html, signature, parts: JSON.parse(content.replace(/&quot;/g, '"')) };
+    };
+    scene("one");
+    const before = await served();
+    scene("two, longer");
+    pastSettleWindow();
+    const after = await served();
+
+    expect(before.html).toContain('data-hf-scene="a"');
+    expect(after.signature).not.toBe(before.signature);
+    expect(after.parts.shared).toBe(before.parts.shared);
+    expect(after.parts.scenes.a).not.toBe(before.parts.scenes.a);
+  });
+
   it("applies adapter preview transforms to bundled root previews", async () => {
     const projectDir = createProjectDir();
     const app = new Hono();

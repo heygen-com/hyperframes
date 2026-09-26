@@ -2036,6 +2036,439 @@ describe("bundleToSingleHtml script order", () => {
   });
 });
 
+describe("bundleToSingleHtml sceneParts", () => {
+  const film = () =>
+    makeTempProject({
+      "index.html": `<!doctype html>
+<html><head></head><body>
+  <div id="root" data-composition-id="main" data-width="1920" data-height="1080" data-duration="4">
+    <div data-composition-id="a" data-composition-src="compositions/a.html" data-start="0" data-duration="2"></div>
+    <div data-composition-id="b" data-composition-src="compositions/b.html" data-start="2" data-duration="2"></div>
+  </div>
+  <script>window.__rootRan = true;</script>
+</body></html>`,
+      "compositions/a.html": `<template id="a-template"><div data-composition-id="a">
+  <style>.a-text { color: red; }</style><p class="a-text">A</p>
+  <div data-composition-id="n" data-composition-src="compositions/n.html"></div>
+  <script>window.__aRan = true;</script>
+</div></template>`,
+      "compositions/n.html": `<template id="n-template"><div data-composition-id="n">
+  <style>.n-text { color: blue; }</style><p class="n-text">N</p><script>window.__nRan = true;</script>
+</div></template>`,
+      "compositions/b.html": `<template id="b-template"><div data-composition-id="b">
+  <style>.b-text { color: green; }</style><p class="b-text">B</p><script>window.__bRan = true;</script>
+</div></template>`,
+    });
+  const partsOf = (doc: Document, scene: string) =>
+    [...doc.querySelectorAll(`[data-hf-scene="${scene}"]`)].map((el) => el.tagName.toLowerCase());
+
+  it("tags each top-level scene's host, styles and scripts, with nested scenes in their parent's parts", async () => {
+    const doc = parseHTML(await bundleToSingleHtml(film(), { sceneParts: true })).document;
+    // The nested scene is reached after b, so a's parts come in two runs around b's.
+    expect(partsOf(doc, "a").sort()).toEqual(["div", "script", "script", "style", "style"]);
+    expect(partsOf(doc, "b").sort()).toEqual(["div", "script", "style"]);
+    expect(partsOf(doc, "n")).toEqual([]);
+    const textOf = (selector: string) =>
+      [...doc.querySelectorAll(selector)].map((el) => el.textContent ?? "").join("\n");
+    const aStyle = textOf('style[data-hf-scene="a"]');
+    const aScript = textOf('script[data-hf-scene="a"]');
+    expect(aStyle).toContain("a-text");
+    expect(aStyle).toContain("n-text");
+    expect(aScript).toContain("__aRan");
+    expect(aScript).toContain("__nRan");
+    expect(aScript).not.toContain("__bRan");
+    const shared = [
+      ...doc.querySelectorAll("style:not([data-hf-scene]), script:not([data-hf-scene])"),
+    ]
+      .map((el) => el.textContent ?? "")
+      .join("\n");
+    expect(shared).not.toMatch(/a-text|b-text|__aRan|__bRan/);
+    expect(shared).toContain("__rootRan");
+  });
+
+  it("emits styles and scripts in render order, a nested scene, an @import and root variables included", async () => {
+    const dir = makeTempProject({
+      "index.html": `<!doctype html>
+<html><head><style>.root-text { color: black; }</style></head><body>
+  <div id="root" data-composition-id="main" data-width="1920" data-height="1080" data-duration="4">
+    <div data-composition-id="a" data-composition-src="compositions/a.html" data-start="0" data-duration="2"
+      data-variable-values='{"accent":"blue"}'></div>
+    <div data-composition-id="b" data-composition-src="compositions/b.html" data-start="2" data-duration="2"></div>
+  </div>
+</body></html>`,
+      "compositions/a.html": `<html data-composition-variables='[{"id":"accent","type":"string","label":"Accent","default":"red"}]'><body>
+<template id="a-template"><div data-composition-id="a">
+  <style>@keyframes pulse { to { opacity: 0.1; } }</style><p>A</p>
+  <div data-composition-id="n" data-composition-src="compositions/n.html"></div>
+  <script>window.__order = ["a"];</script>
+</div></template></body></html>`,
+      "compositions/n.html": `<template id="n-template"><div data-composition-id="n">
+  <style>@keyframes pulse { to { opacity: 0.3; } }</style><p>N</p><script>window.__order.push("n");</script>
+</div></template>`,
+      "compositions/b.html": `<template id="b-template"><div data-composition-id="b">
+  <link rel="stylesheet" href="https://fonts.example.com/b.css">
+  <style>@import url("data:text/css,@keyframes%20pulse%7Bto%7Bopacity:0.9%7D%7D");
+  @keyframes pulse { to { opacity: 0.2; } }</style><p>B</p><script>window.__order.push("b");</script>
+</div></template>`,
+    });
+    const order = (html: string) => {
+      const doc = parseHTML(html).document;
+      const text = (sel: string) =>
+        [...doc.querySelectorAll(sel)].map((el) => el.textContent ?? "");
+      const js = text("script").join("\n");
+      const head = [...doc.head.children].map((el) => el.tagName.toLowerCase());
+      return {
+        head: head.filter((tag, i) => tag !== head[i - 1]),
+        css: text("style").join("").replace(/\s+/g, ""),
+        scripts: ['["a"]', 'push("n")', 'push("b")'].sort((x, y) => js.indexOf(x) - js.indexOf(y)),
+      };
+    };
+    expect(order(await bundleToSingleHtml(dir, { sceneParts: true }))).toEqual(
+      order(await bundleToSingleHtml(dir)),
+    );
+  });
+
+  it("leaves renders untagged", async () => {
+    const html = await bundleToSingleHtml(film());
+    expect(
+      parseHTML(html).document.querySelector("[data-hf-scene], [data-hf-scene-no-swap]"),
+    ).toBeNull();
+    expect(html).toContain("__aRan");
+  });
+
+  it("puts every @import once at the front of the head, as a render's merged sheet does", async () => {
+    const dir = makeTempProject({
+      "index.html": `<!doctype html><html><head></head><body>
+  <div data-composition-id="main" data-width="1920" data-height="1080" data-duration="2">
+    <div data-composition-id="a" data-composition-src="compositions/a.html" data-start="0" data-duration="2"></div>
+  </div></body></html>`,
+      "compositions/a.html": `<template id="a-template"><div data-composition-id="a">
+  <style>.t { color: red; }</style>
+  <div data-composition-id="n" data-composition-src="compositions/n.html"></div></div></template>`,
+      "compositions/n.html": `<template id="n-template"><div data-composition-id="n">
+  <style>@import url("https://fonts.example.com/inter.css"); .n { color: blue; }</style></div></template>`,
+    });
+    const doc = parseHTML(await bundleToSingleHtml(dir, { sceneParts: true })).document;
+    const first = doc.querySelector(
+      "head style:not([data-hf-scene]):not([data-hyperframes-text-rendering])",
+    );
+    expect(
+      first?.textContent?.startsWith('@import url("https://fonts.example.com/inter.css")'),
+    ).toBe(true);
+    expect(doc.querySelector('style[data-hf-scene="a"]')?.textContent).not.toContain("@import");
+    expect(styleText(doc.documentElement.outerHTML).match(/@import/g)).toHaveLength(1);
+  });
+
+  it("marks a scene whose own script leaves work running as not swappable, and only that scene", async () => {
+    const dir = makeTempProject({
+      "index.html": `<!doctype html><html><head>
+  <script src="https://cdn.jsdelivr.net/npm/gsap@3.14.2/dist/gsap.min.js"></script>
+  <script src="https://cdn.example.com/d-scene.js"></script></head><body>
+  <div data-composition-id="main" data-width="1920" data-height="1080" data-duration="4">
+    <div data-composition-id="a" data-composition-src="compositions/a.html" data-start="0" data-duration="2"></div>
+    <div data-composition-id="b" data-composition-src="compositions/b.html" data-start="2" data-duration="2"></div>
+    <div data-composition-id="c" data-composition-src="compositions/c.html" data-start="0" data-duration="2"></div>
+    <div data-composition-id="d" data-composition-src="compositions/d.html" data-start="2" data-duration="2"></div>
+    <div data-composition-id="e" data-composition-src="compositions/e.html" data-start="2" data-duration="2"></div>
+    <div data-composition-id="f" data-composition-src="compositions/f.html" data-start="2" data-duration="2"></div>
+  </div></body></html>`,
+      "compositions/e.html": `<template id="e-template"><div data-composition-id="e"><p>E</p>
+  <script src="https://cdn.jsdelivr.net/npm/gsap@3/../lottie-web@5/build/player/lottie.min.js"></script></div></template>`,
+      "compositions/f.html": `<template id="f-template"><div data-composition-id="f"><p>F</p>
+  <script>gsap.timeline().to(window.__sharedState, { x: 1 });</script></div></template>`,
+      "compositions/d.html": `<template id="d-template"><div data-composition-id="d"><p>D</p>
+  <script src="https://cdn.example.com/d-scene.js"></script></div></template>`,
+      "compositions/c.html": `<template id="c-template"><div data-composition-id="c"><p>C</p>
+  <script src="c.js"></script></div></template>`,
+      "compositions/c.js": `document.querySelector("p").animate([], 1000);`,
+      "compositions/a.html": `<template id="a-template"><div data-composition-id="a"><p>A</p>
+  <div data-composition-id="n" data-composition-src="compositions/n.html"></div>
+  <script>window.__timelines = window.__timelines || {};</script></div></template>`,
+      "compositions/n.html": `<template id="n-template"><div data-composition-id="n">
+  <script>window.addEventListener("hf-seek", () => {});</script></div></template>`,
+      "compositions/b.html": `<template id="b-template"><div data-composition-id="b"><p>B</p>
+  <script src="https://cdn.jsdelivr.net/npm/gsap@3.14.2/dist/gsap.min.js"></script>
+  <script>gsap.timeline({ onComplete: () => {} });</script></div></template>`,
+    });
+    const doc = parseHTML(await bundleToSingleHtml(dir, { sceneParts: true })).document;
+    const host = (id: string) => doc.querySelector(`div[data-hf-scene="${id}"]`);
+    expect(host("a")?.getAttribute("data-hf-scene-no-swap")).toBe(
+      "its script uses addEventListener",
+    );
+    expect(host("b")?.hasAttribute("data-hf-scene-no-swap")).toBe(false);
+    expect(host("c")?.getAttribute("data-hf-scene-no-swap")).toBe(
+      "it runs a script that is not a known library",
+    );
+    // The root loading the same URL does not make a scene's own initializer a library.
+    expect(host("d")?.getAttribute("data-hf-scene-no-swap")).toBe(
+      "it runs a script that is not a known library",
+    );
+    expect(host("e")?.getAttribute("data-hf-scene-no-swap")).toBe(
+      "it runs a script that is not a known library",
+    );
+    // A timeline built and chained in one expression is never registered, so a swap leaves it running.
+    expect(host("f")?.getAttribute("data-hf-scene-no-swap")).toBe(
+      "its script uses gsap.timeline().to(",
+    );
+    const rendered = await bundleToSingleHtml(dir);
+    expect(parseHTML(rendered).document.querySelector("[data-hf-scene-no-swap]")).toBeNull();
+  });
+
+  const rootProject = (root: string, extra: Record<string, string> = {}) =>
+    makeTempProject({
+      "index.html": `<!doctype html><html><head></head><body>
+  <div data-composition-id="main" data-width="1920" data-height="1080" data-duration="2">
+    <div data-composition-id="a" data-composition-src="compositions/a.html" data-start="0" data-duration="1"></div>
+    <div data-composition-id="b" data-composition-src="compositions/b.html" data-start="1" data-duration="1"></div>
+  </div>${root}</body></html>`,
+      "compositions/a.html": `<template id="a-template"><div data-composition-id="a"><button class="go">Go</button><span id="count">0</span><em>!</em></div></template>`,
+      "compositions/b.html": `<template id="b-template"><div data-composition-id="b"><p>B</p></div></template>`,
+      ...extra,
+    });
+  const swapMarks = async (dir: string) => {
+    const doc = parseHTML(await bundleToSingleHtml(dir, { sceneParts: true })).document;
+    return ["a", "b"].map((id) =>
+      doc.querySelector(`div[data-hf-scene="${id}"]`)?.getAttribute("data-hf-scene-no-swap"),
+    );
+  };
+
+  it.each([
+    [
+      "binds a listener, inline",
+      `<script>document.querySelector(".go").addEventListener("click", () => {});</script>`,
+      {},
+      ".go",
+    ],
+    [
+      "binds a listener from a local file",
+      `<script src="root.js"></script>`,
+      { "root.js": `document.querySelector(".go").onclick = () => {};` },
+      ".go",
+    ],
+    [
+      "tweens a scene node from the root timeline",
+      `<script>gsap.timeline({ paused: true }).to("#count", { opacity: 0 }, 1);</script>`,
+      {},
+      "#count",
+    ],
+    [
+      "binds listeners by tag name",
+      `<script>document.querySelectorAll("em").forEach((e) => e.addEventListener("click", () => {}));</script>`,
+      {},
+      "em",
+    ],
+    [
+      "reaches a node by a tag selector",
+      `<script>document.querySelector("div button").onclick = () => {};</script>`,
+      {},
+      "div button",
+    ],
+    [
+      "updates a scene node from a timer",
+      `<script>setTimeout(function tick() { document.getElementById("count").textContent++; setTimeout(tick, 100); }, 100);</script>`,
+      {},
+      "count",
+    ],
+    [
+      "binds a listener from an inline template's script",
+      `<template id="t-template"><div data-composition-id="t"><script>document.querySelector(".go").addEventListener("click", () => {});</script></div></template><div data-composition-id="t" data-start="0" data-duration="1"></div>`,
+      {},
+      ".go",
+    ],
+  ])("marks the scene a script outside it reaches when it %s", async (_, root, extra, selected) => {
+    expect(await swapMarks(rootProject(root, extra))).toEqual([
+      `a script outside the scene selects ${selected}`,
+      null,
+    ]);
+  });
+
+  const selects = (selector: string) => `a script outside the scene selects ${selector}`;
+  it.each([
+    ["an upper-case tag name", "BUTTON", [selects("BUTTON"), null]],
+    ["everything", "*", [selects("*"), selects("*")]],
+    ["everything, padded", " * ", [selects(" * "), selects(" * ")]],
+    ["a tag above the scenes", "body button", [selects("body button"), null]],
+    ["everything below a tag above the scenes", "body *", [selects("body *"), selects("body *")]],
+  ] as const)(
+    "marks the scenes a script outside them reaches by %s",
+    async (_, selector, marks) => {
+      const root = `<script>document.querySelectorAll("${selector}").forEach((el) => el.normalize());</script>`;
+      expect(await swapMarks(rootProject(root))).toEqual(marks);
+    },
+  );
+
+  it("keeps scenes swappable when a script outside them never names their nodes", async () => {
+    const root = `<script>document.addEventListener("click", () => {}); requestAnimationFrame(() => {}); parent.postMessage({ at: Date.now() },
+    "*"); document.querySelectorAll("NAV"); document.getElementById("Count");
+  document.body.append(document.createElement("div"), document.createElementNS("http://www.w3.org/2000/svg", "span"));</script>
+  <script type="application/json">{"note": "addEventListener"}</script>`;
+    expect(await swapMarks(rootProject(root))).toEqual([null, null]);
+  });
+
+  it("runs a scene's local script file in source order with its inline scripts, as a render does", async () => {
+    const dir = makeTempProject({
+      "index.html": `<!doctype html><html><head></head><body>
+  <div data-composition-id="main" data-width="1920" data-height="1080" data-duration="2">
+    <div data-composition-id="a" data-composition-src="compositions/a.html" data-start="0" data-duration="2"></div>
+  </div></body></html>`,
+      "compositions/a.html": `<template id="a-template"><div data-composition-id="a"><p>A</p>
+  <script>window.__assetBase = "compositions/assets/";</script>
+  <script src="reader.js"></script></div></template>`,
+      "compositions/reader.js": `window.__readBase = window.__assetBase;`,
+    });
+    const order = (html: string) => [html.indexOf("__assetBase = "), html.indexOf("__readBase =")];
+    const [setPreview, readPreview] = order(await bundleToSingleHtml(dir, { sceneParts: true }));
+    const [setRender, readRender] = order(await bundleToSingleHtml(dir));
+    expect(setRender).toBeGreaterThan(-1);
+    expect(setRender).toBeLessThan(readRender);
+    expect(setPreview).toBeGreaterThan(-1);
+    expect(setPreview).toBeLessThan(readPreview);
+  });
+
+  it("refuses to swap a scene that runs a module script or an import map", async () => {
+    const dir = makeTempProject({
+      "index.html": `<!doctype html><html><head></head><body>
+  <div data-composition-id="main" data-width="1920" data-height="1080" data-duration="2">
+    <div data-composition-id="m" data-composition-src="compositions/m.html" data-start="0" data-duration="1"></div>
+    <div data-composition-id="i" data-composition-src="compositions/i.html" data-start="1" data-duration="1"></div>
+  </div></body></html>`,
+      "compositions/m.html": `<template id="m-template"><div data-composition-id="m"><p>M</p>
+  <script type="module">window.__mRan = true;</script></div></template>`,
+      "compositions/i.html": `<template id="i-template"><div data-composition-id="i"><p>I</p>
+  <div data-composition-id="n" data-composition-src="compositions/n.html"></div></div></template>`,
+      "compositions/n.html": `<template id="n-template"><div data-composition-id="n">
+  <script type="importmap">{"imports":{"x":"./x.js"}}</script></div></template>`,
+    });
+    const doc = parseHTML(await bundleToSingleHtml(dir, { sceneParts: true })).document;
+    for (const id of ["m", "i"]) {
+      expect(
+        doc.querySelector(`div[data-hf-scene="${id}"]`)?.getAttribute("data-hf-scene-no-swap"),
+      ).toBe("it runs a module script or import map");
+    }
+  });
+
+  it("refuses to swap a scene for every kind of work its script can leave behind", async () => {
+    const leaks = [
+      'window.addEventListener("resize", f)',
+      "requestAnimationFrame(f)",
+      "requestIdleCallback(f)",
+      "setTimeout(f, 1)",
+      "setInterval(f, 1)",
+      "queueMicrotask(f)",
+      'c.getContext("webgl")',
+      "new WebGLRenderer()",
+      "navigator.gpu",
+      "new Worker(u)",
+      "new Audio(u).play()",
+      "new AudioContext()",
+      "new ResizeObserver(f)",
+      "fetch(u)",
+      'import("x")',
+      "eval(s)",
+      "new Function(s)",
+      "Promise.resolve()",
+      "async function f() {}",
+      "await img.decode()",
+      "d3.json(u).then(f)",
+      "el.animate([], 1000)",
+      "gsap.ticker.add(f)",
+      "gsap.delayedCall(1, f)",
+      "ScrollTrigger.create({})",
+      "lottie.loadAnimation({})",
+      "new THREE.Scene()",
+      "window.__hfLottie = []",
+      "window.onresize = f",
+      'el["onclick"] = f',
+      "document.head.appendChild(s)",
+      "document.body.append(s)",
+      "new WebGPURenderer()",
+      'customElements.define("x-a", A)',
+      "CSS.registerProperty(p)",
+      "new WebSocket(u)",
+      "new EventSource(u)",
+      "Draggable.create(el)",
+      "anime({ loop: true })",
+      'document.documentElement.style.setProperty("--x", "1")',
+      'document.getElementsByTagName("head")[0]',
+      'document.querySelector("body").append(s)',
+      "gsap.to(el, { x: 1, repeat: -1 })",
+      "onresize = f",
+      'Object.defineProperty(window, "__ready", { value: true })',
+      "matchMedia(q).addListener(f)",
+      "tl.repeat(-1)",
+      "document.fonts.add(face)",
+      "document.adoptedStyleSheets = [sheet]",
+      'history.pushState({}, "", u)',
+      'new BroadcastChannel("c")',
+      "gsap.to(window.__shared, { value: 200, duration: 10 })",
+    ];
+    const files: Record<string, string> = {};
+    const hosts = leaks
+      .map(
+        (_, i) =>
+          `<div data-composition-id="s${i}" data-composition-src="compositions/s${i}.html" data-start="0" data-duration="1"></div>`,
+      )
+      .join("\n");
+    files["index.html"] = `<!doctype html><html><head></head><body>
+  <div data-composition-id="main" data-width="1920" data-height="1080" data-duration="1">${hosts}</div></body></html>`;
+    leaks.forEach((code, i) => {
+      files[`compositions/s${i}.html`] =
+        `<template id="s${i}-template"><div data-composition-id="s${i}"><p>${i}</p>
+  <script>${code};</script></div></template>`;
+    });
+    const doc = parseHTML(
+      await bundleToSingleHtml(makeTempProject(files), { sceneParts: true }),
+    ).document;
+    const unmarked = leaks.filter(
+      (_, i) =>
+        !doc.querySelector(`div[data-hf-scene="s${i}"]`)?.hasAttribute("data-hf-scene-no-swap"),
+    );
+    expect(unmarked).toEqual([]);
+  });
+
+  it("keeps the shared style's @import first when scene styles are split out", async () => {
+    const dir = makeTempProject({
+      "index.html": `<!doctype html><html><head><style>.root { color: red; }
+@import url("https://fonts.example.com/montserrat.css");</style></head><body>
+  <div data-composition-id="main" data-width="1920" data-height="1080" data-duration="2">
+    <div data-composition-id="a" data-composition-src="compositions/a.html" data-start="0" data-duration="2"></div>
+  </div></body></html>`,
+      "compositions/a.html": `<template id="a-template"><div data-composition-id="a"><style>.a { color: blue; }</style></div></template>`,
+    });
+    const shared = (html: string) =>
+      [...parseHTML(html).document.querySelectorAll("head style:not([data-hf-scene])")]
+        .map((el) => el.textContent ?? "")
+        .find((css) => css.includes(".root")) ?? "";
+    expect(shared(await bundleToSingleHtml(dir, { sceneParts: true })).startsWith("@import")).toBe(
+      true,
+    );
+    expect(shared(await bundleToSingleHtml(dir)).startsWith("@import")).toBe(true);
+  });
+
+  it("does not refuse a scene for words that only look like side effects", async () => {
+    const dir = makeTempProject({
+      "index.html": `<!doctype html><html><head></head><body>
+  <div data-composition-id="main" data-width="1920" data-height="1080" data-duration="1">
+    <div data-composition-id="a" data-composition-src="compositions/a.html" data-start="0" data-duration="1"></div>
+  </div></body></html>`,
+      "compositions/a.html": `<template id="a-template"><div data-composition-id="a"><p id="nt-ticker-track">A</p>
+  <script>
+    // animate the title in, then hold
+    const tl = gsap.timeline({ paused: true, onComplete: () => {} });
+    tl.to("#nt-ticker-track", { x: 10, className: "fade-animate" });
+    window.__timelines = window.__timelines || {};
+    window.__timelines["a"] = tl;
+    const state = {};
+    Object.defineProperty(state, "flap", { get: () => 1 });
+  </script></div></template>`,
+    });
+    const doc = parseHTML(await bundleToSingleHtml(dir, { sceneParts: true })).document;
+    expect(
+      doc.querySelector('div[data-hf-scene="a"]')?.getAttribute("data-hf-scene-no-swap"),
+    ).toBeNull();
+  });
+});
+
 describe("stampHfIds", () => {
   const project = () =>
     makeTempProject({

@@ -4,6 +4,7 @@ import { Readable } from "node:stream";
 import { join, resolve } from "node:path";
 import { createHash } from "node:crypto";
 import {
+  addScenePartsManifest,
   injectScriptsIntoHtml,
   insertBeforeCloseTag,
   stripEmbeddedRuntimeScripts,
@@ -318,6 +319,7 @@ export const PREVIEW_BUNDLE_OPTIONS = {
   runtime: "placeholder",
   inlineAssets: false,
   staticGuard: false,
+  sceneParts: true,
 } as const satisfies BundleOptions;
 
 export function registerPreviewRoutes(api: Hono, adapter: PreviewApiAdapter): void {
@@ -395,6 +397,7 @@ export function registerPreviewRoutes(api: Hono, adapter: PreviewApiAdapter): vo
         mainCompositionPath,
         mediaCodecProbeCache,
       );
+      bundled = addScenePartsManifest(bundled, [`meta[name="${PROJECT_SIGNATURE_META}"]`]);
       rememberPreview(builtKey, bundled);
       adapter.previewDocuments?.write(builtKey, bundled);
       return bundled;

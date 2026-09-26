@@ -33,6 +33,99 @@ import {
   planCompositionAssembly,
   EXTRACTED_COMPOSITION_ASSET_SELECTOR,
 } from "./compositionAssembly";
+import { SCENE_NO_SWAP_ATTR, SCENE_PART_ATTR } from "../sceneParts";
+
+// Anything a scene script can leave running, pending or registered outside its timeline, or that
+// throws when run again: only the timeline is torn down when a scene is swapped, so when unsure, refuse.
+const SIDE_EFFECT_RE =
+  /\b(addEventListener|requestAnimationFrame|requestIdleCallback|setTimeout|setInterval|queueMicrotask|getContext|WebGL\w*|WebGPU\w*|gpu|Worker|WebSocket|EventSource|Audio\w*|\w*Observer|fetch|import|eval|Function|Promise|async|await|delayedCall|ScrollTrigger|Draggable|anime|customElements|registerProperty|addListener|BroadcastChannel|pushState|replaceState|adoptedStyleSheets|documentElement|getElementsByTagName|lottie|THREE|__hf[A-Z]\w*)\b|\.then\s*\(|\.animate\s*\(|\.ticker\b|repeat\s*:\s*-1|\.repeat\s*\(\s*-1|defineProperty\s*\(\s*(window|globalThis|self|document)\b|\bfonts\s*\.\s*add\b|\.on[a-z]+\s*=(?!=)|\bon(resize|scroll|message|key\w+|click|pointer\w+|mouse\w+|wheel|visibilitychange|hashchange|popstate|error|load)\s*=(?!=)|\[\s*["']on[a-z]+["']\s*\]|document\s*\.\s*(head|body)\b|querySelector(All)?\(\s*["'](head|body)["']|\bgsap\s*\.\s*(?:to|from|fromTo)\s*\(|\bgsap\s*\.\s*timeline\s*\((?:[^()]|\([^()]*\))*\)\s*\.\s*(?:to|from|fromTo|set|add|call)\s*\(/;
+
+// npm packages that only define globals when loaded; lottie-web is absent because it scans the page on load.
+const SWAP_SAFE_LIBRARY_URL =
+  /^https:\/\/(cdn\.jsdelivr\.net\/npm|unpkg\.com)\/(gsap|three|d3|d3-[a-z-]+|topojson-client|clipper-lib)(@[^/]+)?\//;
+const isSwapSafeLibrary = (src: string) =>
+  URL.canParse(src) && SWAP_SAFE_LIBRARY_URL.test(new URL(src).href);
+
+/** Why an authored scene script cannot be swapped out cleanly, or null when it can. */
+function sceneScriptSwapRefusal(script: string): string | null {
+  const match = SIDE_EFFECT_RE.exec(script);
+  return match ? `its script uses ${match[0].trim()}` : null;
+}
+
+// A quoted string in a script, in any of the three quote styles.
+const STRING_LITERAL_RE = /(["'`])((?:\\.|(?!\1)[^\\\n])*?)\1/g;
+// Text ending where createElement takes its tag: that string makes a node, it selects none.
+const CREATES_ELEMENT_RE = /createElement\s*\(\s*$|createElementNS\s*\([^()]*,\s*$/;
+// A "*" after a comma is a later argument, like postMessage's target origin; selector calls take it first.
+const isNotASelector = (script: string, at: number, literal: string) =>
+  CREATES_ELEMENT_RE.test(script.slice(Math.max(0, at - 60), at)) ||
+  (literal.trim() === "*" && /,\s*$/.test(script.slice(Math.max(0, at - 20), at)));
+
+/** Marks each scene whose nodes a script outside it names by selector, id or class: a swap would strand it. */
+export function refuseSwapsReachedByRootScripts(document: Document, rootScripts: string[]): void {
+  const hosts = [...document.querySelectorAll(`[${SCENE_PART_ATTR}]`)];
+  const byName = new Map<string, Set<Element>>();
+  for (const host of hosts) {
+    for (const el of [host, ...host.querySelectorAll("*")]) {
+      for (const name of [
+        el.localName,
+        el.id && `#${el.id}`,
+        ...[...el.classList].map((c) => `.${c}`),
+      ]) {
+        if (name) byName.set(name, (byName.get(name) ?? new Set()).add(host));
+      }
+    }
+  }
+  // A selector naming a tag the document lacks cannot match, so it is not worth a query.
+  const namesKnown = (selector: string) =>
+    selector
+      .split(",")
+      .some((alt) =>
+        alt
+          .split(/[\s>+~]+/)
+          .every(
+            (part) =>
+              !/^[a-z][\w-]*$/i.test(part) ||
+              byName.has(part.toLowerCase()) ||
+              document.querySelector(part) !== null,
+          ),
+      );
+  const literals = new Set(
+    rootScripts.flatMap((s) =>
+      [...s.matchAll(STRING_LITERAL_RE)]
+        .filter((m) => !isNotASelector(s, m.index, m[2] ?? ""))
+        .map((m) => m[2] ?? ""),
+    ),
+  );
+  for (const literal of literals) {
+    const open = hosts.filter((host) => !host.hasAttribute(SCENE_NO_SWAP_ATTR));
+    if (open.length === 0) return;
+    // Tag names match in any case; ids and classes do not.
+    const reached =
+      literal.trim() === "*"
+        ? open
+        : /^[A-Za-z_][\w-]*$/.test(literal)
+          ? [literal.toLowerCase(), `#${literal}`, `.${literal}`].flatMap((name) => [
+              ...(byName.get(name) ?? []),
+            ])
+          : /[#.[:>]|[\w\]*] *[\s,]+ *[\w*]/.test(literal) &&
+              literal.length <= 120 &&
+              namesKnown(literal)
+            ? open.filter((host) => reaches(host, literal))
+            : [];
+    for (const host of reached)
+      if (!host.hasAttribute(SCENE_NO_SWAP_ATTR))
+        host.setAttribute(SCENE_NO_SWAP_ATTR, `a script outside the scene selects ${literal}`);
+  }
+}
+
+const reaches = (host: Element, selector: string) => {
+  try {
+    return host.matches(selector) || host.querySelector(selector) !== null;
+  } catch {
+    return false;
+  }
+};
 
 // ---------------------------------------------------------------------------
 // Public interface
@@ -132,15 +225,19 @@ export interface InlineSubCompositionsOptions {
    * Defaults to `console.warn`.
    */
   onMissingComposition?: (srcPath: string, reason?: string) => void;
+  /** Tag each top-level host with `data-hf-scene` and report every part's scene, for preview swaps. */
+  tagScenes?: boolean;
 }
 
 export interface InlineSubCompositionsResult {
   styles: string[];
+  /** With `tagScenes`: the scene each entry of `styles` belongs to. */
+  styleScenes: string[];
   scripts: string[];
   externalScriptSrcs: string[];
   scriptItems: Array<
-    | { kind: "inline"; content: string }
-    | ({ kind: "external"; src: string } & ExternalScriptAttributes)
+    | { kind: "inline"; content: string; scene?: string }
+    | ({ kind: "external"; src: string; scene?: string } & ExternalScriptAttributes)
   >;
   externalLinks: { href: string; rel: string; crossorigin?: string }[];
   variablesByComp: Record<string, Record<string, unknown>>;
@@ -197,9 +294,11 @@ export function inlineSubCompositions(
     scriptErrorLabel = "[HyperFrames] composition script error:",
     onMissingComposition,
     assetExists,
+    tagScenes = false,
   } = options;
 
   const styles: string[] = [];
+  const styleScenes: string[] = [];
   const scripts: string[] = [];
   const externalScriptSrcs: string[] = [];
   const scriptItems: InlineSubCompositionsResult["scriptItems"] = [];
@@ -209,9 +308,14 @@ export function inlineSubCompositions(
   const seenLinkHrefs = new Set<string>();
   const variablesByComp: Record<string, Record<string, unknown>> = {};
 
-  const queue = hosts.map((element) => ({ element, ancestry: [] as string[] }));
+  const sceneHosts = new Map<string, Element>();
+  const queue = hosts.map((element) => ({
+    element,
+    ancestry: [] as string[],
+    scene: undefined as string | undefined,
+  }));
   for (let queueIndex = 0; queueIndex < queue.length; queueIndex += 1) {
-    const { element: hostEl, ancestry } = queue[queueIndex]!;
+    const { element: hostEl, ancestry, scene: parentScene } = queue[queueIndex]!;
     const src = hostEl.getAttribute("data-composition-src");
     if (!src) continue;
 
@@ -276,6 +380,18 @@ export function inlineSubCompositions(
     const scopeCompId = plan.authoredCompositionId || "";
     const scriptCompositionId = plan.scriptCompositionId || "";
     const runtimeScope = runtimeCompId ? buildScopeSelector(runtimeCompId) : "";
+    const scene = tagScenes ? (parentScene ?? (runtimeCompId || src)) : undefined;
+    if (scene && !parentScene) {
+      hostEl.setAttribute(SCENE_PART_ATTR, scene);
+      sceneHosts.set(scene, hostEl);
+    }
+    // Lazy, so renders (no scene hosts) never run the refusal checks.
+    const refuseSwap = (why: () => string | null) => {
+      const host = scene ? sceneHosts.get(scene) : undefined;
+      if (!host || host.hasAttribute(SCENE_NO_SWAP_ATTR)) return;
+      const reason = why();
+      if (reason) host.setAttribute(SCENE_NO_SWAP_ATTR, reason);
+    };
 
     // Variable merging (bundler feature). Read declared defaults from the
     // document element (full-document sub-comps) AND the inner composition root
@@ -340,15 +456,24 @@ export function inlineSubCompositions(
     // (GSAP from a CDN) has to run before the content scripts calling into it.
     for (const styleEl of plan.styleSources) {
       styles.push(scopeSubStyle(styleEl.textContent || ""));
+      if (scene) styleScenes.push(scene);
       styleEl.remove();
     }
 
-    // Head- and content-sourced scripts take the same branch. The head loop
-    // used to handle only `src`, so an inline <head> script was silently
-    // discarded on render while the mount path executed it.
+    // Head- and content-sourced scripts take the same branch.
     for (const scriptEl of plan.scriptSources) {
       const externalSrc = resolveSubAssetPath(scriptEl.getAttribute("src"));
       const type = (scriptEl.getAttribute("type") || "").trim().toLowerCase();
+      // A swap never re-runs external or module scripts: only a known library that just defines globals is safe.
+      refuseSwap(() =>
+        type === "importmap" || type === "module"
+          ? "it runs a module script or import map"
+          : !externalSrc
+            ? sceneScriptSwapRefusal(scriptEl.textContent || "")
+            : isSwapSafeLibrary(externalSrc)
+              ? null
+              : "it runs a script that is not a known library",
+      );
       if (type === "importmap") {
         const map = parseImportMap(scriptEl.textContent || "", (url) => {
           // The rebase drops a leading "./" and a trailing "/"; an import map address needs both.
@@ -375,6 +500,7 @@ export function inlineSubCompositions(
           kind: "external",
           src: externalSrc,
           ...readExternalScriptAttributes(scriptEl),
+          ...(scene ? { scene } : {}),
         });
       } else {
         const wrappedScript = scriptCompositionId
@@ -389,7 +515,7 @@ export function inlineSubCompositions(
             )
           : wrapInlineScriptWithErrorBoundary(scriptEl.textContent || "", scriptErrorLabel);
         scripts.push(wrappedScript);
-        scriptItems.push({ kind: "inline", content: wrappedScript });
+        scriptItems.push({ kind: "inline", content: wrappedScript, ...(scene ? { scene } : {}) });
       }
       scriptEl.remove();
     }
@@ -484,12 +610,13 @@ export function inlineSubCompositions(
       onMissingComposition?.(skipped.src, skipped.reason);
     }
     for (const nestedHost of nested.hosts) {
-      queue.push({ element: nestedHost.host, ancestry: nestedAncestry });
+      queue.push({ element: nestedHost.host, ancestry: nestedAncestry, scene });
     }
   }
 
   return {
     styles,
+    styleScenes,
     scripts,
     externalScriptSrcs,
     scriptItems,
