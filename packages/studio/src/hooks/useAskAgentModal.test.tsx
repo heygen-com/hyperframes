@@ -87,6 +87,7 @@ describe("handleAgentModalSubmit", () => {
     expect(copyTextToClipboard).not.toHaveBeenCalled();
     expect(hook.current.agentModalOpen).toBe(false);
     expect(hook.current.copiedAgentPrompt).toBe(false);
+    expect(hook.current.agentPromptToHost).toBe(true);
   });
 
   it("copies the prompt to the clipboard when no host takes it", async () => {
@@ -99,5 +100,6 @@ describe("handleAgentModalSubmit", () => {
     expect(copyTextToClipboard).toHaveBeenCalledTimes(1);
     expect(String(vi.mocked(copyTextToClipboard).mock.calls[0]?.[0])).toContain("make it red");
     expect(hook.current.copiedAgentPrompt).toBe(true);
+    expect(hook.current.agentPromptToHost).toBe(false);
   });
 });

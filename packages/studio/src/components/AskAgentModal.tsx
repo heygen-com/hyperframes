@@ -29,6 +29,8 @@ export interface AskAgentModalProps {
   selectionLabel: string;
   contextPreview?: string;
   anchorPoint?: AgentModalAnchorPoint | null;
+  /** What submitting does: copy the prompt to the clipboard, or send it to the host's agent. */
+  action?: "copy" | "send";
   onSubmit: (instruction: string) => void;
   onClose: () => void;
 }
@@ -37,9 +39,11 @@ export function AskAgentModal({
   selectionLabel,
   contextPreview,
   anchorPoint = null,
+  action = "copy",
   onSubmit,
   onClose,
 }: AskAgentModalProps) {
+  const title = action === "send" ? "Ask the AI agent" : "Copy prompt to AI agent";
   const [value, setValue] = useState("");
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
@@ -75,7 +79,7 @@ export function AskAgentModal({
         ref={containerRef}
         role="dialog"
         aria-modal="true"
-        aria-label="Copy prompt to AI agent"
+        aria-label={title}
         tabIndex={-1}
         className={`w-[480px] rounded-2xl border border-neutral-800 bg-neutral-950 shadow-2xl outline-hidden ${
           anchorPoint ? "fixed" : ""
@@ -85,7 +89,7 @@ export function AskAgentModal({
       >
         <div className="flex items-center justify-between px-5 py-4 border-b border-neutral-800/60">
           <div>
-            <h3 className="text-sm font-medium text-neutral-200">Copy prompt to AI agent</h3>
+            <h3 className="text-sm font-medium text-neutral-200">{title}</h3>
             <p className="text-xs text-neutral-500 mt-0.5">
               {selectionLabel.length > 50 ? `${selectionLabel.slice(0, 49)}…` : selectionLabel}
             </p>
@@ -135,14 +139,15 @@ export function AskAgentModal({
         </div>
         <div className="flex items-center justify-between px-5 py-3 border-t border-neutral-800/60">
           <span className="text-[11px] text-neutral-600">
-            {navigator.platform.includes("Mac") ? "⌘" : "Ctrl"}+Enter to copy
+            {navigator.platform.includes("Mac") ? "⌘" : "Ctrl"}+Enter to{" "}
+            {action === "send" ? "send" : "copy"}
           </span>
           <button
             className="px-4 py-1.5 rounded-lg bg-studio-accent/90 text-xs font-medium text-neutral-950 hover:bg-studio-accent disabled:opacity-40 disabled:cursor-not-allowed"
             disabled={!value.trim()}
             onClick={handleSubmit}
           >
-            Copy prompt
+            {action === "send" ? "Send to agent" : "Copy prompt"}
           </button>
         </div>
       </div>

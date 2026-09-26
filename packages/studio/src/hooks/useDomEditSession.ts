@@ -149,6 +149,7 @@ export function useDomEditSession({
     agentModalAnchorPoint,
     copiedAgentPrompt,
     agentPromptSelectionContext,
+    agentPromptToHost,
     setAgentModalOpen,
     setAgentPromptSelectionContext,
     setAgentModalAnchorPoint,
@@ -507,6 +508,7 @@ export function useDomEditSession({
     agentModalAnchorPoint,
     copiedAgentPrompt,
     agentPromptSelectionContext,
+    agentPromptToHost,
     domEditSelectionRef,
     // Callbacks
     handleTimelineElementSelect,

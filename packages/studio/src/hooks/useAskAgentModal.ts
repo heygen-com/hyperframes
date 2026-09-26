@@ -162,6 +162,8 @@ export function useAskAgentModal({
     agentModalAnchorPoint,
     copiedAgentPrompt,
     agentPromptSelectionContext,
+    /** The modal sends to the host rather than copying — its wording follows. */
+    agentPromptToHost: !!onAgentPrompt,
 
     // Setters (consumed by handlePreviewCanvasMouseDown and other callers)
     setAgentModalOpen,

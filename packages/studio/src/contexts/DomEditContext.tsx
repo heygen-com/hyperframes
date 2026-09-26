@@ -94,6 +94,7 @@ export interface DomEditSelectionValue extends Pick<
   | "agentModalOpen"
   | "agentModalAnchorPoint"
   | "copiedAgentPrompt"
+  | "agentPromptToHost"
   | "agentPromptSelectionContext"
 > {}
 
@@ -147,6 +148,7 @@ export function DomEditProvider({
     agentModalOpen,
     agentModalAnchorPoint,
     copiedAgentPrompt,
+    agentPromptToHost,
     agentPromptSelectionContext,
     domEditSelectionRef,
     handleTimelineElementSelect,
@@ -404,6 +406,7 @@ export function DomEditProvider({
       agentModalOpen,
       agentModalAnchorPoint,
       copiedAgentPrompt,
+      agentPromptToHost,
       agentPromptSelectionContext,
     }),
     [
@@ -418,6 +421,7 @@ export function DomEditProvider({
       agentModalOpen,
       agentModalAnchorPoint,
       copiedAgentPrompt,
+      agentPromptToHost,
       agentPromptSelectionContext,
     ],
   );
