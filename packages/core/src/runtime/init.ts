@@ -2422,8 +2422,8 @@ export function initSandboxRuntimeModular(): void {
   const groupHiddenLast = new WeakMap<Element, boolean>();
   const groupHasUncapturedMember = (groupId: string, currentTime: number): boolean => {
     for (const el of document.querySelectorAll("audio[data-start]")) {
-      if (!isMediaElement(el) || audioGroupOf(el) !== groupId || webAudio.routesElement(el))
-        continue;
+      if (!isMediaElement(el) || audioGroupOf(el) !== groupId) continue;
+      if (webAudio.routesElement(el) || isSilencedByHidden(el)) continue;
       const start = resolveAbsoluteMediaStartSeconds(el);
       const duration = parseStrictFiniteTimingNumber(el.dataset.duration);
       const end = duration != null && duration > 0 ? start + duration : Infinity;

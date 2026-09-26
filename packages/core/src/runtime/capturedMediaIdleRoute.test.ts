@@ -331,6 +331,25 @@ describe("an audio group muted or unmuted while playing", () => {
     expect(stopAll).not.toHaveBeenCalled();
   });
 
+  it("does not restart the mix to unmute a group whose unfinished member is muted itself", async () => {
+    mount(
+      `<hf-audio-group id="music" data-hidden=""></hf-audio-group>` +
+        `<audio id="bed" data-start="0" data-duration="10" data-audio-group="music" data-hidden="" src="/assets/music.mp3"></audio>` +
+        `<audio id="vo" data-start="0" data-duration="10" src="/assets/vo.mp3"></audio>`,
+    );
+    initSandboxRuntimeModular();
+    await flush();
+    window.__player?.play();
+    await flush();
+    const stopAll = vi.spyOn(WebAudioTransport.prototype, "stopAll");
+
+    document.getElementById("music")!.removeAttribute("data-hidden");
+    stepFrames(1);
+    await flush();
+
+    expect(stopAll).not.toHaveBeenCalled();
+  });
+
   it("brings a member that starts after the unmute in through the group", async () => {
     mount(
       `<hf-audio-group id="music" data-hidden=""></hf-audio-group>` +
