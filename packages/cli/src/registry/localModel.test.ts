@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const readConfig = vi.fn();
-const writeConfig = vi.fn();
+const disk = { consent: undefined as boolean | undefined };
 const existsSync = vi.fn();
 const readFileSync = vi.fn();
 const unlinkSync = vi.fn();
@@ -10,7 +10,8 @@ const digest = vi.fn();
 
 vi.mock("../telemetry/config.js", () => ({
   readConfig: () => readConfig(),
-  writeConfig: (c: unknown) => writeConfig(c),
+  updateLocalModelConsent: (decide: (onDisk: boolean | undefined) => boolean | undefined) =>
+    (disk.consent = decide(disk.consent)),
 }));
 vi.mock("node:fs", async (importOriginal) => ({
   ...(await importOriginal<typeof import("node:fs")>()),
@@ -45,6 +46,7 @@ const {
   localTokenizerPath,
   localModelPath,
   recordLocalModelConsent,
+  assumeLocalModelConsent,
 } = await import("./localModel.js");
 
 function returnMatchingDigests(rounds = 1): void {
@@ -64,7 +66,7 @@ function makeDownloadsAppearOnDisk(): void {
 beforeEach(() => {
   readConfig.mockReturnValue({});
   existsSync.mockReturnValue(false);
-  writeConfig.mockReset();
+  disk.consent = undefined;
   readFileSync.mockReturnValue(Buffer.from("artifact"));
   unlinkSync.mockReset();
   downloadFile.mockReset();
@@ -78,20 +80,20 @@ describe("consent state", () => {
     expect(localModelConsent()).toBeUndefined();
   });
 
-  it("persists a yes", () => {
-    readConfig.mockReturnValue({ telemetryEnabled: true });
+  it("records a person's answer over whatever was saved", () => {
+    disk.consent = false;
     recordLocalModelConsent(true);
-    expect(writeConfig).toHaveBeenCalledWith(
-      expect.objectContaining({ localEmbeddingEnabled: true }),
-    );
+    expect(disk.consent).toBe(true);
+    recordLocalModelConsent(false);
+    expect(disk.consent).toBe(false);
   });
 
-  it("persists a no without discarding other settings", () => {
-    readConfig.mockReturnValue({ telemetryEnabled: false, anonymousId: "abc" });
-    recordLocalModelConsent(false);
-    expect(writeConfig).toHaveBeenCalledWith(
-      expect.objectContaining({ localEmbeddingEnabled: false, anonymousId: "abc" }),
-    );
+  it("assumes yes only for a question never asked, and keeps a saved no", () => {
+    disk.consent = undefined;
+    expect(assumeLocalModelConsent()).toBe(true);
+    disk.consent = false;
+    expect(assumeLocalModelConsent()).toBe(false);
+    expect(disk.consent).toBe(false);
   });
 });
 
@@ -171,7 +173,7 @@ describe("status", () => {
     // The caller owns the prompt, because only it knows whether word matching
     // already answered well enough to make the offer pointless.
     expect(() => localModelStatus()).not.toThrow();
-    expect(writeConfig).not.toHaveBeenCalled();
+    expect(disk.consent).toBeUndefined();
   });
 });
 

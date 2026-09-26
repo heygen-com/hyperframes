@@ -1,3 +1,4 @@
+// fallow-ignore-file code-duplication
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { homedir } from "node:os";
 import { join } from "node:path";
@@ -34,6 +35,15 @@ vi.mock("node:fs", () => ({
   rmSync: vi.fn((path: string) => {
     fsState.files.delete(path);
   }),
+  // The settings lock: an exclusive create, released by rmSync.
+  openSync: vi.fn((path: string, flag: string) => {
+    if (flag === "wx" && fsState.files.has(path))
+      throw Object.assign(new Error(`EEXIST: ${path}`), { code: "EEXIST" });
+    fsState.files.set(path, "");
+    return 3;
+  }),
+  closeSync: vi.fn(),
+  statSync: vi.fn(() => ({ mtimeMs: Date.now() })),
 }));
 
 // The backfill warning is suppressed under a telemetry runtime override (a

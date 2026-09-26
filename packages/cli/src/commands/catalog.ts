@@ -20,6 +20,7 @@ import { finishCommand } from "../utils/commandResult.js";
 import { runAdd } from "./add.js";
 import { hasNoSearchableTokens, searchByWords } from "../registry/localSearch.js";
 import {
+  assumeLocalModelConsent,
   downloadOfferMessage,
   ensureLocalModel,
   type LocalModelStatus,
@@ -62,10 +63,12 @@ async function prepareOnDeviceTier(opts: {
   };
 
   const status = opts.status;
-  if (!opts.assumedYes && status.status === "declined") {
-    warn(
-      "on-device search skipped: the model download was previously declined. Re-run with --yes to consent.",
-    );
+  // A person at a terminal may reverse their own no with --yes; an unwatched run only answers a question never asked.
+  const unwatchedYes = opts.assumedYes && !opts.canPrompt;
+  const declined =
+    "on-device search skipped: the model download was previously declined. Re-run with --yes in a terminal to consent.";
+  if (status.status === "declined" && !opts.assumedYes) {
+    warn(declined);
     return warnings;
   }
 
@@ -90,6 +93,22 @@ async function prepareOnDeviceTier(opts: {
     }
   }
 
+  // Before anything is installed, so a no saved meanwhile stops the runtime install too.
+  if (status.status === "declined" || status.status === "not-asked") {
+    if (!unwatchedYes) recordLocalModelConsent(true);
+    else {
+      const agreed = assumeLocalModelConsent();
+      if (agreed !== true) {
+        warn(
+          agreed === false
+            ? declined
+            : "on-device search skipped: could not save the answer in settings.",
+        );
+        return warnings;
+      }
+    }
+  }
+
   // Before the model download: fetching 32 MB and then finding the runtime missing wastes it.
   const runtime = await ensureLocalRuntime();
   if (!runtime.ok) {
@@ -97,9 +116,6 @@ async function prepareOnDeviceTier(opts: {
     return warnings;
   }
 
-  if (status.status === "declined" || status.status === "not-asked") {
-    recordLocalModelConsent(true);
-  }
   const model = await ensureLocalModel();
   const revisionStale =
     opts.artifactRevision !== undefined && cachedLocalVectorRevision() !== opts.artifactRevision;

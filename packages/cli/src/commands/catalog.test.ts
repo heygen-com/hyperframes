@@ -1,3 +1,4 @@
+// fallow-ignore-file code-duplication
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { RegistryItem } from "@hyperframes/core";
@@ -84,7 +85,10 @@ const state = vi.hoisted(() => ({
   modelStatus: "ready" as "ready" | "not-asked" | "declined" | "unavailable",
   confirmAnswer: true as boolean,
   consentRecorded: [] as boolean[],
+  consentSavedMeanwhile: undefined as boolean | undefined,
+  consentWriteFails: false,
   downloads: 0,
+  runtimeInstalls: 0,
   runtimeAvailable: true,
 }));
 
@@ -133,14 +137,23 @@ vi.mock("../registry/localModel.js", () => ({
   recordLocalModelConsent: (enabled: boolean) => {
     state.consentRecorded.push(enabled);
   },
+  assumeLocalModelConsent: () => {
+    if (state.consentWriteFails) return undefined;
+    const onDisk = state.consentSavedMeanwhile ?? state.consentRecorded.at(-1);
+    if (onDisk !== undefined) return onDisk;
+    state.consentRecorded.push(true);
+    return true;
+  },
   downloadOfferMessage: () => "offer",
   nonInteractiveConsentMessage: () => "consent",
 }));
 
 vi.mock("../registry/localEmbedder.js", () => ({
   // Left unmocked this would run a real npm install under vitest.
-  ensureLocalRuntime: async () =>
-    state.runtimeAvailable ? { ok: true } : { ok: false, reason: "installing it failed" },
+  ensureLocalRuntime: async () => {
+    state.runtimeInstalls += 1;
+    return state.runtimeAvailable ? { ok: true } : { ok: false, reason: "installing it failed" };
+  },
 }));
 
 vi.mock("../registry/localSemantic.js", () => ({
@@ -252,7 +265,10 @@ beforeEach(() => {
   state.rankingError = null;
   state.confirmAnswer = true;
   state.consentRecorded = [];
+  state.consentSavedMeanwhile = undefined;
+  state.consentWriteFails = false;
   state.downloads = 0;
+  state.runtimeInstalls = 0;
   state.runtimeAvailable = true;
   state.registry = [block("count-up"), block("fade-through"), component("whip-pan")];
   state.indexed = ["count-up", "fade-through", "whip-pan"];
@@ -666,6 +682,48 @@ describe("the on-device download offer", () => {
 
     expect(state.downloads).toBe(0);
     expect(state.consentRecorded).toEqual([]);
+  });
+
+  it("lets --yes in a run nobody watches answer a question never asked", async () => {
+    state.modelStatus = "not-asked";
+
+    await runEnvelope({ query: "count up", "on-device": true, yes: true });
+
+    expect([state.downloads, state.consentRecorded]).toEqual([1, [true]]);
+  });
+
+  it("keeps a recorded no against --yes in a run nobody watches, installing nothing", async () => {
+    state.consentRecorded = [false];
+
+    const { warnings } = await runEnvelope({ query: "count up", "on-device": true, yes: true });
+
+    expect([state.runtimeInstalls, state.downloads, state.consentRecorded]).toEqual([
+      0,
+      0,
+      [false],
+    ]);
+    expect(warnings?.join(" ")).toContain("previously declined");
+  });
+
+  it("installs nothing, and does not claim a no, when the answer cannot be saved", async () => {
+    state.modelStatus = "not-asked";
+    state.consentWriteFails = true;
+
+    const { warnings } = await runEnvelope({ query: "count up", "on-device": true, yes: true });
+
+    expect([state.runtimeInstalls, state.downloads]).toEqual([0, 0]);
+    expect(warnings?.join(" ")).toContain("could not save the answer");
+    expect(warnings?.join(" ")).not.toContain("previously declined");
+  });
+
+  it("keeps a no saved by someone else while the run was starting", async () => {
+    state.modelStatus = "not-asked";
+    state.consentSavedMeanwhile = false;
+
+    const { warnings } = await runEnvelope({ query: "count up", "on-device": true, yes: true });
+
+    expect([state.runtimeInstalls, state.downloads, state.consentRecorded]).toEqual([0, 0, []]);
+    expect(warnings?.join(" ")).toContain("previously declined");
   });
 });
 
