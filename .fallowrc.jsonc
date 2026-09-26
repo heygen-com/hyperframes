@@ -893,7 +893,6 @@
       "packages/studio/src/components/sidebar/BlocksTab.tsx",
       "packages/studio/src/components/sidebar/CompositionsTab.tsx",
       "packages/studio/src/components/sidebar/LeftSidebar.tsx",
-      "packages/studio/src/components/storyboard/StoryboardLoaded.tsx",
       "packages/studio/src/components/StudioRightPanel.tsx",
       "packages/studio/src/components/StudioToast.tsx",
       "packages/studio/src/components/ui/Tooltip.tsx",

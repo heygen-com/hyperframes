@@ -4,11 +4,11 @@ How a `storyboard: yes` run earns fidelity one pass at a time: the plan is revie
 
 This is the shared process for any workflow that plans on a storyboard. The contracts it leans on live next door: interaction mode, gate types, and the comments channel in `brief-contract.md`; the `STORYBOARD.md` format, the `outline → built → animated` statuses, and the comments sidecar in `storyboard-format.md`. A workflow's SKILL.md says **when** its steps hit each pass and supplies its **sketch stand-ins** (what the plain blocks represent); how the loop runs is defined here, once. The stage mechanics between the passes — audio, frames, assembly, transitions, captions, verify — live in `production-loop.md`; this file owns only the user-facing pauses.
 
-## § 1 — The plan, on a live board
+## § 1 — The plan, in chat
 
-Open the **storyboard board** before presenting the plan: run `npx hyperframes preview --background` from the project directory, confirm it is serving, and open `http://localhost:<port>/?view=storyboard#project/<project-name>`. This is an early planning surface, not the final composition preview; it may open before composition checks. The plan appears as frame cards and refreshes as work lands.
+Present the plan in chat and keep it in `STORYBOARD.md`, which is the source of truth as work lands.
 
-Present the plan as a proposal (shape: `hyperframes-creative/references/story-spine.md` § 3): open by echoing **"This video tells [audience] that [message]"**, then the frame table — one row per frame: frame · beat (type, duration) · on screen · why (its `narrativeRole`, traced to the message). Hand the board URL with it, noting feedback lands in both places — comment on the board or reply here, one revision loop — and that a board submit still needs one reply here (anything) to get picked up.
+Present the plan as a proposal (shape: `hyperframes-creative/references/story-spine.md` § 3): open by echoing **"This video tells [audience] that [message]"**, then the frame table — one row per frame: frame · beat (type, duration) · on screen · why (its `narrativeRole`, traced to the message). Feedback arrives as a reply here, one revision loop.
 
 In the same message ask two things: **(a)** approve or request changes, and **(b)** **sketches first** (recommended — a quick wireframe look check right after this approval) or skip sketches and build in one go. Iterate until approved — feedback arrives in chat or as the comments file (`brief-contract.md` § 1, the comments channel): revise exactly the frames it names, clear the file, re-present.
 

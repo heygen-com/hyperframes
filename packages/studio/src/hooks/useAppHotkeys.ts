@@ -189,7 +189,7 @@ export function useAppHotkeys({
       // earlier file edit (which would ALSO leave the caption change intact).
       const captionState = useCaptionStore.getState();
       // Only when the caption preview is actually visible: isEditMode stays
-      // true while the preview is hidden (storyboard view), and eating ⌘Z
+      // true while the preview is hidden, and eating ⌘Z
       // there would pop invisible caption edits instead of file history.
       if (captionState.isEditMode && isCaptionPreviewVisible()) {
         const restored = direction === "undo" ? captionState.undo() : captionState.redo();

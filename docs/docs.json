@@ -203,8 +203,7 @@
           {
             "group": "Start in Studio",
             "pages": [
-              "studio/index",
-              "studio/storyboard"
+              "studio/index"
             ]
           },
           {
