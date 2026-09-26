@@ -204,6 +204,11 @@ export function inlineSubCompositions(
   hosts: Element[],
   options: InlineSubCompositionsOptions,
 ): InlineSubCompositionsResult {
+  let rootSrcs: Set<string> | undefined;
+  const rootScriptSrcs = () =>
+    (rootSrcs ??= new Set(
+      [...document.querySelectorAll("script[src]")].map((el) => el.getAttribute("src")!.trim()),
+    ));
   const {
     resolveHtml,
     parseHtml,
@@ -383,21 +388,21 @@ export function inlineSubCompositions(
       styleEl.remove();
     }
 
-    // Head- and content-sourced scripts take the same branch. The head loop
-    // used to handle only `src`, so an inline <head> script was silently
-    // discarded on render while the mount path executed it.
+    // Head- and content-sourced scripts take the same branch.
     for (const scriptEl of plan.scriptSources) {
       const externalSrc = resolveSubAssetPath(scriptEl.getAttribute("src"));
       const type = (scriptEl.getAttribute("type") || "").trim().toLowerCase();
-      // A swap never re-runs external or module scripts: a library URL is fine, a scene's own file is not.
+      // A swap never re-runs external or module scripts: only a URL the root document also loads is shared.
       refuseSwap(() =>
         type === "importmap" || type === "module"
           ? "it runs a module script or import map"
           : !externalSrc
             ? sceneScriptSwapRefusal(scriptEl.textContent || "")
-            : /^https?:\/\//i.test(externalSrc)
-              ? null
-              : "it runs a script file that is not a library URL",
+            : !/^https?:\/\//i.test(externalSrc)
+              ? "it runs a script file that is not a library URL"
+              : rootScriptSrcs().has(externalSrc)
+                ? null
+                : "it runs a script URL the root document does not load",
       );
       if (type === "importmap") {
         const map = parseImportMap(scriptEl.textContent || "", (url) => {

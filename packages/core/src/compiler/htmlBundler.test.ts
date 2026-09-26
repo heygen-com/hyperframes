@@ -2035,11 +2035,14 @@ describe("bundleToSingleHtml sceneParts", () => {
 
   it("tags each top-level scene's host, styles and scripts, with nested scenes in their parent's parts", async () => {
     const doc = parseHTML(await bundleToSingleHtml(film(), { sceneParts: true })).document;
-    expect(partsOf(doc, "a").sort()).toEqual(["div", "script", "style"]);
+    // The nested scene is reached after b, so a's parts come in two runs around b's.
+    expect(partsOf(doc, "a").sort()).toEqual(["div", "script", "script", "style", "style"]);
     expect(partsOf(doc, "b").sort()).toEqual(["div", "script", "style"]);
     expect(partsOf(doc, "n")).toEqual([]);
-    const aStyle = doc.querySelector('style[data-hf-scene="a"]')?.textContent ?? "";
-    const aScript = doc.querySelector('script[data-hf-scene="a"]')?.textContent ?? "";
+    const textOf = (selector: string) =>
+      [...doc.querySelectorAll(selector)].map((el) => el.textContent ?? "").join("\n");
+    const aStyle = textOf('style[data-hf-scene="a"]');
+    const aScript = textOf('script[data-hf-scene="a"]');
     expect(aStyle).toContain("a-text");
     expect(aStyle).toContain("n-text");
     expect(aScript).toContain("__aRan");
@@ -2052,6 +2055,44 @@ describe("bundleToSingleHtml sceneParts", () => {
       .join("\n");
     expect(shared).not.toMatch(/a-text|b-text|__aRan|__bRan/);
     expect(shared).toContain("__rootRan");
+  });
+
+  it("emits styles and scripts in render order, a nested scene and root variables included", async () => {
+    const dir = makeTempProject({
+      "index.html": `<!doctype html>
+<html><head><style>.root-text { color: black; }</style></head><body>
+  <div id="root" data-composition-id="main" data-width="1920" data-height="1080" data-duration="4">
+    <div data-composition-id="a" data-composition-src="compositions/a.html" data-start="0" data-duration="2"
+      data-variable-values='{"accent":"blue"}'></div>
+    <div data-composition-id="b" data-composition-src="compositions/b.html" data-start="2" data-duration="2"></div>
+  </div>
+</body></html>`,
+      "compositions/a.html": `<html data-composition-variables='[{"id":"accent","type":"string","label":"Accent","default":"red"}]'><body>
+<template id="a-template"><div data-composition-id="a">
+  <style>@keyframes pulse { to { opacity: 0.1; } }</style><p>A</p>
+  <div data-composition-id="n" data-composition-src="compositions/n.html"></div>
+  <script>window.__order = ["a"];</script>
+</div></template></body></html>`,
+      "compositions/n.html": `<template id="n-template"><div data-composition-id="n">
+  <style>@keyframes pulse { to { opacity: 0.3; } }</style><p>N</p><script>window.__order.push("n");</script>
+</div></template>`,
+      "compositions/b.html": `<template id="b-template"><div data-composition-id="b">
+  <style>@keyframes pulse { to { opacity: 0.2; } }</style><p>B</p><script>window.__order.push("b");</script>
+</div></template>`,
+    });
+    const order = (html: string) => {
+      const doc = parseHTML(html).document;
+      const text = (sel: string) =>
+        [...doc.querySelectorAll(sel)].map((el) => el.textContent ?? "");
+      const js = text("script").join("\n");
+      return {
+        css: text("style").join("").replace(/\s+/g, ""),
+        scripts: ['["a"]', 'push("n")', 'push("b")'].sort((x, y) => js.indexOf(x) - js.indexOf(y)),
+      };
+    };
+    expect(order(await bundleToSingleHtml(dir, { sceneParts: true }))).toEqual(
+      order(await bundleToSingleHtml(dir)),
+    );
   });
 
   it("leaves renders untagged", async () => {
@@ -2080,12 +2121,16 @@ describe("bundleToSingleHtml sceneParts", () => {
 
   it("marks a scene whose own script leaves work running as not swappable, and only that scene", async () => {
     const dir = makeTempProject({
-      "index.html": `<!doctype html><html><head></head><body>
+      "index.html": `<!doctype html><html><head>
+  <script src="https://cdn.example.com/gsap.min.js"></script></head><body>
   <div data-composition-id="main" data-width="1920" data-height="1080" data-duration="4">
     <div data-composition-id="a" data-composition-src="compositions/a.html" data-start="0" data-duration="2"></div>
     <div data-composition-id="b" data-composition-src="compositions/b.html" data-start="2" data-duration="2"></div>
     <div data-composition-id="c" data-composition-src="compositions/c.html" data-start="0" data-duration="2"></div>
+    <div data-composition-id="d" data-composition-src="compositions/d.html" data-start="2" data-duration="2"></div>
   </div></body></html>`,
+      "compositions/d.html": `<template id="d-template"><div data-composition-id="d"><p>D</p>
+  <script src="https://cdn.example.com/d-scene.js"></script></div></template>`,
       "compositions/c.html": `<template id="c-template"><div data-composition-id="c"><p>C</p>
   <script src="c.js"></script></div></template>`,
       "compositions/c.js": `document.querySelector("p").animate([], 1000);`,
@@ -2106,6 +2151,9 @@ describe("bundleToSingleHtml sceneParts", () => {
     expect(host("b")?.hasAttribute("data-hf-scene-no-swap")).toBe(false);
     expect(host("c")?.getAttribute("data-hf-scene-no-swap")).toBe(
       "it runs a script file that is not a library URL",
+    );
+    expect(host("d")?.getAttribute("data-hf-scene-no-swap")).toBe(
+      "it runs a script URL the root document does not load",
     );
     const rendered = await bundleToSingleHtml(dir);
     expect(rendered).not.toContain("data-hf-scene-no-swap");

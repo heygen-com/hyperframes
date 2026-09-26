@@ -671,15 +671,26 @@ function joinCssHoistingImports(sheets: string[]): string {
   return [...imports, ...cssParts].join("\n\n").trim();
 }
 
+type PartRun<T> = { scene?: string; chunks: T[] };
+
+function pushRun<T>(runs: PartRun<T>[], scene: string | undefined, chunk: T): void {
+  const last = runs.at(-1);
+  if (last && last.scene === scene) last.chunks.push(chunk);
+  else runs.push({ scene, chunks: [chunk] });
+}
+
 function coalesceHeadStylesAndBodyScripts(document: Document): void {
   const allHeadStyles = [...document.querySelectorAll("head style")];
-  const headStyleEls = allHeadStyles.filter((el) => !el.hasAttribute(SCENE_PART_ATTR));
-  if (allHeadStyles.length > 1) {
-    const merged = joinCssHoistingImports(headStyleEls.map((el) => el.textContent || ""));
-    if (merged) {
-      headStyleEls[0]!.textContent = merged;
-      for (let i = 1; i < headStyleEls.length; i++) headStyleEls[i]!.remove();
-    }
+  const untaggedRuns: Element[][] = [[]];
+  for (const el of allHeadStyles) {
+    if (el.hasAttribute(SCENE_PART_ATTR)) untaggedRuns.push([]);
+    else untaggedRuns.at(-1)!.push(el);
+  }
+  for (const run of allHeadStyles.length > 1 ? untaggedRuns : []) {
+    const merged = joinCssHoistingImports(run.map((el) => el.textContent || ""));
+    if (!merged) continue;
+    run[0]!.textContent = merged;
+    for (const el of run.slice(1)) el.remove();
   }
 
   const isPinned = (el: Element) =>
@@ -1006,16 +1017,10 @@ export async function bundleToSingleHtml(
       );
     },
   });
-  const sceneStyleChunks = new Map<string, string[]>();
-  const sceneScriptChunks = new Map<string, DeferredScriptChunk[]>();
-  const addScenePart = <T>(parts: Map<string, T[]>, scene: string, chunk: T) =>
-    parts.set(scene, [...(parts.get(scene) ?? []), chunk]);
-  const compStyleChunks: string[] = subCompResult.styleScenes.length
-    ? []
-    : [...subCompResult.styles];
-  subCompResult.styleScenes.forEach((scene, i) =>
-    addScenePart(sceneStyleChunks, scene, subCompResult.styles[i]!),
-  );
+  const styleRuns: PartRun<string>[] = [];
+  subCompResult.styles.forEach((css, i) => pushRun(styleRuns, subCompResult.styleScenes[i], css));
+  const scriptRuns: PartRun<DeferredScriptChunk>[] = [];
+  const compStyleChunks: string[] = [];
   const compScriptChunks: DeferredScriptChunk[] = [];
   const compExternalLinks = [...subCompResult.externalLinks];
   const compVariablesByComp: Record<string, Record<string, unknown>> = {
@@ -1024,8 +1029,7 @@ export async function bundleToSingleHtml(
   const seenCompScriptSrcs = new Set<string>();
   for (const scriptItem of subCompResult.scriptItems) {
     if (scriptItem.kind === "inline") {
-      if (scriptItem.scene) addScenePart(sceneScriptChunks, scriptItem.scene, scriptItem.content);
-      else compScriptChunks.push(scriptItem.content);
+      pushRun(scriptRuns, scriptItem.scene, scriptItem.content);
       continue;
     }
     const extSrc = scriptItem.src;
@@ -1042,8 +1046,7 @@ export async function bundleToSingleHtml(
       if (js != null) {
         const chunk = () =>
           preserveLocalScriptIntegrity(document, extSrc, resolveEntryPath) ? "" : js;
-        if (scriptItem.scene) addScenePart(sceneScriptChunks, scriptItem.scene, chunk);
-        else compScriptChunks.push(chunk);
+        pushRun(scriptRuns, scriptItem.scene, chunk);
         continue;
       }
     }
@@ -1212,31 +1215,22 @@ export async function bundleToSingleHtml(
     }
   }
 
-  if (compStyleChunks.length) {
-    const style = document.createElement("style");
-    style.textContent = compStyleChunks.join("\n\n");
-    document.head.appendChild(style);
-  }
+  for (const css of compStyleChunks) pushRun(styleRuns, undefined, css);
+  for (const chunk of compScriptChunks) pushRun(scriptRuns, undefined, chunk);
   const variablesByCompScript = buildVariablesByCompScript(compVariablesByComp);
   if (variablesByCompScript) {
-    compScriptChunks.unshift(variablesByCompScript);
+    if (scriptRuns[0] && !scriptRuns[0].scene) scriptRuns[0].chunks.unshift(variablesByCompScript);
+    else scriptRuns.unshift({ chunks: [variablesByCompScript] });
   }
-  if (compScriptChunks.length) {
-    const compScript = document.createElement("script");
-    compScript.textContent = joinJsChunks(
-      compScriptChunks.map((chunk) => (typeof chunk === "string" ? chunk : chunk())),
-    );
-    document.body.appendChild(compScript);
-  }
-  for (const [scene, chunks] of sceneStyleChunks) {
+  for (const { scene, chunks } of styleRuns) {
     const style = document.createElement("style");
-    style.setAttribute(SCENE_PART_ATTR, scene);
-    style.textContent = joinCssHoistingImports(chunks);
+    if (scene) style.setAttribute(SCENE_PART_ATTR, scene);
+    style.textContent = scene ? joinCssHoistingImports(chunks) : chunks.join("\n\n");
     document.head.appendChild(style);
   }
-  for (const [scene, chunks] of sceneScriptChunks) {
+  for (const { scene, chunks } of scriptRuns) {
     const script = document.createElement("script");
-    script.setAttribute(SCENE_PART_ATTR, scene);
+    if (scene) script.setAttribute(SCENE_PART_ATTR, scene);
     script.textContent = joinJsChunks(
       chunks.map((chunk) => (typeof chunk === "string" ? chunk : chunk())),
     );
