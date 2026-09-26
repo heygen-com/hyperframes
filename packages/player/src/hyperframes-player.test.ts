@@ -3336,6 +3336,8 @@ describe("HyperframesPlayer asset-ready gate", () => {
       probe: { start(): void };
     };
     const start = vi.spyOn(player.probe, "start");
+    // Mid-insertion the element already reads as connected; connectedCallback has not run yet.
+    Object.defineProperty(player, "isConnected", { get: () => true, configurable: true });
 
     player.iframe.dispatchEvent(new Event("load"));
 
