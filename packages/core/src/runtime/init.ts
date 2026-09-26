@@ -876,11 +876,9 @@ export function initSandboxRuntimeModular(): void {
       timelineRegistry: timelines,
       includeAuthoredTimingAttrs: true,
     });
-    // The root's own data-duration is the authored source of truth for
-    // composition length. Without it in the floor, a GSAP timeline that ends
-    // even slightly short of the declared duration shrinks the playable
-    // window — and duration-gated consumers (e.g. the studio's adapter
-    // selection) silently reject the runtime player, losing audio playback.
+    // getSafeTimelineDurationSeconds returns the declared length first; here it only sizes the
+    // stand-in timeline that resolveRootTimelineFromDocument builds for a root timeline with no
+    // length.
     const rootDeclaredSeconds = parseStrictFiniteTimingNumber(rootEl.getAttribute("data-duration"));
     const subCompositionEnds: number[] = [];
     const compositionNodes = Array.from(
@@ -1223,7 +1221,8 @@ export function initSandboxRuntimeModular(): void {
     fallback = 0,
     timingRevision?: number,
   ): number => {
-    // The root's declared length is the film's length, as in the render: a longer timeline is cut off.
+    // The root's declared length is the film's length, as in the render: a longer timeline is cut
+    // off.
     const declaredDuration = parseStrictFiniteTimingNumber(
       resolveRootCompositionElement()?.getAttribute("data-duration"),
     );
