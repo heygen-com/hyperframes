@@ -2,6 +2,40 @@ import { describe, it, expect } from "vitest";
 import { lintHyperframeHtml } from "../hyperframeLinter.js";
 
 describe("media rules", () => {
+  it.each([
+    'title="an unmuted muted crossorigin clip"',
+    "title='an unmuted muted crossorigin clip'",
+  ])("does not treat words in %s as media attributes", async (tooltip) => {
+    const html = `
+<html><body>
+  <div id="root" data-composition-id="c1" data-width="1920" data-height="1080">
+    <video id="v1" ${tooltip} src="a.mp4" data-start="0" data-duration="3"></video>
+    <audio id="a1" src="a.mp4" data-start="0" data-duration="3"></audio>
+  </div>
+</body></html>`;
+    const result = await lintHyperframeHtml(html);
+    const codes = result.findings.map((finding) => finding.code);
+
+    expect(codes).toContain("video_missing_muted");
+    expect(codes).toContain("video_audio_double_source");
+    expect(codes).not.toContain("media_crossorigin_breaks_preview");
+  });
+
+  it.each(["muted", 'muted=""', 'muted="false"', "MUTED"])(
+    "keeps %s as a present Boolean attribute",
+    async (mutedAttr) => {
+      const html = `
+<html><body>
+  <div id="root" data-composition-id="c1" data-width="1920" data-height="1080">
+    <video id="v1" ${mutedAttr} src="a.mp4" data-start="0" data-duration="3"></video>
+  </div>
+</body></html>`;
+      const result = await lintHyperframeHtml(html);
+
+      expect(result.findings.some((finding) => finding.code === "video_missing_muted")).toBe(false);
+    },
+  );
+
   it("reports error for duplicate media ids", async () => {
     const html = `
 <html><body>
