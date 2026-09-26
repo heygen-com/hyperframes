@@ -242,25 +242,22 @@ export function useSetAudioGroupAttribute({
     },
     [previewIframeRef],
   );
-  const revertLive = useCallback(
-    (groupId: string, attr: string) => {
+  const takeLiveBefore = useCallback(
+    (groupId: string, attr: string): (() => void) => {
       const key = audioGroupAttributeLiveKey(groupId, attr);
-      if (!liveBeforeRef.current.has(key)) return;
-      patchLiveGroupAttribute(
-        previewIframeRef.current,
-        groupId,
-        attr,
-        liveBeforeRef.current.get(key) ?? null,
-      );
-      syncStoredGroupAttribute(
-        groupId,
-        attr,
-        previewIframeRef.current?.contentDocument?.getElementById(groupId)?.getAttribute(attr) ??
-          null,
-      );
+      if (!liveBeforeRef.current.has(key)) return () => {};
+      const before = liveBeforeRef.current.get(key) ?? null;
       liveBeforeRef.current.delete(key);
+      return () => {
+        patchLiveGroupAttribute(previewIframeRef.current, groupId, attr, before);
+        syncStoredGroupAttribute(groupId, attr, before);
+      };
     },
     [previewIframeRef],
+  );
+  const revertLive = useCallback(
+    (groupId: string, attr: string) => takeLiveBefore(groupId, attr)(),
+    [takeLiveBefore],
   );
   const setQuiet = useCallback(
     async (
@@ -270,10 +267,11 @@ export function useSetAudioGroupAttribute({
       label: string,
     ): Promise<TimelineEditOutcome> => {
       const pid = projectForTimelineSave(isRecordingRef?.current, projectIdRef.current, showToast);
-      // Put back what `setLive` previewed and mirrored, so the preview and the
-      // store agree with the file again.
+      // Claimed at the start, so a gesture begun while this save is in flight
+      // records its own before-value instead of inheriting this one.
+      const restoreLive = takeLiveBefore(groupId, attr);
       const unsaved = (outcome: TimelineEditOutcome): TimelineEditOutcome => {
-        revertLive(groupId, attr);
+        restoreLive();
         return outcome;
       };
       if (typeof pid !== "string") return unsaved(pid);
@@ -292,7 +290,6 @@ export function useSetAudioGroupAttribute({
         });
         if (!written)
           return unsaved(failedTimelineSave("This group has no id to save it by", showToast));
-        liveBeforeRef.current.delete(audioGroupAttributeLiveKey(groupId, attr));
         syncStoredGroupAttribute(groupId, attr, value);
         return { status: "saved" };
       } catch (error) {
@@ -302,7 +299,7 @@ export function useSetAudioGroupAttribute({
       }
     },
     [
-      revertLive,
+      takeLiveBefore,
       activeCompPath,
       previewIframeRef,
       writeProjectFile,

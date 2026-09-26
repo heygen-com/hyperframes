@@ -7,6 +7,7 @@ import { TimelineEditProvider } from "../../contexts/TimelineEditContext";
 import { jsonResponse, requestUrl } from "../../hooks/fetchStubTestUtils";
 import { useTimelineEditing } from "../../hooks/useTimelineEditing";
 import { usePlayerStore, type TimelineElement } from "../store/playerStore";
+import { serializeAutomation, type HfAutomation } from "@hyperframes/core/audio-automation";
 import { groupAutomationElement } from "./groupAutomationElement";
 import { useAutomationLanes, type AutomationLaneBinding } from "./useAutomationLanes";
 
@@ -39,17 +40,20 @@ afterEach(() => {
 });
 
 function mountLanes(target: TimelineElement, canEdit?: CanEdit, recording = false) {
+  let file = SOURCE;
   vi.stubGlobal(
     "fetch",
     vi.fn(async (input: Parameters<typeof fetch>[0]) =>
-      requestUrl(input).includes("/files/") ? jsonResponse({ content: SOURCE }) : jsonResponse({}),
+      requestUrl(input).includes("/files/") ? jsonResponse({ content: file }) : jsonResponse({}),
     ),
   );
   const iframe = document.createElement("iframe");
   document.body.append(iframe);
   iframe.contentDocument!.body.innerHTML = SOURCE;
   usePlayerStore.getState().setElements([{ ...music, audioGroup: "hf-group" }]);
-  const writeProjectFile = vi.fn(async (_path: string, _content: string) => {});
+  const writeProjectFile = vi.fn(async (_path: string, content: string) => {
+    file = content;
+  });
   const refresh = vi.fn(async () => {});
   const selection = { id: target.id };
   const previewIframeRef = { current: iframe };
@@ -97,15 +101,25 @@ function mountLanes(target: TimelineElement, canEdit?: CanEdit, recording = fals
   const host = document.createElement("div");
   document.body.append(host);
   act(() => createRoot(host).render(<Host />));
-  const commit = async () => {
+  const commit = async (next: HfAutomation = NEXT) => {
     let outcome: unknown;
     await act(async () => {
-      outcome = await binding!.onCommit(NEXT);
+      outcome = await binding!.onCommit(next);
     });
     return outcome;
   };
-  const preview = () => act(() => binding!.onPreview(NEXT));
-  return { commit, preview, writeProjectFile, refresh, selection, iframe };
+  const preview = (next: HfAutomation = NEXT) => act(() => binding!.onPreview(next));
+  const startCommit = (next: HfAutomation) => binding!.onCommit(next);
+  return {
+    commit,
+    startCommit,
+    preview,
+    writeProjectFile,
+    refresh,
+    selection,
+    iframe,
+    setFile: (next: string) => (file = next),
+  };
 }
 
 describe("useAutomationLanes saves report what happened", () => {
@@ -175,5 +189,52 @@ describe("useAutomationLanes saves report what happened", () => {
       /<hf-audio-group id="hf-group" data-automation=/,
     );
     expect(usePlayerStore.getState().elements[0]?.audioGroupAutomation).toContain('"volume"');
+  });
+
+  it("keeps what an earlier save wrote when a later one fails while it is in flight", async () => {
+    const { startCommit, preview, writeProjectFile, iframe, setFile } = mountLanes(music);
+    const saved = serializeAutomation(NEXT);
+    let landFirst = () => {};
+    writeProjectFile
+      .mockImplementationOnce(
+        (_path, content) =>
+          new Promise<void>((resolve) => {
+            landFirst = () => {
+              setFile(content);
+              resolve();
+            };
+          }),
+      )
+      .mockRejectedValueOnce(new Error("disk full"));
+    preview();
+    const first = startCommit(NEXT);
+    await act(() => vi.waitFor(() => expect(writeProjectFile).toHaveBeenCalledTimes(1)));
+    const later = {
+      version: 1 as const,
+      lanes: [{ target: "volume", points: [{ t: 0, v: 0.9 }] }],
+    };
+    preview(later);
+    const second = startCommit(later);
+    landFirst();
+    let outcomes: unknown[] = [];
+    await act(async () => {
+      outcomes = await Promise.all([first, second]);
+    });
+    expect(outcomes).toMatchObject([{ status: "saved" }, { status: "failed" }]);
+    expect(iframe.contentDocument!.getElementById("music")?.getAttribute("data-automation")).toBe(
+      saved,
+    );
+  });
+
+  it("puts a group's dragged preview and mirror back when a recording refuses the release", async () => {
+    const group = groupAutomationElement({ id: "hf-group", label: "Music", anchorKey: 0 }, 12);
+    const { commit, preview, iframe } = mountLanes(group, undefined, true);
+    preview();
+    expect(usePlayerStore.getState().elements[0]?.audioGroupAutomation).toContain('"volume"');
+    expect(await commit()).toMatchObject({ status: "refused" });
+    expect(
+      iframe.contentDocument!.getElementById("hf-group")?.hasAttribute("data-automation"),
+    ).toBe(false);
+    expect(usePlayerStore.getState().elements[0]?.audioGroupAutomation).toBeUndefined();
   });
 });

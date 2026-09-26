@@ -448,11 +448,10 @@ export async function persistElementAttribute({
   // Every live-write caller patches the DOM before committing — a fader drag is
   // `setLive` per frame, hovering a preset auditions the whole chain — so by the
   // time this runs the live DOM already holds the in-progress value. Reading it
-  // here made `previousValue === value`, so the unwind below was a no-op, and
-  // `setQuiet`'s catch (which deliberately re-mirrors the store from the live
-  // DOM) then mirrored that same never-saved value. The group audibly had the
-  // preset, the panel agreed, and a reload dropped it — the failure class the
-  // target check above was added to close, still open on the live-write path.
+  // here made `previousValue === value`, so the unwind below was a no-op and the
+  // preview kept a never-saved value. The group audibly had the preset, the
+  // panel agreed, and a reload dropped it — the failure class the target check
+  // above was added to close, still open on the live-write path.
   const previousValue = readAttributeByTarget(before, patchTarget, attr) ?? null;
   patchLive(value);
 

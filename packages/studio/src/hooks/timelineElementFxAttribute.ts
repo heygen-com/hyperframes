@@ -120,20 +120,20 @@ export function useSetElementAttribute({
     },
     [previewIframeRef, activeCompPath],
   );
-  const revertLive = useCallback(
-    (element: TimelineElement, attr: string) => {
+  const takeLiveBefore = useCallback(
+    (element: TimelineElement, attr: string): (() => void) => {
       const key = elementAttributeLiveKey(element, activeCompPath, attr);
-      if (!liveBeforeRef.current.has(key)) return;
-      patchLiveElementAttribute(
-        previewIframeRef.current,
-        element,
-        attr,
-        liveBeforeRef.current.get(key) ?? null,
-        activeCompPath,
-      );
+      if (!liveBeforeRef.current.has(key)) return () => {};
+      const before = liveBeforeRef.current.get(key) ?? null;
       liveBeforeRef.current.delete(key);
+      return () =>
+        patchLiveElementAttribute(previewIframeRef.current, element, attr, before, activeCompPath);
     },
     [previewIframeRef, activeCompPath],
+  );
+  const revertLive = useCallback(
+    (element: TimelineElement, attr: string) => takeLiveBefore(element, attr)(),
+    [takeLiveBefore],
   );
   const setQuiet = useCallback(
     async (
@@ -143,8 +143,9 @@ export function useSetElementAttribute({
       label: string,
     ): Promise<TimelineEditOutcome> => {
       const pid = projectForTimelineSave(isRecordingRef?.current, projectIdRef.current, showToast);
+      const restoreLive = takeLiveBefore(element, attr);
       const unsaved = (outcome: TimelineEditOutcome): TimelineEditOutcome => {
-        revertLive(element, attr);
+        restoreLive();
         return outcome;
       };
       if (typeof pid !== "string") return unsaved(pid);
@@ -163,7 +164,6 @@ export function useSetElementAttribute({
         });
         if (!written)
           return unsaved(failedTimelineSave("This clip has no id to save it by", showToast));
-        liveBeforeRef.current.delete(elementAttributeLiveKey(element, activeCompPath, attr));
         syncStoredAutomationFromPreview(previewIframeRef.current?.contentDocument);
         return { status: "saved" };
       } catch (error) {
@@ -173,7 +173,7 @@ export function useSetElementAttribute({
       }
     },
     [
-      revertLive,
+      takeLiveBefore,
       activeCompPath,
       previewIframeRef,
       writeProjectFile,
