@@ -114,7 +114,7 @@ it("settles a load whose runtime learns its duration after its only readiness po
   act(() => root.unmount());
 });
 
-it("stops retrying a pending load once the player unmounts", async () => {
+it.each(["unmounts", "resets"])("stops retrying a pending load once the player %s", async (how) => {
   const { api, root } = renderTimelinePlayerHarness();
   const { adapter, win } = makeAdapterWindow();
   let lookups = 0;
@@ -124,10 +124,11 @@ it("stops retrying a pending load once the player unmounts", async () => {
     api.onIframeLoad();
   });
   postFromRuntime(win, { type: "state" });
-  act(() => root.unmount());
-  const atUnmount = lookups;
+  act(() => (how === "resets" ? api.resetPlayer() : root.unmount()));
+  const atStop = lookups;
   await new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)));
-  expect(lookups).toBe(atUnmount);
+  expect(lookups).toBe(atStop);
+  if (how === "resets") act(() => root.unmount());
 });
 
 it("does not let the blank page's load step enable Play for the preview that replaces it", async () => {

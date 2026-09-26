@@ -505,9 +505,9 @@ export function useTimelinePlayer({
   const resetPlayer = useCallback(() => {
     stopRAFLoop();
     stopReverseLoop();
-    if (probeIntervalRef.current) clearInterval(probeIntervalRef.current);
+    cancelPendingLoad();
     usePlayerStore.getState().reset();
-  }, [stopRAFLoop, stopReverseLoop]);
+  }, [stopRAFLoop, stopReverseLoop, cancelPendingLoad]);
 
   useEffect(() => {
     return usePlayerStore.subscribe((state, prev) => {
