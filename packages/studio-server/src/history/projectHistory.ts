@@ -530,7 +530,7 @@ class Engine {
     return hits.flatMap(({ group, change }, i) => this.cutOut(group, change, cuts[i]) ?? []);
   }
 
-  /** Walks the server's own writes back from `change.after` to the bytes they replaced, stored so an undo restores them. */
+  /** Walks the server's writes back from `change.after` to the bytes they replaced, stored so an undo restores them. */
   async overwrittenBy(change: HistoryFileChange, told: string | undefined, seen: Set<string>) {
     const absPath = join(this.dir, change.path);
     let bytes: string | Uint8Array | undefined;
