@@ -1245,6 +1245,7 @@ export function init(config: HyperShaderConfig): GsapTimeline {
     typeof tl.totalTime === "function"
       ? (tl.totalTime.bind(tl) as (...args: unknown[]) => GsapTimeline | number)
       : null;
+  // GSAP re-renders in place through totalTime from these; that is not a seek to record.
   const reRendersInPlace = tl as unknown as Record<string, unknown>;
   for (const method of ["timeScale", "paused", "reversed"]) {
     const original = reRendersInPlace[method];
@@ -1349,9 +1350,9 @@ export function init(config: HyperShaderConfig): GsapTimeline {
   if (originalTotalTime) {
     tl.totalTime = ((...args: unknown[]) => {
       if (ownSeekDepth > 0) return originalTotalTime(...args);
-      if (args.length > 0) updatePublicTimelineTime(args[0]);
-      if (!prewarming) return originalTotalTime(...args);
-      return args.length === 0 ? publicTimelineTime : tl;
+      if (args.length === 0) return prewarming ? publicTimelineTime : originalTotalTime();
+      updatePublicTimelineTime(args[0]);
+      return originalTotalTime(...args);
     }) as NonNullable<GsapTimeline["totalTime"]>;
   }
 

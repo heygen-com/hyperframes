@@ -10,7 +10,8 @@ function stubGsap() {
   let paused = true;
   const calls: { fn: () => void; at: number }[] = [];
   const tl = {
-    paused: () => paused,
+    paused: (value?: boolean) =>
+      value === undefined ? paused : ((paused = value), tl.totalTime(now, true), tl),
     play: () => ((paused = false), tl),
     pause: () => ((paused = true), tl),
     // Like GSAP, time() and seek() move the playhead through totalTime().
@@ -209,5 +210,63 @@ describe("a runtime seek while the prewarm runs", () => {
 
     expect(changedSpeed).toBe(true);
     expect(tl?.totalTime()).toBe(0);
+  });
+
+  function initDuringCapture(onCaptureFrame: (tl: SpeedTimeline) => void): SpeedTimeline {
+    stubGsap();
+    stubWebGl();
+    let tl: SpeedTimeline | undefined;
+    let fired = false;
+    vi.spyOn(console, "warn").mockImplementation((message: unknown) => {
+      if (!fired && tl && String(message).includes("Transition capture failed")) {
+        fired = true;
+        onCaptureFrame(tl);
+      }
+    });
+    mountScenes(["s4", "s5"]);
+    tl = init({
+      bgColor: "#000",
+      scenes: ["s4", "s5"],
+      transitions: [{ time: 4.4, duration: 0.8, shader: "domain-warp" }],
+    }) as unknown as SpeedTimeline;
+    return tl;
+  }
+
+  it("applies it, reads back the recorded playhead, and restores to it", async () => {
+    let readBeforeSeek: unknown;
+    let crossedTwo = 0;
+    let appliedAtOnce = false;
+    const tl = initDuringCapture((timeline) => {
+      readBeforeSeek = timeline.totalTime();
+      crossedTwo = 0;
+      timeline.totalTime(1);
+      appliedAtOnce = crossedTwo === 1;
+    });
+    tl.call(() => (crossedTwo += 1), null, 2);
+    await prewarmDone();
+
+    expect(readBeforeSeek).toBe(0);
+    expect(appliedAtOnce).toBe(true);
+    expect(tl.totalTime()).toBe(1);
+  });
+
+  it("is not moved by paused(false) while the prewarm sits on a capture frame", async () => {
+    const tl = initDuringCapture((timeline) => {
+      (timeline as unknown as { paused: (value: boolean) => unknown }).paused(false);
+    });
+    await prewarmDone();
+
+    expect(tl.totalTime()).toBe(0);
+  });
+
+  it("passes a seek after the prewarm straight through", async () => {
+    const tl = initDuringCapture(() => {});
+    let crossedThree = 0;
+    tl.call(() => (crossedThree += 1), null, 3);
+    await prewarmDone();
+    crossedThree = 0;
+
+    tl.totalTime(3.5);
+    expect(crossedThree).toBe(1);
   });
 });
