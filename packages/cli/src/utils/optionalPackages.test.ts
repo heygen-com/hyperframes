@@ -1,5 +1,13 @@
 import { spawnSync } from "node:child_process";
-import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import {
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  renameSync,
+  rmSync,
+  symlinkSync,
+  writeFileSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { pathToFileURL } from "node:url";
@@ -150,6 +158,21 @@ describe("a copy installed beside the CLI", () => {
     writeFileSync(join(nearer, "index.js"), `module.exports = { copy: "unversioned" };`);
     try {
       expect(loadBesideCli("onnxruntime-node", cliUrl)).toBeNull();
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
+  it("loads a symlinked copy, as bun and pnpm lay packages out", () => {
+    const pin = OPTIONAL_PACKAGES["onnxruntime-node"];
+    const { root, cliUrl } = layout(pin);
+    const linked = join(root, "node_modules", "onnxruntime-node");
+    const store = join(root, "store", "onnxruntime-node");
+    mkdirSync(join(root, "store"), { recursive: true });
+    renameSync(linked, store);
+    symlinkSync(store, linked, "dir");
+    try {
+      expect(loadBesideCli("onnxruntime-node", cliUrl)).toEqual({ copy: `beside ${pin}` });
     } finally {
       rmSync(root, { recursive: true, force: true });
     }
