@@ -41,12 +41,21 @@ afterEach(() => {
 
 function mountLanes(target: TimelineElement, canEdit?: CanEdit, recording = false) {
   let file = SOURCE;
+  let reads = 0;
+  const held = new Map<number, Promise<void>>();
   vi.stubGlobal(
     "fetch",
-    vi.fn(async (input: Parameters<typeof fetch>[0]) =>
-      requestUrl(input).includes("/files/") ? jsonResponse({ content: file }) : jsonResponse({}),
-    ),
+    vi.fn(async (input: Parameters<typeof fetch>[0]) => {
+      if (!requestUrl(input).includes("/files/")) return jsonResponse({});
+      await held.get(++reads);
+      return jsonResponse({ content: file });
+    }),
   );
+  const holdRead = (n: number) => {
+    let release = () => {};
+    held.set(n, new Promise<void>((resolve) => (release = resolve)));
+    return release;
+  };
   const iframe = document.createElement("iframe");
   document.body.append(iframe);
   iframe.contentDocument!.body.innerHTML = SOURCE;
@@ -119,6 +128,9 @@ function mountLanes(target: TimelineElement, canEdit?: CanEdit, recording = fals
     selection,
     iframe,
     setFile: (next: string) => (file = next),
+    file: () => file,
+    reads: () => reads,
+    holdRead,
   };
 }
 
@@ -225,6 +237,37 @@ describe("useAutomationLanes saves report what happened", () => {
       saved,
     );
     expect(usePlayerStore.getState().elements[0]?.automation).toBe(saved);
+  });
+
+  it("never lets an older failed save's recovery land over a newer save", async () => {
+    const { commit, startCommit, preview, writeProjectFile, iframe, file, reads, holdRead } =
+      mountLanes(music);
+    const at = (v: number) => ({
+      version: 1 as const,
+      lanes: [{ target: "volume", points: [{ t: 0, v }] }],
+    });
+    expect(await commit(at(0.5))).toEqual({ status: "saved" });
+    const releaseRecovery = holdRead(3);
+    writeProjectFile.mockRejectedValueOnce(new Error("offline"));
+    preview(at(0.9));
+    const older = startCommit(at(0.9));
+    await act(() => vi.waitFor(() => expect(reads()).toBe(3)));
+    preview(at(0.7));
+    const newer = startCommit(at(0.7));
+    await act(() => vi.waitFor(() => expect(reads()).toBe(4)));
+    releaseRecovery();
+    let outcomes: unknown[] = [];
+    await act(async () => {
+      outcomes = await Promise.all([older, newer]);
+    });
+    expect(outcomes).toMatchObject([{ status: "failed" }, { status: "saved" }]);
+    const landed = serializeAutomation(at(0.7));
+    const saved = new DOMParser().parseFromString(file(), "text/html");
+    expect(saved.getElementById("music")?.getAttribute("data-automation")).toBe(landed);
+    expect(iframe.contentDocument!.getElementById("music")?.getAttribute("data-automation")).toBe(
+      landed,
+    );
+    expect(usePlayerStore.getState().elements[0]?.automation).toBe(landed);
   });
 
   it("settles on a queued save that lands after an earlier one fails", async () => {

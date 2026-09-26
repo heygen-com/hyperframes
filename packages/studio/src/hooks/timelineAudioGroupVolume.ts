@@ -12,7 +12,7 @@ import { invalidateGroupInfoCache } from "../player/lib/timelineGroupInfo";
 import {
   buildPatchTarget,
   persistElementAttribute,
-  claimLiveBefore,
+  createLiveLanes,
   readSavedAttribute,
   type RecordEditInput,
 } from "./timelineEditingHelpers";
@@ -238,14 +238,12 @@ export function useSetAudioGroupAttribute({
   ) => Promise<TimelineEditOutcome>;
   revertLive: (groupId: string, attr: string) => void;
 } {
-  const liveBeforeRef = useRef(new Map<string, string | null>());
+  const liveLanes = useRef(createLiveLanes());
   const setLive = useCallback(
     (groupId: string, attr: string, value: string | null) => {
       const key = audioGroupAttributeLiveKey(groupId, attr);
       const target = previewIframeRef.current?.contentDocument?.getElementById(groupId);
-      if (!liveBeforeRef.current.has(key)) {
-        liveBeforeRef.current.set(key, target?.getAttribute(attr) ?? null);
-      }
+      liveLanes.current.preview(key, () => target?.getAttribute(attr) ?? null);
       patchLiveGroupAttribute(previewIframeRef.current, groupId, attr, value);
       // Live too, not just on commit: a fader drag is `setLive` per frame and
       // `setQuiet` once on release, so without this the strip's own readout
@@ -256,7 +254,7 @@ export function useSetAudioGroupAttribute({
   );
   const claimLive = useCallback(
     (groupId: string, attr: string) =>
-      claimLiveBefore(liveBeforeRef.current, audioGroupAttributeLiveKey(groupId, attr), (value) => {
+      liveLanes.current.claim(audioGroupAttributeLiveKey(groupId, attr), (value) => {
         patchLiveGroupAttribute(previewIframeRef.current, groupId, attr, value);
         syncStoredGroupAttribute(groupId, attr, value);
       }),
@@ -310,7 +308,7 @@ export function useSetAudioGroupAttribute({
         });
         if (!written)
           return unsaved(failedTimelineSave("This group has no id to save it by", showToast));
-        syncStoredGroupAttribute(groupId, attr, value);
+        settleLive(value);
         return { status: "saved" };
       } catch (error) {
         console.error("[Timeline] Failed to set group attribute", error);

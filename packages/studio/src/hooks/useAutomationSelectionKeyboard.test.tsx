@@ -320,6 +320,41 @@ describe("useAutomationSelectionKeyboard", () => {
     },
   );
 
+  it.each(["in order", "reversed"])(
+    "marks the latest paste when pastes on two clips resolve %s",
+    async (order) => {
+      clearAutomationClipboard();
+      usePlayerStore.setState({
+        elements: [
+          { ...bgmElement, duration: 10 },
+          { ...bgmElement, id: "vo", key: "vo", duration: 10 },
+        ],
+        selectedElementId: "bgm",
+        currentTime: 1,
+      });
+      usePlayerStore
+        .getState()
+        .setAutomationSelection(wholeAxis({ elementKey: "bgm", target: "volume", t0: 2, t1: 4 }));
+      const lands: Array<() => void> = [];
+      const onCommit = vi.fn(
+        () =>
+          new Promise<{ status: "saved" }>((resolve) =>
+            lands.push(() => resolve({ status: "saved" })),
+          ),
+      );
+      setup({ onCommit });
+      combo("c");
+      usePlayerStore.getState().clearAutomationSelection();
+      combo("v");
+      usePlayerStore.setState({ selectedElementId: "vo" });
+      combo("v");
+      const order_ = order === "in order" ? [0, 1] : [1, 0];
+      for (const i of order_) lands[i]?.();
+      await act(async () => {});
+      expect(usePlayerStore.getState().automationSelection?.elementKey).toBe("vo");
+    },
+  );
+
   it("chains a second Cmd+V after the first instead of overwriting it", async () => {
     // The regression this pins: paste leaves its own span selected, so anchoring
     // at sel.t0 unconditionally made every later press recompute the same atT.

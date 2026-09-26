@@ -12,8 +12,8 @@ import type { TimelineElement } from "../player";
 import {
   buildPatchTarget,
   findTimelineElementInIframe,
+  createLiveLanes,
   persistElementAttribute,
-  claimLiveBefore,
   readSavedAttribute,
 } from "./timelineEditingHelpers";
 import type {
@@ -116,28 +116,22 @@ export function useSetElementAttribute({
   ) => Promise<TimelineEditOutcome>;
   revertLive: (element: TimelineElement, attr: string) => void;
 } {
-  const liveBeforeRef = useRef(new Map<string, string | null>());
+  const liveLanes = useRef(createLiveLanes());
   const setLive = useCallback(
     (element: TimelineElement, attr: string, value: string | null) => {
       const key = elementAttributeLiveKey(element, activeCompPath, attr);
       const target = findTimelineElementInIframe(previewIframeRef.current, element, activeCompPath);
-      if (!liveBeforeRef.current.has(key)) {
-        liveBeforeRef.current.set(key, target?.getAttribute(attr) ?? null);
-      }
+      liveLanes.current.preview(key, () => target?.getAttribute(attr) ?? null);
       patchLiveElementAttribute(previewIframeRef.current, element, attr, value, activeCompPath);
     },
     [previewIframeRef, activeCompPath],
   );
   const claimLive = useCallback(
     (element: TimelineElement, attr: string) =>
-      claimLiveBefore(
-        liveBeforeRef.current,
-        elementAttributeLiveKey(element, activeCompPath, attr),
-        (value) => {
-          patchLiveElementAttribute(previewIframeRef.current, element, attr, value, activeCompPath);
-          syncStoredAutomationFromPreview(previewIframeRef.current?.contentDocument);
-        },
-      ),
+      liveLanes.current.claim(elementAttributeLiveKey(element, activeCompPath, attr), (value) => {
+        patchLiveElementAttribute(previewIframeRef.current, element, attr, value, activeCompPath);
+        syncStoredAutomationFromPreview(previewIframeRef.current?.contentDocument);
+      }),
     [previewIframeRef, activeCompPath],
   );
   const revertLive = useCallback(
@@ -182,7 +176,7 @@ export function useSetElementAttribute({
         });
         if (!written)
           return unsaved(failedTimelineSave("This clip has no id to save it by", showToast));
-        syncStoredAutomationFromPreview(previewIframeRef.current?.contentDocument);
+        settleLive(value);
         return { status: "saved" };
       } catch (error) {
         console.error("[Timeline] Failed to set element attribute", error);

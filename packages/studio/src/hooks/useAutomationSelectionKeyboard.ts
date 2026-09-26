@@ -213,6 +213,8 @@ function pasteAnchor(
   return clampNumber(raw, 0, element.duration - span);
 }
 
+let latestPaste = 0;
+
 /**
  * Cmd/Ctrl+V: paste the clipboard onto the selected clip's lane, at the active
  * selection or the playhead. Returns false (untouched event) when the chord
@@ -243,6 +245,7 @@ function handlePaste(
   const saved = paste.binding.onCommit(
     withLane(paste.binding.automation, { target: paste.target, points }),
   );
+  const seq = ++latestPaste;
   const mark = {
     elementKey: paste.elementKey,
     target: paste.target,
@@ -251,13 +254,13 @@ function handlePaste(
     v0: paste.range.min,
     v1: paste.range.max,
   };
-  // Once it lands, and only over the selection it was pasted at, select and mark the
-  // full-height span: the feedback that it landed, what a second Cmd+V chains after,
-  // and what Delete takes back in one press. A refused paste marks nothing.
+  // Once the latest paste lands, and only over the selection it was pasted at, select
+  // and mark its full-height span: the feedback that it landed, what a second Cmd+V
+  // chains after, and what Delete takes back in one press.
   void saved.then((outcome) => {
     if (outcome && outcome.status !== "saved") return;
     const current = usePlayerStore.getState();
-    if (current.automationSelection !== sel) return;
+    if (seq !== latestPaste || current.automationSelection !== sel) return;
     current.setAutomationSelection(mark);
     markLastPaste(mark);
   });

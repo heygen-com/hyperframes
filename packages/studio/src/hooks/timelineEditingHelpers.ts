@@ -397,19 +397,32 @@ export async function persistTimelineBatchEdit(
   });
 }
 
-/** Claim `key`'s before-value; the call settles on `saved` (else the claim), sparing a newer gesture. */
-export function claimLiveBefore(
-  liveBefore: Map<string, string | null>,
-  key: string,
-  apply: (value: string | null) => void,
-): (saved?: string | null) => void {
-  const claimed = liveBefore.has(key) ? (liveBefore.get(key) ?? null) : undefined;
-  liveBefore.delete(key);
-  return (saved) => {
-    const value = saved !== undefined ? saved : claimed;
-    if (value === undefined) return;
-    if (liveBefore.has(key)) liveBefore.set(key, value);
-    else apply(value);
+/** Live-preview bookkeeping per lane: the value before a gesture, and which gesture is newest. */
+export function createLiveLanes() {
+  const before = new Map<string, string | null>();
+  const generation = new Map<string, number>();
+  const bump = (key: string): number => {
+    const next = (generation.get(key) ?? 0) + 1;
+    generation.set(key, next);
+    return next;
+  };
+  return {
+    preview(key: string, readCurrent: () => string | null): void {
+      if (!before.has(key)) before.set(key, readCurrent());
+      bump(key);
+    },
+    // The returned call settles on `saved` (else the claimed before-value), unless a
+    // newer gesture or save has touched the lane since.
+    claim(key: string, apply: (value: string | null) => void): (saved?: string | null) => void {
+      const claimed = before.has(key) ? (before.get(key) ?? null) : undefined;
+      before.delete(key);
+      const mine = bump(key);
+      return (saved) => {
+        if (generation.get(key) !== mine) return;
+        const value = saved !== undefined ? saved : claimed;
+        if (value !== undefined) apply(value);
+      };
+    },
   };
 }
 
