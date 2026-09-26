@@ -2077,6 +2077,7 @@ describe("bundleToSingleHtml sceneParts", () => {
   <style>@keyframes pulse { to { opacity: 0.3; } }</style><p>N</p><script>window.__order.push("n");</script>
 </div></template>`,
       "compositions/b.html": `<template id="b-template"><div data-composition-id="b">
+  <link rel="stylesheet" href="https://fonts.example.com/b.css">
   <style>@import url("data:text/css,@keyframes%20pulse%7Bto%7Bopacity:0.9%7D%7D");
   @keyframes pulse { to { opacity: 0.2; } }</style><p>B</p><script>window.__order.push("b");</script>
 </div></template>`,
@@ -2086,7 +2087,9 @@ describe("bundleToSingleHtml sceneParts", () => {
       const text = (sel: string) =>
         [...doc.querySelectorAll(sel)].map((el) => el.textContent ?? "");
       const js = text("script").join("\n");
+      const head = [...doc.head.children].map((el) => el.tagName.toLowerCase());
       return {
+        head: head.filter((tag, i) => tag !== head[i - 1]),
         css: text("style").join("").replace(/\s+/g, ""),
         scripts: ['["a"]', 'push("n")', 'push("b")'].sort((x, y) => js.indexOf(x) - js.indexOf(y)),
       };
@@ -2135,7 +2138,10 @@ describe("bundleToSingleHtml sceneParts", () => {
     <div data-composition-id="b" data-composition-src="compositions/b.html" data-start="2" data-duration="2"></div>
     <div data-composition-id="c" data-composition-src="compositions/c.html" data-start="0" data-duration="2"></div>
     <div data-composition-id="d" data-composition-src="compositions/d.html" data-start="2" data-duration="2"></div>
+    <div data-composition-id="e" data-composition-src="compositions/e.html" data-start="2" data-duration="2"></div>
   </div></body></html>`,
+      "compositions/e.html": `<template id="e-template"><div data-composition-id="e"><p>E</p>
+  <script src="https://cdn.jsdelivr.net/npm/gsap@3/../lottie-web@5/build/player/lottie.min.js"></script></div></template>`,
       "compositions/d.html": `<template id="d-template"><div data-composition-id="d"><p>D</p>
   <script src="https://cdn.example.com/d-scene.js"></script></div></template>`,
       "compositions/c.html": `<template id="c-template"><div data-composition-id="c"><p>C</p>
@@ -2161,6 +2167,9 @@ describe("bundleToSingleHtml sceneParts", () => {
     );
     // The root loading the same URL does not make a scene's own initializer a library.
     expect(host("d")?.getAttribute("data-hf-scene-no-swap")).toBe(
+      "it runs a script that is not a known library",
+    );
+    expect(host("e")?.getAttribute("data-hf-scene-no-swap")).toBe(
       "it runs a script that is not a known library",
     );
     const rendered = await bundleToSingleHtml(dir);

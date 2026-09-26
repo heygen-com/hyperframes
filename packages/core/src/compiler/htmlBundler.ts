@@ -671,8 +671,8 @@ function joinCssHoistingImports(sheets: string[]): string {
   return [...imports, ...cssParts].join("\n\n").trim();
 }
 
-// A render joins every head style into one sheet with each distinct @import first; scene styles must match.
-function hoistImportsAcrossSceneStyles(document: Document): void {
+// A render joins every head style into one sheet at the first one's place, each distinct @import first.
+function placeSceneStylesLikeRender(document: Document): void {
   const styles = [...document.querySelectorAll("head style")];
   const imports = new Set<string>();
   for (const el of styles) {
@@ -680,6 +680,7 @@ function hoistImportsAcrossSceneStyles(document: Document): void {
       .replace(CSS_IMPORT_RE, (match) => (imports.add(match.trim()), ""))
       .trim();
   }
+  styles.slice(1).reduce((previous, el) => (previous.after(el), el), styles[0]!);
   if (imports.size === 0) return;
   const hoisted = [...imports].join("\n\n");
   const first = styles[0]!;
@@ -713,7 +714,7 @@ function coalesceHeadStylesAndBodyScripts(document: Document): void {
     run[0]!.textContent = merged;
     for (const el of run.slice(1)) el.remove();
   }
-  if (untaggedRuns.length > 1) hoistImportsAcrossSceneStyles(document);
+  if (untaggedRuns.length > 1) placeSceneStylesLikeRender(document);
 
   const isPinned = (el: Element) =>
     el.hasAttribute(RUNTIME_BOOTSTRAP_ATTR) || el.hasAttribute(SCENE_PART_ATTR);

@@ -40,11 +40,13 @@ import { SCENE_NO_SWAP_ATTR, SCENE_PART_ATTR } from "../sceneParts";
 const SIDE_EFFECT_RE =
   /\b(addEventListener|requestAnimationFrame|requestIdleCallback|setTimeout|setInterval|queueMicrotask|getContext|WebGL\w*|WebGPU\w*|gpu|Worker|WebSocket|EventSource|Audio\w*|\w*Observer|fetch|import|eval|Function|Promise|async|await|delayedCall|ScrollTrigger|Draggable|anime|customElements|registerProperty|addListener|BroadcastChannel|pushState|replaceState|adoptedStyleSheets|documentElement|getElementsByTagName|lottie|THREE|__hf[A-Z]\w*)\b|\.then\s*\(|\.animate\s*\(|\.ticker\b|repeat\s*:\s*-1|\.repeat\s*\(\s*-1|defineProperty\s*\(\s*(window|globalThis|self|document)\b|\bfonts\s*\.\s*add\b|\.on[a-z]+\s*=(?!=)|\bon(resize|scroll|message|key\w+|click|pointer\w+|mouse\w+|wheel|visibilitychange|hashchange|popstate|error|load)\s*=(?!=)|\[\s*["']on[a-z]+["']\s*\]|document\s*\.\s*(head|body)\b|querySelector(All)?\(\s*["'](head|body)["']/;
 
-/** Why an authored scene script cannot be swapped out cleanly, or null when it can. */
 // npm packages that only define globals when loaded; lottie-web is absent because it scans the page on load.
 const SWAP_SAFE_LIBRARY_URL =
   /^https:\/\/(cdn\.jsdelivr\.net\/npm|unpkg\.com)\/(gsap|three|d3|d3-[a-z-]+|topojson-client|clipper-lib)(@[^/]+)?\//;
+const isSwapSafeLibrary = (src: string) =>
+  URL.canParse(src) && SWAP_SAFE_LIBRARY_URL.test(new URL(src).href);
 
+/** Why an authored scene script cannot be swapped out cleanly, or null when it can. */
 function sceneScriptSwapRefusal(script: string): string | null {
   const match = SIDE_EFFECT_RE.exec(script);
   return match ? `its script uses ${match[0].trim()}` : null;
@@ -397,7 +399,7 @@ export function inlineSubCompositions(
           ? "it runs a module script or import map"
           : !externalSrc
             ? sceneScriptSwapRefusal(scriptEl.textContent || "")
-            : SWAP_SAFE_LIBRARY_URL.test(externalSrc)
+            : isSwapSafeLibrary(externalSrc)
               ? null
               : "it runs a script that is not a known library",
       );
