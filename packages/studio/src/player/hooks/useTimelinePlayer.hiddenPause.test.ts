@@ -58,7 +58,9 @@ describe("useTimelinePlayer tab hidden while playing", () => {
     const { api, root } = renderTimelinePlayerHarness();
     attachIframeWindow(api, makeAdapterWindow().win);
     const pressL = () =>
-      act(() => void window.dispatchEvent(new KeyboardEvent("keydown", { code: "KeyL", key: "l" })));
+      act(
+        () => void window.dispatchEvent(new KeyboardEvent("keydown", { code: "KeyL", key: "l" })),
+      );
     pressL();
     pressL();
     expect(usePlayerStore.getState().playbackRate).toBe(2);
