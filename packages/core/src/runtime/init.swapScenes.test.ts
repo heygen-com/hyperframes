@@ -707,6 +707,24 @@ describe("__hfSwapScenes", () => {
     expect(p.style.translate).toContain("30");
   });
 
+  it("keeps a moved video where it was moved, as a fresh load puts it, through an edit beside it", async () => {
+    const { root } = trackingRoot();
+    quietMedia();
+    const moved = 'data-x="40" data-y="7" data-hf-edit-base-x="0" data-hf-edit-base-y="0"';
+    const scene = (text: string, hash: string): Scene => ({
+      ...A1,
+      hash,
+      body: `<p>${text}</p><video src="clip.mp4" ${moved}></video>`,
+    });
+    boot([scene("A one", "ha1"), B], root);
+    await tick();
+    const video = sceneHost("a").querySelector("video")!;
+    expect(video.style.getPropertyValue("translate")).toBe("40px 7px");
+    await window.__hfSwapScenes!(preview([scene("A two", "ha2"), B]).html);
+    expect(sceneHost("a").querySelector("video")).toBe(video);
+    expect(video.style.getPropertyValue("translate")).toBe("40px 7px");
+  });
+
   it("rejects a scene the bundler marked as not swappable, naming why", async () => {
     const { root } = trackingRoot();
     const marked = (s: Scene): Scene => ({
@@ -871,6 +889,18 @@ describe("__hfSwapScenes", () => {
       asFresh,
     ],
     ["a lone timeline to()", "#kept", `tl.to(k, { x: 10, duration: 1 });`, writesOutside],
+    [
+      "a padding tween on an empty object",
+      "video",
+      `tl.to({}, { duration: 2 }); tl.from(k, { x: 50, duration: 1 }, 0);`,
+      asFresh,
+    ],
+    [
+      "a counter on a local object",
+      "video",
+      `const state = { n: 0 }; tl.to(state, { n: 10, duration: 1, onUpdate: () => void (k.dataset.n = String(Math.round(state.n))) }); tl.from(k, { x: 50, duration: 1 }, 0);`,
+      asFresh,
+    ],
     [
       "a move the record missed, as a callback's",
       "video",

@@ -58,7 +58,11 @@ import {
   SCENE_PARTS_META,
   type SceneParts,
 } from "../sceneParts";
-import { applyPositionEdits, installPositionEditsSeekReapply } from "./positionEdits";
+import {
+  applyPositionEdits,
+  forgetPositionEdit,
+  installPositionEditsSeekReapply,
+} from "./positionEdits";
 import { applyVariableBindings, unproxiedMediaSrc } from "./applyVariableBindings";
 import { createColorGradingRuntime, type RuntimeColorGradingApi } from "./colorGrading";
 import { COLOR_GRADING_AUTHORED_OPACITY_ATTR } from "../colorGrading";
@@ -3186,6 +3190,8 @@ export function initSandboxRuntimeModular(): void {
       const style = el.getAttribute("style");
       if (style === null) kept.removeAttribute("style");
       else kept.setAttribute("style", style);
+      // The swap's closing pass puts its move back, as a load's first pass does.
+      forgetPositionEdit(kept as HTMLElement);
     }
   };
   const compositionIdsIn = (host: Element) =>
@@ -3213,8 +3219,9 @@ export function initSandboxRuntimeModular(): void {
         );
       }
     }
-    // A revert can leave a value on what the swap keeps; kept media are reset, anything else outside is refused.
-    const outside = (target: unknown) => typeof target !== "function" && !inScene.has(target);
+    // A revert can leave a value on what the swap keeps; kept media are reset, page nodes outside are refused.
+    const outside = (target: unknown) =>
+      typeof (target as Node | null)?.nodeType === "number" && !inScene.has(target);
     for (const animation of own as Set<SceneAnimation | undefined>) {
       for (const tween of animation
         ? [animation, ...(animation.getChildren?.(true, true, false) ?? [])]
