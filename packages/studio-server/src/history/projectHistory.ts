@@ -5,13 +5,14 @@ import {
   type Stats,
   existsSync,
   lstatSync,
+  statSync,
   mkdirSync,
   readdirSync,
   readFileSync,
   realpathSync,
 } from "node:fs";
 import { homedir } from "node:os";
-import { dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
+import { basename, dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
 import { replaceFileAtomically } from "../helpers/atomicFile.js";
 import {
   DELETED_VERSION,
@@ -226,6 +227,19 @@ function fileLeftIn(dir: string, at: string, deleted: ReadonlySet<string>): stri
   return undefined;
 }
 
+/** Whether the disk holding `dir` treats `A` and `a` as one name: its nearest lettered folder, case-flipped, is itself. */
+function ignoresCase(dir: string): boolean {
+  for (let at = dir; dirname(at) !== at; at = dirname(at)) {
+    const name = basename(at);
+    const flipped = name === name.toLowerCase() ? name.toUpperCase() : name.toLowerCase();
+    if (flipped === name) continue;
+    const self = statSync(at);
+    const other = statSync(join(dirname(at), flipped), { throwIfNoEntry: false });
+    return other?.ino === self.ino && other.dev === self.dev;
+  }
+  return false;
+}
+
 const blocks = (removed: string, added: string) =>
   added.startsWith(`${removed}/`) || removed.startsWith(`${added}/`);
 
@@ -243,6 +257,7 @@ function addChange(group: Group, path: string, before: string | null, after: str
 
 class Engine {
   readonly dir: string;
+  readonly foldsCase: boolean;
   readonly home: string;
   log: HistoryLog = { baseline: new Map(), entries: [], pins: new Set() };
   tracked = new Map<string, Tracked>();
@@ -264,6 +279,12 @@ class Engine {
   ) {
     this.dir = resolve(options.projectDir);
     this.home = join(options.historyRoot, projectId);
+    this.foldsCase = ignoresCase(this.dir);
+  }
+
+  /** A path as the project's disk compares names: folded where `A` and `a` are one name. */
+  nameKey(path: string): string {
+    return this.foldsCase ? path.toLowerCase() : path;
   }
 
   get logFile() {
@@ -360,7 +381,9 @@ class Engine {
     const appearedAt = (file: (typeof seen)[number]) =>
       Math.max(
         changedAt(file),
-        ...removed.filter((gone) => blocks(gone.path, file.path)).map((gone) => gone.at),
+        ...removed
+          .filter((gone) => blocks(this.nameKey(gone.path), this.nameKey(file.path)))
+          .map((gone) => gone.at),
       );
     const events = [
       ...removed,

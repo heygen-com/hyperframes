@@ -422,26 +422,33 @@ describe("openProjectHistory", () => {
     },
   );
 
-  it("logs a folder moved over an agent's file after its turn idled out as the outside's, however old its files", async () => {
-    const { history, projectDir } = await project({ a: "file" });
-    const staged = tempDir("hf-history-folder-");
-    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
-    try {
-      const window = await history.beginWindow(agent, "Agent turn", { idleMs: 50 });
-      writeFileSync(join(staged, "b.html"), "b");
-      for (const until = Date.now() + 150; Date.now() < until; );
-      rmSync(join(projectDir, "a"));
-      renameSync(staged, join(projectDir, "a"));
-      await window.close();
-      await history.flush();
-    } finally {
-      vi.useRealTimers();
-    }
+  it.each([["a"], ...(caseInsensitive() ? [["A"]] : [])])(
+    "logs a folder a/ moved over an agent's file %s after its turn idled out as the outside's, however old its files",
+    async (file) => {
+      const { history, projectDir } = await project({ [file]: "file" });
+      const staged = tempDir("hf-history-folder-");
+      vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+      try {
+        const window = await history.beginWindow(agent, "Agent turn", { idleMs: 50 });
+        writeFileSync(join(staged, "b.html"), "b");
+        for (const until = Date.now() + 150; Date.now() < until; );
+        rmSync(join(projectDir, file));
+        renameSync(staged, join(projectDir, "a"));
+        await window.close();
+        await history.flush();
+      } finally {
+        vi.useRealTimers();
+      }
 
-    expect(
-      history.list().map((entry) => [entry.who.kind, entry.files.map((file) => file.path).sort()]),
-    ).toEqual([["outside", ["a", "a/b.html"]]]);
-  });
+      const entries = history.list();
+      expect(
+        entries.map((entry) => [entry.who.kind, entry.files.map((f) => f.path).sort()]),
+      ).toEqual([["outside", [file, "a/b.html"]]]);
+      const dir = tempDir("hf-history-checkout-");
+      await history.checkout(entries[0]!.id, "after", dir);
+      expect(inside(dir, "a/b.html")).toBe("b");
+    },
+  );
 
   it("refuses a checkout folder inside the project, however it is reached", async () => {
     const { history, write, projectDir, has } = await project({ "index.html": "v1" });
