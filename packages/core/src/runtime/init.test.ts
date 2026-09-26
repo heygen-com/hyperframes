@@ -1646,6 +1646,43 @@ describe("initSandboxRuntimeModular", () => {
         expect(window.__hf?.animationEnd?.()).toBeCloseTo(1.9, 6);
       });
 
+      it("stretches array keyframes to the tween's own duration", () => {
+        const keyframes = [{ x: 0 }, { x: 100 }, { x: 200 }, { x: 300 }];
+        const root = paused().to({ x: 0 }, { keyframes, duration: 4.4, ease: "none" }, 1);
+        initWithRoot("10", root);
+
+        expect(window.__hf?.animationEnd?.()).toBeCloseTo(5.4, 6);
+      });
+
+      it("stretches each staggered item's keyframes to the tween's duration", () => {
+        const keyframes = [{ x: 10 }, { x: 20 }];
+        const root = paused().to(dots(3), { keyframes, duration: 3, stagger: 0.5 }, 0);
+        initWithRoot("10", root);
+
+        expect(window.__hf?.animationEnd?.()).toBeCloseTo(4, 6);
+      });
+
+      it("counts a stagger tween at the duration set after it was made", () => {
+        const stagger = gsap.to(dots(3), { x: 1, duration: 1, stagger: 0.2 }).duration(4);
+        const root = paused().add(stagger, 0);
+        initWithRoot("10", root);
+
+        expect(window.__hf?.animationEnd?.()).toBeCloseTo(4, 6);
+      });
+
+      it("keeps the end when zero-length keyframes give no stretch", () => {
+        const keyframes = [
+          { x: 1, duration: 0 },
+          { x: 2, duration: 0 },
+        ];
+        const root = paused()
+          .to({ x: 0 }, { x: 1, duration: 1 }, 0)
+          .to({ x: 0 }, { keyframes }, 0.5);
+        initWithRoot("10", root);
+
+        expect(window.__hf?.animationEnd?.()).toBe(1);
+      });
+
       // GSAP leaves a paused child out of its parent, but author code may play it later.
       it("counts a paused child the same before and after author code plays it", () => {
         const sub = paused().to({ x: 0 }, { x: 100, duration: 6 });

@@ -84,16 +84,16 @@ describe("lottie adapter", () => {
     });
   });
 
-  describe("seek", () => {
-    function mountedAt(start: string) {
-      document.body.innerHTML = `<div data-composition-id="root"><div data-composition-id="host" data-start="${start}"><div data-composition-id="walk"><div id="player"></div></div></div></div>`;
-      const { resolveStartForElement } = createRuntimeStartTimeResolver({});
-      const adapter = createLottieAdapter({
-        resolveStartSeconds: (el) => resolveStartForElement(el, 0),
-      });
-      return { adapter, player: document.getElementById("player")! };
-    }
+  function mountedAt(start: string) {
+    document.body.innerHTML = `<div data-composition-id="root"><div data-composition-id="host" data-start="${start}"><div data-composition-id="walk"><div id="player"></div></div></div></div>`;
+    const { resolveStartForElement } = createRuntimeStartTimeResolver({});
+    const adapter = createLottieAdapter({
+      resolveStartSeconds: (el) => resolveStartForElement(el, 0),
+    });
+    return { adapter, player: document.getElementById("player")! };
+  }
 
+  describe("seek", () => {
     it("seeks a player in a mounted composition to the time since that composition started", () => {
       const { adapter, player } = mountedAt("3");
       const anim = { ...createLottieWebAnim(), wrapper: player };
@@ -303,6 +303,37 @@ describe("lottie adapter", () => {
       lottieWindow.__hfLottie = [anim];
       const adapter = createLottieAdapter();
       expect(adapter.getInferredDurationSeconds?.()).toBeNull();
+    });
+  });
+
+  describe("getAnimationCycleEndSeconds", () => {
+    afterEach(() => {
+      document.body.innerHTML = "";
+    });
+
+    it("ends one loop after the start of the player's composition", () => {
+      const { adapter, player } = mountedAt("5");
+      lottieWindow.__hfLottie = [{ ...createLottieWebAnim({ totalFrames: 60 }), wrapper: player }];
+      expect(adapter.getAnimationCycleEndSeconds?.()).toBe(7);
+    });
+
+    it("skips a player whose element was removed", () => {
+      const { adapter, player } = mountedAt("0");
+      const gone = document.body.appendChild(document.createElement("div"));
+      gone.remove();
+      lottieWindow.__hfLottie = [
+        { ...createLottieWebAnim({ totalFrames: 60 }), wrapper: player },
+        { ...createLottieWebAnim({ totalFrames: 300 }), wrapper: gone },
+      ];
+      expect(adapter.getAnimationCycleEndSeconds?.()).toBe(2);
+    });
+
+    it("ends one loop in for a player at the root", () => {
+      const { adapter } = mountedAt("5");
+      const root = document.querySelector('[data-composition-id="root"]')!;
+      const player = root.appendChild(document.createElement("div"));
+      lottieWindow.__hfLottie = [{ ...createLottieWebAnim({ totalFrames: 60 }), wrapper: player }];
+      expect(adapter.getAnimationCycleEndSeconds?.()).toBe(2);
     });
   });
 });

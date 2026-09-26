@@ -52,15 +52,16 @@ import { swallow } from "../diagnostics";
 export function createLottieAdapter(params?: {
   resolveStartSeconds?: (element: Element) => number;
 }): RuntimeDeterministicAdapter {
-  const secondsIntoComposition = (anim: unknown, pageTime: number): number => {
-    const el = isLottieWebAnimation(anim) ? anim.wrapper : (anim as DotLottiePlayer).canvas;
+  const compositionStartSeconds = (anim: unknown): number => {
+    const el = lottieElement(anim);
     const composition =
       el && typeof (el as Element).closest === "function"
         ? (el as Element).closest("[data-composition-id]")
         : null;
-    if (!composition || !params?.resolveStartSeconds) return pageTime;
-    return Math.max(0, pageTime - params.resolveStartSeconds(composition));
+    return composition && params?.resolveStartSeconds ? params.resolveStartSeconds(composition) : 0;
   };
+  const secondsIntoComposition = (anim: unknown, pageTime: number): number =>
+    Math.max(0, pageTime - compositionStartSeconds(anim));
 
   const adapter: RuntimeDeterministicAdapter = {
     name: "lottie",
@@ -166,32 +167,49 @@ export function createLottieAdapter(params?: {
       // Just let them be garbage collected naturally.
     },
 
-    getInferredDurationSeconds: () => {
-      const instances = (window as LottieWindow).__hfLottie;
-      if (!instances || instances.length === 0) return null;
-      let maxSeconds = 0;
-      let sawAny = false;
-      for (const anim of instances) {
-        let seconds: number | null = null;
-        try {
-          seconds = inferAnimationDurationSeconds(anim);
-        } catch (err) {
-          // ignore per-animation failures — keep going for other instances
-          swallow("runtime.adapters.lottie.site4", err);
-        }
-        if (seconds == null) continue;
-        sawAny = true;
-        maxSeconds = Math.max(maxSeconds, seconds);
-      }
-      // Not-yet-loaded animations report totalFrames=0 — return null (not 0)
-      // so the caller doesn't treat "still loading" as "genuinely zero
-      // duration". A later discover cycle will pick up the real value once
-      // the JSON has loaded.
-      return sawAny ? maxSeconds : null;
-    },
+    getInferredDurationSeconds: () => latestInstanceEnd((_, seconds) => seconds),
+
+    // Plays from its composition's start, as seek anchors it; a removed scene's instance stays registered.
+    getAnimationCycleEndSeconds: () =>
+      latestInstanceEnd((anim, seconds) =>
+        (lottieElement(anim) as Node | undefined)?.isConnected === false
+          ? null
+          : compositionStartSeconds(anim) + seconds,
+      ),
   };
-  adapter.getAnimationCycleEndSeconds = adapter.getInferredDurationSeconds;
   return adapter;
+}
+
+/** Max of `endOf(instance, its length)` over registered instances; null skips an instance. */
+function latestInstanceEnd(
+  endOf: (anim: LottieWebAnimation | DotLottiePlayer, seconds: number) => number | null,
+): number | null {
+  const instances = (window as LottieWindow).__hfLottie;
+  if (!instances || instances.length === 0) return null;
+  let maxSeconds = 0;
+  let sawAny = false;
+  for (const anim of instances) {
+    let seconds: number | null = null;
+    try {
+      const length = inferAnimationDurationSeconds(anim);
+      seconds = length == null ? null : endOf(anim, length);
+    } catch (err) {
+      // ignore per-animation failures — keep going for other instances
+      swallow("runtime.adapters.lottie.site4", err);
+    }
+    if (seconds == null) continue;
+    sawAny = true;
+    maxSeconds = Math.max(maxSeconds, seconds);
+  }
+  // Not-yet-loaded animations report totalFrames=0 — return null (not 0)
+  // so the caller doesn't treat "still loading" as "genuinely zero
+  // duration". A later discover cycle will pick up the real value once
+  // the JSON has loaded.
+  return sawAny ? maxSeconds : null;
+}
+
+function lottieElement(anim: unknown): unknown {
+  return isLottieWebAnimation(anim) ? anim.wrapper : (anim as DotLottiePlayer).canvas;
 }
 
 /** `frame` wrapped into [0, total); a float hair under a whole cycle is the next cycle's first frame. */

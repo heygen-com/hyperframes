@@ -2804,8 +2804,11 @@ export function initSandboxRuntimeModular(): void {
       const nested = child.getChildren
         ? child
         : (child as { timeline?: RuntimeTimelineChildLike }).timeline;
+      // GSAP plays a tween's inner timeline stretched to the tween's own duration() (1 for a timeline).
+      const stretch = Number(child.duration?.()) / Number(nested?.duration?.());
       const cycle = nested?.getChildren
-        ? readOneCycleEndSeconds(nested.getChildren(false, true, true))
+        ? readOneCycleEndSeconds(nested.getChildren(false, true, true)) *
+          (Number.isFinite(stretch) && stretch > 0 ? stretch : 1)
         : Number(child.duration?.()) || 0;
       // startTime() is in the parent's time, the cycle in the child's own; reversed reports -1.
       const scale = Math.abs(Number((child as { timeScale?: () => number }).timeScale?.()) || 1);
