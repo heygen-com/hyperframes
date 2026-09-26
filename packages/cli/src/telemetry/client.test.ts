@@ -19,6 +19,9 @@ vi.mock("../utils/env.js", () => ({
   isDevMode: () => false,
 }));
 
+const dns = vi.hoisted(() => ({ answers: true }));
+vi.mock("../utils/hostAnswers.js", () => ({ hostAnswers: async () => dns.answers }));
+
 // Canary enrolment is registry-driven and will change as rollouts ramp; stub
 // it so this asserts the WIRING (does every event carry the cohort?) rather
 // than whichever canaries happen to be live today.
@@ -90,6 +93,21 @@ describe("telemetry queue delivery", () => {
     }
   });
 
+  it("keeps events queued for the exit-time send when DNS does not answer", async () => {
+    dns.answers = false;
+    const fetchMock = vi.fn(() => Promise.resolve(new Response("")));
+    vi.stubGlobal("fetch", fetchMock);
+    try {
+      trackEvent("render_complete", { quality: "draft" });
+      await flush();
+      expect(fetchMock).not.toHaveBeenCalled();
+    } finally {
+      dns.answers = true;
+    }
+    await flush();
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+
   it("forgets events only after the request completes, and stamps each with a uuid", async () => {
     const fetchMock = vi.fn(() => Promise.resolve(new Response("")));
     vi.stubGlobal("fetch", fetchMock);
@@ -140,6 +158,7 @@ describe("telemetry queue delivery", () => {
     trackEvent("render_complete", { quality: "draft" });
     const inFlight = flush();
     trackEvent("cli_command_result", { command: "render" });
+    await vi.waitFor(() => expect(gated).toHaveBeenCalled());
     resolveFetch(new Response(""));
     await inFlight;
 

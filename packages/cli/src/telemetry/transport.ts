@@ -2,6 +2,7 @@ import { spawn } from "node:child_process";
 import { randomUUID } from "node:crypto";
 import { POSTHOG_API_KEY } from "./posthogKey.js";
 import { readConfig } from "./config.js";
+import { hostAnswers } from "../utils/hostAnswers.js";
 
 // This is a public project API key — safe to embed in client-side code.
 // It only allows writing events, not reading data.
@@ -115,6 +116,8 @@ export async function flush(): Promise<void> {
   const snapshot = eventQueue.slice();
   const payload = buildPayload(snapshot);
   if (payload == null) return;
+  // Left queued: the exit-time flushSync() sends it from a detached child.
+  if (!(await hostAnswers(new URL(POSTHOG_HOST).hostname))) return;
 
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), FLUSH_TIMEOUT_MS);

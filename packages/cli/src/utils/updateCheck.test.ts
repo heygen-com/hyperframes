@@ -1,6 +1,9 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { isSafeVersion, printDeprecationNotice, withMeta } from "./updateCheck.js";
 
+const dns = vi.hoisted(() => ({ answers: true }));
+vi.mock("./hostAnswers.js", () => ({ hostAnswers: async () => dns.answers }));
+
 describe("isSafeVersion", () => {
   it("accepts strict semver, incl. prerelease/build metadata", () => {
     expect(isSafeVersion("1.2.3")).toBe(true);
@@ -260,6 +263,20 @@ describe("checkForUpdate — registry boundary guard", () => {
   afterEach(() => {
     vi.doUnmock("../telemetry/config.js");
     vi.resetModules();
+  });
+
+  it("does not ask the registry when DNS does not answer", async () => {
+    dns.answers = false;
+    const fetchMock = vi.fn();
+    vi.stubGlobal("fetch", fetchMock);
+    try {
+      const mod = await import("./updateCheck.js");
+      await mod.checkForUpdate(true);
+      expect(fetchMock).not.toHaveBeenCalled();
+    } finally {
+      dns.answers = true;
+      vi.unstubAllGlobals();
+    }
   });
 
   it("caches and returns a valid semver from the registry", async () => {

@@ -4,6 +4,7 @@ import { compareVersions } from "compare-versions";
 import { readConfig, readConfigFresh, writeConfig } from "../telemetry/config.js";
 import { VERSION } from "../version.js";
 import { isDevMode } from "./env.js";
+import { hostAnswers } from "./hostAnswers.js";
 import { detectInstaller } from "./installerDetection.js";
 import { readPinnedHyperframesVersions } from "./projectPin.js";
 import { isSafeVersion } from "./safeVersion.js";
@@ -66,6 +67,9 @@ export async function checkForUpdate(force?: boolean): Promise<UpdateCheckResult
   }
 
   try {
+    if (!(await hostAnswers(new URL(NPM_REGISTRY_URL).hostname))) {
+      return fallbackResult(config.latestVersion);
+    }
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS);
     const res = await fetch(NPM_REGISTRY_URL, {

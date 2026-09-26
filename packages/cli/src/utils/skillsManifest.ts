@@ -28,6 +28,7 @@ import {
 import { homedir } from "node:os";
 import { isAbsolute, join, relative, resolve, sep } from "node:path";
 import { promisify } from "node:util";
+import { hostAnswers } from "./hostAnswers.js";
 
 const execFileAsync = promisify(execFile);
 
@@ -642,6 +643,7 @@ function asSkillsManifest(data: unknown, sourceLabel: string): SkillsManifest {
 }
 
 async function fetchManifest(url: string): Promise<SkillsManifest> {
+  if (!(await hostAnswers(new URL(url).hostname))) throw new Error(`DNS did not answer for ${url}`);
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS);
   try {
