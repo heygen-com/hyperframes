@@ -32,7 +32,7 @@ export function replaceFileAtomically(
   }
 }
 
-/** The file's real path; for a file not there (yet, or any more), its folder's real path joined with its name. */
+/** The file's real path; for a path not there (yet, or any more), the nearest existing folder's real path joined with the rest. */
 export function realFilePath(filePath: string): string {
   try {
     return fs.realpathSync(filePath);
