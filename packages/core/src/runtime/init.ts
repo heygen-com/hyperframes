@@ -1383,6 +1383,17 @@ export function initSandboxRuntimeModular(): void {
       if (existingRootTimeline) {
         try {
           fallbackTimeline.add(existingRootTimeline, 0);
+          // Only unpause a root the wrapper actually holds — read the children
+          // back rather than trusting add(), the same rule the
+          // nested-composition path applies below. A paused child inside the
+          // paused wrapper never renders its holds, so the author's tl.set
+          // values (e.g. a static resize) would never appear on seek.
+          if (typeof fallbackTimeline.getChildren === "function") {
+            const held = fallbackTimeline.getChildren(true, true, true);
+            if (Array.isArray(held) && held.includes(existingRootTimeline)) {
+              existingRootTimeline.paused(false);
+            }
+          }
         } catch (err) {
           // keep fallback resilient if root add fails
           swallow("runtime.init.site2", err);
