@@ -191,13 +191,7 @@ function codecFactsFor(codecName: string, hasAlpha: boolean): AssetCodecFacts {
   };
 }
 
-/**
- * Probe a single video asset. Best-effort: ffprobe missing, erroring, or
- * finding no video stream resolves to `null` (asset omitted by the caller),
- * never a throw. Async so a pool of probes runs concurrently (the default
- * runner is `execFile`-based).
- */
-export async function probeAssetCodec(
+async function probeCodecFacts(
   filePath: string,
   runner?: FfprobeRunner,
 ): Promise<AssetCodecFacts | null> {
@@ -224,10 +218,7 @@ export function createMediaCodecProbeCache(): MediaCodecProbeCache {
   return new Map();
 }
 
-// Used when a caller doesn't pass its own cache — still correct (probes every
-// time a fresh Map would), but callers that want the mtime-cache benefit
-// across repeated scans (the studio preview route, etc.) should construct
-// and hold their own cache via `createMediaCodecProbeCache`.
+// Shared by every route and scan in this process that does not pass its own cache.
 const defaultProbeCache: MediaCodecProbeCache = new Map();
 const MAX_PROBE_CACHE_ENTRIES = 512;
 
@@ -245,10 +236,16 @@ function rememberProbeResult(
   cache.set(filePath, result);
 }
 
-async function probeAssetCodecCached(
+/**
+ * Probe a single video asset, cached per path until its mtime or size changes.
+ * Best-effort: ffprobe missing, erroring, or finding no video stream resolves
+ * to `null` (asset omitted by the caller), never a throw. Async so a pool of
+ * probes runs concurrently (the default runner is `execFile`-based).
+ */
+export async function probeAssetCodec(
   filePath: string,
-  cache: MediaCodecProbeCache,
   runner?: FfprobeRunner,
+  cache: MediaCodecProbeCache = defaultProbeCache,
 ): Promise<AssetCodecFacts | null> {
   let stat: ReturnType<typeof statSync>;
   try {
@@ -261,7 +258,7 @@ async function probeAssetCodecCached(
     rememberProbeResult(cache, filePath, cached);
     return cached.facts;
   }
-  const facts = await probeAssetCodec(filePath, runner);
+  const facts = await probeCodecFacts(filePath, runner);
   rememberProbeResult(cache, filePath, { mtimeMs: stat.mtimeMs, size: stat.size, facts });
   return facts;
 }
@@ -369,7 +366,7 @@ export async function scanProjectMediaCodecMap(
         const index = nextIndex++;
         const entry = entries[index];
         if (!entry) break;
-        facts[index] = await probeAssetCodecCached(entry[0], cache, options.runner);
+        facts[index] = await probeAssetCodec(entry[0], options.runner, cache);
       }
     }),
   );

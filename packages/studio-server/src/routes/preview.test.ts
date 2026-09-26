@@ -1480,6 +1480,50 @@ describe("hf-proxy negotiation and media codec map injection (U3)", () => {
   });
 });
 
+describe("hf-proxy codec probe", () => {
+  afterEach(() => {
+    vi.resetModules();
+    vi.doUnmock("../helpers/mediaMetadata.js");
+    vi.doUnmock("../helpers/proxyTranscoder.js");
+  });
+
+  it("runs ffprobe once for repeated proxy requests of the same unchanged clip", async () => {
+    const projectDir = createProjectDir();
+    writeFileSync(join(projectDir, "clip.mp4"), "original-hevc-bytes");
+    const proxyPath = join(projectDir, "proxy.mp4");
+    writeFileSync(proxyPath, "proxy-bytes");
+    const probeMediaMetadata = vi.fn(async () => ({
+      kind: "video" as const,
+      color: { codecName: "hevc", pixelFormat: "yuv420p" },
+    }));
+    vi.resetModules();
+    vi.doMock("../helpers/mediaMetadata.js", async () => ({
+      ...(await vi.importActual<typeof import("../helpers/mediaMetadata.js")>(
+        "../helpers/mediaMetadata.js",
+      )),
+      probeMediaMetadata,
+    }));
+    vi.doMock("../helpers/proxyTranscoder.js", async () => ({
+      ...(await vi.importActual<typeof import("../helpers/proxyTranscoder.js")>(
+        "../helpers/proxyTranscoder.js",
+      )),
+      resolveProxy: async () => proxyPath,
+    }));
+    const { registerPreviewRoutes: register } = await import("./preview.js");
+    const app = new Hono();
+    register(app, createAdapter(projectDir));
+
+    for (const _ of [1, 2]) {
+      const res = await app.request(
+        "http://localhost/projects/demo/preview/clip.mp4?hf-proxy=h264",
+      );
+      expect(res.status).toBe(200);
+    }
+
+    expect(probeMediaMetadata).toHaveBeenCalledTimes(1);
+  });
+});
+
 describe("preview asset byte ranges", () => {
   it("streams a slice of a media file too large to read whole", async () => {
     // A sparse 3 GiB file costs no disk. readFileSync refuses anything over
