@@ -607,23 +607,35 @@ describe("__hfSwapScenes", () => {
 
   it("puts the swapped scene's CSS animations under the playhead", async () => {
     const { root } = trackingRoot();
-    const animation = { currentTime: null as number | null, pause: vi.fn(), play: vi.fn() };
-    const proto = HTMLElement.prototype as unknown as { getAnimations?: () => unknown[] };
-    proto.getAnimations = function (this: HTMLElement) {
-      return this.textContent === "A two" ? [animation] : [];
+    // jsdom has no CSSAnimation; the CSS adapter seeks only its instances, read live document-wide.
+    class CSSAnimation {}
+    vi.stubGlobal("CSSAnimation", CSSAnimation);
+    const animation = Object.assign(new CSSAnimation(), {
+      currentTime: null as number | null,
+      pause: vi.fn(),
+      play: vi.fn(),
+      effect: { target: null as Element | null },
+    });
+    document.getAnimations = () => {
+      animation.effect.target =
+        Array.from(document.querySelectorAll("p")).find((p) => p.textContent === "A two") ?? null;
+      return animation.effect.target ? [animation as unknown as Animation] : [];
     };
     try {
       boot([A1, B], root);
       await tick();
+      window.__player?.renderSeek(2);
       const animated: Scene = {
         ...A2,
         body: '<p style="animation-name: spin; animation-duration: 2s">A two</p>',
       };
       await window.__hfSwapScenes!(preview([animated, B]).html);
-      expect(animation.currentTime).toBeTypeOf("number");
+      // The CSS adapter's seek to 1 s into scene a, hosted at 1; WAAPI alone would leave 0.
+      expect(animation.currentTime).toBe(1000);
       expect(animation.pause).toHaveBeenCalled();
     } finally {
-      delete proto.getAnimations;
+      vi.unstubAllGlobals();
+      Reflect.deleteProperty(document, "getAnimations");
     }
   });
 

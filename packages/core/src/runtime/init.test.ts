@@ -3699,6 +3699,161 @@ describe("initSandboxRuntimeModular", () => {
     expect(window.__player?.getDuration()).toBe(0);
   });
 
+  it("reads document animations once per seek pass across the WAAPI and CSS adapters", () => {
+    const root = document.createElement("div");
+    root.setAttribute("data-composition-id", "main");
+    root.setAttribute("data-root", "true");
+    root.setAttribute("data-start", "0");
+    root.setAttribute("data-duration", "10");
+    root.setAttribute("data-width", "1920");
+    root.setAttribute("data-height", "1080");
+    document.body.appendChild(root);
+
+    const animated = document.createElement("div");
+    animated.setAttribute("data-start", "1");
+    root.appendChild(animated);
+
+    vi.spyOn(window, "getComputedStyle").mockImplementation((target) => {
+      const real =
+        Object.getPrototypeOf(window).getComputedStyle ?? (() => ({}) as CSSStyleDeclaration);
+      return {
+        ...real,
+        animationName: target === animated ? "slide" : "none",
+      } as CSSStyleDeclaration;
+    });
+    // jsdom has no CSSAnimation; the CSS adapter seeks only its instances.
+    class CSSAnimation {}
+    vi.stubGlobal("CSSAnimation", CSSAnimation);
+    const animation = Object.assign(new CSSAnimation(), {
+      currentTime: 0,
+      pause: vi.fn(),
+      play: vi.fn(),
+      addEventListener: vi.fn(),
+      effect: { target: animated },
+    }) as unknown as Animation;
+    const getAnimations = vi.fn(() => [animation]);
+    document.getAnimations = getAnimations;
+    window.__timelines = {};
+
+    try {
+      initSandboxRuntimeModular();
+
+      getAnimations.mockClear();
+      window.__player!.renderSeek(2);
+      expect(getAnimations).toHaveBeenCalledTimes(1);
+      // The WAAPI adapter writes 2000; only the CSS adapter, reading the same list, writes clip time.
+      expect(animation.currentTime).toBe(1000);
+
+      getAnimations.mockClear();
+      window.__player!.seek(3);
+      expect(getAnimations).toHaveBeenCalledTimes(1);
+
+      // Each pass reads afresh: the runtime can show a clip between two seeks.
+      getAnimations.mockClear();
+      window.__player!.seek(4);
+      window.__player!.seek(5);
+      expect(getAnimations).toHaveBeenCalledTimes(2);
+    } finally {
+      vi.unstubAllGlobals();
+      Reflect.deleteProperty(document, "getAnimations");
+    }
+  });
+
+  it("times a CSS animation without data-start from its clip inside a nested composition", () => {
+    const root = document.createElement("div");
+    root.setAttribute("data-composition-id", "main");
+    root.setAttribute("data-root", "true");
+    root.setAttribute("data-start", "0");
+    root.setAttribute("data-duration", "12");
+    root.setAttribute("data-width", "1920");
+    root.setAttribute("data-height", "1080");
+    const host = document.createElement("div");
+    host.setAttribute("data-composition-id", "sub");
+    host.setAttribute("data-start", "6");
+    host.setAttribute("data-duration", "4");
+    const clip = document.createElement("div");
+    clip.className = "clip";
+    clip.setAttribute("data-start", "1");
+    clip.setAttribute("data-duration", "3");
+    const box = document.createElement("div");
+    clip.appendChild(box);
+    host.appendChild(clip);
+    root.appendChild(host);
+    document.body.appendChild(root);
+
+    vi.spyOn(window, "getComputedStyle").mockImplementation(
+      (target) => ({ animationName: target === box ? "slide" : "none" }) as CSSStyleDeclaration,
+    );
+    class CSSAnimation {}
+    vi.stubGlobal("CSSAnimation", CSSAnimation);
+    const animation = Object.assign(new CSSAnimation(), {
+      currentTime: 0,
+      pause: vi.fn(),
+      play: vi.fn(),
+      addEventListener: vi.fn(),
+      effect: { target: box },
+    }) as unknown as Animation;
+    document.getAnimations = () => [animation];
+    window.__timelines = {};
+
+    try {
+      initSandboxRuntimeModular();
+
+      // The clip starts 1 s into a sub-composition hosted at 6 s: 8 s is 1 s into the clip.
+      window.__player!.seek(8);
+      expect(animation.currentTime).toBe(1000);
+      window.__player!.renderSeek(9);
+      expect(animation.currentTime).toBe(2000);
+    } finally {
+      vi.unstubAllGlobals();
+      Reflect.deleteProperty(document, "getAnimations");
+    }
+  });
+
+  it("keeps an authored CSS animation delay when seeking into a clip that started hidden", () => {
+    const root = document.createElement("div");
+    root.setAttribute("data-composition-id", "main");
+    root.setAttribute("data-root", "true");
+    root.setAttribute("data-start", "0");
+    root.setAttribute("data-duration", "10");
+    root.setAttribute("data-width", "1920");
+    root.setAttribute("data-height", "1080");
+    const clip = document.createElement("div");
+    clip.className = "clip";
+    clip.setAttribute("data-start", "6");
+    clip.setAttribute("data-duration", "3");
+    const box = document.createElement("div");
+    clip.appendChild(box);
+    root.appendChild(clip);
+    document.body.appendChild(root);
+
+    vi.spyOn(window, "getComputedStyle").mockImplementation(
+      (target) =>
+        (target === box
+          ? { animationName: "slide", animationDelay: "1s", animationDuration: "2s" }
+          : { animationName: "none" }) as CSSStyleDeclaration,
+    );
+    // A hidden clip has no live CSSAnimation, so the runtime poses it through the inline delay.
+    document.getAnimations = () => [];
+    window.__timelines = {};
+
+    try {
+      initSandboxRuntimeModular();
+      const player = window.__player!;
+      for (const move of [player.seek, player.renderSeek]) {
+        player.seek(0);
+        expect(clip.style.visibility).toBe("hidden");
+        // 0.5 s into the clip, 0.5 s of the authored 1 s delay is still to run.
+        move(6.5);
+        expect(box.style.animationDelay).toBe("0.5s");
+        move(8);
+        expect(box.style.animationDelay).toBe("-1s");
+      }
+    } finally {
+      Reflect.deleteProperty(document, "getAnimations");
+    }
+  });
+
   it("infers hf.duration from a registered Lottie animation without data-duration or a GSAP timeline", () => {
     const root = document.createElement("div");
     root.setAttribute("data-composition-id", "main");

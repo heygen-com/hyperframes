@@ -248,6 +248,12 @@ const SLOW_IDLE_HEARTBEAT_MS = 1000;
 // GSAP `data` on the tweens the runtime adds to stretch a timeline; never animation.
 const RUNTIME_FILLER = "hf-runtime-filler";
 
+// One document.getAnimations() per seek and the pause after it, read on first use, shared by all adapters.
+function pageAnimationsForOnePass(): () => Animation[] {
+  let list: Animation[] | undefined;
+  return () => (list ??= document.getAnimations());
+}
+
 export function initSandboxRuntimeModular(): void {
   const state = createRuntimeState();
   // Each video and audio as written, captured before the runtime writes to it; a swap keeps only these.
@@ -3056,11 +3062,15 @@ export function initSandboxRuntimeModular(): void {
     postState(true);
   };
 
-  const runAdapters = (method: "discover" | "pause" | "play", timeSeconds = 0) => {
+  const runAdapters = (
+    method: "discover" | "pause" | "play",
+    timeSeconds = 0,
+    pageAnimations?: () => Animation[],
+  ) => {
     for (const adapter of state.deterministicAdapters) {
       try {
         if (method === "discover") adapter.discover();
-        if (method === "pause") adapter.pause();
+        if (method === "pause") adapter.pause({ pageAnimations });
         if (method === "play" && adapter.play) adapter.play();
       } catch (err) {
         // keep runtime resilient against adapter-specific failures
@@ -3467,8 +3477,8 @@ export function initSandboxRuntimeModular(): void {
       state.mediaForceSyncNextTick = true;
       const tl = state.capturedTimeline;
       pauseTimelineIfPossible(tl);
-      seekTimelineAndAdapters(state.currentTime);
-      runAdapters("pause");
+      const pageAnimations = seekTimelineAndAdapters(state.currentTime);
+      runAdapters("pause", 0, pageAnimations);
       if (options?.keepPlaying && wasPlaying) {
         transport.play();
         return;
@@ -3492,11 +3502,11 @@ export function initSandboxRuntimeModular(): void {
       state.currentTime = clock.now();
       state.isPlaying = false;
       state.mediaForceSyncNextTick = true;
-      seekTimelineAndAdapters(state.currentTime, {
+      const pageAnimations = seekTimelineAndAdapters(state.currentTime, {
         activateChildren: true,
         suppressEvents: options?.suppressEvents,
       });
-      runAdapters("pause");
+      runAdapters("pause", 0, pageAnimations);
       syncMediaForCurrentState();
       colorGrading.redraw();
       paintVfx(state.currentTime, { engineMode: true });
@@ -3889,14 +3899,14 @@ export function initSandboxRuntimeModular(): void {
   function seekTimelineAndAdapters(
     t: number,
     opts?: { activateChildren?: boolean; suppressEvents?: boolean },
-  ) {
+  ): () => Animation[] {
     const tl = state.capturedTimeline;
     // Critical for a sub-composition whose data-start is at or near 0: it is added
     // to the root while the root is paused and may never receive an explicit
     // play(), so without the rearm it holds its initial CSS state (opacity:0).
     const rearmed = tl && opts?.activateChildren ? activateSiblingTimelines(tl) : [];
     try {
-      seekRootChildrenAndAdapters(tl, t, opts);
+      return seekRootChildrenAndAdapters(tl, t, opts);
     } finally {
       for (const sibling of rearmed) pauseTimelineIfPossible(sibling);
     }
@@ -3906,7 +3916,7 @@ export function initSandboxRuntimeModular(): void {
     tl: RuntimeTimelineLike | null,
     t: number,
     opts?: { activateChildren?: boolean; suppressEvents?: boolean },
-  ) {
+  ): () => Animation[] {
     const suppressEvents = opts?.suppressEvents === true;
     if (tl) {
       // #10: when data-duration exceeds the timeline's intrinsic length the
@@ -3953,14 +3963,16 @@ export function initSandboxRuntimeModular(): void {
     // the deterministic adapters, syncTimedElementVisibility, the hf-timelines-built
     // handler and __hfReseekGpu. It only ever moved the state the seek left behind.
     seekStandaloneRegisteredTimelines(t, opts);
+    const pageAnimations = pageAnimationsForOnePass();
     for (const adapter of state.deterministicAdapters) {
       if (adapter.name === "gsap" && tl) continue;
       try {
-        adapter.seek({ time: t, suppressEvents });
+        adapter.seek({ time: t, suppressEvents, pageAnimations });
       } catch (err) {
         swallow("runtime.init.transport.adapter", err);
       }
     }
+    return pageAnimations;
   }
 
   // True while the Studio is mid-drag on an element (the gesture marker is

@@ -316,8 +316,12 @@ export type RuntimeTimelineLike = {
 export type RuntimeDeterministicAdapter = {
   name: string;
   discover: () => void;
-  seek: (ctx: { time: number; suppressEvents?: boolean }) => void;
-  pause: () => void;
+  seek: (ctx: {
+    time: number;
+    suppressEvents?: boolean;
+    pageAnimations?: () => Animation[];
+  }) => void;
+  pause: (ctx?: { pageAnimations?: () => Animation[] }) => void;
   play?: () => void;
   revert?: () => void;
   /**
