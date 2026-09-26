@@ -452,6 +452,7 @@ describe("persistElementAttribute", () => {
         writeProjectFile,
         recordEdit: vi.fn(),
         pendingTimelineEditPathRef: { current: new Set() },
+        onFileRead: vi.fn(),
         patchLive,
       }),
     ).rejects.toThrow("Unable to patch element in index.html");
@@ -495,6 +496,7 @@ describe("persistElementAttribute — unwind value", () => {
         writeProjectFile,
         recordEdit: vi.fn(),
         pendingTimelineEditPathRef: { current: new Set() },
+        onFileRead: vi.fn(),
         // The live DOM is ALREADY at the new value when the commit runs — that
         // is what `setLive` does on every drag frame.
         patchLive: (v) => patched.push(v),
