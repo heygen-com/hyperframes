@@ -282,7 +282,8 @@ export function useSetAudioGroupAttribute({
       value: string | null,
       label: string,
     ): Promise<TimelineEditOutcome> => {
-      const pid = projectForTimelineSave(isRecordingRef?.current, projectIdRef.current, showToast);
+      const project = projectIdRef.current;
+      const pid = projectForTimelineSave(isRecordingRef?.current, project, showToast);
       // Settles on what the file holds, so overlapping saves that fail cannot leave
       // the preview or the store on a value that never landed.
       const live = claimLive(groupId, attr);
@@ -293,13 +294,7 @@ export function useSetAudioGroupAttribute({
           activeCompPath,
         );
         live.settle(
-          await readSavedAttribute(
-            projectIdRef.current,
-            targetPath,
-            patchTarget,
-            attr,
-            writeProjectFile,
-          ),
+          await readSavedAttribute(project, targetPath, patchTarget, attr, writeProjectFile),
         );
         return outcome;
       };
