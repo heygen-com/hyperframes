@@ -3380,6 +3380,27 @@ describe("HyperframesPlayer asset-ready gate", () => {
     player.remove();
   });
 
+  it("keeps a same-origin handshake when that document's load event arrives after ready", async () => {
+    const player = await createConnectedPlayer();
+    player._ready = false;
+    const doc = document.implementation.createHTMLDocument("composition");
+    Object.defineProperty(player.iframe, "contentDocument", { get: () => doc, configurable: true });
+    post(player, { type: "timeline", durationInFrames: 60 });
+    await vi.waitFor(() => expect(player.assetsReady).toBe(true));
+
+    player._onIframeLoad();
+
+    expect(player._ready).toBe(true);
+    expect(player.assetsReady).toBe(true);
+
+    const next = document.implementation.createHTMLDocument("next composition");
+    Object.defineProperty(player.iframe, "contentDocument", { get: () => next });
+    player._onIframeLoad();
+    expect(player._ready).toBe(false);
+
+    player.remove();
+  });
+
   it("does not wait on an opaque-origin runtime that already settled its assets", async () => {
     const player = await createConnectedPlayer();
     player._ready = false;

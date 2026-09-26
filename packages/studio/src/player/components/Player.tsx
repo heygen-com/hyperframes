@@ -39,6 +39,8 @@ interface PlayerProps {
 
 interface HyperframesPlayerElement extends HTMLElement {
   iframeElement: HTMLIFrameElement;
+  ready?: boolean;
+  painted?: boolean;
 }
 
 const MEDIA_HAVE_FUTURE_DATA = 3;
@@ -245,8 +247,9 @@ export const Player = forwardRef<HTMLIFrameElement, PlayerProps>(
           setLoaded(true);
           setPreviewError(null);
           setShaderTransitionLoading(false);
-          setCompositionLoading(true);
-          setPainted(false);
+          // The player can finish this document's handshake before `load`, and sends it only once.
+          setCompositionLoading(!player.ready);
+          setPainted(Boolean(player.painted));
           // Reveal animation on reload (hot-reload, composition switch)
           if (loadCountRef.current > 1) {
             container.classList.remove("preview-revealing");

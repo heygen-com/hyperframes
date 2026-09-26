@@ -115,6 +115,7 @@ class HyperframesPlayer extends HTMLElement {
   private probe: CompositionProbe;
 
   private _ready = false;
+  private _readyDocument: Document | null = null;
   private _assetsReady = false;
   private _painted = false;
   private _pendingPlay = false;
@@ -1024,6 +1025,7 @@ class HyperframesPlayer extends HTMLElement {
     this._dispatchReady();
 
     const doc = this._getSameOriginIframeDocument();
+    this._readyDocument = doc;
     if (doc) this._media.setupFromIframe(doc);
 
     this._replayBridgeState();
@@ -1044,6 +1046,7 @@ class HyperframesPlayer extends HTMLElement {
     this.controlsApi?.updateTime(0, duration);
     this._dispatchReady();
     const doc = this._getSameOriginIframeDocument();
+    this._readyDocument = doc;
     if (doc) this._media.setupFromIframe(doc);
     this._setIframeMediaMuted(this.muted);
     this._waitForAssetsReady(doc);
@@ -1141,6 +1144,7 @@ class HyperframesPlayer extends HTMLElement {
    *  data deliveries end here. A queued play is the caller's, so only its owners clear it. */
   private _abandonComposition(reason: string): void {
     this._ready = false;
+    this._readyDocument = null;
     this._invalidateAssetsWait();
     this._runtimeBridgeReady = false;
     this._rejectAllRuntimeDataDeliveries(reason);
@@ -1261,9 +1265,9 @@ class HyperframesPlayer extends HTMLElement {
 
   private _onIframeLoad() {
     // The runtime posts its timeline at DOMContentLoaded, before `load`, and every
-    // host-initiated navigation clears `_ready` first. So a ready opaque-origin player already
-    // holds this document's handshake; a paused runtime would never post it again.
-    if (this._ready && this._getSameOriginIframeDocument() === null) return;
+    // host-initiated navigation clears `_ready` first. So a ready player already holds this
+    // document's handshake (an opaque origin reads as null); a paused runtime never posts it again.
+    if (this._ready && this._getSameOriginIframeDocument() === this._readyDocument) return;
 
     this._ready = false;
     // The runtime installs its bridge at DOMContentLoaded, posts `ready`, and only then does the
