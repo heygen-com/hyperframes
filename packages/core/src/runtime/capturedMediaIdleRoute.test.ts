@@ -41,12 +41,13 @@ function makeNode(kind: string, extra: Partial<GraphNode> = {}): GraphNode {
 const sources = new Map<HTMLMediaElement, GraphNode>();
 let destination: GraphNode;
 
+let pendingResume: Promise<void> | null = null;
 class GraphAudioContext {
-  state = "running";
+  state = pendingResume ? "suspended" : "running";
   currentTime = 0;
   destination = (destination = makeNode("destination"));
   resume() {
-    return Promise.resolve();
+    return pendingResume ?? Promise.resolve();
   }
   close() {
     return Promise.resolve();
@@ -188,5 +189,28 @@ describe("an element Web Audio captured, outside a play", () => {
     stepFrames(1);
 
     expect(music.volume).toBe(0);
+  });
+
+  it("does not mute a processed track whose capture a newer pass replaced", async () => {
+    let release!: () => void;
+    pendingResume = new Promise<void>((r) => (release = r));
+    mount(
+      `<audio id="vo" data-start="0" data-duration="10" data-playback-rate="1.5" data-fx-chain="[]" src="/assets/vo.mp3"></audio>` +
+        `<audio id="sfx" data-start="0" data-duration="10" src="/assets/sfx.mp3"></audio>`,
+    );
+    const vo = document.getElementById("vo") as HTMLAudioElement;
+    initSandboxRuntimeModular();
+    await flush();
+    window.__player?.play();
+    await flush();
+
+    // A hide reschedules every track while the first captures still wait on resume().
+    document.getElementById("sfx")!.setAttribute("data-hidden", "");
+    stepFrames(1);
+    release();
+    pendingResume = null;
+    await flush();
+
+    expect(vo.muted).toBe(false);
   });
 });

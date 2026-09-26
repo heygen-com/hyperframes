@@ -4067,7 +4067,8 @@ export function initSandboxRuntimeModular(): void {
             )
           : Promise.resolve(null);
       void capture.then((scheduled) => {
-        if (scheduled || !clock.isPlaying()) return;
+        // A newer pass replaced this one; its null is not a failed capture.
+        if (scheduled || !clock.isPlaying() || gen !== webAudio.currentGeneration()) return;
         const effectiveRate = state.playbackRate * readElementPlaybackRate(rawEl);
         // Deliberately the FX/automation pair and NOT
         // `nativeUnexpressibleProcessing()`, which this route's diagnostic uses.
