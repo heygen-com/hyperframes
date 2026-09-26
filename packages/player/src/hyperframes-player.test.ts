@@ -1450,6 +1450,23 @@ describe("HyperframesPlayer loop end-state handling", () => {
     expect(player._paused).toBe(false);
   });
 
+  it("keeps a pause the runtime marks as not ended, even at exactly the length", () => {
+    const ended = vi.fn();
+    const seek = vi.spyOn(player, "seek");
+    player.addEventListener("ended", ended);
+    player._duration = 4.97;
+
+    for (const loop of [false, true]) {
+      player.loop = loop;
+      player._paused = false;
+      postState(149, false, 4.97, false);
+
+      expect(ended).not.toHaveBeenCalled();
+      expect(seek).not.toHaveBeenCalled();
+      expect(player._paused).toBe(true);
+    }
+  });
+
   it("keeps a pause from inside the composition on the last frame", () => {
     const ended = vi.fn();
     const seek = vi.spyOn(player, "seek");

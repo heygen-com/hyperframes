@@ -53,8 +53,9 @@ export function applyRuntimeStateMessage(
   callbacks: PlaybackStateCallbacks,
 ): PlaybackState {
   const rawTime = runtimeTime(data, fps);
-  const atEnd = current.duration > 0 && (data.ended === true || rawTime >= current.duration);
-  const currentTime = atEnd ? current.duration : rawTime;
+  const atEnd = current.duration > 0 && (data.ended ?? rawTime >= current.duration);
+  const clampedTime = current.duration > 0 ? Math.min(rawTime, current.duration) : rawTime;
+  const currentTime = atEnd ? current.duration : clampedTime;
   const wasPlaying = !current.paused;
   const nextPaused = !data.isPlaying;
   const completedPlayback = atEnd && (wasPlaying || data.isPlaying);
