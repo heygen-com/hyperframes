@@ -283,7 +283,15 @@ export function useSetAudioGroupAttribute({
           groupId,
           activeCompPath,
         );
-        settleLive(await readSavedAttribute(projectIdRef.current, targetPath, patchTarget, attr));
+        settleLive(
+          await readSavedAttribute(
+            projectIdRef.current,
+            targetPath,
+            patchTarget,
+            attr,
+            writeProjectFile,
+          ),
+        );
         return outcome;
       };
       if (typeof pid !== "string") return unsaved(pid);

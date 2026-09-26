@@ -155,7 +155,15 @@ export function useSetElementAttribute({
       const settleLive = claimLive(element, attr);
       const unsaved = async (outcome: TimelineEditOutcome): Promise<TimelineEditOutcome> => {
         const { targetPath, patchTarget } = elementSaveTarget(element, activeCompPath);
-        settleLive(await readSavedAttribute(projectIdRef.current, targetPath, patchTarget, attr));
+        settleLive(
+          await readSavedAttribute(
+            projectIdRef.current,
+            targetPath,
+            patchTarget,
+            attr,
+            writeProjectFile,
+          ),
+        );
         return outcome;
       };
       if (typeof pid !== "string") return unsaved(pid);

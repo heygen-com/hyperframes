@@ -227,6 +227,43 @@ describe("useAutomationLanes saves report what happened", () => {
     expect(usePlayerStore.getState().elements[0]?.automation).toBe(saved);
   });
 
+  it("settles on a queued save that lands after an earlier one fails", async () => {
+    const { startCommit, preview, writeProjectFile, iframe, setFile } = mountLanes(music);
+    let failFirst = () => {};
+    writeProjectFile
+      .mockImplementationOnce(
+        () =>
+          new Promise<void>((_resolve, reject) => {
+            failFirst = () => reject(new Error("offline"));
+          }),
+      )
+      .mockImplementationOnce(async (_path, content) => {
+        await new Promise((resolve) => setTimeout(resolve, 10));
+        setFile(content);
+      });
+    preview();
+    const first = startCommit(NEXT);
+    await act(() => vi.waitFor(() => expect(writeProjectFile).toHaveBeenCalledTimes(1)));
+    const later = {
+      version: 1 as const,
+      lanes: [{ target: "volume", points: [{ t: 0, v: 0.9 }] }],
+    };
+    preview(later);
+    const second = startCommit(later);
+    await act(() => new Promise((resolve) => setTimeout(resolve, 20)));
+    failFirst();
+    let outcomes: unknown[] = [];
+    await act(async () => {
+      outcomes = await Promise.all([first, second]);
+    });
+    expect(outcomes).toMatchObject([{ status: "failed" }, { status: "saved" }]);
+    const landed = serializeAutomation(later);
+    expect(iframe.contentDocument!.getElementById("music")?.getAttribute("data-automation")).toBe(
+      landed,
+    );
+    expect(usePlayerStore.getState().elements[0]?.automation).toBe(landed);
+  });
+
   it("settles on the file when two overlapping saves both fail", async () => {
     const { startCommit, preview, writeProjectFile, iframe } = mountLanes(music);
     let failFirst = () => {};

@@ -291,31 +291,34 @@ describe("useAutomationSelectionKeyboard", () => {
     expect(again).not.toContain(6);
   });
 
-  it("keeps a selection drawn while a refused paste was saving", async () => {
-    clearAutomationClipboard();
-    usePlayerStore.setState({
-      elements: [{ ...bgmElement, duration: 10 }],
-      selectedElementId: "bgm",
-    });
-    usePlayerStore
-      .getState()
-      .setAutomationSelection(wholeAxis({ elementKey: "bgm", target: "volume", t0: 2, t1: 4 }));
-    let land = () => {};
-    const onCommit = vi.fn(
-      () =>
-        new Promise<{ status: "refused"; reason: string }>((resolve) => {
-          land = () => resolve({ status: "refused", reason: "Locked" });
-        }),
-    );
-    setup({ onCommit });
-    combo("c");
-    combo("v");
-    const drawn = wholeAxis({ elementKey: "bgm", target: "volume", t0: 6, t1: 8 });
-    usePlayerStore.getState().setAutomationSelection(drawn);
-    land();
-    await act(async () => {});
-    expect(usePlayerStore.getState().automationSelection).toEqual(drawn);
-  });
+  it.each([{ status: "saved" as const }, { status: "refused" as const, reason: "Locked" }])(
+    "keeps a selection drawn while a paste was saving ($status)",
+    async (outcome) => {
+      clearAutomationClipboard();
+      usePlayerStore.setState({
+        elements: [{ ...bgmElement, duration: 10 }],
+        selectedElementId: "bgm",
+      });
+      usePlayerStore
+        .getState()
+        .setAutomationSelection(wholeAxis({ elementKey: "bgm", target: "volume", t0: 2, t1: 4 }));
+      let land = () => {};
+      const onCommit = vi.fn(
+        () =>
+          new Promise<typeof outcome>((resolve) => {
+            land = () => resolve(outcome);
+          }),
+      );
+      setup({ onCommit });
+      combo("c");
+      combo("v");
+      const drawn = wholeAxis({ elementKey: "bgm", target: "volume", t0: 6, t1: 8 });
+      usePlayerStore.getState().setAutomationSelection(drawn);
+      land();
+      await act(async () => {});
+      expect(usePlayerStore.getState().automationSelection).toEqual(drawn);
+    },
+  );
 
   it("chains a second Cmd+V after the first instead of overwriting it", async () => {
     // The regression this pins: paste leaves its own span selected, so anchoring

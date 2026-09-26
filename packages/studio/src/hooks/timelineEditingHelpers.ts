@@ -16,6 +16,7 @@ import {
   getTimelineElementIdentity,
 } from "../player/lib/timelineElementHelpers";
 import { saveProjectFilesWithHistory, type RecordEditInput } from "../utils/studioFileHistory";
+import { serializeStudioFileMutations } from "../utils/studioFileMutationCoordinator";
 import type { TimelineZIndexReorderCommit } from "./useTimelineEditingTypes";
 import { setCompositionDurationToContent } from "../utils/timelineAssetDrop";
 import { readFileContent } from "./timelineTimingSync";
@@ -412,15 +413,18 @@ export function claimLiveBefore(
   };
 }
 
-/** What the file holds for `attr` on the target, or undefined when that cannot be read. */
+/** What the file holds for `attr` once queued writes to it land; undefined when unreadable. */
 export async function readSavedAttribute(
   projectId: string | null,
   targetPath: string,
   patchTarget: PatchTarget | null,
   attr: string,
+  writeFile: (path: string, content: string, expectedContent?: string) => Promise<void>,
 ): Promise<string | null | undefined> {
   if (!projectId || !patchTarget) return undefined;
-  const html = await readFileContent(projectId, targetPath).catch(() => null);
+  const html = await serializeStudioFileMutations(writeFile, [targetPath], () =>
+    readFileContent(projectId, targetPath),
+  ).catch(() => null);
   if (html === null || readTagSnippetByTarget(html, patchTarget) === undefined) return undefined;
   return readAttributeByTarget(html, patchTarget, attr) ?? null;
 }
