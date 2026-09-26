@@ -94,6 +94,8 @@ export class ParentMediaManager {
     const wasPromoted = this._audioOwner === "parent";
     this._audioOwner = "runtime";
     this.pauseAll();
+    for (const m of this._entries) if (m !== this._urlAudioEntry) m.el.src = "";
+    this._entries = this._urlAudioEntry ? [this._urlAudioEntry] : [];
     this.teardownObserver();
     if (wasPromoted) {
       this._dispatchEvent(

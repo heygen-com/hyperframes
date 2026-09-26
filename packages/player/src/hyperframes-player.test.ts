@@ -131,6 +131,9 @@ describe("HyperframesPlayer parent-frame media", () => {
     seek: (t: number) => void;
     _audioOwner?: "runtime" | "parent";
     _promoteToParentProxy?: () => void;
+    _ready?: boolean;
+    _assetsReady?: boolean;
+    _parentTickRaf?: number | null;
   };
 
   let player: PlayerElement;
@@ -260,13 +263,17 @@ describe("HyperframesPlayer parent-frame media", () => {
     player.setAttribute("audio-src", "https://cdn.example.com/narration.mp3");
     document.body.appendChild(player);
     player._promoteToParentProxy?.();
+    player._ready = true;
+    player._assetsReady = true;
     player.play();
+    expect(player._parentTickRaf).not.toBeNull();
     mockAudio.pause.mockClear();
 
     player.setAttribute("src", "next-composition.html");
 
     expect(player._audioOwner).toBe("runtime");
     expect(mockAudio.pause).toHaveBeenCalled();
+    expect(player._parentTickRaf).toBeNull();
   });
 
   function dispatchAutoplayBlockedFromPlayerFrame(player: HTMLElement): HTMLMediaElement {

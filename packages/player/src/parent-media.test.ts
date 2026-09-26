@@ -163,6 +163,25 @@ describe("ParentMediaManager audio-src proxy lifecycle", () => {
   });
 });
 
+describe("ParentMediaManager across documents", () => {
+  it("drops the previous document's proxies on reset and keeps the audio-src one", () => {
+    const mgr = makeManager();
+    mgr.setupFromUrl("https://example.test/narration.mp3");
+    const track = document.createElement("audio");
+    track.setAttribute("src", "https://example.test/old-film.mp3");
+    track.setAttribute("data-start", "0");
+    track.preload = "auto";
+    document.body.appendChild(track);
+    mgr.setupFromIframe(document);
+    expect(mgr.entries).toHaveLength(2);
+
+    mgr.resetForIframeLoad();
+
+    expect(mgr.entries.map((m) => m.el.src)).toEqual(["https://example.test/narration.mp3"]);
+    track.remove();
+  });
+});
+
 describe("ParentMediaManager clip window", () => {
   it("plays a proxy inside its clip window and pauses it at the clip end instant", () => {
     const mgr = makeManager({ isPaused: false, owner: "parent" });
