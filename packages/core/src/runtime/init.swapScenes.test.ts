@@ -383,6 +383,33 @@ describe("__hfSwapScenes", () => {
     expect(p.textContent).toBe("Hel");
   });
 
+  it("keeps the same video element through an edit beside it and applies an edit to it", async () => {
+    const { root } = trackingRoot();
+    quietMedia();
+    const scene = (text: string, video: string, hash: string): Scene => ({
+      ...A1,
+      hash,
+      body: `<p>${text}</p><video src="clip.mp4" ${video}</video>`,
+    });
+    boot([scene("A one", 'data-start="1" loop>one', "ha1"), B], root);
+    await tick();
+    const video = sceneHost("a").querySelector("video");
+    await window.__hfSwapScenes!(
+      preview([scene("A two", 'data-start="1" loop>one', "ha2"), B]).html,
+    );
+    expect(sceneHost("a").querySelector("p")?.textContent).toBe("A two");
+    expect(sceneHost("a").querySelector("video")).toBe(video);
+    const edit = 'data-start="1.5" style="opacity: 0.5">two';
+    await window.__hfSwapScenes!(preview([scene("A two", edit, "ha3"), B]).html);
+    expect(sceneHost("a").querySelector("video")).toBe(video);
+    expect(video?.getAttribute("data-start")).toBe("1.5");
+    expect(video?.style.opacity).toBe("0.5");
+    expect(video?.hasAttribute("loop")).toBe(false);
+    expect(video?.textContent).toBe("two");
+    expect(video?.getAttribute("src")).toBe("clip.mp4");
+    expect(video?.getAttribute("preload")).toBe("auto");
+  });
+
   it("probes the swapped scene's media for volume once the scene is in the root timeline", async () => {
     const { root, children } = trackingRoot();
     const withAudio = (s: Scene, text: string): Scene => ({

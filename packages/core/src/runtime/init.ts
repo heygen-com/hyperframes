@@ -3104,6 +3104,27 @@ export function initSandboxRuntimeModular(): void {
     }
     return urls;
   };
+  // A video or audio the edit left alone keeps playing: it takes its new copy's place and attributes.
+  const keepUnchangedMedia = (oldHost: Element, host: Element) => {
+    const bySrc = new Map<string, Element[]>();
+    for (const el of oldHost.querySelectorAll("video, audio")) {
+      const src = unproxiedMediaSrc(el);
+      if (src) bySrc.set(src, [...(bySrc.get(src) ?? []), el]);
+    }
+    for (const el of host.querySelectorAll("video, audio")) {
+      const src = unproxiedMediaSrc(el);
+      const kept = src ? bySrc.get(src)?.shift() : undefined;
+      if (!kept) continue;
+      // The runtime sets preload once, when it first binds the element.
+      const own = (name: string) => name === "src" || name === "preload";
+      for (const { name } of Array.from(kept.attributes))
+        if (!own(name) && !el.hasAttribute(name)) kept.removeAttribute(name);
+      for (const { name, value } of Array.from(el.attributes))
+        if (!own(name)) kept.setAttribute(name, value);
+      kept.replaceChildren(...el.childNodes);
+      el.replaceWith(kept);
+    }
+  };
   // Swap edited scenes in place from a rebuilt preview document. Refuses before changing anything unless
   // the documents differ only inside existing scenes; a later failure is left to the caller's reload.
   const swapScenes = async (html: string): Promise<void> => {
@@ -3178,6 +3199,7 @@ export function initSandboxRuntimeModular(): void {
       else document.head.append(...newStyles);
       for (const el of oldParts) if (el !== oldHost) el.remove();
       const host = document.importNode(newHost, true);
+      keepUnchangedMedia(oldHost, host);
       oldHost.replaceWith(host);
       swappedHosts.push(host);
       if (host.querySelector(".caption-group")) captionHosts.push(host);
