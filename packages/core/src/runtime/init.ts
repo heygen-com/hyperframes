@@ -4267,7 +4267,10 @@ export function initSandboxRuntimeModular(): void {
         runAdapters("pause");
         syncMediaForCurrentState();
         postState(true);
+        return;
       }
+      // When iframe rAF is throttled, parent ticks also own position reporting.
+      postState(false);
     },
     onEnablePickMode: () => picker.enablePickMode(),
     onDisablePickMode: () => picker.disablePickMode(),
