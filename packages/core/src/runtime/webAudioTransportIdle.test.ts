@@ -14,14 +14,21 @@ function makeNode() {
 let resumeGate: Promise<void> | null = null;
 let suspendGate: Promise<void> | null = null;
 let suspendFails = false;
+let startsLate = false;
 const contexts: FakeAudioContext[] = [];
 
 class FakeAudioContext {
-  state: "running" | "suspended" | "closed" = "running";
+  state: "running" | "suspended" | "closed" = startsLate ? "suspended" : "running";
   currentTime = 0;
   destination = makeNode();
+  onstatechange: (() => void) | null = null;
+  // Chrome fires "statechange" after construction and on every transition.
   constructor() {
     contexts.push(this);
+    queueMicrotask(() => {
+      this.state = "running";
+      this.onstatechange?.();
+    });
   }
   createGain() {
     return makeNode();
@@ -43,7 +50,12 @@ class FakeAudioContext {
   // Chrome applies suspend() and resume() in call order.
   private queue: Promise<void> = Promise.resolve();
   private enqueue(gate: Promise<void> | null, next: "running" | "suspended") {
-    this.queue = this.queue.then(() => gate).then(() => void (this.state = next));
+    this.queue = this.queue
+      .then(() => gate)
+      .then(() => {
+        this.state = next;
+        this.onstatechange?.();
+      });
     return this.queue;
   }
   suspend() {
@@ -90,6 +102,7 @@ describe("WebAudioTransport keeps its context suspended while nothing sounds", (
     resumeGate = null;
     suspendGate = null;
     suspendFails = false;
+    startsLate = false;
     vi.useFakeTimers();
   });
   afterEach(() => {
@@ -99,6 +112,12 @@ describe("WebAudioTransport keeps its context suspended while nothing sounds", (
   });
 
   it("suspends a freshly opened context while the transport is paused", async () => {
+    const { ctx } = await startTransport();
+    expect(ctx.state).toBe("suspended");
+  });
+
+  it("suspends a context the browser starts only after construction", async () => {
+    startsLate = true;
     const { ctx } = await startTransport();
     expect(ctx.state).toBe("suspended");
   });

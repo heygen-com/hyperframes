@@ -193,13 +193,13 @@ export class WebAudioTransport {
   async init(): Promise<boolean> {
     try {
       this._ctx = new AudioContext();
+      this._ctx.onstatechange = () => this.rest();
       this._masterGain = this._ctx.createGain();
       this._monitorGain = this._ctx.createGain();
       this._masterGain.connect(this._monitorGain);
       this._monitorGain.connect(this._ctx.destination);
       this.applyMasterGain();
       if (this._metering) this.attachMasterTap();
-      this.rest();
       return true;
     } catch {
       return false;
@@ -210,15 +210,6 @@ export class WebAudioTransport {
     if (!this._ctx || (this._ctx.state === "running" && !this._suspendPending)) return;
     this._suspendPending = false;
     await this._ctx.resume();
-  }
-
-  /** Resume for a play pass; a Pause that lands while waiting sends it back to sleep. */
-  private async wakeFor(generation: number): Promise<void> {
-    try {
-      await this.wake();
-    } finally {
-      if (generation !== this._playGeneration) this.rest();
-    }
   }
 
   private rest(): void {
@@ -392,7 +383,7 @@ export class WebAudioTransport {
     if (generation !== this._playGeneration) return null;
 
     try {
-      await this.wakeFor(generation);
+      await this.wake();
       if (generation !== this._playGeneration) return null;
 
       const sourceNode = this.acquireMediaElementSource(el);
@@ -676,7 +667,7 @@ export class WebAudioTransport {
     if (generation !== this._playGeneration) return null;
 
     try {
-      await this.wakeFor(generation);
+      await this.wake();
       if (generation !== this._playGeneration) return null;
       // Read after the wake: the clock kept running while the context resumed.
       const compositionTime = readCompositionTime();
