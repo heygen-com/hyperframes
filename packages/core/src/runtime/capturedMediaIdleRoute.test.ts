@@ -49,6 +49,9 @@ class GraphAudioContext {
   resume() {
     return pendingResume ?? Promise.resolve();
   }
+  suspend() {
+    return Promise.resolve();
+  }
   close() {
     return Promise.resolve();
   }

@@ -39,6 +39,7 @@ function createMockAudioContext(currentTime = 100) {
     currentTime,
     state: "running",
     resume: vi.fn(),
+    suspend: vi.fn(() => Promise.resolve()),
     createBufferSource: vi.fn(() => sourceNode),
     createMediaElementSource: vi.fn(() => mediaElementSourceNode),
     createGain: vi.fn(() => gainNode),
@@ -62,6 +63,8 @@ const mockBuffer = {} as AudioBuffer;
 const mockEl = {
   muted: false,
   volume: 0.4,
+  paused: true,
+  addEventListener: () => {},
   getAttribute: (name: string) => (name === "data-playback-rate" ? "1" : null),
 } as unknown as HTMLMediaElement;
 
@@ -774,6 +777,7 @@ describe("WebAudioTransport", () => {
         currentTime,
         state: "running",
         resume: vi.fn(),
+        suspend: vi.fn(() => Promise.resolve()),
         createBufferSource: vi.fn(() => ({
           buffer: null as AudioBuffer | null,
           playbackRate: { value: 1 },
