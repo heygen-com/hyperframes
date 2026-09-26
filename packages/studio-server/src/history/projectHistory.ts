@@ -212,6 +212,20 @@ async function removeEmptyFolders(dir: string): Promise<void> {
   await rmdir(dir);
 }
 
+/** The first file or link under folder `dir` (project path `at`) that `deleted` does not hold; links are not followed. */
+function fileLeftIn(dir: string, at: string, deleted: ReadonlySet<string>): string | undefined {
+  for (const entry of readdirSync(dir, { withFileTypes: true })) {
+    const path = `${at}/${entry.name}`;
+    const left = entry.isDirectory()
+      ? fileLeftIn(join(dir, entry.name), path, deleted)
+      : deleted.has(path)
+        ? undefined
+        : path;
+    if (left) return left;
+  }
+  return undefined;
+}
+
 const blocks = (removed: string, added: string) =>
   added.startsWith(`${removed}/`) || removed.startsWith(`${added}/`);
 
@@ -669,20 +683,17 @@ class Engine {
     return undefined;
   }
 
-  /** A file the writes would have to delete to put `path` in place: a file at a folder above it, or one inside a folder at it. */
+  /** What the writes would have to delete to put `path` in place: a file or link at or above it, or a file in a folder at it. */
   inTheWay(path: string, deleted: ReadonlySet<string>): string | undefined {
-    const above = dirname(path) === "." ? undefined : this.standingAt(dirname(path));
-    if (above && !above.stat.isDirectory() && !deleted.has(above.at)) return above.at;
-    let inside: Dirent[] = [];
-    try {
-      inside = readdirSync(join(this.dir, path), { recursive: true, withFileTypes: true });
-    } catch (error) {
-      if (!isMissingFolder(error)) throw error;
-    }
-    return inside
-      .filter((entry) => !entry.isDirectory())
-      .map((entry) => relative(this.dir, join(entry.parentPath, entry.name)).split(sep).join("/"))
-      .find((file) => !deleted.has(file));
+    const standing = this.standingAt(path);
+    if (!standing) return undefined;
+    if (standing.at !== path) return deleted.has(standing.at) ? undefined : standing.at;
+    if (standing.stat.isSymbolicLink()) return path;
+    if (!standing.stat.isDirectory()) return undefined;
+    // On-disk names, so a folder `a` found at `A` on a case-insensitive disk matches its tracked files.
+    const folder = realpathSync.native(join(this.dir, path));
+    const at = relative(realpathSync.native(this.dir), folder).split(sep).join("/");
+    return fileLeftIn(folder, at, deleted);
   }
 
   /** Writes `target` (path to hash, null deletes) as one entry of `who`'s. */
@@ -692,7 +703,11 @@ class Engine {
     target: Map<string, string | null>,
     extra: Partial<HistoryEntry>,
   ): Promise<HistoryEntry | null> {
-    const deleted = new Set([...target].filter(([, hash]) => hash === null).map(([path]) => path));
+    const deleted = new Set(
+      [...target]
+        .filter(([path, hash]) => hash === null && this.tracked.has(path))
+        .map(([path]) => path),
+    );
     const blocked = [...target]
       .filter(([, hash]) => hash !== null)
       .map(([path]) => this.inTheWay(path, deleted))

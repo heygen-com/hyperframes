@@ -346,16 +346,69 @@ describe("openProjectHistory", () => {
       mkdirSync(join(projectDir, "a"));
       writeFileSync(join(projectDir, "a", "b.html"), "b");
     });
-    writeFileSync(join(projectDir, "a", "new.html"), "new");
+    mkdirSync(join(projectDir, "a", "sub"));
+    writeFileSync(join(projectDir, "a", "sub", "new.html"), "new");
     await history.flush();
     const entries = history.list().length;
 
-    await expect(history.undo(turn.id, { who: you })).rejects.toThrow("a/new.html is in the way");
-    expect([read("a/b.html"), read("a/new.html"), history.list().length]).toEqual([
+    await expect(history.undo(turn.id, { who: you })).rejects.toThrow(
+      "a/sub/new.html is in the way",
+    );
+    expect([read("a/b.html"), read("a/sub/new.html"), history.list().length]).toEqual([
       "b",
       "new",
       entries,
     ]);
+  });
+
+  // Windows needs a privilege to create symlinks.
+  it.skipIf(process.platform === "win32")(
+    "refuses an undo that would have to replace a link added since, and leaves its folder alone",
+    async () => {
+      const { history, projectDir, read } = await project({ a: "file" });
+      const turn = await change(history, agent, "Agent turn", () => {
+        rmSync(join(projectDir, "a"));
+        writeFileSync(join(projectDir, "c.html"), "c");
+      });
+      const outside = tempDir("hf-history-linked-");
+      mkdirSync(join(outside, "empty"));
+      symlinkSync(outside, join(projectDir, "a"), "dir");
+
+      await expect(history.undo(turn.id, { who: you })).rejects.toThrow("a is in the way");
+      expect([read("c.html"), existsSync(join(outside, "empty"))]).toEqual(["c", true]);
+    },
+  );
+
+  it.skipIf(process.platform === "win32")(
+    "refuses an undo that would write through a link standing where a folder was",
+    async () => {
+      const { history, projectDir } = await project({ "a/b.html": "b" });
+      const turn = await change(history, agent, "Agent turn", () => {
+        rmSync(join(projectDir, "a"), { recursive: true });
+        writeFileSync(join(projectDir, "a"), "file");
+      });
+      rmSync(join(projectDir, "a"));
+      const outside = tempDir("hf-history-linked-");
+      symlinkSync(outside, join(projectDir, "a"), "dir");
+      await history.flush();
+
+      await expect(history.undo(turn.id, { who: you, mode: "just-this" })).rejects.toThrow(
+        "a is in the way",
+      );
+      expect(existsSync(join(outside, "b.html"))).toBe(false);
+    },
+  );
+
+  it.skipIf(!caseInsensitive())("undoes a turn that turned file A into folder a/", async () => {
+    const { history, projectDir, read } = await project({ A: "file" });
+    const turn = await change(history, agent, "Agent turn", () => {
+      rmSync(join(projectDir, "A"));
+      mkdirSync(join(projectDir, "a"));
+      writeFileSync(join(projectDir, "a", "b.html"), "b");
+    });
+
+    expect((await history.undo(turn.id, { who: you })).ok).toBe(true);
+    expect(read("A")).toBe("file");
   });
 
   it("logs a folder moved over an agent's file after its turn idled out as the outside's, however old its files", async () => {
