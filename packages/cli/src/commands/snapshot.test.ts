@@ -3,6 +3,8 @@ import { describe, expect, it, vi } from "vitest";
 import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { tmpdir } from "node:os";
+import { execFileSync } from "node:child_process";
+import { findFFmpeg } from "../browser/ffmpeg.js";
 import { sourceTimeAt } from "@hyperframes/core";
 
 const snapshotState = vi.hoisted(() => ({
@@ -25,6 +27,7 @@ vi.mock("../utils/staticProjectServer.js", () => ({
 }));
 
 import snapshotCommand, {
+  extractVideoFrameToBuffer,
   computeSnapshotTimes,
   formatSnapshotTimestamp,
   parseZoomScale,
@@ -299,6 +302,31 @@ describe("resolveSnapshotVideoFrameTime", () => {
     if (expected === null) expect(result).toBeNull();
     else expect(result).toBeCloseTo(expected, 6);
   });
+});
+
+describe("extractVideoFrameToBuffer", () => {
+  const ffmpeg = findFFmpeg();
+
+  it.skipIf(!ffmpeg)(
+    "gives a 24 fps clip's real last frame for a held tail that lands past it",
+    async () => {
+      const dir = mkdtempSync(join(tmpdir(), "hf-snapshot-tail-"));
+      try {
+        const clip = join(dir, "clip.mp4");
+        const source = ["-f", "lavfi", "-i", "testsrc=d=1:r=24:s=160x90", "-pix_fmt", "yuv420p"];
+        execFileSync(ffmpeg!, ["-hide_banner", "-loglevel", "error", ...source, clip]);
+
+        const held = await extractVideoFrameToBuffer(clip, 1 - 1 / 30, false, false, true);
+        const lastFrame = await extractVideoFrameToBuffer(clip, 23 / 24, false, true);
+
+        expect(await extractVideoFrameToBuffer(clip, 1 - 1 / 30)).toBeNull();
+        expect(lastFrame).not.toBeNull();
+        expect(held?.equals(lastFrame!)).toBe(true);
+      } finally {
+        rmSync(dir, { recursive: true, force: true });
+      }
+    },
+  );
 });
 
 describe("resolveSnapshotVideoClipStart", () => {
