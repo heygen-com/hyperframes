@@ -2183,7 +2183,7 @@ describe("bundleToSingleHtml sceneParts", () => {
     <div data-composition-id="a" data-composition-src="compositions/a.html" data-start="0" data-duration="1"></div>
     <div data-composition-id="b" data-composition-src="compositions/b.html" data-start="1" data-duration="1"></div>
   </div>${root}</body></html>`,
-      "compositions/a.html": `<template id="a-template"><div data-composition-id="a"><button class="go">Go</button><span id="count">0</span></div></template>`,
+      "compositions/a.html": `<template id="a-template"><div data-composition-id="a"><button class="go">Go</button><span id="count">0</span><em>!</em></div></template>`,
       "compositions/b.html": `<template id="b-template"><div data-composition-id="b"><p>B</p></div></template>`,
       ...extra,
     });
@@ -2212,6 +2212,18 @@ describe("bundleToSingleHtml sceneParts", () => {
       `<script>gsap.timeline({ paused: true }).to("#count", { opacity: 0 }, 1);</script>`,
       {},
       "#count",
+    ],
+    [
+      "binds listeners by tag name",
+      `<script>document.querySelectorAll("em").forEach((e) => e.addEventListener("click", () => {}));</script>`,
+      {},
+      "em",
+    ],
+    [
+      "reaches a node by a tag selector",
+      `<script>document.querySelector("div button").onclick = () => {};</script>`,
+      {},
+      "div button",
     ],
     [
       "updates a scene node from a timer",

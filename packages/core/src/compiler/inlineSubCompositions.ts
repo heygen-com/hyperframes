@@ -60,12 +60,25 @@ export function refuseSwapsReachedByRootScripts(document: Document, rootScripts:
   const hosts = [...document.querySelectorAll(`[${SCENE_PART_ATTR}]`)];
   const byName = new Map<string, Set<Element>>();
   for (const host of hosts) {
-    for (const el of [host, ...host.querySelectorAll("[id], [class]")]) {
-      for (const name of [el.id && `#${el.id}`, ...[...el.classList].map((c) => `.${c}`)]) {
+    for (const el of [host, ...host.querySelectorAll("*")]) {
+      for (const name of [
+        el.localName,
+        el.id && `#${el.id}`,
+        ...[...el.classList].map((c) => `.${c}`),
+      ]) {
         if (name) byName.set(name, (byName.get(name) ?? new Set()).add(host));
       }
     }
   }
+  // A selector naming a tag no scene has cannot match, so it is not worth a query.
+  const namesKnown = (selector: string) =>
+    selector
+      .split(",")
+      .some((alt) =>
+        alt
+          .split(/[\s>+~]+/)
+          .every((part) => !/^[a-z][\w-]*$/i.test(part) || byName.has(part.toLowerCase())),
+      );
   const literals = new Set(
     rootScripts.flatMap((s) => [...s.matchAll(STRING_LITERAL_RE)].map((m) => m[2] ?? "")),
   );
@@ -73,8 +86,10 @@ export function refuseSwapsReachedByRootScripts(document: Document, rootScripts:
     const open = hosts.filter((host) => !host.hasAttribute(SCENE_NO_SWAP_ATTR));
     if (open.length === 0) return;
     const reached = /^[A-Za-z_][\w-]*$/.test(literal)
-      ? [...(byName.get(`#${literal}`) ?? []), ...(byName.get(`.${literal}`) ?? [])]
-      : /[#.[:>]/.test(literal)
+      ? [literal, `#${literal}`, `.${literal}`].flatMap((name) => [...(byName.get(name) ?? [])])
+      : /[#.[:>]|[\w\]*] *[\s,]+ *[\w*]/.test(literal) &&
+          literal.length <= 120 &&
+          namesKnown(literal)
         ? open.filter((host) => reaches(host, literal))
         : [];
     for (const host of reached)
