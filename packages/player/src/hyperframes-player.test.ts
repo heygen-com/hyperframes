@@ -256,6 +256,19 @@ describe("HyperframesPlayer parent-frame media", () => {
     expect(mockAudio.pause).toHaveBeenCalled();
   });
 
+  it("hands audio back to the iframe and pauses the proxy as soon as the source changes", () => {
+    player.setAttribute("audio-src", "https://cdn.example.com/narration.mp3");
+    document.body.appendChild(player);
+    player._promoteToParentProxy?.();
+    player.play();
+    mockAudio.pause.mockClear();
+
+    player.setAttribute("src", "next-composition.html");
+
+    expect(player._audioOwner).toBe("runtime");
+    expect(mockAudio.pause).toHaveBeenCalled();
+  });
+
   function dispatchAutoplayBlockedFromPlayerFrame(player: HTMLElement): HTMLMediaElement {
     const iframe = player.shadowRoot?.querySelector("iframe");
     if (!(iframe instanceof HTMLIFrameElement)) throw new Error("expected player iframe");

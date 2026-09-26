@@ -288,8 +288,16 @@ describe("ready to show", () => {
       el.iframeElement.dispatchEvent(new Event("load"));
     });
     await twoFrames();
-
     expect(onReadyToShowChange).toHaveBeenLastCalledWith(true);
+
+    for (const state of [
+      { ready: false, painted: true },
+      { ready: true, painted: false },
+    ]) {
+      Object.assign(el, state);
+      act(() => void el.iframeElement.dispatchEvent(new Event("load")));
+      expect(onReadyToShowChange).toHaveBeenLastCalledWith(false);
+    }
   });
 
   it("marks the preview booted when it can show and play, not at ready", async () => {

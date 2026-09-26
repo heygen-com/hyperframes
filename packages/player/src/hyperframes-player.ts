@@ -1144,8 +1144,17 @@ class HyperframesPlayer extends HTMLElement {
     this._ready = false;
     this._readyDocument = null;
     this._invalidateAssetsWait();
+    this._releaseDocument();
     this._runtimeBridgeReady = false;
     this._rejectAllRuntimeDataDeliveries(reason);
+  }
+
+  private _releaseDocument(): void {
+    this._directTimelineAdapter = null;
+    this._directTimelineClock.stop();
+    this._stopParentTickClock();
+    this.shaderLoader.reset();
+    this._media.resetForIframeLoad();
   }
 
   /** Abandons any in-flight asset wait — every `_ready = false` site calls
@@ -1273,12 +1282,8 @@ class HyperframesPlayer extends HTMLElement {
     // iframe's load event fire. Do not erase that authoritative handshake here: doing so strands
     // retained data set after load until a second `ready` that never comes. Source setters and
     // sandbox-policy reloads already clear bridge readiness before starting a navigation.
-    this._directTimelineAdapter = null;
-    this._directTimelineClock.stop();
-    this._stopParentTickClock();
     this._invalidateAssetsWait();
-    this.shaderLoader.reset();
-    this._media.resetForIframeLoad();
+    this._releaseDocument();
     this.probe.start();
   }
 
