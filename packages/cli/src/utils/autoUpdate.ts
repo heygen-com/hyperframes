@@ -90,20 +90,32 @@ function launchDetachedInstall(
   //   1. Runs the install via execFile (bin + argv, NO shell) so a version
   //      string can never be re-interpreted as shell syntax — structural
   //      symmetry with the interactive `runDetectedInstall` path.
-  //   2. Rewrites the config file with completedUpdate, clears pendingUpdate.
+  //   2. Under the config.json.lock protocol owned by withConfigLock in telemetry/config.ts, rewrites the
+  //      config with completedUpdate and clears pendingUpdate; skips on lock timeout or an unreadable file.
   // We run it through `node -e` so we don't need to ship a separate file. Bin
   // and args are embedded as JSON literals (data, not code).
   const nodeScript = `
     const { execFile } = require("node:child_process");
-    const { readFileSync, renameSync, writeFileSync } = require("node:fs");
+    const { closeSync, openSync, readFileSync, renameSync, rmSync, statSync, writeFileSync } = require("node:fs");
     const CFG = ${JSON.stringify(configFile)};
     const TMP = \`\${CFG}.tmp\`;
+    const LOCK = \`\${CFG}.lock\`;
     const VERSION = ${JSON.stringify(version)};
     const BIN = ${JSON.stringify(invocation.bin)};
     const ARGS = ${JSON.stringify(invocation.args)};
-    execFile(BIN, ARGS, { windowsHide: true, maxBuffer: 4 * 1024 * 1024 }, (err, _stdout, stderr) => {
+    function withLock(task) {
+      const started = Date.now();
+      for (;;) {
+        try { closeSync(openSync(LOCK, "wx")); break; } catch (e) { if (e.code !== "EEXIST") return; }
+        try { if (Date.now() - statSync(LOCK).mtimeMs > 5000) rmSync(LOCK); } catch (e) {}
+        if (Date.now() - started > 10000) return;
+        Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 25);
+      }
+      try { task(); } finally { rmSync(LOCK, { force: true }); }
+    }
+    execFile(BIN, ARGS, { windowsHide: true, maxBuffer: 4 * 1024 * 1024 }, (err, _stdout, stderr) => withLock(() => {
       let cfg = {};
-      try { cfg = JSON.parse(readFileSync(CFG, "utf-8")); } catch (e) {}
+      try { cfg = JSON.parse(readFileSync(CFG, "utf-8")); } catch (e) { if (e.code !== "ENOENT") return; }
       cfg.completedUpdate = {
         version: VERSION,
         ok: !err,
@@ -115,7 +127,7 @@ function launchDetachedInstall(
         writeFileSync(TMP, JSON.stringify(cfg, null, 2) + "\\n", { mode: 0o600 });
         renameSync(TMP, CFG);
       } catch (e) {}
-    });
+    }));
   `;
 
   const out = openSync(LOG_FILE, "a", 0o600);

@@ -17,9 +17,11 @@ import { fetchRegistryManifest } from "../registry/remote.js";
 import { loadProjectConfig, DEFAULT_PROJECT_CONFIG } from "../utils/projectConfig.js";
 import { resolve } from "node:path";
 import { finishCommand } from "../utils/commandResult.js";
+import { isAttendedTerminal } from "../utils/attendedTerminal.js";
 import { runAdd } from "./add.js";
 import { hasNoSearchableTokens, searchByWords } from "../registry/localSearch.js";
 import {
+  assumeLocalModelConsent,
   downloadOfferMessage,
   ensureLocalModel,
   type LocalModelStatus,
@@ -62,10 +64,12 @@ async function prepareOnDeviceTier(opts: {
   };
 
   const status = opts.status;
-  if (!opts.assumedYes && status.status === "declined") {
-    warn(
-      "on-device search skipped: the model download was previously declined. Re-run with --yes to consent.",
-    );
+  // A person at a terminal may reverse their own no with --yes; an unwatched run only answers a question never asked.
+  const unwatchedYes = opts.assumedYes && !opts.canPrompt;
+  const declined =
+    "on-device search skipped: the model download was previously declined. To consent, re-run with --yes in an interactive terminal, without --json and outside CI.";
+  if (status.status === "declined" && !opts.assumedYes) {
+    warn(declined);
     return warnings;
   }
 
@@ -80,13 +84,32 @@ async function prepareOnDeviceTier(opts: {
       initialValue: true,
     });
     if (clack.isCancel(answer) || answer !== true) {
-      recordLocalModelConsent(false);
-      warn("on-device search skipped: the download was declined.");
+      warn(
+        recordLocalModelConsent(false) === false
+          ? "on-device search skipped: the download was declined."
+          : "on-device search skipped: the download was declined, but could not save the answer in settings.",
+      );
       // Return, or the decline is the only thing that does not happen: the
       // runtime check below is skipped precisely because consent is now false,
       // control reaches recordLocalModelConsent(true), and the answer is
       // overwritten with yes before the download it refused.
       return warnings;
+    }
+  }
+
+  // Before anything is installed, so a no saved meanwhile stops the runtime install too.
+  if (status.status === "declined" || status.status === "not-asked") {
+    if (!unwatchedYes) recordLocalModelConsent(true);
+    else {
+      const agreed = assumeLocalModelConsent();
+      if (agreed !== true) {
+        warn(
+          agreed === false
+            ? declined
+            : "on-device search skipped: could not save the answer in settings.",
+        );
+        return warnings;
+      }
     }
   }
 
@@ -97,9 +120,6 @@ async function prepareOnDeviceTier(opts: {
     return warnings;
   }
 
-  if (status.status === "declined" || status.status === "not-asked") {
-    recordLocalModelConsent(true);
-  }
   const model = await ensureLocalModel();
   const revisionStale =
     opts.artifactRevision !== undefined && cachedLocalVectorRevision() !== opts.artifactRevision;
@@ -224,7 +244,7 @@ export default defineCommand({
       warnings = await prepareOnDeviceTier({
         assumedYes: args.yes === true,
         artifactRevision,
-        canPrompt: process.stdout.isTTY === true && !json,
+        canPrompt: isAttendedTerminal() && !json,
         registry: config.registry,
         registryNames,
         status: searchContext.status,
@@ -706,7 +726,8 @@ async function offerLocalModel(
     initialValue: true,
   });
   if (clack.isCancel(answer)) return;
-  recordLocalModelConsent(answer === true);
+  if (recordLocalModelConsent(answer === true) !== (answer === true))
+    console.error("  Could not save the answer in settings.");
   if (answer !== true) return;
 
   // The vectors come from the registry rather than the package, so consent is

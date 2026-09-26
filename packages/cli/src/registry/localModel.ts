@@ -19,7 +19,7 @@ import { homedir } from "node:os";
 import { join } from "node:path";
 
 import { downloadFile } from "../utils/download.js";
-import { readConfig, writeConfig } from "../telemetry/config.js";
+import { readConfig, updateLocalModelConsent } from "../telemetry/config.js";
 
 /**
  * bge-small-en-v1.5: 62.17 MTEB average against 62.3 for text-embedding-3-small,
@@ -82,8 +82,13 @@ export function localModelConsent(): LocalModelDecision {
   return readConfig().localEmbeddingEnabled;
 }
 
-export function recordLocalModelConsent(enabled: boolean): void {
-  writeConfig({ ...readConfig(), localEmbeddingEnabled: enabled });
+export function recordLocalModelConsent(enabled: boolean): LocalModelDecision {
+  return updateLocalModelConsent(() => enabled);
+}
+
+/** --yes in a run nobody watches: it answers only a question never asked. Returns the decision that stands. */
+export function assumeLocalModelConsent(): LocalModelDecision {
+  return updateLocalModelConsent((onDisk) => onDisk ?? true);
 }
 
 export function localModelPath(): string {

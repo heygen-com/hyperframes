@@ -1,3 +1,4 @@
+// fallow-ignore-file code-duplication
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { RegistryItem } from "@hyperframes/core";
@@ -84,7 +85,10 @@ const state = vi.hoisted(() => ({
   modelStatus: "ready" as "ready" | "not-asked" | "declined" | "unavailable",
   confirmAnswer: true as boolean,
   consentRecorded: [] as boolean[],
+  consentSavedMeanwhile: undefined as boolean | undefined,
+  consentWriteFails: false,
   downloads: 0,
+  runtimeInstalls: 0,
   runtimeAvailable: true,
 }));
 
@@ -131,7 +135,16 @@ vi.mock("../registry/localModel.js", () => ({
     return true;
   },
   recordLocalModelConsent: (enabled: boolean) => {
+    if (state.consentWriteFails) return state.consentRecorded.at(-1);
     state.consentRecorded.push(enabled);
+    return enabled;
+  },
+  assumeLocalModelConsent: () => {
+    if (state.consentWriteFails) return undefined;
+    const onDisk = state.consentSavedMeanwhile ?? state.consentRecorded.at(-1);
+    if (onDisk !== undefined) return onDisk;
+    state.consentRecorded.push(true);
+    return true;
   },
   downloadOfferMessage: () => "offer",
   nonInteractiveConsentMessage: () => "consent",
@@ -139,8 +152,10 @@ vi.mock("../registry/localModel.js", () => ({
 
 vi.mock("../registry/localEmbedder.js", () => ({
   // Left unmocked this would run a real npm install under vitest.
-  ensureLocalRuntime: async () =>
-    state.runtimeAvailable ? { ok: true } : { ok: false, reason: "installing it failed" },
+  ensureLocalRuntime: async () => {
+    state.runtimeInstalls += 1;
+    return state.runtimeAvailable ? { ok: true } : { ok: false, reason: "installing it failed" };
+  },
 }));
 
 vi.mock("../registry/localSemantic.js", () => ({
@@ -252,7 +267,10 @@ beforeEach(() => {
   state.rankingError = null;
   state.confirmAnswer = true;
   state.consentRecorded = [];
+  state.consentSavedMeanwhile = undefined;
+  state.consentWriteFails = false;
   state.downloads = 0;
+  state.runtimeInstalls = 0;
   state.runtimeAvailable = true;
   state.registry = [block("count-up"), block("fade-through"), component("whip-pan")];
   state.indexed = ["count-up", "fade-through", "whip-pan"];
@@ -608,14 +626,27 @@ describe("the on-device download offer", () => {
   // The offer only exists for someone who can answer it. Off a terminal the
   // caller must add --yes explicitly, so a test that forgets the terminal
   // never reaches the prompt and passes for the wrong reason.
-  const asATerminal = async (run: () => Promise<string>): Promise<string> => {
-    const descriptor = Object.getOwnPropertyDescriptor(process.stdout, "isTTY");
+  const asATerminal = async <T>(
+    run: () => Promise<T>,
+    { stdin = true, ci }: { stdin?: boolean; ci?: string } = {},
+  ): Promise<T> => {
+    const streams = [process.stdin, process.stdout];
+    const descriptors = streams.map((stream) => Object.getOwnPropertyDescriptor(stream, "isTTY"));
+    const savedCi = process.env["CI"];
+    Object.defineProperty(process.stdin, "isTTY", { value: stdin, configurable: true });
     Object.defineProperty(process.stdout, "isTTY", { value: true, configurable: true });
+    if (ci === undefined) delete process.env["CI"];
+    else process.env["CI"] = ci;
     try {
       return await run();
     } finally {
-      if (descriptor) Object.defineProperty(process.stdout, "isTTY", descriptor);
-      else delete (process.stdout as unknown as { isTTY?: boolean }).isTTY;
+      streams.forEach((stream, i) => {
+        const descriptor = descriptors[i];
+        if (descriptor) Object.defineProperty(stream, "isTTY", descriptor);
+        else delete (stream as unknown as { isTTY?: boolean }).isTTY;
+      });
+      if (savedCi === undefined) delete process.env["CI"];
+      else process.env["CI"] = savedCi;
     }
   };
 
@@ -659,6 +690,46 @@ describe("the on-device download offer", () => {
     expect(state.consentRecorded).toEqual([false, true]);
   });
 
+  it("says a no that could not be saved was not saved", async () => {
+    state.modelStatus = "not-asked";
+    state.confirmAnswer = false;
+    state.consentWriteFails = true;
+
+    const { err } = await asATerminal(() => runForExit({ query: "count up", "on-device": true }));
+
+    expect([state.downloads, state.consentRecorded]).toEqual([0, []]);
+    expect(err).toContain("declined, but could not save the answer in settings");
+  });
+
+  it("says so when a no given to the thin-results offer could not be saved", async () => {
+    state.modelStatus = "not-asked";
+    state.confirmAnswer = false;
+    state.consentWriteFails = true;
+
+    const { err } = await asATerminal(() => runForExit({ query: "count up" }));
+
+    expect(err).toContain("Could not save the answer in settings.");
+  });
+
+  it.each([
+    ["piped stdin", { stdin: false }],
+    ["CI", { ci: "true" }],
+  ])("treats a terminal with %s as unwatched, so its --yes keeps a saved no", async (_, env) => {
+    state.consentRecorded = [false];
+
+    const { err } = await asATerminal(
+      () => runForExit({ query: "count up", "on-device": true, yes: true }),
+      env,
+    );
+
+    expect([state.runtimeInstalls, state.downloads, state.consentRecorded]).toEqual([
+      0,
+      0,
+      [false],
+    ]);
+    expect(err).toContain("previously declined");
+  });
+
   it("does not treat non-interactive output as download consent", async () => {
     state.modelStatus = "not-asked";
 
@@ -666,6 +737,48 @@ describe("the on-device download offer", () => {
 
     expect(state.downloads).toBe(0);
     expect(state.consentRecorded).toEqual([]);
+  });
+
+  it("lets --yes in a run nobody watches answer a question never asked", async () => {
+    state.modelStatus = "not-asked";
+
+    await runEnvelope({ query: "count up", "on-device": true, yes: true });
+
+    expect([state.downloads, state.consentRecorded]).toEqual([1, [true]]);
+  });
+
+  it("keeps a recorded no against --yes in a run nobody watches, installing nothing", async () => {
+    state.consentRecorded = [false];
+
+    const { warnings } = await runEnvelope({ query: "count up", "on-device": true, yes: true });
+
+    expect([state.runtimeInstalls, state.downloads, state.consentRecorded]).toEqual([
+      0,
+      0,
+      [false],
+    ]);
+    expect(warnings?.join(" ")).toContain("previously declined");
+  });
+
+  it("installs nothing, and does not claim a no, when the answer cannot be saved", async () => {
+    state.modelStatus = "not-asked";
+    state.consentWriteFails = true;
+
+    const { warnings } = await runEnvelope({ query: "count up", "on-device": true, yes: true });
+
+    expect([state.runtimeInstalls, state.downloads]).toEqual([0, 0]);
+    expect(warnings?.join(" ")).toContain("could not save the answer");
+    expect(warnings?.join(" ")).not.toContain("previously declined");
+  });
+
+  it("keeps a no saved by someone else while the run was starting", async () => {
+    state.modelStatus = "not-asked";
+    state.consentSavedMeanwhile = false;
+
+    const { warnings } = await runEnvelope({ query: "count up", "on-device": true, yes: true });
+
+    expect([state.runtimeInstalls, state.downloads, state.consentRecorded]).toEqual([0, 0, []]);
+    expect(warnings?.join(" ")).toContain("previously declined");
   });
 });
 
