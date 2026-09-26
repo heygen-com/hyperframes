@@ -18,6 +18,7 @@ import type {
   MutableRef,
   UseTimelineElementVisibilityEditingInput,
 } from "./timelineTrackVisibility";
+import { projectForTimelineSave, type TimelineEditOutcome } from "./timelineEditPermission";
 
 function patchLiveElementAttribute(
   iframe: HTMLIFrameElement | null,
@@ -64,10 +65,10 @@ async function setElementAttribute({
   writeProjectFile,
   recordEdit,
   pendingTimelineEditPathRef,
-}: SetElementAttributeInput): Promise<string[]> {
+}: SetElementAttributeInput): Promise<string[] | null> {
   const targetPath = element.sourceFile || activeCompPath || "index.html";
   const patchTarget = buildPatchTarget(element);
-  if (!patchTarget) return [];
+  if (!patchTarget) return null;
 
   return persistElementAttribute({
     projectId,
@@ -99,7 +100,7 @@ export function useSetElementAttribute({
     attr: string,
     value: string | null,
     label: string,
-  ) => Promise<void>;
+  ) => Promise<TimelineEditOutcome>;
   revertLive: (element: TimelineElement, attr: string) => void;
 } {
   const liveBeforeRef = useRef(new Map<string, string | null>());
@@ -130,15 +131,17 @@ export function useSetElementAttribute({
     [previewIframeRef, activeCompPath],
   );
   const setQuiet = useCallback(
-    async (element: TimelineElement, attr: string, value: string | null, label: string) => {
-      if (isRecordingRef?.current) {
-        showToast("Cannot edit timeline while recording", "error");
-        return;
-      }
-      const pid = projectIdRef.current;
-      if (!pid) return;
+    async (
+      element: TimelineElement,
+      attr: string,
+      value: string | null,
+      label: string,
+    ): Promise<TimelineEditOutcome> => {
+      const pid = projectForTimelineSave(isRecordingRef?.current, projectIdRef.current, showToast);
+      if (typeof pid !== "string") return pid;
+      const liveKey = elementAttributeLiveKey(element, activeCompPath, attr);
       try {
-        await setElementAttribute({
+        const written = await setElementAttribute({
           projectId: pid,
           activeCompPath,
           element,
@@ -150,12 +153,15 @@ export function useSetElementAttribute({
           recordEdit,
           pendingTimelineEditPathRef,
         });
-        liveBeforeRef.current.delete(elementAttributeLiveKey(element, activeCompPath, attr));
+        liveBeforeRef.current.delete(liveKey);
+        if (written) return { status: "saved" };
+        return { status: "failed", reason: "This clip could not be found in its file" };
       } catch (error) {
         console.error("[Timeline] Failed to set element attribute", error);
         const message = error instanceof Error ? error.message : "Failed to update effect";
         showToast(message);
-        liveBeforeRef.current.delete(elementAttributeLiveKey(element, activeCompPath, attr));
+        liveBeforeRef.current.delete(liveKey);
+        return { status: "failed", reason: message };
       }
     },
     [

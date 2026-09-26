@@ -162,6 +162,7 @@ export type { StudioPendingEditsDrainResult } from "./utils/studioPendingEdits";
 export type {
   CanEditTimelineElement,
   TimelineEditPermission,
+  TimelineEditOutcome,
 } from "./hooks/timelineEditPermission";
 export { useEditHistoryActions } from "./hooks/useEditHistoryActions";
 export type {

@@ -1,4 +1,5 @@
 import { useCallback, useRef } from "react";
+import { projectForTimelineSave, type TimelineEditOutcome } from "./timelineEditPermission";
 import { HF_AUDIO_FX_ATTR } from "@hyperframes/core/audio-fx";
 import { HF_AUDIO_AUTOMATION_ATTR } from "@hyperframes/core/audio-automation";
 import { usePlayerStore } from "../player";
@@ -213,7 +214,12 @@ export function useSetAudioGroupAttribute({
   isRecordingRef,
 }: UseTimelineElementVisibilityEditingInput): {
   setLive: (groupId: string, attr: string, value: string | null) => void;
-  setQuiet: (groupId: string, attr: string, value: string | null, label: string) => Promise<void>;
+  setQuiet: (
+    groupId: string,
+    attr: string,
+    value: string | null,
+    label: string,
+  ) => Promise<TimelineEditOutcome>;
   revertLive: (groupId: string, attr: string) => void;
 } {
   const liveBeforeRef = useRef(new Map<string, string | null>());
@@ -253,13 +259,14 @@ export function useSetAudioGroupAttribute({
     [previewIframeRef],
   );
   const setQuiet = useCallback(
-    async (groupId: string, attr: string, value: string | null, label: string) => {
-      if (isRecordingRef?.current) {
-        showToast("Cannot edit timeline while recording", "error");
-        return;
-      }
-      const pid = projectIdRef.current;
-      if (!pid) return;
+    async (
+      groupId: string,
+      attr: string,
+      value: string | null,
+      label: string,
+    ): Promise<TimelineEditOutcome> => {
+      const pid = projectForTimelineSave(isRecordingRef?.current, projectIdRef.current, showToast);
+      if (typeof pid !== "string") return pid;
       try {
         await setAudioGroupAttribute({
           projectId: pid,
@@ -275,6 +282,7 @@ export function useSetAudioGroupAttribute({
         });
         liveBeforeRef.current.delete(audioGroupAttributeLiveKey(groupId, attr));
         syncStoredGroupAttribute(groupId, attr, value);
+        return { status: "saved" };
       } catch (error) {
         // `persistElementAttribute` leaves the live DOM at the previous value
         // however it failed — it unwinds a failed save, and an unresolvable
@@ -290,6 +298,7 @@ export function useSetAudioGroupAttribute({
         const message = error instanceof Error ? error.message : "Failed to update group";
         showToast(message);
         liveBeforeRef.current.delete(audioGroupAttributeLiveKey(groupId, attr));
+        return { status: "failed", reason: message };
       }
     },
     [
