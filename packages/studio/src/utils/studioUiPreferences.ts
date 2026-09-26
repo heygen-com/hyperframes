@@ -20,6 +20,8 @@ export interface StudioUiPreferences {
   recentBlocks?: string[];
   snapEnabled?: boolean;
   gridVisible?: boolean;
+  rulerVisible?: boolean;
+  safeMarginsVisible?: boolean;
   gridSpacing?: number;
   snapToGrid?: boolean;
   /** Timeline magnet: snap clip drags/trims/drops to playhead, clip edges, and beats. */
@@ -129,6 +131,12 @@ function readStorage(storage: Storage | null): StudioUiPreferences {
     }
     if (typeof parsed.gridVisible === "boolean") {
       preferences.gridVisible = parsed.gridVisible;
+    }
+    if (typeof parsed.rulerVisible === "boolean") {
+      preferences.rulerVisible = parsed.rulerVisible;
+    }
+    if (typeof parsed.safeMarginsVisible === "boolean") {
+      preferences.safeMarginsVisible = parsed.safeMarginsVisible;
     }
     if (typeof parsed.gridSpacing === "number" && Number.isFinite(parsed.gridSpacing)) {
       preferences.gridSpacing = parsed.gridSpacing;

@@ -6,6 +6,7 @@ import { CompositionBreadcrumb } from "./CompositionBreadcrumb";
 import { usePreviewBlockDrop } from "./usePreviewBlockDrop";
 import { useNLEContext } from "./NLEContext";
 import { AssetPreviewOverlay } from "./AssetPreviewOverlay";
+import { PreviewGuides } from "../editor/PreviewGuides";
 
 function subscribeFullscreen(cb: () => void) {
   document.addEventListener("fullscreenchange", cb);
@@ -142,6 +143,7 @@ export function PreviewPane({
           )}
           <AssetPreviewOverlay />
         </div>
+        <PreviewGuides iframeRef={iframeRef} />
         {!isFullscreen && previewOverlay}
       </div>
       {/* Transport row: no own background or border — the controls sit flat on
