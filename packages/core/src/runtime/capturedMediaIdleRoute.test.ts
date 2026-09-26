@@ -216,3 +216,56 @@ describe("an element Web Audio captured, outside a play", () => {
     expect(audible(sources.get(vo))).toBe(true);
   });
 });
+
+/** On its idle route an element's own volume applies; inside a play only the graph's gains do. */
+function heard(el: HTMLMediaElement): boolean {
+  const source = sources.get(el);
+  if (!source) return !el.muted && el.volume > 0;
+  if (source.outputs.has(destination)) return el.volume > 0;
+  return audible(source);
+}
+
+describe("an audio group muted or unmuted while playing", () => {
+  const groupHtml =
+    `<hf-audio-group id="music"></hf-audio-group>` +
+    `<audio id="bed" data-start="0" data-duration="10" data-audio-group="music" src="/assets/music.mp3"></audio>`;
+
+  it("silences its members at once", async () => {
+    mount(groupHtml);
+    const bed = document.getElementById("bed") as HTMLAudioElement;
+    initSandboxRuntimeModular();
+    await flush();
+    window.__player?.play();
+    await flush();
+    expect(heard(bed)).toBe(true);
+
+    document.getElementById("music")!.setAttribute("data-hidden", "");
+    stepFrames(1);
+    await flush();
+
+    expect(heard(bed)).toBe(false);
+  });
+
+  it("brings its members back through the group", async () => {
+    mount(groupHtml);
+    const bed = document.getElementById("bed") as HTMLAudioElement;
+    const group = document.getElementById("music")!;
+    initSandboxRuntimeModular();
+    await flush();
+    window.__player?.play();
+    await flush();
+    window.__player?.pause();
+    group.setAttribute("data-hidden", "");
+    stepFrames(1);
+    window.__player?.play();
+    await flush();
+    expect(heard(bed)).toBe(false);
+
+    group.removeAttribute("data-hidden");
+    stepFrames(1);
+    await flush();
+
+    expect(heard(bed)).toBe(true);
+    expect(sources.get(bed)!.outputs.has(destination)).toBe(false);
+  });
+});
