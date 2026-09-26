@@ -203,7 +203,7 @@ async function resolveProjectPath(
     return { error: c.json({ error: "forbidden", why: "nul" }, 403) } as const;
   }
 
-  // A content write pins its target; a delete or rename acts on a link itself.
+  // An edit pins its target; create-only writes use `wx`, and a delete or rename acts on a link itself.
   const absPath = (opts?.pin ? pinWithinProject : resolveWithinProject)(project.dir, filePath);
   if (!absPath) {
     if (isDanglingSymlinkInProject(project.dir, resolve(project.dir, filePath))) {
@@ -2715,7 +2715,7 @@ export function registerFileRoutes(api: Hono, adapter: StudioApiAdapter): void {
       const seen = new Set<string>();
       const prepared: FoldedAtomicCutFile[] = [];
       for (const file of files) {
-        const absPath = resolveWithinProject(project.dir, file.path);
+        const absPath = pinWithinProject(project.dir, file.path);
         if (!absPath) return c.json({ error: `forbidden path: ${file.path}` }, 403);
         if (seen.has(absPath)) return c.json({ error: `duplicate path: ${file.path}` }, 400);
         seen.add(absPath);
@@ -3227,7 +3227,14 @@ export function registerFileRoutes(api: Hono, adapter: StudioApiAdapter): void {
     }
 
     ensureDir(destAbs);
-    writeFileSync(destAbs, readFileSync(srcAbs));
+    try {
+      writeFileSync(destAbs, readFileSync(srcAbs), { flag: "wx" });
+    } catch (error) {
+      if (!error || typeof error !== "object" || !("code" in error) || error.code !== "EEXIST") {
+        throw error;
+      }
+      return c.json({ error: "already exists" }, 409);
+    }
 
     return c.json({ ok: true, path: copyPath }, 201);
   });

@@ -1,5 +1,13 @@
 // @vitest-environment node
-import { lstatSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
+import {
+  lstatSync,
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  rmSync,
+  symlinkSync,
+  writeFileSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { Hono } from "hono";
@@ -178,6 +186,65 @@ describe("element edits with another writer racing them", () => {
       expect((await post(route.replace("index.html", "alias.html"), aliased)).status).toBe(200);
       expect(readFileSync(outside, "utf-8")).toBe(ORIGINAL);
       expect(read()).toContain("z-index: 2");
+    },
+  );
+
+  it.skipIf(process.platform === "win32").each(Object.entries(ROUTES))(
+    "%s writes the file it checked, though a folder link on its path is retargeted outside",
+    async (_, [route, body]) => {
+      const { post, path } = project();
+      const real = join(path, "..", "real");
+      mkdirSync(real);
+      writeFileSync(join(real, "index.html"), ORIGINAL);
+      const scenes = join(path, "..", "scenes");
+      symlinkSync(real, scenes, "dir");
+      const outside = mkdtempSync(join(tmpdir(), "hf-patch-outside-"));
+      dirs.push(outside);
+      hooks.backingUp = () => {
+        hooks.backingUp = undefined;
+        writeFileSync(join(outside, "index.html"), ORIGINAL);
+        rmSync(scenes);
+        symlinkSync(outside, scenes, "dir");
+      };
+      const linked = JSON.parse(JSON.stringify(body).replaceAll("index.html", "scenes/index.html"));
+
+      expect((await post(route.replace("index.html", "scenes/index.html"), linked)).status).toBe(
+        200,
+      );
+      expect(readFileSync(join(outside, "index.html"), "utf-8")).toBe(ORIGINAL);
+      expect(readFileSync(join(real, "index.html"), "utf-8")).toContain("z-index: 2");
+    },
+  );
+
+  it.skipIf(process.platform === "win32")(
+    "split-batch writes the linked file it checked, though the link is retargeted outside",
+    async () => {
+      const { post, path, read } = project();
+      const clip = '<div id="a" data-start="0" data-duration="4">A</div>';
+      writeFileSync(path, clip);
+      const alias = join(path, "..", "alias.html");
+      symlinkSync(path, alias);
+      const outsideDir = mkdtempSync(join(tmpdir(), "hf-patch-outside-"));
+      dirs.push(outsideDir);
+      const outside = join(outsideDir, "index.html");
+      hooks.backingUp = () => {
+        hooks.backingUp = undefined;
+        writeFileSync(outside, clip);
+        rmSync(alias);
+        symlinkSync(outside, alias);
+      };
+      const target = { target: { id: "a" }, originalId: "a", splitTime: 2, elementStart: 0 };
+      const files = [
+        {
+          path: "alias.html",
+          expectedVersion: fileContentVersion(clip),
+          targets: [{ ...target, elementDuration: 4 }],
+        },
+      ];
+
+      expect((await post("split-batch", { files, transactionToken: "cut" })).status).toBe(200);
+      expect(readFileSync(outside, "utf-8")).toBe(clip);
+      expect(read()).toContain('id="a-split"');
     },
   );
 
