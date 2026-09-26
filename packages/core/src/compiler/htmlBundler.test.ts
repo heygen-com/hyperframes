@@ -2245,7 +2245,8 @@ describe("bundleToSingleHtml sceneParts", () => {
   });
 
   it("keeps scenes swappable when a script outside them never names their nodes", async () => {
-    const root = `<script>document.addEventListener("click", () => {}); requestAnimationFrame(() => {}); parent.postMessage({}, "*");</script>
+    const root = `<script>document.addEventListener("click", () => {}); requestAnimationFrame(() => {}); parent.postMessage({}, "*");
+  document.body.append(document.createElement("div"), document.createElementNS("http://www.w3.org/2000/svg", "span"));</script>
   <script type="application/json">{"note": "addEventListener"}</script>`;
     expect(await swapMarks(rootProject(root))).toEqual([null, null]);
   });

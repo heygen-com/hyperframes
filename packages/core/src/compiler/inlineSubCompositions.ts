@@ -54,6 +54,8 @@ function sceneScriptSwapRefusal(script: string): string | null {
 
 // A quoted string in a script, in any of the three quote styles.
 const STRING_LITERAL_RE = /(["'`])((?:\\.|(?!\1)[^\\\n])*?)\1/g;
+// Text ending where createElement takes its tag: that string makes a node, it selects none.
+const CREATES_ELEMENT_RE = /createElement\s*\(\s*$|createElementNS\s*\([^()]*,\s*$/;
 
 /** Marks each scene whose nodes a script outside it names by selector, id or class: a swap would strand it. */
 export function refuseSwapsReachedByRootScripts(document: Document, rootScripts: string[]): void {
@@ -80,7 +82,11 @@ export function refuseSwapsReachedByRootScripts(document: Document, rootScripts:
           .every((part) => !/^[a-z][\w-]*$/i.test(part) || byName.has(part.toLowerCase())),
       );
   const literals = new Set(
-    rootScripts.flatMap((s) => [...s.matchAll(STRING_LITERAL_RE)].map((m) => m[2] ?? "")),
+    rootScripts.flatMap((s) =>
+      [...s.matchAll(STRING_LITERAL_RE)]
+        .filter((m) => !CREATES_ELEMENT_RE.test(s.slice(Math.max(0, m.index - 60), m.index)))
+        .map((m) => m[2] ?? ""),
+    ),
   );
   for (const literal of literals) {
     const open = hosts.filter((host) => !host.hasAttribute(SCENE_NO_SWAP_ATTR));
