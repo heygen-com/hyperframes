@@ -696,7 +696,7 @@ type LocalMode = "local-model" | "words";
  * person to prompt instead, or when that person has already answered.
  */
 function localModelHint(json: boolean, status: LocalModelStatus | undefined): string | null {
-  if (!json && process.stdout.isTTY) return null;
+  if (!json && isAttendedTerminal()) return null;
   if (status?.status !== "not-asked") return null;
   return nonInteractiveConsentMessage();
 }
@@ -714,7 +714,7 @@ async function offerLocalModel(
   registryBaseUrl: string,
   artifactRevision?: string,
 ): Promise<void> {
-  if (json || !process.stdout.isTTY) return;
+  if (json || !isAttendedTerminal()) return;
   if (localModelStatus().status !== "not-asked") return;
   // Deliberately not gated on the number of results. That gate was set when the
   // catalog was small; against 411 moves a word match nearly always returns

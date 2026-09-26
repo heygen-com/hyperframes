@@ -730,6 +730,18 @@ describe("the on-device download offer", () => {
     expect(err).toContain("previously declined");
   });
 
+  it.each([
+    ["piped stdin", { stdin: false }],
+    ["CI", { ci: "true" }],
+  ])("does not offer the download after thin results in a terminal with %s", async (_, env) => {
+    state.modelStatus = "not-asked";
+    state.confirmAnswer = true;
+
+    await asATerminal(() => runForExit({ query: "count up" }), env);
+
+    expect([state.downloads, state.consentRecorded]).toEqual([0, []]);
+  });
+
   it("does not treat non-interactive output as download consent", async () => {
     state.modelStatus = "not-asked";
 
