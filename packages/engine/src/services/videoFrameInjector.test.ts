@@ -244,11 +244,10 @@ describe("createVideoFrameInjector cache hygiene against page-side skips", () =>
     ]);
   });
 
-  it("does cache normally when the page reports the id as injected", async () => {
-    // Counter-test: when injection succeeds for a videoId, the cache must
-    // record it and a second call at the same frameIndex must short-circuit.
-    // This pins the happy path so a future refactor can't trade the skip
-    // bug for a never-cache regression.
+  it("refreshes replacement styles when the source frame is unchanged", async () => {
+    // A held final video frame can outlive the source media while GSAP keeps
+    // animating the element. The replacement image must receive those style
+    // updates even when the frame cache has the same source frame.
     // The injector calls page.evaluate after injecting frames (GPU reseek);
     // stub it so these cache-hygiene cases exercise the real code path.
     const fakePage = { evaluate: async () => undefined } as unknown as Page;
@@ -263,9 +262,9 @@ describe("createVideoFrameInjector cache hygiene against page-side skips", () =>
     await hook!(fakePage, 0);
     expect(injectVideoFramesBatchMock).toHaveBeenCalledTimes(1);
 
+    injectVideoFramesBatchMock.mockResolvedValueOnce(["pip"]);
     await hook!(fakePage, 0);
-    // Cache hit — no second inject for the same frameIndex.
-    expect(injectVideoFramesBatchMock).toHaveBeenCalledTimes(1);
+    expect(injectVideoFramesBatchMock).toHaveBeenCalledTimes(2);
   });
 
   it("reinjects frame zero when a whole-chunk retry uses a fresh hook and page", async () => {
