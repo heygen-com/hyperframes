@@ -532,6 +532,50 @@ describe("__hfSwapScenes", () => {
     probe.mockReset();
   });
 
+  it("re-probes the volume of media kept through the swap against the new timeline", async () => {
+    const { root } = trackingRoot();
+    quietMedia();
+    const withAudio = (s: Scene, text: string): Scene => ({
+      ...s,
+      body: `<p>${text}</p><audio src="music.mp3" data-start="1" data-duration="2"></audio>`,
+    });
+    const probe = vi.mocked(probeAndCacheElementVolume);
+    probe.mockImplementation((el, _timeline, _duration, cache) => void cache.set(el, []));
+    boot([withAudio(A1, "A one"), B], root);
+    await tick();
+    const audio = sceneHost("a").querySelector("audio")!;
+    const probedAudio = () => probe.mock.calls.filter(([el]) => el === audio).length;
+    expect(probedAudio()).toBeGreaterThan(0);
+    probe.mockClear();
+    await window.__hfSwapScenes!(preview([withAudio(A2, "A two"), B]).html);
+    expect(sceneHost("a").querySelector("audio")).toBe(audio);
+    expect(probedAudio()).toBeGreaterThan(0);
+    probe.mockReset();
+  });
+
+  it("gives the swapped scene's host its per-instance CSS variables", async () => {
+    const { root } = trackingRoot();
+    scoped.__hfVariablesByComp = { a: { accent: "#ff0000" } };
+    boot([A1, B], root);
+    await tick();
+    await window.__hfSwapScenes!(preview([A2, B]).html);
+    expect((sceneHost("a") as HTMLElement).style.getPropertyValue("--accent")).toBe("#ff0000");
+  });
+
+  it("adds no asset error listener to the swapped scene, which would keep it after it is swapped out", async () => {
+    const { root } = trackingRoot();
+    const withImage = (s: Scene): Scene => ({ ...s, body: `${s.body}<img src="logo.png">` });
+    boot([withImage(A1), B], root);
+    await tick();
+    const listen = vi.spyOn(EventTarget.prototype, "addEventListener");
+    await window.__hfSwapScenes!(preview([withImage(A2), B]).html);
+    const img = sceneHost("a").querySelector("img");
+    const onImg = listen.mock.contexts.filter(
+      (el, i) => el === img && listen.mock.calls[i]![0] === "error",
+    );
+    expect(onImg).toHaveLength(0);
+  });
+
   it("re-applies a moved element's position edit after the swap", async () => {
     const { root } = trackingRoot();
     boot([A1, B], root);
