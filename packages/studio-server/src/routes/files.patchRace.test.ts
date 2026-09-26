@@ -138,6 +138,8 @@ describe("element edits with another writer racing them", () => {
 
   it("insert-composition answers 409 instead of writing over a save that lands during its backup", async () => {
     const { post, path, read } = project();
+    const page = `<!doctype html><html><body><div data-composition-id="main" data-width="640" data-height="360" data-duration="2"></div></body></html>`;
+    writeFileSync(path, page);
     writeFileSync(
       join(path, "..", "child.html"),
       `<template><div data-composition-id="child" data-width="640" data-height="360" data-duration="3"></div></template>`,
@@ -148,7 +150,7 @@ describe("element edits with another writer racing them", () => {
       sourcePath: "child.html",
       start: 0,
       track: 0,
-      expectedVersion: fileContentVersion(ORIGINAL),
+      expectedVersion: fileContentVersion(page),
     });
 
     expect(response.status).toBe(409);
