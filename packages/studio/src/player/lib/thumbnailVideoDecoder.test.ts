@@ -155,6 +155,21 @@ describe("decodeVideoThumbnail", () => {
     expect(timesEnded).toBe(true);
   });
 
+  it("spreads a trimmed strip across its range when the file reports no duration", async () => {
+    input.getPrimaryVideoTrack.mockResolvedValue({
+      getDisplayWidth: vi.fn(async () => 1080),
+      getDisplayHeight: vi.fn(async () => 1920),
+      getDurationFromMetadata: vi.fn(async () => null),
+    });
+    const decoded: number[][] = [];
+    recordDecodes(decoded);
+    await decodeVideoThumbnail(
+      { source: "/clip.mp4", sourceStart: 5, sourceRangeDuration: 5, frameCount: 3 },
+      new AbortController().signal,
+    );
+    expect(decoded).toEqual([[5, 7.5, 10]]);
+  });
+
   it("releases input and degrades when the source has no video track", async () => {
     input.getPrimaryVideoTrack.mockResolvedValue(null);
     await expect(

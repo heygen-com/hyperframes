@@ -139,8 +139,12 @@ export async function decodeVideoThumbnail(
     }
     const metadataDuration = await track.getDurationFromMetadata({ skipLiveWait: true });
     throwIfAborted(signal);
-    const sourceDuration = Math.max(0, metadataDuration ?? request.sourceRangeDuration ?? 0);
-    const sourceStart = Math.min(Math.max(0, request.sourceStart ?? 0), sourceDuration);
+    const requestedStart = Math.max(0, request.sourceStart ?? 0);
+    const sourceDuration = Math.max(
+      0,
+      metadataDuration ?? requestedStart + (request.sourceRangeDuration ?? 0),
+    );
+    const sourceStart = Math.min(requestedStart, sourceDuration);
     const requestedDuration =
       request.sourceRangeDuration ?? Math.max(0, sourceDuration - sourceStart);
     const duration = Math.min(
