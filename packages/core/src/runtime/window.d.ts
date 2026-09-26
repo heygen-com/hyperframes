@@ -1,4 +1,9 @@
-import type { RuntimeSeekOptions, RuntimeTimelineMessage, RuntimeTimelineLike } from "./types";
+import type {
+  RuntimeSeekOptions,
+  RuntimeTimelineChildLike,
+  RuntimeTimelineMessage,
+  RuntimeTimelineLike,
+} from "./types";
 import type { RuntimeColorGradingApi } from "./colorGrading";
 import type { HyperframePickerApi } from "../inline-scripts/pickerApi";
 import type { PlayerAPI } from "../core.types";
@@ -128,6 +133,7 @@ declare global {
         ...args: unknown[]
       ) => ((progress: number) => number) | null;
       registerPlugin?: (plugin: unknown) => void;
+      getTweensOf?: (targets: Element[]) => RuntimeTimelineChildLike[];
       ticker?: {
         tick: () => void;
       };

@@ -306,6 +306,7 @@ describe("__hfSwapScenes", () => {
     const { root } = trackingRoot();
     const order: string[] = [];
     const tween = {
+      parent: made.b,
       vars: { color: "#dim" },
       startTime: () => 0,
       invalidate: () => void order.push("rewrite"),
@@ -553,6 +554,48 @@ describe("__hfSwapScenes", () => {
       "scene a cannot be swapped: its script uses addEventListener",
     );
     expect(made.a1!.kill).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    ["the root timeline", "host", (root: Tl) => root],
+    ["the root timeline", "text", (root: Tl) => root],
+    ["another scene's timeline", "text", () => made.b],
+  ])("refuses, changing nothing, when %s tweens the scene's %s", async (_, target, owner) => {
+    const { root } = trackingRoot();
+    const tweened = () => (target === "host" ? sceneHost("a") : sceneHost("a").querySelector("p"));
+    const tween = { parent: owner(root) };
+    (window as unknown as { gsap: unknown }).gsap = {
+      set: () => {},
+      getTweensOf: (targets: Element[]) => (targets.includes(tweened()!) ? [tween] : []),
+    };
+    boot([A1, B], root);
+    await tick();
+    const before = document.documentElement.innerHTML;
+    await expect(window.__hfSwapScenes!(preview([A2, B]).html)).rejects.toThrow(
+      "scene a cannot be swapped: an animation outside it moves its elements",
+    );
+    expect(document.documentElement.innerHTML).toBe(before);
+    expect(made.a1!.kill).not.toHaveBeenCalled();
+  });
+
+  it("swaps a scene whose elements only its own and its nested scenes' timelines tween", async () => {
+    const { root } = trackingRoot();
+    const nested = (s: Scene): Scene => ({
+      ...s,
+      body: `${s.body}<div data-composition-id="n"><i>n</i></div>`,
+    });
+    const own = { parent: made.a1 };
+    const inNested = { parent: { parent: made.n1 } };
+    (window as unknown as { gsap: unknown }).gsap = {
+      set: () => {},
+      getTweensOf: (targets: Element[]) =>
+        targets.includes(sceneHost("a")) ? [own, inNested] : [],
+    };
+    boot([nested(A1), B], root);
+    window.__timelines!.n = made.n1;
+    await tick();
+    await window.__hfSwapScenes!(preview([nested(A2), B]).html);
+    expect(sceneHost("a").querySelector("p")?.textContent).toBe("A two");
   });
 
   it("rejects a scene with more than one host rather than dropping one", async () => {

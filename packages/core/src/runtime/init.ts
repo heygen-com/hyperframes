@@ -83,6 +83,7 @@ import type {
   RuntimeDeterministicAdapter,
   RuntimeJson,
   RuntimeSeekOptions,
+  RuntimeTimelineChildLike,
   RuntimeTimelineLike,
 } from "./types";
 import type { PlayerAPI } from "../core.types";
@@ -3147,6 +3148,27 @@ export function initSandboxRuntimeModular(): void {
       if (kept) el.replaceWith(kept);
     }
   };
+  const compositionIdsIn = (host: Element) =>
+    [host, ...host.querySelectorAll("[data-composition-id]")].flatMap(
+      (el) => el.getAttribute("data-composition-id") || [],
+    );
+  // GSAP binds a tween to elements, so one from outside the scene would go on moving the replaced copy.
+  const refuseOutsideTweens = (
+    name: string,
+    host: Element,
+    timelines: Record<string, RuntimeTimelineLike | undefined>,
+  ) => {
+    const own = new Set<unknown>(compositionIdsIn(host).map((id) => timelines[id]));
+    for (const tween of window.gsap?.getTweensOf?.([host, ...host.querySelectorAll("*")]) ?? []) {
+      let owner: RuntimeTimelineChildLike | undefined = tween;
+      while (owner && !own.has(owner)) owner = owner.parent;
+      if (!owner) {
+        throw new Error(
+          `scene ${name} cannot be swapped: an animation outside it moves its elements`,
+        );
+      }
+    }
+  };
   // Swap edited scenes in place from a rebuilt preview document. Refuses before changing anything unless
   // the documents differ only inside existing scenes; a later failure is left to the caller's reload.
   const swapScenes = async (html: string): Promise<void> => {
@@ -3166,6 +3188,10 @@ export function initSandboxRuntimeModular(): void {
     }
     const changed = names.filter((name) => nextParts.scenes[name] !== liveParts.scenes[name]);
     if (changed.length === 0) throw new Error("no scene changed");
+    const timelines = (window.__timelines ??= {}) as Record<
+      string,
+      RuntimeTimelineLike | undefined
+    >;
     const swaps = changed.map((name) => {
       const partsIn = (doc: Document) =>
         Array.from(doc.querySelectorAll(`[${SCENE_PART_ATTR}="${CSS.escape(name)}"]`));
@@ -3196,6 +3222,7 @@ export function initSandboxRuntimeModular(): void {
       if (styleCount(oldParts) !== styleCount(newParts)) {
         throw new Error(`scene ${name} cannot be swapped: its styles moved`);
       }
+      refuseOutsideTweens(name, oldHost, timelines);
       return { oldParts, newParts, oldHost, newHost };
     });
     // Fetched before the first write, so a stalled or failed request leaves the page as it was.
@@ -3207,10 +3234,6 @@ export function initSandboxRuntimeModular(): void {
       throw new Error("the preview changed while this swap waited");
     }
     sceneSwapGeneration += 1;
-    const timelines = (window.__timelines ??= {}) as Record<
-      string,
-      RuntimeTimelineLike | undefined
-    >;
     const root = state.capturedTimeline as
       | (RuntimeTimelineLike & { remove?: (child: unknown) => unknown })
       | null;
@@ -3218,10 +3241,9 @@ export function initSandboxRuntimeModular(): void {
     const captionHosts: Element[] = [];
     const swappedHosts: Element[] = [];
     for (const { oldParts, newParts, oldHost, newHost } of swaps) {
-      for (const el of [oldHost, ...oldHost.querySelectorAll("[data-composition-id]")]) {
-        const id = el.getAttribute("data-composition-id");
-        const previous = id ? timelines[id] : undefined;
-        if (!id || !previous) continue;
+      for (const id of compositionIdsIn(oldHost)) {
+        const previous = timelines[id];
+        if (!previous) continue;
         const old = previous as { revert?: () => void; kill?: () => void };
         if (old.revert) old.revert();
         else previous.totalTime?.(0, true);
