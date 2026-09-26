@@ -42,7 +42,11 @@ import { resolveCompositionDuration } from "@hyperframes/parsers/composition-dur
 import { createRuntimeStartTimeResolver } from "./startResolver";
 import { createClipTree } from "./clipTree";
 import { loadExternalCompositions, loadInlineTemplateCompositions } from "./compositionLoader";
-import { applyCaptionOverrides } from "./captionOverrides";
+import {
+  applyCaptionOverrides,
+  applyFetchedCaptionOverrides,
+  fetchCaptionOverrides,
+} from "./captionOverrides";
 import {
   SCENE_NO_SWAP_ATTR,
   SCENE_PART_ATTR,
@@ -3180,6 +3184,14 @@ export function initSandboxRuntimeModular(): void {
       }
       return { oldParts, newParts, oldHost, newHost };
     });
+    // Fetched before the first write, so a stalled or failed request leaves the page as it was.
+    const captionOverrides = swaps.some(({ newHost }) => newHost.querySelector(".caption-group"))
+      ? await fetchCaptionOverrides()
+      : [];
+    if (state.tornDown) throw new Error("the preview was torn down during the swap");
+    if (JSON.stringify(readSceneParts(document)) !== JSON.stringify(liveParts)) {
+      throw new Error("the preview changed while this swap waited");
+    }
     const timelines = (window.__timelines ??= {}) as Record<
       string,
       RuntimeTimelineLike | undefined
@@ -3236,12 +3248,8 @@ export function initSandboxRuntimeModular(): void {
         }
       }
     };
-    const captionsApplied = captionHosts.length
-      ? applyCaptionOverrides(captionHosts, rewindCaptionTimelines)
-      : Promise.resolve();
     initVfx(document.body, state.canonicalFps);
-    await captionsApplied;
-    if (state.tornDown) throw new Error("the preview was torn down during the swap");
+    applyFetchedCaptionOverrides(captionOverrides, captionHosts, rewindCaptionTimelines);
     releaseDetachedMedia();
     childrenBound = false;
     bindRootTimelineIfAvailable();

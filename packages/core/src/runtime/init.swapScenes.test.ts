@@ -103,22 +103,20 @@ const B: Scene = {
 };
 const A2: Scene = { ...A1, body: "<p>A two</p>", css: ".a{color:green}", label: "a2", hash: "ha2" };
 
-let observer: MutationObserver | null = null;
-
 function boot(scenes: Scene[], root: Tl) {
   const { head, body } = preview(scenes);
   document.head.innerHTML = head;
   document.body.innerHTML = body;
   window.__timelines = { main: root };
   for (const s of scenes) window.__timelines[s.id] = made[s.label];
-  // Run each scene script the swap creates, as a browser would.
-  observer = new MutationObserver((records) => {
-    for (const r of records)
-      for (const n of r.addedNodes)
-        if (n instanceof HTMLScriptElement && n.hasAttribute("data-hf-scene"))
-          new Function(n.textContent ?? "")();
-  });
-  observer.observe(document.body, { childList: true });
+  // Run each scene script the swap appends when it is appended, as a browser would.
+  const append = document.body.appendChild.bind(document.body);
+  document.body.appendChild = <T extends Node>(node: T): T => {
+    append(node);
+    if (node instanceof HTMLScriptElement && node.hasAttribute("data-hf-scene"))
+      new Function(node.textContent ?? "")();
+    return node;
+  };
   initSandboxRuntimeModular();
 }
 
@@ -141,6 +139,22 @@ const proxyHostile = () => {
 const cssText = () =>
   [...document.head.querySelectorAll("style")].map((s) => s.textContent).join("");
 
+// Boots A1 and B, then starts swapping in a captioned A whose caption overrides have not arrived.
+async function bootWithPendingCaptions() {
+  const { root } = trackingRoot();
+  (window as unknown as { gsap: unknown }).gsap = { set: () => {} };
+  let answer: (r: Response) => void = () => {};
+  vi.spyOn(globalThis, "fetch").mockImplementation(
+    () => new Promise<Response>((resolve) => (answer = resolve)),
+  );
+  boot([A1, B], root);
+  await tick();
+  const before = document.documentElement.innerHTML;
+  const captions: Scene = { ...A2, body: '<div class="caption-group"><span>w</span></div>' };
+  const swap = window.__hfSwapScenes!(preview([captions, B]).html);
+  return { swap, before, answer: (r: Response) => answer(r) };
+}
+
 describe("__hfSwapScenes", () => {
   beforeEach(() => {
     resetRuntimeDataForTests();
@@ -155,7 +169,8 @@ describe("__hfSwapScenes", () => {
     (window as unknown as { __made: typeof made }).__made = made;
   });
   afterEach(() => {
-    observer?.disconnect();
+    Reflect.deleteProperty(document.body, "appendChild");
+    Reflect.deleteProperty(window, "gsap");
     window.__hfRuntimeTeardown?.();
     document.head.innerHTML = "";
     document.body.innerHTML = "";
@@ -517,20 +532,27 @@ describe("__hfSwapScenes", () => {
   });
 
   it("rejects a swap the preview was torn down during", async () => {
-    const { root } = trackingRoot();
-    (window as unknown as { gsap: unknown }).gsap = { set: () => {} };
-    const captions: Scene = { ...A2, body: '<div class="caption-group"><span>w</span></div>' };
-    let answer: (r: Response) => void = () => {};
-    vi.spyOn(globalThis, "fetch").mockImplementation(
-      () => new Promise<Response>((resolve) => (answer = resolve)),
-    );
-    boot([A1, B], root);
-    await tick();
-    const swapping = window.__hfSwapScenes!(preview([captions, B]).html);
+    const { swap, answer } = await bootWithPendingCaptions();
     window.__hfRuntimeTeardown?.();
     answer(new Response("null", { status: 404 }));
-    await expect(swapping).rejects.toThrow("torn down");
-    delete (window as unknown as { gsap?: unknown }).gsap;
+    await expect(swap).rejects.toThrow("torn down");
+  });
+
+  it("leaves the page untouched while the caption overrides are still loading", async () => {
+    const { before } = await bootWithPendingCaptions();
+    for (let i = 0; i < 5; i++) await tick();
+    expect(document.documentElement.innerHTML).toBe(before);
+    expect(made.a1!.kill).not.toHaveBeenCalled();
+  });
+
+  it("rejects a swap another swap overtook while its caption overrides loaded", async () => {
+    const { swap, answer } = await bootWithPendingCaptions();
+    const B2: Scene = { ...B, body: "<p>B two</p>", label: "n1", hash: "hb2" };
+    await window.__hfSwapScenes!(preview([A1, B2]).html);
+    answer(new Response("null", { status: 404 }));
+    await expect(swap).rejects.toThrow("changed");
+    expect(sceneHost("a").textContent).toBe("A one");
+    expect(sceneHost("b").textContent).toBe("B two");
   });
 
   it("offers no swap on a page served without a scene manifest", async () => {
