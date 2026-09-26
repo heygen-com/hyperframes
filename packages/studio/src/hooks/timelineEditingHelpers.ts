@@ -404,31 +404,37 @@ export async function persistTimelineBatchEdit(
 /** Live-preview bookkeeping per lane: the value before a gesture, and which gesture is newest. */
 export function createLiveLanes() {
   const before = new Map<string, string | null>();
-  const newestSave = new Map<string, number>();
+  const pending = new Map<string, Set<number>>();
+  const verified = new Map<string, string | null>();
   let saves = 0;
   const take = (key: string): string | null | undefined => {
     const claimed = before.has(key) ? (before.get(key) ?? null) : undefined;
     before.delete(key);
     return claimed;
   };
+  const overtaken = (key: string, save: number): boolean =>
+    [...(pending.get(key) ?? [])].some((newer) => newer > save);
   return {
     preview(key: string, readCurrent: () => string | null): void {
       if (!before.has(key)) before.set(key, readCurrent());
     },
-    // A save. Its settle records what the file holds (`saved`, else the claimed value)
-    // unless a newer save has started; it moves the preview only while no drag is live.
+    // A save. Its settle records what the file holds: `saved`, else the last value read or
+    // saved on this lane, never an unsaved one. Store and preview follow only while no newer
+    // save is pending, and the preview only while no drag is live.
     claim(key: string, apply: LiveLaneApply): LiveLaneSave {
-      const claimed = take(key);
+      before.delete(key);
       const mine = ++saves;
-      newestSave.set(key, mine);
+      pending.set(key, (pending.get(key) ?? new Set<number>()).add(mine));
       const preview = (value: string | null) => {
-        if (newestSave.get(key) === mine && !before.has(key)) apply.preview(value);
+        if (!before.has(key) && !overtaken(key, mine)) apply.preview(value);
       };
       return {
         preview,
         settle(saved) {
-          const value = saved !== undefined ? saved : claimed;
-          if (value === undefined || newestSave.get(key) !== mine) return;
+          pending.get(key)?.delete(mine);
+          if (saved !== undefined) verified.set(key, saved);
+          if (!verified.has(key) || overtaken(key, mine)) return;
+          const value = verified.get(key) ?? null;
           if (before.has(key)) before.set(key, value);
           apply.store(value);
           preview(value);

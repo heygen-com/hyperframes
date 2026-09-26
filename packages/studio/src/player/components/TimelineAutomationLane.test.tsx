@@ -377,6 +377,25 @@ describe("TimelineAutomationLane", () => {
     expect(Number(circles[0]!.getAttribute("cx"))).toBeCloseTo(PAD + 300, 0);
   });
 
+  it("commits the dragged points when an older save lands mid-drag", () => {
+    const onCommit = vi.fn(async (_next: HfAutomation) => ({ status: "saved" as const }));
+    const { container, rerender } = renderRerenderable(
+      <TimelineAutomationLane {...laneProps({ automation: ramp, onCommit })} />,
+    );
+    const svg = container.querySelector("svg")!;
+    stubBox(svg, { left: 0, top: 0, width: 400, height: 48 });
+    fire(svg, "pointerdown", { clientX: 0, clientY: 6 });
+    fire(svg, "pointermove", { clientX: 160, clientY: 40 });
+    fire(svg, "pointerup", { clientX: 160, clientY: 40 });
+    const older = onCommit.mock.calls[0]![0];
+    fire(svg, "pointerdown", { clientX: 160, clientY: 40 });
+    fire(svg, "pointermove", { clientX: 320, clientY: 40 });
+    rerender(<TimelineAutomationLane {...laneProps({ automation: older, onCommit })} />);
+    fire(svg, "pointerup", { clientX: 320, clientY: 40 });
+    const released = onCommit.mock.calls[1]![0];
+    expect(released.lanes[0]!.points[0]!.t).toBeGreaterThan(older.lanes[0]!.points[0]!.t + 1);
+  });
+
   it("keeps lane order when editing, so the view does not switch parameters", () => {
     // The displayed lane defaults to the first one. Moving the edited lane to
     // the end of the list swapped the lane out from under the pointer on the

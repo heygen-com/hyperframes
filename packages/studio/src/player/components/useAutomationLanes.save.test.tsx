@@ -307,6 +307,110 @@ describe("useAutomationLanes saves report what happened", () => {
     expect(usePlayerStore.getState().elements[0]?.automation).toBe(landed);
   });
 
+  it.each([
+    { lane: "clip", target: music, field: "automation" },
+    { lane: "group", target: group, field: "audioGroupAutomation" },
+  ] as const)(
+    "keeps a landed $lane save when a newer one fails and cannot read the file back",
+    async ({ target, field }) => {
+      const { startCommit, writeProjectFile, iframe, file, setFile, failRead } = mountLanes(target);
+      const at = (v: number) => ({
+        version: 1 as const,
+        lanes: [{ target: "volume", points: [{ t: 0, v }] }],
+      });
+      let landOlder = () => {};
+      writeProjectFile
+        .mockImplementationOnce(
+          (_path, content) =>
+            new Promise<void>((resolve) => {
+              landOlder = () => {
+                setFile(content);
+                resolve();
+              };
+            }),
+        )
+        .mockRejectedValueOnce(new Error("offline"));
+      const older = startCommit(at(0.5));
+      await act(() => vi.waitFor(() => expect(writeProjectFile).toHaveBeenCalledTimes(1)));
+      const newer = startCommit(at(0.9));
+      failRead(3);
+      landOlder();
+      await act(async () => {
+        await Promise.all([older, newer]);
+      });
+      const want = serializeAutomation(at(0.5));
+      const saved = new DOMParser().parseFromString(file(), "text/html");
+      expect(saved.getElementById(target.id)?.getAttribute("data-automation")).toBe(want);
+      expect(
+        iframe.contentDocument!.getElementById(target.id)?.getAttribute("data-automation"),
+      ).toBe(want);
+      expect(usePlayerStore.getState().elements[0]?.[field]).toBe(want);
+    },
+  );
+
+  it("never settles on a value that was not saved when a refused save cannot read the file back", async () => {
+    const { startCommit, preview, writeProjectFile, iframe, failRead, setRecording } =
+      mountLanes(music);
+    const at = (v: number) => ({
+      version: 1 as const,
+      lanes: [{ target: "volume", points: [{ t: 0, v }] }],
+    });
+    let failOlder = () => {};
+    writeProjectFile.mockImplementationOnce(
+      () =>
+        new Promise<void>((_resolve, reject) => {
+          failOlder = () => reject(new Error("offline"));
+        }),
+    );
+    preview(at(0.9));
+    const older = startCommit(at(0.9));
+    await act(() => vi.waitFor(() => expect(writeProjectFile).toHaveBeenCalledTimes(1)));
+    preview(at(0.7));
+    setRecording(true);
+    const refused = startCommit(at(0.7));
+    failRead(2);
+    failOlder();
+    await act(async () => {
+      await Promise.all([older, refused]);
+    });
+    expect(iframe.contentDocument!.getElementById("music")?.hasAttribute("data-automation")).toBe(
+      false,
+    );
+    expect(usePlayerStore.getState().elements[0]?.automation).toBeUndefined();
+  });
+
+  it("leaves the store to a newer pending save when an older one lands", async () => {
+    const { startCommit, writeProjectFile, setFile, holdRead } = mountLanes(music);
+    const at = (v: number) => ({
+      version: 1 as const,
+      lanes: [{ target: "volume", points: [{ t: 0, v }] }],
+    });
+    let landOlder = () => {};
+    writeProjectFile.mockImplementationOnce(
+      (_path, content) =>
+        new Promise<void>((resolve) => {
+          landOlder = () => {
+            setFile(content);
+            resolve();
+          };
+        }),
+    );
+    const older = startCommit(at(0.5));
+    await act(() => vi.waitFor(() => expect(writeProjectFile).toHaveBeenCalledTimes(1)));
+    const releaseNewer = holdRead(2);
+    const newer = startCommit(at(0.9));
+    landOlder();
+    await act(async () => {
+      await older;
+    });
+    expect(usePlayerStore.getState().elements[0]?.automation).toBeUndefined();
+    releaseNewer();
+    await act(async () => {
+      await newer;
+    });
+    expect(usePlayerStore.getState().elements[0]?.automation).toBe(serializeAutomation(at(0.9)));
+  });
+
   it("keeps a newer release's preview while an older save fails under it", async () => {
     const { startCommit, preview, writeProjectFile, iframe, holdRead } = mountLanes(music);
     const at = (v: number) => ({

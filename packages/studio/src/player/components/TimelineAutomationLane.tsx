@@ -242,14 +242,6 @@ export function TimelineAutomationLane({
     [draft, target, stored],
   );
 
-  // The draft is released when the automation it was drawn over actually
-  // changes — the persisted edit landing, or an edit from elsewhere. Releasing
-  // it merely because the drag ended would snap the point back to where it
-  // started for as long as the write takes to come around.
-  useEffect(() => {
-    if (draft && draft.basedOn !== automation) setDraft(null);
-  }, [automation, draft]);
-
   // A different parameter is a different envelope; the draft does not carry over.
   useEffect(() => {
     setDraft(null);
@@ -324,6 +316,7 @@ export function TimelineAutomationLane({
     duration,
     rangeSelection,
   });
+
   const {
     dragIndex,
     curveIndex,
@@ -334,6 +327,13 @@ export function TimelineAutomationLane({
     hint,
     editing,
   } = gestures;
+  // Released when the automation it was drawn over changes, not on drag end (the point would
+  // snap back until the write lands) and not under a live gesture (its release would commit
+  // an older save's points).
+  const gestureLive = [dragIndex, curveIndex, segmentDragIndex, edgeDrag].some((g) => g !== null);
+  useEffect(() => {
+    if (draft && draft.basedOn !== automation && !gestureLive) setDraft(null);
+  }, [automation, draft, gestureLive]);
 
   const removeAt = useCallback(
     (index: number): void => {
