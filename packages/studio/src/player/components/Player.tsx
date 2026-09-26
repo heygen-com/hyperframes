@@ -247,7 +247,6 @@ export const Player = forwardRef<HTMLIFrameElement, PlayerProps>(
           setLoaded(true);
           setPreviewError(null);
           setShaderTransitionLoading(false);
-          // The player can finish this document's handshake before `load`, and sends it only once.
           setCompositionLoading(!player.ready);
           setPainted(Boolean(player.painted));
           // Reveal animation on reload (hot-reload, composition switch)
