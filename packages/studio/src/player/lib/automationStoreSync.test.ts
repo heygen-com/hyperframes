@@ -33,6 +33,30 @@ beforeEach(() => {
 });
 
 describe("syncStoredAutomationFromPreview", () => {
+  it("reads the element the timeline bound, not an earlier same-id copy in a sub-composition", () => {
+    usePlayerStore.setState({ elements: [el({ hfId: "hf-root" })] });
+    const doc = document.implementation.createHTMLDocument("preview");
+    doc.body.innerHTML =
+      '<div data-composition-id="strip"><audio id="bgm" data-hf-id="hf-inner"></audio></div>' +
+      '<audio id="bgm" data-hf-id="hf-root"></audio>';
+    doc.querySelector('[data-hf-id="hf-inner"]')?.setAttribute("data-automation", TWO_POINTS);
+    doc.querySelector('[data-hf-id="hf-root"]')?.setAttribute("data-automation", RESTORED);
+    syncStoredAutomationFromPreview(doc);
+    expect(usePlayerStore.getState().elements[0]?.automation).toBe(RESTORED);
+  });
+
+  it("reads the copy in the element's own file when a sub-composition repeats its hf-id", () => {
+    usePlayerStore.setState({ elements: [el({ hfId: "hf-bgm" })] });
+    const doc = document.implementation.createHTMLDocument("preview");
+    doc.body.innerHTML =
+      '<div data-composition-id="strip" data-composition-src="compositions/strip.html">' +
+      '<audio id="bgm" data-hf-id="hf-bgm"></audio></div><audio id="bgm" data-hf-id="hf-bgm"></audio>';
+    doc.querySelectorAll("audio")[0]?.setAttribute("data-automation", TWO_POINTS);
+    doc.querySelectorAll("audio")[1]?.setAttribute("data-automation", RESTORED);
+    syncStoredAutomationFromPreview(doc);
+    expect(usePlayerStore.getState().elements[0]?.automation).toBe(RESTORED);
+  });
+
   it("reads back an envelope an undo restored on the preview", () => {
     // The bug: a soft undo patches the preview document and re-runs the timeline, but
     // the store keeps its own copy of the attributes and that copy is what a lane

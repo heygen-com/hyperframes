@@ -31,6 +31,8 @@ declare global {
     __timelines: Record<string, RuntimeTimelineLike>;
     __player?: PlayerAPI;
     __hyperframes?: {
+      /** A path the calling composition wrote relative to its own file, as a URL the page can load. */
+      assetUrl?: (path: string) => string;
       registerRuntimeDataHandler?: (
         channel: string,
         handler: (payload: unknown) => void,
@@ -74,6 +76,8 @@ declare global {
     __playerReady?: boolean;
     __renderReady?: boolean;
     __hfRuntimeTeardown?: (() => void) | null;
+    /** Swap edited scenes from a rebuilt preview document; refuses before changing anything when it cannot. */
+    __hfSwapScenes?: (html: string) => Promise<void>;
     __HF_EXPORT_RENDER_SEEK_CONFIG?: {
       mode?: string;
       diagnostics?: boolean;

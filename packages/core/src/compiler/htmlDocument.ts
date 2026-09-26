@@ -34,9 +34,14 @@ export function parseHTMLContent(html: string): Document {
   return parseHTML(`<!DOCTYPE html><html><head></head><body>${html}</body></html>`).document;
 }
 
+/** Lowercases A-Z only, so indexes found in the result are valid in the input ("İ" lowercases to two chars). */
+function lowerAscii(text: string): string {
+  return text.replace(/[A-Z]+/g, (letters) => letters.toLowerCase());
+}
+
 export function stripEmbeddedRuntimeScripts(html: string): string {
   if (!html) return html;
-  const loweredHtml = html.toLowerCase();
+  const loweredHtml = lowerAscii(html);
   let output = "";
   let cursor = 0;
 
@@ -76,21 +81,42 @@ function findScriptStart(loweredHtml: string, from: number): number {
   return -1;
 }
 
+type TagState = "tagName" | "between" | "name" | "equals" | "value";
+
 function findTagEnd(html: string, from: number): number {
   let quote: string | undefined;
+  let state: TagState = "tagName";
   for (let index = from; index < html.length; index += 1) {
-    const char = html[index];
+    const char = html.charAt(index);
     if (quote) {
-      if (char === quote) quote = undefined;
-      continue;
-    }
-    if (char === '"' || char === "'") {
-      quote = char;
+      quote = char === quote ? undefined : quote;
       continue;
     }
     if (char === ">") return index;
+    if (state === "equals" && (char === '"' || char === "'")) {
+      quote = char;
+      state = "between";
+      continue;
+    }
+    state = nextTagState(state, char, index === from);
   }
   return -1;
+}
+
+function nextTagState(state: TagState, char: string, first: boolean): TagState {
+  if (isHtmlWhitespace(char)) return stateAfterWhitespace(state);
+  if (char === "/" && !first) return stateAfterSlash(state);
+  if (char === "=" && state === "name") return "equals";
+  if (state === "equals") return "value";
+  return state === "between" ? "name" : state;
+}
+
+function stateAfterWhitespace(state: TagState): TagState {
+  return state === "tagName" || state === "value" ? "between" : state;
+}
+
+function stateAfterSlash(state: TagState): TagState {
+  return state === "equals" || state === "value" ? "value" : "between";
 }
 
 function findScriptCloseTagEnd(loweredHtml: string, from: number): number {
@@ -129,7 +155,7 @@ function shouldStripRuntimeScriptBlock(block: string): boolean {
 function getScriptSource(block: string): string {
   const startTagEnd = findTagEnd(block, 1);
   if (startTagEnd === -1) return "";
-  const loweredBlock = block.toLowerCase();
+  const loweredBlock = lowerAscii(block);
   const closeTagStart = loweredBlock.lastIndexOf("</script");
   const end = closeTagStart === -1 ? block.length : closeTagStart;
   return block.slice(startTagEnd + 1, end);
@@ -152,8 +178,8 @@ function escapeInlineScriptSource(source: string): string {
 }
 
 function escapeCaseInsensitiveToken(source: string, token: string, replacement: string): string {
-  const loweredSource = source.toLowerCase();
-  const loweredToken = token.toLowerCase();
+  const loweredSource = lowerAscii(source);
+  const loweredToken = lowerAscii(token);
   let output = "";
   let cursor = 0;
 
@@ -174,19 +200,98 @@ function inlineScriptTags(scripts: readonly string[]): string {
   return scripts.map((source) => `<script>${escapeInlineScriptSource(source)}</script>`).join("\n");
 }
 
+const RAW_TEXT_TAGS = ["script", "style", "title", "textarea"] as const;
+
+type DocumentTag = "<head" | "</head" | "<body" | "</body";
+const COMMENT_END = /--!?>/g;
+
+function findDocumentTag(html: string, tag: DocumentTag): number {
+  const lowered = lowerAscii(html);
+  const unclosedRawText = new Set<string>();
+  let cursor = 0;
+  while (cursor !== -1) {
+    const open = lowered.indexOf("<", cursor);
+    if (open === -1) return -1;
+    if (isTagAt(lowered, open, tag)) return open;
+    cursor = skipMarkup(lowered, open, unclosedRawText);
+  }
+  return -1;
+}
+
+function isTagAt(lowered: string, at: number, token: string): boolean {
+  return lowered.startsWith(token, at) && isTagBoundary(lowered.charAt(at + token.length));
+}
+
+/** Cursor just past the markup that starts at `open`, or -1 when the document ends inside it. */
+function skipMarkup(lowered: string, open: number, unclosedRawText: Set<string>): number {
+  if (lowered.startsWith("<!--", open)) return skipComment(lowered, open);
+  const next = lowered.charAt(open + 1);
+  if (next === "/" && !/[a-z]/.test(lowered.charAt(open + 2))) {
+    const bogusEnd = lowered.indexOf(">", open);
+    return bogusEnd === -1 ? -1 : bogusEnd + 1;
+  }
+  if (!/[a-z/]/.test(next)) return open + 1;
+  const tagEnd = findTagEnd(lowered, open + 1);
+  return tagEnd === -1 ? -1 : skipRawText(lowered, open, tagEnd, unclosedRawText);
+}
+
+function skipComment(lowered: string, open: number): number {
+  if (lowered.startsWith("<!-->", open) || lowered.startsWith("<!--->", open)) {
+    return lowered.indexOf(">", open) + 1;
+  }
+  COMMENT_END.lastIndex = open + 4;
+  const end = COMMENT_END.exec(lowered);
+  return end ? end.index + end[0].length : -1;
+}
+
+function skipRawText(
+  lowered: string,
+  open: number,
+  tagEnd: number,
+  unclosedRawText: Set<string>,
+): number {
+  const rawText = RAW_TEXT_TAGS.find((name) => isTagAt(lowered, open, `<${name}`));
+  if (!rawText) return tagEnd + 1;
+  const close = unclosedRawText.has(rawText) ? -1 : findRawTextClose(lowered, rawText, tagEnd + 1);
+  if (close !== -1) return close;
+  unclosedRawText.add(rawText);
+  return lowered.charAt(tagEnd - 1) === "/" ? tagEnd + 1 : -1;
+}
+
+function findRawTextClose(lowered: string, name: string, from: number): number {
+  const close = `</${name}`;
+  for (let at = lowered.indexOf(close, from); at !== -1; at = lowered.indexOf(close, at + 1)) {
+    if (isTagAt(lowered, at, close)) return at;
+  }
+  return -1;
+}
+
+function insertBeforeDocumentTag(html: string, tag: DocumentTag, markup: string): string | null {
+  const at = findDocumentTag(html, tag);
+  return at === -1 ? null : html.slice(0, at) + markup + html.slice(at);
+}
+
+/** Insert markup just before the document's own `</head>` or `</body>`; null when it has none. */
+export function insertBeforeCloseTag(
+  html: string,
+  name: "head" | "body",
+  markup: string,
+): string | null {
+  return insertBeforeDocumentTag(html, `</${name}`, markup);
+}
+
 /**
  * Insert raw tag markup at the very start of `<head>`, ahead of every author
  * script (inline or external). Falls back to just before `<body>`, then to the
  * top of the document, for fragments that carry neither.
  */
 export function injectTagsAtHeadStart(html: string, tags: string): string {
-  if (html.includes("<head")) {
-    return html.replace(/<head\b[^>]*>/i, (match) => `${match}\n${tags}`);
+  const headOpen = findDocumentTag(html, "<head");
+  const headOpenEnd = headOpen === -1 ? -1 : findTagEnd(html, headOpen + 1);
+  if (headOpenEnd !== -1) {
+    return `${html.slice(0, headOpenEnd + 1)}\n${tags}${html.slice(headOpenEnd + 1)}`;
   }
-  if (html.includes("<body")) {
-    return html.replace("<body", () => `${tags}\n<body`);
-  }
-  return `${tags}\n${html}`;
+  return insertBeforeDocumentTag(html, "<body", `${tags}\n`) ?? `${tags}\n${html}`;
 }
 
 export function injectScriptsAtHeadStart(html: string, scripts: readonly string[]): string {
@@ -206,23 +311,14 @@ export function injectScriptsIntoHtml(
 
   if (headScripts.length > 0) {
     const headTags = inlineScriptTags(headScripts);
-    if (html.includes("</head>")) {
-      // Function replacement avoids `$&` interpolation in runtime source.
-      html = html.replace("</head>", () => `${headTags}\n</head>`);
-    } else if (html.includes("<body")) {
-      html = html.replace("<body", () => `${headTags}\n<body`);
-    } else {
-      html = `${headTags}\n${html}`;
-    }
+    const withHead = insertBeforeCloseTag(html, "head", `${headTags}\n`);
+    html =
+      withHead ?? insertBeforeDocumentTag(html, "<body", `${headTags}\n`) ?? `${headTags}\n${html}`;
   }
 
   if (bodyScripts.length > 0) {
     const bodyTags = inlineScriptTags(bodyScripts);
-    if (html.includes("</body>")) {
-      html = html.replace("</body>", () => `${bodyTags}\n</body>`);
-    } else {
-      html = `${html}\n${bodyTags}`;
-    }
+    html = insertBeforeCloseTag(html, "body", `${bodyTags}\n`) ?? `${html}\n${bodyTags}`;
   }
 
   return html;

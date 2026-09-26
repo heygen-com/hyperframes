@@ -22,6 +22,7 @@ import {
   type MutationContext,
   type MutationDecision,
   type MutationVerb,
+  isFileChanged,
 } from "./a2Shared.js";
 
 export async function runMutation(
@@ -249,9 +250,7 @@ function applyMutation(
       },
     ])[0];
   } catch (error) {
-    if (error instanceof Error && error.message === "file changed since the timeline was read") {
-      return { error: error.message };
-    }
+    if (isFileChanged(error)) return { error: error.message };
     throw error;
   }
 }

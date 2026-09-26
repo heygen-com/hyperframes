@@ -150,7 +150,6 @@ export function createPickerModule(deps: PickerModuleDeps): PickerModule {
     if (!el || el === document.body || el === document.documentElement) return false;
     const tag = el.tagName.toLowerCase();
     if (tag === "script" || tag === "style" || tag === "link" || tag === "meta") return false;
-    if (el.classList.contains("__hf-pick-highlight")) return false;
     if (passThroughRoots.has(el)) return false;
     if (el.closest(PICKER_IGNORE_SELECTOR)) return false;
     if (isEffectivelyHidden(el as HTMLElement)) return false;

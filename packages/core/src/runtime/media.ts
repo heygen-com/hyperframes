@@ -19,18 +19,32 @@ export function readElementPlaybackStart(el: Element): number {
   return readMediaStart(el);
 }
 
-const SEEK_END_EVENTS = ["seeked", "error", "emptied", "abort"] as const;
+const HOLD_END_EVENTS = ["seeked", "loadeddata", "error", "emptied", "abort"] as const;
+const HOLD_CAP_MS = 5000;
+const releaseHeldVideo = new WeakMap<HTMLMediaElement, () => void>();
 
-// A seeking video still paints its previous frame; frame captures wait on the seek barrier until it lands.
+// A seeking video still paints its previous frame, and one still fetching its first data paints none (its seek
+// waits for metadata without setting `seeking`); frame captures wait on the barrier until it lands. The 5 s cap is
+// the only end for a stalled source (`suspend` also fires between range requests); capture phase catches <source>.
 function holdSeekBarrierUntilVideoLands(el: HTMLMediaElement): void {
-  if (el.tagName !== "VIDEO" || !el.seeking) return;
+  const loading =
+    el.readyState < el.HAVE_CURRENT_DATA &&
+    el.networkState === el.NETWORK_LOADING &&
+    !(window as { __HF_EXPORT_RENDER_SEEK_CONFIG?: unknown }).__HF_EXPORT_RENDER_SEEK_CONFIG;
+  if (el.tagName !== "VIDEO" || !(el.seeking || loading) || findInjectedRenderFrame(el)) return;
+  releaseHeldVideo.get(el)?.();
   registerSeekCompletion(
     new Promise<void>((resolve) => {
-      const done = () => {
-        for (const type of SEEK_END_EVENTS) el.removeEventListener(type, done);
+      const done = (event?: Event) => {
+        if (event?.type === "loadeddata" && el.seeking) return;
+        clearTimeout(cap);
+        for (const type of HOLD_END_EVENTS) el.removeEventListener(type, done, true);
+        if (releaseHeldVideo.get(el) === done) releaseHeldVideo.delete(el);
         resolve();
       };
-      for (const type of SEEK_END_EVENTS) el.addEventListener(type, done);
+      const cap = setTimeout(done, HOLD_CAP_MS);
+      for (const type of HOLD_END_EVENTS) el.addEventListener(type, done, true);
+      releaseHeldVideo.set(el, done);
     }),
   );
 }
@@ -220,6 +234,7 @@ export function evictMediaSyncState(el: HTMLMediaElement): void {
   strictDriftSamples.delete(el);
   seekLoadRetried.delete(el);
   lastRuntimeAppliedVolume.delete(el);
+  videoSteering.delete(el);
 }
 
 /** Test-only seam: whether any per-source sync state is still tracked for `el`. */
@@ -229,8 +244,32 @@ export function hasMediaSyncStateForTest(el: HTMLMediaElement): boolean {
     lastRelativeTime.has(el) ||
     strictDriftSamples.has(el) ||
     seekLoadRetried.has(el) ||
-    lastRuntimeAppliedVolume.has(el)
+    lastRuntimeAppliedVolume.has(el) ||
+    videoSteering.has(el)
   );
+}
+
+/** Drift a playing audio element may carry before sync pulls it back onto the playhead. */
+const MEDIA_SYNC_TOLERANCE_SECONDS = 0.04;
+
+// A playing video is steered back by rate, not seeked (a seek resets its decoder).
+// Its rate is written only when steering starts or stops: every write costs a frame.
+const VIDEO_STEER = 0.03;
+const VIDEO_STEER_RELEASE_SECONDS = 0.01;
+
+/** Direction (+1 fast, -1 slow) a video is being steered in; absent when it plays at its authored rate. */
+const videoSteering = new WeakMap<HTMLMediaElement, number>();
+
+/** Rate for a playing video `offset` seconds behind (+) or ahead (-) of the playhead. */
+function steeredVideoRate(el: HTMLMediaElement, offset: number, baseRate: number): number {
+  const direction = Math.sign(offset);
+  const steering = videoSteering.get(el);
+  if (Math.abs(offset) > MEDIA_SYNC_TOLERANCE_SECONDS) videoSteering.set(el, direction);
+  else if (steering !== direction || Math.abs(offset) <= VIDEO_STEER_RELEASE_SECONDS) {
+    videoSteering.delete(el);
+    return baseRate;
+  }
+  return baseRate * (1 + direction * VIDEO_STEER);
 }
 
 // fallow-ignore-next-line complexity
@@ -413,13 +452,8 @@ export function syncRuntimeMedia(params: {
       // (no-op when already "auto") and catches elements whose preload
       // was overridden after init.ts set it.
       if (el.preload !== "auto") el.preload = "auto";
-      try {
-        // Per-element rate × global transport rate
-        el.playbackRate = rateAt(clipRate, params.timeSeconds - clip.start) * params.playbackRate;
-      } catch (err) {
-        // ignore unsupported playbackRate
-        swallow("runtime.media.site1", err);
-      }
+      // Per-element rate × global transport rate
+      const baseRate = rateAt(clipRate, params.timeSeconds - clip.start) * params.playbackRate;
       // Drift correction — three tiers:
       //
       // 1. Hard sync (0.5s): first tick, timeline jumps (scrub), catastrophic
@@ -438,7 +472,6 @@ export function syncRuntimeMedia(params: {
       // The first tick a clip is active has no previous offset to compare —
       // treated as hard resync so sub-compositions with non-zero mediaStart
       // land on the right frame.
-      const STRICT_DRIFT_THRESHOLD = 0.04;
       const STRICT_REQUIRED_SAMPLES = 2;
 
       const currentElTime = el.currentTime || 0;
@@ -455,19 +488,18 @@ export function syncRuntimeMedia(params: {
       const staleAudioOnFirstTick =
         el.tagName === "AUDIO" &&
         firstTickOfClip &&
-        currentElTime - relTime > STRICT_DRIFT_THRESHOLD;
+        currentElTime - relTime > MEDIA_SYNC_TOLERANCE_SECONDS;
       const hardSync =
         (isHeldVideoTail && drift > 0.001) ||
         (el.ended && canSeekEndedMediaBackward && drift > 0.001) ||
         staleAudioOnFirstTick ||
         (drift > 0.5 && (firstTickOfClip || offsetJumped || catastrophicDrift));
-      // Playing video elements use the browser's native decoder pipeline for
-      // timing. Seeking a playing video resets the decoder, causing a ~150ms
-      // freeze while it re-buffers — during which the monotonic clock advances,
-      // creating a perpetual seek→freeze→drift→seek stutter loop. Skip strict
-      // and force sync for playing videos; only hard sync (>0.5s) warrants
-      // the decoder-reset cost.
-      const isPlayingVideo = el.tagName === "VIDEO" && !el.paused;
+      // Playing videos use the browser's decoder for timing. Seeking one resets the decoder: a
+      // ~150ms freeze while it re-buffers, as the monotonic clock advances, which loops into a
+      // seek→freeze→drift→seek stutter. So a playing video skips strict and force sync; only hard
+      // sync (>0.5s) warrants the decoder-reset cost. A paused transport pauses this video below,
+      // so a seek that pauses mid-playback still lands it.
+      const isPlayingVideo = el.tagName === "VIDEO" && !el.paused && params.playing;
       // Only apply strict sync when offset has stabilized (not growing).
       // During initial buffering, offset grows ~16ms/tick as the timeline
       // advances while media stays at 0. Accumulated drift from pause/play
@@ -479,7 +511,7 @@ export function syncRuntimeMedia(params: {
         !hardSync &&
         !firstTickOfClip &&
         offsetStabilized &&
-        drift > STRICT_DRIFT_THRESHOLD
+        drift > MEDIA_SYNC_TOLERANCE_SECONDS
       ) {
         const samples = (strictDriftSamples.get(el) ?? 0) + 1;
         strictDriftSamples.set(el, samples);
@@ -487,10 +519,21 @@ export function syncRuntimeMedia(params: {
           strictSync = true;
           strictDriftSamples.set(el, 0);
         }
-      } else if (drift <= STRICT_DRIFT_THRESHOLD) {
+      } else if (drift <= MEDIA_SYNC_TOLERANCE_SECONDS) {
         strictDriftSamples.set(el, 0);
       }
       const forceSync = !isPlayingVideo && params.forceSync && drift > 0.02;
+      try {
+        // A hard sync lands the video on the playhead, so its pre-seek offset says nothing.
+        if (!isPlayingVideo || hardSync) videoSteering.delete(el);
+        const rate =
+          isPlayingVideo && !hardSync ? steeredVideoRate(el, offset, baseRate) : baseRate;
+        // Some engines read a rate back at lower precision; an equal-enough rate is not rewritten.
+        if (Math.abs(el.playbackRate - rate) > 1e-6) el.playbackRate = rate;
+      } catch (err) {
+        // ignore unsupported playbackRate
+        swallow("runtime.media.site1", err);
+      }
       if (hardSync || strictSync || forceSync) {
         // Skip the per-tick seek (and the `el.load()` drift-recovery retry
         // below) for `<video>` elements that have a sibling
@@ -522,6 +565,8 @@ export function syncRuntimeMedia(params: {
           holdSeekBarrierUntilVideoLands(el);
         }
         playRequested.delete(el);
+      } else if (!params.playing) {
+        holdSeekBarrierUntilVideoLands(el);
       }
       if (isHeldVideoTail) {
         if (!el.paused) el.pause();

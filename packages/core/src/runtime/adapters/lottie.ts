@@ -49,7 +49,19 @@ import { swallow } from "../diagnostics";
  * via the global `lottie` object, so compositions that call
  * `lottie.loadAnimation(...)` without manually registering still work.
  */
-export function createLottieAdapter(): RuntimeDeterministicAdapter {
+export function createLottieAdapter(params?: {
+  resolveStartSeconds?: (element: Element) => number;
+}): RuntimeDeterministicAdapter {
+  const secondsIntoComposition = (anim: unknown, pageTime: number): number => {
+    const el = isLottieWebAnimation(anim) ? anim.wrapper : (anim as DotLottiePlayer).canvas;
+    const composition =
+      el && typeof (el as Element).closest === "function"
+        ? (el as Element).closest("[data-composition-id]")
+        : null;
+    if (!composition || !params?.resolveStartSeconds) return pageTime;
+    return Math.max(0, pageTime - params.resolveStartSeconds(composition));
+  };
+
   return {
     name: "lottie",
 
@@ -78,12 +90,13 @@ export function createLottieAdapter(): RuntimeDeterministicAdapter {
     },
 
     seek: (ctx) => {
-      const time = Math.max(0, Number(ctx.time) || 0);
+      const pageTime = Math.max(0, Number(ctx.time) || 0);
       const instances = (window as LottieWindow).__hfLottie;
       if (!instances || instances.length === 0) return;
 
       for (const anim of instances) {
         try {
+          const time = secondsIntoComposition(anim, pageTime);
           const loops = anim.loop === true;
           if (isLottieWebAnimation(anim)) {
             // lottie-web: AnimationItem
@@ -245,6 +258,7 @@ interface LottieWebAnimation {
   totalFrames: number;
   frameRate: number;
   loop?: boolean | number;
+  wrapper?: unknown;
 }
 
 interface LottieWebGlobal {
@@ -261,6 +275,7 @@ interface DotLottiePlayer {
   frameRate?: number;
   duration?: number;
   loop?: boolean;
+  canvas?: unknown;
 }
 
 interface LottieWindow extends Window {

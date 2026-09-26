@@ -428,14 +428,83 @@ function nodeMatchesManifestClip(node: Element, clip: ClipManifestClip): boolean
   });
 }
 
-function findTimelineDomNode(doc: Document, id: string): Element | null {
-  return (
-    doc.getElementById(id) ??
-    doc.querySelector(`[data-hf-id="${CSS.escape(id)}"]`) ??
-    doc.querySelector(`[data-composition-id="${CSS.escape(id)}"]`) ??
-    doc.querySelector(`.${CSS.escape(id)}`) ??
-    null
-  );
+/** Whether `node` sits in the composition the clip was read from, the chain the runtime records outermost first
+ * (`resolveNearestCompositionContext` in core's runtime/timeline.ts). A clip without that scope accepts any node. */
+function nodeInClipScope(node: Element, clip: ClipManifestClip): boolean {
+  const scope = clip.compositionAncestors;
+  if (!scope) return true;
+  const ids: string[] = [];
+  for (let cursor = node.parentElement; cursor; cursor = cursor.parentElement) {
+    const id = cursor.getAttribute("data-composition-id");
+    if (id) ids.unshift(id);
+  }
+  return ids.length === scope.length && ids.every((id, index) => id === scope[index]);
+}
+
+/** The first match in the clip's composition across `selectors`; a lone match stands only when none is in scope, as a
+ * healed host can stale the clip's chain for a pass. An id can repeat in a sub-composition earlier in the document. */
+function findInClipScope(
+  doc: Document,
+  clip: ClipManifestClip,
+  selectors: string[],
+): Element | null {
+  let lone: Element | null = null;
+  for (const selector of selectors) {
+    const nodes = Array.from(doc.querySelectorAll(selector));
+    const scoped = nodes.find((node) => nodeInClipScope(node, clip));
+    if (scoped) return scoped;
+    if (nodes.length === 1) lone ??= nodes[0];
+  }
+  return lone;
+}
+
+export type PreviewTarget = Pick<TimelineElement, "hfId" | "domId" | "id" | "sourceFile">;
+
+/** Finds a row's preview element by `data-hf-id`, then id, preferring one in the row's own file: both repeat across
+ * files. Indexes the document once, so a pass over every row costs one scan. */
+export function previewElementFinder(
+  doc: Document,
+  selector = "[data-hf-id], [id]",
+): (target: PreviewTarget) => Element | null {
+  const byKey = new Map<string, Element[]>();
+  const add = (key: string, node: Element) => {
+    const nodes = byKey.get(key);
+    if (nodes) nodes.push(node);
+    else byKey.set(key, [node]);
+  };
+  for (const node of doc.querySelectorAll(selector)) {
+    const hfId = node.getAttribute("data-hf-id");
+    const id = node.getAttribute("id");
+    if (hfId) add(`hf:${hfId}`, node);
+    if (id) add(`id:${id}`, node);
+  }
+  return (target) => {
+    const matches = [
+      ...((target.hfId && byKey.get(`hf:${target.hfId}`)) || []),
+      ...(byKey.get(`id:${target.domId ?? target.id}`) ?? []),
+    ];
+    return (
+      matches.find((node) => getTimelineElementSourceFile(node) === target.sourceFile) ??
+      matches[0] ??
+      null
+    );
+  };
+}
+
+export function findClipElementById(doc: Document, clip: ClipManifestClip): Element | null {
+  if (!clip.id) return null;
+  const first = doc.getElementById(clip.id);
+  if (!first || nodeInClipScope(first, clip)) return first;
+  return findInClipScope(doc, clip, [`[id="${CSS.escape(clip.id)}"]`]);
+}
+
+function findTimelineDomNode(doc: Document, clip: ClipManifestClip): Element | null {
+  if (!clip.id) return null;
+  const first = doc.getElementById(clip.id);
+  if (first && nodeInClipScope(first, clip)) return first;
+  const id = CSS.escape(clip.id);
+  const byOtherKeys = [`[data-hf-id="${id}"]`, `[data-composition-id="${id}"]`, `.${id}`];
+  return findInClipScope(doc, clip, first ? [`[id="${id}"]`, ...byOtherKeys] : byOtherKeys);
 }
 
 export function findTimelineDomNodeForClip(
@@ -445,7 +514,7 @@ export function findTimelineDomNodeForClip(
   usedNodes = new Set<Element>(),
   getCandidates = () => getTimelineDomNodes(doc),
 ): Element | null {
-  const byIdentity = clip.id ? findTimelineDomNode(doc, clip.id) : null;
+  const byIdentity = findTimelineDomNode(doc, clip);
   if (byIdentity && !usedNodes.has(byIdentity) && nodeMatchesClipTag(byIdentity, clip))
     return byIdentity;
 

@@ -47,6 +47,56 @@ describe("live DOM manifest hydration", () => {
       ).toHaveLength(2);
     }
   });
+  it("binds a root clip to its own element when a mounted sub-composition repeats its id", () => {
+    // The sub-composition's copy comes first in document order, so a bare id lookup finds it.
+    const doc = documentWith(
+      '<div id="strip" data-composition-id="strip" data-composition-src="compositions/strip.html" data-start="0" data-duration="4" data-track-index="1">' +
+        '<video id="frame-1" data-hf-id="hf-inner" data-start="0"></video></div>' +
+        '<video id="frame-1" data-hf-id="hf-root" data-start="6" data-duration="1" data-track-index="7"></video>',
+    );
+    const [element] = buildTimelineElementsFromClips(
+      [
+        clip({
+          id: "frame-1",
+          tagName: "video",
+          kind: "video",
+          start: 6,
+          duration: 1,
+          track: 7,
+          compositionAncestors: ["main"],
+        }),
+      ],
+      doc,
+    );
+    expect([element.hfId, element.sourceFile]).toEqual(["hf-root", undefined]);
+  });
+  it("keeps a unique id bound while its host's composition id is healed after the manifest", () => {
+    // The wrapper's data-composition-id arrived after the runtime recorded the clip's chain as ["main"].
+    const doc = documentWith(
+      '<div id="ho" data-hf-id="ho" data-start="0" data-duration="4"></div>' +
+        '<div id="hs-layer" data-composition-id="hs-comp">' +
+        '<div id="hs" data-hf-id="hs" data-start="0" data-duration="4"></div></div>',
+    );
+    const [element] = buildTimelineElementsFromClips(
+      [clip({ id: "hs", compositionAncestors: ["main"] })],
+      doc,
+    );
+    expect(element.hfId).toBe("hs");
+  });
+  it("binds an id-less host by its composition id over a lone id inside that sub-composition", () => {
+    const doc = documentWith(
+      '<div data-composition-id="card" data-composition-src="compositions/card.html" data-start="0" data-duration="4">' +
+        '<div data-hf-inner-root><div id="card" data-start="0" data-duration="4"></div></div></div>',
+    );
+    const host = doc.querySelector('[data-composition-src="compositions/card.html"]');
+    const card = clip({
+      id: "card",
+      kind: "composition",
+      compositionId: "card",
+      compositionAncestors: ["main"],
+    });
+    expect(findTimelineDomNodeForClip(doc, card, 0)).toBe(host);
+  });
   it("does not bind a cross-tag direct identity", () => {
     const doc = documentWith('<div id="collision" data-start="0" data-duration="4"></div>');
     expect(

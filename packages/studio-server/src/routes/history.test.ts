@@ -1,9 +1,11 @@
 // @vitest-environment node
-import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+// fallow-ignore-file code-duplication
+import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { createStudioApi } from "../createStudioApi";
+import { DELETED_VERSION, fileContentVersion, identifyFileWrite } from "../helpers/fileVersion";
 import { openProjectHistory, type ProjectHistory } from "../history/projectHistory";
 import type { StudioApiAdapter } from "../types";
 
@@ -26,23 +28,29 @@ function apiFor(projectDir: string, history?: ProjectHistory) {
     ...(history && { history: () => history }),
   } as unknown as StudioApiAdapter;
   const api = createStudioApi(adapter);
-  return (path: string, body?: object) =>
+  return (path: string, body?: object, headers?: Record<string, string>) =>
     api.request(
       `/projects/demo/history${path}`,
-      body ? { method: "POST", body: JSON.stringify(body) } : undefined,
+      body ? { method: "POST", body: JSON.stringify(body), headers } : undefined,
     );
+}
+
+/** A project whose index.html reads "A", with its history and the routes over it. */
+async function demoProject({ quietMs }: { quietMs?: number } = {}) {
+  const projectDir = tempDir("hf-history-routes-");
+  writeFileSync(join(projectDir, "index.html"), "A");
+  const history = await openProjectHistory({
+    projectDir,
+    historyRoot: tempDir("hf-history-routes-root-"),
+    ...(quietMs && { quietMs }),
+  });
+  cleanup.push(() => history.close());
+  return { projectDir, history, call: apiFor(projectDir, history) };
 }
 
 describe("history routes", () => {
   it("record a Studio edit window as the person's entry, and step back undoes it", async () => {
-    const projectDir = tempDir("hf-history-routes-");
-    writeFileSync(join(projectDir, "index.html"), "A");
-    const history = await openProjectHistory({
-      projectDir,
-      historyRoot: tempDir("hf-history-routes-root-"),
-    });
-    cleanup.push(() => history.close());
-    const call = apiFor(projectDir, history);
+    const { projectDir, call } = await demoProject();
 
     const { windowId } = await (await call("/window", { label: "Moved Title" })).json();
     writeFileSync(join(projectDir, "index.html"), "B");
@@ -53,6 +61,220 @@ describe("history routes", () => {
     expect(step).toMatchObject({ ok: true, entry: { label: "Undid: Moved Title" } });
     expect(readFileSync(join(projectDir, "index.html"), "utf-8")).toBe("A");
     expect((await (await call("")).json()).entries).toHaveLength(2);
+  });
+
+  it("record an agent that names itself as the writer of its window and of its undo", async () => {
+    const { projectDir, call } = await demoProject();
+    const agent = { kind: "agent", name: "Claude" };
+
+    const { windowId } = await (
+      await call("/window", { label: "Bigger title", who: agent })
+    ).json();
+    writeFileSync(join(projectDir, "index.html"), "B");
+    const { entry } = await (await call(`/window/${windowId}/close`, {})).json();
+    expect(entry.who).toEqual(agent);
+
+    const undo = await (await call("/undo", { entryId: windowId, who: agent })).json();
+    expect(undo.entry).toMatchObject({ who: agent, label: "Undid: Bigger title" });
+    const restore = await (await call("/restore", { point: windowId, who: { name: "x" } })).json();
+    expect(restore.who, "only an agent names itself").toEqual({ kind: "person", name: "You" });
+  });
+
+  it("serve a kept file's bytes by hash, and nothing for a hash that is not one", async () => {
+    const { projectDir, call } = await demoProject();
+    const outsideHistory = `${"../".repeat(40)}${projectDir.slice(1)}/index.html`;
+    const { windowId } = await (await call("/window", { label: "Edit" })).json();
+    writeFileSync(join(projectDir, "index.html"), "B");
+    const { entry } = await (await call(`/window/${windowId}/close`, {})).json();
+
+    expect(await (await call(`/blob/${entry.files[0].before}`)).text()).toBe("A");
+    expect((await call(`/blob/${"0".repeat(64)}`)).status).toBe(404);
+    expect((await call(`/blob/${encodeURIComponent(outsideHistory)}`)).status).toBe(404);
+  });
+
+  it("name what Cmd+Z and Cmd+Shift+Z would revert next", async () => {
+    const { projectDir, call } = await demoProject();
+    expect(await (await call("")).json()).toMatchObject({ back: null, forward: null });
+
+    const { windowId } = await (await call("/window", { label: "Moved Title" })).json();
+    writeFileSync(join(projectDir, "index.html"), "B");
+    await call(`/window/${windowId}/close`, {});
+    expect(await (await call("")).json()).toMatchObject({
+      back: { id: windowId, label: "Moved Title", paths: ["index.html"] },
+      forward: null,
+    });
+
+    await call("/step", { direction: "back" });
+    expect(await (await call("")).json()).toMatchObject({
+      back: null,
+      forward: { label: "Undid: Moved Title" },
+    });
+  });
+
+  it("name the person's own newest change, not an agent's later write", async () => {
+    const { projectDir, history, call } = await demoProject();
+    const write = (text: string) => writeFileSync(join(projectDir, "index.html"), text);
+    const agent = { kind: "agent" as const, name: "Agent" };
+    const you = { kind: "person" as const, name: "You" };
+    const window = await history.beginWindow(agent, "Agent turn");
+    write("B");
+    await history.claim(you, "sweep", []);
+    write("C");
+    await history.claim(you, "Dragged Title", ["index.html"], {
+      coalesceKey: "drag",
+      idleMs: 60_000,
+      overwrote: { "index.html": fileContentVersion("B") },
+    });
+    write("D");
+    await window.close();
+    await history.flush();
+    expect((await (await call("")).json()).back).toMatchObject({ label: "Dragged Title" });
+  });
+
+  it.each([
+    ["a save that landed between Studio's read and its write", ["save B", "patch"], "B"],
+    ["its start, when Studio wrote the edit as two patches", ["patch", "patch"], "A"],
+    ["a save before Studio's patch and its whole-file follow-up", ["save B", "patch", "put"], "B"],
+    [
+      "its start, when Studio's patches came back to earlier bytes",
+      ["patch", "patch", "unpatch"],
+      "A",
+    ],
+  ])("undo Studio's element edit back to %s", async (_, steps, undoneTo) => {
+    const { projectDir, history } = await demoProject();
+    const index = join(projectDir, "index.html");
+    const saved = (text: string) => `<h1 id="title">${text}</h1>`;
+    writeFileSync(index, saved("A"));
+    await history.flush();
+    const api = createStudioApi({
+      listProjects: () => [],
+      resolveProject: (id: string) => (id === "demo" ? { id, dir: projectDir } : null),
+      history: () => history,
+    } as unknown as StudioApiAdapter);
+    const post = (path: string, body: object) =>
+      api.request(`/projects/demo${path}`, { method: "POST", body: JSON.stringify(body) });
+
+    let zIndex = 1;
+    for (const step of steps) {
+      if (step === "save B") writeFileSync(index, saved("B"));
+      const current = readFileSync(index, "utf-8");
+      const written =
+        step === "patch" || step === "unpatch"
+          ? await post("/file-mutations/patch-element/index.html", {
+              target: { id: "title" },
+              operations: [
+                {
+                  type: "inline-style",
+                  property: "z-index",
+                  value: String(step === "patch" ? ++zIndex : --zIndex),
+                },
+              ],
+            })
+          : step === "put"
+            ? await api.request("/projects/demo/files/index.html", {
+                method: "PUT",
+                headers: { "If-Match": fileContentVersion(current) },
+                body: `${current}<style>@font-face{}</style>`,
+              })
+            : null;
+      expect(written?.status ?? 200).toBe(200);
+    }
+    await post("/history/claim", {
+      label: "Moved Title",
+      paths: ["index.html"],
+      overwrote: { "index.html": fileContentVersion(saved("A")) },
+    });
+    expect(await (await post("/history/step", { direction: "back" })).json()).toMatchObject({
+      ok: true,
+      entry: { label: "Undid: Moved Title" },
+    });
+    expect(readFileSync(index, "utf-8")).toBe(saved(undoneTo));
+  });
+
+  it("hold a gesture claimed without idleMs until another key, however long it pauses", async () => {
+    const { projectDir, history, call } = await demoProject({ quietMs: 30 });
+    const drag = (text: string) => {
+      writeFileSync(join(projectDir, "index.html"), text);
+      return call("/claim", {
+        label: "Dragged Title",
+        paths: ["index.html"],
+        coalesceKey: "drag",
+        idleMs: null,
+      });
+    };
+    await drag("B");
+    await new Promise((resolve) => setTimeout(resolve, 150));
+    await drag("C");
+    await history.flush();
+    expect(history.list().map((entry) => entry.label)).toEqual(["Dragged Title"]);
+  });
+
+  it("label an undo's writes with Studio's write token, so their echo reads as Studio's own", async () => {
+    const { projectDir, call } = await demoProject();
+    writeFileSync(join(projectDir, "index.html"), "B");
+    await call("/claim", { label: "Moved Title", paths: ["index.html"] });
+    await call("/step", { direction: "back" }, { "X-Hyperframes-Write-Token": "studio-1" });
+    expect(readFileSync(join(projectDir, "index.html"), "utf8")).toBe("A");
+    expect(
+      identifyFileWrite(join(projectDir, "index.html"), fileContentVersion("A")),
+    ).toMatchObject({
+      path: "index.html",
+      writeToken: "studio-1",
+    });
+  });
+
+  it("label a deletion an undo makes with Studio's write token too", async () => {
+    const { projectDir, call } = await demoProject();
+    writeFileSync(join(projectDir, "extra.html"), "added");
+    await call("/claim", { label: "Added a section", paths: ["extra.html"] });
+    await call("/step", { direction: "back" }, { "X-Hyperframes-Write-Token": "studio-2" });
+    expect(existsSync(join(projectDir, "extra.html"))).toBe(false);
+    expect(identifyFileWrite(join(projectDir, "extra.html"), DELETED_VERSION)).toMatchObject({
+      writeToken: "studio-2",
+    });
+  });
+
+  it("cap a window's idle time at ten minutes, and pass the version Studio overwrote to its claim", async () => {
+    const { history, call } = await demoProject();
+    const beginWindow = vi.spyOn(history, "beginWindow");
+    const claim = vi.spyOn(history, "claim");
+    await call("/window", { label: "Dragged", idleMs: 1e12 });
+    expect(beginWindow).toHaveBeenCalledWith(expect.anything(), "Dragged", { idleMs: 600_000 });
+    await call("/claim", {
+      label: "Moved",
+      paths: ["index.html"],
+      overwrote: { "index.html": "v", x: 1 },
+    });
+    expect(claim).toHaveBeenCalledWith(expect.anything(), "Moved", ["index.html"], {
+      overwrote: { "index.html": "v" },
+    });
+  });
+
+  it("claim what Studio just wrote as the person's entry, under the edit's label", async () => {
+    const { projectDir, call } = await demoProject();
+    writeFileSync(join(projectDir, "index.html"), "B");
+    const { claimed } = await (
+      await call("/claim", { label: "Moved Title", paths: ["index.html", 7] })
+    ).json();
+    const { entries, back } = await (await call("")).json();
+    expect(entries).toMatchObject([{ id: claimed.id, label: "Moved Title", who: { name: "You" } }]);
+    expect(back).toMatchObject({ id: claimed.id, label: "Moved Title" });
+  });
+
+  it("end a window given idleMs by itself once its writes stop", async () => {
+    const { projectDir, call } = await demoProject();
+
+    const { windowId } = await (
+      await call("/window", { label: "Dragged Title", idleMs: 50 })
+    ).json();
+    writeFileSync(join(projectDir, "index.html"), "B");
+    await vi.waitFor(
+      async () =>
+        expect((await (await call("")).json()).entries).toMatchObject([{ label: "Dragged Title" }]),
+      { timeout: 2_000, interval: 50 },
+    );
+    const { entry } = await (await call(`/window/${windowId}/close`, {})).json();
+    expect(entry).toMatchObject({ id: windowId, label: "Dragged Title" });
   });
 
   it("refuse to close a window through another project's route", async () => {

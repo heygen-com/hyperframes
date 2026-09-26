@@ -318,7 +318,6 @@ export async function persistTimelineEdit(input: PersistTimelineEditInput): Prom
   await saveProjectFilesWithHistory({
     projectId: input.projectId,
     label: input.label,
-    kind: "timeline",
     coalesceKey: input.coalesceKey,
     files: { [targetPath]: patchedContent },
     readFile: async () => originalContent,
@@ -388,7 +387,6 @@ export async function persistTimelineBatchEdit(
   await saveProjectFilesWithHistory({
     projectId: input.projectId,
     label: input.label,
-    kind: "timeline",
     coalesceKey: input.coalesceKey,
     coalesceMs: input.coalesceMs,
     files,
@@ -466,7 +464,6 @@ export async function persistElementAttribute({
     const changedPaths = await saveProjectFilesWithHistory({
       projectId,
       label,
-      kind: "timeline",
       files: { [targetPath]: patched },
       readFile: async (path) => (path === targetPath ? before : readFileContent(projectId, path)),
       writeFile: writeProjectFile,

@@ -7,7 +7,7 @@
  * closes that gap with a 33 MB model the user opted into.
  *
  * The vectors here are 384-dimension and were produced by a different model
- * than the hosted 1536-dimension set. The two are not comparable and are never
+ * than the hosted 3072-dimension set. The two are not comparable and are never
  * mixed: a query is embedded by whichever model produced the vectors it is
  * being compared against.
  */

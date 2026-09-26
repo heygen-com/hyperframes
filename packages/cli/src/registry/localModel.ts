@@ -22,9 +22,9 @@ import { downloadFile } from "../utils/download.js";
 import { readConfig, writeConfig } from "../telemetry/config.js";
 
 /**
- * bge-small-en-v1.5: 62.17 MTEB average against 62.3 for the hosted model this
- * substitutes for, at 384 dimensions instead of 1536. Chosen for being close to
- * parity while small enough to ship, not for being a weaker tier.
+ * bge-small-en-v1.5: 62.17 MTEB average against 62.3 for text-embedding-3-small,
+ * the model it was chosen against, at 384 dimensions instead of 1536. Chosen for
+ * being close to parity while small enough to ship, not for being a weaker tier.
  */
 export const LOCAL_MODEL_ID = "bge-small-en-v1.5";
 export const LOCAL_MODEL_DIMENSIONS = 384;

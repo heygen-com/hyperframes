@@ -5,6 +5,7 @@ import { decodeVideoThumbnail, videoThumbnailTimestamps } from "./thumbnailVideo
 
 const dispose = vi.fn();
 const canvasesAtTimestamps = vi.fn();
+const getKeyPacket = vi.fn(async (_time: number) => null as { timestamp: number } | null);
 const input = {
   getPrimaryVideoTrack: vi.fn(),
   dispose,
@@ -22,10 +23,25 @@ vi.mock("mediabunny", () => ({
   CanvasSink: class {
     canvasesAtTimestamps = canvasesAtTimestamps;
   },
+  EncodedPacketSink: class {
+    getKeyPacket = getKeyPacket;
+  },
 }));
+
+function recordDecodes(decoded: number[][]): void {
+  canvasesAtTimestamps.mockImplementation(async function* (timestamps: AsyncIterable<number>) {
+    const run: number[] = [];
+    decoded.push(run);
+    for await (const time of timestamps) {
+      run.push(time);
+      yield { canvas: document.createElement("canvas") };
+    }
+  });
+}
 
 beforeEach(() => {
   vi.clearAllMocks();
+  getKeyPacket.mockImplementation(async () => null);
   vi.spyOn(URL, "createObjectURL").mockReturnValueOnce("blob:one").mockReturnValueOnce("blob:two");
   vi.spyOn(URL, "revokeObjectURL").mockImplementation(() => {});
   HTMLCanvasElement.prototype.toBlob = function toBlob(callback) {
@@ -52,17 +68,14 @@ describe("videoThumbnailTimestamps", () => {
 
 describe("decodeVideoThumbnail", () => {
   it("extracts sparse frames, returns object URLs, and disposes once", async () => {
-    const canvas = document.createElement("canvas");
-    canvasesAtTimestamps.mockImplementation(async function* (timestamps: number[]) {
-      expect(timestamps).toEqual([2, 8]);
-      yield { canvas, timestamp: 2, duration: 1 };
-      yield { canvas, timestamp: 8, duration: 1 };
-    });
+    const decoded: number[][] = [];
+    recordDecodes(decoded);
     const result = await decodeVideoThumbnail(
       { source: "/clip.mp4", sourceStart: 2, sourceRangeDuration: 6, frameCount: 2 },
       new AbortController().signal,
     );
 
+    expect(decoded).toEqual([[2, 8]]);
     expect(result.value).toEqual({
       kind: "filmstrip",
       urls: ["blob:one", "blob:two"],
@@ -72,6 +85,89 @@ describe("decodeVideoThumbnail", () => {
     result.dispose?.();
     expect(URL.revokeObjectURL).toHaveBeenCalledTimes(2);
     expect(dispose).toHaveBeenCalledTimes(1);
+  });
+
+  it("decodes each strip frame at its keyframe unless that keyframe is before the clip's range", async () => {
+    getKeyPacket.mockImplementation(async (time) => ({ timestamp: Math.floor(time / 4) * 4 }));
+    const decoded: number[][] = [];
+    recordDecodes(decoded);
+    await decodeVideoThumbnail(
+      { source: "/clip.mp4", sourceStart: 2, sourceRangeDuration: 8, frameCount: 3 },
+      new AbortController().signal,
+    );
+    expect(decoded).toEqual([[2, 4, 8]]);
+  });
+
+  it("keeps a slot's own time when its keyframe is more than half a slot earlier", async () => {
+    getKeyPacket.mockImplementation(async () => ({ timestamp: 0 }));
+    const decoded: number[][] = [];
+    recordDecodes(decoded);
+    await decodeVideoThumbnail(
+      { source: "/clip.mp4", sourceStart: 0, sourceRangeDuration: 10, frameCount: 3 },
+      new AbortController().signal,
+    );
+    await decodeVideoThumbnail(
+      { source: "/clip.mp4", sourceStart: 0, sourceRangeDuration: 10, frameCount: 1 },
+      new AbortController().signal,
+    );
+    expect(decoded).toEqual([[0, 5, 10], [5]]);
+  });
+
+  it("looks up each keyframe just before decoding it", async () => {
+    const events: string[] = [];
+    getKeyPacket.mockImplementation(async (time) => {
+      events.push(`key ${time}`);
+      return { timestamp: time };
+    });
+    canvasesAtTimestamps.mockImplementation(async function* (timestamps: AsyncIterable<number>) {
+      for await (const time of timestamps) {
+        events.push(`frame ${time}`);
+        yield { canvas: document.createElement("canvas") };
+      }
+    });
+    await decodeVideoThumbnail(
+      { source: "/clip.mp4", sourceStart: 0, sourceRangeDuration: 10, frameCount: 3 },
+      new AbortController().signal,
+    );
+    expect(events).toEqual(["key 0", "frame 0", "key 5", "frame 5", "key 10", "frame 10"]);
+  });
+
+  it("ends the decode times without throwing when cancelled during a keyframe lookup", async () => {
+    const controller = new AbortController();
+    getKeyPacket.mockImplementation(async () => (controller.abort(), null));
+    const decoded: number[] = [];
+    let timesEnded = false;
+    canvasesAtTimestamps.mockImplementation(async function* (timestamps: AsyncIterable<number>) {
+      for await (const time of timestamps) {
+        decoded.push(time);
+        yield { canvas: document.createElement("canvas") };
+      }
+      timesEnded = true;
+    });
+    await expect(
+      decodeVideoThumbnail(
+        { source: "/clip.mp4", sourceStart: 0, sourceRangeDuration: 10, frameCount: 3 },
+        controller.signal,
+      ),
+    ).rejects.toThrow("Aborted");
+    expect(getKeyPacket).toHaveBeenCalledTimes(1);
+    expect(decoded).toEqual([]);
+    expect(timesEnded).toBe(true);
+  });
+
+  it("spreads a trimmed strip across its range when the file reports no duration", async () => {
+    input.getPrimaryVideoTrack.mockResolvedValue({
+      getDisplayWidth: vi.fn(async () => 1080),
+      getDisplayHeight: vi.fn(async () => 1920),
+      getDurationFromMetadata: vi.fn(async () => null),
+    });
+    const decoded: number[][] = [];
+    recordDecodes(decoded);
+    await decodeVideoThumbnail(
+      { source: "/clip.mp4", sourceStart: 5, sourceRangeDuration: 5, frameCount: 3 },
+      new AbortController().signal,
+    );
+    expect(decoded).toEqual([[5, 7.5, 10]]);
   });
 
   it("releases input and degrades when the source has no video track", async () => {

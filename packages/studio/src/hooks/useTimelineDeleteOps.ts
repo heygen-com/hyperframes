@@ -157,7 +157,6 @@ export function useTimelineDeleteOps({
           await saveProjectFilesWithHistory({
             projectId: pid,
             label: deleteHistoryLabel,
-            kind: "timeline",
             coalesceKey,
             files: { [targetPath]: patchedContent },
             readFile: async () => originalContent,

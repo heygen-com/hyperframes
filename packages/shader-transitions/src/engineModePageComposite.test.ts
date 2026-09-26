@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   clonePinStyleFor,
+  installPageSideCompositor,
   isPageSideCompositingSupported,
   PAGE_COMPOSITOR_BUILD_CANARY,
   PAGE_COMPOSITOR_CANVAS_ID,
@@ -87,6 +88,95 @@ describe("clonePinStyleFor", () => {
     // frame, or the clone would silently grow to fill the canvas.
     const pin = clonePinStyleFor({ left: 120, top: 240, width: 400, height: 300 });
     expect(pin).toEqual({ left: "120px", top: "240px", width: "400px", height: "300px" });
+  });
+});
+
+describe("page-side compositor seek", () => {
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  class FakeScene {
+    style = { visibility: "hidden" };
+    constructor(private readonly attrs: Record<string, string>) {}
+    getAttribute(name: string) {
+      return this.attrs[name] ?? null;
+    }
+  }
+
+  // A browser with drawElementImage and a WebGL context whose every call succeeds.
+  function installWithHiddenScenes(
+    timing: Record<string, readonly [start: string, duration: string]>,
+  ) {
+    const gl = new Proxy(
+      {},
+      {
+        get: (_target, key) => {
+          if (key === "getShaderParameter" || key === "getProgramParameter") return () => true;
+          if (key === "getExtension") return () => ({ loseContext: () => undefined });
+          return () => ({});
+        },
+      },
+    );
+    const canvas = () => ({
+      style: {},
+      width: 0,
+      height: 0,
+      layoutSubtree: true,
+      firstChild: null,
+      setAttribute: () => undefined,
+      remove: () => undefined,
+      getContext: (type: string) => (type === "2d" ? { drawElementImage: () => undefined } : gl),
+    });
+    const scenes = new Map(
+      Object.entries(timing).map(([id, [start, duration]]) => [
+        id,
+        new FakeScene({ "data-start": start, "data-duration": duration }),
+      ]),
+    );
+    let startPolling: (() => void) | undefined;
+    const hf = { seek: vi.fn() };
+    vi.stubGlobal("window", {
+      __hf: hf,
+      setInterval: (poll: () => void) => {
+        startPolling = poll;
+        return 1;
+      },
+      clearInterval: () => undefined,
+    });
+    vi.stubGlobal("HTMLElement", FakeScene);
+    vi.stubGlobal("document", {
+      createElement: canvas,
+      getElementById: (id: string) => scenes.get(id) ?? null,
+      body: { appendChild: () => undefined },
+    });
+    const installed = installPageSideCompositor({
+      scenes: ["s4", "s5"],
+      transitions: [{ time: 4.4, duration: 0.8, shader: "domain-warp" }],
+      bgColor: "#000",
+      accentColors: { accent: [1, 1, 1], dark: [0, 0, 0], bright: [1, 1, 1] },
+      width: 1920,
+      height: 1080,
+      defaultDuration: 0.8,
+    });
+    startPolling?.();
+    return { installed, hf, scenes };
+  }
+
+  // s4 runs 2.8 to 4.8 s, s5 4.4 to 8.0 s; a plain scene plays before and after them.
+  const film = { s4: ["2.8", "2"], s5: ["4.4", "3.6"] } as const;
+
+  it("leaves the runtime's hide on a shader scene before its window", () => {
+    const { installed, hf, scenes } = installWithHiddenScenes(film);
+    expect(installed).toBe(true);
+    hf.seek(2.4);
+    expect(scenes.get("s4")?.style.visibility).toBe("hidden");
+  });
+
+  it("leaves the runtime's hide on the last shader scene after its window", () => {
+    const { hf, scenes } = installWithHiddenScenes(film);
+    hf.seek(8.8);
+    expect(scenes.get("s5")?.style.visibility).toBe("hidden");
   });
 });
 

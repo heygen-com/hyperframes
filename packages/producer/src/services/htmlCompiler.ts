@@ -41,11 +41,13 @@ import {
   buildVariablesByCompScript,
   inlineSubCompositions as inlineSubCompositionsShared,
   ensureExternalScriptTag,
+  emitMountedModuleScripts,
   prepareFlattenedInnerRoot,
   emitRootCompositionVariableStyles,
   readDeclaredDefaults,
   parseHostVariableValues,
   inlineScriptRuns,
+  insertBeforeCloseTag,
 } from "@hyperframes/core/compiler";
 import {
   checkSubCompositionUsability,
@@ -124,9 +126,7 @@ export function injectSdkPositionEditsRenderScript(html: string): string {
   }
   const scriptBody = getPositionEditsRenderScript().replace(/<\/script/gi, "<\\/script");
   const script = `<script>${scriptBody}</script>`;
-  const bodyClose = html.search(/<\/body\s*>/i);
-  if (bodyClose < 0) return `${html}${script}`;
-  return `${html.slice(0, bodyClose)}${script}${html.slice(bodyClose)}`;
+  return insertBeforeCloseTag(html, "body", script) ?? `${html}${script}`;
 }
 
 /**
@@ -1097,6 +1097,13 @@ function inlineSubCompositions(
     }
     flushInline();
   }
+  if (body) {
+    emitMountedModuleScripts(
+      document as unknown as Document,
+      result.importMaps,
+      result.moduleScripts,
+    );
+  }
 
   // Compile-time CSS custom properties (mirrors the preview bundler): root
   // declarers plus one scoped rule per sub-composition host, so var(--slug)
@@ -2027,10 +2034,11 @@ export async function compileForRender(
   ];
   const hasPositionEdits = HF_POSITION_ATTRS.some((attr) => assembledHtml.includes(attr));
   const htmlWithPositionScript = hasPositionEdits
-    ? assembledHtml.replace(
-        /<\/body>/i,
-        `<script>${createStudioPositionSeekReapplyScript()}</script></body>`,
-      )
+    ? (insertBeforeCloseTag(
+        assembledHtml,
+        "body",
+        `<script>${createStudioPositionSeekReapplyScript()}</script>`,
+      ) ?? assembledHtml)
     : assembledHtml;
   const htmlWithSdkPositionScript = injectSdkPositionEditsRenderScript(htmlWithPositionScript);
 

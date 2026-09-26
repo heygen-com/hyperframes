@@ -15,6 +15,8 @@ export interface HistoryFileChange {
   after: string | null;
 }
 
+export type HistoryEntrySide = "before" | "after";
+
 export interface HistoryEntry {
   id: string;
   who: HistoryWho;
@@ -105,19 +107,29 @@ export function writeLog(file: string, log: HistoryLog): void {
   replaceFileAtomically(file, records.map((r) => `${JSON.stringify(r)}\n`).join(""), 0o644);
 }
 
-function applyEntry(manifest: Manifest, entry: HistoryEntry): void {
-  for (const file of entry.files)
-    if (file.after === null) manifest.delete(file.path);
-    else manifest.set(file.path, file.after);
+function applyEntry(manifest: Manifest, entry: HistoryEntry, side: HistoryEntrySide): void {
+  for (const file of entry.files) {
+    const hash = file[side];
+    if (hash === null) manifest.delete(file.path);
+    else manifest.set(file.path, hash);
+  }
 }
 
 /** The files as they were right after `point`. Null when that point is no longer kept. */
 export function manifestAt(log: HistoryLog, point: string): Manifest | null {
+  return point === START ? new Map(log.baseline) : manifestAround(log, point, "after");
+}
+
+/** Entry `id`'s own files as it found (`before`) or left (`after`) them; the rest as earlier entries left them. */
+export function manifestAround(
+  log: HistoryLog,
+  id: string,
+  side: HistoryEntrySide,
+): Manifest | null {
   const manifest = new Map(log.baseline);
-  if (point === START) return manifest;
   for (const entry of log.entries) {
-    applyEntry(manifest, entry);
-    if (entry.id === point) return manifest;
+    applyEntry(manifest, entry, entry.id === id ? side : "after");
+    if (entry.id === id) return manifest;
   }
   return null;
 }
@@ -133,25 +145,43 @@ export function undoneIds(entries: readonly HistoryEntry[]): Set<string> {
 }
 
 /**
- * What Cmd+Z (back) or Cmd+Shift+Z (forward) reverts, whoever made the change. Back: the newest change still in
- * effect. Forward: the newest undo of a change that is still in effect, while no change has been made since.
+ * What Cmd+Z (back) or Cmd+Shift+Z (forward) reverts for `mine`. Back: the newest change `mine` owns that is still
+ * in effect. Forward: the newest of `mine`'s undos still in effect, while `mine` has made no change since.
  */
 export function stepTarget(
   entries: readonly HistoryEntry[],
   direction: "back" | "forward",
+  mine: (entry: HistoryEntry) => boolean,
 ): HistoryEntry | undefined {
   const undone = undoneIds(entries);
   const byId = new Map(entries.map((entry) => [entry.id, entry]));
-  for (let i = entries.length - 1; i >= 0; i -= 1) {
-    const entry = entries[i]!;
-    const isChange = !entry.undoes;
-    if (direction === "back" && isChange && !undone.has(entry.id)) return entry;
-    if (direction !== "forward") continue;
-    if (isChange) return undefined;
-    const target = byId.get(entry.undoes!);
-    if (!undone.has(entry.id) && target && !target.undoes) return entry;
+  const owns = ownerOf(entries, byId, mine);
+  const newestFirst = [...entries].reverse();
+  if (direction === "back")
+    return newestFirst.find((entry) => !entry.undoes && !undone.has(entry.id) && owns(entry));
+  for (const entry of newestFirst) {
+    if (!entry.undoes) {
+      if (owns(entry)) return undefined;
+      continue;
+    }
+    const target = byId.get(entry.undoes);
+    if (mine(entry) && !undone.has(entry.id) && target && !target.undoes) return entry;
   }
   return undefined;
+}
+
+/** A change is yours to step over if you made it, or your redo is what brought it back. */
+function ownerOf(
+  entries: readonly HistoryEntry[],
+  byId: ReadonlyMap<string, HistoryEntry>,
+  mine: (entry: HistoryEntry) => boolean,
+): (entry: HistoryEntry) => boolean {
+  const redoneBy = new Map<string, HistoryEntry>();
+  for (const entry of entries) {
+    const target = entry.undoes ? byId.get(entry.undoes) : undefined;
+    if (target?.undoes) redoneBy.set(target.undoes, entry);
+  }
+  return (entry) => mine(entry) || mine(redoneBy.get(entry.id) ?? entry);
 }
 
 /**
@@ -161,7 +191,7 @@ export function stepTarget(
 export function foldOldest(log: HistoryLog): boolean {
   const oldest = log.entries[0];
   if (!oldest || log.pins.has(oldest.id)) return false;
-  applyEntry(log.baseline, oldest);
+  applyEntry(log.baseline, oldest, "after");
   log.entries.shift();
   return true;
 }

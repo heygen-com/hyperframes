@@ -1,4 +1,4 @@
-// fallow-ignore-file unused-file
+import { constants, setPriority } from "node:os";
 import { ensureBrowser, releaseOwnedBrowserInstallLock } from "./browser/manager.js";
 import { lintProject } from "./utils/lintProject.js";
 import { killOrphanedProcesses } from "./utils/orphanCleanup.js";
@@ -19,7 +19,13 @@ let result: unknown;
 if (mode === "browser") {
   result = await ensureBrowser(input);
 } else if (mode === "lint") {
-  result = await lintProject(input.projectDir, input.entryFile);
+  // Nobody waits on a background lint the way they wait on a Studio boot, so it takes idle CPU only.
+  setPriority(constants.priority.PRIORITY_LOW);
+  result = await lintProject(
+    input.projectDir,
+    input.entryFile,
+    input.host ? { host: input.host } : undefined,
+  );
 } else if (mode === "orphan-cleanup") {
   const killed = killOrphanedProcesses();
   result = killed;

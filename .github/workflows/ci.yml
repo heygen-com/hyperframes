@@ -11,6 +11,8 @@ env:
   HYPERFRAMES_NO_TELEMETRY: "1"
 
 on:
+  merge_group:
+    types: [checks_requested]
   workflow_dispatch:
     inputs:
       catalog_publish:
@@ -179,10 +181,16 @@ jobs:
   build:
     name: Build
     needs: changes
-    if: needs.changes.outputs.code == 'true'
+    # A skipped required check passes, so a broken change detection must fail it instead.
+    if: ${{ !cancelled() && (needs.changes.result != 'success' || needs.changes.outputs.code == 'true') }}
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
+      - name: Require change detection
+        if: needs.changes.result != 'success'
+        run: |
+          echo "::error::Change detection did not succeed, so this required check cannot pass."
+          exit 1
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
         with:
           lfs: true
@@ -352,10 +360,16 @@ jobs:
   typecheck:
     name: Typecheck
     needs: changes
-    if: needs.changes.outputs.code == 'true'
+    # A skipped required check passes, so a broken change detection must fail it instead.
+    if: ${{ !cancelled() && (needs.changes.result != 'success' || needs.changes.outputs.code == 'true') }}
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
+      - name: Require change detection
+        if: needs.changes.result != 'success'
+        run: |
+          echo "::error::Change detection did not succeed, so this required check cannot pass."
+          exit 1
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
         with:
           lfs: true
@@ -453,10 +467,15 @@ jobs:
     needs: [changes, producer-source-tests, test-studio, test-runtime, test-support, test-skills]
     # Keep the existing required `Test` context authoritative for producer
     # failures too. It also fails closed if any package shard fails or is cancelled.
-    if: always() && (needs.changes.outputs.code == 'true' || needs.changes.outputs.skills == 'true')
+    if: always() && (needs.changes.result != 'success' || needs.changes.outputs.code == 'true' || needs.changes.outputs.skills == 'true')
     runs-on: ubuntu-latest
     timeout-minutes: 3
     steps:
+      - name: Require change detection
+        if: needs.changes.result != 'success'
+        run: |
+          echo "::error::Change detection did not succeed, so this required check cannot pass."
+          exit 1
       - name: Require producer source tests
         if: needs.changes.outputs.code == 'true' && needs.producer-source-tests.result != 'success'
         run: |
@@ -669,10 +688,16 @@ jobs:
   test-runtime-contract:
     name: "Test: runtime contract"
     needs: changes
-    if: needs.changes.outputs.code == 'true'
+    # A skipped required check passes, so a broken change detection must fail it instead.
+    if: ${{ !cancelled() && (needs.changes.result != 'success' || needs.changes.outputs.code == 'true') }}
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
+      - name: Require change detection
+        if: needs.changes.result != 'success'
+        run: |
+          echo "::error::Change detection did not succeed, so this required check cannot pass."
+          exit 1
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
         with:
           lfs: true
@@ -738,7 +763,7 @@ jobs:
     needs: [changes]
     if: needs.changes.outputs.studio == 'true'
     runs-on: ubuntu-latest
-    timeout-minutes: 12
+    timeout-minutes: 18
     steps:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
       - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
@@ -759,6 +784,19 @@ jobs:
           mkdir -p packages/studio/data/projects
           cp -R packages/studio/tests/e2e/fixtures/timeline-virtualization \
             packages/studio/data/projects/timeline-virtualization
+          cp -R packages/studio/tests/e2e/fixtures/studio-open \
+            packages/studio/data/projects/studio-open
+      - name: Read the base branch's work-count ceilings
+        # A ceiling may not disappear, or rise without a new reason, against the branch this PR merges into.
+        if: github.event_name == 'pull_request'
+        env:
+          BASE_REF: ${{ github.base_ref }}
+        run: |
+          git fetch --no-tags --depth=1 origin "$BASE_REF"
+          if ! git show FETCH_HEAD:packages/studio/tests/e2e/perf-ceilings.json > /tmp/base-perf-ceilings.json; then
+            rm -f /tmp/base-perf-ceilings.json
+            echo "The base branch has no perf-ceilings.json yet"
+          fi
       - name: Run both arms of the timeline viewport gate
         run: |
           set -euo pipefail
@@ -831,6 +869,30 @@ jobs:
             echo "FAIL: default=${DEFAULT_STATUS}, disabled=${DISABLED_STATUS}"
             exit 1
           fi
+      - name: Count the work of opening a film in Studio
+        # Counts, not ms: thumbnail renders, page loads and requests do not move
+        # with runner load, so perf-ceilings.json can hold them exactly.
+        if: success() || failure()
+        run: |
+          set -euo pipefail
+          NODE_ENV=production bun run --cwd packages/studio dev -- --port 5315 --strictPort &
+          SERVER_PID=$!
+          trap 'kill "$SERVER_PID" 2>/dev/null || true' EXIT
+          for i in $(seq 1 60); do
+            if curl -sf "http://localhost:5315/" >/dev/null 2>&1; then break; fi
+            sleep 1
+          done
+          if ! curl -sf "http://localhost:5315/" >/dev/null 2>&1; then
+            echo "FAIL: studio dev server did not start on port 5315"
+            exit 1
+          fi
+          STUDIO_URL="http://localhost:5315/#project/studio-open" \
+            STUDIO_PROJECT_DIR="$PWD/packages/studio/data/projects/studio-open" \
+            node packages/studio/tests/e2e/studio-open-counts.mjs \
+            | tee /tmp/studio-open-counts.json
+          node packages/studio/tests/e2e/perf-ratchet.mjs check \
+            packages/studio/tests/e2e/perf-ceilings.json studio-open /tmp/studio-open-counts.json \
+            /tmp/base-perf-ceilings.json
       - name: Upload gate evidence
         # The gate's whole output is machine-readable evidence, and a red run is
         # exactly when someone needs to read it. Keep it on failure too.
@@ -838,7 +900,9 @@ jobs:
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: timeline-viewport-gate-evidence
-          path: /tmp/timeline-gate-*.json
+          path: |
+            /tmp/timeline-gate-*.json
+            /tmp/studio-open-counts.json
           if-no-files-found: error
 
   smoke-global-install:

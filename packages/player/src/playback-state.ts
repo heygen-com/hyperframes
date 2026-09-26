@@ -27,23 +27,46 @@ export interface PlaybackStateCallbacks {
   media: ParentMediaManager;
 }
 
+type RuntimeStateData = {
+  frame: number;
+  isPlaying: boolean;
+  currentTime?: number;
+  ended?: boolean;
+};
+
+/** The runtime's exact time when it sends one (older runtimes send only the whole frame). */
+function runtimeTime(data: RuntimeStateData, fps: number): number {
+  return typeof data.currentTime === "number" && Number.isFinite(data.currentTime)
+    ? data.currentTime
+    : (data.frame ?? 0) / fps;
+}
+
+/** A stopped runtime's `ended: false` is a pause; otherwise reaching the length is the end. */
+function isAtEnd(data: RuntimeStateData, time: number, duration: number): boolean {
+  if (duration <= 0) return false;
+  if (data.ended === true) return true;
+  if (data.ended === false && !data.isPlaying) return false;
+  return time >= duration;
+}
+
 /**
  * Process a `state` message from the runtime and return the next state.
  * Side effects (controls updates, events, media mirroring) are fired through
  * `callbacks`. The caller must commit the returned state object.
  */
 export function applyRuntimeStateMessage(
-  data: { frame: number; isPlaying: boolean },
+  data: RuntimeStateData,
   fps: number,
   current: PlaybackState,
   callbacks: PlaybackStateCallbacks,
 ): PlaybackState {
-  const rawTime = (data.frame ?? 0) / fps;
-  const currentTime = current.duration > 0 ? Math.min(rawTime, current.duration) : rawTime;
+  const rawTime = runtimeTime(data, fps);
+  const atEnd = isAtEnd(data, rawTime, current.duration);
+  const clampedTime = current.duration > 0 ? Math.min(rawTime, current.duration) : rawTime;
+  const currentTime = atEnd ? current.duration : clampedTime;
   const wasPlaying = !current.paused;
   const nextPaused = !data.isPlaying;
-  const completedPlayback =
-    current.duration > 0 && currentTime >= current.duration && (wasPlaying || data.isPlaying);
+  const completedPlayback = atEnd && (wasPlaying || data.isPlaying);
 
   if (completedPlayback && callbacks.getLoop()) {
     if (callbacks.media.audioOwner === "parent") callbacks.media.pauseAll();
@@ -51,7 +74,7 @@ export function applyRuntimeStateMessage(
     callbacks.play();
     // play() sets paused=false; reflect that in the returned state so the
     // caller's destructure doesn't overwrite it with the stale nextPaused value.
-    return { ...current, currentTime, paused: false };
+    return { ...current, currentTime: 0, paused: false };
   }
 
   const next: PlaybackState = { ...current, currentTime, paused: nextPaused };

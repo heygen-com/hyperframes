@@ -2,7 +2,7 @@ import { randomUUID } from "node:crypto";
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join, resolve } from "node:path";
 
-const ID_PATH = join(".hyperframes", "history-id");
+export const ID_PATH = join(".hyperframes", "history-id");
 /** The only shape minted here; the id is project content and becomes a path, so nothing else is trusted. */
 const ID_SHAPE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
 

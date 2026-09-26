@@ -1,12 +1,6 @@
 import type { SerializedDockview } from "dockview-react";
 import { parseDockLayout } from "../components/dock/dockLayoutSchema";
 
-export interface StoredPreviewZoomState {
-  zoomPercent: number;
-  panX: number;
-  panY: number;
-}
-
 export type TimelineTimeDisplayMode = "time" | "frame";
 
 export interface StudioUiPreferences {
@@ -15,7 +9,6 @@ export interface StudioUiPreferences {
   audioMuted?: boolean;
   audioVolume?: number;
   thumbnailMode?: "adaptive" | "hidden";
-  previewZoom?: StoredPreviewZoomState;
   recentBlocks?: string[];
   snapEnabled?: boolean;
   gridVisible?: boolean;
@@ -102,19 +95,6 @@ function readStorage(storage: Storage | null, key: string): StudioUiPreferences 
       preferences.thumbnailMode = parsed.thumbnailMode;
     } else if (typeof parsed.thumbnailsEnabled === "boolean") {
       preferences.thumbnailMode = parsed.thumbnailsEnabled ? "adaptive" : "hidden";
-    }
-    if (isRecord(parsed.previewZoom)) {
-      const { zoomPercent, panX, panY } = parsed.previewZoom;
-      if (
-        typeof zoomPercent === "number" &&
-        Number.isFinite(zoomPercent) &&
-        typeof panX === "number" &&
-        Number.isFinite(panX) &&
-        typeof panY === "number" &&
-        Number.isFinite(panY)
-      ) {
-        preferences.previewZoom = { zoomPercent, panX, panY };
-      }
     }
     if (Array.isArray(parsed.recentBlocks)) {
       preferences.recentBlocks = parsed.recentBlocks.filter(

@@ -1,4 +1,4 @@
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, it } from "node:test";
@@ -88,4 +88,47 @@ describe("glass-shard-title payload", () => {
       }
     });
   });
+});
+
+describe("module blocks' catalog import map", () => {
+  const vendorUrls = Object.fromEntries(
+    [
+      "gsap-3.14.2.min",
+      "three.core.min",
+      "three.module.min",
+      "RoomEnvironment",
+      "BufferGeometryUtils",
+    ].map((k) => [k, `https://cdn.example/${k}.js`]),
+  );
+  it("frost: runs the script that drives frost after frost.js, not an earlier inline script", () => {
+    const name = "frost-sequence-camera-orbit";
+    const dir = join("registry/blocks", name);
+    const out = inlineCatalogScripts(
+      name,
+      readFileSync(join(dir, `${name}.html`), "utf-8"),
+      dir,
+      vendorUrls,
+    );
+    const start = out.indexOf("<script>(function(){");
+    const bootstrap = out.slice(start, out.indexOf("})();</script>", start));
+    assert.match(bootstrap, /setRendererProfile/);
+    assert.doesNotMatch(out.replace(bootstrap, ""), /setRendererProfile/);
+  });
+
+  for (const name of ["cuboid-carousel", "orbit-card"]) {
+    it(`${name}: maps every specifier its entry module imports, with no import map of its own left`, () => {
+      const dir = join("registry/blocks", name);
+      const html = readFileSync(join(dir, `${name}.html`), "utf-8");
+      const entry = html.slice(html.indexOf('<script type="module">'));
+      const imported = [...entry.matchAll(/^\s*import [^;]*? from "([^"]+)"/gm)].flatMap(
+        (m) => m[1] ?? [],
+      );
+      assert.ok(imported.length > 0);
+      const out = inlineCatalogScripts(name, html, dir, vendorUrls);
+      const mapped = /imports:\{(.*?)\}\}\);/.exec(out)?.[1] ?? "";
+      const keys = [...mapped.matchAll(/(?:^|,)"?([^",:]+)"?:/g)].map((m) => m[1]);
+      for (const spec of imported) assert.ok(keys.includes(spec), spec);
+      assert.doesNotMatch(out, /<script type="importmap">/);
+    });
+  }
 });

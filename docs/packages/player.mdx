@@ -61,6 +61,8 @@ Set `autoplay muted` only when playback should start without a user gesture.
 | `audio-src`     | string  | —       | Optional primary audio URL to preload in the parent frame |
 | `audio-locked`  | boolean | false   | Force muted playback and hide volume controls             |
 | `assets-loading-ui` | `player` or `none` | `player` | `none` hides the loading-assets card; asset events still fire |
+| `low-power-idle` | boolean | false | While paused, check in once a second, not every 80 ms (many-player pages) |
+| `disable-click-to-play` | boolean | false | A click on the player no longer plays or pauses, so the page can handle it |
 
 Player also accepts `shader-capture-scale` and `shader-loading` for previewing
 projects that use shader transitions. These are preview controls, not composition
@@ -82,6 +84,7 @@ player.playbackRate = 1.5;
 player.muted = true;
 
 console.log(player.duration, player.paused, player.ready);
+console.log(player.compositionWidth, player.compositionHeight);
 ```
 
 ## Events
@@ -100,7 +103,9 @@ player.addEventListener("timeupdate", (event) => {
 
 | Event          | Detail            | Description                                                  |
 | -------------- | ----------------- | ------------------------------------------------------------ |
-| `ready`        | `{ duration }`    | Composition loaded and timeline discovered                   |
+| `ready`        | `{ duration, compositionWidth, compositionHeight }` | Composition loaded and timeline discovered |
+| `durationchange` | `{ duration }`  | The duration changed after `ready`                           |
+| `resize`       | `{ compositionWidth, compositionHeight }` | The composition's size changed           |
 | `timeupdate`   | `{ currentTime }` | Playback position changed, approximately 10 times per second |
 | `play`         | —                 | Playback started                                             |
 | `pause`        | —                 | Playback paused                                              |

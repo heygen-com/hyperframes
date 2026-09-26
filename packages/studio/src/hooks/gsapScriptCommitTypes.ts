@@ -1,7 +1,6 @@
 import type { ParsedGsap } from "@hyperframes/core/gsap-parser";
 import type { Composition } from "@hyperframes/sdk";
 import type { DomEditSelection } from "../components/editor/domEditingTypes";
-import type { EditHistoryKind } from "../utils/editHistory";
 import type { PublishSdkSession } from "../utils/sdkCutover";
 import type { RuntimeTweenChange } from "./gsapRuntimePatch";
 
@@ -96,7 +95,6 @@ export interface GsapScriptCommitsParams {
   editHistory: {
     recordEdit: (entry: {
       label: string;
-      kind: EditHistoryKind;
       coalesceKey?: string;
       coalesceMs?: number;
       files: Record<string, { before: string; after: string }>;

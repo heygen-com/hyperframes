@@ -1,5 +1,7 @@
 import { describe, it, expect, vi, afterEach } from "vitest";
 import {
+  evictMediaSyncState,
+  hasMediaSyncStateForTest,
   readElementPlaybackRate,
   readElementPlaybackStart,
   refreshRuntimeMediaCache,
@@ -729,6 +731,119 @@ describe("syncRuntimeMedia", () => {
       expect(await barrierSettled(barrier)).toBe(false);
       clip.el.dispatchEvent(new Event("seeked"));
       expect(await barrierSettled(barrier)).toBe(true);
+    });
+
+    function seekLoadingVideo(): RuntimeMediaClip {
+      const clip = createMockClip({ start: 7.1, end: 18.24 });
+      Object.defineProperty(clip.el, "readyState", { value: 0, configurable: true });
+      Object.defineProperty(clip.el, "networkState", { value: 2, configurable: true });
+      syncRuntimeMedia({ clips: [clip], timeSeconds: 12, playing: false, playbackRate: 1 });
+      return clip;
+    }
+
+    it("holds the barrier until a video still loading its first data has it", async () => {
+      const clip = seekLoadingVideo();
+      expect(clip.el.seeking).toBe(false);
+      const barrier = waitForSeekCompletion();
+      expect(await barrierSettled(barrier)).toBe(false);
+      Object.defineProperty(clip.el, "seeking", { value: true, configurable: true });
+      clip.el.dispatchEvent(new Event("loadeddata"));
+      expect(await barrierSettled(barrier)).toBe(false);
+      clip.el.dispatchEvent(new Event("seeked"));
+      expect(await barrierSettled(barrier)).toBe(true);
+    });
+
+    it("holds a loading video that is already parked on the frame's time", async () => {
+      const clip = createMockClip({ start: 7.1, end: 18.24 });
+      Object.defineProperty(clip.el, "readyState", { value: 0, configurable: true });
+      Object.defineProperty(clip.el, "networkState", { value: 2, configurable: true });
+      clip.el.currentTime = 4.9;
+      syncRuntimeMedia({ clips: [clip], timeSeconds: 12, playing: false, playbackRate: 1 });
+      expect(await barrierSettled(waitForSeekCompletion())).toBe(false);
+    });
+
+    it("does not hold a video that is not fetching", async () => {
+      const clip = createMockClip({ start: 7.1, end: 18.24 });
+      Object.defineProperty(clip.el, "readyState", { value: 0, configurable: true });
+      Object.defineProperty(clip.el, "networkState", { value: 1, configurable: true });
+      syncRuntimeMedia({ clips: [clip], timeSeconds: 12, playing: false, playbackRate: 1 });
+      expect(await barrierSettled(waitForSeekCompletion())).toBe(true);
+    });
+
+    it("releases a loading video when its <source> child fails", async () => {
+      const clip = seekLoadingVideo();
+      const source = document.createElement("source");
+      clip.el.appendChild(source);
+      const barrier = waitForSeekCompletion();
+      source.dispatchEvent(new Event("error"));
+      expect(await barrierSettled(barrier)).toBe(true);
+    });
+
+    it("gives a later seek its own full wait", async () => {
+      vi.useFakeTimers();
+      try {
+        const clip = seekLoadingVideo();
+        await vi.advanceTimersByTimeAsync(4000);
+        syncRuntimeMedia({ clips: [clip], timeSeconds: 13, playing: false, playbackRate: 1 });
+        let settled = false;
+        void waitForSeekCompletion().then(() => (settled = true));
+        await vi.advanceTimersByTimeAsync(4999);
+        expect(settled).toBe(false);
+        await vi.advanceTimersByTimeAsync(1);
+        expect(settled).toBe(true);
+      } finally {
+        vi.useRealTimers();
+      }
+    });
+
+    it("does not hold a loading video while playing without a seek", async () => {
+      const clip = createMockClip({ start: 7.1, end: 18.24 });
+      Object.defineProperty(clip.el, "readyState", { value: 0, configurable: true });
+      Object.defineProperty(clip.el, "networkState", { value: 2, configurable: true });
+      syncRuntimeMedia({ clips: [clip], timeSeconds: 12, playing: true, playbackRate: 1 });
+      resetSeekDispatchState();
+      syncRuntimeMedia({ clips: [clip], timeSeconds: 12, playing: true, playbackRate: 1 });
+      expect(await barrierSettled(waitForSeekCompletion())).toBe(true);
+    });
+
+    it("releases a video that never loads after the cap", async () => {
+      vi.useFakeTimers();
+      try {
+        seekLoadingVideo();
+        let settled = false;
+        void waitForSeekCompletion().then(() => (settled = true));
+        await vi.advanceTimersByTimeAsync(4999);
+        expect(settled).toBe(false);
+        await vi.advanceTimersByTimeAsync(1);
+        expect(settled).toBe(true);
+      } finally {
+        vi.useRealTimers();
+      }
+    });
+
+    it("keeps holding a loading video through a suspend between range requests", async () => {
+      const clip = seekLoadingVideo();
+      const barrier = waitForSeekCompletion();
+      clip.el.dispatchEvent(new Event("suspend"));
+      expect(await barrierSettled(barrier)).toBe(false);
+      Object.defineProperty(clip.el, "seeking", { value: true, configurable: true });
+      clip.el.dispatchEvent(new Event("loadedmetadata"));
+      clip.el.dispatchEvent(new Event("seeking"));
+      expect(await barrierSettled(barrier)).toBe(false);
+      Object.defineProperty(clip.el, "seeking", { value: false, configurable: true });
+      clip.el.dispatchEvent(new Event("seeked"));
+      expect(await barrierSettled(barrier)).toBe(true);
+    });
+
+    it("does not hold a render for a video still loading", async () => {
+      const renderWindow = window as { __HF_EXPORT_RENDER_SEEK_CONFIG?: unknown };
+      renderWindow.__HF_EXPORT_RENDER_SEEK_CONFIG = { mode: "seek" };
+      try {
+        seekLoadingVideo();
+        expect(await barrierSettled(waitForSeekCompletion())).toBe(true);
+      } finally {
+        delete renderWindow.__HF_EXPORT_RENDER_SEEK_CONFIG;
+      }
     });
 
     it.each(["error", "emptied", "abort"])(
@@ -1626,6 +1741,143 @@ describe("syncRuntimeMedia", () => {
       forceSync: true,
     });
     expect(clip.el.currentTime).toBe(5);
+  });
+
+  describe("playing video drift", () => {
+    function playingVideoAt(currentTime: number, playbackRate = 1) {
+      const clip = createMockClip({ start: 0, end: 20, duration: 20 });
+      Object.defineProperty(clip.el, "paused", { value: false, writable: true });
+      Object.defineProperty(clip.el, "currentTime", { value: currentTime, writable: true });
+      clip.el.playbackRate = playbackRate;
+      return clip;
+    }
+    const tick = (clip: RuntimeMediaClip, timeSeconds: number, playbackRate = 1) =>
+      syncRuntimeMedia({
+        clips: [clip],
+        timeSeconds,
+        playing: true,
+        playbackRate,
+        getCompositionDuration: () => 20,
+      });
+
+    it("runs a video lagging past the sync tolerance 3% fast instead of seeking it", () => {
+      const clip = playingVideoAt(4.908);
+      tick(clip, 5);
+      tick(clip, 5);
+      expect(clip.el.playbackRate).toBeCloseTo(1.03, 9);
+      expect(clip.el.currentTime).toBe(4.908);
+    });
+
+    it("runs a video that is ahead 3% slow", () => {
+      const clip = playingVideoAt(5.3);
+      tick(clip, 5);
+      tick(clip, 5);
+      expect(clip.el.playbackRate).toBeCloseTo(0.97, 9);
+    });
+
+    it("keeps steering until the video is nearly back, then returns to the authored rate", () => {
+      const clip = playingVideoAt(4.9);
+      tick(clip, 5);
+      tick(clip, 5);
+      clip.el.currentTime = 4.98;
+      tick(clip, 5);
+      expect(clip.el.playbackRate).toBeCloseTo(1.03, 9);
+      clip.el.currentTime = 4.995;
+      tick(clip, 5);
+      expect(clip.el.playbackRate).toBe(1);
+    });
+
+    it("keeps steering through a speed ramp, whose base rate moves every tick", () => {
+      const clip = playingVideoAt(4.9);
+      tick(clip, 5, 1);
+      tick(clip, 5, 1);
+      clip.el.currentTime = 4.98;
+      tick(clip, 5, 1.2);
+      expect(clip.el.playbackRate).toBeCloseTo(1.2 * 1.03, 9);
+    });
+
+    it("plays a hard-synced video at its authored rate on the tick it is seeked", () => {
+      const clip = playingVideoAt(4.9);
+      tick(clip, 5);
+      tick(clip, 5);
+      expect(clip.el.playbackRate).toBeCloseTo(1.03, 9);
+      tick(clip, 9); // a jump past the hard-sync threshold
+      expect(clip.el.currentTime).toBe(9);
+      expect(clip.el.playbackRate).toBe(1);
+    });
+
+    it("does not start steering inside the sync tolerance", () => {
+      const clip = playingVideoAt(4.97, 2);
+      tick(clip, 5, 2);
+      tick(clip, 5, 2);
+      expect(clip.el.playbackRate).toBe(2);
+    });
+
+    it("returns a steered video to its authored rate when the transport pauses", () => {
+      const clip = playingVideoAt(4.9);
+      tick(clip, 5);
+      tick(clip, 5);
+      syncRuntimeMedia({
+        clips: [clip],
+        timeSeconds: 5,
+        playing: false,
+        playbackRate: 1,
+        getCompositionDuration: () => 20,
+      });
+      clip.el.currentTime = 4.98; // inside the tolerance: must not resume steering
+      tick(clip, 5);
+      expect(clip.el.playbackRate).toBe(1);
+    });
+
+    it("forgets the steering when the element's sync state is evicted", () => {
+      const clip = playingVideoAt(4.9);
+      tick(clip, 5);
+      tick(clip, 5);
+      evictMediaSyncState(clip.el);
+      expect(hasMediaSyncStateForTest(clip.el)).toBe(false);
+    });
+
+    it("does not rewrite a steered rate that reads back at lower precision", () => {
+      const clip = playingVideoAt(4.9);
+      let stored = 1;
+      let writes = 0;
+      Object.defineProperty(clip.el, "playbackRate", {
+        configurable: true,
+        get: () => stored,
+        set: (v: number) => {
+          writes += 1;
+          stored = Math.fround(v);
+        },
+      });
+      for (let i = 0; i < 5; i++) tick(clip, 5);
+      expect(writes).toBe(1);
+    });
+
+    it("scales the steer with the transport rate", () => {
+      const clip = playingVideoAt(4.908, 2);
+      tick(clip, 5, 2);
+      tick(clip, 5, 2);
+      expect(clip.el.playbackRate).toBeCloseTo(2.06, 9);
+    });
+  });
+
+  // A seek while playing pauses and syncs in one pass, before the video element has paused.
+  it("a seek that pauses mid-playback lands a lagging playing video on the new time", () => {
+    const clip = createMockClip({ start: 3.85, end: 5.6, duration: 1.75 });
+    Object.defineProperty(clip.el, "paused", { value: false, writable: true });
+    Object.defineProperty(clip.el, "currentTime", { value: 0.031, writable: true });
+    syncRuntimeMedia({ clips: [clip], timeSeconds: 4.109, playing: true, playbackRate: 1 });
+    expect(clip.el.currentTime).toBe(0.031);
+
+    syncRuntimeMedia({
+      clips: [clip],
+      timeSeconds: 4.4,
+      playing: false,
+      playbackRate: 1,
+      forceSync: true,
+    });
+    expect(clip.el.currentTime).toBeCloseTo(0.55, 5);
+    expect(clip.el.pause).toHaveBeenCalled();
   });
 
   it("mutes when either outputMuted OR userMuted is true (OR invariant)", () => {

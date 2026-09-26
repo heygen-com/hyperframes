@@ -20,6 +20,7 @@ type RuntimeBridgeControlActionBase =
   | "set-media-output-muted"
   | "set-native-media-sync-disabled"
   | "set-web-audio-media-disabled"
+  | "set-idle-heartbeat"
   | "set-root-duration"
   | "stop-media"
   | "flash-elements";
@@ -34,6 +35,7 @@ type RuntimeBridgeControlMessageBase = {
   volume?: number;
   durationSeconds?: number;
   disabled?: boolean;
+  slow?: boolean;
   playbackRate?: number;
   target?: HfColorGradingTarget | string | null;
   grading?: RuntimeJson;
@@ -45,6 +47,8 @@ export type RuntimeStateMessage = {
   source: "hf-preview";
   type: "state";
   frame: number;
+  currentTime: number;
+  ended: boolean;
   isPlaying: boolean;
   muted: boolean;
   playbackRate: number;

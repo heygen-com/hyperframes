@@ -9,6 +9,7 @@ import {
   readPreviewErrorMessage,
   shouldShowCompositionLoadingOverlay,
 } from "./Player";
+import { usePlayerStore } from "../store/playerStore";
 
 vi.mock("@hyperframes/player", () => ({}));
 
@@ -124,6 +125,11 @@ describe("preview errors", () => {
 
     expect(() => act(() => root?.unmount())).not.toThrow();
     root = null;
+  });
+
+  it("puts the preview on the player's once-a-second paused heartbeat", async () => {
+    const { player } = await mountPlayer();
+    expect(player.hasAttribute("low-power-idle")).toBe(true);
   });
 
   it("attaches lifecycle listeners before navigating the player", async () => {
@@ -269,6 +275,54 @@ describe("ready to show", () => {
 
     act(() => void el.iframeElement.dispatchEvent(new Event("load")));
     expect(onReadyToShowChange).toHaveBeenLastCalledWith(false);
+  });
+
+  it("marks the preview booted when it can show and play, not at ready", async () => {
+    usePlayerStore.setState({ previewBooted: false });
+    const { player } = await mountPlayer({});
+    const el = player as TestHyperframesPlayer;
+
+    loadAndReady(el);
+    act(() => void el.dispatchEvent(new Event("assetsready")));
+    await twoFrames();
+    expect(usePlayerStore.getState().previewBooted).toBe(false);
+
+    painted(el);
+    await twoFrames();
+    expect(usePlayerStore.getState().previewBooted).toBe(true);
+  });
+
+  it("marks the preview booted at its first frame while media is still buffering", async () => {
+    usePlayerStore.setState({ previewBooted: false });
+    const onReadyToShowChange = vi.fn();
+    const { player } = await mountPlayer({ onReadyToShowChange });
+    const el = player as TestHyperframesPlayer;
+    document.body.appendChild(el.iframeElement);
+    const doc = el.iframeElement.contentDocument!;
+    const audio = doc.createElement("audio");
+    Object.defineProperty(audio, "readyState", { value: 0, configurable: true });
+    Object.defineProperty(audio, "networkState", { value: 2, configurable: true });
+    doc.body.appendChild(audio);
+
+    loadAndReady(el);
+    painted(el);
+    await twoFrames();
+    expect(onReadyToShowChange).not.toHaveBeenCalledWith(true);
+    expect(usePlayerStore.getState().previewBooted).toBe(true);
+  });
+
+  it("stops deferring editing work when the preview never shows", async () => {
+    vi.useFakeTimers();
+    try {
+      usePlayerStore.setState({ previewBooted: false });
+      await mountPlayer({});
+      act(() => void vi.advanceTimersByTime(4999));
+      expect(usePlayerStore.getState().previewBooted).toBe(false);
+      act(() => void vi.advanceTimersByTime(1));
+      expect(usePlayerStore.getState().previewBooted).toBe(true);
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it("reports the document start time with the painted iframe", async () => {

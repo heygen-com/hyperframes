@@ -30,6 +30,7 @@ describe("studio client shouldTrack", () => {
     setDev(false);
     setNoTelemetry(undefined);
     localStorage.clear();
+    delete window.__HF_CLI_TELEMETRY_DISABLED;
     vi.unstubAllGlobals();
   });
 
@@ -88,4 +89,29 @@ describe("studio client shouldTrack", () => {
     localStorage.setItem(OPT_OUT_KEY, "1");
     expect(shouldTrack()).toBe(false);
   });
+});
+
+it("suppresses actual render events in a CLI-opted-out Studio while the enabled control sends", async () => {
+  vi.useFakeTimers();
+  vi.resetModules();
+  setDev(false);
+  setNoTelemetry(undefined);
+  localStorage.clear();
+  const send = vi.fn().mockResolvedValue(new Response());
+  vi.stubGlobal("fetch", send);
+  try {
+    const { trackEvent } = await import("./client");
+    window.__HF_CLI_TELEMETRY_DISABLED = true;
+    trackEvent("render_complete", { duration: 1 });
+    await vi.advanceTimersByTimeAsync(1100);
+    expect(send).not.toHaveBeenCalled();
+    window.__HF_CLI_TELEMETRY_DISABLED = false;
+    trackEvent("render_complete", { duration: 1 });
+    await vi.advanceTimersByTimeAsync(1100);
+    expect(send).toHaveBeenCalledOnce();
+  } finally {
+    delete window.__HF_CLI_TELEMETRY_DISABLED;
+    vi.useRealTimers();
+    vi.unstubAllGlobals();
+  }
 });
