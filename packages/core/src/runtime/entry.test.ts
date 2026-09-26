@@ -88,6 +88,9 @@ describe("runtime entry", () => {
     const current = timed(root, "div", "0");
     const later = timed(root, "div", "5");
     const poster = timed(root, "img", "0");
+    // Studio serves later scenes' images lazy; laid out, they would load before the first pass.
+    const plate = later.appendChild(document.createElement("img"));
+    plate.setAttribute("loading", "lazy");
     // A composition script may write visibility inline before the runtime runs.
     later.style.visibility = "visible";
     // Readiness, which runs the first pass, waits while GSAP batches timelines.
@@ -97,7 +100,8 @@ describe("runtime entry", () => {
     await evaluateRuntime();
     expect(window.__player).toBeUndefined();
     expect(visibility(current, later)).toEqual(["hidden", "hidden"]);
-    expect(contentSkipped(current, later, poster)).toEqual([false, true, false]);
+    expect(contentSkipped(current, later, poster)).toEqual([false, false, false]);
+    expect(getComputedStyle(plate).display).toBe("none");
 
     delete (document as { readyState?: unknown }).readyState;
     document.dispatchEvent(new Event("DOMContentLoaded"));
@@ -108,6 +112,7 @@ describe("runtime entry", () => {
     window.dispatchEvent(new CustomEvent("hf-timelines-built"));
     expect(window.__renderReady).toBe(true);
     expect(visibility(current, later, poster)).toEqual(["visible", "hidden", "visible"]);
+    expect(getComputedStyle(plate).display).not.toBe("none");
   });
 
   it("skips the content of each hidden clip not due within the look-ahead, until something shows it", async () => {
