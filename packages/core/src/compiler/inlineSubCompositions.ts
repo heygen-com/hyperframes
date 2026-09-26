@@ -58,23 +58,36 @@ const STRING_LITERAL_RE = /(["'`])((?:\\.|(?!\1)[^\\\n])*?)\1/g;
 /** Marks each scene whose nodes a script outside it names by selector, id or class: a swap would strand it. */
 export function refuseSwapsReachedByRootScripts(document: Document, rootScripts: string[]): void {
   const hosts = [...document.querySelectorAll(`[${SCENE_PART_ATTR}]`)];
-  for (const [, , literal = ""] of rootScripts.flatMap((s) => [...s.matchAll(STRING_LITERAL_RE)])) {
-    const bare = /^[A-Za-z_][\w-]*$/.test(literal);
-    for (const el of (bare ? [`#${literal}`, `.${literal}`] : [literal]).flatMap(
-      queryAllOrNone(document),
-    )) {
-      const host = hosts.find((h) => h.contains(el));
-      if (host && !host.hasAttribute(SCENE_NO_SWAP_ATTR))
-        host.setAttribute(SCENE_NO_SWAP_ATTR, `a script outside the scene selects ${literal}`);
+  const byName = new Map<string, Set<Element>>();
+  for (const host of hosts) {
+    for (const el of [host, ...host.querySelectorAll("[id], [class]")]) {
+      for (const name of [el.id && `#${el.id}`, ...[...el.classList].map((c) => `.${c}`)]) {
+        if (name) byName.set(name, (byName.get(name) ?? new Set()).add(host));
+      }
     }
+  }
+  const literals = new Set(
+    rootScripts.flatMap((s) => [...s.matchAll(STRING_LITERAL_RE)].map((m) => m[2] ?? "")),
+  );
+  for (const literal of literals) {
+    const open = hosts.filter((host) => !host.hasAttribute(SCENE_NO_SWAP_ATTR));
+    if (open.length === 0) return;
+    const reached = /^[A-Za-z_][\w-]*$/.test(literal)
+      ? [...(byName.get(`#${literal}`) ?? []), ...(byName.get(`.${literal}`) ?? [])]
+      : /[#.[:>]/.test(literal)
+        ? open.filter((host) => reaches(host, literal))
+        : [];
+    for (const host of reached)
+      if (!host.hasAttribute(SCENE_NO_SWAP_ATTR))
+        host.setAttribute(SCENE_NO_SWAP_ATTR, `a script outside the scene selects ${literal}`);
   }
 }
 
-const queryAllOrNone = (root: ParentNode) => (selector: string) => {
+const reaches = (host: Element, selector: string) => {
   try {
-    return [...root.querySelectorAll(selector)];
+    return host.matches(selector) || host.querySelector(selector) !== null;
   } catch {
-    return [];
+    return false;
   }
 };
 
