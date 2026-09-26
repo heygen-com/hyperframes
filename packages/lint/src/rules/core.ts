@@ -150,6 +150,101 @@ function ruleForcesOpacityZero(rule: postcss.Rule): boolean {
   return forcesOpacityZero;
 }
 
+const CSS_TRANSITION_PROP_RE = /^(-webkit-)?transition($|-)/i;
+
+function isAllowedTransitionNone(prop: string, value: string): boolean {
+  const normalizedProp = prop.toLowerCase();
+  if (
+    normalizedProp !== "transition" &&
+    normalizedProp !== "-webkit-transition" &&
+    normalizedProp !== "transition-property" &&
+    normalizedProp !== "-webkit-transition-property"
+  ) {
+    return false;
+  }
+  return (
+    value
+      .replace(/\s*!important\s*$/i, "")
+      .trim()
+      .toLowerCase() === "none"
+  );
+}
+
+function transitionFinding(
+  prop: string,
+  snippet: string,
+  extra?: Pick<HyperframeLintFinding, "selector" | "elementId">,
+): HyperframeLintFinding {
+  return {
+    code: "css_transition_used",
+    severity: "error",
+    message:
+      `CSS \`${prop}\` is browser-clock driven and not seek-safe. ` +
+      "A class swap looks correct in preview, but parallel workers restore state on a fresh page and restart the fade, so the export flashes.",
+    ...extra,
+    fixHint: "Keep the class swap for state; put the visual change on the paused GSAP timeline.",
+    snippet: truncateSnippet(snippet),
+  };
+}
+
+function declarationUsesTransition(prop: string, value: string): boolean {
+  if (!CSS_TRANSITION_PROP_RE.test(prop)) return false;
+  if (prop.startsWith("--")) return false;
+  return !isAllowedTransitionNone(prop, value);
+}
+
+function collectStyleBlockTransitionFindings(
+  styles: LintContext["styles"],
+): HyperframeLintFinding[] {
+  const findings: HyperframeLintFinding[] = [];
+  for (const style of styles) {
+    let root: postcss.Root;
+    try {
+      root = postcss.parse(style.content);
+    } catch {
+      // css_parse_error is reported by the selector-safety rule.
+      continue;
+    }
+    root.walkDecls(CSS_TRANSITION_PROP_RE, (declaration) => {
+      if (!declarationUsesTransition(declaration.prop, declaration.value)) return;
+      const parent = declaration.parent;
+      const selector = parent?.type === "rule" ? (parent as postcss.Rule).selector : undefined;
+      findings.push(transitionFinding(declaration.prop, declaration.toString(), { selector }));
+    });
+  }
+  return findings;
+}
+
+function splitInlineStyleDeclarations(
+  inlineStyle: string,
+): Array<{ prop: string; value: string; raw: string }> {
+  const declarations: Array<{ prop: string; value: string; raw: string }> = [];
+  for (const part of inlineStyle.split(";")) {
+    const colon = part.indexOf(":");
+    if (colon < 0) continue;
+    declarations.push({
+      prop: part.slice(0, colon).trim(),
+      value: part.slice(colon + 1).trim(),
+      raw: part.trim(),
+    });
+  }
+  return declarations;
+}
+
+function collectInlineStyleTransitionFindings(tags: LintContext["tags"]): HyperframeLintFinding[] {
+  const findings: HyperframeLintFinding[] = [];
+  for (const tag of tags) {
+    const inlineStyle = readAttr(tag.raw, "style");
+    if (!inlineStyle) continue;
+    const elementId = readAttr(tag.raw, "id") || undefined;
+    for (const { prop, value, raw } of splitInlineStyleDeclarations(inlineStyle)) {
+      if (!prop || !declarationUsesTransition(prop, value)) continue;
+      findings.push(transitionFinding(prop, raw, { elementId }));
+    }
+  }
+  return findings;
+}
+
 function isStudioTimelineElement(tag: { raw: string; name: string }): boolean {
   if (["script", "style", "link", "meta", "template", "noscript"].includes(tag.name)) {
     return false;
@@ -756,6 +851,16 @@ export const coreRules: Array<(ctx: LintContext) => HyperframeLintFinding[]> = [
     }
     return findings;
   },
+
+  // css_transition_used — CSS transitions run on the browser clock, so a class
+  // swap that looks correct in preview restarts the fade when parallel workers
+  // restore state on a fresh page (and on `snapshot --at` past settle time).
+  // The CSS adapter only discovers `animation-name`; finite `@keyframes` are
+  // seekable, `transition` is not. See #3493.
+  ({ styles, tags }) => [
+    ...collectStyleBlockTransitionFindings(styles),
+    ...collectInlineStyleTransitionFindings(tags),
+  ],
 ];
 
 function cssErrorOffset(source: string, error: postcss.CssSyntaxError): number | undefined {
