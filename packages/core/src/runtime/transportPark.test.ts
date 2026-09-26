@@ -182,6 +182,24 @@ describe("parked transport loop", () => {
     expect(vi.getTimerCount()).toBe(1);
   });
 
+  it("reports the end in the state it posts when the film finishes", () => {
+    let nowMs = 1000;
+    vi.spyOn(performance, "now").mockImplementation(() => nowMs);
+    document.body.innerHTML = `<div id="root" data-composition-id="main" data-root="true" data-start="0" data-duration="4.97"><div id="clip" data-start="0.48" data-duration="4.49"></div></div>`;
+    window.__timelines = { main: createMockTimeline(4.97) };
+    initSandboxRuntimeModular();
+    quiesce();
+
+    window.__player!.play();
+    for (let step = 0; step < 120 && window.__player!.isPlaying(); step += 1) {
+      nowMs += 50;
+      raf.step(50);
+    }
+
+    const states = posted.filter((m) => m["type"] === "state");
+    expect(states.at(-1)).toMatchObject({ isPlaying: false, ended: true, frame: 149 });
+  });
+
   it("keeps asking for animation frames while playing", () => {
     mount();
     initSandboxRuntimeModular();

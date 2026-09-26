@@ -117,6 +117,7 @@ export function handleRuntimeMessage(
         {
           frame: (data["frame"] as number) ?? 0,
           currentTime: data["currentTime"] as number | undefined,
+          ended: data["ended"] === true,
           isPlaying: !!data["isPlaying"],
         },
         protocol.fps,

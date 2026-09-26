@@ -48,6 +48,7 @@ export type RuntimeStateMessage = {
   type: "state";
   frame: number;
   currentTime: number;
+  ended: boolean;
   isPlaying: boolean;
   muted: boolean;
   playbackRate: number;

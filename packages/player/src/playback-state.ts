@@ -27,26 +27,37 @@ export interface PlaybackStateCallbacks {
   media: ParentMediaManager;
 }
 
+type RuntimeStateData = {
+  frame: number;
+  isPlaying: boolean;
+  currentTime?: number;
+  ended?: boolean;
+};
+
+/** The runtime's exact time when it sends one (older runtimes send only the whole frame). */
+function runtimeTime(data: RuntimeStateData, fps: number): number {
+  return typeof data.currentTime === "number" && Number.isFinite(data.currentTime)
+    ? data.currentTime
+    : (data.frame ?? 0) / fps;
+}
+
 /**
  * Process a `state` message from the runtime and return the next state.
  * Side effects (controls updates, events, media mirroring) are fired through
  * `callbacks`. The caller must commit the returned state object.
  */
 export function applyRuntimeStateMessage(
-  data: { frame: number; isPlaying: boolean; currentTime?: number },
+  data: RuntimeStateData,
   fps: number,
   current: PlaybackState,
   callbacks: PlaybackStateCallbacks,
 ): PlaybackState {
-  const rawTime =
-    typeof data.currentTime === "number" && Number.isFinite(data.currentTime)
-      ? data.currentTime
-      : (data.frame ?? 0) / fps;
-  const currentTime = current.duration > 0 ? Math.min(rawTime, current.duration) : rawTime;
+  const rawTime = runtimeTime(data, fps);
+  const atEnd = current.duration > 0 && (data.ended === true || rawTime >= current.duration);
+  const currentTime = atEnd ? current.duration : rawTime;
   const wasPlaying = !current.paused;
   const nextPaused = !data.isPlaying;
-  const completedPlayback =
-    current.duration > 0 && currentTime >= current.duration && (wasPlaying || data.isPlaying);
+  const completedPlayback = atEnd && (wasPlaying || data.isPlaying);
 
   if (completedPlayback && callbacks.getLoop()) {
     if (callbacks.media.audioOwner === "parent") callbacks.media.pauseAll();

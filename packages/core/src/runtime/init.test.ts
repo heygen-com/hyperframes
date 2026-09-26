@@ -483,7 +483,12 @@ describe("initSandboxRuntimeModular", () => {
     window.__player?.pause();
 
     const states = outbound.filter((m) => m.type === "state");
-    expect(states.at(-1)).toMatchObject({ frame: 149, currentTime: 4.95, isPlaying: false });
+    expect(states.at(-1)).toMatchObject({
+      frame: 149,
+      currentTime: 4.95,
+      ended: false,
+      isPlaying: false,
+    });
   });
 
   it("resolves Studio custom cubic-bezier eases on the composition GSAP instance", () => {

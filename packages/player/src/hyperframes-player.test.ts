@@ -1411,30 +1411,31 @@ describe("HyperframesPlayer loop end-state handling", () => {
     expect(player._paused).toBe(true);
   });
 
-  function postState(frame: number, isPlaying: boolean, currentTime?: number) {
+  function postState(frame: number, isPlaying: boolean, currentTime?: number, ended = false) {
     player._onMessage(
       new MessageEvent("message", {
         source: frameWindow,
-        data: { source: "hf-preview", type: "state", frame, currentTime, isPlaying },
+        data: { source: "hf-preview", type: "state", frame, currentTime, ended, isPlaying },
       }),
     );
   }
 
   // 4.97 s at 30 fps is 149.1 frames: the runtime posts frame 149 both at its end and
-  // on a pause just before it, so only its exact time tells the two apart.
-  it("ends a film whose length falls between two frames when the runtime reaches its end", () => {
+  // on a pause just before it. Its `ended` flag tells the two apart, and the player's
+  // length can sit a float step past the runtime's end (0.48 + 4.49 here).
+  it("ends a film when the runtime reports its end, even a float step short of the length", () => {
     const ended = vi.fn();
     player.addEventListener("ended", ended);
     player.loop = false;
-    player._duration = 4.97;
+    player._duration = 0.48 + 4.49;
     player._paused = false;
 
     postState(149, true, 4.96);
     expect(ended).not.toHaveBeenCalled();
 
-    postState(149, false, 4.97);
+    postState(149, false, 4.97, true);
     expect(ended).toHaveBeenCalledTimes(1);
-    expect(player._currentTime).toBe(4.97);
+    expect(player._currentTime).toBe(player._duration);
   });
 
   it("loops a film whose length falls between two frames", () => {
@@ -1443,7 +1444,7 @@ describe("HyperframesPlayer loop end-state handling", () => {
     player._duration = 4.97;
     player._paused = false;
 
-    postState(149, false, 4.97);
+    postState(149, false, 4.97, true);
 
     expect(seek).toHaveBeenCalledWith(0);
     expect(player._paused).toBe(false);
