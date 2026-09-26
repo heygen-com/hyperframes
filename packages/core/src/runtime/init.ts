@@ -3205,16 +3205,24 @@ export function initSandboxRuntimeModular(): void {
         );
       }
     }
-    // A set's revert is right only if nothing that read its value is reverted after it, an order the record lacks.
+    // One animation reverts a kept element exactly; two can leave one's value behind, as the record lacks write order.
     const survives = (target: unknown) =>
       typeof target !== "function" && (!inScene.has(target) || isMedia(target as Element));
-    for (const id of compositionIdsIn(host)) {
-      for (const animation of sceneAnimations[id] ?? []) {
-        if (animation.getChildren || animation.duration?.() !== 0) continue;
-        if (animation.targets?.().some(survives)) {
-          throw new Error(
-            `scene ${name} cannot be swapped: its script sets a value on an element the swap keeps`,
-          );
+    const writer = new Map<unknown, unknown>();
+    const counted = new Set<unknown>();
+    for (const animation of own as Set<SceneAnimation | undefined>) {
+      if (!animation || counted.has(animation)) continue;
+      for (const tween of [animation, ...(animation.getChildren?.(true, true, false) ?? [])]) {
+        if (tween !== animation && counted.has(tween)) continue;
+        counted.add(tween);
+        for (const target of tween.targets?.() ?? []) {
+          if (!survives(target)) continue;
+          if ((writer.get(target) ?? animation) !== animation) {
+            throw new Error(
+              `scene ${name} cannot be swapped: two of its animations write to an element the swap keeps`,
+            );
+          }
+          writer.set(target, animation);
         }
       }
     }

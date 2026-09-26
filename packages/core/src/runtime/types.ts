@@ -295,7 +295,7 @@ export type RuntimeTimelineChildLike = {
 export type SceneAnimation = {
   targets?: () => unknown[];
   duration?: () => number;
-  getChildren?: unknown;
+  getChildren?: (nested?: boolean, tweens?: boolean, timelines?: boolean) => SceneAnimation[];
   revert?: () => void;
   kill?: () => void;
   totalTime?: (timeSeconds?: number, suppressEvents?: boolean) => unknown;

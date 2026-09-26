@@ -828,48 +828,90 @@ describe("__hfSwapScenes", () => {
     expect(order).toEqual(["second set", "first set", "timeline"]);
   });
 
-  const keptSet = "scene a cannot be swapped: its script sets a value on an element the swap keeps";
+  const twoWriters =
+    "scene a cannot be swapped: two of its animations write to an element the swap keeps";
+  const asFresh = "swapped, as a fresh load, video kept";
+  const thenFrom = `tl.from(k, { x: 0, duration: 1 });`;
   it.each([
-    ["refuses", "an element outside it", "#kept", keptSet],
-    ["refuses", "a video it keeps", "video", keptSet],
-    ["swaps", "its own text", "p", "swapped: x=50 at the end, x=50 on a fresh load"],
-  ])(
-    "%s a scene whose script sets a value on %s, which reverting in record order can leave",
-    async (_, __, el, expected) => {
-      const exports: { gsap?: RealGsap } = {};
-      // Its ticker takes the frame callback as it loads, and this file's runs at once: give it one that never ticks.
-      const frame = window.requestAnimationFrame;
-      window.requestAnimationFrame = () => 0;
-      new Function("exports", "module", readFileSync(vendoredGsap(), "utf8"))(exports, { exports });
-      window.requestAnimationFrame = frame;
-      const gsap = exports.gsap!;
-      vi.stubGlobal("gsap", gsap);
-      quietMedia();
-      const source = `const v = globalThis.document.querySelector(${JSON.stringify(el)});
+    ["a free from()", "#kept", `gsap.from(k, { x: "+=50", duration: 1 }); ${thenFrom}`, twoWriters],
+    [
+      "a free fromTo()",
+      "#kept",
+      `gsap.fromTo(k, { x: "+=50" }, { x: "+=0", duration: 1 }); ${thenFrom}`,
+      twoWriters,
+    ],
+    [
+      "a tween moved to its end",
+      "#kept",
+      `gsap.to(k, { x: "+=50", duration: 0.5 }).progress(1); ${thenFrom}`,
+      twoWriters,
+    ],
+    [
+      "a second timeline's from()",
+      "#kept",
+      `gsap.timeline({ paused: true }).from(k, { x: "+=50", duration: 1 }); ${thenFrom}`,
+      twoWriters,
+    ],
+    ["a relative set", "#kept", `gsap.set(k, { x: "+=50" }); ${thenFrom}`, twoWriters],
+    ["a relative set", "video", `gsap.set(k, { x: "+=50" }); ${thenFrom}`, twoWriters],
+    ["a lone set", "video", `gsap.set(k, { x: 50 });`, asFresh],
+    ["a lone timeline from()", "video", `tl.from(k, { x: 50, duration: 1 });`, asFresh],
+    [
+      "a set on its text and a timeline from()",
+      "video",
+      `gsap.set("p", { x: 20 }); tl.from(k, { x: 50, duration: 1 });`,
+      asFresh,
+    ],
+    [
+      "one timeline moving it twice",
+      "video",
+      `tl.from(k, { x: 50, duration: 1 }).to(k, { x: "+=30", duration: 1 });`,
+      asFresh,
+    ],
+  ])("a scene script with %s on %s, an element the swap keeps", async (_, el, body, expected) => {
+    const exports: { gsap?: RealGsap } = {};
+    // Its ticker takes the frame callback as it loads, and this file's runs at once: give it one that never ticks.
+    const frame = window.requestAnimationFrame;
+    window.requestAnimationFrame = () => 0;
+    new Function("exports", "module", readFileSync(vendoredGsap(), "utf8"))(exports, { exports });
+    window.requestAnimationFrame = frame;
+    const gsap = exports.gsap!;
+    vi.stubGlobal("gsap", gsap);
+    quietMedia();
+    const source = `const k = globalThis.document.querySelector(${JSON.stringify(el)});
 const tl = gsap.timeline({ paused: true });
-gsap.set(v, { x: "+=50" });
-tl.from(v, { x: 0, duration: 1 });
+${body}
 window.__timelines.a = tl;`;
-      const scene = (text: string, hash: string): Scene => ({
-        ...A1,
-        hash,
-        body: `<p>${text}</p><video src="clip.mp4"></video>`,
-        script: wrapScopedCompositionScript(source, "a"),
-      });
-      boot([scene("A one", "ha1"), B], trackingRoot().root);
-      document.body.insertAdjacentHTML("beforeend", '<div id="kept"></div>');
-      new Function(document.querySelector('script[data-hf-scene="a"]')!.textContent!)();
-      const swapped = await window.__hfSwapScenes!(preview([scene("A two", "ha2"), B]).html).then(
-        () => {
-          window.__timelines!.a!.totalTime!(1);
-          return `swapped: x=${gsap.getProperty(document.querySelector(el)!, "x")} at the end, x=50 on a fresh load`;
-        },
-        (error: Error) => error.message,
-      );
-      gsap.ticker.sleep();
-      expect(swapped).toBe(expected);
-    },
-  );
+    const scene = (text: string, hash: string): Scene => ({
+      ...A1,
+      hash,
+      body: `<p>${text}</p><video src="clip.mp4"></video>`,
+      script: wrapScopedCompositionScript(source, "a"),
+    });
+    boot([scene("A one", "ha1"), B], trackingRoot().root);
+    document.body.insertAdjacentHTML("beforeend", '<div id="kept"></div>');
+    new Function(document.querySelector('script[data-hf-scene="a"]')!.textContent!)();
+    // The old page is a fresh load of the same script.
+    const atEnd = () => {
+      const timeline = window.__timelines!.a!;
+      timeline.totalTime!(timeline.duration());
+      return gsap.getProperty(document.querySelector(el)!, "x");
+    };
+    const fresh = atEnd();
+    const video = sceneHost("a").querySelector("video");
+    const swapped = await window.__hfSwapScenes!(preview([scene("A two", "ha2"), B]).html).then(
+      () => {
+        const x = atEnd();
+        const kept = sceneHost("a").querySelector("video") === video ? ", video kept" : "";
+        return x === fresh
+          ? `swapped, as a fresh load${kept}`
+          : `swapped: x=${x} against ${fresh} on a fresh load`;
+      },
+      (error: Error) => error.message,
+    );
+    gsap.ticker.sleep();
+    expect(swapped).toBe(expected);
+  });
 
   it("rejects a scene with more than one host rather than dropping one", async () => {
     const { root } = trackingRoot();
