@@ -323,8 +323,6 @@ export function useTimelineSyncCallbacks({
           if (probeIntervalRef.current) clearInterval(probeIntervalRef.current);
           return;
         }
-        // A readiness post can land before the runtime knows its duration, and a paused
-        // low-power preview posts only once a second: retry on frames, not on the next post.
         cancelAnimationFrame(retryFrame);
         retryFrame = requestAnimationFrame(trySettle);
       };
