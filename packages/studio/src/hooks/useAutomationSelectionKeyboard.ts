@@ -260,7 +260,8 @@ function handlePaste(
   void saved.then((outcome) => {
     if (outcome && outcome.status !== "saved") return;
     const current = usePlayerStore.getState();
-    if (seq !== latestPaste || current.automationSelection !== sel) return;
+    const moved = current.selectedElementId !== state.selectedElementId;
+    if (seq !== latestPaste || moved || current.automationSelection !== sel) return;
     current.setAutomationSelection(mark);
     markLastPaste(mark);
   });

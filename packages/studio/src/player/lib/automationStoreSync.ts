@@ -17,7 +17,7 @@ import { HF_AUDIO_AUTOMATION_ATTR } from "@hyperframes/core/audio-automation";
 import { HF_AUDIO_FX_ATTR } from "@hyperframes/core/audio-fx";
 import { usePlayerStore, type TimelineElement } from "../store/playerStore";
 import { groupInfoFor } from "./timelineGroupInfo";
-import { previewElementFinder } from "./timelineElementHelpers";
+import { getTimelineElementIdentity, previewElementFinder } from "./timelineElementHelpers";
 
 /**
  * Re-read every element's automation and FX-chain attributes from the preview
@@ -68,6 +68,32 @@ export function syncStoredAutomationFromPreview(doc: Document | null | undefined
       if (keys.every((key) => fields[key] === element[key])) return element;
       changed = true;
       return { ...element, ...fields };
+    });
+    return changed ? { elements } : {};
+  });
+}
+
+const STORED_FIELD: Record<string, "automation" | "fxChain"> = {
+  [HF_AUDIO_AUTOMATION_ATTR]: "automation",
+  [HF_AUDIO_FX_ATTR]: "fxChain",
+};
+
+/** Record a saved automation or FX-chain value on one element's stored copy. */
+export function syncStoredElementAttribute(
+  target: TimelineElement,
+  attr: string,
+  value: string | null,
+): void {
+  const field = STORED_FIELD[attr];
+  if (!field) return;
+  const key = getTimelineElementIdentity(target);
+  const next = value ?? undefined;
+  usePlayerStore.setState((state) => {
+    let changed = false;
+    const elements = state.elements.map((element) => {
+      if (getTimelineElementIdentity(element) !== key || element[field] === next) return element;
+      changed = true;
+      return { ...element, [field]: next };
     });
     return changed ? { elements } : {};
   });

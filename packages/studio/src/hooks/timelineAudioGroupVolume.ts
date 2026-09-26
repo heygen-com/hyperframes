@@ -254,9 +254,9 @@ export function useSetAudioGroupAttribute({
   );
   const claimLive = useCallback(
     (groupId: string, attr: string) =>
-      liveLanes.current.claim(audioGroupAttributeLiveKey(groupId, attr), (value) => {
-        patchLiveGroupAttribute(previewIframeRef.current, groupId, attr, value);
-        syncStoredGroupAttribute(groupId, attr, value);
+      liveLanes.current.claim(audioGroupAttributeLiveKey(groupId, attr), {
+        preview: (value) => patchLiveGroupAttribute(previewIframeRef.current, groupId, attr, value),
+        store: (value) => syncStoredGroupAttribute(groupId, attr, value),
       }),
     [previewIframeRef],
   );

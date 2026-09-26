@@ -291,6 +291,66 @@ describe("useAutomationLanes saves report what happened", () => {
     );
   });
 
+  it("reverts a refused drag to the file after an older save failed under it", async () => {
+    let locked = false;
+    const { commit, startCommit, preview, writeProjectFile, iframe } = mountLanes(music, () =>
+      locked ? LOCKED : true,
+    );
+    const at = (v: number) => ({
+      version: 1 as const,
+      lanes: [{ target: "volume", points: [{ t: 0, v }] }],
+    });
+    let failFirst = () => {};
+    writeProjectFile.mockImplementationOnce(
+      () =>
+        new Promise<void>((_resolve, reject) => {
+          failFirst = () => reject(new Error("offline"));
+        }),
+    );
+    preview(at(0.9));
+    const older = startCommit(at(0.9));
+    await act(() => vi.waitFor(() => expect(writeProjectFile).toHaveBeenCalledTimes(1)));
+    preview(at(0.7));
+    failFirst();
+    await act(async () => {
+      await older;
+    });
+    locked = true;
+    expect(await commit(at(0.7))).toMatchObject({ status: "refused" });
+    expect(iframe.contentDocument!.getElementById("music")?.hasAttribute("data-automation")).toBe(
+      false,
+    );
+    expect(usePlayerStore.getState().elements[0]?.automation).toBeUndefined();
+  });
+
+  it("stores a save that lands after a newer live write was cancelled", async () => {
+    const { startCommit, preview, writeProjectFile, setFile } = mountLanes(music);
+    const at = (v: number) => ({
+      version: 1 as const,
+      lanes: [{ target: "volume", points: [{ t: 0, v }] }],
+    });
+    let land = () => {};
+    writeProjectFile.mockImplementationOnce(
+      (_path, content) =>
+        new Promise<void>((resolve) => {
+          land = () => {
+            setFile(content);
+            resolve();
+          };
+        }),
+    );
+    preview(at(0.5));
+    const saving = startCommit(at(0.5));
+    await act(() => vi.waitFor(() => expect(writeProjectFile).toHaveBeenCalledTimes(1)));
+    preview(at(0.9));
+    preview(at(0.5));
+    land();
+    await act(async () => {
+      await saving;
+    });
+    expect(usePlayerStore.getState().elements[0]?.automation).toBe(serializeAutomation(at(0.5)));
+  });
+
   it("settles on a queued save that lands after an earlier one fails", async () => {
     const { startCommit, preview, writeProjectFile, iframe, setFile } = mountLanes(music);
     let failFirst = () => {};

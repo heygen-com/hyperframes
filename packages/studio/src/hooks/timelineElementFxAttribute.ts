@@ -25,7 +25,7 @@ import {
   projectForTimelineSave,
   type TimelineEditOutcome,
 } from "./timelineEditPermission";
-import { syncStoredAutomationFromPreview } from "../player/lib/automationStoreSync";
+import { syncStoredElementAttribute } from "../player/lib/automationStoreSync";
 
 function patchLiveElementAttribute(
   iframe: HTMLIFrameElement | null,
@@ -128,9 +128,10 @@ export function useSetElementAttribute({
   );
   const claimLive = useCallback(
     (element: TimelineElement, attr: string) =>
-      liveLanes.current.claim(elementAttributeLiveKey(element, activeCompPath, attr), (value) => {
-        patchLiveElementAttribute(previewIframeRef.current, element, attr, value, activeCompPath);
-        syncStoredAutomationFromPreview(previewIframeRef.current?.contentDocument);
+      liveLanes.current.claim(elementAttributeLiveKey(element, activeCompPath, attr), {
+        preview: (value) =>
+          patchLiveElementAttribute(previewIframeRef.current, element, attr, value, activeCompPath),
+        store: (value) => syncStoredElementAttribute(element, attr, value),
       }),
     [previewIframeRef, activeCompPath],
   );

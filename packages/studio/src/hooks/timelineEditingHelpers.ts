@@ -411,16 +411,22 @@ export function createLiveLanes() {
       if (!before.has(key)) before.set(key, readCurrent());
       bump(key);
     },
-    // The returned call settles on `saved` (else the claimed before-value), unless a
-    // newer gesture or save has touched the lane since.
-    claim(key: string, apply: (value: string | null) => void): (saved?: string | null) => void {
+    // The returned call records what the file holds (`saved`, else the claimed value):
+    // always in the store and a live gesture's before-value, in the preview only while
+    // no newer gesture or save has touched the lane.
+    claim(
+      key: string,
+      apply: { preview: (value: string | null) => void; store: (value: string | null) => void },
+    ): (saved?: string | null) => void {
       const claimed = before.has(key) ? (before.get(key) ?? null) : undefined;
       before.delete(key);
       const mine = bump(key);
       return (saved) => {
-        if (generation.get(key) !== mine) return;
         const value = saved !== undefined ? saved : claimed;
-        if (value !== undefined) apply(value);
+        if (value === undefined) return;
+        if (before.has(key)) before.set(key, value);
+        apply.store(value);
+        if (generation.get(key) === mine) apply.preview(value);
       };
     },
   };

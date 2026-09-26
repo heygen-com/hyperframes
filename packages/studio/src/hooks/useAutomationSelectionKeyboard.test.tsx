@@ -355,6 +355,36 @@ describe("useAutomationSelectionKeyboard", () => {
     },
   );
 
+  it("does not mark a paste whose clip was left before it landed", async () => {
+    clearAutomationClipboard();
+    usePlayerStore.setState({
+      elements: [
+        { ...bgmElement, duration: 10 },
+        { ...bgmElement, id: "vo", key: "vo", duration: 10 },
+      ],
+      selectedElementId: "bgm",
+      currentTime: 1,
+    });
+    usePlayerStore
+      .getState()
+      .setAutomationSelection(wholeAxis({ elementKey: "bgm", target: "volume", t0: 2, t1: 4 }));
+    let land = () => {};
+    const onCommit = vi.fn(
+      () =>
+        new Promise<{ status: "saved" }>((resolve) => {
+          land = () => resolve({ status: "saved" });
+        }),
+    );
+    setup({ onCommit });
+    combo("c");
+    usePlayerStore.getState().clearAutomationSelection();
+    combo("v");
+    usePlayerStore.setState({ selectedElementId: "vo" });
+    land();
+    await act(async () => {});
+    expect(usePlayerStore.getState().automationSelection).toBeNull();
+  });
+
   it("chains a second Cmd+V after the first instead of overwriting it", async () => {
     // The regression this pins: paste leaves its own span selected, so anchoring
     // at sel.t0 unconditionally made every later press recompute the same atT.
