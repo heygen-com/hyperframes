@@ -213,8 +213,9 @@ export class WebAudioTransport {
   }
 
   private rest(): void {
-    if (!this._ctx || this._ctx.state !== "running" || this._suspendPending) return;
     if (this._restTimer !== null) clearTimeout(this._restTimer);
+    this._restTimer = null;
+    if (!this._ctx || this._ctx.state !== "running" || this._suspendPending) return;
     this._restTimer = setTimeout(() => {
       this._restTimer = null;
       this.suspendIfIdle();

@@ -215,6 +215,24 @@ describe("WebAudioTransport keeps its context suspended while nothing sounds", (
     expect(ctx.suspends).toBe(suspendsBefore + 1);
   });
 
+  it("drops its idle timer when the browser suspends the context itself", async () => {
+    const { transport, ctx } = await startTransport();
+    await play(transport, makeTrack());
+    transport.stopAll();
+    await vi.advanceTimersByTimeAsync(2000);
+    // An interruption outside the transport (an OS or WebKit audio session) suspends the context.
+    ctx.state = "suspended";
+    ctx.onstatechange?.();
+    let release!: () => void;
+    resumeGate = new Promise((resolve) => (release = resolve));
+    const playing = play(transport, makeTrack());
+    await vi.advanceTimersByTimeAsync(9000);
+    release();
+    await playing;
+    await vi.advanceTimersByTimeAsync(0);
+    expect(ctx.state).toBe("running");
+  });
+
   it("anchors a decoded Play to the time read after the wake", async () => {
     const { transport } = await startTransport();
     let now = 10;
