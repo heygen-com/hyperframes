@@ -244,7 +244,7 @@ export function useTimelineSyncCallbacks({
       adapter.pause();
       const startTime = seekAdapterToRestorePoint(adapter, pendingSeekRef);
       const commit = () => {
-        // Keep non-React listeners such as the capture link and time display in sync
+        // Keep non-React listeners such as the time display in sync
         // with the initial adapter seek on iframe load.
         liveTime.notify(startTime);
         syncAdapterDuration(adapter, setDuration);

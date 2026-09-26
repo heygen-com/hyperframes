@@ -477,6 +477,7 @@ export function useTimelinePlayer({
         const adapter = getAdapterRef.current?.();
         if (adapter) {
           adapter.pause();
+          setCurrentTime(adapter.getTime());
           setIsPlaying(false);
           stopRAFLoop();
         }
