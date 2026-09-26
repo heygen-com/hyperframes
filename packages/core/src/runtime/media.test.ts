@@ -1741,6 +1741,62 @@ describe("syncRuntimeMedia", () => {
     expect(clip.el.currentTime).toBe(5);
   });
 
+  describe("playing video drift", () => {
+    function playingVideoAt(currentTime: number, playbackRate = 1) {
+      const clip = createMockClip({ start: 0, end: 20, duration: 20 });
+      Object.defineProperty(clip.el, "paused", { value: false, writable: true });
+      Object.defineProperty(clip.el, "currentTime", { value: currentTime, writable: true });
+      clip.el.playbackRate = playbackRate;
+      return clip;
+    }
+    const tick = (clip: RuntimeMediaClip, timeSeconds: number, playbackRate = 1) =>
+      syncRuntimeMedia({
+        clips: [clip],
+        timeSeconds,
+        playing: true,
+        playbackRate,
+        getCompositionDuration: () => 20,
+      });
+
+    it("runs a video lagging past the sync tolerance 3% fast instead of seeking it", () => {
+      const clip = playingVideoAt(4.908);
+      tick(clip, 5);
+      tick(clip, 5);
+      expect(clip.el.playbackRate).toBeCloseTo(1.03, 9);
+      expect(clip.el.currentTime).toBe(4.908);
+    });
+
+    it("runs a video that is ahead 3% slow", () => {
+      const clip = playingVideoAt(5.3);
+      tick(clip, 5);
+      tick(clip, 5);
+      expect(clip.el.playbackRate).toBeCloseTo(0.97, 9);
+    });
+
+    it("keeps steering until the video is nearly back, then returns to the authored rate", () => {
+      const clip = playingVideoAt(4.98, 1.03);
+      tick(clip, 5);
+      expect(clip.el.playbackRate).toBeCloseTo(1.03, 9);
+      clip.el.currentTime = 4.995;
+      tick(clip, 5);
+      expect(clip.el.playbackRate).toBe(1);
+    });
+
+    it("does not start steering inside the sync tolerance", () => {
+      const clip = playingVideoAt(4.97, 2);
+      tick(clip, 5, 2);
+      tick(clip, 5, 2);
+      expect(clip.el.playbackRate).toBe(2);
+    });
+
+    it("scales the steer with the transport rate", () => {
+      const clip = playingVideoAt(4.908, 2);
+      tick(clip, 5, 2);
+      tick(clip, 5, 2);
+      expect(clip.el.playbackRate).toBeCloseTo(2.06, 9);
+    });
+  });
+
   // A seek while playing pauses and syncs in one pass, before the video element has paused.
   it("a seek that pauses mid-playback lands a lagging playing video on the new time", () => {
     const clip = createMockClip({ start: 3.85, end: 5.6, duration: 1.75 });

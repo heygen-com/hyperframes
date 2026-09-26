@@ -247,6 +247,27 @@ export function hasMediaSyncStateForTest(el: HTMLMediaElement): boolean {
   );
 }
 
+/** Drift a playing audio element may carry before sync pulls it back onto the playhead. */
+export const MEDIA_SYNC_TOLERANCE_SECONDS = 0.04;
+
+/**
+ * A playing video cannot be seeked back into sync without resetting its
+ * decoder, so drift past the sync tolerance is closed by running it a few
+ * percent fast or slow (pitch is preserved) until it is nearly back. The rate
+ * changes only when steering starts or stops: every rate write costs a frame.
+ */
+const VIDEO_STEER = 0.03;
+const VIDEO_STEER_RELEASE_SECONDS = 0.01;
+
+/** Rate for a playing video `offset` seconds behind (+) or ahead (-) of the playhead. */
+function steeredVideoRate(offset: number, currentRate: number, baseRate: number): number {
+  const direction = Math.sign(offset);
+  const steered = baseRate * (1 + direction * VIDEO_STEER);
+  if (Math.abs(offset) > MEDIA_SYNC_TOLERANCE_SECONDS) return steered;
+  const stillSteering = Math.abs(currentRate - steered) < 1e-9;
+  return stillSteering && Math.abs(offset) > VIDEO_STEER_RELEASE_SECONDS ? steered : baseRate;
+}
+
 // fallow-ignore-next-line complexity
 export function syncRuntimeMedia(params: {
   clips: RuntimeMediaClip[];
@@ -427,13 +448,8 @@ export function syncRuntimeMedia(params: {
       // (no-op when already "auto") and catches elements whose preload
       // was overridden after init.ts set it.
       if (el.preload !== "auto") el.preload = "auto";
-      try {
-        // Per-element rate × global transport rate
-        el.playbackRate = rateAt(clipRate, params.timeSeconds - clip.start) * params.playbackRate;
-      } catch (err) {
-        // ignore unsupported playbackRate
-        swallow("runtime.media.site1", err);
-      }
+      // Per-element rate × global transport rate
+      const baseRate = rateAt(clipRate, params.timeSeconds - clip.start) * params.playbackRate;
       // Drift correction — three tiers:
       //
       // 1. Hard sync (0.5s): first tick, timeline jumps (scrub), catastrophic
@@ -452,7 +468,6 @@ export function syncRuntimeMedia(params: {
       // The first tick a clip is active has no previous offset to compare —
       // treated as hard resync so sub-compositions with non-zero mediaStart
       // land on the right frame.
-      const STRICT_DRIFT_THRESHOLD = 0.04;
       const STRICT_REQUIRED_SAMPLES = 2;
 
       const currentElTime = el.currentTime || 0;
@@ -469,7 +484,7 @@ export function syncRuntimeMedia(params: {
       const staleAudioOnFirstTick =
         el.tagName === "AUDIO" &&
         firstTickOfClip &&
-        currentElTime - relTime > STRICT_DRIFT_THRESHOLD;
+        currentElTime - relTime > MEDIA_SYNC_TOLERANCE_SECONDS;
       const hardSync =
         (isHeldVideoTail && drift > 0.001) ||
         (el.ended && canSeekEndedMediaBackward && drift > 0.001) ||
@@ -492,7 +507,7 @@ export function syncRuntimeMedia(params: {
         !hardSync &&
         !firstTickOfClip &&
         offsetStabilized &&
-        drift > STRICT_DRIFT_THRESHOLD
+        drift > MEDIA_SYNC_TOLERANCE_SECONDS
       ) {
         const samples = (strictDriftSamples.get(el) ?? 0) + 1;
         strictDriftSamples.set(el, samples);
@@ -500,10 +515,17 @@ export function syncRuntimeMedia(params: {
           strictSync = true;
           strictDriftSamples.set(el, 0);
         }
-      } else if (drift <= STRICT_DRIFT_THRESHOLD) {
+      } else if (drift <= MEDIA_SYNC_TOLERANCE_SECONDS) {
         strictDriftSamples.set(el, 0);
       }
       const forceSync = !isPlayingVideo && params.forceSync && drift > 0.02;
+      try {
+        const rate = isPlayingVideo ? steeredVideoRate(offset, el.playbackRate, baseRate) : baseRate;
+        if (el.playbackRate !== rate) el.playbackRate = rate;
+      } catch (err) {
+        // ignore unsupported playbackRate
+        swallow("runtime.media.site1", err);
+      }
       if (hardSync || strictSync || forceSync) {
         // Skip the per-tick seek (and the `el.load()` drift-recovery retry
         // below) for `<video>` elements that have a sibling
