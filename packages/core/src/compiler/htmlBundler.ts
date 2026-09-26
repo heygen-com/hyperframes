@@ -32,7 +32,7 @@ import {
 import { validateHyperframeHtmlContract } from "./staticGuard";
 import { getHyperframeRuntimeScript } from "../generated/runtime-inline";
 import { readDeclaredDefaults } from "../runtime/getVariables";
-import { inlineSubCompositions, refuseSwapsHeldByRootScripts } from "./inlineSubCompositions";
+import { inlineSubCompositions, refuseSwapsReachedByRootScripts } from "./inlineSubCompositions";
 import { queryByAttr } from "../utils/cssSelector";
 import { isSafePath, resolveWithinProject } from "../safePath.js";
 import { ensureHfIds } from "@hyperframes/parsers/hf-ids";
@@ -1005,15 +1005,18 @@ export async function bundleToSingleHtml(
     }
   }
 
-  // Read before sub-compositions add theirs: only the root's own scripts can hold scene nodes across a swap.
+  // Read before sub-compositions add theirs: only the root's own scripts, inline templates included, can reach into scenes.
   const rootScripts = options?.sceneParts
-    ? [...document.querySelectorAll(`script:not([${RUNTIME_BOOTSTRAP_ATTR}])`)]
-        .filter((el) => !el.closest("template"))
-        .map((el) => {
-          const src = el.getAttribute("src");
-          const path = src && isRelativeUrl(src) ? resolveEntryPath(src) : null;
-          return src ? (path && safeReadFile(path)) || "" : el.textContent || "";
-        })
+    ? [
+        ...document.querySelectorAll(`script:not([${RUNTIME_BOOTSTRAP_ATTR}])`),
+        ...[...document.querySelectorAll("template")].flatMap((t) => [
+          ...(t as HTMLTemplateElement).content.querySelectorAll("script"),
+        ]),
+      ].map((el) => {
+        const src = el.getAttribute("src");
+        const path = src && isRelativeUrl(src) ? resolveEntryPath(src) : null;
+        return src ? (path && safeReadFile(path)) || "" : el.textContent || "";
+      })
     : [];
 
   // Inline sub-compositions (via shared function)
@@ -1051,7 +1054,7 @@ export async function bundleToSingleHtml(
       );
     },
   });
-  refuseSwapsHeldByRootScripts(document, rootScripts);
+  refuseSwapsReachedByRootScripts(document, rootScripts);
   const styleRuns: PartRun<string>[] = [];
   subCompResult.styles.forEach((css, i) => pushRun(styleRuns, subCompResult.styleScenes[i], css));
   const scriptRuns: PartRun<DeferredScriptChunk>[] = [];

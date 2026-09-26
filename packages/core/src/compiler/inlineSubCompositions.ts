@@ -52,17 +52,31 @@ function sceneScriptSwapRefusal(script: string): string | null {
   return match ? `its script uses ${match[0].trim()}` : null;
 }
 
-// A listener, observer or loop outside the scenes can hold a scene's old nodes after a swap.
-const HOLDS_SCENE_NODES_RE =
-  /\b(addEventListener|\w*Observer|setInterval|requestAnimationFrame)\b|\.on[a-z]+\s*=(?!=)/;
+// A quoted string in a script, in any of the three quote styles.
+const STRING_LITERAL_RE = /(["'`])((?:\\.|(?!\1)[^\\\n])*?)\1/g;
 
-/** Marks every scene not swappable when a script outside them can hold their nodes. */
-export function refuseSwapsHeldByRootScripts(document: Document, rootScripts: string[]): void {
-  const match = rootScripts.map((script) => HOLDS_SCENE_NODES_RE.exec(script)).find(Boolean);
-  if (!match) return;
-  for (const host of document.querySelectorAll(`[${SCENE_PART_ATTR}]:not([${SCENE_NO_SWAP_ATTR}])`))
-    host.setAttribute(SCENE_NO_SWAP_ATTR, `a script outside the scenes uses ${match[0].trim()}`);
+/** Marks each scene whose nodes a script outside it names by selector, id or class: a swap would strand it. */
+export function refuseSwapsReachedByRootScripts(document: Document, rootScripts: string[]): void {
+  const hosts = [...document.querySelectorAll(`[${SCENE_PART_ATTR}]`)];
+  for (const [, , literal = ""] of rootScripts.flatMap((s) => [...s.matchAll(STRING_LITERAL_RE)])) {
+    const bare = /^[A-Za-z_][\w-]*$/.test(literal);
+    for (const el of (bare ? [`#${literal}`, `.${literal}`] : [literal]).flatMap(
+      queryAllOrNone(document),
+    )) {
+      const host = hosts.find((h) => h.contains(el));
+      if (host && !host.hasAttribute(SCENE_NO_SWAP_ATTR))
+        host.setAttribute(SCENE_NO_SWAP_ATTR, `a script outside the scene selects ${literal}`);
+    }
+  }
 }
+
+const queryAllOrNone = (root: ParentNode) => (selector: string) => {
+  try {
+    return [...root.querySelectorAll(selector)];
+  } catch {
+    return [];
+  }
+};
 
 // ---------------------------------------------------------------------------
 // Public interface

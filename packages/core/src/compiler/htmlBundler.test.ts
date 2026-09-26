@@ -2176,31 +2176,67 @@ describe("bundleToSingleHtml sceneParts", () => {
     expect(rendered).not.toContain("data-hf-scene-no-swap");
   });
 
-  it.each([
-    ["inline", `<script>BIND</script>`, {}],
-    ["in a local file", `<script src="root.js"></script>`, { "root.js": "BIND" }],
-  ])(
-    "marks every scene not swappable when a script outside them, %s, binds a listener",
-    async (_, tag, extra) => {
-      const bind = `document.querySelector(".go").addEventListener("click", () => {});`;
-      const dir = makeTempProject({
-        "index.html": `<!doctype html><html><head></head><body>
+  const rootProject = (root: string, extra: Record<string, string> = {}) =>
+    makeTempProject({
+      "index.html": `<!doctype html><html><head></head><body>
   <div data-composition-id="main" data-width="1920" data-height="1080" data-duration="2">
     <div data-composition-id="a" data-composition-src="compositions/a.html" data-start="0" data-duration="1"></div>
     <div data-composition-id="b" data-composition-src="compositions/b.html" data-start="1" data-duration="1"></div>
-  </div>${tag.replace("BIND", bind)}</body></html>`,
-        ...Object.fromEntries(Object.entries(extra).map(([k, v]) => [k, v.replace("BIND", bind)])),
-        "compositions/a.html": `<template id="a-template"><div data-composition-id="a"><button class="go">Go</button></div></template>`,
-        "compositions/b.html": `<template id="b-template"><div data-composition-id="b"><p>B</p></div></template>`,
-      });
-      const doc = parseHTML(await bundleToSingleHtml(dir, { sceneParts: true })).document;
-      for (const id of ["a", "b"]) {
-        expect(
-          doc.querySelector(`div[data-hf-scene="${id}"]`)?.getAttribute("data-hf-scene-no-swap"),
-        ).toBe("a script outside the scenes uses addEventListener");
-      }
-    },
-  );
+  </div>${root}</body></html>`,
+      "compositions/a.html": `<template id="a-template"><div data-composition-id="a"><button class="go">Go</button><span id="count">0</span></div></template>`,
+      "compositions/b.html": `<template id="b-template"><div data-composition-id="b"><p>B</p></div></template>`,
+      ...extra,
+    });
+  const swapMarks = async (dir: string) => {
+    const doc = parseHTML(await bundleToSingleHtml(dir, { sceneParts: true })).document;
+    return ["a", "b"].map((id) =>
+      doc.querySelector(`div[data-hf-scene="${id}"]`)?.getAttribute("data-hf-scene-no-swap"),
+    );
+  };
+
+  it.each([
+    [
+      "binds a listener, inline",
+      `<script>document.querySelector(".go").addEventListener("click", () => {});</script>`,
+      {},
+      ".go",
+    ],
+    [
+      "binds a listener from a local file",
+      `<script src="root.js"></script>`,
+      { "root.js": `document.querySelector(".go").onclick = () => {};` },
+      ".go",
+    ],
+    [
+      "tweens a scene node from the root timeline",
+      `<script>gsap.timeline({ paused: true }).to("#count", { opacity: 0 }, 1);</script>`,
+      {},
+      "#count",
+    ],
+    [
+      "updates a scene node from a timer",
+      `<script>setTimeout(function tick() { document.getElementById("count").textContent++; setTimeout(tick, 100); }, 100);</script>`,
+      {},
+      "count",
+    ],
+    [
+      "binds a listener from an inline template's script",
+      `<template id="t-template"><div data-composition-id="t"><script>document.querySelector(".go").addEventListener("click", () => {});</script></div></template><div data-composition-id="t" data-start="0" data-duration="1"></div>`,
+      {},
+      ".go",
+    ],
+  ])("marks the scene a script outside it reaches when it %s", async (_, root, extra, selected) => {
+    expect(await swapMarks(rootProject(root, extra))).toEqual([
+      `a script outside the scene selects ${selected}`,
+      null,
+    ]);
+  });
+
+  it("keeps scenes swappable when a script outside them never names their nodes", async () => {
+    const root = `<script>document.addEventListener("click", () => {}); requestAnimationFrame(() => {});</script>
+  <script type="application/json">{"note": "addEventListener"}</script>`;
+    expect(await swapMarks(rootProject(root))).toEqual([null, null]);
+  });
 
   it("runs a scene's local script file in source order with its inline scripts, as a render does", async () => {
     const dir = makeTempProject({
