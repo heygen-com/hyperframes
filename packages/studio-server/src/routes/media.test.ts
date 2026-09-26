@@ -1,7 +1,15 @@
 // fallow-ignore-file code-duplication
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { Hono } from "hono";
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import {
+  mkdirSync,
+  mkdtempSync,
+  readdirSync,
+  readFileSync,
+  rmSync,
+  symlinkSync,
+  writeFileSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { registerMediaRoutes } from "./media";
@@ -117,6 +125,34 @@ describe("registerMediaRoutes", () => {
     expect(response.status).toBe(501);
   });
 
+  // Windows needs a privilege to create symlinks.
+  it.skipIf(process.platform === "win32")(
+    "writes background-removal output to the folder it checked, though a link on its path is retargeted",
+    async () => {
+      const outside = mkdtempSync(join(tmpdir(), "hf-media-outside-"));
+      tempProjectDirs.push(outside);
+      let dir = "";
+      const { app, projectDir } = createAdapter((opts) => {
+        rmSync(join(dir, "cutouts"));
+        symlinkSync(outside, join(dir, "cutouts"), "dir");
+        writeFileSync(opts.outputPath, "cutout");
+        return completeJob(opts);
+      });
+      dir = projectDir;
+      mkdirSync(join(projectDir, "real"));
+      symlinkSync(join(projectDir, "real"), join(projectDir, "cutouts"), "dir");
+
+      await app.request("http://localhost/projects/demo/media/remove-background", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ inputPath: "assets/photo.jpg", outputPath: "cutouts/photo.png" }),
+      });
+
+      expect(readdirSync(outside)).toEqual([]);
+      expect(readFileSync(join(projectDir, "real", "photo.png"), "utf-8")).toBe("cutout");
+    },
+  );
+
   it("rejects remote input paths", async () => {
     const { app, startBackgroundRemoval } = createAdapter(completeJob);
 
@@ -183,6 +219,62 @@ describe("registerMediaRoutes", () => {
         jobId: data.jobId,
       }),
     );
+  });
+
+  it("gives a second removal of the same clip its own output names while the first still runs", async () => {
+    const { app } = createAdapter((opts) => ({
+      ...completeJob(opts),
+      status: "processing" as const,
+      backgroundOutputAssetPath: opts.backgroundOutputAssetPath,
+    }));
+    const start = async () =>
+      (await (
+        await app.request("http://localhost/projects/demo/media/remove-background", {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ inputPath: "assets/clip.mp4", createBackgroundPlate: true }),
+        })
+      ).json()) as { outputPath: string; backgroundOutputPath: string };
+
+    const [first, second] = [await start(), await start()];
+    expect([first.outputPath, second.outputPath]).toEqual([
+      "assets/cutouts/clip-cutout.webm",
+      "assets/cutouts/clip-cutout-2.webm",
+    ]);
+    expect(second.backgroundOutputPath).toBe("assets/cutouts/clip-plate-2.webm");
+  });
+
+  it.each([
+    [
+      "an explicit output spelled another way",
+      { outputPath: "assets//cutouts/clip-cutout.webm" },
+      "clip-cutout-2.webm",
+    ],
+    [
+      "a plate asked for under the cutout's own name",
+      { outputPath: "assets/cutouts/clip-plate.webm" },
+      "clip-plate-2.webm",
+    ],
+  ])("never gives two outputs one name: %s", async (_, extra, plate) => {
+    const { app } = createAdapter((opts) => ({
+      ...completeJob(opts),
+      status: "processing" as const,
+      backgroundOutputAssetPath: opts.backgroundOutputAssetPath,
+    }));
+    const start = async (body: object) =>
+      (await (
+        await app.request("http://localhost/projects/demo/media/remove-background", {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ inputPath: "assets/clip.mp4", ...body }),
+        })
+      ).json()) as { outputPath: string; backgroundOutputPath?: string };
+
+    const first = await start({});
+    const second = await start({ ...extra, createBackgroundPlate: true });
+    const names = [first.outputPath, second.outputPath, second.backgroundOutputPath];
+    expect(new Set(names).size).toBe(3);
+    expect(names.join(" ")).toContain(plate);
   });
 
   it("normalizes query strings from local media paths", async () => {
