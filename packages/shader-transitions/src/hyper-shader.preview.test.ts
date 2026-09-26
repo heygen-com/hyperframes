@@ -118,14 +118,15 @@ describe("preview outside a transition", () => {
     await prewarmDone();
 
     tl.time(4.2);
+    expect((document.getElementById("s1") as HTMLElement).style.opacity).toBe("0");
     tl.time(1, true);
     expect(visibilityOf(["s1"])).not.toEqual(["hidden"]);
   });
 
-  it("keeps seeking after a timeline callback throws during the prewarm's restore seek", async () => {
+  it("finishes the prewarm and keeps seeking after a timeline callback throws while it restores", async () => {
     stubGsap();
     stubWebGl();
-    vi.spyOn(console, "warn").mockImplementation(() => {});
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
     mountScenes(["s4", "s5"]);
     const tl = init({
       bgColor: "#000",
@@ -142,11 +143,15 @@ describe("preview outside a transition", () => {
     );
     let hits = 0;
     tl.call(() => (hits += 1), null, 3);
-    await prewarmDone().catch(() => {});
+    await prewarmDone();
     throwing = false;
     hits = 0;
 
     tl.time(3.5);
     expect(hits).toBe(1);
+    expect(warn).toHaveBeenCalledWith(
+      expect.stringContaining("restoring the playhead"),
+      expect.objectContaining({ message: "author callback" }),
+    );
   });
 });

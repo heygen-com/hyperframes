@@ -2167,9 +2167,10 @@ export function init(config: HyperShaderConfig): GsapTimeline {
           suppressSceneMutationTracking(() => {
             setActualTimelineTime(restoreTimelineTime, false);
           });
-        } finally {
-          prewarming = false;
+        } catch (e) {
+          console.warn("[HyperShader] A timeline callback failed while restoring the playhead:", e);
         }
+        prewarming = false;
         publicTimelineTime = restoreTimelineTime;
         for (const item of originalSceneStyles) {
           if (!item.scene) continue;
