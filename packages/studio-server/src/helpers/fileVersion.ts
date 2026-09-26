@@ -5,7 +5,7 @@ export interface FileWriteReceipt {
   path: string;
   version: string;
   writeToken: string;
-  overwrote?: string;
+  overwrote?: string | Uint8Array;
 }
 
 interface StoredReceipt extends FileWriteReceipt {
@@ -52,11 +52,13 @@ export function createWriteToken(requestToken?: string): string {
 export function recordFileWriteReceipt(filePath: string, receipt: FileWriteReceipt): void {
   const absPath = realFilePath(filePath);
   const now = Date.now();
-  const current = (receipts.get(absPath) ?? []).filter(
-    (entry) => now - entry.recordedAt < RECEIPT_TTL_MS,
-  );
-  current.push({ ...receipt, recordedAt: now });
-  receipts.set(absPath, current);
+  // Every path's expired receipts go, not just this one's: a receipt can hold a whole file's bytes.
+  for (const [path, list] of receipts) {
+    const live = list.filter((entry) => now - entry.recordedAt < RECEIPT_TTL_MS);
+    if (live.length > 0) receipts.set(path, live);
+    else receipts.delete(path);
+  }
+  receipts.set(absPath, [...(receipts.get(absPath) ?? []), { ...receipt, recordedAt: now }]);
 }
 
 export function clearFileWriteReceipt(filePath: string, version: string, writeToken: string): void {
@@ -87,7 +89,10 @@ export function identifyFileWrite(
 }
 
 /** The bytes the API write of `version` replaced, while its receipt lives. */
-export function bytesOverwrittenBy(filePath: string, version: string): string | undefined {
+export function bytesOverwrittenBy(
+  filePath: string,
+  version: string,
+): string | Uint8Array | undefined {
   return newestReceipt(realFilePath(filePath), version)?.overwrote;
 }
 

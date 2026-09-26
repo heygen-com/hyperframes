@@ -17,6 +17,7 @@ import { replaceFileAtomically } from "../helpers/atomicFile.js";
 import {
   bytesOverwrittenBy,
   DELETED_VERSION,
+  fileContentVersion,
   hashOfVersion,
   hashVersion,
   recordFileWriteReceipt,
@@ -508,22 +509,33 @@ class Engine {
     );
     const others = this.windows.filter((open) => !sameWho(open.who, who));
     const groups = this.outside ? [this.outside, ...others] : others;
-    const taken: HistoryFileChange[] = [];
-    for (const group of groups) {
-      for (const change of [...group.changes.values()]) {
-        if (!wanted.has(change.path)) continue;
-        const cut = (await this.overwrittenBy(change)) ?? at.get(change.path);
-        const claimed = this.cutOut(group, change, cut);
-        if (claimed) taken.push(claimed);
-      }
+    const hits = groups.flatMap((group) =>
+      [...group.changes.values()]
+        .filter((change) => wanted.has(change.path))
+        .map((change) => ({ group, change })),
+    );
+    // Every cut is stored before any change is cut, so a failed store leaves the groups whole.
+    const cuts: Array<string | undefined> = [];
+    for (const { change } of hits) {
+      const told = at.get(change.path);
+      cuts.push((await this.overwrittenBy(change, told)) ?? told);
     }
-    return taken;
+    return hits.flatMap(({ group, change }, i) => this.cutOut(group, change, cuts[i]) ?? []);
   }
 
-  /** What the server's own write of `change.after` replaced, from its receipt, stored so an undo can restore it. */
-  async overwrittenBy(change: HistoryFileChange): Promise<string | undefined> {
-    if (!change.after) return undefined;
-    const bytes = bytesOverwrittenBy(join(this.dir, change.path), hashVersion(change.after));
+  /** Walks the server's own writes back from `change.after` to the bytes they replaced, stored so an undo restores them. */
+  async overwrittenBy(change: HistoryFileChange, told: string | undefined) {
+    const absPath = join(this.dir, change.path);
+    const seen = new Set<string>();
+    let bytes: string | Uint8Array | undefined;
+    for (let hash = change.after; hash && !seen.has(hash); ) {
+      seen.add(hash);
+      const replaced = bytesOverwrittenBy(absPath, hashVersion(hash));
+      if (replaced === undefined) break;
+      bytes = replaced;
+      hash = hashOfVersion(fileContentVersion(replaced))!;
+      if (hash === change.before || hash === told) return hash;
+    }
     if (bytes === undefined) return undefined;
     const staged = join(this.home, `overwrote-${randomUUID()}`);
     await writeFile(staged, bytes);
@@ -631,7 +643,11 @@ class Engine {
     let folded = false;
     while (this.historyBytes() > budget && foldOldest(this.log)) {
       folded = true;
-      await this.blobs.prune(referencedHashes(this.log, this.manifest()));
+      const keep = referencedHashes(this.log, this.manifest());
+      for (const group of [...this.windows, this.outside, this.claimed?.group])
+        for (const change of group?.changes.values() ?? [])
+          for (const hash of [change.before, change.after]) if (hash) keep.add(hash);
+      await this.blobs.prune(keep);
     }
     if (folded) writeLog(this.logFile, this.log);
   }

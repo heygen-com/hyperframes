@@ -18,7 +18,7 @@ import { spawnSync } from "node:child_process";
 import { tmpdir } from "node:os";
 import { basename, dirname, join, relative } from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { fileContentVersion } from "../helpers/fileVersion";
+import { fileContentVersion, recordFileWriteReceipt } from "../helpers/fileVersion";
 import { HistoryBusyError } from "./ownerLock";
 import { openProjectHistory, type ProjectHistory } from "./projectHistory";
 import { START, type HistoryWho } from "./historyLog";
@@ -845,6 +845,33 @@ describe("openProjectHistory", () => {
       ["Changed outside the app", "outside"],
     ]);
     expect((await window.close())?.id).toBe(window.id);
+  });
+
+  it("keeps the bytes a claim cut at through a budget fold that runs before they are logged", async () => {
+    const saved = "B".repeat(3000);
+    const { history, write, read, projectDir } = await project(
+      { "index.html": "a", "other.html": "o" },
+      { budgetBytes: 2000 },
+    );
+    await change(history, you, "Old", () => write("other.html", "o2"));
+    history.pin((await change(history, you, "Pinned", () => write("other.html", "o3"))).id, true);
+    write("other.html", "o4");
+    await history.claim(you, "Drag", ["other.html"], { coalesceKey: "drag" });
+    // Studio's write of `edited` replaced a save it never read.
+    const edited = `${saved}!`;
+    write("index.html", edited);
+    recordFileWriteReceipt(join(projectDir, "index.html"), {
+      path: "index.html",
+      version: fileContentVersion(edited),
+      writeToken: "studio",
+      overwrote: saved,
+    });
+
+    const edit = await history.claim(you, "Edit", ["index.html"], {
+      overwrote: { "index.html": fileContentVersion("a") },
+    });
+    expect((await history.undo(edit!.id, { who: you })).ok).toBe(true);
+    expect(read("index.html")).toBe(saved);
   });
 
   it("keeps the history of a small edit in a project larger than its budget", async () => {

@@ -490,29 +490,19 @@ function commitElementPatchBatchesWithReceipts(
  * the stage for a few hundred milliseconds right after the user typed. Every
  * mutation route records through here so no route can forget.
  */
-function recordMutationReceipt(
-  c: RouteContext,
-  filePath: string,
-  absPath: string,
-  html: string,
-  overwrote?: string,
-): { version: string; writeToken: string } {
-  const version = fileContentVersion(html);
-  const writeToken = createWriteToken(c.req.header("X-Hyperframes-Write-Token"));
-  recordFileWriteReceipt(absPath, { path: filePath, version, writeToken, overwrote });
-  return { version, writeToken };
-}
-
 function writeFileWithReceipt(
   c: RouteContext,
   filePath: string,
   absPath: string,
   html: string,
 ): { version: string; writeToken: string } {
-  const overwrote = readFileSync(absPath, "utf-8");
+  const overwrote = readFileSync(absPath);
   replaceFileAtomically(absPath, html, statSync(absPath).mode);
   // The synchronous write cannot yield before its receipt is recorded; keep this block await-free.
-  return recordMutationReceipt(c, filePath, absPath, html, overwrote);
+  const version = fileContentVersion(html);
+  const writeToken = createWriteToken(c.req.header("X-Hyperframes-Write-Token"));
+  recordFileWriteReceipt(absPath, { path: filePath, version, writeToken, overwrote });
+  return { version, writeToken };
 }
 
 function writeMutationResult(
@@ -2432,6 +2422,7 @@ export function registerFileRoutes(api: Hono, adapter: StudioApiAdapter): void {
     }
 
     let backup: ReturnType<typeof snapshotBeforeWrite> = { backupPath: null };
+    let overwrote: Buffer | undefined;
     if (createOnly) {
       ensureDir(res.absPath);
       let fd: number;
@@ -2477,6 +2468,7 @@ export function registerFileRoutes(api: Hono, adapter: StudioApiAdapter): void {
       }
       try {
         const currentContent = readFileSync(fd);
+        overwrote = currentContent;
         const currentVersion = fileContentVersion(currentContent);
         if (expectedVersion !== currentVersion) {
           return c.json(
@@ -2501,7 +2493,7 @@ export function registerFileRoutes(api: Hono, adapter: StudioApiAdapter): void {
     }
     const version = fileContentVersion(body);
     const writeToken = createWriteToken(c.req.header("X-Hyperframes-Write-Token"));
-    recordFileWriteReceipt(res.absPath, { path: res.filePath, version, writeToken });
+    recordFileWriteReceipt(res.absPath, { path: res.filePath, version, writeToken, overwrote });
     c.header("ETag", version);
 
     return c.json({
