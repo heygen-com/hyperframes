@@ -687,13 +687,13 @@ class Engine {
   inTheWay(path: string, deleted: ReadonlySet<string>): string | undefined {
     const standing = this.standingAt(path);
     if (!standing) return undefined;
-    if (standing.at !== path) return deleted.has(standing.at) ? undefined : standing.at;
-    if (standing.stat.isSymbolicLink()) return path;
-    if (!standing.stat.isDirectory()) return undefined;
-    // On-disk names, so a folder `a` found at `A` on a case-insensitive disk matches its tracked files.
-    const folder = realpathSync.native(join(this.dir, path));
-    const at = relative(realpathSync.native(this.dir), folder).split(sep).join("/");
-    return fileLeftIn(folder, at, deleted);
+    if (standing.stat.isSymbolicLink()) return standing.at;
+    if (standing.at === path && !standing.stat.isDirectory()) return undefined;
+    // On-disk names, so an entry `a` found at `A` on a case-insensitive disk matches its tracked paths.
+    const real = realpathSync.native(join(this.dir, standing.at));
+    const at = relative(realpathSync.native(this.dir), real).split(sep).join("/");
+    if (standing.at !== path) return deleted.has(at) ? undefined : at;
+    return fileLeftIn(real, at, deleted);
   }
 
   /** Writes `target` (path to hash, null deletes) as one entry of `who`'s. */
@@ -703,12 +703,11 @@ class Engine {
     target: Map<string, string | null>,
     extra: Partial<HistoryEntry>,
   ): Promise<HistoryEntry | null> {
-    const deleted = new Set(
-      [...target]
-        .filter(([path, hash]) => hash === null && this.tracked.has(path))
-        .map(([path]) => path),
-    );
-    const blocked = [...target]
+    const changes = [...target]
+      .filter(([path, hash]) => (this.tracked.get(path)?.hash ?? null) !== hash)
+      .sort(([, a], [, b]) => Number(a !== null) - Number(b !== null));
+    const deleted = new Set(changes.filter(([, hash]) => hash === null).map(([path]) => path));
+    const blocked = changes
       .filter(([, hash]) => hash !== null)
       .map(([path]) => this.inTheWay(path, deleted))
       .find(Boolean);
@@ -716,13 +715,7 @@ class Engine {
     const group = this.newGroup(who, label);
     this.windows.push(group);
     try {
-      const deletionsFirst = [...target].sort(
-        ([, a], [, b]) => Number(a !== null) - Number(b !== null),
-      );
-      for (const [path, hash] of deletionsFirst) {
-        if ((this.tracked.get(path)?.hash ?? null) !== hash)
-          await this.writeProjectFile(path, hash);
-      }
+      for (const [path, hash] of changes) await this.writeProjectFile(path, hash);
       await this.sweep();
     } finally {
       this.windows = this.windows.filter((open) => open !== group);

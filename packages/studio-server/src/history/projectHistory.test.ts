@@ -399,17 +399,28 @@ describe("openProjectHistory", () => {
     },
   );
 
-  it.skipIf(!caseInsensitive())("undoes a turn that turned file A into folder a/", async () => {
-    const { history, projectDir, read } = await project({ A: "file" });
-    const turn = await change(history, agent, "Agent turn", () => {
-      rmSync(join(projectDir, "A"));
-      mkdirSync(join(projectDir, "a"));
-      writeFileSync(join(projectDir, "a", "b.html"), "b");
-    });
+  it.skipIf(!caseInsensitive())(
+    "undoes and redoes a turn that turned file A into folder a/, and undoes the reverse",
+    async () => {
+      const { history, projectDir, read } = await project({ A: "file" });
+      const turn = await change(history, agent, "Agent turn", () => {
+        rmSync(join(projectDir, "A"));
+        mkdirSync(join(projectDir, "a"));
+        writeFileSync(join(projectDir, "a", "b.html"), "b");
+      });
 
-    expect((await history.undo(turn.id, { who: you })).ok).toBe(true);
-    expect(read("A")).toBe("file");
-  });
+      const undone = await history.undo(turn.id, { who: you });
+      expect(undone.ok && read("A")).toBe("file");
+      const redone = await history.undo(undone.ok ? undone.entry!.id : "", { who: you });
+      expect(redone.ok && read("a/b.html")).toBe("b");
+      const reverse = await change(history, agent, "Reverse turn", () => {
+        rmSync(join(projectDir, "a"), { recursive: true });
+        writeFileSync(join(projectDir, "A"), "file");
+      });
+      const reversed = await history.undo(reverse.id, { who: you });
+      expect(reversed.ok && read("a/b.html")).toBe("b");
+    },
+  );
 
   it("logs a folder moved over an agent's file after its turn idled out as the outside's, however old its files", async () => {
     const { history, projectDir } = await project({ a: "file" });
