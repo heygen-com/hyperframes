@@ -52,6 +52,17 @@ async function evaluateRuntime(): Promise<void> {
 }
 
 const visibility = (...els: HTMLElement[]) => els.map((el) => getComputedStyle(el).visibility);
+const contentSkipped = (...els: HTMLElement[]) =>
+  els.map((el) =>
+    Array.from(document.styleSheets).some((sheet) =>
+      Array.from(sheet.cssRules).some(
+        (rule) =>
+          rule instanceof CSSStyleRule &&
+          rule.style.getPropertyValue("content-visibility") === "hidden" &&
+          el.matches(rule.selectorText),
+      ),
+    ),
+  );
 
 describe("runtime entry", () => {
   afterEach(() => {
@@ -86,6 +97,7 @@ describe("runtime entry", () => {
     await evaluateRuntime();
     expect(window.__player).toBeUndefined();
     expect(visibility(current, later)).toEqual(["hidden", "hidden"]);
+    expect(contentSkipped(current, later, poster)).toEqual([true, true, false]);
 
     delete (document as { readyState?: unknown }).readyState;
     document.dispatchEvent(new Event("DOMContentLoaded"));
@@ -96,6 +108,19 @@ describe("runtime entry", () => {
     window.dispatchEvent(new CustomEvent("hf-timelines-built"));
     expect(window.__renderReady).toBe(true);
     expect(visibility(current, later, poster)).toEqual(["visible", "hidden", "visible"]);
+  });
+
+  it("skips the content of each hidden clip not due within the look-ahead, until something shows it", async () => {
+    const root = mountRoot();
+    const current = timed(root, "div", "0");
+    const soon = timed(root, "div", "1.5");
+    const later = timed(root, "div", "5");
+
+    await evaluateRuntime();
+    expect(contentSkipped(current, soon, later)).toEqual([false, false, true]);
+    // How Studio's layer reveal shows a hidden clip.
+    later.style.visibility = "visible";
+    expect(contentSkipped(later)).toEqual([false]);
   });
 
   it("leaves nothing hidden when the runtime is evaluated a second time", async () => {
