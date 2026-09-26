@@ -220,3 +220,26 @@ describe("htmlDocument helpers", () => {
     expect(insertBeforeCloseTag('<div><script>"</head>"</script></div>', "head", "x")).toBeNull();
   });
 });
+
+describe("injectTagsAtHeadStart on long adversarial input", () => {
+  const M = 2_000_000;
+  it.each([
+    ["an unclosed double quote", `<html data-x="${"a".repeat(M)}`],
+    ["an unclosed single quote", `<html data-x='${"a".repeat(M)}`],
+    ["many quoted values", `<html ${'"a" '.repeat(M / 4)}`],
+    ["many <", "<".repeat(M)],
+    ["many <html>", "<html>".repeat(M / 6)],
+    ["many comments", `${"<!--x-->".repeat(M / 8)}<head>`],
+    ["an unclosed comment", `<!--${"a".repeat(M)}`],
+    ["an unclosed comment of <", `<!--${"<".repeat(M)}`],
+    ["an unclosed comment of quotes", `<!--${'"'.repeat(M)}`],
+    ["alternating quotes", `<html ${`"'`.repeat(M / 2)}`],
+    ["leading spaces", `${" ".repeat(M)}x`],
+    ["a tag that never closes", `<html ${"a ".repeat(M / 2)}`],
+    ["an unclosed tag name", `<${"a".repeat(M)}`],
+  ])("stays fast on %s", (_, html) => {
+    const started = performance.now();
+    injectTagsAtHeadStart(html, "<meta>");
+    expect(performance.now() - started).toBeLessThan(1500);
+  });
+});

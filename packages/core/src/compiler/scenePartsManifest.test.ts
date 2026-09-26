@@ -54,6 +54,11 @@ describe("addScenePartsManifest", () => {
     expect(document.body.textContent).not.toMatch(/b["']>|head>/);
   });
 
+  it("adds the manifest right after a head tag with attributes when a script precedes the doctype", () => {
+    const html = `<script src="gsap.js"></script>${doc("one", "<h1>t</h1>").replace("<head>", '<head lang="en">')}`;
+    expect(addScenePartsManifest(html)).toContain('<head lang="en">\n<meta name="hf-scene-parts"');
+  });
+
   it("leaves a document without scene parts untouched", () => {
     const html = "<!doctype html><html><head></head><body><p>x</p></body></html>";
     expect(addScenePartsManifest(html)).toBe(html);
@@ -67,7 +72,7 @@ describe("addScenePartsManifest", () => {
       "hf-scene-parts",
     ]);
     const unclosed = `<body><div data-hf-scene="a"></div><head `;
-    expect(addScenePartsManifest(unclosed)).toBe(unclosed);
+    expect(addScenePartsManifest(unclosed)).toMatch(/^<meta name="hf-scene-parts"[^>]*>\n<body>/);
     const started = performance.now();
     addScenePartsManifest(`<body><div data-hf-scene="a"></div>${"<head ".repeat(40_000)}`);
     expect(performance.now() - started).toBeLessThan(1000);
