@@ -7,7 +7,8 @@
  * store would go on holding the value it was born with until a reload.
  *
  * One reader, called where a change lands: the resync every dom-edit attribute
- * commit runs, a landed timeline clip save, and an undo or redo's soft restore. It
+ * commit runs, and an undo or redo's soft restore (timeline saves record their own
+ * value through syncStoredElementAttribute below). It
  * reads the preview rather than being told, because those callers know a file
  * changed, not which attribute — and because three separate writers shipped without
  * remembering to sync, which is what a single sink prevents.

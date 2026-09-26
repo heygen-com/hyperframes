@@ -152,6 +152,7 @@ interface SetAudioGroupAttributeInput {
   value: string | null;
   label: string;
   previewIframe: HTMLIFrameElement | null;
+  patchLive: (value: string | null) => void;
   writeProjectFile: (path: string, content: string) => Promise<void>;
   recordEdit: (input: RecordEditInput) => Promise<void>;
   pendingTimelineEditPathRef: MutableRef<Set<string>>;
@@ -183,6 +184,7 @@ async function setAudioGroupAttribute({
   value,
   label,
   previewIframe,
+  patchLive,
   writeProjectFile,
   recordEdit,
   pendingTimelineEditPathRef,
@@ -208,7 +210,7 @@ async function setAudioGroupAttribute({
     writeProjectFile,
     recordEdit,
     pendingTimelineEditPathRef,
-    patchLive: (v) => patchLiveGroupAttribute(previewIframe, groupId, attr, v),
+    patchLive,
   });
 }
 
@@ -252,17 +254,23 @@ export function useSetAudioGroupAttribute({
     },
     [previewIframeRef],
   );
-  const claimLive = useCallback(
-    (groupId: string, attr: string) =>
-      liveLanes.current.claim(audioGroupAttributeLiveKey(groupId, attr), {
-        preview: (value) => patchLiveGroupAttribute(previewIframeRef.current, groupId, attr, value),
-        store: (value) => syncStoredGroupAttribute(groupId, attr, value),
-      }),
+  const laneApply = useCallback(
+    (groupId: string, attr: string) => ({
+      preview: (value: string | null) =>
+        patchLiveGroupAttribute(previewIframeRef.current, groupId, attr, value),
+      store: (value: string | null) => syncStoredGroupAttribute(groupId, attr, value),
+    }),
     [previewIframeRef],
   );
+  const claimLive = useCallback(
+    (groupId: string, attr: string) =>
+      liveLanes.current.claim(audioGroupAttributeLiveKey(groupId, attr), laneApply(groupId, attr)),
+    [laneApply],
+  );
   const revertLive = useCallback(
-    (groupId: string, attr: string) => claimLive(groupId, attr)(),
-    [claimLive],
+    (groupId: string, attr: string) =>
+      liveLanes.current.revert(audioGroupAttributeLiveKey(groupId, attr), laneApply(groupId, attr)),
+    [laneApply],
   );
   const setQuiet = useCallback(
     async (
@@ -274,14 +282,14 @@ export function useSetAudioGroupAttribute({
       const pid = projectForTimelineSave(isRecordingRef?.current, projectIdRef.current, showToast);
       // Settles on what the file holds, so overlapping saves that fail cannot leave
       // the preview or the store on a value that never landed.
-      const settleLive = claimLive(groupId, attr);
+      const live = claimLive(groupId, attr);
       const unsaved = async (outcome: TimelineEditOutcome): Promise<TimelineEditOutcome> => {
         const { targetPath, patchTarget } = groupSaveTarget(
           previewIframeRef.current,
           groupId,
           activeCompPath,
         );
-        settleLive(
+        live.settle(
           await readSavedAttribute(
             projectIdRef.current,
             targetPath,
@@ -302,13 +310,14 @@ export function useSetAudioGroupAttribute({
           value,
           label,
           previewIframe: previewIframeRef.current,
+          patchLive: live.preview,
           writeProjectFile,
           recordEdit,
           pendingTimelineEditPathRef,
         });
         if (!written)
           return unsaved(failedTimelineSave("This group has no id to save it by", showToast));
-        settleLive(value);
+        live.settle(value);
         return { status: "saved" };
       } catch (error) {
         console.error("[Timeline] Failed to set group attribute", error);

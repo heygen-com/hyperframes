@@ -401,35 +401,61 @@ export async function persistTimelineBatchEdit(
 export function createLiveLanes() {
   const before = new Map<string, string | null>();
   const generation = new Map<string, number>();
+  const newestSave = new Map<string, number>();
   const bump = (key: string): number => {
     const next = (generation.get(key) ?? 0) + 1;
     generation.set(key, next);
     return next;
+  };
+  const take = (key: string): string | null | undefined => {
+    const claimed = before.has(key) ? (before.get(key) ?? null) : undefined;
+    before.delete(key);
+    return claimed;
   };
   return {
     preview(key: string, readCurrent: () => string | null): void {
       if (!before.has(key)) before.set(key, readCurrent());
       bump(key);
     },
-    // The returned call records what the file holds (`saved`, else the claimed value):
-    // always in the store and a live gesture's before-value, in the preview only while
-    // no newer gesture or save has touched the lane.
-    claim(
-      key: string,
-      apply: { preview: (value: string | null) => void; store: (value: string | null) => void },
-    ): (saved?: string | null) => void {
-      const claimed = before.has(key) ? (before.get(key) ?? null) : undefined;
-      before.delete(key);
+    // A save. Its settle records what the file holds (`saved`, else the claimed value)
+    // unless a newer save has started; it moves the preview only while it owns the lane.
+    claim(key: string, apply: LiveLaneApply): LiveLaneSave {
+      const claimed = take(key);
       const mine = bump(key);
-      return (saved) => {
-        const value = saved !== undefined ? saved : claimed;
-        if (value === undefined) return;
-        if (before.has(key)) before.set(key, value);
-        apply.store(value);
+      newestSave.set(key, mine);
+      const preview = (value: string | null) => {
         if (generation.get(key) === mine) apply.preview(value);
       };
+      return {
+        preview,
+        settle(saved) {
+          const value = saved !== undefined ? saved : claimed;
+          if (value === undefined || newestSave.get(key) !== mine) return;
+          if (before.has(key)) before.set(key, value);
+          apply.store(value);
+          preview(value);
+        },
+      };
+    },
+    // A gesture refused before it saved: put its before-value back and hand the lane
+    // back to the newest save still able to settle it.
+    revert(key: string, apply: LiveLaneApply): void {
+      const claimed = take(key);
+      if (claimed === undefined) return;
+      apply.preview(claimed);
+      apply.store(claimed);
+      generation.set(key, newestSave.get(key) ?? bump(key));
     },
   };
+}
+
+interface LiveLaneSave {
+  preview: (value: string | null) => void;
+  settle: (saved?: string | null) => void;
+}
+interface LiveLaneApply {
+  preview: (value: string | null) => void;
+  store: (value: string | null) => void;
 }
 
 /** What the file holds for `attr` once queued writes to it land; undefined when unreadable. */

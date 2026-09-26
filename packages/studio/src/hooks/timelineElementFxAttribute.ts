@@ -62,7 +62,7 @@ interface SetElementAttributeInput {
   attr: string;
   value: string | null;
   label: string;
-  previewIframe: HTMLIFrameElement | null;
+  patchLive: (value: string | null) => void;
   writeProjectFile: (path: string, content: string) => Promise<void>;
   recordEdit: Parameters<typeof persistElementAttribute>[0]["recordEdit"];
   pendingTimelineEditPathRef: MutableRef<Set<string>>;
@@ -75,7 +75,7 @@ async function setElementAttribute({
   attr,
   value,
   label,
-  previewIframe,
+  patchLive,
   writeProjectFile,
   recordEdit,
   pendingTimelineEditPathRef,
@@ -93,7 +93,7 @@ async function setElementAttribute({
     writeProjectFile,
     recordEdit,
     pendingTimelineEditPathRef,
-    patchLive: (v) => patchLiveElementAttribute(previewIframe, element, attr, v, activeCompPath),
+    patchLive,
   });
 }
 
@@ -126,18 +126,29 @@ export function useSetElementAttribute({
     },
     [previewIframeRef, activeCompPath],
   );
-  const claimLive = useCallback(
-    (element: TimelineElement, attr: string) =>
-      liveLanes.current.claim(elementAttributeLiveKey(element, activeCompPath, attr), {
-        preview: (value) =>
-          patchLiveElementAttribute(previewIframeRef.current, element, attr, value, activeCompPath),
-        store: (value) => syncStoredElementAttribute(element, attr, value),
-      }),
+  const laneApply = useCallback(
+    (element: TimelineElement, attr: string) => ({
+      preview: (value: string | null) =>
+        patchLiveElementAttribute(previewIframeRef.current, element, attr, value, activeCompPath),
+      store: (value: string | null) => syncStoredElementAttribute(element, attr, value),
+    }),
     [previewIframeRef, activeCompPath],
   );
+  const claimLive = useCallback(
+    (element: TimelineElement, attr: string) =>
+      liveLanes.current.claim(
+        elementAttributeLiveKey(element, activeCompPath, attr),
+        laneApply(element, attr),
+      ),
+    [laneApply, activeCompPath],
+  );
   const revertLive = useCallback(
-    (element: TimelineElement, attr: string) => claimLive(element, attr)(),
-    [claimLive],
+    (element: TimelineElement, attr: string) =>
+      liveLanes.current.revert(
+        elementAttributeLiveKey(element, activeCompPath, attr),
+        laneApply(element, attr),
+      ),
+    [laneApply, activeCompPath],
   );
   const setQuiet = useCallback(
     async (
@@ -147,10 +158,10 @@ export function useSetElementAttribute({
       label: string,
     ): Promise<TimelineEditOutcome> => {
       const pid = projectForTimelineSave(isRecordingRef?.current, projectIdRef.current, showToast);
-      const settleLive = claimLive(element, attr);
+      const live = claimLive(element, attr);
       const unsaved = async (outcome: TimelineEditOutcome): Promise<TimelineEditOutcome> => {
         const { targetPath, patchTarget } = elementSaveTarget(element, activeCompPath);
-        settleLive(
+        live.settle(
           await readSavedAttribute(
             projectIdRef.current,
             targetPath,
@@ -170,14 +181,14 @@ export function useSetElementAttribute({
           attr,
           value,
           label,
-          previewIframe: previewIframeRef.current,
+          patchLive: live.preview,
           writeProjectFile,
           recordEdit,
           pendingTimelineEditPathRef,
         });
         if (!written)
           return unsaved(failedTimelineSave("This clip has no id to save it by", showToast));
-        settleLive(value);
+        live.settle(value);
         return { status: "saved" };
       } catch (error) {
         console.error("[Timeline] Failed to set element attribute", error);
@@ -188,7 +199,6 @@ export function useSetElementAttribute({
     [
       claimLive,
       activeCompPath,
-      previewIframeRef,
       writeProjectFile,
       recordEdit,
       pendingTimelineEditPathRef,

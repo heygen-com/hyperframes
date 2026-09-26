@@ -33,6 +33,8 @@ const music: TimelineElement = {
   sourceFile: "index.html",
 };
 
+const group = groupAutomationElement({ id: "hf-group", label: "Music", anchorKey: 0 }, 12);
+
 afterEach(() => {
   document.body.innerHTML = "";
   usePlayerStore.getState().reset();
@@ -185,7 +187,6 @@ describe("useAutomationLanes saves report what happened", () => {
   });
 
   it("refuses a group lane edit when a member is locked", async () => {
-    const group = groupAutomationElement({ id: "hf-group", label: "Music", anchorKey: 0 }, 12);
     const { commit, writeProjectFile } = mountLanes(group, (el) =>
       el.id === "music" ? LOCKED : true,
     );
@@ -194,7 +195,6 @@ describe("useAutomationLanes saves report what happened", () => {
   });
 
   it("saves a group lane on the group and mirrors it to the members", async () => {
-    const group = groupAutomationElement({ id: "hf-group", label: "Music", anchorKey: 0 }, 12);
     const { commit, writeProjectFile } = mountLanes(group);
     expect(await commit()).toEqual({ status: "saved" });
     expect(writeProjectFile.mock.calls[0]?.[1]).toMatch(
@@ -351,6 +351,95 @@ describe("useAutomationLanes saves report what happened", () => {
     expect(usePlayerStore.getState().elements[0]?.automation).toBe(serializeAutomation(at(0.5)));
   });
 
+  it.each([
+    { lane: "clip", target: music, field: "automation", pendingLands: true, expected: 0.7 },
+    { lane: "clip", target: music, field: "automation", pendingLands: false, expected: null },
+    {
+      lane: "group",
+      target: group,
+      field: "audioGroupAutomation",
+      pendingLands: true,
+      expected: 0.7,
+    },
+    {
+      lane: "group",
+      target: group,
+      field: "audioGroupAutomation",
+      pendingLands: false,
+      expected: null,
+    },
+  ] as const)(
+    "agrees with the file when a $lane drag is refused between an older failure and a pending save (lands: $pendingLands)",
+    async ({ target, field, pendingLands, expected }) => {
+      let locked = false;
+      const {
+        commit,
+        startCommit,
+        preview,
+        writeProjectFile,
+        iframe,
+        file,
+        reads,
+        holdRead,
+        setFile,
+      } = mountLanes(target, () => (locked ? LOCKED : true));
+      const stored = () => usePlayerStore.getState().elements[0]?.[field] ?? null;
+      const shown = () =>
+        iframe.contentDocument!.getElementById(target.id)?.getAttribute("data-automation") ?? null;
+      const at = (v: number) => ({
+        version: 1 as const,
+        lanes: [{ target: "volume", points: [{ t: 0, v }] }],
+      });
+      let failOlder = () => {};
+      let finishPending = () => {};
+      writeProjectFile
+        .mockImplementationOnce(
+          () =>
+            new Promise<void>((_resolve, reject) => {
+              failOlder = () => reject(new Error("offline"));
+            }),
+        )
+        .mockImplementationOnce(
+          (_path, content) =>
+            new Promise<void>((resolve, reject) => {
+              finishPending = () => {
+                if (!pendingLands) return reject(new Error("offline"));
+                setFile(content);
+                resolve();
+              };
+            }),
+        );
+      preview(at(0.9));
+      const older = startCommit(at(0.9));
+      await act(() => vi.waitFor(() => expect(writeProjectFile).toHaveBeenCalledTimes(1)));
+      const releasePending = holdRead(2);
+      preview(at(0.7));
+      const pending = startCommit(at(0.7));
+      await act(() => vi.waitFor(() => expect(reads()).toBe(2)));
+      preview(at(0.5));
+      const duringDrag = stored();
+      failOlder();
+      await act(async () => {
+        await older;
+      });
+      expect(stored()).toBe(duringDrag);
+      releasePending();
+      await act(() => vi.waitFor(() => expect(writeProjectFile).toHaveBeenCalledTimes(2)));
+      expect(shown()).toBe(serializeAutomation(at(0.5)));
+      locked = true;
+      expect(await commit(at(0.5))).toMatchObject({ status: "refused" });
+      finishPending();
+      await act(async () => {
+        await pending;
+      });
+      const want = expected === null ? null : serializeAutomation(at(expected));
+      const saved = new DOMParser().parseFromString(file(), "text/html");
+      expect(saved.getElementById(target.id)?.getAttribute("data-automation") ?? null).toBe(want);
+      expect(shown()).toBe(want);
+      expect(stored()).toBe(want);
+    },
+  );
+
   it("settles on a queued save that lands after an earlier one fails", async () => {
     const { startCommit, preview, writeProjectFile, iframe, setFile } = mountLanes(music);
     let failFirst = () => {};
@@ -421,7 +510,6 @@ describe("useAutomationLanes saves report what happened", () => {
   });
 
   it("puts a group's dragged preview and mirror back when a recording refuses the release", async () => {
-    const group = groupAutomationElement({ id: "hf-group", label: "Music", anchorKey: 0 }, 12);
     const { commit, preview, iframe } = mountLanes(group, undefined, true);
     preview();
     expect(usePlayerStore.getState().elements[0]?.audioGroupAutomation).toContain('"volume"');
