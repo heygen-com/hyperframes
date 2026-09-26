@@ -1,7 +1,7 @@
 type SwapWindow = Window & { __hfSwapScenes?: (html: string) => Promise<void> };
 
 const SCENES_SWAPPED = "hf-scenes-swapped";
-export const SCENE_SWAP_DOWNLOAD_MS = 5000;
+export const SCENE_SWAP_MS = 5000;
 
 export function onPreviewContentReplaced(
   iframe: HTMLIFrameElement,
@@ -23,21 +23,26 @@ export function sceneSwapFor(
   const swap = win?.__hfSwapScenes;
   if (typeof swap !== "function") return null;
   return async (url, isCurrent) => {
-    const download = new AbortController();
+    const deadline = new AbortController();
     const timer = setTimeout(
-      () => download.abort(new Error("the preview took too long to download")),
-      SCENE_SWAP_DOWNLOAD_MS,
+      () => deadline.abort(new Error("the preview took too long to swap")),
+      SCENE_SWAP_MS,
     );
-    let html: string;
-    try {
-      const response = await fetch(url, { signal: download.signal });
+    const swapping = (async () => {
+      const response = await fetch(url, { signal: deadline.signal });
       if (!response.ok) throw new Error(`preview request failed with ${response.status}`);
-      html = await response.text();
+      const html = await response.text();
+      if (!isCurrent()) throw new Error("superseded by a newer reload");
+      await swap.call(win, html);
+    })();
+    const expired = new Promise<never>((_resolve, reject) =>
+      deadline.signal.addEventListener("abort", () => reject(deadline.signal.reason)),
+    );
+    try {
+      await Promise.race([swapping, expired]);
     } finally {
       clearTimeout(timer);
     }
-    if (!isCurrent()) throw new Error("superseded by a newer reload");
-    await swap.call(win, html);
     iframe.dispatchEvent(new Event(SCENES_SWAPPED));
   };
 }
