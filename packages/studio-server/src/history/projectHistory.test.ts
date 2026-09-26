@@ -295,29 +295,35 @@ describe("openProjectHistory", () => {
     }
   });
 
-  it("checks out a turn that turned a file into a folder and idled before the next scan", async () => {
-    const { history, projectDir } = await project({ a: "file" });
-    await history.beginWindow(agent, "Agent turn", { idleMs: 60_000 });
-    rmSync(join(projectDir, "a"));
-    mkdirSync(join(projectDir, "a"));
-    writeFileSync(join(projectDir, "a", "b.html"), "b");
-    vi.useFakeTimers({ toFake: ["Date"] });
-    try {
-      vi.setSystemTime(Date.now() + 120_000);
-      await history.flush();
-    } finally {
-      vi.useRealTimers();
-    }
+  it.each([
+    ["a file into a folder", { a: "file" }, "a/b.html", ["a", "a/b.html"]],
+    ["a folder into a file", { "a/b.html": "b" }, "a", ["a", "a/b.html"]],
+  ])(
+    "checks out a turn that turned %s and idled before the next scan",
+    async (_, files, made, paths) => {
+      const { history, projectDir } = await project(files);
+      await history.beginWindow(agent, "Agent turn", { idleMs: 60_000 });
+      rmSync(join(projectDir, "a"), { recursive: true });
+      mkdirSync(dirname(join(projectDir, made)), { recursive: true });
+      writeFileSync(join(projectDir, made), "made");
+      vi.useFakeTimers({ toFake: ["Date"] });
+      try {
+        vi.setSystemTime(Date.now() + 120_000);
+        await history.flush();
+      } finally {
+        vi.useRealTimers();
+      }
 
-    const [first] = history.list();
-    expect([first!.who.kind, first!.files.map((file) => file.path).sort()]).toEqual([
-      "agent",
-      ["a", "a/b.html"],
-    ]);
-    const dir = tempDir("hf-history-checkout-");
-    await history.checkout(first!.id, "after", dir);
-    expect(inside(dir, "a/b.html")).toBe("b");
-  });
+      const [first] = history.list();
+      expect([first!.who.kind, first!.files.map((file) => file.path).sort()]).toEqual([
+        "agent",
+        paths,
+      ]);
+      const dir = tempDir("hf-history-checkout-");
+      await history.checkout(first!.id, "after", dir);
+      expect(inside(dir, made)).toBe("made");
+    },
+  );
 
   it("undoes and redoes a turn that turned a file into a folder", async () => {
     const { history, projectDir, read } = await project({ a: "file" });
@@ -331,6 +337,25 @@ describe("openProjectHistory", () => {
     expect(undone.ok && read("a")).toBe("file");
     const redone = await history.undo(undone.ok ? undone.entry!.id : "", { who: you });
     expect(redone.ok && read("a/c/b.html")).toBe("b");
+  });
+
+  it("refuses an undo that would have to delete a file added since, and leaves the files alone", async () => {
+    const { history, projectDir, read } = await project({ a: "file" });
+    const turn = await change(history, agent, "Agent turn", () => {
+      rmSync(join(projectDir, "a"));
+      mkdirSync(join(projectDir, "a"));
+      writeFileSync(join(projectDir, "a", "b.html"), "b");
+    });
+    writeFileSync(join(projectDir, "a", "new.html"), "new");
+    await history.flush();
+    const entries = history.list().length;
+
+    await expect(history.undo(turn.id, { who: you })).rejects.toThrow("a/new.html is in the way");
+    expect([read("a/b.html"), read("a/new.html"), history.list().length]).toEqual([
+      "b",
+      "new",
+      entries,
+    ]);
   });
 
   it("logs a folder moved over an agent's file after its turn idled out as the outside's, however old its files", async () => {

@@ -1,6 +1,15 @@
 import { randomUUID } from "node:crypto";
 import { readdir, rm, rmdir } from "node:fs/promises";
-import { existsSync, lstatSync, mkdirSync, readFileSync, realpathSync } from "node:fs";
+import {
+  type Dirent,
+  type Stats,
+  existsSync,
+  lstatSync,
+  mkdirSync,
+  readdirSync,
+  readFileSync,
+  realpathSync,
+} from "node:fs";
 import { homedir } from "node:os";
 import { dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
 import { replaceFileAtomically } from "../helpers/atomicFile.js";
@@ -186,6 +195,23 @@ function splitAt(
   ];
 }
 
+const isMissingFolder = (error: unknown) =>
+  ["ENOENT", "ENOTDIR"].includes((error as NodeJS.ErrnoException).code ?? "");
+
+/** Removes a folder at `dir` that holds only empty folders (inTheWay checked), so a file can take its place. */
+async function removeEmptyFolders(dir: string): Promise<void> {
+  let entries: Dirent[];
+  try {
+    entries = await readdir(dir, { withFileTypes: true });
+  } catch (error) {
+    if (isMissingFolder(error)) return;
+    throw error;
+  }
+  for (const entry of entries)
+    if (entry.isDirectory()) await removeEmptyFolders(join(dir, entry.name));
+  await rmdir(dir);
+}
+
 const blocks = (removed: string, added: string) =>
   added.startsWith(`${removed}/`) || removed.startsWith(`${added}/`);
 
@@ -312,7 +338,10 @@ class Engine {
     const present = new Set(seen.map((file) => file.path));
     const removed = [...this.tracked.keys()]
       .filter((path) => !present.has(path))
-      .map((path) => ({ at: this.replacedAt(path, sweptAt, changedAt), path, file: null }));
+      .map((path) => {
+        const standing = this.standingAt(path);
+        return { at: standing ? changedAt(standing.stat) : sweptAt, path, file: null };
+      });
     // A file in the way of a removal (a/b over file a, or the reverse) appeared no earlier than that removal.
     const appearedAt = (file: (typeof seen)[number]) =>
       Math.max(
@@ -628,19 +657,32 @@ class Engine {
     await this.commitOutside();
   }
 
-  /** A removed path is dated by what took its place (a folder at file a's path, or a file at folder a/'s), else the sweep. */
-  replacedAt(
-    path: string,
-    sweptAt: number,
-    changedAt: (stat: { mtimeMs: number; ctimeMs: number }) => number,
-  ) {
+  /** What took a removed path's place, dating its removal: an entry at the path, or a file at a folder above it. */
+  standingAt(path: string): { at: string; stat: Stats } | undefined {
     const parts = path.split("/");
     for (let depth = 1; depth <= parts.length; depth += 1) {
-      const stat = lstatSync(join(this.dir, ...parts.slice(0, depth)), { throwIfNoEntry: false });
-      if (!stat) break;
-      if (depth === parts.length || !stat.isDirectory()) return changedAt(stat);
+      const at = parts.slice(0, depth).join("/");
+      const stat = lstatSync(join(this.dir, at), { throwIfNoEntry: false });
+      if (!stat) return undefined;
+      if (at === path || !stat.isDirectory()) return { at, stat };
     }
-    return sweptAt;
+    return undefined;
+  }
+
+  /** A file the writes would have to delete to put `path` in place: a file at a folder above it, or one inside a folder at it. */
+  inTheWay(path: string, deleted: ReadonlySet<string>): string | undefined {
+    const above = dirname(path) === "." ? undefined : this.standingAt(dirname(path));
+    if (above && !above.stat.isDirectory() && !deleted.has(above.at)) return above.at;
+    let inside: Dirent[] = [];
+    try {
+      inside = readdirSync(join(this.dir, path), { recursive: true, withFileTypes: true });
+    } catch (error) {
+      if (!isMissingFolder(error)) throw error;
+    }
+    return inside
+      .filter((entry) => !entry.isDirectory())
+      .map((entry) => relative(this.dir, join(entry.parentPath, entry.name)).split(sep).join("/"))
+      .find((file) => !deleted.has(file));
   }
 
   /** Writes `target` (path to hash, null deletes) as one entry of `who`'s. */
@@ -650,6 +692,12 @@ class Engine {
     target: Map<string, string | null>,
     extra: Partial<HistoryEntry>,
   ): Promise<HistoryEntry | null> {
+    const deleted = new Set([...target].filter(([, hash]) => hash === null).map(([path]) => path));
+    const blocked = [...target]
+      .filter(([, hash]) => hash !== null)
+      .map(([path]) => this.inTheWay(path, deleted))
+      .find(Boolean);
+    if (blocked) throw new Error(`${blocked} is in the way; move or delete it, then try again.`);
     const group = this.newGroup(who, label);
     this.windows.push(group);
     try {
@@ -675,18 +723,10 @@ class Engine {
       const version = hash === null ? DELETED_VERSION : hashVersion(hash);
       recordFileWriteReceipt(absPath, { path, version, writeToken });
     }
-    if (hash === null) await this.remove(path);
-    else await this.blobs.writeTo(hash, absPath);
-  }
-
-  /** Removes a file and the folders it leaves empty, as git does. */
-  async remove(path: string): Promise<void> {
-    await rm(join(this.dir, path), { force: true });
-    try {
-      for (let dir = dirname(path); dir !== "."; dir = dirname(dir))
-        await rmdir(join(this.dir, dir));
-    } catch {
-      // The first folder that is not empty (or already gone) ends the climb.
+    if (hash === null) await rm(absPath, { force: true });
+    else {
+      await removeEmptyFolders(absPath);
+      await this.blobs.writeTo(hash, absPath);
     }
   }
 
