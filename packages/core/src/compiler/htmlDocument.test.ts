@@ -4,11 +4,29 @@ import {
   injectScriptsIntoHtml,
   injectTagsAtHeadStart,
   insertBeforeCloseTag,
+  isFullHtmlDocument,
   parseHTMLContent,
   stripEmbeddedRuntimeScripts,
 } from "./htmlDocument.js";
 
 describe("htmlDocument helpers", () => {
+  it("keeps a document's <html> attributes when a comment comes before the doctype", () => {
+    const doc = parseHTMLContent(
+      '<!-- hyperframes-registry-item: blk -->\n<!doctype html>\n<html lang="en" data-composition-variables="[]"><body></body></html>',
+    );
+    expect(doc.documentElement.getAttribute("lang")).toBe("en");
+    expect(doc.documentElement.hasAttribute("data-composition-variables")).toBe(true);
+  });
+
+  it("tells a document from a fragment past leading comments", () => {
+    expect(isFullHtmlDocument("<!-- marker -->\n<!doctype html><html></html>")).toBe(true);
+    expect(isFullHtmlDocument("<!-- a --><!-- b --><html lang='en'></html>")).toBe(true);
+    expect(isFullHtmlDocument("<!-- marker --><div data-composition-id='x'></div>")).toBe(false);
+    expect(isFullHtmlDocument("<!--><div></div><!-- --><html></html>")).toBe(false);
+    expect(isFullHtmlDocument("<html-card></html-card>")).toBe(false);
+    expect(isFullHtmlDocument("<!DOCTYPEhtml><html/ lang='en'></html>")).toBe(true);
+  });
+
   it("wraps fragments before parsing", () => {
     const doc = parseHTMLContent("<template><span>hello</span></template>");
     expect(doc.body.querySelector("template")?.innerHTML).toContain("<span>hello</span>");

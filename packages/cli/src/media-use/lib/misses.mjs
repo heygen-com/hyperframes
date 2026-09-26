@@ -1,19 +1,19 @@
 import { appendFileSync, existsSync, mkdirSync, readFileSync } from "node:fs";
-import { homedir } from "node:os";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
+import { globalMediaDir } from "./media-home.mjs";
 
 const MISSES_FILE = "misses.jsonl";
 
 function missesPath() {
-  return join(homedir(), ".media", MISSES_FILE);
+  return join(globalMediaDir(), MISSES_FILE);
 }
 
 export function recordMiss({ type, intent, provider_override, local_only }) {
   try {
-    const dir = join(homedir(), ".media");
-    mkdirSync(dir, { recursive: true });
+    const path = missesPath();
+    mkdirSync(dirname(path), { recursive: true });
     appendFileSync(
-      join(dir, MISSES_FILE),
+      path,
       JSON.stringify({
         ts: new Date().toISOString(),
         type,

@@ -1,6 +1,16 @@
 import { resolve, sep, join, dirname, basename } from "node:path";
 import { lstatSync, realpathSync } from "node:fs";
 
+function realpath(path: string): string {
+  try {
+    return realpathSync.native(path);
+  } catch (error) {
+    // Some Windows volumes (RAM disks) refuse the native call with EISDIR.
+    if ((error as NodeJS.ErrnoException).code === "EISDIR") return realpathSync(path);
+    throw error;
+  }
+}
+
 // realpath also fails for dangling/cyclic symlinks. Existing entries must not
 // become missing segments: writes could follow them outside the project.
 function isMissingPath(path: string): boolean {
@@ -25,7 +35,7 @@ function isMissingPath(path: string): boolean {
  * symlink that lives *inside* `base` but points outside it (e.g.
  * `base/link -> /etc`). A downstream `readFileSync`/`writeFileSync`/`statSync`
  * then follows that link to a file outside `base`. To close this we canonicalize
- * both sides with `realpathSync` before comparing.
+ * both sides with `realpathSync.native` (the on-disk letter case too) before comparing.
  *
  * The target may not exist yet (e.g. creating a new file), so we canonicalize the
  * deepest *existing* ancestor and re-attach the trailing not-yet-existing
@@ -42,7 +52,7 @@ function isMissingPath(path: string): boolean {
 export function isSafePath(base: string, resolved: string): boolean {
   let baseReal: string;
   try {
-    baseReal = realpathSync(resolve(base));
+    baseReal = realpath(resolve(base));
   } catch {
     // Base must exist and be resolvable; fail closed if not.
     return false;
@@ -55,7 +65,7 @@ export function isSafePath(base: string, resolved: string): boolean {
   for (;;) {
     let ancestorReal: string;
     try {
-      ancestorReal = realpathSync(probe);
+      ancestorReal = realpath(probe);
     } catch {
       if (!isMissingPath(probe)) return false;
       const parent = dirname(probe);

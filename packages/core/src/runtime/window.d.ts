@@ -76,6 +76,8 @@ declare global {
     __playerReady?: boolean;
     __renderReady?: boolean;
     __hfRuntimeTeardown?: (() => void) | null;
+    /** Swap edited scenes from a rebuilt preview document; refuses before changing anything when it cannot. */
+    __hfSwapScenes?: (html: string) => Promise<void>;
     __HF_EXPORT_RENDER_SEEK_CONFIG?: {
       mode?: string;
       diagnostics?: boolean;

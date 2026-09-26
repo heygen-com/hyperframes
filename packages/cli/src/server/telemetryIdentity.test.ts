@@ -60,6 +60,12 @@ describe("resolveCliTelemetryDistinctId", () => {
     detectAgent.mockReturnValue(null);
   });
 
+  it.each([true, false])("passes telemetry posture to Studio on every host: %s", (enabled) => {
+    shouldTrack.mockReturnValue(enabled);
+    const html = buildCliIdentityScript({ includeIdentity: false });
+    expect(html).toContain(`window.__HF_CLI_TELEMETRY_DISABLED=${!enabled};`);
+  });
+
   it("returns the CLI anonymousId when telemetry is enabled", () => {
     shouldTrack.mockReturnValue(true);
     readConfig.mockReturnValue({ anonymousId: "machine-uuid" });
@@ -101,7 +107,7 @@ describe("buildCliIdentityScript", () => {
     shouldTrack.mockReturnValue(true);
     readConfig.mockReturnValue({ anonymousId: "machine-uuid" });
     expect(buildCliIdentityScript()).toBe(
-      '<script>window.__HF_CLI_DISTINCT_ID="machine-uuid";</script>',
+      '<script>window.__HF_CLI_TELEMETRY_DISABLED=false;window.__HF_CLI_DISTINCT_ID="machine-uuid";</script>',
     );
   });
 
@@ -109,13 +115,15 @@ describe("buildCliIdentityScript", () => {
     shouldTrack.mockReturnValue(true);
     readConfig.mockReturnValue({ anonymousId: "machine-uuid", bucketSeed: "seed-uuid" });
     expect(buildCliIdentityScript()).toBe(
-      '<script>window.__HF_CLI_DISTINCT_ID="machine-uuid";window.__HF_CLI_BUCKET_SEED="seed-uuid";</script>',
+      '<script>window.__HF_CLI_TELEMETRY_DISABLED=false;window.__HF_CLI_DISTINCT_ID="machine-uuid";window.__HF_CLI_BUCKET_SEED="seed-uuid";</script>',
     );
   });
 
-  it("emits an empty string when telemetry is off and there are no canaries", () => {
+  it("emits the browser opt-out when telemetry is off and there are no canaries", () => {
     shouldTrack.mockReturnValue(false);
-    expect(buildCliIdentityScript()).toBe("");
+    expect(buildCliIdentityScript()).toBe(
+      "<script>window.__HF_CLI_TELEMETRY_DISABLED=true;</script>",
+    );
   });
 
   // The cross-surface fix: with telemetry off the CLI resolves every canary
@@ -127,7 +135,7 @@ describe("buildCliIdentityScript", () => {
     canaryDecisions.mockReturnValue({ "de-parallel-router": { enabled: false, forced: false } });
     const script = buildCliIdentityScript();
     expect(script).toBe(
-      "<script>window.__HF_CLI_CANARY_DECISIONS=" +
+      "<script>window.__HF_CLI_TELEMETRY_DISABLED=true;window.__HF_CLI_CANARY_DECISIONS=" +
         '{"de-parallel-router":{"enabled":false,"forced":false}};</script>',
     );
     expect(script).not.toContain("__HF_CLI_DISTINCT_ID");
@@ -139,7 +147,7 @@ describe("buildCliIdentityScript", () => {
     readConfig.mockReturnValue({ anonymousId: "machine-uuid", bucketSeed: "seed-uuid" });
     canaryDecisions.mockReturnValue({ "de-parallel-router": { enabled: true, forced: true } });
     expect(buildCliIdentityScript()).toBe(
-      '<script>window.__HF_CLI_DISTINCT_ID="machine-uuid";' +
+      '<script>window.__HF_CLI_TELEMETRY_DISABLED=false;window.__HF_CLI_DISTINCT_ID="machine-uuid";' +
         'window.__HF_CLI_BUCKET_SEED="seed-uuid";' +
         "window.__HF_CLI_CANARY_DECISIONS=" +
         '{"de-parallel-router":{"enabled":true,"forced":true}};</script>',
@@ -163,7 +171,7 @@ describe("buildCliIdentityScript", () => {
       throw new Error("registry blew up");
     });
     expect(buildCliIdentityScript()).toBe(
-      '<script>window.__HF_CLI_DISTINCT_ID="machine-uuid";</script>',
+      '<script>window.__HF_CLI_TELEMETRY_DISABLED=false;window.__HF_CLI_DISTINCT_ID="machine-uuid";</script>',
     );
   });
 
@@ -195,9 +203,11 @@ describe("buildStudioHeadScripts", () => {
     expect(head.indexOf("__HF_CLI_DISTINCT_ID")).toBeLessThan(head.indexOf("__HF_STUDIO_ENV__"));
   });
 
-  it("returns just the env script when there is no identity and no canary", () => {
+  it("returns the browser opt-out and env script when there is no identity and no canary", () => {
     shouldTrack.mockReturnValue(false);
-    expect(buildStudioHeadScripts(ENV_SCRIPT)).toBe(ENV_SCRIPT);
+    expect(buildStudioHeadScripts(ENV_SCRIPT)).toBe(
+      "<script>window.__HF_CLI_TELEMETRY_DISABLED=true;</script>" + ENV_SCRIPT,
+    );
   });
 });
 

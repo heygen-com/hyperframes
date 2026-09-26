@@ -1,3 +1,4 @@
+import type { TimelineEditOutcome } from "../../hooks/timelineEditPermission";
 import { useCallback, useMemo } from "react";
 import type { GsapAnimation } from "@hyperframes/core/gsap-parser";
 import type { TimelineElement } from "../../player";
@@ -40,7 +41,12 @@ export interface TimelineEditCallbackDeps {
   handleToggleTrackHidden: (track: number, hidden: boolean) => Promise<void> | void;
   setAudioGroupAttribute: {
     setLive: (groupId: string, attr: string, value: string | null) => void;
-    setQuiet: (groupId: string, attr: string, value: string | null, label: string) => Promise<void>;
+    setQuiet: (
+      groupId: string,
+      attr: string,
+      value: string | null,
+      label: string,
+    ) => Promise<TimelineEditOutcome | void>;
   };
   handleBlockedTimelineEdit: (element: TimelineElement, intent: BlockedTimelineEditIntent) => void;
   handleTimelineElementSplit: (element: TimelineElement, splitTime: number) => Promise<void> | void;
@@ -60,7 +66,7 @@ export interface TimelineEditCallbackDeps {
       attr: string,
       value: string | null,
       label: string,
-    ) => Promise<void>;
+    ) => Promise<TimelineEditOutcome | void>;
   };
 }
 

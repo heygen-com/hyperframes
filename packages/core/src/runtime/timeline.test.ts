@@ -497,6 +497,45 @@ describe("collectRuntimeTimelinePayload", () => {
     expect(result.compositionHeight).toBe(2160);
   });
 
+  it("reads a px-suffixed composition size the way the runtime lays it out", () => {
+    const root = document.createElement("div");
+    root.setAttribute("data-composition-id", "main");
+    root.setAttribute("data-width", "1080px");
+    root.setAttribute("data-height", "1920px");
+    root.setAttribute("data-duration", "5");
+    document.body.appendChild(root);
+
+    const result = collectRuntimeTimelinePayload(defaultParams);
+    expect(result.compositionWidth).toBe(1080);
+    expect(result.compositionHeight).toBe(1920);
+  });
+
+  it("reads the size and duration of the explicit root when another composition comes first", () => {
+    document.body.innerHTML = `<div data-composition-id="card" data-duration="3" data-width="800" data-height="600"></div><div data-composition-id="main" data-root="true" data-width="1920" data-height="1080"></div>`;
+    (window as TimelineTestWindow).__timelines = { main: { duration: () => 7 } };
+
+    const result = collectRuntimeTimelinePayload(defaultParams);
+    expect(result.compositionWidth).toBe(1920);
+    expect(result.compositionHeight).toBe(1080);
+    expect(result.durationInFrames).toBe(210);
+  });
+
+  it("reports the real length of a film shorter than one second", () => {
+    document.body.innerHTML = `<div data-composition-id="main" data-duration="0.2"><div id="clip" data-start="0" data-duration="0.2"></div></div>`;
+    (window as TimelineTestWindow).__timelines = { main: { duration: () => 0.2 } };
+
+    const result = collectRuntimeTimelinePayload(defaultParams);
+    expect(result.durationSeconds).toBe(0.2);
+    expect(result.durationInFrames).toBe(6);
+  });
+
+  it("reports the real length of a sub-second root with no timed clips", () => {
+    document.body.innerHTML = `<div data-composition-id="main" data-duration="0.2"></div>`;
+
+    const result = collectRuntimeTimelinePayload(defaultParams);
+    expect(result.durationSeconds).toBe(0.2);
+  });
+
   it("defaults composition dimensions to 1920x1080", () => {
     const result = collectRuntimeTimelinePayload(defaultParams);
     expect(result.compositionWidth).toBe(1920);

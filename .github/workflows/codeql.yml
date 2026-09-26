@@ -10,9 +10,9 @@
 # changes show up as a normal PR diff.
 name: CodeQL
 
+# No merge_group: the code scanning rule does not apply to merge queue groups,
+# and the queue often merges a group and deletes its ref before the upload lands.
 on:
-  merge_group:
-    types: [checks_requested]
   workflow_dispatch:
   push:
     branches: [main]

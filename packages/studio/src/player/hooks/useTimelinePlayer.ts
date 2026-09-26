@@ -362,21 +362,25 @@ export function useTimelinePlayer({
       seek,
     });
 
-  const { processTimelineMessageRef, enrichMissingCompositionsRef, onIframeLoad } =
-    useTimelineSyncCallbacks({
-      iframeRef,
-      probeIntervalRef,
-      pendingSeekRef,
-      isRefreshingRef,
-      getAdapter,
-      syncTimelineElements,
-      setDuration,
-      setCurrentTime,
-      requestTimelineReady,
-      setIsPlaying,
-      attachIframeShortcutListeners,
-      applyPreviewAudioState,
-    });
+  const {
+    processTimelineMessageRef,
+    enrichMissingCompositionsRef,
+    onIframeLoad,
+    cancelPendingLoad,
+  } = useTimelineSyncCallbacks({
+    iframeRef,
+    probeIntervalRef,
+    pendingSeekRef,
+    isRefreshingRef,
+    getAdapter,
+    syncTimelineElements,
+    setDuration,
+    setCurrentTime,
+    requestTimelineReady,
+    setIsPlaying,
+    attachIframeShortcutListeners,
+    applyPreviewAudioState,
+  });
 
   // Full-reload edits load behind a hidden shadow iframe (useShadowPreviewReload.ts).
   const {
@@ -452,8 +456,8 @@ export function useTimelinePlayer({
     applyPreviewVariablesToUrl(url);
     beginShadowReload(url.toString());
   }, [saveSeekPosition, getAdapter, beginShadowReload]);
-  const getAdapterRef = useRef(getAdapter);
-  getAdapterRef.current = getAdapter;
+  const pauseRef = useRef(pause);
+  pauseRef.current = pause;
 
   useMountEffect(() => {
     const handleWindowKeyDown = (e: KeyboardEvent) => playbackKeyDownRef.current(e);
@@ -469,14 +473,7 @@ export function useTimelinePlayer({
     });
 
     const handleVisibilityChange = () => {
-      if (document.hidden && usePlayerStore.getState().isPlaying) {
-        const adapter = getAdapterRef.current?.();
-        if (adapter) {
-          adapter.pause();
-          setIsPlaying(false);
-          stopRAFLoop();
-        }
-      }
+      if (document.hidden && usePlayerStore.getState().isPlaying) pauseRef.current();
     };
 
     window.addEventListener("keydown", handleWindowKeyDown, true);
@@ -494,16 +491,16 @@ export function useTimelinePlayer({
       stopReverseLoop();
       stopScrubPreviewAudio();
       releaseStaticSeekCache(staticSeekAdapterRef, staticSeekWarnedRef);
-      if (probeIntervalRef.current) clearInterval(probeIntervalRef.current);
+      cancelPendingLoad();
     };
   });
 
   const resetPlayer = useCallback(() => {
     stopRAFLoop();
     stopReverseLoop();
-    if (probeIntervalRef.current) clearInterval(probeIntervalRef.current);
+    cancelPendingLoad();
     usePlayerStore.getState().reset();
-  }, [stopRAFLoop, stopReverseLoop]);
+  }, [stopRAFLoop, stopReverseLoop, cancelPendingLoad]);
 
   useEffect(() => {
     return usePlayerStore.subscribe((state, prev) => {

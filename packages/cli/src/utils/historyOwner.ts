@@ -9,11 +9,13 @@ import {
   type HistoryListItem,
   type HistoryResult,
   type HistoryWho,
+  type UndoMode,
 } from "@hyperframes/studio-server";
+
 import { resolveProject } from "./project.js";
 import { findPreviewServerForProject, studioApiUrl } from "./studioSelectionClient.js";
 
-export type UndoMode = "just-this" | "back-to-before";
+export type { UndoMode };
 
 /** An agent's turn: its writes until `end`, or until the idle limit passes without one, are one entry of its own. */
 export interface Turn {

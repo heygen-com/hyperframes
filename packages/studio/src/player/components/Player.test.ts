@@ -127,6 +127,11 @@ describe("preview errors", () => {
     root = null;
   });
 
+  it("puts the preview on the player's once-a-second paused heartbeat", async () => {
+    const { player } = await mountPlayer();
+    expect(player.hasAttribute("low-power-idle")).toBe(true);
+  });
+
   it("attaches lifecycle listeners before navigating the player", async () => {
     await mountPlayer();
     const srcIndex = lifecycleLog.indexOf("src");

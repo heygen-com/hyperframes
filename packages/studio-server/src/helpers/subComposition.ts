@@ -7,16 +7,7 @@ import {
   rewriteInlineStyleAssetUrls,
 } from "@hyperframes/core";
 import { stripEmbeddedRuntimeScripts } from "@hyperframes/core/compiler";
-
-/**
- * Detect whether `html` is a full document (has `<html>`, `<head>`, or
- * `<!doctype`), as opposed to a `<template>`-wrapped fragment.
- * Anchored to start-of-string (ignoring leading whitespace) so stray
- * occurrences inside script/template content don't false-positive.
- */
-function isFullHtmlDocument(html: string): boolean {
-  return /^\s*(?:<!doctype\s|<html[\s>])/i.test(html);
-}
+import { isFullHtmlDocument } from "@hyperframes/core/compiler/html-document";
 
 /**
  * Rewrite relative asset paths in a parsed DOM tree. Shared across all

@@ -52,23 +52,24 @@ Show a static image before playback starts:
 
 ## Attributes
 
-| Attribute              | Type                            | Default       | Description                                                                 |
-| ---------------------- | ------------------------------- | ------------- | --------------------------------------------------------------------------- |
-| `src`                  | string                          | —             | URL to the composition HTML file                                            |
-| `audio-src`            | string                          | —             | Audio URL for parent-frame playback (mobile)                                |
-| `width`                | number                          | 1920          | Composition width in pixels (aspect ratio)                                  |
-| `height`               | number                          | 1080          | Composition height in pixels (aspect ratio)                                 |
-| `controls`             | boolean                         | false         | Show play/pause, scrubber, and time display                                 |
-| `muted`                | boolean                         | false         | Mute audio playback                                                         |
-| `audio-locked`         | boolean                         | false         | Force-mute and hide the volume controls so the viewer cannot turn sound on  |
-| `poster`               | string                          | —             | Image URL shown before playback starts                                      |
-| `playback-rate`        | number                          | 1             | Speed multiplier (0.5 = half, 2 = double)                                   |
-| `autoplay`             | boolean                         | false         | Start playing when ready                                                    |
-| `loop`                 | boolean                         | false         | Restart when the composition ends                                           |
-| `shader-capture-scale` | number                          | —             | Shader transition snapshot scale forwarded to browser previews (`0.25`-`1`) |
-| `shader-loading`       | `composition \| player \| none` | `composition` | Controls shader transition prep loading UI ownership                        |
-| `assets-loading-ui`    | `player \| none`                | `player`      | `none` never shows the loading-assets card; asset events still fire         |
-| `low-power-idle`       | boolean                         | false         | While paused, check in once a second, not every 80 ms (many-player pages)   |
+| Attribute               | Type                            | Default       | Description                                                                 |
+| ----------------------- | ------------------------------- | ------------- | --------------------------------------------------------------------------- |
+| `src`                   | string                          | —             | URL to the composition HTML file                                            |
+| `audio-src`             | string                          | —             | Audio URL for parent-frame playback (mobile)                                |
+| `width`                 | number                          | 1920          | Composition width in pixels (aspect ratio)                                  |
+| `height`                | number                          | 1080          | Composition height in pixels (aspect ratio)                                 |
+| `controls`              | boolean                         | false         | Show play/pause, scrubber, and time display                                 |
+| `muted`                 | boolean                         | false         | Mute audio playback                                                         |
+| `audio-locked`          | boolean                         | false         | Force-mute and hide the volume controls so the viewer cannot turn sound on  |
+| `poster`                | string                          | —             | Image URL shown before playback starts                                      |
+| `playback-rate`         | number                          | 1             | Speed multiplier (0.5 = half, 2 = double)                                   |
+| `autoplay`              | boolean                         | false         | Start playing when ready                                                    |
+| `loop`                  | boolean                         | false         | Restart when the composition ends                                           |
+| `shader-capture-scale`  | number                          | —             | Shader transition snapshot scale forwarded to browser previews (`0.25`-`1`) |
+| `shader-loading`        | `composition \| player \| none` | `composition` | Controls shader transition prep loading UI ownership                        |
+| `assets-loading-ui`     | `player \| none`                | `player`      | `none` never shows the loading-assets card; asset events still fire         |
+| `low-power-idle`        | boolean                         | false         | While paused, check in once a second, not every 80 ms (many-player pages)   |
+| `disable-click-to-play` | boolean                         | false         | A click on the player no longer plays or pauses (host overlays own clicks)  |
 
 ### Shader transition previews
 
@@ -127,6 +128,9 @@ player.currentTime; // number (read/write)
 player.duration; // number (read-only)
 player.paused; // boolean (read-only)
 player.ready; // boolean (read-only)
+player.compositionWidth; // number (read-only), the composition's width
+player.compositionHeight; // number (read-only), the composition's height
+player.disableClickToPlay; // boolean (read/write)
 player.playbackRate; // number (read/write)
 player.muted; // boolean (read/write)
 player.audioLocked; // boolean (read/write) — force-mute + hide volume controls
@@ -223,15 +227,17 @@ function StudioPreview({ src }: { src: string }) {
 
 ## Events
 
-| Event                   | Detail                     | Fired when                                 |
-| ----------------------- | -------------------------- | ------------------------------------------ |
-| `ready`                 | `{ duration }`             | Composition loaded and duration determined |
-| `play`                  | —                          | Playback started                           |
-| `pause`                 | —                          | Playback paused                            |
-| `timeupdate`            | `{ currentTime }`          | Playback position changed (~10 fps)        |
-| `ended`                 | —                          | Reached the end (when not looping)         |
-| `error`                 | `{ message }`              | Composition failed to load                 |
-| `shadertransitionstate` | `{ compositionId, state }` | Shader transition cache/capture progress   |
+| Event                   | Detail                                              | Fired when                                 |
+| ----------------------- | --------------------------------------------------- | ------------------------------------------ |
+| `ready`                 | `{ duration, compositionWidth, compositionHeight }` | Composition loaded and duration determined |
+| `durationchange`        | `{ duration }`                                      | The duration changed after `ready`         |
+| `resize`                | `{ compositionWidth, compositionHeight }`           | The composition's size changed             |
+| `play`                  | —                                                   | Playback started                           |
+| `pause`                 | —                                                   | Playback paused                            |
+| `timeupdate`            | `{ currentTime }`                                   | Playback position changed (~10 fps)        |
+| `ended`                 | —                                                   | Reached the end (when not looping)         |
+| `error`                 | `{ message }`                                       | Composition failed to load                 |
+| `shadertransitionstate` | `{ compositionId, state }`                          | Shader transition cache/capture progress   |
 
 ```js
 player.addEventListener("ready", (e) => {

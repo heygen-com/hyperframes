@@ -1,4 +1,5 @@
 import { createHash, randomUUID } from "node:crypto";
+import { realFilePath } from "./safePath.js";
 
 export interface FileWriteReceipt {
   path: string;
@@ -8,6 +9,8 @@ export interface FileWriteReceipt {
 
 interface StoredReceipt extends FileWriteReceipt {
   recordedAt: number;
+  /** The bytes this write replaced, so the project history can keep a save that landed just before it. */
+  overwrote?: string | Uint8Array;
 }
 
 const RECEIPT_TTL_MS = 10_000;
@@ -47,16 +50,23 @@ export function createWriteToken(requestToken?: string): string {
   return token && token.length <= 200 ? token : randomUUID();
 }
 
-export function recordFileWriteReceipt(absPath: string, receipt: FileWriteReceipt): void {
+export function recordFileWriteReceipt(
+  filePath: string,
+  receipt: Omit<StoredReceipt, "recordedAt">,
+): void {
+  const absPath = realFilePath(filePath);
   const now = Date.now();
-  const current = (receipts.get(absPath) ?? []).filter(
-    (entry) => now - entry.recordedAt < RECEIPT_TTL_MS,
-  );
-  current.push({ ...receipt, recordedAt: now });
-  receipts.set(absPath, current);
+  // Every path's expired receipts go, not just this one's: a receipt can hold a whole file's bytes.
+  for (const [path, list] of receipts) {
+    const live = list.filter((entry) => now - entry.recordedAt < RECEIPT_TTL_MS);
+    if (live.length > 0) receipts.set(path, live);
+    else receipts.delete(path);
+  }
+  receipts.set(absPath, [...(receipts.get(absPath) ?? []), { ...receipt, recordedAt: now }]);
 }
 
-export function clearFileWriteReceipt(absPath: string, version: string, writeToken: string): void {
+export function clearFileWriteReceipt(filePath: string, version: string, writeToken: string): void {
+  const absPath = realFilePath(filePath);
   const current = (receipts.get(absPath) ?? []).filter(
     (entry) => entry.version !== version || entry.writeToken !== writeToken,
   );
@@ -73,9 +83,30 @@ export function clearFileWriteReceipt(absPath: string, version: string, writeTok
  * TTL removes a receipt.
  */
 export function identifyFileWrite(
-  absPath: string,
+  filePath: string,
   expectedVersion: string,
 ): FileWriteReceipt | null {
+  const receipt = newestReceipt(realFilePath(filePath), expectedVersion);
+  if (!receipt) return null;
+  const { path, version, writeToken } = receipt;
+  return { path, version, writeToken };
+}
+
+/** The bytes the API write of `version` replaced, while its receipt lives. */
+export function bytesOverwrittenBy(
+  filePath: string,
+  version: string,
+): string | Uint8Array | undefined {
+  return newestReceipt(realFilePath(filePath), version)?.overwrote;
+}
+
+/** Drops the replaced bytes a claim walked through, so a later claim can't walk back through them. */
+export function forgetOverwrittenBytes(filePath: string, versions: ReadonlySet<string>): void {
+  for (const receipt of receipts.get(realFilePath(filePath)) ?? [])
+    if (versions.has(receipt.version)) delete receipt.overwrote;
+}
+
+function newestReceipt(absPath: string, expectedVersion: string): StoredReceipt | undefined {
   const now = Date.now();
   const current = (receipts.get(absPath) ?? []).filter(
     (entry) => now - entry.recordedAt < RECEIPT_TTL_MS,
@@ -90,9 +121,7 @@ export function identifyFileWrite(
   for (let i = current.length - 1; i >= 0 && !receipt; i -= 1) {
     if (current[i]?.version === expectedVersion) receipt = current[i];
   }
-  if (!receipt) return null;
-  const { path, version, writeToken } = receipt;
-  return { path, version, writeToken };
+  return receipt;
 }
 
 /**

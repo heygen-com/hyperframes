@@ -242,7 +242,7 @@ export type ShaderName = keyof typeof shaders;
 export const SHADER_NAMES = Object.keys(shaders) as ShaderName[];
 
 export function getFragSource(name: string): string {
-  const def = shaders[name];
+  const def = Object.hasOwn(shaders, name) ? shaders[name] : undefined;
   if (!def)
     throw new Error(
       `[HyperShader] Unknown shader: "${name}". Available: ${SHADER_NAMES.join(", ")}`,

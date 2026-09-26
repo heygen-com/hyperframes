@@ -27,14 +27,14 @@ import { isAudioFile } from "../helpers/mime.js";
 import { replaceFileAtomically } from "../helpers/atomicFile.js";
 import { generateWaveformCache } from "../helpers/waveform.js";
 import { validateUploadedMediaBuffer } from "../helpers/mediaValidation.js";
-import { isSafePath, resolveWithinProject } from "../helpers/safePath.js";
+import { isSafePath, pinWithinProject, resolveWithinProject } from "../helpers/safePath.js";
 import { backupPathForResponse, snapshotBeforeWrite } from "../helpers/backupJournal.js";
 import {
   createWriteToken,
   fileContentVersion,
   recordFileWriteReceipt,
 } from "../helpers/fileVersion.js";
-import { applyFileMutations } from "../helpers/applyFileMutations.js";
+import { applyFileMutations, FileChangedError } from "../helpers/applyFileMutations.js";
 import {
   findUnsafeDomPatchValues,
   findUnsafeMutationValues,
@@ -176,7 +176,7 @@ async function resolveProjectPath(
   c: RouteContext,
   adapter: StudioApiAdapter,
   route: string,
-  opts?: { mustExist?: boolean },
+  opts?: { mustExist?: boolean; pin?: boolean },
 ) {
   const id = c.req.param("id");
   const project = await adapter.resolveProject(id);
@@ -203,7 +203,8 @@ async function resolveProjectPath(
     return { error: c.json({ error: "forbidden", why: "nul" }, 403) } as const;
   }
 
-  const absPath = resolveWithinProject(project.dir, filePath);
+  // An edit pins its target; create-only writes use `wx`, and a delete or rename acts on a link itself.
+  const absPath = (opts?.pin ? pinWithinProject : resolveWithinProject)(project.dir, filePath);
   if (!absPath) {
     if (isDanglingSymlinkInProject(project.dir, resolve(project.dir, filePath))) {
       return { error: c.json({ error: "not found", why: "dangling_symlink" }, 404) } as const;
@@ -221,13 +222,13 @@ async function resolveProjectPath(
 function resolveProjectFile(
   c: RouteContext,
   adapter: StudioApiAdapter,
-  opts?: { mustExist?: boolean },
+  opts?: { mustExist?: boolean; pin?: boolean },
 ) {
   return resolveProjectPath(c, adapter, "files", opts);
 }
 
 function resolveFileMutationContext(c: RouteContext, adapter: StudioApiAdapter, operation: string) {
-  return resolveProjectPath(c, adapter, `file-mutations/${operation}`);
+  return resolveProjectPath(c, adapter, `file-mutations/${operation}`, { pin: true });
 }
 
 type MutationTarget = {
@@ -361,13 +362,19 @@ function foldElementPatches(
   return { content, matched };
 }
 
+const PATCH_CONFLICT_ATTEMPTS = 3;
+
+type ElementPatchCommitResult =
+  | { error: "duplicate" | "forbidden" | "not-found" | "conflict"; sourceFile: string }
+  | { durable: boolean; files: ElementPatchBatchFileResult[] };
+
 /**
  * The single commit owner for element patch batches. All files are resolved,
  * read, and folded before the first write; any unmatched target refuses the
- * whole request. Studio Server is intentionally single-process; within that
- * process the final snapshots/writes are synchronous, so another route cannot
- * interleave once the commit section begins. A multi-process deployment must
- * replace this process-local guarantee with a shared per-project file lock.
+ * whole request, and a write from elsewhere mid-fold refolds before it answers 409.
+ * Studio Server is single-process; within it the final snapshots/writes are
+ * synchronous, so another route cannot interleave once the commit begins. A
+ * multi-process deployment needs a shared per-project file lock instead.
  */
 export function commitElementPatchBatches(
   projectDir: string,
@@ -375,9 +382,24 @@ export function commitElementPatchBatches(
   writeFile: (path: string, content: string, encoding: "utf-8") => void = (path, content) =>
     replaceFileAtomically(path, content, statSync(path).mode),
   requestToken?: string,
-):
-  | { error: "duplicate" | "forbidden" | "not-found"; sourceFile: string }
-  | { durable: boolean; files: ElementPatchBatchFileResult[] } {
+): ElementPatchCommitResult {
+  for (let attempt = 1; ; attempt += 1) {
+    try {
+      return foldAndCommitElementPatchBatches(projectDir, batches, writeFile, requestToken);
+    } catch (error) {
+      if (!(error instanceof FileChangedError)) throw error;
+      if (attempt === PATCH_CONFLICT_ATTEMPTS)
+        return { error: "conflict", sourceFile: error.sourceFile };
+    }
+  }
+}
+
+function foldAndCommitElementPatchBatches(
+  projectDir: string,
+  batches: ElementPatchBatchRequest[],
+  writeFile: (path: string, content: string, encoding: "utf-8") => void,
+  requestToken: string | undefined,
+): ElementPatchCommitResult {
   const resolvedPaths = new Set<string>();
   const prepared: Array<{
     sourceFile: string;
@@ -388,7 +410,7 @@ export function commitElementPatchBatches(
   }> = [];
 
   for (const batch of batches) {
-    const absPath = resolveWithinProject(projectDir, batch.sourceFile);
+    const absPath = pinWithinProject(projectDir, batch.sourceFile);
     if (!absPath) return { error: "forbidden", sourceFile: batch.sourceFile };
     if (resolvedPaths.has(absPath)) return { error: "duplicate", sourceFile: batch.sourceFile };
     resolvedPaths.add(absPath);
@@ -453,7 +475,7 @@ function commitElementPatchBatchesWithReceipts(
   return commitElementPatchBatches(
     projectDir,
     batches,
-    writeFileSync,
+    undefined,
     c.req.header("X-Hyperframes-Write-Token"),
   );
 }
@@ -468,27 +490,19 @@ function commitElementPatchBatchesWithReceipts(
  * the stage for a few hundred milliseconds right after the user typed. Every
  * mutation route records through here so no route can forget.
  */
-function recordMutationReceipt(
-  c: RouteContext,
-  filePath: string,
-  absPath: string,
-  html: string,
-): { version: string; writeToken: string } {
-  const version = fileContentVersion(html);
-  const writeToken = createWriteToken(c.req.header("X-Hyperframes-Write-Token"));
-  recordFileWriteReceipt(absPath, { path: filePath, version, writeToken });
-  return { version, writeToken };
-}
-
 function writeFileWithReceipt(
   c: RouteContext,
   filePath: string,
   absPath: string,
   html: string,
 ): { version: string; writeToken: string } {
+  const overwrote = readFileSync(absPath);
   replaceFileAtomically(absPath, html, statSync(absPath).mode);
   // The synchronous write cannot yield before its receipt is recorded; keep this block await-free.
-  return recordMutationReceipt(c, filePath, absPath, html);
+  const version = fileContentVersion(html);
+  const writeToken = createWriteToken(c.req.header("X-Hyperframes-Write-Token"));
+  recordFileWriteReceipt(absPath, { path: filePath, version, writeToken, overwrote });
+  return { version, writeToken };
 }
 
 function writeMutationResult(
@@ -497,9 +511,13 @@ function writeMutationResult(
   filePath: string,
   absPath: string,
   html: string,
+  original: string,
 ): { backupPath: string | null; version: string } | Response {
   const backup = snapshotBeforeWrite(projectDir, absPath);
   if (backup.error) return c.json({ error: `backup failed: ${backup.error}` }, 500);
+  if (readFileSync(absPath, "utf-8") !== original) {
+    return c.json({ error: "file changed", conflict: true, path: filePath }, 409);
+  }
   const { version } = writeFileWithReceipt(c, filePath, absPath, html);
   return { backupPath: backupPathForResponse(projectDir, backup.backupPath), version };
 }
@@ -516,7 +534,7 @@ function writeIfChanged(
   if (next === original) {
     return c.json({ ok: true, changed: false, content: original, path: filePath });
   }
-  const mutationResult = writeMutationResult(c, projectDir, filePath, absPath, next);
+  const mutationResult = writeMutationResult(c, projectDir, filePath, absPath, next, original);
   if (mutationResult instanceof Response) return mutationResult;
   const { backupPath } = mutationResult;
   return c.json({
@@ -544,9 +562,11 @@ function rejectUnsafeMutationValues(
 
 function elementPatchBatchCommitErrorResponse(
   c: RouteContext,
-  error: "duplicate" | "forbidden" | "not-found",
+  error: Extract<ElementPatchCommitResult, { error: unknown }>["error"],
   sourceFile: string,
 ): Response {
+  if (error === "conflict")
+    return c.json({ error: "file changed", conflict: true, sourceFile }, 409);
   if (error === "not-found") return c.json({ error, sourceFile }, 404);
   if (error === "forbidden") return c.json({ error, sourceFile }, 403);
   return c.json({ error: "duplicate source file", sourceFile }, 400);
@@ -1358,6 +1378,7 @@ async function applyGsapMutations(
       res.filePath,
       res.absPath,
       newHtml,
+      beforeHtml,
     );
     if (mutationResult instanceof Response) return mutationResult;
     backupPath = mutationResult.backupPath;
@@ -2374,7 +2395,7 @@ export function registerFileRoutes(api: Hono, adapter: StudioApiAdapter): void {
   // ── Write (overwrite) ──
 
   api.put("/projects/:id/files/*", async (c) => {
-    const res = await resolveProjectFile(c, adapter);
+    const res = await resolveProjectFile(c, adapter, { pin: true });
     if ("error" in res) return res.error;
 
     const body = Buffer.from(await c.req.arrayBuffer());
@@ -2401,6 +2422,7 @@ export function registerFileRoutes(api: Hono, adapter: StudioApiAdapter): void {
     }
 
     let backup: ReturnType<typeof snapshotBeforeWrite> = { backupPath: null };
+    let overwrote: Buffer | undefined;
     if (createOnly) {
       ensureDir(res.absPath);
       let fd: number;
@@ -2446,6 +2468,7 @@ export function registerFileRoutes(api: Hono, adapter: StudioApiAdapter): void {
       }
       try {
         const currentContent = readFileSync(fd);
+        overwrote = currentContent;
         const currentVersion = fileContentVersion(currentContent);
         if (expectedVersion !== currentVersion) {
           return c.json(
@@ -2470,7 +2493,7 @@ export function registerFileRoutes(api: Hono, adapter: StudioApiAdapter): void {
     }
     const version = fileContentVersion(body);
     const writeToken = createWriteToken(c.req.header("X-Hyperframes-Write-Token"));
-    recordFileWriteReceipt(res.absPath, { path: res.filePath, version, writeToken });
+    recordFileWriteReceipt(res.absPath, { path: res.filePath, version, writeToken, overwrote });
     c.header("ETag", version);
 
     return c.json({
@@ -2579,6 +2602,11 @@ export function registerFileRoutes(api: Hono, adapter: StudioApiAdapter): void {
 
     const backup = snapshotBeforeWrite(ctx.project.dir, ctx.absPath);
     if (backup.error) return c.json({ error: `backup failed: ${backup.error}` }, 500);
+    const current = readFileSync(ctx.absPath, "utf-8");
+    if (current !== before) {
+      const currentVersion = fileContentVersion(current);
+      return c.json({ error: "file conflict", currentVersion, currentContent: current }, 409);
+    }
     const { version, writeToken } = writeFileWithReceipt(
       c,
       ctx.filePath,
@@ -2681,7 +2709,7 @@ export function registerFileRoutes(api: Hono, adapter: StudioApiAdapter): void {
       const seen = new Set<string>();
       const prepared: FoldedAtomicCutFile[] = [];
       for (const file of files) {
-        const absPath = resolveWithinProject(project.dir, file.path);
+        const absPath = pinWithinProject(project.dir, file.path);
         if (!absPath) return c.json({ error: `forbidden path: ${file.path}` }, 403);
         if (seen.has(absPath)) return c.json({ error: `duplicate path: ${file.path}` }, 400);
         seen.add(absPath);
@@ -2757,6 +2785,7 @@ export function registerFileRoutes(api: Hono, adapter: StudioApiAdapter): void {
             path: file.path,
             version: fileContentVersion(file.after),
             writeToken,
+            overwrote: file.before,
           });
         }
       } catch (error) {
@@ -2853,6 +2882,7 @@ export function registerFileRoutes(api: Hono, adapter: StudioApiAdapter): void {
       ctx.filePath,
       ctx.absPath,
       result.html,
+      originalContent,
     );
     if (mutationResult instanceof Response) return mutationResult;
     const { version, backupPath } = mutationResult;
@@ -2885,48 +2915,54 @@ export function registerFileRoutes(api: Hono, adapter: StudioApiAdapter): void {
       return rejectUnsafeMutationValues(c, unsafeFields);
     }
 
-    let originalContent: string;
-    try {
-      originalContent = readFileSync(ctx.absPath, "utf-8");
-    } catch {
-      return c.json({ error: "not found" }, 404);
-    }
-    const { html: patched, matched } = patchElementInHtml(
-      originalContent,
-      parsed.target,
-      parsed.body.operations,
-    );
-    if (patched === originalContent) {
-      const version = fileContentVersion(originalContent);
+    for (let attempt = 1; ; attempt += 1) {
+      let originalContent: string;
+      try {
+        originalContent = readFileSync(ctx.absPath, "utf-8");
+      } catch {
+        return c.json({ error: "not found" }, 404);
+      }
+      const { html: patched, matched } = patchElementInHtml(
+        originalContent,
+        parsed.target,
+        parsed.body.operations,
+      );
+      if (patched === originalContent) {
+        const version = fileContentVersion(originalContent);
+        c.header("ETag", version);
+        return c.json({
+          ok: true,
+          changed: false,
+          matched,
+          content: originalContent,
+          path: ctx.filePath,
+          version,
+        });
+      }
+      const mutationResult = writeMutationResult(
+        c,
+        ctx.project.dir,
+        ctx.filePath,
+        ctx.absPath,
+        patched,
+        originalContent,
+      );
+      if (mutationResult instanceof Response) {
+        if (mutationResult.status === 409 && attempt < PATCH_CONFLICT_ATTEMPTS) continue;
+        return mutationResult;
+      }
+      const { backupPath, version } = mutationResult;
       c.header("ETag", version);
       return c.json({
         ok: true,
-        changed: false,
+        changed: true,
         matched,
-        content: originalContent,
+        content: patched,
         path: ctx.filePath,
         version,
+        backupPath,
       });
     }
-    const mutationResult = writeMutationResult(
-      c,
-      ctx.project.dir,
-      ctx.filePath,
-      ctx.absPath,
-      patched,
-    );
-    if (mutationResult instanceof Response) return mutationResult;
-    const { backupPath, version } = mutationResult;
-    c.header("ETag", version);
-    return c.json({
-      ok: true,
-      changed: true,
-      matched,
-      content: patched,
-      path: ctx.filePath,
-      version,
-      backupPath,
-    });
   });
 
   api.post("/projects/:id/file-mutations/patch-element-batches", async (c) => {
@@ -3054,6 +3090,7 @@ export function registerFileRoutes(api: Hono, adapter: StudioApiAdapter): void {
       ctx.filePath,
       ctx.absPath,
       result.html,
+      originalContent,
     );
     if (mutationResult instanceof Response) return mutationResult;
     const { backupPath } = mutationResult;
@@ -3185,7 +3222,14 @@ export function registerFileRoutes(api: Hono, adapter: StudioApiAdapter): void {
     }
 
     ensureDir(destAbs);
-    writeFileSync(destAbs, readFileSync(srcAbs));
+    try {
+      writeFileSync(destAbs, readFileSync(srcAbs), { flag: "wx" });
+    } catch (error) {
+      if (!error || typeof error !== "object" || !("code" in error) || error.code !== "EEXIST") {
+        throw error;
+      }
+      return c.json({ error: "already exists" }, 409);
+    }
 
     return c.json({ ok: true, path: copyPath }, 201);
   });
@@ -3254,6 +3298,7 @@ export function registerFileRoutes(api: Hono, adapter: StudioApiAdapter): void {
   api.post("/projects/:id/gsap-mutations/*", async (c) => {
     const res = await resolveProjectPath(c, adapter, "gsap-mutations", {
       mustExist: true,
+      pin: true,
     });
     if ("error" in res) return res.error;
 
@@ -3265,7 +3310,10 @@ export function registerFileRoutes(api: Hono, adapter: StudioApiAdapter): void {
   });
 
   api.post("/projects/:id/gsap-mutations-batch/*", async (c) => {
-    const res = await resolveProjectPath(c, adapter, "gsap-mutations-batch", { mustExist: true });
+    const res = await resolveProjectPath(c, adapter, "gsap-mutations-batch", {
+      mustExist: true,
+      pin: true,
+    });
     if ("error" in res) return res.error;
 
     const body = (await c.req.json().catch(() => null)) as {
@@ -3285,7 +3333,10 @@ export function registerFileRoutes(api: Hono, adapter: StudioApiAdapter): void {
   // mutation wrote. Keep compare + write in this synchronous server section so
   // another request cannot land between a client-side check and the restore.
   api.post("/projects/:id/gsap-mutation-rollback/*", async (c) => {
-    const res = await resolveProjectPath(c, adapter, "gsap-mutation-rollback", { mustExist: true });
+    const res = await resolveProjectPath(c, adapter, "gsap-mutation-rollback", {
+      mustExist: true,
+      pin: true,
+    });
     if ("error" in res) return res.error;
 
     const body = (await c.req.json().catch(() => null)) as {

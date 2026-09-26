@@ -1,4 +1,5 @@
 // @vitest-environment happy-dom
+// fallow-ignore-file code-duplication
 import { act, createElement } from "react";
 import { createRoot } from "react-dom/client";
 import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
@@ -103,8 +104,7 @@ it("a drag's edits under one key undo as one step, even before the drag goes idl
       }),
     );
   }
-  // The held drag is not in the history's list yet: only its own paths say what to read before the step.
-  expect(hook().undoLabel).toBeUndefined();
+  await vi.waitFor(() => expect(hook().undoLabel).toBe("Dragged Title"));
   const undone = await act(() => hook().undo({ readFile }));
   expect(undone).toMatchObject({
     ok: true,

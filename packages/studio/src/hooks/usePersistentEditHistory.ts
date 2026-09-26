@@ -120,11 +120,11 @@ function redoneAt(view: HistoryView): number | null {
   return view.entries.find((entry) => entry.id === undo?.undoes)?.endedAt ?? null;
 }
 
-/** Studio's undo over the server's project history: an edit claims what it wrote; Cmd+Z steps every writer's. */
+/** Studio's undo over the server's project history: an edit claims what it wrote; Cmd+Z steps the person's. */
 export function usePersistentEditHistory({ projectId }: UsePersistentEditHistoryOptions) {
   const [view, setView] = useState<HistoryView>(EMPTY);
   const [loaded, setLoaded] = useState(false);
-  // A coalescing claim stays on the server until its drag goes idle, so it is not in `view` yet.
+  // A coalescing claim the server just took, until `refresh()` brings its entry into `view`.
   const heldClaimRef = useRef<{ paths: string[]; at: number } | null>(null);
   const projectIdRef = useRef(projectId);
   projectIdRef.current = projectId;
