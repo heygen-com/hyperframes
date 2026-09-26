@@ -38,6 +38,7 @@ function stubGsap() {
   };
   const timeline = (opts: { onUpdate?: () => void }) => ((onUpdate = opts.onUpdate), tl);
   vi.stubGlobal("gsap", { timeline, set: () => {}, to: () => {}, fromTo: () => {} });
+  return { now: () => now };
 }
 
 function stubWebGl() {
@@ -268,5 +269,49 @@ describe("a runtime seek while the prewarm runs", () => {
 
     tl.totalTime(3.5);
     expect(crossedThree).toBe(1);
+  });
+
+  it("does not reach the capture when it lands while the capture frame paints", async () => {
+    const clock = stubGsap();
+    stubWebGl();
+    let tl: SpeedTimeline | undefined;
+    let capturedAt: number | undefined;
+    vi.spyOn(console, "warn").mockImplementation((message: unknown) => {
+      if (capturedAt === undefined && String(message).includes("Transition capture failed")) {
+        capturedAt = clock.now();
+      }
+    });
+    vi.spyOn(window, "requestAnimationFrame").mockImplementation((callback) => {
+      tl?.totalTime(0.3);
+      return setTimeout(() => callback(performance.now()), 0) as unknown as number;
+    });
+    mountScenes(["s4", "s5"]);
+    tl = init({
+      bgColor: "#000",
+      scenes: ["s4", "s5"],
+      transitions: [{ time: 4.4, duration: 0.8, shader: "domain-warp" }],
+    }) as unknown as SpeedTimeline;
+    await prewarmDone();
+
+    expect(capturedAt).toBe(4.4);
+  });
+
+  it("still records outside seeks after a callback throws inside a capture seek", async () => {
+    let thrown = false;
+    const tl = initDuringCapture((timeline) => timeline.totalTime(1));
+    tl.call(
+      () => {
+        if (!thrown) {
+          thrown = true;
+          throw new Error("author callback");
+        }
+      },
+      null,
+      2,
+    );
+    await prewarmDone();
+
+    expect(thrown).toBe(true);
+    expect(tl.totalTime()).toBe(1);
   });
 });

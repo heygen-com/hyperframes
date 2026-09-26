@@ -1940,11 +1940,14 @@ export function init(config: HyperShaderConfig): GsapTimeline {
     disposeCachedTransition(cache);
     let allPersisted = true;
     for (let sampleIndex = 0; sampleIndex < sampleCount; sampleIndex += 1) {
-      const progress = sampleIndex / (sampleCount - 1);
+      const sampleTime = cache.time + (cache.duration * sampleIndex) / (sampleCount - 1);
       suppressSceneMutationTracking(() => {
-        originalTime(cache.time + cache.duration * progress, false);
+        originalTime(sampleTime, false);
       });
       await waitForPaint();
+      suppressSceneMutationTracking(() => {
+        originalTime(sampleTime, true);
+      });
 
       const fromScene = document.getElementById(cache.fromId);
       const toScene = document.getElementById(cache.toId);
