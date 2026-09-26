@@ -20,7 +20,7 @@ afterEach(() => {
 });
 
 // The preview page: the saved markup plus what the runtime adds to it.
-function mountPreview(): HTMLIFrameElement {
+function mountPreview(mounted = ""): HTMLIFrameElement {
   const iframe = document.createElement("iframe");
   document.body.appendChild(iframe);
   const doc = iframe.contentDocument as Document;
@@ -29,11 +29,12 @@ function mountPreview(): HTMLIFrameElement {
   doc.close();
   (doc.querySelector("h1") as HTMLElement).style.cssText = "visibility: hidden; display: none";
   doc.body.append(Object.assign(doc.createElement("script"), { textContent: "/* runtime */" }));
+  doc.body.insertAdjacentHTML("beforeend", mounted);
   return iframe;
 }
 
-function mountPicker(files: Record<string, string>) {
-  const iframe = mountPreview();
+function mountPicker(files: Record<string, string>, selector = "h1", mounted = "") {
+  const iframe = mountPreview(mounted);
   const synced: Record<string, string>[] = [];
   let api: ReturnType<typeof useElementPicker> | null = null;
   function Harness() {
@@ -52,7 +53,7 @@ function mountPicker(files: Record<string, string>) {
         data: {
           source: "hf-preview",
           type: "element-picked",
-          elementInfo: { selector: "h1", tagName: "h1" },
+          elementInfo: { selector, tagName: "h1" },
           ...runtimeProtocolMetadata(30),
         },
       }),
@@ -78,6 +79,25 @@ describe("an edit to a picked element without an id", () => {
     const { picker, synced } = mountPicker({ "index.html": SAVED });
     act(() => picker().setTextContent("Hello"));
     expect(synced[0]?.["index.html"]).toMatch(/>Hello<\/h1>/);
+  });
+
+  it("writes into the element's own file when another file holds an identical one", () => {
+    const sub = ensureHfIds(`<template><div data-composition-id="b">
+<h1 class="clip" data-start="2" data-duration="3" data-track-index="0">Title</h1>
+</div></template>`);
+    const subH1 = new DOMParser()
+      .parseFromString(sub, "text/html")
+      .querySelector("template")
+      ?.content.querySelector("h1");
+    const host = `<div data-composition-src="compositions/b.html">${subH1?.outerHTML}</div>`;
+    const { picker, synced } = mountPicker(
+      { "index.html": SAVED, "compositions/b.html": sub },
+      "[data-composition-src] h1",
+      host,
+    );
+    expect(SAVED).toContain(`data-hf-id="${subH1?.getAttribute("data-hf-id")}"`);
+    act(() => picker().setStyle("color", "red"));
+    expect(synced.map((changed) => Object.keys(changed))).toEqual([["compositions/b.html"]]);
   });
 
   it("writes nothing when no saved file holds the element", () => {

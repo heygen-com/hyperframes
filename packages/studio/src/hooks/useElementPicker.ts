@@ -11,6 +11,8 @@ import {
   acceptStudioRuntimeMessage,
   postRuntimeControlMessage,
 } from "../player/lib/runtimeProtocol";
+import { compositionPathOfPreviewUrl } from "../player/components/CompositionThumbnail";
+import { getSourceFileForElement } from "../components/editor/domEditingDom";
 
 export interface PickedElement {
   id: string | null;
@@ -132,18 +134,25 @@ export function useElementPicker(
   optionsRef.current = options;
 
   // Sync immediately (not debounced) — save on every change for reliability
-  const syncToSource = useCallback((picked: PickedElement, live: Element, op: PatchOperation) => {
-    const opts = optionsRef.current;
-    if (!opts?.workspaceFiles || !opts.onSyncFiles) return;
-    // No id: the preview's hf-id names the element; with no saved match nothing is written.
-    const hfId = live.getAttribute("data-hf-id");
-    const patch = picked.id
-      ? patchById(opts.workspaceFiles, picked.id, picked.selector, op)
-      : hfId
-        ? patchByHfId(opts.workspaceFiles, hfId, op)
-        : null;
-    if (patch && patch.after !== patch.before) opts.onSyncFiles({ [patch.path]: patch.after });
-  }, []);
+  const syncToSource = useCallback(
+    (picked: PickedElement, live: HTMLElement, iframe: HTMLIFrameElement, op: PatchOperation) => {
+      const opts = optionsRef.current;
+      if (!opts?.workspaceFiles || !opts.onSyncFiles) return;
+      // No id: the preview's hf-id names the element, in the file it was served from.
+      const hfId = live.getAttribute("data-hf-id");
+      const ownFile = getSourceFileForElement(
+        live,
+        compositionPathOfPreviewUrl(iframe.getAttribute("src") ?? ""),
+      ).sourceFile;
+      const patch = picked.id
+        ? patchById(opts.workspaceFiles, picked.id, picked.selector, op)
+        : hfId
+          ? patchByHfId(opts.workspaceFiles, hfId, ownFile, op)
+          : null;
+      if (patch && patch.after !== patch.before) opts.onSyncFiles({ [patch.path]: patch.after });
+    },
+    [],
+  );
 
   const setStyle = useCallback(
     (prop: string, value: string) => {
@@ -162,7 +171,11 @@ export function useElementPicker(
                 }
               : null,
           );
-          syncToSource(pickedElement, el, { type: "inline-style", property: prop, value });
+          syncToSource(pickedElement, el, activeIframe, {
+            type: "inline-style",
+            property: prop,
+            value,
+          });
         }
       } catch {
         /* cross-origin */
@@ -188,7 +201,11 @@ export function useElementPicker(
                 }
               : null,
           );
-          syncToSource(pickedElement, el, { type: "attribute", property: attr, value });
+          syncToSource(pickedElement, el as HTMLElement, activeIframe, {
+            type: "attribute",
+            property: attr,
+            value,
+          });
         }
       } catch {
         /* cross-origin */
@@ -207,7 +224,7 @@ export function useElementPicker(
         if (el) {
           el.textContent = text;
           setPickedElement((prev) => (prev ? { ...prev, textContent: text } : null));
-          syncToSource(pickedElement, el, {
+          syncToSource(pickedElement, el as HTMLElement, activeIframe, {
             type: "text-content",
             property: "textContent",
             value: text,
@@ -277,9 +294,11 @@ function patchById(
 function patchByHfId(
   files: Record<string, string>,
   hfId: string,
+  ownFile: string,
   op: PatchOperation,
 ): SourcePatch | null {
-  const path = Object.keys(files).find((file) => findTagByTarget(files[file] ?? "", { hfId }));
+  const matches = Object.keys(files).filter((file) => findTagByTarget(files[file] ?? "", { hfId }));
+  const path = matches.includes(ownFile) ? ownFile : matches.length === 1 ? matches[0] : undefined;
   const before = path ? files[path] : undefined;
   return path && before ? { path, before, after: applyPatchByTarget(before, { hfId }, op) } : null;
 }
