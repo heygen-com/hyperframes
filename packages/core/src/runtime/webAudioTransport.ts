@@ -134,7 +134,7 @@ function isBufferSource(
   return source.sourceKind === "buffer";
 }
 
-// Long enough that a stop-and-reschedule inside one play never bounces the context.
+// A pause to scrub or a reschedule mid-play keeps the output awake; a real idle lets it sleep.
 const IDLE_SUSPEND_MS = 10000;
 
 export class WebAudioTransport {
