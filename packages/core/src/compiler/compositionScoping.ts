@@ -667,7 +667,7 @@ ${source.replace(/<\/(script)/gi, "<\\/$1")}
     globalTimeline.getChildren(false).forEach(function(animation) {
       if (before.indexOf(animation) >= 0) return;
       recorded.push(animation);
-      // Dropped as the timeline would have; a tween moved back from its end re-adds itself.
+      // Dropped as the timeline drops a finished tween (it keeps a paused one); moved back, a tween re-adds itself.
       if (autoRemove && !animation.getChildren && animation.totalProgress() === 1) globalTimeline.remove(animation);
     });
   };
