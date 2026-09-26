@@ -901,6 +901,30 @@ describe("openProjectHistory", () => {
     expect(read("index.html")).toBe("X");
   });
 
+  it("keeps what a Studio write landing during a claim replaced, for the next claim", async () => {
+    const { history, write, read, projectDir } = await project({ "index.html": "W" });
+    const receipt = (content: string, overwrote: string) =>
+      recordFileWriteReceipt(join(projectDir, "index.html"), {
+        path: "index.html",
+        version: fileContentVersion(content),
+        writeToken: "studio",
+        overwrote,
+      });
+    const told = (content: string) => ({
+      overwrote: { "index.html": fileContentVersion(content) },
+    });
+    write("index.html", "X");
+    receipt("X", "W");
+    // Studio's next write, over an editor's save B, lands after this claim's scan.
+    receipt("Y", "B");
+    await history.claim(you, "First", ["index.html"], told("W"));
+    write("index.html", "Y");
+
+    const second = await history.claim(you, "Second", ["index.html"], told("X"));
+    expect((await history.undo(second!.id, { who: you })).ok).toBe(true);
+    expect(read("index.html")).toBe("B");
+  });
+
   it("keeps the history of a small edit in a project larger than its budget", async () => {
     const { history, write } = await project(
       { "media.bin": Buffer.alloc(4096, 1), "index.html": "a" },

@@ -517,18 +517,23 @@ class Engine {
     );
     // Every cut is stored before any change is cut, so a failed store leaves the groups whole.
     const cuts: Array<string | undefined> = [];
-    for (const { change } of hits) {
+    const walked = hits.map(() => new Set<string>());
+    for (const [i, { change }] of hits.entries()) {
       const told = at.get(change.path);
-      cuts.push((await this.overwrittenBy(change, told)) ?? told);
+      cuts.push((await this.overwrittenBy(change, told, walked[i]!)) ?? told);
     }
-    for (const { change } of hits) forgetOverwrittenBytes(join(this.dir, change.path));
+    hits.forEach(({ change }, i) =>
+      forgetOverwrittenBytes(
+        join(this.dir, change.path),
+        new Set([...walked[i]!].map(hashVersion)),
+      ),
+    );
     return hits.flatMap(({ group, change }, i) => this.cutOut(group, change, cuts[i]) ?? []);
   }
 
   /** Walks the server's own writes back from `change.after` to the bytes they replaced, stored so an undo restores them. */
-  async overwrittenBy(change: HistoryFileChange, told: string | undefined) {
+  async overwrittenBy(change: HistoryFileChange, told: string | undefined, seen: Set<string>) {
     const absPath = join(this.dir, change.path);
-    const seen = new Set<string>();
     let bytes: string | Uint8Array | undefined;
     for (let hash = change.after; hash; ) {
       // A loop (X, Y, back to X) says nothing about what was there first: the client's word stands.

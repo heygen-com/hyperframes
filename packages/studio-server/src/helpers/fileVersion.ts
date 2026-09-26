@@ -100,9 +100,10 @@ export function bytesOverwrittenBy(
   return newestReceipt(realFilePath(filePath), version)?.overwrote;
 }
 
-/** Drops the replaced bytes a claim has used, so a later claim can't walk back through them. */
-export function forgetOverwrittenBytes(filePath: string): void {
-  for (const receipt of receipts.get(realFilePath(filePath)) ?? []) delete receipt.overwrote;
+/** Drops the replaced bytes a claim walked through, so a later claim can't walk back through them. */
+export function forgetOverwrittenBytes(filePath: string, versions: ReadonlySet<string>): void {
+  for (const receipt of receipts.get(realFilePath(filePath)) ?? [])
+    if (versions.has(receipt.version)) delete receipt.overwrote;
 }
 
 function newestReceipt(absPath: string, expectedVersion: string): StoredReceipt | undefined {
