@@ -307,14 +307,19 @@ function isTimelineRooted(node: Node, timelineVar: string, script: string): bool
  * not emit `tl.xxx()` calls in that case as `tl` would be undefined at render.
  */
 function findInsertionPoint(parsed: ParsedGsapAcornForWrite): number | null {
+  const tlDecl = findTimelineDeclarationStatement(parsed.ast, parsed.timelineVar);
   const lastLocated = parsed.located[parsed.located.length - 1];
   if (lastLocated) {
     const lastCall = lastLocated.call;
     const exprStmt = findEnclosingExpressionStatement(lastCall.ancestors);
-    return exprStmt?.end ?? lastCall.node.end;
+    const lastEnd = exprStmt?.end ?? lastCall.node.end;
+    // A global gsap.set lives BEFORE the timeline declaration; anchoring a new
+    // tl.* call there emits it before `const tl` exists (TDZ) — clamp to the
+    // declaration's end instead.
+    if (tlDecl && lastEnd < tlDecl.end) return tlDecl.end;
+    return lastEnd;
   }
   if (!parsed.hasTimeline) return null;
-  const tlDecl = findTimelineDeclarationStatement(parsed.ast, parsed.timelineVar);
   return tlDecl?.end ?? (parsed.ast.end as number);
 }
 

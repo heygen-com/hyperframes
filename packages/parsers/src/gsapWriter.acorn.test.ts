@@ -9,6 +9,7 @@ import { describe, expect, it } from "vitest";
 import {
   addAnimationToScript,
   addKeyframeToScript,
+  addLabelToScript,
   convertToKeyframesFromScript,
   removeAnimationFromScript,
   removeKeyframeFromScript,
@@ -49,6 +50,19 @@ window.__timelines["t"] = tl;`;
 // ---------------------------------------------------------------------------
 // No-op identity
 // ---------------------------------------------------------------------------
+
+/** Runs `script` against a minimal gsap stub; a TDZ on `const tl` would throw. */
+function expectScriptRuns(script: string): void {
+  const timelineStub = {
+    set: () => timelineStub,
+    to: () => timelineStub,
+    from: () => timelineStub,
+    addLabel: () => timelineStub,
+  };
+  const gsapStub = { timeline: () => timelineStub, set: () => undefined };
+  const windowStub: { __timelines: Record<string, unknown> } = { __timelines: {} };
+  expect(() => new Function("gsap", "window", script)(gsapStub, windowStub)).not.toThrow();
+}
 
 describe("T6c — no-op identity", () => {
   it("updateAnimationInScript with empty updates returns identical script", () => {
@@ -248,6 +262,50 @@ window.__timelines["t"] = tl;`;
     // Round-trip: the id resolves back to the inserted set
     const updated = updateAnimationInScript(result, id, { properties: { x: 300, y: 20 } });
     expect(updated).toContain("x: 300");
+  });
+
+  it("inserts tl.set after the timeline declaration when the only located call is a global set", () => {
+    // Studio: drag (writes a global gsap.set above the timeline), then resize
+    // (writes tl.set). Anchoring after the global set would emit the tl.set
+    // before `const tl` exists — a TDZ ReferenceError at runtime.
+    const script = `\
+const tl = gsap.timeline({ paused: true });
+window.__timelines["main"] = tl;`;
+    const { script: withGlobalSet } = addAnimationToScript(script, {
+      targetSelector: "#a",
+      method: "set",
+      position: 0,
+      properties: { x: 53, y: 157 },
+      global: true,
+    });
+    const { script: result } = addAnimationToScript(withGlobalSet, {
+      targetSelector: "#a",
+      method: "set",
+      position: 0,
+      properties: { width: 512, height: 670 },
+    });
+    expect(result).toContain('tl.set("#a", { width: 512, height: 670 }, 0);');
+    expect(result.indexOf('gsap.set("#a"')).toBeLessThan(result.indexOf("gsap.timeline"));
+    expect(result.indexOf('tl.set("#a"')).toBeGreaterThan(result.indexOf("gsap.timeline"));
+    expectScriptRuns(result);
+  });
+
+  it("inserts addLabel after the timeline declaration when the only located call is a global set", () => {
+    const script = `\
+const tl = gsap.timeline({ paused: true });
+window.__timelines["main"] = tl;`;
+    const { script: withGlobalSet } = addAnimationToScript(script, {
+      targetSelector: "#a",
+      method: "set",
+      position: 0,
+      properties: { x: 53, y: 157 },
+      global: true,
+    });
+    const result = addLabelToScript(withGlobalSet, "intro", 0);
+    expect(result).toContain('tl.addLabel("intro", 0);');
+    expect(result.indexOf('gsap.set("#a"')).toBeLessThan(result.indexOf("gsap.timeline"));
+    expect(result.indexOf('tl.addLabel("intro"')).toBeGreaterThan(result.indexOf("gsap.timeline"));
+    expectScriptRuns(result);
   });
 });
 
