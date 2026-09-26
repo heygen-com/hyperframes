@@ -1055,6 +1055,16 @@ window.__timelines.a = tl;`;
     expect(made.a1!.kill).not.toHaveBeenCalled();
   });
 
+  it("checks the timeline registry as it is after the caption wait, which a data handler may replace", async () => {
+    const { swap, before, answer } = await bootWithPendingCaptions();
+    const movesB = { targets: () => [sceneHost("b")], getChildren: () => [] };
+    // As a runtime-data handler may: a new registry object, whose scene-a timeline moves scene b.
+    window.__timelines = { ...window.__timelines, a: movesB as unknown as RuntimeTimelineLike };
+    answer(new Response("null", { status: 404 }));
+    await expect(swap).rejects.toThrow("its animations write outside the scene");
+    expect(document.documentElement.innerHTML).toBe(before);
+  });
+
   it("runs the new scene scripts once every edited scene is replaced, so none binds to one still to go", async () => {
     const { root } = trackingRoot();
     const bound: Element[] = [];

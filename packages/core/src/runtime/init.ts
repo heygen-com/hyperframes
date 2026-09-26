@@ -3253,11 +3253,6 @@ export function initSandboxRuntimeModular(): void {
     }
     const changed = names.filter((name) => nextParts.scenes[name] !== liveParts.scenes[name]);
     if (changed.length === 0) throw new Error("no scene changed");
-    const timelines = (window.__timelines ??= {}) as Record<
-      string,
-      RuntimeTimelineLike | undefined
-    >;
-    const sceneAnimations = (window.__hfSceneAnimations ??= {});
     const swaps = changed.map((name) => {
       const partsIn = (doc: Document) =>
         Array.from(doc.querySelectorAll(`[${SCENE_PART_ATTR}="${CSS.escape(name)}"]`));
@@ -3298,6 +3293,12 @@ export function initSandboxRuntimeModular(): void {
     if (generation !== sceneSwapGeneration) {
       throw new Error("the preview changed while this swap waited");
     }
+    // Read after the wait: a runtime-data handler may replace the registry while captions load.
+    const timelines = (window.__timelines ??= {}) as Record<
+      string,
+      RuntimeTimelineLike | undefined
+    >;
+    const sceneAnimations = (window.__hfSceneAnimations ??= {});
     const refuseAnyOutsideTweens = () => {
       for (const { name, oldHost } of swaps)
         refuseOutsideTweens(name, oldHost, timelines, sceneAnimations);
@@ -3369,7 +3370,7 @@ export function initSandboxRuntimeModular(): void {
       for (const host of captionHosts) {
         for (const el of [host, ...host.querySelectorAll("[data-composition-id]")]) {
           const id = el.getAttribute("data-composition-id");
-          if (id) timelines[id]?.totalTime?.(0, true);
+          if (id) window.__timelines?.[id]?.totalTime?.(0, true);
         }
       }
     };
