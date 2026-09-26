@@ -7,7 +7,7 @@ import { resolveWithinProject } from "@hyperframes/core";
 // Re-exported here for back-compat with existing `../helpers/safePath.js` imports.
 export { isSafePath, resolveWithinProject } from "@hyperframes/core";
 
-/** The file's real path; for a path not there (yet, or any more), the nearest existing folder's real path joined with the rest. */
+/** The real path; for a path not there (yet, or any more), the nearest existing folder's real path plus the rest. */
 export function realFilePath(filePath: string): string {
   try {
     return realpathSync(filePath);
