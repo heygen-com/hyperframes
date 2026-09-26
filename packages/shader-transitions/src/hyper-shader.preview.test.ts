@@ -60,9 +60,7 @@ describe("preview outside a transition", () => {
     stubWebGl();
     // jsdom cannot capture a scene; HyperShader falls back to a CSS crossfade and warns.
     vi.spyOn(console, "warn").mockImplementation(() => {});
-    // s4 runs 2.8 to 4.8 s and s5 4.4 to 8.0 s.
     document.body.innerHTML = `<div data-composition-id="main" data-width="640" data-height="360">
-      <div id="s1" class="scene clip">one</div>
       <div id="s4" class="scene clip">four</div>
       <div id="s5" class="scene clip">five</div>
     </div>`;
