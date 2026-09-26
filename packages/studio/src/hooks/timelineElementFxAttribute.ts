@@ -13,6 +13,8 @@ import {
   buildPatchTarget,
   findTimelineElementInIframe,
   persistElementAttribute,
+  claimLiveBefore,
+  readSavedAttribute,
 } from "./timelineEditingHelpers";
 import type {
   MutableRef,
@@ -46,6 +48,13 @@ function elementAttributeLiveKey(
   return `${element.sourceFile || activeCompPath || "index.html"}\0${element.key ?? element.domId ?? element.id}\0${attr}`;
 }
 
+function elementSaveTarget(element: TimelineElement, activeCompPath: string | null) {
+  return {
+    targetPath: element.sourceFile || activeCompPath || "index.html",
+    patchTarget: buildPatchTarget(element),
+  };
+}
+
 interface SetElementAttributeInput {
   projectId: string;
   activeCompPath: string | null;
@@ -71,8 +80,7 @@ async function setElementAttribute({
   recordEdit,
   pendingTimelineEditPathRef,
 }: SetElementAttributeInput): Promise<string[] | null> {
-  const targetPath = element.sourceFile || activeCompPath || "index.html";
-  const patchTarget = buildPatchTarget(element);
+  const { targetPath, patchTarget } = elementSaveTarget(element, activeCompPath);
   if (!patchTarget) return null;
 
   return persistElementAttribute({
@@ -120,22 +128,21 @@ export function useSetElementAttribute({
     },
     [previewIframeRef, activeCompPath],
   );
-  const takeLiveBefore = useCallback(
-    (element: TimelineElement, attr: string): (() => void) => {
-      const key = elementAttributeLiveKey(element, activeCompPath, attr);
-      if (!liveBeforeRef.current.has(key)) return () => {};
-      const before = liveBeforeRef.current.get(key) ?? null;
-      liveBeforeRef.current.delete(key);
-      return () => {
-        patchLiveElementAttribute(previewIframeRef.current, element, attr, before, activeCompPath);
-        syncStoredAutomationFromPreview(previewIframeRef.current?.contentDocument);
-      };
-    },
+  const claimLive = useCallback(
+    (element: TimelineElement, attr: string) =>
+      claimLiveBefore(
+        liveBeforeRef.current,
+        elementAttributeLiveKey(element, activeCompPath, attr),
+        (value) => {
+          patchLiveElementAttribute(previewIframeRef.current, element, attr, value, activeCompPath);
+          syncStoredAutomationFromPreview(previewIframeRef.current?.contentDocument);
+        },
+      ),
     [previewIframeRef, activeCompPath],
   );
   const revertLive = useCallback(
-    (element: TimelineElement, attr: string) => takeLiveBefore(element, attr)(),
-    [takeLiveBefore],
+    (element: TimelineElement, attr: string) => claimLive(element, attr)(),
+    [claimLive],
   );
   const setQuiet = useCallback(
     async (
@@ -145,9 +152,10 @@ export function useSetElementAttribute({
       label: string,
     ): Promise<TimelineEditOutcome> => {
       const pid = projectForTimelineSave(isRecordingRef?.current, projectIdRef.current, showToast);
-      const restoreLive = takeLiveBefore(element, attr);
-      const unsaved = (outcome: TimelineEditOutcome): TimelineEditOutcome => {
-        restoreLive();
+      const settleLive = claimLive(element, attr);
+      const unsaved = async (outcome: TimelineEditOutcome): Promise<TimelineEditOutcome> => {
+        const { targetPath, patchTarget } = elementSaveTarget(element, activeCompPath);
+        settleLive(await readSavedAttribute(projectIdRef.current, targetPath, patchTarget, attr));
         return outcome;
       };
       if (typeof pid !== "string") return unsaved(pid);
@@ -175,7 +183,7 @@ export function useSetElementAttribute({
       }
     },
     [
-      takeLiveBefore,
+      claimLive,
       activeCompPath,
       previewIframeRef,
       writeProjectFile,

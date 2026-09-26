@@ -396,6 +396,35 @@ export async function persistTimelineBatchEdit(
   });
 }
 
+/** Claim `key`'s before-value; the call settles on `saved` (else the claim), sparing a newer gesture. */
+export function claimLiveBefore(
+  liveBefore: Map<string, string | null>,
+  key: string,
+  apply: (value: string | null) => void,
+): (saved?: string | null) => void {
+  const claimed = liveBefore.has(key) ? (liveBefore.get(key) ?? null) : undefined;
+  liveBefore.delete(key);
+  return (saved) => {
+    const value = saved !== undefined ? saved : claimed;
+    if (value === undefined) return;
+    if (liveBefore.has(key)) liveBefore.set(key, value);
+    else apply(value);
+  };
+}
+
+/** What the file holds for `attr` on the target, or undefined when that cannot be read. */
+export async function readSavedAttribute(
+  projectId: string | null,
+  targetPath: string,
+  patchTarget: PatchTarget | null,
+  attr: string,
+): Promise<string | null | undefined> {
+  if (!projectId || !patchTarget) return undefined;
+  const html = await readFileContent(projectId, targetPath).catch(() => null);
+  if (html === null || readTagSnippetByTarget(html, patchTarget) === undefined) return undefined;
+  return readAttributeByTarget(html, patchTarget, attr) ?? null;
+}
+
 export { applyPatchByTarget, formatTimelineAttributeNumber };
 
 export { patchDocumentRootDuration } from "./timelineEditingGsap";
@@ -448,10 +477,9 @@ export async function persistElementAttribute({
   // Every live-write caller patches the DOM before committing — a fader drag is
   // `setLive` per frame, hovering a preset auditions the whole chain — so by the
   // time this runs the live DOM already holds the in-progress value. Reading it
-  // here made `previousValue === value`, so the unwind below was a no-op and the
-  // preview kept a never-saved value. The group audibly had the preset, the
-  // panel agreed, and a reload dropped it — the failure class the target check
-  // above was added to close, still open on the live-write path.
+  // here made `previousValue === value`, so the unwind was a no-op and the preview
+  // kept a never-saved value that a reload dropped: the failure class the target
+  // check above closes, still open on the live-write path.
   const previousValue = readAttributeByTarget(before, patchTarget, attr) ?? null;
   patchLive(value);
 

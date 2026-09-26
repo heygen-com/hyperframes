@@ -229,7 +229,7 @@ describe("useAutomationSelectionKeyboard", () => {
     expect(entry?.points.map((p) => p.t)).toEqual([0, 2]);
   });
 
-  it("Cmd+V with no selection pastes at the playhead and selects the pasted span", () => {
+  it("Cmd+V with no selection pastes at the playhead and selects the pasted span", async () => {
     clearAutomationClipboard();
     // Duration wide enough that the playhead (5s) is not clamped down by the
     // 0..duration-span bound — this is a paste-at-playhead test, not a
@@ -254,6 +254,7 @@ describe("useAutomationSelectionKeyboard", () => {
     expect(times).toContain(7); // + clipboard span 2
 
     // Pasting again immediately should land right after the first paste.
+    await act(async () => {});
     expect(usePlayerStore.getState().automationSelection).toEqual({
       elementKey: "bgm",
       target: "volume",
@@ -267,7 +268,7 @@ describe("useAutomationSelectionKeyboard", () => {
     });
   });
 
-  it("gives back the selection and the chain when the paste's save is refused", async () => {
+  it("marks nothing when the paste's save is refused, even for two quick presses", async () => {
     clearAutomationClipboard();
     usePlayerStore.setState({
       elements: [{ ...bgmElement, duration: 10 }],
@@ -279,6 +280,7 @@ describe("useAutomationSelectionKeyboard", () => {
     setup({ onCommit });
     combo("c");
     combo("v");
+    combo("v");
     await act(async () => {});
     expect(usePlayerStore.getState().automationSelection).toEqual(original);
     combo("v");
@@ -289,7 +291,33 @@ describe("useAutomationSelectionKeyboard", () => {
     expect(again).not.toContain(6);
   });
 
-  it("chains a second Cmd+V after the first instead of overwriting it", () => {
+  it("keeps a selection drawn while a refused paste was saving", async () => {
+    clearAutomationClipboard();
+    usePlayerStore.setState({
+      elements: [{ ...bgmElement, duration: 10 }],
+      selectedElementId: "bgm",
+    });
+    usePlayerStore
+      .getState()
+      .setAutomationSelection(wholeAxis({ elementKey: "bgm", target: "volume", t0: 2, t1: 4 }));
+    let land = () => {};
+    const onCommit = vi.fn(
+      () =>
+        new Promise<{ status: "refused"; reason: string }>((resolve) => {
+          land = () => resolve({ status: "refused", reason: "Locked" });
+        }),
+    );
+    setup({ onCommit });
+    combo("c");
+    combo("v");
+    const drawn = wholeAxis({ elementKey: "bgm", target: "volume", t0: 6, t1: 8 });
+    usePlayerStore.getState().setAutomationSelection(drawn);
+    land();
+    await act(async () => {});
+    expect(usePlayerStore.getState().automationSelection).toEqual(drawn);
+  });
+
+  it("chains a second Cmd+V after the first instead of overwriting it", async () => {
     // The regression this pins: paste leaves its own span selected, so anchoring
     // at sel.t0 unconditionally made every later press recompute the same atT.
     clearAutomationClipboard();
@@ -309,6 +337,7 @@ describe("useAutomationSelectionKeyboard", () => {
     );
     expect(first).toContain(2);
     expect(first).toContain(4);
+    await act(async () => {});
 
     combo("v");
     const second = (onCommit.mock.calls.at(-1)?.[0]?.lanes?.[0]?.points ?? []).map(
@@ -316,6 +345,7 @@ describe("useAutomationSelectionKeyboard", () => {
     );
     expect(second).toContain(4);
     expect(second).toContain(6);
+    await act(async () => {});
     expect(usePlayerStore.getState().automationSelection).toEqual({
       elementKey: "bgm",
       target: "volume",
@@ -329,7 +359,7 @@ describe("useAutomationSelectionKeyboard", () => {
     });
   });
 
-  it("Cmd+V at a selection near the clip's end clamps the paste inside its duration", () => {
+  it("Cmd+V at a selection near the clip's end clamps the paste inside its duration", async () => {
     // The playhead branch already clamps to duration - span; the
     // selection-start branch didn't, so pasting a 2s clip at a selection
     // sitting at t0=5.5 on a 6s clip used to write points out to t=7.5 —
@@ -355,6 +385,7 @@ describe("useAutomationSelectionKeyboard", () => {
       expect(t).toBeLessThanOrEqual(bgmElement.duration);
     }
     // Clamped to duration (6) - span (2) = 4, not the unclamped 5.5.
+    await act(async () => {});
     expect(usePlayerStore.getState().automationSelection).toEqual({
       elementKey: "bgm",
       target: "volume",

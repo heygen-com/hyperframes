@@ -243,11 +243,6 @@ function handlePaste(
   const saved = paste.binding.onCommit(
     withLane(paste.binding.automation, { target: paste.target, points }),
   );
-  // Select the pasted span — the only feedback that it landed — and mark it, so
-  // an immediate second Cmd+V recognises this selection as the paste's own and
-  // chains right after it instead of overwriting it.
-  // Full-height box over the pasted span: everything that landed is selected, so
-  // Delete straight after a paste undoes it in one press.
   const mark = {
     elementKey: paste.elementKey,
     target: paste.target,
@@ -256,26 +251,17 @@ function handlePaste(
     v0: paste.range.min,
     v1: paste.range.max,
   };
-  const chainedFrom = sel && isLastPasteSpan(sel) ? sel : null;
-  state.setAutomationSelection(mark);
-  markLastPaste(mark);
+  // Once it lands, and only over the selection it was pasted at, select and mark the
+  // full-height span: the feedback that it landed, what a second Cmd+V chains after,
+  // and what Delete takes back in one press. A refused paste marks nothing.
   void saved.then((outcome) => {
-    if (outcome && outcome.status !== "saved") unmarkPaste(mark, sel, chainedFrom);
+    if (outcome && outcome.status !== "saved") return;
+    const current = usePlayerStore.getState();
+    if (current.automationSelection !== sel) return;
+    current.setAutomationSelection(mark);
+    markLastPaste(mark);
   });
   return true;
-}
-
-/** A paste that did not land gives back the selection and chain it replaced. */
-function unmarkPaste(
-  mark: AutomationSelection,
-  previous: AutomationSelection | null,
-  chainedFrom: AutomationSelection | null,
-): void {
-  if (!isLastPasteSpan(mark)) return;
-  const state = usePlayerStore.getState();
-  if (previous) state.setAutomationSelection(previous);
-  else state.clearAutomationSelection();
-  markLastPaste(chainedFrom);
 }
 
 /** Cmd/Ctrl+C on the active selection. Returns false when the chord doesn't

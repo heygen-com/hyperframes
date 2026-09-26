@@ -12,6 +12,8 @@ import { invalidateGroupInfoCache } from "../player/lib/timelineGroupInfo";
 import {
   buildPatchTarget,
   persistElementAttribute,
+  claimLiveBefore,
+  readSavedAttribute,
   type RecordEditInput,
 } from "./timelineEditingHelpers";
 import type {
@@ -161,6 +163,18 @@ interface SetAudioGroupAttributeInput {
  * `createAudioGroupAndAssignMembers`'s save shape but for a single element
  * and attribute rather than a member-assignment sweep.
  */
+function groupSaveTarget(
+  previewIframe: HTMLIFrameElement | null,
+  groupId: string,
+  activeCompPath: string | null,
+) {
+  const groupEl = previewIframe?.contentDocument?.getElementById(groupId) ?? null;
+  return {
+    targetPath: resolveGroupSourceFile(groupEl) || activeCompPath || "index.html",
+    patchTarget: buildPatchTarget({ domId: groupId }),
+  };
+}
+
 async function setAudioGroupAttribute({
   projectId,
   activeCompPath,
@@ -181,9 +195,7 @@ async function setAudioGroupAttribute({
   // means `readTagSnippetByTarget` finds nothing and every mute, fader move and
   // FX preset throws "Unable to patch element in index.html". Every sibling
   // timeline writer already routes `element.sourceFile || activeCompPath`.
-  const groupEl = previewIframe?.contentDocument?.getElementById(groupId) ?? null;
-  const targetPath = resolveGroupSourceFile(groupEl) || activeCompPath || "index.html";
-  const patchTarget = buildPatchTarget({ domId: groupId });
+  const { targetPath, patchTarget } = groupSaveTarget(previewIframe, groupId, activeCompPath);
   if (!patchTarget) return null;
 
   return persistElementAttribute({
@@ -242,22 +254,17 @@ export function useSetAudioGroupAttribute({
     },
     [previewIframeRef],
   );
-  const takeLiveBefore = useCallback(
-    (groupId: string, attr: string): (() => void) => {
-      const key = audioGroupAttributeLiveKey(groupId, attr);
-      if (!liveBeforeRef.current.has(key)) return () => {};
-      const before = liveBeforeRef.current.get(key) ?? null;
-      liveBeforeRef.current.delete(key);
-      return () => {
-        patchLiveGroupAttribute(previewIframeRef.current, groupId, attr, before);
-        syncStoredGroupAttribute(groupId, attr, before);
-      };
-    },
+  const claimLive = useCallback(
+    (groupId: string, attr: string) =>
+      claimLiveBefore(liveBeforeRef.current, audioGroupAttributeLiveKey(groupId, attr), (value) => {
+        patchLiveGroupAttribute(previewIframeRef.current, groupId, attr, value);
+        syncStoredGroupAttribute(groupId, attr, value);
+      }),
     [previewIframeRef],
   );
   const revertLive = useCallback(
-    (groupId: string, attr: string) => takeLiveBefore(groupId, attr)(),
-    [takeLiveBefore],
+    (groupId: string, attr: string) => claimLive(groupId, attr)(),
+    [claimLive],
   );
   const setQuiet = useCallback(
     async (
@@ -267,11 +274,16 @@ export function useSetAudioGroupAttribute({
       label: string,
     ): Promise<TimelineEditOutcome> => {
       const pid = projectForTimelineSave(isRecordingRef?.current, projectIdRef.current, showToast);
-      // Claimed at the start, so a gesture begun while this save is in flight
-      // records its own before-value instead of inheriting this one.
-      const restoreLive = takeLiveBefore(groupId, attr);
-      const unsaved = (outcome: TimelineEditOutcome): TimelineEditOutcome => {
-        restoreLive();
+      // Settles on what the file holds, so overlapping saves that fail cannot leave
+      // the preview or the store on a value that never landed.
+      const settleLive = claimLive(groupId, attr);
+      const unsaved = async (outcome: TimelineEditOutcome): Promise<TimelineEditOutcome> => {
+        const { targetPath, patchTarget } = groupSaveTarget(
+          previewIframeRef.current,
+          groupId,
+          activeCompPath,
+        );
+        settleLive(await readSavedAttribute(projectIdRef.current, targetPath, patchTarget, attr));
         return outcome;
       };
       if (typeof pid !== "string") return unsaved(pid);
@@ -299,7 +311,7 @@ export function useSetAudioGroupAttribute({
       }
     },
     [
-      takeLiveBefore,
+      claimLive,
       activeCompPath,
       previewIframeRef,
       writeProjectFile,
