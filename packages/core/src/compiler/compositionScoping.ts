@@ -646,7 +646,7 @@ ${source.replace(/<\/(script)/gi, "<\\/$1")}
       console.error(__hfErrorLabel, __hfCompId, _err);
     }
   };
-  // What the script started on GSAP's global timeline, however it reached GSAP, for a scene swap to revert.
+  // What the script started on the global gsap timeline, by any route, for a scene swap to revert.
   // Only a page with a scene manifest can swap; elsewhere the first script stores null and none records.
   var __hfRecordAnimations = function(run) {
     if (window.__hfSceneAnimations === undefined) {
