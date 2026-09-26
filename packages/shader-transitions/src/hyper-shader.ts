@@ -35,6 +35,10 @@ interface GsapTimeline {
     (value: number, suppressEvents?: boolean): GsapTimeline;
   };
   seek?: (position: number | string, suppressEvents?: boolean) => GsapTimeline;
+  totalTime?: {
+    (): number;
+    (value: number, suppressEvents?: boolean): GsapTimeline;
+  };
   call: (fn: () => void, args: null, position: number) => GsapTimeline;
   to: (
     target: Record<string, unknown>,
@@ -1219,12 +1223,27 @@ export function init(config: HyperShaderConfig): GsapTimeline {
     tl = gsap.timeline({ paused: true, onUpdate: tickShader });
   }
 
-  const originalPlay = tl.play.bind(tl) as (...args: unknown[]) => GsapTimeline;
-  const originalPause = tl.pause.bind(tl) as (...args: unknown[]) => GsapTimeline;
-  const originalTime = tl.time.bind(tl) as (...args: unknown[]) => GsapTimeline | number;
+  let ownSeekDepth = 0;
+  const asOwnSeek =
+    <R>(fn: (...args: unknown[]) => R) =>
+    (...args: unknown[]): R => {
+      ownSeekDepth += 1;
+      try {
+        return fn(...args);
+      } finally {
+        ownSeekDepth -= 1;
+      }
+    };
+  const originalPlay = asOwnSeek(tl.play.bind(tl) as (...args: unknown[]) => GsapTimeline);
+  const originalPause = asOwnSeek(tl.pause.bind(tl) as (...args: unknown[]) => GsapTimeline);
+  const originalTime = asOwnSeek(tl.time.bind(tl) as (...args: unknown[]) => GsapTimeline | number);
   const originalSeek =
     typeof tl.seek === "function"
-      ? (tl.seek.bind(tl) as (...args: unknown[]) => GsapTimeline)
+      ? asOwnSeek(tl.seek.bind(tl) as (...args: unknown[]) => GsapTimeline)
+      : null;
+  const originalTotalTime =
+    typeof tl.totalTime === "function"
+      ? (tl.totalTime.bind(tl) as (...args: unknown[]) => GsapTimeline | number)
       : null;
   const readActualTimelineTime = (): number => {
     const value = originalTime();
@@ -1318,6 +1337,15 @@ export function init(config: HyperShaderConfig): GsapTimeline {
       tickShader();
       return result;
     }) as NonNullable<GsapTimeline["seek"]>;
+  }
+
+  if (originalTotalTime) {
+    tl.totalTime = ((...args: unknown[]) => {
+      if (ownSeekDepth > 0) return originalTotalTime(...args);
+      if (args.length > 0) updatePublicTimelineTime(args[0]);
+      if (!prewarming) return originalTotalTime(...args);
+      return args.length === 0 ? publicTimelineTime : tl;
+    }) as NonNullable<GsapTimeline["totalTime"]>;
   }
 
   initCapture();

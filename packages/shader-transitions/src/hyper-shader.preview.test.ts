@@ -13,7 +13,10 @@ function stubGsap() {
     paused: () => paused,
     play: () => ((paused = false), tl),
     pause: () => ((paused = true), tl),
-    time: (t?: number, suppressEvents = false) => {
+    // Like GSAP, time() and seek() move the playhead through totalTime().
+    time: (t?: number, suppressEvents = false) =>
+      t === undefined ? now : tl.totalTime(t, suppressEvents),
+    totalTime: (t?: number, suppressEvents = false) => {
       if (t === undefined) return now;
       const from = now;
       now = t;
@@ -153,5 +156,29 @@ describe("preview outside a transition", () => {
       expect.stringContaining("restoring the playhead"),
       expect.objectContaining({ message: "author callback" }),
     );
+  });
+});
+
+describe("a runtime seek while the prewarm runs", () => {
+  it("is where the prewarm leaves the playhead", async () => {
+    stubGsap();
+    stubWebGl();
+    vi.spyOn(console, "warn").mockImplementation(() => {});
+    mountScenes(["s4", "s5"]);
+    const tl = init({
+      bgColor: "#000",
+      scenes: ["s4", "s5"],
+      transitions: [{ time: 4.4, duration: 0.8, shader: "domain-warp" }],
+    }) as ShaderTimeline & { totalTime: (t?: number) => unknown };
+    let crossings = 0;
+    tl.call(() => (crossings += 1), null, 0.5);
+    await Promise.resolve();
+    tl.totalTime(1);
+    await prewarmDone();
+    crossings = 0;
+
+    expect(tl.totalTime()).toBe(1);
+    tl.time(0.2);
+    expect(crossings).toBe(1);
   });
 });
