@@ -411,6 +411,79 @@ describe("useAutomationLanes saves report what happened", () => {
     },
   );
 
+  it.each([
+    { lane: "clip", target: music, field: "automation" },
+    { lane: "group", target: group, field: "audioGroupAutomation" },
+  ] as const)(
+    "never verifies a $lane drag's before-value that an unsaved paste left behind",
+    async ({ target, field }) => {
+      const { startCommit, commit, preview, writeProjectFile, iframe, failRead } =
+        mountLanes(target);
+      const at = (v: number) => ({
+        version: 1 as const,
+        lanes: [{ target: "volume", points: [{ t: 0, v }] }],
+      });
+      let failPaste = () => {};
+      writeProjectFile
+        .mockImplementationOnce(
+          () =>
+            new Promise<void>((_resolve, reject) => {
+              failPaste = () => reject(new Error("offline"));
+            }),
+        )
+        .mockRejectedValueOnce(new Error("offline"));
+      failRead(2);
+      failRead(4);
+      const paste = startCommit(at(0.5));
+      await act(() => vi.waitFor(() => expect(writeProjectFile).toHaveBeenCalledTimes(1)));
+      preview(at(0.9));
+      failPaste();
+      await act(async () => {
+        await paste;
+      });
+      expect(await commit(at(0.9))).toMatchObject({ status: "failed" });
+      expect(
+        iframe.contentDocument!.getElementById(target.id)?.hasAttribute("data-automation"),
+      ).toBe(false);
+      expect(usePlayerStore.getState().elements[0]?.[field]).toBeUndefined();
+    },
+  );
+
+  it("reverts a refused drag to the last saved value when its before-value was never saved", async () => {
+    let locked = false;
+    const { startCommit, commit, preview, writeProjectFile, iframe, failRead } = mountLanes(
+      music,
+      () => (locked ? LOCKED : true),
+    );
+    const at = (v: number) => ({
+      version: 1 as const,
+      lanes: [{ target: "volume", points: [{ t: 0, v }] }],
+    });
+    expect(await commit(at(0.3))).toEqual({ status: "saved" });
+    let failPaste = () => {};
+    writeProjectFile.mockImplementationOnce(
+      () =>
+        new Promise<void>((_resolve, reject) => {
+          failPaste = () => reject(new Error("offline"));
+        }),
+    );
+    failRead(3);
+    const paste = startCommit(at(0.5));
+    await act(() => vi.waitFor(() => expect(writeProjectFile).toHaveBeenCalledTimes(2)));
+    preview(at(0.9));
+    failPaste();
+    await act(async () => {
+      await paste;
+    });
+    locked = true;
+    expect(await commit(at(0.9))).toMatchObject({ status: "refused" });
+    const saved = serializeAutomation(at(0.3));
+    expect(iframe.contentDocument!.getElementById("music")?.getAttribute("data-automation")).toBe(
+      saved,
+    );
+    expect(usePlayerStore.getState().elements[0]?.automation).toBe(saved);
+  });
+
   it("leaves the store to a newer pending save when an older one lands", async () => {
     const { startCommit, writeProjectFile, setFile, holdRead } = mountLanes(music);
     const at = (v: number) => ({

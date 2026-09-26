@@ -406,28 +406,33 @@ export function createLiveLanes() {
   const before = new Map<string, string | null>();
   const pending = new Map<string, Set<number>>();
   const verified = new Map<string, string | null>();
+  // Lanes whose before-value was read with no save pending, so it is what the file holds.
+  const clean = new Set<string>();
   let saves = 0;
   const take = (key: string): string | null | undefined => {
     const claimed = before.has(key) ? (before.get(key) ?? null) : undefined;
     before.delete(key);
+    clean.delete(key);
     return claimed;
   };
   const overtaken = (key: string, save: number): boolean =>
     [...(pending.get(key) ?? [])].some((newer) => newer > save);
   return {
     preview(key: string, readCurrent: () => string | null): void {
-      if (!before.has(key)) before.set(key, readCurrent());
+      if (before.has(key)) return;
+      before.set(key, readCurrent());
+      if (!pending.has(key)) clean.add(key);
     },
     // A save. Its settle records what the file holds: `saved`, else the last value verified on
-    // this lane (a landed save, a read-back, or the value under a drag begun with no save
-    // pending), never an unsaved one. Store and preview follow only while no newer save is
-    // pending, and the preview only while no drag is live.
+    // this lane (a landed save, a read-back, or a clean before-value), never an unsaved one.
+    // Store and preview follow only while no newer save is pending, and the preview only
+    // while no drag is live.
     claim(key: string, apply: LiveLaneApply): LiveLaneSave {
+      const trusted = clean.has(key);
       const claimed = take(key);
       const mine = ++saves;
-      const inFlight = pending.get(key) ?? new Set<number>();
-      if (claimed !== undefined && inFlight.size === 0) verified.set(key, claimed);
-      pending.set(key, inFlight.add(mine));
+      if (claimed !== undefined && trusted) verified.set(key, claimed);
+      pending.set(key, (pending.get(key) ?? new Set<number>()).add(mine));
       const preview = (value: string | null) => {
         if (!before.has(key) && !overtaken(key, mine)) apply.preview(value);
       };

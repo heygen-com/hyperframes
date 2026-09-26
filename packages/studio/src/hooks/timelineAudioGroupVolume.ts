@@ -256,8 +256,11 @@ export function useSetAudioGroupAttribute({
   );
   const laneApply = useCallback(
     (groupId: string, attr: string) => ({
-      preview: (value: string | null) =>
-        patchLiveGroupAttribute(previewIframeRef.current, groupId, attr, value),
+      // Like `setLive`, a group's preview carries its store mirror.
+      preview: (value: string | null) => {
+        patchLiveGroupAttribute(previewIframeRef.current, groupId, attr, value);
+        syncStoredGroupAttribute(groupId, attr, value);
+      },
       store: (value: string | null) => syncStoredGroupAttribute(groupId, attr, value),
     }),
     [previewIframeRef],
