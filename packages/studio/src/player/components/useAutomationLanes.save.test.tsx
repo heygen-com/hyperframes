@@ -321,12 +321,23 @@ describe("useAutomationLanes saves report what happened", () => {
   });
 
   it.each([
-    { lane: "clip", target: music, field: "automation" },
-    { lane: "group", target: group, field: "audioGroupAutomation" },
+    { lane: "clip", target: music, field: "automation", newer: "fails" },
+    { lane: "clip", target: music, field: "automation", newer: "is refused" },
+    { lane: "group", target: group, field: "audioGroupAutomation", newer: "fails" },
+    { lane: "group", target: group, field: "audioGroupAutomation", newer: "is refused" },
   ] as const)(
-    "keeps a landed $lane save when a newer one fails and cannot read the file back",
-    async ({ target, field }) => {
-      const { startCommit, writeProjectFile, iframe, file, setFile, failRead } = mountLanes(target);
+    "keeps a landed $lane save when a newer one $newer and cannot read the file back",
+    async ({ target, field, newer: how }) => {
+      const {
+        startCommit,
+        writeProjectFile,
+        iframe,
+        file,
+        setFile,
+        failRead,
+        reads,
+        setRecording,
+      } = mountLanes(target);
       const at = (v: number) => ({
         version: 1 as const,
         lanes: [{ target: "volume", points: [{ t: 0, v }] }],
@@ -345,8 +356,9 @@ describe("useAutomationLanes saves report what happened", () => {
         .mockRejectedValueOnce(new Error("offline"));
       const older = startCommit(at(0.5));
       await act(() => vi.waitFor(() => expect(writeProjectFile).toHaveBeenCalledTimes(1)));
+      if (how === "is refused") setRecording(true);
       const newer = startCommit(at(0.9));
-      failRead(3);
+      failRead(how === "fails" ? 3 : reads() + 1);
       landOlder();
       await act(async () => {
         await Promise.all([older, newer]);
@@ -612,6 +624,54 @@ describe("useAutomationLanes saves report what happened", () => {
     );
     expect(usePlayerStore.getState().elements[0]?.automation).toBeUndefined();
   });
+
+  it.each([
+    { lane: "clip", target: music, field: "automation", later: "fails" },
+    { lane: "clip", target: music, field: "automation", later: "is refused" },
+    { lane: "group", target: group, field: "audioGroupAutomation", later: "fails" },
+    { lane: "group", target: group, field: "audioGroupAutomation", later: "is refused" },
+  ] as const)(
+    "never brings back a $lane value an undo removed when a later save $later and cannot read the file back",
+    async ({ target, field, later }) => {
+      const {
+        commit,
+        startCommit,
+        preview,
+        writeProjectFile,
+        iframe,
+        setFile,
+        failRead,
+        reads,
+        setRecording,
+      } = mountLanes(target);
+      const at = (v: number) => ({
+        version: 1 as const,
+        lanes: [{ target: "volume", points: [{ t: 0, v }] }],
+      });
+      preview(at(0.5));
+      expect(await commit(at(0.5))).toEqual({ status: "saved" });
+      // Undo: file, preview and store go back to the clip without automation.
+      setFile(SOURCE);
+      iframe.contentDocument!.body.innerHTML = SOURCE;
+      usePlayerStore.getState().setElements([{ ...music, audioGroup: "hf-group" }]);
+      if (later === "fails") {
+        writeProjectFile.mockImplementationOnce(async () => {
+          failRead(reads() + 1);
+          throw new Error("offline");
+        });
+      } else {
+        setRecording(true);
+        failRead(reads() + 1);
+      }
+      await act(async () => {
+        await startCommit(at(0.9));
+      });
+      expect(
+        iframe.contentDocument!.getElementById(target.id)?.hasAttribute("data-automation"),
+      ).toBe(false);
+      expect(usePlayerStore.getState().elements[0]?.[field]).toBeUndefined();
+    },
+  );
 
   it("leaves the store to a newer pending save when an older one lands", async () => {
     const { startCommit, writeProjectFile, setFile, holdRead } = mountLanes(music);

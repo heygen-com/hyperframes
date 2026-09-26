@@ -153,6 +153,7 @@ interface SetAudioGroupAttributeInput {
   label: string;
   previewIframe: HTMLIFrameElement | null;
   patchLive: (value: string | null) => void;
+  onFileRead: (value: string | null) => void;
   writeProjectFile: (path: string, content: string) => Promise<void>;
   recordEdit: (input: RecordEditInput) => Promise<void>;
   pendingTimelineEditPathRef: MutableRef<Set<string>>;
@@ -185,6 +186,7 @@ async function setAudioGroupAttribute({
   label,
   previewIframe,
   patchLive,
+  onFileRead,
   writeProjectFile,
   recordEdit,
   pendingTimelineEditPathRef,
@@ -211,6 +213,7 @@ async function setAudioGroupAttribute({
     recordEdit,
     pendingTimelineEditPathRef,
     patchLive,
+    onFileRead,
   });
 }
 
@@ -256,11 +259,8 @@ export function useSetAudioGroupAttribute({
   );
   const laneApply = useCallback(
     (groupId: string, attr: string) => ({
-      // Like `setLive`, a group's preview carries its store mirror.
-      preview: (value: string | null) => {
-        patchLiveGroupAttribute(previewIframeRef.current, groupId, attr, value);
-        syncStoredGroupAttribute(groupId, attr, value);
-      },
+      preview: (value: string | null) =>
+        patchLiveGroupAttribute(previewIframeRef.current, groupId, attr, value),
       store: (value: string | null) => syncStoredGroupAttribute(groupId, attr, value),
     }),
     [previewIframeRef],
@@ -309,6 +309,7 @@ export function useSetAudioGroupAttribute({
           label,
           previewIframe: previewIframeRef.current,
           patchLive: live.preview,
+          onFileRead: live.read,
           writeProjectFile,
           recordEdit,
           pendingTimelineEditPathRef,

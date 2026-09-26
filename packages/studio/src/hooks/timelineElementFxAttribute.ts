@@ -63,6 +63,7 @@ interface SetElementAttributeInput {
   value: string | null;
   label: string;
   patchLive: (value: string | null) => void;
+  onFileRead: (value: string | null) => void;
   writeProjectFile: (path: string, content: string) => Promise<void>;
   recordEdit: Parameters<typeof persistElementAttribute>[0]["recordEdit"];
   pendingTimelineEditPathRef: MutableRef<Set<string>>;
@@ -76,6 +77,7 @@ async function setElementAttribute({
   value,
   label,
   patchLive,
+  onFileRead,
   writeProjectFile,
   recordEdit,
   pendingTimelineEditPathRef,
@@ -94,6 +96,7 @@ async function setElementAttribute({
     recordEdit,
     pendingTimelineEditPathRef,
     patchLive,
+    onFileRead,
   });
 }
 
@@ -177,6 +180,7 @@ export function useSetElementAttribute({
           value,
           label,
           patchLive: live.preview,
+          onFileRead: live.read,
           writeProjectFile,
           recordEdit,
           pendingTimelineEditPathRef,

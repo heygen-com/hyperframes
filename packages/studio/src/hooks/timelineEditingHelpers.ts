@@ -442,13 +442,20 @@ export function createLiveLanes(project: () => string | null) {
       };
       return {
         preview,
+        read(value) {
+          verified.set(key, value);
+        },
         settle(saved) {
           const inFlight = pending.get(key);
           inFlight?.delete(mine);
-          if (inFlight?.size === 0) pending.delete(key);
           if (saved !== undefined) verified.set(key, saved);
-          if (!verified.has(key) || overtaken(key, mine) || !open()) return;
-          const value = verified.get(key) ?? null;
+          const value = verified.get(key);
+          // With no save left in flight the file can change under it (undo, an outside edit).
+          if (!inFlight?.size) {
+            pending.delete(key);
+            verified.delete(key);
+          }
+          if (value === undefined || overtaken(key, mine) || !open()) return;
           if (before.has(key)) before.set(key, value);
           apply.store(value);
           preview(value);
@@ -468,6 +475,7 @@ export function createLiveLanes(project: () => string | null) {
 
 interface LiveLaneSave {
   preview: (value: string | null) => void;
+  read: (value: string | null) => void;
   settle: (saved?: string | null) => void;
 }
 interface LiveLaneApply {
@@ -507,6 +515,8 @@ export interface PersistElementAttributeInput {
   pendingTimelineEditPathRef: { current: Set<string> };
   /** Write the attribute directly on the live preview DOM node. */
   patchLive: (value: string | null) => void;
+  /** What the file held for the attribute, read inside the queue before this write. */
+  onFileRead: (value: string | null) => void;
 }
 
 /**
@@ -528,6 +538,7 @@ export async function persistElementAttribute({
   recordEdit,
   pendingTimelineEditPathRef,
   patchLive,
+  onFileRead,
 }: PersistElementAttributeInput): Promise<string[]> {
   // Joins the file's mutation queue before reading, so saves land in the order they start
   // and each patches what the save before it wrote. Resolve the target before patching
@@ -546,6 +557,7 @@ export async function persistElementAttribute({
     // kept a never-saved value that a reload dropped: the failure class the target
     // check above closes, still open on the live-write path.
     const previousValue = readAttributeByTarget(before, patchTarget, attr) ?? null;
+    onFileRead(previousValue);
     patchLive(value);
 
     const operation: PatchOperation = { type: "attribute", property: attr, value };
