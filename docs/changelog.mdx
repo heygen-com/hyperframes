@@ -233,9 +233,13 @@ Clicking an element inside a section now selects that element, even when the sec
 <Update
   label="HyperFrames v0.8.71"
   description="Released - 2026-09-24"
-  tags={["Release", "Studio", "Scripts", "Studio Server"]}
+  tags={["Release", "Runtime", "Studio", "Scripts"]}
 >
-Apps that embed Studio's timeline can now import its component styles on their own, so clips and their labels look the same as in Studio. Studio also refreshes its file tree when files change outside it, and video probing handles files that report no stream duration.
+Apps that embed Studio's timeline can now import its component styles on their own, so clips and their labels look the same as in Studio. Studio also refreshes its file tree when files change outside it, and video probing handles files that report no stream duration. Effects chains gain a backdrop capture for adjustment-layer effects and two new two-source kernels, luma matte and noise.
+
+## Features
+
+- **Runtime:** Data-vfx-chain backdrop capture and two-source kernels (luma-matte, noise) ([84e36fc16](https://github.com/heygen-com/hyperframes/commit/84e36fc16afcc9d5979f92b50b230bf0b8c29bb9), [#4330](https://github.com/heygen-com/hyperframes/pull/4330)).
 
 ## Fixes
 
