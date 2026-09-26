@@ -71,7 +71,7 @@ class FakeAudioContext {
   }
 }
 
-const idle = () => vi.advanceTimersByTimeAsync(5000);
+const idle = () => vi.advanceTimersByTimeAsync(20000);
 const originalAudioContext = (globalThis as Record<string, unknown>).AudioContext;
 
 async function startTransport() {
@@ -209,7 +209,7 @@ describe("WebAudioTransport keeps its context suspended while nothing sounds", (
     await play(transport, makeTrack());
     const suspendsBefore = ctx.suspends;
     transport.stopAll();
-    await vi.advanceTimersByTimeAsync(999);
+    await vi.advanceTimersByTimeAsync(9999);
     expect(ctx.suspends).toBe(suspendsBefore);
     await vi.advanceTimersByTimeAsync(1);
     expect(ctx.suspends).toBe(suspendsBefore + 1);

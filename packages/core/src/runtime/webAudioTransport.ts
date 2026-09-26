@@ -135,7 +135,7 @@ function isBufferSource(
 }
 
 // Long enough that a stop-and-reschedule inside one play never bounces the context.
-const IDLE_SUSPEND_MS = 1000;
+const IDLE_SUSPEND_MS = 10000;
 
 export class WebAudioTransport {
   private _ctx: AudioContext | null = null;
