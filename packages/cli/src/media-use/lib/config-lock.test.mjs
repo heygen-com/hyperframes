@@ -24,6 +24,25 @@ test("releasing leaves a lock another process took meanwhile", () => {
   }
 });
 
+test("returns the task's result even when the lock cannot be released", () => {
+  const { lock, cleanup } = lockIn();
+  try {
+    const refusing = {
+      ...fs,
+      openSync(path, flags) {
+        if (path.endsWith(".reap")) throw Object.assign(new Error("EPERM"), { code: "EPERM" });
+        return fs.openSync(path, flags);
+      },
+    };
+    assert.equal(
+      withFileLock(lock, refusing, () => "saved"),
+      "saved",
+    );
+  } finally {
+    cleanup();
+  }
+});
+
 test("takes over a lock left behind by a process that died holding it", () => {
   const { lock, cleanup } = lockIn();
   try {

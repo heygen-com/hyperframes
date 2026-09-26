@@ -58,6 +58,9 @@ export function withFileLock(lockPath, fs, task) {
         if (fs.readFileSync(lockPath, "utf8") === token) fs.rmSync(lockPath);
       } catch {}
     };
-    for (let tries = 0; tries < 40 && !reaping(releaseOwn); tries++) nap();
+    // A failed release leaves a lock that goes stale in 5 s; it must not turn a finished task into an error.
+    try {
+      for (let tries = 0; tries < 40 && !reaping(releaseOwn); tries++) nap();
+    } catch {}
   }
 }
