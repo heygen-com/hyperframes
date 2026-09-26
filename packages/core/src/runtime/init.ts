@@ -2420,19 +2420,20 @@ export function initSandboxRuntimeModular(): void {
   // export time, per B4); this just keeps the live WebAudio group bus in
   // sync with a `data-hidden` toggle made mid-playback.
   const groupHiddenLast = new WeakMap<Element, boolean>();
-  const groupHasMemberInWindow = (groupId: string): boolean => {
+  const groupHasUncapturedMember = (groupId: string, currentTime: number): boolean => {
     for (const el of document.querySelectorAll("audio[data-start]")) {
-      if (audioGroupOf(el) !== groupId) continue;
+      if (!isMediaElement(el) || audioGroupOf(el) !== groupId || webAudio.routesElement(el))
+        continue;
       const start = resolveAbsoluteMediaStartSeconds(el);
-      const duration = parseStrictFiniteTimingNumber((el as HTMLElement).dataset.duration);
+      const duration = parseStrictFiniteTimingNumber(el.dataset.duration);
       const end = duration != null && duration > 0 ? start + duration : Infinity;
-      if (Number.isFinite(start) && isInClipWindow(state.currentTime, start, end)) return true;
+      if (Number.isFinite(start) && currentTime < end) return true;
     }
     return false;
   };
-  /** The bus gain owns a group's mute; true when an unmute needs members captured again. */
-  const syncAudioGroupMute = (): boolean => {
-    let unmutedInWindow = false;
+  /** The bus gain owns a group's mute; true when an unmute leaves a member still to play outside the graph. */
+  const syncAudioGroupMute = (currentTime: number): boolean => {
+    let needsCapture = false;
     for (const groupEl of document.querySelectorAll(HF_AUDIO_GROUP_TAG)) {
       const hidden = groupEl.hasAttribute("data-hidden");
       const last = groupHiddenLast.get(groupEl);
@@ -2440,9 +2441,9 @@ export function initSandboxRuntimeModular(): void {
       groupHiddenLast.set(groupEl, hidden);
       if (!groupEl.id) continue;
       webAudio.setGroupMuted(groupEl.id, hidden);
-      if (last && !hidden && groupHasMemberInWindow(groupEl.id)) unmutedInWindow = true;
+      if (last && !hidden && groupHasUncapturedMember(groupEl.id, currentTime)) needsCapture = true;
     }
-    return unmutedInWindow;
+    return needsCapture;
   };
 
   const applyTimedElementVisibility = (
@@ -2527,8 +2528,8 @@ export function initSandboxRuntimeModular(): void {
     // this reschedule exists to re-run are what change the active set, so
     // firing it otherwise was an audible stop-and-restart across the whole mix
     // that rebuilt an identical set.
-    const groupUnmutedInWindow = syncAudioGroupMute();
-    if ((hiddenAudioDirty || groupUnmutedInWindow) && clock.isPlaying()) {
+    const groupNeedsCapture = syncAudioGroupMute(currentTime);
+    if ((hiddenAudioDirty || groupNeedsCapture) && clock.isPlaying()) {
       webAudio.stopAll();
       for (const el of document.querySelectorAll("audio[data-start]")) {
         if (isMediaElement(el) && isSilencedByHidden(el)) el.volume = 0;

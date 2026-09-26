@@ -289,14 +289,37 @@ describe("an audio group muted or unmuted while playing", () => {
     expect(stopAll).not.toHaveBeenCalled();
   });
 
-  it("does not restart the mix to unmute a group with nothing in window", async () => {
+  it("does not restart the mix to unmute it right after muting it", async () => {
+    mount(
+      groupHtml + `<audio id="vo" data-start="0" data-duration="10" src="/assets/vo.mp3"></audio>`,
+    );
+    const bed = document.getElementById("bed") as HTMLAudioElement;
+    const group = document.getElementById("music")!;
+    initSandboxRuntimeModular();
+    await flush();
+    window.__player?.play();
+    await flush();
+    group.setAttribute("data-hidden", "");
+    stepFrames(1);
+    const stopAll = vi.spyOn(WebAudioTransport.prototype, "stopAll");
+
+    group.removeAttribute("data-hidden");
+    stepFrames(1);
+    await flush();
+
+    expect(heard(bed)).toBe(true);
+    expect(stopAll).not.toHaveBeenCalled();
+  });
+
+  it("does not restart the mix to unmute a group whose members have all finished", async () => {
     mount(
       `<hf-audio-group id="music" data-hidden=""></hf-audio-group>` +
-        `<audio id="bed" data-start="5" data-duration="4" data-audio-group="music" src="/assets/music.mp3"></audio>` +
+        `<audio id="bed" data-start="0" data-duration="2" data-audio-group="music" src="/assets/music.mp3"></audio>` +
         `<audio id="vo" data-start="0" data-duration="10" src="/assets/vo.mp3"></audio>`,
     );
     initSandboxRuntimeModular();
     await flush();
+    window.__player?.seek(3);
     window.__player?.play();
     await flush();
     const stopAll = vi.spyOn(WebAudioTransport.prototype, "stopAll");
@@ -306,5 +329,25 @@ describe("an audio group muted or unmuted while playing", () => {
     await flush();
 
     expect(stopAll).not.toHaveBeenCalled();
+  });
+
+  it("brings a member that starts after the unmute in through the group", async () => {
+    mount(
+      `<hf-audio-group id="music" data-hidden=""></hf-audio-group>` +
+        `<audio id="bed" data-start="5" data-duration="4" data-audio-group="music" src="/assets/music.mp3"></audio>`,
+    );
+    const bed = document.getElementById("bed") as HTMLAudioElement;
+    initSandboxRuntimeModular();
+    await flush();
+    window.__player?.play();
+    await flush();
+    expect(sources.get(bed)).toBeUndefined();
+
+    document.getElementById("music")!.removeAttribute("data-hidden");
+    stepFrames(1);
+    await flush();
+
+    expect(audible(sources.get(bed))).toBe(true);
+    expect(sources.get(bed)!.outputs.has(destination)).toBe(false);
   });
 });
