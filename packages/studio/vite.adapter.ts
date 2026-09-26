@@ -11,7 +11,7 @@ import {
   copyFileSync,
   unlinkSync,
 } from "node:fs";
-import { join, relative, resolve, isAbsolute, dirname, sep } from "node:path";
+import { basename, join, relative, resolve, isAbsolute, dirname, sep } from "node:path";
 import type { ViteDevServer } from "vite";
 import {
   type ResolvedProject,
@@ -24,7 +24,7 @@ import {
   PREVIEW_BUNDLE_OPTIONS,
   DEFAULT_HISTORY_ROOT,
   openProjectHistory,
-  type ProjectHistory,
+  historyCache,
 } from "@hyperframes/studio-server";
 import type { RegistryItem } from "@hyperframes/core/registry";
 import type { BundleOptions } from "@hyperframes/core/compiler";
@@ -109,11 +109,17 @@ export function createViteAdapter(
     openHistory = openProjectHistory,
   }: { historyRoot?: string; openHistory?: typeof openProjectHistory } = {},
 ): StudioApiAdapter {
-  const histories = new Map<string, Promise<ProjectHistory | null>>();
+  const histories = historyCache((projectDir) =>
+    openHistory({ projectDir, historyRoot }).catch((error: unknown) => {
+      console.warn(`[studio] Project history is off for ${basename(projectDir)}: ${String(error)}`);
+      // By name: the dev server's engine is its own module copy, so its error class is not this import's.
+      if (error instanceof Error && error.name === "HistoryClosedError")
+        histories.forget(projectDir);
+      return null;
+    }),
+  );
   // Commits any open edit when the dev server stops, so it keeps its label.
-  server.httpServer?.on("close", () => {
-    for (const opened of histories.values()) void opened.then((history) => history?.close());
-  });
+  server.httpServer?.on("close", () => void histories.closeAll());
   let _bundler: ((dir: string, options?: BundleOptions) => Promise<string>) | null = null;
   let _producerModuleLoader:
     | (() => Promise<{
@@ -212,17 +218,10 @@ export function createViteAdapter(
         .sort((a, b) => (a.title ?? "").localeCompare(b.title ?? ""));
     },
 
-    // Studio's undo runs on the project's history: opened once per project, and a failed open stays off.
+    // Studio's undo runs on the project's history: opened once per project; a failed open stays off unless the folder
+    // changed while it opened.
     history(project: ResolvedProject) {
-      let opened = histories.get(project.dir);
-      if (!opened) {
-        opened = openHistory({ projectDir: project.dir, historyRoot }).catch((error: unknown) => {
-          console.warn(`[studio] Project history is off for ${project.id}: ${String(error)}`);
-          return null;
-        });
-        histories.set(project.dir, opened);
-      }
-      return opened;
+      return histories.get(project.dir);
     },
 
     // fallow-ignore-next-line complexity

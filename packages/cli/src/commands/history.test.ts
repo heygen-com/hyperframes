@@ -1,6 +1,14 @@
 // @vitest-environment node
 import { spawn } from "node:child_process";
-import { mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import {
+  mkdirSync,
+  mkdtempSync,
+  readdirSync,
+  readFileSync,
+  renameSync,
+  rmSync,
+  writeFileSync,
+} from "node:fs";
 import type { AddressInfo } from "node:net";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
@@ -16,7 +24,7 @@ import { runCommand } from "citty";
 import { Hono } from "hono";
 import { afterEach, describe, expect, it, onTestFinished, vi } from "vitest";
 import { consumeCommandResult } from "../utils/commandResult.js";
-import { historyDeps } from "../utils/historyOwner.js";
+import { historyDeps, withOwner } from "../utils/historyOwner.js";
 import historyCommand from "./history.js";
 
 const pause = (ms: number) => new Promise((settle) => setTimeout(settle, ms));
@@ -247,6 +255,24 @@ describe.each(["direct", "preview"])("hyperframes history (%s)", (mode) => {
 });
 
 describe("hyperframes history, one owner", () => {
+  it("lets go of the history when a new project takes the folder's path mid-command", async () => {
+    const { dir, hf } = project();
+    await hf("begin", "--who", "claude", "--label", "Retitle");
+    const moved = `${dir}-moved`;
+    onTestFinished(() => rmSync(moved, { recursive: true, force: true }));
+    const swap = async () => {
+      renameSync(dir, moved);
+      mkdirSync(dir);
+    };
+    await expect(withOwner(dir, swap)).rejects.toThrow("now another project");
+    const reopened = await openProjectHistory({
+      projectDir: moved,
+      historyRoot: historyDeps.historyRoot,
+      ownerWaitMs: 200,
+    });
+    await reopened.close();
+  });
+
   it("goes through a running preview, so the log keeps one baseline and every entry once", async () => {
     const { dir, json, turn } = project();
     const held = await preview(dir);
@@ -400,6 +426,7 @@ describe("hyperframes history, one owner", () => {
       env: {
         ...process.env,
         HOME: home,
+        USERPROFILE: home,
         HYPERFRAMES_SKIP_UPDATE_CHECK: "1",
         HYPERFRAMES_NO_TELEMETRY: "1",
       },

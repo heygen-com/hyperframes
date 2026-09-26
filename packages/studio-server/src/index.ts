@@ -13,8 +13,10 @@ export {
   type HistoryListItem,
   type HistoryResult,
   type HistoryWindow,
+  HistoryClosedError,
 } from "./history/projectHistory.js";
 export { HistoryBusyError } from "./history/ownerLock.js";
+export { historyCache } from "./history/historyCache.js";
 export {
   START as HISTORY_START,
   type HistoryEntry,

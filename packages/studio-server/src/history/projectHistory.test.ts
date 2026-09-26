@@ -20,7 +20,7 @@ import { basename, dirname, join, relative } from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { fileContentVersion, recordFileWriteReceipt } from "../helpers/fileVersion";
 import { HistoryBusyError } from "./ownerLock";
-import { openProjectHistory, type ProjectHistory } from "./projectHistory";
+import { HistoryClosedError, openProjectHistory, type ProjectHistory } from "./projectHistory";
 import { START, type HistoryWho } from "./historyLog";
 
 const you: HistoryWho = { kind: "person", name: "You" };
@@ -541,6 +541,179 @@ describe("openProjectHistory", () => {
     await expect(history.checkout(entry.id, "after", dir)).rejects.toThrow();
     expect(readdirSync(dir)).toEqual([]);
   });
+
+  it("refuses every call after close, even through a window begun before it", async () => {
+    const { history, write } = await project({ "index.html": "v1" });
+    const entry = await change(history, you, "Second", () => write("index.html", "v2"));
+    const window = await history.beginWindow(agent, "Turn");
+    await history.close();
+
+    await expect(window.close()).rejects.toThrow(HistoryClosedError);
+    await expect(history.claim(you, "Edit", ["index.html"])).rejects.toThrow(HistoryClosedError);
+    await expect(history.undo(entry.id, { who: you })).rejects.toThrow(HistoryClosedError);
+    await expect(history.restore(START, you)).rejects.toThrow(HistoryClosedError);
+    await expect(history.readBlob("a")).rejects.toThrow(HistoryClosedError);
+    expect(() => history.list()).toThrow(HistoryClosedError);
+  });
+
+  it("releases ownership only after every close has settled", async () => {
+    const { history } = await project({ "index.html": "v1" });
+    let firstDone = false;
+    const first = history.close().then(() => (firstDone = true));
+    await history.close();
+    expect(firstDone).toBe(true);
+    await first;
+  });
+
+  it("refuses once a new project takes the folder's path, leaving both projects' files alone", async () => {
+    const { history, write, read, projectDir, historyRoot } = await project({ "index.html": "v1" });
+    await change(history, you, "Second", () => write("index.html", "v2"));
+    const window = await history.beginWindow(agent, "Turn");
+    write("index.html", "v3");
+    history.noteChange("index.html");
+    await pause(100);
+    const moved = `${projectDir}-moved`;
+    renameSync(projectDir, moved);
+    cleanup.push(() => rmSync(moved, { recursive: true, force: true }));
+    mkdirSync(projectDir);
+    writeFileSync(join(projectDir, "index.html"), "new project");
+
+    expect(history.replacedAtPath()).toBe(true);
+    await expect(history.restore(START, you)).rejects.toThrow(HistoryClosedError);
+    expect(() => history.list()).toThrow(HistoryClosedError);
+    // What the turn wrote before the swap is still its entry; nothing of the new project is.
+    expect((await window.close())?.files.map((file) => file.path)).toEqual(["index.html"]);
+    await history.close();
+    expect([read("index.html"), readFileSync(join(moved, "index.html"), "utf-8")]).toEqual([
+      "new project",
+      "v3",
+    ]);
+    const again = await open(moved, historyRoot);
+    expect(again.list().map((entry) => entry.label)).toEqual(["Second", "Turn"]);
+  });
+
+  it("refuses to write into a folder moved away, so the old path is not recreated", async () => {
+    const { history, write, projectDir } = await project({ "index.html": "v1" });
+    await change(history, you, "Second", () => write("index.html", "v2"));
+    renameSync(projectDir, `${projectDir}-moved`);
+    cleanup.push(() => rmSync(`${projectDir}-moved`, { recursive: true, force: true }));
+
+    await expect(history.restore(START, you)).rejects.toThrow("The project folder is gone");
+    expect(existsSync(projectDir)).toBe(false);
+    expect(history.replacedAtPath()).toBe(false);
+  });
+
+  it.each([
+    ["a new project took the folder's path", "new"],
+    ["a copy carrying its id took the folder's path", "copy"],
+    ["the folder moved away", "none"],
+  ])(
+    "refuses to open, so a server can retry, once %s while it waited for the history",
+    async (_, replacement) => {
+      const { history, projectDir, historyRoot } = await project({ "index.html": "v1" });
+      const waiting = openProjectHistory({ projectDir, historyRoot });
+      waiting.then((late) => cleanup.push(() => late.close())).catch(() => {});
+      await pause(50);
+      renameSync(projectDir, `${projectDir}-moved`);
+      cleanup.push(() => rmSync(`${projectDir}-moved`, { recursive: true, force: true }));
+      if (replacement === "new") mkdirSync(projectDir);
+      if (replacement === "copy") cpSync(`${projectDir}-moved`, projectDir, { recursive: true });
+      await history.close();
+
+      await expect(waiting).rejects.toThrow(HistoryClosedError);
+    },
+  );
+
+  it("refuses, so a server can retry, to open a folder that is not there", async () => {
+    const projectDir = join(tempDir("hf-history-gone-"), "project");
+    const historyRoot = tempDir("hf-history-root-");
+    await expect(openProjectHistory({ projectDir, historyRoot })).rejects.toThrow(
+      HistoryClosedError,
+    );
+  });
+
+  it("gives a folder whose history record cannot prove it is that folder a history of its own", async () => {
+    const { history, write, projectDir, historyRoot } = await project({ "index.html": "v1" });
+    await change(history, you, "Old change", () => write("index.html", "v2"));
+    await history.close();
+    writeFileSync(
+      join(historyRoot, history.projectId, "project.json"),
+      JSON.stringify({ dir: projectDir }),
+    );
+
+    const again = await open(projectDir, historyRoot);
+    expect([again.projectId === history.projectId, again.list()]).toEqual([false, []]);
+  });
+
+  it("leaves the id alone for a history root that has no history under it, so the open one keeps recording", async () => {
+    const { history, write, projectDir } = await project({ "index.html": "v1" });
+    const other = await open(projectDir, tempDir("hf-history-other-root-"));
+
+    await change(history, you, "Edit", () => write("index.html", "v2"));
+    expect([other.projectId, history.list().length]).toEqual([history.projectId, 1]);
+  });
+
+  it("gives a folder on a reused inode, created at another time, a history of its own", async () => {
+    const { history, write, projectDir, historyRoot } = await project({ "index.html": "v1" });
+    await change(history, you, "Old change", () => write("index.html", "v2"));
+    await history.close();
+    const record = join(historyRoot, history.projectId, "project.json");
+    const was = JSON.parse(readFileSync(record, "utf-8"));
+    writeFileSync(record, JSON.stringify({ ...was, born: was.born - 1000 }));
+
+    const again = await open(projectDir, historyRoot);
+    expect([again.projectId === history.projectId, again.list()]).toEqual([false, []]);
+  });
+
+  it("keeps the history when the disk's device number changed, as a remounted drive's does", async () => {
+    const { history, write, projectDir, historyRoot } = await project({ "index.html": "v1" });
+    await change(history, you, "Old change", () => write("index.html", "v2"));
+    await history.close();
+    const record = join(historyRoot, history.projectId, "project.json");
+    writeFileSync(
+      record,
+      JSON.stringify({ ...JSON.parse(readFileSync(record, "utf-8")), dev: -1 }),
+    );
+
+    const again = await open(projectDir, historyRoot);
+    expect(again.list().map((entry) => entry.label)).toEqual(["Old change"]);
+  });
+
+  it("counts a folder whose history id is gone as another project, as a recreated folder on a reused inode is", async () => {
+    const { history, write, read, projectDir } = await project({ "index.html": "v1" });
+    await change(history, you, "Second", () => write("index.html", "v2"));
+    rmSync(join(projectDir, ".hyperframes"), { recursive: true });
+    write("index.html", "new project");
+
+    expect(history.replacedAtPath()).toBe(true);
+    await expect(history.restore(START, you)).rejects.toThrow(HistoryClosedError);
+    expect(read("index.html")).toBe("new project");
+  });
+
+  it.each([["the copy"], ["the moved original"]])(
+    "gives a copy put where the original was its own history, and the moved original keeps its own, %s opened first",
+    async (first) => {
+      const { history, write, projectDir, historyRoot } = await project({ "index.html": "v1" });
+      await change(history, you, "Old change", () => write("index.html", "v2"));
+      await history.close();
+      const moved = `${projectDir}-moved`;
+      cpSync(projectDir, `${projectDir}-copy`, { recursive: true });
+      renameSync(projectDir, moved);
+      renameSync(`${projectDir}-copy`, projectDir);
+      cleanup.push(() => rmSync(moved, { recursive: true, force: true }));
+
+      const labels = async (dir: string) => {
+        const opened = await open(dir, historyRoot);
+        const list = opened.list().map((entry) => entry.label);
+        await opened.close();
+        return list;
+      };
+      const order = first === "the copy" ? [projectDir, moved] : [moved, projectDir];
+      const [a, b] = [await labels(order[0]!), await labels(order[1]!)];
+      const [copy, original] = first === "the copy" ? [a, b] : [b, a];
+      expect({ copy, original }).toEqual({ copy: [], original: ["Old change"] });
+    },
+  );
 
   it("keeps the history across a move and a reopen, and a copy of the folder starts its own", async () => {
     const { history, write, projectDir, historyRoot } = await project({ "index.html": "v1" });

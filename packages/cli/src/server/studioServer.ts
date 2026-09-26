@@ -56,7 +56,8 @@ import {
   DEFAULT_HISTORY_ROOT,
   openProjectHistory,
   HistoryBusyError,
-  type ProjectHistory,
+  HistoryClosedError,
+  historyCache,
 } from "@hyperframes/studio-server";
 import { resolveAutoProxy } from "../utils/projectConfig.js";
 import { getElementScreenshotClip } from "@hyperframes/studio-server/screenshot-clip";
@@ -429,18 +430,20 @@ export function createStudioServer(options: StudioServerOptions): StudioServer {
 
   // Opened on first use, so a server that never serves Studio's history never writes one. A failed open stays off
   // for this run; one another process was holding is tried again on the next request.
-  let history: Promise<ProjectHistory | null> | undefined;
-  const projectHistory = () =>
-    (history ??= openProjectHistory({
+  const histories = historyCache(() =>
+    openProjectHistory({
       projectDir,
       historyRoot: options.historyRoot ?? DEFAULT_HISTORY_ROOT,
     }).catch((error: unknown) => {
       console.warn(`[studio] Project history is off: ${String(error)}`);
-      if (error instanceof HistoryBusyError) history = undefined;
+      if (error instanceof HistoryBusyError || error instanceof HistoryClosedError)
+        histories.forget(projectDir);
       return null;
-    }));
+    }),
+  );
+  const projectHistory = () => histories.get(projectDir);
   watcher.addListener((changedPath) => {
-    void history?.then((opened) => opened?.noteChange(changedPath));
+    void histories.peek(projectDir)?.then((opened) => opened?.noteChange(changedPath));
   });
 
   const inFlightRenders = new Map<AbortController, Promise<void>>();
@@ -1098,7 +1101,7 @@ export function createStudioServer(options: StudioServerOptions): StudioServer {
   const shutdown = async (): Promise<void> => {
     shuttingDown = true;
     // Commits any open edit window; bounded with the renders below, so a history still opening cannot hold exit.
-    const closeHistory = history?.then((opened) => opened?.close()).catch(() => {});
+    const closeHistory = histories.closeAll().catch(() => {});
     const renders = [...inFlightRenders];
     for (const [abortController] of renders) abortController.abort();
     const { killTrackedProcesses, closeBrowserPool } = await import("@hyperframes/engine");

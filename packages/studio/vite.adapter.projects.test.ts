@@ -1,6 +1,15 @@
 import { EventEmitter } from "node:events";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { mkdtempSync, mkdirSync, realpathSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
+import {
+  existsSync,
+  mkdtempSync,
+  mkdirSync,
+  realpathSync,
+  renameSync,
+  rmSync,
+  symlinkSync,
+  writeFileSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
 import { join, win32 } from "node:path";
 import { isValidProjectId } from "./src/utils/projectRouting";
@@ -52,6 +61,46 @@ describe("Studio's dev server keeps each project's history", () => {
       await history?.close();
     }
   });
+
+  it("opens a new project's own history once it takes the folder's path", async () => {
+    const { data, adapter, app } = fixture();
+    mkdirSync(join(data, "demo"));
+    writeFileSync(join(data, "demo", "index.html"), "A");
+    const old = await adapter.history!(adapter.resolveProject("demo")!);
+    renameSync(join(data, "demo"), join(data, "demo-moved"));
+    mkdirSync(join(data, "demo"));
+    writeFileSync(join(data, "demo", "index.html"), "new");
+
+    const list = await app.request("http://localhost/projects/demo/history");
+    expect(list.status).toBe(200);
+    expect(existsSync(join(data, "demo", ".hyperframes", "history-id"))).toBe(true);
+    const fresh = await adapter.history!(adapter.resolveProject("demo")!);
+    expect(fresh?.projectId).not.toBe(old?.projectId);
+    await fresh?.close();
+  });
+});
+
+describe("Studio's dev server retries a history whose folder changed while it opened", () => {
+  it("opens it again on the next request", async () => {
+    const root = mkdtempSync(join(tmpdir(), "hf-project-history-retry-"));
+    roots.push(root);
+    mkdirSync(join(root, "demo"));
+    const history = { replacedAtPath: () => false } as unknown as ProjectHistory;
+    const openHistory = vi
+      .fn()
+      .mockRejectedValueOnce(
+        Object.assign(new Error("now another project"), { name: "HistoryClosedError" }),
+      )
+      .mockResolvedValue(history);
+    const adapter = createViteAdapter(
+      root,
+      {} as ViteDevServer,
+      createProjectSignatureCache({ compute: () => "test" }),
+      { openHistory },
+    );
+    expect(await adapter.history!(adapter.resolveProject("demo")!)).toBeNull();
+    expect(await adapter.history!(adapter.resolveProject("demo")!)).toBe(history);
+  });
 });
 
 describe("Studio's dev server closes the histories it opened when it stops", () => {
@@ -61,7 +110,9 @@ describe("Studio's dev server closes the histories it opened when it stops", () 
     mkdirSync(join(root, "demo"));
     const httpServer = new EventEmitter();
     const close = vi.fn(async () => {});
-    const openHistory = vi.fn(async () => ({ close }) as unknown as ProjectHistory);
+    const openHistory = vi.fn(
+      async () => ({ close, replacedAtPath: () => false }) as unknown as ProjectHistory,
+    );
     const adapter = createViteAdapter(
       root,
       { httpServer } as unknown as ViteDevServer,

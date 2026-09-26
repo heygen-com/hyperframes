@@ -42,7 +42,7 @@ export interface HistoryLog {
   pins: Set<string>;
 }
 
-type LogRecord =
+export type LogRecord =
   | { type: "baseline"; files: Record<string, string> }
   | { type: "entry"; entry: HistoryEntry }
   | { type: "pin"; id: string; pinned: boolean };
