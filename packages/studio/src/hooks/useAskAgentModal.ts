@@ -17,6 +17,8 @@ export interface UseAskAgentModalParams {
   showToast: (message: string, tone?: "error" | "info") => void;
   domEditSelectionRef: React.MutableRefObject<DomEditSelection | null>;
   domEditSelection: DomEditSelection | null;
+  /** A host that takes the prompt itself: the studio then neither copies it nor flashes "Copied". */
+  onAgentPrompt?: (prompt: string) => void;
 }
 
 // ── Hook ──
@@ -28,6 +30,7 @@ export function useAskAgentModal({
   showToast,
   domEditSelectionRef,
   domEditSelection,
+  onAgentPrompt,
 }: UseAskAgentModalParams) {
   // ── State ──
 
@@ -100,6 +103,15 @@ export function useAskAgentModal({
         sourceFilePath: toProjectAbsolutePath(projectDir, targetPath),
       });
 
+      if (onAgentPrompt) {
+        // The host has its own agent panel: the prompt goes there, not to the clipboard.
+        onAgentPrompt(prompt);
+        setAgentModalOpen(false);
+        setAgentPromptSelectionContext(undefined);
+        setAgentModalAnchorPoint(null);
+        return;
+      }
+
       const copied = await copyTextToClipboard(prompt);
       if (!copied) {
         showToast("Could not copy prompt to clipboard.", "error");
@@ -118,6 +130,7 @@ export function useAskAgentModal({
       agentPromptSelectionContext,
       agentPromptTagSnippet,
       domEditSelection,
+      onAgentPrompt,
       projectDir,
       showToast,
     ],

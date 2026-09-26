@@ -59,6 +59,8 @@ export interface UseDomEditSessionParams extends DomEditTimelineParams {
    *  timeline row hands off here instead of the REST remove-elements path. */
   handleTimelineElementsDelete: (elements: TimelineElement[]) => Promise<void>;
   readOnlyPreview: boolean;
+  /** See StudioAppProps.onAgentPrompt. */
+  onAgentPrompt?: (prompt: string) => void;
 }
 
 export function useDomEditSession({
@@ -100,6 +102,7 @@ export function useDomEditSession({
   forceReloadSdkSession,
   handleTimelineElementsDelete,
   readOnlyPreview,
+  onAgentPrompt,
 }: UseDomEditSessionParams) {
   const isMasterView = !activeCompPath || activeCompPath === "index.html";
   const previewCaptionEditMode = captionEditMode && !readOnlyPreview;
@@ -159,6 +162,7 @@ export function useDomEditSession({
     showToast,
     domEditSelectionRef,
     domEditSelection,
+    onAgentPrompt,
   });
 
   useStudioSelectionPublisher({

@@ -36,6 +36,8 @@ import { StudioApp } from "@hyperframes/studio";
 
 A host that composes `EditorShell` itself passes the same definitions as `hostPanels` and renders each one as a `Dock.Panel` inside `panels`.
 
+A host with an agent panel of its own can also take the prompt that "Describe a change to the agent" builds for a selected element: pass `onAgentPrompt={(prompt) => …}` to `StudioApp` and the modal hands the prompt to it instead of copying it to the clipboard.
+
 ## Development
 
 The studio is embedded in the `hyperframes preview` command. To develop the studio UI itself:

@@ -74,11 +74,12 @@ export interface StudioAppProps {
   readOnlyPreviewReason?: string;
   /** The host's own dock panels, tabbed into the side columns after Studio's; read at mount. */
   hostPanels?: readonly HostPanel[];
+  onAgentPrompt?: (prompt: string) => void; // "Describe a change to the agent" hands its prompt here instead of the clipboard
 }
 
 // fallow-ignore-next-line complexity
 export function StudioApp(props: StudioAppProps = {}) {
-  const { readOnlyPreview = false, readOnlyPreviewReason, hostPanels } = props;
+  const { readOnlyPreview = false, readOnlyPreviewReason, hostPanels, onAgentPrompt } = props;
   const { projectId, resolving, waitingForServer } = useServerConnection();
   const initialUrlStateRef = useRef(readStudioUrlStateFromWindow());
   useStudioSessionStart(projectId, resolving, waitingForServer);
@@ -311,6 +312,7 @@ export function StudioApp(props: StudioAppProps = {}) {
     forceReloadSdkSession: sdkHandle.forceReload,
     handleTimelineElementsDelete: timelineEditing.handleTimelineElementsDelete,
     readOnlyPreview,
+    onAgentPrompt,
   });
   domEditSelectionBridgeRef.current = domEditSession.domEditSelection;
   handleDomZIndexReorderCommitRef.current = domEditSession.handleDomZIndexReorderCommit;
