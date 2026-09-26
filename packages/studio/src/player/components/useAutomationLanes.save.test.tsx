@@ -307,6 +307,37 @@ describe("useAutomationLanes saves report what happened", () => {
     expect(usePlayerStore.getState().elements[0]?.automation).toBe(landed);
   });
 
+  it("keeps a newer release's preview while an older save fails under it", async () => {
+    const { startCommit, preview, writeProjectFile, iframe, holdRead } = mountLanes(music);
+    const at = (v: number) => ({
+      version: 1 as const,
+      lanes: [{ target: "volume", points: [{ t: 0, v }] }],
+    });
+    const shown = () =>
+      iframe.contentDocument!.getElementById("music")?.getAttribute("data-automation");
+    let failOlder = () => {};
+    writeProjectFile.mockImplementationOnce(
+      () =>
+        new Promise<void>((_resolve, reject) => {
+          failOlder = () => reject(new Error("offline"));
+        }),
+    );
+    preview(at(0.9));
+    const older = startCommit(at(0.9));
+    await act(() => vi.waitFor(() => expect(writeProjectFile).toHaveBeenCalledTimes(1)));
+    const releaseNewer = holdRead(2);
+    preview(at(0.7));
+    const newer = startCommit(at(0.7));
+    failOlder();
+    await act(() => new Promise((resolve) => setTimeout(resolve, 20)));
+    expect(shown()).toBe(serializeAutomation(at(0.7)));
+    releaseNewer();
+    await act(async () => {
+      await Promise.all([older, newer]);
+    });
+    expect(shown()).toBe(serializeAutomation(at(0.7)));
+  });
+
   it("keeps a newer live drag's preview when an older save's recovery lands", async () => {
     const { startCommit, preview, writeProjectFile, iframe, reads, holdRead } = mountLanes(music);
     const at = (v: number) => ({
@@ -502,6 +533,7 @@ describe("useAutomationLanes saves report what happened", () => {
       if (newer === "is refused") setRecording(true);
       preview(at(0.7));
       const pending = startCommit(at(0.7));
+      await act(() => new Promise((resolve) => setTimeout(resolve, 50)));
       releaseOlder();
       await act(async () => {
         await Promise.all([older, pending]);
