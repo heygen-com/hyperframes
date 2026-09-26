@@ -3223,6 +3223,7 @@ export function initSandboxRuntimeModular(): void {
         const id = el.getAttribute("data-composition-id");
         const previous = id ? timelines[id] : undefined;
         if (!id || !previous) continue;
+        previous.totalTime?.(0, true);
         root?.remove?.(previous);
         (previous as { kill?: () => void }).kill?.();
         delete timelines[id];

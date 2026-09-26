@@ -449,6 +449,29 @@ describe("__hfSwapScenes", () => {
     expect(video?.getAttribute("preload")).toBe("auto");
   });
 
+  it("rewinds the old timeline first, so a kept video carries none of its tweens' values", async () => {
+    const { root } = trackingRoot();
+    quietMedia();
+    const scene = (text: string, label: string, hash: string): Scene => ({
+      ...A1,
+      label,
+      hash,
+      body: `<p>${text}</p><video src="clip.mp4" data-start="1">one</video>`,
+    });
+    boot([scene("A one", "a1", "ha1"), B], root);
+    await tick();
+    const video = sceneHost("a").querySelector("video")!;
+    const seek = made.a1!.totalTime.bind(made.a1);
+    const fadeOverTwentySeconds = (t?: number) => (
+      t !== undefined && (video.style.opacity = String(1 - t / 20)), seek(t)
+    );
+    made.a1!.totalTime = fadeOverTwentySeconds as Tl["totalTime"];
+    made.a1!.totalTime(10);
+    await window.__hfSwapScenes!(preview([scene("A two", "a2", "ha2"), B]).html);
+    expect(sceneHost("a").querySelector("video")).toBe(video);
+    expect(video.style.opacity).toBe("1");
+  });
+
   it.each([
     ["muted is added", "muted"],
     ["its timing and style change", 'data-start="1.5" style="opacity: 0.5"'],
