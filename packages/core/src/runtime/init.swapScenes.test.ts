@@ -114,9 +114,9 @@ const B: Scene = {
 };
 const A2: Scene = { ...A1, body: "<p>A two</p>", css: ".a{color:green}", label: "a2", hash: "ha2" };
 
-function boot(scenes: Scene[], root: Tl) {
+function boot(scenes: Scene[], root: Tl, editHead = (head: string) => head) {
   const { head, body } = preview(scenes);
-  document.head.innerHTML = head;
+  document.head.innerHTML = editHead(head);
   document.body.innerHTML = body;
   window.__timelines = { main: root };
   for (const s of scenes) window.__timelines[s.id] = made[s.label];
@@ -539,6 +539,37 @@ describe("__hfSwapScenes", () => {
     await tick();
     await window.__hfSwapScenes!(preview([A2, B]).html);
     expect(cssText().indexOf(".a{color:green}")).toBeLessThan(cssText().indexOf(".b{color:blue}"));
+  });
+
+  it("replaces each of a scene's separated styles in place, so same-named @keyframes cascade as a fresh load's do", async () => {
+    const { root } = trackingRoot();
+    // Scene a's nested scene comes after b in source order, so a owns a second style run after b's.
+    const secondStyle = (css: string) => (html: string) =>
+      html.replace(
+        `.b{color:blue}</style>`,
+        `.b{color:blue}</style><style data-hf-scene="a">${css}</style>`,
+      );
+    boot([A1, B], root, secondStyle(".a2{color:red}"));
+    await tick();
+    const edited = secondStyle(".a2{color:green}")(preview([A2, B]).html);
+    await window.__hfSwapScenes!(edited);
+    const sceneStyles = Array.from(
+      document.head.querySelectorAll("style[data-hf-scene]"),
+      (el) => el.textContent,
+    );
+    expect(sceneStyles).toEqual([".a{color:green}", ".b{color:blue}", ".a2{color:green}"]);
+  });
+
+  it("refuses a swap whose scene has a different number of style parts", async () => {
+    const { root } = trackingRoot();
+    boot([A1, B], root);
+    await tick();
+    const extra = preview([A2, B]).html.replace(
+      `.b{color:blue}</style>`,
+      `.b{color:blue}</style><style data-hf-scene="a">.a2{}</style>`,
+    );
+    await expect(window.__hfSwapScenes!(extra)).rejects.toThrow("its styles moved");
+    expect(made.a1!.kill).not.toHaveBeenCalled();
   });
 
   it("puts the swapped scene's CSS animations under the playhead", async () => {

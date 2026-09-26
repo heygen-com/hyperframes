@@ -3193,6 +3193,10 @@ export function initSandboxRuntimeModular(): void {
           `scene ${name} cannot be swapped: it loads media this scene has not loaded`,
         );
       }
+      const styleCount = (parts: Element[]) => parts.filter((el) => el.tagName === "STYLE").length;
+      if (styleCount(oldParts) !== styleCount(newParts)) {
+        throw new Error(`scene ${name} cannot be swapped: its styles moved`);
+      }
       return { oldParts, newParts, oldHost, newHost };
     });
     // Fetched before the first write, so a stalled or failed request leaves the page as it was.
@@ -3223,13 +3227,11 @@ export function initSandboxRuntimeModular(): void {
         (previous as { kill?: () => void }).kill?.();
         delete timelines[id];
       }
-      // New styles take the old ones' place: same-named @keyframes resolve by order.
-      const oldStyles = oldParts.filter((el) => el.tagName === "STYLE");
-      const newStyles = newParts
+      // Each new style takes its own old one's place: same-named @keyframes resolve by order.
+      const newStyles = newParts.filter((el) => el.tagName === "STYLE");
+      oldParts
         .filter((el) => el.tagName === "STYLE")
-        .map((el) => document.importNode(el, true));
-      if (oldStyles[0]) oldStyles[0].before(...newStyles);
-      else document.head.append(...newStyles);
+        .forEach((el, i) => el.replaceWith(document.importNode(newStyles[i]!, true)));
       for (const el of oldParts) if (el !== oldHost) el.remove();
       const host = document.importNode(newHost, true);
       keepUnchangedMedia(oldHost, host);
