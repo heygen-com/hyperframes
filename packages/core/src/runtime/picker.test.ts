@@ -248,6 +248,21 @@ describe("createPickerModule", () => {
       expect(selectorOf(document.getElementById("t")!)).toBe("#t");
     });
 
+    it("names a shape in the second of two scenes that share it, not the first scene's", () => {
+      const picker = createPickerModule({ postMessage: createMockPostMessage() });
+      picker.installPickerApi();
+      document.body.innerHTML = `<div data-composition-id="scene-1"><div class="shape"></div></div>
+        <div data-composition-id="scene-2"><div class="shape"></div></div>`;
+      const shape = document.querySelector('[data-composition-id="scene-2"] > .shape')!;
+      const restore = emulateHitTest(() => [shape]);
+      try {
+        const selector = (window as any).__HF_PICKER_API.pickAtPoint(10, 10)?.selector as string;
+        expect([...document.querySelectorAll(selector)]).toEqual([shape]);
+      } finally {
+        restore();
+      }
+    });
+
     it("names an element under an SVG foreignObject by a selector that finds it", () => {
       const picker = createPickerModule({ postMessage: createMockPostMessage() });
       picker.installPickerApi();
