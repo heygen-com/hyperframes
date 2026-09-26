@@ -186,7 +186,7 @@ export class WebAudioTransport {
   private _playGeneration = 0;
   // A running context renders silence nonstop, so a paused transport keeps it
   // suspended unless a captured track is sounding on the idle route (scrub).
-  private _captured = new Set<HTMLMediaElement>();
+  private _playingCaptured = new Set<HTMLMediaElement>();
   private _suspendPending = false;
   private _restTimer: ReturnType<typeof setTimeout> | null = null;
 
@@ -231,10 +231,13 @@ export class WebAudioTransport {
   }
 
   private suspendIfIdle(): void {
-    if (!this._ctx || !this._paused || this._suspendPending) return;
-    for (const el of this._captured) if (!el.paused) return;
+    if (!this._ctx || !this._paused || this._suspendPending || this._playingCaptured.size > 0)
+      return;
     this._suspendPending = true;
-    this._ctx.suspend().catch((err) => swallow("webAudioTransport.suspend", err));
+    this._ctx.suspend().catch((err) => {
+      this._suspendPending = false;
+      swallow("webAudioTransport.suspend", err);
+    });
   }
 
   get context(): AudioContext | null {
@@ -358,10 +361,15 @@ export class WebAudioTransport {
     }
     const sourceNode = this._ctx.createMediaElementSource(el);
     this._mediaElementSources.set(el, sourceNode);
-    this._captured.add(el);
-    el.addEventListener("play", () => void this.wake());
-    el.addEventListener("pause", () => this.rest());
-    el.addEventListener("ended", () => this.rest());
+    if (!el.paused) this._playingCaptured.add(el);
+    el.addEventListener("play", () => {
+      this._playingCaptured.add(el);
+      void this.wake();
+    });
+    el.addEventListener("pause", () => {
+      this._playingCaptured.delete(el);
+      this.rest();
+    });
     return sourceNode;
   }
 
@@ -658,7 +666,7 @@ export class WebAudioTransport {
     buffer: AudioBuffer,
     compositionStart: number,
     mediaStart: number,
-    compositionTime: number,
+    readCompositionTime: () => number,
     volume: number,
     generation: number,
     rate = 1,
@@ -670,6 +678,8 @@ export class WebAudioTransport {
     try {
       await this.wakeFor(generation);
       if (generation !== this._playGeneration) return null;
+      // Read after the wake: the clock kept running while the context resumed.
+      const compositionTime = readCompositionTime();
 
       const safeRate = normalizeRate(rate);
       const mediaRate = readElementPlaybackRate(el);
@@ -887,7 +897,8 @@ export class WebAudioTransport {
     this._bufferCache.clear();
     this._failedSrcs.clear();
     this._mediaElementSources = new WeakMap();
-    this._captured.clear();
+    this._playingCaptured.clear();
+    this._suspendPending = false;
     if (this._restTimer !== null) clearTimeout(this._restTimer);
     this._restTimer = null;
     if (this._ctx) {

@@ -13,6 +13,7 @@ function makeNode() {
 
 let resumeGate: Promise<void> | null = null;
 let suspendGate: Promise<void> | null = null;
+let suspendFails = false;
 const contexts: FakeAudioContext[] = [];
 
 class FakeAudioContext {
@@ -28,6 +29,16 @@ class FakeAudioContext {
   createMediaElementSource() {
     return makeNode();
   }
+  createBufferSource() {
+    return {
+      ...makeNode(),
+      buffer: null,
+      playbackRate: { value: 1 },
+      start() {},
+      stop() {},
+      addEventListener() {},
+    };
+  }
   suspends = 0;
   // Chrome applies suspend() and resume() in call order.
   private queue: Promise<void> = Promise.resolve();
@@ -37,6 +48,7 @@ class FakeAudioContext {
   }
   suspend() {
     this.suspends += 1;
+    if (suspendFails) return Promise.reject(new Error("closed"));
     return this.enqueue(suspendGate, "suspended");
   }
   resume() {
@@ -77,6 +89,7 @@ describe("WebAudioTransport keeps its context suspended while nothing sounds", (
     (globalThis as Record<string, unknown>).AudioContext = FakeAudioContext;
     resumeGate = null;
     suspendGate = null;
+    suspendFails = false;
     vi.useFakeTimers();
   });
   afterEach(() => {
@@ -169,6 +182,71 @@ describe("WebAudioTransport keeps its context suspended while nothing sounds", (
     await idle();
     expect(ctx.state).toBe("running");
     setTrackPlaying(el, false);
+    await idle();
+    expect(ctx.state).toBe("suspended");
+  });
+  it("waits the full idle delay before suspending", async () => {
+    const { transport, ctx } = await startTransport();
+    await play(transport, makeTrack());
+    const suspendsBefore = ctx.suspends;
+    transport.stopAll();
+    await vi.advanceTimersByTimeAsync(999);
+    expect(ctx.suspends).toBe(suspendsBefore);
+    await vi.advanceTimersByTimeAsync(1);
+    expect(ctx.suspends).toBe(suspendsBefore + 1);
+  });
+
+  it("anchors a decoded Play to the time read after the wake", async () => {
+    const { transport } = await startTransport();
+    let now = 10;
+    let release!: () => void;
+    resumeGate = new Promise((resolve) => (release = resolve));
+    const gen = transport.startGeneration();
+    const pending = transport.schedulePlayback(
+      makeTrack(),
+      {} as AudioBuffer,
+      0,
+      0,
+      () => now,
+      1,
+      gen,
+    );
+    now = 10.25;
+    release();
+    expect(await pending).not.toBeNull();
+    expect(transport.getTime()).toBeCloseTo(10.25, 6);
+  });
+
+  it("keeps no reference to a captured track once it stops playing", async () => {
+    const { transport } = await startTransport();
+    const el = makeTrack();
+    await play(transport, el);
+    transport.stopAll();
+    setTrackPlaying(el, true);
+    setTrackPlaying(el, false);
+    el.remove();
+    const holders = Object.values(transport).filter((v) => v instanceof Set && v.has(el));
+    expect(holders).toHaveLength(0);
+  });
+
+  it("suspends a context opened by a second init() after destroy()", async () => {
+    const { transport } = await startTransport();
+    transport.destroy();
+    await transport.init();
+    await idle();
+    expect(contexts[contexts.length - 1]!.state).toBe("suspended");
+  });
+
+  it("tries again on the next Pause after a suspend that failed", async () => {
+    const { transport, ctx } = await startTransport();
+    const el = makeTrack();
+    await play(transport, el);
+    suspendFails = true;
+    transport.stopAll();
+    await idle();
+    expect(ctx.state).toBe("running");
+    suspendFails = false;
+    transport.stopAll();
     await idle();
     expect(ctx.state).toBe("suspended");
   });
