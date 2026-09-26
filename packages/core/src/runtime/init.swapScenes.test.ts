@@ -901,6 +901,43 @@ describe("__hfSwapScenes", () => {
     expect(made.a1!.kill).not.toHaveBeenCalled();
   });
 
+  it("refuses a swap when an outside animation starts on the scene while its caption overrides load", async () => {
+    const { swap, answer } = await bootWithPendingCaptions();
+    const tween = { targets: () => [sceneHost("a")] };
+    Object.assign(window.gsap!, { globalTimeline: { getChildren: () => [tween] } });
+    answer(new Response("null", { status: 404 }));
+    await expect(swap).rejects.toThrow("an animation outside it moves its elements");
+  });
+
+  it("runs the new scene scripts once every edited scene is replaced, so none binds to one still to go", async () => {
+    const { root } = trackingRoot();
+    const bound: Element[] = [];
+    (window as unknown as { __bind: () => void }).__bind = () => bound.push(sceneHost("b"));
+    boot([A1, B], root);
+    await tick();
+    const B2: Scene = { ...B, body: "<p>B two</p>", hash: "hb2" };
+    await window.__hfSwapScenes!(preview([{ ...A2, script: "window.__bind?.();" }, B2]).html);
+    expect(bound.map((el) => el.isConnected)).toEqual([true]);
+  });
+
+  it("refuses, for the caller's reload, when stopping one scene starts an animation on another it swaps", async () => {
+    const { root } = trackingRoot();
+    const running: object[] = [];
+    (window as unknown as { gsap: unknown }).gsap = {
+      set: () => {},
+      globalTimeline: { getChildren: () => [...running] },
+    };
+    // As the old timeline's onInterrupt can when revert() interrupts it.
+    const startOnB = () => void running.push({ targets: () => [sceneHost("b")] });
+    Object.assign(made.a1!, { revert: startOnB });
+    boot([A1, B], root);
+    await tick();
+    const B2: Scene = { ...B, body: "<p>B two</p>", hash: "hb2" };
+    await expect(window.__hfSwapScenes!(preview([A2, B2]).html)).rejects.toThrow(
+      "scene b cannot be swapped",
+    );
+  });
+
   it("rejects a swap another swap overtook while its caption overrides loaded", async () => {
     const { swap, answer } = await bootWithPendingCaptions();
     const B2: Scene = { ...B, body: "<p>B two</p>", label: "n1", hash: "hb2" };

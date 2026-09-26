@@ -3260,8 +3260,7 @@ export function initSandboxRuntimeModular(): void {
       if (styleCount(oldParts) !== styleCount(newParts)) {
         throw new Error(`scene ${name} cannot be swapped: its styles moved`);
       }
-      refuseOutsideTweens(name, oldHost, timelines, sceneAnimations);
-      return { oldParts, newParts, oldHost, newHost };
+      return { name, oldParts, newParts, oldHost, newHost };
     });
     // Fetched before the first write, so a stalled or failed request leaves the page as it was.
     const captionOverrides = swaps.some(({ newHost }) => newHost.querySelector(".caption-group"))
@@ -3271,6 +3270,12 @@ export function initSandboxRuntimeModular(): void {
     if (generation !== sceneSwapGeneration) {
       throw new Error("the preview changed while this swap waited");
     }
+    const refuseAnyOutsideTweens = () => {
+      for (const { name, oldHost } of swaps)
+        refuseOutsideTweens(name, oldHost, timelines, sceneAnimations);
+    };
+    // Checked after the wait, which a tween could start in, and before anything changes.
+    refuseAnyOutsideTweens();
     sceneSwapGeneration += 1;
     const root = state.capturedTimeline as
       | (RuntimeTimelineLike & { remove?: (child: unknown) => unknown })
@@ -3278,23 +3283,28 @@ export function initSandboxRuntimeModular(): void {
     // Overrides re-dim every word they touch, so only the swapped scenes' captions get them.
     const captionHosts: Element[] = [];
     const swappedHosts: Element[] = [];
-    for (const { oldParts, newParts, oldHost, newHost } of swaps) {
-      const stopped = new Set<unknown>();
-      for (const id of compositionIdsIn(oldHost)) {
-        // Newest first: each revert restores what the animation before it wrote.
-        for (const previous of [...(sceneAnimations[id] ?? []).slice().reverse(), timelines[id]]) {
-          if (!previous || stopped.has(previous)) continue;
-          stopped.add(previous);
-          const old = previous as SceneAnimation;
-          if (old.revert) old.revert();
-          else old.totalTime?.(0, true);
-          root?.remove?.(previous);
-          // revert() has already killed it; a second kill() fires onInterrupt again.
-          if (!old.revert) old.kill?.();
-        }
-        delete timelines[id];
-        delete sceneAnimations[id];
+    const oldIds = swaps.flatMap(({ oldHost }) => compositionIdsIn(oldHost));
+    const stopped = new Set<unknown>();
+    for (const id of oldIds) {
+      // Newest first: each revert restores what the animation before it wrote.
+      for (const previous of [...(sceneAnimations[id] ?? []).slice().reverse(), timelines[id]]) {
+        if (!previous || stopped.has(previous)) continue;
+        stopped.add(previous);
+        const old = previous as SceneAnimation;
+        if (old.revert) old.revert();
+        else old.totalTime?.(0, true);
+        root?.remove?.(previous);
+        // revert() has already killed it; a second kill() fires onInterrupt again.
+        if (!old.revert) old.kill?.();
       }
+    }
+    // A revert fires the animation's onInterrupt, which can start a tween on a scene about to be replaced.
+    refuseAnyOutsideTweens();
+    for (const id of oldIds) {
+      delete timelines[id];
+      delete sceneAnimations[id];
+    }
+    for (const { oldParts, newParts, oldHost, newHost } of swaps) {
       // Each new style takes its own old one's place: same-named @keyframes resolve by order.
       const newStyles = newParts.filter((el) => el.tagName === "STYLE");
       oldParts
@@ -3308,6 +3318,9 @@ export function initSandboxRuntimeModular(): void {
       oldHost.replaceWith(host);
       swappedHosts.push(host);
       if (host.querySelector(".caption-group")) captionHosts.push(host);
+    }
+    // Run once every host is replaced, so no new script binds to a scene still to be swapped.
+    for (const { newParts } of swaps) {
       for (const el of newParts) {
         if (el.tagName !== "SCRIPT") continue;
         // An imported <script> never runs; a created one does.
