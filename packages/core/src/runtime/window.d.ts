@@ -83,7 +83,7 @@ declare global {
     __renderReady?: boolean;
     __hfRuntimeTeardown?: (() => void) | null;
     /** What each composition's scripts started on GSAP's global timeline, by composition id. */
-    __hfSceneAnimations?: Record<string, SceneAnimation[]>;
+    __hfSceneAnimations?: Record<string, SceneAnimation[]> | null;
     /** Swap edited scenes from a rebuilt preview document; refuses before changing anything when it cannot. */
     __hfSwapScenes?: (html: string) => Promise<void>;
     __HF_EXPORT_RENDER_SEEK_CONFIG?: {

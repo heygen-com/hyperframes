@@ -1,4 +1,5 @@
 import postcss, { type AtRule, type Node, type Rule } from "postcss";
+import { SCENE_PARTS_META } from "../sceneParts";
 
 const AUTHORED_ROOT_ID_ATTR = "data-hf-authored-id";
 const INNER_ROOT_ATTR = "data-hf-inner-root";
@@ -646,12 +647,18 @@ ${source.replace(/<\/(script)/gi, "<\\/$1")}
     }
   };
   // What the script started on GSAP's global timeline, however it reached GSAP, for a scene swap to revert.
+  // Only a page with a scene manifest can swap; elsewhere the first script stores null and none records.
   var __hfRecordAnimations = function(run) {
+    if (window.__hfSceneAnimations === undefined) {
+      window.__hfSceneAnimations = window.document.querySelector(${jsonScriptLiteral(`meta[name="${SCENE_PARTS_META}"]`)})
+        ? {}
+        : null;
+    }
+    var byComp = window.__hfSceneAnimations;
     var globalTimeline = __hfBaseGsap && __hfBaseGsap.globalTimeline;
-    if (!globalTimeline || !__hfTimelineCompId) return run();
+    if (!byComp || !globalTimeline || !__hfTimelineCompId) return run();
     var before = globalTimeline.getChildren(false);
     run();
-    var byComp = (window.__hfSceneAnimations = window.__hfSceneAnimations || {});
     var recorded = (byComp[__hfTimelineCompId] = byComp[__hfTimelineCompId] || []);
     globalTimeline.getChildren(false).forEach(function(animation) {
       if (before.indexOf(animation) < 0) recorded.push(animation);

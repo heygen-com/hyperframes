@@ -438,39 +438,49 @@ window.__timelines.scene = tl;
     expect(gsapTargets).toEqual([["Scene"], ["Scene"]]);
   });
 
-  it("records what a script starts on GSAP's global timeline, however it reaches GSAP", () => {
-    const { document } = parseHTML(`<div data-composition-id="scene"><p>x</p></div>`);
-    const children: object[] = [{ startedBefore: true }];
-    const start = () => {
-      const animation = { to: () => animation };
-      children.push(animation);
-      return animation;
-    };
-    const gsap = {
-      globalTimeline: { getChildren: () => [...children] },
-      timeline: start,
-      to: start,
-    };
-    const fakeWindow: Record<string, unknown> = { document, __timelines: {}, gsap };
-    const wrapped = wrapScopedCompositionScript(
-      `
+  it.each([
+    ["records", `<meta name="hf-scene-parts" content="{}">`, true],
+    ["on a page no scene swap can act on, records nothing of", "", false],
+  ])(
+    "%s what a script starts on GSAP's global timeline, however it reaches GSAP",
+    (_, head, records) => {
+      const { document } = parseHTML(
+        `<html><head>${head}</head><body><div data-composition-id="scene"><p>x</p></div></body></html>`,
+      );
+      const children: object[] = [{ startedBefore: true }];
+      const start = () => {
+        const animation = { to: () => animation };
+        children.push(animation);
+        return animation;
+      };
+      const gsap = {
+        globalTimeline: { getChildren: () => [...children] },
+        timeline: start,
+        to: start,
+      };
+      const fakeWindow: Record<string, unknown> = { document, __timelines: {}, gsap };
+      const wrapped = wrapScopedCompositionScript(
+        `
 gsap.timeline().to("p", { x: 1 });
 const g = gsap; g.to("p", { x: 1 });
 gsap["to"]("p", { x: 1 });
 window.gsap.to("p", { x: 1 });
 globalThis.gsap.to("p", { x: 1 });
 `,
-      "scene",
-    );
-    vi.stubGlobal("gsap", gsap);
-    try {
-      new Function("window", "gsap", wrapped)(fakeWindow, gsap);
-    } finally {
-      vi.unstubAllGlobals();
-    }
-    expect(children).toHaveLength(6);
-    expect(fakeWindow.__hfSceneAnimations).toEqual({ scene: children.slice(1) });
-  });
+        "scene",
+      );
+      vi.stubGlobal("gsap", gsap);
+      try {
+        new Function("window", "gsap", wrapped)(fakeWindow, gsap);
+      } finally {
+        vi.unstubAllGlobals();
+      }
+      expect(children).toHaveLength(6);
+      expect(fakeWindow.__hfSceneAnimations ?? null).toEqual(
+        records ? { scene: children.slice(1) } : null,
+      );
+    },
+  );
 
   it("scopes each selector in a GSAP target array to the composition root", () => {
     const { document } = parseHTML(`
