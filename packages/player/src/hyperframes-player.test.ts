@@ -1467,6 +1467,38 @@ describe("HyperframesPlayer loop end-state handling", () => {
     }
   });
 
+  it("ends or loops a film the runtime plays past the length without ever reporting its end", () => {
+    const ended = vi.fn();
+    const seek = vi.spyOn(player, "seek");
+    player.addEventListener("ended", ended);
+    player._duration = 1;
+
+    player.loop = true;
+    player._paused = false;
+    postState(31, true, 1.02, false);
+    expect(seek).toHaveBeenCalledWith(0);
+
+    player.loop = false;
+    player._paused = false;
+    postState(31, true, 1.02, false);
+    expect(ended).toHaveBeenCalledTimes(1);
+  });
+
+  it("leaves a film paused at its end alone when the runtime keeps reporting the end", () => {
+    const ended = vi.fn();
+    const seek = vi.spyOn(player, "seek");
+    player.addEventListener("ended", ended);
+    player.loop = true;
+    player._duration = 4.97;
+    player._paused = true;
+
+    postState(149, false, 4.97, true);
+
+    expect(ended).not.toHaveBeenCalled();
+    expect(seek).not.toHaveBeenCalled();
+    expect(player._paused).toBe(true);
+  });
+
   it("keeps a pause from inside the composition on the last frame", () => {
     const ended = vi.fn();
     const seek = vi.spyOn(player, "seek");

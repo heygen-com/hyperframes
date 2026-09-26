@@ -41,6 +41,14 @@ function runtimeTime(data: RuntimeStateData, fps: number): number {
     : (data.frame ?? 0) / fps;
 }
 
+/** A stopped runtime's `ended: false` is a pause; otherwise reaching the length is the end. */
+function isAtEnd(data: RuntimeStateData, time: number, duration: number): boolean {
+  if (duration <= 0) return false;
+  if (data.ended === true) return true;
+  if (data.ended === false && !data.isPlaying) return false;
+  return time >= duration;
+}
+
 /**
  * Process a `state` message from the runtime and return the next state.
  * Side effects (controls updates, events, media mirroring) are fired through
@@ -53,7 +61,7 @@ export function applyRuntimeStateMessage(
   callbacks: PlaybackStateCallbacks,
 ): PlaybackState {
   const rawTime = runtimeTime(data, fps);
-  const atEnd = current.duration > 0 && (data.ended ?? rawTime >= current.duration);
+  const atEnd = isAtEnd(data, rawTime, current.duration);
   const clampedTime = current.duration > 0 ? Math.min(rawTime, current.duration) : rawTime;
   const currentTime = atEnd ? current.duration : clampedTime;
   const wasPlaying = !current.paused;
