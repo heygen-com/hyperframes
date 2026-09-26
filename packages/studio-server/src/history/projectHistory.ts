@@ -651,13 +651,21 @@ class Engine {
     let folded = false;
     while (this.historyBytes() > budget && foldOldest(this.log)) {
       folded = true;
-      const keep = referencedHashes(this.log, this.manifest());
-      for (const group of [...this.windows, this.outside, this.claimed?.group])
-        for (const change of group?.changes.values() ?? [])
-          for (const hash of [change.before, change.after]) if (hash) keep.add(hash);
-      await this.blobs.prune(keep);
+      await this.blobs.prune(
+        new Set([...referencedHashes(this.log, this.manifest()), ...this.pendingHashes()]),
+      );
     }
     if (folded) writeLog(this.logFile, this.log);
+  }
+
+  /** Hashes only pending changes point at yet, such as a claim's stored cut. */
+  pendingHashes(): string[] {
+    const changes = [...this.windows, this.outside, this.claimed?.group].flatMap((group) => [
+      ...(group?.changes.values() ?? []),
+    ]);
+    return changes
+      .flatMap((change) => [change.before, change.after])
+      .filter((hash): hash is string => hash !== null);
   }
 
   /** Before an operation or a window: every write is filed and every pending change committed, in write order. */
