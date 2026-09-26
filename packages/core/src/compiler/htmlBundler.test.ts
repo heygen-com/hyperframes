@@ -959,6 +959,32 @@ describe("bundleToSingleHtml", () => {
     expect(externalHost?.querySelector("p")?.textContent).toBe("External scene");
   });
 
+  it("keeps an installed sub-composition's declared defaults for getVariables", async () => {
+    // `hyperframes add` writes a marker comment above the doctype.
+    const dir = makeTempProject({
+      "index.html": `<!doctype html>
+<html><head></head><body>
+  <div id="root" data-composition-id="main" data-width="1920" data-height="1080">
+    <div data-composition-id="blk" data-composition-src="compositions/blk.html"></div>
+  </div>
+  <script>window.__timelines={};</script>
+</body></html>`,
+      "compositions/blk.html": `<!-- hyperframes-registry-item: blk -->
+<!doctype html>
+<html data-composition-variables='[{"id":"image1","type":"image","default":"assets/blk/one.jpg"}]'>
+  <body>
+    <div id="blk-root" data-composition-id="blk" data-width="1920" data-height="1080">
+      <script>window.__blkVars = __hyperframes.getVariables();</script>
+    </div>
+  </body>
+</html>`,
+    });
+
+    const bundled = await bundleToSingleHtml(dir);
+
+    expect(bundled).toMatch(/__hfVariablesByComp = Object\.assign\([^;]*assets\/blk\/one\.jpg/);
+  });
+
   it("emits per-instance scoped variables for bundled sub-compositions", async () => {
     const dir = makeTempProject({
       "index.html": `<!doctype html>

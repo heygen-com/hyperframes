@@ -9,6 +9,14 @@ import {
 } from "./htmlDocument.js";
 
 describe("htmlDocument helpers", () => {
+  it("keeps a document's <html> attributes when a comment comes before the doctype", () => {
+    const doc = parseHTMLContent(
+      '<!-- hyperframes-registry-item: blk -->\n<!doctype html>\n<html lang="en" data-composition-variables="[]"><body></body></html>',
+    );
+    expect(doc.documentElement.getAttribute("lang")).toBe("en");
+    expect(doc.documentElement.hasAttribute("data-composition-variables")).toBe(true);
+  });
+
   it("wraps fragments before parsing", () => {
     const doc = parseHTMLContent("<template><span>hello</span></template>");
     expect(doc.body.querySelector("template")?.innerHTML).toContain("<span>hello</span>");
