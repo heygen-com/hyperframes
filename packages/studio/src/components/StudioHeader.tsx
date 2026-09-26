@@ -4,7 +4,7 @@ import { getHistoryShortcutLabel } from "../utils/studioHelpers";
 import { useStudioShellContext } from "../contexts/StudioContext";
 import { usePanelLayoutContext } from "../contexts/PanelLayoutContext";
 import { trackStudioEvent } from "../utils/studioTelemetry";
-import { Button, buttonBase, buttonSizes, buttonVariants, cn, IconButton, Tooltip } from "./ui";
+import { Tooltip } from "./ui";
 
 export interface StudioHeaderProps {
   captureFrameHref: string;
@@ -40,8 +40,8 @@ function HyperframesLogo() {
           y2="37.482"
           gradientUnits="userSpaceOnUse"
         >
-          <stop stopColor="var(--color-brand-gradient-from)" />
-          <stop offset="1" stopColor="var(--color-brand-gradient-to)" />
+          <stop stopColor="#06E3FA" />
+          <stop offset="1" stopColor="#4FDB5E" />
         </linearGradient>
         <linearGradient
           id="hf-g1"
@@ -51,8 +51,8 @@ function HyperframesLogo() {
           y2="6.303"
           gradientUnits="userSpaceOnUse"
         >
-          <stop stopColor="var(--color-brand-gradient-from)" />
-          <stop offset="1" stopColor="var(--color-brand-gradient-to)" />
+          <stop stopColor="#06E3FA" />
+          <stop offset="1" stopColor="#4FDB5E" />
         </linearGradient>
       </defs>
       {/* heygen label */}
@@ -138,16 +138,6 @@ function HyperframesLogo() {
   );
 }
 
-/** The Undo / Redo tooltip: the shortcut always, the last action's name when there is one. */
-export function historyTooltipLabel(
-  action: "undo" | "redo",
-  lastAction: string | null | undefined,
-): string {
-  const shortcut = getHistoryShortcutLabel(action);
-  const verb = action === "undo" ? "Undo" : "Redo";
-  return lastAction ? `${verb} ${lastAction} (${shortcut})` : `${verb} (${shortcut})`;
-}
-
 /**
  * Does the header's Inspector button open the panel, or close it?
  *
@@ -184,44 +174,68 @@ export function StudioHeader({
   const ffmpegMissing = renderQueue.ffmpegMissing;
 
   return (
-    <div className="flex items-center justify-between h-10 px-3 bg-surface border-b border-border-strong shrink-0">
+    <div className="flex items-center justify-between h-10 px-3 bg-neutral-900 border-b border-neutral-800 shrink-0">
       {/* Left: logo + project name */}
       <div className="flex items-center gap-3">
         <HyperframesLogo />
-        <span className="text-text-5 select-none" aria-hidden="true">
+        <span className="text-neutral-700 select-none" aria-hidden="true">
           |
         </span>
-        <span className="text-step-11 font-medium text-text-1">{projectId}</span>
+        <span className="text-[11px] font-medium text-neutral-300">{projectId}</span>
       </div>
       {/* Right: toolbar buttons */}
       <div className="flex items-center gap-1.5">
-        <Tooltip label={historyTooltipLabel("undo", editHistory.undoLabel)} side="bottom">
-          <IconButton
-            aria-label="Undo"
-            icon={<RotateCcw size={14} />}
-            disabled={!editHistory.canUndo}
+        <Tooltip
+          label={
+            editHistory.undoLabel
+              ? `Undo ${editHistory.undoLabel} (${getHistoryShortcutLabel("undo")})`
+              : `Undo (${getHistoryShortcutLabel("undo")})`
+          }
+          side="bottom"
+        >
+          <button
+            type="button"
             onClick={() => {
               trackStudioEvent("toolbar_action", { action: "undo" });
               void handleUndo();
             }}
-          />
+            disabled={!editHistory.canUndo}
+            className={`h-7 w-7 flex items-center justify-center rounded-md transition-colors active:scale-[0.98] ${
+              editHistory.canUndo
+                ? "text-neutral-400 hover:text-neutral-200 hover:bg-neutral-800"
+                : "text-neutral-700 cursor-default"
+            }`}
+            aria-label="Undo"
+          >
+            <RotateCcw size={14} />
+          </button>
         </Tooltip>
-        <Tooltip label={historyTooltipLabel("redo", editHistory.redoLabel)} side="bottom">
-          <IconButton
-            aria-label="Redo"
-            icon={<RotateCw size={14} />}
-            disabled={!editHistory.canRedo}
+        <Tooltip
+          label={
+            editHistory.redoLabel
+              ? `Redo ${editHistory.redoLabel} (${getHistoryShortcutLabel("redo")})`
+              : `Redo (${getHistoryShortcutLabel("redo")})`
+          }
+          side="bottom"
+        >
+          <button
+            type="button"
             onClick={() => {
               trackStudioEvent("toolbar_action", { action: "redo" });
               void handleRedo();
             }}
-          />
+            disabled={!editHistory.canRedo}
+            className={`h-7 w-7 flex items-center justify-center rounded-md transition-colors active:scale-[0.98] ${
+              editHistory.canRedo
+                ? "text-neutral-400 hover:text-neutral-200 hover:bg-neutral-800"
+                : "text-neutral-700 cursor-default"
+            }`}
+            aria-label="Redo"
+          >
+            <RotateCw size={14} />
+          </button>
         </Tooltip>
         <Tooltip label={capturing ? "Capturing frame…" : "Capture current frame"} side="bottom">
-          {/* A real download link, so it wears Button's recipe rather than being
-              one: `download` on an <a> is what saves the frame, and no <button>
-              can do that. `enabled:` never matches a link, so the ghost
-              variant's hover look is repeated unprefixed here. */}
           <a
             href={captureFrameHref}
             download={captureFrameFilename}
@@ -236,14 +250,11 @@ export function StudioHeader({
             onFocus={refreshCaptureFrameTime}
             onPointerDown={refreshCaptureFrameTime}
             aria-disabled={capturing || undefined}
-            className={cn(
-              buttonBase,
-              buttonVariants.ghost,
-              buttonSizes.md,
+            className={`h-7 flex items-center gap-1.5 px-2.5 rounded-md text-[11px] font-medium transition-colors ${
               capturing
-                ? "text-text-4 cursor-default"
-                : "hover:bg-hover hover:text-text-0 active:scale-[0.98]",
-            )}
+                ? "text-neutral-600 cursor-default"
+                : "text-neutral-400 hover:text-neutral-200 hover:bg-neutral-800 active:scale-[0.98]"
+            }`}
             aria-label={capturing ? "Capturing frame" : "Capture current frame"}
           >
             {capturing ? (
@@ -274,29 +285,8 @@ export function StudioHeader({
           </a>
         </Tooltip>
         <Tooltip label="Inspector" side="bottom">
-          <Button
-            variant="ghost"
-            aria-label="Inspector"
-            aria-pressed={inspectorButtonActive}
-            className={cn(
-              "border",
-              inspectorButtonActive
-                ? "border-accent/30 bg-accent/10 text-accent"
-                : "border-transparent",
-            )}
-            icon={
-              <svg
-                width="12"
-                height="12"
-                viewBox="0 0 24 24"
-                fill="none"
-                stroke="currentColor"
-                strokeWidth="2"
-              >
-                <circle cx="12" cy="12" r="10" />
-                <polygon points="10 8 16 12 10 16" fill="currentColor" stroke="none" />
-              </svg>
-            }
+          <button
+            type="button"
             onClick={() => {
               if (shouldOpenInspector(effectiveRightCollapsed, inspectorPanelActive)) {
                 trackStudioEvent("panel_toggle", { panel: "inspector", collapsed: false });
@@ -309,9 +299,27 @@ export function StudioHeader({
               // the panel shouldn't deselect the element.
               setRightCollapsed(true);
             }}
+            aria-pressed={inspectorButtonActive}
+            className={`h-7 flex items-center gap-1.5 px-2.5 rounded-md text-[11px] font-medium border transition-colors active:scale-[0.98] ${
+              inspectorButtonActive
+                ? "text-studio-accent bg-studio-accent/10 border-studio-accent/30"
+                : "text-neutral-500 hover:text-neutral-300 hover:bg-neutral-800 border-transparent"
+            }`}
+            aria-label="Inspector"
           >
+            <svg
+              width="12"
+              height="12"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="2"
+            >
+              <circle cx="12" cy="12" r="10" />
+              <polygon points="10 8 16 12 10 16" fill="currentColor" stroke="none" />
+            </svg>
             Inspector
-          </Button>
+          </button>
         </Tooltip>
         <Tooltip
           label={
@@ -323,9 +331,8 @@ export function StudioHeader({
           }
           side="bottom"
         >
-          <Button
-            variant="primary"
-            data-testid="header-export"
+          <button
+            type="button"
             disabled={isRendering}
             onClick={() => {
               if (isRendering) return;
@@ -339,9 +346,10 @@ export function StudioHeader({
               if (ffmpegMissing) return;
               onExport?.();
             }}
+            className="h-7 flex items-center gap-1.5 px-3 rounded-md text-[11px] font-semibold bg-studio-accent text-[#09090B] enabled:hover:brightness-110 transition-[filter,transform] enabled:active:scale-[0.98] disabled:opacity-50 disabled:cursor-not-allowed"
           >
             {isRendering ? "Rendering…" : "Export"}
-          </Button>
+          </button>
         </Tooltip>
       </div>
     </div>
