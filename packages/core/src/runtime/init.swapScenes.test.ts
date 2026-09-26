@@ -902,11 +902,13 @@ describe("__hfSwapScenes", () => {
   });
 
   it("refuses a swap when an outside animation starts on the scene while its caption overrides load", async () => {
-    const { swap, answer } = await bootWithPendingCaptions();
+    const { swap, before, answer } = await bootWithPendingCaptions();
     const tween = { targets: () => [sceneHost("a")] };
     Object.assign(window.gsap!, { globalTimeline: { getChildren: () => [tween] } });
     answer(new Response("null", { status: 404 }));
     await expect(swap).rejects.toThrow("an animation outside it moves its elements");
+    expect(document.documentElement.innerHTML).toBe(before);
+    expect(made.a1!.kill).not.toHaveBeenCalled();
   });
 
   it("runs the new scene scripts once every edited scene is replaced, so none binds to one still to go", async () => {
