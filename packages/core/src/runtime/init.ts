@@ -3176,8 +3176,16 @@ export function initSandboxRuntimeModular(): void {
     for (const el of host.querySelectorAll("video, audio")) {
       const shape = authoredShape(el);
       const kept = byShape.get(shape)?.shift();
-      if (kept) el.replaceWith(kept);
-      else authoredMedia.set(el, shape);
+      if (!kept) {
+        authoredMedia.set(el, shape);
+        continue;
+      }
+      el.replaceWith(kept);
+      // Back as written, the tween cache emptied, so the new script's tweens read what a fresh load's do.
+      window.gsap?.set?.(kept, { clearProps: "all" });
+      const style = el.getAttribute("style");
+      if (style === null) kept.removeAttribute("style");
+      else kept.setAttribute("style", style);
     }
   };
   const compositionIdsIn = (host: Element) =>
@@ -3205,24 +3213,16 @@ export function initSandboxRuntimeModular(): void {
         );
       }
     }
-    // One animation reverts a kept element exactly; two can leave one's value behind, as the record lacks write order.
-    const survives = (target: unknown) =>
-      typeof target !== "function" && (!inScene.has(target) || isMedia(target as Element));
-    const writer = new Map<unknown, unknown>();
-    const counted = new Set<unknown>();
+    // A revert can leave a value on what the swap keeps; kept media are reset, anything else outside is refused.
+    const outside = (target: unknown) => typeof target !== "function" && !inScene.has(target);
     for (const animation of own as Set<SceneAnimation | undefined>) {
-      if (!animation || counted.has(animation)) continue;
-      for (const tween of [animation, ...(animation.getChildren?.(true, true, false) ?? [])]) {
-        if (tween !== animation && counted.has(tween)) continue;
-        counted.add(tween);
-        for (const target of tween.targets?.() ?? []) {
-          if (!survives(target)) continue;
-          if ((writer.get(target) ?? animation) !== animation) {
-            throw new Error(
-              `scene ${name} cannot be swapped: two of its animations write to an element the swap keeps`,
-            );
-          }
-          writer.set(target, animation);
+      for (const tween of animation
+        ? [animation, ...(animation.getChildren?.(true, true, false) ?? [])]
+        : []) {
+        if (tween.targets?.().some(outside)) {
+          throw new Error(
+            `scene ${name} cannot be swapped: its animations write outside the scene`,
+          );
         }
       }
     }

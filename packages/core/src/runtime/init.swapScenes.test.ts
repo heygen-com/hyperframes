@@ -571,7 +571,7 @@ describe("__hfSwapScenes", () => {
   });
 
   it.each([
-    ["rewinds and kills an old timeline that cannot revert", false, "1", 1],
+    ["rewinds and kills an old timeline that cannot revert", false, "", 1],
     ["reverts an old timeline that can, dropping the inline values it wrote", true, "", 0],
   ])(
     "%s, so a kept video carries none of its tweens' values",
@@ -828,32 +828,34 @@ describe("__hfSwapScenes", () => {
     expect(order).toEqual(["second set", "first set", "timeline"]);
   });
 
-  const twoWriters =
-    "scene a cannot be swapped: two of its animations write to an element the swap keeps";
+  const writesOutside = "scene a cannot be swapped: its animations write outside the scene";
   const asFresh = "swapped, as a fresh load, video kept";
   const thenFrom = `tl.from(k, { x: 0, duration: 1 });`;
+  const shapes = {
+    "a free from()": `gsap.from(k, { x: "+=50", duration: 1 }); ${thenFrom}`,
+    "a free fromTo()": `gsap.fromTo(k, { x: "+=50" }, { x: "+=0", duration: 1 }); ${thenFrom}`,
+    "a tween moved to its end": `gsap.to(k, { x: "+=50", duration: 0.5 }).progress(1); ${thenFrom}`,
+    "a second timeline's from()": `gsap.timeline({ paused: true }).from(k, { x: "+=50", duration: 1 }); ${thenFrom}`,
+    "a relative set": `gsap.set(k, { x: "+=50" }); ${thenFrom}`,
+    "a nested timeline's to() before its from()": `tl.add(gsap.timeline().to(k, { x: 10, duration: 0.5 }).from(k, { x: 0, duration: 1 }), 0);`,
+  };
   it.each([
-    ["a free from()", "#kept", `gsap.from(k, { x: "+=50", duration: 1 }); ${thenFrom}`, twoWriters],
+    ...Object.entries(shapes).flatMap(([shape, body]) => [
+      [shape, "video", body, asFresh],
+      [shape, "#kept", body, writesOutside],
+    ]),
     [
-      "a free fromTo()",
-      "#kept",
-      `gsap.fromTo(k, { x: "+=50" }, { x: "+=0", duration: 1 }); ${thenFrom}`,
-      twoWriters,
+      "a to() before a from() on one property",
+      "video",
+      `tl.to(k, { opacity: 0.5, duration: 0.5 }, 0).from(k, { opacity: 0, duration: 1 }, 0.5);`,
+      asFresh,
     ],
     [
-      "a tween moved to its end",
-      "#kept",
-      `gsap.to(k, { x: "+=50", duration: 0.5 }).progress(1); ${thenFrom}`,
-      twoWriters,
+      "a fade in, then out",
+      "video",
+      `tl.from(k, { opacity: 0, duration: 1 }, 0).to(k, { opacity: 0, duration: 1 }, 1.5);`,
+      asFresh,
     ],
-    [
-      "a second timeline's from()",
-      "#kept",
-      `gsap.timeline({ paused: true }).from(k, { x: "+=50", duration: 1 }); ${thenFrom}`,
-      twoWriters,
-    ],
-    ["a relative set", "#kept", `gsap.set(k, { x: "+=50" }); ${thenFrom}`, twoWriters],
-    ["a relative set", "video", `gsap.set(k, { x: "+=50" }); ${thenFrom}`, twoWriters],
     ["a lone set", "video", `gsap.set(k, { x: 50 });`, asFresh],
     ["a lone timeline from()", "video", `tl.from(k, { x: 50, duration: 1 });`, asFresh],
     [
@@ -868,7 +870,14 @@ describe("__hfSwapScenes", () => {
       `tl.from(k, { x: 50, duration: 1 }).to(k, { x: "+=30", duration: 1 });`,
       asFresh,
     ],
-  ])("a scene script with %s on %s, an element the swap keeps", async (_, el, body, expected) => {
+    ["a lone timeline to()", "#kept", `tl.to(k, { x: 10, duration: 1 });`, writesOutside],
+    [
+      "a move the record missed, as a callback's",
+      "video",
+      `globalThis.__missed = () => gsap.set(k, { x: 30 }); tl.from(k, { opacity: 0, duration: 1 });`,
+      asFresh,
+    ],
+  ])("a scene script with %s on %s", async (_, el, body, expected) => {
     const exports: { gsap?: RealGsap } = {};
     // Its ticker takes the frame callback as it loads, and this file's runs at once: give it one that never ticks.
     const frame = window.requestAnimationFrame;
@@ -885,31 +894,38 @@ window.__timelines.a = tl;`;
     const scene = (text: string, hash: string): Scene => ({
       ...A1,
       hash,
-      body: `<p>${text}</p><video src="clip.mp4"></video>`,
+      body: `<p>${text}</p><video src="clip.mp4" style="opacity: 0.5"></video>`,
       script: wrapScopedCompositionScript(source, "a"),
     });
     boot([scene("A one", "ha1"), B], trackingRoot().root);
     document.body.insertAdjacentHTML("beforeend", '<div id="kept"></div>');
     new Function(document.querySelector('script[data-hf-scene="a"]')!.textContent!)();
     // The old page is a fresh load of the same script.
-    const atEnd = () => {
+    const along = () => {
       const timeline = window.__timelines!.a!;
-      timeline.totalTime!(timeline.duration());
-      return gsap.getProperty(document.querySelector(el)!, "x");
+      const k = document.querySelector(el)!;
+      return [0, 0.25, 0.5, 0.75, 1]
+        .map((at) => {
+          timeline.totalTime!(at * timeline.duration());
+          return `${gsap.getProperty(k, "x")}/${gsap.getProperty(k, "opacity")}`;
+        })
+        .join(" ");
     };
-    const fresh = atEnd();
+    const fresh = along();
+    (globalThis as { __missed?: () => void }).__missed?.();
     const video = sceneHost("a").querySelector("video");
     const swapped = await window.__hfSwapScenes!(preview([scene("A two", "ha2"), B]).html).then(
       () => {
-        const x = atEnd();
+        const values = along();
         const kept = sceneHost("a").querySelector("video") === video ? ", video kept" : "";
-        return x === fresh
+        return values === fresh
           ? `swapped, as a fresh load${kept}`
-          : `swapped: x=${x} against ${fresh} on a fresh load`;
+          : `swapped: ${values} against ${fresh}`;
       },
       (error: Error) => error.message,
     );
     gsap.ticker.sleep();
+    delete (globalThis as { __missed?: () => void }).__missed;
     expect(swapped).toBe(expected);
   });
 

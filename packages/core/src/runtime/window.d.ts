@@ -131,6 +131,7 @@ declare global {
     __HF_PICKER_API?: HyperframePickerApi;
     gsap?: {
       timeline: (params?: { paused?: boolean }) => RuntimeTimelineLike;
+      set?: (target: Element, vars: Record<string, unknown>) => unknown;
       parseEase?: (
         ease: string | ((progress: number) => number),
         ...args: unknown[]
