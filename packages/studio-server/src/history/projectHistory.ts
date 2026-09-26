@@ -515,7 +515,6 @@ class Engine {
         .filter((change) => wanted.has(change.path))
         .map((change) => ({ group, change })),
     );
-    // Every cut is stored before any change is cut, so a failed store leaves the groups whole.
     const cuts: Array<string | undefined> = [];
     const walked = hits.map(() => new Set<string>());
     for (const [i, { change }] of hits.entries()) {
