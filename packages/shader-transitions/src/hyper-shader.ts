@@ -1015,7 +1015,7 @@ export function init(config: HyperShaderConfig): GsapTimeline {
       } else if (sceneId === toId) {
         setScenePlaybackState(scene, true, toOpacity);
       } else {
-        setScenePlaybackState(scene, false, "0");
+        setSceneLayer(scene, false, "0");
       }
     });
   };
@@ -2163,16 +2163,19 @@ export function init(config: HyperShaderConfig): GsapTimeline {
         state.active = false;
         state.transitionIndex = -1;
         canvasEl.style.display = "none";
-        suppressSceneMutationTracking(() => {
-          setActualTimelineTime(restoreTimelineTime, false);
-        });
+        try {
+          suppressSceneMutationTracking(() => {
+            setActualTimelineTime(restoreTimelineTime, false);
+          });
+        } finally {
+          prewarming = false;
+        }
         publicTimelineTime = restoreTimelineTime;
         for (const item of originalSceneStyles) {
           if (!item.scene) continue;
           item.scene.style.opacity = item.opacity;
           item.scene.style.pointerEvents = item.pointerEvents;
         }
-        prewarming = false;
         tickShader();
         window.dispatchEvent(
           new CustomEvent("hyperShader:ready", {

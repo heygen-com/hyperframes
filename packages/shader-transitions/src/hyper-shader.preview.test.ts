@@ -54,16 +54,36 @@ afterEach(() => {
   document.body.innerHTML = "";
 });
 
+type ShaderTimeline = ReturnType<typeof init> & {
+  call: (fn: () => void, args: null, at: number) => unknown;
+};
+
+function mountScenes(ids: string[]): void {
+  document.body.innerHTML = `<div data-composition-id="main" data-width="640" data-height="360">${ids
+    .map((id) => `<div id="${id}" class="scene clip">${id}</div>`)
+    .join("")}</div>`;
+}
+
+function prewarmDone(): Promise<void> {
+  return (window as unknown as { __hf: { shaderTransitionsReady: Promise<void> } }).__hf
+    .shaderTransitionsReady;
+}
+
+function visibilityOf(ids: string[]): string[] {
+  return ids.map((id) => (document.getElementById(id) as HTMLElement).style.visibility);
+}
+
 describe("preview outside a transition", () => {
   it("leaves the runtime's hide on shader scenes after the prewarm on a paused page", async () => {
     stubGsap();
     stubWebGl();
     // jsdom cannot capture a scene; HyperShader falls back to a CSS crossfade and warns.
     vi.spyOn(console, "warn").mockImplementation(() => {});
-    document.body.innerHTML = `<div data-composition-id="main" data-width="640" data-height="360">
-      <div id="s4" class="scene clip">four</div>
-      <div id="s5" class="scene clip">five</div>
-    </div>`;
+    let prewarmedTransitions = 0;
+    window.addEventListener("hyperShader:ready", (e) => {
+      prewarmedTransitions = (e as CustomEvent<{ total: number }>).detail.total;
+    });
+    mountScenes(["s4", "s5"]);
     const tl = init({
       bgColor: "#000",
       scenes: ["s4", "s5"],
@@ -74,13 +94,59 @@ describe("preview outside a transition", () => {
     for (const id of ["s4", "s5"]) {
       (document.getElementById(id) as HTMLElement).style.visibility = "hidden";
     }
-    await (window as unknown as { __hf: { shaderTransitionsReady: Promise<void> } }).__hf
-      .shaderTransitionsReady;
+    await prewarmDone();
 
     // Paused: nothing re-syncs visibility until the next seek.
     tl.time(0);
-    for (const id of ["s4", "s5"]) {
-      expect(document.getElementById(id)?.style.visibility).toBe("hidden");
-    }
+    expect(prewarmedTransitions).toBeGreaterThan(0);
+    expect(visibilityOf(["s4", "s5"])).toEqual(["hidden", "hidden"]);
+  });
+
+  it("does not leave a scene outside the transition pair hidden", async () => {
+    stubGsap();
+    stubWebGl();
+    vi.spyOn(console, "warn").mockImplementation(() => {});
+    mountScenes(["s1", "s2", "s3"]);
+    const tl = init({
+      bgColor: "#000",
+      scenes: ["s1", "s2", "s3"],
+      transitions: [
+        { time: 2, duration: 0.8, shader: "domain-warp" },
+        { time: 4, duration: 0.8, shader: "domain-warp" },
+      ],
+    });
+    await prewarmDone();
+
+    tl.time(4.2);
+    tl.time(1, true);
+    expect(visibilityOf(["s1"])).not.toEqual(["hidden"]);
+  });
+
+  it("keeps seeking after a timeline callback throws during the prewarm's restore seek", async () => {
+    stubGsap();
+    stubWebGl();
+    vi.spyOn(console, "warn").mockImplementation(() => {});
+    mountScenes(["s4", "s5"]);
+    const tl = init({
+      bgColor: "#000",
+      scenes: ["s4", "s5"],
+      transitions: [{ time: 4.4, duration: 0.8, shader: "domain-warp" }],
+    }) as ShaderTimeline;
+    let throwing = true;
+    tl.call(
+      () => {
+        if (throwing) throw new Error("author callback");
+      },
+      null,
+      1,
+    );
+    let hits = 0;
+    tl.call(() => (hits += 1), null, 3);
+    await prewarmDone().catch(() => {});
+    throwing = false;
+    hits = 0;
+
+    tl.time(3.5);
+    expect(hits).toBe(1);
   });
 });
