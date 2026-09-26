@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto";
-import { readdir, rm } from "node:fs/promises";
-import { existsSync, mkdirSync, readFileSync, realpathSync } from "node:fs";
+import { readdir, rm, rmdir } from "node:fs/promises";
+import { existsSync, lstatSync, mkdirSync, readFileSync, realpathSync } from "node:fs";
 import { homedir } from "node:os";
 import { dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
 import { replaceFileAtomically } from "../helpers/atomicFile.js";
@@ -310,14 +310,18 @@ class Engine {
       Math.min(sweptAt, Math.max(file.mtimeMs, file.ctimeMs));
     const seen = listProjectFiles(this.dir);
     const present = new Set(seen.map((file) => file.path));
-    // A removal is dated no later than a file that could only appear once it was gone (a/b over file a, or the reverse).
-    const removedAt = (path: string) =>
-      Math.min(sweptAt, ...seen.filter((file) => blocks(path, file.path)).map(changedAt));
+    const removed = [...this.tracked.keys()]
+      .filter((path) => !present.has(path))
+      .map((path) => ({ at: this.replacedAt(path, sweptAt, changedAt), path, file: null }));
+    // A file in the way of a removal (a/b over file a, or the reverse) appeared no earlier than that removal.
+    const appearedAt = (file: (typeof seen)[number]) =>
+      Math.max(
+        changedAt(file),
+        ...removed.filter((gone) => blocks(gone.path, file.path)).map((gone) => gone.at),
+      );
     const events = [
-      ...[...this.tracked.keys()]
-        .filter((path) => !present.has(path))
-        .map((path) => ({ at: removedAt(path), path, file: null })),
-      ...seen.map((file) => ({ at: changedAt(file), path: file.path, file })),
+      ...removed,
+      ...seen.map((file) => ({ at: appearedAt(file), path: file.path, file })),
     ].sort((a, b) => a.at - b.at);
     let changed = false;
     for (const { at, path, file } of events) {
@@ -624,6 +628,21 @@ class Engine {
     await this.commitOutside();
   }
 
+  /** A removed path is dated by what took its place (a folder at file a's path, or a file at folder a/'s), else the sweep. */
+  replacedAt(
+    path: string,
+    sweptAt: number,
+    changedAt: (stat: { mtimeMs: number; ctimeMs: number }) => number,
+  ) {
+    const parts = path.split("/");
+    for (let depth = 1; depth <= parts.length; depth += 1) {
+      const stat = lstatSync(join(this.dir, ...parts.slice(0, depth)), { throwIfNoEntry: false });
+      if (!stat) break;
+      if (depth === parts.length || !stat.isDirectory()) return changedAt(stat);
+    }
+    return sweptAt;
+  }
+
   /** Writes `target` (path to hash, null deletes) as one entry of `who`'s. */
   async writeAs(
     who: HistoryWho,
@@ -634,7 +653,10 @@ class Engine {
     const group = this.newGroup(who, label);
     this.windows.push(group);
     try {
-      for (const [path, hash] of target) {
+      const deletionsFirst = [...target].sort(
+        ([, a], [, b]) => Number(a !== null) - Number(b !== null),
+      );
+      for (const [path, hash] of deletionsFirst) {
         if ((this.tracked.get(path)?.hash ?? null) !== hash)
           await this.writeProjectFile(path, hash);
       }
@@ -653,8 +675,19 @@ class Engine {
       const version = hash === null ? DELETED_VERSION : hashVersion(hash);
       recordFileWriteReceipt(absPath, { path, version, writeToken });
     }
-    if (hash === null) await rm(absPath, { force: true });
+    if (hash === null) await this.remove(path);
     else await this.blobs.writeTo(hash, absPath);
+  }
+
+  /** Removes a file and the folders it leaves empty, as git does. */
+  async remove(path: string): Promise<void> {
+    await rm(join(this.dir, path), { force: true });
+    try {
+      for (let dir = dirname(path); dir !== "."; dir = dirname(dir))
+        await rmdir(join(this.dir, dir));
+    } catch {
+      // The first folder that is not empty (or already gone) ends the climb.
+    }
   }
 
   entry(id: string): HistoryEntry {

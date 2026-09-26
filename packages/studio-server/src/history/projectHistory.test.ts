@@ -310,9 +310,48 @@ describe("openProjectHistory", () => {
     }
 
     const [first] = history.list();
+    expect([first!.who.kind, first!.files.map((file) => file.path).sort()]).toEqual([
+      "agent",
+      ["a", "a/b.html"],
+    ]);
     const dir = tempDir("hf-history-checkout-");
     await history.checkout(first!.id, "after", dir);
     expect(inside(dir, "a/b.html")).toBe("b");
+  });
+
+  it("undoes and redoes a turn that turned a file into a folder", async () => {
+    const { history, projectDir, read } = await project({ a: "file" });
+    const turn = await change(history, agent, "Agent turn", () => {
+      rmSync(join(projectDir, "a"));
+      mkdirSync(join(projectDir, "a", "c"), { recursive: true });
+      writeFileSync(join(projectDir, "a", "c", "b.html"), "b");
+    });
+
+    const undone = await history.undo(turn.id, { who: you });
+    expect(undone.ok && read("a")).toBe("file");
+    const redone = await history.undo(undone.ok ? undone.entry!.id : "", { who: you });
+    expect(redone.ok && read("a/c/b.html")).toBe("b");
+  });
+
+  it("logs a folder moved over an agent's file after its turn idled out as the outside's, however old its files", async () => {
+    const { history, projectDir } = await project({ a: "file" });
+    const staged = tempDir("hf-history-folder-");
+    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+    try {
+      const window = await history.beginWindow(agent, "Agent turn", { idleMs: 50 });
+      writeFileSync(join(staged, "b.html"), "b");
+      for (const until = Date.now() + 150; Date.now() < until; );
+      rmSync(join(projectDir, "a"));
+      renameSync(staged, join(projectDir, "a"));
+      await window.close();
+      await history.flush();
+    } finally {
+      vi.useRealTimers();
+    }
+
+    expect(
+      history.list().map((entry) => [entry.who.kind, entry.files.map((file) => file.path).sort()]),
+    ).toEqual([["outside", ["a", "a/b.html"]]]);
   });
 
   it("refuses a checkout folder inside the project, however it is reached", async () => {
