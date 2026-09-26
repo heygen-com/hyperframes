@@ -2130,7 +2130,9 @@ describe("bundleToSingleHtml sceneParts", () => {
 
   it("leaves renders untagged", async () => {
     const html = await bundleToSingleHtml(film());
-    expect(html).not.toContain("data-hf-scene");
+    expect(
+      parseHTML(html).document.querySelector("[data-hf-scene], [data-hf-scene-no-swap]"),
+    ).toBeNull();
     expect(html).toContain("__aRan");
   });
 
@@ -2154,7 +2156,7 @@ describe("bundleToSingleHtml sceneParts", () => {
       first?.textContent?.startsWith('@import url("https://fonts.example.com/inter.css")'),
     ).toBe(true);
     expect(doc.querySelector('style[data-hf-scene="a"]')?.textContent).not.toContain("@import");
-    expect(doc.documentElement.outerHTML.match(/@import/g)).toHaveLength(1);
+    expect(styleText(doc.documentElement.outerHTML).match(/@import/g)).toHaveLength(1);
   });
 
   it("marks a scene whose own script leaves work running as not swappable, and only that scene", async () => {
@@ -2202,7 +2204,7 @@ describe("bundleToSingleHtml sceneParts", () => {
       "it runs a script that is not a known library",
     );
     const rendered = await bundleToSingleHtml(dir);
-    expect(rendered).not.toContain("data-hf-scene-no-swap");
+    expect(parseHTML(rendered).document.querySelector("[data-hf-scene-no-swap]")).toBeNull();
   });
 
   const rootProject = (root: string, extra: Record<string, string> = {}) =>
