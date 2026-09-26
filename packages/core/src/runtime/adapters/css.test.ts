@@ -1,4 +1,4 @@
-import { describe, it, expect, vi } from "vitest";
+import { afterEach, describe, it, expect, vi } from "vitest";
 import { createCssAdapter } from "./css";
 
 describe("css adapter", () => {
@@ -330,33 +330,62 @@ describe("css adapter", () => {
     });
   });
 
-  it("counts one iteration of a repeating or infinite animation toward the cycle end", () => {
-    const el = document.createElement("div");
-    el.setAttribute("data-start", "2");
-    document.body.appendChild(el);
-    vi.spyOn(window, "getComputedStyle").mockImplementation(() => {
-      return { animationName: "pulse" } as CSSStyleDeclaration;
+  describe("cycle end", () => {
+    const mountAnimated = (style: Partial<CSSStyleDeclaration>) => {
+      const el = document.createElement("div");
+      el.setAttribute("data-start", "2");
+      document.body.appendChild(el);
+      vi.spyOn(window, "getComputedStyle").mockImplementation(
+        () =>
+          ({ animationDelay: el.style.animationDelay || "0s", ...style }) as CSSStyleDeclaration,
+      );
+      return el;
+    };
+
+    afterEach(() => {
+      document.body.replaceChildren();
+      vi.restoreAllMocks();
     });
-    const timing = (delay: number, duration: number, iterations: number) => ({
-      effect: {
-        getComputedTiming: () => ({
-          delay,
-          duration,
-          iterations,
-          endTime: delay + duration * iterations,
-        }),
-      },
+
+    it("reads one cycle per animation from the computed lists, not the live animations", () => {
+      // A display:none clip or a finished animation has no live handle; its CSS still counts.
+      const el = mountAnimated({
+        animationName: "a, none, b, c",
+        animationDuration: "1s, 9s, 1500ms",
+        animationDelay: "0s, 0s, 0s, 2s",
+      });
+      el.getAnimations = () => [];
+
+      const adapter = createCssAdapter();
+      adapter.discover();
+
+      // c pairs the 2s delay with the first duration again: 2 + 2 + 1.
+      expect(adapter.getAnimationCycleEndSeconds?.()).toBe(5);
+      expect(adapter.getInferredDurationSeconds?.()).toBeNull();
     });
-    (el as HTMLElement & { getAnimations?: () => Animation[] }).getAnimations = () =>
-      [timing(500, 1000, 40), timing(0, 2000, Infinity)] as unknown as Animation[];
 
-    const adapter = createCssAdapter();
-    adapter.discover();
+    it("skips an animation whose negative delay ends it before it starts", () => {
+      mountAnimated({ animationName: "a", animationDuration: "1s", animationDelay: "-2s" });
 
-    expect(adapter.getAnimationCycleEndSeconds?.()).toBe(4);
-    expect(adapter.getInferredDurationSeconds?.()).toBe(42.5);
+      const adapter = createCssAdapter();
+      adapter.discover();
 
-    document.body.removeChild(el);
-    vi.restoreAllMocks();
+      expect(adapter.getAnimationCycleEndSeconds?.()).toBeNull();
+    });
+
+    it("keeps the authored delay when rediscovered after a fallback seek", () => {
+      const el = mountAnimated({ animationName: "pulse", animationDuration: "1s" });
+      el.getAnimations = () => [];
+
+      const adapter = createCssAdapter();
+      adapter.discover();
+      adapter.seek({ time: 5 });
+      expect(el.style.animationDelay).toBe("-3s");
+      adapter.discover();
+      adapter.pause();
+
+      expect(adapter.getAnimationCycleEndSeconds?.()).toBe(3);
+      expect(el.style.animationDelay).toBe("");
+    });
   });
 });

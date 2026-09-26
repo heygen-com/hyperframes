@@ -1595,6 +1595,25 @@ describe("initSandboxRuntimeModular", () => {
         expect(window.__hf?.animationEnd?.()).toBe(3);
       });
 
+      it("skips an endless stagger and keeps the other animations", () => {
+        const dots = [{ x: 0 }, { x: 0 }, { x: 0 }];
+        const root = paused()
+          .to({ x: 0 }, { x: 1, duration: 4 }, 0)
+          .to(dots, { x: 1, duration: 1, stagger: { each: 0.2, repeat: -1 } }, 0);
+        initWithRoot("10", root);
+
+        expect(window.__hf?.animationEnd?.()).toBe(4);
+      });
+
+      it("skips a paused child that never plays", () => {
+        const root = paused()
+          .to({ x: 0 }, { x: 1, duration: 4 }, 0)
+          .add(gsap.to({ x: 0 }, { x: 1, duration: 20, paused: true }), 0);
+        initWithRoot("10", root);
+
+        expect(window.__hf?.animationEnd?.()).toBe(4);
+      });
+
       it("caps an auto-nested sub-composition at its host clip's end", () => {
         mountRoot("9");
         const host = document.createElement("div");

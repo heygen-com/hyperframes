@@ -10,6 +10,7 @@ export function createCssAdapter(params?: {
     baseDelay: string;
     basePlayState: string;
     animations: Animation[];
+    cycleSeconds: number;
   }> = [];
 
   const getAnimationsForElement = (el: HTMLElement): Animation[] => {
@@ -26,6 +27,23 @@ export function createCssAdapter(params?: {
       ? params.resolveStartSeconds(el)
       : Number.parseFloat(el.getAttribute("data-start") ?? "0") || 0;
 
+  // Computed lists pair by index, repeating the shorter; unlike getAnimations(), they outlive display:none.
+  const readCycleSeconds = (style: CSSStyleDeclaration): number => {
+    const seconds = (list: string | undefined) =>
+      (list || "")
+        .split(",")
+        .map((v) => Number.parseFloat(v) / (v.trim().endsWith("ms") ? 1000 : 1));
+    const durations = seconds(style.animationDuration);
+    const delays = seconds(style.animationDelay);
+    let end = 0;
+    style.animationName.split(",").forEach((name, i) => {
+      if (name.trim() === "none") return;
+      const cycle = delays[i % delays.length]! + durations[i % durations.length]!;
+      if (cycle > end) end = cycle;
+    });
+    return end;
+  };
+
   /**
    * End time (seconds, relative to composition start) for one WAAPI
    * animation handle. `endSeconds` is set only when the timing is readable
@@ -37,7 +55,6 @@ export function createCssAdapter(params?: {
   const inferAnimationEndSeconds = (
     animation: Animation,
     startSeconds: number,
-    oneCycle: boolean,
   ): { endSeconds?: number; unbounded?: true } => {
     let timing: ComputedEffectTiming | null = null;
     try {
@@ -46,28 +63,9 @@ export function createCssAdapter(params?: {
       swallow("runtime.adapters.css.site5", err);
     }
     if (!timing) return {};
-    const endTimeMs = oneCycle
-      ? Number(timing.delay) + Number(timing.duration)
-      : Number(timing.endTime);
+    const endTimeMs = Number(timing.endTime);
     if (!Number.isFinite(endTimeMs)) return { unbounded: true };
     return { endSeconds: startSeconds + endTimeMs / 1000 };
-  };
-
-  const readMaxEndSeconds = (oneCycle: boolean): number | null => {
-    let maxEndSeconds = 0;
-    for (const entry of entries) {
-      if (!entry.el.isConnected) continue;
-      const start = resolveEntryStartSeconds(entry.el);
-      for (const animation of getAnimationsForElement(entry.el)) {
-        const result = inferAnimationEndSeconds(animation, start, oneCycle);
-        // Unbounded (Infinity/NaN endTime) animations are skipped here —
-        // they never contribute to maxEndSeconds. A finite animation
-        // elsewhere on the composition still supplies a valid duration
-        // signal; only fall through to null when nothing finite was found.
-        if (result.endSeconds != null) maxEndSeconds = Math.max(maxEndSeconds, result.endSeconds);
-      }
-    }
-    return maxEndSeconds > 0 ? maxEndSeconds : null;
   };
 
   const seekAnimations = (animations: Animation[], timeMs: number) => {
@@ -125,6 +123,8 @@ export function createCssAdapter(params?: {
   return {
     name: "css",
     discover: () => {
+      // A fallback seek's inline delay must not be read back as the authored one.
+      for (const entry of entries) restoreInlineStyles(entry);
       entries = [];
       const all = document.querySelectorAll("*");
       for (const rawEl of all) {
@@ -136,11 +136,34 @@ export function createCssAdapter(params?: {
           baseDelay: rawEl.style.animationDelay || "",
           basePlayState: rawEl.style.animationPlayState || "",
           animations: getAnimationsForElement(rawEl),
+          cycleSeconds: readCycleSeconds(style),
         });
       }
     },
-    getInferredDurationSeconds: () => readMaxEndSeconds(false),
-    getAnimationCycleEndSeconds: () => readMaxEndSeconds(true),
+    getAnimationCycleEndSeconds: () => {
+      let end = 0;
+      for (const entry of entries) {
+        if (!entry.el.isConnected || entry.cycleSeconds <= 0) continue;
+        end = Math.max(end, resolveEntryStartSeconds(entry.el) + entry.cycleSeconds);
+      }
+      return end > 0 ? end : null;
+    },
+    getInferredDurationSeconds: () => {
+      let maxEndSeconds = 0;
+      for (const entry of entries) {
+        if (!entry.el.isConnected) continue;
+        const start = resolveEntryStartSeconds(entry.el);
+        for (const animation of getAnimationsForElement(entry.el)) {
+          const result = inferAnimationEndSeconds(animation, start);
+          // Unbounded (Infinity/NaN endTime) animations are skipped here —
+          // they never contribute to maxEndSeconds. A finite animation
+          // elsewhere on the composition still supplies a valid duration
+          // signal; only fall through to null when nothing finite was found.
+          if (result.endSeconds != null) maxEndSeconds = Math.max(maxEndSeconds, result.endSeconds);
+        }
+      }
+      return maxEndSeconds > 0 ? maxEndSeconds : null;
+    },
     seek: (ctx) => {
       const time = Number(ctx.time) || 0;
       for (const entry of entries) {

@@ -54,8 +54,9 @@ declare global {
         seconds: number | null;
         pendingClips: number;
       };
-      /** Where the composition's animations end in seconds (root timeline and animation
-       *  adapters, never media or the declared length), or null when unknown. Studio reads it. */
+      /** Where each animation's FIRST cycle ends, latest wins, in seconds (root timeline and
+       *  animation adapters, never media or the declared length); repeats may run past it.
+       *  Null when unknown. Studio reads it. */
       animationEnd?: () => number | null;
       /** Borrow an element's playback while the transport clock is paused, so the
        *  runtime's paused-side enforcement leaves it alone. Always release. */

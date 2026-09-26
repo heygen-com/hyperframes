@@ -2799,12 +2799,17 @@ export function initSandboxRuntimeModular(): void {
     let end = 0;
     for (const child of children) {
       if (child.data === RUNTIME_FILLER) continue;
+      // GSAP leaves a paused child out; the runtime keeps registered scenes paused between seeks.
+      const paused = (child as { paused?: () => boolean }).paused?.();
+      if (paused && !Object.values(window.__timelines ?? {}).includes(child as never)) continue;
       const cycle = child.getChildren
         ? readOneCycleEndSeconds(child.getChildren(false, true, true))
         : Number(child.duration?.()) || 0;
       // startTime() is in the parent's time, the cycle in the child's own; reversed reports -1.
       const scale = Math.abs(Number((child as { timeScale?: () => number }).timeScale?.()) || 1);
       const childEnd = (Number(child.startTime?.()) || 0) + cycle / scale;
+      // An endless stagger reports its ~1e10 s inner timeline; skip it, as the adapters skip loops.
+      if (childEnd >= LOOP_INFLATED_TIMELINE_SECONDS) continue;
       end = Math.max(end, Math.min(childEnd, autoNestedHostEndSeconds(child)));
     }
     return end;
