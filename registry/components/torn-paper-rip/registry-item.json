@@ -1,0 +1,53 @@
+{
+  "$schema": "https://hyperframes.heygen.com/schema/registry-item.json",
+  "name": "torn-paper-rip",
+  "type": "hyperframes:component",
+  "title": "Torn Paper Rip",
+  "description": "A jagged, fibrous paper tear travels across the frame, taking one scene with it and leaving the next standing. The exposed cross-section rides just behind the cut edge, on a token paper tone.",
+  "tags": ["torn paper", "paper rip", "paper tear", "transition", "texture", "motion-primitive"],
+  "files": [
+    {
+      "path": "torn-paper-rip.html",
+      "target": "compositions/components/torn-paper-rip.html",
+      "type": "hyperframes:snippet"
+    }
+  ],
+  "variables": [
+    {
+      "id": "direction",
+      "type": "enum",
+      "role": "motion",
+      "label": "Direction",
+      "description": "Which way the tear travels across the frame.",
+      "default": "left-to-right",
+      "options": [
+        { "value": "left-to-right", "label": "Left to right" },
+        { "value": "right-to-left", "label": "Right to left" }
+      ]
+    },
+    {
+      "id": "tone",
+      "type": "enum",
+      "role": "style",
+      "label": "Paper tone",
+      "description": "Color of the exposed paper cross-section riding the tear.",
+      "default": "cream",
+      "options": [
+        { "value": "cream", "label": "Cream" },
+        { "value": "kraft", "label": "Kraft" },
+        { "value": "white", "label": "White" }
+      ]
+    },
+    {
+      "id": "roughness",
+      "type": "number",
+      "role": "style",
+      "label": "Roughness",
+      "description": "How jagged and fibrous the tear edge is. Low is a clean deckle edge, high is roughly torn.",
+      "default": 55,
+      "min": 20,
+      "max": 90,
+      "step": 1
+    }
+  ]
+}

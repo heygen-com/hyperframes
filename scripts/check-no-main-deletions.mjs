@@ -39,6 +39,9 @@ const BASE_FLAG = "--base";
 const STORYBOARD_VIEW_REASON =
   "owner-directed removal of the Studio storyboard view; its only readers were deleted with it";
 
+const SIMULATED_CURSOR_REASON =
+  "owner-directed removal of simulated-cursor; the Cursors section's new pointer animations replace it";
+
 export const ALLOWED_DELETIONS = new Map([
   [
     "packages/studio/src/utils/editHistory.ts",
@@ -1075,6 +1078,9 @@ export const ALLOWED_DELETIONS = new Map([
     "registry/examples/vscode-theme-visualizer/scripts/build-theme-registry.mjs",
     "removed in the 2026-09 low-use catalog cut, see the PR",
   ],
+  ["registry/components/simulated-cursor/demo.html", SIMULATED_CURSOR_REASON],
+  ["registry/components/simulated-cursor/registry-item.json", SIMULATED_CURSOR_REASON],
+  ["registry/components/simulated-cursor/simulated-cursor.html", SIMULATED_CURSOR_REASON],
 ]);
 
 export function parseBase(argv, fallback = "origin/main") {

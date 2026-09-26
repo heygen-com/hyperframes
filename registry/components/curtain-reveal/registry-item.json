@@ -1,0 +1,55 @@
+{
+  "$schema": "https://hyperframes.heygen.com/schema/registry-item.json",
+  "name": "curtain-reveal",
+  "type": "hyperframes:component",
+  "title": "Curtain Reveal",
+  "description": "Two pleated stage curtains gather outward from center, the way real velvet bunches at the tieback, revealing the stage underneath. A static pelmet frames the top; a soft spotlight can bloom in as they part.",
+  "tags": ["curtain", "stage reveal", "transition", "motion-primitive"],
+  "files": [
+    {
+      "path": "curtain-reveal.html",
+      "target": "compositions/components/curtain-reveal.html",
+      "type": "hyperframes:snippet"
+    }
+  ],
+  "variables": [
+    {
+      "id": "tone",
+      "type": "enum",
+      "role": "style",
+      "label": "Curtain tone",
+      "description": "Curtain color.",
+      "default": "red",
+      "options": [
+        { "value": "red", "label": "Red" },
+        { "value": "burgundy", "label": "Burgundy" },
+        { "value": "navy", "label": "Navy" },
+        { "value": "forest", "label": "Forest" }
+      ]
+    },
+    {
+      "id": "pelmet",
+      "type": "enum",
+      "role": "style",
+      "label": "Pelmet",
+      "description": "Static valance framing the top of the stage.",
+      "default": "on",
+      "options": [
+        { "value": "on", "label": "On" },
+        { "value": "off", "label": "Off" }
+      ]
+    },
+    {
+      "id": "spotlight",
+      "type": "enum",
+      "role": "style",
+      "label": "Spotlight",
+      "description": "Soft glow blooming over the stage as the curtains part.",
+      "default": "on",
+      "options": [
+        { "value": "on", "label": "On" },
+        { "value": "off", "label": "Off" }
+      ]
+    }
+  ]
+}

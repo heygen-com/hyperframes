@@ -1,0 +1,55 @@
+{
+  "$schema": "https://hyperframes.heygen.com/schema/registry-item.json",
+  "name": "agent-cursor",
+  "type": "hyperframes:component",
+  "title": "Agent Cursor",
+  "description": "An AI agent operating a UI: a glowing cursor with a name tag that types out each step, shimmers while it thinks, clicks each target with a sparkle, and ends on a check.",
+  "tags": ["cursor", "motion-primitive", "agent", "ai", "status", "click"],
+  "files": [
+    {
+      "path": "agent-cursor.html",
+      "target": "compositions/components/agent-cursor.html",
+      "type": "hyperframes:snippet"
+    }
+  ],
+  "jobs": ["demonstrate"],
+  "family": "pointers",
+  "profile": "interaction",
+  "syncPoints": [
+    { "id": "first-click", "phase": "in", "offset": 2.79 },
+    { "id": "second-click", "phase": "in", "offset": 4.39 },
+    { "id": "done", "phase": "in", "offset": 4.7 }
+  ],
+  "variables": [
+    {
+      "id": "agent_name",
+      "type": "string",
+      "role": "content",
+      "label": "Agent name",
+      "default": "Agent"
+    },
+    {
+      "id": "steps",
+      "type": "string",
+      "role": "content",
+      "label": "Status steps",
+      "description": "Comma-separated: a reading line, one line per target, then a done line.",
+      "default": "Reading the page,Opening Settings,Turning on backups,Done"
+    },
+    {
+      "id": "targets",
+      "type": "string",
+      "role": "layout",
+      "label": "Click targets",
+      "description": "Semicolon-separated x,y points in percent of the frame.",
+      "default": "25,47;76,30"
+    },
+    {
+      "id": "accent",
+      "type": "color",
+      "role": "style",
+      "label": "Accent",
+      "default": "#8b5cf6"
+    }
+  ]
+}

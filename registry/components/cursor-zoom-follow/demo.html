@@ -1,0 +1,77 @@
+<!doctype html>
+<!--
+  Zoom Follow Cursor, standalone demo: a screen recording framed on a wallpaper. The mounted
+  screen is the built-in dashboard; clicks land at 1.3s, 2.7s and 4.1s.
+-->
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=1920, height=1080" />
+    <title>Zoom Follow Cursor, Demo</title>
+    <script src="https://cdn.jsdelivr.net/npm/gsap@3.14.2/dist/gsap.min.js"></script>
+    <style>
+      *,
+      *::before,
+      *::after {
+        box-sizing: border-box;
+      }
+      html,
+      body {
+        margin: 0;
+        width: 100%;
+        height: 100%;
+        overflow: hidden;
+      }
+      #root {
+        position: relative;
+        width: 1920px;
+        height: 1080px;
+        overflow: hidden;
+        background:
+          radial-gradient(900px 700px at 15% 20%, #8b9cff 0%, transparent 60%),
+          radial-gradient(900px 800px at 90% 90%, #ff9ec7 0%, transparent 60%), #c9c3f5;
+      }
+      .window {
+        position: absolute;
+        left: 160px;
+        top: 90px;
+        width: 1600px;
+        height: 900px;
+        border-radius: 22px;
+        overflow: hidden;
+        box-shadow:
+          0 40px 110px rgba(40, 30, 90, 0.35),
+          0 0 0 1px rgba(255, 255, 255, 0.5);
+      }
+    </style>
+  </head>
+  <body>
+    <div
+      id="root"
+      data-composition-id="cursor-zoom-follow-demo"
+      data-start="0"
+      data-width="1920"
+      data-height="1080"
+      data-duration="6"
+    >
+      <div
+        class="window clip"
+        id="cursor-zoom-follow"
+        data-composition-id="cursor-zoom-follow"
+        data-composition-src="./cursor-zoom-follow.html"
+        data-variable-values='{"zoom":1.8,"accent":"#4f5bff"}'
+        data-start="0"
+        data-duration="6"
+        data-track-index="0"
+        data-width="1600"
+        data-height="900"
+      ></div>
+    </div>
+
+    <script>
+      window.__timelines = window.__timelines || {};
+      var tl = gsap.timeline({ paused: true });
+      window.__timelines["cursor-zoom-follow-demo"] = tl;
+    </script>
+  </body>
+</html>

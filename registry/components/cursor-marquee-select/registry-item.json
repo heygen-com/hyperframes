@@ -1,0 +1,76 @@
+{
+  "$schema": "https://hyperframes.heygen.com/schema/registry-item.json",
+  "name": "cursor-marquee-select",
+  "type": "hyperframes:component",
+  "title": "Marquee Select Cursor",
+  "description": "A cursor drags a selection rectangle across a photo grid; each tile rings and pops a check the frame the rectangle touches it, while a pill counts the selection up.",
+  "tags": ["cursor", "motion-primitive", "select", "marquee", "grid", "product-demo"],
+  "files": [
+    {
+      "path": "cursor-marquee-select.html",
+      "target": "compositions/components/cursor-marquee-select.html",
+      "type": "hyperframes:snippet"
+    }
+  ],
+  "jobs": ["demonstrate"],
+  "family": "pointers",
+  "profile": "interaction",
+  "syncPoints": [
+    { "id": "press", "phase": "in", "offset": 0.9 },
+    { "id": "release", "phase": "in", "offset": 2.3 }
+  ],
+  "variables": [
+    { "id": "accent", "type": "color", "role": "style", "label": "Accent", "default": "#2f7bf6" },
+    {
+      "id": "start_x",
+      "type": "number",
+      "role": "layout",
+      "label": "Drag start X",
+      "default": 20.5,
+      "min": 0,
+      "max": 100,
+      "step": 0.5,
+      "unit": "%"
+    },
+    {
+      "id": "start_y",
+      "type": "number",
+      "role": "layout",
+      "label": "Drag start Y",
+      "default": 25.5,
+      "min": 0,
+      "max": 100,
+      "step": 0.5,
+      "unit": "%"
+    },
+    {
+      "id": "end_x",
+      "type": "number",
+      "role": "layout",
+      "label": "Drag end X",
+      "default": 57,
+      "min": 0,
+      "max": 100,
+      "step": 0.5,
+      "unit": "%"
+    },
+    {
+      "id": "end_y",
+      "type": "number",
+      "role": "layout",
+      "label": "Drag end Y",
+      "default": 52,
+      "min": 0,
+      "max": 100,
+      "step": 0.5,
+      "unit": "%"
+    },
+    {
+      "id": "pill_label",
+      "type": "string",
+      "role": "content",
+      "label": "Pill label",
+      "default": "selected"
+    }
+  ]
+}
