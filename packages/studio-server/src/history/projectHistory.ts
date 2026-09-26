@@ -186,6 +186,9 @@ function splitAt(
   ];
 }
 
+const blocks = (removed: string, added: string) =>
+  added.startsWith(`${removed}/`) || removed.startsWith(`${added}/`);
+
 /** A window takes a write within idleMs of its last one; past that it has ended, even before its timer commits it. */
 const takesWrite = (window: Group, at: number) =>
   window.idleMs === undefined || at - (window.lastWriteAt ?? at) <= window.idleMs;
@@ -305,16 +308,26 @@ class Engine {
     const sweptAt = Date.now();
     const changedAt = (file: { mtimeMs: number; ctimeMs: number }) =>
       Math.min(sweptAt, Math.max(file.mtimeMs, file.ctimeMs));
-    const seen = listProjectFiles(this.dir).sort((a, b) => changedAt(a) - changedAt(b));
-    let changed = false;
-    for (const file of seen)
-      changed = (await this.observe(file.path, statKey(file, sweptAt), changedAt(file))) || changed;
+    const seen = listProjectFiles(this.dir);
     const present = new Set(seen.map((file) => file.path));
-    for (const [path, known] of this.tracked) {
-      if (present.has(path)) continue;
+    // A removal is dated no later than a file that could only appear once it was gone (a/b over file a, or the reverse).
+    const removedAt = (path: string) =>
+      Math.min(sweptAt, ...seen.filter((file) => blocks(path, file.path)).map(changedAt));
+    const events = [
+      ...[...this.tracked.keys()]
+        .filter((path) => !present.has(path))
+        .map((path) => ({ at: removedAt(path), path, file: null })),
+      ...seen.map((file) => ({ at: changedAt(file), path: file.path, file })),
+    ].sort((a, b) => a.at - b.at);
+    let changed = false;
+    for (const { at, path, file } of events) {
+      if (file) {
+        changed = (await this.observe(path, statKey(file, sweptAt), at)) || changed;
+        continue;
+      }
+      const known = this.tracked.get(path)!;
       this.tracked.delete(path);
-      const removedAt = sweptAt;
-      await this.record(path, known.hash, null, removedAt);
+      await this.record(path, known.hash, null, at);
       changed = true;
     }
     if (changed) this.saveStatCache();

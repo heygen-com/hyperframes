@@ -295,6 +295,26 @@ describe("openProjectHistory", () => {
     }
   });
 
+  it("checks out a turn that turned a file into a folder and idled before the next scan", async () => {
+    const { history, projectDir } = await project({ a: "file" });
+    await history.beginWindow(agent, "Agent turn", { idleMs: 60_000 });
+    rmSync(join(projectDir, "a"));
+    mkdirSync(join(projectDir, "a"));
+    writeFileSync(join(projectDir, "a", "b.html"), "b");
+    vi.useFakeTimers({ toFake: ["Date"] });
+    try {
+      vi.setSystemTime(Date.now() + 120_000);
+      await history.flush();
+    } finally {
+      vi.useRealTimers();
+    }
+
+    const [first] = history.list();
+    const dir = tempDir("hf-history-checkout-");
+    await history.checkout(first!.id, "after", dir);
+    expect(inside(dir, "a/b.html")).toBe("b");
+  });
+
   it("refuses a checkout folder inside the project, however it is reached", async () => {
     const { history, write, projectDir, has } = await project({ "index.html": "v1" });
     const entry = await change(history, you, "Second", () => write("index.html", "v2"));
