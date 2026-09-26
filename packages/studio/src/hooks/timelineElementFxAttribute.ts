@@ -116,7 +116,7 @@ export function useSetElementAttribute({
   ) => Promise<TimelineEditOutcome>;
   revertLive: (element: TimelineElement, attr: string) => void;
 } {
-  const liveLanes = useRef(createLiveLanes());
+  const liveLanes = useRef(createLiveLanes(() => projectIdRef.current));
   const setLive = useCallback(
     (element: TimelineElement, attr: string, value: string | null) => {
       const key = elementAttributeLiveKey(element, activeCompPath, attr);

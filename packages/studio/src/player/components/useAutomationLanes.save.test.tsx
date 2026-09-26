@@ -42,6 +42,7 @@ afterEach(() => {
 });
 
 function mountLanes(target: TimelineElement, canEdit?: CanEdit, recording = false) {
+  let projectId = "p1";
   const isRecordingRef = { current: recording };
   let file = SOURCE;
   let reads = 0;
@@ -80,7 +81,7 @@ function mountLanes(target: TimelineElement, canEdit?: CanEdit, recording = fals
   }
   function Host() {
     const editing = useTimelineEditing({
-      projectId: "p1",
+      projectId,
       activeCompPath: "index.html",
       timelineElements: [music],
       showToast: () => {},
@@ -115,7 +116,8 @@ function mountLanes(target: TimelineElement, canEdit?: CanEdit, recording = fals
 
   const host = document.createElement("div");
   document.body.append(host);
-  act(() => createRoot(host).render(<Host />));
+  const root = createRoot(host);
+  act(() => root.render(<Host />));
   const commit = async (next: HfAutomation = NEXT) => {
     let outcome: unknown;
     await act(async () => {
@@ -137,6 +139,14 @@ function mountLanes(target: TimelineElement, canEdit?: CanEdit, recording = fals
     file: () => file,
     reads: () => reads,
     failRead: (n: number) => broken.add(n),
+    // A different project whose file, preview and store hold the same clip, unedited.
+    switchProject: (next: string) => {
+      projectId = next;
+      file = SOURCE;
+      iframe.contentDocument!.body.innerHTML = SOURCE;
+      usePlayerStore.getState().setElements([{ ...music, audioGroup: "hf-group" }]);
+      act(() => root.render(<Host />));
+    },
     setRecording: (next: boolean) => (isRecordingRef.current = next),
     holdRead,
   };
@@ -483,6 +493,83 @@ describe("useAutomationLanes saves report what happened", () => {
     );
     expect(usePlayerStore.getState().elements[0]?.automation).toBe(saved);
   });
+
+  it.each([
+    { lane: "clip", target: music, field: "automation" },
+    { lane: "group", target: group, field: "audioGroupAutomation" },
+  ] as const)(
+    "never settles another project's saved $lane value when a save cannot read the file back",
+    async ({ target, field }) => {
+      const { commit, preview, writeProjectFile, iframe, failRead, switchProject } =
+        mountLanes(target);
+      const at = (v: number) => ({
+        version: 1 as const,
+        lanes: [{ target: "volume", points: [{ t: 0, v }] }],
+      });
+      preview(at(0.5));
+      expect(await commit(at(0.5))).toEqual({ status: "saved" });
+      switchProject("p2");
+      writeProjectFile.mockRejectedValueOnce(new Error("offline"));
+      failRead(3);
+      expect(await commit(at(0.9))).toMatchObject({ status: "failed" });
+      expect(
+        iframe.contentDocument!.getElementById(target.id)?.hasAttribute("data-automation"),
+      ).toBe(false);
+      expect(usePlayerStore.getState().elements[0]?.[field]).toBeUndefined();
+    },
+  );
+
+  it.each([{ held: "write" }, { held: "read" }] as const)(
+    "leaves a new project alone when a save made before the switch lands after it (held: $held)",
+    async ({ held }) => {
+      const {
+        startCommit,
+        preview,
+        writeProjectFile,
+        iframe,
+        setFile,
+        holdRead,
+        reads,
+        switchProject,
+      } = mountLanes(music);
+      const at = (v: number) => ({
+        version: 1 as const,
+        lanes: [{ target: "volume", points: [{ t: 0, v }] }],
+      });
+      let land = () => {};
+      if (held === "write") {
+        writeProjectFile.mockImplementationOnce(
+          (_path, content) =>
+            new Promise<void>((resolve) => {
+              land = () => {
+                setFile(content);
+                resolve();
+              };
+            }),
+        );
+      } else {
+        land = holdRead(1);
+      }
+      preview(at(0.5));
+      const saving = startCommit(at(0.5));
+      await act(() =>
+        vi.waitFor(() =>
+          held === "write"
+            ? expect(writeProjectFile).toHaveBeenCalledTimes(1)
+            : expect(reads()).toBe(1),
+        ),
+      );
+      switchProject("p2");
+      land();
+      await act(async () => {
+        await saving;
+      });
+      expect(iframe.contentDocument!.getElementById("music")?.hasAttribute("data-automation")).toBe(
+        false,
+      );
+      expect(usePlayerStore.getState().elements[0]?.automation).toBeUndefined();
+    },
+  );
 
   it("leaves the store to a newer pending save when an older one lands", async () => {
     const { startCommit, writeProjectFile, setFile, holdRead } = mountLanes(music);

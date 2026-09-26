@@ -240,7 +240,7 @@ export function useSetAudioGroupAttribute({
   ) => Promise<TimelineEditOutcome>;
   revertLive: (groupId: string, attr: string) => void;
 } {
-  const liveLanes = useRef(createLiveLanes());
+  const liveLanes = useRef(createLiveLanes(() => projectIdRef.current));
   const setLive = useCallback(
     (groupId: string, attr: string, value: string | null) => {
       const key = audioGroupAttributeLiveKey(groupId, attr);

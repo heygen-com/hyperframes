@@ -401,8 +401,8 @@ export async function persistTimelineBatchEdit(
   });
 }
 
-/** Live-preview bookkeeping per lane: the value before a gesture, pending saves, and the last value verified. */
-export function createLiveLanes() {
+/** Live-preview bookkeeping per lane of the open project: the value before a gesture, pending saves, and the last value verified. */
+export function createLiveLanes(project: () => string | null) {
   const before = new Map<string, string | null>();
   const pending = new Map<string, Set<number>>();
   const verified = new Map<string, string | null>();
@@ -417,24 +417,28 @@ export function createLiveLanes() {
   };
   const overtaken = (key: string, save: number): boolean =>
     [...(pending.get(key) ?? [])].some((newer) => newer > save);
+  const scoped = (laneKey: string): string => `${project() ?? ""}\n${laneKey}`;
   return {
-    preview(key: string, readCurrent: () => string | null): void {
+    preview(laneKey: string, readCurrent: () => string | null): void {
+      const key = scoped(laneKey);
       if (before.has(key)) return;
       before.set(key, readCurrent());
       if (!pending.has(key)) clean.add(key);
     },
     // A save. Its settle records what the file holds: `saved`, else the last value verified on
     // this lane (a landed save, a read-back, or a clean before-value), never an unsaved one.
-    // Store and preview follow only while no newer save is pending, and the preview only
-    // while no drag is live.
-    claim(key: string, apply: LiveLaneApply): LiveLaneSave {
+    // Store and preview follow only while no newer save is pending and its project is open,
+    // and the preview only while no drag is live.
+    claim(laneKey: string, apply: LiveLaneApply): LiveLaneSave {
+      const key = scoped(laneKey);
+      const open = () => scoped(laneKey) === key;
       const trusted = clean.has(key);
       const claimed = take(key);
       const mine = ++saves;
       if (claimed !== undefined && trusted) verified.set(key, claimed);
       pending.set(key, (pending.get(key) ?? new Set<number>()).add(mine));
       const preview = (value: string | null) => {
-        if (!before.has(key) && !overtaken(key, mine)) apply.preview(value);
+        if (open() && !before.has(key) && !overtaken(key, mine)) apply.preview(value);
       };
       return {
         preview,
@@ -443,7 +447,7 @@ export function createLiveLanes() {
           inFlight?.delete(mine);
           if (inFlight?.size === 0) pending.delete(key);
           if (saved !== undefined) verified.set(key, saved);
-          if (!verified.has(key) || overtaken(key, mine)) return;
+          if (!verified.has(key) || overtaken(key, mine) || !open()) return;
           const value = verified.get(key) ?? null;
           if (before.has(key)) before.set(key, value);
           apply.store(value);
@@ -453,8 +457,8 @@ export function createLiveLanes() {
     },
     // A gesture refused before it saved: put its before-value back, which hands the lane
     // back to any save still pending on it.
-    revert(key: string, apply: LiveLaneApply): void {
-      const claimed = take(key);
+    revert(laneKey: string, apply: LiveLaneApply): void {
+      const claimed = take(scoped(laneKey));
       if (claimed === undefined) return;
       apply.preview(claimed);
       apply.store(claimed);
