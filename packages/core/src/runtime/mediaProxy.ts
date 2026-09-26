@@ -4,6 +4,7 @@ import { evictMediaSyncState } from "./media";
 import { findInjectedRenderFrame } from "./renderFrameSibling";
 import type { RuntimeJson } from "./types";
 import { isVideoElement } from "./domRealm";
+import { swappedElements } from "./proxySrc";
 
 /**
  * One entry per project-root-relative asset pathname, injected by the
@@ -38,10 +39,6 @@ const DIAGNOSTIC_UNAVAILABLE_CODE = "runtime_media_proxy_unavailable";
 
 type ProxyTrigger = "proactive" | "reactive" | "tertiary";
 
-// Elements already swapped to their proxy src. Gates every trigger so a
-// second undecodable-video signal (another zero-width metadata tick, a
-// stray error event) never re-swaps or loops.
-const swappedElements = new WeakSet<HTMLMediaElement>();
 // Elements that already got the "can't help you" diagnostic (cross-origin,
 // or the proxy itself failing) — one-shot per element, independent of
 // `swappedElements` so the proxy-failed case (which fires AFTER a real swap)
@@ -225,7 +222,7 @@ export function swapToProxy(
     emitUnavailableDiagnostic(el, "invalid_source_url", originalSrc);
     return;
   }
-  swappedElements.add(el);
+  swappedElements.set(el, el.getAttribute("src"));
   // The swapped src points at a different file — sync state (drift offsets,
   // seek-retry latches, volume tracking) computed against the original
   // source must not carry over, or the next tick misreads a fresh file's

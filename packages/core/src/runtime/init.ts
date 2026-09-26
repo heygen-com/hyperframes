@@ -50,7 +50,7 @@ import {
   type SceneParts,
 } from "../sceneParts";
 import { applyPositionEdits, installPositionEditsSeekReapply } from "./positionEdits";
-import { applyVariableBindings } from "./applyVariableBindings";
+import { applyVariableBindings, unproxiedMediaSrc } from "./applyVariableBindings";
 import { createColorGradingRuntime, type RuntimeColorGradingApi } from "./colorGrading";
 import { initVfx, paintVfx } from "./vfx";
 import { TransportClock } from "./clock";
@@ -3093,10 +3093,12 @@ export function initSandboxRuntimeModular(): void {
       if (part.tagName === "STYLE") addCssUrls(part.textContent);
       if (part.tagName === "STYLE" || part.tagName === "SCRIPT") continue;
       for (const el of [part, ...part.querySelectorAll("*")]) {
-        for (const attr of ["src", "poster", "srcset"]) {
-          const value = el.getAttribute(attr);
-          if (value) urls.add(value);
-        }
+        const values = [
+          unproxiedMediaSrc(el),
+          el.getAttribute("poster"),
+          el.getAttribute("srcset"),
+        ];
+        for (const value of values) if (value) urls.add(value);
         addCssUrls(el.getAttribute("style"));
       }
     }

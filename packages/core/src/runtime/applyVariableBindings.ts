@@ -33,6 +33,7 @@ import {
   isSafeMediaUrl,
 } from "@hyperframes/parsers/composition";
 import { isHtmlElement } from "./domRealm";
+import { unproxiedSrc } from "./proxySrc";
 
 // data-var-src only rebinds media `src` on media elements. A user-controlled
 // variable value assigned to a src is an XSS surface on tags whose src executes
@@ -169,6 +170,11 @@ function variableSrcFor(el: Element, cache: ScopeValuesCache): string | null {
     return null;
   }
   return url;
+}
+
+/** The src an element loads, preview proxy aside: its bound variable's value, else its attribute. */
+export function unproxiedMediaSrc(el: Element): string | null {
+  return variableSrcFor(el, new Map()) ?? unproxiedSrc(el);
 }
 
 export function applyVariableBindings(doc: Document): void {

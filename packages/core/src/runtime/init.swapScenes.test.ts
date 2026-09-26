@@ -123,6 +123,11 @@ function boot(scenes: Scene[], root: Tl) {
 }
 
 const tick = () => new Promise<void>((r) => window.setTimeout(r, 0));
+const sceneHost = (id: string) =>
+  document.querySelector(`[data-hf-scene="${id}"]:not(style):not(script)`)!;
+const scoped = window as unknown as {
+  __hfVariablesByComp?: Record<string, Record<string, unknown>>;
+};
 const cssText = () =>
   [...document.head.querySelectorAll("style")].map((s) => s.textContent).join("");
 
@@ -144,6 +149,7 @@ describe("__hfSwapScenes", () => {
     window.__hfRuntimeTeardown?.();
     document.head.innerHTML = "";
     document.body.innerHTML = "";
+    delete scoped.__hfVariablesByComp;
     vi.restoreAllMocks();
   });
 
@@ -305,6 +311,21 @@ describe("__hfSwapScenes", () => {
     );
     expect(document.querySelector('[data-hf-scene="a"]:not(style):not(script)')?.textContent).toBe(
       "A one",
+    );
+  });
+
+  it("swaps a scene whose bound image shows its variable's value, and refuses a bound one that is new", async () => {
+    const { root } = trackingRoot();
+    scoped.__hfVariablesByComp = { a: { logo: "brand.svg", other: "other.svg" } };
+    const logo = '<img data-var-src="logo" src="assets/logo.svg">';
+    boot([{ ...A1, body: `<p>A one</p>${logo}` }, B], root);
+    await tick();
+    await window.__hfSwapScenes!(preview([{ ...A2, body: `<p>A two</p>${logo}` }, B]).html);
+    expect(sceneHost("a").querySelector("img")?.getAttribute("src")).toBe("brand.svg");
+    const other = '<img data-var-src="other" src="brand.svg">';
+    const withOther = { ...A2, hash: "ha3", body: `<p>A two</p>${logo}${other}` };
+    await expect(window.__hfSwapScenes!(preview([withOther, B]).html)).rejects.toThrow(
+      "it loads media",
     );
   });
 
