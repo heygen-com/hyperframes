@@ -269,4 +269,30 @@ describe("WebAudioTransport keeps its context suspended while nothing sounds", (
     await idle();
     expect(ctx.state).toBe("suspended");
   });
+  it("suspends on the next Pause after a playing track stopped with no pause event", async () => {
+    const { transport, ctx } = await startTransport();
+    const el = makeTrack();
+    await play(transport, el);
+    transport.stopAll();
+    setTrackPlaying(el, true);
+    await idle();
+    // The load algorithm (el.load(), a src swap) clears playback without firing "pause".
+    Object.defineProperty(el, "paused", { configurable: true, get: () => true });
+    transport.stopAll();
+    await idle();
+    expect(ctx.state).toBe("suspended");
+  });
+
+  it("suspends after a playing track is emptied by a reload, with no further Pause", async () => {
+    const { transport, ctx } = await startTransport();
+    const el = makeTrack();
+    await play(transport, el);
+    transport.stopAll();
+    setTrackPlaying(el, true);
+    await idle();
+    Object.defineProperty(el, "paused", { configurable: true, get: () => true });
+    el.dispatchEvent(new Event("emptied"));
+    await idle();
+    expect(ctx.state).toBe("suspended");
+  });
 });

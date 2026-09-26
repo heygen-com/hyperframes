@@ -222,6 +222,8 @@ export class WebAudioTransport {
   }
 
   private suspendIfIdle(): void {
+    // `paused` is the truth; the load algorithm clears it without a "pause" event.
+    for (const el of this._playingCaptured) if (el.paused) this._playingCaptured.delete(el);
     if (!this._ctx || !this._paused || this._suspendPending || this._playingCaptured.size > 0)
       return;
     this._suspendPending = true;
@@ -357,10 +359,12 @@ export class WebAudioTransport {
       this._playingCaptured.add(el);
       void this.wake();
     });
-    el.addEventListener("pause", () => {
+    const stopped = () => {
       this._playingCaptured.delete(el);
       this.rest();
-    });
+    };
+    el.addEventListener("pause", stopped);
+    el.addEventListener("emptied", stopped);
     return sourceNode;
   }
 
