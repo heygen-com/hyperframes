@@ -633,7 +633,7 @@ function stubVisibility(initial: DocumentVisibilityState) {
 
 describe("useTimelinePlayer scene swap", () => {
   function liveFilm(swap?: (html: string) => Promise<void>) {
-    const { win } = makeAdapterWindow();
+    const { adapter, win } = makeAdapterWindow();
     const iframe = makeFakeIframe(swap ? { ...win, __hfSwapScenes: swap } : win);
     iframe.src = "http://localhost/api/projects/demo/preview";
     const harness = renderTimelinePlayerHarness();
@@ -641,7 +641,14 @@ describe("useTimelinePlayer scene swap", () => {
       harness.getApi().iframeRef.current = iframe;
       harness.getApi().onIframeLoad();
     });
-    return harness;
+    return { ...harness, adapter };
+  }
+  function playingFilm(swap: (html: string) => Promise<void>) {
+    const film = liveFilm(swap);
+    usePlayerStore.setState({ timelineReady: true });
+    act(() => film.getApi().play());
+    film.adapter.pause.mockClear();
+    return film;
   }
   const roles = (api: ReturnType<ReturnType<typeof liveFilm>["getApi"]>) =>
     api.previewSlots.map((slot) => slot.role);
@@ -727,5 +734,45 @@ describe("useTimelinePlayer scene swap", () => {
     act(() => getApi().refreshPlayer());
     expect(fetchSpy).not.toHaveBeenCalled();
     expect(getApi().previewSlots[1]!.gen).toBeGreaterThan(firstShadow);
+  });
+
+  it("keeps a playing film playing through a swap, ready to swap the next edit", async () => {
+    const fetchSpy = vi
+      .spyOn(globalThis, "fetch")
+      .mockImplementation(async () => new Response("<html>v2</html>"));
+    const swap = vi.fn(async () => {});
+    const { getApi, adapter } = playingFilm(swap);
+    act(() => getApi().refreshPlayer());
+    await settle();
+    expect(adapter.pause).not.toHaveBeenCalled();
+    expect(usePlayerStore.getState().isPlaying).toBe(true);
+    expect(roles(getApi())).toEqual(["live"]);
+    act(() => getApi().refreshPlayer());
+    await settle();
+    expect(fetchSpy).toHaveBeenCalledTimes(2);
+    expect(swap).toHaveBeenCalledTimes(2);
+  });
+
+  it("keeps a playing film playing through a refused swap, from where the live frame had reached", async () => {
+    vi.spyOn(globalThis, "fetch").mockResolvedValue(new Response("<html>v2</html>"));
+    const { getApi, adapter } = playingFilm(async () => {
+      throw new Error("the film changed outside its scenes");
+    });
+    adapter.seek(3);
+    act(() => getApi().refreshPlayer());
+    // The live frame plays on while the swap is tried; the fallback reload starts from here.
+    adapter.seek(4.5);
+    await settle();
+    expect(adapter.pause).not.toHaveBeenCalled();
+    expect(usePlayerStore.getState().isPlaying).toBe(true);
+    const gen = getApi().previewSlots.find((s) => s.role === "shadow")!.gen;
+    const shadow = makeShadowWithSpies();
+    act(() => {
+      getApi().setShadowIframeNode(shadow.iframe);
+      getApi().onShadowIframeLoad(gen);
+      getApi().onShadowReadyChange(gen, true);
+    });
+    expect(shadow.adapter.getTime()).toBe(4.5);
+    expect(shadow.adapter.isPlaying()).toBe(true);
   });
 });
