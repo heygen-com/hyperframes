@@ -200,6 +200,28 @@ describe("parked transport loop", () => {
     expect(states.at(-1)).toMatchObject({ isPlaying: false, ended: true, frame: 149 });
   });
 
+  it("stops a film at its declared length when its animation runs longer, as the render does", () => {
+    let nowMs = 1000;
+    vi.spyOn(performance, "now").mockImplementation(() => nowMs);
+    document.body.innerHTML = `<div id="root" data-composition-id="main" data-root="true" data-start="0" data-duration="3"></div>`;
+    window.__timelines = { main: createMockTimeline(5) };
+    initSandboxRuntimeModular();
+    quiesce();
+
+    window.__player!.play();
+    for (let step = 0; step < 200 && window.__player!.isPlaying(); step += 1) {
+      nowMs += 50;
+      raf.step(50);
+    }
+
+    const states = posted.filter((m) => m["type"] === "state");
+    expect(states.at(-1)).toMatchObject({ isPlaying: false, ended: true, frame: 90 });
+    expect(window.__player!.getDuration()).toBe(3);
+    expect(posted.filter((m) => m["type"] === "timeline").at(-1)).toMatchObject({
+      durationSeconds: 3,
+    });
+  });
+
   it("keeps asking for animation frames while playing", () => {
     mount();
     initSandboxRuntimeModular();
@@ -330,6 +352,8 @@ describe("parked transport loop", () => {
 
   it("delivers media metadata that arrives after the loop parked", async () => {
     mount(`<video id="v" data-start="0" src="a.mp4"></video>`);
+    // A declared length would hold the film at 5 s; only an inferred one can grow.
+    document.getElementById("root")!.removeAttribute("data-duration");
     initSandboxRuntimeModular();
     quiesce();
 
@@ -513,6 +537,7 @@ describe("parked transport loop", () => {
 
   it("delivers an adapter duration that grows while parked, with no DOM mutation and no event", () => {
     mount();
+    document.getElementById("root")!.removeAttribute("data-duration");
     initSandboxRuntimeModular();
     quiesce();
     const before = window.__player!.getDuration();

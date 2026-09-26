@@ -1223,6 +1223,14 @@ export function initSandboxRuntimeModular(): void {
     fallback = 0,
     timingRevision?: number,
   ): number => {
+    // The root's declared length is the film's length, as in the render: a longer timeline is cut off.
+    const declaredDuration = parseStrictFiniteTimingNumber(
+      resolveRootCompositionElement()?.getAttribute("data-duration"),
+    );
+    if (isUsableTimelineDuration(declaredDuration)) {
+      if (window.__hf?.durationSource) delete window.__hf.durationSource;
+      return declaredDuration;
+    }
     const timelineDuration = getTimelineDurationSeconds(timeline);
     const { media: mediaFloor, authoredComposition: authoredCompositionFloor } =
       resolveDurationFloors(timingRevision);

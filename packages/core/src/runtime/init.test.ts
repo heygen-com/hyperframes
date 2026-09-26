@@ -842,12 +842,13 @@ describe("initSandboxRuntimeModular", () => {
       "visible",
     ]);
 
+    // 79.4 s is now the film's end, which a clip running to the end rests on (the render stops before it).
     setDuration(79.4);
     window.__player?.renderSeek(finalSample);
     expect([root, ctaHost, cta].map((element) => element.style.visibility)).toEqual([
-      "hidden",
-      "hidden",
-      "hidden",
+      "visible",
+      "visible",
+      "visible",
     ]);
 
     setDuration(79.41666666666667);
@@ -905,12 +906,14 @@ describe("initSandboxRuntimeModular", () => {
     // prepareFrameForCapture -> window.__hf.seek path before reading pixels.
     // Lock the visibility state at that common pre-capture boundary; the
     // unavailable private project is still required for buffer/encode proof.
-    for (const { host, child, tailFrame } of seams) {
+    for (const [index, { host, child, tailFrame }] of seams.entries()) {
       window.__player?.renderSeek(tailFrame / fps);
       expect([host.style.visibility, child.style.visibility]).toEqual(["visible", "visible"]);
 
+      // Past the last seam is past the film's end, where its final clip rests.
+      const after = index === seams.length - 1 ? "visible" : "hidden";
       window.__player?.renderSeek((tailFrame + 1) / fps);
-      expect([host.style.visibility, child.style.visibility]).toEqual(["hidden", "hidden"]);
+      expect([host.style.visibility, child.style.visibility]).toEqual([after, after]);
     }
   });
 
@@ -1347,7 +1350,7 @@ describe("initSandboxRuntimeModular", () => {
     expect(window.__player?.getDuration()).toBe(250.5);
   });
 
-  it("keeps the timeline duration when it exceeds the root's declared data-duration", () => {
+  it("cuts a timeline that runs past the root's declared data-duration to the declared length", () => {
     const root = document.createElement("div");
     root.setAttribute("data-composition-id", "main");
     root.setAttribute("data-root", "true");
@@ -1363,7 +1366,7 @@ describe("initSandboxRuntimeModular", () => {
 
     initSandboxRuntimeModular();
 
-    expect(window.__player?.getDuration()).toBe(12);
+    expect(window.__player?.getDuration()).toBe(10);
   });
 
   // #6: a single timeline registered under a key that does NOT match the root's
