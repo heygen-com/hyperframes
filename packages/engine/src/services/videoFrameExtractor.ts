@@ -218,6 +218,7 @@ const SDR_TO_HDR_COLORSPACE_FILTER = "colorspace=all=bt2020:iall=bt709:range=tv"
 const HDR_TO_SDR_TONEMAP_FILTER =
   "zscale=t=linear:npl=100,tonemap=hable:desat=0,zscale=p=bt709:t=bt709:m=bt709:r=tv";
 const HDR_TO_SDR_TRANSFORM_KEY = "hdr2sdr-hable-bt709";
+const SDR_CANVAS_PASSTHROUGH_FILTER = "setparams=color_trc=iec61966-2-1";
 
 function sdrToHdrTransformKey(transfer: HdrTransfer): string {
   return `sdr2hdr-${transfer}`;
@@ -852,6 +853,9 @@ export async function extractVideoFramesRange(
   }
   if (options.toneMapHdrToSdr && isHdr && !isMacOS) {
     vfFilters.push(HDR_TO_SDR_TONEMAP_FILTER);
+  }
+  if (!isHdr && !options.sdrToHdrTransfer) {
+    vfFilters.push(SDR_CANVAS_PASSTHROUGH_FILTER);
   }
   if (vfFilters.length > 0) args.push("-vf", vfFilters.join(","));
   if (!options.finalFrameOnly && metadata.isVFR) {
