@@ -113,7 +113,7 @@ function loadInstalled(dir: string, name: string): unknown | null {
 function pinnedCopyBesideCli(name: OptionalPackage, cliUrl: string): boolean {
   const req = createRequire(cliUrl);
   try {
-    const entry = req.resolve(name);
+    const entry = realpathSync(req.resolve(name));
     const copy = (req.resolve.paths(name) ?? [])
       .map((dir) => join(dir, name))
       .find((dir) => existsSync(dir) && entry.startsWith(realpathSync(dir) + sep));

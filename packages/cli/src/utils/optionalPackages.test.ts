@@ -10,7 +10,8 @@ import {
 } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { pathToFileURL } from "node:url";
+import { fileURLToPath, pathToFileURL } from "node:url";
+import { buildSync } from "esbuild";
 import { describe, expect, it, vi } from "vitest";
 import {
   OPTIONAL_PACKAGES,
@@ -173,6 +174,40 @@ describe("a copy installed beside the CLI", () => {
     symlinkSync(store, linked, "dir");
     try {
       expect(loadBesideCli("onnxruntime-node", cliUrl)).toEqual({ copy: `beside ${pin}` });
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
+  it("loads a symlinked copy when Node preserves symlinks", () => {
+    const pin = OPTIONAL_PACKAGES["onnxruntime-node"];
+    const { root, cliUrl } = layout(pin);
+    const linked = join(root, "node_modules", "onnxruntime-node");
+    const store = join(root, "store", "onnxruntime-node");
+    mkdirSync(join(root, "store"), { recursive: true });
+    renameSync(linked, store);
+    symlinkSync(store, linked, "dir");
+    // Bundled first: a TS loader cannot itself load under --preserve-symlinks in a bun store.
+    const bundle = join(root, "optionalPackages.mjs");
+    buildSync({
+      entryPoints: [fileURLToPath(new URL("./optionalPackages.ts", import.meta.url))],
+      bundle: true,
+      platform: "node",
+      format: "esm",
+      outfile: bundle,
+    });
+    const script = `const m = await import(${JSON.stringify(pathToFileURL(bundle).href)});
+const url = ${JSON.stringify(cliUrl)};
+console.log(JSON.stringify([m.loadBesideCli("onnxruntime-node", url),
+  m.installedOptionalPackageVersion("onnxruntime-node", "/no-cache", url)]));`;
+    try {
+      const child = spawnSync(
+        process.execPath,
+        ["--preserve-symlinks", "--input-type=module", "-e", script],
+        { encoding: "utf-8" },
+      );
+      expect(child.stderr).toBe("");
+      expect(JSON.parse(child.stdout)).toEqual([{ copy: `beside ${pin}` }, pin]);
     } finally {
       rmSync(root, { recursive: true, force: true });
     }
