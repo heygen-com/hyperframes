@@ -85,6 +85,7 @@ import type {
   RuntimeSeekOptions,
   RuntimeTimelineChildLike,
   RuntimeTimelineLike,
+  SceneAnimation,
 } from "./types";
 import type { PlayerAPI } from "../core.types";
 import { swallow } from "./diagnostics";
@@ -3181,8 +3182,11 @@ export function initSandboxRuntimeModular(): void {
     name: string,
     host: Element,
     timelines: Record<string, RuntimeTimelineLike | undefined>,
+    sceneAnimations: Record<string, SceneAnimation[]>,
   ) => {
-    const own = new Set<unknown>(compositionIdsIn(host).map((id) => timelines[id]));
+    const own = new Set<unknown>(
+      compositionIdsIn(host).flatMap((id) => [timelines[id], ...(sceneAnimations[id] ?? [])]),
+    );
     for (const tween of window.gsap?.getTweensOf?.([host, ...host.querySelectorAll("*")]) ?? []) {
       let owner: RuntimeTimelineChildLike | undefined = tween;
       while (owner && !own.has(owner)) owner = owner.parent;
@@ -3216,6 +3220,7 @@ export function initSandboxRuntimeModular(): void {
       string,
       RuntimeTimelineLike | undefined
     >;
+    const sceneAnimations = (window.__hfSceneAnimations ??= {});
     const swaps = changed.map((name) => {
       const partsIn = (doc: Document) =>
         Array.from(doc.querySelectorAll(`[${SCENE_PART_ATTR}="${CSS.escape(name)}"]`));
@@ -3246,7 +3251,7 @@ export function initSandboxRuntimeModular(): void {
       if (styleCount(oldParts) !== styleCount(newParts)) {
         throw new Error(`scene ${name} cannot be swapped: its styles moved`);
       }
-      refuseOutsideTweens(name, oldHost, timelines);
+      refuseOutsideTweens(name, oldHost, timelines, sceneAnimations);
       return { oldParts, newParts, oldHost, newHost };
     });
     // Fetched before the first write, so a stalled or failed request leaves the page as it was.
@@ -3265,16 +3270,20 @@ export function initSandboxRuntimeModular(): void {
     const captionHosts: Element[] = [];
     const swappedHosts: Element[] = [];
     for (const { oldParts, newParts, oldHost, newHost } of swaps) {
+      const stopped = new Set<unknown>();
       for (const id of compositionIdsIn(oldHost)) {
-        const previous = timelines[id];
-        if (!previous) continue;
-        const old = previous as { revert?: () => void; kill?: () => void };
-        if (old.revert) old.revert();
-        else previous.totalTime?.(0, true);
-        root?.remove?.(previous);
-        // revert() has already killed it; a second kill() fires onInterrupt again.
-        if (!old.revert) old.kill?.();
+        for (const previous of [timelines[id], ...(sceneAnimations[id] ?? [])]) {
+          if (!previous || stopped.has(previous)) continue;
+          stopped.add(previous);
+          const old = previous as SceneAnimation;
+          if (old.revert) old.revert();
+          else old.totalTime?.(0, true);
+          root?.remove?.(previous);
+          // revert() has already killed it; a second kill() fires onInterrupt again.
+          if (!old.revert) old.kill?.();
+        }
         delete timelines[id];
+        delete sceneAnimations[id];
       }
       // Each new style takes its own old one's place: same-named @keyframes resolve by order.
       const newStyles = newParts.filter((el) => el.tagName === "STYLE");

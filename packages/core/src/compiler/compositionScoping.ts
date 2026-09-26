@@ -645,8 +645,20 @@ ${source.replace(/<\/(script)/gi, "<\\/$1")}
       console.error(__hfErrorLabel, __hfCompId, _err);
     }
   };
+  // What the script started on GSAP's global timeline, however it reached GSAP, for a scene swap to revert.
+  var __hfRecordAnimations = function(run) {
+    var globalTimeline = __hfBaseGsap && __hfBaseGsap.globalTimeline;
+    if (!globalTimeline || !__hfTimelineCompId) return run();
+    var before = globalTimeline.getChildren(false);
+    run();
+    var byComp = (window.__hfSceneAnimations = window.__hfSceneAnimations || {});
+    var recorded = (byComp[__hfTimelineCompId] = byComp[__hfTimelineCompId] || []);
+    globalTimeline.getChildren(false).forEach(function(animation) {
+      if (before.indexOf(animation) < 0) recorded.push(animation);
+    });
+  };
   __hfFindRoot();
-  __hfRun();
+  __hfRecordAnimations(__hfRun);
 })();`;
 }
 

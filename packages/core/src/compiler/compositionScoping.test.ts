@@ -438,6 +438,40 @@ window.__timelines.scene = tl;
     expect(gsapTargets).toEqual([["Scene"], ["Scene"]]);
   });
 
+  it("records what a script starts on GSAP's global timeline, however it reaches GSAP", () => {
+    const { document } = parseHTML(`<div data-composition-id="scene"><p>x</p></div>`);
+    const children: object[] = [{ startedBefore: true }];
+    const start = () => {
+      const animation = { to: () => animation };
+      children.push(animation);
+      return animation;
+    };
+    const gsap = {
+      globalTimeline: { getChildren: () => [...children] },
+      timeline: start,
+      to: start,
+    };
+    const fakeWindow: Record<string, unknown> = { document, __timelines: {}, gsap };
+    const wrapped = wrapScopedCompositionScript(
+      `
+gsap.timeline().to("p", { x: 1 });
+const g = gsap; g.to("p", { x: 1 });
+gsap["to"]("p", { x: 1 });
+window.gsap.to("p", { x: 1 });
+globalThis.gsap.to("p", { x: 1 });
+`,
+      "scene",
+    );
+    vi.stubGlobal("gsap", gsap);
+    try {
+      new Function("window", "gsap", wrapped)(fakeWindow, gsap);
+    } finally {
+      vi.unstubAllGlobals();
+    }
+    expect(children).toHaveLength(6);
+    expect(fakeWindow.__hfSceneAnimations).toEqual({ scene: children.slice(1) });
+  });
+
   it("scopes each selector in a GSAP target array to the composition root", () => {
     const { document } = parseHTML(`
       <div data-composition-id="scene">

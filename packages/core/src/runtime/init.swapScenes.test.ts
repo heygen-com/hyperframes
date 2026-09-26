@@ -3,6 +3,7 @@ import { initSandboxRuntimeModular, installAuthoredMediaCapture } from "./init";
 import type { RuntimeTimelineLike } from "./types";
 import { resetRuntimeDataForTests } from "./runtimeData";
 import { probeAndCacheElementVolume } from "./mediaVolumeEnvelope.js";
+import { wrapScopedCompositionScript } from "../compiler/compositionScoping";
 
 vi.mock("./mediaVolumeEnvelope.js", async (importOriginal) => {
   const actual = await importOriginal<typeof import("./mediaVolumeEnvelope.js")>();
@@ -195,6 +196,8 @@ describe("__hfSwapScenes", () => {
     document.body.innerHTML = "";
     delete scoped.__hfVariablesByComp;
     delete window.__HF_MEDIA_CODEC_MAP__;
+    delete window.__hfSceneAnimations;
+    vi.unstubAllGlobals();
     vi.restoreAllMocks();
   });
 
@@ -709,6 +712,47 @@ describe("__hfSwapScenes", () => {
     await window.__hfSwapScenes!(preview([nested(A2), B]).html);
     expect(sceneHost("a").querySelector("p")?.textContent).toBe("A two");
   });
+
+  it.each([
+    ["a timeline it never registers", `gsap.timeline().to("p", { x: 100 });`],
+    ["gsap under another name", `const g = gsap; g.to("p", { x: 100 });`],
+    ["gsap by a computed key", `gsap["to"]("p", { x: 100 });`],
+    ["the unscoped global", `globalThis.gsap.to("p", { x: 100 });`],
+  ])(
+    "stops what the old scene script started through %s, so one copy runs after the swap",
+    async (_, source) => {
+      const { root } = trackingRoot();
+      const running = new Set<object>();
+      const globalTimeline = { getChildren: () => [...running] };
+      const start = () => {
+        const animation = {
+          parent: globalTimeline,
+          to: () => animation,
+          revert: () => void running.delete(animation),
+        };
+        running.add(animation);
+        return animation;
+      };
+      // Every animation here moves the scene's <p>.
+      vi.stubGlobal("gsap", {
+        set: () => {},
+        getTweensOf: () => [...running],
+        globalTimeline,
+        timeline: start,
+        to: start,
+      });
+      const scene = (s: Scene): Scene => ({
+        ...s,
+        script: wrapScopedCompositionScript(source, "a"),
+      });
+      boot([scene(A1), B], root);
+      new Function(document.querySelector('script[data-hf-scene="a"]')!.textContent!)();
+      await tick();
+      expect(running.size).toBe(1);
+      await window.__hfSwapScenes!(preview([scene(A2), B]).html);
+      expect(running.size).toBe(1);
+    },
+  );
 
   it("rejects a scene with more than one host rather than dropping one", async () => {
     const { root } = trackingRoot();
