@@ -97,7 +97,7 @@ describe("runtime entry", () => {
     await evaluateRuntime();
     expect(window.__player).toBeUndefined();
     expect(visibility(current, later)).toEqual(["hidden", "hidden"]);
-    expect(contentSkipped(current, later, poster)).toEqual([true, true, false]);
+    expect(contentSkipped(current, later, poster)).toEqual([false, true, false]);
 
     delete (document as { readyState?: unknown }).readyState;
     document.dispatchEvent(new Event("DOMContentLoaded"));

@@ -3,7 +3,8 @@
 // The rule and its flag live on the page, so every runtime copy shares them.
 const HIDE_ATTR = "data-hf-first-pass-hide";
 const HIDE_UNTIL_FIRST_PASS =
-  "[data-start]:not(video, audio, img) { visibility: hidden !important; content-visibility: hidden !important; }";
+  "[data-start]:not(video, audio, img) { visibility: hidden !important; } " +
+  '[data-start]:not(video, audio, img, [data-start="0"]) { content-visibility: hidden !important; }';
 const SKIP_ATTR = "data-hf-skip-hidden-content";
 export const UPCOMING_ATTR = "data-hf-upcoming";
 const SKIP_HIDDEN_CONTENT = `[data-start]:not(video, audio, img, [${UPCOMING_ATTR}])[style*="visibility: hidden"] { content-visibility: hidden; }`;
