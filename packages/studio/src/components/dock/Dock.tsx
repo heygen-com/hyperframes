@@ -23,11 +23,13 @@ import { addRegisteredPanel, applySideMinimums, buildEditLayout } from "./dockLa
 import { DOCK_PANEL_COMPONENT } from "./dockLayoutSchema";
 import { useDockLayoutStore, type DockController, type DockSnapshot } from "./dockLayoutStore";
 import {
-  PANEL_DEFINITIONS,
-  PANEL_IDS,
+  allPanelIds,
+  hostPanelIds,
   isPanelId,
+  panelDefinition,
   panelsInZone,
-  type PanelDefinition,
+  registerHostPanels,
+  type HostPanelDefinition,
   type PanelId,
 } from "./panelRegistry";
 import "./dock.css";
@@ -88,7 +90,7 @@ function snapshot(api: DockviewApi): DockSnapshot {
 function createController(api: DockviewApi): DockController {
   const open = (id: PanelId) => {
     if (api.getPanel(id)) return;
-    const { zone, reopen } = PANEL_DEFINITIONS[id];
+    const { zone, reopen } = panelDefinition(id);
     // Side columns are tab groups; preview and timeline are separate groups in the centre.
     const sibling =
       zone === "center"
@@ -118,11 +120,16 @@ function createController(api: DockviewApi): DockController {
   };
 }
 
-function restoreOrBuild(api: DockviewApi, projectId: string | null) {
-  const stored = readStudioUiPreferences(undefined, projectId).dockLayout;
+function restoreOrBuild(api: DockviewApi, projectId: string | null, open: DockController["open"]) {
+  const preferences = readStudioUiPreferences(undefined, projectId);
+  const stored = preferences.dockLayout;
   if (stored) {
     try {
       api.fromJSON(stored);
+      // A layout saved before the host declared a panel still has to show it; one the
+      // user closed stays closed — `dockHostPanels` is what tells the two apart.
+      const known = new Set(preferences.dockHostPanels ?? []);
+      for (const id of hostPanelIds()) if (!known.has(id) && !api.getPanel(id)) open(id);
       return;
     } catch {
       /* a layout the schema accepted but dockview cannot load: start over */
@@ -131,7 +138,21 @@ function restoreOrBuild(api: DockviewApi, projectId: string | null) {
   buildEditLayout(api, window.innerWidth);
 }
 
-function Root({ projectId, children }: { projectId: string | null; children: ReactNode }) {
+const NO_HOST_PANELS: readonly HostPanelDefinition[] = [];
+
+function Root({
+  projectId,
+  hostPanels = NO_HOST_PANELS,
+  children,
+}: {
+  projectId: string | null;
+  /** The host's own panels, known at mount: the saved layout is read with them registered. */
+  hostPanels?: readonly HostPanelDefinition[];
+  children: ReactNode;
+}) {
+  // Registered during render, before the stored layout is parsed in onReady and before any
+  // Dock.Panel child resolves its definition.
+  registerHostPanels(hostPanels);
   const [slots, setSlots] = useState<Slots>({});
   const registerSlot = useCallback((id: PanelId, element: HTMLElement | null) => {
     setSlots((prev) => {
@@ -149,7 +170,8 @@ function Root({ projectId, children }: { projectId: string | null; children: Rea
   const onReady = useCallback(
     ({ api }: DockviewReadyEvent) => {
       disposeRef.current();
-      restoreOrBuild(api, projectId);
+      const controller = createController(api);
+      restoreOrBuild(api, projectId, controller.open);
       applySideMinimums(api);
       const root = api.groups[0]?.element.closest<HTMLElement>(".hf-dock");
       const disposeAccessibility = root ? installDockAccessibility(api, root) : () => {};
@@ -158,7 +180,7 @@ function Root({ projectId, children }: { projectId: string | null; children: Rea
       const resizeObserver = new ResizeObserver(() => applySideMinimums(api, window.innerWidth));
       if (root) resizeObserver.observe(root);
       const store = useDockLayoutStore.getState();
-      store.attach(createController(api));
+      store.attach(controller);
       store.sync(snapshot(api));
       const pending = store.takePendingActivation();
       if (pending) api.getPanel(pending)?.api.setActive();
@@ -167,7 +189,11 @@ function Root({ projectId, children }: { projectId: string | null; children: Rea
       const persist = () => {
         clearTimeout(timer);
         timer = setTimeout(() => {
-          writeStudioUiPreferences({ dockLayout: api.toJSON() }, undefined, projectId);
+          writeStudioUiPreferences(
+            { dockLayout: api.toJSON(), dockHostPanels: hostPanelIds() },
+            undefined,
+            projectId,
+          );
         }, PERSIST_DEBOUNCE_MS);
       };
       // dockview does not fire onDidLayoutChange for add/remove/activate,
@@ -224,12 +250,11 @@ function Panel({ id, title, children }: { id: PanelId; title?: string; children:
   const visible = useDockLayoutStore((state) => state.visiblePanels.has(id));
   const controller = useDockLayoutStore((state) => state.controller);
   const open = useDockLayoutStore((state) => state.openPanels.has(id));
-  const label = title ?? PANEL_DEFINITIONS[id].title;
+  const label = title ?? panelDefinition(id).title;
   useEffect(() => {
     if (open) controller?.setTitle(id, label);
   }, [controller, id, label, open]);
-  const definition: PanelDefinition = PANEL_DEFINITIONS[id];
-  const shown = visible || definition.keepMounted;
+  const shown = visible || panelDefinition(id).keepMounted;
   return element && shown ? createPortal(children, element) : null;
 }
 
@@ -265,7 +290,7 @@ function WindowMenu() {
           role="menu"
           className="absolute right-0 top-8 z-50 w-44 rounded-md border border-neutral-800 bg-neutral-900 py-1 shadow-lg"
         >
-          {PANEL_IDS.map((id) => (
+          {allPanelIds().map((id) => (
             <button
               key={id}
               type="button"
@@ -275,7 +300,7 @@ function WindowMenu() {
               className="flex w-full items-center gap-2 px-3 py-1.5 text-left text-[11px] text-neutral-300 hover:bg-neutral-800"
             >
               <span className="w-3 text-panel-accent">{openPanels.has(id) ? "✓" : ""}</span>
-              {PANEL_DEFINITIONS[id].title}
+              {panelDefinition(id).title}
             </button>
           ))}
           <div className="my-1 border-t border-neutral-800" />

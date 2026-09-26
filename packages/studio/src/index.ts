@@ -34,6 +34,9 @@ export type { ToggleProps } from "./components/ui/Toggle";
 // NLE Layout
 export { EditorShell } from "./components/EditorShell";
 export type { EditorShellProps } from "./components/EditorShell";
+// The dock a host composes EditorShell's `panels` with, and the panel vocabulary.
+export { Dock } from "./components/dock/Dock";
+export type { HostPanelDefinition, PanelId, PanelZone } from "./components/dock/panelRegistry";
 export { NLEPreview } from "./components/nle/NLEPreview";
 export { DEFAULT_SHORTCUT_SECTIONS } from "./player/components/studioShortcuts";
 export type { ShortcutHint, ShortcutSection } from "./player/components/studioShortcuts";
@@ -112,6 +115,8 @@ export { FileTree } from "./components/editor/FileTree";
 
 // App
 export { StudioApp } from "./App";
+export type { StudioAppProps } from "./App";
+export type { HostPanel } from "./components/HostPanels";
 
 // Ask-agent flow
 export { AskAgentModal } from "./components/AskAgentModal";

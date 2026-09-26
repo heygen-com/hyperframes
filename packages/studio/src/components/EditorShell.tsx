@@ -19,6 +19,7 @@ import { useTimelineSelectionPreviewSync } from "../hooks/useTimelineSelectionPr
 import { StudioAgentTools } from "../webmcp/StudioAgentTools";
 import type { TimelineDropPlacement } from "../player/components/timelineCallbacks";
 import { Dock } from "./dock/Dock";
+import type { HostPanelDefinition } from "./dock/panelRegistry";
 
 type RenderClipContent = (
   element: TimelineElement,
@@ -30,6 +31,8 @@ type RenderClipContent = (
 export interface EditorShellProps extends TimelineEditCallbackDeps {
   /** Dock.Panel elements for every panel except the built-in preview and timeline. */
   panels: ReactNode;
+  /** The host's own panels, declared once so the dock can place, list and save them; their Dock.Panel elements go in `panels`. */
+  hostPanels?: readonly HostPanelDefinition[];
   timelineToolbar: ReactNode;
   renderClipContent: RenderClipContent;
   handleTimelineElementDelete: (element: TimelineElement) => Promise<void> | void;
@@ -81,6 +84,7 @@ export interface EditorShellProps extends TimelineEditCallbackDeps {
 // NLEProvider so every panel shares one player.
 export function EditorShell({
   panels,
+  hostPanels,
   timelineToolbar,
   renderClipContent,
   handleTimelineElementDelete,
@@ -187,6 +191,7 @@ export function EditorShell({
             <EditorShellBody
               projectId={projectId}
               panels={panels}
+              hostPanels={hostPanels}
               captionEditMode={captionEditMode}
               onSelectTimelineElement={handleTimelineElementSelect}
               onPreviewBlockDrop={handlePreviewBlockDrop}
@@ -222,6 +227,7 @@ export function EditorShell({
 
 interface EditorShellBodyProps {
   panels: ReactNode;
+  hostPanels?: readonly HostPanelDefinition[];
   projectId: string;
   captionEditMode: boolean;
   previewOverlay: ReactNode;
@@ -248,6 +254,7 @@ interface EditorShellBodyProps {
 
 function EditorShellBody({
   panels,
+  hostPanels,
   projectId,
   captionEditMode,
   previewOverlay,
@@ -293,7 +300,7 @@ function EditorShellBody({
       {/* Renders nothing; exposes Studio's state to an agentic browser. Mounted
           here rather than in App because it needs the DomEdit contexts. */}
       <StudioAgentTools />
-      <Dock.Root projectId={projectId}>
+      <Dock.Root projectId={projectId} hostPanels={hostPanels}>
         <Dock.Panel id="preview">
           <div className="relative flex h-full w-full min-w-0 flex-col">
             <PreviewPane

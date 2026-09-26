@@ -1,7 +1,7 @@
 import { create } from "zustand";
 import {
-  PANEL_DEFINITIONS,
-  PANEL_IDS,
+  allPanelIds,
+  panelDefinition,
   panelsInZone,
   type PanelId,
   type PanelZone,
@@ -49,8 +49,8 @@ interface DockLayoutState extends DockSnapshot {
 
 export const useDockLayoutStore = create<DockLayoutState>((set, get) => ({
   controller: null,
-  openPanels: new Set(PANEL_IDS),
-  visiblePanels: new Set(PANEL_IDS),
+  openPanels: new Set(allPanelIds()),
+  visiblePanels: new Set(allPanelIds()),
   activePanel: null,
   lastActive: {},
   pendingActivation: null,
@@ -60,11 +60,11 @@ export const useDockLayoutStore = create<DockLayoutState>((set, get) => ({
     set((state) => {
       const lastActive = { ...state.lastActive };
       for (const id of snapshot.groupActivePanels ?? []) {
-        const zone = PANEL_DEFINITIONS[id].zone;
+        const zone = panelDefinition(id).zone;
         if (zone !== "center") lastActive[zone] = id;
       }
       const { activePanel } = snapshot;
-      if (activePanel) lastActive[PANEL_DEFINITIONS[activePanel].zone] = activePanel;
+      if (activePanel) lastActive[panelDefinition(activePanel).zone] = activePanel;
       return { ...snapshot, lastActive };
     }),
   takePendingActivation: () => {

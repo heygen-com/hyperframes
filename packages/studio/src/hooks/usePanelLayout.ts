@@ -2,7 +2,7 @@ import { useCallback, useEffect, useRef } from "react";
 import type { RightPanelTab } from "../utils/studioHelpers";
 import { trackStudioEvent } from "../utils/studioTelemetry";
 import { useDockLayoutStore, visiblePanelInZone } from "../components/dock/dockLayoutStore";
-import { PANEL_DEFINITIONS, type PanelId } from "../components/dock/panelRegistry";
+import { panelDefinition, type PanelId } from "../components/dock/panelRegistry";
 
 export interface InitialPanelLayoutState {
   rightCollapsed?: boolean | null;
@@ -15,7 +15,7 @@ function panelForTab(tab: RightPanelTab): PanelId {
 }
 
 function tabForPanel(id: PanelId | null): RightPanelTab {
-  return id !== null && PANEL_DEFINITIONS[id].zone === "right" ? (id as RightPanelTab) : "design";
+  return id !== null && panelDefinition(id).zone === "right" ? (id as RightPanelTab) : "design";
 }
 
 /** The right column as the rest of Studio reads it, backed by the dock's panel state. */

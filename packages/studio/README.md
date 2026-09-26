@@ -17,6 +17,25 @@ The studio is a React application with:
 - **Live preview** — see changes in real time as you edit
 - **Composition inspector** — view and modify element properties
 
+## Host panels
+
+An app that mounts `StudioApp` can add its own panels to the dock — an agent chat, a task log, a project browser — and they behave like the built-in ones: a tab in their side column (after the built-ins), an entry in the Window menu, a place the saved layout remembers.
+
+```tsx
+import { StudioApp } from "@hyperframes/studio";
+
+<StudioApp
+  hostPanels={[
+    { id: "agent", title: "Agent", zone: "right", content: <AgentPanel /> },
+    { id: "tasks", title: "Tasks", zone: "left", keepMounted: true, content: <TasksPanel /> },
+  ]}
+/>;
+```
+
+`zone` is `"left"` or `"right"` (the centre holds the preview and the timeline). `keepMounted` keeps the content alive while its tab is hidden. By default a panel reopens as a tab of its column's first panel; `reopen: { near, direction }` picks another place. Ids must not reuse a built-in panel's. The panels are read at mount.
+
+A host that composes `EditorShell` itself passes the same definitions as `hostPanels` and renders each one as a `Dock.Panel` inside `panels`.
+
 ## Development
 
 The studio is embedded in the `hyperframes preview` command. To develop the studio UI itself:

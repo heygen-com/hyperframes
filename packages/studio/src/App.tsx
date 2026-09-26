@@ -52,6 +52,7 @@ import { useGestureCommit } from "./hooks/useGestureCommit";
 import { GestureTrailOverlay } from "./components/editor/GestureTrailOverlay";
 import { StudioLeftPanels } from "./components/StudioLeftPanels";
 import { EditorShell } from "./components/EditorShell";
+import { StudioHostPanels, type HostPanel } from "./components/HostPanels";
 import { StudioRightPanels } from "./components/StudioRightPanels";
 import { TimelineToolbar } from "./components/TimelineToolbar";
 import { StudioPlaybackProvider, StudioShellProvider } from "./contexts/StudioContext";
@@ -71,10 +72,13 @@ export interface StudioAppProps {
   readOnlyPreview?: boolean;
   /** Short text shown on disabled hand-edit controls while `readOnlyPreview` is set. */
   readOnlyPreviewReason?: string;
+  /** The host's own dock panels, tabbed into the side columns after Studio's; read at mount. */
+  hostPanels?: readonly HostPanel[];
 }
 
 // fallow-ignore-next-line complexity
-export function StudioApp({ readOnlyPreview = false, readOnlyPreviewReason }: StudioAppProps = {}) {
+export function StudioApp(props: StudioAppProps = {}) {
+  const { readOnlyPreview = false, readOnlyPreviewReason, hostPanels } = props;
   const { projectId, resolving, waitingForServer } = useServerConnection();
   const initialUrlStateRef = useRef(readStudioUrlStateFromWindow());
   useStudioSessionStart(projectId, resolving, waitingForServer);
@@ -490,6 +494,7 @@ export function StudioApp({ readOnlyPreview = false, readOnlyPreviewReason }: St
                 <EditorShell
                   readOnlyPreview={readOnlyPreview}
                   readOnlyPreviewReason={readOnlyPreviewReason}
+                  hostPanels={hostPanels}
                   panels={
                     <>
                       <StudioLeftPanels
@@ -523,6 +528,7 @@ export function StudioApp({ readOnlyPreview = false, readOnlyPreviewReason }: St
                         onAutoGroupCarveSources={timelineEditing.handleAutoGroupCarveSources}
                         onAddMediaOverlay={handleAddMediaOverlay}
                       />
+                      <StudioHostPanels panels={hostPanels} />
                     </>
                   }
                   timelineToolbar={timelineToolbar}

@@ -8,7 +8,7 @@ import * as dockLayout from "./dockLayout";
 import { Dock } from "./Dock";
 import { parseDockLayout } from "./dockLayoutSchema";
 import { useDockLayoutStore } from "./dockLayoutStore";
-import { PANEL_IDS } from "./panelRegistry";
+import { PANEL_IDS, registerHostPanels, type HostPanelDefinition } from "./panelRegistry";
 import { readStudioUiPreferences } from "../../utils/studioUiPreferences";
 
 (globalThis as unknown as { IS_REACT_ACT_ENVIRONMENT: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
@@ -57,15 +57,21 @@ let root: Root | null = null;
 function mount(
   projectId: string | null,
   titles: Partial<Record<(typeof PANEL_IDS)[number], string>> = {},
+  hostPanels: readonly HostPanelDefinition[] = [],
 ) {
   const host = document.createElement("div");
   document.body.append(host);
   root = createRoot(host);
   act(() => {
     root?.render(
-      <Dock.Root projectId={projectId}>
+      <Dock.Root projectId={projectId} hostPanels={hostPanels}>
         {PANEL_IDS.map((id) => (
           <Dock.Panel key={id} id={id} title={titles[id]}>
+            <div data-testid={`content-${id}`}>{id}</div>
+          </Dock.Panel>
+        ))}
+        {hostPanels.map(({ id }) => (
+          <Dock.Panel key={id} id={id}>
             <div data-testid={`content-${id}`}>{id}</div>
           </Dock.Panel>
         ))}
@@ -74,6 +80,8 @@ function mount(
   });
   return host;
 }
+
+const AGENT_PANEL: HostPanelDefinition = { id: "agent", title: "Agent", zone: "right" };
 
 /** The persisted views of the group holding `id`, after the debounced write lands. */
 function persistedGroupOf(id: string): string | undefined {
@@ -94,6 +102,7 @@ afterEach(() => {
   act(() => root?.unmount());
   root = null;
   document.body.innerHTML = "";
+  registerHostPanels([]);
   vi.useRealTimers();
 });
 
@@ -204,6 +213,65 @@ describe("Dock on React 19", () => {
   });
 });
 
+describe("Host panels", () => {
+  it("tabs a host panel into its column, after the built-ins, and shows it when activated", async () => {
+    const host = mount("p1", {}, [AGENT_PANEL]);
+    expect(useDockLayoutStore.getState().openPanels.has("agent")).toBe(true);
+    expect(dockApi?.getPanel("agent")?.title).toBe("Agent");
+    expect(persistedGroupOf("agent")).toContain('"design"');
+    // Design stays the column's active tab: the host panel is one more tab, not the front one.
+    expect(host.querySelector('[data-testid="content-design"]')).not.toBeNull();
+    expect(host.querySelector('[data-testid="content-agent"]')).toBeNull();
+    await act(async () => {
+      useDockLayoutStore.getState().activatePanel("agent");
+      await Promise.resolve();
+    });
+    expect(host.querySelector('[data-testid="content-agent"]')).not.toBeNull();
+  });
+
+  it("puts a left-zone host panel in the library column", () => {
+    mount("p1", {}, [{ id: "notes", title: "Notes", zone: "left" }]);
+    expect(persistedGroupOf("notes")).toContain('"compositions"');
+  });
+
+  it("opens a host panel that a saved layout predates", () => {
+    mount("p1");
+    act(() => {
+      vi.advanceTimersByTime(1000);
+    });
+    act(() => root?.unmount());
+    root = null;
+    document.body.innerHTML = "";
+
+    mount("p1", {}, [AGENT_PANEL]);
+    expect(useDockLayoutStore.getState().openPanels.has("agent")).toBe(true);
+    expect(persistedGroupOf("agent")).toContain('"design"');
+  });
+
+  it("keeps a closed host panel closed across mounts, and lists it in the Window menu", () => {
+    mount("p1", {}, [AGENT_PANEL]);
+    act(() => useDockLayoutStore.getState().closePanel("agent"));
+    act(() => {
+      vi.advanceTimersByTime(1000);
+    });
+    act(() => root?.unmount());
+    root = null;
+    document.body.innerHTML = "";
+
+    const host = mount("p1", {}, [AGENT_PANEL]);
+    expect(useDockLayoutStore.getState().openPanels.has("agent")).toBe(false);
+    act(() => root?.render(<Dock.WindowMenu />));
+    act(() => host.parentElement?.querySelector("button")?.click());
+    expect(document.body.textContent).toContain("Agent");
+  });
+
+  it("refuses a host panel that reuses a built-in id", () => {
+    expect(() => registerHostPanels([{ id: "design", title: "Mine", zone: "right" }])).toThrow(
+      /built-in/,
+    );
+  });
+});
+
 describe("Dock wiring", () => {
   it("re-applies the side minimums when a panel is dragged to another group", () => {
     mount(null);
@@ -270,5 +338,13 @@ describe("parseDockLayout", () => {
     expect(parseDockLayout(placed(["preview", "design"], ["preview"]))).toBeNull();
     expect(parseDockLayout(placed(["preview"], ["preview", "design"]))).toBeNull();
     expect(parseDockLayout(placed(["preview", "design"], ["preview", "design"]))).not.toBeNull();
+  });
+
+  it("accepts a registered host panel and rejects the same id once it is gone", () => {
+    const layout = placed(["preview", "agent"], ["preview", "agent"]);
+    registerHostPanels([AGENT_PANEL]);
+    expect(parseDockLayout(layout)).not.toBeNull();
+    registerHostPanels([]);
+    expect(parseDockLayout(layout)).toBeNull();
   });
 });

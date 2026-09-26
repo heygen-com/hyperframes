@@ -43,6 +43,12 @@ export interface StudioUiPreferences {
   agentToolsEnabled?: boolean;
   /** The dock's serialized panel tree; parsed by `parseDockLayout` on read. */
   dockLayout?: SerializedDockview;
+  /**
+   * The host panels the dock layout was saved with. A host panel missing from the layout
+   * AND from this list is one the host declared since, and opens at its default place; one
+   * missing from the layout alone was closed by the user and stays closed.
+   */
+  dockHostPanels?: string[];
 }
 
 const STUDIO_UI_PREFERENCES_KEY = "hf-studio-ui-preferences";
@@ -145,6 +151,11 @@ function readStorage(storage: Storage | null, key: string): StudioUiPreferences 
     }
     const dockLayout = parseDockLayout(parsed.dockLayout);
     if (dockLayout) preferences.dockLayout = dockLayout;
+    if (Array.isArray(parsed.dockHostPanels)) {
+      preferences.dockHostPanels = parsed.dockHostPanels.filter(
+        (v: unknown): v is string => typeof v === "string",
+      );
+    }
     return preferences;
   } catch {
     return {};

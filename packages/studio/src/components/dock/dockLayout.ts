@@ -1,6 +1,6 @@
 import type { Direction, DockviewApi } from "dockview-react";
 import { DOCK_PANEL_COMPONENT } from "./dockLayoutSchema";
-import { PANEL_DEFINITIONS, isPanelId, type PanelId } from "./panelRegistry";
+import { hostPanelIds, isPanelId, panelDefinition, type PanelId } from "./panelRegistry";
 
 const MIN_PREVIEW_W = 360;
 const MIN_PREVIEW_H = 200;
@@ -36,7 +36,7 @@ function holdsPreview(group: DockviewApi["groups"][number]) {
 /** The zone of a group whose every tab is a side panel, else null. */
 function sideZone(group: DockviewApi["groups"][number]): "left" | "right" | null {
   const zones = group.panels.map((panel) =>
-    isPanelId(panel.id) ? PANEL_DEFINITIONS[panel.id].zone : "center",
+    isPanelId(panel.id) ? panelDefinition(panel.id).zone : "center",
   );
   const first = zones[0];
   const allSide = zones.every((zone) => zone !== "center");
@@ -75,7 +75,7 @@ export function addRegisteredPanel(
   return api.addPanel({
     id,
     component: DOCK_PANEL_COMPONENT,
-    title: PANEL_DEFINITIONS[id].title,
+    title: panelDefinition(id).title,
     renderer: "always",
     ...minimumSize(id),
     ...(position ? { position } : {}),
@@ -95,6 +95,11 @@ export function buildEditLayout(api: DockviewApi, viewportWidth: number) {
   addRegisteredPanel(api, "design", { referencePanel: "preview", direction: "right" });
   for (const id of ["layers", "renders", "variables"] as const) {
     addRegisteredPanel(api, id, { referencePanel: "design", direction: "within" });
+  }
+  // The host's panels tab into their column after the built-ins, which stay the active tabs.
+  for (const id of hostPanelIds()) {
+    const anchor = panelDefinition(id).zone === "left" ? "compositions" : "design";
+    addRegisteredPanel(api, id, { referencePanel: anchor, direction: "within" });
   }
   api.getPanel("compositions")?.api.setActive();
   api.getPanel("design")?.api.setActive();

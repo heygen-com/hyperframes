@@ -3,7 +3,7 @@ import { CornersIn, CornersOut, DotsThree, X } from "@phosphor-icons/react";
 import type { IDockviewHeaderActionsProps } from "dockview-react";
 import { IconButton, Menu, MenuCheckboxItem, MenuItem, MenuSeparator } from "../ui";
 import { useDockLayoutStore } from "./dockLayoutStore";
-import { PANEL_DEFINITIONS, isPanelId, panelsInZone } from "./panelRegistry";
+import { isPanelId, panelDefinition, panelsInZone } from "./panelRegistry";
 
 /** Panel menu, maximise and close group, drawn on the active group's strip only. */
 export function DockStripActions({
@@ -26,7 +26,7 @@ export function DockStripActions({
   if (!isGroupActive) return null;
 
   const first = panels.find((panel) => isPanelId(panel.id))?.id;
-  const menuPanels = isPanelId(first) ? panelsInZone(PANEL_DEFINITIONS[first].zone) : [];
+  const menuPanels = isPanelId(first) ? panelsInZone(panelDefinition(first).zone) : [];
   return (
     <div className="hf-dock-strip-actions">
       <Menu
@@ -40,7 +40,7 @@ export function DockStripActions({
             checked={openPanels.has(id)}
             onCheckedChange={() => togglePanel(id)}
           >
-            {PANEL_DEFINITIONS[id].title}
+            {panelDefinition(id).title}
           </MenuCheckboxItem>
         ))}
         <MenuSeparator />
