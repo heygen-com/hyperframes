@@ -3406,14 +3406,9 @@ async function armStaticDedup(
   page: Page,
   logInitPhase: (phase: string) => void,
 ): Promise<void> {
-  // Adaptive motion-blur sample-count classification shares the GSAP-timeline walk
-  // below but is gated independently of dedup (capture mode / before-capture hooks are
-  // about buffer-reuse safety, irrelevant to which properties a tween touches), so it
-  // is computed here, once, ahead of dedup's own idempotency check. Cached in
-  // `sharedStaticFrameStats` so dedup's own call further down does not repeat the walk.
-  // Reads `session.options.motionBlur` (the raw caller options), not `session.motionBlur`
-  // (the resolved plan) — every armStaticDedup call site runs before finalizeSessionInit
-  // resolves the plan, so the resolved field is never set yet at this point.
+  // Adaptive motion-blur classification shares this GSAP-timeline walk; gated separately
+  // from dedup below, and reads session.options.motionBlur since session.motionBlur is
+  // not resolved yet at this point (see the PR body for why).
   let sharedStaticFrameStats: Awaited<ReturnType<typeof computeStaticFrameSet>> | undefined;
   if (
     session.options.motionBlur &&
