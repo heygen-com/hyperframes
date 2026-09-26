@@ -1065,6 +1065,37 @@ window.__timelines.a = tl;`;
     expect(document.documentElement.innerHTML).toBe(before);
   });
 
+  it("refuses a swap whose scene was replaced while its caption overrides loaded", async () => {
+    const { swap, answer } = await bootWithPendingCaptions();
+    const live = sceneHost("a");
+    live.replaceWith(live.cloneNode(true));
+    const manifest = () =>
+      document.querySelector('meta[name="hf-scene-parts"]')?.getAttribute("content");
+    const before = manifest();
+    answer(new Response("null", { status: 404 }));
+    await expect(swap).rejects.toThrow("a scene changed while this swap waited");
+    expect(manifest()).toBe(before);
+  });
+
+  it("refuses when stopping a scene's timeline replaces the registry with one moving another scene", async () => {
+    const { root } = trackingRoot();
+    (window as unknown as { gsap: unknown }).gsap = { set: () => {} };
+    const movesB = { targets: () => [sceneHost("b")], getChildren: () => [] };
+    // As an onInterrupt that revert() fires can: a new registry whose scene-a timeline moves scene b.
+    const replaceRegistry = () =>
+      void (window.__timelines = {
+        ...window.__timelines,
+        a: movesB as unknown as RuntimeTimelineLike,
+      });
+    Object.assign(made.a1!, { revert: replaceRegistry });
+    boot([A1, B], root);
+    await tick();
+    await expect(window.__hfSwapScenes!(preview([A2, B]).html)).rejects.toThrow(
+      "its animations write outside the scene",
+    );
+    delete (window as unknown as { gsap?: unknown }).gsap;
+  });
+
   it("runs the new scene scripts once every edited scene is replaced, so none binds to one still to go", async () => {
     const { root } = trackingRoot();
     const bound: Element[] = [];

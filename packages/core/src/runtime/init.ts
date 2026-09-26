@@ -3293,15 +3293,17 @@ export function initSandboxRuntimeModular(): void {
     if (generation !== sceneSwapGeneration) {
       throw new Error("the preview changed while this swap waited");
     }
-    // Read after the wait: a runtime-data handler may replace the registry while captions load.
-    const timelines = (window.__timelines ??= {}) as Record<
-      string,
-      RuntimeTimelineLike | undefined
-    >;
-    const sceneAnimations = (window.__hfSceneAnimations ??= {});
+    // A data handler can replace a scene's parts during the wait; the swap would then act on detached copies.
+    if (swaps.some(({ oldParts }) => oldParts.some((el) => !el.isConnected))) {
+      throw new Error("a scene changed while this swap waited");
+    }
+    // Read at each use: a data handler or an animation's callback may replace the registry mid-swap.
+    const timelines = () =>
+      (window.__timelines ??= {}) as Record<string, RuntimeTimelineLike | undefined>;
+    const sceneAnimations = () => (window.__hfSceneAnimations ??= {});
     const refuseAnyOutsideTweens = () => {
       for (const { name, oldHost } of swaps)
-        refuseOutsideTweens(name, oldHost, timelines, sceneAnimations);
+        refuseOutsideTweens(name, oldHost, timelines(), sceneAnimations());
     };
     // Checked after the wait, which a tween could start in, and before anything changes.
     refuseAnyOutsideTweens();
@@ -3314,24 +3316,31 @@ export function initSandboxRuntimeModular(): void {
     const swappedHosts: Element[] = [];
     const oldIds = swaps.flatMap(({ oldHost }) => compositionIdsIn(oldHost));
     const stopped = new Set<unknown>();
-    for (const id of oldIds) {
-      // Newest first: each revert restores what the animation before it wrote.
-      for (const previous of [...(sceneAnimations[id] ?? []).slice().reverse(), timelines[id]]) {
-        if (!previous || stopped.has(previous)) continue;
-        stopped.add(previous);
-        const old = previous as SceneAnimation;
-        if (old.revert) old.revert();
-        else old.totalTime?.(0, true);
-        root?.remove?.(previous);
-        // revert() has already killed it; a second kill() fires onInterrupt again.
-        if (!old.revert) old.kill?.();
+    const stopOldAnimations = () => {
+      for (const id of oldIds) {
+        // Newest first: each revert restores what the animation before it wrote.
+        for (const previous of [
+          ...(sceneAnimations()[id] ?? []).slice().reverse(),
+          timelines()[id],
+        ]) {
+          if (!previous || stopped.has(previous)) continue;
+          stopped.add(previous);
+          const old = previous as SceneAnimation;
+          if (old.revert) old.revert();
+          else old.totalTime?.(0, true);
+          root?.remove?.(previous);
+          // revert() has already killed it; a second kill() fires onInterrupt again.
+          if (!old.revert) old.kill?.();
+        }
       }
-    }
-    // A revert fires the animation's onInterrupt, which can start a tween on a scene about to be replaced.
+    };
+    stopOldAnimations();
+    // A revert fires the animation's onInterrupt, which can register or start animations; stop and check those too.
+    stopOldAnimations();
     refuseAnyOutsideTweens();
     for (const id of oldIds) {
-      delete timelines[id];
-      delete sceneAnimations[id];
+      delete timelines()[id];
+      delete sceneAnimations()[id];
     }
     for (const { oldParts, newParts, oldHost, newHost } of swaps) {
       // Each new style takes its own old one's place: same-named @keyframes resolve by order.
