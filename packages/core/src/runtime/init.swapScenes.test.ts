@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { initSandboxRuntimeModular } from "./init";
+import { initSandboxRuntimeModular, installAuthoredMediaCapture } from "./init";
 import type { RuntimeTimelineLike } from "./types";
 import { resetRuntimeDataForTests } from "./runtimeData";
 import { probeAndCacheElementVolume } from "./mediaVolumeEnvelope.js";
@@ -67,6 +67,7 @@ interface Scene {
   label: string;
   hash: string;
   extraAttrs?: string;
+  script?: string;
 }
 
 function preview(scenes: Scene[], shared = "s1", sharedMarkup = "") {
@@ -87,7 +88,10 @@ function preview(scenes: Scene[], shared = "s1", sharedMarkup = "") {
       .join("") +
     `</div>` +
     scenes
-      .map((s) => `<script data-hf-scene="${s.id}">${sceneScript(s.id, s.label)}</script>`)
+      .map(
+        (s) =>
+          `<script data-hf-scene="${s.id}">${sceneScript(s.id, s.label)}${s.script ?? ""}</script>`,
+      )
       .join("");
   return {
     head,
@@ -114,7 +118,7 @@ const B: Scene = {
 };
 const A2: Scene = { ...A1, body: "<p>A two</p>", css: ".a{color:green}", label: "a2", hash: "ha2" };
 
-function boot(scenes: Scene[], root: Tl, editHead = (head: string) => head) {
+function mount(scenes: Scene[], root: Tl, editHead = (head: string) => head) {
   const { head, body } = preview(scenes);
   document.head.innerHTML = editHead(head);
   document.body.innerHTML = body;
@@ -128,6 +132,10 @@ function boot(scenes: Scene[], root: Tl, editHead = (head: string) => head) {
       new Function(node.textContent ?? "")();
     return node;
   };
+}
+
+function boot(scenes: Scene[], root: Tl, editHead = (head: string) => head) {
+  mount(scenes, root, editHead);
   initSandboxRuntimeModular();
 }
 
@@ -448,6 +456,66 @@ describe("__hfSwapScenes", () => {
     expect(sceneHost("a").querySelector("p")?.textContent).toBe("A two");
     expect(sceneHost("a").querySelector("video")).toBe(video);
     expect(video?.getAttribute("preload")).toBe("auto");
+  });
+
+  it("keeps a video a scene script wrote to while the page parsed", async () => {
+    const { root } = trackingRoot();
+    quietMedia();
+    const scene = (text: string, hash: string): Scene => ({
+      ...A1,
+      hash,
+      body: `<p>${text}</p><video src="clip.mp4"></video>`,
+    });
+    installAuthoredMediaCapture();
+    mount([scene("A one", "ha1"), B], root);
+    await tick();
+    const video = sceneHost("a").querySelector("video")!;
+    // A tl.from() in the scene script writes its start value when the timeline is built.
+    video.style.opacity = "0";
+    initSandboxRuntimeModular();
+    await tick();
+    await window.__hfSwapScenes!(preview([scene("A two", "ha2"), B]).html);
+    expect(sceneHost("a").querySelector("video")).toBe(video);
+  });
+
+  it("records a video's <source> children that the parser adds after the video itself", async () => {
+    const { root } = trackingRoot();
+    quietMedia();
+    const scene = (text: string, hash: string): Scene => ({
+      ...A1,
+      hash,
+      body: `<p>${text}</p><video><source src="clip.mp4"></video>`,
+    });
+    installAuthoredMediaCapture();
+    mount([scene("A one", "ha1"), B], root);
+    const video = sceneHost("a").querySelector("video")!;
+    const source = video.querySelector("source")!;
+    // The parser yields with the video's children still to come.
+    source.remove();
+    await tick();
+    video.appendChild(source);
+    await tick();
+    initSandboxRuntimeModular();
+    await tick();
+    await window.__hfSwapScenes!(preview([scene("A two", "ha2"), B]).html);
+    expect(sceneHost("a").querySelector("video")).toBe(video);
+  });
+
+  it("keeps a rebuilt video through the next edit though its scene script writes to it", async () => {
+    const { root } = trackingRoot();
+    quietMedia();
+    const scene = (text: string, attrs: string, hash: string): Scene => ({
+      ...A1,
+      hash,
+      body: `<p>${text}</p><video src="clip.mp4" ${attrs}></video>`,
+      script: `document.querySelector('[data-hf-scene="a"] video').style.opacity = "0";`,
+    });
+    boot([scene("A one", "", "ha1"), B], root);
+    await tick();
+    await window.__hfSwapScenes!(preview([scene("A two", "muted", "ha2"), B]).html);
+    const rebuilt = sceneHost("a").querySelector("video");
+    await window.__hfSwapScenes!(preview([scene("A three", "muted", "ha3"), B]).html);
+    expect(sceneHost("a").querySelector("video")).toBe(rebuilt);
   });
 
   it.each([

@@ -233,6 +233,30 @@ const authoredShape = (el: Element): string =>
     el.innerHTML,
   ]);
 
+// Each video and audio as written, recorded as the page parses: a scene script can write to it before init.
+const authoredMedia = new WeakMap<Element, string>();
+const recordAuthoredMedia = (node: Node) => {
+  if (!isElementNode(node)) return;
+  for (const el of node.matches("video, audio") ? [node] : node.querySelectorAll("video, audio"))
+    if (!authoredMedia.has(el)) authoredMedia.set(el, authoredShape(el));
+};
+let authoredMediaObserver: MutationObserver | null = null;
+
+/** Records media as the page parses, before scene scripts run; init stops it. */
+export function installAuthoredMediaCapture(): void {
+  if (typeof MutationObserver === "undefined") return;
+  recordAuthoredMedia(document.documentElement);
+  authoredMediaObserver = new MutationObserver((records) => {
+    for (const record of records) {
+      record.addedNodes.forEach(recordAuthoredMedia);
+      // The parser can yield inside a <video>, so its <source> children may arrive after it.
+      const media = isElementNode(record.target) ? record.target.closest("video, audio") : null;
+      if (media) authoredMedia.set(media, authoredShape(media));
+    }
+  });
+  authoredMediaObserver.observe(document.documentElement, { childList: true, subtree: true });
+}
+
 // URL attributes a scene swap checks besides src, poster and srcset, by tag.
 const MEDIA_URL_ATTRS = new Map([
   ["image", ["href", "xlink:href"]],
@@ -243,12 +267,9 @@ const SLOW_IDLE_HEARTBEAT_MS = 1000;
 
 export function initSandboxRuntimeModular(): void {
   const state = createRuntimeState();
-  // Each video and audio as written, captured before the runtime writes to it; a swap keeps only these.
-  const authoredMedia = new WeakMap<Element, string>();
-  if (readSceneParts(document)) {
-    for (const el of document.querySelectorAll("video, audio"))
-      authoredMedia.set(el, authoredShape(el));
-  }
+  authoredMediaObserver?.disconnect();
+  authoredMediaObserver = null;
+  if (readSceneParts(document)) recordAuthoredMedia(document.documentElement);
   // Runtime-data handlers may replace the timeline object they mutate. Keep the
   // reconciliation callback late-bound because the reporter is installed before
   // the timeline resolver/binder is declared below. Delivery cannot complete
@@ -3135,6 +3156,7 @@ export function initSandboxRuntimeModular(): void {
   };
   let sceneSwapGeneration = 0;
   // A video or audio the edit left as written keeps playing: the old element takes its copy's place.
+  // A rebuilt one is recorded from the new markup, before its scene script runs.
   const keepUnchangedMedia = (oldHost: Element, host: Element) => {
     const byShape = new Map<string, Element[]>();
     for (const el of oldHost.querySelectorAll("video, audio")) {
@@ -3144,8 +3166,10 @@ export function initSandboxRuntimeModular(): void {
       byShape.set(shape, [...(byShape.get(shape) ?? []), el]);
     }
     for (const el of host.querySelectorAll("video, audio")) {
-      const kept = byShape.get(authoredShape(el))?.shift();
+      const shape = authoredShape(el);
+      const kept = byShape.get(shape)?.shift();
       if (kept) el.replaceWith(kept);
+      else authoredMedia.set(el, shape);
     }
   };
   const compositionIdsIn = (host: Element) =>
@@ -3271,8 +3295,6 @@ export function initSandboxRuntimeModular(): void {
         script.textContent = el.textContent;
         document.body.appendChild(script);
       }
-      for (const el of host.querySelectorAll("video, audio"))
-        if (!authoredMedia.has(el)) authoredMedia.set(el, authoredShape(el));
     }
     document
       .querySelector(`meta[name="${SCENE_PARTS_META}"]`)

@@ -1,4 +1,4 @@
-import { initSandboxRuntimeModular } from "./init";
+import { initSandboxRuntimeModular, installAuthoredMediaCapture } from "./init";
 import { installAuthoredOpacityCapture } from "./colorGrading";
 import { hideTimedClipsUntilFirstPass } from "./timedClipHide";
 import { fitTextFontSize } from "../text/fitTextFontSize";
@@ -28,6 +28,7 @@ type HyperframeWindow = Window & {
 // composition's animation scripts (and the grading hide) mutate it — must run
 // at script evaluation time, while the document is still parsing.
 installAuthoredOpacityCapture();
+installAuthoredMediaCapture();
 
 hideTimedClipsUntilFirstPass();
 
