@@ -4,7 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { Hono } from "hono";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { fileContentVersion } from "../helpers/fileVersion";
+import { fileContentVersion, identifyFileWrite } from "../helpers/fileVersion";
 import { registerFileRoutes } from "./files";
 
 const hooks = vi.hoisted(() => ({
@@ -172,6 +172,7 @@ describe("element edits with another writer racing them", () => {
       expect((await post(route.replace("index.html", "alias.html"), aliased)).status).toBe(200);
       expect(lstatSync(alias).isSymbolicLink()).toBe(true);
       expect(read()).toContain("z-index: 2");
+      expect(identifyFileWrite(path, fileContentVersion(read()))).not.toBeNull();
     },
   );
 

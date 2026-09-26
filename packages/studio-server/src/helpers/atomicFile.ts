@@ -12,8 +12,9 @@ export function replaceFileAtomically(
   content: string | Uint8Array,
   mode: number,
   operations: AtomicFileSystem = fs,
+  { followLinks = true }: { followLinks?: boolean } = {},
 ): void {
-  const target = existingTarget(filePath);
+  const target = followLinks ? existingTarget(filePath) : filePath;
   const tempPath = `${target}.${process.pid}.${randomUUID()}.tmp`;
   try {
     operations.writeFileSync(tempPath, content, { encoding: "utf-8", mode });
