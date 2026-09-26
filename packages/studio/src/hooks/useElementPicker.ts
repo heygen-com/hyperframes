@@ -140,14 +140,10 @@ export function useElementPicker(
       if (!opts?.workspaceFiles || !opts.onSyncFiles) return;
       // No id: the preview's hf-id names the element, in the file it was served from.
       const hfId = live.getAttribute("data-hf-id");
-      const ownFile = getSourceFileForElement(
-        live,
-        compositionPathOfPreviewUrl(iframe.getAttribute("src") ?? ""),
-      ).sourceFile;
       const patch = picked.id
         ? patchById(opts.workspaceFiles, picked.id, picked.selector, op)
         : hfId
-          ? patchByHfId(opts.workspaceFiles, hfId, ownFile, op)
+          ? patchByHfId(opts.workspaceFiles, hfId, ownSourceFile(live, iframe), op)
           : null;
       if (patch && patch.after !== patch.before) opts.onSyncFiles({ [patch.path]: patch.after });
     },
@@ -289,6 +285,11 @@ function patchById(
   const path = resolveSourceFile(id, selector, files);
   const before = path ? files[path] : undefined;
   return path && before ? { path, before, after: applyPatch(before, id, op) } : null;
+}
+
+function ownSourceFile(live: HTMLElement, iframe: HTMLIFrameElement): string {
+  const previewed = compositionPathOfPreviewUrl(iframe.getAttribute("src") ?? "");
+  return getSourceFileForElement(live, previewed).sourceFile;
 }
 
 function patchByHfId(

@@ -81,23 +81,28 @@ describe("an edit to a picked element without an id", () => {
     expect(synced[0]?.["index.html"]).toMatch(/>Hello<\/h1>/);
   });
 
-  it("writes into the element's own file when another file holds an identical one", () => {
-    const sub = ensureHfIds(`<template><div data-composition-id="b">
+  // The same h1 in index.html and compositions/b.html, so both carry one hf-id.
+  const SUB = ensureHfIds(`<template><div data-composition-id="b">
 <h1 class="clip" data-start="2" data-duration="3" data-track-index="0">Title</h1>
 </div></template>`);
-    const subH1 = new DOMParser()
-      .parseFromString(sub, "text/html")
-      .querySelector("template")
-      ?.content.querySelector("h1");
-    const host = `<div data-composition-src="compositions/b.html">${subH1?.outerHTML}</div>`;
-    const { picker, synced } = mountPicker(
-      { "index.html": SAVED, "compositions/b.html": sub },
-      "[data-composition-src] h1",
-      host,
-    );
+  const subH1 = new DOMParser()
+    .parseFromString(SUB, "text/html")
+    .querySelector("template")
+    ?.content.querySelector("h1");
+  const host = `<div data-composition-file="compositions/b.html">${subH1?.outerHTML}</div>`;
+
+  it.each([
+    ["index.html first", { "index.html": SAVED, "compositions/b.html": SUB }],
+    ["the sub-composition first", { "compositions/b.html": SUB, "index.html": SAVED }],
+  ])("writes a twin element into its own file (%s)", (_order, files) => {
     expect(SAVED).toContain(`data-hf-id="${subH1?.getAttribute("data-hf-id")}"`);
-    act(() => picker().setStyle("color", "red"));
-    expect(synced.map((changed) => Object.keys(changed))).toEqual([["compositions/b.html"]]);
+    const inSub = mountPicker(files, "[data-composition-file] h1", host);
+    act(() => inSub.picker().setStyle("color", "red"));
+    expect(inSub.synced.map((changed) => Object.keys(changed))).toEqual([["compositions/b.html"]]);
+    act(() => root?.unmount());
+    const inRoot = mountPicker(files, "h1", host);
+    act(() => inRoot.picker().setStyle("color", "red"));
+    expect(inRoot.synced.map((changed) => Object.keys(changed))).toEqual([["index.html"]]);
   });
 
   it("writes nothing when no saved file holds the element", () => {
