@@ -53,4 +53,21 @@ describe("useTimelinePlayer tab hidden while playing", () => {
     expect(usePlayerStore.getState().currentTime).toBe(stoppedAt);
     act(() => root.unmount());
   });
+
+  it("does not carry the shuttle speed past the pause", () => {
+    const { api, root } = renderTimelinePlayerHarness();
+    attachIframeWindow(api, makeAdapterWindow().win);
+    const pressL = () =>
+      act(() => void window.dispatchEvent(new KeyboardEvent("keydown", { code: "KeyL", key: "l" })));
+    pressL();
+    pressL();
+    expect(usePlayerStore.getState().playbackRate).toBe(2);
+
+    vi.spyOn(document, "hidden", "get").mockReturnValue(true);
+    act(() => void document.dispatchEvent(new Event("visibilitychange")));
+    pressL();
+
+    expect(usePlayerStore.getState().playbackRate).toBe(1);
+    act(() => root.unmount());
+  });
 });
