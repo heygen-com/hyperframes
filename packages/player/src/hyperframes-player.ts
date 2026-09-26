@@ -200,13 +200,14 @@ class HyperframesPlayer extends HTMLElement {
     this.resizeObserver = new ResizeObserver(() => this._rescale());
     this._onMessage = this._onMessage.bind(this);
     this._onIframeLoad = this._onIframeLoad.bind(this);
+    // Before any host can listen, so a host's load listener reads state this load already set.
+    this.iframe.addEventListener("load", this._onIframeLoad);
   }
 
   connectedCallback() {
     this._applySandboxOriginPolicy();
     this.resizeObserver.observe(this);
     window.addEventListener("message", this._onMessage);
-    this.iframe.addEventListener("load", this._onIframeLoad);
     if (this.hasAttribute("controls")) this._setupControls();
     if (this.hasAttribute("poster"))
       this.posterEl = setupPoster(this.shadow, this.getAttribute("poster"), this.posterEl);
@@ -229,7 +230,6 @@ class HyperframesPlayer extends HTMLElement {
     this._stopIframeMedia();
     this.resizeObserver.disconnect();
     window.removeEventListener("message", this._onMessage);
-    this.iframe.removeEventListener("load", this._onIframeLoad);
     this.probe.stop();
     this._directTimelineClock.stop();
     this._stopParentTickClock();
@@ -1095,10 +1095,6 @@ class HyperframesPlayer extends HTMLElement {
     }, ASSETS_LOADING_SHOW_DELAY_MS);
   }
 
-  /** Timeout diagnostic. Re-scans since some assets may have resolved by
-   *  now. Compute can cause the timeout, so it's reported too. A hidden
-   *  document can starve paint-and-idle of frames for the full 8s — that's
-   *  reported directly rather than inferred, since it can't be bounded. */
   private _hasPendingFirstFrameAssets(doc: Document): boolean {
     const { pendingMedia, pendingImages, fontsLoading } = scanPendingCompositionAssets(doc, {
       scope: FIRST_FRAME_READINESS_SCOPE,
@@ -1106,6 +1102,10 @@ class HyperframesPlayer extends HTMLElement {
     return pendingMedia.length > 0 || pendingImages.length > 0 || fontsLoading;
   }
 
+  /** Timeout diagnostic. Re-scans since some assets may have resolved by
+   *  now. Compute can cause the timeout, so it's reported too. A hidden
+   *  document can starve paint-and-idle of frames for the full 8s — that's
+   *  reported directly rather than inferred, since it can't be bounded. */
   private _warnStuckAssets(doc: Document): void {
     const { pendingMedia, pendingImages, fontsLoading } = scanPendingCompositionAssets(doc, {
       scope: FIRST_FRAME_READINESS_SCOPE,

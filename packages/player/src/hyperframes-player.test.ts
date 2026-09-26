@@ -481,10 +481,11 @@ describe("HyperframesPlayer parent-frame media", () => {
       windowAdd.mock.calls.filter(([eventName]) => eventName === "message").length -
         windowRemove.mock.calls.filter(([eventName]) => eventName === "message").length,
     ).toBe(1);
+    // The one load listener is added in the constructor, before these spies.
     expect(
       iframeAdd.mock.calls.filter(([eventName]) => eventName === "load").length -
         iframeRemove.mock.calls.filter(([eventName]) => eventName === "load").length,
-    ).toBe(1);
+    ).toBe(0);
   });
 
   it("returns parent-media ownership to the runtime after reconnect", () => {
@@ -3330,6 +3331,23 @@ describe("HyperframesPlayer asset-ready gate", () => {
       data: { source: "hf-preview", ...data },
     } as unknown as MessageEvent);
 
+  it("handles its iframe's load before a host's load listener runs", async () => {
+    const player = document.createElement("hyperframes-player") as PlayerInternal & {
+      _readyDocument: Document | null;
+    };
+    const readyAtHostLoad: boolean[] = [];
+    player.iframe.addEventListener("load", () => readyAtHostLoad.push(player._ready));
+    document.body.appendChild(player);
+    await vi.waitFor(() => expect(readyAtHostLoad).toHaveLength(1));
+    player._ready = true;
+    player._readyDocument = document.implementation.createHTMLDocument("previous document");
+
+    player.iframe.dispatchEvent(new Event("load"));
+
+    expect(readyAtHostLoad[1]).toBe(false);
+    player.remove();
+  });
+
   it("paints a document before its load when nothing first-frame is pending", async () => {
     const player = await createConnectedPlayer();
     player._ready = false;
@@ -3450,10 +3468,14 @@ describe("HyperframesPlayer asset-ready gate", () => {
     post(player, { type: "timeline", durationInFrames: 60 });
     await vi.waitFor(() => expect(player.assetsReady).toBe(true));
 
+    const settled = vi.fn();
+    player.addEventListener("assetsready", settled);
     player._onIframeLoad();
+    await new Promise((resolve) => setTimeout(resolve, 50));
 
     expect(player._ready).toBe(true);
     expect(player.assetsReady).toBe(true);
+    expect(settled).not.toHaveBeenCalled();
 
     const next = document.implementation.createHTMLDocument("next composition");
     Object.defineProperty(player.iframe, "contentDocument", { get: () => next });
