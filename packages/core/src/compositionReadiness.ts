@@ -274,6 +274,21 @@ export function paintAndIdleReadinessInput(
 
 const DEFAULT_TIMEOUT_MS = 8_000;
 
+// Media a script adds before `load` belongs to the first frame, so the inputs scan after it.
+function documentLoaded(doc: Document, signal: AbortSignal): Promise<void> | null {
+  const win = doc.defaultView;
+  if (!win || (doc.readyState !== "loading" && doc.readyState !== "interactive")) return null;
+  return new Promise((resolve) => {
+    const done = () => {
+      win.removeEventListener("load", done);
+      signal.removeEventListener("abort", done);
+      resolve();
+    };
+    win.addEventListener("load", done);
+    signal.addEventListener("abort", done);
+  });
+}
+
 export interface CompositionReadinessResult {
   timedOut: boolean;
 }
@@ -298,9 +313,14 @@ export function settleCompositionReadiness(
     paintAndIdleReadinessInput,
   ];
   const controller = new AbortController();
-  const pending = inputs
-    .map((input) => input(doc, controller.signal))
-    .filter((p): p is Promise<void> => p !== null);
+  const start = () =>
+    inputs
+      .map((input) => input(doc, controller.signal))
+      .filter((p): p is Promise<void> => p !== null);
+  const loaded = documentLoaded(doc, controller.signal);
+  const pending = loaded
+    ? [loaded.then(() => (controller.signal.aborted ? undefined : Promise.all(start())))]
+    : start();
   if (pending.length === 0) {
     onSettled({ timedOut: false });
     return;

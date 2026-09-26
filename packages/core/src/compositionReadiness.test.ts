@@ -349,6 +349,30 @@ describe("paintAndIdleReadinessInput", () => {
 });
 
 describe("settleCompositionReadiness", () => {
+  it("scans a document that is still loading only once its load fires", async () => {
+    const win = new EventTarget();
+    let readyState: DocumentReadyState = "interactive";
+    const doc = {
+      defaultView: win,
+      get readyState() {
+        return readyState;
+      },
+    } as unknown as Document;
+    const input = vi.fn(() => null);
+    const onSettled = vi.fn();
+
+    settleCompositionReadiness(doc, onSettled, { inputs: [input] });
+    await flushMicrotasks();
+    expect(input).not.toHaveBeenCalled();
+    expect(onSettled).not.toHaveBeenCalled();
+
+    readyState = "complete";
+    win.dispatchEvent(new Event("load"));
+    await flushMicrotasks();
+    expect(input).toHaveBeenCalledTimes(1);
+    expect(onSettled).toHaveBeenCalledWith({ timedOut: false });
+  });
+
   it("does not wait for a later video through the public first-frame path", async () => {
     const doc = docWith(
       '<img id="first" data-start="0" data-duration="5" src="first.png">' +
@@ -417,6 +441,7 @@ describe("settleCompositionReadiness", () => {
     const { win, fireFrame } = docWithFakeWindow(false);
     const doc = docWith("");
     Object.defineProperty(doc, "defaultView", { value: win, configurable: true });
+    Object.defineProperty(doc, "readyState", { value: "complete", configurable: true });
     let settled = false;
     settleCompositionReadiness(doc, () => {
       settled = true;

@@ -3330,6 +3330,29 @@ describe("HyperframesPlayer asset-ready gate", () => {
       data: { source: "hf-preview", ...data },
     } as unknown as MessageEvent);
 
+  it("stays unpainted for first-frame media a script adds before the document's load", async () => {
+    const player = await createConnectedPlayer();
+    player._ready = false;
+    const doc = player.iframe.contentDocument!;
+    let readyState: DocumentReadyState = "interactive";
+    Object.defineProperty(doc, "readyState", { get: () => readyState, configurable: true });
+    post(player, { type: "timeline", durationInFrames: 60 });
+
+    const video = doc.createElement("video");
+    video.setAttribute("data-start", "0");
+    Object.defineProperty(video, "readyState", { value: 0, configurable: true });
+    doc.body.appendChild(video);
+    readyState = "complete";
+    doc.defaultView!.dispatchEvent(new Event("load"));
+    player._onIframeLoad();
+    await new Promise((resolve) => setTimeout(resolve, 300));
+
+    expect(player._ready).toBe(true);
+    expect(player.assetsReady).toBe(false);
+    expect(player.painted).toBe(false);
+    player.remove();
+  });
+
   it("holds an opaque-origin composition until its runtime posts assets-ready", async () => {
     const player = await createConnectedPlayer();
     player._ready = false;
