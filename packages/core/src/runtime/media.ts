@@ -244,7 +244,8 @@ export function hasMediaSyncStateForTest(el: HTMLMediaElement): boolean {
     lastRelativeTime.has(el) ||
     strictDriftSamples.has(el) ||
     seekLoadRetried.has(el) ||
-    lastRuntimeAppliedVolume.has(el)
+    lastRuntimeAppliedVolume.has(el) ||
+    videoSteering.has(el)
   );
 }
 

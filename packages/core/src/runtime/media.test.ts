@@ -1,5 +1,7 @@
 import { describe, it, expect, vi, afterEach } from "vitest";
 import {
+  evictMediaSyncState,
+  hasMediaSyncStateForTest,
   readElementPlaybackRate,
   readElementPlaybackStart,
   refreshRuntimeMediaCache,
@@ -1809,6 +1811,46 @@ describe("syncRuntimeMedia", () => {
       tick(clip, 5, 2);
       tick(clip, 5, 2);
       expect(clip.el.playbackRate).toBe(2);
+    });
+
+    it("returns a steered video to its authored rate when the transport pauses", () => {
+      const clip = playingVideoAt(4.9);
+      tick(clip, 5);
+      tick(clip, 5);
+      syncRuntimeMedia({
+        clips: [clip],
+        timeSeconds: 5,
+        playing: false,
+        playbackRate: 1,
+        getCompositionDuration: () => 20,
+      });
+      clip.el.currentTime = 4.98; // inside the tolerance: must not resume steering
+      tick(clip, 5);
+      expect(clip.el.playbackRate).toBe(1);
+    });
+
+    it("forgets the steering when the element's sync state is evicted", () => {
+      const clip = playingVideoAt(4.9);
+      tick(clip, 5);
+      tick(clip, 5);
+      evictMediaSyncState(clip.el);
+      expect(hasMediaSyncStateForTest(clip.el)).toBe(false);
+    });
+
+    it("does not rewrite a steered rate that reads back at lower precision", () => {
+      const clip = playingVideoAt(4.9);
+      let stored = 1;
+      let writes = 0;
+      Object.defineProperty(clip.el, "playbackRate", {
+        configurable: true,
+        get: () => stored,
+        set: (v: number) => {
+          writes += 1;
+          stored = Math.fround(v);
+        },
+      });
+      for (let i = 0; i < 5; i++) tick(clip, 5);
+      expect(writes).toBe(1);
     });
 
     it("scales the steer with the transport rate", () => {
