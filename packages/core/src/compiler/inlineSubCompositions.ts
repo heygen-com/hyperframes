@@ -41,6 +41,10 @@ const SIDE_EFFECT_RE =
   /\b(addEventListener|requestAnimationFrame|requestIdleCallback|setTimeout|setInterval|queueMicrotask|getContext|WebGL\w*|WebGPU\w*|gpu|Worker|WebSocket|EventSource|Audio\w*|\w*Observer|fetch|import|eval|Function|Promise|async|await|delayedCall|ScrollTrigger|Draggable|anime|customElements|registerProperty|addListener|BroadcastChannel|pushState|replaceState|adoptedStyleSheets|documentElement|getElementsByTagName|lottie|THREE|__hf[A-Z]\w*)\b|\.then\s*\(|\.animate\s*\(|\.ticker\b|repeat\s*:\s*-1|\.repeat\s*\(\s*-1|defineProperty\s*\(\s*(window|globalThis|self|document)\b|\bfonts\s*\.\s*add\b|\.on[a-z]+\s*=(?!=)|\bon(resize|scroll|message|key\w+|click|pointer\w+|mouse\w+|wheel|visibilitychange|hashchange|popstate|error|load)\s*=(?!=)|\[\s*["']on[a-z]+["']\s*\]|document\s*\.\s*(head|body)\b|querySelector(All)?\(\s*["'](head|body)["']/;
 
 /** Why an authored scene script cannot be swapped out cleanly, or null when it can. */
+// npm packages that only define globals when loaded; lottie-web is absent because it scans the page on load.
+const SWAP_SAFE_LIBRARY_URL =
+  /^https:\/\/(cdn\.jsdelivr\.net\/npm|unpkg\.com)\/(gsap|three|d3|d3-[a-z-]+|topojson-client|clipper-lib)(@[^/]+)?\//;
+
 function sceneScriptSwapRefusal(script: string): string | null {
   const match = SIDE_EFFECT_RE.exec(script);
   return match ? `its script uses ${match[0].trim()}` : null;
@@ -204,11 +208,6 @@ export function inlineSubCompositions(
   hosts: Element[],
   options: InlineSubCompositionsOptions,
 ): InlineSubCompositionsResult {
-  let rootSrcs: Set<string> | undefined;
-  const rootScriptSrcs = () =>
-    (rootSrcs ??= new Set(
-      [...document.querySelectorAll("script[src]")].map((el) => el.getAttribute("src")!.trim()),
-    ));
   const {
     resolveHtml,
     parseHtml,
@@ -392,17 +391,15 @@ export function inlineSubCompositions(
     for (const scriptEl of plan.scriptSources) {
       const externalSrc = resolveSubAssetPath(scriptEl.getAttribute("src"));
       const type = (scriptEl.getAttribute("type") || "").trim().toLowerCase();
-      // A swap never re-runs external or module scripts: only a URL the root document also loads is shared.
+      // A swap never re-runs external or module scripts: only a known library that just defines globals is safe.
       refuseSwap(() =>
         type === "importmap" || type === "module"
           ? "it runs a module script or import map"
           : !externalSrc
             ? sceneScriptSwapRefusal(scriptEl.textContent || "")
-            : !/^https?:\/\//i.test(externalSrc)
-              ? "it runs a script file that is not a library URL"
-              : rootScriptSrcs().has(externalSrc)
-                ? null
-                : "it runs a script URL the root document does not load",
+            : SWAP_SAFE_LIBRARY_URL.test(externalSrc)
+              ? null
+              : "it runs a script that is not a known library",
       );
       if (type === "importmap") {
         const map = parseImportMap(scriptEl.textContent || "", (url) => {

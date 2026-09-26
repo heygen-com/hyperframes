@@ -2057,7 +2057,7 @@ describe("bundleToSingleHtml sceneParts", () => {
     expect(shared).toContain("__rootRan");
   });
 
-  it("emits styles and scripts in render order, a nested scene and root variables included", async () => {
+  it("emits styles and scripts in render order, a nested scene, an @import and root variables included", async () => {
     const dir = makeTempProject({
       "index.html": `<!doctype html>
 <html><head><style>.root-text { color: black; }</style></head><body>
@@ -2077,7 +2077,8 @@ describe("bundleToSingleHtml sceneParts", () => {
   <style>@keyframes pulse { to { opacity: 0.3; } }</style><p>N</p><script>window.__order.push("n");</script>
 </div></template>`,
       "compositions/b.html": `<template id="b-template"><div data-composition-id="b">
-  <style>@keyframes pulse { to { opacity: 0.2; } }</style><p>B</p><script>window.__order.push("b");</script>
+  <style>@import url("data:text/css,@keyframes%20pulse%7Bto%7Bopacity:0.9%7D%7D");
+  @keyframes pulse { to { opacity: 0.2; } }</style><p>B</p><script>window.__order.push("b");</script>
 </div></template>`,
     });
     const order = (html: string) => {
@@ -2101,7 +2102,7 @@ describe("bundleToSingleHtml sceneParts", () => {
     expect(html).toContain("__aRan");
   });
 
-  it("puts a nested scene's @import first in its scene's style, where CSS honours it", async () => {
+  it("puts every @import once at the front of the head, as a render's merged sheet does", async () => {
     const dir = makeTempProject({
       "index.html": `<!doctype html><html><head></head><body>
   <div data-composition-id="main" data-width="1920" data-height="1080" data-duration="2">
@@ -2114,15 +2115,21 @@ describe("bundleToSingleHtml sceneParts", () => {
   <style>@import url("https://fonts.example.com/inter.css"); .n { color: blue; }</style></div></template>`,
     });
     const doc = parseHTML(await bundleToSingleHtml(dir, { sceneParts: true })).document;
-    const css = doc.querySelector('style[data-hf-scene="a"]')?.textContent ?? "";
-    expect(css.startsWith('@import url("https://fonts.example.com/inter.css")')).toBe(true);
-    expect(css.match(/@import/g)).toHaveLength(1);
+    const first = doc.querySelector(
+      "head style:not([data-hf-scene]):not([data-hyperframes-text-rendering])",
+    );
+    expect(
+      first?.textContent?.startsWith('@import url("https://fonts.example.com/inter.css")'),
+    ).toBe(true);
+    expect(doc.querySelector('style[data-hf-scene="a"]')?.textContent).not.toContain("@import");
+    expect(doc.documentElement.outerHTML.match(/@import/g)).toHaveLength(1);
   });
 
   it("marks a scene whose own script leaves work running as not swappable, and only that scene", async () => {
     const dir = makeTempProject({
       "index.html": `<!doctype html><html><head>
-  <script src="https://cdn.example.com/gsap.min.js"></script></head><body>
+  <script src="https://cdn.jsdelivr.net/npm/gsap@3.14.2/dist/gsap.min.js"></script>
+  <script src="https://cdn.example.com/d-scene.js"></script></head><body>
   <div data-composition-id="main" data-width="1920" data-height="1080" data-duration="4">
     <div data-composition-id="a" data-composition-src="compositions/a.html" data-start="0" data-duration="2"></div>
     <div data-composition-id="b" data-composition-src="compositions/b.html" data-start="2" data-duration="2"></div>
@@ -2140,7 +2147,7 @@ describe("bundleToSingleHtml sceneParts", () => {
       "compositions/n.html": `<template id="n-template"><div data-composition-id="n">
   <script>window.addEventListener("hf-seek", () => {});</script></div></template>`,
       "compositions/b.html": `<template id="b-template"><div data-composition-id="b"><p>B</p>
-  <script src="https://cdn.example.com/gsap.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/gsap@3.14.2/dist/gsap.min.js"></script>
   <script>gsap.timeline({ onComplete: () => {} });</script></div></template>`,
     });
     const doc = parseHTML(await bundleToSingleHtml(dir, { sceneParts: true })).document;
@@ -2150,10 +2157,11 @@ describe("bundleToSingleHtml sceneParts", () => {
     );
     expect(host("b")?.hasAttribute("data-hf-scene-no-swap")).toBe(false);
     expect(host("c")?.getAttribute("data-hf-scene-no-swap")).toBe(
-      "it runs a script file that is not a library URL",
+      "it runs a script that is not a known library",
     );
+    // The root loading the same URL does not make a scene's own initializer a library.
     expect(host("d")?.getAttribute("data-hf-scene-no-swap")).toBe(
-      "it runs a script URL the root document does not load",
+      "it runs a script that is not a known library",
     );
     const rendered = await bundleToSingleHtml(dir);
     expect(rendered).not.toContain("data-hf-scene-no-swap");

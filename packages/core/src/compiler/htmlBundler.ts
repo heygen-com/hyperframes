@@ -671,6 +671,27 @@ function joinCssHoistingImports(sheets: string[]): string {
   return [...imports, ...cssParts].join("\n\n").trim();
 }
 
+// A render joins every head style into one sheet with each distinct @import first; scene styles must match.
+function hoistImportsAcrossSceneStyles(document: Document): void {
+  const styles = [...document.querySelectorAll("head style")];
+  const imports = new Set<string>();
+  for (const el of styles) {
+    el.textContent = (el.textContent || "")
+      .replace(CSS_IMPORT_RE, (match) => (imports.add(match.trim()), ""))
+      .trim();
+  }
+  if (imports.size === 0) return;
+  const hoisted = [...imports].join("\n\n");
+  const first = styles[0]!;
+  if (!first.hasAttribute(SCENE_PART_ATTR)) {
+    first.textContent = [hoisted, first.textContent].filter(Boolean).join("\n\n");
+    return;
+  }
+  const holder = document.createElement("style");
+  holder.textContent = hoisted;
+  first.before(holder);
+}
+
 type PartRun<T> = { scene?: string; chunks: T[] };
 
 function pushRun<T>(runs: PartRun<T>[], scene: string | undefined, chunk: T): void {
@@ -692,6 +713,7 @@ function coalesceHeadStylesAndBodyScripts(document: Document): void {
     run[0]!.textContent = merged;
     for (const el of run.slice(1)) el.remove();
   }
+  if (untaggedRuns.length > 1) hoistImportsAcrossSceneStyles(document);
 
   const isPinned = (el: Element) =>
     el.hasAttribute(RUNTIME_BOOTSTRAP_ATTR) || el.hasAttribute(SCENE_PART_ATTR);
@@ -998,7 +1020,7 @@ export async function bundleToSingleHtml(
     parseHtml: parseHTMLContent,
     hostIdentityMap: hostIdentityByElement,
     rewriteInlineStyles: true,
-    // A sub-composition's SIBLING assets (`_shared.css` next to it) must be
+    // A sub-composition's SIBLING assets (a stylesheet next to it) must be
     // re-pointed at its own directory when its content moves to the root
     // document; project-root refs with no such sibling stay as authored.
     assetExists: (path: string) => {
