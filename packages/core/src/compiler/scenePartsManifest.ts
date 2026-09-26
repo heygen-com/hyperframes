@@ -5,9 +5,8 @@ import { parseHTMLContent } from "./htmlDocument";
 const hash = (text: string) => createHash("sha1").update(text).digest("hex").slice(0, 16);
 
 /**
- * Add a {@link SceneParts} manifest to a preview document built with `sceneParts`, so the preview
- * runtime can tell whether a rebuilt document differs only inside some scenes. `ignore` lists
- * selectors for parts that change on every build without changing what is shown.
+ * Adds a {@link SceneParts} manifest so the runtime can tell a rebuild differs only inside scenes.
+ * `ignore` lists selectors for parts that change on every build without changing what is shown.
  */
 export function addScenePartsManifest(html: string, ignore: readonly string[] = []): string {
   const doc = parseHTMLContent(html);

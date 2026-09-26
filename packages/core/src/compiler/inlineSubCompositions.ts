@@ -189,11 +189,7 @@ export interface InlineSubCompositionsOptions {
    * Defaults to `console.warn`.
    */
   onMissingComposition?: (srcPath: string, reason?: string) => void;
-  /**
-   * Tag each top-level host with `data-hf-scene` and report which scene every style and inline
-   * script came from (nested sub-compositions belong to their top-level scene), so a preview can
-   * swap one scene's parts in place. Off for renders.
-   */
+  /** Tag each top-level host with `data-hf-scene` and report every part's scene, for preview swaps. */
   tagScenes?: boolean;
 }
 

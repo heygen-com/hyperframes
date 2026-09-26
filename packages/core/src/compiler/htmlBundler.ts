@@ -1005,7 +1005,7 @@ export async function bundleToSingleHtml(
     }
   }
 
-  // Read before sub-compositions add theirs: only the root's own scripts, inline templates included, can reach into scenes.
+  // Read before sub-compositions add theirs: only the root's own scripts can reach into scenes.
   const rootScripts = options?.sceneParts
     ? [
         ...document.querySelectorAll(`script:not([${RUNTIME_BOOTSTRAP_ATTR}])`),
