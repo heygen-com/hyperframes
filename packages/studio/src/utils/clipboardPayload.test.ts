@@ -4,8 +4,25 @@ import {
   deduplicateIds,
   serializeClipboardPayload,
   deserializeClipboardPayload,
+  insertAsSibling,
   type ClipboardPayload,
 } from "./clipboardPayload";
+
+describe("insertAsSibling", () => {
+  it("falls back to a registry scene's root inside the template its <html> wraps", () => {
+    const source = `<html data-composition-id="card"><body><template><div data-composition-id="card"></div></template></body></html>`;
+    expect(insertAsSibling(source, `<img id="a" />`, undefined, undefined)).toBe(
+      source.replace(`"card"></div>`, `"card"><img id="a" /></div>`),
+    );
+  });
+
+  it("falls back past a composition written inside a comment", () => {
+    const source = `<!-- <div data-composition-id="old"> --><div data-composition-id="main"></div>`;
+    expect(insertAsSibling(source, `<img id="a" />`, undefined, undefined)).toBe(
+      source.replace(`"main">`, `"main"><img id="a" />`),
+    );
+  });
+});
 
 describe("deduplicateIds", () => {
   it("renames ids that collide with existing ids", () => {

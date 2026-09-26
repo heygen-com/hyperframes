@@ -209,8 +209,8 @@ function syncCommittedGsapMutation({
  * - `"verify-failed"` (TRANSIENT: re-run happened, `__timelines` momentarily
  *   empty) → do NOT escalate; the live `gsap.set` already shows the correct value
  *   and a remount would re-flash the WebGL context + revert subcomp keyframes.
- * - `"applied"` → success (or deferred to async plugin load; `onAsyncFailure`
- *   covers the CDN-error escalation).
+ * - `"applied"` / `"deferred"` → success (a deferred plugin load that fails
+ *   escalates through `onAsyncFailure`).
  */
 function softReloadOrEscalate(
   iframe: HTMLIFrameElement | null,
@@ -228,7 +228,7 @@ function softReloadOrEscalate(
     currentTimeOverride: currentTime,
     authoredHtml,
   });
-  if (result === "applied") return;
+  if (result === "applied" || result === "deferred") return;
   trackStudioEvent("gsap_soft_reload_outcome", {
     origin,
     result,

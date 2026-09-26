@@ -1,7 +1,16 @@
 import { AUDIO_EXT, IMAGE_EXT, VIDEO_EXT } from "./mediaTypes";
 import { roundToCenti } from "./rounding";
-import { COMPOSITION_ROOT_OPEN_TAG_RE } from "./compositionPatterns";
-import { patchRootCompositionDuration, readRootCompositionDuration } from "./rootDuration";
+import {
+  findRootOpenTag,
+  patchRootCompositionDuration,
+  readDocumentRootDuration,
+  readRootCompositionDuration,
+} from "./rootDuration";
+import {
+  furthestClipEndFromDocument,
+  furthestClipEndFromSource,
+  parseCompositionSource,
+} from "../player/lib/timelineElementHelpers";
 
 export const TIMELINE_ASSET_MIME = "application/x-hyperframes-asset";
 export const TIMELINE_BLOCK_MIME = "application/x-hyperframes-block";
@@ -138,22 +147,9 @@ export function buildTimelineAssetInsertHtml(input: {
 }
 
 /**
- * A clip inserted past the composition end would exist in the HTML but never
- * appear on the timeline or in playback. Extend the root's data-duration to
- * cover it (mirrors blockInstaller's behavior for installed blocks).
- */
-export function extendCompositionDurationIfNeeded(source: string, requiredEnd: number): string {
-  const rootDur = readRootCompositionDuration(source);
-  if (rootDur == null || !Number.isFinite(rootDur) || requiredEnd <= rootDur) return source;
-  return patchRootCompositionDuration(source, String(roundToCenti(requiredEnd)));
-}
-
-/**
  * Set the composition root's `data-duration` to `contentEnd` (grow OR shrink) so the
- * timeline length tracks content — the content-driven counterpart to
- * extendCompositionDurationIfNeeded's grow-only ratchet. Used after edits that can
- * reduce the furthest clip end (delete/trim). No-op when `contentEnd` is not > 0, so
- * an empty timeline keeps its declared duration instead of collapsing to 0.
+ * timeline length tracks content. No-op when `contentEnd` is not > 0, so an empty
+ * timeline keeps its declared duration instead of collapsing to 0.
  */
 export function setCompositionDurationToContent(source: string, contentEnd: number): string {
   if (!Number.isFinite(contentEnd) || contentEnd <= 0) return source;
@@ -164,9 +160,62 @@ export function setCompositionDurationToContent(source: string, contentEnd: numb
   return patchRootCompositionDuration(source, String(next));
 }
 
+/** The furthest clip end and the live animation end of one file. */
+export interface ContentEnd {
+  clips: number;
+  animation: number;
+}
+
+/**
+ * The length after an edit, or null to leave it. Derived (it equals the content end before
+ * the edit) follows content; hand-set grows only to a clip the edit newly places past it.
+ */
+export function resolveRootLength(
+  length: number | null,
+  before: ContentEnd,
+  after: ContentEnd,
+): number | null {
+  // An animation end that became unreadable is unknown, not zero: never cut on it.
+  if (before.animation > 0 && !(after.animation > 0)) return null;
+  if (
+    length == null ||
+    !Number.isFinite(length) ||
+    roundToCenti(length) === roundToCenti(Math.max(before.clips, before.animation))
+  ) {
+    return Math.max(after.clips, after.animation);
+  }
+  const clipsEnd = roundToCenti(after.clips);
+  return clipsEnd > roundToCenti(length) && clipsEnd > roundToCenti(before.clips)
+    ? after.clips
+    : null;
+}
+
+export function rootLengthAfterEdit(
+  original: string,
+  edited: string,
+  animationEnd: number,
+): number | null {
+  const doc = parseCompositionSource(original);
+  return resolveRootLength(
+    readDocumentRootDuration(doc),
+    { clips: furthestClipEndFromDocument(doc), animation: animationEnd },
+    { clips: furthestClipEndFromSource(edited), animation: animationEnd },
+  );
+}
+
+export function writeRootLength(source: string, length: number | null): string {
+  return length == null ? source : setCompositionDurationToContent(source, length);
+}
+
+/** One length decision for a whole edit of `original`; an unchanged file keeps its length. */
+export function syncRootLength(original: string, edited: string, animationEnd: number): string {
+  if (edited === original) return edited;
+  return writeRootLength(edited, rootLengthAfterEdit(original, edited, animationEnd));
+}
+
 export function insertTimelineAssetIntoSource(source: string, assetHtml: string): string {
-  const match = COMPOSITION_ROOT_OPEN_TAG_RE.exec(source);
-  if (!match || match.index == null) {
+  const match = findRootOpenTag(source);
+  if (!match) {
     throw new Error("No composition root found in target source");
   }
   const insertAt = match.index + match[0].length;

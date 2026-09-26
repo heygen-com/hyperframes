@@ -3,14 +3,72 @@ import { describe, expect, it } from "vitest";
 import {
   buildTimelineFileDropPlacements,
   buildTimelineAssetInsertHtml,
-  extendCompositionDurationIfNeeded,
   fitTimelineAssetGeometry,
   getTimelineAssetKind,
   insertTimelineAssetIntoSource,
   resolveTimelineAssetCompositionSize,
+  resolveRootLength,
   resolveTimelineAssetSrc,
   setCompositionDurationToContent,
+  writeRootLength,
 } from "./timelineAssetDrop";
+
+describe("resolveRootLength", () => {
+  const ends = (clips: number, animation = 0) => ({ clips, animation });
+
+  it("moves a derived length to the new content end, both ways", () => {
+    expect(resolveRootLength(5, ends(5), ends(4))).toBe(4);
+    expect(resolveRootLength(5, ends(5), ends(7))).toBe(7);
+    expect(resolveRootLength(5, ends(5), ends(4, 6))).toBe(6);
+    expect(resolveRootLength(6, ends(4, 6), ends(3, 6))).toBe(6);
+  });
+
+  it("compares at the writer's hundredths", () => {
+    expect(resolveRootLength(5, ends(5.004), ends(4))).toBe(4);
+    expect(resolveRootLength(5, ends(5.01), ends(4))).toBeNull();
+  });
+
+  it("treats a root without a readable length as derived", () => {
+    expect(resolveRootLength(null, ends(5), ends(4))).toBe(4);
+    expect(resolveRootLength(Number.NaN, ends(5), ends(4))).toBe(4);
+  });
+
+  it("leaves a hand-set length, even against a later animation", () => {
+    expect(resolveRootLength(8, ends(5, 5), ends(4, 5))).toBeNull();
+    expect(resolveRootLength(3, ends(3, 6), ends(3, 6))).toBeNull();
+  });
+
+  it("grows a hand-set length to a clip newly placed past it, never to an animation", () => {
+    expect(resolveRootLength(8, ends(5), ends(9, 12))).toBe(9);
+  });
+
+  it("does not grow a hand-set length for a clip that already ran past it", () => {
+    expect(resolveRootLength(8, ends(9), ends(9))).toBeNull();
+    expect(resolveRootLength(8, ends(9), ends(8.5))).toBeNull();
+    expect(resolveRootLength(8, ends(9), ends(8.004))).toBeNull();
+  });
+
+  it("never cuts a derived length on an animation end that became unreadable", () => {
+    expect(resolveRootLength(5, ends(3, 5), ends(3, 0))).toBeNull();
+  });
+});
+
+describe("writeRootLength", () => {
+  const root = `<div data-composition-id="c" data-duration="5">x</div>`;
+
+  it("writes the length", () => {
+    expect(writeRootLength(root, 3.456)).toBe(
+      `<div data-composition-id="c" data-duration="3.46">x</div>`,
+    );
+  });
+
+  it("writes nothing to leave the length, for an empty timeline, or a root without a length", () => {
+    expect(writeRootLength(root, null)).toBe(root);
+    expect(writeRootLength(root, 0)).toBe(root);
+    const bare = `<div data-composition-id="c">x</div>`;
+    expect(writeRootLength(bare, 3)).toBe(bare);
+  });
+});
 
 describe("setCompositionDurationToContent", () => {
   const src = (dur: number) =>
@@ -46,32 +104,6 @@ describe("setCompositionDurationToContent", () => {
     expect(setCompositionDurationToContent(source, 8)).toBe(
       `<div data-composition-id='c' data-duration='8'>x</div>`,
     );
-  });
-});
-
-describe("extendCompositionDurationIfNeeded", () => {
-  it("grows the root duration when a clip lands past the end", () => {
-    const source = `<div data-composition-id="c" data-duration="5">x</div>`;
-    expect(extendCompositionDurationIfNeeded(source, 8)).toBe(
-      `<div data-composition-id="c" data-duration="8">x</div>`,
-    );
-  });
-
-  it("is a no-op when the required end fits within the current duration", () => {
-    const source = `<div data-composition-id="c" data-duration="10">x</div>`;
-    expect(extendCompositionDurationIfNeeded(source, 8)).toBe(source);
-  });
-
-  it("grows even when the attribute order is swapped and quotes are single", () => {
-    const source = `<div data-duration='5' data-composition-id='c'>x</div>`;
-    expect(extendCompositionDurationIfNeeded(source, 8)).toBe(
-      `<div data-duration='8' data-composition-id='c'>x</div>`,
-    );
-  });
-
-  it("is a no-op when there is no composition root", () => {
-    const source = `<div data-duration="5">x</div>`;
-    expect(extendCompositionDurationIfNeeded(source, 8)).toBe(source);
   });
 });
 
@@ -196,6 +228,45 @@ describe("insertTimelineAssetIntoSource", () => {
     expect(html).toContain('data-composition-id="main">');
     expect(html).toContain('<img id="photo_asset" data-start="0" data-duration="3" />');
   });
+
+  it("inserts into a registry scene's root inside the template its <html> wraps", () => {
+    const source = [
+      `<html data-composition-id="card">`,
+      `<body><template>`,
+      `  <div data-composition-id="card" data-duration="4">`,
+      `  </div>`,
+      `</template></body></html>`,
+    ].join("\n");
+    expect(insertTimelineAssetIntoSource(source, `<img id="a" />`)).toBe(
+      source.replace(`data-duration="4">`, `data-duration="4">\n    <img id="a" />`),
+    );
+  });
+
+  it("does not insert into a composition written inside a comment", () => {
+    const source = [
+      `<!-- <div data-composition-id="old"> -->`,
+      `<div data-composition-id="main"></div>`,
+    ].join("\n");
+    expect(insertTimelineAssetIntoSource(source, `<img id="a" />`)).toBe(
+      source.replace(`"main">`, `"main">\n  <img id="a" />`),
+    );
+  });
+
+  // Each is no comment to the parser, or one that ends before the root.
+  for (const prefix of [`<script>var open = "<!--";</script>`, `<!-->`, `<!--->`, `<!-- a --!>`]) {
+    it(`inserts into the root, not a scene inside it, after ${prefix}`, () => {
+      const source = [
+        prefix,
+        `<div data-composition-id="main">`,
+        `  <!-- clips -->`,
+        `  <div data-composition-id="scene"></div>`,
+        `</div>`,
+      ].join("\n");
+      expect(insertTimelineAssetIntoSource(source, `<img id="a" />`)).toBe(
+        source.replace(`"main">`, `"main">\n  <img id="a" />`),
+      );
+    });
+  }
 });
 
 describe("buildTimelineAssetInsertHtml — video audio", () => {

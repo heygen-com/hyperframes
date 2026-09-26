@@ -3,10 +3,13 @@
 // edit's undo history, and swapping the rewritten script into the live preview
 // without a full iframe reload when possible.
 import { type TimelineElement, usePlayerStore } from "../player/store/playerStore";
-import { applySoftReload, applySoftReloadFinalization } from "../utils/gsapSoftReload";
-import { furthestClipEndFromDocument } from "../player/lib/timelineElementHelpers";
+import {
+  applySoftReload,
+  applySoftReloadFinalization,
+  type SoftReloadResult,
+} from "../utils/gsapSoftReload";
 import type { RecordEditInput } from "../utils/studioFileHistory";
-import { patchDocumentRootDuration } from "./timelineEditingGsap";
+import { syncEditLength, type LengthSync } from "./timelineLengthSync";
 import { studioWriteHeaders } from "../utils/studioFileVersion";
 
 class GsapPreviewConvergenceError extends Error {}
@@ -72,34 +75,6 @@ async function rollbackOwnedMutation(
   if (result.restored === true && result.conflict === false) return "restored";
   if (result.restored === false && result.conflict === true) return "conflict";
   throw new Error(`Invalid restore response for ${targetPath}`);
-}
-
-/** Best-effort live-iframe wrapper for patchDocumentRootDuration (see timelineEditingGsap). */
-function patchIframeRootDuration(iframe: HTMLIFrameElement | null, contentEnd: number): void {
-  try {
-    patchDocumentRootDuration(iframe?.contentDocument ?? null, contentEnd);
-  } catch {
-    // Cross-origin or mid-navigation — file save is enqueued; iframe patch is best-effort.
-  }
-}
-
-/** Keep the duration readout and live root aligned with optimistically patched clips. */
-export function syncPreviewContentDuration(iframe: HTMLIFrameElement | null): void {
-  const end = furthestClipEndFromDocument(iframe?.contentDocument ?? null);
-  if (end > 0) {
-    usePlayerStore.getState().setDuration(end);
-    patchIframeRootDuration(iframe, end);
-  }
-}
-
-/** Restore both store and live-root duration when a timing persist fails. */
-export function captureDurationRollback(iframe: HTMLIFrameElement | null): () => void {
-  const previousDuration = usePlayerStore.getState().duration;
-  return () => {
-    if (usePlayerStore.getState().duration === previousDuration) return;
-    usePlayerStore.getState().setDuration(previousDuration);
-    patchIframeRootDuration(iframe, previousDuration);
-  };
 }
 
 /**
@@ -214,6 +189,8 @@ function rebindPreviewTiming(iframe: HTMLIFrameElement | null, currentTime: numb
  *   server returned no script (older server, multi-script comp): the live
  *   script is now stale, so a rebind against it would show wrong positions →
  *   full-reload.
+ *
+ * Returns the soft reload's outcome; a rebind counts as applied, a failed one as cannot-soft-reload.
  */
 function syncTimingEditPreview(
   iframe: HTMLIFrameElement | null,
@@ -221,20 +198,18 @@ function syncTimingEditPreview(
   currentTime: number,
   reloadPreview: () => void,
   rebindWhenUnmutated: boolean,
-): void {
+): SoftReloadResult {
   if (!outcome.mutated && rebindWhenUnmutated) {
-    if (!rebindPreviewTiming(iframe, currentTime)) reloadPreview();
-    return;
+    const rebound = rebindPreviewTiming(iframe, currentTime);
+    if (!rebound) reloadPreview();
+    return rebound ? "applied" : "cannot-soft-reload";
   }
-  if (!iframe || !outcome.scriptText) {
-    reloadPreview();
-    return;
-  }
-  const result = applySoftReload(iframe, outcome.scriptText, {
+  const result = applySoftReload(iframe, outcome.scriptText ?? "", {
     onAsyncFailure: reloadPreview,
     currentTimeOverride: currentTime,
   });
   if (result === "cannot-soft-reload") reloadPreview();
+  return result;
 }
 
 async function finishTimelineTimingFallback(input: {
@@ -250,6 +225,7 @@ async function finishTimelineTimingFallback(input: {
    * edit).
    */
   rebindWhenUnmutated: boolean;
+  afterPreviewSync: (converged: boolean) => Promise<void>;
 }): Promise<void> {
   let outcome: GsapMutationStatus = { mutated: false, scriptText: null };
   if (input.gsapMutation) {
@@ -263,13 +239,14 @@ async function finishTimelineTimingFallback(input: {
       return;
     }
   }
-  syncTimingEditPreview(
+  const result = syncTimingEditPreview(
     input.iframe,
     outcome,
     usePlayerStore.getState().currentTime,
     input.reloadPreview,
     input.rebindWhenUnmutated,
   );
+  if (result !== "cannot-soft-reload") await input.afterPreviewSync(result === "applied");
 }
 
 // Coalesce window for folding a GSAP mutation into the preceding timing edit; only has to
@@ -492,6 +469,7 @@ export function finishClipTimingFallback(input: {
   coalesceKey?: string;
   recordEdit: (edit: RecordEditInput) => Promise<void>;
   edit: SingleClipGsapEdit;
+  lengthSync?: LengthSync;
 }): Promise<void> {
   const { projectId, targetPath, domId, edit } = input;
   const timingChanged =
@@ -530,6 +508,8 @@ export function finishClipTimingFallback(input: {
         : undefined,
     onGsapError,
     rebindWhenUnmutated: true,
+    afterPreviewSync: (converged) =>
+      syncEditLength({ ...input, converged, coalesceMs: GSAP_HISTORY_COALESCE_MS }),
   });
 }
 
@@ -557,6 +537,7 @@ export async function finishGroupTimingGsapFallback<C extends { element: Timelin
   resolveChangePath: (element: TimelineElement) => string;
   /** Per-change GSAP mutation; return null to skip a change with no timing delta. */
   mutateChange: (change: C, changePath: string) => Promise<GsapMutationStatus> | null;
+  lengthSync?: LengthSync;
 }): Promise<void> {
   const activePath = input.activeCompPath || "index.html";
   const otherFileChanged = input.changes.some(
@@ -595,5 +576,12 @@ export async function finishGroupTimingGsapFallback<C extends { element: Timelin
     // to re-derive clip windows — the in-place timing rebind covers that. But
     // when another file changed, only a full reload reflects every file.
     rebindWhenUnmutated: !otherFileChanged,
+    afterPreviewSync: (converged) =>
+      syncEditLength({
+        ...input,
+        converged,
+        targetPath: activePath,
+        coalesceMs: GSAP_HISTORY_COALESCE_MS,
+      }),
   });
 }

@@ -251,9 +251,9 @@ describe("applySoftReload", () => {
     const onAsyncFailure = vi.fn();
     const result = applySoftReload(iframe, MOTION_PATH_SCRIPT_TEXT, { onAsyncFailure });
 
-    // Optimistically "applied" (script will run once the plugin loads) — and the
-    // script has NOT executed yet, so the timeline isn't rebound synchronously.
-    expect(result).toBe("applied");
+    // "deferred" (script will run once the plugin loads) — the script has NOT
+    // executed yet, so the timeline isn't rebound synchronously.
+    expect(result).toBe("deferred");
     expect(appendedScripts).toHaveLength(1);
     expect(appendedScripts[0]!.src).toContain("MotionPathPlugin");
     expect(contentWindow.__hfForceTimelineRebind).not.toHaveBeenCalled();

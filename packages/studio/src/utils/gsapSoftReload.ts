@@ -138,8 +138,8 @@ function verifyTimelinesPopulated(win: IframeWindow, targetKeys: string[]): bool
  * the correct value — do NOT escalate; a remount would re-flash the WebGL context
  * and revert subcomposition keyframes):
  *
- * - `"applied"`            — the script ran (or is deferred to the async plugin
- *                            load and WILL run). The preview is/will be correct.
+ * - `"applied"`            — the script ran. The preview is correct.
+ * - `"deferred"`           — it WILL run once the MotionPath plugin loads; no escalation.
  * - `"verify-failed"`      — TRANSIENT: the re-run happened but `__timelines`
  *                            momentarily read empty. Live state is correct → do
  *                            NOT escalate. (Was a bare `false` before.)
@@ -148,9 +148,9 @@ function verifyTimelinesPopulated(win: IframeWindow, targetKeys: string[]): bool
  *                            to replace. The preview is stale/broken → escalate.
  *
  * The async MotionPath-plugin load failure is still surfaced via
- * `onAsyncFailure` (it fires after this returned `"applied"` optimistically).
+ * `onAsyncFailure` (it fires after this returned `"deferred"`).
  */
-export type SoftReloadResult = "applied" | "verify-failed" | "cannot-soft-reload";
+export type SoftReloadResult = "applied" | "deferred" | "verify-failed" | "cannot-soft-reload";
 
 /**
  * Replace the GSAP script in the live iframe without reloading. This preserves
@@ -171,7 +171,7 @@ export type SoftReloadResult = "applied" | "verify-failed" | "cannot-soft-reload
  * keys read empty in the transient post-run window (live state is still correct).
  *
  * `onAsyncFailure` is invoked when the soft reload was deferred to load the
- * MotionPath plugin (so this returned `"applied"` optimistically) but the plugin
+ * MotionPath plugin (so this returned `"deferred"`) but the plugin
  * `<script>` then failed to load — the iframe is left without the plugin and the
  * caller should perform a full reload to recover. It never fires on the
  * synchronous paths.
@@ -285,9 +285,9 @@ export function applySoftReload(
 
   // Track whether the MotionPath async path was taken. When it is, the script
   // executes inside pluginScript.onload — after applySoftReload has already
-  // returned. We optimistically return true because the script WILL execute
-  // once the plugin loads; the alternative (returning false) would trigger a
-  // full iframe reload that destroys the very WebGL context we're preserving.
+  // returned. We return "deferred", not a failure, because the script WILL execute
+  // once the plugin loads; a failure would trigger a full iframe reload that
+  // destroys the very WebGL context we're preserving.
   let deferredToAsync = false;
 
   // Authored-opacity resolution for the restore loop below. Three-state:
@@ -471,9 +471,9 @@ export function applySoftReload(
       doReload();
     }
     // When MotionPath needs async loading, the script hasn't executed yet —
-    // skip the __timelines check and report success optimistically (the script
-    // WILL run on plugin load; onAsyncFailure covers the CDN-error case).
-    if (deferredToAsync) return "applied";
+    // skip the __timelines check (the script WILL run on plugin load;
+    // onAsyncFailure covers the CDN-error case).
+    if (deferredToAsync) return "deferred";
     // The re-run executed. If the target keys read back, we're done; otherwise
     // it's the TRANSIENT empty-timeline window (live state is correct) — surfaced
     // as "verify-failed" so callers know NOT to escalate.

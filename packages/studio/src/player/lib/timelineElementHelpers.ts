@@ -98,19 +98,17 @@ export function isTimelineIgnoredElement(el: Element): boolean {
 }
 
 /**
- * Furthest clip end (start + RAW `data-duration`) over every non-root clip in the
- * document. Reads the authored attribute, NOT any runtime-computed value — so it
- * is immune to the runtime's clamp that truncates a clip's live duration to the
- * composition length. This is the source of truth for content-driven duration:
- * computing it from the store instead would feed the truncated value back in and
- * make the composition length ratchet down (research HANDOFF-3 §6.1 feedback loop).
+ * Furthest end (start + RAW `data-duration`, never the runtime-clamped value) of the root
+ * composition's own clips. A nested scene counts by its host: its inner clips run on its clock.
+ * A clip outside every composition counts too, as under a `<meta data-composition-id>` root.
  */
-export function furthestClipEndFromDocument(doc: Document | null | undefined): number {
+export function furthestClipEndFromDocument(doc: ParentNode | null | undefined): number {
   if (!doc) return 0;
   const root = doc.querySelector("[data-composition-id]");
   let maxEnd = 0;
-  for (const node of Array.from(doc.querySelectorAll("[data-start]"))) {
-    if (node === root || isTimelineIgnoredElement(node)) continue;
+  for (const node of Array.from(doc.querySelectorAll("[data-start]:not([data-hf-autostamped])"))) {
+    const owner = node.parentElement?.closest("[data-composition-id]") ?? null;
+    if ((owner !== null && owner !== root) || isTimelineIgnoredElement(node)) continue;
     const start = Number.parseFloat(node.getAttribute("data-start") ?? "");
     const duration = readDurationAttribute(node);
     if (!Number.isFinite(start) || start < 0 || duration <= 0) continue;
@@ -126,15 +124,21 @@ export function readTimelineDurationFromDocument(doc: Document | null | undefine
   return furthestClipEndFromDocument(doc);
 }
 
-/**
- * Furthest clip end parsed straight from a composition SOURCE STRING (the HTML
- * being saved). Uses raw `data-duration`, so it is the correct input for syncing
- * the root duration after an edit — reading the store instead would use the
- * runtime-truncated durations and shrink the composition (the feedback loop).
- */
+/** Furthest clip end of a composition SOURCE STRING (the HTML being saved), never the store's. */
 export function furthestClipEndFromSource(source: string): number {
   if (!source) return 0;
-  return furthestClipEndFromDocument(new DOMParser().parseFromString(source, "text/html"));
+  return furthestClipEndFromDocument(parseCompositionSource(source));
+}
+
+/**
+ * A scene file keeps its composition in `<template>` content, which document queries skip; a
+ * registry scene marks its `<html>` too. The scene preview likewise shows the first template.
+ */
+export function parseCompositionSource(source: string): ParentNode {
+  const doc = new DOMParser().parseFromString(source, "text/html");
+  const root = doc.querySelector("[data-composition-id]");
+  if (root && root !== doc.documentElement) return doc;
+  return doc.querySelector("template")?.content ?? doc;
 }
 
 // ---------------------------------------------------------------------------

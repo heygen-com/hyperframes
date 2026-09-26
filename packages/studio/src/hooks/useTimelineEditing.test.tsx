@@ -291,9 +291,11 @@ function stubProjectFetch(files: string | Record<string, string>, gsapBody?: unk
     [
       "/api/projects/p1/gsap-mutations/",
       (url) => {
-        const content = fileContent(pathAfter(url, "/gsap-mutations/")) ?? "";
+        const path = pathAfter(url, "/gsap-mutations/");
+        const content = fileContent(path) ?? "";
+        const body = typeof gsapBody === "function" ? gsapBody(path) : gsapBody;
         return jsonResponse(
-          gsapBody ?? { mutated: false, scriptText: null, before: content, after: content },
+          body ?? { mutated: false, scriptText: null, before: content, after: content },
         );
       },
     ],
@@ -1453,6 +1455,380 @@ describe("useTimelineEditing duration rollback on failed persist", () => {
     hook.unmount();
   });
 
+  describe("never shrinks below the live animation end", () => {
+    // The last clip ends at 5s and so do the animations; editing the clip to end at 4s must keep 5s.
+    const ANIMATED_SOURCE = [
+      `<div data-composition-id="main" data-duration="5">`,
+      `  <div id="clip" data-start="3" data-duration="2" data-track-index="0"></div>`,
+      `</div>`,
+    ].join("\n");
+
+    async function expectLengthKept(
+      edit: (hook: ReturnType<typeof renderTimelineEditingHook>, clip: TimelineElement) => unknown,
+      // Another file's root is not the previewed one, so the live animations do not count there.
+      { sourceFile = "index.html", fileDuration = "5" } = {},
+    ): Promise<void> {
+      const iframe = createRootedIframe(ANIMATED_SOURCE);
+      (iframe.contentWindow as unknown as { __hf: unknown }).__hf = { animationEnd: () => 5 };
+      const clip = timelineElement({
+        id: "clip",
+        track: 0,
+        zIndex: 0,
+        start: 3,
+        duration: 2,
+        sourceFile,
+      });
+      const writeProjectFile = vi.fn<(...args: unknown[]) => Promise<void>>(async () => {});
+      stubProjectFetch(ANIMATED_SOURCE);
+      usePlayerStore.getState().setDuration(5);
+      const hook = renderTimelineEditingHook({
+        timelineElements: [clip],
+        iframe,
+        onZIndexCommit: vi.fn().mockResolvedValue(undefined),
+        projectId: "p1",
+        writeProjectFile,
+        recordEdit: vi.fn(async () => {}),
+        reloadPreview: vi.fn(),
+      });
+
+      await act(async () => {
+        await edit(hook, clip);
+        await flushAsyncWork();
+      });
+
+      expect(rootDurationAttr(iframe)).toBe("5");
+      expect(usePlayerStore.getState().duration).toBe(5);
+      expect(writeProjectFile).toHaveBeenCalledTimes(1);
+      expect(String(writeProjectFile.mock.calls[0]![1])).toContain(
+        `data-composition-id="main" data-duration="${fileDuration}"`,
+      );
+      hook.unmount();
+    }
+
+    it("on move", () => expectLengthKept((hook, clip) => hook.move(clip, { start: 2, track: 0 })));
+
+    it("on resize", () =>
+      expectLengthKept((hook, clip) =>
+        hook.resize(clip, { start: 3, duration: 1, playbackStart: undefined }),
+      ));
+
+    it("on group move", () =>
+      expectLengthKept((hook, clip) => hook.groupMove([{ element: clip, start: 2 }])));
+
+    it("on group resize", () =>
+      expectLengthKept((hook, clip) =>
+        hook.groupResize([{ element: clip, start: 3, duration: 1 }]),
+      ));
+
+    it("but not in another composition's file", async () => {
+      const subFile = { sourceFile: "sub.html", fileDuration: "4" };
+      await expectLengthKept((hook, clip) => hook.move(clip, { start: 2, track: 0 }), subFile);
+      await expectLengthKept(
+        (hook, clip) => hook.groupMove([{ element: clip, start: 2 }]),
+        subFile,
+      );
+    });
+
+    it("on delete", async () => {
+      const removed = ANIMATED_SOURCE.replace(/\n.*id="clip".*/, "").replace(
+        "</div>",
+        `  <div id="head" data-start="0" data-duration="1" data-track-index="0"></div>\n</div>`,
+      );
+      vi.stubGlobal(
+        "fetch",
+        vi.fn(async (input: Parameters<typeof fetch>[0]) =>
+          requestUrl(input).includes("/remove-element/")
+            ? jsonResponse({ changed: true, content: removed })
+            : jsonResponse({ content: ANIMATED_SOURCE }),
+        ),
+      );
+      const iframe = createRootedIframe(ANIMATED_SOURCE);
+      (iframe.contentWindow as unknown as { __hf: unknown }).__hf = { animationEnd: () => 5 };
+      const clip = timelineElement({ id: "clip", track: 0, zIndex: 0, start: 3, duration: 2 });
+      const writeProjectFile = vi.fn<(...args: unknown[]) => Promise<void>>(async () => {});
+      usePlayerStore.getState().setDuration(5);
+      const hook = renderTimelineEditingHook({
+        timelineElements: [clip],
+        iframe,
+        onZIndexCommit: vi.fn().mockResolvedValue(undefined),
+        projectId: "p1",
+        writeProjectFile,
+        recordEdit: vi.fn(async () => {}),
+        reloadPreview: vi.fn(),
+      });
+
+      await act(async () => {
+        await hook.del(clip);
+        await flushAsyncWork();
+      });
+
+      expect(usePlayerStore.getState().duration).toBe(5);
+      expect(String(writeProjectFile.mock.calls[0]![1])).toContain(
+        'data-composition-id="main" data-duration="5"',
+      );
+      hook.unmount();
+    });
+  });
+
+  describe("a length set by hand", () => {
+    const lengthSource = (length: number, start: number) =>
+      [
+        `<div data-composition-id="main" data-duration="${length}">`,
+        `  <div id="clip" data-start="${start}" data-duration="2" data-track-index="0"></div>`,
+        `</div>`,
+      ].join("\n");
+
+    async function expectLength(
+      setup: { length: number; start: number; animationEnd: number },
+      edit: (hook: ReturnType<typeof renderTimelineEditingHook>, clip: TimelineElement) => unknown,
+      expected: string,
+    ): Promise<void> {
+      const source = lengthSource(setup.length, setup.start);
+      const iframe = createRootedIframe(source);
+      (iframe.contentWindow as unknown as { __hf: unknown }).__hf = {
+        animationEnd: () => setup.animationEnd,
+      };
+      const clip = timelineElement({ id: "clip", track: 0, zIndex: 0, start: setup.start });
+      const writeProjectFile = vi.fn<(...args: unknown[]) => Promise<void>>(async () => {});
+      stubProjectFetch(source);
+      usePlayerStore.getState().setDuration(setup.length);
+      const hook = renderTimelineEditingHook({
+        timelineElements: [clip],
+        iframe,
+        onZIndexCommit: vi.fn().mockResolvedValue(undefined),
+        projectId: "p1",
+        writeProjectFile,
+        recordEdit: vi.fn(async () => {}),
+        reloadPreview: vi.fn(),
+      });
+
+      await act(async () => {
+        await edit(hook, clip);
+        await flushAsyncWork();
+      });
+
+      expect(rootDurationAttr(iframe)).toBe(expected);
+      expect(usePlayerStore.getState().duration).toBe(Number(expected));
+      expect(writeProjectFile).toHaveBeenCalledTimes(1);
+      expect(String(writeProjectFile.mock.calls[0]![1])).toContain(
+        `data-composition-id="main" data-duration="${expected}"`,
+      );
+      hook.unmount();
+    }
+
+    const handSet = { length: 8, start: 3, animationEnd: 5 };
+
+    it("is kept on move", () =>
+      expectLength(handSet, (hook, clip) => hook.move(clip, { start: 2, track: 0 }), "8"));
+
+    it("is kept on resize", () =>
+      expectLength(
+        handSet,
+        (hook, clip) => hook.resize(clip, { start: 3, duration: 1, playbackStart: undefined }),
+        "8",
+      ));
+
+    it("is kept on group move", () =>
+      expectLength(handSet, (hook, clip) => hook.groupMove([{ element: clip, start: 2 }]), "8"));
+
+    it("is kept on group resize", () =>
+      expectLength(
+        handSet,
+        (hook, clip) => hook.groupResize([{ element: clip, start: 3, duration: 1 }]),
+        "8",
+      ));
+
+    it("is not grown by a later animation", () =>
+      expectLength(
+        { length: 3, start: 1, animationEnd: 6 },
+        (hook, clip) => hook.move(clip, { start: 0.5, track: 0 }),
+        "3",
+      ));
+
+    it("grows to a clip dragged past it, not to the animation end", async () => {
+      const past = { length: 8, start: 3, animationEnd: 12 };
+      await expectLength(past, (hook, clip) => hook.move(clip, { start: 7, track: 0 }), "9");
+      await expectLength(past, (hook, clip) => hook.groupMove([{ element: clip, start: 7 }]), "9");
+    });
+
+    it("while a derived length still shrinks with its content", () =>
+      expectLength(
+        { length: 5, start: 3, animationEnd: 0 },
+        (hook, clip) => hook.move(clip, { start: 2, track: 0 }),
+        "4",
+      ));
+
+    // The runtime reports a `repeat: -1` tween's first cycle; the length holds at its end.
+    it("while a derived length holds at a repeating animation's first cycle", () =>
+      expectLength(
+        { length: 6, start: 3, animationEnd: 6 },
+        (hook, clip) => hook.move(clip, { start: 2, track: 0 }),
+        "6",
+      ));
+
+    it("is kept on delete", async () => {
+      const source = lengthSource(8, 3);
+      const removed = source.replace(
+        /\n.*id="clip".*/,
+        `\n  <div id="head" data-start="0" data-duration="1" data-track-index="0"></div>`,
+      );
+      vi.stubGlobal(
+        "fetch",
+        vi.fn(async (input: Parameters<typeof fetch>[0]) =>
+          requestUrl(input).includes("/remove-element/")
+            ? jsonResponse({ changed: true, content: removed })
+            : jsonResponse({ content: source }),
+        ),
+      );
+      const iframe = createRootedIframe(source);
+      const clip = timelineElement({ id: "clip", track: 0, zIndex: 0, start: 3 });
+      const writeProjectFile = vi.fn<(...args: unknown[]) => Promise<void>>(async () => {});
+      usePlayerStore.getState().setDuration(8);
+      const hook = renderTimelineEditingHook({
+        timelineElements: [clip],
+        iframe,
+        onZIndexCommit: vi.fn().mockResolvedValue(undefined),
+        projectId: "p1",
+        writeProjectFile,
+        recordEdit: vi.fn(async () => {}),
+        reloadPreview: vi.fn(),
+      });
+
+      await act(async () => {
+        await hook.del(clip);
+        await flushAsyncWork();
+      });
+
+      expect(usePlayerStore.getState().duration).toBe(8);
+      expect(String(writeProjectFile.mock.calls[0]![1])).toContain(
+        'data-composition-id="main" data-duration="8"',
+      );
+      hook.unmount();
+    });
+  });
+
+  describe("a length decided from the file alone", () => {
+    type Clip = { id: string; start: number; duration: number };
+    type Hook = ReturnType<typeof renderTimelineEditingHook>;
+    const rootSource = (root: string, clips: Clip[]) =>
+      [
+        `<div data-composition-id="main" ${root}>`,
+        ...clips.map(
+          (clip) =>
+            `  <div id="${clip.id}" data-start="${clip.start}" data-duration="${clip.duration}" data-track-index="0"></div>`,
+        ),
+        `</div>`,
+      ].join("\n");
+    const moveTo =
+      (start: number) =>
+      (hook: Hook, [clip]: TimelineElement[]) =>
+        hook.move(clip!, { start, track: 0 });
+
+    async function editLength(
+      source: string,
+      clips: Clip[],
+      edit: (hook: Hook, elements: TimelineElement[]) => unknown,
+    ) {
+      const iframe = createRootedIframe(source);
+      const elements = clips.map((clip) => timelineElement({ ...clip, track: 0, zIndex: 0 }));
+      const writeProjectFile = vi.fn<(...args: unknown[]) => Promise<void>>(async () => {});
+      stubProjectFetch(source);
+      usePlayerStore.getState().setDuration(Number(/data-duration="([^"]+)"/.exec(source)![1]));
+      const hook = renderTimelineEditingHook({
+        timelineElements: elements,
+        iframe,
+        onZIndexCommit: vi.fn().mockResolvedValue(undefined),
+        projectId: "p1",
+        writeProjectFile,
+        recordEdit: vi.fn(async () => {}),
+        reloadPreview: vi.fn(),
+      });
+      await act(async () => {
+        await edit(hook, elements);
+        await flushAsyncWork();
+      });
+      hook.unmount();
+      return {
+        file: String(writeProjectFile.mock.calls[0]![1]),
+        live: iframe.contentDocument?.querySelector("[data-composition-id]"),
+        duration: usePlayerStore.getState().duration,
+      };
+    }
+
+    it("follows its content on every edit, in the file and the live root", async () => {
+      const clips = [{ id: "clip", start: 3, duration: 2 }];
+      const source = rootSource(`data-duration="5"`, clips);
+      const edits: Array<(hook: Hook, elements: TimelineElement[]) => unknown> = [
+        moveTo(2),
+        (hook, [clip]) => hook.resize(clip!, { start: 3, duration: 1, playbackStart: undefined }),
+        (hook, [clip]) => hook.groupMove([{ element: clip!, start: 2 }]),
+        (hook, [clip]) => hook.groupResize([{ element: clip!, start: 3, duration: 1 }]),
+      ];
+      for (const edit of edits) {
+        const { file, live } = await editLength(source, clips, edit);
+        expect(file).toContain(`data-duration="4">`);
+        expect(live?.getAttribute("data-duration")).toBe("4");
+      }
+    });
+
+    it("is derived only when the length equals the content end before the edit", async () => {
+      const clips = [{ id: "clip", start: 3, duration: 2 }];
+      const derived = await editLength(rootSource(`data-duration="5"`, clips), clips, moveTo(2));
+      expect(derived.file).toContain(`data-duration="4"`);
+      expect(derived.duration).toBe(4);
+      const handSet = await editLength(rootSource(`data-duration="8"`, clips), clips, moveTo(2));
+      expect(handSet.file).toContain(`data-duration="8">`);
+      expect(handSet.duration).toBe(8);
+    });
+
+    it("is decided once per file in a group move, whatever the order", async () => {
+      const clips = [
+        { id: "a", start: 3, duration: 2 },
+        { id: "b", start: 7, duration: 2 },
+      ];
+      const source = rootSource(`data-duration="8"`, clips);
+      // Both back by 2, and a swap that leaves the furthest end where it was.
+      for (const starts of [
+        [1, 5],
+        [7, 5],
+      ]) {
+        for (const order of [
+          [0, 1],
+          [1, 0],
+        ]) {
+          const { file, duration } = await editLength(source, clips, (hook, elements) =>
+            hook.groupMove(order.map((i) => ({ element: elements[i]!, start: starts[i]! }))),
+          );
+          expect(file).toContain(`data-duration="8">`);
+          expect(duration).toBe(8);
+        }
+      }
+    });
+
+    it("does not grow a hand-set length for a clip that already ran past it", async () => {
+      const clips = [
+        { id: "a", start: 3, duration: 2 },
+        { id: "b", start: 7, duration: 2 },
+      ];
+      const { file, live, duration } = await editLength(
+        rootSource(`data-duration="8"`, clips),
+        clips,
+        moveTo(2),
+      );
+      expect(file).toContain(`data-duration="8">`);
+      expect(live?.getAttribute("data-duration")).toBe("8");
+      expect(duration).toBe(8);
+    });
+
+    it("grows a hand-set length to a clip newly dragged past it", async () => {
+      const clip = { id: "clip", start: 3, duration: 2 };
+      const grown = await editLength(rootSource(`data-duration="8"`, [clip]), [clip], moveTo(7));
+      expect(grown.file).toContain(`data-duration="9">`);
+      expect(grown.live?.getAttribute("data-duration")).toBe("9");
+      expect(grown.duration).toBe(9);
+    });
+  });
+
   it("keeps the grown duration when the persist succeeds", async () => {
     const { iframe, clip, hook } = setupFailedPersist();
     // Same harness, but with a write that succeeds this time.
@@ -1478,6 +1854,315 @@ describe("useTimelineEditing duration rollback on failed persist", () => {
 
     succeeding.unmount();
   });
+});
+
+describe("useTimelineEditing re-decides the length once the preview converged", () => {
+  type Hook = ReturnType<typeof renderTimelineEditingHook>;
+  // Film 5: `a` (3-5) owns the last tween. Once it moves to 1-3, a tween on `h` ending at 4 is the last.
+  const clips = [
+    `  <div id="h" data-hf-id="hf-h" data-start="0" data-duration="1" data-track-index="0"></div>`,
+    `  <div id="a" data-hf-id="hf-a" data-start="3" data-duration="2" data-track-index="1"></div>`,
+  ];
+  const source = (root: string, extra = "") =>
+    [
+      `<div data-hf-id="hf-stage" data-hf-root data-composition-id="main" ${root}>`,
+      ...clips,
+      extra,
+      `</div>`,
+    ].join("\n");
+  // The core quickstart form: the root is a `<meta>`, so no clip sits inside it.
+  const metaRootSource = (root: string, extra = "") =>
+    [
+      `<meta data-composition-id="main" ${root}>`,
+      `<div id="stage" data-hf-id="hf-stage" data-hf-root>`,
+      ...clips,
+      extra,
+      `</div>`,
+    ].join("\n");
+  const inTemplate = (html: string) => `<template>\n${html}\n</template>`;
+  // The form `hyperframes add` installs: the scene preview unwraps the template.
+  const registryComponent = (html: string) =>
+    `<!doctype html><html lang="en" data-composition-id="main" data-composition-duration="5"><body>${inTemplate(html)}</body></html>`;
+  const edits: Record<string, (hook: Hook, a: TimelineElement) => Promise<unknown>> = {
+    move: (hook, a) => hook.move(a, { start: 1, track: a.track }),
+    resize: (hook, a) => hook.resize(a, { start: 1, duration: 2, playbackStart: undefined }),
+    "group move": (hook, a) => hook.groupMove([{ element: a, start: 1 }]),
+    "group resize": (hook, a) => hook.groupResize([{ element: a, start: 1, duration: 2 }]),
+  };
+  // An untimed `bg`, as authored and as the preview runtime stamps it with the film's length.
+  const untimed = {
+    file: `  <div id="bg"></div>`,
+    live: (length: number) =>
+      `  <div id="bg" data-start="0" data-duration="${length}" data-hf-autostamped="1"></div>`,
+  };
+
+  async function editConverging(
+    root: string,
+    edit: keyof typeof edits | ((hook: Hook, a: TimelineElement) => Promise<unknown>),
+    sdk: boolean,
+    {
+      file = "",
+      live = "",
+      markup = source,
+      wrap = (html: string) => html,
+      startEnd = 5,
+      convergedEnds = [4],
+      onConverge = (_files: Record<string, string>) => {},
+      script = "",
+    } = {},
+  ) {
+    const files: Record<string, string> = { "index.html": wrap(markup(root, file)) };
+    let animationEnd = startEnd;
+    let rebinds = 0;
+    const iframe = document.createElement("iframe");
+    document.body.append(iframe);
+    iframe.contentDocument!.body.innerHTML =
+      markup(root, live) + (script ? `<script>${script}</script>` : "");
+    // The rebind is the convergence point: the runtime now sees the moved tweens.
+    Object.assign(iframe.contentWindow!, {
+      __hf: { animationEnd: () => animationEnd },
+      __hfForceTimelineRebind: () => {
+        animationEnd = convergedEnds[Math.min(rebinds++, convergedEnds.length - 1)]!;
+        onConverge(files);
+      },
+    });
+    // With a script, the GSAP rewrite soft-reloads it; the MotionPath plugin never finishes loading.
+    if (script) {
+      Object.assign(iframe.contentWindow!, {
+        gsap: { set: () => {} },
+        __timelines: {},
+        __hfMotionPathPluginLoading: true,
+        setInterval: vi.fn(),
+      });
+    }
+    const writeProjectFile = vi.fn(async (path: string, content: string) => {
+      files[path] = content;
+    });
+    const recordEdit = vi.fn<TimelineRecordEdit>(async () => {});
+    const reloadPreview = vi.fn();
+    const rewriteScript = (path: string) => {
+      const before = files[path]!;
+      files[path] = `${before}\n`;
+      return { mutated: true, scriptText: script, before, after: files[path] };
+    };
+    stubProjectFetch(files, script ? rewriteScript : undefined);
+    usePlayerStore.getState().setDuration(Number(/data-duration="([^"]+)"/.exec(root)?.[1] ?? 5));
+    const a = timelineElement({ id: "a", track: 1, zIndex: 0, start: 3, duration: 2 });
+    const hook = renderTimelineEditingHook({
+      timelineElements: [timelineElement({ id: "h", track: 0, zIndex: 0, duration: 1 }), a],
+      iframe,
+      onZIndexCommit: vi.fn().mockResolvedValue(undefined),
+      projectId: "p1",
+      writeProjectFile,
+      recordEdit,
+      reloadPreview,
+      sdkSession: sdk ? await openComposition(files["index.html"]!) : null,
+      publishSdkSession: vi.fn<TimelinePublishSdkSession>(() => "published"),
+    });
+    await act(async () => {
+      await (typeof edit === "function" ? edit : edits[edit]!)(hook, a);
+      await flushAsyncWork();
+    });
+    hook.unmount();
+    return {
+      file: /data-composition-id="main" data-duration="([^"]+)"/.exec(files["index.html"]!)?.[1],
+      live: iframe.contentDocument
+        ?.querySelector("[data-composition-id]")
+        ?.getAttribute("data-duration"),
+      duration: usePlayerStore.getState().duration,
+      recordEdit,
+      writeProjectFile,
+      reloadPreview,
+    };
+  }
+
+  for (const sdk of [false, true]) {
+    const path = sdk ? "SDK" : "fallback";
+    for (const edit of Object.keys(edits)) {
+      it(`${edit} on the ${path} path follows the moved animation end`, async () => {
+        const result = await editConverging(`data-duration="5"`, edit, sdk);
+        expect(result.reloadPreview).not.toHaveBeenCalled();
+        expect(result.file).toBe("4");
+        expect(result.live).toBe("4");
+        expect(result.duration).toBe(4);
+      });
+    }
+
+    it(`writes the ${path} path's length in the gesture's undo step`, async () => {
+      const { recordEdit } = await editConverging(`data-duration="5"`, "move", sdk);
+      const claims = recordEdit.mock.calls.map(([claim]) => claim);
+      expect(claims.map((claim) => claim.coalesceKey)).toEqual([
+        "timeline-move:hf-a",
+        "timeline-move:hf-a",
+      ]);
+      expect(claims[1]!.files["index.html"]!.before).toBe(claims[0]!.files["index.html"]!.after);
+      expect(claims[1]!.files["index.html"]!.after).toContain(`data-duration="4"`);
+    });
+
+    it(`leaves a hand-set length alone on the ${path} path, whatever the runtime stamped`, async () => {
+      const { file, live, duration } = await editConverging(`data-duration="8"`, "move", sdk, {
+        file: untimed.file,
+        live: untimed.live(8),
+      });
+      expect(file).toBe("8");
+      expect(live).toBe("8");
+      expect(duration).toBe(8);
+    });
+
+    it(`never cuts on an animation end that turns unreadable on the ${path} path`, async () => {
+      const result = await editConverging(`data-duration="5"`, "move", sdk, { convergedEnds: [0] });
+      expect([result.file, result.live, result.duration]).toEqual(["5", "5", 5]);
+    });
+
+    // The master preview inlines a scene; its inner clip keeps the scene's own clock.
+    const scene = (host: number) => {
+      const open = `  <div id="s" data-hf-id="hf-s" data-composition-id="scene" data-start="0" data-duration="${host}" data-track-index="2">`;
+      return {
+        file: `${open}</div>`,
+        live: `${open}<div data-start="0" data-duration="8"></div></div>`,
+      };
+    };
+
+    it(`keeps a hand-set length a trimmed scene's inner clip matches on the ${path} path`, async () => {
+      const result = await editConverging(`data-duration="8"`, "move", sdk, scene(5));
+      expect([result.file, result.live, result.duration]).toEqual(["8", "8", 8]);
+    });
+
+    it(`follows content past a trimmed scene on the ${path} path`, async () => {
+      const result = await editConverging(`data-duration="5"`, "move", sdk, scene(4));
+      expect([result.file, result.live, result.duration]).toEqual(["4", "4", 4]);
+    });
+
+    it(`shows the length a scene dragged back out gives the file on the ${path} path`, async () => {
+      const host = timelineElement({ id: "s", track: 2, zIndex: 0, start: 0, duration: 5 });
+      const dragOut = (hook: Hook) =>
+        hook.resize(host, { start: 0, duration: 8, playbackStart: undefined });
+      const result = await editConverging(`data-duration="5"`, dragOut, sdk, scene(5));
+      expect([result.file, result.live, result.duration]).toEqual(["8", "8", 8]);
+    });
+
+    // `st` outlasts every animation, so it holds the length.
+    const still = `  <div id="st" data-start="0" data-duration="5" data-track-index="2"></div>`;
+    const wraps = {
+      plain: undefined,
+      template: inTemplate,
+      "registry component": registryComponent,
+    };
+    for (const [form, wrap] of Object.entries(wraps)) {
+      it(`holds at a clip past the animations in a ${form} file on the ${path} path`, async () => {
+        const result = await editConverging(`data-duration="5"`, "move", sdk, {
+          file: still,
+          live: still,
+          wrap,
+        });
+        expect([result.file, result.live, result.duration]).toEqual(["5", "5", 5]);
+      });
+    }
+
+    it(`keeps a template scene with no length at its clips on the ${path} path`, async () => {
+      const result = await editConverging("", "move", sdk, {
+        file: still,
+        live: still,
+        wrap: inTemplate,
+      });
+      expect([result.file, result.live, result.duration]).toEqual([undefined, "5", 5]);
+    });
+
+    it(`counts the clips of a meta root on the ${path} path`, async () => {
+      const last = `  <div id="st" data-start="0" data-duration="6" data-track-index="2"></div>`;
+      const result = await editConverging("", "move", sdk, {
+        file: last,
+        live: last,
+        markup: metaRootSource,
+      });
+      expect([result.live, result.duration]).toEqual(["6", 6]);
+    });
+
+    const grownScenes = {
+      "template scene behind a comment naming the root": (html: string) =>
+        `<!--\n  REQUIRED: data-composition-id identifies this composition.\n-->\n${inTemplate(html)}`,
+      "registry component": registryComponent,
+    };
+    for (const [form, wrap] of Object.entries(grownScenes)) {
+      it(`grows a hand-set ${form} to a clip dragged past it on the ${path} path`, async () => {
+        const result = await editConverging(
+          `data-duration="8"`,
+          (hook, a) => hook.resize(a, { start: 4, duration: 6, playbackStart: undefined }),
+          sdk,
+          { wrap },
+        );
+        expect([result.file, result.live, result.duration]).toEqual(["10", "10", 10]);
+      });
+    }
+
+    it(`keeps a length changed on disk before the ${path} path converged`, async () => {
+      const result = await editConverging(`data-duration="5"`, "move", sdk, {
+        onConverge: (files) => {
+          files["index.html"] = files["index.html"]!.replace(
+            `data-duration="5"`,
+            `data-duration="7"`,
+          );
+        },
+      });
+      expect([result.file, result.live, result.duration]).toEqual(["7", "7", 7]);
+    });
+
+    // The first move's readout puts a length on the live root; a file without one still has none.
+    const moveTwice = (to: number) => async (hook: Hook, a: TimelineElement) => {
+      await hook.move(a, { start: 1, track: a.track });
+      await hook.move({ ...a, start: 1 }, { start: to, track: a.track });
+    };
+    const roots = {
+      "plain root with no length": { root: "", options: {} },
+      "meta root with no length": { root: "", options: { markup: metaRootSource } },
+      "template scene with no length": { root: "", options: { wrap: inTemplate } },
+      "root with a length": { root: `data-duration="5"`, options: {} },
+    };
+    for (const [form, { root, options }] of Object.entries(roots)) {
+      for (const [to, end] of [
+        [0, 2.5],
+        [3, 5.5],
+      ] as const) {
+        it(`re-decides a second move to ${end} on a ${form} on the ${path} path`, async () => {
+          const result = await editConverging(root, moveTwice(to), sdk, {
+            ...options,
+            convergedEnds: [4, end],
+          });
+          expect([result.file, result.live, result.duration]).toEqual([
+            root ? String(end) : undefined,
+            String(end),
+            end,
+          ]);
+        });
+      }
+    }
+  }
+
+  it("re-decides after its own write rounded the length to hundredths", async () => {
+    // 1.1 + 2.2 is 3.3000000000000003; the file gets 3.3.
+    const result = await editConverging(
+      `data-duration="5"`,
+      (hook, a) => hook.resize(a, { start: 1.1, duration: 2.2, playbackStart: undefined }),
+      false,
+      { startEnd: 3 },
+    );
+    expect([result.file, result.live, result.duration]).toEqual(["4", "4", 4]);
+  });
+
+  // Derived 5 with animations to 3: the move shows 3 at once, and the SDK path writes no length.
+  for (const [outcome, script] of [
+    ["waits for a plugin", '/* __timelines["main"] motionPath: */'],
+    ["cannot verify", '/* __timelines["main"] */'],
+  ] as const) {
+    it(`shows the file's length while the soft reload ${outcome}`, async () => {
+      const result = await editConverging(`data-duration="5"`, "move", true, {
+        startEnd: 3,
+        script,
+      });
+      expect(result.reloadPreview).not.toHaveBeenCalled();
+      expect([result.file, result.live, result.duration]).toEqual(["5", "5", 5]);
+    });
+  }
 });
 
 // Blocked means no fetch write, no recordEdit, and the host's reason

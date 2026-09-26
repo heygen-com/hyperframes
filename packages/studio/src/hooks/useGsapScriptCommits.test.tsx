@@ -324,6 +324,21 @@ describe("applyPreviewSync", () => {
     );
   });
 
+  it('no instantPatch + softReload "deferred": a success, like "applied"', () => {
+    applySoftReload.mockReturnValue("deferred");
+    const reloadPreview = vi.fn();
+
+    applyPreviewSync(
+      FAKE_IFRAME,
+      result({ scriptText: "SCRIPT" }),
+      { label: "x", softReload: true },
+      reloadPreview,
+    );
+
+    expect(reloadPreview).not.toHaveBeenCalled();
+    expect(trackStudioEvent).not.toHaveBeenCalled();
+  });
+
   it('no instantPatch + softReload "cannot-soft-reload": escalates to full reload', () => {
     applySoftReload.mockReturnValue("cannot-soft-reload");
     const reloadPreview = vi.fn();

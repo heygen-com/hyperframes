@@ -9,9 +9,10 @@ import { saveProjectFilesWithHistory, type RecordEditInput } from "../utils/stud
 import { studioWriteHeaders } from "../utils/studioFileVersion";
 import { getTimelineElementLabel } from "../utils/studioHelpers";
 import { buildPatchTarget, removeIframeTimelineElements } from "./timelineEditingHelpers";
-import { captureDurationRollback, readFileContent } from "./timelineTimingSync";
-import { setCompositionDurationToContent } from "../utils/timelineAssetDrop";
-import { furthestClipEndFromSource } from "../player/lib/timelineElementHelpers";
+import { readFileContent } from "./timelineTimingSync";
+import { captureDurationRollback } from "./timelineLengthSync";
+import { animationEndFor, isPreviewedFile } from "./timelineEditingGsap";
+import { rootLengthAfterEdit, writeRootLength } from "../utils/timelineAssetDrop";
 import {
   resolveMainTrackDeleteRippleShifts,
   resolveShiftedElements,
@@ -99,6 +100,8 @@ export function useTimelineDeleteOps({
       const sameFile = selection.filter(
         (candidate) => (candidate.sourceFile || activeCompPath || "index.html") === targetPath,
       );
+      const isRootFile = isPreviewedFile(targetPath, activeCompPath);
+      const animationEnd = animationEndFor(previewIframeRef.current, targetPath, activeCompPath);
       try {
         const originalContent = await readFileContent(pid, targetPath);
 
@@ -134,18 +137,13 @@ export function useTimelineDeleteOps({
           };
           if (typeof removeData.content === "string") removedContent = removeData.content;
         }
-        // Content-driven duration: shrink the composition to the furthest
-        // remaining clip end, read from the post-removal SOURCE (raw
-        // data-duration), so deleting the last/longest clip removes trailing
-        // empty space. Measured from the source, not the store, whose
-        // durations are runtime-truncated.
-        const deleteContentEnd = furthestClipEndFromSource(removedContent);
-        const patchedContent = setCompositionDurationToContent(removedContent, deleteContentEnd);
+        const nextLength = rootLengthAfterEdit(originalContent, removedContent, animationEnd);
+        const patchedContent = writeRootLength(removedContent, nextLength);
         // Optimistically reflect the shrunk length in the readout/seek bar,
         // rolling it back if the persist below fails (see captureDurationRollback).
         const rollbackDuration = captureDurationRollback(previewIframeRef.current);
-        if (deleteContentEnd > 0 && targetPath === (activeCompPath || "index.html")) {
-          usePlayerStore.getState().setDuration(deleteContentEnd);
+        if (nextLength != null && nextLength > 0 && isRootFile) {
+          usePlayerStore.getState().setDuration(nextLength);
         }
 
         // Shared with the ripple move below so a folded ripple is one undo

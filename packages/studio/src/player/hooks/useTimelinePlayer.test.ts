@@ -107,6 +107,18 @@ describe("readTimelineDurationFromDocument", () => {
     expect(readTimelineDurationFromDocument(doc)).toBe(5.5);
   });
 
+  it("counts a nested scene by its host, not by its inner clips", () => {
+    const doc = createDocument(`
+      <div data-composition-id="main">
+        <div data-composition-id="scene" data-start="1" data-duration="4">
+          <section data-start="0" data-duration="8"></section>
+        </div>
+      </div>
+    `);
+
+    expect(readTimelineDurationFromDocument(doc)).toBe(5);
+  });
+
   it("reads data-hf-authored-duration when data-duration is stripped", () => {
     const doc = createDocument(`
       <div data-composition-id="main">

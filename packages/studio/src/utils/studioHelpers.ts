@@ -324,9 +324,6 @@ export function clampNumber(value: number, min: number, max: number): number {
   return Math.min(Math.max(value, min), max);
 }
 
-// fallow-ignore-next-line unused-export
-export { COMPOSITION_ROOT_OPEN_TAG_RE } from "./compositionPatterns";
-
 export function collectHtmlIds(source: string): string[] {
   return Array.from(source.matchAll(/\bid="([^"]+)"/g), (match) => match[1] ?? "");
 }

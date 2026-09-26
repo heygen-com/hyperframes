@@ -68,5 +68,6 @@ export type IframeWindow = Window & {
   __hf?: {
     leasePausedMedia?: (el: HTMLMediaElement) => void;
     releasePausedMedia?: (el: HTMLMediaElement) => void;
+    animationEnd?: () => number | null;
   };
 };
