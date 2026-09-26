@@ -234,6 +234,7 @@ export function evictMediaSyncState(el: HTMLMediaElement): void {
   strictDriftSamples.delete(el);
   seekLoadRetried.delete(el);
   lastRuntimeAppliedVolume.delete(el);
+  videoSteering.delete(el);
 }
 
 /** Test-only seam: whether any per-source sync state is still tracked for `el`. */
@@ -259,13 +260,19 @@ export const MEDIA_SYNC_TOLERANCE_SECONDS = 0.04;
 const VIDEO_STEER = 0.03;
 const VIDEO_STEER_RELEASE_SECONDS = 0.01;
 
+/** Direction (+1 fast, -1 slow) a video is being steered in; absent when it plays at its authored rate. */
+const videoSteering = new WeakMap<HTMLMediaElement, number>();
+
 /** Rate for a playing video `offset` seconds behind (+) or ahead (-) of the playhead. */
-function steeredVideoRate(offset: number, currentRate: number, baseRate: number): number {
+function steeredVideoRate(el: HTMLMediaElement, offset: number, baseRate: number): number {
   const direction = Math.sign(offset);
-  const steered = baseRate * (1 + direction * VIDEO_STEER);
-  if (Math.abs(offset) > MEDIA_SYNC_TOLERANCE_SECONDS) return steered;
-  const stillSteering = Math.abs(currentRate - steered) < 1e-9;
-  return stillSteering && Math.abs(offset) > VIDEO_STEER_RELEASE_SECONDS ? steered : baseRate;
+  const steering = videoSteering.get(el);
+  if (Math.abs(offset) > MEDIA_SYNC_TOLERANCE_SECONDS) videoSteering.set(el, direction);
+  else if (steering !== direction || Math.abs(offset) <= VIDEO_STEER_RELEASE_SECONDS) {
+    videoSteering.delete(el);
+    return baseRate;
+  }
+  return baseRate * (1 + direction * VIDEO_STEER);
 }
 
 // fallow-ignore-next-line complexity
@@ -520,8 +527,11 @@ export function syncRuntimeMedia(params: {
       }
       const forceSync = !isPlayingVideo && params.forceSync && drift > 0.02;
       try {
-        const rate = isPlayingVideo ? steeredVideoRate(offset, el.playbackRate, baseRate) : baseRate;
-        if (el.playbackRate !== rate) el.playbackRate = rate;
+        // A hard sync lands the video on the playhead, so its pre-seek offset says nothing.
+        if (!isPlayingVideo || hardSync) videoSteering.delete(el);
+        const rate = isPlayingVideo && !hardSync ? steeredVideoRate(el, offset, baseRate) : baseRate;
+        // Some engines read a rate back at lower precision; an equal-enough rate is not rewritten.
+        if (Math.abs(el.playbackRate - rate) > 1e-6) el.playbackRate = rate;
       } catch (err) {
         // ignore unsupported playbackRate
         swallow("runtime.media.site1", err);

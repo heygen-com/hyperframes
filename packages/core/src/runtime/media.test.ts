@@ -1774,11 +1774,33 @@ describe("syncRuntimeMedia", () => {
     });
 
     it("keeps steering until the video is nearly back, then returns to the authored rate", () => {
-      const clip = playingVideoAt(4.98, 1.03);
+      const clip = playingVideoAt(4.9);
+      tick(clip, 5);
+      tick(clip, 5);
+      clip.el.currentTime = 4.98;
       tick(clip, 5);
       expect(clip.el.playbackRate).toBeCloseTo(1.03, 9);
       clip.el.currentTime = 4.995;
       tick(clip, 5);
+      expect(clip.el.playbackRate).toBe(1);
+    });
+
+    it("keeps steering through a speed ramp, whose base rate moves every tick", () => {
+      const clip = playingVideoAt(4.9);
+      tick(clip, 5, 1);
+      tick(clip, 5, 1);
+      clip.el.currentTime = 4.98;
+      tick(clip, 5, 1.2);
+      expect(clip.el.playbackRate).toBeCloseTo(1.2 * 1.03, 9);
+    });
+
+    it("plays a hard-synced video at its authored rate on the tick it is seeked", () => {
+      const clip = playingVideoAt(4.9);
+      tick(clip, 5);
+      tick(clip, 5);
+      expect(clip.el.playbackRate).toBeCloseTo(1.03, 9);
+      tick(clip, 9); // a jump past the hard-sync threshold
+      expect(clip.el.currentTime).toBe(9);
       expect(clip.el.playbackRate).toBe(1);
     });
 
