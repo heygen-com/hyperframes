@@ -1474,13 +1474,13 @@ describe("HyperframesPlayer loop end-state handling", () => {
         data: { source: "hf-preview", type: "timeline", durationSeconds: 0.2, durationInFrames: 6 },
       }),
     );
-    expect(player.duration).toBe(0.2);
+    expect(player._duration).toBe(0.2);
     player._paused = false;
 
     postState(6, false, 0.2, true);
 
     expect(ended).toHaveBeenCalledTimes(1);
-    expect(player.currentTime).toBe(0.2);
+    expect(player._currentTime).toBe(0.2);
   });
 
   it("loops a film whose length falls between two frames", () => {
