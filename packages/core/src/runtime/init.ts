@@ -3133,6 +3133,7 @@ export function initSandboxRuntimeModular(): void {
     }
     return urls;
   };
+  let sceneSwapGeneration = 0;
   // A video or audio the edit left as written keeps playing: the old element takes its copy's place.
   const keepUnchangedMedia = (oldHost: Element, host: Element) => {
     const byShape = new Map<string, Element[]>();
@@ -3150,6 +3151,7 @@ export function initSandboxRuntimeModular(): void {
   // Swap edited scenes in place from a rebuilt preview document. Refuses before changing anything unless
   // the documents differ only inside existing scenes; a later failure is left to the caller's reload.
   const swapScenes = async (html: string): Promise<void> => {
+    const generation = sceneSwapGeneration;
     const next = new DOMParser().parseFromString(html, "text/html");
     const liveParts = readSceneParts(document);
     const nextParts = readSceneParts(next);
@@ -3198,9 +3200,10 @@ export function initSandboxRuntimeModular(): void {
       ? await fetchCaptionOverrides()
       : [];
     if (state.tornDown) throw new Error("the preview was torn down during the swap");
-    if (JSON.stringify(readSceneParts(document)) !== JSON.stringify(liveParts)) {
+    if (generation !== sceneSwapGeneration) {
       throw new Error("the preview changed while this swap waited");
     }
+    sceneSwapGeneration += 1;
     const timelines = (window.__timelines ??= {}) as Record<
       string,
       RuntimeTimelineLike | undefined

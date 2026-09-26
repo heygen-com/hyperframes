@@ -587,6 +587,15 @@ describe("__hfSwapScenes", () => {
     expect(sceneHost("b").textContent).toBe("B two");
   });
 
+  it("rejects a waiting swap after other swaps changed its scene and changed it back", async () => {
+    const { swap, answer } = await bootWithPendingCaptions();
+    const A3: Scene = { ...A1, body: "<p>A three</p>", label: "n1", hash: "ha3" };
+    await window.__hfSwapScenes!(preview([A3, B]).html);
+    await window.__hfSwapScenes!(preview([A1, B]).html);
+    answer(new Response("null", { status: 404 }));
+    await expect(swap).rejects.toThrow("changed");
+  });
+
   it("offers no swap on a page served without a scene manifest", async () => {
     const { root } = trackingRoot();
     boot([A1, B], root);
