@@ -213,7 +213,7 @@ async function removeEmptyFolders(dir: string): Promise<void> {
   await rmdir(dir);
 }
 
-/** The first file or link under folder `dir` (project path `at`) that `deleted` does not hold; links are not followed. */
+/** The first file or link under folder `dir` (project path `at`) not in `deleted`; links are not followed. */
 function fileLeftIn(dir: string, at: string, deleted: ReadonlySet<string>): string | undefined {
   for (const entry of readdirSync(dir, { withFileTypes: true })) {
     const path = `${at}/${entry.name}`;
@@ -227,7 +227,7 @@ function fileLeftIn(dir: string, at: string, deleted: ReadonlySet<string>): stri
   return undefined;
 }
 
-/** Whether the project's disk treats `A` and `a` as one name: its own history-id file answers to its name upper-cased. */
+/** Whether the project's disk treats `A` and `a` as one name: its history-id file answers when upper-cased. */
 function ignoresCase(dir: string): boolean {
   const self = statSync(join(dir, ID_PATH), { throwIfNoEntry: false });
   const other = statSync(join(dir, ID_PATH.toUpperCase()), { throwIfNoEntry: false });
@@ -700,7 +700,7 @@ class Engine {
     return undefined;
   }
 
-  /** What the writes would have to delete to put `path` in place: a file or link at or above it, or a file in a folder at it. */
+  /** What a write of `path` would have to delete: a file or link at or above it, or a file in a folder at it. */
   inTheWay(path: string, deleted: ReadonlySet<string>): string | undefined {
     const standing = this.standingAt(path);
     if (!standing) return undefined;
