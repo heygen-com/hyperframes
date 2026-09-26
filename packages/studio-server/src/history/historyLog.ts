@@ -155,28 +155,33 @@ export function stepTarget(
 ): HistoryEntry | undefined {
   const undone = undoneIds(entries);
   const byId = new Map(entries.map((entry) => [entry.id, entry]));
+  const owns = ownerOf(entries, byId, mine);
+  const newestFirst = [...entries].reverse();
+  if (direction === "back")
+    return newestFirst.find((entry) => !entry.undoes && !undone.has(entry.id) && owns(entry));
+  for (const entry of newestFirst) {
+    if (!entry.undoes) {
+      if (owns(entry)) return undefined;
+      continue;
+    }
+    const target = byId.get(entry.undoes);
+    if (mine(entry) && !undone.has(entry.id) && target && !target.undoes) return entry;
+  }
+  return undefined;
+}
+
+/** A change is yours to step over if you made it, or your redo is what brought it back. */
+function ownerOf(
+  entries: readonly HistoryEntry[],
+  byId: ReadonlyMap<string, HistoryEntry>,
+  mine: (entry: HistoryEntry) => boolean,
+): (entry: HistoryEntry) => boolean {
   const redoneBy = new Map<string, HistoryEntry>();
   for (const entry of entries) {
     const target = entry.undoes ? byId.get(entry.undoes) : undefined;
     if (target?.undoes) redoneBy.set(target.undoes, entry);
   }
-  // A change is yours to step over if you made it, or your redo is what brought it back.
-  const owns = (entry: HistoryEntry) => mine(entry) || mine(redoneBy.get(entry.id) ?? entry);
-  for (let i = entries.length - 1; i >= 0; i -= 1) {
-    const entry = entries[i]!;
-    const isChange = !entry.undoes;
-    if (direction === "back") {
-      if (isChange && !undone.has(entry.id) && owns(entry)) return entry;
-      continue;
-    }
-    if (isChange) {
-      if (owns(entry)) return undefined;
-      continue;
-    }
-    const target = byId.get(entry.undoes!);
-    if (mine(entry) && !undone.has(entry.id) && target && !target.undoes) return entry;
-  }
-  return undefined;
+  return (entry) => mine(entry) || mine(redoneBy.get(entry.id) ?? entry);
 }
 
 /**

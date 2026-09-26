@@ -1,4 +1,5 @@
 // @vitest-environment happy-dom
+// fallow-ignore-file code-duplication
 import { act, createElement } from "react";
 import { createRoot } from "react-dom/client";
 import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";

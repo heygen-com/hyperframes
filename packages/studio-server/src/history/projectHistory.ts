@@ -363,12 +363,8 @@ class Engine {
   ): Promise<{ id: string } | null> {
     await this.sweep();
     const taken = this.takeClaimed(who, paths, overwrote);
-    if (!taken.length) {
-      // A claim under another key still ends the held one.
-      if (coalesceKey !== this.claimed?.key) await this.commitClaim();
-      return null;
-    }
-    const held = this.pendingElsewhere() ? null : this.heldFor(coalesceKey, taken);
+    if (!taken.length) return this.claimNothing(coalesceKey);
+    const held = this.heldFor(coalesceKey, taken);
     if (!held) await this.commitClaim();
     await this.commitPending();
     const group = held ?? this.newGroup(who, label);
@@ -376,6 +372,12 @@ class Engine {
     if (coalesceKey) return this.holdClaim(group, coalesceKey, idleMs);
     const entry = await this.commit(group);
     return entry && { id: entry.id };
+  }
+
+  /** A claim that took nothing still ends a held claim under another key. */
+  async claimNothing(coalesceKey: string | undefined): Promise<null> {
+    if (coalesceKey !== this.claimed?.key) await this.commitClaim();
+    return null;
   }
 
   /** Commits every other writer's pending changes, oldest first; open windows stay open. */
@@ -393,7 +395,8 @@ class Engine {
 
   /** The held claim `taken` continues: same key, each file from its own last change, no held file changed since. */
   heldFor(key: string | undefined, taken: readonly HistoryFileChange[]): Group | null {
-    const group = key && this.claimed?.key === key ? this.claimed.group : null;
+    const group =
+      key && this.claimed?.key === key && !this.pendingElsewhere() ? this.claimed.group : null;
     const after = (path: string, before: string | null) => {
       const own = group?.changes.get(path);
       return own ? own.after : before;
