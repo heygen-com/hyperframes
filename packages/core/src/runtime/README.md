@@ -31,7 +31,9 @@ postMessage:
   - actions: `play`, `pause`, `seek`, `set-muted`, `set-playback-rate`, `enable-pick-mode`, `disable-pick-mode`
 - runtime -> parent events:
   - `source: "hf-preview"`
-  - `type: "state"` and `type: "timeline"`; `timeline` carries `assetsReady` (whether the
+  - `type: "state"` carries the whole `frame` and the exact `currentTime` in seconds; a
+    film whose length falls between two frames ends at `currentTime`, not at a frame
+  - `type: "timeline"` carries `assetsReady` (whether the
     composition's media, images and fonts have settled) and the runtime then posts
     `type: "assets-ready"` once, so a parent that cannot read the iframe can gate playback
   - `type: "ready"` — emitted once when `installRuntimeControlBridge` registers

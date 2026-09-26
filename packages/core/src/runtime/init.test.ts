@@ -461,6 +461,31 @@ describe("initSandboxRuntimeModular", () => {
     );
   });
 
+  it("posts the exact time a pause on the last frame lands on, next to its rounded frame", () => {
+    const outbound: Array<Record<string, unknown>> = [];
+    vi.spyOn(window.parent, "postMessage").mockImplementation((message: unknown) => {
+      if (typeof message === "object" && message !== null) {
+        outbound.push(message as Record<string, unknown>);
+      }
+    });
+    let nowMs = 1000;
+    vi.spyOn(performance, "now").mockImplementation(() => nowMs);
+    document.body.innerHTML = `<div data-composition-id="main" data-root="true" data-duration="4.97"></div>`;
+    window.__timelines = { main: createMockTimeline(4.97) };
+    initSandboxRuntimeModular();
+
+    window.__player?.play();
+    // Steps under the clock's 500 ms stall threshold, read each time as playback does.
+    for (let step = 0; step < 99; step += 1) {
+      nowMs += 50;
+      window.__player?.getTime();
+    }
+    window.__player?.pause();
+
+    const states = outbound.filter((m) => m.type === "state");
+    expect(states.at(-1)).toMatchObject({ frame: 149, currentTime: 4.95, isPlaying: false });
+  });
+
   it("resolves Studio custom cubic-bezier eases on the composition GSAP instance", () => {
     const defaultEase = (progress: number) => 1 - (1 - progress) ** 2;
     const originalParseEase = vi.fn(() => defaultEase);

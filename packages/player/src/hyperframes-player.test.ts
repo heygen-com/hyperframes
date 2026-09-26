@@ -1331,6 +1331,7 @@ describe("HyperframesPlayer loop end-state handling", () => {
   type PlayerInternal = HTMLElement & {
     iframe: HTMLIFrameElement;
     play: () => void;
+    pause: () => void;
     seek: (timeInSeconds: number) => void;
     loop: boolean;
     _duration: number;
@@ -1410,44 +1411,30 @@ describe("HyperframesPlayer loop end-state handling", () => {
     expect(player._paused).toBe(true);
   });
 
-  function postState(frame: number, isPlaying: boolean) {
+  function postState(frame: number, isPlaying: boolean, currentTime?: number) {
     player._onMessage(
       new MessageEvent("message", {
         source: frameWindow,
-        data: { source: "hf-preview", type: "state", frame, isPlaying },
+        data: { source: "hf-preview", type: "state", frame, currentTime, isPlaying },
       }),
     );
   }
 
-  it("ends a film whose length falls between two frames when the runtime stops on its last frame", () => {
+  // 4.97 s at 30 fps is 149.1 frames: the runtime posts frame 149 both at its end and
+  // on a pause just before it, so only its exact time tells the two apart.
+  it("ends a film whose length falls between two frames when the runtime reaches its end", () => {
     const ended = vi.fn();
     player.addEventListener("ended", ended);
     player.loop = false;
-    player._duration = 4.97; // 149.1 frames at 30fps; the runtime stops on frame 149
+    player._duration = 4.97;
     player._paused = false;
 
-    postState(149, true);
+    postState(149, true, 4.96);
     expect(ended).not.toHaveBeenCalled();
 
-    postState(149, false);
+    postState(149, false, 4.97);
     expect(ended).toHaveBeenCalledTimes(1);
     expect(player._currentTime).toBe(4.97);
-  });
-
-  it("ends only within half a frame of the length", () => {
-    const ended = vi.fn();
-    player.addEventListener("ended", ended);
-    player.loop = false;
-    player._paused = false;
-
-    player._duration = 149.51 / 30;
-    postState(149, false);
-    expect(ended).not.toHaveBeenCalled();
-
-    player._paused = false;
-    player._duration = 149.49 / 30;
-    postState(149, false);
-    expect(ended).toHaveBeenCalledTimes(1);
   });
 
   it("loops a film whose length falls between two frames", () => {
@@ -1456,10 +1443,39 @@ describe("HyperframesPlayer loop end-state handling", () => {
     player._duration = 4.97;
     player._paused = false;
 
-    postState(149, false);
+    postState(149, false, 4.97);
 
     expect(seek).toHaveBeenCalledWith(0);
     expect(player._paused).toBe(false);
+  });
+
+  it("keeps a pause from inside the composition on the last frame", () => {
+    const ended = vi.fn();
+    const seek = vi.spyOn(player, "seek");
+    player.addEventListener("ended", ended);
+    player.loop = true;
+    player._duration = 4.97;
+    player._paused = false;
+
+    postState(149, false, 4.95);
+
+    expect(ended).not.toHaveBeenCalled();
+    expect(seek).not.toHaveBeenCalled();
+    expect(player._paused).toBe(true);
+    expect(player._currentTime).toBe(4.95);
+  });
+
+  it("resumes where a host pause on the last frame left it", () => {
+    player._duration = 4.97;
+    player._paused = false;
+    player.pause();
+    postState(149, false, 4.95);
+    const seek = vi.spyOn(player, "seek");
+
+    player.play();
+
+    expect(seek).not.toHaveBeenCalled();
+    expect(player._currentTime).toBe(4.95);
   });
 
   it("play() seeks to 0 and replays when called after the video has ended", () => {
