@@ -2170,9 +2170,12 @@ describe("bundleToSingleHtml sceneParts", () => {
     <div data-composition-id="c" data-composition-src="compositions/c.html" data-start="0" data-duration="2"></div>
     <div data-composition-id="d" data-composition-src="compositions/d.html" data-start="2" data-duration="2"></div>
     <div data-composition-id="e" data-composition-src="compositions/e.html" data-start="2" data-duration="2"></div>
+    <div data-composition-id="f" data-composition-src="compositions/f.html" data-start="2" data-duration="2"></div>
   </div></body></html>`,
       "compositions/e.html": `<template id="e-template"><div data-composition-id="e"><p>E</p>
   <script src="https://cdn.jsdelivr.net/npm/gsap@3/../lottie-web@5/build/player/lottie.min.js"></script></div></template>`,
+      "compositions/f.html": `<template id="f-template"><div data-composition-id="f"><p>F</p>
+  <script>gsap.timeline().to(window.__sharedState, { x: 1 });</script></div></template>`,
       "compositions/d.html": `<template id="d-template"><div data-composition-id="d"><p>D</p>
   <script src="https://cdn.example.com/d-scene.js"></script></div></template>`,
       "compositions/c.html": `<template id="c-template"><div data-composition-id="c"><p>C</p>
@@ -2202,6 +2205,10 @@ describe("bundleToSingleHtml sceneParts", () => {
     );
     expect(host("e")?.getAttribute("data-hf-scene-no-swap")).toBe(
       "it runs a script that is not a known library",
+    );
+    // A timeline built and chained in one expression is never registered, so a swap leaves it running.
+    expect(host("f")?.getAttribute("data-hf-scene-no-swap")).toBe(
+      "its script uses gsap.timeline().to(",
     );
     const rendered = await bundleToSingleHtml(dir);
     expect(parseHTML(rendered).document.querySelector("[data-hf-scene-no-swap]")).toBeNull();
@@ -2275,8 +2282,20 @@ describe("bundleToSingleHtml sceneParts", () => {
     ]);
   });
 
+  const selects = (selector: string) => `a script outside the scene selects ${selector}`;
+  it.each([
+    ["an upper-case tag name", "BUTTON", [selects("BUTTON"), null]],
+    ["everything", "*", [selects("*"), selects("*")]],
+  ] as const)(
+    "marks the scenes a script outside them reaches by %s",
+    async (_, selector, marks) => {
+      const root = `<script>document.querySelectorAll("${selector}").forEach((el) => el.normalize());</script>`;
+      expect(await swapMarks(rootProject(root))).toEqual(marks);
+    },
+  );
+
   it("keeps scenes swappable when a script outside them never names their nodes", async () => {
-    const root = `<script>document.addEventListener("click", () => {}); requestAnimationFrame(() => {}); parent.postMessage({}, "*");
+    const root = `<script>document.addEventListener("click", () => {}); requestAnimationFrame(() => {}); parent.postMessage({}, "*"); document.querySelectorAll("NAV"); document.getElementById("Count");
   document.body.append(document.createElement("div"), document.createElementNS("http://www.w3.org/2000/svg", "span"));</script>
   <script type="application/json">{"note": "addEventListener"}</script>`;
     expect(await swapMarks(rootProject(root))).toEqual([null, null]);

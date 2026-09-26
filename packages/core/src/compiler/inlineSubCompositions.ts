@@ -38,7 +38,7 @@ import { SCENE_NO_SWAP_ATTR, SCENE_PART_ATTR } from "../sceneParts";
 // Anything a scene script can leave running, pending or registered outside its timeline, or that
 // throws when run again: only the timeline is torn down when a scene is swapped, so when unsure, refuse.
 const SIDE_EFFECT_RE =
-  /\b(addEventListener|requestAnimationFrame|requestIdleCallback|setTimeout|setInterval|queueMicrotask|getContext|WebGL\w*|WebGPU\w*|gpu|Worker|WebSocket|EventSource|Audio\w*|\w*Observer|fetch|import|eval|Function|Promise|async|await|delayedCall|ScrollTrigger|Draggable|anime|customElements|registerProperty|addListener|BroadcastChannel|pushState|replaceState|adoptedStyleSheets|documentElement|getElementsByTagName|lottie|THREE|__hf[A-Z]\w*)\b|\.then\s*\(|\.animate\s*\(|\.ticker\b|repeat\s*:\s*-1|\.repeat\s*\(\s*-1|defineProperty\s*\(\s*(window|globalThis|self|document)\b|\bfonts\s*\.\s*add\b|\.on[a-z]+\s*=(?!=)|\bon(resize|scroll|message|key\w+|click|pointer\w+|mouse\w+|wheel|visibilitychange|hashchange|popstate|error|load)\s*=(?!=)|\[\s*["']on[a-z]+["']\s*\]|document\s*\.\s*(head|body)\b|querySelector(All)?\(\s*["'](head|body)["']|\bgsap\s*\.\s*(?:to|from|fromTo)\s*\(/;
+  /\b(addEventListener|requestAnimationFrame|requestIdleCallback|setTimeout|setInterval|queueMicrotask|getContext|WebGL\w*|WebGPU\w*|gpu|Worker|WebSocket|EventSource|Audio\w*|\w*Observer|fetch|import|eval|Function|Promise|async|await|delayedCall|ScrollTrigger|Draggable|anime|customElements|registerProperty|addListener|BroadcastChannel|pushState|replaceState|adoptedStyleSheets|documentElement|getElementsByTagName|lottie|THREE|__hf[A-Z]\w*)\b|\.then\s*\(|\.animate\s*\(|\.ticker\b|repeat\s*:\s*-1|\.repeat\s*\(\s*-1|defineProperty\s*\(\s*(window|globalThis|self|document)\b|\bfonts\s*\.\s*add\b|\.on[a-z]+\s*=(?!=)|\bon(resize|scroll|message|key\w+|click|pointer\w+|mouse\w+|wheel|visibilitychange|hashchange|popstate|error|load)\s*=(?!=)|\[\s*["']on[a-z]+["']\s*\]|document\s*\.\s*(head|body)\b|querySelector(All)?\(\s*["'](head|body)["']|\bgsap\s*\.\s*(?:to|from|fromTo)\s*\(|\bgsap\s*\.\s*timeline\s*\((?:[^()]|\([^()]*\))*\)\s*\.\s*(?:to|from|fromTo|set|add|call)\s*\(/;
 
 // npm packages that only define globals when loaded; lottie-web is absent because it scans the page on load.
 const SWAP_SAFE_LIBRARY_URL =
@@ -54,8 +54,9 @@ function sceneScriptSwapRefusal(script: string): string | null {
 
 // A quoted string in a script, in any of the three quote styles.
 const STRING_LITERAL_RE = /(["'`])((?:\\.|(?!\1)[^\\\n])*?)\1/g;
-// Text ending where createElement takes its tag: that string makes a node, it selects none.
-const CREATES_ELEMENT_RE = /createElement\s*\(\s*$|createElementNS\s*\([^()]*,\s*$/;
+// Text ending where a string is a new node's tag or a message's target origin: it selects nothing.
+const NOT_A_SELECTOR_RE =
+  /createElement\s*\(\s*$|createElementNS\s*\([^()]*,\s*$|postMessage\s*\([^()]*,\s*$/;
 
 /** Marks each scene whose nodes a script outside it names by selector, id or class: a swap would strand it. */
 export function refuseSwapsReachedByRootScripts(document: Document, rootScripts: string[]): void {
@@ -84,20 +85,26 @@ export function refuseSwapsReachedByRootScripts(document: Document, rootScripts:
   const literals = new Set(
     rootScripts.flatMap((s) =>
       [...s.matchAll(STRING_LITERAL_RE)]
-        .filter((m) => !CREATES_ELEMENT_RE.test(s.slice(Math.max(0, m.index - 60), m.index)))
+        .filter((m) => !NOT_A_SELECTOR_RE.test(s.slice(Math.max(0, m.index - 60), m.index)))
         .map((m) => m[2] ?? ""),
     ),
   );
   for (const literal of literals) {
     const open = hosts.filter((host) => !host.hasAttribute(SCENE_NO_SWAP_ATTR));
     if (open.length === 0) return;
-    const reached = /^[A-Za-z_][\w-]*$/.test(literal)
-      ? [literal, `#${literal}`, `.${literal}`].flatMap((name) => [...(byName.get(name) ?? [])])
-      : /[#.[:>]|[\w\]*] *[\s,]+ *[\w*]/.test(literal) &&
-          literal.length <= 120 &&
-          namesKnown(literal)
-        ? open.filter((host) => reaches(host, literal))
-        : [];
+    // Tag names match in any case; ids and classes do not.
+    const reached =
+      literal === "*"
+        ? open
+        : /^[A-Za-z_][\w-]*$/.test(literal)
+          ? [literal.toLowerCase(), `#${literal}`, `.${literal}`].flatMap((name) => [
+              ...(byName.get(name) ?? []),
+            ])
+          : /[#.[:>]|[\w\]*] *[\s,]+ *[\w*]/.test(literal) &&
+              literal.length <= 120 &&
+              namesKnown(literal)
+            ? open.filter((host) => reaches(host, literal))
+            : [];
     for (const host of reached)
       if (!host.hasAttribute(SCENE_NO_SWAP_ATTR))
         host.setAttribute(SCENE_NO_SWAP_ATTR, `a script outside the scene selects ${literal}`);
