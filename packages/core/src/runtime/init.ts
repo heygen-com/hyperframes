@@ -2520,7 +2520,6 @@ export function initSandboxRuntimeModular(): void {
     // that rebuilt an identical set.
     if (hiddenAudioDirty && clock.isPlaying()) {
       webAudio.stopAll();
-      // stopAll hands every track back its own volume; a newly hidden one must not sound for a frame.
       for (const el of document.querySelectorAll("audio[data-start]")) {
         if (isMediaElement(el) && isSilencedByHidden(el)) el.volume = 0;
       }
@@ -4067,8 +4066,8 @@ export function initSandboxRuntimeModular(): void {
             )
           : Promise.resolve(null);
       void capture.then((scheduled) => {
-        // A newer pass replaced this one; its null is not a failed capture.
-        if (scheduled || !clock.isPlaying() || gen !== webAudio.currentGeneration()) return;
+        const replacedByNewerPass = gen !== webAudio.currentGeneration();
+        if (scheduled || !clock.isPlaying() || replacedByNewerPass) return;
         const effectiveRate = state.playbackRate * readElementPlaybackRate(rawEl);
         // Deliberately the FX/automation pair and NOT
         // `nativeUnexpressibleProcessing()`, which this route's diagnostic uses.

@@ -345,7 +345,6 @@ export class WebAudioTransport {
 
       const sourceNode = this.acquireMediaElementSource(el);
       if (!sourceNode) return null;
-      // Drops the idle route `stopAll` gave it, so the element has one path out.
       sourceNode.disconnect();
 
       const safeRate = normalizeRate(rate);
@@ -774,14 +773,12 @@ export class WebAudioTransport {
       if (isBufferSource(source)) source.el.muted = source.priorMuted;
       else {
         source.el.volume = source.priorVolume;
-        // A captured element has no native output left, so outside a play it
-        // sounds the way an uncaptured one would (a paused scrub, say).
+        // Captured, it has no native output; outside a play it sounds through the destination.
         if (this._ctx) source.sourceNode.connect(this._ctx.destination);
       }
     }
     this._activeSources = [];
     this._paused = true;
-    // A schedule still waiting on resume() would otherwise land after this stop.
     this._playGeneration += 1;
   }
 
