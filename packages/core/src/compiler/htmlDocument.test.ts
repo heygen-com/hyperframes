@@ -24,6 +24,7 @@ describe("htmlDocument helpers", () => {
     expect(isFullHtmlDocument("<!-- marker --><div data-composition-id='x'></div>")).toBe(false);
     expect(isFullHtmlDocument("<!--><div></div><!-- --><html></html>")).toBe(false);
     expect(isFullHtmlDocument("<html-card></html-card>")).toBe(false);
+    expect(isFullHtmlDocument("<!DOCTYPEhtml><html/ lang='en'></html>")).toBe(true);
   });
 
   it("wraps fragments before parsing", () => {

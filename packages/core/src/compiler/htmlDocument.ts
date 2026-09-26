@@ -25,7 +25,7 @@ const SIMPLE_RUNTIME_FLAG_ASSIGNMENTS = [
 const LEADING_COMMENTS = /^(?:\s|<!--(?:>|->|[\s\S]*?-->))*/;
 
 export function isFullHtmlDocument(html: string): boolean {
-  return /^(?:<!doctype[\s>]|<html[\s>])/i.test(html.replace(LEADING_COMMENTS, ""));
+  return /^(?:<!doctype|<html[\s>/])/i.test(html.replace(LEADING_COMMENTS, ""));
 }
 
 /**

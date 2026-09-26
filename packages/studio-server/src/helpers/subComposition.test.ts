@@ -105,8 +105,9 @@ describe("buildSubCompositionHtml", () => {
 
     const html = buildSubCompositionHtml(dir, "compositions/blk.html", "/api/runtime.js", "/p/");
 
-    expect(html).toContain("data-composition-variables=");
-    expect(html!.slice(html!.indexOf("<body"))).not.toContain("<html");
+    const body = html!.indexOf("<body");
+    expect(html!.slice(0, body)).toContain("data-composition-variables=");
+    expect(html!.slice(body)).not.toContain("<html");
   });
 
   it("handles raw fragment compositions (no template, no full document)", () => {
