@@ -33,7 +33,12 @@ function mountPreview(mounted = ""): HTMLIFrameElement {
   return iframe;
 }
 
-function mountPicker(files: Record<string, string>, selector = "h1", mounted = "") {
+function mountPicker(
+  files: Record<string, string>,
+  selector = "h1",
+  mounted = "",
+  hostAppliesWrites = true,
+) {
   const iframe = mountPreview(mounted);
   const synced: Record<string, string>[] = [];
   let api: ReturnType<typeof useElementPicker> | null = null;
@@ -48,7 +53,7 @@ function mountPicker(files: Record<string, string>, selector = "h1", mounted = "
         workspaceFiles,
         onSyncFiles: (changed) => {
           synced.push(changed);
-          setFiles((prev) => ({ ...prev, ...changed }));
+          if (hostAppliesWrites) setFiles((prev) => ({ ...prev, ...changed }));
         },
       },
     );
@@ -136,6 +141,27 @@ describe("an edit to a picked element without an id", () => {
     const written = synced.at(-1)?.["index.html"] ?? "";
     expect(written).toContain(">Renamed</h1>");
     expect(written).not.toContain("color: red");
+  });
+
+  it("builds the next edit on the host's undo", () => {
+    const { picker, synced, setHostFiles } = mountPicker({ "index.html": SAVED });
+    act(() => picker().setStyle("color", "red"));
+    setHostFiles({ "index.html": SAVED });
+    act(() => picker().setStyle("background", "blue"));
+    expect(synced.at(-1)?.["index.html"]).not.toContain("color: red");
+  });
+
+  it("keeps later edits while the host has applied only the first", () => {
+    const { picker, synced, setHostFiles } = mountPicker({ "index.html": SAVED }, "h1", "", false);
+    act(() => {
+      picker().setStyle("color", "red");
+      picker().setStyle("background", "blue");
+    });
+    setHostFiles(synced[0] as Record<string, string>);
+    act(() => picker().setStyle("border", "0"));
+    expect(synced.at(-1)?.["index.html"]).toMatch(
+      /style="color: red; background: blue; border: 0"/,
+    );
   });
 
   it("writes nothing when no saved file holds the element", () => {

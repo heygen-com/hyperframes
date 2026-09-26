@@ -133,6 +133,7 @@ export function useElementPicker(
   const optionsRef = useRef(options);
   optionsRef.current = options;
   const pendingWritesRef = useRef(new Map<string, PendingWrite>());
+  settlePendingWrites(pendingWritesRef.current, options?.workspaceFiles);
 
   // Sync immediately (not debounced) — save on every change for reliability
   const syncToSource = useCallback(
@@ -261,8 +262,28 @@ type PickedElementInfo = Partial<Omit<PickedElement, "computedStyles">>;
 
 // workspaceFiles lags this hook's own writes until the host rerenders.
 interface PendingWrite {
-  sources: Set<string>;
-  latest: string;
+  hostSource: string | undefined;
+  writes: string[];
+}
+
+// ponytail: keeps at most 50 writes per file for a host that never rerenders.
+const MAX_PENDING_WRITES = 50;
+
+function settlePendingWrites(
+  pending: Map<string, PendingWrite>,
+  files: Record<string, string> | undefined,
+): void {
+  for (const [path, write] of pending) {
+    const hostSource = files?.[path];
+    if (hostSource === write.hostSource) continue;
+    const caughtUpTo = hostSource === undefined ? -1 : write.writes.indexOf(hostSource);
+    if (caughtUpTo < 0 || caughtUpTo === write.writes.length - 1) {
+      pending.delete(path);
+    } else {
+      write.hostSource = hostSource;
+      write.writes = write.writes.slice(caughtUpTo + 1);
+    }
+  }
 }
 
 function withPendingWrites(
@@ -270,14 +291,7 @@ function withPendingWrites(
   pending: Map<string, PendingWrite>,
 ): Record<string, string> {
   const merged = { ...files };
-  for (const [path, write] of pending) {
-    const hostSource = files[path];
-    if (hostSource !== undefined && hostSource !== write.latest && write.sources.has(hostSource)) {
-      merged[path] = write.latest;
-    } else {
-      pending.delete(path);
-    }
-  }
+  for (const [path, write] of pending) merged[path] = write.writes.at(-1) ?? merged[path];
   return merged;
 }
 
@@ -287,12 +301,8 @@ function recordPendingWrite(
   hostSource: string | undefined,
   after: string,
 ): void {
-  const write = pending.get(path) ?? {
-    sources: new Set(hostSource === undefined ? [] : [hostSource]),
-    latest: after,
-  };
-  write.sources.add(after);
-  write.latest = after;
+  const write = pending.get(path) ?? { hostSource, writes: [] };
+  write.writes = [...write.writes, after].slice(-MAX_PENDING_WRITES);
   pending.set(path, write);
 }
 
