@@ -420,7 +420,7 @@
     "name": "caption-blend-difference",
     "type": "component",
     "title": "Blend Difference",
-    "description": "Auto-inverting text using mix-blend-mode: difference \u2014 flips between white and black per-pixel against the background",
+    "description": "Auto-inverting text using mix-blend-mode: difference — flips between white and black per-pixel against the background",
     "tags": [
       "text",
       "text-effect",
@@ -644,7 +644,7 @@
     "name": "caption-texture",
     "type": "component",
     "title": "Texture",
-    "description": "Flowing texture mask over large uppercase text \u2014 ships with 6 textures (lava, marble, metal, wood, concrete, rock), configurable via the texture variable",
+    "description": "Flowing texture mask over large uppercase text — ships with 6 textures (lava, marble, metal, wood, concrete, rock), configurable via the texture variable",
     "tags": [
       "captions",
       "caption-style",
@@ -917,7 +917,7 @@
     "name": "carousel-text-circle-1",
     "type": "block",
     "title": "Text + Circle Carousel 1",
-    "description": "A headline mask-reveals word by word while a circle carousel converges from off-frame and threads the line, collapses to centre, hard-cuts to a second line that arrives at 1.4\u00d7 (Circle style 1).",
+    "description": "A headline mask-reveals word by word while a circle carousel converges from off-frame and threads the line, collapses to centre, hard-cuts to a second line that arrives at 1.4× (Circle style 1).",
     "tags": [
       "carousel",
       "title-card",
@@ -933,7 +933,7 @@
     "name": "carousel-text-circle-2",
     "type": "block",
     "title": "Text + Circle Carousel 2",
-    "description": "A headline mask-reveals word by word while a circle carousel converges from off-frame and threads the line, collapses to centre, hard-cuts to a second line that arrives at 1.4\u00d7 (Circle style 2).",
+    "description": "A headline mask-reveals word by word while a circle carousel converges from off-frame and threads the line, collapses to centre, hard-cuts to a second line that arrives at 1.4× (Circle style 2).",
     "tags": [
       "carousel",
       "title-card",
@@ -949,7 +949,7 @@
     "name": "carousel-text-circle-3",
     "type": "block",
     "title": "Text + Circle Carousel 3",
-    "description": "A headline mask-reveals word by word while a circle carousel converges from off-frame and threads the line, collapses to centre, hard-cuts to a second line that arrives at 1.4\u00d7 (Circle style 3).",
+    "description": "A headline mask-reveals word by word while a circle carousel converges from off-frame and threads the line, collapses to centre, hard-cuts to a second line that arrives at 1.4× (Circle style 3).",
     "tags": [
       "carousel",
       "title-card",
@@ -965,7 +965,7 @@
     "name": "carousel-text-circle-4",
     "type": "block",
     "title": "Text + Circle Carousel 4",
-    "description": "A headline mask-reveals word by word while a circle carousel converges from off-frame and threads the line, collapses to centre, hard-cuts to a second line that arrives at 1.4\u00d7 (Circle style 4).",
+    "description": "A headline mask-reveals word by word while a circle carousel converges from off-frame and threads the line, collapses to centre, hard-cuts to a second line that arrives at 1.4× (Circle style 4).",
     "tags": [
       "carousel",
       "title-card",
@@ -981,7 +981,7 @@
     "name": "carousel-text-circle-5",
     "type": "block",
     "title": "Text + Circle Carousel 5",
-    "description": "A headline mask-reveals word by word while a circle carousel converges from off-frame and threads the line, collapses to centre, hard-cuts to a second line that arrives at 1.4\u00d7 (Circle style 5).",
+    "description": "A headline mask-reveals word by word while a circle carousel converges from off-frame and threads the line, collapses to centre, hard-cuts to a second line that arrives at 1.4× (Circle style 5).",
     "tags": [
       "carousel",
       "title-card",
@@ -1209,7 +1209,7 @@
     "name": "code-3d-extrude",
     "type": "block",
     "title": "Code 3D Extrude",
-    "description": "Syntax-highlighted code on a lit, beveled 3D slab that rotates through real space and settles to a readable rest \u2014 true WebGL depth and lighting, not a 2D transform.",
+    "description": "Syntax-highlighted code on a lit, beveled 3D slab that rotates through real space and settles to a readable rest — true WebGL depth and lighting, not a 2D transform.",
     "tags": [
       "code",
       "code-animation",
@@ -1224,7 +1224,7 @@
     "name": "code-diff",
     "type": "block",
     "title": "Code Diff",
-    "description": "An edit shown as a colored diff \u2014 removed lines collapse in red, added lines expand in green.",
+    "description": "An edit shown as a colored diff — removed lines collapse in red, added lines expand in green.",
     "tags": [
       "code",
       "code-animation",
@@ -1238,7 +1238,7 @@
     "name": "code-highlight",
     "type": "block",
     "title": "Code Highlight Sweep",
-    "description": "A highlight band sweeps across a target line while the surrounding context dims \u2014 draws the eye to one line.",
+    "description": "A highlight band sweeps across a target line while the surrounding context dims — draws the eye to one line.",
     "tags": [
       "code",
       "code-animation",
@@ -1252,7 +1252,7 @@
     "name": "code-morph",
     "type": "block",
     "title": "Code Morph",
-    "description": "One snippet transforms into another \u2014 tokens glide between positions, leavers fade out, enterers fade in. Shiki Magic Move re-driven as a paused GSAP timeline.",
+    "description": "One snippet transforms into another — tokens glide between positions, leavers fade out, enterers fade in. Shiki Magic Move re-driven as a paused GSAP timeline.",
     "tags": [
       "code",
       "code-animation",
@@ -1267,7 +1267,7 @@
     "name": "code-particle-assemble",
     "type": "block",
     "title": "Code Particle Assemble",
-    "description": "Thousands of GPU points scatter through space and fly to the exact glyph pixels of the code, resolving into readable syntax-highlighted text \u2014 a particle system, not a token tween.",
+    "description": "Thousands of GPU points scatter through space and fly to the exact glyph pixels of the code, resolving into readable syntax-highlighted text — a particle system, not a token tween.",
     "tags": [
       "code",
       "code-animation",
@@ -1283,7 +1283,7 @@
     "name": "code-scroll",
     "type": "block",
     "title": "Code Scroll To Line",
-    "description": "The camera scrolls a long file to bring a target line to center and spotlights it \u2014 for walking through real modules.",
+    "description": "The camera scrolls a long file to bring a target line to center and spotlights it — for walking through real modules.",
     "tags": [
       "code",
       "code-animation",
@@ -1389,7 +1389,7 @@
     "name": "code-typing",
     "type": "block",
     "title": "Code Typing",
-    "description": "Token-streamed typing reveal with a caret that tracks the frontier \u2014 deterministic, no CSS animation.",
+    "description": "Token-streamed typing reveal with a caret that tracks the frontier — deterministic, no CSS animation.",
     "tags": [
       "code",
       "code-animation",
@@ -2013,7 +2013,7 @@
     "name": "grain-overlay",
     "type": "component",
     "title": "Grain Overlay",
-    "description": "Animated film grain texture overlay using CSS keyframes \u2014 adds warmth and analog character to any composition",
+    "description": "Animated film grain texture overlay using CSS keyframes — adds warmth and analog character to any composition",
     "tags": [
       "texture",
       "grain",
@@ -2056,7 +2056,7 @@
     "name": "grid-pixelate-wipe",
     "type": "component",
     "title": "Grid Pixelate Wipe",
-    "description": "Transition effect where the screen dissolves into a grid of squares that fade out with staggered timing \u2014 use between scenes",
+    "description": "Transition effect where the screen dissolves into a grid of squares that fade out with staggered timing — use between scenes",
     "tags": [
       "transition",
       "wipe",
@@ -2144,7 +2144,7 @@
     "name": "hw-boil",
     "type": "component",
     "title": "Hand-Drawn Boil",
-    "description": "Hand-drawn jitter that re-poses every N frames, as seek-safe helpers: pose derives from quantized timeline time through a seeded hash; includes the shared onUpdate dispatcher, a wobbled-ellipse path generator, the boil pose control (off/calm/lively over the family-locked frameDrop), a curvature-adaptive pen-velocity ease, and the completed stroke matrix (plain/soft/sharp/spray \u2014 spray is index-seeded deterministic dots, no turbulence) with texture-safe draw-on",
+    "description": "Hand-drawn jitter that re-poses every N frames, as seek-safe helpers: pose derives from quantized timeline time through a seeded hash; includes the shared onUpdate dispatcher, a wobbled-ellipse path generator, the boil pose control (off/calm/lively over the family-locked frameDrop), a curvature-adaptive pen-velocity ease, and the completed stroke matrix (plain/soft/sharp/spray — spray is index-seeded deterministic dots, no turbulence) with texture-safe draw-on",
     "tags": [
       "handwritten",
       "effect",
@@ -2157,7 +2157,7 @@
     "name": "hw-box-label",
     "type": "component",
     "title": "Hand-Drawn Box Label",
-    "description": "Wobbled rounded rectangle draws on \u2014 across the authored stroke matrix (plain/soft/sharp/spray) \u2014 or drops in and lands with a volume-true contact squash and bouncy spring recovery, with a handwritten label above or centered; boils",
+    "description": "Wobbled rounded rectangle draws on — across the authored stroke matrix (plain/soft/sharp/spray) — or drops in and lands with a volume-true contact squash and bouncy spring recovery, with a handwritten label above or centered; boils",
     "tags": [
       "handwritten",
       "annotation",
@@ -2615,7 +2615,7 @@
   {
     "name": "lower-third-bild",
     "type": "block",
-    "title": "Lower Third \u2014 BILD Style",
+    "title": "Lower Third — BILD Style",
     "description": "News-style lower third with tight-fit text boxes: white headline bar with red drop-shadow, red sub-line with white drop-shadow.",
     "tags": [
       "broadcast",
@@ -2629,7 +2629,7 @@
   {
     "name": "lt-accent-underline",
     "type": "block",
-    "title": "Lower Third \u2014 Accent Underline",
+    "title": "Lower Third — Accent Underline",
     "description": "Cardless lower third for footage overlay: name rises, an accent rule draws left-to-right, role fades in; text-shadowed for legibility",
     "tags": [
       "lower-third",
@@ -2644,7 +2644,7 @@
   {
     "name": "lt-bold-block",
     "type": "block",
-    "title": "Lower Third \u2014 Bold Block",
+    "title": "Lower Third — Bold Block",
     "description": "High-energy podcast lower third: solid dark block wipes in, uppercase name slams up, accent tag pops",
     "tags": [
       "lower-third",
@@ -2659,7 +2659,7 @@
   {
     "name": "lt-clean-bar",
     "type": "block",
-    "title": "Lower Third \u2014 Clean Bar",
+    "title": "Lower Third — Clean Bar",
     "description": "Minimal white-card lower third for podcasts/interviews: accent tab, name + role, clip-wipe entrance",
     "tags": [
       "lower-third",
@@ -2673,7 +2673,7 @@
   {
     "name": "lt-color-block",
     "type": "block",
-    "title": "Lower Third \u2014 Color Block",
+    "title": "Lower Third — Color Block",
     "description": "High-energy lower third: bold accent-color block slides in with overshoot, condensed name + mono role",
     "tags": [
       "lower-third",
@@ -2688,7 +2688,7 @@
   {
     "name": "lt-dark-card",
     "type": "block",
-    "title": "Lower Third \u2014 Dark Card",
+    "title": "Lower Third — Dark Card",
     "description": "Charcoal card lower third for bright footage: name, drawn accent underline, role; slide-up entrance",
     "tags": [
       "lower-third",
@@ -2703,7 +2703,7 @@
   {
     "name": "lt-kicker-name",
     "type": "block",
-    "title": "Lower Third \u2014 Kicker Name",
+    "title": "Lower Third — Kicker Name",
     "description": "Cardless lower third with an accent eyebrow/kicker tag, heavy name, and a drawn baseline; for footage",
     "tags": [
       "lower-third",
@@ -2718,7 +2718,7 @@
   {
     "name": "lt-mask-reveal",
     "type": "block",
-    "title": "Lower Third \u2014 Mask Reveal",
+    "title": "Lower Third — Mask Reveal",
     "description": "Cardless lower third: an accent sweep crosses and clip-path-reveals a heavy name, role fades up; for footage",
     "tags": [
       "lower-third",
@@ -2747,7 +2747,7 @@
   {
     "name": "lt-side-rule",
     "type": "block",
-    "title": "Lower Third \u2014 Side Rule",
+    "title": "Lower Third — Side Rule",
     "description": "Cardless lower third with a vertical accent bar; condensed display name + mono role, text-shadowed for footage",
     "tags": [
       "lower-third",
@@ -2762,7 +2762,7 @@
   {
     "name": "lt-soft-pill",
     "type": "block",
-    "title": "Lower Third \u2014 Soft Pill",
+    "title": "Lower Third — Soft Pill",
     "description": "Rounded white pill lower third for podcasts/interviews: status dot, name + role, scale-pop entrance",
     "tags": [
       "lower-third",
@@ -2777,7 +2777,7 @@
   {
     "name": "lt-stack-bars",
     "type": "block",
-    "title": "Lower Third \u2014 Stack Bars",
+    "title": "Lower Third — Stack Bars",
     "description": "Two stacked bars: a dark name bar wipes from the left, an accent role bar wipes from the right",
     "tags": [
       "lower-third",
@@ -2950,7 +2950,7 @@
     "name": "mk-callout-highlight",
     "type": "block",
     "title": "Word-Sweep Highlight",
-    "description": "A sentence whose word-by-word emphasis is driven by a single scalar \u2014 tween it to sync the highlight with a voiceover",
+    "description": "A sentence whose word-by-word emphasis is driven by a single scalar — tween it to sync the highlight with a voiceover",
     "tags": [
       "typography",
       "karaoke",
@@ -2964,7 +2964,7 @@
     "name": "mk-clone-wall-transition",
     "type": "block",
     "title": "Text Clone Wall Transition",
-    "description": "Overlay transition: a tiled word wall covers the frame, inverts via difference blending, and clears \u2014 hard-cut the content beneath while covered",
+    "description": "Overlay transition: a tiled word wall covers the frame, inverts via difference blending, and clears — hard-cut the content beneath while covered",
     "tags": [
       "transition",
       "typography",
@@ -2977,7 +2977,7 @@
     "name": "mk-emphasis-type",
     "type": "component",
     "title": "Background Emphasis Type",
-    "description": "Oversized low-contrast background word drifting slowly behind the subject \u2014 typography as texture",
+    "description": "Oversized low-contrast background word drifting slowly behind the subject — typography as texture",
     "tags": [
       "typography",
       "text-treatment",
@@ -3092,7 +3092,7 @@
     "name": "morph-text",
     "type": "component",
     "title": "Morph Text",
-    "description": "Gooey text morph \u2014 cycles through an editable word list using SVG threshold + GSAP-driven blur for a fluid, satisfying transition effect",
+    "description": "Gooey text morph — cycles through an editable word list using SVG threshold + GSAP-driven blur for a fluid, satisfying transition effect",
     "tags": [
       "text",
       "text-effect",
@@ -3108,7 +3108,7 @@
     "name": "motion-blur",
     "type": "component",
     "title": "Motion Blur",
-    "description": "After Effects-style motion blur \u2014 integrates each element over a shutter window (shutter angle, phase, samples per frame) by sampling the GSAP timeline at sub-frame times and averaging equal-weight additive copies of the element along its real trajectory, so translation, scale, rotation, 3D rotation and skew all drive the smear",
+    "description": "After Effects-style motion blur — integrates each element over a shutter window (shutter angle, phase, samples per frame) by sampling the GSAP timeline at sub-frame times and averaging equal-weight additive copies of the element along its real trajectory, so translation, scale, rotation, 3D rotation and skew all drive the smear",
     "tags": [
       "effect",
       "motion-blur",
@@ -3523,7 +3523,7 @@
     "name": "parallax-unzoom",
     "type": "component",
     "title": "Parallax Unzoom",
-    "description": "Reveal transition \u2014 focus card scales down from full frame as siblings parallax in to form a grid (reverse of parallax-zoom)",
+    "description": "Reveal transition — focus card scales down from full frame as siblings parallax in to form a grid (reverse of parallax-zoom)",
     "tags": [
       "transition",
       "reveal",
@@ -3539,7 +3539,7 @@
     "name": "parallax-zoom",
     "type": "component",
     "title": "Parallax Zoom",
-    "description": "Center card scales up to fill the frame while siblings parallax outward \u2014 inspired by the eBay Playbook hero transition",
+    "description": "Center card scales up to fill the frame while siblings parallax outward — inspired by the eBay Playbook hero transition",
     "tags": [
       "transition",
       "zoom",
@@ -3990,7 +3990,7 @@
     "name": "shimmer-sweep",
     "type": "component",
     "title": "Shimmer Sweep",
-    "description": "Animated light sweep across text or elements using a CSS gradient mask \u2014 ideal for AI accents and premium reveals",
+    "description": "Animated light sweep across text or elements using a CSS gradient mask — ideal for AI accents and premium reveals",
     "tags": [
       "text",
       "shimmer",
@@ -4004,7 +4004,7 @@
     "name": "shutter-slam",
     "type": "component",
     "title": "Shutter Slam",
-    "description": "One word thrown through six single-property beats under integrated shutter blur \u2014 two translate slams, a scale punch, then a full turn about each axis \u2014 on the measured easing of the After Effects export the shutter model was fitted to",
+    "description": "One word thrown through six single-property beats under integrated shutter blur — two translate slams, a scale punch, then a full turn about each axis — on the measured easing of the After Effects export the shutter model was fitted to",
     "tags": [
       "effect",
       "motion-blur",
@@ -4152,7 +4152,7 @@
     "name": "spain-map",
     "type": "block",
     "title": "Spain Map",
-    "description": "Animated Spain choropleth by autonomous community with staggered reveals and gradient legend \u2014 D3 conic conformal projection",
+    "description": "Animated Spain choropleth by autonomous community with staggered reveals and gradient legend — D3 conic conformal projection",
     "tags": [
       "data",
       "map",
@@ -5119,7 +5119,7 @@
     "name": "us-map",
     "type": "block",
     "title": "US Map",
-    "description": "Animated US choropleth map with staggered state reveals, value labels, and gradient legend \u2014 pure inline SVG with GSAP",
+    "description": "Animated US choropleth map with staggered state reveals, value labels, and gradient legend — pure inline SVG with GSAP",
     "tags": [
       "data",
       "map",
@@ -5134,7 +5134,7 @@
     "name": "us-map-bubble",
     "type": "block",
     "title": "US Bubble Map",
-    "description": "Animated US bubble map with proportional city markers, value callouts, and connection lines \u2014 composable with us-map",
+    "description": "Animated US bubble map with proportional city markers, value callouts, and connection lines — composable with us-map",
     "tags": [
       "data",
       "map",
@@ -5150,7 +5150,7 @@
     "name": "us-map-flow",
     "type": "block",
     "title": "US Flow Map",
-    "description": "Animated connection arcs between US cities over a base map \u2014 composable origin-destination flow visualization",
+    "description": "Animated connection arcs between US cities over a base map — composable origin-destination flow visualization",
     "tags": [
       "data",
       "map",
@@ -5167,7 +5167,7 @@
     "name": "us-map-hex",
     "type": "block",
     "title": "US Hex Grid Map",
-    "description": "Animated hexagonal tile grid map \u2014 each state as an equal-weight hex with data fill and abbreviation label",
+    "description": "Animated hexagonal tile grid map — each state as an equal-weight hex with data fill and abbreviation label",
     "tags": [
       "data",
       "map",
@@ -5263,7 +5263,7 @@
     "name": "vfx-iphone-device",
     "type": "block",
     "title": "iPhone & MacBook 3D Showcase",
-    "description": "Real GLTF iPhone 15 Pro Max and MacBook Pro models with live HTML-in-Canvas screen content, morphing glass lens, product review camera choreography, and 360\u00b0 turntable.",
+    "description": "Real GLTF iPhone 15 Pro Max and MacBook Pro models with live HTML-in-Canvas screen content, morphing glass lens, product review camera choreography, and 360° turntable.",
     "tags": [
       "html-in-canvas",
       "3d",
@@ -5357,7 +5357,7 @@
     "name": "vignette",
     "type": "component",
     "title": "Vignette",
-    "description": "Cinematic radial vignette overlay using a pure-CSS gradient \u2014 darkens the edges to pull focus toward the center",
+    "description": "Cinematic radial vignette overlay using a pure-CSS gradient — darkens the edges to pull focus toward the center",
     "tags": [
       "vignette",
       "overlay",
@@ -5395,20 +5395,6 @@
     ],
     "href": "/catalog/blocks/vpn-youtube-spot",
     "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/vpn-youtube-spot.png"
-  },
-  {
-    "name": "week-in-merges",
-    "type": "block",
-    "title": "Week in Merges",
-    "description": "Each author's avatar bounces across their row at a speed set by how many pull requests they merged",
-    "tags": [
-      "data",
-      "chart",
-      "ranking",
-      "leaderboard"
-    ],
-    "href": "/catalog/blocks/week-in-merges",
-    "preview": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/week-in-merges.png"
   },
   {
     "name": "weight-wave",
@@ -5508,7 +5494,7 @@
     "name": "world-map",
     "type": "block",
     "title": "World Map",
-    "description": "Animated world choropleth with country-by-country reveal, tooltip labels, and rotating globe inset \u2014 D3 Natural Earth projection",
+    "description": "Animated world choropleth with country-by-country reveal, tooltip labels, and rotating globe inset — D3 Natural Earth projection",
     "tags": [
       "data",
       "map",
