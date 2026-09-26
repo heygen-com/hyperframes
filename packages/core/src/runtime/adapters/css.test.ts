@@ -329,4 +329,34 @@ describe("css adapter", () => {
       vi.restoreAllMocks();
     });
   });
+
+  it("counts one iteration of a repeating or infinite animation toward the cycle end", () => {
+    const el = document.createElement("div");
+    el.setAttribute("data-start", "2");
+    document.body.appendChild(el);
+    vi.spyOn(window, "getComputedStyle").mockImplementation(() => {
+      return { animationName: "pulse" } as CSSStyleDeclaration;
+    });
+    const timing = (delay: number, duration: number, iterations: number) => ({
+      effect: {
+        getComputedTiming: () => ({
+          delay,
+          duration,
+          iterations,
+          endTime: delay + duration * iterations,
+        }),
+      },
+    });
+    (el as HTMLElement & { getAnimations?: () => Animation[] }).getAnimations = () =>
+      [timing(500, 1000, 40), timing(0, 2000, Infinity)] as unknown as Animation[];
+
+    const adapter = createCssAdapter();
+    adapter.discover();
+
+    expect(adapter.getAnimationCycleEndSeconds?.()).toBe(4);
+    expect(adapter.getInferredDurationSeconds?.()).toBe(42.5);
+
+    document.body.removeChild(el);
+    vi.restoreAllMocks();
+  });
 });

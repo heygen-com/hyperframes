@@ -31,7 +31,7 @@ import { isElementNode, isMediaElement } from "./domRealm";
 /** A root timeline this long is an endless loop, not a film: GSAP reports 1e10 s for `repeat: -1`.
  *  Studio's sanitizeDurationSeconds rejects the same length. Animations that simply end past the
  *  voiceover are real duration, and the runtime player already plays them. */
-const LOOP_INFLATED_TIMELINE_SECONDS = 7200;
+export const LOOP_INFLATED_TIMELINE_SECONDS = 7200;
 
 export function isRuntimeElementVisibleAt(
   rawNode: HTMLElement,

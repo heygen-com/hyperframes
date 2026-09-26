@@ -37,7 +37,11 @@ import { probeAndCacheElementVolume, type VolumeKeyframe } from "./mediaVolumeEn
 import { createPickerModule } from "./picker";
 import { createRuntimePlayer, type RuntimePlayerTransport } from "./player";
 import { createRuntimeState } from "./state";
-import { collectRuntimeTimelinePayload, isRuntimeElementVisibleAt } from "./timeline";
+import {
+  collectRuntimeTimelinePayload,
+  isRuntimeElementVisibleAt,
+  LOOP_INFLATED_TIMELINE_SECONDS,
+} from "./timeline";
 import {
   findRootCompositionElement,
   parseCompositionDimension,
@@ -83,6 +87,7 @@ import type {
   RuntimeDeterministicAdapter,
   RuntimeJson,
   RuntimeSeekOptions,
+  RuntimeTimelineChildLike,
   RuntimeTimelineLike,
 } from "./types";
 import type { PlayerAPI } from "../core.types";
@@ -239,6 +244,8 @@ const MEDIA_URL_ATTRS = new Map([
 ]);
 
 const SLOW_IDLE_HEARTBEAT_MS = 1000;
+// GSAP `data` on the tweens the runtime adds to stretch a timeline; never animation.
+const RUNTIME_FILLER = "hf-runtime-filler";
 
 export function initSandboxRuntimeModular(): void {
   const state = createRuntimeState();
@@ -1058,10 +1065,11 @@ export function initSandboxRuntimeModular(): void {
   // media windows already use — makes data-duration optional wherever the
   // runtime can figure the duration out on its own, instead of hard-failing
   // capture with "Composition has zero duration".
-  const resolveAdapterDurationFloorSeconds = (): number | null => {
+  const resolveAdapterDurationFloorSeconds = (oneCycle = false): number | null => {
     let maxSeconds = 0;
     for (const adapter of state.deterministicAdapters) {
-      const getter = adapter.getInferredDurationSeconds;
+      const getter =
+        (oneCycle && adapter.getAnimationCycleEndSeconds) || adapter.getInferredDurationSeconds;
       if (typeof getter !== "function") continue;
       let inferred: number | null = null;
       try {
@@ -1308,6 +1316,9 @@ export function initSandboxRuntimeModular(): void {
     return safeDuration > 0 ? Math.max(0, safeDuration) : 0;
   };
 
+  // Sub-composition timelines the runtime nested into the root, by host composition id.
+  const autoNestedHostIds = new WeakMap<object, string>();
+
   const resolveRootTimelineFromDocument = (): TimelineResolution => {
     const timelines = (window.__timelines ?? {}) as Record<string, RuntimeTimelineLike | undefined>;
     // DX fallback (#6): when the root timeline cannot be resolved by id but
@@ -1354,6 +1365,13 @@ export function initSandboxRuntimeModular(): void {
       if (!node) return 0;
       return startResolver.resolveStartForElement(node, 0);
     };
+    const nestAtHostStart = (
+      parent: RuntimeTimelineLike,
+      candidate: { compositionId: string; timeline: RuntimeTimelineLike },
+    ): void => {
+      parent.add(candidate.timeline, resolveCompositionStartSeconds(candidate.compositionId));
+      autoNestedHostIds.set(candidate.timeline, candidate.compositionId);
+    };
     const createCompositeTimelineFromCandidates = (
       candidates: Array<{
         compositionId: string;
@@ -1364,12 +1382,7 @@ export function initSandboxRuntimeModular(): void {
       const gsapApi = window.gsap;
       if (!gsapApi || typeof gsapApi.timeline !== "function") return null;
       const compositeTimeline = gsapApi.timeline({ paused: true }) as RuntimeTimelineLike;
-      for (const candidate of candidates) {
-        compositeTimeline.add(
-          candidate.timeline,
-          resolveCompositionStartSeconds(candidate.compositionId),
-        );
-      }
+      for (const candidate of candidates) nestAtHostStart(compositeTimeline, candidate);
       return compositeTimeline;
     };
     const createDurationFloorTimeline = (
@@ -1389,11 +1402,11 @@ export function initSandboxRuntimeModular(): void {
         }
       }
       const withTween = fallbackTimeline as RuntimeTimelineLike & {
-        to?: (target: object, vars: { duration?: number }) => unknown;
+        to?: (target: object, vars: { duration?: number; data?: string }) => unknown;
       };
       if (typeof withTween.to === "function") {
         try {
-          withTween.to({}, { duration: durationSeconds });
+          withTween.to({}, { duration: durationSeconds, data: RUNTIME_FILLER });
         } catch (err) {
           // no-op; if tween creation fails, caller will discard by unusable duration
           swallow("runtime.init.site3", err);
@@ -1436,8 +1449,7 @@ export function initSandboxRuntimeModular(): void {
           const alreadyIncluded = existingChildren.some((child) => child === candidate.timeline);
           if (alreadyIncluded) continue;
           try {
-            const startSec = resolveCompositionStartSeconds(candidate.compositionId);
-            rootTimeline.add(candidate.timeline, startSec);
+            nestAtHostStart(rootTimeline, candidate);
             addedIds.push(candidate.compositionId);
           } catch (err) {
             // ignore broken child add attempts
@@ -1644,13 +1656,17 @@ export function initSandboxRuntimeModular(): void {
           rootDurationFloorSeconds >= rootDurationSeconds + 0.5
         ) {
           const tlWithTo = rootTimeline as RuntimeTimelineLike & {
-            to?: (target: object, vars: { duration: number }, position: number) => unknown;
+            to?: (
+              target: object,
+              vars: { duration: number; data: string },
+              position: number,
+            ) => unknown;
           };
           if (typeof tlWithTo.to === "function") {
             try {
               // Placing a zero-duration tween at the floor extends
               // timeline.duration() to exactly that point.
-              tlWithTo.to({}, { duration: 0 }, rootDurationFloorSeconds);
+              tlWithTo.to({}, { duration: 0, data: RUNTIME_FILLER }, rootDurationFloorSeconds);
             } catch (err) {
               // keep runtime resilient
               swallow("runtime.init.site6", err);
@@ -2769,6 +2785,38 @@ export function initSandboxRuntimeModular(): void {
   };
   window.__hf.leasePausedMedia = leasePausedMedia;
   window.__hf.releasePausedMedia = releasePausedMedia;
+  // A sub-composition is hidden after its host clip, so its animation counts only until then.
+  const autoNestedHostEndSeconds = (child: RuntimeTimelineChildLike): number => {
+    const hostId = autoNestedHostIds.get(child);
+    const host = hostId
+      ? document.querySelector(`[data-composition-id="${CSS.escape(hostId)}"]`)
+      : null;
+    const duration = host ? resolveDurationForElement(host) : null;
+    return host && duration ? resolveStartForElement(host, 0) + duration : Infinity;
+  };
+  // GSAP's duration() of a tween is one iteration; a timeline's duration() counts its children's repeats.
+  const readOneCycleEndSeconds = (children: RuntimeTimelineChildLike[]): number => {
+    let end = 0;
+    for (const child of children) {
+      if (child.data === RUNTIME_FILLER) continue;
+      const cycle = child.getChildren
+        ? readOneCycleEndSeconds(child.getChildren(false, true, true))
+        : Number(child.duration?.()) || 0;
+      // startTime() is in the parent's time, the cycle in the child's own; reversed reports -1.
+      const scale = Math.abs(Number((child as { timeScale?: () => number }).timeScale?.()) || 1);
+      const childEnd = (Number(child.startTime?.()) || 0) + cycle / scale;
+      end = Math.max(end, Math.min(childEnd, autoNestedHostEndSeconds(child)));
+    }
+    return end;
+  };
+  window.__hf.animationEnd = () => {
+    const timeline = state.capturedTimeline;
+    const timelineEnd = timeline?.getChildren
+      ? readOneCycleEndSeconds(timeline.getChildren(false, true, true))
+      : (getTimelineDurationSeconds(timeline) ?? 0);
+    const end = Math.max(timelineEnd, resolveAdapterDurationFloorSeconds(true) ?? 0);
+    return end > 0 && end < LOOP_INFLATED_TIMELINE_SECONDS ? end : null;
+  };
   window.__hf.audioMeter = {
     start: () => webAudio.startMetering(),
     stop: () => webAudio.stopMetering(),

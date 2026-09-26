@@ -125,6 +125,7 @@ export function createWaapiAdapter(): RuntimeDeterministicAdapter {
    */
   const inferAnimationEndSeconds = (
     animation: Animation,
+    oneCycle: boolean,
   ): { endSeconds?: number; unbounded?: true } => {
     let timing: ComputedEffectTiming | null = null;
     try {
@@ -133,10 +134,25 @@ export function createWaapiAdapter(): RuntimeDeterministicAdapter {
       swallow("runtime.adapters.waapi.site4", err);
     }
     if (!timing) return {};
-    const endTimeMs = Number(timing.endTime);
+    const endTimeMs = oneCycle
+      ? Number(timing.delay) + Number(timing.duration)
+      : Number(timing.endTime);
     if (!Number.isFinite(endTimeMs)) return { unbounded: true };
     const compositionStartSeconds = (baselines.get(animation)?.compositionTimeMs ?? 0) / 1000;
     return { endSeconds: compositionStartSeconds + endTimeMs / 1000 };
+  };
+
+  const readMaxEndSeconds = (oneCycle: boolean): number | null => {
+    let maxEndSeconds = 0;
+    for (const animation of snapshotAnimations()) {
+      const result = inferAnimationEndSeconds(animation, oneCycle);
+      // Unbounded (Infinity/NaN endTime) animations are skipped here —
+      // they never contribute to maxEndSeconds. A finite animation
+      // elsewhere on the composition still supplies a valid duration
+      // signal; only fall through to null when nothing finite was found.
+      if (result.endSeconds != null) maxEndSeconds = Math.max(maxEndSeconds, result.endSeconds);
+    }
+    return maxEndSeconds > 0 ? maxEndSeconds : null;
   };
 
   return {
@@ -214,17 +230,7 @@ export function createWaapiAdapter(): RuntimeDeterministicAdapter {
       installedAnimate = undefined;
       animateHookInstalled = false;
     },
-    getInferredDurationSeconds: () => {
-      let maxEndSeconds = 0;
-      for (const animation of snapshotAnimations()) {
-        const result = inferAnimationEndSeconds(animation);
-        // Unbounded (Infinity/NaN endTime) animations are skipped here —
-        // they never contribute to maxEndSeconds. A finite animation
-        // elsewhere on the composition still supplies a valid duration
-        // signal; only fall through to null when nothing finite was found.
-        if (result.endSeconds != null) maxEndSeconds = Math.max(maxEndSeconds, result.endSeconds);
-      }
-      return maxEndSeconds > 0 ? maxEndSeconds : null;
-    },
+    getInferredDurationSeconds: () => readMaxEndSeconds(false),
+    getAnimationCycleEndSeconds: () => readMaxEndSeconds(true),
   };
 }

@@ -370,4 +370,30 @@ describe("waapi adapter", () => {
       document.getAnimations = original;
     });
   });
+
+  it("counts one iteration of a repeating or infinite animation toward the cycle end", () => {
+    const timing = (delay: number, duration: number, iterations: number) => ({
+      pause: vi.fn(),
+      currentTime: 0,
+      effect: {
+        getComputedTiming: () => ({
+          delay,
+          duration,
+          iterations,
+          endTime: delay + duration * iterations,
+        }),
+      },
+    });
+    (document as any).getAnimations = vi.fn(() => [
+      timing(500, 1000, 40),
+      timing(0, 2000, Infinity),
+    ]);
+
+    const adapter = createWaapiAdapter();
+
+    expect(adapter.getAnimationCycleEndSeconds?.()).toBe(2);
+    expect(adapter.getInferredDurationSeconds?.()).toBe(40.5);
+
+    delete (document as any).getAnimations;
+  });
 });

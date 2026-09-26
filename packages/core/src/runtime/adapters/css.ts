@@ -37,6 +37,7 @@ export function createCssAdapter(params?: {
   const inferAnimationEndSeconds = (
     animation: Animation,
     startSeconds: number,
+    oneCycle: boolean,
   ): { endSeconds?: number; unbounded?: true } => {
     let timing: ComputedEffectTiming | null = null;
     try {
@@ -45,9 +46,28 @@ export function createCssAdapter(params?: {
       swallow("runtime.adapters.css.site5", err);
     }
     if (!timing) return {};
-    const endTimeMs = Number(timing.endTime);
+    const endTimeMs = oneCycle
+      ? Number(timing.delay) + Number(timing.duration)
+      : Number(timing.endTime);
     if (!Number.isFinite(endTimeMs)) return { unbounded: true };
     return { endSeconds: startSeconds + endTimeMs / 1000 };
+  };
+
+  const readMaxEndSeconds = (oneCycle: boolean): number | null => {
+    let maxEndSeconds = 0;
+    for (const entry of entries) {
+      if (!entry.el.isConnected) continue;
+      const start = resolveEntryStartSeconds(entry.el);
+      for (const animation of getAnimationsForElement(entry.el)) {
+        const result = inferAnimationEndSeconds(animation, start, oneCycle);
+        // Unbounded (Infinity/NaN endTime) animations are skipped here —
+        // they never contribute to maxEndSeconds. A finite animation
+        // elsewhere on the composition still supplies a valid duration
+        // signal; only fall through to null when nothing finite was found.
+        if (result.endSeconds != null) maxEndSeconds = Math.max(maxEndSeconds, result.endSeconds);
+      }
+    }
+    return maxEndSeconds > 0 ? maxEndSeconds : null;
   };
 
   const seekAnimations = (animations: Animation[], timeMs: number) => {
@@ -119,22 +139,8 @@ export function createCssAdapter(params?: {
         });
       }
     },
-    getInferredDurationSeconds: () => {
-      let maxEndSeconds = 0;
-      for (const entry of entries) {
-        if (!entry.el.isConnected) continue;
-        const start = resolveEntryStartSeconds(entry.el);
-        for (const animation of getAnimationsForElement(entry.el)) {
-          const result = inferAnimationEndSeconds(animation, start);
-          // Unbounded (Infinity/NaN endTime) animations are skipped here —
-          // they never contribute to maxEndSeconds. A finite animation
-          // elsewhere on the composition still supplies a valid duration
-          // signal; only fall through to null when nothing finite was found.
-          if (result.endSeconds != null) maxEndSeconds = Math.max(maxEndSeconds, result.endSeconds);
-        }
-      }
-      return maxEndSeconds > 0 ? maxEndSeconds : null;
-    },
+    getInferredDurationSeconds: () => readMaxEndSeconds(false),
+    getAnimationCycleEndSeconds: () => readMaxEndSeconds(true),
     seek: (ctx) => {
       const time = Number(ctx.time) || 0;
       for (const entry of entries) {

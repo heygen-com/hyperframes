@@ -288,7 +288,9 @@ export type RuntimeTimelineChildLike = {
   vars?: unknown;
   startTime?: () => number;
   duration?: () => number;
+  data?: unknown;
   parent?: RuntimeTimelineChildLike;
+  getChildren?: RuntimeTimelineLike["getChildren"];
 };
 
 export type RuntimeTimelineLike = {
@@ -356,6 +358,7 @@ export type RuntimeDeterministicAdapter = {
    * (Lottie JSON fetch, etc.) resolves.
    */
   getInferredDurationSeconds?: () => number | null;
+  getAnimationCycleEndSeconds?: () => number | null;
 };
 
 export type RuntimeGsapSetTarget = string | Element | Element[] | null;
