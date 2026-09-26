@@ -243,6 +243,48 @@ describe("mirrorGlobalSkills", () => {
     expect(realpathSync(link)).toBe(realpathSync(join(home, ".claude", "skills", "hyperframes")));
   });
 
+  it("does not mirror Codex when the universal store is available", () => {
+    const home = makeHome();
+    seedStore(home, ["hyperframes"]);
+    installMarker(home, ".codex");
+    mkdirSync(join(home, ".agents", "skills", "hyperframes"), { recursive: true });
+    writeFileSync(join(home, ".agents", "skills", "hyperframes", "SKILL.md"), "# universal\n");
+    mkdirSync(join(home, ".codex", "skills", ".system"), { recursive: true });
+
+    const { mirrored } = mirrorGlobalSkills({
+      skills: ["hyperframes"],
+      home,
+      platform: "linux",
+      env: ENV,
+    });
+
+    expect(mirrored.map((entry) => entry.agent)).not.toContain("codex");
+    expect(existsSync(join(home, ".codex", "skills", ".system"))).toBe(true);
+    expect(existsSync(join(home, ".codex", "skills", "hyperframes"))).toBe(false);
+  });
+
+  it("does not mirror Codex under a custom CODEX_HOME", () => {
+    const home = makeHome();
+    const codexHome = makeHome();
+    seedStore(home, ["hyperframes"]);
+    installMarker(home, ".codex");
+    mkdirSync(join(home, ".agents", "skills", "hyperframes"), { recursive: true });
+    writeFileSync(join(home, ".agents", "skills", "hyperframes", "SKILL.md"), "# universal\n");
+    const existing = join(codexHome, "skills", "hyperframes");
+    mkdirSync(existing, { recursive: true });
+    writeFileSync(join(existing, "SKILL.md"), "# locally managed\n", "utf8");
+
+    const { mirrored } = mirrorGlobalSkills({
+      skills: ["hyperframes"],
+      home,
+      platform: "linux",
+      env: { CODEX_HOME: codexHome },
+    });
+
+    expect(mirrored.map((entry) => entry.agent)).not.toContain("codex");
+    expect(readFileSync(join(existing, "SKILL.md"), "utf8")).toBe("# locally managed\n");
+  });
+
   // Pi natively discovers BOTH ~/.pi/agent/skills and the universal
   // ~/.agents/skills (pi's packages/coding-agent/docs/skills.md#locations).
   // A mirrored per-agent copy collides with the universal one and Pi skips
