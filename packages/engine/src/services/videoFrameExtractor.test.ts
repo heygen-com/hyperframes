@@ -948,6 +948,31 @@ describe("FrameLookupTable", () => {
     expect(table.getActiveFramePayloads(4.5).get("hero")?.frameIndex).toBe(15);
   });
 
+  it("shows a copy starting on a float sum at that instant, as the preview does", () => {
+    const copyStart = 0.1 + 0.2;
+    const clip = (id: string, start: number) => ({
+      id,
+      src: `${id}.webm`,
+      start,
+      end: start + 0.2,
+      mediaStart: 0,
+      loop: false,
+      hasAudio: false,
+    });
+    const frames = (videoId: string) => ({ ...fakeExtracted(30, 30), videoId });
+    const table = () =>
+      createFrameLookupTable(
+        [clip("a", 0.1), clip("copy", copyStart)],
+        [frames("a"), frames("copy")],
+      );
+
+    expect(table().getActiveFramePayloads(0.3).get("copy")?.frameIndex).toBe(0);
+    const stepping = table();
+    stepping.getActiveFramePayloads(0.2);
+    expect(stepping.getActiveFramePayloads(0.3).get("copy")?.frameIndex).toBe(0);
+    expect(getFrameAtTime(frames("copy"), 0.3, copyStart)).toBe("frame-0.jpg");
+  });
+
   it("selects source frames at the authored constant playback rate", () => {
     const videos = parseVideoElements(
       '<video id="hero" src="clip.webm" data-start="0" data-duration="2" data-playback-rate="2"></video>',
@@ -1038,10 +1063,7 @@ describe("FrameLookupTable", () => {
     expect(table.getActiveFramePayloads(31).has("main")).toBe(false); // after resolved end (30)
   });
 
-  it("holds the last frame at the inclusive clip end (t === end)", () => {
-    // clip [1,3] with exactly 2s of source frames (60 @ 30fps). The frame
-    // landing on t === end used to deactivate one frame early and render blank,
-    // while the runtime keeps the element visible on its last frame.
+  it("shows the last frame just before the end and leaves at t === end, as the runtime does", () => {
     const table = createFrameLookupTable(
       [
         {
@@ -1056,10 +1078,10 @@ describe("FrameLookupTable", () => {
       ],
       [fakeExtracted(60, 30)],
     );
-    const atEnd = table.getActiveFramePayloads(3.0).get("hero");
-    expect(atEnd?.frameIndex).toBe(59);
-    // mid-clip is unaffected
     expect(table.getActiveFramePayloads(2.5).get("hero")?.frameIndex).toBe(45);
+    expect(table.getActiveFramePayloads(2.99).get("hero")?.frameIndex).toBe(59);
+    expect(table.getActiveFramePayloads(3.0).has("hero")).toBe(false);
+    expect(table.getFrame("hero", 3.0)).toBeNull();
   });
 
   it("holds the last frame across the tail when the source is shorter than the window", () => {
@@ -1080,7 +1102,7 @@ describe("FrameLookupTable", () => {
       [fakeExtracted(30, 30)],
     );
     expect(table.getActiveFramePayloads(1.5).get("hero")?.frameIndex).toBe(29);
-    expect(table.getActiveFramePayloads(5.0).get("hero")?.frameIndex).toBe(29);
+    expect(table.getActiveFramePayloads(4.99).get("hero")?.frameIndex).toBe(29);
   });
 
   it("holds the last frame when the source is a sub-frame shorter than the slot", () => {
@@ -1107,27 +1129,38 @@ describe("FrameLookupTable", () => {
     expect(table.getActiveFramePayloads(3.4).get("hero")?.frameIndex).toBe(42);
     // source exhausted but within tolerance of the end → hold, don't blank
     expect(table.getActiveFramePayloads(3.44).get("hero")?.frameIndex).toBe(42);
-    expect(table.getActiveFramePayloads(3.45).get("hero")?.frameIndex).toBe(42);
   });
 
-  it("keeps both clips active at a shared adjacent boundary, matching the runtime", () => {
-    // clip A ends at 3.0, clip B starts at 3.0. The runtime shows both at the
-    // shared instant; the active set must too.
-    const table = createFrameLookupTable(
-      [
-        { id: "a", src: "a.webm", start: 0, end: 3, mediaStart: 0, loop: false, hasAudio: false },
-        { id: "b", src: "b.webm", start: 3, end: 6, mediaStart: 0, loop: false, hasAudio: false },
-      ],
-      // createFrameLookupTable maps each clip to extracted frames by id.
-      [
-        { ...fakeExtracted(90, 30), videoId: "a" },
-        { ...fakeExtracted(90, 30), videoId: "b" },
-      ],
-    );
-    const payloads = table.getActiveFramePayloads(3.0);
-    expect(payloads.has("a")).toBe(true);
-    expect(payloads.has("b")).toBe(true);
-  });
+  it.each([
+    ["an exact", 0.1, 0.3, 0.3],
+    ["a float-sum", 0.1, 0.1 + 0.2, 9 / 30],
+  ])(
+    "hands %s shared boundary to the incoming clip only, as the runtime does",
+    (_, aStart, aEnd, t) => {
+      const clip = (id: string, start: number, end: number) => ({
+        id,
+        src: `${id}.webm`,
+        start,
+        end,
+        mediaStart: 0,
+        loop: false,
+        hasAudio: false,
+      });
+      const table = () =>
+        createFrameLookupTable(
+          [clip("a", aStart, aEnd), clip("b", 0.3, 0.5)],
+          [
+            { ...fakeExtracted(90, 30), videoId: "a" },
+            { ...fakeExtracted(90, 30), videoId: "b" },
+          ],
+        );
+      const stepping = table();
+      expect([...stepping.getActiveFramePayloads(8 / 30).keys()]).toEqual(["a"]);
+      expect([...stepping.getActiveFramePayloads(t).keys()]).toEqual(["b"]);
+      expect([...table().getActiveFramePayloads(t).keys()]).toEqual(["b"]);
+      expect(table().getFrame("a", t)).toBeNull();
+    },
+  );
 });
 
 describe("analyzeClipMediaFit", () => {
