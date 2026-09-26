@@ -145,21 +145,22 @@ function applyCssCustomProperties(roots: Iterable<Element>, cache: ScopeValuesCa
   }
 }
 
-function variableSrcFor(el: Element, cache: ScopeValuesCache): string | null {
+function variableSrcFor(el: Element, cache: ScopeValuesCache, warn = true): string | null {
   const id = el.getAttribute("data-var-src")?.trim();
   if (!id) return null;
   // Only media elements may take a variable-driven src (see VAR_SRC_TAGS) — a
   // src on <iframe>/<script>/<embed> is a code-execution sink, not a media ref.
   if (!VAR_SRC_TAGS.has(el.tagName.toLowerCase())) {
-    console.warn(
-      `[hyperframes] Ignoring data-var-src on <${el.tagName.toLowerCase()}>: variable-bound src is only allowed on ${Array.from(VAR_SRC_TAGS).join("/")}.`,
-    );
+    if (warn)
+      console.warn(
+        `[hyperframes] Ignoring data-var-src on <${el.tagName.toLowerCase()}>: variable-bound src is only allowed on ${Array.from(VAR_SRC_TAGS).join("/")}.`,
+      );
     return null;
   }
   const url = resolveUrl(valuesForElement(el, cache)[id]);
   if (url === null) return null;
   if (!isSafeMediaUrl(url)) {
-    console.warn(`[hyperframes] Ignoring data-var-src="${id}": unsafe URL protocol.`);
+    if (warn) console.warn(`[hyperframes] Ignoring data-var-src="${id}": unsafe URL protocol.`);
     return null;
   }
   return url;
@@ -167,7 +168,7 @@ function variableSrcFor(el: Element, cache: ScopeValuesCache): string | null {
 
 /** The src an element loads, preview proxy aside: its bound variable's value, else its attribute. */
 export function unproxiedMediaSrc(el: Element): string | null {
-  return variableSrcFor(el, new Map()) ?? unproxiedSrc(el);
+  return variableSrcFor(el, new Map(), false) ?? unproxiedSrc(el);
 }
 
 /** Applies the bindings in `doc`, or only those inside `within` and `within` itself. */

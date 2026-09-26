@@ -596,6 +596,21 @@ describe("__hfSwapScenes", () => {
     await expect(swap).rejects.toThrow("changed");
   });
 
+  it("warns about a data-var-src on a non-media tag once for the new element, as a load does", async () => {
+    const { root } = trackingRoot();
+    scoped.__hfVariablesByComp = { a: { page: "page.html" } };
+    const frame = (s: Scene): Scene => ({
+      ...s,
+      body: `${s.body}<iframe data-var-src="page"></iframe>`,
+    });
+    boot([frame(A1), B], root);
+    await tick();
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    await window.__hfSwapScenes!(preview([frame(A2), B]).html);
+    const ignored = warn.mock.calls.filter(([m]) => String(m).includes("Ignoring data-var-src"));
+    expect(ignored).toHaveLength(1);
+  });
+
   it("offers no swap on a page served without a scene manifest", async () => {
     const { root } = trackingRoot();
     boot([A1, B], root);
