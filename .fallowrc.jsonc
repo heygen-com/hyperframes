@@ -22,6 +22,7 @@
     "packages/producer/we-render.mjs",
     "packages/producer/scripts/validate-fast-video.ts",
     "packages/cli/scripts/generate-font-data.ts",
+    "packages/studio/scripts/icon-specimen.tsx",
     "packages/engine/scripts/test-fitTextFontSize-browser.ts",
     "packages/aws-lambda/scripts/*.ts",
     // Built as standalone IIFE for the browser-side sandbox runtime;
