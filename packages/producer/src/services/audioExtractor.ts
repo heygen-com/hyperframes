@@ -9,7 +9,7 @@
 import { spawn } from "node:child_process";
 import { existsSync, mkdirSync, rmSync, readFileSync } from "node:fs";
 import { join, dirname } from "node:path";
-import { getFfmpegBinary, trackChildProcess } from "@hyperframes/engine";
+import { getFfmpegBinary, trackChildProcess, withTransientSpawnRetry } from "@hyperframes/engine";
 
 export interface AudioElement {
   id: string;
@@ -87,28 +87,34 @@ export function parseAudioElements(html: string): AudioElement[] {
  * Run an FFmpeg command and return a promise.
  */
 function runFFmpeg(args: string[]): Promise<void> {
-  return new Promise((resolve, reject) => {
-    // See runFfmpeg.ts: keeps a console window off the user's desktop on Windows.
-    const ffmpeg = spawn(getFfmpegBinary(), args, { windowsHide: true });
-    trackChildProcess(ffmpeg);
-    let stderr = "";
+  return withTransientSpawnRetry(
+    getFfmpegBinary(),
+    async () => {
+      // See runFfmpeg.ts: keeps a console window off the user's desktop on Windows.
+      const ffmpeg = spawn(getFfmpegBinary(), args, { windowsHide: true });
+      trackChildProcess(ffmpeg);
+      return new Promise<void>((resolve, reject) => {
+        let stderr = "";
 
-    ffmpeg.stderr.on("data", (data) => {
-      stderr += data.toString();
-    });
+        ffmpeg.stderr.on("data", (data) => {
+          stderr += data.toString();
+        });
 
-    ffmpeg.on("close", (code) => {
-      if (code === 0) {
-        resolve();
-      } else {
-        reject(new Error(`FFmpeg failed (code ${code}): ${stderr.slice(-500)}`));
-      }
-    });
+        ffmpeg.on("close", (code) => {
+          if (code === 0) {
+            resolve();
+          } else {
+            reject(new Error(`FFmpeg failed (code ${code}): ${stderr.slice(-500)}`));
+          }
+        });
 
-    ffmpeg.on("error", (err) => {
-      reject(err);
-    });
-  });
+        ffmpeg.on("error", (err) => {
+          reject(err);
+        });
+      });
+    },
+    () => undefined,
+  );
 }
 
 /**
