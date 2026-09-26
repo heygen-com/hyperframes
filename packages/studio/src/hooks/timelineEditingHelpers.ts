@@ -17,7 +17,7 @@ import {
 } from "../player/lib/timelineElementHelpers";
 import {
   saveProjectFilesWithHistory,
-  writeProjectFilesWithHistory,
+  writeProjectFilesWithHistoryInQueue,
   type RecordEditInput,
 } from "../utils/studioFileHistory";
 import { serializeStudioFileMutations } from "../utils/studioFileMutationCoordinator";
@@ -533,7 +533,7 @@ export async function persistElementAttribute({
 
     pendingTimelineEditPathRef.current.add(targetPath);
     try {
-      return await writeProjectFilesWithHistory({
+      return await writeProjectFilesWithHistoryInQueue({
         projectId,
         label,
         files: { [targetPath]: patched },

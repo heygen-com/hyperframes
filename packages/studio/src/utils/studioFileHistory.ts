@@ -64,12 +64,11 @@ export async function saveProjectFilesWithHistory(
   input: SaveProjectFilesWithHistoryInput,
 ): Promise<string[]> {
   return serializeStudioFileMutations(input.writeFile, Object.keys(input.files), () =>
-    writeProjectFilesWithHistory(input),
+    writeProjectFilesWithHistoryInQueue(input),
   );
 }
 
-/** `saveProjectFilesWithHistory` for a caller that already holds the files' mutation queue. */
-export async function writeProjectFilesWithHistory({
+export async function writeProjectFilesWithHistoryInQueue({
   label,
   coalesceKey,
   coalesceMs,
