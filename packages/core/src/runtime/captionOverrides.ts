@@ -191,8 +191,22 @@ function tweenState(
   const declared = declaredCaptionState(tw);
   if (declared) return declared;
   const color = String(tw.vars.color);
+  // var() and currentColor resolve per word, so only plain colours are shared.
+  if (/var\(|currentcolor/i.test(color)) return paintedColor(el, color) === rest ? "dim" : "active";
   if (!painted.has(color)) painted.set(color, paintedColor(el, color));
   return painted.get(color) === rest ? "dim" : "active";
+}
+
+// What the invalidated tweens re-read their start from, wherever the playhead has been. A from()
+// recorded its own start, and a word with no colour tween keeps its classes' colours.
+function restPaintOf(
+  override: CaptionOverride,
+  colorTweens: GsapTween[],
+  rest: string,
+): string | undefined {
+  if (override.dimColor) return override.dimColor;
+  if (colorTweens.length === 0 || colorTweens.some((tw) => tw.vars.runBackwards)) return undefined;
+  return rest;
 }
 
 function rewriteColorTweens(
@@ -216,10 +230,7 @@ function rewriteColorTweens(
     if (!tw.vars.runBackwards) tw.invalidate?.();
   }
 
-  // The invalidated tweens re-read their start from this, wherever the playhead has been.
-  // A from() recorded its own start, which the rest colour would overwrite.
-  const restPaint =
-    override.dimColor || (colorTweens.some((tw) => tw.vars.runBackwards) ? undefined : rest);
+  const restPaint = restPaintOf(override, colorTweens, rest);
   if (restPaint) gsap.set(el, { color: restPaint });
 }
 

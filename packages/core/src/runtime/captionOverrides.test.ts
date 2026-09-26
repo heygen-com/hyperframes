@@ -334,6 +334,23 @@ describe("caption state declaration", () => {
     expect(from.invalidate).not.toHaveBeenCalled();
   });
 
+  it("leaves a word with no colour tween to its own classes under an active-only override", async () => {
+    const set = vi.fn((el: HTMLElement, vars: Record<string, unknown>) => {
+      if (vars.color) el.style.color = String(vars.color);
+    });
+    Object.defineProperty(window, "gsap", {
+      configurable: true,
+      value: { set, killTweensOf() {}, getTweensOf: () => [] },
+    });
+    installCaptionOverrideFetch([{ wordIndex: 0, activeColor: "#ff0" }]);
+    document.body.innerHTML = `<style>.w { color: #888; }</style><div class="caption-group"><span class="w">Hi</span></div>`;
+
+    applyCaptionOverrides();
+    await flushCaptionOverrides();
+
+    expect(document.querySelector<HTMLElement>(".w")?.style.color).toBe("");
+  });
+
   it("prefers the declaration over the rest colour, per tween, when they disagree", async () => {
     // The first two are the reverse of what the rest colour infers; the third is undeclared.
     const tweens = installGsapMockWithTweens([
