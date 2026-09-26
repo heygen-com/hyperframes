@@ -35,15 +35,19 @@ export function findAuthoredElementById(doc: Document, live: Element): Element |
 }
 
 const PATH_ATTRS = ["src", "href"];
-const CSS_URL = /url\(\s*(["']?)([^)"'\s]+)\1\s*\)/g;
-const PROJECT = "https://project.invalid/";
+const CSS_URL = /\burl\(\s*(["']?)([^)"'\s](?:[^)"']*[^)"'\s])?)\1\s*\)/g;
 
 function isRelative(path: string): boolean {
   return !!path && !/^(?:[a-z][a-z\d+.-]*:|\/|#)/i.test(path);
 }
 
 function toProjectPath(sourceFile: string, path: string): string {
-  return decodeURI(new URL(path, PROJECT + sourceFile).pathname.slice(1));
+  const parts = sourceFile.split("/").slice(0, -1);
+  for (const part of path.split("/")) {
+    if (part === "..") parts.pop();
+    else if (part !== "." && part !== "") parts.push(part);
+  }
+  return parts.join("/");
 }
 
 function livePathsOf(live: Element): Set<string> {

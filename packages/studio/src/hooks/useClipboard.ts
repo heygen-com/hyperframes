@@ -234,7 +234,8 @@ export function useClipboard({
     async (path: string): Promise<string> => {
       const pid = projectIdRef.current;
       if (!pid) throw new Error("No project is open.");
-      await waitForPendingDomEditSaves();
+      // Only the order matters here; a failed save already shows its own banner.
+      await waitForPendingDomEditSaves().catch(() => {});
       return serializeStudioFileMutations(writeProjectFile, [path], () =>
         readFileContent(pid, path),
       );

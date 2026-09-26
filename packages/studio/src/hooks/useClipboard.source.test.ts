@@ -232,7 +232,8 @@ describe("copy of a sub-composition clip", () => {
     clearSelection();
     const sub = SUB.replace(
       ">Sub<",
-      '><img src="../assets/logo.png?v=2"><img src="logo.png"><img src="assets/shared.png">Sub<',
+      '><img src="../assets/logo.png?v=2"><img src="logo.png"><img src="assets/shared.png">' +
+        '<img src="../assets/100%.png"><span style="background: url(\'../fonts/My Font.woff2\')"></span>Sub<',
     );
     const selection = { ...SUB_SELECTION, hfId: stampedHfId(sub, "h2") };
     const { clipboard, writes } = mountClipboard(selection, sub, (host) => {
@@ -245,7 +246,9 @@ describe("copy of a sub-composition clip", () => {
     expect(writes[0]).toContain('src="assets/logo.png?v=2"');
     expect(writes[0]).toContain('src="compositions/logo.png"');
     expect(writes[0]).toContain('src="assets/shared.png"');
-    expect(writes[0]).not.toContain("../assets");
+    expect(writes[0]).toContain('src="assets/100%.png"');
+    expect(writes[0]).toContain("url('fonts/My Font.woff2')");
+    expect(writes[0]).not.toContain("../");
     expect(writes[0]).not.toContain("display: none");
   });
 });
@@ -263,6 +266,16 @@ describe("copy order", () => {
     clipboard().handleCopy();
     await clipboard().handlePaste();
     expect(writes[0]?.match(/>Title v2<\/h1>/g)).toHaveLength(2);
+  });
+
+  it("still copies after a DOM edit save failed", async () => {
+    selectTitle();
+    const { clipboard, writes, domEditSave } = mountClipboard();
+    domEditSave.pending = Promise.reject(new Error("save conflict"));
+    domEditSave.pending.catch(() => {});
+    clipboard().handleCopy();
+    await clipboard().handlePaste();
+    expect(writes[0]?.match(/>Title<\/h1>/g)).toHaveLength(2);
   });
 
   it("pastes the second of two copies", async () => {
