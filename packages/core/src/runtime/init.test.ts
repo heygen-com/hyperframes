@@ -75,6 +75,22 @@ function createPaddableMockTimeline(duration: number): RuntimeTimelineLike {
   return timeline;
 }
 
+/** A duration-floor wrapper mock: `add` records (or drops) children, and the
+ *  padding `to` tween extends the reported duration, so the runtime accepts
+ *  the wrapper as usable. `holdChildren: false` mimics a GSAP whose `add`
+ *  silently fails to attach the child. */
+function createHoldingMockTimeline(duration: number, holdChildren = true): RuntimeTimelineLike {
+  const timeline = createPaddableMockTimeline(duration);
+  const children: RuntimeTimelineLike[] = [];
+  const baseAdd = timeline.add;
+  timeline.add = (child: RuntimeTimelineLike, startAtSeconds: number) => {
+    if (holdChildren) children.push(child);
+    baseAdd(child, startAtSeconds);
+  };
+  timeline.getChildren = () => children;
+  return timeline;
+}
+
 function createManualRaf() {
   let now = 0;
   let nextId = 0;
@@ -2900,6 +2916,55 @@ describe("initSandboxRuntimeModular", () => {
     } finally {
       delete (window as { gsap?: unknown }).gsap;
     }
+  });
+
+  it("unpauses the author's zero-duration root timeline once the duration-floor wrapper holds it (regression)", () => {
+    const root = document.createElement("div");
+    root.setAttribute("data-composition-id", "main");
+    root.setAttribute("data-root", "true");
+    root.setAttribute("data-start", "0");
+    root.setAttribute("data-duration", "2");
+    root.setAttribute("data-width", "1920");
+    root.setAttribute("data-height", "1080");
+    document.body.appendChild(root);
+
+    window.gsap = {
+      timeline: () => createHoldingMockTimeline(0),
+    };
+    // What Studio writes for a static resize: a paused root timeline holding
+    // only tl.set(..., 0) holds, so its registered duration is unusable (0).
+    const main = createMockTimeline(0);
+    window.__timelines = { main };
+
+    initSandboxRuntimeModular();
+
+    // The wrapper now holds the author's root. A paused child inside the
+    // paused wrapper never renders its holds on seek, so it must be unpaused.
+    expect(main.paused()).toBe(false);
+  });
+
+  it("keeps the author's root timeline paused when the duration-floor wrapper does not hold it", () => {
+    const root = document.createElement("div");
+    root.setAttribute("data-composition-id", "main");
+    root.setAttribute("data-root", "true");
+    root.setAttribute("data-start", "0");
+    root.setAttribute("data-duration", "2");
+    root.setAttribute("data-width", "1920");
+    root.setAttribute("data-height", "1080");
+    document.body.appendChild(root);
+
+    window.gsap = {
+      // add() silently drops the child, like a GSAP attach failure.
+      timeline: () => createHoldingMockTimeline(0, false),
+    };
+    const main = createMockTimeline(0);
+    window.__timelines = { main };
+
+    initSandboxRuntimeModular();
+
+    // Unheld, the root stays on its own paused transport — unpausing it there
+    // would let it free-run on the global ticker.
+    expect(main.paused()).toBe(true);
   });
 
   it("still applies the media-metadata duration rebind after renderSeek in Studio preview (no export render-seek config)", async () => {
