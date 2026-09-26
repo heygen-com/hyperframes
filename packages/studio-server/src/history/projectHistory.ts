@@ -12,7 +12,7 @@ import {
   realpathSync,
 } from "node:fs";
 import { homedir } from "node:os";
-import { basename, dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
+import { dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
 import { replaceFileAtomically } from "../helpers/atomicFile.js";
 import {
   DELETED_VERSION,
@@ -22,7 +22,7 @@ import {
 } from "../helpers/fileVersion.js";
 import { affectsProjectSignature, listProjectFiles } from "../helpers/projectSignature.js";
 import { openBlobStore, type BlobStore } from "./blobStore.js";
-import { projectHistoryId } from "./historyId.js";
+import { ID_PATH, projectHistoryId } from "./historyId.js";
 import { takeHistoryOwnership } from "./ownerLock.js";
 import {
   START,
@@ -227,17 +227,11 @@ function fileLeftIn(dir: string, at: string, deleted: ReadonlySet<string>): stri
   return undefined;
 }
 
-/** Whether the disk holding `dir` treats `A` and `a` as one name: its nearest lettered folder, case-flipped, is itself. */
+/** Whether the project's disk treats `A` and `a` as one name: its own history-id file answers to its name upper-cased. */
 function ignoresCase(dir: string): boolean {
-  for (let at = dir; dirname(at) !== at; at = dirname(at)) {
-    const name = basename(at);
-    const flipped = name === name.toLowerCase() ? name.toUpperCase() : name.toLowerCase();
-    if (flipped === name) continue;
-    const self = statSync(at);
-    const other = statSync(join(dirname(at), flipped), { throwIfNoEntry: false });
-    return other?.ino === self.ino && other.dev === self.dev;
-  }
-  return false;
+  const self = statSync(join(dir, ID_PATH), { throwIfNoEntry: false });
+  const other = statSync(join(dir, ID_PATH.toUpperCase()), { throwIfNoEntry: false });
+  return self !== undefined && other?.ino === self.ino && other.dev === self.dev;
 }
 
 const blocks = (removed: string, added: string) =>
