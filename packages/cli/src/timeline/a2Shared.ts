@@ -256,6 +256,9 @@ function trimInput(args: Record<string, unknown>) {
   };
 }
 
+const leavesNoLength = (start: number, duration: number) =>
+  duration <= 0 || sameInstant(start, start + duration);
+
 function finishTrim(
   context: MutationContext,
   nextStart: number,
@@ -266,7 +269,7 @@ function finishTrim(
   if (duration && !duration.ok) return duration;
   const nextDuration =
     duration?.seconds ?? (end ? durationUntil(nextStart, end.seconds) : context.row.duration);
-  if (nextDuration <= 0 || sameInstant(nextStart, nextStart + nextDuration)) {
+  if (leavesNoLength(nextStart, nextDuration)) {
     return {
       ok: false,
       reason: "trim duration must be positive",

@@ -22,6 +22,7 @@ import {
   timeAtSourceTime,
   type RateSpec,
   hasClipStarted,
+  isInClipWindow,
   parseStrictFiniteTimingNumber,
   readMediaStart,
   toFps,
@@ -1117,8 +1118,7 @@ export function resolveTimelineExtractionWindow(
     if (sourceRemaining > 0 && video.loop && Number.isFinite(video.end)) {
       const phaseOffset = trimmedSourcePreroll % sourceRemaining;
       const phaseRemaining = sourceRemaining - phaseOffset;
-      // The element visibility contract includes its end boundary. Preserve a
-      // complete cycle on equality as well, otherwise a rebased suffix would
+      // Keep a complete cycle on equality too, otherwise a rebased suffix would
       // wrap to its own first frame instead of the source cycle's first frame.
       if (visibleSourceDuration >= phaseRemaining) {
         return withTimelineDuration(
@@ -2314,7 +2314,7 @@ export class FrameLookupTable {
   getFrame(videoId: string, globalTime: number): string | null {
     const video = this.videos.get(videoId);
     if (!video) return null;
-    if (!hasClipStarted(globalTime, video.start) || globalTime > video.end) return null;
+    if (!isInClipWindow(globalTime, video.start, video.end)) return null;
     const frameIndex = getFrameIndexAtTime(
       video.extracted,
       globalTime,
@@ -2334,24 +2334,17 @@ export class FrameLookupTable {
   }
 
   private refreshActiveSet(globalTime: number): void {
-    // The active window is [start, end] INCLUSIVE of the end, mirroring the
-    // runtime's element-visibility contract (core/runtime init.ts keeps an
-    // element visible through `currentTime <= end`). An exclusive end-bound
-    // here deactivated the video one frame early, so the frame landing exactly
-    // on a clip's end rendered blank while the runtime still showed it.
+    // The runtime's half-open window. Rendered times stay below the composition end, so its
+    // terminal hold (isClipVisibleAt) never applies here.
     if (this.lastTime == null || globalTime < this.lastTime) {
       this.activeVideoIds.clear();
       this.startCursor = 0;
       for (const entry of this.orderedVideos) {
-        const started = hasClipStarted(globalTime, entry.start);
-        if (started && globalTime <= entry.end) {
+        if (!hasClipStarted(globalTime, entry.start)) break;
+        if (isInClipWindow(globalTime, entry.start, entry.end)) {
           this.activeVideoIds.add(entry.videoId);
         }
-        if (started) {
-          this.startCursor += 1;
-        } else {
-          break;
-        }
+        this.startCursor += 1;
       }
       this.lastTime = globalTime;
       return;
@@ -2363,7 +2356,7 @@ export class FrameLookupTable {
       if (!hasClipStarted(globalTime, candidate.start)) {
         break;
       }
-      if (globalTime <= candidate.end) {
+      if (isInClipWindow(globalTime, candidate.start, candidate.end)) {
         this.activeVideoIds.add(candidate.videoId);
       }
       this.startCursor += 1;
@@ -2371,7 +2364,7 @@ export class FrameLookupTable {
 
     for (const videoId of Array.from(this.activeVideoIds)) {
       const video = this.videos.get(videoId);
-      if (!video || !hasClipStarted(globalTime, video.start) || globalTime > video.end) {
+      if (!video || !isInClipWindow(globalTime, video.start, video.end)) {
         this.activeVideoIds.delete(videoId);
       }
     }

@@ -1,3 +1,4 @@
+// fallow-ignore-file code-duplication
 import { describe, expect, it, vi } from "vitest";
 import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
@@ -147,7 +148,7 @@ describe("snapshot lint preflight", () => {
 });
 
 describe("resolveSnapshotVideoFrameTime", () => {
-  it("keeps media active at the inclusive clip end and samples its last decodable frame", () => {
+  it("holds a clip ending with the composition on its last decodable frame", () => {
     expect(
       resolveSnapshotVideoFrameTime({
         globalTime: 15,
@@ -155,6 +156,7 @@ describe("resolveSnapshotVideoFrameTime", () => {
         clipDuration: 15,
         relativeTime: 15,
         sourceDuration: 15,
+        compositionDuration: 15,
       }),
     ).toBeCloseTo(15 - 1 / 30, 6);
   });
@@ -172,6 +174,7 @@ describe("resolveSnapshotVideoFrameTime", () => {
           clipDuration: 0.2,
           relativeTime: globalTime - clipStart,
           sourceDuration: 10,
+          compositionDuration: 1,
         }),
       ).toBe(0);
     },
@@ -185,21 +188,30 @@ describe("resolveSnapshotVideoFrameTime", () => {
         clipDuration: 15,
         relativeTime: 7.5,
         sourceDuration: 15,
+        compositionDuration: 15,
       }),
     ).toBe(7.5);
   });
 
-  it("does not activate media after the clip end", () => {
-    expect(
-      resolveSnapshotVideoFrameTime({
-        globalTime: 15.001,
-        clipStart: 0,
-        clipDuration: 15,
-        relativeTime: 15.001,
-        sourceDuration: 15,
-      }),
-    ).toBeNull();
-  });
+  it.each([
+    [15.001, 0, 15],
+    [15, 0, 15],
+    [0.3, 0.1, 0.1 + 0.2],
+  ])(
+    "leaves a clip that ends before the composition does at %s",
+    (globalTime, clipStart, clipEnd) => {
+      expect(
+        resolveSnapshotVideoFrameTime({
+          globalTime,
+          clipStart,
+          clipDuration: clipEnd - clipStart,
+          relativeTime: globalTime - clipStart,
+          sourceDuration: 15,
+          compositionDuration: 30,
+        }),
+      ).toBeNull();
+    },
+  );
 
   it.each([
     {
@@ -210,6 +222,7 @@ describe("resolveSnapshotVideoFrameTime", () => {
         clipDuration: 10,
         relativeTime: 0,
         sourceDuration: 10,
+        compositionDuration: 15,
       },
       expected: null,
     },
@@ -221,6 +234,7 @@ describe("resolveSnapshotVideoFrameTime", () => {
         clipDuration: 10,
         relativeTime: -0.1,
         sourceDuration: 10,
+        compositionDuration: 15,
       },
       expected: null,
     },
@@ -232,17 +246,19 @@ describe("resolveSnapshotVideoFrameTime", () => {
         clipDuration: 10,
         relativeTime: 10,
         sourceDuration: 0,
+        compositionDuration: 15,
       },
       expected: 10 - 1 / 30,
     },
     {
-      name: "offset clip inclusive end",
+      name: "offset clip held at the composition end",
       input: {
         globalTime: 15,
         clipStart: 5,
         clipDuration: 10,
         relativeTime: 10,
         sourceDuration: 10,
+        compositionDuration: 15,
       },
       expected: 10 - 1 / 30,
     },
@@ -254,6 +270,7 @@ describe("resolveSnapshotVideoFrameTime", () => {
         clipDuration: 10,
         relativeTime: 10,
         sourceDuration: 10,
+        compositionDuration: 15,
       },
       expected: 10 - 1 / 30,
     },
