@@ -3163,11 +3163,11 @@ export function initSandboxRuntimeModular(): void {
     return urls;
   };
   let sceneSwapGeneration = 0;
-  // A video or audio the edit left as written keeps playing: the old element takes its copy's place.
-  // A rebuilt one is recorded from the new markup, before its scene script runs.
-  const keepUnchangedMedia = (oldHost: Element, host: Element) => {
+  // A video or audio the edit left as written keeps playing, unless the scene's scripts changed: what the
+  // old script wrote to it directly is unknown. A rebuilt one is recorded from the new markup.
+  const keepUnchangedMedia = (oldHost: Element, host: Element, sameScripts: boolean) => {
     const byShape = new Map<string, Element[]>();
-    for (const el of oldHost.querySelectorAll("video, audio")) {
+    for (const el of sameScripts ? oldHost.querySelectorAll("video, audio") : []) {
       const shape = authoredMedia.get(el);
       // Its grading canvas sits beside it in the old scene and cannot follow it.
       if (!shape || colorGradingRuntime?.isGraded(el)) continue;
@@ -3301,7 +3301,9 @@ export function initSandboxRuntimeModular(): void {
         .forEach((el, i) => el.replaceWith(document.importNode(newStyles[i]!, true)));
       for (const el of oldParts) if (el !== oldHost) el.remove();
       const host = document.importNode(newHost, true);
-      keepUnchangedMedia(oldHost, host);
+      const scripts = (parts: Element[]) =>
+        parts.flatMap((el) => (el.tagName === "SCRIPT" ? el.outerHTML : [])).join("");
+      keepUnchangedMedia(oldHost, host, scripts(oldParts) === scripts(newParts));
       oldHost.replaceWith(host);
       swappedHosts.push(host);
       if (host.querySelector(".caption-group")) captionHosts.push(host);

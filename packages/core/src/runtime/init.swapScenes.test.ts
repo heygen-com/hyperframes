@@ -539,6 +539,24 @@ describe("__hfSwapScenes", () => {
     expect(sceneHost("a").querySelector("video")).toBe(rebuilt);
   });
 
+  it("rebuilds a video whose scene script the edit changed, dropping what the old script wrote to it", async () => {
+    const { root } = trackingRoot();
+    quietMedia();
+    const write = `const v = document.querySelector('[data-hf-scene="a"] video'); v.style.opacity = "0"; v.muted = true;`;
+    const scene = (text: string, script: string, hash: string): Scene => ({
+      ...A1,
+      hash,
+      body: `<p>${text}</p><video src="clip.mp4"></video>`,
+      script,
+    });
+    boot([scene("A one", write, "ha1"), B], root);
+    new Function(document.querySelector('script[data-hf-scene="a"]')!.textContent!)();
+    await tick();
+    await window.__hfSwapScenes!(preview([scene("A two", "", "ha2"), B]).html);
+    const video = sceneHost("a").querySelector("video")!;
+    expect([video.style.opacity, video.muted]).toEqual(["", false]);
+  });
+
   it.each([
     ["rewinds and kills an old timeline that cannot revert", false, "1", 1],
     ["reverts an old timeline that can, dropping the inline values it wrote", true, "", 0],
@@ -547,28 +565,29 @@ describe("__hfSwapScenes", () => {
     async (_, canRevert, opacity, kills) => {
       const { root } = trackingRoot();
       quietMedia();
-      const scene = (text: string, label: string, hash: string): Scene => ({
+      const scene = (text: string, hash: string): Scene => ({
         ...A1,
-        label,
         hash,
         body: `<p>${text}</p><video src="clip.mp4" data-start="1">one</video>`,
       });
-      boot([scene("A one", "a1", "ha1"), B], root);
+      boot([scene("A one", "ha1"), B], root);
       await tick();
       const video = sceneHost("a").querySelector("video")!;
-      const seek = made.a1!.totalTime.bind(made.a1);
+      const old = made.a1!;
+      const seek = old.totalTime.bind(old);
       const fadeOverTwentySeconds = (t?: number) => (
         t !== undefined && (video.style.opacity = String(1 - t / 20)), seek(t)
       );
-      made.a1!.totalTime = fadeOverTwentySeconds as Tl["totalTime"];
-      if (canRevert)
-        Object.assign(made.a1!, { revert: () => video.style.removeProperty("opacity") });
-      made.a1!.totalTime(10);
-      await window.__hfSwapScenes!(preview([scene("A two", "a2", "ha2"), B]).html);
+      old.totalTime = fadeOverTwentySeconds as Tl["totalTime"];
+      if (canRevert) Object.assign(old, { revert: () => video.style.removeProperty("opacity") });
+      old.totalTime(10);
+      // The same script registers a fresh timeline.
+      made.a1 = made.a2!;
+      await window.__hfSwapScenes!(preview([scene("A two", "ha2"), B]).html);
       expect(sceneHost("a").querySelector("video")).toBe(video);
       expect(video.style.opacity).toBe(opacity);
       // GSAP's revert() kills the timeline itself; a second kill() fires its onInterrupt again.
-      expect(made.a1!.kill).toHaveBeenCalledTimes(kills);
+      expect(old.kill).toHaveBeenCalledTimes(kills);
     },
   );
 
@@ -636,7 +655,7 @@ describe("__hfSwapScenes", () => {
     const probedAudio = () => probe.mock.calls.filter(([el]) => el === audio).length;
     expect(probedAudio()).toBeGreaterThan(0);
     probe.mockClear();
-    await window.__hfSwapScenes!(preview([withAudio(A2, "A two"), B]).html);
+    await window.__hfSwapScenes!(preview([withAudio({ ...A1, hash: "ha2" }, "A two"), B]).html);
     expect(sceneHost("a").querySelector("audio")).toBe(audio);
     expect(probedAudio()).toBeGreaterThan(0);
     probe.mockReset();
