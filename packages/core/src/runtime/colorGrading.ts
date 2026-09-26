@@ -249,7 +249,6 @@ export interface RuntimeColorGradingApi {
     rawCompare: unknown,
   ) => boolean;
   setSourceVisibility: (target: Element, visible: boolean) => boolean;
-  /** Whether the element is drawn through a grading canvas right now. */
   isGraded: (target: Element) => boolean;
   getStatus: (
     target: HfColorGradingTarget | string | null | undefined,
