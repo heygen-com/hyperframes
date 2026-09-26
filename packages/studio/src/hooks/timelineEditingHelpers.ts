@@ -15,7 +15,11 @@ import {
   furthestClipEndFromSource,
   getTimelineElementIdentity,
 } from "../player/lib/timelineElementHelpers";
-import { saveProjectFilesWithHistory, type RecordEditInput } from "../utils/studioFileHistory";
+import {
+  saveProjectFilesWithHistory,
+  writeProjectFilesWithHistory,
+  type RecordEditInput,
+} from "../utils/studioFileHistory";
 import { serializeStudioFileMutations } from "../utils/studioFileMutationCoordinator";
 import type { TimelineZIndexReorderCommit } from "./useTimelineEditingTypes";
 import { setCompositionDurationToContent } from "../utils/timelineAssetDrop";
@@ -400,13 +404,8 @@ export async function persistTimelineBatchEdit(
 /** Live-preview bookkeeping per lane: the value before a gesture, and which gesture is newest. */
 export function createLiveLanes() {
   const before = new Map<string, string | null>();
-  const generation = new Map<string, number>();
   const newestSave = new Map<string, number>();
-  const bump = (key: string): number => {
-    const next = (generation.get(key) ?? 0) + 1;
-    generation.set(key, next);
-    return next;
-  };
+  let saves = 0;
   const take = (key: string): string | null | undefined => {
     const claimed = before.has(key) ? (before.get(key) ?? null) : undefined;
     before.delete(key);
@@ -415,16 +414,15 @@ export function createLiveLanes() {
   return {
     preview(key: string, readCurrent: () => string | null): void {
       if (!before.has(key)) before.set(key, readCurrent());
-      bump(key);
     },
     // A save. Its settle records what the file holds (`saved`, else the claimed value)
-    // unless a newer save has started; it moves the preview only while it owns the lane.
+    // unless a newer save has started; it moves the preview only while no drag is live.
     claim(key: string, apply: LiveLaneApply): LiveLaneSave {
       const claimed = take(key);
-      const mine = bump(key);
+      const mine = ++saves;
       newestSave.set(key, mine);
       const preview = (value: string | null) => {
-        if (generation.get(key) === mine) apply.preview(value);
+        if (newestSave.get(key) === mine && !before.has(key)) apply.preview(value);
       };
       return {
         preview,
@@ -437,14 +435,13 @@ export function createLiveLanes() {
         },
       };
     },
-    // A gesture refused before it saved: put its before-value back and hand the lane
+    // A gesture refused before it saved: put its before-value back, which hands the lane
     // back to the newest save still able to settle it.
     revert(key: string, apply: LiveLaneApply): void {
       const claimed = take(key);
       if (claimed === undefined) return;
       apply.preview(claimed);
       apply.store(claimed);
-      generation.set(key, newestSave.get(key) ?? bump(key));
     },
   };
 }
@@ -512,44 +509,43 @@ export async function persistElementAttribute({
   pendingTimelineEditPathRef,
   patchLive,
 }: PersistElementAttributeInput): Promise<string[]> {
-  // Resolve the target BEFORE patching the live DOM. The optimistic patch used
-  // to run first, and only the save was wrapped in the unwind — so an
-  // unresolvable target threw with the live preview (and, through the callers'
-  // catch, the store mirrored off it) holding a value that never reached disk.
-  // The write then read as successful until a reload dropped it.
-  const before = await readFileContent(projectId, targetPath);
-  if (readTagSnippetByTarget(before, patchTarget) === undefined) {
-    throw new Error(`Unable to patch element in ${targetPath}`);
-  }
-  // The unwind value comes from the FILE, not from `readLive()`.
-  //
-  // Every live-write caller patches the DOM before committing — a fader drag is
-  // `setLive` per frame, hovering a preset auditions the whole chain — so by the
-  // time this runs the live DOM already holds the in-progress value. Reading it
-  // here made `previousValue === value`, so the unwind was a no-op and the preview
-  // kept a never-saved value that a reload dropped: the failure class the target
-  // check above closes, still open on the live-write path.
-  const previousValue = readAttributeByTarget(before, patchTarget, attr) ?? null;
-  patchLive(value);
+  // Joins the file's mutation queue before reading, so saves land in the order they start
+  // and each patches what the save before it wrote. Resolve the target before patching
+  // the live DOM, so an unresolvable target never leaves an unsaved preview.
+  return serializeStudioFileMutations(writeProjectFile, [targetPath], async () => {
+    const before = await readFileContent(projectId, targetPath);
+    if (readTagSnippetByTarget(before, patchTarget) === undefined) {
+      throw new Error(`Unable to patch element in ${targetPath}`);
+    }
+    // The unwind value comes from the FILE, not from `readLive()`.
+    //
+    // Every live-write caller patches the DOM before committing — a fader drag is
+    // `setLive` per frame, hovering a preset auditions the whole chain — so by the
+    // time this runs the live DOM already holds the in-progress value. Reading it
+    // here made `previousValue === value`, so the unwind was a no-op and the preview
+    // kept a never-saved value that a reload dropped: the failure class the target
+    // check above closes, still open on the live-write path.
+    const previousValue = readAttributeByTarget(before, patchTarget, attr) ?? null;
+    patchLive(value);
 
-  const operation: PatchOperation = { type: "attribute", property: attr, value };
-  const patched = applyPatchByTarget(before, patchTarget, operation);
+    const operation: PatchOperation = { type: "attribute", property: attr, value };
+    const patched = applyPatchByTarget(before, patchTarget, operation);
 
-  pendingTimelineEditPathRef.current.add(targetPath);
-  try {
-    const changedPaths = await saveProjectFilesWithHistory({
-      projectId,
-      label,
-      files: { [targetPath]: patched },
-      readFile: async (path) => (path === targetPath ? before : readFileContent(projectId, path)),
-      writeFile: writeProjectFile,
-      recordEdit,
-    });
-    return changedPaths;
-  } catch (error) {
-    // The optimistic live write already ran; unwind it on a save failure so
-    // the preview doesn't show a value that never reached disk.
-    patchLive(previousValue);
-    throw error;
-  }
+    pendingTimelineEditPathRef.current.add(targetPath);
+    try {
+      return await writeProjectFilesWithHistory({
+        projectId,
+        label,
+        files: { [targetPath]: patched },
+        readFile: async (path) => (path === targetPath ? before : readFileContent(projectId, path)),
+        writeFile: writeProjectFile,
+        recordEdit,
+      });
+    } catch (error) {
+      // The optimistic live write already ran; unwind it on a save failure so
+      // the preview doesn't show a value that never reached disk.
+      patchLive(previousValue);
+      throw error;
+    }
+  });
 }

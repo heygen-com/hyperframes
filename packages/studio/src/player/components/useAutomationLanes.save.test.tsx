@@ -42,14 +42,18 @@ afterEach(() => {
 });
 
 function mountLanes(target: TimelineElement, canEdit?: CanEdit, recording = false) {
+  const isRecordingRef = { current: recording };
   let file = SOURCE;
   let reads = 0;
   const held = new Map<number, Promise<void>>();
+  const broken = new Set<number>();
   vi.stubGlobal(
     "fetch",
     vi.fn(async (input: Parameters<typeof fetch>[0]) => {
       if (!requestUrl(input).includes("/files/")) return jsonResponse({});
-      await held.get(++reads);
+      const n = ++reads;
+      await held.get(n);
+      if (broken.has(n)) throw new Error("offline");
       return jsonResponse({ content: file });
     }),
   );
@@ -87,7 +91,7 @@ function mountLanes(target: TimelineElement, canEdit?: CanEdit, recording = fals
       pendingTimelineEditPathRef: { current: new Set<string>() },
       uploadProjectFiles: async () => [],
       canEdit,
-      isRecordingRef: { current: recording },
+      isRecordingRef,
     });
     const domEdit = {
       domEditSelectionRef: { current: selection },
@@ -132,6 +136,8 @@ function mountLanes(target: TimelineElement, canEdit?: CanEdit, recording = fals
     setFile: (next: string) => (file = next),
     file: () => file,
     reads: () => reads,
+    failRead: (n: number) => broken.add(n),
+    setRecording: (next: boolean) => (isRecordingRef.current = next),
     holdRead,
   };
 }
@@ -254,13 +260,44 @@ describe("useAutomationLanes saves report what happened", () => {
     await act(() => vi.waitFor(() => expect(reads()).toBe(3)));
     preview(at(0.7));
     const newer = startCommit(at(0.7));
-    await act(() => vi.waitFor(() => expect(reads()).toBe(4)));
     releaseRecovery();
     let outcomes: unknown[] = [];
     await act(async () => {
       outcomes = await Promise.all([older, newer]);
     });
     expect(outcomes).toMatchObject([{ status: "failed" }, { status: "saved" }]);
+    const landed = serializeAutomation(at(0.7));
+    const saved = new DOMParser().parseFromString(file(), "text/html");
+    expect(saved.getElementById("music")?.getAttribute("data-automation")).toBe(landed);
+    expect(iframe.contentDocument!.getElementById("music")?.getAttribute("data-automation")).toBe(
+      landed,
+    );
+    expect(usePlayerStore.getState().elements[0]?.automation).toBe(landed);
+  });
+
+  it("keeps a newer save when an older failed save cannot read the file back", async () => {
+    const { startCommit, preview, writeProjectFile, iframe, file, failRead } = mountLanes(music);
+    const at = (v: number) => ({
+      version: 1 as const,
+      lanes: [{ target: "volume", points: [{ t: 0, v }] }],
+    });
+    let failOlder = () => {};
+    writeProjectFile.mockImplementationOnce(
+      () =>
+        new Promise<void>((_resolve, reject) => {
+          failOlder = () => reject(new Error("offline"));
+        }),
+    );
+    preview(at(0.9));
+    const older = startCommit(at(0.9));
+    await act(() => vi.waitFor(() => expect(writeProjectFile).toHaveBeenCalledTimes(1)));
+    preview(at(0.7));
+    const newer = startCommit(at(0.7));
+    failRead(3);
+    failOlder();
+    await act(async () => {
+      await Promise.all([older, newer]);
+    });
     const landed = serializeAutomation(at(0.7));
     const saved = new DOMParser().parseFromString(file(), "text/html");
     expect(saved.getElementById("music")?.getAttribute("data-automation")).toBe(landed);
@@ -372,17 +409,10 @@ describe("useAutomationLanes saves report what happened", () => {
     "agrees with the file when a $lane drag is refused between an older failure and a pending save (lands: $pendingLands)",
     async ({ target, field, pendingLands, expected }) => {
       let locked = false;
-      const {
-        commit,
-        startCommit,
-        preview,
-        writeProjectFile,
-        iframe,
-        file,
-        reads,
-        holdRead,
-        setFile,
-      } = mountLanes(target, () => (locked ? LOCKED : true));
+      const { commit, startCommit, preview, writeProjectFile, iframe, file, setFile } = mountLanes(
+        target,
+        () => (locked ? LOCKED : true),
+      );
       const stored = () => usePlayerStore.getState().elements[0]?.[field] ?? null;
       const shown = () =>
         iframe.contentDocument!.getElementById(target.id)?.getAttribute("data-automation") ?? null;
@@ -412,31 +442,77 @@ describe("useAutomationLanes saves report what happened", () => {
       preview(at(0.9));
       const older = startCommit(at(0.9));
       await act(() => vi.waitFor(() => expect(writeProjectFile).toHaveBeenCalledTimes(1)));
-      const releasePending = holdRead(2);
       preview(at(0.7));
       const pending = startCommit(at(0.7));
-      await act(() => vi.waitFor(() => expect(reads()).toBe(2)));
       preview(at(0.5));
-      const duringDrag = stored();
       failOlder();
-      await act(async () => {
-        await older;
-      });
-      expect(stored()).toBe(duringDrag);
-      releasePending();
       await act(() => vi.waitFor(() => expect(writeProjectFile).toHaveBeenCalledTimes(2)));
       expect(shown()).toBe(serializeAutomation(at(0.5)));
       locked = true;
       expect(await commit(at(0.5))).toMatchObject({ status: "refused" });
       finishPending();
       await act(async () => {
-        await pending;
+        await Promise.all([older, pending]);
       });
       const want = expected === null ? null : serializeAutomation(at(expected));
       const saved = new DOMParser().parseFromString(file(), "text/html");
       expect(saved.getElementById(target.id)?.getAttribute("data-automation") ?? null).toBe(want);
       expect(shown()).toBe(want);
       expect(stored()).toBe(want);
+    },
+  );
+
+  it.each([
+    { lane: "clip", target: music, field: "automation", newer: "saves", expected: 0.7 },
+    { lane: "clip", target: music, field: "automation", newer: "fails", expected: 0.9 },
+    { lane: "clip", target: music, field: "automation", newer: "is refused", expected: 0.9 },
+    { lane: "group", target: group, field: "audioGroupAutomation", newer: "saves", expected: 0.7 },
+    { lane: "group", target: group, field: "audioGroupAutomation", newer: "fails", expected: 0.9 },
+    {
+      lane: "group",
+      target: group,
+      field: "audioGroupAutomation",
+      newer: "is refused",
+      expected: 0.9,
+    },
+  ] as const)(
+    "lands saves in the order they start when an older $lane save reads slowly and the newer one $newer",
+    async ({ target, field, newer, expected }) => {
+      const {
+        startCommit,
+        preview,
+        writeProjectFile,
+        iframe,
+        file,
+        holdRead,
+        setFile,
+        setRecording,
+      } = mountLanes(target);
+      const at = (v: number) => ({
+        version: 1 as const,
+        lanes: [{ target: "volume", points: [{ t: 0, v }] }],
+      });
+      writeProjectFile.mockImplementation(async (_path, content) => {
+        if (newer === "fails" && content.includes("0.7")) throw new Error("offline");
+        setFile(content);
+      });
+      const releaseOlder = holdRead(1);
+      preview(at(0.9));
+      const older = startCommit(at(0.9));
+      if (newer === "is refused") setRecording(true);
+      preview(at(0.7));
+      const pending = startCommit(at(0.7));
+      releaseOlder();
+      await act(async () => {
+        await Promise.all([older, pending]);
+      });
+      const want = serializeAutomation(at(expected));
+      const saved = new DOMParser().parseFromString(file(), "text/html");
+      expect(saved.getElementById(target.id)?.getAttribute("data-automation")).toBe(want);
+      expect(
+        iframe.contentDocument!.getElementById(target.id)?.getAttribute("data-automation"),
+      ).toBe(want);
+      expect(usePlayerStore.getState().elements[0]?.[field]).toBe(want);
     },
   );
 
