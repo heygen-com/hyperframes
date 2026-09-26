@@ -6,19 +6,20 @@ type AtomicFileSystem = Pick<
   "writeFileSync" | "chmodSync" | "renameSync" | "unlinkSync"
 >;
 
-/** Replace a file only after the complete sibling temp file is written. */
+/** Replace a file only after the complete sibling temp file is written; a symlink's target is replaced, not the link. */
 export function replaceFileAtomically(
   filePath: string,
   content: string | Uint8Array,
   mode: number,
   operations: AtomicFileSystem = fs,
 ): void {
-  const tempPath = `${filePath}.${process.pid}.${randomUUID()}.tmp`;
+  const target = existingTarget(filePath);
+  const tempPath = `${target}.${process.pid}.${randomUUID()}.tmp`;
   try {
     operations.writeFileSync(tempPath, content, { encoding: "utf-8", mode });
     operations.chmodSync(tempPath, mode);
     // Node fs.rename uses libuv uv_fs_rename; win32 calls MoveFileExW with MOVEFILE_REPLACE_EXISTING.
-    operations.renameSync(tempPath, filePath);
+    operations.renameSync(tempPath, target);
   } catch (error) {
     try {
       operations.unlinkSync(tempPath);
@@ -26,5 +27,13 @@ export function replaceFileAtomically(
       // Preserve the write error; cleanup is best effort.
     }
     throw error;
+  }
+}
+
+function existingTarget(filePath: string): string {
+  try {
+    return fs.realpathSync(filePath);
+  } catch {
+    return filePath;
   }
 }

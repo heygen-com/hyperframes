@@ -1,5 +1,5 @@
 // @vitest-environment node
-import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { lstatSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { Hono } from "hono";
@@ -156,6 +156,24 @@ describe("element edits with another writer racing them", () => {
     expect(response.status).toBe(409);
     expect(read()).toBe(saved("x"));
   });
+
+  it.each(Object.entries(ROUTES))(
+    "%s edits a linked file through its link and keeps the link",
+    async (_, [route, body]) => {
+      const { post, path, read } = project();
+      const alias = join(path, "..", "alias.html");
+      try {
+        symlinkSync(path, alias);
+      } catch {
+        return;
+      }
+      const aliased = JSON.parse(JSON.stringify(body).replaceAll("index.html", "alias.html"));
+
+      expect((await post(route.replace("index.html", "alias.html"), aliased)).status).toBe(200);
+      expect(lstatSync(alias).isSymbolicLink()).toBe(true);
+      expect(read()).toContain("z-index: 2");
+    },
+  );
 
   it("patch-element answers with the version of what it wrote", async () => {
     const { post, read } = project();
