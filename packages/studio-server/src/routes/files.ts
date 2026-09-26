@@ -27,7 +27,7 @@ import { isAudioFile } from "../helpers/mime.js";
 import { replaceFileAtomically } from "../helpers/atomicFile.js";
 import { generateWaveformCache } from "../helpers/waveform.js";
 import { validateUploadedMediaBuffer } from "../helpers/mediaValidation.js";
-import { isSafePath, resolveWithinProject } from "../helpers/safePath.js";
+import { isSafePath, pinWithinProject, resolveWithinProject } from "../helpers/safePath.js";
 import { backupPathForResponse, snapshotBeforeWrite } from "../helpers/backupJournal.js";
 import {
   createWriteToken,
@@ -176,7 +176,7 @@ async function resolveProjectPath(
   c: RouteContext,
   adapter: StudioApiAdapter,
   route: string,
-  opts?: { mustExist?: boolean },
+  opts?: { mustExist?: boolean; pin?: boolean },
 ) {
   const id = c.req.param("id");
   const project = await adapter.resolveProject(id);
@@ -203,7 +203,8 @@ async function resolveProjectPath(
     return { error: c.json({ error: "forbidden", why: "nul" }, 403) } as const;
   }
 
-  const absPath = resolveWithinProject(project.dir, filePath);
+  // A content write pins its target; a delete or rename acts on a link itself.
+  const absPath = (opts?.pin ? pinWithinProject : resolveWithinProject)(project.dir, filePath);
   if (!absPath) {
     if (isDanglingSymlinkInProject(project.dir, resolve(project.dir, filePath))) {
       return { error: c.json({ error: "not found", why: "dangling_symlink" }, 404) } as const;
@@ -221,13 +222,13 @@ async function resolveProjectPath(
 function resolveProjectFile(
   c: RouteContext,
   adapter: StudioApiAdapter,
-  opts?: { mustExist?: boolean },
+  opts?: { mustExist?: boolean; pin?: boolean },
 ) {
   return resolveProjectPath(c, adapter, "files", opts);
 }
 
 function resolveFileMutationContext(c: RouteContext, adapter: StudioApiAdapter, operation: string) {
-  return resolveProjectPath(c, adapter, `file-mutations/${operation}`);
+  return resolveProjectPath(c, adapter, `file-mutations/${operation}`, { pin: true });
 }
 
 type MutationTarget = {
@@ -409,7 +410,7 @@ function foldAndCommitElementPatchBatches(
   }> = [];
 
   for (const batch of batches) {
-    const absPath = resolveWithinProject(projectDir, batch.sourceFile);
+    const absPath = pinWithinProject(projectDir, batch.sourceFile);
     if (!absPath) return { error: "forbidden", sourceFile: batch.sourceFile };
     if (resolvedPaths.has(absPath)) return { error: "duplicate", sourceFile: batch.sourceFile };
     resolvedPaths.add(absPath);
@@ -2402,7 +2403,7 @@ export function registerFileRoutes(api: Hono, adapter: StudioApiAdapter): void {
   // ── Write (overwrite) ──
 
   api.put("/projects/:id/files/*", async (c) => {
-    const res = await resolveProjectFile(c, adapter);
+    const res = await resolveProjectFile(c, adapter, { pin: true });
     if ("error" in res) return res.error;
 
     const body = Buffer.from(await c.req.arrayBuffer());
@@ -3295,6 +3296,7 @@ export function registerFileRoutes(api: Hono, adapter: StudioApiAdapter): void {
   api.post("/projects/:id/gsap-mutations/*", async (c) => {
     const res = await resolveProjectPath(c, adapter, "gsap-mutations", {
       mustExist: true,
+      pin: true,
     });
     if ("error" in res) return res.error;
 
@@ -3306,7 +3308,10 @@ export function registerFileRoutes(api: Hono, adapter: StudioApiAdapter): void {
   });
 
   api.post("/projects/:id/gsap-mutations-batch/*", async (c) => {
-    const res = await resolveProjectPath(c, adapter, "gsap-mutations-batch", { mustExist: true });
+    const res = await resolveProjectPath(c, adapter, "gsap-mutations-batch", {
+      mustExist: true,
+      pin: true,
+    });
     if ("error" in res) return res.error;
 
     const body = (await c.req.json().catch(() => null)) as {
@@ -3326,7 +3331,10 @@ export function registerFileRoutes(api: Hono, adapter: StudioApiAdapter): void {
   // mutation wrote. Keep compare + write in this synchronous server section so
   // another request cannot land between a client-side check and the restore.
   api.post("/projects/:id/gsap-mutation-rollback/*", async (c) => {
-    const res = await resolveProjectPath(c, adapter, "gsap-mutation-rollback", { mustExist: true });
+    const res = await resolveProjectPath(c, adapter, "gsap-mutation-rollback", {
+      mustExist: true,
+      pin: true,
+    });
     if ("error" in res) return res.error;
 
     const body = (await c.req.json().catch(() => null)) as {

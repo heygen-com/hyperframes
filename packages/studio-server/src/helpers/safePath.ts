@@ -1,10 +1,33 @@
-import { join } from "node:path";
-import { readdirSync, type Dirent } from "node:fs";
+import { basename, dirname, isAbsolute, join, relative, sep } from "node:path";
+import { readdirSync, realpathSync, type Dirent } from "node:fs";
+import { resolveWithinProject } from "@hyperframes/core";
 
 // `isSafePath` lives at the package root so non-studio-api layers (compiler,
 // CLI, engine) can share it without a backwards dependency on studio-api.
 // Re-exported here for back-compat with existing `../helpers/safePath.js` imports.
 export { isSafePath, resolveWithinProject } from "@hyperframes/core";
+
+/** The file's real path; for a path not there (yet, or any more), the nearest existing folder's real path joined with the rest. */
+export function realFilePath(filePath: string): string {
+  try {
+    return realpathSync(filePath);
+  } catch {
+    const dir = dirname(filePath);
+    return dir === filePath ? filePath : join(realFilePath(dir), basename(filePath));
+  }
+}
+
+/**
+ * `resolveWithinProject` with every link inside the project resolved now, so a write to the result lands on the
+ * file checked here even if a link on the way is retargeted before the write.
+ */
+export function pinWithinProject(base: string, relativePath: string): string | null {
+  const checked = resolveWithinProject(base, relativePath);
+  if (!checked) return null;
+  const inside = relative(realFilePath(base), realFilePath(checked));
+  const escapes = inside === ".." || inside.startsWith(`..${sep}`) || isAbsolute(inside);
+  return escapes ? null : join(base, inside);
+}
 
 const IGNORE_DIRS = new Set([
   ".thumbnails",

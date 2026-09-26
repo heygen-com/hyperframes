@@ -159,6 +159,29 @@ describe("element edits with another writer racing them", () => {
 
   // Windows needs a privilege to create symlinks.
   it.skipIf(process.platform === "win32").each(Object.entries(ROUTES))(
+    "%s writes the linked file it checked, though the link is retargeted outside before the write",
+    async (_, [route, body]) => {
+      const { post, path, read } = project();
+      const alias = join(path, "..", "alias.html");
+      symlinkSync(path, alias);
+      const outsideDir = mkdtempSync(join(tmpdir(), "hf-patch-outside-"));
+      dirs.push(outsideDir);
+      const outside = join(outsideDir, "index.html");
+      hooks.backingUp = () => {
+        hooks.backingUp = undefined;
+        writeFileSync(outside, read());
+        rmSync(alias);
+        symlinkSync(outside, alias);
+      };
+      const aliased = JSON.parse(JSON.stringify(body).replaceAll("index.html", "alias.html"));
+
+      expect((await post(route.replace("index.html", "alias.html"), aliased)).status).toBe(200);
+      expect(readFileSync(outside, "utf-8")).toBe(ORIGINAL);
+      expect(read()).toContain("z-index: 2");
+    },
+  );
+
+  it.skipIf(process.platform === "win32").each(Object.entries(ROUTES))(
     "%s edits a linked file through its link and keeps the link",
     async (_, [route, body]) => {
       const { post, path, read } = project();

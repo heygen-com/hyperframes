@@ -111,8 +111,7 @@ export function stampFileHfIds(filePath: string): string | null {
       const mode = fstatSync(fd).mode;
       closeSync(fd);
       fd = null;
-      if (isUnchanged(filePath, html))
-        replaceFileAtomically(filePath, normalized, mode, undefined, { followLinks: false });
+      if (isUnchanged(filePath, html)) replaceFileAtomically(filePath, normalized, mode);
     }
     return normalized;
   } catch (err) {

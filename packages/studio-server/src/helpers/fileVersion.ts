@@ -1,5 +1,5 @@
 import { createHash, randomUUID } from "node:crypto";
-import { realFilePath } from "./atomicFile.js";
+import { realFilePath } from "./safePath.js";
 
 export interface FileWriteReceipt {
   path: string;
