@@ -33,4 +33,24 @@ describe("useTimelinePlayer tab hidden while playing", () => {
     expect(usePlayerStore.getState().currentTime).toBe(6);
     act(() => root.unmount());
   });
+
+  it("stops a reverse shuttle for good", async () => {
+    const { api, root } = renderTimelinePlayerHarness();
+    const { adapter, win } = makeAdapterWindow();
+    attachIframeWindow(api, win);
+    adapter.seek(20);
+    act(() => void window.dispatchEvent(new KeyboardEvent("keydown", { code: "KeyJ", key: "j" })));
+    await act(() => new Promise((r) => setTimeout(r, 100)));
+    expect(usePlayerStore.getState().isPlaying).toBe(true);
+
+    vi.spyOn(document, "hidden", "get").mockReturnValue(true);
+    act(() => void document.dispatchEvent(new Event("visibilitychange")));
+    const stoppedAt = adapter.getTime();
+    await act(() => new Promise((r) => setTimeout(r, 200)));
+
+    expect(usePlayerStore.getState().isPlaying).toBe(false);
+    expect(adapter.getTime()).toBe(stoppedAt);
+    expect(usePlayerStore.getState().currentTime).toBe(stoppedAt);
+    act(() => root.unmount());
+  });
 });

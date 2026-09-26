@@ -456,8 +456,8 @@ export function useTimelinePlayer({
     applyPreviewVariablesToUrl(url);
     beginShadowReload(url.toString());
   }, [saveSeekPosition, getAdapter, beginShadowReload]);
-  const getAdapterRef = useRef(getAdapter);
-  getAdapterRef.current = getAdapter;
+  const pauseRef = useRef(pause);
+  pauseRef.current = pause;
 
   useMountEffect(() => {
     const handleWindowKeyDown = (e: KeyboardEvent) => playbackKeyDownRef.current(e);
@@ -473,15 +473,7 @@ export function useTimelinePlayer({
     });
 
     const handleVisibilityChange = () => {
-      if (document.hidden && usePlayerStore.getState().isPlaying) {
-        const adapter = getAdapterRef.current?.();
-        if (adapter) {
-          adapter.pause();
-          setCurrentTime(adapter.getTime());
-          setIsPlaying(false);
-          stopRAFLoop();
-        }
-      }
+      if (document.hidden && usePlayerStore.getState().isPlaying) pauseRef.current();
     };
 
     window.addEventListener("keydown", handleWindowKeyDown, true);
