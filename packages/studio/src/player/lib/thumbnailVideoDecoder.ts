@@ -44,7 +44,7 @@ interface DecodedResources {
 
 interface ThumbnailCanvasSink {
   canvasesAtTimestamps(
-    timestamps: number[],
+    timestamps: AsyncIterable<number>,
   ): AsyncIterable<{ canvas: HTMLCanvasElement | OffscreenCanvas } | null>;
 }
 
@@ -77,7 +77,7 @@ function targetDimensions(
 
 async function decodeFrames(
   sink: ThumbnailCanvasSink,
-  timestamps: number[],
+  timestamps: AsyncIterable<number>,
   signal: AbortSignal,
   resources: DecodedResources,
 ): Promise<void> {
@@ -89,6 +89,7 @@ async function decodeFrames(
     throwIfAborted(signal);
     resources.urls.push(URL.createObjectURL(blob));
   }
+  throwIfAborted(signal);
 }
 
 function loadedResult(
@@ -151,16 +152,15 @@ export async function decodeVideoThumbnail(
       duration,
       Math.min(request.frameCount, budgets.richPreviewFrameCount),
     );
-    // A frame at its keyframe decodes alone; one between keyframes decodes the whole run before it.
-    // A slot takes its keyframe only within half a slot, so every tile still shows its own stretch.
     const keys = new mediabunny.EncodedPacketSink(track);
-    const slack = duration / Math.max(2, timestamps.length - 1) / 2;
-    const decodeAt: number[] = [];
-    for (const time of timestamps) {
-      const key = await keys.getKeyPacket(time, { metadataOnly: true });
-      throwIfAborted(signal);
-      const near = key && key.timestamp >= sourceStart && time - key.timestamp <= slack;
-      decodeAt.push(near ? key.timestamp : time);
+    const maxKeyframeLead = duration / Math.max(2, timestamps.length - 1) / 2;
+    async function* decodeTimesAtNearbyKeyframes() {
+      for (const time of timestamps) {
+        const key = await keys.getKeyPacket(time, { metadataOnly: true });
+        if (signal.aborted) return;
+        const near = key && key.timestamp >= sourceStart && time - key.timestamp <= maxKeyframeLead;
+        yield near ? key.timestamp : time;
+      }
     }
     const aspect = displayWidth / displayHeight;
     const target = targetDimensions(aspect, budgets);
@@ -170,7 +170,7 @@ export async function decodeVideoThumbnail(
       fit: request.fit ?? "cover",
       poolSize: 1,
     });
-    await decodeFrames(sink, decodeAt, signal, resources);
+    await decodeFrames(sink, decodeTimesAtNearbyKeyframes(), signal, resources);
     return loadedResult(resources, aspect, target.width, target.height);
   } catch (error) {
     releaseDecodedResources(resources);
