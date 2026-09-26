@@ -234,6 +234,23 @@ describe("caption state declaration", () => {
     ]);
   });
 
+  it("leaves a from() colour tween as recorded, so it still lights the word up to its own colour", async () => {
+    const from = {
+      vars: { color: "#444", runBackwards: true },
+      startTime: () => 0,
+      invalidate: vi.fn(),
+    };
+    const gsap = { set() {}, killTweensOf() {}, getTweensOf: () => [from] };
+    Object.defineProperty(window, "gsap", { configurable: true, value: gsap });
+    installCaptionOverrideFetch([{ wordIndex: 0, dimColor: "#888" }]);
+    document.body.innerHTML = `<div class="caption-group"><span id="w0">Hi</span></div>`;
+
+    applyCaptionOverrides();
+    await flushCaptionOverrides();
+
+    expect(from.invalidate).not.toHaveBeenCalled();
+  });
+
   it("prefers the declaration over the colour heuristic when they disagree", async () => {
     // Declared order is deliberately the reverse of what colour-equality would infer.
     const tweens = installGsapMockWithTweens([

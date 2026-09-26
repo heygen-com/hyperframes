@@ -163,16 +163,8 @@ function definedProps(override: CaptionOverride, keys: (keyof CaptionOverride)[]
   );
 }
 
-// Replace color values in existing GSAP tweens, classified in two layers.
-//
-// A tween that DECLARES its state is taken at its word. Anything undeclared falls back to
-// colour equality against a dim reference — a guess, and the reason the declaration exists:
-// two states sharing a colour make every tween look dim.
-//
-// The reference is drawn only from tweens the guess still applies to (a declared "dim" one
-// if present, else the first undeclared one). Deriving it from a tween declared "active"
-// would compare undeclared siblings against a colour that has explicitly said it is not the
-// dim reference.
+// Undeclared tweens are dim when their colour equals this reference, taken from a tween
+// declared "dim" or else the first undeclared one, never from one declared "active".
 function dimBaselineOf(colorTweens: GsapTween[]): string {
   const dimReference =
     colorTweens.find((tw) => declaredCaptionState(tw) === "dim") ??
@@ -197,7 +189,8 @@ function rewriteColorTweens(gsap: GsapStatic, el: HTMLElement, override: Caption
     const color = state === "dim" ? override.dimColor : override.activeColor;
     if (!color) continue;
     tw.vars.color = color;
-    tw.invalidate?.();
+    // A from() re-read after invalidate() would end on the dim colour set below.
+    if (!tw.vars.runBackwards) tw.invalidate?.();
   }
 
   // Set current visible color (words start in dim state)
