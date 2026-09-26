@@ -1,0 +1,559 @@
+<!doctype html>
+<!--
+  ai-answer-rank: "Is your brand in the AI answer?"
+
+  A mock AI chat card for answer-engine and AI-visibility marketing. The
+  question types into the user's bubble, the assistant answers with a ranked
+  list of three picks, holds, then re-ranks: the promoted brand slides into
+  its slot, the rows below it step down, the last one drops out of the top
+  three, and the brand row lands with the one accent highlight and a check.
+
+  The UI is placeholder material: ink at alpha steps over the ground, logos as
+  rounded-square monograms, descriptions as skeleton rules. Accent lands on
+  the brand row only.
+
+  Rank numbers belong to the slots, not the rows, so a row that moves keeps
+  the list numbered 1-3 without swapping any text.
+-->
+<html
+  lang="en"
+  data-composition-variables='[
+    { "id": "prompt", "type": "string", "role": "content", "label": "Prompt", "description": "The question typed into the user bubble. Up to about 60 characters keeps it on one or two lines.", "default": "What&#39;s the best CRM for a small team?" },
+    { "id": "lead", "type": "string", "role": "content", "label": "Answer lead-in", "description": "The assistant line above the ranked list.", "default": "Here are the top picks:" },
+    { "id": "rowA", "type": "string", "role": "content", "label": "Pick 1", "description": "First pick in the original answer: a product other than the brand this video promotes.", "portrays": ["competitor_name"], "default": "Brand A" },
+    { "id": "rowB", "type": "string", "role": "content", "label": "Pick 2", "description": "Second pick in the original answer: a product other than the brand this video promotes.", "portrays": ["competitor_name"], "default": "Brand B" },
+    { "id": "rowC", "type": "string", "role": "content", "label": "Pick 3", "description": "Third pick in the original answer. It drops out of the top three when the brand lands.", "portrays": ["competitor_name"], "default": "Brand C" },
+    { "id": "brand", "type": "string", "role": "content", "label": "Brand", "description": "The brand this video promotes, by its real name. It slides into the answer and takes the highlight.", "portrays": ["subject_name"], "default": "Your brand" },
+    { "id": "brandRank", "type": "enum", "role": "content", "label": "Brand rank", "description": "The slot the brand lands in. Picks at and below it step down one place.", "portrays": ["recommended_position"], "default": "1", "options": [{ "value": "1", "label": "1st" }, { "value": "2", "label": "2nd" }, { "value": "3", "label": "3rd" }] },
+    { "id": "accent", "type": "color", "role": "style", "label": "Accent", "description": "Highlight, monogram and check on the brand row, the one accent element.", "default": "#16a34a" },
+    { "id": "ink", "type": "color", "role": "style", "label": "Ink", "description": "Text colour; every placeholder surface is this ink at an alpha step.", "default": "#18181b" },
+    { "id": "ground", "type": "color", "role": "style", "label": "Ground", "description": "Chat card surface; the page around it is the ground tinted toward the ink.", "default": "#fcfcfb" }
+  ]'
+>
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=1080, height=1080" />
+    <title>AI Answer Rank</title>
+    <script src="https://cdn.jsdelivr.net/npm/gsap@3.14.2/dist/gsap.min.js"></script>
+    <style>
+      * {
+        margin: 0;
+        padding: 0;
+        box-sizing: border-box;
+      }
+      html,
+      body {
+        width: 1080px;
+        height: 1080px;
+        overflow: hidden;
+        background: #efefee;
+      }
+      #aar-root {
+        --aar-ink: #18181b;
+        --aar-ground: #fcfcfb;
+        --aar-accent: #16a34a;
+        --aar-l1: color-mix(in srgb, var(--aar-ink) 72%, transparent);
+        --aar-l2: color-mix(in srgb, var(--aar-ink) 45%, transparent);
+        --aar-l3: color-mix(in srgb, var(--aar-ink) 18%, transparent);
+        --aar-l4: color-mix(in srgb, var(--aar-ink) 8%, transparent);
+        --aar-hair: color-mix(in srgb, var(--aar-ink) 14%, transparent);
+        position: relative;
+        width: 1080px;
+        height: 1080px;
+        overflow: hidden;
+        background: color-mix(in srgb, var(--aar-ink) 6%, var(--aar-ground));
+        color: var(--aar-ink);
+        font-family: Inter, ui-sans-serif, system-ui, sans-serif;
+      }
+      #aar-scene {
+        position: absolute;
+        inset: 0;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+      }
+      #aar-card {
+        width: 920px;
+        padding: 56px 56px 16px;
+        border-radius: 44px;
+        background: var(--aar-ground);
+        border: 1px solid var(--aar-hair);
+        box-shadow:
+          0 2px 6px rgba(0, 0, 0, 0.04),
+          0 30px 80px rgba(0, 0, 0, 0.1);
+        display: flex;
+        flex-direction: column;
+      }
+
+      /* the bubble is sized by an invisible copy of the whole prompt, so typing never reflows the card */
+      #aar-bubble {
+        position: relative;
+        align-self: flex-end;
+        max-width: 720px;
+        padding: 24px 32px;
+        border-radius: 32px 32px 10px 32px;
+        background: var(--aar-l4);
+        font-size: 32px;
+        line-height: 44px;
+        letter-spacing: -0.2px;
+        transform-origin: 100% 100%;
+      }
+      #aar-sizer {
+        visibility: hidden;
+      }
+      #aar-typing {
+        position: absolute;
+        left: 32px;
+        right: 32px;
+        top: 24px;
+      }
+      #aar-caret {
+        display: inline-block;
+        width: 3px;
+        height: 34px;
+        margin-left: 2px;
+        border-radius: 2px;
+        background: var(--aar-ink);
+        vertical-align: -6px;
+      }
+
+      #aar-answer {
+        position: relative;
+        margin-top: 48px;
+      }
+      #aar-lead {
+        display: flex;
+        align-items: center;
+        gap: 16px;
+        height: 48px;
+        font-size: 34px;
+        font-weight: 600;
+        letter-spacing: -0.4px;
+      }
+      #aar-star {
+        flex: 0 0 auto;
+        width: 30px;
+        height: 30px;
+      }
+      #aar-star path {
+        fill: var(--aar-ink);
+      }
+      .aar-w {
+        opacity: 0;
+      }
+      #aar-thinking {
+        position: absolute;
+        left: 4px;
+        top: 17px;
+        display: flex;
+        gap: 10px;
+      }
+      .aar-dot {
+        width: 14px;
+        height: 14px;
+        border-radius: 50%;
+        background: var(--aar-l2);
+      }
+
+      /* 40px of runway under slot three, masked, so the pick pushed out fades instead of being cut */
+      #aar-list {
+        position: relative;
+        height: 448px;
+        margin-top: 28px;
+        overflow: hidden;
+        -webkit-mask-image: linear-gradient(to bottom, #000 408px, transparent 448px);
+        mask-image: linear-gradient(to bottom, #000 408px, transparent 448px);
+      }
+      .aar-rank {
+        position: absolute;
+        left: 0;
+        width: 44px;
+        height: 124px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 30px;
+        font-weight: 600;
+        font-variant-numeric: tabular-nums;
+        color: var(--aar-l1);
+      }
+      .aar-row {
+        position: absolute;
+        left: 68px;
+        right: 0;
+        height: 124px;
+        display: flex;
+        align-items: center;
+        gap: 26px;
+        padding: 0 28px;
+        border-radius: 28px;
+        border: 1.5px solid var(--aar-hair);
+      }
+      .aar-hl {
+        position: absolute;
+        inset: -1.5px;
+        border-radius: 28px;
+        border: 3px solid var(--aar-accent);
+        background: color-mix(in srgb, var(--aar-accent) 9%, transparent);
+      }
+      .aar-tile {
+        position: relative;
+        flex: 0 0 auto;
+        width: 68px;
+        height: 68px;
+        border-radius: 18px;
+        background: var(--aar-l1);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        overflow: hidden;
+      }
+      .aar-tile-accent {
+        position: absolute;
+        inset: 0;
+        background: var(--aar-accent);
+      }
+      .aar-mono {
+        position: relative;
+        color: var(--aar-ground);
+        font-size: 26px;
+        font-weight: 700;
+        letter-spacing: 0.5px;
+      }
+      .aar-meta {
+        position: relative;
+        flex: 1 1 auto;
+        min-width: 0;
+      }
+      .aar-name {
+        font-size: 36px;
+        font-weight: 600;
+        line-height: 44px;
+        letter-spacing: -0.5px;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+      }
+      .aar-skel {
+        height: 12px;
+        margin-top: 12px;
+        border-radius: 6px;
+        background: var(--aar-l3);
+      }
+      #aar-check {
+        position: relative;
+        flex: 0 0 auto;
+        width: 56px;
+        height: 56px;
+      }
+      #aar-check circle {
+        fill: var(--aar-accent);
+      }
+      #aar-check-path {
+        fill: none;
+        stroke: var(--aar-ground);
+        stroke-width: 5;
+        stroke-linecap: round;
+        stroke-linejoin: round;
+      }
+      .aar-hidden {
+        opacity: 0;
+        visibility: hidden;
+      }
+    </style>
+  </head>
+  <body>
+    <div
+      id="aar-root"
+      data-composition-id="ai-answer-rank"
+      data-start="0"
+      data-width="1080"
+      data-height="1080"
+      data-duration="9"
+    >
+      <section id="aar-scene" class="clip" data-start="0" data-duration="9" data-track-index="1">
+        <div id="aar-card" class="aar-hidden">
+          <div id="aar-bubble" class="aar-hidden">
+            <span id="aar-sizer">What's the best CRM for a small team?</span>
+            <div id="aar-typing"><span id="aar-typed"></span><span id="aar-caret"></span></div>
+          </div>
+
+          <div id="aar-answer">
+            <div id="aar-thinking" class="aar-hidden">
+              <div class="aar-dot"></div>
+              <div class="aar-dot"></div>
+              <div class="aar-dot"></div>
+            </div>
+            <div id="aar-lead">
+              <svg id="aar-star" class="aar-hidden" viewBox="0 0 24 24" aria-hidden="true">
+                <path
+                  d="M12 0 C12.9 7 17 11.1 24 12 C17 12.9 12.9 17 12 24 C11.1 17 7 12.9 0 12 C7 11.1 11.1 7 12 0 Z"
+                />
+              </svg>
+              <span id="aar-lead-text">Here are the top picks:</span>
+            </div>
+
+            <div id="aar-list">
+              <div class="aar-rank aar-hidden" id="aar-rank-1" style="top: 0">1</div>
+              <div class="aar-rank aar-hidden" id="aar-rank-2" style="top: 142px">2</div>
+              <div class="aar-rank aar-hidden" id="aar-rank-3" style="top: 284px">3</div>
+
+              <div
+                class="aar-row aar-hidden"
+                id="aar-row-a"
+                data-layout-allow-overflow
+                style="top: 0"
+              >
+                <div class="aar-tile"><span class="aar-mono">BA</span></div>
+                <div class="aar-meta">
+                  <div class="aar-name">Brand A</div>
+                  <div class="aar-skel" style="width: 58%"></div>
+                </div>
+              </div>
+              <div
+                class="aar-row aar-hidden"
+                id="aar-row-b"
+                data-layout-allow-overflow
+                style="top: 142px"
+              >
+                <div class="aar-tile"><span class="aar-mono">BB</span></div>
+                <div class="aar-meta">
+                  <div class="aar-name">Brand B</div>
+                  <div class="aar-skel" style="width: 44%"></div>
+                </div>
+              </div>
+              <div
+                class="aar-row aar-hidden"
+                id="aar-row-c"
+                data-layout-allow-overflow
+                style="top: 284px"
+              >
+                <div class="aar-tile"><span class="aar-mono">BC</span></div>
+                <div class="aar-meta">
+                  <div class="aar-name">Brand C</div>
+                  <div class="aar-skel" style="width: 51%"></div>
+                </div>
+              </div>
+
+              <div
+                class="aar-row aar-hidden"
+                id="aar-row-brand"
+                data-layout-allow-overflow
+                style="top: 0"
+              >
+                <div class="aar-hl aar-hidden" id="aar-hl"></div>
+                <div class="aar-tile">
+                  <div class="aar-tile-accent aar-hidden" id="aar-tile-accent"></div>
+                  <span class="aar-mono">YB</span>
+                </div>
+                <div class="aar-meta">
+                  <div class="aar-name">Your brand</div>
+                  <div class="aar-skel" style="width: 62%"></div>
+                </div>
+                <svg id="aar-check" class="aar-hidden" viewBox="0 0 56 56" aria-hidden="true">
+                  <circle cx="28" cy="28" r="28" />
+                  <path id="aar-check-path" d="M17 29 L24.5 36.5 L39 21" />
+                </svg>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+    </div>
+
+    <script>
+      (function () {
+        "use strict";
+
+        var vars =
+          window.__hyperframes && typeof window.__hyperframes.getVariables === "function"
+            ? window.__hyperframes.getVariables()
+            : {};
+
+        function text(value, fallback, max) {
+          if (typeof value !== "string") return fallback;
+          var t = value.trim();
+          if (!t) return fallback;
+          return t.length > max ? t.slice(0, max) : t;
+        }
+        function color(value, fallback) {
+          if (typeof value !== "string") return fallback;
+          var c = value.trim();
+          return c && CSS.supports("color", c) ? c : fallback;
+        }
+        function monogram(name) {
+          var words = name.split(/\s+/).filter(Boolean);
+          var letters =
+            words.length > 1 ? words[0][0] + words[words.length - 1][0] : name.slice(0, 1);
+          return letters.toUpperCase();
+        }
+
+        var root = document.getElementById("aar-root");
+        root.style.setProperty("--aar-ink", color(vars.ink, "#18181b"));
+        root.style.setProperty("--aar-ground", color(vars.ground, "#fcfcfb"));
+        root.style.setProperty("--aar-accent", color(vars.accent, "#16a34a"));
+
+        var prompt = text(vars.prompt, "What's the best CRM for a small team?", 90);
+        var lead = text(vars.lead, "Here are the top picks:", 48);
+        var names = [
+          text(vars.rowA, "Brand A", 32),
+          text(vars.rowB, "Brand B", 32),
+          text(vars.rowC, "Brand C", 32),
+        ];
+        var brand = text(vars.brand, "Your brand", 32);
+        var slot = ["1", "2", "3"].indexOf(String(vars.brandRank));
+        if (slot < 0) slot = 0;
+
+        var SLOT = 142;
+        var rows = ["#aar-row-a", "#aar-row-b", "#aar-row-c"].map(function (sel, i) {
+          var el = document.querySelector(sel);
+          el.querySelector(".aar-name").textContent = names[i];
+          el.querySelector(".aar-mono").textContent = monogram(names[i]);
+          return el;
+        });
+        var brandRow = document.getElementById("aar-row-brand");
+        brandRow.querySelector(".aar-name").textContent = brand;
+        brandRow.querySelector(".aar-mono").textContent = monogram(brand);
+        brandRow.style.top = slot * SLOT + "px";
+
+        document.getElementById("aar-sizer").textContent = prompt;
+        var leadEl = document.getElementById("aar-lead-text");
+        leadEl.textContent = "";
+        var words = lead.split(/\s+/).map(function (word, i) {
+          if (i > 0) leadEl.appendChild(document.createTextNode(" "));
+          var span = document.createElement("span");
+          span.className = "aar-w";
+          span.textContent = word;
+          leadEl.appendChild(span);
+          return span;
+        });
+
+        var checkPath = document.getElementById("aar-check-path");
+        var checkLen = checkPath.getTotalLength();
+        checkPath.style.strokeDasharray = String(checkLen);
+
+        window.__timelines = window.__timelines || {};
+        var tl = gsap.timeline({ paused: true });
+
+        tl.fromTo(
+          "#aar-card",
+          { autoAlpha: 0, y: 40 },
+          { autoAlpha: 1, y: 0, duration: 0.6, ease: "power3.out" },
+          0.1,
+        );
+        tl.fromTo(
+          "#aar-bubble",
+          { autoAlpha: 0, scale: 0.9 },
+          { autoAlpha: 1, scale: 1, duration: 0.3, ease: "back.out(1.6)" },
+          0.5,
+        );
+
+        /* uneven keystrokes read as a person typing; the budget keeps long prompts inside 9s */
+        var KEY_GAPS = [
+          0.05, 0.035, 0.06, 0.04, 0.03, 0.055, 0.045, 0.07, 0.035, 0.05, 0.04, 0.065,
+        ];
+        var raw = 0;
+        for (var n = 1; n < prompt.length; n += 1) raw += KEY_GAPS[n % KEY_GAPS.length];
+        var squeeze = Math.min(1, 1.8 / Math.max(raw, 0.001));
+        var TYPE_START = 0.8;
+        var t = TYPE_START;
+        tl.set("#aar-typed", { textContent: "" }, 0.001);
+        tl.set("#aar-caret", { autoAlpha: 0 }, 0.001);
+        tl.set("#aar-caret", { autoAlpha: 1 }, TYPE_START - 0.15);
+        for (var c = 1; c <= prompt.length; c += 1) {
+          tl.set("#aar-typed", { textContent: prompt.slice(0, c) }, t);
+          t += KEY_GAPS[c % KEY_GAPS.length] * squeeze;
+        }
+        var typeEnd = t;
+        tl.set("#aar-caret", { autoAlpha: 0 }, typeEnd + 0.2);
+
+        var THINK = typeEnd + 0.4;
+        tl.fromTo(
+          "#aar-thinking",
+          { autoAlpha: 0 },
+          { autoAlpha: 1, duration: 0.15, ease: "none" },
+          THINK,
+        );
+        gsap.utils.toArray(".aar-dot").forEach(function (dot, i) {
+          for (var b = 0; b < 2; b += 1) {
+            var at = THINK + 0.1 + b * 0.32 + i * 0.08;
+            tl.to(dot, { y: -9, duration: 0.14, ease: "sine.out" }, at);
+            tl.to(dot, { y: 0, duration: 0.14, ease: "sine.in" }, at + 0.14);
+          }
+        });
+        var LEAD = THINK + 0.85;
+        tl.to("#aar-thinking", { autoAlpha: 0, duration: 0.12, ease: "none" }, LEAD - 0.12);
+        tl.fromTo(
+          "#aar-star",
+          { autoAlpha: 0, scale: 0.3, rotation: -90 },
+          { autoAlpha: 1, scale: 1, rotation: 0, duration: 0.45, ease: "back.out(2)" },
+          LEAD,
+        );
+        words.forEach(function (w, i) {
+          tl.set(w, { opacity: 1 }, LEAD + 0.12 + i * 0.07);
+        });
+
+        var ROWS = LEAD + 0.25 + words.length * 0.07;
+        rows.forEach(function (row, i) {
+          var at = ROWS + i * 0.16;
+          tl.fromTo(
+            "#aar-rank-" + (i + 1),
+            { autoAlpha: 0 },
+            { autoAlpha: 1, duration: 0.3, ease: "none" },
+            at,
+          );
+          tl.fromTo(
+            row,
+            { autoAlpha: 0, y: 24 },
+            { autoAlpha: 1, y: 0, duration: 0.45, ease: "power3.out" },
+            at,
+          );
+        });
+
+        /* picks step down rather than trade places, so the eye can follow each one to its new rank */
+        var RERANK = ROWS + 0.32 + 0.45 + 0.95;
+        rows.forEach(function (row, i) {
+          if (i < slot) return;
+          tl.to(row, { y: SLOT, duration: 0.55, ease: "power3.inOut" }, RERANK);
+          if (i === 2) tl.to(row, { autoAlpha: 0, duration: 0.4, ease: "power1.in" }, RERANK + 0.1);
+        });
+        /* the brand waits until its slot is mostly clear, so it never lands on the row leaving it */
+        tl.fromTo(
+          brandRow,
+          { autoAlpha: 0, x: 96 },
+          { autoAlpha: 1, x: 0, duration: 0.55, ease: "power3.out" },
+          RERANK + 0.34,
+        );
+
+        var LAND = RERANK + 0.9;
+        tl.fromTo(
+          "#aar-hl",
+          { autoAlpha: 0 },
+          { autoAlpha: 1, duration: 0.3, ease: "power1.out" },
+          LAND,
+        );
+        tl.fromTo(
+          "#aar-tile-accent",
+          { autoAlpha: 0 },
+          { autoAlpha: 1, duration: 0.3, ease: "power1.out" },
+          LAND,
+        );
+        tl.fromTo(
+          "#aar-check",
+          { autoAlpha: 0, scale: 0.4 },
+          { autoAlpha: 1, scale: 1, duration: 0.42, ease: "back.out(2.2)" },
+          LAND + 0.05,
+        );
+        tl.fromTo(
+          checkPath,
+          { strokeDashoffset: checkLen },
+          { strokeDashoffset: 0, duration: 0.34, ease: "power2.out" },
+          LAND + 0.2,
+        );
+
+        tl.set({}, {}, 9);
+        window.__timelines["ai-answer-rank"] = tl;
+      })();
+    </script>
+  </body>
+</html>
