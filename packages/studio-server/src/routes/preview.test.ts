@@ -1504,7 +1504,9 @@ describe("what the preview loaded", () => {
       }),
     );
 
-    expect((await app.request("http://localhost/projects/demo/preview")).status).toBe(200);
+    const res = await app.request("http://localhost/projects/demo/preview");
+    expect(res.status).toBe(200);
+    expect(await res.text()).toContain(".hyperframes/gif/loader.webm");
 
     expect(affectsPreview(projectDir, "from-bundler.css")).toBe(true);
     expect(affectsPreview(projectDir, "style.css")).toBe(true);

@@ -414,16 +414,12 @@ export function useExternalFileChangeCoordinator({
         return;
       }
 
-      const replaced = pendingPayloadRef.current?.payload;
-      const replacedChangeStillNeedsReload =
-        replaced != null &&
-        readFileChangeAffectsPreview(replaced) &&
+      const waiting = pendingPayloadRef.current?.payload;
+      const waitingChangeOutranksThis =
+        waiting != null &&
+        readFileChangeAffectsPreview(waiting) &&
         !readFileChangeAffectsPreview(payload);
-      pendingPayloadRef.current = {
-        payload: replacedChangeStillNeedsReload
-          ? { ...(payload as object), affectsPreview: true, affectedCompositions: null }
-          : payload,
-      };
+      if (!waitingChangeOutranksThis) pendingPayloadRef.current = { payload };
       void startDrainLoop();
     },
     [projectId, pendingTimelineEditPathRef, startDrainLoop, onAcceptedPersistedFileChange],
