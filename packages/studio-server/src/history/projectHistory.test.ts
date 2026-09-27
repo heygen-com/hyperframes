@@ -684,16 +684,16 @@ describe("openProjectHistory", () => {
       expect(inside(projectDir, "index.html")).toBe("<p>v2</p>\n");
     });
 
-    it.each([["empty", ""], ["null", "null"]])(
-      "keeps the id when the record is %s, as 0.8.78 did",
-      async (_, record) => {
-        const { projectDir, historyRoot } = legacyProject((projectDir) => projectDir);
-        writeFileSync(join(historyRoot, fixtureId, "project.json"), record);
+    it.each([
+      ["empty", ""],
+      ["null", "null"],
+    ])("keeps the id when the record is %s, as 0.8.78 did", async (_, record) => {
+      const { projectDir, historyRoot } = legacyProject((projectDir) => projectDir);
+      writeFileSync(join(historyRoot, fixtureId, "project.json"), record);
 
-        const history = await open(projectDir, historyRoot);
-        expect([history.projectId, history.list().length]).toEqual([fixtureId, 2]);
-      },
-    );
+      const history = await open(projectDir, historyRoot);
+      expect([history.projectId, history.list().length]).toEqual([fixtureId, 2]);
+    });
 
     it("keeps the history when the record names the folder by another path to it", async () => {
       const { projectDir, historyRoot } = legacyProject((projectDir) => `${projectDir}-link`);

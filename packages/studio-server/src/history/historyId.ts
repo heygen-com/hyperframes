@@ -23,7 +23,8 @@ export const sameFolder = (a: FolderIdentity, b: FolderIdentity) =>
 
 export function isRecordedFolder(historyDir: string, folder: FolderIdentity): boolean {
   const was = readRecord(historyDir);
-  if (typeof was?.ino === "number") return sameFolder({ ino: was.ino, birthtimeMs: was.born ?? NaN }, folder);
+  if (typeof was?.ino === "number")
+    return sameFolder({ ino: was.ino, birthtimeMs: was.born ?? NaN }, folder);
   const unreadableSo0878KeptTheId = typeof was?.dir !== "string";
   if (unreadableSo0878KeptTheId) return true;
   return !isCopyOf0878Folder(was!.dir as string, basename(historyDir), folder);
