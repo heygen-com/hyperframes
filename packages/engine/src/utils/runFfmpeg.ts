@@ -8,6 +8,7 @@
 
 import { spawn } from "child_process";
 import { getFfmpegBinary } from "./ffmpegBinaries.js";
+import { isTransientSpawnErrno, withTransientSpawnRetry } from "./ffSpawnRetry.js";
 import { trackChildProcess } from "./processTracker.js";
 import {
   ManagedChildProcess,
@@ -112,29 +113,39 @@ export function formatFfmpegError(
 
 export async function runFfmpeg(args: string[], opts?: RunFfmpegOptions): Promise<RunFfmpegResult> {
   const timeout = opts?.timeout ?? DEFAULT_TIMEOUT;
-  // windowsHide: ffmpeg/ffprobe are console-subsystem binaries, so without
-  // this Node opens a visible console window per spawn on Windows. A render
-  // shells out dozens of times across parallel workers, which flashes a burst
-  // of windows across the user's desktop. No-op on macOS and Linux.
-  const ffmpeg = spawn(getFfmpegBinary(), args, { windowsHide: true });
-  trackChildProcess(ffmpeg);
-  const managed = new ManagedChildProcess(ffmpeg, {
-    signal: opts?.signal,
-    deadlineAtMs: Date.now() + timeout,
-    onStderr: opts?.onStderr,
-  });
-  const outcome = await managed.wait();
-  const result: RunFfmpegResult = {
-    success: outcome.reason === "exit" && outcome.exitCode === 0,
-    exitCode: outcome.exitCode,
-    signal: outcome.signal,
-    stderr: outcome.stderr,
-    durationMs: outcome.durationMs,
-    terminationReason: outcome.reason,
-    error: outcome.error,
-  };
-  if (isExternalFfmpegInterruption(result)) {
-    result.failureReason = "external_interruption";
-  }
-  return result;
+  return withTransientSpawnRetry(
+    getFfmpegBinary(),
+    async () => {
+      // windowsHide: ffmpeg/ffprobe are console-subsystem binaries, so without
+      // this Node opens a visible console window per spawn on Windows. A render
+      // shells out dozens of times across parallel workers, which flashes a burst
+      // of windows across the user's desktop. No-op on macOS and Linux.
+      const ffmpeg = spawn(getFfmpegBinary(), args, { windowsHide: true });
+      trackChildProcess(ffmpeg);
+      const managed = new ManagedChildProcess(ffmpeg, {
+        signal: opts?.signal,
+        deadlineAtMs: Date.now() + timeout,
+        onStderr: opts?.onStderr,
+      });
+      const outcome = await managed.wait();
+      const result: RunFfmpegResult = {
+        success: outcome.reason === "exit" && outcome.exitCode === 0,
+        exitCode: outcome.exitCode,
+        signal: outcome.signal,
+        stderr: outcome.stderr,
+        durationMs: outcome.durationMs,
+        terminationReason: outcome.reason,
+        error: outcome.error,
+      };
+      if (isExternalFfmpegInterruption(result)) {
+        result.failureReason = "external_interruption";
+      }
+      return result;
+    },
+    (result) =>
+      result.terminationReason === "spawn_error" &&
+      isTransientSpawnErrno((result.error as NodeJS.ErrnoException | undefined)?.code)
+        ? (result.error as NodeJS.ErrnoException | undefined)
+        : undefined,
+  );
 }
