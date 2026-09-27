@@ -93,7 +93,9 @@ function readFileOnce(file: string): FileRead {
   try {
     fd = openSync(file, "r");
   } catch (err) {
-    if ((err as NodeJS.ErrnoException).code === "ENOENT") return "missing";
+    const code = (err as NodeJS.ErrnoException).code;
+    if (code === "ENOENT") return "missing";
+    if (code === "ENOTDIR") return "not-a-file";
     throw err;
   }
   try {
@@ -108,7 +110,7 @@ function readFileOnce(file: string): FileRead {
 // A manifest that is gone or not a file adds nothing to the key; any other read error still fails.
 function manifestKey(file: string): { key: string; mtimeMs: number } {
   const manifest = readFileOnce(file);
-  if (typeof manifest === "string") return { key: "", mtimeMs: 0 };
+  if (typeof manifest === "string") return { key: "", mtimeMs: -Infinity };
   const hash = createHash("sha1").update(manifest.data).digest("hex").slice(0, 16);
   return { key: `_${hash}`, mtimeMs: Math.round(manifest.mtimeMs) };
 }

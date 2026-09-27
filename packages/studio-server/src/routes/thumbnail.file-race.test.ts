@@ -48,6 +48,16 @@ describe("thumbnail reads that race a delete", () => {
     },
   );
 
+  it("serves a thumbnail when a file sits where the manifests' folder would be", async () => {
+    const { app, adapter, dir } = serveThumbnails();
+    writeFileSync(join(dir, ".hyperframes"), "not a folder");
+
+    const res = await app.request("http://localhost/projects/demo/thumbnail/index.html");
+
+    expect(res.status).toBe(200);
+    expect(adapter.generateThumbnail).toHaveBeenCalledTimes(1);
+  });
+
   it("regenerates a cached thumbnail that is pruned between the check and the read", async () => {
     const { app, adapter } = serveThumbnails();
     vanished.matches = (path) => path.includes(".thumbnails") && path.endsWith(".jpg");
