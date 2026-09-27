@@ -925,10 +925,8 @@ export function trackFigmaImport(props: {
 
 const reportedFailures = new WeakSet<object>();
 
-// Report why a command failed before it exits non-zero. cli_command_result
-// records the failure but not the reason; this fills that gap via cli_error so
-// command failures are diagnosable. Enqueues synchronously — the process `exit`
-// handler flushes it. Every command-failure report goes through here.
+// Report why a command failed: cli_command_result records the failure, not the reason. Every
+// command-failure report goes through here. Enqueues synchronously; the `exit` handler flushes it.
 export function trackCommandFailure(
   command: string,
   err: unknown,
