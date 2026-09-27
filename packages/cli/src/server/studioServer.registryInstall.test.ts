@@ -10,6 +10,7 @@ import {
 } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { trackRegistryItemAdded } from "../telemetry/events.js";
 import { createStudioServer, type StudioServer } from "./studioServer.js";
 
 vi.mock("../telemetry/events.js", () => ({ trackRegistryItemAdded: vi.fn() }));
@@ -98,6 +99,9 @@ describe("Studio catalog install", () => {
 
     expect(result.written).toEqual(["scenes/my-block.html"]);
     expect(result.block.name).toBe("my-block");
+    expect(trackRegistryItemAdded).toHaveBeenCalledWith(
+      expect.objectContaining({ item: "my-block", source: "studio" }),
+    );
     expect(existsSync(join(real, "compositions/my-block.html"))).toBe(false);
     const config = JSON.parse(readFileSync(join(real, "hyperframes.json"), "utf-8"));
     expect(config.registryItems).toEqual([

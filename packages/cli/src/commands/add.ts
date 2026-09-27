@@ -179,6 +179,8 @@ export interface RunAddArgs {
   force?: boolean;
   /** Current CLI version used for registry metadata compatibility checks. */
   cliVersion?: string;
+  /** Who installed, for the registry_item_added event. */
+  source?: "cli" | "studio";
 }
 
 export interface RunAddResult {
@@ -381,6 +383,7 @@ export async function addToProject(
       item: planItem.name,
       itemType: planItem.type,
       requested: planItem.name === item.name,
+      source: opts.source ?? "cli",
     });
   }
 

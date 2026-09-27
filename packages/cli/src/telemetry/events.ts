@@ -793,11 +793,13 @@ export function trackRegistryItemAdded(props: {
   item: string;
   itemType: string;
   requested: boolean;
+  source: "cli" | "studio";
 }): void {
   trackEvent("registry_item_added", {
     item: props.item,
     item_type: props.itemType,
     requested: props.requested,
+    source: props.source,
   });
 }
 

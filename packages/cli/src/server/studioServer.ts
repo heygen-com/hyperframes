@@ -771,6 +771,7 @@ export function createStudioServer(options: StudioServerOptions): StudioServer {
         name: opts.blockName,
         projectDir: opts.project.dir,
         skipClipboard: true,
+        source: "studio",
       });
       for (const warning of result.warnings) {
         process.stderr.write(`hyperframes:registry ${warning}\n`);
