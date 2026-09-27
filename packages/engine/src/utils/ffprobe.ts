@@ -188,6 +188,8 @@ export interface VideoMetadata {
   hasAlpha: boolean;
   /** Color space info from the video stream. Null if ffprobe didn't report it. */
   colorSpace: VideoColorSpace | null;
+  /** Sample range from the video stream, e.g. "tv" or "pc". */
+  colorRange?: string;
   /** Decoded frame count from the video stream's `nb_frames`. Omitted when the
    * container does not surface a reliable count (still images, malformed
    * streams, or muxes that require `-count_packets` to populate). Callers
@@ -224,6 +226,7 @@ interface FFProbeStream {
   avg_frame_rate?: string;
   sample_rate?: string;
   channels?: number;
+  color_range?: string;
   color_transfer?: string;
   color_primaries?: string;
   color_space?: string;
@@ -788,6 +791,7 @@ export async function extractMediaMetadata(filePath: string): Promise<VideoMetad
       isVFR,
       hasAlpha,
       colorSpace,
+      colorRange: videoStream.color_range,
       frames,
     };
   })();

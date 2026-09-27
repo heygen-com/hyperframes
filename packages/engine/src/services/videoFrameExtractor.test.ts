@@ -1436,7 +1436,7 @@ describe.skipIf(!HAS_FFMPEG)("video frame extraction format", () => {
 
       expect(result.errors).toEqual([]);
       const frame = result.extracted[0]!.framePaths.get(0)!;
-      // Chrome reads cICP before sRGB, and ffmpeg < 6.1 writes no cICP, so only an sRGB chunk
+      // Chrome reads cICP before sRGB, and ffmpeg < 6.0 writes no cICP, so only an sRGB chunk
       // without cICP means "these are sRGB code values" on every ffmpeg.
       const chunks = pngChunkTypes(frame);
       expect(chunks).toContain("sRGB");
@@ -1486,6 +1486,95 @@ describe.skipIf(!HAS_FFMPEG)("video frame extraction format", () => {
       const worst = Math.max(...shown.map((v, i) => Math.abs(v - source[i]!)));
       expect(worst, `x=${x}: source ${source} jpg ${shown}`).toBeLessThanOrEqual(3);
     }
+  }, 60_000);
+
+  // ffmpeg < 6.1 drops frame durations from CFR resampling once any -vf is set, so the colour
+  // filters would cut the still that ends this window short.
+  it.each(["png", "jpg"] as const)(
+    "keeps every frame and the full range colours of a VFR window that ends on a still (%s)",
+    async (format) => {
+      const fixture = join(FIXTURE_DIR, `vfr-still-bt709-pc-${format}.mp4`);
+      const synth = await runFfmpeg([
+        "-y",
+        "-v",
+        "error",
+        "-f",
+        "lavfi",
+        "-i",
+        `color=c=0xC83C28:s=${UI_FIXTURE_WIDTH}x${UI_FIXTURE_HEIGHT}:d=2:r=60`,
+        "-vf",
+        "select='not(between(n\\,30\\,89))'",
+        "-fps_mode",
+        "vfr",
+        "-c:v",
+        "libx264",
+        "-preset",
+        "ultrafast",
+        "-pix_fmt",
+        "yuvj420p",
+        "-color_range",
+        "pc",
+        "-color_primaries",
+        "bt709",
+        "-color_trc",
+        "bt709",
+        "-colorspace",
+        "bt709",
+        fixture,
+      ]);
+      if (!synth.success) throw new Error(`fixture synthesis failed: ${synth.stderr.slice(-400)}`);
+      const window = 0.616666;
+      const unfilteredDir = join(FIXTURE_DIR, `out-vfr-still-unfiltered-${format}`);
+      mkdirSync(unfilteredDir, { recursive: true });
+      const unfiltered = await runFfmpeg([
+        "-v",
+        "error",
+        "-ss",
+        "0",
+        "-i",
+        fixture,
+        "-t",
+        String(window),
+        "-fps_mode",
+        "cfr",
+        "-r",
+        "30",
+        join(unfilteredDir, "f_%05d.png"),
+      ]);
+      expect(unfiltered.success).toBe(true);
+
+      const result = await extractVideoFramesRange(fixture, `vfr-still-${format}`, 0, window, {
+        fps: 30,
+        outputDir: join(FIXTURE_DIR, "out-vfr-still"),
+        format,
+      });
+
+      expect(result.metadata.isVFR).toBe(true);
+      expect(result.totalFrames).toBe(readdirSync(unfilteredDir).length);
+      const last = result.framePaths.get(result.totalFrames - 1)!;
+      const source = readFirstFramePixel(fixture, 10, 10);
+      const shown = readFirstFramePixel(last, 10, 10);
+      const worst = Math.max(...shown.map((v, i) => Math.abs(v - source[i]!)));
+      expect(worst, `source ${source} ${format} ${shown}`).toBeLessThanOrEqual(
+        format === "png" ? 0 : 3,
+      );
+      if (format === "png") expect(pngChunkTypes(last)).toContain("sRGB");
+    },
+    60_000,
+  );
+
+  it("leaves SDR-to-HDR frames in the HDR colours they were converted to", async () => {
+    const outputDir = join(FIXTURE_DIR, "out-sdr-to-hdr-gate");
+    mkdirSync(outputDir, { recursive: true });
+
+    const result = await extractVideoFramesRange(UI_FIXTURE, "sdr-to-hdr-gate", 0, 1, {
+      fps: 1,
+      outputDir,
+      format: "png",
+      sdrToHdrTransfer: "pq",
+    });
+
+    expect(pngChunkTypes(result.framePaths.get(0)!)).not.toContain("sRGB");
   }, 60_000);
 
   it("keeps jpg and png extraction caches separate", async () => {

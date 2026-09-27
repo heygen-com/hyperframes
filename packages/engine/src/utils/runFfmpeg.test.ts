@@ -1,8 +1,17 @@
+import { spawnSync } from "node:child_process";
 import { EventEmitter } from "node:events";
-import { resolve } from "node:path";
+import { mkdtempSync, readdirSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join, resolve } from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { formatFfmpegError, isExternalFfmpegInterruption } from "./runFfmpeg.js";
+import {
+  formatFfmpegError,
+  isExternalFfmpegInterruption,
+  runFfmpegPipeline,
+} from "./runFfmpeg.js";
+
+const HAS_FFMPEG = spawnSync("ffmpeg", ["-version"]).status === 0;
 
 describe("isExternalFfmpegInterruption", () => {
   const base = {
@@ -174,4 +183,51 @@ describe("runFfmpeg binary resolution", () => {
     expect(result.success).toBe(true);
     expect(calls[0]).toEqual({ command: resolve("/tools/ffmpeg.exe"), args: ["-version"] });
   });
+});
+
+describe.skipIf(!HAS_FFMPEG)("runFfmpegPipeline", () => {
+  const rawFrames = (source: string) => ["-v", "error", "-f", "lavfi", "-i", source, "-c:v", "rawvideo", "-f", "nut", "pipe:1"];
+
+  it("hands every producer frame to the consumer", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "hf-pipeline-"));
+    try {
+      const result = await runFfmpegPipeline(rawFrames("testsrc2=s=64x16:d=0.2:r=30"), [
+        "-v",
+        "error",
+        "-f",
+        "nut",
+        "-i",
+        "pipe:0",
+        "-fps_mode",
+        "passthrough",
+        join(dir, "f_%03d.png"),
+      ]);
+      expect(result.success, result.stderr).toBe(true);
+      expect(readdirSync(dir)).toHaveLength(6);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  }, 30_000);
+
+  it("fails with the producer's error when the producer cannot start its input", async () => {
+    const result = await runFfmpegPipeline(
+      ["-v", "error", "-i", join(tmpdir(), "hf-missing-input.mp4"), "-c:v", "rawvideo", "-f", "nut", "pipe:1"],
+      ["-v", "error", "-f", "nut", "-i", "pipe:0", "-f", "null", "-"],
+    );
+    expect(result.success).toBe(false);
+    expect(result.stderr).toMatch(/hf-missing-input\.mp4/);
+  }, 30_000);
+
+  it("stops an endless producer when the consumer fails", async () => {
+    const startedAt = Date.now();
+    const result = await runFfmpegPipeline(
+      rawFrames("testsrc2=s=320x240:r=30"),
+      ["-v", "error", "-f", "nut", "-i", "pipe:0", "-vf", "hf_missing_filter", "-f", "null", "-"],
+      { timeout: 20_000 },
+    );
+    expect(result.success).toBe(false);
+    expect(result.terminationReason).toBe("exit");
+    expect(result.stderr).toMatch(/hf_missing_filter/);
+    expect(Date.now() - startedAt).toBeLessThan(10_000);
+  }, 30_000);
 });

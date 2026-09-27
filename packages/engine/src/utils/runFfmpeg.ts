@@ -6,11 +6,12 @@
  * that appears across audioMixer and chunkEncoder into a single helper.
  */
 
-import { spawn } from "child_process";
+import { spawn, type ChildProcess } from "child_process";
 import { getFfmpegBinary } from "./ffmpegBinaries.js";
 import { trackChildProcess } from "./processTracker.js";
 import {
   ManagedChildProcess,
+  type ManagedChildProcessOutcome,
   type ManagedProcessTerminationReason,
 } from "./managedChildProcess.js";
 
@@ -110,25 +111,26 @@ export function formatFfmpegError(
     : `FFmpeg exited with code ${exitCode}`;
 }
 
-export async function runFfmpeg(args: string[], opts?: RunFfmpegOptions): Promise<RunFfmpegResult> {
-  const timeout = opts?.timeout ?? DEFAULT_TIMEOUT;
+function spawnFfmpeg(args: string[]): ChildProcess {
   // windowsHide: ffmpeg/ffprobe are console-subsystem binaries, so without
   // this Node opens a visible console window per spawn on Windows. A render
   // shells out dozens of times across parallel workers, which flashes a burst
   // of windows across the user's desktop. No-op on macOS and Linux.
   const ffmpeg = spawn(getFfmpegBinary(), args, { windowsHide: true });
   trackChildProcess(ffmpeg);
-  const managed = new ManagedChildProcess(ffmpeg, {
-    signal: opts?.signal,
-    deadlineAtMs: Date.now() + timeout,
-    onStderr: opts?.onStderr,
-  });
-  const outcome = await managed.wait();
+  return ffmpeg;
+}
+
+function succeeded(outcome: ManagedChildProcessOutcome): boolean {
+  return outcome.reason === "exit" && outcome.exitCode === 0;
+}
+
+function toResult(outcome: ManagedChildProcessOutcome, stderr = outcome.stderr): RunFfmpegResult {
   const result: RunFfmpegResult = {
-    success: outcome.reason === "exit" && outcome.exitCode === 0,
+    success: succeeded(outcome),
     exitCode: outcome.exitCode,
     signal: outcome.signal,
-    stderr: outcome.stderr,
+    stderr,
     durationMs: outcome.durationMs,
     terminationReason: outcome.reason,
     error: outcome.error,
@@ -137,4 +139,49 @@ export async function runFfmpeg(args: string[], opts?: RunFfmpegOptions): Promis
     result.failureReason = "external_interruption";
   }
   return result;
+}
+
+export async function runFfmpeg(args: string[], opts?: RunFfmpegOptions): Promise<RunFfmpegResult> {
+  const timeout = opts?.timeout ?? DEFAULT_TIMEOUT;
+  const managed = new ManagedChildProcess(spawnFfmpeg(args), {
+    signal: opts?.signal,
+    deadlineAtMs: Date.now() + timeout,
+    onStderr: opts?.onStderr,
+  });
+  return toResult(await managed.wait());
+}
+
+/**
+ * Runs `ffmpeg <producerArgs> | ffmpeg <consumerArgs>`. Fails when either side
+ * fails and reports the first failure, its stderr last so error tails show it.
+ */
+export async function runFfmpegPipeline(
+  producerArgs: string[],
+  consumerArgs: string[],
+  opts?: RunFfmpegOptions,
+): Promise<RunFfmpegResult> {
+  const deadlineAtMs = Date.now() + (opts?.timeout ?? DEFAULT_TIMEOUT);
+  const producer = spawnFfmpeg(producerArgs);
+  const consumer = spawnFfmpeg(consumerArgs);
+  // A consumer that exits early must not leave the producer blocked on a full pipe.
+  consumer.stdin?.on("error", () => {});
+  consumer.once("close", () => producer.stdout?.destroy());
+  if (consumer.stdin) producer.stdout?.pipe(consumer.stdin);
+  const outcomes = await Promise.all(
+    [producer, consumer].map((child) =>
+      new ManagedChildProcess(child, {
+        signal: opts?.signal,
+        deadlineAtMs,
+        onStderr: opts?.onStderr,
+      }).wait(),
+    ),
+  );
+  const [firstFailure] = outcomes
+    .filter((outcome) => !succeeded(outcome))
+    .sort((a, b) => a.durationMs - b.durationMs);
+  const reported = firstFailure ?? outcomes[1]!;
+  const stderr = [...outcomes.filter((outcome) => outcome !== reported), reported]
+    .map((outcome) => outcome.stderr)
+    .join("");
+  return toResult(reported, stderr);
 }

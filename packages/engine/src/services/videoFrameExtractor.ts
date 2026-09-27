@@ -47,7 +47,7 @@ import {
   UrlDownloadError,
   writeUrlDownloadTelemetry,
 } from "../utils/urlDownloader.js";
-import { runFfmpeg } from "../utils/runFfmpeg.js";
+import { runFfmpeg, runFfmpegPipeline, type RunFfmpegResult } from "../utils/runFfmpeg.js";
 import { DEFAULT_CONFIG, type EngineConfig } from "../config.js";
 import { unwrapTemplate } from "../utils/htmlTemplate.js";
 import {
@@ -753,6 +753,19 @@ export function parseImageElements(html: string): ImageElement[] {
   return images;
 }
 
+/** nut drops colour tags, so the raw frames it carries get the source's back as decoder options. */
+function rawFrameColourArgs(metadata: VideoMetadata): string[] {
+  const tags: Array<[string, string | undefined]> = [
+    ["-color_range", metadata.colorRange],
+    ["-colorspace", metadata.colorSpace?.colorSpace],
+    ["-color_primaries", metadata.colorSpace?.colorPrimaries],
+    ["-color_trc", metadata.colorSpace?.colorTransfer],
+  ];
+  return tags.flatMap(([flag, value]) =>
+    value && value !== "unknown" && value !== "reserved" ? [flag, value] : [],
+  );
+}
+
 export async function extractVideoFramesRange(
   videoPath: string,
   videoId: string,
@@ -862,17 +875,38 @@ export async function extractVideoFramesRange(
     vfFilters.push(SDR_CANVAS_PASSTHROUGH_FILTER);
     if (format === "jpg") vfFilters.push(SDR_JPEG_AS_BT601_FULL_RANGE_FILTER);
   }
-  if (vfFilters.length > 0) args.push("-vf", vfFilters.join(","));
-  if (!options.finalFrameOnly && metadata.isVFR) {
-    args.push("-fps_mode", "cfr", "-r", ffmpegFps);
-  }
-
-  args.push("-q:v", format === "jpg" ? String(Math.ceil((100 - quality) / 3)) : "0");
+  const encodeArgs = ["-q:v", format === "jpg" ? String(Math.ceil((100 - quality) / 3)) : "0"];
   // Render-scoped temp frames are read once; level 1 measured 3-5x faster for ~14% larger files.
-  if (format === "png") args.push("-compression_level", "1");
-  args.push("-y", outputPattern);
+  if (format === "png") encodeArgs.push("-compression_level", "1");
+  encodeArgs.push("-y", outputPattern);
 
-  const processResult = await runFfmpeg(args, { signal, timeout: ffmpegProcessTimeout });
+  const runOptions = { signal, timeout: ffmpegProcessTimeout };
+  const resampleVfrToCfr = !options.finalFrameOnly && metadata.isVFR;
+  if (resampleVfrToCfr) args.push("-fps_mode", "cfr", "-r", ffmpegFps);
+  let processResult: RunFfmpegResult;
+  if (resampleVfrToCfr && vfFilters.length > 0) {
+    // ffmpeg <6.1 ignores frame durations in CFR resampling once any -vf is set,
+    // cutting a trailing still short, so the filters run in a second process.
+    processResult = await runFfmpegPipeline(
+      [...args, "-c:v", "rawvideo", "-f", "nut", "pipe:1"],
+      [
+        ...rawFrameColourArgs(metadata),
+        "-f",
+        "nut",
+        "-i",
+        "pipe:0",
+        "-vf",
+        vfFilters.join(","),
+        "-fps_mode",
+        "passthrough",
+        ...encodeArgs,
+      ],
+      runOptions,
+    );
+  } else {
+    if (vfFilters.length > 0) args.push("-vf", vfFilters.join(","));
+    processResult = await runFfmpeg([...args, ...encodeArgs], runOptions);
+  }
   if (processResult.failureReason === "external_interruption") {
     throw new VideoSourceExtractionError(
       "external_interruption",
