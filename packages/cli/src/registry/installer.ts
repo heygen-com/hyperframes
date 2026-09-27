@@ -97,7 +97,7 @@ export function recordRewrittenInstall(destDir: string, written: string[]): void
     try {
       path = registryTargetPath(root, target);
     } catch {
-      continue; // a hand-edited key the installer would refuse too
+      continue; // a key that no longer resolves, or that the installer would refuse
     }
     if (rewritten.has(path)) record[target] = digest(readFileSync(path));
   }

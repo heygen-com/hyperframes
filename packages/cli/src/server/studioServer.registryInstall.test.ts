@@ -150,6 +150,7 @@ describe("Studio catalog install", () => {
       } as never);
 
     await install();
+    expect(readFileSync(join(real, "scenes/my-block.html"), "utf-8")).toContain("width=1920");
     expect((await install()).written).toEqual(["shared-scenes/my-block.html"]);
   });
 });
