@@ -107,7 +107,6 @@ function readFileOnce(file: string): FileRead {
   }
 }
 
-// A manifest that is gone or not a file adds nothing to the key; any other read error still fails.
 function manifestKey(file: string): { key: string; mtimeMs: number } {
   const manifest = readFileOnce(file);
   if (typeof manifest === "string") return { key: "", mtimeMs: -Infinity };
