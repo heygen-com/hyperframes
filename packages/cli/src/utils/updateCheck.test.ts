@@ -53,7 +53,9 @@ async function noticeWith(opts: {
     else process.env[k] = v;
   }
   // Default to a non-CI interactive terminal unless the test overrides env.
-  if (!("CI" in (opts.env ?? {}))) delete process.env["CI"];
+  for (const name of ["CI", "HYPERFRAMES_NO_UPDATE_CHECK"]) {
+    if (!(name in (opts.env ?? {}))) delete process.env[name];
+  }
 
   const origTTY = process.stderr.isTTY;
   Object.defineProperty(process.stderr, "isTTY", {
@@ -134,6 +136,7 @@ async function checkWith(
   fetched: boolean;
 }> {
   vi.resetModules();
+  vi.doMock("./env.js", () => ({ isDevMode: () => false }));
   const writes: Array<Record<string, unknown>> = [];
   vi.doMock("../telemetry/config.js", () => ({
     readConfig: () => ({}),
@@ -271,15 +274,45 @@ describe("checkForUpdate — registry boundary guard", () => {
     vi.resetModules();
   });
 
+  function clearOptOuts(): void {
+    vi.stubEnv("CI", "");
+    vi.stubEnv("HYPERFRAMES_NO_UPDATE_CHECK", "");
+  }
+
+  it("still asks the registry from a run without a terminal", async () => {
+    clearOptOuts();
+    try {
+      expect((await checkWith("99.0.0", false)).fetched).toBe(true);
+    } finally {
+      vi.unstubAllEnvs();
+    }
+  });
+
   it("skips the background registry request when DNS does not answer", async () => {
+    clearOptOuts();
     dns.answers = false;
     try {
       expect((await checkWith("99.0.0", false)).fetched).toBe(false);
       expect((await checkWith("99.0.0")).fetched).toBe(true);
     } finally {
       dns.answers = true;
+      vi.unstubAllEnvs();
     }
   });
+
+  it.each(["CI", "HYPERFRAMES_NO_UPDATE_CHECK"])(
+    "skips the background registry request when %s=1",
+    async (name) => {
+      clearOptOuts();
+      vi.stubEnv(name, "1");
+      try {
+        expect((await checkWith("99.0.0", false)).fetched).toBe(false);
+        expect((await checkWith("99.0.0")).fetched).toBe(true);
+      } finally {
+        vi.unstubAllEnvs();
+      }
+    },
+  );
 
   it("caches and returns a valid semver from the registry", async () => {
     const { latest, wroteVersion } = await checkWith("9.9.9");

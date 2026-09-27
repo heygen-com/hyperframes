@@ -35,6 +35,7 @@ describe("skillsUpdateCheck", () => {
     mockCheckSkills.mockReset();
     gate.suppressed = false;
     gate.answers = true;
+    vi.stubEnv("HYPERFRAMES_SKIP_SKILLS", "");
   });
   afterEach(() => {
     vi.restoreAllMocks();

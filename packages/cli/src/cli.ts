@@ -280,7 +280,6 @@ if (
   import("./utils/updateCheck.js").then(async (mod) => {
     _printUpdateNotice = mod.printUpdateNotice;
     _printStalePinNotice = mod.printStalePinNotice;
-    if (mod.updateNoticesSuppressed()) return;
     const result = await mod.checkForUpdate().catch(() => null);
     if (result?.updateAvailable) {
       const auto = await import("./utils/autoUpdate.js").catch(() => null);

@@ -10,57 +10,10 @@ afterEach(() => {
   vi.doUnmock("./commands/init.js");
   vi.doUnmock("./telemetry/events.js");
   vi.doUnmock("./telemetry/index.js");
-  vi.doUnmock("./utils/updateCheck.js");
-  vi.doUnmock("./utils/skillsUpdateCheck.js");
-  vi.doUnmock("./utils/autoUpdate.js");
   vi.resetModules();
 });
 
 describe("CLI lifecycle", () => {
-  function mockBackgroundChecks(unattended: boolean) {
-    const checkForUpdate = vi.fn(async () => ({ updateAvailable: false }));
-    const checkSkillsForUpdate = vi.fn(async () => ({}));
-    const updateNoticesSuppressed = vi.fn(() => unattended);
-    const skillsLoaded = vi.fn();
-    const reportCompletedUpdate = vi.fn();
-    vi.doMock("./utils/autoUpdate.js", () => ({
-      reportCompletedUpdate,
-      scheduleBackgroundInstall: vi.fn(),
-    }));
-    vi.doMock("./utils/updateCheck.js", () => ({
-      checkForUpdate,
-      printStalePinNotice: vi.fn(),
-      printUpdateNotice: vi.fn(),
-      updateNoticesSuppressed,
-    }));
-    vi.doMock("./utils/skillsUpdateCheck.js", () => {
-      skillsLoaded();
-      return { checkSkillsForUpdate, printSkillsUpdateNotice: vi.fn() };
-    });
-    const settled = async () => {
-      await vi.waitFor(() => {
-        expect(updateNoticesSuppressed).toHaveBeenCalled();
-        expect(skillsLoaded).toHaveBeenCalled();
-        expect(reportCompletedUpdate).toHaveBeenCalled();
-      });
-      await new Promise((resolve) => setImmediate(resolve));
-    };
-    return { checkForUpdate, settled };
-  }
-
-  it.each([
-    [true, "skips"],
-    [false, "runs"],
-  ])("with notices suppressed=%s, the update check %s", async (unattended) => {
-    mockInitCommand(() => {});
-    mockTelemetry();
-    const { checkForUpdate, settled } = mockBackgroundChecks(unattended);
-    process.argv = ["node", "cli.ts", "init"];
-    await import("./cli.js");
-    await settled();
-    expect(checkForUpdate).toHaveBeenCalledTimes(unattended ? 0 : 1);
-  });
-
   it("queues a command failure before finalizing telemetry", async () => {
     let resolveEvents!: (events: {
       trackCommandFailure: (command: string, error: unknown) => void;

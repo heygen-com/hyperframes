@@ -42,10 +42,11 @@ export interface UpdateMeta {
  * Check npm registry for the latest version. Uses a 24h cache to avoid
  * hitting the registry on every invocation.
  *
- * @param force - Skip the cache and the DNS probe; the caller waits for the registry
+ * @param force - Skip the cache, opt-outs and DNS probe: the caller waits for the registry
  */
 export async function checkForUpdate(force?: boolean): Promise<UpdateCheckResult> {
   const config = readConfig();
+  if (!force && updateCheckDisabled()) return fallbackResult(config.latestVersion);
   const now = Date.now();
 
   // Also guard the cache read: a cache written before this boundary guard
@@ -160,17 +161,19 @@ export function printDeprecationNotice(command: string): void {
   );
 }
 
-/**
- * True when update / freshness notices should stay silent — CI, non-TTY, dev
- * mode, or the HYPERFRAMES_NO_UPDATE_CHECK opt-out. Shared with the skills
- * freshness notice so both honour the same gating.
- */
-export function updateNoticesSuppressed(): boolean {
+/** True when the update check is off: dev mode, CI, or the HYPERFRAMES_NO_UPDATE_CHECK opt-out. */
+function updateCheckDisabled(): boolean {
   if (isDevMode()) return true;
   if (process.env["CI"] === "true" || process.env["CI"] === "1") return true;
-  if (!process.stderr.isTTY) return true;
-  if (process.env["HYPERFRAMES_NO_UPDATE_CHECK"] === "1") return true;
-  return false;
+  return process.env["HYPERFRAMES_NO_UPDATE_CHECK"] === "1";
+}
+
+/**
+ * True when update / freshness notices should stay silent: the check is off or stderr is not a
+ * terminal. Shared with the skills freshness notice so both honour the same gating.
+ */
+export function updateNoticesSuppressed(): boolean {
+  return updateCheckDisabled() || !process.stderr.isTTY;
 }
 
 /**
