@@ -623,8 +623,8 @@ class Engine {
       part.changes.set(path, window.changes.get(path)!);
       window.changes.delete(path);
     }
+    (window.parts ??= new Set()).add(part.id);
     window.entry = await this.commit(part);
-    if (window.entry) (window.parts ??= new Set()).add(window.entry.id);
   }
 
   holdClaim(
