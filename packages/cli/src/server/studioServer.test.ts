@@ -710,6 +710,30 @@ describe("Studio file-change SSE", () => {
     expect(await nextEvent(stream!)).toContain('"affectsPreview":true');
   });
 
+  it("reloads when a folder holding an asset the preview missed is moved in", async () => {
+    const { projectDir, projectUrl } = await previewedProject();
+    expect((await server!.app.request(`${projectUrl}/preview/media/clip.png`)).status).toBe(404);
+    const [stream] = await subscribe(1);
+
+    mkdirSync(join(projectDir, "media"));
+    writeFileSync(join(projectDir, "media", "clip.png"), "clip");
+    mockWatcher.emit("change", "rename", "media");
+
+    const payload = await nextEvent(stream!);
+    expect(payload).toContain('"path":"media"');
+    expect(payload).toContain('"affectsPreview":true');
+  });
+
+  it("reloads when a folder holding an asset the preview loaded is removed", async () => {
+    const { projectDir } = await previewedProject();
+    const [stream] = await subscribe(1);
+
+    rmSync(join(projectDir, "assets"), { recursive: true });
+    mockWatcher.emit("change", "rename", "assets");
+
+    expect(await nextEvent(stream!)).toContain('"affectsPreview":true');
+  });
+
   it("still delivers a new file in a folder an old watchIgnore listed, for the file tree", async () => {
     const { projectDir } = await previewedProject();
     writeFileSync(

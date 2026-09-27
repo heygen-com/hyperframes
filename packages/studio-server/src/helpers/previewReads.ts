@@ -1,9 +1,9 @@
-import { resolve } from "node:path";
+import { resolve, sep } from "node:path";
 import { STUDIO_SIGNATURE_MANIFEST_PATHS } from "./projectSignature.js";
 
 const ALWAYS_AFFECTS = ["hyperframes.json", ...STUDIO_SIGNATURE_MANIFEST_PATHS];
 const REFERENCE =
-  /\b(?:src|href|poster|data-composition-src)\s*=\s*(["'])(.*?)\1|url\(\s*(?:(["'])(.*?)\3|([^"'\s)]+))/gi;
+  /\b(?:src|href|poster|data-composition-src)\s*=\s*(?:"([^"\n]*)"|'([^'\n]*)')|url\(\s*(?:"([^"\n]*)"|'([^'\n]*)'|([^"'\s)]+))/gi;
 // macOS and Windows volumes ignore letter case by default, so it is not part of a path's identity there.
 const pathKey =
   process.platform === "darwin" || process.platform === "win32"
@@ -22,7 +22,7 @@ export function recordPreviewRead(projectDir: string, filePath: string): void {
 
 export function recordPreviewReferences(projectDir: string, html: string): void {
   for (const match of html.matchAll(REFERENCE)) {
-    const url = (match[2] ?? match[4] ?? match[5] ?? "").trim();
+    const url = (match[1] ?? match[2] ?? match[3] ?? match[4] ?? match[5] ?? "").trim();
     if (!url || /^(?:[a-z][a-z0-9+.-]*:|[/#])/i.test(url)) continue;
     const path = url.split(/[?#]/)[0] ?? "";
     let decoded = path;
@@ -39,11 +39,14 @@ export function recordPreviewBuilt(projectDir: string): void {
   builtProjects.add(pathKey(projectDir));
 }
 
-// Until this process has built the preview, as after a restart under an open tab, every write counts.
+// Every write counts until this process built the preview; a folder event counts when a loaded file is inside it.
 export function affectsPreview(projectDir: string, changedPath: string): boolean {
   const key = pathKey(projectDir);
   if (!builtProjects.has(key)) return true;
   const changed = pathKey(resolve(projectDir, changedPath));
-  if (readsByProject.get(key)?.has(changed)) return true;
-  return ALWAYS_AFFECTS.some((path) => pathKey(resolve(projectDir, path)) === changed);
+  const loaded = [
+    ...(readsByProject.get(key) ?? []),
+    ...ALWAYS_AFFECTS.map((path) => pathKey(resolve(projectDir, path))),
+  ];
+  return loaded.some((path) => path === changed || path.startsWith(changed + sep));
 }

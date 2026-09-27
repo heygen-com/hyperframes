@@ -1518,7 +1518,24 @@ describe("what the preview loaded", () => {
     const started = performance.now();
     const css = `<style>a { background: url(${" ".repeat(200_000)}</style>`;
     recordPreviewReferences(createProjectDir(), css);
+    recordPreviewReferences(createProjectDir(), `url("${'url("a'.repeat(100_000)}`);
     expect(performance.now() - started).toBeLessThan(1000);
+  });
+
+  it("counts a folder event when a file the preview asked for is inside it", async () => {
+    const projectDir = createProjectDir();
+    writeFileSync(join(projectDir, "index.html"), "<html><body></body></html>");
+    const app = new Hono();
+    registerPreviewRoutes(app, createAdapter(projectDir, { bundle: async () => null }));
+    expect((await app.request("http://localhost/projects/demo/preview")).status).toBe(200);
+    expect(
+      (await app.request("http://localhost/projects/demo/preview/media/clip.png")).status,
+    ).toBe(404);
+
+    expect(affectsPreview(projectDir, "media")).toBe(true);
+    expect(affectsPreview(projectDir, join(projectDir, "media"))).toBe(true);
+    expect(affectsPreview(projectDir, "med")).toBe(false);
+    expect(affectsPreview(projectDir, "docs")).toBe(false);
   });
 
   it("counts every write until this process has built the preview, even after serving an asset", async () => {
