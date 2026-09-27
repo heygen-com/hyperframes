@@ -734,8 +734,10 @@ async function offerLocalModel(
     initialValue: true,
   });
   if (clack.isCancel(answer)) return;
-  if (recordLocalModelConsent(answer === true) !== (answer === true))
+  if (recordLocalModelConsent(answer === true) !== (answer === true)) {
     console.error("  Could not save the answer in settings; `hyperframes doctor` says why.");
+    return;
+  }
   if (answer !== true) return;
 
   // The vectors come from the registry rather than the package, so consent is

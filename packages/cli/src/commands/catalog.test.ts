@@ -91,6 +91,7 @@ const state = vi.hoisted(() => ({
   runtimeInstalls: 0,
   runtimeAvailable: true,
   noSavedDuringRuntime: false,
+  vectorsOnDisk: true,
 }));
 
 vi.mock("../registry/resolver.js", () => ({
@@ -173,7 +174,7 @@ vi.mock("../registry/localSemantic.js", () => ({
   },
   localVectorNames: () => state.indexed,
   cachedLocalVectorRevision: () => state.cachedVectorRevision,
-  hasLocalVectors: () => true,
+  hasLocalVectors: () => state.vectorsOnDisk,
   fetchLocalVectors: async (_registry: string, options: { expectedRevision?: string } = {}) => {
     state.vectorFetches += 1;
     if (state.vectorFetchSucceeds && options.expectedRevision !== undefined) {
@@ -280,6 +281,7 @@ beforeEach(() => {
   state.runtimeInstalls = 0;
   state.runtimeAvailable = true;
   state.noSavedDuringRuntime = false;
+  state.vectorsOnDisk = true;
   state.registry = [block("count-up"), block("fade-through"), component("whip-pan")];
   state.indexed = ["count-up", "fade-through", "whip-pan"];
   state.ranking = [
@@ -818,6 +820,17 @@ describe("the on-device download offer", () => {
     await runEnvelope({ query: "count up", "on-device": true });
 
     expect([state.runtimeInstalls, state.downloads]).toEqual([1, 0]);
+  });
+
+  it("fetches nothing after a thin-results yes that cannot be saved", async () => {
+    state.modelStatus = "not-asked";
+    state.confirmAnswer = true;
+    state.consentWriteFails = true;
+    state.vectorsOnDisk = false;
+
+    await asATerminal(() => runForExit({ query: "count up" }));
+
+    expect([state.vectorFetches, state.downloads]).toEqual([0, 0]);
   });
 
   it("installs nothing when a person's yes cannot be saved", async () => {
