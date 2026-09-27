@@ -23,7 +23,7 @@ import { PREVIEW_BUNDLE_OPTIONS, registerPreviewRoutes } from "./preview";
 import { registerFileRoutes } from "./files";
 import { createPreviewDocumentStore } from "../helpers/previewDocumentStore";
 import type { StudioApiAdapter } from "../types";
-import { affectsPreview } from "../helpers/previewReads";
+import { affectsPreview, recordPreviewReferences } from "../helpers/previewReads";
 
 const tempDirs: string[] = [];
 
@@ -1498,6 +1498,9 @@ describe("what the preview loaded", () => {
           options?.onRead?.(join(dir, "from-bundler.css"));
           return null;
         },
+        // As the CLI does with an animated GIF: the document it serves names a derived copy.
+        transformPreviewHtml: async ({ html }) =>
+          html.replace("assets/loader.gif", ".hyperframes/gif/loader.webm"),
       }),
     );
 
@@ -1507,6 +1510,13 @@ describe("what the preview loaded", () => {
     expect(affectsPreview(projectDir, "style.css")).toBe(true);
     expect(affectsPreview(projectDir, "assets/loader.gif")).toBe(true);
     expect(affectsPreview(projectDir, "notes.md")).toBe(false);
+  });
+
+  it("scans a document with a long run of spaces inside url( in linear time", () => {
+    const started = performance.now();
+    const css = `<style>a { background: url(${" ".repeat(200_000)}</style>`;
+    recordPreviewReferences(createProjectDir(), css);
+    expect(performance.now() - started).toBeLessThan(1000);
   });
 
   it("counts every write until this process has built the preview, even after serving an asset", async () => {

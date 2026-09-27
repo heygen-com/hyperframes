@@ -3,7 +3,7 @@ import { STUDIO_SIGNATURE_MANIFEST_PATHS } from "./projectSignature.js";
 
 const ALWAYS_AFFECTS = ["hyperframes.json", ...STUDIO_SIGNATURE_MANIFEST_PATHS];
 const REFERENCE =
-  /\b(?:src|href|poster|data-composition-src)\s*=\s*(["'])(.*?)\1|url\(\s*(["']?)([^"')]+)\3\s*\)/gi;
+  /\b(?:src|href|poster|data-composition-src)\s*=\s*(["'])(.*?)\1|url\(\s*(?:(["'])(.*?)\3|([^"'\s)]+))/gi;
 // macOS and Windows volumes ignore letter case by default, so it is not part of a path's identity there.
 const pathKey =
   process.platform === "darwin" || process.platform === "win32"
@@ -24,7 +24,7 @@ export function recordPreviewRead(projectDir: string, filePath: string): void {
 /** Note every project file a built document names, before a host transform swaps one for a derived copy. */
 export function recordPreviewReferences(projectDir: string, html: string): void {
   for (const match of html.matchAll(REFERENCE)) {
-    const url = (match[2] ?? match[4] ?? "").trim();
+    const url = (match[2] ?? match[4] ?? match[5] ?? "").trim();
     if (!url || /^(?:[a-z][a-z0-9+.-]*:|[/#])/i.test(url)) continue;
     const path = url.split(/[?#]/)[0] ?? "";
     let decoded = path;

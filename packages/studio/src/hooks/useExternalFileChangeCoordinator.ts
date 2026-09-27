@@ -421,7 +421,7 @@ export function useExternalFileChangeCoordinator({
         !readFileChangeAffectsPreview(payload);
       pendingPayloadRef.current = {
         payload: replacedChangeStillNeedsReload
-          ? { ...(payload as object), affectsPreview: true }
+          ? { ...(payload as object), affectsPreview: true, affectedCompositions: null }
           : payload,
       };
       void startDrainLoop();
