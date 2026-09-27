@@ -191,14 +191,16 @@ function codecFactsFor(codecName: string, hasAlpha: boolean): AssetCodecFacts {
   };
 }
 
+/** `undefined` when ffprobe itself failed: no answer about the file, so nothing to cache. */
 async function probeCodecFacts(
   filePath: string,
   runner?: FfprobeRunner,
-): Promise<AssetCodecFacts | null> {
+): Promise<AssetCodecFacts | null | undefined> {
   const metadata = runner
     ? await probeMediaMetadata(filePath, runner)
     : await probeMediaMetadata(filePath);
-  if (metadata.kind !== "video" || metadata.probeError) return null;
+  if (metadata.probeError) return undefined;
+  if (metadata.kind !== "video") return null;
   const codecName = metadata.color.codecName;
   if (!codecName) return null;
   return codecFactsFor(codecName, pixelFormatHasAlpha(metadata.color.pixelFormat));
@@ -240,7 +242,8 @@ function rememberProbeResult(
  * Probe a single video asset, cached per path until its mtime or size changes.
  * Best-effort: ffprobe missing, erroring, or finding no video stream resolves
  * to `null` (asset omitted by the caller), never a throw. Async so a pool of
- * probes runs concurrently (the default runner is `execFile`-based).
+ * probes runs concurrently (the default runner is `execFile`-based). A cache hit
+ * skips `runner`; a failed probe is not cached, so the next call retries.
  */
 export async function probeAssetCodec(
   filePath: string,
@@ -259,6 +262,7 @@ export async function probeAssetCodec(
     return cached.facts;
   }
   const facts = await probeCodecFacts(filePath, runner);
+  if (facts === undefined) return null;
   rememberProbeResult(cache, filePath, { mtimeMs: stat.mtimeMs, size: stat.size, facts });
   return facts;
 }
