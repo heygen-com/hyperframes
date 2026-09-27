@@ -744,6 +744,20 @@ export async function injectVideoFramesBatch(
             ? 1
             : opacityParsed;
 
+        // Measure the video's used box BEFORE its replacement <img> sibling is
+        // created, inserted and styled. A fresh sibling is briefly in flow (it
+        // only becomes position:absolute below) and the copy loop hands it the
+        // video's border-width — in a flex layout that bordered in-flow sibling
+        // shrinks the video's own flex box, so measuring afterwards reads a box
+        // the replacement itself perturbed instead of the authored one.
+        const videoRect = video.getBoundingClientRect();
+        const videoBox = {
+          left: Number.isFinite(video.offsetLeft) ? video.offsetLeft : 0,
+          top: Number.isFinite(video.offsetTop) ? video.offsetTop : 0,
+          width: video.offsetWidth > 0 ? video.offsetWidth : videoRect.width,
+          height: video.offsetHeight > 0 ? video.offsetHeight : videoRect.height,
+        };
+
         if (isNewImage) {
           img = document.createElement("img");
           img.classList.add("__render_frame__");
@@ -780,23 +794,21 @@ export async function injectVideoFramesBatch(
         // stack vertically — the <img> lands below the video and gets clipped
         // by any overflow:hidden ancestor (e.g., border-radius wrappers).
         //
-        // Apply this after visual style copying so the measured used box is
-        // the final authority for replacement frame geometry.
-        {
-          const videoRect = video.getBoundingClientRect();
-          const offsetLeft = Number.isFinite(video.offsetLeft) ? video.offsetLeft : 0;
-          const offsetTop = Number.isFinite(video.offsetTop) ? video.offsetTop : 0;
-          const offsetWidth = video.offsetWidth > 0 ? video.offsetWidth : videoRect.width;
-          const offsetHeight = video.offsetHeight > 0 ? video.offsetHeight : videoRect.height;
-          img.style.position = "absolute";
-          img.style.inset = "auto";
-          img.style.left = `${offsetLeft}px`;
-          img.style.top = `${offsetTop}px`;
-          img.style.right = "auto";
-          img.style.bottom = "auto";
-          img.style.width = `${offsetWidth}px`;
-          img.style.height = `${offsetHeight}px`;
-        }
+        // Geometry comes from `videoBox`, measured above before this <img>
+        // could perturb the video's own layout.
+        img.style.position = "absolute";
+        img.style.inset = "auto";
+        img.style.left = `${videoBox.left}px`;
+        img.style.top = `${videoBox.top}px`;
+        img.style.right = "auto";
+        img.style.bottom = "auto";
+        img.style.width = `${videoBox.width}px`;
+        img.style.height = `${videoBox.height}px`;
+        // `videoBox` is always a border-box, so the <img> must read its own
+        // width/height the same way — overriding the box-sizing the copy loop
+        // took from the video (possibly content-box), which would otherwise
+        // push the <img>'s content area past the measured box by its border.
+        img.style.boxSizing = "border-box";
         img.style.objectFit = computedStyle.objectFit;
         img.style.objectPosition = computedStyle.objectPosition;
         img.style.zIndex = computedStyle.zIndex;
