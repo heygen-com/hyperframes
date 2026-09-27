@@ -39,7 +39,12 @@ function readRecord(historyDir: string): { dir?: unknown; ino?: unknown; born?: 
 }
 
 function isCopyOf0878Folder(recordedDir: string, id: string, folder: FolderIdentity): boolean {
-  const there = statSync(recordedDir, { throwIfNoEntry: false });
+  let there;
+  try {
+    there = statSync(recordedDir, { throwIfNoEntry: false });
+  } catch {
+    return false;
+  }
   return !!there && !sameFolder(there, folder) && readId(recordedDir) === id;
 }
 
@@ -67,7 +72,12 @@ export function projectHistoryId(projectDir: string, historyRoot: string): strin
   return id;
 }
 
-export class HistoryIdError extends Error {}
+export class HistoryIdError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "HistoryIdError";
+  }
+}
 
 export function recordProject(historyDir: string, dir: string, folder: FolderIdentity): void {
   const record = { dir, ino: folder.ino, born: folder.birthtimeMs };
