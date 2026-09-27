@@ -1657,6 +1657,49 @@ describe("claim: a writer that records after writing", () => {
     expect([read("index.html"), read("r.js")]).toEqual(["B", "2"]);
   });
 
+  describe("with undoScope everyone", () => {
+    async function editThenTurn() {
+      const opened = await project({ "index.html": "A" }, { undoScope: "everyone" });
+      await change(opened.history, you, "Moved Title", () => opened.write("index.html", "B"));
+      const window = await opened.history.beginWindow(agent, "Agent turn");
+      opened.write("index.html", "C");
+      await window.close();
+      return opened;
+    }
+
+    it("Cmd+Z undoes the newest change whoever made it: the agent's turn, then the person's edit", async () => {
+      const { history, read } = await editThenTurn();
+
+      expect(await history.step("back", you)).toMatchObject({ ok: true, entry: { label: "Undid: Agent turn" } });
+      expect(read("index.html")).toBe("B");
+      expect(await history.step("back", you)).toMatchObject({ ok: true, entry: { label: "Undid: Moved Title" } });
+      expect(read("index.html")).toBe("A");
+    });
+
+    it("Shift+Cmd+Z brings them back in turn", async () => {
+      const { history, read } = await editThenTurn();
+      await history.step("back", you);
+      await history.step("back", you);
+
+      await history.step("forward", you);
+      expect(read("index.html")).toBe("B");
+      await history.step("forward", you);
+      expect(read("index.html")).toBe("C");
+    });
+
+    it("leaves an agent's turn that is still open alone", async () => {
+      const { history, write, read } = await project({ "index.html": "A", "r.js": "1" }, { undoScope: "everyone" });
+      await change(history, you, "Moved Title", () => write("index.html", "B"));
+      const window = await history.beginWindow(agent, "Agent turn");
+      write("r.js", "2");
+
+      expect(history.next("back", you)?.label).toBe("Moved Title");
+      await history.step("back", you);
+      expect([read("index.html"), read("r.js")]).toEqual(["A", "2"]);
+      await window.close();
+    });
+  });
+
   it("an agent's turn the person undid and redid is the person's to Cmd+Z", async () => {
     const { history, write } = await project({ "index.html": "A" });
     const window = await history.beginWindow(agent, "Agent turn");

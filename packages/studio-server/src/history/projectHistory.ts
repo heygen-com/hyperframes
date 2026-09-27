@@ -76,6 +76,8 @@ export interface ProjectHistoryOptions {
   ownerWaitMs?: number;
   /** A CLI turn's window from an earlier open: writes since, within its idle limit, become the entry with its id. */
   closedWindow?: ClosedWindow;
+  /** Whose finished changes Cmd+Z and Shift+Cmd+Z step over: the caller's own (default), or everyone's, newest first. */
+  undoScope?: "own" | "everyone";
 }
 
 interface ClaimOptions {
@@ -909,7 +911,8 @@ class Engine {
       (group) => group?.changes.size && mine(group.who),
     );
     if (pending) return direction === "back" ? this.pendingEntry(pending) : undefined;
-    return stepTarget(this.log.entries, direction, (entry) => mine(entry.who));
+    const everyone = this.options.undoScope === "everyone";
+    return stepTarget(this.log.entries, direction, (entry) => everyone || mine(entry.who));
   }
 
   /** A pending group as the entry it becomes once committed (a window's part gets a fresh id). */
