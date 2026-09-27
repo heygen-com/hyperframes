@@ -104,6 +104,7 @@ export interface RenderCommandArgs {
   resume?: boolean;
   "keep-segments"?: boolean;
   "low-memory-mode"?: boolean;
+  "require-beginframe"?: boolean;
   "experimental-fast-capture"?: boolean;
   "frames-cache-dir"?: string;
 }
@@ -383,6 +384,9 @@ export function createRenderPlan(args: RenderCommandArgs, now = new Date()): Ren
   if (args["page-side-compositing"] === false) environment.HF_PAGE_SIDE_COMPOSITING = "false";
   if (args["low-memory-mode"] != null) {
     environment.PRODUCER_LOW_MEMORY_MODE = args["low-memory-mode"] ? "true" : "false";
+  }
+  if (args["require-beginframe"] != null) {
+    environment.PRODUCER_REQUIRE_BEGINFRAME = args["require-beginframe"] ? "true" : "false";
   }
   if (args["experimental-fast-capture"] != null) {
     environment.PRODUCER_EXPERIMENTAL_FAST_CAPTURE = args["experimental-fast-capture"]

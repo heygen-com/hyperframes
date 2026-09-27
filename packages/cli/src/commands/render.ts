@@ -382,6 +382,12 @@ export default defineCommand({
         "memory thrash on constrained machines. Default: auto-detected from " +
         "total RAM (<= 8 GB). Env: PRODUCER_LOW_MEMORY_MODE.",
     },
+    "require-beginframe": {
+      type: "boolean",
+      description:
+        "Fail the render instead of falling back to screenshot capture when BeginFrame " +
+        "cannot run (Linux with chrome-headless-shell only). Env: PRODUCER_REQUIRE_BEGINFRAME.",
+    },
     "experimental-fast-capture": {
       type: "boolean",
       description:

@@ -229,6 +229,15 @@ describe("createRenderPlan", () => {
     }
   });
 
+  it("maps --require-beginframe to the engine's environment switch", () => {
+    expect(createRenderPlan({ dir: projectDir, "require-beginframe": true }).environment).toEqual({
+      PRODUCER_REQUIRE_BEGINFRAME: "true",
+    });
+    expect(createRenderPlan({ dir: projectDir }).environment).not.toHaveProperty(
+      "PRODUCER_REQUIRE_BEGINFRAME",
+    );
+  });
+
   it("resolves a relative frame-cache directory into the execution environment", () => {
     const plan = createRenderPlan({ dir: projectDir, "frames-cache-dir": "./frame-cache" });
     expect(plan.environment.HYPERFRAMES_EXTRACT_CACHE_DIR).toBe(resolve("./frame-cache"));

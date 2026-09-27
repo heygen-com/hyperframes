@@ -642,13 +642,17 @@ function logResolvedBrowserGpuMode(resolved: "hardware" | "software", reason: st
 function createBrowserLaunchFingerprint(
   chromeArgs: string[],
   config?: Partial<
-    Pick<EngineConfig, "browserTimeout" | "protocolTimeout" | "chromePath" | "forceScreenshot">
+    Pick<
+      EngineConfig,
+      "browserTimeout" | "protocolTimeout" | "chromePath" | "forceScreenshot" | "requireBeginFrame"
+    >
   >,
 ): BrowserLaunchFingerprint {
   const launchConfig = {
     browserTimeout: DEFAULT_CONFIG.browserTimeout,
     protocolTimeout: DEFAULT_CONFIG.protocolTimeout,
     forceScreenshot: DEFAULT_CONFIG.forceScreenshot,
+    requireBeginFrame: DEFAULT_CONFIG.requireBeginFrame,
     ...config,
   };
   const headlessShell = resolveHeadlessShellPath(launchConfig);
@@ -671,6 +675,7 @@ function createBrowserLaunchFingerprint(
     browserTimeoutMs: launchConfig.browserTimeout,
     protocolTimeoutMs: launchConfig.protocolTimeout,
     requestedCaptureMode,
+    requireBeginFrame: launchConfig.requireBeginFrame,
   };
 }
 
@@ -682,7 +687,12 @@ export async function acquireBrowser(
   config?: Partial<
     Pick<
       EngineConfig,
-      "browserTimeout" | "protocolTimeout" | "enableBrowserPool" | "chromePath" | "forceScreenshot"
+      | "browserTimeout"
+      | "protocolTimeout"
+      | "enableBrowserPool"
+      | "chromePath"
+      | "forceScreenshot"
+      | "requireBeginFrame"
     >
   >,
 ): Promise<AcquiredBrowser> {
@@ -724,6 +734,13 @@ async function launchBrowser(
       if (!probe.supported) {
         await closeBrowserAfterFailedProbe(browser);
         browser = undefined;
+        if (fingerprint.requireBeginFrame) {
+          throw new BeginFrameRequiredError(
+            `the HeadlessExperimental.beginFrame probe failed after ${probe.durationMs}ms ` +
+              `(${probe.detail}). Browsers starting together on one GPU can miss this ` +
+              `deadline, so fewer --workers may help`,
+          );
+        }
         console.warn(
           `[BrowserManager] HeadlessExperimental.beginFrame probe failed after ${probe.durationMs}ms: ` +
             `${probe.detail}; falling back to screenshot mode.`,
@@ -974,6 +991,14 @@ export function compositionRequiresWebGpu(html: string): boolean {
     if (/\bdata-composition-id\b/i.test(tag)) return /\bdata-requires-webgpu(?:\s|=|>)/i.test(tag);
   }
   return false;
+}
+
+/** BeginFrame capture was required but this session would have used screenshot capture. */
+export class BeginFrameRequiredError extends Error {
+  constructor(reason: string) {
+    super(`BeginFrame capture is required, but ${reason}; not falling back to screenshot capture.`);
+    this.name = "BeginFrameRequiredError";
+  }
 }
 
 /** No hardware WebGPU adapter on this host; distinct from a browser or navigation failure. */

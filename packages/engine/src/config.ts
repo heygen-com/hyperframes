@@ -59,6 +59,11 @@ export interface EngineConfig {
   /** Force screenshot capture mode (skip BeginFrame even on Linux). */
   forceScreenshot: boolean;
   /**
+   * Fail a capture session that would not run BeginFrame, instead of
+   * falling back to screenshot capture.
+   */
+  requireBeginFrame: boolean;
+  /**
    * Static-frame dedup: reuse byte-identical frames instead of re-seeking +
    * re-screenshotting (anchor-verified at init). Default ON; disable via
    * `HF_STATIC_DEDUP` in {false,0,off}. Only arms in screenshot capture mode.
@@ -291,6 +296,7 @@ export const DEFAULT_CONFIG: EngineConfig = {
   browserTimeout: 120_000,
   protocolTimeout: 300_000,
   forceScreenshot: false,
+  requireBeginFrame: false,
   staticFrameDedup: true,
   useDrawElement: true,
   enableDrawElementWorkerEncode: true,
@@ -342,6 +348,7 @@ const BOOLEAN_ENGINE_CONFIG_FIELDS = [
   "disableGpu",
   "enableBrowserPool",
   "forceScreenshot",
+  "requireBeginFrame",
   "staticFrameDedup",
   "useDrawElement",
   "enableDrawElementWorkerEncode",
@@ -851,6 +858,7 @@ export function resolveConfig(overrides?: Partial<EngineConfig>): EngineConfig {
       : undefined,
 
     forceScreenshot: envBool("PRODUCER_FORCE_SCREENSHOT", DEFAULT_CONFIG.forceScreenshot),
+    requireBeginFrame: envBool("PRODUCER_REQUIRE_BEGINFRAME", DEFAULT_CONFIG.requireBeginFrame),
     staticFrameDedup: resolveStaticFrameDedup(),
     useDrawElement: envBool("PRODUCER_EXPERIMENTAL_FAST_CAPTURE", DEFAULT_CONFIG.useDrawElement),
     enableDrawElementWorkerEncode: envBool(
