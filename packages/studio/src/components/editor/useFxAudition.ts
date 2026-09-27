@@ -11,7 +11,6 @@ import type { HfAudioFxChain } from "@hyperframes/core/audio-fx";
 
 export function useFxAudition(
   chain: HfAudioFxChain,
-  // `ended` marks the write that puts the stored chain back as the audition's last.
   onChainPreview: ((chain: HfAudioFxChain, ended?: boolean) => void) | undefined,
   onAuditionTransport: ((on: boolean) => void) | undefined,
 ) {
