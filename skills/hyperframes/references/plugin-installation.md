@@ -2,7 +2,7 @@
 
 Check the directory two levels above the loaded `SKILL.md` for `plugin.json`,
 `.claude-plugin/plugin.json`, `.codex-plugin/plugin.json`, or
-`.cursor-plugin/plugin.json` identifying `hyperframes`, or `gemini-extension.json`.
+`.cursor-plugin/plugin.json` identifying `hyperframes`, or a Gemini extension manifest.
 That directory is `<PLUGIN_ROOT>`. If none exists, this is a standalone skill;
 follow the normal installation and freshness instructions.
 
