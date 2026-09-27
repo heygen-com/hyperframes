@@ -78,17 +78,24 @@ describe("a settings lock left by a process that stopped", () => {
   };
 
   it.each([
-    ["a terminal", true, [], 1],
-    ["--json", true, ["--json"], 0],
-    ["piped output", false, [], 0],
-  ])("warns once per process on %s", async (_, tty, extraArgs, lines) => {
+    ["a terminal", true, [], undefined, 1],
+    ["--json", true, ["--json"], undefined, 0],
+    ["--json=true", true, ["--json=true"], undefined, 0],
+    ["piped output", false, [], undefined, 0],
+    ["CI", true, [], "true", 0],
+  ])("warns once per process on %s", async (_, tty, extraArgs, ci, lines) => {
     const lock = leaveLock();
     const { writeConfig, readConfig } = await import("./config.js");
-    const stdoutTty = Object.getOwnPropertyDescriptor(process.stdout, "isTTY");
+    const streams = [process.stdin, process.stdout];
+    const saved = streams.map((stream) => Object.getOwnPropertyDescriptor(stream, "isTTY"));
     const argv = process.argv;
+    const savedCi = process.env.CI;
     const error = vi.spyOn(console, "error").mockImplementation(() => {});
-    Object.defineProperty(process.stdout, "isTTY", { value: tty, configurable: true });
+    for (const stream of streams)
+      Object.defineProperty(stream, "isTTY", { value: tty, configurable: true });
     process.argv = [...argv, ...extraArgs];
+    if (ci === undefined) delete process.env.CI;
+    else process.env.CI = ci;
     try {
       writeConfig(readConfig());
       writeConfig(readConfig());
@@ -99,8 +106,13 @@ describe("a settings lock left by a process that stopped", () => {
     } finally {
       error.mockRestore();
       process.argv = argv;
-      if (stdoutTty) Object.defineProperty(process.stdout, "isTTY", stdoutTty);
-      else delete (process.stdout as { isTTY?: boolean }).isTTY;
+      if (savedCi === undefined) delete process.env.CI;
+      else process.env.CI = savedCi;
+      streams.forEach((stream, i) => {
+        const descriptor = saved[i];
+        if (descriptor) Object.defineProperty(stream, "isTTY", descriptor);
+        else delete (stream as { isTTY?: boolean }).isTTY;
+      });
     }
   });
 });

@@ -5,6 +5,7 @@ import { homedir } from "node:os";
 import { randomUUID } from "node:crypto";
 import { normalizeErrorMessage } from "../utils/errorMessage.js";
 import { telemetryRuntimeOverride } from "./policy.js";
+import { isAttendedTerminal } from "../utils/attendedTerminal.js";
 import { withFileLock } from "../media-use/lib/config-lock.mjs";
 
 // ---------------------------------------------------------------------------
@@ -833,7 +834,11 @@ function warnSettingsLockedOnce(error: unknown): void {
   if (warnedSettingsLocked || (error as NodeJS.ErrnoException)?.code !== "HF_SETTINGS_LOCKED")
     return;
   warnedSettingsLocked = true;
-  if (process.stdout.isTTY !== true || process.argv.includes("--json")) return;
+  if (
+    !isAttendedTerminal() ||
+    process.argv.some((arg) => arg === "--json" || arg.startsWith("--json="))
+  )
+    return;
   console.error(`${(error as Error).message} (see \`hyperframes doctor\`).`);
 }
 

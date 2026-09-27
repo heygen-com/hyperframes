@@ -37,7 +37,7 @@ export function withFileLock(lockPath, fs, task) {
   try {
     return task();
   } finally {
-    // Nothing but its owner removes or replaces a lock, so release needs no check; a failure must not fail the task.
+    // No code removes another's lock, so release needs no check (only a person deleting a live one defeats it).
     try {
       fs.rmSync(lockPath);
     } catch {}
