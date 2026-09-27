@@ -670,17 +670,13 @@ const hasJq = (() => {
 
 const runOneLiner = async (line: string, timeline?: ProjectTimeline): Promise<string> => {
   const own = timeline ? null : inversionProject();
-  try {
-    return execFileSync("bash", ["-c", line], {
-      env: {
-        ...process.env,
-        TL: JSON.stringify({ timeline: timeline ?? (await describeProject(own!)) }),
-      },
-      encoding: "utf8",
-    });
-  } finally {
-    if (own) rmSync(dirname(own), { recursive: true, force: true });
-  }
+  return execFileSync("bash", ["-c", line], {
+    env: {
+      ...process.env,
+      TL: JSON.stringify({ timeline: timeline ?? (await describeProject(own!)) }),
+    },
+    encoding: "utf8",
+  });
 };
 const parseStream = (out: string) => JSON.parse(`[${out.replace(/}\s*{/g, "},{")}]`);
 
