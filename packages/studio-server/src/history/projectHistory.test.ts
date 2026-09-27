@@ -1670,9 +1670,15 @@ describe("claim: a writer that records after writing", () => {
     it("Cmd+Z undoes the newest change whoever made it: the agent's turn, then the person's edit", async () => {
       const { history, read } = await editThenTurn();
 
-      expect(await history.step("back", you)).toMatchObject({ ok: true, entry: { label: "Undid: Agent turn" } });
+      expect(await history.step("back", you)).toMatchObject({
+        ok: true,
+        entry: { label: "Undid: Agent turn" },
+      });
       expect(read("index.html")).toBe("B");
-      expect(await history.step("back", you)).toMatchObject({ ok: true, entry: { label: "Undid: Moved Title" } });
+      expect(await history.step("back", you)).toMatchObject({
+        ok: true,
+        entry: { label: "Undid: Moved Title" },
+      });
       expect(read("index.html")).toBe("A");
     });
 
@@ -1688,7 +1694,10 @@ describe("claim: a writer that records after writing", () => {
     });
 
     it("leaves an agent's turn that is still open alone", async () => {
-      const { history, write, read } = await project({ "index.html": "A", "r.js": "1" }, { undoScope: "everyone" });
+      const { history, write, read } = await project(
+        { "index.html": "A", "r.js": "1" },
+        { undoScope: "everyone" },
+      );
       await change(history, you, "Moved Title", () => write("index.html", "B"));
       const window = await history.beginWindow(agent, "Agent turn");
       write("r.js", "2");

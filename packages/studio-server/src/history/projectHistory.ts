@@ -912,7 +912,13 @@ class Engine {
     );
     if (pending) return direction === "back" ? this.pendingEntry(pending) : undefined;
     const everyone = this.options.undoScope === "everyone";
-    return stepTarget(this.log.entries, direction, (entry) => everyone || mine(entry.who));
+    const ofOpenTurn = (entry: HistoryEntry) =>
+      this.windows.some((open) => sameWho(open.who, entry.who) && open.startedAt === entry.startedAt);
+    return stepTarget(
+      this.log.entries,
+      direction,
+      (entry) => mine(entry.who) || (everyone && !ofOpenTurn(entry)),
+    );
   }
 
   /** A pending group as the entry it becomes once committed (a window's part gets a fresh id). */
