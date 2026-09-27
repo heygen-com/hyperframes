@@ -31,7 +31,8 @@ describe("the CLI test run", () => {
     await fetchRegistryManifest(registry);
 
     const slug = registry.replace(/[^a-zA-Z0-9]/g, "_");
-    const cached = (home: string) => existsSync(join(home, ".hyperframes", "cache", `${slug}__registry.json`));
+    const cached = (home: string) =>
+      existsSync(join(home, ".hyperframes", "cache", `${slug}__registry.json`));
     expect(cached(homedir())).toBe(true);
     expect(cached(userInfo().homedir)).toBe(false);
   });
