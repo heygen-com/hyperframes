@@ -1,5 +1,6 @@
 import { dirname, resolve, sep } from "node:path";
 import { STUDIO_SIGNATURE_MANIFEST_PATHS } from "./projectSignature.js";
+import { pinWithinProject } from "./safePath.js";
 
 const ALWAYS_AFFECTS = ["hyperframes.json", ...STUDIO_SIGNATURE_MANIFEST_PATHS];
 const REFERENCE =
@@ -17,8 +18,11 @@ export function recordPreviewRead(projectDir: string, filePath: string): void {
   const key = pathKey(projectDir);
   let reads = readsByProject.get(key);
   if (!reads) readsByProject.set(key, (reads = new Set()));
-  for (let path = pathKey(resolve(projectDir, filePath)); !reads.has(path); path = dirname(path)) {
-    reads.add(path);
+  const lexical = resolve(projectDir, filePath);
+  if (reads.has(pathKey(lexical))) return;
+  for (const read of [lexical, pinWithinProject(projectDir, filePath)]) {
+    if (!read) continue;
+    for (let path = pathKey(read); !reads.has(path); path = dirname(path)) reads.add(path);
   }
 }
 

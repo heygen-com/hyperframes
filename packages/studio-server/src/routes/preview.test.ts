@@ -1541,6 +1541,25 @@ describe("what the preview loaded", () => {
     expect(affectsPreview(projectDir, "im")).toBe(false);
   });
 
+  it.skipIf(process.platform === "win32")(
+    "counts an edit to the file a symlinked asset points at",
+    async () => {
+      const projectDir = createProjectDir();
+      writeFileSync(join(projectDir, "index.html"), "<html><body></body></html>");
+      mkdirSync(join(projectDir, "assets"));
+      writeFileSync(join(projectDir, "assets", "actual.css"), "a {}");
+      symlinkSync("actual.css", join(projectDir, "assets", "alias.css"));
+      const app = new Hono();
+      registerPreviewRoutes(app, createAdapter(projectDir, { bundle: async () => null }));
+      expect((await app.request("http://localhost/projects/demo/preview")).status).toBe(200);
+      const alias = await app.request("http://localhost/projects/demo/preview/assets/alias.css");
+      expect(alias.status).toBe(200);
+
+      expect(affectsPreview(projectDir, "assets/actual.css")).toBe(true);
+      expect(affectsPreview(projectDir, "assets/other.css")).toBe(false);
+    },
+  );
+
   it("records the folders of a read in a project at the filesystem root", () => {
     const root = parse(process.cwd()).root;
     recordPreviewRead(root, "media/clip.png");
