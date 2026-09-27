@@ -20,12 +20,13 @@ afterEach(() => {
 
 describe("useBlockHandlers", () => {
   it("leaves only the error toast when an install fails", async () => {
-    const shown: string[] = [];
-    const showToast = vi.fn((message: string) => {
-      shown.push(message);
-      return shown.length;
-    });
-    const dismissToast = vi.fn();
+    const events: string[] = [];
+    let nextId = 0;
+    const showToast = (message: string) => {
+      events.push(`show ${message}`);
+      return ++nextId;
+    };
+    const dismissToast = (id: number) => events.push(`dismiss ${id}`);
     let handlers: UseBlockHandlersResult | undefined;
     function Harness() {
       handlers = useBlockHandlers({
@@ -47,14 +48,18 @@ describe("useBlockHandlers", () => {
       });
       return null;
     }
-    mountReactHarness(<Harness />);
+    const root = mountReactHarness(<Harness />);
 
     await act(async () => {
       handlers!.handleAddBlock("x-post");
       await new Promise((resolve) => setTimeout(resolve, 0));
     });
 
-    expect(shown).toEqual(["Adding x-post…", "Installing catalog items needs hyperframes preview"]);
-    expect(dismissToast).toHaveBeenCalledWith(1);
+    expect(events).toEqual([
+      "show Adding x-post…",
+      "show Installing catalog items needs hyperframes preview",
+      "dismiss 1",
+    ]);
+    act(() => root.unmount());
   });
 });
