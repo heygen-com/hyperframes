@@ -1,4 +1,4 @@
-import { existsSync, statSync } from "node:fs";
+import { existsSync, realpathSync, statSync } from "node:fs";
 import { relative, resolve, sep } from "node:path";
 import { rewriteAssetPath } from "@hyperframes/parsers/asset-paths";
 import {
@@ -207,6 +207,8 @@ async function probeCodecFacts(
 }
 
 interface CachedAssetProbe {
+  /** The file a symlinked path pointed at, so retargeting the link is a miss. */
+  target: string;
   mtimeMs: number;
   size: number;
   facts: AssetCodecFacts | null;
@@ -239,7 +241,7 @@ function rememberProbeResult(
 }
 
 /**
- * Probe a single video asset, cached per path until its mtime or size changes.
+ * Probe a single video asset, cached per path until its target, mtime or size changes.
  * Best-effort: ffprobe missing, erroring, or finding no video stream resolves
  * to `null` (asset omitted by the caller), never a throw. Async so a pool of
  * probes runs concurrently (the default runner is `execFile`-based). A cache hit
@@ -251,19 +253,26 @@ export async function probeAssetCodec(
   cache: MediaCodecProbeCache = defaultProbeCache,
 ): Promise<AssetCodecFacts | null> {
   let stat: ReturnType<typeof statSync>;
+  let target: string;
   try {
     stat = statSync(filePath);
+    target = realpathSync(filePath);
   } catch {
     return null;
   }
   const cached = cache.get(filePath);
-  if (cached && cached.mtimeMs === stat.mtimeMs && cached.size === stat.size) {
+  if (
+    cached &&
+    cached.target === target &&
+    cached.mtimeMs === stat.mtimeMs &&
+    cached.size === stat.size
+  ) {
     rememberProbeResult(cache, filePath, cached);
     return cached.facts;
   }
   const facts = await probeCodecFacts(filePath, runner);
   if (facts === undefined) return null;
-  rememberProbeResult(cache, filePath, { mtimeMs: stat.mtimeMs, size: stat.size, facts });
+  rememberProbeResult(cache, filePath, { target, mtimeMs: stat.mtimeMs, size: stat.size, facts });
   return facts;
 }
 
