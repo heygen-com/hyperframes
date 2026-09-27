@@ -1,4 +1,5 @@
 // fallow-ignore-file code-duplication complexity
+import { preloadMedia } from "./preloadMedia";
 import { installRuntimeControlBridge, postRuntimeMessage, setRuntimeProtocolFps } from "./bridge";
 import { instantTolerance } from "../clipFacts";
 import { isInClipWindow } from "./clipWindow";
@@ -2383,15 +2384,7 @@ export function initSandboxRuntimeModular(): void {
       // mode, for <audio>, or when the codec map is absent.
       maybeProxyProactively(mediaEl);
 
-      // Eagerly preload media data so audio/video is buffered before the user
-      // clicks play. Without this, the first play() call fires on un-fetched
-      // media, producing silence or choppy audio until the browser caches it.
-      if (mediaEl.preload !== "auto") {
-        mediaEl.preload = "auto";
-      }
-      if (mediaEl.readyState < HTMLMediaElement.HAVE_FUTURE_DATA) {
-        mediaEl.load();
-      }
+      preloadMedia(mediaEl);
 
       // Probe volume automation from the GSAP timeline — same approach as the
       // renderer (see discoverAudioVolumeAutomationFromTimeline / audioMixer).
