@@ -340,15 +340,7 @@ export function StudioApp({ readOnlyPreview = false, readOnlyPreviewReason }: St
     effectiveTimelineDuration,
   });
   const compositionDimensions = useCompositionDimensions(previewIframeRef);
-  const {
-    lintModal,
-    linting,
-    handleLint,
-    closeLintModal,
-    findingsByFile,
-    lintFindingCount,
-    hasLintError,
-  } = useLintModal(projectId, refreshKey);
+  const lint = useLintModal(projectId, refreshKey);
   const frameCapture = useFrameCapture({
     projectId,
     activeCompPath,
@@ -503,11 +495,11 @@ export function StudioApp({ readOnlyPreview = false, readOnlyPreviewReason }: St
                         onSelectComposition={handleSelectComposition}
                         onAddBlock={handleAddBlock}
                         onPreviewBlock={setBlockPreview}
-                        onLint={handleLint}
-                        linting={linting}
-                        lintFindingCount={lintFindingCount}
-                        lintFindingsByFile={findingsByFile}
-                        lintHasError={hasLintError}
+                        onLint={lint.handleLint}
+                        linting={lint.linting}
+                        lintFindingCount={lint.lintFindingCount}
+                        lintFindingsByFile={lint.findingsByFile}
+                        lintHasError={lint.hasLintError}
                         onAddAssetToTimeline={handleAddAssetAtPlayhead}
                         onAddCompositionToTimeline={handleAddCompositionAtPlayhead}
                       />
@@ -580,8 +572,8 @@ export function StudioApp({ readOnlyPreview = false, readOnlyPreviewReason }: St
                 <StudioOverlays
                   projectId={projectId}
                   projectDir={fileManager.projectDir}
-                  lintModal={lintModal}
-                  closeLintModal={closeLintModal}
+                  lintModal={lint.lintModal}
+                  closeLintModal={lint.closeLintModal}
                   consoleErrors={consoleErrors}
                   clearConsoleErrors={() => setConsoleErrors(null)}
                   domEditSession={domEditSession}
