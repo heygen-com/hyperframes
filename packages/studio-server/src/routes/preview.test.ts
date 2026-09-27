@@ -23,7 +23,11 @@ import { PREVIEW_BUNDLE_OPTIONS, registerPreviewRoutes } from "./preview";
 import { registerFileRoutes } from "./files";
 import { createPreviewDocumentStore } from "../helpers/previewDocumentStore";
 import type { StudioApiAdapter } from "../types";
-import { affectsPreview, recordPreviewReferences } from "../helpers/previewReads";
+import {
+  affectsPreview,
+  recordPreviewBuilt,
+  recordPreviewReferences,
+} from "../helpers/previewReads";
 
 const tempDirs: string[] = [];
 
@@ -1520,6 +1524,20 @@ describe("what the preview loaded", () => {
     recordPreviewReferences(createProjectDir(), css);
     recordPreviewReferences(createProjectDir(), `url("${'url("a'.repeat(100_000)}`);
     expect(performance.now() - started).toBeLessThan(1000);
+  });
+
+  it("records every reference form a document uses, and the folders holding them", () => {
+    const projectDir = createProjectDir();
+    recordPreviewReferences(
+      projectDir,
+      `<img src='a.png'><i style="x: url('b.png')"></i><i style='y: url("c.png")'></i><i style="z: url(img/deep/d.png)"></i>`,
+    );
+    recordPreviewBuilt(projectDir);
+
+    for (const path of ["a.png", "b.png", "c.png", "img/deep/d.png", "img/deep", "img"]) {
+      expect(affectsPreview(projectDir, path)).toBe(true);
+    }
+    expect(affectsPreview(projectDir, "im")).toBe(false);
   });
 
   it("counts a folder event when a file the preview asked for is inside it", async () => {

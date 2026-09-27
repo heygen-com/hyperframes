@@ -724,11 +724,11 @@ describe("Studio file-change SSE", () => {
     expect(payload).toContain('"affectsPreview":true');
   });
 
-  it("reloads when a folder holding an asset the preview loaded is removed", async () => {
+  it("reloads when a folder holding an asset the preview loaded is moved out", async () => {
     const { projectDir } = await previewedProject();
     const [stream] = await subscribe(1);
 
-    rmSync(join(projectDir, "assets"), { recursive: true });
+    renameSync(join(projectDir, "assets"), join(tmpProject(), "assets"));
     mockWatcher.emit("change", "rename", "assets");
 
     expect(await nextEvent(stream!)).toContain('"affectsPreview":true');

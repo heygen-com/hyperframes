@@ -1,4 +1,4 @@
-import { resolve, sep } from "node:path";
+import { dirname, resolve, sep } from "node:path";
 import { STUDIO_SIGNATURE_MANIFEST_PATHS } from "./projectSignature.js";
 
 const ALWAYS_AFFECTS = ["hyperframes.json", ...STUDIO_SIGNATURE_MANIFEST_PATHS];
@@ -17,7 +17,11 @@ export function recordPreviewRead(projectDir: string, filePath: string): void {
   const key = pathKey(projectDir);
   let reads = readsByProject.get(key);
   if (!reads) readsByProject.set(key, (reads = new Set()));
-  reads.add(pathKey(resolve(projectDir, filePath)));
+  let path = pathKey(resolve(projectDir, filePath));
+  while ((path === key || path.startsWith(key + sep)) && !reads.has(path)) {
+    reads.add(path);
+    path = dirname(path);
+  }
 }
 
 export function recordPreviewReferences(projectDir: string, html: string): void {
@@ -44,9 +48,8 @@ export function affectsPreview(projectDir: string, changedPath: string): boolean
   const key = pathKey(projectDir);
   if (!builtProjects.has(key)) return true;
   const changed = pathKey(resolve(projectDir, changedPath));
-  const loaded = [
-    ...(readsByProject.get(key) ?? []),
-    ...ALWAYS_AFFECTS.map((path) => pathKey(resolve(projectDir, path))),
-  ];
-  return loaded.some((path) => path === changed || path.startsWith(changed + sep));
+  if (readsByProject.get(key)?.has(changed)) return true;
+  return ALWAYS_AFFECTS.map((path) => pathKey(resolve(projectDir, path))).some(
+    (path) => path === changed || path.startsWith(changed + sep),
+  );
 }
