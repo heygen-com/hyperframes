@@ -642,7 +642,10 @@ describe("openProjectHistory", () => {
     const again = await open(projectDir, historyRoot);
     expect(again.projectId).toBe(history.projectId);
     expect(again.list().map((entry) => entry.label)).toEqual(["Old change"]);
-    expect(JSON.parse(readFileSync(record, "utf-8"))).toMatchObject({ dir: projectDir, ino: expect.any(Number) });
+    expect(JSON.parse(readFileSync(record, "utf-8"))).toMatchObject({
+      dir: projectDir,
+      ino: expect.any(Number),
+    });
   });
 
   describe("a history 0.8.78 wrote", () => {
@@ -1032,7 +1035,7 @@ describe("openProjectHistory", () => {
     expect(reopened.list().map((kept) => kept.label)).toEqual(["Second", "Third"]);
   });
 
-  it("mints its own id when the project's history-id is anything else, so a project cannot pick where history is written", async () => {
+  it("refuses a history-id that is anything else, so a project cannot pick where history is written", async () => {
     const projectDir = tempDir("hf-history-project-");
     const historyRoot = tempDir("hf-history-root-");
     const victim = tempDir("hf-history-victim-");
@@ -1041,12 +1044,11 @@ describe("openProjectHistory", () => {
     mkdirSync(join(projectDir, ".hyperframes"));
     writeFileSync(join(projectDir, ".hyperframes", "history-id"), relative(historyRoot, victim));
 
-    const history = await open(projectDir, historyRoot);
-    expect(history.projectId).toMatch(/^[0-9a-f]{8}(-[0-9a-f]{4}){3}-[0-9a-f]{12}$/);
+    await expect(open(projectDir, historyRoot)).rejects.toThrow(/history-id/);
     expect(readdirSync(victim)).toEqual(["project.json"]);
     expect(readFileSync(join(victim, "project.json"), "utf-8")).toBe('{"precious":true}');
     const idFile = join(projectDir, ".hyperframes", "history-id");
-    expect(readFileSync(idFile, "utf-8").trim()).toBe(history.projectId);
+    expect(readFileSync(idFile, "utf-8")).toBe(relative(historyRoot, victim));
   });
 
   it("commits a window that is never closed when the history flushes, so an undo still reaches its writes", async () => {

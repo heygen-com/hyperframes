@@ -43,7 +43,9 @@ export function projectHistoryId(projectDir: string, historyRoot: string): strin
   const folder = statSync(dir);
   let id = readId(dir);
   if (!id && existsSync(join(dir, ID_PATH)))
-    throw new Error(`${join(dir, ID_PATH)} holds no history id this version can read; move it aside to start anew.`);
+    throw new Error(
+      `${join(dir, ID_PATH)} holds no history id this version can read; move it aside to start anew.`,
+    );
   if (
     !id ||
     (existsSync(join(historyRoot, id)) && !isRecordedFolder(join(historyRoot, id), dir, folder))
