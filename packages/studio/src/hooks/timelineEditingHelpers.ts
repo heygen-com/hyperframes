@@ -337,6 +337,36 @@ export interface PersistTimelineBatchChange {
   buildPatches: (original: string, target: PatchTarget) => string;
 }
 
+/** One batch change per element, each applying the same patch operation. */
+export function operationChanges(
+  elements: readonly TimelineElement[],
+  operation: PatchOperation,
+): PersistTimelineBatchChange[] {
+  return elements.map((element) => ({
+    element,
+    buildPatches: (html, target) => applyPatchByTarget(html, target, operation),
+  }));
+}
+
+/** Patches each change into `source`, failing loudly on a target the file does not hold. */
+export function patchTimelineChangesInSource(
+  source: string,
+  targetPath: string,
+  changes: readonly PersistTimelineBatchChange[],
+): string {
+  let current = source;
+  for (const { element, buildPatches } of changes) {
+    const target = buildPatchTarget(element);
+    if (!target) throw new Error(`Timeline element ${element.id} is missing a patchable target`);
+    // Resolve first: a member already at its target values patches to the same string, a missing one must throw.
+    if (!findTagByTarget(current, target)) {
+      throw new Error(`Unable to patch timeline element ${element.id} in ${targetPath}`);
+    }
+    current = buildPatches(current, target);
+  }
+  return current;
+}
+
 export interface PersistTimelineBatchEditInput {
   projectId: string;
   activeCompPath: string | null;
@@ -353,35 +383,15 @@ export interface PersistTimelineBatchEditInput {
 export async function persistTimelineBatchEdit(
   input: PersistTimelineBatchEditInput,
 ): Promise<void> {
-  const changesByPath = new Map<
-    string,
-    Array<{ change: PersistTimelineBatchChange; target: PatchTarget }>
-  >();
+  const changesByPath = new Map<string, PersistTimelineBatchChange[]>();
   for (const change of input.changes) {
     const targetPath = change.element.sourceFile || input.activeCompPath || "index.html";
-    const target = buildPatchTarget(change.element);
-    if (!target) {
-      throw new Error(`Timeline element ${change.element.id} is missing a patchable target`);
-    }
-    changesByPath.set(targetPath, [...(changesByPath.get(targetPath) ?? []), { change, target }]);
+    changesByPath.set(targetPath, [...(changesByPath.get(targetPath) ?? []), change]);
   }
-
   const buildFile = (targetPath: string) => (original: string) => {
-    let current = original;
-    for (const { change, target } of changesByPath.get(targetPath) ?? []) {
-      // Resolve the target FIRST: byte-identical output below is only a legit
-      // no-op when the member actually resolved in the source. A mistargeted
-      // member (stale id/selector) must fail loudly like the single-edit path,
-      // not be silently dropped as "already at target".
-      if (!findTagByTarget(current, target)) {
-        throw new Error(`Unable to patch timeline element ${change.element.id} in ${targetPath}`);
-      }
-      // A member already at its target values (a track-insert renumber) patches to the
-      // identical string: a legitimate no-op, not a reason to abort the batch.
-      current = change.buildPatches(current, target);
-    }
-    if (current !== original) input.pendingTimelineEditPathRef.current.add(targetPath);
-    return current;
+    const next = patchTimelineChangesInSource(original, targetPath, changesByPath.get(targetPath)!);
+    if (next !== original) input.pendingTimelineEditPathRef.current.add(targetPath);
+    return next;
   };
 
   await saveProjectFilesWithHistory({
@@ -421,7 +431,7 @@ export function readTargetAttribute(
   return readAttributeByTarget(html, patchTarget, attr) ?? null;
 }
 
-export { applyPatchByTarget, formatTimelineAttributeNumber };
+export { formatTimelineAttributeNumber };
 
 export { patchDocumentRootDuration } from "./timelineEditingGsap";
 
@@ -485,7 +495,7 @@ export async function persistElementAttribute({
         projectId,
         label,
         files: { [targetPath]: () => patched },
-        readFile: async (path) => (path === targetPath ? before : readFileContent(projectId, path)),
+        readFile: async () => before,
         writeFile: writeProjectFile,
         recordEdit,
       });

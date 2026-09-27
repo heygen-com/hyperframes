@@ -15,12 +15,13 @@ import { invalidateGroupInfoCache } from "../player/lib/timelineGroupInfo";
 import { readTagSnippetByTarget, type PatchOperation } from "../utils/sourcePatcher";
 import {
   findTimelineElementInIframe,
+  operationChanges,
+  patchTimelineChangesInSource,
   readFileContent,
   type RecordEditInput,
 } from "./timelineEditingHelpers";
 import {
   groupElementsByTargetPath,
-  patchElementsInFile,
   reseekPreviewRuntime,
   type MutableRef,
   type UseTimelineElementVisibilityEditingInput,
@@ -201,11 +202,10 @@ export async function createAudioGroupAndAssignMembers({
   const files: Record<string, (current: string) => string> = {};
   for (const targetPath of new Set([...byPath.keys(), groupPath])) {
     files[targetPath] = (current) => {
-      let patched = patchElementsInFile(
+      let patched = patchTimelineChangesInSource(
         current,
-        byPath.get(targetPath) ?? [],
         targetPath,
-        groupOperation,
+        operationChanges(byPath.get(targetPath) ?? [], groupOperation),
       );
       if (targetPath === groupPath) patched = insertGroupElement(patched, groupId, groupLabel);
       if (patched !== current) pendingTimelineEditPathRef.current.add(targetPath);

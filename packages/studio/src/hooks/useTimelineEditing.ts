@@ -242,6 +242,7 @@ export function useTimelineEditing({
             label: "Move timeline clip",
             coalesceKey,
             recordEdit,
+            writeProjectFile,
             edit: { kind: "shift", delta: updates.start - element.start },
           }).finally(() => invalidateGsapCache?.());
         const moveFallback = () =>
@@ -345,6 +346,7 @@ export function useTimelineEditing({
           label: "Resize timeline clip",
           coalesceKey,
           recordEdit,
+          writeProjectFile,
           edit: {
             kind: "scale",
             from: { start: element.start, duration: element.duration },

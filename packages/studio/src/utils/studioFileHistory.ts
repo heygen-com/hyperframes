@@ -68,6 +68,34 @@ export async function saveProjectFilesWithHistory(
   );
 }
 
+/**
+ * A server-side rewrite and its undo entry, holding the file's queue from the read to the history write.
+ * `rewrite` returns what the server left on disk (and the edit's final content if it goes further), or null.
+ */
+export async function saveServerRewriteWithHistory(input: {
+  projectId: string;
+  path: string;
+  label: string;
+  coalesceKey?: string;
+  writeFile: ProjectFileWriter;
+  recordEdit: (entry: RecordEditInput) => Promise<void>;
+  rewrite: (original: string) => Promise<{ disk: string; after?: string } | null>;
+}): Promise<boolean> {
+  const { projectId, path, writeFile } = input;
+  return serializeStudioFileMutations(writeFile, [path], async () => {
+    const original = await readProjectFileContent(projectId, path);
+    const result = await input.rewrite(original);
+    if (!result) return false;
+    await writeProjectFilesWithHistoryInQueue({
+      ...input,
+      files: { [path]: () => result.after ?? result.disk },
+      readFile: async () => original,
+      diskContent: { [path]: result.disk },
+    });
+    return true;
+  });
+}
+
 export async function writeProjectFilesWithHistoryInQueue({
   label,
   coalesceKey,

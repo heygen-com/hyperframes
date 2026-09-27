@@ -11,6 +11,8 @@ import {
   shiftGsapPositions,
 } from "./timelineTimingSync";
 
+const writeProjectFile = async () => {};
+
 afterEach(() => {
   usePlayerStore.getState().reset();
   vi.restoreAllMocks();
@@ -68,6 +70,7 @@ function clipFallbackInput(overrides: {
     domId: "clip",
     label: "Move timeline clip",
     recordEdit: overrides.recordEdit as never,
+    writeProjectFile,
     edit: { kind: "shift", delta: 1 } as const,
   };
 }
@@ -495,6 +498,7 @@ describe("nothing-to-rewrite timing edits rebind in place (no script re-executio
     const element = { sourceFile: "index.html" } as TimelineElement;
 
     await finishGroupTimingGsapFallback({
+      writeProjectFile,
       projectId: "p1",
       iframe,
       reloadPreview,
@@ -522,6 +526,7 @@ describe("nothing-to-rewrite timing edits rebind in place (no script re-executio
     const reloadPreview = vi.fn();
 
     await finishGroupTimingGsapFallback({
+      writeProjectFile,
       projectId: "p1",
       iframe,
       reloadPreview,
@@ -602,6 +607,7 @@ describe("foldGsapMutationIntoHistory — owned GSAP transaction", () => {
     let clipIndex = 0;
 
     await finishGroupTimingGsapFallback({
+      writeProjectFile,
       projectId: "p1",
       iframe: buildLivePreviewIframe().iframe,
       reloadPreview: vi.fn(),
@@ -632,6 +638,7 @@ describe("foldGsapMutationIntoHistory — owned GSAP transaction", () => {
     let clipIndex = 0;
 
     await finishGroupTimingGsapFallback({
+      writeProjectFile,
       projectId: "p1",
       iframe: buildLivePreviewIframe().iframe,
       reloadPreview: vi.fn(),
@@ -669,6 +676,7 @@ describe("foldGsapMutationIntoHistory — owned GSAP transaction", () => {
 
     const reloadPreview = vi.fn();
     await finishGroupTimingGsapFallback({
+      writeProjectFile,
       projectId: "p1",
       iframe: buildLivePreviewIframe().iframe,
       reloadPreview,
@@ -698,6 +706,7 @@ describe("foldGsapMutationIntoHistory — owned GSAP transaction", () => {
     let clipIndex = 0;
 
     await finishGroupTimingGsapFallback({
+      writeProjectFile,
       projectId: "p1",
       iframe: buildLivePreviewIframe().iframe,
       reloadPreview,
@@ -728,6 +737,7 @@ describe("foldGsapMutationIntoHistory — owned GSAP transaction", () => {
     const recordEdit = vi.fn(async () => {});
 
     await finishGroupTimingGsapFallback({
+      writeProjectFile,
       projectId: "p1",
       iframe: buildLivePreviewIframe().iframe,
       reloadPreview: vi.fn(),
@@ -762,6 +772,7 @@ describe("foldGsapMutationIntoHistory — owned GSAP transaction", () => {
 
     const reloadPreview = vi.fn();
     await finishGroupTimingGsapFallback({
+      writeProjectFile,
       projectId: "p1",
       iframe: buildLivePreviewIframe().iframe,
       reloadPreview,
@@ -797,6 +808,7 @@ describe("foldGsapMutationIntoHistory — owned GSAP transaction", () => {
     const server = installOwnedFileServer(contents, { failReadAt: 1 });
 
     await finishGroupTimingGsapFallback({
+      writeProjectFile,
       projectId: "p1",
       iframe: buildLivePreviewIframe().iframe,
       reloadPreview: vi.fn(),

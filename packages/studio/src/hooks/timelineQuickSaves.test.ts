@@ -8,13 +8,16 @@ import {
   persistTimelineEdit,
 } from "./timelineEditingHelpers";
 import type { TimelineElement } from "../player/store/playerStore";
+import { finishClipTimingFallback } from "./timelineTimingSync";
 import { applyColorGradingScopeUpdate } from "../components/studioColorGradingScope";
 
 const SOURCE =
   '<div id="root"><video id="a" class="clip" data-start="1" data-duration="5" data-track-index="0"></video>' +
-  '<video id="b" class="clip" data-start="2" data-duration="5" data-track-index="1"></video></div>';
+  '<video id="b" class="clip" data-start="2" data-duration="5" data-track-index="1"></video>' +
+  '<script>gsap.to("#a", { x: 1 }, 1)</script></div>';
 
 // Refuses a write whose base is stale, like the server's If-Match; one write can be held mid-flight.
+// A GSAP shift lands 10 ms after it is posted and releases the held write.
 function fakeProject() {
   let file = SOURCE;
   const refused: string[] = [];
@@ -23,7 +26,19 @@ function fakeProject() {
   const firstWrite = new Promise<void>((resolve) => (release = resolve));
   vi.stubGlobal(
     "fetch",
-    vi.fn(async () => ({ ok: true, json: async () => ({ content: file }) })),
+    vi.fn(async (input: string) => {
+      if (input.includes("/gsap-mutation-capabilities")) {
+        return Response.json({ atomicOwnershipPairs: true });
+      }
+      if (input.includes("/gsap-mutations/")) {
+        await new Promise((resolve) => setTimeout(resolve, 10));
+        const before = file;
+        file = file.replace("{ x: 1 }, 1)", "{ x: 1 }, 3)");
+        release();
+        return Response.json({ mutated: true, before, after: file, scriptText: null });
+      }
+      return Response.json({ content: file });
+    }),
   );
   const writeProjectFile = async (path: string, content: string, expected?: string) => {
     if (++writes === 1) await firstWrite;
@@ -155,5 +170,26 @@ describe("two quick timeline saves on one file", () => {
 
     expect(project.read()).toContain('id="a" class="clip" data-start="3"');
     expect(project.read()).toContain('data-color-grading="warm"');
+  });
+
+  it("lands a move started while the previous move's GSAP rewrite is in flight", async () => {
+    const project = fakeProject();
+    const shiftA = finishClipTimingFallback({
+      iframe: null,
+      reloadPreview: () => {},
+      projectId: "p1",
+      targetPath: "index.html",
+      domId: "a",
+      label: "Move clip",
+      recordEdit: async () => {},
+      writeProjectFile: project.writeProjectFile,
+      edit: { kind: "shift", delta: 2 },
+    });
+    const results = await Promise.allSettled([shiftA, move(project, "b", 4)]);
+
+    expect(project.refused).toEqual([]);
+    expect(results.map((r) => r.status)).toEqual(["fulfilled", "fulfilled"]);
+    expect(project.read()).toContain('gsap.to("#a", { x: 1 }, 3)');
+    expect(project.read()).toContain('id="b" class="clip" data-start="4"');
   });
 });

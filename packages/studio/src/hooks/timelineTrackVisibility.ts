@@ -9,11 +9,11 @@ import {
 } from "../player/components/timelineTrackDisplay";
 import { saveProjectFilesWithHistory } from "../utils/studioFileHistory";
 import { isAudioTimelineElement } from "../utils/timelineInspector";
-import { readTagSnippetByTarget, type PatchOperation } from "../utils/sourcePatcher";
+import type { PatchOperation } from "../utils/sourcePatcher";
 import {
-  applyPatchByTarget,
-  buildPatchTarget,
   findTimelineElementInIframe,
+  operationChanges,
+  patchTimelineChangesInSource,
   readFileContent,
   type RecordEditInput,
 } from "./timelineEditingHelpers";
@@ -127,26 +127,6 @@ export function groupElementsByTargetPath(
   return byPath;
 }
 
-export function patchElementsInFile(
-  content: string,
-  fileElements: TimelineElement[],
-  targetPath: string,
-  operation: PatchOperation,
-): string {
-  let patched = content;
-  for (const element of fileElements) {
-    const patchTarget = buildPatchTarget(element);
-    if (!patchTarget) {
-      throw new Error(`Timeline element ${element.id} is missing a patchable target`);
-    }
-    if (readTagSnippetByTarget(patched, patchTarget) === undefined) {
-      throw new Error(`Unable to patch timeline element ${element.id} in ${targetPath}`);
-    }
-    patched = applyPatchByTarget(patched, patchTarget, operation);
-  }
-  return patched;
-}
-
 // fallow-ignore-next-line complexity
 async function setElementsHidden({
   projectId,
@@ -173,7 +153,11 @@ async function setElementsHidden({
   for (const [targetPath, fileElements] of groupElementsByTargetPath(elements, activeCompPath)) {
     files[targetPath] = (current) => {
       pendingTimelineEditPathRef.current.add(targetPath);
-      return patchElementsInFile(current, fileElements, targetPath, hiddenOperation);
+      return patchTimelineChangesInSource(
+        current,
+        targetPath,
+        operationChanges(fileElements, hiddenOperation),
+      );
     };
   }
 

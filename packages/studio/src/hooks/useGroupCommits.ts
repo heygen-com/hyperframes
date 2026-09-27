@@ -1,11 +1,9 @@
 import { buildProjectApiPath } from "../utils/projectRouting";
 import { useCallback } from "react";
 import {
-  readProjectFileContent,
-  writeProjectFilesWithHistoryInQueue,
+  saveServerRewriteWithHistory,
   type DomEditCommitBaseParams,
 } from "../utils/studioFileHistory";
-import { serializeStudioFileMutations } from "../utils/studioFileMutationCoordinator";
 import {
   buildDomEditPatchTarget,
   readHfId,
@@ -126,12 +124,14 @@ async function commitStructuralMutation(
     | "reloadPreview"
   >,
 ): Promise<{ content?: string; groupId?: string }> {
-  const result = await serializeStudioFileMutations(
-    deps.writeProjectFile,
-    [targetPath],
-    async () => {
-      const originalContent = await readProjectFileContent(pid, targetPath);
-
+  let result: { content?: string; groupId?: string } = {};
+  await saveServerRewriteWithHistory({
+    projectId: pid,
+    path: targetPath,
+    label,
+    writeFile: deps.writeProjectFile,
+    recordEdit: deps.editHistory.recordEdit,
+    rewrite: async (originalContent) => {
       const mutateResponse = await fetch(
         buildProjectApiPath(pid, `/file-mutations/${route}/${encodeURIComponent(targetPath)}`),
         {
@@ -146,22 +146,10 @@ async function commitStructuralMutation(
         } | null;
         throw new Error(errBody?.error ?? `Failed to ${label.toLowerCase()} in ${targetPath}`);
       }
-      const mutateData = (await mutateResponse.json()) as { content?: string; groupId?: string };
-      const patchedContent =
-        typeof mutateData.content === "string" ? mutateData.content : originalContent;
-
-      await writeProjectFilesWithHistoryInQueue({
-        projectId: pid,
-        label,
-        files: { [targetPath]: () => patchedContent },
-        readFile: async () => originalContent,
-        diskContent: { [targetPath]: patchedContent },
-        writeFile: deps.writeProjectFile,
-        recordEdit: deps.editHistory.recordEdit,
-      });
-      return mutateData;
+      result = (await mutateResponse.json()) as { content?: string; groupId?: string };
+      return { disk: typeof result.content === "string" ? result.content : originalContent };
     },
-  );
+  });
   deps.clearDomSelection();
   deps.forceReloadSdkSession?.();
   deps.reloadPreview();

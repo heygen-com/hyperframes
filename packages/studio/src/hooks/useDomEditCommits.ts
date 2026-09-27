@@ -5,11 +5,7 @@ import { FONT_EXT } from "../utils/mediaTypes";
 
 import { trackStudioEvent } from "../utils/studioTelemetry";
 import { primaryFontFamilyValue } from "../utils/studioFontHelpers";
-import {
-  createStudioSaveHttpError,
-  StudioSaveHttpError,
-  trackStudioSaveFailure,
-} from "../utils/studioSaveDiagnostics";
+import { StudioSaveHttpError, trackStudioSaveFailure } from "../utils/studioSaveDiagnostics";
 import { buildDomEditPatchTarget, type DomEditSelection } from "../components/editor/domEditing";
 import { fontFamilyFromAssetPath, type ImportedFontAsset } from "../components/editor/fontAssets";
 import type { CommitDomEditPatchBatches, PersistDomEditOperations } from "./domEditCommitTypes";
@@ -34,6 +30,7 @@ import {
 import type { CutoverResult } from "../utils/sdkCutover";
 import { reseekPreviewRuntime } from "./timelineTrackVisibility";
 import { serializeStudioFileMutations } from "../utils/studioFileMutationCoordinator";
+import { readProjectFileContent } from "../utils/studioFileHistory";
 interface RecordEditInput {
   label: string;
   coalesceKey?: string;
@@ -159,20 +156,11 @@ export function useDomEditCommits({
       };
 
       const readTarget = async (): Promise<string | null> => {
-        const readResponse = await fetch(
-          buildProjectApiPath(pid, `/files/${encodeURIComponent(targetPath)}`),
-        );
-        if (!readResponse.ok) {
-          throw await createStudioSaveHttpError(readResponse, `Failed to read ${targetPath}`);
-        }
-        const readData = (await readResponse.json()) as { content?: string };
-        if (typeof readData.content !== "string") {
-          throw new Error(`Missing file contents for ${targetPath}`);
-        }
+        const content = await readProjectFileContent(pid, targetPath);
         if (projectIdRef.current !== expectedProjectId) {
           throw new Error("Active project changed before the edit could be saved");
         }
-        return options?.shouldSave && !options.shouldSave() ? null : readData.content;
+        return options?.shouldSave && !options.shouldSave() ? null : content;
       };
 
       // Validate layout values BEFORE any persist path runs. The SDK cutover
