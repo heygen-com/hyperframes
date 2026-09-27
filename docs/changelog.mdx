@@ -9,6 +9,36 @@ Recent HyperFrames releases, including user-facing features, fixes, and migratio
 {/* New release entries are prepended by `bun run changelog:draft <version> --write`. */}
 
 <Update
+  label="HyperFrames v0.8.81"
+  description="Released - 2026-09-27"
+  tags={["Release", "Studio Server", "Studio", "CLI"]}
+>
+Projects updated from 0.8.78 keep their full edit history again, and a host app can now make Cmd+Z undo the newest change whoever made it. Studio also lists only real compositions, and SDR renders keep the source colours.
+
+## Features
+
+- **Studio Server:** A host can make Cmd+Z undo the newest change, whoever made it ([b165b64ed](https://github.com/heygen-com/hyperframes/commit/b165b64eda845f46f9b622b96e4545bf704d0950), [#4603](https://github.com/heygen-com/hyperframes/pull/4603)).
+
+## Fixes
+
+- **Studio Server:** History saved by 0.8.78 survives the update with every entry ([3db3da7bb](https://github.com/heygen-com/hyperframes/commit/3db3da7bb284c5f0d89a1f7507d96115236e6bfc), [#4601](https://github.com/heygen-com/hyperframes/pull/4601)).
+- **CLI:** A failed command sends one error report, naming its real cause ([627e9476a](https://github.com/heygen-com/hyperframes/commit/627e9476af1c3feeb4359808a9f455a645b0697d), [#4586](https://github.com/heygen-com/hyperframes/pull/4586)).
+- **Studio:** List and grade only real compositions, not generated preview files ([3855623dd](https://github.com/heygen-com/hyperframes/commit/3855623dd93065ba1c5b2c8b2dfd005853636b91), [#4590](https://github.com/heygen-com/hyperframes/pull/4590)).
+- **Studio Server:** A write through a link lands on the file the system resolves ([59e3850f6](https://github.com/heygen-com/hyperframes/commit/59e3850f6a54f4d853b6cbc9af11032c05dbe2b6), [#4589](https://github.com/heygen-com/hyperframes/pull/4589)).
+- **Engine:** SDR renders keep footage and page colours as in the source ([c9b3d9c96](https://github.com/heygen-com/hyperframes/commit/c9b3d9c9628d4c51696147ecd2fd881080e72824), [#4564](https://github.com/heygen-com/hyperframes/pull/4564)).
+
+## Performance
+
+- **Studio:** The lint error badge pulses three times, then holds ([d6e8542a3](https://github.com/heygen-com/hyperframes/commit/d6e8542a380107c9843a83d2c595413f9e2a25c3), [#4594](https://github.com/heygen-com/hyperframes/pull/4594)).
+
+## Internal
+
+- **CLI:** CLI tests run with a home folder of their own, never the user's ([2b1bb8b73](https://github.com/heygen-com/hyperframes/commit/2b1bb8b731e0445081cd2a1d526f7f83df41cdcb), [#4587](https://github.com/heygen-com/hyperframes/pull/4587)).
+
+[View the full commit range](https://github.com/heygen-com/hyperframes/compare/v0.8.80...v0.8.81).
+</Update>
+
+<Update
   label="HyperFrames v0.8.80"
   description="Released - 2026-09-27"
   tags={["Release", "Studio", "CLI", "Studio Server"]}
