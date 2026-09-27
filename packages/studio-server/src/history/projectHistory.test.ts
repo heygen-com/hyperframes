@@ -1693,6 +1693,14 @@ describe("claim: a writer that records after writing", () => {
       expect(read("index.html")).toBe("C");
     });
 
+    it("a new change by anyone ends Shift+Cmd+Z", async () => {
+      const { history, write } = await editThenTurn();
+      await history.step("back", you);
+      await change(history, agent, "Another turn", () => write("index.html", "D"));
+
+      expect(history.next("forward", you)).toBeUndefined();
+    });
+
     it("leaves an agent's turn that is still open alone", async () => {
       const { history, write, read } = await project(
         { "index.html": "A", "r.js": "1" },

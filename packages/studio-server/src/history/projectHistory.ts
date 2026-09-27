@@ -144,7 +144,7 @@ export interface ProjectHistory {
   /** A watcher saw `path` change (project-relative or absolute). */
   noteChange(path: string): void;
   list(): HistoryListItem[];
-  /** Cmd+Z (back) and Cmd+Shift+Z (forward) over `who`'s own and outside changes; `writeToken` labels the echo. */
+  /** Cmd+Z (back) and Cmd+Shift+Z (forward) over `who`'s own and outside changes, or all (undoScope everyone). */
   step(direction: "back" | "forward", who: HistoryWho, options?: Writing): Promise<HistoryResult>;
   /** The entry `who`'s next step reverts, pending changes included, as of the last scan (a step scans first). */
   next(direction: "back" | "forward", who: HistoryWho): HistoryEntry | undefined;
@@ -184,6 +184,7 @@ interface Group {
   lastWriteAt?: number;
   idleTimer?: NodeJS.Timeout;
   entry?: HistoryEntry | null;
+  parts?: Set<string>;
 }
 
 /**
@@ -623,6 +624,7 @@ class Engine {
       window.changes.delete(path);
     }
     window.entry = await this.commit(part);
+    if (window.entry) (window.parts ??= new Set()).add(window.entry.id);
   }
 
   holdClaim(
@@ -911,10 +913,7 @@ class Engine {
     );
     if (pending) return direction === "back" ? this.pendingEntry(pending) : undefined;
     const everyone = this.options.undoScope === "everyone";
-    const ofOpenTurn = (entry: HistoryEntry) =>
-      this.windows.some(
-        (open) => sameWho(open.who, entry.who) && open.startedAt === entry.startedAt,
-      );
+    const ofOpenTurn = (entry: HistoryEntry) => this.windows.some((open) => open.parts?.has(entry.id));
     return stepTarget(
       this.log.entries,
       direction,
