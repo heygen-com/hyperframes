@@ -20,6 +20,24 @@ if (process.platform === "win32") {
   process.env.FONTCONFIG_FILE = file;
 }
 
+// Every cache, config and state path the CLI builds from the home folder lands in a temp dir,
+// so no test reads or writes the user's own. Set before workers fork, as above.
+const testHome = mkdtempSync(join(tmpdir(), "hf-vitest-home-"));
+process.once("exit", () => rmSync(testHome, { recursive: true, force: true }));
+process.env.HOME = process.env.USERPROFILE = testHome;
+for (const name of [
+  "XDG_CACHE_HOME",
+  "XDG_CONFIG_HOME",
+  "XDG_STATE_HOME",
+  "XDG_DATA_HOME",
+  "CODEX_HOME",
+  "CLAUDE_CONFIG_DIR",
+  "HEYGEN_CONFIG_DIR",
+  "HYPERFRAMES_CATALOG_ARTIFACT_DIR",
+]) {
+  delete process.env[name];
+}
+
 export default defineConfig({
   resolve: {
     alias: [
