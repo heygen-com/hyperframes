@@ -671,25 +671,72 @@ describe("Studio file-change SSE", () => {
   const encodedVersion = (content: string): string =>
     fileContentVersion(content).replaceAll('"', '\\"');
 
-  it("does not deliver report or temporary-file changes, but delivers the final source save", async () => {
+  /** A project whose preview has been loaded once, as an open Studio tab does on its first render. */
+  async function previewedProject(): Promise<{ projectDir: string; projectUrl: string }> {
     const projectDir = tmpProject();
-    writeFileSync(join(projectDir, "index.html"), "<html>before</html>");
+    mkdirSync(join(projectDir, "assets"));
+    writeFileSync(join(projectDir, "assets", "logo.png"), "logo-v1");
+    writeFileSync(
+      join(projectDir, "index.html"),
+      '<html><body><div data-composition-id="root"><img src="assets/logo.png"></div></body></html>',
+    );
+    server = createStudioServer({ projectDir });
+    const projectUrl = `/api/projects/${encodeURIComponent(basename(projectDir))}`;
+    expect((await server.app.request(`${projectUrl}/preview`)).status).toBe(200);
+    expect((await server.app.request(`${projectUrl}/preview/assets/logo.png`)).status).toBe(200);
+    return { projectDir, projectUrl };
+  }
+
+  it("marks a notes write as not affecting the preview, so the tab does not reload", async () => {
+    const { projectDir } = await previewedProject();
+    const [stream] = await subscribe(1);
+
+    writeFileSync(join(projectDir, "notes.md"), "review notes");
+    mockWatcher.emit("change", "rename", "notes.md");
+
+    const payload = await nextEvent(stream!);
+    expect(payload).toContain('"path":"notes.md"');
+    expect(payload).toContain('"affectsPreview":false');
+    expect(payload).toContain('"affectedCompositions":[]');
+  });
+
+  it("marks a write to an asset the preview loaded as affecting it", async () => {
+    const { projectDir } = await previewedProject();
+    const [stream] = await subscribe(1);
+
+    writeFileSync(join(projectDir, "assets", "logo.png"), "logo-v2");
+    mockWatcher.emit("change", "change", "assets/logo.png");
+
+    expect(await nextEvent(stream!)).toContain('"affectsPreview":true');
+  });
+
+  it("still delivers a new file in a folder an old watchIgnore listed, for the file tree", async () => {
+    const { projectDir } = await previewedProject();
     writeFileSync(
       join(projectDir, "hyperframes.json"),
       JSON.stringify({ preview: { watchIgnore: ["docs"] } }),
     );
+    const [stream] = await subscribe(1);
+
+    mkdirSync(join(projectDir, "docs"));
+    writeFileSync(join(projectDir, "docs", "report.json"), "{}");
+    mockWatcher.emit("change", "rename", "docs/report.json");
+
+    const payload = await nextEvent(stream!);
+    expect(payload).toContain('"path":"docs/report.json"');
+    expect(payload).toContain('"affectsPreview":false');
+  });
+
+  it("counts every write as affecting the preview until the preview has loaded anything", async () => {
+    const projectDir = tmpProject();
+    writeFileSync(join(projectDir, "index.html"), "<html></html>");
     server = createStudioServer({ projectDir });
-    const streams = await subscribe(2);
-    mockWatcher.emit("change", "change", "docs/report.json");
-    mockWatcher.emit("change", "rename", "index.html.tmp.97896.1d3e1712ad2c");
-    await new Promise((resolve) => setTimeout(resolve, 60));
-    writeFileSync(join(projectDir, "index.html"), "<html>after</html>");
-    mockWatcher.emit("change", "rename", "index.html");
-    for (const payload of await Promise.all(streams.map(nextEvent))) {
-      expect(payload).toContain('"path":"index.html"');
-      expect(payload).not.toContain("report.json");
-      expect(payload).not.toContain(".tmp");
-    }
+    const [stream] = await subscribe(1);
+
+    writeFileSync(join(projectDir, "notes.md"), "notes");
+    mockWatcher.emit("change", "rename", "notes.md");
+
+    expect(await nextEvent(stream!)).toContain('"affectsPreview":true');
   });
 
   it("labels a Studio write for every open subscriber, not just the first", async () => {

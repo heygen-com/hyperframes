@@ -45,7 +45,7 @@ import {
   getMimeType,
   affectsProjectSignature,
   compositionsAffectedBy,
-  shouldReloadPreview,
+  affectsPreview,
   type PreviewApiAdapter,
   PREVIEW_BUNDLE_OPTIONS,
   createPreviewDocumentStore,
@@ -871,6 +871,7 @@ export function createStudioServer(options: StudioServerOptions): StudioServer {
         // identity for an unlabelled change, and without it every duplicate
         // delivery of one watcher event drains and reloads again.
         const receipt = identifyFileWrite(absPath, version ?? DELETED_VERSION);
+        const reloads = affectsPreview(projectDir, path);
         // `projectId` so a stale tab — one still pointed at a project this
         // server no longer serves, because `hyperframes preview` reused this
         // port for a different folder (see ProjectUnreachableBanner's doc
@@ -887,8 +888,10 @@ export function createStudioServer(options: StudioServerOptions): StudioServer {
               path,
               version,
               projectId: project.id,
+              // False for a file the preview never loaded: the tab refreshes its file tree, not the preview.
+              affectsPreview: reloads,
               // Which thumbnails this write can change; null means all of them.
-              affectedCompositions: compositionsAffectedBy(projectDir, path),
+              affectedCompositions: reloads ? compositionsAffectedBy(projectDir, path) : [],
               ...receipt,
             }),
           })
@@ -897,9 +900,7 @@ export function createStudioServer(options: StudioServerOptions): StudioServer {
       // Re-applied here because the watcher now also emits the signature
       // manifest files, which must not trigger a browser reload.
       const wrappedListener = (changedPath: string) => {
-        if (shouldWatchProjectFile(changedPath) && shouldReloadPreview(projectDir, changedPath)) {
-          listener(changedPath);
-        }
+        if (shouldWatchProjectFile(changedPath)) listener(changedPath);
       };
       watcher.addListener(wrappedListener);
       stream.onAbort(() => watcher.removeListener(wrappedListener));

@@ -94,6 +94,21 @@ describe("external file change coordinator", () => {
     expect(refreshFileTree).toHaveBeenCalledOnce();
   });
 
+  it("refreshes the file tree but not Preview for a file the preview never loaded", async () => {
+    const order: string[] = [];
+    await mountCoordinator({
+      reloadPreview: () => order.push("preview"),
+      reloadSdkSession: () => order.push("sdk"),
+      refreshFileTree: () => {
+        order.push("tree");
+      },
+    });
+    await act(async () =>
+      handler?.({ path: "notes.md", content: "notes", version: "v1", affectsPreview: false }),
+    );
+    expect(order).toEqual(["sdk", "tree"]);
+  });
+
   it("does not refresh the tree for a suppressed self-write echo", async () => {
     const refreshFileTree = vi.fn();
     await mountCoordinator({ refreshFileTree });

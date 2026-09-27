@@ -115,7 +115,10 @@ export interface StudioApiAdapter {
   history?: (project: ResolvedProject) => Promise<ProjectHistory | null> | ProjectHistory | null;
 
   /** Bundle a project directory into a single HTML string, forwarding `options` over the host's own. */
-  bundle(projectDir: string, options?: Pick<BundleOptions, "stampHfIds">): Promise<string | null>;
+  bundle(
+    projectDir: string,
+    options?: Pick<BundleOptions, "stampHfIds" | "onRead">,
+  ): Promise<string | null>;
 
   /** Optional: cached signature for project files that should invalidate preview frame caches. */
   getProjectSignature?: (projectDir: string) => string;

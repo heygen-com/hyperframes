@@ -11,6 +11,7 @@ export { FLATTENED_INNER_ROOT_STRIP_ATTRS } from "../runtime/flattenedRoot";
 import { parseHostVariableValues, warnUnknownEnumValues } from "../runtime/getVariables";
 import { sanitizeCssValue } from "../runtime/applyVariableBindings";
 import { cssVariableName } from "../tokenSlug";
+import { AsyncLocalStorage } from "async_hooks";
 import { readFileSync, existsSync, statSync } from "fs";
 import { resolve, relative, dirname, isAbsolute, sep } from "path";
 import { CSS_URL_RE, isNonRelativeUrl } from "./assetPaths.js";
@@ -86,7 +87,15 @@ function isRelativeUrl(url: string): boolean {
   return !isNonRelativeUrl(url) && !isAbsolute(url);
 }
 
+// The `onRead` of the bundle in progress, kept per async call so concurrent bundles do not mix.
+const bundleReads = new AsyncLocalStorage<(filePath: string) => void>();
+
+function noteRead(filePath: string): void {
+  bundleReads.getStore()?.(filePath);
+}
+
 function safeReadFile(filePath: string): string | null {
+  noteRead(filePath);
   if (!existsSync(filePath)) return null;
   try {
     return readFileSync(filePath, "utf-8");
@@ -257,6 +266,7 @@ function inlineCssFile(
 }
 
 function safeReadFileBuffer(filePath: string): Buffer | null {
+  noteRead(filePath);
   if (!existsSync(filePath)) return null;
   try {
     return readFileSync(filePath);
@@ -828,6 +838,8 @@ export interface BundleOptions {
   sceneParts?: boolean;
   /** Warn when the compiled HTML breaks the HyperFrames contract (default true). */
   staticGuard?: boolean;
+  /** Called with every project file the bundle reads or looks for, so a caller can tell which writes affect it. */
+  onRead?: (filePath: string) => void;
 }
 
 /**
@@ -938,10 +950,12 @@ function hoistCompositionScripts(
   }
 }
 
-export async function bundleToSingleHtml(
-  projectDir: string,
-  options?: BundleOptions,
-): Promise<string> {
+export function bundleToSingleHtml(projectDir: string, options?: BundleOptions): Promise<string> {
+  const bundle = () => bundleProject(projectDir, options);
+  return options?.onRead ? bundleReads.run(options.onRead, bundle) : bundle();
+}
+
+async function bundleProject(projectDir: string, options?: BundleOptions): Promise<string> {
   const entryFile = options?.entryFile ?? "index.html";
   const indexPath = resolveWithinProject(projectDir, entryFile);
   if (!indexPath || !existsSync(indexPath)) {
@@ -954,6 +968,7 @@ export async function bundleToSingleHtml(
   };
 
   const readSource = options?.stampHfIds ? ensureHfIds : (html: string) => html;
+  noteRead(indexPath);
   const rawHtml = readSource(readFileSync(indexPath, "utf-8"));
   const compiled = await compileHtml(rawHtml, sourceDir, options?.probeMediaDuration);
 
@@ -1040,6 +1055,7 @@ export async function bundleToSingleHtml(
     // document; project-root refs with no such sibling stay as authored.
     assetExists: (path: string) => {
       const resolved = resolveEntryPath(path);
+      if (resolved) noteRead(resolved);
       return resolved !== null && existsSync(resolved);
     },
     flattenInnerRoot: prepareFlattenedInnerRoot,

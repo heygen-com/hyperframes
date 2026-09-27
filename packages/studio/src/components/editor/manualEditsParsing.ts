@@ -38,6 +38,11 @@ export function readStudioFileChangePath(payload: unknown): string | null {
  * The compositions whose thumbnails a change can alter, or `null` for all of them. Anything
  * but a list of paths (an older server, the Vite dev host) reads as "all".
  */
+/** False only when the server says the preview never loaded the changed file; older servers send nothing. */
+export function readFileChangeAffectsPreview(payload: unknown): boolean {
+  return asPayloadRecord(payload)?.affectsPreview !== false;
+}
+
 export function readFileChangeAffectedCompositions(payload: unknown): readonly string[] | null {
   const value = asPayloadRecord(payload)?.affectedCompositions;
   if (!Array.isArray(value) || !value.every((path) => typeof path === "string")) return null;
