@@ -2271,7 +2271,6 @@ export class FrameLookupTable {
     {
       extracted: ExtractedFrames;
       start: number;
-      end: number;
       shown: { start: number; end: number };
       mediaStart: number;
       loop: boolean;
@@ -2282,7 +2281,6 @@ export class FrameLookupTable {
     videoId: string;
     extracted: ExtractedFrames;
     start: number;
-    end: number;
     shown: { start: number; end: number };
     mediaStart: number;
     loop: boolean;
@@ -2304,7 +2302,6 @@ export class FrameLookupTable {
     this.videos.set(extracted.videoId, {
       extracted,
       start,
-      end,
       shown: fps ? exportClipWindow(start, end, fps) : { start, end },
       mediaStart,
       loop,
