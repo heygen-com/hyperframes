@@ -104,7 +104,15 @@ describe("CLI lifecycle", () => {
     });
 
     it("when the command rethrows the failure as its own", async () => {
-      const sent = await runCli(["normalize-audio", outsideProject(), "--json"]);
+      const sent = await runCli([
+        "normalize-audio",
+        outsideProject(),
+        "--reference",
+        "a",
+        "--target",
+        "b",
+        "--json",
+      ]);
 
       expect(sent).toEqual([expect.objectContaining({ error_name: "InvalidProjectError" })]);
     });
