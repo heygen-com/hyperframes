@@ -85,7 +85,7 @@ function CompositionSection({
 }
 
 export function VariablesOtherCompositions({
-  fileTree,
+  compositionPaths,
   excludePath,
   refreshKey,
   readProjectFile,
@@ -93,7 +93,7 @@ export function VariablesOtherCompositions({
   recordEdit,
   reloadPreview,
 }: {
-  fileTree: string[];
+  compositionPaths: string[];
   excludePath: string;
   refreshKey: unknown;
   readProjectFile: (path: string) => Promise<string>;
@@ -103,7 +103,7 @@ export function VariablesOtherCompositions({
 }) {
   const [selfRefresh, setSelfRefresh] = useState(0);
   const groups = useProjectCompositionVariables(
-    fileTree,
+    compositionPaths,
     excludePath,
     readProjectFile,
     `${refreshKey}:${selfRefresh}`,
