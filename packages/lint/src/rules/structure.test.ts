@@ -14,6 +14,7 @@ const STRUCTURE = new Set([
   "timeline_element_missing_timing",
   "caption_track_kind_missing",
   "multiple_caption_tracks",
+  "clip_ends_past_root_duration",
 ]);
 const has = (found: Awaited<ReturnType<typeof codes>>, code: string) =>
   found.some((f) => f.code === code);
@@ -136,5 +137,62 @@ describe("caption rules", () => {
     const mixed =
       cap('data-track-kind="captions" data-track-index="5"') + cap('data-track-kind="captions"');
     expect(has(await codes(mixed), "multiple_caption_tracks")).toBe(false);
+  });
+});
+
+describe("clip_ends_past_root_duration", () => {
+  const PAST = "clip_ends_past_root_duration";
+  it("names a direct clip that ends past the root, with its end and the root duration", async () => {
+    const [finding, ...rest] = await codes(
+      '<div id="outro" class="clip" data-start="8" data-duration="4">x</div>',
+    );
+    expect(rest).toEqual([]);
+    expect(finding).toMatchObject({ code: PAST, severity: "warning", elementId: "outro" });
+    expect(finding?.message).toContain('<div id="outro"> runs from 8s to 12s');
+    expect(finding?.message).toContain("data-duration of 10s");
+    expect(finding?.fixHint).toBe(
+      'Extend the root data-duration to 12, or make <div id="outro"> end at or before 10s.',
+    );
+  });
+  it("passes a clip ending at the root or within the shared tolerance past it", async () => {
+    expect(await codes('<div class="clip" data-start="6" data-duration="4">x</div>')).toEqual([]);
+    expect(await codes('<div class="clip" data-start="4" data-duration="6.04">x</div>')).toEqual(
+      [],
+    );
+    expect(await codes('<div class="clip" data-start="4" data-duration="6.05">x</div>')).toEqual(
+      [],
+    );
+    const [finding] = await codes('<div class="clip" data-start="4" data-duration="6.06">x</div>');
+    expect(finding?.message).toContain("runs from 4s to 10.06s");
+  });
+  it("reads a legacy data-end, and skips a start that references another clip", async () => {
+    const [finding] = await codes('<div class="clip" data-start="8" data-end="12">x</div>');
+    expect(finding).toMatchObject({ code: PAST });
+    expect(finding?.message).toContain("runs from 8s to 12s");
+    expect(
+      await codes('<div class="clip" data-start="intro + 2" data-duration="20">x</div>'),
+    ).toEqual([]);
+  });
+  it("judges a sub-composition by its host, not its inner clips", async () => {
+    const [finding] = await codes(
+      '<div id="scene" data-composition-src="compositions/scene.html" data-start="7" data-duration="5"></div>',
+    );
+    expect(finding).toMatchObject({ code: PAST, elementId: "scene" });
+    expect(finding?.message).toContain("runs from 7s to 12s");
+    const inline =
+      '<div id="inner" data-composition-id="inner" data-start="0" data-duration="5">' +
+      '<div class="clip" data-start="0" data-duration="20">x</div></div>';
+    expect(await codes(inline)).toEqual([]);
+  });
+  it("skips media whose length only the file knows", async () => {
+    expect(await codes('<video src="a.mp4" data-start="9"></video>')).toEqual([]);
+  });
+  it("leaves a root with no data-duration to the missing-duration rules", async () => {
+    const html = page('<div class="clip" data-start="8" data-duration="4">x</div>').replace(
+      ' data-duration="10"',
+      "",
+    );
+    const { findings } = await lintHyperframeHtml(html);
+    expect(findings.filter((f) => f.code === PAST)).toEqual([]);
   });
 });
