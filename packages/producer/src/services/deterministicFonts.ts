@@ -827,13 +827,13 @@ function importRuleUrl(params: string): string | null {
   const trimmed = params.trim();
   if (trimmed.toLowerCase().startsWith("url(")) {
     const close = trimmed.indexOf(")");
-    if (close < 0) return null;
+    if (close < 0 || !isUnconditionalMedia(trimmed.slice(close + 1))) return null;
     return trimmed.slice(4, close).trim().replace(/^['"]/, "").replace(/['"]$/, "");
   }
   const quote = trimmed[0];
   if (quote !== '"' && quote !== "'") return null;
   const end = trimmed.indexOf(quote, 1);
-  return end > 0 ? trimmed.slice(1, end) : null;
+  return end > 0 && isUnconditionalMedia(trimmed.slice(end + 1)) ? trimmed.slice(1, end) : null;
 }
 
 function fontFaceRuleFamily(rule: AtRule): string | undefined {
@@ -842,6 +842,24 @@ function fontFaceRuleFamily(rule: AtRule): string | undefined {
     if (decl.prop.toLowerCase() === "font-family") family = parseFontFamilyValue(decl.value)[0];
   });
   return family;
+}
+
+function isUnconditionalMedia(media: string | null): boolean {
+  const normalized = (media ?? "").trim().toLowerCase();
+  return normalized === "" || normalized === "all";
+}
+
+function isUnconditionalStylesheet(element: {
+  getAttribute(name: string): string | null;
+  hasAttribute(name: string): boolean;
+}): boolean {
+  const type = (element.getAttribute("type") ?? "").trim().toLowerCase();
+  return (
+    isUnconditionalMedia(element.getAttribute("media")) &&
+    (type === "" || type === "text/css") &&
+    !(element.getAttribute("title") ?? "").trim() &&
+    !element.hasAttribute("disabled")
+  );
 }
 
 function collectDeclaredFontFamilies(html: string): DeclaredFontFamilies {
@@ -859,23 +877,31 @@ function collectDeclaredFontFamilies(html: string): DeclaredFontFamilies {
   };
 
   for (const styleEl of Array.from(document.querySelectorAll("style"))) {
+    if (!isUnconditionalStylesheet(styleEl)) continue;
     const root = parseCssRoot(styleEl.textContent ?? "");
     if (!root) continue;
     root.walkAtRules((atRule) => {
+      if (atRule.parent?.type !== "root") return;
       const name = atRule.name.toLowerCase();
       if (name === "import") {
         const url = importRuleUrl(atRule.params);
         if (url) for (const family of googleFontsUrlFamilies(url)) declare(family);
         return;
       }
-      // A nested face is conditional; re-emitting it unconditionally would change rendering.
-      if (name !== "font-face" || atRule.parent?.type !== "root") return;
+      if (name !== "font-face") return;
       const family = fontFaceRuleFamily(atRule);
       if (family) declare(family, atRule);
     });
   }
 
   for (const link of Array.from(document.querySelectorAll("link[href]"))) {
+    const rel = (link.getAttribute("rel") ?? "").toLowerCase().split(/\s+/);
+    if (
+      !rel.includes("stylesheet") ||
+      rel.includes("alternate") ||
+      !isUnconditionalStylesheet(link)
+    )
+      continue;
     for (const family of googleFontsUrlFamilies(link.getAttribute("href") ?? "")) declare(family);
   }
 

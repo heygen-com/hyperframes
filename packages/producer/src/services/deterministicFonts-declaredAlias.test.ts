@@ -290,3 +290,56 @@ describe("declared-family alias resolution — still unresolved", () => {
     expect(queried).toEqual([authored]);
   });
 });
+
+describe("declared-family aliases preserve stylesheet conditions", () => {
+  const googleUrl = "https://fonts.googleapis.com/css2?family=Saira+Extra+Condensed";
+  it.each([
+    [
+      "style media on a face",
+      '<style media="print">@font-face { font-family: "Saira Extra Condensed"; src: url("data:font/woff2;base64,QlJBTkQ="); }</style>',
+    ],
+    ["style media on an import", `<style media="print">@import url("${googleUrl}");</style>`],
+    [
+      "nested media face",
+      '<style>@media print { @font-face { font-family: "Saira Extra Condensed"; src: url("data:font/woff2;base64,QlJBTkQ="); } }</style>',
+    ],
+    [
+      "nested supports import",
+      `<style>@supports (display: grid) { @import url("${googleUrl}"); }</style>`,
+    ],
+    ["import media", `<style>@import url("${googleUrl}") print;</style>`],
+    ["quoted import media", `<style>@import "${googleUrl}" print;</style>`],
+    ["import supports", `<style>@import url("${googleUrl}") supports(display: grid);</style>`],
+    ["import layer", `<style>@import url("${googleUrl}") layer(brand);</style>`],
+    ["link media", `<link rel="stylesheet" media="print" href="${googleUrl}">`],
+    ["alternate link", `<link rel="alternate stylesheet" title="Brand" href="${googleUrl}">`],
+    ["disabled link", `<link rel="stylesheet" disabled href="${googleUrl}">`],
+    ["non-stylesheet link", `<link rel="preload" href="${googleUrl}">`],
+    ["non-CSS style", `<style type="text/plain">@import url("${googleUrl}");</style>`],
+    ["non-CSS link", `<link rel="stylesheet" type="text/plain" href="${googleUrl}">`],
+    ["titled style", `<style title="Brand">@import url("${googleUrl}");</style>`],
+    ["titled link", `<link rel="stylesheet" title="Brand" href="${googleUrl}">`],
+  ])("ignores %s as an unconditional alias source", async (_case, declaration) => {
+    const html = htmlWith(
+      `${declaration}<style>h1 { font-family: "Saira ExtraCondensed"; }</style>`,
+    );
+    const { error, queried } = await compileFailure(html);
+    expect(error.unresolvedFamilies).toEqual(["Saira ExtraCondensed"]);
+    expect(queried).toEqual(["Saira ExtraCondensed"]);
+    const { result } = await compile(html, false);
+    expect(injectedFaces(result)).toEqual([]);
+  });
+
+  it.each([
+    `<style media="all" type="text/css">@import url("${googleUrl}");</style>`,
+    `<link rel="stylesheet" media="all" type="text/css" href="${googleUrl}">`,
+    `<style>@import "${googleUrl}" all;</style>`,
+  ])("accepts an unconditional stylesheet: %s", async (declaration) => {
+    const { result } = await compile(
+      htmlWith(`${declaration}<style>h1 { font-family: "Saira ExtraCondensed"; }</style>`),
+    );
+    expect(injectedFaces(result)).toEqual([
+      { family: "Saira ExtraCondensed", src: dataUriFor("Saira Extra Condensed") },
+    ]);
+  });
+});
