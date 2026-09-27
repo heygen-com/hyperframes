@@ -17,7 +17,7 @@ import {
   writeSync,
 } from "node:fs";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { join, parse } from "node:path";
 import { ensureHfIds } from "@hyperframes/parsers/hf-ids";
 import { PREVIEW_BUNDLE_OPTIONS, registerPreviewRoutes } from "./preview";
 import { registerFileRoutes } from "./files";
@@ -26,6 +26,7 @@ import type { StudioApiAdapter } from "../types";
 import {
   affectsPreview,
   recordPreviewBuilt,
+  recordPreviewRead,
   recordPreviewReferences,
 } from "../helpers/previewReads";
 
@@ -1538,6 +1539,13 @@ describe("what the preview loaded", () => {
       expect(affectsPreview(projectDir, path)).toBe(true);
     }
     expect(affectsPreview(projectDir, "im")).toBe(false);
+  });
+
+  it("records the folders of a read in a project at the filesystem root", () => {
+    const root = parse(process.cwd()).root;
+    recordPreviewRead(root, "media/clip.png");
+    recordPreviewBuilt(root);
+    expect(affectsPreview(root, "media")).toBe(true);
   });
 
   it("counts a folder event when a file the preview asked for is inside it", async () => {

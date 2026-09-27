@@ -17,10 +17,8 @@ export function recordPreviewRead(projectDir: string, filePath: string): void {
   const key = pathKey(projectDir);
   let reads = readsByProject.get(key);
   if (!reads) readsByProject.set(key, (reads = new Set()));
-  let path = pathKey(resolve(projectDir, filePath));
-  while ((path === key || path.startsWith(key + sep)) && !reads.has(path)) {
+  for (let path = pathKey(resolve(projectDir, filePath)); !reads.has(path); path = dirname(path)) {
     reads.add(path);
-    path = dirname(path);
   }
 }
 
