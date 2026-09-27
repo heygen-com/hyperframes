@@ -79,10 +79,15 @@ export function isRuntimeElementVisibleAt(
   const computedEnd =
     duration != null && duration > 0 ? start + duration : Number.POSITIVE_INFINITY;
   // Export seeks snap to frame boundaries; interactive visibility uses authored seconds.
-  const span = options.exportRenderSeek
+  const clipWindow = options.exportRenderSeek
     ? exportClipWindow(start, computedEnd, options.canonicalFps)
     : { start, end: computedEnd };
-  return isClipVisibleAt(options.currentTime, span.start, span.end, options.compositionDuration);
+  return isClipVisibleAt(
+    options.currentTime,
+    clipWindow.start,
+    clipWindow.end,
+    options.compositionDuration,
+  );
 }
 
 function parseNum(value: string | null | undefined): number | null {

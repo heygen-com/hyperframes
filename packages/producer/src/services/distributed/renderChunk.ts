@@ -679,8 +679,7 @@ export async function renderChunk(
               planVideos.extracted,
               v2Manifest === null ? "dense-v1" : "sparse-v2",
             ),
-            resolveRenderFpsConfig({ num: plan.dimensions.fpsNum, den: plan.dimensions.fpsDen })
-              .value,
+            resolveRenderFpsConfig(job.config.fps).value,
           )
         : null;
     const createChunkVideoFrameInjector = createChunkVideoFrameInjectorFactory(videoFrameLookup);
