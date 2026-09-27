@@ -888,7 +888,6 @@ export function createStudioServer(options: StudioServerOptions): StudioServer {
               path,
               version,
               projectId: project.id,
-              // False for a file the preview never loaded: the tab refreshes its file tree, not the preview.
               affectsPreview: reloads,
               // Which thumbnails this write can change; null means all of them.
               affectedCompositions: reloads ? compositionsAffectedBy(projectDir, path) : [],

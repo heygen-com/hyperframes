@@ -87,7 +87,6 @@ function isRelativeUrl(url: string): boolean {
   return !isNonRelativeUrl(url) && !isAbsolute(url);
 }
 
-// The `onRead` of the bundle in progress, kept per async call so concurrent bundles do not mix.
 const bundleReads = new AsyncLocalStorage<(filePath: string) => void>();
 
 function noteRead(filePath: string): void {
@@ -838,7 +837,6 @@ export interface BundleOptions {
   sceneParts?: boolean;
   /** Warn when the compiled HTML breaks the HyperFrames contract (default true). */
   staticGuard?: boolean;
-  /** Called with every project file the bundle reads or looks for, so a caller can tell which writes affect it. */
   onRead?: (filePath: string) => void;
 }
 

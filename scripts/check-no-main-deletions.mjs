@@ -1075,6 +1075,16 @@ export const ALLOWED_DELETIONS = new Map([
     "registry/examples/vscode-theme-visualizer/scripts/build-theme-registry.mjs",
     "removed in the 2026-09 low-use catalog cut, see the PR",
   ],
+  [
+    "packages/studio-server/src/helpers/previewWatchIgnore.ts",
+    "preview.watchIgnore is replaced by reloading only when a file the preview loaded changes",
+  ],
+  [
+    "packages/studio-server/src/helpers/previewWatchIgnore.test.ts",
+    "tests for the removed preview.watchIgnore helper",
+  ],
+  ["docs/images/preview-reload-evidence/after.webm", "evidence video no page referenced"],
+  ["docs/images/preview-reload-evidence/before.webm", "evidence video no page referenced"],
 ]);
 
 export function parseBase(argv, fallback = "origin/main") {

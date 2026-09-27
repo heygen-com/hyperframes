@@ -13,7 +13,6 @@ const pathKey =
 const readsByProject = new Map<string, Set<string>>();
 const builtProjects = new Set<string>();
 
-/** Note a project file the preview loaded, served or looked for; a later write to it reloads the preview. */
 export function recordPreviewRead(projectDir: string, filePath: string): void {
   const key = pathKey(projectDir);
   let reads = readsByProject.get(key);
@@ -21,7 +20,6 @@ export function recordPreviewRead(projectDir: string, filePath: string): void {
   reads.add(pathKey(resolve(projectDir, filePath)));
 }
 
-/** Note every project file a built document names, before a host transform swaps one for a derived copy. */
 export function recordPreviewReferences(projectDir: string, html: string): void {
   for (const match of html.matchAll(REFERENCE)) {
     const url = (match[2] ?? match[4] ?? match[5] ?? "").trim();
@@ -37,15 +35,11 @@ export function recordPreviewReferences(projectDir: string, html: string): void 
   }
 }
 
-/** This process built the project's preview, so its reads are known from here on. */
 export function recordPreviewBuilt(projectDir: string): void {
   builtProjects.add(pathKey(projectDir));
 }
 
-/**
- * Whether a write at `changedPath` (absolute, or relative to `projectDir`) can change what the preview shows.
- * Until this process has built the preview, as after a restart under an open tab, every write counts.
- */
+// Until this process has built the preview, as after a restart under an open tab, every write counts.
 export function affectsPreview(projectDir: string, changedPath: string): boolean {
   const key = pathKey(projectDir);
   if (!builtProjects.has(key)) return true;
