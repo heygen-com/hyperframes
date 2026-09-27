@@ -14,6 +14,21 @@ import { tmpdir } from "node:os";
 import { join, resolve, delimiter } from "node:path";
 import { test } from "node:test";
 
+function assertContributorOverrides(dir, scripts) {
+  const override = join(dir, "contributor checkout");
+  const built = join(override, "packages/cli/dist/cli.js");
+  mkdirSync(join(built, ".."), { recursive: true });
+  writeFileSync(built, "// built CLI fixture");
+  for (const explicitArg of [true, false]) {
+    const found = execFileSync(
+      process.execPath,
+      [join(scripts, "hf-cli.cjs"), ...(explicitArg ? [override] : [])],
+      { encoding: "utf8", env: { ...process.env, HYPERFRAMES_ROOT: explicitArg ? "" : override } },
+    );
+    assert.equal(found.trim(), built);
+  }
+}
+
 test("extracted captions helpers invoke the pinned CLI without a checkout", (t) => {
   const dir = mkdtempSync(join(tmpdir(), "hf-caption-zip-"));
   t.after(() => rmSync(dir, { recursive: true, force: true }));
@@ -27,18 +42,7 @@ test("extracted captions helpers invoke the pinned CLI without a checkout", (t) 
     execFileSync(process.execPath, [join(scripts, "hf-cli.cjs")], { encoding: "utf8" }).trim(),
     realpathSync(join(root, "skills/hyperframes/scripts/plugin-cli.mjs")),
   );
-  const override = join(dir, "contributor checkout");
-  const built = join(override, "packages/cli/dist/cli.js");
-  mkdirSync(join(built, ".."), { recursive: true });
-  writeFileSync(built, "// built CLI fixture");
-  for (const explicitArg of [true, false]) {
-    const found = execFileSync(
-      process.execPath,
-      [join(scripts, "hf-cli.cjs"), ...(explicitArg ? [override] : [])],
-      { encoding: "utf8", env: { ...process.env, HYPERFRAMES_ROOT: explicitArg ? "" : override } },
-    );
-    assert.equal(found.trim(), built);
-  }
+  assertContributorOverrides(dir, scripts);
   rmSync(join(root, "packages"), { recursive: true });
   const project = join(dir, "project with spaces");
   const bin = join(dir, "bin");
@@ -89,8 +93,35 @@ test("extracted captions helpers invoke the pinned CLI without a checkout", (t) 
   }
 });
 
-const cases = [{ code: 0 }, { code: 23 }, ...["INT", "TERM", "HUP"].map((cancel) => ({ cancel }))];
-for (const { code, cancel } of cases) {
+function cleanupRenderFixture(dir, pidFile) {
+  if (existsSync(pidFile)) {
+    const { npm, render } = JSON.parse(readFileSync(pidFile));
+    for (const pid of [npm, render]) {
+      try {
+        process.kill(pid, "SIGKILL");
+      } catch {}
+    }
+  }
+  rmSync(dir, { recursive: true, force: true });
+}
+
+function assertProcessesExited(pidFile) {
+  const pids = JSON.parse(readFileSync(pidFile));
+  for (const pid of Object.values(pids)) {
+    const status = spawnSync("ps", ["-o", "stat=", "-p", String(pid)], { encoding: "utf8" });
+    assert.ok(
+      status.status === 1 || /^\s*Z/.test(status.stdout),
+      `PID ${pid} survives: ${status.stdout} ${status.stderr}`,
+    );
+  }
+}
+
+const cases = [
+  { code: 0, expectedStatus: 0 },
+  { code: 23, expectedStatus: 1 },
+  ...["INT", "TERM", "HUP"].map((cancel) => ({ cancel, expectedStatus: 0 })),
+];
+for (const { code, cancel, expectedStatus } of cases) {
   test(`ZIP render waits for CLI completion: code=${code}, cancel=${cancel}`, async (t) => {
     const dir = mkdtempSync(join(tmpdir(), "hf-caption-render-"));
     const pidFile = join(dir, "pids.json");
@@ -98,17 +129,7 @@ for (const { code, cancel } of cases) {
       stdio: "ignore",
     });
     t.after(() => unrelated.kill());
-    t.after(() => {
-      if (existsSync(pidFile)) {
-        const { npm, render } = JSON.parse(readFileSync(pidFile));
-        for (const pid of [npm, render]) {
-          try {
-            process.kill(pid, "SIGKILL");
-          } catch {}
-        }
-      }
-      rmSync(dir, { recursive: true, force: true });
-    });
+    t.after(() => cleanupRenderFixture(dir, pidFile));
     execFileSync("unzip", ["-q", resolve("dist/hyperframes-agent-plugin.zip"), "-d", dir]);
     const script = join(
       dir,
@@ -178,18 +199,11 @@ sys.exit(2)
       },
     );
     assert.equal(result.error, undefined, result.stderr);
-    assert.equal(result.status, cancel ? 0 : code === 0 ? 0 : 1, result.stdout + result.stderr);
+    assert.equal(result.status, expectedStatus, result.stdout + result.stderr);
     assert.equal(unrelated.exitCode, null);
     assert.doesNotThrow(() => process.kill(unrelated.pid, 0));
-    if (cancel || code !== 0) assert.equal(existsSync(join(project, "final.mp4")), false);
-    const pids = JSON.parse(readFileSync(pidFile));
-    for (const pid of Object.values(pids)) {
-      const status = spawnSync("ps", ["-o", "stat=", "-p", String(pid)], { encoding: "utf8" });
-      assert.ok(
-        status.status === 1 || /^\s*Z/.test(status.stdout),
-        `PID ${pid} survives: ${status.stdout} ${status.stderr}`,
-      );
-    }
+    assert.equal(existsSync(join(project, "final.mp4")), code === 0);
+    assertProcessesExited(pidFile);
     const before = readFileSync(output).length;
     await new Promise((resolve) => setTimeout(resolve, 300));
     assert.equal(readFileSync(output).length, before, "render still writes output after returning");
