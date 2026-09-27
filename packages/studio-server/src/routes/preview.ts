@@ -564,7 +564,7 @@ export function registerPreviewRoutes(api: Hono, adapter: PreviewApiAdapter): vo
       ) {
         return c.text("not found", 404);
       }
-      const facts = await probeAssetCodec(file);
+      const facts = await probeAssetCodec(file, undefined, mediaCodecProbeCache);
       const eligibility = decideMediaProxyEligibility(facts);
       if (!eligibility.eligible) {
         return c.text(`media proxy unavailable: ${eligibility.reason}`, 422);

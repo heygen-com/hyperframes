@@ -7,6 +7,7 @@
  * point at custom registries or reshape their project layout.
  */
 
+import { normalizePreviewWatchIgnore } from "@hyperframes/studio-server";
 import { readFileSync, writeFileSync } from "node:fs";
 import { join, resolve } from "node:path";
 import { DEFAULT_REGISTRY_URL } from "../registry/index.js";
@@ -59,6 +60,7 @@ export interface ProjectConfig {
   paths: ProjectConfigPaths;
   /** Media handling options (e.g. auto-proxying of browser-hostile codecs). */
   media?: ProjectConfigMedia;
+  preview?: { watchIgnore?: string[] };
   /**
    * Owning authoring-workflow skill slug (e.g. "product-launch-video"). Stamped
    * by `hyperframes init --skill` or seeded from the first `hyperframes render
@@ -151,6 +153,9 @@ export function normalizeConfig(partial: Partial<ProjectConfig>): ProjectConfig 
           ? partial.media.autoProxy
           : DEFAULT_PROJECT_CONFIG.media?.autoProxy,
     },
+    preview: partial.preview
+      ? { watchIgnore: normalizePreviewWatchIgnore(partial.preview.watchIgnore) }
+      : undefined,
     // Slug-gate on read so a hand-edited or corrupt value never reaches the
     // telemetry stream; an invalid slug simply drops the attribution.
     authoringSkill: normalizeSkillSlug(partial.authoringSkill),

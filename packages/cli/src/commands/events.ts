@@ -1,5 +1,5 @@
 import { defineCommand } from "citty";
-import { trackEvent, flush } from "../telemetry/client.js";
+import { trackEvent, flush, flushSync } from "../telemetry/client.js";
 import { SKILL_SLUG } from "../telemetry/skill.js";
 
 // Skill-usage telemetry endpoint. A skill reports its own invocation/outcome —
@@ -54,6 +54,7 @@ export default defineCommand({
       }
       trackEvent(event, props);
       await flush();
+      flushSync();
     } catch {
       // swallow — telemetry must never surface a non-zero exit to the caller
     }

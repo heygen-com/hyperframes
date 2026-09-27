@@ -57,3 +57,28 @@ For lower-level failures, continue to [general troubleshooting](/guides/troubles
 - [Work with source and an agent](/studio/source)
 - [Finish, render, and share](/guides/export-and-share)
 - [Diagnose a project or CLI problem](/guides/troubleshooting)
+
+## Preview keeps restarting while tools write reports
+
+Preview watches project files so source and asset edits appear automatically.
+If an agent or check command writes notes and reports inside your project, exclude
+those outputs from live reload in `hyperframes.json`:
+
+```json
+{
+  "preview": {
+    "watchIgnore": ["docs", "references/check-results.json"]
+  }
+}
+```
+
+Entries are literal project-relative file or directory paths, not globs. A directory
+entry includes its descendants, but not similarly named siblings. Only exclude
+files the composition does not use: ignored files remain available to the server
+and renderer, but edits to them will not automatically reload the player or its
+thumbnails. Changes to this setting take effect without restarting the server;
+`hyperframes.json` itself always triggers a reload.
+
+Atomic-save temporary files (`.tmp`, `.tmp.<pid>.<hex>`, `.swp`, `.swo`, and trailing
+`~`) do not trigger preview reloads. Renaming them to the final source filename
+still does.

@@ -7,8 +7,15 @@ vi.stubEnv("HYPERFRAMES_NO_TELEMETRY", "");
 vi.stubEnv("DO_NOT_TRACK", "");
 
 // Pin config so the queue never touches disk and telemetry is enabled.
+const configRead = vi.hoisted(() => ({ failOnce: false }));
 vi.mock("./config.js", () => ({
-  readConfig: () => ({ anonymousId: "anon-test-123", telemetryEnabled: true }),
+  readConfig: () => {
+    if (configRead.failOnce) {
+      configRead.failOnce = false;
+      throw new Error("EACCES");
+    }
+    return { anonymousId: "anon-test-123", telemetryEnabled: true };
+  },
   writeConfig: () => {},
   getIdentityPersistence: () => "durable",
   getIdentityWriteOutcome: () => undefined,
@@ -18,6 +25,9 @@ vi.mock("./config.js", () => ({
 vi.mock("../utils/env.js", () => ({
   isDevMode: () => false,
 }));
+
+const dns = vi.hoisted(() => ({ answers: true }));
+vi.mock("../utils/hostAnswers.js", () => ({ hostAnswers: async () => dns.answers }));
 
 // Canary enrolment is registry-driven and will change as rollouts ramp; stub
 // it so this asserts the WIRING (does every event carry the cohort?) rather
@@ -90,6 +100,21 @@ describe("telemetry queue delivery", () => {
     }
   });
 
+  it("keeps events queued for the exit-time send when DNS does not answer", async () => {
+    dns.answers = false;
+    const fetchMock = vi.fn(() => Promise.resolve(new Response("")));
+    vi.stubGlobal("fetch", fetchMock);
+    try {
+      trackEvent("render_complete", { quality: "draft" });
+      await flush();
+      expect(fetchMock).not.toHaveBeenCalled();
+    } finally {
+      dns.answers = true;
+    }
+    await flush();
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+
   it("forgets events only after the request completes, and stamps each with a uuid", async () => {
     const fetchMock = vi.fn(() => Promise.resolve(new Response("")));
     vi.stubGlobal("fetch", fetchMock);
@@ -132,6 +157,40 @@ describe("telemetry queue delivery", () => {
     expect(succeeding).toHaveBeenCalledTimes(1);
   });
 
+  it("sends each event once when two flushes overlap", async () => {
+    const pending: Array<(r: Response) => void> = [];
+    const gated = vi.fn(() => new Promise<Response>((res) => pending.push(res)));
+    vi.stubGlobal("fetch", gated);
+
+    trackEvent("render_complete", { quality: "draft" });
+    const eager = flush();
+    const final = flush();
+    await vi.waitFor(() => expect(gated).toHaveBeenCalled());
+    for (const res of pending.splice(0)) res(new Response(""));
+    await Promise.all([eager, final]);
+    expect(gated).toHaveBeenCalledTimes(1);
+  });
+
+  it("leaves the batch to the exit-time send when the flush ahead of it failed", async () => {
+    const fetchMock = vi.fn(() => Promise.reject(new Error("offline")));
+    vi.stubGlobal("fetch", fetchMock);
+    trackEvent("render_complete", { quality: "draft" });
+    await Promise.all([flush(), flush()]);
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+
+  it("still sends from a flush queued behind one that threw", async () => {
+    const fetchMock = vi.fn(() => Promise.resolve(new Response("")));
+    vi.stubGlobal("fetch", fetchMock);
+    trackEvent("render_complete", { quality: "draft" });
+    configRead.failOnce = true;
+    const first = flush();
+    const second = flush();
+    await expect(first).rejects.toThrow("EACCES");
+    await second;
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+
   it("does not drop events queued while a flush is in flight", async () => {
     let resolveFetch: (r: Response) => void = () => {};
     const gated = vi.fn(() => new Promise<Response>((res) => (resolveFetch = res)));
@@ -140,6 +199,7 @@ describe("telemetry queue delivery", () => {
     trackEvent("render_complete", { quality: "draft" });
     const inFlight = flush();
     trackEvent("cli_command_result", { command: "render" });
+    await vi.waitFor(() => expect(gated).toHaveBeenCalled());
     resolveFetch(new Response(""));
     await inFlight;
 

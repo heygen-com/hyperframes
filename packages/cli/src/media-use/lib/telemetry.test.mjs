@@ -1,4 +1,5 @@
 import { strict as assert } from "node:assert";
+import { spawn } from "node:child_process";
 import { test } from "node:test";
 import {
   existsSync,
@@ -367,6 +368,68 @@ test("read-only telemetry state degrades without throwing", async () => {
     } catch {
       // best effort for cleanup on platforms with different chmod behavior
     }
+    restoreEnv(savedEnv);
+    rmSync(root, { recursive: true, force: true });
+    __resetTelemetryForTest();
+  }
+});
+
+async function trackQuietly(home) {
+  const originalFetch = globalThis.fetch;
+  const originalError = console.error;
+  globalThis.fetch = async () => ({ ok: true });
+  console.error = () => {};
+  try {
+    withoutTelemetryOptOut();
+    await track("media_use_resolve", { type: "bgm" });
+    return readFileSync(join(home, ".hyperframes/config.json"), "utf8");
+  } finally {
+    globalThis.fetch = originalFetch;
+    console.error = originalError;
+  }
+}
+
+test("waits for another process's locked settings write, then keeps the no it saved", async () => {
+  const savedEnv = { ...process.env };
+  const { root, home } = sandbox();
+  const dir = join(home, ".hyperframes");
+  mkdirSync(dir, { recursive: true });
+  const holder = spawn(process.execPath, [
+    "-e",
+    `const fs = require("fs");
+      const dir = process.argv[1];
+      fs.writeFileSync(dir + "/config.json.lock", "", { flag: "wx" });
+      process.stdout.write("locked\\n");
+      setTimeout(() => {
+        fs.writeFileSync(dir + "/other.tmp", JSON.stringify({ localEmbeddingEnabled: false }));
+        fs.renameSync(dir + "/other.tmp", dir + "/config.json");
+        fs.rmSync(dir + "/config.json.lock");
+      }, 1000);`,
+    dir,
+  ]);
+  const exited = new Promise((done) => holder.on("exit", done));
+  try {
+    await new Promise((locked) => holder.stdout.once("data", locked));
+    const saved = JSON.parse(await trackQuietly(home));
+    await exited;
+    assert.equal(saved.localEmbeddingEnabled, false);
+    assert.equal(saved.telemetryNoticeShown, true);
+    assert.equal(typeof saved.anonymousId, "string");
+  } finally {
+    restoreEnv(savedEnv);
+    rmSync(root, { recursive: true, force: true });
+    __resetTelemetryForTest();
+  }
+});
+
+test("leaves a settings file it cannot read untouched", async () => {
+  const savedEnv = { ...process.env };
+  const { root, home } = sandbox();
+  mkdirSync(join(home, ".hyperframes"), { recursive: true });
+  writeFileSync(join(home, ".hyperframes/config.json"), "{not json");
+  try {
+    assert.equal(await trackQuietly(home), "{not json");
+  } finally {
     restoreEnv(savedEnv);
     rmSync(root, { recursive: true, force: true });
     __resetTelemetryForTest();

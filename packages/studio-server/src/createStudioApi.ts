@@ -5,6 +5,7 @@ import { registerFileRoutes } from "./routes/files.js";
 import { registerPreviewRoutes } from "./routes/preview.js";
 import { registerLintRoutes } from "./routes/lint.js";
 import { registerRenderRoutes } from "./routes/render.js";
+import { registerImageThumbnailRoutes } from "./routes/imageThumbnail.js";
 import { registerThumbnailRoutes } from "./routes/thumbnail.js";
 import { registerWaveformRoutes } from "./routes/waveform.js";
 import { registerFontRoutes } from "./routes/fonts.js";
@@ -29,6 +30,7 @@ export function createStudioApi(adapter: StudioApiAdapter): Hono {
   registerLintRoutes(api, adapter);
   registerRenderRoutes(api, adapter);
   registerThumbnailRoutes(api, adapter);
+  registerImageThumbnailRoutes(api, adapter);
   registerSelectionRoutes(api, adapter);
   registerMediaRoutes(api, adapter);
   registerWaveformRoutes(api, adapter);

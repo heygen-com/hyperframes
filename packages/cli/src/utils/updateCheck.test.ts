@@ -1,6 +1,9 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { isSafeVersion, printDeprecationNotice, withMeta } from "./updateCheck.js";
 
+const dns = vi.hoisted(() => ({ answers: true }));
+vi.mock("./hostAnswers.js", () => ({ hostAnswers: async () => dns.answers }));
+
 describe("isSafeVersion", () => {
   it("accepts strict semver, incl. prerelease/build metadata", () => {
     expect(isSafeVersion("1.2.3")).toBe(true);
@@ -50,7 +53,9 @@ async function noticeWith(opts: {
     else process.env[k] = v;
   }
   // Default to a non-CI interactive terminal unless the test overrides env.
-  if (!("CI" in (opts.env ?? {}))) delete process.env["CI"];
+  for (const name of ["CI", "HYPERFRAMES_NO_UPDATE_CHECK"]) {
+    if (!(name in (opts.env ?? {}))) delete process.env[name];
+  }
 
   const origTTY = process.stderr.isTTY;
   Object.defineProperty(process.stderr, "isTTY", {
@@ -122,11 +127,16 @@ describe("printUpdateNotice — install-method-aware command", () => {
  * never be cached, because it flows into the auto-updater's install command.
  * This closes the injection class for every downstream consumer at one point.
  */
-async function checkWith(registryVersion: unknown): Promise<{
+async function checkWith(
+  registryVersion: unknown,
+  force = true,
+): Promise<{
   latest: string;
   wroteVersion: string | undefined;
+  fetched: boolean;
 }> {
   vi.resetModules();
+  vi.doMock("./env.js", () => ({ isDevMode: () => false }));
   const writes: Array<Record<string, unknown>> = [];
   vi.doMock("../telemetry/config.js", () => ({
     readConfig: () => ({}),
@@ -134,17 +144,19 @@ async function checkWith(registryVersion: unknown): Promise<{
     writeConfig: (c: Record<string, unknown>) => writes.push({ ...c }),
   }));
   const origFetch = globalThis.fetch;
-  globalThis.fetch = (async () => ({
-    ok: true,
-    json: async () => ({ version: registryVersion }),
-  })) as unknown as typeof fetch;
+  let fetched = false;
+  globalThis.fetch = (async () => {
+    fetched = true;
+    return { ok: true, json: async () => ({ version: registryVersion }) };
+  }) as unknown as typeof fetch;
   try {
     const mod = await import("./updateCheck.js");
-    const result = await mod.checkForUpdate(true);
+    const result = await mod.checkForUpdate(force);
     const lastWrite = writes.at(-1);
     return {
       latest: result.latest,
       wroteVersion: lastWrite ? (lastWrite["latestVersion"] as string | undefined) : undefined,
+      fetched,
     };
   } finally {
     globalThis.fetch = origFetch;
@@ -259,8 +271,52 @@ describe("printDeprecationNotice", () => {
 describe("checkForUpdate — registry boundary guard", () => {
   afterEach(() => {
     vi.doUnmock("../telemetry/config.js");
+    vi.doUnmock("./env.js");
     vi.resetModules();
   });
+
+  function clearOptOuts(): void {
+    vi.stubEnv("CI", "");
+    vi.stubEnv("HYPERFRAMES_NO_UPDATE_CHECK", "");
+  }
+
+  it("still asks the registry from a run without a terminal", async () => {
+    clearOptOuts();
+    const origTTY = process.stderr.isTTY;
+    Object.defineProperty(process.stderr, "isTTY", { value: false, configurable: true });
+    try {
+      expect((await checkWith("99.0.0", false)).fetched).toBe(true);
+    } finally {
+      Object.defineProperty(process.stderr, "isTTY", { value: origTTY, configurable: true });
+      vi.unstubAllEnvs();
+    }
+  });
+
+  it("skips the background registry request when DNS does not answer", async () => {
+    clearOptOuts();
+    dns.answers = false;
+    try {
+      expect((await checkWith("99.0.0", false)).fetched).toBe(false);
+      expect((await checkWith("99.0.0")).fetched).toBe(true);
+    } finally {
+      dns.answers = true;
+      vi.unstubAllEnvs();
+    }
+  });
+
+  it.each(["CI", "HYPERFRAMES_NO_UPDATE_CHECK"])(
+    "skips the background registry request when %s=1",
+    async (name) => {
+      clearOptOuts();
+      vi.stubEnv(name, "1");
+      try {
+        expect((await checkWith("99.0.0", false)).fetched).toBe(false);
+        expect((await checkWith("99.0.0")).fetched).toBe(true);
+      } finally {
+        vi.unstubAllEnvs();
+      }
+    },
+  );
 
   it("caches and returns a valid semver from the registry", async () => {
     const { latest, wroteVersion } = await checkWith("9.9.9");

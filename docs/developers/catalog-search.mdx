@@ -40,7 +40,8 @@ The download is never started without a yes:
   been asked yet.
 - Agents, CI and `--json` runs are never prompted. They are told to ask the person they work for;
   `--on-device --yes` is that person's yes, and records it.
-- After a no, `--on-device` alone is skipped with a message; `--on-device --yes` changes the answer.
+- After a no, `--on-device` alone is skipped with a message. Only `--on-device --yes` in an interactive
+  terminal (stdin and stdout both terminals, no `--json`, not CI) changes the answer; elsewhere a no stands.
 
 Once the model is on your machine, every `catalog --query` uses meaning search. If it cannot run, the
 CLI says why and falls back to word match.

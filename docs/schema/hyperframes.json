@@ -79,6 +79,20 @@
           }
         }
       }
+    },
+    "preview": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "watchIgnore": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          },
+          "description": "Project-relative files or directories that should not trigger preview reloads (literal paths, not glob patterns). Directory entries include their descendants. Does not exclude files from rendering or serving. hyperframes.json always triggers a reload."
+        }
+      }
     }
   }
 }

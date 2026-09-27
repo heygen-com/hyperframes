@@ -107,7 +107,12 @@ export function createViteAdapter(
   {
     historyRoot = DEFAULT_HISTORY_ROOT,
     openHistory = openProjectHistory,
-  }: { historyRoot?: string; openHistory?: typeof openProjectHistory } = {},
+    onResolveProject,
+  }: {
+    historyRoot?: string;
+    openHistory?: typeof openProjectHistory;
+    onResolveProject?: (project: ResolvedProject) => void;
+  } = {},
 ): StudioApiAdapter {
   const histories = historyCache((projectDir) =>
     openHistory({ projectDir, historyRoot }).catch((error: unknown) => {
@@ -240,11 +245,13 @@ export function createViteAdapter(
               projectDir = resolve(dataDir, session.projectId);
               if (!isPathWithin(dataDir, projectDir)) return null;
               if (existsSync(projectDir)) {
-                return {
+                const project = {
                   id: session.projectId,
                   dir: realpathSync(projectDir),
                   title: session.title,
                 };
+                onResolveProject?.(project);
+                return project;
               }
             }
           } catch {
@@ -253,7 +260,9 @@ export function createViteAdapter(
         }
         return null;
       }
-      return { id, dir: realpathSync(projectDir) };
+      const project = { id, dir: realpathSync(projectDir) };
+      onResolveProject?.(project);
+      return project;
     },
 
     async bundle(dir, options) {

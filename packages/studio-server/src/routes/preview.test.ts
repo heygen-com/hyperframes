@@ -8,9 +8,11 @@ import {
   mkdtempSync,
   openSync,
   readFileSync,
+  realpathSync,
   rmSync,
   statSync,
   symlinkSync,
+  utimesSync,
   writeFileSync,
   writeSync,
 } from "node:fs";
@@ -1477,6 +1479,79 @@ describe("hf-proxy negotiation and media codec map injection (U3)", () => {
       expect(proxyRes.status).toBe(404);
       expect(resolveProxyMock).not.toHaveBeenCalled();
     });
+  });
+});
+
+describe("hf-proxy codec probe", () => {
+  afterEach(() => {
+    vi.resetModules();
+    vi.doUnmock("../helpers/mediaMetadata.js");
+    vi.doUnmock("../helpers/proxyTranscoder.js");
+  });
+
+  async function appWithProbe(projectDir: string, codecOf: (path: string) => string) {
+    const proxyPath = join(projectDir, "proxy.mp4");
+    writeFileSync(proxyPath, "proxy-bytes");
+    const probeMediaMetadata = vi.fn(async (path: string) => ({
+      kind: "video" as const,
+      color: { codecName: codecOf(path), pixelFormat: "yuv420p" },
+    }));
+    vi.resetModules();
+    vi.doMock("../helpers/mediaMetadata.js", async () => ({
+      ...(await vi.importActual<typeof import("../helpers/mediaMetadata.js")>(
+        "../helpers/mediaMetadata.js",
+      )),
+      probeMediaMetadata,
+    }));
+    vi.doMock("../helpers/proxyTranscoder.js", async () => ({
+      ...(await vi.importActual<typeof import("../helpers/proxyTranscoder.js")>(
+        "../helpers/proxyTranscoder.js",
+      )),
+      resolveProxy: async () => proxyPath,
+    }));
+    const { registerPreviewRoutes: register } = await import("./preview.js");
+    const app = new Hono();
+    register(app, createAdapter(projectDir));
+    const proxy = (file: string) =>
+      app.request(`http://localhost/projects/demo/preview/${file}?hf-proxy=h264`);
+    return { proxy, probeMediaMetadata };
+  }
+
+  it("runs ffprobe once for repeated proxy requests of the same unchanged clip", async () => {
+    const projectDir = createProjectDir();
+    writeFileSync(join(projectDir, "clip.mp4"), "original-hevc-bytes");
+    const { proxy, probeMediaMetadata } = await appWithProbe(projectDir, () => "hevc");
+
+    expect((await proxy("clip.mp4")).status).toBe(200);
+    expect((await proxy("clip.mp4")).status).toBe(200);
+
+    expect(probeMediaMetadata).toHaveBeenCalledTimes(1);
+  });
+
+  it("probes again when a clip's symlink is repointed at a file with the same mtime and size", async () => {
+    const projectDir = createProjectDir();
+    const externalDir = mkdtempSync(join(tmpdir(), "hf-preview-retarget-"));
+    tempDirs.push(externalDir);
+    const hevc = join(externalDir, "hevc.mp4");
+    const h264 = join(externalDir, "h264.mp4");
+    writeFileSync(hevc, "same-size-a");
+    writeFileSync(h264, "same-size-b");
+    const sameTime = new Date("2026-01-01T00:00:00Z");
+    utimesSync(hevc, sameTime, sameTime);
+    utimesSync(h264, sameTime, sameTime);
+    const link = join(projectDir, "clip.mp4");
+    if (!tryCreateSymlink(hevc, link, "file")) return;
+    const { proxy } = await appWithProbe(projectDir, (path) =>
+      realpathSync(path) === realpathSync(hevc) ? "hevc" : "h264",
+    );
+    expect((await proxy("clip.mp4")).status).toBe(200);
+
+    rmSync(link);
+    symlinkSync(h264, link, "file");
+
+    const retargeted = await proxy("clip.mp4");
+    expect(retargeted.status).toBe(422);
+    expect(await retargeted.text()).toContain("browser_safe_codec");
   });
 });
 
