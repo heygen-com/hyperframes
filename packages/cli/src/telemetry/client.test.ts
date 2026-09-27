@@ -150,6 +150,20 @@ describe("telemetry queue delivery", () => {
     expect(succeeding).toHaveBeenCalledTimes(1);
   });
 
+  it("sends each event once when two flushes overlap", async () => {
+    const pending: Array<(r: Response) => void> = [];
+    const gated = vi.fn(() => new Promise<Response>((res) => pending.push(res)));
+    vi.stubGlobal("fetch", gated);
+
+    trackEvent("render_complete", { quality: "draft" });
+    const eager = flush();
+    const final = flush();
+    await vi.waitFor(() => expect(gated).toHaveBeenCalled());
+    for (const res of pending.splice(0)) res(new Response(""));
+    await Promise.all([eager, final]);
+    expect(gated).toHaveBeenCalledTimes(1);
+  });
+
   it("does not drop events queued while a flush is in flight", async () => {
     let resolveFetch: (r: Response) => void = () => {};
     const gated = vi.fn(() => new Promise<Response>((res) => (resolveFetch = res)));

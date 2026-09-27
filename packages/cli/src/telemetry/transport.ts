@@ -95,6 +95,8 @@ function buildPayload(events: readonly QueuedEvent[]): string | null {
   return JSON.stringify({ api_key: POSTHOG_API_KEY, batch });
 }
 
+let inFlight: Promise<void> | undefined;
+
 /**
  * Flush all queued events to PostHog via async HTTP POST.
  * Call sites: the `beforeExit` hook in cli.ts (normal exit), eager sends right
@@ -110,7 +112,17 @@ function buildPayload(events: readonly QueuedEvent[]): string | null {
  * delivery lets the exit-time flushSync() child (which survives the parent)
  * re-send anything unconfirmed; event uuids make that re-send idempotent.
  */
-export async function flush(): Promise<void> {
+export function flush(): Promise<void> {
+  // One request at a time, so an event is never in two batches at once.
+  const run = inFlight ? inFlight.then(sendQueued) : sendQueued();
+  const current = run.finally(() => {
+    if (inFlight === current) inFlight = undefined;
+  });
+  inFlight = current;
+  return current;
+}
+
+async function sendQueued(): Promise<void> {
   // Copy, not alias — events queued while the request is in flight must not
   // be swept into the "delivered" set below.
   const snapshot = eventQueue.slice();
