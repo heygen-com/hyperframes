@@ -7,7 +7,10 @@ export function normalizePreviewWatchIgnore(value: unknown): string[] {
   if (!Array.isArray(value)) return [];
   return value.flatMap((entry: unknown) => {
     if (typeof entry !== "string") return [];
-    const path = entry.replace(/\\/g, "/").replace(/^\.\//, "").replace(/\/+$/, "");
+    const normalized = entry.replace(/\\/g, "/").replace(/^\.\//, "");
+    let end = normalized.length;
+    while (end > 0 && normalized[end - 1] === "/") end -= 1;
+    const path = normalized.slice(0, end);
     if (
       !path ||
       path.startsWith("/") ||

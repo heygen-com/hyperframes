@@ -75,6 +75,12 @@ describe("preview reload filtering", () => {
     expect(shouldReloadPreview(dir, "index.html")).toBe(true);
   });
 
+  it("handles long runs of separators in untrusted settings", () => {
+    const separators = "/".repeat(100_000);
+    expect(normalizePreviewWatchIgnore([`docs${separators}`])).toEqual(["docs"]);
+    expect(normalizePreviewWatchIgnore([`docs${separators}report.json`])).toEqual([]);
+  });
+
   it("rejects exclusions that could hide the whole project or escape its root", () => {
     expect(
       normalizePreviewWatchIgnore([
