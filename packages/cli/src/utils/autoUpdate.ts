@@ -14,7 +14,7 @@
  * Guardrails:
  *   - Never auto-update across major versions. The user opts in explicitly
  *     via `hyperframes upgrade`.
- *   - Skip on CI, non-TTY, dev mode, unknown installer, ephemeral exec (npx),
+ *   - Skip on CI, dev mode, unknown installer, ephemeral exec (npx),
  *     or when `HYPERFRAMES_NO_AUTO_INSTALL` / `HYPERFRAMES_NO_UPDATE_CHECK`
  *     is set.
  *   - If a previous install is still in flight (less than 10 min old), don't
