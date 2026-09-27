@@ -11,7 +11,7 @@ import {
   utimesSync,
   writeFileSync,
 } from "node:fs";
-import { join } from "node:path";
+import { basename, join } from "node:path";
 import { tmpdir } from "node:os";
 import { spawnSync } from "node:child_process";
 import {
@@ -1490,10 +1490,61 @@ describe.skipIf(!HAS_FFMPEG)("video frame extraction format", () => {
 
   // ffmpeg < 6.1 drops frame durations from CFR resampling once any -vf is set, so the colour
   // filters would cut the still that ends this window short.
-  it.each(["png", "jpg"] as const)(
-    "keeps every frame and the full range colours of a VFR window that ends on a still (%s)",
-    async (format) => {
-      const fixture = join(FIXTURE_DIR, `vfr-still-bt709-pc-${format}.mp4`);
+  it.each([
+    {
+      name: "full range BT.709",
+      format: "png",
+      codec: "libx264",
+      pixFmt: "yuvj420p",
+      probed: { colorTransfer: "bt709" },
+      tags: [
+        "-color_range",
+        "pc",
+        "-color_primaries",
+        "bt709",
+        "-color_trc",
+        "bt709",
+        "-colorspace",
+        "bt709",
+      ],
+    },
+    {
+      name: "full range BT.709",
+      format: "jpg",
+      codec: "libx264",
+      pixFmt: "yuvj420p",
+      probed: { colorTransfer: "bt709" },
+      tags: [
+        "-color_range",
+        "pc",
+        "-color_primaries",
+        "bt709",
+        "-color_trc",
+        "bt709",
+        "-colorspace",
+        "bt709",
+      ],
+    },
+    {
+      name: "BT.470BG gamma 2.8",
+      format: "png",
+      codec: "libx264",
+      pixFmt: "yuv420p",
+      probed: { colorTransfer: "bt470bg" },
+      tags: ["-color_primaries", "bt470bg", "-color_trc", "gamma28", "-colorspace", "bt470bg"],
+    },
+    {
+      name: "RGB",
+      format: "png",
+      codec: "libx264rgb",
+      pixFmt: "rgb24",
+      probed: { colorSpace: "gbr" },
+      tags: [],
+    },
+  ] as const)(
+    "keeps every frame and the colours of a $name VFR window that ends on a still ($format)",
+    async ({ name, format, codec, pixFmt, probed, tags }) => {
+      const fixture = join(FIXTURE_DIR, `vfr-still-${name.replace(/\W+/g, "-")}-${format}.mp4`);
       const synth = await runFfmpeg([
         "-y",
         "-v",
@@ -1507,24 +1558,17 @@ describe.skipIf(!HAS_FFMPEG)("video frame extraction format", () => {
         "-fps_mode",
         "vfr",
         "-c:v",
-        "libx264",
+        codec,
         "-preset",
         "ultrafast",
         "-pix_fmt",
-        "yuvj420p",
-        "-color_range",
-        "pc",
-        "-color_primaries",
-        "bt709",
-        "-color_trc",
-        "bt709",
-        "-colorspace",
-        "bt709",
+        pixFmt,
+        ...tags,
         fixture,
       ]);
       if (!synth.success) throw new Error(`fixture synthesis failed: ${synth.stderr.slice(-400)}`);
       const window = 0.616666;
-      const unfilteredDir = join(FIXTURE_DIR, `out-vfr-still-unfiltered-${format}`);
+      const unfilteredDir = join(FIXTURE_DIR, `out-${basename(fixture)}-unfiltered`);
       mkdirSync(unfilteredDir, { recursive: true });
       const unfiltered = await runFfmpeg([
         "-v",
@@ -1543,13 +1587,14 @@ describe.skipIf(!HAS_FFMPEG)("video frame extraction format", () => {
       ]);
       expect(unfiltered.success).toBe(true);
 
-      const result = await extractVideoFramesRange(fixture, `vfr-still-${format}`, 0, window, {
+      const result = await extractVideoFramesRange(fixture, basename(fixture), 0, window, {
         fps: 30,
         outputDir: join(FIXTURE_DIR, "out-vfr-still"),
         format,
       });
 
       expect(result.metadata.isVFR).toBe(true);
+      expect(result.metadata.colorSpace).toMatchObject(probed);
       expect(result.totalFrames).toBe(readdirSync(unfilteredDir).length);
       const last = result.framePaths.get(result.totalFrames - 1)!;
       const source = readFirstFramePixel(fixture, 10, 10);
@@ -3026,6 +3071,69 @@ describe.skipIf(!HAS_FFMPEG || process.platform === "darwin")("forced-SDR HDR ex
     expect(frame(toneMapped)).toEqual(readFileSync(reference));
     expect(frame(plain)).not.toEqual(frame(toneMapped));
     expect(frame(toneMappedAgain)).toEqual(frame(toneMapped));
+  }, 60_000);
+
+  // A second process would read the frames back without the HDR10 light-level metadata the tone map uses.
+  it("tone-maps a VFR HDR10 window in one process, exactly as the unfiltered resample would", async () => {
+    const source = join(fixtureDir, "pq-vfr-4000nit.mp4");
+    const synthesized = await runFfmpeg([
+      "-y",
+      "-v",
+      "error",
+      "-f",
+      "lavfi",
+      "-i",
+      "color=c=0xf0e0c0:s=64x64:r=60:d=2",
+      "-vf",
+      "select='not(between(n\\,30\\,89))',zscale=pin=bt709:tin=bt709:min=bt709:p=bt2020:t=smpte2084:m=bt2020nc:r=tv:npl=1000,format=yuv420p10le",
+      "-fps_mode",
+      "vfr",
+      "-c:v",
+      "libx265",
+      "-x265-params",
+      "log-level=error:hdr10=1:colorprim=bt2020:transfer=smpte2084:colormatrix=bt2020nc:max-cll=4000,400:master-display=G(13250,34500)B(7500,3000)R(34000,16000)WP(15635,16450)L(40000000,50)",
+      source,
+    ]);
+    if (!synthesized.success)
+      throw new Error(`PQ fixture synthesis failed: ${synthesized.stderr.slice(-400)}`);
+    const referenceDir = join(fixtureDir, "pq-vfr-reference");
+    mkdirSync(referenceDir, { recursive: true });
+    const reference = await runFfmpeg([
+      "-v",
+      "error",
+      "-ss",
+      "0",
+      "-i",
+      source,
+      "-t",
+      "0.616666",
+      "-vf",
+      "zscale=t=linear:npl=100,tonemap=hable:desat=0,zscale=p=bt709:t=bt709:m=bt709:r=tv",
+      "-fps_mode",
+      "cfr",
+      "-r",
+      "30",
+      "-q:v",
+      "0",
+      "-compression_level",
+      "1",
+      join(referenceDir, "frame_%05d.png"),
+    ]);
+    expect(reference.success, reference.stderr).toBe(true);
+
+    const result = await extractVideoFramesRange(source, "pq-vfr", 0, 0.616666, {
+      fps: 30,
+      outputDir: join(fixtureDir, "pq-vfr-out"),
+      format: "png",
+      toneMapHdrToSdr: true,
+    });
+
+    expect(result.metadata.isVFR).toBe(true);
+    const referenceFrames = readdirSync(referenceDir).sort();
+    expect(result.totalFrames).toBe(referenceFrames.length);
+    expect(readFileSync(result.framePaths.get(0)!)).toEqual(
+      readFileSync(join(referenceDir, referenceFrames[0]!)),
+    );
   }, 60_000);
 });
 

@@ -753,17 +753,45 @@ export function parseImageElements(html: string): ImageElement[] {
   return images;
 }
 
-/** nut drops colour tags, so the raw frames it carries get the source's back as decoder options. */
-function rawFrameColourArgs(metadata: VideoMetadata): string[] {
-  const tags: Array<[string, string | undefined]> = [
-    ["-color_range", metadata.colorRange],
-    ["-colorspace", metadata.colorSpace?.colorSpace],
-    ["-color_primaries", metadata.colorSpace?.colorPrimaries],
-    ["-color_trc", metadata.colorSpace?.colorTransfer],
-  ];
-  return tags.flatMap(([flag, value]) =>
-    value && value !== "unknown" && value !== "reserved" ? [flag, value] : [],
-  );
+/** Pixel formats nut carries as raw video unchanged on ffmpeg 5.1 to 8.1 (yuvj only loses its range). */
+const NUT_RAW_PIXEL_FORMATS = new Set([
+  "yuv420p",
+  "yuvj420p",
+  "yuv422p",
+  "yuvj422p",
+  "yuv444p",
+  "yuvj444p",
+  "yuva420p",
+  "yuva444p",
+  "yuv420p10le",
+  "yuv422p10le",
+  "yuv444p10le",
+  "yuva420p10le",
+  "nv12",
+  "gray",
+  "gbrp",
+  "gbrap",
+  "gbrp10le",
+  "rgb24",
+  "bgr24",
+  "rgba",
+  "bgra",
+  "argb",
+  "abgr",
+  "rgb48le",
+]);
+
+/** nut drops colour tags, so raw frames get the source's back before any other filter reads them. */
+function restoreSourceColourFilter(metadata: VideoMetadata): string[] {
+  const tags = [
+    ["range", metadata.colorRange],
+    ["colorspace", metadata.colorSpace?.colorSpace],
+    ["color_primaries", metadata.colorSpace?.colorPrimaries],
+    ["color_trc", metadata.colorSpace?.colorTransfer],
+  ].filter(([, value]) => value && value !== "unknown" && value !== "reserved");
+  return tags.length > 0
+    ? [`setparams=${tags.map(([key, value]) => `${key}=${value}`).join(":")}`]
+    : [];
 }
 
 export async function extractVideoFramesRange(
@@ -884,19 +912,23 @@ export async function extractVideoFramesRange(
   const resampleVfrToCfr = !options.finalFrameOnly && metadata.isVFR;
   if (resampleVfrToCfr) args.push("-fps_mode", "cfr", "-r", ffmpegFps);
   let processResult: RunFfmpegResult;
-  if (resampleVfrToCfr && vfFilters.length > 0) {
+  if (
+    resampleVfrToCfr &&
+    vfFilters.length > 0 &&
+    !isHdr &&
+    NUT_RAW_PIXEL_FORMATS.has(metadata.pixelFormat ?? "")
+  ) {
     // ffmpeg <6.1 ignores frame durations in CFR resampling once any -vf is set,
-    // cutting a trailing still short, so the filters run in a second process.
+    // cutting a trailing still short, so the SDR filters run in a second process.
     processResult = await runFfmpegPipeline(
-      [...args, "-c:v", "rawvideo", "-f", "nut", "pipe:1"],
+      [...args, "-an", "-sn", "-dn", "-c:v", "rawvideo", "-f", "nut", "pipe:1"],
       [
-        ...rawFrameColourArgs(metadata),
         "-f",
         "nut",
         "-i",
         "pipe:0",
         "-vf",
-        vfFilters.join(","),
+        [...restoreSourceColourFilter(metadata), ...vfFilters].join(","),
         "-fps_mode",
         "passthrough",
         ...encodeArgs,

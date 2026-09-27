@@ -249,3 +249,42 @@ describe.skipIf(!HAS_FFMPEG)("runFfmpegPipeline", () => {
     expect(Date.now() - startedAt).toBeLessThan(10_000);
   }, 30_000);
 });
+
+describe("runFfmpegPipeline start failure", () => {
+  afterEach(() => {
+    vi.resetModules();
+    vi.doUnmock("child_process");
+  });
+
+  it("releases a waiting consumer when the producer cannot start", async () => {
+    const { PassThrough, Writable } = await import("node:stream");
+    const producer = Object.assign(new EventEmitter(), {
+      stdout: new PassThrough(),
+      stderr: new PassThrough(),
+      kill: vi.fn(),
+      pid: 4242,
+    });
+    const consumer = Object.assign(new EventEmitter(), {
+      stdout: new PassThrough(),
+      stderr: new PassThrough(),
+      stdin: new Writable({ write: (_chunk, _encoding, done) => done() }),
+      kill: vi.fn(),
+      pid: 4243,
+    });
+    consumer.stdin.on("finish", () => consumer.emit("close", 1, null));
+    const spawn = vi.fn().mockReturnValueOnce(producer).mockReturnValueOnce(consumer);
+    vi.resetModules();
+    vi.doMock("child_process", () => ({ spawn }));
+    const { runFfmpegPipeline: pipeline } = await import("./runFfmpeg.js");
+
+    const startedAt = Date.now();
+    const pending = pipeline(["-i", "in"], ["-i", "pipe:0"], { timeout: 5_000 });
+    consumer.emit("spawn");
+    producer.emit("error", Object.assign(new Error("spawn EMFILE"), { code: "EMFILE" }));
+    const result = await pending;
+
+    expect(result.success).toBe(false);
+    expect(result.terminationReason).toBe("spawn_error");
+    expect(Date.now() - startedAt).toBeLessThan(2_000);
+  });
+});

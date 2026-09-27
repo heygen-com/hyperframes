@@ -163,9 +163,12 @@ export async function runFfmpegPipeline(
   const deadlineAtMs = Date.now() + (opts?.timeout ?? DEFAULT_TIMEOUT);
   const producer = spawnFfmpeg(producerArgs);
   const consumer = spawnFfmpeg(consumerArgs);
-  // A consumer that exits early must not leave the producer blocked on a full pipe.
+  // Either side ending early, or failing to start, must release the other from the pipe.
   consumer.stdin?.on("error", () => {});
-  consumer.once("close", () => producer.stdout?.destroy());
+  for (const event of ["close", "error"] as const) {
+    consumer.once(event, () => producer.stdout?.destroy());
+    producer.once(event, () => consumer.stdin?.end());
+  }
   if (consumer.stdin) producer.stdout?.pipe(consumer.stdin);
   const outcomes = await Promise.all(
     [producer, consumer].map((child) =>

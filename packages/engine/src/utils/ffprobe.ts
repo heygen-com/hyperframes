@@ -189,6 +189,7 @@ export interface VideoMetadata {
   /** Color space info from the video stream. Null if ffprobe didn't report it. */
   colorSpace: VideoColorSpace | null;
   colorRange?: string;
+  pixelFormat?: string;
   /** Decoded frame count from the video stream's `nb_frames`. Omitted when the
    * container does not surface a reliable count (still images, malformed
    * streams, or muxes that require `-count_packets` to populate). Callers
@@ -791,6 +792,7 @@ export async function extractMediaMetadata(filePath: string): Promise<VideoMetad
       hasAlpha,
       colorSpace,
       colorRange: videoStream.color_range,
+      pixelFormat,
       frames,
     };
   })();
