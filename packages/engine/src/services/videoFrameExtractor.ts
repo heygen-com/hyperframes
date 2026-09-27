@@ -2338,8 +2338,7 @@ export class FrameLookupTable {
   }
 
   private refreshActiveSet(globalTime: number): void {
-    // Half-open window (exportClipWindow). Rendered times stay below the composition end, so the
-    // runtime's terminal hold (isClipVisibleAt) never applies here.
+    // Half-open exportClipWindow; rendered times stay below the composition end, so no terminal hold here.
     if (this.lastTime == null || globalTime < this.lastTime) {
       this.activeVideoIds.clear();
       this.startCursor = 0;
@@ -2425,7 +2424,6 @@ export class FrameLookupTable {
   }
 }
 
-/** `fps`: see FrameLookupTable. */
 export function createFrameLookupTable(
   videos: VideoElement[],
   extracted: ExtractedFrames[],
