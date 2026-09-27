@@ -1,4 +1,5 @@
 import { resolveTimelineMove, resolveTimelineResize } from "./timelineEditing";
+import { applyClipStartTrimDelta } from "./timelineGroupEditing";
 import type { TimelineElement } from "../store/playerStore";
 import {
   getTimelineInsertBoundaryBand,
@@ -337,16 +338,7 @@ export function computeResizePreview(
       const snappedDuration = Math.round((nextResize.duration + delta) * 1000) / 1000;
       if (target && snapped >= 0 && delta <= maxLeftDelta + 1e-6 && snappedDuration >= 0.05) {
         if (snapped !== nextResize.start) {
-          nextResize = {
-            ...nextResize,
-            start: snapped,
-            duration: snappedDuration,
-            playbackStart:
-              nextResize.playbackStart != null
-                ? Math.round(Math.max(0, nextResize.playbackStart - delta * playbackRate) * 1000) /
-                  1000
-                : undefined,
-          };
+          nextResize = applyClipStartTrimDelta({ ...nextResize, playbackRate }, -delta);
         }
         snap = target;
       }

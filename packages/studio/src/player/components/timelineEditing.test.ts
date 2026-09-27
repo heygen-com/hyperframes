@@ -5,6 +5,8 @@ import {
   buildTimelineElementAgentPrompt,
   buildTimelineAgentPrompt,
   clampTimelineGroupResizeDelta,
+  formatTimelineAttributeNumber,
+  formatTimelineMediaOffset,
   getTimelineEditCapabilities,
   hasPatchableTimelineTarget,
   resolveBlockedTimelineEditIntent,
@@ -365,6 +367,15 @@ describe("resolveTimelineGroupResize", () => {
         { start: 5.5, duration: 3.5, playbackStart: 3 },
       ],
     });
+  });
+
+  it("derives a slowed member's playback start from its rounded start", () => {
+    const [member] = resolveTimelineGroupResize(
+      [{ start: 2, duration: 3, playbackStart: 1, playbackRate: 0.8 }],
+      "start",
+      0.373,
+    ).members;
+    expect(member!.start - member!.playbackStart! / 0.8).toBeCloseTo(2 - 1 / 0.8, 9);
   });
 });
 
@@ -795,7 +806,7 @@ describe("resolveTimelineResize", () => {
         "start",
         0,
       ),
-    ).toEqual({ start: 0.8, duration: 3.2, playbackStart: 0 });
+    ).toEqual({ start: 0.8, duration: 3.2, playbackStart: expect.closeTo(0, 9) });
   });
 
   it("trims generic element start without media offset", () => {
@@ -830,6 +841,40 @@ describe("resolveTimelineResize", () => {
         -200,
       ),
     ).toEqual({ start: 0, duration: 4, playbackStart: undefined });
+  });
+
+  it("keeps a clip's media clock and end fixed across repeated head trims at any speed", () => {
+    const dragsPx = [37.3, -12.9, 81.7, -5.3];
+    for (const playbackRate of [0.25, 0.5, 0.8, 1, 1.25, 2]) {
+      let clip = { start: 2, duration: 6, playbackStart: 3 };
+      const clock = clip.start - clip.playbackStart / playbackRate;
+      const end = clip.start + clip.duration;
+      for (const clientX of dragsPx) {
+        const next = resolveTimelineResize(
+          {
+            ...clip,
+            originClientX: 0,
+            pixelsPerSecond: 100,
+            minStart: 0,
+            maxEnd: 20,
+            playbackRate,
+          },
+          "start",
+          clientX,
+        );
+        // Round-trip through the saved attributes, as a reload would.
+        const savedInPoint = formatTimelineMediaOffset(next.playbackStart!);
+        if (playbackRate === 1)
+          expect(savedInPoint).toBe(formatTimelineAttributeNumber(next.playbackStart!));
+        clip = {
+          start: Number(formatTimelineAttributeNumber(next.start)),
+          duration: Number(formatTimelineAttributeNumber(next.duration)),
+          playbackStart: Number(savedInPoint),
+        };
+        expect(clip.start - clip.playbackStart / playbackRate).toBeCloseTo(clock, 9);
+        expect(clip.start + clip.duration).toBeCloseTo(end, 9);
+      }
+    }
   });
 });
 

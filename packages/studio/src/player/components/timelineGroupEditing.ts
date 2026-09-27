@@ -33,7 +33,7 @@ interface TimelineStartTrimClip {
  * Delta bounds for trimming a clip's START edge (shared by single-clip and group
  * resize). Left-bounded by how far the start can move toward `minStart` and by the
  * media in-point (`playbackStart / playbackRate`); right-bounded by `minDuration`.
- * Returned deltas are unrounded — callers round with their own centisecond helper.
+ * Returned deltas are unrounded; applyClipStartTrimDelta does the rounding.
  */
 export function clipStartTrimDeltaBounds(
   clip: TimelineStartTrimClip,
@@ -50,21 +50,22 @@ export function clipStartTrimDeltaBounds(
 }
 
 /**
- * Apply a start-edge delta to one clip (unrounded): moves the start, shrinks the
- * duration by the same amount, and shifts the media in-point by the delta scaled to
- * the playback rate (clamped at 0).
+ * Apply a start-edge delta to one clip: rounds the start once, keeps the end fixed,
+ * and derives the media in-point from the rounded start (clamped at 0), so the media
+ * clock `start - playbackStart / playbackRate` survives any number of head trims.
  */
 export function applyClipStartTrimDelta(
   clip: TimelineStartTrimClip,
   delta: number,
 ): { start: number; duration: number; playbackStart?: number } {
   const playbackRate = resolveTimelinePlaybackRate(clip.playbackRate);
+  const start = roundTimelineTime(clip.start + delta);
   return {
-    start: clip.start + delta,
-    duration: clip.duration - delta,
+    start,
+    duration: roundTimelineTime(clip.start + clip.duration - start),
     playbackStart:
       clip.playbackStart != null
-        ? Math.max(0, clip.playbackStart + delta * playbackRate)
+        ? Math.max(0, clip.playbackStart + (start - clip.start) * playbackRate)
         : undefined,
   };
 }
@@ -149,13 +150,7 @@ export function resolveTimelineGroupResize(
         };
       }
 
-      const trimmed = applyClipStartTrimDelta(member, delta);
-      return {
-        start: roundTimelineTime(trimmed.start),
-        duration: roundTimelineTime(trimmed.duration),
-        playbackStart:
-          trimmed.playbackStart != null ? roundTimelineTime(trimmed.playbackStart) : undefined,
-      };
+      return applyClipStartTrimDelta(member, delta);
     }),
   };
 }

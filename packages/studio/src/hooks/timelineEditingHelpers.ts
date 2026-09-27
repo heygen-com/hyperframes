@@ -8,6 +8,7 @@ import {
 } from "../utils/sourcePatcher";
 import {
   formatTimelineAttributeNumber,
+  formatTimelineMediaOffset,
   type TimelineStackingReorderIntent,
 } from "../player/components/timelineEditing";
 import { getElementZIndex } from "../player/lib/layerOrdering";
@@ -279,7 +280,7 @@ export function buildTimelineResizeTimingPatch(
     patched = applyPatchByTarget(patched, target, {
       type: "attribute",
       property: pbs.attrName,
-      value: formatTimelineAttributeNumber(pbs.value),
+      value: formatTimelineMediaOffset(pbs.value),
     });
   }
   // Content-driven duration from the PATCHED SOURCE (raw data-duration) —
@@ -396,7 +397,7 @@ export async function persistTimelineBatchEdit(
   });
 }
 
-export { applyPatchByTarget, formatTimelineAttributeNumber };
+export { applyPatchByTarget, formatTimelineAttributeNumber, formatTimelineMediaOffset };
 
 export { patchDocumentRootDuration } from "./timelineEditingGsap";
 
