@@ -7,15 +7,15 @@
  * shared core `setAudioGroupAttribute` also uses.
  */
 
-import { useCallback, useRef } from "react";
+import { useCallback } from "react";
 import type { TimelineElement } from "../player";
 import {
   buildPatchTarget,
   findTimelineElementInIframe,
-  createLiveLanes,
   persistElementAttribute,
   readSavedAttribute,
 } from "./timelineEditingHelpers";
+import { useLiveLanes } from "./liveLanes";
 import type {
   MutableRef,
   UseTimelineElementVisibilityEditingInput,
@@ -119,15 +119,15 @@ export function useSetElementAttribute({
   ) => Promise<TimelineEditOutcome>;
   revertLive: (element: TimelineElement, attr: string) => void;
 } {
-  const liveLanes = useRef(createLiveLanes(() => projectIdRef.current));
+  const liveLanes = useLiveLanes(projectIdRef, activeCompPath);
   const setLive = useCallback(
     (element: TimelineElement, attr: string, value: string | null) => {
       const key = elementAttributeLiveKey(element, activeCompPath, attr);
       const target = findTimelineElementInIframe(previewIframeRef.current, element, activeCompPath);
-      liveLanes.current.preview(key, () => target?.getAttribute(attr) ?? null);
+      liveLanes.preview(key, () => target?.getAttribute(attr) ?? null);
       patchLiveElementAttribute(previewIframeRef.current, element, attr, value, activeCompPath);
     },
-    [previewIframeRef, activeCompPath],
+    [liveLanes, previewIframeRef, activeCompPath],
   );
   const laneApply = useCallback(
     (element: TimelineElement, attr: string) => ({
@@ -139,19 +139,19 @@ export function useSetElementAttribute({
   );
   const claimLive = useCallback(
     (element: TimelineElement, attr: string) =>
-      liveLanes.current.claim(
+      liveLanes.claim(
         elementAttributeLiveKey(element, activeCompPath, attr),
         laneApply(element, attr),
       ),
-    [laneApply, activeCompPath],
+    [liveLanes, laneApply, activeCompPath],
   );
   const revertLive = useCallback(
     (element: TimelineElement, attr: string) =>
-      liveLanes.current.revert(
+      liveLanes.revert(
         elementAttributeLiveKey(element, activeCompPath, attr),
         laneApply(element, attr),
       ),
-    [laneApply, activeCompPath],
+    [liveLanes, laneApply, activeCompPath],
   );
   const setQuiet = useCallback(
     async (

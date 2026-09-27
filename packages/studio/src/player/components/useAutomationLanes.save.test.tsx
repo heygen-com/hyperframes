@@ -34,6 +34,14 @@ const music: TimelineElement = {
 };
 
 const group = groupAutomationElement({ id: "hf-group", label: "Music", anchorKey: 0 }, 12);
+const BOTH_LANES = [
+  { lane: "clip", target: music, field: "automation" },
+  { lane: "group", target: group, field: "audioGroupAutomation" },
+] as const;
+const curve = (v: number): HfAutomation => ({
+  version: 1,
+  lanes: [{ target: "volume", points: [{ t: 0, v }] }],
+});
 
 afterEach(() => {
   document.body.innerHTML = "";
@@ -43,6 +51,8 @@ afterEach(() => {
 
 function mountLanes(target: TimelineElement, canEdit?: CanEdit, recording = false) {
   let projectId = "p1";
+  let composition = "index.html";
+  // Every file but the open one, by `${project}/${path}`.
   const files = new Map<string, string>();
   const isRecordingRef = { current: recording };
   let file = SOURCE;
@@ -56,10 +66,15 @@ function mountLanes(target: TimelineElement, canEdit?: CanEdit, recording = fals
       const n = ++reads;
       await held.get(n);
       if (broken.has(n)) throw new Error("offline");
-      const owner = /projects\/([^/]+)\//.exec(requestUrl(input))?.[1];
-      return jsonResponse({ content: owner && owner !== projectId ? files.get(owner) : file });
+      const [, owner, path] = /projects\/([^/]+)\/files\/([^?]+)/.exec(requestUrl(input)) ?? [];
+      const at = `${owner}/${decodeURIComponent(path ?? "")}`;
+      return jsonResponse({ content: at === `${projectId}/${composition}` ? file : files.get(at) });
     }),
   );
+  const put = (path: string, content: string) => {
+    if (path === composition) file = content;
+    else files.set(`${projectId}/${path}`, content);
+  };
   const holdRead = (n: number) => {
     let release = () => {};
     held.set(n, new Promise<void>((resolve) => (release = resolve)));
@@ -69,9 +84,7 @@ function mountLanes(target: TimelineElement, canEdit?: CanEdit, recording = fals
   document.body.append(iframe);
   iframe.contentDocument!.body.innerHTML = SOURCE;
   usePlayerStore.getState().setElements([{ ...music, audioGroup: "hf-group" }]);
-  const writeProjectFile = vi.fn(async (_path: string, content: string) => {
-    file = content;
-  });
+  const writeProjectFile = vi.fn(async (path: string, content: string) => put(path, content));
   const refresh = vi.fn(async () => {});
   const selection = { id: target.id };
   const previewIframeRef = { current: iframe };
@@ -84,7 +97,7 @@ function mountLanes(target: TimelineElement, canEdit?: CanEdit, recording = fals
   function Host() {
     const editing = useTimelineEditing({
       projectId,
-      activeCompPath: "index.html",
+      activeCompPath: composition,
       timelineElements: [music],
       showToast: () => {},
       writeProjectFile,
@@ -143,13 +156,24 @@ function mountLanes(target: TimelineElement, canEdit?: CanEdit, recording = fals
     failRead: (n: number) => broken.add(n),
     // A different project whose file, preview and store hold the same clip, unedited.
     switchProject: (next: string, content = SOURCE) => {
-      files.set(projectId, file);
+      files.set(`${projectId}/${composition}`, file);
       projectId = next;
-      file = files.get(next) ?? content;
+      file = files.get(`${next}/${composition}`) ?? content;
       iframe.contentDocument!.body.innerHTML = SOURCE;
       usePlayerStore.getState().setElements([{ ...music, audioGroup: "hf-group" }]);
       act(() => root.render(<Host />));
     },
+    // Another composition of the same project, loaded into the preview with `stored` in the store.
+    switchComposition: (next: string, content: string, stored: TimelineElement) => {
+      files.set(`${projectId}/${composition}`, file);
+      composition = next;
+      file = files.get(`${projectId}/${next}`) ?? content;
+      iframe.contentDocument!.body.innerHTML = file;
+      usePlayerStore.getState().setElements([stored]);
+      act(() => root.render(<Host />));
+    },
+    fileAt: (path: string) => (path === composition ? file : files.get(`${projectId}/${path}`)),
+    put,
     setRecording: (next: boolean) => (isRecordingRef.current = next),
     holdRead,
   };
@@ -1065,4 +1089,62 @@ describe("useAutomationLanes saves report what happened", () => {
     ).toBe(false);
     expect(usePlayerStore.getState().elements[0]?.audioGroupAutomation).toBeUndefined();
   });
+
+  it.each(
+    BOTH_LANES.flatMap((lane) => (["write", "read"] as const).map((held) => ({ ...lane, held }))),
+  )(
+    "leaves another composition alone when a $lane save made before switching to it lands after (held: $held)",
+    async ({ target, field, held }) => {
+      const h = mountLanes(target);
+      const doc = new DOMParser().parseFromString(SOURCE, "text/html");
+      const old = serializeAutomation(curve(0.2));
+      for (const id of ["music", "hf-group"])
+        doc.getElementById(id)!.setAttribute("data-automation", old);
+      const other = doc.body.innerHTML;
+      let land = () => {};
+      if (held === "write") {
+        h.writeProjectFile.mockImplementationOnce(
+          (path, content) =>
+            new Promise<void>((resolve) => {
+              land = () => {
+                h.put(path, content);
+                resolve();
+              };
+            }),
+        );
+      } else {
+        land = h.holdRead(1);
+      }
+      h.preview(curve(0.5));
+      const saving = h.startCommit(curve(0.5));
+      await act(() =>
+        vi.waitFor(() =>
+          held === "write"
+            ? expect(h.writeProjectFile).toHaveBeenCalledTimes(1)
+            : expect(h.reads()).toBe(1),
+        ),
+      );
+      h.switchComposition("other.html", other, {
+        ...music,
+        key: "other.html#music",
+        sourceFile: "other.html",
+        audioGroup: "hf-group",
+        automation: old,
+        audioGroupAutomation: old,
+      });
+      land();
+      await act(async () => {
+        await saving;
+      });
+      const inA = new DOMParser().parseFromString(h.fileAt("index.html") ?? "", "text/html");
+      expect(inA.getElementById(target.id)?.getAttribute("data-automation")).toBe(
+        serializeAutomation(curve(0.5)),
+      );
+      expect(h.file()).toBe(other);
+      expect(
+        h.iframe.contentDocument!.getElementById(target.id)?.getAttribute("data-automation"),
+      ).toBe(old);
+      expect(usePlayerStore.getState().elements[0]?.[field]).toBe(old);
+    },
+  );
 });

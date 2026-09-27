@@ -1,4 +1,4 @@
-import { useCallback, useRef } from "react";
+import { useCallback } from "react";
 import {
   failedTimelineSave,
   projectForTimelineSave,
@@ -12,10 +12,10 @@ import { invalidateGroupInfoCache } from "../player/lib/timelineGroupInfo";
 import {
   buildPatchTarget,
   persistElementAttribute,
-  createLiveLanes,
   readSavedAttribute,
   type RecordEditInput,
 } from "./timelineEditingHelpers";
+import { useLiveLanes } from "./liveLanes";
 import type {
   MutableRef,
   UseTimelineElementVisibilityEditingInput,
@@ -243,19 +243,19 @@ export function useSetAudioGroupAttribute({
   ) => Promise<TimelineEditOutcome>;
   revertLive: (groupId: string, attr: string) => void;
 } {
-  const liveLanes = useRef(createLiveLanes(() => projectIdRef.current));
+  const liveLanes = useLiveLanes(projectIdRef, activeCompPath);
   const setLive = useCallback(
     (groupId: string, attr: string, value: string | null) => {
       const key = audioGroupAttributeLiveKey(groupId, attr);
       const target = previewIframeRef.current?.contentDocument?.getElementById(groupId);
-      liveLanes.current.preview(key, () => target?.getAttribute(attr) ?? null);
+      liveLanes.preview(key, () => target?.getAttribute(attr) ?? null);
       patchLiveGroupAttribute(previewIframeRef.current, groupId, attr, value);
       // Live too, not just on commit: a fader drag is `setLive` per frame and
       // `setQuiet` once on release, so without this the strip's own readout
       // fights the drag.
       syncStoredGroupAttribute(groupId, attr, value);
     },
-    [previewIframeRef],
+    [liveLanes, previewIframeRef],
   );
   const laneApply = useCallback(
     (groupId: string, attr: string) => ({
@@ -267,13 +267,13 @@ export function useSetAudioGroupAttribute({
   );
   const claimLive = useCallback(
     (groupId: string, attr: string) =>
-      liveLanes.current.claim(audioGroupAttributeLiveKey(groupId, attr), laneApply(groupId, attr)),
-    [laneApply],
+      liveLanes.claim(audioGroupAttributeLiveKey(groupId, attr), laneApply(groupId, attr)),
+    [liveLanes, laneApply],
   );
   const revertLive = useCallback(
     (groupId: string, attr: string) =>
-      liveLanes.current.revert(audioGroupAttributeLiveKey(groupId, attr), laneApply(groupId, attr)),
-    [laneApply],
+      liveLanes.revert(audioGroupAttributeLiveKey(groupId, attr), laneApply(groupId, attr)),
+    [liveLanes, laneApply],
   );
   const setQuiet = useCallback(
     async (
