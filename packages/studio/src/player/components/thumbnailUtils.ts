@@ -1,7 +1,5 @@
 import { buildProjectApiPath } from "../../utils/projectRouting";
 import { MAX_VISIBLE_THUMBNAIL_FRAMES } from "../lib/timelineViewportBudgets";
-/** Rendered height of a timeline-clip thumbnail strip, in CSS px. */
-export const THUMBNAIL_CLIP_HEIGHT = 66;
 
 export interface ThumbnailStripLayout {
   /** Width of a single tile, in CSS px. */
@@ -63,19 +61,20 @@ export function probeImageAspect(
 }
 
 /**
- * Compute the film-strip tile layout for a clip thumbnail: fixed-height tiles
- * sized by the media's aspect ratio, repeated to fill the clip width.
- * Degenerate aspects (0, negative, NaN, Infinity) fall back to 16:9.
+ * Compute the film-strip tile layout for a clip thumbnail: tiles as tall as
+ * the measured strip, sized by the media's aspect ratio, repeated to fill the
+ * clip width. Degenerate aspects (0, negative, NaN, Infinity) fall back to 16:9.
  */
 export function computeThumbnailStrip(
   containerWidth: number,
   aspect: number,
-  clipHeight: number = THUMBNAIL_CLIP_HEIGHT,
+  clipHeight: number,
   minFrameWidth = 1,
 ): ThumbnailStripLayout {
   const safeAspect = Number.isFinite(aspect) && aspect > 0 ? aspect : 16 / 9;
   const frameW = Math.max(minFrameWidth, Math.round(clipHeight * safeAspect));
-  const frameCount = containerWidth > 0 ? Math.max(1, Math.ceil(containerWidth / frameW)) : 1;
+  const measured = containerWidth > 0 && clipHeight > 0;
+  const frameCount = measured ? Math.max(1, Math.ceil(containerWidth / frameW)) : 1;
   return { frameW, frameCount };
 }
 
