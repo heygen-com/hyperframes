@@ -1560,6 +1560,61 @@ describe("what the preview loaded", () => {
     },
   );
 
+  it.skipIf(process.platform === "win32")(
+    "counts creating the missing target of a symlinked asset the preview asked for",
+    async () => {
+      const projectDir = createProjectDir();
+      writeFileSync(join(projectDir, "index.html"), "<html><body></body></html>");
+      mkdirSync(join(projectDir, "assets"));
+      symlinkSync("actual.css", join(projectDir, "assets", "alias.css"));
+      const app = new Hono();
+      registerPreviewRoutes(app, createAdapter(projectDir, { bundle: async () => null }));
+      expect((await app.request("http://localhost/projects/demo/preview")).status).toBe(200);
+      const alias = await app.request("http://localhost/projects/demo/preview/assets/alias.css");
+      expect(alias.status).toBe(404);
+
+      expect(affectsPreview(projectDir, "assets/actual.css")).toBe(true);
+    },
+  );
+
+  it.skipIf(process.platform === "win32")(
+    "counts an edit to the new target of a symlinked asset retargeted after it loaded",
+    async () => {
+      const projectDir = createProjectDir();
+      writeFileSync(join(projectDir, "index.html"), "<html><body></body></html>");
+      mkdirSync(join(projectDir, "assets"));
+      writeFileSync(join(projectDir, "assets", "first.css"), "a {}");
+      writeFileSync(join(projectDir, "assets", "second.css"), "b {}");
+      symlinkSync("first.css", join(projectDir, "assets", "alias.css"));
+      const app = new Hono();
+      registerPreviewRoutes(app, createAdapter(projectDir, { bundle: async () => null }));
+      const aliasUrl = "http://localhost/projects/demo/preview/assets/alias.css";
+      expect((await app.request("http://localhost/projects/demo/preview")).status).toBe(200);
+      expect((await app.request(aliasUrl)).status).toBe(200);
+
+      rmSync(join(projectDir, "assets", "alias.css"));
+      symlinkSync("second.css", join(projectDir, "assets", "alias.css"));
+      expect(affectsPreview(projectDir, "assets/alias.css")).toBe(true);
+      expect((await app.request(aliasUrl)).status).toBe(200);
+
+      expect(affectsPreview(projectDir, "assets/second.css")).toBe(true);
+    },
+  );
+
+  it.skipIf(process.platform === "win32")(
+    "matches a project recorded by its real folder and watched through a link to it",
+    () => {
+      const realDir = realpathSync(createProjectDir());
+      const linkDir = join(createProjectDir(), "linked-project");
+      symlinkSync(realDir, linkDir);
+      recordPreviewRead(realDir, "style.css");
+      recordPreviewBuilt(realDir);
+
+      expect(affectsPreview(linkDir, join(linkDir, "style.css"))).toBe(true);
+      expect(affectsPreview(linkDir, join(linkDir, "notes.md"))).toBe(false);
+    },
+  );
+
   it("records the folders of a read in a project at the filesystem root", () => {
     const root = parse(process.cwd()).root;
     recordPreviewRead(root, "media/clip.png");

@@ -1,6 +1,7 @@
-import { dirname, resolve, sep } from "node:path";
+import { readlinkSync } from "node:fs";
+import { dirname, join, relative, resolve } from "node:path";
 import { STUDIO_SIGNATURE_MANIFEST_PATHS } from "./projectSignature.js";
-import { pinWithinProject } from "./safePath.js";
+import { realFilePath } from "./safePath.js";
 
 const ALWAYS_AFFECTS = ["hyperframes.json", ...STUDIO_SIGNATURE_MANIFEST_PATHS];
 const REFERENCE =
@@ -13,20 +14,34 @@ const pathKey =
 // ponytail: grows until restart, so a file a film stopped using still reloads; reset per build if that matters.
 const readsByProject = new Map<string, Set<string>>();
 const builtProjects = new Set<string>();
+const projectKey = (projectDir: string) => pathKey(realFilePath(resolve(projectDir)));
+const inRealProject = (projectDir: string, path: string) =>
+  join(realFilePath(resolve(projectDir)), relative(resolve(projectDir), resolve(projectDir, path)));
 
+function linkTarget(path: string): string {
+  for (let hops = 0; hops < 40; hops++) {
+    try {
+      path = resolve(realFilePath(dirname(path)), readlinkSync(path));
+    } catch {
+      break;
+    }
+  }
+  return realFilePath(path);
+}
+
+// A link's target can be created or retargeted later, so every read resolves it again.
 export function recordPreviewRead(projectDir: string, filePath: string): void {
-  const key = pathKey(projectDir);
+  const key = projectKey(projectDir);
   let reads = readsByProject.get(key);
   if (!reads) readsByProject.set(key, (reads = new Set()));
-  const lexical = resolve(projectDir, filePath);
-  if (reads.has(pathKey(lexical))) return;
-  for (const read of [lexical, pinWithinProject(projectDir, filePath)]) {
-    if (!read) continue;
-    for (let path = pathKey(read); !reads.has(path); path = dirname(path)) reads.add(path);
+  const read = inRealProject(projectDir, filePath);
+  for (const found of [read, linkTarget(read)]) {
+    for (let path = pathKey(found); !reads.has(path); path = dirname(path)) reads.add(path);
   }
 }
 
 export function recordPreviewReferences(projectDir: string, html: string): void {
+  const named = new Set<string>();
   for (const match of html.matchAll(REFERENCE)) {
     const url = (match[1] ?? match[2] ?? match[3] ?? match[4] ?? match[5] ?? "").trim();
     if (!url || /^(?:[a-z][a-z0-9+.-]*:|[/#])/i.test(url)) continue;
@@ -37,21 +52,19 @@ export function recordPreviewReferences(projectDir: string, html: string): void 
     } catch {
       // A malformed escape names the file literally.
     }
-    if (decoded) recordPreviewRead(projectDir, decoded);
+    if (decoded) named.add(decoded);
   }
+  for (const path of named) recordPreviewRead(projectDir, path);
 }
 
 export function recordPreviewBuilt(projectDir: string): void {
-  builtProjects.add(pathKey(projectDir));
+  for (const path of ALWAYS_AFFECTS) recordPreviewRead(projectDir, path);
+  builtProjects.add(projectKey(projectDir));
 }
 
 // Every write counts until this process built the preview; a folder event counts when a loaded file is inside it.
 export function affectsPreview(projectDir: string, changedPath: string): boolean {
-  const key = pathKey(projectDir);
+  const key = projectKey(projectDir);
   if (!builtProjects.has(key)) return true;
-  const changed = pathKey(resolve(projectDir, changedPath));
-  if (readsByProject.get(key)?.has(changed)) return true;
-  return ALWAYS_AFFECTS.map((path) => pathKey(resolve(projectDir, path))).some(
-    (path) => path === changed || path.startsWith(changed + sep),
-  );
+  return readsByProject.get(key)?.has(pathKey(inRealProject(projectDir, changedPath))) ?? false;
 }
