@@ -76,7 +76,6 @@ export interface ProjectHistoryOptions {
   ownerWaitMs?: number;
   /** A CLI turn's window from an earlier open: writes since, within its idle limit, become the entry with its id. */
   closedWindow?: ClosedWindow;
-  /** Whose finished changes Cmd+Z and Shift+Cmd+Z step over: the caller's own (default), or everyone's, newest first. */
   undoScope?: "own" | "everyone";
 }
 
