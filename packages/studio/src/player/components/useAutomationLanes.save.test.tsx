@@ -164,6 +164,9 @@ function mountLanes(target: TimelineElement, canEdit?: CanEdit, recording = fals
             onSetElementAttributeQuiet: editing.setElementFxAttribute.setQuiet,
             onSetAudioGroupAttributeLive: editing.setAudioGroupAttribute.setLive,
             onSetAudioGroupAttributeQuiet: editing.setAudioGroupAttribute.setQuiet,
+            // As useTimelineEditCallbacks maps them.
+            onRevertElementAttributeLive: editing.setElementFxAttribute.revertLive,
+            onRevertAudioGroupAttributeLive: editing.setAudioGroupAttribute.revertLive,
           }}
         >
           <Probe />
@@ -1363,4 +1366,41 @@ describe("useAutomationLanes saves report what happened", () => {
       expectEverywhere(h, target, field, panel);
     },
   );
+
+  it("reads a failed group save back from the file it started in after a trip to another composition", async () => {
+    const h = mountLanes(group);
+    expect(await h.commit(curve(0.2))).toEqual({ status: "saved" });
+    const kept = serializeAutomation(curve(0.2));
+    const stray = serializeAutomation(curve(0.9));
+    // B declares the same group inside a sub-composition file, which holds 0.9.
+    h.put("sub.html", `<hf-audio-group id="hf-group" data-automation='${stray}'></hf-audio-group>`);
+    const other = `<div data-composition-id="sub" data-composition-file="sub.html">${SOURCE}</div>`;
+    let failWrite = () => {};
+    h.writeProjectFile.mockImplementationOnce(
+      () =>
+        new Promise<void>((_resolve, reject) => {
+          failWrite = () => reject(new Error("offline"));
+        }),
+    );
+    const saving = h.startCommit(curve(0.5));
+    await act(() => vi.waitFor(() => expect(h.writeProjectFile).toHaveBeenCalledTimes(2)));
+    h.switchComposition("other.html", other, {
+      ...music,
+      key: "other.html#music",
+      audioGroup: "hf-group",
+    });
+    const releaseReadBack = h.holdRead(h.reads() + 1);
+    failWrite();
+    await act(() => vi.waitFor(() => expect(h.reads()).toBe(3)));
+    h.switchComposition("index.html", SOURCE, {
+      ...music,
+      audioGroup: "hf-group",
+      audioGroupAutomation: kept,
+    });
+    releaseReadBack();
+    await act(async () => {
+      await saving;
+    });
+    expectEverywhere(h, group, "audioGroupAutomation", kept);
+  });
 });

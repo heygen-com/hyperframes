@@ -126,7 +126,10 @@ export function TimelineClipFades({ el, pps, widthPx, showHandles }: TimelineCli
 
   /** Puts the live document back where the file has it and drops the draft. */
   const revertGesture = (g: Gesture) => {
-    if (g.moved) onRevertElementAttributeLive?.(el, attrFor(g.edge));
+    if (g.moved) {
+      onSetElementAttributeLive?.(el, attrFor(g.edge), attrText(g.originSeconds));
+      onRevertElementAttributeLive?.(el, attrFor(g.edge));
+    }
     setDraft(null);
   };
 

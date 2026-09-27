@@ -159,14 +159,21 @@ describe("TimelineClipFades", () => {
   });
 
   it("puts the live value back and writes nothing when the gesture is cancelled", () => {
-    const { host, root, onRevertElementAttributeLive, onSetElementAttributeQuiet } = render(clip);
+    const {
+      host,
+      root,
+      onSetElementAttributeLive,
+      onRevertElementAttributeLive,
+      onSetElementAttributeQuiet,
+    } = render(clip);
     const handle = host.querySelector<HTMLElement>('[data-testid="clip-fade-handle-in"]');
     if (!handle) throw new Error("expected a fade-in handle");
     armCapture(handle);
     act(() => handle.dispatchEvent(pointer("pointerdown", 100)));
     act(() => handle.dispatchEvent(pointer("pointermove", 300)));
     act(() => handle.dispatchEvent(pointer("pointercancel", 300)));
-    // Through the lanes' revert, so no value from before the gesture outlives it.
+    // Written back live for a host without the revert, then ended through the lanes' revert.
+    expect(onSetElementAttributeLive).toHaveBeenLastCalledWith(clip, "data-fade-in", "1");
     expect(onRevertElementAttributeLive).toHaveBeenCalledWith(clip, "data-fade-in");
     expect(onSetElementAttributeQuiet).not.toHaveBeenCalled();
     act(() => root.unmount());

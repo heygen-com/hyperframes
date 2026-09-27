@@ -281,13 +281,9 @@ export function useSetAudioGroupAttribute({
     [previewIframeRef],
   );
   const claimLive = useCallback(
-    (groupId: string, attr: string) =>
-      liveLanes.claim(
-        audioGroupAttributeLiveKey(groupId, attr),
-        laneApply(groupId, attr),
-        groupLiveSource(previewIframeRef.current, groupId, activeCompPath, attr),
-      ),
-    [liveLanes, laneApply, previewIframeRef, activeCompPath],
+    (groupId: string, attr: string, source: LiveLaneSource) =>
+      liveLanes.claim(audioGroupAttributeLiveKey(groupId, attr), laneApply(groupId, attr), source),
+    [liveLanes, laneApply],
   );
   const revertLive = useCallback(
     (groupId: string, attr: string) =>
@@ -305,15 +301,11 @@ export function useSetAudioGroupAttribute({
       const pid = projectForTimelineSave(isRecordingRef?.current, project, showToast);
       // Settles on what the file holds, so overlapping saves that fail cannot leave
       // the preview or the store on a value that never landed.
-      const live = claimLive(groupId, attr);
+      const source = groupLiveSource(previewIframeRef.current, groupId, activeCompPath, attr);
+      const live = claimLive(groupId, attr, source);
       const unsaved = async (outcome: TimelineEditOutcome): Promise<TimelineEditOutcome> => {
-        const { targetPath, patchTarget } = groupSaveTarget(
-          previewIframeRef.current,
-          groupId,
-          activeCompPath,
-        );
         live.settle(
-          await readSavedAttribute(project, targetPath, patchTarget, attr, writeProjectFile),
+          await readSavedAttribute(project, source.path, source.target, attr, writeProjectFile),
         );
         return outcome;
       };
