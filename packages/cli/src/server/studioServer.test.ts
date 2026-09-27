@@ -671,6 +671,27 @@ describe("Studio file-change SSE", () => {
   const encodedVersion = (content: string): string =>
     fileContentVersion(content).replaceAll('"', '\\"');
 
+  it("does not deliver report or temporary-file changes, but delivers the final source save", async () => {
+    const projectDir = tmpProject();
+    writeFileSync(join(projectDir, "index.html"), "<html>before</html>");
+    writeFileSync(
+      join(projectDir, "hyperframes.json"),
+      JSON.stringify({ preview: { watchIgnore: ["docs"] } }),
+    );
+    server = createStudioServer({ projectDir });
+    const streams = await subscribe(2);
+    mockWatcher.emit("change", "change", "docs/report.json");
+    mockWatcher.emit("change", "rename", "index.html.tmp.97896.1d3e1712ad2c");
+    await new Promise((resolve) => setTimeout(resolve, 60));
+    writeFileSync(join(projectDir, "index.html"), "<html>after</html>");
+    mockWatcher.emit("change", "rename", "index.html");
+    for (const payload of await Promise.all(streams.map(nextEvent))) {
+      expect(payload).toContain('"path":"index.html"');
+      expect(payload).not.toContain("report.json");
+      expect(payload).not.toContain(".tmp");
+    }
+  });
+
   it("labels a Studio write for every open subscriber, not just the first", async () => {
     const projectDir = tmpProject();
     writeFileSync(join(projectDir, "index.html"), "<html>before</html>");

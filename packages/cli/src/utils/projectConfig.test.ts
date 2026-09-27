@@ -50,6 +50,23 @@ describe("projectConfig", () => {
     });
   });
 
+  it("preserves preview watch exclusions through config writes and authoring updates", () => {
+    const dir = tmp();
+    try {
+      writeProjectConfig(dir, {
+        ...DEFAULT_PROJECT_CONFIG,
+        preview: { watchIgnore: ["./docs/", "reports/check.json"] },
+      });
+      expect(readProjectConfig(dir)?.preview).toEqual({
+        watchIgnore: ["docs", "reports/check.json"],
+      });
+      seedProjectAuthoringSkill(dir, "music-to-video");
+      expect(readProjectConfig(dir)?.preview?.watchIgnore).toEqual(["docs", "reports/check.json"]);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
   describe("normalizeConfig", () => {
     it("fills in defaults for missing fields", () => {
       const result = normalizeConfig({ registry: "https://alt.example.com" });

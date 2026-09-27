@@ -45,6 +45,7 @@ import {
   getMimeType,
   affectsProjectSignature,
   compositionsAffectedBy,
+  shouldReloadPreview,
   type PreviewApiAdapter,
   PREVIEW_BUNDLE_OPTIONS,
   createPreviewDocumentStore,
@@ -896,7 +897,9 @@ export function createStudioServer(options: StudioServerOptions): StudioServer {
       // Re-applied here because the watcher now also emits the signature
       // manifest files, which must not trigger a browser reload.
       const wrappedListener = (changedPath: string) => {
-        if (shouldWatchProjectFile(changedPath)) listener(changedPath);
+        if (shouldWatchProjectFile(changedPath) && shouldReloadPreview(projectDir, changedPath)) {
+          listener(changedPath);
+        }
       };
       watcher.addListener(wrappedListener);
       stream.onAbort(() => watcher.removeListener(wrappedListener));
