@@ -2,7 +2,8 @@ import { resolve } from "node:path";
 import { STUDIO_SIGNATURE_MANIFEST_PATHS } from "./projectSignature.js";
 
 const ALWAYS_AFFECTS = ["hyperframes.json", ...STUDIO_SIGNATURE_MANIFEST_PATHS];
-const REFERENCE = /\b(?:src|href|poster|data-composition-src)\s*=\s*(["'])(.*?)\1|url\(\s*(["']?)([^"')]+)\3\s*\)/gi;
+const REFERENCE =
+  /\b(?:src|href|poster|data-composition-src)\s*=\s*(["'])(.*?)\1|url\(\s*(["']?)([^"')]+)\3\s*\)/gi;
 // macOS and Windows volumes ignore letter case by default, so it is not part of a path's identity there.
 const pathKey =
   process.platform === "darwin" || process.platform === "win32"
