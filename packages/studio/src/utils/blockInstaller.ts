@@ -9,7 +9,6 @@ import { collectHtmlIds } from "./studioHelpers";
 import { generateId } from "./generateId";
 import { formatTimelineAttributeNumber } from "../player/components/timelineEditing";
 import { saveProjectFilesWithHistory } from "./studioFileHistory";
-import type { EditHistoryKind } from "./editHistory";
 import { extendRootDurationInSource } from "./rootDuration";
 import { deriveTimelineStoreKeyForDomId } from "../player/lib/timelineElementHelpers";
 
@@ -41,7 +40,6 @@ interface AddBlockOptions {
   writeProjectFile: (path: string, content: string) => Promise<void>;
   recordEdit: (entry: {
     label: string;
-    kind: EditHistoryKind;
     coalesceKey?: string;
     files: Record<string, { before: string; after: string }>;
   }) => Promise<void>;
@@ -234,7 +232,6 @@ export async function addBlockToProject(
     await saveProjectFilesWithHistory({
       projectId,
       label: `Add ${isBlock ? "block" : "component"}: ${block.title}`,
-      kind: "timeline",
       files: { [targetPath]: patchedContent },
       readFile: async () => originalContent,
       writeFile: writeProjectFile,

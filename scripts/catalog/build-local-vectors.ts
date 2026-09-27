@@ -3,7 +3,7 @@
 /**
  * Embed the catalog with the on-device model so local search can rank by meaning.
  *
- * A second vector set, not a replacement. The hosted vectors are 1536-dimension
+ * A second vector set, not a replacement. The hosted vectors are 3072-dimension
  * and measured; these are 384-dimension and free, and the two are not
  * interchangeable because vectors from different models cannot be compared.
  *

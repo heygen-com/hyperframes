@@ -1,6 +1,8 @@
 import { useEffect, useMemo, useRef, useState, useCallback } from "react";
 import type { GsapAnimation, GsapKeyframesData } from "@hyperframes/core/gsap-parser";
 import { usePlayerStore } from "../player/store/playerStore";
+import type { DomEditSelection } from "../components/editor/domEditingTypes";
+import { findPreviewNode } from "../components/editor/domEditingElement";
 import { readRuntimeKeyframes, scanAllRuntimeKeyframes } from "./gsapRuntimeBridge";
 import {
   clearKeyframeCacheForElement,
@@ -73,7 +75,7 @@ export function getAnimationsForElement(
 export function useGsapAnimationsForElement(
   projectId: string | null,
   sourceFile: string,
-  target: GsapElementTarget | null,
+  target: DomEditSelection | null,
   version: number,
   iframeRef?: React.RefObject<HTMLIFrameElement | null>,
 ): {
@@ -157,24 +159,14 @@ export function useGsapAnimationsForElement(
     // gsap.from(".dot", {stagger})) attribute to every matching element, not
     // just the one whose exact selector equals the tween's. `version` re-runs
     // this after composition reloads.
-    let element: Element | null = null;
-    const doc = iframeRef?.current?.contentDocument;
-    if (doc) {
-      try {
-        element =
-          (targetId ? doc.getElementById(targetId) : null) ??
-          (targetSelector ? doc.querySelector(targetSelector) : null);
-      } catch {
-        element = null;
-      }
-    }
+    const element = target ? findPreviewNode(iframeRef?.current?.contentDocument, target) : null;
     return getAnimationsForElement(
       allAnimations,
       { id: targetId, selector: targetSelector },
       element,
     );
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [allAnimations, targetId, targetSelector, version, iframeRef]);
+  }, [allAnimations, target, version, iframeRef]);
 
   // fallow-ignore-next-line complexity
   const animations = useMemo(() => {

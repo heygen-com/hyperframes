@@ -7,6 +7,8 @@ import { CompositionThumbnail, VideoThumbnail } from "../player";
 import { AudioWaveform } from "../player/components/AudioWaveform";
 import type { TimelineClipRenderContext } from "../player/components/TimelineTypes";
 import { usePlayerStore, type TimelineElement } from "../player/store/playerStore";
+import { buildCompositionThumbnailUrl } from "../player/components/CompositionThumbnail";
+import { compositionCardThumbnailUrl } from "../components/sidebar/CompositionsTab";
 import { normalizeCompositionSrc } from "./useRenderClipContent";
 import { useRenderClipContent } from "./useRenderClipContent";
 
@@ -316,4 +318,31 @@ describe("useRenderClipContent", () => {
       });
     }
   });
+
+  it.each(["compositions/scene-0.html", "compositions/scene [v2].html", "compositions/100%.html"])(
+    "asks for the same thumbnail as the card of %s, so one render serves both",
+    (compositionSrc) => {
+      usePlayerStore.setState({
+        thumbnailMode: "adaptive",
+        thumbnailRevisions: { [compositionSrc]: 3 },
+      });
+
+      const content = renderClipContent({
+        id: "scene-0",
+        tag: "div",
+        start: 10,
+        duration: 5,
+        track: 0,
+        compositionSrc,
+      });
+
+      expect(isValidElement(content)).toBe(true);
+      if (!isValidElement(content)) return;
+      const clipUrl = buildCompositionThumbnailUrl({
+        ...(content.props as Parameters<typeof buildCompositionThumbnailUrl>[0]),
+        origin: window.location.origin,
+      });
+      expect(clipUrl).toBe(compositionCardThumbnailUrl("my-project", compositionSrc, 3));
+    },
+  );
 });

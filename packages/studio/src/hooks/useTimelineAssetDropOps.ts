@@ -166,7 +166,6 @@ export function useTimelineAssetDropOps({
         await saveProjectFilesWithHistory({
           projectId: pid,
           label: "Add timeline asset",
-          kind: "timeline",
           files: { [targetPath]: patchedContent },
           readFile: async () => originalContent,
           writeFile: writeProjectFile,

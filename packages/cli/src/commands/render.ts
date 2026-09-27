@@ -1038,7 +1038,8 @@ async function executeLocalRender(
 
   const startTime = Date.now();
   const logger = createRenderTelemetryLogger(
-    producer.createConsoleLogger?.(options.debug ? "debug" : "info") ?? createNoopProducerLogger(),
+    producer.createConsoleLogger?.(options.debug ? "debug" : options.quiet ? "warn" : "info") ??
+      createNoopProducerLogger(),
   );
 
   const engineConfig = producer.resolveConfig({

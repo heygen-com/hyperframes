@@ -1098,6 +1098,119 @@ describe("layout-audit.browser coordinate-frame findings", () => {
     expect(issues.find((issue) => issue.selector === "#bleed")).toMatchObject({ severity: "info" });
   });
 
+  describe("canvas_content_at_edge", () => {
+    // One grey RGBA pixel per entry: a 1px-thick band, read the same along every edge.
+    function edgeLine(levels: number[]): Uint8ClampedArray {
+      return new Uint8ClampedArray(levels.flatMap((level) => [level, level, level, 255]));
+    }
+
+    // Serves any requested band: the pattern runs along the edge (padded with its last pixel),
+    // painted into every column of the band's thickness, or only `inkAcross` when given.
+    // `inkAt(sx, sy)` limits the ink to the band drawn from that source origin.
+    function stubEdgeReads(
+      line: Uint8ClampedArray,
+      inkAcross?: number,
+      inkAt?: (sx: number, sy: number) => boolean,
+    ): ReturnType<typeof vi.fn> {
+      let origin: [number, number] = [0, 0];
+      const drawImage = vi.fn((_source: unknown, sx: number, sy: number) => {
+        origin = [sx, sy];
+      });
+      const pixels = line.length / 4;
+      const getContextSpy = vi.spyOn(HTMLCanvasElement.prototype, "getContext") as unknown as {
+        mockReturnValue(value: CanvasRenderingContext2D): void;
+      };
+      getContextSpy.mockReturnValue({
+        drawImage,
+        getImageData: (_x: number, _y: number, width: number, height: number) => {
+          const vertical = height >= width;
+          const data = new Uint8ClampedArray(width * height * 4);
+          if (inkAt && !inkAt(...origin)) return { data };
+          for (let y = 0; y < height; y++) {
+            for (let x = 0; x < width; x++) {
+              const along = vertical ? y : x;
+              const across = vertical ? x : y;
+              if (inkAcross !== undefined && across !== inkAcross) continue;
+              const source = 4 * Math.min(along, pixels - 1);
+              data.set(line.subarray(source, source + 4), 4 * (y * width + x));
+            }
+          }
+          return { data };
+        },
+      } as unknown as CanvasRenderingContext2D);
+      return drawImage;
+    }
+
+    function mountCanvas(canvasRect: DOMRect, attributes = ""): void {
+      document.body.innerHTML = `
+        <div id="root" data-composition-id="main" data-width="1920" data-height="1080">
+          <canvas id="art" width="1920" height="1080" ${attributes}></canvas>
+        </div>
+      `;
+      installGeometry({
+        root: rect({ left: 0, top: 0, width: 1920, height: 1080 }),
+        art: canvasRect,
+      });
+      installAuditScript();
+    }
+
+    const FULL_FRAME = rect({ left: 0, top: 0, width: 1920, height: 1080 });
+    // Dark ground crossed by two glyph strokes, as a headline cut by the frame edge reads.
+    const CUT_TEXT = edgeLine([0, 0, 0, 0, 200, 200, 200, 0, 0, 0, 220, 220, 0, 0, 0, 0]);
+
+    it("warns when drawn text crosses the frame edge", () => {
+      stubEdgeReads(CUT_TEXT);
+      mountCanvas(FULL_FRAME);
+
+      const issues = runAudit().filter((issue) => issue.code === "canvas_content_at_edge");
+      expect(issues).toHaveLength(1);
+      expect(issues[0]).toMatchObject({
+        selector: "#art",
+        message: "Canvas content touches the frame edge (left, right, top, bottom).",
+      });
+      expect(issues[0]?.fixHint).toContain("data-layout-allow-overflow");
+    });
+
+    it("sees text whose glyph cell ends in a gap at the outermost pixel column", () => {
+      stubEdgeReads(CUT_TEXT, 1);
+      mountCanvas(FULL_FRAME);
+
+      expect(runAudit().some((issue) => issue.code === "canvas_content_at_edge")).toBe(true);
+    });
+
+    it("names only the edge whose band holds the content", () => {
+      stubEdgeReads(CUT_TEXT, undefined, (sx, sy) => sx === 1916 && sy === 0);
+      mountCanvas(FULL_FRAME);
+
+      const issues = runAudit().filter((issue) => issue.code === "canvas_content_at_edge");
+      expect(issues.map((issue) => issue.message)).toEqual([
+        "Canvas content touches the frame edge (right).",
+      ]);
+    });
+
+    it("stays silent on a full-bleed gradient", () => {
+      stubEdgeReads(edgeLine(Array.from({ length: 256 }, (_, index) => index)));
+      mountCanvas(FULL_FRAME);
+
+      expect(runAudit().some((issue) => issue.code === "canvas_content_at_edge")).toBe(false);
+    });
+
+    it("stays silent under data-layout-allow-overflow", () => {
+      stubEdgeReads(CUT_TEXT);
+      mountCanvas(FULL_FRAME, "data-layout-allow-overflow");
+
+      expect(runAudit().some((issue) => issue.code === "canvas_content_at_edge")).toBe(false);
+    });
+
+    it("never reads a canvas that sits inside the frame", () => {
+      const drawImage = stubEdgeReads(CUT_TEXT);
+      mountCanvas(rect({ left: 200, top: 200, width: 800, height: 450 }));
+
+      expect(runAudit().some((issue) => issue.code === "canvas_content_at_edge")).toBe(false);
+      expect(drawImage).not.toHaveBeenCalled();
+    });
+  });
+
   it("flags a gradient-content hero but not an all-translucent gradient glow", () => {
     document.body.innerHTML = `
       <div id="root" data-composition-id="main" data-width="1920" data-height="1080">

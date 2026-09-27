@@ -48,7 +48,8 @@ import {
   parseRemoteDebuggingPort,
   validateRemoteDebuggingPortDeps,
 } from "../utils/openBrowser.js";
-import { lintProject } from "../utils/lintProject.js";
+import type { ProjectLintResult } from "../utils/lintProject.js";
+import { runRenderSetupWorker } from "../utils/cancellableProcess.js";
 import { formatLintStartupMessage } from "../utils/lintFormat.js";
 import {
   activeServerOnPort,
@@ -416,19 +417,6 @@ export default defineCommand({
     const dir = project.dir;
     const projectName = isImplicitCwd ? basename(process.env.PWD ?? dir) : project.name;
 
-    // Lint before starting — surface issues for the agent to fix.
-    const lintResult = await lintProject(dir);
-    if (!args.json && (lintResult.totalErrors > 0 || lintResult.totalWarnings > 0)) {
-      console.log();
-      const verbose = Boolean(args["lint-verbose"]);
-      for (const line of formatLintStartupMessage(
-        lintResult,
-        verbose ? { kind: "verbose" } : { kind: "summary", pointer: "studio" },
-      ))
-        console.log(line);
-      console.log();
-    }
-
     // Validation: --user-data-dir requires --browser-path
     if (args["user-data-dir"] && !args["browser-path"]) {
       reportPreviewFailure(
@@ -491,6 +479,9 @@ export default defineCommand({
         `  ${c.dim(`Cleaned up ${orphansKilled} orphaned process${orphansKilled === 1 ? "" : "es"} from a previous session.`)}`,
       );
     }
+
+    // Runs in the CLI worker while Studio starts, so it never delays the opening; --json skips it.
+    const startupLint = args.json ? null : printStartupLint(dir, Boolean(args["lint-verbose"]));
 
     const launchMode = previewLaunchMode({
       background: Boolean(args.background),
@@ -555,6 +546,7 @@ export default defineCommand({
         remoteDebuggingPort,
         browserNoGpu,
       });
+      await startupLint;
       return;
     }
 
@@ -604,6 +596,26 @@ export default defineCommand({
     });
   },
 });
+
+async function printStartupLint(dir: string, verbose: boolean): Promise<void> {
+  try {
+    const lintResult = await runRenderSetupWorker<ProjectLintResult>(
+      "lint",
+      { projectDir: dir },
+      { maxBufferBytes: 8 * 1024 * 1024 },
+    );
+    if (lintResult.totalErrors === 0 && lintResult.totalWarnings === 0) return;
+    console.log();
+    for (const line of formatLintStartupMessage(
+      lintResult,
+      verbose ? { kind: "verbose" } : { kind: "summary", pointer: "studio" },
+    ))
+      console.log(line);
+    console.log();
+  } catch (error) {
+    clack.log.warn(`Lint did not finish: ${errorMessage(error)}`);
+  }
+}
 
 export type PreviewLaunchMode = "background" | "dev" | "local" | "embedded";
 
@@ -1188,6 +1200,18 @@ export function studioSummaryUrls(
   };
 }
 
+/** Builds the preview while the browser starts; a failed build is retried by the player's own request. */
+export function prebuildPreview(
+  fetchApp: (request: Request) => Response | Promise<Response>,
+  serverUrl: string,
+  projectName: string,
+): Promise<unknown> {
+  const previewUrl = `${serverUrl}/api/projects/${encodeURIComponent(projectName)}/preview`;
+  return Promise.resolve()
+    .then(() => fetchApp(new Request(previewUrl)))
+    .catch(() => undefined);
+}
+
 export function foregroundPreviewReadyPayload(
   projectName: string,
   serverUrl: string,
@@ -1619,6 +1643,7 @@ async function runEmbeddedMode(
     });
   }
   openStudioBrowser(url, pName, options);
+  void prebuildPreview(app.fetch, url, pName);
 
   // Block until Ctrl+C. Node would normally exit on SIGINT, but the listening
   // HTTP server keeps handles open, so the event loop stays alive after the

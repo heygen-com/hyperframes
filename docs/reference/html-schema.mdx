@@ -80,7 +80,7 @@ timeline registry key.
 | `data-start="0"` | Yes on the top-level root | Start of the composition |
 | `data-width` and `data-height` | Yes | Authored frame dimensions in pixels |
 | `data-duration` | Usually | Total render duration in seconds |
-| `data-no-timeline` | Only for a timeline-free composition | Tells the runtime not to wait for a timeline |
+| `data-no-timeline` | Only for a timeline-free composition | Tells the runtime not to wait for a timeline. Without it a composition that never registers one still waits out `player-ready-timeout` (45 s by default) on every render; `hyperframes lint` reports this as `missing_data_no_timeline` |
 
 An explicit root `data-duration` is the render length. The compiler reads it
 before composition scripts run, so a script or variable override cannot change

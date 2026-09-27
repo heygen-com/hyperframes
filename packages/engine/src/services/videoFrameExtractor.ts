@@ -21,6 +21,9 @@ import {
   sourceTimeAt,
   timeAtSourceTime,
   type RateSpec,
+  exportClipWindow,
+  hasClipStarted,
+  isInClipWindow,
   parseStrictFiniteTimingNumber,
   readMediaStart,
   toFps,
@@ -1116,8 +1119,7 @@ export function resolveTimelineExtractionWindow(
     if (sourceRemaining > 0 && video.loop && Number.isFinite(video.end)) {
       const phaseOffset = trimmedSourcePreroll % sourceRemaining;
       const phaseRemaining = sourceRemaining - phaseOffset;
-      // The element visibility contract includes its end boundary. Preserve a
-      // complete cycle on equality as well, otherwise a rebased suffix would
+      // Keep a complete cycle on equality too, otherwise a rebased suffix would
       // wrap to its own first frame instead of the source cycle's first frame.
       if (visibleSourceDuration >= phaseRemaining) {
         return withTimelineDuration(
@@ -2198,8 +2200,7 @@ function getFrameIndexAtTime(
   holdLastFrame = false,
   playbackRate: RateSpec = 1,
 ): number | null {
-  let localTime = globalTime - videoStart;
-  if (localTime < 0) return null;
+  let localTime = Math.max(0, globalTime - videoStart);
   const normalizedPlaybackRate = normalizeRateSpec(playbackRate);
   const loopDuration = timeAtSourceTime(
     normalizedPlaybackRate,
@@ -2236,6 +2237,7 @@ export function getFrameAtTime(
   loop = false,
   mediaStart = 0,
 ): string | null {
+  if (!hasClipStarted(globalTime, videoStart)) return null;
   const frameIndex = getFrameIndexAtTime(extracted, globalTime, videoStart, loop, mediaStart);
   return frameIndex == null ? null : extracted.framePaths.get(frameIndex) || null;
 }
@@ -2269,7 +2271,7 @@ export class FrameLookupTable {
     {
       extracted: ExtractedFrames;
       start: number;
-      end: number;
+      clipWindow: { start: number; end: number };
       mediaStart: number;
       loop: boolean;
       playbackRate: RateSpec;
@@ -2279,7 +2281,7 @@ export class FrameLookupTable {
     videoId: string;
     extracted: ExtractedFrames;
     start: number;
-    end: number;
+    clipWindow: { start: number; end: number };
     mediaStart: number;
     loop: boolean;
     playbackRate: RateSpec;
@@ -2287,6 +2289,9 @@ export class FrameLookupTable {
   private activeVideoIds: Set<string> = new Set();
   private startCursor = 0;
   private lastTime: number | null = null;
+
+  /** The render's `fps`, so a clip shows in exactly export visibility's frames; omit for authored times. */
+  constructor(private readonly fps?: number) {}
 
   addVideo(
     extracted: ExtractedFrames,
@@ -2299,21 +2304,21 @@ export class FrameLookupTable {
     this.videos.set(extracted.videoId, {
       extracted,
       start,
-      end,
+      clipWindow: this.fps ? exportClipWindow(start, end, this.fps) : { start, end },
       mediaStart,
       loop,
       playbackRate: normalizeRateSpec(playbackRate),
     });
     this.orderedVideos = Array.from(this.videos.entries())
       .map(([videoId, video]) => ({ videoId, ...video }))
-      .sort((a, b) => a.start - b.start);
+      .sort((a, b) => a.clipWindow.start - b.clipWindow.start);
     this.resetActiveState();
   }
 
   getFrame(videoId: string, globalTime: number): string | null {
     const video = this.videos.get(videoId);
     if (!video) return null;
-    if (globalTime < video.start || globalTime > video.end) return null;
+    if (!isInClipWindow(globalTime, video.clipWindow.start, video.clipWindow.end)) return null;
     const frameIndex = getFrameIndexAtTime(
       video.extracted,
       globalTime,
@@ -2333,23 +2338,16 @@ export class FrameLookupTable {
   }
 
   private refreshActiveSet(globalTime: number): void {
-    // The active window is [start, end] INCLUSIVE of the end, mirroring the
-    // runtime's element-visibility contract (core/runtime init.ts keeps an
-    // element visible through `currentTime <= end`). An exclusive end-bound
-    // here deactivated the video one frame early, so the frame landing exactly
-    // on a clip's end rendered blank while the runtime still showed it.
+    // Half-open exportClipWindow; rendered times stay below the composition end, so no terminal hold here.
     if (this.lastTime == null || globalTime < this.lastTime) {
       this.activeVideoIds.clear();
       this.startCursor = 0;
       for (const entry of this.orderedVideos) {
-        if (entry.start <= globalTime && globalTime <= entry.end) {
+        if (!hasClipStarted(globalTime, entry.clipWindow.start)) break;
+        if (isInClipWindow(globalTime, entry.clipWindow.start, entry.clipWindow.end)) {
           this.activeVideoIds.add(entry.videoId);
         }
-        if (entry.start <= globalTime) {
-          this.startCursor += 1;
-        } else {
-          break;
-        }
+        this.startCursor += 1;
       }
       this.lastTime = globalTime;
       return;
@@ -2358,10 +2356,10 @@ export class FrameLookupTable {
     while (this.startCursor < this.orderedVideos.length) {
       const candidate = this.orderedVideos[this.startCursor];
       if (!candidate) break;
-      if (candidate.start > globalTime) {
+      if (!hasClipStarted(globalTime, candidate.clipWindow.start)) {
         break;
       }
-      if (globalTime <= candidate.end) {
+      if (isInClipWindow(globalTime, candidate.clipWindow.start, candidate.clipWindow.end)) {
         this.activeVideoIds.add(candidate.videoId);
       }
       this.startCursor += 1;
@@ -2369,7 +2367,7 @@ export class FrameLookupTable {
 
     for (const videoId of Array.from(this.activeVideoIds)) {
       const video = this.videos.get(videoId);
-      if (!video || globalTime < video.start || globalTime > video.end) {
+      if (!video || !isInClipWindow(globalTime, video.clipWindow.start, video.clipWindow.end)) {
         this.activeVideoIds.delete(videoId);
       }
     }
@@ -2429,8 +2427,9 @@ export class FrameLookupTable {
 export function createFrameLookupTable(
   videos: VideoElement[],
   extracted: ExtractedFrames[],
+  fps?: number,
 ): FrameLookupTable {
-  const table = new FrameLookupTable();
+  const table = new FrameLookupTable(fps);
   const extractedMap = new Map<string, ExtractedFrames>();
   for (const ext of extracted) extractedMap.set(ext.videoId, ext);
 

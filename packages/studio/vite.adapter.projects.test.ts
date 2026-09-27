@@ -1,11 +1,23 @@
-import { afterEach, describe, expect, it } from "vitest";
-import { mkdtempSync, mkdirSync, realpathSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
+import { EventEmitter } from "node:events";
+import { afterEach, describe, expect, it, vi } from "vitest";
+import {
+  existsSync,
+  mkdtempSync,
+  mkdirSync,
+  realpathSync,
+  renameSync,
+  rmSync,
+  symlinkSync,
+  writeFileSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
 import { join, win32 } from "node:path";
 import { isValidProjectId } from "./src/utils/projectRouting";
-import { createStudioApi } from "@hyperframes/studio-server";
+import { createStudioApi, type ProjectHistory } from "@hyperframes/studio-server";
 import type { ViteDevServer } from "vite";
 import { createProjectSignatureCache, createViteAdapter } from "./vite.adapter";
+
+import { previewChangeOwner } from "./vite.preview-watch";
 
 const roots: string[] = [];
 afterEach(() => {
@@ -24,10 +36,97 @@ function fixture() {
     data,
     {} as ViteDevServer,
     createProjectSignatureCache({ compute: () => "test" }),
+    { historyRoot: join(root, "history") },
   );
   const app = createStudioApi(adapter);
   return { root, data, sessions, adapter, app };
 }
+
+describe("Studio's dev server keeps each project's history", () => {
+  it("serves it, so an edit Studio claims is the next undo, and opens it once per project", async () => {
+    const { data, adapter, app } = fixture();
+    mkdirSync(join(data, "demo"));
+    writeFileSync(join(data, "demo", "index.html"), "A");
+    const project = adapter.resolveProject("demo")!;
+    const history = await adapter.history!(project);
+    expect(await adapter.history!(project)).toBe(history);
+    try {
+      writeFileSync(join(data, "demo", "index.html"), "B");
+      const claim = await app.request("http://localhost/projects/demo/history/claim", {
+        method: "POST",
+        body: JSON.stringify({ label: "Moved Title", paths: ["index.html"] }),
+      });
+      expect(await claim.json()).toMatchObject({ claimed: { id: expect.any(String) } });
+      const list = await app.request("http://localhost/projects/demo/history");
+      expect(await list.json()).toMatchObject({ back: { label: "Moved Title" } });
+    } finally {
+      await history?.close();
+    }
+  });
+
+  it("opens a new project's own history once it takes the folder's path", async () => {
+    const { data, adapter, app } = fixture();
+    mkdirSync(join(data, "demo"));
+    writeFileSync(join(data, "demo", "index.html"), "A");
+    const old = await adapter.history!(adapter.resolveProject("demo")!);
+    renameSync(join(data, "demo"), join(data, "demo-moved"));
+    mkdirSync(join(data, "demo"));
+    writeFileSync(join(data, "demo", "index.html"), "new");
+
+    const list = await app.request("http://localhost/projects/demo/history");
+    expect(list.status).toBe(200);
+    expect(existsSync(join(data, "demo", ".hyperframes", "history-id"))).toBe(true);
+    const fresh = await adapter.history!(adapter.resolveProject("demo")!);
+    expect(fresh?.projectId).not.toBe(old?.projectId);
+    await fresh?.close();
+  });
+});
+
+describe("Studio's dev server retries a history whose folder changed while it opened", () => {
+  it("opens it again on the next request", async () => {
+    const root = mkdtempSync(join(tmpdir(), "hf-project-history-retry-"));
+    roots.push(root);
+    mkdirSync(join(root, "demo"));
+    const history = { replacedAtPath: () => false } as unknown as ProjectHistory;
+    const openHistory = vi
+      .fn()
+      .mockRejectedValueOnce(
+        Object.assign(new Error("now another project"), { name: "HistoryClosedError" }),
+      )
+      .mockResolvedValue(history);
+    const adapter = createViteAdapter(
+      root,
+      {} as ViteDevServer,
+      createProjectSignatureCache({ compute: () => "test" }),
+      { openHistory },
+    );
+    expect(await adapter.history!(adapter.resolveProject("demo")!)).toBeNull();
+    expect(await adapter.history!(adapter.resolveProject("demo")!)).toBe(history);
+  });
+});
+
+describe("Studio's dev server closes the histories it opened when it stops", () => {
+  it("closes each through the opener it was given, so an open edit keeps its label", async () => {
+    const root = mkdtempSync(join(tmpdir(), "hf-project-history-close-"));
+    roots.push(root);
+    mkdirSync(join(root, "demo"));
+    const httpServer = new EventEmitter();
+    const close = vi.fn(async () => {});
+    const openHistory = vi.fn(
+      async () => ({ close, replacedAtPath: () => false }) as unknown as ProjectHistory,
+    );
+    const adapter = createViteAdapter(
+      root,
+      { httpServer } as unknown as ViteDevServer,
+      createProjectSignatureCache({ compute: () => "test" }),
+      { openHistory },
+    );
+    await adapter.history!(adapter.resolveProject("demo")!);
+    httpServer.emit("close");
+    await vi.waitFor(() => expect(close).toHaveBeenCalledOnce());
+    expect(openHistory).toHaveBeenCalledOnce();
+  });
+});
 
 describe("Vite project resolution boundary", () => {
   it.each(["C%3A", "C%3Ademo", "..%2Fsessions", "a%2Fb", "a%5Cb", "%2E%2E%2Fsessions", "a%00b"])(
@@ -76,5 +175,37 @@ describe("Vite project resolution boundary", () => {
     const { sessions, adapter } = fixture();
     writeFileSync(join(sessions, "alias.json"), JSON.stringify({ projectId: "../sessions" }));
     expect(adapter.resolveProject("alias")).toBeNull();
+  });
+});
+
+describe("dynamic preview ownership", () => {
+  it.each([false, true])("registers a project opened after startup (symlink: %s)", (linked) => {
+    const { root, data, sessions } = fixture();
+    const owners = new Map<string, string>();
+    const watched: string[] = [];
+    const cache = createProjectSignatureCache({
+      compute: () => "signature",
+      watch: (dir) => {
+        // Ownership must exist before newly watched files can emit events.
+        expect(previewChangeOwner(owners, join(dir, "index.html"))).toBe("new-project");
+        watched.push(dir);
+      },
+    });
+    const adapter = createViteAdapter(data, {} as ViteDevServer, cache, {
+      onResolveProject: (project) => owners.set(project.dir, project.id),
+    });
+    expect(adapter.resolveProject("new-project")).toBeNull();
+    expect(owners.size).toBe(0);
+    const dir = linked ? join(root, "different-target-name") : join(data, "new-project");
+    mkdirSync(dir);
+    if (linked) symlinkSync(dir, join(data, "new-project"), "junction");
+    writeFileSync(join(dir, "index.html"), "before");
+    writeFileSync(join(sessions, "alias.json"), JSON.stringify({ projectId: "new-project" }));
+    const project = adapter.resolveProject(linked ? "alias" : "new-project")!;
+    cache.get(project.dir);
+    writeFileSync(join(dir, "index.html"), "after");
+    expect(watched).toEqual([realpathSync(dir)]);
+    expect(previewChangeOwner(owners, join(realpathSync(dir), "index.html"))).toBe("new-project");
+    expect(previewChangeOwner(owners, join(realpathSync(dir), "index.html.tmp"))).toBeNull();
   });
 });

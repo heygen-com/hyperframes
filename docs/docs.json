@@ -851,6 +851,7 @@
             "pages": [
               "developers/cli",
               "packages/cli",
+              "developers/catalog-search",
               "packages/lint"
             ]
           },

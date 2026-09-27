@@ -7,6 +7,7 @@
 // the reminder on the commands they already run.
 
 import { readConfig, readConfigFresh, writeConfig } from "../telemetry/config.js";
+import { hostAnswers } from "./hostAnswers.js";
 import { checkSkills } from "./skillsManifest.js";
 import { updateNoticesSuppressed } from "./updateCheck.js";
 
@@ -101,15 +102,19 @@ export function invalidateSkillsCache(): void {
 }
 
 /**
- * Refresh the skills freshness cache if it is older than 24h. Best-effort:
+ * Refresh the skills freshness cache if it is older than 24h, only in runs that show the nudge. Best-effort:
  * any failure (offline, no manifest published yet, no skills installed) leaves
  * the cache untouched and reports "no update".
  *
  * @param force - skip the cache and check now
  */
 export async function checkSkillsForUpdate(force?: boolean): Promise<SkillsUpdateMeta> {
+  if (process.env["HYPERFRAMES_SKIP_SKILLS"] === "1" || updateNoticesSuppressed()) {
+    return getSkillsUpdateMeta();
+  }
   if (!force && cacheFresh(readConfig().lastSkillsCheck, Date.now())) return getSkillsUpdateMeta();
   try {
+    if (!(await hostAnswers("github.com"))) return getSkillsUpdateMeta();
     return await refreshSkillsCache();
   } catch {
     return getSkillsUpdateMeta();

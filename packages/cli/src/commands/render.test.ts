@@ -8,6 +8,7 @@ import { spawn } from "node:child_process";
 const producerState = vi.hoisted(() => ({
   createdJobs: [] as Array<Record<string, unknown>>,
   resolveConfigCalls: [] as Array<Record<string, unknown>>,
+  loggerLevels: [] as string[],
   // Overridable per-test hook so the DE-parallel-router-trial tests can
   // mutate the job (perfSummary/errorDetails) or throw, without perturbing
   // every other test in this file that expects a plain no-op resolve.
@@ -98,6 +99,10 @@ const browserManagerState = vi.hoisted(() => ({
 
 vi.mock("../utils/producer.js", () => ({
   loadProducer: vi.fn(async () => ({
+    createConsoleLogger: vi.fn((level: string) => {
+      producerState.loggerLevels.push(level);
+      return { error: vi.fn(), warn: vi.fn(), info: vi.fn(), debug: vi.fn() };
+    }),
     resolveConfig: vi.fn((overrides: Record<string, unknown>) => {
       producerState.resolveConfigCalls.push(overrides);
       return { ...overrides, resolved: true };
@@ -436,6 +441,7 @@ describe("renderLocal browser GPU config", () => {
   beforeEach(() => {
     producerState.createdJobs = [];
     producerState.resolveConfigCalls = [];
+    producerState.loggerLevels = [];
     producerState.executeImpl = async () => undefined;
     preflightState.onRun = undefined;
     configState.disk = { telemetryEnabled: true, deParallelRouterTrialFired: true };
@@ -609,6 +615,22 @@ describe("renderLocal browser GPU config", () => {
     vi.clearAllMocks();
     vi.useRealTimers();
     vi.restoreAllMocks();
+  });
+
+  it("logs only warnings and errors from the producer under --quiet", async () => {
+    const options = {
+      fps: { num: 30, den: 1 },
+      quality: "standard",
+      format: "mp4",
+      gpu: false,
+      browserGpuMode: "software",
+      hdrMode: "auto",
+    } as const;
+    await renderLocal("/tmp/project", "/tmp/out.mp4", { ...options, quiet: true });
+    await renderLocal("/tmp/project", "/tmp/out.mp4", { ...options, quiet: false });
+    await renderLocal("/tmp/project", "/tmp/out.mp4", { ...options, quiet: true, debug: true });
+
+    expect(producerState.loggerLevels).toEqual(["warn", "info", "debug"]);
   });
 
   it("passes an explicit software override for --no-browser-gpu even when env requests hardware", async () => {

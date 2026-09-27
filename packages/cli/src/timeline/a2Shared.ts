@@ -6,6 +6,7 @@ import {
 } from "@hyperframes/studio-server";
 import type { AppliedFileMutation, PatchOperation } from "@hyperframes/studio-server";
 import { fpsToNumber, parseFpsWithDefault } from "@hyperframes/core";
+import { isInsideSpan, sameInstant, spansShareTime } from "@hyperframes/core/clip-facts";
 import { readCompositionFps } from "../utils/compositionFps.js";
 import { readFileSync } from "node:fs";
 import type { ProjectTimeline, TimelineRow } from "./describeProject.js";
@@ -41,6 +42,9 @@ export function refusal(reason: string, fix: string, json: boolean): void {
   const payload = { ok: false, reason, fix };
   console.error(json ? JSON.stringify(payload, null, 2) : `${reason}; ${fix}.`);
 }
+
+export const isFileChanged = (error: unknown): error is Error =>
+  error instanceof Error && error.message === "file changed since the timeline was read";
 
 export function refuse(kind: string, detail: { reason: string; fix: string }, json: boolean): void {
   refusal(`${kind}: ${detail.reason}`, detail.fix, json);
@@ -144,7 +148,7 @@ function overlap(
       candidate !== row &&
       candidate.file === row.file &&
       candidate.trackIndex === row.trackIndex &&
-      Math.max(start, candidate.start) < Math.min(end, candidate.end),
+      spansShareTime(start, end, candidate.start, candidate.end),
   );
 }
 
@@ -252,6 +256,9 @@ function trimInput(args: Record<string, unknown>) {
   };
 }
 
+const leavesNoLength = (start: number, duration: number) =>
+  duration <= 0 || sameInstant(start, start + duration);
+
 function finishTrim(
   context: MutationContext,
   nextStart: number,
@@ -260,8 +267,9 @@ function finishTrim(
 ): MutationDecision | { ok: true; nextStart: number; nextDuration: number } {
   if (end && !end.ok) return end;
   if (duration && !duration.ok) return duration;
-  const nextDuration = duration?.seconds ?? (end ? end.seconds - nextStart : context.row.duration);
-  if (nextDuration <= 0) {
+  const nextDuration =
+    duration?.seconds ?? (end ? durationUntil(nextStart, end.seconds) : context.row.duration);
+  if (leavesNoLength(nextStart, nextDuration)) {
     return {
       ok: false,
       reason: "trim duration must be positive",
@@ -274,6 +282,19 @@ function finishTrim(
 function trimStart(context: MutationContext, expression: string | undefined) {
   if (!expression) return { ok: true as const, seconds: context.row.start };
   return parseMutationTime(context, expression, "pass a valid time expression");
+}
+
+function durationUntil(start: number, end: number): number {
+  let duration = end - start;
+  while (duration > 0 && start + duration > end) duration = nextSmaller(duration);
+  return duration;
+}
+
+const float = new DataView(new ArrayBuffer(8));
+function nextSmaller(positive: number): number {
+  float.setFloat64(0, positive);
+  float.setBigUint64(0, float.getBigUint64(0) - 1n);
+  return float.getFloat64(0);
 }
 
 function trimEnd(context: MutationContext, expression: string | undefined) {
@@ -410,8 +431,7 @@ export function mutationConflict(
       (candidate) =>
         candidate.file === row.file &&
         candidate.trackIndex === row.trackIndex &&
-        candidate.start < nextStart &&
-        nextStart < candidate.end,
+        isInsideSpan(nextStart, candidate.start, candidate.end),
     );
     if (!conflict) return null;
     return {

@@ -2,7 +2,6 @@ import { useState, useCallback, useRef } from "react";
 import type { EditingFile } from "../utils/studioHelpers";
 import { FONT_EXT, isMediaFile } from "../utils/mediaTypes";
 import { fontFamilyFromAssetPath, type ImportedFontAsset } from "../components/editor/fontAssets";
-import type { EditHistoryKind } from "../utils/editHistory";
 import { findTagByTarget, type PatchTarget } from "../utils/sourcePatcher";
 import { StudioFileConflictError } from "../utils/studioSaveDiagnostics";
 import { useFileTree } from "./useFileTree";
@@ -13,7 +12,6 @@ import { useProjectFileWriter } from "./useProjectFileWriter";
 
 interface RecordEditInput {
   label: string;
-  kind: EditHistoryKind;
   coalesceKey?: string;
   files: Record<string, { before: string; after: string }>;
 }

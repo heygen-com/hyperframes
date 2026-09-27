@@ -3,7 +3,7 @@ name: hyperframes-cli
 description: >
   Use the HyperFrames CLI development loop: init, add, catalog, capture, lint, check, snapshot,
   compare, grade-compare, preview, play, present, beats, keyframes, single or batch render, publish,
-  cloud, cloudrun, feedback, lambda, doctor, browser, info, upgrade, skills, compositions, timeline, docs,
+  cloud, cloudrun, feedback, lambda, doctor, browser, info, upgrade, skills, compositions, timeline, history, docs,
   benchmark, telemetry, transcribe, auth, tts, and remove-background. Also use when diagnosing build
   or render failures. validate, inspect, and layout are deprecated aliases; use check. Covers local,
   HeyGen-hosted cloud, AWS Lambda, and Google Cloud Run rendering.
@@ -24,6 +24,19 @@ Run commands as `npx hyperframes ...` unless project instructions provide a wrap
 7. **Open the final Studio preview:** run `npx hyperframes preview --background`, verify the URL returns HTTP 200, hand the timeline project URL to the user, and ask whether to revise or render. Keep it alive until review ends.
 8. **Render only after approval:** use `--quality draft` while iterating, `--quality looks` for the first real encode (the CLI default), and `--quality delivery` for final delivery.
 9. **Verify the output:** confirm the file exists and is non-empty. Read the render summary's second line (`beginframe` vs `screenshot`, GPU, stage timings). `screenshot` + `software gpu` on Linux is the slow path. `ffprobe -v error -show_format -show_streams` and compare duration (and fps if the brief set it) to the root `data-duration`.
+
+<!-- history (trial): remove this block together with the command -->
+
+### Project history in your turn
+
+Every write to the project is kept as an entry that can be undone. Use it at two moments only, never on every step:
+
+- **Start of a turn:** `npx hyperframes history begin --who <your-name> --label "<what you are about to do>"`, then `npx hyperframes history --since mine --who <your-name>` to see what the person changed since your last turn. Build on their edits; never overwrite them.
+- **A check failed, or the person says it got worse:** `npx hyperframes history undo --who <your-name>` undoes your newest turn and leaves the person's edits alone. Do not hand-edit back. On a conflict it exits 2 and prints both choices.
+
+End each turn with `npx hyperframes history end`, so your writes read as yours, not as "Changed outside the app". While a turn is open, every write to the project counts as yours until 10 minutes pass without one; after that the turn has ended by itself.
+
+<!-- /history (trial) -->
 
 ## Mandatory creator-edit cross-references
 
@@ -69,12 +82,12 @@ Treat tiny unstyled content, canvas-sized icons, missing hero elements, or timel
 
 ## Agent conventions
 
-- **Search the catalog before writing motion by hand.** `npx hyperframes catalog --query "<the beat, in plain English>"`. Search is entirely local: there is no hosted tier, no account, and the query text is never sent anywhere. By default it ranks on vocabulary shared with the item's name, title and description, which misses any phrasing that does not reuse the catalog's own wording. Add `--on-device` to rank by meaning instead (see the offline tier below).
+- **Search the catalog before writing motion by hand.** `npx hyperframes catalog --query "<the beat, in plain English>"`. Search is entirely local: there is no hosted tier, no account, and the query text is never sent anywhere. By default it ranks on vocabulary shared with the item's name, title, description and tags, which misses any phrasing that does not reuse the catalog's own wording. Add `--on-device` to rank by meaning instead (see the offline tier below).
 - **Query in English even when the video is not.** Both tiers index an English catalog, so a query in another script produces no searchable terms and returns nothing. Describe the move in English; the on-screen copy stays in whatever language the video needs. `No searchable words in query` means exactly this and is not a missing component, so do not report it as a catalog gap.
 - **Read which tier answered; never infer it from results appearing.** With `--json` the envelope carries `query`, `tier` (`on-device` or `words`), `tier_detail`, `dropped`, `unindexed`, `shown`, `total` and `results`, plus `top_score` when the answering tier produces one and `warnings` when a tier was asked for and could not run, or when a search returned nothing and a better tier is still waiting on someone's consent. A weak result on `words` is expected; the same result on `on-device` is a bug. `top_score` is on-device only and has no threshold behind it: the ranker returns the whole catalog in some order for every query, so read it as evidence rather than as a pass or fail.
 - **`dropped` and `unindexed` are opposite skews between the registry and the on-device index, and rewording the query fixes neither.** `dropped` counts ranked names this registry cannot install, so the strongest matches are the ones being lost. `unindexed` counts registry moves the index cannot see at all, which no query can ever return. Refreshing the registry is not the answer to either: its manifest carries a 24h TTL and heals itself, while the vectors are a separately published artifact fetched into `~/.hyperframes/catalog/`. Re-running with `--on-device` refetches that index when `unindexed` is above zero, so that is the remedy to hand the user. A pure over-coverage skew (`dropped` above zero while `unindexed` is zero) does not trigger the refetch; clearing `~/.hyperframes/catalog/` is the only way out of that one. Both counts are of names rather than of results, so either can exceed `total`.
 - **When a search comes back with nothing worth installing, say so.** `npx hyperframes feedback --search-miss "<the query you ran>" --wanted "<the move you needed>" --tier <the tier that answered>`. You do not have to assemble that line: `catalog --query` prints it pre-filled, and every `--json` search envelope carries it as `report_gap` with the query and tier already correct — fill in `--wanted` and send. This is the only path that sends a query anywhere, and it is a separate deliberate command precisely so plain `catalog --query` keeps its promise of sending nothing. **Report on either tier**, whenever the results do not do the thing; do not hold out for the on-device tier, which needs a consented 33 MB download and is therefore off in most agent runs — waiting for it means never reporting at all. The tier rides along in the report, so a vocabulary miss stays distinguishable from a meaning miss without you having to judge which one you hit. What comes back is a list of moves the catalog does not have yet, read directly rather than guessed from install counts, so the phrasing that matters is the effect you wanted, not the item name you imagined. It carries no rating and never lands in the rating metric.
-- **Offer the offline tier; never enable it silently.** A one-time ~33 MB download (a quantized ONNX build of `bge-small-en-v1.5` plus its tokenizer, pinned to a fixed revision) and the catalog vectors from the registry, both cached under `~/.hyperframes/`, neither added to the project or any package. Once cached it ranks by meaning with nothing sent. Say the size out loud and let the person decide, then pass `--on-device` (with `-y` to skip the prompt) once they agree. The interactive offer only fires on a TTY. Under `--json` there is no prompt, but a search that found nothing puts the same ask in `warnings`, so read that array and put the decision to the user yourself.
+- **Offer the offline tier; never enable it silently.** A one-time ~33 MB download (a quantized ONNX build of `bge-small-en-v1.5` plus its tokenizer, pinned to a fixed revision) and the catalog vectors from the registry, both cached under `~/.hyperframes/`, neither added to the project or any package. Once cached it ranks by meaning with nothing sent. Say the size out loud and let the person decide, then pass `--on-device` (with `-y` to skip the prompt) once they agree. The interactive offer only fires on a TTY. Under `--json` there is no prompt, but a search that found nothing puts the same ask in `warnings`, so read that array and put the decision to the user yourself. When the person asks what the download is, why this model, or what leaves the machine, point them to https://hyperframes.heygen.com/developers/catalog-search.
 
 - Prefer `--json` for agent and CI calls. Server-mode `render`, `preview`, and `play` do not provide ordinary JSON output; `preview --selection --json` and `preview --context --json` are query-mode exceptions.
 - `doctor --json` always exits zero. Gate on its payload:

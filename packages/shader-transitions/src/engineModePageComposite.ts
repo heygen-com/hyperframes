@@ -116,6 +116,7 @@ export function isPageSideCompositingSupported(): boolean {
   return true;
 }
 
+// fallow-ignore-next-line complexity
 export function installPageSideCompositor(options: PageCompositorInstallOptions): boolean {
   if (typeof window === "undefined") return false;
   (window as unknown as { __HF_PAGE_COMPOSITOR_CANARY__?: string }).__HF_PAGE_COMPOSITOR_CANARY__ =
@@ -226,16 +227,6 @@ export function installPageSideCompositor(options: PageCompositorInstallOptions)
     return null;
   }
 
-  // Scene on screen at a non-transition time: after the last transition whose
-  // window has passed. Full transitions list so the index matches scene order.
-  function settledSceneIdAt(time: number): string | undefined {
-    let idx = 0;
-    for (const t of transitions) {
-      if (time >= t.time + (t.duration ?? defaultDuration)) idx += 1;
-    }
-    return scenes[Math.min(idx, scenes.length - 1)];
-  }
-
   let currentActive: ResolvedTransition | null = null;
   let currentProgress = 0;
 
@@ -249,6 +240,7 @@ export function installPageSideCompositor(options: PageCompositorInstallOptions)
   // injection so cloneNode picks up <img> replacements for <video> elements.
   // Awaits decode on cloned data-URI images so drawElementImage reads
   // the current frame, not a stale paint cache entry.
+  // fallow-ignore-next-line complexity
   async function prepareComposite(): Promise<boolean> {
     const active = currentActive;
     if (!active) {
@@ -319,6 +311,7 @@ export function installPageSideCompositor(options: PageCompositorInstallOptions)
 
   // Phase 2b: drawElementImage from painted clones + shader composite.
   // Called after micro-screenshot forces the browser to paint the clones.
+  // fallow-ignore-next-line complexity
   function resolveComposite(): boolean {
     const active = currentActive;
     if (!active) {
@@ -401,14 +394,6 @@ export function installPageSideCompositor(options: PageCompositorInstallOptions)
         pWin.__hf_page_composite_pending = false;
         while (fromStaging.firstChild) fromStaging.removeChild(fromStaging.firstChild);
         while (toStaging.firstChild) toStaging.removeChild(toStaging.firstChild);
-        // Live-page screenshot parity with the layered path's forceVisible: the
-        // core clip runtime hides the final scene a beat before the comp ends, so
-        // un-hide the settled scene (others stay at opacity 0).
-        const settledId = settledSceneIdAt(time);
-        const settled = settledId ? document.getElementById(settledId) : null;
-        if (settled instanceof HTMLElement && settled.style.visibility === "hidden") {
-          settled.style.visibility = "visible";
-        }
         return result;
       }
       currentActive = active;

@@ -1,6 +1,6 @@
 # Background Removal
 
-Make a transparent overlay (typical: a talking head over an arbitrary scene). Uses `u2net_human_seg` (MIT).
+Make a transparent overlay (typical: a talking head over an arbitrary scene). Uses `u2net_human_seg` (Apache-2.0).
 
 ```bash
 npx hyperframes remove-background subject.mp4 -o transparent.webm          # default: VP9 + alpha

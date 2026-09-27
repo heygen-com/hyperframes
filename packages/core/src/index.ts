@@ -269,6 +269,7 @@ export {
 export {
   MEDIA_VISUAL_STYLE_PROPERTIES,
   copyMediaVisualStyles,
+  exportClipWindow,
   quantizeSeekTime,
   quantizeTimeToFrame,
   type MediaVisualStyleProperty,
@@ -320,7 +321,7 @@ export {
 // (verify:packed-manifests catches exactly that).
 export { createRuntimeStartTimeResolver } from "./runtime/startResolver.js";
 // Also exposed via the ./runtime/clip-window subpath; re-exported here for the same dist-emit reason.
-export { isClipVisibleAt, isInClipWindow } from "./runtime/clipWindow.js";
+export { hasClipStarted, isClipVisibleAt, isInClipWindow } from "./runtime/clipWindow.js";
 export {
   normalizePlaybackRate,
   normalizeRateSpec,

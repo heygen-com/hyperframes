@@ -409,6 +409,17 @@ describe("Plan v2 manifest", () => {
     );
   });
 
+  it("gives a chunk the frames of a video starting a hair after its frame, as export shows it", () => {
+    const root = tempPath("hf-plan-v2-snapped-start-");
+    const v1 = createV1Plan(root, { video: true, videoStart: 1 / 30 + 1e-6, videoEnd: 1 });
+    const manifest = readPlanV2Manifest(createPlanV2FromV1(v1, join(root, "v2")).planDir);
+    const chunk1 = listPlanV2ArtifactsForTarget(manifest, { role: "chunk", chunkIndex: 1 });
+
+    expect(chunk1.some((artifact) => artifact.path === "video-frames/hero/frame_00001.jpg")).toBe(
+      true,
+    );
+  });
+
   it("materializes empty video directories for chunks where the video is inactive", () => {
     const root = tempPath("hf-plan-v2-inactive-video-directory-");
     const v1 = createV1Plan(root, {

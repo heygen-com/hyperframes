@@ -42,6 +42,7 @@ const GET_RESPONSES = new Map([
   [`${PROJECT_PATH}/renders`, json({ renders: [] })],
   [`${PROJECT_PATH}/lint`, json({ findings: [] })],
   [`${PROJECT_PATH}/selection`, json({ selection: null, updatedAt: null })],
+  [`${PROJECT_PATH}/history`, json({ entries: [], back: null, forward: null })],
   ["/api/registry/blocks", json([])],
   ["/api/fonts", json({ fonts: [] })],
   ["/api/fonts/google", json({ fonts: [] })],

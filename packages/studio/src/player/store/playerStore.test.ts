@@ -1,6 +1,6 @@
 // @vitest-environment happy-dom
 import { describe, it, expect, beforeEach, vi } from "vitest";
-import { usePlayerStore, liveTime, type TimelineElement } from "./playerStore";
+import { usePlayerStore, liveTime, whenPreviewBooted, type TimelineElement } from "./playerStore";
 import { thumbnailRevisionOf } from "./thumbnailSlice";
 
 /** The playback/selection state `reset()` restores (persistent prefs asserted separately). */
@@ -343,8 +343,19 @@ describe("usePlayerStore", () => {
       const video = doc.createElement("video");
       Object.defineProperty(video, "readyState", { value: 0, configurable: true });
       doc.body.appendChild(video);
+      usePlayerStore.getState().markPreviewLoadStep(doc);
       return { doc, video };
     }
+
+    it("waits for the document's load step before marking it ready", async () => {
+      const doc = document.implementation.createHTMLDocument("composition");
+      usePlayerStore.getState().requestTimelineReady(doc);
+      await new Promise((resolve) => setTimeout(resolve, 50));
+      expect(usePlayerStore.getState().timelineReady).toBe(false);
+
+      usePlayerStore.getState().markPreviewLoadStep(doc);
+      await vi.waitFor(() => expect(usePlayerStore.getState().timelineReady).toBe(true));
+    });
 
     it("resolves timelineReady once the doc's media settles", async () => {
       const { doc, video } = stalledVideoDoc();
@@ -746,5 +757,28 @@ describe("liveTime", () => {
     unsubscribe();
     const result = unsubscribe();
     expect(result).toBe(false);
+  });
+});
+
+describe("whenPreviewBooted", () => {
+  it("resolves false for a project the user left before its preview booted", async () => {
+    usePlayerStore.setState({ timelineProjectId: "project-a", previewBooted: false });
+    const waitA = whenPreviewBooted("project-a");
+
+    usePlayerStore.getState().beginTimelineSession("project-b");
+    usePlayerStore.getState().markPreviewBooted();
+
+    await expect(waitA).resolves.toBe(false);
+    await expect(whenPreviewBooted("project-b")).resolves.toBe(true);
+  });
+
+  it("waits through the open of its own project, then resolves on that project's boot", async () => {
+    usePlayerStore.setState({ timelineProjectId: "project-a", previewBooted: true });
+    const waitB = whenPreviewBooted("project-b");
+
+    usePlayerStore.getState().beginTimelineSession("project-b");
+    usePlayerStore.getState().markPreviewBooted();
+
+    await expect(waitB).resolves.toBe(true);
   });
 });

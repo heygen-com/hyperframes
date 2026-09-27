@@ -237,7 +237,6 @@ export async function createAudioGroupAndAssignMembers({
       label: groupLabel
         ? `Group ${elements.length} clips as ${groupLabel}`
         : `Group ${elements.length} voice clips`,
-      kind: "timeline",
       files,
       readFile: async (path) => {
         const original = originalByPath.get(path);

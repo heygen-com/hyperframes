@@ -285,6 +285,34 @@ describe("createTimelineElementFromManifestClip — source-scoped selector ident
     });
   });
 
+  it("keeps the host it was given when a sub-composition is mounted twice", () => {
+    const doc = makeDoc(`
+      <div data-composition-id="root" data-composition-file="index.html">
+        <div id="a" data-hf-id="hf-a" data-composition-id="card" data-composition-src="card.html"></div>
+        <div id="b" data-hf-id="hf-b" data-composition-id="card" data-composition-src="card.html"></div>
+      </div>
+    `);
+    const element = createTimelineElementFromManifestClip({
+      clip: {
+        id: "b",
+        label: "Card",
+        kind: "composition",
+        tagName: "div",
+        start: 4,
+        duration: 4,
+        track: 0,
+        compositionId: "card",
+        parentCompositionId: "root",
+        compositionSrc: null,
+        assetUrl: null,
+      },
+      fallbackIndex: 1,
+      doc,
+      hostEl: doc.getElementById("b"),
+    });
+    expect(element).toMatchObject({ domId: "b", hfId: "hf-b", compositionSrc: "card.html" });
+  });
+
   it("ignores an index.html duplicate when indexing a scene.html selector", () => {
     const doc = makeDoc(`
       <div data-composition-id="root" data-composition-file="index.html">

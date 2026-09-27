@@ -58,6 +58,7 @@ const GROUPS: Group[] = [
       ["info", "Print project metadata"],
       ["compositions", "List all compositions in a project"],
       ["timeline", "Print the project's tracks and clips"],
+      ["history", "List, undo and restore the project's recorded changes"],
       ["docs", "View inline documentation in the terminal"],
     ],
   },

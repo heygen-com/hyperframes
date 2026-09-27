@@ -2,8 +2,8 @@ import { memo, useCallback, useMemo, useRef, useState } from "react";
 import { useMountEffect } from "../../hooks/useMountEffect";
 import { useThumbnailLease } from "../../hooks/useThumbnailLease";
 import { createThumbnailKey, type ThumbnailPriority } from "../lib/thumbnailScheduler";
-import { TIMELINE_VIEWPORT_BUDGETS } from "../lib/timelineViewportBudgets";
-import { computeThumbnailStrip, probeImageAspect } from "./thumbnailUtils";
+import { decodeImageThumbnail } from "../lib/thumbnailImageDecoder";
+import { computeThumbnailStrip } from "./thumbnailUtils";
 
 export interface ImageThumbnailProps {
   imageSrc: string;
@@ -35,16 +35,7 @@ export const ImageThumbnail = memo(function ImageThumbnail({
       kind: "image" as const,
       priority,
       rich,
-      load: async (signal: AbortSignal) => {
-        const aspect = await probeImageAspect(imageSrc, signal, true);
-        return {
-          value: { kind: "image" as const, url: imageSrc, aspect },
-          weight:
-            TIMELINE_VIEWPORT_BUDGETS.posterMaxPhysicalWidth *
-            TIMELINE_VIEWPORT_BUDGETS.posterMaxPhysicalHeight *
-            4,
-        };
-      },
+      load: (signal: AbortSignal) => decodeImageThumbnail(imageSrc, signal),
     }),
     [imageSrc, priority, projectId, rich, sessionEpoch],
   );

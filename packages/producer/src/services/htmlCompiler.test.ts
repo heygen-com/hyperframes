@@ -166,6 +166,14 @@ describe("injectSdkPositionEditsRenderScript", () => {
     expect(out).toContain("data-hf-edit-base-x");
   });
 
+  it("injects before the document's own </body>, not inside an inlined script that prints one", () => {
+    const vendor = 'p.print("</body>")';
+    const html = `<html><body><h1 data-hf-edit-base-x="0">Hi</h1><script>${vendor}</script></body></html>`;
+    const out = injectSdkPositionEditsRenderScript(html);
+    expect(out).toContain(`<script>${vendor}</script><script>`);
+    expect(out.endsWith("</script></body></html>")).toBe(true);
+  });
+
   it("appends the script when there is no </body> tag", () => {
     const out = injectSdkPositionEditsRenderScript('<div data-hf-edit-base-y="0"></div>');
     expect(out.startsWith('<div data-hf-edit-base-y="0"></div>')).toBe(true);

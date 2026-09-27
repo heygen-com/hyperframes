@@ -11,7 +11,8 @@ export const examples: Example[] = [
   ["Skip the clipboard copy (CI/headless)", "hyperframes add shader-wipe --no-clipboard"],
 ];
 
-import { existsSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
+import { parseHTML } from "linkedom";
 import { resolve, relative } from "node:path";
 import { ITEM_TYPE_DIRS, type RegistryItem } from "@hyperframes/core";
 import { c } from "../ui/colors.js";
@@ -103,10 +104,24 @@ function primaryInstalledTarget(item: RegistryItem): string {
   return primary?.target ?? "";
 }
 
+/** The id a composition file's root declares (inside its `<template>` when templated); a host must carry the same one. */
+export function compositionRootId(html: string): string | undefined {
+  const { document } = parseHTML(html);
+  const content = document.querySelector("template")?.content ?? document;
+  return (
+    content.querySelector("[data-composition-id]")?.getAttribute("data-composition-id") ?? undefined
+  );
+}
+
+function installedRootId(file: string): string | undefined {
+  return existsSync(file) ? compositionRootId(readFileSync(file, "utf-8")) : undefined;
+}
+
 export function buildSnippet(
   item: RegistryItem,
   relativeTarget: string,
   values: Record<string, unknown> | null = null,
+  compositionId?: string,
 ): string {
   if (item.type === "hyperframes:block") {
     // data-start omitted — adjust to your timeline position after pasting.
@@ -115,12 +130,25 @@ export function buildSnippet(
         ? ` data-width="${item.dimensions.width}" data-height="${item.dimensions.height}"`
         : "";
     const vars = variableValuesAttribute(values);
-    return `<div data-composition-src="${relativeTarget}" data-duration="${item.duration}"${dims}${vars}></div>`;
+    const id = compositionId
+      ? ` data-composition-id="${compositionId.replace(/"/g, "&quot;")}"`
+      : "";
+    return `<div${id} data-composition-src="${relativeTarget}" data-duration="${item.duration}"${dims}${vars}></div>`;
   }
   if (item.type === "hyperframes:component") {
     return `<!-- paste from ${relativeTarget} into your composition -->`;
   }
   return "";
+}
+
+/** `add <tag> --json` output: each item's warnings, prefixed with its name. */
+export function tagAddJson(tag: string, results: RunAddResult[]) {
+  return {
+    ok: true,
+    tag,
+    installed: results.map((r) => r.name),
+    warnings: results.flatMap((r) => r.warnings.map((w) => `${r.name}: ${w}`)),
+  };
 }
 
 /** `--vars` is JSON an agent or the catalog page produced; a malformed one is
@@ -365,7 +393,13 @@ export async function runAdd(opts: RunAddArgs): Promise<RunAddResult> {
   // 6. Build include snippet + clipboard copy for the requested item.
   const itemForInstall = installPlan[installPlan.length - 1]!;
   const snippetTargetRel = primaryInstalledTarget(itemForInstall);
-  const snippet = buildSnippet(item, snippetTargetRel, variableValues);
+  const compositionId = installedRootId(resolve(projectDir, snippetTargetRel));
+  if (item.type === "hyperframes:block" && !compositionId) {
+    warnings.push(
+      `${snippetTargetRel} declares no data-composition-id, so the snippet has none; give its root one and put the same id on the snippet`,
+    );
+  }
+  const snippet = buildSnippet(item, snippetTargetRel, variableValues, compositionId);
   const clipboardCopied = !opts.skipClipboard && snippet ? copyToClipboard(snippet) : false;
 
   if (variablesUnknown.length > 0) {
@@ -553,9 +587,7 @@ export default defineCommand({
       }
 
       if (json) {
-        console.log(
-          JSON.stringify({ ok: true, tag: args.name, installed: results.map((r) => r.name) }),
-        );
+        console.log(JSON.stringify(tagAddJson(args.name, results)));
       } else {
         console.log("");
         console.log(`${c.success("✓")} Installed ${results.length}/${items.length} blocks`);

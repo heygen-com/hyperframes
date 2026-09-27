@@ -10,16 +10,19 @@ export const examples: Example[] = [
 ];
 
 import * as clack from "@clack/prompts";
-import { type ItemType } from "@hyperframes/core";
+import { type ItemType, type RegistryItem } from "@hyperframes/core";
 import { c } from "../ui/colors.js";
 import { loadAllItems } from "../registry/resolver.js";
 import { fetchRegistryManifest } from "../registry/remote.js";
 import { loadProjectConfig, DEFAULT_PROJECT_CONFIG } from "../utils/projectConfig.js";
 import { resolve } from "node:path";
 import { finishCommand } from "../utils/commandResult.js";
+import { isAttendedTerminal } from "../utils/attendedTerminal.js";
 import { runAdd } from "./add.js";
 import { hasNoSearchableTokens, searchByWords } from "../registry/localSearch.js";
 import {
+  assumeLocalModelConsent,
+  savedLocalModelConsent,
   downloadOfferMessage,
   ensureLocalModel,
   type LocalModelStatus,
@@ -27,7 +30,7 @@ import {
   nonInteractiveConsentMessage,
   recordLocalModelConsent,
 } from "../registry/localModel.js";
-import { ensureLocalRuntime } from "../registry/localEmbedder.js";
+import { ensureLocalRuntime, hasLocalRuntime } from "../registry/localEmbedder.js";
 import {
   cachedLocalVectorRevision,
   fetchLocalVectors,
@@ -62,10 +65,12 @@ async function prepareOnDeviceTier(opts: {
   };
 
   const status = opts.status;
-  if (!opts.assumedYes && status.status === "declined") {
-    warn(
-      "on-device search skipped: the model download was previously declined. Re-run with --yes to consent.",
-    );
+  // A person at a terminal may reverse their own no with --yes; an unwatched run only answers a question never asked.
+  const unwatchedYes = opts.assumedYes && !opts.canPrompt;
+  const declined =
+    "on-device search skipped: the model download was previously declined. To consent, re-run with --yes in an interactive terminal, without --json and outside CI.";
+  if (status.status === "declined" && !opts.assumedYes) {
+    warn(declined);
     return warnings;
   }
 
@@ -80,8 +85,11 @@ async function prepareOnDeviceTier(opts: {
       initialValue: true,
     });
     if (clack.isCancel(answer) || answer !== true) {
-      recordLocalModelConsent(false);
-      warn("on-device search skipped: the download was declined.");
+      warn(
+        recordLocalModelConsent(false) === false
+          ? "on-device search skipped: the download was declined."
+          : "on-device search skipped: the download was declined, but could not save the answer in settings; `hyperframes doctor` says why.",
+      );
       // Return, or the decline is the only thing that does not happen: the
       // runtime check below is skipped precisely because consent is now false,
       // control reaches recordLocalModelConsent(true), and the answer is
@@ -90,16 +98,36 @@ async function prepareOnDeviceTier(opts: {
     }
   }
 
+  // Settled from disk before anything installs, on every path, so a no saved by another process stops it.
+  const asked = status.status === "declined" || status.status === "not-asked";
+  const agreed = !asked
+    ? savedLocalModelConsent()
+    : unwatchedYes
+      ? assumeLocalModelConsent()
+      : recordLocalModelConsent(true);
+  if (agreed !== true) {
+    warn(
+      agreed === false && (unwatchedYes || !asked)
+        ? declined
+        : asked
+          ? "on-device search skipped: could not save the answer in settings; `hyperframes doctor` says why."
+          : nonInteractiveConsentMessage(),
+    );
+    return warnings;
+  }
+
   // Before the model download: fetching 32 MB and then finding the runtime missing wastes it.
   const runtime = await ensureLocalRuntime();
   if (!runtime.ok) {
     warn(`on-device search skipped: ${runtime.reason}`);
     return warnings;
   }
-
-  if (status.status === "declined" || status.status === "not-asked") {
-    recordLocalModelConsent(true);
+  // The runtime install can take a while; a no saved during it stops the model download.
+  if (savedLocalModelConsent() !== true) {
+    warn(declined);
+    return warnings;
   }
+
   const model = await ensureLocalModel();
   const revisionStale =
     opts.artifactRevision !== undefined && cachedLocalVectorRevision() !== opts.artifactRevision;
@@ -215,8 +243,8 @@ export default defineCommand({
     const routineUpdate =
       searchContext?.status.status === "unavailable" ||
       (searchContext?.status.status === "ready" &&
-        artifactRevision !== undefined &&
-        cachedLocalVectorRevision() !== artifactRevision);
+        (!hasLocalRuntime() ||
+          (artifactRevision !== undefined && cachedLocalVectorRevision() !== artifactRevision)));
     const shouldPrepare = args["on-device"] === true || routineUpdate;
     let warnings: string[] = [];
     let effectiveStatus = searchContext?.status;
@@ -224,7 +252,7 @@ export default defineCommand({
       warnings = await prepareOnDeviceTier({
         assumedYes: args.yes === true,
         artifactRevision,
-        canPrompt: process.stdout.isTTY === true && !json,
+        canPrompt: isAttendedTerminal() && !json,
         registry: config.registry,
         registryNames,
         status: searchContext.status,
@@ -332,15 +360,7 @@ export default defineCommand({
     }
 
     if (json) {
-      const output = matching.map((item) => ({
-        name: item.name,
-        type: item.type.replace("hyperframes:", ""),
-        title: item.title,
-        description: item.description,
-        tags: item.tags ?? [],
-        ...("dimensions" in item && item.dimensions ? { dimensions: item.dimensions } : {}),
-        ...("duration" in item && item.duration ? { duration: item.duration } : {}),
-      }));
+      const output = matching.map(catalogRow);
       if (!query) {
         // A plain listing has no tier and no drop count, and this array shape
         // is already released. Leave it alone.
@@ -483,6 +503,20 @@ export default defineCommand({
     console.log(c.dim(`${matching.length} items. Run "hyperframes add <name>" to install.`));
   },
 });
+
+/** One `--json` row: what an agent or app needs to pick an item and show it before `add` downloads anything. */
+export function catalogRow(item: RegistryItem) {
+  return {
+    name: item.name,
+    type: item.type.replace("hyperframes:", ""),
+    title: item.title,
+    description: item.description,
+    tags: item.tags ?? [],
+    ...("dimensions" in item && item.dimensions ? { dimensions: item.dimensions } : {}),
+    ...("duration" in item && item.duration ? { duration: item.duration } : {}),
+    ...(item.preview ? { preview: item.preview } : {}),
+  };
+}
 
 /**
  * Resolve ranked names against the items this registry actually has.
@@ -670,7 +704,7 @@ type LocalMode = "local-model" | "words";
  * person to prompt instead, or when that person has already answered.
  */
 function localModelHint(json: boolean, status: LocalModelStatus | undefined): string | null {
-  if (!json && process.stdout.isTTY) return null;
+  if (!json && isAttendedTerminal()) return null;
   if (status?.status !== "not-asked") return null;
   return nonInteractiveConsentMessage();
 }
@@ -688,7 +722,7 @@ async function offerLocalModel(
   registryBaseUrl: string,
   artifactRevision?: string,
 ): Promise<void> {
-  if (json || !process.stdout.isTTY) return;
+  if (json || !isAttendedTerminal()) return;
   if (localModelStatus().status !== "not-asked") return;
   // Deliberately not gated on the number of results. That gate was set when the
   // catalog was small; against 411 moves a word match nearly always returns
@@ -700,7 +734,10 @@ async function offerLocalModel(
     initialValue: true,
   });
   if (clack.isCancel(answer)) return;
-  recordLocalModelConsent(answer === true);
+  if (recordLocalModelConsent(answer === true) !== (answer === true)) {
+    console.error("  Could not save the answer in settings; `hyperframes doctor` says why.");
+    return;
+  }
   if (answer !== true) return;
 
   // The vectors come from the registry rather than the package, so consent is

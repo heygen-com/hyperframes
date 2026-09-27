@@ -1,6 +1,6 @@
 {
   "name": "@hyperframes/core",
-  "version": "0.8.72",
+  "version": "0.8.79",
   "description": "",
   "repository": {
     "type": "git",
@@ -757,6 +757,7 @@
     "@types/jsdom": "^28.0.0",
     "@types/node": "^25.0.10",
     "@vitest/coverage-v8": "^4.1.11",
+    "gsap": "^3.15.0",
     "jsdom": "^29.0.0",
     "tsx": "^4.21.0",
     "typescript": "^5.0.0",

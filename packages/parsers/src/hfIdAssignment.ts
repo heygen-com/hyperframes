@@ -62,17 +62,17 @@ function contentKey(el: Element): string {
  * get different ids based on which comes first in the DOM. This is unavoidable:
  * unique ids for byte-identical elements require a positional signal.
  *
- * Why this is safe in practice: once `ensureHfIds` write-back persists
- * `data-hf-id` to source the attribute is physically bound to its element.
- * Reordering identical siblings carries the attribute along → zero
- * order-dependence post-persist. `ensureHfIds` skips pinned elements
- * (`if (getContractAttribute(el, "data-hf-id")) continue`), so normal operation
- * never re-exposes the ordering after first persist.
+ * Why this is safe in practice: once `data-hf-id` is on disk (stamped at project open, or by the
+ * first save) it is bound to its element, so reordering identical siblings carries it along, and
+ * `ensureHfIds` skips pinned elements (`if (getContractAttribute(el, "data-hf-id")) continue`).
+ * Before that, an outside edit changes what is minted (an element's attributes or own text, or a
+ * twin added or removed), so a save carrying an id served before the edit misses or hits the other
+ * twin until the watcher reloads the preview.
  */
-// WIRE CONTRACT: id minting is content-keyed (FNV1a of innerHTML + tag). R7's
+// WIRE CONTRACT: id minting is content-keyed (FNV1a of tag, sorted attrs, own text). R7's
 // preview route relies on mintHfId producing identical ids across mint contexts
-// (disk-persist pass vs. in-memory bundle pass) — see preview.test.ts
-// "bundle returning untagged HTML gets same ids as disk". Any change that adds
+// (served copy vs. the source a save parses) — see preview.test.ts
+// "bundle returning untagged HTML gets the ids minted from the source file". Any change that adds
 // positional, session, or random input to the hash breaks that invariant and
 // makes hf- ids diverge between disk and served HTML, silently corrupting
 // drag-to-edit targeting.

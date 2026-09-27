@@ -2,12 +2,13 @@
 
 import { act, useRef, useState } from "react";
 import { createRoot } from "react-dom/client";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { resetOverlayFrameLoopForTests } from "./overlayFrameLoop";
 import {
   usePreviewCompositionRect,
   type PreviewCompositionRect,
 } from "./usePreviewCompositionRect";
+import { usePlayerStore } from "../../player/store/playerStore";
 
 (globalThis as unknown as { IS_REACT_ACT_ENVIRONMENT: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
@@ -58,6 +59,10 @@ function compositionFrame(box: [number, number, number, number], width: number, 
 }
 
 const settle = () => new Promise((r) => setTimeout(r, 400));
+
+beforeEach(() => {
+  usePlayerStore.setState({ previewBooted: true });
+});
 
 describe("usePreviewCompositionRect", () => {
   it("reports the live preview iframe's box relative to the overlay, scaled to the composition", async () => {

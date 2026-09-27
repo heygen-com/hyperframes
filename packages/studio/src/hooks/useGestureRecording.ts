@@ -30,8 +30,7 @@ interface BasePosition {
 
 interface GsapRuntime {
   timeline: { seek: (t: number) => void };
-  gsap: { set: (target: string, vars: Record<string, number | string>) => void };
-  selector: string;
+  gsap: { set: (target: Element, vars: Record<string, number | string>) => void };
   element: HTMLElement;
   startTime: number;
   maxSeekTime: number;
@@ -81,12 +80,11 @@ function readBasePosition(element: HTMLElement, iframeEl: HTMLIFrameElement): Ba
 function connectGsapRuntime(
   element: HTMLElement,
   iframeEl: HTMLIFrameElement,
-  selector: string | null,
   elementEndTime: number | undefined,
 ): GsapRuntime | null {
   try {
     const win = iframeEl.contentWindow as Window & {
-      gsap?: { set: (t: string, v: Record<string, number | string>) => void };
+      gsap?: { set: (t: Element, v: Record<string, number | string>) => void };
       __timelines?: Record<string, { seek: (t: number) => void; duration: () => number }>;
       __player?: { getTime: () => number };
     };
@@ -98,12 +96,11 @@ function connectGsapRuntime(
           ([key, value]) => key !== "__proxied" && typeof value?.seek === "function",
         )?.[1] ?? null)
       : null;
-    if (win?.gsap?.set && tl?.seek && selector) {
+    if (win?.gsap?.set && tl?.seek && element.id) {
       const tlDuration = tl.duration();
       return {
         timeline: tl,
         gsap: win.gsap,
-        selector,
         element,
         startTime: win.__player?.getTime() ?? 0,
         maxSeekTime:
@@ -126,7 +123,7 @@ function applyRuntimePreview(
   const seekTime = Math.min(runtime.startTime + time, runtime.maxSeekTime);
   runtime.timeline.seek(seekTime);
   runtime.element.style.setProperty("translate", "none");
-  runtime.gsap.set(runtime.selector, { ...properties });
+  runtime.gsap.set(runtime.element, { ...properties });
   runtime.element.style.visibility = "visible";
   liveTime.notify(seekTime);
   usePlayerStore.getState().setCurrentTime(seekTime);
@@ -256,7 +253,7 @@ function releaseRuntimePreview(r: RecordingRefs): void {
   element.style.visibility = savedVisibility;
   element.style.setProperty("translate", savedTranslate || "");
   try {
-    runtime.gsap.set(runtime.selector, {
+    runtime.gsap.set(runtime.element, {
       clearProps: "x,y,scale,scaleX,scaleY,rotation,rotationX,rotationY,opacity,z",
     });
   } catch {
@@ -324,8 +321,7 @@ export function useGestureRecording() {
       r.scale = computeIframeScale(iframeEl);
 
       // --- Phase 3: Connect to the iframe GSAP runtime ---
-      const selector = element.id ? `#${element.id}` : null;
-      r.runtime = connectGsapRuntime(element, iframeEl, selector, elementEndTime);
+      r.runtime = connectGsapRuntime(element, iframeEl, elementEndTime);
       // Clear the optimistic path offset only while a live runtime owns the
       // preview. releaseRuntimePreview restores it on every exit path.
       if (r.runtime && (base.cssOffX || base.cssOffY)) {

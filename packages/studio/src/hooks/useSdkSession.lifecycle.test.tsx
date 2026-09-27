@@ -12,12 +12,17 @@ vi.mock("@hyperframes/sdk", () => ({
 
 import type { Composition } from "@hyperframes/sdk";
 import { useSdkSession, type SdkSessionHandle } from "./useSdkSession";
+import { usePlayerStore } from "../player/store/playerStore";
 
 vi.mock("../utils/studioTelemetry", () => ({ trackStudioEvent: vi.fn() }));
 
 import { trackStudioEvent } from "../utils/studioTelemetry";
 
 const trackMock = vi.mocked(trackStudioEvent);
+
+beforeEach(() => {
+  usePlayerStore.setState({ timelineProjectId: "project-a", previewBooted: true });
+});
 
 function Probe({ projectId }: { projectId: string }) {
   useSdkSession(projectId, "index.html");
@@ -52,6 +57,24 @@ describe("useSdkSession ownership", () => {
 
   afterEach(() => {
     vi.unstubAllGlobals();
+  });
+
+  it("does not read or parse the composition until the live preview has booted", async () => {
+    usePlayerStore.setState({ previewBooted: false });
+    const fetchStub = vi.fn(async () => response("PROJECT_A"));
+    vi.stubGlobal("fetch", fetchStub);
+    openComposition.mockImplementation(async () => fakeSession());
+
+    const root = createRoot(document.createElement("div"));
+    await act(async () => root.render(<Probe projectId="project-a" />));
+    await flushAsyncEffects();
+    expect(fetchStub).not.toHaveBeenCalled();
+    expect(openComposition).not.toHaveBeenCalled();
+
+    await act(async () => usePlayerStore.getState().markPreviewBooted());
+    await flushAsyncEffects();
+    expect(openComposition).toHaveBeenCalledWith("PROJECT_A", { history: false });
+    act(() => root.unmount());
   });
 
   it("hides project A immediately while project B with the same path is still opening", async () => {
@@ -94,7 +117,11 @@ describe("useSdkSession ownership", () => {
     expect(publication).toBe("published");
     expect(captured.handle?.session).toBe(publishedA);
 
-    await act(async () => root.render(<Probe projectId="project-b" />));
+    await act(async () => {
+      usePlayerStore.getState().beginTimelineSession("project-b");
+      usePlayerStore.getState().markPreviewBooted();
+      root.render(<Probe projectId="project-b" />);
+    });
     expect(captured.handle?.session).toBeNull();
     expect(publishedA.dispose).toHaveBeenCalledOnce();
     expect(
@@ -164,6 +191,7 @@ describe("useSdkSession unreachable project", () => {
   });
 
   function probeHandle(projectId: string) {
+    usePlayerStore.setState({ timelineProjectId: projectId });
     const captured: { handle: SdkSessionHandle | null } = { handle: null };
     function HandleProbe() {
       captured.handle = useSdkSession(projectId, "index.html");
@@ -684,11 +712,13 @@ describe("useSdkSession unavailable telemetry", () => {
         ),
       );
       await flushAsyncEffects();
-      await act(async () =>
+      await act(async () => {
+        usePlayerStore.getState().beginTimelineSession("project-b");
+        usePlayerStore.getState().markPreviewBooted();
         root.render(
           <HandleProbe projectId="project-b" path="index.html" onAbsentRead={onAbsentRead} />,
-        ),
-      );
+        );
+      });
       await flushAsyncEffects();
 
       expect(onAbsentRead).toHaveBeenCalledTimes(2);

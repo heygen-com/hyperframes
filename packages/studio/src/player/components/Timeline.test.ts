@@ -88,9 +88,7 @@ function getHorizontalGeometry(host: HTMLElement, clipId: string, tickLabel: str
   if (!ruler) throw new Error("Missing timeline ruler");
   const rulerOrigin = ruler.previousElementSibling;
   if (!(rulerOrigin instanceof HTMLElement)) throw new Error("Missing timeline ruler origin");
-  const playhead = Array.from(host.querySelectorAll<HTMLElement>("div")).find(
-    (node) => node.style.zIndex === "100",
-  );
+  const playhead = host.querySelector<HTMLElement>("[data-timeline-playhead-layer] > div");
   if (!playhead) throw new Error("Missing timeline playhead");
   return { clip, trackHeader, rulerTick, rulerOrigin, playhead };
 }

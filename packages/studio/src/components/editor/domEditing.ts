@@ -37,6 +37,7 @@ export {
   getDomEditNonEditableReason,
   getDomEditTargetKey,
   isTextEditableSelection,
+  liveLayerElement,
   readHfId,
   refreshDomEditSelection,
   resolveDomEditCapabilities,

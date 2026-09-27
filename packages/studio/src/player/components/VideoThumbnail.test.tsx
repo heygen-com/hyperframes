@@ -86,6 +86,19 @@ describe("VideoThumbnail", () => {
     expect(host.querySelectorAll("img").length).toBeGreaterThan(0);
   });
 
+  it("spreads the frames across every tile so the strip reaches the clip's end", async () => {
+    const urls = Array.from({ length: 8 }, (_, index) => `blob:${index}`);
+    vi.mocked(decodeVideoThumbnail).mockResolvedValue({
+      value: { kind: "filmstrip", urls, aspect: 16 / 9 },
+      weight: 256,
+    });
+
+    await render(500);
+
+    const tiles = [...host.querySelectorAll("img")].map((img) => img.getAttribute("src"));
+    expect(tiles).toEqual(["blob:0", "blob:2", "blob:4", "blob:5", "blob:7"]);
+  });
+
   it("issues a single decode job for a narrow clip", async () => {
     vi.mocked(decodeVideoThumbnail).mockResolvedValue({
       value: { kind: "image", url: "blob:poster", aspect: 16 / 9 },

@@ -12,7 +12,6 @@ import {
 } from "../utils/studioSaveDiagnostics";
 import { buildDomEditPatchTarget, type DomEditSelection } from "../components/editor/domEditing";
 import { fontFamilyFromAssetPath, type ImportedFontAsset } from "../components/editor/fontAssets";
-import type { EditHistoryKind } from "../utils/editHistory";
 import type { CommitDomEditPatchBatches, PersistDomEditOperations } from "./domEditCommitTypes";
 import type { PatchOperation } from "../utils/sourcePatcher";
 import {
@@ -38,7 +37,6 @@ import { studioWriteHeaders } from "../utils/studioFileVersion";
 import { reseekPreviewRuntime } from "./timelineTrackVisibility";
 interface RecordEditInput {
   label: string;
-  kind: EditHistoryKind;
   coalesceKey?: string;
   coalesceMs?: number;
   files: Record<string, { before: string; after: string }>;
@@ -286,7 +284,6 @@ export function useDomEditCommits({
 
       await editHistory.recordEdit({
         label: options?.label ?? "Edit layer",
-        kind: "manual",
         coalesceKey: options?.coalesceKey,
         coalesceMs: options?.coalesceMs,
         files: { [targetPath]: { before: originalContent, after: finalContent } },
@@ -365,7 +362,6 @@ export function useDomEditCommits({
           if (changed) {
             await editHistory.recordEdit({
               label: options.label,
-              kind: "manual",
               coalesceKey: options.coalesceKey,
               coalesceMs: options.coalesceMs,
               files,

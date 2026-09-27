@@ -146,7 +146,7 @@ export const VideoThumbnail = memo(function VideoThumbnail({
       {urls.length > 0 && (
         <div className="absolute inset-0 flex">
           {Array.from({ length: frameCount }, (_, index) => {
-            const src = urls[index % urls.length];
+            const src = urls[Math.round((index * (urls.length - 1)) / Math.max(1, frameCount - 1))];
             return (
               <div
                 key={index}

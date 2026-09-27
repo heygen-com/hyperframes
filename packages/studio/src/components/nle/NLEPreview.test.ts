@@ -10,6 +10,7 @@ import { readPreviewComplexity } from "../../player/hooks/usePreviewFirstFrameTe
 globalThis.IS_REACT_ACT_ENVIRONMENT = true;
 
 const playerMounts: string[] = [];
+let livePlayerProps: { onReadyToShowChange?: (ready: boolean) => void } = {};
 
 vi.mock("../../player", async () => {
   const React = await import("react");
@@ -18,11 +19,13 @@ vi.mock("../../player", async () => {
     Player: React.forwardRef(function MockPlayer(
       props: {
         onLoad?: () => void;
+        onReadyToShowChange?: (ready: boolean) => void;
         suppressLoadingOverlay?: boolean;
         style?: React.CSSProperties;
       },
       ref: React.ForwardedRef<HTMLIFrameElement>,
     ) {
+      if (!props.suppressLoadingOverlay) livePlayerProps = props;
       React.useEffect(() => {
         props.onLoad?.();
       }, [props]);
@@ -36,11 +39,6 @@ vi.mock("../../player", async () => {
     }),
   };
 });
-
-vi.mock("../../utils/studioUiPreferences", () => ({
-  readStudioUiPreferences: () => ({}),
-  writeStudioUiPreferences: () => {},
-}));
 
 let resizeCallbacks: Array<() => void> = [];
 
@@ -90,23 +88,25 @@ function renderPreview(
   document.body.append(host);
   const root = createRoot(host);
   const iframeRef = createRef<HTMLIFrameElement>();
-
-  act(() => {
-    root.render(
-      React.createElement(NLEPreview, {
-        projectId: "timeline-edit-playground",
-        iframeRef,
-        onIframeLoad: () => {},
-        previewSlots,
-        onShadowIframeLoad: () => {},
-        onShadowReadyChange: () => {},
-        onShadowError: () => {},
-        setShadowIframeNode: () => {},
-        resetPreviewSlots: () => {},
-        fillBox,
-      }),
-    );
-  });
+  const render = (directUrl?: string, projectId = "timeline-edit-playground") =>
+    act(() => {
+      root.render(
+        React.createElement(NLEPreview, {
+          projectId,
+          directUrl,
+          iframeRef,
+          onIframeLoad: () => {},
+          previewSlots,
+          onShadowIframeLoad: () => {},
+          onShadowReadyChange: () => {},
+          onShadowError: () => {},
+          setShadowIframeNode: () => {},
+          resetPreviewSlots: () => {},
+          fillBox,
+        }),
+      );
+    });
+  render();
 
   const viewport = host.querySelector('[aria-label="Composition preview"]') as HTMLDivElement;
   const stage = host.querySelector('[data-testid="preview-zoom-stage"]') as HTMLDivElement;
@@ -121,8 +121,12 @@ function renderPreview(
   return {
     host,
     root,
+    render,
     viewport,
     stage,
+    openProject(projectId: string) {
+      render(undefined, projectId);
+    },
     cleanup() {
       act(() => {
         root.unmount();
@@ -256,6 +260,111 @@ describe("NLEPreview", () => {
     view.cleanup();
   });
 
+  describe("zoom", () => {
+    beforeEach(() => {
+      vi.useFakeTimers();
+      localStorage.clear();
+    });
+    afterEach(() => {
+      vi.useRealTimers();
+      localStorage.clear();
+    });
+
+    /** A pinch (ctrl + wheel) over the preview, then the settle that follows it. */
+    function pinchIn(view: ReturnType<typeof renderPreview>, steps: number) {
+      act(() => {
+        for (let step = 0; step < steps; step += 1) {
+          const pinch = new WheelEvent("wheel", {
+            bubbles: true,
+            cancelable: true,
+            clientX: 400,
+            clientY: 300,
+            deltaY: -10,
+          });
+          // happy-dom drops ctrlKey from the WheelEvent init; a trackpad pinch sets it.
+          Object.defineProperty(pinch, "ctrlKey", { value: true });
+          view.stage.dispatchEvent(pinch);
+        }
+      });
+      act(() => vi.advanceTimersByTime(300));
+    }
+    const chip = (view: ReturnType<typeof renderPreview>) =>
+      view.host.querySelector('[data-testid="preview-zoom-chip"]');
+    const navigator = (view: ReturnType<typeof renderPreview>) =>
+      view.host.querySelector('[data-testid="preview-zoom-navigator"]');
+
+    it("labels a pan away from Fit without a zoom as panned", () => {
+      const view = renderPreview();
+      act(() => {
+        view.stage.dispatchEvent(
+          new WheelEvent("wheel", { bubbles: true, cancelable: true, deltaX: -30, deltaY: 0 }),
+        );
+      });
+      act(() => vi.advanceTimersByTime(300));
+      expect(chip(view)?.textContent).toBe("Panned·Fit");
+      view.cleanup();
+    });
+
+    it("keeps a click on Fit from reaching the pane behind it", () => {
+      const view = renderPreview();
+      // Above React's root, as the preview pane's handler is: React stops the event before either.
+      const pane = vi.fn();
+      document.body.addEventListener("pointerdown", pane);
+      pinchIn(view, 10);
+      act(() => {
+        view.host
+          .querySelector('[data-testid="preview-zoom-fit"]')!
+          .dispatchEvent(new PointerEvent("pointerdown", { bubbles: true }));
+      });
+      document.body.removeEventListener("pointerdown", pane);
+      expect(pane).not.toHaveBeenCalled();
+      view.cleanup();
+    });
+
+    it("opens at Fit even when an older Studio saved a zoom", () => {
+      localStorage.setItem(
+        "hf-studio-ui-preferences",
+        JSON.stringify({ previewZoom: { zoomPercent: 245, panX: 0, panY: 0 } }),
+      );
+      const view = renderPreview();
+      expect(view.stage.style.transform).toContain("scale(1)");
+      expect(chip(view)).toBeNull();
+      view.cleanup();
+    });
+
+    it("says how far it is zoomed, shows where in the frame, and Fit puts it back", () => {
+      const view = renderPreview();
+      expect([chip(view), navigator(view)]).toEqual([null, null]);
+
+      pinchIn(view, 10);
+      expect(chip(view)?.textContent).toMatch(/^Zoomed 2\d\d%·Fit$/);
+      const region = view.host.querySelector<HTMLElement>(
+        '[data-testid="preview-zoom-navigator-region"]',
+      );
+      expect(Number.parseFloat(region!.style.width)).toBeLessThan(100);
+
+      act(() => {
+        view.host.querySelector<HTMLButtonElement>('[data-testid="preview-zoom-fit"]')!.click();
+      });
+      act(() => vi.advanceTimersByTime(300));
+      expect(view.stage.style.transform).toContain("scale(1)");
+      expect([chip(view), navigator(view)]).toEqual([null, null]);
+      view.cleanup();
+    });
+
+    it("keeps a zoom only while the project is open: nothing is saved, and another project opens at Fit", () => {
+      const view = renderPreview();
+      pinchIn(view, 10);
+      expect(chip(view)).not.toBeNull();
+      expect(localStorage.getItem("hf-studio-ui-preferences") ?? "").not.toContain("previewZoom");
+
+      view.openProject("another-project");
+      expect(view.stage.style.transform).toContain("scale(1)");
+      expect(chip(view)).toBeNull();
+      view.cleanup();
+    });
+  });
+
   it("insets the picture by default and fills a same-shape box when fillBox is on", () => {
     const box = { width: 640, height: 360 };
     const inset = renderPreview(undefined, { box });
@@ -281,6 +390,77 @@ describe("NLEPreview", () => {
     expect(players[1].style.visibility).toBe("hidden");
     expect(players[1].style.pointerEvents).toBe("none");
     view.cleanup();
+  });
+
+  it("covers the live preview with the cached frame-0 poster until it is ready to show", () => {
+    const view = renderPreview();
+    const poster = () =>
+      view.stage.querySelector<HTMLImageElement>('[data-testid="preview-poster"]');
+    expect(poster()?.getAttribute("src")).toBe(
+      "/api/projects/timeline-edit-playground/thumbnail/index.html?t=0&output=source&cached=1",
+    );
+    expect(poster()?.style.zIndex).toBe("2");
+
+    act(() => livePlayerProps.onReadyToShowChange?.(false));
+    expect(poster()?.hidden).toBe(false);
+    act(() => livePlayerProps.onReadyToShowChange?.(true));
+    expect(poster()?.hidden).toBe(true);
+    act(() => poster()?.dispatchEvent(new Event("load")));
+    expect(poster()).toBeNull();
+    view.cleanup();
+  });
+
+  describe("a missing poster", () => {
+    const renderUrl =
+      "/api/projects/timeline-edit-playground/thumbnail/index.html?t=0&output=source";
+    const fetchSpy = vi.fn(() => Promise.resolve(new Response()));
+    beforeEach(() => {
+      fetchSpy.mockClear();
+      vi.stubGlobal("fetch", fetchSpy);
+    });
+    afterEach(() => vi.unstubAllGlobals());
+
+    const settle = (
+      view: ReturnType<typeof renderPreview>,
+      steps: Array<"ready" | "missing" | "loaded">,
+    ) => {
+      for (const step of steps) {
+        const poster = view.stage.querySelector('[data-testid="preview-poster"]');
+        act(() =>
+          step === "ready"
+            ? livePlayerProps.onReadyToShowChange?.(true)
+            : poster?.dispatchEvent(new Event(step === "missing" ? "error" : "load")),
+        );
+      }
+    };
+
+    it("is rendered for the next open when the live frame is ready first", () => {
+      const view = renderPreview();
+      settle(view, ["ready", "missing"]);
+      expect(fetchSpy.mock.calls).toEqual([[renderUrl]]);
+      expect(view.stage.querySelector('[data-testid="preview-poster"]')).toBeNull();
+      view.cleanup();
+    });
+
+    it("is rendered once the live frame is ready when it is missing first", () => {
+      const view = renderPreview();
+      settle(view, ["missing"]);
+      expect(fetchSpy).not.toHaveBeenCalled();
+      settle(view, ["ready", "ready"]);
+      expect(fetchSpy.mock.calls).toEqual([[renderUrl]]);
+      view.cleanup();
+    });
+
+    it("is rendered on a return from a sub-composition when the live frame is ready first", () => {
+      const view = renderPreview();
+      settle(view, ["loaded", "ready"]);
+      view.render("/api/projects/timeline-edit-playground/preview/comp/compositions/intro.html");
+      settle(view, ["ready"]);
+      view.render();
+      settle(view, ["ready", "missing"]);
+      expect(fetchSpy.mock.calls).toEqual([[renderUrl]]);
+      view.cleanup();
+    });
   });
 
   it("mounts the live player once when the composition switches", () => {

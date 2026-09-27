@@ -114,7 +114,12 @@ export function handleRuntimeMessage(
   if (data["type"] === "state") {
     callbacks.setPlaybackState(
       applyRuntimeStateMessage(
-        { frame: (data["frame"] as number) ?? 0, isPlaying: !!data["isPlaying"] },
+        {
+          frame: (data["frame"] as number) ?? 0,
+          currentTime: data["currentTime"] as number | undefined,
+          ended: typeof data["ended"] === "boolean" ? data["ended"] : undefined,
+          isPlaying: !!data["isPlaying"],
+        },
         protocol.fps,
         callbacks.getPlaybackState(),
         callbacks,
@@ -145,15 +150,6 @@ export function handleRuntimeMessage(
       Number.isFinite(declaredDuration) && declaredDuration > 0
         ? declaredDuration
         : frameDuration / protocol.fps;
-    if (Number.isFinite(duration) && duration > 0) {
-      const pb = callbacks.getPlaybackState();
-      callbacks.setPlaybackState({ ...pb, duration });
-      callbacks.updateControlsTime(pb.currentTime, duration);
-      callbacks.onRuntimeTimelineReady(
-        duration,
-        typeof data["assetsReady"] === "boolean" ? data["assetsReady"] : undefined,
-      );
-    }
     if (
       Number.isFinite(data["compositionWidth"]) &&
       (data["compositionWidth"] as number) > 0 &&
@@ -163,6 +159,15 @@ export function handleRuntimeMessage(
       callbacks.setCompositionSize(
         data["compositionWidth"] as number,
         data["compositionHeight"] as number,
+      );
+    }
+    if (Number.isFinite(duration) && duration > 0) {
+      const pb = callbacks.getPlaybackState();
+      callbacks.setPlaybackState({ ...pb, duration });
+      callbacks.updateControlsTime(pb.currentTime, duration);
+      callbacks.onRuntimeTimelineReady(
+        duration,
+        typeof data["assetsReady"] === "boolean" ? data["assetsReady"] : undefined,
       );
     }
     callbacks.setScenes(extractScenes(data["scenes"]));

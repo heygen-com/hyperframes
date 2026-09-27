@@ -133,7 +133,6 @@ describe("runAtomicCutTransaction", () => {
     expect(writeProjectFile).not.toHaveBeenCalled();
     expect(recordEdit).toHaveBeenCalledWith({
       label: "Split timeline clip",
-      kind: "timeline",
       files: { "index.html": { before: "before", after: "after" } },
     });
     expect(observe).toHaveBeenCalledWith("index.html", '"v1"');

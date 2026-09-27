@@ -28,6 +28,7 @@ let failPrepareCaptureSessionForReuse = false;
 let initializeSessionErrorMessage = "initialize failed";
 const browserConsoleBuffer = ["[FrameCapture:ERROR] page.goto failed"];
 const closeCaptureSession = mock(async () => {});
+const createdSessionConfigs: Array<{ enableBrowserPool?: boolean }> = [];
 class DrawElementVerificationError extends Error {}
 
 mock.module("@hyperframes/engine", () => ({
@@ -57,13 +58,16 @@ mock.module("@hyperframes/engine", () => ({
   },
   closeCaptureSession,
   completeDeferredDrawElementInit: async () => {},
-  createCaptureSession: async () => ({
-    isInitialized: false,
-    browserConsoleBuffer,
-    options: { captureBeyondViewport: false },
-    workerEncodeEnabled: sessionWorkerEncodeEnabled,
-    captureMode: captureSessionMode,
-  }),
+  createCaptureSession: async (...args: unknown[]) => {
+    createdSessionConfigs.push(args[4] as { enableBrowserPool?: boolean });
+    return {
+      isInitialized: false,
+      browserConsoleBuffer,
+      options: { captureBeyondViewport: false },
+      workerEncodeEnabled: sessionWorkerEncodeEnabled,
+      captureMode: captureSessionMode,
+    };
+  },
   createFrameReorderBuffer: () => ({
     waitForFrame: async () => {},
     advanceTo: () => {},
@@ -130,6 +134,9 @@ mock.module("@hyperframes/engine", () => ({
     }
   },
   recaptureDrawElementFrameForVerify: async () => Buffer.from("frame"),
+  resolveHeadlessShellPath: () => "/headless-shell",
+  shouldDisableBrowserPoolForParallelWorker: ({ parallel }: { parallel?: boolean }) =>
+    Boolean(parallel),
   spawnStreamingEncoder,
   writeCapturedFrame: async () => {},
 }));
@@ -672,6 +679,70 @@ describe("runCaptureSegmentedStage", () => {
     expect(concatInputs).toEqual(
       Array.from({ length: 7 }, (_, i) => segmentOutputPath(stableDir, i)),
     );
+  });
+
+  it("gives each parallel worker its own browser and the probe session to one worker", async () => {
+    createdSessionConfigs.length = 0;
+    const result = await runCaptureSegmentedStage({
+      ...fakeStageInput({ totalFrames: 6 }),
+      segmentFrames: 3,
+      segmentDir: join(fixtureRoot, "own-browser"),
+      workerCount: 2,
+      deps: {
+        spawnEncoder: mock(async () => okEncoder()),
+        captureFrame: mock(async () => ({ buffer: Buffer.alloc(1) })),
+        concat: mock(async () => ({ success: true as const })),
+        closeSession: mock(async () => {}),
+        removeFile: () => {},
+      },
+    });
+    expect(result.success).toBe(true);
+    expect(createdSessionConfigs).toEqual([expect.objectContaining({ enableBrowserPool: false })]);
+  });
+
+  it("closes a fresh session whose initialization fails", async () => {
+    closeCaptureSession.mockClear();
+    failInitializeSession = true;
+    try {
+      await expect(
+        runCaptureSegmentedStage({
+          ...fakeStageInput({ totalFrames: 3 }),
+          probeSession: null,
+          segmentFrames: 3,
+          segmentDir: join(fixtureRoot, "initfail"),
+        }),
+      ).rejects.toThrow(/initialize failed/);
+    } finally {
+      failInitializeSession = false;
+    }
+    expect(closeCaptureSession.mock.calls.map((c) => c[0])).toEqual([
+      expect.objectContaining({ isInitialized: false }),
+    ]);
+  });
+
+  it("closes the workers already opened when a later worker fails to launch", async () => {
+    const closed: number[] = [];
+    let id = 0;
+    const result = runCaptureSegmentedStage({
+      ...fakeStageInput({ totalFrames: 9 }),
+      probeSession: null,
+      segmentFrames: 3,
+      segmentDir: join(fixtureRoot, "launchfail"),
+      workerCount: 3,
+      sessionFactory: {
+        create: async () => {
+          if (id === 2) throw new Error("browser launch timed out");
+          return fakeSession(id++);
+        },
+      },
+      deps: {
+        closeSession: mock(async (s: { id: number }) => {
+          closed.push(s.id);
+        }),
+      },
+    });
+    await expect(result).rejects.toThrow(/browser launch timed out/);
+    expect(closed.sort()).toEqual([0, 1]);
   });
 
   it("closes every worker session when one worker fails hard", async () => {

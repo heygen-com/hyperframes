@@ -239,6 +239,7 @@ export function StudioApp({ readOnlyPreview = false, readOnlyPreviewReason }: St
     handleTimelineElementsDelete: timelineEditing.handleTimelineElementsDelete,
     handleDomEditElementDelete: domEditDeleteBridge,
     previewIframeRef,
+    waitForPendingDomEditSaves: previewPersistence.waitForPendingDomEditSaves,
   });
   const appHotkeys = useAppHotkeys({
     handleTimelineElementsDelete: timelineEditing.handleTimelineElementsDelete,

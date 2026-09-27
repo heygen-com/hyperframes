@@ -2,7 +2,7 @@
 
 import { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { usePlayerStore } from "../../player/store/playerStore";
 import { TIMELINE_COMPOSITION_MIME } from "../../utils/timelineCompositionDrop";
 import { CompositionsTab } from "./CompositionsTab";
@@ -13,6 +13,10 @@ Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true });
 ).happyDOM.settings.disableIframePageLoading = true;
 
 let root: Root | null = null;
+
+beforeEach(() => {
+  usePlayerStore.setState({ previewBooted: true });
+});
 
 afterEach(() => {
   if (root) act(() => root?.unmount());

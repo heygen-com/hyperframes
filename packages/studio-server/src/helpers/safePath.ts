@@ -1,10 +1,33 @@
-import { join } from "node:path";
-import { readdirSync } from "node:fs";
+import { basename, dirname, isAbsolute, join, relative, sep } from "node:path";
+import { readdirSync, realpathSync, type Dirent } from "node:fs";
+import { resolveWithinProject } from "@hyperframes/core";
 
 // `isSafePath` lives at the package root so non-studio-api layers (compiler,
 // CLI, engine) can share it without a backwards dependency on studio-api.
 // Re-exported here for back-compat with existing `../helpers/safePath.js` imports.
 export { isSafePath, resolveWithinProject } from "@hyperframes/core";
+
+/** The real path; for a path not there (yet, or any more), the nearest existing folder's real path plus the rest. */
+export function realFilePath(filePath: string): string {
+  try {
+    return realpathSync(filePath);
+  } catch {
+    const dir = dirname(filePath);
+    return dir === filePath ? filePath : join(realFilePath(dir), basename(filePath));
+  }
+}
+
+/**
+ * `resolveWithinProject` with every link inside the project resolved now, so a write to the result lands on the
+ * file checked here even if a link on the way is retargeted before the write.
+ */
+export function pinWithinProject(base: string, relativePath: string): string | null {
+  const checked = resolveWithinProject(base, relativePath);
+  if (!checked) return null;
+  const inside = relative(realFilePath(base), realFilePath(checked));
+  const escapes = inside === ".." || inside.startsWith(`..${sep}`) || isAbsolute(inside);
+  return escapes ? null : join(base, inside);
+}
 
 const IGNORE_DIRS = new Set([
   ".thumbnails",
@@ -30,10 +53,21 @@ export function isInHiddenOrVendorDir(relPath: string): boolean {
   return segments.slice(0, -1).some((seg) => seg.startsWith(".") || seg === "node_modules");
 }
 
-/** Recursively walk a directory and return relative file paths. */
+const UNREADABLE_DIR_CODES = new Set(["EACCES", "EPERM", "ENOENT", "ENOTDIR"]);
+
+/** Recursively walk a directory and return relative file paths. A subfolder that is unreadable
+ * or removed mid-walk is skipped; any other failure, or an unreadable `dir` itself, throws. */
 export function walkDir(dir: string, prefix = ""): string[] {
+  let entries: Dirent[];
+  try {
+    entries = readdirSync(dir, { withFileTypes: true });
+  } catch (err) {
+    const code = (err as NodeJS.ErrnoException).code;
+    if (!prefix || !code || !UNREADABLE_DIR_CODES.has(code)) throw err;
+    return [];
+  }
   const files: string[] = [];
-  for (const entry of readdirSync(dir, { withFileTypes: true })) {
+  for (const entry of entries) {
     const rel = prefix ? `${prefix}/${entry.name}` : entry.name;
     if (IGNORE_DIRS.has(entry.name) || shouldIgnoreDir(rel)) continue;
     if (entry.isDirectory()) {

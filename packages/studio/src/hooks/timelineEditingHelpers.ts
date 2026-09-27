@@ -182,6 +182,17 @@ export function patchIframeDomTiming(
   }
 }
 
+/** Takes deleted clips out of the live preview at once: until the reload lands, anything that re-reads the
+ *  preview (composition enrichment) would otherwise put them back on the timeline. */
+export function removeIframeTimelineElements(
+  iframe: HTMLIFrameElement | null,
+  elements: TimelineElement[],
+  activeCompositionPath: string | null = null,
+): void {
+  for (const element of elements)
+    findTimelineElementInIframe(iframe, element, activeCompositionPath)?.remove();
+}
+
 export function playbackStartAttributeForElement(
   element: Pick<TimelineElement, "kind" | "playbackStartAttr">,
 ): "data-media-start" | "data-playback-start" {
@@ -307,7 +318,6 @@ export async function persistTimelineEdit(input: PersistTimelineEditInput): Prom
   await saveProjectFilesWithHistory({
     projectId: input.projectId,
     label: input.label,
-    kind: "timeline",
     coalesceKey: input.coalesceKey,
     files: { [targetPath]: patchedContent },
     readFile: async () => originalContent,
@@ -377,7 +387,6 @@ export async function persistTimelineBatchEdit(
   await saveProjectFilesWithHistory({
     projectId: input.projectId,
     label: input.label,
-    kind: "timeline",
     coalesceKey: input.coalesceKey,
     coalesceMs: input.coalesceMs,
     files,
@@ -455,7 +464,6 @@ export async function persistElementAttribute({
     const changedPaths = await saveProjectFilesWithHistory({
       projectId,
       label,
-      kind: "timeline",
       files: { [targetPath]: patched },
       readFile: async (path) => (path === targetPath ? before : readFileContent(projectId, path)),
       writeFile: writeProjectFile,

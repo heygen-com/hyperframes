@@ -106,16 +106,11 @@
           document.getElementById("cpt-scene").appendChild(c);
         })();
 
-        var V = Object.fromEntries(
-          JSON.parse(
-            document
-              .querySelector("[data-composition-variables]")
-              .getAttribute("data-composition-variables"),
-          ).map((e) => [e.id, e.default]),
-        );
+        // getVariables carries the declared defaults, standalone and mounted.
+        var V = {};
         try {
           if (window.__hyperframes && window.__hyperframes.getVariables)
-            V = Object.assign(V, window.__hyperframes.getVariables() || {});
+            V = window.__hyperframes.getVariables() || {};
         } catch (e) {
           /* corrupt declarations must not blank the composition */
         }
@@ -347,31 +342,26 @@
       const W = 1920,
         H = 1080,
         DUR = 12;
-      let V = Object.fromEntries(
-        JSON.parse(
-          document
-            .querySelector("[data-composition-variables]")
-            .getAttribute("data-composition-variables"),
-        ).map((e) => [e.id, e.default]),
-      );
+      // Bare __hyperframes is this composition's own in a module; getVariables carries the defaults.
+      let V = {};
       try {
-        if (window.__hyperframes && window.__hyperframes.getVariables)
-          V = Object.assign(V, window.__hyperframes.getVariables() || {});
+        if (typeof __hyperframes !== "undefined" && __hyperframes.getVariables)
+          V = __hyperframes.getVariables() || {};
       } catch (e) {
         /* corrupt declarations must not blank the composition */
       }
       const HEADLINE1 = String(V.headline1 ?? "Understory");
-      const HEADLINE2 = String(V.headline2 ?? "MOVE SLOWLY");
+      const HEADLINE2 = String(V.headline2 ?? "Move slowly");
       /* Headline typography is a PARAMETER — never a Design-panel edit. Any
          Google Fonts family name works; falls back through Gelasio/serif
          while (or if never) loading. */
-      const FONT = (String(V.font || "Gelasio").trim() || "Gelasio").replace(/["']/g, "");
+      const FONT = (String(V.font || "Helvetica").trim() || "Helvetica").replace(/["']/g, "");
       const FONT_WEIGHT = Math.max(
         100,
         Math.min(
           900,
           Math.round(
-            isFinite(Number(V.fontWeight)) && Number(V.fontWeight) ? Number(V.fontWeight) : 500,
+            isFinite(Number(V.fontWeight)) && Number(V.fontWeight) ? Number(V.fontWeight) : 900,
           ),
         ),
       );
@@ -386,7 +376,7 @@
       );
       const LETTER_SP = Math.max(
         -0.2,
-        Math.min(1, isFinite(Number(V.letterSpacing)) ? Number(V.letterSpacing) : 0.1),
+        Math.min(1, isFinite(Number(V.letterSpacing)) ? Number(V.letterSpacing) : 0.01),
       );
       const FONT_STACK = '"' + FONT + '", Gelasio, Georgia, serif';
       if (!/^(Helvetica|Arial|Gelasio|Georgia|serif|sans-serif|monospace)$/i.test(FONT)) {
@@ -650,10 +640,15 @@
         return { map, bump };
       }
 
+      // Beside this file when mounted; a runtime without assetUrl keeps the plain path.
+      const assetUrl = (path) =>
+        typeof __hyperframes !== "undefined" && __hyperframes.assetUrl
+          ? __hyperframes.assetUrl(path)
+          : path;
       const textureLoader = new THREE.TextureLoader();
       const [photoSurface, photoNormal] = await Promise.all([
-        textureLoader.loadAsync("assets/leaf-surface-color.webp"),
-        textureLoader.loadAsync("assets/leaf-surface-normal.webp"),
+        textureLoader.loadAsync(assetUrl("assets/leaf-surface-color.webp")),
+        textureLoader.loadAsync(assetUrl("assets/leaf-surface-normal.webp")),
       ]);
       photoSurface.colorSpace = THREE.SRGBColorSpace;
       photoSurface.wrapS = photoSurface.wrapT = THREE.RepeatWrapping;

@@ -1,5 +1,6 @@
 // fallow-ignore-file code-duplication
 import { parseHTML } from "linkedom";
+import { ensureHfIds } from "@hyperframes/parsers/hf-ids";
 import { describe, expect, it } from "vitest";
 import {
   removeElementFromHtml,
@@ -80,7 +81,7 @@ describe("removeElementFromHtml", () => {
   it("supports fragment html by returning updated body markup", () => {
     const html = `<div id="photo"></div><div id="rest"></div>`;
 
-    expect(removeElementFromHtml(html, { id: "photo" })).toBe(`<div id="rest"></div>`);
+    expect(removeElementFromHtml(html, { id: "photo" })).toBe(ensureHfIds(`<div id="rest"></div>`));
   });
 });
 

@@ -1,4 +1,8 @@
-import { applyFileMutations, fileContentVersion } from "@hyperframes/studio-server";
+import {
+  applyFileMutations,
+  fileContentVersion,
+  type AppliedFileMutation,
+} from "@hyperframes/studio-server";
 import { ensureHfIds } from "@hyperframes/parsers/hf-ids";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
@@ -21,6 +25,8 @@ import {
   rowAt,
   type MutationContext,
   type MutationVerb,
+  isFileChanged,
+  refusal,
 } from "./a2Shared.js";
 
 export async function runIds(args: Record<string, unknown>): Promise<void> {
@@ -34,9 +40,24 @@ export async function runIds(args: Record<string, unknown>): Promise<void> {
     const after = ensureHfIds(before);
     return after === before
       ? []
-      : [{ sourceFile: file, absPath: join(project.dir, file), before, after }];
+      : [
+          {
+            sourceFile: file,
+            absPath: join(project.dir, file),
+            before,
+            after,
+            expectedVersion: fileContentVersion(before),
+          },
+        ];
   });
-  const receipts = inputs.length > 0 ? applyFileMutations(project.dir, inputs) : [];
+  let receipts: AppliedFileMutation[] = [];
+  try {
+    if (inputs.length > 0) receipts = applyFileMutations(project.dir, inputs);
+  } catch (error) {
+    if (isFileChanged(error))
+      return refusal(error.message, "re-run hyperframes timeline ids", json);
+    throw error;
+  }
   const afterTimeline = await describeProject(project.indexPath);
   const result = {
     ok: true,

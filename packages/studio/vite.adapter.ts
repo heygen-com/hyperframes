@@ -11,7 +11,7 @@ import {
   copyFileSync,
   unlinkSync,
 } from "node:fs";
-import { join, relative, resolve, isAbsolute, dirname, sep } from "node:path";
+import { basename, join, relative, resolve, isAbsolute, dirname, sep } from "node:path";
 import type { ViteDevServer } from "vite";
 import {
   type ResolvedProject,
@@ -22,6 +22,9 @@ import {
   createProjectSignature,
   affectsProjectSignature,
   PREVIEW_BUNDLE_OPTIONS,
+  DEFAULT_HISTORY_ROOT,
+  openProjectHistory,
+  historyCache,
 } from "@hyperframes/studio-server";
 import type { RegistryItem } from "@hyperframes/core/registry";
 import type { BundleOptions } from "@hyperframes/core/compiler";
@@ -101,7 +104,27 @@ export function createViteAdapter(
   dataDir: string,
   server: ViteDevServer,
   signatureCache: ProjectSignatureCache,
+  {
+    historyRoot = DEFAULT_HISTORY_ROOT,
+    openHistory = openProjectHistory,
+    onResolveProject,
+  }: {
+    historyRoot?: string;
+    openHistory?: typeof openProjectHistory;
+    onResolveProject?: (project: ResolvedProject) => void;
+  } = {},
 ): StudioApiAdapter {
+  const histories = historyCache((projectDir) =>
+    openHistory({ projectDir, historyRoot }).catch((error: unknown) => {
+      console.warn(`[studio] Project history is off for ${basename(projectDir)}: ${String(error)}`);
+      // By name: the dev server's engine is its own module copy, so its error class is not this import's.
+      if (error instanceof Error && error.name === "HistoryClosedError")
+        histories.forget(projectDir);
+      return null;
+    }),
+  );
+  // Commits any open edit when the dev server stops, so it keeps its label.
+  server.httpServer?.on("close", () => void histories.closeAll());
   let _bundler: ((dir: string, options?: BundleOptions) => Promise<string>) | null = null;
   let _producerModuleLoader:
     | (() => Promise<{
@@ -200,6 +223,12 @@ export function createViteAdapter(
         .sort((a, b) => (a.title ?? "").localeCompare(b.title ?? ""));
     },
 
+    // Studio's undo runs on the project's history: opened once per project; a failed open stays off unless the folder
+    // changed while it opened.
+    history(project: ResolvedProject) {
+      return histories.get(project.dir);
+    },
+
     // fallow-ignore-next-line complexity
     resolveProject(id: string) {
       if (!isValidProjectId(id)) return null;
@@ -216,11 +245,13 @@ export function createViteAdapter(
               projectDir = resolve(dataDir, session.projectId);
               if (!isPathWithin(dataDir, projectDir)) return null;
               if (existsSync(projectDir)) {
-                return {
+                const project = {
                   id: session.projectId,
                   dir: realpathSync(projectDir),
                   title: session.title,
                 };
+                onResolveProject?.(project);
+                return project;
               }
             }
           } catch {
@@ -229,13 +260,15 @@ export function createViteAdapter(
         }
         return null;
       }
-      return { id, dir: realpathSync(projectDir) };
+      const project = { id, dir: realpathSync(projectDir) };
+      onResolveProject?.(project);
+      return project;
     },
 
-    async bundle(dir: string) {
+    async bundle(dir, options) {
       const bundler = await getBundler();
       if (!bundler) return null;
-      let html = await bundler(dir, PREVIEW_BUNDLE_OPTIONS);
+      let html = await bundler(dir, { ...PREVIEW_BUNDLE_OPTIONS, ...options });
       html = html.replace(
         'data-hyperframes-preview-runtime="1" src=""',
         `data-hyperframes-preview-runtime="1" src="${this.runtimeUrl}"`,

@@ -3,6 +3,7 @@ import { memo, useState, useCallback, useEffect, useRef } from "react";
 import {
   collectDomEditLayerItems,
   getDomEditLayerKey,
+  liveLayerElement,
   resolveDomEditSelection,
   type DomEditLayerItem,
 } from "./domEditing";
@@ -190,20 +191,8 @@ export const LayersPanel = memo(function LayersPanel() {
 
   const resolveSelection = useCallback(
     (layer: DomEditLayerItem) => {
-      // Re-find the element from the live DOM — layer.element may be stale
-      // after soft reload (which replaces scripts without reloading the iframe).
-      let el = layer.element;
-      if (!el.isConnected) {
-        const iframe = previewIframeRef.current;
-        const doc = iframe?.contentDocument;
-        if (doc) {
-          const found =
-            (layer.id ? doc.getElementById(layer.id) : null) ??
-            (layer.hfId ? doc.querySelector(`[data-hf-id="${CSS.escape(layer.hfId)}"]`) : null) ??
-            doc.getElementById(layer.key);
-          if (found instanceof HTMLElement) el = found;
-        }
-      }
+      const doc = previewIframeRef.current?.contentDocument;
+      const el = liveLayerElement(layer, doc, activeCompPath);
       return resolveDomEditSelection(el, {
         activeCompositionPath: activeCompPath,
         isMasterView,

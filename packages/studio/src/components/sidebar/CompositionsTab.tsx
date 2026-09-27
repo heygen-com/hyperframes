@@ -1,9 +1,14 @@
 import { buildProjectApiPath } from "../../utils/projectRouting";
 import { memo, useCallback, useEffect, useRef, useState } from "react";
-import { buildCompositionThumbnailUrl } from "../../player/components/CompositionThumbnail";
+import {
+  buildCompositionThumbnailUrl,
+  resolveThumbnailSeekTime,
+  THUMBNAIL_SEEK_TIME_SECONDS,
+} from "../../player/components/CompositionThumbnail";
 import { setPreviewMediaMuted } from "../../player/lib/timelineIframeHelpers";
 import { usePlayerStore } from "../../player/store/playerStore";
 import { thumbnailRevisionOf } from "../../player/store/thumbnailSlice";
+import { encodePreviewPath } from "../../player/components/thumbnailUtils";
 import { TIMELINE_COMPOSITION_MIME } from "../../utils/timelineCompositionDrop";
 import { Tooltip } from "../ui/Tooltip";
 
@@ -23,7 +28,6 @@ interface CompositionsTabProps {
 const DEFAULT_PREVIEW_STAGE = { width: 1920, height: 1080 };
 const CARD_W = 80;
 const CARD_H = 45;
-const THUMBNAIL_SEEK_TIME_SECONDS = 3;
 const THUMBNAIL_PLAYBACK_SYNC_ATTEMPTS = 10;
 
 type PreviewWindow = Window & {
@@ -54,17 +58,22 @@ export function resolveCompositionPreviewScale(input: {
   return Math.min(scaleX, scaleY);
 }
 
-export function resolveThumbnailSeekTime(durationSeconds: number | null | undefined): number {
-  if (
-    Number.isFinite(durationSeconds) &&
-    durationSeconds != null &&
-    durationSeconds > 0 &&
-    durationSeconds < THUMBNAIL_SEEK_TIME_SECONDS
-  ) {
-    return durationSeconds / 2;
-  }
+function compositionPreviewUrl(projectId: string, comp: string): string {
+  return buildProjectApiPath(projectId, `/preview/comp/${encodePreviewPath(comp)}`);
+}
 
-  return THUMBNAIL_SEEK_TIME_SECONDS;
+export function compositionCardThumbnailUrl(
+  projectId: string,
+  comp: string,
+  contentRevision: number,
+): string {
+  return buildCompositionThumbnailUrl({
+    previewUrl: compositionPreviewUrl(projectId, comp),
+    seekTime: THUMBNAIL_SEEK_TIME_SECONDS,
+    duration: 0,
+    origin: window.location.origin,
+    contentRevision,
+  });
 }
 
 function parsePositiveNumber(value: string | null): number | null {
@@ -127,6 +136,7 @@ function CompCard({
   lintInfo,
   onAddToTimeline,
   contentRevision,
+  previewBooted,
 }: {
   projectId: string;
   comp: string;
@@ -138,6 +148,7 @@ function CompCard({
   lintInfo?: { count: number; messages: string[] };
   onAddToTimeline?: () => void;
   contentRevision: number;
+  previewBooted: boolean;
 }) {
   const [hovered, setHovered] = useState(false);
   const [stageSize, setStageSize] = useState(DEFAULT_PREVIEW_STAGE);
@@ -179,14 +190,8 @@ function CompCard({
     setLivePreviewLoaded(false);
   };
   const name = comp.replace(/^compositions\//, "").replace(/\.html$/, "");
-  const previewUrl = buildProjectApiPath(projectId, `/preview/comp/${comp}`);
-  const thumbnailUrl = buildCompositionThumbnailUrl({
-    previewUrl,
-    seekTime: THUMBNAIL_SEEK_TIME_SECONDS,
-    duration: 0,
-    origin: window.location.origin,
-    contentRevision,
-  });
+  const previewUrl = compositionPreviewUrl(projectId, comp);
+  const thumbnailUrl = compositionCardThumbnailUrl(projectId, comp, contentRevision);
   const thumbnailFailed = failedThumbnailUrl === thumbnailUrl;
   const previewScale = resolveCompositionPreviewScale({
     cardWidth: CARD_W,
@@ -250,7 +255,7 @@ function CompCard({
           <div className="absolute inset-0 flex items-center justify-center px-1 text-center text-[8px] leading-tight text-neutral-600">
             Preview unavailable
           </div>
-        ) : (
+        ) : !previewBooted ? null : (
           <img
             src={thumbnailUrl}
             alt=""
@@ -390,6 +395,7 @@ export const CompositionsTab = memo(function CompositionsTab({
   lintFindingsByFile,
 }: CompositionsTabProps) {
   const thumbnailRevisions = usePlayerStore((state) => state.thumbnailRevisions);
+  const previewBooted = usePlayerStore((state) => state.previewBooted);
   if (compositions.length === 0) {
     return (
       <div className="flex-1 flex items-center justify-center px-4">
@@ -413,6 +419,7 @@ export const CompositionsTab = memo(function CompositionsTab({
           isRendering={isRendering}
           lintInfo={lintFindingsByFile?.get(comp)}
           contentRevision={thumbnailRevisionOf(thumbnailRevisions, comp)}
+          previewBooted={previewBooted}
         />
       ))}
     </div>

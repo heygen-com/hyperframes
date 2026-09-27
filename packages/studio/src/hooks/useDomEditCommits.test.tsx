@@ -340,7 +340,6 @@ describe("useDomEditCommits z-index reorder persistence", () => {
       expect(rendered.recordEdit).toHaveBeenCalledTimes(1);
       expect(rendered.recordEdit).toHaveBeenCalledWith({
         label: "Reorder layers",
-        kind: "manual",
         coalesceKey: "z-reorder:test",
         // Unbounded per-gesture fold window (keys are unique per gesture):
         // the z entry and its mirror/lane counterpart fold across the server
