@@ -29,9 +29,9 @@ test("returns the task's result even when the lock cannot be released", () => {
   try {
     const refusing = {
       ...fs,
-      openSync(path, flags) {
-        if (path.endsWith(".reap")) throw Object.assign(new Error("EPERM"), { code: "EPERM" });
-        return fs.openSync(path, flags);
+      rmSync(path, options) {
+        if (path === lock) throw Object.assign(new Error("EPERM"), { code: "EPERM" });
+        return fs.rmSync(path, options);
       },
     };
     assert.equal(
@@ -43,42 +43,38 @@ test("returns the task's result even when the lock cannot be released", () => {
   }
 });
 
-test("takes over a lock left behind by a process that died holding it", () => {
+test("refuses a lock left by a process that stopped, names it, and never removes it", () => {
   const { lock, cleanup } = lockIn();
   try {
     fs.writeFileSync(lock, "dead");
     const past = new Date(Date.now() - 60_000);
     fs.utimesSync(lock, past, past);
-    assert.equal(
-      withFileLock(lock, fs, () => "ran"),
-      "ran",
+    const started = Date.now();
+    let ran = false;
+
+    assert.throws(
+      () => withFileLock(lock, fs, () => (ran = true)),
+      (error) => error.message.includes(lock),
     );
-    assert.equal(fs.existsSync(lock), false);
+    assert.ok(Date.now() - started < 1000);
+    assert.equal(ran, false);
+    assert.equal(fs.readFileSync(lock, "utf8"), "dead");
   } finally {
     cleanup();
   }
 });
 
-test("waits for another process's takeover of a stale lock instead of racing it", async () => {
+test("waits for a process that holds the lock, then takes it", async () => {
   const { lock, cleanup } = lockIn();
   try {
-    fs.writeFileSync(lock, "dead");
-    const past = new Date(Date.now() - 60_000);
-    fs.utimesSync(lock, past, past);
-    // Another process holds the reaper, replaces the stale lock with its own, then releases after a pause.
     const script = `
       const fs = require("fs");
       const lock = process.argv[1];
-      fs.writeFileSync(lock + ".reap", "other", { flag: "wx" });
-      process.stdout.write("reaping\\n");
+      fs.writeFileSync(lock, "other", { flag: "wx" });
+      process.stdout.write("locked\\n");
       setTimeout(() => {
+        fs.writeFileSync(lock + ".released", String(Date.now()));
         fs.rmSync(lock);
-        fs.writeFileSync(lock, "other", { flag: "wx" });
-        fs.rmSync(lock + ".reap");
-        setTimeout(() => {
-          fs.writeFileSync(lock + ".released", String(Date.now()));
-          fs.rmSync(lock);
-        }, 300);
       }, 300);`;
     const other = spawn(process.execPath, ["-e", script, lock]);
     await new Promise((ready) => other.stdout.once("data", ready));

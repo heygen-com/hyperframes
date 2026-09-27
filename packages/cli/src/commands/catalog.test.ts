@@ -708,7 +708,7 @@ describe("the on-device download offer", () => {
 
     const { err } = await asATerminal(() => runForExit({ query: "count up" }));
 
-    expect(err).toContain("Could not save the answer in settings.");
+    expect(err).toContain("Could not save the answer in settings; `hyperframes doctor` says why.");
   });
 
   it.each([

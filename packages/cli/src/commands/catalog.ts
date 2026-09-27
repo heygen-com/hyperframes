@@ -87,7 +87,7 @@ async function prepareOnDeviceTier(opts: {
       warn(
         recordLocalModelConsent(false) === false
           ? "on-device search skipped: the download was declined."
-          : "on-device search skipped: the download was declined, but could not save the answer in settings.",
+          : "on-device search skipped: the download was declined, but could not save the answer in settings; `hyperframes doctor` says why.",
       );
       // Return, or the decline is the only thing that does not happen: the
       // runtime check below is skipped precisely because consent is now false,
@@ -106,7 +106,7 @@ async function prepareOnDeviceTier(opts: {
         warn(
           agreed === false
             ? declined
-            : "on-device search skipped: could not save the answer in settings.",
+            : "on-device search skipped: could not save the answer in settings; `hyperframes doctor` says why.",
         );
         return warnings;
       }
@@ -727,7 +727,7 @@ async function offerLocalModel(
   });
   if (clack.isCancel(answer)) return;
   if (recordLocalModelConsent(answer === true) !== (answer === true))
-    console.error("  Could not save the answer in settings.");
+    console.error("  Could not save the answer in settings; `hyperframes doctor` says why.");
   if (answer !== true) return;
 
   // The vectors come from the registry rather than the package, so consent is

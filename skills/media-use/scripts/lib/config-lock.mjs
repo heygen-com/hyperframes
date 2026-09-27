@@ -2,65 +2,41 @@
 // embeds this function's source, so it must use only its arguments and globals.
 export function withFileLock(lockPath, fs, task) {
   const token = `${process.pid}-${Date.now()}-${Math.random().toString(36).slice(2)}`;
-  const reaper = `${lockPath}.reap`;
-  const nap = () => Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 25);
-  const create = (path) => {
+  const started = Date.now();
+  for (;;) {
     let fd;
     try {
-      fd = fs.openSync(path, "wx");
+      fd = fs.openSync(lockPath, "wx");
     } catch (error) {
-      if (error.code === "EEXIST") return false;
-      throw error;
+      if (error.code !== "EEXIST") throw error;
+      // Never taken over: a lock older than any hold was left by a process that stopped, and a person removes it.
+      let leftover = false;
+      try {
+        leftover = Date.now() - fs.statSync(lockPath).mtimeMs > 5000;
+      } catch {}
+      if (leftover || Date.now() - started > 10000)
+        throw new Error(
+          `Settings are locked by another hyperframes process. If none is running, delete ${lockPath}`,
+        );
+      Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 25);
+      continue;
     }
     try {
       fs.writeSync(fd, token);
     } catch (error) {
-      fs.rmSync(path, { force: true });
+      fs.rmSync(lockPath, { force: true });
       throw error;
     } finally {
       fs.closeSync(fd);
     }
-    return true;
-  };
-  const olderThan = (path, ms) => {
-    try {
-      return Date.now() - fs.statSync(path).mtimeMs > ms;
-    } catch {
-      return false;
-    }
-  };
-  // Every removal of the lock happens while holding the reaper file, so a check-then-remove never hits a newer lock.
-  const reaping = (remove) => {
-    if (!create(reaper)) {
-      if (olderThan(reaper, 60000)) fs.rmSync(reaper, { force: true });
-      return false;
-    }
-    try {
-      remove();
-    } finally {
-      fs.rmSync(reaper, { force: true });
-    }
-    return true;
-  };
-  const started = Date.now();
-  while (!create(lockPath)) {
-    if (olderThan(lockPath, 5000))
-      reaping(() => olderThan(lockPath, 5000) && fs.rmSync(lockPath, { force: true }));
-    if (Date.now() - started > 10000)
-      throw new Error("Another hyperframes process kept its settings locked.");
-    nap();
+    break;
   }
   try {
     return task();
   } finally {
-    const releaseOwn = () => {
-      try {
-        if (fs.readFileSync(lockPath, "utf8") === token) fs.rmSync(lockPath);
-      } catch {}
-    };
-    // A failed release leaves a lock that goes stale in 5 s; it must not turn a finished task into an error.
+    // Only the owner ever removes the lock; a failed release must not turn a finished task into an error.
     try {
-      for (let tries = 0; tries < 40 && !reaping(releaseOwn); tries++) nap();
+      if (fs.readFileSync(lockPath, "utf8") === token) fs.rmSync(lockPath);
     } catch {}
   }
 }
