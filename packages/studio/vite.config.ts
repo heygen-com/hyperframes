@@ -176,6 +176,9 @@ function devProjectApi(): Plugin {
           // The engine records its write receipts in this module, where the watcher below reads them.
           const adapter = createViteAdapter(dataDir, server, signatureCache, {
             openHistory: mod.openProjectHistory,
+            // Projects can be created or imported after startup. Keep the canonical
+            // id and real root before the signature cache starts watching them.
+            onResolveProject: (project) => watchedProjects.set(project.dir, project.id),
           });
           _api = mod.createStudioApi(adapter);
         }

@@ -17,6 +17,8 @@ import { createStudioApi, type ProjectHistory } from "@hyperframes/studio-server
 import type { ViteDevServer } from "vite";
 import { createProjectSignatureCache, createViteAdapter } from "./vite.adapter";
 
+import { previewChangeOwner } from "./vite.preview-watch";
+
 const roots: string[] = [];
 afterEach(() => {
   for (const root of roots.splice(0)) rmSync(root, { recursive: true, force: true });
@@ -173,5 +175,37 @@ describe("Vite project resolution boundary", () => {
     const { sessions, adapter } = fixture();
     writeFileSync(join(sessions, "alias.json"), JSON.stringify({ projectId: "../sessions" }));
     expect(adapter.resolveProject("alias")).toBeNull();
+  });
+});
+
+describe("dynamic preview ownership", () => {
+  it.each([false, true])("registers a project opened after startup (symlink: %s)", (linked) => {
+    const { root, data, sessions } = fixture();
+    const owners = new Map<string, string>();
+    const watched: string[] = [];
+    const cache = createProjectSignatureCache({
+      compute: () => "signature",
+      watch: (dir) => {
+        // Ownership must exist before newly watched files can emit events.
+        expect(previewChangeOwner(owners, join(dir, "index.html"))).toBe("new-project");
+        watched.push(dir);
+      },
+    });
+    const adapter = createViteAdapter(data, {} as ViteDevServer, cache, {
+      onResolveProject: (project) => owners.set(project.dir, project.id),
+    });
+    expect(adapter.resolveProject("new-project")).toBeNull();
+    expect(owners.size).toBe(0);
+    const dir = linked ? join(root, "different-target-name") : join(data, "new-project");
+    mkdirSync(dir);
+    if (linked) symlinkSync(dir, join(data, "new-project"), "junction");
+    writeFileSync(join(dir, "index.html"), "before");
+    writeFileSync(join(sessions, "alias.json"), JSON.stringify({ projectId: "new-project" }));
+    const project = adapter.resolveProject(linked ? "alias" : "new-project")!;
+    cache.get(project.dir);
+    writeFileSync(join(dir, "index.html"), "after");
+    expect(watched).toEqual([realpathSync(dir)]);
+    expect(previewChangeOwner(owners, join(realpathSync(dir), "index.html"))).toBe("new-project");
+    expect(previewChangeOwner(owners, join(realpathSync(dir), "index.html.tmp"))).toBeNull();
   });
 });
