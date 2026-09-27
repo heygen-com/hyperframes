@@ -114,7 +114,7 @@ let inFlight: Promise<void> | undefined;
  */
 export function flush(): Promise<void> {
   // One request at a time, so an event is never in two batches at once.
-  const run = inFlight ? inFlight.then(sendQueued) : sendQueued();
+  const run = inFlight ? inFlight.then(sendQueued, sendQueued) : sendQueued();
   const current = run.finally(() => {
     if (inFlight === current) inFlight = undefined;
   });

@@ -7,8 +7,15 @@ vi.stubEnv("HYPERFRAMES_NO_TELEMETRY", "");
 vi.stubEnv("DO_NOT_TRACK", "");
 
 // Pin config so the queue never touches disk and telemetry is enabled.
+const configRead = vi.hoisted(() => ({ failOnce: false }));
 vi.mock("./config.js", () => ({
-  readConfig: () => ({ anonymousId: "anon-test-123", telemetryEnabled: true }),
+  readConfig: () => {
+    if (configRead.failOnce) {
+      configRead.failOnce = false;
+      throw new Error("EACCES");
+    }
+    return { anonymousId: "anon-test-123", telemetryEnabled: true };
+  },
   writeConfig: () => {},
   getIdentityPersistence: () => "durable",
   getIdentityWriteOutcome: () => undefined,
@@ -162,6 +169,18 @@ describe("telemetry queue delivery", () => {
     for (const res of pending.splice(0)) res(new Response(""));
     await Promise.all([eager, final]);
     expect(gated).toHaveBeenCalledTimes(1);
+  });
+
+  it("still sends from a flush queued behind one that threw", async () => {
+    const fetchMock = vi.fn(() => Promise.resolve(new Response("")));
+    vi.stubGlobal("fetch", fetchMock);
+    trackEvent("render_complete", { quality: "draft" });
+    configRead.failOnce = true;
+    const first = flush();
+    const second = flush();
+    await expect(first).rejects.toThrow("EACCES");
+    await second;
+    expect(fetchMock).toHaveBeenCalledTimes(1);
   });
 
   it("does not drop events queued while a flush is in flight", async () => {
