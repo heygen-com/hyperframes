@@ -11,7 +11,6 @@ import {
   formatTimelineMediaOffset,
   type TimelineStackingReorderIntent,
 } from "../player/components/timelineEditing";
-import { applyClipStartTrimDelta } from "../player/components/timelineGroupEditing";
 import { getElementZIndex } from "../player/lib/layerOrdering";
 import {
   furthestClipEndFromSource,
@@ -221,8 +220,10 @@ function resolveResizePlaybackStart(
   const current = raw != null ? parseFloat(raw) : undefined;
   if (current == null || !Number.isFinite(current)) return null;
   const attrName = playbackStartAttributeForElement(element).slice("data-".length);
-  const trimmed = applyClipStartTrimDelta({ ...element, playbackStart: current }, trimDelta);
-  return { attrName, value: trimmed.playbackStart! };
+  return {
+    attrName,
+    value: Math.max(0, current + trimDelta * Math.max(element.playbackRate ?? 1, 0.1)),
+  };
 }
 
 export function buildTimelineMoveTimingPatch(

@@ -862,6 +862,40 @@ describe("resolveTimelineResize", () => {
     expect(next.start - next.playbackStart! / 1.5).toBeCloseTo(2 - 1 / 1.5, 9);
   });
 
+  it("lets a fully-left head trim reach a reloaded in-point's media start at a 5-decimal speed", () => {
+    const next = resolveTimelineResize(
+      {
+        start: 2.37,
+        duration: 2.63,
+        originClientX: 0,
+        pixelsPerSecond: 100,
+        minStart: 0,
+        maxEnd: 10,
+        playbackStart: Number(formatTimelineMediaOffset(0.37 * 0.33333)),
+        playbackRate: 0.33333,
+      },
+      "start",
+      -1000,
+    );
+    expect(next.start).toBe(2);
+  });
+
+  it("moves every group member by the same amount when one reaches its media start", () => {
+    const members = [
+      { start: 2, duration: 3, playbackStart: 1, playbackRate: 1.5 },
+      { start: 5, duration: 3, playbackStart: 4, playbackRate: 1 },
+    ];
+    const result = resolveTimelineGroupResize(members, "start", -10);
+    for (const [i, member] of members.entries()) {
+      const next = result.members[i]!;
+      expect(next.start - member.start).toBeCloseTo(result.delta, 9);
+      expect(next.start - next.playbackStart! / member.playbackRate).toBeCloseTo(
+        member.start - member.playbackStart / member.playbackRate,
+        9,
+      );
+    }
+  });
+
   it("keeps a clip's media clock and end fixed across repeated head trims at any speed", () => {
     const dragsPx = [37.3, -12.9, 81.7, -5.3];
     for (const playbackRate of [0.25, 0.5, 0.8, 1, 1.25, 2]) {

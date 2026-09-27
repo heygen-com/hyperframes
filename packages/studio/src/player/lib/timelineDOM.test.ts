@@ -21,6 +21,32 @@ function makeDoc(html: string): Document {
   return d;
 }
 
+describe("parseTimelineFromDOM — media in-point", () => {
+  it("reads a negative in-point as 0, as the runtime does, so a head trim keeps the clip", () => {
+    const doc = makeDoc(`
+      <div data-composition-id="root">
+        <video id="v" class="clip" data-start="2" data-duration="1" data-media-start="-1"></video>
+      </div>
+    `);
+    const element = parseTimelineFromDOM(doc, 10).find((e) => e.domId === "v")!;
+    expect(element.playbackStart).toBe(0);
+
+    const preview = computeResizePreview(
+      {
+        element,
+        edge: "start",
+        originClientX: 0,
+        previewStart: 2,
+        previewDuration: 1,
+        started: true,
+      },
+      10,
+      { scroll: null, pps: 100, buildSnapTargets: () => [] },
+    );
+    expect(preview.previewDuration).toBe(0.9);
+  });
+});
+
 describe("parseTimelineFromDOM — hfId from data-hf-id", () => {
   it("bridges a real GSAP transition marker onto both named clips", () => {
     document.body.innerHTML = `

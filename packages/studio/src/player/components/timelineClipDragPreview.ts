@@ -323,7 +323,11 @@ export function computeResizePreview(
       // Stay within [start+minDuration, maxEnd] so the snap can't create a
       // degenerate clip or run past the source/composition limit.
       const snappedDuration = Math.round((snapped - nextResize.start) * 1000) / 1000;
-      if (target && snapped <= maxEnd + 1e-6 && snappedDuration >= 0.05) {
+      if (
+        target &&
+        snapped <= maxEnd + 1e-6 &&
+        snappedDuration >= resolveTimelineMinDuration() - 1e-6
+      ) {
         // An edge already on the target still owns the guide; only move it when off.
         if (snapped !== edgeTime) nextResize = { ...nextResize, duration: snappedDuration };
         snap = target;

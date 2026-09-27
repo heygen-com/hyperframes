@@ -13,6 +13,12 @@ function roundTimelineTime(value: number): number {
   return roundToCenti(value);
 }
 
+const SAVED_MEDIA_OFFSET_TOLERANCE = 1e-5;
+
+function ceilTimelineTime(value: number): number {
+  return Math.ceil((value - SAVED_MEDIA_OFFSET_TOLERANCE) * 100) / 100;
+}
+
 export function resolveTimelineMinDuration(minDuration?: number): number {
   return Math.max(ABSOLUTE_TIMELINE_MIN_DURATION, minDuration ?? DEFAULT_TIMELINE_MIN_DURATION);
 }
@@ -61,8 +67,7 @@ export function applyClipStartTrimDelta(
   const playbackRate = resolveTimelinePlaybackRate(clip.playbackRate);
   const mediaZero =
     clip.playbackStart != null ? clip.start - clip.playbackStart / playbackRate : -Infinity;
-  let start = roundTimelineTime(clip.start + delta);
-  if (start < mediaZero - 1e-9) start = Math.ceil(mediaZero * 100) / 100;
+  const start = Math.max(roundTimelineTime(clip.start + delta), ceilTimelineTime(mediaZero));
   return {
     start,
     duration: roundTimelineTime(clip.start + clip.duration - start),
@@ -130,7 +135,7 @@ export function clampTimelineGroupResizeDelta(
 
   // Rigid group: the applied delta is bounded by the most-constrained member.
   const bounds = members.map((member) => clipStartTrimDeltaBounds(member, 0, minDuration));
-  const minDelta = Math.max(...bounds.map((b) => b.minDelta));
+  const minDelta = ceilTimelineTime(Math.max(...bounds.map((b) => b.minDelta)));
   const maxDelta = Math.min(...bounds.map((b) => b.maxDelta));
   return roundTimelineTime(clamp(rawDelta, minDelta, maxDelta));
 }

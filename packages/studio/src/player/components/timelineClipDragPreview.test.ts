@@ -292,6 +292,23 @@ describe("computeResizePreview — composition source continuity", () => {
     });
   });
 
+  it("does not let a tail snap shrink a clip below the drag's minimum duration", () => {
+    const result = computeResizePreview(
+      {
+        element: clip("vo", 0, 2, 1, 0),
+        edge: "end",
+        originClientX: 0,
+        previewStart: 2,
+        previewDuration: 1,
+        started: true,
+      },
+      -95,
+      { scroll: fakeScroll(), pps: 100, buildSnapTargets: () => [{ time: 2.07, type: "beat" }] },
+    );
+
+    expect(result).toMatchObject({ previewDuration: 0.1, snapTime: null });
+  });
+
   it("keeps a slowed clip's media clock when its head snaps to a beat", () => {
     const element = { ...clip("vo", 0, 2, 4, 0), playbackStart: 3, playbackRate: 0.8 };
     const result = computeResizePreview(

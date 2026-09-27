@@ -13,6 +13,7 @@ import { isFinitePositive } from "./playbackAdapter";
 import { getSourceScopedSelectorIndex } from "../../utils/sourceScopedSelectorIndex";
 import { HF_AUDIO_GROUP_TAG } from "@hyperframes/core/audio-groups";
 import { readElementFades } from "@hyperframes/core/audio-fade";
+import { readMediaOffsetSeconds } from "@hyperframes/parsers/media-duration";
 
 // ---------------------------------------------------------------------------
 // Layer-reveal lift transparency
@@ -171,10 +172,8 @@ function applyPlaybackMetadataFromElement(entry: TimelineElement, el: Element): 
   const playbackStartValue = el.getAttribute("data-playback-start");
   const legacyMediaStartValue = el.getAttribute("data-media-start");
   const mediaStartValue = playbackStartValue ?? legacyMediaStartValue;
-  if (mediaStartValue != null) {
-    const playbackStart = parseFloat(mediaStartValue);
-    if (Number.isFinite(playbackStart)) entry.playbackStart = playbackStart;
-  }
+  if (mediaStartValue != null)
+    entry.playbackStart = readMediaOffsetSeconds((n) => el.getAttribute(n));
   if (playbackStartValue != null) entry.playbackStartAttr = "playback-start";
   else if (legacyMediaStartValue != null) entry.playbackStartAttr = "media-start";
 
