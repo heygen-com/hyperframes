@@ -9,10 +9,10 @@ import {
   TRACKS_BOTTOM_PAD,
   TRACK_H,
   PLAYHEAD_HEAD_W,
-  getTimelinePlayheadTransform,
   getTimelineRowTop,
   getTimelineRowHeight,
 } from "./timelineLayout";
+import { getTimelinePlayheadTransform } from "./timelinePlayheadTransform";
 import { TimelineLanes } from "./TimelineLanes";
 import { TimelineGestureOverlay } from "./TimelineGestureOverlay";
 import { useTimelineContext } from "./TimelineProvider";

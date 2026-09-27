@@ -4,12 +4,12 @@ import { useMountEffect } from "../../hooks/useMountEffect";
 import { getPinchTimelineZoomPercent } from "./timelineZoom";
 import {
   getTimelinePlaybackFollowScrollLeft,
-  getTimelinePlayheadTransform,
   getTimelineScrubTime,
   getTimelineScrollLeftForZoomTransition,
   getTimelineScrollLeftForZoomAnchor,
   shouldAutoScrollTimeline,
 } from "./timelineLayout";
+import { getTimelinePlayheadTransform } from "./timelinePlayheadTransform";
 import { applyTimelineHorizontalAutoScrollStep } from "./timelineEditing";
 
 interface UseTimelinePlayheadInput {
