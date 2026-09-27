@@ -12,7 +12,6 @@ vi.mock("../whisper/transcribe.js", () => ({ transcribe: transcribeMock }));
 const trackTranscribeUnavailable = vi.fn();
 vi.mock("../telemetry/events.js", () => ({
   trackTranscribeUnavailable: (...a: unknown[]) => trackTranscribeUnavailable(...a),
-  trackCommandFailure: vi.fn(),
 }));
 
 import transcribeCmd from "./transcribe.js";

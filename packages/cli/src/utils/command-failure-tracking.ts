@@ -1,6 +1,5 @@
 import type { CommandDef } from "citty";
 import { assertKnownFlags } from "./reject-unknown-flags.js";
-import { CliRuntimeError } from "./commandResult.js";
 
 // citty types subcommands as `CommandDef<any>` (SubCommandsDef); mirror that so
 // each command's specific args type is accepted without per-command generics.
@@ -9,7 +8,7 @@ type AnyCommandDef = CommandDef<any>;
 /**
  * Wrap a lazy command loader so leaf commands and nested subcommands share the
  * unknown-flag guard. Errors propagate unchanged to the executable boundary,
- * which is the sole command-failure telemetry reporter.
+ * which reports them.
  */
 export function trackCommandFailures(
   load: () => Promise<AnyCommandDef>,
@@ -81,9 +80,7 @@ function wrapCommand(cmd: AnyCommandDef): AnyCommandDef {
 export async function reportCommandFailure(command: string, err: unknown): Promise<void> {
   try {
     const { trackCommandFailure } = await import("../telemetry/events.js");
-    let cause = err;
-    while (cause instanceof CliRuntimeError && cause.cause !== undefined) cause = cause.cause;
-    trackCommandFailure(command, cause);
+    trackCommandFailure(command, err);
   } catch {
     // ignore: a telemetry failure must not affect the command's exit path
   }

@@ -96,7 +96,7 @@ describe("CLI lifecycle", () => {
     });
 
     it("when the command catches the failure itself", async () => {
-      const sent = await runCli(["lint", outsideProject()]);
+      const sent = await runCli(["lint", outsideProject(), "--json"]);
 
       expect(sent).toEqual([
         expect.objectContaining({ error_name: "InvalidProjectError", command: "lint" }),
@@ -125,7 +125,7 @@ describe("CLI lifecycle", () => {
           throw new FigmaClientError("NO_TOKEN", "No Figma token");
         });
       });
-      const sent = await runCli(["init"]);
+      const sent = await runCli(["init", "--json"]);
 
       expect(sent).toEqual([
         expect.objectContaining({ error_name: "NO_TOKEN", command: "figma:asset" }),

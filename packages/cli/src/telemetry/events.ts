@@ -6,6 +6,7 @@ import type { CatalogUsage } from "../utils/catalogUsage.js";
 import { flush, shouldTrack, trackEvent } from "./client.js";
 import { readConfig } from "./config.js";
 import { getPowerState } from "./system.js";
+import { CliRuntimeError } from "../utils/commandResult.js";
 
 // Power state is volatile (a laptop docks/undocks mid-session), so it is
 // sampled per render event rather than cached with SystemMeta. Attached to
@@ -922,22 +923,25 @@ export function trackFigmaImport(props: {
   });
 }
 
+const reportedFailures = new WeakSet<object>();
+
 // Report why a command failed before it exits non-zero. cli_command_result
 // records the failure but not the reason; this fills that gap via cli_error so
 // command failures are diagnosable. Enqueues synchronously — the process `exit`
-// handler flushes it. Drop this into any command's failure path.
-const reportedFailures = new WeakSet<object>();
+// handler flushes it. Every command-failure report goes through here.
 export function trackCommandFailure(
   command: string,
   err: unknown,
   overrides: { error_name?: string; endpoint?: string } = {},
 ): void {
-  // One failure, one report: the executable boundary reports the same error again after an inline report.
-  if (typeof err === "object" && err !== null) {
-    if (reportedFailures.has(err)) return;
-    reportedFailures.add(err);
+  // A CliRuntimeError wraps the failure it presented; report that failure, and only once.
+  let failure = err;
+  while (failure instanceof CliRuntimeError && failure.cause !== undefined) failure = failure.cause;
+  if (typeof failure === "object" && failure !== null) {
+    if (reportedFailures.has(failure)) return;
+    reportedFailures.add(failure);
   }
-  const error = err instanceof Error ? err : new Error(String(err));
+  const error = failure instanceof Error ? failure : new Error(String(failure));
   trackCliError({
     error_name: overrides.error_name ?? error.name,
     error_message: error.message,

@@ -1,4 +1,5 @@
 import { describe, expect, it, vi, beforeEach } from "vitest";
+import { CliRuntimeError } from "../utils/commandResult.js";
 
 const trackEvent = vi.fn();
 const flush = vi.fn(() => Promise.resolve());
@@ -1156,6 +1157,19 @@ describe("trackCommandFailure", () => {
     trackCommandFailure("info", err);
 
     expect(trackEvent).toHaveBeenCalledTimes(1);
+  });
+
+  it("reports the failure a CliRuntimeError carries, through every wrapper, once", () => {
+    const cause = new Error("not a project");
+    const inner = new CliRuntimeError("Command failed", { exitCode: 1, cause });
+    trackCommandFailure("figma:asset", inner);
+    trackCommandFailure("figma", new CliRuntimeError("x", { exitCode: 1, cause: inner }));
+
+    expect(trackEvent).toHaveBeenCalledTimes(1);
+    expect(trackEvent).toHaveBeenCalledWith(
+      "cli_error",
+      expect.objectContaining({ error_message: "not a project" }),
+    );
   });
 
   it("takes a caller's error name and endpoint", () => {
