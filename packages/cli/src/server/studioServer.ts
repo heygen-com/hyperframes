@@ -7,7 +7,8 @@
 
 import { Hono, type Context } from "hono";
 import { streamSSE } from "hono/streaming";
-import { existsSync, readFileSync, realpathSync, writeFileSync, unlinkSync } from "node:fs";
+import { realpath } from "@hyperframes/core";
+import { existsSync, readFileSync, writeFileSync, unlinkSync } from "node:fs";
 import { createHash } from "node:crypto";
 import { fileURLToPath } from "node:url";
 import { resolve, join, basename, relative, sep } from "node:path";
@@ -784,7 +785,7 @@ export function createStudioServer(options: StudioServerOptions): StudioServer {
       recordRewrittenInstall(opts.project.dir, written);
 
       // The item's own file first, as add recorded it, since Studio mounts the first .html it gets.
-      const root = realpathSync(opts.project.dir);
+      const root = realpath(opts.project.dir);
       const primary = primaryInstalledTarget(item);
       const primaryPath = registryTargetPath(root, primary);
       const others = written
