@@ -188,7 +188,6 @@ export interface VideoMetadata {
   hasAlpha: boolean;
   /** Color space info from the video stream. Null if ffprobe didn't report it. */
   colorSpace: VideoColorSpace | null;
-  /** Sample range from the video stream, e.g. "tv" or "pc". */
   colorRange?: string;
   /** Decoded frame count from the video stream's `nb_frames`. Omitted when the
    * container does not surface a reliable count (still images, malformed

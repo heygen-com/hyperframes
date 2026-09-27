@@ -431,10 +431,7 @@ export function buildStreamingArgs(
     } else {
       // Pad odd dimensions up to even so 4:2:0 encoders (software and
       // nvenc/videotoolbox/qsv/amf) don't abort with "height not divisible by 2".
-      args.push(
-        "-vf",
-        withEvenDimensionPad(sdrFilter, pixelFormat, options.width, options.height),
-      );
+      args.push("-vf", withEvenDimensionPad(sdrFilter, pixelFormat, options.width, options.height));
     }
 
     // Fixed timescale for consistent A/V timing across platforms.

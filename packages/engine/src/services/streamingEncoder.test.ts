@@ -1132,50 +1132,80 @@ describe("createFrameReorderBuffer abort (interleaved parallel drain)", () => {
   });
 });
 
-describe.skipIf(spawnSync("ffmpeg", ["-version"]).status !== 0)("buildStreamingArgs raw SDR colour", () => {
-  // ffmpeg 7 and older convert raw RGB with the BT.601 matrix unless told otherwise.
-  it("delivers raw sRGB frames in the BT.709 the mp4 is tagged with", () => {
-    const dir = mkdtempSync(join(tmpdir(), "se-raw-sdr-"));
-    const rgbAt = (input: string[], decode: string, x: number, stdin?: Buffer): number[] => [
-      ...spawnSync(
-        "ffmpeg",
-        ["-v", "error", ...input, "-vf", `${decode}format=rgb24,crop=1:1:${x}:8`, "-frames:v", "1", "-f", "rawvideo", "-"],
-        { input: stdin },
-      ).stdout,
-    ];
-    try {
-      const frame = spawnSync("ffmpeg", [
-        "-v",
-        "error",
-        "-f",
-        "lavfi",
-        "-i",
-        "color=c=0xC83C28:s=64x16,format=rgb24,drawbox=x=31:y=0:w=33:h=16:c=0x0000FE:t=fill",
-        "-frames:v",
-        "1",
-        "-pix_fmt",
-        "rgb48le",
-        "-f",
-        "rawvideo",
-        "-",
-      ]).stdout;
-      const out = join(dir, "out.mp4");
-      const args = buildStreamingArgs(
-        { ...baseSdr, width: 64, height: 16, preset: "ultrafast", quality: 0, rawInputFormat: "rgb48le" },
-        out,
-      );
-      expect(spawnSync("ffmpeg", args, { input: frame }).status).toBe(0);
+describe.skipIf(spawnSync("ffmpeg", ["-version"]).status !== 0)(
+  "buildStreamingArgs raw SDR colour",
+  () => {
+    // ffmpeg 7 and older convert raw RGB with the BT.601 matrix unless told otherwise.
+    it("delivers raw sRGB frames in the BT.709 the mp4 is tagged with", () => {
+      const dir = mkdtempSync(join(tmpdir(), "se-raw-sdr-"));
+      const rgbAt = (
+        inputFormat: string[],
+        source: string,
+        decode: string,
+        x: number,
+        stdin?: Buffer,
+      ): number[] => [
+        ...spawnSync(
+          "ffmpeg",
+          [
+            "-v",
+            "error",
+            ...inputFormat,
+            "-i",
+            source,
+            "-vf",
+            `${decode}format=rgb24,crop=1:1:${x}:8`,
+            "-frames:v",
+            "1",
+            "-f",
+            "rawvideo",
+            "-",
+          ],
+          { input: stdin },
+        ).stdout,
+      ];
+      try {
+        const frame = spawnSync("ffmpeg", [
+          "-v",
+          "error",
+          "-f",
+          "lavfi",
+          "-i",
+          "color=c=0xC83C28:s=64x16,format=rgb24,drawbox=x=31:y=0:w=33:h=16:c=0x0000FE:t=fill",
+          "-frames:v",
+          "1",
+          "-pix_fmt",
+          "rgb48le",
+          "-f",
+          "rawvideo",
+          "-",
+        ]).stdout;
+        const out = join(dir, "out.mp4");
+        const args = buildStreamingArgs(
+          {
+            ...baseSdr,
+            width: 64,
+            height: 16,
+            preset: "ultrafast",
+            quality: 0,
+            rawInputFormat: "rgb48le",
+          },
+          out,
+        );
+        expect(spawnSync("ffmpeg", args, { input: frame }).status).toBe(0);
 
-      const rawInput = ["-f", "rawvideo", "-pix_fmt", "rgb48le", "-s", "64x16", "-i", "-"];
-      // x=8 is flat colour; x=32 sits one pixel inside the blue edge.
-      for (const x of [8, 32]) {
-        const source = rgbAt(rawInput, "", x, frame);
-        const delivered = rgbAt(["-i", out], "scale=in_color_matrix=bt709:in_range=tv,", x);
-        const worst = Math.max(...delivered.map((v, i) => Math.abs(v - source[i]!)));
-        expect(worst, `x=${x}: source ${source} delivered ${delivered}`).toBeLessThanOrEqual(2);
+        const rawInput = ["-f", "rawvideo", "-pix_fmt", "rgb48le", "-s", "64x16"];
+        // x=8 is flat colour; x=32 sits one pixel inside the blue edge.
+        for (const x of [8, 32]) {
+          const source = rgbAt(rawInput, "-", "", x, frame);
+          const delivered = rgbAt([], out, "scale=in_color_matrix=bt709:in_range=tv,", x);
+          expect([source.length, delivered.length]).toEqual([3, 3]);
+          const worst = Math.max(...delivered.map((v, i) => Math.abs(v - source[i]!)));
+          expect(worst, `x=${x}: source ${source} delivered ${delivered}`).toBeLessThanOrEqual(2);
+        }
+      } finally {
+        rmSync(dir, { recursive: true, force: true });
       }
-    } finally {
-      rmSync(dir, { recursive: true, force: true });
-    }
-  }, 30_000);
-});
+    }, 30_000);
+  },
+);

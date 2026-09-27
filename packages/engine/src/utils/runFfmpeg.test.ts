@@ -5,11 +5,7 @@ import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import {
-  formatFfmpegError,
-  isExternalFfmpegInterruption,
-  runFfmpegPipeline,
-} from "./runFfmpeg.js";
+import { formatFfmpegError, isExternalFfmpegInterruption, runFfmpegPipeline } from "./runFfmpeg.js";
 
 const HAS_FFMPEG = spawnSync("ffmpeg", ["-version"]).status === 0;
 
@@ -186,7 +182,19 @@ describe("runFfmpeg binary resolution", () => {
 });
 
 describe.skipIf(!HAS_FFMPEG)("runFfmpegPipeline", () => {
-  const rawFrames = (source: string) => ["-v", "error", "-f", "lavfi", "-i", source, "-c:v", "rawvideo", "-f", "nut", "pipe:1"];
+  const rawFrames = (source: string) => [
+    "-v",
+    "error",
+    "-f",
+    "lavfi",
+    "-i",
+    source,
+    "-c:v",
+    "rawvideo",
+    "-f",
+    "nut",
+    "pipe:1",
+  ];
 
   it("hands every producer frame to the consumer", async () => {
     const dir = mkdtempSync(join(tmpdir(), "hf-pipeline-"));
@@ -211,7 +219,17 @@ describe.skipIf(!HAS_FFMPEG)("runFfmpegPipeline", () => {
 
   it("fails with the producer's error when the producer cannot start its input", async () => {
     const result = await runFfmpegPipeline(
-      ["-v", "error", "-i", join(tmpdir(), "hf-missing-input.mp4"), "-c:v", "rawvideo", "-f", "nut", "pipe:1"],
+      [
+        "-v",
+        "error",
+        "-i",
+        join(tmpdir(), "hf-missing-input.mp4"),
+        "-c:v",
+        "rawvideo",
+        "-f",
+        "nut",
+        "pipe:1",
+      ],
       ["-v", "error", "-f", "nut", "-i", "pipe:0", "-f", "null", "-"],
     );
     expect(result.success).toBe(false);
