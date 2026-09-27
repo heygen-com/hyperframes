@@ -86,6 +86,11 @@ export function recordLocalModelConsent(enabled: boolean): LocalModelDecision {
   return updateLocalModelConsent(() => enabled);
 }
 
+/** The answer saved right now, read through the settings lock so a write in progress lands first. */
+export function savedLocalModelConsent(): LocalModelDecision {
+  return updateLocalModelConsent((onDisk) => onDisk);
+}
+
 /** --yes in a run nobody watches: it answers only a question never asked. Returns the decision that stands. */
 export function assumeLocalModelConsent(): LocalModelDecision {
   return updateLocalModelConsent((onDisk) => onDisk ?? true);

@@ -22,6 +22,7 @@ import { runAdd } from "./add.js";
 import { hasNoSearchableTokens, searchByWords } from "../registry/localSearch.js";
 import {
   assumeLocalModelConsent,
+  savedLocalModelConsent,
   downloadOfferMessage,
   ensureLocalModel,
   type LocalModelStatus,
@@ -97,26 +98,33 @@ async function prepareOnDeviceTier(opts: {
     }
   }
 
-  // Before anything is installed, so a no saved meanwhile stops the runtime install too.
-  if (status.status === "declined" || status.status === "not-asked") {
-    if (!unwatchedYes) recordLocalModelConsent(true);
-    else {
-      const agreed = assumeLocalModelConsent();
-      if (agreed !== true) {
-        warn(
-          agreed === false
-            ? declined
-            : "on-device search skipped: could not save the answer in settings; `hyperframes doctor` says why.",
-        );
-        return warnings;
-      }
-    }
+  // Settled from disk before anything installs, on every path, so a no saved by another process stops it.
+  const asked = status.status === "declined" || status.status === "not-asked";
+  const agreed = !asked
+    ? savedLocalModelConsent()
+    : unwatchedYes
+      ? assumeLocalModelConsent()
+      : recordLocalModelConsent(true);
+  if (agreed !== true) {
+    warn(
+      agreed === false && (unwatchedYes || !asked)
+        ? declined
+        : asked
+          ? "on-device search skipped: could not save the answer in settings; `hyperframes doctor` says why."
+          : nonInteractiveConsentMessage(),
+    );
+    return warnings;
   }
 
   // Before the model download: fetching 32 MB and then finding the runtime missing wastes it.
   const runtime = await ensureLocalRuntime();
   if (!runtime.ok) {
     warn(`on-device search skipped: ${runtime.reason}`);
+    return warnings;
+  }
+  // The runtime install can take a while; a no saved during it stops the model download.
+  if (savedLocalModelConsent() !== true) {
+    warn(declined);
     return warnings;
   }
 

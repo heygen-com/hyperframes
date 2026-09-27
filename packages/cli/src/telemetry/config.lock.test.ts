@@ -69,6 +69,15 @@ describe("a settings file that exists but cannot be read", () => {
 });
 
 describe("config writes across processes", () => {
+  it("reads a no another process is saving at that moment, not the answer before it", async () => {
+    const { readConfig, updateLocalModelConsent } = await import("./config.js");
+    writeFileSync(join(configDir, "config.json"), JSON.stringify({ localEmbeddingEnabled: true }));
+    readConfig();
+    await anotherProcessSavesNo();
+
+    expect(updateLocalModelConsent((onDisk) => onDisk)).toBe(false);
+  });
+
   it("waits for another process's settings write, then keeps the no it saved", async () => {
     const { readConfig, updateLocalModelConsent } = await import("./config.js");
     expect(readConfig().localEmbeddingEnabled).toBeUndefined();

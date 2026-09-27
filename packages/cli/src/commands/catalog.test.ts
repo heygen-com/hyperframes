@@ -90,6 +90,7 @@ const state = vi.hoisted(() => ({
   downloads: 0,
   runtimeInstalls: 0,
   runtimeAvailable: true,
+  noSavedDuringRuntime: false,
 }));
 
 vi.mock("../registry/resolver.js", () => ({
@@ -146,6 +147,11 @@ vi.mock("../registry/localModel.js", () => ({
     state.consentRecorded.push(true);
     return true;
   },
+  // "unavailable" and "ready" both mean a yes is saved; only a later save changes that.
+  savedLocalModelConsent: () =>
+    state.consentSavedMeanwhile ??
+    state.consentRecorded.at(-1) ??
+    (state.modelStatus === "ready" || state.modelStatus === "unavailable" ? true : undefined),
   downloadOfferMessage: () => "offer",
   nonInteractiveConsentMessage: () => "consent",
 }));
@@ -154,6 +160,7 @@ vi.mock("../registry/localEmbedder.js", () => ({
   // Left unmocked this would run a real npm install under vitest.
   ensureLocalRuntime: async () => {
     state.runtimeInstalls += 1;
+    if (state.noSavedDuringRuntime) state.consentSavedMeanwhile = false;
     return state.runtimeAvailable ? { ok: true } : { ok: false, reason: "installing it failed" };
   },
 }));
@@ -272,6 +279,7 @@ beforeEach(() => {
   state.downloads = 0;
   state.runtimeInstalls = 0;
   state.runtimeAvailable = true;
+  state.noSavedDuringRuntime = false;
   state.registry = [block("count-up"), block("fade-through"), component("whip-pan")];
   state.indexed = ["count-up", "fade-through", "whip-pan"];
   state.ranking = [
@@ -791,6 +799,37 @@ describe("the on-device download offer", () => {
 
     expect([state.runtimeInstalls, state.downloads, state.consentRecorded]).toEqual([0, 0, []]);
     expect(warnings?.join(" ")).toContain("previously declined");
+  });
+
+  it("installs nothing on the routine update when a no was saved after the yes", async () => {
+    state.modelStatus = "unavailable";
+    state.consentSavedMeanwhile = false;
+
+    const { warnings } = await runEnvelope({ query: "count up" });
+
+    expect([state.runtimeInstalls, state.downloads]).toEqual([0, 0]);
+    expect(warnings?.join(" ")).toContain("previously declined");
+  });
+
+  it("skips the model download when a no is saved while the runtime installs", async () => {
+    state.modelStatus = "unavailable";
+    state.noSavedDuringRuntime = true;
+
+    await runEnvelope({ query: "count up", "on-device": true });
+
+    expect([state.runtimeInstalls, state.downloads]).toEqual([1, 0]);
+  });
+
+  it("installs nothing when a person's yes cannot be saved", async () => {
+    state.consentRecorded = [false];
+    state.consentWriteFails = true;
+
+    const { err } = await asATerminal(() =>
+      runForExit({ query: "count up", "on-device": true, yes: true }),
+    );
+
+    expect([state.runtimeInstalls, state.downloads]).toEqual([0, 0]);
+    expect(err).toContain("could not save the answer in settings");
   });
 });
 
