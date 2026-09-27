@@ -11,7 +11,7 @@ import type { DownloadByteBudget } from "../capture/readBoundedResponse.js";
 
 import { createHash } from "node:crypto";
 import { existsSync, readFileSync } from "node:fs";
-import { resolve, relative, isAbsolute } from "node:path";
+import { resolve, relative, isAbsolute, sep } from "node:path";
 import type { FileTarget, RegistryItem } from "@hyperframes/core";
 import { fetchItemFile, DEFAULT_REGISTRY_URL } from "./remote.js";
 import {
@@ -84,6 +84,17 @@ function readInstallRecord(destDir: string): InstallRecord {
 function writeInstallRecord(destDir: string, record: InstallRecord): void {
   const sorted = Object.fromEntries(Object.entries(record).sort(([a], [b]) => a.localeCompare(b)));
   publishRegistryFile(destDir, INSTALL_RECORD, `${JSON.stringify(sorted, null, 2)}\n`);
+}
+
+/** Re-record files an install wrote and its caller then rewrote, so they still read as unedited. */
+export function recordRewrittenInstall(destDir: string, written: string[]): void {
+  const root = registryRoot(destDir);
+  const record = readInstallRecord(root);
+  for (const path of written) {
+    const target = relative(root, path).split(sep).join("/");
+    if (record[target]) record[target] = digest(readFileSync(path));
+  }
+  writeInstallRecord(root, record);
 }
 
 /**

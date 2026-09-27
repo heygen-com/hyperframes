@@ -779,6 +779,8 @@ export function createStudioServer(options: StudioServerOptions): StudioServer {
       const written = result.written;
 
       rewriteWrittenToHostViewport(opts.project.dir, written);
+      const { recordRewrittenInstall } = await import("../registry/installer.js");
+      recordRewrittenInstall(opts.project.dir, written);
 
       // The installer returns resolved paths, so a project opened through a symlink is resolved too.
       const root = realpathSync(opts.project.dir);

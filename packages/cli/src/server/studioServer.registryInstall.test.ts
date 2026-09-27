@@ -68,7 +68,9 @@ function projectWithRegistry(): {
       if (url.endsWith("/blocks/my-block/registry-item.json"))
         return new Response(JSON.stringify(BLOCK));
       if (url.endsWith("/blocks/my-block/my-block.html")) {
-        return new Response('<div data-composition-id="my-block"></div>');
+        return new Response(
+          '<meta name="viewport" content="width=1080, height=1350"><div data-composition-id="my-block"></div>',
+        );
       }
       return new Response("not found", { status: 404 });
     }),
@@ -117,5 +119,23 @@ describe("Studio catalog install", () => {
     expect(items.map((item) => item.name)).toEqual(["my-block"]);
     expect(fetched.length).toBeGreaterThan(0);
     expect(fetched.every((url) => url.startsWith(registry))).toBe(true);
+  });
+
+  it("installs a block sized unlike the project twice, and still keeps a real edit", async () => {
+    const { link, real } = projectWithRegistry();
+    const install = () =>
+      server!.adapter.installRegistryBlock!({
+        project: { dir: link, id: "p", title: "p" },
+        blockName: "my-block",
+      } as never);
+    const file = join(real, "scenes/my-block.html");
+
+    await install();
+    expect(readFileSync(file, "utf-8")).toContain('content="width=1920, height=1080"');
+    expect((await install()).written).toEqual(["scenes/my-block.html"]);
+
+    writeFileSync(file, "my own edit");
+    expect((await install()).written).toEqual([]);
+    expect(readFileSync(file, "utf-8")).toBe("my own edit");
   });
 });
