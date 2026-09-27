@@ -94,7 +94,7 @@ export function VariablesOtherCompositions({
   reloadPreview,
 }: {
   compositionPaths: string[];
-  excludePath: string;
+  excludePath: string | null;
   refreshKey: unknown;
   readProjectFile: (path: string) => Promise<string>;
   writeProjectFile: (path: string, content: string) => Promise<void>;

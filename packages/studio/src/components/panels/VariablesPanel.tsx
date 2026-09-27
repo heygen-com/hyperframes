@@ -538,7 +538,7 @@ export const VariablesPanel = memo(function VariablesPanel({
         )}
         <VariablesOtherCompositions
           compositionPaths={compositions}
-          excludePath={activeCompPath ?? "index.html"}
+          excludePath={effectiveCompPath}
           refreshKey={`${refreshKey}:${revision}`}
           readProjectFile={readProjectFile}
           writeProjectFile={writeProjectFile}
