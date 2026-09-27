@@ -1602,6 +1602,41 @@ describe("what the preview loaded", () => {
   );
 
   it.skipIf(process.platform === "win32")(
+    "counts retargeting a link the read passed through on the way to its file",
+    () => {
+      const projectDir = realpathSync(createProjectDir());
+      for (const version of ["v1", "v2"]) {
+        mkdirSync(join(projectDir, "libs", version, "audio"), { recursive: true });
+        writeFileSync(join(projectDir, "libs", version, "audio", "a.mp3"), version);
+      }
+      symlinkSync("v1", join(projectDir, "libs", "current"));
+      symlinkSync("libs/current/audio", join(projectDir, "media"));
+      recordPreviewRead(projectDir, "media/a.mp3");
+      recordPreviewBuilt(projectDir);
+
+      expect(affectsPreview(projectDir, "libs/current")).toBe(true);
+      expect(affectsPreview(projectDir, "libs/v1/audio/a.mp3")).toBe(true);
+      expect(affectsPreview(projectDir, "libs/v2/audio/a.mp3")).toBe(false);
+    },
+  );
+
+  it.skipIf(process.platform === "win32")(
+    "follows a link target's .. from where the link lands, as the system does",
+    () => {
+      const projectDir = realpathSync(createProjectDir());
+      mkdirSync(join(projectDir, "deep", "nested"), { recursive: true });
+      mkdirSync(join(projectDir, "m"));
+      writeFileSync(join(projectDir, "deep", "real.mp3"), "x");
+      symlinkSync("deep/nested", join(projectDir, "sub"));
+      symlinkSync("../sub/../real.mp3", join(projectDir, "m", "a.mp3"));
+      recordPreviewRead(projectDir, "m/a.mp3");
+      recordPreviewBuilt(projectDir);
+
+      expect(affectsPreview(projectDir, "deep/real.mp3")).toBe(true);
+    },
+  );
+
+  it.skipIf(process.platform === "win32")(
     "matches a project recorded by its real folder and watched through a link to it",
     () => {
       const realDir = realpathSync(createProjectDir());

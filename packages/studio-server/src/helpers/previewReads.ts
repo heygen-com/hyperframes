@@ -1,5 +1,5 @@
 import { readlinkSync } from "node:fs";
-import { dirname, join, relative, resolve } from "node:path";
+import { dirname, join, parse, relative, resolve } from "node:path";
 import { STUDIO_SIGNATURE_MANIFEST_PATHS } from "./projectSignature.js";
 import { realFilePath } from "./safePath.js";
 
@@ -18,15 +18,40 @@ const projectKey = (projectDir: string) => pathKey(realFilePath(resolve(projectD
 const inRealProject = (projectDir: string, path: string) =>
   join(realFilePath(resolve(projectDir)), relative(resolve(projectDir), resolve(projectDir, path)));
 
-function linkTarget(path: string): string {
-  for (let hops = 0; hops < 40; hops++) {
-    try {
-      path = resolve(realFilePath(dirname(path)), readlinkSync(path));
-    } catch {
-      break;
-    }
+const readLink = (path: string): string | null => {
+  try {
+    return readlinkSync(path);
+  } catch {
+    return null;
   }
-  return realFilePath(path);
+};
+
+// Walks `path` as the OS does, returning every link it passes and where it ends up.
+function linksOnTheWay(path: string): string[] {
+  const passed: string[] = [];
+  let at = parse(path).root;
+  let rest = path.slice(at.length).split(/[\\/]+/);
+  for (let hops = 0; rest.length > 0; ) {
+    const part = rest.shift()!;
+    if (!part || part === ".") continue;
+    if (part === "..") {
+      at = dirname(at);
+      continue;
+    }
+    const next = join(at, part);
+    const target = hops < 40 ? readLink(next) : null;
+    if (target === null) {
+      at = next;
+      continue;
+    }
+    hops++;
+    passed.push(next);
+    const root = parse(target).root;
+    if (root) at = root;
+    rest = [...target.slice(root.length).split(/[\\/]+/), ...rest];
+  }
+  passed.push(at);
+  return passed;
 }
 
 // A link's target can be created or retargeted later, so every read resolves it again.
@@ -35,7 +60,7 @@ export function recordPreviewRead(projectDir: string, filePath: string): void {
   let reads = readsByProject.get(key);
   if (!reads) readsByProject.set(key, (reads = new Set()));
   const read = inRealProject(projectDir, filePath);
-  for (const found of [read, linkTarget(read)]) {
+  for (const found of [read, ...linksOnTheWay(read)]) {
     for (let path = pathKey(found); !reads.has(path); path = dirname(path)) reads.add(path);
   }
 }
