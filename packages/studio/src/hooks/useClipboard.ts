@@ -356,21 +356,17 @@ export function useClipboard({
 
     const targetPath = activeCompPath || "index.html";
     try {
-      const originalContent = await readFileContent(pid, targetPath);
-      let patchedContent: string;
       let pastedIds: string[] = [];
-
-      if (payload.kind === "timeline-clip") {
+      const paste = (originalContent: string) => {
+        if (payload.kind !== "timeline-clip") return pasteElementHtml(originalContent, payload);
         const { currentTime, elements } = usePlayerStore.getState();
         const pasted = pasteTimelineClips(originalContent, payload.clips, currentTime, elements);
+        pastedIds = pasted.ids;
         // A clip pasted past the current composition end would exist in the
         // file but never appear on the timeline or in playback/export (the
         // root's data-duration is what actually bounds the render).
-        patchedContent = extendRootDurationInSource(pasted.content, pasted.requiredEnd);
-        pastedIds = pasted.ids;
-      } else {
-        patchedContent = pasteElementHtml(originalContent, payload);
-      }
+        return extendRootDurationInSource(pasted.content, pasted.requiredEnd);
+      };
 
       const label =
         payload.kind === "timeline-clip"
@@ -380,8 +376,8 @@ export function useClipboard({
       await saveProjectFilesWithHistory({
         projectId: pid,
         label,
-        files: { [targetPath]: patchedContent },
-        readFile: async () => originalContent,
+        files: { [targetPath]: paste },
+        readFile: (path) => readFileContent(pid, path),
         writeFile: writeProjectFile,
         recordEdit,
       });
@@ -422,17 +418,19 @@ export function useClipboard({
 
     try {
       const clips = await readClips(targets);
-      const originalContent = await readFileContent(pid, targetPath);
-      const liveElements = usePlayerStore.getState().elements;
-      const pasted = pasteTimelineClips(originalContent, clips, anchorTime, liveElements);
-      const patchedContent = extendRootDurationInSource(pasted.content, pasted.requiredEnd);
-      const ids = pasted.ids;
+      let ids: string[] = [];
+      const duplicate = (originalContent: string) => {
+        const liveElements = usePlayerStore.getState().elements;
+        const pasted = pasteTimelineClips(originalContent, clips, anchorTime, liveElements);
+        ids = pasted.ids;
+        return extendRootDurationInSource(pasted.content, pasted.requiredEnd);
+      };
 
       await saveProjectFilesWithHistory({
         projectId: pid,
         label: clipLabel("Duplicate", clips.length),
-        files: { [targetPath]: patchedContent },
-        readFile: async () => originalContent,
+        files: { [targetPath]: duplicate },
+        readFile: (path) => readFileContent(pid, path),
         writeFile: writeProjectFile,
         recordEdit,
       });

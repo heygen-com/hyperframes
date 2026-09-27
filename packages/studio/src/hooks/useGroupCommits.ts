@@ -2,9 +2,10 @@ import { buildProjectApiPath } from "../utils/projectRouting";
 import { useCallback } from "react";
 import {
   readProjectFileContent,
-  saveProjectFilesWithHistory,
+  writeProjectFilesWithHistoryInQueue,
   type DomEditCommitBaseParams,
 } from "../utils/studioFileHistory";
+import { serializeStudioFileMutations } from "../utils/studioFileMutationCoordinator";
 import {
   buildDomEditPatchTarget,
   readHfId,
@@ -125,36 +126,46 @@ async function commitStructuralMutation(
     | "reloadPreview"
   >,
 ): Promise<{ content?: string; groupId?: string }> {
-  const originalContent = await readProjectFileContent(pid, targetPath);
+  const result = await serializeStudioFileMutations(
+    deps.writeProjectFile,
+    [targetPath],
+    async () => {
+      const originalContent = await readProjectFileContent(pid, targetPath);
 
-  const mutateResponse = await fetch(
-    buildProjectApiPath(pid, `/file-mutations/${route}/${encodeURIComponent(targetPath)}`),
-    {
-      method: "POST",
-      headers: { "Content-Type": "application/json", ...studioWriteHeaders() },
-      body: JSON.stringify(body),
+      const mutateResponse = await fetch(
+        buildProjectApiPath(pid, `/file-mutations/${route}/${encodeURIComponent(targetPath)}`),
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json", ...studioWriteHeaders() },
+          body: JSON.stringify(body),
+        },
+      );
+      if (!mutateResponse.ok) {
+        const errBody = (await mutateResponse.json().catch(() => null)) as {
+          error?: string;
+        } | null;
+        throw new Error(errBody?.error ?? `Failed to ${label.toLowerCase()} in ${targetPath}`);
+      }
+      const mutateData = (await mutateResponse.json()) as { content?: string; groupId?: string };
+      const patchedContent =
+        typeof mutateData.content === "string" ? mutateData.content : originalContent;
+
+      await writeProjectFilesWithHistoryInQueue({
+        projectId: pid,
+        label,
+        files: { [targetPath]: () => patchedContent },
+        readFile: async () => originalContent,
+        diskContent: { [targetPath]: patchedContent },
+        writeFile: deps.writeProjectFile,
+        recordEdit: deps.editHistory.recordEdit,
+      });
+      return mutateData;
     },
   );
-  if (!mutateResponse.ok) {
-    const errBody = (await mutateResponse.json().catch(() => null)) as { error?: string } | null;
-    throw new Error(errBody?.error ?? `Failed to ${label.toLowerCase()} in ${targetPath}`);
-  }
-  const mutateData = (await mutateResponse.json()) as { content?: string; groupId?: string };
-  const patchedContent =
-    typeof mutateData.content === "string" ? mutateData.content : originalContent;
-
-  await saveProjectFilesWithHistory({
-    projectId: pid,
-    label,
-    files: { [targetPath]: patchedContent },
-    readFile: async () => originalContent,
-    writeFile: deps.writeProjectFile,
-    recordEdit: deps.editHistory.recordEdit,
-  });
   deps.clearDomSelection();
   deps.forceReloadSdkSession?.();
   deps.reloadPreview();
-  return mutateData;
+  return result;
 }
 
 export function useGroupCommits(params: UseGroupCommitsParams) {

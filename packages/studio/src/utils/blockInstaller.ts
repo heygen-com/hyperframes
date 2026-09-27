@@ -201,7 +201,6 @@ export async function addBlockToProject(
     );
 
     const targetPath = activeCompPath || "index.html";
-    const originalContent = await readProjectFile(targetPath);
     const relevantElements = timelineElements.filter(
       (element) => (element.sourceFile || targetPath) === targetPath,
     );
@@ -211,29 +210,32 @@ export async function addBlockToProject(
       timelineElements: relevantElements,
       currentTime: opts.currentTime ?? 0,
     });
-    const { width, height } = resolveTimelineAssetCompositionSize(originalContent);
-    const hostId = buildUniqueCompositionId(block.name, collectHtmlIds(originalContent));
-    const subComposition = buildSubCompositionHtml({
-      id: hostId,
-      compositionFile,
-      start,
-      duration,
-      track,
-      width,
-      height,
-      left: visualPosition ? Math.round(visualPosition.left) : 0,
-      top: visualPosition ? Math.round(visualPosition.top) : 0,
-      zIndex: getMaxZIndexFromIframe(opts.previewIframe ?? null) + 1,
-    });
-    const patchedContent = extendRootDurationInSource(
-      insertTimelineAssetIntoSource(originalContent, subComposition),
-      start + duration,
-    );
+    let hostId = "";
+    const insertHost = (originalContent: string) => {
+      const { width, height } = resolveTimelineAssetCompositionSize(originalContent);
+      hostId = buildUniqueCompositionId(block.name, collectHtmlIds(originalContent));
+      const subComposition = buildSubCompositionHtml({
+        id: hostId,
+        compositionFile,
+        start,
+        duration,
+        track,
+        width,
+        height,
+        left: visualPosition ? Math.round(visualPosition.left) : 0,
+        top: visualPosition ? Math.round(visualPosition.top) : 0,
+        zIndex: getMaxZIndexFromIframe(opts.previewIframe ?? null) + 1,
+      });
+      return extendRootDurationInSource(
+        insertTimelineAssetIntoSource(originalContent, subComposition),
+        start + duration,
+      );
+    };
     await saveProjectFilesWithHistory({
       projectId,
       label: `Add ${isBlock ? "block" : "component"}: ${block.title}`,
-      files: { [targetPath]: patchedContent },
-      readFile: async () => originalContent,
+      files: { [targetPath]: insertHost },
+      readFile: readProjectFile,
       writeFile: writeProjectFile,
       recordEdit,
     });

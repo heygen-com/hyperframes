@@ -307,16 +307,9 @@ export interface PersistTimelineEditInput {
 
 export async function persistTimelineEdit(input: PersistTimelineEditInput): Promise<void> {
   const targetPath = input.element.sourceFile || input.activeCompPath || "index.html";
-  const originalContent = await readFileContent(input.projectId, targetPath);
-
   const patchTarget = buildPatchTarget(input.element);
   if (!patchTarget) {
     throw new Error(`Timeline element ${input.element.id} is missing a patchable target`);
-  }
-
-  const patchedContent = input.buildPatches(originalContent, patchTarget);
-  if (patchedContent === originalContent) {
-    throw new Error(`Unable to patch timeline element ${input.element.id} in ${targetPath}`);
   }
 
   input.pendingTimelineEditPathRef.current.add(targetPath);
@@ -324,8 +317,16 @@ export async function persistTimelineEdit(input: PersistTimelineEditInput): Prom
     projectId: input.projectId,
     label: input.label,
     coalesceKey: input.coalesceKey,
-    files: { [targetPath]: patchedContent },
-    readFile: async () => originalContent,
+    files: {
+      [targetPath]: (current) => {
+        const patched = input.buildPatches(current, patchTarget);
+        if (patched === current) {
+          throw new Error(`Unable to patch timeline element ${input.element.id} in ${targetPath}`);
+        }
+        return patched;
+      },
+    },
+    readFile: (path) => readFileContent(input.projectId, path),
     writeFile: input.writeProjectFile,
     recordEdit: input.recordEdit,
   });
@@ -352,50 +353,44 @@ export interface PersistTimelineBatchEditInput {
 export async function persistTimelineBatchEdit(
   input: PersistTimelineBatchEditInput,
 ): Promise<void> {
-  const originals = new Map<string, string>();
-  const patchedByPath = new Map<string, string>();
-
+  const changesByPath = new Map<
+    string,
+    Array<{ change: PersistTimelineBatchChange; target: PatchTarget }>
+  >();
   for (const change of input.changes) {
     const targetPath = change.element.sourceFile || input.activeCompPath || "index.html";
-    const original =
-      originals.get(targetPath) ?? (await readFileContent(input.projectId, targetPath));
-    originals.set(targetPath, original);
-
-    const patchTarget = buildPatchTarget(change.element);
-    if (!patchTarget) {
+    const target = buildPatchTarget(change.element);
+    if (!target) {
       throw new Error(`Timeline element ${change.element.id} is missing a patchable target`);
     }
+    changesByPath.set(targetPath, [...(changesByPath.get(targetPath) ?? []), { change, target }]);
+  }
 
-    const current = patchedByPath.get(targetPath) ?? original;
-    // Resolve the target FIRST: byte-identical output below is only a legit
-    // no-op when the member actually resolved in the source. A mistargeted
-    // member (stale id/selector) must fail loudly like the single-edit path,
-    // not be silently dropped as "already at target".
-    if (!findTagByTarget(current, patchTarget)) {
-      throw new Error(`Unable to patch timeline element ${change.element.id} in ${targetPath}`);
+  const buildFile = (targetPath: string) => (original: string) => {
+    let current = original;
+    for (const { change, target } of changesByPath.get(targetPath) ?? []) {
+      // Resolve the target FIRST: byte-identical output below is only a legit
+      // no-op when the member actually resolved in the source. A mistargeted
+      // member (stale id/selector) must fail loudly like the single-edit path,
+      // not be silently dropped as "already at target".
+      if (!findTagByTarget(current, target)) {
+        throw new Error(`Unable to patch timeline element ${change.element.id} in ${targetPath}`);
+      }
+      // A member already at its target values (a track-insert renumber) patches to the
+      // identical string: a legitimate no-op, not a reason to abort the batch.
+      current = change.buildPatches(current, target);
     }
-    const patched = change.buildPatches(current, patchTarget);
-    // The target resolved, so a member whose attributes already hold the target
-    // values patches to the identical string — e.g. a track-insert renumber
-    // where one clip's lane is already correct. That is a legitimate no-op:
-    // skip it instead of aborting (and rolling back) the whole batch.
-    if (patched === current) continue;
-    patchedByPath.set(targetPath, patched);
-  }
+    if (current !== original) input.pendingTimelineEditPathRef.current.add(targetPath);
+    return current;
+  };
 
-  if (patchedByPath.size === 0) return;
-
-  const files = Object.fromEntries(patchedByPath);
-  for (const targetPath of Object.keys(files)) {
-    input.pendingTimelineEditPathRef.current.add(targetPath);
-  }
   await saveProjectFilesWithHistory({
     projectId: input.projectId,
     label: input.label,
     coalesceKey: input.coalesceKey,
     coalesceMs: input.coalesceMs,
-    files,
-    readFile: async (path) => originals.get(path) ?? readFileContent(input.projectId, path),
+    files: Object.fromEntries([...changesByPath.keys()].map((path) => [path, buildFile(path)])),
+    readFile: (path) => readFileContent(input.projectId, path),
     writeFile: input.writeProjectFile,
     recordEdit: input.recordEdit,
   });
@@ -489,7 +484,7 @@ export async function persistElementAttribute({
       return await writeProjectFilesWithHistoryInQueue({
         projectId,
         label,
-        files: { [targetPath]: patched },
+        files: { [targetPath]: () => patched },
         readFile: async (path) => (path === targetPath ? before : readFileContent(projectId, path)),
         writeFile: writeProjectFile,
         recordEdit,

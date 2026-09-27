@@ -27,7 +27,7 @@ interface SaveProjectFilesWithHistoryInput {
   label: string;
   coalesceKey?: string;
   coalesceMs?: number;
-  files: Record<string, string>;
+  files: Record<string, (contentInsideFileQueue: string) => string>;
   readFile: (path: string) => Promise<string>;
   writeFile: ProjectFileWriter;
   recordEdit: (entry: RecordEditInput) => Promise<void>;
@@ -79,8 +79,9 @@ export async function writeProjectFilesWithHistoryInQueue({
   diskContent,
 }: SaveProjectFilesWithHistoryInput): Promise<string[]> {
   const snapshots: Record<string, { before: string; after: string }> = {};
-  for (const [path, after] of Object.entries(files)) {
+  for (const [path, build] of Object.entries(files)) {
     const before = await readFile(path);
+    const after = build(before);
     if (before !== after) {
       snapshots[path] = { before, after };
     }
