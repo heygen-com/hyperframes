@@ -118,7 +118,7 @@ describe("media treatment routing documentation", () => {
   });
 
   it("places the media-treatment discovery gate in new project instructions", () => {
-    for (const file of ["AGENTS.md", "CLAUDE.md"]) {
+    for (const file of ["AGENTS.md"]) {
       const template = read("packages", "cli", "src", "templates", "_shared", file);
       expect(template).toContain("Changing how real footage or images look or reveal?");
       expect(template).toContain("Load `/media-use`");

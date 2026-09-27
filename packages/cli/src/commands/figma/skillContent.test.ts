@@ -36,7 +36,7 @@ describe("figma SKILL.md telemetry beacons", () => {
 describe("figma storyboard doctrine pins", () => {
   const CATALOG_SURFACES: Array<[string, string[]]> = [
     ["skills/figma/SKILL.md", ["skills", "figma", "SKILL.md"]],
-    ["CLAUDE.md", ["CLAUDE.md"]],
+    ["AGENTS.md", ["AGENTS.md"]],
     ["README.md", ["README.md"]],
     ["docs/guides/skills.mdx", ["docs", "guides", "skills.mdx"]],
     ["skills/hyperframes/SKILL.md", ["skills", "hyperframes", "SKILL.md"]],
