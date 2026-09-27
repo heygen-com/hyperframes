@@ -75,7 +75,7 @@ export interface TimelineFxPopoverProps {
    *  selected clip's attribute — the caller resolves which). */
   onChainChange: (next: HfAudioFxChain) => void;
   /** Preview a hypothetical chain on the running graph without persisting. */
-  onChainPreview?: (next: HfAudioFxChain) => void;
+  onChainPreview?: (next: HfAudioFxChain, ended?: boolean) => void;
   onAuditionTransport?: (on: boolean) => void;
   /** Select the target the way clicking it in the timeline does, and ensure
    *  the property panel's Audio FX group is expanded. */

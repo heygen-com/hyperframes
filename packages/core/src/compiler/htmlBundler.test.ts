@@ -80,6 +80,38 @@ function makeSymlinkProject(
 }
 
 describe("bundleToSingleHtml", () => {
+  it("reports every project file it reads or looks for through onRead", async () => {
+    const dir = makeTempProject({
+      "index.html": `<!doctype html><html><head>
+        <link rel="stylesheet" href="style.css"><link rel="stylesheet" href="missing.css">
+      </head><body>
+        <div data-composition-id="root" data-width="320" data-height="180" data-start="0" data-duration="2">
+          <img src="small.svg">
+          <div data-composition-id="intro" data-composition-src="scenes/intro.html" data-start="0" data-duration="1"></div>
+        </div>
+        <script src="app.js"></script>
+        <script>window.__timelines = window.__timelines || {}; window.__timelines.root = {}</script>
+      </body></html>`,
+      "style.css": '@import "base.css"; .a { color: red; }',
+      "base.css": ".b { color: blue; }",
+      "app.js": "window.appLoaded = true;",
+      "small.svg": '<svg xmlns="http://www.w3.org/2000/svg"></svg>',
+      "scenes/intro.html": `<template><div data-composition-id="intro" data-width="320" data-height="180">
+        <link rel="stylesheet" href="intro.css"><p>intro</p></div></template>`,
+      "scenes/intro.css": ".intro { color: green; }",
+      "notes.md": "not part of the film",
+    });
+    const reads = new Set<string>();
+
+    await bundleToSingleHtml(dir, { onRead: (file) => reads.add(file) });
+
+    const expected = ["index.html", "style.css", "base.css", "missing.css", "app.js", "small.svg"];
+    for (const file of [...expected, "scenes/intro.html", "scenes/intro.css"]) {
+      expect(reads).toContain(join(dir, file));
+    }
+    expect(reads).not.toContain(join(dir, "notes.md"));
+  });
+
   it("bundles a direct composition entry with paths relative to its file", async () => {
     const dir = makeTempProject({
       "index.html": "<html><body>wrong entry</body></html>",

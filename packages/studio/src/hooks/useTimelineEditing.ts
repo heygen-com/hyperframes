@@ -11,6 +11,7 @@ import {
   playbackStartAttributeForElement,
   persistTimelineEdit,
   formatTimelineAttributeNumber,
+  formatTimelineMediaOffset,
   extendRootDurationIfNeeded,
   buildTimelineMoveTimingPatch,
   buildTimelineResizeTimingPatch,
@@ -313,7 +314,7 @@ export function useTimelineEditing({
       ];
       if (updates.playbackStart != null) {
         const liveAttr = playbackStartAttributeForElement(element);
-        liveAttrs.push([liveAttr, formatTimelineAttributeNumber(updates.playbackStart)]);
+        liveAttrs.push([liveAttr, formatTimelineMediaOffset(updates.playbackStart)]);
       }
       patchIframeDomTiming(previewIframeRef.current, element, liveAttrs, activeCompPath);
       // Snapshot the duration BEFORE the optimistic updates below so a failed
@@ -436,7 +437,7 @@ export function useTimelineEditing({
     checkEditable,
   });
 
-  const { revertLive: revertElementFxLive, ...setElementFxAttribute } = useSetElementAttribute({
+  const setElementFxAttribute = useSetElementAttribute({
     projectIdRef,
     activeCompPath,
     showToast,
@@ -447,18 +448,16 @@ export function useTimelineEditing({
     isRecordingRef,
   });
 
-  const { revertLive: revertAudioGroupLive, ...setAudioGroupAttribute } = useSetAudioGroupAttribute(
-    {
-      projectIdRef,
-      activeCompPath,
-      showToast,
-      writeProjectFile,
-      recordEdit,
-      previewIframeRef,
-      pendingTimelineEditPathRef,
-      isRecordingRef,
-    },
-  );
+  const setAudioGroupAttribute = useSetAudioGroupAttribute({
+    projectIdRef,
+    activeCompPath,
+    showToast,
+    writeProjectFile,
+    recordEdit,
+    previewIframeRef,
+    pendingTimelineEditPathRef,
+    isRecordingRef,
+  });
 
   const { handleTimelineElementsDelete, handleTimelineElementDelete } = useTimelineDeleteOps({
     projectIdRef,
@@ -550,7 +549,7 @@ export function useTimelineEditing({
       // no flat twin, only a domClipChildren entry, so both are checked.
       setQuiet: track(
         guard(audioGroupMembers, setAudioGroupAttribute.setQuiet, (reason, groupId, attr) => {
-          revertAudioGroupLive(groupId, attr);
+          setAudioGroupAttribute.revertLive(groupId, attr);
           return refused(reason);
         }),
       ),
@@ -562,7 +561,7 @@ export function useTimelineEditing({
           (element) => [element],
           setElementFxAttribute.setQuiet,
           (reason, element, attr) => {
-            revertElementFxLive(element, attr);
+            setElementFxAttribute.revertLive(element, attr);
             return refused(reason);
           },
         ),
@@ -591,5 +590,9 @@ export function useTimelineEditing({
     handleTimelineGroupResize: track(
       guard((changes) => changes.map((c) => c.element), groupEditing.handleTimelineGroupResize),
     ),
+    restoreLiveLanes: (restore: Parameters<typeof setElementFxAttribute.restoreLive>[0]) => {
+      setElementFxAttribute.restoreLive(restore);
+      setAudioGroupAttribute.restoreLive(restore);
+    },
   };
 }

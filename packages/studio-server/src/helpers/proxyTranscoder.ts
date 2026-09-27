@@ -1,19 +1,12 @@
 import { spawn } from "node:child_process";
 import { createHash, randomUUID } from "node:crypto";
-import {
-  existsSync,
-  mkdirSync,
-  realpathSync,
-  renameSync,
-  statSync,
-  unlinkSync,
-  utimesSync,
-} from "node:fs";
+import { existsSync, mkdirSync, renameSync, statSync, unlinkSync, utimesSync } from "node:fs";
 import { basename, dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
 import { findFfBinary } from "@hyperframes/parsers/ff-binaries";
 import { probeMediaMetadata } from "./mediaMetadata.js";
 import { cleanupProxyCache } from "./proxyCache.js";
 import { PROXY_VARIANT_CONFIG, type ProxyVariant } from "./mediaCodecMap.js";
+import { realpath } from "./safePath.js";
 
 /**
  * Transcodes browser-hostile local video sources (HEVC, ProRes, ...) into a
@@ -158,8 +151,8 @@ function canonicalizeProxySource(
     throw new ProxySourceOutsideProjectError();
   }
 
-  const canonicalProjectDir = realpathSync(projectDir);
-  const canonicalSourcePath = realpathSync(absoluteSourcePath);
+  const canonicalProjectDir = realpath(projectDir);
+  const canonicalSourcePath = realpath(absoluteSourcePath);
   const canonicalRelativePath = relative(canonicalProjectDir, canonicalSourcePath);
   const sourceIsInsideCanonicalProject =
     canonicalRelativePath !== ".." &&

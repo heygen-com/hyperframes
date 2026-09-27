@@ -1,7 +1,7 @@
 import { resolve, sep, join, dirname, basename } from "node:path";
 import { lstatSync, realpathSync } from "node:fs";
 
-function realpath(path: string): string {
+export function realpath(path: string): string {
   try {
     return realpathSync.native(path);
   } catch (error) {

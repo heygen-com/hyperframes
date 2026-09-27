@@ -97,6 +97,12 @@ describe("skillsUpdateCheck", () => {
     return String(writeSpy.mock.calls[0]?.[0]);
   }
 
+  it("suppresses a cached stale-skills notice in an attended plugin run", async () => {
+    vi.stubEnv("HYPERFRAMES_SKIP_SKILLS", "1");
+    // The normal notice gate permits output (the attended TTY case).
+    expect(await noticeTextFor({ skillsOutdatedCount: 2, skillsMissingCount: 1 })).toBeNull();
+  });
+
   it("the cached nudge total counts removed skills, not just outdated/missing", async () => {
     // Cache pre-populated as if a prior refreshSkillsCache had run — only
     // outdated + missing, no removed (the pre-fix shape).

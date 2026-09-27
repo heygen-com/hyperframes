@@ -43,7 +43,6 @@ const EVERY_WRITTEN_KEY: Required<ProjectConfig> = {
   registry: "https://example.test/registry",
   paths: DEFAULT_PROJECT_CONFIG.paths,
   media: { autoProxy: true },
-  preview: { watchIgnore: ["docs", "references/check-results.json"] },
   authoringSkill: "product-launch-video",
   registryItems: [EVERY_RECORD_FIELD],
 };

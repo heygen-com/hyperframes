@@ -11,7 +11,7 @@ import {
   utimesSync,
   writeFileSync,
 } from "node:fs";
-import { join } from "node:path";
+import { basename, join } from "node:path";
 import { tmpdir } from "node:os";
 import { spawnSync } from "node:child_process";
 import {
@@ -1280,6 +1280,15 @@ const RED_SAMPLE_PIXELS = [
   [178, 92],
 ] as const;
 
+function pngChunkTypes(path: string): string[] {
+  const bytes = readFileSync(path);
+  const types: string[] = [];
+  for (let offset = 8; offset + 8 <= bytes.length; offset += 12 + bytes.readUInt32BE(offset)) {
+    types.push(bytes.toString("latin1", offset + 4, offset + 8));
+  }
+  return types;
+}
+
 function readFirstFramePixel(mediaPath: string, x: number, y: number): Rgb {
   const result = spawnSync(
     "ffmpeg",
@@ -1409,6 +1418,291 @@ describe.skipIf(!HAS_FFMPEG)("video frame extraction format", () => {
 
     expect(worstPngDelta).toBeLessThanOrEqual(5);
     expect(worstPngDelta).toBeLessThanOrEqual(worstDefaultDelta);
+  }, 60_000);
+
+  // Chrome runs with --force-color-profile=srgb and colour-manages any frame not tagged sRGB;
+  // the SDR encoder writes the canvas code values as they are, so frames must reach it unconverted.
+  it.each([
+    ["BT.709", "bt709"],
+    ["BT.601", "smpte170m"],
+  ])(
+    "declares png frames of a %s source as sRGB so Chrome shows their code values",
+    async (name, tag) => {
+      const fixture = join(FIXTURE_DIR, `${tag}-shadow.mp4`);
+      const synth = await runFfmpeg([
+        "-y",
+        "-hide_banner",
+        "-loglevel",
+        "error",
+        "-f",
+        "lavfi",
+        "-i",
+        `color=c=0x101010:s=${UI_FIXTURE_WIDTH}x${UI_FIXTURE_HEIGHT}:d=1:r=1`,
+        "-vf",
+        `setparams=color_primaries=${tag}:color_trc=${tag}:colorspace=${tag}:range=tv`,
+        "-c:v",
+        "libx264",
+        "-preset",
+        "ultrafast",
+        "-crf",
+        "0",
+        "-pix_fmt",
+        "yuv420p",
+        fixture,
+      ]);
+      if (!synth.success) {
+        throw new Error(`${name} fixture synthesis failed: ${synth.stderr.slice(-400)}`);
+      }
+      expect((await extractVideoMetadata(fixture)).colorSpace?.colorTransfer).toBe(tag);
+      const outputDir = join(FIXTURE_DIR, `out-png-transfer-${tag}`);
+      mkdirSync(outputDir, { recursive: true });
+
+      const result = await extractAllVideoFrames(
+        [{ ...fixtureVideo(), id: tag, src: fixture }],
+        FIXTURE_DIR,
+        { fps: 1, outputDir, format: "png" },
+      );
+
+      expect(result.errors).toEqual([]);
+      const frame = result.extracted[0]!.framePaths.get(0)!;
+      // Chrome reads cICP before sRGB, and ffmpeg < 6.0 writes no cICP, so only an sRGB chunk
+      // without cICP means "these are sRGB code values" on every ffmpeg.
+      const chunks = pngChunkTypes(frame);
+      expect(chunks).toContain("sRGB");
+      expect(chunks).not.toContain("cICP");
+      expect(readFirstFramePixel(frame, 10, 10)).toEqual(readFirstFramePixel(fixture, 10, 10));
+    },
+    60_000,
+  );
+
+  it("extracts jpg frames of a BT.709 source as the BT.601 full range JPEG readers assume", async () => {
+    const fixture = join(FIXTURE_DIR, "bt709-patch.mp4");
+    const synth = await runFfmpeg([
+      "-y",
+      "-hide_banner",
+      "-loglevel",
+      "error",
+      "-f",
+      "lavfi",
+      "-i",
+      `color=c=0xC83C28:s=${UI_FIXTURE_WIDTH}x${UI_FIXTURE_HEIGHT}:d=1:r=1,format=rgb24,drawbox=x=31:y=0:w=64:h=${UI_FIXTURE_HEIGHT}:c=0x0000FE:t=fill`,
+      "-vf",
+      "scale=out_color_matrix=bt709:out_range=tv,format=yuv420p,setparams=color_primaries=bt709:color_trc=bt709:colorspace=bt709:range=tv",
+      "-c:v",
+      "libx264",
+      "-preset",
+      "ultrafast",
+      "-crf",
+      "0",
+      fixture,
+    ]);
+    if (!synth.success) throw new Error(`fixture synthesis failed: ${synth.stderr.slice(-400)}`);
+    const outputDir = join(FIXTURE_DIR, "out-jpg-matrix");
+    mkdirSync(outputDir, { recursive: true });
+
+    const result = await extractAllVideoFrames(
+      [{ ...fixtureVideo(), id: "bt709-jpg", src: fixture }],
+      FIXTURE_DIR,
+      { fps: 1, outputDir, format: "jpg" },
+    );
+
+    expect(result.errors).toEqual([]);
+    const frame = result.extracted[0]!.framePaths.get(0)!;
+    // x=10 is flat colour; x=32 sits one pixel inside the blue edge.
+    for (const x of [10, 32]) {
+      const source = readFirstFramePixel(fixture, x, 10);
+      const shown = readFirstFramePixel(frame, x, 10);
+      const worst = Math.max(...shown.map((v, i) => Math.abs(v - source[i]!)));
+      expect(worst, `x=${x}: source ${source} jpg ${shown}`).toBeLessThanOrEqual(3);
+    }
+  }, 60_000);
+
+  // Measured in Chrome 152: untagged H.264 plays as BT.601 at 1280x718 and BT.709 at 1280x720 or 406x720;
+  // untagged VP9 and AV1 play as BT.601 at every size.
+  it.each([
+    { codec: "libx264", height: 718, matrix: "bt601", format: "png" },
+    { codec: "libx264", height: 718, matrix: "bt601", format: "jpg" },
+    { codec: "libx264", height: 720, matrix: "bt709", format: "png" },
+    { codec: "libx264", height: 720, matrix: "bt709", format: "jpg" },
+    { codec: "libvpx-vp9", height: 720, matrix: "bt601", format: "png" },
+    { codec: "libaom-av1", height: 720, matrix: "bt601", format: "png" },
+  ] as const)(
+    "reads an untagged $height-line $codec source as $matrix like Chrome's own playback ($format)",
+    async ({ codec, height, matrix, format }) => {
+      const extension = codec === "libvpx-vp9" ? "webm" : "mp4";
+      const fixture = join(FIXTURE_DIR, `untagged-${codec}-${height}.${extension}`);
+      const synth = await runFfmpeg([
+        "-y",
+        "-v",
+        "error",
+        "-f",
+        "lavfi",
+        "-i",
+        `color=c=0xC83C28:s=64x${height}:d=1:r=1`,
+        "-vf",
+        "scale=out_color_matrix=bt601:out_range=tv,format=yuv420p,setparams=colorspace=unknown:color_primaries=unknown:color_trc=unknown:range=tv",
+        "-c:v",
+        codec,
+        ...(codec === "libx264" ? ["-qp", "0"] : ["-crf", "0", "-b:v", "0"]),
+        ...(codec === "libaom-av1" ? ["-cpu-used", "8"] : []),
+        fixture,
+      ]);
+      if (!synth.success) throw new Error(`fixture synthesis failed: ${synth.stderr.slice(-400)}`);
+      expect((await extractVideoMetadata(fixture)).colorSpace?.colorSpace ?? "unknown").toBe(
+        "unknown",
+      );
+
+      const result = await extractVideoFramesRange(
+        fixture,
+        `${basename(fixture)}-${format}`,
+        0,
+        1,
+        {
+          fps: 1,
+          outputDir: join(FIXTURE_DIR, "out-untagged"),
+          format,
+        },
+      );
+
+      const pixelAt = (file: string, decode: string): number[] => [
+        ...spawnSync("ffmpeg", [
+          "-v",
+          "error",
+          "-i",
+          file,
+          "-vf",
+          `${decode}format=rgb24,crop=1:1:10:10`,
+          "-frames:v",
+          "1",
+          "-f",
+          "rawvideo",
+          "-",
+        ]).stdout,
+      ];
+      const expected = pixelAt(fixture, `scale=in_color_matrix=${matrix}:in_range=tv,`);
+      const shown = pixelAt(result.framePaths.get(0)!, "");
+      expect([expected.length, shown.length]).toEqual([3, 3]);
+      const worst = Math.max(...shown.map((v, i) => Math.abs(v - expected[i]!)));
+      expect(worst, `${matrix} decode ${expected}, ${format} ${shown}`).toBeLessThanOrEqual(
+        format === "png" ? 1 : 3,
+      );
+    },
+    60_000,
+  );
+
+  // ffmpeg < 6.1 drops frame durations from CFR resampling once any -vf is set, so the colour
+  // filters would cut the still that ends this window short.
+  it.each([
+    {
+      name: "full range BT.709",
+      format: "png",
+      codec: "libx264",
+      pixFmt: "yuvj420p",
+      probed: { colorTransfer: "bt709" },
+      tags: "range=pc:color_primaries=bt709:color_trc=bt709:colorspace=bt709",
+    },
+    {
+      name: "full range BT.709",
+      format: "jpg",
+      codec: "libx264",
+      pixFmt: "yuvj420p",
+      probed: { colorTransfer: "bt709" },
+      tags: "range=pc:color_primaries=bt709:color_trc=bt709:colorspace=bt709",
+    },
+    {
+      name: "BT.470BG gamma 2.8",
+      format: "png",
+      codec: "libx264",
+      pixFmt: "yuv420p",
+      probed: { colorTransfer: "bt470bg" },
+      tags: "color_primaries=bt470bg:color_trc=bt470bg:colorspace=bt470bg",
+    },
+    {
+      name: "RGB",
+      format: "png",
+      codec: "libx264rgb",
+      pixFmt: "rgb24",
+      probed: { colorSpace: "gbr" },
+      tags: "",
+    },
+  ] as const)(
+    "keeps every frame and the colours of a $name VFR window that ends on a still ($format)",
+    async ({ name, format, codec, pixFmt, probed, tags }) => {
+      const fixture = join(FIXTURE_DIR, `vfr-still-${name.replace(/\W+/g, "-")}-${format}.mp4`);
+      const synth = await runFfmpeg([
+        "-y",
+        "-v",
+        "error",
+        "-f",
+        "lavfi",
+        "-i",
+        `color=c=0xC83C28:s=${UI_FIXTURE_WIDTH}x${UI_FIXTURE_HEIGHT}:d=2:r=60`,
+        "-vf",
+        `select='not(between(n\\,30\\,89))'${tags ? `,setparams=${tags}` : ""}`,
+        "-fps_mode",
+        "vfr",
+        "-c:v",
+        codec,
+        "-preset",
+        "ultrafast",
+        "-pix_fmt",
+        pixFmt,
+        fixture,
+      ]);
+      if (!synth.success) throw new Error(`fixture synthesis failed: ${synth.stderr.slice(-400)}`);
+      const window = 0.616666;
+      const unfilteredDir = join(FIXTURE_DIR, `out-${basename(fixture)}-unfiltered`);
+      mkdirSync(unfilteredDir, { recursive: true });
+      const unfiltered = await runFfmpeg([
+        "-v",
+        "error",
+        "-ss",
+        "0",
+        "-i",
+        fixture,
+        "-t",
+        String(window),
+        "-fps_mode",
+        "cfr",
+        "-r",
+        "30",
+        join(unfilteredDir, "f_%05d.png"),
+      ]);
+      expect(unfiltered.success).toBe(true);
+
+      const result = await extractVideoFramesRange(fixture, basename(fixture), 0, window, {
+        fps: 30,
+        outputDir: join(FIXTURE_DIR, "out-vfr-still"),
+        format,
+      });
+
+      expect(result.metadata.isVFR).toBe(true);
+      expect(result.metadata.colorSpace).toMatchObject(probed);
+      expect(result.totalFrames).toBe(readdirSync(unfilteredDir).length);
+      const last = result.framePaths.get(result.totalFrames - 1)!;
+      const source = readFirstFramePixel(fixture, 10, 10);
+      const shown = readFirstFramePixel(last, 10, 10);
+      const worst = Math.max(...shown.map((v, i) => Math.abs(v - source[i]!)));
+      expect(worst, `source ${source} ${format} ${shown}`).toBeLessThanOrEqual(
+        format === "png" ? 0 : 3,
+      );
+      if (format === "png") expect(pngChunkTypes(last)).toContain("sRGB");
+    },
+    60_000,
+  );
+
+  it("leaves SDR-to-HDR frames in the HDR colours they were converted to", async () => {
+    const outputDir = join(FIXTURE_DIR, "out-sdr-to-hdr-gate");
+    mkdirSync(outputDir, { recursive: true });
+
+    const result = await extractVideoFramesRange(UI_FIXTURE, "sdr-to-hdr-gate", 0, 1, {
+      fps: 1,
+      outputDir,
+      format: "png",
+      sdrToHdrTransfer: "pq",
+    });
+
+    expect(pngChunkTypes(result.framePaths.get(0)!)).not.toContain("sRGB");
   }, 60_000);
 
   it("keeps jpg and png extraction caches separate", async () => {
@@ -2860,6 +3154,69 @@ describe.skipIf(!HAS_FFMPEG || process.platform === "darwin")("forced-SDR HDR ex
     expect(frame(toneMapped)).toEqual(readFileSync(reference));
     expect(frame(plain)).not.toEqual(frame(toneMapped));
     expect(frame(toneMappedAgain)).toEqual(frame(toneMapped));
+  }, 60_000);
+
+  // A second process would read the frames back without the HDR10 light-level metadata the tone map uses.
+  it("tone-maps a VFR HDR10 window in one process, exactly as the unfiltered resample would", async () => {
+    const source = join(fixtureDir, "pq-vfr-4000nit.mp4");
+    const synthesized = await runFfmpeg([
+      "-y",
+      "-v",
+      "error",
+      "-f",
+      "lavfi",
+      "-i",
+      "color=c=0xf0e0c0:s=64x64:r=60:d=2",
+      "-vf",
+      "select='not(between(n\\,30\\,89))',zscale=pin=bt709:tin=bt709:min=bt709:p=bt2020:t=smpte2084:m=bt2020nc:r=tv:npl=1000,format=yuv420p10le",
+      "-fps_mode",
+      "vfr",
+      "-c:v",
+      "libx265",
+      "-x265-params",
+      "log-level=error:hdr10=1:colorprim=bt2020:transfer=smpte2084:colormatrix=bt2020nc:max-cll=4000,400:master-display=G(13250,34500)B(7500,3000)R(34000,16000)WP(15635,16450)L(40000000,50)",
+      source,
+    ]);
+    if (!synthesized.success)
+      throw new Error(`PQ fixture synthesis failed: ${synthesized.stderr.slice(-400)}`);
+    const referenceDir = join(fixtureDir, "pq-vfr-reference");
+    mkdirSync(referenceDir, { recursive: true });
+    const reference = await runFfmpeg([
+      "-v",
+      "error",
+      "-ss",
+      "0",
+      "-i",
+      source,
+      "-t",
+      "0.616666",
+      "-vf",
+      "zscale=t=linear:npl=100,tonemap=hable:desat=0,zscale=p=bt709:t=bt709:m=bt709:r=tv",
+      "-fps_mode",
+      "cfr",
+      "-r",
+      "30",
+      "-q:v",
+      "0",
+      "-compression_level",
+      "1",
+      join(referenceDir, "frame_%05d.png"),
+    ]);
+    expect(reference.success, reference.stderr).toBe(true);
+
+    const result = await extractVideoFramesRange(source, "pq-vfr", 0, 0.616666, {
+      fps: 30,
+      outputDir: join(fixtureDir, "pq-vfr-out"),
+      format: "png",
+      toneMapHdrToSdr: true,
+    });
+
+    expect(result.metadata.isVFR).toBe(true);
+    const referenceFrames = readdirSync(referenceDir).sort();
+    expect(result.totalFrames).toBe(referenceFrames.length);
+    expect(readFileSync(result.framePaths.get(0)!)).toEqual(
+      readFileSync(join(referenceDir, referenceFrames[0]!)),
+    );
   }, 60_000);
 });
 

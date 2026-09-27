@@ -1,7 +1,7 @@
-export { shouldReloadPreview, normalizePreviewWatchIgnore } from "./helpers/previewWatchIgnore.js";
 export { createStudioApi } from "./createStudioApi.js";
 export { createProjectSignature, affectsProjectSignature } from "./helpers/projectSignature.js";
 export { compositionsAffectedBy } from "./helpers/compositionInputs.js";
+export { affectsPreview } from "./helpers/previewReads.js";
 export {
   DEFAULT_HISTORY_ROOT,
   openProjectHistory,
@@ -17,6 +17,7 @@ export {
   HistoryClosedError,
 } from "./history/projectHistory.js";
 export { HistoryBusyError } from "./history/ownerLock.js";
+export { HistoryIdError } from "./history/historyId.js";
 export { historyCache } from "./history/historyCache.js";
 export {
   START as HISTORY_START,

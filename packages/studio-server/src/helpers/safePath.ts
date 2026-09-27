@@ -1,16 +1,16 @@
 import { basename, dirname, isAbsolute, join, relative, sep } from "node:path";
-import { readdirSync, realpathSync, type Dirent } from "node:fs";
-import { resolveWithinProject } from "@hyperframes/core";
+import { readdirSync, type Dirent } from "node:fs";
+import { realpath, resolveWithinProject } from "@hyperframes/core";
 
 // `isSafePath` lives at the package root so non-studio-api layers (compiler,
 // CLI, engine) can share it without a backwards dependency on studio-api.
 // Re-exported here for back-compat with existing `../helpers/safePath.js` imports.
-export { isSafePath, resolveWithinProject } from "@hyperframes/core";
+export { isSafePath, realpath, resolveWithinProject } from "@hyperframes/core";
 
 /** The real path; for a path not there (yet, or any more), the nearest existing folder's real path plus the rest. */
 export function realFilePath(filePath: string): string {
   try {
-    return realpathSync(filePath);
+    return realpath(filePath);
   } catch {
     const dir = dirname(filePath);
     return dir === filePath ? filePath : join(realFilePath(dir), basename(filePath));

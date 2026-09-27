@@ -8,7 +8,6 @@ import {
 } from "./timelineDOM";
 import { isTimelineIgnoredElement } from "./timelineElementHelpers";
 import { computeResizePreview } from "../components/timelineClipDragPreview";
-import { invalidateGroupInfoCache } from "./timelineGroupInfo";
 import type { TimelineElement } from "../store/playerStore";
 
 function el(id: string, extra: Partial<TimelineElement> = {}): TimelineElement {
@@ -20,6 +19,32 @@ function makeDoc(html: string): Document {
   d.body.innerHTML = html;
   return d;
 }
+
+describe("parseTimelineFromDOM — media in-point", () => {
+  it("reads a negative in-point as 0, as the runtime does, so a head trim keeps the clip", () => {
+    const doc = makeDoc(`
+      <div data-composition-id="root">
+        <video id="v" class="clip" data-start="2" data-duration="1" data-media-start="-1"></video>
+      </div>
+    `);
+    const element = parseTimelineFromDOM(doc, 10).find((e) => e.domId === "v")!;
+    expect(element.playbackStart).toBe(0);
+
+    const preview = computeResizePreview(
+      {
+        element,
+        edge: "start",
+        originClientX: 0,
+        previewStart: 2,
+        previewDuration: 1,
+        started: true,
+      },
+      10,
+      { scroll: null, pps: 100, buildSnapTargets: () => [] },
+    );
+    expect(preview.previewDuration).toBe(0.9);
+  });
+});
 
 describe("parseTimelineFromDOM — hfId from data-hf-id", () => {
   it("bridges a real GSAP transition marker onto both named clips", () => {
@@ -166,7 +191,7 @@ describe("group info cache", () => {
   // changes either. Without an explicit drop, a muted group could never be
   // unmuted: the header kept reading the cached `hidden: false` and re-wrote
   // `data-hidden` forever.
-  it("re-reads group state after an invalidation", () => {
+  it("re-reads group state written earlier in the same task", () => {
     const doc = makeDoc(`
       <div data-composition-id="root">
         <audio id="voice-1" data-start="0" data-duration="5" data-audio-group="voiceover"></audio>
@@ -175,15 +200,10 @@ describe("group info cache", () => {
     `);
 
     expect(parseMember(doc).audioGroupHidden).toBe(false);
-
+    // No await: the observer has not delivered either write when the next read runs.
     doc.getElementById("voiceover")?.setAttribute("data-hidden", "");
-    expect(parseMember(doc).audioGroupHidden).toBe(false); // still the cached scan
-
-    invalidateGroupInfoCache(doc);
     expect(parseMember(doc).audioGroupHidden).toBe(true);
-
     doc.getElementById("voiceover")?.removeAttribute("data-hidden");
-    invalidateGroupInfoCache(doc);
     expect(parseMember(doc).audioGroupHidden).toBe(false);
   });
 

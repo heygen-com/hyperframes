@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState, type MutableRefObject } from "react";
 import {
   readFileChangeAffectedCompositions,
+  readFileChangeAffectsPreview,
   readFileChangeField,
   readStudioFileChangePath,
 } from "../components/editor/manualEdits";
@@ -231,9 +232,12 @@ export function useExternalFileChangeCoordinator({
   }, [loadConflictSnapshot, projectId, recoveryFilePath]);
 
   const reloadAcceptedGeneration = useCallback(
-    (path: string) => {
-      logReload("reload", { path, by: "external-change coordinator" });
-      reloadPreview();
+    (path: string, affectsPreview = true) => {
+      logReload(affectsPreview ? "reload" : "file-tree only", {
+        path,
+        by: "external-change coordinator",
+      });
+      if (affectsPreview) reloadPreview();
       reloadSdkSession(path);
       // Fire-and-forget: a failed refresh leaves the tree as stale as it was,
       // which is the status quo this exists to improve on, not a new failure
@@ -279,7 +283,7 @@ export function useExternalFileChangeCoordinator({
         if (!mountedRef.current || generation !== generationRef.current) return;
         setBlocked(null);
         onAcceptedPersistedFileChange(path, readFileChangeAffectedCompositions(payload));
-        reloadAcceptedGeneration(path);
+        reloadAcceptedGeneration(path, readFileChangeAffectsPreview(payload));
         return;
       }
       const content = readFileChangeContent(payload);
@@ -410,7 +414,12 @@ export function useExternalFileChangeCoordinator({
         return;
       }
 
-      pendingPayloadRef.current = { payload };
+      const waiting = pendingPayloadRef.current?.payload;
+      const waitingChangeOutranksThis =
+        waiting != null &&
+        readFileChangeAffectsPreview(waiting) &&
+        !readFileChangeAffectsPreview(payload);
+      if (!waitingChangeOutranksThis) pendingPayloadRef.current = { payload };
       void startDrainLoop();
     },
     [projectId, pendingTimelineEditPathRef, startDrainLoop, onAcceptedPersistedFileChange],
@@ -456,7 +465,7 @@ export function useExternalFileChangeCoordinator({
       await deleteConflictSnapshot?.(projectId, path);
       setBlocked(null);
       onAcceptedPersistedFileChange(path, readFileChangeAffectedCompositions(current.payload));
-      reloadAcceptedGeneration(path);
+      reloadAcceptedGeneration(path, readFileChangeAffectsPreview(current.payload));
     },
     [
       deleteConflictSnapshot,

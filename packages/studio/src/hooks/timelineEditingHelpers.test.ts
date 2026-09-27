@@ -3,6 +3,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   applyTimelineStackingReorder,
   buildTimelineMoveTimingPatch,
+  buildTimelineResizeTimingPatch,
   deleteSelectedKeyframes,
   extendRootDurationIfNeeded,
   patchIframeDomTiming,
@@ -230,6 +231,19 @@ describe("extendRootDurationIfNeeded", () => {
   });
 });
 
+describe("buildTimelineResizeTimingPatch", () => {
+  it("moves a source-only in-point by the caller's own start change", () => {
+    const source = `<div id="root"><video id="a" class="clip" data-start="5" data-duration="3" data-media-start="0.337"></video></div>`;
+    const element = el({ id: "a", tag: "video", domId: "a", start: 5, duration: 3 });
+    const patched = buildTimelineResizeTimingPatch(source, { id: "a" }, element, {
+      start: 3,
+      duration: 5,
+      playbackStart: undefined,
+    });
+    expect(patched).toContain('data-media-start="0"');
+  });
+});
+
 describe("persistTimelineBatchEdit", () => {
   const SOURCE = `<div id="root"><video id="a" class="clip" data-start="1" data-track-index="0"></video><video id="b" class="clip" data-start="2" data-track-index="1"></video></div>`;
 
@@ -452,6 +466,7 @@ describe("persistElementAttribute", () => {
         writeProjectFile,
         recordEdit: vi.fn(),
         pendingTimelineEditPathRef: { current: new Set() },
+        onFileRead: vi.fn(),
         patchLive,
       }),
     ).rejects.toThrow("Unable to patch element in index.html");
@@ -495,6 +510,7 @@ describe("persistElementAttribute — unwind value", () => {
         writeProjectFile,
         recordEdit: vi.fn(),
         pendingTimelineEditPathRef: { current: new Set() },
+        onFileRead: vi.fn(),
         // The live DOM is ALREADY at the new value when the commit runs — that
         // is what `setLive` does on every drag frame.
         patchLive: (v) => patched.push(v),

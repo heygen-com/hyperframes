@@ -1,13 +1,12 @@
 import { sep } from "node:path";
-import { shouldReloadPreview } from "@hyperframes/studio-server";
 
+/** The watched project that owns `filePath`, nearest root first when projects nest. */
 export function previewChangeOwner(
   watchedProjects: ReadonlyMap<string, string>,
   filePath: string,
-): string | null {
+): { projectDir: string; projectId: string } | null {
   const owner = [...watchedProjects]
     .sort(([left], [right]) => right.length - left.length)
     .find(([dir]) => filePath.startsWith(dir + sep));
-  if (!owner || !shouldReloadPreview(owner[0], filePath)) return null;
-  return owner[1];
+  return owner ? { projectDir: owner[0], projectId: owner[1] } : null;
 }

@@ -32,7 +32,7 @@ interface TimelineClipFadesProps {
 
 /** Corner dots that drag `data-fade-in` / `data-fade-out`; the wedge is the faded region. */
 export function TimelineClipFades({ el, pps, widthPx, showHandles }: TimelineClipFadesProps) {
-  const { onSetElementAttributeLive, onSetElementAttributeQuiet } =
+  const { onSetElementAttributeLive, onSetElementAttributeQuiet, onRevertElementAttributeLive } =
     useTimelineEditContextOptional();
   const canEdit = Boolean(onSetElementAttributeLive && onSetElementAttributeQuiet);
 
@@ -126,7 +126,10 @@ export function TimelineClipFades({ el, pps, widthPx, showHandles }: TimelineCli
 
   /** Puts the live document back where the file has it and drops the draft. */
   const revertGesture = (g: Gesture) => {
-    if (g.moved) onSetElementAttributeLive?.(el, attrFor(g.edge), attrText(g.originSeconds));
+    if (g.moved) {
+      onSetElementAttributeLive?.(el, attrFor(g.edge), attrText(g.originSeconds));
+      onRevertElementAttributeLive?.(el, attrFor(g.edge));
+    }
     setDraft(null);
   };
 
