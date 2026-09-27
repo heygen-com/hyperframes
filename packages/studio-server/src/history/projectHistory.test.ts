@@ -632,17 +632,73 @@ describe("openProjectHistory", () => {
     );
   });
 
-  it("gives a folder whose history record cannot prove it is that folder a history of its own", async () => {
+  it("keeps the history of a record 0.8.78 wrote for this folder, and records the folder's identity", async () => {
     const { history, write, projectDir, historyRoot } = await project({ "index.html": "v1" });
     await change(history, you, "Old change", () => write("index.html", "v2"));
     await history.close();
-    writeFileSync(
-      join(historyRoot, history.projectId, "project.json"),
-      JSON.stringify({ dir: projectDir }),
-    );
+    const record = join(historyRoot, history.projectId, "project.json");
+    writeFileSync(record, JSON.stringify({ dir: projectDir }));
 
     const again = await open(projectDir, historyRoot);
-    expect([again.projectId === history.projectId, again.list()]).toEqual([false, []]);
+    expect(again.projectId).toBe(history.projectId);
+    expect(again.list().map((entry) => entry.label)).toEqual(["Old change"]);
+    expect(JSON.parse(readFileSync(record, "utf-8"))).toMatchObject({ dir: projectDir, ino: expect.any(Number) });
+  });
+
+  describe("a history 0.8.78 wrote", () => {
+    const fixture = join(import.meta.dirname, "__fixtures__", "history-0.8.78");
+    const fixtureId = readFileSync(join(fixture, "history-id"), "utf-8").trim();
+
+    /** The fixture's project and history root, laid out as 0.8.78 left them. */
+    function legacyProject(recordedDir: (projectDir: string) => string) {
+      const projectDir = tempDir("hf-history-legacy-");
+      const historyRoot = tempDir("hf-history-legacy-root-");
+      cpSync(join(fixture, "root"), historyRoot, { recursive: true });
+      mkdirSync(join(projectDir, ".hyperframes"));
+      cpSync(join(fixture, "history-id"), join(projectDir, ".hyperframes", "history-id"));
+      cpSync(join(fixture, "index.html"), join(projectDir, "index.html"));
+      const record = join(historyRoot, fixtureId, "project.json");
+      writeFileSync(record, JSON.stringify({ dir: recordedDir(projectDir) }));
+      return { projectDir, historyRoot };
+    }
+
+    it.each([
+      ["at the path it was recorded for", (projectDir: string) => projectDir],
+      ["moved since", (projectDir: string) => `${projectDir}-before-the-move`],
+    ])("opens %s with every entry, and can undo them", async (_, recordedDir) => {
+      const { projectDir, historyRoot } = legacyProject(recordedDir);
+
+      const history = await open(projectDir, historyRoot);
+      expect(history.projectId).toBe(fixtureId);
+      expect(inside(projectDir, ".hyperframes/history-id").trim()).toBe(fixtureId);
+      const entries = history.list();
+      expect(entries.map((entry) => [entry.who.name, entry.label])).toEqual([
+        ["You", "Moved Title"],
+        ["Agent", "Agent turn"],
+      ]);
+      expect(await history.undo(entries[1]!.id, { who: you })).toMatchObject({ ok: true });
+      expect(inside(projectDir, "index.html")).toBe("<p>v2</p>\n");
+    });
+
+    it("gives a copy its own history while the recorded folder still carries the id", async () => {
+      const original = legacyProject((projectDir) => projectDir);
+      const copy = tempDir("hf-history-legacy-copy-");
+      cpSync(original.projectDir, copy, { recursive: true });
+
+      const copied = await open(copy, original.historyRoot);
+      expect([copied.projectId === fixtureId, copied.list()]).toEqual([false, []]);
+      expect((await open(original.projectDir, original.historyRoot)).list()).toHaveLength(2);
+    });
+  });
+
+  it("refuses to open, and leaves the file alone, when the history id cannot be read", async () => {
+    const projectDir = tempDir("hf-history-bad-id-");
+    writeFileSync(join(projectDir, "index.html"), "v1");
+    mkdirSync(join(projectDir, ".hyperframes"));
+    writeFileSync(join(projectDir, ".hyperframes", "history-id"), "not-an-id\n");
+
+    await expect(open(projectDir, tempDir("hf-history-root-"))).rejects.toThrow(/history-id/);
+    expect(inside(projectDir, ".hyperframes/history-id")).toBe("not-an-id\n");
   });
 
   it("leaves the id alone for a history root that has no history under it, so the open one keeps recording", async () => {

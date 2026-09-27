@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto";
 import { existsSync, mkdirSync, readFileSync, statSync, writeFileSync } from "node:fs";
-import { join, resolve } from "node:path";
+import { basename, join, resolve } from "node:path";
 import { replaceFileAtomically } from "../helpers/atomicFile.js";
 
 export const ID_PATH = join(".hyperframes", "history-id");
@@ -21,13 +21,17 @@ export type FolderIdentity = { ino: number; birthtimeMs: number };
 export const sameFolder = (a: FolderIdentity, b: FolderIdentity) =>
   a.ino === b.ino && a.birthtimeMs === b.birthtimeMs;
 
-export function isRecordedFolder(historyDir: string, folder: FolderIdentity): boolean {
+export function isRecordedFolder(historyDir: string, dir: string, folder: FolderIdentity): boolean {
+  let was: { dir?: unknown; ino?: number; born?: number };
   try {
-    const was = JSON.parse(readFileSync(join(historyDir, "project.json"), "utf-8"));
-    return sameFolder({ ino: was.ino, birthtimeMs: was.born }, folder);
+    was = JSON.parse(readFileSync(join(historyDir, "project.json"), "utf-8"));
   } catch {
     return false;
   }
+  // A record from 0.8.78 or earlier holds only the path; as then, the folder is a copy only while that path has the id.
+  if (was.ino === undefined && typeof was.dir === "string")
+    return was.dir === dir || !(existsSync(was.dir) && readId(was.dir) === basename(historyDir));
+  return sameFolder({ ino: was.ino ?? NaN, birthtimeMs: was.born ?? NaN }, folder);
 }
 
 /**
@@ -38,9 +42,11 @@ export function projectHistoryId(projectDir: string, historyRoot: string): strin
   const dir = resolve(projectDir);
   const folder = statSync(dir);
   let id = readId(dir);
+  if (!id && existsSync(join(dir, ID_PATH)))
+    throw new Error(`${join(dir, ID_PATH)} holds no history id this version can read; move it aside to start anew.`);
   if (
     !id ||
-    (existsSync(join(historyRoot, id)) && !isRecordedFolder(join(historyRoot, id), folder))
+    (existsSync(join(historyRoot, id)) && !isRecordedFolder(join(historyRoot, id), dir, folder))
   ) {
     id = randomUUID();
     mkdirSync(join(dir, ".hyperframes"), { recursive: true });
