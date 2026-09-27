@@ -453,7 +453,7 @@ export function buildEncoderArgs(
     const captureFilter = sdrFilter ?? "scale=in_range=pc:out_range=tv";
     if (gpuEncoder === "vaapi") {
       // vaapi already runs `format=nv12,hwupload`; the nv12 conversion aligns
-      // odd dimensions before upload, so only prepend the range conversion.
+      // odd dimensions before upload, so only prepend the colour conversion.
       const vfIdx = args.indexOf("-vf");
       if (vfIdx !== -1) {
         args[vfIdx + 1] = `${captureFilter},${args[vfIdx + 1]}`;

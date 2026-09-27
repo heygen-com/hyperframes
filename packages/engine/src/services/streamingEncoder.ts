@@ -35,7 +35,7 @@ import { formatFfmpegError, isExternalFfmpegInterruption } from "../utils/runFfm
 import { getFfmpegBinary } from "../utils/ffmpegBinaries.js";
 import { getHdrEncoderColorParams } from "../utils/hdr.js";
 import { withEvenDimensionPad } from "../utils/evenDimensions.js";
-import { SDR_CAPTURE_TO_BT709_FILTER } from "../utils/sdrCaptureColor.js";
+import { SDR_CAPTURE_TO_BT709_FILTER, SDR_RGB_TO_BT709_FILTER } from "../utils/sdrCaptureColor.js";
 import { DEFAULT_CONFIG, type EngineConfig } from "../config.js";
 import { fpsToFfmpegArg, fpsToNumber, type Fps } from "@hyperframes/core";
 import { appendVp9CpuUsedArg } from "./vp9Options.js";
@@ -414,29 +414,26 @@ export function buildStreamingArgs(
       );
     }
 
-    // Video filter for range/color conversion.
-    // Raw HDR input (from WebGPU pipeline) is already PQ-encoded — no conversion needed.
-    // Chrome screenshots need full→TV range and BT.709 matrix conversion.
-    if (options.rawInputFormat) {
+    // Raw HDR input (from WebGPU pipeline) is already PQ-encoded, so only SDR gets a
+    // conversion: raw sRGB or Chrome's BT.601 JPEG screenshots to BT.709 limited range.
+    const sdrFilter = options.rawInputFormat
+      ? SDR_RGB_TO_BT709_FILTER
+      : SDR_CAPTURE_TO_BT709_FILTER;
+    if (options.rawInputFormat && options.hdr) {
       // No filter needed — PQ data goes straight to encoder
     } else if (gpuEncoder === "vaapi") {
       // vaapi already runs `format=nv12,hwupload`; the nv12 conversion aligns
-      // odd dimensions before upload, so only prepend the range conversion.
+      // odd dimensions before upload, so only prepend the colour conversion.
       const vfIdx = args.indexOf("-vf");
       if (vfIdx !== -1) {
-        args[vfIdx + 1] = `${SDR_CAPTURE_TO_BT709_FILTER},${args[vfIdx + 1]}`;
+        args[vfIdx + 1] = `${sdrFilter},${args[vfIdx + 1]}`;
       }
     } else {
       // Pad odd dimensions up to even so 4:2:0 encoders (software and
       // nvenc/videotoolbox/qsv/amf) don't abort with "height not divisible by 2".
       args.push(
         "-vf",
-        withEvenDimensionPad(
-          SDR_CAPTURE_TO_BT709_FILTER,
-          pixelFormat,
-          options.width,
-          options.height,
-        ),
+        withEvenDimensionPad(sdrFilter, pixelFormat, options.width, options.height),
       );
     }
 
