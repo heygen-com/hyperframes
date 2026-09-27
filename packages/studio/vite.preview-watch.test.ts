@@ -10,7 +10,7 @@ afterEach(() => {
 });
 
 describe("Vite preview change ownership", () => {
-  it("names the project that owns a path, including one reached through a symlink", () => {
+  it("names the project that owns a path, and none for a path outside every project", () => {
     const root = mkdtempSync(join(tmpdir(), "hf-vite-watch-"));
     dirs.push(root);
     const a = join(root, "external");
