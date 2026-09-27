@@ -10,7 +10,7 @@ import {
 } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { describe, expect, it, vi } from "vitest";
+import { describe, expect, it, onTestFinished, vi } from "vitest";
 import type { RegistryItem } from "@hyperframes/core";
 
 // The installer fetches over the network; the point of these tests is what it
@@ -24,7 +24,9 @@ vi.mock("./remote.js", () => ({
 const { hasLocalEdits, installItem, prepareItem, publishItem } = await import("./installer.js");
 
 function project(): string {
-  return mkdtempSync(join(tmpdir(), "hf-installer-"));
+  const dir = mkdtempSync(join(tmpdir(), "hf-installer-"));
+  onTestFinished(() => rmSync(dir, { recursive: true, force: true }));
+  return dir;
 }
 
 const item = {

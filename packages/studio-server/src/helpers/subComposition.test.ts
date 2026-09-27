@@ -1,12 +1,13 @@
 // @vitest-environment node
-import { mkdtempSync, mkdirSync, writeFileSync } from "node:fs";
+import { mkdtempSync, mkdirSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, onTestFinished } from "vitest";
 import { buildSubCompositionHtml, hasBaseElement } from "./subComposition";
 
 function makeTempProject(files: Record<string, string>): string {
   const dir = mkdtempSync(join(tmpdir(), "hf-subcomp-preview-"));
+  onTestFinished(() => rmSync(dir, { recursive: true, force: true }));
   for (const [rel, content] of Object.entries(files)) {
     const full = join(dir, rel);
     mkdirSync(join(full, ".."), { recursive: true });

@@ -1,7 +1,7 @@
-import { mkdtempSync, writeFileSync } from "node:fs";
+import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, onTestFinished } from "vitest";
 import { findMotionSpec, parseMotionSpec, readMotionSpec, type MotionSpec } from "./motionSpec.js";
 
 const RFC_SPEC = {
@@ -17,6 +17,12 @@ const RFC_SPEC = {
 function expectOk(result: ReturnType<typeof parseMotionSpec>): MotionSpec {
   if (!result.ok) throw new Error(`expected ok, got errors: ${result.errors.join(", ")}`);
   return result.spec;
+}
+
+function tempDir(prefix: string): string {
+  const dir = mkdtempSync(join(tmpdir(), prefix));
+  onTestFinished(() => rmSync(dir, { recursive: true, force: true }));
+  return dir;
 }
 
 describe("parseMotionSpec", () => {
@@ -100,19 +106,19 @@ describe("parseMotionSpec", () => {
 
 describe("findMotionSpec", () => {
   it("returns null when no sidecar is present", () => {
-    const dir = mkdtempSync(join(tmpdir(), "motion-none-"));
+    const dir = tempDir("motion-none-");
     writeFileSync(join(dir, "main.html"), "<div></div>");
     expect(findMotionSpec(dir)).toBeNull();
   });
 
   it("finds the single sidecar", () => {
-    const dir = mkdtempSync(join(tmpdir(), "motion-one-"));
+    const dir = tempDir("motion-one-");
     writeFileSync(join(dir, "anything.motion.json"), "{}");
     expect(findMotionSpec(dir)).toBe(join(dir, "anything.motion.json"));
   });
 
   it("prefers the sidecar matching a composition html basename", () => {
-    const dir = mkdtempSync(join(tmpdir(), "motion-many-"));
+    const dir = tempDir("motion-many-");
     writeFileSync(join(dir, "aaa.motion.json"), "{}");
     writeFileSync(join(dir, "main.motion.json"), "{}");
     writeFileSync(join(dir, "main.html"), "<div></div>");
@@ -120,7 +126,7 @@ describe("findMotionSpec", () => {
   });
 
   it("throws when multiple sidecars each match a different composition", () => {
-    const dir = mkdtempSync(join(tmpdir(), "motion-ambig-"));
+    const dir = tempDir("motion-ambig-");
     writeFileSync(join(dir, "hero.motion.json"), "{}");
     writeFileSync(join(dir, "landing.motion.json"), "{}");
     writeFileSync(join(dir, "hero.html"), "<div></div>");
@@ -137,7 +143,7 @@ describe("readMotionSpec", () => {
   });
 
   it("returns error for a file with invalid JSON", () => {
-    const dir = mkdtempSync(join(tmpdir(), "motion-bad-"));
+    const dir = tempDir("motion-bad-");
     const path = join(dir, "bad.motion.json");
     writeFileSync(path, "not json {{");
     const result = readMotionSpec(path);
@@ -146,7 +152,7 @@ describe("readMotionSpec", () => {
   });
 
   it("returns error for a file with a valid JSON but invalid spec", () => {
-    const dir = mkdtempSync(join(tmpdir(), "motion-invalid-"));
+    const dir = tempDir("motion-invalid-");
     const path = join(dir, "invalid.motion.json");
     writeFileSync(path, JSON.stringify({ assertions: [] }));
     const result = readMotionSpec(path);
@@ -155,7 +161,7 @@ describe("readMotionSpec", () => {
   });
 
   it("parses a valid sidecar file", () => {
-    const dir = mkdtempSync(join(tmpdir(), "motion-valid-"));
+    const dir = tempDir("motion-valid-");
     const path = join(dir, "main.motion.json");
     writeFileSync(
       path,

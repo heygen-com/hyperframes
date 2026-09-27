@@ -1,4 +1,4 @@
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, onTestFinished, vi } from "vitest";
 import { spawnSync } from "node:child_process";
 import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { join, resolve } from "node:path";
@@ -26,6 +26,7 @@ afterEach(() => {
 
 function writeComposition(width: number, height: number): string {
   const dir = mkdtempSync(join(tmpdir(), "hf-cloud-render-test-"));
+  onTestFinished(() => rmSync(dir, { recursive: true, force: true }));
   writeFileSync(
     join(dir, "index.html"),
     `<!doctype html><html><body><div data-composition-id="main" data-width="${width}" data-height="${height}"></div></body></html>`,

@@ -1,7 +1,7 @@
-import { existsSync, mkdtempSync, readFileSync, readdirSync } from "node:fs";
+import { existsSync, mkdtempSync, readFileSync, readdirSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
-import { describe, expect, it, vi } from "vitest";
+import { describe, expect, it, onTestFinished, vi } from "vitest";
 import type { ActiveServer } from "../server/portUtils.js";
 import {
   buildBackgroundPreviewArgs,
@@ -21,6 +21,12 @@ const server: ActiveServer = {
   version: "test",
   pid: "4321",
 };
+
+function tempDir(prefix: string): string {
+  const dir = mkdtempSync(join(tmpdir(), prefix));
+  onTestFinished(() => rmSync(dir, { recursive: true, force: true }));
+  return dir;
+}
 
 function savePreviewSession(stateHome: string): void {
   writePreviewSession(
@@ -42,7 +48,7 @@ async function expectStaleSessionRemoved(stateHome: string): Promise<void> {
 describe("background preview lifecycle", () => {
   it("keeps case-distinct project paths separate on case-sensitive platforms", () => {
     if (process.platform === "win32") return;
-    const stateHome = mkdtempSync(join(tmpdir(), "hf-preview-state-"));
+    const stateHome = tempDir("hf-preview-state-");
 
     expect(previewSessionPath("/tmp/Project", stateHome)).not.toBe(
       previewSessionPath("/tmp/project", stateHome),
@@ -71,7 +77,7 @@ describe("background preview lifecycle", () => {
       execPath: "/usr/bin/node",
       scan,
       spawn,
-      stateHome: mkdtempSync(join(tmpdir(), "hf-preview-state-")),
+      stateHome: tempDir("hf-preview-state-"),
     });
 
     expect(result).toMatchObject({ type: "reused", port: 3210 });
@@ -79,7 +85,7 @@ describe("background preview lifecycle", () => {
   });
 
   it("reuses a saved managed preview on a custom port without repeating --port", async () => {
-    const stateHome = mkdtempSync(join(tmpdir(), "hf-preview-state-"));
+    const stateHome = tempDir("hf-preview-state-");
     writePreviewSession(
       { pid: 4321, port: 41402, projectDir, logPath: "/tmp/custom.log" },
       stateHome,
@@ -100,7 +106,7 @@ describe("background preview lifecycle", () => {
   });
 
   it("discovers managed previews outside the default port scan and removes stale records", async () => {
-    const stateHome = mkdtempSync(join(tmpdir(), "hf-preview-state-"));
+    const stateHome = tempDir("hf-preview-state-");
     const otherProjectDir = resolve("/tmp/hyperframes-preview-managed-custom-port");
     const staleProjectDir = resolve("/tmp/hyperframes-preview-managed-stale");
     writePreviewSession(
@@ -160,7 +166,7 @@ describe("background preview lifecycle", () => {
       scan,
       spawn,
       sleep: async () => {},
-      stateHome: mkdtempSync(join(tmpdir(), "hf-preview-state-")),
+      stateHome: tempDir("hf-preview-state-"),
     });
 
     expect(result).toMatchObject({ type: "started", port: 3211, pid: 5432 });
@@ -173,7 +179,7 @@ describe("background preview lifecycle", () => {
   ])(
     "%s replaces a previously managed server instead of orphaning it",
     async (_label, forceNew) => {
-      const stateHome = mkdtempSync(join(tmpdir(), "hf-preview-state-"));
+      const stateHome = tempDir("hf-preview-state-");
       const oldServer = { ...server, port: 41490, browserGpuMode: "hardware" as const };
       writePreviewSession(
         { pid: 4321, port: 41490, projectDir, logPath: "/tmp/preview.log" },
@@ -218,7 +224,7 @@ describe("background preview lifecycle", () => {
   );
 
   it("replaces the owned preview instead of reusing an unmanaged policy-matching sibling", async () => {
-    const stateHome = mkdtempSync(join(tmpdir(), "hf-preview-state-"));
+    const stateHome = tempDir("hf-preview-state-");
     const owned = { ...server, port: 41490, browserGpuMode: "hardware" as const };
     const sibling = {
       ...server,
@@ -270,7 +276,7 @@ describe("background preview lifecycle", () => {
     // one inside the stop. "Nothing left to stop" is the goal state for a
     // replacement; treating it as fatal refused to start any preview at all
     // until the session record was deleted by hand.
-    const stateHome = mkdtempSync(join(tmpdir(), "hf-preview-state-"));
+    const stateHome = tempDir("hf-preview-state-");
     const owned = { ...server, port: 41490 };
     const replacement = { ...server, port: 41491, pid: "5432" };
     writePreviewSession(
@@ -327,7 +333,7 @@ describe("background preview lifecycle", () => {
       scan,
       spawn,
       sleep: async () => {},
-      stateHome: mkdtempSync(join(tmpdir(), "hf-preview-state-")),
+      stateHome: tempDir("hf-preview-state-"),
     });
 
     expect(result).toMatchObject({ type: "started", port: 3211, pid: 5432 });
@@ -342,7 +348,7 @@ describe("background preview lifecycle", () => {
       spawned = true;
       return { pid: 4321, unref };
     });
-    const stateHome = mkdtempSync(join(tmpdir(), "hf-preview-state-"));
+    const stateHome = tempDir("hf-preview-state-");
 
     const result = await startBackgroundPreview(projectDir, 3002, {
       argv: ["/opt/hyperframes/cli.js", "preview", projectDir, "--background"],
@@ -362,7 +368,7 @@ describe("background preview lifecycle", () => {
     const liveServer = { ...server, pid: "9876" };
     let spawned = false;
     const scan = vi.fn(async () => (spawned ? [liveServer] : []));
-    const stateHome = mkdtempSync(join(tmpdir(), "hf-preview-state-"));
+    const stateHome = tempDir("hf-preview-state-");
 
     const result = await startBackgroundPreview(projectDir, 3002, {
       scan,
@@ -380,7 +386,7 @@ describe("background preview lifecycle", () => {
   });
 
   it("reaps a detached child that never becomes reachable without recording ownership", async () => {
-    const stateHome = mkdtempSync(join(tmpdir(), "hf-preview-state-"));
+    const stateHome = tempDir("hf-preview-state-");
     const kill = vi.fn();
 
     await expect(
@@ -399,7 +405,7 @@ describe("background preview lifecycle", () => {
   });
 
   it("removes a stale session when no matching server or process survives", async () => {
-    const stateHome = mkdtempSync(join(tmpdir(), "hf-preview-state-"));
+    const stateHome = tempDir("hf-preview-state-");
     writePreviewSession(
       { pid: 999_999, port: 3210, projectDir, logPath: "/tmp/missing.log" },
       stateHome,
@@ -409,7 +415,7 @@ describe("background preview lifecycle", () => {
   });
 
   it("removes stale session metadata when its PID is alive but no server proves ownership", async () => {
-    const stateHome = mkdtempSync(join(tmpdir(), "hf-preview-state-"));
+    const stateHome = tempDir("hf-preview-state-");
     savePreviewSession(stateHome);
 
     await expectStaleSessionRemoved(stateHome);
@@ -420,7 +426,7 @@ describe("background preview lifecycle", () => {
     // capture will do it) answers nothing for a second or two. Retiring the
     // record on that destroys the wrapperIdentity that is the only PID-reuse
     // guard `--stop` has, and it never comes back.
-    const stateHome = mkdtempSync(join(tmpdir(), "hf-preview-state-"));
+    const stateHome = tempDir("hf-preview-state-");
     writePreviewSession(
       { pid: 4321, wrapperIdentity: "posix:birth", port: 3210, projectDir, logPath: "/tmp/p.log" },
       stateHome,
@@ -442,7 +448,7 @@ describe("background preview lifecycle", () => {
     // macOS that failure is a subprocess timeout on a LIVE process — under the
     // same load that made the HTTP probe miss. Treating no-answer as
     // "recycled" destroyed the only PID-reuse guard `--stop` has.
-    const stateHome = mkdtempSync(join(tmpdir(), "hf-preview-state-"));
+    const stateHome = tempDir("hf-preview-state-");
     writePreviewSession(
       { pid: 4321, wrapperIdentity: "posix:birth", port: 3210, projectDir, logPath: "/tmp/p.log" },
       stateHome,
@@ -461,7 +467,7 @@ describe("background preview lifecycle", () => {
 
   it("retires the record when the PID cannot be signalled at all", async () => {
     // Gone is gone: no birth token needed, and no subprocess spawned for it.
-    const stateHome = mkdtempSync(join(tmpdir(), "hf-preview-state-"));
+    const stateHome = tempDir("hf-preview-state-");
     writePreviewSession(
       { pid: 4321, wrapperIdentity: "posix:birth", port: 3210, projectDir, logPath: "/tmp/p.log" },
       stateHome,
@@ -481,7 +487,7 @@ describe("background preview lifecycle", () => {
   });
 
   it("retires the record once the wrapper PID has been recycled", async () => {
-    const stateHome = mkdtempSync(join(tmpdir(), "hf-preview-state-"));
+    const stateHome = tempDir("hf-preview-state-");
     writePreviewSession(
       { pid: 4321, wrapperIdentity: "posix:birth", port: 3210, projectDir, logPath: "/tmp/p.log" },
       stateHome,
@@ -499,7 +505,7 @@ describe("background preview lifecycle", () => {
   });
 
   it("never leaves a partial session record for a concurrent reader", () => {
-    const stateHome = mkdtempSync(join(tmpdir(), "hf-preview-state-"));
+    const stateHome = tempDir("hf-preview-state-");
     savePreviewSession(stateHome);
     const path = previewSessionPath(projectDir, stateHome);
 
@@ -514,7 +520,7 @@ describe("background preview lifecycle", () => {
   });
 
   it("uses the recorded custom port when status is called without repeating --port", async () => {
-    const stateHome = mkdtempSync(join(tmpdir(), "hf-preview-state-"));
+    const stateHome = tempDir("hf-preview-state-");
     savePreviewSession(stateHome);
     const scan = vi.fn(async () => [server]);
 
@@ -538,7 +544,7 @@ describe("background preview lifecycle", () => {
       scan,
       kill,
       sleep: async () => {},
-      stateHome: mkdtempSync(join(tmpdir(), "hf-preview-state-")),
+      stateHome: tempDir("hf-preview-state-"),
     });
 
     expect(result).toBe(true);
@@ -547,7 +553,7 @@ describe("background preview lifecycle", () => {
   });
 
   it("does not kill an unmatched saved PID that may have been reused", async () => {
-    const stateHome = mkdtempSync(join(tmpdir(), "hf-preview-state-"));
+    const stateHome = tempDir("hf-preview-state-");
     savePreviewSession(stateHome);
     const kill = vi.fn();
 
@@ -563,7 +569,7 @@ describe("background preview lifecycle", () => {
   });
 
   it("refuses to stop when the live server cannot prove its own PID", async () => {
-    const stateHome = mkdtempSync(join(tmpdir(), "hf-preview-state-"));
+    const stateHome = tempDir("hf-preview-state-");
     writePreviewSession(
       { pid: 4321, port: 3210, projectDir, logPath: "/tmp/preview.log" },
       stateHome,
@@ -584,7 +590,7 @@ describe("background preview lifecycle", () => {
   });
 
   it("reaps the saved wrapper when the live server is proven to be its descendant", async () => {
-    const stateHome = mkdtempSync(join(tmpdir(), "hf-preview-state-"));
+    const stateHome = tempDir("hf-preview-state-");
     writePreviewSession(
       {
         pid: 4321,
@@ -615,7 +621,7 @@ describe("background preview lifecycle", () => {
   });
 
   it("kills only the live server when the saved wrapper birth identity has changed", async () => {
-    const stateHome = mkdtempSync(join(tmpdir(), "hf-preview-state-"));
+    const stateHome = tempDir("hf-preview-state-");
     writePreviewSession(
       {
         pid: 4321,
@@ -646,7 +652,7 @@ describe("background preview lifecycle", () => {
   });
 
   it("fails loudly when the server remains reachable after stop", async () => {
-    const stateHome = mkdtempSync(join(tmpdir(), "hf-preview-state-"));
+    const stateHome = tempDir("hf-preview-state-");
     writePreviewSession(
       { pid: 4321, port: 3210, projectDir, logPath: "/tmp/preview.log" },
       stateHome,
@@ -664,7 +670,7 @@ describe("background preview lifecycle", () => {
   });
 
   it("verifies the owned port stopped even when another server serves the same project", async () => {
-    const stateHome = mkdtempSync(join(tmpdir(), "hf-preview-state-"));
+    const stateHome = tempDir("hf-preview-state-");
     const owned = { ...server, port: 41490 };
     const sibling = { ...server, port: 41491, pid: "8765" };
     writePreviewSession(

@@ -113,12 +113,13 @@ describe("describeProject", () => {
   });
 
   it("reports unreadable automation instead of showing no lanes", async () => {
-    const bad = (await describeProject(project())).tracks
+    const index = project();
+    const bad = (await describeProject(index)).tracks
       .flatMap((t) => t.rows)
       .find((r) => r.id === "bad")!;
     expect(bad.lanes).toEqual([]);
     expect(bad.laneError).toMatch(/not valid JSON/);
-    expect(formatTimeline(await describeProject(project()))).toContain("lanes unreadable:");
+    expect(formatTimeline(await describeProject(index))).toContain("lanes unreadable:");
   });
 
   it("does not read a sub-composition outside the project or a directory", async () => {
@@ -234,12 +235,13 @@ describe("describeProject", () => {
   });
 
   it("gives an image with no authored duration the resolver's default length", async () => {
-    const logo = (await describeProject(project())).tracks
+    const index = project();
+    const logo = (await describeProject(index)).tracks
       .flatMap((t) => t.rows)
       .find((r) => r.id === "logo")!;
     expect(logo.durationAuthored).toBe(false);
     expect(logo).toMatchObject({ durationSource: "default", duration: 3, pendingReason: null });
-    expect(formatTimeline(await describeProject(project()))).toContain(
+    expect(formatTimeline(await describeProject(index))).toContain(
       "logo 0-3s src=logo.png duration=default",
     );
   });
