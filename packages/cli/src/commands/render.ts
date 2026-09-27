@@ -386,7 +386,8 @@ export default defineCommand({
       type: "boolean",
       description:
         "Fail the render instead of falling back to screenshot capture when BeginFrame " +
-        "cannot run (Linux with chrome-headless-shell only). Env: PRODUCER_REQUIRE_BEGINFRAME.",
+        "cannot run (Linux with chrome-headless-shell only; rejected with --docker). " +
+        "Env: PRODUCER_REQUIRE_BEGINFRAME.",
     },
     "experimental-fast-capture": {
       type: "boolean",

@@ -464,6 +464,16 @@ export function createRenderPlan(args: RenderCommandArgs, now = new Date()): Ren
     );
     failUsage();
   }
+  const requireBeginFrame =
+    args["require-beginframe"] ?? process.env.PRODUCER_REQUIRE_BEGINFRAME === "true";
+  if (useDocker && requireBeginFrame) {
+    errorBox(
+      "BeginFrame is local-only",
+      "--require-beginframe (or PRODUCER_REQUIRE_BEGINFRAME=true) needs host Chrome's BeginFrame capture. Docker mode always captures with screenshots on software GL, so the requirement could never hold.",
+      "Run without --docker, or drop --require-beginframe.",
+    );
+    failUsage();
+  }
 
   const videoBitrate = args["video-bitrate"]?.trim();
   if (args.crf != null && videoBitrate) {
