@@ -926,14 +926,25 @@ export function trackFigmaImport(props: {
 // records the failure but not the reason; this fills that gap via cli_error so
 // command failures are diagnosable. Enqueues synchronously — the process `exit`
 // handler flushes it. Drop this into any command's failure path.
-export function trackCommandFailure(command: string, err: unknown): void {
+const reportedFailures = new WeakSet<object>();
+export function trackCommandFailure(
+  command: string,
+  err: unknown,
+  overrides: { error_name?: string; endpoint?: string } = {},
+): void {
+  // One failure, one report: the executable boundary reports the same error again after an inline report.
+  if (typeof err === "object" && err !== null) {
+    if (reportedFailures.has(err)) return;
+    reportedFailures.add(err);
+  }
   const error = err instanceof Error ? err : new Error(String(err));
   trackCliError({
-    error_name: error.name,
+    error_name: overrides.error_name ?? error.name,
     error_message: error.message,
     stack_trace: error.stack,
     command,
     kind: "command_error",
+    endpoint: overrides.endpoint,
   });
 }
 

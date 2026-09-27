@@ -81,8 +81,9 @@ function wrapCommand(cmd: AnyCommandDef): AnyCommandDef {
 export async function reportCommandFailure(command: string, err: unknown): Promise<void> {
   try {
     const { trackCommandFailure } = await import("../telemetry/events.js");
-    const cause = err instanceof CliRuntimeError ? err.cause : undefined;
-    trackCommandFailure(command, cause ?? err);
+    let cause = err;
+    while (cause instanceof CliRuntimeError && cause.cause !== undefined) cause = cause.cause;
+    trackCommandFailure(command, cause);
   } catch {
     // ignore: a telemetry failure must not affect the command's exit path
   }

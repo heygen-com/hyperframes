@@ -134,6 +134,14 @@ describe("reportCommandFailure", () => {
     expect(trackCommandFailure).toHaveBeenCalledWith("info", err);
   });
 
+  it("reports the error a command failure carries, through every wrapper", async () => {
+    const { CliRuntimeError } = await import("./commandResult.js");
+    const cause = new Error("not a project");
+    const inner = new CliRuntimeError("Command failed", { exitCode: 1, cause });
+    await reportCommandFailure("normalize-audio", new CliRuntimeError("x", { exitCode: 1, cause: inner }));
+    expect(trackCommandFailure).toHaveBeenCalledWith("normalize-audio", cause);
+  });
+
   it("never throws when the telemetry call throws", async () => {
     trackCommandFailure.mockImplementationOnce(() => {
       throw new Error("telemetry blew up");

@@ -1150,6 +1150,26 @@ describe("trackCommandFailure", () => {
     );
   });
 
+  it("reports the same error once, however many places report it", () => {
+    const err = new Error("not a project");
+    trackCommandFailure("info", err);
+    trackCommandFailure("info", err);
+
+    expect(trackEvent).toHaveBeenCalledTimes(1);
+  });
+
+  it("takes a caller's error name and endpoint", () => {
+    trackCommandFailure("figma:asset", new Error("No token"), {
+      error_name: "NO_TOKEN",
+      endpoint: "images",
+    });
+
+    expect(trackEvent).toHaveBeenCalledWith(
+      "cli_error",
+      expect.objectContaining({ error_name: "NO_TOKEN", endpoint: "images" }),
+    );
+  });
+
   it("coerces a non-Error reason (e.g. a string) into the message", () => {
     trackCommandFailure("transcribe", "No words found in transcript.");
 
