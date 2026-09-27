@@ -7,11 +7,9 @@ import {
   existsSync,
   writeFileSync,
   realpathSync,
-  mkdirSync,
-  copyFileSync,
   unlinkSync,
 } from "node:fs";
-import { basename, join, relative, resolve, isAbsolute, dirname, sep } from "node:path";
+import { basename, join, relative, resolve, isAbsolute, sep } from "node:path";
 import type { ViteDevServer } from "vite";
 import {
   type ResolvedProject,
@@ -434,49 +432,6 @@ export function createViteAdapter(
         }
       }
       return items;
-    },
-
-    // fallow-ignore-next-line complexity
-    async installRegistryBlock(opts: {
-      project: ResolvedProject;
-      blockName: string;
-    }): Promise<{ written: string[]; block: RegistryItem }> {
-      const registryRoot = resolve(__dirname, "../../registry");
-      let itemDir = join(registryRoot, "blocks", opts.blockName);
-      if (!existsSync(join(itemDir, "registry-item.json"))) {
-        itemDir = join(registryRoot, "components", opts.blockName);
-      }
-      const manifestPath = join(itemDir, "registry-item.json");
-
-      if (!existsSync(manifestPath)) {
-        throw new Error(`Item "${opts.blockName}" not found in registry`);
-      }
-
-      const block = JSON.parse(readFileSync(manifestPath, "utf-8")) as RegistryItem;
-      const written: string[] = [];
-
-      for (const file of block.files) {
-        const sourcePath = join(itemDir, file.path);
-        const targetPath = resolve(opts.project.dir, file.target);
-
-        if (!isPathWithin(opts.project.dir, targetPath)) {
-          throw new Error(`Target path escapes project directory: ${file.target}`);
-        }
-
-        mkdirSync(dirname(targetPath), { recursive: true });
-
-        if (file.type === "hyperframes:composition") {
-          let content = readFileSync(sourcePath, "utf-8");
-          content = `<!-- hyperframes-registry-item: ${block.name} -->\n${content}`;
-          writeFileSync(targetPath, content, "utf-8");
-        } else {
-          copyFileSync(sourcePath, targetPath);
-        }
-
-        written.push(file.target);
-      }
-
-      return { written, block };
     },
   };
 }

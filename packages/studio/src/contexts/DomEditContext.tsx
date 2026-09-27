@@ -13,6 +13,7 @@ export interface DomEditActionsValue extends Pick<
   | "handlePreviewCanvasPointerLeave"
   | "applyDomSelection"
   | "clearDomSelection"
+  | "refreshDomEditSelectionFromPreview"
   | "handleDomStyleCommit"
   | "handleDomStyleCommitForSelection"
   | "handleDomAttributeCommit"
@@ -155,6 +156,7 @@ export function DomEditProvider({
     handlePreviewCanvasPointerLeave,
     applyDomSelection,
     clearDomSelection,
+    refreshDomEditSelectionFromPreview,
     handleDomStyleCommit,
     handleDomStyleCommitForSelection,
     handleDomAttributeCommit,
@@ -248,6 +250,7 @@ export function DomEditProvider({
       handlePreviewCanvasPointerLeave,
       applyDomSelection,
       clearDomSelection,
+      refreshDomEditSelectionFromPreview,
       handleDomStyleCommit,
       handleDomStyleCommitForSelection,
       handleDomAttributeCommit,
@@ -322,6 +325,7 @@ export function DomEditProvider({
       handlePreviewCanvasPointerLeave,
       applyDomSelection,
       clearDomSelection,
+      refreshDomEditSelectionFromPreview,
       handleDomStyleCommit,
       handleDomStyleCommitForSelection,
       handleDomAttributeCommit,

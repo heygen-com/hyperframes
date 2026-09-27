@@ -96,7 +96,7 @@ function variableValuesAttribute(values: Record<string, unknown> | null): string
  * recorded manifest target must name the same file, or a render would look for
  * a block at a path the composition never mounts and report it as dropped.
  */
-function primaryInstalledTarget(item: RegistryItem): string {
+export function primaryInstalledTarget(item: RegistryItem): string {
   const primary =
     item.files.find((f) => f.type === "hyperframes:snippet") ??
     item.files.find((f) => f.type === "hyperframes:composition") ??
@@ -179,6 +179,7 @@ export interface RunAddArgs {
   force?: boolean;
   /** Current CLI version used for registry metadata compatibility checks. */
   cliVersion?: string;
+  source?: "cli" | "studio";
 }
 
 export interface RunAddResult {
@@ -312,6 +313,13 @@ export function describeInstallFailure(err: unknown, registry?: string): string 
 }
 
 export async function runAdd(opts: RunAddArgs): Promise<RunAddResult> {
+  return (await addToProject(opts)).result;
+}
+
+/** The one install path for a catalog item, shared by `add` and Studio; `item` is the requested item as installed. */
+export async function addToProject(
+  opts: RunAddArgs,
+): Promise<{ result: RunAddResult; item: RegistryItem }> {
   const projectDir = resolve(opts.projectDir);
 
   // 1. Load (or write default) project config.
@@ -374,6 +382,7 @@ export async function runAdd(opts: RunAddArgs): Promise<RunAddResult> {
       item: planItem.name,
       itemType: planItem.type,
       requested: planItem.name === item.name,
+      source: opts.source ?? "cli",
     });
   }
 
@@ -406,7 +415,7 @@ export async function runAdd(opts: RunAddArgs): Promise<RunAddResult> {
     warnings.push(`--vars ignored (not declared by ${item.name}): ${variablesUnknown.join(", ")}`);
   }
 
-  return {
+  const result: RunAddResult = {
     ok: true,
     name: item.name,
     type: item.type,
@@ -419,6 +428,7 @@ export async function runAdd(opts: RunAddArgs): Promise<RunAddResult> {
     variablesApplied,
     warnings,
   };
+  return { result, item: itemForInstall };
 }
 
 // ── Command ─────────────────────────────────────────────────────────────────

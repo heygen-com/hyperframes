@@ -1,7 +1,7 @@
-export { shouldReloadPreview, normalizePreviewWatchIgnore } from "./helpers/previewWatchIgnore.js";
 export { createStudioApi } from "./createStudioApi.js";
 export { createProjectSignature, affectsProjectSignature } from "./helpers/projectSignature.js";
 export { compositionsAffectedBy } from "./helpers/compositionInputs.js";
+export { affectsPreview } from "./helpers/previewReads.js";
 export {
   DEFAULT_HISTORY_ROOT,
   openProjectHistory,

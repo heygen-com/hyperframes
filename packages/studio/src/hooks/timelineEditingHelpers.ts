@@ -16,7 +16,12 @@ import {
   furthestClipEndFromSource,
   getTimelineElementIdentity,
 } from "../player/lib/timelineElementHelpers";
-import { saveProjectFilesWithHistory, type RecordEditInput } from "../utils/studioFileHistory";
+import {
+  saveProjectFilesWithHistory,
+  writeProjectFilesWithHistoryInQueue,
+  type RecordEditInput,
+} from "../utils/studioFileHistory";
+import { serializeStudioFileMutations } from "../utils/studioFileMutationCoordinator";
 import type { TimelineZIndexReorderCommit } from "./useTimelineEditingTypes";
 import { setCompositionDurationToContent } from "../utils/timelineAssetDrop";
 import { readFileContent } from "./timelineTimingSync";
@@ -397,6 +402,31 @@ export async function persistTimelineBatchEdit(
   });
 }
 
+/** What the file holds for `attr` once queued writes to it land; undefined when unreadable. */
+export async function readSavedAttribute(
+  projectId: string | null,
+  targetPath: string,
+  patchTarget: PatchTarget | null,
+  attr: string,
+  writeFile: (path: string, content: string, expectedContent?: string) => Promise<void>,
+): Promise<string | null | undefined> {
+  if (!projectId || !patchTarget) return undefined;
+  const html = await serializeStudioFileMutations(writeFile, [targetPath], () =>
+    readFileContent(projectId, targetPath),
+  ).catch(() => null);
+  return html === null ? undefined : readTargetAttribute(html, patchTarget, attr);
+}
+
+/** What `html` holds for `attr` on the target; undefined when the target is not in it. */
+export function readTargetAttribute(
+  html: string,
+  patchTarget: PatchTarget,
+  attr: string,
+): string | null | undefined {
+  if (readTagSnippetByTarget(html, patchTarget) === undefined) return undefined;
+  return readAttributeByTarget(html, patchTarget, attr) ?? null;
+}
+
 export { applyPatchByTarget, formatTimelineAttributeNumber, formatTimelineMediaOffset };
 
 export { patchDocumentRootDuration } from "./timelineEditingGsap";
@@ -413,6 +443,8 @@ export interface PersistElementAttributeInput {
   pendingTimelineEditPathRef: { current: Set<string> };
   /** Write the attribute directly on the live preview DOM node. */
   patchLive: (value: string | null) => void;
+  /** What the file held for the attribute, read inside the queue before this write. */
+  onFileRead: (value: string | null) => void;
 }
 
 /**
@@ -434,47 +466,40 @@ export async function persistElementAttribute({
   recordEdit,
   pendingTimelineEditPathRef,
   patchLive,
+  onFileRead,
 }: PersistElementAttributeInput): Promise<string[]> {
-  // Resolve the target BEFORE patching the live DOM. The optimistic patch used
-  // to run first, and only the save was wrapped in the unwind — so an
-  // unresolvable target threw with the live preview (and, through the callers'
-  // catch, the store mirrored off it) holding a value that never reached disk.
-  // The write then read as successful until a reload dropped it.
-  const before = await readFileContent(projectId, targetPath);
-  if (readTagSnippetByTarget(before, patchTarget) === undefined) {
-    throw new Error(`Unable to patch element in ${targetPath}`);
-  }
-  // The unwind value comes from the FILE, not from `readLive()`.
-  //
-  // Every live-write caller patches the DOM before committing — a fader drag is
-  // `setLive` per frame, hovering a preset auditions the whole chain — so by the
-  // time this runs the live DOM already holds the in-progress value. Reading it
-  // here made `previousValue === value`, so the unwind below was a no-op, and
-  // `setQuiet`'s catch (which deliberately re-mirrors the store from the live
-  // DOM) then mirrored that same never-saved value. The group audibly had the
-  // preset, the panel agreed, and a reload dropped it — the failure class the
-  // target check above was added to close, still open on the live-write path.
-  const previousValue = readAttributeByTarget(before, patchTarget, attr) ?? null;
-  patchLive(value);
+  // Joins the file's mutation queue before reading, so saves land in the order they start
+  // and each patches what the save before it wrote. Resolve the target before patching
+  // the live DOM, so an unresolvable target never leaves an unsaved preview.
+  return serializeStudioFileMutations(writeProjectFile, [targetPath], async () => {
+    const before = await readFileContent(projectId, targetPath);
+    if (readTagSnippetByTarget(before, patchTarget) === undefined) {
+      throw new Error(`Unable to patch element in ${targetPath}`);
+    }
+    // Unwind to the file's value: live writers already patched the DOM, so `readLive()`
+    // would equal `value` and a failed save would keep a never-saved preview.
+    const previousValue = readAttributeByTarget(before, patchTarget, attr) ?? null;
+    onFileRead(previousValue);
+    patchLive(value);
 
-  const operation: PatchOperation = { type: "attribute", property: attr, value };
-  const patched = applyPatchByTarget(before, patchTarget, operation);
+    const operation: PatchOperation = { type: "attribute", property: attr, value };
+    const patched = applyPatchByTarget(before, patchTarget, operation);
 
-  pendingTimelineEditPathRef.current.add(targetPath);
-  try {
-    const changedPaths = await saveProjectFilesWithHistory({
-      projectId,
-      label,
-      files: { [targetPath]: patched },
-      readFile: async (path) => (path === targetPath ? before : readFileContent(projectId, path)),
-      writeFile: writeProjectFile,
-      recordEdit,
-    });
-    return changedPaths;
-  } catch (error) {
-    // The optimistic live write already ran; unwind it on a save failure so
-    // the preview doesn't show a value that never reached disk.
-    patchLive(previousValue);
-    throw error;
-  }
+    pendingTimelineEditPathRef.current.add(targetPath);
+    try {
+      return await writeProjectFilesWithHistoryInQueue({
+        projectId,
+        label,
+        files: { [targetPath]: patched },
+        readFile: async (path) => (path === targetPath ? before : readFileContent(projectId, path)),
+        writeFile: writeProjectFile,
+        recordEdit,
+      });
+    } catch (error) {
+      // The optimistic live write already ran; unwind it on a save failure so
+      // the preview doesn't show a value that never reached disk.
+      patchLive(previousValue);
+      throw error;
+    }
+  });
 }

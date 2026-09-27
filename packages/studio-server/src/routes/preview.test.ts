@@ -17,12 +17,18 @@ import {
   writeSync,
 } from "node:fs";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { join, parse } from "node:path";
 import { ensureHfIds } from "@hyperframes/parsers/hf-ids";
 import { PREVIEW_BUNDLE_OPTIONS, registerPreviewRoutes } from "./preview";
 import { registerFileRoutes } from "./files";
 import { createPreviewDocumentStore } from "../helpers/previewDocumentStore";
 import type { StudioApiAdapter } from "../types";
+import {
+  affectsPreview,
+  recordPreviewBuilt,
+  recordPreviewRead,
+  recordPreviewReferences,
+} from "../helpers/previewReads";
 
 const tempDirs: string[] = [];
 
@@ -1479,6 +1485,204 @@ describe("hf-proxy negotiation and media codec map injection (U3)", () => {
       expect(proxyRes.status).toBe(404);
       expect(resolveProxyMock).not.toHaveBeenCalled();
     });
+  });
+});
+
+describe("what the preview loaded", () => {
+  it("counts the files the bundle reads and the document names, not other project files", async () => {
+    const projectDir = createProjectDir();
+    writeFileSync(
+      join(projectDir, "index.html"),
+      '<html><head><link rel="stylesheet" href="style.css"></head><body><img src="assets/loader.gif"></body></html>',
+    );
+    const app = new Hono();
+    registerPreviewRoutes(
+      app,
+      createAdapter(projectDir, {
+        bundle: async (dir, options) => {
+          options?.onRead?.(join(dir, "from-bundler.css"));
+          return null;
+        },
+        // As the CLI does with an animated GIF: the document it serves names a derived copy.
+        transformPreviewHtml: async ({ html }) =>
+          html.replace("assets/loader.gif", ".hyperframes/gif/loader.webm"),
+      }),
+    );
+
+    const res = await app.request("http://localhost/projects/demo/preview");
+    expect(res.status).toBe(200);
+    expect(await res.text()).toContain(".hyperframes/gif/loader.webm");
+
+    expect(affectsPreview(projectDir, "from-bundler.css")).toBe(true);
+    expect(affectsPreview(projectDir, "style.css")).toBe(true);
+    expect(affectsPreview(projectDir, "assets/loader.gif")).toBe(true);
+    expect(affectsPreview(projectDir, "notes.md")).toBe(false);
+  });
+
+  it("scans a document with a long run of spaces inside url( in linear time", () => {
+    const started = performance.now();
+    const css = `<style>a { background: url(${" ".repeat(200_000)}</style>`;
+    recordPreviewReferences(createProjectDir(), css);
+    recordPreviewReferences(createProjectDir(), `url("${'url("a'.repeat(100_000)}`);
+    expect(performance.now() - started).toBeLessThan(1000);
+  });
+
+  it("records every reference form a document uses, and the folders holding them", () => {
+    const projectDir = createProjectDir();
+    recordPreviewReferences(
+      projectDir,
+      `<img src='a.png'><i style="x: url('b.png')"></i><i style='y: url("c.png")'></i><i style="z: url(img/deep/d.png)"></i>`,
+    );
+    recordPreviewBuilt(projectDir);
+
+    for (const path of ["a.png", "b.png", "c.png", "img/deep/d.png", "img/deep", "img"]) {
+      expect(affectsPreview(projectDir, path)).toBe(true);
+    }
+    expect(affectsPreview(projectDir, "im")).toBe(false);
+  });
+
+  it.skipIf(process.platform === "win32")(
+    "counts an edit to the file a symlinked asset points at",
+    async () => {
+      const projectDir = createProjectDir();
+      writeFileSync(join(projectDir, "index.html"), "<html><body></body></html>");
+      mkdirSync(join(projectDir, "assets"));
+      writeFileSync(join(projectDir, "assets", "actual.css"), "a {}");
+      symlinkSync("actual.css", join(projectDir, "assets", "alias.css"));
+      const app = new Hono();
+      registerPreviewRoutes(app, createAdapter(projectDir, { bundle: async () => null }));
+      expect((await app.request("http://localhost/projects/demo/preview")).status).toBe(200);
+      const alias = await app.request("http://localhost/projects/demo/preview/assets/alias.css");
+      expect(alias.status).toBe(200);
+
+      expect(affectsPreview(projectDir, "assets/actual.css")).toBe(true);
+      expect(affectsPreview(projectDir, "assets/other.css")).toBe(false);
+    },
+  );
+
+  it.skipIf(process.platform === "win32")(
+    "counts creating the missing target of a symlinked asset the preview asked for",
+    async () => {
+      const projectDir = createProjectDir();
+      writeFileSync(join(projectDir, "index.html"), "<html><body></body></html>");
+      mkdirSync(join(projectDir, "assets"));
+      symlinkSync("actual.css", join(projectDir, "assets", "alias.css"));
+      const app = new Hono();
+      registerPreviewRoutes(app, createAdapter(projectDir, { bundle: async () => null }));
+      expect((await app.request("http://localhost/projects/demo/preview")).status).toBe(200);
+      const alias = await app.request("http://localhost/projects/demo/preview/assets/alias.css");
+      expect(alias.status).toBe(404);
+
+      expect(affectsPreview(projectDir, "assets/actual.css")).toBe(true);
+    },
+  );
+
+  it.skipIf(process.platform === "win32")(
+    "counts an edit to the new target of a symlinked asset retargeted after it loaded",
+    async () => {
+      const projectDir = createProjectDir();
+      writeFileSync(join(projectDir, "index.html"), "<html><body></body></html>");
+      mkdirSync(join(projectDir, "assets"));
+      writeFileSync(join(projectDir, "assets", "first.css"), "a {}");
+      writeFileSync(join(projectDir, "assets", "second.css"), "b {}");
+      symlinkSync("first.css", join(projectDir, "assets", "alias.css"));
+      const app = new Hono();
+      registerPreviewRoutes(app, createAdapter(projectDir, { bundle: async () => null }));
+      const aliasUrl = "http://localhost/projects/demo/preview/assets/alias.css";
+      expect((await app.request("http://localhost/projects/demo/preview")).status).toBe(200);
+      expect((await app.request(aliasUrl)).status).toBe(200);
+
+      rmSync(join(projectDir, "assets", "alias.css"));
+      symlinkSync("second.css", join(projectDir, "assets", "alias.css"));
+      expect(affectsPreview(projectDir, "assets/alias.css")).toBe(true);
+      expect((await app.request(aliasUrl)).status).toBe(200);
+
+      expect(affectsPreview(projectDir, "assets/second.css")).toBe(true);
+    },
+  );
+
+  it.skipIf(process.platform === "win32")(
+    "counts retargeting a link the read passed through on the way to its file",
+    () => {
+      const projectDir = realpathSync(createProjectDir());
+      for (const version of ["v1", "v2"]) {
+        mkdirSync(join(projectDir, "libs", version, "audio"), { recursive: true });
+        writeFileSync(join(projectDir, "libs", version, "audio", "a.mp3"), version);
+      }
+      symlinkSync("v1", join(projectDir, "libs", "current"));
+      symlinkSync("libs/current/audio", join(projectDir, "media"));
+      recordPreviewRead(projectDir, "media/a.mp3");
+      recordPreviewBuilt(projectDir);
+
+      expect(affectsPreview(projectDir, "libs/current")).toBe(true);
+      expect(affectsPreview(projectDir, "libs/v1/audio/a.mp3")).toBe(true);
+      expect(affectsPreview(projectDir, "libs/v2/audio/a.mp3")).toBe(false);
+    },
+  );
+
+  it.skipIf(process.platform === "win32")(
+    "follows a link target's .. from where the link lands, as the system does",
+    () => {
+      const projectDir = realpathSync(createProjectDir());
+      mkdirSync(join(projectDir, "deep", "nested"), { recursive: true });
+      mkdirSync(join(projectDir, "m"));
+      writeFileSync(join(projectDir, "deep", "real.mp3"), "x");
+      symlinkSync("deep/nested", join(projectDir, "sub"));
+      symlinkSync("../sub/../real.mp3", join(projectDir, "m", "a.mp3"));
+      recordPreviewRead(projectDir, "m/a.mp3");
+      recordPreviewBuilt(projectDir);
+
+      expect(affectsPreview(projectDir, "deep/real.mp3")).toBe(true);
+    },
+  );
+
+  it.skipIf(process.platform === "win32")(
+    "matches a project recorded by its real folder and watched through a link to it",
+    () => {
+      const realDir = realpathSync(createProjectDir());
+      const linkDir = join(createProjectDir(), "linked-project");
+      symlinkSync(realDir, linkDir);
+      recordPreviewRead(realDir, "style.css");
+      recordPreviewBuilt(realDir);
+
+      expect(affectsPreview(linkDir, join(linkDir, "style.css"))).toBe(true);
+      expect(affectsPreview(linkDir, join(linkDir, "notes.md"))).toBe(false);
+    },
+  );
+
+  it("records the folders of a read in a project at the filesystem root", () => {
+    const root = parse(process.cwd()).root;
+    recordPreviewRead(root, "media/clip.png");
+    recordPreviewBuilt(root);
+    expect(affectsPreview(root, "media")).toBe(true);
+  });
+
+  it("counts a folder event when a file the preview asked for is inside it", async () => {
+    const projectDir = createProjectDir();
+    writeFileSync(join(projectDir, "index.html"), "<html><body></body></html>");
+    const app = new Hono();
+    registerPreviewRoutes(app, createAdapter(projectDir, { bundle: async () => null }));
+    expect((await app.request("http://localhost/projects/demo/preview")).status).toBe(200);
+    expect(
+      (await app.request("http://localhost/projects/demo/preview/media/clip.png")).status,
+    ).toBe(404);
+
+    expect(affectsPreview(projectDir, "media")).toBe(true);
+    expect(affectsPreview(projectDir, join(projectDir, "media"))).toBe(true);
+    expect(affectsPreview(projectDir, "med")).toBe(false);
+    expect(affectsPreview(projectDir, "docs")).toBe(false);
+  });
+
+  it("counts every write until this process has built the preview, even after serving an asset", async () => {
+    const projectDir = createProjectDir();
+    writeFileSync(join(projectDir, "logo.png"), "logo");
+    const app = new Hono();
+    registerPreviewRoutes(app, createAdapter(projectDir));
+
+    expect((await app.request("http://localhost/projects/demo/preview/logo.png")).status).toBe(200);
+
+    expect(affectsPreview(projectDir, "index.html")).toBe(true);
+    expect(affectsPreview(projectDir, "notes.md")).toBe(true);
   });
 });
 

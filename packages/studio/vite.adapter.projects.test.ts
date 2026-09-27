@@ -187,7 +187,7 @@ describe("dynamic preview ownership", () => {
       compute: () => "signature",
       watch: (dir) => {
         // Ownership must exist before newly watched files can emit events.
-        expect(previewChangeOwner(owners, join(dir, "index.html"))).toBe("new-project");
+        expect(previewChangeOwner(owners, join(dir, "index.html"))?.projectId).toBe("new-project");
         watched.push(dir);
       },
     });
@@ -205,7 +205,26 @@ describe("dynamic preview ownership", () => {
     cache.get(project.dir);
     writeFileSync(join(dir, "index.html"), "after");
     expect(watched).toEqual([realpathSync(dir)]);
-    expect(previewChangeOwner(owners, join(realpathSync(dir), "index.html"))).toBe("new-project");
-    expect(previewChangeOwner(owners, join(realpathSync(dir), "index.html.tmp"))).toBeNull();
+    expect(previewChangeOwner(owners, join(realpathSync(dir), "index.html"))?.projectId).toBe(
+      "new-project",
+    );
+  });
+});
+
+describe("Studio's dev server and the catalog", () => {
+  it("answers every install with a 501 that points to hyperframes preview", async () => {
+    const { data, app } = fixture();
+    mkdirSync(join(data, "demo"));
+    writeFileSync(join(data, "demo", "index.html"), "A");
+
+    const response = await app.request("http://localhost/projects/demo/registry/install", {
+      method: "POST",
+      body: JSON.stringify({ blockName: "ai-chat-reveal" }),
+    });
+
+    expect(response.status).toBe(501);
+    expect(await response.json()).toEqual({
+      error: "Installing catalog items needs hyperframes preview",
+    });
   });
 });

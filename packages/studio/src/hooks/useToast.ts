@@ -50,7 +50,7 @@ export function useToast() {
   );
 
   const showToast = useCallback(
-    (message: string, tone: AppToast["tone"] = "error") => {
+    (message: string, tone: AppToast["tone"] = "error"): number => {
       const id = nextToastId++;
       setToasts((prev) => {
         const next = [...prev, { id, message, tone }];
@@ -65,6 +65,7 @@ export function useToast() {
         const timer = setTimeout(() => dismissToast(id), AUTO_DISMISS_MS);
         timersRef.current.set(id, timer);
       }
+      return id;
     },
     [clearTimer, dismissToast],
   );
