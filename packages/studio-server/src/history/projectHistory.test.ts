@@ -20,6 +20,7 @@ import { basename, dirname, join, relative } from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { fileContentVersion, recordFileWriteReceipt } from "../helpers/fileVersion";
 import { HistoryBusyError } from "./ownerLock";
+import { HistoryIdError } from "./historyId";
 import { HistoryClosedError, openProjectHistory, type ProjectHistory } from "./projectHistory";
 import { START, type HistoryWho } from "./historyLog";
 
@@ -683,6 +684,26 @@ describe("openProjectHistory", () => {
       expect(inside(projectDir, "index.html")).toBe("<p>v2</p>\n");
     });
 
+    it.each([["empty", ""], ["null", "null"]])(
+      "keeps the id when the record is %s, as 0.8.78 did",
+      async (_, record) => {
+        const { projectDir, historyRoot } = legacyProject((projectDir) => projectDir);
+        writeFileSync(join(historyRoot, fixtureId, "project.json"), record);
+
+        const history = await open(projectDir, historyRoot);
+        expect([history.projectId, history.list().length]).toEqual([fixtureId, 2]);
+      },
+    );
+
+    it("keeps the history when the record names the folder by another path to it", async () => {
+      const { projectDir, historyRoot } = legacyProject((projectDir) => `${projectDir}-link`);
+      symlinkSync(projectDir, `${projectDir}-link`, "junction");
+      cleanup.push(() => rmSync(`${projectDir}-link`, { force: true }));
+
+      const history = await open(projectDir, historyRoot);
+      expect([history.projectId, history.list().length]).toEqual([fixtureId, 2]);
+    });
+
     it("gives a copy its own history while the recorded folder still carries the id", async () => {
       const original = legacyProject((projectDir) => projectDir);
       const copy = tempDir("hf-history-legacy-copy-");
@@ -700,7 +721,7 @@ describe("openProjectHistory", () => {
     mkdirSync(join(projectDir, ".hyperframes"));
     writeFileSync(join(projectDir, ".hyperframes", "history-id"), "not-an-id\n");
 
-    await expect(open(projectDir, tempDir("hf-history-root-"))).rejects.toThrow(/history-id/);
+    await expect(open(projectDir, tempDir("hf-history-root-"))).rejects.toThrow(HistoryIdError);
     expect(inside(projectDir, ".hyperframes/history-id")).toBe("not-an-id\n");
   });
 

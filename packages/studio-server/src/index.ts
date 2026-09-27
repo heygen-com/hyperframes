@@ -17,6 +17,7 @@ export {
   HistoryClosedError,
 } from "./history/projectHistory.js";
 export { HistoryBusyError } from "./history/ownerLock.js";
+export { HistoryIdError } from "./history/historyId.js";
 export { historyCache } from "./history/historyCache.js";
 export {
   START as HISTORY_START,

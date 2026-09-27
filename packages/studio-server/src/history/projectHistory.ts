@@ -294,7 +294,7 @@ class Engine {
     this.foldsCase = ignoresCase(this.dir);
     const folder = statSync(this.dir, { throwIfNoEntry: false });
     // Checked after the ownership wait, so a folder swapped for a copy meanwhile is refused.
-    if (!folder || readId(this.dir) !== projectId || !isRecordedFolder(this.home, this.dir, folder))
+    if (!folder || readId(this.dir) !== projectId || !isRecordedFolder(this.home, folder))
       throw this.replaced();
     this.folder = { dev: folder.dev, ino: folder.ino, birthtimeMs: folder.birthtimeMs };
   }
