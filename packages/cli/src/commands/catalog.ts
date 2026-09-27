@@ -30,7 +30,7 @@ import {
   nonInteractiveConsentMessage,
   recordLocalModelConsent,
 } from "../registry/localModel.js";
-import { ensureLocalRuntime } from "../registry/localEmbedder.js";
+import { ensureLocalRuntime, hasLocalRuntime } from "../registry/localEmbedder.js";
 import {
   cachedLocalVectorRevision,
   fetchLocalVectors,
@@ -243,8 +243,8 @@ export default defineCommand({
     const routineUpdate =
       searchContext?.status.status === "unavailable" ||
       (searchContext?.status.status === "ready" &&
-        artifactRevision !== undefined &&
-        cachedLocalVectorRevision() !== artifactRevision);
+        (!hasLocalRuntime() ||
+          (artifactRevision !== undefined && cachedLocalVectorRevision() !== artifactRevision)));
     const shouldPrepare = args["on-device"] === true || routineUpdate;
     let warnings: string[] = [];
     let effectiveStatus = searchContext?.status;

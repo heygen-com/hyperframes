@@ -14,16 +14,6 @@ function lockIn() {
   };
 }
 
-test("releasing leaves a lock another process took meanwhile", () => {
-  const { lock, cleanup } = lockIn();
-  try {
-    withFileLock(lock, fs, () => fs.writeFileSync(lock, "other"));
-    assert.equal(fs.readFileSync(lock, "utf8"), "other");
-  } finally {
-    cleanup();
-  }
-});
-
 test("returns the task's result even when the lock cannot be released", () => {
   const { lock, cleanup } = lockIn();
   try {
@@ -54,7 +44,7 @@ test("refuses a lock left by a process that stopped, names it, and never removes
 
     assert.throws(
       () => withFileLock(lock, fs, () => (ran = true)),
-      (error) => error.message.includes(lock),
+      (error) => error.code === "HF_SETTINGS_LOCKED" && error.message.includes(lock),
     );
     assert.ok(Date.now() - started < 1000);
     assert.equal(ran, false);

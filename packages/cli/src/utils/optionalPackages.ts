@@ -59,6 +59,15 @@ export function installedOptionalPackageVersion(
     .version;
 }
 
+export function loadInstalledOptionalPackage<N extends OptionalPackage>(
+  name: N,
+  deps: OptionalPackageDeps = defaultDeps,
+): OptionalPackageModules[N] | null {
+  const found =
+    deps.loadBesideCli(name) ?? deps.loadInstalled(optionalPackageDir(name, deps.cacheDir), name);
+  return found as OptionalPackageModules[N] | null;
+}
+
 /**
  * Load an optional package, installing it once on first use. No prompt: agents run headless.
  * Throws an error that names the manual command when the install cannot complete.
@@ -68,11 +77,9 @@ export async function loadOptionalPackage<N extends OptionalPackage>(
   feature: string,
   deps: OptionalPackageDeps = defaultDeps,
 ): Promise<OptionalPackageModules[N]> {
-  const beside = deps.loadBesideCli(name);
-  if (beside !== null) return beside as OptionalPackageModules[N];
+  const present = loadInstalledOptionalPackage(name, deps);
+  if (present !== null) return present;
   const dir = optionalPackageDir(name, deps.cacheDir);
-  const installed = deps.loadInstalled(dir, name);
-  if (installed !== null) return installed as OptionalPackageModules[N];
 
   const version = OPTIONAL_PACKAGES[name];
   deps.log(`installing ${name} for ${feature}, once`);

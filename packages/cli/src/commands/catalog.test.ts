@@ -92,6 +92,7 @@ const state = vi.hoisted(() => ({
   runtimeAvailable: true,
   noSavedDuringRuntime: false,
   vectorsOnDisk: true,
+  runtimeOnDisk: true,
 }));
 
 vi.mock("../registry/resolver.js", () => ({
@@ -158,6 +159,7 @@ vi.mock("../registry/localModel.js", () => ({
 }));
 
 vi.mock("../registry/localEmbedder.js", () => ({
+  hasLocalRuntime: () => state.runtimeOnDisk,
   // Left unmocked this would run a real npm install under vitest.
   ensureLocalRuntime: async () => {
     state.runtimeInstalls += 1;
@@ -282,6 +284,7 @@ beforeEach(() => {
   state.runtimeAvailable = true;
   state.noSavedDuringRuntime = false;
   state.vectorsOnDisk = true;
+  state.runtimeOnDisk = true;
   state.registry = [block("count-up"), block("fade-through"), component("whip-pan")];
   state.indexed = ["count-up", "fade-through", "whip-pan"];
   state.ranking = [
@@ -832,6 +835,21 @@ describe("the on-device download offer", () => {
 
     expect([state.vectorFetches, state.downloads]).toEqual([0, 0]);
   });
+
+  it.each([
+    [true, 1],
+    [false, 0],
+  ])(
+    "installs a runtime missing beside a ready model only through the consent check (saved yes: %s)",
+    async (savedYes, installs) => {
+      state.runtimeOnDisk = false;
+      if (!savedYes) state.consentSavedMeanwhile = false;
+
+      await runEnvelope({ query: "count up" });
+
+      expect(state.runtimeInstalls).toBe(installs);
+    },
+  );
 
   it("installs nothing when a person's yes cannot be saved", async () => {
     state.consentRecorded = [false];

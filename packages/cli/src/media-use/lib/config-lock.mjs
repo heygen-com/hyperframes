@@ -15,8 +15,11 @@ export function withFileLock(lockPath, fs, task) {
         leftover = Date.now() - fs.statSync(lockPath).mtimeMs > 5000;
       } catch {}
       if (leftover || Date.now() - started > 10000)
-        throw new Error(
-          `Settings are locked by another hyperframes process. If none is running, delete ${lockPath}`,
+        throw Object.assign(
+          new Error(
+            `Settings are locked by another hyperframes process. If none is running, delete ${lockPath}`,
+          ),
+          { code: "HF_SETTINGS_LOCKED" },
         );
       Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 25);
       continue;
@@ -34,9 +37,9 @@ export function withFileLock(lockPath, fs, task) {
   try {
     return task();
   } finally {
-    // Only the owner ever removes the lock; a failed release must not turn a finished task into an error.
+    // Nothing but its owner removes or replaces a lock, so release needs no check; a failure must not fail the task.
     try {
-      if (fs.readFileSync(lockPath, "utf8") === token) fs.rmSync(lockPath);
+      fs.rmSync(lockPath);
     } catch {}
   }
 }

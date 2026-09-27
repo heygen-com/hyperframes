@@ -1,6 +1,6 @@
 // @vitest-environment node
 import { spawn } from "node:child_process";
-import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, utimesSync, writeFileSync } from "node:fs";
 import { homedir, tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -65,6 +65,43 @@ describe("a settings file that exists but cannot be read", () => {
     readConfig();
 
     expect(updateLocalModelConsent((onDisk) => onDisk ?? true)).toBe(false);
+  });
+});
+
+describe("a settings lock left by a process that stopped", () => {
+  const leaveLock = () => {
+    const lock = join(configDir, "config.json.lock");
+    writeFileSync(lock, "stopped");
+    const past = new Date(Date.now() - 60_000);
+    utimesSync(lock, past, past);
+    return lock;
+  };
+
+  it.each([
+    ["a terminal", true, [], 1],
+    ["--json", true, ["--json"], 0],
+    ["piped output", false, [], 0],
+  ])("warns once per process on %s", async (_, tty, extraArgs, lines) => {
+    const lock = leaveLock();
+    const { writeConfig, readConfig } = await import("./config.js");
+    const stdoutTty = Object.getOwnPropertyDescriptor(process.stdout, "isTTY");
+    const argv = process.argv;
+    const error = vi.spyOn(console, "error").mockImplementation(() => {});
+    Object.defineProperty(process.stdout, "isTTY", { value: tty, configurable: true });
+    process.argv = [...argv, ...extraArgs];
+    try {
+      writeConfig(readConfig());
+      writeConfig(readConfig());
+      const warnings = error.mock.calls.map(([line]) => String(line));
+      expect(warnings).toHaveLength(lines);
+      if (lines) expect(warnings[0]).toContain(lock);
+      if (lines) expect(warnings[0]).toContain("hyperframes doctor");
+    } finally {
+      error.mockRestore();
+      process.argv = argv;
+      if (stdoutTty) Object.defineProperty(process.stdout, "isTTY", stdoutTty);
+      else delete (process.stdout as { isTTY?: boolean }).isTTY;
+    }
   });
 });
 

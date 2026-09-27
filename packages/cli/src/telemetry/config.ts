@@ -821,8 +821,20 @@ export function writeConfigWithResult(config: HyperframesConfig): ConfigWriteRes
       persistConfig({ ...config, localEmbeddingEnabled: localModelConsentOnDisk() }),
     );
   } catch (error) {
+    warnSettingsLockedOnce(error);
     return { ok: false, error: normalizeErrorMessage(error) };
   }
+}
+
+let warnedSettingsLocked = false;
+
+/** One line per process while a leftover lock blocks settings; never where a program reads the output. */
+function warnSettingsLockedOnce(error: unknown): void {
+  if (warnedSettingsLocked || (error as NodeJS.ErrnoException)?.code !== "HF_SETTINGS_LOCKED")
+    return;
+  warnedSettingsLocked = true;
+  if (process.stdout.isTTY !== true || process.argv.includes("--json")) return;
+  console.error(`${(error as Error).message} (see \`hyperframes doctor\`).`);
 }
 
 export function updateLocalModelConsent(
@@ -839,7 +851,8 @@ export function updateLocalModelConsent(
       const written = persistConfig({ ...readConfigFresh(), localEmbeddingEnabled: next });
       return written.ok ? next : localModelConsentOnDisk();
     });
-  } catch {
+  } catch (error) {
+    warnSettingsLockedOnce(error);
     return localModelConsentOnDisk();
   }
 }

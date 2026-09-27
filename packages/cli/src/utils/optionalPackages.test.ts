@@ -1,3 +1,4 @@
+// fallow-ignore-file code-duplication
 import { spawnSync } from "node:child_process";
 import {
   existsSync,
@@ -18,6 +19,7 @@ import {
   install,
   installedOptionalPackageVersion,
   loadBesideCli,
+  loadInstalledOptionalPackage,
   loadOptionalPackage,
   optionalPackageDir,
   type OptionalPackageDeps,
@@ -39,6 +41,15 @@ function fakeDeps(overrides: Partial<OptionalPackageDeps> = {}) {
   };
   return { deps, install, log, installed };
 }
+
+describe("loadInstalledOptionalPackage", () => {
+  it("returns null without installing when the package is not on this machine", () => {
+    const { deps, install } = fakeDeps();
+
+    expect(loadInstalledOptionalPackage("onnxruntime-node", deps)).toBeNull();
+    expect(install).not.toHaveBeenCalled();
+  });
+});
 
 describe("loadOptionalPackage", () => {
   it("installs on first use with one plain line, then loads from the cache without installing again", async () => {
