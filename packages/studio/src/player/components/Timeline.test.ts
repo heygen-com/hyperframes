@@ -173,7 +173,9 @@ describe("Timeline provider boundary", () => {
     expect(clip.style.bottom).toBe(`${CLIP_Y}px`);
     expect(rulerOrigin.style.width).toBe(`${GUTTER + TRACKS_LEFT_PAD}px`);
     expect(rulerTick.style.left).toBe("999.5px");
-    expect(playhead.style.left).toBe(`${GUTTER + TRACKS_LEFT_PAD + 1000 - PLAYHEAD_HEAD_W / 2}px`);
+    expect(playhead.style.transform).toBe(
+      `translateX(${GUTTER + TRACKS_LEFT_PAD + 1000 - PLAYHEAD_HEAD_W / 2}px)`,
+    );
     expect(playhead.style.width).toBe(`${PLAYHEAD_HEAD_W}px`);
     expect(
       resolveTimelineAssetDrop(
@@ -283,7 +285,9 @@ describe("Timeline provider boundary", () => {
     expect(semanticRows[2]?.hasAttribute("aria-expanded")).toBe(false);
     expect(trackHeader.style.width).toBe(`${LABEL_COL_W}px`);
     expect(rulerOrigin.style.width).toBe(`${LABEL_COL_W + GUTTER}px`);
-    expect(playhead.style.left).toBe(`${LABEL_COL_W + GUTTER + 1000 - PLAYHEAD_HEAD_W / 2}px`);
+    expect(playhead.style.transform).toBe(
+      `translateX(${LABEL_COL_W + GUTTER + 1000 - PLAYHEAD_HEAD_W / 2}px)`,
+    );
     expect(diamondX).toBe(rulerX);
     expect(rulerX).toBe(LABEL_COL_W + GUTTER + 1000);
     expect(collapsedHeader.textContent).toContain("Outro");

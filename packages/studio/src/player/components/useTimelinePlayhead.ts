@@ -4,7 +4,7 @@ import { useMountEffect } from "../../hooks/useMountEffect";
 import { getPinchTimelineZoomPercent } from "./timelineZoom";
 import {
   getTimelinePlaybackFollowScrollLeft,
-  getTimelinePlayheadLeft,
+  getTimelinePlayheadTransform,
   getTimelineScrubTime,
   getTimelineScrollLeftForZoomTransition,
   getTimelineScrollLeftForZoomAnchor,
@@ -92,7 +92,11 @@ export function useTimelinePlayhead({
   const syncPlayheadPosition = useCallback(
     (time: number) => {
       if (!playheadRef.current || durationRef.current <= 0) return;
-      playheadRef.current.style.left = `${getTimelinePlayheadLeft(time, ppsRef.current, contentOrigin)}px`;
+      playheadRef.current.style.transform = getTimelinePlayheadTransform(
+        time,
+        ppsRef.current,
+        contentOrigin,
+      );
     },
     [playheadRef, durationRef, ppsRef, contentOrigin],
   );
@@ -125,11 +129,11 @@ export function useTimelinePlayhead({
     const unsub = liveTime.subscribe((t) => {
       if (!playheadRef.current || durationRef.current <= 0) return;
       const playheadX = contentOriginRef.current + Math.max(0, t) * ppsRef.current;
-      playheadRef.current.style.left = `${getTimelinePlayheadLeft(
+      playheadRef.current.style.transform = getTimelinePlayheadTransform(
         t,
         ppsRef.current,
         contentOriginRef.current,
-      )}px`;
+      );
       const scroll = scrollRef.current;
       if (
         !scroll ||

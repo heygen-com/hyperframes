@@ -437,6 +437,10 @@ export function getTimelinePlayheadLeft(
   return contentOrigin + Math.max(0, time) * Math.max(0, pixelsPerSecond) - PLAYHEAD_HEAD_W / 2;
 }
 
+/** Playback moves the playhead by transform: a composited layer, no relayout. */
+export const getTimelinePlayheadTransform = (time: number, pps: number, origin: number): string =>
+  `translateX(${getTimelinePlayheadLeft(time, pps, origin)}px)`;
+
 /**
  * Inverse of {@link getTimelinePlayheadLeft}: the scrub time under a viewport
  * clientX. Clamped to [0, duration], NOT rejected — the scrub surface starts
