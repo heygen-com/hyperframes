@@ -783,15 +783,17 @@ export function createStudioServer(options: StudioServerOptions): StudioServer {
       rewriteWrittenToHostViewport(opts.project.dir, written);
       recordRewrittenInstall(opts.project.dir, written);
 
-      // The item's own file first, as add recorded it, even when kept for the project's edit: Studio mounts it.
+      // The item's own file first, as add recorded it, since Studio mounts the first .html it gets.
       const root = realpathSync(opts.project.dir);
       const primary = primaryInstalledTarget(item);
       const primaryPath = registryTargetPath(root, primary);
       const others = written
         .filter((abs) => abs !== primaryPath)
         .map((abs) => relative(root, abs).split(sep).join("/"));
-      const onDisk = written.includes(primaryPath) || result.preserved.includes(primaryPath);
-      return { written: onDisk ? [primary, ...others] : others, block: item };
+      return {
+        written: written.includes(primaryPath) ? [primary, ...others] : others,
+        block: item,
+      };
     },
   };
 

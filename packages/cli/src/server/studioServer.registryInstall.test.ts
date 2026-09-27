@@ -148,7 +148,7 @@ describe("Studio catalog install", () => {
     expect(fetched.every((url) => url.startsWith(registry))).toBe(true);
   });
 
-  it("installs a block sized unlike the project twice, and mounts a real edit as kept", async () => {
+  it("installs a block sized unlike the project twice, and leaves a real edit alone", async () => {
     const { link, real } = projectWithRegistry();
     const install = installer(link);
     const file = join(real, "scenes/studio-drop-block.html");
@@ -158,7 +158,7 @@ describe("Studio catalog install", () => {
     expect((await install("studio-drop-block")).written).toEqual(["scenes/studio-drop-block.html"]);
 
     writeFileSync(file, "my own edit");
-    expect((await install("studio-drop-block")).written).toEqual(["scenes/studio-drop-block.html"]);
+    expect((await install("studio-drop-block")).written).toEqual([]);
     expect(readFileSync(file, "utf-8")).toBe("my own edit");
   });
 
