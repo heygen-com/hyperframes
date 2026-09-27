@@ -23,6 +23,7 @@ import { PREVIEW_BUNDLE_OPTIONS, registerPreviewRoutes } from "./preview";
 import { registerFileRoutes } from "./files";
 import { createPreviewDocumentStore } from "../helpers/previewDocumentStore";
 import type { StudioApiAdapter } from "../types";
+import { affectsPreview } from "../helpers/previewReads";
 
 const tempDirs: string[] = [];
 
@@ -1479,6 +1480,45 @@ describe("hf-proxy negotiation and media codec map injection (U3)", () => {
       expect(proxyRes.status).toBe(404);
       expect(resolveProxyMock).not.toHaveBeenCalled();
     });
+  });
+});
+
+describe("what the preview loaded", () => {
+  it("counts the files the bundle reads and the document names, not other project files", async () => {
+    const projectDir = createProjectDir();
+    writeFileSync(
+      join(projectDir, "index.html"),
+      '<html><head><link rel="stylesheet" href="style.css"></head><body><img src="assets/loader.gif"></body></html>',
+    );
+    const app = new Hono();
+    registerPreviewRoutes(
+      app,
+      createAdapter(projectDir, {
+        bundle: async (dir, options) => {
+          options?.onRead?.(join(dir, "from-bundler.css"));
+          return null;
+        },
+      }),
+    );
+
+    expect((await app.request("http://localhost/projects/demo/preview")).status).toBe(200);
+
+    expect(affectsPreview(projectDir, "from-bundler.css")).toBe(true);
+    expect(affectsPreview(projectDir, "style.css")).toBe(true);
+    expect(affectsPreview(projectDir, "assets/loader.gif")).toBe(true);
+    expect(affectsPreview(projectDir, "notes.md")).toBe(false);
+  });
+
+  it("counts every write until this process has built the preview, even after serving an asset", async () => {
+    const projectDir = createProjectDir();
+    writeFileSync(join(projectDir, "logo.png"), "logo");
+    const app = new Hono();
+    registerPreviewRoutes(app, createAdapter(projectDir));
+
+    expect((await app.request("http://localhost/projects/demo/preview/logo.png")).status).toBe(200);
+
+    expect(affectsPreview(projectDir, "index.html")).toBe(true);
+    expect(affectsPreview(projectDir, "notes.md")).toBe(true);
   });
 });
 

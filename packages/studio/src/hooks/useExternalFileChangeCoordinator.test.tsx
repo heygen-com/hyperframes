@@ -109,6 +109,27 @@ describe("external file change coordinator", () => {
     expect(order).toEqual(["sdk", "tree"]);
   });
 
+  it("still reloads Preview when a notes change replaces a waiting film change", async () => {
+    let release = () => {};
+    const inFlight = new Promise<void>((resolve) => (release = resolve));
+    const reloadPreview = vi.fn();
+    let drains = 0;
+    await mountCoordinator({
+      reloadPreview,
+      drainPendingChanges: async () => {
+        if (drains++ === 0) await inFlight;
+        return { status: "clean" as const };
+      },
+    });
+    await act(async () => handler?.({ path: "index.html", content: "a", version: "v1" }));
+    await act(async () => handler?.({ path: "scene.html", content: "b", version: "v2" }));
+    await act(async () =>
+      handler?.({ path: "notes.md", content: "c", version: "v3", affectsPreview: false }),
+    );
+    await act(async () => release());
+    expect(reloadPreview).toHaveBeenCalledTimes(2);
+  });
+
   it("does not refresh the tree for a suppressed self-write echo", async () => {
     const refreshFileTree = vi.fn();
     await mountCoordinator({ refreshFileTree });

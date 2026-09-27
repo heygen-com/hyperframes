@@ -25,7 +25,11 @@ import {
 } from "../helpers/studioMotionRenderScript.js";
 import { ensureHfIds } from "@hyperframes/parsers/hf-ids";
 import { settledFileTag } from "../helpers/fileVersion.js";
-import { recordPreviewRead } from "../helpers/previewReads.js";
+import {
+  recordPreviewBuilt,
+  recordPreviewRead,
+  recordPreviewReferences,
+} from "../helpers/previewReads.js";
 import { isVariablesPayload, VARIABLES_PAYLOAD_ERROR } from "../helpers/variablesPayload.js";
 import { injectPreviewVariables } from "../helpers/previewVariables.js";
 import {
@@ -371,6 +375,8 @@ export function registerPreviewRoutes(api: Hono, adapter: PreviewApiAdapter): vo
         bundled = stripEmbeddedRuntimeScripts(normalizedDisk ?? diskMain.html);
         mainCompositionPath = diskMain.compositionPath;
       }
+      recordPreviewReferences(project.dir, bundled);
+      recordPreviewBuilt(project.dir);
 
       // Inject runtime if not already present (check URL pattern and bundler attribute)
       if (
@@ -529,6 +535,7 @@ export function registerPreviewRoutes(api: Hono, adapter: PreviewApiAdapter): vo
       stamped,
     );
     if (!html) return c.text("not found", 404);
+    recordPreviewReferences(project.dir, html);
     html = ensureHfIds(await transformPreviewHtml(html, adapter, project, compPath));
     html = injectStudioPreviewAugmentations(html, adapter, project.dir, compPath);
     if (previewVariables) html = injectPreviewVariables(html, previewVariables);

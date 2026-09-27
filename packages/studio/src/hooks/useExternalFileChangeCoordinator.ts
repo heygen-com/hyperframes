@@ -414,7 +414,15 @@ export function useExternalFileChangeCoordinator({
         return;
       }
 
-      pendingPayloadRef.current = { payload };
+      // One waiting change stands for both: if either affects Preview, the reload still happens.
+      const waiting = pendingPayloadRef.current?.payload;
+      const keepsReload =
+        waiting != null &&
+        readFileChangeAffectsPreview(waiting) &&
+        !readFileChangeAffectsPreview(payload);
+      pendingPayloadRef.current = {
+        payload: keepsReload ? { ...(payload as object), affectsPreview: true } : payload,
+      };
       void startDrainLoop();
     },
     [projectId, pendingTimelineEditPathRef, startDrainLoop, onAcceptedPersistedFileChange],
