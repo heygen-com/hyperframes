@@ -39,3 +39,5 @@ in every workflow and reference:
 
 To get newer skills, use the client's plugin update flow and reload the session.
 Do not silently update an installed plugin during a video task.
+
+The launcher suppresses CLI update notices as well as standalone skill refreshes, including when running an older CLI with a stale notice cache. It passes the release as `HYPERFRAMES_PLUGIN_VERSION` for plugin-aware helpers and as `HYPERFRAMES_SKILL_PKG_VERSION` for the existing helper-package bootstrap. Our release process versions those packages together.

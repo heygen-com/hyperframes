@@ -578,6 +578,7 @@ jobs:
           node --test
           skills/hyperframes-animation/scripts/package-loader.test.mjs
           skills/hyperframes-creative/scripts/package-loader.test.mjs
+          skills/hyperframes/scripts/plugin-cli.test.mjs
 
   # Guards that skills-manifest.json (the published freshness fingerprint read
   # by `hyperframes skills check`) was regenerated when a skill changed. Runs

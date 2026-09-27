@@ -2,7 +2,7 @@
 // Run from the user's project; locate the release from this installed file.
 import { spawnSync } from "node:child_process";
 import { existsSync, readFileSync, realpathSync } from "node:fs";
-import { dirname, join } from "node:path";
+import { join, win32 } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 
 const root = fileURLToPath(new URL("../../../", import.meta.url));
@@ -46,16 +46,22 @@ export function invocation(
     throw new Error(
       "Update HyperFrames through your agent's plugin manager; bundled skills are release-managed.",
     );
-  const childEnv = { ...env, HYPERFRAMES_SKIP_SKILLS: "1", HYPERFRAMES_SKILL_PKG_VERSION: version };
+  const childEnv = {
+    ...env,
+    HYPERFRAMES_SKIP_SKILLS: "1",
+    HYPERFRAMES_SKILL_PKG_VERSION: version,
+    HYPERFRAMES_PLUGIN_VERSION: version,
+    HYPERFRAMES_NO_UPDATE_CHECK: "1",
+  };
   if (args[0] === "--script") {
-    if (!args[1]) throw new Error("--script requires the path of a bundled Node script.");
+    if (!args[1]) throw new Error("--script requires a Node script path.");
     return { command: node, args: args.slice(1), env: childEnv };
   }
   const cliArgs = ["--yes", `hyperframes@${version}`, ...args];
   if (platform !== "win32") return { command: "npx", args: cliArgs, env: childEnv };
   const candidates = [
-    env.npm_execpath && join(dirname(env.npm_execpath), "npx-cli.js"),
-    join(dirname(node), "node_modules", "npm", "bin", "npx-cli.js"),
+    env.npm_execpath && win32.join(win32.dirname(env.npm_execpath), "npx-cli.js"),
+    win32.join(win32.dirname(node), "node_modules", "npm", "bin", "npx-cli.js"),
   ].filter(Boolean);
   const npx = candidates.find(pathExists);
   if (!npx)

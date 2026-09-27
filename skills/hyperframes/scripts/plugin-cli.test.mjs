@@ -63,6 +63,8 @@ test("pins CLI, suppresses standalone refresh, preserves unrelated environment",
     PATH: "/bin",
     HYPERFRAMES_SKIP_SKILLS: "1",
     HYPERFRAMES_SKILL_PKG_VERSION: "1.2.3",
+    HYPERFRAMES_PLUGIN_VERSION: "1.2.3",
+    HYPERFRAMES_NO_UPDATE_CHECK: "1",
   });
   assert.throws(() => invocation(["skills", "update"], { version: "1.2.3" }), /plugin manager/);
 });
@@ -71,13 +73,13 @@ test("Windows launches npx through Node without shell argument interpretation", 
   const result = invocation(["render", "a & b"], {
     version: "1.2.3",
     platform: "win32",
-    node: "/node.exe",
-    env: { npm_execpath: "/npm/bin/npm-cli.js" },
-    pathExists: (p) => p === "/npm/bin/npx-cli.js",
+    node: String.raw`C:\Program Files\nodejs\node.exe`,
+    env: { npm_execpath: String.raw`C:\Program Files\nodejs\node_modules\npm\bin\npm-cli.js` },
+    pathExists: (p) => p === String.raw`C:\Program Files\nodejs\node_modules\npm\bin\npx-cli.js`,
   });
-  assert.equal(result.command, "/node.exe");
+  assert.equal(result.command, String.raw`C:\Program Files\nodejs\node.exe`);
   assert.deepEqual(result.args, [
-    "/npm/bin/npx-cli.js",
+    String.raw`C:\Program Files\nodejs\node_modules\npm\bin\npx-cli.js`,
     "--yes",
     "hyperframes@1.2.3",
     "render",
