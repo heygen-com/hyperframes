@@ -8,7 +8,6 @@ import {
 } from "./timelineDOM";
 import { isTimelineIgnoredElement } from "./timelineElementHelpers";
 import { computeResizePreview } from "../components/timelineClipDragPreview";
-import { invalidateGroupInfoCache } from "./timelineGroupInfo";
 import type { TimelineElement } from "../store/playerStore";
 
 function el(id: string, extra: Partial<TimelineElement> = {}): TimelineElement {
@@ -166,7 +165,7 @@ describe("group info cache", () => {
   // changes either. Without an explicit drop, a muted group could never be
   // unmuted: the header kept reading the cached `hidden: false` and re-wrote
   // `data-hidden` forever.
-  it("re-reads group state after an invalidation", () => {
+  it("re-reads group state written earlier in the same task", () => {
     const doc = makeDoc(`
       <div data-composition-id="root">
         <audio id="voice-1" data-start="0" data-duration="5" data-audio-group="voiceover"></audio>
@@ -175,16 +174,10 @@ describe("group info cache", () => {
     `);
 
     expect(parseMember(doc).audioGroupHidden).toBe(false);
-
+    // No await: the observer has not delivered either write when the next read runs.
     doc.getElementById("voiceover")?.setAttribute("data-hidden", "");
-    // A write earlier in the same task counts before the observer delivers it.
     expect(parseMember(doc).audioGroupHidden).toBe(true);
-
-    invalidateGroupInfoCache(doc);
-    expect(parseMember(doc).audioGroupHidden).toBe(true);
-
     doc.getElementById("voiceover")?.removeAttribute("data-hidden");
-    invalidateGroupInfoCache(doc);
     expect(parseMember(doc).audioGroupHidden).toBe(false);
   });
 
