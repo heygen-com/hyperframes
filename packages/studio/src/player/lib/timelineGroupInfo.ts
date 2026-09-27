@@ -42,7 +42,29 @@ const groupInfoCache = new WeakMap<
 
 /** Bumped by every observed mutation to group state in a document. */
 const groupRevisions = new WeakMap<Document, number>();
-const groupObservers = new WeakSet<Document>();
+const groupObservers = new WeakMap<Document, MutationObserver>();
+
+function countGroupChanges(doc: Document, records: readonly MutationRecord[]): void {
+  // `childList` fires for EVERY node added or removed anywhere in the live
+  // preview, which on a composition that churns nodes during playback
+  // (SplitText, a typewriter, anything runtime-inserted) would expire this
+  // cache permanently and put it back to one whole-tree scan per parse. Only
+  // a group ELEMENT appearing or leaving actually changes the answer, so
+  // childList records are filtered rather than trusted; attribute records
+  // always count, because the filter below already narrowed them.
+  const relevant = records.some(
+    (record) =>
+      record.type !== "childList" ||
+      [...record.addedNodes, ...record.removedNodes].some(
+        (node) =>
+          node instanceof Element &&
+          (node.tagName.toLowerCase() === HF_AUDIO_GROUP_TAG ||
+            node.hasAttribute(HF_AUDIO_GROUP_ATTR) ||
+            node.querySelector?.(`${HF_AUDIO_GROUP_TAG},[${HF_AUDIO_GROUP_ATTR}]`) != null),
+      ),
+  );
+  if (relevant) groupRevisions.set(doc, (groupRevisions.get(doc) ?? 0) + 1);
+}
 
 /**
  * Watch a document for any change to group state, so the cache expires itself.
@@ -55,28 +77,8 @@ const groupObservers = new WeakSet<Document>();
  */
 function observeGroupState(doc: Document): void {
   if (groupObservers.has(doc) || typeof MutationObserver === "undefined" || !doc.body) return;
-  groupObservers.add(doc);
-  const observer = new MutationObserver((records) => {
-    // `childList` fires for EVERY node added or removed anywhere in the live
-    // preview, which on a composition that churns nodes during playback
-    // (SplitText, a typewriter, anything runtime-inserted) would expire this
-    // cache permanently and put it back to one whole-tree scan per parse. Only
-    // a group ELEMENT appearing or leaving actually changes the answer, so
-    // childList records are filtered rather than trusted; attribute records
-    // always count, because the filter below already narrowed them.
-    const relevant = records.some(
-      (record) =>
-        record.type !== "childList" ||
-        [...record.addedNodes, ...record.removedNodes].some(
-          (node) =>
-            node instanceof Element &&
-            (node.tagName.toLowerCase() === HF_AUDIO_GROUP_TAG ||
-              node.hasAttribute(HF_AUDIO_GROUP_ATTR) ||
-              node.querySelector?.(`${HF_AUDIO_GROUP_TAG},[${HF_AUDIO_GROUP_ATTR}]`) != null),
-        ),
-    );
-    if (relevant) groupRevisions.set(doc, (groupRevisions.get(doc) ?? 0) + 1);
-  });
+  const observer = new MutationObserver((records) => countGroupChanges(doc, records));
+  groupObservers.set(doc, observer);
   observer.observe(doc.body, {
     subtree: true,
     childList: true,
@@ -112,6 +114,9 @@ export function invalidateGroupInfoCache(doc: Document | null | undefined): void
 export function groupInfoFor(doc: Document | null | undefined, groupId: string): GroupInfo {
   if (!doc) return { label: groupId, volume: 1, hidden: false };
   observeGroupState(doc);
+  // A write earlier in this task has not reached the observer's callback yet.
+  const unseen = groupObservers.get(doc)?.takeRecords();
+  if (unseen?.length) countGroupChanges(doc, unseen);
   const revision = groupRevisions.get(doc) ?? 0;
   const cached = groupInfoCache.get(doc);
   let info = cached && cached.revision === revision ? cached.entries : undefined;

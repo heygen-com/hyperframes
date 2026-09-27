@@ -8,6 +8,7 @@ import { jsonResponse, requestUrl } from "../../hooks/fetchStubTestUtils";
 import { useTimelineEditing } from "../../hooks/useTimelineEditing";
 import { useEditHistoryActions } from "../../hooks/useEditHistoryActions";
 import { usePreviewPersistence } from "../../hooks/usePreviewPersistence";
+import { groupInfoFor } from "../lib/timelineGroupInfo";
 import { usePlayerStore, type TimelineElement } from "../store/playerStore";
 import { serializeAutomation, type HfAutomation } from "@hyperframes/core/audio-automation";
 import { groupAutomationElement } from "./groupAutomationElement";
@@ -1168,6 +1169,26 @@ describe("useAutomationLanes saves report what happened", () => {
       expect(usePlayerStore.getState().elements[0]?.[field]).toBe(want);
     },
   );
+
+  it("clears a group's mirrored automation when an undo soft-restores the group without it", async () => {
+    const { commit, iframe, undo, setFile } = mountLanes(group);
+    const grouped = SOURCE.replace(
+      '<audio id="music"',
+      '<audio id="music" data-audio-group="hf-group"',
+    );
+    setFile(grouped);
+    iframe.contentDocument!.body.innerHTML = grouped;
+    expect(await commit(curve(0.5))).toEqual({ status: "saved" });
+    // The timeline's parse warms the group cache on every render.
+    expect(groupInfoFor(iframe.contentDocument, "hf-group").automation).toBe(
+      serializeAutomation(curve(0.5)),
+    );
+    await undo(grouped);
+    expect(
+      iframe.contentDocument!.getElementById("hf-group")?.hasAttribute("data-automation"),
+    ).toBe(false);
+    expect(usePlayerStore.getState().elements[0]?.audioGroupAutomation).toBeUndefined();
+  });
 
   it.each(
     BOTH_LANES.flatMap((lane) => (["write", "read"] as const).map((held) => ({ ...lane, held }))),

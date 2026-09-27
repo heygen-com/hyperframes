@@ -177,7 +177,8 @@ describe("group info cache", () => {
     expect(parseMember(doc).audioGroupHidden).toBe(false);
 
     doc.getElementById("voiceover")?.setAttribute("data-hidden", "");
-    expect(parseMember(doc).audioGroupHidden).toBe(false); // still the cached scan
+    // A write earlier in the same task counts before the observer delivers it.
+    expect(parseMember(doc).audioGroupHidden).toBe(true);
 
     invalidateGroupInfoCache(doc);
     expect(parseMember(doc).audioGroupHidden).toBe(true);
