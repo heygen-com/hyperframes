@@ -29,7 +29,7 @@ import { homedir } from "node:os";
 import { join } from "node:path";
 import { compareVersions } from "compare-versions";
 import { readConfig, writeConfig } from "../telemetry/config.js";
-import { isDevMode } from "./env.js";
+import { updateCheckDisabled } from "./updateCheck.js";
 import {
   detectInstaller,
   installInvocation,
@@ -42,11 +42,7 @@ const LOG_FILE = join(CONFIG_DIR, "auto-update.log");
 const PENDING_TIMEOUT_MS = 10 * 60 * 1000;
 
 function isAutoInstallDisabled(): boolean {
-  if (isDevMode()) return true;
-  if (process.env["CI"] === "true" || process.env["CI"] === "1") return true;
-  if (process.env["HYPERFRAMES_NO_UPDATE_CHECK"] === "1") return true;
-  if (process.env["HYPERFRAMES_NO_AUTO_INSTALL"] === "1") return true;
-  return false;
+  return updateCheckDisabled() || process.env["HYPERFRAMES_NO_AUTO_INSTALL"] === "1";
 }
 
 /** Parse a semver-ish string's major number; returns NaN for pre-releases etc. */

@@ -271,6 +271,7 @@ describe("printDeprecationNotice", () => {
 describe("checkForUpdate — registry boundary guard", () => {
   afterEach(() => {
     vi.doUnmock("../telemetry/config.js");
+    vi.doUnmock("./env.js");
     vi.resetModules();
   });
 
@@ -281,9 +282,12 @@ describe("checkForUpdate — registry boundary guard", () => {
 
   it("still asks the registry from a run without a terminal", async () => {
     clearOptOuts();
+    const origTTY = process.stderr.isTTY;
+    Object.defineProperty(process.stderr, "isTTY", { value: false, configurable: true });
     try {
       expect((await checkWith("99.0.0", false)).fetched).toBe(true);
     } finally {
+      Object.defineProperty(process.stderr, "isTTY", { value: origTTY, configurable: true });
       vi.unstubAllEnvs();
     }
   });

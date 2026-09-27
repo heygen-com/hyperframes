@@ -162,7 +162,7 @@ export function printDeprecationNotice(command: string): void {
 }
 
 /** True when the update check is off: dev mode, CI, or the HYPERFRAMES_NO_UPDATE_CHECK opt-out. */
-function updateCheckDisabled(): boolean {
+export function updateCheckDisabled(): boolean {
   if (isDevMode()) return true;
   if (process.env["CI"] === "true" || process.env["CI"] === "1") return true;
   return process.env["HYPERFRAMES_NO_UPDATE_CHECK"] === "1";
