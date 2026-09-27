@@ -913,7 +913,8 @@ class Engine {
     );
     if (pending) return direction === "back" ? this.pendingEntry(pending) : undefined;
     const everyone = this.options.undoScope === "everyone";
-    const ofOpenTurn = (entry: HistoryEntry) => this.windows.some((open) => open.parts?.has(entry.id));
+    const ofOpenTurn = (entry: HistoryEntry) =>
+      this.windows.some((open) => open.parts?.has(entry.id));
     return stepTarget(
       this.log.entries,
       direction,
