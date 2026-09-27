@@ -22,6 +22,7 @@ const os = require("os");
 // HYPERFRAMES_ROOT; standalone we also try the in-repo path + ~/Downloads, and
 // accept ANY puppeteer@* the bun store holds (not a pinned version).
 const HF_ROOTS = [
+  process.argv[2] && path.resolve(process.argv[2]), // project-owned helper dependencies
   process.env.HYPERFRAMES_ROOT,
   path.resolve(__dirname, "../../.."), // skills/embedded-captions/scripts → repo root if in-repo
   path.join(os.homedir(), "Downloads", "hyperframes"),
@@ -54,7 +55,7 @@ for (const root of HF_ROOTS) {
 }
 if (!puppeteer) {
   console.error(
-    "[measure] could not locate puppeteer — set HYPERFRAMES_ROOT to a built hyperframes checkout",
+    "[measure] could not locate puppeteer — install project dependencies per embedded-captions SKILL.md Runtime prerequisites",
   );
   process.exit(3);
 }

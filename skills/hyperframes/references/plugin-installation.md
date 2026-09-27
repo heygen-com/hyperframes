@@ -28,7 +28,7 @@ in every workflow and reference:
   latest. Existing project dependency files and lockfiles must not be overwritten
   to match the plugin; surface a runtime incompatibility before changing them.
 
-- For bundled Node helpers that bootstrap HyperFrames packages, use the same
+- For bundled Node helpers, use the same
   launcher with `--script <absolute-script-path> <args...>`. This passes the
   release version to their dependency loader. External providers, registry
   downloads, and existing project dependencies have their own versions; a plugin
