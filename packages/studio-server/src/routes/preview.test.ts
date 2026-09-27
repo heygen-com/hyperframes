@@ -1536,7 +1536,9 @@ describe("hf-proxy codec probe", () => {
     const h264 = join(externalDir, "h264.mp4");
     writeFileSync(hevc, "same-size-a");
     writeFileSync(h264, "same-size-b");
-    utimesSync(h264, statSync(hevc).atime, statSync(hevc).mtime);
+    const sameTime = new Date("2026-01-01T00:00:00Z");
+    utimesSync(hevc, sameTime, sameTime);
+    utimesSync(h264, sameTime, sameTime);
     const link = join(projectDir, "clip.mp4");
     if (!tryCreateSymlink(hevc, link, "file")) return;
     const { proxy } = await appWithProbe(projectDir, (path) =>

@@ -241,11 +241,8 @@ function rememberProbeResult(
 }
 
 /**
- * Probe a single video asset, cached per path until its target, mtime or size changes.
- * Best-effort: ffprobe missing, erroring, or finding no video stream resolves
- * to `null` (asset omitted by the caller), never a throw. Async so a pool of
- * probes runs concurrently (the default runner is `execFile`-based). A cache hit
- * skips `runner`; a failed probe is not cached, so the next call retries.
+ * Codec facts for one video, cached per path until its target, mtime or size changes; a hit skips
+ * `runner`. Never throws: no video stream or a failed probe gives `null`, and a failed probe is not cached.
  */
 export async function probeAssetCodec(
   filePath: string,
