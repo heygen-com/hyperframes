@@ -55,7 +55,7 @@ function projectWithRegistry(): {
     vi.fn(async (input: string | URL) => {
       const url = String(input);
       fetched.push(url);
-      // Only the project's own registry answers, so nothing reaches the real registry cache.
+      // Only the project's own registry answers, so nothing is cached for the public registry.
       if (!url.startsWith(registry)) return new Response("not found", { status: 404 });
       if (url.endsWith("/registry.json")) {
         const items = [{ name: "my-block", type: "hyperframes:block" }];

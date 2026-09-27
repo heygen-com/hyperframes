@@ -757,12 +757,12 @@ export function createStudioServer(options: StudioServerOptions): StudioServer {
       const { listRegistryItems, loadAllItems } = await import("../registry/resolver.js");
       const { loadProjectConfig } = await import("../utils/projectConfig.js");
       // The same registry `add` installs from, so the panel lists what can be installed.
-      const options = { baseUrl: loadProjectConfig(projectDir).registry };
-      const entries = await listRegistryItems(undefined, options);
+      const registry = { baseUrl: loadProjectConfig(projectDir).registry };
+      const entries = await listRegistryItems(undefined, registry);
       const blockAndComponentEntries = entries.filter(
         (e) => e.type === "hyperframes:block" || e.type === "hyperframes:component",
       );
-      return loadAllItems(blockAndComponentEntries, options);
+      return loadAllItems(blockAndComponentEntries, registry);
     },
 
     async installRegistryBlock(opts) {
