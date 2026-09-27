@@ -232,6 +232,8 @@ function mountLanes(target: TimelineElement, canEdit?: CanEdit, recording = fals
       undoHeld = new Promise<void>((resolve) => (release = resolve));
       return { release, done: history!.undo() };
     },
+    // A cancelled gesture's last live write, which puts its start back.
+    cancel: (next: HfAutomation) => act(() => binding!.onPreview(next, true)),
     setRecording: (next: boolean) => (isRecordingRef.current = next),
     holdRead,
   };
@@ -1336,6 +1338,29 @@ describe("useAutomationLanes saves report what happened", () => {
         await Promise.all([undo.done, releasing]);
       });
       expectEverywhere(h, target, field, serializeAutomation(curve(0.2)));
+    },
+  );
+
+  it.each(BOTH_LANES)(
+    "ends a cancelled $lane gesture, so a later outside write is what a failed save settles on",
+    async ({ target, field }) => {
+      const h = mountLanes(target);
+      expect(await h.commit(curve(0.5))).toEqual({ status: "saved" });
+      h.preview(curve(0.9));
+      h.cancel(curve(0.5));
+      // The property panel writes the lane's attribute without going through the lanes.
+      const panel = serializeAutomation(curve(0.3));
+      const doc = new DOMParser().parseFromString(h.file(), "text/html");
+      doc.getElementById(target.id)!.setAttribute("data-automation", panel);
+      h.setFile(doc.body.innerHTML);
+      h.iframe.contentDocument!.getElementById(target.id)!.setAttribute("data-automation", panel);
+      const [clip] = usePlayerStore.getState().elements;
+      usePlayerStore.getState().setElements([{ ...clip!, [field]: panel }]);
+      lastFailing(h, "is refused");
+      await act(async () => {
+        await h.startCommit(curve(0.9));
+      });
+      expectEverywhere(h, target, field, panel);
     },
   );
 });

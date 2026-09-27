@@ -84,6 +84,8 @@ export interface TimelineEditCallbacks {
   ) => Promise<void> | void;
   /** B7's bus strip: live-write the group's own attribute while dragging. */
   onSetAudioGroupAttributeLive?: (groupId: string, attr: string, value: string | null) => void;
+  /** A live write that ended without saving: the value from before it goes back. */
+  onRevertAudioGroupAttributeLive?: (groupId: string, attr: string) => void;
   /** ...and persist one undo entry on release. */
   onSetAudioGroupAttributeQuiet?: (
     groupId: string,
@@ -106,6 +108,7 @@ export interface TimelineEditCallbacks {
     attr: string,
     value: string | null,
   ) => void;
+  onRevertElementAttributeLive?: (element: TimelineElement, attr: string) => void;
   onSetElementAttributeQuiet?: (
     element: TimelineElement,
     attr: string,

@@ -87,7 +87,7 @@ describe("TimelineFxPopover", () => {
     act(() => {
       button?.dispatchEvent(new FocusEvent("focusout", { bubbles: true }));
     });
-    expect(onChainPreview).toHaveBeenCalledWith(EMPTY_CHAIN);
+    expect(onChainPreview).toHaveBeenCalledWith(EMPTY_CHAIN, true);
   });
 
   it("Escape closes without letting the keystroke propagate past the popover", () => {

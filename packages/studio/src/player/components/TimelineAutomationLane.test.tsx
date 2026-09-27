@@ -1664,6 +1664,7 @@ describe("TimelineAutomationLane stretch", () => {
     const reverted = (props.onPreview.mock.calls.at(-1)?.[0] as HfAutomation | undefined)?.lanes[0]
       ?.points;
     expect(reverted).toEqual(stretchable.lanes[0]?.points);
+    expect(props.onPreview.mock.calls.at(-1)?.[1]).toBe(true);
     expect(onRangeSelect).toHaveBeenLastCalledWith(0.5, 2.5, 0, 1);
   });
 

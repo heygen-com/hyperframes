@@ -37,8 +37,8 @@ export interface AutomationLaneBinding {
   /** One entry per lane, in draw order — each gets its own row. */
   lanes: HfAutomationLane[];
   chain: HfAudioFxChain | null;
-  /** Continuous write while dragging; does not persist. */
-  onPreview(next: HfAutomation): void;
+  /** Continuous write while dragging; does not persist. `ended`: a cancel put the start back. */
+  onPreview(next: HfAutomation, ended?: boolean): void;
   /** Gesture-end write; this is the one that persists and lands in undo. */
   onCommit(next: HfAutomation): Promise<TimelineEditOutcome | void>;
   /**
@@ -72,6 +72,7 @@ function automationWriters(edit: TimelineEditCallbacks, element: TimelineElement
     if (!live || !save) return null;
     return {
       live: (value: string | null) => live(element.id, HF_AUDIO_AUTOMATION_ATTR, value),
+      revert: () => edit.onRevertAudioGroupAttributeLive?.(element.id, HF_AUDIO_AUTOMATION_ATTR),
       save: (value: string | null) =>
         save(element.id, HF_AUDIO_AUTOMATION_ATTR, value, AUTOMATION_LABEL),
     };
@@ -80,6 +81,7 @@ function automationWriters(edit: TimelineEditCallbacks, element: TimelineElement
   if (!live || !save) return null;
   return {
     live: (value: string | null) => live(element, HF_AUDIO_AUTOMATION_ATTR, value),
+    revert: () => edit.onRevertElementAttributeLive?.(element, HF_AUDIO_AUTOMATION_ATTR),
     save: (value: string | null) =>
       save(element, HF_AUDIO_AUTOMATION_ATTR, value, AUTOMATION_LABEL),
   };
@@ -107,7 +109,10 @@ export function useAutomationLanes(): UseAutomationLanesResult {
         automation,
         lanes: automation.lanes,
         chain,
-        onPreview: (next) => writers?.live(automationAttrValue(next) || null),
+        onPreview: (next, ended) => {
+          writers?.live(automationAttrValue(next) || null);
+          if (ended) writers?.revert();
+        },
         onCommit: async (next) => {
           if (!writers) return;
           const outcome = await writers.save(automationAttrValue(next) || null);

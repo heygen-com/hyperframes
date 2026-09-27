@@ -33,6 +33,7 @@ function render(
   const root = createRoot(host);
   const onSetElementAttributeLive = vi.fn();
   const onSetElementAttributeQuiet = vi.fn().mockResolvedValue(undefined);
+  const onRevertElementAttributeLive = vi.fn();
   // Stands in for the TimelineClip button the handles live inside.
   const node = (
     <div data-testid="clip" onPointerDown={options.onClipPointerDown}>
@@ -49,13 +50,25 @@ function render(
       options.provide === false ? (
         node
       ) : (
-        <TimelineEditProvider value={{ onSetElementAttributeLive, onSetElementAttributeQuiet }}>
+        <TimelineEditProvider
+          value={{
+            onSetElementAttributeLive,
+            onSetElementAttributeQuiet,
+            onRevertElementAttributeLive,
+          }}
+        >
           {node}
         </TimelineEditProvider>
       ),
     );
   });
-  return { host, root, onSetElementAttributeLive, onSetElementAttributeQuiet };
+  return {
+    host,
+    root,
+    onSetElementAttributeLive,
+    onSetElementAttributeQuiet,
+    onRevertElementAttributeLive,
+  };
 }
 
 function pointer(type: string, clientX: number, pointerId = 1) {
@@ -146,14 +159,15 @@ describe("TimelineClipFades", () => {
   });
 
   it("puts the live value back and writes nothing when the gesture is cancelled", () => {
-    const { host, root, onSetElementAttributeLive, onSetElementAttributeQuiet } = render(clip);
+    const { host, root, onRevertElementAttributeLive, onSetElementAttributeQuiet } = render(clip);
     const handle = host.querySelector<HTMLElement>('[data-testid="clip-fade-handle-in"]');
     if (!handle) throw new Error("expected a fade-in handle");
     armCapture(handle);
     act(() => handle.dispatchEvent(pointer("pointerdown", 100)));
     act(() => handle.dispatchEvent(pointer("pointermove", 300)));
     act(() => handle.dispatchEvent(pointer("pointercancel", 300)));
-    expect(onSetElementAttributeLive).toHaveBeenLastCalledWith(clip, "data-fade-in", "1");
+    // Through the lanes' revert, so no value from before the gesture outlives it.
+    expect(onRevertElementAttributeLive).toHaveBeenCalledWith(clip, "data-fade-in");
     expect(onSetElementAttributeQuiet).not.toHaveBeenCalled();
     act(() => root.unmount());
   });

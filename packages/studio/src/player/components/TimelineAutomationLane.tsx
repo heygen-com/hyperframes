@@ -181,7 +181,7 @@ export interface TimelineAutomationLaneProps {
   /** Clip-local seconds of the playhead, or null when it is outside the clip. */
   playheadSec: number | null;
   /** Continuous write while dragging; does not persist. */
-  onPreview(automation: HfAutomation): void;
+  onPreview(automation: HfAutomation, ended?: boolean): void;
   /** Gesture-end write; this is the one that persists and lands in undo. */
   onCommit(automation: HfAutomation): Promise<TimelineEditOutcome | void> | void;
   /**
@@ -282,11 +282,11 @@ export function TimelineAutomationLane({
   );
 
   const commitPoints = useCallback(
-    (points: HfAutomationLane["points"], persist: boolean): void => {
+    (points: HfAutomationLane["points"], persist: boolean, ended?: boolean): void => {
       // Draw from the draft immediately; the write is what eventually agrees.
       setDraft({ points, basedOn: automation });
       const next = withLane(automation, { target, points });
-      if (!persist) return onPreview(next);
+      if (!persist) return onPreview(next, ended);
       void Promise.resolve(onCommit(next)).then((outcome) => {
         if (outcome && outcome.status !== "saved") {
           setDraft((current) => (current?.points === points ? null : current));
