@@ -45,13 +45,8 @@ const groupRevisions = new WeakMap<Document, number>();
 const groupObservers = new WeakMap<Document, MutationObserver>();
 
 function countGroupChanges(doc: Document, records: readonly MutationRecord[]): void {
-  // `childList` fires for EVERY node added or removed anywhere in the live
-  // preview, which on a composition that churns nodes during playback
-  // (SplitText, a typewriter, anything runtime-inserted) would expire this
-  // cache permanently and put it back to one whole-tree scan per parse. Only
-  // a group ELEMENT appearing or leaving actually changes the answer, so
-  // childList records are filtered rather than trusted; attribute records
-  // always count, because the filter below already narrowed them.
+  // Only a group element added or removed counts: childList fires for every node a playing
+  // preview inserts. Attribute records always count; the observer filter already narrowed them.
   const relevant = records.some(
     (record) =>
       record.type !== "childList" ||

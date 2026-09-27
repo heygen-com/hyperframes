@@ -14,7 +14,7 @@ export interface LiveLaneRestore {
   files?: Record<string, { restored: string }>;
 }
 
-/** Live-preview bookkeeping per lane of the open composition: the value before a gesture, pending saves, and the last value verified. */
+/** Per-lane live-preview state: the value before a gesture, pending saves, the last verified value. */
 function createLiveLanes(project: () => string, composition: () => string) {
   const before = new Map<string, string | null>();
   const sources = new Map<string, LiveLaneSource>();

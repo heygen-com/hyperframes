@@ -475,14 +475,8 @@ export async function persistElementAttribute({
     if (readTagSnippetByTarget(before, patchTarget) === undefined) {
       throw new Error(`Unable to patch element in ${targetPath}`);
     }
-    // The unwind value comes from the FILE, not from `readLive()`.
-    //
-    // Every live-write caller patches the DOM before committing — a fader drag is
-    // `setLive` per frame, hovering a preset auditions the whole chain — so by the
-    // time this runs the live DOM already holds the in-progress value. Reading it
-    // here made `previousValue === value`, so the unwind was a no-op and the preview
-    // kept a never-saved value that a reload dropped: the failure class the target
-    // check above closes, still open on the live-write path.
+    // Unwind to the file's value: live writers already patched the DOM, so `readLive()`
+    // would equal `value` and a failed save would keep a never-saved preview.
     const previousValue = readAttributeByTarget(before, patchTarget, attr) ?? null;
     onFileRead(previousValue);
     patchLive(value);
