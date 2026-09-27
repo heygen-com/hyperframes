@@ -170,19 +170,22 @@ export async function runFfmpegPipeline(
     producer.once(event, () => consumer.stdin?.end());
   }
   if (consumer.stdin) producer.stdout?.pipe(consumer.stdin);
+  const settleOrder: ManagedChildProcessOutcome[] = [];
   const outcomes = await Promise.all(
     [producer, consumer].map((child) =>
       new ManagedChildProcess(child, {
         signal: opts?.signal,
         deadlineAtMs,
         onStderr: opts?.onStderr,
-      }).wait(),
+      })
+        .wait()
+        .then((outcome) => {
+          settleOrder.push(outcome);
+          return outcome;
+        }),
     ),
   );
-  const [firstFailure] = outcomes
-    .filter((outcome) => !succeeded(outcome))
-    .sort((a, b) => a.durationMs - b.durationMs);
-  const reported = firstFailure ?? outcomes[1]!;
+  const reported = settleOrder.find((outcome) => !succeeded(outcome)) ?? outcomes[1]!;
   const stderr = [...outcomes.filter((outcome) => outcome !== reported), reported]
     .map((outcome) => outcome.stderr)
     .join("");

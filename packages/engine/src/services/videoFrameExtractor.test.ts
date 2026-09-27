@@ -1488,16 +1488,20 @@ describe.skipIf(!HAS_FFMPEG)("video frame extraction format", () => {
     }
   }, 60_000);
 
-  // Measured in Chrome 152: an untagged 1280x718 clip plays as BT.601, 1280x720 and 406x720 as BT.709.
+  // Measured in Chrome 152: untagged H.264 plays as BT.601 at 1280x718 and BT.709 at 1280x720 or 406x720;
+  // untagged VP9 and AV1 play as BT.601 at every size.
   it.each([
-    { height: 718, matrix: "bt601", format: "png" },
-    { height: 718, matrix: "bt601", format: "jpg" },
-    { height: 720, matrix: "bt709", format: "png" },
-    { height: 720, matrix: "bt709", format: "jpg" },
+    { codec: "libx264", height: 718, matrix: "bt601", format: "png" },
+    { codec: "libx264", height: 718, matrix: "bt601", format: "jpg" },
+    { codec: "libx264", height: 720, matrix: "bt709", format: "png" },
+    { codec: "libx264", height: 720, matrix: "bt709", format: "jpg" },
+    { codec: "libvpx-vp9", height: 720, matrix: "bt601", format: "png" },
+    { codec: "libaom-av1", height: 720, matrix: "bt601", format: "png" },
   ] as const)(
-    "reads an untagged $height-line source as $matrix like Chrome's own playback ($format)",
-    async ({ height, matrix, format }) => {
-      const fixture = join(FIXTURE_DIR, `untagged-${height}.mp4`);
+    "reads an untagged $height-line $codec source as $matrix like Chrome's own playback ($format)",
+    async ({ codec, height, matrix, format }) => {
+      const extension = codec === "libvpx-vp9" ? "webm" : "mp4";
+      const fixture = join(FIXTURE_DIR, `untagged-${codec}-${height}.${extension}`);
       const synth = await runFfmpeg([
         "-y",
         "-v",
@@ -1509,9 +1513,9 @@ describe.skipIf(!HAS_FFMPEG)("video frame extraction format", () => {
         "-vf",
         "scale=out_color_matrix=bt601:out_range=tv,format=yuv420p,setparams=colorspace=unknown:color_primaries=unknown:color_trc=unknown:range=tv",
         "-c:v",
-        "libx264",
-        "-qp",
-        "0",
+        codec,
+        ...(codec === "libx264" ? ["-qp", "0"] : ["-crf", "0", "-b:v", "0"]),
+        ...(codec === "libaom-av1" ? ["-cpu-used", "8"] : []),
         fixture,
       ]);
       if (!synth.success) throw new Error(`fixture synthesis failed: ${synth.stderr.slice(-400)}`);
@@ -1519,11 +1523,17 @@ describe.skipIf(!HAS_FFMPEG)("video frame extraction format", () => {
         "unknown",
       );
 
-      const result = await extractVideoFramesRange(fixture, `untagged-${height}-${format}`, 0, 1, {
-        fps: 1,
-        outputDir: join(FIXTURE_DIR, "out-untagged"),
-        format,
-      });
+      const result = await extractVideoFramesRange(
+        fixture,
+        `${basename(fixture)}-${format}`,
+        0,
+        1,
+        {
+          fps: 1,
+          outputDir: join(FIXTURE_DIR, "out-untagged"),
+          format,
+        },
+      );
 
       const pixelAt = (file: string, decode: string): number[] => [
         ...spawnSync("ffmpeg", [
@@ -1560,16 +1570,7 @@ describe.skipIf(!HAS_FFMPEG)("video frame extraction format", () => {
       codec: "libx264",
       pixFmt: "yuvj420p",
       probed: { colorTransfer: "bt709" },
-      tags: [
-        "-color_range",
-        "pc",
-        "-color_primaries",
-        "bt709",
-        "-color_trc",
-        "bt709",
-        "-colorspace",
-        "bt709",
-      ],
+      tags: "range=pc:color_primaries=bt709:color_trc=bt709:colorspace=bt709",
     },
     {
       name: "full range BT.709",
@@ -1577,16 +1578,7 @@ describe.skipIf(!HAS_FFMPEG)("video frame extraction format", () => {
       codec: "libx264",
       pixFmt: "yuvj420p",
       probed: { colorTransfer: "bt709" },
-      tags: [
-        "-color_range",
-        "pc",
-        "-color_primaries",
-        "bt709",
-        "-color_trc",
-        "bt709",
-        "-colorspace",
-        "bt709",
-      ],
+      tags: "range=pc:color_primaries=bt709:color_trc=bt709:colorspace=bt709",
     },
     {
       name: "BT.470BG gamma 2.8",
@@ -1594,7 +1586,7 @@ describe.skipIf(!HAS_FFMPEG)("video frame extraction format", () => {
       codec: "libx264",
       pixFmt: "yuv420p",
       probed: { colorTransfer: "bt470bg" },
-      tags: ["-color_primaries", "bt470bg", "-color_trc", "gamma28", "-colorspace", "bt470bg"],
+      tags: "color_primaries=bt470bg:color_trc=bt470bg:colorspace=bt470bg",
     },
     {
       name: "RGB",
@@ -1602,7 +1594,7 @@ describe.skipIf(!HAS_FFMPEG)("video frame extraction format", () => {
       codec: "libx264rgb",
       pixFmt: "rgb24",
       probed: { colorSpace: "gbr" },
-      tags: [],
+      tags: "",
     },
   ] as const)(
     "keeps every frame and the colours of a $name VFR window that ends on a still ($format)",
@@ -1617,7 +1609,7 @@ describe.skipIf(!HAS_FFMPEG)("video frame extraction format", () => {
         "-i",
         `color=c=0xC83C28:s=${UI_FIXTURE_WIDTH}x${UI_FIXTURE_HEIGHT}:d=2:r=60`,
         "-vf",
-        "select='not(between(n\\,30\\,89))'",
+        `select='not(between(n\\,30\\,89))'${tags ? `,setparams=${tags}` : ""}`,
         "-fps_mode",
         "vfr",
         "-c:v",
@@ -1626,7 +1618,6 @@ describe.skipIf(!HAS_FFMPEG)("video frame extraction format", () => {
         "ultrafast",
         "-pix_fmt",
         pixFmt,
-        ...tags,
         fixture,
       ]);
       if (!synth.success) throw new Error(`fixture synthesis failed: ${synth.stderr.slice(-400)}`);

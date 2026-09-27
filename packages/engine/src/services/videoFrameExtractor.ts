@@ -753,11 +753,14 @@ export function parseImageElements(html: string): ImageElement[] {
   return images;
 }
 
-/** Chrome reads an untagged matrix as BT.709 from 720 coded lines up, else BT.601; frames must match its playback. */
+/** Chrome plays untagged VP9 and AV1 as BT.601, and other codecs as BT.709 from 720 coded lines up. */
+const CHROME_BT601_UNTAGGED_CODECS = new Set(["vp9", "av1"]);
+
 function chromeGuessForUntaggedMatrix(metadata: VideoMetadata): string[] {
   const matrix = metadata.colorSpace?.colorSpace;
   if (matrix && matrix !== "unknown") return [];
-  return [`setparams=colorspace=${metadata.height >= 720 ? "bt709" : "smpte170m"}`];
+  const hd = metadata.height >= 720 && !CHROME_BT601_UNTAGGED_CODECS.has(metadata.videoCodec);
+  return [`setparams=colorspace=${hd ? "bt709" : "smpte170m"}`];
 }
 
 /** Pixel formats nut carries as raw video unchanged on ffmpeg 5.1 to 8.1 (yuvj only loses its range). */
@@ -770,15 +773,28 @@ const NUT_RAW_PIXEL_FORMATS = new Set([
   "yuvj444p",
   "yuva420p",
   "yuva444p",
+  "yuv440p",
+  "yuv411p",
+  "yuv410p",
+  "yuva422p",
   "yuv420p10le",
   "yuv422p10le",
   "yuv444p10le",
   "yuva420p10le",
+  "yuva444p10le",
+  "yuv420p12le",
   "nv12",
+  "nv21",
+  "yuyv422",
+  "uyvy422",
   "gray",
+  "gray10le",
+  "ya8",
   "gbrp",
   "gbrap",
   "gbrp10le",
+  "gbrp12le",
+  "gbrap10le",
   "rgb24",
   "bgr24",
   "rgba",
@@ -786,6 +802,7 @@ const NUT_RAW_PIXEL_FORMATS = new Set([
   "argb",
   "abgr",
   "rgb48le",
+  "rgba64le",
 ]);
 
 /** nut drops colour tags, so raw frames get the source's back before any other filter reads them. */
