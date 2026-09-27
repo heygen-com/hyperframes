@@ -21,6 +21,7 @@ import {
   sourceTimeAt,
   timeAtSourceTime,
   type RateSpec,
+  exportClipWindow,
   hasClipStarted,
   isInClipWindow,
   parseStrictFiniteTimingNumber,
@@ -2199,7 +2200,6 @@ function getFrameIndexAtTime(
   holdLastFrame = false,
   playbackRate: RateSpec = 1,
 ): number | null {
-  if (!hasClipStarted(globalTime, videoStart)) return null;
   let localTime = Math.max(0, globalTime - videoStart);
   const normalizedPlaybackRate = normalizeRateSpec(playbackRate);
   const loopDuration = timeAtSourceTime(
@@ -2237,6 +2237,7 @@ export function getFrameAtTime(
   loop = false,
   mediaStart = 0,
 ): string | null {
+  if (!hasClipStarted(globalTime, videoStart)) return null;
   const frameIndex = getFrameIndexAtTime(extracted, globalTime, videoStart, loop, mediaStart);
   return frameIndex == null ? null : extracted.framePaths.get(frameIndex) || null;
 }
@@ -2271,6 +2272,7 @@ export class FrameLookupTable {
       extracted: ExtractedFrames;
       start: number;
       end: number;
+      shown: { start: number; end: number };
       mediaStart: number;
       loop: boolean;
       playbackRate: RateSpec;
@@ -2281,6 +2283,7 @@ export class FrameLookupTable {
     extracted: ExtractedFrames;
     start: number;
     end: number;
+    shown: { start: number; end: number };
     mediaStart: number;
     loop: boolean;
     playbackRate: RateSpec;
@@ -2296,25 +2299,27 @@ export class FrameLookupTable {
     mediaStart: number,
     loop = false,
     playbackRate: RateSpec = 1,
+    fps?: number,
   ): void {
     this.videos.set(extracted.videoId, {
       extracted,
       start,
       end,
+      shown: fps ? exportClipWindow(start, end, fps) : { start, end },
       mediaStart,
       loop,
       playbackRate: normalizeRateSpec(playbackRate),
     });
     this.orderedVideos = Array.from(this.videos.entries())
       .map(([videoId, video]) => ({ videoId, ...video }))
-      .sort((a, b) => a.start - b.start);
+      .sort((a, b) => a.shown.start - b.shown.start);
     this.resetActiveState();
   }
 
   getFrame(videoId: string, globalTime: number): string | null {
     const video = this.videos.get(videoId);
     if (!video) return null;
-    if (!isInClipWindow(globalTime, video.start, video.end)) return null;
+    if (!isInClipWindow(globalTime, video.shown.start, video.shown.end)) return null;
     const frameIndex = getFrameIndexAtTime(
       video.extracted,
       globalTime,
@@ -2334,14 +2339,14 @@ export class FrameLookupTable {
   }
 
   private refreshActiveSet(globalTime: number): void {
-    // The runtime's half-open window. Rendered times stay below the composition end, so its
-    // terminal hold (isClipVisibleAt) never applies here.
+    // Export's half-open window (exportClipWindow). Rendered times stay below the composition end, so the
+    // runtime's terminal hold (isClipVisibleAt) never applies here.
     if (this.lastTime == null || globalTime < this.lastTime) {
       this.activeVideoIds.clear();
       this.startCursor = 0;
       for (const entry of this.orderedVideos) {
-        if (!hasClipStarted(globalTime, entry.start)) break;
-        if (isInClipWindow(globalTime, entry.start, entry.end)) {
+        if (!hasClipStarted(globalTime, entry.shown.start)) break;
+        if (isInClipWindow(globalTime, entry.shown.start, entry.shown.end)) {
           this.activeVideoIds.add(entry.videoId);
         }
         this.startCursor += 1;
@@ -2353,10 +2358,10 @@ export class FrameLookupTable {
     while (this.startCursor < this.orderedVideos.length) {
       const candidate = this.orderedVideos[this.startCursor];
       if (!candidate) break;
-      if (!hasClipStarted(globalTime, candidate.start)) {
+      if (!hasClipStarted(globalTime, candidate.shown.start)) {
         break;
       }
-      if (isInClipWindow(globalTime, candidate.start, candidate.end)) {
+      if (isInClipWindow(globalTime, candidate.shown.start, candidate.shown.end)) {
         this.activeVideoIds.add(candidate.videoId);
       }
       this.startCursor += 1;
@@ -2364,7 +2369,7 @@ export class FrameLookupTable {
 
     for (const videoId of Array.from(this.activeVideoIds)) {
       const video = this.videos.get(videoId);
-      if (!video || !isInClipWindow(globalTime, video.start, video.end)) {
+      if (!video || !isInClipWindow(globalTime, video.shown.start, video.shown.end)) {
         this.activeVideoIds.delete(videoId);
       }
     }
@@ -2421,9 +2426,11 @@ export class FrameLookupTable {
   }
 }
 
+/** `fps` is the render's, so a clip is shown in exactly the frames export visibility shows it in. */
 export function createFrameLookupTable(
   videos: VideoElement[],
   extracted: ExtractedFrames[],
+  fps?: number,
 ): FrameLookupTable {
   const table = new FrameLookupTable();
   const extractedMap = new Map<string, ExtractedFrames>();
@@ -2432,7 +2439,15 @@ export function createFrameLookupTable(
   for (const video of videos) {
     const ext = extractedMap.get(video.id);
     if (ext) {
-      table.addVideo(ext, video.start, video.end, video.mediaStart, video.loop, video.playbackRate);
+      table.addVideo(
+        ext,
+        video.start,
+        video.end,
+        video.mediaStart,
+        video.loop,
+        video.playbackRate,
+        fps,
+      );
     }
   }
 

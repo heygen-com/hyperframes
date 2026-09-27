@@ -269,6 +269,7 @@ export {
 export {
   MEDIA_VISUAL_STYLE_PROPERTIES,
   copyMediaVisualStyles,
+  exportClipWindow,
   quantizeSeekTime,
   quantizeTimeToFrame,
   type MediaVisualStyleProperty,

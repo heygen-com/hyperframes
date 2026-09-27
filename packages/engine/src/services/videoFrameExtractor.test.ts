@@ -1131,6 +1131,35 @@ describe("FrameLookupTable", () => {
     expect(table.getActiveFramePayloads(3.44).get("hero")?.frameIndex).toBe(42);
   });
 
+  it("gives a frame a hair before two clips meet to the clip export shows there", () => {
+    const clip = (id: string, start: number, end: number) => ({
+      id,
+      src: `${id}.webm`,
+      start,
+      end,
+      mediaStart: 0,
+      loop: false,
+      hasAudio: false,
+    });
+    const table = () =>
+      createFrameLookupTable(
+        [clip("a", 0, 1.00001), clip("b", 1.00001, 2)],
+        [
+          { ...fakeExtracted(90, 30), videoId: "a" },
+          { ...fakeExtracted(90, 30), videoId: "b" },
+        ],
+        30,
+      );
+    const stepping = table();
+    stepping.getActiveFramePayloads(29 / 30);
+    const payloads = stepping.getActiveFramePayloads(1);
+
+    expect([...payloads.keys()]).toEqual(["b"]);
+    expect(payloads.get("b")?.frameIndex).toBe(0);
+    expect([...table().getActiveFramePayloads(1).keys()]).toEqual(["b"]);
+    expect(table().getFrame("a", 1)).toBeNull();
+  });
+
   it.each([
     ["an exact", 0.1, 0.3, 0.3],
     ["a float-sum", 0.1, 0.1 + 0.2, 9 / 30],
