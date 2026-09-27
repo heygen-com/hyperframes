@@ -25,6 +25,7 @@ function setupMocks(opts: {
   devMode?: boolean;
   config?: ConfigShape;
   env?: Record<string, string | undefined>;
+  writeFails?: boolean;
 }): {
   writeSpy: ReturnType<typeof vi.fn>;
   spawnSpy: ReturnType<typeof vi.fn>;
@@ -34,12 +35,14 @@ function setupMocks(opts: {
 
   const config = { ...(opts.config ?? {}) };
   const writeSpy = vi.fn((next: ConfigShape) => {
+    if (opts.writeFails) return false;
     Object.assign(config, next);
     // writeConfig is given a full replacement — mirror that by pruning keys
     // that disappeared.
     for (const k of Object.keys(config)) {
       if (!(k in next)) delete (config as Record<string, unknown>)[k];
     }
+    return true;
   });
 
   vi.doMock("../telemetry/config.js", () => ({
@@ -119,6 +122,17 @@ describe("scheduleBackgroundInstall", () => {
     expect(writeSpy).toHaveBeenCalled();
     expect(config.pendingUpdate?.version).toBe("0.4.4");
     expect(config.pendingUpdate?.command).toBe("npm install -g hyperframes@0.4.4");
+  });
+
+  it("launches nothing when the pending install cannot be recorded", async () => {
+    const { spawnSpy } = setupMocks({
+      installer: { kind: "npm", command: "npm install -g hyperframes@0.4.4" },
+      writeFails: true,
+    });
+    const { scheduleBackgroundInstall } = await import("./autoUpdate.js");
+
+    expect(scheduleBackgroundInstall("0.4.4", "0.4.3")).toBe(false);
+    expect(spawnSpy).not.toHaveBeenCalled();
   });
 
   it("does NOT schedule across a major-version jump", async () => {

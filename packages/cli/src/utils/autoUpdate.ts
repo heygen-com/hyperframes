@@ -192,7 +192,7 @@ export function scheduleBackgroundInstall(latestVersion: string, currentVersion:
     command: installCommand,
     startedAt: new Date().toISOString(),
   };
-  writeConfig(config);
+  if (!writeConfig(config)) return false;
 
   try {
     launchDetachedInstall(invocation, installCommand, latestVersion);
