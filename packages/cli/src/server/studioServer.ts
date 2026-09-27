@@ -767,6 +767,7 @@ export function createStudioServer(options: StudioServerOptions): StudioServer {
 
     async installRegistryBlock(opts) {
       const { addToProject } = await import("../commands/add.js");
+      const { recordRewrittenInstall } = await import("../registry/installer.js");
       const { result, item } = await addToProject({
         name: opts.blockName,
         projectDir: opts.project.dir,
@@ -779,7 +780,6 @@ export function createStudioServer(options: StudioServerOptions): StudioServer {
       const written = result.written;
 
       rewriteWrittenToHostViewport(opts.project.dir, written);
-      const { recordRewrittenInstall } = await import("../registry/installer.js");
       recordRewrittenInstall(opts.project.dir, written);
 
       // The installer returns resolved paths, so a project opened through a symlink is resolved too.

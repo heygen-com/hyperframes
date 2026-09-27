@@ -138,4 +138,18 @@ describe("Studio catalog install", () => {
     expect((await install()).written).toEqual([]);
     expect(readFileSync(file, "utf-8")).toBe("my own edit");
   });
+
+  it("installs twice when the block folder is a symlink inside the project", async () => {
+    const { link, real } = projectWithRegistry();
+    mkdirSync(join(real, "shared-scenes"));
+    symlinkSync(join(real, "shared-scenes"), join(real, "scenes"), "junction");
+    const install = () =>
+      server!.adapter.installRegistryBlock!({
+        project: { dir: link, id: "p", title: "p" },
+        blockName: "my-block",
+      } as never);
+
+    await install();
+    expect((await install()).written).toEqual(["shared-scenes/my-block.html"]);
+  });
 });
