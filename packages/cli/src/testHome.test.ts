@@ -31,7 +31,8 @@ describe("the CLI test run", () => {
     await fetchRegistryManifest(registry);
 
     const slug = registry.replace(/[^a-zA-Z0-9]/g, "_");
-    const cacheFile = (home: string) => join(home, ".hyperframes", "cache", `${slug}__registry.json`);
+    const cacheFile = (home: string) =>
+      join(home, ".hyperframes", "cache", `${slug}__registry.json`);
     const leaked = existsSync(cacheFile(userInfo().homedir));
     rmSync(cacheFile(userInfo().homedir), { force: true });
     expect(existsSync(cacheFile(homedir()))).toBe(true);
