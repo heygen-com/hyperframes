@@ -96,7 +96,7 @@ function variableValuesAttribute(values: Record<string, unknown> | null): string
  * recorded manifest target must name the same file, or a render would look for
  * a block at a path the composition never mounts and report it as dropped.
  */
-function primaryInstalledTarget(item: RegistryItem): string {
+export function primaryInstalledTarget(item: RegistryItem): string {
   const primary =
     item.files.find((f) => f.type === "hyperframes:snippet") ??
     item.files.find((f) => f.type === "hyperframes:composition") ??

@@ -10,7 +10,7 @@ import { streamSSE } from "hono/streaming";
 import { existsSync, readFileSync, realpathSync, writeFileSync, unlinkSync } from "node:fs";
 import { createHash } from "node:crypto";
 import { fileURLToPath } from "node:url";
-import { resolve, join, basename, relative } from "node:path";
+import { resolve, join, basename, relative, sep } from "node:path";
 import { readBundleFile } from "./readBundleFile.js";
 import {
   createProjectWatcher,
@@ -766,8 +766,9 @@ export function createStudioServer(options: StudioServerOptions): StudioServer {
     },
 
     async installRegistryBlock(opts) {
-      const { addToProject } = await import("../commands/add.js");
+      const { addToProject, primaryInstalledTarget } = await import("../commands/add.js");
       const { recordRewrittenInstall } = await import("../registry/installer.js");
+      const { registryTargetPath } = await import("../registry/publication.js");
       const { result, item } = await addToProject({
         name: opts.blockName,
         projectDir: opts.project.dir,
@@ -782,9 +783,15 @@ export function createStudioServer(options: StudioServerOptions): StudioServer {
       rewriteWrittenToHostViewport(opts.project.dir, written);
       recordRewrittenInstall(opts.project.dir, written);
 
-      // The installer returns resolved paths, so a project opened through a symlink is resolved too.
+      // The item's own file first, as add recorded it, even when kept for the project's edit: Studio mounts it.
       const root = realpathSync(opts.project.dir);
-      return { written: written.map((abs) => relative(root, abs)), block: item };
+      const primary = primaryInstalledTarget(item);
+      const primaryPath = registryTargetPath(root, primary);
+      const others = written
+        .filter((abs) => abs !== primaryPath)
+        .map((abs) => relative(root, abs).split(sep).join("/"));
+      const onDisk = written.includes(primaryPath) || result.preserved.includes(primaryPath);
+      return { written: onDisk ? [primary, ...others] : others, block: item };
     },
   };
 
