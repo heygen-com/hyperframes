@@ -28,11 +28,13 @@ export function isRecordedFolder(historyDir: string, dir: string, folder: Folder
   } catch {
     return false;
   }
-  // A record from 0.8.78 or earlier holds only the path; as then, the folder is a copy only while that path has the id.
-  if (was.ino === undefined && typeof was.dir === "string")
-    return was.dir === dir || !(existsSync(was.dir) && readId(was.dir) === basename(historyDir));
+  const recordedPathOnlyAs0878Did = was.ino === undefined && typeof was.dir === "string";
+  if (recordedPathOnlyAs0878Did)
+    return was.dir === dir || !stillCarriesId(was.dir as string, basename(historyDir));
   return sameFolder({ ino: was.ino ?? NaN, birthtimeMs: was.born ?? NaN }, folder);
 }
+
+const stillCarriesId = (dir: string, id: string) => existsSync(dir) && readId(dir) === id;
 
 /**
  * The project's history id, kept in the project so a rename or move keeps its history. Where history exists under it,
