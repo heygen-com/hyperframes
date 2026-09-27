@@ -57,7 +57,6 @@ export class CliResultSignal extends Error {
   }
 }
 
-/** `cause` is what the executable boundary reports: the one command-failure report. */
 export function failCommand(exitCode = 1, cause?: unknown): never {
   throw new CliRuntimeError("Command failed", { exitCode, presented: true, cause });
 }
