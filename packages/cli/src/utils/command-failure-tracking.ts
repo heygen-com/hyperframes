@@ -1,5 +1,6 @@
 import type { CommandDef } from "citty";
 import { assertKnownFlags } from "./reject-unknown-flags.js";
+import { CliRuntimeError } from "./commandResult.js";
 
 // citty types subcommands as `CommandDef<any>` (SubCommandsDef); mirror that so
 // each command's specific args type is accepted without per-command generics.
@@ -80,7 +81,8 @@ function wrapCommand(cmd: AnyCommandDef): AnyCommandDef {
 export async function reportCommandFailure(command: string, err: unknown): Promise<void> {
   try {
     const { trackCommandFailure } = await import("../telemetry/events.js");
-    trackCommandFailure(command, err);
+    const cause = err instanceof CliRuntimeError ? err.cause : undefined;
+    trackCommandFailure(command, cause ?? err);
   } catch {
     // ignore: a telemetry failure must not affect the command's exit path
   }

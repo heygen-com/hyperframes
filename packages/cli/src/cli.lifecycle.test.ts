@@ -1,3 +1,6 @@
+import { mkdtempSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { mockTelemetry } from "./cliDispatchTestUtils.js";
 
@@ -67,6 +70,32 @@ describe("CLI lifecycle", () => {
     await execution;
 
     expect(order).toEqual(["cli_error", "flush"]);
+  });
+
+  it("reports a command that fails outside a project once, by its real error", async () => {
+    const reports: unknown[] = [];
+    const dir = mkdtempSync(join(tmpdir(), "hf-cli-once-"));
+    try {
+      mockInitCommand(async () => {
+        const { resolveProject } = await import("./utils/project.js");
+        resolveProject(dir);
+      });
+      mockTelemetry({
+        trackCommandFailure: vi.fn((_command: string, error: unknown) => reports.push(error)),
+      });
+      const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+      const logSpy = vi.spyOn(console, "log").mockImplementation(() => {});
+
+      process.argv = ["node", "cli.ts", "init", "--json"];
+      await import("./cli.js");
+      errorSpy.mockRestore();
+      logSpy.mockRestore();
+
+      expect(reports).toHaveLength(1);
+      expect(reports[0]).toMatchObject({ name: "InvalidProjectError" });
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
   });
 
   it("hands queued events to flushSync even after finalizeCli has run", async () => {
@@ -235,7 +264,7 @@ describe("CLI lifecycle", () => {
   });
 });
 
-function mockInitCommand(run: () => void): void {
+function mockInitCommand(run: () => void | Promise<void>): void {
   vi.doMock("./commands/init.js", () => ({
     default: {
       meta: { name: "init" },
