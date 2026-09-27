@@ -6,6 +6,8 @@ import { DomEditProvider } from "../../contexts/DomEditContext";
 import { TimelineEditProvider } from "../../contexts/TimelineEditContext";
 import { jsonResponse, requestUrl } from "../../hooks/fetchStubTestUtils";
 import { useTimelineEditing } from "../../hooks/useTimelineEditing";
+import { useEditHistoryActions } from "../../hooks/useEditHistoryActions";
+import { usePreviewPersistence } from "../../hooks/usePreviewPersistence";
 import { usePlayerStore, type TimelineElement } from "../store/playerStore";
 import { serializeAutomation, type HfAutomation } from "@hyperframes/core/audio-automation";
 import { groupAutomationElement } from "./groupAutomationElement";
@@ -57,6 +59,7 @@ function mountLanes(target: TimelineElement, canEdit?: CanEdit, recording = fals
   const isRecordingRef = { current: recording };
   let file = SOURCE;
   let reads = 0;
+  let undoTo = SOURCE;
   const held = new Map<number, Promise<void>>();
   const broken = new Set<number>();
   vi.stubGlobal(
@@ -89,6 +92,16 @@ function mountLanes(target: TimelineElement, canEdit?: CanEdit, recording = fals
   const selection = { id: target.id };
   const previewIframeRef = { current: iframe };
   let binding: AutomationLaneBinding | null = null;
+  let history: ReturnType<typeof useEditHistoryActions> | null = null;
+  const editHistory = {
+    undo: async () => {
+      const previous = file;
+      file = undoTo;
+      const restored = { [composition]: { previous, restored: file } };
+      return { ok: true, label: "Undo", paths: [composition], files: restored };
+    },
+    redo: async () => ({ ok: false, reason: "empty" }),
+  };
 
   function Probe() {
     binding = useAutomationLanes().bind(target, true);
@@ -108,6 +121,27 @@ function mountLanes(target: TimelineElement, canEdit?: CanEdit, recording = fals
       uploadProjectFiles: async () => [],
       canEdit,
       isRecordingRef,
+    });
+    const persistence = usePreviewPersistence({
+      showToast: () => {},
+      readOptionalProjectFile: async () => "",
+      writeProjectFile,
+      recordEdit: async () => {},
+      previewIframeRef,
+      activeCompPathRef: { current: composition },
+      reloadPreview: () => {},
+    });
+    history = useEditHistoryActions({
+      editHistory,
+      readOptionalProjectFile: async () => "",
+      readProjectFile: async () => file,
+      writeProjectFile,
+      showToast: () => {},
+      syncHistoryPreviewAfterApply: persistence.syncHistoryPreviewAfterApply,
+      waitForPendingDomEditSaves: persistence.waitForPendingDomEditSaves,
+      // As App.tsx wires it.
+      onAfterUndoRedo: (restore) => editing.restoreLiveLanes(restore),
+      activeCompPath: composition,
     });
     const domEdit = {
       domEditSelectionRef: { current: selection },
@@ -174,6 +208,13 @@ function mountLanes(target: TimelineElement, canEdit?: CanEdit, recording = fals
     },
     fileAt: (path: string) => (path === composition ? file : files.get(`${projectId}/${path}`)),
     put,
+    // Cmd+Z through the real history actions: the file goes back to `to`, the preview soft-restores.
+    undo: async (to: string) => {
+      undoTo = to;
+      await act(async () => {
+        await history!.undo();
+      });
+    },
     setRecording: (next: boolean) => (isRecordingRef.current = next),
     holdRead,
   };
@@ -1089,6 +1130,44 @@ describe("useAutomationLanes saves report what happened", () => {
     ).toBe(false);
     expect(usePlayerStore.getState().elements[0]?.audioGroupAutomation).toBeUndefined();
   });
+
+  it.each(
+    BOTH_LANES.flatMap((lane) =>
+      (["mid-drag", "after a cancel"] as const).flatMap((undo) =>
+        (["is refused", "goes offline"] as const).map((release) => ({ ...lane, undo, release })),
+      ),
+    ),
+  )(
+    "keeps the undone $lane value when an undo lands $undo and the next save $release with no read-back",
+    async ({ target, field, undo: when, release }) => {
+      const h = mountLanes(target);
+      expect(await h.commit(curve(0.2))).toEqual({ status: "saved" });
+      const base = h.file();
+      expect(await h.commit(curve(0.5))).toEqual({ status: "saved" });
+      h.preview(curve(0.9));
+      if (when === "mid-drag") {
+        await h.undo(base);
+        h.preview(curve(0.9));
+      } else {
+        // A cancelled stretch or a left audition re-previews its snapshot and never saves.
+        h.preview(curve(0.5));
+        await h.undo(base);
+      }
+      if (release === "is refused") h.setRecording(true);
+      else h.failRead(h.reads() + 2);
+      h.failRead(h.reads() + 1);
+      await act(async () => {
+        await h.startCommit(curve(0.9));
+      });
+      const want = serializeAutomation(curve(0.2));
+      const saved = new DOMParser().parseFromString(h.file(), "text/html");
+      expect(saved.getElementById(target.id)?.getAttribute("data-automation")).toBe(want);
+      expect(
+        h.iframe.contentDocument!.getElementById(target.id)?.getAttribute("data-automation"),
+      ).toBe(want);
+      expect(usePlayerStore.getState().elements[0]?.[field]).toBe(want);
+    },
+  );
 
   it.each(
     BOTH_LANES.flatMap((lane) => (["write", "read"] as const).map((held) => ({ ...lane, held }))),

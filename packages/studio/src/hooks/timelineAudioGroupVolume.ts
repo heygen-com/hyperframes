@@ -15,7 +15,7 @@ import {
   readSavedAttribute,
   type RecordEditInput,
 } from "./timelineEditingHelpers";
-import { useLiveLanes } from "./liveLanes";
+import { useLiveLanes, type LiveLaneRestore } from "./liveLanes";
 import type {
   MutableRef,
   UseTimelineElementVisibilityEditingInput,
@@ -242,20 +242,30 @@ export function useSetAudioGroupAttribute({
     label: string,
   ) => Promise<TimelineEditOutcome>;
   revertLive: (groupId: string, attr: string) => void;
+  restoreLive: (restore: LiveLaneRestore) => void;
 } {
   const liveLanes = useLiveLanes(projectIdRef, activeCompPath);
   const setLive = useCallback(
     (groupId: string, attr: string, value: string | null) => {
       const key = audioGroupAttributeLiveKey(groupId, attr);
       const target = previewIframeRef.current?.contentDocument?.getElementById(groupId);
-      liveLanes.preview(key, () => target?.getAttribute(attr) ?? null);
+      const { targetPath, patchTarget } = groupSaveTarget(
+        previewIframeRef.current,
+        groupId,
+        activeCompPath,
+      );
+      liveLanes.preview(key, () => target?.getAttribute(attr) ?? null, {
+        path: targetPath,
+        target: patchTarget,
+        attr,
+      });
       patchLiveGroupAttribute(previewIframeRef.current, groupId, attr, value);
       // Live too, not just on commit: a fader drag is `setLive` per frame and
       // `setQuiet` once on release, so without this the strip's own readout
       // fights the drag.
       syncStoredGroupAttribute(groupId, attr, value);
     },
-    [liveLanes, previewIframeRef],
+    [liveLanes, previewIframeRef, activeCompPath],
   );
   const laneApply = useCallback(
     (groupId: string, attr: string) => ({
@@ -336,5 +346,5 @@ export function useSetAudioGroupAttribute({
       projectIdRef,
     ],
   );
-  return { setLive, setQuiet, revertLive };
+  return { setLive, setQuiet, revertLive, restoreLive: liveLanes.restore };
 }

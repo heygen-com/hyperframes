@@ -15,7 +15,7 @@ import {
   persistElementAttribute,
   readSavedAttribute,
 } from "./timelineEditingHelpers";
-import { useLiveLanes } from "./liveLanes";
+import { useLiveLanes, type LiveLaneRestore } from "./liveLanes";
 import type {
   MutableRef,
   UseTimelineElementVisibilityEditingInput,
@@ -118,13 +118,19 @@ export function useSetElementAttribute({
     label: string,
   ) => Promise<TimelineEditOutcome>;
   revertLive: (element: TimelineElement, attr: string) => void;
+  restoreLive: (restore: LiveLaneRestore) => void;
 } {
   const liveLanes = useLiveLanes(projectIdRef, activeCompPath);
   const setLive = useCallback(
     (element: TimelineElement, attr: string, value: string | null) => {
       const key = elementAttributeLiveKey(element, activeCompPath, attr);
       const target = findTimelineElementInIframe(previewIframeRef.current, element, activeCompPath);
-      liveLanes.preview(key, () => target?.getAttribute(attr) ?? null);
+      const { targetPath, patchTarget } = elementSaveTarget(element, activeCompPath);
+      liveLanes.preview(key, () => target?.getAttribute(attr) ?? null, {
+        path: targetPath,
+        target: patchTarget,
+        attr,
+      });
       patchLiveElementAttribute(previewIframeRef.current, element, attr, value, activeCompPath);
     },
     [liveLanes, previewIframeRef, activeCompPath],
@@ -206,5 +212,5 @@ export function useSetElementAttribute({
       projectIdRef,
     ],
   );
-  return { setLive, setQuiet, revertLive };
+  return { setLive, setQuiet, revertLive, restoreLive: liveLanes.restore };
 }

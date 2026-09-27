@@ -591,5 +591,9 @@ export function useTimelineEditing({
     handleTimelineGroupResize: track(
       guard((changes) => changes.map((c) => c.element), groupEditing.handleTimelineGroupResize),
     ),
+    restoreLiveLanes: (restore: Parameters<typeof setElementFxAttribute.restoreLive>[0]) => {
+      setElementFxAttribute.restoreLive(restore);
+      setAudioGroupAttribute.restoreLive(restore);
+    },
   };
 }

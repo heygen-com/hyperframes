@@ -1,8 +1,24 @@
 import { useRef, useState } from "react";
+import { readAttributeByTarget } from "../utils/sourcePatcher";
+import type { PatchTarget } from "./timelineEditingHelpers";
+
+/** Where a lane's value lives in source, so an undo can re-read it. */
+interface LiveLaneSource {
+  path: string;
+  target: PatchTarget | null;
+  attr: string;
+}
+
+/** The files an undo or redo rewrote. */
+export interface LiveLaneRestore {
+  paths?: string[];
+  files?: Record<string, { restored: string }>;
+}
 
 /** Live-preview bookkeeping per lane of the open composition: the value before a gesture, pending saves, and the last value verified. */
 function createLiveLanes(scope: () => string) {
   const before = new Map<string, string | null>();
+  const sources = new Map<string, LiveLaneSource>();
   const pending = new Map<string, Set<number>>();
   const verified = new Map<string, string | null>();
   // Lanes whose before-value was read with no save pending, so it is what the file holds.
@@ -11,6 +27,7 @@ function createLiveLanes(scope: () => string) {
   const take = (key: string): string | null | undefined => {
     const claimed = before.has(key) ? (before.get(key) ?? null) : undefined;
     before.delete(key);
+    sources.delete(key);
     clean.delete(key);
     return claimed;
   };
@@ -18,10 +35,11 @@ function createLiveLanes(scope: () => string) {
     [...(pending.get(key) ?? [])].some((newer) => newer > save);
   const scoped = (laneKey: string): string => `${scope()}\n${laneKey}`;
   return {
-    preview(laneKey: string, readCurrent: () => string | null): void {
+    preview(laneKey: string, readCurrent: () => string | null, source: LiveLaneSource): void {
       const key = scoped(laneKey);
       if (before.has(key)) return;
       before.set(key, readCurrent());
+      sources.set(key, source);
       if (!pending.has(key)) clean.add(key);
     },
     // A save. Its settle records what the file holds: `saved`, else the last value verified on
@@ -71,6 +89,22 @@ function createLiveLanes(scope: () => string) {
       if (claimed === undefined) return;
       apply.preview(claimed);
       apply.store(claimed);
+    },
+    // An undo or redo rewrote files under open lanes, mid-gesture or after one: each before-value
+    // becomes what the restored file holds, or is dropped when that file could not be read.
+    restore({ paths = [], files }: LiveLaneRestore): void {
+      const open = scoped("");
+      for (const [key, { path, target, attr }] of sources) {
+        if (!key.startsWith(open) || !paths.includes(path)) continue;
+        const html = files?.[path]?.restored;
+        if (html === undefined || !target) {
+          take(key);
+          continue;
+        }
+        before.set(key, readAttributeByTarget(html, target, attr) ?? null);
+        if (pending.has(key)) clean.delete(key);
+        else clean.add(key);
+      }
     },
   };
 }

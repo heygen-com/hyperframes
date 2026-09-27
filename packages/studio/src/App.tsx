@@ -260,7 +260,10 @@ export function StudioApp({ readOnlyPreview = false, readOnlyPreviewReason }: St
     handleDuplicate,
     onResetKeyframes: () => resetKeyframesRef.current(),
     onDeleteSelectedKeyframes: () => deleteSelectedKeyframesRef.current(),
-    onAfterUndoRedo: () => invalidateGsapCacheRef.current(),
+    onAfterUndoRedo: (restore) => {
+      invalidateGsapCacheRef.current();
+      timelineEditing.restoreLiveLanes(restore);
+    },
     onGroupSelection: () => domEditSessionRef.current.handleGroupSelection(),
     onUngroupSelection: () => domEditSessionRef.current.handleUngroupSelection(),
     activeCompPath,
