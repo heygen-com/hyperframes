@@ -291,6 +291,30 @@ describe("computeResizePreview — composition source continuity", () => {
       previewPlaybackStart: 2,
     });
   });
+
+  it("keeps a slowed clip's media clock when its head snaps to a beat", () => {
+    const element = { ...clip("vo", 0, 2, 4, 0), playbackStart: 3, playbackRate: 0.8 };
+    const result = computeResizePreview(
+      {
+        element,
+        edge: "start",
+        originClientX: 0,
+        previewStart: 2,
+        previewDuration: 4,
+        started: true,
+      },
+      30,
+      {
+        scroll: fakeScroll(),
+        pps: 100,
+        buildSnapTargets: () => [{ time: 2.3456, type: "beat" }],
+      },
+    );
+
+    expect(result.snapTime).toBe(2.3456);
+    const clock = result.previewStart - result.previewPlaybackStart! / 0.8;
+    expect(clock).toBeCloseTo(2 - 3 / 0.8, 9);
+  });
 });
 
 describe("getTimelineDragOverlayPosition", () => {

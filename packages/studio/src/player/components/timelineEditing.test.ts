@@ -843,6 +843,25 @@ describe("resolveTimelineResize", () => {
     ).toEqual({ start: 0, duration: 4, playbackStart: undefined });
   });
 
+  it("rounds a fully-left head trim inward so the in-point is never clamped off the media clock", () => {
+    const next = resolveTimelineResize(
+      {
+        start: 2,
+        duration: 3,
+        originClientX: 0,
+        pixelsPerSecond: 100,
+        minStart: 0,
+        maxEnd: 10,
+        playbackStart: 1,
+        playbackRate: 1.5,
+      },
+      "start",
+      -1000,
+    );
+    expect(next.start).toBe(1.34);
+    expect(next.start - next.playbackStart! / 1.5).toBeCloseTo(2 - 1 / 1.5, 9);
+  });
+
   it("keeps a clip's media clock and end fixed across repeated head trims at any speed", () => {
     const dragsPx = [37.3, -12.9, 81.7, -5.3];
     for (const playbackRate of [0.25, 0.5, 0.8, 1, 1.25, 2]) {

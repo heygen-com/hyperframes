@@ -59,7 +59,10 @@ export function applyClipStartTrimDelta(
   delta: number,
 ): { start: number; duration: number; playbackStart?: number } {
   const playbackRate = resolveTimelinePlaybackRate(clip.playbackRate);
-  const start = roundTimelineTime(clip.start + delta);
+  const mediaZero =
+    clip.playbackStart != null ? clip.start - clip.playbackStart / playbackRate : -Infinity;
+  let start = roundTimelineTime(clip.start + delta);
+  if (start < mediaZero - 1e-9) start = Math.ceil(mediaZero * 100) / 100;
   return {
     start,
     duration: roundTimelineTime(clip.start + clip.duration - start),

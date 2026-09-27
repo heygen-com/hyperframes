@@ -1,5 +1,9 @@
 import { resolveTimelineMove, resolveTimelineResize } from "./timelineEditing";
-import { applyClipStartTrimDelta } from "./timelineGroupEditing";
+import {
+  applyClipStartTrimDelta,
+  clipStartTrimDeltaBounds,
+  resolveTimelineMinDuration,
+} from "./timelineGroupEditing";
 import type { TimelineElement } from "../store/playerStore";
 import {
   getTimelineInsertBoundaryBand,
@@ -276,7 +280,6 @@ export function computeResizePreview(
   const normalizedTag = resize.element.tag.toLowerCase();
   const canSeedPlaybackStart =
     resize.element.kind === "composition" || normalizedTag === "audio" || normalizedTag === "video";
-  const playbackRate = Math.max(resize.element.playbackRate ?? 1, 0.1);
   // Trim limit = available source media only — NOT the composition length.
   // Duration is content-driven (the comp grows/shrinks to fit on commit), so
   // capping a trim at the current comp end both blocked extending the last clip
@@ -327,19 +330,11 @@ export function computeResizePreview(
       }
     } else {
       const { time: snapped, target } = snapTimelineTime(nextResize.start, trimTargets, snapSecs);
-      const delta = nextResize.start - snapped; // >0 when snapping left
-      // Leftward snap reveals more source; cap so playbackStart can't go < 0.
-      const maxLeftDelta =
-        nextResize.playbackStart != null
-          ? nextResize.playbackStart / playbackRate
-          : Number.POSITIVE_INFINITY;
-      // Also require the resulting duration to stay >= minDuration so a rightward
-      // snap (delta < 0) can't collapse the clip to zero/negative.
-      const snappedDuration = Math.round((nextResize.duration + delta) * 1000) / 1000;
-      if (target && snapped >= 0 && delta <= maxLeftDelta + 1e-6 && snappedDuration >= 0.05) {
-        if (snapped !== nextResize.start) {
-          nextResize = applyClipStartTrimDelta({ ...nextResize, playbackRate }, -delta);
-        }
+      const clip = { ...nextResize, playbackRate: resize.element.playbackRate };
+      const delta = snapped - nextResize.start;
+      const bounds = clipStartTrimDeltaBounds(clip, 0, resolveTimelineMinDuration());
+      if (target && delta >= bounds.minDelta - 1e-6 && delta <= bounds.maxDelta + 1e-6) {
+        if (snapped !== nextResize.start) nextResize = applyClipStartTrimDelta(clip, delta);
         snap = target;
       }
     }
