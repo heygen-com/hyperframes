@@ -243,7 +243,7 @@ export const TimelineCanvas = memo(function TimelineCanvas() {
           className="absolute top-0 bottom-0 pointer-events-none"
           style={{
             left: 0,
-            transform: getTimelinePlayheadTransform(0, 0, props.contentOrigin),
+            transform: getTimelinePlayheadTransform(0, 0, props.contentOrigin, true),
             willChange: "transform",
             width: PLAYHEAD_HEAD_W,
             display: beatDragging ? "none" : undefined,

@@ -39,7 +39,7 @@ import {
 } from "./timelineLayout";
 import { AUTOMATION_LANE_H } from "./automationLaneHeight";
 import { formatTime } from "../lib/time";
-import { usePlayerStore } from "../store/playerStore";
+import { liveTime, usePlayerStore } from "../store/playerStore";
 import { TimelineEditProvider } from "../../contexts/TimelineEditContext";
 
 vi.mock("./timelineRowVirtualizationFlag", () => ({
@@ -152,6 +152,27 @@ function renderSharedAutomationTimeline(selectedElementId?: string) {
   act(() => root.render(React.createElement(Timeline)));
   return { host, root };
 }
+
+describe("Timeline playhead motion", () => {
+  it("moves by fractional pixels while playing and snaps to device pixels once paused", () => {
+    usePlayerStore.setState({
+      duration: 11,
+      timelineReady: true,
+      currentTime: 10,
+      isPlaying: true,
+      zoomMode: "manual",
+      manualZoomPercent: 100,
+      elements: [{ id: "clip-1", tag: "div", start: 10, duration: 1, track: 0 }],
+    });
+    const { root, playhead } = renderTimelineGeometry("clip-1");
+    const wrapperLeft = GUTTER + TRACKS_LEFT_PAD + 1000.3 - PLAYHEAD_HEAD_W / 2;
+    act(() => liveTime.notify(10.003));
+    expect(playhead.style.transform).toBe(`translateX(${wrapperLeft}px)`);
+    act(() => usePlayerStore.setState({ isPlaying: false }));
+    expect(playhead.style.transform).toBe(`translateX(${Math.round(wrapperLeft)}px)`);
+    act(() => root.unmount());
+  });
+});
 
 describe("Timeline provider boundary", () => {
   it("keeps all-collapsed horizontal positions at the gutter plus the pre-t=0 pad", () => {
