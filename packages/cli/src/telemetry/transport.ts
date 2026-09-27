@@ -95,7 +95,7 @@ function buildPayload(events: readonly QueuedEvent[]): string | null {
   return JSON.stringify({ api_key: POSTHOG_API_KEY, batch });
 }
 
-let inFlight: Promise<void> | undefined;
+let inFlight: Promise<boolean> | undefined;
 
 /**
  * Flush all queued events to PostHog via async HTTP POST.
@@ -112,24 +112,27 @@ let inFlight: Promise<void> | undefined;
  * delivery lets the exit-time flushSync() child (which survives the parent)
  * re-send anything unconfirmed; event uuids make that re-send idempotent.
  */
-export function flush(): Promise<void> {
-  // One request at a time, so an event is never in two batches at once.
-  const run = inFlight ? inFlight.then(sendQueued, sendQueued) : sendQueued();
+export async function flush(): Promise<void> {
+  // One request at a time; one queued behind a failed send leaves the batch to flushSync().
+  const run = inFlight
+    ? inFlight.then((sent) => (sent ? sendQueued() : false), sendQueued)
+    : sendQueued();
   const current = run.finally(() => {
     if (inFlight === current) inFlight = undefined;
   });
   inFlight = current;
-  return current;
+  await current;
 }
 
-async function sendQueued(): Promise<void> {
+/** Whether nothing is left undelivered from what was queued when it started. */
+async function sendQueued(): Promise<boolean> {
   // Copy, not alias — events queued while the request is in flight must not
   // be swept into the "delivered" set below.
   const snapshot = eventQueue.slice();
   const payload = buildPayload(snapshot);
-  if (payload == null) return;
+  if (payload == null) return true;
   // Left queued: the exit-time flushSync() sends it from a detached child.
-  if (!(await hostAnswers(new URL(POSTHOG_HOST).hostname))) return;
+  if (!(await hostAnswers(new URL(POSTHOG_HOST).hostname))) return false;
 
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), FLUSH_TIMEOUT_MS);
@@ -145,9 +148,11 @@ async function sendQueued(): Promise<void> {
     // request was in flight stay for the next flush).
     const sent = new Set(snapshot);
     eventQueue = eventQueue.filter((e) => !sent.has(e));
+    return true;
   } catch {
     // Silently ignore — telemetry must never break the CLI. The events stay
     // queued so the exit-time flushSync() fallback can still deliver them.
+    return false;
   } finally {
     clearTimeout(timeout);
   }

@@ -171,6 +171,14 @@ describe("telemetry queue delivery", () => {
     expect(gated).toHaveBeenCalledTimes(1);
   });
 
+  it("leaves the batch to the exit-time send when the flush ahead of it failed", async () => {
+    const fetchMock = vi.fn(() => Promise.reject(new Error("offline")));
+    vi.stubGlobal("fetch", fetchMock);
+    trackEvent("render_complete", { quality: "draft" });
+    await Promise.all([flush(), flush()]);
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+
   it("still sends from a flush queued behind one that threw", async () => {
     const fetchMock = vi.fn(() => Promise.resolve(new Response("")));
     vi.stubGlobal("fetch", fetchMock);
