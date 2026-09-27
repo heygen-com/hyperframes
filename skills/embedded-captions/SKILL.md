@@ -9,6 +9,8 @@ description: >
   including transcription and subject matting; split multi-shot footage before applying it.
 ---
 
+**Plugin installs:** Before setup or freshness commands, follow [plugin execution rules](../hyperframes/references/plugin-installation.md) when this skill is inside a HyperFrames plugin. Standalone installs keep the update instructions below.
+
 > **First, keep this skill fresh — confirm with the user before running:** `npx hyperframes skills update embedded-captions`. A fast no-op when everything is current; otherwise it refreshes this skill plus the core domain skills it depends on before you rely on them.
 
 # Embedded Captions
