@@ -753,6 +753,13 @@ export function parseImageElements(html: string): ImageElement[] {
   return images;
 }
 
+/** Chrome reads an untagged matrix as BT.709 from 720 coded lines up, else BT.601; frames must match its playback. */
+function chromeGuessForUntaggedMatrix(metadata: VideoMetadata): string[] {
+  const matrix = metadata.colorSpace?.colorSpace;
+  if (matrix && matrix !== "unknown") return [];
+  return [`setparams=colorspace=${metadata.height >= 720 ? "bt709" : "smpte170m"}`];
+}
+
 /** Pixel formats nut carries as raw video unchanged on ffmpeg 5.1 to 8.1 (yuvj only loses its range). */
 const NUT_RAW_PIXEL_FORMATS = new Set([
   "yuv420p",
@@ -900,7 +907,7 @@ export async function extractVideoFramesRange(
     vfFilters.push(HDR_TO_SDR_TONEMAP_FILTER);
   }
   if (!isHdr && !options.sdrToHdrTransfer) {
-    vfFilters.push(SDR_CANVAS_PASSTHROUGH_FILTER);
+    vfFilters.push(...chromeGuessForUntaggedMatrix(metadata), SDR_CANVAS_PASSTHROUGH_FILTER);
     if (format === "jpg") vfFilters.push(SDR_JPEG_AS_BT601_FULL_RANGE_FILTER);
   }
   const encodeArgs = ["-q:v", format === "jpg" ? String(Math.ceil((100 - quality) / 3)) : "0"];

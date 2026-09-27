@@ -1488,6 +1488,69 @@ describe.skipIf(!HAS_FFMPEG)("video frame extraction format", () => {
     }
   }, 60_000);
 
+  // Measured in Chrome 152: an untagged 1280x718 clip plays as BT.601, 1280x720 and 406x720 as BT.709.
+  it.each([
+    { height: 718, matrix: "bt601", format: "png" },
+    { height: 718, matrix: "bt601", format: "jpg" },
+    { height: 720, matrix: "bt709", format: "png" },
+    { height: 720, matrix: "bt709", format: "jpg" },
+  ] as const)(
+    "reads an untagged $height-line source as $matrix like Chrome's own playback ($format)",
+    async ({ height, matrix, format }) => {
+      const fixture = join(FIXTURE_DIR, `untagged-${height}.mp4`);
+      const synth = await runFfmpeg([
+        "-y",
+        "-v",
+        "error",
+        "-f",
+        "lavfi",
+        "-i",
+        `color=c=0xC83C28:s=64x${height}:d=1:r=1`,
+        "-vf",
+        "scale=out_color_matrix=bt601:out_range=tv,format=yuv420p,setparams=colorspace=unknown:color_primaries=unknown:color_trc=unknown:range=tv",
+        "-c:v",
+        "libx264",
+        "-qp",
+        "0",
+        fixture,
+      ]);
+      if (!synth.success) throw new Error(`fixture synthesis failed: ${synth.stderr.slice(-400)}`);
+      expect((await extractVideoMetadata(fixture)).colorSpace?.colorSpace ?? "unknown").toBe(
+        "unknown",
+      );
+
+      const result = await extractVideoFramesRange(fixture, `untagged-${height}-${format}`, 0, 1, {
+        fps: 1,
+        outputDir: join(FIXTURE_DIR, "out-untagged"),
+        format,
+      });
+
+      const pixelAt = (file: string, decode: string): number[] => [
+        ...spawnSync("ffmpeg", [
+          "-v",
+          "error",
+          "-i",
+          file,
+          "-vf",
+          `${decode}format=rgb24,crop=1:1:10:10`,
+          "-frames:v",
+          "1",
+          "-f",
+          "rawvideo",
+          "-",
+        ]).stdout,
+      ];
+      const expected = pixelAt(fixture, `scale=in_color_matrix=${matrix}:in_range=tv,`);
+      const shown = pixelAt(result.framePaths.get(0)!, "");
+      expect([expected.length, shown.length]).toEqual([3, 3]);
+      const worst = Math.max(...shown.map((v, i) => Math.abs(v - expected[i]!)));
+      expect(worst, `${matrix} decode ${expected}, ${format} ${shown}`).toBeLessThanOrEqual(
+        format === "png" ? 1 : 3,
+      );
+    },
+    60_000,
+  );
+
   // ffmpeg < 6.1 drops frame durations from CFR resampling once any -vf is set, so the colour
   // filters would cut the still that ends this window short.
   it.each([
