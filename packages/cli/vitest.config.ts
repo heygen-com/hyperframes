@@ -2,6 +2,8 @@ import { copyFileSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { defineConfig } from "vitest/config";
+// Before workers fork, as below: the test run gets a home folder of its own.
+import "./scripts/test-home.mjs";
 
 // Windows: sharp's first text render builds Fontconfig's cache for every OS font (about 9 s on a
 // fresh runner). Set here, before workers fork, because an in-process env write never reaches it.
@@ -18,24 +20,6 @@ if (process.platform === "win32") {
     `<?xml version="1.0"?><!DOCTYPE fontconfig SYSTEM "fonts.dtd"><fontconfig><dir>${dir}</dir><cachedir>${dir}</cachedir></fontconfig>`,
   );
   process.env.FONTCONFIG_FILE = file;
-}
-
-// Every cache, config and state path the CLI builds from the home folder lands in a temp dir,
-// so no test reads or writes the user's own. Set before workers fork, as above.
-const testHome = mkdtempSync(join(tmpdir(), "hf-vitest-home-"));
-process.once("exit", () => rmSync(testHome, { recursive: true, force: true }));
-process.env.HOME = process.env.USERPROFILE = testHome;
-for (const name of [
-  "XDG_CACHE_HOME",
-  "XDG_CONFIG_HOME",
-  "XDG_STATE_HOME",
-  "XDG_DATA_HOME",
-  "CODEX_HOME",
-  "CLAUDE_CONFIG_DIR",
-  "HEYGEN_CONFIG_DIR",
-  "HYPERFRAMES_CATALOG_ARTIFACT_DIR",
-]) {
-  delete process.env[name];
 }
 
 export default defineConfig({

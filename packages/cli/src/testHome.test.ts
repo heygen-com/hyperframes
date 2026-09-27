@@ -1,4 +1,4 @@
-import { existsSync, realpathSync } from "node:fs";
+import { existsSync, realpathSync, rmSync } from "node:fs";
 import { homedir, tmpdir, userInfo } from "node:os";
 import { join, sep } from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
@@ -31,9 +31,10 @@ describe("the CLI test run", () => {
     await fetchRegistryManifest(registry);
 
     const slug = registry.replace(/[^a-zA-Z0-9]/g, "_");
-    const cached = (home: string) =>
-      existsSync(join(home, ".hyperframes", "cache", `${slug}__registry.json`));
-    expect(cached(homedir())).toBe(true);
-    expect(cached(userInfo().homedir)).toBe(false);
+    const cacheFile = (home: string) => join(home, ".hyperframes", "cache", `${slug}__registry.json`);
+    const leaked = existsSync(cacheFile(userInfo().homedir));
+    rmSync(cacheFile(userInfo().homedir), { force: true });
+    expect(existsSync(cacheFile(homedir()))).toBe(true);
+    expect(leaked).toBe(false);
   });
 });
