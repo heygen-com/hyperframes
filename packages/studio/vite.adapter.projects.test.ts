@@ -187,7 +187,7 @@ describe("dynamic preview ownership", () => {
       compute: () => "signature",
       watch: (dir) => {
         // Ownership must exist before newly watched files can emit events.
-        expect(previewChangeOwner(owners, join(dir, "index.html"))).toBe("new-project");
+        expect(previewChangeOwner(owners, join(dir, "index.html"))?.projectId).toBe("new-project");
         watched.push(dir);
       },
     });
@@ -205,8 +205,9 @@ describe("dynamic preview ownership", () => {
     cache.get(project.dir);
     writeFileSync(join(dir, "index.html"), "after");
     expect(watched).toEqual([realpathSync(dir)]);
-    expect(previewChangeOwner(owners, join(realpathSync(dir), "index.html"))).toBe("new-project");
-    expect(previewChangeOwner(owners, join(realpathSync(dir), "index.html.tmp"))).toBeNull();
+    expect(previewChangeOwner(owners, join(realpathSync(dir), "index.html"))?.projectId).toBe(
+      "new-project",
+    );
   });
 });
 

@@ -3,6 +3,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   applyTimelineStackingReorder,
   buildTimelineMoveTimingPatch,
+  buildTimelineResizeTimingPatch,
   deleteSelectedKeyframes,
   extendRootDurationIfNeeded,
   patchIframeDomTiming,
@@ -227,6 +228,19 @@ describe("extendRootDurationIfNeeded", () => {
     expect(extendRootDurationIfNeeded(5)).toBe(false);
     expect(extendRootDurationIfNeeded(3)).toBe(false);
     expect(usePlayerStore.getState().duration).toBe(5);
+  });
+});
+
+describe("buildTimelineResizeTimingPatch", () => {
+  it("moves a source-only in-point by the caller's own start change", () => {
+    const source = `<div id="root"><video id="a" class="clip" data-start="5" data-duration="3" data-media-start="0.337"></video></div>`;
+    const element = el({ id: "a", tag: "video", domId: "a", start: 5, duration: 3 });
+    const patched = buildTimelineResizeTimingPatch(source, { id: "a" }, element, {
+      start: 3,
+      duration: 5,
+      playbackStart: undefined,
+    });
+    expect(patched).toContain('data-media-start="0"');
   });
 });
 

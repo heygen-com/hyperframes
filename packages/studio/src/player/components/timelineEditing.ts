@@ -236,14 +236,7 @@ export function resolveTimelineResize(
 
   const { minDelta, maxDelta } = clipStartTrimDeltaBounds(input, input.minStart, minDuration);
   const clampedDelta = clamp(deltaTime, minDelta, maxDelta);
-  const trimmed = applyClipStartTrimDelta(input, clampedDelta);
-
-  return {
-    start: roundToCentiseconds(trimmed.start),
-    duration: roundToCentiseconds(trimmed.duration),
-    playbackStart:
-      trimmed.playbackStart != null ? roundToCentiseconds(trimmed.playbackStart) : undefined,
-  };
+  return applyClipStartTrimDelta(input, clampedDelta);
 }
 
 export interface TimelinePromptElement {
@@ -474,6 +467,10 @@ export function buildTimelineElementAgentPrompt(element: {
 }
 export function formatTimelineAttributeNumber(value: number): string {
   return Number(roundToCentiseconds(value).toFixed(2)).toString();
+}
+
+export function formatTimelineMediaOffset(value: number): string {
+  return Number(value.toFixed(6)).toString();
 }
 
 /**

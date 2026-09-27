@@ -1,4 +1,5 @@
 import { describe, expect, it, vi, beforeEach } from "vitest";
+import { CliRuntimeError } from "../utils/commandResult.js";
 
 const trackEvent = vi.fn();
 const flush = vi.fn(() => Promise.resolve());
@@ -1147,6 +1148,39 @@ describe("trackCommandFailure", () => {
         // stack_trace is asserted (redacted) in the trackCliError suite; the
         // raw err.stack no longer matches once paths are stripped.
       }),
+    );
+  });
+
+  it("reports the same error once, however many places report it", () => {
+    const err = new Error("not a project");
+    trackCommandFailure("info", err);
+    trackCommandFailure("info", err);
+
+    expect(trackEvent).toHaveBeenCalledTimes(1);
+  });
+
+  it("reports the failure a CliRuntimeError carries, through every wrapper, once", () => {
+    const cause = new Error("not a project");
+    const inner = new CliRuntimeError("Command failed", { exitCode: 1, cause });
+    trackCommandFailure("figma:asset", inner);
+    trackCommandFailure("figma", new CliRuntimeError("x", { exitCode: 1, cause: inner }));
+
+    expect(trackEvent).toHaveBeenCalledTimes(1);
+    expect(trackEvent).toHaveBeenCalledWith(
+      "cli_error",
+      expect.objectContaining({ error_message: "not a project" }),
+    );
+  });
+
+  it("takes a caller's error name and endpoint", () => {
+    trackCommandFailure("figma:asset", new Error("No token"), {
+      error_name: "NO_TOKEN",
+      endpoint: "images",
+    });
+
+    expect(trackEvent).toHaveBeenCalledWith(
+      "cli_error",
+      expect.objectContaining({ error_name: "NO_TOKEN", endpoint: "images" }),
     );
   });
 

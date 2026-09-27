@@ -1,4 +1,5 @@
-import { existsSync, realpathSync, statSync } from "node:fs";
+import { existsSync, statSync } from "node:fs";
+import { realpath } from "./safePath.js";
 import { relative, resolve, sep } from "node:path";
 import { rewriteAssetPath } from "@hyperframes/parsers/asset-paths";
 import {
@@ -253,7 +254,7 @@ export async function probeAssetCodec(
   let target: string;
   try {
     stat = statSync(filePath);
-    target = realpathSync(filePath);
+    target = realpath(filePath);
   } catch {
     return null;
   }

@@ -1,13 +1,14 @@
 import { describe, expect, it } from "vitest";
 import { existsSync, readFileSync } from "node:fs";
-import { homedir } from "node:os";
+import { userInfo } from "node:os";
 import { join } from "node:path";
 
 import { configFromTokenizerJson, encode, normalize, preTokenize, wordPiece } from "./wordpiece.js";
 
 const REFERENCE_PATH = join(import.meta.dirname, "__fixtures__", "wordpiece-reference.json");
+// Read-only from the user's real home: tests run with a temp one, and the model is downloaded there.
 const TOKENIZER_PATH = join(
-  homedir(),
+  userInfo().homedir,
   ".hyperframes",
   "models",
   "bge-small-en-v1.5.tokenizer.json",

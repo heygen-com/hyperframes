@@ -11,6 +11,7 @@ export {
 
 export {
   readFileChangeAffectedCompositions,
+  readFileChangeAffectsPreview,
   readFileChangeField,
   readStudioFileChangePath,
 } from "./manualEditsParsing";

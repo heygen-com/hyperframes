@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import type { TimelineElement } from "../store/playerStore";
 import {
+  applyTimelineGroupResizePreview,
   buildTimelineGroupResizeMembers,
   resolveTimelineGroupResize,
   resolveTimelineGroupResizeChanges,
@@ -130,5 +131,31 @@ describe("resolveTimelineGroupResizeChanges (rigid group patch set)", () => {
         playbackStart: c.playbackStart,
       })),
     ).toEqual(raw.members);
+  });
+});
+
+describe("applyTimelineGroupResizePreview", () => {
+  it("keeps each slowed member's media clock through the group preview", () => {
+    const a = el("a", { start: 2, duration: 3, playbackStart: 1, playbackRate: 0.8 });
+    const b = el("b", { start: 6, duration: 3, playbackStart: 2, playbackRate: 1.25 });
+    const members = buildTimelineGroupResizeMembers([a, b], keys("a", "b"), "a", "start")!;
+    const session = {
+      grabbedKey: "a",
+      edge: "start" as const,
+      members,
+      changes: [],
+      hasChanged: false,
+    };
+
+    applyTimelineGroupResizePreview(session, { previewStart: 2.373, previewDuration: 2.627 });
+
+    for (const [i, member] of [a, b].entries()) {
+      const change = session.changes[i]!;
+      const rate = member.playbackRate!;
+      expect(change.start - change.playbackStart! / rate).toBeCloseTo(
+        member.start - member.playbackStart! / rate,
+        9,
+      );
+    }
   });
 });

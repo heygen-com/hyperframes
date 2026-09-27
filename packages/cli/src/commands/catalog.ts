@@ -10,12 +10,12 @@ export const examples: Example[] = [
 ];
 
 import * as clack from "@clack/prompts";
-import { type ItemType, type RegistryItem } from "@hyperframes/core";
+import { realpath, type ItemType, type RegistryItem } from "@hyperframes/core";
 import { c } from "../ui/colors.js";
 import { loadAllItems } from "../registry/resolver.js";
 import { fetchRegistryManifest } from "../registry/remote.js";
 import { loadProjectConfig, DEFAULT_PROJECT_CONFIG } from "../utils/projectConfig.js";
-import { resolve } from "node:path";
+import { relative, resolve } from "node:path";
 import { finishCommand } from "../utils/commandResult.js";
 import { isAttendedTerminal } from "../utils/attendedTerminal.js";
 import { runAdd } from "./add.js";
@@ -472,9 +472,9 @@ export default defineCommand({
       }
       console.log("");
       console.log(`${c.success("✓")} Installed ${c.accent(result.name)} (${result.type})`);
+      const root = realpath(dir);
       for (const file of result.written) {
-        const rel = file.replace(dir + "/", "");
-        console.log(`  ${c.dim(rel)}`);
+        console.log(`  ${c.dim(relative(root, file))}`);
       }
       if (result.snippet) {
         console.log("");

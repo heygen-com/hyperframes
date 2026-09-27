@@ -67,7 +67,7 @@ export const GC_MARKER = ".hf-last-gc";
  * a JavaScript number. This invalidates entries created after rational NTSC
  * rates had already been rounded to a decimal.
  */
-export const SCHEMA_PREFIX = "hfcache-v4-";
+export const SCHEMA_PREFIX = "hfcache-v5-";
 
 /** Truncated hex chars of SHA-256 used for the entry directory name. */
 const KEY_HEX_CHARS = 16;

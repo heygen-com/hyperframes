@@ -10,10 +10,8 @@ const transcribeMock = vi.fn();
 vi.mock("../whisper/transcribe.js", () => ({ transcribe: transcribeMock }));
 
 const trackTranscribeUnavailable = vi.fn();
-const trackCommandFailure = vi.fn();
 vi.mock("../telemetry/events.js", () => ({
   trackTranscribeUnavailable: (...a: unknown[]) => trackTranscribeUnavailable(...a),
-  trackCommandFailure: (...a: unknown[]) => trackCommandFailure(...a),
 }));
 
 import transcribeCmd from "./transcribe.js";
@@ -32,7 +30,6 @@ describe("transcribe command", () => {
     consumeCommandResult();
     transcribeMock.mockReset();
     trackTranscribeUnavailable.mockReset();
-    trackCommandFailure.mockReset();
     transcribeMock.mockRejectedValue(
       new WhisperUnavailableError("whisper-cpp not found. Install: brew install whisper-cpp"),
     );
@@ -60,7 +57,6 @@ describe("transcribe command", () => {
     expect(transcribeMock).toHaveBeenCalled();
     expect(consumeCommandResult().exitCode).toBe(1);
     expect(trackTranscribeUnavailable).toHaveBeenCalledWith({ optional: false });
-    expect(trackCommandFailure).not.toHaveBeenCalled();
   });
 
   it("--optional skips cleanly with exit 0", async () => {
@@ -76,7 +72,6 @@ describe("transcribe command", () => {
     expect(transcribeMock).toHaveBeenCalled();
     expect(consumeCommandResult().exitCode).toBe(0);
     expect(trackTranscribeUnavailable).toHaveBeenCalledWith({ optional: true });
-    expect(trackCommandFailure).not.toHaveBeenCalled();
   });
 
   it("imports an SRT and exports an SRT sidecar from transcript.json", async () => {

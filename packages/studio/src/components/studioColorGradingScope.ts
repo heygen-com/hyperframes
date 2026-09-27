@@ -22,7 +22,7 @@ interface ApplyColorGradingScopeOptions {
   scope: ColorGradingScope;
   value: string | null;
   selectedSourceFile: string;
-  fileTree: string[];
+  compositionPaths: string[];
   projectId: string;
   waitForPendingDomEditSaves: () => Promise<void>;
   readProjectFile: ProjectFileReader;
@@ -35,11 +35,9 @@ interface ApplyColorGradingScopeOptions {
 function colorGradingScopePaths(
   scope: ColorGradingScope,
   selectedSourceFile: string,
-  fileTree: string[],
+  compositionPaths: string[],
 ): string[] {
-  return scope === "source-file"
-    ? [selectedSourceFile]
-    : fileTree.filter((path) => /\.html?$/i.test(path));
+  return scope === "source-file" ? [selectedSourceFile] : compositionPaths;
 }
 
 // fallow-ignore-next-line complexity
@@ -47,7 +45,7 @@ export async function applyColorGradingScopeUpdate({
   scope,
   value,
   selectedSourceFile,
-  fileTree,
+  compositionPaths,
   projectId,
   waitForPendingDomEditSaves,
   readProjectFile,
@@ -71,7 +69,7 @@ export async function applyColorGradingScopeUpdate({
     changedElements += result.count;
     return result.html;
   };
-  const paths = colorGradingScopePaths(scope, selectedSourceFile, fileTree);
+  const paths = colorGradingScopePaths(scope, selectedSourceFile, compositionPaths);
   const changedPaths = await saveProjectFilesWithHistory({
     projectId,
     label: value ? "Apply color grading" : "Clear color grading",
