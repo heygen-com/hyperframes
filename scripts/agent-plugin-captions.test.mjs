@@ -146,13 +146,13 @@ for (const { code, cancel, expectedStatus } of cases) {
     const child = join(dir, "child.cjs");
     writeFileSync(
       child,
-      `const fs=require('node:fs'); setInterval(()=>fs.appendFileSync(${JSON.stringify(output)},'x'),50);`,
+      "const fs=require('node:fs'); setInterval(()=>fs.appendFileSync(process.argv[2],'x'),50);",
     );
     writeFileSync(
       join(bin, "npx"),
       `#!${process.execPath}
 const fs=require('node:fs');
-const child=require('node:child_process').spawn(process.execPath,[${JSON.stringify(child)}],{stdio:'ignore'});
+const child=require('node:child_process').spawn(process.execPath,[${JSON.stringify(child)},${JSON.stringify(output)}],{stdio:'ignore'});
 fs.writeFileSync(${JSON.stringify(output)},Buffer.alloc(1200000));
 fs.writeFileSync(${JSON.stringify(pidFile)},JSON.stringify({wrapper:process.ppid,npm:process.pid,render:child.pid}));
 ${cancel ? "setInterval(()=>{},1000);" : `setTimeout(()=>{child.kill(); child.once('exit',()=>process.exit(${code}));},1200);`}
