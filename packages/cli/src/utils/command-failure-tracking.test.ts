@@ -138,7 +138,10 @@ describe("reportCommandFailure", () => {
     const { CliRuntimeError } = await import("./commandResult.js");
     const cause = new Error("not a project");
     const inner = new CliRuntimeError("Command failed", { exitCode: 1, cause });
-    await reportCommandFailure("normalize-audio", new CliRuntimeError("x", { exitCode: 1, cause: inner }));
+    await reportCommandFailure(
+      "normalize-audio",
+      new CliRuntimeError("x", { exitCode: 1, cause: inner }),
+    );
     expect(trackCommandFailure).toHaveBeenCalledWith("normalize-audio", cause);
   });
 
