@@ -15,7 +15,7 @@ import {
   persistElementAttribute,
   readSavedAttribute,
 } from "./timelineEditingHelpers";
-import { useLiveLanes, type LiveLaneRestore } from "./liveLanes";
+import { useLiveLanes, type LiveLaneRestore, type LiveLaneSource } from "./liveLanes";
 import type {
   MutableRef,
   UseTimelineElementVisibilityEditingInput,
@@ -53,6 +53,15 @@ function elementSaveTarget(element: TimelineElement, activeCompPath: string | nu
     targetPath: element.sourceFile || activeCompPath || "index.html",
     patchTarget: buildPatchTarget(element),
   };
+}
+
+function elementLiveSource(
+  element: TimelineElement,
+  activeCompPath: string | null,
+  attr: string,
+): LiveLaneSource {
+  const { targetPath, patchTarget } = elementSaveTarget(element, activeCompPath);
+  return { path: targetPath, target: patchTarget, attr };
 }
 
 interface SetElementAttributeInput {
@@ -125,12 +134,11 @@ export function useSetElementAttribute({
     (element: TimelineElement, attr: string, value: string | null) => {
       const key = elementAttributeLiveKey(element, activeCompPath, attr);
       const target = findTimelineElementInIframe(previewIframeRef.current, element, activeCompPath);
-      const { targetPath, patchTarget } = elementSaveTarget(element, activeCompPath);
-      liveLanes.preview(key, () => target?.getAttribute(attr) ?? null, {
-        path: targetPath,
-        target: patchTarget,
-        attr,
-      });
+      liveLanes.preview(
+        key,
+        () => target?.getAttribute(attr) ?? null,
+        elementLiveSource(element, activeCompPath, attr),
+      );
       patchLiveElementAttribute(previewIframeRef.current, element, attr, value, activeCompPath);
     },
     [liveLanes, previewIframeRef, activeCompPath],
@@ -148,6 +156,7 @@ export function useSetElementAttribute({
       liveLanes.claim(
         elementAttributeLiveKey(element, activeCompPath, attr),
         laneApply(element, attr),
+        elementLiveSource(element, activeCompPath, attr),
       ),
     [liveLanes, laneApply, activeCompPath],
   );

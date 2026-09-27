@@ -6,7 +6,7 @@ import { DomEditProvider } from "../../contexts/DomEditContext";
 import { TimelineEditProvider } from "../../contexts/TimelineEditContext";
 import { jsonResponse, requestUrl } from "../../hooks/fetchStubTestUtils";
 import { useTimelineEditing } from "../../hooks/useTimelineEditing";
-import { useEditHistoryActions } from "../../hooks/useEditHistoryActions";
+import { useEditHistoryActions, type EditHistoryHandle } from "../../hooks/useEditHistoryActions";
 import { usePreviewPersistence } from "../../hooks/usePreviewPersistence";
 import { groupInfoFor } from "../lib/timelineGroupInfo";
 import { usePlayerStore, type TimelineElement } from "../store/playerStore";
@@ -61,6 +61,8 @@ function mountLanes(target: TimelineElement, canEdit?: CanEdit, recording = fals
   let file = SOURCE;
   let reads = 0;
   let undoTo = SOURCE;
+  let undoPath: string | null = null;
+  let undoHeld = Promise.resolve();
   const held = new Map<number, Promise<void>>();
   const broken = new Set<number>();
   vi.stubGlobal(
@@ -95,11 +97,17 @@ function mountLanes(target: TimelineElement, canEdit?: CanEdit, recording = fals
   let binding: AutomationLaneBinding | null = null;
   let history: ReturnType<typeof useEditHistoryActions> | null = null;
   const editHistory = {
-    undo: async () => {
-      const previous = file;
-      file = undoTo;
-      const restored = { [composition]: { previous, restored: file } };
-      return { ok: true, label: "Undo", paths: [composition], files: restored };
+    // In the file queue, like the real step, so saves started meanwhile queue behind it.
+    undo: async ({ serialize }: Parameters<EditHistoryHandle["undo"]>[0]) => {
+      const path = undoPath ?? composition;
+      const step = async () => {
+        await undoHeld;
+        const previous = path === composition ? file : (files.get(`${projectId}/${path}`) ?? "");
+        put(path, undoTo);
+        const restored = { [path]: { previous, restored: undoTo } };
+        return { ok: true, label: "Undo", paths: [path], files: restored };
+      };
+      return serialize ? serialize([path], step) : step();
     },
     redo: async () => ({ ok: false, reason: "empty" }),
   };
@@ -210,11 +218,19 @@ function mountLanes(target: TimelineElement, canEdit?: CanEdit, recording = fals
     fileAt: (path: string) => (path === composition ? file : files.get(`${projectId}/${path}`)),
     put,
     // Cmd+Z through the real history actions: the file goes back to `to`, the preview soft-restores.
-    undo: async (to: string) => {
+    undo: async (to: string, path?: string) => {
       undoTo = to;
+      undoPath = path ?? null;
       await act(async () => {
         await history!.undo();
       });
+    },
+    // An undo whose round trip waits for the returned release.
+    startUndo: (to: string) => {
+      let release = () => {};
+      undoTo = to;
+      undoHeld = new Promise<void>((resolve) => (release = resolve));
+      return { release, done: history!.undo() };
     },
     setRecording: (next: boolean) => (isRecordingRef.current = next),
     holdRead,
@@ -1134,7 +1150,7 @@ describe("useAutomationLanes saves report what happened", () => {
 
   it.each(
     BOTH_LANES.flatMap((lane) =>
-      (["mid-drag", "after a cancel"] as const).flatMap((undo) =>
+      (["mid-drag", "with a live write left open"] as const).flatMap((undo) =>
         (["is refused", "goes offline"] as const).map((release) => ({ ...lane, undo, release })),
       ),
     ),
@@ -1150,7 +1166,6 @@ describe("useAutomationLanes saves report what happened", () => {
         await h.undo(base);
         h.preview(curve(0.9));
       } else {
-        // A cancelled stretch or a left audition re-previews its snapshot and never saves.
         h.preview(curve(0.5));
         await h.undo(base);
       }
@@ -1245,6 +1260,82 @@ describe("useAutomationLanes saves report what happened", () => {
         h.iframe.contentDocument!.getElementById(target.id)?.getAttribute("data-automation"),
       ).toBe(old);
       expect(usePlayerStore.getState().elements[0]?.[field]).toBe(old);
+    },
+  );
+
+  const lastFailing = (
+    h: ReturnType<typeof mountLanes>,
+    release: "is refused" | "goes offline",
+  ) => {
+    if (release === "is refused") h.setRecording(true);
+    else h.failRead(h.reads() + 2);
+    h.failRead(h.reads() + 1);
+  };
+  const expectEverywhere = (
+    h: ReturnType<typeof mountLanes>,
+    target: TimelineElement,
+    field: "automation" | "audioGroupAutomation",
+    want: string,
+  ) => {
+    const saved = new DOMParser().parseFromString(h.file(), "text/html");
+    expect(saved.getElementById(target.id)?.getAttribute("data-automation")).toBe(want);
+    expect(
+      h.iframe.contentDocument!.getElementById(target.id)?.getAttribute("data-automation"),
+    ).toBe(want);
+    expect(usePlayerStore.getState().elements[0]?.[field]).toBe(want);
+  };
+  const withEachRelease = BOTH_LANES.flatMap((lane) =>
+    (["is refused", "goes offline"] as const).map((release) => ({ ...lane, release })),
+  );
+
+  it.each(withEachRelease)(
+    "keeps a $lane value undone from another composition when the next save back in it $release with no read-back",
+    async ({ target, field, release }) => {
+      const h = mountLanes(target);
+      expect(await h.commit(curve(0.2))).toEqual({ status: "saved" });
+      const base = h.file();
+      expect(await h.commit(curve(0.5))).toEqual({ status: "saved" });
+      h.preview(curve(0.9));
+      h.preview(curve(0.5));
+      h.switchComposition("other.html", SOURCE, {
+        ...music,
+        key: "other.html#music",
+        sourceFile: "other.html",
+        audioGroup: "hf-group",
+      });
+      await h.undo(base, "index.html");
+      const undone = serializeAutomation(curve(0.2));
+      h.switchComposition("index.html", SOURCE, {
+        ...music,
+        audioGroup: "hf-group",
+        automation: undone,
+        audioGroupAutomation: undone,
+      });
+      lastFailing(h, release);
+      await act(async () => {
+        await h.startCommit(curve(0.9));
+      });
+      expectEverywhere(h, target, field, undone);
+    },
+  );
+
+  it.each(withEachRelease)(
+    "keeps the undone $lane value when a drag is released during the undo's round trip and its save $release with no read-back",
+    async ({ target, field, release }) => {
+      const h = mountLanes(target);
+      expect(await h.commit(curve(0.2))).toEqual({ status: "saved" });
+      const base = h.file();
+      expect(await h.commit(curve(0.5))).toEqual({ status: "saved" });
+      h.preview(curve(0.9));
+      const undo = h.startUndo(base);
+      await act(() => new Promise((resolve) => setTimeout(resolve, 20)));
+      lastFailing(h, release);
+      const releasing = h.startCommit(curve(0.9));
+      undo.release();
+      await act(async () => {
+        await Promise.all([undo.done, releasing]);
+      });
+      expectEverywhere(h, target, field, serializeAutomation(curve(0.2)));
     },
   );
 });

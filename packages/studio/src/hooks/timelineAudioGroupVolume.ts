@@ -15,7 +15,7 @@ import {
   readSavedAttribute,
   type RecordEditInput,
 } from "./timelineEditingHelpers";
-import { useLiveLanes, type LiveLaneRestore } from "./liveLanes";
+import { useLiveLanes, type LiveLaneRestore, type LiveLaneSource } from "./liveLanes";
 import type {
   MutableRef,
   UseTimelineElementVisibilityEditingInput,
@@ -177,6 +177,16 @@ function groupSaveTarget(
   };
 }
 
+function groupLiveSource(
+  previewIframe: HTMLIFrameElement | null,
+  groupId: string,
+  activeCompPath: string | null,
+  attr: string,
+): LiveLaneSource {
+  const { targetPath, patchTarget } = groupSaveTarget(previewIframe, groupId, activeCompPath);
+  return { path: targetPath, target: patchTarget, attr };
+}
+
 async function setAudioGroupAttribute({
   projectId,
   activeCompPath,
@@ -249,16 +259,11 @@ export function useSetAudioGroupAttribute({
     (groupId: string, attr: string, value: string | null) => {
       const key = audioGroupAttributeLiveKey(groupId, attr);
       const target = previewIframeRef.current?.contentDocument?.getElementById(groupId);
-      const { targetPath, patchTarget } = groupSaveTarget(
-        previewIframeRef.current,
-        groupId,
-        activeCompPath,
+      liveLanes.preview(
+        key,
+        () => target?.getAttribute(attr) ?? null,
+        groupLiveSource(previewIframeRef.current, groupId, activeCompPath, attr),
       );
-      liveLanes.preview(key, () => target?.getAttribute(attr) ?? null, {
-        path: targetPath,
-        target: patchTarget,
-        attr,
-      });
       patchLiveGroupAttribute(previewIframeRef.current, groupId, attr, value);
       // Live too, not just on commit: a fader drag is `setLive` per frame and
       // `setQuiet` once on release, so without this the strip's own readout
@@ -277,8 +282,12 @@ export function useSetAudioGroupAttribute({
   );
   const claimLive = useCallback(
     (groupId: string, attr: string) =>
-      liveLanes.claim(audioGroupAttributeLiveKey(groupId, attr), laneApply(groupId, attr)),
-    [liveLanes, laneApply],
+      liveLanes.claim(
+        audioGroupAttributeLiveKey(groupId, attr),
+        laneApply(groupId, attr),
+        groupLiveSource(previewIframeRef.current, groupId, activeCompPath, attr),
+      ),
+    [liveLanes, laneApply, previewIframeRef, activeCompPath],
   );
   const revertLive = useCallback(
     (groupId: string, attr: string) =>

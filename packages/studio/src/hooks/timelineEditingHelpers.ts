@@ -413,7 +413,16 @@ export async function readSavedAttribute(
   const html = await serializeStudioFileMutations(writeFile, [targetPath], () =>
     readFileContent(projectId, targetPath),
   ).catch(() => null);
-  if (html === null || readTagSnippetByTarget(html, patchTarget) === undefined) return undefined;
+  return html === null ? undefined : readTargetAttribute(html, patchTarget, attr);
+}
+
+/** What `html` holds for `attr` on the target; undefined when the target is not in it. */
+export function readTargetAttribute(
+  html: string,
+  patchTarget: PatchTarget,
+  attr: string,
+): string | null | undefined {
+  if (readTagSnippetByTarget(html, patchTarget) === undefined) return undefined;
   return readAttributeByTarget(html, patchTarget, attr) ?? null;
 }
 
