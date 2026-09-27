@@ -30,8 +30,10 @@ export function SidebarLintButton({
         </svg>
         {linting ? "Linting…" : "Lint"}
         {!linting && findingCount != null && findingCount > 0 && (
+          // A pulse that never ends paints a frame forever, idle or paused; three still catch the eye.
           <span
             data-lint-badge={hasError ? "error" : "warning"}
+            style={hasError ? { animationIterationCount: 3 } : undefined}
             className={
               hasError
                 ? "ml-1 min-w-[16px] rounded-full bg-panel-danger/25 px-1 text-[9px] font-bold text-panel-danger animate-pulse motion-reduce:animate-none"

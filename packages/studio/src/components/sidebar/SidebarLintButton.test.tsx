@@ -44,6 +44,11 @@ describe("SidebarLintButton badge", () => {
     expect(badge?.textContent).toContain("including errors");
   });
 
+  it("pulses a few times and then holds still, so an idle Studio paints nothing", () => {
+    const badge = renderBadge(true);
+    expect(badge?.style.animationIterationCount).toBe("3");
+  });
+
   it("stays still when the findings are warnings only", () => {
     const badge = renderBadge(false);
     expect(badge?.dataset.lintBadge).toBe("warning");
