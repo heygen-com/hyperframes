@@ -109,13 +109,13 @@ This is how the HyperFrames launch films were made ([hyperframes-launches](https
 also the house reference reel). Each step waits for the person. The detail lives in the owning
 guides; do not restate it here.
 
-| Step          | What the person gets                                                                                                         | Owner of the detail                                                                          |
-| ------------- | ---------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------- |
-| 1. Brief      | The message as a claim, who watches and where, length, sound, what real footage exists, and the open questions               | `/hyperframes` `references/intent-interview.md`                                              |
-| 2. Directions | Two or three concepts, each with its hook and a named reference film; one recommended                                        | `/hyperframes` `references/pitch-round.md`                                                   |
+| Step          | What the person gets                                                                                                       | Owner of the detail                                                                          |
+| ------------- | -------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------- |
+| 1. Brief      | The message as a claim, who watches and where, length, sound, what real footage exists, and the open questions             | `/hyperframes` `references/intent-interview.md`                                              |
+| 2. Directions | Two or three concepts, each with its hook and a named reference film; one recommended                                      | `/hyperframes` `references/pitch-round.md`                                                   |
 | 3. Storyboard | A beat list, then a static contact sheet (storyboard.html) with a note per cell: what moves first, which way the seam goes | `/hyperframes-creative` `references/storyboard-recipe.md`, `story-spine.md`                  |
-| 4. Build      | The first beat built and shown, then the rest in order, each its own sub-composition (§ 1)                                   | `/product-launch-video` `references/story-design.md`, `motion-language.md`, `cut-catalog.md` |
-| 5. Notes      | Revisions to only the beats named, a new version, the runtime stated                                                         | `/hyperframes` `references/review-loop.md`                                                   |
+| 4. Build      | The first beat built and shown, then the rest in order, each its own sub-composition (§ 1)                                 | `/product-launch-video` `references/story-design.md`, `motion-language.md`, `cut-catalog.md` |
+| 5. Notes      | Revisions to only the beats named, a new version, the runtime stated                                                       | `/hyperframes` `references/review-loop.md`                                                   |
 
 Build the first beat and stop for a reaction before the rest: a wrong direction then costs one beat.
 Never render until asked; the person reviews by scrubbing in Studio.
