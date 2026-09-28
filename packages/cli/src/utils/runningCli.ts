@@ -20,6 +20,7 @@ export function registerRunningCli(
     // A killed process leaves its file behind; the heartbeat tells it from a live one, and restores a removed file.
     const heartbeat = setInterval(() => {
       try {
+        mkdirSync(dir, { recursive: true, mode: 0o700 });
         writeFileSync(file, String(Date.now()), { mode: 0o600 });
       } catch {
         /* best-effort */

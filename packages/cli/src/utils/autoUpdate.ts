@@ -165,8 +165,12 @@ export function installerScript(o: InstallerScriptOptions): string {
       releaseInstallLock();
     });
     const started = Date.now();
+    let lastPoll = Date.now();
     const waitThenInstall = () => {
       if (!ownsLock()) return releaseInstallLock();
+      // A long gap between polls means the machine slept: watch every file afresh.
+      if (Date.now() - lastPoll > ${o.pollMs} * 5) seen.clear();
+      lastPoll = Date.now();
       if (running().length === 0) return install();
       if (Date.now() - started > ${o.maxWaitMs}) {
         console.log(\`[wait] gave up on \${VERSION}: a hyperframes process is still running\`);
