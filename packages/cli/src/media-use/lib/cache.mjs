@@ -1,7 +1,7 @@
 import { readFileSync, writeFileSync, mkdirSync, existsSync, copyFileSync } from "node:fs";
 import { join, basename } from "node:path";
 import { createHash } from "node:crypto";
-import { readManifest, appendRecord, normalizePrompt } from "./manifest.mjs";
+import { readManifest, appendRecord, currentRecords, normalizePrompt } from "./manifest.mjs";
 import { globalMediaDir, mediaHome } from "./media-home.mjs";
 
 export { globalMediaDir };
@@ -137,7 +137,7 @@ export function importFromCache(cacheRecord, projectDir, localId, localPath) {
 }
 
 export function promote(projectDir, id) {
-  const records = readManifest(projectDir);
+  const records = currentRecords(projectDir);
   const record = records.find((r) => r.id === id);
   if (!record) throw new Error(`asset not found in project manifest: ${id}`);
 

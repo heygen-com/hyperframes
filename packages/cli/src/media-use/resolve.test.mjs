@@ -617,6 +617,19 @@ test("--from --source adds a record only when what it says changes", () => {
     ],
   );
   assert.equal(findByPrompt(tmp, "calm underscore", "bgm"), null);
+  const listed = runResolve([
+    ...["--candidates", "--type", "bgm", "--intent", "calm underscore"],
+    ...["--project", tmp, "--json"],
+  ]);
+  assert.deepEqual(
+    JSON.parse(listed)
+      .candidates.filter((c) => c.scope === "project")
+      .map((c) => c.description),
+    ["upbeat synth"],
+  );
+  const index = readFileSync(join(tmp, ".media/index.md"), "utf8");
+  assert.match(index, /upbeat synth/);
+  assert.doesNotMatch(index, /calm underscore/);
   cleanup();
 });
 

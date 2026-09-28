@@ -1,6 +1,6 @@
 import { strict as assert } from "node:assert";
 import { test } from "node:test";
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { findByPrompt, readManifest } from "../../../scripts/lib/manifest.mjs";
@@ -53,13 +53,18 @@ const voiceLine = (intent, duration) => [
   { path: "assets/voice/01.wav", type: "voice", source: "generated", intent, duration },
 ];
 
-test("a rerun that writes the same take keeps one record", (t) => {
+test("a rerun that writes the same take keeps one record, and a new length is a new take", (t) => {
   const dir = project(t);
 
   recordInManifest(dir, voiceLine("Hello world", 1.25));
   recordInManifest(dir, voiceLine("Hello world", 1.25));
-
   assert.equal(readManifest(dir).length, 1);
+
+  recordInManifest(dir, voiceLine("Hello world", 2));
+  assert.deepEqual(
+    readManifest(dir).map(({ duration }) => duration),
+    [1.3, 2],
+  );
 });
 
 test("a rerun with new text records the new take, and the old text no longer finds the file", (t) => {
@@ -76,6 +81,9 @@ test("a rerun with new text records the new take, and the old text no longer fin
     ],
   );
   assert.equal(findByPrompt(dir, "Hello world", "voice"), null);
+  const index = readFileSync(join(dir, ".media/index.md"), "utf8");
+  assert.match(index, /Welcome back to the show/);
+  assert.doesNotMatch(index, /Hello world/);
   assert.equal(findByPrompt(dir, "Welcome back to the show", "voice")?.path, "assets/voice/01.wav");
 });
 
