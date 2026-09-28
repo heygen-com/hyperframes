@@ -3177,12 +3177,11 @@ describe("initSandboxRuntimeModular", () => {
     expect(childTimeline.time()).toBeCloseTo(1, 1);
   });
 
-  it("starts an audio clip on the tick before its time, not the tick after", () => {
+  const mountLateSfx = () => {
     const raf = createManualRaf();
     vi.spyOn(performance, "now").mockImplementation(() => raf.now());
     window.requestAnimationFrame = raf.requestAnimationFrame as typeof window.requestAnimationFrame;
     window.cancelAnimationFrame = raf.cancelAnimationFrame as typeof window.cancelAnimationFrame;
-
     const root = document.createElement("div");
     root.setAttribute("data-composition-id", "main");
     root.setAttribute("data-root", "true");
@@ -3191,7 +3190,6 @@ describe("initSandboxRuntimeModular", () => {
     root.setAttribute("data-width", "1920");
     root.setAttribute("data-height", "1080");
     document.body.appendChild(root);
-
     const sfx = document.createElement("audio");
     sfx.setAttribute("data-start", "1");
     sfx.setAttribute("data-duration", "1");
@@ -3202,18 +3200,56 @@ describe("initSandboxRuntimeModular", () => {
     const startedAt: number[] = [];
     sfx.play = vi.fn(() => {
       startedAt.push(window.__player!.getTime());
+      Object.assign(sfx, { paused: false });
       return Promise.resolve();
     });
+    sfx.pause = vi.fn(() => Object.assign(sfx, { paused: true }));
     root.appendChild(sfx);
     window.__timelines = { main: createMockTimeline(4) };
-
     initSandboxRuntimeModular();
+    return { raf, sfx, startedAt };
+  };
+
+  it("starts an audio clip on the tick before its time, not the tick after", () => {
+    const { raf, startedAt } = mountLateSfx();
     window.__player?.play();
     for (let frame = 0; frame < 75; frame++) raf.step(16);
 
     expect(startedAt.length).toBeGreaterThan(0);
     expect(startedAt[0]).toBeLessThan(1);
     expect(startedAt[0]).toBeGreaterThanOrEqual(1 - 0.02);
+  });
+
+  it("stops a clip it started early when a seek jumps back before it", () => {
+    const { raf, sfx, startedAt } = mountLateSfx();
+    window.__player?.play();
+    for (let frame = 0; frame < 75 && startedAt.length === 0; frame++) raf.step(16);
+    expect(startedAt[0]).toBeLessThan(1);
+
+    window.__player?.seek(0, { keepPlaying: true });
+    raf.step(16);
+
+    expect(sfx.pause).toHaveBeenCalled();
+  });
+
+  it("does not start a clip early on the tick a seek lands just before it", () => {
+    const { raf, startedAt } = mountLateSfx();
+    window.__player?.play();
+    raf.step(16);
+    window.__player?.seek(0.99, { keepPlaying: true });
+
+    expect(startedAt).toEqual([]);
+    raf.step(16);
+    expect(startedAt[0]).toBeGreaterThanOrEqual(1);
+  });
+
+  it("starts a clip at most 40 ms of real time early at a slow speed", () => {
+    const { raf, startedAt } = mountLateSfx();
+    window.__player?.setPlaybackRate(0.25);
+    window.__player?.play();
+    for (let frame = 0; frame < 60 && startedAt.length === 0; frame++) raf.step(100);
+
+    expect(startedAt[0]).toBeGreaterThanOrEqual(1 - 0.04 * 0.25);
   });
 
   it.each([24, 30, 60, 30_000 / 1_001])(

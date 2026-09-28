@@ -2843,8 +2843,8 @@ export function initSandboxRuntimeModular(): void {
    * The media elements this pass must visit, and the argument that the rest can
    * be skipped.
    *
-   * `isActive` requires `isInClipWindow`, so a clip whose window excludes the
-   * new time is inactive there no matter what its element state is. A clip that
+   * `isActive` requires `isInClipWindow` (or, for audio, a start within the early-start
+   * margin), so a clip outside that is inactive there whatever its element state. A clip that
    * is in neither the previous in-window set nor the set of windows whose
    * endpoint the transport just crossed was therefore out of window BEFORE and
    * is out of window NOW — the pass would only have evicted sync state that is
@@ -2978,10 +2978,10 @@ export function initSandboxRuntimeModular(): void {
     // Same reasoning, and the same latch, as the duration floors above.
     const indexed = !renderCaptureSeekStarted;
     const cueAheadSeconds =
-      state.isPlaying && lastSyncedMediaTimeSeconds !== null
+      state.isPlaying && !state.mediaForceSyncNextTick && lastSyncedMediaTimeSeconds !== null
         ? Math.min(
             Math.max(0, state.currentTime - lastSyncedMediaTimeSeconds),
-            MEDIA_SYNC_TOLERANCE_SECONDS,
+            MEDIA_SYNC_TOLERANCE_SECONDS * state.playbackRate,
           )
         : 0;
     const mediaClips = withTimingResolver(() => {
@@ -3040,7 +3040,7 @@ export function initSandboxRuntimeModular(): void {
         // Every clip not visited was out of window at both ends of this seek, so
         // the visited ones are the only possible members.
         mediaClipsInWindow = mediaClips.filter((clip) =>
-          isInClipWindow(state.currentTime, clip.start, clip.end),
+          isInClipWindow(state.currentTime, clip.start - MEDIA_SYNC_TOLERANCE_SECONDS, clip.end),
         );
       } else {
         lastSyncedMediaTimeSeconds = null;
