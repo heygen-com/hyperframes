@@ -31,6 +31,11 @@ function tree(files: string[]): string {
   return root;
 }
 
+// One more project than the walk visits at once, so a folder is still queued when the search stops.
+function queuedAtStop(): string {
+  return tree(Array.from({ length: 65 }, (_, i) => [`f${i}/index.html`, `f${i}/meta.json`]).flat());
+}
+
 async function find(root: string, spotlight: string[] = []): Promise<FoundProject[]> {
   const found: FoundProject[] = [];
   await findProjects({
@@ -111,7 +116,7 @@ describe("findProjects", () => {
   });
 
   it("stops reporting and rejects once its signal is aborted", async () => {
-    const root = tree(["a/index.html", "a/meta.json", "b/index.html", "b/meta.json"]);
+    const root = queuedAtStop();
     const controller = new AbortController();
     const found: FoundProject[] = [];
     const search = findProjects({
@@ -126,10 +131,10 @@ describe("findProjects", () => {
 
     await expect(search).rejects.toMatchObject({ name: "AbortError" });
     expect(found).toHaveLength(1);
-  });
+  }, 20_000);
 
   it("stops the search when onProject throws", async () => {
-    const root = tree(["a/index.html", "a/meta.json", "b/index.html", "b/meta.json"]);
+    const root = queuedAtStop();
     const onProject = vi.fn(() => {
       throw new Error("list is closed");
     });
@@ -138,7 +143,7 @@ describe("findProjects", () => {
       "list is closed",
     );
     expect(onProject).toHaveBeenCalledTimes(1);
-  });
+  }, 20_000);
 
   it("does not start when its signal is already aborted", async () => {
     const onProject = vi.fn();
