@@ -51,6 +51,8 @@ export function useCompositionStack({
 
   const compIdToSrcRef = useRef(compIdToSrc);
   compIdToSrcRef.current = compIdToSrc;
+  const compositionStackRef = useRef(compositionStack);
+  compositionStackRef.current = compositionStack;
 
   const handleNavigateComposition = useCallback(
     (index: number) => {
@@ -67,7 +69,9 @@ export function useCompositionStack({
   const handleDrillDown = useCallback(
     (element: { id: string; compositionSrc?: string }) => {
       if (!element.compositionSrc) return;
-      masterSeekRef.current = usePlayerStore.getState().currentTime;
+      if (compositionStackRef.current.length === 1) {
+        masterSeekRef.current = usePlayerStore.getState().currentTime;
+      }
 
       const compId = element.id;
       let resolvedPath = compIdToSrcRef.current.get(compId);

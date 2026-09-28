@@ -3,6 +3,7 @@ import React, { act } from "react";
 import { createRoot } from "react-dom/client";
 import { afterEach, describe, expect, it } from "vitest";
 import { installReactActEnvironment } from "../../hooks/domSelectionTestHarness";
+import { usePlayerStore } from "../../player/store/playerStore";
 import { useCompositionStack } from "./useCompositionStack";
 
 installReactActEnvironment();
@@ -107,6 +108,45 @@ describe("useCompositionStack — activating a composition by path", () => {
 
     expect(seen.stack).toHaveLength(1);
     expect(seen.stack[0]?.id).toBe("master");
+
+    act(() => root.unmount());
+  });
+});
+
+describe("useCompositionStack — back to the master", () => {
+  afterEach(() => {
+    document.body.innerHTML = "";
+    usePlayerStore.getState().setCurrentTime(0);
+  });
+
+  it("restores the master playhead after a two-level drill", async () => {
+    const host = document.createElement("div");
+    document.body.append(host);
+    const root = createRoot(host);
+    let stack!: ReturnType<typeof useCompositionStack>;
+
+    function Harness() {
+      stack = useCompositionStack({ projectId: "p" });
+      return null;
+    }
+
+    await act(async () => {
+      root.render(<Harness />);
+    });
+    act(() => usePlayerStore.getState().setCurrentTime(12));
+    await act(async () => {
+      stack.handleDrillDown({ id: "intro", compositionSrc: "compositions/intro.html" });
+    });
+    act(() => usePlayerStore.getState().setCurrentTime(3));
+    await act(async () => {
+      stack.handleDrillDown({ id: "logo", compositionSrc: "compositions/logo.html" });
+    });
+    expect(stack.compositionStack.map((level) => level.label)).toEqual(["Master", "intro", "logo"]);
+
+    await act(async () => {
+      stack.handleNavigateComposition(0);
+    });
+    expect(usePlayerStore.getState().currentTime).toBe(12);
 
     act(() => root.unmount());
   });
