@@ -1,10 +1,12 @@
 import { postRuntimeMessage } from "./bridge";
 import { swallow } from "./diagnostics";
-import { evictMediaSyncState } from "./media";
+import { evictMediaSyncState, HOLD_CAP_MS } from "./media";
 import { findInjectedRenderFrame } from "./renderFrameSibling";
 import type { RuntimeJson } from "./types";
 import { isVideoElement } from "./domRealm";
 import { swappedElements } from "./proxySrc";
+import { waitForServedProxy } from "./proxyWait";
+import { registerSeekCompletion } from "./adapters/seek-dispatch";
 
 /**
  * One entry per project-root-relative asset pathname, injected by the
@@ -46,6 +48,10 @@ type ProxyTrigger = "proactive" | "reactive" | "tertiary";
 // `swappedElements` so the proxy-failed case (which fires AFTER a real swap)
 // still gets its own single diagnostic.
 const unavailableDiagnosedElements = new WeakSet<HTMLMediaElement>();
+
+// Elements whose swap has started, with the src it started for. Until the copy is served they
+// keep that src, so nothing that reads it (timeline, player mirror) loads a copy still being made.
+const proxyRequested = new WeakMap<HTMLMediaElement, string | null>();
 
 function currentSrcValue(el: HTMLMediaElement): string {
   return el.currentSrc || el.src;
@@ -215,6 +221,7 @@ export function swapToProxy(
   trigger: ProxyTrigger = "reactive",
 ): void {
   if (swappedElements.has(el)) return;
+  if (proxyRequested.has(el) && proxyRequested.get(el) === el.getAttribute("src")) return;
   const originalSrc = currentSrcValue(el);
   let proxiedSrc: string;
   try {
@@ -224,15 +231,30 @@ export function swapToProxy(
     emitUnavailableDiagnostic(el, "invalid_source_url", originalSrc);
     return;
   }
-  swappedElements.set(el, el.getAttribute("src"));
-  // The swapped src points at a different file — sync state (drift offsets,
-  // seek-retry latches, volume tracking) computed against the original
-  // source must not carry over, or the next tick misreads a fresh file's
-  // buffering as drift. Evict before `load()` so the very next sync tick
-  // treats this element as a first tick.
-  evictMediaSyncState(el);
-  el.src = proxiedSrc;
-  el.load();
+  const originalAttr = el.getAttribute("src");
+  proxyRequested.set(el, originalAttr);
+  const live = () => el.isConnected && el.getAttribute("src") === originalAttr;
+  const swap = waitForServedProxy(proxiedSrc, live).then((served) => {
+    if (!live()) {
+      if (proxyRequested.get(el) === originalAttr) proxyRequested.delete(el);
+      return;
+    }
+    if (!served) {
+      emitUnavailableDiagnostic(el, "proxy_playback_failed", originalSrc);
+      return;
+    }
+    swappedElements.set(el, originalAttr);
+    // Sync state measured on the original would read the new file's buffering as drift.
+    evictMediaSyncState(el);
+    el.src = proxiedSrc;
+    el.load();
+    return new Promise((landed) => {
+      el.addEventListener("loadeddata", landed, { once: true });
+      el.addEventListener("error", landed, { once: true });
+    });
+  });
+  // A frame capture holds for the copy as it held for a loading video before, up to the same cap.
+  registerSeekCompletion(Promise.race([swap, new Promise((cap) => setTimeout(cap, HOLD_CAP_MS))]));
   const codecName = entry?.codecName ?? null;
   const details: Record<string, RuntimeJson> = {
     asset: originalSrc,

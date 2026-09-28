@@ -21,7 +21,7 @@ export function readElementPlaybackStart(el: Element): number {
 }
 
 const HOLD_END_EVENTS = ["seeked", "loadeddata", "error", "emptied", "abort"] as const;
-const HOLD_CAP_MS = 5000;
+export const HOLD_CAP_MS = 5000;
 const releaseHeldVideo = new WeakMap<HTMLMediaElement, () => void>();
 
 // A seeking video still paints its previous frame, and one still fetching its first data paints none (its seek
@@ -208,7 +208,7 @@ function markPlayRequested(el: HTMLMediaElement): void {
 const MEDIA_NETWORK_NO_SOURCE = 3;
 // An element that errored or has no source can't play; re-issuing play() every
 // tick just floods rejections. Skip it until its state changes (src reload).
-function isUnplayable(el: HTMLMediaElement): boolean {
+export function isUnplayable(el: HTMLMediaElement): boolean {
   return el.error != null || el.networkState === MEDIA_NETWORK_NO_SOURCE;
 }
 
@@ -249,6 +249,8 @@ export function hasMediaSyncStateForTest(el: HTMLMediaElement): boolean {
     videoSteering.has(el)
   );
 }
+
+export const MEDIA_HARD_SYNC_SECONDS = 0.5;
 
 /** Drift a playing audio element may carry before sync pulls it back onto the playhead. */
 const MEDIA_SYNC_TOLERANCE_SECONDS = 0.04;
@@ -495,7 +497,7 @@ export function syncRuntimeMedia(params: {
         (isHeldVideoTail && drift > 0.001) ||
         (el.ended && canSeekEndedMediaBackward && drift > 0.001) ||
         staleAudioOnFirstTick ||
-        (drift > 0.5 && (firstTickOfClip || offsetJumped || catastrophicDrift));
+        (drift > MEDIA_HARD_SYNC_SECONDS && (firstTickOfClip || offsetJumped || catastrophicDrift));
       // Playing videos use the browser's decoder for timing. Seeking one resets the decoder: a
       // ~150ms freeze while it re-buffers, as the monotonic clock advances, which loops into a
       // seek→freeze→drift→seek stutter. So a playing video skips strict and force sync; only hard

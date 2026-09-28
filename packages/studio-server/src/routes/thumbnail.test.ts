@@ -17,6 +17,12 @@ import { pruneThumbnailCache, registerThumbnailRoutes } from "./thumbnail";
 import { PREVIEW_CAPTURE_PARAM } from "./preview";
 import type { StudioApiAdapter } from "../types";
 import { createProjectSignature } from "../helpers/projectSignature.js";
+import { proxyActivityMark } from "../helpers/proxyTranscoder.js";
+
+vi.mock("../helpers/proxyTranscoder.js", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("../helpers/proxyTranscoder.js")>()),
+  proxyActivityMark: vi.fn(() => "0"),
+}));
 
 const tempProjectDirs: string[] = [];
 
@@ -130,14 +136,17 @@ describe("registerThumbnailRoutes", () => {
     );
   });
 
-  it("answers a cache-only request from the cache and never renders on a miss", async () => {
+  it("answers a cache-only request from the cache, with no content and no render on a miss", async () => {
     const adapter = createAdapter();
     await writeComposition(adapter, 1920, 1080);
     const app = new Hono();
     registerThumbnailRoutes(app, adapter);
     const url = "http://localhost/projects/demo/thumbnail/index.html?t=0&output=source";
 
-    expect((await app.request(`${url}&cached=1`)).status).toBe(404);
+    const miss = await app.request(`${url}&cached=1`);
+    expect(miss.status).toBe(204);
+    expect(miss.headers.get("Cache-Control")).toBe("no-cache");
+    expect(await miss.text()).toBe("");
     expect(adapter.generateThumbnail).not.toHaveBeenCalled();
 
     expect((await app.request(url)).status).toBe(200);
@@ -469,6 +478,38 @@ describe("registerThumbnailRoutes", () => {
     expect(existsSync(join(project.dir, ".thumbnails"))).toBe(false);
     expect(await (await app.request(url)).text()).toBe("rendered-current");
     expect(adapter.generateThumbnail).toHaveBeenCalledTimes(2);
+  });
+
+  it("does not cache a thumbnail rendered while a clip's preview copy is still being made", async () => {
+    const adapter = createAdapter();
+    await writeComposition(adapter, 1920, 1080);
+    const project = await adapter.resolveProject("demo");
+    if (!project) throw new Error("missing project");
+    vi.mocked(proxyActivityMark).mockReturnValueOnce(null).mockReturnValueOnce(null);
+    const app = new Hono();
+    registerThumbnailRoutes(app, adapter);
+    const url = "http://localhost/projects/demo/thumbnail/index.html?t=3";
+
+    expect((await app.request(url)).status).toBe(200);
+    expect(existsSync(join(project.dir, ".thumbnails"))).toBe(false);
+    expect((await app.request(url)).status).toBe(200);
+    expect(existsSync(join(project.dir, ".thumbnails"))).toBe(true);
+    expect(adapter.generateThumbnail).toHaveBeenCalledTimes(2);
+  });
+
+  it("does not cache a thumbnail when a preview copy starts or lands during the render", async () => {
+    const adapter = createAdapter();
+    await writeComposition(adapter, 1920, 1080);
+    const project = await adapter.resolveProject("demo");
+    if (!project) throw new Error("missing project");
+    vi.mocked(proxyActivityMark).mockReturnValueOnce("0").mockReturnValueOnce("1");
+    const app = new Hono();
+    registerThumbnailRoutes(app, adapter);
+
+    expect(
+      (await app.request("http://localhost/projects/demo/thumbnail/index.html?t=3")).status,
+    ).toBe(200);
+    expect(existsSync(join(project.dir, ".thumbnails"))).toBe(false);
   });
 
   it("does not cache pixels changed in flight behind a stale adapter signature", async () => {

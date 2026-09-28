@@ -24,17 +24,22 @@ vi.mock("../contexts/StudioContext", () => ({
 
 afterEach(() => {
   document.body.innerHTML = "";
-  usePlayerStore.setState({ autoKeyframeEnabled: true, thumbnailMode: "adaptive" });
+  usePlayerStore.setState({
+    autoKeyframeEnabled: true,
+    thumbnailMode: "adaptive",
+    zoomMode: "fit",
+  });
 });
 
 function renderToolbar(
   domEditSession?: React.ComponentProps<typeof TimelineToolbar>["domEditSession"],
+  props: Partial<React.ComponentProps<typeof TimelineToolbar>> = {},
 ) {
   const host = document.createElement("div");
   document.body.append(host);
   const root = createRoot(host);
   act(() => {
-    root.render(<TimelineToolbar domEditSession={domEditSession} />);
+    root.render(<TimelineToolbar domEditSession={domEditSession} {...props} />);
   });
   return { host, root };
 }
@@ -173,6 +178,52 @@ describe("TimelineToolbar — keyframes on audio tracks", () => {
       'button[aria-label="Add keyframe at playhead"]',
     );
     expect(button?.disabled).toBe(false);
+    act(() => root.unmount());
+  });
+
+  const keyframeControls = (host: HTMLElement) => [
+    host.querySelector('button[aria-label="Add keyframe at playhead"]'),
+    host.querySelector('button[aria-label="Auto-record manual edits as keyframes"]'),
+  ];
+  /** True when the keyframe shortcut claimed K, so playback never saw it. */
+  const pressK = () => {
+    const event = new KeyboardEvent("keydown", { key: "k", bubbles: true, cancelable: true });
+    act(() => {
+      window.dispatchEvent(event);
+    });
+    return event.defaultPrevented;
+  };
+
+  it("shows Add keyframe and auto-record, and K adds a keyframe, by default", () => {
+    const { host, root } = renderToolbar(sessionFor("div"));
+    expect(keyframeControls(host).every(Boolean)).toBe(true);
+    expect(pressK()).toBe(true);
+    act(() => root.unmount());
+  });
+
+  it("hides both controls for a host without keyframes, turns auto-record off and leaves K alone", () => {
+    const { host, root } = renderToolbar(sessionFor("div"), { showKeyframes: false });
+    expect(keyframeControls(host)).toEqual([null, null]);
+    expect(usePlayerStore.getState().autoKeyframeEnabled).toBe(false);
+    expect(pressK()).toBe(false);
+    act(() => root.unmount());
+  });
+});
+
+describe("TimelineToolbar Fit", () => {
+  it("shows Fit as a named icon and says whether fit is on", () => {
+    const { host, root } = renderToolbar();
+    const fit = () => host.querySelector('button[aria-label="Fit timeline to width"]');
+    expect(fit()?.textContent).toBe("");
+    expect(fit()?.querySelector("svg")).not.toBeNull();
+    act(() => fit()?.dispatchEvent(new MouseEvent("click", { bubbles: true })));
+    expect(fit()?.getAttribute("aria-pressed")).toBe("true");
+    act(() =>
+      host
+        .querySelector('button[aria-label="Zoom in"]')
+        ?.dispatchEvent(new MouseEvent("click", { bubbles: true })),
+    );
+    expect(fit()?.getAttribute("aria-pressed")).toBe("false");
     act(() => root.unmount());
   });
 });

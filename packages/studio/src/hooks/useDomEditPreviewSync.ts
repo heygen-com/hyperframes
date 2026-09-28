@@ -9,6 +9,7 @@ import { reapplyPositionEditsAfterSeek } from "../components/editor/manualEdits"
 import { useDockLayoutStore } from "../components/dock/dockLayoutStore";
 import type { PatchTarget } from "../utils/sourcePatcher";
 import { logSelect } from "../utils/selectDebug";
+import { onPreviewContentReplaced } from "../player/sceneSwap";
 
 interface UseDomEditPreviewSyncParams {
   previewIframe: HTMLIFrameElement | null;
@@ -113,10 +114,7 @@ export function useDomEditPreviewSync({
       refreshPreviewDocumentVersion();
     };
 
-    previewIframe.addEventListener("load", handleLoad);
-    return () => {
-      previewIframe.removeEventListener("load", handleLoad);
-    };
+    return onPreviewContentReplaced(previewIframe, handleLoad);
   }, [
     activeCompPath,
     applyDomSelection,

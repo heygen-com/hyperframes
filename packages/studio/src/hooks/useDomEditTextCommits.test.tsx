@@ -98,6 +98,7 @@ function commitParams(
     buildDomSelectionFromTarget: vi.fn(async () => null),
     persistDomEditOperations: vi.fn().mockResolvedValue(undefined),
     resolveImportedFontAsset: () => null,
+    readOnlyPreview: false,
     ...overrides,
   };
 }
@@ -124,6 +125,41 @@ afterEach(() => {
 });
 
 describe("useDomEditTextCommits", () => {
+  function richTextProbe() {
+    const { iframe, element } = previewElement('<h1 id="t">Old</h1>', "t");
+    const persist = vi.fn().mockResolvedValue(undefined);
+    const base = commitParams({
+      previewIframeRef: { current: iframe },
+      domEditSelection: selectionFor(element),
+      persistDomEditOperations: persist,
+    });
+    const captured: { hook: ReturnType<typeof useDomEditTextCommits> | null } = { hook: null };
+    function Probe({ readOnlyPreview }: { readOnlyPreview: boolean }) {
+      captured.hook = useDomEditTextCommits({ ...base, readOnlyPreview });
+      return null;
+    }
+    const root = mountReactHarness(<Probe readOnlyPreview={false} />);
+    cleanup = () => act(() => root.unmount());
+    const save = captured.hook!.handleDomRichTextCommit;
+    const commit = { element, html: "New", previousHtml: "Old" };
+    element.innerHTML = "New";
+    return { root, Probe, persist, element, save: () => act(async () => save(commit)) };
+  }
+
+  it("saves in-place text while the preview is editable", async () => {
+    const { persist, save } = richTextProbe();
+    await save();
+    expect(persist).toHaveBeenCalledTimes(1);
+  });
+
+  it("refuses in-place text once the preview turns read-only, through an earlier handler, and puts the old text back", async () => {
+    const { root, Probe, persist, element, save } = richTextProbe();
+    act(() => root.render(<Probe readOnlyPreview />));
+    await save();
+    expect(persist).not.toHaveBeenCalled();
+    expect(element.innerHTML).toBe("Old");
+  });
+
   it("keeps concurrent text commit ownership isolated by target", async () => {
     const { iframe, element: firstElement } = previewElement(
       "<div id='first'>First</div><div id='second'>Second</div>",

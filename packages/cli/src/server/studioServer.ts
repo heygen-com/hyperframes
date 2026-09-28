@@ -466,7 +466,7 @@ export function createStudioServer(options: StudioServerOptions): StudioServer {
 
     // Salted with the running CLI file, so an upgraded CLI never serves an older build's document.
     previewDocuments: createPreviewDocumentStore(
-      join(projectDir, ".hyperframes", "preview"),
+      projectDir,
       createHash("sha256")
         .update(readFileSync(fileURLToPath(import.meta.url)))
         .digest("hex"),

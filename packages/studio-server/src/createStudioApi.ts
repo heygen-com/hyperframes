@@ -14,6 +14,8 @@ import { registerSelectionRoutes } from "./routes/selection.js";
 import { registerMediaRoutes } from "./routes/media.js";
 import { registerGlobalAssetRoutes } from "./routes/globalAssets.js";
 import { registerHistoryRoutes } from "./routes/history.js";
+import { replaceWithProjectDirMissing } from "./helpers/projectDirMissing.js";
+import { folderGone, isProjectRootMissing } from "./helpers/safePath.js";
 
 /**
  * Create a Hono sub-app with all studio API routes.
@@ -23,6 +25,23 @@ import { registerHistoryRoutes } from "./routes/history.js";
  */
 export function createStudioApi(adapter: StudioApiAdapter): Hono {
   const api = new Hono();
+  api.use(async function answerProjectDirMissingAfterErrorHandlers(c, next) {
+    const hostHeaders = new Headers(c.res.headers);
+    await next();
+    if (isProjectRootMissing(c.error)) replaceWithProjectDirMissing(c, hostHeaders);
+  });
+  api.use("/projects/:id/*", async function answerProjectDirMissingForVanishedFolder(c, next) {
+    const hostHeaders = new Headers(c.res.headers);
+    const dirBeforeRoute = await Promise.resolve()
+      .then(() => adapter.resolveProject(c.req.param("id")))
+      .then(
+        (project) => project?.dir,
+        () => undefined,
+      );
+    await next();
+    if (c.res.status >= 403 && dirBeforeRoute && folderGone(dirBeforeRoute))
+      replaceWithProjectDirMissing(c, hostHeaders);
+  });
 
   registerProjectRoutes(api, adapter);
   registerFileRoutes(api, adapter);

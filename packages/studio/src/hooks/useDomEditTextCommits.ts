@@ -53,6 +53,7 @@ export interface UseDomEditTextCommitsParams {
   ) => Promise<DomEditSelection | null>;
   persistDomEditOperations: PersistDomEditOperations;
   resolveImportedFontAsset: (fontFamilyValue: string) => ImportedFontAsset | null;
+  readOnlyPreview: boolean;
 }
 
 function canCommitInlineTextSelection(selection: DomEditSelection, element: HTMLElement): boolean {
@@ -114,7 +115,10 @@ export function useDomEditTextCommits({
   buildDomSelectionFromTarget,
   persistDomEditOperations,
   resolveImportedFontAsset,
+  readOnlyPreview,
 }: UseDomEditTextCommitsParams) {
+  const latestReadOnlyPreviewRef = useRef(readOnlyPreview);
+  latestReadOnlyPreviewRef.current = readOnlyPreview;
   const domTextCommitVersionRef = useRef(new Map<string, symbol>());
   const domStyleCommitVersionRef = useRef(new Map<string, symbol>());
 
@@ -319,6 +323,10 @@ export function useDomEditTextCommits({
   const handleDomRichTextCommit = useCallback(
     async ({ element, html, previousHtml }: InlineTextEditCommit) => {
       if (!domEditSelection) return;
+      if (latestReadOnlyPreviewRef.current) {
+        if (element.isConnected && element.innerHTML === html) element.innerHTML = previousHtml;
+        return;
+      }
       // The same gate that let the edit open, not the design panel's.
       //
       // The panel's rule is about its text fields, and it has none for an
