@@ -37,7 +37,8 @@ function timeRun(command) {
   });
   const seconds = Number(process.hrtime.bigint() - start) / 1e9;
   // A failed run times nothing worth reporting.
-  if (result.status !== 0) throw result.error ?? new Error(`${command.join(" ")} exited ${result.status}`);
+  if (result.status !== 0)
+    throw result.error ?? new Error(`${command.join(" ")} exited ${result.status}`);
   return seconds;
 }
 
