@@ -1,8 +1,5 @@
-/**
- * Video mode: a `<video playsinline>` driven through the same direct-timeline
- * adapter as a same-origin `__timelines` composition, so play/pause/seek, the
- * timeupdate clock, loop and `ended` stay one code path.
- */
+// Video mode: a `<video playsinline>` behind the direct-timeline adapter a same-origin
+// `__timelines` composition uses, so play, seek, loop and `ended` share one code path.
 
 import type { DirectTimelineAdapter } from "./timeline-adapters.js";
 
