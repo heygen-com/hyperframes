@@ -17,6 +17,7 @@ import {
   resolveDomEditCapabilities,
   resolveDomEditSelection,
 } from "./domEditing";
+import { normalizeTimelineCompositionSource } from "./domEditingDom";
 
 function createDocument(markup: string): Document {
   const window = new Window();
@@ -908,6 +909,20 @@ describe("resolveDomEditSelection", () => {
     });
 
     expect(first).not.toBe(second);
+  });
+
+  it("reads a preview prefix only from a URL, not from a project folder named preview", () => {
+    expect(normalizeTimelineCompositionSource("sections/preview/x.html")).toBe(
+      "sections/preview/x.html",
+    );
+    expect(
+      normalizeTimelineCompositionSource(
+        "http://localhost:5190/api/projects/p/preview/sections/x.html",
+      ),
+    ).toBe("sections/x.html");
+    expect(normalizeTimelineCompositionSource("/api/projects/p/preview/comp/sections/x.html")).toBe(
+      "sections/x.html",
+    );
   });
 
   it("finds a composition host authored with a ./ path", () => {
