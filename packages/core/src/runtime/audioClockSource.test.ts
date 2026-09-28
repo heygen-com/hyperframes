@@ -188,4 +188,26 @@ describe("the audio the playhead follows", () => {
     }
     expect(window.__player!.getTime()).toBeGreaterThan((nowMs - playedAt) / 1000 + 0.1);
   });
+
+  it("is not frozen by a clip that has no playable source", async () => {
+    mount(
+      `<audio id="empty" data-start="0" data-duration="10"></audio>` +
+        `<audio id="vo" data-start="0" data-duration="10" src="/assets/vo.mp3"></audio>`,
+    );
+    const empty = document.getElementById("empty") as HTMLAudioElement;
+    const vo = document.getElementById("vo") as HTMLAudioElement;
+    initSandboxRuntimeModular();
+    await flush();
+    window.__player?.play();
+    await flush();
+    const playedAt = nowMs;
+    Object.defineProperty(empty, "networkState", { value: 3 });
+    Object.defineProperty(empty, "readyState", { value: 0 });
+    Object.assign(vo, { paused: false });
+    for (let frame = 0; frame < 90; frame++) {
+      stepFrames(1);
+      vo.currentTime = (nowMs - playedAt) / 1000;
+    }
+    expect(window.__player!.getTime()).toBeGreaterThan(1.4);
+  });
 });

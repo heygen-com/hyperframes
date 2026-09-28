@@ -208,7 +208,7 @@ function markPlayRequested(el: HTMLMediaElement): void {
 const MEDIA_NETWORK_NO_SOURCE = 3;
 // An element that errored or has no source can't play; re-issuing play() every
 // tick just floods rejections. Skip it until its state changes (src reload).
-function isUnplayable(el: HTMLMediaElement): boolean {
+export function isUnplayable(el: HTMLMediaElement): boolean {
   return el.error != null || el.networkState === MEDIA_NETWORK_NO_SOURCE;
 }
 

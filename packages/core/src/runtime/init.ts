@@ -30,14 +30,15 @@ import {
 import { sourceTimeAt } from "../speedRamp";
 import { createWaapiAdapter } from "./adapters/waapi";
 import {
+  isUnplayable,
   readElementPlaybackRate,
-  readElementRateSpec,
   readElementPlaybackStart,
+  readElementRateSpec,
   refreshRuntimeMediaCache,
-  resolveRuntimeMediaClipDuration,
   resolveNaturalMediaTimelineDuration,
-  type RuntimeMediaClip,
+  resolveRuntimeMediaClipDuration,
   syncRuntimeMedia,
+  type RuntimeMediaClip,
 } from "./media";
 import { handleErrorForProxy, handleMetadataForProxy, maybeProxyProactively } from "./mediaProxy";
 import { probeAndCacheElementVolume, type VolumeKeyframe } from "./mediaVolumeEnvelope.js";
@@ -3801,8 +3802,8 @@ export function initSandboxRuntimeModular(): void {
     },
     isPlaying: () => clock.isPlaying(),
     setPlaybackRate: (rate) => {
-      clock.setRate(rate);
       applyPlaybackRate(rate);
+      clock.setRate(state.playbackRate);
       applyWebAudioRate();
     },
     getPlaybackRate: () => state.playbackRate,
@@ -4515,12 +4516,11 @@ export function initSandboxRuntimeModular(): void {
           let foundActive = false;
           for (const rawEl of followed ? [followed, ...audioEls] : audioEls) {
             if (!isMediaElement(rawEl) || !rawEl.isConnected) continue;
-            if (isSilencedByHidden(rawEl)) continue;
+            if (isSilencedByHidden(rawEl) || isUnplayable(rawEl)) continue;
             const start = resolveAbsoluteMediaStartSeconds(rawEl);
             const durAttr = parseStrictFiniteTimingNumber(rawEl.dataset.duration);
             const end = durAttr != null && durAttr > 0 ? start + durAttr : Infinity;
             const mediaStart = readElementPlaybackStart(rawEl);
-            if (rawEl.error) continue;
             if (Number.isFinite(start) && isInClipWindow(state.currentTime, start, end)) {
               if (!rawEl.paused) {
                 clock.attachAudioSource({
@@ -4864,8 +4864,8 @@ export function initSandboxRuntimeModular(): void {
       }
     },
     onSetPlaybackRate: (rate) => {
-      state.transportClock?.setRate(rate);
       applyPlaybackRate(rate);
+      if (state.transportClock) state.transportClock.setRate(state.playbackRate);
       applyWebAudioRate();
     },
     onSetIdleHeartbeat: (slow) => {

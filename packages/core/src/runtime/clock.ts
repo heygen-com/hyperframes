@@ -89,7 +89,7 @@ export class TransportClock {
     if (el.seeking) return this._lastNow;
     const time = timeAtSourceTime(rate ?? 1, el.currentTime - mediaStart) + compositionStart;
     if (time >= this._lastNow) return time;
-    if (el.loop) return null;
+    if (el.loop && this._lastNow - time > timeAtSourceTime(rate ?? 1, el.duration) / 2) return null;
     const buffering = el.readyState < HAVE_FUTURE_DATA;
     return buffering || this._lastNow - time <= MEDIA_HARD_SYNC_SECONDS ? this._lastNow : null;
   }

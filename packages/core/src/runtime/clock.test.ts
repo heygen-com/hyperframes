@@ -365,12 +365,22 @@ describe("TransportClock", () => {
     it("does not freeze on a short native loop that wraps", () => {
       const { clock, advance } = createClock({ duration: 30 });
       clock.play();
-      const bed = Object.assign(createMockAudioEl(0.3, false), { loop: true });
+      const bed = Object.assign(createMockAudioEl(0.3, false), { loop: true, duration: 0.32 });
       clock.attachAudioSource({ el: bed, compositionStart: 0, mediaStart: 0 });
       expect(clock.now()).toBeCloseTo(0.3, 5);
       advance(16);
       bed.currentTime = 0.02; // wrapped to its loop start
       expect(clock.now()).toBeCloseTo(0.316, 5);
+    });
+
+    it("holds the playhead for a looping bed that starts late", () => {
+      const { clock, advance } = createClock({ duration: 30 });
+      clock.play();
+      advancePolled(clock, advance, 2000);
+      const bed = Object.assign(createMockAudioEl(0, false), { loop: true, duration: 8 });
+      clock.attachAudioSource({ el: bed, compositionStart: 1.9, mediaStart: 0 });
+      advance(16);
+      expect(clock.now()).toBeCloseTo(2, 5);
     });
 
     it("continues from the last audio time when the element drops out", () => {
