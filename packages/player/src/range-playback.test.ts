@@ -398,7 +398,7 @@ describe("HyperframesPlayer range playback: video and direct timelines", () => {
     player.removeAttribute("range-end");
     player.seek(5.9);
     player.play();
-    for (const currentTime of [5.91, 5.95, 5.99]) {
+    for (const currentTime of [5.91, 5.95, 5.99, 5.9995]) {
       setMedia(video, { currentTime });
       flushFrame();
     }
