@@ -6,7 +6,7 @@ import type { Example } from "./_examples.js";
 import { c } from "../ui/colors.js";
 import { errorBox } from "../ui/format.js";
 import { failCommand } from "../utils/commandResult.js";
-import { findProjects } from "../utils/findProjects.js";
+import { findProjects } from "@hyperframes/core/projects";
 
 export const examples: Example[] = [
   ["List the HyperFrames projects in your home folder", "hyperframes projects"],

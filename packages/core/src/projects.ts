@@ -3,7 +3,9 @@ import type { Dirent } from "node:fs";
 import { readFile, readdir, realpath, stat } from "node:fs/promises";
 import { homedir } from "node:os";
 import { basename, dirname, isAbsolute, join, relative, sep } from "node:path";
-import { isHyperframesProject, PROJECT_MARKER_FILES } from "@hyperframes/core";
+import { isHyperframesProject, PROJECT_MARKER_FILES } from "./projectRule";
+
+export { isHyperframesProject, PROJECT_MARKER_FILES };
 
 export interface FoundProject {
   path: string;

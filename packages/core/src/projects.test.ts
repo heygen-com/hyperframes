@@ -10,7 +10,7 @@ import {
 import { tmpdir } from "node:os";
 import { join, relative, sep } from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { findProjects, type FoundProject } from "./findProjects.js";
+import { findProjects, type FoundProject } from "./projects";
 
 const roots: string[] = [];
 afterEach(() => {
