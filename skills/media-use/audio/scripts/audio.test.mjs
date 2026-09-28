@@ -104,7 +104,10 @@ test("two effects never share a file when one's name is taken by the person, run
         sfxLibDir,
       });
       const files = sfx.map(({ file }) => file);
-      recordInManifest(dir, [...new Set(files)].map((path) => ({ path, type: "sfx", source: "search" })));
+      recordInManifest(
+        dir,
+        [...new Set(files)].map((path) => ({ path, type: "sfx", source: "search" })),
+      );
       return files;
     };
     try {
