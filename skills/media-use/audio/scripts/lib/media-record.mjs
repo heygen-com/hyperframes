@@ -1,7 +1,10 @@
-import { spawnP } from "./tts.mjs";
+import { recordInPlace } from "../../../scripts/lib/manifest.mjs";
+import { regenerateIndex } from "../../../scripts/lib/index-gen.mjs";
+
+const SFX_SOURCES = { heygen: "search", local: "bundled" };
 
 // The files one engine run wrote, each with how it was made, for the project's media manifest.
-export function writtenAssets({ only, lines, voices, bgm, bgmFields, sfx }) {
+export function writtenAssets({ only, lines, voices, ttsProvider, bgm, bgmFields, sfx }) {
   const textById = new Map(lines.map((line) => [String(line.id), String(line.text ?? "").trim()]));
   const assets = [];
   if (only.has("tts")) {
@@ -11,32 +14,49 @@ export function writtenAssets({ only, lines, voices, bgm, bgmFields, sfx }) {
         type: "voice",
         source: "generated",
         intent: textById.get(voice.id),
+        duration: voice.duration_s,
+        provider: ttsProvider,
       });
     }
   }
   if (only.has("bgm") && bgm && !bgmFields.bgm_pending) {
-    const source = bgmFields.bgm_mode === "retrieve" ? "search" : "generated";
-    assets.push({ path: bgm.path, type: "bgm", source, intent: bgm.query });
+    assets.push({
+      path: bgm.path,
+      type: "bgm",
+      source: bgmFields.bgm_mode === "retrieve" ? "search" : "generated",
+      intent: bgm.query,
+      duration: bgm.duration_s,
+      provider: bgmFields.bgm_provider,
+    });
   }
   if (only.has("sfx")) {
     for (const cue of new Map(sfx.map((entry) => [entry.file, entry])).values()) {
-      const source = { heygen: "search", local: "bundled" }[cue.source];
-      if (source) assets.push({ path: cue.file, type: "sfx", source, intent: cue.name });
+      const source = SFX_SOURCES[cue.source];
+      if (!source) continue;
+      const provider = source === "search" ? "heygen" : "bundled.sfx";
+      assets.push({ path: cue.file, type: "sfx", source, intent: cue.name, duration: cue.duration_s, provider });
     }
   }
   return assets;
 }
 
-// Through `hyperframes media-use`, the manifest's one writer, one file at a time since it numbers records by reading
-// the manifest. Returns one anomaly per file left unrecorded.
-export async function recordInManifest(hyperframesDir, assets, spawn = spawnP) {
+/** Records each asset where it lies; returns one anomaly per file left unrecorded. */
+export function recordInManifest(hyperframesDir, assets) {
   const anomalies = [];
-  for (const { path, type, source, intent } of assets) {
-    const args = ["hyperframes", "media-use", "resolve", "--from", path, "--type", type];
-    args.push("--source", source, "--project", ".", ...(intent ? ["--intent", intent] : []));
-    const { status } = await spawn("npx", args, { cwd: hyperframesDir });
-    if (status !== 0)
-      anomalies.push(`${path}: not recorded in the media manifest (exit ${status})`);
+  for (const { path, type, source, intent, duration, provider } of assets) {
+    try {
+      recordInPlace(hyperframesDir, {
+        type,
+        path,
+        source,
+        description: intent,
+        duration,
+        provenance: { provider: provider || "local", ...(intent && { prompt: intent }) },
+      });
+    } catch (error) {
+      anomalies.push(`${path}: not recorded in the media manifest (${error.message})`);
+    }
   }
+  if (anomalies.length < assets.length) regenerateIndex(hyperframesDir);
   return anomalies;
 }

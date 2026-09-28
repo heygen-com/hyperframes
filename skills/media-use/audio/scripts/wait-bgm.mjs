@@ -133,11 +133,8 @@ while (Date.now() - started <= timeoutMs) {
       message: `BGM ready at ${bgmPath}.`,
     });
     console.log(`✓ bgm: ready (${bgmPath}, ${size}B)`);
-    const generated = [
-      { path: bgmPath, type: "bgm", source: "generated", intent: audioMeta.bgm?.query },
-    ];
-    for (const anomaly of await recordInManifest(hyperframesDir, generated))
-      console.error(`  ${anomaly}`);
+    const generated = { path: bgmPath, type: "bgm", source: "generated", provider: base.provider };
+    for (const anomaly of recordInManifest(hyperframesDir, [generated])) console.error(`  ${anomaly}`);
     process.exit(0);
   }
 

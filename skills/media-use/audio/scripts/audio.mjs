@@ -290,8 +290,8 @@ const meta = {
 };
 mkdirSync(dirname(outPath), { recursive: true });
 audioMeta.write(meta);
-const written = writtenAssets({ only, lines, voices, bgm, bgmFields, sfx });
-anomalies.push(...(await recordInManifest(hyperframesDir, written)));
+const written = writtenAssets({ only, lines, voices, ttsProvider, bgm, bgmFields, sfx });
+anomalies.push(...recordInManifest(hyperframesDir, written));
 
 console.log(`✓ audio engine → ${outPath}`);
 console.log(`  heygen: ${heygenOK ? "yes" : "no"}  ·  ran: ${[...only].join(",")}`);

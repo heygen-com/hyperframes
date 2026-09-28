@@ -1,56 +1,63 @@
 import { strict as assert } from "node:assert";
 import { test } from "node:test";
-import { spawnSync } from "node:child_process";
-import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
+import { readManifest } from "../../../scripts/lib/manifest.mjs";
 import { recordInManifest, writtenAssets } from "./media-record.mjs";
 
-const RESOLVE = join(import.meta.dirname, "../../../../../packages/cli/src/media-use/resolve.mjs");
 const noBgm = { bgm: null, bgmFields: { bgm_pending: false } };
 
-// Stands in for `npx hyperframes media-use resolve ...` by running the CLI's resolve script directly.
-function runResolve(cmd, args, opts) {
-  assert.equal(cmd, "npx");
-  assert.deepEqual(args.slice(0, 3), ["hyperframes", "media-use", "resolve"]);
-  const env = { ...process.env, DO_NOT_TRACK: "1" };
-  const r = spawnSync(process.execPath, [RESOLVE, ...args.slice(3)], { ...opts, env });
-  return Promise.resolve({ status: r.status });
+function project(t) {
+  const dir = mkdtempSync(join(tmpdir(), "mu-record-"));
+  t.after(() => rmSync(dir, { recursive: true, force: true }));
+  return dir;
 }
 
-test("a voice run leaves a manifest entry marked generated", async () => {
-  const dir = mkdtempSync(join(tmpdir(), "mu-record-"));
-  try {
-    mkdirSync(join(dir, "assets/voice"), { recursive: true });
-    writeFileSync(join(dir, "assets/voice/01.wav"), "fake wav");
-    const assets = writtenAssets({
-      only: new Set(["tts"]),
-      lines: [{ id: "01", text: "Welcome to the launch" }],
-      voices: [{ id: "01", path: "assets/voice/01.wav" }],
-      sfx: [],
-      ...noBgm,
-    });
+test("a voice run leaves a manifest entry marked generated", (t) => {
+  const dir = project(t);
+  const assets = writtenAssets({
+    only: new Set(["tts"]),
+    lines: [{ id: "01", text: "Welcome to the launch" }],
+    voices: [{ id: "01", path: "assets/voice/01.wav", duration_s: 2.34 }],
+    ttsProvider: "kokoro",
+    sfx: [],
+    ...noBgm,
+  });
 
-    assert.deepEqual(await recordInManifest(dir, assets, runResolve), []);
+  assert.deepEqual(recordInManifest(dir, assets), []);
 
-    const records = readFileSync(join(dir, ".media/manifest.jsonl"), "utf8")
-      .trim()
-      .split("\n")
-      .map((line) => JSON.parse(line));
-    assert.deepEqual(
-      records.map(({ path, type, source, description }) => ({ path, type, source, description })),
-      [
-        {
-          path: "assets/voice/01.wav",
-          type: "voice",
-          source: "generated",
-          description: "Welcome to the launch",
-        },
-      ],
-    );
-  } finally {
-    rmSync(dir, { recursive: true, force: true });
-  }
+  assert.deepEqual(
+    readManifest(dir).map(({ path, type, source, description, duration, provenance }) => ({
+      path,
+      type,
+      source,
+      description,
+      duration,
+      provenance,
+    })),
+    [
+      {
+        path: "assets/voice/01.wav",
+        type: "voice",
+        source: "generated",
+        description: "Welcome to the launch",
+        duration: 2.3,
+        provenance: { provider: "kokoro", prompt: "Welcome to the launch" },
+      },
+    ],
+  );
+});
+
+test("a rerun that rewrites the same files keeps one record each", (t) => {
+  const dir = project(t);
+  const run = () =>
+    recordInManifest(dir, [{ path: "assets/voice/01.wav", type: "voice", source: "generated" }]);
+
+  run();
+  run();
+
+  assert.equal(readManifest(dir).length, 1);
 });
 
 test("music and sound effects are marked by where they came from", () => {
@@ -64,6 +71,7 @@ test("music and sound effects are marked by where they came from", () => {
       { file: "assets/sfx/whoosh.mp3", name: "whoosh", source: "local" },
       { file: "assets/sfx/whoosh.mp3", name: "whoosh", source: "local" },
       { file: "assets/sfx/glass.mp3", name: "glass", source: "heygen" },
+      { file: "assets/sfx/pop.mp3", name: "pop", source: "project" },
     ],
   });
 
@@ -77,27 +85,29 @@ test("music and sound effects are marked by where they came from", () => {
   );
 });
 
-test("music still being generated is left for wait-bgm to record", () => {
-  const assets = writtenAssets({
-    only: new Set(["bgm"]),
-    lines: [],
-    voices: [],
-    sfx: [],
-    bgm: { path: "assets/bgm/track.wav" },
-    bgmFields: { bgm_pending: true, bgm_mode: "generate" },
-  });
+test("music made locally is marked generated once it is ready, not while pending", () => {
+  const written = (bgm_pending) =>
+    writtenAssets({
+      only: new Set(["bgm"]),
+      lines: [],
+      voices: [],
+      sfx: [],
+      bgm: { path: "assets/bgm/track.wav" },
+      bgmFields: { bgm_pending, bgm_mode: "detached-single" },
+    }).map(({ source }) => source);
 
-  assert.deepEqual(assets, []);
+  assert.deepEqual(written(true), []);
+  assert.deepEqual(written(false), ["generated"]);
 });
 
-test("a file media-use could not record becomes an anomaly, not a failure", async () => {
-  const anomalies = await recordInManifest(
-    "/nowhere",
-    [{ path: "assets/voice/01.wav", type: "voice", source: "generated" }],
-    async () => ({ status: -1 }),
-  );
+test("a file that cannot be recorded becomes an anomaly, not a failure", (t) => {
+  const dir = project(t);
+  writeFileSync(join(dir, ".media"), "a file where the media folder should be");
 
-  assert.deepEqual(anomalies, [
-    "assets/voice/01.wav: not recorded in the media manifest (exit -1)",
+  const anomalies = recordInManifest(dir, [
+    { path: "assets/voice/01.wav", type: "voice", source: "generated" },
   ]);
+
+  assert.equal(anomalies.length, 1);
+  assert.match(anomalies[0], /^assets\/voice\/01\.wav: not recorded in the media manifest/);
 });

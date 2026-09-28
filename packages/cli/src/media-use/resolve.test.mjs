@@ -630,6 +630,14 @@ test("resolve does not relabel a recorded file in assets/ as the person's own", 
     id: "bgm_001",
     type: "bgm",
     path: "assets/bgm/ambient-track.mp3",
+    source: "existing",
+    description: "ambient track",
+    provenance: { provider: "local", adopted: true },
+  });
+  appendRecord(tmp, {
+    id: "bgm_002",
+    type: "bgm",
+    path: "assets/bgm/ambient-track.mp3",
     source: "search",
     description: "calm underscore",
     provenance: { provider: "heygen" },
@@ -650,8 +658,34 @@ test("resolve does not relabel a recorded file in assets/ as the person's own", 
   assert.equal(parsed.source, "search");
   assert.deepEqual(
     readManifest(tmp).map((r) => r.source),
-    ["search"],
+    ["existing", "search"],
   );
+  cleanup();
+});
+
+test("--from --source copies a file from outside the project, labelled with that source", () => {
+  setup();
+  const outside = mkdtempSync(join(tmpdir(), "mu-outside-"));
+  writeFileSync(join(outside, "take.wav"), "outside wav");
+  const args = ["--from", join(outside, "take.wav"), "--type", "voice", "--source", "generated"];
+
+  const out = runResolve([...args, "--project", tmp, "--json"]);
+
+  const parsed = JSON.parse(out.trim());
+  assert.match(parsed.path, /^\.media\/audio\/voice\//);
+  assert.equal(parsed.source, "generated");
+  rmSync(outside, { recursive: true, force: true });
+  cleanup();
+});
+
+test("--source is refused for a LUT and without --from", () => {
+  setup();
+  writeFileSync(join(tmp, "look.cube"), "LUT_3D_SIZE 2\n");
+  const lut = ["--from", join(tmp, "look.cube"), "--type", "lut", "--source", "generated"];
+
+  assert.equal(spawnResolve([...lut, "--project", tmp]).status, 2);
+  assert.equal(spawnResolve(["--source", "generated", "--project", tmp]).status, 2);
+  assert.deepEqual(readManifest(tmp), []);
   cleanup();
 });
 

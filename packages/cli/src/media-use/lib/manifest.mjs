@@ -10,7 +10,7 @@ import {
   rmSync,
   statSync,
 } from "node:fs";
-import { join } from "node:path";
+import { basename, join } from "node:path";
 
 const MANIFEST_FILE = "manifest.jsonl";
 const INDEX_FILE = "index.md";
@@ -83,6 +83,28 @@ export function appendRecord(projectDir, record) {
 // keying cache lookups on exact equality meant "Calm piano" and "calm  piano"
 // re-searched and re-downloaded. Normalize (trim, lowercase, collapse internal
 // whitespace) on both sides; the raw prompt is still stored for audit.
+/** The record a path has now: the manifest only appends, so the last one for a path wins. */
+export function latestRecordFor(projectDir, path) {
+  return readManifest(projectDir).findLast((record) => record.path === path);
+}
+
+/** Records a file already in the project where it is, unless its current record already says the same source. */
+export function recordInPlace(projectDir, { type, path, source, description, duration, provenance }) {
+  const latest = latestRecordFor(projectDir, path);
+  if (latest?.source === source) return latest;
+  const record = {
+    id: nextId(projectDir, type),
+    type,
+    path,
+    source,
+    description: description || basename(path),
+    ...(duration != null && { duration: Math.round(duration * 10) / 10 }),
+    provenance,
+  };
+  appendRecord(projectDir, record);
+  return record;
+}
+
 export function normalizePrompt(prompt) {
   return String(prompt ?? "")
     .trim()

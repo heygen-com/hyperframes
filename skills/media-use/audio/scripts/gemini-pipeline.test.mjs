@@ -108,6 +108,11 @@ fs.writeFileSync(path.join(args[args.indexOf('--dir')+1], 'transcript.json'), JS
         },
       ]);
       assert.equal(meta.total_duration_s, 1.25);
+      const manifest = readFileSync(join(dir, ".media/manifest.jsonl"), "utf8").trim().split("\n");
+      assert.deepEqual(
+        manifest.map((line) => JSON.parse(line)).map(({ path, source }) => [path, source]),
+        [["assets/voice/intro.wav", "generated"]],
+      );
     });
   }
 }

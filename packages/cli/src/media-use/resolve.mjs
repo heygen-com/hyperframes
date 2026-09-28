@@ -1,12 +1,13 @@
 #!/usr/bin/env node
 
 import { spawnSync } from "node:child_process";
-import { existsSync, statSync, writeFileSync, renameSync, rmSync } from "node:fs";
+import { existsSync, statSync, writeFileSync, renameSync, rmSync, realpathSync } from "node:fs";
 import { resolve, join, extname, basename, relative, isAbsolute, sep } from "node:path";
 import { parseArgs } from "node:util";
 import {
   appendRecord,
-  readManifest,
+  latestRecordFor,
+  recordInPlace,
   findByPrompt,
   findByEntity,
   nextId,
@@ -24,6 +25,7 @@ import {
 } from "./lib/registry.mjs";
 import { freezeUrl, freezeLocalFile, isDirectMediaUrl } from "./lib/freeze.mjs";
 import { findExistingAsset } from "./lib/adopt.mjs";
+import { probe as probeMedia } from "./lib/probe.mjs";
 import { track } from "./lib/telemetry.mjs";
 import { recordMiss } from "./lib/misses.mjs";
 import { buildStats } from "./lib/stats.mjs";
@@ -213,6 +215,11 @@ if (args.reuse !== undefined) {
   process.exit(0);
 }
 
+if (args.source && !args.from) {
+  console.error("error: --source goes with --from <file>");
+  process.exit(2);
+}
+
 // Ingest: freeze a user-supplied local file or direct public URL (no search).
 if (args.from) {
   await ingest(args.from);
@@ -358,7 +365,7 @@ async function run() {
       ? null
       : findExistingAsset(projectDir, intent, type);
   if (existingAsset) {
-    const recorded = readManifest(projectDir).find((r) => r.path === existingAsset.relativePath);
+    const recorded = latestRecordFor(projectDir, existingAsset.relativePath);
     if (recorded) return result(recorded, "cached");
     const id = nextId(projectDir, type);
     const record = {
@@ -915,9 +922,14 @@ async function ingest(src) {
     console.error(`error: --source takes one of: ${RECORDED_SOURCES.join(", ")}`);
     process.exit(2);
   }
-  const inProject = args.source && !isUrl ? relative(projectDir, resolve(src)) : null;
-  if (inProject && !inProject.startsWith("..") && !isAbsolute(inProject)) {
-    return recordInPlace(inProject.split(sep).join("/"));
+  if (args.source && (type === "lut" || type === "grade")) {
+    console.error("error: --source records media files; a LUT or grade is ingested without it");
+    process.exit(2);
+  }
+  const real = (path) => (existsSync(path) ? realpathSync(path) : path);
+  const inProject = args.source && !isUrl ? relative(real(projectDir), real(resolve(src))) : null;
+  if (inProject && inProject !== ".." && !inProject.startsWith(`..${sep}`) && !isAbsolute(inProject)) {
+    return recordProjectFile(inProject.split(sep).join("/"));
   }
   const ext = extname(isUrl ? new URL(src).pathname : src) || defaultExt(type);
   const { id, localPath, fullPath } = await withReservedFile(
@@ -957,25 +969,18 @@ async function ingest(src) {
   await result(record, "ingested");
 }
 
-async function recordInPlace(path) {
-  const source = args.source;
-  const known = readManifest(projectDir).find((r) => r.path === path && r.source === source);
-  if (known) return result(known, "cached");
-  const record = {
-    id: nextId(projectDir, type),
+async function recordProjectFile(path) {
+  const record = recordInPlace(projectDir, {
     type,
     path,
-    source,
-    description: intent || basename(path),
-    provenance: {
-      provider: args.provider || "local",
-      from: path,
-      ...(intent && { prompt: intent }),
-    },
-  };
-  appendRecord(projectDir, record);
+    source: args.source,
+    description: intent,
+    duration: probeMedia(join(projectDir, path)).duration,
+    provenance: { provider: args.provider || "local", from: path, ...(intent && { prompt: intent }) },
+  });
   regenerateIndex(projectDir);
-  await result(record, source);
+  // "recorded", not the record's source, so usage counts keep meaning fetches.
+  await result(record, "recorded");
 }
 
 async function showCandidates() {
