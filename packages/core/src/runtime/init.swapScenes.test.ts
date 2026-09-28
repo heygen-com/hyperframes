@@ -609,6 +609,20 @@ describe("__hfSwapScenes", () => {
     },
   );
 
+  it("gives a kept video its authored data-volume back when its unchanged script wrote volume only over the old text", async () => {
+    quietMedia();
+    const { html } = bootWithHeadingScript(
+      "video.volume = 0.2",
+      '<video src="clip.mp4" data-volume="0.5"></video>',
+    );
+    await tick();
+    const video = sceneHost("a").querySelector("video")!;
+    expect(video.volume).toBe(0.2);
+    await window.__hfSwapScenes!(html);
+    expect(sceneHost("a").querySelector("video")).toBe(video);
+    expect(video.volume).toBe(0.5);
+  });
+
   it.each([
     "video.className = 'dim'",
     "video.hidden = true",

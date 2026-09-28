@@ -2420,16 +2420,19 @@ export function initSandboxRuntimeModular(): void {
     }
   };
 
+  const authoredMediaVolume = (el: HTMLMediaElement): number | null => {
+    const parsed = Number.parseFloat(el.dataset.volume ?? "");
+    return Number.isFinite(parsed) ? Math.max(0, Math.min(1, parsed)) : null;
+  };
+
   const bindMediaMetadataListeners = () => {
     if (state.tornDown) return;
     const mediaEls = Array.from(document.querySelectorAll("video, audio")) as HTMLMediaElement[];
     for (const mediaEl of mediaEls) {
       if (metadataBoundMedia.has(mediaEl)) continue;
       metadataBoundMedia.add(mediaEl);
-      const parsedVolume = Number.parseFloat(mediaEl.dataset.volume ?? "");
-      if (Number.isFinite(parsedVolume)) {
-        mediaEl.volume = Math.max(0, Math.min(1, parsedVolume));
-      }
+      const volume = authoredMediaVolume(mediaEl);
+      if (volume !== null) mediaEl.volume = volume;
       mediaEl.addEventListener("loadedmetadata", scheduleMetadataDurationHydration);
       mediaEl.addEventListener("durationchange", scheduleMetadataDurationHydration);
       // Web Audio eligibility, reported at DISCOVERY rather than only at
@@ -3333,8 +3336,9 @@ export function initSandboxRuntimeModular(): void {
       else kept.setAttribute("style", style);
       // The swap's closing pass puts its move back, as a load's first pass does.
       forgetPositionEdit(kept as HTMLElement);
-      // Properties no attribute shows, as the runtime sets them; the volume probe below redoes volume.
+      // Properties no attribute shows, as a load sets them.
       const media = kept as HTMLMediaElement;
+      media.volume = authoredMediaVolume(media) ?? 1;
       media.muted = state.bridgeMuted || state.mediaOutputMuted || media.defaultMuted;
       media.defaultPlaybackRate = 1;
       media.playbackRate = state.playbackRate;
