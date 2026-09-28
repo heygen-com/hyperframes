@@ -126,10 +126,9 @@ Options:
                   timestamps are available.
   --reuse <sha>   Import a specific global-cache asset (by content sha/prefix,
                   from --candidates) into this project
-  --from <file>   Freeze a local file or direct public URL (ingest); a file already
-                  inside the project is recorded where it is, not copied
-  --source <how>  With --from: how the file was made (${RECORDED_SOURCES.join(" | ")});
-                  default ingested
+  --from <file>   Freeze a local file or direct public URL (ingest)
+  --source <how>  With --from: how the file was made (${RECORDED_SOURCES.join(" | ")}).
+                  A file already inside the project is then recorded where it is
   --params <json> Build an explicit parametric LUT (lut/grade only)
   --for <media>   Analyze a local image/video and add measured grade adjust
                   suggestions (grade only)
@@ -898,7 +897,7 @@ async function ingest(src) {
     console.error(`error: --source takes one of: ${RECORDED_SOURCES.join(", ")}`);
     process.exit(2);
   }
-  const inProject = isUrl ? null : relative(projectDir, resolve(src));
+  const inProject = args.source && !isUrl ? relative(projectDir, resolve(src)) : null;
   if (inProject && !inProject.startsWith("..") && !isAbsolute(inProject)) {
     return recordInPlace(inProject.split(sep).join("/"));
   }
@@ -941,7 +940,7 @@ async function ingest(src) {
 }
 
 async function recordInPlace(path) {
-  const source = args.source || "ingested";
+  const source = args.source;
   const known = readManifest(projectDir).find((r) => r.path === path && r.source === source);
   if (known) return result(known, "cached");
   const record = {
