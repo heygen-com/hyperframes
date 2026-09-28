@@ -81,7 +81,9 @@ export class TransportClock {
     return this._lastNow;
   }
 
-  private _elementTimeNeverBehind(source: Extract<AudioClockSource, { el: HTMLMediaElement }>): number | null {
+  private _elementTimeNeverBehind(
+    source: Extract<AudioClockSource, { el: HTMLMediaElement }>,
+  ): number | null {
     const { el, compositionStart, mediaStart, rate } = source;
     if (el.paused || !Number.isFinite(el.currentTime)) return null;
     if (el.seeking) return this._lastNow;
