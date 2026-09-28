@@ -14,8 +14,8 @@ import { registerSelectionRoutes } from "./routes/selection.js";
 import { registerMediaRoutes } from "./routes/media.js";
 import { registerGlobalAssetRoutes } from "./routes/globalAssets.js";
 import { registerHistoryRoutes } from "./routes/history.js";
-import { folderGone, replaceWithProjectDirMissing } from "./helpers/projectDirMissing.js";
-import { isProjectRootMissing } from "./helpers/safePath.js";
+import { replaceWithProjectDirMissing } from "./helpers/projectDirMissing.js";
+import { folderGone, isProjectRootMissing } from "./helpers/safePath.js";
 
 /**
  * Create a Hono sub-app with all studio API routes.

@@ -27,6 +27,7 @@ import { replaceFileAtomically } from "../helpers/atomicFile.js";
 import { generateWaveformCache } from "../helpers/waveform.js";
 import { validateUploadedMediaBuffer } from "../helpers/mediaValidation.js";
 import {
+  folderGone,
   isSafePath,
   mkdirWithinProject,
   pinWithinProject,
@@ -197,7 +198,7 @@ async function resolveProjectPath(
   // `realpathSync(base)` throws when the base itself is gone) and reported as
   // `403 forbidden` — indistinguishable from a real path-traversal attempt.
   // Checked here, once, so every route built on this shares the fix.
-  if (!existsSync(project.dir)) {
+  if (folderGone(project.dir)) {
     return { error: projectDirMissing(c) } as const;
   }
 
@@ -3249,7 +3250,7 @@ export function registerFileRoutes(api: Hono, adapter: StudioApiAdapter): void {
     async (c) => {
       const project = await adapter.resolveProject(c.req.param("id"));
       if (!project) return c.json({ error: "not found" }, 404);
-      if (!existsSync(project.dir)) return projectDirMissing(c);
+      if (folderGone(project.dir)) return projectDirMissing(c);
 
       // Optional subdirectory within the project (e.g. "assets/audio")
       const subDir = c.req.query("dir") ?? "";
@@ -3259,7 +3260,7 @@ export function registerFileRoutes(api: Hono, adapter: StudioApiAdapter): void {
       const formData = await c.req.formData();
       mkdirWithinProject(project.dir, targetDir);
       const result = await processUploadedFiles(formData, targetDir, project.dir);
-      if (!existsSync(project.dir)) return projectDirMissing(c);
+      if (folderGone(project.dir)) return projectDirMissing(c);
 
       return c.json(
         { ok: true, files: result.uploaded, skipped: result.skipped, invalid: result.invalid },

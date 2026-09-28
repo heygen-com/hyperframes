@@ -1,5 +1,5 @@
 import { resolve, sep, join, dirname, basename, relative, isAbsolute } from "node:path";
-import { existsSync, lstatSync, mkdirSync, realpathSync } from "node:fs";
+import { lstatSync, mkdirSync, realpathSync, statSync } from "node:fs";
 
 export function realpath(path: string): string {
   try {
@@ -110,19 +110,28 @@ export class ProjectRootMissingError extends Error {
 export const isProjectRootMissing = (error: unknown): boolean =>
   error instanceof Error && error.name === "ProjectRootMissingError";
 
+/** True only when nothing is at `dir` any more; a folder that cannot be looked at (EACCES, EIO) is not gone. */
+export function folderGone(dir: string): boolean {
+  try {
+    return !statSync(dir, { throwIfNoEntry: false });
+  } catch {
+    return false;
+  }
+}
+
 /** The project folder's real path; ProjectRootMissingError when it is gone. */
 export function realProjectRoot(root: string): string {
   try {
     return realpath(root);
   } catch (error) {
-    if ((error as NodeJS.ErrnoException).code === "ENOENT") throw new ProjectRootMissingError(root);
+    if (folderGone(root)) throw new ProjectRootMissingError(root);
     throw error;
   }
 }
 
 /** Creates `dir` below `root` one folder at a time, so a root moved away fails instead of reappearing; a `dir` outside `root` still needs `root`. */
 export function mkdirWithinProject(root: string, dir: string): void {
-  if (!existsSync(root)) throw new ProjectRootMissingError(root);
+  if (folderGone(root)) throw new ProjectRootMissingError(root);
   const inside = relative(resolve(root), resolve(dir));
   if (inside === ".." || inside.startsWith(`..${sep}`) || isAbsolute(inside)) {
     mkdirSync(dir, { recursive: true });
@@ -135,7 +144,7 @@ export function mkdirWithinProject(root: string, dir: string): void {
       mkdirSync(path);
     } catch (error) {
       const code = (error as NodeJS.ErrnoException).code;
-      if (code === "ENOENT" && !existsSync(root)) throw new ProjectRootMissingError(root);
+      if (code === "ENOENT" && folderGone(root)) throw new ProjectRootMissingError(root);
       if (code !== "EEXIST") throw error;
     }
   }

@@ -442,6 +442,30 @@ describe("resolveProjectPath why", () => {
     expect(startRender).not.toHaveBeenCalled();
   });
 
+  it("refuses a render composition that leaves a symlinked project folder through ..", async (context) => {
+    const { project, adapter } = fixture();
+    const root = join(project, "..");
+    mkdirSync(join(root, "data"));
+    renameSync(project, join(root, "data", "project"));
+    mkdirSync(join(root, "home", "project"), { recursive: true });
+    writeFileSync(join(root, "home", "project", "secret.html"), "<html></html>");
+    linkOrSkip(context, join(root, "data", "project"), join(root, "home", "link"), "dir");
+    const startRender = vi.fn(adapter.startRender);
+    const api = createStudioApi({
+      ...adapter,
+      resolveProject: async (id) => ({ id, dir: join(root, "home", "link") }),
+      startRender,
+    });
+
+    const response = await api.request("http://localhost/projects/demo/render", {
+      method: "POST",
+      body: JSON.stringify({ composition: "../project/secret.html" }),
+    });
+
+    expect(response.status).toBe(400);
+    expect(startRender).not.toHaveBeenCalled();
+  });
+
   it("reports a missing project directory as 404, not 403", async () => {
     const { app, project } = fixture();
     rmSync(project, { recursive: true, force: true });

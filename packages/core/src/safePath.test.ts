@@ -1,8 +1,17 @@
 import { describe, it, expect, afterEach } from "vitest";
-import { existsSync, mkdtempSync, mkdirSync, writeFileSync, symlinkSync, rmSync } from "node:fs";
+import {
+  chmodSync,
+  existsSync,
+  mkdtempSync,
+  mkdirSync,
+  writeFileSync,
+  symlinkSync,
+  rmSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
 import { basename, dirname, join } from "node:path";
 import {
+  folderGone,
   isProjectRootMissing,
   isSafePath,
   mkdirWithinProject,
@@ -224,4 +233,33 @@ describe("mkdirWithinProject", () => {
     );
     expect(existsSync(join(parent, "renders"))).toBe(false);
   });
+});
+
+describe("folderGone", () => {
+  it("is true only when nothing is there", () => {
+    const dir = mkdtempSync(join(tmpdir(), "hf-folder-gone-"));
+    writeFileSync(join(dir, "file"), "");
+    try {
+      expect(folderGone(dir)).toBe(false);
+      expect(folderGone(join(dir, "missing"))).toBe(true);
+      expect(folderGone(join(dir, "file", "below"))).toBe(true);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it.skipIf(process.platform === "win32" || process.getuid?.() === 0)(
+    "is false for a folder that cannot be looked at",
+    () => {
+      const dir = mkdtempSync(join(tmpdir(), "hf-folder-gone-"));
+      mkdirSync(join(dir, "film"));
+      chmodSync(dir, 0o000);
+      try {
+        expect(folderGone(join(dir, "film"))).toBe(false);
+      } finally {
+        chmodSync(dir, 0o700);
+        rmSync(dir, { recursive: true, force: true });
+      }
+    },
+  );
 });

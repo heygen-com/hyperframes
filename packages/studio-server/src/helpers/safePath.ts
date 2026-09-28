@@ -6,6 +6,7 @@ import { realpath, resolveWithinProject } from "@hyperframes/core";
 // CLI, engine) can share it without a backwards dependency on studio-api.
 // Re-exported here for back-compat with existing `../helpers/safePath.js` imports.
 export {
+  folderGone,
   isProjectRootMissing,
   isSafePath,
   mkdirWithinProject,

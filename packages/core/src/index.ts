@@ -276,6 +276,7 @@ export {
 } from "./inline-scripts/parityContract";
 export { redactKnownPaths, redactTelemetryString } from "./telemetryRedaction";
 export {
+  folderGone,
   isProjectRootMissing,
   isSafePath,
   mkdirWithinProject,
