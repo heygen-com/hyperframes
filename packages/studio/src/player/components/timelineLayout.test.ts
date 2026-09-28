@@ -1,8 +1,5 @@
 import { describe, it, expect } from "vitest";
 import {
-  CLIP_Y,
-  INSERT_BOUNDARY_BAND,
-  getTimelineInsertBoundaryBand,
   RULER_H,
   TRACK_H,
   LANE_H,
@@ -292,27 +289,5 @@ describe("getTimelineScrubTime", () => {
       }),
     ).toBe(0);
     expect(at(origin + 250, Number.NaN)).toBe(0);
-  });
-});
-
-// The only production hook keeping resolveInsertRow's band aligned with the
-// rendered clip inset once rows can be taller than TRACK_H. Pinned directly so a
-// change to CLIP_Y or the invalid-height fallback can't silently drift it.
-describe("getTimelineInsertBoundaryBand", () => {
-  it("matches the fixed band for a plain track row", () => {
-    expect(getTimelineInsertBoundaryBand(TRACK_H)).toBe(INSERT_BOUNDARY_BAND);
-    expect(getTimelineInsertBoundaryBand(TRACK_H)).toBe(CLIP_Y / TRACK_H);
-  });
-
-  it("shrinks as the row grows, so the band stays CLIP_Y pixels tall", () => {
-    const expanded = TRACK_H + 2 * LANE_H;
-    expect(getTimelineInsertBoundaryBand(expanded)).toBeCloseTo(CLIP_Y / expanded, 10);
-    expect(getTimelineInsertBoundaryBand(expanded)).toBeLessThan(INSERT_BOUNDARY_BAND);
-  });
-
-  it("falls back to the plain-track band for a height that is not usable", () => {
-    for (const height of [0, -10, Number.NaN]) {
-      expect(getTimelineInsertBoundaryBand(height)).toBe(INSERT_BOUNDARY_BAND);
-    }
   });
 });

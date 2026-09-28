@@ -5,8 +5,7 @@ import {
   TIMELINE_COMPOSITION_MIME,
 } from "../../utils/timelineCompositionDrop";
 import {
-  getTimelineInsertBoundaryBand,
-  getTimelineRowPositionFromY,
+  getTimelineRowFromY,
   resolveTimelineAssetDrop,
   type TimelineRowGeometry,
 } from "./timelineLayout";
@@ -52,17 +51,17 @@ function canInsertTrackFor(types: readonly string[]): boolean {
   return types.includes("Files") || types.includes(TIMELINE_ASSET_MIME);
 }
 
-/** The row boundary a pointer at `contentY` arms for a new track, or null over a lane's middle. */
+/** The row boundary a pointer at `contentY` opens a new track at, or null over a row. */
 export function resolveDropInsertRow(
   contentY: number,
   rowHeights: readonly number[] | undefined,
   trackCount: number,
 ): number | null {
   if (trackCount === 0) return null;
-  const { rowFloat, rowHeight } = getTimelineRowPositionFromY(contentY, rowHeights);
+  const rowFloat = getTimelineRowFromY(contentY, rowHeights);
   // Past the last lane the drop already appends a track (getDefaultDroppedTrack).
   if (rowFloat >= trackCount) return null;
-  return resolveInsertRow(rowFloat, trackCount, getTimelineInsertBoundaryBand(rowHeight));
+  return resolveInsertRow(rowFloat, trackCount);
 }
 
 function placeDrop(
@@ -118,10 +117,9 @@ function applyTypedJsonDrop(
 }
 
 /**
- * Dropping an asset/file/block/composition onto the timeline places it at the
- * exact time and track it was dropped on, like CapCut (pointer placement on
- * every track but the magnetic main track). Supersedes the prior playhead
- * decision (#2291); playhead adds stay available, see useAddAssetAtPlayhead.
+ * Dropping an asset/file/block/composition onto the timeline places it on the row
+ * and at the time it was dropped on; an asset moves to that row's nearest free time.
+ * Supersedes the prior playhead decision (#2291); see useAddAssetAtPlayhead.
  */
 export function useTimelineAssetDrop({
   scrollRef,

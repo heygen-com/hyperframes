@@ -1,6 +1,4 @@
 import type { TimelineElement } from "../store/playerStore";
-import { INSERT_BOUNDARY_BAND } from "./timelineLayout";
-import { isMainTrackElement } from "./timelineZones";
 
 /**
  * Keep a landing track inside the dragged clip's kind-zone: visual clips stay in
@@ -39,26 +37,6 @@ export function isInsertAllowedForZone(
 }
 
 /**
- * The full drop-placement decision for a dragged clip — one pure, testable unit.
- * Enforces: NO time-overlap on a single track; a clip stays in its kind-zone;
- * a new track is created only when needed. Order of resolution:
- *   1. Deliberate boundary insert (pointer near a lane edge), if it's in the
- *      clip's own zone → create a new track there.
- *   2. Otherwise land on a lane: clamp the aimed track to the clip's zone, take it
- *      if free at [start, start+duration), else the nearest FREE lane in the zone
- *      (prefer up), else auto-create a new track right below the aimed lane.
- * `audioTracks` = the set of track indices that currently hold audio (so the fn
- * needs no element-kind import). Returns the landing `track` and, when a new track
- * should be created, the `insertRow` boundary (else null).
- *
- * `preferInsertAbove` biases the auto-created track (occupied-aim → new adjacent
- * track) toward the boundary ABOVE the aimed row instead of below it, so the new
- * lane opens on whichever side of the aimed clip the pointer is nearer (the drag
- * preview passes the pointer's sub-row half). A clip whose aimed span is occupied
- * never snaps back to its origin — it relocates to a free lane, or (none free)
- * gets a fresh track next to the aim. Default (below) preserves prior behaviour.
- */
-/**
  * Insert-row boundary for an out-of-range aim — a `desired` track that isn't a
  * real lane: the sentinel minTrack-1 an upward create-drag emits (#2214-adjacent
  * repro) or a beyond-the-bottom index a downward one does. Anchors the new track
@@ -84,6 +62,40 @@ function outOfRangeZoneInsertRow(
   return desired < Math.min(...zoneTracks) ? zoneTop : zoneBottom;
 }
 
+const floorCenti = (v: number) => Math.floor(v * 100 + 1e-6) / 100;
+const ceilCenti = (v: number) => Math.ceil(v * 100 - 1e-6) / 100;
+
+/** The start nearest `start` at which [start, start + duration) overlaps no clip on `track`.
+ *  Ties go to the later time. The gap after the row's last clip always fits, so a row with
+ *  no gap long enough puts the clip right after its last clip. Bounds sit on centiseconds. */
+export function resolveNearestFreeStart(
+  elements: readonly TimelineElement[],
+  track: number,
+  start: number,
+  duration: number,
+  excludeKey: string | null,
+): number {
+  const busy = elements
+    .filter((el) => (el.key ?? el.id) !== excludeKey && el.track === track)
+    .sort((a, b) => a.start - b.start);
+  let best = Number.POSITIVE_INFINITY;
+  let gapStart = 0;
+  for (const el of [...busy, null]) {
+    const latest = el ? floorCenti(el.start - duration) : Number.POSITIVE_INFINITY;
+    if (latest >= gapStart) {
+      const candidate = Math.min(Math.max(start, gapStart), latest);
+      if (Math.abs(candidate - start) <= Math.abs(best - start)) best = candidate;
+    }
+    if (el) gapStart = Math.max(gapStart, ceilCenti(el.start + el.duration));
+  }
+  return best;
+}
+
+/**
+ * Where a dragged clip lands. A drop on an existing row of the clip's kind-zone stays on that
+ * row at the nearest free time: never a new track, never an overlap. Only an aim outside all
+ * rows, or into a zone with no row yet, opens a track (`insertRow`).
+ */
 export function resolveZoneDropPlacement(input: {
   order: number[];
   audioTracks: ReadonlySet<number>;
@@ -94,99 +106,40 @@ export function resolveZoneDropPlacement(input: {
   duration: number;
   dragKey: string;
   isAudio: boolean;
-  preferInsertAbove?: boolean;
-}): { track: number; insertRow: number | null } {
+}): { track: number; insertRow: number | null; start: number } {
   const { order, audioTracks, elements, desiredTrack, deliberateInsertRow } = input;
-  const { start, duration, dragKey, isAudio, preferInsertAbove } = input;
+  const { start, duration, dragKey, isAudio } = input;
   const audioRow = order.findIndex((t) => audioTracks.has(t));
 
   if (
     deliberateInsertRow !== null &&
     isInsertAllowedForZone(deliberateInsertRow, audioRow, isAudio)
   ) {
-    return { track: desiredTrack, insertRow: deliberateInsertRow };
+    return { track: desiredTrack, insertRow: deliberateInsertRow, start };
   }
 
   const desired = clampTrackToZone(desiredTrack, order, audioRow, isAudio);
   const zoneTracks = order.filter((t) => audioTracks.has(t) === isAudio);
-  const placement = resolvePlacement({
-    elements,
-    desiredTrack: desired,
-    start,
-    duration,
-    trackOrder: zoneTracks,
-    excludeKey: dragKey,
-  });
-  const originTrack = elements.find((element) => (element.key ?? element.id) === dragKey)?.track;
-  const snappedBackToOrigin =
-    originTrack != null && desired !== originTrack && placement.track === originTrack;
-  if (placement.needsInsert || snappedBackToOrigin) {
+  if (!zoneTracks.includes(desired)) {
     const desiredRow = order.indexOf(desired);
-    if (desiredRow < 0) {
-      return {
-        track: desired,
-        insertRow: outOfRangeZoneInsertRow(order, zoneTracks, audioRow, desired),
-      };
-    }
-    // When collision fallback found only the origin lane, insert on the far side
-    // of the aimed lane so normalization cannot turn the gesture into a no-op.
-    // Otherwise prefer the gap nearest the pointer, preserving normal insertion.
-    const originRow = originTrack == null ? -1 : order.indexOf(originTrack);
-    const insertAbove = snappedBackToOrigin
-      ? originRow > desiredRow
-      : preferInsertAbove && isInsertAllowedForZone(desiredRow, audioRow, isAudio);
-    const insertRow = insertAbove ? desiredRow : desiredRow + 1;
-    return { track: desired, insertRow };
+    const insertRow =
+      desiredRow < 0
+        ? outOfRangeZoneInsertRow(order, zoneTracks, audioRow, desired)
+        : desiredRow + 1;
+    return { track: desired, insertRow, start };
   }
-  return { track: placement.track, insertRow: null };
-}
-
-function landsOnMainTrack(landingTrack: number, isAudio: boolean): boolean {
-  return isMainTrackElement({
-    id: "",
-    tag: isAudio ? "audio" : "video",
-    start: 0,
-    duration: 0,
-    track: landingTrack,
-  });
-}
-
-/** An existing clip newly landing on an empty main track commits at start=0.
- *  No-op once the main track holds another clip, off the main track, or for
- *  a clip already resident there. `others` excludes the landing clip itself. */
-export function resolveMainTrackDropStart(
-  others: readonly TimelineElement[],
-  originTrack: number,
-  landingTrack: number,
-  isAudio: boolean,
-  desiredStart: number,
-): number {
-  if (originTrack === landingTrack || !landsOnMainTrack(landingTrack, isAudio)) {
-    return desiredStart;
-  }
-  return others.some(isMainTrackElement) ? desiredStart : 0;
+  const freeStart = resolveNearestFreeStart(elements, desired, start, duration, dragKey);
+  return { track: desired, insertRow: null, start: freeStart };
 }
 
 /**
- * Decide whether a vertical drag is inserting a new track at a lane boundary.
- * `rowFloat` is the pointer's position in track-height units from the top of the
- * first lane (0 = top of lane 0). Returns the boundary row to insert at
- * (0 = above the top lane, `trackCount` = below the bottom), or null when the
- * pointer is over a lane's middle band (a normal move/target). The default band
- * preserves collapsed-row behavior; production passes the concrete row's band.
+ * The row boundary a pointer opens a new track at, or null over a row. `rowFloat` is the pointer's
+ * position in row units from the top of the first row. Only the empty space above the first row
+ * (0) or below the last (`trackCount`) opens one: a drop anywhere on a row stays on that row.
  */
-export function resolveInsertRow(
-  rowFloat: number,
-  trackCount: number,
-  band: number = INSERT_BOUNDARY_BAND,
-): number | null {
-  if (trackCount === 0) return 0;
-  if (rowFloat <= 0) return 0;
+export function resolveInsertRow(rowFloat: number, trackCount: number): number | null {
+  if (trackCount === 0 || rowFloat < 0) return 0;
   if (rowFloat >= trackCount) return trackCount;
-  const lane = Math.floor(rowFloat);
-  const frac = rowFloat - lane;
-  if (frac < band) return lane;
-  if (frac > 1 - band) return lane + 1;
   return null;
 }
 
@@ -217,68 +170,4 @@ export function isLaneFree(
       el.track === track &&
       timeRangesOverlap(start, end, el.start, el.start + el.duration),
   );
-}
-
-export interface PlacementInput {
-  elements: TimelineElement[];
-  desiredTrack: number;
-  start: number;
-  duration: number;
-  trackOrder: number[];
-  excludeKey: string | null;
-}
-
-export interface PlacementResult {
-  /** The lane the clip should land on. */
-  track: number;
-  /**
-   * True when no existing lane was free and the caller should insert a new
-   * track instead of landing on `track` (which is then the desired lane as a
-   * last-resort fallback). Consumed in later stages (2b/2c); stage 2a ignores it.
-   */
-  needsInsert: boolean;
-}
-
-/**
- * Resolve where a dragged clip should land, avoiding overlap. If the desired
- * lane is free, keep it. Otherwise search the nearest free lane, **preferring
- * up** (all lanes above, nearest first), then down. If none is free, signal an
- * insert and fall back to the desired lane.
- */
-export function resolvePlacement({
-  elements,
-  desiredTrack,
-  start,
-  duration,
-  trackOrder,
-  excludeKey,
-}: PlacementInput): PlacementResult {
-  const end = start + duration;
-  const idx = trackOrder.indexOf(desiredTrack);
-  // desiredTrack is not one of the zone's lanes — the clip's kind-zone has no lane
-  // yet (e.g. an audio clip dropped on a visual-only timeline). This MUST be checked
-  // BEFORE the isLaneFree short-circuit below: a free-aimed span on a foreign-zone
-  // lane (an audio clip aimed at an empty stretch of a visual-only timeline) is
-  // "free" only because that lane belongs to the wrong zone. Landing there would
-  // put the clip in the wrong kind-zone, so signal an insert to create the zone's
-  // first lane instead — regardless of whether the aimed span is occupied (#2195).
-  if (idx === -1) return { track: desiredTrack, needsInsert: true };
-
-  if (isLaneFree(elements, desiredTrack, start, end, excludeKey)) {
-    return { track: desiredTrack, needsInsert: false };
-  }
-
-  // Prefer up: nearest lane above first, then the rest above.
-  for (let up = idx - 1; up >= 0; up--) {
-    if (isLaneFree(elements, trackOrder[up], start, end, excludeKey)) {
-      return { track: trackOrder[up], needsInsert: false };
-    }
-  }
-  // Then down: nearest lane below first.
-  for (let down = idx + 1; down < trackOrder.length; down++) {
-    if (isLaneFree(elements, trackOrder[down], start, end, excludeKey)) {
-      return { track: trackOrder[down], needsInsert: false };
-    }
-  }
-  return { track: desiredTrack, needsInsert: true };
 }

@@ -5,12 +5,7 @@ import {
   resolveTimelineMinDuration,
 } from "./timelineGroupEditing";
 import type { TimelineElement } from "../store/playerStore";
-import {
-  getTimelineInsertBoundaryBand,
-  getTimelineRowFromY,
-  getTimelineRowHeight,
-  getTimelineRowPositionFromY,
-} from "./timelineLayout";
+import { getTimelineRowFromY } from "./timelineLayout";
 import { isMusicTrack, isAudioTimelineElement } from "../../utils/timelineInspector";
 import {
   TIMELINE_SNAP_PX,
@@ -26,7 +21,6 @@ import {
 } from "./timelineGroupEditing";
 import { clampGroupMoveDelta } from "./timelineMultiDragPreview";
 import type { DraggedClipState, ResizingClipState } from "./timelineClipDragTypes";
-import { resolveDragLandingStart } from "./timelineDragLanding";
 import { STUDIO_PREVIEW_FPS } from "../lib/time";
 
 /** Snap-target builder closure supplied by the hook (closes over refs + store). */
@@ -98,50 +92,37 @@ function resolveGroupClampedStart(
   return element.start + clampedDelta;
 }
 
-/**
- * The whole drop decision (no same-track overlap, zone-respecting, relocate or
- * create) — one tested pure function, so what runs here is what's verified.
- */
+/** The drop decision for the pointer's row (see resolveZoneDropPlacement). */
 function resolveDropPlacement(
   drag: DraggedClipState,
   clientY: number,
   previewStart: number,
   desiredTrack: number,
   ctx: DragPreviewContext,
-): { track: number; insertRow: number | null } {
-  const { scroll, trackOrder, rowHeights, elements } = ctx;
-  // rowFloat = the pointer's position in track-heights from the top lane; a
-  // near-boundary hover requests a deliberate new-track insert. Uses the
-  // shared row→y inverse so the top breathing pad is subtracted consistently.
-  const rowPosition = scroll
-    ? getTimelineRowPositionFromY(
+): { track: number; insertRow: number | null; start: number } {
+  const { scroll, trackOrder, rowHeights, elements, selectedKeys } = ctx;
+  const rowFloat = scroll
+    ? getTimelineRowFromY(
         clientY - scroll.getBoundingClientRect().top + scroll.scrollTop,
         rowHeights,
       )
-    : { rowFloat: 0, row: 0, fraction: 0, rowHeight: getTimelineRowHeight(0, rowHeights) };
-  // Geometry-exact band (the clip inset divided by this row's actual height) so
-  // an insert only arms in the visible gutter between clip bodies.
-  const rawInsertRow = resolveInsertRow(
-    rowPosition.rowFloat,
-    trackOrder.length,
-    getTimelineInsertBoundaryBand(rowPosition.rowHeight),
-  );
-  // Pointer sub-row half: when a drop must auto-create a track (aimed span
-  // occupied, no free lane), open it on the side the pointer is nearer.
-  const preferInsertAbove = rowPosition.fraction < 0.5;
+    : 0;
+  const dragKey = drag.element.key ?? drag.element.id;
+  // A multi-selection moves rigidly, so its other members are not obstacles for the grabbed clip.
+  const grouped = selectedKeys.size > 1 && selectedKeys.has(dragKey);
+  const obstacles = grouped ? elements.filter((e) => !selectedKeys.has(e.key ?? e.id)) : elements;
   const audioTracks =
     ctx.audioTracks ?? new Set(elements.filter(isAudioTimelineElement).map((e) => e.track));
   return resolveZoneDropPlacement({
     order: trackOrder,
     audioTracks,
-    elements,
+    elements: obstacles,
     desiredTrack,
-    deliberateInsertRow: rawInsertRow,
+    deliberateInsertRow: resolveInsertRow(rowFloat, trackOrder.length),
     start: previewStart,
     duration: drag.element.duration,
-    dragKey: drag.element.key ?? drag.element.id,
+    dragKey,
     isAudio: isAudioTimelineElement(drag.element),
-    preferInsertAbove,
   });
 }
 
@@ -202,28 +183,17 @@ export function computeDragPreview(
     elements,
     selectedKeys,
   );
-  const { track: previewTrack, insertRow } = resolveDropPlacement(
-    drag,
-    clientY,
-    previewStart,
-    nextMove.track,
-    ctx,
-  );
-  const placed = { ...drag, previewStart, previewTrack, insertRow };
-  const snappedStart = resolveDragLandingStart(placed, {
-    elements,
-    trackOrder,
-    selectedKeys,
-  });
+  const placement = resolveDropPlacement(drag, clientY, previewStart, nextMove.track, ctx);
+  const { track: previewTrack, insertRow } = placement;
   return {
     ...drag,
     started: true,
     pointerClientX: clientX,
     pointerClientY: clientY,
-    previewStart: snappedStart,
+    previewStart: placement.start,
     previewTrack,
-    // The lane the POINTER aims at (pre-collision): the commit reads it to tell a
-    // deliberate vertical lane change from a horizontal drag merely bumped sideways.
+    // The lane the POINTER aims at (before the zone clamp): the commit reads it to
+    // tell a deliberate vertical lane change from a horizontal drag.
     desiredTrack: nextMove.track,
     insertRow,
     snapTime: snap.snapTime,

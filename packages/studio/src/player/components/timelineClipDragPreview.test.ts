@@ -168,7 +168,7 @@ describe("computeDragPreview — plain horizontal drag never arms a phantom inse
     expect(next.previewTrack).toBe(0);
   });
 
-  it("uses the expanded row midpoint when choosing the side for an automatic insert", () => {
+  it("an occupied aim in an expanded row stays on that row at the nearest free time", () => {
     const rowHeights = [TRACK_H + 2 * LANE_H, TRACK_H];
     const dragged = clip("dragged", 0, 0, 1, 3);
     const occupied = [dragged, clip("block-0", 0, 0, 1, 2), clip("block-1", 1, 0, 1, 1)];
@@ -195,11 +195,13 @@ describe("computeDragPreview — plain horizontal drag never arms a phantom inse
       ...ctx(rowHeights, occupied),
       trackOrder: [0, 1],
     });
-    expect(next.insertRow).toBe(0);
+    expect(next.insertRow).toBeNull();
+    expect(next.previewTrack).toBe(0);
+    expect(next.previewStart).toBe(1);
   });
 });
 
-describe("computeDragPreview — magnetic first clip on an empty main track", () => {
+describe("computeDragPreview — a clip landing on an empty main track keeps its released start", () => {
   // v-lower sits alone on lane 1; lane 0 (the main track) is empty.
   const vLower = clip("v-lower", 1, 10, 4, 5);
 
@@ -236,11 +238,11 @@ describe("computeDragPreview — magnetic first clip on an empty main track", ()
     });
   }
 
-  it("dragging straight up onto the empty main track snaps the preview start to 0", () => {
+  it("dragging straight up onto the empty main track keeps the start", () => {
     const next = dragUpToMainTrack([vLower]);
     expect(next.previewTrack).toBe(0);
     expect(next.insertRow).toBeNull();
-    expect(next.previewStart).toBe(0);
+    expect(next.previewStart).toBe(10);
   });
 
   it("does not touch the start once the main track already holds a clip", () => {
@@ -249,13 +251,13 @@ describe("computeDragPreview — magnetic first clip on an empty main track", ()
     expect(next.previewStart).toBe(10); // unchanged — main track wasn't empty
   });
 
-  it("aiming the top gutter over an empty main track snaps the ghost: the insert renumbers onto track 0", () => {
+  it("aiming the space above an empty main track opens a track there and keeps the start", () => {
     const next = dragUpToMainTrack([vLower], -0.6);
     expect(next.insertRow).toBe(0);
-    expect(next.previewStart).toBe(0);
+    expect(next.previewStart).toBe(10);
   });
 
-  it("does not retime the rest of a multi-selection when the grabbed clip lands on the empty main track", () => {
+  it("does not retime a multi-selection whose grabbed clip lands on the empty main track", () => {
     const vOther = clip("v-other", 1, 15, 3, 5);
     const next = dragUpToMainTrack([vLower, vOther], 0.5, new Set(["v-lower", "v-other"]));
     expect(next.previewTrack).toBe(0);
@@ -425,29 +427,57 @@ describe("computeDragPreview — the ghost start is the committed start", () => 
 
   it("plain move onto the empty main track", () => {
     const ghost = preview(lower, [lower], 1, 0.5);
-    expect(ghost.previewStart).toBe(0);
+    expect(ghost.previewStart).toBe(10);
     expect(committedStart(ghost, lower, [lower])).toBe(ghost.previewStart);
   });
 
-  it("top-gutter insert that pushes the old track-0 clip down lands on track 0 at 0", () => {
+  it("top-gutter insert that pushes the old track-0 clip down keeps the pointer start", () => {
     const oldMain = clip("old-main", 0, 0, 3, 5);
     const elements = [oldMain, lower];
     const ghost = preview(lower, elements, 1, -0.6);
     expect(ghost.insertRow).toBe(0);
-    expect(ghost.previewStart).toBe(0);
-    expect(committedStart(ghost, lower, elements)).toBe(0);
-  });
-
-  it("top-gutter insert with a clip staying on track 0 keeps the pointer start", () => {
-    const stays = clip("stays", 0, 0, 3, 5);
-    const elements = [stays, lower];
-    // Insert between lane 0 and 1: the resident track-0 clip does not move.
-    const ghost = preview(lower, elements, 1, 1.0);
     expect(ghost.previewStart).toBe(10);
     expect(committedStart(ghost, lower, elements)).toBe(10);
   });
 
-  it("expanded child dragged with its host: the host commits at 0 and the ghost matches", () => {
+  it("a move onto an occupied row lands at its nearest free time, ghost and commit alike", () => {
+    const blocker = clip("blocker", 0, 8, 4, 5);
+    const elements = [blocker, lower];
+    const ghost = preview(lower, elements, 1, 0.5);
+    expect(ghost.insertRow).toBeNull();
+    expect(ghost.previewTrack).toBe(0);
+    expect(ghost.previewStart).toBe(12);
+    expect(committedStart(ghost, lower, elements)).toBe(12);
+  });
+
+  describe("a drop onto an occupied row stays on that row", () => {
+    const title = clip("title", 0, 0, 10, 3, "text");
+    const subtitle = clip("subtitle", 1, 0, 6, 2, "text");
+    const tag = clip("tag", 2, 2, 5, 1, "text");
+    const rows = [title, subtitle, tag];
+
+    it("Tag dropped on the Subtitle row lands right after Subtitle, with no new track", () => {
+      const ghost = preview(tag, rows, 2, 1.5);
+      expect(ghost).toMatchObject({ insertRow: null, previewTrack: 1, previewStart: 6 });
+      expect(committedStart(ghost, tag, rows)).toBe(6);
+    });
+
+    it("Tag dropped on the top Title row stays on track 0 after Title, not snapped to 0", () => {
+      const ghost = preview(tag, rows, 2, 0.5);
+      expect(ghost).toMatchObject({ insertRow: null, previewTrack: 0, previewStart: 10 });
+      expect(committedStart(ghost, tag, rows)).toBe(10);
+    });
+
+    it("the edge of a row is still that row, not a new track", () => {
+      for (const edge of [0.02, 0.98, 1.02]) {
+        const ghost = preview(tag, rows, 2, edge);
+        expect(ghost.insertRow).toBeNull();
+        expect(ghost.previewTrack).toBe(Math.floor(edge));
+      }
+    });
+  });
+
+  it("expanded child dragged with its host: the host keeps its start and the ghost matches", () => {
     for (const [hostStart, childStart] of [
       [30, 32],
       [20, 22],
@@ -462,8 +492,8 @@ describe("computeDragPreview — the ghost start is the committed start", () => 
       const keys = new Set(["host", "child"]);
       const ghost = preview(child, elements, 2, 0.5, keys);
       expect(ghost.previewTrack).toBe(0);
-      expect(ghost.previewStart).toBe(childStart - hostStart);
-      expect(committedStart(ghost, host, elements, keys)).toBe(0);
+      expect(ghost.previewStart).toBe(childStart);
+      expect(committedStart(ghost, host, elements, keys)).toBe(hostStart);
     }
   });
 });

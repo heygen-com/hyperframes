@@ -140,6 +140,73 @@ describe("useTimelineAssetDropOps handleTimelineAssetDrop", () => {
     expect(written).toMatch(/<video id="clip"[^>]*data-track-index="1"/);
   });
 
+  const rowClip = (id: string, start: number, duration: number): TimelineElement => ({
+    id,
+    key: id,
+    tag: "div",
+    start,
+    duration,
+    track: 0,
+    authoredTrack: 0,
+    hfId: `hf-${id}`,
+    domId: id,
+  });
+  const rowSource = (clips: TimelineElement[]) =>
+    [
+      '<main data-composition-id="scene" data-duration="10" data-width="1920" data-height="1080">',
+      ...clips.map(
+        (c) =>
+          `<div data-hf-id="hf-${c.id}" id="${c.id}" data-start="${c.start}" data-duration="${c.duration}" data-track-index="0"></div>`,
+      ),
+      "</main>",
+    ].join("\n");
+  const writtenClip = (written: string, tag: string) =>
+    written.match(new RegExp(`<${tag} id="[^"]*"[^>]*>`))?.[0] ?? "";
+
+  it("lands an asset dropped on an occupied row at that row's nearest free time", async () => {
+    const subtitle = rowClip("subtitle", 0, 6);
+    const writeProjectFile = vi.fn().mockResolvedValue(undefined);
+    const getDrop = renderDropHook(rowSource([subtitle]), writeProjectFile, [subtitle]);
+
+    await act(async () => {
+      await getDrop()("clip.mp4", { start: 2, track: 0 }, 5);
+    });
+
+    const [, written] = writeProjectFile.mock.calls[0] as [string, string];
+    const clip = writtenClip(written, "video");
+    expect(clip).toContain('data-start="6"');
+    expect(clip).toContain('data-track-index="0"');
+    expect(written).toContain(
+      'id="subtitle" data-start="0" data-duration="6" data-track-index="0"',
+    );
+  });
+
+  it("keeps a multi-file drop's clips off each other and off the row's clips", async () => {
+    const clips = [rowClip("a", 0, 4), rowClip("b", 8, 2)];
+    const writeProjectFile = vi.fn().mockResolvedValue(undefined);
+    const uploadProjectFiles = vi.fn().mockResolvedValue(["one.png", "two.png"]);
+    const getDrop = renderDropHook(
+      rowSource(clips),
+      writeProjectFile,
+      clips,
+      undefined,
+      uploadProjectFiles,
+    );
+
+    await act(async () => {
+      await getDrop.file()([new File(["1"], "one.png"), new File(["2"], "two.png")], {
+        start: 1,
+        track: 0,
+      });
+    });
+
+    const starts = writeProjectFile.mock.calls.map(
+      ([, written]) => writtenClip(written as string, "img").match(/data-start="([^"]*)"/)?.[1],
+    );
+    // 3 s images: the first moves past a [0,4); the second is too long for [7,8) and goes after b.
+    expect(starts).toEqual(["4", "10"]);
+  });
+
   it("refuses an asset drop before reading or writing when editing is blocked", async () => {
     const writeProjectFile = vi.fn().mockResolvedValue(undefined);
     const checkEditable = vi.fn(() => false);

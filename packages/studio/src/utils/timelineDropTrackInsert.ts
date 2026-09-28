@@ -1,6 +1,7 @@
 import type { TimelineElement } from "../player";
 import { layoutAfterTrackInsert } from "../player/components/timelineDragLanding";
 import { canMoveTimelineElement } from "../player/components/timelineAuthoredMoveTarget";
+import { resolveNearestFreeStart } from "../player/components/timelineCollision";
 import type { TimelineDropPlacement } from "../player/components/timelineCallbacks";
 import { applyPatchByTarget, readAttributeByTarget } from "./sourcePatcher";
 import { buildPatchTarget } from "../hooks/timelineEditingHelpers";
@@ -67,17 +68,21 @@ export function applyTrackRenumbers(source: string, plan: DropTrackInsertPlan): 
   return out;
 }
 
-/** The lane a dropped clip is written on and the source with any lanes pushed down to make room. */
+/** Where a dropped clip is written: the aimed row at its nearest free time, or a new track (`insertRow`). */
 export function resolveDropTrack(input: {
   source: string;
   elements: TimelineElement[];
   placement: TimelineDropPlacement;
   dropped: Pick<TimelineElement, "id" | "tag" | "start" | "duration">;
-}): { source: string; track: number } {
+}): { source: string; track: number; start: number } {
   const { source, elements, placement, dropped } = input;
-  if (placement.insertRow == null) return { source, track: placement.track };
+  if (placement.insertRow == null) {
+    const { track } = placement;
+    const start = resolveNearestFreeStart(elements, track, dropped.start, dropped.duration, null);
+    return { source, track, start };
+  }
   const { insertRow, trackOrder } = placement;
   const plan = planDropTrackInsert({ elements, trackOrder, insertRow, dropped });
   if (!plan) throw new Error("Cannot open a new track here: a locked clip would have to move.");
-  return { source: applyTrackRenumbers(source, plan), track: plan.track };
+  return { source: applyTrackRenumbers(source, plan), track: plan.track, start: dropped.start };
 }

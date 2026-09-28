@@ -256,8 +256,10 @@ describe("useTimelineAssetDrop", () => {
 
 describe("resolveDropInsertRow", () => {
   const rows = [TRACK_H, TRACK_H, TRACK_H];
-  it("arms a new track at the boundary between two lanes", () => {
-    expect(resolveDropInsertRow(getTimelineRowTop(1, rows), rows, 3)).toBe(1);
+  it("stays on the row at the boundary between two rows", () => {
+    for (const dy of [-1, 0, 1]) {
+      expect(resolveDropInsertRow(getTimelineRowTop(1, rows) + dy, rows, 3)).toBeNull();
+    }
   });
   it("arms a new track above the first lane", () => {
     expect(resolveDropInsertRow(getTimelineRowTop(0, rows) - 4, rows, 3)).toBe(0);
@@ -274,20 +276,32 @@ describe("resolveDropInsertRow", () => {
 });
 
 describe("useTimelineAssetDrop new-track drops", () => {
-  it("previews and commits an insert row for an asset dropped between lanes", () => {
+  it("drops an asset released at the top edge of a row onto that row, with no new track", () => {
     const onAssetDrop = vi.fn();
     const view = renderHarness(onAssetDrop);
     const transfer = assetTransfer(JSON.stringify({ path: "assets/a.png" }));
     const y = getTimelineRowTop(1) + 1;
 
     act(() => view.api.handleAssetDragOver(dragEvent(transfer, 400, y)));
-    expect(view.api.dropPreview).toMatchObject({ start: 10, insertRow: 1 });
+    expect(view.api.dropPreview).toEqual({ start: 10, track: 1 });
+    act(() => view.api.handleAssetDrop(dragEvent(transfer, 400, y)));
+    expect(onAssetDrop).toHaveBeenCalledWith("assets/a.png", { start: 10, track: 1 });
+    act(() => view.root.unmount());
+  });
+
+  it("opens a new track for an asset released in the empty space above the first row", () => {
+    const onAssetDrop = vi.fn();
+    const view = renderHarness(onAssetDrop);
+    const transfer = assetTransfer(JSON.stringify({ path: "assets/a.png" }));
+    const y = getTimelineRowTop(0) - 4;
+
+    act(() => view.api.handleAssetDragOver(dragEvent(transfer, 400, y)));
     act(() => view.api.handleAssetDrop(dragEvent(transfer, 400, y)));
     expect(onAssetDrop).toHaveBeenCalledWith(
       "assets/a.png",
       expect.objectContaining({
         start: 10,
-        insertRow: 1,
+        insertRow: 0,
         trackOrder: Array.from({ length: 100 }, (_, index) => index),
       }),
     );

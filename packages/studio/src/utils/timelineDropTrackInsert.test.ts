@@ -106,7 +106,17 @@ describe("resolveDropTrack", () => {
       placement: { track: 2 },
       dropped,
     });
-    expect(out).toEqual({ source, track: 2 });
+    expect(out).toEqual({ source, track: 2, start: 5 });
+  });
+
+  it("moves a drop on an occupied row to that row's nearest free time, with no new track", () => {
+    const out = resolveDropTrack({
+      source,
+      elements,
+      placement: { track: 1 },
+      dropped: { ...dropped, start: 1 },
+    });
+    expect(out).toEqual({ source, track: 1, start: 2 });
   });
 
   it("returns the new lane and the source with the lanes below pushed down", () => {
@@ -117,6 +127,7 @@ describe("resolveDropTrack", () => {
       dropped,
     });
     expect(out.track).toBe(1);
+    expect(out.start).toBe(5);
     expect(out.source).toContain('id="b" data-start="0" data-track-index="2"');
   });
 
