@@ -15,6 +15,7 @@
 import { copyFileSync, existsSync, mkdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { downloadTo, searchSounds } from "./heygen.mjs";
+import { latestRecordFor } from "../../../scripts/lib/manifest.mjs";
 import { agentWritePath } from "./media-record.mjs";
 
 const SFX_VOLUME = 0.35;
@@ -59,7 +60,10 @@ export async function resolveSfx({ cues, heygenOK, headers, hyperframesDir, sfxL
           continue;
         }
         const top = results[0];
-        const file = agentWritePath(hyperframesDir, `assets/sfx/${slug(name)}.mp3`, written);
+        const file = agentWritePath(hyperframesDir, `assets/sfx/${slug(name)}.mp3`, {
+          anomalies,
+          reusable: (rel) => written.has(rel),
+        });
         await downloadTo(top.audio_url, join(hyperframesDir, file));
         written.add(file);
         sfx.push({
@@ -114,30 +118,33 @@ export async function resolveSfx({ cues, heygenOK, headers, hyperframesDir, sfxL
       continue;
     }
     const src = join(sfxLibDir, hit.file);
-    const libraryCopy = `assets/sfx/${hit.file}`;
+    const library = existsSync(src) ? readFileSync(src) : null;
     const isLibraryCopy = (rel) =>
+      library &&
       existsSync(join(hyperframesDir, rel)) &&
-      existsSync(src) &&
-      readFileSync(join(hyperframesDir, rel)).equals(readFileSync(src));
-    const destRel = agentWritePath(hyperframesDir, libraryCopy, written, isLibraryCopy);
+      readFileSync(join(hyperframesDir, rel)).equals(library);
+    const destRel = agentWritePath(hyperframesDir, `assets/sfx/${hit.file}`, {
+      anomalies,
+      // An unrecorded copy of the library file is one an engine run made before the manifest had it.
+      reusable: (rel) =>
+        written.has(rel) || (!latestRecordFor(hyperframesDir, rel) && isLibraryCopy(rel)),
+    });
     const dest = join(hyperframesDir, destRel);
     // The bundled library may be incomplete: some installs of the skill ship
     // manifest.json without the actual mp3s. Pushing an sfx entry that points at
     // a file we never copied produces a dangling reference that silently drops
     // downstream ("not on disk"). Surface it as a loud anomaly and skip the cue
     // instead, so the audio_meta never references a missing file.
-    // An agent-made copy already at `dest` stands in for a library file this install lacks.
-    if (!isLibraryCopy(destRel) && (existsSync(src) || !existsSync(dest))) {
-      if (!existsSync(src)) {
-        anomalies.push(
-          `sfx "${name}" (id ${id}): bundled file ${hit.file} missing from the offline ` +
-            `library (${sfxLibDir}) — skipped. Reinstall the media-use skill to ` +
-            `restore assets/sfx/*.mp3, or configure a HeyGen credential for retrieval.`,
-        );
-        continue;
-      }
-      copyFileSync(src, dest);
-    }
+    if (library) {
+      if (!isLibraryCopy(destRel)) copyFileSync(src, dest);
+    } else if (!existsSync(dest)) {
+      anomalies.push(
+        `sfx "${name}" (id ${id}): bundled file ${hit.file} missing from the offline ` +
+          `library (${sfxLibDir}) — skipped. Reinstall the media-use skill to ` +
+          `restore assets/sfx/*.mp3, or configure a HeyGen credential for retrieval.`,
+      );
+      continue;
+    } // else the engine's earlier copy at dest stands in for the file this install lacks
     written.add(destRel);
     sfx.push({
       id,

@@ -4,27 +4,40 @@ import { AGENT_SOURCES, latestRecordFor, recordInPlace } from "../../../scripts/
 import { regenerateIndex } from "../../../scripts/lib/index-gen.mjs";
 
 /**
- * Where the engine may write `rel`: there, unless a file the person put there already is (one the manifest does
- * not record as agent-made, not written earlier in this run, and not `reusable`); then the first such
- * `name-2.ext`, `name-3.ext`.
+ * Where the engine may write `rel`: there, unless this run already `taken` it or a file the person put there is
+ * (one the manifest does not record as agent-made, and not `reusable`); then the first free `name-2.ext`,
+ * `name-3.ext`, with an anomaly saying so.
  */
-export function agentWritePath(
-  hyperframesDir,
-  rel,
-  writtenThisRun = new Set(),
-  reusable = () => false,
-) {
-  const personal = (path) =>
-    existsSync(join(hyperframesDir, path)) &&
-    !writtenThisRun.has(path) &&
-    !reusable(path) &&
-    !AGENT_SOURCES.includes(latestRecordFor(hyperframesDir, path)?.source);
-  if (!personal(rel)) return rel;
+export function agentWritePath(hyperframesDir, rel, { anomalies, taken = new Set(), reusable = () => false }) {
+  const free = (path) =>
+    !taken.has(path) &&
+    (!existsSync(join(hyperframesDir, path)) ||
+      reusable(path) ||
+      AGENT_SOURCES.includes(latestRecordFor(hyperframesDir, path)?.source));
+  if (free(rel)) return rel;
   const ext = extname(rel);
-  for (let n = 2; ; n++) {
-    const candidate = `${rel.slice(0, rel.length - ext.length)}-${n}${ext}`;
-    if (!personal(candidate)) return candidate;
+  const stem = rel.slice(0, rel.length - ext.length);
+  let n = 2;
+  while (!free(`${stem}-${n}${ext}`)) n++;
+  const path = `${stem}-${n}${ext}`;
+  const why = taken.has(rel)
+    ? "another line of this run writes there"
+    : "the file there is yours (the media manifest does not record it as made by the engine)";
+  const note = `${rel}: kept, because ${why}; wrote ${path} instead, so point references at it`;
+  if (!anomalies.includes(note)) anomalies.push(note);
+  return path;
+}
+
+/** Each spoken line's file, picked before lines synthesize concurrently so two never land on one free name. */
+export function voicePaths(hyperframesDir, lines, anomalies) {
+  const taken = new Set();
+  const paths = new Map();
+  for (const line of lines.filter((l) => String(l.text ?? "").trim())) {
+    const rel = agentWritePath(hyperframesDir, `assets/voice/${line.id}.wav`, { anomalies, taken });
+    taken.add(rel);
+    paths.set(String(line.id), rel);
   }
+  return paths;
 }
 
 const SFX_SOURCES = { heygen: "search", local: "bundled" };
@@ -58,7 +71,6 @@ export function writtenAssets({ only, lines, voices, ttsProvider, bgm, bgmFields
   if (only.has("sfx")) {
     for (const cue of new Map(sfx.map((entry) => [entry.file, entry])).values()) {
       const source = SFX_SOURCES[cue.source];
-      if (!source) continue;
       const provider = source === "search" ? "heygen" : "bundled.sfx";
       assets.push({
         path: cue.file,

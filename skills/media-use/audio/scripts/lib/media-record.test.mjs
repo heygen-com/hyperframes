@@ -4,7 +4,7 @@ import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { findByPrompt, readManifest } from "../../../scripts/lib/manifest.mjs";
-import { agentWritePath, recordInManifest, writtenAssets } from "./media-record.mjs";
+import { agentWritePath, recordInManifest, voicePaths, writtenAssets } from "./media-record.mjs";
 
 const noBgm = { bgm: null, bgmFields: { bgm_pending: false } };
 
@@ -90,7 +90,6 @@ test("music and sound effects are marked by where they came from", () => {
       { file: "assets/sfx/whoosh.mp3", name: "whoosh", source: "local" },
       { file: "assets/sfx/whoosh.mp3", name: "whoosh", source: "local" },
       { file: "assets/sfx/glass.mp3", name: "glass", source: "heygen" },
-      { file: "assets/sfx/pop.mp3", name: "pop", source: "project" },
     ],
   });
 
@@ -134,18 +133,48 @@ test("a file that cannot be recorded becomes an anomaly, not a failure", (t) => 
 test("the engine writes over only its own files, else the next free name", (t) => {
   const dir = project(t);
   mkdirSync(join(dir, "assets/sfx"), { recursive: true });
-  for (const name of ["mine.mp3", "made.mp3", "twice.mp3", "twice-2.mp3", "kept.mp3", "kept-2.mp3"])
-    writeFileSync(join(dir, "assets/sfx", name), name);
+  const names = ["mine", "made", "adopted", "twice", "twice-2", "kept", "kept-2"];
+  for (const name of names) writeFileSync(join(dir, `assets/sfx/${name}.mp3`), name);
   for (const path of ["assets/sfx/made.mp3", "assets/sfx/kept-2.mp3"])
     recordInManifest(dir, [{ path, type: "sfx", source: "search" }]);
-  const at = (name, written) => agentWritePath(dir, `assets/sfx/${name}`, written);
+  recordInManifest(dir, [{ path: "assets/sfx/adopted.mp3", type: "sfx", source: "existing" }]);
+  const anomalies = [];
+  const at = (name, reusable) =>
+    agentWritePath(dir, `assets/sfx/${name}.mp3`, { anomalies, reusable });
 
-  assert.equal(at("new.mp3"), "assets/sfx/new.mp3");
-  assert.equal(at("mine.mp3"), "assets/sfx/mine-2.mp3");
-  assert.equal(at("made.mp3"), "assets/sfx/made.mp3");
-  assert.equal(at("mine.mp3", new Set(["assets/sfx/mine.mp3"])), "assets/sfx/mine.mp3");
-  assert.equal(at("twice.mp3"), "assets/sfx/twice-3.mp3");
-  assert.equal(at("kept.mp3"), "assets/sfx/kept-2.mp3");
+  assert.equal(at("new"), "assets/sfx/new.mp3");
+  assert.equal(at("made"), "assets/sfx/made.mp3");
+  assert.equal(at("mine", (path) => path === "assets/sfx/mine.mp3"), "assets/sfx/mine.mp3");
+  assert.deepEqual(anomalies, []);
+  assert.equal(at("mine"), "assets/sfx/mine-2.mp3");
+  assert.equal(at("adopted"), "assets/sfx/adopted-2.mp3");
+  assert.equal(at("twice"), "assets/sfx/twice-3.mp3");
+  assert.equal(at("kept"), "assets/sfx/kept-2.mp3");
+  assert.equal(anomalies.length, 4);
+  assert.match(anomalies[0], /^assets\/sfx\/mine\.mp3: kept, .* wrote assets\/sfx\/mine-2\.mp3 instead/);
+});
+
+test("two spoken lines never share a file when one's name is taken by the person", (t) => {
+  const dir = project(t);
+  mkdirSync(join(dir, "assets/voice"), { recursive: true });
+  writeFileSync(join(dir, "assets/voice/hook.wav"), "the person's own hook");
+  const anomalies = [];
+
+  const paths = voicePaths(
+    dir,
+    [
+      { id: "hook", text: "First" },
+      { id: "hook-2", text: "Second" },
+      { id: "blank", text: " " },
+    ],
+    anomalies,
+  );
+
+  assert.deepEqual(Object.fromEntries(paths), {
+    hook: "assets/voice/hook-2.wav",
+    "hook-2": "assets/voice/hook-2-2.wav",
+  });
+  assert.equal(anomalies.length, 2);
 });
 
 test("a record never takes the id of a download still in flight", (t) => {

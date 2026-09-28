@@ -1,6 +1,15 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { BGM_BED_VOLUME, BGM_SILENT_VOLUME, bgmDefaultVolume } from "./bgm.mjs";
+import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { join } from "node:path";
+import { tmpdir } from "node:os";
+import { appendRecord } from "../../../scripts/lib/manifest.mjs";
+import {
+  BGM_BED_VOLUME,
+  BGM_SILENT_VOLUME,
+  bgmDefaultVolume,
+  generateBgmDetached,
+} from "./bgm.mjs";
 
 // Regression: narrated pipelines used to ship BGM at 0.8 (≈ -2 dB), ~16 dB
 // hotter than a music bed under a voice should be. The default under narration
@@ -28,3 +37,28 @@ test("the narrated default is well below the voice (≈ 0 dBFS)", () => {
     `bed should sit ≥16 dB under the voice, got ${separation.toFixed(1)} dB`,
   );
 });
+
+test(
+  "generating music again clears the engine's old track, so waiting cannot mistake it for the new one",
+  { skip: process.platform === "win32" && "the fake python is a shell script" },
+  (t) => {
+    const dir = mkdtempSync(join(tmpdir(), "hf-bgm-"));
+    const path = process.env.PATH;
+    t.after(() => {
+      process.env.PATH = path;
+      rmSync(dir, { recursive: true, force: true });
+    });
+    mkdirSync(join(dir, "bin"));
+    for (const name of ["python3", "python"])
+      writeFileSync(join(dir, "bin", name), "#!/bin/sh\nexit 0\n", { mode: 0o755 });
+    process.env.PATH = `${join(dir, "bin")}:${path}`;
+    mkdirSync(join(dir, "assets/bgm"), { recursive: true });
+    writeFileSync(join(dir, "assets/bgm/track.wav"), "last run's track");
+    appendRecord(dir, { id: "bgm_001", type: "bgm", path: "assets/bgm/track.wav", source: "generated" });
+
+    const gen = generateBgmDetached({ prompt: "calm", durationS: 5, hyperframesDir: dir, anomalies: [] });
+
+    assert.equal(gen.path, "assets/bgm/track.wav");
+    assert.equal(existsSync(join(dir, "assets/bgm/track.wav")), false);
+  },
+);

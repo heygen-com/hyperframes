@@ -12,7 +12,7 @@
 // Missing/failed BGM never blocks a render.
 
 import { spawn, spawnSync } from "node:child_process";
-import { existsSync, mkdirSync, openSync, closeSync } from "node:fs";
+import { existsSync, mkdirSync, openSync, closeSync, rmSync } from "node:fs";
 import { join } from "node:path";
 import { downloadTo, searchSounds } from "./heygen.mjs";
 import { agentWritePath } from "./media-record.mjs";
@@ -46,12 +46,12 @@ function pipInstall(deps) {
 }
 
 // ── retrieval (HeyGen music library) ──────────────────────────────────────────
-export async function retrieveBgm({ query, headers, hyperframesDir, hasVoice }) {
+export async function retrieveBgm({ query, headers, hyperframesDir, hasVoice, anomalies }) {
   const q = query || "calm cinematic underscore";
   const results = await searchSounds(q, "music", headers, { limit: 5 });
   if (!results.length) return null;
   const top = results[0];
-  const rel = agentWritePath(hyperframesDir, "assets/bgm/track.mp3");
+  const rel = agentWritePath(hyperframesDir, "assets/bgm/track.mp3", { anomalies });
   await downloadTo(top.audio_url, join(hyperframesDir, rel));
   return {
     path: rel,
@@ -114,8 +114,9 @@ export function generateBgmDetached({
   lyriaRecipe,
   seedSeconds = 28,
   hasVoice,
+  anomalies,
 }) {
-  const rel = agentWritePath(hyperframesDir, "assets/bgm/track.wav");
+  const rel = agentWritePath(hyperframesDir, "assets/bgm/track.wav", { anomalies });
   const abs = join(hyperframesDir, rel);
   mkdirSync(join(hyperframesDir, "assets", "bgm"), { recursive: true });
   const log = join(hyperframesDir, "assets", "bgm", `bgm-${Date.now()}.log`);
@@ -142,6 +143,7 @@ export function generateBgmDetached({
       "--prompt",
       prompt,
     ]);
+    rmSync(abs, { force: true }); // wait-bgm takes any file here as the finished track
     const proc = spawn(cmd, args, { detached: true, stdio: ["ignore", fd, fd] });
     proc.unref();
     closeSync(fd);
@@ -160,6 +162,7 @@ export function generateBgmDetached({
     const loops = targetS > seedS ? Math.ceil(targetS / seedS) : 1;
     const script = musicgenScript({ prompt, abs, targetS, seedS });
     const { cmd, args } = pythonInvocation(["-c", script]);
+    rmSync(abs, { force: true });
     const proc = spawn(cmd, args, { detached: true, stdio: ["ignore", fd, fd] });
     proc.unref();
     closeSync(fd);
