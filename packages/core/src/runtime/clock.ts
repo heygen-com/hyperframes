@@ -61,7 +61,7 @@ export class TransportClock {
       if ("currentTimeSeconds" in this._audioSource) {
         audioTime = this._audioSource.currentTimeSeconds;
       } else {
-        audioTime = this._elementTime(this._audioSource);
+        audioTime = this._elementTimeNeverBehind(this._audioSource);
       }
       if (audioTime !== null) {
         const t = Number.isFinite(this._duration) ? Math.min(audioTime, this._duration) : audioTime;
@@ -81,8 +81,7 @@ export class TransportClock {
     return this._lastNow;
   }
 
-  /** Audio may pull the playhead forward or hold it while it catches up, never push it back. */
-  private _elementTime(source: Extract<AudioClockSource, { el: HTMLMediaElement }>): number | null {
+  private _elementTimeNeverBehind(source: Extract<AudioClockSource, { el: HTMLMediaElement }>): number | null {
     const { el, compositionStart, mediaStart, rate } = source;
     if (el.paused || !Number.isFinite(el.currentTime)) return null;
     if (el.seeking) return this._lastNow;
@@ -93,7 +92,6 @@ export class TransportClock {
             this._rate +
           compositionStart;
     if (time >= this._lastNow) return time;
-    // A jump back past a hard sync (a native loop wrap) is not where the audio is heard.
     const buffering = el.readyState < HAVE_FUTURE_DATA;
     return buffering || this._lastNow - time <= MEDIA_HARD_SYNC_SECONDS ? this._lastNow : null;
   }
