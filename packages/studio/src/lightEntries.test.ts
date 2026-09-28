@@ -17,6 +17,9 @@ vi.mock("mediabunny", () => refuse("mediabunny"));
 vi.mock("gsap", () => refuse("gsap"));
 vi.mock("linkedom", () => refuse("linkedom"));
 vi.mock("html2canvas", () => refuse("html2canvas"));
+vi.mock("@hyperframes/parsers", () => refuse("@hyperframes/parsers"));
+vi.mock("@hyperframes/sdk", () => refuse("@hyperframes/sdk"));
+vi.mock("dockview-react", () => refuse("dockview-react"));
 
 describe("entries a host imports for its first screen", () => {
   it.each(["./ui", "./player"])(

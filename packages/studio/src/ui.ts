@@ -1,6 +1,6 @@
 export { Button, buttonBase, buttonSizes, buttonVariants } from "./components/ui/Button";
 export type { ButtonSize, ButtonVariant, PreviewState } from "./components/ui/Button";
-export { HyperframesLogo } from "./components/StudioHeader";
+export { HyperframesLogo } from "./components/ui/HyperframesLogo";
 export { IconButton } from "./components/ui/IconButton";
 export { Tab, TabPanel, Tabs, TabsList } from "./components/ui/Tabs";
 export { HyperframesLoader } from "./components/ui/HyperframesLoader";
