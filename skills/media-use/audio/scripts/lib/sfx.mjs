@@ -33,7 +33,7 @@ export async function resolveSfx({ cues, heygenOK, headers, hyperframesDir, sfxL
   const sfx = [];
   const anomalies = [];
   const destDir = join(hyperframesDir, "assets", "sfx");
-  // Each effect's file this run, so one effect named twice gets one file.
+  // Each effect's file this run: one effect named twice gets one file, and two effects never share one.
   const fileFor = new Map();
 
   // Dedupe identical (id,name) cues — the same effect named twice in one line
@@ -63,7 +63,10 @@ export async function resolveSfx({ cues, heygenOK, headers, hyperframesDir, sfxL
         const top = results[0];
         const file =
           fileFor.get(slug(name)) ??
-          agentWritePath(hyperframesDir, `assets/sfx/${slug(name)}.mp3`, { anomalies });
+          agentWritePath(hyperframesDir, `assets/sfx/${slug(name)}.mp3`, {
+            anomalies,
+            taken: new Set(fileFor.values()),
+          });
         await downloadTo(top.audio_url, join(hyperframesDir, file));
         fileFor.set(slug(name), file);
         sfx.push({
@@ -127,6 +130,7 @@ export async function resolveSfx({ cues, heygenOK, headers, hyperframesDir, sfxL
       fileFor.get(hit.file) ??
       agentWritePath(hyperframesDir, `assets/sfx/${hit.file}`, {
         anomalies,
+        taken: new Set(fileFor.values()),
         // An unrecorded copy of the library file is one an engine run made before the manifest had it.
         reusable: (rel) => !latestRecordFor(hyperframesDir, rel) && isLibraryCopy(rel),
       });

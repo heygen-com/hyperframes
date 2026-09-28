@@ -4,6 +4,7 @@ import { mkdtempSync, mkdirSync, readFileSync, rmSync, existsSync, writeFileSync
 import { join, dirname } from "node:path";
 import { tmpdir } from "node:os";
 import { fileURLToPath } from "node:url";
+import { recordInManifest } from "./lib/media-record.mjs";
 import { resolveSfx } from "./lib/sfx.mjs";
 
 // Proves the relocated engine (skills/media-use/audio/) still resolves its
@@ -82,7 +83,7 @@ test("a person's own file under a bundled name survives, and the cue gets the ne
   }
 });
 
-test("two effects never share a file when one's name is taken by the person", async () => {
+test("two effects never share a file when one's name is taken by the person, run after run", async () => {
   const dir = mkdtempSync(join(tmpdir(), "mu-audio-"));
   try {
     mkdirSync(join(dir, "assets", "sfx"), { recursive: true });
@@ -94,22 +95,25 @@ test("two effects never share a file when one's name is taken by the person", as
         return Response.json({ data: [{ audio_url: `https://sound.test/${query}`, score: 0.6 }] });
       return new Response(`bytes of ${new URL(url).pathname}`);
     };
-    try {
+    const run = async (names) => {
       const { sfx } = await resolveSfx({
-        cues: [
-          { id: "1", name: "glitch" },
-          { id: "2", name: "glitch 2" },
-          { id: "3", name: "glitch" },
-        ],
+        cues: names.map((name, index) => ({ id: String(index), name })),
         heygenOK: true,
         headers: {},
         hyperframesDir: dir,
         sfxLibDir,
       });
-      assert.deepEqual(
-        sfx.map(({ file }) => file),
-        ["assets/sfx/glitch-2.mp3", "assets/sfx/glitch-2-2.mp3", "assets/sfx/glitch-2.mp3"],
-      );
+      const files = sfx.map(({ file }) => file);
+      recordInManifest(dir, [...new Set(files)].map((path) => ({ path, type: "sfx", source: "search" })));
+      return files;
+    };
+    try {
+      assert.deepEqual(await run(["glitch"]), ["assets/sfx/glitch-2.mp3"]);
+      assert.deepEqual(await run(["glitch", "glitch 2", "glitch"]), [
+        "assets/sfx/glitch-2.mp3",
+        "assets/sfx/glitch-2-2.mp3",
+        "assets/sfx/glitch-2.mp3",
+      ]);
     } finally {
       globalThis.fetch = realFetch;
     }
