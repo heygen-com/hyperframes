@@ -110,7 +110,7 @@ export function recordInPlace(
       (key) => latest?.[key] === fields[key],
     );
     if (latest && same) return latest;
-    const record = { id: nextId(projectDir, type), ...fields, provenance };
+    const record = { id: nextFreeId(projectDir, type), ...fields, provenance };
     appendRecord(projectDir, record);
     return record;
   });
@@ -210,22 +210,28 @@ export function allocateId(projectDir, type, ext) {
   const typeDir = typeDirPath(projectDir, type);
   mkdirSync(typeDir, { recursive: true });
   return withLock(mediaDir(projectDir), () => {
-    const re = new RegExp(`^${type}_(\\d+)`);
-    let max = 0;
-    for (const r of readManifest(projectDir)) {
-      if (r.type !== type) continue;
-      const m = r.id?.match(re);
-      if (m) max = Math.max(max, parseInt(m[1], 10));
-    }
-    for (const f of readdirSync(typeDir)) {
-      const m = f.match(re);
-      if (m) max = Math.max(max, parseInt(m[1], 10)); // skip ids reserved but not yet appended
-    }
-    const id = `${type}_${String(max + 1).padStart(3, "0")}`;
+    const id = nextFreeId(projectDir, type);
     const localPath = `.media/${typeSubdir(type)}/${id}${ext}`;
     writeFileSync(join(projectDir, localPath), "", { flag: "wx" }); // durable reservation
     return { id, localPath };
   });
+}
+
+// Call under the lock: counts recorded ids and ids reserved by a file not yet recorded.
+function nextFreeId(projectDir, type) {
+  const re = new RegExp(`^${type}_(\\d+)`);
+  let max = 0;
+  for (const r of readManifest(projectDir)) {
+    if (r.type !== type) continue;
+    const m = r.id?.match(re);
+    if (m) max = Math.max(max, parseInt(m[1], 10));
+  }
+  const typeDir = typeDirPath(projectDir, type);
+  for (const f of existsSync(typeDir) ? readdirSync(typeDir) : []) {
+    const m = f.match(re);
+    if (m) max = Math.max(max, parseInt(m[1], 10));
+  }
+  return `${type}_${String(max + 1).padStart(3, "0")}`;
 }
 
 function reservedFile(projectDir, type, ext) {

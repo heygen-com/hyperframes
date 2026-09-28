@@ -1,6 +1,6 @@
 import { strict as assert } from "node:assert";
 import { test } from "node:test";
-import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { findByPrompt, readManifest } from "../../../scripts/lib/manifest.mjs";
@@ -129,4 +129,17 @@ test("a file that cannot be recorded becomes an anomaly, not a failure", (t) => 
 
   assert.equal(anomalies.length, 1);
   assert.match(anomalies[0], /^assets\/voice\/01\.wav: not recorded in the media manifest/);
+});
+
+test("a record never takes the id of a download still in flight", (t) => {
+  const dir = project(t);
+  mkdirSync(join(dir, ".media/audio/bgm"), { recursive: true });
+  writeFileSync(join(dir, ".media/audio/bgm/bgm_001.mp3"), "");
+
+  recordInManifest(dir, [{ path: "assets/bgm/track.wav", type: "bgm", source: "generated" }]);
+
+  assert.deepEqual(
+    readManifest(dir).map(({ id }) => id),
+    ["bgm_002"],
+  );
 });
