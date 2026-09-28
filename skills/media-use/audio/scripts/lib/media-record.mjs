@@ -15,13 +15,13 @@ export function writtenAssets({ only, lines, voices, bgm, bgmFields, sfx }) {
     }
   }
   if (only.has("bgm") && bgm && !bgmFields.bgm_pending) {
-    const source = bgmFields.bgm_mode === "generate" ? "generated" : "search";
+    const source = bgmFields.bgm_mode === "retrieve" ? "search" : "generated";
     assets.push({ path: bgm.path, type: "bgm", source, intent: bgm.query });
   }
   if (only.has("sfx")) {
     for (const cue of new Map(sfx.map((entry) => [entry.file, entry])).values()) {
-      const source = cue.source === "heygen" ? "search" : "bundled";
-      assets.push({ path: cue.file, type: "sfx", source, intent: cue.name });
+      const source = { heygen: "search", local: "bundled" }[cue.source];
+      if (source) assets.push({ path: cue.file, type: "sfx", source, intent: cue.name });
     }
   }
   return assets;

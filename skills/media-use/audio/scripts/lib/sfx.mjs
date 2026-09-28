@@ -118,7 +118,8 @@ export async function resolveSfx({ cues, heygenOK, headers, hyperframesDir, sfxL
     // a file we never copied produces a dangling reference that silently drops
     // downstream ("not on disk"). Surface it as a loud anomaly and skip the cue
     // instead, so the audio_meta never references a missing file.
-    if (!existsSync(dest)) {
+    const reused = existsSync(dest);
+    if (!reused) {
       if (!existsSync(src)) {
         anomalies.push(
           `sfx "${name}" (id ${id}): bundled file ${hit.file} missing from the offline ` +
@@ -129,11 +130,13 @@ export async function resolveSfx({ cues, heygenOK, headers, hyperframesDir, sfxL
       }
       copyFileSync(src, dest);
     }
+    // A file already there that is not the library's copy is the person's own.
+    const own = reused && !(existsSync(src) && readFileSync(dest).equals(readFileSync(src)));
     sfx.push({
       id,
       name,
       file: destRel,
-      source: "local",
+      source: own ? "project" : "local",
       offset_s: 0,
       duration_s: r3(hit.duration),
       volume: SFX_VOLUME,
