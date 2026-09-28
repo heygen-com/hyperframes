@@ -77,6 +77,7 @@ export {
 export { chromeMajorCeiling } from "./services/chromeHostCeiling.js";
 export {
   acquireBrowser,
+  setHostHandlesSigint,
   releaseBrowser,
   drainBrowserPool,
   closeBrowserPool,

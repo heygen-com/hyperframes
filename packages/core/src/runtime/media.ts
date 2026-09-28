@@ -195,6 +195,7 @@ const seekLoadRetried = new WeakSet<HTMLMediaElement>();
 // AbortError / NotAllowedError that should surface. Cleared on the `playing`
 // event (actual playback started) or on `pause`/`error` (state ended).
 const playRequested = new WeakSet<HTMLMediaElement>();
+const startedEarly = new WeakSet<HTMLMediaElement>();
 function markPlayRequested(el: HTMLMediaElement): void {
   if (playRequested.has(el)) return;
   playRequested.add(el);
@@ -208,7 +209,7 @@ function markPlayRequested(el: HTMLMediaElement): void {
 const MEDIA_NETWORK_NO_SOURCE = 3;
 // An element that errored or has no source can't play; re-issuing play() every
 // tick just floods rejections. Skip it until its state changes (src reload).
-function isUnplayable(el: HTMLMediaElement): boolean {
+export function isUnplayable(el: HTMLMediaElement): boolean {
   return el.error != null || el.networkState === MEDIA_NETWORK_NO_SOURCE;
 }
 
@@ -250,8 +251,10 @@ export function hasMediaSyncStateForTest(el: HTMLMediaElement): boolean {
   );
 }
 
+export const MEDIA_HARD_SYNC_SECONDS = 0.5;
+
 /** Drift a playing audio element may carry before sync pulls it back onto the playhead. */
-const MEDIA_SYNC_TOLERANCE_SECONDS = 0.04;
+export const MEDIA_SYNC_TOLERANCE_SECONDS = 0.04;
 
 // A playing video is steered back by rate, not seeked (a seek resets its decoder).
 // Its rate is written only when steering starts or stops: every write costs a frame.
@@ -309,6 +312,8 @@ export function syncRuntimeMedia(params: {
    * unity; do not mistake that transport write for an authored volume edit. */
   isWebAudioRouted?: (el: HTMLMediaElement) => boolean;
   forceSync?: boolean;
+  /** How far the next tick will move the playhead: an audio clip due within it starts now. */
+  cueAheadSeconds?: number;
   /** Lets a video clip that runs to the composition end hold its last frame at the terminal time.
    *  A thunk, because deriving the duration is only worth it for a clip past its own end. */
   getCompositionDuration: () => number;
@@ -320,6 +325,18 @@ export function syncRuntimeMedia(params: {
     const clipRate = clip.rate ?? clip.playbackRate;
     const isNonLoopVideo = el.tagName === "VIDEO" && !clip.loop;
     const inWindow = isInClipWindow(params.timeSeconds, clip.start, clip.end);
+    const dueIn = clip.start - params.timeSeconds;
+    const startsEarly =
+      el.tagName === "AUDIO" &&
+      !inWindow &&
+      dueIn > 0 &&
+      dueIn * Math.max(1, rateAt(clipRate, 0)) <=
+        Math.max(
+          params.cueAheadSeconds ?? 0,
+          startedEarly.has(el) ? MEDIA_SYNC_TOLERANCE_SECONDS : 0,
+        );
+    if (startsEarly) startedEarly.add(el);
+    else startedEarly.delete(el);
     // A video that runs to the composition end stays the visible frame at and past it, so it
     // is held on the frame it shows at its own end rather than left on a stale one.
     const isTerminalVideo =
@@ -353,7 +370,7 @@ export function syncRuntimeMedia(params: {
     // video additionally remains an active visual through
     // its authored window, with tail seeks clamped to the final frame.
     const isActive =
-      (inWindow || isTerminalVideo) &&
+      (inWindow || isTerminalVideo || startsEarly) &&
       relTime >= 0 &&
       (!el.ended || clip.loop || isHeldVideoTail || canSeekEndedMediaBackward);
     if (isActive) {
@@ -495,7 +512,7 @@ export function syncRuntimeMedia(params: {
         (isHeldVideoTail && drift > 0.001) ||
         (el.ended && canSeekEndedMediaBackward && drift > 0.001) ||
         staleAudioOnFirstTick ||
-        (drift > 0.5 && (firstTickOfClip || offsetJumped || catastrophicDrift));
+        (drift > MEDIA_HARD_SYNC_SECONDS && (firstTickOfClip || offsetJumped || catastrophicDrift));
       // Playing videos use the browser's decoder for timing. Seeking one resets the decoder: a
       // ~150ms freeze while it re-buffers, as the monotonic clock advances, which loops into a
       // seek→freeze→drift→seek stutter. So a playing video skips strict and force sync; only hard

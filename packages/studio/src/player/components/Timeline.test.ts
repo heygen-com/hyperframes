@@ -213,7 +213,9 @@ describe("Timeline provider boundary", () => {
         100,
       ).start,
     ).toBe(10);
-    expect(getTimelineFitPps(640, 11, GUTTER)).toBe(10.1);
+    expect(getTimelineFitPps(640, 11, GUTTER)).toBeCloseTo(
+      (640 - GUTTER - 2) / (11 * FIT_ZOOM_HEADROOM),
+    );
 
     act(() => root.unmount());
   });
@@ -313,7 +315,7 @@ describe("Timeline provider boundary", () => {
     expect(rulerX).toBe(LABEL_COL_W + GUTTER + 1000);
     expect(collapsedHeader.textContent).toContain("Outro");
     expect(getTimelineFitPps(640, 20, LABEL_COL_W + GUTTER)).toBeCloseTo(
-      (640 - (LABEL_COL_W + GUTTER) - 2) / MIN_TIMELINE_EXTENT_S,
+      (640 - (LABEL_COL_W + GUTTER) - 2) / (20 * FIT_ZOOM_HEADROOM),
     );
     expect(
       resolveTimelineAssetDrop(
@@ -948,15 +950,13 @@ describe("shouldAutoScrollTimeline", () => {
   });
 });
 
-describe("getTimelineFitPps (min 60s extent + fit headroom)", () => {
+describe("getTimelineFitPps (fit headroom, 60s floor only without a duration)", () => {
   const viewport = 632; // usable width = 632 - GUTTER - TRACKS_LEFT_PAD - 2
 
-  it("computes fit pps against the 60s floor for short compositions", () => {
-    // A 10s comp maps 60s onto the viewport → the comp takes ~1/6 of the width.
-    // (10 * 1.2 = 12s of headroom-padded content is still under the 60s floor.)
-    const pps = getTimelineFitPps(viewport, 10, GUTTER + TRACKS_LEFT_PAD);
-    expect(pps).toBeCloseTo((viewport - (GUTTER + TRACKS_LEFT_PAD) - 2) / MIN_TIMELINE_EXTENT_S);
-    expect(10 * pps).toBeCloseTo((viewport - (GUTTER + TRACKS_LEFT_PAD) - 2) / 6);
+  it("fits a short film to the width, not to a 60s ruler", () => {
+    const usable = viewport - (GUTTER + TRACKS_LEFT_PAD) - 2;
+    const pps = getTimelineFitPps(viewport, 17, GUTTER + TRACKS_LEFT_PAD);
+    expect(17 * pps).toBeCloseTo(usable / FIT_ZOOM_HEADROOM);
   });
 
   it("fits duration * FIT_ZOOM_HEADROOM (not the bare duration) for long compositions", () => {
@@ -1000,11 +1000,10 @@ describe("getTimelineFitPps (min 60s extent + fit headroom)", () => {
 });
 
 describe("getTimelineDisplayContentWidth", () => {
-  it("always spans at least MIN_TIMELINE_EXTENT_S seconds of content", () => {
-    // 10s of content at 20 pps = 200px; the floor keeps 60s (1200px) rendered.
+  it("spans MIN_TIMELINE_EXTENT_S seconds while the duration is unknown", () => {
     expect(
       getTimelineDisplayContentWidth({
-        trackContentWidth: 200,
+        effectiveDuration: 0,
         viewportWidth: 400,
         contentOrigin: GUTTER,
         pps: 20,
@@ -1012,10 +1011,24 @@ describe("getTimelineDisplayContentWidth", () => {
     ).toBe(MIN_TIMELINE_EXTENT_S * 20);
   });
 
-  it("still fills the viewport when that is larger than the 60s floor", () => {
+  it("renders a short film at fit exactly as wide as the viewport, so fit never scrolls", () => {
+    const viewport = 632;
+    const origin = GUTTER + TRACKS_LEFT_PAD;
+    const pps = getTimelineFitPps(viewport, 17, origin);
     expect(
       getTimelineDisplayContentWidth({
-        trackContentWidth: 200,
+        effectiveDuration: 17,
+        viewportWidth: viewport,
+        contentOrigin: origin,
+        pps,
+      }),
+    ).toBeCloseTo(viewport - origin - 2);
+  });
+
+  it("still fills the viewport when that is larger than the fit span", () => {
+    expect(
+      getTimelineDisplayContentWidth({
+        effectiveDuration: 40,
         viewportWidth: 2000,
         contentOrigin: GUTTER + TRACKS_LEFT_PAD,
         pps: 5,
@@ -1026,7 +1039,7 @@ describe("getTimelineDisplayContentWidth", () => {
   it("tracks a drag ghost past every other bound (drag-to-extend)", () => {
     expect(
       getTimelineDisplayContentWidth({
-        trackContentWidth: 500,
+        effectiveDuration: 100,
         viewportWidth: 400,
         contentOrigin: GUTTER,
         pps: 5,
@@ -1038,7 +1051,7 @@ describe("getTimelineDisplayContentWidth", () => {
   it("tracks a resize (trim) ghost past every other bound (trim-to-extend)", () => {
     expect(
       getTimelineDisplayContentWidth({
-        trackContentWidth: 500,
+        effectiveDuration: 100,
         viewportWidth: 400,
         contentOrigin: GUTTER,
         pps: 5,
@@ -1047,15 +1060,15 @@ describe("getTimelineDisplayContentWidth", () => {
     ).toBe(4200);
   });
 
-  it("keeps long content authoritative", () => {
+  it("keeps the fit headroom past the end when zoomed in", () => {
     expect(
       getTimelineDisplayContentWidth({
-        trackContentWidth: 9000,
+        effectiveDuration: 180,
         viewportWidth: 400,
         contentOrigin: GUTTER,
         pps: 50,
       }),
-    ).toBe(9000);
+    ).toBeCloseTo(180 * FIT_ZOOM_HEADROOM * 50);
   });
 });
 

@@ -9,6 +9,29 @@ Recent HyperFrames releases, including user-facing features, fixes, and migratio
 {/* New release entries are prepended by `bun run changelog:draft <version> --write`. */}
 
 <Update
+  label="HyperFrames v0.8.86"
+  description="Released - 2026-09-28"
+  tags={["Release", "Studio", "Studio Server", "Fonts"]}
+>
+Timeline Fit now fills the width with the film, and its button is an icon. The playhead stays put when an audio clip starts, and Studio refuses huge or binary files instead of reading them as text.
+
+## Features
+
+- **Player:** Play video files that declare a type such as video/mp4 ([326bd0c9a](https://github.com/heygen-com/hyperframes/commit/326bd0c9a198f00769f8e0b64f51b1d1125f335f), [#4673](https://github.com/heygen-com/hyperframes/pull/4673)).
+
+## Fixes
+
+- **Studio:** Timeline Fit fills the width with the film, Fit is an icon, and a host can hide keyframe controls ([a3b6eec97](https://github.com/heygen-com/hyperframes/commit/a3b6eec97e7de4a074f07a769224a03279b9b6fb), [#4680](https://github.com/heygen-com/hyperframes/pull/4680)).
+- **Studio:** Back to the master after a nested drill restores the master playhead ([73d26a518](https://github.com/heygen-com/hyperframes/commit/73d26a5187c2b24c7613e9ec58abfc97b4d5c954), [#4678](https://github.com/heygen-com/hyperframes/pull/4678)).
+- **Studio Server:** Refuse huge or binary files with a clear error instead of reading them as text ([52154bddb](https://github.com/heygen-com/hyperframes/commit/52154bddb5d493c3813a9d1634868fcf6ca4c7f4), [#4677](https://github.com/heygen-com/hyperframes/pull/4677)).
+- **Fonts:** Resolve declared family names with missing spaces ([46eedd4df](https://github.com/heygen-com/hyperframes/commit/46eedd4dfb6f0ec2b6edab270742d13f730a14ce), [#4670](https://github.com/heygen-com/hyperframes/pull/4670)).
+- **Core:** The playhead no longer jumps back when an audio clip starts ([fdbc5dcaf](https://github.com/heygen-com/hyperframes/commit/fdbc5dcaf717455fb4e42b2f5e1146dc21dafff8), [#4679](https://github.com/heygen-com/hyperframes/pull/4679)).
+- **Docs:** Restore examples with the HyperFrames Player ([a31738f11](https://github.com/heygen-com/hyperframes/commit/a31738f115d12e662c279dd3af39c7c816afeec5), [#4675](https://github.com/heygen-com/hyperframes/pull/4675)).
+
+[View the full commit range](https://github.com/heygen-com/hyperframes/compare/v0.8.85...v0.8.86).
+</Update>
+
+<Update
   label="HyperFrames v0.8.85"
   description="Released - 2026-09-28"
   tags={["Release", "Studio", "Changelog"]}
