@@ -74,7 +74,7 @@ const CLIENT_TAG = /^[a-z0-9][a-z0-9._+-]{0,31}(\/[a-z0-9._+-]{1,32}){0,3}$/i;
 
 function readClientTag(): string | null {
   const tag = process.env["HYPERFRAMES_CLIENT"]?.trim() ?? "";
-  return tag.length <= 64 && CLIENT_TAG.test(tag) ? tag : null;
+  return CLIENT_TAG.test(tag) ? tag : null;
 }
 
 /**
