@@ -37,6 +37,7 @@ export type HyperframePickerApi = {
     clientY: number,
     indexes?: number[],
   ) => HyperframePickerElementInfo[];
+  describe: (element: Element) => HyperframePickerElementInfo | null;
 };
 
 declare global {

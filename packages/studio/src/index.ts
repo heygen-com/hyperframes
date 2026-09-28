@@ -199,3 +199,32 @@ export {
   type SeamTransitionLoopHandle,
   type SeamTransitionLoopOptions,
 } from "@hyperframes/shader-transitions";
+
+// Editor gestures for a host's own preview overlay: snapping and the marquee
+export {
+  SNAP_THRESHOLD_PX,
+  snapEngagedForTravel,
+  extractSnapTargets,
+  buildCompositionSnapTarget,
+  buildGridSnapEdges,
+  resolveSnapAdjustment,
+  resolveGuideLineRect,
+  resolveEquidistanceGuides,
+} from "./components/editor/snapEngine";
+export type {
+  SnapEdge,
+  SnapTarget,
+  SnapGuide,
+  SpacingGuide,
+  SnapResult,
+  Rect as SnapRect,
+} from "./components/editor/snapEngine";
+export { collectSnapContext } from "./components/editor/snapTargetCollection";
+export type { SnapContext } from "./components/editor/snapTargetCollection";
+export { SnapGuideOverlay } from "./components/editor/SnapGuideOverlay";
+export type { SnapGuideOverlayProps, SnapGuidesState } from "./components/editor/SnapGuideOverlay";
+export { useMarqueeGestures } from "./components/editor/marqueeCommit";
+export type { MarqueeGestures, MarqueeGesturesDeps } from "./components/editor/marqueeCommit";
+export { MarqueeOverlay } from "./components/editor/MarqueeOverlay";
+export type { MarqueeOverlayProps } from "./components/editor/MarqueeOverlay";
+export type { Rect as MarqueeRect } from "./utils/marqueeGeometry";
