@@ -308,14 +308,14 @@ describe("registerFileRoutes", () => {
     const app = new Hono();
     registerFileRoutes(app, createAdapter(projectDir));
 
-    const heapBefore = process.memoryUsage().heapUsed;
+    const peakRssKbBefore = process.resourceUsage().maxRSS;
     const response = await app.request("http://localhost/projects/demo/files/big.mp4");
     const body = await response.text();
 
     expect(response.status).toBe(413);
     expect(JSON.parse(body)).toMatchObject({ why: "too_large" });
     expect(body.length).toBeLessThan(1024);
-    expect(process.memoryUsage().heapUsed - heapBefore).toBeLessThan(50 * 1024 * 1024);
+    expect(process.resourceUsage().maxRSS - peakRssKbBefore).toBeLessThan(100 * 1024);
   });
 
   it("answers 415 for a binary file", async () => {
