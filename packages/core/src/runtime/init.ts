@@ -2592,12 +2592,14 @@ export function initSandboxRuntimeModular(): void {
     if (decided === near) return;
     mediaNearPlayhead.set(el, near);
     if (!near) {
-      // Only load() frees a played clip's connection; at preload none it fetches nothing back, but
-      // it drops the duration, which an untrimmed clip's window is read from.
-      if (decided && parseStrictFiniteTimingNumber(el.dataset.duration) != null) {
+      // load() at preload none stops any fetch and makes none, but it drops the duration an
+      // untrimmed clip's window is read from, so that one stays at metadata.
+      if (parseStrictFiniteTimingNumber(el.dataset.duration) == null) {
+        if (el.preload === "auto") el.preload = "metadata";
+      } else if (el.preload !== "none") {
         el.preload = "none";
         el.load();
-      } else if (el.preload === "auto") el.preload = "metadata";
+      }
     } else if (!visible || decided === undefined) {
       // Not a clip a jump lands on: the media sync arms that one, and load() would undo its seek.
       preloadMedia(el);

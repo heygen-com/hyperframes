@@ -327,13 +327,15 @@ describe("runtime entry", () => {
 
       await evaluateRuntime();
       expect(armed(now, soon, later)).toEqual([true, true, false]);
-      expect(loadsOf(now, soon, later)).toEqual([1, 1, 0]);
+      // Reloaded empty: a fetch the parser started for the far clip stops and none starts.
+      expect(later.preload).toBe("none");
+      expect(loadsOf(now, soon, later)).toEqual([1, 1, 1]);
 
       window.__player?.seek(3.6);
       expect(armed(now, soon, later)).toEqual([false, false, true]);
       // The two that left are reloaded empty, which drops the connection each held.
       expect([now.preload, soon.preload]).toEqual(["none", "none"]);
-      expect(loadsOf(now, soon, later)).toEqual([2, 2, 1]);
+      expect(loadsOf(now, soon, later)).toEqual([2, 2, 2]);
     });
 
     it("keeps an untrimmed clip's duration when the playhead leaves it", async () => {
@@ -355,9 +357,10 @@ describe("runtime entry", () => {
       const [now, later] = videos(mountRoot(), "0", "8");
 
       await evaluateRuntime();
+      const beforeJump = loadsOf(later)[0];
       window.__player?.seek(8.4);
       expect(armed(now, later)).toEqual([false, true]);
-      expect(loadsOf(later)).toEqual([0]);
+      expect(loadsOf(later)).toEqual([beforeJump]);
     });
 
     it("keeps a render loading every media element at bind", async () => {
