@@ -8,7 +8,12 @@ import { regenerateIndex } from "../../../scripts/lib/index-gen.mjs";
  * not record as agent-made, not written earlier in this run, and not `reusable`); then the first such
  * `name-2.ext`, `name-3.ext`.
  */
-export function agentWritePath(hyperframesDir, rel, writtenThisRun = new Set(), reusable = () => false) {
+export function agentWritePath(
+  hyperframesDir,
+  rel,
+  writtenThisRun = new Set(),
+  reusable = () => false,
+) {
   const personal = (path) =>
     existsSync(join(hyperframesDir, path)) &&
     !writtenThisRun.has(path) &&

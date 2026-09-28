@@ -122,7 +122,10 @@ fs.writeFileSync(path.join(args[args.indexOf('--dir')+1], 'transcript.json'), JS
         [[voicePath, "voice", "generated"]],
       );
       if (expired)
-        assert.equal(readFileSync(join(dir, "assets/voice/intro.wav"), "utf8"), "the person's own intro");
+        assert.equal(
+          readFileSync(join(dir, "assets/voice/intro.wav"), "utf8"),
+          "the person's own intro",
+        );
     });
   }
 }
