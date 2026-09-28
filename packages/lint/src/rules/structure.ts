@@ -1,11 +1,14 @@
 import type { LintContext, HyperframeLintFinding, OpenTag } from "../context";
-import { readDecodedAttr } from "../utils";
+import { readDecodedAttr, truncateSnippet } from "../utils";
 import {
   isSubCompositionHost,
   topLevelElements,
   trackKindOf,
   type StructureNode,
 } from "@hyperframes/parsers/top-level-elements";
+import { readClipTiming } from "@hyperframes/parsers/composition-contract";
+import { readDataDurationSeconds } from "@hyperframes/parsers/media-duration";
+import { TIMING_TOLERANCE_SECONDS } from "@hyperframes/parsers/composition-duration";
 
 interface TagNode extends StructureNode<TagNode> {
   children: TagNode[];
@@ -167,6 +170,29 @@ function captionFindings(rows: TagNode[], severity: Severity): HyperframeLintFin
   return findings;
 }
 
+const hundredths = (seconds: number) => Math.round(seconds * 100) / 100;
+
+function clipsPastRootFindings(root: TagNode, rows: TagNode[]): HyperframeLintFinding[] {
+  if (root.attrs["data-composition-id"] === undefined) return [];
+  const rootDuration = readDataDurationSeconds((name) => root.attrs[name]);
+  if (rootDuration === null) return [];
+  const limit = hundredths(rootDuration);
+  return rows.flatMap((row) => {
+    const { start, end } = readClipTiming({ getAttribute: (name) => row.attrs[name] ?? null });
+    if (start === null || end === null || end <= rootDuration + TIMING_TOLERANCE_SECONDS) return [];
+    return [
+      {
+        code: "clip_ends_past_root_duration",
+        severity: "warning",
+        message: `${describe(row)} runs from ${hundredths(start)}s to ${hundredths(end)}s, past the root composition's data-duration of ${limit}s, so it is cut off in previews, posters and renders.`,
+        elementId: row.attrs.id,
+        fixHint: `Extend the root data-duration to ${hundredths(end)}, or make ${describe(row)} end at or before ${limit}s.`,
+        snippet: truncateSnippet(row.open.raw),
+      },
+    ];
+  });
+}
+
 export const structureRules: Array<(ctx: LintContext) => HyperframeLintFinding[]> = [
   (ctx) => {
     // The timeline shows the root composition's rows; a sub-composition file is the leaf where layout lives.
@@ -179,6 +205,7 @@ export const structureRules: Array<(ctx: LintContext) => HyperframeLintFinding[]
       ...nestedStructureFindings(rows, severity),
       ...missingDurationFindings(rows, severity),
       ...captionFindings(rows, severity),
+      ...clipsPastRootFindings(root, rows),
     ];
   },
 ];

@@ -10,6 +10,7 @@ export const MEDIA_BIND_INTERVAL_FRAMES = 30;
  * it: `TIMELINE_POST_INTERVAL_FRAMES` frames at a 60 Hz display.
  */
 export const CHANGE_DRIVEN_SERVICE_MIN_INTERVAL_MS = (1000 * TIMELINE_POST_INTERVAL_FRAMES) / 60;
+export const PLAYING_POLL_INTERVAL_MS = (1000 * TIMELINE_REBIND_INTERVAL_FRAMES) / 60;
 
 export function shouldAttemptPeriodicTimelineBind(input: {
   tick: number;
@@ -24,6 +25,7 @@ export function shouldAttemptPeriodicTimelineBind(input: {
    * async rebind cannot race the first two seconds of playback.
    */
   compositionChanged?: boolean;
+  playingPollDue?: boolean;
 }): boolean {
   // The hold is the outer rule and applies to every trigger.
   if (
@@ -34,6 +36,7 @@ export function shouldAttemptPeriodicTimelineBind(input: {
     return false;
   }
   if (input.compositionChanged === true) return true;
+  if (input.isPlaying) return input.playingPollDue === true;
   return (
     Number.isInteger(input.tick) &&
     input.tick > 0 &&

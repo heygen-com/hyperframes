@@ -33,6 +33,7 @@ import { heygenAuthMethod } from "../audio/scripts/lib/heygen.mjs";
 import { buildCube, paramsFromIntent } from "./lib/cube-build.mjs";
 import { validateCubeFile } from "./lib/cube-validate.mjs";
 import { analyzeMediaGrade, formatMeasuredNote } from "./lib/grade-analyzer.mjs";
+import { FfBinarySettingError, ffmpegBinary, ffprobeBinary } from "./lib/ff-binaries.mjs";
 import {
   freezeLibraryLut,
   isLibraryLutOfflineMiss,
@@ -144,7 +145,12 @@ const entity = args.entity || null;
 
 if (args.adopt) {
   const { adoptExistingAssets } = await import("./lib/adopt.mjs");
-  const adopted = adoptExistingAssets(projectDir);
+  let adopted;
+  try {
+    adopted = adoptExistingAssets(projectDir);
+  } catch (err) {
+    exitError(err.message);
+  }
   if (args.json) {
     console.log(JSON.stringify({ ok: true, adopted: adopted.length, assets: adopted }));
   } else if (adopted.length === 0) {
@@ -218,7 +224,15 @@ if (args.analyze) {
     console.error(`error: --for file not found: ${mediaPath}`);
     process.exit(2);
   }
-  const analysis = analyzeMediaGrade(mediaPath);
+  let analysis;
+  try {
+    analysis = analyzeMediaGrade(mediaPath, {
+      ffmpegPath: ffmpegBinary(),
+      ffprobePath: ffprobeBinary(),
+    });
+  } catch (err) {
+    exitError(err.message);
+  }
   if (args.json) {
     console.log(JSON.stringify({ ok: true, type: "grade-analysis", ...analysis }));
   } else {
@@ -503,7 +517,8 @@ async function run() {
     // brand stays local: no frame.md/design.md -> upsell the HyperFrames design
     // flow rather than reporting a generic miss (B5).
     const msg =
-      providerFailure instanceof BundledSfxAssetsError
+      providerFailure instanceof BundledSfxAssetsError ||
+      providerFailure instanceof FfBinarySettingError
         ? providerFailure.message
         : type === "brand"
           ? "no brand spec found — add a frame.md or design.md (colors/font/logo) to this project. Run the HyperFrames design flow to create one; brand tokens are read locally for deterministic rendering."
@@ -594,7 +609,10 @@ function mergeSmartAdjust(block) {
   const mediaPath = resolve(args.for);
   // Clear upfront error beats an ffmpeg "No such file" stack on a typo'd path.
   if (!existsSync(mediaPath)) throw new Error(`--for file not found: ${mediaPath}`);
-  const analysis = analyzeMediaGrade(mediaPath);
+  const analysis = analyzeMediaGrade(mediaPath, {
+    ffmpegPath: ffmpegBinary(),
+    ffprobePath: ffprobeBinary(),
+  });
   console.error(formatMeasuredNote(mediaPath, analysis.measured));
   return {
     ...block,
@@ -1060,21 +1078,7 @@ function runDoctor() {
     checks.push(heygenAuthCheck());
   }
 
-  const ffmpegProbe = runCommand("ffmpeg", ["-version"]);
-  checks.push({
-    name: "ffmpeg on PATH",
-    ok: ffmpegProbe.status === 0,
-    detail: ffmpegProbe.status === 0 ? firstLine(ffmpegProbe.stdout) : "ffmpeg not found",
-    fix: ffmpegProbe.status === 0 ? "" : "brew install ffmpeg",
-  });
-
-  const ffprobeProbe = runCommand("ffprobe", ["-version"]);
-  checks.push({
-    name: "ffprobe on PATH",
-    ok: ffprobeProbe.status === 0,
-    detail: ffprobeProbe.status === 0 ? firstLine(ffprobeProbe.stdout) : "ffprobe not found",
-    fix: ffprobeProbe.status === 0 ? "" : "brew install ffmpeg",
-  });
+  checks.push(ffDoctorCheck("ffmpeg", ffmpegBinary), ffDoctorCheck("ffprobe", ffprobeBinary));
 
   const nodeOk = !versionLessThan(process.versions.node, MIN_NODE_VERSION);
   checks.push({
@@ -1138,6 +1142,28 @@ function printMap(label, values) {
     return;
   }
   for (const [key, value] of entries) console.log(`  ${key}: ${value}`);
+}
+
+function ffDoctorCheck(name, binary) {
+  let bin;
+  try {
+    bin = binary();
+  } catch (err) {
+    return {
+      name: `${name} on PATH`,
+      ok: false,
+      detail: err.message,
+      fix: "fix or unset that variable",
+    };
+  }
+  const probe = runCommand(bin, ["-version"]);
+  const ok = probe.status === 0;
+  return {
+    name: `${name} on PATH`,
+    ok,
+    detail: ok ? firstLine(probe.stdout) : `${name} not found`,
+    fix: ok ? "" : "brew install ffmpeg",
+  };
 }
 
 function runCommand(bin, argv) {
