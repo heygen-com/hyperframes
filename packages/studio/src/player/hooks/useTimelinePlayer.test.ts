@@ -674,6 +674,8 @@ describe("shouldIgnorePlaybackShortcutEvent while a modal dialog is open", () =>
 
   it("counts an aria-modal dialog where the browser has no checkVisibility", () => {
     const document = createDocument(`<div role="dialog" aria-modal="true"></div>`);
+    delete (document.defaultView!.Element.prototype as { checkVisibility?: unknown })
+      .checkVisibility;
     vi.stubGlobal("document", document);
     expect(
       shouldIgnorePlaybackShortcutEvent(mockKeyboardEvent("Space", { target: document.body })),
