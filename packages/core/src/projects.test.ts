@@ -111,9 +111,7 @@ describe("findProjects", () => {
   });
 
   it("stops reporting and rejects once its signal is aborted", async () => {
-    const root = tree(
-      Array.from({ length: 200 }, (_, i) => [`f${i}/index.html`, `f${i}/meta.json`]).flat(),
-    );
+    const root = tree(["a/index.html", "a/meta.json", "b/index.html", "b/meta.json"]);
     const controller = new AbortController();
     const found: FoundProject[] = [];
     const search = findProjects({
@@ -131,9 +129,7 @@ describe("findProjects", () => {
   });
 
   it("stops the search when onProject throws", async () => {
-    const root = tree(
-      Array.from({ length: 200 }, (_, i) => [`f${i}/index.html`, `f${i}/meta.json`]).flat(),
-    );
+    const root = tree(["a/index.html", "a/meta.json", "b/index.html", "b/meta.json"]);
     const onProject = vi.fn(() => {
       throw new Error("list is closed");
     });
