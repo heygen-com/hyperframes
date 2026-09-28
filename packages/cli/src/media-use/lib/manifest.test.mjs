@@ -264,7 +264,13 @@ function runTests() {
     appendRecord(tmp, makeRecord({ id: "bgm_001" }));
     appendRecord(
       tmp,
-      makeRecord({ id: "sfx_001", type: "sfx", description: "whoosh", duration: 3 }),
+      makeRecord({
+        id: "sfx_001",
+        type: "sfx",
+        path: ".media/audio/sfx/sfx_001.mp3",
+        description: "whoosh",
+        duration: 3,
+      }),
     );
     regenerateIndex(tmp);
     const content = readFileSync(join(tmp, ".media", "index.md"), "utf8");
