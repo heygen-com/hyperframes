@@ -31,7 +31,11 @@ export default defineCommand({
     } catch (error) {
       const code = (error as NodeJS.ErrnoException).code;
       const reason =
-        code === "ENOENT" ? "does not exist" : code === "ENOTDIR" ? "is not a folder" : "cannot be read";
+        code === "ENOENT"
+          ? "does not exist"
+          : code === "ENOTDIR"
+            ? "is not a folder"
+            : "cannot be read";
       errorBox("Cannot search this folder", `${root} ${reason}.`);
       failCommand();
     }
