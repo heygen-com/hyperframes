@@ -3228,18 +3228,21 @@ describe("initSandboxRuntimeModular", () => {
       }),
     );
 
-  it.each([1, 4])("stops a clip it started early when a seek jumps back before it, at %sx", (rate) => {
-    const { raf, sfx, startedAt } = mountLateSfx();
-    setRate(rate);
-    window.__player?.play();
-    for (let frame = 0; frame < 120 && startedAt.length === 0; frame++) raf.step(13);
-    expect(startedAt[0]).toBeLessThan(1);
+  it.each([1, 4])(
+    "stops a clip it started early when a seek jumps back before it, at %sx",
+    (rate) => {
+      const { raf, sfx, startedAt } = mountLateSfx();
+      setRate(rate);
+      window.__player?.play();
+      for (let frame = 0; frame < 120 && startedAt.length === 0; frame++) raf.step(13);
+      expect(startedAt[0]).toBeLessThan(1);
 
-    window.__player?.seek(0, { keepPlaying: true });
-    raf.step(16);
+      window.__player?.seek(0, { keepPlaying: true });
+      raf.step(16);
 
-    expect(sfx.pause).toHaveBeenCalled();
-  });
+      expect(sfx.pause).toHaveBeenCalled();
+    },
+  );
 
   it("does not start a clip early on the tick a seek lands just before it", () => {
     const { raf, startedAt } = mountLateSfx();
@@ -3259,6 +3262,15 @@ describe("initSandboxRuntimeModular", () => {
     for (let frame = 0; frame < 60 && startedAt.length === 0; frame++) raf.step(76);
 
     expect(startedAt[0]).toBeGreaterThanOrEqual(1 - 0.04 * 0.25);
+  });
+
+  it("starts a clip at most 40 ms of film time early at a fast speed", () => {
+    const { raf, startedAt } = mountLateSfx();
+    setRate(4);
+    window.__player?.play();
+    for (let frame = 0; frame < 30 && startedAt.length === 0; frame++) raf.step(18);
+
+    expect(startedAt[0]).toBeGreaterThanOrEqual(1 - 0.04);
   });
 
   it.each([24, 30, 60, 30_000 / 1_001])(
