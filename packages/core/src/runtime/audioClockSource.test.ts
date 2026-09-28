@@ -201,8 +201,10 @@ describe("the audio the playhead follows", () => {
     window.__player?.play();
     await flush();
     const playedAt = nowMs;
-    Object.defineProperty(empty, "networkState", { value: 3 });
+    // What Chrome reports for an <audio> with no source once play() is called on it.
+    Object.defineProperty(empty, "networkState", { value: 0 });
     Object.defineProperty(empty, "readyState", { value: 0 });
+    Object.assign(empty, { paused: false });
     Object.assign(vo, { paused: false });
     for (let frame = 0; frame < 90; frame++) {
       stepFrames(1);
