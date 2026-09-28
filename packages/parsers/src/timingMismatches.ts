@@ -1,10 +1,10 @@
 import { parseHTML } from "linkedom";
 import { parseGsapScriptAcorn } from "./gsapParserAcorn.js";
 import type { GsapAnimation } from "./gsapSerialize.js";
+import { TIMING_TOLERANCE_SECONDS } from "./compositionDuration.js";
 import { isSubCompositionHost, topLevelElements } from "./topLevelElements.js";
 import type { StructureNode } from "./topLevelElements.js";
 
-const EPSILON = 0.05;
 const NON_RENDERED = new Set(["script", "style", "template", "noscript", "link", "meta"]);
 
 export type TimingFinding =
@@ -94,8 +94,8 @@ function windowFinding(
   const duration = attrNumber(el, "data-duration");
   if (dataStart === null) return null;
   const dataEnd = duration === null ? null : dataStart + duration;
-  const beforeStart = anim.method !== "set" && start < dataStart - EPSILON;
-  const afterEnd = dataEnd !== null && start > dataEnd + EPSILON;
+  const beforeStart = anim.method !== "set" && start < dataStart - TIMING_TOLERANCE_SECONDS;
+  const afterEnd = dataEnd !== null && start > dataEnd + TIMING_TOLERANCE_SECONDS;
   if (!beforeStart && !afterEnd) return null;
   const elementId = el.getAttribute("id");
   return {
@@ -183,7 +183,7 @@ export function timingMismatches(html: string): TimingMismatchReport {
   const timelineEnd = Math.max(0, ...ends.filter((e): e is number => e !== null));
 
   const rootDuration = attrNumber(root, "data-duration");
-  if (rootDuration !== null && timelineEnd > rootDuration + EPSILON) {
+  if (rootDuration !== null && timelineEnd > rootDuration + TIMING_TOLERANCE_SECONDS) {
     report.findings.push({ kind: "timeline-exceeds-root-duration", rootDuration, timelineEnd });
   }
   return report;

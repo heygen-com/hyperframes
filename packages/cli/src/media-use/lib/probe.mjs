@@ -1,5 +1,6 @@
 import { execFileSync } from "node:child_process";
 import { extname } from "node:path";
+import { ffprobeBinary } from "./ff-binaries.mjs";
 
 const IMAGE_EXT = new Set([".jpg", ".jpeg", ".png", ".gif", ".webp", ".svg", ".ico"]);
 
@@ -7,11 +8,12 @@ export function probe(filePath) {
   const ext = extname(filePath).toLowerCase();
   if (ext === ".svg") return { width: null, height: null, duration: null, codec: "svg" };
 
+  const ffprobe = ffprobeBinary();
   try {
     // execFileSync (no shell) so a hostile filename like `"; rm -rf ~; ".png`
     // can't break out of the quoting — filePath is passed as a literal argv entry.
     const raw = execFileSync(
-      "ffprobe",
+      ffprobe,
       ["-v", "quiet", "-print_format", "json", "-show_format", "-show_streams", "--", filePath],
       { encoding: "utf8", timeout: 5000 },
     );
