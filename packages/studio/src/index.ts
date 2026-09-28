@@ -181,6 +181,11 @@ export { useDomStyleCommit } from "./hooks/useDomStyleCommit";
 export type { UseDomStyleCommitOptions } from "./hooks/useDomStyleCommit";
 export type { DomEditCommitDeclineReason, DomEditCommitOutcome } from "./hooks/domEditCommitRunner";
 export { resolveDomEditSelection } from "./components/editor/domEditingLayers";
+export { DomEditOverlay } from "./components/editor/DomEditOverlay";
+export type {
+  DomEditGroupPathOffsetCommit,
+  DomEditOverlayProps,
+} from "./components/editor/DomEditOverlay";
 
 export {
   playSeamTransitionLoop,
