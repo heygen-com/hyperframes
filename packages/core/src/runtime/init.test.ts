@@ -3232,7 +3232,7 @@ describe("initSandboxRuntimeModular", () => {
     const { raf, sfx, startedAt } = mountLateSfx();
     setRate(rate);
     window.__player?.play();
-    for (let frame = 0; frame < 75 && startedAt.length === 0; frame++) raf.step(16);
+    for (let frame = 0; frame < 120 && startedAt.length === 0; frame++) raf.step(13);
     expect(startedAt[0]).toBeLessThan(1);
 
     window.__player?.seek(0, { keepPlaying: true });
@@ -3256,7 +3256,7 @@ describe("initSandboxRuntimeModular", () => {
     const { raf, startedAt } = mountLateSfx();
     setRate(0.25);
     window.__player?.play();
-    for (let frame = 0; frame < 60 && startedAt.length === 0; frame++) raf.step(90);
+    for (let frame = 0; frame < 60 && startedAt.length === 0; frame++) raf.step(76);
 
     expect(startedAt[0]).toBeGreaterThanOrEqual(1 - 0.04 * 0.25);
   });

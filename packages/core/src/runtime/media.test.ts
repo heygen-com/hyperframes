@@ -899,6 +899,18 @@ describe("syncRuntimeMedia", () => {
       expect(clip.el.play).not.toHaveBeenCalled();
     });
 
+    it("does not start a sped-up clip so early that its window opens it past strict sync", () => {
+      const clip = createMockClip({ start: 5, end: 6, rate: 3 }, "audio");
+      syncRuntimeMedia({
+        clips: [clip],
+        timeSeconds: 4.98,
+        playing: true,
+        playbackRate: 1,
+        cueAheadSeconds: 0.034,
+      });
+      expect(clip.el.play).not.toHaveBeenCalled();
+    });
+
     it("keeps a clip it started early playing when the next tick is shorter", () => {
       const clip = createMockClip({ start: 5, end: 6 }, "audio");
       syncRuntimeMedia({
