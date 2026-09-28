@@ -131,10 +131,7 @@ describe("TimelineGroupRow", () => {
   });
 
   it("opens a group automation lane on its exact rack parameter", async () => {
-    const { host } = renderRow(
-      GAIN_AUTOMATED,
-      new Set(["voiceover"]),
-    );
+    const { host } = renderRow(GAIN_AUTOMATED, new Set(["voiceover"]));
     const laneTitle = host.querySelector<HTMLButtonElement>('[data-group-lane-label="fx.p1.gain"]');
 
     await act(async () => {
@@ -152,11 +149,7 @@ describe("TimelineGroupRow", () => {
   });
 
   it("keeps a group lane's name off the rack while audio effects are hidden", () => {
-    const { host } = renderRow(
-      GAIN_AUTOMATED,
-      new Set(["voiceover"]),
-      false,
-    );
+    const { host } = renderRow(GAIN_AUTOMATED, new Set(["voiceover"]), false);
     const laneTitle = host.querySelector<HTMLButtonElement>('[data-group-lane-label="fx.p1.gain"]');
 
     expect(laneTitle?.disabled).toBe(true);
@@ -196,16 +189,7 @@ describe("TimelineGroupRow", () => {
 
     expect(laneToggle(renderRow().host)).toBeUndefined();
 
-    const automated = renderRow({
-      fxChain: JSON.stringify({
-        version: 1,
-        nodes: [{ type: "peaking", id: "p1", params: { frequency: 1000, gain: -3, q: 1 } }],
-      }),
-      automation: JSON.stringify({
-        version: 1,
-        lanes: [{ target: "fx.p1.gain", points: [{ t: 0, v: 0 }] }],
-      }),
-    });
+    const automated = renderRow(GAIN_AUTOMATED);
     expect(laneToggle(automated.host)).toBeDefined();
   });
 
@@ -213,16 +197,7 @@ describe("TimelineGroupRow", () => {
   // one right-anchored group. It was two lines — name, then controls — which is
   // what let a stray child overflow the 48px box on the track side.
   it("keeps the caret, the name and every control on one line", () => {
-    const { host } = renderRow({
-      fxChain: JSON.stringify({
-        version: 1,
-        nodes: [{ type: "peaking", id: "p1", params: { frequency: 1000, gain: -3, q: 1 } }],
-      }),
-      automation: JSON.stringify({
-        version: 1,
-        lanes: [{ target: "fx.p1.gain", points: [{ t: 0, v: 0 }] }],
-      }),
-    });
+    const { host } = renderRow(GAIN_AUTOMATED);
     const header = host.querySelector<HTMLElement>('[role="rowheader"]');
     // Caret, name, control group — no second line.
     expect(header?.children).toHaveLength(3);
