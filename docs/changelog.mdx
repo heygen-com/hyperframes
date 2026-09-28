@@ -9,6 +9,40 @@ Recent HyperFrames releases, including user-facing features, fixes, and migratio
 {/* New release entries are prepended by `bun run changelog:draft <version> --write`. */}
 
 <Update
+  label="HyperFrames v0.8.87"
+  description="Released - 2026-09-28"
+  tags={["Release", "Studio", "Skills", "Catalog"]}
+>
+An app that embeds Studio can now save style edits on a selection without Studio's editor. Escape cancels a marquee band, and sound effects start on time.
+
+## Features
+
+- **Studio:** An embedding app can save style edits on a selection through Studio's own style save ([0af671c6d](https://github.com/heygen-com/hyperframes/commit/0af671c6df8f8f740f2e982247ae3eab67dd0514), [#4698](https://github.com/heygen-com/hyperframes/pull/4698)).
+
+## Fixes
+
+- **Studio:** Escape cancels a marquee band on the preview and goes no further ([a51992743](https://github.com/heygen-com/hyperframes/commit/a519927436a75b48d8564c75206a8d9624fc0251), [#4703](https://github.com/heygen-com/hyperframes/pull/4703)).
+- **Studio:** Escape cancels a marquee band on the timeline and goes no further ([f7207247d](https://github.com/heygen-com/hyperframes/commit/f7207247de18c616dd03b063c29a00f3e5000068), [#4700](https://github.com/heygen-com/hyperframes/pull/4700)).
+- **Producer:** Renders leave no captured frames behind when interrupted ([f7ef18dca](https://github.com/heygen-com/hyperframes/commit/f7ef18dca80c791a2991a90280638b32c109d227), [#4694](https://github.com/heygen-com/hyperframes/pull/4694)).
+- **Core:** A sound effect starts on its time instead of a frame late ([e0b940aa3](https://github.com/heygen-com/hyperframes/commit/e0b940aa302efb011009395af54d4023ae08baf1), [#4696](https://github.com/heygen-com/hyperframes/pull/4696)).
+- **Studio:** Drilling in opens the composition's full project path ([a0c72ad64](https://github.com/heygen-com/hyperframes/commit/a0c72ad64a3a68b115495f544e4aa675a41dd74e), [#4689](https://github.com/heygen-com/hyperframes/pull/4689)).
+
+## Performance
+
+- **Studio:** Swap an edited scene into the live preview instead of reloading ([303c8e922](https://github.com/heygen-com/hyperframes/commit/303c8e922f89f657557ad304557101e36fbd7750), [#4499](https://github.com/heygen-com/hyperframes/pull/4499)).
+
+## Docs & Examples
+
+- **Skills:** Studio agents answer questions before editing and plan new films like the launch films ([0c2c4248e](https://github.com/heygen-com/hyperframes/commit/0c2c4248e6a79654fe54e5a65c1f000fcde4dd34), [#4699](https://github.com/heygen-com/hyperframes/pull/4699)).
+
+## Catalog
+
+- **Catalog:** Add 3D objects, cursors, snow, starfield and paper transitions ([590c19249](https://github.com/heygen-com/hyperframes/commit/590c192498ed738941380da7b3a2f6211966ba94), [#4349](https://github.com/heygen-com/hyperframes/pull/4349)).
+
+[View the full commit range](https://github.com/heygen-com/hyperframes/compare/v0.8.86...v0.8.87).
+</Update>
+
+<Update
   label="HyperFrames v0.8.86"
   description="Released - 2026-09-28"
   tags={["Release", "Studio", "Studio Server", "Fonts"]}
