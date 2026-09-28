@@ -422,6 +422,16 @@ describe("HyperframesPlayer range playback: video and direct timelines", () => {
     expect(ranEvents()).toEqual(["ready@0", "ended@2.983"]);
   });
 
+  it("stops a check early when the video's time moves once per frame, not once per tick", () => {
+    const video = loadVideo({ "range-end": "3" });
+    player.play();
+    for (const currentTime of [2.9, 2.9, 2.933, 2.933, 2.967]) {
+      setMedia(video, { currentTime });
+      flushFrame();
+    }
+    expect(ranEvents()).toEqual(["ready@0", "ended@2.983"]);
+  });
+
   it("leaves a video without a range to animation frames while the tab is hidden", () => {
     const video = loadVideo({});
     player.play();

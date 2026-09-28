@@ -52,6 +52,7 @@ export class DirectTimelineClock {
     this.stop();
     let lastTime: number | null = null;
     let lastStep = 0;
+    let lookAhead = 0;
 
     const tick = () => {
       if (isPaused()) {
@@ -71,11 +72,15 @@ export class DirectTimelineClock {
       const stop = getStop();
       if (stop.end > 0) currentTime = Math.min(currentTime, stop.end);
 
-      // The smaller of the last two steps, so one slow frame or a jump does not end the range early.
+      // The smaller of the last two moves, so one slow frame or a jump does not end the range early;
+      // a tick where the time stands still (it moves once per video frame in some browsers) keeps it.
       const step = lastTime === null ? 0 : currentTime - lastTime;
-      const completedPlayback = reachedStop(currentTime, Math.min(step, lastStep), stop);
+      if (step !== 0) {
+        lookAhead = Math.min(step, lastStep);
+        lastStep = step;
+      }
       lastTime = currentTime;
-      lastStep = step;
+      const completedPlayback = reachedStop(currentTime, lookAhead, stop);
       if (completedPlayback) currentTime = stop.shown;
       const now = performance.now();
 
