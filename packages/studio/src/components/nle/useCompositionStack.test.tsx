@@ -119,35 +119,94 @@ describe("useCompositionStack — back to the master", () => {
     usePlayerStore.getState().setCurrentTime(0);
   });
 
-  it("restores the master playhead after a two-level drill", async () => {
+  const INTRO = { id: "intro", compositionSrc: "compositions/intro.html" };
+  const LOGO = { id: "logo", compositionSrc: "compositions/logo.html" };
+  const seek = (time: number) => act(() => usePlayerStore.getState().setCurrentTime(time));
+  const time = () => usePlayerStore.getState().currentTime;
+
+  async function mount(props: { projectId?: string; activeCompositionPath?: string | null } = {}) {
     const host = document.createElement("div");
     document.body.append(host);
     const root = createRoot(host);
-    let stack!: ReturnType<typeof useCompositionStack>;
-
-    function Harness() {
-      stack = useCompositionStack({ projectId: "p" });
+    const seen = {} as { stack: ReturnType<typeof useCompositionStack> };
+    function Harness(p: { projectId: string; activeCompositionPath: string | null }) {
+      seen.stack = useCompositionStack(p);
       return null;
     }
+    const render = async (next: typeof props) => {
+      props = { ...props, ...next };
+      await act(async () => {
+        root.render(
+          <Harness
+            projectId={props.projectId ?? "p"}
+            activeCompositionPath={props.activeCompositionPath ?? null}
+          />,
+        );
+      });
+    };
+    await render({});
+    const run = async (step: (stack: ReturnType<typeof useCompositionStack>) => void) => {
+      await act(async () => step(seen.stack));
+    };
+    return { seen, render, run, unmount: () => act(() => root.unmount()) };
+  }
 
-    await act(async () => {
-      root.render(<Harness />);
-    });
-    act(() => usePlayerStore.getState().setCurrentTime(12));
-    await act(async () => {
-      stack.handleDrillDown({ id: "intro", compositionSrc: "compositions/intro.html" });
-    });
-    act(() => usePlayerStore.getState().setCurrentTime(3));
-    await act(async () => {
-      stack.handleDrillDown({ id: "logo", compositionSrc: "compositions/logo.html" });
-    });
-    expect(stack.compositionStack.map((level) => level.label)).toEqual(["Master", "intro", "logo"]);
+  it("restores the master playhead from the breadcrumb after a two-level drill", async () => {
+    const { seen, run, unmount } = await mount();
+    seek(12);
+    await run((s) => s.handleDrillDown(INTRO));
+    seek(3);
+    await run((s) => s.handleDrillDown(LOGO));
+    expect(seen.stack.compositionStack.map((level) => level.label)).toEqual([
+      "Master",
+      "intro",
+      "logo",
+    ]);
+    await run((s) => s.handleNavigateComposition(0));
+    expect(time()).toBe(12);
+    unmount();
+  });
 
-    await act(async () => {
-      stack.handleNavigateComposition(0);
-    });
-    expect(usePlayerStore.getState().currentTime).toBe(12);
+  it("restores the master playhead when Escape or a timeline double-click goes back", async () => {
+    const { run, unmount } = await mount();
+    seek(12);
+    await run((s) => s.handleDrillDown(INTRO));
+    seek(3);
+    await run((s) => s.handleDrillDown(LOGO));
+    seek(1);
+    await run((s) => s.updateCompositionStack((prev) => prev.slice(0, -1)));
+    expect(time()).toBe(1);
+    await run((s) => s.updateCompositionStack((prev) => prev.slice(0, -1)));
+    expect(time()).toBe(12);
+    unmount();
+  });
 
-    act(() => root.unmount());
+  it("restores a master playhead of exactly 0", async () => {
+    const { run, unmount } = await mount();
+    await run((s) => s.handleDrillDown(INTRO));
+    seek(3);
+    await run((s) => s.handleNavigateComposition(0));
+    expect(time()).toBe(0);
+    unmount();
+  });
+
+  it("restores the master playhead when the Comps panel goes there and back", async () => {
+    const { render, unmount } = await mount();
+    seek(30);
+    await render({ activeCompositionPath: "compositions/intro.html" });
+    seek(4);
+    await render({ activeCompositionPath: "index.html" });
+    expect(time()).toBe(30);
+    unmount();
+  });
+
+  it("does not carry one project's master playhead into another", async () => {
+    const { run, render, unmount } = await mount({ projectId: "a" });
+    seek(12);
+    await run((s) => s.handleDrillDown(INTRO));
+    seek(3);
+    await render({ projectId: "b" });
+    expect(time()).toBe(3);
+    unmount();
   });
 });
