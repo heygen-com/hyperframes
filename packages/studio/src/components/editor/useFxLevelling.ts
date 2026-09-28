@@ -118,7 +118,7 @@ export function useFxLevelling(
     const lane = result.automation.lanes[0];
     const toClipTime = (point: HfAutomationPoint) => ({
       ...point,
-      t: timeAtSourceTime(rate, point.t),
+      t: Number(timeAtSourceTime(rate, point.t).toFixed(3)),
     });
     return { chain: result.chain, lane: lane && { ...lane, points: lane.points.map(toClipTime) } };
   };

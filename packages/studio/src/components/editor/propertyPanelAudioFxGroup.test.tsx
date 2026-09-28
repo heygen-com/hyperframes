@@ -461,13 +461,6 @@ describe("AudioFxGroup dynamic carve", () => {
 
   afterEach(() => vi.unstubAllGlobals());
 
-  /**
-   * Hover-auditioning the leveller has to measure before there is anything to
-   * hear, and measuring a long voiceover takes seconds — by which time the
-   * pointer has usually moved on. Applying then would put levelling on a track
-   * nobody asked to level, through a channel that does not persist: audible,
-   * absent from the document, and gone on the next reload.
-   */
   /** Runs Even Out Levels on a decode of `data` and returns the fx lane's nearest point to a clip time. */
   async function levelledLane(data: Float32Array, dataAttributes: Record<string, string>) {
     vi.stubGlobal(
@@ -537,13 +530,13 @@ describe("AudioFxGroup dynamic carve", () => {
       quietAt: 2,
       loudAt: 5,
     },
-    // 0.5x: 8 s of clip play source 0-4 s; source 2-4 s is quiet, so clip 4-8 s wants lift.
+    // 0.5x: 8 s of clip play source 0-4 s; source 1-2 s is quiet, so clip 2-4 s wants lift and clip 1 s none.
     {
       label: "0.5x",
       attrs: { "playback-rate": "0.5", duration: "8" },
-      quiet: [2, 4],
-      quietAt: 6,
-      loudAt: 2,
+      quiet: [1, 2],
+      quietAt: 3.5,
+      loudAt: 1,
     },
     // A rate lane holding 2x: playback reads the lane, not the missing data-playback-rate.
     {
