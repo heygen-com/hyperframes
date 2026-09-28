@@ -40,9 +40,9 @@ implemented by the current Studio player, canvas, and timeline.
 The focused area decides what a shared shortcut does. Arrow keys nudge a selected
 canvas element, step through frames when nothing nudgeable is selected, or move
 between timeline targets when the timeline has focus (see [Timeline
-navigation](#timeline-navigation) below). `J` and `K` work the same way: with
-keyframes selected they move between keyframes and add one, and otherwise they
-drive playback.
+navigation](#timeline-navigation) below). `K` adds or removes a keyframe at the
+playhead when an animated element is selected, and otherwise stops playback. `J`
+always drives playback.
 
 ## Timeline navigation
 
@@ -66,12 +66,7 @@ If the destination is outside the virtualized viewport, Studio scrolls it into v
 
 | Shortcut | Action |
 | --- | --- |
-| K | Add a keyframe when the current selection supports it |
-| J / Shift + J | Jump to the previous or next keyframe |
-| H | Toggle hold or bezier for selected keyframes |
-| U | Expand or collapse the selected element’s keyframe properties |
-| Left / Right arrow | Nudge selected keyframes by one frame |
-| Shift + Left / Right arrow | Nudge selected keyframes by ten frames |
+| K | Add or remove a keyframe at the playhead when the current selection supports it |
 | R | Start or stop gesture recording |
 
 During gesture recording, drag records position, scroll records depth,

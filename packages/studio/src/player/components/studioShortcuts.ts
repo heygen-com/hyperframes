@@ -1,5 +1,10 @@
-/** Bare keys Studio's app hotkeys bind; the shortcuts list names them from here. */
-export const STUDIO_PLAIN_KEYS = { fullscreen: "f", split: "s", record: "r" } as const;
+/** Bare keys Studio's hotkeys bind; the shortcuts list names them from here. */
+export const STUDIO_PLAIN_KEYS = {
+  fullscreen: "f",
+  split: "s",
+  record: "r",
+  addKeyframe: "k",
+} as const;
 
 export interface ShortcutHint {
   key: string;
@@ -32,10 +37,8 @@ export const DEFAULT_SHORTCUT_SECTIONS: readonly ShortcutSection[] = [
   {
     title: "Keyframes (when an element is selected)",
     hints: [
-      { key: "K", label: "Add keyframe at playhead" },
+      { key: hintKey(STUDIO_PLAIN_KEYS.addKeyframe), label: "Add / remove keyframe at playhead" },
       { key: "Del", label: "Delete selected keyframe" },
-      { key: "H", label: "Toggle hold / bezier" },
-      { key: "U", label: "Expand / collapse properties" },
       { key: hintKey(STUDIO_PLAIN_KEYS.record), label: "Record gesture" },
     ],
   },
