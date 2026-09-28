@@ -16,14 +16,14 @@ import { homedir } from "node:os";
 import { dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
 import { replaceFileAtomically } from "../helpers/atomicFile.js";
 import {
-  bytesOverwrittenBy,
   DELETED_VERSION,
   fileContentVersion,
-  forgetOverwrittenBytes,
   hashOfVersion,
   hashVersion,
+  onFileOverwritten,
   recordFileWriteReceipt,
 } from "../helpers/fileVersion.js";
+import { realFilePath } from "../helpers/safePath.js";
 import { affectsProjectSignature, listProjectFiles } from "../helpers/projectSignature.js";
 import { openBlobStore, type BlobStore } from "./blobStore.js";
 import {
@@ -258,6 +258,21 @@ const blocks = (removed: string, added: string) =>
 const takesWrite = (window: Group, at: number) =>
   window.idleMs === undefined || at - (window.lastWriteAt ?? at) <= window.idleMs;
 
+function chainBackFrom(
+  byAfter: Map<string, string> | undefined,
+  hash: string,
+): Map<string, string> {
+  const chain = new Map<string, string>();
+  let at = hash;
+  let prior = byAfter?.get(at);
+  while (prior !== undefined && !chain.has(at)) {
+    chain.set(at, prior);
+    at = prior;
+    prior = byAfter?.get(at);
+  }
+  return chain;
+}
+
 /** Files one change to a group; a later change to the same path keeps the group's first "before". */
 function addChange(group: Group, path: string, before: string | null, after: string | null): void {
   const earlier = group.changes.get(path);
@@ -277,6 +292,9 @@ class Engine {
   outside: Group | null = null;
   /** A coalescing claim, open until another key, its idle timer, an operation, a window, or another write. */
   claimed: { group: Group; key: string; timer?: NodeJS.Timeout } | null = null;
+  /** Per path and hash an API write left, the hash of the bytes it replaced, until walked or written past. */
+  overwritten = new Map<string, Map<string, string>>();
+  stopHearing: (() => void) | undefined;
   writeToken: string | undefined;
   quietTimer: NodeJS.Timeout | undefined;
   maxTimer: NodeJS.Timeout | undefined;
@@ -370,6 +388,39 @@ class Engine {
     // What changed while the project was closed is one outside entry, or the closed window's.
     this.reopenClosedWindow();
     await this.settleAll();
+  }
+
+  hearWrites(): void {
+    const realDir = realFilePath(this.dir);
+    this.stopHearing = onFileOverwritten((absPath, version, bytes) => {
+      const after = hashOfVersion(version);
+      if (!after || !affectsProjectSignature(realDir, absPath)) return;
+      const replaced = hashOfVersion(fileContentVersion(bytes))!;
+      if (replaced === after) return;
+      const path = relative(realDir, absPath).split(sep).join("/");
+      // One chain per file, a new Map each write (forgetWritesBefore compares identity); the rest was written over.
+      this.overwritten.set(
+        path,
+        chainBackFrom(this.overwritten.get(path), replaced).set(after, replaced),
+      );
+      if (!this.blobs.has(replaced))
+        this.queue(() => this.storeBytes(bytes)).catch((error) => this.options.onError?.(error));
+    });
+  }
+
+  async storeBytes(bytes: string | Uint8Array): Promise<void> {
+    const staged = join(this.home, `overwrote-${randomUUID()}`);
+    await writeFile(staged, bytes);
+    try {
+      await this.blobs.put(staged);
+    } finally {
+      await rm(staged, { force: true });
+    }
+  }
+
+  /** Read at a state no API write left, with no write heard since `heard`: no walk passes it, so forget the rest. */
+  forgetWritesBefore(path: string, hash: string, heard: Map<string, string> | undefined): void {
+    if (this.overwritten.get(path) === heard && !heard?.has(hash)) this.overwritten.delete(path);
   }
 
   reopenClosedWindow(): void {
@@ -467,9 +518,11 @@ class Engine {
   async observe(path: string, stat: string, at: number): Promise<boolean> {
     const known = this.tracked.get(path) ?? { hash: null, stat: null };
     if (stat && known.stat === stat) return false;
+    const heard = this.overwritten.get(path);
     const hash = await this.storeIfPresent(path);
     if (hash === null || this.whereFolder() !== "here") return false;
     this.tracked.set(path, { hash, stat });
+    this.forgetWritesBefore(path, hash, heard);
     if (known.hash !== hash) await this.record(path, known.hash, hash, at);
     return known.hash !== hash || known.stat !== stat;
   }
@@ -573,39 +626,31 @@ class Engine {
     const walked = hits.map(() => new Set<string>());
     for (const [i, { change }] of hits.entries()) {
       const told = at.get(change.path);
-      cuts.push((await this.overwrittenBy(change, told, walked[i]!)) ?? told);
+      cuts.push(this.overwrittenBy(change, told, walked[i]!) ?? told);
     }
-    hits.forEach(({ change }, i) =>
-      forgetOverwrittenBytes(
-        join(this.dir, change.path),
-        new Set([...walked[i]!].map(hashVersion)),
-      ),
-    );
+    hits.forEach(({ change }, i) => this.forgetOverwritten(change.path, walked[i]!));
     return hits.flatMap(({ group, change }, i) => this.cutOut(group, change, cuts[i]) ?? []);
   }
 
-  /** Walks the server's writes back from `change.after` to the bytes they replaced, stored so an undo restores them. */
-  async overwrittenBy(change: HistoryFileChange, told: string | undefined, seen: Set<string>) {
-    const absPath = join(this.dir, change.path);
-    let bytes: string | Uint8Array | undefined;
+  /** Walks the server's writes back from `change.after` to the stored bytes they replaced. */
+  overwrittenBy(change: HistoryFileChange, told: string | undefined, seen: Set<string>) {
+    let found: string | undefined;
     for (let hash = change.after; hash; ) {
       // A loop (X, Y, back to X) says nothing about what was there first: the client's word stands.
       if (seen.has(hash)) return undefined;
       seen.add(hash);
-      const replaced = bytesOverwrittenBy(absPath, hashVersion(hash));
+      const replaced = this.overwritten.get(change.path)?.get(hash);
       if (replaced === undefined) break;
-      bytes = replaced;
-      hash = hashOfVersion(fileContentVersion(replaced))!;
+      found = hash = replaced;
       if (hash === change.before || hash === told) return hash;
     }
-    if (bytes === undefined) return undefined;
-    const staged = join(this.home, `overwrote-${randomUUID()}`);
-    await writeFile(staged, bytes);
-    try {
-      return await this.blobs.put(staged);
-    } finally {
-      await rm(staged, { force: true });
-    }
+    return found;
+  }
+
+  forgetOverwritten(path: string, hashes: Iterable<string>): void {
+    const byAfter = this.overwritten.get(path);
+    for (const hash of hashes) byAfter?.delete(hash);
+    if (byAfter?.size === 0) this.overwritten.delete(path);
   }
 
   cutOut(group: Group, change: HistoryFileChange, cut: string | undefined) {
@@ -691,6 +736,11 @@ class Engine {
       throw error;
     }
     for (const listener of this.listeners) listener(entry);
+    for (const change of group.changes.values()) {
+      const walked = new Set<string>();
+      this.overwrittenBy(change, undefined, walked);
+      this.forgetOverwritten(change.path, walked);
+    }
     await this.keepWithinBudget();
     return entry;
   }
@@ -709,7 +759,11 @@ class Engine {
     while (this.historyBytes() > budget && foldOldest(this.log)) {
       folded = true;
       await this.blobs.prune(
-        new Set([...referencedHashes(this.log, this.manifest()), ...this.pendingHashes()]),
+        new Set([
+          ...referencedHashes(this.log, this.manifest()),
+          ...this.pendingHashes(),
+          ...[...this.overwritten.values()].flatMap((byAfter) => [...byAfter.values()]),
+        ]),
       );
     }
     if (folded) this.persistLog();
@@ -1043,6 +1097,7 @@ class Engine {
       close: () =>
         (this.closing ??= (async () => {
           if (this.notedTimer) clearTimeout(this.notedTimer);
+          this.stopHearing?.();
           const settled = this.queue(() => this.settleAll());
           this.closed = true;
           await settled;
@@ -1085,6 +1140,7 @@ export async function openProjectHistory(options: ProjectHistoryOptions): Promis
     const blobs = await openBlobStore(join(options.historyRoot, projectId, "blobs"));
     const engine = new Engine(options, projectId, blobs);
     await engine.queue(() => engine.start());
+    engine.hearWrites();
     const api = engine.api();
     return {
       ...api,

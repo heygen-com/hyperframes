@@ -1099,7 +1099,10 @@ describe("openProjectHistory", () => {
     expect((await window.close())?.id).toBe(window.id);
   });
 
-  it("keeps the bytes a claim cut at through a budget fold that runs before they are logged", async () => {
+  it.each([
+    ["while the claim runs", Infinity],
+    ["before the claim comes", 1],
+  ])("keeps the bytes a claim cut at through a budget fold %s", async (_when, dragIdleMs) => {
     const saved = "B".repeat(3000);
     const { history, write, read, projectDir } = await project(
       { "index.html": "a", "other.html": "o" },
@@ -1108,7 +1111,7 @@ describe("openProjectHistory", () => {
     await change(history, you, "Old", () => write("other.html", "o2"));
     history.pin((await change(history, you, "Pinned", () => write("other.html", "o3"))).id, true);
     write("other.html", "o4");
-    await history.claim(you, "Drag", ["other.html"], { coalesceKey: "drag" });
+    await history.claim(you, "Drag", ["other.html"], { coalesceKey: "drag", idleMs: dragIdleMs });
     // Studio's write of `edited` replaced a save it never read.
     const edited = `${saved}!`;
     write("index.html", edited);
@@ -1118,6 +1121,7 @@ describe("openProjectHistory", () => {
       writeToken: "studio",
       overwrote: saved,
     });
+    await new Promise((settle) => setTimeout(settle, 20));
 
     const edit = await history.claim(you, "Edit", ["index.html"], {
       overwrote: { "index.html": fileContentVersion("a") },
@@ -1153,7 +1157,7 @@ describe("openProjectHistory", () => {
     expect(read("index.html")).toBe("X");
   });
 
-  it("keeps what a Studio write landing during a claim replaced, for the next claim", async () => {
+  it("keeps what a Studio write replaced over an unseen save, for the next claim", async () => {
     const { history, write, read, projectDir } = await project({ "index.html": "W" });
     const receipt = (content: string, overwrote: string) =>
       recordFileWriteReceipt(join(projectDir, "index.html"), {
@@ -1167,14 +1171,89 @@ describe("openProjectHistory", () => {
     });
     write("index.html", "X");
     receipt("X", "W");
-    // Studio's next write, over an editor's save B, lands after this claim's scan.
-    receipt("Y", "B");
     await history.claim(you, "First", ["index.html"], told("W"));
+    // Studio's next write lands over an editor's save B that the history never saw.
     write("index.html", "Y");
+    receipt("Y", "B");
 
     const second = await history.claim(you, "Second", ["index.html"], told("X"));
     expect((await history.undo(second!.id, { who: you })).ok).toBe(true);
     expect(read("index.html")).toBe("B");
+  });
+
+  it.each([
+    ["once its change is committed", true],
+    ["once an editor wrote over it", false],
+  ])(
+    "forgets what an API write replaced %s, so a later claim cannot cut at it",
+    async (_when, commit) => {
+      const { history, write, read, projectDir } = await project({ "index.html": "W" });
+      write("index.html", "X");
+      recordFileWriteReceipt(join(projectDir, "index.html"), {
+        path: "index.html",
+        version: fileContentVersion("X"),
+        writeToken: "agent",
+        overwrote: "W",
+      });
+      if (commit) await history.flush();
+      write("index.html", "C");
+      await history.flush();
+      // An editor, not the API, brings X back.
+      write("index.html", "X");
+
+      const edit = await history.claim(you, "Edit", ["index.html"], {
+        overwrote: { "index.html": fileContentVersion("C") },
+      });
+      expect((await history.undo(edit!.id, { who: you })).ok).toBe(true);
+      expect(read("index.html")).toBe("C");
+    },
+  );
+
+  it("cuts at an editor's save, not at what a rolled-back API write replaced", async () => {
+    const { history, write, read, projectDir } = await project({ "index.html": "W" });
+    const apiWrites = (content: string, overwrote?: string) => {
+      write("index.html", content);
+      recordFileWriteReceipt(join(projectDir, "index.html"), {
+        path: "index.html",
+        version: fileContentVersion(content),
+        writeToken: "api",
+        overwrote,
+      });
+    };
+    apiWrites("X", "W");
+    apiWrites("W");
+    apiWrites("K", "W");
+    await history.claim(you, "First", ["index.html"], {
+      overwrote: { "index.html": fileContentVersion("W") },
+    });
+    write("index.html", "X");
+    apiWrites("P", "X");
+
+    const second = await history.claim(you, "Second", ["index.html"], {
+      overwrote: { "index.html": fileContentVersion("K") },
+    });
+    expect((await history.undo(second!.id, { who: you })).ok).toBe(true);
+    expect(read("index.html")).toBe("X");
+  });
+
+  it("lets the budget free the bytes a committed API write replaced", async () => {
+    const saved = "B".repeat(3000);
+    const { history, write, projectDir } = await project(
+      { "index.html": "a", "other.html": "o" },
+      { budgetBytes: 2000 },
+    );
+    const edited = `${saved}!`;
+    write("index.html", edited);
+    recordFileWriteReceipt(join(projectDir, "index.html"), {
+      path: "index.html",
+      version: fileContentVersion(edited),
+      writeToken: "agent",
+      overwrote: saved,
+    });
+    await history.flush();
+
+    await change(history, you, "Other", () => write("other.html", "o2"));
+    expect(history.list().map((entry) => entry.label)).toContain("Other");
   });
 
   it("keeps the history of a small edit in a project larger than its budget", async () => {
