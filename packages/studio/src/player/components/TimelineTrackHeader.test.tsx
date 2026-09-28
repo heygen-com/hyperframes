@@ -588,11 +588,18 @@ describe("TimelineTrackHeader", () => {
     it("offers the effect rack from an effect lane only while audio effects are shown", () => {
       const clip = { ...BED, domId: "bed" } as TimelineElement;
       const gainLabel = (showAudioEffects?: boolean) => {
-        const { host, root } = renderHeader({ keyframeClip: clip, animations: [], showAudioEffects });
+        const { host, root } = renderHeader({
+          keyframeClip: clip,
+          animations: [],
+          showAudioEffects,
+        });
         const button = host
           .querySelector('[data-automation-lane-label="Peaking EQ 1.6 kHz · Gain"]')
           ?.querySelector("button");
-        const state = { label: button?.getAttribute("aria-label") ?? null, disabled: button?.disabled };
+        const state = {
+          label: button?.getAttribute("aria-label") ?? null,
+          disabled: button?.disabled,
+        };
         act(() => root.unmount());
         return state;
       };

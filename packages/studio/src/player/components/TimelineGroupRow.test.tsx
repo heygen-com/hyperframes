@@ -45,6 +45,17 @@ const GROUP: TimelineTrackGroupInfo = {
   hidden: false,
 };
 
+const GAIN_AUTOMATED: Partial<TimelineTrackGroupInfo> = {
+  fxChain: JSON.stringify({
+    version: 1,
+    nodes: [{ type: "peaking", id: "p1", params: { frequency: 1000, gain: -3, q: 1 } }],
+  }),
+  automation: JSON.stringify({
+    version: 1,
+    lanes: [{ target: "fx.p1.gain", points: [{ t: 0, v: 0 }] }],
+  }),
+};
+
 function renderRow(
   overrides: Partial<TimelineTrackGroupInfo> = {},
   expandedLaneOwnerIds = new Set<string>(),
@@ -121,16 +132,7 @@ describe("TimelineGroupRow", () => {
 
   it("opens a group automation lane on its exact rack parameter", async () => {
     const { host } = renderRow(
-      {
-        fxChain: JSON.stringify({
-          version: 1,
-          nodes: [{ type: "peaking", id: "p1", params: { frequency: 1000, gain: -3, q: 1 } }],
-        }),
-        automation: JSON.stringify({
-          version: 1,
-          lanes: [{ target: "fx.p1.gain", points: [{ t: 0, v: 0 }] }],
-        }),
-      },
+      GAIN_AUTOMATED,
       new Set(["voiceover"]),
     );
     const laneTitle = host.querySelector<HTMLButtonElement>('[data-group-lane-label="fx.p1.gain"]');
@@ -151,16 +153,7 @@ describe("TimelineGroupRow", () => {
 
   it("keeps a group lane's name off the rack while audio effects are hidden", () => {
     const { host } = renderRow(
-      {
-        fxChain: JSON.stringify({
-          version: 1,
-          nodes: [{ type: "peaking", id: "p1", params: { frequency: 1000, gain: -3, q: 1 } }],
-        }),
-        automation: JSON.stringify({
-          version: 1,
-          lanes: [{ target: "fx.p1.gain", points: [{ t: 0, v: 0 }] }],
-        }),
-      },
+      GAIN_AUTOMATED,
       new Set(["voiceover"]),
       false,
     );
