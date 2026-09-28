@@ -19,7 +19,6 @@ export default defineConfig({
     backgroundChecksWorker: "src/backgroundChecksWorker.ts",
     sherpaWorker: "src/whisper/sherpaWorker.ts",
     shaderTransitionWorker: "../producer/src/services/shaderTransitionWorker.ts",
-    "registry/localSemantic": "src/registry/localSemantic.ts",
   },
   format: ["esm"],
   outDir: "dist",
