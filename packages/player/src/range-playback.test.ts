@@ -380,23 +380,28 @@ describe("HyperframesPlayer range playback: video and direct timelines", () => {
     expect(events.at(-1)).toBe('rangeclamped@2.1 {"rangeStart":2.1,"rangeEnd":2.4,"duration":2.4}');
   });
 
-  it("stops a check early at a range end inside the film, never at the film's own end", () => {
+  it("stops a check early at a range end inside the film, not after one slow frame or at the film's end", () => {
     const video = loadVideo({ "range-end": "3" });
 
     player.play();
-    setMedia(video, { currentTime: 2.95 });
-    flushFrame();
-    setMedia(video, { currentTime: 2.99 });
-    flushFrame();
+    for (const currentTime of [2.6, 2.617, 2.817, 2.834]) {
+      setMedia(video, { currentTime });
+      flushFrame();
+    }
+    expect(player.paused).toBe(false);
+    for (const currentTime of [2.95, 2.99]) {
+      setMedia(video, { currentTime });
+      flushFrame();
+    }
     expect(ranEvents()).toEqual(["ready@0", "ended@2.983"]);
 
     player.removeAttribute("range-end");
     player.seek(5.9);
     player.play();
-    setMedia(video, { currentTime: 5.95 });
-    flushFrame();
-    setMedia(video, { currentTime: 5.99 });
-    flushFrame();
+    for (const currentTime of [5.91, 5.95, 5.99]) {
+      setMedia(video, { currentTime });
+      flushFrame();
+    }
     expect(player.paused).toBe(false);
   });
 
@@ -415,6 +420,20 @@ describe("HyperframesPlayer range playback: video and direct timelines", () => {
       delete (document as { hidden?: boolean }).hidden;
     }
     expect(ranEvents()).toEqual(["ready@0", "ended@2.983"]);
+  });
+
+  it("leaves a video without a range to animation frames while the tab is hidden", () => {
+    const video = loadVideo({});
+    player.play();
+    setMedia(video, { currentTime: 6 });
+    Object.defineProperty(document, "hidden", { configurable: true, value: true });
+    try {
+      video.dispatchEvent(new Event("timeupdate"));
+    } finally {
+      delete (document as { hidden?: boolean }).hidden;
+    }
+    expect(ranEvents()).toEqual(["ready@0"]);
+    expect(player.paused).toBe(false);
   });
 
   it("parks, stops on the last frame inside and wraps a same-origin __timelines composition", () => {

@@ -725,7 +725,7 @@ class HyperframesPlayer extends HTMLElement {
   }
 
   /** Film time where range playback ends or loops; null (no `range-end`) plays to the end.
-   *  At `ended`, `currentTime` is inside the range's last frame, before this. */
+   *  When it ends inside the film, `currentTime` at `ended` is inside its last frame, before this. */
   get rangeEnd(): number | null {
     return this._readSeconds(RANGE_END_ATTR);
   }
@@ -1061,9 +1061,9 @@ class HyperframesPlayer extends HTMLElement {
         onPause: (video) => {
           if (video.paused && !video.ended && !this._paused) this.pause();
         },
-        // A background tab runs no animation frames, but the video still fires timeupdate.
+        // A background tab runs no animation frames; a range's end is checked on timeupdate instead.
         onTimeUpdate: () => {
-          if (document.hidden) this._directTimelineClock.poll();
+          if (document.hidden && this._playRange()) this._directTimelineClock.poll();
         },
         onError: (message, code) => {
           if (!this._paused) this.pause();
