@@ -214,7 +214,7 @@ export function normalizeTimelineCompositionSource(value: string | undefined): s
     return sourcePath || trimmed;
   }
 
-  return trimmed;
+  return trimmed.replace(/^(\.\/|\/)+/, "");
 }
 
 // ─── CSS escaping ─────────────────────────────────────────────────────────────

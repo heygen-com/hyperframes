@@ -7,6 +7,59 @@ import { useCompositionStack } from "./useCompositionStack";
 
 installReactActEnvironment();
 
+describe("useCompositionStack — drilling into a composition file", () => {
+  afterEach(() => {
+    document.body.innerHTML = "";
+  });
+
+  for (const compositionSrc of [
+    "sections/compositions/x.html",
+    "http://localhost:5190/api/projects/p/preview/sections/compositions/x.html",
+    "/api/projects/p/preview/comp/sections/compositions/x.html",
+  ]) {
+    it(`opens the full project path for ${compositionSrc}`, async () => {
+      const host = document.createElement("div");
+      document.body.append(host);
+      const root = createRoot(host);
+      let stack!: ReturnType<typeof useCompositionStack>;
+      function Harness() {
+        stack = useCompositionStack({ projectId: "p" });
+        return null;
+      }
+      await act(async () => {
+        root.render(<Harness />);
+      });
+      await act(async () => {
+        stack.handleDrillDown({ id: "x", compositionSrc });
+      });
+      expect(stack.compositionStack[1]).toMatchObject({
+        id: "sections/compositions/x.html",
+        previewUrl: "/api/projects/p/preview/comp/sections/compositions/x.html",
+      });
+      act(() => root.unmount());
+    });
+  }
+
+  it("keeps a top-level compositions/ path and drops a leading ./", async () => {
+    const host = document.createElement("div");
+    document.body.append(host);
+    const root = createRoot(host);
+    let stack!: ReturnType<typeof useCompositionStack>;
+    function Harness() {
+      stack = useCompositionStack({ projectId: "p" });
+      return null;
+    }
+    await act(async () => {
+      root.render(<Harness />);
+    });
+    await act(async () => {
+      stack.handleDrillDown({ id: "x", compositionSrc: "./compositions/x.html" });
+    });
+    expect(stack.compositionStack[1]?.id).toBe("compositions/x.html");
+    act(() => root.unmount());
+  });
+});
+
 describe("useCompositionStack — project scoping", () => {
   afterEach(() => {
     document.body.innerHTML = "";

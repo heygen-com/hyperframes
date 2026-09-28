@@ -4,6 +4,7 @@ import { useState, useCallback, useRef, useEffect } from "react";
 import { usePlayerStore } from "../../player/store/playerStore";
 import type { CompositionLevel } from "./CompositionBreadcrumb";
 import { encodePreviewPath } from "../../player/components/thumbnailUtils";
+import { normalizeTimelineCompositionSource } from "../editor/domEditingDom";
 
 interface UseCompositionStackOptions {
   projectId: string;
@@ -69,14 +70,10 @@ export function useCompositionStack({
       if (!element.compositionSrc) return;
       masterSeekRef.current = usePlayerStore.getState().currentTime;
 
-      const compId = element.id;
-      let resolvedPath = compIdToSrcRef.current.get(compId);
-
-      if (!resolvedPath) {
-        const src = element.compositionSrc;
-        const compMatch = src.match(/compositions\/.*\.html/);
-        resolvedPath = compMatch ? compMatch[0] : src;
-      }
+      const resolvedPath =
+        normalizeTimelineCompositionSource(compIdToSrcRef.current.get(element.id)) ??
+        normalizeTimelineCompositionSource(element.compositionSrc) ??
+        element.compositionSrc;
 
       usePlayerStore.getState().setElements([]);
 
