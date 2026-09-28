@@ -2,6 +2,7 @@ import type { TimelineElement } from "../player";
 import { layoutAfterTrackInsert } from "../player/components/timelineDragLanding";
 import { canMoveTimelineElement } from "../player/components/timelineAuthoredMoveTarget";
 import { resolveNearestFreeStart } from "../player/components/timelineCollision";
+import { isAudioTimelineElement } from "./timelineInspector";
 import type { TimelineDropPlacement } from "../player/components/timelineCallbacks";
 import { applyPatchByTarget, readAttributeByTarget } from "./sourcePatcher";
 import { buildPatchTarget } from "../hooks/timelineEditingHelpers";
@@ -78,7 +79,9 @@ export function resolveDropTrack(input: {
   const { source, elements, placement, dropped } = input;
   if (placement.insertRow == null) {
     const { track } = placement;
-    const start = resolveNearestFreeStart(elements, track, dropped.start, dropped.duration, null);
+    const audio = isAudioTimelineElement(dropped);
+    const sameKind = elements.filter((e) => isAudioTimelineElement(e) === audio);
+    const start = resolveNearestFreeStart(sameKind, track, dropped.start, dropped.duration, null);
     return { source, track, start };
   }
   const { insertRow, trackOrder } = placement;

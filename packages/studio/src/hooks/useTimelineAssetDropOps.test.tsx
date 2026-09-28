@@ -6,6 +6,7 @@ import { useTimelineAssetDropOps } from "./useTimelineAssetDropOps";
 import { mountReactHarness } from "./domSelectionTestHarness";
 import { usePlayerStore } from "../player/store/playerStore";
 import type { TimelineElement } from "../player";
+import type { TimelineDropPlacement } from "../player/components/timelineCallbacks";
 
 (globalThis as unknown as { IS_REACT_ACT_ENVIRONMENT: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
@@ -181,8 +182,8 @@ describe("useTimelineAssetDropOps handleTimelineAssetDrop", () => {
     );
   });
 
-  it("keeps a multi-file drop's clips off each other and off the row's clips", async () => {
-    const clips = [rowClip("a", 0, 4), rowClip("b", 8, 2)];
+  // Drops two 3 s images onto a row holding `clips`; returns each written image's start and track.
+  async function twoImageDrop(clips: TimelineElement[], placement: TimelineDropPlacement) {
     const writeProjectFile = vi.fn().mockResolvedValue(undefined);
     const uploadProjectFiles = vi.fn().mockResolvedValue(["one.png", "two.png"]);
     const getDrop = renderDropHook(
@@ -192,19 +193,40 @@ describe("useTimelineAssetDropOps handleTimelineAssetDrop", () => {
       undefined,
       uploadProjectFiles,
     );
-
+    const files = [new File(["1"], "one.png"), new File(["2"], "two.png")];
     await act(async () => {
-      await getDrop.file()([new File(["1"], "one.png"), new File(["2"], "two.png")], {
-        start: 1,
-        track: 0,
-      });
+      await getDrop.file()(files, placement);
     });
+    return writeProjectFile.mock.calls.map(([, written]) => {
+      const img = writtenClip(written as string, "img");
+      return [img.match(/data-start="([^"]*)"/)?.[1], img.match(/data-track-index="([^"]*)"/)?.[1]];
+    });
+  }
 
-    const starts = writeProjectFile.mock.calls.map(
-      ([, written]) => writtenClip(written as string, "img").match(/data-start="([^"]*)"/)?.[1],
-    );
-    // 3 s images: the first moves past a [0,4); the second is too long for [7,8) and goes after b.
-    expect(starts).toEqual(["4", "10"]);
+  it("keeps a multi-file drop's clips off each other and off the row's clips", async () => {
+    const landed = await twoImageDrop([rowClip("a", 0, 4), rowClip("b", 8, 2)], {
+      start: 1,
+      track: 0,
+    });
+    // The first moves past a [0,4); the second is too long for [7,8) and goes after b.
+    expect(landed).toEqual([
+      ["4", "0"],
+      ["10", "0"],
+    ]);
+  });
+
+  it("puts a multi-file drop that opens a track back to back on that new track", async () => {
+    const landed = await twoImageDrop([rowClip("a", 0, 10)], {
+      start: 2,
+      track: 0,
+      insertRow: 0,
+      trackOrder: [0],
+    });
+    // Clip a moved down a row, so it no longer blocks the second file.
+    expect(landed).toEqual([
+      ["2", "0"],
+      ["5", "0"],
+    ]);
   });
 
   it("refuses an asset drop before reading or writing when editing is blocked", async () => {

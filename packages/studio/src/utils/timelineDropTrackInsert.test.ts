@@ -99,6 +99,19 @@ describe("applyTrackRenumbers", () => {
 });
 
 describe("resolveDropTrack", () => {
+  it("lets only clips of the dropped file's kind block it on the row", () => {
+    const title = clip("title", 0, 0);
+    const music = { ...clip("music", 0, 0), tag: "audio" };
+    const song = { id: "song", tag: "audio", start: 1, duration: 3 };
+    // An audio file shows in the audio rows wherever it is written, so a visual clip never blocks it.
+    expect(
+      resolveDropTrack({ source, elements: [title], placement: { track: 0 }, dropped: song }).start,
+    ).toBe(1);
+    expect(
+      resolveDropTrack({ source, elements: [music], placement: { track: 0 }, dropped: song }).start,
+    ).toBe(2);
+  });
+
   it("keeps the aimed lane and the source when no insert is asked for", () => {
     const out = resolveDropTrack({
       source,

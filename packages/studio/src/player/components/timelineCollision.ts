@@ -65,21 +65,22 @@ function outOfRangeZoneInsertRow(
 const floorCenti = (v: number) => Math.floor(v * 100 + 1e-6) / 100;
 const ceilCenti = (v: number) => Math.ceil(v * 100 - 1e-6) / 100;
 
-/** The start nearest `start` at which [start, start + duration) overlaps no clip on `track`.
- *  Ties go to the later time. The gap after the row's last clip always fits, so a row with
- *  no gap long enough puts the clip right after its last clip. Bounds sit on centiseconds. */
+/** The start nearest `start`, not below `minStart`, at which [start, start + duration) overlaps
+ *  no clip on `track`. Ties go to the later time. The gap after the row's last clip always fits,
+ *  so a row with no gap long enough puts the clip right after its last clip. */
 export function resolveNearestFreeStart(
   elements: readonly TimelineElement[],
   track: number,
   start: number,
   duration: number,
   excludeKey: string | null,
+  minStart = 0,
 ): number {
   const busy = elements
     .filter((el) => (el.key ?? el.id) !== excludeKey && el.track === track)
     .sort((a, b) => a.start - b.start);
   let best = Number.POSITIVE_INFINITY;
-  let gapStart = 0;
+  let gapStart = ceilCenti(minStart);
   for (const el of [...busy, null]) {
     const latest = el ? floorCenti(el.start - duration) : Number.POSITIVE_INFINITY;
     if (latest >= gapStart) {
@@ -106,9 +107,11 @@ export function resolveZoneDropPlacement(input: {
   duration: number;
   dragKey: string;
   isAudio: boolean;
+  /** Lowest start the clip may take (a group move keeps every member at or after 0). */
+  minStart?: number;
 }): { track: number; insertRow: number | null; start: number } {
   const { order, audioTracks, elements, desiredTrack, deliberateInsertRow } = input;
-  const { start, duration, dragKey, isAudio } = input;
+  const { start, duration, dragKey, isAudio, minStart } = input;
   const audioRow = order.findIndex((t) => audioTracks.has(t));
 
   if (
@@ -120,6 +123,7 @@ export function resolveZoneDropPlacement(input: {
 
   const desired = clampTrackToZone(desiredTrack, order, audioRow, isAudio);
   const zoneTracks = order.filter((t) => audioTracks.has(t) === isAudio);
+  // Only when the aim is outside the rows, or the clip's zone has no row yet.
   if (!zoneTracks.includes(desired)) {
     const desiredRow = order.indexOf(desired);
     const insertRow =
@@ -128,7 +132,7 @@ export function resolveZoneDropPlacement(input: {
         : desiredRow + 1;
     return { track: desired, insertRow, start };
   }
-  const freeStart = resolveNearestFreeStart(elements, desired, start, duration, dragKey);
+  const freeStart = resolveNearestFreeStart(elements, desired, start, duration, dragKey, minStart);
   return { track: desired, insertRow: null, start: freeStart };
 }
 

@@ -497,3 +497,37 @@ describe("computeDragPreview — the ghost start is the committed start", () => 
     }
   });
 });
+
+describe("computeDragPreview — a group move keeps its shape", () => {
+  it("never bumps the grabbed clip further left than the group's 0 limit", () => {
+    const a = clip("a", 1, 0.5, 1, 1);
+    const b = clip("b", 2, 7, 2, 1);
+    const c = clip("c", 0, 6.4, 3.6, 1);
+    const elements = [c, a, b];
+    const selectedKeys = new Set(["a", "b"]);
+    const { drag } = horizontalDrag(b, 2.5, 0);
+    // Up two rows and 0.5 s left: the group limit allows 6.5 s, which overlaps c.
+    const ghost = computeDragPreview(drag, 800 - 0.5 * PPS, yForRow(0.5), {
+      ...ctx(undefined, elements),
+      selectedKeys,
+    });
+    expect(ghost).toMatchObject({ previewTrack: 0, insertRow: null, previewStart: 10 });
+    const onMoveElements = vi.fn();
+    commitDraggedClipMove(ghost, {
+      elements,
+      trackOrder: [0, 1, 2],
+      updateElement: vi.fn(),
+      onMoveElement: vi.fn(),
+      onMoveElements,
+      selectedKeys,
+    });
+    const edits = onMoveElements.mock.calls[0][0] as Array<{
+      element: TimelineElement;
+      updates: { start: number };
+    }>;
+    const moved = Object.fromEntries(
+      edits.map((e) => [e.element.id, e.updates.start - e.element.start]),
+    );
+    expect(moved).toEqual({ a: 3, b: 3 });
+  });
+});

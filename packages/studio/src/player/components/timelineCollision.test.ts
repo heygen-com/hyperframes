@@ -65,6 +65,12 @@ describe("resolveNearestFreeStart", () => {
     expect(resolveNearestFreeStart(row, 0, 2, 3, "a")).toBe(2);
   });
 
+  it("never goes below the lowest allowed start", () => {
+    const blocked = [el("c", 0, 6.4, 3.6)]; // busy [6.4,10)
+    expect(resolveNearestFreeStart(blocked, 0, 6.5, 2, null)).toBe(4.4);
+    expect(resolveNearestFreeStart(blocked, 0, 6.5, 2, null, 6.5)).toBe(10);
+  });
+
   it("keeps a gap-bound start on centiseconds so a written start cannot overlap", () => {
     const start = resolveNearestFreeStart([el("a", 0, 7.1, 2)], 0, 3, 5.045333, null);
     expect(start).toBe(2.05);
@@ -174,7 +180,7 @@ describe("resolveZoneDropPlacement (a drop on a row stays on that row, no overla
     ).toEqual({ track: 1, insertRow: null, start: 5 });
   });
 
-  it("M4 repro: Tag (2 s, 5 s long) onto the Subtitle row (0-6 s) lands at 6 s on that row", () => {
+  it("Tag (2 s, 5 s long) onto the Subtitle row (0-6 s) lands at 6 s on that row", () => {
     const elements = [el("title", 0, 0, 10), el("subtitle", 1, 0, 6), el("tag", 2, 2, 5)];
     const drop = { ...base, elements, start: 2, duration: 5, dragKey: "tag" };
     expect(resolveZoneDropPlacement({ ...drop, desiredTrack: 1 })).toEqual({

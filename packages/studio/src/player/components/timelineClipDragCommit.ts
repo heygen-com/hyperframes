@@ -62,8 +62,9 @@ export interface DragCommitDeps {
    * the edited clip(s) get z-index patches so their canvas stacking matches lane
    * order (higher lane = on top) relative to time-overlapping clips — see
    * timelineStackingSync. Both deps must be supplied to engage; if either is
-   * absent the z-sync is skipped (pure time-moves never restack). `readZIndex` returns the clip's current z-index (from the
-   * live DOM inline style / computed; "auto" ⇒ 0).
+   * absent the z-sync is skipped (pure time-moves never restack). `readZIndex`
+   * returns the clip's current z-index (from the live DOM inline style / computed;
+   * "auto" ⇒ 0).
    */
   readZIndex?: (element: TimelineElement) => number;
   /**
@@ -211,7 +212,7 @@ function resolveMultiSelection(
  * - **Lane change** (the dragged clip's OWN lane changes, no new track): persist
  *   ONLY the dragged clip's start + lane. No other clip is touched. z is synced
  *   only when the pointer aimed at another lane.
- * - **Track insert** (a new lane at a gap boundary): the dragged clip lands on
+ * - **Track insert** (a new lane above or below all rows): the dragged clip lands on
  *   the new lane and the clips at/below the insert are renumbered by +1 (the ONLY
  *   permitted multi-clip write) via a whole-set re-normalize; persisted atomically.
  */

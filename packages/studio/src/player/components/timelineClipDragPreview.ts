@@ -86,11 +86,19 @@ function resolveGroupClampedStart(
   elements: TimelineElement[],
   selectedKeys: ReadonlySet<string>,
 ): number {
-  if (selectedKeys.size <= 1 || !selectedKeys.has(dragKey)) return snapStart;
-  const memberStarts = elements.filter((e) => selectedKeys.has(e.key ?? e.id)).map((e) => e.start);
-  const clampedDelta = clampGroupMoveDelta(snapStart - element.start, memberStarts);
+  if (!isGroupedDrag(dragKey, selectedKeys)) return snapStart;
+  const clampedDelta = clampGroupMoveDelta(
+    snapStart - element.start,
+    groupMemberStarts(elements, selectedKeys),
+  );
   return element.start + clampedDelta;
 }
+
+const isGroupedDrag = (dragKey: string, selectedKeys: ReadonlySet<string>) =>
+  selectedKeys.size > 1 && selectedKeys.has(dragKey);
+
+const groupMemberStarts = (elements: TimelineElement[], selectedKeys: ReadonlySet<string>) =>
+  elements.filter((e) => selectedKeys.has(e.key ?? e.id)).map((e) => e.start);
 
 /** The drop decision for the pointer's row (see resolveZoneDropPlacement). */
 function resolveDropPlacement(
@@ -108,9 +116,14 @@ function resolveDropPlacement(
       )
     : 0;
   const dragKey = drag.element.key ?? drag.element.id;
-  // A multi-selection moves rigidly, so its other members are not obstacles for the grabbed clip.
-  const grouped = selectedKeys.size > 1 && selectedKeys.has(dragKey);
+  // A multi-selection moves rigidly: its other members are not obstacles for the grabbed clip,
+  // and the grabbed clip may not move so far left that a member would cross 0.
+  const grouped = isGroupedDrag(dragKey, selectedKeys);
   const obstacles = grouped ? elements.filter((e) => !selectedKeys.has(e.key ?? e.id)) : elements;
+  const groupFloor = grouped
+    ? drag.element.start -
+      Math.min(drag.element.start, ...groupMemberStarts(elements, selectedKeys))
+    : 0;
   const audioTracks =
     ctx.audioTracks ?? new Set(elements.filter(isAudioTimelineElement).map((e) => e.track));
   return resolveZoneDropPlacement({
@@ -123,6 +136,7 @@ function resolveDropPlacement(
     duration: drag.element.duration,
     dragKey,
     isAudio: isAudioTimelineElement(drag.element),
+    minStart: groupFloor,
   });
 }
 

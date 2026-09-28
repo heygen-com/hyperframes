@@ -41,6 +41,11 @@ function fileDropPlacement(
   return previous ? { start: previous.start + previous.duration, track: previous.track } : next;
 }
 
+interface DropGesture {
+  placed: TimelineElement[];
+  onNewTrack: boolean;
+}
+
 function timelineDropTarget(
   sourceFile: string,
   placement: Pick<TimelineElement, "start" | "track">,
@@ -91,7 +96,7 @@ export function useTimelineAssetDropOps({
       assetPath: string,
       placement: TimelineDropPlacement,
       durationOverride?: number,
-      droppedThisGesture: readonly TimelineElement[] = [],
+      gesture: DropGesture = { placed: [], onNewTrack: false },
     ): Promise<TimelineElement | undefined> => {
       if (isRecordingRef?.current) {
         showToast("Cannot edit timeline while recording", "error");
@@ -127,9 +132,10 @@ export function useTimelineAssetDropOps({
           ...timelineElements.filter(
             (te) => (te.sourceFile || activeCompPath || "index.html") === resolvedTargetPath,
           ),
-          ...droppedThisGesture,
+          ...gesture.placed,
         ];
         const newElementZIndex = Math.max(1, relevantElements.length + 1);
+        const tag = kind === "image" ? "img" : kind;
 
         let newId = "";
         let track = 0;
@@ -139,11 +145,11 @@ export function useTimelineAssetDropOps({
           const resolved = resolveDropTrack({
             source: originalContent,
             // insertRow counts the rows the timeline shows, so plan against those.
-            elements: relevantElements,
+            elements: gesture.onNewTrack ? [...gesture.placed] : relevantElements,
             placement,
             dropped: {
               id: newId,
-              tag: kind === "image" ? "img" : kind,
+              tag,
               start: normalizedStart,
               duration: normalizedDuration,
             },
@@ -185,7 +191,6 @@ export function useTimelineAssetDropOps({
         selectAndRevealTimelineElement(deriveTimelineStoreKeyForDomId(newId, targetPath));
         forceReloadSdkSession?.();
         reloadPreview();
-        const tag = kind === "image" ? "img" : kind;
         return { id: newId, tag, start, duration: normalizedDuration, track };
       } catch (error) {
         const message =
@@ -242,16 +247,18 @@ export function useTimelineAssetDropOps({
         placement ?? { start: 0, track: 0 },
         durations,
       );
-      const landed: TimelineElement[] = [];
+      const gesture: DropGesture = { placed: [], onNewTrack: false };
       for (const [index, assetPath] of uploaded.entries()) {
         const next = placements[index] ?? placements[0];
         const clip = await dropAssetAt(
           assetPath,
-          fileDropPlacement(index, next, placement, landed.at(-1)),
+          fileDropPlacement(index, next, placement, gesture.placed.at(-1)),
           durations[index],
-          landed,
+          gesture,
         );
-        if (clip) landed.push(clip);
+        if (!clip) continue;
+        gesture.placed.push(clip);
+        if (index === 0 && placement?.insertRow != null) gesture.onNewTrack = true;
       }
     },
     [
