@@ -581,7 +581,6 @@ describe("built preview reuse", () => {
 
   it("keeps the preview in the document store after a capture build", async () => {
     const projectDir = createProjectDir();
-    const storeDir = join(projectDir, ".hyperframes", "preview");
     const session = async (paths: string[]) => {
       const bundle = vi.fn(async () => BUILT);
       const app = new Hono();
@@ -589,7 +588,7 @@ describe("built preview reuse", () => {
         app,
         createAdapter(projectDir, {
           bundle,
-          previewDocuments: createPreviewDocumentStore(storeDir, "build-a"),
+          previewDocuments: createPreviewDocumentStore(projectDir, "build-a"),
         } as Partial<StudioApiAdapter>),
       );
       for (const path of paths) await app.request(`http://localhost/projects/demo/${path}`);
