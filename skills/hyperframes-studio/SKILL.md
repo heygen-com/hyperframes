@@ -26,30 +26,33 @@ and never invent a different form of the same edit.
 
 Read the message before you open a file. Decide what it asks for:
 
-| The person                                                        | You                                                            |
-| ----------------------------------------------------------------- | -------------------------------------------------------------- |
-| asks a question ("why", "how", "can it", "what if")               | Answer it. Change nothing.                                     |
-| says don't change anything, hold, "just thinking", "let's talk"   | Change nothing, not even a fix you noticed. Offer it in words. |
-| brings an idea, a subject or a goal with no concrete change in it | Plan it (§ 5). Do not touch the film.                          |
-| names a concrete change ("title bigger", "cut the third scene")   | Make it.                                                       |
-| approves a plan or a storyboard ("build it", "go")                | Build what was approved, one beat at a time (§ 5).             |
+| The person | You |
+| --- | --- |
+| names a change, however politely ("make the title bigger", "can you cut the third scene?") | Make it. |
+| gives a felt note on the built film ("the intro feels jolty", "it doesn't go long enough") | Find the cause, change the measurable thing, and say what the note meant and what moved. |
+| asks a question and names no change ("why does the title jump?") | Answer it. Change nothing. |
+| says don't change anything, hold, "just thinking", "let's talk" | Change no file, not even a fix you noticed. Offer it in words. |
+| brings an idea for this film with no concrete change ("I want the ending to feel bigger") | Propose the change and add it to the plan (below). Change no composition file. |
+| asks for a new film | Plan it (§ 5). |
+| approves a plan ("build it", "go") | Build what was approved. |
 
-When unsure, it is a conversation. A wrong answer costs one message; a wrong build costs a long
-run and a round of notes.
+A message that asks a question and names a change gets the answer and the change. Only when you
+cannot tell whether it asks for anything is it a conversation: a wrong answer costs one message; a
+wrong build costs a long run and a round of notes.
 
 A conversation reply:
 
 - Answer first, in plain words, in a few sentences.
-- Ask at most three questions, only ones whose answer changes the film. Give each a recommended
-  answer and the trade-off ("real screen capture is more credible; an HTML mock scrubs better").
-- When there is an idea to shape, offer two or three genuinely different directions, three lines
-  each: the concept, the opening hook, and the real reference it borrows from. Recommend one.
-- End with the next step and the word that starts it ("Say build and I'll make the first beat").
+- Ask only questions whose answer changes the film, each with a recommended answer and its
+  trade-off ("30 seconds fits a feed; 60 leaves room for the demo").
+- When there is an idea to shape, offer directions per `/hyperframes` `references/pitch-round.md`,
+  each naming the real reference film it borrows from, and recommend one.
+- End with the next step and the word that starts it ("Say build and I'll start").
 
 Keep the plan in the project, not only in the chat: the next message may start a new session that
-cannot see this one. Write it to STORYBOARD.md (and storyboard.html once there are sketches);
-neither changes the film. If the person asked you to change nothing at all, write nothing: put the
-plan in the reply and offer to save it.
+cannot see this one. Add it to STORYBOARD.md the way `/hyperframes-creative`
+`references/storyboard-recipe.md` § 4 records a round; never overwrite locked frames. If the person
+asked you to change nothing at all, write nothing: put the plan in the reply and offer to save it.
 
 ## 1. Every scene is a sub-composition
 
@@ -105,43 +108,30 @@ toggle draws them with a tick at the midpoint of every edge. Source:
 
 ## 5. A new film: plan, storyboard, build
 
-This is how the HyperFrames launch films were made ([hyperframes-launches](https://github.com/heygen-com/hyperframes-launches),
-also the house reference reel). Each step waits for the person. The detail lives in the owning
-guides; do not restate it here.
+The [hyperframes-launches](https://github.com/heygen-com/hyperframes-launches) films were made in
+this order. Each step has an owner; follow it and do not restate it here.
 
-| Step          | What the person gets                                                                                                       | Owner of the detail                                                                          |
-| ------------- | -------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------- |
-| 1. Brief      | The message as a claim, who watches and where, length, sound, what real footage exists, and the open questions             | `/hyperframes` `references/intent-interview.md`                                              |
-| 2. Directions | Two or three concepts, each with its hook and a named reference film; one recommended                                      | `/hyperframes` `references/pitch-round.md`                                                   |
-| 3. Storyboard | A beat list, then a static contact sheet (storyboard.html) with a note per cell: what moves first, which way the seam goes | `/hyperframes-creative` `references/storyboard-recipe.md`, `story-spine.md`                  |
-| 4. Build      | The first beat built and shown, then the rest in order, each its own sub-composition (§ 1)                                 | `/product-launch-video` `references/story-design.md`, `motion-language.md`, `cut-catalog.md` |
-| 5. Notes      | Revisions to only the beats named, a new version, the runtime stated                                                       | `/hyperframes` `references/review-loop.md`                                                   |
+| Step | Owner |
+| --- | --- |
+| 1. Brief | `/hyperframes` `references/intent-interview.md`. Inside an existing Studio project, ask its must-have questions and write BRIEF.md in place; skip `hyperframes init`. |
+| 2. Directions | `/hyperframes` `references/pitch-round.md` |
+| 3. Storyboard | `/hyperframes-creative` `references/storyboard-recipe.md` |
+| 4. Build | The workflow the brief routes to (`/hyperframes` § 2) and its own references |
+| 5. Notes | `/hyperframes` `references/review-loop.md` |
 
-Build the first beat and stop for a reaction before the rest: a wrong direction then costs one beat.
-Never render until asked; the person reviews by scrubbing in Studio.
+What the launch films add, for a product launch. Where the workflow's chosen arc says otherwise,
+the arc wins.
 
-What the launch films add to those guides:
-
-- **Real footage for the product being launched.** Ask for a screen recording in the brief and hold
-  its slot with a labelled placeholder until it arrives. Never draw the launched product's UI.
-  A third-party tool that appears as context (a chat app, an editor) is rebuilt faithfully from a
-  capture, never approximated.
-- **Name the product late.** Open on the viewer's pain or on proof already moving; no title card,
-  no fade in.
+- **Real footage for the launched product.** Ask for a screen recording in the brief and hold its
+  slot with a labelled placeholder until it arrives. Never approximate the launched product's UI. A
+  third-party tool shown as context (a chat app, an editor) is rebuilt faithfully from a capture.
 - **One world.** The same window or canvas continues across beats. Scrub every cut: whatever
   persists must not jump.
-- **One line on screen at a time, one accent word in it.** Split longer copy into timed lines.
-- **The frame edge does the hiding.** Cursors and text leave through the edge, not by fading
-  mid-frame. One motion at a time per element.
-- **Sound is its own pass.** A voice-led film records the voice first and cuts to its words. A
-  text-led film is built silent, then gets a click on every tap, a low music bed and sound effects
-  only where they carry meaning.
+- **Exits inside a shot.** A cursor or element leaving a window that stays on screen exits through
+  the window or frame edge, not by fading mid-frame. Scene seams follow the workflow's
+  `cut-catalog.md`.
 - **Close on the command or the address,** with the logo landing in footage that is still moving.
-- **Length grows under review.** State the runtime at every version; running past the target is
-  the person's call, not yours.
-- **Notes are felt reactions** ("jolty", "doesn't go long enough"). Find the cause, change the
-  measurable thing, and say what the note meant and what moved. Keep the person's words verbatim
-  in STORYBOARD.md under `## Changes from vN`.
+- **State the runtime at every version.** Running past the target is the person's call, not yours.
 
 ## Checking your work
 
