@@ -90,7 +90,8 @@ test("two effects never share a file when one's name is taken by the person", as
     const realFetch = globalThis.fetch;
     globalThis.fetch = async (url) => {
       const query = new URL(url).searchParams.get("query");
-      if (query) return Response.json({ data: [{ audio_url: `https://sound.test/${query}`, score: 0.6 }] });
+      if (query)
+        return Response.json({ data: [{ audio_url: `https://sound.test/${query}`, score: 0.6 }] });
       return new Response(`bytes of ${new URL(url).pathname}`);
     };
     try {
