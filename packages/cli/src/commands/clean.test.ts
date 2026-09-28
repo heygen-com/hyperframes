@@ -13,7 +13,7 @@ import {
   writeFileSync,
 } from "node:fs";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { basename, join } from "node:path";
 import { runCommand } from "citty";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { createOwnedRenderDir } from "@hyperframes/producer";
@@ -110,7 +110,7 @@ describe("cleanLeftovers", () => {
 
     await run();
     expect(readdirSync(renders).sort()).toEqual(
-      ["final.mp4", live, freshOwnerless, userFolder].map((path) => path.split("/").pop()).sort(),
+      ["final.mp4", live, freshOwnerless, userFolder].map((path) => basename(path)).sort(),
     );
     expect(existsSync(oldDebug) || existsSync(windowsLeftover)).toBe(false);
     expect(existsSync(debugNotes)).toBe(true);
