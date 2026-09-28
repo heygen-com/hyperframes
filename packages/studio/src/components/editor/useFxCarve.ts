@@ -33,7 +33,8 @@ import { automationAttrValue, HF_AUDIO_AUTOMATION_ATTR } from "./propertyPanelAu
 import { trackCarveChanged } from "./audioFxTelemetry.js";
 import type { DomEditSelection } from "./domEditingTypes";
 import { usePlayerStore } from "../../player";
-import { carveLanes, measureCarve, mintCarveNodes } from "./useFxCarveNodes.js";
+import { carveLanes, measureCarve, mintCarveNodes, type CarveClip } from "./useFxCarveNodes.js";
+import { readClipClock } from "./clipAudioClock.js";
 import { spanOf } from "./propertyPanelAudioFxGroupUtils.js";
 import type { AudioTrackOption } from "./propertyPanelFxCarveModule.js";
 
@@ -93,11 +94,8 @@ function carveNeedsReanalysis(
  * what lets the src and the start be non-null by construction downstream
  * instead of by assertion.
  */
-function resolveCarveVoices(
-  doc: Document,
-  sources: readonly string[],
-): { src: string; start: string | null }[] {
-  const voices: { src: string; start: string | null }[] = [];
+function resolveCarveVoices(doc: Document, sources: readonly string[]): CarveClip[] {
+  const voices: CarveClip[] = [];
   for (const id of sources) {
     const el = doc.getElementById(id);
     // By tag name, not `instanceof HTMLAudioElement`: these elements belong to
@@ -106,7 +104,8 @@ function resolveCarveVoices(
     if (el?.tagName !== "AUDIO") continue;
     const src = el.getAttribute("src");
     if (!src) continue;
-    voices.push({ src, start: el.getAttribute("data-start") });
+    const clock = readClipClock((name) => el.getAttribute(name));
+    voices.push({ src, start: el.getAttribute("data-start"), clock });
   }
   return voices;
 }
@@ -363,14 +362,11 @@ export function useFxCarve(
     if (voices.length === 0) return;
     setAnalysing(true);
     try {
-      const bedSrc = element.element?.getAttribute("src");
-      const measured = await measureCarve(
-        doc,
-        voices,
-        active.strength,
-        element.dataAttributes?.["start"],
-        bedSrc,
-      );
+      const measured = await measureCarve(doc, voices, active.strength, {
+        src: element.element?.getAttribute("src"),
+        start: element.dataAttributes?.["start"],
+        clock: readClipClock((name) => element.dataAttributes?.[name.slice(5)]),
+      });
       if (!measured) return;
       await persistMeasuredCarve(measured);
     } catch {
