@@ -2,36 +2,7 @@ export { createStudioApi } from "./createStudioApi.js";
 export { createProjectSignature, affectsProjectSignature } from "./helpers/projectSignature.js";
 export { compositionsAffectedBy } from "./helpers/compositionInputs.js";
 export { affectsPreview } from "./helpers/previewReads.js";
-export {
-  DEFAULT_HISTORY_ROOT,
-  openProjectHistory,
-  MAX_WINDOW_IDLE_MS,
-  UNDO_MODES,
-  type UndoMode,
-  type ClosedWindow,
-  type ProjectHistory,
-  type ProjectHistoryOptions,
-  type HistoryListItem,
-  type HistoryResult,
-  type HistoryWindow,
-  HistoryClosedError,
-} from "./history/projectHistory.js";
-export { HistoryBusyError } from "./history/ownerLock.js";
-export { HistoryIdError } from "./history/historyId.js";
-export { historyCache } from "./history/historyCache.js";
-export {
-  listProjectHistories,
-  pruneGoneProjectHistories,
-  type ProjectHistoryRecord,
-  type PrunedHistory,
-} from "./history/pruneHistories.js";
-export {
-  START as HISTORY_START,
-  type HistoryEntry,
-  type HistoryEntrySide,
-  type HistoryFileChange,
-  type HistoryWho,
-} from "./history/historyLog.js";
+export * from "./history/index.js";
 export type {
   StudioApiAdapter,
   ResolvedProject,

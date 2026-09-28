@@ -1,6 +1,6 @@
 import { basename, dirname, isAbsolute, join, relative, sep } from "node:path";
 import { readdirSync, type Dirent } from "node:fs";
-import { realpath, resolveWithinProject } from "@hyperframes/core";
+import { realpath, resolveWithinProject } from "@hyperframes/core/safe-path";
 
 // `isSafePath` lives at the package root so non-studio-api layers (compiler,
 // CLI, engine) can share it without a backwards dependency on studio-api.
@@ -12,7 +12,7 @@ export {
   realpath,
   realProjectRoot,
   resolveWithinProject,
-} from "@hyperframes/core";
+} from "@hyperframes/core/safe-path";
 
 /** The real path; for a path not there (yet, or any more), the nearest existing folder's real path plus the rest. */
 export function realFilePath(filePath: string): string {
