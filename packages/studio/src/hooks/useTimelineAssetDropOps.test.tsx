@@ -141,14 +141,20 @@ describe("useTimelineAssetDropOps handleTimelineAssetDrop", () => {
     expect(written).toMatch(/<video id="clip"[^>]*data-track-index="1"/);
   });
 
-  const rowClip = (id: string, start: number, duration: number): TimelineElement => ({
+  // A clip shown on timeline row `row` and written on file track `track`.
+  const rowClip = (
+    id: string,
+    start: number,
+    duration: number,
+    shown: { tag?: string; row?: number; track?: number } = {},
+  ): TimelineElement => ({
     id,
     key: id,
-    tag: "div",
+    tag: shown.tag ?? "div",
     start,
     duration,
-    track: 0,
-    authoredTrack: 0,
+    track: shown.row ?? 0,
+    authoredTrack: shown.track ?? shown.row ?? 0,
     hfId: `hf-${id}`,
     domId: id,
   });
@@ -157,7 +163,7 @@ describe("useTimelineAssetDropOps handleTimelineAssetDrop", () => {
       '<main data-composition-id="scene" data-duration="10" data-width="1920" data-height="1080">',
       ...clips.map(
         (c) =>
-          `<div data-hf-id="hf-${c.id}" id="${c.id}" data-start="${c.start}" data-duration="${c.duration}" data-track-index="0"></div>`,
+          `<${c.tag} data-hf-id="hf-${c.id}" id="${c.id}" data-start="${c.start}" data-duration="${c.duration}" data-track-index="${c.authoredTrack}"></${c.tag}>`,
       ),
       "</main>",
     ].join("\n");
@@ -182,10 +188,14 @@ describe("useTimelineAssetDropOps handleTimelineAssetDrop", () => {
     );
   });
 
-  // Drops two 3 s images onto a row holding `clips`; returns each written image's start and track.
-  async function twoImageDrop(clips: TimelineElement[], placement: TimelineDropPlacement) {
+  // Drops two files (3 s images by default) onto `clips`; returns each written clip's start and track.
+  async function twoFileDrop(
+    clips: TimelineElement[],
+    placement: TimelineDropPlacement,
+    [names, tag] = [["one.png", "two.png"], "img"] as [string[], string],
+  ) {
     const writeProjectFile = vi.fn().mockResolvedValue(undefined);
-    const uploadProjectFiles = vi.fn().mockResolvedValue(["one.png", "two.png"]);
+    const uploadProjectFiles = vi.fn().mockResolvedValue(names);
     const getDrop = renderDropHook(
       rowSource(clips),
       writeProjectFile,
@@ -193,18 +203,18 @@ describe("useTimelineAssetDropOps handleTimelineAssetDrop", () => {
       undefined,
       uploadProjectFiles,
     );
-    const files = [new File(["1"], "one.png"), new File(["2"], "two.png")];
+    const files = names.map((name) => new File([name], name));
     await act(async () => {
       await getDrop.file()(files, placement);
     });
     return writeProjectFile.mock.calls.map(([, written]) => {
-      const img = writtenClip(written as string, "img");
+      const img = writtenClip(written as string, tag);
       return [img.match(/data-start="([^"]*)"/)?.[1], img.match(/data-track-index="([^"]*)"/)?.[1]];
     });
   }
 
   it("keeps a multi-file drop's clips off each other and off the row's clips", async () => {
-    const landed = await twoImageDrop([rowClip("a", 0, 4), rowClip("b", 8, 2)], {
+    const landed = await twoFileDrop([rowClip("a", 0, 4), rowClip("b", 8, 2)], {
       start: 1,
       track: 0,
     });
@@ -216,7 +226,7 @@ describe("useTimelineAssetDropOps handleTimelineAssetDrop", () => {
   });
 
   it("puts a multi-file drop that opens a track back to back on that new track", async () => {
-    const landed = await twoImageDrop([rowClip("a", 0, 10)], {
+    const landed = await twoFileDrop([rowClip("a", 0, 10)], {
       start: 2,
       track: 0,
       insertRow: 0,
@@ -228,6 +238,32 @@ describe("useTimelineAssetDropOps handleTimelineAssetDrop", () => {
       ["5", "0"],
     ]);
   });
+
+  it("keeps a multi-file drop on the file track of the row it was dropped on", async () => {
+    const clips = [
+      rowClip("title", 0, 10, { track: 2 }),
+      rowClip("mid", 0, 1, { row: 1, track: 3 }),
+      rowClip("other", 0, 1, { row: 2, track: 5 }),
+    ];
+    // Row 0 is file track 2; the second file must not read that 2 back as row 2 (track 5).
+    expect(await twoFileDrop(clips, { start: 3, track: 0 })).toEqual([
+      ["10", "2"],
+      ["13", "2"],
+    ]);
+  });
+
+  it("keeps two audio files dropped on a visual row together, as a single one would go", async () => {
+    const clips = [
+      rowClip("title", 0, 10, { track: 1 }),
+      rowClip("music", 2, 3, { tag: "audio", row: 1, track: 0 }),
+    ];
+    const landed = await twoFileDrop(clips, { start: 12, track: 0 }, [["a.mp3", "b.mp3"], "audio"]);
+    // Audio length probing times out in this harness, so each file gets the 5 s default.
+    expect(landed).toEqual([
+      ["12", "0"],
+      ["17", "0"],
+    ]);
+  }, 30_000);
 
   it("refuses an asset drop before reading or writing when editing is blocked", async () => {
     const writeProjectFile = vi.fn().mockResolvedValue(undefined);

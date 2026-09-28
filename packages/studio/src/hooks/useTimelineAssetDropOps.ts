@@ -128,13 +128,10 @@ export function useTimelineAssetDropOps({
         const resolvedAssetSrc = resolveTimelineAssetSrc(targetPath, assetPath);
 
         const resolvedTargetPath = targetPath || "index.html";
-        const relevantElements = [
-          ...timelineElements.filter(
-            (te) => (te.sourceFile || activeCompPath || "index.html") === resolvedTargetPath,
-          ),
-          ...gesture.placed,
-        ];
-        const newElementZIndex = Math.max(1, relevantElements.length + 1);
+        const fileElements = timelineElements.filter(
+          (te) => (te.sourceFile || activeCompPath || "index.html") === resolvedTargetPath,
+        );
+        const newElementZIndex = Math.max(1, fileElements.length + gesture.placed.length + 1);
         const tag = kind === "image" ? "img" : kind;
 
         let newId = "";
@@ -144,8 +141,9 @@ export function useTimelineAssetDropOps({
           newId = buildTimelineAssetId(assetPath, collectHtmlIds(originalContent));
           const resolved = resolveDropTrack({
             source: originalContent,
-            // Rows and insertRow count the rows the timeline shows, so plan against those.
-            elements: gesture.onNewTrack ? gesture.placed : relevantElements,
+            // Rows and insertRow count the rows the timeline shows; a track this drop opened has no others.
+            elements: gesture.onNewTrack ? [] : fileElements,
+            placed: gesture.placed,
             placement,
             dropped: {
               id: newId,

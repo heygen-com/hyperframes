@@ -204,7 +204,7 @@ function resolveMultiSelection(
  * ONE clip must never re-lane or rewrite OTHER clips. Three outcomes:
  *
  * - **Pure time-move** (dragged clip keeps its lane, no insert): persist just the
- *   dragged clip's start (multi-selection shifts every selected clip in time).
+ *   dragged clip's start (multi-selection shifts every moving clip in time).
  * - **Lane change** (the dragged clip's OWN lane changes, no new track): persist
  *   ONLY the dragged clip's start + lane. No other clip is touched. z is synced
  *   only when the pointer aimed at another lane.

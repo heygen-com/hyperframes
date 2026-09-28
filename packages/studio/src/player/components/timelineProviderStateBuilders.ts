@@ -5,23 +5,26 @@ import type {
 } from "./TimelineProvider";
 import type { ResizingClipState } from "./useTimelineClipDrag";
 import type { DraggedClipState } from "./timelineClipDragTypes";
-import type { MultiDragPreviewInput } from "./timelineMultiDragPreview";
+import { resolveGroupMovers, type MultiDragPreviewInput } from "./timelineMultiDragPreview";
 import { getTimelineElementIdentity } from "../lib/timelineElementHelpers";
+import type { TimelineElement } from "../store/playerStore";
 
 export function resolveMultiDragPreview(
   draggedClip: DraggedClipState | null,
   selectedKeys: ReadonlySet<string>,
+  elements: readonly TimelineElement[],
 ): MultiDragPreviewInput | null {
-  // The dragged clip is a free ghost; selected companions follow the same
-  // clamped delta so the formation stays rigid at the lane boundary.
+  // The dragged clip is a free ghost; the clips that move with it follow the same
+  // clamped delta so the formation stays rigid. A locked selected clip stays put.
   if (!draggedClip?.started) return null;
   const draggedKey = getTimelineElementIdentity(draggedClip.element);
+  const movers = resolveGroupMovers(elements, selectedKeys, draggedKey);
   return {
     dragStarted: true,
     draggedKey,
     draggedOriginStart: draggedClip.element.start,
     draggedPreviewStart: draggedClip.previewStart,
-    selectedKeys,
+    selectedKeys: movers ? new Set(movers.map(getTimelineElementIdentity)) : selectedKeys,
   };
 }
 

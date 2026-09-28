@@ -73,9 +73,10 @@ export function applyTrackRenumbers(source: string, plan: DropTrackInsertPlan): 
 type DroppedClip = Pick<TimelineElement, "id" | "tag" | "start" | "duration">;
 
 /** The file track a drop on display row `lane` is written to, and its nearest free start there.
- *  Only clips of the dropped kind on that file track block it. */
+ *  The timeline's own clips decide the track; `placed` clips only block, like same-kind clips there. */
 function resolveRowDrop(
   elements: TimelineElement[],
+  placed: readonly TimelineElement[],
   lane: number,
   dropped: DroppedClip,
 ): { track: number; start: number } {
@@ -84,7 +85,7 @@ function resolveRowDrop(
   const otherKindRow = row.length > 0 && !row.some((e) => isAudioTimelineElement(e) === audio);
   const asClip = { ...dropped, key: dropped.id, track: lane, sourceFile: elements[0]?.sourceFile };
   const track = otherKindRow ? lane : authoredTrackForLane(lane, elements, asClip);
-  const onTrack = elements
+  const onTrack = [...elements, ...placed]
     .filter((e) => isAudioTimelineElement(e) === audio && (e.authoredTrack ?? e.track) === track)
     .map((e) => ({ ...e, track }));
   return {
@@ -97,12 +98,14 @@ function resolveRowDrop(
 export function resolveDropTrack(input: {
   source: string;
   elements: TimelineElement[];
+  /** Clips this drop gesture already wrote, which `elements` does not hold yet. */
+  placed?: readonly TimelineElement[];
   placement: TimelineDropPlacement;
   dropped: DroppedClip;
 }): { source: string; track: number; start: number } {
   const { source, elements, placement, dropped } = input;
   if (placement.insertRow == null) {
-    return { source, ...resolveRowDrop(elements, placement.track, dropped) };
+    return { source, ...resolveRowDrop(elements, input.placed ?? [], placement.track, dropped) };
   }
   const { insertRow, trackOrder } = placement;
   const plan = planDropTrackInsert({ elements, trackOrder, insertRow, dropped });

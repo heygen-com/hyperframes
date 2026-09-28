@@ -428,7 +428,10 @@ export function useTimelineProviderState({
     [resizingClip],
   );
   const draggedElement = draggedClip?.element ?? null;
-  const multiDragPreview = resolveMultiDragPreview(draggedClip, selectedElementIds);
+  const multiDragPreview = useMemo(
+    () => resolveMultiDragPreview(draggedClip, selectedElementIds, timelineElements),
+    [draggedClip, selectedElementIds, timelineElements],
+  );
   const canvasProps = {
     major,
     minor,

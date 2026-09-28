@@ -16,7 +16,7 @@ import { canMoveTimelineElement } from "./timelineAuthoredMoveTarget";
  * at groupMoveFloor), so this delta is the clamped delta:
  * the instant any member would cross 0 the grabbed clip stops and every passenger
  * stops with it — the formation never deforms. On DROP the commit shifts every
- * selected clip by this same delta (see timelineClipDragCommit / useTimelineClipDrag).
+ * moving clip (resolveGroupMovers) by this same delta (see timelineClipDragCommit).
  *
  * Track changes apply to the grabbed clip only (mirroring the commit); passengers
  * keep their lanes, so only their x moves.

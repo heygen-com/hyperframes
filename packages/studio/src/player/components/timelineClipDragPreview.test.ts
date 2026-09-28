@@ -9,6 +9,8 @@ import {
 import type { DraggedClipState } from "./timelineClipDragTypes";
 import { commitDraggedClipMove } from "./timelineClipDragCommit";
 import { LANE_H, RULER_H, TRACKS_TOP_PAD, TRACK_H } from "./timelineLayout";
+import { isMultiDragPassenger } from "./timelineMultiDragPreview";
+import { resolveMultiDragPreview } from "./timelineProviderStateBuilders";
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Regression bed for the live-reproduced BUG 1: a PLAIN HORIZONTAL drag of a clip
@@ -574,5 +576,21 @@ describe("computeDragPreview — a group move keeps its shape", () => {
     const written = groupMove(b, [locked, b], new Set(["locked", "b"]), 0, 4.5);
     // 4.5 s overlaps the locked 4-6 s clip; 3 s and 6 s are equally near, and a tie goes later.
     expect(written).toEqual({ b: { start: 6, track: 0 } });
+  });
+});
+
+describe("resolveMultiDragPreview — the live ghosts follow the clips that move", () => {
+  it("does not slide a locked clip swept into the selection", () => {
+    const locked: TimelineElement = { ...clip("locked", 0, 4, 2, 1), timelineLocked: true };
+    const b = clip("b", 1, 0, 1, 1);
+    const elements = [locked, b];
+    const selectedKeys = new Set(["locked", "b"]);
+    const { drag } = horizontalDrag(b, 1.5, 0);
+    const ghost = computeDragPreview(drag, 800 + 4.5 * PPS, yForRow(0.5), {
+      ...ctx(undefined, elements),
+      selectedKeys,
+    });
+    const preview = resolveMultiDragPreview(ghost, selectedKeys, elements);
+    expect(preview && isMultiDragPassenger("locked", preview)).toBe(false);
   });
 });
