@@ -787,7 +787,14 @@ async function resolveFamilyFaceRules(
   if (canonicalKey) {
     const canonical = CANONICAL_FONTS[canonicalKey];
     if (!canonical) return [];
-    return bundledFamilyFaceRules(canonical, normalizedFamily, emitFamily, optional, options, fontText);
+    return bundledFamilyFaceRules(
+      canonical,
+      normalizedFamily,
+      emitFamily,
+      optional,
+      options,
+      fontText,
+    );
   }
   return (
     (await googleFamilyFaceRules(lookupFamily, emitFamily, optional, options, fontText)) ??
@@ -1016,7 +1023,13 @@ async function buildFontFaceCss(
         fontText,
       )) ??
       // Last, so a family that already resolves keeps exactly the faces it had.
-      (await resolveDeclaredFamilyAlias(originalCaseFamily, declaredFamilies(), optional, options, fontText));
+      (await resolveDeclaredFamilyAlias(
+        originalCaseFamily,
+        declaredFamilies(),
+        optional,
+        options,
+        fontText,
+      ));
     if (familyRules) {
       rules.push(...familyRules);
       continue;

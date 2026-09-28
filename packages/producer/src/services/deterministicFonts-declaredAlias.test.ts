@@ -255,6 +255,37 @@ describe("declared-family alias resolution", () => {
 
     expect(injectedFaces(result).map((face) => face.family)).toContain("Saira ExtraCondensed");
   });
+
+  it.each([
+    ["an optional var() fallback", true],
+    ["a required family", false],
+  ])("keeps %s transient-failure policy after alias lookup", async (_case, optional) => {
+    const html = htmlWith(`<style>
+      @import url("https://fonts.googleapis.com/css2?family=Saira+Extra+Condensed");
+      h1 { font-family: ${optional ? 'var(--brand, "Saira ExtraCondensed")' : '"Saira ExtraCondensed"'}; }
+    </style>`);
+    const requests: string[] = [];
+    const fetchImpl = (async (input: unknown) => {
+      const url = String(input);
+      requests.push(url);
+      return new Response("", { status: url.includes("Saira%20ExtraCondensed") ? 400 : 503 });
+    }) as unknown as typeof fetch;
+    const localize = () =>
+      injectDeterministicFontFaces(html, {
+        failClosedFontFetch: true,
+        allowSystemFontCapture: false,
+        fetchImpl,
+        fontFetchRetryPolicy: { baseDelayMs: 0, maxAttempts: 3 },
+      });
+
+    if (optional) {
+      expect(await localize()).toBe(html);
+      expect(requests).toHaveLength(3);
+    } else {
+      await expect(localize()).rejects.toMatchObject({ code: "FONT_FETCH_UNAVAILABLE" });
+      expect(requests).toHaveLength(4);
+    }
+  });
 });
 
 describe("declared-family alias resolution — still unresolved", () => {
