@@ -304,6 +304,15 @@ describe("HyperframesPlayer range playback: video and direct timelines", () => {
     }
   }
 
+  function loadVideo(range: Record<string, string>): HTMLVideoElement {
+    player = createPlayer({ type: "video/mp4", src: "https://cdn.example.com/film.mp4", ...range });
+    document.body.appendChild(player);
+    const video = player.shadowRoot!.querySelector("video")!;
+    setMedia(video, { duration: 6, videoWidth: 640, videoHeight: 360 });
+    video.dispatchEvent(new Event("loadedmetadata"));
+    return video;
+  }
+
   function flushFrame() {
     const frame = frames.shift();
     if (!frame) throw new Error("no animation frame queued");
@@ -337,13 +346,7 @@ describe("HyperframesPlayer range playback: video and direct timelines", () => {
   });
 
   it("parks, stops on the last frame inside, wraps with loop and reports a clamp for a video", () => {
-    player = createPlayer({ type: "video/mp4", src: "https://cdn.example.com/film.mp4" });
-    player.setAttribute("range-start", "2");
-    player.setAttribute("range-end", "3");
-    document.body.appendChild(player);
-    const video = player.shadowRoot!.querySelector("video")!;
-    setMedia(video, { duration: 6, videoWidth: 640, videoHeight: 360 });
-    video.dispatchEvent(new Event("loadedmetadata"));
+    const video = loadVideo({ "range-start": "2", "range-end": "3" });
     expect(video.currentTime).toBe(2);
     expect(ranEvents()).toEqual(["ready@2"]);
 
@@ -378,12 +381,7 @@ describe("HyperframesPlayer range playback: video and direct timelines", () => {
   });
 
   it("stops a check early at a range end inside the film, never at the film's own end", () => {
-    player = createPlayer({ type: "video/mp4", src: "https://cdn.example.com/film.mp4" });
-    player.setAttribute("range-end", "3");
-    document.body.appendChild(player);
-    const video = player.shadowRoot!.querySelector("video")!;
-    setMedia(video, { duration: 6, videoWidth: 640, videoHeight: 360 });
-    video.dispatchEvent(new Event("loadedmetadata"));
+    const video = loadVideo({ "range-end": "3" });
 
     player.play();
     setMedia(video, { currentTime: 2.95 });
@@ -403,12 +401,7 @@ describe("HyperframesPlayer range playback: video and direct timelines", () => {
   });
 
   it("checks a video's range end on its timeupdate while the tab is hidden", () => {
-    player = createPlayer({ type: "video/mp4", src: "https://cdn.example.com/film.mp4" });
-    player.setAttribute("range-end", "3");
-    document.body.appendChild(player);
-    const video = player.shadowRoot!.querySelector("video")!;
-    setMedia(video, { duration: 6, videoWidth: 640, videoHeight: 360 });
-    video.dispatchEvent(new Event("loadedmetadata"));
+    const video = loadVideo({ "range-end": "3" });
 
     player.play();
     setMedia(video, { currentTime: 3.01 });
