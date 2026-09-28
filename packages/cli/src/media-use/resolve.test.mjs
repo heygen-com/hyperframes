@@ -550,6 +550,80 @@ test("resolve finds existing unregistered asset before hitting providers", () =>
   cleanup();
 });
 
+test("--from records a file already in the project where it is, with how it was made", () => {
+  setup();
+  mkdirSync(join(tmp, "assets/voice"), { recursive: true });
+  writeFileSync(join(tmp, "assets/voice/01.wav"), "fake wav");
+
+  const out = runResolve([
+    "--from",
+    join(tmp, "assets/voice/01.wav"),
+    "--type",
+    "voice",
+    "--source",
+    "generated",
+    "--intent",
+    "Welcome to the launch",
+    "--project",
+    tmp,
+    "--json",
+  ]);
+
+  assert.equal(JSON.parse(out.trim()).path, "assets/voice/01.wav");
+  assert.deepEqual(
+    readManifest(tmp).map((r) => [r.path, r.source, r.description]),
+    [["assets/voice/01.wav", "generated", "Welcome to the launch"]],
+  );
+  assert.deepEqual(readdirSync(join(tmp, ".media/audio/voice")), []);
+  cleanup();
+});
+
+test("--from refuses a source it does not know", () => {
+  setup();
+  mkdirSync(join(tmp, "assets/voice"), { recursive: true });
+  writeFileSync(join(tmp, "assets/voice/01.wav"), "fake wav");
+  const from = join(tmp, "assets/voice/01.wav");
+
+  const r = spawnResolve(["--from", from, "--type", "voice", "--source", "mine", "--project", tmp]);
+
+  assert.equal(r.status, 2);
+  assert.deepEqual(readManifest(tmp), []);
+  cleanup();
+});
+
+test("resolve does not relabel a recorded file in assets/ as the person's own", () => {
+  setup();
+  mkdirSync(join(tmp, "assets/bgm"), { recursive: true });
+  writeFileSync(join(tmp, "assets/bgm/ambient-track.mp3"), "agent bgm");
+  appendRecord(tmp, {
+    id: "bgm_001",
+    type: "bgm",
+    path: "assets/bgm/ambient-track.mp3",
+    source: "search",
+    description: "calm underscore",
+    provenance: { provider: "heygen" },
+  });
+
+  const out = runResolve([
+    "--type",
+    "bgm",
+    "--intent",
+    "ambient track",
+    "--project",
+    tmp,
+    "--json",
+  ]);
+
+  const parsed = JSON.parse(out.trim());
+  assert.equal(parsed.path, "assets/bgm/ambient-track.mp3");
+  assert.equal(parsed.source, "search");
+  assert.deepEqual(
+    readManifest(tmp).map((r) => r.source),
+    ["search"],
+  );
+  cleanup();
+});
+
 // --- CLI interface ---
 
 test("--help exits 0", () => {

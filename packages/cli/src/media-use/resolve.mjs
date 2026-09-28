@@ -2,10 +2,11 @@
 
 import { spawnSync } from "node:child_process";
 import { existsSync, statSync, writeFileSync, renameSync, rmSync } from "node:fs";
-import { resolve, join, extname, basename } from "node:path";
+import { resolve, join, extname, basename, relative, isAbsolute, sep } from "node:path";
 import { parseArgs } from "node:util";
 import {
   appendRecord,
+  readManifest,
   findByPrompt,
   findByEntity,
   nextId,
@@ -56,6 +57,7 @@ import {
 } from "./lib/local-media-search.mjs";
 
 const INGEST_TYPES = listTypes();
+const RECORDED_SOURCES = ["generated", "search", "bundled"];
 const DEFAULT_EXT = {
   bgm: ".wav",
   sfx: ".mp3",
@@ -88,6 +90,7 @@ const { values: args } = parseArgs({
     "dry-run": { type: "boolean", default: false },
     reuse: { type: "string" },
     from: { type: "string" },
+    source: { type: "string" },
     params: { type: "string" },
     for: { type: "string" },
     analyze: { type: "boolean", default: false },
@@ -123,7 +126,10 @@ Options:
                   timestamps are available.
   --reuse <sha>   Import a specific global-cache asset (by content sha/prefix,
                   from --candidates) into this project
-  --from <file>   Freeze a local file or direct public URL (ingest)
+  --from <file>   Freeze a local file or direct public URL (ingest); a file already
+                  inside the project is recorded where it is, not copied
+  --source <how>  With --from: how the file was made (${RECORDED_SOURCES.join(" | ")});
+                  default ingested
   --params <json> Build an explicit parametric LUT (lut/grade only)
   --for <media>   Analyze a local image/video and add measured grade adjust
                   suggestions (grade only)
@@ -339,6 +345,8 @@ async function run() {
       ? null
       : findExistingAsset(projectDir, intent, type);
   if (existingAsset) {
+    const recorded = readManifest(projectDir).find((r) => r.path === existingAsset.relativePath);
+    if (recorded) return result(recorded, "cached");
     const id = nextId(projectDir, type);
     const record = {
       id,
@@ -886,6 +894,14 @@ async function ingest(src) {
     console.error(`error: refusing to ingest a 0-byte file: ${src}`);
     process.exit(2);
   }
+  if (args.source && !RECORDED_SOURCES.includes(args.source)) {
+    console.error(`error: --source takes one of: ${RECORDED_SOURCES.join(", ")}`);
+    process.exit(2);
+  }
+  const inProject = isUrl ? null : relative(projectDir, resolve(src));
+  if (inProject && !inProject.startsWith("..") && !isAbsolute(inProject)) {
+    return recordInPlace(inProject.split(sep).join("/"));
+  }
   const ext = extname(isUrl ? new URL(src).pathname : src) || defaultExt(type);
   const { id, localPath, fullPath } = await withReservedFile(
     projectDir,
@@ -910,7 +926,7 @@ async function ingest(src) {
     id,
     type,
     path: localPath,
-    source: "ingested",
+    source: args.source || "ingested",
     description: basename(src.split("?")[0]),
     provenance: { provider: "local", from: src },
   };
@@ -922,6 +938,27 @@ async function ingest(src) {
     // best-effort
   }
   await result(record, "ingested");
+}
+
+async function recordInPlace(path) {
+  const source = args.source || "ingested";
+  const known = readManifest(projectDir).find((r) => r.path === path && r.source === source);
+  if (known) return result(known, "cached");
+  const record = {
+    id: nextId(projectDir, type),
+    type,
+    path,
+    source,
+    description: intent || basename(path),
+    provenance: {
+      provider: args.provider || "local",
+      from: path,
+      ...(intent && { prompt: intent }),
+    },
+  };
+  appendRecord(projectDir, record);
+  regenerateIndex(projectDir);
+  await result(record, source);
 }
 
 async function showCandidates() {
