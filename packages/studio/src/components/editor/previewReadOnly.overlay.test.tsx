@@ -146,6 +146,7 @@ beforeEach(() => {
 
 afterEach(() => {
   act(() => root.unmount());
+  actions.current = null;
   document.body.innerHTML = "";
   layout.group = [];
   layout.hover = null;
@@ -466,7 +467,6 @@ describe("DomEditOverlay onTextEditingChange", () => {
     pressEnter(overlay);
     selection.element.textContent = "Typed";
     act(() => root.unmount());
-    actions.current = null;
     expect(handleDomRichTextCommit).toHaveBeenCalledWith({
       element: selection.element,
       html: "Typed",
