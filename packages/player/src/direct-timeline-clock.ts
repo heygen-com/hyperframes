@@ -72,8 +72,7 @@ export class DirectTimelineClock {
       const stop = getStop();
       if (stop.end > 0) currentTime = Math.min(currentTime, stop.end);
 
-      // The smaller of the last two moves, so one slow frame or a jump does not end the range early;
-      // a tick where the time stands still (it moves once per video frame in some browsers) keeps it.
+      // The smaller of the last two moves, so one slow frame or a jump does not end the range early.
       const step = lastTime === null ? 0 : currentTime - lastTime;
       if (step !== 0) {
         lookAhead = Math.min(step, lastStep);
