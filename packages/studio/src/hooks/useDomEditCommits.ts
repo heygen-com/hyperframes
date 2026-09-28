@@ -6,7 +6,7 @@ import { primaryFontFamilyValue } from "../utils/studioFontHelpers";
 import { StudioSaveHttpError, trackStudioSaveFailure } from "../utils/studioSaveDiagnostics";
 import type { DomEditSelection } from "../components/editor/domEditing";
 import { fontFamilyFromAssetPath, type ImportedFontAsset } from "../components/editor/fontAssets";
-import type { CommitDomEditPatchBatches, PersistDomEditOperations } from "./domEditCommitTypes";
+import type { CommitDomEditPatchBatches } from "./domEditCommitTypes";
 import type { PatchOperation } from "../utils/sourcePatcher";
 import { DomEditPersistUnsafeValueError } from "./domEditPersistFailure";
 import { useDomEditPersist, type RecordEditInput } from "./useDomEditPersist";
