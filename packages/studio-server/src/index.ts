@@ -19,6 +19,7 @@ export {
 export { HistoryBusyError } from "./history/ownerLock.js";
 export { HistoryIdError } from "./history/historyId.js";
 export { historyCache } from "./history/historyCache.js";
+export { pruneGoneProjectHistories, type PrunedHistory } from "./history/pruneHistories.js";
 export {
   START as HISTORY_START,
   type HistoryEntry,

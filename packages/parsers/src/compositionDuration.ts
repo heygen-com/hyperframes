@@ -18,6 +18,8 @@ export interface ResolveCompositionDurationInput {
   clipEndsSeconds: readonly (number | null)[];
 }
 
+export const TIMING_TOLERANCE_SECONDS = 0.05;
+
 const isPositiveFinite = (value: number | null): value is number =>
   value !== null && Number.isFinite(value) && value > 0;
 

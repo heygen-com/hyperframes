@@ -184,7 +184,12 @@ export {
 export { RUNTIME_BOOTSTRAP_ATTR, stripEmbeddedRuntimeScripts } from "./compiler/htmlDocument";
 export { queryByAttr } from "./utils/cssSelector";
 export { decodeUrlPathVariants } from "./utils/urlPath";
-export { parseAnimatedGifMetadata, type AnimatedGifMetadata } from "./media/gif";
+export {
+  clearGifFramesBeforeNext,
+  gifClearsAfterLeavingFrameInPlace,
+  parseAnimatedGifMetadata,
+  type AnimatedGifMetadata,
+} from "./media/gif";
 export {
   HF_COLOR_GRADING_ATTR,
   HF_COLOR_GRADING_ADJUST_KEYS,
@@ -285,6 +290,7 @@ export {
   realProjectRoot,
   resolveWithinProject,
 } from "./safePath";
+export { isHyperframesProject, PROJECT_MARKER_FILES } from "./projectRule";
 export type {
   HyperframePickerApi,
   HyperframePickerBoundingBox,
