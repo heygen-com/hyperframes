@@ -132,8 +132,8 @@ export interface ShaderTransitionWorkerPool {
  *      worker via a separate build pipeline (e.g. the CLI's tsup bundle that
  *      emits `shaderTransitionWorker.js` next to `cli.js`) must use this.
  *      The bundled-CLI case is the *only* one where the fallback below
- *      cannot find the worker: `import.meta.url` inside the bundled pool
- *      resolves to its bundle chunk, not the worker's emitted path, so the
+ *      cannot find the worker: `import.meta.url` inside the inlined pool
+ *      resolves to the bundle path, not the worker's emitted path, so the
  *      sibling probe lands in the wrong directory.
  *   2. `HF_SHADER_WORKER_ENTRY` env var — test/dev infra override (file
  *      path or `file://` URL).

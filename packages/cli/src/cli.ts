@@ -26,7 +26,7 @@ for (const stream of [process.stdout, process.stderr]) {
 // The shaderTransitionWorkerPool lives in the producer package and resolves
 // its worker entry by probing for a sibling `.js` file next to
 // `import.meta.url`. When this CLI is bundled by tsup, the producer code is
-// bundled into chunks beside `cli.js`, but `import.meta.url` resolves to the producer's
+// bundled into chunks beside cli.js, but `import.meta.url` resolves to the producer's
 // own dist path (NOT cli.js) on some module-graph layouts — so the sibling
 // probe lands in a directory that does not contain the bundled worker.
 // We emit the worker entry next to cli.js (see tsup.config.ts) and tell
