@@ -5,23 +5,30 @@ import { useStudioShellContextOptional } from "../../contexts/StudioContext";
 import { findElementForSelection } from "../../components/editor/domEditingElement";
 import { readEffectiveZIndex } from "../../components/editor/canvasContextMenuZOrder";
 import type { StackingPatch } from "./timelineStackingSync";
+import type { TimelineZIndexReorderCommit } from "../../hooks/useTimelineEditingTypes";
 
-interface UseTimelineStackingSyncInput {
+/** Given both, a lane move restacks the preview's z-index to match the rows; both win over Studio's own. */
+export interface TimelineStackingSyncProps {
+  previewIframeRef?: RefObject<HTMLIFrameElement | null>;
+  onZIndexReorder?: TimelineZIndexReorderCommit;
+}
+
+interface UseTimelineStackingSyncInput extends TimelineStackingSyncProps {
   expandedElementsRef: RefObject<TimelineElement[]>;
 }
 
-// Lane ↔ stacking unification (research/STAGE3-NEEDED-WIRING.md). Provision the
-// two deps commitDraggedClipMove accepts so a lane-change drag also patches the
-// edited clip's z-index. Both read the SAME preview iframe + z-order persist path
-// the canvas right-click menu / LayersPanel use, so a timeline lane move and a
-// menu z-edit produce one shared inline-style commit shape. Optional contexts:
-// outside the NLE (standalone <Timeline>) these are null ⇒ deps undefined ⇒ the
-// commit's z-sync is a no-op (backward compatible).
-export function useTimelineStackingSync({ expandedElementsRef }: UseTimelineStackingSyncInput) {
+// Lane ↔ stacking sync: the two deps commitDraggedClipMove takes so a lane-change drag also patches
+// z-index, through the same iframe + z persist path the canvas menu and LayersPanel use. Neither ⇒ no-op.
+export function useTimelineStackingSync({
+  expandedElementsRef,
+  previewIframeRef,
+  onZIndexReorder,
+}: UseTimelineStackingSyncInput) {
   const domEditActions = useDomEditActionsContextOptional();
   const shell = useStudioShellContextOptional();
-  const zSyncPreviewIframeRef = domEditActions?.previewIframeRef ?? null;
-  const handleDomZIndexReorderCommit = domEditActions?.handleDomZIndexReorderCommit;
+  const zSyncPreviewIframeRef = previewIframeRef ?? domEditActions?.previewIframeRef ?? null;
+  const handleDomZIndexReorderCommit =
+    onZIndexReorder ?? domEditActions?.handleDomZIndexReorderCommit;
   const zSyncActiveCompPath = shell?.activeCompPath ?? null;
 
   // Resolve a TimelineElement to its live iframe HTMLElement via the same

@@ -154,7 +154,10 @@ export { parseStyleString, mergeStyleIntoTag, findElementBlock } from "./utils/h
 export { usePersistentEditHistory } from "./hooks/usePersistentEditHistory";
 export type { UsePersistentEditHistoryOptions } from "./hooks/usePersistentEditHistory";
 export { useTimelineEditing } from "./hooks/useTimelineEditing";
-export type { UseTimelineEditingOptions } from "./hooks/useTimelineEditingTypes";
+export type {
+  TimelineZIndexReorderCommit,
+  UseTimelineEditingOptions,
+} from "./hooks/useTimelineEditingTypes";
 // A host's own waitForPendingDomEditSaves must also call this, or undo/redo
 // can race a write still in flight (see useTrackPendingTimelineEdit.ts).
 export { flushStudioPendingEdits } from "./utils/studioPendingEdits";
