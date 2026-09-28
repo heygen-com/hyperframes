@@ -3,6 +3,7 @@
 import React, { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { MockResizeObserver, reportResize } from "../../hooks/resizeObserverTestUtils";
 import { thumbnailScheduler } from "../lib/thumbnailScheduler";
 import { ImageThumbnail } from "./ImageThumbnail";
 
@@ -28,12 +29,6 @@ class MockIntersectionObserver {
   takeRecords(): IntersectionObserverEntry[] {
     return [];
   }
-}
-
-class MockResizeObserver {
-  observe() {}
-  disconnect() {}
-  unobserve() {}
 }
 
 // --- Image stub: captures instances so tests fire load/error deterministically ---
@@ -169,6 +164,32 @@ describe("ImageThumbnail", () => {
 
     expectFirstTileSrc("/api/projects/p/preview/assets/icon.svg");
     expect(host.querySelector(".animate-pulse")).toBeNull();
+  });
+
+  it("tiles a wide picture at the clip's measured height, whole", async () => {
+    Object.defineProperty(host, "clientWidth", { configurable: true, value: 500 });
+    Object.defineProperty(host, "clientHeight", { configurable: true, value: 40 });
+    render({ imageSrc: "/api/projects/p/preview/assets/wide.png" });
+    await resolveProbe((probe) => {
+      probe.naturalWidth = 2700;
+      probe.naturalHeight = 1000;
+      probe.onload?.();
+    });
+
+    expect(host.querySelector("img")?.parentElement?.style.width).toBe("108px");
+  });
+
+  it("re-tiles at the height the resize observer reports", async () => {
+    render({ imageSrc: "/api/projects/p/preview/assets/wide.png" });
+    await resolveProbe((probe) => {
+      probe.naturalWidth = 2700;
+      probe.naturalHeight = 1000;
+      probe.onload?.();
+    });
+
+    act(() => reportResize(500, 40));
+
+    expect(host.querySelector("img")?.parentElement?.style.width).toBe("108px");
   });
 
   it("renders the label above the strip when provided", async () => {

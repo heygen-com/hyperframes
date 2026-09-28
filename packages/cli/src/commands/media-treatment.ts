@@ -681,7 +681,7 @@ function printFailure(error: unknown, json: boolean): void {
   const message = normalizeErrorMessage(error);
   if (json) console.log(JSON.stringify(withMeta({ ok: false, error: message })));
   else console.error(`${c.error("✗")} ${message}`);
-  failCommand();
+  failCommand(1, error);
 }
 
 export const mediaTreatmentCommand = defineCommand({

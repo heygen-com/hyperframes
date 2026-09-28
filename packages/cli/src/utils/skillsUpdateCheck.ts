@@ -116,7 +116,7 @@ function skillsNoticeText(meta: SkillsUpdateMeta): string | null {
  * as the CLI self-update notice (CI, non-TTY, dev, HYPERFRAMES_NO_UPDATE_CHECK).
  */
 export function printSkillsUpdateNotice(): void {
-  if (updateNoticesSuppressed()) return;
+  if (process.env["HYPERFRAMES_SKIP_SKILLS"] === "1" || updateNoticesSuppressed()) return;
   const text = skillsNoticeText(getSkillsUpdateMeta());
   if (text) process.stderr.write(text);
 }

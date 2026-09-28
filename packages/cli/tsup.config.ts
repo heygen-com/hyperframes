@@ -17,6 +17,7 @@ export default defineConfig({
     runtimeVersion: "src/runtimeVersion.ts",
     renderSetupWorker: "src/renderSetupWorker.ts",
     backgroundChecksWorker: "src/backgroundChecksWorker.ts",
+    sherpaWorker: "src/whisper/sherpaWorker.ts",
     shaderTransitionWorker: "../producer/src/services/shaderTransitionWorker.ts",
     "registry/localSemantic": "src/registry/localSemantic.ts",
   },

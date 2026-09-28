@@ -48,7 +48,7 @@ import {
   UrlDownloadError,
   writeUrlDownloadTelemetry,
 } from "../utils/urlDownloader.js";
-import { runFfmpeg } from "../utils/runFfmpeg.js";
+import { runFfmpeg, runFfmpegPipeline, type RunFfmpegResult } from "../utils/runFfmpeg.js";
 import { DEFAULT_CONFIG, type EngineConfig } from "../config.js";
 import { unwrapTemplate } from "../utils/htmlTemplate.js";
 import {
@@ -221,6 +221,9 @@ const SDR_TO_HDR_COLORSPACE_FILTER = "colorspace=all=bt2020:iall=bt709:range=tv"
 const HDR_TO_SDR_TONEMAP_FILTER =
   "zscale=t=linear:npl=100,tonemap=hable:desat=0,zscale=p=bt709:t=bt709:m=bt709:r=tv";
 const HDR_TO_SDR_TRANSFORM_KEY = "hdr2sdr-hable-bt709";
+const SDR_CANVAS_PASSTHROUGH_FILTER = "setparams=color_primaries=bt709:color_trc=iec61966-2-1";
+const SDR_JPEG_AS_BT601_FULL_RANGE_FILTER =
+  "scale=flags=neighbor,format=gbrp,scale=out_color_matrix=bt601:out_range=pc:flags=neighbor,format=yuv420p";
 
 function sdrToHdrTransformKey(transfer: HdrTransfer): string {
   return `sdr2hdr-${transfer}`;
@@ -751,6 +754,71 @@ export function parseImageElements(html: string): ImageElement[] {
   return images;
 }
 
+/** Chrome plays untagged VP9 and AV1 as BT.601, H.264 and VP8 as BT.709 from 720 lines (assumed for the rest). */
+const CHROME_BT601_UNTAGGED_CODECS = new Set(["vp9", "av1"]);
+
+function chromeGuessForUntaggedMatrix(metadata: VideoMetadata): string[] {
+  const matrix = metadata.colorSpace?.colorSpace;
+  if (matrix && matrix !== "unknown") return [];
+  const hd = metadata.height >= 720 && !CHROME_BT601_UNTAGGED_CODECS.has(metadata.videoCodec);
+  return [`setparams=colorspace=${hd ? "bt709" : "smpte170m"}`];
+}
+
+/** Pixel formats nut carries as raw video unchanged on ffmpeg 5.1 to 8.1 (yuvj only loses its range). */
+const NUT_RAW_PIXEL_FORMATS = new Set([
+  "yuv420p",
+  "yuvj420p",
+  "yuv422p",
+  "yuvj422p",
+  "yuv444p",
+  "yuvj444p",
+  "yuva420p",
+  "yuva444p",
+  "yuv440p",
+  "yuv411p",
+  "yuv410p",
+  "yuva422p",
+  "yuv420p10le",
+  "yuv422p10le",
+  "yuv444p10le",
+  "yuva420p10le",
+  "yuva444p10le",
+  "yuv420p12le",
+  "nv12",
+  "nv21",
+  "yuyv422",
+  "uyvy422",
+  "gray",
+  "gray10le",
+  "ya8",
+  "gbrp",
+  "gbrap",
+  "gbrp10le",
+  "gbrp12le",
+  "gbrap10le",
+  "rgb24",
+  "bgr24",
+  "rgba",
+  "bgra",
+  "argb",
+  "abgr",
+  "rgb48le",
+  "rgba64le",
+]);
+
+/** nut drops colour tags, so raw frames get the source's back before any other filter reads them. */
+function restoreSourceColourFilter(metadata: VideoMetadata): string[] {
+  const tags = [
+    ["range", metadata.colorRange],
+    ["colorspace", metadata.colorSpace?.colorSpace],
+    ["color_primaries", metadata.colorSpace?.colorPrimaries],
+    ["color_trc", metadata.colorSpace?.colorTransfer],
+  ].filter(([, value]) => value && value !== "unknown" && value !== "reserved");
+  return tags.length > 0
+    ? [`setparams=${tags.map(([key, value]) => `${key}=${value}`).join(":")}`]
+    : [];
+}
+
 export async function extractVideoFramesRange(
   videoPath: string,
   videoId: string,
@@ -856,17 +924,46 @@ export async function extractVideoFramesRange(
   if (options.toneMapHdrToSdr && isHdr && !isMacOS) {
     vfFilters.push(HDR_TO_SDR_TONEMAP_FILTER);
   }
-  if (vfFilters.length > 0) args.push("-vf", vfFilters.join(","));
-  if (!options.finalFrameOnly && metadata.isVFR) {
-    args.push("-fps_mode", "cfr", "-r", ffmpegFps);
+  if (!isHdr && !options.sdrToHdrTransfer) {
+    vfFilters.push(...chromeGuessForUntaggedMatrix(metadata), SDR_CANVAS_PASSTHROUGH_FILTER);
+    if (format === "jpg") vfFilters.push(SDR_JPEG_AS_BT601_FULL_RANGE_FILTER);
   }
-
-  args.push("-q:v", format === "jpg" ? String(Math.ceil((100 - quality) / 3)) : "0");
+  const encodeArgs = ["-q:v", format === "jpg" ? String(Math.ceil((100 - quality) / 3)) : "0"];
   // Render-scoped temp frames are read once; level 1 measured 3-5x faster for ~14% larger files.
-  if (format === "png") args.push("-compression_level", "1");
-  args.push("-y", outputPattern);
+  if (format === "png") encodeArgs.push("-compression_level", "1");
+  encodeArgs.push("-y", outputPattern);
 
-  const processResult = await runFfmpeg(args, { signal, timeout: ffmpegProcessTimeout });
+  const runOptions = { signal, timeout: ffmpegProcessTimeout };
+  const resampleVfrToCfr = !options.finalFrameOnly && metadata.isVFR;
+  if (resampleVfrToCfr) args.push("-fps_mode", "cfr", "-r", ffmpegFps);
+  let processResult: RunFfmpegResult;
+  if (
+    resampleVfrToCfr &&
+    vfFilters.length > 0 &&
+    !isHdr &&
+    NUT_RAW_PIXEL_FORMATS.has(metadata.pixelFormat ?? "")
+  ) {
+    // ffmpeg <6.1 ignores frame durations in CFR resampling once any -vf is set,
+    // cutting a trailing still short, so the SDR filters run in a second process.
+    processResult = await runFfmpegPipeline(
+      [...args, "-an", "-sn", "-dn", "-c:v", "rawvideo", "-f", "nut", "pipe:1"],
+      [
+        "-f",
+        "nut",
+        "-i",
+        "pipe:0",
+        "-vf",
+        [...restoreSourceColourFilter(metadata), ...vfFilters].join(","),
+        "-fps_mode",
+        "passthrough",
+        ...encodeArgs,
+      ],
+      runOptions,
+    );
+  } else {
+    if (vfFilters.length > 0) args.push("-vf", vfFilters.join(","));
+    processResult = await runFfmpeg([...args, ...encodeArgs], runOptions);
+  }
   if (processResult.failureReason === "external_interruption") {
     throw new VideoSourceExtractionError(
       "external_interruption",

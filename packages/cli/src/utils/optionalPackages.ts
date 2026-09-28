@@ -8,6 +8,7 @@ import {
   realpathSync,
   renameSync,
   rmSync,
+  statSync,
   writeFileSync,
 } from "node:fs";
 import { createRequire } from "node:module";
@@ -29,7 +30,7 @@ export const OPTIONAL_PACKAGES = {
   "@google/genai": "1.52.0",
 } as const satisfies Record<OptionalPackage, string>;
 
-const CACHE_DIR = join(homedir(), ".cache", "hyperframes", "optional");
+export const CACHE_DIR = join(homedir(), ".cache", "hyperframes", "optional");
 
 export interface OptionalPackageDeps {
   cacheDir: string;
@@ -108,11 +109,11 @@ function manifestPath(dir: string, name: string): string {
   return join(dir, "node_modules", name, "package.json");
 }
 
-function isInstalled(dir: string, name: string): boolean {
+export function isInstalled(dir: string, name: string): boolean {
   return existsSync(manifestPath(dir, name));
 }
 
-function loadInstalled(dir: string, name: string): unknown | null {
+export function loadInstalled(dir: string, name: string): unknown | null {
   if (!isInstalled(dir, name)) return null;
   return createRequire(join(dir, "package.json"))(name);
 }
@@ -136,9 +137,9 @@ export function loadBesideCli(name: OptionalPackage, cliUrl = import.meta.url): 
   return pinnedCopyBesideCli(name, cliUrl) ? createRequire(cliUrl)(name) : null;
 }
 
-function runNpm(args: string[]): Promise<void> {
+export function runNpm(args: string[], signal?: AbortSignal): Promise<void> {
   const npm = buildNpmCommand(args);
-  const child = spawn(npm.command, npm.args, { stdio: ["ignore", "pipe", "pipe"] });
+  const child = spawn(npm.command, npm.args, { stdio: ["ignore", "pipe", "pipe"], signal });
   return new Promise((resolve, reject) => {
     let output = "";
     child.stdout.on("data", (chunk) => (output += chunk));
@@ -159,16 +160,20 @@ function isProcessAlive(pid: number): boolean {
   }
 }
 
-/** Removes staging dirs whose owning pid is dead (crash or kill mid-install); never a live one. */
-function sweepStaleStaging(dir: string): void {
+const STAGING_PID_TRUSTED_FOR_MS = 6 * 60 * 60 * 1000;
+
+/** Removes staging dirs whose pid is dead (killed install), or too old to trust a live pid (reuse). */
+export function sweepStaleStaging(dir: string): void {
   const prefix = `${basename(dir)}.tmp-`;
   const parent = dirname(dir);
   if (!existsSync(parent)) return;
   for (const entry of readdirSync(parent)) {
     if (!entry.startsWith(prefix)) continue;
     const pid = /^(\d+)(?:-|$)/.exec(entry.slice(prefix.length))?.[1];
-    if (pid === undefined || isProcessAlive(Number(pid))) continue;
+    if (pid === undefined) continue;
     const stale = join(parent, entry);
+    const age = Date.now() - (statSync(stale, { throwIfNoEntry: false })?.mtimeMs ?? Date.now());
+    if (isProcessAlive(Number(pid)) && age < STAGING_PID_TRUSTED_FOR_MS) continue;
     try {
       rmSync(stale, { recursive: true, force: true });
     } catch (err) {

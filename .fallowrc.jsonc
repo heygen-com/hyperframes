@@ -48,6 +48,8 @@
     "packages/cli/src/renderSetupWorker.ts",
     // Update/skills cache refresh, spawned detached by path from backgroundChecks.ts.
     "packages/cli/src/backgroundChecksWorker.ts",
+    // Parakeet decode worker, spawned by path from whisper/sherpa.ts.
+    "packages/cli/src/whisper/sherpaWorker.ts",
     // Test fixture worker, spawned by path via the pools' workerEntryPath
     // option from the crash-recovery tests; has no import-graph referrer.
     "packages/producer/src/services/__fixtures__/crashOnMessageWorker.mjs",

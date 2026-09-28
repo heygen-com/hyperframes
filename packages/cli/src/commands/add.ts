@@ -14,7 +14,7 @@ export const examples: Example[] = [
 import { existsSync, readFileSync } from "node:fs";
 import { parseHTML } from "linkedom";
 import { resolve, relative } from "node:path";
-import { ITEM_TYPE_DIRS, type RegistryItem } from "@hyperframes/core";
+import { ITEM_TYPE_DIRS, realpath, type RegistryItem } from "@hyperframes/core";
 import { c } from "../ui/colors.js";
 import {
   DEFAULT_REGISTRY_URL,
@@ -510,14 +510,15 @@ export default defineCommand({
       }
       console.log("");
       console.log(`${c.success("✓")} Added ${c.accent(result.name)} (${result.type})`);
+      const root = realpath(projectDir);
       for (const file of result.preserved) {
         console.log(
-          `  ${c.warn("kept")} ${relative(projectDir, file) || file} — you have edited this; --force to overwrite`,
+          `  ${c.warn("kept")} ${relative(root, file) || file} — you have edited this; --force to overwrite`,
         );
       }
 
       for (const file of result.written) {
-        console.log(`  ${c.dim(relative(projectDir, file))}`);
+        console.log(`  ${c.dim(relative(root, file))}`);
       }
       if (result.variablesApplied.length > 0) {
         // Say it out loud. A component's values are baked into the file rather

@@ -25,6 +25,11 @@ import {
 } from "../helpers/studioMotionRenderScript.js";
 import { ensureHfIds } from "@hyperframes/parsers/hf-ids";
 import { settledFileTag } from "../helpers/fileVersion.js";
+import {
+  recordPreviewBuilt,
+  recordPreviewRead,
+  recordPreviewReferences,
+} from "../helpers/previewReads.js";
 import { isVariablesPayload, VARIABLES_PAYLOAD_ERROR } from "../helpers/variablesPayload.js";
 import { injectPreviewVariables } from "../helpers/previewVariables.js";
 import {
@@ -296,13 +301,15 @@ function resolveProjectMainHtml(
   projectId: string,
 ): { html: string; compositionPath: string } | null {
   const indexPath = join(projectDir, "index.html");
+  const blockHtmlPath = join(projectDir, `${projectId}.html`);
+  recordPreviewRead(projectDir, indexPath);
+  recordPreviewRead(projectDir, blockHtmlPath);
   if (existsSync(indexPath)) {
     return {
       html: readFileSync(indexPath, "utf-8"),
       compositionPath: "index.html",
     };
   }
-  const blockHtmlPath = join(projectDir, `${projectId}.html`);
   if (existsSync(blockHtmlPath)) {
     return {
       html: readFileSync(blockHtmlPath, "utf-8"),
@@ -355,7 +362,10 @@ export function registerPreviewRoutes(api: Hono, adapter: PreviewApiAdapter): vo
     const normalizedDisk = diskMain ? ensureHfIds(diskMain.html) : null;
 
     try {
-      let bundled = await adapter.bundle(project.dir, { stampHfIds: true });
+      let bundled = await adapter.bundle(project.dir, {
+        stampHfIds: true,
+        onRead: (filePath) => recordPreviewRead(project.dir, filePath),
+      });
       let mainCompositionPath = "index.html";
       if (!bundled) {
         if (!diskMain) return null;
@@ -365,6 +375,8 @@ export function registerPreviewRoutes(api: Hono, adapter: PreviewApiAdapter): vo
         bundled = stripEmbeddedRuntimeScripts(normalizedDisk ?? diskMain.html);
         mainCompositionPath = diskMain.compositionPath;
       }
+      recordPreviewReferences(project.dir, bundled);
+      recordPreviewBuilt(project.dir);
 
       // Inject runtime if not already present (check URL pattern and bundler attribute)
       if (
@@ -491,6 +503,9 @@ export function registerPreviewRoutes(api: Hono, adapter: PreviewApiAdapter): vo
     const previewVariables = vars.values;
     const compPath = requestSubPath(c.req.url, "projects/:id/preview/comp");
     const compFile = resolveWithinProject(project.dir, compPath);
+    if (compFile) recordPreviewRead(project.dir, compFile);
+    // The sub-composition document takes its head from the root.
+    recordPreviewRead(project.dir, "index.html");
     if (!compFile || !existsSync(compFile) || !statSync(compFile).isFile()) {
       return c.text("not found", 404);
     }
@@ -520,6 +535,7 @@ export function registerPreviewRoutes(api: Hono, adapter: PreviewApiAdapter): vo
       stamped,
     );
     if (!html) return c.text("not found", 404);
+    recordPreviewReferences(project.dir, html);
     html = ensureHfIds(await transformPreviewHtml(html, adapter, project, compPath));
     html = injectStudioPreviewAugmentations(html, adapter, project.dir, compPath);
     if (previewVariables) html = injectPreviewVariables(html, previewVariables);
@@ -542,6 +558,7 @@ export function registerPreviewRoutes(api: Hono, adapter: PreviewApiAdapter): vo
     if (!file) {
       return c.text("not found", 404);
     }
+    recordPreviewRead(project.dir, file);
     const stat = existsSync(file) ? statSync(file) : null;
     if (!stat?.isFile()) {
       return c.text("not found", 404);

@@ -161,6 +161,15 @@ describe("splitElementInHtml", () => {
     expect(document.getElementById("media-split")?.getAttribute("data-media-start")).toBe("4");
   });
 
+  it("leaves the first half's authored in-point exactly as written", () => {
+    const mediaSource = `<!DOCTYPE html><html><body><div data-composition-id="root"><video id="media" class="clip" src="asset.mp4" data-start="1" data-duration="6" data-media-start="3.296375" data-playback-rate="0.25"></video></div></body></html>`;
+
+    const result = splitElementInHtml(mediaSource, { id: "media" }, 3, "media-split");
+    const { document } = parseHTML(result.html);
+
+    expect(document.getElementById("media")?.getAttribute("data-media-start")).toBe("3.296375");
+  });
+
   it("does not add a media in-point to non-media elements", () => {
     const result = splitElementInHtml(source, { id: "box" }, 3, "box-split");
 

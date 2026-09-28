@@ -6,10 +6,8 @@ import { failCommand } from "../../utils/commandResult.js";
  * the CLI's standard errorBox, not a stack trace. Non-Error throws still
  * surface raw.
  *
- * Because this exits the process itself, it must ALSO report the failure
- * inline (the top-level trackCommandFailures wrapper never sees it) — the
- * typed error name (FigmaClientError code) is the whole first-run funnel:
- * NO_TOKEN → later success is onboarding conversion.
+ * It reports inline to name the typed code (FigmaClientError code) — the whole
+ * first-run funnel: NO_TOKEN → later success is onboarding conversion.
  */
 
 import { FigmaClientError } from "@hyperframes/core/figma";
@@ -21,23 +19,20 @@ export async function withFigmaErrors(command: string, fn: () => Promise<void>):
   } catch (err) {
     if (err instanceof Error) {
       try {
-        const telemetry = await import("../../telemetry/index.js");
+        const { trackCommandFailure } = await import("../../telemetry/events.js");
         // Surface the typed code (NO_TOKEN, BAD_TOKEN, RATE_LIMITED, …) as the
         // error name — `FigmaClientError` alone says nothing in a dashboard.
-        telemetry.trackCliError({
-          error_name: err instanceof FigmaClientError ? err.code : err.name,
-          error_message: err.message,
-          stack_trace: err.stack,
+        trackCommandFailure(
           command,
-          kind: "command_error",
-          endpoint: err instanceof FigmaClientError ? err.endpoint : undefined,
-        });
+          err,
+          err instanceof FigmaClientError ? { error_name: err.code, endpoint: err.endpoint } : {},
+        );
       } catch {
         // Telemetry must never mask the real command failure.
       }
       const [title = "figma command failed", ...rest] = err.message.split("\n");
       errorBox(title, rest.length > 0 ? rest.join("\n") : undefined);
-      failCommand();
+      failCommand(1, err);
     }
     throw err;
   }

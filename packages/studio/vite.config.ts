@@ -150,6 +150,7 @@ function devProjectApi(): Plugin {
           expectedVersion: string,
         ) => { path: string; version: string; writeToken: string } | null;
         fileContentVersion: (content: string) => string;
+        affectsPreview: (projectDir: string, changedPath: string) => boolean;
         DELETED_VERSION: string;
         openProjectHistory: typeof openProjectHistory;
       } | null = null;
@@ -166,6 +167,7 @@ function devProjectApi(): Plugin {
           for (const name of [
             "identifyFileWrite",
             "fileContentVersion",
+            "affectsPreview",
             "openProjectHistory",
           ] as const) {
             if (typeof mod[name] !== "function") {
@@ -278,11 +280,19 @@ function devProjectApi(): Plugin {
         const receipt = studioServer
           ? studioServer.identifyFileWrite(filePath, version ?? studioServer.DELETED_VERSION)
           : null;
-        const projectId = owner;
+        // The API records what the preview loaded in this same module, so ask it here.
+        const reloads = studioServer?.affectsPreview(owner.projectDir, filePath) ?? true;
         server.ws.send({
           type: "custom",
           event: "hf:file-change",
-          data: { path: filePath, version, projectId, ...receipt },
+          data: {
+            path: filePath,
+            version,
+            projectId: owner.projectId,
+            affectsPreview: reloads,
+            ...(reloads ? {} : { affectedCompositions: [] }),
+            ...receipt,
+          },
         });
       });
       server.httpServer?.on("close", () => void projectWatcher.close());

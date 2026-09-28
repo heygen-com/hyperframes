@@ -275,7 +275,7 @@ export {
   type MediaVisualStyleProperty,
 } from "./inline-scripts/parityContract";
 export { redactKnownPaths, redactTelemetryString } from "./telemetryRedaction";
-export { isSafePath, resolveWithinProject } from "./safePath";
+export { isSafePath, realpath, resolveWithinProject } from "./safePath";
 export type {
   HyperframePickerApi,
   HyperframePickerBoundingBox,

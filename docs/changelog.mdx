@@ -9,6 +9,79 @@ Recent HyperFrames releases, including user-facing features, fixes, and migratio
 {/* New release entries are prepended by `bun run changelog:draft <version> --write`. */}
 
 <Update
+  label="HyperFrames v0.8.81"
+  description="Released - 2026-09-27"
+  tags={["Release", "Studio Server", "Studio", "CLI"]}
+>
+Projects updated from 0.8.78 keep their full edit history again, and a host app can now make Cmd+Z undo the newest change whoever made it. Studio also lists only real compositions, and SDR renders keep the source colours.
+
+## Features
+
+- **Studio Server:** A host can make Cmd+Z undo the newest change, whoever made it ([b165b64ed](https://github.com/heygen-com/hyperframes/commit/b165b64eda845f46f9b622b96e4545bf704d0950), [#4603](https://github.com/heygen-com/hyperframes/pull/4603)).
+
+## Fixes
+
+- **Studio Server:** History saved by 0.8.78 survives the update with every entry ([3db3da7bb](https://github.com/heygen-com/hyperframes/commit/3db3da7bb284c5f0d89a1f7507d96115236e6bfc), [#4601](https://github.com/heygen-com/hyperframes/pull/4601)).
+- **CLI:** A failed command sends one error report, naming its real cause ([627e9476a](https://github.com/heygen-com/hyperframes/commit/627e9476af1c3feeb4359808a9f455a645b0697d), [#4586](https://github.com/heygen-com/hyperframes/pull/4586)).
+- **Studio:** List and grade only real compositions, not generated preview files ([3855623dd](https://github.com/heygen-com/hyperframes/commit/3855623dd93065ba1c5b2c8b2dfd005853636b91), [#4590](https://github.com/heygen-com/hyperframes/pull/4590)).
+- **Studio Server:** A write through a link lands on the file the system resolves ([59e3850f6](https://github.com/heygen-com/hyperframes/commit/59e3850f6a54f4d853b6cbc9af11032c05dbe2b6), [#4589](https://github.com/heygen-com/hyperframes/pull/4589)).
+- **Engine:** SDR renders keep footage and page colours as in the source ([c9b3d9c96](https://github.com/heygen-com/hyperframes/commit/c9b3d9c9628d4c51696147ecd2fd881080e72824), [#4564](https://github.com/heygen-com/hyperframes/pull/4564)).
+
+## Performance
+
+- **Studio:** The lint error badge pulses three times, then holds ([d6e8542a3](https://github.com/heygen-com/hyperframes/commit/d6e8542a380107c9843a83d2c595413f9e2a25c3), [#4594](https://github.com/heygen-com/hyperframes/pull/4594)).
+
+## Internal
+
+- **CLI:** CLI tests run with a home folder of their own, never the user's ([2b1bb8b73](https://github.com/heygen-com/hyperframes/commit/2b1bb8b731e0445081cd2a1d526f7f83df41cdcb), [#4587](https://github.com/heygen-com/hyperframes/pull/4587)).
+
+[View the full commit range](https://github.com/heygen-com/hyperframes/compare/v0.8.80...v0.8.81).
+</Update>
+
+<Update
+  label="HyperFrames v0.8.80"
+  description="Released - 2026-09-27"
+  tags={["Release", "Studio", "CLI", "Studio Server"]}
+>
+Studio reloads the preview less often, and its thumbnails and catalog installs are more reliable. Export, seek and snapshot now show the right video frame, and CLI commands exit when they finish.
+
+## Fixes
+
+- **Studio:** Reload the preview only when a file it loaded changes ([e00baefb5](https://github.com/heygen-com/hyperframes/commit/e00baefb5c536a10849bf94d0b8b2741aba60b37), [#4570](https://github.com/heygen-com/hyperframes/pull/4570)).
+- **Studio Server:** A thumbnail survives files vanishing mid-request ([1262485a0](https://github.com/heygen-com/hyperframes/commit/1262485a017256a60e305a924b1d2fbe79b728cd), [#4571](https://github.com/heygen-com/hyperframes/pull/4571)).
+- **Studio:** An automation lane edit is refused on a locked clip and reports how it saved ([1a53681de](https://github.com/heygen-com/hyperframes/commit/1a53681de160ad5eac47574f4c8d5da1728e8060), [#4533](https://github.com/heygen-com/hyperframes/pull/4533)).
+- **Core:** A CSS animation in a later clip shows the right frame after a seek ([8dfdceb16](https://github.com/heygen-com/hyperframes/commit/8dfdceb167b669985f11c65ad537dc84a8e09b50), [#4554](https://github.com/heygen-com/hyperframes/pull/4554)).
+- **Engine:** Export draws a video in exactly the frames it is shown in ([3def3514d](https://github.com/heygen-com/hyperframes/commit/3def3514d1428b2dba7208c5e1d003cca7d0bfce), [#4565](https://github.com/heygen-com/hyperframes/pull/4565)).
+- **Studio:** Avoid preview reloads for temporary and excluded files ([31c00d2f0](https://github.com/heygen-com/hyperframes/commit/31c00d2f0e30b8a57af6557e3ed52797863231c3), [#4553](https://github.com/heygen-com/hyperframes/pull/4553)).
+- **Core:** Preserve in-flight video preloads during runtime binding ([cc439b0e5](https://github.com/heygen-com/hyperframes/commit/cc439b0e599170687e79aa69ccf84a7ec266728c), [#4562](https://github.com/heygen-com/hyperframes/pull/4562)).
+- **Studio Server:** Probe each proxied clip once instead of on every request ([9c56240bf](https://github.com/heygen-com/hyperframes/commit/9c56240bf58455dc0b038bd35b6fda54d69d742d), [#4557](https://github.com/heygen-com/hyperframes/pull/4557)).
+- **CLI:** Stop background update and skills checks from holding a finished command open ([16dc05e9f](https://github.com/heygen-com/hyperframes/commit/16dc05e9fb9620cab1ba1ea588f74ced43592f81), [#4556](https://github.com/heygen-com/hyperframes/pull/4556)).
+- **CLI:** --yes in an unattended run no longer overrides a no saved by another process ([d290c05b0](https://github.com/heygen-com/hyperframes/commit/d290c05b09e6b1afbf3b992be606df6766d4a172), [#4547](https://github.com/heygen-com/hyperframes/pull/4547)).
+- **CLI:** Snapshot shows a short video's last frame instead of going black ([76723c614](https://github.com/heygen-com/hyperframes/commit/76723c614c52136f33cbc3dc506af2efa27ccca4), [#4552](https://github.com/heygen-com/hyperframes/pull/4552)).
+- **Player:** A reloaded preview waits for its assets once, not twice ([640e99043](https://github.com/heygen-com/hyperframes/commit/640e990431f0e8caa5d6fcbb914c936ecbbe8b4e), [#4546](https://github.com/heygen-com/hyperframes/pull/4546)).
+- **Core:** Clips that meet within float rounding count as meeting in edits and playback ([984ad28c7](https://github.com/heygen-com/hyperframes/commit/984ad28c7cbaae37db26e0c8eeea9b92e7b457ac), [#4535](https://github.com/heygen-com/hyperframes/pull/4535)).
+
+## Performance
+
+- **Studio:** Serve bounded JPEG timeline thumbnails ([91b21ae06](https://github.com/heygen-com/hyperframes/commit/91b21ae06f1f253f97ad8d9d3b472a97e63773bc), [#4560](https://github.com/heygen-com/hyperframes/pull/4560)).
+
+## Docs & Examples
+
+- Credit the background-removal model as Apache-2.0, matching upstream U-2-Net ([e3ef033a3](https://github.com/heygen-com/hyperframes/commit/e3ef033a314abf9d1019cda402776627c040f4bb), [#4561](https://github.com/heygen-com/hyperframes/pull/4561)).
+
+## Catalog
+
+- **CLI:** Studio's catalog install records the item and honours paths, as add does ([4984a268f](https://github.com/heygen-com/hyperframes/commit/4984a268f760eed2997974245b52a59b8a037efa), [#4573](https://github.com/heygen-com/hyperframes/pull/4573)).
+- **Studio:** The dev server leaves catalog installs to hyperframes preview ([c83e95857](https://github.com/heygen-com/hyperframes/commit/c83e958576f406d474a636d648d94dfc05fa822d), [#4574](https://github.com/heygen-com/hyperframes/pull/4574)).
+
+## Internal
+
+- CLI and studio-server tests remove the temp folders they create ([950cccdac](https://github.com/heygen-com/hyperframes/commit/950cccdac065442af4fe4ac2f1279fd910d8d28e), [#4566](https://github.com/heygen-com/hyperframes/pull/4566)).
+
+[View the full commit range](https://github.com/heygen-com/hyperframes/compare/v0.8.79...v0.8.80).
+</Update>
+
+<Update
   label="HyperFrames v0.8.79"
   description="Released - 2026-09-26"
   tags={["Release", "Studio", "Core", "Studio Server"]}

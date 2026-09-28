@@ -13,6 +13,7 @@ import {
   buildTimelineResizeTimingPatch,
   extendRootDurationIfNeeded,
   formatTimelineAttributeNumber,
+  formatTimelineMediaOffset,
   patchIframeDomTiming,
   playbackStartAttributeForElement,
   persistTimelineBatchEdit,
@@ -329,6 +330,7 @@ export function useTimelineGroupEditing({
             errorLabel: "Failed to shift GSAP positions",
             coalesceKey,
             recordEdit,
+            writeProjectFile,
             activeCompPath,
             changes,
             resolveChangePath: (element) => targetPathFor(element, activeCompPath),
@@ -364,6 +366,7 @@ export function useTimelineGroupEditing({
       trySdkBatchPersist,
       showToast,
       invalidateGsapCache,
+      writeProjectFile,
     ],
   );
 
@@ -377,7 +380,7 @@ export function useTimelineGroupEditing({
         ];
         if (change.playbackStart != null) {
           const liveAttr = playbackStartAttributeForElement(change.element);
-          liveAttrs.push([liveAttr, formatTimelineAttributeNumber(change.playbackStart)]);
+          liveAttrs.push([liveAttr, formatTimelineMediaOffset(change.playbackStart)]);
         }
         patchIframeDomTiming(previewIframeRef.current, change.element, liveAttrs, activeCompPath);
       }
@@ -436,6 +439,7 @@ export function useTimelineGroupEditing({
             errorLabel: "Failed to scale GSAP positions",
             coalesceKey,
             recordEdit,
+            writeProjectFile,
             activeCompPath,
             changes,
             resolveChangePath: (element) => targetPathFor(element, activeCompPath),
@@ -477,6 +481,7 @@ export function useTimelineGroupEditing({
       trySdkBatchPersist,
       showToast,
       invalidateGsapCache,
+      writeProjectFile,
     ],
   );
 

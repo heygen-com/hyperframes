@@ -51,7 +51,7 @@ async function readGroup(
  * full parse, so large projects don't pay N openComposition calls.
  */
 export function useProjectCompositionVariables(
-  fileTree: string[],
+  compositionPaths: string[],
   excludePath: string | null,
   readProjectFile: (path: string) => Promise<string>,
   refreshKey: unknown,
@@ -60,7 +60,7 @@ export function useProjectCompositionVariables(
 
   useEffect(() => {
     let cancelled = false;
-    const htmlFiles = fileTree.filter((p) => p.endsWith(".html") && p !== excludePath);
+    const htmlFiles = compositionPaths.filter((p) => p !== excludePath);
 
     void (async () => {
       const out: CompositionVariableGroup[] = [];
@@ -75,7 +75,7 @@ export function useProjectCompositionVariables(
       cancelled = true;
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [fileTree, excludePath, readProjectFile, refreshKey]);
+  }, [compositionPaths, excludePath, readProjectFile, refreshKey]);
 
   return groups;
 }

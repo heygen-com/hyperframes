@@ -1,3 +1,6 @@
+import { mkdtempSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { mockTelemetry } from "./cliDispatchTestUtils.js";
 
@@ -65,6 +68,66 @@ describe("CLI lifecycle", () => {
     process.emit("exit", 0);
 
     expect(order).toEqual(["cli_error", "flushSync"]);
+  });
+
+  describe("reports each failure once, by its real error", () => {
+    const dirs: string[] = [];
+    afterEach(() => {
+      for (const dir of dirs.splice(0)) rmSync(dir, { recursive: true, force: true });
+    });
+    const outsideProject = () => {
+      const dir = mkdtempSync(join(tmpdir(), "hf-cli-once-"));
+      dirs.push(dir);
+      return dir;
+    };
+
+    it("when the failure reaches the top-level handler", async () => {
+      const dir = outsideProject();
+      mockInitCommand(async () => {
+        const { resolveProject } = await import("./utils/project.js");
+        resolveProject(dir);
+      });
+      const sent = await runCli(["init", "--json"]);
+
+      expect(sent).toEqual([expect.objectContaining({ error_name: "InvalidProjectError" })]);
+    });
+
+    it("when the command catches the failure itself", async () => {
+      const sent = await runCli(["lint", outsideProject(), "--json"]);
+
+      expect(sent).toEqual([
+        expect.objectContaining({ error_name: "InvalidProjectError", command: "lint" }),
+      ]);
+    });
+
+    it("when the command rethrows the failure as its own", async () => {
+      const sent = await runCli([
+        "normalize-audio",
+        outsideProject(),
+        "--reference",
+        "a",
+        "--target",
+        "b",
+        "--json",
+      ]);
+
+      expect(sent).toEqual([expect.objectContaining({ error_name: "InvalidProjectError" })]);
+    });
+
+    it("when a figma command reports its error code", async () => {
+      mockInitCommand(async () => {
+        const { withFigmaErrors } = await import("./commands/figma/cliError.js");
+        const { FigmaClientError } = await import("@hyperframes/core/figma");
+        await withFigmaErrors("figma:asset", async () => {
+          throw new FigmaClientError("NO_TOKEN", "No Figma token");
+        });
+      });
+      const sent = await runCli(["init", "--json"]);
+
+      expect(sent).toEqual([
+        expect.objectContaining({ error_name: "NO_TOKEN", command: "figma:asset" }),
+      ]);
+    });
   });
 
   it("hands queued events to flushSync even after finalizeCli has run", async () => {
@@ -262,13 +325,37 @@ const MOCKED_MODULES = [
   "./commands/init.js",
   "./telemetry/events.js",
   "./telemetry/index.js",
+  "./telemetry/client.js",
   "./utils/autoUpdate.js",
   "./utils/updateCheck.js",
   "./utils/skillsUpdateCheck.js",
   "./utils/backgroundChecks.js",
 ];
 
-function mockInitCommand(run: () => void): void {
+/** Runs the CLI with the real failure reporting and returns the cli_error events it sent. */
+async function runCli(args: string[]): Promise<Record<string, unknown>[]> {
+  const sent: Record<string, unknown>[] = [];
+  mockTelemetry();
+  vi.doUnmock("./telemetry/events.js");
+  vi.doMock("./telemetry/client.js", async () => ({
+    ...(await vi.importActual<typeof import("./telemetry/client.js")>("./telemetry/client.js")),
+    trackEvent: (event: string, props: Record<string, unknown>) => {
+      if (event === "cli_error") sent.push(props);
+    },
+  }));
+  const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+  const logSpy = vi.spyOn(console, "log").mockImplementation(() => {});
+  try {
+    process.argv = ["node", "cli.ts", ...args];
+    await import("./cli.js");
+  } finally {
+    errorSpy.mockRestore();
+    logSpy.mockRestore();
+  }
+  return sent;
+}
+
+function mockInitCommand(run: () => void | Promise<void>): void {
   vi.doMock("./commands/init.js", () => ({
     default: {
       meta: { name: "init" },
