@@ -22,7 +22,7 @@ afterEach(() => {
   for (const dir of dirs.splice(0)) rmSync(dir, { recursive: true, force: true });
 });
 
-function setup() {
+function setup(staleMs = 60_000) {
   const dir = mkdtempSync(join(tmpdir(), "hf-installer-"));
   dirs.push(dir);
   const runningDir = join(dir, "running");
@@ -36,7 +36,7 @@ function setup() {
     runningDir,
     pollMs: 50,
     maxWaitMs: 60_000,
-    staleMs: 60_000,
+    staleMs,
   });
   return { dir, runningDir, marker, script };
 }
@@ -91,8 +91,25 @@ it("does not wait on a CLI process that died without cleaning up", async () => {
   expect(existsSync(staleFile)).toBe(false);
 });
 
-it("does not wait on an old pid file whose pid now belongs to another process", async () => {
+it("keeps waiting on a live command whose file looks old after the machine slept", async () => {
   const { runningDir, marker, script } = setup();
+  const cli = registerCli(runningDir);
+  const file = join(runningDir, String(cli.pid));
+  const tenMinutesAgo = new Date(Date.now() - 10 * 60_000);
+  utimesSync(file, tenMinutesAgo, tenMinutesAgo);
+  const installer = start(["-e", script]);
+
+  await sleep(1000);
+  expect(existsSync(marker)).toBe(false);
+  expect(existsSync(file)).toBe(true);
+
+  cli.kill();
+  await exited(installer);
+  expect(existsSync(marker)).toBe(true);
+});
+
+it("drops a pid file whose pid belongs to another process once it stops changing", async () => {
+  const { runningDir, marker, script } = setup(300);
   const other = start(["-e", "setInterval(() => {}, 1000)"]);
   const staleFile = join(runningDir, String(other.pid));
   writeFileSync(staleFile, "");
@@ -118,8 +135,8 @@ it("lets only one installer wait: a later launch exits and installs nothing", as
   expect(existsSync(marker)).toBe(true);
 });
 
-it("takes over an old install lock whose pid now belongs to another process", async () => {
-  const { dir, marker, script } = setup();
+it("takes over an install lock whose pid belongs to another process once it stops changing", async () => {
+  const { dir, marker, script } = setup(300);
   const other = start(["-e", "setInterval(() => {}, 1000)"]);
   const lock = join(dir, "config.json.install-lock");
   writeFileSync(lock, String(other.pid));

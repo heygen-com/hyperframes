@@ -84,7 +84,7 @@ export interface InstallerScriptOptions {
 /**
  * Source of the detached installer, run through `node -e` so no separate file ships. It:
  *   1. Exits if another waiting installer is alive (install lock), then waits until no pid in
- *      `runningDir` is alive and fresh, so no running CLI has package files replaced under it.
+ *      `runningDir` is alive and heartbeating, so no running CLI has package files replaced under it.
  *   2. Runs the install via execFile (bin + argv, NO shell); values are embedded as JSON literals.
  *   3. Under the shared settings lock, records completedUpdate and clears pendingUpdate.
  */
@@ -104,8 +104,17 @@ export function installerScript(o: InstallerScriptOptions): string {
     const withFileLock = ${withFileLock.toString()};
     const withLock = (task) => { try { withFileLock(\`\${CFG}.lock\`, fs, task); } catch (e) {} };
     const alive = (pid) => { try { process.kill(pid, 0); return true; } catch (e) { return e.code === "EPERM"; } };
-    // Live processes touch their files; an old file with a live pid is a killed process's pid reused.
-    const fresh = (file) => { try { return Date.now() - fs.statSync(file).mtimeMs < ${o.staleMs}; } catch (e) { return false; } };
+    // Stale = no heartbeat for staleMs on this process's own clock, which stops while the machine sleeps.
+    const seen = new Map();
+    const mono = () => Number(process.hrtime.bigint() / 1000000n);
+    const observe = (file) => {
+      let mtime;
+      try { mtime = fs.statSync(file).mtimeMs; } catch (e) { return "stale"; }
+      const prev = seen.get(file);
+      if (prev && prev.mtime === mtime) return mono() - prev.at >= ${o.staleMs} ? "stale" : "quiet";
+      seen.set(file, { mtime, at: mono() });
+      return prev ? "beating" : "quiet";
+    };
     const touch = (file) => { try { const now = new Date(); fs.utimesSync(file, now, now); } catch (e) {} };
     const running = () => {
       let names = [];
@@ -113,27 +122,30 @@ export function installerScript(o: InstallerScriptOptions): string {
       return names.filter((name) => {
         const pid = Number(name);
         const file = join(RUNNING, name);
-        if (Number.isInteger(pid) && pid > 0 && alive(pid) && fresh(file)) return true;
+        if (Number.isInteger(pid) && pid > 0 && alive(pid) && observe(file) !== "stale") return true;
         try { fs.unlinkSync(file); } catch (e) {}
         return false;
       });
     };
     let lockBeat;
-    // Taken under the settings lock, so two installers launched together cannot both take it over.
-    const takeInstallLock = () => {
-      let taken = false;
+    const ownsLock = () => { try { return Number(readFileSync(INSTALL_LOCK, "utf-8")) === process.pid; } catch (e) { return false; } };
+    // Under the settings lock, so two installers launched together cannot both take it over.
+    const tryLock = () => {
+      let result = "stuck";
       withLock(() => {
         let owner = NaN;
         try { owner = Number(readFileSync(INSTALL_LOCK, "utf-8")); } catch (e) {}
-        if (Number.isInteger(owner) && owner > 0 && alive(owner) && fresh(INSTALL_LOCK)) return;
+        const state = Number.isInteger(owner) && owner > 0 && alive(owner) ? observe(INSTALL_LOCK) : "stale";
+        if (state !== "stale") { result = state; return; }
         writeFileSync(INSTALL_LOCK, String(process.pid));
-        taken = true;
+        result = "taken";
       });
-      if (taken) lockBeat = setInterval(() => touch(INSTALL_LOCK), ${o.pollMs});
-      else console.log(\`[wait] another installer is already waiting; leaving \${VERSION} to it\`);
-      return taken;
+      return result;
     };
-    const releaseInstallLock = () => { clearInterval(lockBeat); try { fs.unlinkSync(INSTALL_LOCK); } catch (e) {} };
+    const releaseInstallLock = () => {
+      clearInterval(lockBeat);
+      if (ownsLock()) { try { fs.unlinkSync(INSTALL_LOCK); } catch (e) {} }
+    };
     const install = () => execFile(BIN, ARGS, { windowsHide: true, maxBuffer: 4 * 1024 * 1024 }, (err, _stdout, stderr) => {
       withLock(() => {
         let cfg = {};
@@ -154,6 +166,7 @@ export function installerScript(o: InstallerScriptOptions): string {
     });
     const started = Date.now();
     const waitThenInstall = () => {
+      if (!ownsLock()) return releaseInstallLock();
       if (running().length === 0) return install();
       if (Date.now() - started > ${o.maxWaitMs}) {
         console.log(\`[wait] gave up on \${VERSION}: a hyperframes process is still running\`);
@@ -161,7 +174,18 @@ export function installerScript(o: InstallerScriptOptions): string {
       }
       setTimeout(waitThenInstall, ${o.pollMs});
     };
-    if (takeInstallLock()) waitThenInstall();
+    const acquire = () => {
+      const result = tryLock();
+      if (result === "taken") {
+        lockBeat = setInterval(() => ownsLock() && touch(INSTALL_LOCK), ${o.pollMs});
+        return waitThenInstall();
+      }
+      if (result === "quiet") return setTimeout(acquire, ${o.pollMs});
+      console.log(result === "beating"
+        ? \`[wait] another installer is already waiting; leaving \${VERSION} to it\`
+        : \`[wait] settings lock busy; \${VERSION} left for the next run\`);
+    };
+    acquire();
   `;
 }
 
