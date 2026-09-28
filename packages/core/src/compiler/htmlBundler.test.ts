@@ -2198,6 +2198,30 @@ describe("bundleToSingleHtml sceneParts", () => {
   const partsOf = (doc: Document, scene: string) =>
     [...doc.querySelectorAll(`[data-hf-scene="${scene}"]`)].map((el) => el.tagName.toLowerCase());
 
+  it("keeps each scene's own copy of a shared @font-face, so one scene still swaps alone", async () => {
+    const face = `@font-face { font-family: "Brand"; src: url('assets/fonts/brand.woff2'); }`;
+    const dir = makeTempProject({
+      "index.html": `<!doctype html>
+<html><head></head><body>
+  <div id="root" data-composition-id="main" data-width="1920" data-height="1080" data-duration="4">
+    <div data-composition-id="a" data-composition-src="compositions/a.html" data-start="0" data-duration="2"></div>
+    <div data-composition-id="b" data-composition-src="compositions/b.html" data-start="2" data-duration="2"></div>
+  </div>
+</body></html>`,
+      "compositions/a.html": `<template id="a-template"><div data-composition-id="a"><style>${face}</style><p>A</p></div></template>`,
+      "compositions/b.html": `<template id="b-template"><div data-composition-id="b"><style>${face}</style><p>B</p></div></template>`,
+    });
+    const doc = parseHTML(
+      await bundleToSingleHtml(dir, { sceneParts: true, inlineAssets: false }),
+    ).document;
+    for (const scene of ["a", "b"]) {
+      const css = [...doc.querySelectorAll(`style[data-hf-scene="${scene}"]`)]
+        .map((el) => el.textContent ?? "")
+        .join("\n");
+      expect(css).toContain("@font-face");
+    }
+  });
+
   it("tags each top-level scene's host, styles and scripts, with nested scenes in their parent's parts", async () => {
     const doc = parseHTML(await bundleToSingleHtml(film(), { sceneParts: true })).document;
     // The nested scene is reached after b, so a's parts come in two runs around b's.

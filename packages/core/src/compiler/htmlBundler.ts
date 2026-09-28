@@ -1331,11 +1331,14 @@ async function bundleProject(projectDir: string, options?: BundleOptions): Promi
   // Each composition sharing a font carries its own @font-face copy; drop the earlier identical ones
   // before inlining (same url text inlines to the same bytes), so postcss parses paths, not font bytes.
   // Only styles that always apply take part, so the kept copy can never be switched off.
-  const liveStyles = [...document.querySelectorAll("style")].filter(isAlwaysAppliedStyle);
-  const dedupedStyles = dedupeFontFaceRules(liveStyles.map((el) => el.textContent || ""));
-  liveStyles.forEach((el, i) => {
-    el.textContent = dedupedStyles[i] ?? "";
-  });
+  // Scene parts keep their own copies, so each scene still swaps on its own.
+  if (!options?.sceneParts) {
+    const liveStyles = [...document.querySelectorAll("style")].filter(isAlwaysAppliedStyle);
+    const dedupedStyles = dedupeFontFaceRules(liveStyles.map((el) => el.textContent || ""));
+    liveStyles.forEach((el, i) => {
+      el.textContent = dedupedStyles[i] ?? "";
+    });
+  }
   for (const styleEl of document.querySelectorAll("style")) {
     styleEl.textContent = rewriteCssUrlsWithInlinedAssets(
       styleEl.textContent || "",
