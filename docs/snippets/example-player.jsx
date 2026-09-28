@@ -26,6 +26,10 @@ export const ExamplePlayer = ({ src, poster, title, className }) => {
       clip.style.cssText = "width:100%;height:100%;object-fit:contain";
       composition.appendChild(clip);
       const player = document.createElement("hyperframes-player");
+      // Fit posters in published player builds that predate the sizing fix.
+      const posterStyle = document.createElement("style");
+      posterStyle.textContent = ".hfp-poster{width:100%;height:100%}";
+      player.shadowRoot.appendChild(posterStyle);
       player.setAttribute("controls", "");
       player.setAttribute("low-power-idle", "");
       player.setAttribute("width", String(width));

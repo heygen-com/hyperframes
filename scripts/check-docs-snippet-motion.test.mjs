@@ -201,6 +201,11 @@ test("example films use the catalog player without making its controls source li
   assert.doesNotMatch(page, /<a[^>]*>\s*<ExamplePlayer/);
   assert.match(source, /createElement\("hyperframes-player"\)/);
   assert.match(source, /player\.setAttribute\("controls", ""\)/);
+  assert.match(
+    source,
+    /\.hfp-poster\{width:100%;height:100%\}/,
+    "fit large posters in the published player instead of cropping them",
+  );
   assert.match(source, /loading="lazy"/);
   assert.ok(
     source.indexOf("appendChild(fallback)") < source.indexOf("appendChild(script)"),
