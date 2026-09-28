@@ -166,4 +166,26 @@ describe("the audio the playhead follows", () => {
     }
     expect(lastTime).toBeGreaterThan(1.4);
   });
+
+  it("does not follow a clip whose media failed to load", async () => {
+    mount(
+      `<audio id="broken" data-start="0" data-duration="10" src="/assets/missing.mp3"></audio>` +
+        `<audio id="vo" data-start="0" data-duration="10" src="/assets/vo.mp3"></audio>`,
+    );
+    const broken = document.getElementById("broken") as HTMLAudioElement;
+    const vo = document.getElementById("vo") as HTMLAudioElement;
+    initSandboxRuntimeModular();
+    await flush();
+    window.__player?.play();
+    await flush();
+    const playedAt = nowMs;
+    Object.defineProperty(broken, "error", { value: { code: 4 } });
+    Object.assign(broken, { paused: false, currentTime: 0 });
+    Object.assign(vo, { paused: false });
+    for (let frame = 0; frame < 90; frame++) {
+      stepFrames(1);
+      vo.currentTime = (nowMs - playedAt) / 1000;
+    }
+    expect(window.__player!.getTime()).toBeGreaterThan(1.4);
+  });
 });

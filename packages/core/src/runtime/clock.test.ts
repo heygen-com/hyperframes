@@ -331,11 +331,11 @@ describe("TransportClock", () => {
       expect(clock.now()).toBeCloseTo(6.37, 5);
     });
 
-    it("holds the playhead while its element seeks", () => {
+    it("holds the playhead while its element seeks, even to a time ahead", () => {
       const { clock, advance } = createClock({ duration: 30 });
       clock.play();
       advancePolled(clock, advance, 2000);
-      const voice = Object.assign(createMockAudioEl(0, false), { seeking: true });
+      const voice = Object.assign(createMockAudioEl(3, false), { seeking: true });
       clock.attachAudioSource({ el: voice, compositionStart: 2, mediaStart: 0 });
       advance(150);
       expect(clock.now()).toBeCloseTo(2, 5);
