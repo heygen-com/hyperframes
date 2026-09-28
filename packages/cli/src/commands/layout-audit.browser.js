@@ -471,19 +471,55 @@
     };
   }
 
-  // An ancestor (up to and including `stopAt`) that clips its overflow makes any
-  // text spilling past it invisible — that clipping IS the layout mechanism
-  // (odometer/ticker reels, masked windows), not a defect to report.
-  function clippedByAncestor(element, stopAt) {
-    for (let current = element; current; current = current.parentElement) {
-      if (current !== element && clipsOverflow(getComputedStyle(current))) return true;
-      if (current === stopAt) break;
-    }
-    return false;
+  function horizontalTextMetrics(element, style) {
+    if (style.writingMode && style.writingMode !== "horizontal-tb") return null;
+    const context = document.createElement("canvas").getContext("2d");
+    if (!context) return null;
+    context.font = `${style.fontStyle} ${style.fontWeight} ${style.fontSize} ${style.fontFamily}`;
+    let text = textContentFor(element, true);
+    if (style.textTransform === "uppercase") text = text.toUpperCase();
+    if (style.textTransform === "lowercase") text = text.toLowerCase();
+    const metrics = context.measureText(text);
+    return metrics.fontBoundingBoxAscent + metrics.fontBoundingBoxDescent > 0 ? metrics : null;
+  }
+
+  function intersectsTextWindow(rect, clip, tolerance) {
+    return (
+      Math.min(rect.right, clip.right) - Math.max(rect.left, clip.left) > tolerance &&
+      Math.min(rect.bottom, clip.bottom) - Math.max(rect.top, clip.top) > tolerance
+    );
+  }
+
+  function visibleTextLineRects(element, rects, style, clip, tolerance) {
+    const metrics = horizontalTextMetrics(element, style);
+    const fontHeight = metrics ? metrics.fontBoundingBoxAscent + metrics.fontBoundingBoxDescent : 0;
+    const lineHeight = parsePx(style.lineHeight) || fontHeight;
+    return rects.flatMap((rect) => {
+      if (!metrics) return intersectsTextWindow(rect, clip, tolerance) ? [rect] : [];
+      const scale = rect.height / fontHeight;
+      const inkTop =
+        rect.top + (metrics.fontBoundingBoxAscent - metrics.actualBoundingBoxAscent) * scale;
+      const inkBottom =
+        rect.bottom - (metrics.fontBoundingBoxDescent - metrics.actualBoundingBoxDescent) * scale;
+      const ink = { ...rect, top: inkTop, bottom: inkBottom };
+      if (!intersectsTextWindow(ink, clip, tolerance)) return [];
+      // Negative leading belongs outside the used line box. Font metrics scale
+      // with the Range rect, so zoomed cards retain the same clipping decision.
+      const inset = Math.max(0, (rect.height - lineHeight * scale) / 2);
+      return [
+        toRect({
+          ...rect,
+          top: rect.top + inset,
+          bottom: rect.bottom - inset,
+          height: rect.height - 2 * inset,
+        }),
+      ];
+    });
   }
 
   function textOverflowIssues(element, root, rootRect, time, tolerance, clippedIssue) {
-    const textRect = textRectFor(element, true);
+    const lineRects = textClientRects(element, true).map(toRect);
+    const textRect = unionRects(lineRects);
     if (!textRect) return [];
     const text = textContentFor(element, true);
     const selector = selectorFor(element);
@@ -491,32 +527,26 @@
 
     const container = nearestConstraint(element, root, rootRect);
     const containerRect = container === root ? rootRect : toRect(container.getBoundingClientRect());
-    // Glyph ink (ascenders / descenders / accents / heavy display faces) routinely exceeds a
-    // snug line-height box by a few px, proportional to font size. When the constraining box
-    // does NOT clip, that vertical spill is normal typography — it shows in the padding, nothing
-    // is hidden — not a layout defect (it false-flagged caption words). Allow a font-metric
-    // vertical tolerance there; keep it tight when the box actually clips (a real cut-off) and
-    // always tight horizontally (too-wide text is a real wrap/legibility issue).
     const elementStyle = getComputedStyle(element);
     const containerClips = clipsOverflow(
       container === root ? getComputedStyle(root) : getComputedStyle(container),
     );
+    const visibleTextRect = containerClips
+      ? unionRects(visibleTextLineRects(element, lineRects, elementStyle, containerRect, tolerance))
+      : textRect;
     const verticalTolerance = containerClips
       ? tolerance
       : Math.max(tolerance, parsePx(elementStyle.fontSize) * 0.2);
-    const containerOverflow = overflowFor(textRect, containerRect, tolerance, verticalTolerance);
+    const containerOverflow = visibleTextRect
+      ? overflowFor(visibleTextRect, containerRect, tolerance, verticalTolerance)
+      : null;
     const billedAsClippedText =
       container === element &&
       clippedIssue != null &&
       containerOverflow != null &&
       containerOverflow.left == null &&
       containerOverflow.top == null;
-    if (
-      containerOverflow &&
-      !billedAsClippedText &&
-      !hasTextClipOptOut(element) &&
-      !clippedByAncestor(element, container)
-    ) {
+    if (containerOverflow && !billedAsClippedText && !hasTextClipOptOut(element)) {
       const style = elementStyle;
       issues.push({
         code: "text_box_overflow",
@@ -526,11 +556,11 @@
         containerSelector: selectorFor(container),
         text,
         message: "Text extends outside its nearest visual/container box.",
-        rect: textRect,
+        rect: visibleTextRect,
         containerRect,
         overflow: containerOverflow,
         fixHint: textOverflowFixHint(
-          textRect,
+          visibleTextRect,
           containerRect,
           containerOverflow,
           parsePx(style.fontSize),

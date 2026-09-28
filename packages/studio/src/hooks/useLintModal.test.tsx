@@ -69,6 +69,21 @@ describe("useLintModal hasLintError", () => {
   });
 });
 
+describe("useLintModal lintFindingCount", () => {
+  it("counts findings, not files, with the result open and after it closes", async () => {
+    const findings = ["a", "b", "c"].map((message) => ({
+      severity: "warning",
+      message,
+      file: "index.html",
+    }));
+    await mountWithLint(async () => ({ json: async () => ({ findings }) }));
+    expect(latest?.lintFindingCount).toBe(3);
+    act(() => latest?.closeLintModal());
+    expect(latest?.findingsByFile.size).toBe(1);
+    expect(latest?.lintFindingCount).toBe(3);
+  });
+});
+
 describe("useLintModal background lint", () => {
   it("waits for the live preview to boot before asking the server to lint", async () => {
     usePlayerStore.setState({ previewBooted: false });

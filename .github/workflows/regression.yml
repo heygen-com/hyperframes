@@ -12,7 +12,7 @@ env:
 # Graphite can update a branch and its PR base separately for the same head
 # SHA. Keep only the newest expensive regression run for each PR/ref.
 concurrency:
-  group: regression-${{ github.event.pull_request.number || github.ref }}
+  group: regression-${{ github.event.pull_request.number || github.ref }}${{ github.event_name == 'schedule' && '-nightly' || '' }}
   # A body or title edit queues behind running checks instead of cancelling them.
   cancel-in-progress: ${{ github.event.action != 'edited' || github.event.changes.base != null }}
 
@@ -31,6 +31,9 @@ on:
   push:
     branches:
       - main
+  schedule:
+    # Daily at 06:17 UTC: the full suite, including fixtures too slow for every PR.
+    - cron: "17 6 * * *"
 
 jobs:
   changes:
@@ -38,7 +41,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 2
     outputs:
-      code: ${{ (github.event_name == 'workflow_dispatch' && inputs.catalog_publish) && 'true' || steps.filter.outputs.code }}
+      code: ${{ (github.event_name == 'schedule' || (github.event_name == 'workflow_dispatch' && inputs.catalog_publish)) && 'true' || steps.filter.outputs.code }}
       matrix: ${{ steps.shards.outputs.matrix }}
     steps:
       # Force git-based change detection instead of the pull_request REST API.
@@ -49,6 +52,7 @@ jobs:
           fetch-depth: 0
       - uses: dorny/paths-filter@fbd0ab8f3e69293af611ebaee6363fc25e6d187d # v4
         id: filter
+        if: github.event_name != 'schedule'
         with:
           token: ""
           filters: |
@@ -62,9 +66,11 @@ jobs:
       # nor explicitly excluded, so a new fixture cannot silently never run.
       - name: Plan regression shards
         id: shards
+        env:
+          NIGHTLY: ${{ github.event_name == 'schedule' && '--nightly' || '' }}
         run: |
-          echo "matrix=$(node packages/producer/scripts/plan-regression-shards.mjs)" >> "$GITHUB_OUTPUT"
-          node packages/producer/scripts/plan-regression-shards.mjs --pretty
+          echo "matrix=$(node packages/producer/scripts/plan-regression-shards.mjs $NIGHTLY)" >> "$GITHUB_OUTPUT"
+          node packages/producer/scripts/plan-regression-shards.mjs $NIGHTLY --pretty
 
   preflight:
     name: Preflight (lint + format)
@@ -133,6 +139,7 @@ jobs:
           echo "Mode:  ${{ matrix.mode }}"
           echo "Args:  ${{ matrix.args }}"
           docker run --rm \
+            -e HYPERFRAMES_NO_TELEMETRY=1 \
             --security-opt seccomp=unconfined \
             --shm-size=4g \
             -v ${{ github.workspace }}/packages/producer/tests:/app/packages/producer/tests \

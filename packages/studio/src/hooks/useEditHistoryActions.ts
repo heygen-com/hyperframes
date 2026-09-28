@@ -33,7 +33,7 @@ export interface UseEditHistoryActionsOptions {
   showToast: (message: string, tone?: "error" | "info") => void;
   syncHistoryPreviewAfterApply: (restore: Pick<HistoryResult, "paths" | "files">) => Promise<void>;
   waitForPendingDomEditSaves: () => Promise<void>;
-  onAfterUndoRedo?: () => void;
+  onAfterUndoRedo?: (restore: Pick<HistoryResult, "paths" | "files">) => void;
   /** Active composition path — decides whether undo/redo must resync the SDK session. */
   activeCompPath?: string | null;
   /** Reloads the SDK session after a revert of the active comp, past the self-write suppress window. */
@@ -84,11 +84,12 @@ export function useEditHistoryActions({
         return;
       }
       if (result.ok && result.label) {
-        onAfterUndoRedo?.();
+        const restore = { paths: result.paths, files: result.files };
+        onAfterUndoRedo?.(restore);
         if (activeCompPath && result.paths?.includes(activeCompPath)) {
           forceReloadSdkSession?.();
         }
-        await syncHistoryPreviewAfterApply({ paths: result.paths, files: result.files });
+        await syncHistoryPreviewAfterApply(restore);
         showToast(result.label, "info");
       }
     },

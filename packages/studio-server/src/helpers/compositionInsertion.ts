@@ -1,8 +1,9 @@
-import { existsSync, readFileSync, realpathSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import { randomUUID } from "node:crypto";
 import { dirname, relative, resolve, sep } from "node:path";
 import { parseHTML } from "linkedom";
-import { isSafePath, resolveWithinProject } from "./safePath.js";
+import { ProjectRootMissingError } from "@hyperframes/core";
+import { folderGone, isSafePath, realpath, resolveWithinProject } from "./safePath.js";
 
 export class CompositionInsertionError extends Error {
   constructor(
@@ -38,13 +39,14 @@ function positiveAttribute(root: Element, ...names: string[]): number {
 
 function canonicalProjectPath(projectDir: string, candidate: string | null): string {
   if (!candidate) {
+    if (folderGone(projectDir)) throw new ProjectRootMissingError(projectDir);
     throw new CompositionInsertionError("Composition source escapes the project", 400);
   }
   if (!existsSync(candidate)) {
     throw new CompositionInsertionError("Composition source was not found", 404);
   }
-  const canonical = realpathSync(candidate);
-  if (!isSafePath(realpathSync(projectDir), canonical)) {
+  const canonical = realpath(candidate);
+  if (!isSafePath(realpath(projectDir), canonical)) {
     throw new CompositionInsertionError("Composition source escapes the project", 400);
   }
   return canonical;

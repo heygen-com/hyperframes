@@ -84,6 +84,19 @@ describe("detectFormat", () => {
 });
 
 describe("loadTranscript", () => {
+  it("reads an empty word list as a transcript with no words", () => {
+    expect(loadTranscript(tmpFile("transcript.json", "[]"))).toEqual({
+      words: [],
+      format: "words-json",
+    });
+  });
+
+  it("still rejects a JSON array that is not a word list", () => {
+    expect(() => loadTranscript(tmpFile("transcript.json", '[{"foo":1}]'))).toThrow(
+      /Unrecognized JSON transcript format/,
+    );
+  });
+
   it("parses whisper-cpp JSON with punctuation merging", () => {
     const path = tmpFile(
       "transcript.json",

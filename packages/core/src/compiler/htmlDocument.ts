@@ -22,13 +22,18 @@ const SIMPLE_RUNTIME_FLAG_ASSIGNMENTS = [
   /^window\.__renderReady\s*=\s*(?:true|false)\s*;?$/,
 ];
 
+const LEADING_COMMENTS = /^(?:\s|<!--(?:>|->|[\s\S]*?-->))*/;
+
+export function isFullHtmlDocument(html: string): boolean {
+  return /^(?:<!doctype|<html[\s>/])/i.test(html.replace(LEADING_COMMENTS, ""));
+}
+
 /**
  * Parse a full HTML document or wrap a fragment so linkedom consistently puts
  * fragment content under document.body.
  */
 export function parseHTMLContent(html: string): Document {
-  const trimmed = html.trimStart().toLowerCase();
-  if (trimmed.startsWith("<!doctype") || trimmed.startsWith("<html")) {
+  if (isFullHtmlDocument(html)) {
     return parseHTML(html).document;
   }
   return parseHTML(`<!DOCTYPE html><html><head></head><body>${html}</body></html>`).document;
@@ -205,17 +210,36 @@ const RAW_TEXT_TAGS = ["script", "style", "title", "textarea"] as const;
 type DocumentTag = "<head" | "</head" | "<body" | "</body";
 const COMMENT_END = /--!?>/g;
 
-function findDocumentTag(html: string, tag: DocumentTag): number {
-  const lowered = lowerAscii(html);
+function* markupStarts(lowered: string): Generator<number> {
   const unclosedRawText = new Set<string>();
   let cursor = 0;
   while (cursor !== -1) {
     const open = lowered.indexOf("<", cursor);
-    if (open === -1) return -1;
-    if (isTagAt(lowered, open, tag)) return open;
+    if (open === -1) return;
+    yield open;
     cursor = skipMarkup(lowered, open, unclosedRawText);
   }
+}
+
+function findDocumentTag(html: string, tag: DocumentTag): number {
+  const lowered = lowerAscii(html);
+  for (const open of markupStarts(lowered)) {
+    if (isTagAt(lowered, open, tag)) return open;
+  }
   return -1;
+}
+
+export function findStartTags(html: string, name: string): number[] {
+  const lowered = lowerAscii(html);
+  const token = `<${lowerAscii(name)}`;
+  const starts: number[] = [];
+  let templateDepth = 0;
+  for (const open of markupStarts(lowered)) {
+    if (templateDepth === 0 && isTagAt(lowered, open, token)) starts.push(open);
+    if (isTagAt(lowered, open, "<template")) templateDepth++;
+    else if (templateDepth > 0 && isTagAt(lowered, open, "</template")) templateDepth--;
+  }
+  return starts;
 }
 
 function isTagAt(lowered: string, at: number, token: string): boolean {

@@ -127,6 +127,11 @@ describe("preview errors", () => {
     root = null;
   });
 
+  it("puts the preview on the player's once-a-second paused heartbeat", async () => {
+    const { player } = await mountPlayer();
+    expect(player.hasAttribute("low-power-idle")).toBe(true);
+  });
+
   it("attaches lifecycle listeners before navigating the player", async () => {
     await mountPlayer();
     const srcIndex = lifecycleLog.indexOf("src");
@@ -270,6 +275,29 @@ describe("ready to show", () => {
 
     act(() => void el.iframeElement.dispatchEvent(new Event("load")));
     expect(onReadyToShowChange).toHaveBeenLastCalledWith(false);
+  });
+
+  it("can show a document whose player was ready and painted before its load event", async () => {
+    const onReadyToShowChange = vi.fn();
+    const { player } = await mountPlayer({ onReadyToShowChange });
+    const el = Object.assign(player as TestHyperframesPlayer, { ready: true, painted: true });
+
+    act(() => {
+      el.dispatchEvent(new Event("ready"));
+      el.dispatchEvent(new Event("painted"));
+      el.iframeElement.dispatchEvent(new Event("load"));
+    });
+    await twoFrames();
+    expect(onReadyToShowChange).toHaveBeenLastCalledWith(true);
+
+    for (const state of [
+      { ready: false, painted: true },
+      { ready: true, painted: false },
+    ]) {
+      Object.assign(el, state);
+      act(() => void el.iframeElement.dispatchEvent(new Event("load")));
+      expect(onReadyToShowChange).toHaveBeenLastCalledWith(false);
+    }
   });
 
   it("marks the preview booted when it can show and play, not at ready", async () => {

@@ -14,6 +14,7 @@ import {
 } from "@hyperframes/core/audio-fade";
 import type { TimelineElement } from "../store/playerStore";
 import { useTimelineEditContextOptional } from "../../contexts/TimelineEditContext";
+import { releasedOutsideWindow } from "./timelinePointerRelease";
 
 type FadeEdge = "in" | "out";
 
@@ -32,7 +33,7 @@ interface TimelineClipFadesProps {
 
 /** Corner dots that drag `data-fade-in` / `data-fade-out`; the wedge is the faded region. */
 export function TimelineClipFades({ el, pps, widthPx, showHandles }: TimelineClipFadesProps) {
-  const { onSetElementAttributeLive, onSetElementAttributeQuiet } =
+  const { onSetElementAttributeLive, onSetElementAttributeQuiet, onRevertElementAttributeLive } =
     useTimelineEditContextOptional();
   const canEdit = Boolean(onSetElementAttributeLive && onSetElementAttributeQuiet);
 
@@ -126,14 +127,17 @@ export function TimelineClipFades({ el, pps, widthPx, showHandles }: TimelineCli
 
   /** Puts the live document back where the file has it and drops the draft. */
   const revertGesture = (g: Gesture) => {
-    if (g.moved) onSetElementAttributeLive?.(el, attrFor(g.edge), attrText(g.originSeconds));
+    if (g.moved) {
+      onSetElementAttributeLive?.(el, attrFor(g.edge), attrText(g.originSeconds));
+      onRevertElementAttributeLive?.(el, attrFor(g.edge));
+    }
     setDraft(null);
   };
 
   const finish = (e: PointerEvent<HTMLDivElement>, cancelled: boolean) => {
     const g = endGesture(e);
     if (!g) return;
-    if (cancelled || !g.moved) return revertGesture(g);
+    if (cancelled || !g.moved || releasedOutsideWindow(e)) return revertGesture(g);
     setDraft({ edge: g.edge, seconds: g.last });
     void onSetElementAttributeQuiet?.(
       el,

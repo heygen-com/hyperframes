@@ -1,5 +1,8 @@
+// fallow-ignore-file code-duplication
 import { describe, it, expect, vi, afterEach } from "vitest";
 import {
+  evictMediaSyncState,
+  hasMediaSyncStateForTest,
   readElementPlaybackRate,
   readElementPlaybackStart,
   refreshRuntimeMediaCache,
@@ -372,6 +375,14 @@ describe("syncRuntimeMedia", () => {
 
   afterEach(() => {
     document.body.innerHTML = "";
+  });
+
+  it("seeks a clip whose start is a float sum to its first frame, never before it", () => {
+    const clip = createMockClip({ start: 19.8 + 0.1, end: 25 });
+    Object.defineProperty(clip.el, "readyState", { value: 4, writable: true });
+    clip.el.currentTime = 3;
+    syncRuntimeMedia({ clips: [clip], timeSeconds: 19.9, playing: false, playbackRate: 1 });
+    expect(clip.el.currentTime).toBe(0);
   });
 
   describe("speed ramp", () => {
@@ -1028,6 +1039,23 @@ describe("syncRuntimeMedia", () => {
     syncRuntimeMedia({ ...seek, timeSeconds: 5 });
     expect(clip.el.currentTime).toBe(2.5);
     expect(clip.el.play).not.toHaveBeenCalled();
+  });
+
+  it("holds a video ending on a float sum at the composition end on its last frame", () => {
+    const clip = createMockClip({
+      start: 19.8,
+      end: 19.8 + 6.4,
+      duration: 6.4,
+      sourceDuration: 10,
+    });
+    syncRuntimeMedia({
+      clips: [clip],
+      timeSeconds: 26.2,
+      playing: false,
+      playbackRate: 1,
+      getCompositionDuration: () => 26.2,
+    });
+    expect(clip.el.currentTime).toBeCloseTo(6.4, 9);
   });
 
   it("holds a speed-ramped video that runs to the composition end at the source time of its own end", () => {
@@ -1739,6 +1767,124 @@ describe("syncRuntimeMedia", () => {
       forceSync: true,
     });
     expect(clip.el.currentTime).toBe(5);
+  });
+
+  describe("playing video drift", () => {
+    function playingVideoAt(currentTime: number, playbackRate = 1) {
+      const clip = createMockClip({ start: 0, end: 20, duration: 20 });
+      Object.defineProperty(clip.el, "paused", { value: false, writable: true });
+      Object.defineProperty(clip.el, "currentTime", { value: currentTime, writable: true });
+      clip.el.playbackRate = playbackRate;
+      return clip;
+    }
+    const tick = (clip: RuntimeMediaClip, timeSeconds: number, playbackRate = 1) =>
+      syncRuntimeMedia({
+        clips: [clip],
+        timeSeconds,
+        playing: true,
+        playbackRate,
+        getCompositionDuration: () => 20,
+      });
+
+    it("runs a video lagging past the sync tolerance 3% fast instead of seeking it", () => {
+      const clip = playingVideoAt(4.908);
+      tick(clip, 5);
+      tick(clip, 5);
+      expect(clip.el.playbackRate).toBeCloseTo(1.03, 9);
+      expect(clip.el.currentTime).toBe(4.908);
+    });
+
+    it("runs a video that is ahead 3% slow", () => {
+      const clip = playingVideoAt(5.3);
+      tick(clip, 5);
+      tick(clip, 5);
+      expect(clip.el.playbackRate).toBeCloseTo(0.97, 9);
+    });
+
+    it("keeps steering until the video is nearly back, then returns to the authored rate", () => {
+      const clip = playingVideoAt(4.9);
+      tick(clip, 5);
+      tick(clip, 5);
+      clip.el.currentTime = 4.98;
+      tick(clip, 5);
+      expect(clip.el.playbackRate).toBeCloseTo(1.03, 9);
+      clip.el.currentTime = 4.995;
+      tick(clip, 5);
+      expect(clip.el.playbackRate).toBe(1);
+    });
+
+    it("keeps steering through a speed ramp, whose base rate moves every tick", () => {
+      const clip = playingVideoAt(4.9);
+      tick(clip, 5, 1);
+      tick(clip, 5, 1);
+      clip.el.currentTime = 4.98;
+      tick(clip, 5, 1.2);
+      expect(clip.el.playbackRate).toBeCloseTo(1.2 * 1.03, 9);
+    });
+
+    it("plays a hard-synced video at its authored rate on the tick it is seeked", () => {
+      const clip = playingVideoAt(4.9);
+      tick(clip, 5);
+      tick(clip, 5);
+      expect(clip.el.playbackRate).toBeCloseTo(1.03, 9);
+      tick(clip, 9); // a jump past the hard-sync threshold
+      expect(clip.el.currentTime).toBe(9);
+      expect(clip.el.playbackRate).toBe(1);
+    });
+
+    it("does not start steering inside the sync tolerance", () => {
+      const clip = playingVideoAt(4.97, 2);
+      tick(clip, 5, 2);
+      tick(clip, 5, 2);
+      expect(clip.el.playbackRate).toBe(2);
+    });
+
+    it("returns a steered video to its authored rate when the transport pauses", () => {
+      const clip = playingVideoAt(4.9);
+      tick(clip, 5);
+      tick(clip, 5);
+      syncRuntimeMedia({
+        clips: [clip],
+        timeSeconds: 5,
+        playing: false,
+        playbackRate: 1,
+        getCompositionDuration: () => 20,
+      });
+      clip.el.currentTime = 4.98; // inside the tolerance: must not resume steering
+      tick(clip, 5);
+      expect(clip.el.playbackRate).toBe(1);
+    });
+
+    it("forgets the steering when the element's sync state is evicted", () => {
+      const clip = playingVideoAt(4.9);
+      tick(clip, 5);
+      tick(clip, 5);
+      evictMediaSyncState(clip.el);
+      expect(hasMediaSyncStateForTest(clip.el)).toBe(false);
+    });
+
+    it("does not rewrite a steered rate that reads back at lower precision", () => {
+      const clip = playingVideoAt(4.9);
+      let stored = 1;
+      let writes = 0;
+      Object.defineProperty(clip.el, "playbackRate", {
+        configurable: true,
+        get: () => stored,
+        set: (v: number) => {
+          writes += 1;
+          stored = Math.fround(v);
+        },
+      });
+      for (let i = 0; i < 5; i++) tick(clip, 5);
+      expect(writes).toBe(1);
+    });
+
+    it("scales the steer with the transport rate", () => {
+      const clip = playingVideoAt(4.908, 2);
+      tick(clip, 5, 2);
+      tick(clip, 5, 2);
+      expect(clip.el.playbackRate).toBeCloseTo(2.06, 9);
+    });
   });
 
   // A seek while playing pauses and syncs in one pass, before the video element has paused.

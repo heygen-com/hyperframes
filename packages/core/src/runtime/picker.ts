@@ -2,6 +2,7 @@ import type { RuntimeJson, RuntimeOutboundMessage, RuntimePickerElementInfo } fr
 import { COLOR_GRADING_SOURCE_HIDDEN_ATTR } from "../colorGrading";
 import { swallow } from "./diagnostics";
 import { isElementNode } from "./domRealm";
+import { createDrawnProbe } from "./pickerDrawn";
 
 type PickerModuleDeps = {
   postMessage: (payload: RuntimeOutboundMessage) => void;
@@ -130,9 +131,10 @@ export function createPickerModule(deps: PickerModuleDeps): PickerModule {
     const win = el.ownerDocument.defaultView;
     if (!win) return false;
     let current: HTMLElement | null = el;
+    if (win.getComputedStyle(el).visibility === "hidden") return true;
     while (current && current !== document.body && current !== document.documentElement) {
       const computed = win.getComputedStyle(current);
-      if (computed.display === "none" || computed.visibility === "hidden") return true;
+      if (computed.display === "none") return true;
       if (computed.pointerEvents === "none") return true;
       const opacity = Number.parseFloat(computed.opacity);
       if (
@@ -150,7 +152,6 @@ export function createPickerModule(deps: PickerModuleDeps): PickerModule {
     if (!el || el === document.body || el === document.documentElement) return false;
     const tag = el.tagName.toLowerCase();
     if (tag === "script" || tag === "style" || tag === "link" || tag === "meta") return false;
-    if (el.classList.contains("__hf-pick-highlight")) return false;
     if (passThroughRoots.has(el)) return false;
     if (el.closest(PICKER_IGNORE_SELECTOR)) return false;
     if (isEffectivelyHidden(el as HTMLElement)) return false;
@@ -196,11 +197,13 @@ export function createPickerModule(deps: PickerModuleDeps): PickerModule {
   function buildElementLabel(el: Element): string {
     const tag = el.tagName.toLowerCase();
     const text = (el.textContent ?? "").trim().replace(/\s+/g, " ");
-    const trimLabel = (value: string, maxChars: number) =>
-      value.length > maxChars ? `${value.slice(0, maxChars - 1)}…` : value;
-    if (tag === "h1" || tag === "h2" || tag === "h3") return "Heading";
-    if (tag === "p" || tag === "span" || tag === "div")
-      return text.length > 0 ? trimLabel(text, 56) : "Text";
+    const trimLabel = (value: string, maxChars: number) => {
+      const chars = Array.from(value);
+      return chars.length > maxChars ? `${chars.slice(0, maxChars - 1).join("")}…` : value;
+    };
+    const heading = /^h[1-6]$/.test(tag);
+    if (heading || tag === "p" || tag === "span" || tag === "div")
+      return text.length > 0 ? trimLabel(text, 56) : heading ? "Heading" : "Text";
     if (tag === "img") return "Image";
     if (tag === "video") return "Video";
     if (tag === "audio") return "Audio";
@@ -222,15 +225,20 @@ export function createPickerModule(deps: PickerModuleDeps): PickerModule {
     if (blocksPickerAtPoint(raw[0] ?? null)) return [];
     const dedupe: Record<string, true> = {};
     const candidates: Element[] = [];
+    const drawn: Element[] = [];
+    const drawsHere = createDrawnProbe(document, clientX, clientY);
     for (const [i, node] of raw.entries()) {
       if (!isPickableElement(node)) continue;
       const key = `${node.tagName}::${(node as HTMLElement).id || ""}::${i}`;
       if (dedupe[key]) continue;
       dedupe[key] = true;
       candidates.push(node);
-      if (candidates.length >= maxCandidates) break;
+      if (drawn.some((inner) => node.contains(inner)) || drawsHere(node)) {
+        drawn.push(node);
+        if (drawn.length >= maxCandidates) break;
+      }
     }
-    return candidates;
+    return drawn.length > 0 ? drawn : candidates.slice(0, maxCandidates);
   }
 
   function extractElementInfo(el: Element): RuntimePickerElementInfo {
@@ -364,6 +372,7 @@ export function createPickerModule(deps: PickerModuleDeps): PickerModule {
         disablePickMode();
         return selected;
       },
+      describe: (element) => (isElementNode(element) ? extractElementInfo(element) : null),
       pickManyAtPoint: (clientX, clientY, indexes) => {
         if (!Number.isFinite(clientX) || !Number.isFinite(clientY)) return [];
         const infos = getPickInfosFromPoint(clientX, clientY, 8);

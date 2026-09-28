@@ -7,12 +7,13 @@
 // the reminder on the commands they already run.
 
 import { readConfig, readConfigFresh, writeConfig } from "../telemetry/config.js";
+import { hostAnswers } from "./hostAnswers.js";
 import { checkSkills } from "./skillsManifest.js";
 import { updateNoticesSuppressed } from "./updateCheck.js";
 
 const CHECK_INTERVAL_MS = 24 * 60 * 60 * 1000; // 24 hours
 
-export interface SkillsUpdateMeta {
+interface SkillsUpdateMeta {
   updateAvailable: boolean;
   outdated: number;
   missing: number;
@@ -36,15 +37,17 @@ function cacheFresh(lastSkillsCheck: string | undefined, now: number): boolean {
   return now - new Date(lastSkillsCheck).getTime() < CHECK_INTERVAL_MS;
 }
 
-/** Run the real check and persist the result to the cache. */
-async function refreshSkillsCache(): Promise<SkillsUpdateMeta> {
+/** Run the real check and persist the result to the cache. Skipped when DNS does not answer. */
+export async function refreshSkillsCache(): Promise<void> {
+  if (!(await hostAnswers("github.com"))) return;
   // `canonical: true` so this nudge's counts agree with `updateSkills`'s
   // source of truth — otherwise a stale in-repo skills-manifest.json (e.g.
   // inside a hyperframes checkout) can produce a false-positive count here.
   const result = await checkSkills({ canonical: true });
   // Only record a meaningful check when skills were actually found.
   if (result.location) {
-    const config = readConfig();
+    // Fresh read: this runs in a background child, beside the command's own config writes.
+    const config = readConfigFresh();
     config.lastSkillsCheck = new Date().toISOString();
     config.skillsUpdateAvailable = result.updateAvailable;
     config.skillsOutdatedCount = result.summary.outdated;
@@ -58,12 +61,6 @@ async function refreshSkillsCache(): Promise<SkillsUpdateMeta> {
     config.skillsRemovedCount = result.summary.removed;
     writeConfig(config);
   }
-  return {
-    updateAvailable: result.updateAvailable,
-    outdated: result.summary.outdated,
-    missing: result.summary.coreMissing,
-    removed: result.summary.removed,
-  };
 }
 
 /**
@@ -100,20 +97,10 @@ export function invalidateSkillsCache(): void {
   }
 }
 
-/**
- * Refresh the skills freshness cache if it is older than 24h. Best-effort:
- * any failure (offline, no manifest published yet, no skills installed) leaves
- * the cache untouched and reports "no update".
- *
- * @param force - skip the cache and check now
- */
-export async function checkSkillsForUpdate(force?: boolean): Promise<SkillsUpdateMeta> {
-  if (!force && cacheFresh(readConfig().lastSkillsCheck, Date.now())) return getSkillsUpdateMeta();
-  try {
-    return await refreshSkillsCache();
-  } catch {
-    return getSkillsUpdateMeta();
-  }
+/** Whether a background skills check is due: this run shows notices and the 24 h cache is stale. */
+export function skillsCheckDue(): boolean {
+  if (process.env["HYPERFRAMES_SKIP_SKILLS"] === "1" || updateNoticesSuppressed()) return false;
+  return !cacheFresh(readConfig().lastSkillsCheck, Date.now());
 }
 
 /** The stale-skills nudge text, or null when nothing is outdated, missing, or removed. */
@@ -129,7 +116,7 @@ function skillsNoticeText(meta: SkillsUpdateMeta): string | null {
  * as the CLI self-update notice (CI, non-TTY, dev, HYPERFRAMES_NO_UPDATE_CHECK).
  */
 export function printSkillsUpdateNotice(): void {
-  if (updateNoticesSuppressed()) return;
+  if (process.env["HYPERFRAMES_SKIP_SKILLS"] === "1" || updateNoticesSuppressed()) return;
   const text = skillsNoticeText(getSkillsUpdateMeta());
   if (text) process.stderr.write(text);
 }

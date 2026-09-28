@@ -8,19 +8,29 @@ import {
   mkdtempSync,
   openSync,
   readFileSync,
+  realpathSync,
+  renameSync,
   rmSync,
   statSync,
   symlinkSync,
+  utimesSync,
   writeFileSync,
   writeSync,
 } from "node:fs";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { join, parse } from "node:path";
 import { ensureHfIds } from "@hyperframes/parsers/hf-ids";
-import { PREVIEW_BUNDLE_OPTIONS, registerPreviewRoutes } from "./preview";
+import { STUDIO_PREVIEW_MARK_META } from "@hyperframes/core/studio-preview-mark";
+import { PREVIEW_BUNDLE_OPTIONS, PREVIEW_CAPTURE_PARAM, registerPreviewRoutes } from "./preview";
 import { registerFileRoutes } from "./files";
 import { createPreviewDocumentStore } from "../helpers/previewDocumentStore";
 import type { StudioApiAdapter } from "../types";
+import {
+  affectsPreview,
+  recordPreviewBuilt,
+  recordPreviewRead,
+  recordPreviewReferences,
+} from "../helpers/previewReads";
 
 const tempDirs: string[] = [];
 
@@ -104,6 +114,37 @@ describe("registerPreviewRoutes", () => {
     );
     const authored = await (await app.request("http://localhost/projects/demo/preview")).text();
     expect(authored).not.toContain('<base href="/api/projects/demo/preview/">');
+  });
+
+  it("serves the mark the runtime keys preview-only work on, ahead of the runtime script", async () => {
+    const projectDir = createProjectDir();
+    const app = new Hono();
+    registerPreviewRoutes(app, createAdapter(projectDir));
+    const html = await (await app.request("http://localhost/projects/demo/preview")).text();
+    const mark = html.indexOf(`<meta name="${STUDIO_PREVIEW_MARK_META}">`);
+    expect(mark).toBeGreaterThan(-1);
+    expect(mark).toBeLessThan(html.indexOf("/api/runtime.js"));
+    expect(html).toContain("<script data-hf-gsap-fallback>");
+  });
+
+  it("serves a later scene's image lazy, and captures every image eager with no mark", async () => {
+    const projectDir = createProjectDir();
+    const later =
+      '<!DOCTYPE html><html><head></head><body><div data-start="5"><img src="b.png"></div></body></html>';
+    writeFileSync(join(projectDir, "index.html"), later);
+    writeFileSync(join(projectDir, "scene.html"), later);
+    const app = new Hono();
+    registerPreviewRoutes(app, createAdapter(projectDir));
+    for (const path of ["preview", "preview/comp/scene.html"]) {
+      const url = `http://localhost/projects/demo/${path}`;
+      const preview = await (await app.request(url)).text();
+      const capture = await (await app.request(`${url}?${PREVIEW_CAPTURE_PARAM}=1`)).text();
+      expect(preview, path).toMatch(/<img loading="lazy" [^>]*src="b.png">/);
+      expect(preview, path).toContain(STUDIO_PREVIEW_MARK_META);
+      expect(capture, path).not.toContain("loading=");
+      expect(capture, path).not.toContain(STUDIO_PREVIEW_MARK_META);
+      expect(capture, path).toContain("<script data-hf-gsap-fallback>");
+    }
   });
 
   it("injects Studio GSAP motion manifest runtime into project preview", async () => {
@@ -234,6 +275,48 @@ describe("registerPreviewRoutes", () => {
     expect(response.status).toBe(200);
     expect(html).toContain("__hfStudioMotionApply");
     expect(html).toContain("compositions/scene.html");
+  });
+
+  it("serves scene parts with a manifest whose shared hash ignores the project signature", async () => {
+    const projectDir = createProjectDir();
+    mkdirSync(join(projectDir, "compositions"), { recursive: true });
+    writeFileSync(
+      join(projectDir, "index.html"),
+      `<!doctype html><html><head></head><body><div data-composition-id="main" data-width="1280" data-height="720" data-duration="2">
+<div data-composition-id="a" data-composition-src="compositions/a.html" data-start="0" data-duration="2"></div></div></body></html>`,
+    );
+    const scene = (text: string) =>
+      writeFileSync(
+        join(projectDir, "compositions/a.html"),
+        `<template><div data-composition-id="a"><p>${text}</p></div></template>`,
+      );
+    const { bundleToSingleHtml } = await import("@hyperframes/core/compiler");
+    const app = new Hono();
+    registerPreviewRoutes(
+      app,
+      createAdapter(projectDir, {
+        bundle: (dir, options) =>
+          bundleToSingleHtml(dir, { ...PREVIEW_BUNDLE_OPTIONS, ...options }),
+      }),
+    );
+    const served = async () => {
+      const html = await (await app.request("http://localhost/projects/demo/preview")).text();
+      const content = /<meta name="hf-scene-parts" content="([^"]+)">/.exec(html)?.[1] ?? "";
+      const signature = /<meta name="hyperframes-project-signature" content="([^"]+)">/.exec(
+        html,
+      )?.[1];
+      return { html, signature, parts: JSON.parse(content.replace(/&quot;/g, '"')) };
+    };
+    scene("one");
+    const before = await served();
+    scene("two, longer");
+    pastSettleWindow();
+    const after = await served();
+
+    expect(before.html).toContain('data-hf-scene="a"');
+    expect(after.signature).not.toBe(before.signature);
+    expect(after.parts.shared).toBe(before.parts.shared);
+    expect(after.parts.scenes.a).not.toBe(before.parts.scenes.a);
   });
 
   it("applies adapter preview transforms to bundled root previews", async () => {
@@ -475,7 +558,6 @@ describe("built preview reuse", () => {
 
   it("serves a restarted server from the document store unless the build changed", async () => {
     const projectDir = createProjectDir();
-    const storeDir = join(projectDir, ".hyperframes", "preview");
     const serve = async (salt: string) => {
       const bundle = vi.fn(async () => BUILT);
       const app = new Hono();
@@ -483,7 +565,7 @@ describe("built preview reuse", () => {
         app,
         createAdapter(projectDir, {
           bundle,
-          previewDocuments: createPreviewDocumentStore(storeDir, salt),
+          previewDocuments: createPreviewDocumentStore(projectDir, salt),
         } as Partial<StudioApiAdapter>),
       );
       const html = await (await app.request("http://localhost/projects/demo/preview")).text();
@@ -495,6 +577,26 @@ describe("built preview reuse", () => {
     const restarted = await serve("build-a");
     expect(restarted).toEqual({ html: cold.html, builds: 0 });
     expect((await serve("build-b")).builds).toBe(1);
+  });
+
+  it("keeps the preview in the document store after a capture build", async () => {
+    const projectDir = createProjectDir();
+    const session = async (paths: string[]) => {
+      const bundle = vi.fn(async () => BUILT);
+      const app = new Hono();
+      registerPreviewRoutes(
+        app,
+        createAdapter(projectDir, {
+          bundle,
+          previewDocuments: createPreviewDocumentStore(projectDir, "build-a"),
+        } as Partial<StudioApiAdapter>),
+      );
+      for (const path of paths) await app.request(`http://localhost/projects/demo/${path}`);
+      return bundle.mock.calls.length;
+    };
+
+    expect(await session(["preview", `preview?${PREVIEW_CAPTURE_PARAM}=1`])).toBe(2);
+    expect(await session(["preview"])).toBe(0);
   });
 });
 
@@ -1435,6 +1537,327 @@ describe("hf-proxy negotiation and media codec map injection (U3)", () => {
       expect(proxyRes.status).toBe(404);
       expect(resolveProxyMock).not.toHaveBeenCalled();
     });
+  });
+});
+
+describe("what the preview loaded", () => {
+  it("counts the files the bundle reads and the document names, not other project files", async () => {
+    const projectDir = createProjectDir();
+    writeFileSync(
+      join(projectDir, "index.html"),
+      '<html><head><link rel="stylesheet" href="style.css"></head><body><img src="assets/loader.gif"></body></html>',
+    );
+    const app = new Hono();
+    registerPreviewRoutes(
+      app,
+      createAdapter(projectDir, {
+        bundle: async (dir, options) => {
+          options?.onRead?.(join(dir, "from-bundler.css"));
+          return null;
+        },
+        // As the CLI does with an animated GIF: the document it serves names a derived copy.
+        transformPreviewHtml: async ({ html }) =>
+          html.replace("assets/loader.gif", ".hyperframes/gif/loader.webm"),
+      }),
+    );
+
+    const res = await app.request("http://localhost/projects/demo/preview");
+    expect(res.status).toBe(200);
+    expect(await res.text()).toContain(".hyperframes/gif/loader.webm");
+
+    expect(affectsPreview(projectDir, "from-bundler.css")).toBe(true);
+    expect(affectsPreview(projectDir, "style.css")).toBe(true);
+    expect(affectsPreview(projectDir, "assets/loader.gif")).toBe(true);
+    expect(affectsPreview(projectDir, "notes.md")).toBe(false);
+  });
+
+  it("scans a document with a long run of spaces inside url( in linear time", () => {
+    const started = performance.now();
+    const css = `<style>a { background: url(${" ".repeat(200_000)}</style>`;
+    recordPreviewReferences(createProjectDir(), css);
+    recordPreviewReferences(createProjectDir(), `url("${'url("a'.repeat(100_000)}`);
+    expect(performance.now() - started).toBeLessThan(1000);
+  });
+
+  it("records every reference form a document uses, and the folders holding them", () => {
+    const projectDir = createProjectDir();
+    recordPreviewReferences(
+      projectDir,
+      `<img src='a.png'><i style="x: url('b.png')"></i><i style='y: url("c.png")'></i><i style="z: url(img/deep/d.png)"></i>`,
+    );
+    recordPreviewBuilt(projectDir);
+
+    for (const path of ["a.png", "b.png", "c.png", "img/deep/d.png", "img/deep", "img"]) {
+      expect(affectsPreview(projectDir, path)).toBe(true);
+    }
+    expect(affectsPreview(projectDir, "im")).toBe(false);
+  });
+
+  it.skipIf(process.platform === "win32")(
+    "counts an edit to the file a symlinked asset points at",
+    async () => {
+      const projectDir = createProjectDir();
+      writeFileSync(join(projectDir, "index.html"), "<html><body></body></html>");
+      mkdirSync(join(projectDir, "assets"));
+      writeFileSync(join(projectDir, "assets", "actual.css"), "a {}");
+      symlinkSync("actual.css", join(projectDir, "assets", "alias.css"));
+      const app = new Hono();
+      registerPreviewRoutes(app, createAdapter(projectDir, { bundle: async () => null }));
+      expect((await app.request("http://localhost/projects/demo/preview")).status).toBe(200);
+      const alias = await app.request("http://localhost/projects/demo/preview/assets/alias.css");
+      expect(alias.status).toBe(200);
+
+      expect(affectsPreview(projectDir, "assets/actual.css")).toBe(true);
+      expect(affectsPreview(projectDir, "assets/other.css")).toBe(false);
+    },
+  );
+
+  it.skipIf(process.platform === "win32")(
+    "counts creating the missing target of a symlinked asset the preview asked for",
+    async () => {
+      const projectDir = createProjectDir();
+      writeFileSync(join(projectDir, "index.html"), "<html><body></body></html>");
+      mkdirSync(join(projectDir, "assets"));
+      symlinkSync("actual.css", join(projectDir, "assets", "alias.css"));
+      const app = new Hono();
+      registerPreviewRoutes(app, createAdapter(projectDir, { bundle: async () => null }));
+      expect((await app.request("http://localhost/projects/demo/preview")).status).toBe(200);
+      const alias = await app.request("http://localhost/projects/demo/preview/assets/alias.css");
+      expect(alias.status).toBe(404);
+
+      expect(affectsPreview(projectDir, "assets/actual.css")).toBe(true);
+    },
+  );
+
+  it.skipIf(process.platform === "win32")(
+    "counts an edit to the new target of a symlinked asset retargeted after it loaded",
+    async () => {
+      const projectDir = createProjectDir();
+      writeFileSync(join(projectDir, "index.html"), "<html><body></body></html>");
+      mkdirSync(join(projectDir, "assets"));
+      writeFileSync(join(projectDir, "assets", "first.css"), "a {}");
+      writeFileSync(join(projectDir, "assets", "second.css"), "b {}");
+      symlinkSync("first.css", join(projectDir, "assets", "alias.css"));
+      const app = new Hono();
+      registerPreviewRoutes(app, createAdapter(projectDir, { bundle: async () => null }));
+      const aliasUrl = "http://localhost/projects/demo/preview/assets/alias.css";
+      expect((await app.request("http://localhost/projects/demo/preview")).status).toBe(200);
+      expect((await app.request(aliasUrl)).status).toBe(200);
+
+      rmSync(join(projectDir, "assets", "alias.css"));
+      symlinkSync("second.css", join(projectDir, "assets", "alias.css"));
+      expect(affectsPreview(projectDir, "assets/alias.css")).toBe(true);
+      expect((await app.request(aliasUrl)).status).toBe(200);
+
+      expect(affectsPreview(projectDir, "assets/second.css")).toBe(true);
+    },
+  );
+
+  it.skipIf(process.platform === "win32")(
+    "counts retargeting a link the read passed through on the way to its file",
+    () => {
+      const projectDir = realpathSync(createProjectDir());
+      for (const version of ["v1", "v2"]) {
+        mkdirSync(join(projectDir, "libs", version, "audio"), { recursive: true });
+        writeFileSync(join(projectDir, "libs", version, "audio", "a.mp3"), version);
+      }
+      symlinkSync("v1", join(projectDir, "libs", "current"));
+      symlinkSync("libs/current/audio", join(projectDir, "media"));
+      recordPreviewRead(projectDir, "media/a.mp3");
+      recordPreviewBuilt(projectDir);
+
+      expect(affectsPreview(projectDir, "libs/current")).toBe(true);
+      expect(affectsPreview(projectDir, "libs/v1/audio/a.mp3")).toBe(true);
+      expect(affectsPreview(projectDir, "libs/v2/audio/a.mp3")).toBe(false);
+    },
+  );
+
+  it.skipIf(process.platform === "win32")(
+    "follows a link target's .. from where the link lands, as the system does",
+    () => {
+      const projectDir = realpathSync(createProjectDir());
+      mkdirSync(join(projectDir, "deep", "nested"), { recursive: true });
+      mkdirSync(join(projectDir, "m"));
+      writeFileSync(join(projectDir, "deep", "real.mp3"), "x");
+      symlinkSync("deep/nested", join(projectDir, "sub"));
+      symlinkSync("../sub/../real.mp3", join(projectDir, "m", "a.mp3"));
+      recordPreviewRead(projectDir, "m/a.mp3");
+      recordPreviewBuilt(projectDir);
+
+      expect(affectsPreview(projectDir, "deep/real.mp3")).toBe(true);
+    },
+  );
+
+  it.skipIf(process.platform === "win32")(
+    "matches a project recorded by its real folder and watched through a link to it",
+    () => {
+      const realDir = realpathSync(createProjectDir());
+      const linkDir = join(createProjectDir(), "linked-project");
+      symlinkSync(realDir, linkDir);
+      recordPreviewRead(realDir, "style.css");
+      recordPreviewBuilt(realDir);
+
+      expect(affectsPreview(linkDir, join(linkDir, "style.css"))).toBe(true);
+      expect(affectsPreview(linkDir, join(linkDir, "notes.md"))).toBe(false);
+    },
+  );
+
+  it("records the folders of a read in a project at the filesystem root", () => {
+    const root = parse(process.cwd()).root;
+    recordPreviewRead(root, "media/clip.png");
+    recordPreviewBuilt(root);
+    expect(affectsPreview(root, "media")).toBe(true);
+  });
+
+  it("counts a folder event when a file the preview asked for is inside it", async () => {
+    const projectDir = createProjectDir();
+    writeFileSync(join(projectDir, "index.html"), "<html><body></body></html>");
+    const app = new Hono();
+    registerPreviewRoutes(app, createAdapter(projectDir, { bundle: async () => null }));
+    expect((await app.request("http://localhost/projects/demo/preview")).status).toBe(200);
+    expect(
+      (await app.request("http://localhost/projects/demo/preview/media/clip.png")).status,
+    ).toBe(404);
+
+    expect(affectsPreview(projectDir, "media")).toBe(true);
+    expect(affectsPreview(projectDir, join(projectDir, "media"))).toBe(true);
+    expect(affectsPreview(projectDir, "med")).toBe(false);
+    expect(affectsPreview(projectDir, "docs")).toBe(false);
+  });
+
+  it("counts every write until this process has built the preview, even after serving an asset", async () => {
+    const projectDir = createProjectDir();
+    writeFileSync(join(projectDir, "logo.png"), "logo");
+    const app = new Hono();
+    registerPreviewRoutes(app, createAdapter(projectDir));
+
+    expect((await app.request("http://localhost/projects/demo/preview/logo.png")).status).toBe(200);
+
+    expect(affectsPreview(projectDir, "index.html")).toBe(true);
+    expect(affectsPreview(projectDir, "notes.md")).toBe(true);
+  });
+});
+
+describe("hf-proxy codec probe", () => {
+  afterEach(() => {
+    vi.resetModules();
+    vi.doUnmock("../helpers/mediaMetadata.js");
+    vi.doUnmock("../helpers/proxyTranscoder.js");
+  });
+
+  async function appWithProbe(projectDir: string, codecOf: (path: string) => string) {
+    const proxyPath = join(projectDir, "proxy.mp4");
+    writeFileSync(proxyPath, "proxy-bytes");
+    const probeMediaMetadata = vi.fn(async (path: string) => ({
+      kind: "video" as const,
+      color: { codecName: codecOf(path), pixelFormat: "yuv420p" },
+    }));
+    vi.resetModules();
+    vi.doMock("../helpers/mediaMetadata.js", async () => ({
+      ...(await vi.importActual<typeof import("../helpers/mediaMetadata.js")>(
+        "../helpers/mediaMetadata.js",
+      )),
+      probeMediaMetadata,
+    }));
+    vi.doMock("../helpers/proxyTranscoder.js", async () => ({
+      ...(await vi.importActual<typeof import("../helpers/proxyTranscoder.js")>(
+        "../helpers/proxyTranscoder.js",
+      )),
+      resolveProxy: async () => proxyPath,
+    }));
+    const { registerPreviewRoutes: register } = await import("./preview.js");
+    const app = new Hono();
+    register(app, createAdapter(projectDir));
+    const proxy = (file: string) =>
+      app.request(`http://localhost/projects/demo/preview/${file}?hf-proxy=h264`);
+    return { proxy, probeMediaMetadata };
+  }
+
+  it("answers that the project folder is gone when it is renamed while a proxy is requested", async () => {
+    const projectDir = createProjectDir();
+    writeFileSync(join(projectDir, "clip.mp4"), "original-hevc-bytes");
+    vi.resetModules();
+    vi.doMock("../helpers/mediaMetadata.js", async () => ({
+      ...(await vi.importActual<typeof import("../helpers/mediaMetadata.js")>(
+        "../helpers/mediaMetadata.js",
+      )),
+      probeMediaMetadata: async () => {
+        tempDirs.push(`${projectDir}-renamed`);
+        renameSync(projectDir, `${projectDir}-renamed`);
+        return { kind: "video" as const, color: { codecName: "hevc", pixelFormat: "yuv420p" } };
+      },
+    }));
+    const { createStudioApi: create } = await import("../createStudioApi.js");
+    const api = create(createAdapter(projectDir));
+
+    const response = await api.request(
+      "http://localhost/projects/demo/preview/clip.mp4?hf-proxy=h264",
+    );
+
+    expect(response.status).toBe(404);
+    expect(await response.json()).toMatchObject({ why: "project_dir_missing" });
+  });
+
+  it("answers that the project folder is gone when a rename makes the codec probe fail", async () => {
+    const projectDir = createProjectDir();
+    writeFileSync(join(projectDir, "clip.mp4"), "original-hevc-bytes");
+    vi.resetModules();
+    vi.doMock("../helpers/mediaMetadata.js", async () => ({
+      ...(await vi.importActual<typeof import("../helpers/mediaMetadata.js")>(
+        "../helpers/mediaMetadata.js",
+      )),
+      probeMediaMetadata: async () => {
+        tempDirs.push(`${projectDir}-renamed`);
+        renameSync(projectDir, `${projectDir}-renamed`);
+        return { kind: "video" as const, color: {}, probeError: "ffprobe failed" };
+      },
+    }));
+    const { createStudioApi: create } = await import("../createStudioApi.js");
+    const api = create(createAdapter(projectDir));
+
+    const response = await api.request(
+      "http://localhost/projects/demo/preview/clip.mp4?hf-proxy=h264",
+    );
+
+    expect(response.status).toBe(404);
+    expect(await response.json()).toMatchObject({ why: "project_dir_missing" });
+  });
+
+  it("runs ffprobe once for repeated proxy requests of the same unchanged clip", async () => {
+    const projectDir = createProjectDir();
+    writeFileSync(join(projectDir, "clip.mp4"), "original-hevc-bytes");
+    const { proxy, probeMediaMetadata } = await appWithProbe(projectDir, () => "hevc");
+
+    expect((await proxy("clip.mp4")).status).toBe(200);
+    expect((await proxy("clip.mp4")).status).toBe(200);
+
+    expect(probeMediaMetadata).toHaveBeenCalledTimes(1);
+  });
+
+  it("probes again when a clip's symlink is repointed at a file with the same mtime and size", async () => {
+    const projectDir = createProjectDir();
+    const externalDir = mkdtempSync(join(tmpdir(), "hf-preview-retarget-"));
+    tempDirs.push(externalDir);
+    const hevc = join(externalDir, "hevc.mp4");
+    const h264 = join(externalDir, "h264.mp4");
+    writeFileSync(hevc, "same-size-a");
+    writeFileSync(h264, "same-size-b");
+    const sameTime = new Date("2026-01-01T00:00:00Z");
+    utimesSync(hevc, sameTime, sameTime);
+    utimesSync(h264, sameTime, sameTime);
+    const link = join(projectDir, "clip.mp4");
+    if (!tryCreateSymlink(hevc, link, "file")) return;
+    const { proxy } = await appWithProbe(projectDir, (path) =>
+      realpathSync(path) === realpathSync(hevc) ? "hevc" : "h264",
+    );
+    expect((await proxy("clip.mp4")).status).toBe(200);
+
+    rmSync(link);
+    symlinkSync(h264, link, "file");
+
+    const retargeted = await proxy("clip.mp4");
+    expect(retargeted.status).toBe(422);
+    expect(await retargeted.text()).toContain("browser_safe_codec");
   });
 });
 

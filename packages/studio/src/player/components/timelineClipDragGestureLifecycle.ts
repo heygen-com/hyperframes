@@ -8,6 +8,7 @@ import type {
 } from "./timelineClipDragTypes";
 import type { TimelineGroupResizeSession } from "./timelineGroupEditing";
 import { commitTimelineGroupResize } from "./timelineGroupResizeCommit";
+import { releasedOutsideWindow } from "./timelinePointerRelease";
 import {
   beginTimelineOptimisticGesture,
   rollbackLatestTimelineOptimisticGesture,
@@ -349,6 +350,7 @@ export function mountTimelineClipDragGestureLifecycle({
   };
 
   const handleWindowPointerUp = (event: PointerEvent) => {
+    if (releasedOutsideWindow(event)) return handleWindowPointerCancel(event);
     const claimed = claimActiveGesture(event);
     if (claimed === "ignored") return;
     if (claimed) {

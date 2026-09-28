@@ -9,12 +9,14 @@ const skillLibDir = resolve("skills/media-use/scripts/lib");
 const cliLibDir = resolve("packages/cli/src/media-use/lib");
 
 export const MEDIA_USE_COPY_NAMES = [
+  "config-lock.mjs",
   "cutlist.mjs",
   "duck.mjs",
   "error-diffusion.mjs",
   "index-gen.mjs",
   "manifest.mjs",
   "media-fetch.mjs",
+  "media-home.mjs",
   "npx-sync.mjs",
   "parakeet-words.mjs",
   "prefs-store.mjs",

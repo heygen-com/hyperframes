@@ -1,6 +1,6 @@
 import { vi } from "vitest";
 
-const previewState = vi.hoisted(() => ({ captionEditMode: false }));
+const previewState = vi.hoisted(() => ({ captionEditMode: false, isPlaying: false }));
 export function getPreviewState() {
   return previewState;
 }
@@ -11,7 +11,7 @@ vi.mock("../../contexts/StudioContext", () => ({
   useStudioPlaybackContext: () => ({
     captionEditMode: previewState.captionEditMode,
     compositionLoading: false,
-    isPlaying: false,
+    isPlaying: previewState.isPlaying,
   }),
 }));
 vi.mock("../../captions/store", () => {

@@ -2,10 +2,10 @@ import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { describe, expect, it } from "vitest";
-import { applyFileMutations } from "./applyFileMutations.js";
+import { applyFileMutations, FileChangedError } from "./applyFileMutations.js";
 import { fileContentVersion, identifyFileWrite, resetFileWriteReceipts } from "./fileVersion.js";
 
-function expectStaleMutation(after: string): void {
+function expectStaleMutation(after: string, pinVersion = true): void {
   const projectDir = mkdtempSync(join(tmpdir(), "hf-mutation-version-"));
   const path = join(projectDir, "index.html");
   try {
@@ -14,9 +14,15 @@ function expectStaleMutation(after: string): void {
     writeFileSync(path, "external", "utf8");
     expect(() =>
       applyFileMutations(projectDir, [
-        { sourceFile: "index.html", absPath: path, before: "before", after, expectedVersion },
+        {
+          sourceFile: "index.html",
+          absPath: path,
+          before: "before",
+          after,
+          ...(pinVersion ? { expectedVersion } : {}),
+        },
       ]),
-    ).toThrow("file changed since the timeline was read");
+    ).toThrow(FileChangedError);
     expect(readFileSync(path, "utf8")).toBe("external");
   } finally {
     rmSync(projectDir, { recursive: true, force: true });
@@ -93,6 +99,10 @@ describe("applyFileMutations", () => {
     } finally {
       rmSync(projectDir, { recursive: true, force: true });
     }
+  });
+
+  it("refuses a file that changed since the caller read it, without an expected version", () => {
+    expectStaleMutation("after", false);
   });
 
   it("clears receipts for writes rolled back after a partial batch", () => {

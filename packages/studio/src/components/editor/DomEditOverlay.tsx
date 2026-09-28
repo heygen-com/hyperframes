@@ -54,6 +54,14 @@ interface DomEditOverlayProps {
   groupSelections?: DomEditSelection[];
   hoverSelection: DomEditSelection | null;
   allowCanvasMovement?: boolean;
+  /** "host": no hover, marquee or box re-select; Enter with nothing focused still opens text. */
+  canvasInput?: "overlay" | "host";
+  onTextEditingChange?: (editing: boolean) => void;
+  /** A click on a single selection's box, in either mode; the event may be the pointerup. */
+  onSelectionBoxClick?: (
+    event: React.MouseEvent<HTMLDivElement>,
+    selection: DomEditSelection,
+  ) => void;
   onCanvasMouseDown: (
     event: React.MouseEvent<HTMLDivElement>,
     options?: PreviewMouseDownOptions,
@@ -117,7 +125,10 @@ export const DomEditOverlay = memo(function DomEditOverlay({
   groupSelections = [],
   hoverSelection,
   allowCanvasMovement = true,
-  onCanvasMouseDown,
+  canvasInput = "overlay",
+  onTextEditingChange,
+  onSelectionBoxClick,
+  onCanvasMouseDown: onCanvasMouseDownProp,
   onCanvasPointerMove,
   onCanvasPointerLeave,
   onSelectionChange,
@@ -133,6 +144,7 @@ export const DomEditOverlay = memo(function DomEditOverlay({
   onApplyZIndex,
 }: DomEditOverlayProps) {
   const readOnly = usePreviewReadOnly();
+  const hostInput = canvasInput === "host";
   const overlayRef = useRef<HTMLDivElement | null>(null);
   const boxRef = useRef<HTMLDivElement | null>(null);
   const onMarqueeSelectRef = useRef(onMarqueeSelect);
@@ -150,6 +162,13 @@ export const DomEditOverlay = memo(function DomEditOverlay({
 
   const selectionRef = useRef(selection);
   selectionRef.current = selection;
+  const onCanvasMouseDown: typeof onCanvasMouseDownProp = (event, options) => {
+    const sel = selectionRef.current;
+    if (sel && boxRef.current?.contains(event.target as Node | null)) {
+      onSelectionBoxClick?.(event, sel);
+    }
+    if (!hostInput) onCanvasMouseDownProp(event, options);
+  };
 
   // Brief highlight on the sibling a forward/backward z step crossed — drawn
   // in this studio overlay, never in the iframe DOM (see useZOrderCrossedFlash).
@@ -163,7 +182,14 @@ export const DomEditOverlay = memo(function DomEditOverlay({
   hoverSelectionRef.current = hoverSelection;
 
   // Double-click an element to edit its text where it sits.
-  const inlineText = useInlineTextEditing(selectionRef);
+  const inlineText = useInlineTextEditing(selectionRef, { enterFromWindow: hostInput });
+  const onTextEditingChangeRef = useRef(onTextEditingChange);
+  onTextEditingChangeRef.current = onTextEditingChange;
+  useEffect(() => {
+    if (!inlineText.editing) return;
+    onTextEditingChangeRef.current?.(true);
+    return () => onTextEditingChangeRef.current?.(false);
+  }, [inlineText.editing]);
   const onPathOffsetCommitRef = useRef(onPathOffsetCommit);
   onPathOffsetCommitRef.current = onPathOffsetCommit;
   const onGroupPathOffsetCommitRef = useRef(onGroupPathOffsetCommit);
@@ -322,7 +348,7 @@ export const DomEditOverlay = memo(function DomEditOverlay({
 
   // fallow-ignore-next-line complexity
   const handleOverlayPointerDown = (event: React.PointerEvent<HTMLDivElement>) => {
-    if (!allowCanvasMovement || event.button !== 0) return;
+    if (!allowCanvasMovement || hostInput || event.button !== 0) return;
     if (event.shiftKey) {
       const shiftIframe = iframeRef.current;
       const candidate = resolveShiftClickCandidate({
@@ -378,9 +404,7 @@ export const DomEditOverlay = memo(function DomEditOverlay({
           )
         : null;
       if (freshTarget) return;
-      const overlayEl = overlayRef.current;
-      if (overlayEl) {
-        const oRect = overlayEl.getBoundingClientRect();
+      if (overlayRef.current) {
         // Anywhere empty on the overlay starts one, not just inside the frame.
         // An element dragged past the edge sits OUT there in the grey, and a
         // rubber band that refuses to start there cannot reach it — which left
@@ -390,17 +414,7 @@ export const DomEditOverlay = memo(function DomEditOverlay({
         event.preventDefault();
         event.stopPropagation();
         suppressNextOverlayMouseDownRef.current = true;
-        (event.currentTarget as HTMLElement).setPointerCapture(event.pointerId);
-        const cx = event.clientX - oRect.left;
-        const cy = event.clientY - oRect.top;
-        marquee.marqueeRef.current = {
-          startX: cx,
-          startY: cy,
-          currentX: cx,
-          currentY: cy,
-          pointerId: event.pointerId,
-          pastThreshold: false,
-        };
+        marquee.begin(event);
         return;
       }
     }
@@ -440,7 +454,7 @@ export const DomEditOverlay = memo(function DomEditOverlay({
       // Standing aside is the only way the caret below can be reached, and is
       // what keeps selection, drag and marquee from firing mid-edit.
       className={`absolute inset-0 z-10 outline-hidden ${
-        inlineText.editing ? "pointer-events-none" : "pointer-events-auto"
+        inlineText.editing || hostInput ? "pointer-events-none" : "pointer-events-auto"
       }`}
       data-editing-text={inlineText.editing ? "true" : undefined}
       tabIndex={-1}
@@ -451,6 +465,7 @@ export const DomEditOverlay = memo(function DomEditOverlay({
         // A pointer gesture supersedes a pending nudge burst — commit it first
         // so the gesture's member snapshot starts from the nudged position.
         flushNudge();
+        suppressNextBoxClickRef.current = false;
         // Not while editing: taking focus back would send the keystroke nowhere.
         if (!inlineText.editing) {
           focusDomEditOverlayElement(event.currentTarget as FocusableDomEditOverlay);
@@ -467,9 +482,9 @@ export const DomEditOverlay = memo(function DomEditOverlay({
       onPointerLeave={() => onCanvasPointerLeaveRef.current()}
       onPointerUp={marquee.onPointerUp}
       onPointerCancel={marquee.onPointerCancel}
-      onContextMenu={handleContextMenu}
+      onContextMenu={hostInput ? undefined : handleContextMenu}
     >
-      {hoverSelection && hoverRect && compRect.width > 0 && (
+      {!hostInput && hoverSelection && hoverRect && compRect.width > 0 && (
         <div
           aria-hidden="true"
           data-dom-edit-hover-box="true"
@@ -516,7 +531,7 @@ export const DomEditOverlay = memo(function DomEditOverlay({
           editing session, which does. */}
       {inlineText.toolbar}
       <OffCanvasIndicators
-        rects={offCanvasRects}
+        rects={hostInput ? [] : offCanvasRects}
         elements={offCanvasElementsRef}
         compRect={compRect}
         selection={selection}

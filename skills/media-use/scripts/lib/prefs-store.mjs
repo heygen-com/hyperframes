@@ -1,6 +1,6 @@
 import { existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from "node:fs";
-import { homedir } from "node:os";
 import { basename, dirname, join, resolve } from "node:path";
+import { globalMediaDir } from "./media-home.mjs";
 
 /**
  * Remembered defaults — the lightweight tier of HyperFrames user memory.
@@ -41,7 +41,7 @@ export function projectPrefsPath(projectDir) {
 }
 
 export function userPrefsPath() {
-  return join(homedir(), ".media", PREFS_FILE);
+  return join(globalMediaDir(), PREFS_FILE);
 }
 
 function emptyFile() {

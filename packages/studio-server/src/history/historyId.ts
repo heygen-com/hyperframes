@@ -1,12 +1,16 @@
 import { randomUUID } from "node:crypto";
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
-import { join, resolve } from "node:path";
+import { existsSync, mkdirSync, readFileSync, statSync, writeFileSync } from "node:fs";
+import { basename, join, resolve } from "node:path";
+import { replaceFileAtomically } from "../helpers/atomicFile.js";
+import { mkdirWithinProject } from "../helpers/safePath.js";
 
-const ID_PATH = join(".hyperframes", "history-id");
+export const ID_PATH = join(".hyperframes", "history-id");
 /** The only shape minted here; the id is project content and becomes a path, so nothing else is trusted. */
 const ID_SHAPE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
 
-function readId(projectDir: string): string | null {
+export const isHistoryId = (name: string) => ID_SHAPE.test(name);
+
+export function readId(projectDir: string): string | null {
   try {
     const id = readFileSync(join(projectDir, ID_PATH), "utf-8").trim();
     return ID_SHAPE.test(id) ? id : null;
@@ -15,28 +19,77 @@ function readId(projectDir: string): string | null {
   }
 }
 
-function recordedDir(historyDir: string): string | null {
+export type FolderIdentity = { ino: number; birthtimeMs: number };
+
+export const sameFolder = (a: FolderIdentity, b: FolderIdentity) =>
+  a.ino === b.ino && a.birthtimeMs === b.birthtimeMs;
+
+export function isRecordedFolder(historyDir: string, folder: FolderIdentity): boolean {
+  const was = readRecord(historyDir);
+  if (typeof was?.ino === "number")
+    return sameFolder({ ino: was.ino, birthtimeMs: was.born ?? NaN }, folder);
+  const unreadableSo0878KeptTheId = typeof was?.dir !== "string";
+  if (unreadableSo0878KeptTheId) return true;
+  return !isCopyOf0878Folder(was!.dir as string, basename(historyDir), folder);
+}
+
+export function readRecord(
+  historyDir: string,
+): { dir?: unknown; ino?: unknown; born?: number; dev?: unknown } | null {
   try {
-    return JSON.parse(readFileSync(join(historyDir, "project.json"), "utf-8")).dir ?? null;
+    return JSON.parse(readFileSync(join(historyDir, "project.json"), "utf-8"));
   } catch {
     return null;
   }
 }
 
+function isCopyOf0878Folder(recordedDir: string, id: string, folder: FolderIdentity): boolean {
+  let there;
+  try {
+    there = statSync(recordedDir, { throwIfNoEntry: false });
+  } catch {
+    return false;
+  }
+  return !!there && !sameFolder(there, folder) && readId(recordedDir) === id;
+}
+
 /**
- * The project's history id, kept in the project so a rename or move keeps its history. A folder whose id is
- * still carried by the folder that history was recorded for is a copy, and gets an id of its own.
+ * The project's history id, kept in the project so a rename or move keeps its history; only the folder its history
+ * was recorded for keeps it (isRecordedFolder). An id file that cannot be read is refused, never replaced.
  */
 export function projectHistoryId(projectDir: string, historyRoot: string): string {
   const dir = resolve(projectDir);
+  const folder = statSync(dir);
   let id = readId(dir);
-  const was = id && recordedDir(join(historyRoot, id));
-  if (!id || (was && was !== dir && existsSync(was) && readId(was) === id)) {
+  if (!id && existsSync(join(dir, ID_PATH)))
+    throw new HistoryIdError(
+      `${join(dir, ID_PATH)} holds no history id this version can read; move it aside to start anew.`,
+    );
+  if (
+    !id ||
+    (existsSync(join(historyRoot, id)) && !isRecordedFolder(join(historyRoot, id), folder))
+  ) {
     id = randomUUID();
-    mkdirSync(join(dir, ".hyperframes"), { recursive: true });
+    mkdirWithinProject(dir, join(dir, ".hyperframes"));
     writeFileSync(join(dir, ID_PATH), `${id}\n`);
   }
-  mkdirSync(join(historyRoot, id), { recursive: true });
-  writeFileSync(join(historyRoot, id, "project.json"), JSON.stringify({ dir }));
+  recordProject(join(historyRoot, id), dir, folder);
   return id;
+}
+
+export class HistoryIdError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "HistoryIdError";
+  }
+}
+
+export function recordProject(
+  historyDir: string,
+  dir: string,
+  folder: FolderIdentity & { dev: number },
+): void {
+  const record = { dir, ino: folder.ino, born: folder.birthtimeMs, dev: folder.dev };
+  mkdirSync(historyDir, { recursive: true });
+  replaceFileAtomically(join(historyDir, "project.json"), JSON.stringify(record), 0o644);
 }

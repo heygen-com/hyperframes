@@ -7,10 +7,11 @@
 
 import { Hono, type Context } from "hono";
 import { streamSSE } from "hono/streaming";
+import { realpath } from "@hyperframes/core";
 import { existsSync, readFileSync, writeFileSync, unlinkSync } from "node:fs";
 import { createHash } from "node:crypto";
 import { fileURLToPath } from "node:url";
-import { resolve, join, basename } from "node:path";
+import { resolve, join, basename, relative, sep } from "node:path";
 import { readBundleFile } from "./readBundleFile.js";
 import {
   createProjectWatcher,
@@ -45,6 +46,7 @@ import {
   getMimeType,
   affectsProjectSignature,
   compositionsAffectedBy,
+  affectsPreview,
   type PreviewApiAdapter,
   PREVIEW_BUNDLE_OPTIONS,
   createPreviewDocumentStore,
@@ -56,7 +58,8 @@ import {
   DEFAULT_HISTORY_ROOT,
   openProjectHistory,
   HistoryBusyError,
-  type ProjectHistory,
+  HistoryClosedError,
+  historyCache,
 } from "@hyperframes/studio-server";
 import { resolveAutoProxy } from "../utils/projectConfig.js";
 import { getElementScreenshotClip } from "@hyperframes/studio-server/screenshot-clip";
@@ -429,18 +432,20 @@ export function createStudioServer(options: StudioServerOptions): StudioServer {
 
   // Opened on first use, so a server that never serves Studio's history never writes one. A failed open stays off
   // for this run; one another process was holding is tried again on the next request.
-  let history: Promise<ProjectHistory | null> | undefined;
-  const projectHistory = () =>
-    (history ??= openProjectHistory({
+  const histories = historyCache(() =>
+    openProjectHistory({
       projectDir,
       historyRoot: options.historyRoot ?? DEFAULT_HISTORY_ROOT,
     }).catch((error: unknown) => {
       console.warn(`[studio] Project history is off: ${String(error)}`);
-      if (error instanceof HistoryBusyError) history = undefined;
+      if (error instanceof HistoryBusyError || error instanceof HistoryClosedError)
+        histories.forget(projectDir);
       return null;
-    }));
+    }),
+  );
+  const projectHistory = () => histories.get(projectDir);
   watcher.addListener((changedPath) => {
-    void history?.then((opened) => opened?.noteChange(changedPath));
+    void histories.peek(projectDir)?.then((opened) => opened?.noteChange(changedPath));
   });
 
   const inFlightRenders = new Map<AbortController, Promise<void>>();
@@ -461,7 +466,7 @@ export function createStudioServer(options: StudioServerOptions): StudioServer {
 
     // Salted with the running CLI file, so an upgraded CLI never serves an older build's document.
     previewDocuments: createPreviewDocumentStore(
-      join(projectDir, ".hyperframes", "preview"),
+      projectDir,
       createHash("sha256")
         .update(readFileSync(fileURLToPath(import.meta.url)))
         .digest("hex"),
@@ -751,40 +756,45 @@ export function createStudioServer(options: StudioServerOptions): StudioServer {
 
     async listRegistryCatalog() {
       const { listRegistryItems, loadAllItems } = await import("../registry/resolver.js");
-      const entries = await listRegistryItems();
+      const { loadProjectConfig } = await import("../utils/projectConfig.js");
+      // The same registry `add` installs from, so the panel lists what can be installed.
+      const registry = { baseUrl: loadProjectConfig(projectDir).registry };
+      const entries = await listRegistryItems(undefined, registry);
       const blockAndComponentEntries = entries.filter(
         (e) => e.type === "hyperframes:block" || e.type === "hyperframes:component",
       );
-      return loadAllItems(blockAndComponentEntries);
+      return loadAllItems(blockAndComponentEntries, registry);
     },
 
     async installRegistryBlock(opts) {
-      const { resolveItemWithDependencies } = await import("../registry/resolver.js");
-      const { installItem } = await import("../registry/installer.js");
-      const { gateRegistryItemsCompatibility } = await import("../registry/compatibility.js");
-      // Resolve transitive registryDependencies and install them first so a
-      // block that depends on other registry items installs completely.
-      const items = await resolveItemWithDependencies(opts.blockName);
-      // Compatibility-gate the whole set before writing anything (same gate as
-      // `hyperframes add`), so an incompatible block or dep aborts cleanly.
-      const warnings = gateRegistryItemsCompatibility(items);
-      for (const warning of warnings) {
+      const { addToProject, primaryInstalledTarget } = await import("../commands/add.js");
+      const { recordRewrittenInstall } = await import("../registry/installer.js");
+      const { registryTargetPath } = await import("../registry/publication.js");
+      const { result, item } = await addToProject({
+        name: opts.blockName,
+        projectDir: opts.project.dir,
+        skipClipboard: true,
+        source: "studio",
+      });
+      for (const warning of result.warnings) {
         process.stderr.write(`hyperframes:registry ${warning}\n`);
       }
-      const written: string[] = [];
-      for (const dep of items) {
-        const result = await installItem(dep, { destDir: opts.project.dir });
-        written.push(...result.written);
-      }
-      const item = items[items.length - 1]!;
+      const written = result.written;
 
       rewriteWrittenToHostViewport(opts.project.dir, written);
+      recordRewrittenInstall(opts.project.dir, written);
 
-      const relativePaths = written.map((abs) => {
-        const rel = abs.startsWith(opts.project.dir) ? abs.slice(opts.project.dir.length + 1) : abs;
-        return rel;
-      });
-      return { written: relativePaths, block: item };
+      // The item's own file first, as add recorded it, since Studio mounts the first .html it gets.
+      const root = realpath(opts.project.dir);
+      const primary = primaryInstalledTarget(item);
+      const primaryPath = registryTargetPath(root, primary);
+      const others = written
+        .filter((abs) => abs !== primaryPath)
+        .map((abs) => relative(root, abs).split(sep).join("/"));
+      return {
+        written: written.includes(primaryPath) ? [primary, ...others] : others,
+        block: item,
+      };
     },
   };
 
@@ -867,6 +877,7 @@ export function createStudioServer(options: StudioServerOptions): StudioServer {
         // identity for an unlabelled change, and without it every duplicate
         // delivery of one watcher event drains and reloads again.
         const receipt = identifyFileWrite(absPath, version ?? DELETED_VERSION);
+        const reloads = affectsPreview(projectDir, path);
         // `projectId` so a stale tab — one still pointed at a project this
         // server no longer serves, because `hyperframes preview` reused this
         // port for a different folder (see ProjectUnreachableBanner's doc
@@ -883,8 +894,9 @@ export function createStudioServer(options: StudioServerOptions): StudioServer {
               path,
               version,
               projectId: project.id,
+              affectsPreview: reloads,
               // Which thumbnails this write can change; null means all of them.
-              affectedCompositions: compositionsAffectedBy(projectDir, path),
+              affectedCompositions: reloads ? compositionsAffectedBy(projectDir, path) : [],
               ...receipt,
             }),
           })
@@ -1098,7 +1110,7 @@ export function createStudioServer(options: StudioServerOptions): StudioServer {
   const shutdown = async (): Promise<void> => {
     shuttingDown = true;
     // Commits any open edit window; bounded with the renders below, so a history still opening cannot hold exit.
-    const closeHistory = history?.then((opened) => opened?.close()).catch(() => {});
+    const closeHistory = histories.closeAll().catch(() => {});
     const renders = [...inFlightRenders];
     for (const [abortController] of renders) abortController.abort();
     const { killTrackedProcesses, closeBrowserPool } = await import("@hyperframes/engine");

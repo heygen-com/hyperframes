@@ -213,10 +213,11 @@ export const PlayerControls = memo(function PlayerControls({
       currentTimeRef.current = time;
       if (!timeDisplayRef.current) return;
       const currentDuration = durationRef.current;
-      timeDisplayRef.current.textContent =
+      const text =
         timeDisplayModeRef.current === "frame"
           ? formatFrameTime(time, currentDuration)
           : formatTime(time);
+      if (timeDisplayRef.current.textContent !== text) timeDisplayRef.current.textContent = text;
     };
     const unsubscribe = liveTime.subscribe(updateTime);
     updateTime(usePlayerStore.getState().currentTime);

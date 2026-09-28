@@ -131,6 +131,7 @@ function renderTimelineEditingHook(input: {
   elementsDelete: ReturnType<typeof useTimelineEditing>["handleTimelineElementsDelete"];
   handleAutoGroupCarveSources: ReturnType<typeof useTimelineEditing>["handleAutoGroupCarveSources"];
   setAudioGroupAttribute: ReturnType<typeof useTimelineEditing>["setAudioGroupAttribute"];
+  setElementFxAttribute: ReturnType<typeof useTimelineEditing>["setElementFxAttribute"];
   unmount: () => void;
 } {
   let move: ReturnType<typeof useTimelineEditing>["handleTimelineElementMove"] | null = null;
@@ -146,6 +147,7 @@ function renderTimelineEditingHook(input: {
   let setAudioGroupAttribute:
     | ReturnType<typeof useTimelineEditing>["setAudioGroupAttribute"]
     | null = null;
+  let latest: ReturnType<typeof useTimelineEditing> | null = null;
 
   function Harness() {
     const commitRef = useRef(input.onZIndexCommit);
@@ -176,6 +178,7 @@ function renderTimelineEditingHook(input: {
     elementsDelete = hook.handleTimelineElementsDelete;
     handleAutoGroupCarveSources = hook.handleAutoGroupCarveSources;
     setAudioGroupAttribute = hook.setAudioGroupAttribute;
+    latest = hook;
     return null;
   }
 
@@ -197,6 +200,8 @@ function renderTimelineEditingHook(input: {
     elementsDelete,
     handleAutoGroupCarveSources,
     setAudioGroupAttribute,
+    setElementFxAttribute: (latest as unknown as ReturnType<typeof useTimelineEditing>)
+      .setElementFxAttribute,
     unmount,
   };
 }
@@ -1907,6 +1912,60 @@ describe("useTimelineEditing: handler identity is stable across renders", () => 
     act(() => bump());
     expect(bumpTick).toBeGreaterThan(1);
     expect(seen[0]).toBe(seen[1]);
+    unmount();
+  });
+});
+
+describe("useTimelineEditing effect saves report what happened", () => {
+  const LOCKED = { blocked: true as const, reason: "Reserved by an agent" };
+
+  it("resolves a saved clip effect as saved", async () => {
+    const { clip, setElementFxAttribute, writeProjectFile, unmount } = setupSingleClipHarness();
+    let outcome: unknown;
+    await act(async () => {
+      outcome = await setElementFxAttribute.setQuiet(clip, "data-hf-audio-fx", "echo", "Apply");
+    });
+    expect(outcome).toEqual({ status: "saved" });
+    expect(writeProjectFile).toHaveBeenCalled();
+    unmount();
+  });
+
+  it("resolves a clip effect on a locked clip as refused, with the host's reason", async () => {
+    const { clip, setElementFxAttribute, writeProjectFile, unmount } = setupSingleClipHarness({
+      canEdit: () => LOCKED,
+    });
+    let outcome: unknown;
+    await act(async () => {
+      outcome = await setElementFxAttribute.setQuiet(clip, "data-hf-audio-fx", "echo", "Apply");
+    });
+    expect(outcome).toEqual({ status: "refused", reason: "Reserved by an agent" });
+    expect(writeProjectFile).not.toHaveBeenCalled();
+    unmount();
+  });
+
+  it("resolves a clip effect whose write fails as failed", async () => {
+    const { clip, setElementFxAttribute, writeProjectFile, unmount } = setupSingleClipHarness();
+    writeProjectFile.mockRejectedValue(new Error("disk full"));
+    let outcome: unknown;
+    await act(async () => {
+      outcome = await setElementFxAttribute.setQuiet(clip, "data-hf-audio-fx", "echo", "Apply");
+    });
+    expect(outcome).toEqual({ status: "failed", reason: expect.stringContaining("disk full") });
+    unmount();
+  });
+
+  it("resolves a group audio effect on a locked group as refused", async () => {
+    const member = timelineElement({ id: "clip", track: 0, zIndex: 0 });
+    usePlayerStore.getState().setElements([{ ...member, audioGroup: "hf-group" }]);
+    const { setAudioGroupAttribute, writeProjectFile, unmount } = setupSingleClipHarness({
+      canEdit: () => LOCKED,
+    });
+    let outcome: unknown;
+    await act(async () => {
+      outcome = await setAudioGroupAttribute.setQuiet("hf-group", "data-volume", "0.5", "Volume");
+    });
+    expect(outcome).toEqual({ status: "refused", reason: "Reserved by an agent" });
+    expect(writeProjectFile).not.toHaveBeenCalled();
     unmount();
   });
 });

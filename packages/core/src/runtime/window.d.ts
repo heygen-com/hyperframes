@@ -1,4 +1,10 @@
-import type { RuntimeSeekOptions, RuntimeTimelineMessage, RuntimeTimelineLike } from "./types";
+import type {
+  RuntimeSeekOptions,
+  RuntimeTimelineChildLike,
+  RuntimeTimelineMessage,
+  RuntimeTimelineLike,
+  SceneAnimation,
+} from "./types";
 import type { RuntimeColorGradingApi } from "./colorGrading";
 import type { HyperframePickerApi } from "../inline-scripts/pickerApi";
 import type { PlayerAPI } from "../core.types";
@@ -54,6 +60,10 @@ declare global {
         seconds: number | null;
         pendingClips: number;
       };
+      /** Where each animation's FIRST cycle ends, latest wins, in seconds (root timeline, CSS and
+       *  Lottie; never script-created WAAPI, media or the declared length); repeats may run past it.
+       *  Null when unknown. Studio reads it. */
+      animationEnd?: () => number | null;
       /** Borrow an element's playback while the transport clock is paused, so the
        *  runtime's paused-side enforcement leaves it alone. Always release. */
       leasePausedMedia?: (el: HTMLMediaElement) => void;
@@ -76,6 +86,10 @@ declare global {
     __playerReady?: boolean;
     __renderReady?: boolean;
     __hfRuntimeTeardown?: (() => void) | null;
+    /** What each composition's scripts started on gsap's global timeline, by composition id. */
+    __hfSceneAnimations?: Record<string, SceneAnimation[]> | null;
+    /** Swap edited scenes from a rebuilt preview document; refuses before changing anything when it cannot. */
+    __hfSwapScenes?: (html: string, signal?: AbortSignal) => Promise<void>;
     __HF_EXPORT_RENDER_SEEK_CONFIG?: {
       mode?: string;
       diagnostics?: boolean;
@@ -121,11 +135,19 @@ declare global {
     __HF_PICKER_API?: HyperframePickerApi;
     gsap?: {
       timeline: (params?: { paused?: boolean }) => RuntimeTimelineLike;
+      set?: (target: Element, vars: Record<string, unknown>) => unknown;
       parseEase?: (
         ease: string | ((progress: number) => number),
         ...args: unknown[]
       ) => ((progress: number) => number) | null;
       registerPlugin?: (plugin: unknown) => void;
+      globalTimeline?: {
+        getChildren?: (
+          nested?: boolean,
+          tweens?: boolean,
+          timelines?: boolean,
+        ) => RuntimeTimelineChildLike[];
+      };
       ticker?: {
         tick: () => void;
       };

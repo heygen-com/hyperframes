@@ -1,4 +1,5 @@
 // @vitest-environment node
+// fallow-ignore-file code-duplication
 import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -35,18 +36,64 @@ function apiFor(projectDir: string, history?: ProjectHistory) {
 }
 
 /** A project whose index.html reads "A", with its history and the routes over it. */
-async function demoProject() {
+async function demoProject({ quietMs }: { quietMs?: number } = {}) {
   const projectDir = tempDir("hf-history-routes-");
   writeFileSync(join(projectDir, "index.html"), "A");
   const history = await openProjectHistory({
     projectDir,
     historyRoot: tempDir("hf-history-routes-root-"),
+    ...(quietMs && { quietMs }),
   });
   cleanup.push(() => history.close());
   return { projectDir, history, call: apiFor(projectDir, history) };
 }
 
 describe("history routes", () => {
+  it.each(["outside", "agent turn"])(
+    "keep the %s write that landed between Studio's read and its patch when Studio's edit is undone",
+    async (writer) => {
+      const projectDir = tempDir("hf-history-outside-patch-");
+      const file = join(projectDir, "index.html");
+      writeFileSync(file, '<h1 id="title">A</h1>');
+      const history = await openProjectHistory({
+        projectDir,
+        historyRoot: tempDir("hf-history-outside-patch-root-"),
+      });
+      cleanup.push(() => history.close());
+      const call = apiFor(projectDir, history);
+      const api = createStudioApi({
+        listProjects: () => [],
+        resolveProject: (id: string) => (id === "demo" ? { id, dir: projectDir } : null),
+        history: () => history,
+      } as unknown as StudioApiAdapter);
+
+      const studioRead = readFileSync(file, "utf-8");
+      const turn =
+        writer === "agent turn"
+          ? await history.beginWindow({ kind: "agent", name: "Agent" }, "Agent turn")
+          : null;
+      writeFileSync(file, '<h1 id="title">B</h1>');
+      const patched = await api.request("/projects/demo/file-mutations/patch-element/index.html", {
+        method: "POST",
+        body: JSON.stringify({
+          target: { id: "title" },
+          operations: [{ type: "inline-style", property: "color", value: "red" }],
+        }),
+      });
+      expect(await patched.json()).toMatchObject({ ok: true, changed: true });
+      await call("/claim", {
+        label: "Color",
+        paths: ["index.html"],
+        overwrote: { "index.html": fileContentVersion(studioRead) },
+      });
+
+      await turn?.close();
+
+      expect(await (await call("/step", { direction: "back" })).json()).toMatchObject({ ok: true });
+      expect(readFileSync(file, "utf-8")).toBe('<h1 id="title">B</h1>');
+    },
+  );
+
   it("record a Studio edit window as the person's entry, and step back undoes it", async () => {
     const { projectDir, call } = await demoProject();
 
@@ -109,7 +156,7 @@ describe("history routes", () => {
     });
   });
 
-  it("name the step the engine takes when it steps past an entry whose file moved on", async () => {
+  it("name the person's own newest change, not an agent's later write", async () => {
     const { projectDir, history, call } = await demoProject();
     const write = (text: string) => writeFileSync(join(projectDir, "index.html"), text);
     const agent = { kind: "agent" as const, name: "Agent" };
@@ -126,7 +173,85 @@ describe("history routes", () => {
     write("D");
     await window.close();
     await history.flush();
-    expect((await (await call("")).json()).back).toMatchObject({ label: "Agent turn" });
+    expect((await (await call("")).json()).back).toMatchObject({ label: "Dragged Title" });
+  });
+
+  it.each([
+    ["a save that landed between Studio's read and its write", ["save B", "patch"], "B"],
+    ["its start, when Studio wrote the edit as two patches", ["patch", "patch"], "A"],
+    ["a save before Studio's patch and its whole-file follow-up", ["save B", "patch", "put"], "B"],
+    [
+      "its start, when Studio's patches came back to earlier bytes",
+      ["patch", "patch", "unpatch"],
+      "A",
+    ],
+  ])("undo Studio's element edit back to %s", async (_, steps, undoneTo) => {
+    const { projectDir, history } = await demoProject();
+    const index = join(projectDir, "index.html");
+    const saved = (text: string) => `<h1 id="title">${text}</h1>`;
+    writeFileSync(index, saved("A"));
+    await history.flush();
+    const api = createStudioApi({
+      listProjects: () => [],
+      resolveProject: (id: string) => (id === "demo" ? { id, dir: projectDir } : null),
+      history: () => history,
+    } as unknown as StudioApiAdapter);
+    const post = (path: string, body: object) =>
+      api.request(`/projects/demo${path}`, { method: "POST", body: JSON.stringify(body) });
+
+    let zIndex = 1;
+    for (const step of steps) {
+      if (step === "save B") writeFileSync(index, saved("B"));
+      const current = readFileSync(index, "utf-8");
+      const written =
+        step === "patch" || step === "unpatch"
+          ? await post("/file-mutations/patch-element/index.html", {
+              target: { id: "title" },
+              operations: [
+                {
+                  type: "inline-style",
+                  property: "z-index",
+                  value: String(step === "patch" ? ++zIndex : --zIndex),
+                },
+              ],
+            })
+          : step === "put"
+            ? await api.request("/projects/demo/files/index.html", {
+                method: "PUT",
+                headers: { "If-Match": fileContentVersion(current) },
+                body: `${current}<style>@font-face{}</style>`,
+              })
+            : null;
+      expect(written?.status ?? 200).toBe(200);
+    }
+    await post("/history/claim", {
+      label: "Moved Title",
+      paths: ["index.html"],
+      overwrote: { "index.html": fileContentVersion(saved("A")) },
+    });
+    expect(await (await post("/history/step", { direction: "back" })).json()).toMatchObject({
+      ok: true,
+      entry: { label: "Undid: Moved Title" },
+    });
+    expect(readFileSync(index, "utf-8")).toBe(saved(undoneTo));
+  });
+
+  it("hold a gesture claimed without idleMs until another key, however long it pauses", async () => {
+    const { projectDir, history, call } = await demoProject({ quietMs: 30 });
+    const drag = (text: string) => {
+      writeFileSync(join(projectDir, "index.html"), text);
+      return call("/claim", {
+        label: "Dragged Title",
+        paths: ["index.html"],
+        coalesceKey: "drag",
+        idleMs: null,
+      });
+    };
+    await drag("B");
+    await new Promise((resolve) => setTimeout(resolve, 150));
+    await drag("C");
+    await history.flush();
+    expect(history.list().map((entry) => entry.label)).toEqual(["Dragged Title"]);
   });
 
   it("label an undo's writes with Studio's write token, so their echo reads as Studio's own", async () => {

@@ -172,6 +172,19 @@ describe("probeAssetCodec", () => {
 
     await expect(probeAssetCodec(videoPath)).resolves.toBeNull();
   });
+
+  it("probes again after ffprobe failed instead of caching the failure", async () => {
+    const project = tmpProject();
+    const videoPath = join(project, "clip.mp4");
+    writeFileSync(videoPath, "fake video bytes");
+    const cache = createMediaCodecProbeCache();
+    process.env.HYPERFRAMES_FFPROBE_PATH = join(project, "missing-ffprobe");
+    await expect(probeAssetCodec(videoPath, undefined, cache)).resolves.toBeNull();
+
+    const facts = await probeAssetCodec(videoPath, makeRunner({ [videoPath]: "hevc" }), cache);
+
+    expect(facts?.codecName).toBe("hevc");
+  });
 });
 
 describe("BROWSER_HOSTILE_CODECS representative mimes", () => {

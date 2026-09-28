@@ -5,6 +5,7 @@ import type {
   RuntimeTimelineLike,
 } from "./types";
 import { stableClipId } from "./clipTree";
+import { findRootCompositionElement, parseCompositionDimension } from "./compositionDimension";
 import {
   AUTHORED_DURATION_ATTR,
   AUTHORED_END_ATTR,
@@ -21,7 +22,7 @@ import {
 import { resolveCssStackingContextId } from "./stackingContext";
 import { createRuntimeStartTimeResolver } from "./startResolver";
 import { isClipVisibleAt } from "./clipWindow";
-import { snapTimeToFrameBoundary } from "../inline-scripts/parityContract";
+import { exportClipWindow } from "../inline-scripts/parityContract";
 import { isSceneLikeCompositionId } from "../slideshow/index.js";
 import { COMPOSITION_CONTRACT_VERSION } from "../compositionContract.js";
 import { runtimeProtocolMetadata } from "./protocol.js";
@@ -30,7 +31,7 @@ import { isElementNode, isMediaElement } from "./domRealm";
 /** A root timeline this long is an endless loop, not a film: GSAP reports 1e10 s for `repeat: -1`.
  *  Studio's sanitizeDurationSeconds rejects the same length. Animations that simply end past the
  *  voiceover are real duration, and the runtime player already plays them. */
-const LOOP_INFLATED_TIMELINE_SECONDS = 7200;
+export const LOOP_INFLATED_TIMELINE_SECONDS = 7200;
 
 export function isRuntimeElementVisibleAt(
   rawNode: HTMLElement,
@@ -78,17 +79,13 @@ export function isRuntimeElementVisibleAt(
   const computedEnd =
     duration != null && duration > 0 ? start + duration : Number.POSITIVE_INFINITY;
   // Export seeks snap to frame boundaries; interactive visibility uses authored seconds.
-  const visibilityStart = options.exportRenderSeek
-    ? snapTimeToFrameBoundary(start, options.canonicalFps)
-    : start;
-  const visibilityEnd =
-    options.exportRenderSeek && Number.isFinite(computedEnd)
-      ? snapTimeToFrameBoundary(computedEnd, options.canonicalFps)
-      : computedEnd;
+  const clipWindow = options.exportRenderSeek
+    ? exportClipWindow(start, computedEnd, options.canonicalFps)
+    : { start, end: computedEnd };
   return isClipVisibleAt(
     options.currentTime,
-    visibilityStart,
-    visibilityEnd,
+    clipWindow.start,
+    clipWindow.end,
     options.compositionDuration,
   );
 }
@@ -316,7 +313,7 @@ export function collectRuntimeTimelinePayload(params: {
     };
   };
 
-  const root = document.querySelector("[data-composition-id]") as Element | null;
+  const root = findRootCompositionElement();
   const compositionNodes = Array.from(document.querySelectorAll("[data-composition-id]"));
   const rootCompositionId = root?.getAttribute("data-composition-id") ?? null;
   const rootCompositionStart = root ? startResolver.resolveStartForElement(root, 0) : 0;
@@ -694,7 +691,8 @@ export function collectRuntimeTimelinePayload(params: {
   // hide structural/background tracks from the timeline UI; if we collapse the
   // payload duration down to the last visible clip end, the controls jump even
   // though playback still runs for the full authored root duration.
-  const safeDuration = Math.max(1, maxEnd || 1, rootCompositionDuration ?? 0);
+  const knownDuration = Math.max(maxEnd || 0, rootCompositionDuration ?? 0);
+  const safeDuration = knownDuration > 0 ? knownDuration : 1;
   const durationInFrames = Math.max(1, Math.ceil(safeDuration * Math.max(1, params.canonicalFps)));
   return {
     ...runtimeProtocolMetadata(params.canonicalFps),
@@ -705,7 +703,7 @@ export function collectRuntimeTimelinePayload(params: {
     durationInFrames,
     clips,
     scenes,
-    compositionWidth: parseNum(root?.getAttribute("data-width")) ?? 1920,
-    compositionHeight: parseNum(root?.getAttribute("data-height")) ?? 1080,
+    compositionWidth: parseCompositionDimension(root?.getAttribute("data-width")) ?? 1920,
+    compositionHeight: parseCompositionDimension(root?.getAttribute("data-height")) ?? 1080,
   };
 }

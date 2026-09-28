@@ -209,6 +209,7 @@ export function StudioApp({ readOnlyPreview = false, readOnlyPreviewReason }: St
       refreshFileTree: fileManager.refreshFileTree,
       reloadPreview,
       showToast,
+      dismissToast,
     },
     previewIframeRef,
     setRightCollapsed: panelLayout.setRightCollapsed,
@@ -239,6 +240,7 @@ export function StudioApp({ readOnlyPreview = false, readOnlyPreviewReason }: St
     handleTimelineElementsDelete: timelineEditing.handleTimelineElementsDelete,
     handleDomEditElementDelete: domEditDeleteBridge,
     previewIframeRef,
+    waitForPendingDomEditSaves: previewPersistence.waitForPendingDomEditSaves,
   });
   const appHotkeys = useAppHotkeys({
     handleTimelineElementsDelete: timelineEditing.handleTimelineElementsDelete,
@@ -259,7 +261,10 @@ export function StudioApp({ readOnlyPreview = false, readOnlyPreviewReason }: St
     handleDuplicate,
     onResetKeyframes: () => resetKeyframesRef.current(),
     onDeleteSelectedKeyframes: () => deleteSelectedKeyframesRef.current(),
-    onAfterUndoRedo: () => invalidateGsapCacheRef.current(),
+    onAfterUndoRedo: (restore) => {
+      invalidateGsapCacheRef.current();
+      timelineEditing.restoreLiveLanes(restore);
+    },
     onGroupSelection: () => domEditSessionRef.current.handleGroupSelection(),
     onUngroupSelection: () => domEditSessionRef.current.handleUngroupSelection(),
     activeCompPath,
@@ -339,8 +344,7 @@ export function StudioApp({ readOnlyPreview = false, readOnlyPreviewReason }: St
     effectiveTimelineDuration,
   });
   const compositionDimensions = useCompositionDimensions(previewIframeRef);
-  const { lintModal, linting, handleLint, closeLintModal, findingsByFile, hasLintError } =
-    useLintModal(projectId, refreshKey);
+  const lint = useLintModal(projectId, refreshKey);
   const frameCapture = useFrameCapture({
     projectId,
     activeCompPath,
@@ -495,11 +499,11 @@ export function StudioApp({ readOnlyPreview = false, readOnlyPreviewReason }: St
                         onSelectComposition={handleSelectComposition}
                         onAddBlock={handleAddBlock}
                         onPreviewBlock={setBlockPreview}
-                        onLint={handleLint}
-                        linting={linting}
-                        lintFindingCount={lintModal?.length ?? findingsByFile.size}
-                        lintFindingsByFile={findingsByFile}
-                        lintHasError={hasLintError}
+                        onLint={lint.handleLint}
+                        linting={lint.linting}
+                        lintFindingCount={lint.lintFindingCount}
+                        lintFindingsByFile={lint.findingsByFile}
+                        lintHasError={lint.hasLintError}
                         onAddAssetToTimeline={handleAddAssetAtPlayhead}
                         onAddCompositionToTimeline={handleAddCompositionAtPlayhead}
                       />
@@ -572,8 +576,8 @@ export function StudioApp({ readOnlyPreview = false, readOnlyPreviewReason }: St
                 <StudioOverlays
                   projectId={projectId}
                   projectDir={fileManager.projectDir}
-                  lintModal={lintModal}
-                  closeLintModal={closeLintModal}
+                  lintModal={lint.lintModal}
+                  closeLintModal={lint.closeLintModal}
                   consoleErrors={consoleErrors}
                   clearConsoleErrors={() => setConsoleErrors(null)}
                   domEditSession={domEditSession}

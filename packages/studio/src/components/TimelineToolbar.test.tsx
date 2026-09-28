@@ -12,7 +12,7 @@ import { AudioMeterStrip } from "./nle/AudioMeterStrip";
 import { TimelineToolbar } from "./TimelineToolbar";
 
 vi.mock("../contexts/StudioContext", () => ({
-  useStudioShellContext: () => ({
+  useStudioShellContextOptional: () => ({
     previewIframeRef: { current: null },
     editHistory: { canUndo: false, canRedo: false },
     handleUndo: vi.fn(),
@@ -212,5 +212,13 @@ describe("TimelineToolbar audio meters", () => {
       useAudioMetersVisible.setState(useAudioMetersVisible.getInitialState());
       localStorage.clear();
     }
+  });
+});
+
+describe("TimelineToolbar add beat", () => {
+  it("shows Add beat by default, as Studio does", () => {
+    const { host, root } = renderToolbar();
+    expect(host.querySelector('button[aria-label="Add beat at playhead"]')).not.toBeNull();
+    act(() => root.unmount());
   });
 });

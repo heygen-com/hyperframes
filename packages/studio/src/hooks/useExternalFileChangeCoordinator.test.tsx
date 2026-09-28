@@ -94,6 +94,55 @@ describe("external file change coordinator", () => {
     expect(refreshFileTree).toHaveBeenCalledOnce();
   });
 
+  it("refreshes the file tree but not Preview for a file the preview never loaded", async () => {
+    const order: string[] = [];
+    await mountCoordinator({
+      reloadPreview: () => order.push("preview"),
+      reloadSdkSession: () => order.push("sdk"),
+      refreshFileTree: () => {
+        order.push("tree");
+      },
+    });
+    await act(async () =>
+      handler?.({ path: "notes.md", content: "notes", version: "v1", affectsPreview: false }),
+    );
+    expect(order).toEqual(["sdk", "tree"]);
+  });
+
+  it("still reloads Preview when a notes change replaces a waiting film change", async () => {
+    let release = () => {};
+    const inFlight = new Promise<void>((resolve) => (release = resolve));
+    const reloadPreview = vi.fn();
+    const reloadSdkSession = vi.fn();
+    const onAcceptedPersistedFileChange = vi.fn();
+    let drains = 0;
+    await mountCoordinator({
+      reloadPreview,
+      reloadSdkSession,
+      onAcceptedPersistedFileChange,
+      drainPendingChanges: async () => {
+        if (drains++ === 0) await inFlight;
+        return { status: "clean" as const };
+      },
+    });
+    await act(async () => handler?.({ path: "index.html", content: "a", version: "v1" }));
+    await act(async () =>
+      handler?.({
+        path: "scene.html",
+        content: "b",
+        version: "v2",
+        affectedCompositions: ["scene.html"],
+      }),
+    );
+    await act(async () =>
+      handler?.({ path: "notes.md", content: "c", version: "v3", affectsPreview: false }),
+    );
+    await act(async () => release());
+    expect(reloadPreview).toHaveBeenCalledTimes(2);
+    expect(reloadSdkSession).toHaveBeenLastCalledWith("scene.html");
+    expect(onAcceptedPersistedFileChange).toHaveBeenLastCalledWith("scene.html", ["scene.html"]);
+  });
+
   it("does not refresh the tree for a suppressed self-write echo", async () => {
     const refreshFileTree = vi.fn();
     await mountCoordinator({ refreshFileTree });

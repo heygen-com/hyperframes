@@ -1,3 +1,4 @@
+import { execFileSync, spawnSync } from "node:child_process";
 import { EventEmitter } from "node:events";
 import {
   existsSync,
@@ -11,9 +12,39 @@ import {
 } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { hdrToSdrToneMapFilter } from "@hyperframes/core";
+import { findFfBinary } from "@hyperframes/parsers/ff-binaries";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 const FFMPEG_PATH = "/usr/bin/ffmpeg";
+const realFfmpeg = findFfBinary("ffmpeg");
+const realFfmpegFilters = realFfmpeg
+  ? spawnSync(realFfmpeg, ["-hide_banner", "-filters"], { encoding: "utf8" }).stdout
+  : "";
+const canToneMapForReal =
+  Boolean(findFfBinary("ffprobe")) && /\szscale\s/.test(realFfmpegFilters ?? "");
+
+function meanLuma(path: string, filters = ""): number {
+  const stats = execFileSync(
+    realFfmpeg!,
+    [
+      "-v",
+      "error",
+      "-i",
+      path,
+      "-frames:v",
+      "1",
+      "-vf",
+      `${filters}signalstats,metadata=print:file=-`,
+      "-f",
+      "null",
+      "-",
+    ],
+    { encoding: "utf8" },
+  );
+  return Number(/YAVG=([\d.]+)/.exec(stats)?.[1]);
+}
+
 // Mirrors MAX_CONCURRENT_TRANSCODES in proxyTranscoder.ts (not exported —
 // this test file and the module are authored together).
 const MAX_CONCURRENT = 2;
@@ -80,6 +111,7 @@ async function loadModule(
   spawn: SpawnImpl,
   ffmpegPath: string | undefined,
   isHdr = false,
+  hdrTransfer: string | null = isHdr ? "pq" : null,
 ): Promise<typeof import("./proxyTranscoder.js")> {
   vi.resetModules();
   vi.doMock("node:child_process", () => {
@@ -92,8 +124,9 @@ async function loadModule(
   vi.doMock("./mediaMetadata.js", () => ({
     probeMediaMetadata: async () => ({
       kind: "video",
-      color: { isHdr },
+      color: { isHdr, hdrTransfer },
     }),
+    probeFirstFrameColour: async () => ({}),
   }));
   return import("./proxyTranscoder.js");
 }
@@ -235,6 +268,7 @@ describe("resolveProxy", () => {
     const filter = calls[1]!.args[filterIndex + 1];
     expect(filter).toContain("tonemap=");
     expect(filter).toContain("bt709");
+    expect(filter).toContain("out_color_matrix=bt709");
 
     succeed(calls[1]!);
     await result;
@@ -276,6 +310,112 @@ describe("resolveProxy", () => {
     await expect(result).rejects.toThrow(/zscale.*libzimg/i);
     expect(calls).toHaveLength(1);
   });
+
+  it("does not tone-map BT.2020 footage without a PQ or HLG transfer, as renders do", async () => {
+    const { spawn, calls } = createSpawnSpy();
+    const { resolveProxy } = await loadModule(spawn, FFMPEG_PATH, true, "unknown");
+    const projectDir = tmpProject();
+    const sourcePath = join(projectDir, "bt2020-sdr.mov");
+    writeFileSync(sourcePath, "source-bytes");
+
+    const result = resolveProxy(projectDir, sourcePath);
+    await flush();
+
+    expect(calls).toHaveLength(1);
+    expect(calls[0]!.args).toContain("-vf");
+    expect(calls[0]!.args[calls[0]!.args.indexOf("-vf") + 1]).not.toContain("tonemap=");
+    succeed(calls[0]!);
+    await result;
+  });
+
+  it.skipIf(!canToneMapForReal)(
+    "tone-maps real HLG footage that tags only its transfer, as renders do",
+    async () => {
+      vi.resetModules();
+      vi.doUnmock("./mediaMetadata.js");
+      const { resolveProxy } = await import("./proxyTranscoder.js");
+      const projectDir = tmpProject();
+      const sourcePath = join(projectDir, "hlg-transfer-only.mp4");
+      // Primaries and matrix "unspecified" (2), transfer HLG (18).
+      const hlgTransferOnly =
+        "h264_metadata=colour_primaries=2:transfer_characteristics=18:matrix_coefficients=2";
+      execFileSync(realFfmpeg!, [
+        "-v",
+        "error",
+        "-f",
+        "lavfi",
+        "-i",
+        "testsrc2=s=64x36:d=0.2",
+        "-c:v",
+        "libx264",
+        "-pix_fmt",
+        "yuv420p",
+        "-bsf:v",
+        hlgTransferOnly,
+        sourcePath,
+      ]);
+
+      const proxyPath = await resolveProxy(projectDir, sourcePath);
+      // Reference: the render tone map's RGB, converted with BT.709. Mean luma is ~53 there;
+      // skipping the tone map gives ~60, a BT.601 conversion ~56.
+      const reference = meanLuma(
+        sourcePath,
+        `${hdrToSdrToneMapFilter({ colorTransfer: "arib-std-b67" }, { colorTransfer: "arib-std-b67" })},format=gbrp,scale=in_range=pc:out_color_matrix=bt709:out_range=tv,format=yuv420p,`,
+      );
+      expect(Math.abs(meanLuma(proxyPath) - reference)).toBeLessThan(1);
+    },
+    60_000,
+  );
+
+  it.skipIf(!canToneMapForReal)(
+    "tone-maps each frame of a real mixed HLG and PQ stream with its own transfer",
+    async () => {
+      vi.resetModules();
+      vi.doUnmock("./mediaMetadata.js");
+      const { resolveProxy } = await import("./proxyTranscoder.js");
+      const projectDir = tmpProject();
+      const segment = (transfer: number) =>
+        execFileSync(realFfmpeg!, [
+          ...["-v", "error", "-f", "lavfi", "-i", "testsrc2=s=320x180:r=25:d=0.2"],
+          // No B-frames: genpts stamps a raw stream in decode order, so reordered frames get wrong times.
+          ...["-c:v", "libx264", "-bf", "0", "-pix_fmt", "yuv420p", "-bsf:v"],
+          `h264_metadata=colour_primaries=9:transfer_characteristics=${transfer}:matrix_coefficients=9`,
+          ...["-f", "h264", "-"],
+        ]);
+      const mux = (name: string, stream: Buffer) => {
+        const raw = join(projectDir, `${name}.h264`);
+        const path = join(projectDir, `${name}.mp4`);
+        writeFileSync(raw, stream);
+        execFileSync(realFfmpeg!, [
+          ...["-v", "error", "-fflags", "+genpts", "-r", "25", "-f", "h264", "-i", raw],
+          ...["-c", "copy", path],
+        ]);
+        return path;
+      };
+      const pq = segment(16);
+      const mixedProxy = await resolveProxy(
+        projectDir,
+        mux("hlg-then-pq", Buffer.concat([segment(18), pq])),
+      );
+      const pqProxy = await resolveProxy(projectDir, mux("pq-only", pq));
+
+      // Frame 5 is the first PQ frame: tone-mapped as PQ it lands near 42 dB, read as HLG near 30.
+      const psnrAt = (n: number) => {
+        const stats = spawnSync(
+          realFfmpeg!,
+          [
+            ...["-i", mixedProxy, "-i", pqProxy, "-lavfi"],
+            `[0:v]select=eq(n\\,${n}),setpts=PTS-STARTPTS[a];[1:v]select=eq(n\\,0),setpts=PTS-STARTPTS[b];[a][b]psnr`,
+            ...["-frames:v", "1", "-f", "null", "-"],
+          ],
+          { encoding: "utf8" },
+        ).stderr;
+        return Number(/average:([\d.]+)/.exec(stats)?.[1] ?? 0);
+      };
+      expect(psnrAt(5)).toBeGreaterThan(36);
+    },
+    60_000,
+  );
 
   it("dedupes two concurrent same-key calls to one spawn", async () => {
     const { spawn, calls } = createSpawnSpy();

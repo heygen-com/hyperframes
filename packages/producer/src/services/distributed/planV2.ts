@@ -46,6 +46,7 @@ import {
 } from "./planV2Publisher.js";
 import { PLAN_V2_INTEGRITY_UNRECOVERABLE, PlanV2IntegrityError } from "./planV2Errors.js";
 import { planV2BlobPath } from "./planV2Layout.js";
+import { resolveRenderFpsConfig } from "../fileServer.js";
 import {
   isPlanAudioArtifactPath,
   PLAN_VIDEOS_META_RELATIVE_PATH,
@@ -407,9 +408,13 @@ function buildVideoChunkDependencies(
   const parsedVideos = parsePlanVideosJson(videos);
   const parsedChunks = parseChunkSlices(chunks);
   const extracted = listVideoFramePaths(executionPlanDir, parsedVideos);
-  const table = createFrameLookupTable(parsedVideos.videos, extracted);
   const fpsNum = readPositiveInteger(dimensions.fpsNum, "dimensions.fpsNum");
   const fpsDen = readPositiveInteger(dimensions.fpsDen, "dimensions.fpsDen");
+  const table = createFrameLookupTable(
+    parsedVideos.videos,
+    extracted,
+    resolveRenderFpsConfig({ num: fpsNum, den: fpsDen }).value,
+  );
   const mutable = new Map<string, Set<number>>();
 
   for (const chunk of parsedChunks) {

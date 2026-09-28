@@ -1,11 +1,11 @@
 <script src="https://cdn.jsdelivr.net/npm/gsap@3.14.2/dist/gsap.min.js"></script>
 <template id="pip-template">
   <div data-composition-id="pip-scene" data-width="1920" data-height="1080">
-    <!-- Pip video: data-start="3" is global time matching the host start.
-         Before the fix, resolveStartForElement returned 3+3=6, hiding the
-         video for the entire host window (3–6s). -->
+    <!-- Pip video: data-start="3" is legacy root-global time matching the host start.
+         Without the global basis it reads as local, 3+3=6, past the host's end. -->
     <video
       id="pip-video"
+      data-hf-media-start-basis="global"
       data-start="3"
       data-duration="3"
       data-track-index="0"

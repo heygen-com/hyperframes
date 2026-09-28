@@ -39,6 +39,8 @@ interface PlayerProps {
 
 interface HyperframesPlayerElement extends HTMLElement {
   iframeElement: HTMLIFrameElement;
+  ready?: boolean;
+  painted?: boolean;
 }
 
 const MEDIA_HAVE_FUTURE_DATA = 3;
@@ -245,8 +247,8 @@ export const Player = forwardRef<HTMLIFrameElement, PlayerProps>(
           setLoaded(true);
           setPreviewError(null);
           setShaderTransitionLoading(false);
-          setCompositionLoading(true);
-          setPainted(false);
+          setCompositionLoading(!player.ready);
+          setPainted(Boolean(player.painted));
           // Reveal animation on reload (hot-reload, composition switch)
           if (loadCountRef.current > 1) {
             container.classList.remove("preview-revealing");
@@ -317,6 +319,7 @@ export const Player = forwardRef<HTMLIFrameElement, PlayerProps>(
 
         player.setAttribute("shader-capture-scale", "1");
         player.setAttribute("shader-loading", "player");
+        player.setAttribute("low-power-idle", "");
         player.setAttribute("width", String(portrait ? 1080 : 1920));
         player.setAttribute("height", String(portrait ? 1920 : 1080));
         player.style.width = "100%";

@@ -33,6 +33,7 @@ function render(
   const root = createRoot(host);
   const onSetElementAttributeLive = vi.fn();
   const onSetElementAttributeQuiet = vi.fn().mockResolvedValue(undefined);
+  const onRevertElementAttributeLive = vi.fn();
   // Stands in for the TimelineClip button the handles live inside.
   const node = (
     <div data-testid="clip" onPointerDown={options.onClipPointerDown}>
@@ -49,17 +50,29 @@ function render(
       options.provide === false ? (
         node
       ) : (
-        <TimelineEditProvider value={{ onSetElementAttributeLive, onSetElementAttributeQuiet }}>
+        <TimelineEditProvider
+          value={{
+            onSetElementAttributeLive,
+            onSetElementAttributeQuiet,
+            onRevertElementAttributeLive,
+          }}
+        >
           {node}
         </TimelineEditProvider>
       ),
     );
   });
-  return { host, root, onSetElementAttributeLive, onSetElementAttributeQuiet };
+  return {
+    host,
+    root,
+    onSetElementAttributeLive,
+    onSetElementAttributeQuiet,
+    onRevertElementAttributeLive,
+  };
 }
 
-function pointer(type: string, clientX: number, pointerId = 1) {
-  const event = new MouseEvent(type, { bubbles: true, clientX, button: 0 });
+function pointer(type: string, clientX: number, pointerId = 1, clientY = 0) {
+  const event = new MouseEvent(type, { bubbles: true, clientX, clientY, button: 0 });
   Object.defineProperty(event, "pointerId", { value: pointerId });
   return event;
 }
@@ -121,14 +134,14 @@ describe("TimelineClipFades", () => {
     const handle = host.querySelector<HTMLElement>('[data-testid="clip-fade-handle-out"]');
     if (!handle) throw new Error("expected a fade-out handle");
     armCapture(handle);
-    // Handle at x=800 (2 s before the end). 300 px left → 5 s.
-    act(() => handle.dispatchEvent(pointer("pointerdown", 800)));
-    act(() => handle.dispatchEvent(pointer("pointermove", 500)));
+    // Pressed at x=1000 with a 2 s fade-out. 300 px left → 5 s.
+    act(() => handle.dispatchEvent(pointer("pointerdown", 1000)));
+    act(() => handle.dispatchEvent(pointer("pointermove", 700)));
     expect(onSetElementAttributeLive).toHaveBeenLastCalledWith(clip, "data-fade-out", "5");
     // Way past the start: clamps to duration − fadeIn = 9 s.
-    act(() => handle.dispatchEvent(pointer("pointermove", -500)));
+    act(() => handle.dispatchEvent(pointer("pointermove", 0)));
     expect(onSetElementAttributeLive).toHaveBeenLastCalledWith(clip, "data-fade-out", "9");
-    act(() => handle.dispatchEvent(pointer("pointerup", -500)));
+    act(() => handle.dispatchEvent(pointer("pointerup", 0)));
     expect(onSetElementAttributeQuiet).toHaveBeenCalledWith(clip, "data-fade-out", "9", "Fade out");
     act(() => root.unmount());
   });
@@ -138,23 +151,52 @@ describe("TimelineClipFades", () => {
     const handle = host.querySelector<HTMLElement>('[data-testid="clip-fade-handle-in"]');
     if (!handle) throw new Error("expected a fade-in handle");
     armCapture(handle);
-    act(() => handle.dispatchEvent(pointer("pointerdown", 100)));
-    act(() => handle.dispatchEvent(pointer("pointermove", -40)));
-    act(() => handle.dispatchEvent(pointer("pointerup", -40)));
+    act(() => handle.dispatchEvent(pointer("pointerdown", 200)));
+    act(() => handle.dispatchEvent(pointer("pointermove", 0)));
+    act(() => handle.dispatchEvent(pointer("pointerup", 0)));
     expect(onSetElementAttributeQuiet).toHaveBeenCalledWith(clip, "data-fade-in", null, "Fade in");
     act(() => root.unmount());
   });
 
   it("puts the live value back and writes nothing when the gesture is cancelled", () => {
-    const { host, root, onSetElementAttributeLive, onSetElementAttributeQuiet } = render(clip);
+    const {
+      host,
+      root,
+      onSetElementAttributeLive,
+      onRevertElementAttributeLive,
+      onSetElementAttributeQuiet,
+    } = render(clip);
     const handle = host.querySelector<HTMLElement>('[data-testid="clip-fade-handle-in"]');
     if (!handle) throw new Error("expected a fade-in handle");
     armCapture(handle);
     act(() => handle.dispatchEvent(pointer("pointerdown", 100)));
     act(() => handle.dispatchEvent(pointer("pointermove", 300)));
     act(() => handle.dispatchEvent(pointer("pointercancel", 300)));
+    // Written back live for a host without the revert, then ended through the lanes' revert.
     expect(onSetElementAttributeLive).toHaveBeenLastCalledWith(clip, "data-fade-in", "1");
+    expect(onRevertElementAttributeLive).toHaveBeenCalledWith(clip, "data-fade-in");
     expect(onSetElementAttributeQuiet).not.toHaveBeenCalled();
+    act(() => root.unmount());
+  });
+
+  it.each([
+    ["above the window", 300, -40],
+    ["on the window's right edge", window.innerWidth, 10],
+  ])("restores the fade and saves nothing when released %s", (_, clientX, clientY) => {
+    const { host, root, onSetElementAttributeLive, onRevertElementAttributeLive, ...rest } =
+      render(clip);
+    const handle = host.querySelector<HTMLElement>('[data-testid="clip-fade-handle-in"]');
+    if (!handle) throw new Error("expected a fade-in handle");
+    armCapture(handle);
+    act(() => handle.dispatchEvent(pointer("pointerdown", 100)));
+    act(() => handle.dispatchEvent(pointer("pointermove", 300)));
+    act(() => handle.dispatchEvent(pointer("pointerup", clientX, 1, clientY)));
+    expect(rest.onSetElementAttributeQuiet).not.toHaveBeenCalled();
+    expect(onSetElementAttributeLive).toHaveBeenLastCalledWith(clip, "data-fade-in", "1");
+    expect(onRevertElementAttributeLive).toHaveBeenCalledWith(clip, "data-fade-in");
+    expect(host.querySelector('[data-testid="clip-fade-in"]')?.getAttribute("points")).toBe(
+      "0,0 100,0 0,100",
+    );
     act(() => root.unmount());
   });
 

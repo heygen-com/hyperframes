@@ -80,6 +80,8 @@ function byTextButton(host: HTMLElement, text: string): HTMLButtonElement | unde
   return Array.from(host.querySelectorAll("button")).find((b) => b.textContent?.includes(text));
 }
 
+const SAMPLE_RATE = 48000;
+
 function mount(dataAttributes: Record<string, string>, alone = false, voices = 2) {
   // Every write is quiet: persisted without the preview reload that would
   // restart every playing track, but with a selection resync so the panel sees
@@ -459,29 +461,8 @@ describe("AudioFxGroup dynamic carve", () => {
 
   afterEach(() => vi.unstubAllGlobals());
 
-  /**
-   * Hover-auditioning the leveller has to measure before there is anything to
-   * hear, and measuring a long voiceover takes seconds — by which time the
-   * pointer has usually moved on. Applying then would put levelling on a track
-   * nobody asked to level, through a channel that does not persist: audible,
-   * absent from the document, and gone on the next reload.
-   */
-  it("levels the part of the file the clip plays, not the file from its start", async () => {
-    // A lane's `t` is seconds from the start of the CLIP, but the decode is the
-    // whole file — so a trimmed clip got an envelope offset by exactly
-    // `media-start`, and every correction landed early.
-    //
-    // The file is loud 0-2s, quiet 2-5s, loud again 5-8s, and the clip trims the
-    // first 2s. Measured from the clip's own zero, t=0.5 sits in the quiet
-    // passage and wants a real lift; measured from the file's zero it sits in
-    // the loud head and wants none. That gap is the bug.
-    const sampleRate = 48000;
-    const data = new Float32Array(sampleRate * 8);
-    for (let i = 0; i < data.length; i++) {
-      const t = i / sampleRate;
-      const amp = t < 2 ? 0.5 : t < 5 ? 0.05 : 0.5;
-      data[i] = amp * Math.sin(2 * Math.PI * 300 * t);
-    }
+  /** Runs Even Out Levels on a decode of `data` and returns the fx lane's nearest point to a clip time. */
+  async function levelledLane(data: Float32Array, dataAttributes: Record<string, string>) {
     vi.stubGlobal(
       "fetch",
       vi.fn(async () => ({ arrayBuffer: async () => new ArrayBuffer(8) })),
@@ -489,15 +470,10 @@ describe("AudioFxGroup dynamic carve", () => {
     vi.stubGlobal(
       "OfflineAudioContext",
       class {
-        decodeAudioData = async () => ({ sampleRate, getChannelData: () => data });
+        decodeAudioData = async () => ({ sampleRate: SAMPLE_RATE, getChannelData: () => data });
       },
     );
-
-    const { host, onSetAttributeQuiet } = mount({
-      "fx-chain": CHAIN,
-      "media-start": "2",
-      duration: "6",
-    });
+    const { host, onSetAttributeQuiet } = mount({ "fx-chain": CHAIN, ...dataAttributes });
     document.getElementById("bed")?.setAttribute("src", "bed.wav");
     act(() => byTextButton(host, "Audio FX")?.click());
     act(() => byTextButton(host, "+ effect")?.click());
@@ -513,10 +489,73 @@ describe("AudioFxGroup dynamic carve", () => {
       JSON.parse(String(write[1])).lanes as { target: string; points: { t: number; v: number }[] }[]
     ).find((l) => l.target.startsWith("fx."));
     if (!lane) throw new Error("no fx lane");
-    const near = (t: number) =>
+    return (t: number) =>
       lane.points.reduce((best, p) => (Math.abs(p.t - t) < Math.abs(best.t - t) ? p : best));
-    // The quiet passage, from the clip's zero, gets its lift.
+  }
+
+  /** A 300 Hz tone, 16 s long: quiet between `quietFrom` and `quietTo`, loud elsewhere. */
+  function toneWithQuietPassage(quietFrom: number, quietTo: number): Float32Array {
+    const data = new Float32Array(SAMPLE_RATE * 16);
+    for (let i = 0; i < data.length; i++) {
+      const t = i / SAMPLE_RATE;
+      data[i] = (t >= quietFrom && t < quietTo ? 0.05 : 0.5) * Math.sin(2 * Math.PI * 300 * t);
+    }
+    return data;
+  }
+
+  it("levels the part of the file the clip plays, not the file from its start", async () => {
+    // A lane's `t` is seconds from the start of the CLIP, but the decode is the
+    // whole file. The file is quiet 2-5 s and the clip trims the first 2 s, so
+    // from the clip's zero t=0.5 wants a real lift; from the file's zero it wants none.
+    const near = await levelledLane(toneWithQuietPassage(2, 5), {
+      "playback-start": "2",
+      "media-start": "0",
+      duration: "6",
+    });
     expect(near(0.5).v).toBeGreaterThan(4);
+  });
+
+  it.each<{
+    label: string;
+    attrs: Record<string, string>;
+    quiet: [number, number];
+    quietAt: number;
+    loudAt: number;
+  }>([
+    // 2x: 6 s of clip play source 0-12 s; source 2-6 s is quiet, so clip 1-3 s wants lift.
+    {
+      label: "2x",
+      attrs: { "playback-rate": "2", duration: "6" },
+      quiet: [2, 6],
+      quietAt: 2,
+      loudAt: 5,
+    },
+    // 0.5x: 8 s of clip play source 0-4 s; source 1-2 s is quiet, so clip 2-4 s wants lift and clip 1 s none.
+    {
+      label: "0.5x",
+      attrs: { "playback-rate": "0.5", duration: "8" },
+      quiet: [1, 2],
+      quietAt: 3.5,
+      loudAt: 1,
+    },
+    // A rate lane holding 2x: playback reads the lane, not the missing data-playback-rate.
+    {
+      label: "a 2x rate lane",
+      attrs: {
+        automation:
+          '{"version":1,"lanes":[{"target":"rate","points":[{"t":0,"v":2},{"t":6,"v":2}]}]}',
+        duration: "6",
+      },
+      quiet: [2, 6],
+      quietAt: 2,
+      loudAt: 5,
+    },
+  ])("levels on the clip's clock at $label", async (c) => {
+    const near = await levelledLane(toneWithQuietPassage(...c.quiet), c.attrs);
+    expect({ quiet: near(c.quietAt).v > 4, loud: near(c.loudAt).v < 2 }).toEqual({
+      quiet: true,
+      loud: true,
+    });
   });
 
   it("removes every lane a preset owned, not just the last node's", () => {
@@ -949,6 +988,141 @@ describe("AudioFxGroup dynamic carve", () => {
     });
     expect(onSetAttributeLive.mock.calls.every((c) => c[0] === "data-fx-carve")).toBe(true);
     expect(onSetAttributeQuiet.mock.calls.some((c) => c[0] === "data-fx-chain")).toBe(false);
+  });
+
+  describe("on each clip's own clock", () => {
+    type Point = { t: number; v: number };
+    /** `hz` at `amp` over [from, to) of a `seconds`-long file, silence elsewhere. */
+    const tone = (seconds: number, [from, to]: [number, number], hz = 1000, amp = 0.7) =>
+      Float32Array.from({ length: SAMPLE_RATE * seconds }, (_, i) => {
+        const t = i / SAMPLE_RATE;
+        return t >= from && t < to ? amp * Math.sin(2 * Math.PI * hz * t) : 0;
+      });
+
+    /** Each file decodes to its own samples, found by the URL that was fetched. */
+    function stubFiles(files: Record<string, Float32Array>): void {
+      vi.stubGlobal(
+        "fetch",
+        vi.fn(async (url: string) => ({ arrayBuffer: async () => url })),
+      );
+      vi.stubGlobal(
+        "OfflineAudioContext",
+        class {
+          decodeAudioData = async (url: string) => {
+            const data = Object.entries(files).find(([name]) => url.endsWith(name))![1];
+            return { sampleRate: SAMPLE_RATE, getChannelData: () => data };
+          };
+        },
+      );
+    }
+
+    const valueAt = (points: Point[], t: number): number => {
+      const i = points.findIndex((p) => p.t >= t);
+      if (i <= 0) return points.at(i)!.v;
+      const [a, b] = [points[i - 1]!, points[i]!];
+      return a.v + ((b.v - a.v) * (t - a.t)) / (b.t - a.t);
+    };
+
+    /** Carves the bed against `vo` and reads back the lane driving the first node of `type`. */
+    async function carveLane(
+      type: string,
+      voice: Record<string, string>,
+      bed: Record<string, string> = {},
+      strength = 0,
+    ) {
+      const { host, onSetAttributeQuiet } = mount({
+        "fx-chain": carvedChain,
+        "fx-carve": settings(true, { strength, sources: [] }),
+        start: "0",
+        ...bed,
+      });
+      const vo = document.getElementById("vo")!;
+      vo.setAttribute("src", "voice.wav");
+      for (const [name, value] of Object.entries(voice)) vo.setAttribute(`data-${name}`, value);
+      document.getElementById("bed")!.setAttribute("src", "bed.wav");
+      await act(async () => {
+        pickSource(host, "vo");
+      });
+      const calls = onSetAttributeQuiet.mock.calls;
+      const nodes = parseWrite(writeTo(calls, "data-fx-chain")!).nodes as {
+        id: string;
+        type: string;
+        params: { gain: number; frequency: number };
+      }[];
+      const node = nodes.find((n) => n.type === type)!;
+      const lanes = parseWrite(writeTo(calls, "data-automation")!).lanes as {
+        target: string;
+        points: Point[];
+      }[];
+      const points = lanes.find((l) => l.target === `fx.${node.id}.gain`)!.points;
+      return {
+        depth: node.params.gain,
+        frequency: node.params.frequency,
+        points,
+        at: (t: number) => valueAt(points, t),
+      };
+    }
+
+    /** Quiet 1 kHz speech at 0-2 s, loud 4 kHz speech at 4-6 s, in an 8 s file. */
+    const lateSpeech = () => {
+      const after = tone(8, [4, 6], 4000, 0.9);
+      return tone(8, [0, 2], 1000, 0.3).map((v, i) => v + after[i]!);
+    };
+
+    it("ignores speech after the bed has stopped playing", async () => {
+      // The bed file runs 8 s, but the clip plays only its first 3 s.
+      stubFiles({ "voice.wav": lateSpeech(), "bed.wav": tone(8, [0, 8], 200) });
+      const lane = await carveLane("peaking", { start: "0" }, { duration: "3" });
+      expect(lane.frequency).toBe(1000);
+    });
+
+    it("ignores speech after a bed with no duration runs out, when it ducks", async () => {
+      // No data-duration: the bed plays its 3 s file. Strength 0.05 ducks and keeps one band.
+      stubFiles({ "voice.wav": lateSpeech(), "bed.wav": tone(3, [0, 3], 200) });
+      const lane = await carveLane("peaking", { start: "0" }, {}, 0.05);
+      expect(lane.frequency).toBe(1000);
+    });
+
+    it.each([
+      ["no duration", {}],
+      ["a duration longer than its file", { duration: "6" }],
+    ])("ignores speech after a 3 s bed file with %s, without ducking", async (_, bed) => {
+      stubFiles({ "voice.wav": lateSpeech(), "bed.wav": tone(3, [0, 3], 200) });
+      const lane = await carveLane("peaking", { start: "0" }, bed);
+      expect(lane.frequency).toBe(1000);
+    });
+
+    it("cuts where a trimmed voice speaks, not where its file does", async () => {
+      // File speech 2-3.5 s; the clip plays 2-4 s of it, so the bed hears it at 0-1.5 s.
+      stubFiles({ "voice.wav": tone(6, [2, 3.5]), "bed.wav": tone(8, [0, 8], 200) });
+      const lane = await carveLane("peaking", { start: "0", "media-start": "2", duration: "2" });
+      expect({ speaking: lane.at(0.8) <= lane.depth * 0.5, after: lane.at(3) }).toEqual({
+        speaking: true,
+        after: 0,
+      });
+    });
+
+    it("cuts over half the source length for a voice at 2x", async () => {
+      // File speech 1-3 s at 2x: the bed hears it at 0.5-1.5 s.
+      stubFiles({ "voice.wav": tone(4, [1, 3]), "bed.wav": tone(8, [0, 8], 200) });
+      const lane = await carveLane("peaking", { start: "0", "playback-rate": "2", duration: "2" });
+      expect({
+        speaking: lane.at(0.8) <= lane.depth * 0.5 && lane.at(1.3) <= lane.depth * 0.5,
+        after: lane.at(2.5),
+      }).toEqual({ speaking: true, after: 0 });
+    });
+
+    it("ducks against the part of the bed that plays", async () => {
+      // The bed file is silent for 4 s and loud after; the clip starts 4 s in, so it is loud under the voice.
+      stubFiles({ "voice.wav": tone(4, [1, 3]), "bed.wav": tone(8, [4, 8], 200, 0.9) });
+      const lane = await carveLane(
+        "gain",
+        { start: "0" },
+        { "media-start": "4", duration: "4" },
+        1,
+      );
+      expect(Math.min(...lane.points.map((p) => p.v))).toBeLessThan(0);
+    });
   });
 });
 

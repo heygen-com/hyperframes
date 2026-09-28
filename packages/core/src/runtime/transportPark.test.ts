@@ -123,6 +123,12 @@ describe("parked transport loop", () => {
     return frames;
   };
 
+  /** One frame at 120 Hz: the clock and the animation frame advance together. */
+  const frame120Hz = () => {
+    vi.advanceTimersByTime(8);
+    raf.step(8);
+  };
+
   /**
    * Park the transport AND drain init's own one-shot timers, several of which
    * post state and would otherwise be mistaken for a heartbeat. Leaves exactly
@@ -180,6 +186,51 @@ describe("parked transport loop", () => {
     expect(raf.pending()).toBe(0);
     // Exactly one thing still scheduled: the parked heartbeat.
     expect(vi.getTimerCount()).toBe(1);
+  });
+
+  it("reports the end in the state it posts when the film finishes", () => {
+    let nowMs = 1000;
+    vi.spyOn(performance, "now").mockImplementation(() => nowMs);
+    document.body.innerHTML = `<div id="root" data-composition-id="main" data-root="true" data-start="0" data-duration="4.97"><div id="clip" data-start="0.48" data-duration="4.49"></div></div>`;
+    window.__timelines = { main: createMockTimeline(4.97) };
+    initSandboxRuntimeModular();
+    quiesce();
+
+    window.__player!.play();
+    for (let step = 0; step < 120 && window.__player!.isPlaying(); step += 1) {
+      nowMs += 50;
+      raf.step(50);
+    }
+
+    const states = posted.filter((m) => m["type"] === "state");
+    expect(states.at(-1)).toMatchObject({ isPlaying: false, ended: true, frame: 149 });
+  });
+
+  // The render stops at the root's declared length too; a longer animation is cut off.
+  it.each([
+    ["3 s, shorter than its animation", "3", 90],
+    ["under a second", "0.2", 6],
+    ["one 60 fps frame", String(1 / 60), 1],
+  ])("stops a film declared %s at that length, and says so", (_label, declared, frame) => {
+    const seconds = Number(declared);
+    let nowMs = 1000;
+    vi.spyOn(performance, "now").mockImplementation(() => nowMs);
+    document.body.innerHTML = `<div id="root" data-composition-id="main" data-root="true" data-start="0" data-duration="${declared}"></div>`;
+    window.__timelines = { main: createMockTimeline(5) };
+    initSandboxRuntimeModular();
+    quiesce();
+
+    window.__player!.play();
+    for (let step = 0; step < 400 && window.__player!.isPlaying(); step += 1) {
+      nowMs += 10;
+      raf.step(10);
+    }
+
+    const states = posted.filter((m) => m["type"] === "state");
+    expect(states.at(-1)).toMatchObject({ isPlaying: false, ended: true, frame });
+    expect(window.__player!.getDuration()).toBeCloseTo(seconds, 9);
+    const timeline = posted.filter((m) => m["type"] === "timeline").at(-1);
+    expect(timeline?.["durationSeconds"]).toBeCloseTo(seconds, 9);
   });
 
   it("keeps asking for animation frames while playing", () => {
@@ -312,6 +363,8 @@ describe("parked transport loop", () => {
 
   it("delivers media metadata that arrives after the loop parked", async () => {
     mount(`<video id="v" data-start="0" src="a.mp4"></video>`);
+    // A declared length would hold the film at 5 s; only an inferred one can grow.
+    document.getElementById("root")!.removeAttribute("data-duration");
     initSandboxRuntimeModular();
     quiesce();
 
@@ -420,7 +473,7 @@ describe("parked transport loop", () => {
     expect(posted.filter((m) => m["type"] === "state")).toHaveLength(0);
   });
 
-  it("keeps the manifest on its frame cadence while playing, whatever the DOM does", () => {
+  it("rate-limits the manifest while playing, whatever the DOM does", () => {
     mount();
     initSandboxRuntimeModular();
     quiesce();
@@ -443,6 +496,85 @@ describe("parked transport loop", () => {
     const posts = posted.filter((m) => m["type"] === "timeline").length - before;
     // Main's cadence over 30 frames is one post per 20 frames, so at most two.
     expect(posts).toBeLessThanOrEqual(2);
+  });
+
+  it("does not re-post the manifest while playing a film that is not changing", () => {
+    mount();
+    initSandboxRuntimeModular();
+    quiesce();
+    window.__player!.play();
+    // Past the rebind policy's play hold, at 120 Hz.
+    for (let i = 0; i < 300; i += 1) frame120Hz();
+    const before = posted.filter((m) => m["type"] === "timeline").length;
+    for (let i = 0; i < 250; i += 1) frame120Hz();
+    expect(posted.filter((m) => m["type"] === "timeline").length - before).toBe(0);
+  });
+
+  it("posts a playing clip's new track, label and z-index on the next poll", async () => {
+    mount(
+      '<div id="clip" data-start="0" data-duration="5" data-track-index="0" data-timeline-label="Before" style="z-index: 1"></div>',
+    );
+    initSandboxRuntimeModular();
+    quiesce();
+    window.__player!.play();
+    for (let i = 0; i < 300; i += 1) frame120Hz();
+    const clip = document.getElementById("clip")!;
+    clip.setAttribute("data-track-index", "7");
+    clip.setAttribute("data-timeline-label", "After");
+    clip.style.zIndex = "9";
+    await flushObservers();
+    for (let i = 0; i < 130; i += 1) frame120Hz();
+    const clips = (posted.filter((m) => m["type"] === "timeline").at(-1)?.["clips"] ?? []) as Array<
+      Record<string, unknown>
+    >;
+    const clip_ = clips.find((c) => c["id"] === "clip");
+    expect([clip_?.["track"], clip_?.["timelineLabel"], clip_?.["zIndex"]]).toEqual([
+      7,
+      "After",
+      9,
+    ]);
+  });
+
+  it("posts a label edited while playing and paused before the next poll", async () => {
+    mount('<div id="clip" data-start="0" data-duration="5" data-timeline-label="Before"></div>');
+    initSandboxRuntimeModular();
+    quiesce();
+    window.__player!.play();
+    for (let i = 0; i < 300; i += 1) frame120Hz();
+    document.getElementById("clip")!.setAttribute("data-timeline-label", "After");
+    await flushObservers();
+    for (let i = 0; i < 12; i += 1) frame120Hz();
+    window.__player!.pause();
+    for (let i = 0; i < 300; i += 1) frame120Hz();
+    const clips = (posted.filter((m) => m["type"] === "timeline").at(-1)?.["clips"] ?? []) as Array<
+      Record<string, unknown>
+    >;
+    expect(clips.find((c) => c["id"] === "clip")?.["timelineLabel"]).toBe("After");
+  });
+
+  it("applies a data-width change while playing", async () => {
+    mount();
+    initSandboxRuntimeModular();
+    quiesce();
+    window.__player!.play();
+    for (let i = 0; i < 300; i += 1) frame120Hz();
+    const root = document.getElementById("root")!;
+    root.setAttribute("data-width", "640");
+    await flushObservers();
+    for (let i = 0; i < 60; i += 1) frame120Hz();
+    expect(root.style.width).toBe("640px");
+  });
+
+  it("applies a data-height change while parked", async () => {
+    mount();
+    initSandboxRuntimeModular();
+    quiesce();
+    const root = document.getElementById("root")!;
+    root.setAttribute("data-height", "360");
+    await flushObservers();
+    vi.advanceTimersByTime(PARK_HEARTBEAT_MS);
+    settle();
+    expect(root.style.height).toBe("360px");
   });
 
   it("does not park when the manifest post throws with a change still pending", async () => {
@@ -495,6 +627,7 @@ describe("parked transport loop", () => {
 
   it("delivers an adapter duration that grows while parked, with no DOM mutation and no event", () => {
     mount();
+    document.getElementById("root")!.removeAttribute("data-duration");
     initSandboxRuntimeModular();
     quiesce();
     const before = window.__player!.getDuration();

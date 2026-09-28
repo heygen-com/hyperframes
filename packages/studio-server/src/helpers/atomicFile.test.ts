@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it } from "vitest";
 import * as fs from "node:fs";
-import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { lstatSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { replaceFileAtomically } from "./atomicFile.js";
@@ -12,6 +12,24 @@ describe("replaceFileAtomically", () => {
     for (const dir of dirs) rmSync(dir, { recursive: true, force: true });
     dirs.length = 0;
   });
+
+  // Windows needs a privilege to create symlinks.
+  it.skipIf(process.platform === "win32")(
+    "replaces a link at the path, never writing its target",
+    () => {
+      const dir = mkdtempSync(join(tmpdir(), "atomic-file-test-"));
+      dirs.push(dir);
+      const target = join(dir, "target.html");
+      const link = join(dir, "link.html");
+      writeFileSync(target, "old");
+      symlinkSync(target, link);
+
+      replaceFileAtomically(link, "new", 0o644);
+
+      expect(readFileSync(target, "utf-8")).toBe("old");
+      expect(lstatSync(link).isSymbolicLink()).toBe(false);
+    },
+  );
 
   it("writes the sibling completely before replacing the project file", () => {
     const dir = mkdtempSync(join(tmpdir(), "atomic-file-test-"));
