@@ -18,8 +18,7 @@ export function waitsUnloaded(media: Element): boolean {
   return parseStrictFiniteTimingNumber(media.getAttribute("data-duration")) != null;
 }
 
-/** Studio's preview: a parsed clip after the first frame gets preload none before it can fetch, as
- * Chromium ignores a later none; the visibility pass arms it when due. */
+/** Preview only: later clips parse at preload none, as Chromium ignores a none set mid-fetch. */
 export function deferMediaUntilDue(): void {
   const defer = (el: Element) => {
     const start = parseStrictFiniteTimingNumber(el.getAttribute("data-start"));
