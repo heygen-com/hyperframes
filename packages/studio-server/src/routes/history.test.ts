@@ -49,9 +49,13 @@ async function demoProject({ quietMs }: { quietMs?: number } = {}) {
 }
 
 describe("history routes", () => {
-  it.each(["outside", "agent turn"])(
-    "keep the %s write that landed between Studio's read and its patch when Studio's edit is undone",
-    async (writer) => {
+  it.each([
+    ["outside", 0],
+    ["agent turn", 0],
+    ["outside", 11_000],
+  ])(
+    "keep the %s write that landed between Studio's read and its patch when Studio's edit is undone (claim %d ms later)",
+    async (writer, claimDelayMs) => {
       const projectDir = tempDir("hf-history-outside-patch-");
       const file = join(projectDir, "index.html");
       writeFileSync(file, '<h1 id="title">A</h1>');
@@ -81,6 +85,10 @@ describe("history routes", () => {
         }),
       });
       expect(await patched.json()).toMatchObject({ ok: true, changed: true });
+      if (claimDelayMs) {
+        vi.useFakeTimers({ toFake: ["Date"], now: Date.now() + claimDelayMs });
+        cleanup.push(() => vi.useRealTimers());
+      }
       await call("/claim", {
         label: "Color",
         paths: ["index.html"],
