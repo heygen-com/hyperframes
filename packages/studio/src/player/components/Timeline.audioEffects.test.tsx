@@ -2,43 +2,27 @@
 
 import React, { act } from "react";
 import { createRoot } from "react-dom/client";
-import { afterAll, afterEach, beforeAll, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it } from "vitest";
 import { Timeline } from "./Timeline";
+import { installTimelineMountEnv } from "./timelineMountTestEnv";
 import { usePlayerStore, type TimelineElement } from "../store/playerStore";
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
-class MockResizeObserver {
-  constructor(private readonly callback: ResizeObserverCallback) {}
-  observe(target: Element) {
-    this.callback([{ target } as ResizeObserverEntry], this as unknown as ResizeObserver);
-  }
-  unobserve() {}
-  disconnect() {}
-}
-
-const originalResizeObserver = globalThis.ResizeObserver;
-const originalClientWidth = Object.getOwnPropertyDescriptor(HTMLElement.prototype, "clientWidth");
-
-beforeAll(() => {
-  globalThis.ResizeObserver = MockResizeObserver as unknown as typeof ResizeObserver;
-  Object.defineProperty(HTMLElement.prototype, "clientWidth", {
-    configurable: true,
-    get: () => 900,
-  });
-});
-
-afterAll(() => {
-  globalThis.ResizeObserver = originalResizeObserver;
-  if (originalClientWidth)
-    Object.defineProperty(HTMLElement.prototype, "clientWidth", originalClientWidth);
-});
+installTimelineMountEnv();
 
 afterEach(() => {
   document.body.innerHTML = "";
 });
 
-const voice: TimelineElement = { id: "vo", domId: "vo", tag: "audio", start: 0, duration: 4, track: 0 };
+const voice: TimelineElement = {
+  id: "vo",
+  domId: "vo",
+  tag: "audio",
+  start: 0,
+  duration: 4,
+  track: 0,
+};
 const grouped: TimelineElement[] = ["vo-1", "vo-2"].map((id, track) => ({
   id,
   domId: id,
