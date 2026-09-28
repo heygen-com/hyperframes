@@ -193,16 +193,17 @@ function setOptional<K extends keyof TimelineElement>(
   else entry[key] = value;
 }
 
-/** What the mixer hears (the compiler's `data-has-audio` rule, muted, volume) and how it enters and leaves. */
+/** What the mixer gets (the compiler's `data-has-audio` rule, muted, volume) and how it enters and leaves. */
 function applyAudioMetadataFromElement(entry: TimelineElement, el: Element): void {
   const media = resolveMediaElement(el) ?? el;
-  const attr = (name: string) => el.getAttribute(name) ?? media.getAttribute(name);
   const muted = el.hasAttribute("muted") || media.hasAttribute("muted");
-  const hasAudio = attr("data-has-audio");
-  const heard = hasAudio === null ? media.tagName === "VIDEO" && !muted : hasAudio === "true";
-  setOptional(entry, "hasAudio", heard ? true : undefined);
+  const hasAudio = el.getAttribute("data-has-audio");
+  const sound = hasAudio === null ? el.tagName === "VIDEO" && !muted : hasAudio === "true";
+  setOptional(entry, "hasAudio", sound ? true : undefined);
   setOptional(entry, "muted", muted ? true : undefined);
-  const volume = Number.parseFloat(attr("data-volume") ?? "");
+  const volume = Number.parseFloat(
+    el.getAttribute("data-volume") ?? media.getAttribute("data-volume") ?? "",
+  );
   setOptional(entry, "volume", Number.isFinite(volume) ? volume : undefined);
   const fades = readElementFades(el);
   setOptional(entry, "fadeIn", fades.fadeIn > 0 ? fades.fadeIn : undefined);

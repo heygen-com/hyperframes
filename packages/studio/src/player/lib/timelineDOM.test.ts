@@ -556,10 +556,35 @@ describe("what the live clip list says a clip plays", () => {
     expect(plain.muted).toBeUndefined();
   });
 
-  it("hears a video with neither muted nor data-has-audio, as the compiler does", () => {
+  it("gives a video with neither muted nor data-has-audio sound, as the compiler does", () => {
     expect(manifestVideo("").hasAudio).toBe(true);
     expect(manifestVideo("muted").hasAudio).toBeUndefined();
     expect(manifestVideo('data-has-audio="false"').hasAudio).toBeUndefined();
-    expect(manifestVideo('muted data-has-audio="true"').hasAudio).toBe(true);
+    expect(manifestVideo('muted data-has-audio="true"')).toMatchObject({
+      hasAudio: true,
+      muted: true,
+    });
+  });
+
+  it("does not give a timed wrapper the sound of an untimed video inside it", () => {
+    const doc = makeDoc(
+      `<div data-composition-id="root"><div id="w" data-start="0" data-duration="4"><video src="a.mp4"></video></div></div>`,
+    );
+    const wrapper = createTimelineElementFromManifestClip({
+      clip: {
+        id: "w",
+        label: "w",
+        kind: "element",
+        tagName: "div",
+        start: 0,
+        duration: 4,
+        track: 0,
+        assetUrl: null,
+      },
+      fallbackIndex: 0,
+      doc,
+      hostEl: doc.getElementById("w"),
+    });
+    expect(wrapper.hasAudio).toBeUndefined();
   });
 });
