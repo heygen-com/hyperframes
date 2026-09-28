@@ -48,6 +48,7 @@ const GROUP: TimelineTrackGroupInfo = {
 function renderRow(
   overrides: Partial<TimelineTrackGroupInfo> = {},
   expandedLaneOwnerIds = new Set<string>(),
+  showAudioEffects?: boolean,
 ) {
   const onSetAudioGroupAttributeQuiet = vi.fn();
   const onSetElementAttributeQuiet = vi.fn();
@@ -66,6 +67,7 @@ function renderRow(
           virtualized={false}
           contentOrigin={232}
           theme={defaultTimelineTheme}
+          showAudioEffects={showAudioEffects}
           collapsedGroupIds={new Set()}
           expandedLaneOwnerIds={expandedLaneOwnerIds}
           toggleGroupExpanded={vi.fn()}
@@ -145,6 +147,27 @@ describe("TimelineGroupRow", () => {
       elementKey: "voiceover",
       automationTarget: "fx.p1.gain",
     });
+  });
+
+  it("keeps a group lane's name off the rack while audio effects are hidden", () => {
+    const { host } = renderRow(
+      {
+        fxChain: JSON.stringify({
+          version: 1,
+          nodes: [{ type: "peaking", id: "p1", params: { frequency: 1000, gain: -3, q: 1 } }],
+        }),
+        automation: JSON.stringify({
+          version: 1,
+          lanes: [{ target: "fx.p1.gain", points: [{ t: 0, v: 0 }] }],
+        }),
+      },
+      new Set(["voiceover"]),
+      false,
+    );
+    const laneTitle = host.querySelector<HTMLButtonElement>('[data-group-lane-label="fx.p1.gain"]');
+
+    expect(laneTitle?.disabled).toBe(true);
+    expect(laneTitle?.getAttribute("aria-label")).toBeNull();
   });
 
   // C1 names this as the step's own definition of done: "opening the popover on

@@ -458,7 +458,7 @@ export function TimelineTrackHeader({
               // element, so a shared row's other envelopes belong to clips it is
               // not showing and there would be nothing to reveal.
               onReveal={
-                revealTarget && revealElementId && keyframeClip
+                showAudioEffects && revealTarget && revealElementId && keyframeClip
                   ? () => {
                       // Select FIRST: the rack is the property panel's view of
                       // the selected element, so a reveal aimed at an unselected

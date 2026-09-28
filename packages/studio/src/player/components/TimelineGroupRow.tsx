@@ -60,7 +60,7 @@ export function TimelineGroupRow({
   virtualized,
   contentOrigin,
   theme,
-  showAudioEffects,
+  showAudioEffects = true,
   rovingTargetId = null,
   collapsedGroupIds,
   expandedLaneOwnerIds,
@@ -190,7 +190,7 @@ export function TimelineGroupRow({
             columnWidth={contentOrigin >= LABEL_COL_W ? LABEL_COL_W : contentOrigin}
             gutterBackground={theme.gutterBackground}
             accentColor={GROUP_LANE_ACCENT}
-            onReveal={openGroupFxRack}
+            onReveal={showAudioEffects ? openGroupFxRack : undefined}
           />
         )}
       </div>
