@@ -15,11 +15,11 @@ import {
   formatTimelineAttributeNumber,
   formatTimelineMediaOffset,
   patchIframeDomTiming,
-  playbackStartAttributeForElement,
   persistTimelineBatchEdit,
   type PersistTimelineBatchChange,
   type RecordEditInput,
 } from "./timelineEditingHelpers";
+import { playbackStartAttributeForElement } from "../player/lib/timelineElementHelpers";
 import {
   captureDurationRollback,
   finishGroupTimingGsapFallback,
@@ -330,6 +330,7 @@ export function useTimelineGroupEditing({
             errorLabel: "Failed to shift GSAP positions",
             coalesceKey,
             recordEdit,
+            writeProjectFile,
             activeCompPath,
             changes,
             resolveChangePath: (element) => targetPathFor(element, activeCompPath),
@@ -365,6 +366,7 @@ export function useTimelineGroupEditing({
       trySdkBatchPersist,
       showToast,
       invalidateGsapCache,
+      writeProjectFile,
     ],
   );
 
@@ -437,6 +439,7 @@ export function useTimelineGroupEditing({
             errorLabel: "Failed to scale GSAP positions",
             coalesceKey,
             recordEdit,
+            writeProjectFile,
             activeCompPath,
             changes,
             resolveChangePath: (element) => targetPathFor(element, activeCompPath),
@@ -478,6 +481,7 @@ export function useTimelineGroupEditing({
       trySdkBatchPersist,
       showToast,
       invalidateGsapCache,
+      writeProjectFile,
     ],
   );
 

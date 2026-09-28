@@ -11,6 +11,7 @@ import { useAudioMetersVisible } from "../../utils/audioMeterVisibility";
 import { SILENT_CHANNEL } from "../../utils/audioMeterMath";
 import {
   AudioMeterStrip,
+  type AudioMeterStripProps,
   evictGoneMeterState,
   followMeterHook,
   stepAndPaintStrips,
@@ -20,8 +21,9 @@ import {
 
 const iframe = { contentWindow: null as unknown };
 const previewIframeRef = { current: iframe };
+let shell: { previewIframeRef: typeof previewIframeRef } | null = { previewIframeRef };
 vi.mock("../../contexts/StudioContext", () => ({
-  useStudioShellContext: () => ({ previewIframeRef }),
+  useStudioShellContextOptional: () => shell,
 }));
 
 const onSetAudioGroupAttributeLive = vi.fn();
@@ -88,6 +90,7 @@ const tick = () => {
 };
 
 beforeEach(() => {
+  shell = { previewIframeRef };
   frames = [];
   vi.stubGlobal("requestAnimationFrame", (cb: FrameRequestCallback) => frames.push(cb));
   vi.stubGlobal("cancelAnimationFrame", () => {});
@@ -103,11 +106,11 @@ afterEach(() => {
   vi.unstubAllGlobals();
 });
 
-function mount() {
+function mount(props: AudioMeterStripProps = {}) {
   const host = document.createElement("div");
   document.body.append(host);
   const root = createRoot(host);
-  act(() => root.render(<AudioMeterStrip />));
+  act(() => root.render(<AudioMeterStrip {...props} />));
   roots.push(root);
   return { host, root };
 }
@@ -175,6 +178,26 @@ describe("AudioMeterStrip", () => {
     expect(second.start).toHaveBeenCalledTimes(1);
     tick();
     expect(second.read).toHaveBeenCalled();
+  });
+
+  it("reads a host's preview iframe over the shell's", () => {
+    usePlayerStore.setState({ elements: [clip({ audioGroup: "vo" })] });
+    const shellHook = makeHook();
+    setHook(shellHook);
+    const hostHook = makeHook();
+    const hostIframe = { contentWindow: { __hf: { audioMeter: hostHook } } };
+    mount({ previewIframeRef: { current: hostIframe as unknown as HTMLIFrameElement } });
+    tick();
+    expect(hostHook.start).toHaveBeenCalledTimes(1);
+    expect(shellHook.start).not.toHaveBeenCalled();
+  });
+
+  it("mounts with no shell and no preview iframe", () => {
+    shell = null;
+    usePlayerStore.setState({ elements: [clip({ audioGroup: "vo" })] });
+    const { host } = mount();
+    tick();
+    expect(host.querySelector("[data-testid=audio-meter-strip]")).not.toBeNull();
   });
 
   it("keeps authored gain 2 above unity and writes exactly 1 at the midpoint", () => {

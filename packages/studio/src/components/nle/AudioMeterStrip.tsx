@@ -20,7 +20,7 @@ import type { StereoLevel } from "@hyperframes/core/runtime/levelTap";
 import { usePlayerStore } from "../../player";
 import { clampNumber } from "../../utils/studioHelpers";
 import { useAudioMetersVisible } from "../../utils/audioMeterVisibility";
-import { useStudioShellContext } from "../../contexts/StudioContext";
+import { useStudioShellContextOptional } from "../../contexts/StudioContext";
 import { useTimelineEditContextOptional } from "../../contexts/TimelineEditContext";
 import {
   METER_DB_MARKS,
@@ -107,7 +107,7 @@ function useVolumeHandlers(): {
 
 type PreviewWindow = (Window & { __hf?: { audioMeter?: AudioMeterHook } }) | null | undefined;
 
-function readHook(iframe: HTMLIFrameElement | null): AudioMeterHook | null {
+function readHook(iframe: HTMLIFrameElement | null | undefined): AudioMeterHook | null {
   try {
     return (iframe?.contentWindow as PreviewWindow)?.__hf?.audioMeter ?? null;
   } catch {
@@ -123,9 +123,8 @@ function paintPeak(el: HTMLElement | null, peak: number): void {
   el.style.setProperty("transform", peak >= 1 ? "translateY(1px)" : "none");
 }
 
-/** The fill is a fixed green/amber/red backdrop; painting only moves the dark
- *  mask that covers the unlit top portion, so a loud peak lights the real red
- *  band instead of tinting a flat colour brighter. */
+/** The fill is a fixed green/amber/red backdrop; painting only moves the dark mask that covers the unlit top
+ *  portion, so a loud peak lights the real red band instead of tinting a flat colour brighter. */
 function paint(bars: StripBars | undefined, channels: Pair): void {
   channels.forEach((ch, i) => {
     bars?.[i]?.mask?.style.setProperty("height", `${(1 - ch.level) * 100}%`);
@@ -179,8 +178,13 @@ export function stepAndPaintStrips(
 }
 
 /** One rAF loop re-reads the hook off the live preview window, so a reloaded iframe is followed. */
-function useMeterLoop(strips: Strip[], bars: RefObject<Map<string | null, StripBars>>) {
-  const { previewIframeRef } = useStudioShellContext();
+function useMeterLoop(
+  strips: Strip[],
+  bars: RefObject<Map<string | null, StripBars>>,
+  iframeRef: RefObject<HTMLIFrameElement | null> | undefined,
+) {
+  const shell = useStudioShellContextOptional();
+  const previewIframeRef = iframeRef ?? shell?.previewIframeRef;
   const stripsRef = useRef(strips);
   stripsRef.current = strips;
   useEffect(() => {
@@ -190,7 +194,7 @@ function useMeterLoop(strips: Strip[], bars: RefObject<Map<string | null, StripB
     const state = new Map<string | null, Pair>();
     const tick = (now: number) => {
       raf = requestAnimationFrame(tick);
-      active = followMeterHook(active, readHook(previewIframeRef.current));
+      active = followMeterHook(active, readHook(previewIframeRef?.current));
       const levels = active?.read();
       const dt = now - last;
       last = now;
@@ -395,14 +399,21 @@ function MeterStrip({
   );
 }
 
-export const AudioMeterStrip = memo(function AudioMeterStrip() {
+export interface AudioMeterStripProps {
+  /** Pass a stable ref (useRef): a new object each render restarts the meter loop. */
+  previewIframeRef?: RefObject<HTMLIFrameElement | null>;
+}
+
+export const AudioMeterStrip = memo(function AudioMeterStrip({
+  previewIframeRef,
+}: AudioMeterStripProps) {
   const visible = useAudioMetersVisible((s) => s.visible);
   const projectHasAudio = useProjectHasAudio();
   if (!visible || !projectHasAudio) return null;
-  return <MeterStripBody />;
+  return <MeterStripBody previewIframeRef={previewIframeRef} />;
 });
 
-function MeterStripBody() {
+function MeterStripBody({ previewIframeRef }: AudioMeterStripProps) {
   const strips = useStrips();
   const bars = useRef(new Map<string | null, StripBars>());
   const register = useRef((id: string | null, b: StripBars | null) => {
@@ -410,7 +421,7 @@ function MeterStripBody() {
     else bars.current.delete(id);
   }).current;
   const { onLive, onCommit } = useVolumeHandlers();
-  useMeterLoop(strips, bars);
+  useMeterLoop(strips, bars, previewIframeRef);
   return (
     <div
       data-testid="audio-meter-strip"

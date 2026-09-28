@@ -9,6 +9,8 @@ description: >
   general video planning.
 ---
 
+**Plugin installs:** Before setup or freshness commands, follow [plugin execution rules](../hyperframes/references/plugin-installation.md) when this skill is inside a HyperFrames plugin. Standalone installs keep the update instructions below.
+
 # HyperFrames Keyframes
 
 Keyframes are a pose contract: visible states, continuous subject identity, seek-safe runtime, verified pixels.

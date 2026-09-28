@@ -19,7 +19,7 @@ import { Tooltip } from "./ui";
 import { AudioMetersIcon } from "./icons/AudioMetersIcon";
 import { RippleEditIcon } from "./icons/RippleEditIcon";
 import { flatActive, flatBtn, flatDisabled, flatIdle } from "./timelineToolbarStyles";
-import { TimelineHistoryButtons } from "./TimelineHistoryButtons";
+import { TimelineHistoryButtons, type TimelineHistoryButtonsProps } from "./TimelineHistoryButtons";
 import { Scissors } from "../icons/SystemIcons";
 import type { GsapAnimation } from "@hyperframes/core/gsap-parser";
 import type { DomEditSelection } from "./editor/domEditingTypes";
@@ -33,9 +33,11 @@ interface DomEditSessionSlice extends EnableKeyframesSession {
   selectedGsapAnimations: GsapAnimation[];
 }
 
-interface TimelineToolbarProps {
+export interface TimelineToolbarProps {
   domEditSession?: DomEditSessionSlice;
   onSplitElement?: (element: TimelineElement, splitTime: number) => void;
+  history?: TimelineHistoryButtonsProps;
+  showAddBeat?: boolean;
 }
 
 interface KeyframeToggleState {
@@ -127,7 +129,12 @@ function useKeyframeToggle(session?: DomEditSessionSlice) {
 }
 
 // fallow-ignore-next-line complexity
-export function TimelineToolbar({ domEditSession, onSplitElement }: TimelineToolbarProps) {
+export function TimelineToolbar({
+  domEditSession,
+  onSplitElement,
+  history,
+  showAddBeat = true,
+}: TimelineToolbarProps) {
   const activeTool = usePlayerStore((s) => s.activeTool);
   const setActiveTool = usePlayerStore((s) => s.setActiveTool);
   const timelineSnapEnabled = usePlayerStore((s) => s.timelineSnapEnabled);
@@ -195,7 +202,7 @@ export function TimelineToolbar({ domEditSession, onSplitElement }: TimelineTool
     <div className="border-b border-neutral-800/60">
       <div className="flex items-center justify-between px-2 py-0.5">
         <div className="flex items-center gap-0.5">
-          <TimelineHistoryButtons />
+          <TimelineHistoryButtons {...history} />
           <Tooltip label="Selection tool (V)">
             <button
               type="button"
@@ -416,7 +423,8 @@ export function TimelineToolbar({ domEditSession, onSplitElement }: TimelineTool
               );
             })()}
           {(() => {
-            // Always rendered (CapCut-style): before beat analysis loads (or when
+            if (!showAddBeat) return null;
+            // Rendered whenever shown (CapCut-style): before beat analysis loads (or when
             // the project has no analyzed music) the button fades to a disabled
             // state instead of unmounting, so the toolbar layout never shifts.
             const canAdd = beatAnalysisReady && canAddBeatAt(currentTime);

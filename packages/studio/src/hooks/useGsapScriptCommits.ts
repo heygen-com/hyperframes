@@ -523,6 +523,7 @@ export function useGsapScriptCommits({ projectIdRef, activeCompPath, previewIfra
     showToast,
     sdkSession,
     sdkDeps,
+    writeProjectFile,
   });
   const keyframeOps = useGsapKeyframeOps({
     activeCompPath,

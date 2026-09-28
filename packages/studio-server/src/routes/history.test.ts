@@ -49,6 +49,51 @@ async function demoProject({ quietMs }: { quietMs?: number } = {}) {
 }
 
 describe("history routes", () => {
+  it.each(["outside", "agent turn"])(
+    "keep the %s write that landed between Studio's read and its patch when Studio's edit is undone",
+    async (writer) => {
+      const projectDir = tempDir("hf-history-outside-patch-");
+      const file = join(projectDir, "index.html");
+      writeFileSync(file, '<h1 id="title">A</h1>');
+      const history = await openProjectHistory({
+        projectDir,
+        historyRoot: tempDir("hf-history-outside-patch-root-"),
+      });
+      cleanup.push(() => history.close());
+      const call = apiFor(projectDir, history);
+      const api = createStudioApi({
+        listProjects: () => [],
+        resolveProject: (id: string) => (id === "demo" ? { id, dir: projectDir } : null),
+        history: () => history,
+      } as unknown as StudioApiAdapter);
+
+      const studioRead = readFileSync(file, "utf-8");
+      const turn =
+        writer === "agent turn"
+          ? await history.beginWindow({ kind: "agent", name: "Agent" }, "Agent turn")
+          : null;
+      writeFileSync(file, '<h1 id="title">B</h1>');
+      const patched = await api.request("/projects/demo/file-mutations/patch-element/index.html", {
+        method: "POST",
+        body: JSON.stringify({
+          target: { id: "title" },
+          operations: [{ type: "inline-style", property: "color", value: "red" }],
+        }),
+      });
+      expect(await patched.json()).toMatchObject({ ok: true, changed: true });
+      await call("/claim", {
+        label: "Color",
+        paths: ["index.html"],
+        overwrote: { "index.html": fileContentVersion(studioRead) },
+      });
+
+      await turn?.close();
+
+      expect(await (await call("/step", { direction: "back" })).json()).toMatchObject({ ok: true });
+      expect(readFileSync(file, "utf-8")).toBe('<h1 id="title">B</h1>');
+    },
+  );
+
   it("record a Studio edit window as the person's entry, and step back undoes it", async () => {
     const { projectDir, call } = await demoProject();
 

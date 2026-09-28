@@ -8,9 +8,11 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 type FakeConfig = Record<string, unknown>;
 
 let config: FakeConfig;
+// What a process-cached readConfig() returns; null means it matches disk.
+let cachedRead: FakeConfig | null = null;
 
 vi.mock("../telemetry/config.js", () => ({
-  readConfig: () => ({ ...config }),
+  readConfig: () => ({ ...(cachedRead ?? config) }),
   readConfigFresh: () => ({ ...config }),
   writeConfig: (next: FakeConfig) => {
     config = { ...next };
@@ -32,6 +34,7 @@ describe("skillsUpdateCheck", () => {
   beforeEach(() => {
     vi.resetModules();
     config = {};
+    cachedRead = null;
     mockCheckSkills.mockReset();
     gate.suppressed = false;
     gate.answers = true;
@@ -45,12 +48,32 @@ describe("skillsUpdateCheck", () => {
   it.each([
     ["HYPERFRAMES_SKIP_SKILLS is set", () => vi.stubEnv("HYPERFRAMES_SKIP_SKILLS", "1")],
     ["the run shows no notices", () => (gate.suppressed = true)],
-    ["DNS does not answer", () => (gate.answers = false)],
-  ])("does not check skills when %s", async (_, arrange) => {
+  ])("no background check is due when %s", async (_, arrange) => {
+    const { skillsCheckDue } = await import("./skillsUpdateCheck.js");
+    expect(skillsCheckDue()).toBe(true);
     arrange();
-    const { checkSkillsForUpdate } = await import("./skillsUpdateCheck.js");
-    await checkSkillsForUpdate(true);
+    expect(skillsCheckDue()).toBe(false);
+  });
+
+  it("does not check skills when DNS does not answer", async () => {
+    gate.answers = false;
+    const { refreshSkillsCache } = await import("./skillsUpdateCheck.js");
+    await refreshSkillsCache();
     expect(mockCheckSkills).not.toHaveBeenCalled();
+  });
+
+  it("writes onto a fresh read, keeping what another process wrote meanwhile", async () => {
+    config = { commandCount: 1 };
+    cachedRead = { ...config };
+    config = { commandCount: 2 };
+    mockCheckSkills.mockResolvedValue({
+      location: "/home/user/.claude/skills",
+      updateAvailable: false,
+      summary: { current: 1, outdated: 0, missing: 0, coreMissing: 0, removed: 0 },
+    });
+    const { refreshSkillsCache } = await import("./skillsUpdateCheck.js");
+    await refreshSkillsCache();
+    expect(config).toMatchObject({ commandCount: 2, skillsOutdatedCount: 0 });
   });
 
   it("refreshSkillsCache persists the removed count alongside outdated/missing", async () => {
@@ -60,11 +83,15 @@ describe("skillsUpdateCheck", () => {
       summary: { current: 1, outdated: 2, missing: 3, coreMissing: 1, removed: 3 },
     });
 
-    const { checkSkillsForUpdate } = await import("./skillsUpdateCheck.js");
-    const meta = await checkSkillsForUpdate(true);
+    const { refreshSkillsCache } = await import("./skillsUpdateCheck.js");
+    await refreshSkillsCache();
 
-    expect(meta).toEqual({ updateAvailable: true, outdated: 2, missing: 1, removed: 3 });
-    expect(config["skillsRemovedCount"]).toBe(3);
+    expect(config).toMatchObject({
+      skillsUpdateAvailable: true,
+      skillsOutdatedCount: 2,
+      skillsMissingCount: 1,
+      skillsRemovedCount: 3,
+    });
     // Must resolve against the canonical upstream manifest, not a possibly
     // stale in-repo skills-manifest.json, so this nudge agrees with what
     // `updateSkills` would actually reconcile.
@@ -78,8 +105,8 @@ describe("skillsUpdateCheck", () => {
       summary: { current: 0, outdated: 0, missing: 0, coreMissing: 0, removed: 0 },
     });
 
-    const { checkSkillsForUpdate } = await import("./skillsUpdateCheck.js");
-    await checkSkillsForUpdate(true);
+    const { refreshSkillsCache } = await import("./skillsUpdateCheck.js");
+    await refreshSkillsCache();
 
     expect(config["skillsRemovedCount"]).toBeUndefined();
   });
@@ -96,6 +123,12 @@ describe("skillsUpdateCheck", () => {
     expect(writeSpy).toHaveBeenCalledTimes(1);
     return String(writeSpy.mock.calls[0]?.[0]);
   }
+
+  it("suppresses a cached stale-skills notice in an attended plugin run", async () => {
+    vi.stubEnv("HYPERFRAMES_SKIP_SKILLS", "1");
+    // The normal notice gate permits output (the attended TTY case).
+    expect(await noticeTextFor({ skillsOutdatedCount: 2, skillsMissingCount: 1 })).toBeNull();
+  });
 
   it("the cached nudge total counts removed skills, not just outdated/missing", async () => {
     // Cache pre-populated as if a prior refreshSkillsCache had run — only
@@ -144,12 +177,9 @@ describe("skillsUpdateCheck", () => {
 
     it("a fresh cache short-circuits the background check with the stale verdict (the bug's precondition)", async () => {
       config = { ...PRE_INSTALL_CACHE };
-      const { checkSkillsForUpdate } = await import("./skillsUpdateCheck.js");
+      const { skillsCheckDue } = await import("./skillsUpdateCheck.js");
 
-      const meta = await checkSkillsForUpdate();
-
-      expect(mockCheckSkills).not.toHaveBeenCalled();
-      expect(meta).toEqual({ updateAvailable: true, outdated: 12, missing: 8, removed: 0 });
+      expect(skillsCheckDue()).toBe(false);
     });
 
     it("drops the cached verdict so the next background check re-runs for real", async () => {
@@ -160,7 +190,7 @@ describe("skillsUpdateCheck", () => {
         summary: { current: 20, outdated: 0, missing: 0, coreMissing: 0, removed: 0 },
       });
 
-      const { checkSkillsForUpdate, invalidateSkillsCache } =
+      const { skillsCheckDue, refreshSkillsCache, invalidateSkillsCache } =
         await import("./skillsUpdateCheck.js");
       invalidateSkillsCache();
 
@@ -171,22 +201,22 @@ describe("skillsUpdateCheck", () => {
       expect(config["skillsMissingCount"]).toBeUndefined();
       expect(config["skillsRemovedCount"]).toBeUndefined();
 
-      const meta = await checkSkillsForUpdate();
+      expect(skillsCheckDue()).toBe(true);
+      await refreshSkillsCache();
       expect(mockCheckSkills).toHaveBeenCalledWith({ canonical: true });
-      expect(meta).toEqual({ updateAvailable: false, outdated: 0, missing: 0, removed: 0 });
+      expect(config).toMatchObject({ skillsUpdateAvailable: false, skillsOutdatedCount: 0 });
     });
 
     it("counts are cleared, not just the timestamp — an offline machine goes quiet instead of resurrecting stale counts", async () => {
       config = { ...PRE_INSTALL_CACHE };
       mockCheckSkills.mockRejectedValue(new Error("offline"));
 
-      const { checkSkillsForUpdate, invalidateSkillsCache, printSkillsUpdateNotice } =
+      const { refreshSkillsCache, invalidateSkillsCache, printSkillsUpdateNotice } =
         await import("./skillsUpdateCheck.js");
       invalidateSkillsCache();
 
-      // Refresh fails (offline) → falls back to cached meta, which is now empty.
-      const meta = await checkSkillsForUpdate();
-      expect(meta).toEqual({ updateAvailable: false, outdated: 0, missing: 0, removed: 0 });
+      // Refresh fails (offline) and leaves the now-empty cache alone.
+      await expect(refreshSkillsCache()).rejects.toThrow("offline");
 
       const writeSpy = vi.spyOn(process.stderr, "write").mockImplementation(() => true);
       printSkillsUpdateNotice();
