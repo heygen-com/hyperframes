@@ -64,6 +64,10 @@ export function recordInManifest(hyperframesDir, assets) {
       anomalies.push(`${path}: not recorded in the media manifest (${error.message})`);
     }
   }
-  if (anomalies.length < assets.length) regenerateIndex(hyperframesDir);
+  try {
+    if (anomalies.length < assets.length) regenerateIndex(hyperframesDir);
+  } catch (error) {
+    anomalies.push(`.media/index.md: not refreshed (${error.message})`);
+  }
   return anomalies;
 }

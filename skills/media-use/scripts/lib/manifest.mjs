@@ -79,10 +79,6 @@ export function appendRecord(projectDir, record) {
   appendFileSync(p, line);
 }
 
-// Match prompts forgivingly. Agents rarely re-emit a byte-identical intent, so
-// keying cache lookups on exact equality meant "Calm piano" and "calm  piano"
-// re-searched and re-downloaded. Normalize (trim, lowercase, collapse internal
-// whitespace) on both sides; the raw prompt is still stored for audit.
 /** The record a path has now: the manifest only appends, so the last one for a path wins. */
 export function latestRecordFor(projectDir, path) {
   return readManifest(projectDir).findLast((record) => record.path === path);
@@ -108,6 +104,10 @@ export function recordInPlace(
   return record;
 }
 
+// Match prompts forgivingly. Agents rarely re-emit a byte-identical intent, so
+// keying cache lookups on exact equality meant "Calm piano" and "calm  piano"
+// re-searched and re-downloaded. Normalize (trim, lowercase, collapse internal
+// whitespace) on both sides; the raw prompt is still stored for audit.
 export function normalizePrompt(prompt) {
   return String(prompt ?? "")
     .trim()

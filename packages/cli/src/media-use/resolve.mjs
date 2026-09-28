@@ -975,12 +975,18 @@ async function ingest(src) {
 }
 
 async function recordProjectFile(path) {
+  let duration;
+  try {
+    duration = probeMedia(join(projectDir, path)).duration;
+  } catch (err) {
+    exitError(err.message);
+  }
   const record = recordInPlace(projectDir, {
     type,
     path,
     source: args.source,
     description: intent,
-    duration: probeMedia(join(projectDir, path)).duration,
+    duration,
     provenance: {
       provider: args.provider || "local",
       from: path,
