@@ -206,6 +206,59 @@ describe("parked transport loop", () => {
     expect(states.at(-1)).toMatchObject({ isPlaying: false, ended: true, frame: 149 });
   });
 
+  it("stops on a play range's end frame, says it ended there, and plays to the film end once cleared", () => {
+    let nowMs = 1000;
+    vi.spyOn(performance, "now").mockImplementation(() => nowMs);
+    mount();
+    const timeline = window.__timelines!.main!;
+    initSandboxRuntimeModular();
+    quiesce();
+    const setPlayRange = (startSeconds: number | null, endSeconds: number | null) =>
+      window.dispatchEvent(
+        new MessageEvent("message", {
+          source: window.parent,
+          data: {
+            source: "hf-parent",
+            type: "control",
+            action: "set-play-range",
+            startSeconds,
+            endSeconds,
+          },
+        }),
+      );
+    const playOut = () => {
+      window.__player!.play();
+      for (let step = 0; step < 1000 && window.__player!.isPlaying(); step += 1) {
+        nowMs += 7;
+        raf.step(7);
+      }
+    };
+
+    setPlayRange(2, 3);
+    window.__player!.seek(2);
+    playOut();
+    const states = posted.filter((m) => m["type"] === "state");
+    expect(states.at(-1)).toMatchObject({
+      isPlaying: false,
+      ended: true,
+      frame: 90,
+      currentTime: 3,
+    });
+    expect(states.every((m) => (m["currentTime"] as number) <= 3)).toBe(true);
+    expect(timeline.time()).toBe(3);
+    expect(window.__player!.getDuration()).toBe(5);
+
+    setPlayRange(null, null);
+    playOut();
+    const after = posted.filter((m) => m["type"] === "state");
+    expect(after.at(-1)).toMatchObject({
+      isPlaying: false,
+      ended: true,
+      frame: 150,
+      currentTime: 5,
+    });
+  });
+
   // The render stops at the root's declared length too; a longer animation is cut off.
   it.each([
     ["3 s, shorter than its animation", "3", 90],

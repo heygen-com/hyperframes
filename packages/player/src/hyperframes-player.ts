@@ -5,6 +5,7 @@ import { DirectTimelineClock } from "./direct-timeline-clock.js";
 import { ParentMediaManager } from "./parent-media.js";
 import { isRealmHtmlMediaElement } from "./media-element-guards.js";
 import { handleRuntimeMessage } from "./runtime-message-handler.js";
+import { isOutsidePlayRange, type PlayRange, resolvePlayRange } from "./play-range.js";
 import {
   SHADER_CAPTURE_SCALE_ATTR,
   SHADER_LOADING_ATTR,
@@ -47,6 +48,8 @@ const ASSETS_LOADING_ATTR = "assets-loading";
 const ASSETS_LOADING_UI_ATTR = "assets-loading-ui";
 const LOW_POWER_IDLE_ATTR = "low-power-idle";
 const DISABLE_CLICK_TO_PLAY_ATTR = "disable-click-to-play";
+const RANGE_START_ATTR = "range-start";
+const RANGE_END_ATTR = "range-end";
 // paint-and-idle now always has a frame to wait on, so the overlay would
 // flash on every single Play without this debounce. ponytail: 150ms is
 // unmeasured, retune once there's production data on paint-and-idle timing.
@@ -104,6 +107,8 @@ class HyperframesPlayer extends HTMLElement {
       SHADER_LOADING_ATTR,
       ASSETS_LOADING_UI_ATTR,
       LOW_POWER_IDLE_ATTR,
+      RANGE_START_ATTR,
+      RANGE_END_ATTR,
     ];
   }
 
@@ -148,6 +153,7 @@ class HyperframesPlayer extends HTMLElement {
   private _pendingRuntimeData = new Map<string, PendingRuntimeDataDelivery>();
   private _afterUpdate: Array<() => void> | null = null;
   private _videoSource: VideoSource | null = null;
+  private _rangeClampReported = "";
 
   constructor() {
     super();
@@ -178,7 +184,7 @@ class HyperframesPlayer extends HTMLElement {
       },
       getLoop: () => this.loop,
       restart: () => {
-        this.seek(0);
+        this.seek(this._playRange()?.start ?? 0);
         this.play();
       },
       onPaused: () => {
@@ -338,6 +344,10 @@ class HyperframesPlayer extends HTMLElement {
       case LOW_POWER_IDLE_ATTR:
         this._sendControl("set-idle-heartbeat", { slow: val !== null });
         break;
+      case RANGE_START_ATTR:
+      case RANGE_END_ATTR:
+        this._applyPlayRange(true);
+        break;
       case SHADER_CAPTURE_SCALE_ATTR:
       case SHADER_LOADING_ATTR:
       case RUNTIME_SRC_ATTR:
@@ -394,7 +404,10 @@ class HyperframesPlayer extends HTMLElement {
     this._pendingPlay = false;
     this.posterEl?.remove();
     this.posterEl = null;
-    if (this._duration > 0 && this._currentTime >= this._duration) this.seek(0);
+    const range = this._ready ? this._playRange() : null;
+    if (range) {
+      if (isOutsidePlayRange(this._currentTime, range, this._duration)) this.seek(range.start);
+    } else if (this._duration > 0 && this._currentTime >= this._duration) this.seek(0);
     // Must be set before _startParentTickClock so the RAF loop's `_paused`
     // check doesn't immediately self-terminate on the first callback.
     this._paused = false;
@@ -424,6 +437,7 @@ class HyperframesPlayer extends HTMLElement {
         () => this._currentTime,
         () => this._duration,
         () => this._paused,
+        () => this._playRange()?.end ?? this._duration,
       );
     }
   }
@@ -688,6 +702,76 @@ class HyperframesPlayer extends HTMLElement {
     else this.removeAttribute("loop");
   }
 
+  /** Film time where range playback starts; null (no `range-start`) starts at 0. */
+  get rangeStart(): number | null {
+    return this._readSeconds(RANGE_START_ATTR);
+  }
+  set rangeStart(seconds: number | null) {
+    this._writeSeconds(RANGE_START_ATTR, seconds);
+  }
+
+  /** Film time where range playback ends or loops; null (no `range-end`) plays to the end. */
+  get rangeEnd(): number | null {
+    return this._readSeconds(RANGE_END_ATTR);
+  }
+  set rangeEnd(seconds: number | null) {
+    this._writeSeconds(RANGE_END_ATTR, seconds);
+  }
+
+  private _readSeconds(name: string): number | null {
+    const value = this.getAttribute(name);
+    return value === null ? null : Number(value);
+  }
+
+  private _writeSeconds(name: string, seconds: number | null): void {
+    if (seconds === null) this.removeAttribute(name);
+    else this.setAttribute(name, String(seconds));
+  }
+
+  private _hasPlayRange(): boolean {
+    return this.hasAttribute(RANGE_START_ATTR) || this.hasAttribute(RANGE_END_ATTR);
+  }
+
+  private _playRange(): PlayRange | null {
+    return resolvePlayRange(this.rangeStart, this.rangeEnd, this._duration).range;
+  }
+
+  private _sendPlayRange(range: PlayRange | null): void {
+    const endSeconds = range?.end ?? null;
+    this._sendControl("set-play-range", { startSeconds: range?.start ?? null, endSeconds });
+  }
+
+  /** A new range or duration: the runtime gets the new end and the host hears of a clamp. With
+   *  `park`, a paused player moves to the start and a playing one outside the range jumps there;
+   *  a queued play() starts at the range start itself. */
+  private _applyPlayRange(park: boolean): void {
+    const { range, clamped } = resolvePlayRange(this.rangeStart, this.rangeEnd, this._duration);
+    this._sendPlayRange(range);
+    if (!this._ready) return;
+    this._reportRangeClamp(range, clamped);
+    if (range && park && !this._pendingPlay) this._moveIntoPlayRange(range);
+  }
+
+  // Once per asked-for range and duration.
+  private _reportRangeClamp(range: PlayRange | null, clamped: boolean): void {
+    const clampKey = clamped ? `${this.rangeStart},${this.rangeEnd},${this._duration}` : "";
+    if (clampKey === this._rangeClampReported) return;
+    this._rangeClampReported = clampKey;
+    if (!clamped) return;
+    const detail = { rangeStart: range?.start ?? null, rangeEnd: range?.end ?? null };
+    this._emit(
+      new CustomEvent("rangeclamped", { detail: { ...detail, duration: this._duration } }),
+    );
+  }
+
+  private _moveIntoPlayRange(range: PlayRange): void {
+    if (this._paused) this.seek(range.start);
+    else if (isOutsidePlayRange(this._currentTime, range, this._duration)) {
+      this.seek(range.start);
+      this.play();
+    }
+  }
+
   private _sendControl(action: string, extra: Record<string, unknown> = {}): boolean {
     try {
       const frameWindow = this.iframe.contentWindow;
@@ -882,6 +966,7 @@ class HyperframesPlayer extends HTMLElement {
       disabled: this._isSlideshowPlayer(),
     });
     this._sendControl("set-idle-heartbeat", { slow: this.hasAttribute(LOW_POWER_IDLE_ATTR) });
+    if (this._hasPlayRange()) this._sendPlayRange(this._playRange());
   }
 
   private _reloadShaderOptions(): void {
@@ -1145,6 +1230,7 @@ class HyperframesPlayer extends HTMLElement {
       seek: (t) => this.seek(t),
       play: () => this.play(),
       getLoop: () => this.loop,
+      getPlayRange: () => this._playRange(),
       media: this._media,
     });
   }
@@ -1325,13 +1411,17 @@ class HyperframesPlayer extends HTMLElement {
     this._emit(new CustomEvent("ready", { detail }));
     // Once ready: covers a size message that never came, and lets a zero-size player warn.
     this._rescale();
+    this._rangeClampReported = "";
+    if (this._hasPlayRange()) this._applyPlayRange(true);
   }
 
   /** `ready` carries the first duration; later changes fire `durationchange`. */
   private _setDuration(duration: number): void {
     if (duration === this._duration) return;
     this._duration = duration;
-    if (this._ready) this._emit(new CustomEvent("durationchange", { detail: { duration } }));
+    if (!this._ready) return;
+    this._emit(new CustomEvent("durationchange", { detail: { duration } }));
+    if (this._hasPlayRange()) this._applyPlayRange(false);
   }
 
   private _setCompositionSize(width: number, height: number): void {

@@ -64,6 +64,8 @@ Set `autoplay muted` only when playback should start without a user gesture.
 | `assets-loading-ui` | `player` or `none` | `player` | `none` hides the loading-assets card; asset events still fire |
 | `low-power-idle` | boolean | false | While paused, check in once a second, not every 80 ms (many-player pages) |
 | `disable-click-to-play` | boolean | false | A click on the player no longer plays or pauses, so the page can handle it |
+| `range-start` | number | — | Film second where playback starts, loops back to and parks when paused (`rangeStart`) |
+| `range-end` | number | — | Film second where playback ends, or loops with `loop`, on its own frame (`rangeEnd`) |
 
 Player also accepts `shader-capture-scale` and `shader-loading` for previewing
 projects that use shader transitions. These are preview controls, not composition
@@ -115,6 +117,7 @@ player.addEventListener("timeupdate", (event) => {
 | `play`         | —                 | Playback started                                             |
 | `pause`        | —                 | Playback paused                                              |
 | `ended`        | —                 | Playback reached end                                         |
+| `rangeclamped` | `{ rangeStart, rangeEnd, duration }` | A range past the film was cut to its end, or an empty one ignored (nulls) |
 | `ratechange`   | —                 | Playback rate changed                                        |
 | `volumechange` | —                 | Volume or muted state changed                                |
 | `scenes`       | `{ scenes }`      | The runtime reported its scene list                          |

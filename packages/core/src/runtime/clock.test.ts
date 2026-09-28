@@ -199,6 +199,25 @@ describe("TransportClock", () => {
       expect(clock.getDuration()).toBe(Infinity);
     });
 
+    it("stops at a play range's end, keeps the film duration, and runs to the film end once cleared", () => {
+      const { clock, advance } = createClock({ duration: 6 });
+      clock.setPlayRange(2, 3);
+      clock.seek(2);
+      clock.play();
+      advance(1500);
+      expect(clock.now()).toBe(3);
+      expect(clock.reachedEnd()).toBe(true);
+      expect(clock.getDuration()).toBe(6);
+      expect(clock.getPlayStart()).toBe(2);
+      clock.pause();
+      expect(clock.play()).toBe(false);
+      clock.setPlayRange(0, null);
+      expect(clock.reachedEnd()).toBe(false);
+      clock.play();
+      advance(5000);
+      expect(clock.now()).toBe(6);
+    });
+
     it("reachedEnd returns false when no duration set", () => {
       const { clock, advance } = createClock();
       clock.play();

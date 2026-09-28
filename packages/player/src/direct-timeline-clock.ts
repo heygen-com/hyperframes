@@ -35,6 +35,7 @@ export class DirectTimelineClock {
     getCurrentTime: () => number,
     getDuration: () => number,
     isPaused: () => boolean,
+    getEnd: () => number,
   ): void {
     this.stop();
 
@@ -53,9 +54,10 @@ export class DirectTimelineClock {
       }
 
       const duration = getDuration();
-      if (duration > 0) currentTime = Math.min(currentTime, duration);
+      const end = getEnd();
+      if (end > 0) currentTime = Math.min(currentTime, end);
 
-      const completedPlayback = duration > 0 && currentTime >= duration;
+      const completedPlayback = end > 0 && currentTime >= end;
       const now = performance.now();
 
       if (now - this._lastUpdateMs > UI_UPDATE_INTERVAL_MS || completedPlayback) {

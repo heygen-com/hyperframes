@@ -84,6 +84,8 @@ Show a static image before playback starts:
 | `assets-loading-ui`     | `player \| none`                | `player`      | `none` never shows the loading-assets card; asset events still fire         |
 | `low-power-idle`        | boolean                         | false         | While paused, check in once a second, not every 80 ms (many-player pages)   |
 | `disable-click-to-play` | boolean                         | false         | A click on the player no longer plays or pauses (host overlays own clicks)  |
+| `range-start`           | number                          | —             | Film second where playback starts, loops back to and parks when paused      |
+| `range-end`             | number                          | —             | Film second where playback ends (or loops, with `loop`), on its own frame   |
 
 ### Shader transition previews
 
@@ -149,6 +151,8 @@ player.playbackRate; // number (read/write)
 player.muted; // boolean (read/write)
 player.audioLocked; // boolean (read/write) — force-mute + hide volume controls
 player.loop; // boolean (read/write)
+player.rangeStart; // number | null (read/write, mirrors range-start)
+player.rangeEnd; // number | null (read/write, mirrors range-end)
 player.shaderCaptureScale; // number (read/write)
 player.shaderLoading; // "composition" | "player" | "none" (read/write)
 
@@ -250,6 +254,7 @@ function StudioPreview({ src }: { src: string }) {
 | `pause`                 | —                                                   | Playback paused                            |
 | `timeupdate`            | `{ currentTime }`                                   | Playback position changed (~10 fps)        |
 | `ended`                 | —                                                   | Reached the end (when not looping)         |
+| `rangeclamped`          | `{ rangeStart, rangeEnd, duration }`                | The range was cut to the film, or ignored  |
 | `error`                 | `{ message }` (video mode: `{ message, code }`)     | Composition or video failed to load        |
 | `playbackerror`         | `{ source, error }`                                 | The browser blocked playback               |
 | `shadertransitionstate` | `{ compositionId, state }`                          | Shader transition cache/capture progress   |
