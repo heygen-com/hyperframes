@@ -827,12 +827,7 @@ export async function extractVideoFramesRange(
   options: ExtractionOptions,
   signal?: AbortSignal,
   config?: Partial<Pick<EngineConfig, "ffmpegProcessTimeout">>,
-  /**
-   * Override the output directory for this extraction. When provided, frames
-   * are written directly into `outputDirOverride` (no per-videoId subdir).
-   * Used by the cache layer to materialize frames straight into the keyed
-   * cache entry directory.
-   */
+  /** Frames go straight here, with no per-videoId subdir (the cache layer's keyed entry). */
   outputDirOverride?: string,
 ): Promise<ExtractedFrames> {
   const ffmpegProcessTimeout = config?.ffmpegProcessTimeout ?? DEFAULT_CONFIG.ffmpegProcessTimeout;
@@ -877,6 +872,8 @@ export async function extractVideoFramesRange(
   const isHdr = isHdrColorSpaceUtil(metadata.colorSpace);
   const isMacOS = process.platform === "darwin";
 
+  const sampleCfrAtOutputFps = !options.finalFrameOnly && !metadata.isVFR;
+
   const args: string[] = [];
   if (isHdr && isMacOS) {
     args.push("-hwaccel", "videotoolbox");
@@ -900,6 +897,8 @@ export async function extractVideoFramesRange(
     // a negative timestamp base) can seek to EOF and emit zero frames.
     args.push("-i", videoPath, "-ss", String(startTime), "-frames:v", "1");
   } else {
+    // An accurate seek drops the frame on screen at startTime; the fps sampling below needs it.
+    if (sampleCfrAtOutputFps) args.push("-noaccurate_seek");
     args.push("-ss", String(startTime), "-i", videoPath, "-t", String(duration));
   }
 
@@ -908,8 +907,14 @@ export async function extractVideoFramesRange(
     // VideoToolbox tone-maps during decode; force output to bt709 SDR format
     vfFilters.push("format=nv12");
   }
-  if (!options.finalFrameOnly && !metadata.isVFR) {
-    vfFilters.push(`fps=${ffmpegFps}`);
+  if (sampleCfrAtOutputFps) {
+    // Each slot takes the last frame starting at or before its time. Ticks of 2 ms or finer
+    // first shift half a tick, absorbing container rounding (WebM/MKV use whole ms).
+    vfFilters.push(
+      "settb=intb/2",
+      "setpts=PTS-lte(TB\\,0.001)",
+      `fps=${ffmpegFps}:start_time=0:round=up`,
+    );
   }
   if (options.sdrToHdrTransfer) {
     // Ordering intent: fps sampling runs BEFORE the colorspace remap so only

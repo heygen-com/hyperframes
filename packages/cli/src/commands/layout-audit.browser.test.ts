@@ -622,6 +622,162 @@ describe("layout-audit.browser", () => {
     expect(runAudit().some((issue) => issue.code === "text_box_overflow")).toBe(true);
   });
 
+  it("flags text a clipping parent cuts off", () => {
+    document.body.innerHTML = `
+      <div id="root" data-composition-id="main" data-width="640" data-height="360">
+        <div id="card">
+          <div id="headline">CREATIVE CHOICES</div>
+        </div>
+      </div>
+    `;
+    installGeometry(
+      {
+        root: rect({ left: 0, top: 0, width: 640, height: 360 }),
+        card: rect({ left: 40, top: 60, width: 200, height: 80 }),
+        headline: rect({ left: 50, top: 20, width: 160, height: 200 }),
+        text: rect({ left: 50, top: 20, width: 160, height: 200 }),
+      },
+      {
+        card: {
+          overflow: "hidden",
+          overflowX: "hidden",
+          overflowY: "hidden",
+          backgroundColor: "rgb(40, 20, 60)",
+          borderTopLeftRadius: "34px",
+          borderTopRightRadius: "34px",
+          borderBottomRightRadius: "34px",
+          borderBottomLeftRadius: "34px",
+        },
+      },
+    );
+    installAuditScript();
+
+    const found = runAudit().filter((issue) => issue.code === "text_box_overflow");
+    expect(found).toHaveLength(1);
+    expect(found[0]?.selector).toBe("#headline");
+    expect(found[0]?.containerSelector).toBe("#card");
+    expect(found[0]?.overflow?.top).toBeGreaterThan(2);
+    expect(found[0]?.overflow?.bottom).toBeGreaterThan(2);
+    expect(runAudit().some((issue) => issue.code === "clipped_text")).toBe(false);
+
+    document.querySelector("#card")?.setAttribute("data-layout-allow-overflow", "");
+    expect(runAudit().some((issue) => issue.code === "text_box_overflow")).toBe(false);
+  });
+
+  it("flags visible text entirely outside a non-clipping card", () => {
+    document.body.innerHTML = `
+      <div id="root" data-composition-id="main" data-width="640" data-height="360">
+        <div id="card"><div id="headline">Visible overflow</div></div>
+      </div>
+    `;
+    installGeometry(
+      {
+        root: rect({ left: 0, top: 0, width: 640, height: 360 }),
+        card: rect({ left: 40, top: 60, width: 200, height: 80 }),
+        headline: rect({ left: 50, top: 170, width: 160, height: 30 }),
+        text: rect({ left: 50, top: 170, width: 160, height: 30 }),
+      },
+      {
+        card: {
+          overflow: "visible",
+          backgroundColor: "rgb(40, 20, 60)",
+          borderTopLeftRadius: "34px",
+        },
+      },
+    );
+    installAuditScript();
+
+    const found = runAudit().filter((issue) => issue.code === "text_box_overflow");
+    expect(found).toHaveLength(1);
+    expect(found[0]?.selector).toBe("#headline");
+    expect(found[0]?.containerSelector).toBe("#card");
+    expect(found[0]?.overflow?.bottom).toBe(60);
+  });
+
+  it("does not flag a line parked entirely outside a clipping window", () => {
+    document.body.innerHTML = `
+      <div id="root" data-composition-id="main" data-width="640" data-height="360">
+        <div id="card">
+          <div id="headline">9</div>
+        </div>
+      </div>
+    `;
+    installGeometry(
+      {
+        root: rect({ left: 0, top: 0, width: 640, height: 360 }),
+        card: rect({ left: 40, top: 60, width: 40, height: 20 }),
+        headline: rect({ left: 40, top: 0, width: 40, height: 20 }),
+        text: rect({ left: 40, top: 0, width: 40, height: 20 }),
+      },
+      {
+        card: {
+          overflow: "hidden",
+          overflowX: "hidden",
+          overflowY: "hidden",
+        },
+      },
+    );
+    installAuditScript();
+
+    expect(runAudit().some((issue) => issue.code === "text_box_overflow")).toBe(false);
+  });
+
+  it.each([
+    { name: "resting tight line", top: 87, height: 145, clipHeight: 120, scale: 1, error: false },
+    { name: "parked touching line", top: 195, height: 113, clipHeight: 96, scale: 1, error: false },
+    { name: "real cut", top: 87, height: 145, clipHeight: 60, scale: 1, error: true },
+    { name: "scaled real cut", top: 93.5, height: 72.5, clipHeight: 30, scale: 0.5, error: true },
+  ])("uses scaled line boxes for $name", ({ top, height, clipHeight, scale, error }) => {
+    document.body.innerHTML = `
+      <div id="root" data-composition-id="main" data-width="640" data-height="360">
+        <div id="card"><div id="headline">HELLO</div></div>
+      </div>`;
+    const contextSpy = vi.spyOn(HTMLCanvasElement.prototype, "getContext") as unknown as {
+      mockReturnValue(value: CanvasRenderingContext2D): void;
+    };
+    contextSpy.mockReturnValue({
+      font: "",
+      measureText: () => ({
+        fontBoundingBoxAscent: 115,
+        fontBoundingBoxDescent: 30,
+        actualBoundingBoxAscent: 85,
+        actualBoundingBoxDescent: 0,
+      }),
+    } as unknown as CanvasRenderingContext2D);
+    installGeometry(
+      {
+        root: rect({ left: 0, top: 0, width: 640, height: 360 }),
+        card: rect({ left: 40, top: 100, width: 400 * scale, height: clipHeight }),
+        headline: rect({ left: 40, top, width: 300 * scale, height }),
+        text: rect({ left: 40, top, width: 300 * scale, height }),
+      },
+      {
+        card: { overflow: "hidden", overflowX: "hidden", overflowY: "hidden" },
+        headline: { lineHeight: "120px" },
+      },
+    );
+    installAuditScript();
+    expect(runAudit().some((issue) => issue.code === "text_box_overflow")).toBe(error);
+  });
+
+  it("ignores subpixel contact with a clipping window", () => {
+    document.body.innerHTML = `
+      <div id="root" data-composition-id="main" data-width="640" data-height="360">
+        <div id="card"><div id="headline">NEXT</div></div>
+      </div>`;
+    installGeometry(
+      {
+        root: rect({ left: 0, top: 0, width: 640, height: 360 }),
+        card: rect({ left: 40, top: 100, width: 400, height: 96 }),
+        headline: rect({ left: 40, top: 195.7, width: 300, height: 96 }),
+        text: rect({ left: 40, top: 195.7, width: 300, height: 96 }),
+      },
+      { card: { overflow: "hidden", overflowX: "hidden", overflowY: "hidden" } },
+    );
+    installAuditScript();
+    expect(runAudit().some((issue) => issue.code === "text_box_overflow")).toBe(false);
+  });
+
   it("keeps auditing visible descendants beyond the second element", () => {
     document.body.innerHTML = `
       <div id="root" data-composition-id="main" data-width="640" data-height="360">

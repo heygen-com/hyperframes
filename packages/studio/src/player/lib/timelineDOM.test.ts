@@ -9,6 +9,7 @@ import {
 import { isTimelineIgnoredElement } from "./timelineElementHelpers";
 import { computeResizePreview } from "../components/timelineClipDragPreview";
 import type { TimelineElement } from "../store/playerStore";
+import { readMediaOffsetSeconds } from "@hyperframes/parsers/media-duration";
 
 function el(id: string, extra: Partial<TimelineElement> = {}): TimelineElement {
   return { id, tag: "img", start: 0, duration: 5, track: 0, ...extra };
@@ -43,6 +44,26 @@ describe("parseTimelineFromDOM — media in-point", () => {
       { scroll: null, pps: 100, buildSnapTargets: () => [] },
     );
     expect(preview.previewDuration).toBe(0.9);
+  });
+});
+
+describe("parseTimelineFromDOM — in-point read as playback reads it", () => {
+  it.each([
+    ['data-playback-start="-1" data-media-start="2"', 2, "playback-start"],
+    ['data-playback-start="abc" data-media-start="2"', 2, "playback-start"],
+    ['data-media-start="junk"', 0, "media-start"],
+    ['data-media-start="1.5s"', 0, "media-start"],
+  ])("%s", (inPoint, playbackStart, playbackStartAttr) => {
+    const doc = makeDoc(
+      `<div data-composition-id="root"><video id="v" class="clip" data-start="0" data-duration="4" ${inPoint}></video></div>`,
+    );
+    const element = parseTimelineFromDOM(doc, 10).find((e) => e.domId === "v")!;
+    const video = doc.getElementById("v")!;
+    expect(element.playbackStart).toBe(readMediaOffsetSeconds((n) => video.getAttribute(n)));
+    expect([element.playbackStart, element.playbackStartAttr]).toEqual([
+      playbackStart,
+      playbackStartAttr,
+    ]);
   });
 });
 

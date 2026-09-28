@@ -26,8 +26,13 @@ vi.mock("../utils/env.js", () => ({
   isDevMode: () => false,
 }));
 
-const dns = vi.hoisted(() => ({ answers: true }));
-vi.mock("../utils/hostAnswers.js", () => ({ hostAnswers: async () => dns.answers }));
+const dns = vi.hoisted(() => ({ answers: true, probes: 0 }));
+vi.mock("../utils/hostAnswers.js", () => ({
+  hostAnswers: async () => {
+    dns.probes++;
+    return dns.answers;
+  },
+}));
 
 // Canary enrolment is registry-driven and will change as rollouts ramp; stub
 // it so this asserts the WIRING (does every event carry the cohort?) rather
@@ -77,6 +82,7 @@ describe("telemetry queue delivery", () => {
     );
     await flush();
     vi.unstubAllGlobals();
+    dns.probes = 0;
   });
 
   it("delivers harness context alongside a recognized agent without leaking marker values", async () => {
@@ -171,12 +177,48 @@ describe("telemetry queue delivery", () => {
     expect(gated).toHaveBeenCalledTimes(1);
   });
 
-  it("leaves the batch to the exit-time send when the flush ahead of it failed", async () => {
+  it.each([
+    ["the send failed", () => {}, 1],
+    ["DNS did not answer", () => (dns.answers = false), 0],
+  ])("leaves the batch to the exit-time send when, ahead of it, %s", async (_, arrange, sends) => {
     const fetchMock = vi.fn(() => Promise.reject(new Error("offline")));
     vi.stubGlobal("fetch", fetchMock);
     trackEvent("render_complete", { quality: "draft" });
-    await Promise.all([flush(), flush()]);
+    arrange();
+    try {
+      await Promise.all([flush(), flush()]);
+    } finally {
+      dns.answers = true;
+    }
+    // One attempt, whichever way it failed.
+    expect(dns.probes).toBe(1);
+    expect(fetchMock).toHaveBeenCalledTimes(sends);
+    // Still queued: the next send carries it.
+    const succeeding = vi.fn(() => Promise.resolve(new Response("")));
+    vi.stubGlobal("fetch", succeeding);
+    await flush();
+    expect(sentBatch(succeeding).map((e) => e.event)).toEqual(["render_complete"]);
+  });
+
+  it("still sends from a flush queued behind one that had nothing to send", async () => {
+    const fetchMock = vi.fn(() => Promise.resolve(new Response("")));
+    vi.stubGlobal("fetch", fetchMock);
+    const empty = flush();
+    trackEvent("render_complete", { quality: "draft" });
+    await Promise.all([empty, flush()]);
     expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+
+  it("cancels the reply it never reads, so a stalled body cannot hold the process", async () => {
+    const cancel = vi.fn();
+    const body = new ReadableStream({ cancel });
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(() => Promise.resolve(new Response(body))),
+    );
+    trackEvent("render_complete", { quality: "draft" });
+    await flush();
+    expect(cancel).toHaveBeenCalled();
   });
 
   it("still sends from a flush queued behind one that threw", async () => {
@@ -222,13 +264,13 @@ describe("telemetry queue delivery", () => {
     const [execPath, args, opts] = spawnMock.mock.calls[0] as unknown as [
       string,
       string[],
-      { detached: boolean },
+      Record<string, unknown>,
     ];
     expect(execPath).toBe(process.execPath);
     expect(args[0]).toBe("-e");
     expect(args[1]).toContain("render_complete");
     expect(args[1]).toMatch(/[0-9a-f-]{36}/); // event uuid rides along
-    expect(opts.detached).toBe(true);
+    expect(opts).toMatchObject({ detached: true, windowsHide: true });
 
     // Queue handed to the child — nothing left for a regular flush.
     const fetchMock = vi.fn(() => Promise.resolve(new Response("")));

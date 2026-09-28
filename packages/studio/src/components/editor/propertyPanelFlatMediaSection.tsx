@@ -8,6 +8,7 @@ import {
   formatNumericValue,
   formatTimingValue,
   parseNumericValue,
+  readClipInPoint,
   stripQueryAndHash,
 } from "./propertyPanelHelpers";
 import { FlatSelectRow, FlatSlider } from "./propertyPanelFlatPrimitives";
@@ -88,10 +89,7 @@ export function FlatMediaSection({
       ? automatedVolumeValue
       : (parseNumericValue(element.dataAttributes.volume ?? "") ?? 1);
   const volumeFaderPosition = audioGainToFaderPosition(volume);
-  const mediaStart =
-    Number.parseFloat(
-      element.dataAttributes["media-start"] ?? element.dataAttributes["playback-start"] ?? "0",
-    ) || 0;
+  const { mediaStart, mediaStartAttr } = readClipInPoint(element.dataAttributes);
   const constantRate = Number.parseFloat(element.dataAttributes["playback-rate"] ?? "1") || 1;
   const playbackRate =
     rate?.automated && rate.automatedValue !== undefined ? rate.automatedValue : constantRate;
@@ -340,11 +338,11 @@ export function FlatMediaSection({
             max={mediaStartMax * 100}
             tier={mediaStart === 0 ? "default" : "explicitCustom"}
             displayValue={formatTimingValue(mediaStart)}
-            onCommit={(next) => void onSetAttribute("media-start", (next / 100).toFixed(2))}
+            onCommit={(next) => void onSetAttribute(mediaStartAttr, (next / 100).toFixed(2))}
             onCommitText={(text) => {
               const seconds = parseSecondsInput(text);
               if (seconds === null) return false;
-              void onSetAttribute("media-start", Math.min(seconds, mediaStartMax).toFixed(2));
+              void onSetAttribute(mediaStartAttr, Math.min(seconds, mediaStartMax).toFixed(2));
               return true;
             }}
           />

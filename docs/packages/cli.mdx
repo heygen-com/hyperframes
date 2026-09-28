@@ -59,8 +59,9 @@ from any command's output, without a second call:
 }
 ```
 
-The version numbers come from a cache refreshed at most once a day. `--json`
-never makes a network request of its own. Deprecated commands add
+The version numbers come from a cache refreshed at most once a day, in a
+background process, and never under CI or `HYPERFRAMES_NO_UPDATE_CHECK=1`.
+`--json` never makes a network request of its own. Deprecated commands add
 `_meta.deprecated: true`.
 
 **Flags, not prompts.** A missing required flag fails immediately with a usage

@@ -7,7 +7,7 @@ import { CompositionsTab } from "./sidebar/CompositionsTab";
 import { TimelineToolbar } from "./TimelineToolbar";
 
 vi.mock("../contexts/StudioContext", () => ({
-  useStudioShellContext: () => ({
+  useStudioShellContextOptional: () => ({
     editHistory: { canUndo: false, canRedo: false },
     handleUndo: vi.fn(),
     handleRedo: vi.fn(),

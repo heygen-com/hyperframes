@@ -33,7 +33,7 @@ interface RecordEditInput {
   files: Record<string, { before: string; after: string }>;
 }
 
-interface UseClipboardOptions {
+export interface UseClipboardOptions {
   projectId: string | null;
   activeCompPath: string | null;
   domEditSelectionRef: React.MutableRefObject<DomEditSelection | null>;

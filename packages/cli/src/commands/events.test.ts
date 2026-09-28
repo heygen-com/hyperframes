@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 
+const order: string[] = [];
 const telemetry = vi.hoisted(() => ({
   trackEvent: vi.fn(),
   flush: vi.fn(async () => {}),
@@ -8,10 +9,12 @@ const telemetry = vi.hoisted(() => ({
 vi.mock("../telemetry/client.js", () => telemetry);
 
 describe("events", () => {
-  it("hands anything flush() left queued to the detached sender", async () => {
+  it("queues the event, then hands it to the detached sender without waiting on the network", async () => {
+    telemetry.trackEvent.mockImplementation(() => order.push("track"));
+    telemetry.flushSync.mockImplementation(() => order.push("flushSync"));
     const { default: events } = await import("./events.js");
     await events.run?.({ args: { skill: "hyperframes", event: "skill_invoked" } } as never);
-    expect(telemetry.trackEvent).toHaveBeenCalled();
-    expect(telemetry.flushSync).toHaveBeenCalled();
+    expect(order).toEqual(["track", "flushSync"]);
+    expect(telemetry.flush).not.toHaveBeenCalled();
   });
 });
