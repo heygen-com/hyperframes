@@ -195,6 +195,14 @@ describe("useTimelineGeometry keeps the scale when only the length changes", () 
     expect(seen.pps).toBeCloseTo(seen.fitPps * 1.5);
   });
 
+  it("refits after a project reset, which empties the clips and the length", () => {
+    usePlayerStore.setState({ zoomMode: "manual", manualZoomPercent: 150 });
+    renderAt(120);
+    renderAt(0);
+    renderAt(17);
+    expect(seen.pps).toBeCloseTo(seen.fitPps * 1.5);
+  });
+
   it("keeps a lengthened film's scale near the maximum zoom", () => {
     usePlayerStore.setState({ zoomMode: "manual", manualZoomPercent: 100_000 });
     renderAt(17);
