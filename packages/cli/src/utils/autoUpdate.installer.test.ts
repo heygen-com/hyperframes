@@ -1,5 +1,13 @@
 import { spawn, type ChildProcess } from "node:child_process";
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import {
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  rmSync,
+  utimesSync,
+  writeFileSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, expect, it } from "vitest";
@@ -28,6 +36,7 @@ function setup() {
     runningDir,
     pollMs: 50,
     maxWaitMs: 60_000,
+    staleMs: 60_000,
   });
   return { dir, runningDir, marker, script };
 }
@@ -43,6 +52,10 @@ const exited = (child: ChildProcess) =>
     ? Promise.resolve()
     : new Promise<void>((resolve) => child.once("exit", () => resolve()));
 const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
+
+async function until(check: () => boolean): Promise<void> {
+  while (!check()) await sleep(25);
+}
 
 function registerCli(runningDir: string): ChildProcess {
   const cli = start(["-e", "setInterval(() => {}, 1000)"]);
@@ -78,16 +91,41 @@ it("does not wait on a CLI process that died without cleaning up", async () => {
   expect(existsSync(staleFile)).toBe(false);
 });
 
-it("lets only one installer wait: a later launch exits and installs nothing", async () => {
+it("does not wait on an old pid file whose pid now belongs to another process", async () => {
   const { runningDir, marker, script } = setup();
+  const other = start(["-e", "setInterval(() => {}, 1000)"]);
+  const staleFile = join(runningDir, String(other.pid));
+  writeFileSync(staleFile, "");
+  const tenMinutesAgo = new Date(Date.now() - 10 * 60_000);
+  utimesSync(staleFile, tenMinutesAgo, tenMinutesAgo);
+
+  await exited(start(["-e", script]));
+  expect(existsSync(marker)).toBe(true);
+  expect(existsSync(staleFile)).toBe(false);
+});
+
+it("lets only one installer wait: a later launch exits and installs nothing", async () => {
+  const { dir, runningDir, marker, script } = setup();
   const cli = registerCli(runningDir);
   const first = start(["-e", script]);
-  await sleep(300);
+  await until(() => existsSync(join(dir, "config.json.install-lock")));
 
   await exited(start(["-e", script]));
   expect(existsSync(marker)).toBe(false);
 
   cli.kill();
   await exited(first);
+  expect(existsSync(marker)).toBe(true);
+});
+
+it("takes over an old install lock whose pid now belongs to another process", async () => {
+  const { dir, marker, script } = setup();
+  const other = start(["-e", "setInterval(() => {}, 1000)"]);
+  const lock = join(dir, "config.json.install-lock");
+  writeFileSync(lock, String(other.pid));
+  const tenMinutesAgo = new Date(Date.now() - 10 * 60_000);
+  utimesSync(lock, tenMinutesAgo, tenMinutesAgo);
+
+  await exited(start(["-e", script]));
   expect(existsSync(marker)).toBe(true);
 });

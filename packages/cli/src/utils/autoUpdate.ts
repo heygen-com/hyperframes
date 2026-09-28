@@ -31,7 +31,7 @@ import { compareVersions } from "compare-versions";
 import { withFileLock } from "../media-use/lib/config-lock.mjs";
 import { readConfig, writeConfig } from "../telemetry/config.js";
 import { updateCheckDisabled } from "./updateCheck.js";
-import { RUNNING_DIR } from "./runningCli.js";
+import { RUNNING_DIR, RUNNING_STALE_MS } from "./runningCli.js";
 import {
   detectInstaller,
   installInvocation,
@@ -77,12 +77,14 @@ export interface InstallerScriptOptions {
   runningDir: string;
   pollMs: number;
   maxWaitMs: number;
+  /** A pid or install-lock file not touched for this long belongs to a dead process. */
+  staleMs: number;
 }
 
 /**
  * Source of the detached installer, run through `node -e` so no separate file ships. It:
  *   1. Exits if another waiting installer is alive (install lock), then waits until no pid in
- *      `runningDir` is alive, so no running CLI has package files replaced under it.
+ *      `runningDir` is alive and fresh, so no running CLI has package files replaced under it.
  *   2. Runs the install via execFile (bin + argv, NO shell); values are embedded as JSON literals.
  *   3. Under the shared settings lock, records completedUpdate and clears pendingUpdate.
  */
@@ -102,25 +104,36 @@ export function installerScript(o: InstallerScriptOptions): string {
     const withFileLock = ${withFileLock.toString()};
     const withLock = (task) => { try { withFileLock(\`\${CFG}.lock\`, fs, task); } catch (e) {} };
     const alive = (pid) => { try { process.kill(pid, 0); return true; } catch (e) { return e.code === "EPERM"; } };
-    // ponytail: a crashed CLI's pid reused by another process only delays the install until maxWaitMs.
+    // Live processes touch their files; an old file with a live pid is a killed process's pid reused.
+    const fresh = (file) => { try { return Date.now() - fs.statSync(file).mtimeMs < ${o.staleMs}; } catch (e) { return false; } };
+    const touch = (file) => { try { const now = new Date(); fs.utimesSync(file, now, now); } catch (e) {} };
     const running = () => {
       let names = [];
       try { names = fs.readdirSync(RUNNING); } catch (e) {}
       return names.filter((name) => {
         const pid = Number(name);
-        if (Number.isInteger(pid) && pid > 0 && alive(pid)) return true;
-        try { fs.unlinkSync(join(RUNNING, name)); } catch (e) {}
+        const file = join(RUNNING, name);
+        if (Number.isInteger(pid) && pid > 0 && alive(pid) && fresh(file)) return true;
+        try { fs.unlinkSync(file); } catch (e) {}
         return false;
       });
     };
+    let lockBeat;
+    // Taken under the settings lock, so two installers launched together cannot both take it over.
     const takeInstallLock = () => {
-      try { writeFileSync(INSTALL_LOCK, String(process.pid), { flag: "wx" }); return true; } catch (e) { if (e.code !== "EEXIST") return false; }
-      let owner = NaN;
-      try { owner = Number(readFileSync(INSTALL_LOCK, "utf-8")); } catch (e) {}
-      if (Number.isInteger(owner) && owner > 0 && alive(owner)) return false;
-      try { writeFileSync(INSTALL_LOCK, String(process.pid)); return true; } catch (e) { return false; }
+      let taken = false;
+      withLock(() => {
+        let owner = NaN;
+        try { owner = Number(readFileSync(INSTALL_LOCK, "utf-8")); } catch (e) {}
+        if (Number.isInteger(owner) && owner > 0 && alive(owner) && fresh(INSTALL_LOCK)) return;
+        writeFileSync(INSTALL_LOCK, String(process.pid));
+        taken = true;
+      });
+      if (taken) lockBeat = setInterval(() => touch(INSTALL_LOCK), ${o.pollMs});
+      else console.log(\`[wait] another installer is already waiting; leaving \${VERSION} to it\`);
+      return taken;
     };
-    const releaseInstallLock = () => { try { fs.unlinkSync(INSTALL_LOCK); } catch (e) {} };
+    const releaseInstallLock = () => { clearInterval(lockBeat); try { fs.unlinkSync(INSTALL_LOCK); } catch (e) {} };
     const install = () => execFile(BIN, ARGS, { windowsHide: true, maxBuffer: 4 * 1024 * 1024 }, (err, _stdout, stderr) => {
       withLock(() => {
         let cfg = {};
@@ -178,6 +191,7 @@ function launchDetachedInstall(
     runningDir: RUNNING_DIR,
     pollMs: INSTALL_POLL_MS,
     maxWaitMs: INSTALL_MAX_WAIT_MS,
+    staleMs: RUNNING_STALE_MS,
   });
 
   const out = openSync(LOG_FILE, "a", 0o600);
