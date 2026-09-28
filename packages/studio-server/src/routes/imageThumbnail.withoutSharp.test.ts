@@ -12,6 +12,7 @@ vi.mock("sharp", () => {
 let dir: string | undefined;
 afterEach(async () => {
   if (dir) await rm(dir, { recursive: true, force: true });
+  vi.restoreAllMocks();
 });
 
 describe("studio-server where sharp cannot load", () => {
@@ -19,14 +20,24 @@ describe("studio-server where sharp cannot load", () => {
     await expect(import("../index.js")).resolves.toHaveProperty("createStudioApi");
   });
 
-  it("answers a JPEG thumbnail request with 422 instead of failing", async () => {
+  it("answers a real JPEG with 422 and warns once", async () => {
+    const { default: realSharp } = await vi.importActual<typeof import("sharp")>("sharp");
+    const jpeg = await realSharp({
+      create: { width: 64, height: 48, channels: 3, background: "#6495ed" },
+    })
+      .jpeg()
+      .toBuffer();
     const { registerImageThumbnailRoutes } = await import("./imageThumbnail.js");
     dir = await mkdtemp(join(tmpdir(), "hf-image-no-sharp-"));
-    await writeFile(join(dir, "photo.jpg"), Buffer.from([0xff, 0xd8, 0xff, 0xd9]));
+    await writeFile(join(dir, "a.jpg"), jpeg);
+    await writeFile(join(dir, "b.jpg"), jpeg);
     const adapter = { resolveProject: (id: string) => (id === "p" ? { id, dir } : null) };
     const app = new Hono();
     registerImageThumbnailRoutes(app, adapter as unknown as StudioApiAdapter);
-    const res = await app.request("http://localhost/projects/p/image-thumbnail/photo.jpg");
-    expect(res.status).toBe(422);
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    const url = (name: string) => `http://localhost/projects/p/image-thumbnail/${name}`;
+    expect((await app.request(url("a.jpg"))).status).toBe(422);
+    expect((await app.request(url("b.jpg"))).status).toBe(422);
+    expect(warn).toHaveBeenCalledTimes(1);
   });
 });

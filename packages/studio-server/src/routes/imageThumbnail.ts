@@ -10,7 +10,20 @@ import { ThumbnailGenerationCoordinator } from "./thumbnailGenerationCoordinator
 const MAX_SOURCE_BYTES = 64 * 1024 * 1024;
 const MAX_CACHE_BYTES = 8 * 1024 * 1024;
 
+let sharpLoad: Promise<typeof import("sharp").default> | undefined;
+function loadSharp() {
+  sharpLoad ??= import("sharp").then(
+    (module) => module.default,
+    (error: unknown) => {
+      console.warn("[Studio] JPEG thumbnails are off: sharp could not load:", error);
+      throw error;
+    },
+  );
+  return sharpLoad;
+}
+
 async function generateThumbnail(path: string, signal: AbortSignal): Promise<Buffer> {
+  const sharp = await loadSharp();
   const file = await open(path, "r");
   try {
     const info = await file.stat();
@@ -24,7 +37,6 @@ async function generateThumbnail(path: string, signal: AbortSignal): Promise<Buf
       offset += bytesRead;
     }
     if (source[0] !== 0xff || source[1] !== 0xd8) throw new Error("Unsupported image");
-    const { default: sharp } = await import("sharp");
     const image = sharp(source.subarray(0, offset), { limitInputPixels: 40_000_000 });
     if ((await image.metadata()).format !== "jpeg") throw new Error("Unsupported image");
     signal.throwIfAborted();
