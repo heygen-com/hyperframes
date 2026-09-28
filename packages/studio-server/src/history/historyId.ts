@@ -7,6 +7,8 @@ export const ID_PATH = join(".hyperframes", "history-id");
 /** The only shape minted here; the id is project content and becomes a path, so nothing else is trusted. */
 const ID_SHAPE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
 
+export const isHistoryId = (name: string) => ID_SHAPE.test(name);
+
 export function readId(projectDir: string): string | null {
   try {
     const id = readFileSync(join(projectDir, ID_PATH), "utf-8").trim();
@@ -30,7 +32,9 @@ export function isRecordedFolder(historyDir: string, folder: FolderIdentity): bo
   return !isCopyOf0878Folder(was!.dir as string, basename(historyDir), folder);
 }
 
-function readRecord(historyDir: string): { dir?: unknown; ino?: unknown; born?: number } | null {
+export function readRecord(
+  historyDir: string,
+): { dir?: unknown; ino?: unknown; born?: number } | null {
   try {
     return JSON.parse(readFileSync(join(historyDir, "project.json"), "utf-8"));
   } catch {
