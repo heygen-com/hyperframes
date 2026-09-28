@@ -14,7 +14,7 @@
  * Guardrails:
  *   - Never auto-update across major versions. The user opts in explicitly
  *     via `hyperframes upgrade`.
- *   - Skip on CI, non-TTY, dev mode, unknown installer, ephemeral exec (npx),
+ *   - Skip on CI, dev mode, unknown installer, ephemeral exec (npx),
  *     or when `HYPERFRAMES_NO_AUTO_INSTALL` / `HYPERFRAMES_NO_UPDATE_CHECK`
  *     is set.
  *   - If a previous install is still in flight (less than 10 min old), don't
@@ -28,8 +28,9 @@ import { appendFileSync, mkdirSync, openSync } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
 import { compareVersions } from "compare-versions";
+import { withFileLock } from "../media-use/lib/config-lock.mjs";
 import { readConfig, writeConfig } from "../telemetry/config.js";
-import { isDevMode } from "./env.js";
+import { updateCheckDisabled } from "./updateCheck.js";
 import {
   detectInstaller,
   installInvocation,
@@ -42,11 +43,7 @@ const LOG_FILE = join(CONFIG_DIR, "auto-update.log");
 const PENDING_TIMEOUT_MS = 10 * 60 * 1000;
 
 function isAutoInstallDisabled(): boolean {
-  if (isDevMode()) return true;
-  if (process.env["CI"] === "true" || process.env["CI"] === "1") return true;
-  if (process.env["HYPERFRAMES_NO_UPDATE_CHECK"] === "1") return true;
-  if (process.env["HYPERFRAMES_NO_AUTO_INSTALL"] === "1") return true;
-  return false;
+  return updateCheckDisabled() || process.env["HYPERFRAMES_NO_AUTO_INSTALL"] === "1";
 }
 
 /** Parse a semver-ish string's major number; returns NaN for pre-releases etc. */
@@ -90,20 +87,24 @@ function launchDetachedInstall(
   //   1. Runs the install via execFile (bin + argv, NO shell) so a version
   //      string can never be re-interpreted as shell syntax — structural
   //      symmetry with the interactive `runDetectedInstall` path.
-  //   2. Rewrites the config file with completedUpdate, clears pendingUpdate.
+  //   2. Under the shared settings lock (withFileLock, embedded as source), rewrites the config with
+  //      completedUpdate and clears pendingUpdate; skips on lock timeout or an unreadable file.
   // We run it through `node -e` so we don't need to ship a separate file. Bin
   // and args are embedded as JSON literals (data, not code).
   const nodeScript = `
     const { execFile } = require("node:child_process");
-    const { readFileSync, renameSync, writeFileSync } = require("node:fs");
+    const fs = require("node:fs");
+    const { readFileSync, renameSync, writeFileSync } = fs;
     const CFG = ${JSON.stringify(configFile)};
     const TMP = \`\${CFG}.tmp\`;
     const VERSION = ${JSON.stringify(version)};
     const BIN = ${JSON.stringify(invocation.bin)};
     const ARGS = ${JSON.stringify(invocation.args)};
-    execFile(BIN, ARGS, { windowsHide: true, maxBuffer: 4 * 1024 * 1024 }, (err, _stdout, stderr) => {
+    const withFileLock = ${withFileLock.toString()};
+    const withLock = (task) => { try { withFileLock(\`\${CFG}.lock\`, fs, task); } catch (e) {} };
+    execFile(BIN, ARGS, { windowsHide: true, maxBuffer: 4 * 1024 * 1024 }, (err, _stdout, stderr) => withLock(() => {
       let cfg = {};
-      try { cfg = JSON.parse(readFileSync(CFG, "utf-8")); } catch (e) {}
+      try { cfg = JSON.parse(readFileSync(CFG, "utf-8")); } catch (e) { if (e.code !== "ENOENT") return; }
       cfg.completedUpdate = {
         version: VERSION,
         ok: !err,
@@ -115,7 +116,7 @@ function launchDetachedInstall(
         writeFileSync(TMP, JSON.stringify(cfg, null, 2) + "\\n", { mode: 0o600 });
         renameSync(TMP, CFG);
       } catch (e) {}
-    });
+    }));
   `;
 
   const out = openSync(LOG_FILE, "a", 0o600);
@@ -187,7 +188,7 @@ export function scheduleBackgroundInstall(latestVersion: string, currentVersion:
     command: installCommand,
     startedAt: new Date().toISOString(),
   };
-  writeConfig(config);
+  if (!writeConfig(config)) return false;
 
   try {
     launchDetachedInstall(invocation, installCommand, latestVersion);

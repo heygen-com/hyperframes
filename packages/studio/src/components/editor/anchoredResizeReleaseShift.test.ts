@@ -1,11 +1,7 @@
 // @vitest-environment jsdom
 import { afterEach, describe, expect, it } from "vitest";
-import {
-  applyStudioBoxSize,
-  applyStudioPathOffset,
-  readStudioBoxSize,
-  reapplyPositionEditsAfterSeek,
-} from "./manualEditsDom";
+import { applyStudioBoxSize, applyStudioPathOffset, readStudioBoxSize } from "./manualEditsDom";
+import { reapplyPositionEditsAfterSeek } from "./manualEditsSeekReapply";
 import { buildBoxSizePatches, buildPathOffsetPatches } from "./manualEditsDomPatches";
 import { createManualOffsetDragMember, applyManualOffsetDragCommit } from "./manualOffsetDrag";
 import { computeNextResizeAnchor } from "./domEditResizeLocal";

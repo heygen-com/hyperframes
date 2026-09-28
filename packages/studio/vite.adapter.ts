@@ -7,11 +7,9 @@ import {
   existsSync,
   writeFileSync,
   realpathSync,
-  mkdirSync,
-  copyFileSync,
   unlinkSync,
 } from "node:fs";
-import { join, relative, resolve, isAbsolute, dirname, sep } from "node:path";
+import { basename, join, relative, resolve, isAbsolute, sep } from "node:path";
 import type { ViteDevServer } from "vite";
 import {
   type ResolvedProject,
@@ -24,7 +22,7 @@ import {
   PREVIEW_BUNDLE_OPTIONS,
   DEFAULT_HISTORY_ROOT,
   openProjectHistory,
-  type ProjectHistory,
+  historyCache,
 } from "@hyperframes/studio-server";
 import type { RegistryItem } from "@hyperframes/core/registry";
 import type { BundleOptions } from "@hyperframes/core/compiler";
@@ -107,13 +105,24 @@ export function createViteAdapter(
   {
     historyRoot = DEFAULT_HISTORY_ROOT,
     openHistory = openProjectHistory,
-  }: { historyRoot?: string; openHistory?: typeof openProjectHistory } = {},
+    onResolveProject,
+  }: {
+    historyRoot?: string;
+    openHistory?: typeof openProjectHistory;
+    onResolveProject?: (project: ResolvedProject) => void;
+  } = {},
 ): StudioApiAdapter {
-  const histories = new Map<string, Promise<ProjectHistory | null>>();
+  const histories = historyCache((projectDir) =>
+    openHistory({ projectDir, historyRoot }).catch((error: unknown) => {
+      console.warn(`[studio] Project history is off for ${basename(projectDir)}: ${String(error)}`);
+      // By name: the dev server's engine is its own module copy, so its error class is not this import's.
+      if (error instanceof Error && error.name === "HistoryClosedError")
+        histories.forget(projectDir);
+      return null;
+    }),
+  );
   // Commits any open edit when the dev server stops, so it keeps its label.
-  server.httpServer?.on("close", () => {
-    for (const opened of histories.values()) void opened.then((history) => history?.close());
-  });
+  server.httpServer?.on("close", () => void histories.closeAll());
   let _bundler: ((dir: string, options?: BundleOptions) => Promise<string>) | null = null;
   let _producerModuleLoader:
     | (() => Promise<{
@@ -212,17 +221,10 @@ export function createViteAdapter(
         .sort((a, b) => (a.title ?? "").localeCompare(b.title ?? ""));
     },
 
-    // Studio's undo runs on the project's history: opened once per project, and a failed open stays off.
+    // Studio's undo runs on the project's history: opened once per project; a failed open stays off unless the folder
+    // changed while it opened.
     history(project: ResolvedProject) {
-      let opened = histories.get(project.dir);
-      if (!opened) {
-        opened = openHistory({ projectDir: project.dir, historyRoot }).catch((error: unknown) => {
-          console.warn(`[studio] Project history is off for ${project.id}: ${String(error)}`);
-          return null;
-        });
-        histories.set(project.dir, opened);
-      }
-      return opened;
+      return histories.get(project.dir);
     },
 
     // fallow-ignore-next-line complexity
@@ -241,11 +243,13 @@ export function createViteAdapter(
               projectDir = resolve(dataDir, session.projectId);
               if (!isPathWithin(dataDir, projectDir)) return null;
               if (existsSync(projectDir)) {
-                return {
+                const project = {
                   id: session.projectId,
                   dir: realpathSync(projectDir),
                   title: session.title,
                 };
+                onResolveProject?.(project);
+                return project;
               }
             }
           } catch {
@@ -254,7 +258,9 @@ export function createViteAdapter(
         }
         return null;
       }
-      return { id, dir: realpathSync(projectDir) };
+      const project = { id, dir: realpathSync(projectDir) };
+      onResolveProject?.(project);
+      return project;
     },
 
     async bundle(dir, options) {
@@ -426,49 +432,6 @@ export function createViteAdapter(
         }
       }
       return items;
-    },
-
-    // fallow-ignore-next-line complexity
-    async installRegistryBlock(opts: {
-      project: ResolvedProject;
-      blockName: string;
-    }): Promise<{ written: string[]; block: RegistryItem }> {
-      const registryRoot = resolve(__dirname, "../../registry");
-      let itemDir = join(registryRoot, "blocks", opts.blockName);
-      if (!existsSync(join(itemDir, "registry-item.json"))) {
-        itemDir = join(registryRoot, "components", opts.blockName);
-      }
-      const manifestPath = join(itemDir, "registry-item.json");
-
-      if (!existsSync(manifestPath)) {
-        throw new Error(`Item "${opts.blockName}" not found in registry`);
-      }
-
-      const block = JSON.parse(readFileSync(manifestPath, "utf-8")) as RegistryItem;
-      const written: string[] = [];
-
-      for (const file of block.files) {
-        const sourcePath = join(itemDir, file.path);
-        const targetPath = resolve(opts.project.dir, file.target);
-
-        if (!isPathWithin(opts.project.dir, targetPath)) {
-          throw new Error(`Target path escapes project directory: ${file.target}`);
-        }
-
-        mkdirSync(dirname(targetPath), { recursive: true });
-
-        if (file.type === "hyperframes:composition") {
-          let content = readFileSync(sourcePath, "utf-8");
-          content = `<!-- hyperframes-registry-item: ${block.name} -->\n${content}`;
-          writeFileSync(targetPath, content, "utf-8");
-        } else {
-          copyFileSync(sourcePath, targetPath);
-        }
-
-        written.push(file.target);
-      }
-
-      return { written, block };
     },
   };
 }

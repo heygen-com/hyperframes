@@ -2,12 +2,13 @@
 // payloads. Unit tests cover the streak arithmetic; this proves the wiring
 // and pins the event shape a dashboard will be built against.
 
-import { describe, it, expect, vi, beforeEach } from "vitest";
+import { describe, it, expect, vi, beforeEach, afterAll } from "vitest";
 import { mkdtempSync, mkdirSync, writeFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
 const HOME = mkdtempSync(join(tmpdir(), "hf-lintrun-"));
+afterAll(() => rmSync(HOME, { recursive: true, force: true }));
 vi.mock("node:os", async (importOriginal) => {
   const actual = await importOriginal<typeof import("node:os")>();
   return { ...actual, homedir: () => HOME };

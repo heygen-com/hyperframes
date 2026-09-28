@@ -1,5 +1,6 @@
 import { swallow } from "./diagnostics";
 import { isClipVisibleAt, isInClipWindow } from "./clipWindow";
+import { sameInstant } from "../clipFacts";
 import { interpolateVolumeGain, type VolumeKeyframe } from "./mediaVolumeEnvelope.js";
 import { elementVolumeLaneGain } from "./audioAutomationVolume.js";
 import { fadeGain, NO_FADES, readElementFades, type AudioFades } from "../audioFade.js";
@@ -324,10 +325,11 @@ export function syncRuntimeMedia(params: {
     const isTerminalVideo =
       isNonLoopVideo &&
       !inWindow &&
-      params.timeSeconds >= clip.end &&
+      (params.timeSeconds >= clip.end || sameInstant(params.timeSeconds, clip.end)) &&
       isClipVisibleAt(params.timeSeconds, clip.start, clip.end, params.getCompositionDuration());
     let relTime =
-      sourceTimeAt(clipRate, Math.min(params.timeSeconds, clip.end) - clip.start) + clip.mediaStart;
+      sourceTimeAt(clipRate, Math.max(0, Math.min(params.timeSeconds, clip.end) - clip.start)) +
+      clip.mediaStart;
     const isHeldVideoTail =
       isTerminalVideo ||
       (isNonLoopVideo && clip.sourceDuration != null && relTime >= clip.sourceDuration && inWindow);

@@ -1,12 +1,21 @@
 import { EventEmitter } from "node:events";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import {
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  renameSync,
+  rmSync,
+  writeFileSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
 import { basename, join } from "node:path";
 import {
   createProjectSignature,
   fileContentVersion,
   HistoryBusyError,
+  HistoryClosedError,
 } from "@hyperframes/studio-server";
 import { loadHyperframeRuntimeSource } from "@hyperframes/core";
 import { loadRuntimeSource } from "./runtimeSource.js";
@@ -156,16 +165,38 @@ describe("createStudioServer project history (D-491)", () => {
     await server.shutdown();
   });
 
-  it("tries a history another process was holding again on the next request, instead of turning it off", async () => {
-    historyState.open = async () => {
-      historyState.open = null;
-      throw new HistoryBusyError(1);
-    };
+  it.each([
+    ["another process was holding", new HistoryBusyError(1)],
+    ["whose folder changed while it opened", new HistoryClosedError("now another project")],
+  ])(
+    "tries a history %s again on the next request, instead of turning it off",
+    async (_, refusal) => {
+      historyState.open = async () => {
+        historyState.open = null;
+        throw refusal;
+      };
+      const projectDir = tmpProject();
+      server = createStudioServer({ projectDir, historyRoot: tmpProject() });
+      const historyUrl = `/api/projects/${encodeURIComponent(basename(projectDir))}/history`;
+      expect((await server.app.request(historyUrl)).status).toBe(404);
+      expect((await server.app.request(historyUrl)).status).toBe(200);
+      await server.shutdown();
+    },
+  );
+
+  it("opens a new project's own history once it takes the folder's path", async () => {
     const projectDir = tmpProject();
+    writeFileSync(join(projectDir, "index.html"), "<html>before</html>");
     server = createStudioServer({ projectDir, historyRoot: tmpProject() });
     const historyUrl = `/api/projects/${encodeURIComponent(basename(projectDir))}/history`;
-    expect((await server.app.request(historyUrl)).status).toBe(404);
     expect((await server.app.request(historyUrl)).status).toBe(200);
+    renameSync(projectDir, `${projectDir}-moved`);
+    dirs.push(`${projectDir}-moved`);
+    mkdirSync(projectDir);
+    writeFileSync(join(projectDir, "index.html"), "<html>new</html>");
+
+    expect((await server.app.request(historyUrl)).status).toBe(200);
+    expect(existsSync(join(projectDir, ".hyperframes", "history-id"))).toBe(true);
     await server.shutdown();
   });
 
@@ -639,6 +670,98 @@ describe("Studio file-change SSE", () => {
   /** The version as it appears inside the JSON-encoded SSE data line. */
   const encodedVersion = (content: string): string =>
     fileContentVersion(content).replaceAll('"', '\\"');
+
+  /** A project whose preview has been loaded once, as an open Studio tab does on its first render. */
+  async function previewedProject(): Promise<{ projectDir: string; projectUrl: string }> {
+    const projectDir = tmpProject();
+    mkdirSync(join(projectDir, "assets"));
+    writeFileSync(join(projectDir, "assets", "logo.png"), "logo-v1");
+    writeFileSync(
+      join(projectDir, "index.html"),
+      '<html><body><div data-composition-id="root"><img src="assets/logo.png"></div></body></html>',
+    );
+    server = createStudioServer({ projectDir });
+    const projectUrl = `/api/projects/${encodeURIComponent(basename(projectDir))}`;
+    expect((await server.app.request(`${projectUrl}/preview`)).status).toBe(200);
+    expect((await server.app.request(`${projectUrl}/preview/assets/logo.png`)).status).toBe(200);
+    return { projectDir, projectUrl };
+  }
+
+  it("marks a notes write as not affecting the preview, so the tab does not reload", async () => {
+    const { projectDir } = await previewedProject();
+    const [stream] = await subscribe(1);
+
+    writeFileSync(join(projectDir, "notes.md"), "review notes");
+    mockWatcher.emit("change", "rename", "notes.md");
+
+    const payload = await nextEvent(stream!);
+    expect(payload).toContain('"path":"notes.md"');
+    expect(payload).toContain('"affectsPreview":false');
+    expect(payload).toContain('"affectedCompositions":[]');
+  });
+
+  it("marks a write to an asset the preview loaded as affecting it", async () => {
+    const { projectDir } = await previewedProject();
+    const [stream] = await subscribe(1);
+
+    writeFileSync(join(projectDir, "assets", "logo.png"), "logo-v2");
+    mockWatcher.emit("change", "change", "assets/logo.png");
+
+    expect(await nextEvent(stream!)).toContain('"affectsPreview":true');
+  });
+
+  it("reloads when a folder holding an asset the preview missed is moved in", async () => {
+    const { projectDir, projectUrl } = await previewedProject();
+    expect((await server!.app.request(`${projectUrl}/preview/media/clip.png`)).status).toBe(404);
+    const [stream] = await subscribe(1);
+
+    mkdirSync(join(projectDir, "media"));
+    writeFileSync(join(projectDir, "media", "clip.png"), "clip");
+    mockWatcher.emit("change", "rename", "media");
+
+    const payload = await nextEvent(stream!);
+    expect(payload).toContain('"path":"media"');
+    expect(payload).toContain('"affectsPreview":true');
+  });
+
+  it("reloads when a folder holding an asset the preview loaded is moved out", async () => {
+    const { projectDir } = await previewedProject();
+    const [stream] = await subscribe(1);
+
+    renameSync(join(projectDir, "assets"), join(tmpProject(), "assets"));
+    mockWatcher.emit("change", "rename", "assets");
+
+    expect(await nextEvent(stream!)).toContain('"affectsPreview":true');
+  });
+
+  it("still delivers a new file in a folder an old watchIgnore listed, for the file tree", async () => {
+    const { projectDir } = await previewedProject();
+    writeFileSync(
+      join(projectDir, "hyperframes.json"),
+      JSON.stringify({ preview: { watchIgnore: ["docs"] } }),
+    );
+    const [stream] = await subscribe(1);
+
+    mkdirSync(join(projectDir, "docs"));
+    writeFileSync(join(projectDir, "docs", "report.json"), "{}");
+    mockWatcher.emit("change", "rename", "docs/report.json");
+
+    const payload = await nextEvent(stream!);
+    expect(payload).toContain('"path":"docs/report.json"');
+    expect(payload).toContain('"affectsPreview":false');
+  });
+
+  it("counts every write as affecting the preview until the preview has loaded anything", async () => {
+    const projectDir = tmpProject();
+    writeFileSync(join(projectDir, "index.html"), "<html></html>");
+    server = createStudioServer({ projectDir });
+    const [stream] = await subscribe(1);
+
+    writeFileSync(join(projectDir, "notes.md"), "notes");
+    mockWatcher.emit("change", "rename", "notes.md");
+
+    expect(await nextEvent(stream!)).toContain('"affectsPreview":true');
+  });
 
   it("labels a Studio write for every open subscriber, not just the first", async () => {
     const projectDir = tmpProject();

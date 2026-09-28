@@ -21,7 +21,15 @@ export function projectForTimelineSave(
     showToast("Cannot edit timeline while recording", "error");
     return { status: "refused", reason: "Cannot edit timeline while recording" };
   }
-  return projectId ?? { status: "failed", reason: "No project is open" };
+  return projectId ?? failedTimelineSave("No project is open", showToast);
+}
+
+export function failedTimelineSave(
+  reason: string,
+  showToast: (message: string, tone?: "error" | "info") => void,
+): TimelineEditOutcome {
+  showToast(reason);
+  return { status: "failed", reason };
 }
 
 function timelineEditRefusal(

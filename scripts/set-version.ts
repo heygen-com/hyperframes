@@ -36,7 +36,13 @@ const PACKAGES = [
   "packages/sdk",
 ];
 
-const PLUGINS = [".claude-plugin", ".codex-plugin", ".cursor-plugin"];
+const PLUGINS = [
+  ".claude-plugin/plugin.json",
+  ".codex-plugin/plugin.json",
+  ".cursor-plugin/plugin.json",
+  "plugin.json",
+  "gemini-extension.json",
+];
 
 const ROOT = join(import.meta.dirname, "..");
 export const CHANGELOG_REVIEW_TODO = "<!-- TODO: write a 1-2 sentence release summary here. -->";
@@ -118,7 +124,7 @@ function updatePluginVersions(version: string) {
   // short arrays inline, but JSON.stringify expands them, which would fail the
   // pre-commit format check on the release commit this script creates.
   for (const plugin of PLUGINS) {
-    const pluginPath = join(ROOT, plugin, "plugin.json");
+    const pluginPath = join(ROOT, plugin);
     const text = readFileSync(pluginPath, "utf-8");
     const oldVersion = text.match(/"version"\s*:\s*"([^"]*)"/)?.[1] ?? "unknown";
     writeFileSync(pluginPath, text.replace(/("version"\s*:\s*)"[^"]*"/, `$1"${version}"`));
@@ -311,7 +317,7 @@ export function docsChangelogEntryHasGeneratedTodo(content: string, marker: stri
 export function releaseAllowedPaths(version: string) {
   return [
     ...PACKAGES.map((pkg) => join(pkg, "package.json")),
-    ...PLUGINS.map((plugin) => join(plugin, "plugin.json")),
+    ...PLUGINS,
     "docs/changelog.mdx",
     join("releases", `v${version}.md`),
   ];

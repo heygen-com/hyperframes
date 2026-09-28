@@ -1,8 +1,14 @@
+import { chmodSync, mkdtempSync, readdirSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { describe, expect, it, test } from "vitest";
 import {
   dtwPresetForModel,
+  getPreparedWavDurationSeconds,
   initialModelForLanguage,
+  isPcm16kMono,
   isWhisperTimeoutError,
+  prepareWav,
   resolveAudioPreparationTimeoutMs,
   resolveWhisperTimeoutMs,
   whisperModelSlowdownFactor,
@@ -159,14 +165,17 @@ describe("resolveWhisperTimeoutMs with overrideMs", () => {
 });
 
 describe("isWhisperTimeoutError", () => {
-  it("returns true for a Node SIGTERM child-timeout error", () => {
-    const err = Object.assign(new Error("Command failed"), { signal: "SIGTERM" });
+  it("returns true for execFileSync's own timeout (ETIMEDOUT with SIGTERM)", () => {
+    const err = Object.assign(new Error("Command failed"), {
+      code: "ETIMEDOUT",
+      signal: "SIGTERM",
+    });
     expect(isWhisperTimeoutError(err)).toBe(true);
   });
 
-  it("returns true for an ETIMEDOUT-coded error", () => {
-    const err = Object.assign(new Error("Command failed"), { code: "ETIMEDOUT" });
-    expect(isWhisperTimeoutError(err)).toBe(true);
+  it("returns false for a SIGTERM someone else sent, so it reaches the cancel rule", () => {
+    const err = Object.assign(new Error("Command failed"), { signal: "SIGTERM" });
+    expect(isWhisperTimeoutError(err)).toBe(false);
   });
 
   it("returns false for a non-timeout child error", () => {
@@ -191,7 +200,10 @@ describe("wrapWhisperTimeoutError", () => {
   });
 
   it("wraps SIGTERM timeouts with a discoverable hint naming --timeout and the env var", () => {
-    const original = Object.assign(new Error("Command failed"), { signal: "SIGTERM" });
+    const original = Object.assign(new Error("Command failed"), {
+      code: "ETIMEDOUT",
+      signal: "SIGTERM",
+    });
     const wrapped = wrapWhisperTimeoutError(original, {
       effectiveTimeoutMs: 1_260_000,
       model: "medium.en",
@@ -262,5 +274,91 @@ describe("initialModelForLanguage", () => {
 
   test("keeps an already multilingual model unchanged", () => {
     expect(initialModelForLanguage("large-v3", "de")).toBe("large-v3");
+  });
+});
+
+describe("isPcm16kMono", () => {
+  it("passes only 16-bit PCM through; 24-bit and float WAV go through ffmpeg", () => {
+    const wav = (codec_name: string) => ({ codec_name, sample_rate: "16000", channels: 1 });
+    expect(isPcm16kMono(wav("pcm_s16le"))).toBe(true);
+    expect(isPcm16kMono(wav("pcm_s24le"))).toBe(false);
+    expect(isPcm16kMono(wav("pcm_f32le"))).toBe(false);
+    expect(isPcm16kMono({ ...wav("pcm_s16le"), sample_rate: "24000" })).toBe(false);
+  });
+});
+
+describe("getPreparedWavDurationSeconds", () => {
+  it("reads the length from the size alone, whatever comes before the samples", () => {
+    const dir = mkdtempSync(join(tmpdir(), "hf-wav-duration-"));
+    const wav = join(dir, "prepared.wav");
+    writeFileSync(wav, Buffer.concat([Buffer.alloc(6000), Buffer.alloc(1.5 * 32_000)]));
+    expect(getPreparedWavDurationSeconds(wav)).toBeCloseTo(1.69, 2);
+    expect(getPreparedWavDurationSeconds(join(dir, "missing.wav"))).toBeNull();
+    rmSync(dir, { recursive: true, force: true });
+  });
+});
+
+describe.skipIf(process.platform === "win32")("prepareWav", () => {
+  it("removes the partial WAV when ffmpeg fails or is stopped", () => {
+    const dir = mkdtempSync(join(tmpdir(), "hf-prepare-wav-"));
+    const ffmpeg = join(dir, "ffmpeg");
+    writeFileSync(
+      ffmpeg,
+      `#!${process.execPath}\nrequire("fs").writeFileSync(process.argv.at(-1), "partial");\nprocess.exit(255);\n`,
+    );
+    chmodSync(ffmpeg, 0o755);
+    const leftovers = () =>
+      readdirSync(tmpdir()).filter((f) => f.startsWith(`hyperframes-audio-${process.pid}-`));
+    const saved = process.env.HYPERFRAMES_FFMPEG_PATH;
+    process.env.HYPERFRAMES_FFMPEG_PATH = ffmpeg;
+    try {
+      for (const input of ["talk.mp3", "talk.mp4"]) {
+        expect(() => prepareWav(join(dir, input))).toThrow(/Command failed/);
+        expect(leftovers()).toEqual([]);
+      }
+    } finally {
+      if (saved === undefined) delete process.env.HYPERFRAMES_FFMPEG_PATH;
+      else process.env.HYPERFRAMES_FFMPEG_PATH = saved;
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  function failWith(script: string): unknown {
+    const dir = mkdtempSync(join(tmpdir(), "hf-prepare-wav-"));
+    const ffmpeg = join(dir, "ffmpeg");
+    writeFileSync(ffmpeg, `#!${process.execPath}\n${script}\n`);
+    chmodSync(ffmpeg, 0o755);
+    const saved = process.env.HYPERFRAMES_FFMPEG_PATH;
+    process.env.HYPERFRAMES_FFMPEG_PATH = ffmpeg;
+    try {
+      prepareWav(join(dir, "talk.mp3"));
+    } catch (err) {
+      return err;
+    } finally {
+      if (saved === undefined) delete process.env.HYPERFRAMES_FFMPEG_PATH;
+      else process.env.HYPERFRAMES_FFMPEG_PATH = saved;
+      rmSync(dir, { recursive: true, force: true });
+    }
+    throw new Error("prepareWav did not fail");
+  }
+
+  it("keeps ffmpeg's stderr on the error, so the cause above its summary line is shown", () => {
+    const said =
+      "Output file does not contain any stream\nError opening output files: Invalid argument";
+    const err = failWith(`process.stderr.write(${JSON.stringify(said)}); process.exit(234);`);
+    expect(err).toMatchObject({ cancelled: false, stderr: said });
+  });
+
+  it("reads a cancel only from ffmpeg's own signal line, not a path that mentions one", () => {
+    const said = "/in/received signal.mp3: Invalid data found when processing input";
+    const err = failWith(`process.stderr.write(${JSON.stringify(said)}); process.exit(255);`);
+    expect(err).toMatchObject({ cancelled: false });
+  });
+
+  it("rethrows Node's own failure (output overflow) as is, never as a cancel", () => {
+    const flood = `require("fs").writeSync(2, "Exiting normally, received signal 2.\\n" + "x".repeat(65 << 20));`;
+    const err = failWith(`${flood} process.exit(255);`) as { code?: string; cancelled?: boolean };
+    expect(err.code).toBe("ENOBUFS");
+    expect(err.cancelled).toBeUndefined();
   });
 });

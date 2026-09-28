@@ -39,6 +39,16 @@ const RENDER_CANCELLATION_SIGNALS: readonly RenderCancellationSignal[] = [
   "SIGHUP",
 ];
 
+export function stoppedByCancelSignal(stop: {
+  code?: unknown;
+  signal?: string | null;
+  killed?: boolean;
+  error?: unknown;
+}): boolean {
+  if (stop.code || stop.killed || stop.error) return false;
+  return RENDER_CANCELLATION_SIGNALS.some((signal) => signal === stop.signal);
+}
+
 function captureAncestors(
   pid: number,
   lookupParentPid: (pid: number) => number | null,

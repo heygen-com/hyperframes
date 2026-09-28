@@ -32,7 +32,7 @@ const SIGNATURE_EXCLUDED_DIRS = new Set([
   "renders",
 ]);
 const MAX_SIGNATURE_TEXT_BYTES = 2_000_000;
-const STUDIO_SIGNATURE_MANIFEST_PATHS = [
+export const STUDIO_SIGNATURE_MANIFEST_PATHS = [
   ".hyperframes/studio-manual-edits.json",
   ".hyperframes/studio-motion.json",
 ] as const;

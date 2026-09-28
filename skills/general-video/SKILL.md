@@ -8,6 +8,8 @@ description: >
   Route fresh creation through hyperframes before using this skill.
 ---
 
+**Plugin installs:** Before setup or freshness commands, follow [plugin execution rules](../hyperframes/references/plugin-installation.md) when this skill is inside a HyperFrames plugin. Standalone installs keep the update instructions below.
+
 # General video
 
 Before relying on this workflow, run:

@@ -11,7 +11,7 @@ import {
   utimesSync,
   writeFileSync,
 } from "node:fs";
-import { join } from "node:path";
+import { basename, join } from "node:path";
 import { tmpdir } from "node:os";
 import { spawnSync } from "node:child_process";
 import {
@@ -948,6 +948,31 @@ describe("FrameLookupTable", () => {
     expect(table.getActiveFramePayloads(4.5).get("hero")?.frameIndex).toBe(15);
   });
 
+  it("shows a copy starting on a float sum at that instant, as the preview does", () => {
+    const copyStart = 0.1 + 0.2;
+    const clip = (id: string, start: number) => ({
+      id,
+      src: `${id}.webm`,
+      start,
+      end: start + 0.2,
+      mediaStart: 0,
+      loop: false,
+      hasAudio: false,
+    });
+    const frames = (videoId: string) => ({ ...fakeExtracted(30, 30), videoId });
+    const table = () =>
+      createFrameLookupTable(
+        [clip("a", 0.1), clip("copy", copyStart)],
+        [frames("a"), frames("copy")],
+      );
+
+    expect(table().getActiveFramePayloads(0.3).get("copy")?.frameIndex).toBe(0);
+    const stepping = table();
+    stepping.getActiveFramePayloads(0.2);
+    expect(stepping.getActiveFramePayloads(0.3).get("copy")?.frameIndex).toBe(0);
+    expect(getFrameAtTime(frames("copy"), 0.3, copyStart)).toBe("frame-0.jpg");
+  });
+
   it("selects source frames at the authored constant playback rate", () => {
     const videos = parseVideoElements(
       '<video id="hero" src="clip.webm" data-start="0" data-duration="2" data-playback-rate="2"></video>',
@@ -1038,10 +1063,7 @@ describe("FrameLookupTable", () => {
     expect(table.getActiveFramePayloads(31).has("main")).toBe(false); // after resolved end (30)
   });
 
-  it("holds the last frame at the inclusive clip end (t === end)", () => {
-    // clip [1,3] with exactly 2s of source frames (60 @ 30fps). The frame
-    // landing on t === end used to deactivate one frame early and render blank,
-    // while the runtime keeps the element visible on its last frame.
+  it("shows the last frame just before the end and leaves at t === end, as the runtime does", () => {
     const table = createFrameLookupTable(
       [
         {
@@ -1056,10 +1078,10 @@ describe("FrameLookupTable", () => {
       ],
       [fakeExtracted(60, 30)],
     );
-    const atEnd = table.getActiveFramePayloads(3.0).get("hero");
-    expect(atEnd?.frameIndex).toBe(59);
-    // mid-clip is unaffected
     expect(table.getActiveFramePayloads(2.5).get("hero")?.frameIndex).toBe(45);
+    expect(table.getActiveFramePayloads(2.99).get("hero")?.frameIndex).toBe(59);
+    expect(table.getActiveFramePayloads(3.0).has("hero")).toBe(false);
+    expect(table.getFrame("hero", 3.0)).toBeNull();
   });
 
   it("holds the last frame across the tail when the source is shorter than the window", () => {
@@ -1080,7 +1102,7 @@ describe("FrameLookupTable", () => {
       [fakeExtracted(30, 30)],
     );
     expect(table.getActiveFramePayloads(1.5).get("hero")?.frameIndex).toBe(29);
-    expect(table.getActiveFramePayloads(5.0).get("hero")?.frameIndex).toBe(29);
+    expect(table.getActiveFramePayloads(4.99).get("hero")?.frameIndex).toBe(29);
   });
 
   it("holds the last frame when the source is a sub-frame shorter than the slot", () => {
@@ -1107,27 +1129,67 @@ describe("FrameLookupTable", () => {
     expect(table.getActiveFramePayloads(3.4).get("hero")?.frameIndex).toBe(42);
     // source exhausted but within tolerance of the end → hold, don't blank
     expect(table.getActiveFramePayloads(3.44).get("hero")?.frameIndex).toBe(42);
-    expect(table.getActiveFramePayloads(3.45).get("hero")?.frameIndex).toBe(42);
   });
 
-  it("keeps both clips active at a shared adjacent boundary, matching the runtime", () => {
-    // clip A ends at 3.0, clip B starts at 3.0. The runtime shows both at the
-    // shared instant; the active set must too.
-    const table = createFrameLookupTable(
-      [
-        { id: "a", src: "a.webm", start: 0, end: 3, mediaStart: 0, loop: false, hasAudio: false },
-        { id: "b", src: "b.webm", start: 3, end: 6, mediaStart: 0, loop: false, hasAudio: false },
-      ],
-      // createFrameLookupTable maps each clip to extracted frames by id.
-      [
-        { ...fakeExtracted(90, 30), videoId: "a" },
-        { ...fakeExtracted(90, 30), videoId: "b" },
-      ],
-    );
-    const payloads = table.getActiveFramePayloads(3.0);
-    expect(payloads.has("a")).toBe(true);
-    expect(payloads.has("b")).toBe(true);
+  it("gives a frame a hair before two clips meet to the clip export shows there", () => {
+    const clip = (id: string, start: number, end: number) => ({
+      id,
+      src: `${id}.webm`,
+      start,
+      end,
+      mediaStart: 0,
+      loop: false,
+      hasAudio: false,
+    });
+    const table = () =>
+      createFrameLookupTable(
+        [clip("a", 0, 1.00001), clip("b", 1.00001, 2)],
+        [
+          { ...fakeExtracted(90, 30), videoId: "a" },
+          { ...fakeExtracted(90, 30), videoId: "b" },
+        ],
+        30,
+      );
+    const stepping = table();
+    stepping.getActiveFramePayloads(29 / 30);
+    const payloads = stepping.getActiveFramePayloads(1);
+
+    expect([...payloads.keys()]).toEqual(["b"]);
+    expect(payloads.get("b")?.frameIndex).toBe(0);
+    expect([...table().getActiveFramePayloads(1).keys()]).toEqual(["b"]);
+    expect(table().getFrame("a", 1)).toBeNull();
   });
+
+  it.each([
+    ["an exact", 0.1, 0.3, 0.3],
+    ["a float-sum", 0.1, 0.1 + 0.2, 9 / 30],
+  ])(
+    "hands %s shared boundary to the incoming clip only, as the runtime does",
+    (_, aStart, aEnd, t) => {
+      const clip = (id: string, start: number, end: number) => ({
+        id,
+        src: `${id}.webm`,
+        start,
+        end,
+        mediaStart: 0,
+        loop: false,
+        hasAudio: false,
+      });
+      const table = () =>
+        createFrameLookupTable(
+          [clip("a", aStart, aEnd), clip("b", 0.3, 0.5)],
+          [
+            { ...fakeExtracted(90, 30), videoId: "a" },
+            { ...fakeExtracted(90, 30), videoId: "b" },
+          ],
+        );
+      const stepping = table();
+      expect([...stepping.getActiveFramePayloads(8 / 30).keys()]).toEqual(["a"]);
+      expect([...stepping.getActiveFramePayloads(t).keys()]).toEqual(["b"]);
+      expect([...table().getActiveFramePayloads(t).keys()]).toEqual(["b"]);
+      expect(table().getFrame("a", t)).toBeNull();
+    },
+  );
 });
 
 describe("analyzeClipMediaFit", () => {
@@ -1217,6 +1279,15 @@ const RED_SAMPLE_PIXELS = [
   [118, 82],
   [178, 92],
 ] as const;
+
+function pngChunkTypes(path: string): string[] {
+  const bytes = readFileSync(path);
+  const types: string[] = [];
+  for (let offset = 8; offset + 8 <= bytes.length; offset += 12 + bytes.readUInt32BE(offset)) {
+    types.push(bytes.toString("latin1", offset + 4, offset + 8));
+  }
+  return types;
+}
 
 function readFirstFramePixel(mediaPath: string, x: number, y: number): Rgb {
   const result = spawnSync(
@@ -1349,6 +1420,291 @@ describe.skipIf(!HAS_FFMPEG)("video frame extraction format", () => {
     expect(worstPngDelta).toBeLessThanOrEqual(worstDefaultDelta);
   }, 60_000);
 
+  // Chrome runs with --force-color-profile=srgb and colour-manages any frame not tagged sRGB;
+  // the SDR encoder writes the canvas code values as they are, so frames must reach it unconverted.
+  it.each([
+    ["BT.709", "bt709"],
+    ["BT.601", "smpte170m"],
+  ])(
+    "declares png frames of a %s source as sRGB so Chrome shows their code values",
+    async (name, tag) => {
+      const fixture = join(FIXTURE_DIR, `${tag}-shadow.mp4`);
+      const synth = await runFfmpeg([
+        "-y",
+        "-hide_banner",
+        "-loglevel",
+        "error",
+        "-f",
+        "lavfi",
+        "-i",
+        `color=c=0x101010:s=${UI_FIXTURE_WIDTH}x${UI_FIXTURE_HEIGHT}:d=1:r=1`,
+        "-vf",
+        `setparams=color_primaries=${tag}:color_trc=${tag}:colorspace=${tag}:range=tv`,
+        "-c:v",
+        "libx264",
+        "-preset",
+        "ultrafast",
+        "-crf",
+        "0",
+        "-pix_fmt",
+        "yuv420p",
+        fixture,
+      ]);
+      if (!synth.success) {
+        throw new Error(`${name} fixture synthesis failed: ${synth.stderr.slice(-400)}`);
+      }
+      expect((await extractVideoMetadata(fixture)).colorSpace?.colorTransfer).toBe(tag);
+      const outputDir = join(FIXTURE_DIR, `out-png-transfer-${tag}`);
+      mkdirSync(outputDir, { recursive: true });
+
+      const result = await extractAllVideoFrames(
+        [{ ...fixtureVideo(), id: tag, src: fixture }],
+        FIXTURE_DIR,
+        { fps: 1, outputDir, format: "png" },
+      );
+
+      expect(result.errors).toEqual([]);
+      const frame = result.extracted[0]!.framePaths.get(0)!;
+      // Chrome reads cICP before sRGB, and ffmpeg < 6.0 writes no cICP, so only an sRGB chunk
+      // without cICP means "these are sRGB code values" on every ffmpeg.
+      const chunks = pngChunkTypes(frame);
+      expect(chunks).toContain("sRGB");
+      expect(chunks).not.toContain("cICP");
+      expect(readFirstFramePixel(frame, 10, 10)).toEqual(readFirstFramePixel(fixture, 10, 10));
+    },
+    60_000,
+  );
+
+  it("extracts jpg frames of a BT.709 source as the BT.601 full range JPEG readers assume", async () => {
+    const fixture = join(FIXTURE_DIR, "bt709-patch.mp4");
+    const synth = await runFfmpeg([
+      "-y",
+      "-hide_banner",
+      "-loglevel",
+      "error",
+      "-f",
+      "lavfi",
+      "-i",
+      `color=c=0xC83C28:s=${UI_FIXTURE_WIDTH}x${UI_FIXTURE_HEIGHT}:d=1:r=1,format=rgb24,drawbox=x=31:y=0:w=64:h=${UI_FIXTURE_HEIGHT}:c=0x0000FE:t=fill`,
+      "-vf",
+      "scale=out_color_matrix=bt709:out_range=tv,format=yuv420p,setparams=color_primaries=bt709:color_trc=bt709:colorspace=bt709:range=tv",
+      "-c:v",
+      "libx264",
+      "-preset",
+      "ultrafast",
+      "-crf",
+      "0",
+      fixture,
+    ]);
+    if (!synth.success) throw new Error(`fixture synthesis failed: ${synth.stderr.slice(-400)}`);
+    const outputDir = join(FIXTURE_DIR, "out-jpg-matrix");
+    mkdirSync(outputDir, { recursive: true });
+
+    const result = await extractAllVideoFrames(
+      [{ ...fixtureVideo(), id: "bt709-jpg", src: fixture }],
+      FIXTURE_DIR,
+      { fps: 1, outputDir, format: "jpg" },
+    );
+
+    expect(result.errors).toEqual([]);
+    const frame = result.extracted[0]!.framePaths.get(0)!;
+    // x=10 is flat colour; x=32 sits one pixel inside the blue edge.
+    for (const x of [10, 32]) {
+      const source = readFirstFramePixel(fixture, x, 10);
+      const shown = readFirstFramePixel(frame, x, 10);
+      const worst = Math.max(...shown.map((v, i) => Math.abs(v - source[i]!)));
+      expect(worst, `x=${x}: source ${source} jpg ${shown}`).toBeLessThanOrEqual(3);
+    }
+  }, 60_000);
+
+  // Measured in Chrome 152: untagged H.264 plays as BT.601 at 1280x718 and BT.709 at 1280x720 or 406x720;
+  // untagged VP9 and AV1 play as BT.601 at every size.
+  it.each([
+    { codec: "libx264", height: 718, matrix: "bt601", format: "png" },
+    { codec: "libx264", height: 718, matrix: "bt601", format: "jpg" },
+    { codec: "libx264", height: 720, matrix: "bt709", format: "png" },
+    { codec: "libx264", height: 720, matrix: "bt709", format: "jpg" },
+    { codec: "libvpx-vp9", height: 720, matrix: "bt601", format: "png" },
+    { codec: "libaom-av1", height: 720, matrix: "bt601", format: "png" },
+  ] as const)(
+    "reads an untagged $height-line $codec source as $matrix like Chrome's own playback ($format)",
+    async ({ codec, height, matrix, format }) => {
+      const extension = codec === "libvpx-vp9" ? "webm" : "mp4";
+      const fixture = join(FIXTURE_DIR, `untagged-${codec}-${height}.${extension}`);
+      const synth = await runFfmpeg([
+        "-y",
+        "-v",
+        "error",
+        "-f",
+        "lavfi",
+        "-i",
+        `color=c=0xC83C28:s=64x${height}:d=1:r=1`,
+        "-vf",
+        "scale=out_color_matrix=bt601:out_range=tv,format=yuv420p,setparams=colorspace=unknown:color_primaries=unknown:color_trc=unknown:range=tv",
+        "-c:v",
+        codec,
+        ...(codec === "libx264" ? ["-qp", "0"] : ["-crf", "0", "-b:v", "0"]),
+        ...(codec === "libaom-av1" ? ["-cpu-used", "8"] : []),
+        fixture,
+      ]);
+      if (!synth.success) throw new Error(`fixture synthesis failed: ${synth.stderr.slice(-400)}`);
+      expect((await extractVideoMetadata(fixture)).colorSpace?.colorSpace ?? "unknown").toBe(
+        "unknown",
+      );
+
+      const result = await extractVideoFramesRange(
+        fixture,
+        `${basename(fixture)}-${format}`,
+        0,
+        1,
+        {
+          fps: 1,
+          outputDir: join(FIXTURE_DIR, "out-untagged"),
+          format,
+        },
+      );
+
+      const pixelAt = (file: string, decode: string): number[] => [
+        ...spawnSync("ffmpeg", [
+          "-v",
+          "error",
+          "-i",
+          file,
+          "-vf",
+          `${decode}format=rgb24,crop=1:1:10:10`,
+          "-frames:v",
+          "1",
+          "-f",
+          "rawvideo",
+          "-",
+        ]).stdout,
+      ];
+      const expected = pixelAt(fixture, `scale=in_color_matrix=${matrix}:in_range=tv,`);
+      const shown = pixelAt(result.framePaths.get(0)!, "");
+      expect([expected.length, shown.length]).toEqual([3, 3]);
+      const worst = Math.max(...shown.map((v, i) => Math.abs(v - expected[i]!)));
+      expect(worst, `${matrix} decode ${expected}, ${format} ${shown}`).toBeLessThanOrEqual(
+        format === "png" ? 1 : 3,
+      );
+    },
+    60_000,
+  );
+
+  // ffmpeg < 6.1 drops frame durations from CFR resampling once any -vf is set, so the colour
+  // filters would cut the still that ends this window short.
+  it.each([
+    {
+      name: "full range BT.709",
+      format: "png",
+      codec: "libx264",
+      pixFmt: "yuvj420p",
+      probed: { colorTransfer: "bt709" },
+      tags: "range=pc:color_primaries=bt709:color_trc=bt709:colorspace=bt709",
+    },
+    {
+      name: "full range BT.709",
+      format: "jpg",
+      codec: "libx264",
+      pixFmt: "yuvj420p",
+      probed: { colorTransfer: "bt709" },
+      tags: "range=pc:color_primaries=bt709:color_trc=bt709:colorspace=bt709",
+    },
+    {
+      name: "BT.470BG gamma 2.8",
+      format: "png",
+      codec: "libx264",
+      pixFmt: "yuv420p",
+      probed: { colorTransfer: "bt470bg" },
+      tags: "color_primaries=bt470bg:color_trc=bt470bg:colorspace=bt470bg",
+    },
+    {
+      name: "RGB",
+      format: "png",
+      codec: "libx264rgb",
+      pixFmt: "rgb24",
+      probed: { colorSpace: "gbr" },
+      tags: "",
+    },
+  ] as const)(
+    "keeps every frame and the colours of a $name VFR window that ends on a still ($format)",
+    async ({ name, format, codec, pixFmt, probed, tags }) => {
+      const fixture = join(FIXTURE_DIR, `vfr-still-${name.replace(/\W+/g, "-")}-${format}.mp4`);
+      const synth = await runFfmpeg([
+        "-y",
+        "-v",
+        "error",
+        "-f",
+        "lavfi",
+        "-i",
+        `color=c=0xC83C28:s=${UI_FIXTURE_WIDTH}x${UI_FIXTURE_HEIGHT}:d=2:r=60`,
+        "-vf",
+        `select='not(between(n\\,30\\,89))'${tags ? `,setparams=${tags}` : ""}`,
+        "-fps_mode",
+        "vfr",
+        "-c:v",
+        codec,
+        "-preset",
+        "ultrafast",
+        "-pix_fmt",
+        pixFmt,
+        fixture,
+      ]);
+      if (!synth.success) throw new Error(`fixture synthesis failed: ${synth.stderr.slice(-400)}`);
+      const window = 0.616666;
+      const unfilteredDir = join(FIXTURE_DIR, `out-${basename(fixture)}-unfiltered`);
+      mkdirSync(unfilteredDir, { recursive: true });
+      const unfiltered = await runFfmpeg([
+        "-v",
+        "error",
+        "-ss",
+        "0",
+        "-i",
+        fixture,
+        "-t",
+        String(window),
+        "-fps_mode",
+        "cfr",
+        "-r",
+        "30",
+        join(unfilteredDir, "f_%05d.png"),
+      ]);
+      expect(unfiltered.success).toBe(true);
+
+      const result = await extractVideoFramesRange(fixture, basename(fixture), 0, window, {
+        fps: 30,
+        outputDir: join(FIXTURE_DIR, "out-vfr-still"),
+        format,
+      });
+
+      expect(result.metadata.isVFR).toBe(true);
+      expect(result.metadata.colorSpace).toMatchObject(probed);
+      expect(result.totalFrames).toBe(readdirSync(unfilteredDir).length);
+      const last = result.framePaths.get(result.totalFrames - 1)!;
+      const source = readFirstFramePixel(fixture, 10, 10);
+      const shown = readFirstFramePixel(last, 10, 10);
+      const worst = Math.max(...shown.map((v, i) => Math.abs(v - source[i]!)));
+      expect(worst, `source ${source} ${format} ${shown}`).toBeLessThanOrEqual(
+        format === "png" ? 0 : 3,
+      );
+      if (format === "png") expect(pngChunkTypes(last)).toContain("sRGB");
+    },
+    60_000,
+  );
+
+  it("leaves SDR-to-HDR frames in the HDR colours they were converted to", async () => {
+    const outputDir = join(FIXTURE_DIR, "out-sdr-to-hdr-gate");
+    mkdirSync(outputDir, { recursive: true });
+
+    const result = await extractVideoFramesRange(UI_FIXTURE, "sdr-to-hdr-gate", 0, 1, {
+      fps: 1,
+      outputDir,
+      format: "png",
+      sdrToHdrTransfer: "pq",
+    });
+
+    expect(pngChunkTypes(result.framePaths.get(0)!)).not.toContain("sRGB");
+  }, 60_000);
+
   it("keeps jpg and png extraction caches separate", async () => {
     const cacheDir = mkdtempSync(join(tmpdir(), "hf-extract-format-cache-"));
     try {
@@ -1428,6 +1784,98 @@ describe.skipIf(!HAS_FFMPEG)("video frame extraction format", () => {
       first.totalFrames,
     );
   }, 60_000);
+});
+
+// Each output slot shows the frame on screen at its time, as the preview does.
+describe.skipIf(!HAS_FFMPEG)("frame sampling at the output frame rate", () => {
+  const FIXTURE_DIR = mkdtempSync(join(tmpdir(), "hf-video-frame-sampling-"));
+  const WIDTH = 32;
+  const HEIGHT = 16;
+  // Matroska stores whole-millisecond timestamps (a 30 fps frame at 66.67 ms reads 67 ms);
+  // a 1/30 timescale stores each frame exactly on a coarse tick.
+  const SOURCES = {
+    "mp4-60": { fps: 60, file: "index-60fps.mp4", muxer: [] },
+    "mkv-30": { fps: 30, file: "index-30fps.mkv", muxer: [] },
+    "mp4-30-timescale-30": {
+      fps: 30,
+      file: "index-30fps-ts30.mp4",
+      muxer: ["-video_track_timescale", "30"],
+    },
+  } as const;
+  type SourceName = keyof typeof SOURCES;
+  const sourcePath = (name: SourceName) => join(FIXTURE_DIR, SOURCES[name].file);
+
+  beforeAll(async () => {
+    for (const name of Object.keys(SOURCES) as SourceName[]) {
+      // Frame k carries luma 16 + 2k, so each extracted frame names its source index.
+      const result = await runFfmpeg([
+        "-y",
+        "-hide_banner",
+        "-loglevel",
+        "error",
+        "-f",
+        "lavfi",
+        "-i",
+        `nullsrc=s=${WIDTH}x${HEIGHT}:r=${SOURCES[name].fps}:d=1.5,geq=lum='16+2*N':cb=128:cr=128`,
+        "-c:v",
+        "libx264",
+        "-qp",
+        "0",
+        "-pix_fmt",
+        "yuv420p",
+        ...SOURCES[name].muxer,
+        sourcePath(name),
+      ]);
+      if (!result.success) throw new Error(`index fixture synthesis failed: ${result.stderr}`);
+    }
+  }, 30_000);
+
+  afterAll(() => {
+    rmSync(FIXTURE_DIR, { recursive: true, force: true });
+  });
+
+  function sourceIndexes(extracted: ExtractedFrames): number[] {
+    const decoded = spawnSync("ffmpeg", [
+      "-v",
+      "error",
+      "-i",
+      join(extracted.outputDir, extracted.framePattern),
+      "-f",
+      "rawvideo",
+      "-pix_fmt",
+      "gray",
+      "pipe:1",
+    ]);
+    if (decoded.status !== 0) throw new Error(decoded.stderr.toString());
+    const indexes: number[] = [];
+    for (let offset = 0; offset < decoded.stdout.length; offset += WIDTH * HEIGHT) {
+      indexes.push(Math.round(((decoded.stdout[offset] ?? 0) * 219) / 255 / 2));
+    }
+    return indexes;
+  }
+
+  it.each([
+    { source: "mp4-60", fps: 24, startTime: 0, duration: 0.5 },
+    { source: "mp4-60", fps: 10, startTime: 0.37, duration: 0.6 },
+    { source: "mkv-30", fps: 30, startTime: 0, duration: 0.5 },
+    { source: "mp4-30-timescale-30", fps: 60, startTime: 0, duration: 0.5 },
+  ] as const)(
+    "$source: samples the frame on screen at each $fps fps slot from $startTime s",
+    async (c) => {
+      const extracted = await extractVideoFramesRange(
+        sourcePath(c.source),
+        `${c.source}-${c.fps}`,
+        c.startTime,
+        c.duration,
+        { fps: c.fps, outputDir: FIXTURE_DIR, format: "png" },
+      );
+      const onScreen = Array.from({ length: Math.round(c.duration * c.fps) }, (_, i) =>
+        Math.floor((c.startTime + i / c.fps) * SOURCES[c.source].fps + 1e-9),
+      );
+      expect(sourceIndexes(extracted)).toEqual(onScreen);
+    },
+    30_000,
+  );
 });
 
 describe.skipIf(!HAS_FFMPEG)("held tails on sparse-timestamp sources", () => {
@@ -2798,6 +3246,69 @@ describe.skipIf(!HAS_FFMPEG || process.platform === "darwin")("forced-SDR HDR ex
     expect(frame(toneMapped)).toEqual(readFileSync(reference));
     expect(frame(plain)).not.toEqual(frame(toneMapped));
     expect(frame(toneMappedAgain)).toEqual(frame(toneMapped));
+  }, 60_000);
+
+  // A second process would read the frames back without the HDR10 light-level metadata the tone map uses.
+  it("tone-maps a VFR HDR10 window in one process, exactly as the unfiltered resample would", async () => {
+    const source = join(fixtureDir, "pq-vfr-4000nit.mp4");
+    const synthesized = await runFfmpeg([
+      "-y",
+      "-v",
+      "error",
+      "-f",
+      "lavfi",
+      "-i",
+      "color=c=0xf0e0c0:s=64x64:r=60:d=2",
+      "-vf",
+      "select='not(between(n\\,30\\,89))',zscale=pin=bt709:tin=bt709:min=bt709:p=bt2020:t=smpte2084:m=bt2020nc:r=tv:npl=1000,format=yuv420p10le",
+      "-fps_mode",
+      "vfr",
+      "-c:v",
+      "libx265",
+      "-x265-params",
+      "log-level=error:hdr10=1:colorprim=bt2020:transfer=smpte2084:colormatrix=bt2020nc:max-cll=4000,400:master-display=G(13250,34500)B(7500,3000)R(34000,16000)WP(15635,16450)L(40000000,50)",
+      source,
+    ]);
+    if (!synthesized.success)
+      throw new Error(`PQ fixture synthesis failed: ${synthesized.stderr.slice(-400)}`);
+    const referenceDir = join(fixtureDir, "pq-vfr-reference");
+    mkdirSync(referenceDir, { recursive: true });
+    const reference = await runFfmpeg([
+      "-v",
+      "error",
+      "-ss",
+      "0",
+      "-i",
+      source,
+      "-t",
+      "0.616666",
+      "-vf",
+      "zscale=t=linear:npl=100,tonemap=hable:desat=0,zscale=p=bt709:t=bt709:m=bt709:r=tv",
+      "-fps_mode",
+      "cfr",
+      "-r",
+      "30",
+      "-q:v",
+      "0",
+      "-compression_level",
+      "1",
+      join(referenceDir, "frame_%05d.png"),
+    ]);
+    expect(reference.success, reference.stderr).toBe(true);
+
+    const result = await extractVideoFramesRange(source, "pq-vfr", 0, 0.616666, {
+      fps: 30,
+      outputDir: join(fixtureDir, "pq-vfr-out"),
+      format: "png",
+      toneMapHdrToSdr: true,
+    });
+
+    expect(result.metadata.isVFR).toBe(true);
+    const referenceFrames = readdirSync(referenceDir).sort();
+    expect(result.totalFrames).toBe(referenceFrames.length);
+    expect(readFileSync(result.framePaths.get(0)!)).toEqual(
+      readFileSync(join(referenceDir, referenceFrames[0]!)),
+    );
   }, 60_000);
 });
 

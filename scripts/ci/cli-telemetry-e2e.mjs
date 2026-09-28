@@ -14,10 +14,9 @@
  * a local registry (the origin is a first-class project setting,
  * `hyperframes.json#registry`) supplies an item with a `registryDependencies`
  * edge, which no shipped catalog item declares today; and `globalThis.fetch`
- * is wrapped so the batch is captured instead of sent. Faking a 200 is what
- * keeps this off production analytics — `flush()` only leaves events queued
- * when the request fails, and only a non-empty queue makes the exit handler
- * spawn the detached `flushSync` child that would bypass the hook.
+ * is wrapped so the batch is captured instead of sent. The exit handler's
+ * detached `flushSync` child would bypass that wrapper, so the hook runs the
+ * child's script in-process instead; nothing reaches production analytics.
  *
  * Usage: node scripts/ci/cli-telemetry-e2e.mjs [path/to/dist/cli.js]
  */
@@ -135,6 +134,18 @@ globalThis.fetch = async function (input, init) {
   }
   return realFetch(input, init);
 };
+// The exit-time flushSync() child would send past the wrapper above: run its script here instead.
+// It runs inside the exit handler, so the wrapper must record before its first await.
+const childProcess = require("node:child_process");
+const realSpawn = childProcess.spawn;
+childProcess.spawn = function (command, args, options) {
+  if (Array.isArray(args) && args[0] === "-e" && String(args[1]).includes("posthog")) {
+    (0, eval)(args[1]);
+    return { unref() {}, on() { return this; } };
+  }
+  return realSpawn.call(this, command, args, options);
+};
+require("node:module").syncBuiltinESMExports();
 `,
 );
 

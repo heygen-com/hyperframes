@@ -1,3 +1,4 @@
+// fallow-ignore-file code-duplication
 import { spawnSync } from "node:child_process";
 import {
   existsSync,
@@ -6,6 +7,7 @@ import {
   renameSync,
   rmSync,
   symlinkSync,
+  utimesSync,
   writeFileSync,
 } from "node:fs";
 import { tmpdir } from "node:os";
@@ -18,6 +20,7 @@ import {
   install,
   installedOptionalPackageVersion,
   loadBesideCli,
+  loadInstalledOptionalPackage,
   loadOptionalPackage,
   optionalPackageDir,
   type OptionalPackageDeps,
@@ -39,6 +42,15 @@ function fakeDeps(overrides: Partial<OptionalPackageDeps> = {}) {
   };
   return { deps, install, log, installed };
 }
+
+describe("loadInstalledOptionalPackage", () => {
+  it("returns null without installing when the package is not on this machine", () => {
+    const { deps, install } = fakeDeps();
+
+    expect(loadInstalledOptionalPackage("onnxruntime-node", deps)).toBeNull();
+    expect(install).not.toHaveBeenCalled();
+  });
+});
 
 describe("loadOptionalPackage", () => {
   it("installs on first use with one plain line, then loads from the cache without installing again", async () => {
@@ -306,6 +318,20 @@ describe("install", () => {
       expect(existsSync(dead)).toBe(false);
       expect(existsSync(deadOldFormat)).toBe(false);
       expect(existsSync(alive)).toBe(true);
+    } finally {
+      rmSync(cache, { recursive: true, force: true });
+    }
+  });
+
+  it("sweeps a staging dir hours old even when its pid is alive, since pids get reused", async () => {
+    const { cache, dir, stubNpm } = setup();
+    const reused = `${dir}.tmp-${process.ppid}-abcd1234`;
+    mkdirSync(reused, { recursive: true });
+    const sevenHoursAgo = new Date(Date.now() - 7 * 60 * 60 * 1000);
+    utimesSync(reused, sevenHoursAgo, sevenHoursAgo);
+    try {
+      await install(dir, name, version, stubNpm);
+      expect(existsSync(reused)).toBe(false);
     } finally {
       rmSync(cache, { recursive: true, force: true });
     }

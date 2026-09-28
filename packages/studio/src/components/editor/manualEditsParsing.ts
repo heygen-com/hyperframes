@@ -34,6 +34,10 @@ export function readStudioFileChangePath(payload: unknown): string | null {
   return path === null ? null : normalizeStudioFileChangePath(path);
 }
 
+export function readFileChangeAffectsPreview(payload: unknown): boolean {
+  return asPayloadRecord(payload)?.affectsPreview !== false;
+}
+
 /**
  * The compositions whose thumbnails a change can alter, or `null` for all of them. Anything
  * but a list of paths (an older server, the Vite dev host) reads as "all".

@@ -160,8 +160,8 @@ describe("distributed video metadata", () => {
       const lookup = createFrameLookupTable(result.videos, [extractedFrames(metadata)]);
 
       expect(lookup.getActiveFramePayloads(7).get("hero")?.frameIndex).toBe(expectedFrame);
-      expect(lookup.getFrame("hero", 8)).not.toBeNull();
-      expect(lookup.getFrame("hero", 8.01)).toBeNull();
+      expect(lookup.getFrame("hero", 8 - 1 / 30)).not.toBeNull();
+      expect(lookup.getFrame("hero", 8)).toBeNull();
     },
   );
 });

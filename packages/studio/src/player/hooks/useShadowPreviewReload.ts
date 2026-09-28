@@ -12,7 +12,7 @@ import {
   type PreviewIframeSlot,
   type UseTimelineSyncCallbacksParams,
 } from "./useTimelineSyncCallbacks";
-import type { PlaybackAdapter } from "../lib/playbackTypes";
+import type { IframeWindow, PlaybackAdapter } from "../lib/playbackTypes";
 import { thumbnailScheduler } from "../lib/thumbnailScheduler";
 import { usePlayerStore } from "../store/playerStore";
 
@@ -22,6 +22,11 @@ import { usePlayerStore } from "../store/playerStore";
 export const SHADOW_READY_TIMEOUT_MS = 15_000;
 // A busy machine can need more than one budget; the shadow keeps loading for this many before it is dropped.
 export const SHADOW_READY_BUDGETS = 3;
+
+function restoreSeekPainted(iframe: HTMLIFrameElement | null): Promise<void> | undefined {
+  const win = iframe?.contentWindow as IframeWindow | null | undefined;
+  return win?.__hfWaitForSeekCompletion?.().catch(() => {});
+}
 
 function isDocumentHidden(): boolean {
   return typeof document !== "undefined" && document.visibilityState === "hidden";
@@ -137,10 +142,16 @@ export function useShadowPreviewReload({
   const isCurrentShadow = useCallback((gen?: number) => gen === shadowGenRef.current, []);
   const previewGeneration = useCallback(() => shadowGenRef.current, []);
   const markAdapterReady = useCallback(
-    (_iframe: HTMLIFrameElement | null, gen: number | undefined, commit: () => void) => {
+    (iframe: HTMLIFrameElement | null, gen: number | undefined, commit: () => void) => {
       if (gen == null || gen !== shadowGenRef.current) return;
-      pendingCommitRef.current = { gen, commit };
-      promoteWhenReady(gen);
+      const register = () => {
+        if (gen !== shadowGenRef.current) return;
+        pendingCommitRef.current = { gen, commit };
+        promoteWhenReady(gen);
+      };
+      const painted = restoreSeekPainted(iframe);
+      if (painted) void painted.then(register);
+      else register();
     },
     [promoteWhenReady],
   );

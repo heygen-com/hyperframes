@@ -442,11 +442,13 @@ describe("runAdd (integration, mocked registry)", () => {
         item: "base-component",
         itemType: "hyperframes:component",
         requested: false,
+        source: "cli",
       });
       expect(trackRegistryItemAdded).toHaveBeenCalledWith({
         item: "dep-block",
         itemType: "hyperframes:block",
         requested: true,
+        source: "cli",
       });
     } finally {
       rmSync(dir, { recursive: true, force: true });

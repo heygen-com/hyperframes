@@ -326,8 +326,10 @@ export default defineCommand({
       description:
         "Run shader transitions on a page-side WebGL canvas inside Chrome " +
         "instead of the Node-side layered blend. ~6× faster for SDR " +
-        "shader-transition renders. HDR/alpha/video content auto-disables. " +
-        "Use --no-page-side-compositing to force the layered path.",
+        "shader-transition renders. Used for mp4, hls and gif output without " +
+        "HDR content; for mp4 and hls it usually turns off under --experimental-fast-capture. " +
+        "webm and mov output take the layered path. --no-page-side-compositing forces " +
+        "the layered path for mp4 and hls; gif always uses the page-side canvas.",
       default: true,
     },
     "browser-timeout": {

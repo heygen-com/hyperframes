@@ -10,6 +10,7 @@ import {
   statSync,
   writeFileSync,
 } from "node:fs";
+import { execFile } from "node:child_process";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -777,6 +778,13 @@ describe("checkSkills canonical bypass of the in-repo manifest shortcut", () => 
     const res = await checkSkills({ cwd: project, home, canonical: true });
     expect(res.skills.map((s) => s.name)).not.toContain("retired-skill");
     expect(res.skills.map((s) => s.name)).toContain("kept");
+    // The background check runs this with no console; git must not open one on Windows.
+    expect(vi.mocked(execFile)).toHaveBeenCalledWith(
+      "git",
+      expect.arrayContaining(["ls-remote"]),
+      expect.objectContaining({ windowsHide: true }),
+      expect.any(Function),
+    );
   });
 
   it("canonical:true still honors an explicit local `source` override", async () => {
