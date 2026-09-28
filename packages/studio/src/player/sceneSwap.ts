@@ -17,6 +17,20 @@ export function onPreviewContentReplaced(
   };
 }
 
+export function markScenesStale(iframe: HTMLIFrameElement | null, files: readonly string[]): void {
+  const doc = iframe?.contentDocument;
+  const meta = doc?.querySelector<HTMLMetaElement>('meta[name="hf-scene-parts"]');
+  if (!doc || !meta) return;
+  const parts = JSON.parse(meta.content) as { scenes: Record<string, string> };
+  for (const file of files) {
+    for (const host of doc.querySelectorAll(`[data-composition-file="${CSS.escape(file)}"]`)) {
+      const scene = host.closest("[data-hf-scene]")?.getAttribute("data-hf-scene");
+      if (scene && scene in parts.scenes) parts.scenes[scene] = "";
+    }
+  }
+  meta.content = JSON.stringify(parts);
+}
+
 /** Null when the preview cannot swap; rejects when superseded, cancelled or a full reload is needed. */
 export function sceneSwapFor(
   iframe: HTMLIFrameElement,

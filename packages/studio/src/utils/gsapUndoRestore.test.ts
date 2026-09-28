@@ -259,6 +259,24 @@ describe("applyUndoRestoreToPreview", () => {
     expect(reloadPreview).toHaveBeenCalledTimes(1);
   });
 
+  it("blanks a restored scene's live hash before reloading, so the scene swap takes it", () => {
+    const { iframe, doc } = buildLiveIframe(
+      `<div data-hf-scene="scene0" data-composition-file="scenes/intro.html"><h1>Rep0</h1></div>` +
+        `<div data-hf-scene="scene1" data-composition-file="scenes/outro.html"></div>`,
+    );
+    const meta = doc.createElement("meta");
+    meta.name = "hf-scene-parts";
+    meta.content = JSON.stringify({ shared: "s", scenes: { scene0: "h0", scene1: "h1" } });
+    doc.head.append(meta);
+    let partsAtReload: unknown;
+    const reloadPreview = vi.fn(() => (partsAtReload = JSON.parse(meta.content)));
+    const files = {
+      "scenes/intro.html": { previous: "<h1>Rep0</h1>", restored: "<h1>Alpha</h1>" },
+    };
+    expect(applyUndoRestoreToPreview(iframe, ROOT, files, 3, reloadPreview)).toBe("full");
+    expect(partsAtReload).toEqual({ shared: "s", scenes: { scene0: "", scene1: "h1" } });
+  });
+
   it("full-reloads when the restore touches a sub-comp, not the active comp", () => {
     const { iframe } = buildLiveIframe(`<div id="a">t</div>`);
     const reloadPreview = vi.fn();

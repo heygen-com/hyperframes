@@ -8,6 +8,7 @@ import {
   extractGsapScriptText,
   findGsapScriptElements,
 } from "./gsapSoftReload";
+import { markScenesStale } from "../player/sceneSwap";
 
 type PreviewWindow = Window & {
   __player?: { seek?: (t: number) => void };
@@ -192,6 +193,7 @@ export function applyUndoRestoreToPreview(
   // full-reloaded: the original "undo always blinks".
   const activeDocPath = activeCompPath ?? "index.html";
   const paths = files ? Object.keys(files) : [];
+  markScenesStale(iframe, paths);
   // Soft path only covers the single active-comp document in the root iframe.
   if (!iframe || !files || paths.length !== 1 || paths[0] !== activeDocPath) {
     reloadPreview();
