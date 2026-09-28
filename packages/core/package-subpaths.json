@@ -110,6 +110,12 @@
       "types": "./dist/compiler/index.d.ts",
       "environments": ["bun", "node"]
     },
+    "./projects": {
+      "source": "./src/projects.ts",
+      "runtime": "./dist/projects.js",
+      "types": "./dist/projects.d.ts",
+      "environments": ["bun", "node"]
+    },
     "./audio-fx": {
       "source": "./src/audioFx.ts",
       "runtime": "./dist/audioFx.js",

@@ -11,6 +11,7 @@ import { fileURLToPath } from "node:url";
 import { promisify } from "node:util";
 import { type Fps } from "@hyperframes/core";
 import {
+  getFfmpegBinary,
   MIXED_AUDIO_FILENAME,
   type VideoElement,
   type VideoFrameFormat,
@@ -323,7 +324,7 @@ const execFile = promisify(execFileCallback);
  * same process (Cloud Run Jobs, Temporal activity workers) would otherwise
  * spawn ffmpeg once per chunk just to read the version — ~20-50ms each.
  */
-let cachedFfmpegVersion: string | null = null;
+const cachedFfmpegVersions = new Map<string, string>();
 
 /**
  * Read `ffmpeg -version` first line. The string is opaque — `planHash`
@@ -332,23 +333,36 @@ let cachedFfmpegVersion: string | null = null;
  * disagree with the plan's baked-in encoder args.
  */
 export async function readFfmpegVersion(): Promise<string> {
-  if (cachedFfmpegVersion !== null) return cachedFfmpegVersion;
-  const { stdout } = await execFile("ffmpeg", ["-version"], {
-    maxBuffer: 1024 * 1024,
-    // See runFfmpeg.ts: keeps a console window off the user's desktop on Windows.
-    windowsHide: true,
-  });
+  const binary = getFfmpegBinary();
+  const cached = cachedFfmpegVersions.get(binary);
+  if (cached !== undefined) return cached;
+  let stdout: string;
+  try {
+    ({ stdout } = await execFile(binary, ["-version"], {
+      maxBuffer: 1024 * 1024,
+      // See runFfmpeg.ts: keeps a console window off the user's desktop on Windows.
+      windowsHide: true,
+    }));
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
+    throw Object.assign(
+      new Error(`ffmpeg not found at "${binary}": install FFmpeg or set HYPERFRAMES_FFMPEG_PATH.`, {
+        cause: error,
+      }),
+      { code: "ENOENT" },
+    );
+  }
   const firstLine = stdout.split(/\r?\n/)[0]?.trim() ?? "";
   if (!firstLine) {
     throw new Error("ffmpeg -version returned empty output");
   }
-  cachedFfmpegVersion = firstLine;
+  cachedFfmpegVersions.set(binary, firstLine);
   return firstLine;
 }
 
 /** Test-only: clear the cached ffmpeg version so a fresh probe runs. */
 function _resetFfmpegVersionCacheForTests(): void {
-  cachedFfmpegVersion = null;
+  cachedFfmpegVersions.clear();
 }
 
 /**

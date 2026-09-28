@@ -124,6 +124,12 @@
       "import": "./src/compiler/index.ts",
       "types": "./src/compiler/index.ts"
     },
+    "./projects": {
+      "bun": "./src/projects.ts",
+      "node": "./dist/projects.js",
+      "import": "./src/projects.ts",
+      "types": "./src/projects.ts"
+    },
     "./audio-fx": {
       "bun": "./src/audioFx.ts",
       "node": "./dist/audioFx.js",
@@ -511,6 +517,10 @@
       "./compiler": {
         "import": "./dist/compiler/index.js",
         "types": "./dist/compiler/index.d.ts"
+      },
+      "./projects": {
+        "import": "./dist/projects.js",
+        "types": "./dist/projects.d.ts"
       },
       "./audio-fx": {
         "import": "./dist/audioFx.js",
