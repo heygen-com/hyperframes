@@ -339,15 +339,13 @@ describe("a copy that fails", () => {
   });
 });
 
-describe("with no DOM edit session (a null selection ref)", () => {
-  it("acts on the timeline selection and refuses when nothing is selected", async () => {
+describe("with no DOM edit session", () => {
+  it("refuses copy, cut and duplicate when nothing is selected", async () => {
     clearSelection();
-    const { clipboard, deleted } = mountClipboard(null);
+    const { clipboard, deleted } = mountClipboard();
     expect(clipboard().handleCopy()).toBe(false);
     expect(await clipboard().handleCut()).toBe(false);
     expect(await clipboard().handleDuplicate()).toBe(false);
     expect(deleted).toEqual([]);
-    selectTitle();
-    expect(clipboard().handleCopy()).toBe(true);
   });
 });

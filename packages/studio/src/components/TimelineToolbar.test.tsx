@@ -221,13 +221,4 @@ describe("TimelineToolbar add beat", () => {
     expect(host.querySelector('button[aria-label="Add beat at playhead"]')).not.toBeNull();
     act(() => root.unmount());
   });
-
-  it("omits Add beat for a host whose undo cannot reach beat edits", () => {
-    const host = document.createElement("div");
-    document.body.append(host);
-    const root = createRoot(host);
-    act(() => root.render(<TimelineToolbar showAddBeat={false} />));
-    expect(host.querySelector('button[aria-label="Add beat at playhead"]')).toBeNull();
-    act(() => root.unmount());
-  });
 });

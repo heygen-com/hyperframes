@@ -1,7 +1,7 @@
 // @vitest-environment happy-dom
 // fallow-ignore-file code-duplication
 
-import { act, type ComponentProps } from "react";
+import { act } from "react";
 import { MAX_AUDIO_GAIN } from "@hyperframes/core/audio-gain";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -11,6 +11,7 @@ import { useAudioMetersVisible } from "../../utils/audioMeterVisibility";
 import { SILENT_CHANNEL } from "../../utils/audioMeterMath";
 import {
   AudioMeterStrip,
+  type AudioMeterStripProps,
   evictGoneMeterState,
   followMeterHook,
   stepAndPaintStrips,
@@ -105,7 +106,7 @@ afterEach(() => {
   vi.unstubAllGlobals();
 });
 
-function mount(props: ComponentProps<typeof AudioMeterStrip> = {}) {
+function mount(props: AudioMeterStripProps = {}) {
   const host = document.createElement("div");
   document.body.append(host);
   const root = createRoot(host);

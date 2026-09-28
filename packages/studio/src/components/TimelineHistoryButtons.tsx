@@ -7,13 +7,14 @@ import { Tooltip } from "./ui";
 
 interface HistoryButtonProps {
   action: "undo" | "redo";
-  enabled: boolean;
+  can: boolean;
   label: string | undefined;
   onClick: (() => Promise<void> | void) | undefined;
 }
 
-function HistoryButton({ action, enabled, label, onClick }: HistoryButtonProps) {
+function HistoryButton({ action, can, label, onClick }: HistoryButtonProps) {
   const Icon = action === "undo" ? RotateCcw : RotateCw;
+  const enabled = Boolean(onClick) && can;
   return (
     <Tooltip label={historyTooltipLabel(action, label)}>
       <button
@@ -41,7 +42,7 @@ export interface TimelineHistoryButtonsProps {
   onRedo?: () => Promise<void> | void;
 }
 
-/** Undo and Redo, on the one edit-history path the shell already owns. */
+/** Undo and Redo: a host's props win, else the shell's edit history. */
 export function TimelineHistoryButtons(props: TimelineHistoryButtonsProps) {
   const shell = useStudioShellContextOptional();
   const onUndo = props.onUndo ?? shell?.handleUndo;
@@ -50,13 +51,13 @@ export function TimelineHistoryButtons(props: TimelineHistoryButtonsProps) {
     <>
       <HistoryButton
         action="undo"
-        enabled={Boolean(onUndo) && (props.canUndo ?? shell?.editHistory.canUndo ?? false)}
+        can={props.canUndo ?? shell?.editHistory.canUndo ?? false}
         label={props.undoLabel ?? shell?.editHistory.undoLabel}
         onClick={onUndo}
       />
       <HistoryButton
         action="redo"
-        enabled={Boolean(onRedo) && (props.canRedo ?? shell?.editHistory.canRedo ?? false)}
+        can={props.canRedo ?? shell?.editHistory.canRedo ?? false}
         label={props.redoLabel ?? shell?.editHistory.redoLabel}
         onClick={onRedo}
       />

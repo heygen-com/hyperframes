@@ -424,7 +424,7 @@ export function TimelineToolbar({
             })()}
           {(() => {
             if (!showAddBeat) return null;
-            // Always rendered (CapCut-style): before beat analysis loads (or when
+            // Rendered whenever shown (CapCut-style): before beat analysis loads (or when
             // the project has no analyzed music) the button fades to a disabled
             // state instead of unmounting, so the toolbar layout never shifts.
             const canAdd = beatAnalysisReady && canAddBeatAt(currentTime);

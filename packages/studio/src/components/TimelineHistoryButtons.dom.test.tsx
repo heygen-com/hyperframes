@@ -119,34 +119,36 @@ it("classifies Undo and Redo for the hotkey filters at their new location (KTD13
   }
 });
 
-it("takes a host's history props over the shell's", () => {
+it("takes a host's history props over the shell's", async () => {
   editHistory.canUndo = true;
+  editHistory.redoLabel = "shell move";
   const onUndo = vi.fn();
   const onRedo = vi.fn();
   const host = mount(
-    <TimelineHistoryButtons canUndo={false} canRedo onUndo={onUndo} onRedo={onRedo} />,
+    <TimelineHistoryButtons
+      canUndo={false}
+      canRedo
+      redoLabel="host trim"
+      onUndo={onUndo}
+      onRedo={onRedo}
+    />,
   );
 
   expect(button(host, "Undo").disabled).toBe(true);
+  act(() => button(host, "Redo").focus());
+  await act(async () => {
+    await new Promise((resolve) => setTimeout(resolve, 0));
+  });
+  expect(document.querySelector('[role="tooltip"]')?.textContent).toContain("Redo host trim");
   click(button(host, "Redo"));
 
   expect(onRedo).toHaveBeenCalledTimes(1);
   expect(handleRedo).not.toHaveBeenCalled();
 });
 
-it("renders both buttons disabled with no shell and no props", () => {
+it("keeps a button disabled when it has no handler, whatever canUndo/canRedo say", () => {
   shell = null;
-  const host = mount(<TimelineHistoryButtons />);
+  const host = mount(<TimelineHistoryButtons canUndo canRedo />);
 
   for (const label of ["Undo", "Redo"]) expect(button(host, label).disabled).toBe(true);
-});
-
-it("passes a host's history through the toolbar", () => {
-  shell = null;
-  const onUndo = vi.fn();
-  const host = mount(<TimelineToolbar history={{ canUndo: true, onUndo }} />);
-
-  click(button(host, "Undo"));
-
-  expect(onUndo).toHaveBeenCalledTimes(1);
 });

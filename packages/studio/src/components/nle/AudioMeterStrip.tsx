@@ -107,7 +107,7 @@ function useVolumeHandlers(): {
 
 type PreviewWindow = (Window & { __hf?: { audioMeter?: AudioMeterHook } }) | null | undefined;
 
-function readHook(iframe: HTMLIFrameElement | null): AudioMeterHook | null {
+function readHook(iframe: HTMLIFrameElement | null | undefined): AudioMeterHook | null {
   try {
     return (iframe?.contentWindow as PreviewWindow)?.__hf?.audioMeter ?? null;
   } catch {
@@ -123,9 +123,8 @@ function paintPeak(el: HTMLElement | null, peak: number): void {
   el.style.setProperty("transform", peak >= 1 ? "translateY(1px)" : "none");
 }
 
-/** The fill is a fixed green/amber/red backdrop; painting only moves the dark
- *  mask that covers the unlit top portion, so a loud peak lights the real red
- *  band instead of tinting a flat colour brighter. */
+/** The fill is a fixed green/amber/red backdrop; painting only moves the dark mask that covers the unlit top
+ *  portion, so a loud peak lights the real red band instead of tinting a flat colour brighter. */
 function paint(bars: StripBars | undefined, channels: Pair): void {
   channels.forEach((ch, i) => {
     bars?.[i]?.mask?.style.setProperty("height", `${(1 - ch.level) * 100}%`);
@@ -195,7 +194,7 @@ function useMeterLoop(
     const state = new Map<string | null, Pair>();
     const tick = (now: number) => {
       raf = requestAnimationFrame(tick);
-      active = followMeterHook(active, readHook(previewIframeRef?.current ?? null));
+      active = followMeterHook(active, readHook(previewIframeRef?.current));
       const levels = active?.read();
       const dt = now - last;
       last = now;
@@ -401,6 +400,7 @@ function MeterStrip({
 }
 
 export interface AudioMeterStripProps {
+  /** Pass a stable ref (useRef): a new object each render restarts the meter loop. */
   previewIframeRef?: RefObject<HTMLIFrameElement | null>;
 }
 
