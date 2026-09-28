@@ -26,7 +26,7 @@ export default defineConfig({
   target: "node22",
   platform: "node",
   bundle: true,
-  splitting: false,
+  splitting: true,
   sourcemap: false,
   clean: true,
   banner: {
