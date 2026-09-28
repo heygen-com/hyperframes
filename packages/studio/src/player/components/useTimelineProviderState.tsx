@@ -71,6 +71,8 @@ export function useTimelineProviderState({
   canPasteClip,
   theme: themeOverrides,
   sessionEpoch = 0,
+  previewIframeRef,
+  onZIndexReorder,
 }: TimelineProps = {}): TimelineContextValue {
   const {
     onMoveElement,
@@ -184,6 +186,8 @@ export function useTimelineProviderState({
   });
   const { readClipZIndex, applyStackingPatches, zSyncEnabled } = useTimelineStackingSync({
     expandedElementsRef: timelineElementsRef,
+    previewIframeRef,
+    onZIndexReorder,
   });
   const {
     draggedClip,

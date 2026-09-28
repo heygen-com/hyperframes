@@ -13,7 +13,6 @@ import {
   readlinkSync,
   writeFileSync,
   writeSync,
-  mkdirSync,
   unlinkSync,
   rmSync,
   statSync,
@@ -27,8 +26,14 @@ import { isAudioFile } from "../helpers/mime.js";
 import { replaceFileAtomically } from "../helpers/atomicFile.js";
 import { generateWaveformCache } from "../helpers/waveform.js";
 import { validateUploadedMediaBuffer } from "../helpers/mediaValidation.js";
-import { isSafePath, pinWithinProject, resolveWithinProject } from "../helpers/safePath.js";
+import {
+  isSafePath,
+  mkdirWithinProject,
+  pinWithinProject,
+  resolveWithinProject,
+} from "../helpers/safePath.js";
 import { backupPathForResponse, snapshotBeforeWrite } from "../helpers/backupJournal.js";
+import { projectDirMissing } from "../helpers/projectDirMissing.js";
 import {
   createWriteToken,
   fileContentVersion,
@@ -193,9 +198,7 @@ async function resolveProjectPath(
   // `403 forbidden` — indistinguishable from a real path-traversal attempt.
   // Checked here, once, so every route built on this shares the fix.
   if (!existsSync(project.dir)) {
-    return {
-      error: c.json({ error: "not found", why: "project_dir_missing" }, 404),
-    } as const;
+    return { error: projectDirMissing(c) } as const;
   }
 
   const filePath = requestSubPath(c.req.url, `projects/:id/${route}`);
@@ -586,10 +589,9 @@ async function parseMutationBody<T extends { target?: MutationTarget }>(
   return { target: body.target, body };
 }
 
-/** Ensure the parent directory of a path exists. */
-function ensureDir(filePath: string) {
-  const dir = dirname(filePath);
-  if (!existsSync(dir)) mkdirSync(dir, { recursive: true });
+/** Ensure the parent directory of a path exists, never recreating a project folder that is gone. */
+function ensureDir(projectDir: string, filePath: string) {
+  mkdirWithinProject(projectDir, dirname(filePath));
 }
 
 /**
@@ -2427,7 +2429,7 @@ export function registerFileRoutes(api: Hono, adapter: StudioApiAdapter): void {
     let backup: ReturnType<typeof snapshotBeforeWrite> = { backupPath: null };
     let overwrote: Buffer | undefined;
     if (createOnly) {
-      ensureDir(res.absPath);
+      ensureDir(res.project.dir, res.absPath);
       let fd: number;
       try {
         fd = openSync(res.absPath, "wx");
@@ -2514,7 +2516,7 @@ export function registerFileRoutes(api: Hono, adapter: StudioApiAdapter): void {
     const res = await resolveProjectFile(c, adapter);
     if ("error" in res) return res.error;
 
-    ensureDir(res.absPath);
+    ensureDir(res.project.dir, res.absPath);
     const body = Buffer.from(await c.req.arrayBuffer());
     try {
       writeFileSync(res.absPath, body, { flag: "wx" });
@@ -3193,7 +3195,7 @@ export function registerFileRoutes(api: Hono, adapter: StudioApiAdapter): void {
       return c.json({ error: "already exists" }, 409);
     }
 
-    ensureDir(newAbs);
+    ensureDir(res.project.dir, newAbs);
     renameSync(res.absPath, newAbs);
 
     // Update references to the old path across all project files
@@ -3224,7 +3226,7 @@ export function registerFileRoutes(api: Hono, adapter: StudioApiAdapter): void {
       return c.json({ error: "forbidden" }, 403);
     }
 
-    ensureDir(destAbs);
+    ensureDir(project.dir, destAbs);
     try {
       writeFileSync(destAbs, readFileSync(srcAbs), { flag: "wx" });
     } catch (error) {
@@ -3250,15 +3252,17 @@ export function registerFileRoutes(api: Hono, adapter: StudioApiAdapter): void {
     async (c) => {
       const project = await adapter.resolveProject(c.req.param("id"));
       if (!project) return c.json({ error: "not found" }, 404);
+      if (!existsSync(project.dir)) return projectDirMissing(c);
 
       // Optional subdirectory within the project (e.g. "assets/audio")
       const subDir = c.req.query("dir") ?? "";
       const targetDir = subDir ? resolveWithinProject(project.dir, subDir) : project.dir;
       if (!targetDir) return c.json({ error: "forbidden" }, 403);
-      if (subDir && !existsSync(targetDir)) mkdirSync(targetDir, { recursive: true });
 
       const formData = await c.req.formData();
+      mkdirWithinProject(project.dir, targetDir);
       const result = await processUploadedFiles(formData, targetDir, project.dir);
+      if (!existsSync(project.dir)) return projectDirMissing(c);
 
       return c.json(
         {

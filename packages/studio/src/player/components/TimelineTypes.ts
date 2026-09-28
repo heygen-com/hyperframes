@@ -4,13 +4,15 @@ import type { TimelineTimeRange } from "../store/rangeSelectionSlice";
 import type { TimelineDropCallbacks } from "./timelineCallbacks";
 import type { TimelineTheme } from "./timelineTheme";
 import type { TimelineEditOverrides } from "./useResolvedTimelineEditCallbacks";
+import type { TimelineStackingSyncProps } from "./useTimelineStackingSync";
 
 export interface TimelineClipRenderContext {
   priority: "overscan" | "visible" | "interaction";
   rich: boolean;
 }
 
-export interface TimelineProps extends TimelineDropCallbacks, TimelineEditOverrides {
+export interface TimelineProps
+  extends TimelineDropCallbacks, TimelineEditOverrides, TimelineStackingSyncProps {
   /** Project-scoped reset boundary; soft source refreshes retain the same epoch. */
   sessionEpoch?: number;
   onSeek?: (time: number, options?: { keepPlaying?: boolean }) => void;

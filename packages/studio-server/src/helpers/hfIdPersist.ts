@@ -1,17 +1,9 @@
 import { ensureHfIds } from "@hyperframes/parsers/hf-ids";
 import { createHash } from "node:crypto";
-import {
-  closeSync,
-  constants,
-  fstatSync,
-  mkdirSync,
-  openSync,
-  readFileSync,
-  writeFileSync,
-} from "node:fs";
+import { closeSync, constants, fstatSync, openSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { replaceFileAtomically } from "./atomicFile.js";
-import { isInHiddenOrVendorDir, walkDir } from "./safePath.js";
+import { isInHiddenOrVendorDir, mkdirWithinProject, walkDir } from "./safePath.js";
 
 export const isCompositionSource = (html: string): boolean => /data-composition-id\s*=/.test(html);
 
@@ -49,7 +41,7 @@ export function stampProjectHfIds(projectDir: string): void {
     next[file] = hash;
   }
   try {
-    mkdirSync(dirname(recordPath), { recursive: true });
+    mkdirWithinProject(projectDir, dirname(recordPath));
     writeFileSync(recordPath, JSON.stringify(next));
   } catch {
     // read-only project: the next start parses again

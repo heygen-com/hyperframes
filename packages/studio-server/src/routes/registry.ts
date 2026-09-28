@@ -1,5 +1,8 @@
+import { existsSync } from "node:fs";
 import type { Hono } from "hono";
 import type { StudioApiAdapter } from "../types.js";
+import { projectDirMissing } from "../helpers/projectDirMissing.js";
+import { isProjectRootMissing } from "../helpers/safePath.js";
 
 export function registerRegistryRoutes(api: Hono, adapter: StudioApiAdapter): void {
   api.get("/registry/blocks", async (c) => {
@@ -17,6 +20,7 @@ export function registerRegistryRoutes(api: Hono, adapter: StudioApiAdapter): vo
     }
     const project = await adapter.resolveProject(c.req.param("id"));
     if (!project) return c.json({ error: "Project not found" }, 404);
+    if (!existsSync(project.dir)) return projectDirMissing(c);
 
     const body = await c.req.json<{ blockName?: string }>().catch(() => null);
     if (!body?.blockName) {
@@ -27,6 +31,7 @@ export function registerRegistryRoutes(api: Hono, adapter: StudioApiAdapter): vo
       const result = await adapter.installRegistryBlock({ project, blockName: body.blockName });
       return c.json(result);
     } catch (err) {
+      if (isProjectRootMissing(err)) return projectDirMissing(c);
       const message = err instanceof Error ? err.message : "Install failed";
       return c.json({ error: message }, 500);
     }

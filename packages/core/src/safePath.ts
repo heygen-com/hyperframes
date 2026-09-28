@@ -1,5 +1,5 @@
-import { resolve, sep, join, dirname, basename } from "node:path";
-import { lstatSync, realpathSync } from "node:fs";
+import { resolve, sep, join, dirname, basename, relative, isAbsolute } from "node:path";
+import { existsSync, lstatSync, mkdirSync, realpathSync } from "node:fs";
 
 export function realpath(path: string): string {
   try {
@@ -96,4 +96,50 @@ export function isSafePath(base: string, resolved: string): boolean {
 export function resolveWithinProject(base: string, relativePath: string): string | null {
   const resolved = resolve(base, relativePath);
   return isSafePath(base, resolved) ? resolved : null;
+}
+
+/** The project folder is gone, renamed or deleted while open; a write must not bring it back. */
+export class ProjectRootMissingError extends Error {
+  constructor(readonly root: string) {
+    super(`Project folder not found: ${root}`);
+    this.name = "ProjectRootMissingError";
+  }
+}
+
+// By name, so a copy of this module bundled into another package still matches.
+export const isProjectRootMissing = (error: unknown): boolean =>
+  error instanceof Error && error.name === "ProjectRootMissingError";
+
+/** The project folder's real path; ProjectRootMissingError when it is gone. */
+export function realProjectRoot(root: string): string {
+  try {
+    return realpath(root);
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === "ENOENT") throw new ProjectRootMissingError(root);
+    throw error;
+  }
+}
+
+/**
+ * Creates `dir` below `root` one folder at a time, so a root moved away fails instead of reappearing.
+ * A `dir` outside `root` is created recursively, but only while `root` exists.
+ */
+export function mkdirWithinProject(root: string, dir: string): void {
+  if (!existsSync(root)) throw new ProjectRootMissingError(root);
+  const inside = relative(resolve(root), resolve(dir));
+  if (inside === ".." || inside.startsWith(`..${sep}`) || isAbsolute(inside)) {
+    mkdirSync(dir, { recursive: true });
+    return;
+  }
+  let path = resolve(root);
+  for (const part of inside.split(sep).filter(Boolean)) {
+    path = join(path, part);
+    try {
+      mkdirSync(path);
+    } catch (error) {
+      const code = (error as NodeJS.ErrnoException).code;
+      if (code === "ENOENT" && !existsSync(root)) throw new ProjectRootMissingError(root);
+      if (code !== "EEXIST") throw error;
+    }
+  }
 }
