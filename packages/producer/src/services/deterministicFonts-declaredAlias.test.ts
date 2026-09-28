@@ -66,13 +66,21 @@ function fakeGoogleFonts(queried: string[]): typeof fetch {
     const owner = woff2Owners.get(requested.href);
     if (owner) return new Response(fontBytes(owner));
     if (requested.hostname !== "fonts.googleapis.com") return new Response("", { status: 404 });
-    const family = requested.searchParams.get("family")?.split(":", 1)[0] ?? "";
-    queried.push(family);
-    const woff2 = SERVED_FAMILIES.get(family);
-    if (!woff2) return new Response("", { status: 400 });
-    return new Response(
-      `@font-face { font-style: italic; font-weight: 800; src: url(${woff2}) format('woff2'); }`,
-    );
+    const families = requested.searchParams
+      .getAll("family")
+      .flatMap((value) => value.split("|"))
+      .map((value) => value.split(":", 1)[0] ?? "");
+    queried.push(families[0] ?? "");
+    const rules = families.flatMap((family) => {
+      const woff2 = SERVED_FAMILIES.get(family);
+      return woff2
+        ? [
+            `@font-face { font-family: "${family}"; font-style: italic; font-weight: 800; src: url(${woff2}) format('woff2'); }`,
+          ]
+        : [];
+    });
+    if (rules.length === 0) return new Response("", { status: 400 });
+    return new Response(rules.join("\n"));
   };
   return (async (input: unknown) => respond(input)) as unknown as typeof fetch;
 }
@@ -220,8 +228,8 @@ describe("declared-family alias resolution", () => {
       ),
     );
 
-    // "Saira" resolves as itself on the first request; no alias lookup.
-    expect(queried).toEqual(["Saira ExtraCondensed", "Saira Extra Condensed", "Saira"]);
+    // The authored Google stylesheet serves both declared names in one request.
+    expect(queried).toEqual(["Saira ExtraCondensed", "Saira"]);
     expect(injectedFaces(result)).toEqual([
       { family: "Saira ExtraCondensed", src: dataUriFor("Saira Extra Condensed") },
       { family: "Saira", src: dataUriFor("Saira") },
