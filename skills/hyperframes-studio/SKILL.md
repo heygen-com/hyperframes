@@ -47,7 +47,7 @@ A conversation reply:
 - End with the next step and the word that starts it ("Say build and I'll make the first beat").
 
 Keep the plan in the project, not only in the chat: the next message may start a new session that
-cannot see this one. Write it to `STORYBOARD.md` (and `storyboard.html` once there are sketches);
+cannot see this one. Write it to STORYBOARD.md (and storyboard.html once there are sketches);
 neither changes the film. If the person asked you to change nothing at all, write nothing: put the
 plan in the reply and offer to save it.
 
@@ -109,13 +109,13 @@ This is how the HyperFrames launch films were made ([hyperframes-launches](https
 also the house reference reel). Each step waits for the person. The detail lives in the owning
 guides; do not restate it here.
 
-| Step           | What the person gets                                                                                                       | Owner of the detail                                                                    |
-| -------------- | -------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------- |
-| 1. Brief       | The message as a claim, who watches and where, length, sound, what real footage exists, and the open questions            | `/hyperframes` `references/intent-interview.md`                                        |
-| 2. Directions  | Two or three concepts, each with its hook and a named reference film; one recommended                                      | `/hyperframes` `references/pitch-round.md`                                             |
-| 3. Storyboard  | A beat list, then a static contact sheet (`storyboard.html`) with a note per cell: what moves first, which way the seam goes | `/hyperframes-creative` `references/storyboard-recipe.md`, `story-spine.md`            |
-| 4. Build       | The first beat built and shown, then the rest in order, each its own sub-composition (§ 1)                                 | `/product-launch-video` `references/story-design.md`, `motion-language.md`, `cut-catalog.md` |
-| 5. Notes       | Revisions to only the beats named, a new version, the runtime stated                                                       | `/hyperframes` `references/review-loop.md`                                             |
+| Step          | What the person gets                                                                                                         | Owner of the detail                                                                          |
+| ------------- | ---------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------- |
+| 1. Brief      | The message as a claim, who watches and where, length, sound, what real footage exists, and the open questions               | `/hyperframes` `references/intent-interview.md`                                              |
+| 2. Directions | Two or three concepts, each with its hook and a named reference film; one recommended                                        | `/hyperframes` `references/pitch-round.md`                                                   |
+| 3. Storyboard | A beat list, then a static contact sheet (storyboard.html) with a note per cell: what moves first, which way the seam goes | `/hyperframes-creative` `references/storyboard-recipe.md`, `story-spine.md`                  |
+| 4. Build      | The first beat built and shown, then the rest in order, each its own sub-composition (§ 1)                                   | `/product-launch-video` `references/story-design.md`, `motion-language.md`, `cut-catalog.md` |
+| 5. Notes      | Revisions to only the beats named, a new version, the runtime stated                                                         | `/hyperframes` `references/review-loop.md`                                                   |
 
 Build the first beat and stop for a reaction before the rest: a wrong direction then costs one beat.
 Never render until asked; the person reviews by scrubbing in Studio.
@@ -141,7 +141,7 @@ What the launch films add to those guides:
   the person's call, not yours.
 - **Notes are felt reactions** ("jolty", "doesn't go long enough"). Find the cause, change the
   measurable thing, and say what the note meant and what moved. Keep the person's words verbatim
-  in `STORYBOARD.md` under `## Changes from vN`.
+  in STORYBOARD.md under `## Changes from vN`.
 
 ## Checking your work
 
