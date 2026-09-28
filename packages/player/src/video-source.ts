@@ -7,13 +7,14 @@
 import type { DirectTimelineAdapter } from "./timeline-adapters.js";
 
 export function isVideoType(type: string | null): boolean {
-  return type !== null && type.startsWith("video/");
+  return type?.trim().toLowerCase().startsWith("video/") ?? false;
 }
 
 export interface VideoSourceCallbacks {
   onMetadata: (video: HTMLVideoElement) => void;
   onDurationChange: (video: HTMLVideoElement) => void;
   onResize: (video: HTMLVideoElement) => void;
+  onPlay: (video: HTMLVideoElement) => void;
   onPause: (video: HTMLVideoElement) => void;
   onError: (message: string, code: number | null) => void;
   onPlayRejected: (error: unknown) => void;
@@ -36,6 +37,7 @@ export function createVideoSource(callbacks: VideoSourceCallbacks): VideoSource 
   video.addEventListener("loadedmetadata", () => callbacks.onMetadata(video), { signal });
   video.addEventListener("durationchange", () => callbacks.onDurationChange(video), { signal });
   video.addEventListener("resize", () => callbacks.onResize(video), { signal });
+  video.addEventListener("play", () => callbacks.onPlay(video), { signal });
   video.addEventListener("pause", () => callbacks.onPause(video), { signal });
   video.addEventListener(
     "error",
@@ -50,7 +52,11 @@ export function createVideoSource(callbacks: VideoSourceCallbacks): VideoSource 
     seek: (timeInSeconds) => {
       video.currentTime = timeInSeconds;
     },
-    play: () => video.play().catch(callbacks.onPlayRejected),
+    // A rejection that lands after destroy() belongs to a source that is gone.
+    play: () =>
+      video.play().catch((error: unknown) => {
+        if (!signal.aborted) callbacks.onPlayRejected(error);
+      }),
     pause: () => video.pause(),
     // The default rate survives a new src; the current rate alone would reset to it.
     timeScale: (rate) => {

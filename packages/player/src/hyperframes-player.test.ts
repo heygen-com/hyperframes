@@ -3025,7 +3025,7 @@ describe("HyperframesPlayer video mode", () => {
     return video;
   }
 
-  function setMedia(video: HTMLVideoElement, props: Record<string, unknown>) {
+  function setMedia(video: HTMLMediaElement, props: Record<string, unknown>) {
     for (const [name, value] of Object.entries(props)) {
       Object.defineProperty(video, name, { configurable: true, writable: true, value });
     }
@@ -3045,8 +3045,18 @@ describe("HyperframesPlayer video mode", () => {
 
   beforeEach(async () => {
     await import("./hyperframes-player.js");
-    playSpy = vi.spyOn(HTMLMediaElement.prototype, "play").mockResolvedValue(undefined);
-    vi.spyOn(HTMLMediaElement.prototype, "pause").mockImplementation(() => undefined);
+    // Like a browser, play() and pause() flip `paused` at once; their events come later, if at all.
+    playSpy = vi
+      .spyOn(HTMLMediaElement.prototype, "play")
+      .mockImplementation(function (this: HTMLMediaElement) {
+        setMedia(this, { paused: false });
+        return Promise.resolve();
+      });
+    vi.spyOn(HTMLMediaElement.prototype, "pause").mockImplementation(
+      function (this: HTMLMediaElement) {
+        setMedia(this, { paused: true });
+      },
+    );
     vi.spyOn(HTMLMediaElement.prototype, "load").mockImplementation(() => undefined);
     frames = [];
     vi.spyOn(window, "requestAnimationFrame").mockImplementation((callback) => {
@@ -3280,7 +3290,7 @@ describe("HyperframesPlayer video mode", () => {
     player.addEventListener("pause", (event) => pauses.push(event));
 
     player.play();
-    setMedia(video, { ended: true });
+    setMedia(video, { paused: true, ended: true });
     video.dispatchEvent(new Event("pause"));
     expect(player.paused).toBe(false);
 
@@ -3288,6 +3298,157 @@ describe("HyperframesPlayer video mode", () => {
     video.dispatchEvent(new Event("pause"));
     expect(player.paused).toBe(true);
     expect(pauses).toHaveLength(1);
+  });
+
+  it("ignores a pause event that lands after the player played again", () => {
+    const video = videoOf(player);
+    loadMetadata(video);
+    player.play();
+    player.seek(2);
+    player.play();
+    player.pause();
+    player.play();
+    const pauses: Event[] = [];
+    player.addEventListener("pause", (event) => pauses.push(event));
+
+    video.dispatchEvent(new Event("pause"));
+
+    expect(player.paused).toBe(false);
+    expect(pauses).toEqual([]);
+  });
+
+  it("follows a play the page did not ask for, but not a stale one", () => {
+    const video = videoOf(player);
+    loadMetadata(video);
+    player.play();
+    player.pause();
+    video.dispatchEvent(new Event("play"));
+    expect(player.paused).toBe(true);
+
+    const plays: Event[] = [];
+    player.addEventListener("play", (event) => plays.push(event));
+    setMedia(video, { paused: false });
+    video.dispatchEvent(new Event("play"));
+
+    expect(player.paused).toBe(false);
+    expect(plays).toHaveLength(1);
+  });
+
+  it("reads the paused frame from the video, not the last clock sample", () => {
+    const withControls = createPlayer({ type: "video/mp4", src: FILM, controls: "" });
+    const video = videoOf(withControls);
+    loadMetadata(video);
+    withControls.play();
+    setMedia(video, { currentTime: 2.37 });
+
+    withControls.pause();
+
+    expect(withControls.currentTime).toBe(2.37);
+    expect(withControls.shadowRoot?.textContent).toContain("0:02 / 0:06");
+  });
+
+  it("switches from a playing video to a composition paused", () => {
+    const withControls = createPlayer({ type: "video/mp4", src: FILM, controls: "" });
+    loadMetadata(videoOf(withControls));
+    withControls.play();
+
+    withControls.removeAttribute("type");
+
+    expect(withControls.paused).toBe(true);
+    expect(withControls.shadowRoot?.querySelector('[aria-label="Play"]')).not.toBeNull();
+  });
+
+  it("reports a load failure after play as error only", async () => {
+    const video = videoOf(player);
+    let reject: (error: unknown) => void = () => {};
+    playSpy.mockImplementationOnce(() => new Promise((_resolve, fail) => (reject = fail)));
+    const seen: string[] = [];
+    for (const type of ["pause", "error", "playbackerror"]) {
+      player.addEventListener(type, () => seen.push(type));
+    }
+    loadMetadata(video);
+    player.play();
+
+    video.dispatchEvent(new Event("error"));
+    reject(new DOMException("no supported source", "NotSupportedError"));
+    await Promise.resolve();
+    await Promise.resolve();
+
+    expect(seen).toEqual(["pause", "error"]);
+  });
+
+  it("reports a blocked play once when the page already paused", async () => {
+    loadMetadata(videoOf(player));
+    playSpy.mockRejectedValueOnce(new DOMException("blocked", "NotAllowedError"));
+    const seen: string[] = [];
+    for (const type of ["pause", "playbackerror"]) {
+      player.addEventListener(type, () => seen.push(type));
+    }
+
+    player.play();
+    player.pause();
+    await Promise.resolve();
+    await Promise.resolve();
+
+    expect(seen).toEqual(["pause", "playbackerror"]);
+  });
+
+  it("ignores a blocked play that lands after the video was removed", async () => {
+    let reject: (error: unknown) => void = () => {};
+    playSpy.mockImplementationOnce(() => new Promise((_resolve, fail) => (reject = fail)));
+    loadMetadata(videoOf(player));
+    player.play();
+    const seen: Event[] = [];
+    player.addEventListener("playbackerror", (event) => seen.push(event));
+
+    player.removeAttribute("type");
+    reject(new DOMException("blocked", "NotAllowedError"));
+    await Promise.resolve();
+    await Promise.resolve();
+
+    expect(seen).toEqual([]);
+  });
+
+  it("ignores a composition's late runtime message once it plays a video", () => {
+    window.dispatchEvent(
+      new MessageEvent("message", {
+        source: player.iframeElement.contentWindow,
+        data: { source: "hf-preview", type: "timeline", durationInFrames: 120, scenes: [] },
+      }),
+    );
+
+    expect(player.ready).toBe(false);
+    expect(player.duration).toBe(0);
+  });
+
+  it("gives srcdoc precedence over a video src", () => {
+    loadMetadata(videoOf(player));
+    player.play();
+
+    player.setAttribute("srcdoc", "<p>composition</p>");
+
+    expect(player.shadowRoot?.querySelector("video")).toBeNull();
+    expect(player.iframeElement.hidden).toBe(false);
+    expect(player.iframeElement.getAttribute("srcdoc")).toContain("composition");
+  });
+
+  it("plays the video src once srcdoc is removed", () => {
+    const both = createPlayer({ type: "video/mp4", src: FILM, srcdoc: "<p>composition</p>" });
+    expect(both.shadowRoot?.querySelector("video")).toBeNull();
+
+    both.removeAttribute("srcdoc");
+    loadMetadata(videoOf(both));
+    both.play();
+
+    expect(videoOf(both).getAttribute("src")).toBe(FILM);
+    expect(playSpy).toHaveBeenCalledTimes(1);
+    expect(both.paused).toBe(false);
+  });
+
+  it("reads the video type without regard to case or padding", () => {
+    const upper = createPlayer({ type: " Video/MP4 ", src: FILM });
+
+    expect(videoOf(upper).getAttribute("src")).toBe(FILM);
   });
 
   it("shows a new src as paused at the start in the controls", () => {
@@ -3305,7 +3466,8 @@ describe("HyperframesPlayer video mode", () => {
 
     const playButton = withControls.shadowRoot?.querySelector('[aria-label="Play"]');
     expect(playButton).not.toBeNull();
-    expect(withControls.shadowRoot?.textContent).toContain("0:00 / 0:06");
+    expect(withControls.shadowRoot?.textContent).toContain("0:00 / 0:00");
+    expect(withControls.duration).toBe(0);
   });
 
   it("stops playing when the video fails", () => {

@@ -40,7 +40,7 @@ import "@hyperframes/player";
 
 ### Video files
 
-Set `type` to a video type and the player plays `src` in a `<video playsinline>` instead of loading it as a composition. The same API and events apply: `play()`, `pause()`, `seek()`, `currentTime`, `duration`, `ready`, `timeupdate`, `play`, `pause`, `ended`, `durationchange` and `resize`, with the video's own size as `compositionWidth`/`compositionHeight`. A video that fails to load fires `error` at once with `{ message, code }`, where `code` is the `MediaError` code. A `play()` the browser blocks (for example, unmuted autoplay) fires `playbackerror` with `{ source: "video" }` and leaves the player paused. `poster`, `controls`, `loop`, `muted`, `volume`, `playback-rate` and `autoplay` work as they do for a composition.
+Set `type` to a video type and the player plays `src` in a `<video playsinline>` instead of loading it as a composition. The same API and events apply: `play()`, `pause()`, `seek()`, `currentTime`, `duration`, `ready`, `timeupdate`, `play`, `pause`, `ended`, `durationchange` and `resize`, with the video's own size as `compositionWidth`/`compositionHeight`. A video that fails to load fires `error` at once with `{ message, code }`, where `code` is the `MediaError` code. A `play()` the browser blocks (for example, unmuted autoplay) fires `playbackerror` with `{ source: "video" }` and leaves the player paused. `poster`, `controls`, `loop`, `muted`, `volume`, `playback-rate` and `autoplay` work as they do for a composition. `scenes`, `setRuntimeData()`, `setColorGrading()`, `iframeElement` and `stopMedia()` are composition-only: a video has no scenes or runtime, its iframe stays blank, and `stopMedia()` does not stop the video. `srcdoc` wins over a video `src`, as it does in an iframe.
 
 ```html
 <hyperframes-player
@@ -251,6 +251,7 @@ function StudioPreview({ src }: { src: string }) {
 | `timeupdate`            | `{ currentTime }`                                   | Playback position changed (~10 fps)        |
 | `ended`                 | —                                                   | Reached the end (when not looping)         |
 | `error`                 | `{ message }` (video mode: `{ message, code }`)     | Composition or video failed to load        |
+| `playbackerror`         | `{ source, error }`                                 | The browser blocked playback               |
 | `shadertransitionstate` | `{ compositionId, state }`                          | Shader transition cache/capture progress   |
 
 ```js

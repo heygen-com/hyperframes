@@ -270,8 +270,15 @@ class HyperframesPlayer extends HTMLElement {
         if (!this.isConnected) break;
         this._pendingPlay = false;
         this._abandonComposition("Composition navigated before runtime data was applied");
-        if (val !== null) this.iframe.srcdoc = prepareSrcdocForElement(this, val);
-        else this.iframe.removeAttribute("srcdoc");
+        // srcdoc wins over src, as in an iframe, so it also wins over a video src.
+        if (val !== null) {
+          this._teardownVideo();
+          this.iframe.srcdoc = prepareSrcdocForElement(this, val);
+        } else {
+          this.iframe.removeAttribute("srcdoc");
+          const src = this.getAttribute("src");
+          if (src !== null) this._loadSrc(src);
+        }
         break;
       case SANDBOX_ORIGIN_ATTR:
         this._applySandboxOriginPolicy(this.isConnected && oldVal !== val);
@@ -314,7 +321,7 @@ class HyperframesPlayer extends HTMLElement {
       case "volume": {
         const v = Math.max(0, Math.min(1, parseFloat(val || "1")));
         this._volume = v;
-        if (this._videoSource) this._videoSource.video.volume = v;
+        this._syncVideoAudio();
         this._media.updateVolume(v);
         this._sendControl("set-volume", { volume: v });
         this.controlsApi?.updateVolume(v);
@@ -427,6 +434,7 @@ class HyperframesPlayer extends HTMLElement {
     // after the user stopped playback.
     this._pendingPlay = false;
     if (!this._tryDirectTimelinePause()) this._sendControl("pause");
+    else this.controlsApi?.updateTime(this._currentTime, this._duration);
     this._directTimelineClock.stop();
     this._stopParentTickClock();
     if (this._media.audioOwner === "parent") this._media.pauseAll();
@@ -640,7 +648,7 @@ class HyperframesPlayer extends HTMLElement {
       return;
     }
     this._media.updateMuted(val !== null);
-    if (this._videoSource) this._videoSource.video.muted = val !== null;
+    this._syncVideoAudio();
     this._setIframeMediaMuted(val !== null);
     this._sendControl("set-muted", { muted: val !== null });
     this.controlsApi?.updateMuted(val !== null);
@@ -890,17 +898,19 @@ class HyperframesPlayer extends HTMLElement {
     if (this.hasAttribute("src")) this._loadSrc(this.getAttribute("src") || "");
   }
 
-  // A different source: like a <video> given a new src, it does not inherit a queued play.
+  // A new source, like a new <video> src, starts paused and inherits no queued play.
   private _navigateSrc(src: string): void {
     this._pendingPlay = false;
+    this._paused = true;
+    this.controlsApi?.updatePlaying(false);
     this._abandonComposition("Composition navigated before runtime data was applied");
     this._loadSrc(src);
   }
 
-  /** Every `src` load: a `type="video/..."` source plays in a `<video>`, anything else is a
-   *  composition in the iframe. */
+  /** Every `src` load: a `type="video/..."` source plays in a `<video>` unless `srcdoc` is set;
+   *  anything else is a composition in the iframe. */
   private _loadSrc(src: string): void {
-    if (isVideoType(this.getAttribute("type"))) {
+    if (isVideoType(this.getAttribute("type")) && !this.hasAttribute("srcdoc")) {
       this._loadVideo(src);
       return;
     }
@@ -914,9 +924,12 @@ class HyperframesPlayer extends HTMLElement {
         onMetadata: (video) => this._applyThenEmit(() => this._onVideoReady(video)),
         onDurationChange: (video) => this._applyTimelineDuration(video.duration),
         onResize: (video) => this._applyVideoSize(video),
-        // A pause the page did not ask for (media keys, the browser): the player follows it.
+        // Follow a play or pause the page did not ask for, but not a queued one it since reversed.
+        onPlay: (video) => {
+          if (!video.paused && this._paused) this.play();
+        },
         onPause: (video) => {
-          if (!video.ended && !this._paused) this.pause();
+          if (video.paused && !video.ended && !this._paused) this.pause();
         },
         onError: (message, code) => {
           if (!this._paused) this.pause();
@@ -930,15 +943,12 @@ class HyperframesPlayer extends HTMLElement {
       this.iframe.src = "about:blank";
     }
     this.probe.stop();
-    this._resetFrameState();
     const { video, adapter } = this._videoSource;
     this._directTimelineAdapter = adapter;
-    this._paused = true;
     this._currentTime = 0;
-    this.controlsApi?.updatePlaying(false);
-    this.controlsApi?.updateTime(0, this._duration);
-    video.muted = this.muted;
-    video.volume = this._volume;
+    this._duration = 0;
+    this.controlsApi?.updateTime(0, 0);
+    this._syncVideoAudio();
     adapter.timeScale?.(this.playbackRate);
     video.src = src;
   }
@@ -947,9 +957,13 @@ class HyperframesPlayer extends HTMLElement {
     if (!this._videoSource) return;
     this._videoSource.destroy();
     this._videoSource = null;
-    this._directTimelineClock.stop();
-    this._directTimelineAdapter = null;
     this.iframe.hidden = false;
+  }
+
+  private _syncVideoAudio(): void {
+    if (!this._videoSource) return;
+    this._videoSource.video.muted = this.muted;
+    this._videoSource.video.volume = this._volume;
   }
 
   private _onVideoReady(video: HTMLVideoElement): void {
@@ -976,10 +990,10 @@ class HyperframesPlayer extends HTMLElement {
     }
   }
 
-  // A play() interrupted by pause() or a new src rejects with AbortError; that is not a failure.
+  // Only a blocked play is a playbackerror: a failed load already fired `error`.
   private _onVideoPlayRejected(error: unknown): void {
-    if (error instanceof DOMException && error.name === "AbortError") return;
-    this.pause();
+    if (!(error instanceof DOMException && error.name === "NotAllowedError")) return;
+    if (!this._paused) this.pause();
     this._emit(new CustomEvent("playbackerror", { detail: { source: "video", error } }));
   }
 
@@ -1028,7 +1042,11 @@ class HyperframesPlayer extends HTMLElement {
     return this._withDirectTimeline((tl) => void tl.play());
   }
   private _tryDirectTimelinePause(): boolean {
-    return this._withDirectTimeline((tl) => void tl.pause());
+    return this._withDirectTimeline((tl) => {
+      tl.pause();
+      // The clock samples every ~100 ms; the paused frame is the timeline's own time.
+      this._currentTime = tl.time();
+    });
   }
 
   /**
@@ -1059,6 +1077,8 @@ class HyperframesPlayer extends HTMLElement {
   }
 
   private _onMessage(e: MessageEvent) {
+    // The iframe window outlives its documents: a late composition message must not reach a video.
+    if (this._videoSource) return;
     this._applyThenEmit(() => this._handleRuntimeMessage(e));
   }
 
@@ -1391,19 +1411,14 @@ class HyperframesPlayer extends HTMLElement {
       return;
     }
 
+    this._ready = false;
     // The runtime installs its bridge at DOMContentLoaded, posts `ready`, and only then does the
     // iframe's load event fire. Do not erase that authoritative handshake here: doing so strands
     // retained data set after load until a second `ready` that never comes. Source setters and
     // sandbox-policy reloads already clear bridge readiness before starting a navigation.
-    this._resetFrameState();
-    this.probe.start();
-  }
-
-  /** Drops everything the previous document or video left behind. */
-  private _resetFrameState(): void {
-    this._ready = false;
     this._invalidateAssetsWait();
     this._releaseDocument();
+    this.probe.start();
   }
 
   private _setupControls() {

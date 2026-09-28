@@ -69,6 +69,10 @@ Player also accepts `shader-capture-scale` and `shader-loading` for previewing
 projects that use shader transitions. These are preview controls, not composition
 authoring attributes.
 
+With a `video/...` `type`, `src` plays in a `<video>` behind the same playback API and
+events. `scenes`, `setRuntimeData()`, `setColorGrading()`, `iframeElement` and `stopMedia()`
+are composition-only, and `srcdoc` wins over a video `src`, as it does in an iframe.
+
 ## JavaScript API
 
 The main API follows familiar media-player behavior:
@@ -115,6 +119,7 @@ player.addEventListener("timeupdate", (event) => {
 | `volumechange` | —                 | Volume or muted state changed                                |
 | `scenes`       | `{ scenes }`      | The runtime reported its scene list                          |
 | `error`        | `{ message }`     | Load or runtime error; a video adds its `MediaError` `code`  |
+| `playbackerror` | `{ source, error }` | The browser blocked playback, for example unmuted autoplay |
 
 ## Advanced: iframe access
 
