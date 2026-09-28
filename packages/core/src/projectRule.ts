@@ -1,4 +1,4 @@
-/** Files that `hyperframes init` or HyperFrames Desktop write at a project's root, next to its `index.html`. */
+/** Files that `hyperframes init` or another HyperFrames tool writes at a project's root, next to its `index.html`. */
 export const PROJECT_MARKER_FILES = ["hyperframes.json", "meta.json", "project.json"] as const;
 
 export function isHyperframesProject(fileNames: Iterable<string>): boolean {
