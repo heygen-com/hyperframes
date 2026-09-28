@@ -232,7 +232,9 @@ export {
   type VideoFrameFormat,
   VIDEO_FRAME_FORMATS,
   isVideoFrameFormat,
+  EXTRACT_CACHE_MIN_AGE_MS,
 } from "./services/videoFrameExtractor.js";
+export { directorySizeBytes, gcExtractionCache } from "./services/extractionCache.js";
 
 export {
   resolveReferencedStart,

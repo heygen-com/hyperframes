@@ -1137,6 +1137,27 @@ In JSON mode, paths inside `detail` and `hint` are redacted — your home
 directory becomes the literal `$HOME`, so output is safe to paste into a bug
 report or an agent context.
 
+### `clean`
+
+Find and remove what HyperFrames left on disk.
+
+```bash
+npx hyperframes clean --dry-run   # list it, remove nothing
+npx hyperframes clean
+npx hyperframes clean --snapshots # also remove snapshots/ folders
+npx hyperframes clean --json
+```
+
+It looks in the current project and every project the Studio history knows, and removes:
+
+- frames and staging folders left by renders that were killed or crashed (a render that is still running keeps its own);
+- work folders of `--debug` renders nothing has written to for six hours;
+- the history of projects that no longer exist;
+- extracted video frames and video proxies nobody has used for an hour (they rebuild on demand).
+
+`snapshots/` folders are listed as also reclaimable and removed only with `--snapshots`. Rendered outputs, source
+files, the browser download and models are never touched.
+
 ### `info` and `compositions`
 
 `npx hyperframes info [dir]` prints project metadata: name, resolution,

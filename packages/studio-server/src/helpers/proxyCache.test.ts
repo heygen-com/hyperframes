@@ -49,6 +49,25 @@ describe("cleanupProxyCache", () => {
     expect(existsSync(newest)).toBe(true);
   });
 
+  it("reports the same removals in a dry run and removes nothing", () => {
+    const cache = cacheDir();
+    const now = 1_800_000_000_000;
+    const idle = join(cache, "idle.mp4");
+    const older = join(cache, "older.mp4");
+    const recent = join(cache, "recent.mp4");
+    writeEntry(idle, 4, now - 2 * 60 * 60 * 1000);
+    writeEntry(older, 3, now - 10_000);
+    writeEntry(recent, 6, now - 1_000);
+    const options = { now, maxBytes: 7, maxIdleMs: 60 * 60 * 1000, minSweepIntervalMs: 0 };
+
+    const planned = cleanupProxyCache(cache, { ...options, dryRun: true });
+    expect(existsSync(idle)).toBe(true);
+    expect(cleanupProxyCache(cache, options)).toEqual(planned);
+    expect(planned).toMatchObject({ removed: [idle, older], bytesBefore: 13, bytesAfter: 6 });
+    expect(existsSync(idle)).toBe(false);
+    expect(existsSync(recent)).toBe(true);
+  });
+
   it("counts and evicts WebM proxies alongside MP4 proxies", () => {
     const cache = cacheDir();
     const now = 1_800_000_000_000;

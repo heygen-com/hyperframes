@@ -172,6 +172,7 @@ const commandLoaders = {
   tts: () => import("./commands/tts.js").then((m) => m.default),
   docs: () => import("./commands/docs.js").then((m) => m.default),
   doctor: () => import("./commands/doctor.js").then((m) => m.default),
+  clean: () => import("./commands/clean.js").then((m) => m.default),
   upgrade: () => import("./commands/upgrade.js").then((m) => m.default),
   skills: () => import("./commands/skills.js").then((m) => m.default),
   feedback: () => import("./commands/feedback.js").then((m) => m.default),

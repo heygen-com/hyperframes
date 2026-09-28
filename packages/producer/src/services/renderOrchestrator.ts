@@ -2825,6 +2825,14 @@ function deVerifyFallbackTelemetry(err: unknown): {
   };
 }
 
+/** Where `--debug` renders keep their work dirs, one per job id. */
+export function resolveRenderDebugDir(): string {
+  const producerRoot = process.env.PRODUCER_RENDERS_DIR
+    ? resolve(process.env.PRODUCER_RENDERS_DIR, "..")
+    : resolve(dirname(fileURLToPath(import.meta.url)), "../..");
+  return join(producerRoot, ".debug");
+}
+
 /**
  * Render a `RenderJob` end-to-end: compile → probe → extract videos →
  * audio → capture → encode → assemble. The function body is a thin
@@ -2846,11 +2854,7 @@ export async function executeRenderJob(
   // Ahead of the work dir / log file / execution context: a config the format
   // cannot honor must fail before anything is written to disk.
   validateHlsRenderConfig(job.config);
-  const moduleDir = dirname(fileURLToPath(import.meta.url));
-  const producerRoot = process.env.PRODUCER_RENDERS_DIR
-    ? resolve(process.env.PRODUCER_RENDERS_DIR, "..")
-    : resolve(moduleDir, "../..");
-  const debugDir = join(producerRoot, ".debug");
+  const debugDir = resolveRenderDebugDir();
   const outputDir = dirname(outputPath);
   if (!existsSync(outputDir)) mkdirSync(outputDir, { recursive: true });
   const workDir = job.config.debug
