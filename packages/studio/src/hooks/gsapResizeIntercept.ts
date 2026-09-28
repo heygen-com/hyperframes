@@ -101,7 +101,7 @@ export async function tryGsapResizeIntercept(
   const fetchedAnimations = fetchFallbackAnimations ? await fetchFallbackAnimations() : [];
   const outcome = preflightGsapResizeIntercept(selection, animations, iframe, fetchedAnimations);
   if (outcome.status === "blocked") return outcome;
-  const { hasScaleGroup, resizeGroup, resizeProperties, workingAnimations } = resizeRoute(
+  const { resizeGroup, resizeProperties, workingAnimations } = resizeRoute(
     animations,
     fetchedAnimations,
   );
@@ -124,7 +124,7 @@ export async function tryGsapResizeIntercept(
       ? resolved.anim
       : null;
   logResize("intercept-enter", {
-    hasScaleGroup,
+    hasScaleGroup: resizeGroup === "scale",
     resizeGroup,
     animMethod: anim?.method ?? null,
     animId: anim?.id ?? null,

@@ -319,7 +319,8 @@ export function preflightGsapRotationIntercept(
   iframe: HTMLIFrameElement | null,
   fetchedAnimations: GsapAnimation[] = [],
 ): GsapEditOutcome {
-  if (!(selectorFromSelection(selection) ?? writeTargetSelector(selection))) {
+  const liveSelector = selectorFromSelection(selection);
+  if (!(liveSelector ?? writeTargetSelector(selection))) {
     return { status: "blocked", reason: "no-selector" };
   }
   const editability = directEditOutcomeForProperties(
@@ -328,7 +329,6 @@ export function preflightGsapRotationIntercept(
   );
   if (editability.status === "blocked") return editability;
   const workingAnimations = animations.length > 0 ? animations : fetchedAnimations;
-  const liveSelector = selectorFromSelection(selection);
   const hasSourceTween = workingAnimations.some((a) =>
     animationWritesAnyProperty(a, ROTATION_CHANNEL_SET),
   );

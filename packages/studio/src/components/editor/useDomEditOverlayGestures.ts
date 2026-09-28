@@ -103,7 +103,7 @@ export function createDomEditOverlayGestureHandlers(opts: UseDomEditOverlayGestu
     },
   ) => _startGesture(kind, e, opts, options);
 
-  // A press on a box that cannot move says why at once, not after the pointer travels.
+  // A press on a box that cannot move says why at once.
   const startBlockedMove = (e: React.PointerEvent<HTMLElement>, selection: DomEditSelection) => {
     e.preventDefault();
     e.stopPropagation();

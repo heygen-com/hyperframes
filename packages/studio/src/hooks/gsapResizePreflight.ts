@@ -18,7 +18,7 @@ export function resizeRoute(animations: GsapAnimation[], fetchedAnimations: Gsap
   const resizeProperties =
     resizeGroup === "scale" ? new Set(["scale", "scaleX", "scaleY"]) : new Set(["width", "height"]);
   const workingAnimations = animations.length > 0 ? animations : fetchedAnimations;
-  return { allKnownAnimations, hasScaleGroup, resizeGroup, resizeProperties, workingAnimations };
+  return { allKnownAnimations, resizeGroup, resizeProperties, workingAnimations };
 }
 
 /** The resize commit's refusal rule, also run ahead of time to hide the resize handles. */
