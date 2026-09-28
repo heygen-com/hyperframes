@@ -578,6 +578,21 @@ test("--from records a file already in the project where it is, with how it was 
   cleanup();
 });
 
+test("--from --source records a file once, however many runs rewrite it", () => {
+  setup();
+  mkdirSync(join(tmp, "assets/voice"), { recursive: true });
+  writeFileSync(join(tmp, "assets/voice/01.wav"), "fake wav");
+  const from = join(tmp, "assets/voice/01.wav");
+  const args = ["--from", from, "--type", "voice", "--source", "generated", "--project", tmp];
+
+  runResolve([...args, "--json"]);
+  writeFileSync(from, "second take");
+  runResolve([...args, "--json"]);
+
+  assert.equal(readManifest(tmp).length, 1);
+  cleanup();
+});
+
 test("--from refuses a source it does not know", () => {
   setup();
   mkdirSync(join(tmp, "assets/voice"), { recursive: true });
