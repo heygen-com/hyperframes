@@ -279,20 +279,24 @@ if (
   // we don't over-print.
   import("./utils/autoUpdate.js").then((mod) => mod.reportCompletedUpdate()).catch(() => {});
 
-  import("./utils/updateCheck.js").then(async (mod) => {
-    _printUpdateNotice = mod.printUpdateNotice;
-    _printStalePinNotice = mod.printStalePinNotice;
-    const result = mod.cachedUpdateCheck();
-    if (result.updateAvailable) {
-      const auto = await import("./utils/autoUpdate.js").catch(() => null);
-      auto?.scheduleBackgroundInstall(result.latest, result.current);
-    }
-  });
+  import("./utils/updateCheck.js")
+    .then(async (mod) => {
+      _printUpdateNotice = mod.printUpdateNotice;
+      _printStalePinNotice = mod.printStalePinNotice;
+      const result = mod.cachedUpdateCheck();
+      if (result.updateAvailable) {
+        const auto = await import("./utils/autoUpdate.js").catch(() => null);
+        auto?.scheduleBackgroundInstall(result.latest, result.current);
+      }
+    })
+    .catch(() => {});
 
   // Skills freshness nudge — same gating as the CLI self-update notice.
-  import("./utils/skillsUpdateCheck.js").then((mod) => {
-    _printSkillsUpdateNotice = mod.printSkillsUpdateNotice;
-  });
+  import("./utils/skillsUpdateCheck.js")
+    .then((mod) => {
+      _printSkillsUpdateNotice = mod.printSkillsUpdateNotice;
+    })
+    .catch(() => {});
 
   // The notices read the caches; a detached child refreshes them for the next run.
   import("./utils/backgroundChecks.js").then((mod) => mod.launchBackgroundChecks()).catch(() => {});
