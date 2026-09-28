@@ -21,6 +21,18 @@
       "import": "./src/index.ts",
       "types": "./src/index.ts"
     },
+    "./ui": {
+      "browser": "./src/ui.ts",
+      "bun": "./src/ui.ts",
+      "import": "./src/ui.ts",
+      "types": "./src/ui.ts"
+    },
+    "./player": {
+      "browser": "./src/playerEntry.ts",
+      "bun": "./src/playerEntry.ts",
+      "import": "./src/playerEntry.ts",
+      "types": "./src/playerEntry.ts"
+    },
     "./tailwind-preset": {
       "bun": "./src/styles/tailwind-preset.ts",
       "import": "./src/styles/tailwind-preset.ts",
@@ -37,6 +49,14 @@
       ".": {
         "import": "./dist/index.js",
         "types": "./dist/index.d.ts"
+      },
+      "./ui": {
+        "import": "./dist/ui.js",
+        "types": "./dist/ui.d.ts"
+      },
+      "./player": {
+        "import": "./dist/player.js",
+        "types": "./dist/player.d.ts"
       },
       "./tailwind-preset": {
         "import": "./dist/styles/tailwind-preset.js",
