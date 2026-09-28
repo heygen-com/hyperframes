@@ -594,18 +594,28 @@ test("--from records a file already in the project where it is, with how it was 
   cleanup();
 });
 
-test("--from --source records a file once, however many runs rewrite it", () => {
+test("--from --source adds a record only when what it says changes", () => {
   setup();
-  mkdirSync(join(tmp, "assets/voice"), { recursive: true });
-  writeFileSync(join(tmp, "assets/voice/01.wav"), "fake wav");
-  const from = join(tmp, "assets/voice/01.wav");
-  const args = ["--from", from, "--type", "voice", "--source", "generated", "--project", tmp];
+  mkdirSync(join(tmp, "assets/bgm"), { recursive: true });
+  writeFileSync(join(tmp, "assets/bgm/track.mp3"), "fake mp3");
+  const from = join(tmp, "assets/bgm/track.mp3");
+  const record = (intent) =>
+    runResolve([
+      ...["--from", from, "--type", "bgm", "--source", "search", "--intent", intent],
+      ...["--project", tmp, "--json"],
+    ]);
 
-  runResolve([...args, "--json"]);
-  writeFileSync(from, "second take");
-  runResolve([...args, "--json"]);
+  record("calm underscore");
+  record("calm underscore");
+  record("upbeat synth");
 
-  assert.equal(readManifest(tmp).length, 1);
+  assert.deepEqual(
+    readManifest(tmp).map((r) => [r.source, r.description]),
+    [
+      ["search", "calm underscore"],
+      ["search", "upbeat synth"],
+    ],
+  );
   cleanup();
 });
 

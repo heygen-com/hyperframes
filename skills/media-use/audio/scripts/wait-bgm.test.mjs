@@ -1,5 +1,8 @@
 import assert from "node:assert/strict";
-import { readFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { spawnSync } from "node:child_process";
+import { join } from "node:path";
+import { tmpdir } from "node:os";
 import { test } from "node:test";
 import { runInNewContext } from "node:vm";
 
@@ -62,4 +65,39 @@ test("empty log path does not access the filesystem", () => {
     })(""),
     "",
   );
+});
+
+test("records locally made music as generated once it is ready", () => {
+  const dir = mkdtempSync(join(tmpdir(), "mu-wait-bgm-"));
+  try {
+    mkdirSync(join(dir, "assets/bgm"), { recursive: true });
+    writeFileSync(join(dir, "assets/bgm/track.wav"), "generated music");
+    writeFileSync(
+      join(dir, "audio_meta.json"),
+      JSON.stringify({
+        bgm: { path: "assets/bgm/track.wav" },
+        bgm_pending: true,
+        bgm_provider: "musicgen",
+        bgm_mode: "detached-single",
+      }),
+    );
+    const script = new URL("./wait-bgm.mjs", import.meta.url).pathname;
+    const args = ["--audio-meta", join(dir, "audio_meta.json"), "--hyperframes", dir];
+
+    const run = spawnSync(process.execPath, [script, ...args, "--timeout-ms", "1000"], {
+      encoding: "utf8",
+    });
+
+    assert.equal(run.status, 0, run.stderr);
+    const records = readFileSync(join(dir, ".media/manifest.jsonl"), "utf8")
+      .trim()
+      .split("\n")
+      .map((line) => JSON.parse(line));
+    assert.deepEqual(
+      records.map(({ path, type, source, provenance }) => [path, type, source, provenance.provider]),
+      [["assets/bgm/track.wav", "bgm", "generated", "musicgen"]],
+    );
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
 });
