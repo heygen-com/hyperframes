@@ -24,7 +24,6 @@ export type AudioClockSource =
 /** GSAP's own `lagSmoothing` default — see the PR body for why this clock needs its own copy. */
 const STALL_THRESHOLD_MS = 500;
 const STALL_ADJUSTED_LAG_MS = 33;
-/** `HTMLMediaElement.HAVE_FUTURE_DATA`, spelled out so the clock runs without a DOM. */
 const HAVE_FUTURE_DATA = 3;
 
 export class TransportClock {
@@ -36,7 +35,6 @@ export class TransportClock {
   private _audioSource: AudioClockSource | null = null;
   /** Wall-clock time of the last `now()` read while playing; null while paused. */
   private _lastReadMs: number | null = null;
-  /** The time the last read reported while playing; audio may hold it, never push it back. */
   private _lastNow = 0;
 
   constructor(opts?: {
@@ -67,7 +65,6 @@ export class TransportClock {
       }
       if (audioTime !== null) {
         const t = Number.isFinite(this._duration) ? Math.min(audioTime, this._duration) : audioTime;
-        // Re-anchored so a fallback read continues from here, not from the last play().
         this._baseTime = Math.max(0, t);
         this._playStartMs = this._nowMs();
         this._lastReadMs = null;
@@ -84,11 +81,7 @@ export class TransportClock {
     return this._lastNow;
   }
 
-  /**
-   * The element's composition time, or null when it cannot lead the playhead.
-   * Audio may pull the playhead forward, or hold it while it catches up (a clip
-   * still starting, seeking or buffering), but never push it back.
-   */
+  /** Audio may pull the playhead forward or hold it while it catches up, never push it back. */
   private _elementTime(source: Extract<AudioClockSource, { el: HTMLMediaElement }>): number | null {
     const { el, compositionStart, mediaStart, rate } = source;
     if (el.paused || !Number.isFinite(el.currentTime)) return null;

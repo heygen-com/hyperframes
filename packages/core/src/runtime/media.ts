@@ -250,7 +250,6 @@ export function hasMediaSyncStateForTest(el: HTMLMediaElement): boolean {
   );
 }
 
-/** Drift past which media sync seeks an element outright instead of easing it back. */
 export const MEDIA_HARD_SYNC_SECONDS = 0.5;
 
 /** Drift a playing audio element may carry before sync pulls it back onto the playhead. */

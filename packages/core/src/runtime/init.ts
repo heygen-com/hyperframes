@@ -3801,7 +3801,6 @@ export function initSandboxRuntimeModular(): void {
     },
     isPlaying: () => clock.isPlaying(),
     setPlaybackRate: (rate) => {
-      // Clock first: a read between the two would map media time at the old rate.
       clock.setRate(rate);
       applyPlaybackRate(rate);
       applyWebAudioRate();
@@ -4512,7 +4511,6 @@ export function initSandboxRuntimeModular(): void {
           }
         } else {
           const audioEls = document.querySelectorAll("audio[data-start]");
-          // The clip the playhead follows keeps it while it plays; one that starts later must not take over.
           const followed = clock.audioElement();
           let foundActive = false;
           for (const rawEl of followed ? [followed, ...audioEls] : audioEls) {
