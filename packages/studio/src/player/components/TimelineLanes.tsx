@@ -41,6 +41,7 @@ export function TimelineLanes({
   contentGutter,
   trackContentWidth,
   theme,
+  showAudioEffects,
   displayTrackOrder,
   rowGeometry,
   virtualRows,
@@ -168,6 +169,7 @@ export function TimelineLanes({
                 virtualized={rowsVirtualized}
                 contentOrigin={contentOrigin}
                 theme={theme}
+                showAudioEffects={showAudioEffects}
                 rovingTargetId={keyboard.rovingTargetId}
                 collapsedGroupIds={collapsedGroupIds}
                 expandedLaneOwnerIds={expandedLaneOwnerIds}
@@ -292,6 +294,7 @@ export function TimelineLanes({
                 isAudioTrack={isAudioTrack}
                 isGroupMember={groupMemberTracks.has(trackNum)}
                 theme={theme}
+                showAudioEffects={showAudioEffects}
                 onToggleClipExpanded={() => {
                   const keys = els.map(getTimelineElementIdentity);
                   if (keys.length > 0) toggleRowExpandedTracked(keys);

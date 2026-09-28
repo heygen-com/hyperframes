@@ -33,4 +33,6 @@ export interface TimelineProps
   onDuplicateClip?: () => Promise<boolean>;
   canPasteClip?: () => boolean;
   theme?: Partial<TimelineTheme>;
+  /** False hides every audio-effects control on the track and group headers. */
+  showAudioEffects?: boolean;
 }
