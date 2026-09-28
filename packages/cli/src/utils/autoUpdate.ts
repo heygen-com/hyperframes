@@ -81,13 +81,8 @@ export interface InstallerScriptOptions {
   staleMs: number;
 }
 
-/**
- * Source of the detached installer, run through `node -e` so no separate file ships. It:
- *   1. Exits if another waiting installer is alive (install lock), then waits until no pid in
- *      `runningDir` is alive and heartbeating, so no running CLI has package files replaced under it.
- *   2. Runs the install via execFile (bin + argv, NO shell); values are embedded as JSON literals.
- *   3. Under the shared settings lock, records completedUpdate and clears pendingUpdate.
- */
+/** The detached installer, run via `node -e`: waits until no CLI in `runningDir` is alive, then
+ *  installs with execFile (no shell) and records completedUpdate under the settings lock. */
 export function installerScript(o: InstallerScriptOptions): string {
   return `
     const { execFile } = require("node:child_process");
