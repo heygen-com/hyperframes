@@ -45,6 +45,7 @@ import {
 import { resolveCenterResizeSize } from "./domEditResizeLocal";
 import { resolveResizeDraftRect } from "./resizeDraft";
 import {
+  notifyBlockedPress,
   startGesture as _startGesture,
   startGroupDrag as _startGroupDrag,
 } from "./domEditOverlayStartGesture";
@@ -109,7 +110,7 @@ export function createDomEditOverlayGestureHandlers(opts: UseDomEditOverlayGestu
     e.stopPropagation();
     e.currentTarget.setPointerCapture(e.pointerId);
     opts.blockedMoveRef.current = { pointerId: e.pointerId, startX: e.clientX, startY: e.clientY };
-    opts.onBlockedMoveRef.current(selection);
+    notifyBlockedPress(e, opts, selection);
   };
 
   const moveGroupDrag = createGroupDragMover(opts, setDraftGroupOverlayItems);

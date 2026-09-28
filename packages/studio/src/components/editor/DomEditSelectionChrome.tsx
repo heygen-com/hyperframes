@@ -103,7 +103,7 @@ export function DomEditGroupChrome({
           cursor: canManipulate && groupCanMove ? "move" : "default",
         }}
         onPointerDown={(e) => {
-          if (!canManipulate || !groupCanMove || e.shiftKey) return;
+          if (!canManipulate || e.shiftKey) return;
           gestures.startGroupDrag(e);
         }}
         onMouseDown={onBoxMouseDown}

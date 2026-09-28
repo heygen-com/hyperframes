@@ -133,17 +133,26 @@ export type { GsapDragCommitCallbacks };
  * Returns an explicit persisted/blocked outcome. Callers must reject blocked
  * outcomes so the gesture layer restores its runtime and overlay drafts.
  */
-// fallow-ignore-next-line complexity
-export async function preflightGsapDragIntercept(
+async function preflightGsapDragIntercept(
   selection: DomEditSelection,
   animations: GsapAnimation[],
   iframe: HTMLIFrameElement | null,
   fetchFallbackAnimations?: () => Promise<GsapAnimation[]>,
 ): Promise<GsapEditOutcome> {
+  const fetchedAnimations = fetchFallbackAnimations ? await fetchFallbackAnimations() : [];
+  return dragEditOutcome(selection, animations, iframe, fetchedAnimations);
+}
+
+/** The move commit's refusal rule, also run ahead of time to hide the move handles. */
+// fallow-ignore-next-line complexity
+export function dragEditOutcome(
+  selection: DomEditSelection,
+  animations: GsapAnimation[],
+  iframe: HTMLIFrameElement | null,
+  fetchedAnimations: GsapAnimation[] = [],
+): GsapEditOutcome {
   const selector = selectorFromSelection(selection);
   if (!selector) return { status: "blocked", reason: "no-selector" };
-
-  const fetchedAnimations = fetchFallbackAnimations ? await fetchFallbackAnimations() : [];
   // The fallback API currently represents both a definitive empty parse and an
   // exhausted fetch failure as `[]`. Keep the selected cache in the preflight
   // set as well: ignoring it would let a transient fetch failure bypass helper /

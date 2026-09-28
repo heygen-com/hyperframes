@@ -1,10 +1,14 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import type { GsapAnimation } from "@hyperframes/core/gsap-parser";
 import type { DomEditSelection } from "../components/editor/domEditingTypes";
-import { preflightGsapDragIntercept, preflightGsapRotationIntercept } from "./gsapRuntimeBridge";
+import { dragEditOutcome, preflightGsapRotationIntercept } from "./gsapRuntimeBridge";
 import { preflightGsapResizeIntercept } from "./gsapResizePreflight";
 import { GSAP_EDIT_BLOCK_COPY, type GsapEditOutcome } from "./gsapEditOutcome";
-import type { GsapAnimationFetchOptions } from "./useGsapAnimationFetchFallback";
+import { fetchParsedAnimations } from "./keyframeCacheAstLoad";
+import {
+  gsapSourceFileForSelection,
+  selectElementAnimationsOrRetry,
+} from "./useGsapAnimationFetchFallback";
 
 interface CommitPreflight {
   offset: GsapEditOutcome;
@@ -12,25 +16,30 @@ interface CommitPreflight {
   rotation: GsapEditOutcome;
 }
 
-async function runCommitPreflights(
+function runCommitPreflights(
   selection: DomEditSelection,
-  animations: GsapAnimation[],
+  fileAnimations: GsapAnimation[],
   iframe: HTMLIFrameElement | null,
-): Promise<CommitPreflight> {
+): CommitPreflight {
+  const target = { id: selection.id ?? null, selector: selection.selector ?? null };
+  const matched = selectElementAnimationsOrRetry(
+    { animations: fileAnimations },
+    target,
+    selection.element,
+  );
+  // A file the server parsed with no tweens at all is a definitive answer here.
+  const animations = matched.kind === "resolved" ? matched.animations : [];
   return {
-    offset: await preflightGsapDragIntercept(selection, animations, iframe),
+    offset: dragEditOutcome(selection, animations, iframe),
     size: preflightGsapResizeIntercept(selection, animations, iframe),
     rotation: preflightGsapRotationIntercept(selection, animations, iframe),
   };
 }
 
-// A narrowed copy can be handed back as a new selection; narrowing always starts from the resolved one.
+// Studio can hand a narrowed copy back as a new selection; narrowing starts from the resolved one.
 const resolvedSelections = new WeakMap<DomEditSelection, DomEditSelection>();
 
 const resolvedOf = (selection: DomEditSelection) => resolvedSelections.get(selection) ?? selection;
-
-const opensManualEdit = ({ capabilities: c }: DomEditSelection) =>
-  c.canApplyManualOffset || c.canApplyManualSize || c.canApplyManualRotation;
 
 const MANUAL_FLAGS = [
   ["canApplyManualOffset", "offset"],
@@ -61,14 +70,15 @@ function narrowCapabilities(
   }
   if (reasons.length === 0) return resolved;
   next.reasonIfDisabled = reasons.find(Boolean) || next.reasonIfDisabled;
+  if (!preflight) next.commitCheckPending = true;
   const narrowed = { ...resolved, capabilities: next };
   resolvedSelections.set(narrowed, resolved);
   return narrowed;
 }
 
-interface Verdict {
+interface FileParse {
   version: number;
-  preflight: CommitPreflight | null;
+  animations: GsapAnimation[] | null;
 }
 
 /**
@@ -76,54 +86,57 @@ interface Verdict {
  * so chrome, nudge and group gates never offer an edit that snaps back.
  */
 export function useCommitPreflightCapabilities({
+  projectId,
   enabled,
   selection,
   groupSelections,
   previewIframeRef,
-  makeFetchFallback,
   version,
 }: {
+  projectId: string | null;
   enabled: boolean;
   selection: DomEditSelection | null;
   groupSelections: DomEditSelection[];
   previewIframeRef: React.RefObject<HTMLIFrameElement | null>;
-  makeFetchFallback: (
-    selection: DomEditSelection,
-    options?: GsapAnimationFetchOptions,
-  ) => () => Promise<GsapAnimation[]>;
   version: number;
 }) {
-  const verdictsRef = useRef(new WeakMap<HTMLElement, Verdict>());
-  const [verdictTick, setVerdictTick] = useState(0);
+  // One parse per file and version; the last good parse answers while a newer one loads.
+  const parsesRef = useRef(new Map<string, FileParse>());
+  const [parseTick, setParseTick] = useState(0);
+  const active = enabled && projectId !== null;
 
   useEffect(() => {
-    if (!enabled) return;
-    for (const target of selection ? [selection, ...groupSelections] : groupSelections) {
-      const known = verdictsRef.current.get(target.element);
-      if (!opensManualEdit(resolvedOf(target)) || known?.version === version) continue;
-      // Re-checking an element keeps its last verdict, so a commit does not blink its handles.
-      verdictsRef.current.set(target.element, { version, preflight: known?.preflight ?? null });
-      void makeFetchFallback(target, { failOnFetchError: true })()
-        .then((animations) => runCommitPreflights(target, animations, previewIframeRef.current))
-        .catch(() => null)
-        .then((preflight) => {
-          const current = verdictsRef.current.get(target.element);
-          if (current?.version !== version) return;
-          if (JSON.stringify(current.preflight) === JSON.stringify(preflight)) return;
-          verdictsRef.current.set(target.element, { version, preflight });
-          setVerdictTick((tick) => tick + 1);
-        });
+    if (!enabled || !projectId) return;
+    const targets = selection ? [selection, ...groupSelections] : groupSelections;
+    for (const file of new Set(targets.map(gsapSourceFileForSelection))) {
+      const known = parsesRef.current.get(file);
+      if (known?.version === version) continue;
+      parsesRef.current.set(file, { version, animations: known?.animations ?? null });
+      void fetchParsedAnimations(projectId, file).then((parsed) => {
+        const current = parsesRef.current.get(file);
+        if (current?.version !== version) return;
+        // A failed read is not an answer: forget it so the next selection asks again.
+        if (parsed) parsesRef.current.set(file, { version, animations: parsed.animations });
+        else parsesRef.current.delete(file);
+        // Re-render only when an answer changed, so a read that keeps failing cannot loop.
+        if (parsed || current.animations) setParseTick((tick) => tick + 1);
+      });
     }
-  }, [enabled, selection, groupSelections, version, makeFetchFallback, previewIframeRef]);
+  }, [enabled, projectId, selection, groupSelections, version]);
 
   return useMemo(() => {
-    void verdictTick;
-    if (!enabled) return { selection, groupSelections };
-    const narrow = (target: DomEditSelection) =>
-      narrowCapabilities(target, verdictsRef.current.get(target.element)?.preflight ?? null);
+    void parseTick;
+    if (!active) return { selection, groupSelections };
+    const narrow = (target: DomEditSelection) => {
+      const animations = parsesRef.current.get(gsapSourceFileForSelection(target))?.animations;
+      const preflight = animations
+        ? runCommitPreflights(resolvedOf(target), animations, previewIframeRef.current)
+        : null;
+      return narrowCapabilities(target, preflight);
+    };
     return {
       selection: selection && narrow(selection),
       groupSelections: groupSelections.map(narrow),
     };
-  }, [enabled, selection, groupSelections, verdictTick]);
+  }, [active, selection, groupSelections, parseTick, previewIframeRef]);
 }

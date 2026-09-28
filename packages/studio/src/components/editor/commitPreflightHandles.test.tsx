@@ -6,6 +6,8 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { GsapAnimation } from "@hyperframes/core/gsap-parser";
 import { makeSelection } from "../../hooks/domSelectionTestHarness";
 import { GSAP_EDIT_BLOCK_COPY } from "../../hooks/gsapEditOutcome";
+import { tryGsapDragIntercept } from "../../hooks/gsapRuntimeBridge";
+import { getAnimationsForElement } from "../../hooks/useGsapTweenCache";
 import { useCommitPreflightCapabilities } from "../../hooks/useCommitPreflightCapabilities";
 import { CANVAS_NUDGE_COMMIT_DEBOUNCE_MS } from "./domEditNudge";
 import { __resetForTests } from "../../utils/canvasNudgeGate";
@@ -15,6 +17,15 @@ import { DomEditOverlay } from "./DomEditOverlay";
 
 (globalThis as unknown as { IS_REACT_ACT_ENVIRONMENT: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
+type Parse = { animations: GsapAnimation[] } | null;
+const parses = vi.hoisted(() => ({ fetch: vi.fn<(...args: unknown[]) => Promise<unknown>>() }));
+const layout = vi.hoisted(() => ({ group: [] as unknown[] }));
+
+vi.mock("../../hooks/keyframeCacheAstLoad", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("../../hooks/keyframeCacheAstLoad")>()),
+  fetchParsedAnimations: (...args: unknown[]) => parses.fetch(...args),
+}));
+
 vi.mock("./useDomEditOverlayRects", () => {
   const rect = { left: 100, top: 100, width: 200, height: 100, editScaleX: 1, editScaleY: 1 };
   return {
@@ -23,8 +34,8 @@ vi.mock("./useDomEditOverlayRects", () => {
       overlayRectRef: { current: rect },
       setOverlayRect: () => undefined,
       hoverRect: null,
-      groupOverlayItems: [],
-      groupOverlayItemsRef: { current: [] },
+      groupOverlayItems: layout.group,
+      groupOverlayItemsRef: { current: layout.group },
       setGroupOverlayItems: () => undefined,
       childRects: [],
     }),
@@ -34,6 +45,7 @@ vi.mock("./useDomEditOverlayRects", () => {
 const BOX = '[data-dom-edit-selection-box="true"]';
 const DOTS = "div.h-4.w-4";
 const ROTATE = '[aria-label="Rotate selection"]';
+const RECT = { left: 100, top: 100, width: 200, height: 100, editScaleX: 1, editScaleY: 1 };
 let root: Root;
 let host: HTMLElement;
 
@@ -53,39 +65,87 @@ function tween(
   } as unknown as GsapAnimation;
 }
 
+const loop = (properties: Record<string, number>, targetSelector = "#title") =>
+  tween(properties, { targetSelector, provenance: { kind: "loop" } } as never);
+
+function element(id: string, className = "") {
+  const el = document.createElement("h1");
+  el.id = id;
+  el.className = className;
+  document.body.append(el);
+  return el;
+}
+
+function resolved(el: HTMLElement): DomEditSelection {
+  const selection = makeSelection(el.id, el);
+  selection.capabilities.canApplyManualRotation = true;
+  return selection;
+}
+
+/** A preview whose runtime timeline is visibly moving `el`. */
+function livePreview(el: HTMLElement, vars: Record<string, number>) {
+  const liveTween = {
+    targets: () => [el],
+    vars: { ...vars, duration: 1 },
+    duration: () => 1,
+    startTime: () => 0,
+  };
+  const timeline = { getChildren: () => [liveTween], duration: () => 6 };
+  return {
+    contentWindow: { __timelines: { root: timeline }, gsap: { getProperty: () => 0 } },
+    contentDocument: { querySelector: (sel: string) => (sel === `#${el.id}` ? el : null) },
+  } as unknown as HTMLIFrameElement;
+}
+
+interface EditorProps {
+  selection: DomEditSelection | null;
+  groups?: DomEditSelection[];
+  version?: number;
+  preview?: HTMLIFrameElement | null;
+}
+
 /** Studio's session narrowing feeding the real overlay, as the editor mounts it. */
-function mount(animations: Promise<GsapAnimation[]>) {
+function mount(first: EditorProps) {
   const spies = {
     onBlockedMove: vi.fn(),
     onPathOffsetCommit: vi.fn(),
     onManualDragStart: vi.fn(),
   };
-  const element = document.createElement("h1");
-  element.id = "title";
-  document.body.append(element);
-  const resolved = makeSelection("title", element);
-  resolved.capabilities.canApplyManualRotation = true;
-  const seen: { selection: DomEditSelection | null } = { selection: null };
+  const seen: { selection: DomEditSelection | null; groups: DomEditSelection[] } = {
+    selection: null,
+    groups: [],
+  };
   const iframeRef = { current: document.createElement("iframe") };
-  const makeFetchFallback = () => () => animations;
-  function Editor() {
-    const { selection } = useCommitPreflightCapabilities({
+  function Editor({ selection, groups, version = 0, preview = null }: EditorProps) {
+    const groupSelections = groups ?? (selection ? [selection] : []);
+    const narrowed = useCommitPreflightCapabilities({
+      projectId: "p",
       enabled: true,
-      selection: resolved,
-      groupSelections: [resolved],
-      previewIframeRef: { current: null },
-      makeFetchFallback,
-      version: 0,
+      selection,
+      groupSelections,
+      previewIframeRef: { current: preview },
+      version,
     });
-    seen.selection = selection;
+    seen.selection = narrowed.selection;
+    seen.groups = narrowed.groupSelections;
+    layout.group =
+      groupSelections.length > 1
+        ? narrowed.groupSelections.map((s) => ({
+            key: s.id,
+            selection: s,
+            element: s.element,
+            rect: RECT,
+          }))
+        : [];
     return (
       <DomEditOverlay
         iframeRef={iframeRef}
         activeCompositionPath={null}
-        selection={selection}
+        selection={groupSelections.length > 1 ? null : narrowed.selection}
+        groupSelections={groupSelections.length > 1 ? narrowed.groupSelections : []}
         hoverSelection={null}
         onCanvasMouseDown={() => undefined}
-        onCanvasPointerMove={() => Promise.resolve(selection)}
+        onCanvasPointerMove={() => Promise.resolve(narrowed.selection)}
         onCanvasPointerLeave={() => undefined}
         onSelectionChange={() => undefined}
         onGroupPathOffsetCommit={() => undefined}
@@ -98,9 +158,13 @@ function mount(animations: Promise<GsapAnimation[]>) {
   host = document.createElement("div");
   document.body.append(host);
   root = createRoot(host);
-  act(() => root.render(<Editor />));
-  return { spies, seen, overlay: host.firstElementChild as HTMLElement };
+  const render = (props: EditorProps) => act(() => root.render(<Editor {...props} />));
+  render(first);
+  return { spies, seen, render, overlay: () => host.firstElementChild as HTMLElement };
 }
+
+const answer = (animations: GsapAnimation[]) =>
+  parses.fetch.mockResolvedValueOnce({ animations } satisfies Parse);
 
 async function settle() {
   await act(async () => {
@@ -114,10 +178,29 @@ const fire = (target: Element, type: string, init: MouseEventInit = {}) => {
   });
 };
 
+const flags = (selection: DomEditSelection | null) => {
+  const c = selection?.capabilities;
+  return [c?.canApplyManualOffset, c?.canApplyManualSize, c?.canApplyManualRotation];
+};
+
+const handles = (overlay: HTMLElement) => ({
+  dots: overlay.querySelectorAll(DOTS).length,
+  rotate: Boolean(overlay.querySelector(ROTATE)),
+});
+
+/** Select `#title` in a file whose parse is `animations` (none queued when null). */
+async function select(animations: GsapAnimation[] | null, props: Partial<EditorProps> = {}) {
+  if (animations) answer(animations);
+  const view = mount({ selection: resolved(element("title")), ...props });
+  await settle();
+  return view;
+}
+
 describe("handles follow what Studio would commit", () => {
   beforeEach(() => {
     HTMLElement.prototype.setPointerCapture = () => undefined;
     __resetForTests();
+    parses.fetch.mockReset();
     vi.useFakeTimers();
   });
 
@@ -125,24 +208,18 @@ describe("handles follow what Studio would commit", () => {
     vi.useRealTimers();
     act(() => root.unmount());
     document.body.innerHTML = "";
+    layout.group = [];
   });
 
   it("hides every handle on a helper-loop animation and says why", async () => {
-    const loop = tween({ x: 120, rotation: 30, width: 320 }, {
-      provenance: { kind: "loop" },
-    } as never);
-    const { seen, overlay, spies } = mount(Promise.resolve([loop]));
-    await settle();
+    const { seen, overlay, spies } = await select([loop({ x: 120, rotation: 30, width: 320 })]);
 
-    expect(seen.selection?.capabilities).toMatchObject({
-      canApplyManualOffset: false,
-      canApplyManualSize: false,
-      canApplyManualRotation: false,
-      reasonIfDisabled: GSAP_EDIT_BLOCK_COPY["unroll-required"],
-    });
-    expect(overlay.querySelectorAll(DOTS)).toHaveLength(0);
-    expect(overlay.querySelector(ROTATE)).toBeNull();
-    expect((overlay.querySelector(BOX) as HTMLElement).style.cursor).toBe("default");
+    expect(flags(seen.selection)).toEqual([false, false, false]);
+    expect(seen.selection?.capabilities.reasonIfDisabled).toBe(
+      GSAP_EDIT_BLOCK_COPY["unroll-required"],
+    );
+    expect(handles(overlay())).toEqual({ dots: 0, rotate: false });
+    expect((overlay().querySelector(BOX) as HTMLElement).style.cursor).toBe("default");
     act(() => {
       window.dispatchEvent(new KeyboardEvent("keydown", { key: "ArrowRight", bubbles: true }));
       vi.advanceTimersByTime(CANVAS_NUDGE_COMMIT_DEBOUNCE_MS + 10);
@@ -151,107 +228,157 @@ describe("handles follow what Studio would commit", () => {
   });
 
   it("hides every handle on a runtime-computed animation and says why", async () => {
-    const computed = tween({ x: 120, rotation: 30, width: 320 }, {
-      provenance: { kind: "runtime-dynamic" },
-    } as never);
-    const { seen, overlay } = mount(Promise.resolve([computed]));
-    await settle();
+    const computed = { provenance: { kind: "runtime-dynamic" } } as never;
+    const { seen, overlay } = await select([tween({ x: 120, rotation: 30, width: 320 }, computed)]);
 
-    expect(seen.selection?.capabilities).toMatchObject({
-      canApplyManualOffset: false,
-      canApplyManualSize: false,
-      canApplyManualRotation: false,
-      reasonIfDisabled: GSAP_EDIT_BLOCK_COPY["source-uneditable"],
-    });
-    expect(overlay.querySelectorAll(DOTS)).toHaveLength(0);
-    expect(overlay.querySelector(ROTATE)).toBeNull();
+    expect(flags(seen.selection)).toEqual([false, false, false]);
+    expect(seen.selection?.capabilities.reasonIfDisabled).toBe(
+      GSAP_EDIT_BLOCK_COPY["source-uneditable"],
+    );
+    expect(handles(overlay())).toEqual({ dots: 0, rotate: false });
   });
 
   it("keeps every handle on a plain keyframed element, and a drag still commits", async () => {
-    const keyframed = tween({}, {
-      propertyGroup: "position",
-      keyframes: {
-        keyframes: [
-          { percentage: 0, properties: { x: 0, y: 0 } },
-          { percentage: 100, properties: { x: 200, y: 40 } },
-        ],
-      },
-    } as never);
-    const { seen, overlay, spies } = mount(Promise.resolve([keyframed]));
-    await settle();
+    const frames = [
+      { percentage: 0, properties: { x: 0, y: 0 } },
+      { percentage: 100, properties: { x: 200, y: 40 } },
+    ];
+    const keyframed = { propertyGroup: "position", keyframes: { keyframes: frames } } as never;
+    const { seen, overlay, spies } = await select([tween({}, keyframed)]);
 
-    expect(seen.selection?.capabilities).toMatchObject({
-      canApplyManualOffset: true,
-      canApplyManualSize: true,
-      canApplyManualRotation: true,
-    });
-    expect(overlay.querySelectorAll(DOTS)).toHaveLength(4);
-    expect(overlay.querySelector(ROTATE)).not.toBeNull();
-    const box = overlay.querySelector(BOX)!;
-    fire(box, "pointerdown", { clientX: 150, clientY: 150 });
-    fire(overlay, "pointermove", { clientX: 190, clientY: 150 });
-    fire(overlay, "pointerup", { clientX: 190, clientY: 150 });
+    expect(flags(seen.selection)).toEqual([true, true, true]);
+    expect(handles(overlay())).toEqual({ dots: 4, rotate: true });
+    fire(overlay().querySelector(BOX)!, "pointerdown", { clientX: 150, clientY: 150 });
+    fire(overlay(), "pointermove", { clientX: 190, clientY: 150 });
+    fire(overlay(), "pointerup", { clientX: 190, clientY: 150 });
     await settle();
     expect(spies.onBlockedMove).not.toHaveBeenCalled();
     expect(spies.onPathOffsetCommit).toHaveBeenCalledTimes(1);
   });
 
-  it("shows no handles while the check is still running", async () => {
-    const { seen, overlay } = mount(new Promise<GsapAnimation[]>(() => undefined));
-    await settle();
+  it("keeps the handles of an element a class tween animates, as the commit does", async () => {
+    const card = element("card-1", "card");
+    const preview = livePreview(card, { y: 40 });
+    const stagger = tween({ y: 40 }, { targetSelector: ".card", method: "from" } as never);
+    const selection = resolved(card);
+    const { seen, overlay } = await select([stagger], { selection, preview });
 
-    expect(seen.selection?.capabilities).toMatchObject({
-      canApplyManualOffset: false,
-      canApplyManualSize: false,
-      canApplyManualRotation: false,
-    });
-    expect(overlay.querySelectorAll(DOTS)).toHaveLength(0);
-    expect(overlay.querySelector(ROTATE)).toBeNull();
+    expect(flags(seen.selection)).toEqual([true, true, true]);
+    expect(handles(overlay()).dots).toBe(4);
+    const commitList = getAnimationsForElement(
+      [stagger],
+      { id: "card-1", selector: "#card-1" },
+      card,
+    );
+    const preflightOnly = { preflightOnly: true };
+    const commit = tryGsapDragIntercept(
+      selection,
+      { x: 0, y: 0 },
+      commitList,
+      preview,
+      vi.fn(),
+      undefined,
+      preflightOnly,
+    );
+    expect(await commit).toEqual({ status: "persisted" });
   });
 
-  it("toasts once on the press of a blocked element, before any travel", async () => {
-    const loop = tween({ x: 120 }, { provenance: { kind: "loop" } } as never);
-    const { overlay, spies } = mount(Promise.resolve([loop]));
-    await settle();
-    const box = overlay.querySelector(BOX)!;
+  it("shows no handles and stays silent on a press while the check is still running", async () => {
+    parses.fetch.mockReturnValue(new Promise<Parse>(() => undefined));
+    const { seen, overlay, spies } = await select(null);
 
+    expect(flags(seen.selection)).toEqual([false, false, false]);
+    expect(seen.selection?.capabilities.commitCheckPending).toBe(true);
+    expect(handles(overlay())).toEqual({ dots: 0, rotate: false });
+    fire(overlay().querySelector(BOX)!, "pointerdown", { clientX: 150, clientY: 150 });
+    expect(spies.onBlockedMove).not.toHaveBeenCalled();
+  });
+
+  it("gives a plain element in a file with no animations its handles after one read", async () => {
+    const { seen, overlay, render } = await select([]);
+
+    expect(flags(seen.selection)).toEqual([true, true, true]);
+    expect(handles(overlay()).dots).toBe(4);
+    render({ selection: resolved(element("subtitle")) });
+    expect(flags(seen.selection)).toEqual([true, true, true]);
+    expect(parses.fetch).toHaveBeenCalledTimes(1);
+  });
+
+  it("asks again after a failed read instead of keeping the failure", async () => {
+    parses.fetch.mockResolvedValueOnce(null);
+    const { seen, render } = await select(null);
+    const title = seen.selection!.element;
+    expect(flags(seen.selection)[0]).toBe(false);
+
+    answer([]);
+    render({ selection: null });
+    render({ selection: resolved(title) });
+    await settle();
+    expect(parses.fetch).toHaveBeenCalledTimes(2);
+    expect(flags(seen.selection)[0]).toBe(true);
+  });
+
+  it("re-checks when the animations change, keeping the last answer until the new one lands", async () => {
+    const selection = resolved(element("title"));
+    const { seen, render } = await select([tween({ x: 120 })], { selection });
+    expect(flags(seen.selection)[0]).toBe(true);
+
+    let land: (parse: Parse) => void = () => undefined;
+    parses.fetch.mockReturnValueOnce(new Promise<Parse>((resolve) => (land = resolve)));
+    render({ selection, version: 1 });
+    await settle();
+    // The save re-resolves the selection while the new read is still in flight.
+    render({ selection: resolved(selection.element), version: 1 });
+    expect(flags(seen.selection)[0]).toBe(true);
+    await act(async () => land({ animations: [loop({ x: 120 })] }));
+    await settle();
+    expect(flags(seen.selection)[0]).toBe(false);
+    expect(parses.fetch).toHaveBeenCalledTimes(2);
+  });
+
+  it("toasts once on the primary press of a blocked element, before any travel", async () => {
+    const { overlay, spies } = await select([loop({ x: 120 })]);
+    const box = overlay().querySelector(BOX)!;
+
+    fire(box, "pointerdown", { button: 2, clientX: 150, clientY: 150 });
+    fire(overlay(), "pointerup", { button: 2 });
+    expect(spies.onBlockedMove).not.toHaveBeenCalled();
     fire(box, "pointerdown", { clientX: 150, clientY: 150 });
     expect(spies.onBlockedMove).toHaveBeenCalledTimes(1);
     expect(spies.onBlockedMove.mock.calls[0]![0].capabilities.reasonIfDisabled).toBe(
       GSAP_EDIT_BLOCK_COPY["unroll-required"],
     );
-    fire(overlay, "pointermove", { clientX: 200, clientY: 150 });
-    fire(overlay, "pointerup", { clientX: 200, clientY: 150 });
+    fire(overlay(), "pointermove", { clientX: 200, clientY: 150 });
+    fire(overlay(), "pointerup", { clientX: 200, clientY: 150 });
     expect(spies.onBlockedMove).toHaveBeenCalledTimes(1);
     expect(spies.onManualDragStart).not.toHaveBeenCalled();
     expect(spies.onPathOffsetCommit).not.toHaveBeenCalled();
   });
 
-  it("narrows only rotation when only the rotation is a helper's", async () => {
-    const spin = tween({ rotation: 90 }, { provenance: { kind: "loop" } } as never);
-    const { seen, overlay } = mount(Promise.resolve([spin]));
-    await settle();
-
-    expect(seen.selection?.capabilities).toMatchObject({
-      canApplyManualOffset: true,
-      canApplyManualSize: true,
-      canApplyManualRotation: false,
+  it("narrows each group member on its own and toasts the blocked one on a group press", async () => {
+    const a = resolved(element("a"));
+    const b = resolved(element("b"));
+    const { seen, overlay, spies } = await select([loop({ x: 120 }, "#a")], {
+      selection: a,
+      groups: [a, b],
     });
-    expect(overlay.querySelectorAll(DOTS)).toHaveLength(4);
-    expect(overlay.querySelector(ROTATE)).toBeNull();
+
+    expect(seen.groups.map((s) => flags(s)[0])).toEqual([false, true]);
+    fire(overlay().querySelector(BOX)!, "pointerdown", { clientX: 150, clientY: 150 });
+    expect(spies.onBlockedMove).toHaveBeenCalledTimes(1);
+    expect(spies.onBlockedMove.mock.calls[0]![0].element).toBe(a.element);
+    expect(spies.onManualDragStart).not.toHaveBeenCalled();
   });
 
-  it("narrows only resize when only the size is a helper's", async () => {
-    const grow = tween({ width: 320, height: 90 }, { provenance: { kind: "loop" } } as never);
-    const { seen, overlay } = mount(Promise.resolve([grow]));
-    await settle();
-
-    expect(seen.selection?.capabilities).toMatchObject({
-      canApplyManualOffset: true,
-      canApplyManualSize: false,
-      canApplyManualRotation: true,
-    });
-    expect(overlay.querySelectorAll(DOTS)).toHaveLength(0);
-    expect(overlay.querySelector(ROTATE)).not.toBeNull();
-  });
+  it.each([
+    ["rotation", loop({ rotation: 90 }), [true, true, false], { dots: 4, rotate: false }],
+    ["resize", loop({ width: 320, height: 90 }), [true, false, true], { dots: 0, rotate: true }],
+  ])(
+    "narrows only %s when only that channel is a helper's",
+    async (_, animation, expected, shown) => {
+      const { seen, overlay } = await select([animation]);
+      expect(flags(seen.selection)).toEqual(expected);
+      expect(handles(overlay())).toEqual(shown);
+    },
+  );
 });

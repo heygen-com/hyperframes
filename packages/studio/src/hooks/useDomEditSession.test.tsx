@@ -63,8 +63,8 @@ const domEditSelectionRef: { current: DomEditSelection | null } = { current: nul
 const domEditGroupSelectionsRef: { current: DomEditSelection[] } = { current: [] };
 const groupSelectionSpy = vi.fn();
 const gsapCommitMutation = Object.assign(vi.fn(), { batch: vi.fn() });
-const neverFetched = new Promise<GsapAnimation[]>(() => undefined);
-const fetchedAnimations = { current: neverFetched };
+const neverParsed = new Promise<{ animations: GsapAnimation[] }>(() => undefined);
+const parsedFile = { current: neverParsed };
 
 function createSessionParams(
   overrides: Partial<UseDomEditSessionParams> = {},
@@ -169,7 +169,11 @@ vi.mock("./useAskAgentModal", () => ({
 vi.mock("./useStudioSelectionPublisher", () => ({
   useStudioSelectionPublisher: () => {},
 }));
-vi.mock("./useGsapTweenCache", () => ({
+vi.mock("./keyframeCacheAstLoad", () => ({
+  fetchParsedAnimations: () => parsedFile.current,
+}));
+vi.mock("./useGsapTweenCache", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("./useGsapTweenCache")>()),
   useGsapCacheVersion: () => ({ version: 0, bump: vi.fn() }),
 }));
 vi.mock("./useGsapScriptCommits", () => ({
@@ -209,7 +213,7 @@ vi.mock("./useDomEditWiring", () => ({
     gsapMultipleTimelines: false,
     gsapUnsupportedTimelinePattern: false,
     trackGsapInteractionFailure: vi.fn(),
-    makeFetchFallback: () => () => fetchedAnimations.current,
+    makeFetchFallback: vi.fn(),
     handleGsapUpdateProperty: vi.fn(),
     handleGsapUpdateMeta: vi.fn(),
     handleGsapDeleteAnimation: vi.fn(),
@@ -431,7 +435,7 @@ describe("the session hands out selections narrowed to what the GSAP commit acce
       },
     } as unknown as DomEditSelection;
     const loop = { targetSelector: "#hero", properties: { x: 100 }, provenance: { kind: "loop" } };
-    fetchedAnimations.current = Promise.resolve([loop as unknown as GsapAnimation]);
+    parsedFile.current = Promise.resolve({ animations: [loop as unknown as GsapAnimation] });
     const seen: { selection?: DomEditSelection | null } = {};
     function Probe() {
       seen.selection = useDomEditSession(createSessionParams()).domEditSelection;
@@ -452,7 +456,7 @@ describe("the session hands out selections narrowed to what the GSAP commit acce
       });
     } finally {
       domEditSelectionRef.current = null;
-      fetchedAnimations.current = neverFetched;
+      parsedFile.current = neverParsed;
       act(() => root.unmount());
     }
   });

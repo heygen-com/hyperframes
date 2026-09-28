@@ -496,11 +496,11 @@ export function useDomEditSession({
   const { handleUpdateSegmentEase, handleUpdateKeyframeEase, handleSetAllKeyframeEases } =
     useKeyframeEaseCommits({ gsapCommitMutation, domEditSelectionRef });
   const committable = useCommitPreflightCapabilities({
+    projectId,
     enabled: gsapCommitMutation !== null,
     selection: domEditSelection,
     groupSelections: domEditGroupSelections,
     previewIframeRef,
-    makeFetchFallback,
     version: gsapCacheVersion,
   });
   return {
