@@ -1073,6 +1073,16 @@ describe("AudioFxGroup dynamic carve", () => {
       expect(lane.frequency).toBe(1000);
     });
 
+    it("ignores speech after a bed with no duration runs out, when it ducks", async () => {
+      // No data-duration: the bed plays its 3 s file. Strength 0.05 ducks and keeps one band.
+      const under = tone(8, [0, 2], 1000, 0.3);
+      const after = tone(8, [4, 6], 4000, 0.9);
+      const voice = under.map((v, i) => v + after[i]!);
+      stubFiles({ "voice.wav": voice, "bed.wav": tone(3, [0, 3], 200) });
+      const lane = await carveLane("peaking", { start: "0" }, {}, 0.05);
+      expect(lane.frequency).toBe(1000);
+    });
+
     it("cuts where a trimmed voice speaks, not where its file does", async () => {
       // File speech 2-3.5 s; the clip plays 2-4 s of it, so the bed hears it at 0-1.5 s.
       stubFiles({ "voice.wav": tone(6, [2, 3.5]), "bed.wav": tone(8, [0, 8], 200) });
