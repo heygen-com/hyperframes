@@ -1,5 +1,4 @@
 import { defineCommand } from "citty";
-import { readdirSync } from "node:fs";
 import { homedir } from "node:os";
 import { resolve } from "node:path";
 import type { Example } from "./_examples.js";
@@ -26,25 +25,22 @@ export default defineCommand({
   },
   async run({ args }) {
     const root = resolve(args.root ?? homedir());
-    try {
-      readdirSync(root);
-    } catch (error) {
-      const code = (error as NodeJS.ErrnoException).code;
-      const reason =
-        code === "ENOENT"
-          ? "does not exist"
-          : code === "ENOTDIR"
-            ? "is not a folder"
-            : "cannot be read";
-      errorBox("Cannot search this folder", `${root} ${reason}.`);
-      failCommand();
-    }
     const count = await findProjects({
       root,
       onProject: (project) => {
         if (args.json) console.log(JSON.stringify(project));
         else console.log(`   ${c.accent(project.name)}  ${c.dim(project.path)}`);
       },
+    }).catch((error: NodeJS.ErrnoException) => {
+      if (!error.code) throw error;
+      const reason =
+        error.code === "ENOENT"
+          ? "does not exist"
+          : error.code === "ENOTDIR"
+            ? "is not a folder"
+            : "cannot be read";
+      errorBox("Cannot search this folder", `${root} ${reason}.`);
+      return failCommand();
     });
     if (!args.json) {
       console.log();

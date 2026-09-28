@@ -137,6 +137,21 @@ describe("findProjects", () => {
     },
   );
 
+  it("fails on a root that is missing or not a folder instead of finding nothing", async () => {
+    const root = tree(["file.txt"]);
+    await expect(find(join(root, "missing"))).rejects.toMatchObject({ code: "ENOENT" });
+    await expect(find(join(root, "file.txt"))).rejects.toMatchObject({ code: "ENOTDIR" });
+  });
+
+  it.skipIf(process.platform === "win32" || process.getuid?.() === 0)(
+    "fails on a root it may not read instead of finding nothing",
+    async () => {
+      const root = tree([]);
+      chmodSync(root, 0o000);
+      await expect(find(root)).rejects.toMatchObject({ code: "EACCES" });
+    },
+  );
+
   it("reports a Spotlight hit once, and only where the walk would also count it", async () => {
     const root = tree([
       "film/index.html",

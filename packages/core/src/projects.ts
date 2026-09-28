@@ -59,7 +59,8 @@ export async function findProjects({
   onProject,
   spotlight = spotlightMarkers,
 }: FindProjectsOptions): Promise<number> {
-  const root = await realpath(givenRoot).catch(() => givenRoot);
+  const root = await realpath(givenRoot);
+  await readdir(root);
   const home = await realpath(homedir()).catch(() => homedir());
   const skippedDir = (parent: string, name: string) =>
     name.startsWith(".") || name === "node_modules" || (name === "Library" && parent === home);
