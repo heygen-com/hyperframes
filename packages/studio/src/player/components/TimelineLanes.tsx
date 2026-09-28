@@ -116,8 +116,8 @@ export function TimelineLanes({
   // synthetic lane element spans the whole composition rather than a clip.
   const compositionDuration = usePlayerStore((s) => s.duration);
   useAutomationSelectionKeyboard({ lanes: automationLanes });
-  const { logicalRowsByTrack, groupByAnchor, groupMemberTracks } =
-    useTimelineLaneRowIndexes(logicalRows, groups);
+  const rowIndexes = useTimelineLaneRowIndexes(logicalRows, groups);
+  const { logicalRowsByTrack, groupByAnchor, groupMemberTracks } = rowIndexes;
   const {
     toggleRowExpanded: toggleRowExpandedTracked,
     toggleClipExpanded: toggleClipExpandedTracked,

@@ -34,10 +34,7 @@ import { useTimelineKeyframeHandlers } from "./useTimelineKeyframeHandlers";
 import { useTimelineGapHighlights } from "./useTimelineGapHighlights";
 import { TimelineRazorGuideOverlay, useTimelineRazorInteraction } from "./TimelineRazorInteraction";
 import { useTimelinePerformanceTelemetry } from "./useTimelinePerformanceTelemetry";
-import {
-  getEffectiveTimelineDuration,
-  getTimelinePreviewElement,
-} from "./timelineViewModel";
+import { getEffectiveTimelineDuration, getTimelinePreviewElement } from "./timelineViewModel";
 import { useTimelineShiftModifier } from "./useTimelineShiftModifier";
 import { useTimelineTicks } from "./useTimelineTicks";
 import { getTimelineElementIdentity } from "../lib/timelineElementHelpers";
