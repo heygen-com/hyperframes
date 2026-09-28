@@ -915,6 +915,16 @@ describe("resolveTimelineResize", () => {
     expect(group).toBe(single);
   });
 
+  it("moves on-grid group members together when the tightest member sits 5 ms off the grid", () => {
+    const members = [
+      { start: 1.005, duration: 2 },
+      { start: 0, duration: 5 },
+      { start: 0.24, duration: 5 },
+    ];
+    const next = resolveTimelineGroupResize(members, "start", 10).members;
+    expect(next.map((m) => m.start)).toEqual([2.9, 1.89, 2.13]);
+  });
+
   it("never moves a group head trim left of zero near the minimum length", () => {
     const [member] = resolveTimelineGroupResize(
       [{ start: 0.004, duration: 0.1 }],
