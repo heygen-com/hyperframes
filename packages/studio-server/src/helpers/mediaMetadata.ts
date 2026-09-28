@@ -96,7 +96,7 @@ const VIDEO_EXT = new Set([
   ".ts",
 ]);
 const IMAGE_EXT = new Set([".jpg", ".jpeg", ".png", ".webp", ".avif"]);
-const AUDIO_EXT = new Set([".mp3", ".wav", ".ogg", ".m4a", ".aac"]);
+const AUDIO_EXT = new Set([".mp3", ".wav", ".ogg", ".m4a", ".aac", ".flac"]);
 
 function lower(value: string | undefined): string {
   return value?.toLowerCase() ?? "";

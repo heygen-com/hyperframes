@@ -25,6 +25,33 @@ interface PruneOptions {
   budgetMs?: number;
 }
 
+export interface ProjectHistoryRecord {
+  id: string;
+  projectDir: string;
+  lastUsedMs: number;
+}
+
+/** Every history whose project is still in the folder it was recorded for; reads only. */
+export function listProjectHistories(historyRoot: string): ProjectHistoryRecord[] {
+  return namesIn(historyRoot)
+    .filter(isHistoryId)
+    .flatMap((id) => {
+      const home = join(historyRoot, id);
+      const projectDir = readRecord(home)?.dir;
+      if (typeof projectDir !== "string" || readId(projectDir) !== id) return [];
+      return [{ id, projectDir, lastUsedMs: lastUsed(home) }];
+    });
+}
+
+function namesIn(historyRoot: string): string[] {
+  try {
+    return readdirSync(historyRoot);
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === "ENOENT") return [];
+    throw error;
+  }
+}
+
 export interface PrunedHistory {
   id: string;
   projectDir: string;
@@ -51,13 +78,7 @@ async function pruneWithin(
   }: PruneOptions & { measure?: boolean },
 ): Promise<{ pruned: PrunedHistory[]; finished: boolean }> {
   const started = performance.now();
-  let names: string[];
-  try {
-    names = readdirSync(historyRoot);
-  } catch (error) {
-    if ((error as NodeJS.ErrnoException).code === "ENOENT") return { pruned: [], finished: true };
-    throw error;
-  }
+  const names = namesIn(historyRoot);
   const pruned: PrunedHistory[] = [];
   for (const name of names) {
     if (performance.now() - started >= budgetMs) return { pruned, finished: false };

@@ -378,9 +378,7 @@ export const DomEditOverlay = memo(function DomEditOverlay({
           )
         : null;
       if (freshTarget) return;
-      const overlayEl = overlayRef.current;
-      if (overlayEl) {
-        const oRect = overlayEl.getBoundingClientRect();
+      if (overlayRef.current) {
         // Anywhere empty on the overlay starts one, not just inside the frame.
         // An element dragged past the edge sits OUT there in the grey, and a
         // rubber band that refuses to start there cannot reach it — which left
@@ -390,17 +388,7 @@ export const DomEditOverlay = memo(function DomEditOverlay({
         event.preventDefault();
         event.stopPropagation();
         suppressNextOverlayMouseDownRef.current = true;
-        (event.currentTarget as HTMLElement).setPointerCapture(event.pointerId);
-        const cx = event.clientX - oRect.left;
-        const cy = event.clientY - oRect.top;
-        marquee.marqueeRef.current = {
-          startX: cx,
-          startY: cy,
-          currentX: cx,
-          currentY: cy,
-          pointerId: event.pointerId,
-          pastThreshold: false,
-        };
+        marquee.begin(event);
         return;
       }
     }

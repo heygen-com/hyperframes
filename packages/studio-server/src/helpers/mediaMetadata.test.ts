@@ -111,6 +111,15 @@ describe("probeMediaMetadata", () => {
     expect(audioFile).not.toHaveProperty("hasAudio");
   });
 
+  it("reads a flac file as audio", async () => {
+    const flac = await probeMediaMetadata("/tmp/music.flac", () => ({
+      status: 0,
+      stdout: "{}",
+      stderr: "",
+    }));
+    expect(flac.kind).toBe("audio");
+  });
+
   it("ignores attached cover art and reads the real video stream", async () => {
     const metadata = await probeMediaMetadata("/tmp/clip.mp4", () => ({
       status: 0,
