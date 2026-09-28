@@ -15,6 +15,7 @@ import { spawn, spawnSync } from "node:child_process";
 import { existsSync, mkdirSync, openSync, closeSync } from "node:fs";
 import { join } from "node:path";
 import { downloadTo, searchSounds } from "./heygen.mjs";
+import { agentWritePath } from "./media-record.mjs";
 import { pythonInvocation } from "./python.mjs";
 
 const r3 = (x) => Number(x.toFixed(3));
@@ -50,7 +51,7 @@ export async function retrieveBgm({ query, headers, hyperframesDir, hasVoice }) 
   const results = await searchSounds(q, "music", headers, { limit: 5 });
   if (!results.length) return null;
   const top = results[0];
-  const rel = "assets/bgm/track.mp3";
+  const rel = agentWritePath(hyperframesDir, "assets/bgm/track.mp3");
   await downloadTo(top.audio_url, join(hyperframesDir, rel));
   return {
     path: rel,
@@ -114,7 +115,7 @@ export function generateBgmDetached({
   seedSeconds = 28,
   hasVoice,
 }) {
-  const rel = "assets/bgm/track.wav";
+  const rel = agentWritePath(hyperframesDir, "assets/bgm/track.wav");
   const abs = join(hyperframesDir, rel);
   mkdirSync(join(hyperframesDir, "assets", "bgm"), { recursive: true });
   const log = join(hyperframesDir, "assets", "bgm", `bgm-${Date.now()}.log`);

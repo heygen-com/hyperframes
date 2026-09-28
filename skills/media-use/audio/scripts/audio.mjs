@@ -55,7 +55,7 @@ import { generateBgmDetached, inferBgmPrompt, retrieveBgm } from "./lib/bgm.mjs"
 import { resolveSfx } from "./lib/sfx.mjs";
 import { mapWithConcurrency } from "./lib/concurrency.mjs";
 import { openAudioMeta } from "./lib/audio-meta.mjs";
-import { recordInManifest, writtenAssets } from "./lib/media-record.mjs";
+import { agentWritePath, recordInManifest, writtenAssets } from "./lib/media-record.mjs";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const argv = process.argv.slice(2);
@@ -145,7 +145,7 @@ if (only.has("tts") && lines.length) {
       anomalies.push(`line ${id}: empty text — skipped`);
       return null;
     }
-    const rel = `assets/voice/${id}.wav`;
+    const rel = agentWritePath(hyperframesDir, `assets/voice/${id}.wav`);
     const abs = join(hyperframesDir, rel);
     const { ok, words, error } = await synthesizeOne({
       provider: ttsProvider,

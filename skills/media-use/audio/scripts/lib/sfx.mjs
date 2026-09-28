@@ -15,6 +15,7 @@
 import { copyFileSync, existsSync, mkdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { downloadTo, searchSounds } from "./heygen.mjs";
+import { agentWritePath } from "./media-record.mjs";
 
 const SFX_VOLUME = 0.35;
 const slug = (s) =>
@@ -31,6 +32,7 @@ export async function resolveSfx({ cues, heygenOK, headers, hyperframesDir, sfxL
   const sfx = [];
   const anomalies = [];
   const destDir = join(hyperframesDir, "assets", "sfx");
+  const written = new Set();
 
   // Dedupe identical (id,name) cues — the same effect named twice in one line
   // downloads/copies once.
@@ -57,8 +59,9 @@ export async function resolveSfx({ cues, heygenOK, headers, hyperframesDir, sfxL
           continue;
         }
         const top = results[0];
-        const file = `assets/sfx/${slug(name)}.mp3`;
+        const file = agentWritePath(hyperframesDir, `assets/sfx/${slug(name)}.mp3`, written);
         await downloadTo(top.audio_url, join(hyperframesDir, file));
+        written.add(file);
         sfx.push({
           id,
           name,
@@ -111,15 +114,20 @@ export async function resolveSfx({ cues, heygenOK, headers, hyperframesDir, sfxL
       continue;
     }
     const src = join(sfxLibDir, hit.file);
-    const destRel = `assets/sfx/${hit.file}`;
+    const libraryCopy = `assets/sfx/${hit.file}`;
+    const isLibraryCopy = (rel) =>
+      existsSync(join(hyperframesDir, rel)) &&
+      existsSync(src) &&
+      readFileSync(join(hyperframesDir, rel)).equals(readFileSync(src));
+    const destRel = agentWritePath(hyperframesDir, libraryCopy, written, isLibraryCopy);
     const dest = join(hyperframesDir, destRel);
     // The bundled library may be incomplete: some installs of the skill ship
     // manifest.json without the actual mp3s. Pushing an sfx entry that points at
     // a file we never copied produces a dangling reference that silently drops
     // downstream ("not on disk"). Surface it as a loud anomaly and skip the cue
     // instead, so the audio_meta never references a missing file.
-    const reused = existsSync(dest);
-    if (!reused) {
+    // An agent-made copy already at `dest` stands in for a library file this install lacks.
+    if (!isLibraryCopy(destRel) && (existsSync(src) || !existsSync(dest))) {
       if (!existsSync(src)) {
         anomalies.push(
           `sfx "${name}" (id ${id}): bundled file ${hit.file} missing from the offline ` +
@@ -130,13 +138,12 @@ export async function resolveSfx({ cues, heygenOK, headers, hyperframesDir, sfxL
       }
       copyFileSync(src, dest);
     }
-    // A file already there that is not the library's copy is the person's own.
-    const own = reused && !(existsSync(src) && readFileSync(dest).equals(readFileSync(src)));
+    written.add(destRel);
     sfx.push({
       id,
       name,
       file: destRel,
-      source: own ? "project" : "local",
+      source: "local",
       offset_s: 0,
       duration_s: r3(hit.duration),
       volume: SFX_VOLUME,

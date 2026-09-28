@@ -1,10 +1,10 @@
 import { strict as assert } from "node:assert";
 import { test } from "node:test";
-import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { readManifest } from "../../../scripts/lib/manifest.mjs";
-import { recordInManifest, writtenAssets } from "./media-record.mjs";
+import { agentWritePath, recordInManifest, writtenAssets } from "./media-record.mjs";
 
 const noBgm = { bgm: null, bgmFields: { bgm_pending: false } };
 
@@ -110,4 +110,21 @@ test("a file that cannot be recorded becomes an anomaly, not a failure", (t) => 
 
   assert.equal(anomalies.length, 1);
   assert.match(anomalies[0], /^assets\/voice\/01\.wav: not recorded in the media manifest/);
+});
+
+test("the engine writes over only its own files, else the next free name", (t) => {
+  const dir = project(t);
+  mkdirSync(join(dir, "assets/sfx"), { recursive: true });
+  for (const name of ["mine.mp3", "made.mp3", "twice.mp3", "twice-2.mp3", "kept.mp3", "kept-2.mp3"])
+    writeFileSync(join(dir, "assets/sfx", name), name);
+  for (const path of ["assets/sfx/made.mp3", "assets/sfx/kept-2.mp3"])
+    recordInManifest(dir, [{ path, type: "sfx", source: "search" }]);
+  const at = (name, written) => agentWritePath(dir, `assets/sfx/${name}`, written);
+
+  assert.equal(at("new.mp3"), "assets/sfx/new.mp3");
+  assert.equal(at("mine.mp3"), "assets/sfx/mine-2.mp3");
+  assert.equal(at("made.mp3"), "assets/sfx/made.mp3");
+  assert.equal(at("mine.mp3", new Set(["assets/sfx/mine.mp3"])), "assets/sfx/mine.mp3");
+  assert.equal(at("twice.mp3"), "assets/sfx/twice-3.mp3");
+  assert.equal(at("kept.mp3"), "assets/sfx/kept-2.mp3");
 });

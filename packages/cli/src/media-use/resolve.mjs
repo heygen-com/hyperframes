@@ -5,6 +5,7 @@ import { existsSync, statSync, writeFileSync, renameSync, rmSync, realpathSync }
 import { resolve, join, extname, basename, relative, isAbsolute, sep } from "node:path";
 import { parseArgs } from "node:util";
 import {
+  AGENT_SOURCES,
   appendRecord,
   latestRecordFor,
   recordInPlace,
@@ -60,7 +61,7 @@ import {
 } from "./lib/local-media-search.mjs";
 
 const INGEST_TYPES = listTypes();
-const RECORDED_SOURCES = ["generated", "search", "bundled"];
+const RECORDED_SOURCES = AGENT_SOURCES;
 const DEFAULT_EXT = {
   bgm: ".wav",
   sfx: ".mp3",

@@ -1,6 +1,6 @@
 import { strict as assert } from "node:assert";
 import { test } from "node:test";
-import { mkdtempSync, rmSync, existsSync, writeFileSync } from "node:fs";
+import { mkdtempSync, mkdirSync, readFileSync, rmSync, existsSync, writeFileSync } from "node:fs";
 import { join, dirname } from "node:path";
 import { tmpdir } from "node:os";
 import { fileURLToPath } from "node:url";
@@ -48,9 +48,12 @@ test("an unknown cue is reported, not fatal", async () => {
   }
 });
 
-test("a person's own file under a bundled name is not labelled as the library's", async () => {
+test("a person's own file under a bundled name survives, and the cue gets the next free name", async () => {
   const dir = mkdtempSync(join(tmpdir(), "mu-audio-"));
   try {
+    const own = join(dir, "assets", "sfx", "whoosh.mp3");
+    mkdirSync(dirname(own), { recursive: true });
+    writeFileSync(own, "the person's own whoosh");
     const resolve = () =>
       resolveSfx({
         cues: [{ id: "1", name: "whoosh" }],
@@ -58,14 +61,21 @@ test("a person's own file under a bundled name is not labelled as the library's"
         hyperframesDir: dir,
         sfxLibDir,
       });
-    const copied = await resolve();
-    const reused = await resolve();
-    writeFileSync(join(dir, copied.sfx[0].file), "the person's own whoosh");
-    const own = await resolve();
 
+    const first = await resolve();
+    const second = await resolve();
+
+    assert.equal(readFileSync(own, "utf8"), "the person's own whoosh");
     assert.deepEqual(
-      [copied, reused, own].map(({ sfx }) => sfx[0].source),
-      ["local", "local", "project"],
+      [first, second].map(({ sfx }) => [sfx[0].file, sfx[0].source]),
+      [
+        ["assets/sfx/whoosh-2.mp3", "local"],
+        ["assets/sfx/whoosh-2.mp3", "local"],
+      ],
+    );
+    assert.deepEqual(
+      readFileSync(join(dir, "assets/sfx/whoosh-2.mp3")),
+      readFileSync(join(sfxLibDir, "whoosh.mp3")),
     );
   } finally {
     rmSync(dir, { recursive: true, force: true });

@@ -1,5 +1,26 @@
-import { recordInPlace } from "../../../scripts/lib/manifest.mjs";
+import { existsSync } from "node:fs";
+import { extname, join } from "node:path";
+import { AGENT_SOURCES, latestRecordFor, recordInPlace } from "../../../scripts/lib/manifest.mjs";
 import { regenerateIndex } from "../../../scripts/lib/index-gen.mjs";
+
+/**
+ * Where the engine may write `rel`: there, unless a file the person put there already is (one the manifest does
+ * not record as agent-made, not written earlier in this run, and not `reusable`); then the first such
+ * `name-2.ext`, `name-3.ext`.
+ */
+export function agentWritePath(hyperframesDir, rel, writtenThisRun = new Set(), reusable = () => false) {
+  const personal = (path) =>
+    existsSync(join(hyperframesDir, path)) &&
+    !writtenThisRun.has(path) &&
+    !reusable(path) &&
+    !AGENT_SOURCES.includes(latestRecordFor(hyperframesDir, path)?.source);
+  if (!personal(rel)) return rel;
+  const ext = extname(rel);
+  for (let n = 2; ; n++) {
+    const candidate = `${rel.slice(0, rel.length - ext.length)}-${n}${ext}`;
+    if (!personal(candidate)) return candidate;
+  }
+}
 
 const SFX_SOURCES = { heygen: "search", local: "bundled" };
 
