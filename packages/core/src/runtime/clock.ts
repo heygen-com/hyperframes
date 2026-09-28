@@ -87,11 +87,15 @@ export class TransportClock {
     const { el, compositionStart, mediaStart, rate } = source;
     if (el.paused || !Number.isFinite(el.currentTime)) return null;
     if (el.seeking) return this._lastNow;
-    const time = timeAtSourceTime(rate ?? 1, el.currentTime - mediaStart) + compositionStart;
-    if (time >= this._lastNow) return time;
-    if (el.loop && this._lastNow - time > timeAtSourceTime(rate ?? 1, el.duration) / 2) return null;
+    const spec = rate ?? 1;
+    const time = timeAtSourceTime(spec, el.currentTime - mediaStart) + compositionStart;
+    return time >= this._lastNow ? time : this._heldTimeWhenBehind(el, this._lastNow - time, spec);
+  }
+
+  private _heldTimeWhenBehind(el: HTMLMediaElement, behind: number, spec: RateSpec): number | null {
+    if (el.loop && behind > timeAtSourceTime(spec, el.duration) / 2) return null;
     const buffering = el.readyState < HAVE_FUTURE_DATA;
-    return buffering || this._lastNow - time <= MEDIA_HARD_SYNC_SECONDS ? this._lastNow : null;
+    return buffering || behind <= MEDIA_HARD_SYNC_SECONDS ? this._lastNow : null;
   }
 
   /** Folds a >500ms gap since the last read into `_playStartMs` so it's never reported as played time. */
