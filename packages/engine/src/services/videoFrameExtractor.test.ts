@@ -3283,7 +3283,7 @@ describe.skipIf(!HAS_ZSCALE)("forced-SDR HDR extraction", () => {
         "testsrc2=s=160x90:r=25:d=0.2",
         "-c:v",
         "libx264",
-        // No B-frames: genpts on a raw stream with reordering writes pts before dts and drops frames.
+        // No B-frames: genpts stamps a raw stream in decode order, so reordered frames get wrong times.
         "-bf",
         "0",
         "-pix_fmt",
@@ -3338,7 +3338,8 @@ describe.skipIf(!HAS_ZSCALE)("forced-SDR HDR extraction", () => {
     const segment = async (name: string, transfer: number) => {
       const path = join(fixtureDir, `trim-${name}.h264`);
       await run([
-        ...["-f", "lavfi", "-i", "testsrc2=s=160x90:r=25:d=2", "-c:v", "libx264", "-g", "50"],
+        ...["-f", "lavfi", "-i", "testsrc2=s=160x90:r=25:d=2"],
+        ...["-c:v", "libx264", "-g", "50", "-bf", "0"],
         ...["-pix_fmt", "yuv420p", "-bsf:v"],
         `h264_metadata=colour_primaries=9:transfer_characteristics=${transfer}:matrix_coefficients=9`,
         ...["-f", "h264", path],
