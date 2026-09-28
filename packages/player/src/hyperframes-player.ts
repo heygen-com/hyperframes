@@ -262,7 +262,7 @@ class HyperframesPlayer extends HTMLElement {
         break;
       case "type": {
         const src = this.getAttribute("src");
-        if (!this.isConnected || src === null || isVideoType(oldVal) === isVideoType(val)) break;
+        if (!this.isConnected || src === null || !!this._videoSource === this._wantsVideo()) break;
         this._navigateSrc(src);
         break;
       }
@@ -270,14 +270,14 @@ class HyperframesPlayer extends HTMLElement {
         if (!this.isConnected) break;
         this._pendingPlay = false;
         this._abandonComposition("Composition navigated before runtime data was applied");
-        // srcdoc wins over src, as in an iframe, so it also wins over a video src.
         if (val !== null) {
+          this._pauseForVideoSwitch();
           this._teardownVideo();
           this.iframe.srcdoc = prepareSrcdocForElement(this, val);
         } else {
           this.iframe.removeAttribute("srcdoc");
           const src = this.getAttribute("src");
-          if (src !== null) this._loadSrc(src);
+          if (src !== null && this._wantsVideo()) this._navigateSrc(src);
         }
         break;
       case SANDBOX_ORIGIN_ATTR:
@@ -434,7 +434,7 @@ class HyperframesPlayer extends HTMLElement {
     // after the user stopped playback.
     this._pendingPlay = false;
     if (!this._tryDirectTimelinePause()) this._sendControl("pause");
-    else this.controlsApi?.updateTime(this._currentTime, this._duration);
+    else this._showPausedVideoTime();
     this._directTimelineClock.stop();
     this._stopParentTickClock();
     if (this._media.audioOwner === "parent") this._media.pauseAll();
@@ -898,19 +898,29 @@ class HyperframesPlayer extends HTMLElement {
     if (this.hasAttribute("src")) this._loadSrc(this.getAttribute("src") || "");
   }
 
-  // A new source, like a new <video> src, starts paused and inherits no queued play.
+  // A different source inherits no queued play.
   private _navigateSrc(src: string): void {
     this._pendingPlay = false;
-    this._paused = true;
-    this.controlsApi?.updatePlaying(false);
+    this._pauseForVideoSwitch();
     this._abandonComposition("Composition navigated before runtime data was applied");
     this._loadSrc(src);
   }
 
-  /** Every `src` load: a `type="video/..."` source plays in a `<video>` unless `srcdoc` is set;
-   *  anything else is a composition in the iframe. */
+  /** A `type="video/..."` src plays in a `<video>`, unless `srcdoc` (which wins, as in an iframe)
+   *  shows a composition. */
+  private _wantsVideo(): boolean {
+    return isVideoType(this.getAttribute("type")) && !this.hasAttribute("srcdoc");
+  }
+
+  // Like a <video> given a new src, a switch into or out of a video starts paused.
+  private _pauseForVideoSwitch(): void {
+    if (!this._videoSource && !this._wantsVideo()) return;
+    this._paused = true;
+    this.controlsApi?.updatePlaying(false);
+  }
+
   private _loadSrc(src: string): void {
-    if (isVideoType(this.getAttribute("type")) && !this.hasAttribute("srcdoc")) {
+    if (this._wantsVideo()) {
       this._loadVideo(src);
       return;
     }
@@ -1042,11 +1052,15 @@ class HyperframesPlayer extends HTMLElement {
     return this._withDirectTimeline((tl) => void tl.play());
   }
   private _tryDirectTimelinePause(): boolean {
-    return this._withDirectTimeline((tl) => {
-      tl.pause();
-      // The clock samples every ~100 ms; the paused frame is the timeline's own time.
-      this._currentTime = tl.time();
-    });
+    return this._withDirectTimeline((tl) => void tl.pause());
+  }
+
+  // The clock samples every ~100 ms; like a <video>, a pause reports the exact frame.
+  private _showPausedVideoTime(): void {
+    if (!this._videoSource) return;
+    this._currentTime = this._videoSource.video.currentTime;
+    this.controlsApi?.updateTime(this._currentTime, this._duration);
+    this._emit(new CustomEvent("timeupdate", { detail: { currentTime: this._currentTime } }));
   }
 
   /**

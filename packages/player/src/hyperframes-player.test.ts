@@ -3451,6 +3451,63 @@ describe("HyperframesPlayer video mode", () => {
     expect(videoOf(upper).getAttribute("src")).toBe(FILM);
   });
 
+  it("fires timeupdate with the exact frame before pause", () => {
+    const video = videoOf(player);
+    loadMetadata(video);
+    player.play();
+    setMedia(video, { currentTime: 2.37 });
+    const seen: string[] = [];
+    player.addEventListener("timeupdate", (event) =>
+      seen.push(`timeupdate ${(event as CustomEvent<{ currentTime: number }>).detail.currentTime}`),
+    );
+    player.addEventListener("pause", () => seen.push("pause"));
+
+    player.pause();
+
+    expect(seen).toEqual(["timeupdate 2.37", "pause"]);
+  });
+
+  it("starts paused when srcdoc replaces a playing video", () => {
+    loadMetadata(videoOf(player));
+    player.play();
+
+    player.setAttribute("srcdoc", "<p>composition</p>");
+
+    expect(player.paused).toBe(true);
+  });
+
+  it("autoplays the video once srcdoc is removed from a playing composition", () => {
+    const both = createPlayer({
+      type: "video/mp4",
+      src: FILM,
+      srcdoc: "<p>composition</p>",
+      autoplay: "",
+      muted: "",
+    });
+    both.play();
+
+    both.removeAttribute("srcdoc");
+    loadMetadata(videoOf(both));
+
+    expect(playSpy).toHaveBeenCalledTimes(1);
+    expect(both.paused).toBe(false);
+  });
+
+  it("keeps a srcdoc composition when type changes under it", () => {
+    const both = createPlayer({ type: "video/mp4", src: FILM, srcdoc: "<p>composition</p>" });
+    window.dispatchEvent(
+      new MessageEvent("message", {
+        source: both.iframeElement.contentWindow,
+        data: { source: "hf-preview", type: "timeline", durationInFrames: 120, scenes: [] },
+      }),
+    );
+    expect(both.ready).toBe(true);
+
+    both.removeAttribute("type");
+
+    expect(both.ready).toBe(true);
+  });
+
   it("shows a new src as paused at the start in the controls", () => {
     const withControls = createPlayer({ type: "video/mp4", src: FILM, controls: "" });
     const video = videoOf(withControls);
@@ -3495,6 +3552,73 @@ describe("HyperframesPlayer video mode", () => {
     expect(player.shadowRoot?.querySelector("video")).toBeNull();
     expect(player.iframeElement.hidden).toBe(false);
     expect(player.iframeElement.src).toContain("film.mp4");
+  });
+});
+
+// Video mode must leave a player without a video type exactly as it was.
+describe("HyperframesPlayer composition behaviour outside video mode", () => {
+  type CompositionPlayer = HTMLElement & {
+    play: () => void;
+    pause: () => void;
+    currentTime: number;
+    paused: boolean;
+    iframeElement: HTMLIFrameElement;
+    _currentTime: number;
+    _directTimelineAdapter: unknown;
+  };
+  const COMPOSITION = "composition.html";
+
+  function createPlayer(attrs: Record<string, string>): CompositionPlayer {
+    const el = document.createElement("hyperframes-player") as CompositionPlayer;
+    for (const [name, value] of Object.entries(attrs)) el.setAttribute(name, value);
+    document.body.appendChild(el);
+    return el;
+  }
+
+  beforeEach(async () => {
+    await import("./hyperframes-player.js");
+  });
+
+  afterEach(() => {
+    document.body.innerHTML = "";
+    vi.restoreAllMocks();
+  });
+
+  it("does not reset paused when a composition src changes", () => {
+    const player = createPlayer({ src: COMPOSITION });
+    player.play();
+
+    player.setAttribute("src", "other-composition.html");
+
+    expect(player.paused).toBe(false);
+  });
+
+  it("keeps the last clock sample when a direct timeline pauses", () => {
+    const player = createPlayer({ src: COMPOSITION });
+    player._directTimelineAdapter = {
+      duration: () => 6,
+      time: () => 2.37,
+      seek: () => {},
+      play: () => {},
+      pause: () => {},
+    };
+    player._currentTime = 1;
+    const updates: Event[] = [];
+    player.addEventListener("timeupdate", (event) => updates.push(event));
+
+    player.pause();
+
+    expect(player.currentTime).toBe(1);
+    expect(updates).toEqual([]);
+  });
+
+  it("does not reload src when srcdoc is removed", () => {
+    const player = createPlayer({ src: COMPOSITION, srcdoc: "<p>composition</p>" });
+    player.iframeElement.setAttribute("src", "about:blank#kept");
+
+    player.removeAttribute("srcdoc");
+
+    expect(player.iframeElement.getAttribute("src")).toBe("about:blank#kept");
   });
 });
 
