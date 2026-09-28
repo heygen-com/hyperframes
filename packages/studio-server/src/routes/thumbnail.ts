@@ -216,7 +216,8 @@ export function registerThumbnailRoutes(api: Hono, adapter: StudioApiAdapter): v
         headers: { "Content-Type": contentType, "Cache-Control": "no-cache" },
       });
     }
-    if (url.searchParams.get("cached") === "1") return c.body(null, 404);
+    if (url.searchParams.get("cached") === "1")
+      return c.body(null, 204, { "Cache-Control": "no-cache" });
 
     try {
       const buffer = await thumbnailGenerationCoordinator.acquire(
