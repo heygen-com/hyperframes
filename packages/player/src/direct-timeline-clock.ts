@@ -10,6 +10,7 @@
 import type { DirectTimelineAdapter } from "./timeline-adapters.js";
 
 const UI_UPDATE_INTERVAL_MS = 100;
+const MAX_PLAYBACK_STEP_BETWEEN_CHECKS_S = 0.5;
 
 export interface ClockCallbacks {
   /** Called every ~100ms and on completion with the current time. */
@@ -24,9 +25,18 @@ export interface ClockCallbacks {
   onPaused: () => void;
 }
 
+// A range ending inside the film stops a check early, so the frame past it never shows.
+function reachedStop(time: number, step: number, stop: { end: number; shown: number }): boolean {
+  if (stop.end <= 0) return false;
+  const early =
+    stop.shown < stop.end && step > 0 && step <= MAX_PLAYBACK_STEP_BETWEEN_CHECKS_S ? step : 0;
+  return time + early >= stop.end;
+}
+
 export class DirectTimelineClock {
   private _raf: number | null = null;
   private _lastUpdateMs = 0;
+  private _tick: (() => void) | null = null;
 
   constructor(private readonly _callbacks: ClockCallbacks) {}
 
@@ -38,6 +48,7 @@ export class DirectTimelineClock {
     getStop: () => { end: number; shown: number },
   ): void {
     this.stop();
+    let lastTime: number | null = null;
 
     const tick = () => {
       if (isPaused()) {
@@ -57,7 +68,9 @@ export class DirectTimelineClock {
       const stop = getStop();
       if (stop.end > 0) currentTime = Math.min(currentTime, stop.end);
 
-      const completedPlayback = stop.end > 0 && currentTime >= stop.end;
+      const step = lastTime === null ? 0 : currentTime - lastTime;
+      lastTime = currentTime;
+      const completedPlayback = reachedStop(currentTime, step, stop);
       if (completedPlayback) currentTime = stop.shown;
       const now = performance.now();
 
@@ -85,7 +98,15 @@ export class DirectTimelineClock {
       this._raf = requestAnimationFrame(tick);
     };
 
+    this._tick = tick;
     this._raf = requestAnimationFrame(tick);
+  }
+
+  /** Runs one check now, for a hidden tab, which runs no animation frames. */
+  poll(): void {
+    if (this._raf === null || !this._tick) return;
+    cancelAnimationFrame(this._raf);
+    this._tick();
   }
 
   stop(): void {

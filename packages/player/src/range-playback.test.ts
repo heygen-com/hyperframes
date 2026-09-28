@@ -377,6 +377,53 @@ describe("HyperframesPlayer range playback: video and direct timelines", () => {
     expect(events.at(-1)).toBe('rangeclamped@2.1 {"rangeStart":2.1,"rangeEnd":2.4,"duration":2.4}');
   });
 
+  it("stops a check early at a range end inside the film, never at the film's own end", () => {
+    player = createPlayer({ type: "video/mp4", src: "https://cdn.example.com/film.mp4" });
+    player.setAttribute("range-end", "3");
+    document.body.appendChild(player);
+    const video = player.shadowRoot!.querySelector("video")!;
+    setMedia(video, { duration: 6, videoWidth: 640, videoHeight: 360 });
+    video.dispatchEvent(new Event("loadedmetadata"));
+
+    player.play();
+    setMedia(video, { currentTime: 2.95 });
+    flushFrame();
+    setMedia(video, { currentTime: 2.99 });
+    flushFrame();
+    expect(ranEvents()).toEqual(["ready@0", "ended@2.983"]);
+
+    player.removeAttribute("range-end");
+    player.seek(5.9);
+    player.play();
+    setMedia(video, { currentTime: 5.95 });
+    flushFrame();
+    setMedia(video, { currentTime: 5.99 });
+    flushFrame();
+    expect(player.paused).toBe(false);
+  });
+
+  it("checks a video's range end on its timeupdate while the tab is hidden", () => {
+    player = createPlayer({ type: "video/mp4", src: "https://cdn.example.com/film.mp4" });
+    player.setAttribute("range-end", "3");
+    document.body.appendChild(player);
+    const video = player.shadowRoot!.querySelector("video")!;
+    setMedia(video, { duration: 6, videoWidth: 640, videoHeight: 360 });
+    video.dispatchEvent(new Event("loadedmetadata"));
+
+    player.play();
+    setMedia(video, { currentTime: 3.01 });
+    video.dispatchEvent(new Event("timeupdate"));
+    expect(player.paused).toBe(false);
+
+    Object.defineProperty(document, "hidden", { configurable: true, value: true });
+    try {
+      video.dispatchEvent(new Event("timeupdate"));
+    } finally {
+      delete (document as { hidden?: boolean }).hidden;
+    }
+    expect(ranEvents()).toEqual(["ready@0", "ended@2.983"]);
+  });
+
   it("parks, stops on the last frame inside and wraps a same-origin __timelines composition", () => {
     let time = 0;
     const tl = {
