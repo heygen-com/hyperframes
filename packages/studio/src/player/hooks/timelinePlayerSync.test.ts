@@ -11,6 +11,8 @@ describe("timelineElementsChanged", () => {
     ["hidden", { hidden: true }],
     ["audio group volume", { audioGroupVolume: 0 }],
     ["audio group hidden", { audioGroupHidden: true }],
+    ["fade in", { fadeIn: 1 }],
+    ["fade out", { fadeOut: 1 }],
   ])("sees a clip whose %s changed with no timing change", (_name, change) => {
     expect(timelineElementsChanged([clip], [{ ...clip, ...change }])).toBe(true);
     expect(timelineElementsChanged([{ ...clip, ...change }], [{ ...clip, ...change }])).toBe(false);
