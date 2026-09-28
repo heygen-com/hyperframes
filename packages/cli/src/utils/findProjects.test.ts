@@ -8,7 +8,7 @@ import {
   writeFileSync,
 } from "node:fs";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { join, relative, sep } from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { findProjects, type FoundProject } from "./findProjects.js";
 
@@ -22,7 +22,7 @@ afterEach(() => {
 });
 
 function tree(files: string[]): string {
-  const root = realpathSync(mkdtempSync(join(tmpdir(), "hf-find-projects-")));
+  const root = realpathSync.native(mkdtempSync(join(tmpdir(), "hf-find-projects-")));
   roots.push(root);
   for (const file of files) {
     mkdirSync(join(root, file, ".."), { recursive: true });
@@ -42,7 +42,7 @@ async function find(root: string, spotlight: string[] = []): Promise<FoundProjec
 }
 
 const paths = (root: string, found: FoundProject[]) =>
-  found.map((project) => project.path.slice(root.length + 1)).sort();
+  found.map((project) => relative(root, project.path).split(sep).join("/")).sort();
 
 describe("findProjects", () => {
   it("finds a folder with index.html and a project marker, and nothing else", async () => {
@@ -91,9 +91,12 @@ describe("findProjects", () => {
       "Movies/Library/film/index.html",
       "Movies/Library/film/meta.json",
     ]);
-    vi.stubEnv("HOME", root);
+    vi.stubEnv("HOME", root + sep);
+    vi.stubEnv("USERPROFILE", root + sep);
 
-    expect(paths(root, await find(root))).toEqual(["Movies/Library/film"]);
+    const found = await find(root, ["Library/film/meta.json", "Movies/Library/film/meta.json"]);
+
+    expect(paths(root, found)).toEqual(["Movies/Library/film"]);
   });
 
   it("does not look for projects inside a project", async () => {
@@ -114,7 +117,7 @@ describe("findProjects", () => {
     expect(paths(root, await find(root))).toEqual(["film"]);
   });
 
-  it.skipIf(process.getuid?.() === 0)(
+  it.skipIf(process.platform === "win32" || process.getuid?.() === 0)(
     "finishes past a symlink loop and an unreadable folder",
     async () => {
       const root = tree([
