@@ -3220,8 +3220,17 @@ describe("initSandboxRuntimeModular", () => {
     expect(startedAt[0]).toBeGreaterThanOrEqual(1 - 0.02);
   });
 
-  it("stops a clip it started early when a seek jumps back before it", () => {
+  const setRate = (playbackRate: number) =>
+    window.dispatchEvent(
+      new MessageEvent("message", {
+        source: window.parent,
+        data: { source: "hf-parent", type: "control", action: "set-playback-rate", playbackRate },
+      }),
+    );
+
+  it.each([1, 4])("stops a clip it started early when a seek jumps back before it, at %sx", (rate) => {
     const { raf, sfx, startedAt } = mountLateSfx();
+    setRate(rate);
     window.__player?.play();
     for (let frame = 0; frame < 75 && startedAt.length === 0; frame++) raf.step(16);
     expect(startedAt[0]).toBeLessThan(1);
@@ -3245,14 +3254,9 @@ describe("initSandboxRuntimeModular", () => {
 
   it("starts a clip at most 40 ms of real time early at a slow speed", () => {
     const { raf, startedAt } = mountLateSfx();
-    window.dispatchEvent(
-      new MessageEvent("message", {
-        source: window.parent,
-        data: { source: "hf-parent", type: "control", action: "set-playback-rate", playbackRate: 0.25 },
-      }),
-    );
+    setRate(0.25);
     window.__player?.play();
-    for (let frame = 0; frame < 60 && startedAt.length === 0; frame++) raf.step(100);
+    for (let frame = 0; frame < 60 && startedAt.length === 0; frame++) raf.step(90);
 
     expect(startedAt[0]).toBeGreaterThanOrEqual(1 - 0.04 * 0.25);
   });

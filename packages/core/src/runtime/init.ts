@@ -2981,7 +2981,7 @@ export function initSandboxRuntimeModular(): void {
       state.isPlaying && !state.mediaForceSyncNextTick && lastSyncedMediaTimeSeconds !== null
         ? Math.min(
             Math.max(0, state.currentTime - lastSyncedMediaTimeSeconds),
-            MEDIA_SYNC_TOLERANCE_SECONDS * state.playbackRate,
+            MEDIA_SYNC_TOLERANCE_SECONDS * Math.min(1, state.playbackRate),
           )
         : 0;
     const mediaClips = withTimingResolver(() => {
