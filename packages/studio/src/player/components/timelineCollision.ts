@@ -80,7 +80,7 @@ export function resolveNearestFreeStart(
     .filter((el) => (el.key ?? el.id) !== excludeKey && el.track === track)
     .sort((a, b) => a.start - b.start);
   let best = Number.POSITIVE_INFINITY;
-  let gapStart = ceilCenti(minStart);
+  let gapStart = minStart;
   for (const el of [...busy, null]) {
     const latest = el ? floorCenti(el.start - duration) : Number.POSITIVE_INFINITY;
     if (latest >= gapStart) {

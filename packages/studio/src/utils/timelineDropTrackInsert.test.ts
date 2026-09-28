@@ -99,6 +99,41 @@ describe("applyTrackRenumbers", () => {
 });
 
 describe("resolveDropTrack", () => {
+  // Title shows on row 0; Music is written on track 0 too but shows on audio row 1.
+  const shown = (
+    id: string,
+    tag: string,
+    row: number,
+    track: number,
+    start: number,
+    length: number,
+  ) => ({
+    ...clip(id, row, start),
+    tag,
+    duration: length,
+    authoredTrack: track,
+  });
+  const title = shown("title", "div", 0, 0, 0, 10);
+  const music = shown("music", "audio", 1, 0, 2, 3);
+  const song = { id: "song", tag: "audio", start: 2, duration: 3 };
+  const drop = (elements: TimelineElement[], row: number, dropped = song) =>
+    resolveDropTrack({ source, elements, placement: { track: row }, dropped });
+
+  it("joins an audio row's file track at the nearest free time, not a new track", () => {
+    expect(drop([title, music], 1)).toMatchObject({ track: 0, start: 5 });
+  });
+
+  it("keeps an audio file dropped on a visual row off the audio clip on the track it is written to", () => {
+    expect(drop([title, music], 0)).toMatchObject({ track: 0, start: 5 });
+  });
+
+  it("writes a drop on a shown row to that row's file track and checks the clips there", () => {
+    const top = shown("top", "div", 0, 0, 0, 4);
+    const lower = shown("lower", "div", 1, 2, 0, 4); // file track 2, shown as row 1
+    const image = { id: "image", tag: "img", start: 1, duration: 3 };
+    expect(drop([top, lower], 1, image)).toMatchObject({ track: 2, start: 4 });
+  });
+
   it("lets only clips of the dropped file's kind block it on the row", () => {
     const title = clip("title", 0, 0);
     const music = { ...clip("music", 0, 0), tag: "audio" };

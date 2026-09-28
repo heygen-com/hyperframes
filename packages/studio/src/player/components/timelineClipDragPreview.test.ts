@@ -530,4 +530,49 @@ describe("computeDragPreview — a group move keeps its shape", () => {
     );
     expect(moved).toEqual({ a: 3, b: 3 });
   });
+
+  // Drags `grabbed` by `seconds` onto `row` and commits; returns each written clip's start.
+  function groupMove(
+    grabbed: TimelineElement,
+    elements: TimelineElement[],
+    selectedKeys: ReadonlySet<string>,
+    row: number,
+    seconds: number,
+  ) {
+    const { drag } = horizontalDrag(grabbed, grabbed.track + 0.5, 0);
+    const ghost = computeDragPreview(drag, 800 + seconds * PPS, yForRow(row + 0.5), {
+      ...ctx(undefined, elements),
+      selectedKeys,
+    });
+    const onMoveElements = vi.fn();
+    commitDraggedClipMove(ghost, {
+      elements,
+      trackOrder: [0, 1, 2],
+      updateElement: vi.fn(),
+      onMoveElement: vi.fn(),
+      onMoveElements,
+      selectedKeys,
+    });
+    const edits = onMoveElements.mock.calls[0][0] as Array<{
+      element: TimelineElement;
+      updates: { start: number; track: number };
+    }>;
+    return Object.fromEntries(edits.map((e) => [e.element.id, e.updates]));
+  }
+
+  it("lets a group whose leftmost clip starts off the centisecond grid reach 0 exactly", () => {
+    const a = clip("a", 1, 0.333, 1, 1);
+    const b = clip("b", 0, 7, 2, 1);
+    const written = groupMove(b, [a, b], new Set(["a", "b"]), 0, -20);
+    expect(written.a.start).toBe(0);
+    expect(written.b.start).toBeCloseTo(6.667, 6);
+  });
+
+  it("treats a locked clip swept into the selection as an obstacle, since it does not move", () => {
+    const locked: TimelineElement = { ...clip("locked", 0, 4, 2, 1), timelineLocked: true };
+    const b = clip("b", 1, 0, 1, 1);
+    const written = groupMove(b, [locked, b], new Set(["locked", "b"]), 0, 4.5);
+    // 4.5 s overlaps the locked 4-6 s clip; 3 s and 6 s are equally near, and a tie goes later.
+    expect(written).toEqual({ b: { start: 6, track: 0 } });
+  });
 });

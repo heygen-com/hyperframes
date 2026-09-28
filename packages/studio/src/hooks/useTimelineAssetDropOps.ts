@@ -144,8 +144,8 @@ export function useTimelineAssetDropOps({
           newId = buildTimelineAssetId(assetPath, collectHtmlIds(originalContent));
           const resolved = resolveDropTrack({
             source: originalContent,
-            // insertRow counts the rows the timeline shows, so plan against those.
-            elements: gesture.onNewTrack ? [...gesture.placed] : relevantElements,
+            // Rows and insertRow count the rows the timeline shows, so plan against those.
+            elements: gesture.onNewTrack ? gesture.placed : relevantElements,
             placement,
             dropped: {
               id: newId,
@@ -191,7 +191,15 @@ export function useTimelineAssetDropOps({
         selectAndRevealTimelineElement(deriveTimelineStoreKeyForDomId(newId, targetPath));
         forceReloadSdkSession?.();
         reloadPreview();
-        return { id: newId, tag, start, duration: normalizedDuration, track };
+        const lane = placement.insertRow == null ? placement.track : track;
+        return {
+          id: newId,
+          tag,
+          start,
+          duration: normalizedDuration,
+          track: lane,
+          authoredTrack: track,
+        };
       } catch (error) {
         const message =
           error instanceof Error ? error.message : "Failed to drop asset onto timeline";

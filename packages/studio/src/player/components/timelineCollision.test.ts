@@ -69,6 +69,7 @@ describe("resolveNearestFreeStart", () => {
     const blocked = [el("c", 0, 6.4, 3.6)]; // busy [6.4,10)
     expect(resolveNearestFreeStart(blocked, 0, 6.5, 2, null)).toBe(4.4);
     expect(resolveNearestFreeStart(blocked, 0, 6.5, 2, null, 6.5)).toBe(10);
+    expect(resolveNearestFreeStart([], 0, 6.667, 2, null, 6.667)).toBe(6.667); // not rounded up
   });
 
   it("keeps a gap-bound start on centiseconds so a written start cannot overlap", () => {

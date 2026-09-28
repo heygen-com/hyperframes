@@ -19,7 +19,7 @@ import {
   applyTimelineGroupResizePreview,
   type TimelineGroupResizeSession,
 } from "./timelineGroupEditing";
-import { clampGroupMoveDelta } from "./timelineMultiDragPreview";
+import { groupMoveFloor, resolveGroupMovers } from "./timelineMultiDragPreview";
 import type { DraggedClipState, ResizingClipState } from "./timelineClipDragTypes";
 import { STUDIO_PREVIEW_FPS } from "../lib/time";
 
@@ -71,35 +71,6 @@ function resolveDragMaxStart(scroll: HTMLDivElement | null, pps: number, duratio
   return Math.max(duration, scroll && pps > 0 ? scroll.scrollWidth / pps : duration);
 }
 
-/**
- * Rigid group move: when the grabbed clip is part of a multi-selection, the
- * WHOLE formation shifts by its delta on commit (see timelineClipDragCommit).
- * Clamp that delta here — against every selected member's start — so the
- * grabbed clip can't out-run the group: it STOPS the instant any member would
- * cross 0, exactly as it lands on commit. Lane changes still apply to the
- * grabbed clip only, so only the start (x) is constrained.
- */
-function resolveGroupClampedStart(
-  snapStart: number,
-  element: TimelineElement,
-  dragKey: string,
-  elements: TimelineElement[],
-  selectedKeys: ReadonlySet<string>,
-): number {
-  if (!isGroupedDrag(dragKey, selectedKeys)) return snapStart;
-  const clampedDelta = clampGroupMoveDelta(
-    snapStart - element.start,
-    groupMemberStarts(elements, selectedKeys),
-  );
-  return element.start + clampedDelta;
-}
-
-const isGroupedDrag = (dragKey: string, selectedKeys: ReadonlySet<string>) =>
-  selectedKeys.size > 1 && selectedKeys.has(dragKey);
-
-const groupMemberStarts = (elements: TimelineElement[], selectedKeys: ReadonlySet<string>) =>
-  elements.filter((e) => selectedKeys.has(e.key ?? e.id)).map((e) => e.start);
-
 /** The drop decision for the pointer's row (see resolveZoneDropPlacement). */
 function resolveDropPlacement(
   drag: DraggedClipState,
@@ -107,8 +78,9 @@ function resolveDropPlacement(
   previewStart: number,
   desiredTrack: number,
   ctx: DragPreviewContext,
+  group: GroupDrag,
 ): { track: number; insertRow: number | null; start: number } {
-  const { scroll, trackOrder, rowHeights, elements, selectedKeys } = ctx;
+  const { scroll, trackOrder, rowHeights, elements } = ctx;
   const rowFloat = scroll
     ? getTimelineRowFromY(
         clientY - scroll.getBoundingClientRect().top + scroll.scrollTop,
@@ -116,28 +88,41 @@ function resolveDropPlacement(
       )
     : 0;
   const dragKey = drag.element.key ?? drag.element.id;
-  // A multi-selection moves rigidly: its other members are not obstacles for the grabbed clip,
-  // and the grabbed clip may not move so far left that a member would cross 0.
-  const grouped = isGroupedDrag(dragKey, selectedKeys);
-  const obstacles = grouped ? elements.filter((e) => !selectedKeys.has(e.key ?? e.id)) : elements;
-  const groupFloor = grouped
-    ? drag.element.start -
-      Math.min(drag.element.start, ...groupMemberStarts(elements, selectedKeys))
-    : 0;
   const audioTracks =
     ctx.audioTracks ?? new Set(elements.filter(isAudioTimelineElement).map((e) => e.track));
   return resolveZoneDropPlacement({
     order: trackOrder,
     audioTracks,
-    elements: obstacles,
+    elements: group.obstacles,
     desiredTrack,
     deliberateInsertRow: resolveInsertRow(rowFloat, trackOrder.length),
     start: previewStart,
     duration: drag.element.duration,
     dragKey,
     isAudio: isAudioTimelineElement(drag.element),
-    minStart: groupFloor,
+    minStart: group.floor,
   });
+}
+
+interface GroupDrag {
+  /** Clips the grabbed clip may not overlap: everything but the clips that move with it. */
+  obstacles: TimelineElement[];
+  /** Lowest start the grabbed clip may take (see groupMoveFloor). */
+  floor: number;
+}
+
+function resolveGroupDrag(drag: DraggedClipState, ctx: DragPreviewContext): GroupDrag {
+  const movers = resolveGroupMovers(
+    ctx.elements,
+    ctx.selectedKeys,
+    drag.element.key ?? drag.element.id,
+  );
+  if (!movers) return { obstacles: ctx.elements, floor: 0 };
+  const moving = new Set(movers.map((e) => e.key ?? e.id));
+  return {
+    obstacles: ctx.elements.filter((e) => !moving.has(e.key ?? e.id)),
+    floor: groupMoveFloor(drag.element.start, movers),
+  };
 }
 
 /** Recompute the dragged-clip preview (move + snap + group clamp + drop placement). */
@@ -147,7 +132,7 @@ export function computeDragPreview(
   clientY: number,
   ctx: DragPreviewContext,
 ): DraggedClipState {
-  const { scroll, pps, duration, trackOrder, elements, selectedKeys, buildSnapTargets } = ctx;
+  const { scroll, pps, duration, trackOrder, buildSnapTargets } = ctx;
   const dragMaxStart = resolveDragMaxStart(scroll, pps, duration);
   const scrollTop = scroll?.scrollTop ?? drag.originScrollTop;
   const scrollRectTop = scroll?.getBoundingClientRect().top ?? 0;
@@ -189,15 +174,10 @@ export function computeDragPreview(
     // rendered extent (see dragMaxStart) — the composition grows on commit.
     dragMaxStart + drag.element.duration,
   );
-  const dragKey = drag.element.key ?? drag.element.id;
-  const previewStart = resolveGroupClampedStart(
-    snap.start,
-    drag.element,
-    dragKey,
-    elements,
-    selectedKeys,
-  );
-  const placement = resolveDropPlacement(drag, clientY, previewStart, nextMove.track, ctx);
+  // A group moves rigidly: the grabbed clip stops where the leftmost mover would cross 0.
+  const group = resolveGroupDrag(drag, ctx);
+  const previewStart = Math.max(snap.start, group.floor);
+  const placement = resolveDropPlacement(drag, clientY, previewStart, nextMove.track, ctx, group);
   const { track: previewTrack, insertRow } = placement;
   return {
     ...drag,

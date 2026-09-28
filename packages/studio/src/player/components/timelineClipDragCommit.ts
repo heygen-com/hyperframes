@@ -18,6 +18,7 @@ import {
 import { runLaneZGesture } from "../../components/nle/zLaneGesture";
 import { refreshAfterDurableLaneMove } from "./timelineLaneMoveRefresh";
 import { authoredTrackForLane } from "./timelineAuthoredTrack";
+import { resolveGroupMovers } from "./timelineMultiDragPreview";
 
 type StartTrack = Pick<TimelineElement, "start" | "track">;
 export interface TimelineMoveEdit {
@@ -186,15 +187,10 @@ function resolveMultiSelection(
   keys: ReadonlySet<string>;
   movedStart: (e: TimelineElement) => number;
 } | null {
-  const { elements, selectedKeys } = deps;
   const dragKey = keyOf(drag.element);
-  if (!selectedKeys || selectedKeys.size <= 1 || !selectedKeys.has(dragKey)) return null;
-  const keys = new Set(
-    [...selectedKeys].filter((k) => {
-      const el = elements.find((e) => keyOf(e) === k);
-      return el ? canMoveElement(el) : false;
-    }),
-  );
+  const movers = resolveGroupMovers(deps.elements, deps.selectedKeys, dragKey);
+  if (!movers) return null;
+  const keys = new Set(movers.map(keyOf));
   const delta = drag.previewStart - drag.element.start;
   const movedStart = (e: TimelineElement): number =>
     keyOf(e) === dragKey ? drag.previewStart : Math.max(0, round3(e.start + delta));
