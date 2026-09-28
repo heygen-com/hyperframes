@@ -28,7 +28,16 @@
  *     `success: false`.
  */
 
-import { copyFileSync, existsSync, mkdirSync, readdirSync, rmSync, statSync } from "node:fs";
+import {
+  copyFileSync,
+  existsSync,
+  mkdirSync,
+  readdirSync,
+  readFileSync,
+  rmSync,
+  statSync,
+  writeFileSync,
+} from "node:fs";
 import { dirname, join } from "node:path";
 import {
   encodeFramesChunkedConcat,
@@ -41,7 +50,11 @@ import {
   type EngineConfig,
   type EncodeResult,
 } from "@hyperframes/engine";
-import type { Fps } from "@hyperframes/core";
+import {
+  clearGifFramesBeforeNext,
+  gifClearsAfterLeavingFrameInPlace,
+  type Fps,
+} from "@hyperframes/core";
 import type { ProducerLogger } from "../../../logger.js";
 import { formatExportFrameName } from "../../../utils/paths.js";
 import type { ProgressCallback, RenderJob } from "../../renderOrchestrator.js";
@@ -131,6 +144,43 @@ function resolveGifLoop(loop: number | undefined): number {
   return resolved;
 }
 
+function gifEncodeFailure(
+  startTime: number,
+  outputPath: string,
+  error: string,
+  failureReason?: EncodeResult["failureReason"],
+): EncodeResult {
+  return {
+    success: false,
+    outputPath,
+    durationMs: Date.now() - startTime,
+    framesEncoded: 0,
+    fileSize: 0,
+    error,
+    failureReason,
+  };
+}
+
+async function reencodeWithClearedWholeFrames(
+  argsInput: GifEncodeArgsInput,
+  run: { signal?: AbortSignal; timeout: number },
+  startTime: number,
+): Promise<EncodeResult | null> {
+  const { outputPath } = argsInput;
+  const result = await runFfmpeg(buildGifPaletteuseArgs({ ...argsInput, wholeFrames: true }), run);
+  if (!result.success) {
+    const error = formatFfmpegError(result.exitCode, result.stderr);
+    return gifEncodeFailure(startTime, outputPath, error, result.failureReason);
+  }
+  const gif = readFileSync(outputPath);
+  if (!clearGifFramesBeforeNext(gif)) {
+    const error = "[FFmpeg] GIF output could not be parsed to clear its frames";
+    return gifEncodeFailure(startTime, outputPath, error);
+  }
+  writeFileSync(outputPath, gif);
+  return null;
+}
+
 async function encodeGifFromDir(
   framesDir: string,
   framePattern: string,
@@ -148,14 +198,7 @@ async function encodeGifFromDir(
   const files = readdirSync(framesDir).filter((file) => file.match(/\.(jpg|jpeg|png)$/i));
   const frameCount = files.length;
   if (frameCount === 0) {
-    return {
-      success: false,
-      outputPath,
-      durationMs: Date.now() - startTime,
-      framesEncoded: 0,
-      fileSize: 0,
-      error: "[FFmpeg] No frame files found in directory",
-    };
+    return gifEncodeFailure(startTime, outputPath, "[FFmpeg] No frame files found in directory");
   }
 
   const argsInput: GifEncodeArgsInput = {
@@ -168,36 +211,20 @@ async function encodeGifFromDir(
     preserveAlpha: input.preserveAlpha,
   };
   try {
-    const paletteResult = await runFfmpeg(buildGifPalettegenArgs(argsInput), {
-      signal: input.signal,
-      timeout: input.timeout,
-    });
-    if (!paletteResult.success) {
-      return {
-        success: false,
-        outputPath,
-        durationMs: Date.now() - startTime,
-        framesEncoded: 0,
-        fileSize: 0,
-        error: formatFfmpegError(paletteResult.exitCode, paletteResult.stderr),
-        failureReason: paletteResult.failureReason,
-      };
+    const run = { signal: input.signal, timeout: input.timeout };
+    for (const args of [buildGifPalettegenArgs(argsInput), buildGifPaletteuseArgs(argsInput)]) {
+      const result = await runFfmpeg(args, run);
+      if (!result.success) {
+        const error = formatFfmpegError(result.exitCode, result.stderr);
+        return gifEncodeFailure(startTime, outputPath, error, result.failureReason);
+      }
     }
-
-    const gifResult = await runFfmpeg(buildGifPaletteuseArgs(argsInput), {
-      signal: input.signal,
-      timeout: input.timeout,
-    });
-    if (!gifResult.success) {
-      return {
-        success: false,
-        outputPath,
-        durationMs: Date.now() - startTime,
-        framesEncoded: 0,
-        fileSize: 0,
-        error: formatFfmpegError(gifResult.exitCode, gifResult.stderr),
-        failureReason: gifResult.failureReason,
-      };
+    if (
+      input.preserveAlpha &&
+      gifClearsAfterLeavingFrameInPlace(readFileSync(outputPath)) !== false
+    ) {
+      const failure = await reencodeWithClearedWholeFrames(argsInput, run, startTime);
+      if (failure) return failure;
     }
 
     const fileSize = existsSync(outputPath) ? statSync(outputPath).size : 0;

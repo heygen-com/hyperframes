@@ -16,6 +16,7 @@ import { buildProjectApiPath } from "../../utils/projectRouting";
 // ---------------------------------------------------------------------------
 
 import type { FeedbackContext } from "./feedbackTrigger";
+import { isMediaFile } from "../../utils/mediaTypes";
 
 /** Written by `hyperframes init`; absent in a hand-made or copied project. */
 const CONFIG_FILE = "hyperframes.json";
@@ -23,12 +24,10 @@ const CONFIG_FILE = "hyperframes.json";
 /** Matches the CLI's own slug gate, so a hand-edited value cannot leak text. */
 const SKILL_SLUG = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
 
-const MEDIA_EXTENSIONS = /\.(mp4|mov|webm|m4v|mp3|wav|m4a|aac|ogg|png|jpe?g|gif|webp|svg|avif)$/i;
-
 let snapshot: FeedbackContext = {};
 
 function countMedia(files: string[]): number {
-  return files.filter((f) => MEDIA_EXTENSIONS.test(f)).length;
+  return files.filter(isMediaFile).length;
 }
 
 /**

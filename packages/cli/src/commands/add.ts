@@ -14,7 +14,12 @@ export const examples: Example[] = [
 import { existsSync, readFileSync } from "node:fs";
 import { parseHTML } from "linkedom";
 import { resolve, relative } from "node:path";
-import { ITEM_TYPE_DIRS, realpath, type RegistryItem } from "@hyperframes/core";
+import {
+  isProjectRootMissing,
+  ITEM_TYPE_DIRS,
+  realpath,
+  type RegistryItem,
+} from "@hyperframes/core";
 import { c } from "../ui/colors.js";
 import {
   DEFAULT_REGISTRY_URL,
@@ -273,6 +278,7 @@ async function installAll(
       }
     }
   } catch (err) {
+    if (isProjectRootMissing(err)) throw err;
     if (err instanceof InvalidVariableValuesError) throw new AddError(err.message, "invalid-vars");
     throw new AddError(describeInstallFailure(err, baseUrl), "install-failed");
   }

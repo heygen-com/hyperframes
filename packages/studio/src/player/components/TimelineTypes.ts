@@ -4,18 +4,20 @@ import type { TimelineTimeRange } from "../store/rangeSelectionSlice";
 import type { TimelineDropCallbacks } from "./timelineCallbacks";
 import type { TimelineTheme } from "./timelineTheme";
 import type { TimelineEditOverrides } from "./useResolvedTimelineEditCallbacks";
+import type { TimelineStackingSyncProps } from "./useTimelineStackingSync";
 
 export interface TimelineClipRenderContext {
   priority: "overscan" | "visible" | "interaction";
   rich: boolean;
 }
 
-export interface TimelineProps extends TimelineDropCallbacks, TimelineEditOverrides {
+export interface TimelineProps
+  extends TimelineDropCallbacks, TimelineEditOverrides, TimelineStackingSyncProps {
   /** Project-scoped reset boundary; soft source refreshes retain the same epoch. */
   sessionEpoch?: number;
-  /** keepPlaying: true preserves the current play state across the seek. */
   onSeek?: (time: number, options?: { keepPlaying?: boolean }) => void;
   onDrillDown?: (element: TimelineElement) => void;
+  /** Picture only: takes no pointer input. Interactive content goes in renderClipOverlay. */
   renderClipContent?: (
     element: TimelineElement,
     style: { clip: string; label: string },

@@ -26,6 +26,7 @@ import {
 } from "../helpers/fileVersion.js";
 import { affectsProjectSignature, listProjectFiles } from "../helpers/projectSignature.js";
 import { openBlobStore, type BlobStore } from "./blobStore.js";
+import { pruneGoneProjectHistoriesDaily } from "./pruneHistories.js";
 import {
   ID_PATH,
   isRecordedFolder,
@@ -77,6 +78,7 @@ export interface ProjectHistoryOptions {
   /** A CLI turn's window from an earlier open: writes since, within its idle limit, become the entry with its id. */
   closedWindow?: ClosedWindow;
   undoScope?: "own" | "everyone";
+  pruneGoneProjectsBudgetMs?: number;
 }
 
 interface ClaimOptions {
@@ -1085,6 +1087,10 @@ export async function openProjectHistory(options: ProjectHistoryOptions): Promis
     const blobs = await openBlobStore(join(options.historyRoot, projectId, "blobs"));
     const engine = new Engine(options, projectId, blobs);
     await engine.queue(() => engine.start());
+    pruneGoneProjectHistoriesDaily(options.historyRoot, engine.now(), {
+      onError: options.onError,
+      budgetMs: options.pruneGoneProjectsBudgetMs,
+    });
     const api = engine.api();
     return {
       ...api,

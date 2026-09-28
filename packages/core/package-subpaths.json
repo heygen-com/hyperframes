@@ -38,6 +38,24 @@
       "types": "./dist/utils/htmlAttrSafety.d.ts",
       "environments": ["browser", "bun", "node"]
     },
+    "./safe-path": {
+      "source": "./src/safePath.ts",
+      "runtime": "./dist/safePath.js",
+      "types": "./dist/safePath.d.ts",
+      "environments": ["bun", "node"]
+    },
+    "./asset-paths": {
+      "source": "./src/compiler/rewriteSubCompPaths.ts",
+      "runtime": "./dist/compiler/rewriteSubCompPaths.js",
+      "types": "./dist/compiler/rewriteSubCompPaths.d.ts",
+      "environments": ["bun", "node"]
+    },
+    "./runtime-script": {
+      "source": "./src/generated/runtime-inline.ts",
+      "runtime": "./dist/generated/runtime-inline.js",
+      "types": "./dist/generated/runtime-inline.d.ts",
+      "environments": ["browser", "bun", "node"]
+    },
     "./rich-text-sanitize": {
       "source": "./src/utils/richTextSanitize.ts",
       "runtime": "./dist/utils/richTextSanitize.js",
@@ -108,6 +126,12 @@
       "source": "./src/compiler/index.ts",
       "runtime": "./dist/compiler/index.js",
       "types": "./dist/compiler/index.d.ts",
+      "environments": ["bun", "node"]
+    },
+    "./projects": {
+      "source": "./src/projects.ts",
+      "runtime": "./dist/projects.js",
+      "types": "./dist/projects.d.ts",
       "environments": ["bun", "node"]
     },
     "./audio-fx": {
