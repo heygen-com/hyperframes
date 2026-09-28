@@ -2868,7 +2868,12 @@ export function initSandboxRuntimeModular(): void {
     const hi = Math.max(fromSeconds, toSeconds) + sameInstantMargin;
     const visiting = new Set<HTMLVideoElement | HTMLAudioElement>();
     for (const clip of mediaClipsInWindow) visiting.add(clip.el);
-    for (const clip of clipsWithEndpointBetween(index.byStart, (c) => c.start, lo, hi + cueAheadSeconds)) {
+    for (const clip of clipsWithEndpointBetween(
+      index.byStart,
+      (c) => c.start,
+      lo,
+      hi + cueAheadSeconds,
+    )) {
       visiting.add(clip.el);
     }
     for (const clip of clipsWithEndpointBetween(index.byEnd, (c) => c.end, lo, hi)) {
@@ -2974,7 +2979,10 @@ export function initSandboxRuntimeModular(): void {
     const indexed = !renderCaptureSeekStarted;
     const cueAheadSeconds =
       state.isPlaying && lastSyncedMediaTimeSeconds !== null
-        ? Math.min(Math.max(0, state.currentTime - lastSyncedMediaTimeSeconds), MEDIA_SYNC_TOLERANCE_SECONDS)
+        ? Math.min(
+            Math.max(0, state.currentTime - lastSyncedMediaTimeSeconds),
+            MEDIA_SYNC_TOLERANCE_SECONDS,
+          )
         : 0;
     const mediaClips = withTimingResolver(() => {
       if (!indexed) return buildRuntimeMediaCache().mediaClips;
@@ -2985,8 +2993,7 @@ export function initSandboxRuntimeModular(): void {
       // duration the two-scope rule exists to prevent.
       return buildRuntimeMediaCache(
         collectMediaElementsToVisit(index, state.currentTime, cueAheadSeconds),
-      )
-        .mediaClips;
+      ).mediaClips;
     });
     // Attach probed volume keyframes to clips so syncRuntimeMedia can use the
     // same envelope the renderer uses instead of tracking GSAP-change diffs.

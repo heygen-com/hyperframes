@@ -329,7 +329,11 @@ export function syncRuntimeMedia(params: {
       el.tagName === "AUDIO" &&
       !inWindow &&
       dueIn > 0 &&
-      dueIn <= Math.max(params.cueAheadSeconds ?? 0, startedEarly.has(el) ? MEDIA_SYNC_TOLERANCE_SECONDS : 0);
+      dueIn <=
+        Math.max(
+          params.cueAheadSeconds ?? 0,
+          startedEarly.has(el) ? MEDIA_SYNC_TOLERANCE_SECONDS : 0,
+        );
     if (startsEarly) startedEarly.add(el);
     else startedEarly.delete(el);
     // A video that runs to the composition end stays the visible frame at and past it, so it
