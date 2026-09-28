@@ -566,25 +566,28 @@ describe("what the live clip list says a clip plays", () => {
     });
   });
 
-  it("does not give a timed wrapper the sound of an untimed video inside it", () => {
-    const doc = makeDoc(
-      `<div data-composition-id="root"><div id="w" data-start="0" data-duration="4"><video src="a.mp4"></video></div></div>`,
-    );
-    const wrapper = createTimelineElementFromManifestClip({
-      clip: {
-        id: "w",
-        label: "w",
-        kind: "element",
-        tagName: "div",
-        start: 0,
-        duration: 4,
-        track: 0,
-        assetUrl: null,
-      },
-      fallbackIndex: 0,
-      doc,
-      hostEl: doc.getElementById("w"),
-    });
-    expect(wrapper.hasAudio).toBeUndefined();
-  });
+  it.each(["", ' data-has-audio="true"'])(
+    "does not give a timed wrapper the sound of an untimed video%s inside it",
+    (videoAttrs) => {
+      const doc = makeDoc(
+        `<div data-composition-id="root"><div id="w" data-start="0" data-duration="4"><video src="a.mp4"${videoAttrs}></video></div></div>`,
+      );
+      const wrapper = createTimelineElementFromManifestClip({
+        clip: {
+          id: "w",
+          label: "w",
+          kind: "element",
+          tagName: "div",
+          start: 0,
+          duration: 4,
+          track: 0,
+          assetUrl: null,
+        },
+        fallbackIndex: 0,
+        doc,
+        hostEl: doc.getElementById("w"),
+      });
+      expect(wrapper.hasAudio).toBeUndefined();
+    },
+  );
 });
