@@ -106,7 +106,9 @@ export function recordInPlace(
   mkdirSync(mediaDir(projectDir), { recursive: true });
   return withLock(mediaDir(projectDir), () => {
     const latest = latestRecordFor(projectDir, path);
-    const same = ["source", "description", "duration"].every((key) => latest?.[key] === fields[key]);
+    const same = ["source", "description", "duration"].every(
+      (key) => latest?.[key] === fields[key],
+    );
     if (latest && same) return latest;
     const record = { id: nextId(projectDir, type), ...fields, provenance };
     appendRecord(projectDir, record);

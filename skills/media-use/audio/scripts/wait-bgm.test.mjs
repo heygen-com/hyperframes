@@ -94,7 +94,12 @@ test("records locally made music as generated once it is ready", () => {
       .split("\n")
       .map((line) => JSON.parse(line));
     assert.deepEqual(
-      records.map(({ path, type, source, provenance }) => [path, type, source, provenance.provider]),
+      records.map(({ path, type, source, provenance }) => [
+        path,
+        type,
+        source,
+        provenance.provider,
+      ]),
       [["assets/bgm/track.wav", "bgm", "generated", "musicgen"]],
     );
   } finally {

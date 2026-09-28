@@ -13,7 +13,7 @@ import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { createServer } from "node:http";
 import { execFileSync, spawn, spawnSync } from "node:child_process";
-import { appendRecord, readManifest } from "./lib/manifest.mjs";
+import { appendRecord, findByPrompt, readManifest } from "./lib/manifest.mjs";
 import { regenerateIndex } from "./lib/index-gen.mjs";
 import { getProvider } from "./lib/providers.mjs";
 import { HEYGEN_NOT_FOUND_MESSAGE } from "./lib/heygen-cli.mjs";
@@ -616,6 +616,7 @@ test("--from --source adds a record only when what it says changes", () => {
       ["search", "upbeat synth"],
     ],
   );
+  assert.equal(findByPrompt(tmp, "calm underscore", "bgm"), null);
   cleanup();
 });
 
