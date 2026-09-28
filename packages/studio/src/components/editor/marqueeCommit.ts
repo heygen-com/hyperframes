@@ -134,10 +134,12 @@ function releaseCapture(m: MarqueeState): void {
   }
 }
 
+export function useMarqueeGestures(deps: MarqueeGesturesDeps): MarqueeGestures;
+export function useMarqueeGestures<T>(
+  deps: MarqueeGesturesDeps<T> & Required<Pick<MarqueeGesturesDeps<T>, "resolveHits">>,
+): MarqueeGestures;
 // fallow-ignore-next-line complexity
-export function useMarqueeGestures<T = DomEditSelection>(
-  deps: MarqueeGesturesDeps<T>,
-): MarqueeGestures {
+export function useMarqueeGestures<T>(deps: MarqueeGesturesDeps<T>): MarqueeGestures {
   const marqueeRef = useRef<MarqueeState | null>(null);
   const [marqueeRect, setMarqueeRect] = useState<Rect | null>(null);
   // Live "candidate" highlight: the elements the marquee currently touches,

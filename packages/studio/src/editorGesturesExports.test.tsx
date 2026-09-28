@@ -56,7 +56,7 @@ function MarqueeHost<T>(props: {
   deps: MarqueeGesturesDeps<T>;
   onState: (state: MarqueeGestures) => void;
 }) {
-  props.onState(useMarqueeGestures(props.deps));
+  props.onState(useMarqueeGestures(props.deps as unknown as MarqueeGesturesDeps));
   return null;
 }
 
@@ -133,6 +133,28 @@ describe("marquee package export, driven by a host", () => {
     expect(overlay.releasePointerCapture).toHaveBeenCalledWith(7);
     await act(async () => marquee().onPointerUp(at(20, 20)));
     expect(onSelect).not.toHaveBeenCalled();
+  });
+
+  it("a pointercancel mid-drag drops the marquee without selecting", async () => {
+    const { onSelect, at, marquee } = mountMarquee<string>(byId);
+    act(() => marquee().begin(at(1, 1)));
+    act(() => marquee().onPointerMove(at(20, 20)));
+    act(() => marquee().onPointerCancel());
+    expect(marquee().marqueeRect).toBeNull();
+    await act(async () => marquee().onPointerUp(at(20, 20)));
+    expect(onSelect).not.toHaveBeenCalled();
+  });
+
+  it("will not hand a host Studio's selections under the host's own pick type", () => {
+    const hostDeps: MarqueeGesturesDeps<string> = {
+      iframeRef: { current: null },
+      overlayRef: { current: null },
+      activeCompositionPathRef: { current: null },
+      onMarqueeSelectRef: { current: undefined },
+    };
+    // @ts-expect-error a host pick type needs its own resolveHits
+    const typed = () => useMarqueeGestures<string>(hostDeps);
+    expect(typed).toBeTypeOf("function");
   });
 
   it("resolves Studio edit selections when the host passes no resolveHits", async () => {
