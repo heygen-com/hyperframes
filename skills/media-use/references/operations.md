@@ -112,14 +112,16 @@ engine directly.
 # install once: uv venv ~/.venvs/parakeet && VIRTUAL_ENV=~/.venvs/parakeet uv pip install parakeet-mlx
 node <SKILL_DIR>/scripts/transcribe.mjs --input talk.mp4 --out talk.transcribe.json
 
-# equivalently, the hyperframes CLI has Parakeet built in (auto-detects it, whisper fallback):
+# the hyperframes CLI runs Parakeet on macOS, Linux and Windows once it is installed:
+npx hyperframes models install parakeet                 # once, ~640 MB, ask the user first
 npx hyperframes transcribe talk.mp4 --engine parakeet   # or --engine auto (default)
 ```
 
-VERIFIED on 24GB: accurate, ~3s (cached) for 8s audio. Parakeet covers English +
-25 European languages. For other languages, or when parakeet-mlx is not
-installed, transcribe.mjs auto-falls-back to whisper.cpp (99 languages) via
-`hyperframes transcribe`. `--engine parakeet|whisper` forces one. (Cohere
+VERIFIED on 24GB: accurate, ~3s (cached) for 8s audio. Parakeet covers 25
+European languages, English included. For other languages, or when parakeet-mlx is not
+installed, transcribe.mjs falls back to `hyperframes transcribe`, which uses the
+CLI's Parakeet when `models install parakeet` has run and whisper.cpp (99
+languages) otherwise. `--engine parakeet|whisper` forces one. (Cohere
 Transcribe tops the leaderboard on paper but its mlx-audio quants produced
 garbage and ran 40-70x slower on a Mac in testing, so it is not wired in.)
 

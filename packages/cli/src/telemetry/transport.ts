@@ -99,9 +99,8 @@ let inFlight: Promise<boolean> | undefined;
 
 /**
  * Flush all queued events to PostHog via async HTTP POST.
- * Call sites: the `beforeExit` hook in cli.ts (normal exit), eager sends right
- * after high-value events (trackRenderComplete / trackRenderError), and the
- * `events` beacon command, which awaits delivery before its process exits.
+ * Call sites: eager sends right after high-value events (trackRenderComplete /
+ * trackRenderError), which also serve long-lived preview processes.
  *
  * Events are only removed from the queue once the request has completed.
  * The old drain-first version silently lost the whole batch whenever the
@@ -138,12 +137,14 @@ async function sendQueued(): Promise<boolean> {
   const timeout = setTimeout(() => controller.abort(), FLUSH_TIMEOUT_MS);
 
   try {
-    await fetch(`${POSTHOG_HOST}/batch/`, {
+    const res = await fetch(`${POSTHOG_HOST}/batch/`, {
       method: "POST",
       headers: { "Content-Type": "application/json", Connection: "close" },
       body: payload,
       signal: controller.signal,
     });
+    // Nothing reads the reply; drop it so a stalled body cannot hold the socket open.
+    await res.body?.cancel();
     // Delivered — forget exactly what was sent (events queued while the
     // request was in flight stay for the next flush).
     const sent = new Set(snapshot);
@@ -175,7 +176,7 @@ export function flushSync(): void {
         "-e",
         `fetch(${JSON.stringify(`${POSTHOG_HOST}/batch/`)},{method:"POST",headers:{"Content-Type":"application/json"},body:${JSON.stringify(payload)},signal:AbortSignal.timeout(${FLUSH_TIMEOUT_MS})}).catch(()=>{})`,
       ],
-      { detached: true, stdio: "ignore" },
+      { detached: true, stdio: "ignore", windowsHide: true },
     );
     // Let the parent exit without waiting for the child
     child.unref();

@@ -2897,7 +2897,7 @@ BeginFrame timing.
 <Update
   label="HyperFrames v0.7.92"
   description="Released - 2026-08-04"
-  tags={["Release", "Release", "Studio", "Core"]}
+  tags={["Release", "Studio", "Core"]}
 >
 Percentage-based canary rollouts land, so a change can ship to a stable slice of
 installs instead of all-or-nothing — decided locally and offline, with two inert
@@ -4218,7 +4218,7 @@ HyperFrames now uses a 0–10 recommendation scale for feedback, keeps canvas z-
 <Update
   label="HyperFrames v0.7.57"
   description="Released - 2026-07-14"
-  tags={["Release", "Producer", "Release", "CLI"]}
+  tags={["Release", "Producer", "CLI"]}
 >
 `hyperframes publish` now returns a stable public URL: re-publishing updates the same link in place, and a `--space` flag plus a committable project file let a whole team publish to one shared URL. This release also keeps preview review sessions alive across reloads and tags HeyGen API calls with an `X-HeyGen-Client-Source` header.
 
@@ -6054,7 +6054,7 @@ Adds slideshow support end-to-end: a player-side controller state machine and `<
 <Update
   label="HyperFrames v0.6.113"
   description="Released - 2026-06-19"
-  tags={["Release", "Release", "Core", "Sdk"]}
+  tags={["Release", "Core", "Sdk"]}
 >
 Brings the AI Studio (Pacific) SDK integration surface online — object-valued font/image variables, elastic timing with word-alignment, element insertion, and keyframe animation ops — all on the acorn GSAP writer, now gated behind the cutover flag with recast kept as the default. Also adds a slideshow schema/parser/lint rule and phase-1 image-alpha hit-testing, so clicks on transparent image pixels fall through to the layer behind.
 
@@ -6815,7 +6815,7 @@ Completes the playbackRate fix across all media duration resolution sites — vi
 <Update
   label="HyperFrames v0.6.83"
   description="Released - 2026-06-09"
-  tags={["Release", "Core", "Producer", "Release"]}
+  tags={["Release", "Core", "Producer"]}
 >
 Fixes media elements with custom playback rates being clipped to the raw source duration instead of the rate-adjusted timeline duration. Also adds a release tag monotonicity guard.
 
