@@ -3,7 +3,7 @@ import React, { act } from "react";
 import { createRoot } from "react-dom/client";
 import { afterEach, describe, expect, it } from "vitest";
 import { installReactActEnvironment } from "../../hooks/domSelectionTestHarness";
-import { usePlayerStore } from "../../player/store/playerStore";
+import { liveTime, usePlayerStore } from "../../player/store/playerStore";
 import { useCompositionStack } from "./useCompositionStack";
 
 installReactActEnvironment();
@@ -117,6 +117,7 @@ describe("useCompositionStack — back to the master", () => {
   afterEach(() => {
     document.body.innerHTML = "";
     usePlayerStore.getState().setCurrentTime(0);
+    usePlayerStore.getState().setIsPlaying(false);
   });
 
   const INTRO = { id: "intro", compositionSrc: "compositions/intro.html" };
@@ -177,6 +178,32 @@ describe("useCompositionStack — back to the master", () => {
     await run((s) => s.updateCompositionStack((prev) => prev.slice(0, -1)));
     expect(time()).toBe(1);
     await run((s) => s.updateCompositionStack((prev) => prev.slice(0, -1)));
+    expect(time()).toBe(12);
+    unmount();
+  });
+
+  it("restores the live master playhead when the drill happens during playback", async () => {
+    const { run, unmount } = await mount();
+    seek(4);
+    act(() => usePlayerStore.getState().setIsPlaying(true));
+    liveTime.notify(9);
+    await run((s) => s.handleDrillDown(INTRO));
+    act(() => usePlayerStore.getState().setIsPlaying(false));
+    seek(2);
+    await run((s) => s.handleNavigateComposition(0));
+    expect(time()).toBe(9);
+    unmount();
+  });
+
+  it("saves the master playhead at the first of two drills in one batch", async () => {
+    const { run, unmount } = await mount();
+    seek(12);
+    await run((s) => {
+      s.handleDrillDown(INTRO);
+      usePlayerStore.getState().setCurrentTime(7);
+      s.handleDrillDown(LOGO);
+    });
+    await run((s) => s.handleNavigateComposition(0));
     expect(time()).toBe(12);
     unmount();
   });

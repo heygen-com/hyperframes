@@ -1,7 +1,7 @@
 import { buildProjectApiPath } from "../../utils/projectRouting";
 // Composition drill-down stack management for NLEContext/EditorShell
 import { useState, useCallback, useRef, useEffect } from "react";
-import { usePlayerStore } from "../../player/store/playerStore";
+import { liveTime, usePlayerStore } from "../../player/store/playerStore";
 import type { CompositionLevel } from "./CompositionBreadcrumb";
 import { encodePreviewPath } from "../../player/components/thumbnailUtils";
 
@@ -49,7 +49,7 @@ export function useCompositionStack({
     stackRef.current = next;
     const player = usePlayerStore.getState();
     if (prev.length === 1 && next.length > 1) {
-      masterSeekRef.current = player.currentTime;
+      masterSeekRef.current = player.isPlaying ? liveTime.latest() : player.currentTime;
       masterSeekProjectRef.current = projectIdRef.current;
     } else if (next.length === 1 && prev.length > 1) {
       if (masterSeekProjectRef.current === projectIdRef.current) {
