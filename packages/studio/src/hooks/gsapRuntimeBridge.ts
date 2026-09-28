@@ -25,14 +25,10 @@ import {
 } from "./gsapDragCommit";
 import { commitWholePropertyOffset } from "./gsapWholePropertyOffsetCommit";
 import { isGestureTransactionCommit } from "./gestureTransaction";
+import { tweenReach, tweensForThisElement } from "./gsapTweenReach";
 import { resolveTweenDuration } from "../utils/globalTimeCompiler";
 import type { GsapDragCommitCallbacks } from "./gsapDragCommit";
-import {
-  isInstantHold,
-  selectorFromSelection,
-  tweenTargetsElement,
-  writeTargetSelector,
-} from "./gsapShared";
+import { isInstantHold, selectorFromSelection, writeTargetSelector } from "./gsapShared";
 import {
   findGsapPositionAnimation,
   pickClosestToPlayhead,
@@ -133,20 +129,14 @@ export async function resolveGroupTween(
 
 export type { GsapDragCommitCallbacks };
 
-/**
- * Attempt to handle a drag commit via the GSAP script mutation path.
- *
- * Returns an explicit persisted/blocked outcome. Callers must reject blocked
- * outcomes so the gesture layer restores its runtime and overlay drafts.
- */
-/** A position tween that also moves other elements (a stagger on `.w`): editing it for a
- *  one-element drag would move them all. */
-function movesOtherElementsToo(selection: DomEditSelection, animations: GsapAnimation[]): boolean {
-  const own = writeTargetSelector(selection);
-  return animations.some(
-    (a) =>
-      animationWritesAnyProperty(a, POSITION_CHANNEL_SET) &&
-      !(own && tweenTargetsElement(a.targetSelector, own, selection.element)),
+const writesPosition = (a: GsapAnimation) => animationWritesAnyProperty(a, POSITION_CHANNEL_SET);
+
+/** Only a tween shared with siblings positions this element (a stagger on `.w`). */
+function positionedOnlyBySharedTween(selection: DomEditSelection, animations: GsapAnimation[]) {
+  const positioning = animations.filter(writesPosition);
+  return (
+    positioning.some((a) => tweenReach(a, selection.element) === "shared") &&
+    tweensForThisElement(selection, positioning).length === 0
   );
 }
 
@@ -166,10 +156,18 @@ async function preflightGsapDragIntercept(
   // set as well: ignoring it would let a transient fetch failure bypass helper /
   // runtime-source ownership and reach a destructive split or property write.
   const allKnownAnimations = [...animations, ...fetchedAnimations];
-  const editability = directEditOutcomeForProperties(allKnownAnimations, POSITION_CHANNEL_SET);
+  if (positionedOnlyBySharedTween(selection, allKnownAnimations)) {
+    return { status: "element-offset" };
+  }
+  const editability = directEditOutcomeForProperties(
+    tweensForThisElement(selection, allKnownAnimations),
+    POSITION_CHANNEL_SET,
+  );
   if (editability.status === "blocked") return editability;
-  if (movesOtherElementsToo(selection, allKnownAnimations)) return { status: "element-offset" };
-  const sourceAnimations = fetchedAnimations.length > 0 ? fetchedAnimations : animations;
+  const sourceAnimations = tweensForThisElement(
+    selection,
+    fetchedAnimations.length > 0 ? fetchedAnimations : animations,
+  );
   const posAnim = findGsapPositionAnimation(sourceAnimations, selector);
   const hasLivePosition = hasNonHoldTweenForElement(iframe, selector, undefined, POSITION_CHANNELS);
 
@@ -201,25 +199,38 @@ function oneUndoStep(
     commit(selection, mutation, { ...options, coalesceKey, coalesceMs: Number.POSITIVE_INFINITY });
 }
 
+/**
+ * Attempt to handle a drag commit via the GSAP script mutation path.
+ *
+ * Returns persisted, blocked, or element-offset (only a shared tween positions the
+ * element: the caller saves the move on the element itself). Callers must reject
+ * blocked outcomes so the gesture layer restores its runtime and overlay drafts.
+ */
 export async function tryGsapDragIntercept(
   selection: DomEditSelection,
   offset: { x: number; y: number },
-  animations: GsapAnimation[],
+  allAnimations: GsapAnimation[],
   iframe: HTMLIFrameElement | null,
   gestureCommit: GsapDragCommitCallbacks["commitMutation"],
-  fetchFallbackAnimations?: () => Promise<GsapAnimation[]>,
+  fetchAllAnimations?: () => Promise<GsapAnimation[]>,
   options?: { altKey?: boolean; preflightOnly?: boolean; preflightPassed?: boolean },
 ): Promise<GsapEditOutcome> {
   if (!options?.preflightPassed) {
     const preflight = await preflightGsapDragIntercept(
       selection,
-      animations,
+      allAnimations,
       iframe,
-      fetchFallbackAnimations,
+      fetchAllAnimations,
     );
     if (preflight.status !== "persisted" || options?.preflightOnly) return preflight;
   }
-  const selector = selectorFromSelection(selection);
+  const animations = tweensForThisElement(selection, allAnimations);
+  const fetchFallbackAnimations =
+    fetchAllAnimations && (async () => tweensForThisElement(selection, await fetchAllAnimations()));
+  const ownPositionTween = animations.find(
+    (a) => writesPosition(a) && tweenReach(a, selection.element) === "own",
+  );
+  const selector = ownPositionTween?.targetSelector ?? selectorFromSelection(selection);
   // The preflight above proves this; retain a defensive result for DOM churn.
   if (!selector) return { status: "blocked", reason: "no-selector" };
   const commitMutation = oneUndoStep(gestureCommit);

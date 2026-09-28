@@ -14,6 +14,7 @@ import {
   clearStudioBoxSize,
   clearStudioRotation,
 } from "../components/editor/manualEdits";
+import { applyElementPositionOffset } from "../components/editor/elementPositionOffset";
 import {
   buildPathOffsetPatches,
   buildBoxSizePatches,
@@ -24,6 +25,18 @@ import {
 } from "../components/editor/manualEditsDomPatches";
 import type { PatchOperation } from "../utils/sourcePatcher";
 import { isElementGsapTargeted } from "./gsapTargetCache";
+
+const ELEMENT_OFFSET_UNSAFE_MESSAGE =
+  "This layer is anchored from its right or bottom edge. Move it in the Code tab.";
+
+/** The drag draft moved GSAP's x/y; left/top carries the move now, so put them back. */
+function settleGsapDraftAtGestureStart(el: HTMLElement): void {
+  const gsap = (el.ownerDocument.defaultView as { gsap?: { set: (t: Element, v: object) => void } })
+    ?.gsap;
+  const x = Number.parseFloat(el.getAttribute("data-hf-drag-gsap-base-x") ?? "");
+  const y = Number.parseFloat(el.getAttribute("data-hf-drag-gsap-base-y") ?? "");
+  if (gsap && Number.isFinite(x) && Number.isFinite(y)) gsap.set(el, { x, y });
+}
 
 const GSAP_CSS_FALLBACK_BLOCKED_MESSAGE =
   "This element is GSAP-animated — dragging via CSS would corrupt keyframes";
@@ -47,7 +60,7 @@ export interface UseDomGeometryCommitsParams {
   commitPositionPatchToHtml: (
     selection: DomEditSelection,
     patches: PatchOperation[],
-    options: { label: string; coalesceKey: string; skipRefresh?: boolean },
+    options: { label: string; coalesceKey: string; coalesceMs?: number; skipRefresh?: boolean },
   ) => Promise<void>;
   readOnlyPreview: boolean;
 }
@@ -58,20 +71,28 @@ export function useDomGeometryCommits({
   commitPositionPatchToHtml,
   readOnlyPreview,
 }: UseDomGeometryCommitsParams) {
-  const commitElementPathOffset = useCallback(
+  const commitElementPositionOffset = useCallback(
     (selection: DomEditSelection, next: { x: number; y: number }, coalesceKey?: string) => {
       if (readOnlyPreview) return Promise.resolve();
-      const before = captureStudioPathOffset(selection.element);
-      applyStudioPathOffset(selection.element, next);
-      return commitPositionPatchToHtml(selection, buildPathOffsetPatches(selection.element), {
+      const el = selection.element;
+      const previous = { position: el.style.position, left: el.style.left, top: el.style.top };
+      const patches = applyElementPositionOffset(el, next);
+      if (!patches) {
+        const error = new Error(ELEMENT_OFFSET_UNSAFE_MESSAGE);
+        showToast(error.message, "error");
+        return Promise.reject(error);
+      }
+      settleGsapDraftAtGestureStart(el);
+      return commitPositionPatchToHtml(selection, patches, {
         label: "Move layer",
-        coalesceKey: coalesceKey ?? `path-offset:${getDomEditTargetKey(selection)}`,
+        coalesceKey: coalesceKey ?? `element-offset:${getDomEditTargetKey(selection)}`,
+        ...(coalesceKey && { coalesceMs: Number.POSITIVE_INFINITY }),
       }).catch((error) => {
-        restoreStudioPathOffset(selection.element, before);
+        Object.assign(el.style, previous);
         throw error;
       });
     },
-    [commitPositionPatchToHtml, readOnlyPreview],
+    [commitPositionPatchToHtml, readOnlyPreview, showToast],
   );
 
   const handleDomPathOffsetCommit = useCallback(
@@ -83,9 +104,17 @@ export function useDomGeometryCommits({
       // Upgrade path for GSAP: add a moveElementGsap SDK op in a separate SDK PR.
       const gsapFallback = rejectGsapCssFallback(selection, previewIframeRef, showToast);
       if (gsapFallback) return gsapFallback;
-      return commitElementPathOffset(selection, next);
+      const before = captureStudioPathOffset(selection.element);
+      applyStudioPathOffset(selection.element, next);
+      return commitPositionPatchToHtml(selection, buildPathOffsetPatches(selection.element), {
+        label: "Move layer",
+        coalesceKey: `path-offset:${getDomEditTargetKey(selection)}`,
+      }).catch((error) => {
+        restoreStudioPathOffset(selection.element, before);
+        throw error;
+      });
     },
-    [commitElementPathOffset, previewIframeRef, showToast, readOnlyPreview],
+    [commitPositionPatchToHtml, previewIframeRef, showToast, readOnlyPreview],
   );
 
   const handleDomBoxSizeCommit = useCallback(
@@ -171,7 +200,7 @@ export function useDomGeometryCommits({
   );
 
   return {
-    commitElementPathOffset,
+    commitElementPositionOffset,
     handleDomPathOffsetCommit,
     handleDomBoxSizeCommit,
     handleDomRotationCommit,

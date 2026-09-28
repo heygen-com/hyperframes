@@ -52,6 +52,7 @@ function mountResizeHandler(
   const element = document.createElement("div");
   const selection = { element, id: "clip", selector: "#clip" } as unknown as DomEditSelection;
   const fallback = vi.fn().mockResolvedValue(undefined);
+  const elementOffset = vi.fn().mockResolvedValue(undefined);
   const commitMutation = vi.fn().mockResolvedValue(undefined);
   let resize:
     | ((
@@ -71,7 +72,7 @@ function mountResizeHandler(
       bumpGsapCache: vi.fn(),
       makeFetchFallback: () => vi.fn().mockResolvedValue(targetAnimations),
       trackGsapInteractionFailure: vi.fn(),
-      commitElementPathOffset: vi.fn(),
+      commitElementPositionOffset: elementOffset,
       handleDomBoxSizeCommit: fallback,
       addGsapAnimation: vi.fn(),
       convertToKeyframes: vi.fn(),
@@ -81,7 +82,7 @@ function mountResizeHandler(
     return null;
   }
   const root = mountReactHarness(<Harness />);
-  return { selection, fallback, commitMutation, resize: resize!, root };
+  return { selection, fallback, elementOffset, commitMutation, resize: resize!, root };
 }
 
 type AwareEditingParams = Parameters<typeof useGsapAwareEditing>[0];
@@ -90,11 +91,18 @@ function mountGroupHandler({
   gsapCommitMutation,
   makeFetchFallback,
   trackGsapInteractionFailure = vi.fn(),
+  commitElementPositionOffset = vi.fn(),
 }: Pick<AwareEditingParams, "gsapCommitMutation" | "makeFetchFallback"> &
-  Partial<Pick<AwareEditingParams, "trackGsapInteractionFailure">>) {
+  Partial<
+    Pick<AwareEditingParams, "trackGsapInteractionFailure" | "commitElementPositionOffset">
+  >) {
   let groupCommit!: (updates: DomEditGroupPathOffsetCommit[]) => Promise<void>;
+  let pathOffsetCommit!: (
+    selection: DomEditSelection,
+    next: { x: number; y: number },
+  ) => Promise<void>;
   function Harness() {
-    groupCommit = useGsapAwareEditing({
+    const editing = useGsapAwareEditing({
       domEditSelection: null,
       selectedGsapAnimations: [],
       gsapCommitMutation,
@@ -103,18 +111,71 @@ function mountGroupHandler({
       bumpGsapCache: vi.fn(),
       makeFetchFallback,
       trackGsapInteractionFailure,
-      commitElementPathOffset: vi.fn(),
+      commitElementPositionOffset,
       handleDomBoxSizeCommit: vi.fn(),
       addGsapAnimation: vi.fn(),
       convertToKeyframes: vi.fn(),
       setArcPath: vi.fn(),
       updateArcSegment: vi.fn(),
-    }).handleGsapAwareGroupPathOffsetCommit;
+    });
+    groupCommit = editing.handleGsapAwareGroupPathOffsetCommit;
+    pathOffsetCommit = editing.handleGsapAwarePathOffsetCommit;
     return null;
   }
   const root = mountReactHarness(<Harness />);
-  return { groupCommit: (updates: DomEditGroupPathOffsetCommit[]) => groupCommit(updates), root };
+  return {
+    groupCommit: (updates: DomEditGroupPathOffsetCommit[]) => groupCommit(updates),
+    pathOffsetCommit: (selection: DomEditSelection, next: { x: number; y: number }) =>
+      pathOffsetCommit(selection, next),
+    root,
+  };
 }
+
+describe("useGsapAwareEditing shared-tween moves", () => {
+  it("saves a single drag through the element's own offset", async () => {
+    mocks.drag.mockResolvedValue({ status: "element-offset" });
+    const commitElementPositionOffset = vi.fn().mockResolvedValue(undefined);
+    const commitMutation = vi.fn();
+    const { pathOffsetCommit, root } = mountGroupHandler({
+      gsapCommitMutation: commitMutation,
+      makeFetchFallback: () => vi.fn().mockResolvedValue([]),
+      commitElementPositionOffset,
+    });
+    const word = { element: document.createElement("span"), hfId: "w0", selector: ".w" };
+    await act(() => pathOffsetCommit(word as unknown as DomEditSelection, { x: 40, y: 20 }));
+    expect(commitElementPositionOffset).toHaveBeenCalledWith(word, { x: 40, y: 20 });
+    expect(commitMutation).not.toHaveBeenCalled();
+    act(() => root.unmount());
+  });
+
+  it("saves a group member that shares a tween through its own offset, under the group key", async () => {
+    mocks.drag.mockImplementation(async (selection, _next, _a, _i, commit, _f, options) => {
+      if (selection.hfId === "w0") return { status: "element-offset" };
+      if (!options?.preflightOnly) await commit(selection, { type: "move" }, { label: "Move" });
+      return { status: "persisted" };
+    });
+    const commitElementPositionOffset = vi.fn().mockResolvedValue(undefined);
+    const { groupCommit, root } = mountGroupHandler({
+      gsapCommitMutation: vi.fn().mockResolvedValue(undefined),
+      makeFetchFallback: () => vi.fn().mockResolvedValue([]),
+      commitElementPositionOffset,
+    });
+    const word = { element: document.createElement("span"), hfId: "w0", selector: ".w" };
+    const box = { element: document.createElement("div"), id: "box", selector: "#box" };
+    await act(() =>
+      groupCommit([
+        { selection: word, next: { x: 40, y: 20 } },
+        { selection: box, next: { x: 40, y: 20 } },
+      ] as unknown as DomEditGroupPathOffsetCommit[]),
+    );
+    expect(commitElementPositionOffset).toHaveBeenCalledWith(
+      word,
+      { x: 40, y: 20 },
+      expect.stringMatching(/^group-drag:\d+$/),
+    );
+    act(() => root.unmount());
+  });
+});
 
 describe("useGsapAwareEditing anchored resize", () => {
   it("uses the explicit target's animations instead of the human selection cache", async () => {
@@ -160,6 +221,15 @@ describe("useGsapAwareEditing anchored resize", () => {
     expect(h.fallback).not.toHaveBeenCalled();
     expect(mocks.drag).toHaveBeenCalledTimes(1);
     expect(mocks.drag.mock.calls[0]![1]).toEqual({ x: -50, y: -25 });
+    act(() => h.root.unmount());
+  });
+
+  it("persists the anchor as the element's own offset when its position tween is shared", async () => {
+    mocks.resize.mockResolvedValue({ status: "persisted" });
+    mocks.drag.mockResolvedValue({ status: "element-offset" });
+    const h = mountResizeHandler([]);
+    await act(() => h.resize(h.selection, { width: 300, height: 200 }, { x: -50, y: -25 }));
+    expect(h.elementOffset).toHaveBeenCalledWith(h.selection, { x: -50, y: -25 });
     act(() => h.root.unmount());
   });
 

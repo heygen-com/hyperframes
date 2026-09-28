@@ -434,7 +434,7 @@ export function useDomEditCommits({
   // ── Geometry commits (path offset, box size, rotation) ──
 
   const {
-    commitElementPathOffset,
+    commitElementPositionOffset,
     handleDomPathOffsetCommit,
     handleDomBoxSizeCommit,
     handleDomRotationCommit,
@@ -478,7 +478,7 @@ export function useDomEditCommits({
     handleDomTextFieldStyleCommit,
     handleDomAddTextField,
     handleDomRemoveTextField,
-    commitElementPathOffset,
+    commitElementPositionOffset,
     handleDomPathOffsetCommit,
     handleDomBoxSizeCommit,
     handleDomRotationCommit,

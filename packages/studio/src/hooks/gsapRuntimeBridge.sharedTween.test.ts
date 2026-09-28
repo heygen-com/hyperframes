@@ -72,6 +72,54 @@ describe("tryGsapDragIntercept: one word of a staggered phrase", () => {
   });
 });
 
+describe("tryGsapDragIntercept: which tweens a word's drag may use", () => {
+  it("edits the word's own position tween, not the shared one, when it has both", async () => {
+    const words = mountPhrase();
+    const own = {
+      ...staggerIn,
+      id: "own",
+      method: "set",
+      targetSelector: '[data-hf-id="hf-w0"]',
+      properties: { x: 10, y: 0 },
+      duration: 0,
+      propertyGroup: "position",
+    } as unknown as GsapAnimation;
+    const commitMutation = vi.fn();
+    const outcome = await tryGsapDragIntercept(
+      wordSelection(words[0]!, 0),
+      { x: -40, y: 0 },
+      [staggerIn, own],
+      null,
+      commitMutation,
+      async () => [staggerIn, own],
+    );
+    expect(outcome.status).toBe("persisted");
+    const touched = commitMutation.mock.calls.map((call) => JSON.stringify(call[1]));
+    expect(touched.length).toBeGreaterThan(0);
+    expect(touched.every((m) => !m.includes(staggerIn.id))).toBe(true);
+    expect(touched.some((m) => m.includes('"own"'))).toBe(true);
+  });
+
+  it("ignores a tween whose target never reaches the word", async () => {
+    document.body.innerHTML = `<div id="title"><span class="w">A</span><span class="w">B</span></div>
+      <div id="subtitle"><span class="w" data-hf-id="hf-s0">C</span></div>`;
+    const word = document.querySelector<HTMLElement>('[data-hf-id="hf-s0"]')!;
+    const titleOnly = { ...staggerIn, id: "title-only", targetSelector: "#title .w" };
+    const commitMutation = vi.fn();
+    const outcome = await tryGsapDragIntercept(
+      wordSelection(word, 2),
+      { x: -40, y: 0 },
+      [titleOnly as GsapAnimation],
+      null,
+      commitMutation,
+      async () => [titleOnly as GsapAnimation],
+    );
+    expect(outcome.status).toBe("persisted");
+    const touched = commitMutation.mock.calls.map((call) => JSON.stringify(call[1]));
+    expect(touched.every((m) => !m.includes("title-only"))).toBe(true);
+  });
+});
+
 describe("tryGsapDragIntercept: one drag is one undo step", () => {
   it("records the split and the move under one gesture key", async () => {
     document.body.innerHTML = `<div id="hero"></div>`;

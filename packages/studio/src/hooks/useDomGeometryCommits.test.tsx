@@ -143,3 +143,30 @@ describe("useDomGeometryCommits read-only preview", () => {
     unmount();
   });
 });
+
+describe("useDomGeometryCommits element position offset", () => {
+  it("persists left/top on the element and no translate offset", async () => {
+    const element = document.createElement("span");
+    Object.defineProperties(element, {
+      offsetLeft: { get: () => 100 + (Number.parseFloat(element.style.left) || 0) },
+      offsetTop: { get: () => 200 + (Number.parseFloat(element.style.top) || 0) },
+    });
+    document.body.append(element);
+    const selection = { hfId: "w0", selector: ".w", element } as unknown as DomEditSelection;
+    const commitPositionPatchToHtml = vi
+      .fn<UseDomGeometryCommitsParams["commitPositionPatchToHtml"]>()
+      .mockResolvedValue(undefined);
+    const { commits, unmount } = mountCommits(commitPositionPatchToHtml);
+
+    await commits().commitElementPositionOffset(selection, { x: 40, y: 20 });
+
+    const patches = commitPositionPatchToHtml.mock.calls[0]![1];
+    expect(patches).toEqual([
+      { type: "inline-style", property: "position", value: "relative" },
+      { type: "inline-style", property: "left", value: "40px" },
+      { type: "inline-style", property: "top", value: "20px" },
+    ]);
+    expect(element.style.getPropertyValue("translate")).toBe("");
+    unmount();
+  });
+});
