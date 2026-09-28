@@ -8,7 +8,11 @@ import { regenerateIndex } from "../../../scripts/lib/index-gen.mjs";
  * (one the manifest does not record as agent-made, and not `reusable`); then the first free `name-2.ext`,
  * `name-3.ext`, with an anomaly saying so.
  */
-export function agentWritePath(hyperframesDir, rel, { anomalies, taken = new Set(), reusable = () => false }) {
+export function agentWritePath(
+  hyperframesDir,
+  rel,
+  { anomalies, taken = new Set(), reusable = () => false },
+) {
   const free = (path) =>
     !taken.has(path) &&
     (!existsSync(join(hyperframesDir, path)) ||

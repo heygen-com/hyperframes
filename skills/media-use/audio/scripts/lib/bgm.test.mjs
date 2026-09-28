@@ -54,9 +54,19 @@ test(
     process.env.PATH = `${join(dir, "bin")}:${path}`;
     mkdirSync(join(dir, "assets/bgm"), { recursive: true });
     writeFileSync(join(dir, "assets/bgm/track.wav"), "last run's track");
-    appendRecord(dir, { id: "bgm_001", type: "bgm", path: "assets/bgm/track.wav", source: "generated" });
+    appendRecord(dir, {
+      id: "bgm_001",
+      type: "bgm",
+      path: "assets/bgm/track.wav",
+      source: "generated",
+    });
 
-    const gen = generateBgmDetached({ prompt: "calm", durationS: 5, hyperframesDir: dir, anomalies: [] });
+    const gen = generateBgmDetached({
+      prompt: "calm",
+      durationS: 5,
+      hyperframesDir: dir,
+      anomalies: [],
+    });
 
     assert.equal(gen.path, "assets/bgm/track.wav");
     assert.equal(existsSync(join(dir, "assets/bgm/track.wav")), false);

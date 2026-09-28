@@ -144,14 +144,20 @@ test("the engine writes over only its own files, else the next free name", (t) =
 
   assert.equal(at("new"), "assets/sfx/new.mp3");
   assert.equal(at("made"), "assets/sfx/made.mp3");
-  assert.equal(at("mine", (path) => path === "assets/sfx/mine.mp3"), "assets/sfx/mine.mp3");
+  assert.equal(
+    at("mine", (path) => path === "assets/sfx/mine.mp3"),
+    "assets/sfx/mine.mp3",
+  );
   assert.deepEqual(anomalies, []);
   assert.equal(at("mine"), "assets/sfx/mine-2.mp3");
   assert.equal(at("adopted"), "assets/sfx/adopted-2.mp3");
   assert.equal(at("twice"), "assets/sfx/twice-3.mp3");
   assert.equal(at("kept"), "assets/sfx/kept-2.mp3");
   assert.equal(anomalies.length, 4);
-  assert.match(anomalies[0], /^assets\/sfx\/mine\.mp3: kept, .* wrote assets\/sfx\/mine-2\.mp3 instead/);
+  assert.match(
+    anomalies[0],
+    /^assets\/sfx\/mine\.mp3: kept, .* wrote assets\/sfx\/mine-2\.mp3 instead/,
+  );
 });
 
 test("two spoken lines never share a file when one's name is taken by the person", (t) => {
