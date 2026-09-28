@@ -1,5 +1,5 @@
 // fallow-ignore-file code-duplication complexity
-import { preloadMedia, releaseMedia, waitsUnloaded } from "./preloadMedia";
+import { preloadMedia, releaseMedia, lengthIsAuthored } from "./preloadMedia";
 import { installRuntimeControlBridge, postRuntimeMessage, setRuntimeProtocolFps } from "./bridge";
 import { instantTolerance } from "../clipFacts";
 import { isInClipWindow } from "./clipWindow";
@@ -2695,7 +2695,7 @@ export function initSandboxRuntimeModular(): void {
     if (decided === near) return;
     mediaNearPlayhead.set(el, near);
     if (!near) {
-      if (!waitsUnloaded(el)) {
+      if (!lengthIsAuthored(el)) {
         if (el.preload === "auto") el.preload = "metadata";
       } else if (el.preload !== "none") {
         el.preload = "none";

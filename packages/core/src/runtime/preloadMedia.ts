@@ -21,8 +21,7 @@ export function releaseMedia(media: HTMLMediaElement): void {
   if (src !== null) media.setAttribute("src", src);
 }
 
-/** A clip whose window needs no metadata: an untrimmed one's length is read from its duration. */
-export function waitsUnloaded(media: Element): boolean {
+export function lengthIsAuthored(media: Element): boolean {
   return parseStrictFiniteTimingNumber(media.getAttribute("data-duration")) != null;
 }
 
@@ -30,7 +29,8 @@ export function waitsUnloaded(media: Element): boolean {
 export function deferMediaUntilDue(): void {
   const defer = (el: Element) => {
     const start = parseStrictFiniteTimingNumber(el.getAttribute("data-start"));
-    if (start != null && start > 0 && waitsUnloaded(el)) (el as HTMLMediaElement).preload = "none";
+    if (start != null && start > 0 && lengthIsAuthored(el))
+      (el as HTMLMediaElement).preload = "none";
   };
   new MutationObserver((records) => {
     if (!skipsHiddenImages()) return;
