@@ -119,6 +119,10 @@ interface PlayerState extends PlayerStoreSlices {
   /** Pin the timeline zoom to its current scale before a duration change, so
    *  it stops rescaling every clip. No-op once already pinned. */
   pinTimelineZoom: (currentPixelsPerSecond: number, fitPixelsPerSecond: number) => void;
+  /** The scale an edit started from, kept until its reload moves the fit basis. */
+  timelineKeptScale: { pps: number; fitPps: number } | null;
+  /** Re-expresses the kept scale against a new fit basis, so an edit that changes the length rescales no clip. */
+  keepTimelineScale: (fitPixelsPerSecond: number) => void;
   /** The timeline's live pixels-per-second + fit basis, published by <Timeline>. */
   timelinePps: number;
   timelineFitPps: number;
@@ -415,7 +419,7 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
     set({ audioVolume: nextVolume });
   },
   setLoopEnabled: (enabled) => set({ loopEnabled: enabled }),
-  setZoomMode: (mode) => set({ zoomMode: mode }),
+  setZoomMode: (mode) => set({ zoomMode: mode, timelineKeptScale: null }),
   clearSelectedElementIds: () => set({ selectedElementIds: new Set() }),
   setSelectedElementIds: (ids: Set<string>) => set({ selectedElementIds: new Set(ids) }),
   timelineSnapEnabled: readStudioUiPreferences().timelineSnapEnabled ?? true,
@@ -435,14 +439,24 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
   },
   pinTimelineZoom: (currentPixelsPerSecond, fitPixelsPerSecond) =>
     set((s) => {
+      const timelineKeptScale = { pps: currentPixelsPerSecond, fitPps: fitPixelsPerSecond };
       // Already pinned (or the user manually zoomed) — never clobber that.
-      if (s.zoomMode === "manual") return {};
+      if (s.zoomMode === "manual") return { timelineKeptScale };
       const percent = computePinnedZoomPercent(currentPixelsPerSecond, fitPixelsPerSecond);
       writeStudioUiPreferences({
         timelineZoomMode: "manual",
         timelineManualZoomPercent: percent,
       });
-      return { zoomMode: "manual", manualZoomPercent: percent };
+      return { zoomMode: "manual", manualZoomPercent: percent, timelineKeptScale };
+    }),
+  timelineKeptScale: null,
+  keepTimelineScale: (fitPixelsPerSecond) =>
+    set((s) => {
+      const kept = s.timelineKeptScale;
+      if (!kept || s.zoomMode !== "manual") return { timelineKeptScale: null };
+      const percent = computePinnedZoomPercent(kept.pps, fitPixelsPerSecond);
+      writeStudioUiPreferences({ timelineManualZoomPercent: percent });
+      return { manualZoomPercent: percent, timelineKeptScale: null };
     }),
   setTimelineScale: (pps, fitPps) => {
     const state = get();
@@ -473,6 +487,7 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
   setManualZoomPercent: (percent) =>
     set((state) => ({
       manualZoomPercent: clampTimelineZoomPercent(percent, state.timelineFitPps),
+      timelineKeptScale: null,
     })),
   bumpZEditVersion: () => set((state) => ({ zEditVersion: state.zEditVersion + 1 })),
   setCurrentTime: (time) => set({ currentTime: Number.isFinite(time) ? time : 0 }),

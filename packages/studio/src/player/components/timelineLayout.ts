@@ -288,8 +288,8 @@ export const MIN_TIMELINE_EXTENT_S = 60;
  * duration — onto the viewport, so the composition ends at ~83% of the width
  * and the trailing ~17% stays empty ruler + droppable lane surface (room to
  * drag clips past the current end without first zooming out). Applied ONLY
- * inside {@link getTimelineFitPps}, the single fit-pps source, so the ruler,
- * lanes, playhead, marquee, and drag math all inherit it consistently. Manual
+ * inside {@link getTimelineFitSpan}, which fit pps and the drawn width share, so
+ * the ruler, lanes, playhead, marquee, and drag math inherit it. Manual
  * zoom percentages stay defined relative to this fit basis (100% == fit).
  */
 export const FIT_ZOOM_HEADROOM = 1.2;
@@ -319,13 +319,12 @@ export function getTimelineFitPps(
 
 /**
  * The rendered timeline extent in px. Always covers, whichever is largest:
- * the actual clip content, the visible viewport (no dead black after short
+ * the visible viewport (no dead black after short
  * content — CapCut-style), a live drag or resize ghost plus the auto-scroll
  * margin (drag/trim-to-extend), and the fit span at this zoom. Only the
  * RENDERED extent grows; clip positions/durations are untouched.
  */
 export function getTimelineDisplayContentWidth(input: {
-  trackContentWidth: number;
   effectiveDuration: number;
   viewportWidth: number;
   contentOrigin: number;
@@ -335,7 +334,6 @@ export function getTimelineDisplayContentWidth(input: {
 }): number {
   const safePps = Number.isFinite(input.pps) ? Math.max(input.pps, 0) : 0;
   return Math.max(
-    input.trackContentWidth,
     input.viewportWidth - input.contentOrigin - 2,
     input.dragGhostEndPx ?? 0,
     input.resizeGhostEndPx ?? 0,

@@ -1,4 +1,4 @@
-import { useEffect, useRef, type RefObject } from "react";
+import { useEffect, useLayoutEffect, useRef, type RefObject } from "react";
 import { usePlayerStore, type TimelineElement, type ZoomMode } from "../store/playerStore";
 import { getTimelinePixelsPerSecond } from "./timelineZoom";
 import {
@@ -46,7 +46,6 @@ export function useTimelineGeometry({
   const fitPps = getTimelineFitPps(viewportWidth, effectiveDuration, contentOrigin);
   const pps = getTimelinePixelsPerSecond(fitPps, zoomMode, manualZoomPercent);
   ppsRef.current = pps;
-  const trackContentWidth = Math.max(0, effectiveDuration * pps);
   // Drag-to-extend: while a clip is dragged, keep the rendered extent a margin
   // past the ghost's end. Holding the pointer in the right edge zone then keeps
   // auto-scroll stepping (scrollWidth grows with the ghost), so the timeline
@@ -68,7 +67,6 @@ export function useTimelineGeometry({
   // the space instead of leaving dead black — CapCut-style. Only the RENDERED
   // extent grows; clip positions/durations are untouched.
   const displayContentWidth = getTimelineDisplayContentWidth({
-    trackContentWidth,
     effectiveDuration,
     viewportWidth,
     contentOrigin,
@@ -116,6 +114,12 @@ export function useTimelineGeometry({
   useEffect(() => {
     usePlayerStore.getState().setTimelineScale(pps, fitPps);
   }, [pps, fitPps]);
+  // Before paint, so the frame an edit's new length arrives in already shows the kept scale.
+  const keptScale = usePlayerStore((s) => s.timelineKeptScale);
+  useLayoutEffect(() => {
+    if (keptScale && keptScale.fitPps !== fitPps)
+      usePlayerStore.getState().keepTimelineScale(fitPps);
+  }, [keptScale, fitPps]);
 
   return {
     pps,

@@ -24,7 +24,11 @@ vi.mock("../contexts/StudioContext", () => ({
 
 afterEach(() => {
   document.body.innerHTML = "";
-  usePlayerStore.setState({ autoKeyframeEnabled: true, thumbnailMode: "adaptive" });
+  usePlayerStore.setState({
+    autoKeyframeEnabled: true,
+    thumbnailMode: "adaptive",
+    zoomMode: "fit",
+  });
 });
 
 function renderToolbar(
@@ -207,9 +211,11 @@ describe("TimelineToolbar — keyframes on audio tracks", () => {
 });
 
 describe("TimelineToolbar Fit", () => {
-  it("names the Fit button and says whether fit is on", () => {
+  it("shows Fit as a named icon and says whether fit is on", () => {
     const { host, root } = renderToolbar();
     const fit = () => host.querySelector('button[aria-label="Fit timeline to width"]');
+    expect(fit()?.textContent).toBe("");
+    expect(fit()?.querySelector("svg")).not.toBeNull();
     act(() => fit()?.dispatchEvent(new MouseEvent("click", { bubbles: true })));
     expect(fit()?.getAttribute("aria-pressed")).toBe("true");
     act(() =>

@@ -115,3 +115,62 @@ describe("useTimelineGeometry restore-scroll effect", () => {
     expect(scroll.scrollLeft).toBe(300);
   });
 });
+
+function ScaleProbe({
+  duration,
+  seen,
+}: {
+  duration: number;
+  seen: { pps: number; fitPps: number };
+}) {
+  const ppsRef = useRef(0);
+  const fitPpsRef = useRef(0);
+  const zoomMode = usePlayerStore((s) => s.zoomMode);
+  const manualZoomPercent = usePlayerStore((s) => s.manualZoomPercent);
+  const { pps, fitPps } = useTimelineGeometry({
+    viewportWidth: 1200,
+    effectiveDuration: duration,
+    zoomMode,
+    manualZoomPercent,
+    ppsRef,
+    fitPpsRef,
+    draggedClip: null,
+    resizingClip: null,
+    expandedElements: [],
+    isDragging: useRef(false),
+    scrollRef: useRef<HTMLDivElement>(null),
+    lastScrollLeftRef: useRef(0),
+    contentOrigin: 32,
+  });
+  seen.pps = pps;
+  seen.fitPps = fitPps;
+  return null;
+}
+
+describe("useTimelineGeometry keeps the scale across an edit that changes the length", () => {
+  const seen = { pps: 0, fitPps: 0 };
+  const renderAt = (duration: number) =>
+    act(() => root.render(<ScaleProbe duration={duration} seen={seen} />));
+  const pinAsAnEditDoes = () =>
+    act(() => usePlayerStore.getState().pinTimelineZoom(seen.pps, seen.fitPps));
+
+  it("keeps a short film's clips the same size when an edit lengthens it", () => {
+    usePlayerStore.setState({ zoomMode: "fit", manualZoomPercent: 100 });
+    renderAt(17);
+    const before = seen.pps;
+    pinAsAnEditDoes();
+    renderAt(25);
+    expect(seen.fitPps).toBeLessThan(before);
+    expect(Math.abs(seen.pps - before)).toBeLessThan(seen.fitPps * 0.005);
+    expect(usePlayerStore.getState().timelineKeptScale).toBeNull();
+  });
+
+  it("lets a zoom the user picks after the edit win", () => {
+    usePlayerStore.setState({ zoomMode: "fit", manualZoomPercent: 100 });
+    renderAt(17);
+    pinAsAnEditDoes();
+    act(() => usePlayerStore.getState().setManualZoomPercent(200));
+    renderAt(25);
+    expect(seen.pps).toBeCloseTo(seen.fitPps * 2);
+  });
+});

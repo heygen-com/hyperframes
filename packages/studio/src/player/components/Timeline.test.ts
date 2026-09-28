@@ -1003,7 +1003,6 @@ describe("getTimelineDisplayContentWidth", () => {
   it("spans MIN_TIMELINE_EXTENT_S seconds while the duration is unknown", () => {
     expect(
       getTimelineDisplayContentWidth({
-        trackContentWidth: 0,
         effectiveDuration: 0,
         viewportWidth: 400,
         contentOrigin: GUTTER,
@@ -1018,7 +1017,6 @@ describe("getTimelineDisplayContentWidth", () => {
     const pps = getTimelineFitPps(viewport, 17, origin);
     expect(
       getTimelineDisplayContentWidth({
-        trackContentWidth: 17 * pps,
         effectiveDuration: 17,
         viewportWidth: viewport,
         contentOrigin: origin,
@@ -1030,7 +1028,6 @@ describe("getTimelineDisplayContentWidth", () => {
   it("still fills the viewport when that is larger than the fit span", () => {
     expect(
       getTimelineDisplayContentWidth({
-        trackContentWidth: 200,
         effectiveDuration: 40,
         viewportWidth: 2000,
         contentOrigin: GUTTER + TRACKS_LEFT_PAD,
@@ -1042,7 +1039,6 @@ describe("getTimelineDisplayContentWidth", () => {
   it("tracks a drag ghost past every other bound (drag-to-extend)", () => {
     expect(
       getTimelineDisplayContentWidth({
-        trackContentWidth: 500,
         effectiveDuration: 100,
         viewportWidth: 400,
         contentOrigin: GUTTER,
@@ -1055,7 +1051,6 @@ describe("getTimelineDisplayContentWidth", () => {
   it("tracks a resize (trim) ghost past every other bound (trim-to-extend)", () => {
     expect(
       getTimelineDisplayContentWidth({
-        trackContentWidth: 500,
         effectiveDuration: 100,
         viewportWidth: 400,
         contentOrigin: GUTTER,
@@ -1068,7 +1063,6 @@ describe("getTimelineDisplayContentWidth", () => {
   it("keeps the fit headroom past the end when zoomed in", () => {
     expect(
       getTimelineDisplayContentWidth({
-        trackContentWidth: 9000,
         effectiveDuration: 180,
         viewportWidth: 400,
         contentOrigin: GUTTER,

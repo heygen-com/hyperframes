@@ -1,5 +1,11 @@
 import { useEffect, useRef } from "react";
-import { Image, Magnet, MagnifyingGlassMinus, MagnifyingGlassPlus } from "@phosphor-icons/react";
+import {
+  ArrowsOutLineHorizontal,
+  Image,
+  Magnet,
+  MagnifyingGlassMinus,
+  MagnifyingGlassPlus,
+} from "@phosphor-icons/react";
 import {
   useEnableKeyframes,
   isPlayheadWithinTween,
@@ -513,7 +519,7 @@ export function TimelineToolbar({
                   : "text-neutral-400 hover:bg-white/6 hover:text-neutral-200"
               }`}
             >
-              Fit
+              <ArrowsOutLineHorizontal size={16} aria-hidden="true" />
             </button>
           </Tooltip>
           <Tooltip label="Zoom out">
