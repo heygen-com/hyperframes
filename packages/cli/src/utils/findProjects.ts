@@ -1,7 +1,8 @@
 import { execFile } from "node:child_process";
 import type { Dirent } from "node:fs";
 import { readFile, readdir, realpath, stat } from "node:fs/promises";
-import { basename, dirname, join, relative, sep } from "node:path";
+import { homedir } from "node:os";
+import { basename, dirname, isAbsolute, join, relative, sep } from "node:path";
 import { isHyperframesProject, PROJECT_MARKER_FILES } from "@hyperframes/core";
 
 export interface FoundProject {
@@ -19,9 +20,10 @@ export interface FindProjectsOptions {
 }
 
 const WALK_CONCURRENCY = 64;
-const SKIPPED_DIR_NAMES = new Set(["node_modules", "Library"]);
+const HOME = homedir();
 
-const skippedDir = (name: string) => name.startsWith(".") || SKIPPED_DIR_NAMES.has(name);
+const skippedDir = (parent: string, name: string) =>
+  name.startsWith(".") || name === "node_modules" || (name === "Library" && parent === HOME);
 
 async function readEntries(dir: string): Promise<Dirent[] | null> {
   try {
@@ -55,10 +57,11 @@ function spotlightMarkers(root: string): Promise<string[]> {
 }
 
 export async function findProjects({
-  root,
+  root: givenRoot,
   onProject,
   spotlight = spotlightMarkers,
 }: FindProjectsOptions): Promise<number> {
+  const root = await realpath(givenRoot).catch(() => givenRoot);
   const reported = new Set<string>();
   const entriesByDir = new Map<string, Promise<Dirent[] | null>>();
   const entriesOf = (dir: string) => {
@@ -83,39 +86,51 @@ export async function findProjects({
   async function walk() {
     const pending = [root];
     let active = 0;
+    let failure: unknown;
     const visit = async (dir: string) => {
       const entries = await readEntries(dir);
-      if (!entries || (await isWorktreeCopy(dir, entries))) return;
+      if (!entries || (dir !== root && (await isWorktreeCopy(dir, entries)))) return;
       if (isHyperframesProject(fileNames(entries))) return report(dir, "walk");
       for (const entry of entries) {
-        if (entry.isDirectory() && !skippedDir(entry.name)) pending.push(join(dir, entry.name));
+        if (entry.isDirectory() && !skippedDir(dir, entry.name)) pending.push(join(dir, entry.name));
       }
     };
     await new Promise<void>((done) => {
       const pump = () => {
         while (active < WALK_CONCURRENCY && pending.length > 0) {
           active++;
-          void visit(pending.pop()!).finally(() => {
-            active--;
-            pump();
-          });
+          void visit(pending.pop()!)
+            .catch((error: unknown) => {
+              failure ??= error;
+            })
+            .finally(() => {
+              active--;
+              pump();
+            });
         }
         if (active === 0 && pending.length === 0) done();
       };
       pump();
     });
+    if (failure) throw failure;
   }
 
   // The walk would reach the same folder only if nothing on the way down stops it.
   async function walkWouldReach(dir: string): Promise<boolean> {
     const inside = relative(root, dir);
-    if (inside.startsWith("..") || inside === "") return inside === "";
+    if (inside === "") return true;
+    if (inside.startsWith("..") || isAbsolute(inside)) return false;
+    const parts = inside.split(sep);
+    let parent = root;
+    for (const part of parts) {
+      if (skippedDir(parent, part)) return false;
+      parent = join(parent, part);
+    }
     let current = root;
-    for (const part of inside.split(sep)) {
+    for (const part of parts) {
       const entries = await entriesOf(current);
-      if (!entries || (await isWorktreeCopy(current, entries))) return false;
+      if (!entries || (current !== root && (await isWorktreeCopy(current, entries)))) return false;
       if (isHyperframesProject(fileNames(entries))) return false;
-      if (skippedDir(part)) return false;
       current = join(current, part);
     }
     const entries = await entriesOf(current);
@@ -126,10 +141,9 @@ export async function findProjects({
     const dirs = new Set((await spotlight(root)).map((marker) => dirname(marker)));
     await Promise.all(
       [...dirs].map(async (dir) => {
+        if (!(await walkWouldReach(dir))) return;
         const entries = await entriesOf(dir);
-        if (entries && isHyperframesProject(fileNames(entries)) && (await walkWouldReach(dir))) {
-          await report(dir, "spotlight");
-        }
+        if (entries && isHyperframesProject(fileNames(entries))) await report(dir, "spotlight");
       }),
     );
   }

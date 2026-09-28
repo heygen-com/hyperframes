@@ -86,8 +86,20 @@ describe("findProjects", () => {
     expect(paths(root, await find(root))).toEqual(["film"]);
   });
 
-  it("finishes past a symlink loop and an unreadable folder", async () => {
-    const root = tree(["film/index.html", "film/meta.json", "locked/film/index.html"]);
+  it("searches a root that is itself a git worktree copy", async () => {
+    const root = tree(["film/index.html", "film/meta.json"]);
+    writeFileSync(join(root, ".git"), "gitdir: /src/repo/.git/worktrees/copy\n");
+
+    expect(paths(root, await find(root))).toEqual(["film"]);
+  });
+
+  it.skipIf(process.getuid?.() === 0)("finishes past a symlink loop and an unreadable folder", async () => {
+    const root = tree([
+      "film/index.html",
+      "film/meta.json",
+      "locked/film/index.html",
+      "locked/film/meta.json",
+    ]);
     symlinkSync(root, join(root, "loop"), "dir");
     chmodSync(join(root, "locked"), 0o000);
 
