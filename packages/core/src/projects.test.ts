@@ -99,6 +99,49 @@ describe("findProjects", () => {
     expect(paths(root, found)).toEqual(["Movies/Library/film"]);
   });
 
+  it("searches the home folder when no root is given", async () => {
+    const root = tree(["film/index.html", "film/meta.json"]);
+    vi.stubEnv("HOME", root);
+    vi.stubEnv("USERPROFILE", root);
+    const found: FoundProject[] = [];
+
+    await findProjects({ onProject: (project) => found.push(project), spotlight: async () => [] });
+
+    expect(paths(root, found)).toEqual(["film"]);
+  });
+
+  it("stops reporting and rejects once its signal is aborted", async () => {
+    const root = tree(
+      Array.from({ length: 200 }, (_, i) => [`f${i}/index.html`, `f${i}/meta.json`]).flat(),
+    );
+    const controller = new AbortController();
+    const found: FoundProject[] = [];
+    const search = findProjects({
+      root,
+      signal: controller.signal,
+      spotlight: async () => [],
+      onProject: (project) => {
+        found.push(project);
+        controller.abort();
+      },
+    });
+
+    await expect(search).rejects.toMatchObject({ name: "AbortError" });
+    expect(found).toHaveLength(1);
+  });
+
+  it("does not start when its signal is already aborted", async () => {
+    const onProject = vi.fn();
+    const search = findProjects({
+      root: tree(["film/index.html", "film/meta.json"]),
+      onProject,
+      signal: AbortSignal.abort(),
+    });
+
+    await expect(search).rejects.toMatchObject({ name: "AbortError" });
+    expect(onProject).not.toHaveBeenCalled();
+  });
+
   it("does not look for projects inside a project", async () => {
     const root = tree([
       "film/index.html",

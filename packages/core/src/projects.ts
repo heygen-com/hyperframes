@@ -15,10 +15,13 @@ export interface FoundProject {
 }
 
 export interface FindProjectsOptions {
-  root: string;
+  /** Defaults to the home folder. */
+  root?: string;
   onProject: (project: FoundProject) => void;
+  /** Stops the search: no `onProject` call after it fires, and the promise rejects with its reason. */
+  signal?: AbortSignal;
   /** Paths of marker files already indexed under `root`; defaults to Spotlight on macOS. */
-  spotlight?: (root: string) => Promise<string[]>;
+  spotlight?: (root: string, signal?: AbortSignal) => Promise<string[]>;
 }
 
 const WALK_CONCURRENCY = 64;
@@ -41,14 +44,14 @@ async function isWorktreeCopy(dir: string, entries: Dirent[]): Promise<boolean> 
 const fileNames = (entries: Dirent[]) =>
   entries.filter((entry) => !entry.isDirectory()).map((entry) => entry.name);
 
-function spotlightMarkers(root: string): Promise<string[]> {
+function spotlightMarkers(root: string, signal?: AbortSignal): Promise<string[]> {
   if (process.platform !== "darwin") return Promise.resolve([]);
   const query = PROJECT_MARKER_FILES.map((name) => `kMDItemFSName == "${name}"`).join(" || ");
   return new Promise((resolve) => {
     execFile(
       "mdfind",
       ["-onlyin", root, query],
-      { timeout: 10_000, maxBuffer: 64 * 1024 * 1024 },
+      { timeout: 10_000, maxBuffer: 64 * 1024 * 1024, signal },
       (error, stdout) => resolve(error ? [] : stdout.split("\n").filter(Boolean)),
     );
   });
@@ -56,8 +59,9 @@ function spotlightMarkers(root: string): Promise<string[]> {
 
 /** Rejects with the file system error when `root` itself cannot be read; unreadable folders below it are skipped. */
 export async function findProjects({
-  root: givenRoot,
+  root: givenRoot = homedir(),
   onProject,
+  signal,
   spotlight = spotlightMarkers,
 }: FindProjectsOptions): Promise<number> {
   const root = await realpath(givenRoot).catch(() => givenRoot);
@@ -78,6 +82,7 @@ export async function findProjects({
     if (reported.has(real)) return;
     reported.add(real);
     const index = await stat(join(dir, "index.html")).catch(() => null);
+    if (signal?.aborted) return;
     onProject({
       path: dir,
       name: basename(dir),
@@ -101,7 +106,7 @@ export async function findProjects({
     };
     await new Promise<void>((done) => {
       const pump = () => {
-        while (active < WALK_CONCURRENCY && pending.length > 0) {
+        while (active < WALK_CONCURRENCY && pending.length > 0 && !signal?.aborted) {
           active++;
           void visit(pending.pop()!)
             .catch((error: unknown) => {
@@ -112,7 +117,7 @@ export async function findProjects({
               pump();
             });
         }
-        if (active === 0 && pending.length === 0) done();
+        if (active === 0 && (pending.length === 0 || signal?.aborted)) done();
       };
       pump();
     });
@@ -150,7 +155,7 @@ export async function findProjects({
   }
 
   async function fromSpotlight() {
-    const dirs = new Set((await spotlight(root)).map((marker) => dirname(marker)));
+    const dirs = new Set((await spotlight(root, signal)).map((marker) => dirname(marker)));
     await Promise.all(
       [...dirs].map(async (dir) => {
         if (!(await walkWouldReach(dir))) return;
@@ -161,5 +166,6 @@ export async function findProjects({
   }
 
   await Promise.all([fromSpotlight(), walk()]);
+  signal?.throwIfAborted();
   return reported.size;
 }
