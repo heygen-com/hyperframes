@@ -118,7 +118,6 @@ import {
 } from "./utils/commandResult.js";
 import { registerRunningCli } from "./utils/runningCli.js";
 
-// Lets a background auto-install wait until no CLI process is still loading files from the package.
 registerRunningCli();
 
 const isHelp = process.argv.includes("--help") || process.argv.includes("-h");

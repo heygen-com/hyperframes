@@ -4,7 +4,6 @@ import { join } from "node:path";
 
 /** One empty file per live CLI process, named by pid; the background installer waits until none is alive. */
 export const RUNNING_DIR = join(homedir(), ".hyperframes", "running");
-/** The file is rewritten this often; an installer that sees no rewrite for RUNNING_STALE_MS drops it. */
 export const RUNNING_HEARTBEAT_MS = 30_000;
 export const RUNNING_STALE_MS = 10 * 60_000;
 
@@ -17,7 +16,6 @@ export function registerRunningCli(
     mkdirSync(dir, { recursive: true, mode: 0o700 });
     const file = join(dir, String(process.pid));
     writeFileSync(file, "", { mode: 0o600 });
-    // A killed process leaves its file behind; the heartbeat tells it from a live one, and restores a removed file.
     const heartbeat = setInterval(() => {
       try {
         mkdirSync(dir, { recursive: true, mode: 0o700 });
