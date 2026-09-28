@@ -128,9 +128,9 @@ export function useTimelineAssetDropOps({
         const resolvedAssetSrc = resolveTimelineAssetSrc(targetPath, assetPath);
 
         const resolvedTargetPath = targetPath || "index.html";
-        const fileElements = timelineElements.filter(
-          (te) => (te.sourceFile || activeCompPath || "index.html") === resolvedTargetPath,
-        );
+        const fileElements = timelineElements
+          .filter((te) => (te.sourceFile || activeCompPath || "index.html") === resolvedTargetPath)
+          .map((te) => ({ ...te, sourceFile: resolvedTargetPath }));
         const newElementZIndex = Math.max(1, fileElements.length + gesture.placed.length + 1);
         const tag = kind === "image" ? "img" : kind;
 

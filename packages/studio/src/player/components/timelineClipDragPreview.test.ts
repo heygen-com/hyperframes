@@ -580,17 +580,19 @@ describe("computeDragPreview — a group move keeps its shape", () => {
 });
 
 describe("resolveMultiDragPreview — the live ghosts follow the clips that move", () => {
-  it("does not slide a locked clip swept into the selection", () => {
+  it("slides the movable selected clips but not a locked one swept into the selection", () => {
     const locked: TimelineElement = { ...clip("locked", 0, 4, 2, 1), timelineLocked: true };
     const b = clip("b", 1, 0, 1, 1);
-    const elements = [locked, b];
-    const selectedKeys = new Set(["locked", "b"]);
+    const rider = clip("rider", 2, 8, 1, 1);
+    const elements = [locked, b, rider];
+    const selectedKeys = new Set(["locked", "b", "rider"]);
     const { drag } = horizontalDrag(b, 1.5, 0);
     const ghost = computeDragPreview(drag, 800 + 4.5 * PPS, yForRow(0.5), {
       ...ctx(undefined, elements),
       selectedKeys,
     });
     const preview = resolveMultiDragPreview(ghost, selectedKeys, elements);
+    expect(preview && isMultiDragPassenger("rider", preview)).toBe(true);
     expect(preview && isMultiDragPassenger("locked", preview)).toBe(false);
   });
 });

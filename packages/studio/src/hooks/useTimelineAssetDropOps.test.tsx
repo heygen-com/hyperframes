@@ -252,6 +252,19 @@ describe("useTimelineAssetDropOps handleTimelineAssetDrop", () => {
     ]);
   });
 
+  it("reads a row's file track from every clip of the file, whether or not it names the file", async () => {
+    const unnamed = rowClip("unnamed", 0, 1, { row: 2, track: 0 });
+    const title = { ...rowClip("title", 0, 10), sourceFile: "index.html" };
+    const writeProjectFile = vi.fn().mockResolvedValue(undefined);
+    const getDrop = renderDropHook(rowSource([unnamed, title]), writeProjectFile, [unnamed, title]);
+    await act(async () => {
+      await getDrop()("pic.png", { start: 2, track: 0 }, 3);
+    });
+    const img = writtenClip(writeProjectFile.mock.calls[0][1] as string, "img");
+    expect(img).toContain('data-track-index="0"');
+    expect(img).toContain('data-start="10"');
+  });
+
   it("keeps two audio files dropped on a visual row together, as a single one would go", async () => {
     const clips = [
       rowClip("title", 0, 10, { track: 1 }),
