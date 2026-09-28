@@ -41,14 +41,15 @@ describe("getSystemMeta client", () => {
     expect(getSystemMeta().client).toBeNull();
   });
 
-  it.each(["studio-host/1.2.3 build 7", "studio-host/1.2.3\nstable", `studio-host/${"9".repeat(80)}`])(
-    "drops a tag that is not a short slash-separated slug: %j",
-    async (tag) => {
-      vi.stubEnv("HYPERFRAMES_CLIENT", tag);
-      const { getSystemMeta } = await import("./system.js");
-      expect(getSystemMeta().client).toBeNull();
-    },
-  );
+  it.each([
+    "studio-host/1.2.3 build 7",
+    "studio-host/1.2.3\nstable",
+    `studio-host/${"9".repeat(80)}`,
+  ])("drops a tag that is not a short slash-separated slug: %j", async (tag) => {
+    vi.stubEnv("HYPERFRAMES_CLIENT", tag);
+    const { getSystemMeta } = await import("./system.js");
+    expect(getSystemMeta().client).toBeNull();
+  });
 });
 
 describe("getAvailableMemoryMb", () => {
