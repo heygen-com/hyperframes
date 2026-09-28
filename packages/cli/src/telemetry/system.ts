@@ -63,6 +63,8 @@ export interface SystemMeta {
   agent_hint: string | null;
   term_program: string | null;
   agent_env_hints: string | null;
+  /** App that launched the CLI, from HYPERFRAMES_CLIENT (`desktop/<version>/<channel>`); null from a shell. */
+  client: string | null;
 }
 
 let cached: SystemMeta | null = null;
@@ -102,6 +104,7 @@ export function getSystemMeta(): SystemMeta {
     agent_hint: hints.agent_hint,
     term_program: hints.term_program,
     agent_env_hints: hints.agent_env_hints,
+    client: process.env["HYPERFRAMES_CLIENT"]?.trim() || null,
   };
   return cached;
 }

@@ -26,6 +26,22 @@ describe("getSystemMeta execution context", () => {
   });
 });
 
+describe("getSystemMeta client", () => {
+  afterEach(() => vi.unstubAllEnvs());
+
+  it("reads the launching app's tag from HYPERFRAMES_CLIENT", async () => {
+    vi.stubEnv("HYPERFRAMES_CLIENT", "desktop/0.8.82/stable");
+    const { getSystemMeta } = await import("./system.js");
+    expect(getSystemMeta().client).toBe("desktop/0.8.82/stable");
+  });
+
+  it("is null when the CLI runs from a shell", async () => {
+    vi.stubEnv("HYPERFRAMES_CLIENT", "");
+    const { getSystemMeta } = await import("./system.js");
+    expect(getSystemMeta().client).toBeNull();
+  });
+});
+
 describe("getAvailableMemoryMb", () => {
   it("parses vm_stat on macOS to compute available memory", async () => {
     vi.doMock("node:os", async () => ({

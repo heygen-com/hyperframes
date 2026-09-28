@@ -1239,7 +1239,9 @@ CLI when one is detected (`claude_code`, `codex`, `cursor`). That name is
 inferred from which well-known environment variables exist; their values are
 never read. Local paths and URL query strings are redacted from error and
 checkpoint messages. Project names, video content, and environment variable
-values are never collected.
+values are never collected, with one exception: `HYPERFRAMES_CLIENT`, the tag the
+HyperFrames desktop app sets (for example `desktop/0.8.82/stable`), is sent as
+`client` so reports from the app can be told apart.
 
 Nothing personally identifying is collected until you sign in. When you run
 `hyperframes auth login`, your HeyGen account email — or username, if the

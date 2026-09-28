@@ -111,6 +111,7 @@ Events include two fingerprint properties used to distinguish managed-sandbox ru
 
 - **`sandbox_runtime`**: `gvisor` / `firecracker` / `docker` / `kvm` / `wsl` / `null`. gVisor via kernel string + `/proc/version`. Firecracker via `/dev/vsock` + DMI sys_vendor. Docker via `/.dockerenv` + cgroup.
 - **`agent_runtime`**: `claude_code` / `codex` / `cursor` / `copilot_agent` / `jules` / `replit` / `devin` / `aider` / `gemini_cli` / `hermes` / `openclaw` / `null`. Detected by the existence of well-known vendor env vars; the values themselves are never read.
+- **`client`**: set only when the HyperFrames desktop app launched the CLI, from its own `HYPERFRAMES_CLIENT` tag (for example `desktop/0.8.82/stable`). The one env-var value that is read.
 
 ## Asset Preprocessing
 

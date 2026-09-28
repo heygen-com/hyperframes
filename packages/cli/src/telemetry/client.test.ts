@@ -106,6 +106,34 @@ describe("telemetry queue delivery", () => {
     }
   });
 
+  it("tags every event, feedback and catalog misses included, with the launching app", async () => {
+    const meta = vi.spyOn(system, "getSystemMeta").mockReturnValue({
+      ...system.getSystemMeta(),
+      client: "desktop/0.8.82/stable",
+    });
+    try {
+      const fetchMock = vi.fn(() => Promise.resolve(new Response("")));
+      vi.stubGlobal("fetch", fetchMock);
+      const { trackRenderFeedback, trackCatalogSearchMiss } = await import("./events.js");
+      trackEvent("cli_command", { command: "lint" });
+      trackRenderFeedback({ rating: 9 });
+      trackCatalogSearchMiss({ query: "confetti" });
+      await flush();
+      const init = fetchMock.mock.calls[0]?.[1] as { body: string } | undefined;
+      const batch = JSON.parse(init?.body ?? "{}").batch as Array<{
+        event: string;
+        properties: Record<string, unknown>;
+      }>;
+      expect(batch.map((e) => [e.event, e.properties.client])).toEqual([
+        ["cli_command", "desktop/0.8.82/stable"],
+        ["cli_render_feedback", "desktop/0.8.82/stable"],
+        ["cli_catalog_search_miss", "desktop/0.8.82/stable"],
+      ]);
+    } finally {
+      meta.mockRestore();
+    }
+  });
+
   it("keeps events queued for the exit-time send when DNS does not answer", async () => {
     dns.answers = false;
     const fetchMock = vi.fn(() => Promise.resolve(new Response("")));
