@@ -231,7 +231,11 @@ export function parseTimelineFromDOM(
   let trackCounter = 0;
   const timelineRegistry = timelines ?? (doc.defaultView as IframeWindow | null)?.__timelines;
   const transitionLabels = transitionLabelsForDocument(doc, timelineRegistry);
-  const masterStart = createRuntimeStartTimeResolver({ timelineRegistry, documentRef: doc });
+  const masterStart = createRuntimeStartTimeResolver({
+    timelineRegistry,
+    includeAuthoredTimingAttrs: true,
+    documentRef: doc,
+  });
 
   // fallow-ignore-next-line complexity
   nodes.forEach((node) => {

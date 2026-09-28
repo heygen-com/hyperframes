@@ -125,6 +125,18 @@ describe("buildMissingCompositionElements — nested master time", () => {
       ["badge", 6, 2],
     ]);
   });
+
+  it("starts a host after a referenced scene's authored length", () => {
+    const doc = makeDoc(`
+      <div data-composition-id="main" data-start="0" data-duration="20">
+        <div id="s1" data-composition-id="s1" data-start="0" data-hf-authored-duration="8"></div>
+        <div id="s2" data-composition-id="s2" data-start="s1 + 1" data-duration="4"></div>
+      </div>
+    `);
+    const win = { __timelines: { s1: { duration: () => 6 } } } as unknown as IframeWindow;
+    const { missing } = buildMissingCompositionElements(doc, win, [], 20);
+    expect(missing.find((e) => e.domId === "s2")?.start).toBe(9);
+  });
 });
 
 describe("setPreviewMediaVolume", () => {
