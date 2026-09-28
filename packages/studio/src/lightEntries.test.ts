@@ -16,6 +16,7 @@ vi.mock("@codemirror/state", () => refuse("@codemirror/state"));
 vi.mock("mediabunny", () => refuse("mediabunny"));
 vi.mock("gsap", () => refuse("gsap"));
 vi.mock("@hyperframes/parsers", () => refuse("@hyperframes/parsers"));
+vi.mock("@hyperframes/parsers/hf-ids", () => refuse("@hyperframes/parsers/hf-ids"));
 vi.mock("@hyperframes/sdk", () => refuse("@hyperframes/sdk"));
 vi.mock("dockview-react", () => refuse("dockview-react"));
 
