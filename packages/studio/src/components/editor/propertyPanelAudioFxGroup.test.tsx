@@ -80,6 +80,8 @@ function byTextButton(host: HTMLElement, text: string): HTMLButtonElement | unde
   return Array.from(host.querySelectorAll("button")).find((b) => b.textContent?.includes(text));
 }
 
+const SAMPLE_RATE = 48000;
+
 function mount(dataAttributes: Record<string, string>, alone = false, voices = 2) {
   // Every write is quiet: persisted without the preview reload that would
   // restart every playing track, but with a selection resync so the panel sees
@@ -459,29 +461,8 @@ describe("AudioFxGroup dynamic carve", () => {
 
   afterEach(() => vi.unstubAllGlobals());
 
-  /**
-   * Hover-auditioning the leveller has to measure before there is anything to
-   * hear, and measuring a long voiceover takes seconds — by which time the
-   * pointer has usually moved on. Applying then would put levelling on a track
-   * nobody asked to level, through a channel that does not persist: audible,
-   * absent from the document, and gone on the next reload.
-   */
-  it("levels the part of the file the clip plays, not the file from its start", async () => {
-    // A lane's `t` is seconds from the start of the CLIP, but the decode is the
-    // whole file — so a trimmed clip got an envelope offset by exactly the
-    // in-point, and every correction landed early.
-    //
-    // The file is loud 0-2s, quiet 2-5s, loud again 5-8s, and the clip trims the
-    // first 2s. Measured from the clip's own zero, t=0.5 sits in the quiet
-    // passage and wants a real lift; measured from the file's zero it sits in
-    // the loud head and wants none. That gap is the bug.
-    const sampleRate = 48000;
-    const data = new Float32Array(sampleRate * 8);
-    for (let i = 0; i < data.length; i++) {
-      const t = i / sampleRate;
-      const amp = t < 2 ? 0.5 : t < 5 ? 0.05 : 0.5;
-      data[i] = amp * Math.sin(2 * Math.PI * 300 * t);
-    }
+  /** Runs Even Out Levels on a decode of `data` and returns the fx lane's nearest point to a clip time. */
+  async function levelledLane(data: Float32Array, dataAttributes: Record<string, string>) {
     vi.stubGlobal(
       "fetch",
       vi.fn(async () => ({ arrayBuffer: async () => new ArrayBuffer(8) })),
@@ -489,16 +470,10 @@ describe("AudioFxGroup dynamic carve", () => {
     vi.stubGlobal(
       "OfflineAudioContext",
       class {
-        decodeAudioData = async () => ({ sampleRate, getChannelData: () => data });
+        decodeAudioData = async () => ({ sampleRate: SAMPLE_RATE, getChannelData: () => data });
       },
     );
-
-    const { host, onSetAttributeQuiet } = mount({
-      "fx-chain": CHAIN,
-      "playback-start": "2",
-      "media-start": "0",
-      duration: "6",
-    });
+    const { host, onSetAttributeQuiet } = mount({ "fx-chain": CHAIN, ...dataAttributes });
     document.getElementById("bed")?.setAttribute("src", "bed.wav");
     act(() => byTextButton(host, "Audio FX")?.click());
     act(() => byTextButton(host, "+ effect")?.click());
@@ -514,10 +489,73 @@ describe("AudioFxGroup dynamic carve", () => {
       JSON.parse(String(write[1])).lanes as { target: string; points: { t: number; v: number }[] }[]
     ).find((l) => l.target.startsWith("fx."));
     if (!lane) throw new Error("no fx lane");
-    const near = (t: number) =>
+    return (t: number) =>
       lane.points.reduce((best, p) => (Math.abs(p.t - t) < Math.abs(best.t - t) ? p : best));
-    // The quiet passage, from the clip's zero, gets its lift.
+  }
+
+  /** A 300 Hz tone, 16 s long: quiet between `quietFrom` and `quietTo`, loud elsewhere. */
+  function toneWithQuietPassage(quietFrom: number, quietTo: number): Float32Array {
+    const data = new Float32Array(SAMPLE_RATE * 16);
+    for (let i = 0; i < data.length; i++) {
+      const t = i / SAMPLE_RATE;
+      data[i] = (t >= quietFrom && t < quietTo ? 0.05 : 0.5) * Math.sin(2 * Math.PI * 300 * t);
+    }
+    return data;
+  }
+
+  it("levels the part of the file the clip plays, not the file from its start", async () => {
+    // A lane's `t` is seconds from the start of the CLIP, but the decode is the
+    // whole file. The file is quiet 2-5 s and the clip trims the first 2 s, so
+    // from the clip's zero t=0.5 wants a real lift; from the file's zero it wants none.
+    const near = await levelledLane(toneWithQuietPassage(2, 5), {
+      "playback-start": "2",
+      "media-start": "0",
+      duration: "6",
+    });
     expect(near(0.5).v).toBeGreaterThan(4);
+  });
+
+  it.each<{
+    label: string;
+    attrs: Record<string, string>;
+    quiet: [number, number];
+    quietAt: number;
+    loudAt: number;
+  }>([
+    // 2x: 6 s of clip play source 0-12 s; source 2-6 s is quiet, so clip 1-3 s wants lift.
+    {
+      label: "2x",
+      attrs: { "playback-rate": "2", duration: "6" },
+      quiet: [2, 6],
+      quietAt: 2,
+      loudAt: 5,
+    },
+    // 0.5x: 8 s of clip play source 0-4 s; source 1-2 s is quiet, so clip 2-4 s wants lift and clip 1 s none.
+    {
+      label: "0.5x",
+      attrs: { "playback-rate": "0.5", duration: "8" },
+      quiet: [1, 2],
+      quietAt: 3.5,
+      loudAt: 1,
+    },
+    // A rate lane holding 2x: playback reads the lane, not the missing data-playback-rate.
+    {
+      label: "a 2x rate lane",
+      attrs: {
+        automation:
+          '{"version":1,"lanes":[{"target":"rate","points":[{"t":0,"v":2},{"t":6,"v":2}]}]}',
+        duration: "6",
+      },
+      quiet: [2, 6],
+      quietAt: 2,
+      loudAt: 5,
+    },
+  ])("levels on the clip's clock at $label", async (c) => {
+    const near = await levelledLane(toneWithQuietPassage(...c.quiet), c.attrs);
+    expect({ quiet: near(c.quietAt).v > 4, loud: near(c.loudAt).v < 2 }).toEqual({
+      quiet: true,
+      loud: true,
+    });
   });
 
   it("removes every lane a preset owned, not just the last node's", () => {

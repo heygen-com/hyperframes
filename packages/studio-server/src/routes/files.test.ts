@@ -1649,6 +1649,34 @@ const tl = gsap.timeline({ paused: true });
     expect(result.mutated).toBe(false);
   });
 
+  it("a resize after a drag on a script-less file writes below the timeline it creates", async () => {
+    const projectDir = createProjectDir();
+    const app = new Hono();
+    registerFileRoutes(app, createAdapter(projectDir));
+    writeHtml(projectDir, "index.html", '<html><body><div id="card"></div></body></html>');
+    const add = (properties: Record<string, number>, global?: boolean) =>
+      app.request("http://localhost/projects/demo/gsap-mutations/index.html", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          type: "add",
+          targetSelector: "#card",
+          method: "set",
+          position: 0,
+          properties,
+          global,
+        }),
+      });
+
+    expect((await add({ x: -217, y: -38 }, true)).status).toBe(200);
+    expect((await add({ width: 751, height: 871 })).status).toBe(200);
+
+    const html = readFileSync(join(projectDir, "index.html"), "utf-8");
+    const declaration = html.indexOf("const tl = gsap.timeline");
+    expect(html.indexOf('gsap.set("#card"')).toBeLessThan(declaration);
+    expect(html.indexOf('tl.set("#card"')).toBeGreaterThan(declaration);
+  });
+
   it("consolidate-position-writes leaves exactly one position write per selector", async () => {
     const projectDir = createProjectDir();
     const CORRUPTED = `<!DOCTYPE html><html><body><script data-hyperframes-gsap>

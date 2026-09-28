@@ -155,6 +155,7 @@ async function directOwner(projectDir: string, turn: Turn | null): Promise<Owner
   const history = await openProjectHistory({
     projectDir,
     historyRoot: historyDeps.historyRoot,
+    pruneGoneProjectsBudgetMs: 1000,
     // A turn begun through a preview that has since stopped is still the agent's, until its idle limit.
     ...(turn && {
       closedWindow: {
