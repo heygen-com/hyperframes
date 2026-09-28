@@ -330,11 +330,16 @@ describe("runtime entry", () => {
       expect(later.preload).toBe("none");
       expect(loadsOf(now, soon, later)).toEqual([1, 1, 0]);
 
+      now.setAttribute("src", "now.mp4");
+      const srcWrites = new MutationObserver(() => {});
+      srcWrites.observe(now, { attributeFilter: ["src"] });
       window.__player?.seek(3.6);
       expect(armed(now, soon, later)).toEqual([false, false, true]);
-      // The two that left are reloaded empty, which drops the connection each held.
+      // The two that left are reloaded empty with src dropped for the reload, ending any fetch in flight.
       expect([now.preload, soon.preload]).toEqual(["none", "none"]);
       expect(loadsOf(now, soon, later)).toEqual([2, 2, 1]);
+      expect(srcWrites.takeRecords()).toHaveLength(2);
+      expect(now.getAttribute("src")).toBe("now.mp4");
     });
 
     it("keeps an untrimmed clip's duration when the playhead leaves it", async () => {

@@ -1,5 +1,5 @@
 // fallow-ignore-file code-duplication complexity
-import { preloadMedia, waitsUnloaded } from "./preloadMedia";
+import { preloadMedia, releaseMedia, waitsUnloaded } from "./preloadMedia";
 import { installRuntimeControlBridge, postRuntimeMessage, setRuntimeProtocolFps } from "./bridge";
 import { instantTolerance } from "../clipFacts";
 import { isInClipWindow } from "./clipWindow";
@@ -2700,7 +2700,7 @@ export function initSandboxRuntimeModular(): void {
       } else if (el.preload !== "none") {
         el.preload = "none";
         // Frees a clip the window armed; on one the parser started, it would only restart the fetch.
-        if (decided) el.load();
+        if (decided) releaseMedia(el);
       }
     } else if (!visible || decided === undefined) {
       // Not a clip a jump lands on: the media sync arms that one, and load() would undo its seek.

@@ -13,6 +13,14 @@ export function preloadMedia(media: PreloadableMedia): void {
   if (media.readyState < 3 && !videoAlreadyLoading) media.load();
 }
 
+/** Ends a fetch in flight, which preload none alone does not; the src attribute ends unchanged. */
+export function releaseMedia(media: HTMLMediaElement): void {
+  const src = media.getAttribute("src");
+  if (src !== null) media.removeAttribute("src");
+  media.load();
+  if (src !== null) media.setAttribute("src", src);
+}
+
 /** A clip whose window needs no metadata: an untrimmed one's length is read from its duration. */
 export function waitsUnloaded(media: Element): boolean {
   return parseStrictFiniteTimingNumber(media.getAttribute("data-duration")) != null;
