@@ -48,6 +48,7 @@ import {
   collectRuntimeTimelinePayload,
   isRuntimeElementVisibleAt,
   LOOP_INFLATED_TIMELINE_SECONDS,
+  parseAuthoredTrack,
 } from "./timeline";
 import {
   findRootCompositionElement,
@@ -2586,8 +2587,45 @@ export function initSandboxRuntimeModular(): void {
   // Media on screen or due within the look-ahead loads; the rest stops holding a connection to
   // the origin that also serves Studio's thumbnails.
   const mediaNearPlayhead = new WeakMap<HTMLMediaElement, boolean>();
+  // During playback a clip that starts arms the next clip on its track, which a cold 2 s look-ahead
+  // cannot fetch in time on a slow link.
+  const armedNext = new WeakSet<HTMLMediaElement>();
+  const armedFrom = new WeakSet<HTMLMediaElement>();
+  // An untracked clip (NaN) shares a track with nothing, as in the timeline payload.
+  const hostOf = (el: Element) => el.parentElement?.closest("[data-composition-id]");
+  const armNextOnTrack = (el: HTMLMediaElement) => {
+    const track = parseAuthoredTrack(el, Number.NaN);
+    const clips = buildRuntimeMediaCache(
+      Array.from(metadataBoundMedia).filter(
+        (m) =>
+          m.isConnected && parseAuthoredTrack(m, Number.NaN) === track && hostOf(m) === hostOf(el),
+      ),
+    ).mediaClips;
+    const end = clips.find((clip) => clip.el === el)?.end ?? Number.NaN;
+    let next: (typeof clips)[number] | undefined;
+    for (const clip of clips)
+      if (
+        clip.el !== el &&
+        clip.start >= end - instantTolerance(end) &&
+        !(next && next.start <= clip.start)
+      )
+        next = clip;
+    if (!next) return;
+    armedNext.add(next.el);
+    if (mediaNearPlayhead.get(next.el) !== true) {
+      mediaNearPlayhead.set(next.el, true);
+      preloadMedia(next.el);
+    }
+  };
   const preloadNearPlayhead = (el: HTMLMediaElement, visible: boolean, upcoming: boolean) => {
-    const near = visible || upcoming;
+    const playing = clock.isPlaying();
+    if (visible || !playing) armedNext.delete(el);
+    if (!(visible && playing)) armedFrom.delete(el);
+    else if (!armedFrom.has(el)) {
+      armedFrom.add(el);
+      armNextOnTrack(el);
+    }
+    const near = visible || upcoming || armedNext.has(el);
     const decided = mediaNearPlayhead.get(el);
     if (decided === near) return;
     mediaNearPlayhead.set(el, near);

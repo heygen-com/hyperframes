@@ -362,6 +362,54 @@ describe("runtime entry", () => {
       expect(loadsOf(later)).toEqual([beforeJump]);
     });
 
+    // jsdom's media elements cannot play; the runtime only needs play() to settle.
+    const stubPlayback = () => {
+      vi.spyOn(HTMLMediaElement.prototype, "play").mockResolvedValue(undefined);
+      vi.spyOn(HTMLMediaElement.prototype, "pause").mockImplementation(() => {});
+    };
+    const tracks = (root: HTMLElement) => {
+      stubPlayback();
+      const [now, next, afterNext, otherTrack] = videos(root, "0", "4", "7", "3");
+      otherTrack.setAttribute("data-track-index", "2");
+      return { now, next, afterNext, otherTrack };
+    };
+
+    it("arms the next clip on a clip's track when it starts playing, and nothing else", async () => {
+      spyLoad();
+      servePreview();
+      const { next, afterNext, otherTrack } = tracks(mountRoot());
+
+      await evaluateRuntime();
+      window.__player?.play();
+      expect(armed(next, afterNext, otherTrack)).toEqual([true, false, false]);
+      expect(loadsOf(next, afterNext, otherTrack)).toEqual([1, 0, 0]);
+    });
+
+    it("arms nothing ahead of a paused playhead", async () => {
+      spyLoad();
+      servePreview();
+      const { next } = tracks(mountRoot());
+
+      await evaluateRuntime();
+      window.__player?.seek(0.5);
+      expect(armed(next)).toEqual([false]);
+      window.__player?.play();
+      window.__player?.pause();
+      expect(armed(next)).toEqual([false]);
+    });
+
+    it("keeps an armed next clip through a window pass that finds it outside the look-ahead", async () => {
+      spyLoad();
+      servePreview();
+      const { next } = tracks(mountRoot());
+
+      await evaluateRuntime();
+      window.__player?.play();
+      window.__player?.seek(0.5, { keepPlaying: true });
+      expect(armed(next)).toEqual([true]);
+      expect(loadsOf(next)).toEqual([1]);
+    });
+
     it("gives each parsed clip after the first frame preload none before it can fetch", async () => {
       servePreview();
       const root = mountRoot();

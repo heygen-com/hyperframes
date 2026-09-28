@@ -143,7 +143,7 @@ function maxDefinedNumber(...values: Array<number | null>): number | null {
  * `parseInt(...) || fallback` silently replaced authored track 0 with the
  * synthetic fallback, so track-0 clips drifted to the bottom of the timeline.
  */
-function parseAuthoredTrack(el: Element, fallback: number): number {
+export function parseAuthoredTrack(el: Element, fallback: number): number {
   const raw = el.getAttribute("data-track-index") ?? el.getAttribute("data-track");
   if (raw == null) return fallback;
   const parsed = Number.parseInt(raw, 10);
