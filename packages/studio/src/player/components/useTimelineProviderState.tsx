@@ -19,7 +19,8 @@ import { useTimelineEditPinning } from "./useTimelineEditPinning";
 import { useTimelineStackingSync } from "./useTimelineStackingSync";
 import { useTimelineGeometry } from "./useTimelineGeometry";
 import { useAutoExpandKeyframedClips } from "./useAutoExpandKeyframedClips";
-import { GUTTER, LABEL_COL_W, TRACKS_LEFT_PAD } from "./timelineLayout";
+import { GUTTER, LABEL_COL_W } from "./timelineLayout";
+import { useTimelineLabelColumn } from "./useTimelineLabelColumn";
 import { useTimelineScrollViewport } from "./useTimelineScrollViewport";
 import { ClipContentOnceShown } from "./timelineClipChildren";
 import { useResolvedTimelineEditCallbacks } from "./useResolvedTimelineEditCallbacks";
@@ -36,7 +37,6 @@ import { useTimelinePerformanceTelemetry } from "./useTimelinePerformanceTelemet
 import {
   getEffectiveTimelineDuration,
   getTimelinePreviewElement,
-  timelineNeedsLabelColumn,
 } from "./timelineViewModel";
 import { useTimelineShiftModifier } from "./useTimelineShiftModifier";
 import { useTimelineTicks } from "./useTimelineTicks";
@@ -108,12 +108,7 @@ export function useTimelineProviderState({
   const selectedElementIds = usePlayerStore((s) => s.selectedElementIds);
   const focusedEaseSegment = usePlayerStore((s) => s.focusedEaseSegment);
   const gsapAnimations = usePlayerStore((s) => s.gsapAnimations);
-  const labelMode = useMemo(
-    () => timelineNeedsLabelColumn(gsapAnimations, timelineElements),
-    [gsapAnimations, timelineElements],
-  );
-  // The label column provides pre-t=0 space; otherwise keep TRACKS_LEFT_PAD after the gutter.
-  const contentOrigin = labelMode ? LABEL_COL_W + GUTTER : GUTTER + TRACKS_LEFT_PAD;
+  const { labelMode, contentOrigin } = useTimelineLabelColumn(gsapAnimations, timelineElements);
   const setSelectedElementId = usePlayerStore((s) => s.setSelectedElementId);
   const currentTime = usePlayerStore((s) => s.currentTime);
   const beatDragging = usePlayerStore((s) => s.beatDragging);
