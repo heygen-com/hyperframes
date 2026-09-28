@@ -158,7 +158,8 @@ function diskStillHere(dir: string, dev: unknown, tempDir: string): boolean {
     stat = statSync(at, { throwIfNoEntry: false });
   }
   if (typeof dev === "number") return stat.dev === dev;
-  return at === dir || at === dirname(dir) || isSafePath(tempDir, at);
+  // Recorded before `dev`: a missing folder may sit on an unmounted disk, so only an emptied folder or temp counts.
+  return at === dir || isSafePath(tempDir, at);
 }
 
 function lastUsed(home: string): number {

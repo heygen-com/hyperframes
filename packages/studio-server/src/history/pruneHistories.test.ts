@@ -11,8 +11,14 @@ import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { describe, expect, it, onTestFinished, vi } from "vitest";
 import { ID_PATH, readId } from "./historyId.js";
+import { takeHistoryOwnership } from "./ownerLock.js";
 import { openProjectHistory } from "./projectHistory.js";
 import { KEEP_GONE_PROJECT_HISTORY_MS, pruneGoneProjectHistories } from "./pruneHistories.js";
+
+vi.mock("./ownerLock.js", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("./ownerLock.js")>();
+  return { ...actual, takeHistoryOwnership: vi.fn(actual.takeHistoryOwnership) };
+});
 
 function tempDir(prefix: string): string {
   const dir = mkdtempSync(join(tmpdir(), prefix));
@@ -92,8 +98,12 @@ describe("pruneGoneProjectHistories", () => {
     const elsewhere = { tempDir: historyRoot };
 
     expect(await prunedIds(historyRoot, elsewhere)).toEqual([]);
-    const later = Date.now() + KEEP_GONE_PROJECT_HISTORY_MS;
-    expect(await prunedIds(historyRoot, { ...elsewhere, now: later })).toEqual([gone.id]);
+    expect(await prunedIds(historyRoot, { ...elsewhere, now: Date.now() + 13 * DAY_MS })).toEqual(
+      [],
+    );
+    expect(await prunedIds(historyRoot, { ...elsewhere, now: Date.now() + 14 * DAY_MS })).toEqual([
+      gone.id,
+    ]);
   });
 
   it("prunes when a history opens a day after the last full prune", async () => {
@@ -198,22 +208,56 @@ describe("pruneGoneProjectHistories", () => {
     ]);
   });
 
-  it("keeps a history recorded without its disk once the project's parent is gone too", async () => {
+  it("prunes a history recorded without its disk only when its folder is there without the project", async () => {
     const historyRoot = tempDir("hf-prune-root-");
+    const emptied = await projectWithHistory(historyRoot);
+    const folderGone = await projectWithHistory(historyRoot);
     const parentGone = await projectWithHistory(historyRoot, {
       projectDir: join(tempDir("hf-prune-parent-"), "project"),
     });
-    const parentKept = await projectWithHistory(historyRoot);
-    await Promise.all([parentGone.history.close(), parentKept.history.close()]);
-    for (const { id } of [parentGone, parentKept])
-      editRecord(historyRoot, id, ({ dev: _dev, ...record }) => record);
+    const all = [emptied, folderGone, parentGone];
+    await Promise.all(all.map(({ history }) => history.close()));
+    for (const { id } of all) editRecord(historyRoot, id, ({ dev: _dev, ...record }) => record);
+    rmSync(join(emptied.projectDir, ".hyperframes"), { recursive: true, force: true });
+    // An unmounted disk leaves its mount point, so a missing folder under it may just be unplugged.
+    rmSync(folderGone.projectDir, { recursive: true, force: true });
     rmSync(dirname(parentGone.projectDir), { recursive: true, force: true });
-    rmSync(parentKept.projectDir, { recursive: true, force: true });
 
     const later = Date.now() + KEEP_GONE_PROJECT_HISTORY_MS;
     expect(await prunedIds(historyRoot, { tempDir: historyRoot, now: later })).toEqual([
-      parentKept.id,
+      emptied.id,
     ]);
+  });
+
+  it("prunes a history recorded without its disk under the temp folder once its project is gone", async () => {
+    const historyRoot = tempDir("hf-prune-root-");
+    const scratch = await projectWithHistory(historyRoot, {
+      projectDir: join(tempDir("hf-prune-scratch-"), "project"),
+    });
+    await scratch.history.close();
+    editRecord(historyRoot, scratch.id, ({ dev: _dev, ...record }) => record);
+    rmSync(dirname(scratch.projectDir), { recursive: true, force: true });
+
+    expect(await prunedIds(historyRoot)).toEqual([scratch.id]);
+  });
+
+  it("keeps a history whose project comes back while the prune takes its lock", async () => {
+    const historyRoot = tempDir("hf-prune-root-");
+    const back = await projectWithHistory(historyRoot);
+    await back.history.close();
+    const idFile = join(back.projectDir, ID_PATH);
+    const id = readFileSync(idFile, "utf-8");
+    rmSync(dirname(idFile), { recursive: true, force: true });
+    const real = await vi.importActual<typeof import("./ownerLock.js")>("./ownerLock.js");
+    vi.mocked(takeHistoryOwnership).mockImplementationOnce(async (home, waitMs) => {
+      mkdirSync(dirname(idFile), { recursive: true });
+      writeFileSync(idFile, id);
+      return real.takeHistoryOwnership(home, waitMs);
+    });
+
+    expect(await prunedIds(historyRoot)).toEqual([]);
+    expect(existsSync(idFile)).toBe(true);
+    expect(existsSync(join(historyRoot, back.id))).toBe(true);
   });
 
   it("removes the history of a folder that now holds another project", async () => {
