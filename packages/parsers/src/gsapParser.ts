@@ -1463,9 +1463,10 @@ function findStatementPath(path: AstPath): AstPath | null {
 
 function insertAfterAnchor(parsed: ParsedGsapAst, newStatement: AstNode): void {
   const lastCall = parsed.located[parsed.located.length - 1]?.call;
-  const anchorPath = lastCall
-    ? findStatementPath(lastCall.path)
-    : findTimelineDeclarationPath(parsed.ast, parsed.timelineVar);
+  const lastPath = lastCall ? findStatementPath(lastCall.path) : null;
+  const timeline = findTimelineDeclarationPath(parsed.ast, parsed.timelineVar);
+  const beforeTimeline = !!timeline && !!lastPath && lastPath.node.start < timeline.node.start;
+  const anchorPath = !lastCall || beforeTimeline ? timeline : lastPath;
   if (anchorPath) {
     anchorPath.insertAfter(newStatement);
   } else {

@@ -23,6 +23,7 @@ import {
   authoredMarkup,
   findAuthoredElement,
   findAuthoredElementById,
+  liveMarkupWithoutPreviewMarks,
   parseSavedSource,
 } from "../utils/authoredSource";
 import { serializeStudioFileMutations } from "../utils/studioFileMutationCoordinator";
@@ -88,7 +89,9 @@ function getSelectedDomElement(
 
 function savedMarkupElseLive(saved: Document, live: Element, sourceFile: string): string {
   const authored = findAuthoredElement(saved, live) ?? findAuthoredElementById(saved, live);
-  return authored ? authoredMarkup(authored, live, sourceFile) : live.outerHTML;
+  return authored
+    ? authoredMarkup(authored, live, sourceFile)
+    : liveMarkupWithoutPreviewMarks(live);
 }
 
 async function readSavedMarkup(

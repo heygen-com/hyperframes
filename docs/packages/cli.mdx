@@ -921,7 +921,7 @@ How it uses the machine, and when it gives up:
 | `--low-memory-mode` / `--no-low-memory-mode`             | auto at 8 GB RAM or less                   | Safe profile: one worker, screenshot capture, no calibration. See the note below.                                   |
 | `--gpu`                                                  | off                                        | Hardware FFmpeg encoding (NVENC, VideoToolbox, AMF, VAAPI, QSV)                                                    |
 | `--browser-gpu` / `--no-browser-gpu`                     | auto locally, off in Docker                | Host GPU for Chrome and WebGL capture, or software rendering. Auto probes WebGL once and falls back.                |
-| `--page-side-compositing` / `--no-page-side-compositing`  | on                                         | Page-side WebGL for compatible SDR shader transitions, ~6× faster. HDR, alpha, and video disable it themselves.     |
+| `--page-side-compositing` / `--no-page-side-compositing`  | on                                         | Page-side WebGL for SDR shader transitions in mp4, hls and gif, ~6× faster. webm and mov use the layered path; gif always uses page-side WebGL, even with `--no-page-side-compositing`. |
 | `--experimental-fast-capture`                            | on where it can engage                     | Chrome's draw-element capture, ~2× faster; falls back to screenshots on its own. Env: `PRODUCER_EXPERIMENTAL_FAST_CAPTURE`. |
 | `--frames-cache-dir`                                     | `<tmpdir>/hyperframes-extract-cache-<uid>` | Where extracted source frames cache. `off`, `none`, `false`, or `0` disables it. `doctor` reports the live value.   |
 | `--max-concurrent-renders`                               | `2`                                        | Concurrent jobs on the Producer server, 1–10                                                                       |
@@ -1236,10 +1236,12 @@ Studio installs and which of the two installed them, and system info — includi
 environment fingerprint: OS, kernel string, CPU and memory shape, sandbox
 runtime such as gVisor or Docker, and the _name_ of a coding agent driving the
 CLI when one is detected (`claude_code`, `codex`, `cursor`). That name is
-inferred from which well-known environment variables exist; their values are
-never read. Local paths and URL query strings are redacted from error and
+inferred from which well-known environment variables exist. Local paths and URL query strings are redacted from error and
 checkpoint messages. Project names, video content, and environment variable
-values are never collected.
+values are never collected, except short self-identifying names: `AGENT`,
+`AI_AGENT` and `TERM_PROGRAM` (filtered to short slugs), and `HYPERFRAMES_CLIENT`,
+the `<app>/<version>/<channel>` tag an app that launches the CLI sets, sent as
+`client` so reports from that app can be told apart.
 
 Nothing personally identifying is collected until you sign in. When you run
 `hyperframes auth login`, your HeyGen account email — or username, if the

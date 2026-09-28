@@ -54,7 +54,7 @@ vi.mock("node:child_process", () => ({
 const { trackEvent, flush, flushSync } = await import("./client.js");
 const system = await import("./system.js");
 
-type Batch = { uuid: string; event: string }[];
+type Batch = { uuid: string; event: string; properties: Record<string, unknown> }[];
 
 function sentBatch(fetchMock: ReturnType<typeof vi.fn>, call = 0): Batch {
   const init = fetchMock.mock.calls[call]?.[1] as { body: string } | undefined;
@@ -101,6 +101,29 @@ describe("telemetry queue delivery", () => {
         execution_harness_hint: "harbor",
       });
       expect(eventProps(fetchMock)).not.toHaveProperty("HARBOR_AGENT");
+    } finally {
+      meta.mockRestore();
+    }
+  });
+
+  it("tags every event, feedback and catalog misses included, with the launching app", async () => {
+    const meta = vi.spyOn(system, "getSystemMeta").mockReturnValue({
+      ...system.getSystemMeta(),
+      client: "example-app/1.2.3/stable",
+    });
+    try {
+      const fetchMock = vi.fn(() => Promise.resolve(new Response("")));
+      vi.stubGlobal("fetch", fetchMock);
+      const { trackRenderFeedback, trackCatalogSearchMiss } = await import("./events.js");
+      trackEvent("cli_command", { command: "lint" });
+      trackRenderFeedback({ rating: 9 });
+      trackCatalogSearchMiss({ query: "confetti" });
+      await flush();
+      expect(sentBatch(fetchMock).map((e) => [e.event, e.properties.client])).toEqual([
+        ["cli_command", "example-app/1.2.3/stable"],
+        ["cli_render_feedback", "example-app/1.2.3/stable"],
+        ["cli_catalog_search_miss", "example-app/1.2.3/stable"],
+      ]);
     } finally {
       meta.mockRestore();
     }

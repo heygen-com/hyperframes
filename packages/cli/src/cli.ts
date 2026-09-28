@@ -116,6 +116,9 @@ import {
   registerRootExitRequester,
   type CommandResult,
 } from "./utils/commandResult.js";
+import { registerRunningCli } from "./utils/runningCli.js";
+
+registerRunningCli();
 
 const isHelp = process.argv.includes("--help") || process.argv.includes("-h");
 

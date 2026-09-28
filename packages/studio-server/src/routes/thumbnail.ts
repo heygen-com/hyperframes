@@ -23,6 +23,7 @@ import { STUDIO_MOTION_PATH } from "../helpers/studioMotionRenderScript.js";
 import { thumbnailGenerationCoordinator } from "./thumbnailGenerationCoordinator.js";
 import { requestSubPath } from "../helpers/requestSubPath.js";
 import { resolveWithinProject } from "../helpers/safePath.js";
+import { PREVIEW_CAPTURE_PARAM } from "./preview.js";
 
 const THUMBNAIL_CACHE_VERSION = "v4";
 const THUMBNAIL_MAX_OUTPUT_WIDTH = 240;
@@ -179,10 +180,11 @@ export function registerThumbnailRoutes(api: Hono, adapter: StudioApiAdapter): v
     sourceMtime = Math.max(sourceMtime, manualEdits.mtimeMs, motion.mtimeMs);
 
     const projectUrl = `http://${c.req.header("host")}/api/projects/${encodeURIComponent(project.id)}`;
-    const previewUrl =
+    const previewPath =
       compPath === "index.html"
         ? `${projectUrl}/preview`
         : `${projectUrl}/preview/comp/${compPath.split("/").map(encodeURIComponent).join("/")}`;
+    const previewUrl = `${previewPath}?${PREVIEW_CAPTURE_PARAM}=1`;
 
     // Cache
     const cacheDir = join(project.dir, ".thumbnails");

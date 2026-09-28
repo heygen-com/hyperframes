@@ -129,6 +129,7 @@ export function trackEvent(
       // never pay for it. See telemetry/canary.ts.
       ...canaryEventProperties(),
       agent_env_hints: sys.agent_env_hints ?? undefined,
+      client: sys.client ?? undefined,
     },
     distinctId,
   );
