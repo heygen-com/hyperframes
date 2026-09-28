@@ -103,6 +103,15 @@ export function createDomEditOverlayGestureHandlers(opts: UseDomEditOverlayGestu
     },
   ) => _startGesture(kind, e, opts, options);
 
+  // A press on a box that cannot move says why at once, not after the pointer travels.
+  const startBlockedMove = (e: React.PointerEvent<HTMLElement>, selection: DomEditSelection) => {
+    e.preventDefault();
+    e.stopPropagation();
+    e.currentTarget.setPointerCapture(e.pointerId);
+    opts.blockedMoveRef.current = { pointerId: e.pointerId, startX: e.clientX, startY: e.clientY };
+    opts.onBlockedMoveRef.current(selection);
+  };
+
   const moveGroupDrag = createGroupDragMover(opts, setDraftGroupOverlayItems);
 
   // fallow-ignore-next-line complexity
@@ -116,13 +125,11 @@ export function createDomEditOverlayGestureHandlers(opts: UseDomEditOverlayGestu
       opts.onCanvasPointerMoveRef.current(e, { preferClipAncestor: false });
     }
 
-    if (blockedMove && sel) {
+    if (blockedMove) {
       const dx = e.clientX - blockedMove.startX;
       const dy = e.clientY - blockedMove.startY;
-      if (!blockedMove.notified && Math.hypot(dx, dy) >= BLOCKED_MOVE_THRESHOLD_PX) {
-        blockedMove.notified = true;
+      if (Math.hypot(dx, dy) >= BLOCKED_MOVE_THRESHOLD_PX) {
         opts.suppressNextBoxClickRef.current = true;
-        opts.onBlockedMoveRef.current(sel);
       }
       return;
     }
@@ -545,5 +552,12 @@ export function createDomEditOverlayGestureHandlers(opts: UseDomEditOverlayGestu
     opts.rafPausedRef.current = false;
   };
 
-  return { startGesture, startGroupDrag, onPointerMove, onPointerUp, clearPointerState };
+  return {
+    startGesture,
+    startGroupDrag,
+    startBlockedMove,
+    onPointerMove,
+    onPointerUp,
+    clearPointerState,
+  };
 }
