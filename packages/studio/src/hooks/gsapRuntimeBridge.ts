@@ -164,7 +164,8 @@ export function dragEditOutcome(
   const editability = directEditOutcomeForProperties(allKnownAnimations, POSITION_CHANNEL_SET);
   if (editability.status === "blocked") return editability;
   const sourceAnimations = fetchedAnimations.length > 0 ? fetchedAnimations : animations;
-  // A group writes each member on its own, so a tween shared with other targets cannot carry one.
+  // In a group only a tween naming this member by id or by its own selector counts,
+  // so a class tween shared with id-selected members cannot take one member's write.
   const positionSources = group
     ? getAnimationsForElement(sourceAnimations, { id: selection.id ?? null, selector })
     : sourceAnimations;
