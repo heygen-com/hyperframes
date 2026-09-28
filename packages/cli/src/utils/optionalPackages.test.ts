@@ -7,6 +7,7 @@ import {
   renameSync,
   rmSync,
   symlinkSync,
+  utimesSync,
   writeFileSync,
 } from "node:fs";
 import { tmpdir } from "node:os";
@@ -317,6 +318,20 @@ describe("install", () => {
       expect(existsSync(dead)).toBe(false);
       expect(existsSync(deadOldFormat)).toBe(false);
       expect(existsSync(alive)).toBe(true);
+    } finally {
+      rmSync(cache, { recursive: true, force: true });
+    }
+  });
+
+  it("sweeps a staging dir hours old even when its pid is alive, since pids get reused", async () => {
+    const { cache, dir, stubNpm } = setup();
+    const reused = `${dir}.tmp-${process.ppid}-abcd1234`;
+    mkdirSync(reused, { recursive: true });
+    const sevenHoursAgo = new Date(Date.now() - 7 * 60 * 60 * 1000);
+    utimesSync(reused, sevenHoursAgo, sevenHoursAgo);
+    try {
+      await install(dir, name, version, stubNpm);
+      expect(existsSync(reused)).toBe(false);
     } finally {
       rmSync(cache, { recursive: true, force: true });
     }

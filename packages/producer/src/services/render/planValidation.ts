@@ -126,8 +126,8 @@ export function validateNoSystemFonts(compiledHtml: string): void {
     const families = resolveFontFamilyDeclarationFamilies(declaration, customProperties);
     if (families.length === 0) continue;
     const primaryRaw = families[0]!;
-    // Unresolved var() primaries are left to the browser; resolved custom
-    // properties are checked above so common `--font: system-ui` aliases fail.
+    // A var() primary is checked as its resolved value or, when undefined, its
+    // fallback, so `--font: system-ui` and `var(--font, system-ui)` both fail.
     if (!GENERIC_FAMILIES.has(primaryRaw.toLowerCase())) continue;
     throw new PlanValidationError(
       SYSTEM_FONT_USED,

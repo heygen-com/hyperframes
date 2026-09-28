@@ -7,6 +7,8 @@ import {
   FONT_ALIAS_KEYS,
   _clearGoogleFontCssCacheForTests,
   injectDeterministicFontFaces,
+  normalizeSystemFontPrimaryFamilies,
+  resolveFontFamilyDeclarationFamilies,
 } from "./deterministicFonts.js";
 
 describe("existing font-face recognition", () => {
@@ -200,5 +202,119 @@ describe("FONT_ALIASES cross-platform coverage", () => {
     expect(FONT_ALIAS_KEYS.has("consolas")).toBe(true);
     expect(FONT_ALIAS_KEYS.has("inter")).toBe(true);
     expect(FONT_ALIAS_KEYS.size).toBe(Object.keys(FONT_ALIASES).length);
+  });
+});
+
+const styled = (css: string) => `<html><head><style>${css}</style></head><body>Hello</body></html>`;
+
+describe("var() font-family fallbacks", () => {
+  const noProperties = new Map<string, string>();
+
+  it("injects the fallback family of an undefined custom property", async () => {
+    const html = styled(`body { font-family: var(--font-body, Inter, system-ui, sans-serif); }`);
+    const result = await injectDeterministicFontFaces(html, { allowSystemFontCapture: false });
+    expect(result).toContain(`font-family: "Inter";`);
+  });
+
+  it("uses the fallback list when the custom property is undefined", () => {
+    expect(
+      resolveFontFamilyDeclarationFamilies(
+        "var(--font-body, Inter, system-ui, sans-serif), serif",
+        noProperties,
+      ),
+    ).toEqual(["Inter", "system-ui", "sans-serif", "serif"]);
+  });
+
+  it("prefers a defined custom property over the fallback", () => {
+    expect(
+      resolveFontFamilyDeclarationFamilies(
+        "var(--font-body, Inter), serif",
+        new Map([["--font-body", '"Montserrat", sans-serif']]),
+      ),
+    ).toEqual(["Montserrat", "sans-serif", "serif"]);
+  });
+
+  it("resolves a nested var() fallback", () => {
+    expect(resolveFontFamilyDeclarationFamilies("var(--a, var(--b, Inter))", noProperties)).toEqual(
+      ["Inter"],
+    );
+    expect(
+      resolveFontFamilyDeclarationFamilies(
+        "var(--a, var(--b, Inter))",
+        new Map([["--b", "Oswald"]]),
+      ),
+    ).toEqual(["Oswald"]);
+  });
+
+  it("follows a defined property whose value is itself a var()", () => {
+    expect(
+      resolveFontFamilyDeclarationFamilies(
+        "var(--a), serif",
+        new Map([
+          ["--a", "var(--b, system-ui)"],
+          ["--b", "Oswald"],
+        ]),
+      ),
+    ).toEqual(["Oswald", "serif"]);
+    expect(
+      resolveFontFamilyDeclarationFamilies(
+        "var(--a)",
+        new Map([["--a", "var(--undefined, Inter, system-ui)"]]),
+      ),
+    ).toEqual(["Inter", "system-ui"]);
+  });
+
+  it("stops on a custom property cycle", () => {
+    const cycle = new Map([
+      ["--a", "var(--b)"],
+      ["--b", "var(--a)"],
+    ]);
+    expect(resolveFontFamilyDeclarationFamilies("var(--a), serif", cycle)).toEqual([
+      expect.stringMatching(/^var\(/),
+      "serif",
+    ]);
+  });
+
+  it.each(["inherit", "var(--font-body, inherit)"])(
+    "treats %s as a keyword, not a font to fetch",
+    async (value) => {
+      const html = styled(`body { font-family: ${value}; }`);
+      const fetchImpl = Object.assign(async () => new Response("", { status: 404 }), {
+        preconnect: fetch.preconnect,
+      });
+      expect(
+        await injectDeterministicFontFaces(html, {
+          fetchImpl,
+          allowSystemFontCapture: false,
+          failClosedFontFetch: true,
+        }),
+      ).toBe(html);
+    },
+  );
+
+  it("requests no family for an undefined var() without a fallback", async () => {
+    const html = styled(`body { font-family: var(--font-body); }`);
+    expect(await injectDeterministicFontFaces(html, { allowSystemFontCapture: false })).toBe(html);
+  });
+});
+
+describe("system-font primaries behind var()", () => {
+  it.each([
+    [
+      `var(--font-display, -apple-system, BlinkMacSystemFont, "Helvetica Neue", Arial, sans-serif)`,
+      `var(--font-display, Inter, -apple-system, BlinkMacSystemFont, "Helvetica Neue", Arial, sans-serif)`,
+    ],
+    [`var(--a, var(--b, system-ui)), serif`, `var(--a, var(--b, Inter, system-ui)), serif`],
+  ])("puts Inter first in the fallback of undefined %s", (value, expected) => {
+    expect(normalizeSystemFontPrimaryFamilies(styled(`body { font-family: ${value}; }`))).toBe(
+      styled(`body { font-family: ${expected}; }`),
+    );
+  });
+
+  it("leaves a var() alone when its property is defined", () => {
+    const html = styled(
+      `:root { --font-display: "Montserrat"; } body { font-family: var(--font-display, -apple-system, sans-serif); }`,
+    );
+    expect(normalizeSystemFontPrimaryFamilies(html)).toBe(html);
   });
 });

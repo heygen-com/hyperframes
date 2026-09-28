@@ -19,7 +19,8 @@ import {
 import { tmpdir } from "node:os";
 import { join, parse } from "node:path";
 import { ensureHfIds } from "@hyperframes/parsers/hf-ids";
-import { PREVIEW_BUNDLE_OPTIONS, registerPreviewRoutes } from "./preview";
+import { STUDIO_PREVIEW_MARK_META } from "@hyperframes/core/studio-preview-mark";
+import { PREVIEW_BUNDLE_OPTIONS, PREVIEW_CAPTURE_PARAM, registerPreviewRoutes } from "./preview";
 import { registerFileRoutes } from "./files";
 import { createPreviewDocumentStore } from "../helpers/previewDocumentStore";
 import type { StudioApiAdapter } from "../types";
@@ -112,6 +113,37 @@ describe("registerPreviewRoutes", () => {
     );
     const authored = await (await app.request("http://localhost/projects/demo/preview")).text();
     expect(authored).not.toContain('<base href="/api/projects/demo/preview/">');
+  });
+
+  it("serves the mark the runtime keys preview-only work on, ahead of the runtime script", async () => {
+    const projectDir = createProjectDir();
+    const app = new Hono();
+    registerPreviewRoutes(app, createAdapter(projectDir));
+    const html = await (await app.request("http://localhost/projects/demo/preview")).text();
+    const mark = html.indexOf(`<meta name="${STUDIO_PREVIEW_MARK_META}">`);
+    expect(mark).toBeGreaterThan(-1);
+    expect(mark).toBeLessThan(html.indexOf("/api/runtime.js"));
+    expect(html).toContain("<script data-hf-gsap-fallback>");
+  });
+
+  it("serves a later scene's image lazy, and captures every image eager with no mark", async () => {
+    const projectDir = createProjectDir();
+    const later =
+      '<!DOCTYPE html><html><head></head><body><div data-start="5"><img src="b.png"></div></body></html>';
+    writeFileSync(join(projectDir, "index.html"), later);
+    writeFileSync(join(projectDir, "scene.html"), later);
+    const app = new Hono();
+    registerPreviewRoutes(app, createAdapter(projectDir));
+    for (const path of ["preview", "preview/comp/scene.html"]) {
+      const url = `http://localhost/projects/demo/${path}`;
+      const preview = await (await app.request(url)).text();
+      const capture = await (await app.request(`${url}?${PREVIEW_CAPTURE_PARAM}=1`)).text();
+      expect(preview, path).toMatch(/<img loading="lazy" [^>]*src="b.png">/);
+      expect(preview, path).toContain(STUDIO_PREVIEW_MARK_META);
+      expect(capture, path).not.toContain("loading=");
+      expect(capture, path).not.toContain(STUDIO_PREVIEW_MARK_META);
+      expect(capture, path).toContain("<script data-hf-gsap-fallback>");
+    }
   });
 
   it("injects Studio GSAP motion manifest runtime into project preview", async () => {
@@ -545,6 +577,27 @@ describe("built preview reuse", () => {
     const restarted = await serve("build-a");
     expect(restarted).toEqual({ html: cold.html, builds: 0 });
     expect((await serve("build-b")).builds).toBe(1);
+  });
+
+  it("keeps the preview in the document store after a capture build", async () => {
+    const projectDir = createProjectDir();
+    const storeDir = join(projectDir, ".hyperframes", "preview");
+    const session = async (paths: string[]) => {
+      const bundle = vi.fn(async () => BUILT);
+      const app = new Hono();
+      registerPreviewRoutes(
+        app,
+        createAdapter(projectDir, {
+          bundle,
+          previewDocuments: createPreviewDocumentStore(storeDir, "build-a"),
+        } as Partial<StudioApiAdapter>),
+      );
+      for (const path of paths) await app.request(`http://localhost/projects/demo/${path}`);
+      return bundle.mock.calls.length;
+    };
+
+    expect(await session(["preview", `preview?${PREVIEW_CAPTURE_PARAM}=1`])).toBe(2);
+    expect(await session(["preview"])).toBe(0);
   });
 });
 

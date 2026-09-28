@@ -13,7 +13,7 @@ import { isFinitePositive } from "./playbackAdapter";
 import { getSourceScopedSelectorIndex } from "../../utils/sourceScopedSelectorIndex";
 import { HF_AUDIO_GROUP_TAG } from "@hyperframes/core/audio-groups";
 import { readElementFades } from "@hyperframes/core/audio-fade";
-import { readMediaOffsetSeconds } from "@hyperframes/parsers/media-duration";
+import { type AttrReader, readMediaOffsetSeconds } from "@hyperframes/parsers/media-duration";
 
 // ---------------------------------------------------------------------------
 // Layer-reveal lift transparency
@@ -168,14 +168,34 @@ export function resolveMediaElement(el: Element): HTMLMediaElement | HTMLImageEl
     : null;
 }
 
+/** The in-point as playback reads it, and the attribute holding it; empty when neither is authored. */
+export function readPlaybackStartAttributes(
+  getAttr: AttrReader,
+): Pick<TimelineElement, "playbackStart" | "playbackStartAttr"> {
+  const playbackStartAttr =
+    getAttr("data-playback-start") != null
+      ? "playback-start"
+      : getAttr("data-media-start") != null
+        ? "media-start"
+        : undefined;
+  return playbackStartAttr
+    ? { playbackStart: readMediaOffsetSeconds(getAttr), playbackStartAttr }
+    : {};
+}
+
+export function playbackStartAttributeForElement(
+  element: Pick<TimelineElement, "kind" | "playbackStartAttr">,
+): "data-media-start" | "data-playback-start" {
+  return element.playbackStartAttr === "playback-start" || element.kind === "composition"
+    ? "data-playback-start"
+    : "data-media-start";
+}
+
 function applyPlaybackMetadataFromElement(entry: TimelineElement, el: Element): void {
-  const playbackStartValue = el.getAttribute("data-playback-start");
-  const legacyMediaStartValue = el.getAttribute("data-media-start");
-  const mediaStartValue = playbackStartValue ?? legacyMediaStartValue;
-  if (mediaStartValue != null)
-    entry.playbackStart = readMediaOffsetSeconds((n) => el.getAttribute(n));
-  if (playbackStartValue != null) entry.playbackStartAttr = "playback-start";
-  else if (legacyMediaStartValue != null) entry.playbackStartAttr = "media-start";
+  Object.assign(
+    entry,
+    readPlaybackStartAttributes((n) => el.getAttribute(n)),
+  );
 
   const authoredPlaybackRate = Number.parseFloat(el.getAttribute("data-playback-rate") ?? "");
   if (Number.isFinite(authoredPlaybackRate) && authoredPlaybackRate > 0) {
@@ -193,9 +213,25 @@ function setOptional<K extends keyof TimelineElement>(
   else entry[key] = value;
 }
 
-/** `data-has-audio` and the clip-edge fades: what the mixer hears and how it enters and leaves. */
+function readVolume(el: Element, media: Element): number | undefined {
+  const volume = Number.parseFloat(
+    el.getAttribute("data-volume") ?? media.getAttribute("data-volume") ?? "",
+  );
+  return Number.isFinite(volume) ? volume : undefined;
+}
+
+/** What the mixer gets: the compiler's `data-has-audio` rule, muted and volume. */
 function applyAudioMetadataFromElement(entry: TimelineElement, el: Element): void {
-  setOptional(entry, "hasAudio", el.getAttribute("data-has-audio") === "true" ? true : undefined);
+  const media = resolveMediaElement(el) ?? el;
+  const muted = el.hasAttribute("muted") || media.hasAttribute("muted");
+  const hasAudio = el.getAttribute("data-has-audio");
+  const sound = hasAudio === null ? el.tagName === "VIDEO" && !muted : hasAudio === "true";
+  setOptional(entry, "hasAudio", sound ? true : undefined);
+  setOptional(entry, "muted", muted ? true : undefined);
+  setOptional(entry, "volume", readVolume(el, media));
+}
+
+function applyFadeMetadataFromElement(entry: TimelineElement, el: Element): void {
   const fades = readElementFades(el);
   setOptional(entry, "fadeIn", fades.fadeIn > 0 ? fades.fadeIn : undefined);
   setOptional(entry, "fadeOut", fades.fadeOut > 0 ? fades.fadeOut : undefined);
@@ -204,6 +240,7 @@ function applyAudioMetadataFromElement(entry: TimelineElement, el: Element): voi
 export function applyMediaMetadataFromElement(entry: TimelineElement, el: Element): void {
   applyPlaybackMetadataFromElement(entry, el);
   applyAudioMetadataFromElement(entry, el);
+  applyFadeMetadataFromElement(entry, el);
 
   const mediaEl = resolveMediaElement(el);
   if (!mediaEl) return;

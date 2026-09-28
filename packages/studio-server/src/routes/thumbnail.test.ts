@@ -14,6 +14,7 @@ import {
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { pruneThumbnailCache, registerThumbnailRoutes } from "./thumbnail";
+import { PREVIEW_CAPTURE_PARAM } from "./preview";
 import type { StudioApiAdapter } from "../types";
 import { createProjectSignature } from "../helpers/projectSignature.js";
 import { proxyActivityMark } from "../helpers/proxyTranscoder.js";
@@ -66,6 +67,23 @@ async function writeComposition(
 }
 
 describe("registerThumbnailRoutes", () => {
+  it("screenshots the capture variant of the preview document", async () => {
+    const adapter = createAdapter();
+    await writeComposition(adapter, 1920, 1080);
+    const app = new Hono();
+    registerThumbnailRoutes(app, adapter);
+    const loaded: string[] = [];
+    vi.mocked(adapter.generateThumbnail!).mockImplementation(async ({ previewUrl }) => {
+      loaded.push(new URL(previewUrl).search);
+      return Buffer.from("thumb");
+    });
+
+    await app.request("http://localhost/projects/demo/thumbnail/index.html?t=6");
+    await app.request("http://localhost/projects/demo/thumbnail/scenes%2Fb.html?t=6");
+
+    expect(loaded).toEqual([`?${PREVIEW_CAPTURE_PARAM}=1`, `?${PREVIEW_CAPTURE_PARAM}=1`]);
+  });
+
   it("forwards selector queries to thumbnail generation", async () => {
     const adapter = createAdapter();
     const app = new Hono();
