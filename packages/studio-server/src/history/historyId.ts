@@ -34,7 +34,7 @@ export function isRecordedFolder(historyDir: string, folder: FolderIdentity): bo
 
 export function readRecord(
   historyDir: string,
-): { dir?: unknown; ino?: unknown; born?: number } | null {
+): { dir?: unknown; ino?: unknown; born?: number; dev?: unknown } | null {
   try {
     return JSON.parse(readFileSync(join(historyDir, "project.json"), "utf-8"));
   } catch {
@@ -83,8 +83,12 @@ export class HistoryIdError extends Error {
   }
 }
 
-export function recordProject(historyDir: string, dir: string, folder: FolderIdentity): void {
-  const record = { dir, ino: folder.ino, born: folder.birthtimeMs };
+export function recordProject(
+  historyDir: string,
+  dir: string,
+  folder: FolderIdentity & { dev: number },
+): void {
+  const record = { dir, ino: folder.ino, born: folder.birthtimeMs, dev: folder.dev };
   mkdirSync(historyDir, { recursive: true });
   replaceFileAtomically(join(historyDir, "project.json"), JSON.stringify(record), 0o644);
 }

@@ -1,6 +1,14 @@
-import { chmodSync, existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import {
+  chmodSync,
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  rmSync,
+  writeFileSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 import { describe, expect, it, onTestFinished, vi } from "vitest";
 import { ID_PATH, readId } from "./historyId.js";
 import { openProjectHistory } from "./projectHistory.js";
@@ -33,6 +41,15 @@ async function projectWithHistory(
   // Lets the open's own daily prune scan first, so it cannot race the test's.
   await new Promise((settle) => setImmediate(settle));
   return { projectDir, history, id: readId(projectDir)! };
+}
+
+function editRecord(
+  historyRoot: string,
+  id: string,
+  edit: (record: Record<string, unknown>) => Record<string, unknown>,
+) {
+  const file = join(historyRoot, id, "project.json");
+  writeFileSync(file, JSON.stringify(edit(JSON.parse(readFileSync(file, "utf-8")))));
 }
 
 const prunedIds = async (...args: Parameters<typeof pruneGoneProjectHistories>) =>
@@ -157,6 +174,47 @@ describe("pruneGoneProjectHistories", () => {
       expect(existsSync(join(historyRoot, hidden.id))).toBe(true);
     },
   );
+
+  it("keeps a gone project's history while the disk that held it is not here", async () => {
+    const historyRoot = tempDir("hf-prune-root-");
+    const onDrive = await projectWithHistory(historyRoot, {
+      projectDir: join(tempDir("hf-prune-drive-"), "project"),
+    });
+    const deleted = await projectWithHistory(historyRoot, {
+      projectDir: join(tempDir("hf-prune-tree-"), "project"),
+    });
+    const mountPoint = await projectWithHistory(historyRoot);
+    await Promise.all([onDrive, deleted, mountPoint].map(({ history }) => history.close()));
+    for (const { id } of [onDrive, mountPoint])
+      editRecord(historyRoot, id, (record) => ({ ...record, dev: Number(record.dev) + 1 }));
+    rmSync(dirname(onDrive.projectDir), { recursive: true, force: true });
+    // What an unmounted drive leaves at its mount point: the folder, without the project in it.
+    rmSync(join(mountPoint.projectDir, ".hyperframes"), { recursive: true, force: true });
+    rmSync(dirname(deleted.projectDir), { recursive: true, force: true });
+
+    const later = Date.now() + KEEP_GONE_PROJECT_HISTORY_MS;
+    expect(await prunedIds(historyRoot, { tempDir: historyRoot, now: later })).toEqual([
+      deleted.id,
+    ]);
+  });
+
+  it("keeps a history recorded without its disk once the project's parent is gone too", async () => {
+    const historyRoot = tempDir("hf-prune-root-");
+    const parentGone = await projectWithHistory(historyRoot, {
+      projectDir: join(tempDir("hf-prune-parent-"), "project"),
+    });
+    const parentKept = await projectWithHistory(historyRoot);
+    await Promise.all([parentGone.history.close(), parentKept.history.close()]);
+    for (const { id } of [parentGone, parentKept])
+      editRecord(historyRoot, id, ({ dev: _dev, ...record }) => record);
+    rmSync(dirname(parentGone.projectDir), { recursive: true, force: true });
+    rmSync(parentKept.projectDir, { recursive: true, force: true });
+
+    const later = Date.now() + KEEP_GONE_PROJECT_HISTORY_MS;
+    expect(await prunedIds(historyRoot, { tempDir: historyRoot, now: later })).toEqual([
+      parentKept.id,
+    ]);
+  });
 
   it("removes the history of a folder that now holds another project", async () => {
     const historyRoot = tempDir("hf-prune-root-");

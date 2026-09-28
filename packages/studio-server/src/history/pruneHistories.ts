@@ -2,7 +2,7 @@ import { randomUUID } from "node:crypto";
 import { readdirSync, readFileSync, renameSync, statSync, writeFileSync } from "node:fs";
 import { lstat, readdir, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 import { isSafePath } from "../helpers/safePath.js";
 import { ID_PATH, isHistoryId, readId, readRecord } from "./historyId.js";
 import { HistoryBusyError, takeHistoryOwnership } from "./ownerLock.js";
@@ -133,13 +133,32 @@ function recheckAndMoveAway(historyRoot: string, id: string, { now, dryRun, temp
 
 /** The folder a history was recorded for, when that project is gone; null while it may still need its history. */
 function abandonedProject(home: string, id: string, now: number, tempDir: string): string | null {
-  const dir = readRecord(home)?.dir;
+  const record = readRecord(home);
+  const dir = record?.dir;
   if (typeof dir !== "string") return null;
   if (now - lastUsed(home) < KEEP_GONE_PROJECT_HISTORY_MS && !isSafePath(tempDir, dir)) return null;
-  if (!statSync(join(dir, ID_PATH), { throwIfNoEntry: false })) return dir;
+  return projectGone(dir, id, record?.dev, tempDir) ? dir : null;
+}
+
+function projectGone(dir: string, id: string, dev: unknown, tempDir: string): boolean {
+  if (!statSync(join(dir, ID_PATH), { throwIfNoEntry: false }))
+    return diskStillHere(dir, dev, tempDir);
   // An id file this version cannot read is refused, never replaced, so its history is still the project's.
   const there = readId(dir);
-  return there !== null && there !== id ? dir : null;
+  return there !== null && there !== id;
+}
+
+/** A project without its id is gone only if the disk that held it is here: an unmounted drive or share keeps it. */
+function diskStillHere(dir: string, dev: unknown, tempDir: string): boolean {
+  let at = dir;
+  let stat = statSync(at, { throwIfNoEntry: false });
+  while (!stat) {
+    if (dirname(at) === at) return false;
+    at = dirname(at);
+    stat = statSync(at, { throwIfNoEntry: false });
+  }
+  if (typeof dev === "number") return stat.dev === dev;
+  return at === dir || at === dirname(dir) || isSafePath(tempDir, at);
 }
 
 function lastUsed(home: string): number {
