@@ -471,6 +471,45 @@ describe("fail-closed fonts named only in an undefined var() fallback", () => {
       expect(optionalWarnings()[0]).toContain(`"Acme Brand Sans"`);
     });
 
+    it("fetches a required family before hanging optional ones spend the budget", async () => {
+      const requested: string[] = [];
+      const notFound = makeHttp400Fetch();
+      const fetchImpl = (async (input: Parameters<typeof fetch>[0], init?: RequestInit) => {
+        requested.push(String(input));
+        return String(input).includes("Required")
+          ? notFound(input, init)
+          : hangingFetch(input, init);
+      }) as unknown as typeof fetch;
+      const caught = await rejectedError(
+        injectDeterministicFontFaces(
+          styled(
+            `.a { font-family: var(--a, "Optional One"), serif; } .b { font-family: var(--b, "Optional Two"), serif; } .c { font-family: "Required Face", serif; }`,
+          ),
+          {
+            failClosedFontFetch: true,
+            allowSystemFontCapture: false,
+            fetchImpl,
+            fontFetchRetryPolicy: { baseDelayMs: 0, attemptTimeoutMs: 100, maxElapsedMs: 300 },
+          },
+        ),
+      );
+      expect((caught as FontFetchError).code).toBe(FONT_FETCH_FAILED);
+      expect(requested.some((url) => url.includes("Required"))).toBe(true);
+    });
+
+    it("keeps the bundled Inter faces and warns when its top-up fetch fails", async () => {
+      const html = styled(`body { font-family: var(--brand, Inter, sans-serif); }`);
+      const result = await injectDeterministicFontFaces(html, {
+        failClosedFontFetch: true,
+        allowSystemFontCapture: false,
+        fetchImpl: makeHttp503Fetch(),
+        fontFetchRetryPolicy: { baseDelayMs: 0 },
+      });
+      expect(result).toContain(`font-family: "Inter";`);
+      expect(optionalWarnings()).toHaveLength(1);
+      expect(optionalWarnings()[0]).toContain(`"Inter"`);
+    });
+
     it("gives up on a hanging fetch within the per-attempt bound and warns", async () => {
       const { counter, fetchImpl } = counting(hangingFetch);
       const started = Date.now();

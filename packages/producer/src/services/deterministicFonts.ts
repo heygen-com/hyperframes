@@ -678,7 +678,11 @@ async function buildFontFaceCss(
   const rules: string[] = [];
   const unresolved: string[] = [];
 
-  for (const [normalizedFamily, { family: originalCaseFamily, optional }] of requestedFamilies) {
+  // Required families fetch first, so optional ones cannot spend the shared fetch budget before them.
+  const requiredFirst = [...requestedFamilies].sort(
+    ([, a], [, b]) => Number(a.optional) - Number(b.optional),
+  );
+  for (const [normalizedFamily, { family: originalCaseFamily, optional }] of requiredFirst) {
     // Path 1: pre-bundled fonts via FONT_ALIASES — emit embedded faces,
     // then fetch from Google Fonts to fill missing weights and character subsets.
     const canonicalKey = FONT_ALIASES[normalizedFamily];
