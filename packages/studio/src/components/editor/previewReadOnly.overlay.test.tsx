@@ -378,6 +378,39 @@ describe("DomEditOverlay with canvasInput host", () => {
     }
   });
 
+  it("does not report a press off the box, or a click on a group's box", () => {
+    const onSelectionBoxClick = vi.fn();
+    const off = fixture({ onSelectionBoxClick, onMarqueeSelect: undefined });
+    for (const type of ["pointerdown", "mousedown", "pointerup", "click"]) fire(off.overlay, type);
+    expect(off.spies.onCanvasMouseDown).toHaveBeenCalledTimes(1);
+    act(() => root.unmount());
+    const members = ["a", "b"].map((id) => {
+      const selection = makeSelection(id, textElement(id));
+      return { key: id, selection, element: selection.element, rect: RECT };
+    });
+    members[1].selection.capabilities.canApplyManualOffset = false;
+    layout.group = members;
+    const { spies, overlay } = fixture({
+      onSelectionBoxClick,
+      selection: members[0].selection,
+      groupSelections: members.map((m) => m.selection),
+    });
+    clickBox(overlay);
+    expect(spies.onCanvasMouseDown).toHaveBeenCalledTimes(1);
+    expect(onSelectionBoxClick).not.toHaveBeenCalled();
+  });
+
+  it("reports the first box click after a handle resize", () => {
+    const onSelectionBoxClick = vi.fn();
+    const { selection, overlay } = fixture({ ...HOST, onSelectionBoxClick });
+    for (const type of ["pointerdown", "pointerup", "click"]) {
+      fire(overlay.querySelector("div.h-4.w-4")!, type);
+    }
+    selection.capabilities.canApplyManualOffset = false;
+    clickBox(overlay);
+    expect(onSelectionBoxClick).toHaveBeenCalledTimes(1);
+  });
+
   it("opens the text on Enter when nothing else has focus, not from a focused field", () => {
     const off = fixture();
     enterOn(document.body);

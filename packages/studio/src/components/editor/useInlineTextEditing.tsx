@@ -95,7 +95,8 @@ export function useInlineTextEditing(
   };
   const handleKeyDownRef = useRef(handleKeyDown);
   handleKeyDownRef.current = handleKeyDown;
-  // A host-mode canvas never takes focus, so with nothing focused Enter reaches it via the window.
+  // A host-mode canvas takes no presses of its own, so it is rarely focused;
+  // with nothing focused, Enter comes via the window.
   useEffect(() => {
     if (!enterFromWindow) return;
     const onKeyDown = (event: KeyboardEvent) => {

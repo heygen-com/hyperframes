@@ -54,10 +54,10 @@ interface DomEditOverlayProps {
   groupSelections?: DomEditSelection[];
   hoverSelection: DomEditSelection | null;
   allowCanvasMovement?: boolean;
-  /** "host": host owns presses off handles; a box click does not re-select; no hover or marquee. */
+  /** "host": no hover, marquee or box re-select; Enter with nothing focused still opens text. */
   canvasInput?: "overlay" | "host";
   onTextEditingChange?: (editing: boolean) => void;
-  /** A click on the selection box, in either mode; fires before Studio's own re-select, if any. */
+  /** A click on a single selection's box, in either mode; the event may be the pointerup. */
   onSelectionBoxClick?: (
     event: React.MouseEvent<HTMLDivElement>,
     selection: DomEditSelection,
@@ -164,8 +164,7 @@ export const DomEditOverlay = memo(function DomEditOverlay({
   selectionRef.current = selection;
   const onCanvasMouseDown: typeof onCanvasMouseDownProp = (event, options) => {
     const sel = selectionRef.current;
-    const target = event.target as HTMLElement | null;
-    if (sel && target?.closest?.('[data-dom-edit-selection-box="true"]')) {
+    if (sel && boxRef.current?.contains(event.target as Node | null)) {
       onSelectionBoxClick?.(event, sel);
     }
     if (!hostInput) onCanvasMouseDownProp(event, options);
@@ -478,6 +477,7 @@ export const DomEditOverlay = memo(function DomEditOverlay({
         // A pointer gesture supersedes a pending nudge burst — commit it first
         // so the gesture's member snapshot starts from the nudged position.
         flushNudge();
+        suppressNextBoxClickRef.current = false;
         // Not while editing: taking focus back would send the keystroke nowhere.
         if (!inlineText.editing) {
           focusDomEditOverlayElement(event.currentTarget as FocusableDomEditOverlay);
