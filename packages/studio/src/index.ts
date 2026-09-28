@@ -9,6 +9,7 @@ export { DEFAULT_SHORTCUT_SECTIONS } from "./player/components/studioShortcuts";
 export type { ShortcutHint, ShortcutSection } from "./player/components/studioShortcuts";
 export { CompositionBreadcrumb } from "./components/nle/CompositionBreadcrumb";
 export type { CompositionLevel } from "./components/nle/CompositionBreadcrumb";
+export { useCompositionStack } from "./components/nle/useCompositionStack";
 
 // Player (preview, timeline, playback controls)
 export {
