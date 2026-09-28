@@ -115,26 +115,34 @@ export async function findProjects({
     if (failure) throw failure;
   }
 
-  // The walk would reach the same folder only if nothing on the way down stops it.
-  async function walkWouldReach(dir: string): Promise<boolean> {
+  // Folder names from the root down to `dir`, or null if the walk would skip one of them by name.
+  function namesBelowRoot(dir: string): string[] | null {
     const inside = relative(root, dir);
-    if (inside === "") return true;
-    if (inside.startsWith("..") || isAbsolute(inside)) return false;
-    const parts = inside.split(sep);
+    if (inside.startsWith("..") || isAbsolute(inside)) return null;
+    const names = inside === "" ? [] : inside.split(sep);
     let parent = root;
-    for (const part of parts) {
-      if (skippedDir(parent, part)) return false;
-      parent = join(parent, part);
+    for (const name of names) {
+      if (skippedDir(parent, name)) return null;
+      parent = join(parent, name);
     }
+    return names;
+  }
+
+  async function walkStopsAt(dir: string): Promise<boolean> {
+    const entries = await entriesOf(dir);
+    return !entries || (dir !== root && (await isWorktreeCopy(dir, entries)));
+  }
+
+  async function walkWouldReach(dir: string): Promise<boolean> {
+    const names = namesBelowRoot(dir);
+    if (!names) return false;
     let current = root;
-    for (const part of parts) {
-      const entries = await entriesOf(current);
-      if (!entries || (current !== root && (await isWorktreeCopy(current, entries)))) return false;
-      if (isHyperframesProject(fileNames(entries))) return false;
-      current = join(current, part);
+    for (const name of names) {
+      if (await walkStopsAt(current)) return false;
+      if (isHyperframesProject(fileNames((await entriesOf(current))!))) return false;
+      current = join(current, name);
     }
-    const entries = await entriesOf(current);
-    return !!entries && !(await isWorktreeCopy(current, entries));
+    return !(await walkStopsAt(current));
   }
 
   async function fromSpotlight() {
