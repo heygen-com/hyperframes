@@ -923,6 +923,18 @@ describe("syncRuntimeMedia", () => {
       expect(clip.el.pause).not.toHaveBeenCalled();
     });
 
+    it("does not start a clip again once the playhead is past it", () => {
+      const clip = createMockClip({ start: 5, end: 6 }, "audio");
+      syncRuntimeMedia({
+        clips: [clip],
+        timeSeconds: 6.01,
+        playing: true,
+        playbackRate: 1,
+        cueAheadSeconds: 0.017,
+      });
+      expect(clip.el.play).not.toHaveBeenCalled();
+    });
+
     it("starts nothing early while paused, and never a video", () => {
       const audio = createMockClip({ start: 5, end: 6 }, "audio");
       syncRuntimeMedia({

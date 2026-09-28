@@ -325,7 +325,6 @@ export function syncRuntimeMedia(params: {
     const inWindow = isInClipWindow(params.timeSeconds, clip.start, clip.end);
     const dueIn = clip.start - params.timeSeconds;
     const startsEarly =
-      params.playing &&
       el.tagName === "AUDIO" &&
       !inWindow &&
       dueIn > 0 &&
