@@ -7,7 +7,7 @@
  */
 
 import type { ParentMediaManager } from "./parent-media.js";
-import type { PlayRange } from "./play-range.js";
+import { type PlayRange, playRangeStopTime } from "./play-range.js";
 
 const UI_UPDATE_INTERVAL_MS = 100;
 
@@ -16,6 +16,7 @@ export interface PlaybackState {
   duration: number;
   paused: boolean;
   lastUpdateMs: number;
+  enteringRange?: boolean;
 }
 
 export interface PlaybackStateCallbacks {
@@ -34,6 +35,7 @@ type RuntimeStateData = {
   isPlaying: boolean;
   currentTime?: number;
   ended?: boolean;
+  ownsRange?: boolean;
 };
 
 /** The runtime's exact time when it sends one (older runtimes send only the whole frame). */
@@ -51,18 +53,53 @@ function isAtEnd(data: RuntimeStateData, time: number, duration: number): boolea
   return time >= duration;
 }
 
-/** Loop start and end, a range's or the film's; past a range end is its end only while playing. */
+type PlayBounds = {
+  start: number;
+  shownAtEnd: number;
+  atEnd: boolean;
+  stopRuntime: boolean;
+  entering: boolean;
+};
+
+/** A `play-range` runtime says when a range ended. For an older one the player reads the time,
+ *  and after it jumps into the range only from a state inside it, never a stale one. */
 function playBounds(
   data: RuntimeStateData,
   time: number,
-  duration: number,
+  current: PlaybackState,
   playing: boolean,
   range: PlayRange | null | undefined,
-): { start: number; end: number; atEnd: boolean; ranged: boolean } {
-  if (!range)
-    return { start: 0, end: duration, atEnd: isAtEnd(data, time, duration), ranged: false };
-  const end = range.end ?? duration;
-  return { start: range.start, end, atEnd: playing && isAtEnd(data, time, end), ranged: true };
+  fps: number,
+): PlayBounds {
+  const { duration } = current;
+  if (!range) {
+    const atEnd = isAtEnd(data, time, duration);
+    return { start: 0, shownAtEnd: duration, atEnd, stopRuntime: false, entering: false };
+  }
+  if (data.ownsRange) {
+    const atEnd = playing && data.ended === true && !data.isPlaying;
+    return { start: range.start, shownAtEnd: time, atEnd, stopRuntime: false, entering: false };
+  }
+  return olderRuntimeBounds(data, time, current, playing, range, fps);
+}
+
+function olderRuntimeBounds(
+  data: RuntimeStateData,
+  time: number,
+  current: PlaybackState,
+  playing: boolean,
+  range: PlayRange,
+  fps: number,
+): PlayBounds {
+  const end = range.end ?? current.duration;
+  const entering = current.enteringRange === true && (time < range.start || time >= end);
+  return {
+    start: range.start,
+    shownAtEnd: playRangeStopTime(range, current.duration, fps),
+    atEnd: playing && !entering && isAtEnd(data, time, end),
+    stopRuntime: data.isPlaying,
+    entering,
+  };
 }
 
 /**
@@ -80,10 +117,10 @@ export function applyRuntimeStateMessage(
   const wasPlaying = !current.paused;
   const playing = wasPlaying || data.isPlaying;
   const range = callbacks.getPlayRange?.();
-  const bounds = playBounds(data, rawTime, current.duration, playing, range);
-  const { end, atEnd, start: loopStart } = bounds;
+  const bounds = playBounds(data, rawTime, current, playing, range, fps);
+  const { atEnd, start: loopStart } = bounds;
   const clampedTime = current.duration > 0 ? Math.min(rawTime, current.duration) : rawTime;
-  const currentTime = atEnd ? end : clampedTime;
+  const currentTime = atEnd ? bounds.shownAtEnd : clampedTime;
   const nextPaused = !data.isPlaying;
   const completedPlayback = atEnd && playing;
 
@@ -93,10 +130,10 @@ export function applyRuntimeStateMessage(
     callbacks.play();
     // play() sets paused=false; reflect that in the returned state so the
     // caller's destructure doesn't overwrite it with the stale nextPaused value.
-    return { ...current, currentTime: loopStart, paused: false };
+    return { ...current, currentTime: loopStart, paused: false, enteringRange: true };
   }
 
-  const next: PlaybackState = { ...current, currentTime, paused: nextPaused };
+  const next = { ...current, currentTime, paused: nextPaused, enteringRange: bounds.entering };
 
   if (callbacks.media.audioOwner === "parent") {
     if (wasPlaying && nextPaused) {
@@ -117,8 +154,8 @@ export function applyRuntimeStateMessage(
   }
 
   if (completedPlayback) {
-    // A runtime older than set-play-range plays on past the range: stop it on the end.
-    if (bounds.ranged && data.isPlaying) callbacks.seek(end);
+    // A runtime without play-range plays on past the range: stop it on the last frame inside.
+    if (bounds.stopRuntime) callbacks.seek(currentTime);
     if (callbacks.media.audioOwner === "parent") callbacks.media.pauseAll();
     next.paused = true;
     callbacks.updateControlsPlaying(false);

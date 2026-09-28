@@ -1,4 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi, type MockInstance } from "vitest";
+import { runtimeProtocolMetadata } from "@hyperframes/core/runtime/protocol";
 
 type Player = HTMLElement & {
   play: () => void;
@@ -16,6 +17,10 @@ type Player = HTMLElement & {
   _onProbeReady: (result: unknown) => void;
 };
 
+// The last frame inside a range ending at 3 s at 30 fps, and the middle of it.
+const HOLD_AT_3 = 89 / 30;
+const MID_LAST_AT_3 = 89.5 / 30;
+
 let player: Player;
 let events: string[];
 
@@ -23,22 +28,29 @@ function createPlayer(attrs: Record<string, string> = {}): Player {
   const el = document.createElement("hyperframes-player") as Player;
   for (const [name, value] of Object.entries(attrs)) el.setAttribute(name, value);
   events = [];
-  for (const type of ["ready", "ended", "rangeclamped", "durationchange"]) {
+  for (const type of ["ready", "ended", "rangeclamped", "durationchange", "play"]) {
     el.addEventListener(type, (event) => {
       const detail = (event as CustomEvent).detail;
       const shown = type === "rangeclamped" ? ` ${JSON.stringify(detail)}` : "";
-      events.push(`${type}@${el.currentTime}${shown}`);
+      events.push(`${type}@${Number(el.currentTime.toFixed(3))}${shown}`);
     });
   }
   return el;
 }
 
+const ranEvents = () => events.filter((e) => !e.startsWith("play@"));
+
 describe("HyperframesPlayer range playback: composition", () => {
   let postSpy: MockInstance<typeof window.postMessage>;
+  // A runtime that advertises `play-range` (the current one), or an older one that does not.
+  let protocol: Record<string, unknown>;
 
   const send = (data: Record<string, unknown>) =>
     player._onMessage(
-      new MessageEvent("message", { source: window, data: { source: "hf-preview", ...data } }),
+      new MessageEvent("message", {
+        source: window,
+        data: { source: "hf-preview", ...protocol, ...data },
+      }),
     );
   const timeline = (seconds: number) =>
     send({
@@ -53,7 +65,7 @@ describe("HyperframesPlayer range playback: composition", () => {
     postSpy.mock.calls
       .map((call) => call[0] as Record<string, unknown>)
       .filter((data) => data?.type === "control" && data.action === action);
-  const seeks = () => controls("seek").map((data) => data.timeSeconds);
+  const seeks = () => controls("seek").map((data) => data.timeSeconds as number);
   const sentRanges = () =>
     controls("set-play-range").map((data) => [data.startSeconds, data.endSeconds]);
 
@@ -71,6 +83,7 @@ describe("HyperframesPlayer range playback: composition", () => {
   beforeEach(async () => {
     await import("./hyperframes-player.js");
     postSpy = vi.spyOn(window, "postMessage").mockImplementation(() => undefined);
+    protocol = { ...runtimeProtocolMetadata(30) };
   });
 
   afterEach(() => {
@@ -78,12 +91,12 @@ describe("HyperframesPlayer range playback: composition", () => {
     vi.restoreAllMocks();
   });
 
-  it("parks on range-start at ready and hands the range to the runtime", () => {
+  it("parks on range-start at ready and hands the range to the runtime once", () => {
     mount({ "range-start": "2", "range-end": "3" });
 
     expect(events).toEqual(["ready@2"]);
     expect(seeks()).toEqual([2]);
-    expect(sentRanges().at(-1)).toEqual([2, 3]);
+    expect(sentRanges()).toEqual([[2, 3]]);
     expect(player.paused).toBe(true);
   });
 
@@ -93,7 +106,7 @@ describe("HyperframesPlayer range playback: composition", () => {
     player.seek(5);
     state(5, false, true);
     expect(player.currentTime).toBe(5);
-    expect(events).toEqual(["ready@2"]);
+    expect(ranEvents()).toEqual(["ready@2"]);
     player.play();
     expect(seeks()).toEqual([2, 5, 2]);
     expect(player.currentTime).toBe(2);
@@ -107,15 +120,15 @@ describe("HyperframesPlayer range playback: composition", () => {
     expect(seeks().at(-1)).toBe(2.5);
   });
 
-  it("stops at range-end with ended when the runtime reports its end there", () => {
+  it("ends on the range's last frame when the runtime reports its end there", () => {
     mount({ "range-start": "2", "range-end": "3" });
     player.play();
 
-    state(3, false, true);
+    state(HOLD_AT_3, false, true);
 
-    expect(events).toEqual(["ready@2", "ended@3"]);
+    expect(ranEvents()).toEqual(["ready@2", "ended@2.967"]);
     expect(player.paused).toBe(true);
-    expect(player.currentTime).toBe(3);
+    expect(player.currentTime).toBe(HOLD_AT_3);
     player.play();
     expect(seeks().at(-1)).toBe(2);
   });
@@ -124,28 +137,59 @@ describe("HyperframesPlayer range playback: composition", () => {
     mount({ "range-start": "2", "range-end": "3", loop: "" });
     player.play();
 
-    state(3, false, true);
+    state(HOLD_AT_3, false, true);
 
     expect(seeks()).toEqual([2, 2]);
     expect(player.paused).toBe(false);
     expect(player.currentTime).toBe(2);
-    expect(events).toEqual(["ready@2"]);
+    expect(ranEvents()).toEqual(["ready@2"]);
   });
 
-  it("stops or wraps a runtime that ignores set-play-range and plays past the end", () => {
+  it("stops an older runtime that plays past the end on the last frame inside, or wraps it", () => {
+    protocol = {};
     mount({ "range-start": "2", "range-end": "3" });
     player.play();
     state(3.03, true);
-    expect(events).toEqual(["ready@2", "ended@3"]);
-    expect(seeks().at(-1)).toBe(3);
+    expect(ranEvents()).toEqual(["ready@2", "ended@2.967"]);
+    expect(seeks().at(-1)).toBe(HOLD_AT_3);
+    expect(player.currentTime).toBe(HOLD_AT_3);
     expect(player.paused).toBe(true);
 
     player.loop = true;
     player.play();
+    state(2.1, true);
     state(3.03, true);
     expect(seeks().slice(-2)).toEqual([2, 2]);
     expect(player.paused).toBe(false);
   });
+
+  for (const runtime of ["a play-range runtime", "an older runtime"]) {
+    it(`keeps playing from range-start with ${runtime} when a new end leaves the playhead past it`, () => {
+      if (runtime === "an older runtime") protocol = {};
+      mount({ "range-start": "2", "range-end": "3" });
+      player.play();
+      state(2.5, true);
+      const seeksBefore = seeks().length;
+      const eventsBefore = events.length;
+
+      player.rangeEnd = 2.4;
+      state(2.53, true);
+      state(2.54, true, true);
+      state(2, true);
+
+      expect(events.slice(eventsBefore)).toEqual([]);
+      expect(player.paused).toBe(false);
+      expect(player.currentTime).toBe(2);
+      expect(sentRanges().at(-1)).toEqual([2, 2.4]);
+      // A play-range runtime jumps by itself; for an older one the player seeks.
+      expect(seeks().slice(seeksBefore)).toEqual(runtime === "an older runtime" ? [2] : []);
+
+      // Past the new end: an older runtime is read from its time, a current one says so.
+      if (runtime === "an older runtime") state(2.41, true);
+      else state(71 / 30, false, true);
+      expect(ranEvents().at(-1)).toBe("ended@2.367");
+    });
+  }
 
   it("clamps a range past the film to its end and says so once", () => {
     mount({ "range-start": "2", "range-end": "10", loop: "" });
@@ -194,28 +238,21 @@ describe("HyperframesPlayer range playback: composition", () => {
     expect(events.filter((e) => e.startsWith("rangeclamped"))).toHaveLength(2);
   });
 
-  it("parks a paused player on a new range's start, and moves a playing one only from outside", () => {
+  it("re-parks a paused player on a new range's start only when the playhead falls outside it", () => {
     mount({ "range-start": "2", "range-end": "3" });
 
     player.rangeEnd = 5;
+    expect(seeks()).toEqual([2]);
     player.rangeStart = 4;
-    expect(player.currentTime).toBe(4);
-    expect(player.paused).toBe(true);
-    expect(sentRanges().at(-1)).toEqual([4, 5]);
-
-    player.play();
-    state(4.1, true);
-    player.rangeStart = 1;
+    expect(seeks()).toEqual([2, 4]);
+    player.seek(4.5);
+    player.rangeEnd = 4.8;
+    expect(seeks().at(-1)).toBe(4.5);
+    expect(player.currentTime).toBe(4.5);
+    player.rangeEnd = 4.2;
     expect(seeks().at(-1)).toBe(4);
-    player.rangeEnd = 2;
-    expect(seeks().at(-1)).toBe(1);
-    expect(player.paused).toBe(false);
-    expect(sentRanges().at(-1)).toEqual([1, 2]);
-
-    state(1.2, true);
-    player.rangeEnd = 3;
-    expect(seeks().at(-1)).toBe(1);
-    expect(player.paused).toBe(false);
+    expect(player.paused).toBe(true);
+    expect(sentRanges().at(-1)).toEqual([4, 4.2]);
   });
 
   it("clears the range in the runtime when both attributes go", () => {
@@ -237,8 +274,10 @@ describe("HyperframesPlayer range playback: composition", () => {
     expect(player.rangeEnd).toBe(4);
 
     player.rangeStart = null;
+    player.rangeEnd = undefined as unknown as null;
     expect(player.hasAttribute("range-start")).toBe(false);
-    expect(player.rangeStart).toBeNull();
+    expect(player.hasAttribute("range-end")).toBe(false);
+    expect([player.rangeStart, player.rangeEnd]).toEqual([null, null]);
   });
 
   // Pins the existing whole-film behaviour: no range attribute, no new message, loop from 0.
@@ -251,7 +290,7 @@ describe("HyperframesPlayer range playback: composition", () => {
     expect([player.rangeStart, player.rangeEnd]).toEqual([null, null]);
     expect(sentRanges()).toEqual([]);
     expect(seeks()).toEqual([0]);
-    expect(events).toEqual(["ready@0"]);
+    expect(ranEvents()).toEqual(["ready@0"]);
   });
 });
 
@@ -297,7 +336,7 @@ describe("HyperframesPlayer range playback: video and direct timelines", () => {
     vi.restoreAllMocks();
   });
 
-  it("parks, stops with ended, wraps with loop and reports a clamp for a video", () => {
+  it("parks, stops on the last frame inside, wraps with loop and reports a clamp for a video", () => {
     player = createPlayer({ type: "video/mp4", src: "https://cdn.example.com/film.mp4" });
     player.setAttribute("range-start", "2");
     player.setAttribute("range-end", "3");
@@ -306,12 +345,14 @@ describe("HyperframesPlayer range playback: video and direct timelines", () => {
     setMedia(video, { duration: 6, videoWidth: 640, videoHeight: 360 });
     video.dispatchEvent(new Event("loadedmetadata"));
     expect(video.currentTime).toBe(2);
-    expect(events).toEqual(["ready@2"]);
+    expect(ranEvents()).toEqual(["ready@2"]);
 
     player.play();
     setMedia(video, { currentTime: 3.01 });
     flushFrame();
-    expect(events).toEqual(["ready@2", "ended@3"]);
+    expect(ranEvents()).toEqual(["ready@2", "ended@2.983"]);
+    expect(video.currentTime).toBeCloseTo(MID_LAST_AT_3, 9);
+    expect(player.currentTime).toBeCloseTo(MID_LAST_AT_3, 9);
     expect(player.paused).toBe(true);
 
     player.loop = true;
@@ -323,12 +364,20 @@ describe("HyperframesPlayer range playback: video and direct timelines", () => {
     expect(playSpy).toHaveBeenCalledTimes(3);
     expect(player.paused).toBe(false);
 
-    setMedia(video, { duration: 2.5 });
+    const plays = events.filter((e) => e.startsWith("play@")).length;
+    player.rangeEnd = 2.5;
+    setMedia(video, { currentTime: 2.7 });
+    player.rangeStart = 2.1;
+    expect(video.currentTime).toBe(2.1);
+    expect(player.paused).toBe(false);
+    expect(events.filter((e) => e.startsWith("play@"))).toHaveLength(plays);
+
+    setMedia(video, { duration: 2.4 });
     video.dispatchEvent(new Event("durationchange"));
-    expect(events.at(-1)).toBe('rangeclamped@2 {"rangeStart":2,"rangeEnd":2.5,"duration":2.5}');
+    expect(events.at(-1)).toBe('rangeclamped@2.1 {"rangeStart":2.1,"rangeEnd":2.4,"duration":2.4}');
   });
 
-  it("parks, stops and wraps a same-origin __timelines composition inside the range", () => {
+  it("parks, stops on the last frame inside and wraps a same-origin __timelines composition", () => {
     let time = 0;
     const tl = {
       duration: () => 6,
@@ -354,7 +403,8 @@ describe("HyperframesPlayer range playback: video and direct timelines", () => {
     player.play();
     time = 3.02;
     flushFrame();
-    expect(events).toEqual(["ready@2", "ended@3"]);
+    expect(ranEvents()).toEqual(["ready@2", "ended@2.983"]);
+    expect(time).toBeCloseTo(MID_LAST_AT_3, 9);
 
     player.loop = true;
     player.play();

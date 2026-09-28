@@ -1,5 +1,7 @@
 // Range playback: the `range-start` / `range-end` attributes, in film seconds.
 
+import { playRangeHoldTime } from "@hyperframes/core/runtime/protocol";
+
 export interface PlayRange {
   start: number;
   end: number | null;
@@ -21,6 +23,16 @@ export function resolvePlayRange(
   return { range: { start: from, end: to }, clamped: cut };
 }
 
-export function isOutsidePlayRange(time: number, range: PlayRange, duration: number): boolean {
-  return time < range.start || time >= (range.end ?? duration);
+export function playRangeStopTime(range: PlayRange, duration: number, fps: number): number {
+  const end = range.end ?? duration;
+  return end < duration ? playRangeHoldTime(range.start, end, fps) : end;
+}
+
+export function isOutsidePlayRange(
+  time: number,
+  range: PlayRange,
+  duration: number,
+  fps: number,
+): boolean {
+  return time < range.start || time >= playRangeStopTime(range, duration, fps);
 }

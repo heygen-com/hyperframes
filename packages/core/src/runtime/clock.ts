@@ -1,5 +1,6 @@
 import { timeAtSourceTime, type RateSpec } from "../speedRamp.js";
 import { MEDIA_HARD_SYNC_SECONDS } from "./media.js";
+import { playRangeHoldTime } from "./protocol.js";
 
 export type TransportClockSnapshot = {
   time: number;
@@ -33,6 +34,7 @@ export class TransportClock {
   private _duration = Infinity;
   private _playStart = 0;
   private _playEnd = Infinity;
+  private _playHold = Infinity;
   private _nowMs: () => number;
   private _audioSource: AudioClockSource | null = null;
   /** Wall-clock time of the last `now()` read while playing; null while paused. */
@@ -176,9 +178,10 @@ export class TransportClock {
     return this._duration;
   }
 
-  setPlayRange(start: number, end: number | null): void {
+  setPlayRange(start: number, end: number | null, fps: number): void {
     this._playStart = Number.isFinite(start) && start > 0 ? start : 0;
     this._playEnd = end !== null && Number.isFinite(end) && end > this._playStart ? end : Infinity;
+    this._playHold = playRangeHoldTime(this._playStart, this._playEnd, fps);
   }
 
   getPlayStart(): number {
@@ -187,6 +190,11 @@ export class TransportClock {
 
   getEnd(): number {
     return Math.min(this._duration, this._playEnd);
+  }
+
+  /** Where a stop parks: the film's end, or a range's last frame, since the moment is [start, end). */
+  getStopTime(): number {
+    return this._playEnd < this._duration ? this._playHold : this.getEnd();
   }
 
   attachAudioSource(source: AudioClockSource): void {
@@ -233,7 +241,7 @@ export class TransportClock {
   }
 
   reachedEnd(): boolean {
-    const end = this.getEnd();
-    return Number.isFinite(end) && this.now() >= end;
+    const time = this.now();
+    return time >= this.getEnd() || (this._playStartMs === null && time >= this.getStopTime());
   }
 }

@@ -5,7 +5,12 @@ import { DirectTimelineClock } from "./direct-timeline-clock.js";
 import { ParentMediaManager } from "./parent-media.js";
 import { isRealmHtmlMediaElement } from "./media-element-guards.js";
 import { handleRuntimeMessage } from "./runtime-message-handler.js";
-import { isOutsidePlayRange, type PlayRange, resolvePlayRange } from "./play-range.js";
+import {
+  isOutsidePlayRange,
+  type PlayRange,
+  playRangeStopTime,
+  resolvePlayRange,
+} from "./play-range.js";
 import {
   SHADER_CAPTURE_SCALE_ATTR,
   SHADER_LOADING_ATTR,
@@ -153,6 +158,8 @@ class HyperframesPlayer extends HTMLElement {
   private _pendingRuntimeData = new Map<string, PendingRuntimeDataDelivery>();
   private _afterUpdate: Array<() => void> | null = null;
   private _videoSource: VideoSource | null = null;
+  private _runtimeOwnsPlayRange = false;
+  private _enteringRange = false;
   private _rangeClampReported = "";
 
   constructor() {
@@ -395,8 +402,12 @@ class HyperframesPlayer extends HTMLElement {
     return this._scenes;
   }
 
-  // fallow-ignore-next-line complexity
   play() {
+    this._play(true);
+  }
+
+  // fallow-ignore-next-line complexity
+  private _play(announce: boolean) {
     if (this._ready && !this._assetsReady) {
       this._pendingPlay = true;
       return;
@@ -406,7 +417,10 @@ class HyperframesPlayer extends HTMLElement {
     this.posterEl = null;
     const range = this._ready ? this._playRange() : null;
     if (range) {
-      if (isOutsidePlayRange(this._currentTime, range, this._duration)) this.seek(range.start);
+      if (isOutsidePlayRange(this._currentTime, range, this._duration, this._runtimeFps)) {
+        this.seek(range.start);
+        this._enteringRange = true;
+      }
     } else if (this._duration > 0 && this._currentTime >= this._duration) this.seek(0);
     // Must be set before _startParentTickClock so the RAF loop's `_paused`
     // check doesn't immediately self-terminate on the first callback.
@@ -430,14 +444,14 @@ class HyperframesPlayer extends HTMLElement {
     }
     if (this._media.audioOwner === "parent") this._media.playAll();
     this.controlsApi?.updatePlaying(true);
-    if (!queuedForReady) this._emit(new Event("play"));
+    if (!queuedForReady && announce) this._emit(new Event("play"));
     if (directTimelineStarted && this._directTimelineAdapter) {
       this._directTimelineClock.start(
         this._directTimelineAdapter,
         () => this._currentTime,
         () => this._duration,
         () => this._paused,
-        () => this._playRange()?.end ?? this._duration,
+        () => this._clockStop(),
       );
     }
   }
@@ -724,7 +738,7 @@ class HyperframesPlayer extends HTMLElement {
   }
 
   private _writeSeconds(name: string, seconds: number | null): void {
-    if (seconds === null) this.removeAttribute(name);
+    if (seconds == null) this.removeAttribute(name);
     else this.setAttribute(name, String(seconds));
   }
 
@@ -765,11 +779,32 @@ class HyperframesPlayer extends HTMLElement {
   }
 
   private _moveIntoPlayRange(range: PlayRange): void {
+    if (!isOutsidePlayRange(this._currentTime, range, this._duration, this._runtimeFps)) return;
     if (this._paused) this.seek(range.start);
-    else if (isOutsidePlayRange(this._currentTime, range, this._duration)) {
-      this.seek(range.start);
-      this.play();
+    else this._jumpWhilePlaying(range.start);
+  }
+
+  /** A `play-range` runtime jumps by itself and a player clock seeks without pausing; an older
+   *  runtime is seeked and resumed, with no second `play` event. */
+  private _jumpWhilePlaying(time: number): void {
+    if (this._directTimelineAdapter) {
+      this._directTimelineAdapter.seek(time, false);
+      this._currentTime = time;
+    } else if (!this._runtimeOwnsPlayRange) {
+      this.seek(time);
+      this._enteringRange = true;
+      this._play(false);
     }
+  }
+
+  /** Where the player's own clock stops, and the time it then shows: mid last frame, since a video
+   *  seeked onto a frame boundary can decode the frame before it. */
+  private _clockStop(): { end: number; shown: number } {
+    const range = this._playRange();
+    const end = range?.end ?? this._duration;
+    if (!range) return { end, shown: end };
+    const hold = playRangeStopTime(range, this._duration, this._runtimeFps);
+    return { end, shown: hold < end ? (hold + end) / 2 : hold };
   }
 
   private _sendControl(action: string, extra: Record<string, unknown> = {}): boolean {
@@ -966,7 +1001,6 @@ class HyperframesPlayer extends HTMLElement {
       disabled: this._isSlideshowPlayer(),
     });
     this._sendControl("set-idle-heartbeat", { slow: this.hasAttribute(LOW_POWER_IDLE_ATTR) });
-    if (this._hasPlayRange()) this._sendPlayRange(this._playRange());
   }
 
   private _reloadShaderOptions(): void {
@@ -1188,8 +1222,10 @@ class HyperframesPlayer extends HTMLElement {
         duration: this._duration,
         paused: this._paused,
         lastUpdateMs: this._lastUpdateMs,
+        enteringRange: this._enteringRange,
       }),
-      setPlaybackState: ({ currentTime, duration, paused, lastUpdateMs }) => {
+      setPlaybackState: ({ currentTime, duration, paused, lastUpdateMs, enteringRange }) => {
+        this._enteringRange = enteringRange === true;
         this._currentTime = currentTime;
         this._setDuration(duration);
         this._paused = paused;
@@ -1203,6 +1239,7 @@ class HyperframesPlayer extends HTMLElement {
       onRuntimeReady: () => {
         this._runtimeBridgeReady = true;
         this._replayBridgeState();
+        if (this._hasPlayRange()) this._sendPlayRange(this._playRange());
         this._replayRuntimeData();
       },
       onRuntimeAssetsReady: () => {
@@ -1218,6 +1255,9 @@ class HyperframesPlayer extends HTMLElement {
         this._onRuntimeTimelineReady(duration, assetsReady),
       setRuntimeFps: (fps) => {
         this._runtimeFps = fps;
+      },
+      setRuntimeOwnsPlayRange: (owns) => {
+        this._runtimeOwnsPlayRange = owns;
       },
       shouldPromoteMediaAutoplayFallback: () => !this._isSlideshowPlayer(),
       setScenes: (scenes) => {
@@ -1377,6 +1417,8 @@ class HyperframesPlayer extends HTMLElement {
   }
 
   private _releaseDocument(): void {
+    this._runtimeOwnsPlayRange = false;
+    this._enteringRange = false;
     this._directTimelineAdapter = null;
     this._directTimelineClock.stop();
     this._stopParentTickClock();
