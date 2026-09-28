@@ -3283,6 +3283,9 @@ describe.skipIf(!HAS_ZSCALE)("forced-SDR HDR extraction", () => {
         "testsrc2=s=160x90:r=25:d=0.2",
         "-c:v",
         "libx264",
+        // No B-frames: genpts on a raw stream with reordering writes pts before dts and drops frames.
+        "-bf",
+        "0",
         "-pix_fmt",
         "yuv420p",
         "-bsf:v",
