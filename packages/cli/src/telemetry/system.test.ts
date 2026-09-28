@@ -40,6 +40,15 @@ describe("getSystemMeta client", () => {
     const { getSystemMeta } = await import("./system.js");
     expect(getSystemMeta().client).toBeNull();
   });
+
+  it.each(["desktop/0.8.82 build 7", "desktop/0.8.82\nstable", `desktop/${"9".repeat(80)}`])(
+    "drops a tag that is not a short slash-separated slug: %j",
+    async (tag) => {
+      vi.stubEnv("HYPERFRAMES_CLIENT", tag);
+      const { getSystemMeta } = await import("./system.js");
+      expect(getSystemMeta().client).toBeNull();
+    },
+  );
 });
 
 describe("getAvailableMemoryMb", () => {

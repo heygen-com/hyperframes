@@ -69,6 +69,14 @@ export interface SystemMeta {
 
 let cached: SystemMeta | null = null;
 
+// Short `desktop/<version>/<channel>`-shaped tags only: the value lands verbatim in the space-delimited feedback string.
+const CLIENT_TAG = /^[a-z0-9][a-z0-9._+-]{0,31}(\/[a-z0-9._+-]{1,32}){0,3}$/i;
+
+function readClientTag(): string | null {
+  const tag = process.env["HYPERFRAMES_CLIENT"]?.trim() ?? "";
+  return tag.length <= 64 && CLIENT_TAG.test(tag) ? tag : null;
+}
+
 /**
  * Collect system metadata. Cached after first call.
  * Only includes static values — use `freemem()` directly for volatile readings.
@@ -104,7 +112,7 @@ export function getSystemMeta(): SystemMeta {
     agent_hint: hints.agent_hint,
     term_program: hints.term_program,
     agent_env_hints: hints.agent_env_hints,
-    client: process.env["HYPERFRAMES_CLIENT"]?.trim() || null,
+    client: readClientTag(),
   };
   return cached;
 }
