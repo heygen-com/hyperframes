@@ -4,7 +4,7 @@ import type { DomEditSelection } from "../components/editor/domEditingTypes";
 import { dragEditOutcome, preflightGsapRotationIntercept } from "./gsapRuntimeBridge";
 import { preflightGsapResizeIntercept } from "./gsapResizePreflight";
 import { GSAP_EDIT_BLOCK_COPY, type GsapEditOutcome } from "./gsapEditOutcome";
-import { fetchParsedAnimations } from "./keyframeCacheAstLoad";
+import { fetchParsedAnimations, parseCacheKey } from "./keyframeCacheAstLoad";
 import {
   gsapSourceFileForSelection,
   selectElementAnimationsOrRetry,
@@ -20,6 +20,7 @@ function runCommitPreflights(
   selection: DomEditSelection,
   fileAnimations: GsapAnimation[],
   iframe: HTMLIFrameElement | null,
+  group: boolean,
 ): CommitPreflight {
   const target = { id: selection.id ?? null, selector: selection.selector ?? null };
   const matched = selectElementAnimationsOrRetry(
@@ -30,7 +31,7 @@ function runCommitPreflights(
   // A file the server parsed with no tweens at all is a definitive answer here.
   const animations = matched.kind === "resolved" ? matched.animations : [];
   return {
-    offset: dragEditOutcome(selection, animations, iframe),
+    offset: dragEditOutcome(selection, animations, iframe, [], group),
     size: preflightGsapResizeIntercept(selection, animations, iframe),
     rotation: preflightGsapRotationIntercept(selection, animations, iframe),
   };
@@ -100,37 +101,41 @@ export function useCommitPreflightCapabilities({
   previewIframeRef: React.RefObject<HTMLIFrameElement | null>;
   version: number;
 }) {
-  // One parse per file and version; the last good parse answers while a newer one loads.
+  // One parse per project file and version; the last good parse answers while a newer one loads.
   const parsesRef = useRef(new Map<string, FileParse>());
   const [parseTick, setParseTick] = useState(0);
-  const active = enabled && projectId !== null;
 
   useEffect(() => {
     if (!enabled || !projectId) return;
     const targets = selection ? [selection, ...groupSelections] : groupSelections;
     for (const file of new Set(targets.map(gsapSourceFileForSelection))) {
-      const known = parsesRef.current.get(file);
+      const key = parseCacheKey(projectId, file);
+      const known = parsesRef.current.get(key);
       if (known?.version === version) continue;
-      parsesRef.current.set(file, { version, animations: known?.animations ?? null });
+      parsesRef.current.set(key, { version, animations: known?.animations ?? null });
       void fetchParsedAnimations(projectId, file).then((parsed) => {
-        const current = parsesRef.current.get(file);
-        if (current?.version !== version) return;
-        // A failed read is not an answer: forget it so the next selection asks again.
-        if (parsed) parsesRef.current.set(file, { version, animations: parsed.animations });
-        else parsesRef.current.delete(file);
-        // Re-render only when an answer changed, so a read that keeps failing cannot loop.
-        if (parsed || current.animations) setParseTick((tick) => tick + 1);
+        if (parsesRef.current.get(key)?.version !== version) return;
+        if (parsed) {
+          parsesRef.current.set(key, { version, animations: parsed.animations });
+          setParseTick((tick) => tick + 1);
+          return;
+        }
+        // A failed read is not an answer: keep the last one, and the next selection asks again.
+        if (known?.animations) parsesRef.current.set(key, known);
+        else parsesRef.current.delete(key);
       });
     }
   }, [enabled, projectId, selection, groupSelections, version]);
 
   return useMemo(() => {
     void parseTick;
-    if (!active) return { selection, groupSelections };
+    if (!enabled || !projectId) return { selection, groupSelections };
+    const group = groupSelections.length > 1;
     const narrow = (target: DomEditSelection) => {
-      const animations = parsesRef.current.get(gsapSourceFileForSelection(target))?.animations;
+      const file = gsapSourceFileForSelection(target);
+      const animations = parsesRef.current.get(parseCacheKey(projectId, file))?.animations;
       const preflight = animations
-        ? runCommitPreflights(resolvedOf(target), animations, previewIframeRef.current)
+        ? runCommitPreflights(resolvedOf(target), animations, previewIframeRef.current, group)
         : null;
       return narrowCapabilities(target, preflight);
     };
@@ -138,5 +143,5 @@ export function useCommitPreflightCapabilities({
       selection: selection && narrow(selection),
       groupSelections: groupSelections.map(narrow),
     };
-  }, [active, selection, groupSelections, parseTick, previewIframeRef]);
+  }, [enabled, projectId, selection, groupSelections, parseTick, previewIframeRef]);
 }

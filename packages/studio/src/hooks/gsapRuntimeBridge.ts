@@ -33,6 +33,7 @@ import {
   readGsapPositionFromIframe,
 } from "./gsapPositionDetection";
 import { hasNonHoldTweenForElement } from "./gsapRuntimeKeyframes";
+import { getAnimationsForElement } from "./gsapElementMatch";
 import {
   animationWritesAnyProperty,
   directEditOutcomeForProperties,
@@ -138,9 +139,10 @@ async function preflightGsapDragIntercept(
   animations: GsapAnimation[],
   iframe: HTMLIFrameElement | null,
   fetchFallbackAnimations?: () => Promise<GsapAnimation[]>,
+  group?: boolean,
 ): Promise<GsapEditOutcome> {
   const fetchedAnimations = fetchFallbackAnimations ? await fetchFallbackAnimations() : [];
-  return dragEditOutcome(selection, animations, iframe, fetchedAnimations);
+  return dragEditOutcome(selection, animations, iframe, fetchedAnimations, group);
 }
 
 /** The move commit's refusal rule, also run ahead of time to hide the move handles. */
@@ -150,6 +152,7 @@ export function dragEditOutcome(
   animations: GsapAnimation[],
   iframe: HTMLIFrameElement | null,
   fetchedAnimations: GsapAnimation[] = [],
+  group = false,
 ): GsapEditOutcome {
   const selector = selectorFromSelection(selection);
   if (!selector) return { status: "blocked", reason: "no-selector" };
@@ -161,7 +164,11 @@ export function dragEditOutcome(
   const editability = directEditOutcomeForProperties(allKnownAnimations, POSITION_CHANNEL_SET);
   if (editability.status === "blocked") return editability;
   const sourceAnimations = fetchedAnimations.length > 0 ? fetchedAnimations : animations;
-  const posAnim = findGsapPositionAnimation(sourceAnimations, selector);
+  // A group writes each member on its own, so a tween shared with other targets cannot carry one.
+  const positionSources = group
+    ? getAnimationsForElement(sourceAnimations, { id: selection.id ?? null, selector })
+    : sourceAnimations;
+  const posAnim = findGsapPositionAnimation(positionSources, selector);
   const hasLivePosition = hasNonHoldTweenForElement(iframe, selector, undefined, POSITION_CHANNELS);
 
   if (hasLivePosition && !posAnim) {
@@ -186,7 +193,12 @@ export async function tryGsapDragIntercept(
   iframe: HTMLIFrameElement | null,
   commitMutation: GsapDragCommitCallbacks["commitMutation"],
   fetchFallbackAnimations?: () => Promise<GsapAnimation[]>,
-  options?: { altKey?: boolean; preflightOnly?: boolean; preflightPassed?: boolean },
+  options?: {
+    altKey?: boolean;
+    preflightOnly?: boolean;
+    preflightPassed?: boolean;
+    group?: boolean;
+  },
 ): Promise<GsapEditOutcome> {
   if (!options?.preflightPassed) {
     const preflight = await preflightGsapDragIntercept(
@@ -194,6 +206,7 @@ export async function tryGsapDragIntercept(
       animations,
       iframe,
       fetchFallbackAnimations,
+      options?.group,
     );
     if (preflight.status === "blocked" || options?.preflightOnly) return preflight;
   }

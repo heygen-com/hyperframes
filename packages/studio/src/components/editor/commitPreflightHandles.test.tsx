@@ -82,18 +82,19 @@ function resolved(el: HTMLElement): DomEditSelection {
   return selection;
 }
 
-/** A preview whose runtime timeline is visibly moving `el`. */
-function livePreview(el: HTMLElement, vars: Record<string, number>) {
+/** A preview whose runtime timeline is visibly moving `els` with one shared tween. */
+function livePreview(els: HTMLElement[], vars: Record<string, number>) {
   const liveTween = {
-    targets: () => [el],
+    targets: () => els,
     vars: { ...vars, duration: 1 },
     duration: () => 1,
     startTime: () => 0,
   };
   const timeline = { getChildren: () => [liveTween], duration: () => 6 };
+  const byId = (sel: string) => els.find((el) => sel === `#${el.id}`) ?? null;
   return {
     contentWindow: { __timelines: { root: timeline }, gsap: { getProperty: () => 0 } },
-    contentDocument: { querySelector: (sel: string) => (sel === `#${el.id}` ? el : null) },
+    contentDocument: { querySelector: byId },
   } as unknown as HTMLIFrameElement;
 }
 
@@ -102,6 +103,7 @@ interface EditorProps {
   groups?: DomEditSelection[];
   version?: number;
   preview?: HTMLIFrameElement | null;
+  projectId?: string;
 }
 
 /** Studio's session narrowing feeding the real overlay, as the editor mounts it. */
@@ -116,10 +118,16 @@ function mount(first: EditorProps) {
     groups: [],
   };
   const iframeRef = { current: document.createElement("iframe") };
-  function Editor({ selection, groups, version = 0, preview = null }: EditorProps) {
+  function Editor({
+    selection,
+    groups,
+    version = 0,
+    preview = null,
+    projectId = "p",
+  }: EditorProps) {
     const groupSelections = groups ?? (selection ? [selection] : []);
     const narrowed = useCommitPreflightCapabilities({
-      projectId: "p",
+      projectId,
       enabled: true,
       selection,
       groupSelections,
@@ -258,7 +266,7 @@ describe("handles follow what Studio would commit", () => {
 
   it("keeps the handles of an element a class tween animates, as the commit does", async () => {
     const card = element("card-1", "card");
-    const preview = livePreview(card, { y: 40 });
+    const preview = livePreview([card], { y: 40 });
     const stagger = tween({ y: 40 }, { targetSelector: ".card", method: "from" } as never);
     const selection = resolved(card);
     const { seen, overlay } = await select([stagger], { selection, preview });
@@ -334,6 +342,80 @@ describe("handles follow what Studio would commit", () => {
     await settle();
     expect(flags(seen.selection)[0]).toBe(false);
     expect(parses.fetch).toHaveBeenCalledTimes(2);
+  });
+
+  it("keeps the last answer when a re-check read fails, and takes the next good one", async () => {
+    const selection = resolved(element("title"));
+    const { seen, render } = await select([], { selection });
+    expect(flags(seen.selection)[0]).toBe(true);
+
+    parses.fetch.mockResolvedValueOnce(null);
+    render({ selection, version: 1 });
+    await settle();
+    let land: (parse: Parse) => void = () => undefined;
+    parses.fetch.mockReturnValueOnce(new Promise<Parse>((resolve) => (land = resolve)));
+    render({ selection: resolved(selection.element), version: 1 });
+    await settle();
+    expect(parses.fetch).toHaveBeenCalledTimes(3);
+    expect(flags(seen.selection)[0]).toBe(true);
+    expect(seen.selection?.capabilities.commitCheckPending).toBeUndefined();
+
+    await act(async () => land({ animations: [loop({ x: 120 })] }));
+    await settle();
+    expect(flags(seen.selection)[0]).toBe(false);
+  });
+
+  it("checks another project's file against that project's own parse", async () => {
+    const { seen, render } = await select([loop({ x: 120 })], { projectId: "a" });
+    const title = seen.selection!.element;
+    expect(flags(seen.selection)[0]).toBe(false);
+
+    answer([]);
+    render({ selection: resolved(title), projectId: "b" });
+    await settle();
+    expect(parses.fetch).toHaveBeenLastCalledWith("b", "index.html");
+    expect(flags(seen.selection)[0]).toBe(true);
+  });
+
+  it("refuses a group move carried by one shared tween, while a single member stays movable", async () => {
+    const dots = [element("dot-1", "dot"), element("dot-2", "dot")];
+    const preview = livePreview(dots, { y: 40 });
+    const stagger = tween({ y: 40 }, { targetSelector: ".dot", method: "from" } as never);
+    const [a, b] = dots.map(resolved);
+    const { seen, overlay, spies, render } = await select([stagger], {
+      selection: a!,
+      groups: [a!, b!],
+      preview,
+    });
+
+    expect(seen.groups.map((s) => flags(s)[0])).toEqual([false, false]);
+    expect(seen.groups[0]?.capabilities.reasonIfDisabled).toBe(
+      GSAP_EDIT_BLOCK_COPY["source-uneditable"],
+    );
+    fire(overlay().querySelector(BOX)!, "pointerdown", { clientX: 150, clientY: 150 });
+    expect(spies.onBlockedMove).toHaveBeenCalledTimes(1);
+    const commitList = getAnimationsForElement(
+      [stagger],
+      { id: "dot-1", selector: "#dot-1" },
+      dots[0],
+    );
+    const groupPreflight = { preflightOnly: true, group: true };
+    const commit = tryGsapDragIntercept(
+      a!,
+      { x: 0, y: 0 },
+      commitList,
+      preview,
+      vi.fn(),
+      undefined,
+      groupPreflight,
+    );
+    expect(await commit).toMatchObject({
+      status: "blocked",
+      detail: "live-position-no-source-tween",
+    });
+
+    render({ selection: a!, preview });
+    expect(flags(seen.selection)[0]).toBe(true);
   });
 
   it("toasts once on the primary press of a blocked element, before any travel", async () => {

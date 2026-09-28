@@ -169,7 +169,8 @@ vi.mock("./useAskAgentModal", () => ({
 vi.mock("./useStudioSelectionPublisher", () => ({
   useStudioSelectionPublisher: () => {},
 }));
-vi.mock("./keyframeCacheAstLoad", () => ({
+vi.mock("./keyframeCacheAstLoad", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("./keyframeCacheAstLoad")>()),
   fetchParsedAnimations: () => parsedFile.current,
 }));
 vi.mock("./useGsapTweenCache", async (importOriginal) => ({
