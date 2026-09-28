@@ -5,6 +5,18 @@ describe("isInClipWindow", () => {
   it("includes the start and excludes the end", () => {
     expect([1, 1.5, 2].map((t) => isInClipWindow(t, 1, 2))).toEqual([true, true, false]);
   });
+
+  it("hands the instant a float sum misses by a rounding step to the next clip only", () => {
+    expect([isInClipWindow(26.2, 19.8, 19.8 + 6.4), isInClipWindow(26.2, 26.2, 28.2)]).toEqual([
+      false,
+      true,
+    ]);
+    expect(isInClipWindow(20 / 24, 0, 20 / 24 + 5e-7)).toBe(true);
+  });
+
+  it("keeps a clip with no known end in its window", () => {
+    expect(isInClipWindow(5, 0, Number.POSITIVE_INFINITY)).toBe(true);
+  });
 });
 
 describe("isClipVisibleAt", () => {

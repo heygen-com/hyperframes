@@ -60,6 +60,10 @@ declare global {
         seconds: number | null;
         pendingClips: number;
       };
+      /** Where each animation's FIRST cycle ends, latest wins, in seconds (root timeline, CSS and
+       *  Lottie; never script-created WAAPI, media or the declared length); repeats may run past it.
+       *  Null when unknown. Studio reads it. */
+      animationEnd?: () => number | null;
       /** Borrow an element's playback while the transport clock is paused, so the
        *  runtime's paused-side enforcement leaves it alone. Always release. */
       leasePausedMedia?: (el: HTMLMediaElement) => void;

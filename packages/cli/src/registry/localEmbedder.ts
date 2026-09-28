@@ -13,7 +13,11 @@
 
 import { readFileSync } from "node:fs";
 
-import { loadOptionalPackage } from "../utils/optionalPackages.js";
+import {
+  installedOptionalPackageVersion,
+  loadInstalledOptionalPackage,
+  loadOptionalPackage,
+} from "../utils/optionalPackages.js";
 import {
   LOCAL_MODEL_DIMENSIONS,
   QUERY_INSTRUCTION,
@@ -44,8 +48,14 @@ export async function ensureLocalRuntime(): Promise<{ ok: true } | { ok: false; 
   }
 }
 
+export function hasLocalRuntime(): boolean {
+  return installedOptionalPackageVersion("onnxruntime-node") !== null;
+}
+
+/** Loads what is installed and never installs: only ensureLocalRuntime does, after consent is settled. */
 export async function loadLocalEmbedder(): Promise<LocalEmbedder> {
-  const ort = await loadOptionalPackage("onnxruntime-node", FEATURE);
+  const ort = loadInstalledOptionalPackage("onnxruntime-node");
+  if (ort === null) throw new Error("the on-device runtime is not installed yet");
   const config = configFromTokenizerJson(readFileSync(localTokenizerPath(), "utf-8"));
   const session = await ort.InferenceSession.create(localModelPath());
 

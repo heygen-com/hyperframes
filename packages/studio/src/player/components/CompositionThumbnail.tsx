@@ -1,6 +1,6 @@
-import { memo, useCallback, useMemo, useRef, useState, type CSSProperties } from "react";
-import { useMountEffect } from "../../hooks/useMountEffect";
+import { memo, useMemo, type CSSProperties } from "react";
 import { useThumbnailLease } from "../../hooks/useThumbnailLease";
+import { useThumbnailStripSize } from "../../hooks/useThumbnailStripSize";
 import { createThumbnailKey, type ThumbnailPriority } from "../lib/thumbnailScheduler";
 import { TIMELINE_VIEWPORT_BUDGETS } from "../lib/timelineViewportBudgets";
 import { computeThumbnailStrip, probeImageAspect } from "./thumbnailUtils";
@@ -22,7 +22,6 @@ interface CompositionThumbnailProps {
   rich?: boolean;
 }
 
-const CLIP_HEIGHT = 66;
 const THUMBNAIL_URL_VERSION = "v3";
 export const THUMBNAIL_SEEK_TIME_SECONDS = 3;
 
@@ -122,8 +121,7 @@ export const CompositionThumbnail = memo(function CompositionThumbnail({
   contentRevision = 0,
   priority = "visible",
 }: CompositionThumbnailProps) {
-  const [containerWidth, setContainerWidth] = useState(0);
-  const observerRef = useRef<ResizeObserver | null>(null);
+  const [container, setContainerRef] = useThumbnailStripSize();
   const url = buildCompositionThumbnailUrl({
     previewUrl,
     seekTime,
@@ -149,24 +147,11 @@ export const CompositionThumbnail = memo(function CompositionThumbnail({
   const value =
     snapshot.status === "ready" && snapshot.value.kind === "image" ? snapshot.value : null;
   const { frameW, frameCount } = computeThumbnailStrip(
-    containerWidth,
+    container.width,
     value?.aspect ?? 16 / 9,
-    CLIP_HEIGHT,
+    container.height,
     48,
   );
-
-  const setContainerRef = useCallback((element: HTMLDivElement | null) => {
-    observerRef.current?.disconnect();
-    if (!element) return;
-    const target = element.parentElement ?? element;
-    setContainerWidth(target.clientWidth);
-    observerRef.current = new ResizeObserver(([entry]) =>
-      setContainerWidth(entry.contentRect.width),
-    );
-    observerRef.current.observe(target);
-  }, []);
-
-  useMountEffect(() => () => observerRef.current?.disconnect());
 
   return (
     <div ref={setContainerRef} className="absolute inset-0 overflow-hidden">
@@ -189,7 +174,7 @@ export const CompositionThumbnail = memo(function CompositionThumbnail({
                 src={value.url}
                 alt=""
                 draggable={false}
-                className="absolute inset-0 h-full w-full object-cover"
+                className="absolute inset-0 h-full w-full object-contain"
                 style={{ opacity: "var(--timeline-composition-thumbnail-opacity)" }}
               />
             </div>

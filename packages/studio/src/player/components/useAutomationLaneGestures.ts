@@ -46,7 +46,7 @@ export interface UseAutomationLaneGesturesInput {
   pointAt(clientX: number, clientY: number): { t: number; v: number };
   xOf(t: number): number;
   yOf(v: number): number;
-  commitPoints(points: HfAutomationLane["points"], persist: boolean): void;
+  commitPoints(points: HfAutomationLane["points"], persist: boolean, ended?: boolean): void;
   /** Clip-local times a dragged point snaps to, on top of its own neighbours. */
   snapTimes?: readonly number[] | undefined;
   readOnly?: boolean | undefined;

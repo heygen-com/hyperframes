@@ -78,6 +78,7 @@ import {
   buildVirtualTimeShim,
   closeFileServerSafely,
   createFileServer,
+  resolveRenderFpsConfig,
   type FileServerHandle,
 } from "../fileServer.js";
 import {
@@ -678,6 +679,7 @@ export async function renderChunk(
               planVideos.extracted,
               v2Manifest === null ? "dense-v1" : "sparse-v2",
             ),
+            resolveRenderFpsConfig(job.config.fps).value,
           )
         : null;
     const createChunkVideoFrameInjector = createChunkVideoFrameInjectorFactory(videoFrameLookup);

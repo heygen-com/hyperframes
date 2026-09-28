@@ -49,7 +49,7 @@ export interface TimelineViewportBudgets {
 
 const MEBIBYTE = 1024 * 1024;
 const DAY_MS = 24 * 60 * 60 * 1000;
-export const MAX_VISIBLE_THUMBNAIL_FRAMES = Math.ceil(3840 / (66 * (16 / 9))); // 4K timeline width / tallest 16:9 tile.
+export const MAX_VISIBLE_THUMBNAIL_FRAMES = Math.ceil(3840 / (66 * (16 / 9))); // Decode-memory cap, 4K width / a 66 px 16:9 tile; 40 px clips reuse frames past it.
 
 /**
  * The sole default budget owner for timeline viewport and media virtualization.

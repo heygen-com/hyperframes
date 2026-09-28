@@ -115,6 +115,8 @@ class HyperframesPlayer extends HTMLElement {
   private probe: CompositionProbe;
 
   private _ready = false;
+  private _readyDocument: Document | null = null;
+  private _connected = false;
   private _assetsReady = false;
   private _painted = false;
   private _pendingPlay = false;
@@ -199,13 +201,15 @@ class HyperframesPlayer extends HTMLElement {
     this.resizeObserver = new ResizeObserver(() => this._rescale());
     this._onMessage = this._onMessage.bind(this);
     this._onIframeLoad = this._onIframeLoad.bind(this);
+    // Before any host can listen; _onIframeLoad skips the blank-document load before connect.
+    this.iframe.addEventListener("load", this._onIframeLoad);
   }
 
   connectedCallback() {
+    this._connected = true;
     this._applySandboxOriginPolicy();
     this.resizeObserver.observe(this);
     window.addEventListener("message", this._onMessage);
-    this.iframe.addEventListener("load", this._onIframeLoad);
     if (this.hasAttribute("controls")) this._setupControls();
     if (this.hasAttribute("poster"))
       this.posterEl = setupPoster(this.shadow, this.getAttribute("poster"), this.posterEl);
@@ -224,11 +228,11 @@ class HyperframesPlayer extends HTMLElement {
   }
 
   disconnectedCallback() {
+    this._connected = false;
     this._sendControl("pause");
     this._stopIframeMedia();
     this.resizeObserver.disconnect();
     window.removeEventListener("message", this._onMessage);
-    this.iframe.removeEventListener("load", this._onIframeLoad);
     this.probe.stop();
     this._directTimelineClock.stop();
     this._stopParentTickClock();
@@ -869,7 +873,6 @@ class HyperframesPlayer extends HTMLElement {
     // replaced, where it can only end in a delivery timeout rather than the immediate,
     // explanatory rejection the caller gets from every other navigating path.
     this._abandonComposition("Shader options changed before runtime data was applied");
-    if (getShaderModeFromElement(this) !== "player") this.shaderLoader.reset();
     if (this.hasAttribute("srcdoc")) {
       this.iframe.srcdoc = prepareSrcdocForElement(this, this.getAttribute("srcdoc") || "");
       return;
@@ -1095,6 +1098,13 @@ class HyperframesPlayer extends HTMLElement {
     }, ASSETS_LOADING_SHOW_DELAY_MS);
   }
 
+  private _hasPendingFirstFrameAssets(doc: Document): boolean {
+    const { pendingMedia, pendingImages, fontsLoading } = scanPendingCompositionAssets(doc, {
+      scope: FIRST_FRAME_READINESS_SCOPE,
+    });
+    return pendingMedia.length > 0 || pendingImages.length > 0 || fontsLoading;
+  }
+
   /** Timeout diagnostic. Re-scans since some assets may have resolved by
    *  now. Compute can cause the timeout, so it's reported too. A hidden
    *  document can starve paint-and-idle of frames for the full 8s — that's
@@ -1141,9 +1151,19 @@ class HyperframesPlayer extends HTMLElement {
    *  data deliveries end here. A queued play is the caller's, so only its owners clear it. */
   private _abandonComposition(reason: string): void {
     this._ready = false;
+    this._readyDocument = null;
     this._invalidateAssetsWait();
+    this._releaseDocument();
     this._runtimeBridgeReady = false;
     this._rejectAllRuntimeDataDeliveries(reason);
+  }
+
+  private _releaseDocument(): void {
+    this._directTimelineAdapter = null;
+    this._directTimelineClock.stop();
+    this._stopParentTickClock();
+    this.shaderLoader.reset();
+    this._media.resetForIframeLoad();
   }
 
   /** Abandons any in-flight asset wait — every `_ready = false` site calls
@@ -1164,6 +1184,7 @@ class HyperframesPlayer extends HTMLElement {
   }
 
   private _dispatchReady(): void {
+    this._readyDocument = this._getSameOriginIframeDocument();
     const detail = {
       duration: this._duration,
       compositionWidth: this._compositionWidth,
@@ -1260,22 +1281,24 @@ class HyperframesPlayer extends HTMLElement {
   }
 
   private _onIframeLoad() {
+    if (!this._connected) return;
     // The runtime posts its timeline at DOMContentLoaded, before `load`, and every
-    // host-initiated navigation clears `_ready` first. So a ready opaque-origin player already
-    // holds this document's handshake; a paused runtime would never post it again.
-    if (this._ready && this._getSameOriginIframeDocument() === null) return;
+    // host-initiated navigation clears `_ready` first. So a ready player already holds this
+    // document's handshake (an opaque origin reads as null); a paused runtime never posts it again.
+    const doc = this._getSameOriginIframeDocument();
+    if (this._ready && doc === this._readyDocument) {
+      // Its asset wait scanned at DOMContentLoaded; a script may have added first-frame media since.
+      if (doc && this._hasPendingFirstFrameAssets(doc)) this._waitForAssetsReady(doc);
+      return;
+    }
 
     this._ready = false;
     // The runtime installs its bridge at DOMContentLoaded, posts `ready`, and only then does the
     // iframe's load event fire. Do not erase that authoritative handshake here: doing so strands
     // retained data set after load until a second `ready` that never comes. Source setters and
     // sandbox-policy reloads already clear bridge readiness before starting a navigation.
-    this._directTimelineAdapter = null;
-    this._directTimelineClock.stop();
-    this._stopParentTickClock();
     this._invalidateAssetsWait();
-    this.shaderLoader.reset();
-    this._media.resetForIframeLoad();
+    this._releaseDocument();
     this.probe.start();
   }
 

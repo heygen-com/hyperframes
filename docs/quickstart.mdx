@@ -29,7 +29,7 @@ preview — you only change the URL.
 ```text
 Set this folder up for HyperFrames and make me a video.
 
-1. Run: npx hyperframes skills update
+1. If the HyperFrames plugin is installed, use its bundled skills and launcher. Otherwise run: npx hyperframes skills update
 2. Then, using /hyperframes, make a 10-second product intro for https://example.com
 3. Open the local preview when it is done and tell me the project folder.
 ```
@@ -37,9 +37,13 @@ Set this folder up for HyperFrames and make me a video.
 Swap `https://example.com` for the page you want the video to show. Everything
 below is the same thing done by hand, if you would rather see each step.
 
-## 1. Install the skills
+## 1. Install the plugin or skills
 
-Run this in your project folder:
+For Claude Code, Copilot, VS Code, Cursor, or Gemini CLI, start with the
+[plugin installation guide](/guides/plugins). It includes update settings for
+each agent. Claude's plugin router is `/hyperframes:hyperframes`.
+
+For standalone skills, run this in your project folder:
 
 ```bash
 npx skills add heygen-com/hyperframes

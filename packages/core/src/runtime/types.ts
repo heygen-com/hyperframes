@@ -260,11 +260,13 @@ export type RuntimeOutboundMessage =
   | RuntimePerformanceMessage
   | RuntimeGroupLevelsMessage;
 
+export type HeldSeek = Promise<void> | void;
+
 export type RuntimePlayer = {
   _timeline: RuntimeTimelineLike | null;
   play: () => void;
   pause: () => void;
-  seek: (timeSeconds: number, options?: { keepPlaying?: boolean }) => void;
+  seek: (timeSeconds: number, options?: { keepPlaying?: boolean }) => HeldSeek;
   renderSeek: (timeSeconds: number, options?: RuntimeSeekOptions) => void;
   getTime: () => number;
   getDuration: () => number;
@@ -288,7 +290,9 @@ export type RuntimeTimelineChildLike = {
   vars?: unknown;
   startTime?: () => number;
   duration?: () => number;
+  data?: unknown;
   parent?: RuntimeTimelineChildLike;
+  getChildren?: RuntimeTimelineLike["getChildren"];
 };
 
 /** A timeline or tween a composition script started, as a scene swap stops it. */
@@ -324,8 +328,12 @@ export type RuntimeTimelineLike = {
 export type RuntimeDeterministicAdapter = {
   name: string;
   discover: () => void;
-  seek: (ctx: { time: number; suppressEvents?: boolean }) => void;
-  pause: () => void;
+  seek: (ctx: {
+    time: number;
+    suppressEvents?: boolean;
+    pageAnimations?: () => Animation[];
+  }) => void;
+  pause: (ctx?: { pageAnimations?: () => Animation[] }) => void;
   play?: () => void;
   revert?: () => void;
   /**
@@ -366,6 +374,7 @@ export type RuntimeDeterministicAdapter = {
    * (Lottie JSON fetch, etc.) resolves.
    */
   getInferredDurationSeconds?: () => number | null;
+  getAnimationCycleEndSeconds?: () => number | null;
 };
 
 export type RuntimeGsapSetTarget = string | Element | Element[] | null;

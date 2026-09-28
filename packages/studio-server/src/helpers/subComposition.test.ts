@@ -1,12 +1,13 @@
 // @vitest-environment node
-import { mkdtempSync, mkdirSync, writeFileSync } from "node:fs";
+import { mkdtempSync, mkdirSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, onTestFinished } from "vitest";
 import { buildSubCompositionHtml, hasBaseElement } from "./subComposition";
 
 function makeTempProject(files: Record<string, string>): string {
   const dir = mkdtempSync(join(tmpdir(), "hf-subcomp-preview-"));
+  onTestFinished(() => rmSync(dir, { recursive: true, force: true }));
   for (const [rel, content] of Object.entries(files)) {
     const full = join(dir, rel);
     mkdirSync(join(full, ".."), { recursive: true });
@@ -88,6 +89,26 @@ describe("buildSubCompositionHtml", () => {
     expect(html).toContain('name="viewport"');
     // <html lang="en"> attribute forwarded to the output
     expect(html).toContain('lang="en"');
+  });
+
+  it("keeps an installed block's <html> variables though a marker comment precedes the doctype", () => {
+    const dir = makeTempProject({
+      "index.html": `<!doctype html>
+<html><head></head><body></body></html>`,
+      "compositions/blk.html": `<!-- hyperframes-registry-item: blk -->
+<!doctype html>
+<html lang="en" data-composition-variables='[{"id":"image1","type":"image","default":"assets/blk/one.jpg"}]'>
+  <body>
+    <div id="root" data-composition-id="blk" data-width="1920" data-height="1080"></div>
+  </body>
+</html>`,
+    });
+
+    const html = buildSubCompositionHtml(dir, "compositions/blk.html", "/api/runtime.js", "/p/");
+
+    const body = html!.indexOf("<body");
+    expect(html!.slice(0, body)).toContain("data-composition-variables=");
+    expect(html!.slice(body)).not.toContain("<html");
   });
 
   it("handles raw fragment compositions (no template, no full document)", () => {

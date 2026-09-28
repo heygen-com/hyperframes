@@ -1,5 +1,5 @@
 import { createHash, randomUUID } from "node:crypto";
-import { constants, createReadStream } from "node:fs";
+import { constants, createReadStream, renameSync } from "node:fs";
 import { copyFile, mkdir, readdir, readFile, rename, rm, stat } from "node:fs/promises";
 import { dirname, join } from "node:path";
 
@@ -10,7 +10,7 @@ export interface BlobStore {
   has(hash: string): boolean;
   read(hash: string): Promise<Buffer>;
   /** Writes the blob's bytes to `absPath` by clone-or-copy and rename, so a reader never sees half a file. */
-  writeTo(hash: string, absPath: string): Promise<void>;
+  writeTo(hash: string, absPath: string, beforeReplace?: () => void): Promise<void>;
   bytes(): number;
   size(hash: string): number;
   prune(keep: ReadonlySet<string>): Promise<void>;
@@ -24,12 +24,13 @@ async function hashFile(path: string): Promise<string> {
   return hash.digest("hex");
 }
 
-async function cloneOrCopy(from: string, to: string): Promise<void> {
+async function cloneOrCopy(from: string, to: string, beforeReplace?: () => void): Promise<void> {
   await mkdir(dirname(to), { recursive: true });
   const temp = `${to}.${randomUUID()}.tmp`;
   try {
     await copyFile(from, temp, constants.COPYFILE_FICLONE);
-    await rename(temp, to);
+    beforeReplace?.();
+    renameSync(temp, to);
   } catch (error) {
     await rm(temp, { force: true });
     throw error;
@@ -70,7 +71,8 @@ export async function openBlobStore(dir: string): Promise<BlobStore> {
     },
     has: (hash) => sizes.has(hash),
     read: async (hash) => readFile(pathOf(hash)),
-    writeTo: async (hash, absPath) => cloneOrCopy(pathOf(hash), absPath),
+    writeTo: async (hash, absPath, beforeReplace) =>
+      cloneOrCopy(pathOf(hash), absPath, beforeReplace),
     bytes: () => total,
     size: (hash) => sizes.get(hash) ?? 0,
     async prune(keep) {

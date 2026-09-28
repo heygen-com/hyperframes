@@ -9,6 +9,7 @@ const skillLibDir = resolve("skills/media-use/scripts/lib");
 const cliLibDir = resolve("packages/cli/src/media-use/lib");
 
 export const MEDIA_USE_COPY_NAMES = [
+  "config-lock.mjs",
   "cutlist.mjs",
   "duck.mjs",
   "error-diffusion.mjs",

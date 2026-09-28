@@ -17,8 +17,11 @@ vi.mock("../version.js", () => ({
 // isDevMode() is true under vitest (module path ends in .ts), which would
 // suppress the notice unconditionally — mock ./env.js like updateCheck.test.ts does.
 vi.mock("./env.js", () => ({ isDevMode: () => false }));
+// What a process-cached readConfig() returns; null means it matches disk.
+let cachedRead: Record<string, unknown> | null = null;
 vi.mock("../telemetry/config.js", () => ({
-  readConfig: () => ({ ...store }),
+  readConfig: () => ({ ...(cachedRead ?? store) }),
+  readConfigFresh: () => ({ ...store }),
   writeConfig: (c: Record<string, unknown>) => {
     store = { ...c };
     return true;
@@ -33,6 +36,7 @@ describe("printStalePinNotice", () => {
   const origWrite = process.stderr.write.bind(process.stderr);
   beforeEach(() => {
     store = { latestVersion: "0.7.55" };
+    cachedRead = null;
     runningVersion = "0.7.55";
     writes = [];
     dir = mkdtempSync(join(tmpdir(), "hf-pin-"));
@@ -46,6 +50,18 @@ describe("printStalePinNotice", () => {
   afterEach(() => {
     process.stderr.write = origWrite;
     rmSync(dir, { recursive: true, force: true });
+  });
+
+  it("keeps what the background check wrote after this process read the settings", () => {
+    writeFileSync(
+      join(dir, "package.json"),
+      JSON.stringify({ scripts: { render: "npx --yes hyperframes@0.7.48 render" } }),
+    );
+    cachedRead = { ...store };
+    store = { ...store, lastUpdateCheck: "2026-09-27T00:00:00.000Z" };
+    printStalePinNotice(dir);
+    expect(store).toMatchObject({ lastUpdateCheck: "2026-09-27T00:00:00.000Z" });
+    expect(store["lastStalePinNoticeAt"]).toEqual(expect.any(Number));
   });
 
   it("warns once when the project pins an older version", () => {

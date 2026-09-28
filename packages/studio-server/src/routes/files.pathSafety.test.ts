@@ -73,6 +73,46 @@ function upload(app: Hono, dir = "", filename = "upload.txt") {
 }
 
 describe("file route containment", () => {
+  it("writes the file a link resolves to when its target climbs out of a linked folder", async (context) => {
+    const { app, project } = fixture();
+    mkdirSync(join(project, "deep", "nested"), { recursive: true });
+    mkdirSync(join(project, "m"));
+    writeFileSync(join(project, "deep", "y.txt"), "old");
+    writeFileSync(join(project, "y.txt"), "decoy");
+    linkOrSkip(context, join(project, "deep", "nested"), join(project, "sub"), "dir");
+    linkOrSkip(context, "../sub/../y.txt", join(project, "m", "x.txt"), "file");
+
+    const response = await app.request(fileUrl("m/x.txt"), {
+      method: "PUT",
+      headers: { "If-Match": fileContentVersion("old") },
+      body: "new",
+    });
+
+    expect(response.status).toBe(200);
+    expect(readFileSync(join(project, "deep", "y.txt"), "utf8")).toBe("new");
+    expect(readFileSync(join(project, "y.txt"), "utf8")).toBe("decoy");
+  });
+
+  it("refuses a write through a link whose target climbs out of a folder linked outside", async (context) => {
+    const { app, project, outside } = fixture();
+    mkdirSync(join(outside, "a", "b"), { recursive: true });
+    mkdirSync(join(project, "m"));
+    writeFileSync(join(outside, "a", "y.txt"), "outside secret");
+    writeFileSync(join(project, "y.txt"), "decoy");
+    linkOrSkip(context, join(outside, "a", "b"), join(project, "sub"), "dir");
+    linkOrSkip(context, "../sub/../y.txt", join(project, "m", "x.txt"), "file");
+
+    const response = await app.request(fileUrl("m/x.txt"), {
+      method: "PUT",
+      headers: { "If-Match": fileContentVersion("outside secret") },
+      body: "overwrite",
+    });
+
+    expect(response.status).toBe(403);
+    expect(readFileSync(join(outside, "a", "y.txt"), "utf8")).toBe("outside secret");
+    expect(readFileSync(join(project, "y.txt"), "utf8")).toBe("decoy");
+  });
+
   it.each(["GET", "PUT", "POST", "DELETE"])(
     "rejects encoded traversal through %s without changing outside bytes",
     async (method) => {

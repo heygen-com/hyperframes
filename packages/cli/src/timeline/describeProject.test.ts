@@ -12,7 +12,7 @@ import { tmpdir } from "node:os";
 import { basename, dirname, join } from "node:path";
 import { MEDIA_DURATION_FIXTURES } from "@hyperframes/parsers/media-duration-fixtures";
 import { fileURLToPath } from "node:url";
-import { afterEach, beforeAll, describe, expect, it } from "vitest";
+import { beforeAll, describe, expect, it, onTestFinished } from "vitest";
 import { ensureDOMParser } from "../utils/dom.js";
 import {
   createProbeGate,
@@ -47,6 +47,11 @@ const childrenOf = (t: ProjectTimeline, row: TimelineRow) =>
   allRows(t).filter((r) => row.children.some((c) => c.kind === r.trackKind && c.index === r.index));
 
 let dir = "";
+const tempDir = (prefix: string) => {
+  const made = mkdtempSync(join(tmpdir(), prefix));
+  onTestFinished(() => rmSync(made, { recursive: true, force: true }));
+  return made;
+};
 const TINY_PNG = Buffer.from(
   "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR4nGP4z8DwHwAFAAH/iZk9HQAAAABJRU5ErkJggg==",
   "base64",
@@ -67,15 +72,14 @@ const rowsOf = async (
 };
 
 const project = () => {
-  dir = mkdtempSync(join(tmpdir(), "hf-timeline-"));
-  mkdirSync(join(dir, "compositions"));
+  dir = join(tempDir("hf-timeline-"), "project");
+  mkdirSync(join(dir, "compositions"), { recursive: true });
   writeFileSync(join(dir, "index.html"), INDEX);
   writeFileSync(join(dir, "compositions", "title.html"), TITLE);
   return join(dir, "index.html");
 };
 
 beforeAll(ensureDOMParser);
-afterEach(() => rmSync(dir, { recursive: true, force: true }));
 
 describe("describeProject", () => {
   it("groups rows into tracks by kind with resolved timing and clip facts", async () => {
@@ -133,7 +137,6 @@ describe("describeProject", () => {
       ["o", 0],
       ["d", 0],
     ]);
-    rmSync(join(dir, "..", "hf-outside.html"));
   });
 
   it("reads a sub-composition whose folder name starts with two dots", async () => {
@@ -150,7 +153,7 @@ describe("describeProject", () => {
 
   it("does not follow a symlink out of the project", async () => {
     const index = project();
-    const outside = mkdtempSync(join(tmpdir(), "hf-outside-"));
+    const outside = tempDir("hf-outside-");
     writeFileSync(join(outside, "secret.html"), TITLE);
     symlinkSync(join(outside, "secret.html"), join(dir, "compositions", "link.html"));
     writeFileSync(
@@ -159,7 +162,6 @@ describe("describeProject", () => {
     );
     const [row] = (await describeProject(index)).tracks.flatMap((t) => t.rows);
     expect(row!.children).toEqual([]);
-    rmSync(outside, { recursive: true, force: true });
   });
 
   it("claims no duration source for a leaf with nothing authored and no children", async () => {
@@ -172,7 +174,7 @@ describe("describeProject", () => {
 
   it("does not probe a remote, absolute or parent-relative src and says why", async () => {
     const index = project();
-    const outside = mkdtempSync(join(tmpdir(), "hf-outside-media-"));
+    const outside = tempDir("hf-outside-media-");
     copyFileSync(REAL_AUDIO, join(outside, "out.mp3"));
     copyFileSync(REAL_AUDIO, join(dir, "..", "hf-parent-media.mp3"));
     writeFileSync(
@@ -196,8 +198,6 @@ describe("describeProject", () => {
         duration: 0,
       });
     }
-    rmSync(outside, { recursive: true, force: true });
-    rmSync(join(dir, "..", "hf-parent-media.mp3"));
   });
 
   it("reports a still image used as a video source as pending, not a measured zero", async () => {
@@ -215,22 +215,18 @@ describe("describeProject", () => {
   });
 
   it("does not probe a media src that is a symlink out of the project", async () => {
-    const outside = mkdtempSync(join(tmpdir(), "hf-outside-"));
-    try {
-      copyFileSync(REAL_AUDIO, join(outside, "secret.mp3"));
-      const { rows } = await rowsOf(
-        `<div data-composition-id="m"><audio id="a" src="link.mp3" data-start="0"></audio></div>`,
-        false,
-        (root) => symlinkSync(join(outside, "secret.mp3"), join(root, "link.mp3")),
-      );
-      expect(rows[0]).toMatchObject({
-        durationSource: "pending",
-        pendingReason: "source file not found",
-        duration: 0,
-      });
-    } finally {
-      rmSync(outside, { recursive: true, force: true });
-    }
+    const outside = tempDir("hf-outside-");
+    copyFileSync(REAL_AUDIO, join(outside, "secret.mp3"));
+    const { rows } = await rowsOf(
+      `<div data-composition-id="m"><audio id="a" src="link.mp3" data-start="0"></audio></div>`,
+      false,
+      (root) => symlinkSync(join(outside, "secret.mp3"), join(root, "link.mp3")),
+    );
+    expect(rows[0]).toMatchObject({
+      durationSource: "pending",
+      pendingReason: "source file not found",
+      duration: 0,
+    });
   });
 
   it("gives an image with no authored duration the resolver's default length", async () => {
@@ -328,7 +324,7 @@ const INVERSION_INDEX = `<div data-composition-id="main" data-duration="30">
 const INVERSION_SCENE = `<template><div data-composition-id="scene"><video id="nested" src="n.mp4" data-start="1" data-duration="2" data-track-index="0"></video></div></template>`;
 
 const inversionProject = () => {
-  dir = mkdtempSync(join(tmpdir(), "hf-timeline-abs-"));
+  dir = tempDir("hf-timeline-abs-");
   mkdirSync(join(dir, "compositions"));
   writeFileSync(join(dir, "index.html"), INVERSION_INDEX);
   writeFileSync(join(dir, "compositions", "scene.html"), INVERSION_SCENE);
@@ -369,7 +365,7 @@ describe("absolute main-timeline time", () => {
   });
 
   it("places a nested media clip with a negative start where the runtime plays it", async () => {
-    dir = mkdtempSync(join(tmpdir(), "hf-timeline-neg-"));
+    dir = tempDir("hf-timeline-neg-");
     mkdirSync(join(dir, "compositions"));
     writeFileSync(join(dir, "index.html"), INVERSION_INDEX);
     writeFileSync(
@@ -382,7 +378,7 @@ describe("absolute main-timeline time", () => {
   });
 
   it("resolves a media start given as an expression like any other clip, not as a literal", async () => {
-    dir = mkdtempSync(join(tmpdir(), "hf-timeline-expr-"));
+    dir = tempDir("hf-timeline-expr-");
     mkdirSync(join(dir, "compositions"));
     writeFileSync(join(dir, "index.html"), INVERSION_INDEX);
     writeFileSync(
@@ -398,7 +394,7 @@ describe("absolute main-timeline time", () => {
   });
 
   it("clamps a negative media start to 0 when the host starts at 0, as the runtime does", async () => {
-    dir = mkdtempSync(join(tmpdir(), "hf-timeline-neg0-"));
+    dir = tempDir("hf-timeline-neg0-");
     writeFileSync(
       join(dir, "index.html"),
       `<div data-composition-id="main" data-duration="10"><video id="v" src="v.mp4" data-start="-3" data-duration="2" data-track-index="0"></video></div>`,
@@ -412,7 +408,7 @@ describe("absolute main-timeline time", () => {
   // hosted at main-timeline 5.2s too, and a video in an EARLIER host ends at
   // 5.27s — a 0.07s overlap only visible once both are on the same clock.
   it("carries enough absolute time to detect a sub-second overlap across two different sub-compositions", async () => {
-    dir = mkdtempSync(join(tmpdir(), "hf-timeline-overlap-"));
+    dir = tempDir("hf-timeline-overlap-");
     mkdirSync(join(dir, "compositions"));
     writeFileSync(
       join(dir, "index.html"),
@@ -442,7 +438,7 @@ describe("absolute main-timeline time", () => {
   // clip" has to be found by comparing videos nested in DIFFERENT
   // sub-compositions, each printed with its own local 0-based start.
   it("orders videos nested in different sub-compositions by absolute start, not local start", async () => {
-    dir = mkdtempSync(join(tmpdir(), "hf-timeline-order-"));
+    dir = tempDir("hf-timeline-order-");
     mkdirSync(join(dir, "compositions"));
     writeFileSync(
       join(dir, "index.html"),
@@ -534,7 +530,7 @@ const EVAL_MUSIC = `<template><div data-composition-id="terminal-music">
 </div></template>`;
 
 const evalTimeline = () => {
-  dir = mkdtempSync(join(tmpdir(), "hf-timeline-eval-"));
+  dir = tempDir("hf-timeline-eval-");
   mkdirSync(join(dir, "compositions"));
   writeFileSync(join(dir, "index.html"), EVAL_INDEX);
   writeFileSync(join(dir, "compositions", "terminal-sfx.html"), EVAL_SFX);
@@ -544,7 +540,7 @@ const evalTimeline = () => {
 
 /** Ids, absent ids, and same ids across kinds and hosts; every clip has a distinct src. */
 const collidingTimeline = () => {
-  dir = mkdtempSync(join(tmpdir(), "hf-timeline-collide-"));
+  dir = tempDir("hf-timeline-collide-");
   mkdirSync(join(dir, "compositions"));
   writeFileSync(
     join(dir, "index.html"),
@@ -635,7 +631,7 @@ describe("kind tracks list every clip once", () => {
   });
 
   it("does not count a sub-composition inside a sub-composition", async () => {
-    dir = mkdtempSync(join(tmpdir(), "hf-timeline-deep-"));
+    dir = tempDir("hf-timeline-deep-");
     mkdirSync(join(dir, "compositions"));
     writeFileSync(join(dir, "index.html"), EVAL_INDEX);
     writeFileSync(
@@ -674,17 +670,13 @@ const hasJq = (() => {
 
 const runOneLiner = async (line: string, timeline?: ProjectTimeline): Promise<string> => {
   const own = timeline ? null : inversionProject();
-  try {
-    return execFileSync("bash", ["-c", line], {
-      env: {
-        ...process.env,
-        TL: JSON.stringify({ timeline: timeline ?? (await describeProject(own!)) }),
-      },
-      encoding: "utf8",
-    });
-  } finally {
-    if (own) rmSync(dirname(own), { recursive: true, force: true });
-  }
+  return execFileSync("bash", ["-c", line], {
+    env: {
+      ...process.env,
+      TL: JSON.stringify({ timeline: timeline ?? (await describeProject(own!)) }),
+    },
+    encoding: "utf8",
+  });
 };
 const parseStream = (out: string) => JSON.parse(`[${out.replace(/}\s*{/g, "},{")}]`);
 

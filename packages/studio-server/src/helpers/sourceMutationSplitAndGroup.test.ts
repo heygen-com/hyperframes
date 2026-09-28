@@ -1,6 +1,7 @@
 // fallow-ignore-file code-duplication
 import { parseHTML } from "linkedom";
 import { describe, expect, it } from "vitest";
+import { readMediaOffsetSeconds } from "@hyperframes/parsers/media-duration";
 import {
   splitElementInHtml,
   unwrapElementsFromHtml,
@@ -159,6 +160,32 @@ describe("splitElementInHtml", () => {
     const { document } = parseHTML(result.html);
 
     expect(document.getElementById("media-split")?.getAttribute("data-media-start")).toBe("4");
+  });
+
+  it("leaves the first half's authored in-point exactly as written", () => {
+    const mediaSource = `<!DOCTYPE html><html><body><div data-composition-id="root"><video id="media" class="clip" src="asset.mp4" data-start="1" data-duration="6" data-media-start="3.296375" data-playback-rate="0.25"></video></div></body></html>`;
+
+    const result = splitElementInHtml(mediaSource, { id: "media" }, 3, "media-split");
+    const { document } = parseHTML(result.html);
+
+    expect(document.getElementById("media")?.getAttribute("data-media-start")).toBe("3.296375");
+  });
+
+  it.each([
+    ['data-playback-start="-1" data-media-start="2"', "data-playback-start", 2, 4],
+    ['data-playback-start="abc" data-media-start="2"', "data-playback-start", 2, 4],
+    ['data-media-start="-1"', "data-media-start", 0, 2],
+    ['data-media-start="junk"', "data-media-start", 0, 2],
+    ['data-media-start="1.5s"', "data-media-start", 0, 2],
+  ])("splits %s where playback reads it", (inPoint, attr, left, right) => {
+    const mediaSource = `<!DOCTYPE html><html><body><div data-composition-id="root"><video id="media" class="clip" src="asset.mp4" data-start="0" data-duration="6" ${inPoint}></video></div></body></html>`;
+
+    const { document } = parseHTML(splitElementInHtml(mediaSource, { id: "media" }, 2, "b").html);
+    const playbackReads = (id: string) =>
+      readMediaOffsetSeconds((name) => document.getElementById(id)?.getAttribute(name));
+
+    expect([playbackReads("media"), playbackReads("b")]).toEqual([left, right]);
+    expect(document.getElementById("b")?.getAttribute(attr)).toBe(String(right));
   });
 
   it("does not add a media in-point to non-media elements", () => {

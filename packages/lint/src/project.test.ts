@@ -663,6 +663,40 @@ describe("video_media_start_at_or_past_eof", () => {
   });
 });
 
+describe("missing asset findings name the file that references them", () => {
+  it("points a draft section's missing image, audio and mask at the draft, not the film", async () => {
+    const project = makeProject(
+      `<html><body>
+  <div data-composition-id="main" data-width="1920" data-height="1080" data-start="0" data-duration="10">
+    <img src="assets/missing-in-film.png" />
+    <div data-composition-src="compositions/draft.html" data-composition-id="draft" data-start="0" data-duration="5"></div>
+  </div>
+</body></html>`,
+      {
+        "draft.html": `<!doctype html><html><body>
+  <div data-composition-id="draft" data-width="1920" data-height="1080">
+    <style>.masked { mask-image: url(../assets/missing-mask.png); }</style>
+    <img src="../assets/missing-in-draft.png" />
+    <audio src="../assets/missing-in-draft.mp3" data-start="0" data-duration="5"></audio>
+  </div>
+</body></html>`,
+      },
+    );
+
+    const { results } = await lintProject(project);
+    const fileOf = (code: string, name: string) =>
+      results
+        .flatMap((entry) => entry.result.findings)
+        .find((finding) => finding.code === code && finding.message.includes(name))?.file;
+
+    const draft = join(project, "compositions", "draft.html");
+    expect(fileOf("missing_local_asset", "missing-in-draft.png")).toBe(draft);
+    expect(fileOf("audio_src_not_found", "missing-in-draft.mp3")).toBe(draft);
+    expect(fileOf("texture_mask_asset_not_found", "missing-mask.png")).toBe(draft);
+    expect(fileOf("missing_local_asset", "missing-in-film.png")).toBe(join(project, "index.html"));
+  });
+});
+
 describe("audio_src_not_found with templating tokens", () => {
   // A src carrying an unresolved templating placeholder is late-bound before render,
   // so the static linter cannot resolve it to a file and must not report it missing.

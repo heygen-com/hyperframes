@@ -1,4 +1,4 @@
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, rmSync, utimesSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { pathToFileURL } from "node:url";
@@ -309,5 +309,27 @@ describe("checkOptionalPackage", () => {
       ok: true,
       detail: "1.52.0 installed",
     });
+  });
+});
+
+describe("checkSettingsLock", () => {
+  it("names a lock left by a process that stopped, and leaves it for the person to remove", async () => {
+    const { checkSettingsLock } = await import("./doctor.js");
+    const dir = mkdtempSync(join(tmpdir(), "hf-doctor-lock-"));
+    try {
+      const lock = join(dir, "config.json.lock");
+      expect(checkSettingsLock(lock)).toEqual({ ok: true, detail: "Not locked" });
+
+      writeFileSync(lock, "stopped");
+      const past = new Date(Date.now() - 60_000);
+      utimesSync(lock, past, past);
+      const result = checkSettingsLock(lock);
+
+      expect(result.ok).toBe(false);
+      expect(result.hint).toContain(`delete ${lock}`);
+      expect(existsSync(lock)).toBe(true);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
   });
 });

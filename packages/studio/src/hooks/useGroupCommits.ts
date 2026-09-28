@@ -1,8 +1,7 @@
 import { buildProjectApiPath } from "../utils/projectRouting";
 import { useCallback } from "react";
 import {
-  readProjectFileContent,
-  saveProjectFilesWithHistory,
+  saveServerRewriteWithHistory,
   type DomEditCommitBaseParams,
 } from "../utils/studioFileHistory";
 import {
@@ -125,36 +124,36 @@ async function commitStructuralMutation(
     | "reloadPreview"
   >,
 ): Promise<{ content?: string; groupId?: string }> {
-  const originalContent = await readProjectFileContent(pid, targetPath);
-
-  const mutateResponse = await fetch(
-    buildProjectApiPath(pid, `/file-mutations/${route}/${encodeURIComponent(targetPath)}`),
-    {
-      method: "POST",
-      headers: { "Content-Type": "application/json", ...studioWriteHeaders() },
-      body: JSON.stringify(body),
-    },
-  );
-  if (!mutateResponse.ok) {
-    const errBody = (await mutateResponse.json().catch(() => null)) as { error?: string } | null;
-    throw new Error(errBody?.error ?? `Failed to ${label.toLowerCase()} in ${targetPath}`);
-  }
-  const mutateData = (await mutateResponse.json()) as { content?: string; groupId?: string };
-  const patchedContent =
-    typeof mutateData.content === "string" ? mutateData.content : originalContent;
-
-  await saveProjectFilesWithHistory({
+  let result: { content?: string; groupId?: string } = {};
+  await saveServerRewriteWithHistory({
     projectId: pid,
+    path: targetPath,
     label,
-    files: { [targetPath]: patchedContent },
-    readFile: async () => originalContent,
     writeFile: deps.writeProjectFile,
     recordEdit: deps.editHistory.recordEdit,
+    rewrite: async (originalContent) => {
+      const mutateResponse = await fetch(
+        buildProjectApiPath(pid, `/file-mutations/${route}/${encodeURIComponent(targetPath)}`),
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json", ...studioWriteHeaders() },
+          body: JSON.stringify(body),
+        },
+      );
+      if (!mutateResponse.ok) {
+        const errBody = (await mutateResponse.json().catch(() => null)) as {
+          error?: string;
+        } | null;
+        throw new Error(errBody?.error ?? `Failed to ${label.toLowerCase()} in ${targetPath}`);
+      }
+      result = (await mutateResponse.json()) as { content?: string; groupId?: string };
+      return { disk: typeof result.content === "string" ? result.content : originalContent };
+    },
   });
   deps.clearDomSelection();
   deps.forceReloadSdkSession?.();
   deps.reloadPreview();
-  return mutateData;
+  return result;
 }
 
 export function useGroupCommits(params: UseGroupCommitsParams) {
