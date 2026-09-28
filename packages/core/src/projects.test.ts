@@ -130,10 +130,24 @@ describe("findProjects", () => {
     expect(found).toHaveLength(1);
   });
 
+  it("stops the search when onProject throws", async () => {
+    const root = tree(
+      Array.from({ length: 200 }, (_, i) => [`f${i}/index.html`, `f${i}/meta.json`]).flat(),
+    );
+    const onProject = vi.fn(() => {
+      throw new Error("list is closed");
+    });
+
+    await expect(findProjects({ root, onProject, spotlight: async () => [] })).rejects.toThrow(
+      "list is closed",
+    );
+    expect(onProject).toHaveBeenCalledTimes(1);
+  });
+
   it("does not start when its signal is already aborted", async () => {
     const onProject = vi.fn();
     const search = findProjects({
-      root: tree(["film/index.html", "film/meta.json"]),
+      root: join(tree([]), "missing"),
       onProject,
       signal: AbortSignal.abort(),
     });

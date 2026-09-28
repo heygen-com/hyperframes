@@ -64,12 +64,15 @@ export async function findProjects({
   signal,
   spotlight = spotlightMarkers,
 }: FindProjectsOptions): Promise<number> {
+  signal?.throwIfAborted();
   const root = await realpath(givenRoot).catch(() => givenRoot);
   await readdir(root);
   const home = await realpath(homedir()).catch(() => homedir());
   const skippedDir = (parent: string, name: string) =>
     name.startsWith(".") || name === "node_modules" || (name === "Library" && parent === home);
   const reported = new Set<string>();
+  let onProjectThrew = false;
+  const stopped = () => onProjectThrew || signal?.aborted;
   const entriesByDir = new Map<string, Promise<Dirent[] | null>>();
   const entriesOf = (dir: string) => {
     let entries = entriesByDir.get(dir);
@@ -82,13 +85,18 @@ export async function findProjects({
     if (reported.has(real)) return;
     reported.add(real);
     const index = await stat(join(dir, "index.html")).catch(() => null);
-    if (signal?.aborted) return;
-    onProject({
-      path: dir,
-      name: basename(dir),
-      source,
-      mtime: (index?.mtime ?? new Date(0)).toISOString(),
-    });
+    if (stopped()) return;
+    try {
+      onProject({
+        path: dir,
+        name: basename(dir),
+        source,
+        mtime: (index?.mtime ?? new Date(0)).toISOString(),
+      });
+    } catch (error) {
+      onProjectThrew = true;
+      throw error;
+    }
   }
 
   async function walk() {
@@ -106,7 +114,7 @@ export async function findProjects({
     };
     await new Promise<void>((done) => {
       const pump = () => {
-        while (active < WALK_CONCURRENCY && pending.length > 0 && !signal?.aborted) {
+        while (active < WALK_CONCURRENCY && pending.length > 0 && !stopped()) {
           active++;
           void visit(pending.pop()!)
             .catch((error: unknown) => {
@@ -117,7 +125,7 @@ export async function findProjects({
               pump();
             });
         }
-        if (active === 0 && (pending.length === 0 || signal?.aborted)) done();
+        if (active === 0 && (pending.length === 0 || stopped())) done();
       };
       pump();
     });
@@ -158,7 +166,7 @@ export async function findProjects({
     const dirs = new Set((await spotlight(root, signal)).map((marker) => dirname(marker)));
     await Promise.all(
       [...dirs].map(async (dir) => {
-        if (!(await walkWouldReach(dir))) return;
+        if (stopped() || !(await walkWouldReach(dir))) return;
         const entries = await entriesOf(dir);
         if (entries && isHyperframesProject(fileNames(entries))) await report(dir, "spotlight");
       }),
