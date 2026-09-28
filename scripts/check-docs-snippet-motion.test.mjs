@@ -173,3 +173,22 @@ test("HoverVideo's control does not bubble its click to a wrapping link", () => 
     "the click does not bubble to a wrapping link",
   );
 });
+
+// Mintlify prefixes caller classes before evaluating snippets. Interpolating
+// them after literal classes can join the boundary tokens and lose aspect-video.
+test("HoverVideo preserves the caller's sizing classes at the Mintlify boundary", () => {
+  const source = readFileSync(join(here, "../docs/snippets/hover-video.jsx"), "utf8");
+  const wrapper = source.match(/<div\s+ref=\{wrapRef\}([\s\S]*?)>/);
+  assert.ok(wrapper, "found the preview's layout wrapper");
+  assert.match(
+    wrapper[1],
+    /className=\{className\}/,
+    "forward sizing classes without interpolation",
+  );
+  assert.match(
+    wrapper[1],
+    /position:\s*"relative"/,
+    "anchor the absolute video inside the sized wrapper",
+  );
+  assert.match(wrapper[1], /overflow:\s*"hidden"/, "clip the preview inside its card");
+});
