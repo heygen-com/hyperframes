@@ -47,6 +47,22 @@ describe("parseTimelineFromDOM — nested master time", () => {
       ["badge", 6],
     ]);
   });
+
+  it("places a clip inside a referenced scene after the scene's authored length", () => {
+    const doc = makeDoc(`
+      <div data-composition-id="main" data-start="0" data-duration="20">
+        <div id="s1" data-composition-id="s1" data-start="0" data-hf-authored-duration="8"></div>
+        <div id="s2" data-composition-id="s2" data-start="s1 + 1" data-duration="6">
+          <div data-composition-id="s2">
+            <div id="c" class="clip" data-start="1" data-duration="2"></div>
+          </div>
+        </div>
+      </div>
+    `);
+    const timelines = { s1: { duration: () => 6 } } as never;
+    const c = parseTimelineFromDOM(doc, 20, timelines).find((e) => e.domId === "c");
+    expect(c?.start).toBe(10);
+  });
 });
 
 describe("parseTimelineFromDOM — media in-point", () => {
