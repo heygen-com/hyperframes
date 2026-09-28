@@ -1,4 +1,3 @@
-import { existsSync } from "node:fs";
 import { Hono } from "hono";
 import type { StudioApiAdapter } from "./types.js";
 import { registerProjectRoutes } from "./routes/projects.js";
@@ -15,7 +14,7 @@ import { registerSelectionRoutes } from "./routes/selection.js";
 import { registerMediaRoutes } from "./routes/media.js";
 import { registerGlobalAssetRoutes } from "./routes/globalAssets.js";
 import { registerHistoryRoutes } from "./routes/history.js";
-import { replaceWithProjectDirMissing } from "./helpers/projectDirMissing.js";
+import { folderGone, replaceWithProjectDirMissing } from "./helpers/projectDirMissing.js";
 import { isProjectRootMissing } from "./helpers/safePath.js";
 
 /**
@@ -40,7 +39,7 @@ export function createStudioApi(adapter: StudioApiAdapter): Hono {
         () => undefined,
       );
     await next();
-    if (c.res.status >= 403 && dirBeforeRoute && !existsSync(dirBeforeRoute))
+    if (c.res.status >= 403 && dirBeforeRoute && folderGone(dirBeforeRoute))
       replaceWithProjectDirMissing(c, hostHeaders);
   });
 

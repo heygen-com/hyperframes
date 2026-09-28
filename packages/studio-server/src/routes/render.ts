@@ -5,7 +5,7 @@ import { join } from "node:path";
 import type { StudioApiAdapter, RenderJobState } from "../types.js";
 import { VALID_CANVAS_RESOLUTIONS, type CanvasResolution } from "@hyperframes/parsers";
 import { formatRenderOutputTimestamp, parseFps } from "@hyperframes/core";
-import { mkdirWithinProject, resolveWithinProject } from "../helpers/safePath.js";
+import { mkdirWithinProject, realProjectRoot, resolveWithinProject } from "../helpers/safePath.js";
 import { isVariablesPayload, VARIABLES_PAYLOAD_ERROR } from "../helpers/variablesPayload.js";
 
 const VALID_RESOLUTIONS = new Set<string>(VALID_CANVAS_RESOLUTIONS);
@@ -104,7 +104,7 @@ export function registerRenderRoutes(api: Hono, adapter: StudioApiAdapter): void
       // `body.composition` is attacker-controlled (from c.req.json()).
       // resolveWithinProject dereferences symlinks, so an in-project symlink
       // pointing outside the root can't smuggle the render target out.
-      if (!resolveWithinProject(project.dir, body.composition)) {
+      if (!resolveWithinProject(realProjectRoot(project.dir), body.composition)) {
         return c.json({ error: "composition path must be within the project directory" }, 400);
       }
       composition = body.composition;

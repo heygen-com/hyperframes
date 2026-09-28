@@ -1,3 +1,4 @@
+import { statSync } from "node:fs";
 import type { Context } from "hono";
 
 const PROJECT_DIR_MISSING = { error: "not found", why: "project_dir_missing" };
@@ -10,4 +11,12 @@ export function replaceWithProjectDirMissing(c: Context, hostHeaders: Headers): 
   hostHeaders.delete("content-type");
   c.res = undefined;
   c.res = Response.json(PROJECT_DIR_MISSING, { status: 404, headers: hostHeaders });
+}
+
+export function folderGone(dir: string): boolean {
+  try {
+    return !statSync(dir, { throwIfNoEntry: false });
+  } catch {
+    return false;
+  }
 }

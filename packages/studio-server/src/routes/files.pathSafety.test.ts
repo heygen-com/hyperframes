@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, it, vi, type TestContext } from "vitest";
 import { Hono } from "hono";
 import {
+  chmodSync,
   existsSync,
   mkdirSync,
   mkdtempSync,
@@ -349,6 +350,13 @@ describe("resolveProjectPath why", () => {
       ["a save", "arrayBuffer", "PUT", "files/inside.txt", "new"],
       ["a rename", "text", "PATCH", "files/inside.txt", JSON.stringify({ newPath: "moved.txt" })],
       ["a duplicate", "text", "POST", "duplicate-file", JSON.stringify({ path: "inside.txt" })],
+      [
+        "a render that names a composition",
+        "text",
+        "POST",
+        "render",
+        JSON.stringify({ composition: "index.html" }),
+      ],
     ] as const)(
       "answers that the project folder is gone when it vanishes while %s reads its body",
       async (_, read, method, route, body) => {
@@ -361,7 +369,34 @@ describe("resolveProjectPath why", () => {
       const { response } = vanishWhileReading("text", "PATCH", "files/inside.txt", "{}");
       expect((await response).status).toBe(400);
     });
+
+    it("keeps a save conflict's 409 while the folder is there", async () => {
+      const { adapter } = fixture();
+      const response = await createStudioApi(host(adapter)).request(fileUrl("inside.txt"), {
+        method: "PUT",
+        headers: { "If-Match": fileContentVersion("stale") },
+        body: "new",
+      });
+      expect(response.status).toBe(409);
+    });
   });
+
+  it.skipIf(process.platform === "win32" || process.getuid?.() === 0)(
+    "keeps a route's error when the project folder is there but cannot be looked at",
+    async () => {
+      const { project, adapter } = fixture();
+      const api = createStudioApi(adapter);
+      api.get("/projects/:id/broken", () => {
+        throw new Error("read failed");
+      });
+      chmodSync(join(project, ".."), 0o000);
+      try {
+        expect((await api.request("http://localhost/projects/demo/broken")).status).toBe(500);
+      } finally {
+        chmodSync(join(project, ".."), 0o700);
+      }
+    },
+  );
 
   it.each([
     ["an error after the folder vanished", () => new Error("read failed"), true],
