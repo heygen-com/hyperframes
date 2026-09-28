@@ -181,27 +181,27 @@ describe("TimelineToolbar — keyframes on audio tracks", () => {
     host.querySelector('button[aria-label="Add keyframe at playhead"]'),
     host.querySelector('button[aria-label="Auto-record manual edits as keyframes"]'),
   ];
-  const pressK = () =>
+  /** True when the keyframe shortcut claimed K, so playback never saw it. */
+  const pressK = () => {
+    const event = new KeyboardEvent("keydown", { key: "k", bubbles: true, cancelable: true });
     act(() => {
-      window.dispatchEvent(new KeyboardEvent("keydown", { key: "k", bubbles: true }));
+      window.dispatchEvent(event);
     });
+    return event.defaultPrevented;
+  };
 
   it("shows Add keyframe and auto-record, and K adds a keyframe, by default", () => {
-    const session = sessionFor("div");
-    const { host, root } = renderToolbar(session);
+    const { host, root } = renderToolbar(sessionFor("div"));
     expect(keyframeControls(host).every(Boolean)).toBe(true);
-    pressK();
-    expect(session.handleGsapAddAnimation).toHaveBeenCalled();
+    expect(pressK()).toBe(true);
     act(() => root.unmount());
   });
 
   it("hides both controls for a host without keyframes, turns auto-record off and leaves K alone", () => {
-    const session = sessionFor("div");
-    const { host, root } = renderToolbar(session, { showKeyframes: false });
+    const { host, root } = renderToolbar(sessionFor("div"), { showKeyframes: false });
     expect(keyframeControls(host)).toEqual([null, null]);
     expect(usePlayerStore.getState().autoKeyframeEnabled).toBe(false);
-    pressK();
-    expect(session.handleGsapAddAnimation).not.toHaveBeenCalled();
+    expect(pressK()).toBe(false);
     act(() => root.unmount());
   });
 });

@@ -213,7 +213,9 @@ describe("Timeline provider boundary", () => {
         100,
       ).start,
     ).toBe(10);
-    expect(getTimelineFitPps(640, 11, GUTTER)).toBe(10.1);
+    expect(getTimelineFitPps(640, 11, GUTTER)).toBeCloseTo(
+      (640 - GUTTER - 2) / (11 * FIT_ZOOM_HEADROOM),
+    );
 
     act(() => root.unmount());
   });

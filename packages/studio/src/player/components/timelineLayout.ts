@@ -297,7 +297,7 @@ export const FIT_ZOOM_HEADROOM = 1.2;
 /* ── Tick generation ──────────────────────────────────────────────── */
 /* ── Width / duration derivation ──────────────────────────────────── */
 /** Seconds the timeline maps: the composition plus FIT_ZOOM_HEADROOM, or the floor while its duration is unknown. */
-export function getTimelineFitSpan(effectiveDuration: number): number {
+function getTimelineFitSpan(effectiveDuration: number): number {
   return Number.isFinite(effectiveDuration) && effectiveDuration > 0
     ? effectiveDuration * FIT_ZOOM_HEADROOM
     : MIN_TIMELINE_EXTENT_S;

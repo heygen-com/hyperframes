@@ -279,9 +279,8 @@ export function TimelineToolbar({
           )}
           {showKeyframes && (
             <>
-              {/* Always rendered (CapCut-style): with no keyframeable selection the
-              button fades to a disabled state instead of unmounting, so the
-              toolbar layout never shifts. */}
+              {/* With no keyframeable selection the button fades to disabled instead of
+              unmounting, so the toolbar layout never shifts (CapCut-style). */}
               <Tooltip
                 label={
                   keyframePathEndpoint
