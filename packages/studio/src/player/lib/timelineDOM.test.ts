@@ -25,6 +25,30 @@ function makeDoc(html: string): Document {
   return d;
 }
 
+describe("parseTimelineFromDOM — nested master time", () => {
+  it("adds every enclosing host's start to a clip inside a sub-composition", () => {
+    const doc = makeDoc(`
+      <div data-composition-id="main" data-start="0" data-duration="20">
+        <div id="intro" data-composition-id="intro" data-start="2" data-duration="10">
+          <div data-composition-id="intro">
+            <div id="logo" data-composition-id="logo" data-start="3" data-duration="5">
+              <div data-composition-id="logo">
+                <div id="badge" class="clip" data-start="1" data-duration="2"></div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    `);
+    const starts = parseTimelineFromDOM(doc, 20).map((e) => [e.domId, e.start]);
+    expect(starts).toEqual([
+      ["intro", 2],
+      ["logo", 5],
+      ["badge", 6],
+    ]);
+  });
+});
+
 describe("parseTimelineFromDOM — media in-point", () => {
   it("reads a negative in-point as 0, as the runtime does, so a head trim keeps the clip", () => {
     const doc = makeDoc(`

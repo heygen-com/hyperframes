@@ -12,6 +12,7 @@ import type { TimelineElement } from "../store/playerStore";
 import type { ClipManifestClip, IframeWindow, TimelineLike } from "./playbackTypes";
 import { resolveCssStackingContextId } from "@hyperframes/core/runtime/stacking-context";
 import { readClipTiming } from "@hyperframes/core/composition-contract";
+import { createRuntimeStartTimeResolver } from "@hyperframes/core/runtime/start-resolver";
 import { groupInfoFor } from "./timelineGroupInfo";
 import { transitionLabelsForDocument } from "./timelineTransitionMetadata";
 import {
@@ -228,10 +229,9 @@ export function parseTimelineFromDOM(
   const nodes = doc.querySelectorAll("[data-start]");
   const els: TimelineElement[] = [];
   let trackCounter = 0;
-  const transitionLabels = transitionLabelsForDocument(
-    doc,
-    timelines ?? (doc.defaultView as IframeWindow | null)?.__timelines,
-  );
+  const timelineRegistry = timelines ?? (doc.defaultView as IframeWindow | null)?.__timelines;
+  const transitionLabels = transitionLabelsForDocument(doc, timelineRegistry);
+  const masterStart = createRuntimeStartTimeResolver({ timelineRegistry, documentRef: doc });
 
   // fallow-ignore-next-line complexity
   nodes.forEach((node) => {
@@ -239,11 +239,14 @@ export function parseTimelineFromDOM(
     if (isTimelineIgnoredElement(node)) return;
     const el = node as HTMLElement;
     const timing = readClipTiming(el);
-    const start = timing.start;
-    if (start == null) return;
+    if (timing.start == null) return;
+    const tagLower = el.tagName.toLowerCase();
+    const start =
+      tagLower === "video" || tagLower === "audio"
+        ? masterStart.resolveMediaStartForElement(el)
+        : masterStart.resolveStartForElement(el);
     if (Number.isFinite(rootDuration) && rootDuration > 0 && start >= rootDuration) return;
 
-    const tagLower = el.tagName.toLowerCase();
     let dur = timing.duration ?? 0;
     if (dur <= 0) dur = Math.max(0, rootDuration - start);
     if (Number.isFinite(rootDuration) && rootDuration > 0) {

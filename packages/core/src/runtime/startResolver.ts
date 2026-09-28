@@ -14,7 +14,7 @@ import { parseStartExpression } from "./startExpression";
 import { MEDIA_START_BASIS_ATTR, resolveMediaStartSeconds } from "../mediaTiming";
 
 export function createRuntimeStartTimeResolver(params: {
-  timelineRegistry?: Record<string, RuntimeTimelineLike | undefined>;
+  timelineRegistry?: Record<string, Pick<RuntimeTimelineLike, "duration"> | undefined>;
   includeAuthoredTimingAttrs?: boolean;
   /**
    * The document that reference lookups (`data-start="intro + 2"`) resolve

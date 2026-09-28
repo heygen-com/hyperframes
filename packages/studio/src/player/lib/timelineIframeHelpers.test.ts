@@ -103,6 +103,30 @@ describe("buildMissingCompositionElements — hfId (R7)", () => {
   });
 });
 
+describe("buildMissingCompositionElements — nested master time", () => {
+  it("places hosts two and three levels deep at their master time", () => {
+    const doc = makeDoc(`
+      <div data-composition-id="main" data-start="0" data-duration="20">
+        <div id="intro" data-composition-id="intro" data-start="2" data-duration="10">
+          <div data-composition-id="intro">
+            <div id="logo" data-composition-id="logo" data-start="3" data-duration="5">
+              <div data-composition-id="logo">
+                <div id="badge" data-composition-id="badge" data-start="1" data-duration="2"></div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    `);
+    const { missing } = buildMissingCompositionElements(doc, window as IframeWindow, [], 20);
+    expect(missing.map((e) => [e.domId, e.start, e.duration])).toEqual([
+      ["intro", 2, 10],
+      ["logo", 5, 5],
+      ["badge", 6, 2],
+    ]);
+  });
+});
+
 describe("setPreviewMediaVolume", () => {
   it("sends a clamped runtime volume to a direct preview iframe", () => {
     const iframe = document.createElement("iframe");
