@@ -63,12 +63,7 @@ function selectedZIndexEntry(sel: DomEditSelection, zIndex: number): ZIndexReord
   };
 }
 
-/**
- * Sibling elements are raw iframe DOM nodes with no selection object: derive a
- * PatchTarget from the node itself (siblings live in the same document, so they
- * share the selection's sourceFile). Null when it cannot be robustly targeted
- * (no id and no selector) — its z stays live-only.
- */
+/** A raw iframe sibling in the selection's file; null with no id or selector (z stays live). */
 function siblingZIndexEntry(
   element: HTMLElement,
   zIndex: number,
