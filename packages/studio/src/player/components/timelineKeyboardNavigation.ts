@@ -49,7 +49,6 @@ export interface TimelineLogicalItem {
   elementId: string;
   /** The item's time anchor. Clips use their midpoint; ease controls use the segment midpoint. */
   time: number;
-  /** Set on clips only. */
   element?: TimelineElement;
   keyframeTarget?: TimelineKeyframeTarget;
 }
