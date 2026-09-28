@@ -209,16 +209,16 @@ export function useMarqueeGestures<T>(deps: MarqueeGesturesDeps<T>): MarqueeGest
     reset();
   }, [reset]);
 
-  // Escape cancels an in-flight band, captured so a host's own Escape never also fires.
   useEffect(() => {
-    const onBandEscape = (e: KeyboardEvent) => {
+    const cancelBandBeforeHostEscape = (e: KeyboardEvent) => {
       if (e.key !== "Escape" || !marqueeRef.current) return;
       e.preventDefault();
       e.stopPropagation();
       cancel();
     };
-    window.addEventListener("keydown", onBandEscape, { capture: true });
-    return () => window.removeEventListener("keydown", onBandEscape, { capture: true });
+    window.addEventListener("keydown", cancelBandBeforeHostEscape, { capture: true });
+    return () =>
+      window.removeEventListener("keydown", cancelBandBeforeHostEscape, { capture: true });
   }, [cancel]);
 
   const onPointerMove = useCallback(
