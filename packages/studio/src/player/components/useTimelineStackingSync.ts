@@ -7,7 +7,7 @@ import { readEffectiveZIndex } from "../../components/editor/canvasContextMenuZO
 import type { StackingPatch } from "./timelineStackingSync";
 import type { TimelineZIndexReorderCommit } from "../../hooks/useTimelineEditingTypes";
 
-/** Given both, a lane move restacks the preview's z-index to match the rows; both win over Studio's own. */
+/** With both set, a lane move restacks the preview's z-index to match the rows; each overrides Studio's own. */
 export interface TimelineStackingSyncProps {
   previewIframeRef?: RefObject<HTMLIFrameElement | null>;
   onZIndexReorder?: TimelineZIndexReorderCommit;
@@ -18,7 +18,7 @@ interface UseTimelineStackingSyncInput extends TimelineStackingSyncProps {
 }
 
 // Lane ↔ stacking sync: the two deps commitDraggedClipMove takes so a lane-change drag also patches
-// z-index, through the same iframe + z persist path the canvas menu and LayersPanel use. Neither ⇒ no-op.
+// z-index, through the same iframe + z persist path the canvas menu and LayersPanel use. Either missing ⇒ no-op.
 export function useTimelineStackingSync({
   expandedElementsRef,
   previewIframeRef,
