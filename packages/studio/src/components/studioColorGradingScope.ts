@@ -40,31 +40,6 @@ function colorGradingScopePaths(
   return scope === "source-file" ? [selectedSourceFile] : compositionPaths;
 }
 
-async function patchColorGradingScopeFiles(
-  paths: string[],
-  value: string | null,
-  readProjectFile: ProjectFileReader,
-): Promise<{ files: Record<string, string>; changedElements: number }> {
-  const snapshots = await Promise.all(
-    Array.from(new Set(paths)).map(async (path) => ({
-      path,
-      before: await readProjectFile(path),
-    })),
-  );
-  const files: Record<string, string> = {};
-  let changedElements = 0;
-
-  for (const { path, before } of snapshots) {
-    const result = patchMediaColorGradingInHtml(before, value);
-    if (result.html !== before) {
-      files[path] = result.html;
-      changedElements += result.count;
-    }
-  }
-
-  return { files, changedElements };
-}
-
 // fallow-ignore-next-line complexity
 export async function applyColorGradingScopeUpdate({
   scope,
@@ -88,24 +63,25 @@ export async function applyColorGradingScopeUpdate({
     return EMPTY_COLOR_GRADING_SCOPE_RESULT;
   }
 
-  const { files, changedElements } = await patchColorGradingScopeFiles(
-    colorGradingScopePaths(scope, selectedSourceFile, compositionPaths),
-    value,
-    readProjectFile,
-  );
-  if (Object.keys(files).length === 0) {
-    showToast("No color grading changed", "info");
-    return EMPTY_COLOR_GRADING_SCOPE_RESULT;
-  }
-
+  let changedElements = 0;
+  const patchGrading = (before: string) => {
+    const result = patchMediaColorGradingInHtml(before, value);
+    changedElements += result.count;
+    return result.html;
+  };
+  const paths = colorGradingScopePaths(scope, selectedSourceFile, compositionPaths);
   const changedPaths = await saveProjectFilesWithHistory({
     projectId,
     label: value ? "Apply color grading" : "Clear color grading",
-    files,
+    files: Object.fromEntries(paths.map((path) => [path, patchGrading])),
     readFile: readProjectFile,
     writeFile: writeProjectFile,
     recordEdit,
   });
+  if (changedPaths.length === 0) {
+    showToast("No color grading changed", "info");
+    return EMPTY_COLOR_GRADING_SCOPE_RESULT;
+  }
   reloadPreview();
   showToast(
     `${value ? "Applied" : "Cleared"} color grading on ${changedElements} media item${changedElements === 1 ? "" : "s"}`,

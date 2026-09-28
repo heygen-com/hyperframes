@@ -46,6 +46,8 @@
     "packages/producer/src/services/healthWorkerThread.ts",
     // Render-setup worker, spawned by path from cancellableProcess.ts.
     "packages/cli/src/renderSetupWorker.ts",
+    // Parakeet decode worker, spawned by path from whisper/sherpa.ts.
+    "packages/cli/src/whisper/sherpaWorker.ts",
     // Test fixture worker, spawned by path via the pools' workerEntryPath
     // option from the crash-recovery tests; has no import-graph referrer.
     "packages/producer/src/services/__fixtures__/crashOnMessageWorker.mjs",

@@ -1,6 +1,6 @@
-import { memo, useCallback, useMemo, useRef, useState } from "react";
-import { useMountEffect } from "../../hooks/useMountEffect";
+import { memo, useMemo } from "react";
 import { useThumbnailLease } from "../../hooks/useThumbnailLease";
+import { useThumbnailStripSize } from "../../hooks/useThumbnailStripSize";
 import { createThumbnailKey, type ThumbnailPriority } from "../lib/thumbnailScheduler";
 import { decodeImageThumbnail } from "../lib/thumbnailImageDecoder";
 import { computeThumbnailStrip } from "./thumbnailUtils";
@@ -25,8 +25,7 @@ export const ImageThumbnail = memo(function ImageThumbnail({
   priority = "visible",
   rich = false,
 }: ImageThumbnailProps) {
-  const [containerWidth, setContainerWidth] = useState(0);
-  const observerRef = useRef<ResizeObserver | null>(null);
+  const [container, setContainerRef] = useThumbnailStripSize();
   const request = useMemo(
     () => ({
       key: createThumbnailKey({ kind: "image", source: imageSrc, rich: Number(rich) }),
@@ -42,20 +41,7 @@ export const ImageThumbnail = memo(function ImageThumbnail({
   const snapshot = useThumbnailLease(request);
   const value = snapshot.status === "ready" ? snapshot.value : null;
   const aspect = value?.kind === "image" ? value.aspect : 16 / 9;
-  const { frameW, frameCount } = computeThumbnailStrip(containerWidth, aspect);
-
-  const setContainerRef = useCallback((element: HTMLDivElement | null) => {
-    observerRef.current?.disconnect();
-    if (!element) return;
-    const target = element.parentElement ?? element;
-    setContainerWidth(target.clientWidth);
-    observerRef.current = new ResizeObserver(([entry]) =>
-      setContainerWidth(entry.contentRect.width),
-    );
-    observerRef.current.observe(target);
-  }, []);
-
-  useMountEffect(() => () => observerRef.current?.disconnect());
+  const { frameW, frameCount } = computeThumbnailStrip(container.width, aspect, container.height);
 
   return (
     <div ref={setContainerRef} className="absolute inset-0 overflow-hidden">

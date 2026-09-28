@@ -18,6 +18,7 @@ const fs = require("fs");
 const os = require("os");
 
 const HF_ROOTS = [
+  process.argv[2] && path.resolve(process.argv[2]), // project-owned helper dependencies
   process.env.HYPERFRAMES_ROOT,
   path.resolve(__dirname, "../../.."),
   path.join(os.homedir(), "Downloads", "hyperframes"),

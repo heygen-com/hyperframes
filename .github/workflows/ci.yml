@@ -134,6 +134,16 @@ jobs:
               - "package.json"
               - ".github/workflows/ci.yml"
             codex_plugin:
+              - "skills-manifest.json"
+              - "packages/cli/package.json"
+              - "plugin.json"
+              - "gemini-extension.json"
+              - ".claude-plugin/**"
+              - ".cursor-plugin/**"
+              - "scripts/package-agent-plugin*"
+              - "scripts/agent-plugin-captions.test.mjs"
+              - "scripts/set-version*"
+              - "LICENSE"
               - ".codex-plugin/**"
               - "assets/**"
               - "skills/**"
@@ -578,6 +588,7 @@ jobs:
           node --test
           skills/hyperframes-animation/scripts/package-loader.test.mjs
           skills/hyperframes-creative/scripts/package-loader.test.mjs
+          skills/hyperframes/scripts/plugin-cli.test.mjs
 
   # Guards that skills-manifest.json (the published freshness fingerprint read
   # by `hyperframes skills check`) was regenerated when a skill changed. Runs
@@ -642,6 +653,12 @@ jobs:
       - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
           node-version: 22
+      - name: Test portable plugin packaging
+        run: node --test scripts/package-agent-plugin.test.mjs
+      - name: Build portable agent plugin
+        run: node scripts/package-agent-plugin.mjs
+      - name: Exercise captions from the extracted portable bundle
+        run: node --test scripts/agent-plugin-captions.test.mjs
       - name: Build upload-ready Codex plugin
         run: node scripts/package-codex-plugin.mjs
 

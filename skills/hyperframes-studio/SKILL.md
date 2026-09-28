@@ -9,6 +9,8 @@ description: >
   `creator-editing-recipes.md` in `/hyperframes-core`.
 ---
 
+**Plugin installs:** Before setup or freshness commands, follow [plugin execution rules](../hyperframes/references/plugin-installation.md) when this skill is inside a HyperFrames plugin. Standalone installs keep the update instructions below.
+
 # HyperFrames Studio conventions
 
 Studio draws one timeline row per top-level element. A project that follows the
