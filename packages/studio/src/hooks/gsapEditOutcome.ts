@@ -44,8 +44,6 @@ export type GsapEditOutcome =
       ownsDragOffset?: boolean;
     }
   | { status: "blocked"; reason: GsapEditBlockReason; detail?: GsapEditBlockDetail }
-  /** The position tween also moves other elements; nothing was written, so the caller
-   *  persists the gesture as this one element's own offset. */
   | { status: "element-offset" };
 
 const COPY: Record<GsapEditBlockReason, string> = {

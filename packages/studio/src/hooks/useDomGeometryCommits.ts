@@ -58,8 +58,6 @@ export function useDomGeometryCommits({
   commitPositionPatchToHtml,
   readOnlyPreview,
 }: UseDomGeometryCommitsParams) {
-  // The element's own inline offset. Also the channel for a GSAP element whose position
-  // tween is shared with siblings: `translate` composes with GSAP's transform.
   const commitElementPathOffset = useCallback(
     (selection: DomEditSelection, next: { x: number; y: number }, coalesceKey?: string) => {
       if (readOnlyPreview) return Promise.resolve();
