@@ -142,7 +142,9 @@ export function clampTimelineGroupResizeDelta(
   const bounds = members.map((member) => clipStartTrimDeltaBounds(member, 0, minDuration));
   const minDelta = ceilTimelineTime(Math.max(...bounds.map((b) => b.minDelta)));
   const maxDelta = Math.min(...bounds.map((b) => b.maxDelta));
-  return roundTimelineTime(clamp(rawDelta, minDelta, floorTimelineTime(maxDelta)));
+  const delta = roundTimelineTime(clamp(rawDelta, minDelta, maxDelta));
+  const roundedPastTightestMember = delta > maxDelta + SAVED_MEDIA_OFFSET_TOLERANCE;
+  return roundedPastTightestMember ? maxDelta : delta;
 }
 
 export function resolveTimelineGroupResize(

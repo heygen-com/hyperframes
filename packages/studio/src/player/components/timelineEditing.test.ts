@@ -910,6 +910,21 @@ describe("resolveTimelineResize", () => {
     expect(short).toEqual([]);
   });
 
+  it("stops a group head trim where the single-clip trim stops", () => {
+    const { single, group } = headTrimmedFullyRight({ start: 1.003, duration: 2 });
+    expect(group).toBe(single);
+  });
+
+  it("never moves a group head trim left of zero near the minimum length", () => {
+    const [member] = resolveTimelineGroupResize(
+      [{ start: 0.004, duration: 0.1 }],
+      "start",
+      10,
+    ).members;
+    expect(member!.start).toBeGreaterThanOrEqual(0);
+    expect(member!.duration).toBeGreaterThanOrEqual(0.1);
+  });
+
   it("moves every group member by the same amount when one reaches its media start", () => {
     const members = [
       { start: 2, duration: 3, playbackStart: 1, playbackRate: 1.5 },
