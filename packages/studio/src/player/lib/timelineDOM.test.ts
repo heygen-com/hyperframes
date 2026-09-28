@@ -547,3 +547,74 @@ describe("a composition clip's source length", () => {
     expect(card?.sourceDuration).toBeUndefined();
   });
 });
+
+describe("what the live clip list says a clip plays", () => {
+  function manifestVideo(attrs: string): TimelineElement {
+    const doc = makeDoc(
+      `<div data-composition-id="root"><video id="v" src="a.mp4" data-start="0" data-duration="4" ${attrs}></video></div>`,
+    );
+    return createTimelineElementFromManifestClip({
+      clip: {
+        id: "v",
+        label: "v",
+        kind: "video",
+        tagName: "video",
+        start: 0,
+        duration: 4,
+        track: 0,
+        assetUrl: null,
+      },
+      fallbackIndex: 0,
+      doc,
+      hostEl: doc.getElementById("v"),
+    });
+  }
+
+  it("carries data-volume and muted from the element", () => {
+    expect(manifestVideo('data-volume="0" muted')).toMatchObject({ volume: 0, muted: true });
+    const plain = manifestVideo("");
+    expect(plain.volume).toBeUndefined();
+    expect(plain.muted).toBeUndefined();
+  });
+
+  it("carries the clip-edge fades, and drops a zero one", () => {
+    const faded = manifestVideo('data-fade-in="1.5" data-fade-out="0"');
+    expect(faded.fadeIn).toBe(1.5);
+    expect(faded.fadeOut).toBeUndefined();
+  });
+
+  it("gives a video with neither muted nor data-has-audio sound, as the compiler does", () => {
+    expect(manifestVideo("").hasAudio).toBe(true);
+    expect(manifestVideo("muted").hasAudio).toBeUndefined();
+    expect(manifestVideo('data-has-audio="false"').hasAudio).toBeUndefined();
+    expect(manifestVideo('muted data-has-audio="true"')).toMatchObject({
+      hasAudio: true,
+      muted: true,
+    });
+  });
+
+  it.each(["", ' data-has-audio="true"'])(
+    "does not give a timed wrapper the sound of an untimed video%s inside it",
+    (videoAttrs) => {
+      const doc = makeDoc(
+        `<div data-composition-id="root"><div id="w" data-start="0" data-duration="4"><video src="a.mp4"${videoAttrs}></video></div></div>`,
+      );
+      const wrapper = createTimelineElementFromManifestClip({
+        clip: {
+          id: "w",
+          label: "w",
+          kind: "element",
+          tagName: "div",
+          start: 0,
+          duration: 4,
+          track: 0,
+          assetUrl: null,
+        },
+        fallbackIndex: 0,
+        doc,
+        hostEl: doc.getElementById("w"),
+      });
+      expect(wrapper.hasAudio).toBeUndefined();
+    },
+  );
+});

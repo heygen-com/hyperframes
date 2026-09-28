@@ -2,6 +2,7 @@ import { execFileSync } from "node:child_process";
 import { existsSync, statSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { ffprobeBinary } from "./ff-binaries.mjs";
 import { resolveSpawnCommand } from "../../audio/scripts/lib/tts.mjs";
 
 // Local voiceover via the packaged Kokoro-82M TTS (the `hyperframes tts` CLI),
@@ -13,10 +14,10 @@ import { resolveSpawnCommand } from "../../audio/scripts/lib/tts.mjs";
 // Delegated to the hyperframes CLI (same as transcribe / remove-background), not
 // re-implemented here. ffprobe reads the duration back for the ledger.
 
-function probeDurationSeconds(file) {
+function probeDurationSeconds(ffprobe, file) {
   try {
     const out = execFileSync(
-      "ffprobe",
+      ffprobe,
       ["-v", "error", "-show_entries", "format=duration", "-of", "csv=p=0", "--", file],
       { encoding: "utf8", timeout: 15000 },
     );
@@ -39,6 +40,7 @@ export async function localTtsGenerate(
   env = process.env,
   pathExists = existsSync,
 ) {
+  const ffprobe = ffprobeBinary();
   const outPath = join(tmpdir(), `media-use-kokoro-${process.pid}-${Date.now()}.wav`);
   const argv = ["hyperframes", "tts", intent, "--output", outPath];
   if (ctx?.voice) argv.push("--voice", ctx.voice);
@@ -85,7 +87,7 @@ export async function localTtsGenerate(
     metadata: {
       description: intent,
       provider: "kokoro.local",
-      duration: probeDurationSeconds(outPath),
+      duration: probeDurationSeconds(ffprobe, outPath),
       provenance: { engine: "kokoro-82m", prompt: intent },
     },
   };

@@ -302,19 +302,20 @@ function isTimelineRooted(node: Node, timelineVar: string, script: string): bool
 }
 
 /**
- * Find the byte offset after which to insert a new statement (tween or label).
+ * Byte offset to insert a new tween or label at: never above the timeline declaration.
  * Returns null when no timeline declaration exists in the script — callers must
  * not emit `tl.xxx()` calls in that case as `tl` would be undefined at render.
  */
 function findInsertionPoint(parsed: ParsedGsapAcornForWrite): number | null {
+  const tlDecl = findTimelineDeclarationStatement(parsed.ast, parsed.timelineVar);
   const lastLocated = parsed.located[parsed.located.length - 1];
   if (lastLocated) {
     const lastCall = lastLocated.call;
     const exprStmt = findEnclosingExpressionStatement(lastCall.ancestors);
-    return exprStmt?.end ?? lastCall.node.end;
+    const lastCallEnd = exprStmt?.end ?? lastCall.node.end;
+    return Math.max(lastCallEnd, tlDecl?.end ?? 0);
   }
   if (!parsed.hasTimeline) return null;
-  const tlDecl = findTimelineDeclarationStatement(parsed.ast, parsed.timelineVar);
   return tlDecl?.end ?? (parsed.ast.end as number);
 }
 

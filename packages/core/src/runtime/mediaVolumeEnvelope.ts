@@ -202,7 +202,9 @@ function probeKeyframesInWindow(
   return hasAutomation ? keyframes : null;
 }
 
-export type RuntimeTimelineRef = Partial<Pick<RuntimeTimelineLike, "totalTime" | "seek">>;
+export type RuntimeTimelineRef = Partial<
+  Pick<RuntimeTimelineLike, "totalTime" | "seek" | "getChildren">
+>;
 
 export interface VolumeProbeOptions {
   /**
@@ -214,6 +216,46 @@ export interface VolumeProbeOptions {
    * Preview callers omit this option and retain live automation discovery.
    */
   allowLiveTimelineSeek?: boolean;
+}
+
+function namesKey(vars: unknown, matches: (key: string) => boolean, depth = 0): boolean {
+  if (depth > 3 || vars === null || typeof vars !== "object") return false;
+  if (Array.isArray(vars)) return vars.some((item) => namesKey(item, matches, depth + 1));
+  if (Object.getPrototypeOf(vars) !== Object.prototype) return false;
+  return Object.entries(vars).some(
+    ([key, value]) => matches(key) || namesKey(value, matches, depth + 1),
+  );
+}
+
+const isDomNode = (target: unknown): boolean =>
+  typeof (target as { nodeType?: unknown } | null)?.nodeType === "number";
+
+function hasSetter(target: unknown, key: string): boolean {
+  for (let o = Object(target); o; o = Object.getPrototypeOf(o)) {
+    const descriptor = Object.getOwnPropertyDescriptor(o, key);
+    if (descriptor) return typeof descriptor.set === "function";
+  }
+  return false;
+}
+
+/**
+ * Whether seeking `timeline` can move `el.volume`: a tween on the element that names `volume`, or a tween
+ * on a non-DOM object whose tweened property is a setter (a gain proxy). Spacers, calls and counters skip.
+ */
+function timelineCanMoveVolume(timeline: RuntimeTimelineRef, el: HTMLMediaElement): boolean {
+  if (typeof timeline.getChildren !== "function") return true;
+  try {
+    return timeline.getChildren(true, true, false).some((tween) => {
+      const targets: unknown[] = tween.targets?.() ?? [];
+      return targets.some((target) =>
+        isDomNode(target)
+          ? target === el && namesKey(tween.vars, (key) => key === "volume")
+          : namesKey(tween.vars, (key) => hasSetter(target, key)),
+      );
+    });
+  } catch {
+    return true;
+  }
 }
 
 /**
@@ -238,6 +280,8 @@ export function probeAndCacheElementVolume(
   if (!timeline) return;
   if (!isMediaElement(mediaEl)) return;
   if (compositionDuration <= 0) return;
+  // Sampling is ~60 whole-timeline seeks per second of clip, paid again on every rebind.
+  if (!timelineCanMoveVolume(timeline, mediaEl)) return;
 
   const seekFn = (t: number) => {
     try {

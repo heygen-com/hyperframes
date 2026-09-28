@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  findStartTags,
   injectScriptsAtHeadStart,
   injectScriptsIntoHtml,
   injectTagsAtHeadStart,
@@ -218,6 +219,26 @@ describe("htmlDocument helpers", () => {
 
   it("finds no close tag in a fragment", () => {
     expect(insertBeforeCloseTag('<div><script>"</head>"</script></div>', "head", "x")).toBeNull();
+  });
+});
+
+describe("findStartTags", () => {
+  const at = (html: string, name: string) =>
+    findStartTags(html, name).map((i) => html.slice(i, html.indexOf(">", i) + 1));
+
+  it("finds each start tag in any case, and none in comments, raw text or longer names", () => {
+    const html =
+      '<!-- <img a> --><script>"<img b>"</script><textarea><img c></textarea>' +
+      '<img-card></img-card><IMG src=d><img\nsrc=e><div title="<img f>"></div>';
+    expect(at(html, "img")).toEqual(["<IMG src=d>", "<img\nsrc=e>"]);
+  });
+
+  it("leaves out template content, nested templates included", () => {
+    const html =
+      "<img a><template><img b><template><img c></template><img d></template>" +
+      '<div data-start="5"><template><img e></template><img f></div>';
+    expect(at(html, "img")).toEqual(["<img a>", "<img f>"]);
+    expect(at(html, "template")).toEqual(["<template>", "<template>"]);
   });
 });
 

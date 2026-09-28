@@ -33,7 +33,6 @@ import {
   STUDIO_ROTATION_TRANSFORM_ORIGIN,
 } from "./manualEditsTypes";
 import { roundRotationAngle } from "./manualEditsParsing";
-import { applyStudioMotionFromDom } from "./studioMotion";
 import { gsapAnimatesProperty } from "./gsapAnimatesProperty";
 import { splitTopLevelWhitespace } from "./manualEditsStyleHelpers";
 
@@ -532,68 +531,4 @@ export function applyStudioRotationDraft(element: HTMLElement, rotation: { angle
     "rotate",
     composeStudioRotationValue(element, `${roundRotationAngle(rotation.angle)}deg`),
   );
-}
-
-/* ── Seek reapply (position + motion) ────────────────────────────── */
-function queryStudioElements(doc: Document, attr: string): HTMLElement[] {
-  const ctor = doc.defaultView?.HTMLElement;
-  if (!ctor) return [];
-  const elements = Array.from(doc.querySelectorAll(`[${attr}="true"]`)).filter(
-    (el): el is HTMLElement => el instanceof ctor,
-  );
-  // Handle legacy HTML files where attributes were persisted with a double data- prefix
-  const legacyAttr = `data-${attr}`;
-  for (const el of doc.querySelectorAll(`[${legacyAttr}="true"]`)) {
-    if (el instanceof ctor && !el.hasAttribute(attr)) {
-      el.setAttribute(attr, "true");
-      el.removeAttribute(legacyAttr);
-      elements.push(el);
-    }
-  }
-  return elements;
-}
-
-function reapplyPathOffsets(doc: Document): void {
-  for (const el of queryStudioElements(doc, STUDIO_PATH_OFFSET_ATTR)) {
-    // Unlike size below, the offset channels COMPOSE — applying both doubles the move.
-    if (gsapAnimatesProperty(el, "x", "y")) continue;
-    const x = el.style.getPropertyValue(STUDIO_OFFSET_X_PROP);
-    const y = el.style.getPropertyValue(STUDIO_OFFSET_Y_PROP);
-    if (!x && !y) continue;
-    const offset = { x: Number.parseFloat(x) || 0, y: Number.parseFloat(y) || 0 };
-    applyStudioPathOffset(el, offset, { updateBase: false });
-  }
-}
-
-/**
- * Put the studio's committed size back after a seek, GSAP-sized elements included.
- * Size does not compose the way the offset above does: both channels write width
- * and height, so the later write wins on the same number. Standing aside meant
- * nothing held the size while a soft reload reverted the old timeline (GSAP hands
- * back each tween's recorded starting width), so the element sat at its stylesheet
- * size until the new one rendered — the jump after a resize.
- */
-function reapplyBoxSizes(doc: Document): void {
-  for (const el of queryStudioElements(doc, STUDIO_BOX_SIZE_ATTR)) {
-    const w = Number.parseFloat(el.style.getPropertyValue(STUDIO_WIDTH_PROP));
-    const h = Number.parseFloat(el.style.getPropertyValue(STUDIO_HEIGHT_PROP));
-    if (Number.isFinite(w) && Number.isFinite(h) && w > 0 && h > 0) {
-      applyStudioBoxSize(el, { width: w, height: h });
-    }
-  }
-}
-function reapplyRotations(doc: Document): void {
-  for (const el of queryStudioElements(doc, STUDIO_ROTATION_ATTR)) {
-    const angle = Number.parseFloat(el.style.getPropertyValue(STUDIO_ROTATION_PROP));
-    if (Number.isFinite(angle)) {
-      applyStudioRotation(el, { angle });
-    }
-  }
-}
-
-export function reapplyPositionEditsAfterSeek(doc: Document): void {
-  reapplyPathOffsets(doc);
-  reapplyBoxSizes(doc);
-  reapplyRotations(doc);
-  applyStudioMotionFromDom(doc);
 }

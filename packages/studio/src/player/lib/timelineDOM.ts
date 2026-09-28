@@ -304,8 +304,6 @@ export function parseTimelineFromDOM(
       if (mediaEl.tagName === "IMG") {
         entry.tag = "img";
       }
-      const vol = el.getAttribute("data-volume") ?? mediaEl.getAttribute("data-volume");
-      if (vol) entry.volume = parseFloat(vol);
       // Override AFTER the helper (which sets the raw relative attribute) so the
       // resolved absolute URL wins — the Studio can then fetch the asset
       // regardless of whether the attribute value was relative or absolute.
