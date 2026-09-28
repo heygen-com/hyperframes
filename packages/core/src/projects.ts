@@ -54,12 +54,13 @@ function spotlightMarkers(root: string): Promise<string[]> {
   });
 }
 
+/** Rejects with the file system error when `root` itself cannot be read; unreadable folders below it are skipped. */
 export async function findProjects({
   root: givenRoot,
   onProject,
   spotlight = spotlightMarkers,
 }: FindProjectsOptions): Promise<number> {
-  const root = await realpath(givenRoot);
+  const root = await realpath(givenRoot).catch(() => givenRoot);
   await readdir(root);
   const home = await realpath(homedir()).catch(() => homedir());
   const skippedDir = (parent: string, name: string) =>

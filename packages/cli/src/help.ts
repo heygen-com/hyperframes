@@ -57,7 +57,6 @@ const GROUPS: Group[] = [
       ["compare", "Render composition variants into one labeled comparison sheet"],
       ["info", "Print project metadata"],
       ["compositions", "List all compositions in a project"],
-      ["projects", "Find the HyperFrames projects on this machine"],
       ["timeline", "Print the project's tracks and clips"],
       ["history", "List, undo and restore the project's recorded changes"],
       ["docs", "View inline documentation in the terminal"],
