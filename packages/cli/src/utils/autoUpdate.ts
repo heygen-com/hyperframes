@@ -31,6 +31,7 @@ import { compareVersions } from "compare-versions";
 import { withFileLock } from "../media-use/lib/config-lock.mjs";
 import { readConfig, writeConfig } from "../telemetry/config.js";
 import { updateCheckDisabled } from "./updateCheck.js";
+import { RUNNING_DIR } from "./runningCli.js";
 import {
   detectInstaller,
   installInvocation,
@@ -41,6 +42,9 @@ const CONFIG_DIR = join(homedir(), ".hyperframes");
 const LOG_FILE = join(CONFIG_DIR, "auto-update.log");
 /** An install that hasn't finished after this many ms is considered stuck. */
 const PENDING_TIMEOUT_MS = 10 * 60 * 1000;
+/** A waiting installer gives up after this long; the next run schedules it again. */
+const INSTALL_MAX_WAIT_MS = 60 * 60 * 1000;
+const INSTALL_POLL_MS = 2_000;
 
 function isAutoInstallDisabled(): boolean {
   return updateCheckDisabled() || process.env["HYPERFRAMES_NO_AUTO_INSTALL"] === "1";
@@ -65,6 +69,89 @@ function log(line: string): void {
   }
 }
 
+export interface InstallerScriptOptions {
+  configFile: string;
+  version: string;
+  bin: string;
+  args: readonly string[];
+  runningDir: string;
+  pollMs: number;
+  maxWaitMs: number;
+}
+
+/**
+ * Source of the detached installer, run through `node -e` so no separate file ships. It:
+ *   1. Exits if another waiting installer is alive (install lock), then waits until no pid in
+ *      `runningDir` is alive, so no running CLI has package files replaced under it.
+ *   2. Runs the install via execFile (bin + argv, NO shell); values are embedded as JSON literals.
+ *   3. Under the shared settings lock, records completedUpdate and clears pendingUpdate.
+ */
+export function installerScript(o: InstallerScriptOptions): string {
+  return `
+    const { execFile } = require("node:child_process");
+    const fs = require("node:fs");
+    const { join } = require("node:path");
+    const { readFileSync, renameSync, writeFileSync } = fs;
+    const CFG = ${JSON.stringify(o.configFile)};
+    const TMP = \`\${CFG}.tmp\`;
+    const INSTALL_LOCK = \`\${CFG}.install-lock\`;
+    const RUNNING = ${JSON.stringify(o.runningDir)};
+    const VERSION = ${JSON.stringify(o.version)};
+    const BIN = ${JSON.stringify(o.bin)};
+    const ARGS = ${JSON.stringify(o.args)};
+    const withFileLock = ${withFileLock.toString()};
+    const withLock = (task) => { try { withFileLock(\`\${CFG}.lock\`, fs, task); } catch (e) {} };
+    const alive = (pid) => { try { process.kill(pid, 0); return true; } catch (e) { return e.code === "EPERM"; } };
+    // ponytail: a crashed CLI's pid reused by another process only delays the install until maxWaitMs.
+    const running = () => {
+      let names = [];
+      try { names = fs.readdirSync(RUNNING); } catch (e) {}
+      return names.filter((name) => {
+        const pid = Number(name);
+        if (Number.isInteger(pid) && pid > 0 && alive(pid)) return true;
+        try { fs.unlinkSync(join(RUNNING, name)); } catch (e) {}
+        return false;
+      });
+    };
+    const takeInstallLock = () => {
+      try { writeFileSync(INSTALL_LOCK, String(process.pid), { flag: "wx" }); return true; } catch (e) { if (e.code !== "EEXIST") return false; }
+      let owner = NaN;
+      try { owner = Number(readFileSync(INSTALL_LOCK, "utf-8")); } catch (e) {}
+      if (Number.isInteger(owner) && owner > 0 && alive(owner)) return false;
+      try { writeFileSync(INSTALL_LOCK, String(process.pid)); return true; } catch (e) { return false; }
+    };
+    const releaseInstallLock = () => { try { fs.unlinkSync(INSTALL_LOCK); } catch (e) {} };
+    const install = () => execFile(BIN, ARGS, { windowsHide: true, maxBuffer: 4 * 1024 * 1024 }, (err, _stdout, stderr) => {
+      withLock(() => {
+        let cfg = {};
+        try { cfg = JSON.parse(readFileSync(CFG, "utf-8")); } catch (e) { if (e.code !== "ENOENT") return; }
+        cfg.completedUpdate = {
+          version: VERSION,
+          ok: !err,
+          finishedAt: new Date().toISOString(),
+          ...(err ? { error: String(stderr || err.message || "install failed").slice(-400) } : {}),
+        };
+        delete cfg.pendingUpdate;
+        try {
+          writeFileSync(TMP, JSON.stringify(cfg, null, 2) + "\\n", { mode: 0o600 });
+          renameSync(TMP, CFG);
+        } catch (e) {}
+      });
+      releaseInstallLock();
+    });
+    const started = Date.now();
+    const waitThenInstall = () => {
+      if (running().length === 0) return install();
+      if (Date.now() - started > ${o.maxWaitMs}) {
+        console.log(\`[wait] gave up on \${VERSION}: a hyperframes process is still running\`);
+        return releaseInstallLock();
+      }
+      setTimeout(waitThenInstall, ${o.pollMs});
+    };
+    if (takeInstallLock()) waitThenInstall();
+  `;
+}
+
 /**
  * Spawn a detached child to run the install command. Stdout/stderr land in
  * the log file; the child is `unref()`d so the parent exits immediately
@@ -83,41 +170,15 @@ function launchDetachedInstall(
   mkdirSync(CONFIG_DIR, { recursive: true, mode: 0o700 });
   const configFile = join(CONFIG_DIR, "config.json");
 
-  // The child script:
-  //   1. Runs the install via execFile (bin + argv, NO shell) so a version
-  //      string can never be re-interpreted as shell syntax — structural
-  //      symmetry with the interactive `runDetectedInstall` path.
-  //   2. Under the shared settings lock (withFileLock, embedded as source), rewrites the config with
-  //      completedUpdate and clears pendingUpdate; skips on lock timeout or an unreadable file.
-  // We run it through `node -e` so we don't need to ship a separate file. Bin
-  // and args are embedded as JSON literals (data, not code).
-  const nodeScript = `
-    const { execFile } = require("node:child_process");
-    const fs = require("node:fs");
-    const { readFileSync, renameSync, writeFileSync } = fs;
-    const CFG = ${JSON.stringify(configFile)};
-    const TMP = \`\${CFG}.tmp\`;
-    const VERSION = ${JSON.stringify(version)};
-    const BIN = ${JSON.stringify(invocation.bin)};
-    const ARGS = ${JSON.stringify(invocation.args)};
-    const withFileLock = ${withFileLock.toString()};
-    const withLock = (task) => { try { withFileLock(\`\${CFG}.lock\`, fs, task); } catch (e) {} };
-    execFile(BIN, ARGS, { windowsHide: true, maxBuffer: 4 * 1024 * 1024 }, (err, _stdout, stderr) => withLock(() => {
-      let cfg = {};
-      try { cfg = JSON.parse(readFileSync(CFG, "utf-8")); } catch (e) { if (e.code !== "ENOENT") return; }
-      cfg.completedUpdate = {
-        version: VERSION,
-        ok: !err,
-        finishedAt: new Date().toISOString(),
-        ...(err ? { error: String(stderr || err.message || "install failed").slice(-400) } : {}),
-      };
-      delete cfg.pendingUpdate;
-      try {
-        writeFileSync(TMP, JSON.stringify(cfg, null, 2) + "\\n", { mode: 0o600 });
-        renameSync(TMP, CFG);
-      } catch (e) {}
-    }));
-  `;
+  const nodeScript = installerScript({
+    configFile,
+    version,
+    bin: invocation.bin,
+    args: invocation.args,
+    runningDir: RUNNING_DIR,
+    pollMs: INSTALL_POLL_MS,
+    maxWaitMs: INSTALL_MAX_WAIT_MS,
+  });
 
   const out = openSync(LOG_FILE, "a", 0o600);
   const child = spawn(process.execPath, ["-e", nodeScript], {
