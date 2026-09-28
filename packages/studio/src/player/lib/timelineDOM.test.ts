@@ -556,6 +556,12 @@ describe("what the live clip list says a clip plays", () => {
     expect(plain.muted).toBeUndefined();
   });
 
+  it("carries the clip-edge fades, and drops a zero one", () => {
+    const faded = manifestVideo('data-fade-in="1.5" data-fade-out="0"');
+    expect(faded.fadeIn).toBe(1.5);
+    expect(faded.fadeOut).toBeUndefined();
+  });
+
   it("gives a video with neither muted nor data-has-audio sound, as the compiler does", () => {
     expect(manifestVideo("").hasAudio).toBe(true);
     expect(manifestVideo("muted").hasAudio).toBeUndefined();

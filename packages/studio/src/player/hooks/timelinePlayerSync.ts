@@ -1,5 +1,20 @@
 import type { TimelineElement } from "../store/playerStore";
 
+const RENDERED_FIELDS: readonly (keyof TimelineElement)[] = [
+  "id",
+  "start",
+  "duration",
+  "track",
+  "sourceDuration",
+  "muted",
+  "hasAudio",
+  "volume",
+  "playbackRate",
+  "hidden",
+  "audioGroupVolume",
+  "audioGroupHidden",
+];
+
 /** Whether a derived timeline changes any field that affects rendering. */
 export function timelineElementsChanged(
   previous: TimelineElement[],
@@ -8,20 +23,6 @@ export function timelineElementsChanged(
   if (next.length !== previous.length) return true;
   return next.some((element, index) => {
     const prior = previous[index];
-    return (
-      !prior ||
-      element.id !== prior.id ||
-      element.start !== prior.start ||
-      element.duration !== prior.duration ||
-      element.track !== prior.track ||
-      element.sourceDuration !== prior.sourceDuration ||
-      element.muted !== prior.muted ||
-      element.hasAudio !== prior.hasAudio ||
-      element.volume !== prior.volume ||
-      element.playbackRate !== prior.playbackRate ||
-      element.hidden !== prior.hidden ||
-      element.audioGroupVolume !== prior.audioGroupVolume ||
-      element.audioGroupHidden !== prior.audioGroupHidden
-    );
+    return !prior || RENDERED_FIELDS.some((key) => element[key] !== prior[key]);
   });
 }
