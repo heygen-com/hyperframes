@@ -862,10 +862,50 @@ function isUnconditionalStylesheet(element: {
   );
 }
 
+type DeclaredFontRegister = (family: string, fontFaceRule?: AtRule) => void;
+
+function declareStyleFontFamilies(
+  styleEl: {
+    textContent: string | null;
+    getAttribute(name: string): string | null;
+    hasAttribute(name: string): boolean;
+  },
+  register: DeclaredFontRegister,
+): void {
+  if (!isUnconditionalStylesheet(styleEl)) return;
+  const root = parseCssRoot(styleEl.textContent ?? "");
+  if (!root) return;
+  root.walkAtRules((atRule) => {
+    if (atRule.parent?.type !== "root") return;
+    const name = atRule.name.toLowerCase();
+    if (name === "import") {
+      const url = importRuleUrl(atRule.params);
+      if (url) for (const family of googleFontsUrlFamilies(url)) register(family);
+      return;
+    }
+    if (name !== "font-face") return;
+    const family = fontFaceRuleFamily(atRule);
+    if (family) register(family, atRule);
+  });
+}
+
+function declareLinkedFontFamilies(
+  link: {
+    getAttribute(name: string): string | null;
+    hasAttribute(name: string): boolean;
+  },
+  register: DeclaredFontRegister,
+): void {
+  const rel = (link.getAttribute("rel") ?? "").toLowerCase().split(/\s+/);
+  if (!rel.includes("stylesheet") || rel.includes("alternate") || !isUnconditionalStylesheet(link))
+    return;
+  for (const family of googleFontsUrlFamilies(link.getAttribute("href") ?? "")) register(family);
+}
+
 function collectDeclaredFontFamilies(html: string): DeclaredFontFamilies {
   const { document } = parseHTML(html);
   const declared = new Map<string, DeclaredFontFamily>();
-  const declare = (family: string, fontFaceRule?: AtRule): void => {
+  const register: DeclaredFontRegister = (family, fontFaceRule) => {
     const key = normalizeFamilyName(family);
     if (!key || GENERIC_FAMILIES.has(key)) return;
     let entry = declared.get(key);
@@ -877,34 +917,11 @@ function collectDeclaredFontFamilies(html: string): DeclaredFontFamilies {
   };
 
   for (const styleEl of Array.from(document.querySelectorAll("style"))) {
-    if (!isUnconditionalStylesheet(styleEl)) continue;
-    const root = parseCssRoot(styleEl.textContent ?? "");
-    if (!root) continue;
-    root.walkAtRules((atRule) => {
-      if (atRule.parent?.type !== "root") return;
-      const name = atRule.name.toLowerCase();
-      if (name === "import") {
-        const url = importRuleUrl(atRule.params);
-        if (url) for (const family of googleFontsUrlFamilies(url)) declare(family);
-        return;
-      }
-      if (name !== "font-face") return;
-      const family = fontFaceRuleFamily(atRule);
-      if (family) declare(family, atRule);
-    });
+    declareStyleFontFamilies(styleEl, register);
   }
-
   for (const link of Array.from(document.querySelectorAll("link[href]"))) {
-    const rel = (link.getAttribute("rel") ?? "").toLowerCase().split(/\s+/);
-    if (
-      !rel.includes("stylesheet") ||
-      rel.includes("alternate") ||
-      !isUnconditionalStylesheet(link)
-    )
-      continue;
-    for (const family of googleFontsUrlFamilies(link.getAttribute("href") ?? "")) declare(family);
+    declareLinkedFontFamilies(link, register);
   }
-
   return declared;
 }
 
@@ -1466,6 +1483,7 @@ function declaredFaceFamily(block: string): string | undefined {
   return found?.[1];
 }
 
+// fallow-ignore-next-line complexity
 async function fetchGoogleFont(
   familyName: string,
   options: InternalFontFetchOptions,
