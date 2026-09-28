@@ -654,6 +654,32 @@ describe("shouldIgnorePlaybackShortcutEvent while a modal dialog is open", () =>
     }
   });
 
+  it("counts a dialog under fullscreen only when the fullscreen element holds it", () => {
+    const document = stubStudioDocument(
+      `<div id="stage"><div id="inner" role="dialog" aria-modal="true"></div></div>` +
+        `<div id="outer" role="dialog" aria-modal="true"></div>`,
+    );
+    const space = () =>
+      shouldIgnorePlaybackShortcutEvent(mockKeyboardEvent("Space", { target: document.body }));
+    const fullscreenOn = (id: string) =>
+      Object.defineProperty(document, "fullscreenElement", {
+        configurable: true,
+        value: document.getElementById(id),
+      });
+    fullscreenOn("stage");
+    expect(space()).toBe(true);
+    document.getElementById("inner")!.remove();
+    expect(space()).toBe(false);
+  });
+
+  it("counts an aria-modal dialog where the browser has no checkVisibility", () => {
+    const document = createDocument(`<div role="dialog" aria-modal="true"></div>`);
+    vi.stubGlobal("document", document);
+    expect(
+      shouldIgnorePlaybackShortcutEvent(mockKeyboardEvent("Space", { target: document.body })),
+    ).toBe(true);
+  });
+
   it("keeps playback keys when no dialog is open", () => {
     const document = stubStudioDocument(`<main><p>Preview</p></main>`);
     expect(

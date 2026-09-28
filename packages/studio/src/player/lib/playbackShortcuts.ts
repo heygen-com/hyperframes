@@ -41,15 +41,20 @@ export function shouldIgnorePlaybackShortcutTarget(target: EventTarget | null): 
   );
 }
 
-const MODAL_DIALOG_SELECTOR = "dialog:modal, [role='dialog'][aria-modal='true']";
+const MODAL_DIALOG_SELECTOR = "[role=dialog][aria-modal=true]";
 
-// An open modal owns the keyboard wherever focus sits, preview iframe included.
-// checkVisibility skips dialogs left mounted but hidden; inert ones take no input.
+// An open modal owns the keyboard wherever focus sits, preview iframe included. It counts only
+// when shown: visible, not inert, and not behind a fullscreen element that leaves it out.
 function isModalDialogOpen(): boolean {
   const doc = globalThis.document;
   if (!doc) return false;
+  const fullscreen = doc.fullscreenElement;
   return Array.from(doc.querySelectorAll(MODAL_DIALOG_SELECTOR)).some(
-    (dialog) => dialog.checkVisibility({ visibilityProperty: true }) && !dialog.closest("[inert]"),
+    (dialog) =>
+      (!fullscreen || fullscreen.contains(dialog)) &&
+      !dialog.closest("[inert]") &&
+      (typeof dialog.checkVisibility !== "function" ||
+        dialog.checkVisibility({ visibilityProperty: true })),
   );
 }
 
