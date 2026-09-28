@@ -29,12 +29,13 @@ afterEach(() => {
 
 function renderToolbar(
   domEditSession?: React.ComponentProps<typeof TimelineToolbar>["domEditSession"],
+  props: Partial<React.ComponentProps<typeof TimelineToolbar>> = {},
 ) {
   const host = document.createElement("div");
   document.body.append(host);
   const root = createRoot(host);
   act(() => {
-    root.render(<TimelineToolbar domEditSession={domEditSession} />);
+    root.render(<TimelineToolbar domEditSession={domEditSession} {...props} />);
   });
   return { host, root };
 }
@@ -173,6 +174,50 @@ describe("TimelineToolbar — keyframes on audio tracks", () => {
       'button[aria-label="Add keyframe at playhead"]',
     );
     expect(button?.disabled).toBe(false);
+    act(() => root.unmount());
+  });
+
+  const keyframeControls = (host: HTMLElement) => [
+    host.querySelector('button[aria-label="Add keyframe at playhead"]'),
+    host.querySelector('button[aria-label="Auto-record manual edits as keyframes"]'),
+  ];
+  const pressK = () =>
+    act(() => {
+      window.dispatchEvent(new KeyboardEvent("keydown", { key: "k", bubbles: true }));
+    });
+
+  it("shows Add keyframe and auto-record, and K adds a keyframe, by default", () => {
+    const session = sessionFor("div");
+    const { host, root } = renderToolbar(session);
+    expect(keyframeControls(host).every(Boolean)).toBe(true);
+    pressK();
+    expect(session.handleGsapAddAnimation).toHaveBeenCalled();
+    act(() => root.unmount());
+  });
+
+  it("hides both controls for a host without keyframes, turns auto-record off and leaves K alone", () => {
+    const session = sessionFor("div");
+    const { host, root } = renderToolbar(session, { showKeyframes: false });
+    expect(keyframeControls(host)).toEqual([null, null]);
+    expect(usePlayerStore.getState().autoKeyframeEnabled).toBe(false);
+    pressK();
+    expect(session.handleGsapAddAnimation).not.toHaveBeenCalled();
+    act(() => root.unmount());
+  });
+});
+
+describe("TimelineToolbar Fit", () => {
+  it("names the Fit button and says whether fit is on", () => {
+    const { host, root } = renderToolbar();
+    const fit = () => host.querySelector('button[aria-label="Fit timeline to width"]');
+    act(() => fit()?.dispatchEvent(new MouseEvent("click", { bubbles: true })));
+    expect(fit()?.getAttribute("aria-pressed")).toBe("true");
+    act(() =>
+      host
+        .querySelector('button[aria-label="Zoom in"]')
+        ?.dispatchEvent(new MouseEvent("click", { bubbles: true })),
+    );
+    expect(fit()?.getAttribute("aria-pressed")).toBe("false");
     act(() => root.unmount());
   });
 });

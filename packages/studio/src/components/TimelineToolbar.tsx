@@ -38,6 +38,8 @@ export interface TimelineToolbarProps {
   onSplitElement?: (element: TimelineElement, splitTime: number) => void;
   history?: TimelineHistoryButtonsProps;
   showAddBeat?: boolean;
+  /** Hides Add keyframe and auto-record, and turns off auto-record and the K shortcut with them. */
+  showKeyframes?: boolean;
 }
 
 interface KeyframeToggleState {
@@ -134,6 +136,7 @@ export function TimelineToolbar({
   onSplitElement,
   history,
   showAddBeat = true,
+  showKeyframes = true,
 }: TimelineToolbarProps) {
   const activeTool = usePlayerStore((s) => s.activeTool);
   const setActiveTool = usePlayerStore((s) => s.setActiveTool);
@@ -174,9 +177,13 @@ export function TimelineToolbar({
   // Wire the "Add keyframe (K)" shortcut the toolbar advertises. Active only when
   // there's a keyframeable selection; otherwise K stays JKL-pause in playback.
   useKeyframeKeyboard({
-    enabled: Boolean(onToggleKeyframe),
+    enabled: showKeyframes && Boolean(onToggleKeyframe),
     onAddKeyframe: onToggleKeyframe,
   });
+
+  useEffect(() => {
+    if (!showKeyframes) setAutoKeyframeEnabled(false);
+  }, [showKeyframes, setAutoKeyframeEnabled]);
 
   // "N" toggles timeline snapping (industry convention: Resolve/FCP).
   // Skip when typing in an input/contenteditable.
@@ -270,107 +277,111 @@ export function TimelineToolbar({
               </button>
             </Tooltip>
           )}
-          {/* Always rendered (CapCut-style): with no keyframeable selection the
+          {showKeyframes && (
+            <>
+              {/* Always rendered (CapCut-style): with no keyframeable selection the
               button fades to a disabled state instead of unmounting, so the
               toolbar layout never shifts. */}
-          <Tooltip
-            label={
-              keyframePathEndpoint
-                ? "Motion path endpoints cannot be removed"
-                : !onToggleKeyframe
-                  ? "Select an animated element to add keyframes"
-                  : keyframeIsMotionPath
-                    ? keyframeWillExtend
-                      ? "Extend motion path to playhead (K)"
-                      : keyframeState === "active"
-                        ? "Remove waypoint from motion path (K)"
-                        : "Add waypoint to motion path (K)"
-                    : keyframeState === "active"
-                      ? "Remove keyframe at playhead (K)"
-                      : keyframeState === "inactive"
+              <Tooltip
+                label={
+                  keyframePathEndpoint
+                    ? "Motion path endpoints cannot be removed"
+                    : !onToggleKeyframe
+                      ? "Select an animated element to add keyframes"
+                      : keyframeIsMotionPath
                         ? keyframeWillExtend
-                          ? "Add keyframe at playhead, extends animation (K)"
-                          : "Add keyframe at playhead (K)"
-                        : "Add keyframe (K)"
-            }
-          >
-            <button
-              type="button"
-              disabled={!onToggleKeyframe}
-              onClick={onToggleKeyframe}
-              aria-label={
-                keyframePathEndpoint
-                  ? "Motion path endpoint"
-                  : keyframeIsMotionPath
-                    ? keyframeState === "active"
-                      ? "Remove motion path waypoint"
-                      : keyframeWillExtend
-                        ? "Extend motion path to playhead"
-                        : "Add motion path waypoint"
-                    : keyframeState === "active"
-                      ? "Remove keyframe at playhead"
-                      : "Add keyframe at playhead"
-              }
-              className={
-                !onToggleKeyframe
-                  ? flatDisabled
-                  : `${flatBtn} active:scale-[0.98] hover:bg-white/6 ${
-                      keyframeState === "active"
-                        ? "text-studio-accent"
-                        : keyframeState === "inactive"
-                          ? "text-neutral-400 hover:text-studio-accent"
-                          : "text-neutral-600 hover:text-neutral-400"
-                    }`
-              }
-            >
-              <svg width="16" height="16" viewBox="0 0 10 10" fill="currentColor">
-                {keyframeState === "active" ? (
-                  <path d="M5 0.5L9.5 5L5 9.5L0.5 5Z" />
-                ) : (
-                  <path
-                    d="M5 1.2L8.8 5L5 8.8L1.2 5Z"
-                    fill="none"
-                    stroke="currentColor"
-                    strokeWidth="1.2"
-                  />
-                )}
-              </svg>
-            </button>
-          </Tooltip>
-          <Tooltip
-            label={
-              autoKeyframeEnabled
-                ? "Auto-record manual edits as keyframes (click to turn off)"
-                : "Manual edits will not be recorded as keyframes (click to turn on)"
-            }
-          >
-            <button
-              type="button"
-              onClick={() => setAutoKeyframeEnabled(!autoKeyframeEnabled)}
-              aria-label="Auto-record manual edits as keyframes"
-              aria-pressed={autoKeyframeEnabled}
-              className={`${flatBtn} active:scale-[0.98] hover:bg-white/6 ${
-                autoKeyframeEnabled
-                  ? "text-red-400 hover:text-red-300"
-                  : "text-neutral-600 hover:text-neutral-400"
-              }`}
-            >
-              <svg width="16" height="16" viewBox="0 0 10 10" fill="none">
-                {/* Same diamond outline as the Add-keyframe icon, with a
+                          ? "Extend motion path to playhead (K)"
+                          : keyframeState === "active"
+                            ? "Remove waypoint from motion path (K)"
+                            : "Add waypoint to motion path (K)"
+                        : keyframeState === "active"
+                          ? "Remove keyframe at playhead (K)"
+                          : keyframeState === "inactive"
+                            ? keyframeWillExtend
+                              ? "Add keyframe at playhead, extends animation (K)"
+                              : "Add keyframe at playhead (K)"
+                            : "Add keyframe (K)"
+                }
+              >
+                <button
+                  type="button"
+                  disabled={!onToggleKeyframe}
+                  onClick={onToggleKeyframe}
+                  aria-label={
+                    keyframePathEndpoint
+                      ? "Motion path endpoint"
+                      : keyframeIsMotionPath
+                        ? keyframeState === "active"
+                          ? "Remove motion path waypoint"
+                          : keyframeWillExtend
+                            ? "Extend motion path to playhead"
+                            : "Add motion path waypoint"
+                        : keyframeState === "active"
+                          ? "Remove keyframe at playhead"
+                          : "Add keyframe at playhead"
+                  }
+                  className={
+                    !onToggleKeyframe
+                      ? flatDisabled
+                      : `${flatBtn} active:scale-[0.98] hover:bg-white/6 ${
+                          keyframeState === "active"
+                            ? "text-studio-accent"
+                            : keyframeState === "inactive"
+                              ? "text-neutral-400 hover:text-studio-accent"
+                              : "text-neutral-600 hover:text-neutral-400"
+                        }`
+                  }
+                >
+                  <svg width="16" height="16" viewBox="0 0 10 10" fill="currentColor">
+                    {keyframeState === "active" ? (
+                      <path d="M5 0.5L9.5 5L5 9.5L0.5 5Z" />
+                    ) : (
+                      <path
+                        d="M5 1.2L8.8 5L5 8.8L1.2 5Z"
+                        fill="none"
+                        stroke="currentColor"
+                        strokeWidth="1.2"
+                      />
+                    )}
+                  </svg>
+                </button>
+              </Tooltip>
+              <Tooltip
+                label={
+                  autoKeyframeEnabled
+                    ? "Auto-record manual edits as keyframes (click to turn off)"
+                    : "Manual edits will not be recorded as keyframes (click to turn on)"
+                }
+              >
+                <button
+                  type="button"
+                  onClick={() => setAutoKeyframeEnabled(!autoKeyframeEnabled)}
+                  aria-label="Auto-record manual edits as keyframes"
+                  aria-pressed={autoKeyframeEnabled}
+                  className={`${flatBtn} active:scale-[0.98] hover:bg-white/6 ${
+                    autoKeyframeEnabled
+                      ? "text-red-400 hover:text-red-300"
+                      : "text-neutral-600 hover:text-neutral-400"
+                  }`}
+                >
+                  <svg width="16" height="16" viewBox="0 0 10 10" fill="none">
+                    {/* Same diamond outline as the Add-keyframe icon, with a
                       record-style dot inside: filled = auto-recording,
                       hollow = manual edits won't be keyframed. */}
-                <path d="M5 0.7L9.3 5L5 9.3L0.7 5Z" stroke="currentColor" strokeWidth="1" />
-                <circle
-                  cx="5"
-                  cy="5"
-                  r="1.8"
-                  fill={autoKeyframeEnabled ? "currentColor" : "none"}
-                  stroke="currentColor"
-                  strokeWidth="1"
-                />
-              </svg>
-            </button>
-          </Tooltip>
+                    <path d="M5 0.7L9.3 5L5 9.3L0.7 5Z" stroke="currentColor" strokeWidth="1" />
+                    <circle
+                      cx="5"
+                      cy="5"
+                      r="1.8"
+                      fill={autoKeyframeEnabled ? "currentColor" : "none"}
+                      stroke="currentColor"
+                      strokeWidth="1"
+                    />
+                  </svg>
+                </button>
+              </Tooltip>
+            </>
+          )}
           {onSplitElement &&
             (() => {
               // Render the button unconditionally (disabled when unusable):
@@ -495,6 +506,8 @@ export function TimelineToolbar({
             <button
               type="button"
               onClick={() => setZoomMode("fit")}
+              aria-label="Fit timeline to width"
+              aria-pressed={zoomMode === "fit"}
               className={`h-7 px-2 rounded-md text-[11px] font-medium transition-colors ${
                 zoomMode === "fit"
                   ? "bg-studio-accent/10 text-studio-accent"

@@ -43,8 +43,6 @@ export function useTimelineGeometry({
   lastScrollLeftRef,
   contentOrigin,
 }: UseTimelineGeometryInput) {
-  // Fit pps maps at least MIN_TIMELINE_EXTENT_S onto the viewport, so short
-  // comps show a 60s ruler with usable empty space (see getTimelineFitPps).
   const fitPps = getTimelineFitPps(viewportWidth, effectiveDuration, contentOrigin);
   const pps = getTimelinePixelsPerSecond(fitPps, zoomMode, manualZoomPercent);
   ppsRef.current = pps;
@@ -65,12 +63,13 @@ export function useTimelineGeometry({
   const resizeGhostEndPx = resizingClip?.started
     ? (resizingClip.previewStart + resizingClip.previewDuration) * pps + DRAG_EXTEND_MARGIN_PX
     : 0;
-  // The timeline canvas always fills at least the viewport width AND the
-  // MIN_TIMELINE_EXTENT_S floor: the ruler + empty track lanes keep going into
+  // The timeline canvas always fills at least the viewport width AND the fit
+  // span at this zoom: the ruler + empty track lanes keep going into
   // the space instead of leaving dead black — CapCut-style. Only the RENDERED
   // extent grows; clip positions/durations are untouched.
   const displayContentWidth = getTimelineDisplayContentWidth({
     trackContentWidth,
+    effectiveDuration,
     viewportWidth,
     contentOrigin,
     pps,
