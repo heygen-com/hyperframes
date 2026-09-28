@@ -8,6 +8,7 @@ import type {
 } from "./timelineClipDragTypes";
 import type { TimelineGroupResizeSession } from "./timelineGroupEditing";
 import { commitTimelineGroupResize } from "./timelineGroupResizeCommit";
+import { releasedOutsideWindow } from "./timelinePointerRelease";
 import {
   beginTimelineOptimisticGesture,
   rollbackLatestTimelineOptimisticGesture,
@@ -34,11 +35,6 @@ interface TimelineGestureCommit {
 }
 
 type UpdateElement = ReturnType<typeof usePlayerStore.getState>["updateElement"];
-
-function releasedOutsideWindow(event: PointerEvent): boolean {
-  const { clientX: x, clientY: y } = event;
-  return x < 0 || y < 0 || x >= window.innerWidth || y >= window.innerHeight;
-}
 
 interface TimelineClipDragGestureLifecycleInput {
   lifecycleRef: RefObject<TimelineGestureLifecycle>;
