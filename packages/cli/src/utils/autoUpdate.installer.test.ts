@@ -57,6 +57,17 @@ async function until(check: () => boolean): Promise<void> {
   while (!check()) await sleep(25);
 }
 
+function backdate(file: string): void {
+  const tenMinutesAgo = new Date(Date.now() - 10 * 60_000);
+  utimesSync(file, tenMinutesAgo, tenMinutesAgo);
+}
+
+async function expectInstalledAndRemoved(script: string, marker: string, file: string) {
+  await exited(start(["-e", script]));
+  expect(existsSync(marker)).toBe(true);
+  expect(existsSync(file)).toBe(false);
+}
+
 function registerCli(runningDir: string): ChildProcess {
   const cli = start(["-e", "setInterval(() => {}, 1000)"]);
   writeFileSync(join(runningDir, String(cli.pid)), "");
@@ -86,17 +97,14 @@ it("does not wait on a CLI process that died without cleaning up", async () => {
   const staleFile = join(runningDir, String(dead.pid));
   writeFileSync(staleFile, "");
 
-  await exited(start(["-e", script]));
-  expect(existsSync(marker)).toBe(true);
-  expect(existsSync(staleFile)).toBe(false);
+  await expectInstalledAndRemoved(script, marker, staleFile);
 });
 
 it("keeps waiting on a live command whose file looks old after the machine slept", async () => {
   const { runningDir, marker, script } = setup();
   const cli = registerCli(runningDir);
   const file = join(runningDir, String(cli.pid));
-  const tenMinutesAgo = new Date(Date.now() - 10 * 60_000);
-  utimesSync(file, tenMinutesAgo, tenMinutesAgo);
+  backdate(file);
   const installer = start(["-e", script]);
 
   await sleep(1000);
@@ -113,12 +121,9 @@ it("drops a pid file whose pid belongs to another process once it stops changing
   const other = start(["-e", "setInterval(() => {}, 1000)"]);
   const staleFile = join(runningDir, String(other.pid));
   writeFileSync(staleFile, "");
-  const tenMinutesAgo = new Date(Date.now() - 10 * 60_000);
-  utimesSync(staleFile, tenMinutesAgo, tenMinutesAgo);
+  backdate(staleFile);
 
-  await exited(start(["-e", script]));
-  expect(existsSync(marker)).toBe(true);
-  expect(existsSync(staleFile)).toBe(false);
+  await expectInstalledAndRemoved(script, marker, staleFile);
 });
 
 it("lets only one installer wait: a later launch exits and installs nothing", async () => {
@@ -140,8 +145,7 @@ it("takes over an install lock whose pid belongs to another process once it stop
   const other = start(["-e", "setInterval(() => {}, 1000)"]);
   const lock = join(dir, "config.json.install-lock");
   writeFileSync(lock, String(other.pid));
-  const tenMinutesAgo = new Date(Date.now() - 10 * 60_000);
-  utimesSync(lock, tenMinutesAgo, tenMinutesAgo);
+  backdate(lock);
 
   await exited(start(["-e", script]));
   expect(existsSync(marker)).toBe(true);

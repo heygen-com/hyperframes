@@ -232,8 +232,7 @@ function launchDetachedInstall(
  * If a new version is available and policy allows, kick off a detached
  * installer. Returns whether an install was spawned (for tests).
  */
-export function scheduleBackgroundInstall(latestVersion: string, currentVersion: string): boolean {
-  if (isAutoInstallDisabled()) return false;
+function isSilentUpgrade(latestVersion: string, currentVersion: string): boolean {
   if (!latestVersion || !currentVersion) return false;
 
   let cmp: number;
@@ -253,6 +252,12 @@ export function scheduleBackgroundInstall(latestVersion: string, currentVersion:
     log(`[skip] major-bump ${currentVersion} -> ${latestVersion}`);
     return false;
   }
+  return true;
+}
+
+export function scheduleBackgroundInstall(latestVersion: string, currentVersion: string): boolean {
+  if (isAutoInstallDisabled()) return false;
+  if (!isSilentUpgrade(latestVersion, currentVersion)) return false;
 
   const installer = detectInstaller();
   if (installer.kind === "skip") {
