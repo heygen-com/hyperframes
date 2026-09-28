@@ -14,7 +14,14 @@ import {
   type HfAudioFxChain,
 } from "@hyperframes/core/audio-fx";
 import { levellingResult, removeLevelling } from "@hyperframes/core/audio-leveller";
-import type { HfAutomation } from "@hyperframes/core/audio-automation";
+import type { HfAutomation, HfAutomationPoint } from "@hyperframes/core/audio-automation";
+import {
+  resolveRateSpec,
+  sourceTimeAt,
+  timeAtSourceTime,
+  type RateSpec,
+} from "@hyperframes/core/speed-ramp";
+import { readPlaybackRate } from "@hyperframes/parsers/media-duration";
 import {
   automationAttrValue,
   HF_AUDIO_AUTOMATION_ATTR,
@@ -85,18 +92,35 @@ export function useFxLevelling(
    * in-point. Slicing here is what puts the two clocks back on the same
    * zero.
    */
-  const clipWindow = (audio: { samples: Float32Array; sampleRate: number }) => {
+  const clipWindow = (audio: { samples: Float32Array; sampleRate: number }, rate: RateSpec) => {
     const { mediaStart } = readClipInPoint(element.dataAttributes);
     const duration = positiveFinite(Number(element.dataAttributes?.["duration"] ?? Number.NaN));
     const from = mediaStart
       ? Math.min(audio.samples.length, Math.floor(mediaStart * audio.sampleRate))
       : 0;
     const to = duration
-      ? Math.min(audio.samples.length, from + Math.ceil(duration * audio.sampleRate))
+      ? Math.min(
+          audio.samples.length,
+          from + Math.ceil(sourceTimeAt(rate, duration) * audio.sampleRate),
+        )
       : audio.samples.length;
     return from === 0 && to === audio.samples.length
       ? audio.samples
       : audio.samples.subarray(from, to);
+  };
+
+  /** The levelled chain and its lane, with the lane moved from the source's clock onto the clip's. */
+  const measureLevelling = (audio: { samples: Float32Array; sampleRate: number }) => {
+    const attr = (name: string) => element.dataAttributes?.[name.slice(5)];
+    const rate = resolveRateSpec(attr("data-automation"), readPlaybackRate(attr));
+    const result = levellingResult(chain, clipWindow(audio, rate), audio.sampleRate);
+    if (!result) return null;
+    const lane = result.automation.lanes[0];
+    const toClipTime = (point: HfAutomationPoint) => ({
+      ...point,
+      t: timeAtSourceTime(rate, point.t),
+    });
+    return { chain: result.chain, lane: lane && { ...lane, points: lane.points.map(toClipTime) } };
   };
 
   const runLeveller = async (): Promise<void> => {
@@ -104,14 +128,14 @@ export function useFxLevelling(
     try {
       const audio = await decodeTrack();
       if (!audio) return;
-      const result = levellingResult(chain, clipWindow(audio), audio.sampleRate);
+      const result = measureLevelling(audio);
       if (!result) return;
       trackLeveller("run");
       await onSetAttributeQuiet(HF_AUDIO_FX_ATTR, serializeAudioFxChain(result.chain));
       // Merged by target, never written wholesale: the script describes its own
       // lane only, and replacing the attribute would take the carve's lanes and
       // the volume lane with it.
-      const lane = result.automation.lanes[0];
+      const lane = result.lane;
       if (lane) {
         void onSetAttributeQuiet(
           HF_AUDIO_AUTOMATION_ATTR,
@@ -161,10 +185,10 @@ export function useFxLevelling(
       const audio = await decodeTrack();
       // Gone, or superseded by a later hover. Either way this result is stale.
       if (!audio || run !== auditionRun.current) return;
-      const result = levellingResult(chain, clipWindow(audio), audio.sampleRate);
+      const result = measureLevelling(audio);
       if (!result || run !== auditionRun.current) return;
       void onSetAttributeLive(HF_AUDIO_FX_ATTR, serializeAudioFxChain(result.chain));
-      const lane = result.automation.lanes[0];
+      const lane = result.lane;
       if (lane) {
         void onSetAttributeLive(
           HF_AUDIO_AUTOMATION_ATTR,
