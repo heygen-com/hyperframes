@@ -3,7 +3,7 @@ import { test } from "node:test";
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
-import { readManifest } from "../../../scripts/lib/manifest.mjs";
+import { findByPrompt, readManifest } from "../../../scripts/lib/manifest.mjs";
 import { agentWritePath, recordInManifest, writtenAssets } from "./media-record.mjs";
 
 const noBgm = { bgm: null, bgmFields: { bgm_pending: false } };
@@ -49,15 +49,34 @@ test("a voice run leaves a manifest entry marked generated", (t) => {
   );
 });
 
-test("a rerun that rewrites the same files keeps one record each", (t) => {
-  const dir = project(t);
-  const run = () =>
-    recordInManifest(dir, [{ path: "assets/voice/01.wav", type: "voice", source: "generated" }]);
+const voiceLine = (intent, duration) => [
+  { path: "assets/voice/01.wav", type: "voice", source: "generated", intent, duration },
+];
 
-  run();
-  run();
+test("a rerun that writes the same take keeps one record", (t) => {
+  const dir = project(t);
+
+  recordInManifest(dir, voiceLine("Hello world", 1.25));
+  recordInManifest(dir, voiceLine("Hello world", 1.25));
 
   assert.equal(readManifest(dir).length, 1);
+});
+
+test("a rerun with new text records the new take, and the old text no longer finds the file", (t) => {
+  const dir = project(t);
+
+  recordInManifest(dir, voiceLine("Hello world", 1.25));
+  recordInManifest(dir, voiceLine("Welcome back to the show", 3.5));
+
+  assert.deepEqual(
+    readManifest(dir).map(({ description, duration }) => [description, duration]),
+    [
+      ["Hello world", 1.3],
+      ["Welcome back to the show", 3.5],
+    ],
+  );
+  assert.equal(findByPrompt(dir, "Hello world", "voice"), null);
+  assert.equal(findByPrompt(dir, "Welcome back to the show", "voice")?.path, "assets/voice/01.wav");
 });
 
 test("music and sound effects are marked by where they came from", () => {
@@ -76,11 +95,11 @@ test("music and sound effects are marked by where they came from", () => {
   });
 
   assert.deepEqual(
-    assets.map(({ path, source }) => [path, source]),
+    assets.map(({ path, source, provider }) => [path, source, provider]),
     [
-      ["assets/bgm/track.mp3", "search"],
-      ["assets/sfx/whoosh.mp3", "bundled"],
-      ["assets/sfx/glass.mp3", "search"],
+      ["assets/bgm/track.mp3", "search", undefined],
+      ["assets/sfx/whoosh.mp3", "bundled", "bundled.sfx"],
+      ["assets/sfx/glass.mp3", "search", "heygen"],
     ],
   );
 });

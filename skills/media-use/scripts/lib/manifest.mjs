@@ -87,24 +87,36 @@ export function latestRecordFor(projectDir, path) {
   return readManifest(projectDir).findLast((record) => record.path === path);
 }
 
-/** Records a file already in the project where it is, unless its current record already says the same source. */
+/** Records with every older record for the same path dropped, since the last one for a path is its record. */
+export function currentRecords(projectDir) {
+  const records = readManifest(projectDir);
+  const last = new Map(records.map((record, index) => [record.path, index]));
+  return records.filter((record, index) => !record.path || last.get(record.path) === index);
+}
+
+/** Records a file already in the project where it is, unless its current record already says the same thing. */
 export function recordInPlace(
   projectDir,
   { type, path, source, description, duration, provenance },
 ) {
-  const latest = latestRecordFor(projectDir, path);
-  if (latest?.source === source) return latest;
-  const record = {
-    id: nextId(projectDir, type),
+  const fields = {
     type,
     path,
     source,
     description: description || basename(path),
     ...(duration != null && { duration: Math.round(duration * 10) / 10 }),
-    provenance,
   };
-  appendRecord(projectDir, record);
-  return record;
+  mkdirSync(mediaDir(projectDir), { recursive: true });
+  return withLock(mediaDir(projectDir), () => {
+    const latest = latestRecordFor(projectDir, path);
+    const same = ["source", "description", "duration"].every(
+      (key) => latest?.[key] === fields[key],
+    );
+    if (latest && same) return latest;
+    const record = { id: nextId(projectDir, type), ...fields, provenance };
+    appendRecord(projectDir, record);
+    return record;
+  });
 }
 
 // Match prompts forgivingly. Agents rarely re-emit a byte-identical intent, so
@@ -121,7 +133,7 @@ export function normalizePrompt(prompt) {
 export function findByPrompt(projectDir, prompt, type) {
   const key = normalizePrompt(prompt);
   if (!key) return null;
-  const records = readManifest(projectDir);
+  const records = currentRecords(projectDir);
   return (
     records.find(
       (r) => normalizePrompt(r.provenance?.prompt) === key && (type == null || r.type === type),
@@ -131,7 +143,7 @@ export function findByPrompt(projectDir, prompt, type) {
 
 export function findByEntity(projectDir, entity) {
   const lower = entity.toLowerCase();
-  const records = readManifest(projectDir);
+  const records = currentRecords(projectDir);
   return records.find((r) => r.entity && r.entity.toLowerCase() === lower) || null;
 }
 
