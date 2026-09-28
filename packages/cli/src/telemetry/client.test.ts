@@ -54,7 +54,7 @@ vi.mock("node:child_process", () => ({
 const { trackEvent, flush, flushSync } = await import("./client.js");
 const system = await import("./system.js");
 
-type Batch = { uuid: string; event: string }[];
+type Batch = { uuid: string; event: string; properties: Record<string, unknown> }[];
 
 function sentBatch(fetchMock: ReturnType<typeof vi.fn>, call = 0): Batch {
   const init = fetchMock.mock.calls[call]?.[1] as { body: string } | undefined;
@@ -119,12 +119,7 @@ describe("telemetry queue delivery", () => {
       trackRenderFeedback({ rating: 9 });
       trackCatalogSearchMiss({ query: "confetti" });
       await flush();
-      const init = fetchMock.mock.calls[0]?.[1] as { body: string } | undefined;
-      const batch = JSON.parse(init?.body ?? "{}").batch as Array<{
-        event: string;
-        properties: Record<string, unknown>;
-      }>;
-      expect(batch.map((e) => [e.event, e.properties.client])).toEqual([
+      expect(sentBatch(fetchMock).map((e) => [e.event, e.properties.client])).toEqual([
         ["cli_command", "desktop/0.8.82/stable"],
         ["cli_render_feedback", "desktop/0.8.82/stable"],
         ["cli_catalog_search_miss", "desktop/0.8.82/stable"],
