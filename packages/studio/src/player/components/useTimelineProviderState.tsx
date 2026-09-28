@@ -1,6 +1,6 @@
 import { useRef, useMemo, useCallback, useState } from "react";
 import { useAdjustedBeatAnalysis, useMusicBeatAnalysis } from "../../hooks/useMusicBeatAnalysis";
-import { usePlayerStore, type TimelineElement } from "../store/playerStore";
+import { usePlayerStore } from "../store/playerStore";
 import { defaultTimelineTheme } from "./timelineTheme";
 import { useTimelinePlayhead } from "./useTimelinePlayhead";
 import { useTimelineZoom } from "./useTimelineZoom";
@@ -8,12 +8,8 @@ import { useTimelineAssetDrop } from "./timelineDragDrop";
 import { type KeyframeDiamondContextMenuState } from "./KeyframeDiamondContextMenu";
 import { useTimelineClipDrag } from "./useTimelineClipDrag";
 import type { ClipContextMenuState, TimelineContextValue } from "./TimelineProvider";
-import {
-  buildTimelineMeta,
-  resolveMultiDragPreview,
-  resolveResizingElementIds,
-  shouldIgnoreTimelinePointerDown,
-} from "./timelineProviderStateBuilders";
+import { buildTimelineShellMeta } from "./timelineShellMeta";
+import { useTimelineDragPreviewState } from "./useTimelineDragPreviewState";
 import { useTimelineOverlaysState } from "./useTimelineOverlaysState";
 import { useTimelineEditPinning } from "./useTimelineEditPinning";
 import { useTimelineStackingSync } from "./useTimelineStackingSync";
@@ -31,13 +27,9 @@ import {
 } from "./useTimelineTrackLayout";
 import { useTimelineKeyframeHandlers } from "./useTimelineKeyframeHandlers";
 import { useTimelineGapHighlights } from "./useTimelineGapHighlights";
-import { TimelineRazorGuideOverlay, useTimelineRazorInteraction } from "./TimelineRazorInteraction";
+import { useTimelineRazorInteraction } from "./TimelineRazorInteraction";
 import { useTimelinePerformanceTelemetry } from "./useTimelinePerformanceTelemetry";
-import {
-  getEffectiveTimelineDuration,
-  getTimelinePreviewElement,
-  timelineNeedsLabelColumn,
-} from "./timelineViewModel";
+import { getEffectiveTimelineDuration, timelineNeedsLabelColumn } from "./timelineViewModel";
 import { useTimelineShiftModifier } from "./useTimelineShiftModifier";
 import { useTimelineTicks } from "./useTimelineTicks";
 import { getTimelineElementIdentity } from "../lib/timelineElementHelpers";
@@ -46,7 +38,6 @@ import { useTimelineActiveClips } from "./useTimelineActiveClips";
 import { useTimelineLaneMoveRefresh } from "./useTimelineLaneMoveRefresh";
 import { useTimelineLogicalFocus } from "./useTimelineLogicalFocus";
 import { useTimelineEditContextOptional } from "../../contexts/TimelineEditContext";
-import { resolveSnapGuide } from "./timelineSnapping";
 export function useTimelineProviderState({
   onSeek,
   onDrillDown,
@@ -228,7 +219,8 @@ export function useTimelineProviderState({
     sessionEpoch,
   });
   const displayLayout = useTimelineDisplayLayout(draggedClip, trackOrder, rowGeometry);
-  const resizingElementIds = resolveResizingElementIds(resizingClip);
+  const { resizingElementIds, getPreviewElement, draggedElement, multiDragPreview, snapGuide } =
+    useTimelineDragPreviewState(draggedClip, resizingClip, selectedElementIds, timelineElements);
   const { recordTimelineScroll } = useTimelinePerformanceTelemetry({
     totalClipCount: timelineElements.length,
     totalRowCount: displayLayout.displayTrackOrder.length,
@@ -427,15 +419,6 @@ export function useTimelineProviderState({
     timeDisplayMode,
     timelineFocus.rowVirtualizationActive ? renderTimeRange : undefined,
   );
-  const getPreviewElement = useCallback(
-    (element: TimelineElement): TimelineElement => getTimelinePreviewElement(element, resizingClip),
-    [resizingClip],
-  );
-  const draggedElement = draggedClip?.element ?? null;
-  const multiDragPreview = useMemo(
-    () => resolveMultiDragPreview(draggedClip, selectedElementIds, timelineElements),
-    [draggedClip, selectedElementIds, timelineElements],
-  );
   const canvasProps = {
     major,
     minor,
@@ -509,7 +492,7 @@ export function useTimelineProviderState({
     onMoveElement,
     beatDragging,
     draggedElement,
-    snapGuide: resolveSnapGuide(draggedClip, resizingClip),
+    snapGuide,
     multiDragPreview,
     onToggleTrackHidden: editContext.onToggleTrackHidden,
     onTogglePropertyGroupKeyframe: editContext.onTogglePropertyGroupKeyframe,
@@ -527,60 +510,33 @@ export function useTimelineProviderState({
       )),
     [holdNewClipContent, renderClipContent],
   );
-  const timelineMeta = buildTimelineMeta({
-    emptyState: {
-      isDragOver: assetDrop.isDragOver,
-      onFileDrop: !!onFileDrop,
+  const timelineMeta = buildTimelineShellMeta({
+    isDragOver: assetDrop.isDragOver,
+    hasFileDrop: !!onFileDrop,
+    drop: {
       onDragOver: assetDrop.handleAssetDragOver,
       onDragLeave: assetDrop.handleAssetDragLeave,
       onDrop: assetDrop.handleAssetDrop,
     },
-    container: {
-      ref: setContainerRef,
-      "aria-label": "Timeline track view",
-      "data-timeline-element-count": timelineElements.length,
-      isDragOver: assetDrop.isDragOver,
-      activeTool,
-      shiftHeld,
-      accentClass: "ring-1 ring-inset ring-studio-accent/60",
-      onMouseMove: updateRazorGuide,
-      onMouseLeave: clearRazorGuide,
-      style: {
-        touchAction: "pan-x pan-y",
-        background: theme.shellBackground,
-        borderColor: theme.shellBorder,
-      },
-    },
-    viewport: {
-      ref: setScrollRef,
-      tabIndex: -1,
-      labelMode,
-      zoomMode,
-      onScroll: (e) => {
-        lastScrollLeftRef.current = e.currentTarget.scrollLeft;
-        recordTimelineScroll(e.currentTarget);
-        syncScrollViewport(e.currentTarget, true);
-      },
-      ...timelineFocus.timelineFocusProps,
-      onDragOver: assetDrop.handleAssetDragOver,
-      onDragLeave: assetDrop.handleAssetDragLeave,
-      onDrop: assetDrop.handleAssetDrop,
-      onPointerDown: (e) => {
-        if (shouldIgnoreTimelinePointerDown(e.target)) return;
-        if (splitAllAtPointer(e)) return;
-        handlePointerDown(e);
-      },
+    pointer: {
+      onPointerDown: handlePointerDown,
       onPointerMove: handlePointerMove,
       onPointerUp: handlePointerUp,
       onPointerCancel: handlePointerCancel,
-      onLostPointerCapture: handlePointerCancel,
     },
+    setContainerRef,
+    setScrollRef,
+    focusProps: timelineFocus.timelineFocusProps,
     elementCount: timelineElements.length,
-    labelColumnWidth: LABEL_COL_W,
-    razorGuide:
-      activeTool === "razor" && razorGuideX !== null ? (
-        <TimelineRazorGuideOverlay x={razorGuideX} />
-      ) : null,
+    activeTool,
+    shiftHeld,
+    labelMode,
+    zoomMode,
+    theme,
+    razor: { razorGuideX, updateRazorGuide, clearRazorGuide, splitAllAtPointer },
+    lastScrollLeftRef,
+    recordTimelineScroll,
+    syncScrollViewport,
   });
   const contextValue: TimelineContextValue = {
     state: {
