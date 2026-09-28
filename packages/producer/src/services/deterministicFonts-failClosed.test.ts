@@ -14,7 +14,8 @@
  * The tests inject `fetchImpl` so no real network call happens.
  */
 
-import { beforeEach, describe, expect, it } from "bun:test";
+import { afterEach, beforeEach, describe, expect, it, spyOn } from "bun:test";
+import { defaultLogger } from "../logger.js";
 import {
   _clearGoogleFontCssCacheForTests,
   FONT_FETCH_FAILED,
@@ -425,22 +426,163 @@ describe("fail-closed fonts named only in an undefined var() fallback", () => {
     expect(caught).toBeInstanceOf(FontFetchError);
   });
 
-  it.each([
-    ["HTTP 503", makeHttp503Fetch],
-    ["a network failure", makeFailingFetch],
-  ])("still fails closed on %s for a fallback-only family", async (_label, makeFetch) => {
-    const caught = await rejectedError(
-      injectDeterministicFontFaces(
-        styled(`body { font-family: var(--brand, "Acme Brand Sans", sans-serif); }`),
-        {
+  describe("a transient failure on a fallback-only family", () => {
+    const FALLBACK_ONLY = styled(
+      `body { font-family: var(--brand, "Acme Brand Sans", sans-serif); }`,
+    );
+    let warnings: string[] = [];
+    let warnSpy: ReturnType<typeof spyOn>;
+    beforeEach(() => {
+      warnings = [];
+      warnSpy = spyOn(defaultLogger, "warn").mockImplementation((message: string) => {
+        warnings.push(message);
+      });
+    });
+    afterEach(() => warnSpy.mockRestore());
+
+    const counting = (inner: typeof fetch) => {
+      const counter = { requests: 0 };
+      const fetchImpl = (async (...args: Parameters<typeof fetch>) => {
+        counter.requests += 1;
+        return inner(...args);
+      }) as unknown as typeof fetch;
+      return { counter, fetchImpl };
+    };
+    const hangingFetch = (async (_input: unknown, init?: RequestInit) =>
+      new Promise<Response>((_resolve, reject) => {
+        init?.signal?.addEventListener("abort", () => reject(init.signal?.reason), { once: true });
+      })) as unknown as typeof fetch;
+    const optionalWarnings = () => warnings.filter((w) => w.includes("Optional font"));
+
+    it.each([
+      ["HTTP 503", makeHttp503Fetch],
+      ["a network failure", makeFailingFetch],
+    ])("retries once on %s, then renders the fallback and warns", async (_label, makeFetch) => {
+      const { counter, fetchImpl } = counting(makeFetch());
+      const result = await injectDeterministicFontFaces(FALLBACK_ONLY, {
+        failClosedFontFetch: true,
+        allowSystemFontCapture: false,
+        fetchImpl,
+        fontFetchRetryPolicy: { baseDelayMs: 0, maxAttempts: 3 },
+      });
+      expect(result).toBe(FALLBACK_ONLY);
+      expect(counter.requests).toBe(2);
+      expect(optionalWarnings()).toHaveLength(1);
+      expect(optionalWarnings()[0]).toContain(`"Acme Brand Sans"`);
+    });
+
+    it("gives up on a hanging fetch within the per-attempt bound and warns", async () => {
+      const { counter, fetchImpl } = counting(hangingFetch);
+      const started = Date.now();
+      const result = await injectDeterministicFontFaces(FALLBACK_ONLY, {
+        failClosedFontFetch: true,
+        allowSystemFontCapture: false,
+        fetchImpl,
+        fontFetchRetryPolicy: { baseDelayMs: 0, attemptTimeoutMs: 50, maxAttempts: 3 },
+      });
+      expect(result).toBe(FALLBACK_ONLY);
+      expect(counter.requests).toBe(2);
+      expect(Date.now() - started).toBeLessThan(1_000);
+      expect(optionalWarnings()[0]).toContain(`"Acme Brand Sans"`);
+    });
+
+    it("injects the face when the retry succeeds, without a warning", async () => {
+      const served = makeGoogleFontFetch([]);
+      const unavailable = makeHttp503Fetch();
+      let calls = 0;
+      const fetchImpl = (async (...args: Parameters<typeof fetch>) =>
+        (calls += 1) === 1 ? unavailable(...args) : served(...args)) as unknown as typeof fetch;
+      const result = await injectDeterministicFontFaces(FALLBACK_ONLY, {
+        failClosedFontFetch: true,
+        allowSystemFontCapture: false,
+        fetchImpl,
+        fontFetchRetryPolicy: { baseDelayMs: 0 },
+      });
+      expect(result).toContain("data-hyperframes-deterministic-fonts");
+      expect(result).toContain(`font-family: "Acme Brand Sans"`);
+      expect(optionalWarnings()).toHaveLength(0);
+    });
+
+    it("still aborts when the caller cancels", async () => {
+      const controller = new AbortController();
+      const reason = new Error("caller cancelled");
+      setTimeout(() => controller.abort(reason), 20);
+      const caught = await rejectedError(
+        injectDeterministicFontFaces(FALLBACK_ONLY, {
           failClosedFontFetch: true,
           allowSystemFontCapture: false,
-          fetchImpl: makeFetch(),
-          fontFetchRetryPolicy: { baseDelayMs: 0 },
-        },
-      ),
-    );
-    expect(caught).toBeInstanceOf(FontFetchUnavailableError);
+          fetchImpl: hangingFetch,
+          abortSignal: controller.signal,
+          fontFetchRetryPolicy: { baseDelayMs: 0, attemptTimeoutMs: 5_000 },
+        }),
+      );
+      expect(caught).toBe(reason);
+      expect(optionalWarnings()).toHaveLength(0);
+    });
+
+    it("keeps a required family fail-closed after all its attempts", async () => {
+      const { counter, fetchImpl } = counting(makeHttp503Fetch());
+      const caught = await rejectedError(
+        injectDeterministicFontFaces(
+          styled(`body { font-family: "Acme Brand Sans", sans-serif; }`),
+          {
+            failClosedFontFetch: true,
+            allowSystemFontCapture: false,
+            fetchImpl,
+            fontFetchRetryPolicy: { baseDelayMs: 0, maxAttempts: 3 },
+          },
+        ),
+      );
+      expect(caught).toBeInstanceOf(FontFetchUnavailableError);
+      expect(counter.requests).toBe(3);
+      expect(optionalWarnings()).toHaveLength(0);
+    });
+
+    it("does not hand a required family the optional retry count for the same request", async () => {
+      const { counter, fetchImpl } = counting(makeHttp503Fetch());
+      const fontFetchRetryPolicy = { baseDelayMs: 0, maxAttempts: 3 };
+      const [optionalResult, requiredError] = await Promise.all([
+        injectDeterministicFontFaces(FALLBACK_ONLY, {
+          failClosedFontFetch: true,
+          allowSystemFontCapture: false,
+          fetchImpl,
+          fontFetchRetryPolicy,
+        }),
+        rejectedError(
+          injectDeterministicFontFaces(
+            styled(
+              `body { font-family: var(--brand, "Acme Brand Sans", sans-serif); } p { font-family: "Acme Brand Sans"; }`,
+            ),
+            {
+              failClosedFontFetch: true,
+              allowSystemFontCapture: false,
+              fetchImpl,
+              fontFetchRetryPolicy,
+            },
+          ),
+        ),
+      ]);
+      expect(optionalResult).toBe(FALLBACK_ONLY);
+      expect(requiredError).toBeInstanceOf(FontFetchUnavailableError);
+      expect(counter.requests).toBe(5);
+    });
+
+    it("keeps a family fail-closed when it is also named directly", async () => {
+      const caught = await rejectedError(
+        injectDeterministicFontFaces(
+          styled(
+            `.a { font-family: var(--brand, "Acme Brand Sans", sans-serif); } .b { font-family: "Acme Brand Sans", serif; }`,
+          ),
+          {
+            failClosedFontFetch: true,
+            allowSystemFontCapture: false,
+            fetchImpl: makeHttp503Fetch(),
+            fontFetchRetryPolicy: { baseDelayMs: 0 },
+          },
+        ),
+      );
+      expect(caught).toBeInstanceOf(FontFetchUnavailableError);
+    });
   });
 
   it.each([

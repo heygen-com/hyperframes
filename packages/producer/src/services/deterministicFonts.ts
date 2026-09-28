@@ -329,7 +329,10 @@ function primaryCssVariable(
   return null;
 }
 
-/** `optional`: reached only through a var() fallback or a chain of var()s; not-found is skipped. */
+/**
+ * `optional`: reached only through a var() fallback or a chain of var()s; not-found is skipped
+ * and a transient failure warns instead of throwing.
+ */
 type ResolvedFamily = { family: string; optional: boolean };
 
 // Deep enough for real alias chains; stops `--a: var(--b); --b: var(--a)` cycles.
@@ -674,7 +677,7 @@ async function buildFontFaceCss(
   const rules: string[] = [];
   const unresolved: string[] = [];
 
-  for (const [normalizedFamily, { family: originalCaseFamily }] of requestedFamilies) {
+  for (const [normalizedFamily, { family: originalCaseFamily, optional }] of requestedFamilies) {
     // Path 1: pre-bundled fonts via FONT_ALIASES — emit embedded faces,
     // then fetch from Google Fonts to fill missing weights and character subsets.
     const canonicalKey = FONT_ALIASES[normalizedFamily];
@@ -710,7 +713,7 @@ async function buildFontFaceCss(
       // `originalCaseFamily` so the authored CSS keeps matching.
       const canonicalFamily = resolveAliasDisplayName(normalizedFamily);
       const googleFaces = canonicalFamily
-        ? await fetchGoogleFont(canonicalFamily, options, fontText)
+        ? await fetchFamilyFaces(canonicalFamily, optional, options, fontText)
         : [];
 
       // Bundled weights only cover Latin. Keep other subsets (including
@@ -750,7 +753,7 @@ async function buildFontFaceCss(
     }
 
     // Path 2: fetch from Google Fonts (with local cache)
-    const googleFaces = await fetchGoogleFont(originalCaseFamily, options, fontText);
+    const googleFaces = await fetchFamilyFaces(originalCaseFamily, optional, options, fontText);
     if (googleFaces.length > 0) {
       for (const face of googleFaces) {
         rules.push(
@@ -1210,8 +1213,9 @@ function fetchGoogleFontCss(
   familyName: string,
   options: InternalFontFetchOptions,
 ): Promise<{ ok: true; body: string } | { ok: false }> {
-  // Fail-closed callers retry and throw where lenient ones don't, so they never share an entry.
-  const key = `${options.failClosedFontFetch ? "closed" : "open"}:${url}`;
+  // Retries decide the outcome, so only callers with the same mode and attempt count share an entry.
+  const mode = options.failClosedFontFetch ? `closed${options.retryPolicy.maxAttempts}` : "open";
+  const key = `${mode}:${url}`;
   let shared = googleFontCssCache.get(key);
   if (!shared) {
     // The shared fetch must not carry any one caller's abortSignal, or that
@@ -1316,6 +1320,30 @@ async function fetchGoogleFont(
   return faces;
 }
 
+/** An optional family gets one retry on a transient failure, then renders its fallback with a warning. */
+async function fetchFamilyFaces(
+  familyName: string,
+  optional: boolean,
+  options: InternalFontFetchOptions,
+  fontText?: string,
+): Promise<GoogleFontFace[]> {
+  if (!optional) return fetchGoogleFont(familyName, options, fontText);
+  const maxAttempts = Math.min(options.retryPolicy.maxAttempts, 2);
+  try {
+    return await fetchGoogleFont(
+      familyName,
+      { ...options, retryPolicy: { ...options.retryPolicy, maxAttempts } },
+      fontText,
+    );
+  } catch (err) {
+    if (!(err instanceof FontFetchUnavailableError)) throw err;
+    defaultLogger.warn(
+      `[Compiler] Optional font "${familyName}" is unavailable, rendering its fallback: ${err.message}`,
+    );
+    return [];
+  }
+}
+
 // ---------------------------------------------------------------------------
 
 /**
@@ -1323,7 +1351,7 @@ async function fetchGoogleFont(
  */
 export interface InjectDeterministicFontFacesOptions {
   /**
-   * When `true`, exhausted transient fetch failures throw
+   * When `true`, exhausted transient fetch failures of a required family throw
    * {@link FontFetchUnavailableError} with code `FONT_FETCH_UNAVAILABLE`;
    * deterministic resolution failures retain `FONT_FETCH_FAILED`.
    *
@@ -1561,7 +1589,7 @@ export async function injectDeterministicFontFaces(
     fetchOptions,
     extractGoogleFontsText(html),
   );
-  // An optional family that no source serves is tolerated; fetch failures threw above.
+  // An optional family that no source serves, or that stayed unavailable, is tolerated.
   const required = unresolved.filter(
     (family) => !pendingFamilies.get(family.toLowerCase())?.optional,
   );
