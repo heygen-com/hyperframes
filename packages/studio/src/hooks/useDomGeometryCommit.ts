@@ -133,7 +133,8 @@ export function useDomGeometryCommit({
     () => ({
       commitPathOffset: (selection, next, modifiers) =>
         saved(() => handleGsapAwarePathOffsetCommit(selection, next, modifiers)),
-      commitGroupPathOffset: (updates) => saved(() => handleGsapAwareGroupPathOffsetCommit(updates)),
+      commitGroupPathOffset: (updates) =>
+        saved(() => handleGsapAwareGroupPathOffsetCommit(updates)),
       commitBoxSize: (selection, next, offset, restore) =>
         saved(() => handleGsapAwareBoxSizeCommit(selection, next, offset, restore)),
       commitRotation: (selection, next) =>
