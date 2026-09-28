@@ -10,6 +10,7 @@
 import type { DirectTimelineAdapter } from "./timeline-adapters.js";
 
 const UI_UPDATE_INTERVAL_MS = 100;
+const CURRENT_TIME_ROUNDING_S = 1e-3;
 
 export interface ClockCallbacks {
   /** Called every ~100ms and on completion with the current time. */
@@ -31,7 +32,7 @@ function reachedStop(
   stop: { end: number; shown: number },
 ): boolean {
   if (stop.end <= 0) return false;
-  const early = stop.shown < stop.end && lookAhead > 0 ? lookAhead : 0;
+  const early = stop.shown < stop.end && lookAhead > 0 ? lookAhead + CURRENT_TIME_ROUNDING_S : 0;
   return time + early >= stop.end;
 }
 

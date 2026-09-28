@@ -422,10 +422,10 @@ describe("HyperframesPlayer range playback: video and direct timelines", () => {
     expect(ranEvents()).toEqual(["ready@0", "ended@2.983"]);
   });
 
-  it("stops a check early when the video's time moves once per frame, not once per tick", () => {
+  it("stops a check early when the video's time moves once per frame and is rounded down", () => {
     const video = loadVideo({ "range-end": "3" });
     player.play();
-    for (const currentTime of [2.9, 2.9, 2.933, 2.933, 2.967]) {
+    for (const currentTime of [2.9, 2.9, 2.933333, 2.933333, 2.966666]) {
       setMedia(video, { currentTime });
       flushFrame();
     }
