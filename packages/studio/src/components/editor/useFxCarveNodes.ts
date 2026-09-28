@@ -117,16 +117,11 @@ export async function measureCarve(
   if (mixed.length === 0) return null;
   // Strength is what the author set; these are the numbers it means.
   const profile = carveProfile(strength);
-  // The bed as well as the voice, when the carve is asked to match levels:
-  // "how far over the voice is this bed" cannot be answered by listening to
-  // one of them.
-  const bedSamples =
-    profile.duckDb > 0 && bed.src ? await decode(bed.src, bed.clock).catch(() => null) : null;
+  // The bed as it plays: its length bounds the speech worth carving, and the duck
+  // compares against it ("how far over the voice is this bed" needs both).
+  const bedSamples = bed.src ? await decode(bed.src, bed.clock).catch(() => null) : null;
   // Speech after the bed stops has no bed to carve.
-  const bedLength =
-    bedSamples?.length ??
-    (bed.clock.duration ? Math.round(bed.clock.duration * DECODE_SAMPLE_RATE) : mixed.length);
-  const voiceMix = mixed.subarray(0, bedLength);
+  const voiceMix = bedSamples ? mixed.subarray(0, bedSamples.length) : mixed;
   const bands = analyseCarveBands(voiceMix, DECODE_SAMPLE_RATE, profile);
   // The level half of the carve, measured against the speech it has to sit
   // under. No offset to apply: the mix is already on the bed's clock.

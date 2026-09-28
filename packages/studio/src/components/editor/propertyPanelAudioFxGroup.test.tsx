@@ -1063,23 +1063,32 @@ describe("AudioFxGroup dynamic carve", () => {
       };
     }
 
-    it("ignores speech after the bed has stopped playing", async () => {
-      // Quiet 1 kHz speech under the 3 s bed; loud 4 kHz speech at 4-6 s, after the bed ends.
-      const under = tone(8, [0, 2], 1000, 0.3);
+    /** Quiet 1 kHz speech at 0-2 s, loud 4 kHz speech at 4-6 s, in an 8 s file. */
+    const lateSpeech = () => {
       const after = tone(8, [4, 6], 4000, 0.9);
-      const voice = under.map((v, i) => v + after[i]!);
-      stubFiles({ "voice.wav": voice, "bed.wav": tone(8, [0, 8], 200) });
+      return tone(8, [0, 2], 1000, 0.3).map((v, i) => v + after[i]!);
+    };
+
+    it("ignores speech after the bed has stopped playing", async () => {
+      // The bed file runs 8 s, but the clip plays only its first 3 s.
+      stubFiles({ "voice.wav": lateSpeech(), "bed.wav": tone(8, [0, 8], 200) });
       const lane = await carveLane("peaking", { start: "0" }, { duration: "3" });
       expect(lane.frequency).toBe(1000);
     });
 
     it("ignores speech after a bed with no duration runs out, when it ducks", async () => {
       // No data-duration: the bed plays its 3 s file. Strength 0.05 ducks and keeps one band.
-      const under = tone(8, [0, 2], 1000, 0.3);
-      const after = tone(8, [4, 6], 4000, 0.9);
-      const voice = under.map((v, i) => v + after[i]!);
-      stubFiles({ "voice.wav": voice, "bed.wav": tone(3, [0, 3], 200) });
+      stubFiles({ "voice.wav": lateSpeech(), "bed.wav": tone(3, [0, 3], 200) });
       const lane = await carveLane("peaking", { start: "0" }, {}, 0.05);
+      expect(lane.frequency).toBe(1000);
+    });
+
+    it.each([
+      ["no duration", {}],
+      ["a duration longer than its file", { duration: "6" }],
+    ])("ignores speech after a 3 s bed file with %s, without ducking", async (_, bed) => {
+      stubFiles({ "voice.wav": lateSpeech(), "bed.wav": tone(3, [0, 3], 200) });
+      const lane = await carveLane("peaking", { start: "0" }, bed);
       expect(lane.frequency).toBe(1000);
     });
 
