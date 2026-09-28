@@ -2342,6 +2342,9 @@ async function processUploadedFiles(
 
 // ── Route registration ──────────────────────────────────────────────────────
 
+const MAX_TEXT_READ_BYTES = 32 * 1024 * 1024;
+const GIT_BINARY_SNIFF_BYTES = 8000;
+
 export function registerFileRoutes(api: Hono, adapter: StudioApiAdapter): void {
   // ── Read ──
 
@@ -2376,13 +2379,20 @@ export function registerFileRoutes(api: Hono, adapter: StudioApiAdapter): void {
       // Hono answers as a plain-text 500. The caller already handles a 404
       // with `why`; this reports the same shape instead of an opaque server
       // error for something that is not one.
-      if (!fstatSync(fd).isFile()) {
+      const stat = fstatSync(fd);
+      if (!stat.isFile()) {
         return c.json({ error: "not found", why: "not_a_file" }, 404);
+      }
+      if (stat.size > MAX_TEXT_READ_BYTES) {
+        return c.json({ error: "too large to read as text", why: "too_large" }, 413);
       }
 
       const content = readFileSync(fd);
       const version = fileContentVersion(content);
       c.header("ETag", version);
+      if (content.subarray(0, GIT_BINARY_SNIFF_BYTES).includes(0)) {
+        return c.json({ error: "not a text file", why: "binary", version }, 415);
+      }
       // `missing: false` on the read path too, so its PRESENCE is what tells a
       // caller this server distinguishes the two empty answers at all. Without
       // it here, a real 0-byte file from a new server looks exactly like either

@@ -3,6 +3,7 @@ import React, { act } from "react";
 import { createRoot } from "react-dom/client";
 import { afterEach, describe, expect, it } from "vitest";
 import { installReactActEnvironment } from "../../hooks/domSelectionTestHarness";
+import { liveTime, usePlayerStore } from "../../player/store/playerStore";
 import { useCompositionStack } from "./useCompositionStack";
 
 installReactActEnvironment();
@@ -109,5 +110,130 @@ describe("useCompositionStack — activating a composition by path", () => {
     expect(seen.stack[0]?.id).toBe("master");
 
     act(() => root.unmount());
+  });
+});
+
+describe("useCompositionStack — back to the master", () => {
+  afterEach(() => {
+    document.body.innerHTML = "";
+    usePlayerStore.getState().setCurrentTime(0);
+    usePlayerStore.getState().setIsPlaying(false);
+  });
+
+  const INTRO = { id: "intro", compositionSrc: "compositions/intro.html" };
+  const LOGO = { id: "logo", compositionSrc: "compositions/logo.html" };
+  const seek = (time: number) => act(() => usePlayerStore.getState().setCurrentTime(time));
+  const time = () => usePlayerStore.getState().currentTime;
+
+  async function mount(props: { projectId?: string; activeCompositionPath?: string | null } = {}) {
+    const host = document.createElement("div");
+    document.body.append(host);
+    const root = createRoot(host);
+    const seen = {} as { stack: ReturnType<typeof useCompositionStack> };
+    function Harness(p: { projectId: string; activeCompositionPath: string | null }) {
+      seen.stack = useCompositionStack(p);
+      return null;
+    }
+    const render = async (next: typeof props) => {
+      props = { ...props, ...next };
+      await act(async () => {
+        root.render(
+          <Harness
+            projectId={props.projectId ?? "p"}
+            activeCompositionPath={props.activeCompositionPath ?? null}
+          />,
+        );
+      });
+    };
+    await render({});
+    const run = async (step: (stack: ReturnType<typeof useCompositionStack>) => void) => {
+      await act(async () => step(seen.stack));
+    };
+    return { seen, render, run, unmount: () => act(() => root.unmount()) };
+  }
+
+  it("restores the master playhead from the breadcrumb after a two-level drill", async () => {
+    const { seen, run, unmount } = await mount();
+    seek(12);
+    await run((s) => s.handleDrillDown(INTRO));
+    seek(3);
+    await run((s) => s.handleDrillDown(LOGO));
+    expect(seen.stack.compositionStack.map((level) => level.label)).toEqual([
+      "Master",
+      "intro",
+      "logo",
+    ]);
+    await run((s) => s.handleNavigateComposition(0));
+    expect(time()).toBe(12);
+    unmount();
+  });
+
+  it("restores the master playhead when Escape or a timeline double-click goes back", async () => {
+    const { run, unmount } = await mount();
+    seek(12);
+    await run((s) => s.handleDrillDown(INTRO));
+    seek(3);
+    await run((s) => s.handleDrillDown(LOGO));
+    seek(1);
+    await run((s) => s.updateCompositionStack((prev) => prev.slice(0, -1)));
+    expect(time()).toBe(1);
+    await run((s) => s.updateCompositionStack((prev) => prev.slice(0, -1)));
+    expect(time()).toBe(12);
+    unmount();
+  });
+
+  it("restores the live master playhead when the drill happens during playback", async () => {
+    const { run, unmount } = await mount();
+    seek(4);
+    act(() => usePlayerStore.getState().setIsPlaying(true));
+    liveTime.notify(9);
+    await run((s) => s.handleDrillDown(INTRO));
+    act(() => usePlayerStore.getState().setIsPlaying(false));
+    seek(2);
+    await run((s) => s.handleNavigateComposition(0));
+    expect(time()).toBe(9);
+    unmount();
+  });
+
+  it("saves the master playhead at the first of two drills in one batch", async () => {
+    const { run, unmount } = await mount();
+    seek(12);
+    await run((s) => {
+      s.handleDrillDown(INTRO);
+      usePlayerStore.getState().setCurrentTime(7);
+      s.handleDrillDown(LOGO);
+    });
+    await run((s) => s.handleNavigateComposition(0));
+    expect(time()).toBe(12);
+    unmount();
+  });
+
+  it("restores a master playhead of exactly 0", async () => {
+    const { run, unmount } = await mount();
+    await run((s) => s.handleDrillDown(INTRO));
+    seek(3);
+    await run((s) => s.handleNavigateComposition(0));
+    expect(time()).toBe(0);
+    unmount();
+  });
+
+  it("restores the master playhead when the Comps panel goes there and back", async () => {
+    const { render, unmount } = await mount();
+    seek(30);
+    await render({ activeCompositionPath: "compositions/intro.html" });
+    seek(4);
+    await render({ activeCompositionPath: "index.html" });
+    expect(time()).toBe(30);
+    unmount();
+  });
+
+  it("does not carry one project's master playhead into another", async () => {
+    const { run, render, unmount } = await mount({ projectId: "a" });
+    seek(12);
+    await run((s) => s.handleDrillDown(INTRO));
+    seek(3);
+    await render({ projectId: "b" });
+    expect(time()).toBe(3);
+    unmount();
   });
 });

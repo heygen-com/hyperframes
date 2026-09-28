@@ -1,7 +1,7 @@
 import { buildProjectApiPath } from "../../utils/projectRouting";
 // Composition drill-down stack management for NLEContext/EditorShell
 import { useState, useCallback, useRef, useEffect } from "react";
-import { usePlayerStore } from "../../player/store/playerStore";
+import { liveTime, usePlayerStore } from "../../player/store/playerStore";
 import type { CompositionLevel } from "./CompositionBreadcrumb";
 import { encodePreviewPath } from "../../player/components/thumbnailUtils";
 
@@ -37,16 +37,30 @@ export function useCompositionStack({
   const onCompositionChangeRef = useRef(onCompositionChange);
   onCompositionChangeRef.current = onCompositionChange;
 
+  const masterSeekRef = useRef(0);
+  const masterSeekProjectRef = useRef<string | null>(null);
+  const projectIdRef = useRef(projectId);
+  projectIdRef.current = projectId;
+  const stackRef = useRef(compositionStack);
+
   const updateCompositionStack: typeof setCompositionStack = useCallback((action) => {
-    setCompositionStack((prev) => {
-      const next = typeof action === "function" ? action(prev) : action;
-      const id = next[next.length - 1]?.id;
-      queueMicrotask(() => onCompositionChangeRef.current?.(id === "master" ? null : id));
-      return next;
-    });
+    const prev = stackRef.current;
+    const next = typeof action === "function" ? action(prev) : action;
+    stackRef.current = next;
+    const player = usePlayerStore.getState();
+    if (prev.length === 1 && next.length > 1) {
+      masterSeekRef.current = player.isPlaying ? liveTime.latest() : player.currentTime;
+      masterSeekProjectRef.current = projectIdRef.current;
+    } else if (next.length === 1 && prev.length > 1) {
+      if (masterSeekProjectRef.current === projectIdRef.current) {
+        player.setCurrentTime(masterSeekRef.current);
+      }
+    }
+    setCompositionStack(next);
+    const id = next[next.length - 1]?.id;
+    queueMicrotask(() => onCompositionChangeRef.current?.(id === "master" ? null : id));
   }, []);
 
-  const masterSeekRef = useRef(0);
   const [compIdToSrc, setCompIdToSrc] = useState<Map<string, string>>(new Map());
 
   const compIdToSrcRef = useRef(compIdToSrc);
@@ -54,9 +68,6 @@ export function useCompositionStack({
 
   const handleNavigateComposition = useCallback(
     (index: number) => {
-      if (index === 0 && masterSeekRef.current > 0) {
-        usePlayerStore.getState().setCurrentTime(masterSeekRef.current);
-      }
       usePlayerStore.getState().setElements([]);
       updateCompositionStack((prev) => prev.slice(0, index + 1));
     },
@@ -67,7 +78,6 @@ export function useCompositionStack({
   const handleDrillDown = useCallback(
     (element: { id: string; compositionSrc?: string }) => {
       if (!element.compositionSrc) return;
-      masterSeekRef.current = usePlayerStore.getState().currentTime;
 
       const compId = element.id;
       let resolvedPath = compIdToSrcRef.current.get(compId);
