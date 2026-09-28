@@ -30,6 +30,7 @@ import {
 import { sourceTimeAt } from "../speedRamp";
 import { createWaapiAdapter } from "./adapters/waapi";
 import {
+  MEDIA_SYNC_TOLERANCE_SECONDS,
   readElementPlaybackRate,
   readElementRateSpec,
   readElementPlaybackStart,
@@ -2857,6 +2858,7 @@ export function initSandboxRuntimeModular(): void {
   const collectMediaElementsToVisit = (
     index: MediaClipIndex,
     toSeconds: number,
+    cueAheadSeconds: number,
   ): Array<HTMLVideoElement | HTMLAudioElement> => {
     const fromSeconds = lastSyncedMediaTimeSeconds;
     if (fromSeconds === null) return index.clips.map((clip) => clip.el);
@@ -2866,7 +2868,7 @@ export function initSandboxRuntimeModular(): void {
     const hi = Math.max(fromSeconds, toSeconds) + sameInstantMargin;
     const visiting = new Set<HTMLVideoElement | HTMLAudioElement>();
     for (const clip of mediaClipsInWindow) visiting.add(clip.el);
-    for (const clip of clipsWithEndpointBetween(index.byStart, (c) => c.start, lo, hi)) {
+    for (const clip of clipsWithEndpointBetween(index.byStart, (c) => c.start, lo, hi + cueAheadSeconds)) {
       visiting.add(clip.el);
     }
     for (const clip of clipsWithEndpointBetween(index.byEnd, (c) => c.end, lo, hi)) {
@@ -2970,6 +2972,10 @@ export function initSandboxRuntimeModular(): void {
     // stale one cannot be recovered, so it visits all of them exactly as before.
     // Same reasoning, and the same latch, as the duration floors above.
     const indexed = !renderCaptureSeekStarted;
+    const cueAheadSeconds =
+      state.isPlaying && lastSyncedMediaTimeSeconds !== null
+        ? Math.min(Math.max(0, state.currentTime - lastSyncedMediaTimeSeconds), MEDIA_SYNC_TOLERANCE_SECONDS)
+        : 0;
     const mediaClips = withTimingResolver(() => {
       if (!indexed) return buildRuntimeMediaCache().mediaClips;
       const index = resolveMediaClipIndex();
@@ -2977,7 +2983,9 @@ export function initSandboxRuntimeModular(): void {
       // is re-read here: `el.duration` is reset by any `el.load()` the retry path
       // made last pass, and a cached copy of it would be exactly the stale
       // duration the two-scope rule exists to prevent.
-      return buildRuntimeMediaCache(collectMediaElementsToVisit(index, state.currentTime))
+      return buildRuntimeMediaCache(
+        collectMediaElementsToVisit(index, state.currentTime, cueAheadSeconds),
+      )
         .mediaClips;
     });
     // Attach probed volume keyframes to clips so syncRuntimeMedia can use the
@@ -3007,6 +3015,7 @@ export function initSandboxRuntimeModular(): void {
         userMuted: state.bridgeMuted,
         userVolume: state.bridgeVolume,
         forceSync,
+        cueAheadSeconds,
         getCompositionDuration: () =>
           getSafeTimelineDurationSeconds(state.capturedTimeline, 0, timingRevision),
         onElementVolume: (el, _effectiveVolume, authorVolume) =>
