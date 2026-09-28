@@ -2,7 +2,6 @@ import type { Hono } from "hono";
 import { HTTPException } from "hono/http-exception";
 import { open, stat } from "node:fs/promises";
 import { createHash } from "node:crypto";
-import sharp from "sharp";
 import type { StudioApiAdapter } from "../types.js";
 import { pinWithinProject } from "../helpers/safePath.js";
 import { requestSubPath } from "../helpers/requestSubPath.js";
@@ -25,6 +24,7 @@ async function generateThumbnail(path: string, signal: AbortSignal): Promise<Buf
       offset += bytesRead;
     }
     if (source[0] !== 0xff || source[1] !== 0xd8) throw new Error("Unsupported image");
+    const { default: sharp } = await import("sharp");
     const image = sharp(source.subarray(0, offset), { limitInputPixels: 40_000_000 });
     if ((await image.metadata()).format !== "jpeg") throw new Error("Unsupported image");
     signal.throwIfAborted();
