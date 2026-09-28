@@ -33,6 +33,7 @@ import {
 // rewriteSubCompPaths functions are used by inlineSubCompositions (shared module)
 import {
   buildVariablesByCompScript,
+  dedupeFontFaceRules,
   scopeCssToComposition,
   wrapInlineScriptWithErrorBoundary,
   wrapScopedCompositionScript,
@@ -709,6 +710,15 @@ function placeSceneStylesLikeRender(document: Document): void {
   first.before(holder);
 }
 
+function isAlwaysAppliedStyle(el: Element): boolean {
+  const type = el.getAttribute("type")?.trim().toLowerCase();
+  return (
+    !el.hasAttribute("media") &&
+    (!type || type === "text/css") &&
+    !el.closest("template, noscript, svg")
+  );
+}
+
 type PartRun<T> = { scene?: string; chunks: T[] };
 
 function pushRun<T>(runs: PartRun<T>[], scene: string | undefined, chunk: T): void {
@@ -1317,6 +1327,14 @@ async function bundleProject(projectDir: string, options?: BundleOptions): Promi
     const srcset = el.getAttribute("srcset");
     if (srcset)
       el.setAttribute("srcset", rewriteSrcsetWithInlinedAssets(srcset, projectDir, inlineAssets));
+  }
+  // Before inlining, so postcss reads paths not font bytes; scene parts keep copies to swap alone.
+  if (!options?.sceneParts) {
+    const liveStyles = [...document.querySelectorAll("style")].filter(isAlwaysAppliedStyle);
+    const dedupedStyles = dedupeFontFaceRules(liveStyles.map((el) => el.textContent || ""));
+    liveStyles.forEach((el, i) => {
+      el.textContent = dedupedStyles[i] ?? "";
+    });
   }
   for (const styleEl of document.querySelectorAll("style")) {
     styleEl.textContent = rewriteCssUrlsWithInlinedAssets(

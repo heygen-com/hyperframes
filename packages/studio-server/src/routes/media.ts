@@ -1,9 +1,9 @@
 import type { Hono } from "hono";
 import { streamSSE } from "hono/streaming";
-import { existsSync, mkdirSync } from "node:fs";
+import { existsSync } from "node:fs";
 import { basename, dirname, extname, join, posix } from "node:path";
 import type { MediaProcessingJobState, StudioApiAdapter } from "../types.js";
-import { pinWithinProject, resolveWithinProject } from "../helpers/safePath.js";
+import { mkdirWithinProject, pinWithinProject, resolveWithinProject } from "../helpers/safePath.js";
 import { probeMediaMetadata } from "../helpers/mediaMetadata.js";
 
 const VIDEO_EXTENSIONS = new Set([
@@ -231,8 +231,8 @@ export function registerMediaRoutes(
         }
       }
 
-      mkdirSync(dirname(outputPath), { recursive: true });
-      if (backgroundOutputPath) mkdirSync(dirname(backgroundOutputPath), { recursive: true });
+      mkdirWithinProject(project.dir, dirname(outputPath));
+      if (backgroundOutputPath) mkdirWithinProject(project.dir, dirname(backgroundOutputPath));
 
       const jobId = makeJobId(project.id, mediaJobs);
       const state = adapter.startBackgroundRemoval({

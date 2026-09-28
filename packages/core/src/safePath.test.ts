@@ -2,7 +2,12 @@ import { describe, it, expect, afterEach } from "vitest";
 import { existsSync, mkdtempSync, mkdirSync, writeFileSync, symlinkSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { basename, dirname, join } from "node:path";
-import { isSafePath, resolveWithinProject } from "./safePath.js";
+import {
+  isProjectRootMissing,
+  isSafePath,
+  mkdirWithinProject,
+  resolveWithinProject,
+} from "./safePath.js";
 
 const recased = (path: string) => join(dirname(path), basename(path).toUpperCase());
 
@@ -172,5 +177,51 @@ describe("resolveWithinProject", () => {
     writeFileSync(join(external, "secret.txt"), "top secret");
     if (!tryCreateSymlink(external, join(base, "link"), "dir")) return;
     expect(resolveWithinProject(base, "link/secret.txt")).toBeNull();
+  });
+});
+
+describe("mkdirWithinProject", () => {
+  const made: string[] = [];
+  afterEach(() => {
+    for (const dir of made.splice(0)) rmSync(dir, { recursive: true, force: true });
+  });
+  const tempDir = () => {
+    const dir = mkdtempSync(join(tmpdir(), "hf-mkdir-within-"));
+    made.push(dir);
+    return dir;
+  };
+
+  it("creates the missing folders below a project folder that exists", () => {
+    const root = tempDir();
+    mkdirWithinProject(root, join(root, ".hyperframes", "backup"));
+    expect(existsSync(join(root, ".hyperframes", "backup"))).toBe(true);
+  });
+
+  it("does not bring back a project folder that was renamed away", () => {
+    const parent = tempDir();
+    const root = join(parent, "film");
+    let thrown: unknown;
+    try {
+      mkdirWithinProject(root, join(root, "assets", "audio"));
+    } catch (error) {
+      thrown = error;
+    }
+    expect(isProjectRootMissing(thrown)).toBe(true);
+    expect(existsSync(root)).toBe(false);
+  });
+
+  it("creates a folder outside the project as before", () => {
+    const parent = tempDir();
+    mkdirSync(join(parent, "film"));
+    mkdirWithinProject(join(parent, "film"), join(parent, "cache", "renders"));
+    expect(existsSync(join(parent, "cache", "renders"))).toBe(true);
+  });
+
+  it("creates no folder outside the project once the project folder is gone", () => {
+    const parent = tempDir();
+    expect(() => mkdirWithinProject(join(parent, "film"), join(parent, "renders"))).toThrow(
+      /Project folder not found/,
+    );
+    expect(existsSync(join(parent, "renders"))).toBe(false);
   });
 });

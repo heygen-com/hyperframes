@@ -56,7 +56,7 @@ let zReorderGestureSeq = 0;
  * fold can only ever merge records of the SAME gesture.
  *
  * Exported as THE single implementation of the key: the canvas z-order wiring
- * (PreviewOverlays) mints it once per gesture and passes the same instance to
+ * (ConnectedDomEditOverlay) mints it once per gesture and passes the same instance to
  * both the z persist and the timeline lane mirror (useCanvasZOrderTimelineMirror)
  * so editHistory folds the z write and the track write into one undo entry —
  * recomputing the key per record would silently split the undo.

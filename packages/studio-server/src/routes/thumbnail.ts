@@ -4,7 +4,6 @@ import {
   type Dirent,
   fstatSync,
   openSync,
-  mkdirSync,
   readFileSync,
   readdirSync,
   renameSync,
@@ -22,7 +21,11 @@ import { createProjectSignature, resolveProjectAndSignature } from "../helpers/p
 import { STUDIO_MOTION_PATH } from "../helpers/studioMotionRenderScript.js";
 import { thumbnailGenerationCoordinator } from "./thumbnailGenerationCoordinator.js";
 import { requestSubPath } from "../helpers/requestSubPath.js";
-import { resolveWithinProject } from "../helpers/safePath.js";
+import {
+  isProjectRootMissing,
+  mkdirWithinProject,
+  resolveWithinProject,
+} from "../helpers/safePath.js";
 import { PREVIEW_CAPTURE_PARAM } from "./preview.js";
 
 const THUMBNAIL_CACHE_VERSION = "v4";
@@ -216,7 +219,8 @@ export function registerThumbnailRoutes(api: Hono, adapter: StudioApiAdapter): v
         headers: { "Content-Type": contentType, "Cache-Control": "no-cache" },
       });
     }
-    if (url.searchParams.get("cached") === "1") return c.body(null, 404);
+    if (url.searchParams.get("cached") === "1")
+      return c.body(null, 204, { "Cache-Control": "no-cache" });
 
     try {
       const buffer = await thumbnailGenerationCoordinator.acquire(
@@ -252,7 +256,7 @@ export function registerThumbnailRoutes(api: Hono, adapter: StudioApiAdapter): v
             // but never file them under a signature they do not prove.
             return generated;
           }
-          mkdirSync(cacheDir, { recursive: true });
+          mkdirWithinProject(project.dir, cacheDir);
           writeThumbnailAtomically(cachePath, generated);
           return generated;
         },
@@ -271,6 +275,7 @@ export function registerThumbnailRoutes(api: Hono, adapter: StudioApiAdapter): v
       if (err instanceof DOMException && err.name === "AbortError") {
         return new Response(null, { status: 499 });
       }
+      if (isProjectRootMissing(err)) throw err;
       const msg = err instanceof Error ? err.message : String(err);
       return c.json({ error: `Thumbnail generation failed: ${msg}` }, 500);
     }

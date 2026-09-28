@@ -694,6 +694,12 @@ describe("missing asset findings name the file that references them", () => {
     expect(fileOf("audio_src_not_found", "missing-in-draft.mp3")).toBe(draft);
     expect(fileOf("texture_mask_asset_not_found", "missing-mask.png")).toBe(draft);
     expect(fileOf("missing_local_asset", "missing-in-film.png")).toBe(join(project, "index.html"));
+    const entryOf = (name: string) =>
+      results.find((entry) => entry.result.findings.some((f) => f.message.includes(name)))?.file;
+    expect(entryOf("missing-in-draft.png")).toBe("compositions/draft.html");
+    expect(entryOf("missing-in-draft.mp3")).toBe("compositions/draft.html");
+    expect(entryOf("missing-mask.png")).toBe("compositions/draft.html");
+    expect(entryOf("missing-in-film.png")).toBe("index.html");
   });
 });
 

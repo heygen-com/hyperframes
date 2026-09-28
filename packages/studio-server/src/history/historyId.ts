@@ -2,10 +2,13 @@ import { randomUUID } from "node:crypto";
 import { existsSync, mkdirSync, readFileSync, statSync, writeFileSync } from "node:fs";
 import { basename, join, resolve } from "node:path";
 import { replaceFileAtomically } from "../helpers/atomicFile.js";
+import { mkdirWithinProject } from "../helpers/safePath.js";
 
 export const ID_PATH = join(".hyperframes", "history-id");
 /** The only shape minted here; the id is project content and becomes a path, so nothing else is trusted. */
 const ID_SHAPE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
+
+export const isHistoryId = (name: string) => ID_SHAPE.test(name);
 
 export function readId(projectDir: string): string | null {
   try {
@@ -30,7 +33,9 @@ export function isRecordedFolder(historyDir: string, folder: FolderIdentity): bo
   return !isCopyOf0878Folder(was!.dir as string, basename(historyDir), folder);
 }
 
-function readRecord(historyDir: string): { dir?: unknown; ino?: unknown; born?: number } | null {
+export function readRecord(
+  historyDir: string,
+): { dir?: unknown; ino?: unknown; born?: number; dev?: unknown } | null {
   try {
     return JSON.parse(readFileSync(join(historyDir, "project.json"), "utf-8"));
   } catch {
@@ -65,7 +70,7 @@ export function projectHistoryId(projectDir: string, historyRoot: string): strin
     (existsSync(join(historyRoot, id)) && !isRecordedFolder(join(historyRoot, id), folder))
   ) {
     id = randomUUID();
-    mkdirSync(join(dir, ".hyperframes"), { recursive: true });
+    mkdirWithinProject(dir, join(dir, ".hyperframes"));
     writeFileSync(join(dir, ID_PATH), `${id}\n`);
   }
   recordProject(join(historyRoot, id), dir, folder);
@@ -79,8 +84,12 @@ export class HistoryIdError extends Error {
   }
 }
 
-export function recordProject(historyDir: string, dir: string, folder: FolderIdentity): void {
-  const record = { dir, ino: folder.ino, born: folder.birthtimeMs };
+export function recordProject(
+  historyDir: string,
+  dir: string,
+  folder: FolderIdentity & { dev: number },
+): void {
+  const record = { dir, ino: folder.ino, born: folder.birthtimeMs, dev: folder.dev };
   mkdirSync(historyDir, { recursive: true });
   replaceFileAtomically(join(historyDir, "project.json"), JSON.stringify(record), 0o644);
 }

@@ -4,6 +4,8 @@ export default defineConfig({
   tsconfig: "tsconfig.lib.json",
   entry: {
     index: "src/index.ts",
+    ui: "src/ui.ts",
+    player: "src/playerEntry.ts",
     "styles/tailwind-preset": "src/styles/tailwind-preset.ts",
   },
   format: ["esm"],

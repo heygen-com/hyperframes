@@ -1683,6 +1683,110 @@ describe("bundleToSingleHtml", () => {
     expect(bundled).not.toContain("data:font/woff2");
   });
 
+  it("inlines a font shared by two compositions once, keeping a rule that differs in weight", async () => {
+    const dir = makeTempProject({
+      "index.html": `<!doctype html>
+<html><head></head><body>
+  <div id="root" data-composition-id="main" data-width="1920" data-height="1080">
+    <div
+      data-composition-id="hero"
+      data-composition-src="compositions/hero.html"
+      data-start="0"
+      data-duration="2"></div>
+    <div
+      data-composition-id="outro"
+      data-composition-src="compositions/outro.html"
+      data-start="2"
+      data-duration="2"></div>
+    <div
+      data-composition-id="bold"
+      data-composition-src="compositions/bold.html"
+      data-start="4"
+      data-duration="2"></div>
+  </div>
+  <script>window.__timelines={};</script>
+</body></html>`,
+      "compositions/hero.html": `<template id="hero-template">
+  <div data-composition-id="hero" data-width="1920" data-height="1080">
+    <style>
+      @font-face {
+        font-family: "Brand Sans";
+        font-weight: 400;
+        font-style: normal;
+        src: url("../fonts/brand.woff2") format("woff2");
+      }
+    </style>
+    <p>Hero</p>
+  </div>
+</template>`,
+      // A separate composition declaring the byte-identical @font-face rule:
+      // its bytes must ship once, not once per composition that repeats it.
+      "compositions/outro.html": `<template id="outro-template">
+  <div data-composition-id="outro" data-width="1920" data-height="1080">
+    <style>
+      @font-face {
+        font-family: "Brand Sans";
+        font-weight: 400;
+        font-style: normal;
+        src: url("../fonts/brand.woff2") format("woff2");
+      }
+    </style>
+    <p>Outro</p>
+  </div>
+</template>`,
+      // Same family and src, but a different font-weight: a genuinely
+      // different rule that must survive dedupe untouched.
+      "compositions/bold.html": `<template id="bold-template">
+  <div data-composition-id="bold" data-width="1920" data-height="1080">
+    <style>
+      @font-face {
+        font-family: "Brand Sans";
+        font-weight: 700;
+        font-style: normal;
+        src: url("../fonts/brand.woff2") format("woff2");
+      }
+    </style>
+    <p>Bold</p>
+  </div>
+</template>`,
+      "fonts/brand.woff2": "brand-font-bytes",
+    });
+
+    const bundled = await bundleToSingleHtml(dir);
+    const fontFaceRules = bundled.match(/@font-face\s*{[^}]*}/g) ?? [];
+    const rulesByWeight = (weight: string) =>
+      fontFaceRules.filter((rule) => rule.includes(`font-weight: ${weight};`));
+
+    expect(fontFaceRules).toHaveLength(2);
+    expect(rulesByWeight("400")).toHaveLength(1);
+    expect(rulesByWeight("700")).toHaveLength(1);
+    expect(bundled.split(inlinedAs("font/woff2", "brand-font-bytes")).length - 1).toBe(2);
+  });
+
+  it.each([
+    ["a media query", `<style media="print">FACE</style>`],
+    ["a non-CSS type", `<style type="text/x-template">FACE</style>`],
+    ["<noscript>", `<noscript><style>FACE</style></noscript>`],
+    ["<svg>", `<svg><style>FACE</style></svg>`],
+  ])("keeps a font's always-applied copy when the later copy sits behind %s", async (_, later) => {
+    const face = `@font-face { font-family: "Brand"; src: url("fonts/brand.woff2") format("woff2"); }`;
+    const dir = makeTempProject({
+      "index.html": `<!doctype html>
+<html><head><style>${face}</style></head><body>
+  <div id="root" data-composition-id="main" data-width="1920" data-height="1080">
+    ${later.replace("FACE", face)}
+    <p>Hi</p>
+  </div>
+  <script>window.__timelines={};</script>
+</body></html>`,
+      "fonts/brand.woff2": "brand-font-bytes",
+    });
+
+    const { document } = parseHTML(await bundleToSingleHtml(dir));
+    const headCss = [...document.querySelectorAll("head style")].map((s) => s.textContent).join("");
+    expect(headCss).toContain("@font-face");
+  });
+
   it("leaves an oversized asset relative and warns rather than inlining it", async () => {
     const dir = makeTempProject({
       "index.html": `<!doctype html>
@@ -2231,6 +2335,30 @@ describe("bundleToSingleHtml sceneParts", () => {
     });
   const partsOf = (doc: Document, scene: string) =>
     [...doc.querySelectorAll(`[data-hf-scene="${scene}"]`)].map((el) => el.tagName.toLowerCase());
+
+  it("keeps each scene's own copy of a shared @font-face, so one scene still swaps alone", async () => {
+    const face = `@font-face { font-family: "Brand"; src: url('assets/fonts/brand.woff2'); }`;
+    const dir = makeTempProject({
+      "index.html": `<!doctype html>
+<html><head></head><body>
+  <div id="root" data-composition-id="main" data-width="1920" data-height="1080" data-duration="4">
+    <div data-composition-id="a" data-composition-src="compositions/a.html" data-start="0" data-duration="2"></div>
+    <div data-composition-id="b" data-composition-src="compositions/b.html" data-start="2" data-duration="2"></div>
+  </div>
+</body></html>`,
+      "compositions/a.html": `<template id="a-template"><div data-composition-id="a"><style>${face}</style><p>A</p></div></template>`,
+      "compositions/b.html": `<template id="b-template"><div data-composition-id="b"><style>${face}</style><p>B</p></div></template>`,
+    });
+    const doc = parseHTML(
+      await bundleToSingleHtml(dir, { sceneParts: true, inlineAssets: false }),
+    ).document;
+    for (const scene of ["a", "b"]) {
+      const css = [...doc.querySelectorAll(`style[data-hf-scene="${scene}"]`)]
+        .map((el) => el.textContent ?? "")
+        .join("\n");
+      expect(css).toContain("@font-face");
+    }
+  });
 
   it("tags each top-level scene's host, styles and scripts, with nested scenes in their parent's parts", async () => {
     const doc = parseHTML(await bundleToSingleHtml(film(), { sceneParts: true })).document;

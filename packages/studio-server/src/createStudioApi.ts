@@ -14,6 +14,8 @@ import { registerSelectionRoutes } from "./routes/selection.js";
 import { registerMediaRoutes } from "./routes/media.js";
 import { registerGlobalAssetRoutes } from "./routes/globalAssets.js";
 import { registerHistoryRoutes } from "./routes/history.js";
+import { projectDirMissing } from "./helpers/projectDirMissing.js";
+import { isProjectRootMissing } from "./helpers/safePath.js";
 
 /**
  * Create a Hono sub-app with all studio API routes.
@@ -23,6 +25,10 @@ import { registerHistoryRoutes } from "./routes/history.js";
  */
 export function createStudioApi(adapter: StudioApiAdapter): Hono {
   const api = new Hono();
+  api.use(async function answerProjectDirMissingAfterErrorHandlers(c, next) {
+    await next();
+    if (isProjectRootMissing(c.error)) c.res = projectDirMissing(c);
+  });
 
   registerProjectRoutes(api, adapter);
   registerFileRoutes(api, adapter);
