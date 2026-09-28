@@ -227,10 +227,7 @@ export async function tryGsapDragIntercept(
   const animations = tweensForThisElement(selection, allAnimations);
   const fetchFallbackAnimations =
     fetchAllAnimations && (async () => tweensForThisElement(selection, await fetchAllAnimations()));
-  const ownPositionTween = animations.find(
-    (a) => writesPosition(a) && tweenReach(a, selection.element) === "own",
-  );
-  const selector = ownPositionTween?.targetSelector ?? selectorFromSelection(selection);
+  const selector = selectorFromSelection(selection);
   // The preflight above proves this; retain a defensive result for DOM churn.
   if (!selector) return { status: "blocked", reason: "no-selector" };
   const commitMutation = oneUndoStep(gestureCommit);
