@@ -1,6 +1,6 @@
 import { useEffect, useLayoutEffect, useRef, type RefObject } from "react";
 import { usePlayerStore, type TimelineElement, type ZoomMode } from "../store/playerStore";
-import { getTimelinePixelsPerSecond } from "./timelineZoom";
+import { computePinnedZoomPercent, getTimelinePixelsPerSecond } from "./timelineZoom";
 import {
   DRAG_EXTEND_MARGIN_PX,
   getTimelineDisplayContentWidth,
@@ -105,8 +105,7 @@ export function useTimelineGeometry({
     return () => cancelAnimationFrame(raf);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [expandedElements, zoomMode]);
-  // Publish the live scale so edit handlers OUTSIDE <Timeline> (the keyboard-delete
-  // path) can pin the zoom via pinTimelineZoomToCurrent without threading geometry.
+  // Publish the live scale for readers outside <Timeline> (the toolbar's zoom controls).
   // In a useEffect (not the render body) so React-18 concurrent replay — Suspense
   // retry, transitions, StrictMode double-invoke — can't double-publish. The write is
   // idempotent (same pps/fitPps → same fields), so this is behavior-preserving; the
@@ -114,12 +113,20 @@ export function useTimelineGeometry({
   useEffect(() => {
     usePlayerStore.getState().setTimelineScale(pps, fitPps);
   }, [pps, fitPps]);
-  // Before paint, so the frame an edit's new length arrives in already shows the kept scale.
-  const keptScale = usePlayerStore((s) => s.timelineKeptScale);
+  // In manual zoom a length change (same width) keeps the on-screen scale instead of
+  // rescaling every clip, whichever edit caused it. Before paint, so no frame shows the jump.
+  const lastScale = useRef({ effectiveDuration, viewportWidth, contentOrigin, pps });
   useLayoutEffect(() => {
-    if (keptScale && keptScale.fitPps !== fitPps)
-      usePlayerStore.getState().keepTimelineScale(fitPps);
-  }, [keptScale, fitPps]);
+    const last = lastScale.current;
+    lastScale.current = { effectiveDuration, viewportWidth, contentOrigin, pps };
+    const lengthOnly =
+      last.effectiveDuration > 0 &&
+      last.effectiveDuration !== effectiveDuration &&
+      last.viewportWidth === viewportWidth &&
+      last.contentOrigin === contentOrigin;
+    if (zoomMode === "manual" && lengthOnly)
+      usePlayerStore.getState().setManualZoomPercent(computePinnedZoomPercent(last.pps, fitPps));
+  });
 
   return {
     pps,

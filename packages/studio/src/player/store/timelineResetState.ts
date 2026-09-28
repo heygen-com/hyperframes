@@ -38,7 +38,6 @@ export function createTimelineResetState() {
     keyframeCache: new Map<string, KeyframeCacheEntry>(),
     gsapAnimations: new Map<string, GsapAnimation[]>(),
     beatAnalysis: null,
-    timelineKeptScale: null,
     beatEdits: null,
     beatUndo: [],
     beatRedo: [],

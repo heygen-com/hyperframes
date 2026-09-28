@@ -118,9 +118,11 @@ describe("useTimelineGeometry restore-scroll effect", () => {
 
 function ScaleProbe({
   duration,
+  width = 1200,
   seen,
 }: {
   duration: number;
+  width?: number;
   seen: { pps: number; fitPps: number };
 }) {
   const ppsRef = useRef(0);
@@ -128,7 +130,7 @@ function ScaleProbe({
   const zoomMode = usePlayerStore((s) => s.zoomMode);
   const manualZoomPercent = usePlayerStore((s) => s.manualZoomPercent);
   const { pps, fitPps } = useTimelineGeometry({
-    viewportWidth: 1200,
+    viewportWidth: width,
     effectiveDuration: duration,
     zoomMode,
     manualZoomPercent,
@@ -147,30 +149,44 @@ function ScaleProbe({
   return null;
 }
 
-describe("useTimelineGeometry keeps the scale across an edit that changes the length", () => {
+describe("useTimelineGeometry keeps the scale when only the length changes", () => {
   const seen = { pps: 0, fitPps: 0 };
-  const renderAt = (duration: number) =>
-    act(() => root.render(<ScaleProbe duration={duration} seen={seen} />));
-  const pinAsAnEditDoes = () =>
-    act(() => usePlayerStore.getState().pinTimelineZoom(seen.pps, seen.fitPps));
+  const renderAt = (duration: number, width?: number) =>
+    act(() => root.render(<ScaleProbe duration={duration} width={width} seen={seen} />));
+  const within = (pps: number) => Math.abs(seen.pps - pps) < seen.fitPps * 0.005;
 
-  it("keeps a short film's clips the same size when an edit lengthens it", () => {
+  it("keeps a short film's clips the same size when the first edit lengthens it", () => {
     usePlayerStore.setState({ zoomMode: "fit", manualZoomPercent: 100 });
     renderAt(17);
     const before = seen.pps;
-    pinAsAnEditDoes();
+    act(() => usePlayerStore.getState().pinTimelineZoom(seen.pps, seen.fitPps));
     renderAt(25);
     expect(seen.fitPps).toBeLessThan(before);
-    expect(Math.abs(seen.pps - before)).toBeLessThan(seen.fitPps * 0.005);
-    expect(usePlayerStore.getState().timelineKeptScale).toBeNull();
+    expect(within(before)).toBe(true);
   });
 
-  it("lets a zoom the user picks after the edit win", () => {
+  it("keeps the scale in manual zoom when a later edit shortens the film", () => {
+    usePlayerStore.setState({ zoomMode: "manual", manualZoomPercent: 150 });
+    renderAt(17);
+    const before = seen.pps;
+    renderAt(12);
+    expect(seen.fitPps).toBeGreaterThan(before / 1.5);
+    expect(within(before)).toBe(true);
+  });
+
+  it("still scales with the fit width when the timeline is resized, and when the length first loads", () => {
+    usePlayerStore.setState({ zoomMode: "manual", manualZoomPercent: 150 });
+    renderAt(0);
+    renderAt(17);
+    expect(seen.pps).toBeCloseTo(seen.fitPps * 1.5);
+    renderAt(17, 900);
+    expect(seen.pps).toBeCloseTo(seen.fitPps * 1.5);
+  });
+
+  it("refits in fit mode", () => {
     usePlayerStore.setState({ zoomMode: "fit", manualZoomPercent: 100 });
     renderAt(17);
-    pinAsAnEditDoes();
-    act(() => usePlayerStore.getState().setManualZoomPercent(200));
     renderAt(25);
-    expect(seen.pps).toBeCloseTo(seen.fitPps * 2);
+    expect(seen.pps).toBe(seen.fitPps);
   });
 });
