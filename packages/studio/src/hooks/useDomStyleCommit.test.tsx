@@ -11,7 +11,8 @@ vi.mock("../utils/studioTelemetry", () => ({ trackStudioEvent: vi.fn() }));
 
 const SOURCE = '<div id="card" style="color: red">Card</div>';
 
-function stubServer() {
+/** Each patch answers with the next status in `failures` (none left: success). */
+function stubServer(failures: number[] = []) {
   const patches: unknown[] = [];
   vi.stubGlobal(
     "fetch",
@@ -22,6 +23,8 @@ function stubServer() {
       if (url.includes("/api/projects/p1/files/")) return json({ content: SOURCE });
       if (url.includes("/api/projects/p1/file-mutations/patch-element/")) {
         patches.push(JSON.parse(String(init?.body)));
+        const status = failures.shift();
+        if (status) return new Response(JSON.stringify({ error: "refused" }), { status });
         return json({
           ok: true,
           changed: true,
@@ -111,6 +114,30 @@ describe("useDomStyleCommit, from the package entry", () => {
     });
     expect(patches).toHaveLength(0);
     expect(element.style.color).toBe("red");
+    unmount();
+  });
+
+  it("never lets a failed save revert a later edit's property", async () => {
+    stubServer([500]);
+    const { element, hook, unmount } = renderHost();
+    const selection = makeSelection("card", element);
+
+    const first = hook().commitStyle(selection, { color: "blue" });
+    const second = hook().commitStyle(selection, { color: "green", "font-size": "40px" });
+
+    expect((await first).ok).toBe(false);
+    expect((await second).ok).toBe(true);
+    expect(element.style.color).toBe("green");
+    unmount();
+  });
+
+  it("saves again after a conflict paused the queue", async () => {
+    stubServer([409]);
+    const { element, hook, unmount } = renderHost();
+    const selection = makeSelection("card", element);
+
+    expect((await hook().commitStyle(selection, { color: "blue" })).ok).toBe(false);
+    expect((await hook().commitStyle(selection, { color: "green" })).ok).toBe(true);
     unmount();
   });
 

@@ -8,9 +8,9 @@ import { useMountEffect } from "./useMountEffect";
 
 export interface UseDomStyleCommitOptions {
   projectId: string | null;
-  /** The preview the host already runs; used only to apply the style live. */
+  /** The preview the host already runs: the style applies there live, and it reseeks after a save. */
   iframeRef: React.MutableRefObject<HTMLIFrameElement | null>;
-  /** The same writer and history the host gives the timeline, so there is one writer and one undo list. */
+  /** The same function objects the host gives the timeline, so there is one writer and one undo list. */
   writeProjectFile: (path: string, content: string, expectedContent?: string) => Promise<void>;
   recordEdit: (entry: RecordEditInput) => Promise<void>;
   activeCompPath?: string | null;
@@ -51,8 +51,10 @@ export function useDomStyleCommit({
     reloadPreview: noop,
   });
   const commitStyle = useCallback(
-    (selection: DomEditSelection, styles: Record<string, string>) =>
-      projectIdRef.current
+    (selection: DomEditSelection, styles: Record<string, string>) => {
+      // Each call is the user's own retry, so a pause left by an earlier failed save never blocks it.
+      queue.reset();
+      return projectIdRef.current
         ? commitDomStyles(
             {
               activeCompPath,
@@ -64,8 +66,9 @@ export function useDomStyleCommit({
             selection,
             styles,
           )
-        : Promise.resolve<DomEditCommitOutcome>({ ok: false, reason: "no-project" }),
-    [activeCompPath, iframeRef, persistDomEditOperations, showToast, versions],
+        : Promise.resolve<DomEditCommitOutcome>({ ok: false, reason: "no-project" });
+    },
+    [activeCompPath, iframeRef, persistDomEditOperations, queue, showToast, versions],
   );
   return { commitStyle, waitForPendingSaves: queue.waitForIdle };
 }
