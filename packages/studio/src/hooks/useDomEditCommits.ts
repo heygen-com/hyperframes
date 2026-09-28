@@ -5,11 +5,7 @@ import { FONT_EXT } from "../utils/mediaTypes";
 
 import { trackStudioEvent } from "../utils/studioTelemetry";
 import { primaryFontFamilyValue } from "../utils/studioFontHelpers";
-import {
-  createStudioSaveHttpError,
-  StudioSaveHttpError,
-  trackStudioSaveFailure,
-} from "../utils/studioSaveDiagnostics";
+import { StudioSaveHttpError, trackStudioSaveFailure } from "../utils/studioSaveDiagnostics";
 import { buildDomEditPatchTarget, type DomEditSelection } from "../components/editor/domEditing";
 import { fontFamilyFromAssetPath, type ImportedFontAsset } from "../components/editor/fontAssets";
 import type { CommitDomEditPatchBatches, PersistDomEditOperations } from "./domEditCommitTypes";
@@ -26,15 +22,15 @@ import { useElementLifecycleOps } from "./useElementLifecycleOps";
 import {
   AtomicElementPatchConvergenceError,
   batchesAreInlineStyleOnly,
-  formatPatchRejectionMessage,
   formatUnsafeFieldList,
-  getErrorDetail,
   patchElementBatches,
-  readErrorResponseBody,
+  postPatchElement,
+  writePreparedContent,
 } from "./useDomEditCommitsHelpers";
 import type { CutoverResult } from "../utils/sdkCutover";
-import { studioWriteHeaders } from "../utils/studioFileVersion";
 import { reseekPreviewRuntime } from "./timelineTrackVisibility";
+import { serializeStudioFileMutations } from "../utils/studioFileMutationCoordinator";
+import { readProjectFileContent } from "../utils/studioFileHistory";
 interface RecordEditInput {
   label: string;
   coalesceKey?: string;
@@ -159,23 +155,13 @@ export function useDomEditCommits({
         return result;
       };
 
-      const readResponse = await fetch(
-        buildProjectApiPath(pid, `/files/${encodeURIComponent(targetPath)}`),
-      );
-      if (!readResponse.ok) {
-        throw await createStudioSaveHttpError(readResponse, `Failed to read ${targetPath}`);
-      }
-      const readData = (await readResponse.json()) as { content?: string };
-      const originalContent = readData.content;
-      if (typeof originalContent !== "string") {
-        throw new Error(`Missing file contents for ${targetPath}`);
-      }
-
-      if (projectIdRef.current !== expectedProjectId) {
-        throw new Error("Active project changed before the edit could be saved");
-      }
-
-      if (options?.shouldSave && !options.shouldSave()) return;
+      const readTarget = async (): Promise<string | null> => {
+        const content = await readProjectFileContent(pid, targetPath);
+        if (projectIdRef.current !== expectedProjectId) {
+          throw new Error("Active project changed before the edit could be saved");
+        }
+        return options?.shouldSave && !options.shouldSave() ? null : content;
+      };
 
       // Validate layout values BEFORE any persist path runs. The SDK cutover
       // path (onTrySdkPersist) returns early on success, so leaving this check
@@ -195,7 +181,10 @@ export function useDomEditCommits({
       // Skip the SDK path when prepareContent is set (e.g. @font-face injection
       // for a custom font): sdkCutoverPersist serializes only the patched DOM
       // and would drop the injected content. Let the server path run prepareContent.
+      // The SDK joins the file queue itself and re-reads there; this read is only its fallback.
       if (onTrySdkPersist && !options?.prepareContent) {
+        const originalContent = await readTarget();
+        if (originalContent === null) return;
         const cutover = await onTrySdkPersist(selection, operations, originalContent, targetPath, {
           label: options?.label,
           coalesceKey: options?.coalesceKey,
@@ -212,31 +201,41 @@ export function useDomEditCommits({
         }
       }
 
-      const patchResponse = await fetch(
-        buildProjectApiPath(pid, `/file-mutations/patch-element/${encodeURIComponent(targetPath)}`),
-        {
-          method: "POST",
-          headers: { "Content-Type": "application/json", ...studioWriteHeaders() },
-          body: JSON.stringify(patchBody),
-        },
-      );
-      if (!patchResponse.ok) {
-        showToast(formatPatchRejectionMessage(await readErrorResponseBody(patchResponse)), "error");
-        throw await createStudioSaveHttpError(patchResponse, `Failed to patch ${targetPath}`, {
-          alreadyToasted: true,
-        });
-      }
-
-      const patchData = (await patchResponse.json()) as {
-        ok?: boolean;
-        changed?: boolean;
-        matched?: boolean;
-        content?: string;
-        path?: string;
-        version?: string;
+      const history = {
+        label: options?.label ?? "Edit layer",
+        coalesceKey: options?.coalesceKey,
+        coalesceMs: options?.coalesceMs,
       };
+      const prepare = options?.prepareContent;
+      // Read, server patch, follow-up write and history hold the file's queue, so no save lands between them.
+      const saved = await serializeStudioFileMutations(writeProjectFile, [targetPath], async () => {
+        const originalContent = await readTarget();
+        if (originalContent === null) return null;
+        const patchData = await postPatchElement(pid, targetPath, patchBody, showToast);
+        if (!patchData.changed) return { patchData, patchedContent: null, finalContent: null };
 
-      if (!patchData.changed) {
+        const patchedContent =
+          typeof patchData.content === "string" ? patchData.content : originalContent;
+        const finalContent = prepare
+          ? await writePreparedContent(
+              targetPath,
+              patchedContent,
+              prepare,
+              writeProjectFile,
+              showToast,
+            )
+          : patchedContent;
+
+        await editHistory.recordEdit({
+          ...history,
+          files: { [targetPath]: { before: originalContent, after: finalContent } },
+        });
+        return { patchData, patchedContent, finalContent };
+      });
+      if (saved === null) return;
+      const { patchData, patchedContent, finalContent } = saved;
+
+      if (finalContent === null) {
         if (patchData.matched === false) {
           const targetKey = selection.selector ?? selection.id ?? "selection";
           if (!reportedUnresolvableRef.current.has(targetKey)) {
@@ -258,36 +257,6 @@ export function useDomEditCommits({
           false,
         );
       }
-
-      const patchedContent =
-        typeof patchData.content === "string" ? patchData.content : originalContent;
-
-      let finalContent = patchedContent;
-      if (options?.prepareContent) {
-        const preparedContent = options.prepareContent(patchedContent, targetPath);
-        if (preparedContent !== patchedContent) {
-          try {
-            await writeProjectFile(targetPath, preparedContent, patchedContent);
-            finalContent = preparedContent;
-          } catch (error) {
-            // The patch above already landed on disk — only the prepareContent
-            // embellishment (e.g. an injected @font-face) failed to write. Keep
-            // the already-persisted patchedContent instead of throwing, which
-            // would otherwise revert a change the server already committed.
-            showToast(
-              `Saved, but couldn't finish updating ${targetPath}: ${getErrorDetail(error)}`,
-              "error",
-            );
-          }
-        }
-      }
-
-      await editHistory.recordEdit({
-        label: options?.label ?? "Edit layer",
-        coalesceKey: options?.coalesceKey,
-        coalesceMs: options?.coalesceMs,
-        files: { [targetPath]: { before: originalContent, after: finalContent } },
-      });
       forceReloadSdkSession?.();
 
       if (!options?.skipRefresh) {
@@ -350,24 +319,38 @@ export function useDomEditCommits({
             );
           }
 
-          const atomicResult = await patchElementBatches(pid, batches);
-          const allMatched =
-            atomicResult.durable && atomicResult.files.every((result) => result.allMatched);
-          const files = Object.fromEntries(
-            atomicResult.files
-              .filter((result) => result.changed)
-              .map((result) => [result.sourceFile, { before: result.before, after: result.after }]),
+          const sourceFiles = batches.map((batch) => batch.sourceFile);
+          // The server patch and its history entry hold every touched file's queue.
+          const { allMatched, changed } = await serializeStudioFileMutations(
+            writeProjectFile,
+            sourceFiles,
+            async () => {
+              const atomicResult = await patchElementBatches(pid, batches);
+              const files = Object.fromEntries(
+                atomicResult.files
+                  .filter((result) => result.changed)
+                  .map((result) => [
+                    result.sourceFile,
+                    { before: result.before, after: result.after },
+                  ]),
+              );
+              const anyChanged = Object.keys(files).length > 0;
+              if (anyChanged) {
+                await editHistory.recordEdit({
+                  label: options.label,
+                  coalesceKey: options.coalesceKey,
+                  coalesceMs: options.coalesceMs,
+                  files,
+                });
+              }
+              return {
+                allMatched:
+                  atomicResult.durable && atomicResult.files.every((result) => result.allMatched),
+                changed: anyChanged,
+              };
+            },
           );
-          const changed = Object.keys(files).length > 0;
-          if (changed) {
-            await editHistory.recordEdit({
-              label: options.label,
-              coalesceKey: options.coalesceKey,
-              coalesceMs: options.coalesceMs,
-              files,
-            });
-            forceReloadSdkSession?.();
-          }
+          if (changed) forceReloadSdkSession?.();
           const durable = allMatched;
           // A z-only reorder already applied its inline styles to the live iframe
           // DOM (and the store) synchronously, so remounting the iframe here only
@@ -399,7 +382,15 @@ export function useDomEditCommits({
         throw error;
       });
     },
-    [editHistory, forceReloadSdkSession, projectIdRef, queueDomEditSave, reloadPreview, showToast],
+    [
+      editHistory,
+      forceReloadSdkSession,
+      projectIdRef,
+      queueDomEditSave,
+      reloadPreview,
+      showToast,
+      writeProjectFile,
+    ],
   );
 
   // ── Text & style commits (delegated to useDomEditTextCommits) ──

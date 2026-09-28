@@ -166,15 +166,11 @@ describe("layoutAudit helpers", () => {
     expect(formatted).toContain("t=1-5s (3 samples)");
   });
 
-  // The clip rule that suppresses the odometer/ticker false positive: text
-  // spilling past an `overflow:hidden` reel window is the mechanism, not a bug.
-  it("treats clipping overflow values as masking (suppress) and visible as not (still report)", () => {
-    // Intended clipping — the queued digit rows of a reel are masked here.
+  it("treats hidden, clip, auto, and scroll as clipping", () => {
     expect(overflowValueClips("hidden")).toBe(true);
     expect(overflowValueClips("clip")).toBe(true);
     expect(overflowValueClips("auto")).toBe(true);
     expect(overflowValueClips("scroll")).toBe(true);
-    // Genuine overflow — nothing masks the text, so it must STILL be reported.
     expect(overflowValueClips("visible")).toBe(false);
     expect(overflowValueClips("clip visible")).toBe(false);
     expect(overflowValueClips("")).toBe(false);

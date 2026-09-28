@@ -214,3 +214,13 @@ jobs:
             fi
             gh release create "v${VERSION}" "${FLAGS[@]}"
           fi
+
+      - name: Build portable agent plugin
+        run: node scripts/package-agent-plugin.mjs
+
+      - name: Attach portable plugin to release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          VERSION: ${{ steps.version.outputs.version }}
+          REPO: ${{ github.repository }}
+        run: gh release upload "v${VERSION}" dist/hyperframes-agent-plugin.zip dist/hyperframes-agent-plugin.sha256 dist/hyperframes-agent-plugin.json --repo "$REPO" --clobber

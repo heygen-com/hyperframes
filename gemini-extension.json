@@ -1,0 +1,5 @@
+{
+  "name": "hyperframes",
+  "version": "0.8.81",
+  "description": "HyperFrames by HeyGen. Write HTML, render video. Compositions, GSAP and runtime adapter animations, captions, voiceovers, audio-reactive visuals, and website capture for HyperFrames."
+}

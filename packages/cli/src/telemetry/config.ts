@@ -409,6 +409,8 @@ export interface HyperframesConfig {
   latestVersion?: string;
   /** Throttle for the non-TTY stale-project-pin notice (ms epoch). */
   lastStalePinNoticeAt?: number;
+  lastUpdateAttemptAt?: string;
+  lastSkillsAttemptAt?: string;
   /**
    * Auto-update marker. Set when a background install is spawned so a
    * subsequent run can skip re-triggering it. Cleared once
@@ -650,6 +652,8 @@ function passthroughFields(parsed: Partial<HyperframesConfig>): Partial<Hyperfra
     lastUpdateCheck: parsed.lastUpdateCheck,
     latestVersion: parsed.latestVersion,
     lastStalePinNoticeAt: parsed.lastStalePinNoticeAt,
+    lastUpdateAttemptAt: parsed.lastUpdateAttemptAt,
+    lastSkillsAttemptAt: parsed.lastSkillsAttemptAt,
     pendingUpdate: parsed.pendingUpdate,
     completedUpdate: parsed.completedUpdate,
     lastSkillsCheck: parsed.lastSkillsCheck,

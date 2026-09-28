@@ -1,4 +1,4 @@
-import { useStudioShellContext } from "../contexts/StudioContext";
+import { useStudioShellContextOptional } from "../contexts/StudioContext";
 import { RotateCcw, RotateCw } from "../icons/SystemIcons";
 import { trackStudioEvent } from "../utils/studioTelemetry";
 import { historyTooltipLabel } from "../utils/studioHelpers";
@@ -7,13 +7,14 @@ import { Tooltip } from "./ui";
 
 interface HistoryButtonProps {
   action: "undo" | "redo";
-  enabled: boolean;
+  can: boolean;
   label: string | undefined;
-  onClick: () => Promise<void> | void;
+  onClick: (() => Promise<void> | void) | undefined;
 }
 
-function HistoryButton({ action, enabled, label, onClick }: HistoryButtonProps) {
+function HistoryButton({ action, can, label, onClick }: HistoryButtonProps) {
   const Icon = action === "undo" ? RotateCcw : RotateCw;
+  const enabled = Boolean(onClick) && can;
   return (
     <Tooltip label={historyTooltipLabel(action, label)}>
       <button
@@ -23,7 +24,7 @@ function HistoryButton({ action, enabled, label, onClick }: HistoryButtonProps) 
         className={enabled ? flatIdle : flatDisabled}
         onClick={() => {
           trackStudioEvent("toolbar_action", { action });
-          void onClick();
+          void onClick?.();
         }}
       >
         <Icon size={16} />
@@ -32,22 +33,33 @@ function HistoryButton({ action, enabled, label, onClick }: HistoryButtonProps) 
   );
 }
 
-/** Undo and Redo, on the one edit-history path the shell already owns. */
-export function TimelineHistoryButtons() {
-  const { editHistory, handleUndo, handleRedo } = useStudioShellContext();
+export interface TimelineHistoryButtonsProps {
+  canUndo?: boolean;
+  canRedo?: boolean;
+  undoLabel?: string;
+  redoLabel?: string;
+  onUndo?: () => Promise<void> | void;
+  onRedo?: () => Promise<void> | void;
+}
+
+/** Undo and Redo: a host's props win, else the shell's edit history. */
+export function TimelineHistoryButtons(props: TimelineHistoryButtonsProps) {
+  const shell = useStudioShellContextOptional();
+  const onUndo = props.onUndo ?? shell?.handleUndo;
+  const onRedo = props.onRedo ?? shell?.handleRedo;
   return (
     <>
       <HistoryButton
         action="undo"
-        enabled={editHistory.canUndo}
-        label={editHistory.undoLabel}
-        onClick={handleUndo}
+        can={props.canUndo ?? shell?.editHistory.canUndo ?? false}
+        label={props.undoLabel ?? shell?.editHistory.undoLabel}
+        onClick={onUndo}
       />
       <HistoryButton
         action="redo"
-        enabled={editHistory.canRedo}
-        label={editHistory.redoLabel}
-        onClick={handleRedo}
+        can={props.canRedo ?? shell?.editHistory.canRedo ?? false}
+        label={props.redoLabel ?? shell?.editHistory.redoLabel}
+        onClick={onRedo}
       />
     </>
   );

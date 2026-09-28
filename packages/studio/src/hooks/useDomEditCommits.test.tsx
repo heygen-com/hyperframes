@@ -1252,8 +1252,15 @@ describe("useDomEditCommits style persist handling", () => {
 
       const secondCommit = rendered.hook.handleDomStyleCommit("color", "green");
       await flushAsyncWork();
-      expect(patchCount).toBe(2);
+      // The newer commit waits for the older one in the file's queue.
+      expect(patchCount).toBe(1);
 
+      firstPatch.reject(new Error("server rejected blue"));
+      await firstCommit;
+      expect(element.style.getPropertyValue("color")).toBe("green");
+
+      await flushAsyncWork();
+      expect(patchCount).toBe(2);
       secondPatch.resolve(
         jsonResponse({
           ok: true,
@@ -1263,10 +1270,6 @@ describe("useDomEditCommits style persist handling", () => {
         }),
       );
       await secondCommit;
-      expect(element.style.getPropertyValue("color")).toBe("green");
-
-      firstPatch.reject(new Error("server rejected blue"));
-      await firstCommit;
 
       expect(element.style.getPropertyValue("color")).toBe("green");
     } finally {
@@ -1698,15 +1701,16 @@ describe("useDomEditCommits attribute persist handling", () => {
     try {
       // Older commit's persist stays pending (captures previousValue=null); the
       // newer commit captures previousValue="first-value" (the older commit's
-      // optimistic apply) and succeeds before the older one rejects. Without the
+      // optimistic apply) and is still queued when the older one rejects. Without the
       // per-key version guard, the stale rejection would revert to the older
       // commit's own previousValue (null) and stomp the newer commit's value.
       const firstCommit = rendered.hook.handleDomHtmlAttributeCommit("muted", "first-value");
       await act(async () => {
-        await rendered.hook.handleDomHtmlAttributeCommit("muted", "second-value");
+        const secondCommit = rendered.hook.handleDomHtmlAttributeCommit("muted", "second-value");
+        first.reject(new Error("stale request failed"));
+        await firstCommit;
+        await secondCommit;
       });
-      first.reject(new Error("stale request failed"));
-      await firstCommit;
 
       expect(element.getAttribute("muted")).toBe("second-value");
     } finally {

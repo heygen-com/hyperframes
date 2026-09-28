@@ -1,3 +1,4 @@
+import { clampPlaybackRate } from "@hyperframes/parsers/media-duration";
 import { roundToCenti } from "../../utils/rounding";
 import type { TimelineElement } from "../store/playerStore";
 import { getTimelineEditCapabilities } from "./timelineEditCapabilities";
@@ -19,13 +20,17 @@ function ceilTimelineTime(value: number): number {
   return Math.ceil((value - SAVED_MEDIA_OFFSET_TOLERANCE) * 100) / 100;
 }
 
+function floorTimelineTime(value: number): number {
+  return Math.floor((value + SAVED_MEDIA_OFFSET_TOLERANCE) * 100) / 100;
+}
+
 export function resolveTimelineMinDuration(minDuration?: number): number {
   return Math.max(ABSOLUTE_TIMELINE_MIN_DURATION, minDuration ?? DEFAULT_TIMELINE_MIN_DURATION);
 }
 
 /** Playback rate never drops to zero (would make media-in-point math divide by ~0). */
-function resolveTimelinePlaybackRate(rate?: number): number {
-  return Math.max(0.1, rate ?? 1);
+export function resolveTimelinePlaybackRate(rate?: number): number {
+  return clampPlaybackRate(rate ?? 1);
 }
 
 interface TimelineStartTrimClip {
@@ -38,8 +43,8 @@ interface TimelineStartTrimClip {
 /**
  * Delta bounds for trimming a clip's START edge (shared by single-clip and group
  * resize). Left-bounded by how far the start can move toward `minStart` and by the
- * media in-point (`playbackStart / playbackRate`); right-bounded by `minDuration`.
- * Returned deltas are unrounded; applyClipStartTrimDelta does the rounding.
+ * media in-point (`playbackStart / playbackRate`); right-bounded by `minDuration`, the start
+ * floored onto the centisecond grid. Otherwise unrounded; applyClipStartTrimDelta rounds.
  */
 export function clipStartTrimDeltaBounds(
   clip: TimelineStartTrimClip,
@@ -51,7 +56,7 @@ export function clipStartTrimDeltaBounds(
     clip.playbackStart != null ? clip.playbackStart / playbackRate : Number.POSITIVE_INFINITY;
   return {
     minDelta: -Math.min(clip.start - minStart, maxLeftExtensionFromMedia),
-    maxDelta: clip.duration - minDuration,
+    maxDelta: floorTimelineTime(clip.start + clip.duration - minDuration) - clip.start,
   };
 }
 
@@ -137,7 +142,9 @@ export function clampTimelineGroupResizeDelta(
   const bounds = members.map((member) => clipStartTrimDeltaBounds(member, 0, minDuration));
   const minDelta = ceilTimelineTime(Math.max(...bounds.map((b) => b.minDelta)));
   const maxDelta = Math.min(...bounds.map((b) => b.maxDelta));
-  return roundTimelineTime(clamp(rawDelta, minDelta, maxDelta));
+  const delta = roundTimelineTime(clamp(rawDelta, minDelta, maxDelta));
+  const roundedPastTightestMember = delta > maxDelta + SAVED_MEDIA_OFFSET_TOLERANCE;
+  return roundedPastTightestMember ? maxDelta - SAVED_MEDIA_OFFSET_TOLERANCE : delta;
 }
 
 export function resolveTimelineGroupResize(

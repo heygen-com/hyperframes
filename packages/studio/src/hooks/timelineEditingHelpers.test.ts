@@ -12,6 +12,7 @@ import {
   type PersistTimelineBatchChange,
 } from "./timelineEditingHelpers";
 import type { TimelineElement } from "../player/store/playerStore";
+import { readMediaOffsetSeconds } from "@hyperframes/parsers/media-duration";
 import { usePlayerStore } from "../player/store/playerStore";
 import type { CommitMutationOptions } from "./gsapScriptCommitTypes";
 import { timelineKeyframeSelectionKey } from "../player/components/timelineKeyframeIdentity";
@@ -241,6 +242,26 @@ describe("buildTimelineResizeTimingPatch", () => {
       playbackStart: undefined,
     });
     expect(patched).toContain('data-media-start="0"');
+  });
+});
+
+describe("buildTimelineResizeTimingPatch — source in-point read as playback reads it", () => {
+  it.each([
+    ['data-playback-start="-1" data-media-start="2"', 4.5, 1.5],
+    ['data-playback-start="2"', 4.5, 1.5],
+    ['data-media-start="junk"', 5.5, 0.5],
+    ['data-media-start="1.5s"', 5.5, 0.5],
+  ])("%s, head to %s", (inPoint, start, expected) => {
+    const source = `<div id="root"><video id="a" class="clip" data-start="5" data-duration="3" ${inPoint}></video></div>`;
+    const element = el({ id: "a", tag: "video", domId: "a", start: 5, duration: 3 });
+    const host = document.createElement("div");
+    host.innerHTML = buildTimelineResizeTimingPatch(source, { id: "a" }, element, {
+      start,
+      duration: 8 - start,
+      playbackStart: undefined,
+    });
+    const video = host.querySelector("#a")!;
+    expect(readMediaOffsetSeconds((name) => video.getAttribute(name))).toBe(expected);
   });
 });
 

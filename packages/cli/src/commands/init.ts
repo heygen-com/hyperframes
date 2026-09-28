@@ -945,7 +945,9 @@ export default defineCommand({
       console.log("Get started:");
       console.log();
       if (skipSkills) {
-        console.log(`  ${c.accent("1.")} Install AI coding skills (one-time):`);
+        console.log(
+          `  ${c.accent("1.")} Use your HyperFrames plugin, or install standalone skills:`,
+        );
         console.log(`     ${c.accent("npx hyperframes skills update")}`);
       } else {
         console.log(

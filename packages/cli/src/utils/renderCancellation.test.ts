@@ -1,6 +1,6 @@
 // fallow-ignore-file code-duplication
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { createRenderCancellationScope } from "./renderCancellation.js";
+import { createRenderCancellationScope, stoppedByCancelSignal } from "./renderCancellation.js";
 
 afterEach(() => {
   vi.useRealTimers();
@@ -157,5 +157,22 @@ describe("createRenderCancellationScope ancestor monitoring", () => {
       if (previous === undefined) delete process.env.HYPERFRAMES_RENDER_DETACHED;
       else process.env.HYPERFRAMES_RENDER_DETACHED = previous;
     }
+  });
+});
+
+describe("stoppedByCancelSignal", () => {
+  it("is true for a child killed by any signal the scope cancels on, SIGHUP included", () => {
+    for (const signal of ["SIGINT", "SIGTERM", "SIGHUP"]) {
+      expect(stoppedByCancelSignal({ signal })).toBe(true);
+    }
+  });
+
+  it("is false when Node stopped the child or it stopped another way", () => {
+    expect(stoppedByCancelSignal({ code: "ETIMEDOUT", signal: "SIGTERM" })).toBe(false);
+    expect(stoppedByCancelSignal({ code: "ENOBUFS", signal: "SIGTERM" })).toBe(false);
+    expect(stoppedByCancelSignal({ killed: true, signal: "SIGTERM" })).toBe(false);
+    expect(stoppedByCancelSignal({ error: new Error("ETIMEDOUT"), signal: "SIGTERM" })).toBe(false);
+    expect(stoppedByCancelSignal({ signal: "SIGKILL" })).toBe(false);
+    expect(stoppedByCancelSignal({ code: 1, signal: null })).toBe(false);
   });
 });

@@ -23,6 +23,7 @@ import {
 } from "./propertyPanelAutomation";
 import { trackLeveller } from "./audioFxTelemetry.js";
 import type { DomEditSelection } from "./domEditingTypes";
+import { readClipInPoint } from "./propertyPanelHelpers";
 import { useAuditionTransport } from "./useAuditionTransport.js";
 
 /**
@@ -80,12 +81,12 @@ export function useFxLevelling(
    *
    * A lane's `t` is seconds from the start of the CLIP, but the decode is the
    * whole file from its first sample — so measuring a trimmed clip produced an
-   * envelope offset by the trim, and every correction landed early by exactly
-   * `media-start`. Slicing here is what puts the two clocks back on the same
+   * envelope offset by the trim, and every correction landed early by exactly the
+   * in-point. Slicing here is what puts the two clocks back on the same
    * zero.
    */
   const clipWindow = (audio: { samples: Float32Array; sampleRate: number }) => {
-    const mediaStart = positiveFinite(Number(element.dataAttributes?.["media-start"] ?? 0));
+    const { mediaStart } = readClipInPoint(element.dataAttributes);
     const duration = positiveFinite(Number(element.dataAttributes?.["duration"] ?? Number.NaN));
     const from = mediaStart
       ? Math.min(audio.samples.length, Math.floor(mediaStart * audio.sampleRate))

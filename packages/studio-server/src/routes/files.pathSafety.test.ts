@@ -440,6 +440,7 @@ describe("resolveProjectPath why", () => {
 
     await expectProjectGone(response, project);
     expect(startRender).not.toHaveBeenCalled();
+    expect(existsSync(adapter.rendersDir({ id: "demo", dir: project }))).toBe(false);
   });
 
   it("refuses a render composition that leaves a symlinked project folder through ..", async (context) => {
