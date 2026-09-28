@@ -910,6 +910,20 @@ describe("resolveDomEditSelection", () => {
     expect(first).not.toBe(second);
   });
 
+  it("finds a composition host authored with a ./ path", () => {
+    const document = createDocument(`
+      <div data-composition-id="scene" data-composition-file="./compositions/scene.html"></div>
+    `);
+
+    expect(
+      findElementForTimelineElement(
+        document,
+        { id: "scene", compositionSrc: "./compositions/scene.html" },
+        { activeCompositionPath: null, isMasterView: true },
+      )?.getAttribute("data-composition-id"),
+    ).toBe("scene");
+  });
+
   it("resolves generated timeline ids without throwing", () => {
     const document = createDocument(`
       <div data-composition-id="hook">

@@ -70,10 +70,9 @@ export function useCompositionStack({
       if (!element.compositionSrc) return;
       masterSeekRef.current = usePlayerStore.getState().currentTime;
 
-      const resolvedPath =
-        normalizeTimelineCompositionSource(compIdToSrcRef.current.get(element.id)) ??
-        normalizeTimelineCompositionSource(element.compositionSrc) ??
-        element.compositionSrc;
+      const src = compIdToSrcRef.current.get(element.id) ?? element.compositionSrc;
+      const normalized = normalizeTimelineCompositionSource(src) ?? src;
+      const resolvedPath = normalized.replace(/^(\.\/|\/)+/, "");
 
       usePlayerStore.getState().setElements([]);
 
