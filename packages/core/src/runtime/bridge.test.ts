@@ -14,6 +14,7 @@ function createMockDeps() {
     onSetNativeMediaSyncDisabled: vi.fn(),
     onSetWebAudioMediaDisabled: vi.fn(),
     onSetPlaybackRate: vi.fn(),
+    onSetIdleHeartbeat: vi.fn(),
     onSetColorGrading: vi.fn(),
     onSetColorGradingCompare: vi.fn(),
     onSetRootDuration: vi.fn(),

@@ -5,7 +5,7 @@ import {
   HTML_BODY_CSS_WIDTH_FIRST_RE,
   HTML_BODY_CSS_HEIGHT_FIRST_RE,
   VIEWPORT_META_SIZE_RE,
-} from "@hyperframes/parsers";
+} from "@hyperframes/parsers/composition";
 import {
   readAttr,
   readDecodedAttr,
@@ -497,7 +497,7 @@ export const coreRules: Array<(ctx: LintContext) => HyperframeLintFinding[]> = [
   },
 
   // CSS selector safety
-  ({ styles }) => {
+  ({ styles, locate }) => {
     const findings: HyperframeLintFinding[] = [];
     const reportedRepeatedIds = new Set<string>();
     const reportedHiddenStyleSelectors = new Set<string>();
@@ -507,6 +507,12 @@ export const coreRules: Array<(ctx: LintContext) => HyperframeLintFinding[]> = [
         root = postcss.parse(style.content);
       } catch (error) {
         findings.push({
+          ...locate(
+            style,
+            error instanceof postcss.CssSyntaxError
+              ? cssErrorOffset(style.content, error)
+              : undefined,
+          ),
           code: "css_parse_error",
           severity: "error",
           message: `CSS parse error: ${error instanceof Error ? error.message : "unknown"}`,
@@ -581,7 +587,7 @@ export const coreRules: Array<(ctx: LintContext) => HyperframeLintFinding[]> = [
   },
 
   // invalid_inline_script_syntax (JS parse error)
-  ({ scripts }) => {
+  ({ scripts, locate }) => {
     const findings: HyperframeLintFinding[] = [];
     for (const script of scripts) {
       const attrs = script.attrs || "";
@@ -595,9 +601,10 @@ export const coreRules: Array<(ctx: LintContext) => HyperframeLintFinding[]> = [
       const syntaxError = getInlineScriptSyntaxError(script.content);
       if (!syntaxError) continue;
       findings.push({
+        ...locate(script, syntaxError.offset),
         code: "invalid_inline_script_syntax",
         severity: "error",
-        message: `Inline script has invalid syntax: ${syntaxError}`,
+        message: `Inline script has invalid syntax: ${syntaxError.message}`,
         fixHint: "Fix the inline script syntax before render verification.",
         snippet: truncateSnippet(script.content),
       });
@@ -672,7 +679,7 @@ export const coreRules: Array<(ctx: LintContext) => HyperframeLintFinding[]> = [
   },
 
   // non_deterministic_code
-  ({ scripts }) => {
+  ({ scripts, locate }) => {
     const findings: HyperframeLintFinding[] = [];
     const patterns: Array<{
       pattern: RegExp;
@@ -734,8 +741,10 @@ export const coreRules: Array<(ctx: LintContext) => HyperframeLintFinding[]> = [
       // way to clear the error while still rendering the snippet.
       const executable = stripStringLiterals(withoutComments);
       for (const { pattern, label, hint, scansStrings } of patterns) {
-        if (pattern.test(scansStrings ? withoutComments : executable)) {
+        const match = pattern.exec(scansStrings ? withoutComments : executable);
+        if (match) {
           findings.push({
+            ...locate(script, match.index),
             code: "non_deterministic_code",
             severity: "error",
             message: `Script contains \`${label}\` which produces non-deterministic output. Renders may differ between frames or runs.`,
@@ -748,3 +757,20 @@ export const coreRules: Array<(ctx: LintContext) => HyperframeLintFinding[]> = [
     return findings;
   },
 ];
+
+function cssErrorOffset(source: string, error: postcss.CssSyntaxError): number | undefined {
+  // Current PostCSS supplies offsets, but its declaration type omits this field.
+  if (error.input && "offset" in error.input && typeof error.input.offset === "number")
+    return error.input.offset;
+  const { line, column } = error;
+  if (line === undefined || column === undefined) return undefined;
+  let offset = 0;
+  let currentLine = 1;
+  // PostCSS counts LF only; sourcePosition subsequently handles HTML newline conventions.
+  for (const match of source.matchAll(/\n/g)) {
+    if (currentLine >= line) break;
+    offset = match.index + 1;
+    currentLine++;
+  }
+  return currentLine === line ? offset + column - 1 : undefined;
+}

@@ -5,13 +5,15 @@ import {
   mkdirSync,
   readdirSync,
   readFileSync,
+  realpathSync,
   renameSync,
   rmSync,
+  statSync,
   writeFileSync,
 } from "node:fs";
 import { createRequire } from "node:module";
 import { homedir } from "node:os";
-import { basename, dirname, join } from "node:path";
+import { basename, dirname, join, sep } from "node:path";
 import { buildNpmCommand } from "./npxCommand.js";
 
 /** Module type of each optional package; the keys are the only names the loader accepts. */
@@ -28,10 +30,11 @@ export const OPTIONAL_PACKAGES = {
   "@google/genai": "1.52.0",
 } as const satisfies Record<OptionalPackage, string>;
 
-const CACHE_DIR = join(homedir(), ".cache", "hyperframes", "optional");
+export const CACHE_DIR = join(homedir(), ".cache", "hyperframes", "optional");
 
 export interface OptionalPackageDeps {
   cacheDir: string;
+  loadBesideCli(name: OptionalPackage): unknown | null;
   /** The package's exports when already installed in `dir`, else null. */
   loadInstalled(dir: string, name: string): unknown | null;
   /** Install `name@version` into `dir`; rejects with npm's output on failure. */
@@ -48,11 +51,22 @@ export function optionalPackageDir(name: OptionalPackage, cacheDir = CACHE_DIR):
 export function installedOptionalPackageVersion(
   name: OptionalPackage,
   cacheDir = CACHE_DIR,
+  cliUrl = import.meta.url,
 ): string | null {
+  if (pinnedCopyBesideCli(name, cliUrl)) return OPTIONAL_PACKAGES[name];
   const dir = optionalPackageDir(name, cacheDir);
   if (!isInstalled(dir, name)) return null;
   return (JSON.parse(readFileSync(manifestPath(dir, name), "utf-8")) as { version: string })
     .version;
+}
+
+export function loadInstalledOptionalPackage<N extends OptionalPackage>(
+  name: N,
+  deps: OptionalPackageDeps = defaultDeps,
+): OptionalPackageModules[N] | null {
+  const found =
+    deps.loadBesideCli(name) ?? deps.loadInstalled(optionalPackageDir(name, deps.cacheDir), name);
+  return found as OptionalPackageModules[N] | null;
 }
 
 /**
@@ -64,9 +78,9 @@ export async function loadOptionalPackage<N extends OptionalPackage>(
   feature: string,
   deps: OptionalPackageDeps = defaultDeps,
 ): Promise<OptionalPackageModules[N]> {
+  const present = loadInstalledOptionalPackage(name, deps);
+  if (present !== null) return present;
   const dir = optionalPackageDir(name, deps.cacheDir);
-  const installed = deps.loadInstalled(dir, name);
-  if (installed !== null) return installed as OptionalPackageModules[N];
 
   const version = OPTIONAL_PACKAGES[name];
   deps.log(`installing ${name} for ${feature}, once`);
@@ -95,18 +109,37 @@ function manifestPath(dir: string, name: string): string {
   return join(dir, "node_modules", name, "package.json");
 }
 
-function isInstalled(dir: string, name: string): boolean {
+export function isInstalled(dir: string, name: string): boolean {
   return existsSync(manifestPath(dir, name));
 }
 
-function loadInstalled(dir: string, name: string): unknown | null {
+export function loadInstalled(dir: string, name: string): unknown | null {
   if (!isInstalled(dir, name)) return null;
   return createRequire(join(dir, "package.json"))(name);
 }
 
-function runNpm(args: string[]): Promise<void> {
+function pinnedCopyBesideCli(name: OptionalPackage, cliUrl: string): boolean {
+  const req = createRequire(cliUrl);
+  try {
+    const entry = realpathSync(req.resolve(name));
+    const copy = (req.resolve.paths(name) ?? [])
+      .map((dir) => join(dir, name))
+      .find((dir) => existsSync(dir) && entry.startsWith(realpathSync(dir) + sep));
+    if (!copy) return false;
+    const manifest = readFileSync(join(copy, "package.json"), "utf-8");
+    return (JSON.parse(manifest) as { version?: string }).version === OPTIONAL_PACKAGES[name];
+  } catch {
+    return false;
+  }
+}
+
+export function loadBesideCli(name: OptionalPackage, cliUrl = import.meta.url): unknown | null {
+  return pinnedCopyBesideCli(name, cliUrl) ? createRequire(cliUrl)(name) : null;
+}
+
+export function runNpm(args: string[], signal?: AbortSignal): Promise<void> {
   const npm = buildNpmCommand(args);
-  const child = spawn(npm.command, npm.args, { stdio: ["ignore", "pipe", "pipe"] });
+  const child = spawn(npm.command, npm.args, { stdio: ["ignore", "pipe", "pipe"], signal });
   return new Promise((resolve, reject) => {
     let output = "";
     child.stdout.on("data", (chunk) => (output += chunk));
@@ -127,16 +160,20 @@ function isProcessAlive(pid: number): boolean {
   }
 }
 
-/** Removes staging dirs whose owning pid is dead (crash or kill mid-install); never a live one. */
-function sweepStaleStaging(dir: string): void {
+const STAGING_PID_TRUSTED_FOR_MS = 6 * 60 * 60 * 1000;
+
+/** Removes staging dirs whose pid is dead (killed install), or too old to trust a live pid (reuse). */
+export function sweepStaleStaging(dir: string): void {
   const prefix = `${basename(dir)}.tmp-`;
   const parent = dirname(dir);
   if (!existsSync(parent)) return;
   for (const entry of readdirSync(parent)) {
     if (!entry.startsWith(prefix)) continue;
     const pid = /^(\d+)(?:-|$)/.exec(entry.slice(prefix.length))?.[1];
-    if (pid === undefined || isProcessAlive(Number(pid))) continue;
+    if (pid === undefined) continue;
     const stale = join(parent, entry);
+    const age = Date.now() - (statSync(stale, { throwIfNoEntry: false })?.mtimeMs ?? Date.now());
+    if (isProcessAlive(Number(pid)) && age < STAGING_PID_TRUSTED_FOR_MS) continue;
     try {
       rmSync(stale, { recursive: true, force: true });
     } catch (err) {
@@ -186,6 +223,7 @@ export async function install(
 
 const defaultDeps: OptionalPackageDeps = {
   cacheDir: CACHE_DIR,
+  loadBesideCli: (name) => loadBesideCli(name),
   loadInstalled,
   install,
   log: (line) => console.error(line),

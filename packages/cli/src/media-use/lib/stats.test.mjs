@@ -11,7 +11,7 @@ function sandbox() {
   const projectDir = join(root, "project");
   mkdirSync(home, { recursive: true });
   mkdirSync(projectDir, { recursive: true });
-  process.env.HOME = home;
+  process.env.HYPERFRAMES_MEDIA_HOME = home;
   return { root, home, projectDir };
 }
 

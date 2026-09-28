@@ -5,7 +5,6 @@ import type {
   VariableUsageReport,
   VariableValidationIssue,
 } from "@hyperframes/sdk";
-import type { EditHistoryKind } from "../../utils/editHistory";
 import type { PublishSdkSession } from "../../utils/sdkCutover";
 import { useStudioPlaybackContext, useStudioShellContext } from "../../contexts/StudioContext";
 import { useDomEditContext } from "../../contexts/DomEditContext";
@@ -37,7 +36,6 @@ export interface StudioEditPersistenceProps {
   reloadPreview: () => void;
   recordEdit: (entry: {
     label: string;
-    kind: EditHistoryKind;
     files: Record<string, { before: string; after: string }>;
   }) => Promise<void>;
 }
@@ -256,7 +254,7 @@ export const VariablesPanel = memo(function VariablesPanel({
 }: VariablesPanelProps) {
   const { activeCompPath, showToast } = useStudioShellContext();
   const { refreshKey } = useStudioPlaybackContext();
-  const { readProjectFile, writeProjectFile, fileTree, compositions } = useFileManagerContext();
+  const { readProjectFile, writeProjectFile, compositions } = useFileManagerContext();
   const { domEditSelection } = useDomEditContext();
   // Master view (no activeCompPath) targets the real main composition, not a
   // hardcoded index.html — used for both the persist write target and the
@@ -539,8 +537,8 @@ export const VariablesPanel = memo(function VariablesPanel({
           </button>
         )}
         <VariablesOtherCompositions
-          fileTree={fileTree}
-          excludePath={activeCompPath ?? "index.html"}
+          compositionPaths={compositions}
+          excludePath={effectiveCompPath}
           refreshKey={`${refreshKey}:${revision}`}
           readProjectFile={readProjectFile}
           writeProjectFile={writeProjectFile}

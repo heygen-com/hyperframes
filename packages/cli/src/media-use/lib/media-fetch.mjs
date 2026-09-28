@@ -69,3 +69,17 @@ export async function fetchMedia(url, { method = "GET", signal, fetchImpl = fetc
   }
   throw new Error("Media download exceeded redirect limit");
 }
+
+// Stream and abort once the cap is crossed, so a lying or chunked body can't buffer past it.
+export async function readCappedBody(res, maxBytes, label) {
+  const declared = Number(res.headers.get("content-length"));
+  if (declared > maxBytes) throw new Error(`${label}: ${declared} bytes exceeds ${maxBytes} cap`);
+  const chunks = [];
+  let total = 0;
+  for await (const chunk of res.body) {
+    total += chunk.length;
+    if (total > maxBytes) throw new Error(`${label}: stream exceeds ${maxBytes} cap`);
+    chunks.push(chunk);
+  }
+  return Buffer.concat(chunks, total);
+}

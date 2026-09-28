@@ -109,8 +109,6 @@ export function useTimelineAssetDropOps({
       }
 
       try {
-        const originalContent = await readFileContent(pid, targetPath);
-
         const normalizedStart = Number(formatTimelineAttributeNumber(placement.start));
         const duration =
           Number.isFinite(durationOverride) && durationOverride != null && durationOverride > 0
@@ -120,7 +118,6 @@ export function useTimelineAssetDropOps({
         // A video with an audio stream lands audible; the mixer only hears a
         // <video> marked data-has-audio, and a muted drop was losing the sound.
         const hasAudio = await resolveDroppedAssetHasAudio(pid, assetPath, kind);
-        const newId = buildTimelineAssetId(assetPath, collectHtmlIds(originalContent));
         const resolvedAssetSrc = resolveTimelineAssetSrc(targetPath, assetPath);
 
         const resolvedTargetPath = targetPath || "index.html";
@@ -129,46 +126,51 @@ export function useTimelineAssetDropOps({
         );
         const newElementZIndex = Math.max(1, relevantElements.length + 1);
 
-        const { source: sourceWithRoom, track } = resolveDropTrack({
-          source: originalContent,
-          // insertRow counts the rows the timeline shows, so plan against those.
-          elements: relevantElements,
-          placement,
-          dropped: {
-            id: newId,
-            tag: kind === "image" ? "img" : kind,
-            start: normalizedStart,
-            duration: normalizedDuration,
-          },
-        });
-        const patchedContent = extendRootDurationInSource(
-          insertTimelineAssetIntoSource(
-            sourceWithRoom,
-            buildTimelineAssetInsertHtml({
+        let newId = "";
+        let track = 0;
+        const insertAsset = (originalContent: string) => {
+          newId = buildTimelineAssetId(assetPath, collectHtmlIds(originalContent));
+          const resolved = resolveDropTrack({
+            source: originalContent,
+            // insertRow counts the rows the timeline shows, so plan against those.
+            elements: relevantElements,
+            placement,
+            dropped: {
               id: newId,
-              hfId: `hf-${generateId()}`,
-              assetPath: resolvedAssetSrc,
-              kind,
+              tag: kind === "image" ? "img" : kind,
               start: normalizedStart,
               duration: normalizedDuration,
-              track,
-              zIndex: newElementZIndex,
-              hasAudio,
-              geometry: fitTimelineAssetGeometry(
-                null,
-                resolveTimelineAssetCompositionSize(originalContent),
-              ),
-            }),
-          ),
-          normalizedStart + normalizedDuration,
-        );
+            },
+          });
+          track = resolved.track;
+          return extendRootDurationInSource(
+            insertTimelineAssetIntoSource(
+              resolved.source,
+              buildTimelineAssetInsertHtml({
+                id: newId,
+                hfId: `hf-${generateId()}`,
+                assetPath: resolvedAssetSrc,
+                kind,
+                start: normalizedStart,
+                duration: normalizedDuration,
+                track,
+                zIndex: newElementZIndex,
+                hasAudio,
+                geometry: fitTimelineAssetGeometry(
+                  null,
+                  resolveTimelineAssetCompositionSize(originalContent),
+                ),
+              }),
+            ),
+            normalizedStart + normalizedDuration,
+          );
+        };
 
         await saveProjectFilesWithHistory({
           projectId: pid,
           label: "Add timeline asset",
-          kind: "timeline",
-          files: { [targetPath]: patchedContent },
-          readFile: async () => originalContent,
+          files: { [targetPath]: insertAsset },
+          readFile: (path) => readFileContent(pid, path),
           writeFile: writeProjectFile,
           recordEdit,
         });

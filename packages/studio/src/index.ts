@@ -35,6 +35,8 @@ export type { ToggleProps } from "./components/ui/Toggle";
 export { EditorShell } from "./components/EditorShell";
 export type { EditorShellProps } from "./components/EditorShell";
 export { NLEPreview } from "./components/nle/NLEPreview";
+export { DEFAULT_SHORTCUT_SECTIONS } from "./player/components/studioShortcuts";
+export type { ShortcutHint, ShortcutSection } from "./player/components/studioShortcuts";
 export { CompositionBreadcrumb } from "./components/nle/CompositionBreadcrumb";
 export type { CompositionLevel } from "./components/nle/CompositionBreadcrumb";
 
@@ -160,6 +162,7 @@ export type { StudioPendingEditsDrainResult } from "./utils/studioPendingEdits";
 export type {
   CanEditTimelineElement,
   TimelineEditPermission,
+  TimelineEditOutcome,
 } from "./hooks/timelineEditPermission";
 export { useEditHistoryActions } from "./hooks/useEditHistoryActions";
 export type {
@@ -181,3 +184,18 @@ export type { TimelinePaneProps } from "./components/nle/TimelinePane";
 export { TimelineEditProvider } from "./contexts/TimelineEditContext";
 export type { TimelineEditCallbacks } from "./player/components/timelineCallbacks";
 export type { BlockedTimelineEditIntent } from "./player/components/timelineEditing";
+export { TimelineToolbar } from "./components/TimelineToolbar";
+export type { TimelineToolbarProps } from "./components/TimelineToolbar";
+export { TimelineHistoryButtons } from "./components/TimelineHistoryButtons";
+export type { TimelineHistoryButtonsProps } from "./components/TimelineHistoryButtons";
+export { AudioMeterStrip } from "./components/nle/AudioMeterStrip";
+export type { AudioMeterStripProps } from "./components/nle/AudioMeterStrip";
+export { useClipboard } from "./hooks/useClipboard";
+export type { UseClipboardOptions } from "./hooks/useClipboard";
+
+export {
+  playSeamTransitionLoop,
+  type SeamTransitionFrameSource,
+  type SeamTransitionLoopHandle,
+  type SeamTransitionLoopOptions,
+} from "@hyperframes/shader-transitions";

@@ -74,8 +74,15 @@
         <span style="font-weight: 400">Aa</span><span style="font-weight: 600">Aa</span>
       </div>
     </div>
+    <script type="importmap">
+      { "imports": { "orbit-card/scene": "./assets/orbit-scene.js" } }
+    </script>
     <script type="module">
-      import { renderAt } from "./assets/orbit-scene.js";
+      import { createOrbitScene } from "orbit-card/scene";
+      // Bare __hyperframes is this composition's own in a module.
+      const renderAt = createOrbitScene(
+        (typeof __hyperframes !== "undefined" && __hyperframes.getVariables?.()) || {},
+      );
       const state = { time: 0 };
       const timeline = gsap.timeline({ paused: true });
       timeline.to(state, {

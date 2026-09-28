@@ -2,9 +2,12 @@
 // never carry intent text, file names, or paths.
 
 import { randomUUID } from "node:crypto";
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import * as fs from "node:fs";
+import { existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
+import { withFileLock } from "./config-lock.mjs";
+import { globalMediaDir } from "./media-home.mjs";
 
 const POSTHOG_API_KEY = "phc_zjjbX0PnWxERXrMHhkEJWj9A9BhGVLRReICgsfTMmpx";
 const POSTHOG_HOST = "https://us.i.posthog.com";
@@ -61,10 +64,24 @@ function readSharedConfig() {
   return {};
 }
 
-function writeSharedConfig(config) {
-  const dir = join(homedir(), ".hyperframes");
-  if (!existsSync(dir)) mkdirSync(dir, { recursive: true });
-  writeFileSync(join(dir, "config.json"), JSON.stringify(config, null, 2) + "\n");
+// Best effort: skipped when the lock cannot be taken or the file cannot be read, never written unlocked.
+function updateSharedConfig(patch) {
+  const file = sharedConfigPath();
+  mkdirSync(dirname(file), { recursive: true });
+  try {
+    withFileLock(`${file}.lock`, fs, () => {
+      let config = {};
+      try {
+        config = JSON.parse(readFileSync(file, "utf8"));
+      } catch (error) {
+        if (error.code !== "ENOENT") return;
+      }
+      if (!config || typeof config !== "object" || Array.isArray(config)) return;
+      const tmp = `${file}.${process.pid}.tmp`;
+      writeFileSync(tmp, JSON.stringify({ ...config, ...patch }, null, 2) + "\n", { mode: 0o600 });
+      renameSync(tmp, file);
+    });
+  } catch {}
 }
 
 // Adopt a pre-existing media-use-only id (~/.media/anon-id from before this
@@ -72,7 +89,7 @@ function writeSharedConfig(config) {
 // one — otherwise cross-surface continuity would start over on upgrade.
 function legacyMediaAnonId() {
   try {
-    const file = join(homedir(), ".media", "anon-id");
+    const file = join(globalMediaDir(), "anon-id");
     if (existsSync(file)) {
       const id = readFileSync(file, "utf8").trim();
       if (id) return id;
@@ -92,7 +109,7 @@ function anonymousId() {
       return config.anonymousId.trim();
     }
     const id = legacyMediaAnonId() || randomUUID();
-    writeSharedConfig({ ...config, anonymousId: id });
+    updateSharedConfig({ anonymousId: id });
     return id;
   } catch {
     return "anon"; // best-effort; a shared bucket is fine if the fs is read-only
@@ -132,7 +149,7 @@ function showTelemetryNotice() {
         "If you sign in to HeyGen, usage links to your account email or username. Opt out with HYPERFRAMES_NO_TELEMETRY=1 or DO_NOT_TRACK=1.",
       ].join("\n"),
     );
-    writeSharedConfig({ ...config, telemetryNoticeShown: true });
+    updateSharedConfig({ telemetryNoticeShown: true });
   } catch {
     // notice is best-effort; never surface into the command
   }

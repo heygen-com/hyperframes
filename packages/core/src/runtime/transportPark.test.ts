@@ -182,6 +182,51 @@ describe("parked transport loop", () => {
     expect(vi.getTimerCount()).toBe(1);
   });
 
+  it("reports the end in the state it posts when the film finishes", () => {
+    let nowMs = 1000;
+    vi.spyOn(performance, "now").mockImplementation(() => nowMs);
+    document.body.innerHTML = `<div id="root" data-composition-id="main" data-root="true" data-start="0" data-duration="4.97"><div id="clip" data-start="0.48" data-duration="4.49"></div></div>`;
+    window.__timelines = { main: createMockTimeline(4.97) };
+    initSandboxRuntimeModular();
+    quiesce();
+
+    window.__player!.play();
+    for (let step = 0; step < 120 && window.__player!.isPlaying(); step += 1) {
+      nowMs += 50;
+      raf.step(50);
+    }
+
+    const states = posted.filter((m) => m["type"] === "state");
+    expect(states.at(-1)).toMatchObject({ isPlaying: false, ended: true, frame: 149 });
+  });
+
+  // The render stops at the root's declared length too; a longer animation is cut off.
+  it.each([
+    ["3 s, shorter than its animation", "3", 90],
+    ["under a second", "0.2", 6],
+    ["one 60 fps frame", String(1 / 60), 1],
+  ])("stops a film declared %s at that length, and says so", (_label, declared, frame) => {
+    const seconds = Number(declared);
+    let nowMs = 1000;
+    vi.spyOn(performance, "now").mockImplementation(() => nowMs);
+    document.body.innerHTML = `<div id="root" data-composition-id="main" data-root="true" data-start="0" data-duration="${declared}"></div>`;
+    window.__timelines = { main: createMockTimeline(5) };
+    initSandboxRuntimeModular();
+    quiesce();
+
+    window.__player!.play();
+    for (let step = 0; step < 400 && window.__player!.isPlaying(); step += 1) {
+      nowMs += 10;
+      raf.step(10);
+    }
+
+    const states = posted.filter((m) => m["type"] === "state");
+    expect(states.at(-1)).toMatchObject({ isPlaying: false, ended: true, frame });
+    expect(window.__player!.getDuration()).toBeCloseTo(seconds, 9);
+    const timeline = posted.filter((m) => m["type"] === "timeline").at(-1);
+    expect(timeline?.["durationSeconds"]).toBeCloseTo(seconds, 9);
+  });
+
   it("keeps asking for animation frames while playing", () => {
     mount();
     initSandboxRuntimeModular();
@@ -205,6 +250,62 @@ describe("parked transport loop", () => {
     expect(after - before).toBe(3);
     // Still parked: the heartbeat is a timer, not a frame.
     expect(raf.pending()).toBe(0);
+  });
+
+  const setIdleHeartbeat = (slow: boolean) =>
+    window.dispatchEvent(
+      new MessageEvent("message", {
+        source: window.parent,
+        data: { source: "hf-parent", type: "control", action: "set-idle-heartbeat", slow },
+      }),
+    );
+  const states = () => posted.filter((m) => m["type"] === "state").length;
+
+  it("slows the parked heartbeat to once a second when the host asks, and back when it stops", () => {
+    mount();
+    initSandboxRuntimeModular();
+    quiesce();
+
+    setIdleHeartbeat(true);
+    quiesce();
+    const slow = states();
+    vi.advanceTimersByTime(3000);
+    expect(states() - slow).toBe(3);
+    expect(raf.pending()).toBe(0);
+
+    // Turned off mid-interval, the 80 ms beat resumes without waiting out the second.
+    vi.advanceTimersByTime(500);
+    setIdleHeartbeat(false);
+    settle();
+    const resumed = states();
+    for (let beat = 0; beat < 3; beat += 1) vi.advanceTimersByTime(PARK_HEARTBEAT_MS);
+    expect(states() - resumed).toBe(3);
+  });
+
+  it("keeps the fast heartbeat under a slow request until a timeline is bound", () => {
+    mount();
+    window.__timelines = {};
+    initSandboxRuntimeModular();
+    document.getElementById("root")!.removeAttribute("data-duration");
+    setIdleHeartbeat(true);
+    quiesce();
+
+    // A composition that registers its timeline late (after fonts load) must still be seen at once.
+    window.__timelines!["main"] = createMockTimeline(12);
+    vi.advanceTimersByTime(PARK_HEARTBEAT_MS);
+    settle();
+    expect(window.__player!.getDuration()).toBeCloseTo(12, 3);
+  });
+
+  it("keeps the fast heartbeat under a slow request while a sub-composition is unbound", () => {
+    mount('<div data-composition-id="child"></div>');
+    initSandboxRuntimeModular();
+    setIdleHeartbeat(true);
+    quiesce();
+
+    const before = states();
+    for (let beat = 0; beat < 3; beat += 1) vi.advanceTimersByTime(PARK_HEARTBEAT_MS);
+    expect(states() - before).toBe(3);
   });
 
   it("delivers a live data-duration edit while parked", async () => {
@@ -256,6 +357,8 @@ describe("parked transport loop", () => {
 
   it("delivers media metadata that arrives after the loop parked", async () => {
     mount(`<video id="v" data-start="0" src="a.mp4"></video>`);
+    // A declared length would hold the film at 5 s; only an inferred one can grow.
+    document.getElementById("root")!.removeAttribute("data-duration");
     initSandboxRuntimeModular();
     quiesce();
 
@@ -439,6 +542,7 @@ describe("parked transport loop", () => {
 
   it("delivers an adapter duration that grows while parked, with no DOM mutation and no event", () => {
     mount();
+    document.getElementById("root")!.removeAttribute("data-duration");
     initSandboxRuntimeModular();
     quiesce();
     const before = window.__player!.getDuration();

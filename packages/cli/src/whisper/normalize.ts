@@ -48,7 +48,10 @@ function detectJsonFormat(raw: unknown): TranscriptFormat {
     if (obj.transcription && Array.isArray(obj.transcription)) return "whisper-cpp";
     if (obj.words && Array.isArray(obj.words)) return "openai";
   }
-  if (Array.isArray(raw) && raw[0]?.text !== undefined && raw[0]?.start !== undefined) {
+  if (
+    Array.isArray(raw) &&
+    raw.slice(0, 1).every((w) => w?.text !== undefined && w?.start !== undefined)
+  ) {
     return "words-json";
   }
   throw new Error(

@@ -4,12 +4,12 @@ import { useMountEffect } from "../../hooks/useMountEffect";
 import { getPinchTimelineZoomPercent } from "./timelineZoom";
 import {
   getTimelinePlaybackFollowScrollLeft,
-  getTimelinePlayheadLeft,
   getTimelineScrubTime,
   getTimelineScrollLeftForZoomTransition,
   getTimelineScrollLeftForZoomAnchor,
   shouldAutoScrollTimeline,
 } from "./timelineLayout";
+import { getTimelinePlayheadTransform } from "./timelinePlayheadTransform";
 import { applyTimelineHorizontalAutoScrollStep } from "./timelineEditing";
 
 interface UseTimelinePlayheadInput {
@@ -75,7 +75,8 @@ export function useTimelinePlayhead({
     // it true and the next toolbar zoom would wrongly skip center-anchoring.
     const skip = skipCenterAnchorRef.current;
     skipCenterAnchorRef.current = false;
-    if (!scroll || pps === prevPps || skip) return;
+    // A view at the start stays there: a resize or a host zoom must not hide 00:00.
+    if (!scroll || pps === prevPps || skip || scroll.scrollLeft < 1) return;
     const nextScrollLeft = getTimelineScrollLeftForZoomAnchor({
       pointerX: scroll.clientWidth / 2,
       currentScrollLeft: scroll.scrollLeft,
@@ -91,7 +92,12 @@ export function useTimelinePlayhead({
   const syncPlayheadPosition = useCallback(
     (time: number) => {
       if (!playheadRef.current || durationRef.current <= 0) return;
-      playheadRef.current.style.left = `${getTimelinePlayheadLeft(time, ppsRef.current, contentOrigin)}px`;
+      playheadRef.current.style.transform = getTimelinePlayheadTransform(
+        time,
+        ppsRef.current,
+        contentOrigin,
+        !usePlayerStore.getState().isPlaying,
+      );
     },
     [playheadRef, durationRef, ppsRef, contentOrigin],
   );
@@ -121,14 +127,24 @@ export function useTimelinePlayhead({
   }, [zoomMode, scrollRef]);
 
   useMountEffect(() => {
-    const unsub = liveTime.subscribe((t) => {
-      if (!playheadRef.current || durationRef.current <= 0) return;
-      const playheadX = contentOriginRef.current + Math.max(0, t) * ppsRef.current;
-      playheadRef.current.style.left = `${getTimelinePlayheadLeft(
+    let lastLiveTime = usePlayerStore.getState().currentTime;
+    const place = (t: number, atRest: boolean) => {
+      if (!playheadRef.current || durationRef.current <= 0) return false;
+      playheadRef.current.style.transform = getTimelinePlayheadTransform(
         t,
         ppsRef.current,
         contentOriginRef.current,
-      )}px`;
+        atRest,
+      );
+      return true;
+    };
+    const unsubPlaying = usePlayerStore.subscribe((state, prev) => {
+      if (prev.isPlaying && !state.isPlaying) place(lastLiveTime, true);
+    });
+    const unsub = liveTime.subscribe((t) => {
+      lastLiveTime = t;
+      if (!place(t, !usePlayerStore.getState().isPlaying)) return;
+      const playheadX = contentOriginRef.current + Math.max(0, t) * ppsRef.current;
       const scroll = scrollRef.current;
       if (
         !scroll ||
@@ -149,7 +165,10 @@ export function useTimelinePlayhead({
         scroll.scrollLeft = nextScrollLeft;
       }
     });
-    return unsub;
+    return () => {
+      unsub();
+      unsubPlaying();
+    };
   });
 
   const seekFromX = useCallback(

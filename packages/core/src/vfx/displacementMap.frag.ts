@@ -1,13 +1,16 @@
 /**
  * `displacement-map` kernel — GLSL ES 3.00, capture `self`.
  *
- * **Scope (v1, recorded rather than implied):** every corpus instance points
- * its Displacement Map Layer at **the layer itself** (retro-wave `Main/Text`
- * → idx 5 = Text; `Logo Anim/Text Site` and `Logo Anim/Logo` likewise), so
- * `u_src` is both the source and the map and no second capture is needed. A
- * map that is a *different* layer is out of v1 — it needs a second source,
- * which is Phase 2b's `ref`-param shape; the exporter emits a structural
- * capability for it instead.
+ * **The map layer.** Every corpus instance points its Displacement Map Layer
+ * at **the layer itself** (retro-wave `Main/Text` → idx 5 = Text; `Logo Anim/
+ * Text Site` and `Logo Anim/Logo` likewise), so `u_src` is both the source and
+ * the map and no second capture is needed — that is what the `map` ref param
+ * being EMPTY means, and it stays the default. An external map layer is the
+ * same kernel reading `u_src2`: the exporter names that element in `map` and
+ * wraps it in its own `.hf-vfx-src` capture, and `u_hasSrc2` switches the
+ * sampler. The two inputs are read at the same `v_uv`, so an external map is
+ * scaled into the host's box (see `captureSource`), not placed in composition
+ * space.
  *
  * Per axis: `d = (channel(map) − 0.5) · 2 · max`, then sample `u_src` at
  * `uv + d/u_size` with **clamp-to-transparent** edges (Edge = Off, the only
@@ -51,6 +54,10 @@ uniform vec2 u_size;
 uniform float u_t;
 uniform float u_fps;
 uniform sampler2D u_src;
+uniform sampler2D u_src2;
+// 1 when the map ref named another element, 0 when the map is the layer
+// itself. Set by the runtime for every pass, from whether a ref resolved.
+uniform float u_hasSrc2;
 uniform float u_useH;
 uniform float u_maxH;
 uniform float u_useV;
@@ -78,7 +85,7 @@ float hfMapChannel(vec4 premultiplied, float selector) {
 }
 
 void main() {
-  vec4 mapTexel = texture(u_src, v_uv);
+  vec4 mapTexel = u_hasSrc2 > 0.5 ? texture(u_src2, v_uv) : texture(u_src, v_uv);
   float h = hfMapChannel(mapTexel, u_useH);
   float v = hfMapChannel(mapTexel, u_useV);
   vec2 d = vec2((h - 0.5) * 2.0 * u_maxH, (v - 0.5) * 2.0 * u_maxV);

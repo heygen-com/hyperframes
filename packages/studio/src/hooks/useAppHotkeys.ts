@@ -93,7 +93,7 @@ interface UseAppHotkeysParams {
   handleDuplicate: () => Promise<boolean>;
   onResetKeyframes: () => boolean;
   onDeleteSelectedKeyframes: () => void;
-  onAfterUndoRedo?: () => void;
+  onAfterUndoRedo?: UseEditHistoryActionsOptions["onAfterUndoRedo"];
   onToggleRecording?: () => void;
   /** Group the current multi-selection into a data-hf-group wrapper (⌘G). */
   onGroupSelection?: () => void;

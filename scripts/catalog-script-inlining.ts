@@ -206,7 +206,7 @@ function inlineFrostScripts(
   // gsap/frost.js load: left in document order it would run before either is ready.
   const { text: compositionScriptText, html: withoutComposition } = extractAndRemoveScript(
     html.replace(`<script src="assets/gsap-3.14.2.min.js"></script>`, "__CATALOG_BOOTSTRAP__"),
-    /<script>(?=[\s\S]*?window\.__frostInstance)/,
+    /<script>(?=(?:(?!<\/script>)[\s\S])*?window\.__frostInstance)/,
     "frost's composition script",
   );
 
@@ -227,21 +227,10 @@ ${gsapLoaderJs(vendorUrls)}
 }
 
 function inlineGlassScripts(html: string, projectDir: string): string {
-  const hdrRelPath = "assets/ferndale_studio_01_1k.hdr";
-  let glassText = withHostedRefs(
-    readFileSync(join(projectDir, "assets/glass-main.js"), "utf-8"),
-    projectDir,
-  );
-  if (!glassText.includes(hdrRelPath)) {
-    throw new Error(
-      `catalog-script-inlining: glass-main.js no longer references "${hdrRelPath}"; ` +
-        `the hdr substitution needs updating.`,
-    );
+  if (html.includes("assets/ferndale_studio_01_1k.hdr")) {
+    throw new Error("catalog-script-inlining: glass-shard-title's hdr <link> was not inlined.");
   }
-  const hdrBytes = readFileSync(join(projectDir, hdrRelPath));
-  const hdrDataUrl = `data:application/octet-stream;base64,${hdrBytes.toString("base64")}`;
-  glassText = glassText.split(hdrRelPath).join(hdrDataUrl);
-
+  const glassText = readFileSync(join(projectDir, "assets/glass-main.js"), "utf-8");
   const bootstrap = `<script>(0,eval)(${jsStringLiteral(glassText)});</script>`;
   return replaceOnce(
     html,
@@ -287,7 +276,7 @@ const bufferGeoUrl=await ${vendorFetchExpr(vendorUrl(vendorUrls, "BufferGeometry
 const cuboidMotionUrl=${blobUrlExpr(jsStringLiteral(cuboidMotionText))};
 const im=document.createElement("script");
 im.type="importmap";
-im.textContent=JSON.stringify({imports:{three:threeModuleUrl,"three/addons/environments/RoomEnvironment.js":roomEnvUrl,"three/addons/utils/BufferGeometryUtils.js":bufferGeoUrl,"./assets/cuboid-motion.js":cuboidMotionUrl}});
+im.textContent=JSON.stringify({imports:{three:threeModuleUrl,"three/addons/environments/RoomEnvironment.js":roomEnvUrl,"three/addons/utils/BufferGeometryUtils.js":bufferGeoUrl,"cuboid-carousel/motion":cuboidMotionUrl}});
 selfScript.after(im);
 ${precedingScriptEvals}
 const entry=document.createElement("script");
@@ -310,8 +299,14 @@ function inlineOrbitScripts(
   if (!gsapRe.test(html)) {
     throw new Error("catalog-script-inlining: orbit-card's gsap script tag not found.");
   }
+  // The bootstrap's import map replaces the block's own, which points at unhosted files.
+  const { html: withoutImportmap } = extractAndRemoveScript(
+    html,
+    /<script type="importmap">/,
+    "orbit-card's import map",
+  );
   const { text: entryModuleText, html: withoutEntry } = extractAndRemoveScript(
-    html.replace(gsapRe, "__CATALOG_BOOTSTRAP__"),
+    withoutImportmap.replace(gsapRe, "__CATALOG_BOOTSTRAP__"),
     /<script type="module">/,
     "orbit-card's entry module script",
   );
@@ -327,7 +322,7 @@ const orbitSceneText=${jsStringLiteral(orbitSceneText)}.split('"./three.module.m
 const orbitSceneUrl=${blobUrlExpr("orbitSceneText")};
 const im=document.createElement("script");
 im.type="importmap";
-im.textContent=JSON.stringify({imports:{"./assets/orbit-scene.js":orbitSceneUrl}});
+im.textContent=JSON.stringify({imports:{"orbit-card/scene":orbitSceneUrl}});
 selfScript.after(im);
 const entry=document.createElement("script");
 entry.type="module";

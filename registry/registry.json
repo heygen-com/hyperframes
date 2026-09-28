@@ -324,6 +324,10 @@
       "type": "hyperframes:block"
     },
     {
+      "name": "lottie-character-walk",
+      "type": "hyperframes:block"
+    },
+    {
       "name": "lower-third-bild",
       "type": "hyperframes:block"
     },
@@ -1581,6 +1585,6 @@
     }
   ],
   "catalogArtifact": {
-    "revision": "01f77564cabdcd54733e8251051a721b644be2096c1aba9d62f392c7d66d277e"
+    "revision": "973eda0eef98aed0e928080d20a64acacd8054e83611df7ed8b30ea96b25bf5b"
   }
 }

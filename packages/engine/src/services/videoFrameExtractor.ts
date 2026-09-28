@@ -21,6 +21,9 @@ import {
   sourceTimeAt,
   timeAtSourceTime,
   type RateSpec,
+  exportClipWindow,
+  hasClipStarted,
+  isInClipWindow,
   parseStrictFiniteTimingNumber,
   readMediaStart,
   toFps,
@@ -45,7 +48,7 @@ import {
   UrlDownloadError,
   writeUrlDownloadTelemetry,
 } from "../utils/urlDownloader.js";
-import { runFfmpeg } from "../utils/runFfmpeg.js";
+import { runFfmpeg, runFfmpegPipeline, type RunFfmpegResult } from "../utils/runFfmpeg.js";
 import { DEFAULT_CONFIG, type EngineConfig } from "../config.js";
 import { unwrapTemplate } from "../utils/htmlTemplate.js";
 import {
@@ -218,6 +221,9 @@ const SDR_TO_HDR_COLORSPACE_FILTER = "colorspace=all=bt2020:iall=bt709:range=tv"
 const HDR_TO_SDR_TONEMAP_FILTER =
   "zscale=t=linear:npl=100,tonemap=hable:desat=0,zscale=p=bt709:t=bt709:m=bt709:r=tv";
 const HDR_TO_SDR_TRANSFORM_KEY = "hdr2sdr-hable-bt709";
+const SDR_CANVAS_PASSTHROUGH_FILTER = "setparams=color_primaries=bt709:color_trc=iec61966-2-1";
+const SDR_JPEG_AS_BT601_FULL_RANGE_FILTER =
+  "scale=flags=neighbor,format=gbrp,scale=out_color_matrix=bt601:out_range=pc:flags=neighbor,format=yuv420p";
 
 function sdrToHdrTransformKey(transfer: HdrTransfer): string {
   return `sdr2hdr-${transfer}`;
@@ -748,6 +754,71 @@ export function parseImageElements(html: string): ImageElement[] {
   return images;
 }
 
+/** Chrome plays untagged VP9 and AV1 as BT.601, H.264 and VP8 as BT.709 from 720 lines (assumed for the rest). */
+const CHROME_BT601_UNTAGGED_CODECS = new Set(["vp9", "av1"]);
+
+function chromeGuessForUntaggedMatrix(metadata: VideoMetadata): string[] {
+  const matrix = metadata.colorSpace?.colorSpace;
+  if (matrix && matrix !== "unknown") return [];
+  const hd = metadata.height >= 720 && !CHROME_BT601_UNTAGGED_CODECS.has(metadata.videoCodec);
+  return [`setparams=colorspace=${hd ? "bt709" : "smpte170m"}`];
+}
+
+/** Pixel formats nut carries as raw video unchanged on ffmpeg 5.1 to 8.1 (yuvj only loses its range). */
+const NUT_RAW_PIXEL_FORMATS = new Set([
+  "yuv420p",
+  "yuvj420p",
+  "yuv422p",
+  "yuvj422p",
+  "yuv444p",
+  "yuvj444p",
+  "yuva420p",
+  "yuva444p",
+  "yuv440p",
+  "yuv411p",
+  "yuv410p",
+  "yuva422p",
+  "yuv420p10le",
+  "yuv422p10le",
+  "yuv444p10le",
+  "yuva420p10le",
+  "yuva444p10le",
+  "yuv420p12le",
+  "nv12",
+  "nv21",
+  "yuyv422",
+  "uyvy422",
+  "gray",
+  "gray10le",
+  "ya8",
+  "gbrp",
+  "gbrap",
+  "gbrp10le",
+  "gbrp12le",
+  "gbrap10le",
+  "rgb24",
+  "bgr24",
+  "rgba",
+  "bgra",
+  "argb",
+  "abgr",
+  "rgb48le",
+  "rgba64le",
+]);
+
+/** nut drops colour tags, so raw frames get the source's back before any other filter reads them. */
+function restoreSourceColourFilter(metadata: VideoMetadata): string[] {
+  const tags = [
+    ["range", metadata.colorRange],
+    ["colorspace", metadata.colorSpace?.colorSpace],
+    ["color_primaries", metadata.colorSpace?.colorPrimaries],
+    ["color_trc", metadata.colorSpace?.colorTransfer],
+  ].filter(([, value]) => value && value !== "unknown" && value !== "reserved");
+  return tags.length > 0
+    ? [`setparams=${tags.map(([key, value]) => `${key}=${value}`).join(":")}`]
+    : [];
+}
+
 export async function extractVideoFramesRange(
   videoPath: string,
   videoId: string,
@@ -756,12 +827,7 @@ export async function extractVideoFramesRange(
   options: ExtractionOptions,
   signal?: AbortSignal,
   config?: Partial<Pick<EngineConfig, "ffmpegProcessTimeout">>,
-  /**
-   * Override the output directory for this extraction. When provided, frames
-   * are written directly into `outputDirOverride` (no per-videoId subdir).
-   * Used by the cache layer to materialize frames straight into the keyed
-   * cache entry directory.
-   */
+  /** Frames go straight here, with no per-videoId subdir (the cache layer's keyed entry). */
   outputDirOverride?: string,
 ): Promise<ExtractedFrames> {
   const ffmpegProcessTimeout = config?.ffmpegProcessTimeout ?? DEFAULT_CONFIG.ffmpegProcessTimeout;
@@ -806,6 +872,8 @@ export async function extractVideoFramesRange(
   const isHdr = isHdrColorSpaceUtil(metadata.colorSpace);
   const isMacOS = process.platform === "darwin";
 
+  const sampleCfrAtOutputFps = !options.finalFrameOnly && !metadata.isVFR;
+
   const args: string[] = [];
   if (isHdr && isMacOS) {
     args.push("-hwaccel", "videotoolbox");
@@ -829,6 +897,8 @@ export async function extractVideoFramesRange(
     // a negative timestamp base) can seek to EOF and emit zero frames.
     args.push("-i", videoPath, "-ss", String(startTime), "-frames:v", "1");
   } else {
+    // An accurate seek drops the frame on screen at startTime; the fps sampling below needs it.
+    if (sampleCfrAtOutputFps) args.push("-noaccurate_seek");
     args.push("-ss", String(startTime), "-i", videoPath, "-t", String(duration));
   }
 
@@ -837,8 +907,14 @@ export async function extractVideoFramesRange(
     // VideoToolbox tone-maps during decode; force output to bt709 SDR format
     vfFilters.push("format=nv12");
   }
-  if (!options.finalFrameOnly && !metadata.isVFR) {
-    vfFilters.push(`fps=${ffmpegFps}`);
+  if (sampleCfrAtOutputFps) {
+    // Each slot takes the last frame starting at or before its time. Ticks of 2 ms or finer
+    // first shift half a tick, absorbing container rounding (WebM/MKV use whole ms).
+    vfFilters.push(
+      "settb=intb/2",
+      "setpts=PTS-lte(TB\\,0.001)",
+      `fps=${ffmpegFps}:start_time=0:round=up`,
+    );
   }
   if (options.sdrToHdrTransfer) {
     // Ordering intent: fps sampling runs BEFORE the colorspace remap so only
@@ -853,17 +929,46 @@ export async function extractVideoFramesRange(
   if (options.toneMapHdrToSdr && isHdr && !isMacOS) {
     vfFilters.push(HDR_TO_SDR_TONEMAP_FILTER);
   }
-  if (vfFilters.length > 0) args.push("-vf", vfFilters.join(","));
-  if (!options.finalFrameOnly && metadata.isVFR) {
-    args.push("-fps_mode", "cfr", "-r", ffmpegFps);
+  if (!isHdr && !options.sdrToHdrTransfer) {
+    vfFilters.push(...chromeGuessForUntaggedMatrix(metadata), SDR_CANVAS_PASSTHROUGH_FILTER);
+    if (format === "jpg") vfFilters.push(SDR_JPEG_AS_BT601_FULL_RANGE_FILTER);
   }
-
-  args.push("-q:v", format === "jpg" ? String(Math.ceil((100 - quality) / 3)) : "0");
+  const encodeArgs = ["-q:v", format === "jpg" ? String(Math.ceil((100 - quality) / 3)) : "0"];
   // Render-scoped temp frames are read once; level 1 measured 3-5x faster for ~14% larger files.
-  if (format === "png") args.push("-compression_level", "1");
-  args.push("-y", outputPattern);
+  if (format === "png") encodeArgs.push("-compression_level", "1");
+  encodeArgs.push("-y", outputPattern);
 
-  const processResult = await runFfmpeg(args, { signal, timeout: ffmpegProcessTimeout });
+  const runOptions = { signal, timeout: ffmpegProcessTimeout };
+  const resampleVfrToCfr = !options.finalFrameOnly && metadata.isVFR;
+  if (resampleVfrToCfr) args.push("-fps_mode", "cfr", "-r", ffmpegFps);
+  let processResult: RunFfmpegResult;
+  if (
+    resampleVfrToCfr &&
+    vfFilters.length > 0 &&
+    !isHdr &&
+    NUT_RAW_PIXEL_FORMATS.has(metadata.pixelFormat ?? "")
+  ) {
+    // ffmpeg <6.1 ignores frame durations in CFR resampling once any -vf is set,
+    // cutting a trailing still short, so the SDR filters run in a second process.
+    processResult = await runFfmpegPipeline(
+      [...args, "-an", "-sn", "-dn", "-c:v", "rawvideo", "-f", "nut", "pipe:1"],
+      [
+        "-f",
+        "nut",
+        "-i",
+        "pipe:0",
+        "-vf",
+        [...restoreSourceColourFilter(metadata), ...vfFilters].join(","),
+        "-fps_mode",
+        "passthrough",
+        ...encodeArgs,
+      ],
+      runOptions,
+    );
+  } else {
+    if (vfFilters.length > 0) args.push("-vf", vfFilters.join(","));
+    processResult = await runFfmpeg([...args, ...encodeArgs], runOptions);
+  }
   if (processResult.failureReason === "external_interruption") {
     throw new VideoSourceExtractionError(
       "external_interruption",
@@ -921,6 +1026,20 @@ export async function extractVideoFramesRange(
       "Video source produced no decodable frames",
       `FFmpeg exited successfully but produced no frames (start=${startTime}, duration=${duration})`,
     );
+  }
+
+  // Post-extraction reconciliation: when FFmpeg delivers <=60% of the
+  // frames predicted by the probed duration, the duration is likely
+  // inflated (container duration includes a longer audio track). Correct
+  // it so downstream coverage accounting uses the actual video extent.
+  if (framePaths.size > 0 && duration > 0 && !options.finalFrameOnly) {
+    const expectedAtFps = extractionFrameCountForDuration(duration, normalizedFps, metadata.isVFR);
+    if (expectedAtFps > 0 && framePaths.size <= expectedAtFps * 0.6) {
+      const correctedDuration = startTime + framePaths.size / fps;
+      if (correctedDuration < metadata.videoStreamDurationSeconds) {
+        metadata.videoStreamDurationSeconds = correctedDuration;
+      }
+    }
   }
 
   return {
@@ -1102,8 +1221,7 @@ export function resolveTimelineExtractionWindow(
     if (sourceRemaining > 0 && video.loop && Number.isFinite(video.end)) {
       const phaseOffset = trimmedSourcePreroll % sourceRemaining;
       const phaseRemaining = sourceRemaining - phaseOffset;
-      // The element visibility contract includes its end boundary. Preserve a
-      // complete cycle on equality as well, otherwise a rebased suffix would
+      // Keep a complete cycle on equality too, otherwise a rebased suffix would
       // wrap to its own first frame instead of the source cycle's first frame.
       if (visibleSourceDuration >= phaseRemaining) {
         return withTimelineDuration(
@@ -2184,8 +2302,7 @@ function getFrameIndexAtTime(
   holdLastFrame = false,
   playbackRate: RateSpec = 1,
 ): number | null {
-  let localTime = globalTime - videoStart;
-  if (localTime < 0) return null;
+  let localTime = Math.max(0, globalTime - videoStart);
   const normalizedPlaybackRate = normalizeRateSpec(playbackRate);
   const loopDuration = timeAtSourceTime(
     normalizedPlaybackRate,
@@ -2222,6 +2339,7 @@ export function getFrameAtTime(
   loop = false,
   mediaStart = 0,
 ): string | null {
+  if (!hasClipStarted(globalTime, videoStart)) return null;
   const frameIndex = getFrameIndexAtTime(extracted, globalTime, videoStart, loop, mediaStart);
   return frameIndex == null ? null : extracted.framePaths.get(frameIndex) || null;
 }
@@ -2255,7 +2373,7 @@ export class FrameLookupTable {
     {
       extracted: ExtractedFrames;
       start: number;
-      end: number;
+      clipWindow: { start: number; end: number };
       mediaStart: number;
       loop: boolean;
       playbackRate: RateSpec;
@@ -2265,7 +2383,7 @@ export class FrameLookupTable {
     videoId: string;
     extracted: ExtractedFrames;
     start: number;
-    end: number;
+    clipWindow: { start: number; end: number };
     mediaStart: number;
     loop: boolean;
     playbackRate: RateSpec;
@@ -2273,6 +2391,9 @@ export class FrameLookupTable {
   private activeVideoIds: Set<string> = new Set();
   private startCursor = 0;
   private lastTime: number | null = null;
+
+  /** The render's `fps`, so a clip shows in exactly export visibility's frames; omit for authored times. */
+  constructor(private readonly fps?: number) {}
 
   addVideo(
     extracted: ExtractedFrames,
@@ -2285,21 +2406,21 @@ export class FrameLookupTable {
     this.videos.set(extracted.videoId, {
       extracted,
       start,
-      end,
+      clipWindow: this.fps ? exportClipWindow(start, end, this.fps) : { start, end },
       mediaStart,
       loop,
       playbackRate: normalizeRateSpec(playbackRate),
     });
     this.orderedVideos = Array.from(this.videos.entries())
       .map(([videoId, video]) => ({ videoId, ...video }))
-      .sort((a, b) => a.start - b.start);
+      .sort((a, b) => a.clipWindow.start - b.clipWindow.start);
     this.resetActiveState();
   }
 
   getFrame(videoId: string, globalTime: number): string | null {
     const video = this.videos.get(videoId);
     if (!video) return null;
-    if (globalTime < video.start || globalTime > video.end) return null;
+    if (!isInClipWindow(globalTime, video.clipWindow.start, video.clipWindow.end)) return null;
     const frameIndex = getFrameIndexAtTime(
       video.extracted,
       globalTime,
@@ -2319,23 +2440,16 @@ export class FrameLookupTable {
   }
 
   private refreshActiveSet(globalTime: number): void {
-    // The active window is [start, end] INCLUSIVE of the end, mirroring the
-    // runtime's element-visibility contract (core/runtime init.ts keeps an
-    // element visible through `currentTime <= end`). An exclusive end-bound
-    // here deactivated the video one frame early, so the frame landing exactly
-    // on a clip's end rendered blank while the runtime still showed it.
+    // Half-open exportClipWindow; rendered times stay below the composition end, so no terminal hold here.
     if (this.lastTime == null || globalTime < this.lastTime) {
       this.activeVideoIds.clear();
       this.startCursor = 0;
       for (const entry of this.orderedVideos) {
-        if (entry.start <= globalTime && globalTime <= entry.end) {
+        if (!hasClipStarted(globalTime, entry.clipWindow.start)) break;
+        if (isInClipWindow(globalTime, entry.clipWindow.start, entry.clipWindow.end)) {
           this.activeVideoIds.add(entry.videoId);
         }
-        if (entry.start <= globalTime) {
-          this.startCursor += 1;
-        } else {
-          break;
-        }
+        this.startCursor += 1;
       }
       this.lastTime = globalTime;
       return;
@@ -2344,10 +2458,10 @@ export class FrameLookupTable {
     while (this.startCursor < this.orderedVideos.length) {
       const candidate = this.orderedVideos[this.startCursor];
       if (!candidate) break;
-      if (candidate.start > globalTime) {
+      if (!hasClipStarted(globalTime, candidate.clipWindow.start)) {
         break;
       }
-      if (globalTime <= candidate.end) {
+      if (isInClipWindow(globalTime, candidate.clipWindow.start, candidate.clipWindow.end)) {
         this.activeVideoIds.add(candidate.videoId);
       }
       this.startCursor += 1;
@@ -2355,7 +2469,7 @@ export class FrameLookupTable {
 
     for (const videoId of Array.from(this.activeVideoIds)) {
       const video = this.videos.get(videoId);
-      if (!video || globalTime < video.start || globalTime > video.end) {
+      if (!video || !isInClipWindow(globalTime, video.clipWindow.start, video.clipWindow.end)) {
         this.activeVideoIds.delete(videoId);
       }
     }
@@ -2415,8 +2529,9 @@ export class FrameLookupTable {
 export function createFrameLookupTable(
   videos: VideoElement[],
   extracted: ExtractedFrames[],
+  fps?: number,
 ): FrameLookupTable {
-  const table = new FrameLookupTable();
+  const table = new FrameLookupTable(fps);
   const extractedMap = new Map<string, ExtractedFrames>();
   for (const ext of extracted) extractedMap.set(ext.videoId, ext);
 

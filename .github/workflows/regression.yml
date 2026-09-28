@@ -1,4 +1,5 @@
 name: regression
+run-name: ${{ github.event_name == 'workflow_dispatch' && format('Checks (catalog_publish={0})', inputs.catalog_publish) || '' }}
 
 permissions:
   contents: read
@@ -12,9 +13,18 @@ env:
 # SHA. Keep only the newest expensive regression run for each PR/ref.
 concurrency:
   group: regression-${{ github.event.pull_request.number || github.ref }}
-  cancel-in-progress: true
+  # A body or title edit queues behind running checks instead of cancelling them.
+  cancel-in-progress: ${{ github.event.action != 'edited' || github.event.changes.base != null }}
 
 on:
+  merge_group:
+    types: [checks_requested]
+  workflow_dispatch:
+    inputs:
+      catalog_publish:
+        description: "Run required checks for a generated catalog publication."
+        type: boolean
+        default: false
   pull_request:
     # Re-run when Graphite changes only the PR base for the same head SHA.
     types: [opened, synchronize, reopened, edited]
@@ -28,7 +38,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 2
     outputs:
-      code: ${{ steps.filter.outputs.code }}
+      code: ${{ (github.event_name == 'workflow_dispatch' && inputs.catalog_publish) && 'true' || steps.filter.outputs.code }}
       matrix: ${{ steps.shards.outputs.matrix }}
     steps:
       # Force git-based change detection instead of the pull_request REST API.
@@ -123,6 +133,7 @@ jobs:
           echo "Mode:  ${{ matrix.mode }}"
           echo "Args:  ${{ matrix.args }}"
           docker run --rm \
+            -e HYPERFRAMES_NO_TELEMETRY=1 \
             --security-opt seccomp=unconfined \
             --shm-size=4g \
             -v ${{ github.workspace }}/packages/producer/tests:/app/packages/producer/tests \
@@ -145,12 +156,23 @@ jobs:
     if: always()
     steps:
       - name: Check results
+        env:
+          CHANGES_RESULT: ${{ needs.changes.result }}
+          CODE_CHANGED: ${{ needs.changes.outputs.code }}
+          SHARDS_RESULT: ${{ needs.regression-shards.result }}
         run: |
-          if [ "${{ needs.changes.outputs.code }}" != "true" ]; then
-            echo "No code changes — skipping regression (auto-pass)"
-            exit 0
-          fi
-          if [ "${{ needs.regression-shards.result }}" != "success" ]; then
-            echo "One or more regression shards failed"
+          if [ "$CHANGES_RESULT" != "success" ]; then
+            echo "::error::Change detection did not succeed."
             exit 1
           fi
+          case "$CODE_CHANGED" in
+            false) echo "No regression code changes." ;;
+            true)
+              if [ "$SHARDS_RESULT" != "success" ]; then
+                echo "::error::Regression shards did not succeed."
+                exit 1
+              fi
+              echo "All regression shards succeeded."
+              ;;
+            *) echo "::error::Change detection returned no valid decision."; exit 1 ;;
+          esac

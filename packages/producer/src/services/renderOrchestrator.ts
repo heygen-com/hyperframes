@@ -3494,6 +3494,7 @@ async function executeRenderPipeline(input: {
     const framesDir = join(workDir, "captured-frames");
     if (!existsSync(framesDir)) mkdirSync(framesDir, { recursive: true });
 
+    updateJobStatus(job, "rendering", "Checking browser GPU", 25, onProgress);
     const resolvedBrowserGpuMode = await resolveBrowserGpuMode(cfg.browserGpuMode, {
       chromePath: resolveHeadlessShellPath(cfg),
       browserTimeout: cfg.browserTimeout,
@@ -3893,6 +3894,7 @@ async function executeRenderPipeline(input: {
       !deInversionEligible &&
       !deParallelRouterEligible
     ) {
+      updateJobStatus(job, "rendering", "Measuring capture speed", 25, onProgress);
       const outcome = await observeRenderStage(
         observability,
         "capture_calibration",

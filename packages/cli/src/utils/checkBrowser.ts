@@ -1225,6 +1225,7 @@ const LAYOUT_ISSUE_CODES: readonly LayoutIssueCode[] = [
   "frame_out_of_frame",
   "escaped_container",
   "panel_out_of_canvas",
+  "canvas_content_at_edge",
   "connector_detached",
   "connector_orphan",
   "rotation_pivot_drift",

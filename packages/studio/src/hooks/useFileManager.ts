@@ -2,9 +2,9 @@ import { useState, useCallback, useRef } from "react";
 import type { EditingFile } from "../utils/studioHelpers";
 import { FONT_EXT, isMediaFile } from "../utils/mediaTypes";
 import { fontFamilyFromAssetPath, type ImportedFontAsset } from "../components/editor/fontAssets";
-import type { EditHistoryKind } from "../utils/editHistory";
 import { findTagByTarget, type PatchTarget } from "../utils/sourcePatcher";
 import { StudioFileConflictError } from "../utils/studioSaveDiagnostics";
+import { serializeStudioFileMutation } from "../utils/studioFileMutationCoordinator";
 import { useFileTree } from "./useFileTree";
 import { useEditorSave } from "./useEditorSave";
 import { useProjectFileWriter } from "./useProjectFileWriter";
@@ -13,7 +13,6 @@ import { useProjectFileWriter } from "./useProjectFileWriter";
 
 interface RecordEditInput {
   label: string;
-  kind: EditHistoryKind;
   coalesceKey?: string;
   files: Record<string, { before: string; after: string }>;
 }
@@ -100,16 +99,18 @@ export function useFileManager({
 
   const overwriteExternalConflict = useCallback(
     async (conflict: StudioFileConflictError) => {
-      if (conflict.currentContent != null) {
-        await writeProjectFile(
-          conflict.filePath,
-          conflict.attemptedContent,
-          conflict.currentContent,
-        );
-      } else {
-        fileVersions.set(conflict.filePath, conflict.currentVersion);
-        await writeProjectFile(conflict.filePath, conflict.attemptedContent);
-      }
+      await serializeStudioFileMutation(writeProjectFile, conflict.filePath, async () => {
+        if (conflict.currentContent != null) {
+          await writeProjectFile(
+            conflict.filePath,
+            conflict.attemptedContent,
+            conflict.currentContent,
+          );
+        } else {
+          fileVersions.set(conflict.filePath, conflict.currentVersion);
+          await writeProjectFile(conflict.filePath, conflict.attemptedContent);
+        }
+      });
       updateEditingFileContent(conflict.filePath, conflict.attemptedContent);
     },
     [fileVersions, updateEditingFileContent, writeProjectFile],

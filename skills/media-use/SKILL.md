@@ -3,6 +3,8 @@ name: media-use
 description: Agent Media OS, the single skill for every media need in a HyperFrames project. Resolve BGM, SFX, image, icon, brand logo, voice, color grade, or LUT into a frozen local file or paste-ready block + ledger record (one verb, `resolve`); generate via TTS / music / image models when the catalog misses; produce voiceover, transcription, captions, and background removal through one shared audio engine; operate on media (cut / reframe / transform); and reuse assets across projects. Also use for vague feedback that real footage looks dark, flat, boring, should feel retro/camcorder/print/ASCII, needs privacy, or needs a media reveal.
 ---
 
+**Plugin installs:** Before setup or freshness commands, follow [plugin execution rules](../hyperframes/references/plugin-installation.md) when this skill is inside a HyperFrames plugin. Standalone installs keep the update instructions below.
+
 # media-use
 
 The media OS for HyperFrames: resolve · generate · operate · remember — every media type, one skill, zero context noise.
@@ -17,16 +19,16 @@ npx hyperframes media-use resolve --type <type> --intent "<description>" --proje
 
 Returns one line: `resolved <id> → <path> (<type>, <metadata>)`. All search noise stays on disk.
 
-| Type    | One-line intent                                                                     |
-| ------- | ----------------------------------------------------------------------------------- |
-| `bgm`   | background music (HeyGen catalog, 10k+ tracks)                                      |
-| `sfx`   | sound effects (bundled 19-file library + catalog)                                   |
-| `image` | photos, backgrounds (HeyGen asset search, 75k+ vectors)                             |
-| `icon`  | icons, symbols (transparent)                                                        |
-| `logo`  | official brand marks (svgl → simple-icons → GitHub avatar → favicon; never redrawn) |
-| `voice` | TTS voiceover (HeyGen free-usage path; optional local Kokoro)                       |
-| `grade` | measured correction candidate; broad polish/stylization follows Media Treatments    |
-| `lut`   | user-provided or explicitly chosen reusable validated `.cube` file                  |
+| Type    | One-line intent                                                                  |
+| ------- | -------------------------------------------------------------------------------- |
+| `bgm`   | background music (HeyGen catalog, 10k+ tracks)                                   |
+| `sfx`   | sound effects (bundled 19-file library + catalog)                                |
+| `image` | photos, backgrounds (HeyGen asset search, 75k+ vectors)                          |
+| `icon`  | icons, symbols (transparent)                                                     |
+| `logo`  | official brand marks (theSVG → GitHub avatar → favicon; never redrawn)           |
+| `voice` | TTS voiceover (HeyGen free-usage path; optional local Kokoro)                    |
+| `grade` | measured correction candidate; broad polish/stylization follows Media Treatments |
+| `lut`   | user-provided or explicitly chosen reusable validated `.cube` file               |
 
 Before resolving fresh, list reusable candidates with `--candidates` and judge fit yourself — reuse rules, all flags, ingest (`--from`), and adopt are in `references/resolve.md`.
 

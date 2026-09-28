@@ -160,10 +160,12 @@ const commandLoaders = {
   info: () => import("./commands/info.js").then((m) => m.default),
   compositions: () => import("./commands/compositions.js").then((m) => m.default),
   timeline: () => import("./commands/timeline.js").then((m) => m.default),
+  history: () => import("./commands/history.js").then((m) => m.default),
   benchmark: () => import("./commands/benchmark.js").then((m) => m.default),
   browser: () => import("./commands/browser.js").then((m) => m.default),
   "remove-background": () => import("./commands/remove-background.js").then((m) => m.default),
   transcribe: () => import("./commands/transcribe.js").then((m) => m.default),
+  models: () => import("./commands/models.js").then((m) => m.default),
   tts: () => import("./commands/tts.js").then((m) => m.default),
   docs: () => import("./commands/docs.js").then((m) => m.default),
   doctor: () => import("./commands/doctor.js").then((m) => m.default),
@@ -213,7 +215,6 @@ const hasJsonFlag = process.argv.includes("--json");
 // Captured references — populated when the lazy imports resolve.
 // Used in exit handlers where dynamic import() is unsafe (beforeExit loops,
 // exit handler is synchronous-only).
-let _flush: (() => Promise<void>) | undefined;
 let _flushSync: (() => void) | undefined;
 let _trackCliError:
   | ((props: {
@@ -243,7 +244,6 @@ let telemetryReady: Promise<void> = Promise.resolve();
 // printed into a skill's captured output).
 if (!isHelp && command !== "telemetry" && command !== "events" && command !== "unknown") {
   telemetryReady = import("./telemetry/index.js").then((mod) => {
-    _flush = mod.flush;
     _flushSync = mod.flushSync;
     _trackCliError = mod.trackCliError;
     _trackCommandResult = mod.trackCommandResult;
@@ -279,19 +279,20 @@ if (
   import("./utils/updateCheck.js").then(async (mod) => {
     _printUpdateNotice = mod.printUpdateNotice;
     _printStalePinNotice = mod.printStalePinNotice;
-    const result = await mod.checkForUpdate().catch(() => null);
-    if (result?.updateAvailable) {
+    const result = mod.cachedUpdateCheck();
+    if (result.updateAvailable) {
       const auto = await import("./utils/autoUpdate.js").catch(() => null);
       auto?.scheduleBackgroundInstall(result.latest, result.current);
     }
   });
 
-  // Skills freshness nudge — same gating as the CLI self-update notice. The
-  // check is cached (24h) and best-effort: it never blocks or fails the command.
-  import("./utils/skillsUpdateCheck.js").then(async (mod) => {
+  // Skills freshness nudge — same gating as the CLI self-update notice.
+  import("./utils/skillsUpdateCheck.js").then((mod) => {
     _printSkillsUpdateNotice = mod.printSkillsUpdateNotice;
-    await mod.checkSkillsForUpdate().catch(() => null);
   });
+
+  // The notices read the caches; a detached child refreshes them for the next run.
+  import("./utils/backgroundChecks.js").then((mod) => mod.launchBackgroundChecks()).catch(() => {});
 }
 
 const commandStart = Date.now();
@@ -321,7 +322,7 @@ async function finalizeCli(result: CommandResult): Promise<void> {
     durationMs: Date.now() - commandStart,
     runId,
   });
-  await _flush?.().catch(() => {});
+  // No network wait: the exit handler's flushSync() delivers what is still queued.
   if (!hasJsonFlag) {
     _printUpdateNotice?.();
     _printStalePinNotice?.();
@@ -360,12 +361,8 @@ process.on(
         runId,
       });
     }
-    // Unconditional — `finalized` only means finalizeCli STARTED its awaited
-    // flush(). A process.exit() racing that flush (the EPIPE path under agent
-    // pipes) kills the in-flight request, and gating this fallback behind
-    // `finalized` silently dropped the still-queued events — the 0.7.65
-    // render_complete regression. flushSync() is safe to over-call: an empty
-    // queue is a no-op, and event uuids make re-sends idempotent.
+    // Unconditional: this is the exit-time delivery for every command (gating it on `finalized`
+    // was the 0.7.65 render_complete loss). Empty queue is a no-op; uuids make re-sends idempotent.
     _flushSync?.();
   },
 );

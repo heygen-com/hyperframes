@@ -236,6 +236,17 @@ describe("createColorGradingRuntime", () => {
     },
   );
 
+  it("says an element is graded only while it draws through a grading canvas", () => {
+    const { video } = startRuntimeWithVideo();
+    const plain = document.createElement("video");
+    document.body.appendChild(plain);
+    expect(runtime!.isGraded(video)).toBe(true);
+    expect(runtime!.isGraded(plain)).toBe(false);
+    video.removeAttribute(HF_COLOR_GRADING_ATTR);
+    runtime!.refresh();
+    expect(runtime!.isGraded(video)).toBe(false);
+  });
+
   it("uses the default non-preserved drawing buffer outside capture instrumentation", () => {
     startRuntimeWithVideo();
 

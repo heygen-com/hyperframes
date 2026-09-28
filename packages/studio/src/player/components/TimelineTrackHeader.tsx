@@ -214,8 +214,12 @@ export function TimelineTrackHeader({
   // track holding several ungrouped ones has no single chain — the design
   // doc refuses to build "N clips = N chains", so that case gets a pointer
   // at grouping (B6's normative rule) instead of a popover.
-  const { onGroupClips, onSetElementAttributeLive, onSetElementAttributeQuiet } =
-    useTimelineEditContextOptional();
+  const {
+    onGroupClips,
+    onSetElementAttributeLive,
+    onSetElementAttributeQuiet,
+    onRevertElementAttributeLive,
+  } = useTimelineEditContextOptional();
   const domEditActions = useDomEditActionsContextOptional();
   const singleAudioClip =
     isAudioTrack && clipCount === 1 && trackElements.length > 0 ? trackElements[0] : null;
@@ -225,10 +229,19 @@ export function TimelineTrackHeader({
   // needs to be TOLD that, so it earns the button and a refusal.
   const isVideoWithAudioTrack =
     !isAudioTrack && trackElements.some((el) => el.tag.toLowerCase() === "video");
-  const writeClipFxChain = (clip: TimelineElement, next: HfAudioFxChain, live: boolean) => {
+  const writeClipFxChain = (
+    clip: TimelineElement,
+    next: HfAudioFxChain,
+    live: boolean,
+    ended = false,
+  ) => {
     const value = next.nodes.length ? serializeAudioFxChain(next) : null;
-    if (live) onSetElementAttributeLive?.(clip, HF_AUDIO_FX_ATTR, value);
-    else void onSetElementAttributeQuiet?.(clip, HF_AUDIO_FX_ATTR, value, "Apply preset");
+    if (!live) {
+      void onSetElementAttributeQuiet?.(clip, HF_AUDIO_FX_ATTR, value, "Apply preset");
+      return;
+    }
+    onSetElementAttributeLive?.(clip, HF_AUDIO_FX_ATTR, value);
+    if (ended) onRevertElementAttributeLive?.(clip, HF_AUDIO_FX_ATTR);
   };
   const openClipFxRack = (clip: TimelineElement) => {
     void domEditActions?.handleTimelineElementSelect(clip);
@@ -309,7 +322,9 @@ export function TimelineTrackHeader({
                       fxChainRaw={singleAudioClip.fxChain}
                       trackKind={classifyAudioName(singleAudioClip.id, singleAudioClip.src)}
                       onChainChange={(next) => writeClipFxChain(singleAudioClip, next, false)}
-                      onChainPreview={(next) => writeClipFxChain(singleAudioClip, next, true)}
+                      onChainPreview={(next, ended) =>
+                        writeClipFxChain(singleAudioClip, next, true, ended)
+                      }
                       // Muted, an audition is silent — so the hover lifts the mute on
                       // the running graph and puts it back on the way out, the same
                       // borrow-and-return it already does with the playhead.

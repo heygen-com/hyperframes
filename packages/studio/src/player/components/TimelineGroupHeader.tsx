@@ -18,7 +18,7 @@ interface TimelineGroupHeaderProps {
   /** C1: the group's serialized `data-fx-chain`, when set. */
   fxChain?: string;
   onFxChainChange: (next: HfAudioFxChain) => void;
-  onFxChainPreview?: (next: HfAudioFxChain) => void;
+  onFxChainPreview?: (next: HfAudioFxChain, ended?: boolean) => void;
   /** Member clips, so hovering a preset auditions where the group sounds. */
   auditionSpans?: readonly AuditionSpan[];
   onOpenFxRack: () => void;

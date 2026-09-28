@@ -11,6 +11,7 @@ export { Tooltip } from "./Tooltip";
 export {
   ContextMenu,
   Menu,
+  MenuCheckboxItem,
   MenuItem,
   MenuRadioGroup,
   MenuRadioItem,

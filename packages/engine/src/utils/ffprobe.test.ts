@@ -77,6 +77,135 @@ describe("extractMediaMetadata", () => {
   });
 });
 
+describe("extractMediaMetadata nb_frames duration cross-check", () => {
+  afterEach(() => {
+    vi.resetModules();
+  });
+
+  it("uses nb_frames to bound video duration when stream duration is absent and audio is longer", async () => {
+    const { spawn } = createSpawnSpy([
+      {
+        kind: "exit",
+        code: 0,
+        stdout: JSON.stringify({
+          streams: [
+            {
+              codec_type: "video",
+              codec_name: "h264",
+              width: 1920,
+              height: 1080,
+              r_frame_rate: "30/1",
+              avg_frame_rate: "30/1",
+              nb_frames: "150",
+            },
+            { codec_type: "audio", codec_name: "aac" },
+          ],
+          format: { duration: "10" },
+        }),
+      },
+    ]);
+    vi.resetModules();
+    vi.doMock("child_process", () => ({ spawn }));
+    const { extractMediaMetadata: mocked } = await import("./ffprobe.js");
+    const meta = await mocked("/tmp/stock-clip-long-audio.mp4");
+
+    expect(meta.durationSeconds).toBe(10);
+    expect(meta.videoStreamDurationSeconds).toBe(5);
+    expect(meta.frames).toBe(150);
+  });
+
+  it("falls back to container duration when nb_frames is absent", async () => {
+    const { spawn } = createSpawnSpy([
+      {
+        kind: "exit",
+        code: 0,
+        stdout: JSON.stringify({
+          streams: [
+            {
+              codec_type: "video",
+              codec_name: "h264",
+              width: 1280,
+              height: 720,
+              r_frame_rate: "30/1",
+              avg_frame_rate: "30/1",
+            },
+            { codec_type: "audio", codec_name: "aac" },
+          ],
+          format: { duration: "10" },
+        }),
+      },
+    ]);
+    vi.resetModules();
+    vi.doMock("child_process", () => ({ spawn }));
+    const { extractMediaMetadata: mocked } = await import("./ffprobe.js");
+    const meta = await mocked("/tmp/no-nb-frames.mp4");
+
+    expect(meta.videoStreamDurationSeconds).toBe(10);
+    expect(meta.frames).toBeUndefined();
+  });
+
+  it("keeps container duration when nb_frames-derived duration is within 10%", async () => {
+    const { spawn } = createSpawnSpy([
+      {
+        kind: "exit",
+        code: 0,
+        stdout: JSON.stringify({
+          streams: [
+            {
+              codec_type: "video",
+              codec_name: "h264",
+              width: 1280,
+              height: 720,
+              r_frame_rate: "30/1",
+              avg_frame_rate: "30/1",
+              nb_frames: "285",
+            },
+          ],
+          format: { duration: "10" },
+        }),
+      },
+    ]);
+    vi.resetModules();
+    vi.doMock("child_process", () => ({ spawn }));
+    const { extractMediaMetadata: mocked } = await import("./ffprobe.js");
+    const meta = await mocked("/tmp/close-duration.mp4");
+
+    // 285 / 30 = 9.5s, within 10% of container (10s), so keep container
+    expect(meta.videoStreamDurationSeconds).toBe(10);
+  });
+
+  it("prefers stream duration over nb_frames when both are present", async () => {
+    const { spawn } = createSpawnSpy([
+      {
+        kind: "exit",
+        code: 0,
+        stdout: JSON.stringify({
+          streams: [
+            {
+              codec_type: "video",
+              codec_name: "h264",
+              width: 1280,
+              height: 720,
+              duration: "5",
+              r_frame_rate: "30/1",
+              avg_frame_rate: "30/1",
+              nb_frames: "300",
+            },
+          ],
+          format: { duration: "10" },
+        }),
+      },
+    ]);
+    vi.resetModules();
+    vi.doMock("child_process", () => ({ spawn }));
+    const { extractMediaMetadata: mocked } = await import("./ffprobe.js");
+    const meta = await mocked("/tmp/stream-duration-present.mp4");
+
+    // stream duration (5s) takes precedence, nb_frames (300 / 30 = 10s) ignored
+    expect(meta.videoStreamDurationSeconds).toBe(5);
+  });
+});
+
 describe("extractPngMetadataFromBuffer", () => {
   it("accepts a valid cICP chunk before IDAT", () => {
     const metadata = extractPngMetadataFromBuffer(buildMinimalPng());

@@ -269,6 +269,7 @@ export {
   executeParallelCapture,
   mergeWorkerFrames,
   getSystemResources,
+  shouldDisableBrowserPoolForParallelWorker,
   type WorkerTask,
   type WorkerResult,
   type WorkerSizing,

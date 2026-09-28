@@ -20,6 +20,7 @@ type RuntimeBridgeControlActionBase =
   | "set-media-output-muted"
   | "set-native-media-sync-disabled"
   | "set-web-audio-media-disabled"
+  | "set-idle-heartbeat"
   | "set-root-duration"
   | "stop-media"
   | "flash-elements";
@@ -34,6 +35,7 @@ type RuntimeBridgeControlMessageBase = {
   volume?: number;
   durationSeconds?: number;
   disabled?: boolean;
+  slow?: boolean;
   playbackRate?: number;
   target?: HfColorGradingTarget | string | null;
   grading?: RuntimeJson;
@@ -45,6 +47,8 @@ export type RuntimeStateMessage = {
   source: "hf-preview";
   type: "state";
   frame: number;
+  currentTime: number;
+  ended: boolean;
   isPlaying: boolean;
   muted: boolean;
   playbackRate: number;
@@ -256,11 +260,13 @@ export type RuntimeOutboundMessage =
   | RuntimePerformanceMessage
   | RuntimeGroupLevelsMessage;
 
+export type HeldSeek = Promise<void> | void;
+
 export type RuntimePlayer = {
   _timeline: RuntimeTimelineLike | null;
   play: () => void;
   pause: () => void;
-  seek: (timeSeconds: number, options?: { keepPlaying?: boolean }) => void;
+  seek: (timeSeconds: number, options?: { keepPlaying?: boolean }) => HeldSeek;
   renderSeek: (timeSeconds: number, options?: RuntimeSeekOptions) => void;
   getTime: () => number;
   getDuration: () => number;
@@ -284,7 +290,9 @@ export type RuntimeTimelineChildLike = {
   vars?: unknown;
   startTime?: () => number;
   duration?: () => number;
+  data?: unknown;
   parent?: RuntimeTimelineChildLike;
+  getChildren?: RuntimeTimelineLike["getChildren"];
 };
 
 export type RuntimeTimelineLike = {
@@ -310,8 +318,12 @@ export type RuntimeTimelineLike = {
 export type RuntimeDeterministicAdapter = {
   name: string;
   discover: () => void;
-  seek: (ctx: { time: number; suppressEvents?: boolean }) => void;
-  pause: () => void;
+  seek: (ctx: {
+    time: number;
+    suppressEvents?: boolean;
+    pageAnimations?: () => Animation[];
+  }) => void;
+  pause: (ctx?: { pageAnimations?: () => Animation[] }) => void;
   play?: () => void;
   revert?: () => void;
   /**
@@ -352,6 +364,7 @@ export type RuntimeDeterministicAdapter = {
    * (Lottie JSON fetch, etc.) resolves.
    */
   getInferredDurationSeconds?: () => number | null;
+  getAnimationCycleEndSeconds?: () => number | null;
 };
 
 export type RuntimeGsapSetTarget = string | Element | Element[] | null;

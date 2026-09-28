@@ -1,21 +1,11 @@
-import { fetchMedia } from "./media-fetch.mjs";
+import { fetchMedia, readCappedBody } from "./media-fetch.mjs";
 // Official brand marks — the `logo` type's provider tiers, tried in registry
-// order. Every tier was verified against a 54-brand stress test (2026-07,
-// 100% cascade hit). Hit counts below are a snapshot of that run — they
-// drift as the alias/org maps grow; re-run the stress test to refresh them.
+// order.
 //
-//   1. svgl          — official full-color vector SVGs (+ wordmark variants);
-//                      40/54 first-hits. Search is substring-based, so
-//                      entities go through alias normalization first
-//                      ("nextjs" never matches "Next.js" raw).
-//   2. simple-icons  — monochrome official glyphs; caught the long tail the
-//                      others miss (nike, visa, toyota, wechat, bytedance).
-//                      Pinned CDN build for determinism.
-//   3. github avatar — the org's official logo for brands with a GitHub
-//                      presence. Known orgs only: guessing a login risks a
-//                      same-named personal account.
-//   4. domain favicon — small-raster last resort (DuckDuckGo ip3). Responses
-//                      under ~500B are DDG's globe placeholder, not a hit.
+//   1. thesvg: one pinned manifest matched locally ("Next.js", "nextjs", "next js" hit one
+//      entry); default full-color mark; skips licenses outside THESVG_ACCEPTED_LICENSES.
+//   2. github avatar: known orgs only; guessing a login risks a same-named personal account.
+//   3. domain favicon: DuckDuckGo ip3 last resort; under ~500B is its globe placeholder.
 //
 // HeyGen asset search is deliberately absent: for brand queries it returns
 // generic look-alike icons (0/3 in testing) — worse than a miss. A total miss
@@ -26,24 +16,36 @@ import { mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
-const SVGL_API = "https://api.svgl.app";
-const SIMPLE_ICONS_CDN = "https://cdn.jsdelivr.net/npm/simple-icons@16.25.0/icons";
+// Bump by pointing at a newer glincker/thesvg commit; the manifest and every
+// icon URL resolve against the same pin, so a resolve is reproducible.
+const THESVG_REV = "e5957fa742c1ebf6da07ac40665bdd01d8add35f";
+const THESVG_CDN = `https://cdn.jsdelivr.net/gh/glincker/thesvg@${THESVG_REV}`;
+const THESVG_MANIFEST = `${THESVG_CDN}/src/data/icons.json`;
 const FAVICON_MIN_BYTES = 500;
+// ponytail: the manifest is ~3.3MB today; 20MB leaves headroom without trusting an
+// unbounded body from a CDN edge.
+const MAX_MANIFEST_BYTES = 20 * 1024 * 1024;
 
-// svgl search queries per entity, tried in order after the raw entity.
-const SVGL_ALIASES = {
-  nextjs: ["next.js", "next"],
-  aws: ["amazon web services"],
-  huggingface: ["hugging face"],
-  cocacola: ["coca-cola"],
-  mcdonalds: ["mcdonald's"],
-};
+// When several entries share a normalized name (e.g. "slack" and the
+// "slack-badge" auth button), the brand mark wins over cloud/infra and badge
+// collections.
+const THESVG_COLLECTION_RANK = ["brands", "community", "aws", "azure", "gcp", "k8s", "auth-badges"];
 
-// simple-icons slugs that differ from the normalized entity.
-const SIMPLE_ICON_SLUGS = {
-  nextjs: "nextdotjs",
-  aws: "amazonwebservices",
-};
+// The ten SPDX ids theSVG's submission form accepts and verifies before merge
+// (thesvg.org LICENSING.md §5); anything else routes through their unaudited
+// "Other/custom" path.
+const THESVG_ACCEPTED_LICENSES = new Set([
+  "CC0-1.0",
+  "Unlicense",
+  "MIT",
+  "Apache-2.0",
+  "BSD-3-Clause",
+  "ISC",
+  "CC-BY-4.0",
+  "CC-BY-SA-4.0",
+  "CC-BY-ND-4.0",
+  "MPL-2.0",
+]);
 
 // Known GitHub orgs. Only mapped entities resolve at this tier — a brand name
 // is NOT a GitHub login, and guessing hits same-named personal accounts.
@@ -86,15 +88,32 @@ export function titleMatches(title, entity) {
   return norm(title) === norm(entity);
 }
 
-export function svglQueriesFor(entity) {
-  return [entity, ...(SVGL_ALIASES[norm(entity)] || [])];
-}
-
-export function simpleIconSlugsFor(entity) {
-  const slugs = [norm(entity)];
-  const alias = SIMPLE_ICON_SLUGS[norm(entity)];
-  if (alias) slugs.push(alias);
-  return slugs;
+/** Best theSVG entry for an entity, or null: slug > title > alias, ties to the brands
+ * collection; entries outside THESVG_ACCEPTED_LICENSES are never returned. */
+export function thesvgMatch(icons, entity) {
+  const want = norm(entity);
+  if (!want || !Array.isArray(icons)) return null;
+  const collectionRank = (icon) => {
+    const i = THESVG_COLLECTION_RANK.indexOf(icon.collection);
+    return i === -1 ? THESVG_COLLECTION_RANK.length : i;
+  };
+  let best = null;
+  let bestScore = Infinity;
+  for (const icon of icons) {
+    if (!icon || typeof icon.slug !== "string" || !icon.variants?.default) continue;
+    if (!THESVG_ACCEPTED_LICENSES.has(icon.license)) continue;
+    let field;
+    if (norm(icon.slug) === want) field = 0;
+    else if (titleMatches(icon.title, want)) field = 1;
+    else if ((icon.aliases || []).some((a) => titleMatches(a, want))) field = 2;
+    else continue;
+    const score = field * 100 + collectionRank(icon);
+    if (score < bestScore) {
+      best = icon;
+      bestScore = score;
+    }
+  }
+  return best;
 }
 
 export function githubOrgFor(entity) {
@@ -108,7 +127,8 @@ export function faviconDomainFor(entity) {
 async function fetchJson(url) {
   const res = await fetchMedia(url, { signal: AbortSignal.timeout(10_000) });
   if (!res.ok) return null;
-  return res.json();
+  const body = await readCappedBody(res, MAX_MANIFEST_BYTES, "fetchJson");
+  return JSON.parse(body.toString("utf8"));
 }
 
 async function urlExists(url) {
@@ -116,57 +136,58 @@ async function urlExists(url) {
   return res.ok;
 }
 
-export async function svglSearch(intent, ctx = {}) {
-  const entity = entityFrom(intent, ctx.entity);
-  for (const q of svglQueriesFor(entity)) {
-    let items;
-    try {
-      items = await fetchJson(`${SVGL_API}?search=${encodeURIComponent(q)}`);
-    } catch {
-      return null; // network down — let the next tier try its own host
-    }
-    if (!Array.isArray(items)) continue;
-    const hit = items.find((it) => titleMatches(it.title, q) || titleMatches(it.title, entity));
-    if (!hit) continue;
-    const route = typeof hit.route === "string" ? hit.route : hit.route?.light;
-    if (!route) continue;
-    return {
-      url: route,
-      ext: ".svg",
-      source: "search",
-      metadata: {
-        description: `${hit.title} logo (official mark)`,
-        provider: "svgl",
-        provenance: { entity, query: q, route, wordmark: Boolean(hit.wordmark) },
-      },
-    };
+// One manifest per process: a multi-logo resolve pays the download once. A
+// failed load is not cached, so the next call retries.
+let thesvgManifest = null;
+
+async function loadThesvgManifest() {
+  if (!thesvgManifest) {
+    thesvgManifest = fetchJson(THESVG_MANIFEST).then((icons) => {
+      if (!Array.isArray(icons)) throw new Error("theSVG manifest: unexpected shape");
+      return icons;
+    });
+    thesvgManifest.catch(() => {
+      thesvgManifest = null;
+    });
   }
-  return null;
+  return thesvgManifest;
 }
 
-export async function simpleIconsSearch(intent, ctx = {}) {
+/** Test hook: drop the memoized manifest. */
+export function resetThesvgManifest() {
+  thesvgManifest = null;
+}
+
+export async function thesvgSearch(intent, ctx = {}) {
   const entity = entityFrom(intent, ctx.entity);
-  for (const slug of simpleIconSlugsFor(entity)) {
-    const url = `${SIMPLE_ICONS_CDN}/${slug}.svg`;
-    let ok;
-    try {
-      ok = await urlExists(url);
-    } catch {
-      return null;
-    }
-    if (!ok) continue;
-    return {
-      url,
-      ext: ".svg",
-      source: "search",
-      metadata: {
-        description: `${entity} logo (official monochrome glyph)`,
-        provider: "simple-icons",
-        provenance: { entity, slug, pinned: "simple-icons@16.25.0" },
-      },
-    };
+  let icons;
+  try {
+    icons = await loadThesvgManifest();
+  } catch {
+    return null; // network down or bad payload — let the next tier try its own host
   }
-  return null;
+  const hit = thesvgMatch(icons, entity);
+  if (!hit) return null;
+  // theSVG also ships mono, light/dark and wordmark variants; default is the full-color mark.
+  const route = hit.variants.default;
+  return {
+    url: `${THESVG_CDN}/public${route.startsWith("/") ? "" : "/"}${route}`,
+    ext: ".svg",
+    source: "search",
+    metadata: {
+      description: `${hit.title} logo (official mark)`,
+      provider: "thesvg",
+      provenance: {
+        entity,
+        slug: hit.slug,
+        variant: "default",
+        variants: Object.keys(hit.variants),
+        collection: hit.collection,
+        license: hit.license,
+        pinned: `glincker/thesvg@${THESVG_REV}`,
+      },
+    },
+  };
 }
 
 export async function githubAvatarSearch(intent, ctx = {}) {

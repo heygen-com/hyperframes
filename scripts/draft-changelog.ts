@@ -447,8 +447,13 @@ export function renderMdxCommitBullet(commit: ParsedCommit) {
   return `- ${scope}${escapeForMdx(capitalize(commit.summary))} (${links.join(", ")}).`;
 }
 
-function renderTags(commits: ParsedCommit[]) {
-  return ["Release", ...uniqueScopeTags(commits).slice(0, 3)];
+export function renderTags(commits: ParsedCommit[]) {
+  return [
+    "Release",
+    ...uniqueScopeTags(commits)
+      .filter((tag) => tag.toLowerCase() !== "release")
+      .slice(0, 3),
+  ];
 }
 
 function uniqueScopeTags(commits: ParsedCommit[]) {

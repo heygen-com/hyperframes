@@ -2,7 +2,15 @@ import {
   readPreviewCompositionSize,
   type PreviewCompositionSize,
 } from "../../utils/previewCompositionSize";
-import { memo, useCallback, useEffect, useRef, useState, type RefObject } from "react";
+import {
+  memo,
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useRef,
+  useState,
+  type RefObject,
+} from "react";
 import { Player } from "../../player";
 import type { PreviewIframeSlot } from "../../player/hooks/useTimelineSyncCallbacks";
 import {
@@ -10,6 +18,7 @@ import {
   canStartPreviewPan,
   clampPreviewPan,
   clampPreviewZoomPercent,
+  isPreviewAtFit,
   ownsPreviewPanTarget,
   resolvePreviewWheelPan,
   resolvePreviewWheelZoom,
@@ -17,8 +26,9 @@ import {
   type PreviewZoomState,
 } from "./previewZoom";
 import { RULER_GUTTER_PX, usePreviewGuidesStore } from "../editor/previewGuidesStore";
-import { readStudioUiPreferences, writeStudioUiPreferences } from "../../utils/studioUiPreferences";
+import { PreviewZoomOverlay, usePreviewNavigator } from "./PreviewZoomOverlay";
 import { usePreviewFirstFrameTelemetry } from "../../player/hooks/usePreviewFirstFrameTelemetry";
+import { PreviewPoster, usePreviewPoster } from "./PreviewPoster";
 interface NLEPreviewProps {
   projectId: string;
   iframeRef: RefObject<HTMLIFrameElement | null>;
@@ -36,6 +46,8 @@ interface NLEPreviewProps {
   onStageRef?: (ref: React.RefObject<HTMLDivElement | null>) => void;
   /** Reports the authored composition size measured from the loaded preview. */
   onCompositionSizeChange?: (size: PreviewCompositionSize | null) => void;
+  /** Draws the picture edge to edge in this box, without Studio's inset band. */
+  fillBox?: boolean;
 }
 
 export function getPreviewPlayerKey({
@@ -50,7 +62,7 @@ export function getPreviewPlayerKey({
 
 const ZOOM_HUD_TIMEOUT_MS = 1200;
 const ZOOM_SETTLE_MS = 200;
-const PREVIEW_STAGE_INSET_PX = 16;
+const PREVIEW_STAGE_INSET_PX = 8;
 
 // clip-path as well as visibility: the player's loading overlay sets its own
 // visibility:visible and would otherwise paint over the live frame.
@@ -62,34 +74,16 @@ const SHADOW_IFRAME_STYLE: React.CSSProperties = {
   pointerEvents: "none",
 };
 
-function isPreviewAtFit(state: PreviewZoomState): boolean {
-  return (
-    Math.abs(state.zoomPercent - 100) < 0.5 &&
-    Math.abs(state.panX) < 0.1 &&
-    Math.abs(state.panY) < 0.1
-  );
-}
-
-function loadInitialZoom(): PreviewZoomState {
-  const stored = readStudioUiPreferences().previewZoom;
-  return stored
-    ? {
-        zoomPercent: clampPreviewZoomPercent(stored.zoomPercent),
-        panX: stored.panX,
-        panY: stored.panY,
-      }
-    : DEFAULT_PREVIEW_ZOOM;
-}
-
 export function resolvePreviewStageSize(
   viewportWidth: number,
   viewportHeight: number,
   compositionSize: PreviewCompositionSize | null,
   portrait: boolean | undefined,
   gutterPx = 0,
+  insetPx = PREVIEW_STAGE_INSET_PX,
 ): { width: number; height: number } {
-  const availableWidth = Math.max(0, viewportWidth - PREVIEW_STAGE_INSET_PX - 2 * gutterPx);
-  const availableHeight = Math.max(0, viewportHeight - PREVIEW_STAGE_INSET_PX - 2 * gutterPx);
+  const availableWidth = Math.max(0, viewportWidth - 2 * (insetPx + gutterPx));
+  const availableHeight = Math.max(0, viewportHeight - 2 * (insetPx + gutterPx));
   const aspectRatio =
     compositionSize && compositionSize.width > 0 && compositionSize.height > 0
       ? compositionSize.width / compositionSize.height
@@ -130,6 +124,7 @@ export const NLEPreview = memo(function NLEPreview({
   suppressLoadingOverlay,
   onStageRef,
   onCompositionSizeChange,
+  fillBox,
 }: NLEPreviewProps) {
   const activeKey = getPreviewPlayerKey({ projectId, directUrl });
   const viewportRef = useRef<HTMLDivElement>(null);
@@ -150,11 +145,13 @@ export const NLEPreview = memo(function NLEPreview({
   const liveGenRef = useRef<number | null>(null);
   const reportPreviewFirstFrame = usePreviewFirstFrameTelemetry(previewSlots);
   const [compositionSize, setCompositionSize] = useState<PreviewCompositionSize | null>(null);
+  const poster = usePreviewPoster(projectId, activeKey, directUrl);
   const gutterPx = usePreviewGuidesStore((s) => (s.rulerVisible ? RULER_GUTTER_PX : 0));
+  const insetPx = fillBox ? 0 : PREVIEW_STAGE_INSET_PX;
   const [stageSize, setStageSize] = useState(() => resolvePreviewStageSize(0, 0, null, portrait));
 
-  const zoomRef = useRef<PreviewZoomState>(loadInitialZoom());
-  const [settledZoom, setSettledZoom] = useState<PreviewZoomState>(() => zoomRef.current);
+  const zoomRef = useRef<PreviewZoomState>(DEFAULT_PREVIEW_ZOOM);
+  const [settledZoom, setSettledZoom] = useState<PreviewZoomState>(DEFAULT_PREVIEW_ZOOM);
   const hudRef = useRef<HTMLDivElement>(null);
   const hudTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const settleTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -181,7 +178,14 @@ export const NLEPreview = memo(function NLEPreview({
     const updateStageSize = () => {
       const rect = viewport.getBoundingClientRect();
       setStageSize(
-        resolvePreviewStageSize(rect.width, rect.height, compositionSize, portrait, gutterPx),
+        resolvePreviewStageSize(
+          rect.width,
+          rect.height,
+          compositionSize,
+          portrait,
+          gutterPx,
+          insetPx,
+        ),
       );
     };
 
@@ -189,7 +193,7 @@ export const NLEPreview = memo(function NLEPreview({
     const observer = new ResizeObserver(updateStageSize);
     observer.observe(viewport);
     return () => observer.disconnect();
-  }, [compositionSize, portrait, gutterPx]);
+  }, [compositionSize, portrait, gutterPx, insetPx]);
 
   const onCompositionSizeChangeRef = useRef(onCompositionSizeChange);
   onCompositionSizeChangeRef.current = onCompositionSizeChange;
@@ -218,14 +222,33 @@ export const NLEPreview = memo(function NLEPreview({
   const stageSizeRef = useRef(stageSize);
   stageSizeRef.current = stageSize;
 
-  const writeTransform = useCallback((state: PreviewZoomState) => {
-    const stage = stageRef.current;
-    if (!stage) return;
-    const s = toDomPrecision(state.zoomPercent / 100);
-    const px = toDomPrecision(state.panX);
-    const py = toDomPrecision(state.panY);
-    stage.style.transform = `translate3d(${px}px, ${py}px, 0) scale(${s})`;
-  }, []);
+  const { draw: drawNavigator, setRegion: setNavigatorRegion } = usePreviewNavigator(
+    viewportRef,
+    stageSize,
+    zoomRef,
+  );
+  const writeTransform = useCallback(
+    (state: PreviewZoomState) => {
+      const stage = stageRef.current;
+      if (!stage) return;
+      const s = toDomPrecision(state.zoomPercent / 100);
+      const px = toDomPrecision(state.panX);
+      const py = toDomPrecision(state.panY);
+      stage.style.transform = `translate3d(${px}px, ${py}px, 0) scale(${s})`;
+      drawNavigator(state);
+    },
+    [drawNavigator],
+  );
+
+  const zoomProjectRef = useRef(projectId);
+  // Before paint, so the next project never shows a frame at the previous one's zoom.
+  useLayoutEffect(() => {
+    if (zoomProjectRef.current === projectId) return;
+    zoomProjectRef.current = projectId;
+    zoomRef.current = DEFAULT_PREVIEW_ZOOM;
+    writeTransform(DEFAULT_PREVIEW_ZOOM);
+    setSettledZoom(DEFAULT_PREVIEW_ZOOM);
+  }, [projectId, writeTransform]);
 
   const applyTransform = useCallback(
     (next: PreviewZoomState, showHud: boolean) => {
@@ -255,7 +278,6 @@ export const NLEPreview = memo(function NLEPreview({
       settleTimerRef.current = setTimeout(() => {
         zoomingRef.current = false;
         const final = zoomRef.current;
-        writeStudioUiPreferences({ previewZoom: final });
         setSettledZoom((prev) =>
           prev.zoomPercent === final.zoomPercent &&
           prev.panX === final.panX &&
@@ -290,9 +312,8 @@ export const NLEPreview = memo(function NLEPreview({
 
   const applyInitialZoom = useCallback(() => {
     const z = zoomRef.current;
-    if (Math.abs(z.zoomPercent - 100) > 0.5 || Math.abs(z.panX) > 0.1 || Math.abs(z.panY) > 0.1) {
-      // A pan persisted on a large window can restore the composition mostly
-      // off-screen in a smaller one; clamp against the current viewport first.
+    if (!isPreviewAtFit(z)) {
+      // A composition reload can bring a different frame size than the pan was made on; clamp first.
       const viewport = viewportRef.current;
       const rect = viewport?.getBoundingClientRect();
       const sz = stageSizeRef.current;
@@ -467,11 +488,14 @@ export const NLEPreview = memo(function NLEPreview({
     <div className="flex flex-col h-full min-h-0">
       <div
         ref={viewportRef}
-        className="relative flex-1 flex items-center justify-center p-2 overflow-hidden min-h-0 outline-hidden focus:ring-1 focus:ring-studio-accent/40 bg-[var(--studio-preview-bg,var(--color-neutral-950))]"
+        className="relative flex-1 flex items-center justify-center overflow-hidden min-h-0 outline-hidden focus:ring-1 focus:ring-studio-accent/40 bg-[var(--studio-preview-bg,var(--color-neutral-950))]"
         tabIndex={0}
         aria-label="Composition preview"
       >
-        <div className="absolute inset-2 flex items-center justify-center pointer-events-none">
+        <div
+          className="absolute flex items-center justify-center pointer-events-none"
+          style={{ inset: insetPx }}
+        >
           <div
             ref={stageRef}
             className="relative shrink-0 pointer-events-auto"
@@ -507,6 +531,8 @@ export const NLEPreview = memo(function NLEPreview({
                     applyInitialZoom();
                   }}
                   onCompositionLoadingChange={onCompositionLoadingChange}
+                  onReadyToShowChange={poster.onLiveReadyToShowChange}
+                  onPreviewError={poster.onPreviewError}
                   onPainted={(details) => reportPreviewFirstFrame(slot, details)}
                   portrait={portrait}
                   suppressLoadingOverlay={suppressLoadingOverlay}
@@ -532,6 +558,16 @@ export const NLEPreview = memo(function NLEPreview({
                 />
               ),
             )}
+            {poster.mountPoster && (
+              <PreviewPoster
+                key={activeKey}
+                projectId={projectId}
+                hidden={poster.hidePoster}
+                onSize={(size) => setCompositionSize((prev) => prev ?? size)}
+                onLoaded={poster.onPosterLoaded}
+                onMissing={poster.onPosterMissing}
+              />
+            )}
           </div>
         </div>
         <div
@@ -540,17 +576,15 @@ export const NLEPreview = memo(function NLEPreview({
           style={{ opacity: 0, transition: "opacity 200ms ease-in" }}
           aria-live="polite"
         />
-        {!isPreviewAtFit(settledZoom) && (
-          <button
-            type="button"
-            className="absolute bottom-3 right-3 z-50 rounded-md px-2.5 py-1 text-xs font-medium text-white/80 bg-black/50 backdrop-blur-xs hover:bg-black/70 hover:text-white transition-colors"
-            onClick={() => applyZoom(DEFAULT_PREVIEW_ZOOM)}
-            aria-label="Reset zoom to fit"
-            data-testid="preview-reset-zoom"
-          >
-            {Math.round(settledZoom.zoomPercent)}% — Reset
-          </button>
-        )}
+        <PreviewZoomOverlay
+          zoom={settledZoom}
+          stageSize={stageSize}
+          onFit={() => {
+            applyZoom(DEFAULT_PREVIEW_ZOOM);
+            viewportRef.current?.focus();
+          }}
+          navigatorRegionRef={setNavigatorRegion}
+        />
       </div>
     </div>
   );

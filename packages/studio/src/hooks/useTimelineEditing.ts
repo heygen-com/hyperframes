@@ -8,13 +8,14 @@ import { useTimelineAssetDropOps } from "./useTimelineAssetDropOps";
 import {
   applyTimelineStackingReorder,
   patchIframeDomTiming,
-  playbackStartAttributeForElement,
   persistTimelineEdit,
   formatTimelineAttributeNumber,
+  formatTimelineMediaOffset,
   extendRootDurationIfNeeded,
   buildTimelineMoveTimingPatch,
   buildTimelineResizeTimingPatch,
 } from "./timelineEditingHelpers";
+import { playbackStartAttributeForElement } from "../player/lib/timelineElementHelpers";
 import {
   captureDurationRollback,
   finishClipTimingFallback,
@@ -33,15 +34,19 @@ import {
 } from "./timelineTrackVisibility";
 import { useTimelineGroupEditing } from "./useTimelineGroupEditing";
 import { useBlockedTimelineEditToast } from "./useBlockedTimelineEditToast";
-import { useTimelineEditGate } from "./timelineEditPermission";
+import {
+  useTimelineEditGate,
+  useTimelineEditRefusal,
+  type TimelineEditOutcome,
+} from "./timelineEditPermission";
 import { serializeZLaneGesture } from "../components/nle/zLaneGesture";
 import { cutoverCommittedOrThrow, sdkTimingPersist } from "../utils/sdkCutover";
 import type { TimelineMoveUpdates, UseTimelineEditingOptions } from "./useTimelineEditingTypes";
 import { getStudioSaveErrorMessage } from "../utils/studioSaveDiagnostics";
 
-type GuardedTimelineHandler = (...args: never[]) => Promise<void>;
+type GuardedTimelineHandler = (...args: never[]) => Promise<unknown>;
 type GuardedTimelineResolver = (...args: never[]) => readonly TimelineElement[];
-type GuardedTimelineRefusal = (...args: never[]) => void;
+type GuardedTimelineRefusal = (reason: string, ...args: never[]) => unknown;
 
 interface GuardedTimelineEntry {
   resolveTargets: GuardedTimelineResolver;
@@ -74,17 +79,18 @@ export function useTimelineEditing({
   const editQueueRef = useRef(Promise.resolve());
   const track = useTrackPendingTimelineEdit();
   const checkEditable = useTimelineEditGate(canEdit, showToast);
-  const checkEditableRef = useRef(checkEditable);
-  checkEditableRef.current = checkEditable;
+  const refuseEdit = useTimelineEditRefusal(canEdit, showToast);
+  const refuseEditRef = useRef(refuseEdit);
+  refuseEditRef.current = refuseEdit;
   const guardedRef = useRef(new WeakMap<GuardedTimelineHandler, GuardedTimelineEntry>());
   // Refuses (no call, no write, no history entry) when any target is
   // blocked; otherwise runs fn as before. Cached by fn identity — like
   // track() — so a fresh closure here doesn't defeat track's own cache.
   const guard = useCallback(
-    <H extends (...args: never[]) => Promise<void>>(
+    <H extends (...args: never[]) => Promise<unknown>>(
       resolveTargets: (...args: Parameters<H>) => readonly TimelineElement[],
       fn: H,
-      onRefused?: (...args: Parameters<H>) => void,
+      onRefused?: (reason: string, ...args: Parameters<H>) => Awaited<ReturnType<H>>,
     ): H => {
       const key = fn as unknown as GuardedTimelineHandler;
       const cached = guardedRef.current.get(key);
@@ -97,10 +103,9 @@ export function useTimelineEditing({
       entry.resolveTargets = resolveTargets as unknown as GuardedTimelineResolver;
       entry.onRefused = onRefused as unknown as GuardedTimelineRefusal | undefined;
       entry.wrapped = ((...args: Parameters<H>) => {
-        if (!checkEditableRef.current(entry.resolveTargets(...(args as never[])))) {
-          entry.onRefused?.(...(args as never[]));
-          return Promise.resolve();
-        }
+        const reason = refuseEditRef.current(entry.resolveTargets(...(args as never[])));
+        if (reason !== null)
+          return Promise.resolve(entry.onRefused?.(reason, ...(args as never[])));
         return fn(...args);
       }) as H as unknown as GuardedTimelineHandler;
       guardedRef.current.set(key, entry);
@@ -238,6 +243,7 @@ export function useTimelineEditing({
             label: "Move timeline clip",
             coalesceKey,
             recordEdit,
+            writeProjectFile,
             edit: { kind: "shift", delta: updates.start - element.start },
           }).finally(() => invalidateGsapCache?.());
         const moveFallback = () =>
@@ -309,7 +315,7 @@ export function useTimelineEditing({
       ];
       if (updates.playbackStart != null) {
         const liveAttr = playbackStartAttributeForElement(element);
-        liveAttrs.push([liveAttr, formatTimelineAttributeNumber(updates.playbackStart)]);
+        liveAttrs.push([liveAttr, formatTimelineMediaOffset(updates.playbackStart)]);
       }
       patchIframeDomTiming(previewIframeRef.current, element, liveAttrs, activeCompPath);
       // Snapshot the duration BEFORE the optimistic updates below so a failed
@@ -341,6 +347,7 @@ export function useTimelineEditing({
           label: "Resize timeline clip",
           coalesceKey,
           recordEdit,
+          writeProjectFile,
           edit: {
             kind: "scale",
             from: { start: element.start, duration: element.duration },
@@ -432,7 +439,7 @@ export function useTimelineEditing({
     checkEditable,
   });
 
-  const { revertLive: revertElementFxLive, ...setElementFxAttribute } = useSetElementAttribute({
+  const setElementFxAttribute = useSetElementAttribute({
     projectIdRef,
     activeCompPath,
     showToast,
@@ -443,18 +450,16 @@ export function useTimelineEditing({
     isRecordingRef,
   });
 
-  const { revertLive: revertAudioGroupLive, ...setAudioGroupAttribute } = useSetAudioGroupAttribute(
-    {
-      projectIdRef,
-      activeCompPath,
-      showToast,
-      writeProjectFile,
-      recordEdit,
-      previewIframeRef,
-      pendingTimelineEditPathRef,
-      isRecordingRef,
-    },
-  );
+  const setAudioGroupAttribute = useSetAudioGroupAttribute({
+    projectIdRef,
+    activeCompPath,
+    showToast,
+    writeProjectFile,
+    recordEdit,
+    previewIframeRef,
+    pendingTimelineEditPathRef,
+    isRecordingRef,
+  });
 
   const { handleTimelineElementsDelete, handleTimelineElementDelete } = useTimelineDeleteOps({
     projectIdRef,
@@ -500,6 +505,25 @@ export function useTimelineEditing({
     forceReloadSdkSession,
   });
 
+  const refused = (reason: string): TimelineEditOutcome => ({ status: "refused", reason });
+  const audioGroupMembers = (groupId: string): TimelineElement[] => {
+    const state = usePlayerStore.getState();
+    const flatMembers = state.elements.filter((el) => el.audioGroup === groupId);
+    const domMembers = state.domClipChildren
+      .filter((child) => child.audioGroup === groupId)
+      .map(
+        (child): TimelineElement => ({
+          id: child.id,
+          domId: child.id,
+          tag: "div",
+          start: 0,
+          duration: 0,
+          track: -1,
+        }),
+      );
+    return [...flatMembers, ...domMembers];
+  };
+
   // Every write-handler is tracked here, the one place all hand edits
   // converge, so undo never races a write; canEdit gates the same point.
   // Coverage boundary: see the PR body, not every kind resolves an element.
@@ -526,27 +550,10 @@ export function useTimelineEditing({
       // (timelineAudioGroupVolume.ts): a sub-composition's group members have
       // no flat twin, only a domClipChildren entry, so both are checked.
       setQuiet: track(
-        guard(
-          (groupId) => {
-            const state = usePlayerStore.getState();
-            const flatMembers = state.elements.filter((el) => el.audioGroup === groupId);
-            const domMembers = state.domClipChildren
-              .filter((child) => child.audioGroup === groupId)
-              .map(
-                (child): TimelineElement => ({
-                  id: child.id,
-                  domId: child.id,
-                  tag: "div",
-                  start: 0,
-                  duration: 0,
-                  track: -1,
-                }),
-              );
-            return [...flatMembers, ...domMembers];
-          },
-          setAudioGroupAttribute.setQuiet,
-          (groupId, attr) => revertAudioGroupLive(groupId, attr),
-        ),
+        guard(audioGroupMembers, setAudioGroupAttribute.setQuiet, (reason, groupId, attr) => {
+          setAudioGroupAttribute.revertLive(groupId, attr);
+          return refused(reason);
+        }),
       ),
     },
     setElementFxAttribute: {
@@ -555,7 +562,10 @@ export function useTimelineEditing({
         guard(
           (element) => [element],
           setElementFxAttribute.setQuiet,
-          (element, attr) => revertElementFxLive(element, attr),
+          (reason, element, attr) => {
+            setElementFxAttribute.revertLive(element, attr);
+            return refused(reason);
+          },
         ),
       ),
     },
@@ -582,5 +592,9 @@ export function useTimelineEditing({
     handleTimelineGroupResize: track(
       guard((changes) => changes.map((c) => c.element), groupEditing.handleTimelineGroupResize),
     ),
+    restoreLiveLanes: (restore: Parameters<typeof setElementFxAttribute.restoreLive>[0]) => {
+      setElementFxAttribute.restoreLive(restore);
+      setAudioGroupAttribute.restoreLive(restore);
+    },
   };
 }

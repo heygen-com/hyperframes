@@ -1,0 +1,326 @@
+// fallow-ignore-file code-duplication
+import { afterEach, describe, expect, it, vi } from "vitest";
+import { HF_COLOR_GRADING_ATTR, serializeHfColorGrading } from "../colorGrading";
+import { STUDIO_PREVIEW_LAZY_ATTR, STUDIO_PREVIEW_MARK_META } from "../studioPreviewMark";
+import type { RuntimeTimelineLike } from "./types";
+
+function pausedTimeline(duration: number): RuntimeTimelineLike {
+  let time = 0;
+  return {
+    play: () => {},
+    pause: () => {},
+    seek: (t?: number) => (t === undefined ? time : (time = t)),
+    totalTime: (t?: number) => (t === undefined ? time : (time = t)),
+    time: () => time,
+    duration: () => duration,
+    add: () => {},
+    paused: () => true,
+    timeScale: () => {},
+    set: () => {},
+    getChildren: () => [],
+  };
+}
+
+function timed<K extends keyof HTMLElementTagNameMap>(
+  parent: Element,
+  tag: K,
+  start: string,
+): HTMLElementTagNameMap[K] {
+  const el = document.createElement(tag);
+  el.className = "clip";
+  el.setAttribute("data-start", start);
+  el.setAttribute("data-duration", "2");
+  el.setAttribute("data-track-index", "1");
+  parent.appendChild(el);
+  return el;
+}
+
+function mountRoot(): HTMLElement {
+  const root = document.createElement("div");
+  root.setAttribute("data-composition-id", "main");
+  root.setAttribute("data-root", "true");
+  root.setAttribute("data-start", "0");
+  root.setAttribute("data-width", "1920");
+  root.setAttribute("data-height", "1080");
+  document.body.appendChild(root);
+  window.__timelines = { main: pausedTimeline(10) };
+  return root;
+}
+
+async function evaluateRuntime(): Promise<void> {
+  vi.resetModules();
+  await import("./entry");
+}
+
+const visibility = (...els: HTMLElement[]) => els.map((el) => getComputedStyle(el).visibility);
+const imageSkipped = (...clips: HTMLElement[]) =>
+  clips.map((clip) => getComputedStyle(clip.querySelector("img")!).display === "none");
+const withImage = <T extends HTMLElement>(clip: T): T => {
+  clip.appendChild(document.createElement("img"));
+  return clip;
+};
+// What Studio's preview route serves at the head start; render and player documents never carry it.
+const servePreview = () =>
+  document.head.appendChild(
+    Object.assign(document.createElement("meta"), { name: STUDIO_PREVIEW_MARK_META }),
+  );
+const neverDecodes = (clip: HTMLElement) => {
+  withImage(clip).querySelector("img")!.decode = () => new Promise<void>(() => {});
+  return clip;
+};
+
+describe("runtime entry", () => {
+  afterEach(() => {
+    vi.useRealTimers();
+    window.__hfRuntimeTeardown?.();
+    document.head.innerHTML = "";
+    document.body.innerHTML = "";
+    window.__timelines = {};
+    delete window.__player;
+    delete window.__playerReady;
+    delete window.__renderReady;
+    delete window.__hfTimelinesBuilding;
+    const win = window as {
+      __hyperframeRuntimeBootstrapped?: boolean;
+      __hfFirstPassHidden?: boolean;
+    };
+    delete win.__hyperframeRuntimeBootstrapped;
+    delete win.__hfFirstPassHidden;
+    delete (document as { readyState?: unknown }).readyState;
+  });
+
+  it("paints no timed clip, from script evaluation until the first visibility pass decides it", async () => {
+    servePreview();
+    const root = mountRoot();
+    const current = timed(root, "div", "0");
+    const later = timed(root, "div", "5");
+    const poster = timed(root, "img", "0");
+    // Studio serves later scenes' images lazy; laid out, they would load before the first pass.
+    const plate = later.appendChild(document.createElement("img"));
+    plate.setAttribute("loading", "lazy");
+    // A composition script may write visibility inline before the runtime runs.
+    later.style.visibility = "visible";
+    // Readiness, which runs the first pass, waits while GSAP batches timelines.
+    window.__hfTimelinesBuilding = true;
+    Object.defineProperty(document, "readyState", { configurable: true, get: () => "loading" });
+
+    await evaluateRuntime();
+    expect(window.__player).toBeUndefined();
+    expect(visibility(current, later)).toEqual(["hidden", "hidden"]);
+    expect(getComputedStyle(plate).display).toBe("none");
+
+    delete (document as { readyState?: unknown }).readyState;
+    document.dispatchEvent(new Event("DOMContentLoaded"));
+    expect(window.__renderReady).toBe(false);
+    expect(visibility(current, later, poster)).toEqual(["hidden", "hidden", "visible"]);
+
+    window.__hfTimelinesBuilding = false;
+    window.dispatchEvent(new CustomEvent("hf-timelines-built"));
+    expect(window.__renderReady).toBe(true);
+    expect(visibility(current, later, poster)).toEqual(["visible", "hidden", "visible"]);
+    expect(document.querySelector("style[data-hf-first-pass-hide]")).toBeNull();
+  });
+
+  it("gives a render document neither rule, no look-ahead marks and no held seeks", async () => {
+    const root = mountRoot();
+    const current = timed(root, "div", "0");
+    const later = neverDecodes(timed(root, "div", "5"));
+    const plate = later.querySelector("img")!;
+    plate.setAttribute("loading", "lazy");
+    window.__hfTimelinesBuilding = true;
+    Object.defineProperty(document, "readyState", { configurable: true, get: () => "loading" });
+
+    await evaluateRuntime();
+    // A setup-time measure of an authored lazy image must see it laid out.
+    expect(getComputedStyle(plate).display).not.toBe("none");
+    delete (document as { readyState?: unknown }).readyState;
+    document.dispatchEvent(new Event("DOMContentLoaded"));
+    window.__hfTimelinesBuilding = false;
+    window.dispatchEvent(new CustomEvent("hf-timelines-built"));
+    window.__player?.seek(3.5);
+    expect(imageSkipped(later)).toEqual([false]);
+    expect(document.querySelector("[data-hf-upcoming]")).toBeNull();
+    window.__player?.seek(5.5);
+    expect(visibility(current, later)).toEqual(["hidden", "visible"]);
+  });
+
+  it("keys preview mode on the preview meta alone, not on the GSAP fallback script captures keep", async () => {
+    document.head
+      .appendChild(document.createElement("script"))
+      .setAttribute("data-hf-gsap-fallback", "");
+    const root = mountRoot();
+    const current = timed(root, "div", "0");
+    const later = neverDecodes(timed(root, "div", "5"));
+    const plate = later.querySelector("img")!;
+    plate.setAttribute("loading", "lazy");
+    window.__hfTimelinesBuilding = true;
+    Object.defineProperty(document, "readyState", { configurable: true, get: () => "loading" });
+
+    await evaluateRuntime();
+    expect(getComputedStyle(plate).display).not.toBe("none");
+    delete (document as { readyState?: unknown }).readyState;
+    document.dispatchEvent(new Event("DOMContentLoaded"));
+    window.__hfTimelinesBuilding = false;
+    window.dispatchEvent(new CustomEvent("hf-timelines-built"));
+    expect(document.querySelector("style[data-hf-skip-hidden-images]")).toBeNull();
+    window.__player?.seek(3.5);
+    expect(imageSkipped(later)).toEqual([false]);
+    expect(document.querySelector("[data-hf-upcoming]")).toBeNull();
+    expect(window.__player?.seek(5.5)).toBeUndefined();
+    expect(visibility(current, later)).toEqual(["hidden", "visible"]);
+  });
+
+  it("skips the images of each hidden clip not due within the look-ahead, until something shows it", async () => {
+    servePreview();
+    const root = mountRoot();
+    const current = withImage(timed(root, "div", "0"));
+    const soon = withImage(timed(root, "div", "1.5"));
+    const later = withImage(timed(root, "div", "5"));
+    // Shorter than the look-ahead: due within it, though already over at its far end.
+    const brief = withImage(timed(root, "div", "5"));
+    brief.setAttribute("data-duration", "0.5");
+
+    await evaluateRuntime();
+    expect(imageSkipped(current, soon, later, brief)).toEqual([false, false, true, true]);
+    window.__player?.seek(3.6);
+    expect(imageSkipped(later, brief)).toEqual([false, false]);
+    window.__player?.seek(0);
+    // How Studio's layer reveal shows a hidden clip.
+    later.style.visibility = "visible";
+    expect(imageSkipped(later)).toEqual([false]);
+  });
+
+  it("holds a paused jump on the previous picture until the next scene's image decodes", async () => {
+    servePreview();
+    const root = mountRoot();
+    const current = timed(root, "div", "0");
+    const later = timed(root, "div", "5");
+    const plate = later.appendChild(document.createElement("img"));
+    plate.setAttribute("loading", "lazy");
+    plate.setAttribute(STUDIO_PREVIEW_LAZY_ATTR, "");
+    let decoded = () => {};
+    plate.decode = () => new Promise<void>((resolve) => (decoded = resolve));
+    const authored = later.appendChild(document.createElement("img"));
+    authored.setAttribute("loading", "lazy");
+    authored.decode = () => Promise.resolve();
+
+    await evaluateRuntime();
+    expect(window.__player?.seek(0.5)).toBeUndefined();
+    const landed = window.__player?.seek(5.5);
+    expect(landed).toBeInstanceOf(Promise);
+    // Any frame painted now shows the previous scene, while the next one is unskipped so its image loads.
+    expect(visibility(current, later)).toEqual(["visible", "hidden"]);
+    expect(imageSkipped(later)).toEqual([false]);
+    expect(window.__player?.getTime()).toBe(5.5);
+    expect([plate, authored].map((img) => img.getAttribute("loading"))).toEqual(["eager", "lazy"]);
+    decoded();
+    await landed;
+    expect(visibility(current, later)).toEqual(["hidden", "visible"]);
+    await window.__hfWaitForSeekCompletion?.();
+  });
+
+  it("applies a held jump after the cap when an image never decodes", async () => {
+    servePreview();
+    const root = mountRoot();
+    const current = timed(root, "div", "0");
+    const later = timed(root, "div", "5");
+    later.appendChild(document.createElement("img")).decode = () => new Promise<void>(() => {});
+
+    await evaluateRuntime();
+    const swallowed: string[] = [];
+    window.__hf = {
+      ...window.__hf,
+      onSwallowed: ({ label }: { label: string }) => swallowed.push(label),
+    };
+    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+    window.__player?.seek(5.5);
+    await vi.advanceTimersByTimeAsync(999);
+    expect(visibility(current, later)).toEqual(["visible", "hidden"]);
+    await vi.advanceTimersByTimeAsync(1);
+    expect(visibility(current, later)).toEqual(["hidden", "visible"]);
+    expect(swallowed).toEqual(["runtime.init.seekHoldCap"]);
+  });
+
+  it("drops a held jump when a newer seek or a render seek lands first", async () => {
+    servePreview();
+    const root = mountRoot();
+    const current = timed(root, "div", "0");
+    const mid = timed(root, "div", "1");
+    const later = timed(root, "div", "5");
+    const plate = later.appendChild(document.createElement("img"));
+    let decoded = () => {};
+    plate.decode = () => new Promise<void>((resolve) => (decoded = resolve));
+
+    await evaluateRuntime();
+    window.__player?.seek(5.5);
+    window.__player?.seek(1);
+    expect(visibility(current, mid, later)).toEqual(["visible", "visible", "hidden"]);
+    decoded();
+    await window.__hfWaitForSeekCompletion?.();
+    expect(visibility(current, mid, later)).toEqual(["visible", "visible", "hidden"]);
+    expect(window.__player?.getTime()).toBe(1);
+
+    window.__player?.seek(0);
+    window.__player?.seek(5.5);
+    window.__player?.renderSeek(1);
+    decoded();
+    await window.__hfWaitForSeekCompletion?.();
+    expect(visibility(current, mid, later)).toEqual(["visible", "visible", "hidden"]);
+  });
+
+  it("never holds a render seek", async () => {
+    servePreview();
+    const root = mountRoot();
+    const current = timed(root, "div", "0");
+    const later = neverDecodes(timed(root, "div", "5"));
+
+    await evaluateRuntime();
+    window.__player?.renderSeek(5.5);
+    expect(visibility(current, later)).toEqual(["hidden", "visible"]);
+  });
+
+  it("shows the jump target at once when play is pressed during the hold", async () => {
+    servePreview();
+    const root = mountRoot();
+    const current = timed(root, "div", "0");
+    const later = timed(root, "div", "5");
+    later.appendChild(document.createElement("img")).decode = () => new Promise<void>(() => {});
+
+    await evaluateRuntime();
+    window.__player?.seek(5.5);
+    window.__player?.play();
+    expect(visibility(current, later)).toEqual(["hidden", "visible"]);
+  });
+
+  it("leaves nothing hidden when the runtime is evaluated a second time", async () => {
+    const root = mountRoot();
+    const current = timed(root, "div", "0");
+
+    await evaluateRuntime();
+    await evaluateRuntime();
+    // Paused and never sought: no later pass would lift a rule the second copy added.
+    expect(visibility(root, current)).toEqual(["visible", "visible"]);
+    expect(document.querySelectorAll("style[data-hf-first-pass-hide]")).toHaveLength(0);
+  });
+
+  it("grades media inside a clip once the first pass shows the clip, with no seek", async () => {
+    const getContext = vi.spyOn(HTMLCanvasElement.prototype, "getContext").mockReturnValue(null);
+    const scene = timed(mountRoot(), "div", "0");
+    // Untimed: the video inherits the scene's window, so no pass writes its visibility.
+    const video = document.createElement("video");
+    video.setAttribute(
+      HF_COLOR_GRADING_ATTR,
+      serializeHfColorGrading({ adjust: { exposure: 0.5 } }),
+    );
+    Object.defineProperty(video, "readyState", { value: HTMLMediaElement.HAVE_CURRENT_DATA });
+    Object.defineProperty(video, "videoWidth", { value: 640 });
+    Object.defineProperty(video, "videoHeight", { value: 360 });
+    scene.appendChild(video);
+
+    await evaluateRuntime();
+
+    expect(window.__renderReady).toBe(true);
+    expect(getContext.mock.calls.some(([type]) => String(type).startsWith("webgl"))).toBe(true);
+    getContext.mockRestore();
+  });
+});

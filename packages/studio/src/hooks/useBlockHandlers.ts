@@ -8,7 +8,6 @@ import { usePlayerStore } from "../player";
 import { addBlockToProject } from "../utils/blockInstaller";
 import { selectAndRevealTimelineElement } from "../player/components/timelineDropReveal";
 import type { BlockParam } from "@hyperframes/core/registry";
-import type { EditHistoryKind } from "../utils/editHistory";
 import type { RightPanelTab } from "../utils/studioHelpers";
 import type { MediaOverlayPlacement } from "../components/editor/propertyPanelTypes";
 
@@ -19,13 +18,13 @@ interface BlockCtxDeps {
   writeProjectFile: (path: string, content: string) => Promise<void>;
   recordEdit: (entry: {
     label: string;
-    kind: EditHistoryKind;
     coalesceKey?: string;
     files: Record<string, { before: string; after: string }>;
   }) => Promise<void>;
   refreshFileTree: () => Promise<void>;
   reloadPreview: () => void;
-  showToast: (message: string, tone?: "error" | "info") => void;
+  showToast: (message: string, tone?: "error" | "info") => number;
+  dismissToast: (id: number) => void;
 }
 
 interface UseBlockHandlersParams {
@@ -89,21 +88,23 @@ export function useBlockHandlers({
   // Block installs hit the server and end in a full preview reload; without a
   // guard, repeat drops while one is in flight stack duplicate installs.
   const installingBlockRef = useRef(false);
+  const { showToast, dismissToast } = blockCtxDeps;
   const runBlockInstall = useCallback(
     async <T>(blockName: string, install: () => Promise<T>): Promise<T | null> => {
       if (installingBlockRef.current) {
-        blockCtx.showToast("A block is already installing — one moment…", "info");
+        showToast("A block is already installing — one moment…", "info");
         return null;
       }
       installingBlockRef.current = true;
-      blockCtx.showToast(`Adding ${blockName}…`, "info");
+      const progress = showToast(`Adding ${blockName}…`, "info");
       try {
         return await install();
       } finally {
         installingBlockRef.current = false;
+        dismissToast(progress);
       }
     },
-    [blockCtx],
+    [showToast, dismissToast],
   );
 
   const handleAddBlock = useCallback(

@@ -1,6 +1,7 @@
 import { memo } from "react";
 import { TimelineRulerPart } from "./TimelineRulerPart";
 import { PlayheadIndicator } from "./PlayheadIndicator";
+import { TimelinePlayheadLayer } from "./TimelinePlayheadLayer";
 import {
   RULER_H,
   CLIP_Y,
@@ -8,10 +9,10 @@ import {
   TRACKS_BOTTOM_PAD,
   TRACK_H,
   PLAYHEAD_HEAD_W,
-  getTimelinePlayheadLeft,
   getTimelineRowTop,
   getTimelineRowHeight,
 } from "./timelineLayout";
+import { getTimelinePlayheadTransform } from "./timelinePlayheadTransform";
 import { TimelineLanes } from "./TimelineLanes";
 import { TimelineGestureOverlay } from "./TimelineGestureOverlay";
 import { useTimelineContext } from "./TimelineProvider";
@@ -233,21 +234,24 @@ export const TimelineCanvas = memo(function TimelineCanvas() {
 
       {/* Playhead — hidden while dragging a beat so its guideline doesn't
           track the scrub and clutter the beat being moved. Explicit width +
-          the half-head offset baked into getTimelinePlayheadLeft keep the
+          the half-head offset baked into getTimelinePlayheadTransform keep the
           inner 1px line's CENTER exactly on contentOrigin + t * pps (the ruler
           ticks' center), instead of relying on shrink-wrap sizing. */}
-      <div
-        ref={props.playheadRef}
-        className="absolute top-0 bottom-0 pointer-events-none"
-        style={{
-          left: `${getTimelinePlayheadLeft(0, 0, props.contentOrigin)}px`,
-          width: PLAYHEAD_HEAD_W,
-          zIndex: 100,
-          display: beatDragging ? "none" : undefined,
-        }}
-      >
-        <PlayheadIndicator scrubbing={props.isScrubbing} />
-      </div>
+      <TimelinePlayheadLayer scrollRef={props.scrollRef} contentOrigin={props.contentOrigin}>
+        <div
+          ref={props.playheadRef}
+          className="absolute top-0 bottom-0 pointer-events-none"
+          style={{
+            left: 0,
+            transform: getTimelinePlayheadTransform(0, 0, props.contentOrigin, true),
+            willChange: "transform",
+            width: PLAYHEAD_HEAD_W,
+            display: beatDragging ? "none" : undefined,
+          }}
+        >
+          <PlayheadIndicator scrubbing={props.isScrubbing} />
+        </div>
+      </TimelinePlayheadLayer>
     </div>
   );
 });

@@ -17,6 +17,7 @@ import {
   resolveTimedImageDurationSeconds,
 } from "./playbackRate";
 import { isMediaElement } from "./domRealm";
+import { findRootCompositionElement } from "./compositionDimension";
 
 export interface ClipNode {
   readonly id: string;
@@ -118,7 +119,7 @@ export function createClipTree(params: {
   const { startResolver, timelineRegistry, rootDuration } = params;
   const elementToNode = new Map<Element, MutableClipNode>();
 
-  const root = document.querySelector("[data-composition-id]");
+  const root = findRootCompositionElement();
   let ordinal = 0;
 
   for (const el of document.querySelectorAll("[data-start]")) {

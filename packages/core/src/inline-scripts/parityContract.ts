@@ -82,6 +82,18 @@ export function snapTimeToFrameBoundary(timeSeconds: number, fps: number): numbe
     : time;
 }
 
+/** The window export shows a clip in: both ends snapped like its seeks, so a hair off a frame counts as on it. */
+export function exportClipWindow(
+  start: number,
+  end: number,
+  fps: number,
+): { start: number; end: number } {
+  return {
+    start: snapTimeToFrameBoundary(start, fps),
+    end: Number.isFinite(end) ? snapTimeToFrameBoundary(end, fps) : end,
+  };
+}
+
 export function copyMediaVisualStyles(
   targetStyle: CSSStyleDeclaration,
   sourceStyle: CSSStyleDeclaration,

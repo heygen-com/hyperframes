@@ -18,7 +18,7 @@ afterEach(() => {
   if (root) act(() => root?.unmount());
   root = null;
   document.body.innerHTML = "";
-  usePlayerStore.setState({ thumbnailContentRevision: 0 });
+  usePlayerStore.setState({ thumbnailRevisions: {} });
 });
 
 function mount(compositions: string[], masterCompositionPath: string | null) {
@@ -38,6 +38,20 @@ function mount(compositions: string[], masterCompositionPath: string | null) {
   });
   return host;
 }
+
+describe("CompositionsTab card thumbnails", () => {
+  it("waits for the live preview to boot and keeps them through edit reloads", () => {
+    usePlayerStore.getState().reset();
+    const host = mount(["index.html"], "index.html");
+    expect(host.querySelector("img")).toBeNull();
+
+    act(() => usePlayerStore.getState().markPreviewBooted());
+    expect(host.querySelector("img")?.getAttribute("src")).toContain("/thumbnail/index.html");
+
+    act(() => usePlayerStore.getState().setTimelineReady(false));
+    expect(host.querySelector("img")).not.toBeNull();
+  });
+});
 
 describe("CompositionsTab root badge", () => {
   it("marks the composition matching masterCompositionPath as root", () => {

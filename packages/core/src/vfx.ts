@@ -10,6 +10,8 @@
 
 import { FRACTAL_NOISE_FRAG } from "./vfx/fractalNoise.frag";
 import { DISPLACEMENT_MAP_FRAG } from "./vfx/displacementMap.frag";
+import { LUMA_MATTE_FRAG } from "./vfx/lumaMatte.frag";
+import { NOISE_FRAG } from "./vfx/noise.frag";
 import { WAVE_WARP_FRAG } from "./vfx/waveWarp.frag";
 
 export const HF_VFX_ATTR = "data-vfx-chain";
@@ -67,6 +69,14 @@ export interface HfVfxRefParam {
   kind: "ref";
   key: string;
   label: string;
+  /**
+   * The kernel works without it. `displacement-map` reads its own pixels as
+   * the map when `map` is empty (every corpus instance is self-referential),
+   * while `luma-matte` without a matte has nothing to do, so a missing id
+   * there is a loud failure. Spec amendment to v1.1, which had no optional
+   * refs because its only ref was required.
+   */
+  optional?: boolean;
 }
 
 export type HfVfxParam = HfVfxNumberParam | HfVfxEnumParam | HfVfxBoolParam | HfVfxRefParam;
@@ -324,6 +334,14 @@ export const HF_VFX: readonly HfVfxDef[] = [
     frag: DISPLACEMENT_MAP_FRAG,
     params: [
       {
+        kind: "ref",
+        key: "map",
+        label: "Displacement Map Layer",
+        // Optional: empty means the AE default the corpus uses, a map layer
+        // pointing at the layer itself, which `u_src` already holds.
+        optional: true,
+      },
+      {
         kind: "enum",
         key: "useH",
         label: "Use For Horizontal Displacement",
@@ -381,6 +399,67 @@ export const HF_VFX: readonly HfVfxDef[] = [
         kind: "bool",
         key: "expand",
         label: "Expand Output",
+        default: true,
+      },
+    ],
+  },
+  {
+    id: "luma-matte",
+    label: "Matte",
+    // Not one AE effect: the runtime form of every matte the exporter cannot
+    // express as CSS — unsupported track-matte sources, stencils and
+    // silhouettes, Set Matte. Which element is the source and which the matte
+    // is the exporter's choice of what to wrap and what to name in `matte`.
+    capture: "self",
+    frag: LUMA_MATTE_FRAG,
+    params: [
+      { kind: "ref", key: "matte", label: "Matte Layer" },
+      {
+        kind: "enum",
+        key: "mode",
+        label: "Matte Mode",
+        options: [
+          { value: 1, label: "Alpha" },
+          { value: 2, label: "Alpha Inverted" },
+          { value: 3, label: "Luma" },
+          { value: 4, label: "Luma Inverted" },
+        ],
+        default: 1,
+      },
+    ],
+  },
+  {
+    id: "noise",
+    label: "Noise",
+    ae: "ADBE Noise",
+    // `self` on a content layer and `backdrop` on an adjustment layer are the
+    // same kernel reading the same `u_src`; the runtime resolves which from
+    // the DOM (a `data-vfx-for` wrapper), so the def declares only that a
+    // texture is needed.
+    capture: "self",
+    frag: NOISE_FRAG,
+    params: [
+      {
+        kind: "number",
+        key: "amount",
+        label: "Amount of Noise",
+        unit: "%",
+        min: 0,
+        max: 400,
+        step: 0.1,
+        default: 0,
+        animatable: true,
+      },
+      {
+        kind: "bool",
+        key: "useColorNoise",
+        label: "Use Color Noise",
+        default: false,
+      },
+      {
+        kind: "bool",
+        key: "clipping",
+        label: "Clip Result Values",
         default: true,
       },
     ],

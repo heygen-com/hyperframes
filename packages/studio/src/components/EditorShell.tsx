@@ -286,9 +286,7 @@ function EditorShellBody({
   return (
     <div
       ref={containerRef}
-      // Shell canvas is a step LIGHTER than the near-black panel cards so the
-      // gaps between panels read as visible seams (CapCut-style).
-      className="flex flex-col flex-1 min-h-0 bg-panel-surface"
+      className="flex flex-col flex-1 min-h-0"
       onKeyDown={handleKeyDown}
       tabIndex={-1}
     >

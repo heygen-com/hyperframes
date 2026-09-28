@@ -5,6 +5,7 @@ import type {
   LintRule,
   LintTimings,
 } from "./types";
+import { createSourceLocator } from "./sourceLocations";
 import type { LintContext } from "./context";
 import { buildLintContext } from "./context";
 import { parseHtmlStructure, readAttr, truncateSnippet } from "./utils";
@@ -120,7 +121,7 @@ function collectFindings(
     const dedupeKey = dedupeKeyFor(finding);
     if (seen.has(dedupeKey)) continue;
     seen.add(dedupeKey);
-    into.push(filePath ? { ...finding, file: filePath } : finding);
+    into.push(filePath ? { ...finding, file: finding.file ?? filePath } : finding);
   }
 }
 
@@ -130,7 +131,30 @@ export async function lintHyperframeHtml(
 ): Promise<HyperframeLintResult> {
   const startedAt = performance.now();
   const ctx = buildLintContext(html, options);
-  const { findings, timings } = await runRules(ctx, options.filePath);
+  const { findings: rawFindings, timings } = await runRules(ctx, options.filePath);
+  const locate = createSourceLocator(html);
+  const findings = rawFindings.map((finding) => {
+    if (
+      finding.line !== undefined ||
+      finding.code === "invalid_inline_script_syntax" ||
+      finding.code === "non_deterministic_code" ||
+      [
+        "gsap_infinite_repeat",
+        "gsap_repeat_ceil_overshoot",
+        "gsap_repeat_floor_unclamped",
+      ].includes(finding.code)
+    )
+      return finding;
+    // External CSS has its own source coordinates; never attribute it to the HTML document.
+    if (
+      finding.snippet &&
+      options.externalStyles?.some((style) =>
+        style.content.replace(/\s+/g, " ").includes(finding.snippet!.replace(/\.\.\.$/, "")),
+      )
+    )
+      return finding;
+    return { ...finding, ...locate(finding) };
+  });
 
   const errorCount = findings.filter((f) => f.severity === "error").length;
   const warningCount = findings.filter((f) => f.severity === "warning").length;

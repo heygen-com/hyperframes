@@ -2,6 +2,7 @@
 // Nothing in this file should emit findings — it only parses and extracts.
 
 import { Parser } from "htmlparser2";
+import { parse } from "acorn";
 
 export type OpenTag = {
   raw: string;
@@ -13,6 +14,8 @@ export type OpenTag = {
 };
 
 export type ExtractedBlock = {
+  contentStart?: number;
+  file?: string;
   attrs: string;
   content: string;
   raw: string;
@@ -121,6 +124,7 @@ export function parseHtmlStructure(source: string): {
         blocks[name].push({
           attrs: block.attrs,
           content: source.slice(block.contentStart, parser.startIndex),
+          contentStart: block.contentStart,
           raw: source.slice(block.index, parser.endIndex + 1),
           index: block.index,
         });
@@ -353,15 +357,26 @@ function readTimelineRegistryTopLevelKeys(source: string): string[] {
   return keys;
 }
 
-export function getInlineScriptSyntaxError(source: string): string | null {
+export function getInlineScriptSyntaxError(
+  source: string,
+): { message: string; offset?: number } | null {
   if (!source.trim()) return null;
   try {
-    // eslint-disable-next-line no-new-func
-    new Function(source);
+    // Match the former Function-body grammar (including top-level return), without eval.
+    parse(source, {
+      ecmaVersion: "latest",
+      sourceType: "script",
+      allowReturnOutsideFunction: true,
+    });
     return null;
   } catch (error) {
-    if (error instanceof Error) return error.message;
-    return String(error);
+    return {
+      message: error instanceof Error ? error.message : String(error),
+      offset:
+        error instanceof SyntaxError && "pos" in error && typeof error.pos === "number"
+          ? error.pos
+          : undefined,
+    };
   }
 }
 
@@ -753,7 +768,10 @@ export function stripCssComments(source: string): string {
 // `/<!--[\s\S]*?-->/` regex: that pattern backtracks O(n²) on inputs with many
 // unterminated "<!--" (CodeQL js/polynomial-redos). An unterminated "<!--" with
 // no closing "-->" is kept verbatim, matching the prior regex's no-match behavior.
-function stripHtmlCommentsOnce(source: string): string {
+function stripHtmlCommentsOnce(
+  source: string,
+  removed?: (start: number, end: number) => void,
+): string {
   let out = "";
   let i = 0;
   for (;;) {
@@ -762,6 +780,7 @@ function stripHtmlCommentsOnce(source: string): string {
     const end = source.indexOf("-->", start + 4);
     if (end < 0) return out + source.slice(i);
     out += source.slice(i, start);
+    removed?.(start, end + 3);
     i = end + 3;
   }
 }
@@ -770,11 +789,16 @@ function stripHtmlCommentsOnce(source: string): string {
 // comment can splice adjacent markers into a fresh, complete <!-- … --> (e.g.
 // "<<!-- -->!-- … -->" → "<!-- … -->"), which would otherwise survive and let a
 // commented-out <template>/tag hijack the linter's tag scan.
-export function stripHtmlComments(source: string): string {
+export function stripHtmlComments(
+  source: string,
+  pass?: (ranges: Array<[number, number]>) => void,
+): string {
   let out = source;
   for (let prev = ""; prev !== out; ) {
     prev = out;
-    out = stripHtmlCommentsOnce(out);
+    const ranges: Array<[number, number]> = [];
+    out = stripHtmlCommentsOnce(out, pass ? (start, end) => ranges.push([start, end]) : undefined);
+    if (ranges.length) pass?.(ranges);
   }
   return out;
 }

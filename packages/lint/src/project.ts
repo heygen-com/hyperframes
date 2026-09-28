@@ -35,6 +35,10 @@ function parseSubCompHtml(html: string): ParsableDocumentLike {
   return parseHTML(html).document as unknown as ParsableDocumentLike;
 }
 
+/** The file a source was read from, as per-file findings carry it. */
+const sourceFile = (projectDir: string, compSrcPath?: string) =>
+  resolve(projectDir, compSrcPath ?? "index.html");
+
 interface HtmlSource {
   html: string;
   compSrcPath?: string;
@@ -111,11 +115,15 @@ function collectExternalStyles(
   projectDir: string,
   html: string,
   compSrcPath?: string,
-): Array<{ href: string; content: string }> {
-  const styles: Array<{ href: string; content: string }> = [];
+): Array<{ href: string; content: string; file?: string }> {
+  const styles: Array<{ href: string; content: string; file?: string }> = [];
   const { document } = parseHTML(html);
-  for (const { href, content } of collectLocalStylesheets(projectDir, document, compSrcPath)) {
-    styles.push({ href, content });
+  for (const { href, content, rootRelativePath } of collectLocalStylesheets(
+    projectDir,
+    document,
+    compSrcPath,
+  )) {
+    styles.push({ href, content, file: join(projectDir, rootRelativePath) });
   }
   return styles;
 }
@@ -353,7 +361,7 @@ function lintAudioSrcNotFound(
 
   const audioSrcRe = mediaSrcTagRe("audio");
 
-  const missingSrcs: string[] = [];
+  const missingByFile = new Map<string, Set<string>>();
   for (const { html, compSrcPath } of htmlSources) {
     let match: RegExpExecArray | null;
     while ((match = audioSrcRe.exec(html)) !== null) {
@@ -364,16 +372,18 @@ function lintAudioSrcNotFound(
         ? rewriteAssetPath(compSrcPath, src, (path) => existsSync(join(projectDir, path)))
         : src;
       if (!existsSync(resolveProjectRelativeSrc(rootRelative, projectDir))) {
-        missingSrcs.push(src);
+        const file = sourceFile(projectDir, compSrcPath);
+        missingByFile.set(file, (missingByFile.get(file) ?? new Set()).add(src));
       }
     }
   }
 
-  if (missingSrcs.length > 0) {
-    const unique = [...new Set(missingSrcs)];
+  for (const [file, srcs] of missingByFile) {
+    const unique = [...srcs];
     findings.push({
       code: "audio_src_not_found",
       severity: "error",
+      file,
       message: `<audio> element references file(s) not found in the project: ${unique.join(", ")}. The rendered video will be silent.`,
       fixHint:
         unique.length === 1
@@ -394,7 +404,10 @@ function lintMissingLocalAsset(
 
   const localAssetSrcRe = mediaSrcTagRe("video|img|source");
 
-  const missingByTag = new Map<string, Map<string, string>>();
+  const missingByTag = new Map<
+    string,
+    { file: string; tagName: string; byResolved: Map<string, string> }
+  >();
 
   for (const { html, compSrcPath } of htmlSources) {
     const scannable = maskNonScannableRanges(html);
@@ -415,20 +428,23 @@ function lintMissingLocalAsset(
       if (resolvedAsset) continue;
 
       const resolvedKey = resolve(projectDir, rootRelative);
-      let bucket = missingByTag.get(tagName);
+      const file = sourceFile(projectDir, compSrcPath);
+      const bucketKey = `${file}\0${tagName}`;
+      let bucket = missingByTag.get(bucketKey);
       if (!bucket) {
-        bucket = new Map<string, string>();
-        missingByTag.set(tagName, bucket);
+        bucket = { file, tagName, byResolved: new Map<string, string>() };
+        missingByTag.set(bucketKey, bucket);
       }
-      if (!bucket.has(resolvedKey)) bucket.set(resolvedKey, src);
+      if (!bucket.byResolved.has(resolvedKey)) bucket.byResolved.set(resolvedKey, src);
     }
   }
 
-  for (const [tagName, byResolved] of missingByTag) {
+  for (const { file, tagName, byResolved } of missingByTag.values()) {
     const unique = [...byResolved.values()];
     findings.push({
       code: "missing_local_asset",
       severity: "error",
+      file,
       message:
         `<${tagName}> element references local file(s) not found in the project: ${unique.join(", ")}. ` +
         "The renderer will silently skip these and produce a video with missing visuals.",
@@ -449,9 +465,10 @@ function lintTextureMaskAssetNotFound(
   projectDir: string,
   htmlSources: HtmlSource[],
 ): HyperframeLintFinding[] {
-  const missing = new Map<string, string>();
+  const missingByFile = new Map<string, Set<string>>();
 
   for (const { html, compSrcPath } of htmlSources) {
+    const file = sourceFile(projectDir, compSrcPath);
     for (const cssSource of collectCssSources(projectDir, html, compSrcPath)) {
       let match: RegExpExecArray | null;
       const pattern = new RegExp(MASK_IMAGE_URL_RE.source, MASK_IMAGE_URL_RE.flags);
@@ -469,24 +486,24 @@ function lintTextureMaskAssetNotFound(
           cssSource.rootRelativePath,
         );
         if (candidates.some(existsSync)) continue;
-        missing.set(url, candidates[0] ?? resolve(projectDir, url));
+        missingByFile.set(file, (missingByFile.get(file) ?? new Set()).add(url));
       }
     }
   }
 
-  if (missing.size === 0) return [];
-  const urls = [...missing.keys()];
-  return [
-    {
+  return [...missingByFile].map(([file, found]): HyperframeLintFinding => {
+    const urls = [...found];
+    return {
       code: "texture_mask_asset_not_found",
       severity: "error",
+      file,
       message: `CSS mask-image references file(s) not found in the project: ${urls.join(", ")}.`,
       fixHint:
         urls.length === 1
           ? `Add "${urls[0]}" to the project, or update the mask-image URL to point to an existing texture mask.`
           : "Add the missing texture mask files to the project, or update the mask-image URLs to point to existing files.",
-    },
-  ];
+    };
+  });
 }
 
 function lintMultipleRootCompositions(projectDir: string): HyperframeLintFinding[] {

@@ -17,6 +17,31 @@ function makeDoc(html: string): Document {
 }
 
 describe("buildMissingCompositionElements — hfId (R7)", () => {
+  it("labels a row from its own host when a sub-composition repeats the host's id", () => {
+    const doc = makeDoc(`
+      <div data-composition-id="main">
+        <div data-composition-id="strip" data-composition-src="compositions/strip.html"><div id="scene"></div></div>
+        <div id="scene" data-hf-id="hf-scene" data-composition-id="scene" data-composition-file="compositions/scene.html"></div>
+      </div>
+    `);
+    const row = {
+      id: "scene",
+      key: "scene",
+      tag: "div",
+      start: 0,
+      duration: 4,
+      track: 0,
+      hfId: "hf-scene",
+    };
+    const { updatedEls, patched } = buildMissingCompositionElements(
+      doc,
+      window as IframeWindow,
+      [row],
+      10,
+    );
+    expect([patched, updatedEls[0]?.compositionSrc]).toEqual([true, "compositions/scene.html"]);
+  });
+
   it("harvests hfId from data-hf-id on composition host elements", () => {
     const doc = makeDoc(`
       <div data-composition-id="root">
@@ -104,7 +129,7 @@ describe("scrubPreviewAudio", () => {
     audio.pause = vi.fn();
     iframe.contentDocument.body.append(audio);
 
-    scrubPreviewAudio(iframe, 0.5, "music", 0.4);
+    scrubPreviewAudio(iframe, 0.5, { id: "music" }, 0.4);
 
     expect(audio.volume).toBeCloseTo(0.1);
     stopScrubPreviewAudio();
@@ -112,13 +137,13 @@ describe("scrubPreviewAudio", () => {
 
   /**
    * The preview document is a different realm, so `instanceof HTMLAudioElement`
-   * is false for every node in it. That threw the `musicId` hint away and left
+   * is false for every node in it. That threw the `music` hint away and left
    * the first `<audio>` in the document as the only route — and the first
    * `<audio>` is often the voiceover, so scrubbing previewed the wrong track.
    * Two elements, music second, is what tells the two paths apart: with one
    * element the fallback reaches the right node by accident.
    */
-  it("previews the track named by musicId, not the first audio in the document", () => {
+  it("previews the track named by the music row, not the first audio in the document", () => {
     const iframe = document.createElement("iframe");
     document.body.append(iframe);
     const previewDoc = iframe.contentDocument;
@@ -139,10 +164,29 @@ describe("scrubPreviewAudio", () => {
     // The node really is cross-realm; this is the condition, not a contrivance.
     expect(music instanceof HTMLAudioElement).toBe(false);
 
-    scrubPreviewAudio(iframe, 0.5, "music-bed", 1);
+    scrubPreviewAudio(iframe, 0.5, { id: "music-bed" }, 1);
 
     expect(music.play).toHaveBeenCalled();
     expect(voiceover.play).not.toHaveBeenCalled();
+    stopScrubPreviewAudio();
+  });
+
+  it("previews the music row's own track when a sub-composition repeats its id", () => {
+    const iframe = document.createElement("iframe");
+    document.body.append(iframe);
+    const previewDoc = iframe.contentDocument;
+    if (!previewDoc?.body) throw new Error("expected an iframe document");
+    previewDoc.body.innerHTML =
+      '<div data-composition-id="strip" data-composition-src="compositions/strip.html"><audio id="music"></audio></div>' +
+      '<audio id="music" class="root"></audio>';
+    const [inner, root] = Array.from(previewDoc.querySelectorAll("audio"));
+    for (const audio of [inner, root])
+      Object.assign(audio!, { play: vi.fn(async () => {}), pause: vi.fn() });
+
+    scrubPreviewAudio(iframe, 0.5, { id: "music" }, 1);
+
+    expect(root!.play).toHaveBeenCalled();
+    expect(inner!.play).not.toHaveBeenCalled();
     stopScrubPreviewAudio();
   });
 
@@ -166,7 +210,7 @@ describe("scrubPreviewAudio", () => {
     const releasePausedMedia = vi.fn();
     (previewDoc.defaultView as IframeWindow).__hf = { leasePausedMedia, releasePausedMedia };
 
-    scrubPreviewAudio(iframe, 0.5, "music", 1);
+    scrubPreviewAudio(iframe, 0.5, { id: "music" }, 1);
 
     expect(leasePausedMedia).toHaveBeenCalledWith(music);
     expect(releasePausedMedia).not.toHaveBeenCalled();

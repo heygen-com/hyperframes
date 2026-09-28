@@ -3,6 +3,8 @@ name: hyperframes-animation
 description: "All animation knowledge for HyperFrames — atomic motion rules, multi-phase scene blueprints, scene transitions, broader motion-design techniques, AND the seven runtime adapters (GSAP default, plus Lottie, Three.js, Anime.js, CSS keyframes, Web Animations API, TypeGPU). Use for any motion or animation task: pick 2-4 rules and compose, or load a blueprint, or look up runtime-specific API (e.g. GSAP eases / Lottie player / Three.js mixer). Also covers auditing an existing composition's choreography (animation map) and 24 named text-animation effects. HyperFrames-native: single paused timeline, seek-safe, deterministic."
 ---
 
+**Plugin installs:** Before setup or freshness commands, follow [plugin execution rules](../hyperframes/references/plugin-installation.md) when this skill is inside a HyperFrames plugin. Standalone installs keep the update instructions below.
+
 # HyperFrames Animation
 
 All motion knowledge in one skill: **rules** (atomic recipes), **blueprints** (multi-phase scene templates), **transitions** (scene-to-scene), **techniques** (broader motion-design patterns), and **adapters** (per-runtime APIs).
@@ -38,6 +40,7 @@ Blueprints live in `blueprints-index.md`. Each entry points to `blueprints/<id>.
 | GSAP — eases / stagger                                                         | `adapters/gsap-easing-and-stagger.md`               |
 | GSAP — timeline / labels                                                       | `adapters/gsap-timeline-and-labels.md`              |
 | Lottie / dotLottie (After Effects exports, `window.__hfLottie`)                | `adapters/lottie.md`                                |
+| Character animation (walk cycle, mascot, jointed puppet, gestures)             | `adapters/lottie.md` → Characters                   |
 | Three.js / WebGL (3D scenes, `AnimationMixer`, `hf-seek`)                      | `adapters/three.md`                                 |
 | Anime.js (`window.__hfAnime`)                                                  | `adapters/animejs.md`                               |
 | CSS keyframes (`animation-delay` / `play-state` / `fill-mode`)                 | `adapters/css-animations.md`                        |
@@ -49,7 +52,7 @@ Blueprints live in `blueprints-index.md`. Each entry points to `blueprints/<id>.
 ## Picking a runtime
 
 - **GSAP** is the default for 95% of motion work — covers timeline orchestration, transforms, easing, stagger. All atomic rules in this skill are GSAP-based.
-- **Lottie** when an asset has its own pre-baked timeline (typically After Effects exports).
+- **Lottie** when an asset has its own pre-baked timeline (typically After Effects exports), including characters that walk, gesture or react.
 - **Three.js** for 3D scenes, camera motion, shader-driven visuals.
 - **Anime.js** for lightweight tweening when GSAP is overkill.
 - **CSS** for simple repeated motifs, decoration, shimmer — no JavaScript animation cost.

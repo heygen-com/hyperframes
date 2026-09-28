@@ -16,8 +16,10 @@ const handleUndo = vi.fn();
 const handleRedo = vi.fn();
 const trackStudioEvent = vi.fn();
 
+const studioShell = { editHistory, handleUndo, handleRedo };
+let shell: typeof studioShell | null = studioShell;
 vi.mock("../contexts/StudioContext", () => ({
-  useStudioShellContext: () => ({ editHistory, handleUndo, handleRedo }),
+  useStudioShellContextOptional: () => shell,
 }));
 vi.mock("../utils/studioTelemetry", () => ({ trackStudioEvent }));
 
@@ -31,6 +33,7 @@ beforeEach(() => {
     undoLabel: undefined,
     redoLabel: undefined,
   });
+  shell = studioShell;
   vi.clearAllMocks();
 });
 
@@ -114,4 +117,38 @@ it("classifies Undo and Redo for the hotkey filters at their new location (KTD13
     expect(isTypingTarget(el), label).toBe(false);
     expect(shouldIgnorePlaybackShortcutTarget(el), label).toBe(true);
   }
+});
+
+it("takes a host's history props over the shell's", async () => {
+  editHistory.canUndo = true;
+  editHistory.redoLabel = "shell move";
+  const onUndo = vi.fn();
+  const onRedo = vi.fn();
+  const host = mount(
+    <TimelineHistoryButtons
+      canUndo={false}
+      canRedo
+      redoLabel="host trim"
+      onUndo={onUndo}
+      onRedo={onRedo}
+    />,
+  );
+
+  expect(button(host, "Undo").disabled).toBe(true);
+  act(() => button(host, "Redo").focus());
+  await act(async () => {
+    await new Promise((resolve) => setTimeout(resolve, 0));
+  });
+  expect(document.querySelector('[role="tooltip"]')?.textContent).toContain("Redo host trim");
+  click(button(host, "Redo"));
+
+  expect(onRedo).toHaveBeenCalledTimes(1);
+  expect(handleRedo).not.toHaveBeenCalled();
+});
+
+it("keeps a button disabled when it has no handler, whatever canUndo/canRedo say", () => {
+  shell = null;
+  const host = mount(<TimelineHistoryButtons canUndo canRedo />);
+
+  for (const label of ["Undo", "Redo"]) expect(button(host, label).disabled).toBe(true);
 });

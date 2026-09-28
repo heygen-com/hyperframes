@@ -39,7 +39,7 @@ export function formatLintFindings(
           : finding.severity === "warning"
             ? c.warn("⚠")
             : c.dim("ℹ");
-      const fileLabel = multiFile ? c.dim(`[${file}] `) : "";
+      const fileLabel = findingFileLabel(file, finding, multiFile);
       const loc =
         showElementId && finding.elementId ? ` ${c.accent(`[${finding.elementId}]`)}` : "";
       lines.push(`  ${prefix} ${fileLabel}${c.bold(finding.code)}${loc}: ${finding.message}`);
@@ -93,4 +93,14 @@ export function formatLintStartupMessage(
       ? "see the Lint badge in Studio, or run `hyperframes lint` for full output"
       : "run with --lint-verbose for full output";
   return [`  Lint: ${counts} — ${hint}.`];
+}
+
+function findingFileLabel(
+  file: string,
+  finding: import("@hyperframes/lint").HyperframeLintFinding,
+  multiFile: boolean,
+): string {
+  if (finding.line === undefined) return multiFile ? c.dim(`[${file}] `) : "";
+  const column = finding.column === undefined ? "" : `:${finding.column}`;
+  return c.dim(`[${finding.file ?? file}:${finding.line}${column}] `);
 }

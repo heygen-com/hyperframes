@@ -26,6 +26,10 @@ npx skills add heygen-com/hyperframes   # interactive picker (terminal only; rep
 
 **Porting an existing composition?** `/remotion-to-hyperframes` translates a Remotion (React) video composition into HyperFrames HTML — a source migration, separate from the creation workflows above.
 
+## Issue and PR triage
+
+Read [TRIAGE.md](TRIAGE.md) before classifying issues, advertising contribution work, or triaging PRs. Check current source and overlapping PRs; keep difficulty, readiness, and ownership separate. Apply changes only within the task's authorization and verify the resulting GitHub state.
+
 ## Build & Test
 
 ```bash

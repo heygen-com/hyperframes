@@ -4,6 +4,8 @@ import { resolve } from "node:path";
 import puppeteer, { type Browser, type Page } from "puppeteer";
 
 const RUNTIME_PATH = resolve(import.meta.dirname, "../../../core/dist/hyperframe.runtime.iife.js");
+const PNG_1PX =
+  "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8DwHwAFBQIAX8jx0gAAAABJRU5ErkJggg==";
 
 describe("core runtime browser contract", () => {
   let browser: Browser;
@@ -204,6 +206,63 @@ describe("core runtime browser contract", () => {
       expect(afterActive.offsetWidth).toBeGreaterThan(0);
     } finally {
       await videoPage.close();
+    }
+  }, 30_000);
+
+  it("renders a later clip's authored lazy image as it is: laid out at setup, fetched before any seek", async () => {
+    // A chunked render starts a worker straight at a later clip, so its image must already be loaded.
+    const assets = "https://assets.test/";
+    const renderPage = await browser.newPage();
+    try {
+      await renderPage.setRequestInterception(true);
+      renderPage.on("request", (request) => {
+        if (request.url() === `${assets}runtime.js`)
+          void request.respond({
+            contentType: "text/javascript",
+            body: readFileSync(RUNTIME_PATH),
+          });
+        else if (request.url() === `${assets}plate.png`)
+          void request.respond({ contentType: "image/png", body: Buffer.from(PNG_1PX, "base64") });
+        else void request.continue();
+      });
+      await renderPage.setContent(`<!doctype html><html><head>
+        <style>.clip { position: absolute; inset: 0; }</style>
+        <script src="${assets}runtime.js"></script></head><body>
+        <div data-composition-id="root" data-start="0" data-duration="4" data-width="320" data-height="180">
+          <div class="clip" data-start="0" data-duration="2.5" data-track-index="1"></div>
+          <div class="clip" data-start="2.5" data-duration="1.5" data-track-index="1">
+            <img id="plate" loading="lazy" width="200" height="100" src="${assets}plate.png">
+          </div>
+        </div>
+        <script>window.__plateWidthAtSetup = document.getElementById("plate").offsetWidth;</script>
+        </body></html>`);
+      await renderPage.waitForFunction(
+        () => (window as unknown as { __renderReady?: boolean }).__renderReady === true,
+      );
+      const loaded = await renderPage
+        .waitForFunction(
+          () => {
+            const plate = document.getElementById("plate") as HTMLImageElement;
+            return plate.complete && plate.naturalWidth > 0;
+          },
+          { timeout: 5_000 },
+        )
+        .then(() => true)
+        .catch(() => false);
+      const atClip = await renderPage.evaluate(() => {
+        const runtime = window as unknown as {
+          __plateWidthAtSetup?: number;
+          __player?: { renderSeek: (timeSeconds: number) => void };
+        };
+        runtime.__player?.renderSeek(2.6);
+        return {
+          setupWidth: runtime.__plateWidthAtSetup,
+          width: document.getElementById("plate")?.offsetWidth,
+        };
+      });
+      expect({ loaded, ...atClip }).toEqual({ loaded: true, setupWidth: 200, width: 200 });
+    } finally {
+      await renderPage.close();
     }
   }, 30_000);
 

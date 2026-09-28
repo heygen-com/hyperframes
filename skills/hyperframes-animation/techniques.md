@@ -197,7 +197,7 @@ Vector animations that play inside a composition. Use for logos, character anima
 </script>
 ```
 
-`autoplay: false` + `loop: false` + `window.__hfLottie.push()` are mandatory — HyperFrames seeks each registered player to composition time, so anything left on `autoplay`/`loop` runs in wall-clock and renders non-deterministically. The adapter seeks absolute time (no modulo loop, no playback-rate scaling): bake repeating cycles or non-default speed into the Lottie asset or an explicit timeline, then verify the render. Full contract + `.lottie`/dotLottie variant: `adapters/lottie.md`.
+`autoplay: false` + `window.__hfLottie.push()` are mandatory — HyperFrames seeks each registered player to composition time, so a player left on `autoplay` runs in wall-clock and renders non-deterministically. `loop: true` is seek-safe: the adapter wraps composition time into the animation's own length, so a short cycle repeats for the whole scene. There is no playback-rate scaling: bake non-default speed into the Lottie asset. Characters (walk cycles, mascots, gestures) and the full `.lottie`/dotLottie contract: `adapters/lottie.md`.
 
 ---
 

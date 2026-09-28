@@ -1,8 +1,19 @@
 import { describe, it, expect, afterEach } from "vitest";
-import { mkdtempSync, mkdirSync, writeFileSync, symlinkSync, rmSync } from "node:fs";
+import { existsSync, mkdtempSync, mkdirSync, writeFileSync, symlinkSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { basename, dirname, join } from "node:path";
 import { isSafePath, resolveWithinProject } from "./safePath.js";
+
+const recased = (path: string) => join(dirname(path), basename(path).toUpperCase());
+
+function caseInsensitive(): boolean {
+  const dir = mkdtempSync(join(tmpdir(), "safepath-probe-"));
+  try {
+    return existsSync(recased(dir));
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+}
 
 describe("isSafePath", () => {
   const tmpDirs: string[] = [];
@@ -99,6 +110,14 @@ describe("isSafePath", () => {
     if (!tryCreateSymlink(realBase, baseLink, "dir")) return;
     writeFileSync(join(realBase, "file.txt"), "x");
     expect(isSafePath(baseLink, join(baseLink, "file.txt"))).toBe(true);
+  });
+
+  it.skipIf(!caseInsensitive())("admits an in-base path typed in another letter case", () => {
+    const base = tmpDir("safepath-case-");
+    writeFileSync(join(base, "file.txt"), "x");
+    expect(isSafePath(base, join(recased(base), "file.txt"))).toBe(true);
+    expect(isSafePath(recased(base), join(base, "new.txt"))).toBe(true);
+    expect(isSafePath(recased(base), join(tmpdir(), "outside.txt"))).toBe(false);
   });
 
   it("fails closed when the base directory does not exist", () => {

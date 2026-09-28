@@ -1,7 +1,7 @@
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 
-const studioCss = readFileSync(new URL("../../styles/studio.css", import.meta.url), "utf8");
+const studioCss = readFileSync(new URL("../../styles/components.css", import.meta.url), "utf8");
 const themeCss = readFileSync(new URL("../../styles/theme.css", import.meta.url), "utf8");
 const timelineOverlaySources = [
   "TimelineShortcutHint.tsx",

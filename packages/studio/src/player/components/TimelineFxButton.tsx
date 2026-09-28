@@ -157,7 +157,7 @@ interface TimelineFxButtonChainProps {
   onOpenRack: () => void;
   fxChainRaw: string | undefined;
   onChainChange: (next: HfAudioFxChain) => void;
-  onChainPreview?: (next: HfAudioFxChain) => void;
+  onChainPreview?: (next: HfAudioFxChain, ended?: boolean) => void;
   /** The clips this chain is heard through, so an audition starts where they
    *  actually sound rather than from a playhead parked before the first. */
   auditionSpans?: readonly AuditionSpan[];

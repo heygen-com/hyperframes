@@ -1,4 +1,4 @@
-import { type ReactNode } from "react";
+import { useState, type ReactNode } from "react";
 import { usePlayerStore, type TimelineElement } from "../store/playerStore";
 import type { TimelineTimeRange } from "../lib/timelineClipIndex";
 import type { TrackVisualStyle } from "./timelineIcons";
@@ -27,6 +27,16 @@ function ClipLintDot({ element }: { element: TimelineElement }) {
       title={lint.messages.join("\n")}
     />
   );
+}
+
+/**
+ * Mounts a clip's content only once the timeline is at rest, then keeps it through later scrolls,
+ * so a scroll never blanks a picture already on screen and never mounts a screenful of new ones.
+ */
+export function ClipContentOnceShown({ hold, children }: { hold: boolean; children: ReactNode }) {
+  const [shown, setShown] = useState(!hold);
+  if (!shown && !hold) setShown(true);
+  return shown ? children : null;
 }
 
 export function renderClipChildren(

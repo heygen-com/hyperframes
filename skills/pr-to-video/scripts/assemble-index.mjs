@@ -58,7 +58,7 @@ import { parseFormat } from "./lib/dimensions.mjs";
 import { stageAssets } from "./lib/assets.mjs";
 import { parseColors, semanticColors } from "./lib/tokens.mjs";
 import { validateFrameHtml } from "./lib/frame-contract.mjs";
-import { bgmDefaultVolume } from "../../media-use/audio/scripts/lib/bgm.mjs";
+import { bgmDefaultVolume } from "./lib/bgm-volume.mjs";
 
 // ---------- argv ----------
 const argv = process.argv.slice(2);

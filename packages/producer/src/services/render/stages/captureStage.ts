@@ -23,10 +23,8 @@
  *   - `lastBrowserConsole` is set to the buffer of whichever session was
  *     active last (probe session in the parallel close path; sequential
  *     session in the sequential path).
- *   - `job.framesRendered` is updated at the same per-frame / per-progress
- *     points; the same `Capturing frame N/M` `updateJobStatus` payloads
- *     fire at 30-frame and completion checkpoints (parallel) or every
- *     frame (sequential).
+ *   - `job.framesRendered` is updated at every per-frame / per-progress
+ *     point; `Capturing frame N/M` goes through `reportFrameProgress`.
  *
  * Known follow-up: this stage imports `executeDiskCaptureWithAdaptiveRetry`
  * from `renderOrchestrator.ts`, which itself imports the stage — a runtime
@@ -70,7 +68,7 @@ import {
   type RenderJob,
 } from "../../renderOrchestrator.js";
 import { wrapCaptureStageError } from "../captureStageError.js";
-import { updateJobStatus } from "../shared.js";
+import { reportFrameProgress, reportWorkerStartup } from "../shared.js";
 import type { SdrDiskCapturePlan } from "../capturePlan.js";
 
 export interface CaptureStageInput {
@@ -366,23 +364,20 @@ export async function runCaptureStage(input: CaptureStageInput): Promise<Capture
       frameRangeStart: frameRange?.startFrame,
       dedupPerfs,
       onProgress: (progress) => {
+        if (progress.latestWorkerPhase) {
+          if (progress.capturedFrames === 0) reportWorkerStartup(job, progress, onProgress);
+          return;
+        }
         job.framesRendered = progress.capturedFrames;
         checkDiskProjection(progress.capturedFrames);
         const frameProgress = progress.capturedFrames / progress.totalFrames;
-        const progressPct = 25 + frameProgress * 45;
-
-        if (
-          progress.capturedFrames % 30 === 0 ||
-          progress.capturedFrames === progress.totalFrames
-        ) {
-          updateJobStatus(
-            job,
-            "rendering",
-            `Capturing frame ${progress.capturedFrames}/${progress.totalFrames} (${progress.activeWorkers} workers)`,
-            Math.round(progressPct),
-            onProgress,
-          );
-        }
+        reportFrameProgress(
+          job,
+          `Capturing frame ${progress.capturedFrames}/${progress.totalFrames} (${progress.activeWorkers} workers)`,
+          Math.round(25 + frameProgress * 45),
+          onProgress,
+          progress.capturedFrames === progress.totalFrames,
+        );
       },
       cfg: captureCfg,
       log,
@@ -577,12 +572,12 @@ async function captureSessionFrames(
     // capture error wrapper below must remain separate from finally so it
     // can throw with the browser console before cleanup overwrites flow.
     // fallow-ignore-next-line code-duplication
-    updateJobStatus(
+    reportFrameProgress(
       job,
-      "rendering",
       `Capturing frame ${fileIndex + 1}/${rangeFrames}`,
       Math.round(25 + ((fileIndex + 1) / rangeFrames) * 45),
       onProgress,
+      fileIndex + 1 === rangeFrames,
     );
   };
 

@@ -1,12 +1,21 @@
 // @vitest-environment jsdom
+import { ensureHfIds } from "@hyperframes/parsers";
 import { describe, expect, it } from "vitest";
-import { pasteTimelineClips, resolveFreeTrack, type PlacedClip } from "./useClipboard";
+import {
+  pasteElementHtml,
+  pasteTimelineClips,
+  resolveFreeTrack,
+  type PlacedClip,
+} from "./useClipboard";
 import { extendRootDurationInSource } from "../utils/rootDuration";
 import type { TimelineClipboardClip } from "../utils/clipboardPayload";
 import type { TimelineElement } from "../player";
 
 const ROOT =
   '<div id="claude-paper" data-composition-id="claude-paper" data-start="0" data-duration="10"></div>';
+
+const hfIdsIn = (html: string) =>
+  Array.from(html.matchAll(/data-hf-id=["']([^"']+)/g), (m) => m[1]);
 
 function clip(id: string, start: number, duration: number, track: number): TimelineClipboardClip {
   return {
@@ -77,7 +86,7 @@ describe("pasteTimelineClips", () => {
     expect(content).toMatch(/data-track-index="133"/);
   });
 
-  it("strips the copied data-hf-id so a fresh one mints on next save", () => {
+  it("gives a pasted clip a fresh data-hf-id, never the copied one", () => {
     const clipWithHfId: TimelineClipboardClip = {
       html: '<audio data-hf-id="hf-75o7" id="sfx-type-0" src="typenew.mp3" data-start="7.8" data-duration="0.57" data-track-index="109"></audio>',
       start: 7.8,
@@ -85,10 +94,44 @@ describe("pasteTimelineClips", () => {
       track: 109,
     };
     const { content } = pasteTimelineClips(ROOT, [clipWithHfId], 40, []);
-    expect(content).not.toContain("data-hf-id");
+    expect(content).not.toContain("hf-75o7");
+    expect(hfIdsIn(content)).toHaveLength(1);
   });
 
-  it("strips a nested descendant's data-hf-id too, not just the root's", () => {
+  it("leaves nothing for the server to stamp, so the file undo recorded is what stays on disk", () => {
+    const stamped = ensureHfIds(
+      ROOT.replace("</div>", `${clip("sfx-1", 1, 2, 0).html}${clip("sfx-2", 3, 2, 0).html}</div>`),
+    );
+    const copies = hfIdsIn(stamped).length;
+    const original = (id: string) => ({
+      ...clip(id, 1, 2, 0),
+      html: stamped.match(new RegExp(`<audio[^>]*id="${id}"[^>]*></audio>`))![0],
+    });
+    const { content } = pasteTimelineClips(stamped, [original("sfx-1"), original("sfx-2")], 11, []);
+    const ids = hfIdsIn(content);
+    expect(ids).toHaveLength(copies + 2);
+    expect(new Set(ids).size).toBe(ids.length);
+    expect(hfIdsIn(ensureHfIds(content))).toHaveLength(ids.length);
+  });
+
+  it("remints a nested clip's descendants clear of their originals already in the file", () => {
+    const nested =
+      '<div id="comp-1" data-start="1" data-duration="2" data-track-index="0"><span>a</span><span>b</span></div>';
+    const stamped = ensureHfIds(ROOT.replace("</div>", `${nested}</div>`));
+    const copied = stamped.match(/<div[^>]*id="comp-1"[^>]*>.*?<\/div>/)![0];
+    const { content } = pasteTimelineClips(
+      stamped,
+      [{ html: copied, start: 1, duration: 2, track: 0 }],
+      11,
+      [],
+    );
+    const ids = hfIdsIn(content);
+    expect(ids).toHaveLength(hfIdsIn(stamped).length + 3);
+    expect(new Set(ids).size).toBe(ids.length);
+    expect(hfIdsIn(ensureHfIds(content))).toHaveLength(ids.length);
+  });
+
+  it("remints a nested descendant's data-hf-id too, not just the root's", () => {
     // A composition-instance clip's descendants carry their own hf-ids; a
     // clone must remint all of them, not just the root, or the descendants
     // collide with their originals the same way the root would.
@@ -101,7 +144,7 @@ describe("pasteTimelineClips", () => {
     const { content } = pasteTimelineClips(ROOT, [nested], 40, []);
     expect(content).not.toContain("hf-root");
     expect(content).not.toContain("hf-child");
-    expect(content).not.toContain("data-hf-id");
+    expect(hfIdsIn(content)).toHaveLength(2);
   });
 
   it("does not strip text content that happens to contain the data-hf-id string", () => {
@@ -145,7 +188,7 @@ describe("pasteTimelineClips", () => {
     expect(content).toContain(`id="${ids[0]}"`);
   });
 
-  it("strips a single-quoted data-hf-id, not just a double-quoted one", () => {
+  it("remints a single-quoted data-hf-id, not just a double-quoted one", () => {
     const singleQuoted: TimelineClipboardClip = {
       html: '<audio data-hf-id=\'hf-75o7\' id="sfx-type-0" src="typenew.mp3" data-start="7.8" data-duration="0.57" data-track-index="109"></audio>',
       start: 7.8,
@@ -153,10 +196,11 @@ describe("pasteTimelineClips", () => {
       track: 109,
     };
     const { content } = pasteTimelineClips(ROOT, [singleQuoted], 40, []);
-    expect(content).not.toContain("data-hf-id");
+    expect(content).not.toContain("hf-75o7");
+    expect(hfIdsIn(content)).toHaveLength(1);
   });
 
-  it("strips data-hf-id even when an earlier attribute value contains a literal >", () => {
+  it("remints data-hf-id even when an earlier attribute value contains a literal >", () => {
     // A `>` inside title's value would close a bracket-scoped tag regex
     // early, leaving data-hf-id (which comes after it) outside the matched
     // span and unstripped. A real parser doesn't have this failure mode.
@@ -167,7 +211,8 @@ describe("pasteTimelineClips", () => {
       track: 109,
     };
     const { content } = pasteTimelineClips(ROOT, [gtInAttr], 40, []);
-    expect(content).not.toContain("data-hf-id");
+    expect(content).not.toContain("hf-xyz");
+    expect(hfIdsIn(content)).toHaveLength(1);
   });
 
   it("still strips data-hf-id from bare text with no element root", () => {
@@ -182,7 +227,7 @@ describe("pasteTimelineClips", () => {
   });
 
   it("still strips data-hf-id from a tag the HTML parser hoists out of body (e.g. title)", () => {
-    // A <title> never reaches DOMParser's body, so stripHfIds's DOM walk sees
+    // A <title> never reaches DOMParser's body, so remintHfIds's DOM walk sees
     // no root element here -- this exercises the regex fallback, not the walk.
     const hoisted: TimelineClipboardClip = {
       html: '<title data-hf-id="hf-leak">x</title>',
@@ -230,5 +275,19 @@ describe("pasteTimelineClips + extendRootDurationInSource", () => {
     const pasted = pasteTimelineClips(ROOT, [clip("sfx-23", 1, 0.5, 132)], 2, []);
     const extended = extendRootDurationInSource(pasted.content, pasted.requiredEnd);
     expect(extended).toContain('data-duration="10"');
+  });
+});
+
+describe("pasteElementHtml", () => {
+  it("gives a pasted element and its children ids of their own, so an edit to the copy stays on it", () => {
+    const stamped = ensureHfIds(
+      ROOT.replace("</div>", '<p id="title" class="t">Hello <b>there</b></p></div>'),
+    );
+    const copied = stamped.match(/<p[^>]*id="title"[^>]*>.*?<\/p>/)![0];
+    const content = pasteElementHtml(stamped, { html: copied, originSelector: "#title" });
+    const ids = hfIdsIn(content);
+    expect(ids).toHaveLength(hfIdsIn(stamped).length + 2);
+    expect(new Set(ids).size).toBe(ids.length);
+    expect(hfIdsIn(ensureHfIds(content))).toHaveLength(ids.length);
   });
 });

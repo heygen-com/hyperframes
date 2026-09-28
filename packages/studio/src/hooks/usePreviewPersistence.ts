@@ -5,7 +5,6 @@ import {
   reapplyPositionEditsAfterSeek,
 } from "../components/editor/manualEdits";
 import { STUDIO_MOTION_PATH } from "../components/editor/studioMotion";
-import type { EditHistoryKind } from "../utils/editHistory";
 import { createDomEditSaveQueue, type DomEditSaveDrainResult } from "../utils/domEditSaveQueue";
 import {
   flushStudioPendingEdits,
@@ -26,7 +25,6 @@ interface HistoryPreviewRestore {
 
 interface RecordEditInput {
   label: string;
-  kind: EditHistoryKind;
   coalesceKey?: string;
   files: Record<string, { before: string; after: string }>;
 }

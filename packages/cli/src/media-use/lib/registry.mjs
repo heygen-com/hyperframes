@@ -25,12 +25,7 @@ import { sfxProvider } from "./sfx-provider.mjs";
 import { bundledSfxProvider } from "./bundled-sfx-provider.mjs";
 import { imageProvider, iconProvider } from "./image-provider.mjs";
 import { brandProvider } from "./brand-provider.mjs";
-import {
-  svglSearch,
-  simpleIconsSearch,
-  githubAvatarSearch,
-  faviconSearch,
-} from "./logo-provider.mjs";
+import { thesvgSearch, githubAvatarSearch, faviconSearch } from "./logo-provider.mjs";
 import { heygenTtsGenerate } from "./voice-provider.mjs";
 import { heygenVideoGenerate } from "./heygen-video-provider.mjs";
 import { ltxVideoGenerate } from "./ltx-video-provider.mjs";
@@ -65,12 +60,11 @@ const REGISTRY = {
   ],
   icon: [N("heygen.asset.search", { search: iconProvider.search })],
   logo: [
-    // Official brand marks. Tiers verified by a 54-brand stress test (100%
-    // cascade hit); HeyGen asset search is deliberately absent — it returns
-    // generic look-alike icons for brand queries. All free, all network →
-    // --local-only leaves only the cache rungs.
-    N("svgl", { search: svglSearch }),
-    N("simple-icons", { search: simpleIconsSearch }),
+    // Official brand marks: theSVG first, then GitHub org avatar and favicon
+    // for the brands it lacks. HeyGen asset search is deliberately absent — it
+    // returns generic look-alike icons for brand queries. All free, all
+    // network → --local-only leaves only the cache rungs.
+    N("thesvg", { search: thesvgSearch }),
     N("github.avatar", { search: githubAvatarSearch }),
     N("favicon.ddg", { search: faviconSearch }),
   ],

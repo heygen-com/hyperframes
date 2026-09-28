@@ -9,7 +9,7 @@
  * an argument, so each is callable — and readable — on its own.
  */
 
-import { createTimelineDomNodeResolver } from "../lib/timelineElementHelpers";
+import { createTimelineDomNodeResolver, findClipElementById } from "../lib/timelineElementHelpers";
 import { usePlayerStore } from "../store/playerStore";
 import type { TimelineElement, DomClipChild, SubCompositionHostState } from "../store/playerStore";
 import { resolveCssStackingContextId } from "@hyperframes/core/runtime/stacking-context";
@@ -128,7 +128,7 @@ export function collectSubCompositionDomChildren(
   if (!iframeDoc) return out;
   for (const clip of clips) {
     if (clip.kind !== "composition" || !clip.id) continue;
-    const hostEl = iframeDoc.getElementById(clip.id);
+    const hostEl = findClipElementById(iframeDoc, clip);
     if (!hostEl) continue;
     const innerRoot = hostEl.querySelector("[data-hf-inner-root]") ?? hostEl;
     collectHostDomChildren(clip.id, innerRoot, clip.id, parentMap, out);
@@ -172,7 +172,7 @@ export function collectSubCompositionHostState(
   if (!iframeDoc) return out;
   for (const clip of clips) {
     if (clip.kind !== "composition" || !clip.id) continue;
-    const hostEl = iframeDoc.getElementById(clip.id);
+    const hostEl = findClipElementById(iframeDoc, clip);
     if (!hostEl) continue;
     for (const el of Array.from(hostEl.querySelectorAll("[id]"))) {
       const state = readSubCompositionHostState(el);

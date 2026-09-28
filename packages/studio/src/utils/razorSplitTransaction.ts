@@ -181,7 +181,7 @@ export function runAtomicCutTransaction(input: RunAtomicCutInput): Promise<Atomi
       result.files.map((file) => [file.path, { before: file.before, after: file.after }]),
     );
     try {
-      await input.recordEdit({ label: input.label, kind: "timeline", files: snapshots });
+      await input.recordEdit({ label: input.label, files: snapshots });
     } catch (error) {
       try {
         await rollbackUnrecordedCut(result.files, input.writeProjectFile);

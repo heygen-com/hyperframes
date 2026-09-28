@@ -3,6 +3,7 @@ import type { BlockParam } from "@hyperframes/core/registry";
 import { useFileManagerContextOptional } from "../../contexts/FileManagerContext";
 import { useStudioPlaybackContext } from "../../contexts/StudioContext";
 import { trackBlockParamCommit } from "../../telemetry/events";
+import { serializeStudioFileMutation } from "../../utils/studioFileMutationCoordinator";
 
 interface BlockParamsPanelProps {
   blockName: string;
@@ -77,7 +78,11 @@ export const BlockParamsPanel = memo(function BlockParamsPanel({
           trackBlockParamCommit({ tone: "error", blockName, key });
           return;
         }
-        await fileManager.writeProjectFile(compositionPath, content.replace(matcher, nextValue));
+        await fileManager.writeProjectFile(
+          compositionPath,
+          content.replace(matcher, nextValue),
+          content,
+        );
         appliedRef.current[key] = nextValue;
         setCommitState({ tone: "saved" });
         trackBlockParamCommit({ tone: "saved", blockName, key });
@@ -90,16 +95,15 @@ export const BlockParamsPanel = memo(function BlockParamsPanel({
     [fileManager, compositionPath, setRefreshKey, blockName],
   );
 
-  // Commits are serialized: two params committing concurrently would each
-  // read-modify-write the same file and the second write would drop the first.
-  const commitChainRef = useRef<Promise<void>>(Promise.resolve());
+  // Commits join the file's queue: two read-modify-writes of one file must not interleave.
   const commitParam = useCallback(
-    (key: string, nextValue: string) => {
-      const run = commitChainRef.current.then(() => commitParamNow(key, nextValue));
-      commitChainRef.current = run.catch(() => undefined);
-      return run;
-    },
-    [commitParamNow],
+    (key: string, nextValue: string) =>
+      fileManager
+        ? serializeStudioFileMutation(fileManager.writeProjectFile, compositionPath, () =>
+            commitParamNow(key, nextValue),
+          )
+        : Promise.resolve(),
+    [commitParamNow, compositionPath, fileManager],
   );
 
   const handleChange = useCallback(

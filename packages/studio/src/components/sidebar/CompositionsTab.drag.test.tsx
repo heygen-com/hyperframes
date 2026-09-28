@@ -2,7 +2,7 @@
 
 import { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { usePlayerStore } from "../../player/store/playerStore";
 import { TIMELINE_COMPOSITION_MIME } from "../../utils/timelineCompositionDrop";
 import { CompositionsTab } from "./CompositionsTab";
@@ -14,11 +14,15 @@ Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true });
 
 let root: Root | null = null;
 
+beforeEach(() => {
+  usePlayerStore.setState({ previewBooted: true });
+});
+
 afterEach(() => {
   if (root) act(() => root?.unmount());
   root = null;
   document.body.innerHTML = "";
-  usePlayerStore.setState({ thumbnailContentRevision: 0 });
+  usePlayerStore.setState({ thumbnailRevisions: {} });
 });
 
 function mount(onSelect = vi.fn(), onAddToTimeline = vi.fn()) {
@@ -68,7 +72,7 @@ describe("composition card drag", () => {
     act(() => thumbnail.dispatchEvent(new Event("error")));
     expect(host.textContent).toContain("Preview unavailable");
 
-    act(() => usePlayerStore.getState().bumpThumbnailContentRevision());
+    act(() => usePlayerStore.getState().bumpThumbnailRevisions(null));
 
     const retry = host.querySelector<HTMLImageElement>('img[src*="/thumbnail/"]');
     expect(retry).not.toBeNull();

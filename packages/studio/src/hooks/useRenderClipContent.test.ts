@@ -7,6 +7,8 @@ import { CompositionThumbnail, VideoThumbnail } from "../player";
 import { AudioWaveform } from "../player/components/AudioWaveform";
 import type { TimelineClipRenderContext } from "../player/components/TimelineTypes";
 import { usePlayerStore, type TimelineElement } from "../player/store/playerStore";
+import { buildCompositionThumbnailUrl } from "../player/components/CompositionThumbnail";
+import { compositionCardThumbnailUrl } from "../components/sidebar/CompositionsTab";
 import { normalizeCompositionSrc } from "./useRenderClipContent";
 import { useRenderClipContent } from "./useRenderClipContent";
 
@@ -271,11 +273,29 @@ describe("useRenderClipContent", () => {
     }
   });
 
+  it("finds the revision of a composition mounted with a ./ path", () => {
+    usePlayerStore.setState({
+      thumbnailMode: "adaptive",
+      thumbnailRevisions: { "compositions/nested.html": 2 },
+    });
+
+    const content = renderClipContent({
+      id: "nested",
+      tag: "div",
+      start: 0,
+      duration: 4,
+      track: 0,
+      compositionSrc: "./compositions/nested.html",
+    });
+
+    expect(isValidElement(content) && content.props).toMatchObject({ contentRevision: 2 });
+  });
+
   it("forwards persisted content revision to mounted composition thumbnails", () => {
     usePlayerStore.setState({
       thumbnailMode: "adaptive",
       timelineSessionEpoch: 7,
-      thumbnailContentRevision: 11,
+      thumbnailRevisions: { "*": 11, "compositions/nested.html": 2, "compositions/other.html": 5 },
     });
 
     const content = renderClipContent({
@@ -293,8 +313,36 @@ describe("useRenderClipContent", () => {
       expect(content.props).toMatchObject({
         projectId: "my-project",
         sessionEpoch: 7,
-        contentRevision: 11,
+        // its own composition's revision plus the all-compositions one, not a sibling's
+        contentRevision: 13,
       });
     }
   });
+
+  it.each(["compositions/scene-0.html", "compositions/scene [v2].html", "compositions/100%.html"])(
+    "asks for the same thumbnail as the card of %s, so one render serves both",
+    (compositionSrc) => {
+      usePlayerStore.setState({
+        thumbnailMode: "adaptive",
+        thumbnailRevisions: { [compositionSrc]: 3 },
+      });
+
+      const content = renderClipContent({
+        id: "scene-0",
+        tag: "div",
+        start: 10,
+        duration: 5,
+        track: 0,
+        compositionSrc,
+      });
+
+      expect(isValidElement(content)).toBe(true);
+      if (!isValidElement(content)) return;
+      const clipUrl = buildCompositionThumbnailUrl({
+        ...(content.props as Parameters<typeof buildCompositionThumbnailUrl>[0]),
+        origin: window.location.origin,
+      });
+      expect(clipUrl).toBe(compositionCardThumbnailUrl("my-project", compositionSrc, 3));
+    },
+  );
 });

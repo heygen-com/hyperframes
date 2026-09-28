@@ -9,7 +9,7 @@ import { collectHtmlIds } from "./studioHelpers";
 import { generateId } from "./generateId";
 import { formatTimelineAttributeNumber } from "../player/components/timelineEditing";
 import { saveProjectFilesWithHistory } from "./studioFileHistory";
-import type { EditHistoryKind } from "./editHistory";
+import { serializeStudioFileMutation } from "./studioFileMutationCoordinator";
 import { extendRootDurationInSource } from "./rootDuration";
 import { deriveTimelineStoreKeyForDomId } from "../player/lib/timelineElementHelpers";
 
@@ -41,7 +41,6 @@ interface AddBlockOptions {
   writeProjectFile: (path: string, content: string) => Promise<void>;
   recordEdit: (entry: {
     label: string;
-    kind: EditHistoryKind;
     coalesceKey?: string;
     files: Record<string, { before: string; after: string }>;
   }) => Promise<void>;
@@ -95,12 +94,14 @@ async function makeComponentBackgroundTransparent(
   writeProjectFile: AddBlockOptions["writeProjectFile"],
 ): Promise<void> {
   if (block.type !== "hyperframes:component") return;
-  const content = await readProjectFile(compositionFile);
-  const transparentContent = content.replace(
-    /background:\s*(?:#(?:0a0a0a|000000|000|0a0805)|rgba?\([^)]*\))\s*;/g,
-    "background: transparent;",
-  );
-  if (transparentContent !== content) await writeProjectFile(compositionFile, transparentContent);
+  await serializeStudioFileMutation(writeProjectFile, compositionFile, async () => {
+    const content = await readProjectFile(compositionFile);
+    const transparentContent = content.replace(
+      /background:\s*(?:#(?:0a0a0a|000000|000|0a0805)|rgba?\([^)]*\))\s*;/g,
+      "background: transparent;",
+    );
+    if (transparentContent !== content) await writeProjectFile(compositionFile, transparentContent);
+  });
 }
 
 function resolveBlockPlacement({
@@ -203,7 +204,6 @@ export async function addBlockToProject(
     );
 
     const targetPath = activeCompPath || "index.html";
-    const originalContent = await readProjectFile(targetPath);
     const relevantElements = timelineElements.filter(
       (element) => (element.sourceFile || targetPath) === targetPath,
     );
@@ -213,30 +213,32 @@ export async function addBlockToProject(
       timelineElements: relevantElements,
       currentTime: opts.currentTime ?? 0,
     });
-    const { width, height } = resolveTimelineAssetCompositionSize(originalContent);
-    const hostId = buildUniqueCompositionId(block.name, collectHtmlIds(originalContent));
-    const subComposition = buildSubCompositionHtml({
-      id: hostId,
-      compositionFile,
-      start,
-      duration,
-      track,
-      width,
-      height,
-      left: visualPosition ? Math.round(visualPosition.left) : 0,
-      top: visualPosition ? Math.round(visualPosition.top) : 0,
-      zIndex: getMaxZIndexFromIframe(opts.previewIframe ?? null) + 1,
-    });
-    const patchedContent = extendRootDurationInSource(
-      insertTimelineAssetIntoSource(originalContent, subComposition),
-      start + duration,
-    );
+    let hostId = "";
+    const insertHost = (originalContent: string) => {
+      const { width, height } = resolveTimelineAssetCompositionSize(originalContent);
+      hostId = buildUniqueCompositionId(block.name, collectHtmlIds(originalContent));
+      const subComposition = buildSubCompositionHtml({
+        id: hostId,
+        compositionFile,
+        start,
+        duration,
+        track,
+        width,
+        height,
+        left: visualPosition ? Math.round(visualPosition.left) : 0,
+        top: visualPosition ? Math.round(visualPosition.top) : 0,
+        zIndex: getMaxZIndexFromIframe(opts.previewIframe ?? null) + 1,
+      });
+      return extendRootDurationInSource(
+        insertTimelineAssetIntoSource(originalContent, subComposition),
+        start + duration,
+      );
+    };
     await saveProjectFilesWithHistory({
       projectId,
       label: `Add ${isBlock ? "block" : "component"}: ${block.title}`,
-      kind: "timeline",
-      files: { [targetPath]: patchedContent },
-      readFile: async () => originalContent,
+      files: { [targetPath]: insertHost },
+      readFile: readProjectFile,
       writeFile: writeProjectFile,
       recordEdit,
     });

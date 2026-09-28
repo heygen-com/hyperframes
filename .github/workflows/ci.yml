@@ -1,4 +1,5 @@
 name: CI
+run-name: ${{ github.event_name == 'workflow_dispatch' && format('Checks (catalog_publish={0})', inputs.catalog_publish) || '' }}
 
 permissions:
   contents: read
@@ -10,6 +11,14 @@ env:
   HYPERFRAMES_NO_TELEMETRY: "1"
 
 on:
+  merge_group:
+    types: [checks_requested]
+  workflow_dispatch:
+    inputs:
+      catalog_publish:
+        description: "Run required checks for a generated catalog publication."
+        type: boolean
+        default: false
   pull_request:
     # `edited` is required so the workflow re-fires when a PR's base ref is
     # set back to `main` after a Graphite stack restack momentarily flips
@@ -23,7 +32,8 @@ on:
 
 concurrency:
   group: ci-${{ github.ref }}
-  cancel-in-progress: true
+  # A body or title edit queues behind running checks instead of cancelling them.
+  cancel-in-progress: ${{ github.event.action != 'edited' || github.event.changes.base != null }}
 
 jobs:
   test-reachability:
@@ -56,7 +66,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 2
     outputs:
-      code: ${{ steps.filter.outputs.code }}
+      code: ${{ (github.event_name == 'workflow_dispatch' && inputs.catalog_publish) && 'true' || steps.filter.outputs.code }}
       docs_catalog: ${{ steps.filter.outputs.docs_catalog }}
       cli: ${{ steps.filter.outputs.cli }}
       skills: ${{ steps.filter.outputs.skills }}
@@ -80,11 +90,12 @@ jobs:
           token: ""
           filters: |
             catalog_index:
-              - "registry/registry.json"
+              - "registry/**"
               - "registry/catalog-artifact/**"
               - "skills/media-use/audio/assets/sfx/**"
               - "scripts/catalog/check-artifact-coverage.ts"
             docs_catalog:
+              - "skills/media-use/audio/assets/sfx/**"
               - "docs/**"
               - "registry/**"
               - "scripts/*catalog*"
@@ -109,8 +120,11 @@ jobs:
               - "bun.lock"
               - ".github/workflows/ci.yml"
             skills:
+              - "scripts/generate-captured-font-copies.mjs"
               - "packages/cli/src/media-use/**"
               - "scripts/check-media-use-copy-parity.test.mjs"
+              - "scripts/check-skill-import-boundaries.test.mjs"
+              - "scripts/generate-skill-module-copies.mjs"
               - "skills/**"
               - ".claude/skills/**"
               - ".agents/skills/**"
@@ -120,6 +134,16 @@ jobs:
               - "package.json"
               - ".github/workflows/ci.yml"
             codex_plugin:
+              - "skills-manifest.json"
+              - "packages/cli/package.json"
+              - "plugin.json"
+              - "gemini-extension.json"
+              - ".claude-plugin/**"
+              - ".cursor-plugin/**"
+              - "scripts/package-agent-plugin*"
+              - "scripts/agent-plugin-captions.test.mjs"
+              - "scripts/set-version*"
+              - "LICENSE"
               - ".codex-plugin/**"
               - "assets/**"
               - "skills/**"
@@ -167,10 +191,16 @@ jobs:
   build:
     name: Build
     needs: changes
-    if: needs.changes.outputs.code == 'true'
+    # A skipped required check passes, so a broken change detection must fail it instead.
+    if: ${{ !cancelled() && (needs.changes.result != 'success' || needs.changes.outputs.code == 'true') }}
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
+      - name: Require change detection
+        if: needs.changes.result != 'success'
+        run: |
+          echo "::error::Change detection did not succeed, so this required check cannot pass."
+          exit 1
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
         with:
           lfs: true
@@ -202,8 +232,8 @@ jobs:
           node-version: 22
       - uses: ./.github/actions/prepare-ffmpeg-bin
       - run: bash scripts/ci/install-workspace-dependencies.sh
+      - run: bun scripts/generate-registry-items.ts
       - run: bun run lint
-      - run: bun run check:docs-catalog
 
   # Loads every catalog payload a PR changes in headless Chrome. A static scan of the
   # markup cannot see an asset a script fetches, and the docs host serves only fonts,
@@ -226,8 +256,26 @@ jobs:
       - run: bun run --filter '@hyperframes/{parsers,lint,studio-server}' build
       - run: bun run --cwd packages/core build
       - run: bun run --cwd packages/core build:hyperframes-runtime
+      - name: Keep catalog source PRs source-only
+        if: github.event_name == 'pull_request'
+        run: node scripts/check-catalog-source-pr.mjs origin/main
+      - name: Generate and validate catalog
+        env:
+          PUBLISH_PR: ${{ (github.head_ref || github.ref_name) == 'bot/catalog-publish' }}
+        run: |
+          if [ "$PUBLISH_PR" = "true" ]; then
+            bun run check:catalog-drift --committed
+          else
+            bun run check:catalog-drift
+          fi
       - run: bun run verify:catalog-payloads --changed origin/main
-      - run: bun run check:catalog-drift
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: catalog-index
+          path: |
+            registry/registry.json
+            registry/catalog-artifact/local-vectors.json
+            registry/catalog-artifact/local-vectors.bin
 
   # `fallow audit` runs dead-code + complexity + duplication analysis scoped to
   # the changed files. The default `--gate new-only` means existing legacy
@@ -322,10 +370,16 @@ jobs:
   typecheck:
     name: Typecheck
     needs: changes
-    if: needs.changes.outputs.code == 'true'
+    # A skipped required check passes, so a broken change detection must fail it instead.
+    if: ${{ !cancelled() && (needs.changes.result != 'success' || needs.changes.outputs.code == 'true') }}
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
+      - name: Require change detection
+        if: needs.changes.result != 'success'
+        run: |
+          echo "::error::Change detection did not succeed, so this required check cannot pass."
+          exit 1
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
         with:
           lfs: true
@@ -411,6 +465,8 @@ jobs:
         uses: browser-actions/setup-chrome@c785b87e244131f27c9f19c1a33e2ead956ab7ce # v1
         with:
           chrome-version: stable
+      - run: bun run generate:catalog
+        if: needs.changes.outputs.docs_catalog == 'true'
       - run: bun run test:scripts
         env:
           HYPERFRAMES_BROWSER_PATH: ${{ steps.catalog-chrome.outputs.chrome-path }}
@@ -418,23 +474,33 @@ jobs:
 
   test:
     name: Test
-    needs: [changes, producer-source-tests, test-studio, test-runtime, test-support]
+    needs: [changes, producer-source-tests, test-studio, test-runtime, test-support, test-skills]
     # Keep the existing required `Test` context authoritative for producer
     # failures too. It also fails closed if any package shard fails or is cancelled.
-    if: always() && needs.changes.outputs.code == 'true'
+    if: always() && (needs.changes.result != 'success' || needs.changes.outputs.code == 'true' || needs.changes.outputs.skills == 'true')
     runs-on: ubuntu-latest
     timeout-minutes: 3
     steps:
+      - name: Require change detection
+        if: needs.changes.result != 'success'
+        run: |
+          echo "::error::Change detection did not succeed, so this required check cannot pass."
+          exit 1
       - name: Require producer source tests
-        if: needs.producer-source-tests.result != 'success'
+        if: needs.changes.outputs.code == 'true' && needs.producer-source-tests.result != 'success'
         run: |
           echo "::error::Producer unit/integration tests did not succeed."
           exit 1
       - name: Require package test shards
-        if: needs.test-studio.result != 'success' || needs.test-runtime.result != 'success' || needs.test-support.result != 'success'
+        if: needs.changes.outputs.code == 'true' && (needs.test-studio.result != 'success' || needs.test-runtime.result != 'success' || needs.test-support.result != 'success')
         run: |
           echo "::error::A package test shard did not succeed."
           echo "studio=${{ needs.test-studio.result }} runtime=${{ needs.test-runtime.result }} support=${{ needs.test-support.result }}"
+          exit 1
+      - name: Require skills tests
+        if: needs.changes.outputs.skills == 'true' && needs.test-skills.result != 'success'
+        run: |
+          echo "::error::Skills tests did not succeed."
           exit 1
 
   producer-source-tests:
@@ -485,7 +551,12 @@ jobs:
         with:
           node-version: 22
       - uses: ./.github/actions/install-ffmpeg-linux
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
+      - name: Verify standalone skill imports
+        run: bun test scripts/check-skill-import-boundaries.test.mjs
       - name: Discover and run skills tests
+        env:
+          HYPERFRAMES_MEDIA_HOME_REQUIRED: "1"
         # We expand the test list via bash so the job fails loudly when the
         # matcher comes back empty, rather than silently no-op'ing (which
         # would defeat the whole point of this job).
@@ -499,7 +570,7 @@ jobs:
           SKILLS_TESTS+=(scripts/check-media-use-copy-parity.test.mjs scripts/creator-editing-capabilities.test.mjs)
           printf 'Running %d skills test file(s):\n' "${#SKILLS_TESTS[@]}"
           printf '  * %s\n' "${SKILLS_TESTS[@]}"
-          node --test "${SKILLS_TESTS[@]}"
+          node --import ./packages/cli/scripts/test-home.mjs --test "${SKILLS_TESTS[@]}"
 
   test-skill-bootstrap-windows:
     name: "Test: skill bootstrap (Windows, Node 24)"
@@ -517,6 +588,7 @@ jobs:
           node --test
           skills/hyperframes-animation/scripts/package-loader.test.mjs
           skills/hyperframes-creative/scripts/package-loader.test.mjs
+          skills/hyperframes/scripts/plugin-cli.test.mjs
 
   # Guards that skills-manifest.json (the published freshness fingerprint read
   # by `hyperframes skills check`) was regenerated when a skill changed. Runs
@@ -525,16 +597,17 @@ jobs:
   # drift. bun runs the TS script directly, no install needed.
   catalog-index-coverage:
     name: "Catalog: search index covers the registry"
-    needs: changes
+    needs: [changes, catalog-payloads]
     if: needs.changes.outputs.catalog_index == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 3
     steps:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
       - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
-      # Comparing two name lists needs neither the embedding model nor a
-      # network call, so this stays a seconds-long gate. Regenerating the
-      # vectors does need the model, which is why CI checks rather than fixes.
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        with:
+          name: catalog-index
+          path: registry
       - name: Verify every searchable registry item has a vector
         run: bun scripts/catalog/check-artifact-coverage.ts
 
@@ -580,6 +653,12 @@ jobs:
       - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
           node-version: 22
+      - name: Test portable plugin packaging
+        run: node --test scripts/package-agent-plugin.test.mjs
+      - name: Build portable agent plugin
+        run: node scripts/package-agent-plugin.mjs
+      - name: Exercise captions from the extracted portable bundle
+        run: node --test scripts/agent-plugin-captions.test.mjs
       - name: Build upload-ready Codex plugin
         run: node scripts/package-codex-plugin.mjs
 
@@ -626,10 +705,16 @@ jobs:
   test-runtime-contract:
     name: "Test: runtime contract"
     needs: changes
-    if: needs.changes.outputs.code == 'true'
+    # A skipped required check passes, so a broken change detection must fail it instead.
+    if: ${{ !cancelled() && (needs.changes.result != 'success' || needs.changes.outputs.code == 'true') }}
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
+      - name: Require change detection
+        if: needs.changes.result != 'success'
+        run: |
+          echo "::error::Change detection did not succeed, so this required check cannot pass."
+          exit 1
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
         with:
           lfs: true
@@ -695,7 +780,7 @@ jobs:
     needs: [changes]
     if: needs.changes.outputs.studio == 'true'
     runs-on: ubuntu-latest
-    timeout-minutes: 12
+    timeout-minutes: 18
     steps:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
       - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
@@ -716,6 +801,19 @@ jobs:
           mkdir -p packages/studio/data/projects
           cp -R packages/studio/tests/e2e/fixtures/timeline-virtualization \
             packages/studio/data/projects/timeline-virtualization
+          cp -R packages/studio/tests/e2e/fixtures/studio-open \
+            packages/studio/data/projects/studio-open
+      - name: Read the base branch's work-count ceilings
+        # A ceiling may not disappear, or rise without a new reason, against the branch this PR merges into.
+        if: github.event_name == 'pull_request'
+        env:
+          BASE_REF: ${{ github.base_ref }}
+        run: |
+          git fetch --no-tags --depth=1 origin "$BASE_REF"
+          if ! git show FETCH_HEAD:packages/studio/tests/e2e/perf-ceilings.json > /tmp/base-perf-ceilings.json; then
+            rm -f /tmp/base-perf-ceilings.json
+            echo "The base branch has no perf-ceilings.json yet"
+          fi
       - name: Run both arms of the timeline viewport gate
         run: |
           set -euo pipefail
@@ -788,6 +886,30 @@ jobs:
             echo "FAIL: default=${DEFAULT_STATUS}, disabled=${DISABLED_STATUS}"
             exit 1
           fi
+      - name: Count the work of opening a film in Studio
+        # Counts, not ms: thumbnail renders, page loads and requests do not move
+        # with runner load, so perf-ceilings.json can hold them exactly.
+        if: success() || failure()
+        run: |
+          set -euo pipefail
+          NODE_ENV=production bun run --cwd packages/studio dev -- --port 5315 --strictPort &
+          SERVER_PID=$!
+          trap 'kill "$SERVER_PID" 2>/dev/null || true' EXIT
+          for i in $(seq 1 60); do
+            if curl -sf "http://localhost:5315/" >/dev/null 2>&1; then break; fi
+            sleep 1
+          done
+          if ! curl -sf "http://localhost:5315/" >/dev/null 2>&1; then
+            echo "FAIL: studio dev server did not start on port 5315"
+            exit 1
+          fi
+          STUDIO_URL="http://localhost:5315/#project/studio-open" \
+            STUDIO_PROJECT_DIR="$PWD/packages/studio/data/projects/studio-open" \
+            node packages/studio/tests/e2e/studio-open-counts.mjs \
+            | tee /tmp/studio-open-counts.json
+          node packages/studio/tests/e2e/perf-ratchet.mjs check \
+            packages/studio/tests/e2e/perf-ceilings.json studio-open /tmp/studio-open-counts.json \
+            /tmp/base-perf-ceilings.json
       - name: Upload gate evidence
         # The gate's whole output is machine-readable evidence, and a red run is
         # exactly when someone needs to read it. Keep it on failure too.
@@ -795,7 +917,9 @@ jobs:
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: timeline-viewport-gate-evidence
-          path: /tmp/timeline-gate-*.json
+          path: |
+            /tmp/timeline-gate-*.json
+            /tmp/studio-open-counts.json
           if-no-files-found: error
 
   smoke-global-install:
@@ -1040,23 +1164,54 @@ jobs:
 
   semantic-pr-title:
     name: Semantic PR title
-    if: github.event_name == 'pull_request'
+    if: github.event_name == 'pull_request' || github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-latest
     timeout-minutes: 5
+    env:
+      PR_TITLE_TYPES: |
+        feat
+        fix
+        docs
+        style
+        refactor
+        perf
+        test
+        build
+        ci
+        chore
+        revert
     steps:
-      - uses: amannn/action-semantic-pull-request@e32d7e603df1aa1ba07e981f2a23455dee596825 # v5
+      - if: github.event_name == 'pull_request'
+        uses: amannn/action-semantic-pull-request@e32d7e603df1aa1ba07e981f2a23455dee596825 # v5
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
-          types: |
-            feat
-            fix
-            docs
-            style
-            refactor
-            perf
-            test
-            build
-            ci
-            chore
-            revert
+          types: ${{ env.PR_TITLE_TYPES }}
+      - if: github.event_name == 'workflow_dispatch'
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+        with:
+          persist-credentials: false
+      - if: github.event_name == 'workflow_dispatch'
+        id: pr
+        run: node scripts/ci/resolve-workflow-pr.mjs
+        env:
+          GH_TOKEN: ${{ github.token }}
+      - if: github.event_name == 'workflow_dispatch'
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+        with:
+          repository: amannn/action-semantic-pull-request
+          ref: e32d7e603df1aa1ba07e981f2a23455dee596825 # v5
+          path: .semantic-pr-action
+          persist-credentials: false
+      - if: github.event_name == 'workflow_dispatch'
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: 22
+      - if: github.event_name == 'workflow_dispatch'
+        name: Validate PR title
+        run: GITHUB_EVENT_PATH="$PR_EVENT_PATH" node .semantic-pr-action/dist/index.js
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          PR_EVENT_PATH: ${{ steps.pr.outputs.event_path }}
+          INPUT_GITHUBBASEURL: ${{ github.api_url }}
+          INPUT_TYPES: ${{ env.PR_TITLE_TYPES }}

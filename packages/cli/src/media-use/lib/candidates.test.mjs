@@ -6,13 +6,13 @@ import { tmpdir } from "node:os";
 import { listCandidates, formatCandidates, CANDIDATE_CAP } from "./candidates.mjs";
 import { findGlobalBySha } from "./cache.mjs";
 
-// candidates + findGlobalBySha are offline (no heygen), so we can override HOME
+// candidates + findGlobalBySha are offline (no heygen), so we can point HYPERFRAMES_MEDIA_HOME
 // to a temp dir and seed a fake global ~/.media manifest deterministically.
 function sandbox() {
   const root = mkdtempSync(join(tmpdir(), "mu-cand-"));
   const project = join(root, "proj");
   const home = join(root, "home");
-  process.env.HOME = home;
+  process.env.HYPERFRAMES_MEDIA_HOME = home;
   return { root, project, home };
 }
 function seedManifest(dir, records) {

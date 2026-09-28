@@ -8,6 +8,7 @@ import { isEditableTarget } from "../utils/timelineDiscovery";
 import { shouldIgnoreHistoryShortcut } from "../utils/studioHelpers";
 import { canSplitElement } from "../utils/timelineElementSplit";
 import { trackStudioEvent } from "../utils/studioTelemetry";
+import { STUDIO_PLAIN_KEYS } from "../player/components/studioShortcuts";
 
 // Extracted from useAppHotkeys.ts to keep it under the studio 600-line cap,
 // following useTimelineDeleteOps's precedent. Pure functions, no hooks — the
@@ -158,7 +159,7 @@ export function dispatchModifierKey(
  *  Delete arbitration between keyframes, an automation range and the clip can
  *  be asserted without standing up the whole hook. */
 export function dispatchPlainKey(event: KeyboardEvent, key: string, cb: HotkeyCallbacks): void {
-  if (key === "f" && !event.shiftKey && !event.altKey) {
+  if (key === STUDIO_PLAIN_KEYS.fullscreen && !event.shiftKey && !event.altKey) {
     event.preventDefault();
     if (document.fullscreenElement) void document.exitFullscreen();
     else
@@ -166,7 +167,7 @@ export function dispatchPlainKey(event: KeyboardEvent, key: string, cb: HotkeyCa
     return;
   }
 
-  if (event.key === "s" && !event.altKey) {
+  if (event.key === STUDIO_PLAIN_KEYS.split && !event.altKey) {
     // Reserve bare `s` for Split even when the current selection cannot split,
     // so secondary listeners do not reinterpret the same key as Snap toggle.
     event.preventDefault();
@@ -274,7 +275,12 @@ export function dispatchPlainKey(event: KeyboardEvent, key: string, cb: HotkeyCa
     return;
   }
 
-  if (event.key === "r" && !event.shiftKey && !event.altKey && cb.onToggleRecording) {
+  if (
+    event.key === STUDIO_PLAIN_KEYS.record &&
+    !event.shiftKey &&
+    !event.altKey &&
+    cb.onToggleRecording
+  ) {
     event.preventDefault();
     cb.onToggleRecording();
   }

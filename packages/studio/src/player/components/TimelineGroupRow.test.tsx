@@ -84,7 +84,6 @@ function renderRow(
                   onCommit: vi.fn(),
                   onSelect: vi.fn(),
                   readOnly: true,
-                  commitTargetKey: null,
                   selection: null,
                   onRangeSelect: vi.fn(),
                   onRangeClear: vi.fn(),

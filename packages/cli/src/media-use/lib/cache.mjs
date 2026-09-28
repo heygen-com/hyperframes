@@ -1,16 +1,14 @@
 import { readFileSync, writeFileSync, mkdirSync, existsSync, copyFileSync } from "node:fs";
 import { join, basename } from "node:path";
 import { createHash } from "node:crypto";
-import { homedir } from "node:os";
 import { readManifest, appendRecord, normalizePrompt } from "./manifest.mjs";
+import { globalMediaDir, mediaHome } from "./media-home.mjs";
+
+export { globalMediaDir };
 
 const SCHEMA_PREFIX = "mu-v1-";
 const KEY_HEX_CHARS = 16;
 const COMPLETE_SENTINEL = ".hf-complete";
-
-export function globalMediaDir() {
-  return join(homedir(), ".media");
-}
 
 export function contentHash(filePath) {
   const bytes = readFileSync(filePath);
@@ -30,11 +28,11 @@ function markComplete(entryDir) {
 }
 
 // The manifest helpers append their own ".media" to the dir they get, so the
-// global manifest must be addressed by HOME, not by globalMediaDir() — passing
+// global manifest must be addressed by mediaHome(), not by globalMediaDir() — passing
 // the latter nested it at ~/.media/.media/manifest.jsonl, invisible to the
 // Studio /api/assets/global route (which reads the documented flat path).
 export function readGlobalManifest() {
-  return readManifest(homedir());
+  return readManifest(mediaHome());
 }
 
 // Resolve a content-sha (full or unambiguous prefix) to a reusable global-cache
@@ -105,7 +103,7 @@ export function cachePut(filePath, record) {
     reusable: true,
     cached_path: dest,
   };
-  appendRecord(homedir(), globalRecord);
+  appendRecord(mediaHome(), globalRecord);
   return { sha, cached_path: dest };
 }
 

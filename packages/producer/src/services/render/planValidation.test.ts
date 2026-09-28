@@ -310,6 +310,18 @@ describe("validateNoSystemFonts", () => {
     expect((caught as Error).message).toContain(`"-apple-system"`);
   });
 
+  it("checks the fallback of an undefined CSS var() primary", () => {
+    const offending = `<style>body { font-family: var(--ui-font, -apple-system, sans-serif); }</style>`;
+    expect(() => validateNoSystemFonts(offending)).toThrow(`"-apple-system"`);
+    const ok = `<style>body { font-family: var(--ui-font, "Inter", sans-serif); }</style>`;
+    expect(() => validateNoSystemFonts(ok)).not.toThrow();
+  });
+
+  it.each(["serif", "system-ui"])("accepts var(--x,), %s, which the browser inherits", (rest) => {
+    const html = `<style>body { font-family: var(--x,), ${rest}; }</style>`;
+    expect(() => validateNoSystemFonts(html)).not.toThrow();
+  });
+
   it("accepts CSS var() primary aliases that resolve to deterministic fonts", () => {
     const ok = `<style>
       :root { --ui-font: "Inter", -apple-system, sans-serif; }

@@ -3,7 +3,7 @@ import { mkdtempSync, readdirSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { test } from "node:test";
-import { fetchMedia, isPublicMediaUrl } from "./media-fetch.mjs";
+import { fetchMedia, isPublicMediaUrl, readCappedBody } from "./media-fetch.mjs";
 import { freezeUrl } from "./freeze.mjs";
 import { downloadTo } from "../../audio/scripts/lib/heygen.mjs";
 import { synthesizeHeygen } from "../../audio/scripts/lib/tts.mjs";
@@ -167,3 +167,31 @@ for (const entry of ["heygen audio", "tts mp3", "tts wav", "favicon"]) {
     }
   });
 }
+
+function streamed(sizes, contentLength = null) {
+  let pulled = 0;
+  const body = (async function* () {
+    for (const n of sizes) {
+      pulled++;
+      yield new Uint8Array(n);
+    }
+  })();
+  return { res: { headers: { get: () => contentLength }, body }, pulled: () => pulled };
+}
+
+test("readCappedBody refuses a declared oversize body before reading a byte", async () => {
+  const { res, pulled } = streamed([10], "101");
+  await assert.rejects(readCappedBody(res, 100, "t"), /t: 101 bytes exceeds 100 cap/);
+  assert.equal(pulled(), 0);
+});
+
+test("readCappedBody aborts a chunked body the moment it crosses the cap", async () => {
+  const { res, pulled } = streamed([60, 60, 60]);
+  await assert.rejects(readCappedBody(res, 100, "t"), /t: stream exceeds 100 cap/);
+  assert.equal(pulled(), 2);
+});
+
+test("readCappedBody returns every byte of a body at the cap", async () => {
+  const { res } = streamed([60, 40]);
+  assert.equal((await readCappedBody(res, 100, "t")).byteLength, 100);
+});

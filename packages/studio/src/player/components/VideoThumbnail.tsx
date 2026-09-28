@@ -1,17 +1,13 @@
-import { memo, useCallback, useMemo, useRef, useState } from "react";
-import { useMountEffect } from "../../hooks/useMountEffect";
+import { memo, useMemo } from "react";
 import { useThumbnailLease } from "../../hooks/useThumbnailLease";
+import { useThumbnailStripSize } from "../../hooks/useThumbnailStripSize";
 import {
   createThumbnailKey,
   type ThumbnailPriority,
   type ThumbnailSnapshot,
 } from "../lib/thumbnailScheduler";
 import { decodeVideoThumbnail } from "../lib/thumbnailVideoDecoder";
-import {
-  computeThumbnailStrip,
-  quantizeThumbnailFrameCount,
-  THUMBNAIL_CLIP_HEIGHT,
-} from "./thumbnailUtils";
+import { computeThumbnailStrip, quantizeThumbnailFrameCount } from "./thumbnailUtils";
 
 interface VideoThumbnailProps {
   videoSrc: string;
@@ -89,10 +85,9 @@ export const VideoThumbnail = memo(function VideoThumbnail({
   sessionEpoch = 0,
   priority = "visible",
 }: VideoThumbnailProps) {
-  const [containerWidth, setContainerWidth] = useState(0);
-  const observerRef = useRef<ResizeObserver | null>(null);
+  const [container, setContainerRef] = useThumbnailStripSize();
   const requestFrameCount = quantizeThumbnailFrameCount(
-    computeThumbnailStrip(containerWidth, 16 / 9).frameCount,
+    computeThumbnailStrip(container.width, 16 / 9, container.height).frameCount,
   );
   const requestProps = useMemo(
     () => ({
@@ -114,7 +109,7 @@ export const VideoThumbnail = memo(function VideoThumbnail({
     () => createVideoThumbnailRequest(requestProps, requestFrameCount, true),
     [requestFrameCount, requestProps],
   );
-  const measured = containerWidth > 0;
+  const measured = container.width > 0;
   const posterSnapshot = useThumbnailLease(measured ? posterRequest : null);
   const richSnapshot = useThumbnailLease(measured && requestFrameCount > 1 ? richRequest : null);
   const snapshot = selectThumbnailSnapshot(posterSnapshot, richSnapshot);
@@ -122,31 +117,14 @@ export const VideoThumbnail = memo(function VideoThumbnail({
   const urls =
     value?.kind === "filmstrip" ? value.urls : value?.kind === "image" ? [value.url] : [];
   const aspect = value?.kind === "image" || value?.kind === "filmstrip" ? value.aspect : 16 / 9;
-  const { frameW, frameCount } = computeThumbnailStrip(
-    containerWidth,
-    aspect,
-    THUMBNAIL_CLIP_HEIGHT,
-  );
-
-  const setContainerRef = useCallback((element: HTMLDivElement | null) => {
-    observerRef.current?.disconnect();
-    if (!element) return;
-    const target = element.parentElement ?? element;
-    setContainerWidth(target.clientWidth);
-    observerRef.current = new ResizeObserver(([entry]) =>
-      setContainerWidth(entry.contentRect.width),
-    );
-    observerRef.current.observe(target);
-  }, []);
-
-  useMountEffect(() => () => observerRef.current?.disconnect());
+  const { frameW, frameCount } = computeThumbnailStrip(container.width, aspect, container.height);
 
   return (
     <div ref={setContainerRef} className="absolute inset-0 overflow-hidden">
       {urls.length > 0 && (
         <div className="absolute inset-0 flex">
           {Array.from({ length: frameCount }, (_, index) => {
-            const src = urls[index % urls.length];
+            const src = urls[Math.round((index * (urls.length - 1)) / Math.max(1, frameCount - 1))];
             return (
               <div
                 key={index}

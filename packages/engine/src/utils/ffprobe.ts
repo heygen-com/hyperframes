@@ -188,6 +188,8 @@ export interface VideoMetadata {
   hasAlpha: boolean;
   /** Color space info from the video stream. Null if ffprobe didn't report it. */
   colorSpace: VideoColorSpace | null;
+  colorRange?: string;
+  pixelFormat?: string;
   /** Decoded frame count from the video stream's `nb_frames`. Omitted when the
    * container does not surface a reliable count (still images, malformed
    * streams, or muxes that require `-count_packets` to populate). Callers
@@ -224,6 +226,7 @@ interface FFProbeStream {
   avg_frame_rate?: string;
   sample_rate?: string;
   channels?: number;
+  color_range?: string;
   color_transfer?: string;
   color_primaries?: string;
   color_space?: string;
@@ -758,9 +761,27 @@ export async function extractMediaMetadata(filePath: string): Promise<VideoMetad
     const frames =
       Number.isFinite(parsedNbFrames) && parsedNbFrames > 0 ? parsedNbFrames : undefined;
 
+    // When the video stream omits its own duration, the container duration
+    // (format.duration) includes the longest stream — often a longer audio
+    // track in stock/looping clips. Cross-check with nb_frames to bound the
+    // video-specific extent and avoid inflating the expected frame count.
+    let effectiveStreamDuration: number;
+    if (streamDuration > 0) {
+      effectiveStreamDuration = streamDuration;
+    } else if (frames !== undefined && fps > 0 && containerDuration > 0) {
+      const frameDerivedDuration = frames / fps;
+      // Only override when the frame-derived duration is meaningfully shorter
+      // (>10% gap). Within 10% the container value is close enough and may
+      // account for a trailing hold frame that nb_frames does not include.
+      effectiveStreamDuration =
+        frameDerivedDuration < containerDuration * 0.9 ? frameDerivedDuration : containerDuration;
+    } else {
+      effectiveStreamDuration = containerDuration;
+    }
+
     return {
       durationSeconds: containerDuration,
-      videoStreamDurationSeconds: streamDuration > 0 ? streamDuration : containerDuration,
+      videoStreamDurationSeconds: effectiveStreamDuration,
       videoStreamStartSeconds: streamStart,
       width: videoStream.width || stillImage()?.width || 0,
       height: videoStream.height || stillImage()?.height || 0,
@@ -770,6 +791,8 @@ export async function extractMediaMetadata(filePath: string): Promise<VideoMetad
       isVFR,
       hasAlpha,
       colorSpace,
+      colorRange: videoStream.color_range,
+      pixelFormat,
       frames,
     };
   })();

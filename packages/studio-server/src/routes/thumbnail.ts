@@ -1,6 +1,9 @@
 import type { Hono } from "hono";
 import {
-  existsSync,
+  closeSync,
+  type Dirent,
+  fstatSync,
+  openSync,
   mkdirSync,
   readFileSync,
   readdirSync,
@@ -14,9 +17,13 @@ import { join } from "node:path";
 import { createHash, randomUUID } from "node:crypto";
 import type { StudioApiAdapter } from "../types.js";
 import { STUDIO_MANUAL_EDITS_PATH } from "../helpers/manualEditsRenderScript.js";
+import { compositionInputSignature } from "../helpers/compositionInputs.js";
 import { createProjectSignature, resolveProjectAndSignature } from "../helpers/projectSignature.js";
 import { STUDIO_MOTION_PATH } from "../helpers/studioMotionRenderScript.js";
 import { thumbnailGenerationCoordinator } from "./thumbnailGenerationCoordinator.js";
+import { requestSubPath } from "../helpers/requestSubPath.js";
+import { resolveWithinProject } from "../helpers/safePath.js";
+import { PREVIEW_CAPTURE_PARAM } from "./preview.js";
 
 const THUMBNAIL_CACHE_VERSION = "v4";
 const THUMBNAIL_MAX_OUTPUT_WIDTH = 240;
@@ -30,8 +37,14 @@ export function pruneThumbnailCache(
   protectedPaths: ReadonlySet<string>,
   now = Date.now(),
 ): void {
-  if (!existsSync(cacheDir)) return;
-  const files = readdirSync(cacheDir, { withFileTypes: true }).flatMap((entry) => {
+  let entries: Dirent[];
+  try {
+    entries = readdirSync(cacheDir, { withFileTypes: true });
+  } catch (err) {
+    if ((err as NodeJS.ErrnoException).code === "ENOENT") return;
+    throw err;
+  }
+  const files = entries.flatMap((entry) => {
     if (!entry.isFile()) return [];
     const path = join(cacheDir, entry.name);
     try {
@@ -73,6 +86,35 @@ function writeThumbnailAtomically(path: string, buffer: Buffer): void {
   }
 }
 
+type FileRead = { data: Buffer; mtimeMs: number } | "missing" | "not-a-file";
+
+// One open for the stat and the read, so the file cannot change between the check and the use.
+function readFileOnce(file: string): FileRead {
+  let fd: number;
+  try {
+    fd = openSync(file, "r");
+  } catch (err) {
+    const code = (err as NodeJS.ErrnoException).code;
+    if (code === "ENOENT") return "missing";
+    if (code === "ENOTDIR") return "not-a-file";
+    throw err;
+  }
+  try {
+    const stat = fstatSync(fd);
+    if (!stat.isFile()) return "not-a-file";
+    return { data: readFileSync(fd), mtimeMs: stat.mtimeMs };
+  } finally {
+    closeSync(fd);
+  }
+}
+
+function manifestKey(file: string): { key: string; mtimeMs: number } {
+  const manifest = readFileOnce(file);
+  if (typeof manifest === "string") return { key: "", mtimeMs: -Infinity };
+  const hash = createHash("sha1").update(manifest.data).digest("hex").slice(0, 16);
+  return { key: `_${hash}`, mtimeMs: Math.round(manifest.mtimeMs) };
+}
+
 export function registerThumbnailRoutes(api: Hono, adapter: StudioApiAdapter): void {
   api.get("/projects/:id/thumbnail/*", async (c) => {
     if (!adapter.generateThumbnail) {
@@ -82,10 +124,13 @@ export function registerThumbnailRoutes(api: Hono, adapter: StudioApiAdapter): v
     if (!resolved) return c.json({ error: "not found" }, 404);
     const { project, signature: projectSignature } = resolved;
 
-    let compPath = decodeURIComponent(
-      c.req.path.replace(`/projects/${project.id}/thumbnail/`, "").split("?")[0] ?? "",
-    );
+    let compPath = requestSubPath(c.req.url, "projects/:id/thumbnail");
     if (compPath && !compPath.includes(".")) compPath += ".html";
+    const htmlFile = resolveWithinProject(project.dir, compPath);
+    const source = htmlFile ? readFileOnce(htmlFile) : "not-a-file";
+    if (source === "not-a-file") return c.json({ error: "not found" }, 404);
+    // Keyed on what this composition renders from, so editing one scene leaves the others cached.
+    const inputSignature = compositionInputSignature(project.dir, compPath, projectSignature);
 
     const url = new URL(c.req.url, `http://${c.req.header("host") || "localhost"}`);
     const rawSeekTime = url.searchParams.get("t");
@@ -119,11 +164,10 @@ export function registerThumbnailRoutes(api: Hono, adapter: StudioApiAdapter): v
     // edit, even on a hard reload. Keyed on content (like manualEdits/motion), not
     // just mtime, so a restore/copy with a preserved mtime can't serve stale.
     let sourceKey = "";
-    const htmlFile = join(project.dir, compPath);
-    if (existsSync(htmlFile)) {
-      const html = readFileSync(htmlFile, "utf-8");
+    if (source !== "missing") {
+      const html = source.data.toString("utf-8");
       sourceKey = `_${createHash("sha1").update(html).digest("hex").slice(0, 16)}`;
-      sourceMtime = Math.round(statSync(htmlFile).mtimeMs);
+      sourceMtime = Math.round(source.mtimeMs);
       if (!vpWidth) {
         const wMatch = html.match(/data-width=["'](\d+)["']/);
         const hMatch = html.match(/data-height=["'](\d+)["']/);
@@ -131,25 +175,16 @@ export function registerThumbnailRoutes(api: Hono, adapter: StudioApiAdapter): v
         if (hMatch?.[1]) compH = parseInt(hMatch[1]);
       }
     }
-    const manualEditsFile = join(project.dir, STUDIO_MANUAL_EDITS_PATH);
-    let manualEditsKey = "";
-    if (existsSync(manualEditsFile)) {
-      const manualEditsContent = readFileSync(manualEditsFile, "utf-8");
-      manualEditsKey = `_${createHash("sha1").update(manualEditsContent).digest("hex").slice(0, 16)}`;
-      sourceMtime = Math.max(sourceMtime, Math.round(statSync(manualEditsFile).mtimeMs));
-    }
-    const motionFile = join(project.dir, STUDIO_MOTION_PATH);
-    let motionKey = "";
-    if (existsSync(motionFile)) {
-      const motionContent = readFileSync(motionFile, "utf-8");
-      motionKey = `_${createHash("sha1").update(motionContent).digest("hex").slice(0, 16)}`;
-      sourceMtime = Math.max(sourceMtime, Math.round(statSync(motionFile).mtimeMs));
-    }
+    const manualEdits = manifestKey(join(project.dir, STUDIO_MANUAL_EDITS_PATH));
+    const motion = manifestKey(join(project.dir, STUDIO_MOTION_PATH));
+    sourceMtime = Math.max(sourceMtime, manualEdits.mtimeMs, motion.mtimeMs);
 
-    const previewUrl =
+    const projectUrl = `http://${c.req.header("host")}/api/projects/${encodeURIComponent(project.id)}`;
+    const previewPath =
       compPath === "index.html"
-        ? `http://${c.req.header("host")}/api/projects/${project.id}/preview`
-        : `http://${c.req.header("host")}/api/projects/${project.id}/preview/comp/${compPath}`;
+        ? `${projectUrl}/preview`
+        : `${projectUrl}/preview/comp/${compPath.split("/").map(encodeURIComponent).join("/")}`;
+    const previewUrl = `${previewPath}?${PREVIEW_CAPTURE_PARAM}=1`;
 
     // Cache
     const cacheDir = join(project.dir, ".thumbnails");
@@ -159,14 +194,14 @@ export function registerThumbnailRoutes(api: Hono, adapter: StudioApiAdapter): v
     const urlVersionKey = urlVersion
       ? `_${urlVersion.replace(/[^a-zA-Z0-9_-]+/g, "_").slice(0, 32)}`
       : "";
-    const projectSignatureKey = `_${createHash("sha1").update(projectSignature).digest("hex").slice(0, 16)}`;
+    const inputSignatureKey = `_${createHash("sha1").update(inputSignature).digest("hex").slice(0, 16)}`;
     const outputScale =
       outputMode === "source"
         ? 1
         : Math.min(1, THUMBNAIL_MAX_OUTPUT_WIDTH / compW, THUMBNAIL_MAX_OUTPUT_HEIGHT / compH);
     const outputWidth = Math.max(1, Math.round(compW * outputScale));
     const outputHeight = Math.max(1, Math.round(compH * outputScale));
-    const cacheKey = `${THUMBNAIL_CACHE_VERSION}${urlVersionKey}${projectSignatureKey}${manualEditsKey}${motionKey}${sourceKey}_${format}_${outputMode}_${compPath.replace(/\//g, "_")}_${compW}x${compH}_${outputWidth}x${outputHeight}_${sourceMtime}_${seekTime.toFixed(2)}${selectorKey}.${format === "png" ? "png" : "jpg"}`;
+    const cacheKey = `${THUMBNAIL_CACHE_VERSION}${urlVersionKey}${inputSignatureKey}${manualEdits.key}${motion.key}${sourceKey}_${format}_${outputMode}_${compPath.replace(/\//g, "_")}_${compW}x${compH}_${outputWidth}x${outputHeight}_${sourceMtime}_${seekTime.toFixed(2)}${selectorKey}.${format === "png" ? "png" : "jpg"}`;
     const cachePath = join(cacheDir, cacheKey);
     if (!prunedCacheDirs.has(cacheDir)) {
       prunedCacheDirs.add(cacheDir);
@@ -175,11 +210,13 @@ export function registerThumbnailRoutes(api: Hono, adapter: StudioApiAdapter): v
         new Set([...thumbnailGenerationCoordinator.protectedKeys(), cachePath]),
       );
     }
-    if (existsSync(cachePath)) {
-      return new Response(new Uint8Array(readFileSync(cachePath)), {
+    const cached = readFileOnce(cachePath);
+    if (typeof cached === "object") {
+      return new Response(new Uint8Array(cached.data), {
         headers: { "Content-Type": contentType, "Cache-Control": "no-cache" },
       });
     }
+    if (url.searchParams.get("cached") === "1") return c.body(null, 404);
 
     try {
       const buffer = await thumbnailGenerationCoordinator.acquire(
@@ -202,19 +239,20 @@ export function registerThumbnailRoutes(api: Hono, adapter: StudioApiAdapter): v
           });
           if (!generated) return null;
           const afterGeneration = await resolveProjectAndSignature(adapter, project.id);
-          const freshSignature = createProjectSignature(project.dir);
+          const inputsUnchanged = (signature: string) =>
+            compositionInputSignature(project.dir, compPath, signature) === inputSignature;
+          // Both the adapter's signature and a fresh one: the adapter's can lag the watcher.
           if (
-            !afterGeneration ||
-            afterGeneration.project.dir !== project.dir ||
-            afterGeneration.signature !== projectSignature ||
-            freshSignature !== projectSignature
+            afterGeneration?.project.dir !== project.dir ||
+            !inputsUnchanged(afterGeneration.signature) ||
+            !inputsUnchanged(createProjectSignature(project.dir))
           ) {
             // The browser may have rendered content written after this request
             // captured its cache identity. Return the pixels to this caller,
             // but never file them under a signature they do not prove.
             return generated;
           }
-          if (!existsSync(cacheDir)) mkdirSync(cacheDir, { recursive: true });
+          mkdirSync(cacheDir, { recursive: true });
           writeThumbnailAtomically(cachePath, generated);
           return generated;
         },

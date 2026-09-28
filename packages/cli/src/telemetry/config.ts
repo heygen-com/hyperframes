@@ -1,9 +1,12 @@
+import * as fs from "node:fs";
 import { existsSync, mkdirSync, readFileSync, renameSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { homedir } from "node:os";
 import { randomUUID } from "node:crypto";
 import { normalizeErrorMessage } from "../utils/errorMessage.js";
 import { telemetryRuntimeOverride } from "./policy.js";
+import { isAttendedTerminal } from "../utils/attendedTerminal.js";
+import { withFileLock } from "../media-use/lib/config-lock.mjs";
 
 // ---------------------------------------------------------------------------
 // Config directory: ~/.hyperframes/
@@ -406,6 +409,8 @@ export interface HyperframesConfig {
   latestVersion?: string;
   /** Throttle for the non-TTY stale-project-pin notice (ms epoch). */
   lastStalePinNoticeAt?: number;
+  lastUpdateAttemptAt?: string;
+  lastSkillsAttemptAt?: string;
   /**
    * Auto-update marker. Set when a background install is spawned so a
    * subsequent run can skip re-triggering it. Cleared once
@@ -647,6 +652,8 @@ function passthroughFields(parsed: Partial<HyperframesConfig>): Partial<Hyperfra
     lastUpdateCheck: parsed.lastUpdateCheck,
     latestVersion: parsed.latestVersion,
     lastStalePinNoticeAt: parsed.lastStalePinNoticeAt,
+    lastUpdateAttemptAt: parsed.lastUpdateAttemptAt,
+    lastSkillsAttemptAt: parsed.lastSkillsAttemptAt,
     pendingUpdate: parsed.pendingUpdate,
     completedUpdate: parsed.completedUpdate,
     lastSkillsCheck: parsed.lastSkillsCheck,
@@ -654,9 +661,7 @@ function passthroughFields(parsed: Partial<HyperframesConfig>): Partial<Hyperfra
     skillsOutdatedCount: parsed.skillsOutdatedCount,
     skillsMissingCount: parsed.skillsMissingCount,
     skillsRemovedCount: parsed.skillsRemovedCount,
-    // Consent, so it survives the run that recorded it. Undefined stays
-    // undefined on purpose: it means never asked, which is not the same as no.
-    localEmbeddingEnabled: parsed.localEmbeddingEnabled,
+    localEmbeddingEnabled: consentFrom(parsed.localEmbeddingEnabled),
   };
 }
 
@@ -760,7 +765,7 @@ export function readConfig(): HyperframesConfig {
     // Recover through the same mint path as a missing file — so a tripped
     // breaker survives config corruption too — but fail closed for the
     // privacy control: recovery must never silently turn telemetry back on.
-    const config = { ...mintConfig(), telemetryEnabled: false };
+    const config = { ...mintConfig(), telemetryEnabled: false, localEmbeddingEnabled: false };
     const write = writeConfigWithResult(config);
     classifyIdentity(
       config.anonymousId,
@@ -815,6 +820,83 @@ export type ConfigWriteResult =
  * must distinguish a durable preference write from a best-effort update.
  */
 export function writeConfigWithResult(config: HyperframesConfig): ConfigWriteResult {
+  try {
+    // The consent answer changes only through updateLocalModelConsent; a copy read earlier must not undo one.
+    return withConfigLock(() =>
+      persistConfig({ ...config, localEmbeddingEnabled: localModelConsentOnDisk() }),
+    );
+  } catch (error) {
+    warnSettingsLockedOnce(error);
+    return { ok: false, error: normalizeErrorMessage(error) };
+  }
+}
+
+let warnedSettingsLocked = false;
+
+/** One line per process while a leftover lock blocks settings; never where a program reads the output. */
+function warnSettingsLockedOnce(error: unknown): void {
+  if (warnedSettingsLocked || (error as NodeJS.ErrnoException)?.code !== "HF_SETTINGS_LOCKED")
+    return;
+  warnedSettingsLocked = true;
+  if (
+    !isAttendedTerminal() ||
+    process.argv.some((arg) => arg === "--json" || arg.startsWith("--json="))
+  )
+    return;
+  console.error(`${(error as Error).message} (see \`hyperframes doctor\`).`);
+}
+
+export function updateLocalModelConsent(
+  decide: (onDisk: boolean | undefined) => boolean | undefined,
+): boolean | undefined {
+  try {
+    return withConfigLock(() => {
+      const onDisk = localModelConsentOnDisk();
+      const next = decide(onDisk);
+      if (next === onDisk) {
+        if (cachedConfig) cachedConfig.localEmbeddingEnabled = onDisk;
+        return next;
+      }
+      const written = persistConfig({ ...readConfigFresh(), localEmbeddingEnabled: next });
+      return written.ok ? next : localModelConsentOnDisk();
+    });
+  } catch (error) {
+    warnSettingsLockedOnce(error);
+    return localModelConsentOnDisk();
+  }
+}
+
+/** Absent means never asked; anything present but not `true` counts as a no. */
+function consentFrom(value: unknown): boolean | undefined {
+  return value === undefined ? undefined : value === true;
+}
+
+function localModelConsentOnDisk(): boolean | undefined {
+  try {
+    return consentFrom(JSON.parse(readFileSync(CONFIG_FILE, "utf-8")).localEmbeddingEnabled);
+  } catch (error) {
+    // A settings file that exists but cannot be read may hold a no; only a missing one was never asked.
+    return (error as NodeJS.ErrnoException).code === "ENOENT" ? undefined : false;
+  }
+}
+
+let holdingConfigLock = false;
+
+/** One process at a time between reading config.json and replacing it; re-entrant within this one. */
+function withConfigLock<T>(task: () => T): T {
+  if (holdingConfigLock) return task();
+  mkdirSync(CONFIG_DIR, { recursive: true, mode: 0o700 });
+  return withFileLock(`${CONFIG_FILE}.lock`, fs, () => {
+    holdingConfigLock = true;
+    try {
+      return task();
+    } finally {
+      holdingConfigLock = false;
+    }
+  });
+}
+
+function persistConfig(config: HyperframesConfig): ConfigWriteResult {
   try {
     mkdirSync(CONFIG_DIR, { recursive: true, mode: 0o700 });
     const tmpFile = `${CONFIG_FILE}.${process.pid}.tmp`;

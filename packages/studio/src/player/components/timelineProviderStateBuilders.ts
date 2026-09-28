@@ -4,7 +4,6 @@ import type {
   TimelineViewportProps,
 } from "./TimelineProvider";
 import type { ResizingClipState } from "./useTimelineClipDrag";
-import type { TimelineLaneBaseProps } from "./timelineLaneProps";
 import type { DraggedClipState } from "./timelineClipDragTypes";
 import type { MultiDragPreviewInput } from "./timelineMultiDragPreview";
 import { getTimelineElementIdentity } from "../lib/timelineElementHelpers";
@@ -32,14 +31,6 @@ export function resolveResizingElementIds(
   if (resizingClip?.groupPreview) return resizingClip.groupPreview.map((change) => change.key);
   if (resizingClip) return [resizingClip.element.key ?? resizingClip.element.id];
   return undefined;
-}
-
-export function resolveRenderClipContent(
-  rowVirtualizationActive: boolean,
-  isScrolling: boolean,
-  renderClipContent: TimelineLaneBaseProps["renderClipContent"],
-): TimelineLaneBaseProps["renderClipContent"] {
-  return rowVirtualizationActive && isScrolling ? undefined : renderClipContent;
 }
 
 export function shouldIgnoreTimelinePointerDown(target: EventTarget | null): boolean {

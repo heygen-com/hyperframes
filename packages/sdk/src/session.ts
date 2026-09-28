@@ -35,7 +35,7 @@ import type { PersistAdapter, PreviewAdapter } from "./adapters/types.js";
 import { parseMutable } from "./engine/model.js";
 import type { ParsedDocument } from "./engine/model.js";
 import { applyOp, validateOp, type MutationResult } from "./engine/mutate.js";
-import { getGsapScripts, resolveScoped, declarationElement } from "./engine/model.js";
+import { getGsapScripts, resolveScoped, declarationCarriers } from "./engine/model.js";
 import { extractGsapLabels } from "@hyperframes/core/gsap-parser-acorn";
 import { stripEmbeddedRuntimeScripts } from "@hyperframes/core/compiler/html-document";
 import { readClipTiming, type ClipTiming } from "@hyperframes/core/composition-contract";
@@ -221,21 +221,22 @@ class CompositionImpl implements Composition {
   }
 
   getVariableDeclarations(): CompositionVariable[] {
-    return readVariableDeclarations(declarationElement(this.parsed.document, this.parsed.wrapped));
+    const byId = new Map<string, CompositionVariable>();
+    for (const el of declarationCarriers(this.parsed.document, this.parsed.wrapped))
+      for (const decl of readVariableDeclarations(el)) byId.set(decl.id, decl);
+    return [...byId.values()];
   }
 
   getVariableValues(overrides?: Record<string, unknown>): Record<string, unknown> {
     // THIS composition's own declared defaults (loose extraction: any entry with
     // a string id + a `default` key, even ones the strict declaration parser
     // drops) spread under the overrides. Scope note: this reads the composition's
-    // single declaration element only — NOT a union of every `[data-composition-
+    // own carriers (<html> and its root) only — NOT every `[data-composition-
     // variables]` in the document. The runtime's getVariables()
     // (core/runtime/getVariables.ts) additionally walks inlined sub-composition
     // declarers because it operates on the bundled multi-composition document;
     // the SDK models one composition file, so per-file scope is intended.
-    const defaults = readDeclaredDefaults(
-      declarationElement(this.parsed.document, this.parsed.wrapped),
-    );
+    const defaults = declaredDefaults(this.parsed);
     return { ...defaults, ...(overrides ?? {}) };
   }
 
@@ -845,6 +846,14 @@ class CompositionImpl implements Composition {
   }
 }
 
+/** Declared defaults across the composition's carriers, the root winning a shared id as in the runtime. */
+function declaredDefaults(parsed: ParsedDocument): Record<string, unknown> {
+  return Object.assign(
+    {},
+    ...declarationCarriers(parsed.document, parsed.wrapped).map((el) => readDeclaredDefaults(el)),
+  );
+}
+
 // ─── Public factory ───────────────────────────────────────────────────────────
 
 /**
@@ -867,9 +876,7 @@ export async function openComposition(
   // overrides destructively into the declarations, so this is the last moment
   // the authored base values are readable. getVariableValue({ base: true })
   // serves them for the rest of the session (undo-to-base restores).
-  const baseVariableDefaults = readDeclaredDefaults(
-    declarationElement(parsed.document, parsed.wrapped),
-  );
+  const baseVariableDefaults = declaredDefaults(parsed);
 
   // T3 embedded: replay the stored override-set onto the base in one pass,
   // so the session exposes the user's exact edited state — not the template.

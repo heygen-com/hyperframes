@@ -1,11 +1,15 @@
 // fallow-ignore-file complexity
 import { defineCommand } from "citty";
 import { execFileSync, execSync } from "node:child_process";
+import * as fs from "node:fs";
 import { existsSync } from "node:fs";
 import { platform } from "node:os";
 import { dirname } from "node:path";
 import { resolveExtractCacheDir } from "@hyperframes/engine";
 import type { Example } from "./_examples.js";
+import { CONFIG_PATH } from "../telemetry/config.js";
+import { withFileLock } from "../media-use/lib/config-lock.mjs";
+import { normalizeErrorMessage } from "../utils/errorMessage.js";
 import { c } from "../ui/colors.js";
 import { parseToolVersion, runEnvironmentChecks } from "../browser/preflight.js";
 import { KOKORO_MODULES, KOKORO_PIP, MUSICGEN_MODULES, MUSICGEN_PIP } from "../audio/providers.js";
@@ -236,6 +240,17 @@ export function checkArchiveExtractor(
   };
 }
 
+/** A lock left by a hyperframes process that stopped mid-write blocks settings writes until a person removes it. */
+export function checkSettingsLock(lockPath = `${CONFIG_PATH}.lock`): CheckResult {
+  if (!existsSync(lockPath)) return { ok: true, detail: "Not locked" };
+  try {
+    withFileLock(lockPath, fs, () => undefined);
+    return { ok: true, detail: "Not locked" };
+  } catch (error) {
+    return { ok: false, detail: "Locked", hint: normalizeErrorMessage(error) };
+  }
+}
+
 function checkEnvironment(): CheckResult {
   const sys = getSystemMeta();
   const parts: string[] = [];
@@ -287,8 +302,12 @@ function checkLocalMusic(): CheckResult {
 }
 
 /** Not a failure when missing: the package installs itself the first time a feature needs it. */
-export function checkOptionalPackage(name: OptionalPackage, cacheDir?: string): CheckResult {
-  const version = installedOptionalPackageVersion(name, cacheDir);
+export function checkOptionalPackage(
+  name: OptionalPackage,
+  cacheDir?: string,
+  cliUrl?: string,
+): CheckResult {
+  const version = installedOptionalPackageVersion(name, cacheDir, cliUrl);
   return {
     ok: true,
     detail: version ? `${version} installed` : "Not installed (installs on first use)",
@@ -357,6 +376,7 @@ export default defineCommand({
       { name: "Disk", run: checkDisk },
       { name: "Frames cache", run: () => checkFramesCache() },
       { name: "Archive extractor", run: checkArchiveExtractor },
+      { name: "Settings lock", run: () => checkSettingsLock() },
     ];
 
     // /dev/shm is only relevant on Linux (especially Docker)
