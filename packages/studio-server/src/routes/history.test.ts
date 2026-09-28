@@ -53,6 +53,7 @@ describe("history routes", () => {
     ["outside", 0],
     ["agent turn", 0],
     ["outside", 11_000],
+    ["agent turn", 11_000],
   ])(
     "keep the %s write that landed between Studio's read and its patch when Studio's edit is undone (claim %d ms later)",
     async (writer, claimDelayMs) => {

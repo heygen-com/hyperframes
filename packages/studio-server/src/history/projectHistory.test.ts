@@ -18,7 +18,7 @@ import { spawnSync } from "node:child_process";
 import { tmpdir } from "node:os";
 import { basename, dirname, join, relative } from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { fileContentVersion, recordFileWriteReceipt } from "../helpers/fileVersion";
+import { fileContentVersion, hashOfVersion, recordFileWriteReceipt } from "../helpers/fileVersion";
 import { HistoryBusyError } from "./ownerLock";
 import { HistoryIdError } from "./historyId";
 import { HistoryClosedError, openProjectHistory, type ProjectHistory } from "./projectHistory";
@@ -1128,6 +1128,66 @@ describe("openProjectHistory", () => {
     });
     expect((await history.undo(edit!.id, { who: you })).ok).toBe(true);
     expect(read("index.html")).toBe(saved);
+  });
+
+  it("keeps the bytes an API write replaced when its history folder was removed while open", async () => {
+    const { history, write, read, projectDir, historyRoot } = await project({ "index.html": "a" });
+    rmSync(historyRoot, { recursive: true, force: true });
+    write("index.html", "E");
+    recordFileWriteReceipt(join(projectDir, "index.html"), {
+      path: "index.html",
+      version: fileContentVersion("E"),
+      writeToken: "studio",
+      overwrote: "S",
+    });
+
+    const edit = await history.claim(you, "Edit", ["index.html"], {
+      overwrote: { "index.html": fileContentVersion("a") },
+    });
+    expect((await history.undo(edit!.id, { who: you })).ok).toBe(true);
+    expect(read("index.html")).toBe("S");
+  });
+
+  it("forgets what an API write replaced once the file is removed", async () => {
+    const { history, write, read, projectDir } = await project({ "index.html": "a" });
+    write("index.html", "E");
+    recordFileWriteReceipt(join(projectDir, "index.html"), {
+      path: "index.html",
+      version: fileContentVersion("E"),
+      writeToken: "studio",
+      overwrote: "S",
+    });
+    rmSync(join(projectDir, "index.html"));
+    await history.claim(you, "sweep", []);
+    // Re-created outside Studio with the bytes the API wrote: nothing Studio wrote is on disk now.
+    write("index.html", "E");
+
+    const edit = await history.claim(you, "Edit", ["index.html"], {
+      overwrote: { "index.html": fileContentVersion("a") },
+    });
+    expect((await history.undo(edit!.id, { who: you })).ok).toBe(true);
+    expect(read("index.html")).toBe("a");
+  });
+
+  it("frees unreferenced bytes past its budget even when nothing is left to fold", async () => {
+    const saved = "B".repeat(3000);
+    const { history, write, projectDir } = await project(
+      { "index.html": "a", "other.html": "o" },
+      { budgetBytes: 2000 },
+    );
+    history.pin((await change(history, you, "Pinned", () => write("other.html", "o2"))).id, true);
+    const edited = `${saved}!`;
+    write("index.html", edited);
+    recordFileWriteReceipt(join(projectDir, "index.html"), {
+      path: "index.html",
+      version: fileContentVersion(edited),
+      writeToken: "agent",
+      overwrote: saved,
+    });
+    write("index.html", "x");
+    await history.flush();
+
+    await expect(history.readBlob(hashOfVersion(fileContentVersion(saved))!)).rejects.toThrow();
   });
 
   it("cuts a claim at a restored save, not at bytes an earlier claim already used", async () => {

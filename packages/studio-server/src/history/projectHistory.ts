@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import { readdir, rm, rmdir, writeFile } from "node:fs/promises";
+import { mkdir, readdir, rm, rmdir, writeFile } from "node:fs/promises";
 import {
   type Dirent,
   type Stats,
@@ -397,21 +397,23 @@ class Engine {
     this.stopHearing = onFileOverwritten((absPath, version, bytes) => {
       const after = hashOfVersion(version);
       if (!after || !affectsProjectSignature(realDir, absPath)) return;
-      const replaced = hashOfVersion(fileContentVersion(bytes))!;
-      if (replaced === after) return;
+      const replaced = hashOfVersion(fileContentVersion(bytes));
+      if (!replaced || replaced === after) return;
       const path = relative(realDir, absPath).split(sep).join("/");
-      // One chain per file, a new Map each write (forgetWritesBefore compares identity); the rest was written over.
+      // One chain per file, a new Map per write (forgetWritesBefore checks identity); off-chain notes were overwritten.
       this.overwritten.set(
         path,
         chainBackFrom(this.overwritten.get(path), replaced).set(after, replaced),
       );
-      if (!this.blobs.has(replaced))
-        this.queue(() => this.storeBytes(bytes)).catch((error) => this.options.onError?.(error));
+      this.queue(async () => {
+        if (!this.blobs.has(replaced)) await this.storeBytes(bytes);
+      }).catch((error) => this.options.onError?.(error));
     });
   }
 
   async storeBytes(bytes: string | Uint8Array): Promise<void> {
     const staged = join(this.home, `overwrote-${randomUUID()}`);
+    await mkdir(this.home, { recursive: true });
     await writeFile(staged, bytes);
     try {
       await this.blobs.put(staged);
@@ -421,8 +423,13 @@ class Engine {
   }
 
   /** Read at a state no API write left, with no write heard since `heard`: no walk passes it, so forget the rest. */
-  forgetWritesBefore(path: string, hash: string, heard: Map<string, string> | undefined): void {
-    if (this.overwritten.get(path) === heard && !heard?.has(hash)) this.overwritten.delete(path);
+  forgetWritesBefore(
+    path: string,
+    hash: string | null,
+    heard: Map<string, string> | undefined,
+  ): void {
+    if (this.overwritten.get(path) === heard && !(hash && heard?.has(hash)))
+      this.overwritten.delete(path);
   }
 
   reopenClosedWindow(): void {
@@ -474,6 +481,7 @@ class Engine {
     const changedAt = (file: { mtimeMs: number; ctimeMs: number }) =>
       Math.min(sweptAt, Math.max(file.mtimeMs, file.ctimeMs));
     const seen = listProjectFiles(this.dir);
+    const heard = new Map(this.overwritten);
     const present = new Set(seen.map((file) => file.path));
     const removed = [...this.tracked.keys()]
       .filter((path) => !present.has(path))
@@ -501,6 +509,7 @@ class Engine {
       }
       const known = this.tracked.get(path)!;
       this.tracked.delete(path);
+      this.forgetWritesBefore(path, null, heard.get(path));
       await this.record(path, known.hash, null, at);
       changed = true;
     }
@@ -758,8 +767,7 @@ class Engine {
   async keepWithinBudget(): Promise<void> {
     const budget = this.options.budgetBytes ?? 2 * 1024 ** 3;
     let folded = false;
-    while (this.historyBytes() > budget && foldOldest(this.log)) {
-      folded = true;
+    while (this.historyBytes() > budget) {
       await this.blobs.prune(
         new Set([
           ...referencedHashes(this.log, this.manifest()),
@@ -767,6 +775,8 @@ class Engine {
           ...[...this.overwritten.values()].flatMap((byAfter) => [...byAfter.values()]),
         ]),
       );
+      if (this.historyBytes() <= budget || !foldOldest(this.log)) break;
+      folded = true;
     }
     if (folded) this.persistLog();
   }
