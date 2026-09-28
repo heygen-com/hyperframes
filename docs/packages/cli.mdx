@@ -1148,7 +1148,7 @@ npx hyperframes clean --snapshots # also remove snapshots/ folders
 npx hyperframes clean --json
 ```
 
-It looks in the current project and every project the Studio history knows, and removes:
+It looks in the current project (not its subfolders) and every project the Studio history knows, and removes:
 
 - frames and staging folders left by renders that were killed or crashed (a render that is still running keeps its own);
 - work folders of `--debug` renders nothing has written to for six hours;

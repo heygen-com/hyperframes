@@ -225,7 +225,7 @@ export default defineCommand({
   args: {
     dir: {
       type: "positional",
-      description: "Project directory (default: current)",
+      description: "Project directory (default: current); its subfolders are not searched",
       required: false,
     },
     "dry-run": {
