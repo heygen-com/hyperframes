@@ -81,3 +81,38 @@ test("a person's own file under a bundled name survives, and the cue gets the ne
     rmSync(dir, { recursive: true, force: true });
   }
 });
+
+test("two effects never share a file when one's name is taken by the person", async () => {
+  const dir = mkdtempSync(join(tmpdir(), "mu-audio-"));
+  try {
+    mkdirSync(join(dir, "assets", "sfx"), { recursive: true });
+    writeFileSync(join(dir, "assets", "sfx", "glitch.mp3"), "the person's own glitch");
+    const realFetch = globalThis.fetch;
+    globalThis.fetch = async (url) => {
+      const query = new URL(url).searchParams.get("query");
+      if (query) return Response.json({ data: [{ audio_url: `https://sound.test/${query}`, score: 0.6 }] });
+      return new Response(`bytes of ${new URL(url).pathname}`);
+    };
+    try {
+      const { sfx } = await resolveSfx({
+        cues: [
+          { id: "1", name: "glitch" },
+          { id: "2", name: "glitch 2" },
+          { id: "3", name: "glitch" },
+        ],
+        heygenOK: true,
+        headers: {},
+        hyperframesDir: dir,
+        sfxLibDir,
+      });
+      assert.deepEqual(
+        sfx.map(({ file }) => file),
+        ["assets/sfx/glitch-2.mp3", "assets/sfx/glitch-2-2.mp3", "assets/sfx/glitch-2.mp3"],
+      );
+    } finally {
+      globalThis.fetch = realFetch;
+    }
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});

@@ -33,7 +33,8 @@ export async function resolveSfx({ cues, heygenOK, headers, hyperframesDir, sfxL
   const sfx = [];
   const anomalies = [];
   const destDir = join(hyperframesDir, "assets", "sfx");
-  const written = new Set();
+  // Each effect's file this run, so two effects never share one and one effect never gets two.
+  const fileFor = new Map();
 
   // Dedupe identical (id,name) cues — the same effect named twice in one line
   // downloads/copies once.
@@ -60,12 +61,14 @@ export async function resolveSfx({ cues, heygenOK, headers, hyperframesDir, sfxL
           continue;
         }
         const top = results[0];
-        const file = agentWritePath(hyperframesDir, `assets/sfx/${slug(name)}.mp3`, {
-          anomalies,
-          reusable: (rel) => written.has(rel),
-        });
+        const file =
+          fileFor.get(slug(name)) ??
+          agentWritePath(hyperframesDir, `assets/sfx/${slug(name)}.mp3`, {
+            anomalies,
+            taken: new Set(fileFor.values()),
+          });
         await downloadTo(top.audio_url, join(hyperframesDir, file));
-        written.add(file);
+        fileFor.set(slug(name), file);
         sfx.push({
           id,
           name,
@@ -123,12 +126,14 @@ export async function resolveSfx({ cues, heygenOK, headers, hyperframesDir, sfxL
       library &&
       existsSync(join(hyperframesDir, rel)) &&
       readFileSync(join(hyperframesDir, rel)).equals(library);
-    const destRel = agentWritePath(hyperframesDir, `assets/sfx/${hit.file}`, {
-      anomalies,
-      // An unrecorded copy of the library file is one an engine run made before the manifest had it.
-      reusable: (rel) =>
-        written.has(rel) || (!latestRecordFor(hyperframesDir, rel) && isLibraryCopy(rel)),
-    });
+    const destRel =
+      fileFor.get(hit.file) ??
+      agentWritePath(hyperframesDir, `assets/sfx/${hit.file}`, {
+        anomalies,
+        taken: new Set(fileFor.values()),
+        // An unrecorded copy of the library file is one an engine run made before the manifest had it.
+        reusable: (rel) => !latestRecordFor(hyperframesDir, rel) && isLibraryCopy(rel),
+      });
     const dest = join(hyperframesDir, destRel);
     // The bundled library may be incomplete: some installs of the skill ship
     // manifest.json without the actual mp3s. Pushing an sfx entry that points at
@@ -145,7 +150,7 @@ export async function resolveSfx({ cues, heygenOK, headers, hyperframesDir, sfxL
       );
       continue;
     } // else the engine's earlier copy at dest stands in for the file this install lacks
-    written.add(destRel);
+    fileFor.set(hit.file, destRel);
     sfx.push({
       id,
       name,

@@ -156,7 +156,7 @@ test("the engine writes over only its own files, else the next free name", (t) =
   assert.equal(anomalies.length, 4);
   assert.match(
     anomalies[0],
-    /^assets\/sfx\/mine\.mp3: kept, .* wrote assets\/sfx\/mine-2\.mp3 instead/,
+    /^assets\/sfx\/mine\.mp3: kept, .* writing assets\/sfx\/mine-2\.mp3 instead/,
   );
 });
 

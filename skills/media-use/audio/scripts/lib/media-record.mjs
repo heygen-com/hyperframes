@@ -4,9 +4,8 @@ import { AGENT_SOURCES, latestRecordFor, recordInPlace } from "../../../scripts/
 import { regenerateIndex } from "../../../scripts/lib/index-gen.mjs";
 
 /**
- * Where the engine may write `rel`: there, unless this run already `taken` it or a file the person put there is
- * (one the manifest does not record as agent-made, and not `reusable`); then the first free `name-2.ext`,
- * `name-3.ext`, with an anomaly saying so.
+ * Where the engine may write `rel`: there, unless another file of this run has `taken` it or the file there is
+ * the person's (not `reusable` and not recorded as agent-made). Then the first free `name-2.ext`, with an anomaly.
  */
 export function agentWritePath(
   hyperframesDir,
@@ -25,9 +24,9 @@ export function agentWritePath(
   while (!free(`${stem}-${n}${ext}`)) n++;
   const path = `${stem}-${n}${ext}`;
   const why = taken.has(rel)
-    ? "another line of this run writes there"
+    ? "another file of this run goes there"
     : "the file there is yours (the media manifest does not record it as made by the engine)";
-  const note = `${rel}: kept, because ${why}; wrote ${path} instead, so point references at it`;
+  const note = `${rel}: kept, because ${why}; writing ${path} instead (audio_meta.json has the path used)`;
   if (!anomalies.includes(note)) anomalies.push(note);
   return path;
 }
