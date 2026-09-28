@@ -144,6 +144,32 @@ describe("runtime entry", () => {
     expect(visibility(current, later)).toEqual(["hidden", "visible"]);
   });
 
+  it("keys preview mode on the preview meta alone, not on the GSAP fallback script captures keep", async () => {
+    document.head
+      .appendChild(document.createElement("script"))
+      .setAttribute("data-hf-gsap-fallback", "");
+    const root = mountRoot();
+    const current = timed(root, "div", "0");
+    const later = neverDecodes(timed(root, "div", "5"));
+    const plate = later.querySelector("img")!;
+    plate.setAttribute("loading", "lazy");
+    window.__hfTimelinesBuilding = true;
+    Object.defineProperty(document, "readyState", { configurable: true, get: () => "loading" });
+
+    await evaluateRuntime();
+    expect(getComputedStyle(plate).display).not.toBe("none");
+    delete (document as { readyState?: unknown }).readyState;
+    document.dispatchEvent(new Event("DOMContentLoaded"));
+    window.__hfTimelinesBuilding = false;
+    window.dispatchEvent(new CustomEvent("hf-timelines-built"));
+    expect(document.querySelector("style[data-hf-skip-hidden-images]")).toBeNull();
+    window.__player?.seek(3.5);
+    expect(imageSkipped(later)).toEqual([false]);
+    expect(document.querySelector("[data-hf-upcoming]")).toBeNull();
+    expect(window.__player?.seek(5.5)).toBeUndefined();
+    expect(visibility(current, later)).toEqual(["hidden", "visible"]);
+  });
+
   it("skips the images of each hidden clip not due within the look-ahead, until something shows it", async () => {
     servePreview();
     const root = mountRoot();

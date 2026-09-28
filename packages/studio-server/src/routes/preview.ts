@@ -424,7 +424,7 @@ export function registerPreviewRoutes(api: Hono, adapter: PreviewApiAdapter): vo
       );
       bundled = addScenePartsManifest(bundled, [`meta[name="${PROJECT_SIGNATURE_META}"]`]);
       rememberPreview(builtKey, bundled);
-      adapter.previewDocuments?.write(builtKey, bundled);
+      if (!capture) adapter.previewDocuments?.write(builtKey, bundled);
       return bundled;
     } catch {
       // Re-read disk on bundle failure so we serve the latest file content,

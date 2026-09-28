@@ -578,6 +578,27 @@ describe("built preview reuse", () => {
     expect(restarted).toEqual({ html: cold.html, builds: 0 });
     expect((await serve("build-b")).builds).toBe(1);
   });
+
+  it("keeps the preview in the document store after a capture build", async () => {
+    const projectDir = createProjectDir();
+    const storeDir = join(projectDir, ".hyperframes", "preview");
+    const session = async (paths: string[]) => {
+      const bundle = vi.fn(async () => BUILT);
+      const app = new Hono();
+      registerPreviewRoutes(
+        app,
+        createAdapter(projectDir, {
+          bundle,
+          previewDocuments: createPreviewDocumentStore(storeDir, "build-a"),
+        } as Partial<StudioApiAdapter>),
+      );
+      for (const path of paths) await app.request(`http://localhost/projects/demo/${path}`);
+      return bundle.mock.calls.length;
+    };
+
+    expect(await session(["preview", `preview?${PREVIEW_CAPTURE_PARAM}=1`])).toBe(2);
+    expect(await session(["preview"])).toBe(0);
+  });
 });
 
 describe("hf-id surfacing in preview route", () => {
