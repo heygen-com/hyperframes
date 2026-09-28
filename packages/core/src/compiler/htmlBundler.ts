@@ -703,6 +703,16 @@ function placeSceneStylesLikeRender(document: Document): void {
   first.before(holder);
 }
 
+/** A `<style>` the browser applies unconditionally: no media query, a CSS type, no inert parent. */
+function isAlwaysAppliedStyle(el: Element): boolean {
+  const type = el.getAttribute("type")?.trim().toLowerCase();
+  return (
+    !el.hasAttribute("media") &&
+    (!type || type === "text/css") &&
+    !el.closest("template, noscript, svg")
+  );
+}
+
 type PartRun<T> = { scene?: string; chunks: T[] };
 
 function pushRun<T>(runs: PartRun<T>[], scene: string | undefined, chunk: T): void {
@@ -1318,15 +1328,19 @@ async function bundleProject(projectDir: string, options?: BundleOptions): Promi
     if (srcset)
       el.setAttribute("srcset", rewriteSrcsetWithInlinedAssets(srcset, projectDir, inlineAssets));
   }
-  const styleEls = [...document.querySelectorAll("style")];
-  const rewrittenStyles = styleEls.map((styleEl) =>
-    rewriteCssUrlsWithInlinedAssets(styleEl.textContent || "", projectDir, inlineAssets),
-  );
-  // Each composition that shares a font carries its own @font-face copy;
-  // once src is inlined to a data URL, drop later byte-identical repeats.
-  const dedupedStyles = dedupeFontFaceRules(rewrittenStyles);
-  styleEls.forEach((styleEl, i) => {
-    styleEl.textContent = dedupedStyles[i] ?? "";
+  for (const styleEl of document.querySelectorAll("style")) {
+    styleEl.textContent = rewriteCssUrlsWithInlinedAssets(
+      styleEl.textContent || "",
+      projectDir,
+      inlineAssets,
+    );
+  }
+  // Each composition sharing a font carries its own @font-face copy; drop the earlier identical ones.
+  // Only styles that always apply take part, so the kept copy can never be switched off.
+  const liveStyles = [...document.querySelectorAll("style")].filter(isAlwaysAppliedStyle);
+  const dedupedStyles = dedupeFontFaceRules(liveStyles.map((el) => el.textContent || ""));
+  liveStyles.forEach((el, i) => {
+    el.textContent = dedupedStyles[i] ?? "";
   });
   for (const el of [...document.querySelectorAll("[style]")]) {
     el.setAttribute(

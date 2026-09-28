@@ -1199,4 +1199,27 @@ describe("dedupeFontFaceRules", () => {
     const b = `@font-face { font-family: "Brand"; src: url(b.woff2); src: url(a.woff); }`;
     expect(dedupeFontFaceRules([a, b])).toEqual([a, b]);
   });
+
+  it("leaves unparseable style text as authored and never keeps a copy from it", () => {
+    const broken = `${face("swap")} a { color: red`;
+    expect(dedupeFontFaceRules([face("swap"), broken])).toEqual([face("swap"), broken]);
+  });
+
+  it("keeps an !important src apart from a plain one", () => {
+    const a = `@font-face { font-family: "Brand"; src: url(a.woff2) !important; }`;
+    const b = `@font-face { font-family: "Brand"; src: url(a.woff2); }`;
+    expect(dedupeFontFaceRules([a, b])).toEqual([a, b]);
+  });
+
+  it("keeps quoted family names that differ only in inner spaces", () => {
+    const a = `@font-face { font-family: "Brand  Sans"; src: url(a.woff2); }`;
+    const b = `@font-face { font-family: "Brand Sans"; src: url(a.woff2); }`;
+    expect(dedupeFontFaceRules([a, b])).toEqual([a, b]);
+  });
+
+  it("treats a src list wrapped over lines as the same rule", () => {
+    const a = `@font-face { font-family: "Brand"; src: url(a.woff2),\n      url(b.woff); }`;
+    const b = `@font-face { font-family: "Brand"; src: url(a.woff2), url(b.woff); }`;
+    expect(dedupeFontFaceRules([a, b])[0]).not.toContain("@font-face");
+  });
 });

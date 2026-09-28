@@ -1625,6 +1625,30 @@ describe("bundleToSingleHtml", () => {
     expect(bundled.split(inlinedAs("font/woff2", "brand-font-bytes")).length - 1).toBe(2);
   });
 
+  it.each([
+    ["a media query", `<style media="print">FACE</style>`],
+    ["a non-CSS type", `<style type="text/x-template">FACE</style>`],
+    ["<noscript>", `<noscript><style>FACE</style></noscript>`],
+    ["<svg>", `<svg><style>FACE</style></svg>`],
+  ])("keeps a font's always-applied copy when the later copy sits behind %s", async (_, later) => {
+    const face = `@font-face { font-family: "Brand"; src: url("fonts/brand.woff2") format("woff2"); }`;
+    const dir = makeTempProject({
+      "index.html": `<!doctype html>
+<html><head><style>${face}</style></head><body>
+  <div id="root" data-composition-id="main" data-width="1920" data-height="1080">
+    ${later.replace("FACE", face)}
+    <p>Hi</p>
+  </div>
+  <script>window.__timelines={};</script>
+</body></html>`,
+      "fonts/brand.woff2": "brand-font-bytes",
+    });
+
+    const { document } = parseHTML(await bundleToSingleHtml(dir));
+    const headCss = [...document.querySelectorAll("head style")].map((s) => s.textContent).join("");
+    expect(headCss).toContain("@font-face");
+  });
+
   it("leaves an oversized asset relative and warns rather than inlining it", async () => {
     const dir = makeTempProject({
       "index.html": `<!doctype html>

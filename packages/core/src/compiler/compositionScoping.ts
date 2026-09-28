@@ -263,7 +263,14 @@ function isFontFaceAtRule(node: { type: string; name?: string }): node is AtRule
 function fontFaceKey(atRule: AtRule): string {
   const decls: string[] = [];
   atRule.walkDecls((decl) => {
-    decls.push(`${decl.prop.trim().toLowerCase()}:${decl.value.replace(/\s+/g, " ").trim()}`);
+    // Collapse whitespace outside quoted strings only: "A  B" and "A B" name different families.
+    const value = decl.value.replace(
+      /("(?:\\.|[^"\\])*"|'(?:\\.|[^'\\])*')|\s+/g,
+      (_m, str) => str ?? " ",
+    );
+    decls.push(
+      `${decl.prop.trim().toLowerCase()}:${value.trim()}${decl.important ? "!important" : ""}`,
+    );
   });
   return decls.join(";");
 }
@@ -276,7 +283,12 @@ export function dedupeFontFaceRules(styleTexts: string[]): string[] {
     .reverse()
     .map((css) => {
       if (!css || !/@font-face/i.test(css)) return css;
-      const root = postcss.parse(css);
+      let root: postcss.Root;
+      try {
+        root = postcss.parse(css);
+      } catch {
+        return css; // unparseable text ships as authored and takes no part
+      }
       let changed = false;
       for (const node of [...(root.nodes ?? [])].reverse()) {
         if (!isFontFaceAtRule(node)) continue;
