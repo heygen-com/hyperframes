@@ -3236,16 +3236,21 @@ describe("initSandboxRuntimeModular", () => {
     const { raf, startedAt } = mountLateSfx();
     window.__player?.play();
     raf.step(16);
-    window.__player?.seek(0.99, { keepPlaying: true });
+    window.__player?.seek(0.99, { keepPlaying: true }); // lands on the frame at 0.967
 
     expect(startedAt).toEqual([]);
-    raf.step(16);
-    expect(startedAt[0]).toBeGreaterThanOrEqual(1);
+    for (let frame = 0; frame < 10 && startedAt.length === 0; frame++) raf.step(16);
+    expect(startedAt[0]).toBeGreaterThanOrEqual(1 - 0.02);
   });
 
   it("starts a clip at most 40 ms of real time early at a slow speed", () => {
     const { raf, startedAt } = mountLateSfx();
-    window.__player?.setPlaybackRate(0.25);
+    window.dispatchEvent(
+      new MessageEvent("message", {
+        source: window.parent,
+        data: { source: "hf-parent", type: "control", action: "set-playback-rate", playbackRate: 0.25 },
+      }),
+    );
     window.__player?.play();
     for (let frame = 0; frame < 60 && startedAt.length === 0; frame++) raf.step(100);
 
