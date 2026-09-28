@@ -147,3 +147,16 @@ test("the engine writes over only its own files, else the next free name", (t) =
   assert.equal(at("twice.mp3"), "assets/sfx/twice-3.mp3");
   assert.equal(at("kept.mp3"), "assets/sfx/kept-2.mp3");
 });
+
+test("a record never takes the id of a download still in flight", (t) => {
+  const dir = project(t);
+  mkdirSync(join(dir, ".media/audio/bgm"), { recursive: true });
+  writeFileSync(join(dir, ".media/audio/bgm/bgm_001.mp3"), "");
+
+  recordInManifest(dir, [{ path: "assets/bgm/track.wav", type: "bgm", source: "generated" }]);
+
+  assert.deepEqual(
+    readManifest(dir).map(({ id }) => id),
+    ["bgm_002"],
+  );
+});
