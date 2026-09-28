@@ -92,7 +92,8 @@ export async function findProjects({
       if (!entries || (dir !== root && (await isWorktreeCopy(dir, entries)))) return;
       if (isHyperframesProject(fileNames(entries))) return report(dir, "walk");
       for (const entry of entries) {
-        if (entry.isDirectory() && !skippedDir(dir, entry.name)) pending.push(join(dir, entry.name));
+        if (entry.isDirectory() && !skippedDir(dir, entry.name))
+          pending.push(join(dir, entry.name));
       }
     };
     await new Promise<void>((done) => {

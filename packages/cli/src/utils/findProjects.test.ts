@@ -93,22 +93,25 @@ describe("findProjects", () => {
     expect(paths(root, await find(root))).toEqual(["film"]);
   });
 
-  it.skipIf(process.getuid?.() === 0)("finishes past a symlink loop and an unreadable folder", async () => {
-    const root = tree([
-      "film/index.html",
-      "film/meta.json",
-      "locked/film/index.html",
-      "locked/film/meta.json",
-    ]);
-    symlinkSync(root, join(root, "loop"), "dir");
-    chmodSync(join(root, "locked"), 0o000);
+  it.skipIf(process.getuid?.() === 0)(
+    "finishes past a symlink loop and an unreadable folder",
+    async () => {
+      const root = tree([
+        "film/index.html",
+        "film/meta.json",
+        "locked/film/index.html",
+        "locked/film/meta.json",
+      ]);
+      symlinkSync(root, join(root, "loop"), "dir");
+      chmodSync(join(root, "locked"), 0o000);
 
-    try {
-      expect(paths(root, await find(root))).toEqual(["film"]);
-    } finally {
-      chmodSync(join(root, "locked"), 0o755);
-    }
-  });
+      try {
+        expect(paths(root, await find(root))).toEqual(["film"]);
+      } finally {
+        chmodSync(join(root, "locked"), 0o755);
+      }
+    },
+  );
 
   it("reports a Spotlight hit once, and only where the walk would also count it", async () => {
     const root = tree([
