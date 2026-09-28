@@ -119,10 +119,12 @@ describe("useTimelineGeometry restore-scroll effect", () => {
 function ScaleProbe({
   duration,
   width = 1200,
+  clips = duration > 0,
   seen,
 }: {
   duration: number;
   width?: number;
+  clips?: boolean;
   seen: { pps: number; fitPps: number };
 }) {
   const ppsRef = useRef(0);
@@ -138,7 +140,7 @@ function ScaleProbe({
     fitPpsRef,
     draggedClip: null,
     resizingClip: null,
-    expandedElements: [],
+    expandedElements: clips ? [{ ...element, start: 0, duration }] : [],
     isDragging: useRef(false),
     scrollRef: useRef<HTMLDivElement>(null),
     lastScrollLeftRef: useRef(0),
@@ -151,8 +153,10 @@ function ScaleProbe({
 
 describe("useTimelineGeometry keeps the scale when only the length changes", () => {
   const seen = { pps: 0, fitPps: 0 };
-  const renderAt = (duration: number, width?: number) =>
-    act(() => root.render(<ScaleProbe duration={duration} width={width} seen={seen} />));
+  const renderAt = (duration: number, width?: number, clips?: boolean) =>
+    act(() =>
+      root.render(<ScaleProbe duration={duration} width={width} clips={clips} seen={seen} />),
+    );
   const within = (pps: number) => Math.abs(seen.pps - pps) < seen.fitPps * 0.005;
 
   it("keeps a short film's clips the same size when the first edit lengthens it", () => {
@@ -183,10 +187,28 @@ describe("useTimelineGeometry keeps the scale when only the length changes", () 
     expect(seen.pps).toBeCloseTo(seen.fitPps * 1.5);
   });
 
-  it("refits in fit mode", () => {
+  it("refits when another composition opens, which empties the clips first", () => {
+    usePlayerStore.setState({ zoomMode: "manual", manualZoomPercent: 150 });
+    renderAt(120);
+    renderAt(120, undefined, false);
+    renderAt(5);
+    expect(seen.pps).toBeCloseTo(seen.fitPps * 1.5);
+  });
+
+  it("keeps a lengthened film's scale near the maximum zoom", () => {
+    usePlayerStore.setState({ zoomMode: "manual", manualZoomPercent: 100_000 });
+    renderAt(17);
+    const before = seen.pps;
+    expect(before).toBeLessThan(seen.fitPps * 1000);
+    renderAt(25);
+    expect(within(before)).toBe(true);
+  });
+
+  it("leaves the manual zoom alone in fit mode", () => {
     usePlayerStore.setState({ zoomMode: "fit", manualZoomPercent: 100 });
     renderAt(17);
     renderAt(25);
     expect(seen.pps).toBe(seen.fitPps);
+    expect(usePlayerStore.getState().manualZoomPercent).toBe(100);
   });
 });
