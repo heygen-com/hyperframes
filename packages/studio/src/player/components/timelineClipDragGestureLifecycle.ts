@@ -35,6 +35,11 @@ interface TimelineGestureCommit {
 
 type UpdateElement = ReturnType<typeof usePlayerStore.getState>["updateElement"];
 
+function releasedOutsideWindow(event: PointerEvent): boolean {
+  const { clientX: x, clientY: y } = event;
+  return x < 0 || y < 0 || x >= window.innerWidth || y >= window.innerHeight;
+}
+
 interface TimelineClipDragGestureLifecycleInput {
   lifecycleRef: RefObject<TimelineGestureLifecycle>;
   sessionEpochRef: RefObject<number>;
@@ -349,6 +354,7 @@ export function mountTimelineClipDragGestureLifecycle({
   };
 
   const handleWindowPointerUp = (event: PointerEvent) => {
+    if (releasedOutsideWindow(event)) return handleWindowPointerCancel(event);
     const claimed = claimActiveGesture(event);
     if (claimed === "ignored") return;
     if (claimed) {
