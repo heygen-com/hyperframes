@@ -192,3 +192,23 @@ test("HoverVideo preserves the caller's sizing classes at the Mintlify boundary"
   );
   assert.match(wrapper[1], /overflow:\s*"hidden"/, "clip the preview inside its card");
 });
+
+test("example films use the catalog player without making its controls source links", () => {
+  const page = readFileSync(join(here, "../docs/examples.mdx"), "utf8");
+  const source = readFileSync(join(here, "../docs/snippets/example-player.jsx"), "utf8");
+  assert.equal((page.match(/<ExamplePlayer\s/g) ?? []).length, 23);
+  assert.doesNotMatch(page, /<HoverVideo\s/);
+  assert.doesNotMatch(page, /<a[^>]*>\s*<ExamplePlayer/);
+  assert.match(source, /createElement\("hyperframes-player"\)/);
+  assert.match(source, /player\.setAttribute\("controls", ""\)/);
+  assert.match(source, /loading="lazy"/);
+  assert.ok(
+    source.indexOf("appendChild(fallback)") < source.indexOf("appendChild(script)"),
+    "native controls exist before the CDN request",
+  );
+  assert.match(
+    source,
+    /fallback\.readyState >= 1/,
+    "upgrade also handles metadata arriving before the CDN script",
+  );
+});
