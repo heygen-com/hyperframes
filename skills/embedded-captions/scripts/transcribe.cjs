@@ -260,7 +260,8 @@ function main() {
         end: w.end ?? w.t1,
         type: "word",
       }));
-    engine = `whisper.cpp(${model})`;
+    // Under the default --engine auto the CLI may have run Parakeet; it reports which.
+    engine = info.engine === "parakeet" ? `parakeet(${info.model})` : `whisper.cpp(${model})`;
   }
 
   // Tail-hallucination guard: drop words whisper placed entirely inside a terminal

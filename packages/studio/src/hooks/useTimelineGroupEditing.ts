@@ -15,11 +15,11 @@ import {
   formatTimelineAttributeNumber,
   formatTimelineMediaOffset,
   patchIframeDomTiming,
-  playbackStartAttributeForElement,
   persistTimelineBatchEdit,
   type PersistTimelineBatchChange,
   type RecordEditInput,
 } from "./timelineEditingHelpers";
+import { playbackStartAttributeForElement } from "../player/lib/timelineElementHelpers";
 import {
   captureDurationRollback,
   finishGroupTimingGsapFallback,

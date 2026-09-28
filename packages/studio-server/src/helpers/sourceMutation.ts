@@ -1,5 +1,6 @@
 import { parseHTML } from "linkedom";
 import { removeElementWithGsapCascade } from "@hyperframes/parsers";
+import { readMediaOffsetSeconds, readPlaybackRate } from "@hyperframes/parsers/media-duration";
 import postcss from "postcss";
 import selectorParser from "postcss-selector-parser";
 import { isAllowedHtmlAttribute, isSafeAttributeValue } from "@hyperframes/core/html-attr-safety";
@@ -402,12 +403,14 @@ export function splitElementInHtml(
           ? "data-media-start"
           : null;
   if (playbackStartAttr) {
-    const authoredTrim = parseFloat(el.getAttribute(playbackStartAttr) ?? "");
-    const currentTrim = authoredTrim || fallbackTiming?.playbackStart || 0;
-    const rateRaw = parseFloat(el.getAttribute("data-playback-rate") ?? "");
-    const rate =
-      Number.isFinite(rateRaw) && rateRaw > 0 ? rateRaw : (fallbackTiming?.playbackRate ?? 1);
-    if (authoredTrim !== currentTrim)
+    const readAttr = (name: string) => el.getAttribute(name);
+    const authoredTrim = el.getAttribute(playbackStartAttr);
+    const currentTrim =
+      authoredTrim !== null
+        ? readMediaOffsetSeconds(readAttr)
+        : (fallbackTiming?.playbackStart ?? 0);
+    const rate = readPlaybackRate(readAttr, fallbackTiming?.playbackRate);
+    if (authoredTrim === null || Number(authoredTrim) !== currentTrim)
       el.setAttribute(playbackStartAttr, String(Math.round(currentTrim * 1000) / 1000));
     clone.setAttribute(
       playbackStartAttr,

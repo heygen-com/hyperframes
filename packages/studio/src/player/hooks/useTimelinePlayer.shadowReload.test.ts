@@ -325,6 +325,25 @@ describe("shadow reload readiness and failure", () => {
     unmount(root);
   });
 
+  it("promotes only once the shadow's restore seek has painted its frame", async () => {
+    const { getApi, live, gen, root } = beginReload();
+    const shadow = makeShadowWithSpies();
+    let seekPainted = () => {};
+    Object.assign(shadow.iframe.contentWindow!, {
+      __hfWaitForSeekCompletion: () => new Promise<void>((resolve) => (seekPainted = resolve)),
+    });
+    act(() => {
+      getApi().setShadowIframeNode(shadow.iframe);
+      getApi().onShadowIframeLoad(gen);
+      getApi().onShadowReadyChange(gen, true);
+    });
+    expect(getApi().iframeRef.current).toBe(live);
+
+    await act(async () => seekPainted());
+    expect(getApi().iframeRef.current).toBe(shadow.iframe);
+    unmount(root);
+  });
+
   it("promotes when the loader clears before the adapter is ready", () => {
     const { getApi, gen, root } = beginReload();
     const shadow = makeShadowWithSpies();

@@ -337,11 +337,88 @@ describe("checkForUpdate — registry boundary guard", () => {
     expect(wroteVersion).toBeUndefined();
   });
 
+  it("leaves no timer behind when the registry request fails fast", async () => {
+    vi.resetModules();
+    vi.doMock("../telemetry/config.js", () => ({
+      readConfig: () => ({}),
+      readConfigFresh: () => ({}),
+      writeConfig: () => {},
+    }));
+    const origFetch = globalThis.fetch;
+    globalThis.fetch = (async () => {
+      throw new TypeError("fetch failed");
+    }) as unknown as typeof fetch;
+    vi.useFakeTimers();
+    try {
+      const mod = await import("./updateCheck.js");
+      await mod.checkForUpdate(true);
+      expect(vi.getTimerCount()).toBe(0);
+    } finally {
+      vi.useRealTimers();
+      globalThis.fetch = origFetch;
+    }
+  });
+
   it("merges update metadata into a fresh snapshot without re-enabling telemetry", async () => {
     const persisted = await checkAcrossConcurrentConfigWrite();
     expect(persisted).toMatchObject({
       telemetryEnabled: false,
       latestVersion: "9.9.9",
     });
+  });
+});
+
+describe("updateCheckDue / cachedUpdateCheck — what the parent reads without fetching", () => {
+  afterEach(() => {
+    vi.doUnmock("../telemetry/config.js");
+    vi.doUnmock("./env.js");
+    vi.resetModules();
+    vi.unstubAllEnvs();
+  });
+
+  async function load(config: Record<string, unknown>) {
+    vi.resetModules();
+    vi.stubEnv("CI", "");
+    vi.stubEnv("HYPERFRAMES_NO_UPDATE_CHECK", "");
+    vi.doMock("./env.js", () => ({ isDevMode: () => false }));
+    vi.doMock("../telemetry/config.js", () => ({
+      readConfig: () => ({ ...config }),
+      readConfigFresh: () => ({ ...config }),
+      writeConfig: () => {},
+    }));
+    return import("./updateCheck.js");
+  }
+
+  const hoursAgo = (h: number) => new Date(Date.now() - h * 3_600_000).toISOString();
+
+  it.each([
+    ["no cache", {}, true],
+    ["a cache from an hour ago", { lastUpdateCheck: hoursAgo(1), latestVersion: "9.9.9" }, false],
+    ["a cache from 25 hours ago", { lastUpdateCheck: hoursAgo(25), latestVersion: "9.9.9" }, true],
+    ["an unreadable timestamp", { lastUpdateCheck: "garbage", latestVersion: "9.9.9" }, true],
+    [
+      "an unsafe cached version",
+      { lastUpdateCheck: hoursAgo(1), latestVersion: "1.2.3; rm" },
+      true,
+    ],
+  ])("with %s, a check is due: %s", async (_, config, due) => {
+    const mod = await load(config);
+    expect(mod.updateCheckDue()).toBe(due);
+  });
+
+  it("is never due under CI", async () => {
+    const mod = await load({});
+    vi.stubEnv("CI", "1");
+    expect(mod.updateCheckDue()).toBe(false);
+  });
+
+  it("reports a cached newer version, and never surfaces an unsafe one", async () => {
+    expect((await load({ latestVersion: "999.0.0" })).cachedUpdateCheck()).toMatchObject({
+      latest: "999.0.0",
+      updateAvailable: true,
+    });
+    const poisoned = (await load({ latestVersion: "999.0.0; rm -rf /" })).cachedUpdateCheck();
+    expect(poisoned.updateAvailable).toBe(false);
+    expect(poisoned.latest).not.toContain(";");
   });
 });

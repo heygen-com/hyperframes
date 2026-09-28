@@ -64,6 +64,12 @@
       "import": "./src/compositionContract.ts",
       "types": "./src/compositionContract.ts"
     },
+    "./studio-preview-mark": {
+      "bun": "./src/studioPreviewMark.ts",
+      "node": "./dist/studioPreviewMark.js",
+      "import": "./src/studioPreviewMark.ts",
+      "types": "./src/studioPreviewMark.ts"
+    },
     "./media-timing": {
       "bun": "./src/mediaTiming.ts",
       "node": "./dist/mediaTiming.js",
@@ -465,6 +471,10 @@
       "./composition-contract": {
         "import": "./dist/compositionContract.js",
         "types": "./dist/compositionContract.d.ts"
+      },
+      "./studio-preview-mark": {
+        "import": "./dist/studioPreviewMark.js",
+        "types": "./dist/studioPreviewMark.d.ts"
       },
       "./media-timing": {
         "import": "./dist/mediaTiming.js",

@@ -8,7 +8,6 @@ import { useTimelineAssetDropOps } from "./useTimelineAssetDropOps";
 import {
   applyTimelineStackingReorder,
   patchIframeDomTiming,
-  playbackStartAttributeForElement,
   persistTimelineEdit,
   formatTimelineAttributeNumber,
   formatTimelineMediaOffset,
@@ -16,6 +15,7 @@ import {
   buildTimelineMoveTimingPatch,
   buildTimelineResizeTimingPatch,
 } from "./timelineEditingHelpers";
+import { playbackStartAttributeForElement } from "../player/lib/timelineElementHelpers";
 import {
   captureDurationRollback,
   finishClipTimingFallback,

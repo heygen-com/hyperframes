@@ -8,6 +8,7 @@ import {
   formatTimingValue,
   LABEL,
   parseNumericValue,
+  readClipInPoint,
   RESPONSIVE_GRID,
   stripQueryAndHash,
 } from "./propertyPanelHelpers";
@@ -57,10 +58,7 @@ export function MediaSection({
   const volume = parseNumericValue(element.dataAttributes.volume ?? "") ?? 1;
   const volumeFaderPosition = audioGainToFaderPosition(volume);
 
-  const mediaStart =
-    Number.parseFloat(
-      element.dataAttributes["media-start"] ?? element.dataAttributes["playback-start"] ?? "0",
-    ) || 0;
+  const { mediaStart, mediaStartAttr } = readClipInPoint(element.dataAttributes);
 
   const hasLoop = el.hasAttribute("loop");
   const hasMuted = el.hasAttribute("muted");
@@ -297,7 +295,7 @@ export function MediaSection({
                 displayValue={formatTimingValue(mediaStart)}
                 formatDisplayValue={(next) => formatTimingValue(next / 100)}
                 onCommit={(next) => {
-                  void onSetAttribute("media-start", (next / 100).toFixed(2));
+                  void onSetAttribute(mediaStartAttr, (next / 100).toFixed(2));
                 }}
               />
             </div>

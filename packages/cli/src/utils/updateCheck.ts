@@ -46,26 +46,7 @@ export interface UpdateMeta {
  */
 export async function checkForUpdate(force?: boolean): Promise<UpdateCheckResult> {
   const config = readConfig();
-  if (!force && updateCheckDisabled()) return fallbackResult(config.latestVersion);
-  const now = Date.now();
-
-  // Also guard the cache read: a cache written before this boundary guard
-  // existed could hold an unsafe latestVersion — re-validate before trusting it.
-  if (
-    !force &&
-    config.lastUpdateCheck &&
-    config.latestVersion &&
-    isSafeVersion(config.latestVersion)
-  ) {
-    const lastCheck = new Date(config.lastUpdateCheck).getTime();
-    if (now - lastCheck < CHECK_INTERVAL_MS) {
-      return {
-        current: VERSION,
-        latest: config.latestVersion,
-        updateAvailable: isNewerSemver(config.latestVersion, VERSION),
-      };
-    }
-  }
+  if (!force && !updateCheckDue(config)) return fallbackResult(config.latestVersion);
 
   try {
     if (!force && !(await hostAnswers(new URL(NPM_REGISTRY_URL).hostname))) {
@@ -73,15 +54,17 @@ export async function checkForUpdate(force?: boolean): Promise<UpdateCheckResult
     }
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS);
-    const res = await fetch(NPM_REGISTRY_URL, {
-      signal: controller.signal,
-      headers: { Connection: "close" },
-    });
-    clearTimeout(timeout);
-
-    if (!res.ok) return fallbackResult(config.latestVersion);
-
-    const data = (await res.json()) as { version?: unknown };
+    let data: { version?: unknown };
+    try {
+      const res = await fetch(NPM_REGISTRY_URL, {
+        signal: controller.signal,
+        headers: { Connection: "close" },
+      });
+      if (!res.ok) return fallbackResult(config.latestVersion);
+      data = (await res.json()) as { version?: unknown };
+    } finally {
+      clearTimeout(timeout);
+    }
     // Registry boundary guard: only a strict-semver STRING is trusted. This
     // value is cached and later flows into an install command that the
     // background auto-updater executes, so a poisoned or non-string
@@ -106,6 +89,20 @@ export async function checkForUpdate(force?: boolean): Promise<UpdateCheckResult
   } catch {
     return fallbackResult(config.latestVersion);
   }
+}
+
+/** Whether the background check should ask the registry: not opted out, and no fresh safe cache. */
+export function updateCheckDue(config = readConfig()): boolean {
+  if (updateCheckDisabled()) return false;
+  if (!config.lastUpdateCheck || !config.latestVersion || !isSafeVersion(config.latestVersion)) {
+    return true;
+  }
+  const fresh = Date.now() - new Date(config.lastUpdateCheck).getTime() < CHECK_INTERVAL_MS;
+  return !fresh;
+}
+
+export function cachedUpdateCheck(): UpdateCheckResult {
+  return fallbackResult(readConfig().latestVersion);
 }
 
 function fallbackResult(cachedLatest?: string): UpdateCheckResult {
@@ -211,9 +208,7 @@ const STALE_PIN_THROTTLE_MS = 24 * 60 * 60 * 1000;
  * is skipped for --json, so a JSON stdout stays clean regardless.
  */
 export function printStalePinNotice(cwd: string = process.cwd()): void {
-  if (isDevMode()) return;
-  if (process.env["CI"] === "true" || process.env["CI"] === "1") return;
-  if (process.env["HYPERFRAMES_NO_UPDATE_CHECK"] === "1") return;
+  if (updateCheckDisabled()) return;
 
   let scripts: Record<string, string> = {};
   try {
@@ -245,9 +240,9 @@ export function printStalePinNotice(cwd: string = process.cwd()): void {
   });
   if (stale.length === 0) return;
 
-  const config = readConfig();
-  const last = config.lastStalePinNoticeAt ?? 0;
+  const last = readConfig().lastStalePinNoticeAt ?? 0;
   if (Date.now() - last < STALE_PIN_THROTTLE_MS) return;
+  const config = readConfigFresh();
   config.lastStalePinNoticeAt = Date.now();
   writeConfig(config);
 
