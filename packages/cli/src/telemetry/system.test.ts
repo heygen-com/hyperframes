@@ -30,9 +30,9 @@ describe("getSystemMeta client", () => {
   afterEach(() => vi.unstubAllEnvs());
 
   it("reads the launching app's tag from HYPERFRAMES_CLIENT", async () => {
-    vi.stubEnv("HYPERFRAMES_CLIENT", "desktop/0.8.82/stable");
+    vi.stubEnv("HYPERFRAMES_CLIENT", "studio-host/1.2.3/stable");
     const { getSystemMeta } = await import("./system.js");
-    expect(getSystemMeta().client).toBe("desktop/0.8.82/stable");
+    expect(getSystemMeta().client).toBe("studio-host/1.2.3/stable");
   });
 
   it("is null when the CLI runs from a shell", async () => {
@@ -41,7 +41,7 @@ describe("getSystemMeta client", () => {
     expect(getSystemMeta().client).toBeNull();
   });
 
-  it.each(["desktop/0.8.82 build 7", "desktop/0.8.82\nstable", `desktop/${"9".repeat(80)}`])(
+  it.each(["studio-host/1.2.3 build 7", "studio-host/1.2.3\nstable", `studio-host/${"9".repeat(80)}`])(
     "drops a tag that is not a short slash-separated slug: %j",
     async (tag) => {
       vi.stubEnv("HYPERFRAMES_CLIENT", tag);

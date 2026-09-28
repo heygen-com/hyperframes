@@ -63,13 +63,13 @@ export interface SystemMeta {
   agent_hint: string | null;
   term_program: string | null;
   agent_env_hints: string | null;
-  /** App that launched the CLI, from HYPERFRAMES_CLIENT (`desktop/<version>/<channel>`); null from a shell. */
+  /** App that launched the CLI, from HYPERFRAMES_CLIENT (`<app>/<version>/<channel>`); null from a shell. */
   client: string | null;
 }
 
 let cached: SystemMeta | null = null;
 
-// Short `desktop/<version>/<channel>`-shaped tags only: the value lands verbatim in the space-delimited feedback string.
+// Short `<app>/<version>/<channel>`-shaped tags only: the value lands verbatim in the space-delimited feedback string.
 const CLIENT_TAG = /^[a-z0-9][a-z0-9._+-]{0,31}(\/[a-z0-9._+-]{1,32}){0,3}$/i;
 
 function readClientTag(): string | null {

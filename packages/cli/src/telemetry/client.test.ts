@@ -109,7 +109,7 @@ describe("telemetry queue delivery", () => {
   it("tags every event, feedback and catalog misses included, with the launching app", async () => {
     const meta = vi.spyOn(system, "getSystemMeta").mockReturnValue({
       ...system.getSystemMeta(),
-      client: "desktop/0.8.82/stable",
+      client: "studio-host/1.2.3/stable",
     });
     try {
       const fetchMock = vi.fn(() => Promise.resolve(new Response("")));
@@ -120,9 +120,9 @@ describe("telemetry queue delivery", () => {
       trackCatalogSearchMiss({ query: "confetti" });
       await flush();
       expect(sentBatch(fetchMock).map((e) => [e.event, e.properties.client])).toEqual([
-        ["cli_command", "desktop/0.8.82/stable"],
-        ["cli_render_feedback", "desktop/0.8.82/stable"],
-        ["cli_catalog_search_miss", "desktop/0.8.82/stable"],
+        ["cli_command", "studio-host/1.2.3/stable"],
+        ["cli_render_feedback", "studio-host/1.2.3/stable"],
+        ["cli_catalog_search_miss", "studio-host/1.2.3/stable"],
       ]);
     } finally {
       meta.mockRestore();
