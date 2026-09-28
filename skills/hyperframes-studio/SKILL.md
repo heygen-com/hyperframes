@@ -29,7 +29,7 @@ Read the message before you open a file. Decide what it asks for:
 | The person                                                                                 | You                                                                                                                                |
 | ------------------------------------------------------------------------------------------ | ---------------------------------------------------------------------------------------------------------------------------------- |
 | names a change, however politely ("make the title bigger", "can you cut the third scene?") | Make it.                                                                                                                           |
-| gives a felt note on the built film ("the intro feels jolty", "it doesn't go long enough") | Find the cause, change the measurable thing, say what the note meant and what moved, and record it per `storyboard-recipe.md` § 4. |
+| gives a felt note on the built film ("the intro feels jolty", "it doesn't go long enough") | Find the cause, change the measurable thing, say what the note meant and what moved, and record it per `/hyperframes-creative` `references/storyboard-recipe.md` § 4. |
 | asks a question and names no change ("why does the title jump?")                           | Answer it. Change nothing.                                                                                                         |
 | says don't change anything, hold, "just thinking", "let's talk"                            | Change no file, not even a fix you noticed. Offer it in words.                                                                     |
 | brings an idea for this film with no concrete change ("I want the ending to feel bigger")  | Propose the change and add it to the plan (below). Change no composition file.                                                     |
@@ -114,7 +114,7 @@ this order. Each step has an owner; follow it and do not restate it here.
 
 | Step          | Owner                                                                                                                                                                                                                                                                                                         |
 | ------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| 1. Brief      | `/hyperframes` `references/intent-interview.md`. Inside an existing project, ask its must-have questions and skip `hyperframes init`. Never overwrite the project's BRIEF.md or STORYBOARD.md: add a new dated section to each and say so in the reply, which may suggest a new project for a whole new film. |
+| 1. Brief      | `/hyperframes` `references/intent-interview.md`. Inside an existing project, only a follow-on to the same film stays: a new version or a cutdown, same workflow and aspect. Ask its must-have questions, skip `hyperframes init`, never overwrite BRIEF.md or STORYBOARD.md, add a new dated section to each, and say so in the reply. A film with a different workflow or aspect starts a new project, and the reply says so. |
 | 2. Directions | `/hyperframes` `references/pitch-round.md`                                                                                                                                                                                                                                                                    |
 | 3. Storyboard | `/hyperframes-creative` `references/storyboard-recipe.md`                                                                                                                                                                                                                                                     |
 | 4. Build      | The workflow the brief routes to (`/hyperframes` § 2) and its own references                                                                                                                                                                                                                                  |
@@ -123,7 +123,7 @@ this order. Each step has an owner; follow it and do not restate it here.
 What the launch films add, for a product launch. Where the workflow's chosen arc says otherwise,
 the arc wins.
 
-- **Real footage for the launched product.** Ask for a capture or recording of it in the brief and hold its
+- **Real footage for the launched product.** Ask for a screen recording in the brief unless the workflow captures it itself (a site from its URL), and hold its
   slot with a labelled placeholder until it arrives. Never approximate the launched product's UI. A
   third-party tool shown as context (a chat app, an editor) is rebuilt faithfully from a capture.
 - **One world.** The same window or canvas continues across beats. Scrub every cut: whatever

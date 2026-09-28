@@ -2,7 +2,7 @@
 
 Fresh creation only — the SKILL.md state table already decides whether this layer runs at all (edits, project operations, briefed and resumable projects, and explicit Remotion ports never enter it). One conversation at the front door turns "make me a video" into a confirmed brief — the route, the must-have answers, the run's shape, and everything else in the user's head — handed to whichever workflow executes and made durable as `BRIEF.md`. Workflows own execution; this layer owns understanding. Every workflow's opening rule points back here, so the questions are asked once no matter which door the user came through.
 
-The one exception: a new film asked for inside an existing project runs this layer as `/hyperframes-studio` § 5 describes, without `hyperframes init` and without overwriting the project's brief.
+The one exception: a follow-on to the same film (a new version or a cutdown) asked for inside an existing project runs this layer as `/hyperframes-studio` § 5 describes, without `hyperframes init` and without overwriting the project's brief.
 
 These reads are mandatory when their condition matches; do not replace them with recollection:
 
