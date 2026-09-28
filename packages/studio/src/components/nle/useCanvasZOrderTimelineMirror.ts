@@ -30,7 +30,7 @@ export interface MirrorZOrderInput {
 /**
  * Mirror a successful canvas z-order menu action into a timeline LANE move.
  *
- * The caller (PreviewOverlays) invokes the returned callback AFTER the z commit
+ * The caller (ConnectedDomEditOverlay) invokes the returned callback AFTER the z commit
  * resolved — serializing the two same-file writes, exactly like the lane-drag's
  * move→z ordering (see persistMoveEdits' doc) — and with the SAME coalesce key
  * the z persist recorded, so editHistory folds both records into one undo entry.

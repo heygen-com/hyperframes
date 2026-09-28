@@ -411,6 +411,7 @@ export function useDomEditCommits({
     handleDomAddTextField,
     handleDomRemoveTextField,
   } = useDomEditTextCommits({
+    readOnlyPreview,
     activeCompPath,
     previewIframeRef,
     domEditSelection,

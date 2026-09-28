@@ -372,6 +372,7 @@ export function createPickerModule(deps: PickerModuleDeps): PickerModule {
         disablePickMode();
         return selected;
       },
+      describe: (element) => (isElementNode(element) ? extractElementInfo(element) : null),
       pickManyAtPoint: (clientX, clientY, indexes) => {
         if (!Number.isFinite(clientX) || !Number.isFinite(clientY)) return [];
         const infos = getPickInfosFromPoint(clientX, clientY, 8);

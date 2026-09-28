@@ -38,6 +38,19 @@ describe("validateUploadedMedia", () => {
     ).toEqual({ ok: false, reason: "no supported video stream found" });
   });
 
+  it.each(["/tmp/test.flac", "/tmp/test.m4v"])(
+    "probes %s instead of passing it through",
+    (path) => {
+      expect(
+        validateUploadedMedia(path, () => ({
+          status: 0,
+          stdout: JSON.stringify({ streams: [] }),
+          stderr: "",
+        })),
+      ).toMatchObject({ ok: false });
+    },
+  );
+
   it("accepts audio files with an audio stream", () => {
     expect(
       validateUploadedMedia("/tmp/test.wav", () => ({

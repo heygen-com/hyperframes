@@ -83,7 +83,7 @@ export const HoverVideo = ({ src, poster, className, hasAudio = true }) => {
   );
 
   return (
-    <div ref={wrapRef} className={`relative overflow-hidden ${className ?? ""}`}>
+    <div ref={wrapRef} className={className} style={{ position: "relative", overflow: "hidden" }}>
       <video
         ref={videoRef}
         className="absolute inset-0 h-full w-full object-cover"

@@ -29,7 +29,7 @@ interface RecordEditInput {
   files: Record<string, { before: string; after: string }>;
 }
 
-interface UsePreviewPersistenceParams {
+export interface UsePreviewPersistenceParams {
   showToast: (message: string, tone?: "error" | "info") => void;
   readOptionalProjectFile: (path: string) => Promise<string>;
   writeProjectFile: (path: string, content: string) => Promise<void>;

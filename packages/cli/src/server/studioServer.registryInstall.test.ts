@@ -4,6 +4,7 @@ import {
   mkdirSync,
   mkdtempSync,
   readFileSync,
+  renameSync,
   rmSync,
   symlinkSync,
   writeFileSync,
@@ -61,7 +62,7 @@ afterEach(() => {
 });
 
 /** A project behind a symlink whose hyperframes.json points at a stubbed registry; `fetched` logs every URL. */
-function projectWithRegistry(): {
+function projectWithRegistry(onItemFetch?: () => void): {
   link: string;
   real: string;
   registry: string;
@@ -84,7 +85,10 @@ function projectWithRegistry(): {
         );
       }
       const item = ITEMS.find((candidate) => url.includes(`/${candidate.name}/`));
-      if (item && url.endsWith("/registry-item.json")) return new Response(JSON.stringify(item));
+      if (item && url.endsWith("/registry-item.json")) {
+        onItemFetch?.();
+        return new Response(JSON.stringify(item));
+      }
       if (item && url.endsWith(".html")) {
         return new Response(
           `<meta name="viewport" content="width=1080, height=1350"><div data-composition-id="${item.name}"></div>`,
@@ -117,6 +121,36 @@ function installer(link: string) {
 }
 
 describe("Studio catalog install", () => {
+  it("answers that the project folder is gone when it is renamed while the item downloads", async () => {
+    let real = "";
+    ({ real } = projectWithRegistry(() => renameSync(real, `${real}-renamed`)));
+
+    const response = await server!.app.request("/api/projects/link/registry/install", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ blockName: "studio-drop-block" }),
+    });
+
+    expect(response.status).toBe(404);
+    expect(await response.json()).toMatchObject({ why: "project_dir_missing" });
+    expect(existsSync(real)).toBe(false);
+  });
+
+  it("answers that the project folder is gone, and does not recreate it, after a rename", async () => {
+    const { real } = projectWithRegistry();
+    renameSync(real, `${real}-renamed`);
+
+    const response = await server!.app.request("/api/projects/link/registry/install", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ blockName: "studio-drop-block" }),
+    });
+
+    expect(response.status).toBe(404);
+    expect(await response.json()).toMatchObject({ why: "project_dir_missing" });
+    expect(existsSync(real)).toBe(false);
+  });
+
   it("installs through add: honours the project's block folder and records the item", async () => {
     const { link, real } = projectWithRegistry();
 

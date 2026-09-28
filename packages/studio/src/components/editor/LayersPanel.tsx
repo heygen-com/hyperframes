@@ -343,7 +343,7 @@ export const LayersPanel = memo(function LayersPanel() {
 
       // ONE undo entry for the whole gesture: the z persist and the timeline
       // lane mirror below share this per-gesture-unique key (same contract as
-      // the canvas menu's wiring in PreviewOverlays).
+      // the canvas menu's wiring in ConnectedDomEditOverlay).
       const coalesceKey = zReorderCoalesceKey(entries, "layer-drag");
       const desiredOrderKeys = desiredBottomToTop.map(
         (l) =>

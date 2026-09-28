@@ -134,9 +134,8 @@ export function TimelineLanes({
     focusedTargetId,
     rowGeometry,
     scrollRef,
-    onToggleRow: (row) => {
-      if (row.elementId) toggleClipExpandedTracked(row.elementId);
-    },
+    onToggleRow: (row) => row.elementId && toggleClipExpandedTracked(row.elementId),
+    onDrillDown,
   });
   return (
     <div

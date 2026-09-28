@@ -257,6 +257,55 @@ export function scopeCssToComposition(
   return root.toResult({ map: false }).css;
 }
 
+function isFontFaceAtRule(node: { type: string; name?: string }): node is AtRule {
+  return node.type === "atrule" && (node as AtRule).name.toLowerCase() === "font-face";
+}
+
+function fontFaceKey(atRule: AtRule): string {
+  const decls: string[] = [];
+  atRule.walkDecls((decl) => {
+    // Collapse whitespace outside quoted strings only: "A  B" and "A B" name different families.
+    const value = decl.value.replace(
+      /("(?:\\.|[^"\\])*"|'(?:\\.|[^'\\])*')|\s+/g,
+      (_m, str) => str ?? " ",
+    );
+    decls.push(
+      `${decl.prop.trim().toLowerCase()}:${value.trim()}${decl.important ? "!important" : ""}`,
+    );
+  });
+  return decls.join(";");
+}
+
+/** Drops repeats of an identical `@font-face` across the given style texts, keeping the last copy:
+ * the last matching rule is the one the browser uses, so a rule in between never gains precedence. */
+export function dedupeFontFaceRules(styleTexts: string[]): string[] {
+  const seen = new Set<string>();
+  return [...styleTexts]
+    .reverse()
+    .map((css) => {
+      if (!css || !/@font-face/i.test(css)) return css;
+      let root: postcss.Root;
+      try {
+        root = postcss.parse(css);
+      } catch {
+        return css; // unparseable text ships as authored and takes no part
+      }
+      let changed = false;
+      for (const node of [...(root.nodes ?? [])].reverse()) {
+        if (!isFontFaceAtRule(node)) continue;
+        const key = fontFaceKey(node);
+        if (seen.has(key)) {
+          node.remove();
+          changed = true;
+        } else {
+          seen.add(key);
+        }
+      }
+      return changed ? root.toResult({ map: false }).css : css;
+    })
+    .reverse();
+}
+
 /**
  * Serialize a value as a JS literal safe to emit inside a `<script>` element.
  *

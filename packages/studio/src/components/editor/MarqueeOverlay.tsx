@@ -1,6 +1,6 @@
 import type { Rect } from "../../utils/marqueeGeometry";
 
-interface MarqueeOverlayProps {
+export interface MarqueeOverlayProps {
   /** Elements the marquee currently intersects — outlined live before mouse-up. */
   candidateRects: Rect[];
   /** The marquee drag rectangle itself, or null when not marquee-selecting. */

@@ -170,6 +170,45 @@ describe("useInlineTextEdit", () => {
     expect(element.hasAttribute("contenteditable")).toBe(false);
   });
 
+  it("saves an open edit when the editor unmounts", () => {
+    const element = heading();
+    const { controls, root, onCommit } = mount();
+
+    act(() => {
+      controls().start(element);
+    });
+    element.textContent = "Motion Playground Live";
+    act(() => root.unmount());
+
+    expect(onCommit.mock.calls).toEqual([
+      [{ element, html: "Motion Playground Live", previousHtml: "Motion Playground" }],
+    ]);
+    expect(element.hasAttribute("contenteditable")).toBe(false);
+  });
+
+  it("keeps the edit open when the commit function changes", () => {
+    const element = heading();
+    const controls: { current: InlineTextEditControls | null } = { current: null };
+    function Probe({ onCommit }: { onCommit: () => void }) {
+      controls.current = useInlineTextEdit({ onCommit });
+      return null;
+    }
+    const root = createRoot(document.body.appendChild(document.createElement("div")));
+    const first = vi.fn();
+    const second = vi.fn();
+    act(() => root.render(<Probe onCommit={first} />));
+    act(() => {
+      controls.current!.start(element);
+    });
+    act(() => root.render(<Probe onCommit={second} />));
+
+    expect(controls.current!.session?.element).toBe(element);
+    expect(first).not.toHaveBeenCalled();
+    act(() => root.unmount());
+    expect(first).not.toHaveBeenCalled();
+    expect(second).toHaveBeenCalledTimes(1);
+  });
+
   it("hands the current text over exactly once when it commits", () => {
     const element = heading();
     const { controls, root, onCommit } = mount();

@@ -21,7 +21,7 @@ export function readElementPlaybackStart(el: Element): number {
 }
 
 const HOLD_END_EVENTS = ["seeked", "loadeddata", "error", "emptied", "abort"] as const;
-const HOLD_CAP_MS = 5000;
+export const HOLD_CAP_MS = 5000;
 const releaseHeldVideo = new WeakMap<HTMLMediaElement, () => void>();
 
 // A seeking video still paints its previous frame, and one still fetching its first data paints none (its seek
