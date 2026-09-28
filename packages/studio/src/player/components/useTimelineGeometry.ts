@@ -113,18 +113,15 @@ export function useTimelineGeometry({
   useEffect(() => {
     usePlayerStore.getState().setTimelineScale(pps, fitPps);
   }, [pps, fitPps]);
-  // In manual zoom a length change (same width) keeps the on-screen scale instead of
-  // rescaling every clip, whichever edit caused it. Before paint, so no frame shows the jump.
-  const lastScale = useRef({ effectiveDuration, viewportWidth, contentOrigin, pps });
+  // In manual zoom a length change keeps the on-screen scale instead of rescaling every
+  // clip, whichever edit caused it. Before paint, so no frame shows the jump.
+  const lastScale = useRef({ effectiveDuration, pps });
   useLayoutEffect(() => {
     const last = lastScale.current;
-    lastScale.current = { effectiveDuration, viewportWidth, contentOrigin, pps };
-    const lengthOnly =
-      last.effectiveDuration > 0 &&
-      last.effectiveDuration !== effectiveDuration &&
-      last.viewportWidth === viewportWidth &&
-      last.contentOrigin === contentOrigin;
-    if (zoomMode === "manual" && lengthOnly)
+    lastScale.current = { effectiveDuration, pps };
+    const lengthChanged =
+      last.effectiveDuration > 0 && last.effectiveDuration !== effectiveDuration;
+    if (zoomMode === "manual" && lengthChanged)
       usePlayerStore.getState().setManualZoomPercent(computePinnedZoomPercent(last.pps, fitPps));
   });
 
