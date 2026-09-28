@@ -31,7 +31,7 @@ One beat per idea, one focus per beat. Give each beat a short semantic name that
 | Constraint  | At least one explicit "no …" per beat that could go generic.                                                                            |
 | Why         | The beat's job in the story, traced to the message. A beat whose why cannot be traced is cut.                                           |
 
-Real product proof is real: a captured screen, the real command output, or a labelled placeholder beat that holds the slot. Never approximate the launched product's UI: use its recording, or a rebuild from its own design source (`/figma`). A third-party tool shown as context is rebuilt faithfully from a capture. Where the film depicts something real, add a truthfulness line saying what is real.
+Real product proof is real: a captured screen, the real command output, or a labelled placeholder beat that holds the slot. Never approximate the launched product's UI: use a capture or recording of it, rebuild only what the capture cannot move, or rebuild from its own design source (`/figma`). A third-party tool shown as context is rebuilt faithfully from a capture. Where the film depicts something real, add a truthfulness line saying what is real.
 
 Craft devices that make a storyboard specific are taught with examples in `docs/prompting/storyboards.mdx` (breather, callback, two-color discipline) and `docs/prompting/motion.mdx` (hero prop, accumulation); use them by name.
 
