@@ -2362,6 +2362,7 @@ export function initSandboxRuntimeModular(): void {
   const bindMediaMetadataListeners = () => {
     if (state.tornDown) return;
     const mediaEls = Array.from(document.querySelectorAll("video, audio")) as HTMLMediaElement[];
+    const nearPlayheadPending: HTMLMediaElement[] = [];
     for (const mediaEl of mediaEls) {
       if (metadataBoundMedia.has(mediaEl)) continue;
       metadataBoundMedia.add(mediaEl);
@@ -2398,7 +2399,10 @@ export function initSandboxRuntimeModular(): void {
       // mode, for <audio>, or when the codec map is absent.
       maybeProxyProactively(mediaEl);
 
-      preloadMedia(mediaEl);
+      // Studio's preview loads a timed clip only near the playhead; the visibility pass decides.
+      if (hiddenImagesSkipped && mediaEl.hasAttribute("data-start"))
+        nearPlayheadPending.push(mediaEl);
+      else preloadMedia(mediaEl);
 
       // Probe volume automation from the GSAP timeline — same approach as the
       // renderer (see discoverAudioVolumeAutomationFromTimeline / audioMixer).
@@ -2407,6 +2411,8 @@ export function initSandboxRuntimeModular(): void {
       // fires after the timeline has been captured (every 30 transport ticks).
       probeAndCacheVolumeKeyframes(mediaEl);
     }
+    if (nearPlayheadPending.length > 0)
+      syncTimedElementVisibility(state.currentTime, nearPlayheadPending);
   };
 
   const probeAndCacheVolumeKeyframes = (mediaEl: HTMLMediaElement) => {
@@ -2577,6 +2583,27 @@ export function initSandboxRuntimeModular(): void {
     return (start > t && start <= t + LOOKAHEAD_SECONDS) || visibleAt(node, t + LOOKAHEAD_SECONDS);
   };
 
+  // Media on screen or due within the look-ahead loads; the rest stops holding a connection to
+  // the origin that also serves Studio's thumbnails.
+  const mediaNearPlayhead = new WeakMap<HTMLMediaElement, boolean>();
+  const preloadNearPlayhead = (el: HTMLMediaElement, visible: boolean, upcoming: boolean) => {
+    const near = visible || upcoming;
+    const decided = mediaNearPlayhead.get(el);
+    if (decided === near) return;
+    mediaNearPlayhead.set(el, near);
+    if (!near) {
+      // Only load() frees a played clip's connection; at preload none it fetches nothing back, but
+      // it drops the duration, which an untrimmed clip's window is read from.
+      if (decided && parseStrictFiniteTimingNumber(el.dataset.duration) != null) {
+        el.preload = "none";
+        el.load();
+      } else if (el.preload === "auto") el.preload = "metadata";
+    } else if (!visible || decided === undefined) {
+      // Not a clip a jump lands on: the media sync arms that one, and load() would undo its seek.
+      preloadMedia(el);
+    }
+  };
+
   const applyTimedElementVisibility = (
     currentTime: number,
     visibilityNodes: Element[],
@@ -2613,10 +2640,11 @@ export function initSandboxRuntimeModular(): void {
         visibleAt(rawNode, currentTime) &&
         clipChainVisibleAt(rawNode.parentElement, currentTime, visibleAt, rootComp);
       rawNode.style.visibility = isVisibleNow ? "visible" : "hidden";
-      rawNode.toggleAttribute(
-        STUDIO_PREVIEW_UPCOMING_ATTR,
-        hiddenImagesSkipped && !isVisibleNow && dueSoon(rawNode, visibleAt, currentTime),
-      );
+      const upcoming =
+        hiddenImagesSkipped && !isVisibleNow && dueSoon(rawNode, visibleAt, currentTime);
+      rawNode.toggleAttribute(STUDIO_PREVIEW_UPCOMING_ATTR, upcoming);
+      if (hiddenImagesSkipped && isMediaElement(rawNode) && metadataBoundMedia.has(rawNode))
+        preloadNearPlayhead(rawNode, isVisibleNow, upcoming);
       if (!isMediaElement(rawNode) && !isImageElement(rawNode)) decidedTimedClip = true;
       if (isVideoElement(rawNode) || isImageElement(rawNode)) {
         colorGradingRuntime?.setSourceVisibility(rawNode, isVisibleNow);

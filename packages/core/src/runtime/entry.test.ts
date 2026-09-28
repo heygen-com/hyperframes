@@ -303,6 +303,74 @@ describe("runtime entry", () => {
     expect(document.querySelectorAll("style[data-hf-first-pass-hide]")).toHaveLength(0);
   });
 
+  describe("media preload window", () => {
+    const loads: HTMLMediaElement[] = [];
+    const spyLoad = () => {
+      loads.length = 0;
+      vi.spyOn(HTMLMediaElement.prototype, "load").mockImplementation(
+        function (this: HTMLMediaElement) {
+          loads.push(this);
+        },
+      );
+    };
+    const loadsOf = (...els: HTMLMediaElement[]) =>
+      els.map((el) => loads.filter((loaded) => loaded === el).length);
+    const videos = (root: HTMLElement, ...starts: string[]) =>
+      starts.map((start) => timed(root, "video", start));
+    const armed = (...els: HTMLMediaElement[]) => els.map((el) => el.preload === "auto");
+    afterEach(() => vi.restoreAllMocks());
+
+    it("loads a preview's media only on screen or due within the look-ahead, and frees what the playhead left", async () => {
+      spyLoad();
+      servePreview();
+      const [now, soon, later] = videos(mountRoot(), "0", "1.5", "5");
+
+      await evaluateRuntime();
+      expect(armed(now, soon, later)).toEqual([true, true, false]);
+      expect(loadsOf(now, soon, later)).toEqual([1, 1, 0]);
+
+      window.__player?.seek(3.6);
+      expect(armed(now, soon, later)).toEqual([false, false, true]);
+      // The two that left are reloaded empty, which drops the connection each held.
+      expect([now.preload, soon.preload]).toEqual(["none", "none"]);
+      expect(loadsOf(now, soon, later)).toEqual([2, 2, 1]);
+    });
+
+    it("keeps an untrimmed clip's duration when the playhead leaves it", async () => {
+      spyLoad();
+      servePreview();
+      const [untrimmed] = videos(mountRoot(), "0");
+      untrimmed.removeAttribute("data-duration");
+      Object.defineProperty(untrimmed, "duration", { value: 2 });
+
+      await evaluateRuntime();
+      window.__player?.seek(3.6);
+      expect(armed(untrimmed)).toEqual([false]);
+      expect(loadsOf(untrimmed)).toEqual([1]);
+    });
+
+    it("arms a clip a far jump lands on without reloading it under the seek", async () => {
+      spyLoad();
+      servePreview();
+      const [now, later] = videos(mountRoot(), "0", "8");
+
+      await evaluateRuntime();
+      window.__player?.seek(8.4);
+      expect(armed(now, later)).toEqual([false, true]);
+      expect(loadsOf(later)).toEqual([0]);
+    });
+
+    it("keeps a render loading every media element at bind", async () => {
+      spyLoad();
+      const [now, soon, later] = videos(mountRoot(), "0", "1.5", "5");
+
+      await evaluateRuntime();
+      window.__player?.seek(3.6);
+      expect(armed(now, soon, later)).toEqual([true, true, true]);
+      expect(loadsOf(now, soon, later)).toEqual([1, 1, 1]);
+    });
+  });
+
   it("grades media inside a clip once the first pass shows the clip, with no seek", async () => {
     const getContext = vi.spyOn(HTMLCanvasElement.prototype, "getContext").mockReturnValue(null);
     const scene = timed(mountRoot(), "div", "0");
