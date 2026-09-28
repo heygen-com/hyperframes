@@ -42,6 +42,12 @@ export function createStudioApi(adapter: StudioApiAdapter): Hono {
     if (c.res.status >= 403 && dirBeforeRoute && folderGone(dirBeforeRoute))
       replaceWithProjectDirMissing(c, hostHeaders);
   });
+  api.use("/projects/:id/*", async function forgetSignatureAfterWrite(c, next) {
+    await next();
+    if (c.req.method === "GET" || c.req.method === "HEAD") return;
+    const project = await adapter.resolveProject(c.req.param("id"));
+    if (project) adapter.invalidateProjectSignature?.(project.dir);
+  });
 
   registerProjectRoutes(api, adapter);
   registerFileRoutes(api, adapter);

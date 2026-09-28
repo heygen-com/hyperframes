@@ -7,6 +7,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { createStudioApi } from "../createStudioApi";
 import { DELETED_VERSION, fileContentVersion, identifyFileWrite } from "../helpers/fileVersion";
 import { openProjectHistory, type ProjectHistory } from "../history/projectHistory";
+import { createProjectSignature, resolveProjectSignature } from "../helpers/projectSignature";
 import type { StudioApiAdapter } from "../types";
 
 const cleanup: Array<() => unknown> = [];
@@ -93,6 +94,30 @@ describe("history routes", () => {
       expect(readFileSync(file, "utf-8")).toBe('<h1 id="title">B</h1>');
     },
   );
+
+  it("drop the host's cached signature before an undo answers, so the next preview is the restored build", async () => {
+    const { projectDir, history } = await demoProject();
+    let cached: string | null = null;
+    const adapter = {
+      listProjects: () => [],
+      resolveProject: (id: string) => (id === "demo" ? { id, dir: projectDir } : null),
+      history: () => history,
+      getProjectSignature: (dir: string) => (cached ??= createProjectSignature(dir)),
+      invalidateProjectSignature: () => (cached = null),
+    } as unknown as StudioApiAdapter;
+    const api = createStudioApi(adapter);
+    const call = (path: string, body: object) =>
+      api.request(`/projects/demo/history${path}`, { method: "POST", body: JSON.stringify(body) });
+    const { windowId } = await (await call("/window", { label: "Retitle" })).json();
+    writeFileSync(join(projectDir, "index.html"), "Bee");
+    await call(`/window/${windowId}/close`, {});
+    // A thumbnail request caches the edited build's signature; the watcher that clears it lags the undo.
+    const edited = resolveProjectSignature(adapter, projectDir);
+
+    expect(await (await call("/step", { direction: "back" })).json()).toMatchObject({ ok: true });
+    expect(readFileSync(join(projectDir, "index.html"), "utf-8")).toBe("A");
+    expect(resolveProjectSignature(adapter, projectDir)).not.toBe(edited);
+  });
 
   it("record a Studio edit window as the person's entry, and step back undoes it", async () => {
     const { projectDir, call } = await demoProject();

@@ -122,6 +122,7 @@ export interface StudioApiAdapter {
 
   /** Optional: cached signature for project files that should invalidate preview frame caches. */
   getProjectSignature?: (projectDir: string) => string;
+  invalidateProjectSignature?: (projectDir: string) => void;
 
   /** Lint a single HTML string. */
   lint(
