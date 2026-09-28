@@ -113,8 +113,8 @@ export async function measureCarve(
       offsetSeconds: clipStart(voice.start) - bedStart,
     })),
   );
-  const voiceMix = mixCarveSources(decoded, DECODE_SAMPLE_RATE);
-  if (voiceMix.length === 0) return null;
+  const mixed = mixCarveSources(decoded, DECODE_SAMPLE_RATE);
+  if (mixed.length === 0) return null;
   // Strength is what the author set; these are the numbers it means.
   const profile = carveProfile(strength);
   // The bed as well as the voice, when the carve is asked to match levels:
@@ -122,6 +122,11 @@ export async function measureCarve(
   // one of them.
   const bedSamples =
     profile.duckDb > 0 && bed.src ? await decode(bed.src, bed.clock).catch(() => null) : null;
+  // Speech after the bed stops has no bed to carve.
+  const bedLength =
+    bedSamples?.length ??
+    (bed.clock.duration ? Math.round(bed.clock.duration * DECODE_SAMPLE_RATE) : mixed.length);
+  const voiceMix = mixed.subarray(0, bedLength);
   const bands = analyseCarveBands(voiceMix, DECODE_SAMPLE_RATE, profile);
   // The level half of the carve, measured against the speech it has to sit
   // under. No offset to apply: the mix is already on the bed's clock.

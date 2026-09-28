@@ -39,7 +39,7 @@ export function clipSourceWindow(
         from + Math.ceil(sourceTimeAt(clock.rate, clock.duration) * sampleRate),
       )
     : samples.length;
-  return from === 0 && to === samples.length ? samples : samples.subarray(from, to);
+  return samples.subarray(from, to);
 }
 
 const GRAIN = 4096;
@@ -63,6 +63,8 @@ export function clipAudioOnItsClock(
   const out = new Float32Array(
     Math.round(timeAtSourceTime(clock.rate, source.length / sampleRate) * sampleRate),
   );
+  // ponytail: grains are not phase-aligned, so off rate 1 the level reads ~1.3 dB low
+  // (up to ~3 dB on tones) and the duck runs that much deeper; WSOLA if it must match export.
   for (let at = -HOP; at < out.length; at += HOP) {
     const centre = Math.round(sourceTimeAt(clock.rate, (at + HOP) / sampleRate) * sampleRate);
     for (let k = 0; k < GRAIN; k += 1) {

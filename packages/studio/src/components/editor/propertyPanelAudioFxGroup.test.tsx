@@ -1047,7 +1047,7 @@ describe("AudioFxGroup dynamic carve", () => {
       const nodes = parseWrite(writeTo(calls, "data-fx-chain")!).nodes as {
         id: string;
         type: string;
-        params: { gain: number };
+        params: { gain: number; frequency: number };
       }[];
       const node = nodes.find((n) => n.type === type)!;
       const lanes = parseWrite(writeTo(calls, "data-automation")!).lanes as {
@@ -1055,8 +1055,23 @@ describe("AudioFxGroup dynamic carve", () => {
         points: Point[];
       }[];
       const points = lanes.find((l) => l.target === `fx.${node.id}.gain`)!.points;
-      return { depth: node.params.gain, points, at: (t: number) => valueAt(points, t) };
+      return {
+        depth: node.params.gain,
+        frequency: node.params.frequency,
+        points,
+        at: (t: number) => valueAt(points, t),
+      };
     }
+
+    it("ignores speech after the bed has stopped playing", async () => {
+      // Quiet 1 kHz speech under the 3 s bed; loud 4 kHz speech at 4-6 s, after the bed ends.
+      const under = tone(8, [0, 2], 1000, 0.3);
+      const after = tone(8, [4, 6], 4000, 0.9);
+      const voice = under.map((v, i) => v + after[i]!);
+      stubFiles({ "voice.wav": voice, "bed.wav": tone(8, [0, 8], 200) });
+      const lane = await carveLane("peaking", { start: "0" }, { duration: "3" });
+      expect(lane.frequency).toBe(1000);
+    });
 
     it("cuts where a trimmed voice speaks, not where its file does", async () => {
       // File speech 2-3.5 s; the clip plays 2-4 s of it, so the bed hears it at 0-1.5 s.
