@@ -20,10 +20,6 @@ export interface FindProjectsOptions {
 }
 
 const WALK_CONCURRENCY = 64;
-const HOME = homedir();
-
-const skippedDir = (parent: string, name: string) =>
-  name.startsWith(".") || name === "node_modules" || (name === "Library" && parent === HOME);
 
 async function readEntries(dir: string): Promise<Dirent[] | null> {
   try {
@@ -62,6 +58,9 @@ export async function findProjects({
   spotlight = spotlightMarkers,
 }: FindProjectsOptions): Promise<number> {
   const root = await realpath(givenRoot).catch(() => givenRoot);
+  const home = await realpath(homedir()).catch(() => homedir());
+  const skippedDir = (parent: string, name: string) =>
+    name.startsWith(".") || name === "node_modules" || (name === "Library" && parent === home);
   const reported = new Set<string>();
   const entriesByDir = new Map<string, Promise<Dirent[] | null>>();
   const entriesOf = (dir: string) => {

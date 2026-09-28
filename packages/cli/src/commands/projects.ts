@@ -1,10 +1,11 @@
 import { defineCommand } from "citty";
-import { statSync } from "node:fs";
+import { readdirSync } from "node:fs";
 import { homedir } from "node:os";
 import { resolve } from "node:path";
 import type { Example } from "./_examples.js";
 import { c } from "../ui/colors.js";
-import { CliUsageError } from "../utils/commandResult.js";
+import { errorBox } from "../ui/format.js";
+import { failCommand } from "../utils/commandResult.js";
 import { findProjects } from "../utils/findProjects.js";
 
 export const examples: Example[] = [
@@ -25,8 +26,11 @@ export default defineCommand({
   },
   async run({ args }) {
     const root = resolve(args.root ?? homedir());
-    if (!statSync(root, { throwIfNoEntry: false })?.isDirectory()) {
-      throw new CliUsageError(`Not a folder: ${root}`);
+    try {
+      readdirSync(root);
+    } catch (error) {
+      errorBox("Cannot search this folder", `${root}: ${(error as NodeJS.ErrnoException).code}`);
+      failCommand();
     }
     const count = await findProjects({
       root,

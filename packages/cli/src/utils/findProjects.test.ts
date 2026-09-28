@@ -1,11 +1,20 @@
-import { chmodSync, mkdirSync, mkdtempSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
+import {
+  chmodSync,
+  mkdirSync,
+  mkdtempSync,
+  realpathSync,
+  rmSync,
+  symlinkSync,
+  writeFileSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { findProjects, type FoundProject } from "./findProjects.js";
 
 const roots: string[] = [];
 afterEach(() => {
+  vi.unstubAllEnvs();
   for (const root of roots.splice(0)) {
     chmodSync(root, 0o755);
     rmSync(root, { recursive: true, force: true });
@@ -13,7 +22,7 @@ afterEach(() => {
 });
 
 function tree(files: string[]): string {
-  const root = mkdtempSync(join(tmpdir(), "hf-find-projects-"));
+  const root = realpathSync(mkdtempSync(join(tmpdir(), "hf-find-projects-")));
   roots.push(root);
   for (const file of files) {
     mkdirSync(join(root, file, ".."), { recursive: true });
@@ -73,6 +82,18 @@ describe("findProjects", () => {
     writeFileSync(join(root, "repo-copy", ".git"), "gitdir: /src/repo/.git/worktrees/repo-copy\n");
 
     expect(paths(root, await find(root))).toEqual(["vendor/sub/film"]);
+  });
+
+  it("skips Library in the home folder but not a folder named Library elsewhere", async () => {
+    const root = tree([
+      "Library/film/index.html",
+      "Library/film/meta.json",
+      "Movies/Library/film/index.html",
+      "Movies/Library/film/meta.json",
+    ]);
+    vi.stubEnv("HOME", root);
+
+    expect(paths(root, await find(root))).toEqual(["Movies/Library/film"]);
   });
 
   it("does not look for projects inside a project", async () => {
