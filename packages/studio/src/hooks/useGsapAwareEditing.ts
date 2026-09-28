@@ -71,6 +71,11 @@ export interface UseGsapAwareEditingParams {
     label: string,
   ) => void;
   // DOM fallbacks (from useDomEditCommits)
+  commitElementPathOffset: (
+    selection: DomEditSelection,
+    next: { x: number; y: number },
+    coalesceKey?: string,
+  ) => Promise<void>;
   handleDomBoxSizeCommit: (
     selection: DomEditSelection,
     next: { width: number; height: number },
@@ -117,6 +122,7 @@ export function useGsapAwareEditing({
   bumpGsapCache,
   makeFetchFallback,
   trackGsapInteractionFailure,
+  commitElementPathOffset,
   handleDomBoxSizeCommit,
   addGsapAnimation,
   convertToKeyframes,
@@ -154,6 +160,10 @@ export function useGsapAwareEditing({
             makeFetchFallback(selection),
             modifiers,
           );
+          if (outcome.status === "element-offset") {
+            await commitElementPathOffset(selection, next);
+            return;
+          }
           assertGsapEditPersisted(outcome);
         } catch (error) {
           trackGsapInteractionFailure(error, selection, "drag", "Move animated layer");
@@ -167,6 +177,7 @@ export function useGsapAwareEditing({
       makeFetchFallback,
       trackGsapInteractionFailure,
       getGsapAnimationsForSelection,
+      commitElementPathOffset,
     ],
   );
 
@@ -222,6 +233,7 @@ export function useGsapAwareEditing({
         return Promise.resolve();
       };
       const preflightAnimations = new Map<DomEditSelection, GsapAnimation[]>();
+      const offsetMembers = new Set<DomEditSelection>();
       // Editability is user-atomic: prove every member can be written before
       // the first source mutation. Network failures after this point retain the
       // existing multi-request semantics, but a blocked member can never leave
@@ -242,6 +254,7 @@ export function useGsapAwareEditing({
             undefined,
             { preflightOnly: true },
           );
+          if (outcome.status === "element-offset") offsetMembers.add(selection);
           assertGsapEditPersisted(outcome);
         }),
       );
@@ -255,8 +268,15 @@ export function useGsapAwareEditing({
         );
         throw preflightFailure.error;
       }
+      const lastScriptWrite = updates.findLastIndex(
+        ({ selection }) => !offsetMembers.has(selection),
+      );
       for (const [index, { selection, next }] of updates.entries()) {
-        renderOnCommit = index === updates.length - 1;
+        renderOnCommit = index === lastScriptWrite;
+        if (offsetMembers.has(selection)) {
+          await commitElementPathOffset(selection, next, coalesceKey);
+          continue;
+        }
         try {
           const outcome = await tryGsapDragIntercept(
             selection,
@@ -288,7 +308,13 @@ export function useGsapAwareEditing({
         throw error;
       }
     },
-    [gsapCommitMutation, previewIframeRef, makeFetchFallback, trackGsapInteractionFailure],
+    [
+      gsapCommitMutation,
+      previewIframeRef,
+      makeFetchFallback,
+      trackGsapInteractionFailure,
+      commitElementPathOffset,
+    ],
   );
 
   const handleGsapAwareBoxSizeCommit = useCallback(

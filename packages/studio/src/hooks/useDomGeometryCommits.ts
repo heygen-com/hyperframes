@@ -58,6 +58,24 @@ export function useDomGeometryCommits({
   commitPositionPatchToHtml,
   readOnlyPreview,
 }: UseDomGeometryCommitsParams) {
+  // The element's own inline offset. Also the channel for a GSAP element whose position
+  // tween is shared with siblings: `translate` composes with GSAP's transform.
+  const commitElementPathOffset = useCallback(
+    (selection: DomEditSelection, next: { x: number; y: number }, coalesceKey?: string) => {
+      if (readOnlyPreview) return Promise.resolve();
+      const before = captureStudioPathOffset(selection.element);
+      applyStudioPathOffset(selection.element, next);
+      return commitPositionPatchToHtml(selection, buildPathOffsetPatches(selection.element), {
+        label: "Move layer",
+        coalesceKey: coalesceKey ?? `path-offset:${getDomEditTargetKey(selection)}`,
+      }).catch((error) => {
+        restoreStudioPathOffset(selection.element, before);
+        throw error;
+      });
+    },
+    [commitPositionPatchToHtml, readOnlyPreview],
+  );
+
   const handleDomPathOffsetCommit = useCallback(
     (selection: DomEditSelection, next: { x: number; y: number }) => {
       if (readOnlyPreview) return Promise.resolve();
@@ -67,17 +85,9 @@ export function useDomGeometryCommits({
       // Upgrade path for GSAP: add a moveElementGsap SDK op in a separate SDK PR.
       const gsapFallback = rejectGsapCssFallback(selection, previewIframeRef, showToast);
       if (gsapFallback) return gsapFallback;
-      const before = captureStudioPathOffset(selection.element);
-      applyStudioPathOffset(selection.element, next);
-      return commitPositionPatchToHtml(selection, buildPathOffsetPatches(selection.element), {
-        label: "Move layer",
-        coalesceKey: `path-offset:${getDomEditTargetKey(selection)}`,
-      }).catch((error) => {
-        restoreStudioPathOffset(selection.element, before);
-        throw error;
-      });
+      return commitElementPathOffset(selection, next);
     },
-    [commitPositionPatchToHtml, previewIframeRef, showToast, readOnlyPreview],
+    [commitElementPathOffset, previewIframeRef, showToast, readOnlyPreview],
   );
 
   const handleDomBoxSizeCommit = useCallback(
@@ -163,6 +173,7 @@ export function useDomGeometryCommits({
   );
 
   return {
+    commitElementPathOffset,
     handleDomPathOffsetCommit,
     handleDomBoxSizeCommit,
     handleDomRotationCommit,
