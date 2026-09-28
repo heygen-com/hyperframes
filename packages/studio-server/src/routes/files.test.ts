@@ -3,9 +3,12 @@ import { Hono } from "hono";
 import { parseHTML } from "linkedom";
 import { ensureHfIds } from "@hyperframes/parsers/hf-ids";
 import {
+  closeSync,
   existsSync,
+  ftruncateSync,
   mkdirSync,
   mkdtempSync,
+  openSync,
   readFileSync,
   readdirSync,
   rmSync,
@@ -297,6 +300,38 @@ describe("registerFileRoutes", () => {
     expect(response.status).toBe(404);
   });
 
+  it("answers 413 for a file over the text cap without reading it", async () => {
+    const projectDir = createProjectDir();
+    const fd = openSync(join(projectDir, "big.mp4"), "w");
+    ftruncateSync(fd, 300 * 1024 * 1024);
+    closeSync(fd);
+    const app = new Hono();
+    registerFileRoutes(app, createAdapter(projectDir));
+
+    const heapBefore = process.memoryUsage().heapUsed;
+    const response = await app.request("http://localhost/projects/demo/files/big.mp4");
+    const body = await response.text();
+
+    expect(response.status).toBe(413);
+    expect(JSON.parse(body)).toMatchObject({ why: "too_large" });
+    expect(body.length).toBeLessThan(1024);
+    expect(process.memoryUsage().heapUsed - heapBefore).toBeLessThan(50 * 1024 * 1024);
+  });
+
+  it("answers 415 for a binary file", async () => {
+    const projectDir = createProjectDir();
+    const header = Buffer.from([0, 0, 0, 0x18, 0x66, 0x74, 0x79, 0x70, 0xff, 0xfe]);
+    writeFileSync(join(projectDir, "clip.mp4"), Buffer.concat([header, Buffer.alloc(4096, 0xab)]));
+    const app = new Hono();
+    registerFileRoutes(app, createAdapter(projectDir));
+
+    const response = await app.request("http://localhost/projects/demo/files/clip.mp4");
+
+    expect(response.status).toBe(415);
+    expect(await response.json()).toMatchObject({ why: "binary", version: expect.any(String) });
+    expect(response.headers.get("etag")).toBeTruthy();
+  });
+
   it("returns the same strong content version in JSON and ETag", async () => {
     const projectDir = createProjectDir();
     const app = new Hono();
@@ -324,7 +359,8 @@ describe("registerFileRoutes", () => {
     expect(readFileSync(join(projectDir, "assets/image.png"))).toEqual(bytes);
     const read = await app.request(url);
     const payload = await read.json();
-    expect(payload.content).toBe(bytes.toString("utf-8"));
+    expect(read.status).toBe(415);
+    expect(payload.content).toBeUndefined();
     expect(payload.version).toBe(fileContentVersion(bytes));
     expect(read.headers.get("etag")).toBe(payload.version);
     const duplicate = await app.request(url, {
@@ -366,6 +402,7 @@ describe("registerFileRoutes", () => {
     writeFileSync(path, before);
     const url = "http://localhost/projects/demo/files/image.png";
     const read = await app.request(url);
+    expect(read.status).toBe(415);
     const version = read.headers.get("etag")!;
     // Invalid UTF-8 bytes may decode to the same string, but must not share a version.
     const staleBytes = Buffer.from([0xfe, 0, 0x80, 0x81]);
