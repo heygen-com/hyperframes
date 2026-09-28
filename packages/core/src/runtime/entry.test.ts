@@ -327,15 +327,14 @@ describe("runtime entry", () => {
 
       await evaluateRuntime();
       expect(armed(now, soon, later)).toEqual([true, true, false]);
-      // Reloaded empty: a fetch the parser started for the far clip stops and none starts.
       expect(later.preload).toBe("none");
-      expect(loadsOf(now, soon, later)).toEqual([1, 1, 1]);
+      expect(loadsOf(now, soon, later)).toEqual([1, 1, 0]);
 
       window.__player?.seek(3.6);
       expect(armed(now, soon, later)).toEqual([false, false, true]);
       // The two that left are reloaded empty, which drops the connection each held.
       expect([now.preload, soon.preload]).toEqual(["none", "none"]);
-      expect(loadsOf(now, soon, later)).toEqual([2, 2, 2]);
+      expect(loadsOf(now, soon, later)).toEqual([2, 2, 1]);
     });
 
     it("keeps an untrimmed clip's duration when the playhead leaves it", async () => {
@@ -363,6 +362,18 @@ describe("runtime entry", () => {
       expect(loadsOf(later)).toEqual([beforeJump]);
     });
 
+    it("gives each parsed clip after the first frame preload none before it can fetch", async () => {
+      servePreview();
+      const root = mountRoot();
+      timed(root, "div", "0");
+      await evaluateRuntime();
+      const [first, later] = videos(root, "0", "5");
+      const untrimmed = timed(root, "audio", "5");
+      untrimmed.removeAttribute("data-duration");
+      await Promise.resolve();
+      expect([first.preload, later.preload, untrimmed.preload]).toEqual(["", "none", ""]);
+    });
+
     it("keeps a render loading every media element at bind", async () => {
       spyLoad();
       const [now, soon, later] = videos(mountRoot(), "0", "1.5", "5");
@@ -371,6 +382,9 @@ describe("runtime entry", () => {
       window.__player?.seek(3.6);
       expect(armed(now, soon, later)).toEqual([true, true, true]);
       expect(loadsOf(now, soon, later)).toEqual([1, 1, 1]);
+      const parsedLater = timed(document.body, "video", "5");
+      await Promise.resolve();
+      expect(parsedLater.preload).not.toBe("none");
     });
   });
 

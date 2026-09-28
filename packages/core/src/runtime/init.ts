@@ -1,5 +1,5 @@
 // fallow-ignore-file code-duplication complexity
-import { preloadMedia } from "./preloadMedia";
+import { preloadMedia, waitsUnloaded } from "./preloadMedia";
 import { installRuntimeControlBridge, postRuntimeMessage, setRuntimeProtocolFps } from "./bridge";
 import { instantTolerance } from "../clipFacts";
 import { isInClipWindow } from "./clipWindow";
@@ -2592,13 +2592,12 @@ export function initSandboxRuntimeModular(): void {
     if (decided === near) return;
     mediaNearPlayhead.set(el, near);
     if (!near) {
-      // load() at preload none stops any fetch and makes none, but it drops the duration an
-      // untrimmed clip's window is read from, so that one stays at metadata.
-      if (parseStrictFiniteTimingNumber(el.dataset.duration) == null) {
+      if (!waitsUnloaded(el)) {
         if (el.preload === "auto") el.preload = "metadata";
       } else if (el.preload !== "none") {
         el.preload = "none";
-        el.load();
+        // Frees a clip the window armed; on one the parser started, it would only restart the fetch.
+        if (decided) el.load();
       }
     } else if (!visible || decided === undefined) {
       // Not a clip a jump lands on: the media sync arms that one, and load() would undo its seek.
