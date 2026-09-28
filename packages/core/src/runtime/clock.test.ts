@@ -362,6 +362,17 @@ describe("TransportClock", () => {
       expect(clock.now()).toBeCloseTo(5.016, 5);
     });
 
+    it("does not freeze on a short native loop that wraps", () => {
+      const { clock, advance } = createClock({ duration: 30 });
+      clock.play();
+      const bed = Object.assign(createMockAudioEl(0.3, false), { loop: true });
+      clock.attachAudioSource({ el: bed, compositionStart: 0, mediaStart: 0 });
+      expect(clock.now()).toBeCloseTo(0.3, 5);
+      advance(16);
+      bed.currentTime = 0.02; // wrapped to its loop start
+      expect(clock.now()).toBeCloseTo(0.316, 5);
+    });
+
     it("continues from the last audio time when the element drops out", () => {
       const { clock, advance } = createClock({ duration: 30 });
       clock.play();
@@ -436,15 +447,24 @@ describe("TransportClock", () => {
       expect(clock.now()).toBe(4);
     });
 
-    it("composition time is correct when el.playbackRate differs from clock rate", () => {
-      // General formula: wall_elapsed = (el.currentTime - mediaStart) / el.playbackRate
-      // composition_time = compositionStart + wall_elapsed * clockRate
+    it("reads the element's place in its file, whatever playbackRate it has been given", () => {
       const { clock } = createClock({ rate: 2, duration: 20 });
-      // Audio at 1x, clock at 2x: after 1s wall, el.currentTime=1, comp should be 2.
       const audioEl = { currentTime: 1, paused: false, playbackRate: 1 } as HTMLMediaElement;
       clock.play();
       clock.attachAudioSource({ el: audioEl, compositionStart: 0, mediaStart: 0 });
-      expect(clock.now()).toBe(2);
+      expect(clock.now()).toBe(1);
+    });
+
+    it("keeps its place when the speed changes under a clip with its own rate", () => {
+      const { clock, advance } = createClock({ duration: 30 });
+      clock.play();
+      const voice = { currentTime: 12.5, paused: false, playbackRate: 1.25 } as HTMLMediaElement;
+      clock.attachAudioSource({ el: voice, compositionStart: 0, mediaStart: 0, rate: 1.25 });
+      expect(clock.now()).toBe(10);
+      clock.setRate(1.5);
+      voice.playbackRate = 1.5; // the transport rate lands on the element before media sync restores 1.875
+      advance(16);
+      expect(clock.now()).toBe(10);
     });
   });
 });

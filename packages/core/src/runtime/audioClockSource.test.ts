@@ -167,7 +167,7 @@ describe("the audio the playhead follows", () => {
     expect(lastTime).toBeGreaterThan(1.4);
   });
 
-  it("does not follow a clip whose media failed to load", async () => {
+  it("follows the next clip when one earlier in the page failed to load", async () => {
     mount(
       `<audio id="broken" data-start="0" data-duration="10" src="/assets/missing.mp3"></audio>` +
         `<audio id="vo" data-start="0" data-duration="10" src="/assets/vo.mp3"></audio>`,
@@ -184,8 +184,8 @@ describe("the audio the playhead follows", () => {
     Object.assign(vo, { paused: false });
     for (let frame = 0; frame < 90; frame++) {
       stepFrames(1);
-      vo.currentTime = (nowMs - playedAt) / 1000;
+      vo.currentTime = (nowMs - playedAt) / 1000 + 0.2; // ahead of the wall clock, so only the voice explains it
     }
-    expect(window.__player!.getTime()).toBeGreaterThan(1.4);
+    expect(window.__player!.getTime()).toBeGreaterThan((nowMs - playedAt) / 1000 + 0.1);
   });
 });

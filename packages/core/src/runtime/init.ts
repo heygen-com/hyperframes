@@ -4520,8 +4520,9 @@ export function initSandboxRuntimeModular(): void {
             const durAttr = parseStrictFiniteTimingNumber(rawEl.dataset.duration);
             const end = durAttr != null && durAttr > 0 ? start + durAttr : Infinity;
             const mediaStart = readElementPlaybackStart(rawEl);
+            if (rawEl.error) continue;
             if (Number.isFinite(start) && isInClipWindow(state.currentTime, start, end)) {
-              if (!rawEl.paused && !rawEl.error) {
+              if (!rawEl.paused) {
                 clock.attachAudioSource({
                   el: rawEl,
                   compositionStart: start,
@@ -4529,7 +4530,7 @@ export function initSandboxRuntimeModular(): void {
                   rate: readElementRateSpec(rawEl),
                 });
                 foundActive = true;
-              } else if (!rawEl.error && rawEl.readyState < HTMLMediaElement.HAVE_FUTURE_DATA) {
+              } else if (rawEl.readyState < HTMLMediaElement.HAVE_FUTURE_DATA) {
                 // Audio is buffering — freeze visuals at last known position
                 // instead of falling through to monotonic (which runs ahead).
                 clock.attachAudioSource({ currentTimeSeconds: state.currentTime });
