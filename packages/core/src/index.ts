@@ -276,6 +276,7 @@ export {
 } from "./inline-scripts/parityContract";
 export { redactKnownPaths, redactTelemetryString } from "./telemetryRedaction";
 export { isSafePath, realpath, resolveWithinProject } from "./safePath";
+export { isHyperframesProject, PROJECT_MARKER_FILES } from "./projectRule";
 export type {
   HyperframePickerApi,
   HyperframePickerBoundingBox,

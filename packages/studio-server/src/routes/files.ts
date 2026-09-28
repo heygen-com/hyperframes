@@ -2227,11 +2227,13 @@ async function processUploadedFiles(
   uploaded: string[];
   skipped: string[];
   invalid: Array<{ name: string; reason: string }>;
+  unchecked: Array<{ name: string; reason: string }>;
 }> {
   const MAX_UPLOAD_BYTES = 500 * 1024 * 1024; // 500 MB per file
   const uploaded: string[] = [];
   const skipped: string[] = [];
   const invalid: Array<{ name: string; reason: string }> = [];
+  const unchecked: Array<{ name: string; reason: string }> = [];
 
   // @types/node v25 narrows the ambient `FormData.entries()` to
   // `[string, string]` in workspaces where another dep declares an
@@ -2326,12 +2328,13 @@ async function processUploadedFiles(
     }
     const relativePath = subDir ? join(subDir, finalName) : finalName;
     uploaded.push(relativePath);
+    if (validation.unchecked) unchecked.push({ name: finalName, reason: validation.unchecked });
     if (isAudioFile(finalName)) {
       generateWaveformCache(projectDir, relativePath).catch(() => {});
     }
   }
 
-  return { uploaded, skipped, invalid };
+  return { uploaded, skipped, invalid, unchecked };
 }
 
 // ── Route registration ──────────────────────────────────────────────────────
@@ -3258,7 +3261,13 @@ export function registerFileRoutes(api: Hono, adapter: StudioApiAdapter): void {
       const result = await processUploadedFiles(formData, targetDir, project.dir);
 
       return c.json(
-        { ok: true, files: result.uploaded, skipped: result.skipped, invalid: result.invalid },
+        {
+          ok: true,
+          files: result.uploaded,
+          skipped: result.skipped,
+          invalid: result.invalid,
+          unchecked: result.unchecked,
+        },
         201,
       );
     },

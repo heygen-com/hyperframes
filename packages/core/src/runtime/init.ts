@@ -110,6 +110,7 @@ import { swallow } from "./diagnostics";
 import {
   CHANGE_DRIVEN_SERVICE_MIN_INTERVAL_MS,
   MEDIA_BIND_INTERVAL_FRAMES,
+  PLAYING_POLL_INTERVAL_MS,
   TIMELINE_POST_INTERVAL_FRAMES,
   shouldAttemptPeriodicTimelineBind,
 } from "./timelineRebindPolicy";
@@ -1278,7 +1279,8 @@ export function initSandboxRuntimeModular(): void {
       childList: true,
       subtree: true,
       attributes: true,
-      attributeFilter: DURATION_FLOOR_INPUT_ATTRIBUTES,
+      // Sizing inputs too: postTimeline applies them, and it runs when this revision moves.
+      attributeFilter: [...DURATION_FLOOR_INPUT_ATTRIBUTES, "data-width", "data-height"],
     });
     // Media duration changes are published as events, not DOM mutations, and
     // they do not bubble — so listen in the capture phase, which reaches every
@@ -3068,6 +3070,7 @@ export function initSandboxRuntimeModular(): void {
   let assetsReadyStarted = false;
   let assetsSettled = false;
   let liveRootDurationOverrideSeconds = 0;
+  let lastPostedManifest = "";
   const computeClipTreeSignature = (): string => {
     let sig = "";
     for (const el of document.querySelectorAll("[data-start]")) {
@@ -3093,6 +3096,7 @@ export function initSandboxRuntimeModular(): void {
       canonicalFps: state.canonicalFps,
     });
     window.__clipManifest = payload;
+    lastPostedManifest = JSON.stringify(payload);
 
     const currentSignature = computeClipTreeSignature();
     if (clipTreeSignature !== currentSignature) {
@@ -3124,6 +3128,14 @@ export function initSandboxRuntimeModular(): void {
       });
     }
     scheduleRootStageLayoutDiagnostics();
+  };
+
+  // What no observer sees (a label, a track or an inline z-index edited on a playing clip) still reaches Studio.
+  const postTimelineIfManifestChanged = () => {
+    const manifest = JSON.stringify(
+      collectRuntimeTimelinePayload({ canonicalFps: state.canonicalFps }),
+    );
+    if (manifest !== lastPostedManifest) postTimeline();
   };
 
   const finitePositiveDuration = (value: number | null | undefined): number =>
@@ -4025,6 +4037,9 @@ export function initSandboxRuntimeModular(): void {
   /** A composition change has been seen and not yet carried to consumers. */
   let compositionChangePending = false;
   let lastChangeDrivenServiceAtMs = Number.NEGATIVE_INFINITY;
+  let lastPlayingPollAtMs = Number.NEGATIVE_INFINITY;
+  let playingPollWitness = "";
+  let lastTickPlaying = false;
 
   const seekRuntimeTimeline = (
     timeline: RuntimeTimelineLike,
@@ -4391,30 +4406,32 @@ export function initSandboxRuntimeModular(): void {
     try {
       transportTickCount += 1;
 
-      // The three periodic jobs below fire on a frame counter, which is only a
-      // proxy for "the document may have changed since last time". The counter
-      // stops advancing while the loop is parked, so on THAT path the question
-      // is asked directly: the composition timing revision moves on exactly the
-      // inputs these three derive from.
-      //
-      // Only on that path. While the clock is playing the counter advances at
-      // frame rate and is already a good cadence, and raising it is a real
-      // regression: postTimeline walks the whole document, so a composition
-      // that mutates the DOM every frame would turn one post per 20 frames into
-      // one per frame. And the change-driven path is rate-limited to the same
-      // posts-per-second the counter yields at 60 Hz, so no consumer ever sees
-      // a faster cadence than the frame counter alone produced.
+      // The jobs below run when the composition revision moves (rate-limited). What no
+      // observer sees is polled: on the frame counter paused, on a timer playing.
       const timingRevision = readCompositionTimingRevision();
       if (timingRevision !== lastSeenTimingRevision) {
         lastSeenTimingRevision = timingRevision;
         compositionChangePending = true;
       }
       const nowMs = Date.now();
+      const playing = clock.isPlaying();
+      const playingPollDue = playing && nowMs - lastPlayingPollAtMs >= PLAYING_POLL_INTERVAL_MS;
+      const stoppedPlaying = lastTickPlaying && !playing;
+      lastTickPlaying = playing;
+      if (playingPollDue) {
+        lastPlayingPollAtMs = nowMs;
+        const witness = readParkedPollWitness();
+        if (witness !== playingPollWitness) {
+          playingPollWitness = witness;
+          compositionChangePending = true;
+        }
+      }
       const changeDrivenService =
         compositionChangePending &&
-        !clock.isPlaying() &&
         nowMs - lastChangeDrivenServiceAtMs >= CHANGE_DRIVEN_SERVICE_MIN_INTERVAL_MS;
       if (changeDrivenService) lastChangeDrivenServiceAtMs = nowMs;
+      const pausedCounterDue = (interval: number) =>
+        !playing && transportTickCount % interval === 0;
 
       // Slower operations: timeline binding (~every 60 frames / ~1s at 60fps).
       // `compositionChanged` goes IN to the policy, never around it: the policy
@@ -4423,10 +4440,11 @@ export function initSandboxRuntimeModular(): void {
       if (
         shouldAttemptPeriodicTimelineBind({
           tick: transportTickCount,
-          isPlaying: clock.isPlaying(),
+          isPlaying: playing,
           hasCapturedTimeline: state.capturedTimeline != null,
           currentTimeSeconds: clock.now(),
           compositionChanged: changeDrivenService,
+          playingPollDue,
         })
       ) {
         const prevTimeline = state.capturedTimeline;
@@ -4442,7 +4460,7 @@ export function initSandboxRuntimeModular(): void {
           postTimeline();
         }
       }
-      if (changeDrivenService || transportTickCount % TIMELINE_POST_INTERVAL_FRAMES === 0) {
+      if (changeDrivenService || pausedCounterDue(TIMELINE_POST_INTERVAL_FRAMES)) {
         // The manifest is what carries a composition change to its consumers,
         // so posting it is what discharges the pending flag — whichever path
         // got here. Clearing it when the change is merely SEEN would drop it
@@ -4455,8 +4473,10 @@ export function initSandboxRuntimeModular(): void {
         // change happens to wake the loop again.
         postTimeline();
         compositionChangePending = false;
+      } else if (playingPollDue || stoppedPlaying) {
+        postTimelineIfManifestChanged();
       }
-      if (changeDrivenService || transportTickCount % MEDIA_BIND_INTERVAL_FRAMES === 0) {
+      if (changeDrivenService || pausedCounterDue(MEDIA_BIND_INTERVAL_FRAMES)) {
         bindMediaMetadataListeners();
       }
 
