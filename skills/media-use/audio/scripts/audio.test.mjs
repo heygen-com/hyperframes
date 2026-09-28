@@ -52,7 +52,12 @@ test("a person's own file under a bundled name is not labelled as the library's"
   const dir = mkdtempSync(join(tmpdir(), "mu-audio-"));
   try {
     const resolve = () =>
-      resolveSfx({ cues: [{ id: "1", name: "whoosh" }], heygenOK: false, hyperframesDir: dir, sfxLibDir });
+      resolveSfx({
+        cues: [{ id: "1", name: "whoosh" }],
+        heygenOK: false,
+        hyperframesDir: dir,
+        sfxLibDir,
+      });
     const copied = await resolve();
     const reused = await resolve();
     writeFileSync(join(dir, copied.sfx[0].file), "the person's own whoosh");

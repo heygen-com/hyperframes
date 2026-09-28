@@ -89,7 +89,10 @@ export function latestRecordFor(projectDir, path) {
 }
 
 /** Records a file already in the project where it is, unless its current record already says the same source. */
-export function recordInPlace(projectDir, { type, path, source, description, duration, provenance }) {
+export function recordInPlace(
+  projectDir,
+  { type, path, source, description, duration, provenance },
+) {
   const latest = latestRecordFor(projectDir, path);
   if (latest?.source === source) return latest;
   const record = {

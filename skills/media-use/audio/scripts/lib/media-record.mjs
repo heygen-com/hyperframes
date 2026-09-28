@@ -34,7 +34,14 @@ export function writtenAssets({ only, lines, voices, ttsProvider, bgm, bgmFields
       const source = SFX_SOURCES[cue.source];
       if (!source) continue;
       const provider = source === "search" ? "heygen" : "bundled.sfx";
-      assets.push({ path: cue.file, type: "sfx", source, intent: cue.name, duration: cue.duration_s, provider });
+      assets.push({
+        path: cue.file,
+        type: "sfx",
+        source,
+        intent: cue.name,
+        duration: cue.duration_s,
+        provider,
+      });
     }
   }
   return assets;

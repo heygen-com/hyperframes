@@ -928,7 +928,12 @@ async function ingest(src) {
   }
   const real = (path) => (existsSync(path) ? realpathSync(path) : path);
   const inProject = args.source && !isUrl ? relative(real(projectDir), real(resolve(src))) : null;
-  if (inProject && inProject !== ".." && !inProject.startsWith(`..${sep}`) && !isAbsolute(inProject)) {
+  if (
+    inProject &&
+    inProject !== ".." &&
+    !inProject.startsWith(`..${sep}`) &&
+    !isAbsolute(inProject)
+  ) {
     return recordProjectFile(inProject.split(sep).join("/"));
   }
   const ext = extname(isUrl ? new URL(src).pathname : src) || defaultExt(type);
@@ -976,7 +981,11 @@ async function recordProjectFile(path) {
     source: args.source,
     description: intent,
     duration: probeMedia(join(projectDir, path)).duration,
-    provenance: { provider: args.provider || "local", from: path, ...(intent && { prompt: intent }) },
+    provenance: {
+      provider: args.provider || "local",
+      from: path,
+      ...(intent && { prompt: intent }),
+    },
   });
   regenerateIndex(projectDir);
   // "recorded", not the record's source, so usage counts keep meaning fetches.
