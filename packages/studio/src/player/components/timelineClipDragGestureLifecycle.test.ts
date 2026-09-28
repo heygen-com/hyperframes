@@ -135,6 +135,8 @@ describe("timeline clip drag gesture lifecycle", () => {
   it.each([
     ["above the window", 20, -40],
     ["past the window's right edge", window.innerWidth + 40, 10],
+    ["on the window's right edge", window.innerWidth, 10],
+    ["on the window's bottom edge", 20, window.innerHeight],
   ])("cancels a drag released %s and leaves the clip where it was", (_, clientX, clientY) => {
     const g = mountGesture("drag");
     window.dispatchEvent(new MouseEvent("pointermove", { clientX: 20, clientY: 10 }));
