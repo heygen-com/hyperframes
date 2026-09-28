@@ -9,11 +9,11 @@ import {
 } from "../player/components/timelineTrackDisplay";
 import { saveProjectFilesWithHistory } from "../utils/studioFileHistory";
 import { isAudioTimelineElement } from "../utils/timelineInspector";
-import { readTagSnippetByTarget, type PatchOperation } from "../utils/sourcePatcher";
+import type { PatchOperation } from "../utils/sourcePatcher";
 import {
-  applyPatchByTarget,
-  buildPatchTarget,
   findTimelineElementInIframe,
+  operationChanges,
+  patchTimelineChangesInSource,
   readFileContent,
   type RecordEditInput,
 } from "./timelineEditingHelpers";
@@ -149,38 +149,24 @@ async function setElementsHidden({
     property: "hidden",
     value: hidden ? "" : null,
   };
-  const originalByPath = new Map<string, string>();
-  const files: Record<string, string> = {};
+  const files: Record<string, (current: string) => string> = {};
+  for (const [targetPath, fileElements] of groupElementsByTargetPath(elements, activeCompPath)) {
+    files[targetPath] = (current) => {
+      pendingTimelineEditPathRef.current.add(targetPath);
+      return patchTimelineChangesInSource(
+        current,
+        targetPath,
+        operationChanges(fileElements, hiddenOperation),
+      );
+    };
+  }
 
   try {
-    for (const [targetPath, fileElements] of groupElementsByTargetPath(elements, activeCompPath)) {
-      let patchedContent = await readFileContent(projectId, targetPath);
-      originalByPath.set(targetPath, patchedContent);
-
-      for (const element of fileElements) {
-        const patchTarget = buildPatchTarget(element);
-        if (!patchTarget) {
-          throw new Error(`Timeline element ${element.id} is missing a patchable target`);
-        }
-        if (readTagSnippetByTarget(patchedContent, patchTarget) === undefined) {
-          throw new Error(`Unable to patch timeline element ${element.id} in ${targetPath}`);
-        }
-        patchedContent = applyPatchByTarget(patchedContent, patchTarget, hiddenOperation);
-      }
-
-      files[targetPath] = patchedContent;
-      pendingTimelineEditPathRef.current.add(targetPath);
-    }
-
     const changedPaths = await saveProjectFilesWithHistory({
       projectId,
       label,
       files,
-      readFile: async (path) => {
-        const original = originalByPath.get(path);
-        if (original !== undefined) return original;
-        return readFileContent(projectId, path);
-      },
+      readFile: (path) => readFileContent(projectId, path),
       writeFile: writeProjectFile,
       recordEdit,
     });

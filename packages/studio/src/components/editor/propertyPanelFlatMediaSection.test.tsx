@@ -4,7 +4,10 @@ import React, { act } from "react";
 import { createRoot } from "react-dom/client";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { FlatMediaSection } from "./propertyPanelFlatMediaSection";
+import { MediaSection } from "./propertyPanelMediaSection";
 import type { DomEditSelection } from "./domEditing";
+import { formatTimingValue } from "./propertyPanelHelpers";
+import { readMediaOffsetSeconds } from "@hyperframes/parsers/media-duration";
 
 (globalThis as unknown as { IS_REACT_ACT_ENVIRONMENT: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
@@ -605,6 +608,65 @@ describe("FlatMediaSection — audio clips", () => {
       input.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", bubbles: true }));
     });
     expect(onSetAttribute.mock.calls).toEqual([[attribute, expected]]);
+    act(() => root.unmount());
+  });
+
+  it.each<Record<string, string>>([
+    { "playback-start": "1", "media-start": "5" },
+    { "playback-start": "-1", "media-start": "1" },
+    { "media-start": "1" },
+    {},
+  ])("shows and edits the in-point playback reads (%o)", (inPoint) => {
+    const attrs: Record<string, string> = { "source-duration": "45", ...inPoint };
+    const playbackReads = () => readMediaOffsetSeconds((name) => attrs[name.slice(5)]);
+    const onSetAttribute = vi.fn((name: string, value: string) => {
+      attrs[name] = value;
+    });
+    const { host, root } = renderWithRate(makeAudioElement(attrs), onSetAttribute);
+    const readout = host
+      .querySelector('[data-flat-slider-track="true"][aria-label="Media start"]')
+      ?.parentElement?.querySelector<HTMLElement>('[data-flat-slider-value="true"]');
+    if (!readout) throw new Error("expected Media start readout");
+    expect(readout.textContent).toBe(formatTimingValue(playbackReads()));
+    act(() => readout.dispatchEvent(new MouseEvent("click", { bubbles: true })));
+    const input = host.querySelector<HTMLInputElement>('[data-flat-slider-input="true"]');
+    if (!input) throw new Error("expected Media start input");
+    act(() => {
+      typeInto(input, "3");
+      input.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", bubbles: true }));
+    });
+    expect(playbackReads()).toBe(3);
+    act(() => root.unmount());
+  });
+
+  it.each<Record<string, string>>([
+    { "playback-start": "1", "media-start": "5" },
+    { "media-start": "1" },
+  ])("the Design panel's Media start slider writes where playback reads (%o)", (inPoint) => {
+    const attrs: Record<string, string> = { "source-duration": "45", ...inPoint };
+    const onSetAttribute = vi.fn((name: string, value: string) => {
+      attrs[name] = value;
+    });
+    const host = document.createElement("div");
+    document.body.append(host);
+    const root = createRoot(host);
+    act(() => {
+      root.render(
+        <MediaSection
+          projectDir={null}
+          element={makeAudioElement(attrs)}
+          styles={{}}
+          onSetStyle={vi.fn()}
+          onSetAttribute={onSetAttribute}
+          onSetHtmlAttribute={vi.fn()}
+        />,
+      );
+    });
+    const slider = host.querySelector<HTMLInputElement>('input[aria-label="Media start"]');
+    if (!slider) throw new Error("expected Media start slider");
+    act(() => typeInto(slider, "300"));
+    act(() => slider.dispatchEvent(new MouseEvent("mouseup", { bubbles: true })));
+    expect(readMediaOffsetSeconds((name) => attrs[name.slice(5)])).toBe(3);
     act(() => root.unmount());
   });
 

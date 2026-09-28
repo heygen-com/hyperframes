@@ -468,8 +468,8 @@ describe("AudioFxGroup dynamic carve", () => {
    */
   it("levels the part of the file the clip plays, not the file from its start", async () => {
     // A lane's `t` is seconds from the start of the CLIP, but the decode is the
-    // whole file — so a trimmed clip got an envelope offset by exactly
-    // `media-start`, and every correction landed early.
+    // whole file — so a trimmed clip got an envelope offset by exactly the
+    // in-point, and every correction landed early.
     //
     // The file is loud 0-2s, quiet 2-5s, loud again 5-8s, and the clip trims the
     // first 2s. Measured from the clip's own zero, t=0.5 sits in the quiet
@@ -495,7 +495,8 @@ describe("AudioFxGroup dynamic carve", () => {
 
     const { host, onSetAttributeQuiet } = mount({
       "fx-chain": CHAIN,
-      "media-start": "2",
+      "playback-start": "2",
+      "media-start": "0",
       duration: "6",
     });
     document.getElementById("bed")?.setAttribute("src", "bed.wav");

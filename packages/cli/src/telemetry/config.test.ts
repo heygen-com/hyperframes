@@ -113,6 +113,17 @@ describe("config.ts — readConfig / readConfigFresh / writeConfig (real module,
     expect(reread.deParallelRouterTrialRenderCount).toBe(5);
   });
 
+  it("keeps the background checks' attempt stamps across a fresh read", () => {
+    const config = readConfig();
+    config.lastUpdateAttemptAt = "2026-09-27T10:00:00.000Z";
+    config.lastSkillsAttemptAt = "2026-09-27T11:00:00.000Z";
+    writeConfig(config);
+    expect(readConfigFresh()).toMatchObject({
+      lastUpdateAttemptAt: "2026-09-27T10:00:00.000Z",
+      lastSkillsAttemptAt: "2026-09-27T11:00:00.000Z",
+    });
+  });
+
   it('treats a non-boolean deParallelRouterTrialFired (e.g. the JSON string "false") as unset, not truthy', () => {
     const base = readConfig();
     fsState.files.set(

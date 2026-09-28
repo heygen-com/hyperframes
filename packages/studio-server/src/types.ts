@@ -109,8 +109,8 @@ export interface StudioApiAdapter {
   resolveProject(id: string): Promise<ResolvedProject | null> | ResolvedProject | null;
 
   /**
-   * Optional: the project's history (openProjectHistory), one per project for the host's lifetime. Without it
-   * the history routes answer 404.
+   * Optional: the project's current history. A history refuses every call once its folder is replaced (a
+   * deleted `.hyperframes`, a new project there), so keep them in `historyCache`, which reopens. Else routes 404.
    */
   history?: (project: ResolvedProject) => Promise<ProjectHistory | null> | ProjectHistory | null;
 

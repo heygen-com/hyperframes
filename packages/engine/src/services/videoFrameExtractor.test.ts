@@ -1789,6 +1789,98 @@ describe.skipIf(!HAS_FFMPEG)("video frame extraction format", () => {
   }, 60_000);
 });
 
+// Each output slot shows the frame on screen at its time, as the preview does.
+describe.skipIf(!HAS_FFMPEG)("frame sampling at the output frame rate", () => {
+  const FIXTURE_DIR = mkdtempSync(join(tmpdir(), "hf-video-frame-sampling-"));
+  const WIDTH = 32;
+  const HEIGHT = 16;
+  // Matroska stores whole-millisecond timestamps (a 30 fps frame at 66.67 ms reads 67 ms);
+  // a 1/30 timescale stores each frame exactly on a coarse tick.
+  const SOURCES = {
+    "mp4-60": { fps: 60, file: "index-60fps.mp4", muxer: [] },
+    "mkv-30": { fps: 30, file: "index-30fps.mkv", muxer: [] },
+    "mp4-30-timescale-30": {
+      fps: 30,
+      file: "index-30fps-ts30.mp4",
+      muxer: ["-video_track_timescale", "30"],
+    },
+  } as const;
+  type SourceName = keyof typeof SOURCES;
+  const sourcePath = (name: SourceName) => join(FIXTURE_DIR, SOURCES[name].file);
+
+  beforeAll(async () => {
+    for (const name of Object.keys(SOURCES) as SourceName[]) {
+      // Frame k carries luma 16 + 2k, so each extracted frame names its source index.
+      const result = await runFfmpeg([
+        "-y",
+        "-hide_banner",
+        "-loglevel",
+        "error",
+        "-f",
+        "lavfi",
+        "-i",
+        `nullsrc=s=${WIDTH}x${HEIGHT}:r=${SOURCES[name].fps}:d=1.5,geq=lum='16+2*N':cb=128:cr=128`,
+        "-c:v",
+        "libx264",
+        "-qp",
+        "0",
+        "-pix_fmt",
+        "yuv420p",
+        ...SOURCES[name].muxer,
+        sourcePath(name),
+      ]);
+      if (!result.success) throw new Error(`index fixture synthesis failed: ${result.stderr}`);
+    }
+  }, 30_000);
+
+  afterAll(() => {
+    rmSync(FIXTURE_DIR, { recursive: true, force: true });
+  });
+
+  function sourceIndexes(extracted: ExtractedFrames): number[] {
+    const decoded = spawnSync("ffmpeg", [
+      "-v",
+      "error",
+      "-i",
+      join(extracted.outputDir, extracted.framePattern),
+      "-f",
+      "rawvideo",
+      "-pix_fmt",
+      "gray",
+      "pipe:1",
+    ]);
+    if (decoded.status !== 0) throw new Error(decoded.stderr.toString());
+    const indexes: number[] = [];
+    for (let offset = 0; offset < decoded.stdout.length; offset += WIDTH * HEIGHT) {
+      indexes.push(Math.round(((decoded.stdout[offset] ?? 0) * 219) / 255 / 2));
+    }
+    return indexes;
+  }
+
+  it.each([
+    { source: "mp4-60", fps: 24, startTime: 0, duration: 0.5 },
+    { source: "mp4-60", fps: 10, startTime: 0.37, duration: 0.6 },
+    { source: "mkv-30", fps: 30, startTime: 0, duration: 0.5 },
+    { source: "mp4-30-timescale-30", fps: 60, startTime: 0, duration: 0.5 },
+  ] as const)(
+    "$source: samples the frame on screen at each $fps fps slot from $startTime s",
+    async (c) => {
+      const extracted = await extractVideoFramesRange(
+        sourcePath(c.source),
+        `${c.source}-${c.fps}`,
+        c.startTime,
+        c.duration,
+        { fps: c.fps, outputDir: FIXTURE_DIR, format: "png" },
+      );
+      const onScreen = Array.from({ length: Math.round(c.duration * c.fps) }, (_, i) =>
+        Math.floor((c.startTime + i / c.fps) * SOURCES[c.source].fps + 1e-9),
+      );
+      expect(sourceIndexes(extracted)).toEqual(onScreen);
+    },
+    30_000,
+  );
+});
+
 describe.skipIf(!HAS_FFMPEG)("held tails on sparse-timestamp sources", () => {
   const fixtureDir = mkdtempSync(join(tmpdir(), "hf-sparse-held-tail-"));
   const cfrFixture = join(fixtureDir, "sub-1fps-cfr.mp4");
