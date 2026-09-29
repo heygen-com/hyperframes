@@ -82,6 +82,11 @@ afterEach(() => {
 /** Where the playhead at `time` sits inside the 800px viewport. */
 const onScreenX = (scroll: HTMLDivElement, time: number, pps: number) =>
   ORIGIN + time * pps - scroll.scrollLeft;
+function expectVisible(scroll: HTMLDivElement, time: number, pps: number) {
+  const x = onScreenX(scroll, time, pps);
+  expect(x).toBeGreaterThanOrEqual(ORIGIN);
+  expect(x).toBeLessThanOrEqual(800);
+}
 
 describe("useTimelinePlayhead zoom anchor", () => {
   it("keeps a view at the start at the start when the window resizes", () => {
@@ -122,9 +127,7 @@ describe("useTimelinePlayhead zoom anchor", () => {
     usePlayerStore.setState({ currentTime: 30 });
     const scroll = scrollBox(0);
     mount({ pps: 100, scroll, percent: 100 })({ pps: 200, percent: 200 }, true);
-    const x = onScreenX(scroll, 30, 200);
-    expect(x).toBeGreaterThanOrEqual(ORIGIN);
-    expect(x).toBeLessThanOrEqual(800);
+    expectVisible(scroll, 30, 200);
   });
 });
 
@@ -152,9 +155,7 @@ describe("useTimelinePlayhead zoom anchor, percent written by Studio itself", ()
     usePlayerStore.setState({ currentTime: 30 });
     const scroll = scrollBox(0);
     mount({ pps: 100, scroll, percent: 200 })({ pps: 200, percent: 200 }, true);
-    const x = onScreenX(scroll, 30, 200);
-    expect(x).toBeGreaterThanOrEqual(ORIGIN);
-    expect(x).toBeLessThanOrEqual(800);
+    expectVisible(scroll, 30, 200);
   });
 });
 
@@ -163,9 +164,7 @@ describe("useTimelinePlayhead follow while paused", () => {
     const scroll = scrollBox(0);
     mount({ pps: 100, scroll });
     act(() => liveTime.notify(30));
-    const x = onScreenX(scroll, 30, 100);
-    expect(x).toBeGreaterThanOrEqual(ORIGIN);
-    expect(x).toBeLessThanOrEqual(800);
+    expectVisible(scroll, 30, 100);
   });
 
   it("leaves the view alone when a paused seek lands on screen, even past the follow line", () => {

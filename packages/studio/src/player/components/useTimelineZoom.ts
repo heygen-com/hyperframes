@@ -15,7 +15,6 @@ export function useTimelineZoom(): TimelineZoomState {
   const manualZoomPercent = usePlayerStore((s) => s.manualZoomPercent);
   const setZoomMode = usePlayerStore((s) => s.setZoomMode);
   const setStorePercent = usePlayerStore((s) => s.setManualZoomPercent);
-  // Counted so the timeline tells a person's zoom from a pin or re-pin, which write the percent directly.
   const setManualZoomPercent = useCallback(
     (percent: number) => {
       usePlayerStore.setState((s) => ({ userZoomCount: s.userZoomCount + 1 }));

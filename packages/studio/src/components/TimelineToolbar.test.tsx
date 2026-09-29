@@ -226,6 +226,18 @@ describe("TimelineToolbar Fit", () => {
     expect(fit()?.getAttribute("aria-pressed")).toBe("false");
     act(() => root.unmount());
   });
+
+  it("counts a zoom-in click as a person's zoom, so the timeline anchors it on the playhead", () => {
+    const { host, root } = renderToolbar();
+    const before = usePlayerStore.getState().userZoomCount;
+    act(() =>
+      host
+        .querySelector('button[aria-label="Zoom in"]')
+        ?.dispatchEvent(new MouseEvent("click", { bubbles: true })),
+    );
+    expect(usePlayerStore.getState().userZoomCount).toBe(before + 1);
+    act(() => root.unmount());
+  });
 });
 
 describe("TimelineToolbar audio meters", () => {
