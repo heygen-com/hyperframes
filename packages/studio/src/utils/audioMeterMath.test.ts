@@ -1,5 +1,7 @@
 import { describe, expect, it } from "vitest";
+import type { TimelineElement } from "../player";
 import {
+  hasProjectAudio,
   levelToFraction,
   markFraction,
   SILENT_CHANNEL,
@@ -40,5 +42,24 @@ describe("stepPair", () => {
     const rest = stepPair(undefined, undefined, 0, 16);
     expect(stepPair(rest, { l: 0, r: 0 }, 16, 16)).toBe(rest);
     expect(stepPair(rest, { l: 1, r: 0 }, 32, 16)).not.toBe(rest);
+  });
+});
+
+describe("hasProjectAudio", () => {
+  const clip = (overrides: Partial<TimelineElement>): TimelineElement => ({
+    id: "c",
+    tag: "div",
+    start: 0,
+    duration: 1,
+    track: 0,
+    ...overrides,
+  });
+
+  it("counts an audible video as project audio", () => {
+    expect(hasProjectAudio([clip({ tag: "video", hasAudio: true })])).toBe(true);
+  });
+
+  it("ignores a silent video", () => {
+    expect(hasProjectAudio([clip({ tag: "video" })])).toBe(false);
   });
 });

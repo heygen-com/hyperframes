@@ -67,9 +67,11 @@ export function stepPair(
   return [stepChannel(l, raw?.l ?? 0, now, dtMs), stepChannel(r, raw?.r ?? 0, now, dtMs)];
 }
 
-/** The meters appear only for a project with at least one audio clip or group. */
-function hasProjectAudio(elements: readonly TimelineElement[]): boolean {
-  return elements.some((el) => isAudioTimelineElement(el) || el.audioGroup !== undefined);
+/** The meters appear only for a project with at least one audio clip, audible video or group. */
+export function hasProjectAudio(elements: readonly TimelineElement[]): boolean {
+  return elements.some(
+    (el) => isAudioTimelineElement(el) || el.hasAudio === true || el.audioGroup !== undefined,
+  );
 }
 
 /** Scans once per `elements` change, not on every store update (the playhead ticks each frame). */
