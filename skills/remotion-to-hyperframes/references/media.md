@@ -70,8 +70,8 @@ is the static baseline.
 ## `<Video>` and `<OffthreadVideo>`
 
 ```tsx
-<Video src={staticFile("intro.mp4")} muted playsInline />
-<OffthreadVideo src={staticFile("intro.mp4")} muted />
+<Video src={staticFile("intro.mp4")} playsInline />
+<OffthreadVideo src={staticFile("intro.mp4")} />
 ```
 
 ```html
@@ -92,7 +92,7 @@ collapses to a regular `<video>`.
 `playsinline` is required for the runtime to autoplay (browser policy); always
 emit it. Remotion `<Video>` maps to `<video playsinline>` + `data-has-audio="true"`
 unless the Remotion source sets `muted` or `volume={0}` (then emit `muted`
-instead, as in the source above).
+instead).
 
 ## `<Img>`
 

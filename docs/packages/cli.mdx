@@ -641,7 +641,7 @@ npx hyperframes lint [dir] --json
 ◆  Linting my-project/index.html
 
   ✗ missing_gsap_script: Composition uses GSAP but no GSAP script is loaded.
-  ⚠ unmuted-video [clip-1]: Video should have the 'muted' attribute for reliable autoplay.
+  ⚠ video_missing_muted [clip-1]: <video id="clip-1"> has data-start but declares neither muted nor data-has-audio. If the file has sound, add data-has-audio="true" (the sound stays on this clip). If it is silent, add muted.
 
 ◇  1 error(s), 1 warning(s)
 ```

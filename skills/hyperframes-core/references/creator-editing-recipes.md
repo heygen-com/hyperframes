@@ -4,7 +4,7 @@ Use these copyable contracts after `tracks-and-clips.md`. Global math: **consume
 
 Before any edit, run `npx hyperframes timeline` (add `--json` for a machine-readable list) to see the project's tracks and clips instead of reading the HTML.
 
-These recipes keep a video's sound on the `<video>` (`data-has-audio="true"`, no `muted`), so cutting the video cuts its sound. Use a separate `<audio>` only when picture and sound must be cut independently (J/L cuts, replacement audio) or for other sound (music, voiceover) — the recipes that do say so.
+These recipes keep a video's sound on the `<video>` (`data-has-audio="true"`, no `muted`), so cutting the video cuts its sound. Use a separate `<audio>` only when picture and sound must be cut independently (J/L cuts, replacement audio) or for other sound (music, voiceover) — the recipes that do say so. Silent footage or b-roll: replace `data-has-audio="true"` with `muted` in these blocks.
 
 **Every `<video>` and `<audio>` below carries an `id`, and that is not cosmetic**: `lint` errors with `media_missing_id` on timed media without one, and an id-less `<audio>` is never picked up by the mixer, so the render comes out silent. Keep the ids when you copy a recipe.
 
@@ -298,7 +298,7 @@ A J cut or L cut is the case that needs a separate `<audio>`: picture and sound 
 ></audio>
 ```
 
-The sound leads the picture by one second (a J cut): the `<audio>` starts at 4 and reads from source 11, while the picture starts at 5 and reads from 12. Both stay on the same source clock.
+The sound leads the picture by one second (a J cut): the `<audio>` starts at 4 and reads from source 11, while the picture starts at 5 and reads from 12. Both stay on the same source clock. The outgoing clip's own sound must end at the audio cut (trim it or mute it) so two sounds don't overlap.
 
 ## Align a sound to an on-screen event
 
