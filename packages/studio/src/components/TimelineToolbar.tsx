@@ -26,7 +26,7 @@ import { AudioMetersIcon } from "./icons/AudioMetersIcon";
 import { RippleEditIcon } from "./icons/RippleEditIcon";
 import { flatActive, flatBtn, flatDisabled, flatIdle } from "./timelineToolbarStyles";
 import { TimelineHistoryButtons, type TimelineHistoryButtonsProps } from "./TimelineHistoryButtons";
-import { Scissors } from "../icons/SystemIcons";
+import { TimelineToolPicker } from "./TimelineToolPicker";
 import type { GsapAnimation } from "@hyperframes/core/gsap-parser";
 import type { DomEditSelection } from "./editor/domEditingTypes";
 import { canSplitElement } from "../utils/timelineElementSplit";
@@ -144,8 +144,6 @@ export function TimelineToolbar({
   showAddBeat = true,
   showKeyframes = true,
 }: TimelineToolbarProps) {
-  const activeTool = usePlayerStore((s) => s.activeTool);
-  const setActiveTool = usePlayerStore((s) => s.setActiveTool);
   const timelineSnapEnabled = usePlayerStore((s) => s.timelineSnapEnabled);
   const setTimelineSnapEnabled = usePlayerStore((s) => s.setTimelineSnapEnabled);
   const rippleEditEnabled = usePlayerStore((s) => s.rippleEditEnabled);
@@ -216,30 +214,7 @@ export function TimelineToolbar({
       <div className="flex items-center justify-between px-2 py-0.5">
         <div className="flex items-center gap-0.5">
           <TimelineHistoryButtons {...history} />
-          <Tooltip label="Selection tool (V)">
-            <button
-              type="button"
-              onClick={() => setActiveTool("select")}
-              aria-label="Selection tool"
-              aria-pressed={activeTool === "select"}
-              className={activeTool === "select" ? flatActive : flatIdle}
-            >
-              <svg width="16" height="16" viewBox="0 0 12 12" fill="currentColor">
-                <path d="M2 0.5L10 6L6.5 6.5L8.5 11L6.5 11.5L4.5 7L2 9Z" />
-              </svg>
-            </button>
-          </Tooltip>
-          <Tooltip label="Razor tool (B) — Shift+click splits all tracks">
-            <button
-              type="button"
-              onClick={() => setActiveTool("razor")}
-              aria-label="Razor tool"
-              aria-pressed={activeTool === "razor"}
-              className={activeTool === "razor" ? flatActive : flatIdle}
-            >
-              <Scissors size={16} />
-            </button>
-          </Tooltip>
+          <TimelineToolPicker />
           {/* Divider: tool-mode | editing-actions */}
           <div aria-hidden="true" className="mx-1 h-4 w-px bg-neutral-800" />
           <Tooltip label={timelineSnapEnabled ? "Snapping on (N)" : "Snapping off (N)"}>

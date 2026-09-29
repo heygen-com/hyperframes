@@ -254,7 +254,7 @@ export function useGsapAwareEditing({
             previewIframeRef.current,
             coalescedCommit,
             undefined,
-            { preflightOnly: true },
+            { preflightOnly: true, group: true },
           );
           if (outcome.status === "element-offset") offsetMembers.add(selection);
           assertGsapEditPersisted(outcome);

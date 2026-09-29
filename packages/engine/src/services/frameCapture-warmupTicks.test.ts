@@ -14,6 +14,7 @@ import {
   LOCKED_WARMUP_TICKS,
   deriveBeginFrameTimelineTicks,
   deriveBeginFrameTimeTicks,
+  cancelWarmupOnError,
   driveWarmupTicks,
   prepareBeginFrameTimeline,
   warmupFrameTimeTicks,
@@ -53,6 +54,45 @@ async function runWithSimulatedPageLoad(
   );
   return state;
 }
+
+describe("driveWarmupTicks — cancelled", () => {
+  it.each([false, true])(
+    "stops once cancelled even while every tick fails (locked: %s)",
+    async (locked) => {
+      const state = makeState();
+      let calls = 0;
+      await driveWarmupTicks(
+        {
+          intervalMs: 33,
+          lockWarmupTicks: locked,
+          // Yields to the event loop so a loop that never stops fails on the test timeout instead of hanging.
+          sleep: () => new Promise((settle) => setImmediate(settle)),
+          tick: async () => {
+            if (++calls === 3) state.cancelled = true;
+            throw new Error("Target closed");
+          },
+        },
+        state,
+      );
+      expect(calls).toBe(3);
+    },
+  );
+});
+
+describe("cancelWarmupOnError", () => {
+  it("stops the warm-up loop when setup fails and leaves it alone when setup succeeds", async () => {
+    const failed = makeState();
+    const setupError = new Error("render_cancelled");
+    await expect(cancelWarmupOnError(failed, () => Promise.reject(setupError))).rejects.toBe(
+      setupError,
+    );
+    expect(failed.cancelled).toBe(true);
+
+    const succeeded = makeState();
+    await expect(cancelWarmupOnError(succeeded, async () => "ready")).resolves.toBe("ready");
+    expect(succeeded.cancelled).toBeUndefined();
+  });
+});
 
 describe("driveWarmupTicks — unlocked", () => {
   it("stops when state.running flips false", async () => {

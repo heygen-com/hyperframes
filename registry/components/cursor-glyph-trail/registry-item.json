@@ -3,13 +3,21 @@
   "name": "cursor-glyph-trail",
   "type": "hyperframes:component",
   "title": "Cursor Glyph Trail",
-  "description": "An actor travels an authored path depositing small dithered glyphs at its past positions, each popping in and decaying in place, stamp rate scaling with the actor's velocity.",
-  "tags": ["motion-primitive", "demonstrate", "trail", "cursor", "glyphs", "deterministic"],
+  "description": "A tutorial cursor path: on a settings screen the arrow clicks through three steps, leaving a dotted trail spaced evenly by distance and a numbered marker at each click; each step's trail fades as the next move begins.",
+  "tags": [
+    "cursor",
+    "motion-primitive",
+    "demonstrate",
+    "trail",
+    "tutorial",
+    "steps",
+    "deterministic"
+  ],
   "jobs": ["demonstrate"],
   "family": "demonstrate",
   "profile": "stamp-decay",
-  "evidence": "Wave L1 frame study: jh3yy stamp-and-decay contact sheet (2069614221747224613/sheet-01)",
-  "syncPoints": [{ "id": "travel-complete", "phase": "in", "offset": 2.4 }],
+  "evidence": "Step-capture guides (Scribe, Tango): one numbered marker per click, nothing else decorated",
+  "syncPoints": [{ "id": "travel-complete", "phase": "in", "offset": 2.6 }],
   "files": [
     {
       "path": "cursor-glyph-trail.html",
@@ -22,16 +30,16 @@
       "id": "glyphs",
       "type": "string",
       "role": "content",
-      "label": "Glyphs",
-      "description": "Stamp charset; one glyph per stamp is chosen deterministically.",
-      "default": "░▒▓+·×"
+      "label": "Glyphs (deprecated)",
+      "description": "Deprecated and ignored: the trail draws evenly spaced dots.",
+      "default": ""
     },
     {
       "id": "density",
       "type": "enum",
       "role": "style",
       "label": "Density",
-      "description": "Arc-length spacing between stamps along the path.",
+      "description": "Spacing between trail dots.",
       "default": "med",
       "options": [
         { "value": "low", "label": "Low" },
@@ -42,9 +50,9 @@
     {
       "id": "path",
       "type": "enum",
-      "role": "timing",
+      "role": "style",
       "label": "Path",
-      "description": "Authored travel path preset.",
+      "description": "How each move bends: sweep is a gentle curve, arc a deeper one, zigzag a straight line.",
       "default": "sweep",
       "options": [
         { "value": "sweep", "label": "Sweep" },
@@ -57,15 +65,15 @@
       "type": "number",
       "role": "timing",
       "label": "Fade",
-      "description": "Per-stamp decay window in seconds, clamped 0.3 to 1.5.",
-      "default": 0.8
+      "description": "Seconds a step trail takes to fade once the next move begins, clamped 0.3 to 1.5.",
+      "default": 0.5
     },
     {
       "id": "accent",
       "type": "enum",
       "role": "style",
       "label": "Accent",
-      "description": "Trail and actor color: green rides --brand, blue rides --accent, violet rides --accent-2.",
+      "description": "Trail and step marker color: green rides --brand, blue rides --accent, violet rides --accent-2.",
       "default": "green",
       "options": [
         { "value": "green", "label": "Green" },
@@ -78,7 +86,7 @@
       "type": "enum",
       "role": "timing",
       "label": "Exit",
-      "description": "Optional departure. Default none: the settled actor holds until the frame cuts.",
+      "description": "Optional departure. Default none: the finished screen holds until the frame cuts.",
       "default": "none",
       "options": [
         { "value": "none", "label": "None" },

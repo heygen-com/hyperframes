@@ -8,6 +8,8 @@ const DEFAULT_MIN_SWEEP_INTERVAL_MS = 5 * 60 * 1000;
 const PROXY_EXTENSIONS: ReadonlySet<string> = new Set(
   Object.values(PROXY_VARIANT_CONFIG).map(({ extension }) => extension),
 );
+const TRANSCODER_PROXY_NAME = /^[0-9a-f]{64}\.\w+$/;
+const TRANSCODER_TEMP_NAME = /^\.tmp-[0-9a-f-]{36}-[0-9a-f]{64}\.\w+$/;
 
 export interface ProxyCacheCleanupOptions {
   maxBytes?: number;
@@ -16,6 +18,7 @@ export interface ProxyCacheCleanupOptions {
   minSweepIntervalMs?: number;
   protectedPaths?: ReadonlySet<string>;
   now?: number;
+  dryRun?: boolean;
 }
 
 export interface ProxyCacheCleanupResult {
@@ -78,9 +81,12 @@ function readCacheInventory(
       modifiedAt: stat.mtimeMs,
       protected: protectedPaths.has(path),
     };
-    if (dirent.name.startsWith(".tmp-")) {
+    if (TRANSCODER_TEMP_NAME.test(dirent.name)) {
       if (now - stat.mtimeMs >= staleTempMs) staleTemps.push(entry);
-    } else if (PROXY_EXTENSIONS.has(extname(dirent.name))) {
+    } else if (
+      TRANSCODER_PROXY_NAME.test(dirent.name) &&
+      PROXY_EXTENSIONS.has(extname(dirent.name))
+    ) {
       entries.push(entry);
     }
   }
@@ -97,21 +103,24 @@ function evictCacheEntries(
   now: number,
   maxIdleMs: number,
   maxBytes: number,
+  dryRun: boolean,
 ): Omit<ProxyCacheCleanupResult, "skipped"> {
   const bytesBefore = entries.reduce((total, entry) => total + entry.size, 0);
   let bytesAfter = bytesBefore;
   const removed: string[] = [];
   const remove = (entry: CacheEntry, countsTowardBudget: boolean): void => {
-    unlinkSync(entry.path);
+    if (!dryRun) unlinkSync(entry.path);
     removed.push(entry.path);
     if (countsTowardBudget) bytesAfter -= entry.size;
   };
 
   for (const entry of staleTemps) remove(entry, false);
+  const kept: CacheEntry[] = [];
   for (const entry of entries) {
     if (!entry.protected && now - entry.modifiedAt >= maxIdleMs) remove(entry, true);
+    else kept.push(entry);
   }
-  for (const entry of entries) {
+  for (const entry of kept) {
     if (bytesAfter <= maxBytes) break;
     if (!entry.protected && existsSync(entry.path)) remove(entry, true);
   }
@@ -145,7 +154,7 @@ export function cleanupProxyCache(
   const protectedPaths = options.protectedPaths ?? new Set<string>();
   const { entries, staleTemps } = readCacheInventory(cacheDir, protectedPaths, now, staleTempMs);
   return {
-    ...evictCacheEntries(entries, staleTemps, now, maxIdleMs, maxBytes),
+    ...evictCacheEntries(entries, staleTemps, now, maxIdleMs, maxBytes, options.dryRun ?? false),
     skipped: false,
   };
 }

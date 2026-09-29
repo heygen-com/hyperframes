@@ -1,10 +1,5 @@
 import { useCallback, useRef } from "react";
-import type { PatchOperation } from "../utils/sourcePatcher";
-import {
-  isImageBackgroundValue,
-  isManualGeometryStyleProperty,
-  normalizeDomEditStyleValue,
-} from "../utils/studioHelpers";
+import { normalizeDomEditStyleValue } from "../utils/studioHelpers";
 import {
   injectPreviewGoogleFont,
   injectPreviewImportedFont,
@@ -12,7 +7,6 @@ import {
 } from "../utils/studioFontHelpers";
 import {
   buildDomEditRichTextPatchOperation,
-  buildDomEditStylePatchOperation,
   findElementForSelection,
   getDomEditTargetKey,
   isTextEditableSelection,
@@ -32,6 +26,7 @@ import {
   runReportedDomEditCommit,
   type DomEditCommitOutcome,
 } from "./domEditCommitRunner";
+import { commitDomStyles } from "./domStyleCommit";
 import { useDomEditAttributeCommits } from "./useDomEditAttributeCommits";
 import type { InlineTextEditCommit } from "./useInlineTextEdit";
 
@@ -68,24 +63,6 @@ function ownsCurrentPreviewElement(
 ): document is Document {
   if (!document || !element.isConnected) return false;
   return element === selection.element && element.ownerDocument === document;
-}
-
-function buildDomStyleCommitOperations(
-  property: string,
-  value: string,
-  isImageBackgroundCommit: boolean,
-): PatchOperation[] {
-  const operations: PatchOperation[] = [
-    buildDomEditStylePatchOperation(property, normalizeDomEditStyleValue(property, value)),
-  ];
-  if (isImageBackgroundCommit) {
-    operations.push(
-      buildDomEditStylePatchOperation("background-position", "center"),
-      buildDomEditStylePatchOperation("background-repeat", "no-repeat"),
-      buildDomEditStylePatchOperation("background-size", "contain"),
-    );
-  }
-  return operations;
 }
 
 async function resyncDomTextSelectionFromPreview(
@@ -138,81 +115,20 @@ export function useDomEditTextCommits({
   });
 
   const handleDomStyleCommitForSelection = useCallback(
-    async (
-      selection: DomEditSelection,
-      property: string,
-      value: string,
-    ): Promise<DomEditCommitOutcome> => {
-      if (isManualGeometryStyleProperty(property))
-        return domEditCommitDeclined("geometry-property");
-      if (!selection.capabilities.canEditStyles) {
-        return domEditCommitDeclined("styles-not-editable");
-      }
-      const styleCommitKey = `${getDomEditTargetKey(selection)}:${property}`;
-      const isLatestStyleCommit = bumpDomEditCommitMapVersion(
-        domStyleCommitVersionRef.current,
-        styleCommitKey,
-      );
-      const importedFont = property === "font-family" ? resolveImportedFontAsset(value) : null;
-      const iframe = previewIframeRef.current;
-      const doc = iframe?.contentDocument;
-      const normalizedValue = normalizeDomEditStyleValue(property, value);
-      const isImageBackgroundCommit =
-        property === "background-image" && isImageBackgroundValue(value);
-      let editedElement: HTMLElement | null = null;
-      let previousInlineValue: string | null = null;
-      const operations = buildDomStyleCommitOperations(property, value, isImageBackgroundCommit);
-      // Inline-style commits never full-reload the preview (that blanks the iframe
-      // until it re-renders): the live element was already mutated optimistically in
-      // apply(). z-index is no exception — setting `element.style.zIndex` restacks the
-      // element in-browser immediately, so a reload would only cost a black blink.
-      const skipRefresh = true;
-
-      return runReportedDomEditCommit({
-        capture: () => {
-          if (!doc) return;
-          const el = findElementForSelection(doc, selection, activeCompPath);
-          if (!el) return;
-          editedElement = el;
-          previousInlineValue = el.style.getPropertyValue(property);
+    (selection: DomEditSelection, property: string, value: string): Promise<DomEditCommitOutcome> =>
+      commitDomStyles(
+        {
+          activeCompPath,
+          previewIframeRef,
+          persistDomEditOperations,
+          showToast,
+          versions: domStyleCommitVersionRef.current,
+          resolveImportedFontAsset,
+          resync: refreshDomEditSelectionFromPreview,
         },
-        apply: () => {
-          if (!editedElement) return;
-          editedElement.style.setProperty(property, normalizedValue);
-          if (property === "font-family" && doc) {
-            injectPreviewGoogleFont(doc, value);
-            if (importedFont) injectPreviewImportedFont(doc, importedFont);
-          }
-          if (isImageBackgroundCommit) {
-            editedElement.style.setProperty("background-position", "center");
-            editedElement.style.setProperty("background-repeat", "no-repeat");
-            editedElement.style.setProperty("background-size", "contain");
-          }
-        },
-        persist: () =>
-          persistDomEditOperations(selection, operations, {
-            label: "Edit layer style",
-            skipRefresh,
-            prepareContent: importedFont
-              ? (html, sourceFile) => ensureImportedFontFace(html, importedFont, sourceFile)
-              : undefined,
-          }),
-        shouldRevert: () => isLatestStyleCommit(),
-        revert: () => {
-          if (!editedElement || previousInlineValue === null) return;
-          // ponytail: background-image side-effect styles are not reverted here.
-          if (previousInlineValue === "") {
-            editedElement.style.removeProperty(property);
-          } else {
-            editedElement.style.setProperty(property, previousInlineValue);
-          }
-        },
-        onError: (error) => reportDomEditPersistFailure(selection, operations, error, showToast),
-        shouldResync: isLatestStyleCommit,
-        resync: () => refreshDomEditSelectionFromPreview(selection),
-        onFinally: isLatestStyleCommit.release,
-      });
-    },
+        selection,
+        { [property]: value },
+      ),
     [
       activeCompPath,
       persistDomEditOperations,

@@ -13,6 +13,7 @@ export interface VideoSourceCallbacks {
   onResize: (video: HTMLVideoElement) => void;
   onPlay: (video: HTMLVideoElement) => void;
   onPause: (video: HTMLVideoElement) => void;
+  onTimeUpdate: () => void;
   onError: (message: string, code: number | null) => void;
   onPlayRejected: (error: unknown) => void;
 }
@@ -36,6 +37,7 @@ export function createVideoSource(callbacks: VideoSourceCallbacks): VideoSource 
   video.addEventListener("resize", () => callbacks.onResize(video), { signal });
   video.addEventListener("play", () => callbacks.onPlay(video), { signal });
   video.addEventListener("pause", () => callbacks.onPause(video), { signal });
+  video.addEventListener("timeupdate", () => callbacks.onTimeUpdate(), { signal });
   video.addEventListener(
     "error",
     () =>

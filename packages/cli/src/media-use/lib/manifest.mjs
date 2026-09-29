@@ -10,7 +10,7 @@ import {
   rmSync,
   statSync,
 } from "node:fs";
-import { join } from "node:path";
+import { basename, join } from "node:path";
 
 const MANIFEST_FILE = "manifest.jsonl";
 const INDEX_FILE = "index.md";
@@ -79,6 +79,43 @@ export function appendRecord(projectDir, record) {
   appendFileSync(p, line);
 }
 
+/** The record a path has now: the manifest only appends, so the last one for a path wins. */
+export function latestRecordFor(projectDir, path) {
+  return readManifest(projectDir).findLast((record) => record.path === path);
+}
+
+/** Records with every older record for the same path dropped, since the last one for a path is its record. */
+export function currentRecords(projectDir) {
+  const records = readManifest(projectDir);
+  const last = new Map(records.map((record, index) => [record.path, index]));
+  return records.filter((record, index) => !record.path || last.get(record.path) === index);
+}
+
+/** Records a file already in the project where it is, unless its current record already says the same thing. */
+export function recordInPlace(
+  projectDir,
+  { type, path, source, description, duration, provenance },
+) {
+  const fields = {
+    type,
+    path,
+    source,
+    description: description || basename(path),
+    ...(duration != null && { duration: Math.round(duration * 10) / 10 }),
+  };
+  mkdirSync(mediaDir(projectDir), { recursive: true });
+  return withLock(mediaDir(projectDir), () => {
+    const latest = latestRecordFor(projectDir, path);
+    const same = ["source", "description", "duration"].every(
+      (key) => latest?.[key] === fields[key],
+    );
+    if (latest && same) return latest;
+    const record = { id: nextFreeId(projectDir, type), ...fields, provenance };
+    appendRecord(projectDir, record);
+    return record;
+  });
+}
+
 // Match prompts forgivingly. Agents rarely re-emit a byte-identical intent, so
 // keying cache lookups on exact equality meant "Calm piano" and "calm  piano"
 // re-searched and re-downloaded. Normalize (trim, lowercase, collapse internal
@@ -93,7 +130,7 @@ export function normalizePrompt(prompt) {
 export function findByPrompt(projectDir, prompt, type) {
   const key = normalizePrompt(prompt);
   if (!key) return null;
-  const records = readManifest(projectDir);
+  const records = currentRecords(projectDir);
   return (
     records.find(
       (r) => normalizePrompt(r.provenance?.prompt) === key && (type == null || r.type === type),
@@ -103,7 +140,7 @@ export function findByPrompt(projectDir, prompt, type) {
 
 export function findByEntity(projectDir, entity) {
   const lower = entity.toLowerCase();
-  const records = readManifest(projectDir);
+  const records = currentRecords(projectDir);
   return records.find((r) => r.entity && r.entity.toLowerCase() === lower) || null;
 }
 
@@ -173,22 +210,28 @@ export function allocateId(projectDir, type, ext) {
   const typeDir = typeDirPath(projectDir, type);
   mkdirSync(typeDir, { recursive: true });
   return withLock(mediaDir(projectDir), () => {
-    const re = new RegExp(`^${type}_(\\d+)`);
-    let max = 0;
-    for (const r of readManifest(projectDir)) {
-      if (r.type !== type) continue;
-      const m = r.id?.match(re);
-      if (m) max = Math.max(max, parseInt(m[1], 10));
-    }
-    for (const f of readdirSync(typeDir)) {
-      const m = f.match(re);
-      if (m) max = Math.max(max, parseInt(m[1], 10)); // skip ids reserved but not yet appended
-    }
-    const id = `${type}_${String(max + 1).padStart(3, "0")}`;
+    const id = nextFreeId(projectDir, type);
     const localPath = `.media/${typeSubdir(type)}/${id}${ext}`;
     writeFileSync(join(projectDir, localPath), "", { flag: "wx" }); // durable reservation
     return { id, localPath };
   });
+}
+
+// Call under the lock: counts recorded ids and ids reserved by a file not yet recorded.
+function nextFreeId(projectDir, type) {
+  const re = new RegExp(`^${type}_(\\d+)`);
+  let max = 0;
+  for (const r of readManifest(projectDir)) {
+    if (r.type !== type) continue;
+    const m = r.id?.match(re);
+    if (m) max = Math.max(max, parseInt(m[1], 10));
+  }
+  const typeDir = typeDirPath(projectDir, type);
+  for (const f of existsSync(typeDir) ? readdirSync(typeDir) : []) {
+    const m = f.match(re);
+    if (m) max = Math.max(max, parseInt(m[1], 10));
+  }
+  return `${type}_${String(max + 1).padStart(3, "0")}`;
 }
 
 function reservedFile(projectDir, type, ext) {

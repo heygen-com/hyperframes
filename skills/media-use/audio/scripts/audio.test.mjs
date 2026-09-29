@@ -1,6 +1,6 @@
 import { strict as assert } from "node:assert";
 import { test } from "node:test";
-import { mkdtempSync, rmSync, existsSync } from "node:fs";
+import { mkdtempSync, rmSync, existsSync, writeFileSync } from "node:fs";
 import { join, dirname } from "node:path";
 import { tmpdir } from "node:os";
 import { fileURLToPath } from "node:url";
@@ -43,6 +43,30 @@ test("an unknown cue is reported, not fatal", async () => {
     });
     assert.equal(sfx.length, 0);
     assert.ok(anomalies.some((a) => /not in bundled library/.test(a)));
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test("a person's own file under a bundled name is not labelled as the library's", async () => {
+  const dir = mkdtempSync(join(tmpdir(), "mu-audio-"));
+  try {
+    const resolve = () =>
+      resolveSfx({
+        cues: [{ id: "1", name: "whoosh" }],
+        heygenOK: false,
+        hyperframesDir: dir,
+        sfxLibDir,
+      });
+    const copied = await resolve();
+    const reused = await resolve();
+    writeFileSync(join(dir, copied.sfx[0].file), "the person's own whoosh");
+    const own = await resolve();
+
+    assert.deepEqual(
+      [copied, reused, own].map(({ sfx }) => sfx[0].source),
+      ["local", "local", "project"],
+    );
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }

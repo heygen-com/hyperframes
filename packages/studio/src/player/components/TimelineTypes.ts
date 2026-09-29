@@ -33,4 +33,6 @@ export interface TimelineProps
   onDuplicateClip?: () => Promise<boolean>;
   canPasteClip?: () => boolean;
   theme?: Partial<TimelineTheme>;
+  showAudioEffects?: boolean;
+  showKeyframes?: boolean;
 }

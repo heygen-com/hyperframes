@@ -6,7 +6,7 @@ type TweenReach = "own" | "shared" | "elsewhere" | "unknown";
 /** Which elements a tween's target resolves to in the live preview, relative to `el`. */
 export function tweenReach(animation: GsapAnimation, el: Element | null | undefined): TweenReach {
   const doc = el?.ownerDocument;
-  if (!el || !doc || animation.hasUnresolvedSelector) return "unknown";
+  if (!el?.isConnected || !doc || animation.hasUnresolvedSelector) return "unknown";
   let hits: Element[];
   try {
     hits = [...doc.querySelectorAll(animation.targetSelector)];

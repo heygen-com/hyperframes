@@ -47,7 +47,7 @@ export {
 } from "./domEditOverlayGestures";
 export type { DomEditGroupPathOffsetCommit } from "./domEditOverlayGestures";
 
-interface DomEditOverlayProps {
+export interface DomEditOverlayProps {
   iframeRef: RefObject<HTMLIFrameElement | null>;
   activeCompositionPath: string | null;
   selection: DomEditSelection | null;
@@ -518,7 +518,6 @@ export const DomEditOverlay = memo(function DomEditOverlay({
           boxClipPath={boxClipPath}
           selectionKey={selectionKey}
           groupSelectionCount={groupSelections.length}
-          blockedMoveRef={blockedMoveRef}
           gestures={gestures}
           onStyleCommit={onStyleCommitRef.current}
           onBoxMouseDown={suppressBoxMouseDown}

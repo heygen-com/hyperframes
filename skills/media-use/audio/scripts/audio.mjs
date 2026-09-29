@@ -55,6 +55,7 @@ import { generateBgmDetached, inferBgmPrompt, retrieveBgm } from "./lib/bgm.mjs"
 import { resolveSfx } from "./lib/sfx.mjs";
 import { mapWithConcurrency } from "./lib/concurrency.mjs";
 import { openAudioMeta } from "./lib/audio-meta.mjs";
+import { recordInManifest, writtenAssets } from "./lib/media-record.mjs";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const argv = process.argv.slice(2);
@@ -289,6 +290,8 @@ const meta = {
 };
 mkdirSync(dirname(outPath), { recursive: true });
 audioMeta.write(meta);
+const written = writtenAssets({ only, lines, voices, ttsProvider, bgm, bgmFields, sfx });
+anomalies.push(...recordInManifest(hyperframesDir, written));
 
 console.log(`✓ audio engine → ${outPath}`);
 console.log(`  heygen: ${heygenOK ? "yes" : "no"}  ·  ran: ${[...only].join(",")}`);

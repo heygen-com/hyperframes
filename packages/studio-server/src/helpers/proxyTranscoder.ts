@@ -28,7 +28,7 @@ import { mkdirWithinProject, realpath, realProjectRoot } from "./safePath.js";
 
 export const PROXY_PARAMS_VERSION = "v5";
 
-const CACHE_DIR_NAME = ".transcode-cache";
+export const CACHE_DIR_NAME = ".transcode-cache";
 
 function boundedEnvInteger(name: string, fallback: number, min: number, max: number): number {
   const raw = process.env[name]?.trim();

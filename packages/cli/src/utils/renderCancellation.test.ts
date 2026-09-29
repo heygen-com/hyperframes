@@ -2,6 +2,9 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { createRenderCancellationScope, stoppedByCancelSignal } from "./renderCancellation.js";
 
+const { setHostHandlesSigint } = vi.hoisted(() => ({ setHostHandlesSigint: vi.fn() }));
+vi.mock("@hyperframes/engine", () => ({ setHostHandlesSigint }));
+
 afterEach(() => {
   vi.useRealTimers();
 });
@@ -27,6 +30,17 @@ describe("createRenderCancellationScope ancestor monitoring", () => {
     expect(isAlive).toHaveBeenCalledTimes(1);
     expect(lookupIdentity).toHaveBeenCalledTimes(alive ? 1 : 0);
     cancellation.dispose();
+  });
+
+  it("owns Ctrl+C for the engine's browsers while the scope is open", () => {
+    const cancellation = createRenderCancellationScope({
+      signalTarget: { on: vi.fn(), off: vi.fn() },
+      pid: 100,
+      parentPid: () => 1,
+    });
+    expect(setHostHandlesSigint).toHaveBeenLastCalledWith(true);
+    cancellation.dispose();
+    expect(setHostHandlesSigint).toHaveBeenLastCalledWith(false);
   });
 
   it("keeps termination handlers installed until cancellation cleanup finishes", () => {

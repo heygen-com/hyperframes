@@ -219,7 +219,7 @@ export interface ExtractionOptions {
   collectProbeFailures?: boolean;
 }
 
-const EXTRACT_CACHE_MIN_AGE_MS = 60 * 60 * 1000;
+export const EXTRACT_CACHE_MIN_AGE_MS = 60 * 60 * 1000;
 const GC_STALENESS_MS = 24 * 60 * 60 * 1000;
 const SDR_TO_HDR_COLORSPACE_FILTER = "colorspace=all=bt2020:iall=bt709:range=tv";
 const HDR_TO_SDR_ZSCALE_TRANSFORM_KEY = "hdr2sdr-hable-srgb";
@@ -2466,6 +2466,10 @@ export class FrameLookupTable {
       video.playbackRate,
     );
     return frameIndex == null ? null : video.extracted.framePaths.get(frameIndex) || null;
+  }
+
+  frameDirs(): string[] {
+    return [...new Set(Array.from(this.videos.values(), (video) => video.extracted.outputDir))];
   }
 
   private resetActiveState(): void {
