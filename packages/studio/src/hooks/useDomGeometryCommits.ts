@@ -14,11 +14,7 @@ import {
   clearStudioBoxSize,
   clearStudioRotation,
 } from "../components/editor/manualEdits";
-import {
-  applyElementPositionOffset,
-  type ElementOffsetRefusal,
-} from "../components/editor/elementPositionOffset";
-import { LAYER_REVEAL_PRIOR_POSITION_ATTR } from "../player/lib/timelineElementHelpers";
+import { stageElementOffset } from "./elementOffsetStager";
 import {
   buildPathOffsetPatches,
   buildBoxSizePatches,
@@ -29,20 +25,6 @@ import {
 } from "../components/editor/manualEditsDomPatches";
 import type { PatchOperation } from "../utils/sourcePatcher";
 import { isElementGsapTargeted } from "./gsapTargetCache";
-
-const ELEMENT_OFFSET_REFUSED: Record<ElementOffsetRefusal, string> = {
-  anchored: "This layer is anchored from its right or bottom edge. Move it in the Code tab.",
-  percent: "This layer's position is set in percent. Move it in the Code tab.",
-};
-
-/** The drag draft moved GSAP's x/y; left/top carries the move now, so put them back. */
-function settleGsapDraftAtGestureStart(el: HTMLElement): void {
-  const gsap = (el.ownerDocument.defaultView as { gsap?: { set: (t: Element, v: object) => void } })
-    ?.gsap;
-  const x = Number.parseFloat(el.getAttribute("data-hf-drag-gsap-base-x") ?? "");
-  const y = Number.parseFloat(el.getAttribute("data-hf-drag-gsap-base-y") ?? "");
-  if (gsap && Number.isFinite(x) && Number.isFinite(y)) gsap.set(el, { x, y });
-}
 
 const GSAP_CSS_FALLBACK_BLOCKED_MESSAGE =
   "This element is GSAP-animated — dragging via CSS would corrupt keyframes";
@@ -77,34 +59,14 @@ export function useDomGeometryCommits({
   commitPositionPatchToHtml,
   readOnlyPreview,
 }: UseDomGeometryCommitsParams) {
-  // Applies the move live now; `save` persists it, `rollback` takes the live move back.
   const stageElementPositionOffset = useCallback(
-    (selection: DomEditSelection, next: { x: number; y: number }, coalesceKey?: string) => {
-      const el = selection.element;
-      if (readOnlyPreview) return { save: () => Promise.resolve(), rollback: () => undefined };
-      const previous = { position: el.style.position, left: el.style.left, top: el.style.top };
-      const liftMarker = el.getAttribute(LAYER_REVEAL_PRIOR_POSITION_ATTR);
-      const result = applyElementPositionOffset(el, next);
-      if (!Array.isArray(result)) {
-        showToast(ELEMENT_OFFSET_REFUSED[result], "error");
-        throw new Error(ELEMENT_OFFSET_REFUSED[result]);
-      }
-      settleGsapDraftAtGestureStart(el);
-      const rollback = () => {
-        Object.assign(el.style, previous);
-        if (liftMarker !== null) el.setAttribute(LAYER_REVEAL_PRIOR_POSITION_ATTR, liftMarker);
-      };
-      const save = () =>
-        commitPositionPatchToHtml(selection, result, {
-          label: "Move layer",
-          coalesceKey: coalesceKey ?? `element-offset:${getDomEditTargetKey(selection)}`,
-          ...(coalesceKey && { coalesceMs: Number.POSITIVE_INFINITY }),
-        }).catch((error) => {
-          rollback();
-          throw error;
-        });
-      return { save, rollback };
-    },
+    (selection: DomEditSelection, next: { x: number; y: number }, coalesceKey?: string) =>
+      stageElementOffset(
+        { commitPositionPatchToHtml, showToast, readOnlyPreview },
+        selection,
+        next,
+        coalesceKey,
+      ),
     [commitPositionPatchToHtml, readOnlyPreview, showToast],
   );
 

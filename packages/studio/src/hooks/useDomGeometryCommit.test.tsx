@@ -224,3 +224,81 @@ describe("useDomGeometryCommit, from the package entry", () => {
     unmount();
   });
 });
+
+describe("useDomGeometryCommit, one word of a staggered phrase", () => {
+  const WORDS = ["How", "we", "build", "videos", "at", "scale", "every", "day"];
+  const PHRASE = WORDS.map((w, i) => `<span class="w" data-hf-id="hf-w${i}">${w}</span>`).join("");
+
+  function stubPhraseServer() {
+    const calls = { patches: [] as unknown[], gsapMutations: [] as unknown[] };
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+        const url = String(input instanceof Request ? input.url : input);
+        const json = (body: unknown) =>
+          new Response(JSON.stringify(body), { headers: { "content-type": "application/json" } });
+        if (url.includes("/api/projects/p1/gsap-animations/")) {
+          return json({
+            animations: [
+              {
+                id: ".w-from-200",
+                targetSelector: ".w",
+                method: "from",
+                position: 0.2,
+                duration: 0.6,
+                properties: { y: 60, opacity: 0 },
+              },
+            ],
+          });
+        }
+        if (url.includes("/api/projects/p1/files/")) return json({ content: PHRASE });
+        if (url.includes("/api/projects/p1/file-mutations/patch-element/")) {
+          calls.patches.push(JSON.parse(String(init?.body)));
+          return json({ ok: true, changed: true, matched: true, content: "AFTER", version: "v2" });
+        }
+        if (url.includes("/api/projects/p1/gsap-mutations/")) {
+          calls.gsapMutations.push(JSON.parse(String(init?.body)));
+          return json({ ok: true, changed: true, before: "B", after: "A" });
+        }
+        throw new Error(`Unexpected fetch: ${url}`);
+      }),
+    );
+    return calls;
+  }
+
+  it("saves left/top on the dragged word only and never rewrites the shared tween", async () => {
+    const calls = stubPhraseServer();
+    const { element, recordEdit, hook, unmount } = renderHost();
+    element.ownerDocument.body.innerHTML = PHRASE;
+    const word = element.ownerDocument.querySelector<HTMLElement>('[data-hf-id="hf-w0"]')!;
+    Object.defineProperties(word, {
+      offsetLeft: { get: () => 100 + (Number.parseFloat(word.style.left) || 0) },
+      offsetTop: { get: () => 200 + (Number.parseFloat(word.style.top) || 0) },
+    });
+    const selection = {
+      ...makeSelection("How", word),
+      id: undefined,
+      selector: ".w",
+      selectorIndex: 0,
+      hfId: "hf-w0",
+    };
+
+    await expect(hook().commitPathOffset(selection, { x: 40, y: 20 })).resolves.toEqual({
+      ok: true,
+    });
+
+    expect(calls.gsapMutations).toHaveLength(0);
+    expect(calls.patches).toEqual([
+      expect.objectContaining({
+        target: expect.objectContaining({ hfId: "hf-w0" }),
+        operations: [
+          { type: "inline-style", property: "position", value: "relative" },
+          { type: "inline-style", property: "left", value: "40px" },
+          { type: "inline-style", property: "top", value: "20px" },
+        ],
+      }),
+    ]);
+    expect(recordEdit).toHaveBeenCalledTimes(1);
+    unmount();
+  });
+});

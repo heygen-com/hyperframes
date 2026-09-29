@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useRef } from "react";
+import { useCallback, useMemo, useRef, useState } from "react";
 import type { GsapAnimation } from "@hyperframes/core/gsap-parser";
 import type { DomEditSelection } from "../components/editor/domEditing";
 import type { DomEditGroupPathOffsetCommit } from "../components/editor/DomEditOverlay";
@@ -10,6 +10,11 @@ import { useGsapAwareEditing } from "./useGsapAwareEditing";
 import { useGsapInteractionFailureTelemetry } from "./useGsapInteractionFailureTelemetry";
 import { useGsapScriptCommits } from "./useGsapScriptCommits";
 import { useGsapCacheVersion } from "./useGsapTweenCache";
+import { createDomEditSaveQueue } from "../utils/domEditSaveQueue";
+import { useDomEditPersist } from "./useDomEditPersist";
+import { useDomEditPositionPatchCommit } from "./useDomEditPositionPatchCommit";
+import { useMountEffect } from "./useMountEffect";
+import { stageElementOffset } from "./elementOffsetStager";
 
 /**
  * Studio's `Player` must show the project, with `beginTimelineSession(projectId)` run before it
@@ -77,6 +82,29 @@ export function useDomGeometryCommit({
     showToast,
     writeProjectFile,
   });
+  // A word moved out of a shared stagger saves left/top through the same patch path as style edits.
+  const [queue] = useState(createDomEditSaveQueue);
+  useMountEffect(() => () => queue.destroy());
+  const persistDomEditOperations = useDomEditPersist({
+    activeCompPath,
+    previewIframeRef: iframeRef,
+    showToast,
+    queueDomEditSave: queue.enqueue,
+    writeProjectFile,
+    editHistory,
+    projectIdRef,
+    reloadPreview: noop,
+  });
+  const commitPositionPatchToHtml = useDomEditPositionPatchCommit({
+    activeCompPath,
+    persistDomEditOperations,
+    showToast,
+  });
+  const stageElementPositionOffset = useCallback(
+    (selection: DomEditSelection, next: { x: number; y: number }, coalesceKey?: string) =>
+      stageElementOffset({ commitPositionPatchToHtml, showToast }, selection, next, coalesceKey),
+    [commitPositionPatchToHtml, showToast],
+  );
   const makeFetchFallback = useGsapAnimationFetchFallback(projectId);
   const trackGsapInteractionFailure = useGsapInteractionFailureTelemetry(activeCompPath, showToast);
   const {
@@ -94,6 +122,7 @@ export function useDomGeometryCommit({
     bumpGsapCache,
     makeFetchFallback,
     trackGsapInteractionFailure,
+    stageElementPositionOffset,
     handleDomBoxSizeCommit: noDomBoxSizeRoute,
     addGsapAnimation: gsap.addGsapAnimation,
     convertToKeyframes: gsap.convertToKeyframes,
