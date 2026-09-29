@@ -176,7 +176,7 @@ export function computeDragPreview(
     // rendered extent (see dragMaxStart) — the composition grows on commit.
     dragMaxStart + drag.element.duration,
   );
-  // A group moves rigidly: the grabbed clip stops where the leftmost mover would cross 0.
+  // A group moves rigidly: the grabbed clip stops where any mover would cross its host's start.
   const group = resolveGroupDrag(drag, ctx);
   const previewStart = Math.max(snap.start, group.floor);
   const placement = resolveDropPlacement(drag, clientY, previewStart, nextMove.track, ctx, group);

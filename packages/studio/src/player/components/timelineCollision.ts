@@ -107,7 +107,7 @@ export function resolveZoneDropPlacement(input: {
   duration: number;
   dragKey: string;
   isAudio: boolean;
-  /** Lowest start the clip may take (a group move keeps every member at or after 0). */
+  /** Lowest start the clip may take (every moving clip stays at or after its host's start). */
   minStart?: number;
 }): { track: number; insertRow: number | null; start: number } {
   const { order, audioTracks, elements, desiredTrack, deliberateInsertRow } = input;
