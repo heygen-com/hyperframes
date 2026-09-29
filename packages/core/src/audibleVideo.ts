@@ -1,5 +1,5 @@
 export const AUDIBLE_VIDEO_QUALIFIER =
-  ':not([muted]):not([data-has-audio="false"]):not([data-has-audio=""])';
+  ':not([muted]):is(:not([data-has-audio]),[data-has-audio="true"])';
 
 export const AUDIBLE_MEDIA_SELECTOR = `audio[data-start], video[data-start]${AUDIBLE_VIDEO_QUALIFIER}`;
 

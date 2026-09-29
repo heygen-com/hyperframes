@@ -17,6 +17,9 @@ describe("isAudibleVideoElement", () => {
     expect(isAudibleVideoElement(el("VIDEO", { "data-has-audio": "false" }))).toBe(false);
     expect(isAudibleVideoElement(el("VIDEO", { "data-has-audio": "" }))).toBe(false);
   });
+  it("only the exact value true counts, so TRUE is not audible", () => {
+    expect(isAudibleVideoElement(el("VIDEO", { "data-has-audio": "TRUE" }))).toBe(false);
+  });
   it("never true for non-video", () => {
     expect(isAudibleVideoElement(el("AUDIO", {}))).toBe(false);
   });
