@@ -35,15 +35,19 @@ import {
   readFadeSeconds,
 } from "@hyperframes/core/audio-fade";
 import { parseGainInput, parseRateInput, parseSecondsInput } from "./audioInspectorInput";
+import type { CommitDomAttributeBatch } from "../../hooks/domEditCommitTypes";
+import { commitCutout, commitHasAudioToggle, commitMutedToggle } from "./mediaAudioEdits";
 
 // fallow-ignore-next-line complexity
 export function FlatMediaSection({
+  projectId = null,
   projectDir,
   element,
   styles,
   onSetStyle,
   onSetAttribute,
   onSetHtmlAttribute,
+  onSetAttributeBatch,
   onRemoveBackground,
   volumeAutomated,
   onAutomateVolume,
@@ -52,12 +56,14 @@ export function FlatMediaSection({
   automatedVolumeValue,
   rate,
 }: {
+  projectId?: string | null;
   projectDir: string | null;
   element: DomEditSelection;
   styles: Record<string, string>;
   onSetStyle: (prop: string, value: string) => void | Promise<unknown>;
   onSetAttribute: (attr: string, value: string) => void | Promise<void>;
   onSetHtmlAttribute: (attr: string, value: string | null) => void | Promise<void>;
+  onSetAttributeBatch: CommitDomAttributeBatch;
   /** A volume lane in the timeline drives the level; the slider writes a keyframe instead. */
   volumeAutomated?: boolean;
   onAutomateVolume?: () => void;
@@ -133,19 +139,7 @@ export function FlatMediaSection({
     setCreatePlate(false);
   }, [srcAttr]);
 
-  const applyCutoutResult = async (result: BackgroundRemovalResult) => {
-    if (isVideo && hasAudio) {
-      const keep = window.confirm(
-        "Removing the background swaps in a silent cutout, so this clip's sound will be dropped. Continue?",
-      );
-      if (!keep) return;
-    }
-    await onSetHtmlAttribute("src", result.outputPath);
-    if (isVideo) {
-      await onSetAttribute("has-audio", "");
-      await onSetHtmlAttribute("muted", "true");
-    }
-  };
+  const mediaEdit = { element, projectId, projectSrc, commit: onSetAttributeBatch };
 
   const runBackgroundRemoval = async () => {
     if (!onRemoveBackground || !projectSrc || removeBusy) return;
@@ -158,8 +152,8 @@ export function FlatMediaSection({
         quality,
         onProgress: setRemoveProgress,
       });
-      await applyCutoutResult(result);
-      setRemoveProgress({ status: "complete", progress: 100, stage: "Applied cutout", ...result });
+      const stage = await commitCutout(mediaEdit, result.outputPath, hasAudio);
+      setRemoveProgress({ status: "complete", progress: 100, stage, ...result });
     } catch (error) {
       setRemoveProgress({
         status: "failed",
@@ -373,25 +367,13 @@ export function FlatMediaSection({
           <FlatToggle
             label="Muted"
             checked={hasMuted}
-            onChange={(next) => {
-              void onSetHtmlAttribute("muted", next ? "true" : null);
-              // A video's sound lives on the clip: muting drops has-audio, unmuting restores it.
-              if (isVideo) void onSetAttribute("has-audio", next ? "" : "true");
-            }}
+            onChange={(next) => void commitMutedToggle(mediaEdit, next)}
           />
           {isVideo && (
             <FlatToggle
               label="Has audio track"
               checked={hasAudio}
-              onChange={(next) => {
-                if (next) {
-                  void onSetAttribute("has-audio", "true");
-                  void onSetHtmlAttribute("muted", null);
-                } else {
-                  void onSetAttribute("has-audio", "");
-                  void onSetHtmlAttribute("muted", "true");
-                }
-              }}
+              onChange={(next) => void commitHasAudioToggle(mediaEdit, next)}
             />
           )}
         </>

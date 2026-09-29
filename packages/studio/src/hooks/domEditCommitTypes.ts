@@ -57,3 +57,10 @@ export type PersistDomEditOperations = (
     shouldSave?: () => boolean;
   },
 ) => Promise<DomEditPersistOutcome | undefined>;
+
+/** Several data-* and HTML attribute ops on one element as ONE persist and ONE undo entry. */
+export type CommitDomAttributeBatch = (
+  selection: DomEditSelection,
+  operations: PatchOperation[],
+  options: { label: string; prepareContent?: (html: string) => string },
+) => Promise<boolean>;

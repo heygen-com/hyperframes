@@ -12,7 +12,7 @@ function escapeStyleAttributeValue(value: string, quote: string): string {
 }
 
 /** Escape a string for safe use inside a double-quoted HTML attribute. */
-function escapeHtmlAttribute(value: string): string {
+export function escapeHtmlAttribute(value: string): string {
   return value
     .replace(/&/g, "&amp;")
     .replace(/"/g, "&quot;")

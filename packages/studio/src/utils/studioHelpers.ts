@@ -388,13 +388,27 @@ export async function resolveDroppedAssetHasAudio(
   kind: TimelineAssetKind,
 ): Promise<boolean> {
   if (kind !== "video") return false;
+  return (await resolveAssetHasAudio(projectId, assetPath)) === true;
+}
+
+function isPlainRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null;
+}
+
+/** An asset's audio stream from the metadata endpoint: null when the probe can't tell. */
+export async function resolveAssetHasAudio(
+  projectId: string,
+  assetPath: string,
+): Promise<boolean | null> {
   try {
     const response = await fetch(mediaMetadataUrl(projectId, assetPath));
-    if (!response.ok) return false;
-    const data = (await response.json()) as { metadata?: { hasAudio?: boolean } } | null;
-    return data?.metadata?.hasAudio === true;
+    if (!response.ok) return null;
+    const data: unknown = await response.json();
+    const metadata = isPlainRecord(data) ? data.metadata : undefined;
+    const hasAudio = isPlainRecord(metadata) ? metadata.hasAudio : undefined;
+    return typeof hasAudio === "boolean" ? hasAudio : null;
   } catch {
-    return false;
+    return null;
   }
 }
 

@@ -1736,3 +1736,128 @@ describe("useDomEditCommits attribute persist handling", () => {
     }
   });
 });
+
+describe("useDomEditCommits attribute batch commit", () => {
+  beforeEach(() => {
+    ensureCssEscape();
+    vi.clearAllMocks();
+    vi.unstubAllGlobals();
+    document.body.replaceChildren();
+  });
+
+  const original = '<video data-hf-id="hf-card" data-has-audio="true"></video>';
+  const patched = '<video data-hf-id="hf-card" muted></video>';
+  const mute = [
+    { type: "html-attribute" as const, property: "muted", value: "true" },
+    { type: "attribute" as const, property: "has-audio", value: null },
+  ];
+
+  it("sends mixed html and data attribute ops in ONE patch and ONE undo entry", async () => {
+    const fetchMock = stubPatchFetch(
+      {
+        ok: true,
+        changed: true,
+        matched: true,
+        content: patched,
+        path: "index.html",
+        version: "v2",
+      },
+      original,
+    );
+    const { iframe, element } = createPreviewElement(original);
+    const rendered = renderDomEditCommits(createSelection(element, { tagName: "video" }), iframe);
+
+    try {
+      let ok = false;
+      await act(async () => {
+        ok = await rendered.hook.handleDomAttributeBatchCommit(
+          createSelection(element, { tagName: "video" }),
+          mute,
+          { label: "Edit muted" },
+        );
+      });
+
+      const patches = fetchMock.mock.calls.filter(([input]) =>
+        requestUrl(input).includes("/file-mutations/patch-element/"),
+      );
+      expect(ok).toBe(true);
+      expect(patches).toHaveLength(1);
+      const body = JSON.parse(String(patches[0]?.[1]?.body));
+      expect(body.operations).toEqual(mute);
+      expect(rendered.recordEdit).toHaveBeenCalledTimes(1);
+      expect(rendered.recordEdit).toHaveBeenCalledWith(
+        expect.objectContaining({
+          files: { "index.html": { before: original, after: patched } },
+        }),
+      );
+      expect(rendered.reloadPreview).toHaveBeenCalledTimes(1);
+      expect(element.hasAttribute("muted")).toBe(true);
+      expect(element.hasAttribute("data-has-audio")).toBe(false);
+    } finally {
+      rendered.cleanup();
+    }
+  });
+
+  it("folds a document-level prepareContent into the same single undo entry", async () => {
+    stubPatchFetch(
+      {
+        ok: true,
+        changed: true,
+        matched: true,
+        content: patched,
+        path: "index.html",
+        version: "v2",
+      },
+      original,
+    );
+    const writes: string[] = [];
+    const { iframe, element } = createPreviewElement(original);
+    const rendered = renderDomEditCommits(createSelection(element), iframe, {
+      writeProjectFile: async (_path, content) => {
+        writes.push(content);
+      },
+    });
+    const withSibling = `<audio id="a"></audio>${patched}`;
+
+    try {
+      await act(async () => {
+        await rendered.hook.handleDomAttributeBatchCommit(createSelection(element), mute, {
+          label: "Remove background",
+          prepareContent: () => withSibling,
+        });
+      });
+
+      expect(writes).toEqual([withSibling]);
+      expect(rendered.recordEdit).toHaveBeenCalledTimes(1);
+      expect(rendered.recordEdit).toHaveBeenCalledWith(
+        expect.objectContaining({
+          label: "Remove background",
+          files: { "index.html": { before: original, after: withSibling } },
+        }),
+      );
+    } finally {
+      rendered.cleanup();
+    }
+  });
+
+  it("reverts every op in the batch and reports failure when the patch rejects", async () => {
+    stubPatchFetch(new Error("network down"), original);
+    const { iframe, element } = createPreviewElement(original);
+    const rendered = renderDomEditCommits(createSelection(element), iframe);
+
+    try {
+      let ok = true;
+      await act(async () => {
+        ok = await rendered.hook.handleDomAttributeBatchCommit(createSelection(element), mute, {
+          label: "Edit muted",
+        });
+      });
+
+      expect(ok).toBe(false);
+      expect(element.hasAttribute("muted")).toBe(false);
+      expect(element.getAttribute("data-has-audio")).toBe("true");
+    } finally {
+      rendered.cleanup();
+    }
+  });
+});

@@ -23,23 +23,29 @@ import {
   audioGainToFaderPosition,
   audioGainToText,
 } from "@hyperframes/core/audio-gain";
+import type { CommitDomAttributeBatch } from "../../hooks/domEditCommitTypes";
+import { commitCutout, commitHasAudioToggle, commitMutedToggle } from "./mediaAudioEdits";
 
 // fallow-ignore-next-line complexity
 export function MediaSection({
+  projectId = null,
   projectDir,
   element,
   styles,
   onSetStyle,
   onSetAttribute,
   onSetHtmlAttribute,
+  onSetAttributeBatch,
   onRemoveBackground,
 }: {
+  projectId?: string | null;
   projectDir: string | null;
   element: DomEditSelection;
   styles: Record<string, string>;
   onSetStyle: (prop: string, value: string) => void | Promise<unknown>;
   onSetAttribute: (attr: string, value: string) => void | Promise<void>;
   onSetHtmlAttribute: (attr: string, value: string | null) => void | Promise<void>;
+  onSetAttributeBatch: CommitDomAttributeBatch;
   onRemoveBackground?: (
     inputPath: string,
     options: {
@@ -101,19 +107,7 @@ export function MediaSection({
     setCreatePlate(false);
   }, [srcAttr]);
 
-  const applyCutoutResult = async (result: BackgroundRemovalResult) => {
-    if (isVideo && hasAudio) {
-      const keep = window.confirm(
-        "Removing the background swaps in a silent cutout, so this clip's sound will be dropped. Continue?",
-      );
-      if (!keep) return;
-    }
-    await onSetHtmlAttribute("src", result.outputPath);
-    if (isVideo) {
-      await onSetAttribute("has-audio", "");
-      await onSetHtmlAttribute("muted", "true");
-    }
-  };
+  const mediaEdit = { element, projectId, projectSrc, commit: onSetAttributeBatch };
 
   const runBackgroundRemoval = async () => {
     if (!onRemoveBackground || !projectSrc || removeBusy) return;
@@ -126,13 +120,8 @@ export function MediaSection({
         quality,
         onProgress: setRemoveProgress,
       });
-      await applyCutoutResult(result);
-      setRemoveProgress({
-        status: "complete",
-        progress: 100,
-        stage: "Applied cutout",
-        ...result,
-      });
+      const stage = await commitCutout(mediaEdit, result.outputPath, hasAudio);
+      setRemoveProgress({ status: "complete", progress: 100, stage, ...result });
     } catch (error) {
       setRemoveProgress({
         status: "failed",
@@ -331,11 +320,7 @@ export function MediaSection({
                 <SegmentedControl
                   trackName="Muted"
                   value={hasMuted ? "on" : "off"}
-                  onChange={(next) => {
-                    void onSetHtmlAttribute("muted", next === "on" ? "true" : null);
-                    // A video's sound lives on the clip: muting drops has-audio, unmuting restores it.
-                    if (isVideo) void onSetAttribute("has-audio", next === "on" ? "" : "true");
-                  }}
+                  onChange={(next) => void commitMutedToggle(mediaEdit, next === "on")}
                   options={[
                     { label: "On", value: "on" },
                     { label: "Off", value: "off" },
@@ -350,15 +335,7 @@ export function MediaSection({
                 <SegmentedControl
                   trackName="Has audio track"
                   value={hasAudio ? "yes" : "no"}
-                  onChange={(next) => {
-                    if (next === "yes") {
-                      void onSetAttribute("has-audio", "true");
-                      void onSetHtmlAttribute("muted", null);
-                    } else {
-                      void onSetAttribute("has-audio", "");
-                      void onSetHtmlAttribute("muted", "true");
-                    }
-                  }}
+                  onChange={(next) => void commitHasAudioToggle(mediaEdit, next === "yes")}
                   options={[
                     { label: "Yes", value: "yes" },
                     { label: "No", value: "no" },

@@ -58,7 +58,6 @@ export {
 export const PropertyPanel = memo(function PropertyPanel(props: PropertyPanelProps) {
   const {
     projectId,
-    projectDir,
     assets,
     element,
     multiSelectCount = 0,
@@ -72,8 +71,6 @@ export const PropertyPanel = memo(function PropertyPanel(props: PropertyPanelPro
     onSetAttribute,
     onSetAttributeLive,
     onApplyColorGradingScope,
-    onSetHtmlAttribute,
-    onRemoveBackground,
     onSetManualOffset,
     onSetManualSize,
     onSetManualRotation,
@@ -374,17 +371,7 @@ export const PropertyPanel = memo(function PropertyPanel(props: PropertyPanelPro
           />
         )}
 
-        {sections.media && (
-          <MediaSection
-            projectDir={projectDir}
-            element={element}
-            styles={styles}
-            onSetStyle={onSetStyle}
-            onSetAttribute={onSetAttribute}
-            onSetHtmlAttribute={onSetHtmlAttribute}
-            onRemoveBackground={onRemoveBackground}
-          />
-        )}
+        {sections.media && <MediaSection {...props} element={element} styles={styles} />}
 
         {sections.layout && (
           <Section title="Layout" icon={<Move size={15} />}>

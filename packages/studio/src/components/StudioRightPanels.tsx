@@ -62,6 +62,7 @@ export function StudioRightPanels({
     handleDomAttributeQuietCommit,
     handleDomHtmlAttributeCommit,
     handleDomAttributesCommit,
+    handleDomAttributeBatchCommit,
     handleDomPathOffsetCommit,
     handleDomBoxSizeCommit,
     handleDomRotationCommit,
@@ -210,6 +211,7 @@ export function StudioRightPanels({
         onSetStyle={handleDomStyleCommit}
         onSetAttribute={handleDomAttributeCommit}
         onSetAttributes={handleDomAttributesCommit}
+        onSetAttributeBatch={handleDomAttributeBatchCommit}
         onSetAttributeLive={setAttributeWhileDragging}
         onSetAttributeQuiet={handleDomAttributeQuietCommit}
         onApplyColorGradingScope={handleApplyColorGradingScope}

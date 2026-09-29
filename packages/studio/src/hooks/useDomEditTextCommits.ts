@@ -99,6 +99,7 @@ export function useDomEditTextCommits({
     handleDomAttributeQuietCommit,
     handleDomHtmlAttributeCommit,
     handleDomAttributesCommit,
+    handleDomAttributeBatchCommit,
   } = useDomEditAttributeCommits({
     activeCompPath,
     previewIframeRef,
@@ -485,6 +486,7 @@ export function useDomEditTextCommits({
     handleDomAttributeQuietCommit,
     handleDomHtmlAttributeCommit,
     handleDomAttributesCommit,
+    handleDomAttributeBatchCommit,
     handleDomTextCommit,
     handleDomTextCommitForSelection,
     handleDomRichTextCommit,

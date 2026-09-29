@@ -5,6 +5,7 @@ import {
   historyTooltipLabel,
   findMatchingTimelineElementId,
   findTimelineIdByAncestor,
+  resolveAssetHasAudio,
   resolveDroppedAssetDimensions,
   resolveElementTrack,
   resolveTimelineIdForSelection,
@@ -233,5 +234,34 @@ describe("historyTooltipLabel", () => {
   it("keeps the shortcut when the history is empty", () => {
     expect(historyTooltipLabel("undo", undefined)).toMatch(/^Undo \(.+\)$/);
     expect(historyTooltipLabel("redo", null)).toMatch(/^Redo \(.+\)$/);
+  });
+});
+
+describe("resolveAssetHasAudio", () => {
+  afterEach(() => vi.unstubAllGlobals());
+
+  const stubMetadata = (response: Response | Error) =>
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => {
+        if (response instanceof Error) throw response;
+        return response;
+      }),
+    );
+
+  it("answers the metadata endpoint's audio flag", async () => {
+    stubMetadata(new Response(JSON.stringify({ metadata: { hasAudio: true } })));
+    expect(await resolveAssetHasAudio("p1", "assets/talk.mp4")).toBe(true);
+    stubMetadata(new Response(JSON.stringify({ metadata: { hasAudio: false } })));
+    expect(await resolveAssetHasAudio("p1", "assets/cutout.webm")).toBe(false);
+  });
+
+  it("answers null when the probe cannot tell", async () => {
+    stubMetadata(new Response("nope", { status: 500 }));
+    expect(await resolveAssetHasAudio("p1", "assets/talk.mp4")).toBeNull();
+    stubMetadata(new Error("offline"));
+    expect(await resolveAssetHasAudio("p1", "assets/talk.mp4")).toBeNull();
+    stubMetadata(new Response(JSON.stringify({ metadata: {} })));
+    expect(await resolveAssetHasAudio("p1", "assets/talk.mp4")).toBeNull();
   });
 });

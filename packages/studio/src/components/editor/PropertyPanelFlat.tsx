@@ -61,7 +61,6 @@ export function PropertyPanelFlat({
   clipboardCopied,
   onCopyElementInfo,
   projectId,
-  projectDir,
   assets,
   previewIframeRef,
   onClearSelection,
@@ -73,8 +72,6 @@ export function PropertyPanelFlat({
   onSetAttributeLive,
   onSetAttributeQuiet,
   onApplyColorGradingScope,
-  onSetHtmlAttribute,
-  onRemoveBackground,
   onSetText,
   onSetTextFieldStyle,
   onPreviewTextFieldStyle,
@@ -130,6 +127,7 @@ export function PropertyPanelFlat({
   onUpdateKeyframeEase,
   onUpdateSegmentEase,
   onSetAllKeyframeEases,
+  ...forwardedProps
 }: PropertyPanelFlatProps) {
   // PropertyPanel keys this component by selection, so the default is per element.
   const [openGroupId, setOpenGroupId] = useState<string>(() =>
@@ -502,13 +500,12 @@ export function PropertyPanelFlat({
       summary: element.tagName,
       content: (
         <FlatMediaSection
-          projectDir={projectDir}
+          {...forwardedProps}
+          projectId={projectId}
           element={element}
           styles={styles}
           onSetStyle={onSetStyle}
           onSetAttribute={onSetAttribute}
-          onSetHtmlAttribute={onSetHtmlAttribute}
-          onRemoveBackground={onRemoveBackground}
           {...volumeAutomation}
         />
       ),
