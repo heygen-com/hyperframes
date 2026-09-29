@@ -318,7 +318,9 @@ describe("DomEditSelectionChrome with body drag off", () => {
         />,
       );
     });
-    const event = press(host.querySelector('[data-dom-edit-selection-box="true"]')!);
+    const groupBox = host.querySelector<HTMLElement>('[data-dom-edit-selection-box="true"]')!;
+    const event = press(groupBox);
+    expect(groupBox.style.cursor).toBe("");
     expect(hostPress).toHaveBeenCalledTimes(1);
     expect(event.defaultPrevented).toBe(false);
     expect(gestures.startGroupDrag).not.toHaveBeenCalled();
