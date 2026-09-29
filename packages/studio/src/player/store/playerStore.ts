@@ -83,6 +83,7 @@ interface PlayerState extends PlayerStoreSlices {
   zoomMode: ZoomMode;
   /** Timeline zoom percent relative to the fit width when in manual mode */
   manualZoomPercent: number;
+  userZoomCount: number;
   /**
    * Bumped on every live z-index edit (handleDomZIndexReorderCommit apply AND
    * rollback). Flashless z commits (skipReload) never reload the iframe or
@@ -279,6 +280,7 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
   loopEnabled: false,
   zoomMode: "fit",
   manualZoomPercent: 100,
+  userZoomCount: 0,
   zEditVersion: 0,
   timelinePps: 100,
   timelineFitPps: 100,
