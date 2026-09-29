@@ -1,7 +1,7 @@
 // fallow-ignore-file complexity
 import { useCallback, useRef } from "react";
 import { usePlayerStore, type TimelineElement } from "../player";
-import { toAuthoredStart } from "../player/store/timelineElement";
+import { toAuthoredStart, toCompositionTime } from "../player/store/timelineElement";
 import { useRazorSplit } from "./useRazorSplit";
 import { selectSplittableElements } from "../utils/timelineElementSplit";
 import { useTimelineAssetDropOps } from "./useTimelineAssetDropOps";
@@ -350,8 +350,8 @@ export function useTimelineEditing({
           writeProjectFile,
           edit: {
             kind: "scale",
-            from: { start: toAuthoredStart(element, element.start), duration: element.duration },
-            to: { start: authoredStart, duration: updates.duration },
+            from: { start: toCompositionTime(element, element.start), duration: element.duration },
+            to: { start: toCompositionTime(element, updates.start), duration: updates.duration },
           },
         }).finally(() => invalidateGsapCache?.());
       const resizeFallback = () =>

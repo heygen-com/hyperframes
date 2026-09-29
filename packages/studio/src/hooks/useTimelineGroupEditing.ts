@@ -3,7 +3,7 @@
 import { useCallback, type MutableRefObject, type RefObject } from "react";
 import type { Composition } from "@hyperframes/sdk";
 import type { TimelineElement } from "../player";
-import { toAuthoredStart } from "../player/store/timelineElement";
+import { toAuthoredStart, toCompositionTime } from "../player/store/timelineElement";
 import {
   cutoverCommittedOrThrow,
   sdkTimingBatchPersist,
@@ -462,9 +462,9 @@ export function useTimelineGroupEditing({
                 projectId,
                 changePath,
                 domId,
-                toAuthoredStart(change.element, change.element.start),
+                toCompositionTime(change.element, change.element.start),
                 change.element.duration,
-                toAuthoredStart(change.element, change.start),
+                toCompositionTime(change.element, change.start),
                 change.duration,
               );
             },

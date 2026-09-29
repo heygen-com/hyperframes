@@ -10,6 +10,7 @@ import {
   resolveTweenStart,
   resolveTweenDuration,
 } from "../utils/globalTimeCompiler";
+import { toCompositionTime } from "../player/store/timelineElement";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -174,7 +175,7 @@ export function clipTimingStart(element: {
   start: number;
   parentCompositionStart?: number;
 }): number {
-  return element.start - (element.parentCompositionStart ?? 0);
+  return toCompositionTime(element, element.start);
 }
 
 export function selectorFromSelection(selection: DomEditSelection): string | null {

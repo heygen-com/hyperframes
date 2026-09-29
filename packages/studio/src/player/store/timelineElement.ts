@@ -94,13 +94,23 @@ export interface TimelineElement {
   expandedHostKey?: string;
 }
 
+type RowClock = Pick<TimelineElement, "parentCompositionStart" | "authoredStartIsMasterTime">;
+const authoredOffset = (element: RowClock) =>
+  element.authoredStartIsMasterTime ? 0 : (element.parentCompositionStart ?? 0);
+
+/** The earliest master start this row can be written at: its host's start. */
+export function clampToHostStart(element: RowClock, masterTime: number): number {
+  return Math.max(authoredOffset(element), masterTime);
+}
+
 /** A master-time position on this row, as the `data-start` its source file stores. */
-export function toAuthoredStart(
-  element: Pick<TimelineElement, "parentCompositionStart" | "authoredStartIsMasterTime">,
-  masterTime: number,
-): number {
-  const offset = element.authoredStartIsMasterTime ? 0 : (element.parentCompositionStart ?? 0);
-  return Math.max(0, masterTime - offset);
+export function toAuthoredStart(element: RowClock, masterTime: number): number {
+  return clampToHostStart(element, masterTime) - authoredOffset(element);
+}
+
+/** A master-time position on the clock this row's tweens run on. */
+export function toCompositionTime(element: RowClock, masterTime: number): number {
+  return masterTime - (element.parentCompositionStart ?? 0);
 }
 
 /**

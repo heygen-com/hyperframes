@@ -2145,6 +2145,21 @@ describe("useTimelineEditing: nested rows write composition-local starts", () =>
     h.unmount();
   });
 
+  it("scales a legacy root-time video's tweens on its host's clock, single and group", async () => {
+    const window = { oldStart: 5, oldDuration: 2, newStart: 5.5, newDuration: 1.5 };
+    for (const group of [false, true]) {
+      const h = setupNestedHarness();
+      const vo = h.row("vo");
+      await act(async () => {
+        if (group) await h.groupResize([{ element: vo, start: 7.5, duration: 1.5 }]);
+        else await h.resize(vo, { start: 7.5, duration: 1.5, playbackStart: undefined });
+      });
+      expect(h.scaleCalls()).toEqual([expect.objectContaining(window)]);
+      h.unmount();
+      vi.unstubAllGlobals();
+    }
+  });
+
   it("clamps a nested row dropped before its host's start to the host's start", async () => {
     const h = setupNestedHarness();
     const logo = h.row("logo");

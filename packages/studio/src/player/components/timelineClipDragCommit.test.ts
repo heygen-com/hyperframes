@@ -1508,6 +1508,24 @@ describe("commitZMirrorLaneMove", () => {
   });
 });
 
+describe("persistMoveEdits: a nested row dropped before its host", () => {
+  it("lands at the host's start in the store and in the persist", async () => {
+    const logo = { ...el("logo", 0, 5, 5, "div"), parentCompositionStart: 2 };
+    const updateElement = vi.fn();
+    const onMoveElements = vi.fn(async (_edits: TimelineMoveEdit[]) => {});
+    await persistMoveEdits([{ element: logo, updates: { start: 1, track: 0 } }], {
+      elements: [logo],
+      trackOrder: [0],
+      updateElement,
+      onMoveElements,
+    });
+    expect(updateElement).toHaveBeenCalledWith("logo", { start: 2, track: 0 });
+    expect(onMoveElements.mock.calls[0]?.[0]).toEqual([
+      { element: logo, updates: { start: 2, track: 0 } },
+    ]);
+  });
+});
+
 describe("persistMoveEdits convergence", () => {
   it("reasserts a saved lane after a stale runtime sync", async () => {
     const clip = { ...el("headline", 2, 0.5, 4.9), authoredTrack: 2 };
