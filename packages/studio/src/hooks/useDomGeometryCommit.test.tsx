@@ -229,7 +229,7 @@ describe("useDomGeometryCommit, one word of a staggered phrase", () => {
   const WORDS = ["How", "we", "build", "videos", "at", "scale", "every", "day"];
   const PHRASE = WORDS.map((w, i) => `<span class="w" data-hf-id="hf-w${i}">${w}</span>`).join("");
 
-  function stubPhraseServer() {
+  function stubPhraseServer(patchStatuses: number[] = []) {
     const calls = { patches: [] as unknown[], gsapMutations: [] as unknown[] };
     vi.stubGlobal(
       "fetch",
@@ -254,6 +254,13 @@ describe("useDomGeometryCommit, one word of a staggered phrase", () => {
         if (url.includes("/api/projects/p1/files/")) return json({ content: PHRASE });
         if (url.includes("/api/projects/p1/file-mutations/patch-element/")) {
           calls.patches.push(JSON.parse(String(init?.body)));
+          const status = patchStatuses.shift();
+          if (status) {
+            return new Response(JSON.stringify({ error: "the file changed on disk" }), {
+              status,
+              headers: { "content-type": "application/json" },
+            });
+          }
           return json({ ok: true, changed: true, matched: true, content: "AFTER", version: "v2" });
         }
         if (url.includes("/api/projects/p1/gsap-mutations/")) {
@@ -266,22 +273,20 @@ describe("useDomGeometryCommit, one word of a staggered phrase", () => {
     return calls;
   }
 
-  it("saves left/top on the dragged word only and never rewrites the shared tween", async () => {
-    const calls = stubPhraseServer();
-    const { element, recordEdit, hook, unmount } = renderHost();
+  function mountWord(element: HTMLElement) {
     element.ownerDocument.body.innerHTML = PHRASE;
     const word = element.ownerDocument.querySelector<HTMLElement>('[data-hf-id="hf-w0"]')!;
     Object.defineProperties(word, {
       offsetLeft: { get: () => 100 + (Number.parseFloat(word.style.left) || 0) },
       offsetTop: { get: () => 200 + (Number.parseFloat(word.style.top) || 0) },
     });
-    const selection = {
-      ...makeSelection("How", word),
-      id: undefined,
-      selector: ".w",
-      selectorIndex: 0,
-      hfId: "hf-w0",
-    };
+    return { ...makeSelection("How", word), id: undefined, selector: ".w", hfId: "hf-w0" };
+  }
+
+  it("saves left/top on the dragged word only and never rewrites the shared tween", async () => {
+    const calls = stubPhraseServer();
+    const { element, recordEdit, hook, unmount } = renderHost();
+    const selection = mountWord(element);
 
     await expect(hook().commitPathOffset(selection, { x: 40, y: 20 })).resolves.toEqual({
       ok: true,
@@ -298,6 +303,25 @@ describe("useDomGeometryCommit, one word of a staggered phrase", () => {
         ],
       }),
     ]);
+    expect(recordEdit).toHaveBeenCalledTimes(1);
+    unmount();
+  });
+
+  it("saves a later move after a conflict refused the first, and says what happened", async () => {
+    const calls = stubPhraseServer([409]);
+    const showToast = vi.fn();
+    const { element, recordEdit, hook, unmount } = renderHost({ showToast });
+    const selection = mountWord(element);
+
+    await expect(hook().commitPathOffset(selection, { x: 40, y: 20 })).rejects.toThrow();
+    expect(showToast.mock.calls.map((call) => call[0])).toEqual([
+      "Couldn't save edit: the file changed on disk",
+    ]);
+    await expect(hook().commitPathOffset(selection, { x: 40, y: 20 })).resolves.toEqual({
+      ok: true,
+    });
+
+    expect(calls.patches).toHaveLength(2);
     expect(recordEdit).toHaveBeenCalledTimes(1);
     unmount();
   });

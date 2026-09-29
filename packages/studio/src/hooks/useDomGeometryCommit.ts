@@ -82,7 +82,6 @@ export function useDomGeometryCommit({
     showToast,
     writeProjectFile,
   });
-  // A word moved out of a shared stagger saves left/top through the same patch path as style edits.
   const [queue] = useState(createDomEditSaveQueue);
   useMountEffect(() => () => queue.destroy());
   const persistDomEditOperations = useDomEditPersist({
@@ -100,10 +99,23 @@ export function useDomGeometryCommit({
     persistDomEditOperations,
     showToast,
   });
+  // No paused-save banner in a host: each save is a retry, as in useDomStyleCommit.
+  const commitWithFreshQueue = useCallback<typeof commitPositionPatchToHtml>(
+    (...args) => {
+      queue.reset();
+      return commitPositionPatchToHtml(...args);
+    },
+    [commitPositionPatchToHtml, queue],
+  );
   const stageElementPositionOffset = useCallback(
     (selection: DomEditSelection, next: { x: number; y: number }, coalesceKey?: string) =>
-      stageElementOffset({ commitPositionPatchToHtml, showToast }, selection, next, coalesceKey),
-    [commitPositionPatchToHtml, showToast],
+      stageElementOffset(
+        { commitPositionPatchToHtml: commitWithFreshQueue, showToast },
+        selection,
+        next,
+        coalesceKey,
+      ),
+    [commitWithFreshQueue, showToast],
   );
   const makeFetchFallback = useGsapAnimationFetchFallback(projectId);
   const trackGsapInteractionFailure = useGsapInteractionFailureTelemetry(activeCompPath, showToast);
