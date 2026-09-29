@@ -29,7 +29,13 @@ interface HarnessProps {
   zoomMode?: ZoomMode;
 }
 
-function Harness({ pps, scroll, percent = 100, dragging = false, zoomMode = "manual" }: HarnessProps) {
+function Harness({
+  pps,
+  scroll,
+  percent = 100,
+  dragging = false,
+  zoomMode = "manual",
+}: HarnessProps) {
   useTimelinePlayhead({
     playheadRef: { current: document.createElement("div") },
     scrollRef: { current: scroll },

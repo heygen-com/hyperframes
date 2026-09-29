@@ -12,7 +12,6 @@ import {
 import { getTimelinePlayheadTransform } from "./timelinePlayheadTransform";
 import { applyTimelineHorizontalAutoScrollStep } from "./timelineEditing";
 
-/** The scroll that brings an off-screen playhead into view; `from` when it is already visible. */
 function revealPlayheadScrollLeft(
   scroll: HTMLDivElement,
   playheadX: number,
@@ -75,9 +74,8 @@ export function useTimelinePlayhead({
 }: UseTimelinePlayheadInput) {
   const dragScrollRaf = useRef(0);
   const previousZoomModeRef = useRef<ZoomMode | null>(zoomMode);
-  // A toolbar / slider zoom keeps the playhead where it is on screen; a resize keeps the
-  // viewport centre, or 00:00 when the view is at the start. The pinch handler anchors at
-  // the cursor instead, so it opts out via `skipCenterAnchorRef`.
+  // A toolbar zoom keeps the playhead in place; a resize keeps the centre, or 00:00 at the start.
+  // The pinch handler anchors at the cursor instead, so it opts out via `skipCenterAnchorRef`.
   const previousAnchorPpsRef = useRef(pps);
   const previousAnchorPercentRef = useRef(manualZoomPercentRef.current);
   const lastLiveTimeRef = useRef(usePlayerStore.getState().currentTime);
@@ -101,7 +99,8 @@ export function useTimelinePlayhead({
     if (!zoomed && scroll.scrollLeft < 1) return;
     const time = Math.max(0, lastLiveTimeRef.current);
     const playheadX = contentOrigin + time * prevPps;
-    const onScreen = revealPlayheadScrollLeft(scroll, playheadX, contentOrigin) === scroll.scrollLeft;
+    const onScreen =
+      revealPlayheadScrollLeft(scroll, playheadX, contentOrigin) === scroll.scrollLeft;
     const nextScrollLeft = getTimelineScrollLeftForZoomAnchor({
       pointerX: zoomed && onScreen ? playheadX - scroll.scrollLeft : scroll.clientWidth / 2,
       currentScrollLeft: scroll.scrollLeft,
