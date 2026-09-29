@@ -1494,6 +1494,94 @@ describe("bundleToSingleHtml", () => {
     });
   });
 
+  describe("composition links to the same file", () => {
+    async function sharedLinks(aLink: string, bLink: string, rootHead = "") {
+      const comp = (id: string, link: string) =>
+        `<template id="${id}-template"><div data-composition-id="${id}" data-width="320" data-height="180">${link}<p class="${id}">x</p></div></template>`;
+      const dir = makeTempProject({
+        "index.html": `<!doctype html>
+<html><head>${rootHead}</head><body>
+  <div data-composition-id="root" data-width="320" data-height="180">
+    <div data-composition-id="a" data-composition-src="a.html"></div>
+    <div data-composition-id="b" data-composition-src="b.html"></div>
+  </div>
+  <script>window.__timelines = window.__timelines || {}; window.__timelines.root = {}</script>
+</body></html>`,
+        "a.html": comp("a", aLink.replace("HREF", "shared.css")),
+        "b.html": comp("b", bLink.replace("HREF", "shared.css")),
+        "shared.css": ".a,.b{color:green}",
+      });
+      const { document } = parseHTML(await bundleToSingleHtml(dir));
+      return [...document.querySelectorAll("link[href]")].map((el) => ({
+        href: el.getAttribute("href"),
+        rel: el.getAttribute("rel"),
+        media: el.getAttribute("media"),
+        title: el.getAttribute("title"),
+      }));
+    }
+    const link = (attrs = "") => `<link rel="stylesheet" href="HREF"${attrs}>`;
+    const plain = { href: "shared.css", rel: "stylesheet", media: null, title: null };
+    const print = { ...plain, media: "print" };
+
+    it.each([
+      ["a plain link after a print one", link(' media="print"'), link(), [print, plain]],
+      [
+        "a plain link after a titled one",
+        link(' title="alt"'),
+        link(),
+        [{ ...plain, title: "alt" }, plain],
+      ],
+      ["a print link after a plain one", link(), link(' media="print"'), [plain, print]],
+      [
+        "a screen link after a print one",
+        link(' media="print"'),
+        link(' media="screen"'),
+        [print, { ...plain, media: "screen" }],
+      ],
+      ["two print links", link(' media="print"'), link(' media="print"'), [print]],
+      ["two plain links", link(), link(), [plain]],
+    ])("keeps %s under its own condition", async (_, aLink, bLink, expected) => {
+      expect(await sharedLinks(aLink, bLink)).toEqual(expected);
+    });
+
+    it("keeps a plain link after an alternate one", async () => {
+      const links = await sharedLinks(
+        `<link rel="alternate stylesheet" title="alt" href="HREF">`,
+        link(),
+      );
+      expect(links).toContainEqual(plain);
+    });
+
+    it("keeps a composition's plain link when the root links the same URL for print", async () => {
+      const url = "https://cdn.example/shared.css";
+      const links = await sharedLinks(
+        link().replace("HREF", url),
+        link(),
+        `<link rel="stylesheet" href="${url}" media="print">`,
+      );
+      expect(links).toEqual([{ ...print, href: url }, { ...plain, href: url }, plain]);
+    });
+
+    it("carries a composition link's type and disabled state", async () => {
+      const dir = makeTempProject({
+        "index.html": `<!doctype html>
+<html><head></head><body>
+  <div data-composition-id="root" data-width="320" data-height="180">
+    <div data-composition-id="a" data-composition-src="a.html"></div>
+  </div>
+  <script>window.__timelines = window.__timelines || {}; window.__timelines.root = {}</script>
+</body></html>`,
+        "a.html": `<template id="a-template"><div data-composition-id="a" data-width="320" data-height="180">
+<link rel="stylesheet" href="x.scss" type="text/x-scss"><link rel="stylesheet" href="off.css" disabled><p>x</p></div></template>`,
+      });
+      const { document } = parseHTML(await bundleToSingleHtml(dir));
+      expect(document.querySelector('link[href="x.scss"]')?.getAttribute("type")).toBe(
+        "text/x-scss",
+      );
+      expect(document.querySelector('link[href="off.css"]')?.hasAttribute("disabled")).toBe(true);
+    });
+  });
+
   it("preserves @import for absolute URLs", async () => {
     const dir = makeTempProject({
       "index.html": `<!doctype html>

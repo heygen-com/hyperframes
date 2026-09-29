@@ -1,6 +1,11 @@
 import { readExternalScriptAttributes, type ExternalScriptAttributes } from "./externalScripts";
 import { parseImportMap, type ImportMap } from "./importMaps";
-import { compositionStyle, cssStyleMergeKey, type CompositionStyle } from "./scriptRuns";
+import {
+  compositionStyle,
+  cssStyleMergeKey,
+  linkDedupeKey,
+  type CompositionStyle,
+} from "./scriptRuns";
 /**
  * Shared sub-composition inlining logic.
  *
@@ -236,6 +241,23 @@ export interface ExternalLink {
   crossorigin?: string;
   media?: string;
   title?: string;
+  type?: string;
+  disabled?: true;
+}
+
+/** Appends a hoisted link unless the document already has one with the same `linkDedupeKey`. */
+export function ensureExternalLinkTag(doc: Document, link: ExternalLink): void {
+  const el = doc.createElement("link");
+  el.setAttribute("rel", link.rel);
+  el.setAttribute("href", link.href);
+  for (const name of ["crossorigin", "media", "title", "type"] as const) {
+    const value = link[name];
+    if (value != null) el.setAttribute(name, value);
+  }
+  if (link.disabled) el.setAttribute("disabled", "");
+  const key = linkDedupeKey(el);
+  if ([...doc.querySelectorAll("link[href]")].some((other) => linkDedupeKey(other) === key)) return;
+  doc.head.appendChild(el);
 }
 
 export interface InlineSubCompositionsResult {
@@ -314,7 +336,7 @@ export function inlineSubCompositions(
   const importMaps: ImportMap[] = [];
   const moduleScripts: string[] = [];
   const externalLinks: ExternalLink[] = [];
-  const seenLinkHrefs = new Set<string>();
+  const seenLinks = new Set<string>();
   const variablesByComp: Record<string, Record<string, unknown>> = {};
 
   const sceneHosts = new Map<string, Element>();
@@ -450,15 +472,18 @@ export function inlineSubCompositions(
     // composition's font from the render while preview kept it.
     for (const link of plan.linkSources) {
       const href = resolveSubAssetPath(link.getAttribute("href"));
-      if (href && !seenLinkHrefs.has(href)) {
-        seenLinkHrefs.add(href);
+      const key = linkDedupeKey(link, href);
+      if (href && !seenLinks.has(key)) {
+        seenLinks.add(key);
         const rel = (link.getAttribute("rel") || "").trim();
         const crossorigin = link.hasAttribute("crossorigin")
           ? link.getAttribute("crossorigin") || ""
           : undefined;
         const media = link.getAttribute("media") ?? undefined;
         const title = link.getAttribute("title") ?? undefined;
-        externalLinks.push({ href, rel, crossorigin, media, title });
+        const type = link.getAttribute("type") ?? undefined;
+        const disabled = link.hasAttribute("disabled") ? true : undefined;
+        externalLinks.push({ href, rel, crossorigin, media, title, type, disabled });
       }
     }
 

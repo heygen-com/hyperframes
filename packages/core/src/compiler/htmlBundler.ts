@@ -41,7 +41,11 @@ import {
 import { validateHyperframeHtmlContract } from "./staticGuard";
 import { getHyperframeRuntimeScript } from "../generated/runtime-inline";
 import { readDeclaredDefaults } from "../runtime/getVariables";
-import { inlineSubCompositions, refuseSwapsReachedByRootScripts } from "./inlineSubCompositions";
+import {
+  ensureExternalLinkTag,
+  inlineSubCompositions,
+  refuseSwapsReachedByRootScripts,
+} from "./inlineSubCompositions";
 import { queryByAttr } from "../utils/cssSelector";
 import { isSafePath, resolveWithinProject } from "../safePath.js";
 import { ensureHfIds } from "@hyperframes/parsers/hf-ids";
@@ -1262,20 +1266,7 @@ async function bundleProject(projectDir: string, options?: BundleOptions): Promi
     }
   }
 
-  // Inject external scripts from sub-compositions (e.g., Lottie CDN)
-  // that aren't already present in the main document.
-  for (const link of compExternalLinks) {
-    const escapedHref = link.href.replace(/\\/g, "\\\\").replace(/"/g, '\\"');
-    if (!document.querySelector(`link[href="${escapedHref}"]`)) {
-      const linkEl = document.createElement("link");
-      linkEl.setAttribute("rel", link.rel);
-      linkEl.setAttribute("href", link.href);
-      if (link.crossorigin != null) linkEl.setAttribute("crossorigin", link.crossorigin);
-      if (link.media != null) linkEl.setAttribute("media", link.media);
-      if (link.title != null) linkEl.setAttribute("title", link.title);
-      document.head.appendChild(linkEl);
-    }
-  }
+  for (const link of compExternalLinks) ensureExternalLinkTag(document, link);
 
   for (const css of compStyleChunks) pushRun(styleRuns, undefined, css);
   for (const chunk of compScriptChunks) pushRun(scriptRuns, undefined, chunk);

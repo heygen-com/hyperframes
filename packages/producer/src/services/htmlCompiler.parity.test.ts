@@ -234,6 +234,43 @@ describe("preview/render semantic compilation parity", () => {
     expect(render).toEqual(preview);
   });
 
+  it("keeps each composition's link to a shared file under its own condition in preview, render and mount", async () => {
+    const url = "https://cdn.example/shared.css";
+    const host = (id: string) =>
+      `<section data-composition-id="${id}" data-composition-src="${id}.html" data-start="0" data-duration="1"></section>`;
+    const comp = (id: string, attrs: string) =>
+      `<template id="${id}-template"><article data-composition-id="${id}" data-width="320" data-height="180"><link rel="stylesheet" href="${url}"${attrs}><p>x</p></article></template>`;
+    const files = {
+      "index.html": shell(
+        `<main data-composition-id="main" data-start="0" data-width="320" data-height="180" data-duration="1">
+          ${["a", "b", "c"].map(host).join("")}</main>`,
+        `<link rel="stylesheet" href="${url}" title="alt">`,
+      ),
+      "a.html": comp("a", ' media="print"'),
+      "b.html": comp("b", ""),
+      "c.html": comp("c", ' media="print"'),
+    };
+    const dir = project(files);
+    const links = (head: ParentNode) =>
+      [...head.querySelectorAll(`link[href="${url}"]`)].map((el) => ({
+        media: el.getAttribute("media"),
+        title: el.getAttribute("title"),
+      }));
+    const parsedHead = (html: string) => new DOMParser().parseFromString(html, "text/html").head;
+    const expected = [
+      { media: null, title: "alt" },
+      { media: "print", title: null },
+      { media: null, title: null },
+    ];
+    expect(links(parsedHead(await bundleToSingleHtml(dir)))).toEqual(expected);
+    const render = await compileForRender(dir, join(dir, "index.html"), join(dir, ".downloads"), {
+      allowSystemFontCapture: false,
+    });
+    expect(links(parsedHead(render.html))).toEqual(expected);
+    await mountContract(dir, files["index.html"]);
+    expect(links(document.head)).toEqual(expected);
+  });
+
   it("keeps legacy end/layer timing semantically identical", async () => {
     const result = await contracts({
       "index.html":

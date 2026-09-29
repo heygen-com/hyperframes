@@ -46,6 +46,16 @@ export function cssStyleMergeKey(el: Element): string | undefined {
   return JSON.stringify([media === "all" ? "" : media, el.getAttribute("title") ?? ""]);
 }
 
+/** Links with one key load one resource under one condition, so one can stand in for the other. */
+export function linkDedupeKey(el: Element, href = el.getAttribute("href")): string {
+  return JSON.stringify([
+    href,
+    (el.getAttribute("rel") ?? "").trim().toLowerCase(),
+    cssStyleMergeKey(el) ?? el.getAttribute("type"),
+    el.hasAttribute("disabled"),
+  ]);
+}
+
 /** Groups head styles into runs of adjacent styles with one merge key, so merging a run never reorders rules. */
 export function headStyleRuns(
   styles: readonly Element[],

@@ -86,6 +86,7 @@ export {
 
 // Sub-composition inlining (shared between bundler and producer)
 export {
+  ensureExternalLinkTag,
   inlineSubCompositions,
   type InlineSubCompositionsOptions,
   type InlineSubCompositionsResult,
