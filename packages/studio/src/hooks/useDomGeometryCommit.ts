@@ -11,9 +11,9 @@ import { useGsapInteractionFailureTelemetry } from "./useGsapInteractionFailureT
 import { useGsapScriptCommits } from "./useGsapScriptCommits";
 import { useGsapCacheVersion } from "./useGsapTweenCache";
 
-/** The host's player must have run `usePlayerStore.getState().beginTimelineSession(projectId)`. */
+/** The host must first call `usePlayerStore.getState().beginTimelineSession(projectId)`. */
 export interface UseDomGeometryCommitOptions extends UseDomStyleCommitOptions {
-  /** Called when a save cannot patch the live preview in place; defaults to reloading the iframe. */
+  /** Called when a save cannot patch the preview in place; defaults to reloading the iframe. */
   reloadPreview?: () => void;
 }
 

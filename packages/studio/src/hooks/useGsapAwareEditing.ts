@@ -303,7 +303,6 @@ export function useGsapAwareEditing({
         const ownedAnimations = getGsapAnimationsForSelection(selection);
         targetAnimations = Array.isArray(ownedAnimations) ? ownedAnimations : await ownedAnimations;
       } catch (error) {
-        // The transaction below owns restore, so a lookup failing before it must undo the draft here.
         restore();
         trackGsapInteractionFailure(error, selection, "resize", "Resize animated layer");
         throw error;

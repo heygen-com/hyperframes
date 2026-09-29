@@ -162,7 +162,12 @@ describe("useDomGeometryCommit, from the package entry", () => {
     const { element, recordEdit, hook, unmount } = renderHost({ showToast });
 
     await expect(
-      hook().commitBoxSize(makeSelection("card", element), { width: 300, height: 90 }, undefined, restore),
+      hook().commitBoxSize(
+        makeSelection("card", element),
+        { width: 300, height: 90 },
+        undefined,
+        restore,
+      ),
     ).rejects.toThrow();
     expect(restore).toHaveBeenCalledTimes(1);
     expect(showToast).toHaveBeenCalledWith(expect.any(String), "error");
@@ -178,7 +183,12 @@ describe("useDomGeometryCommit, from the package entry", () => {
     const { element, hook, unmount } = renderHost();
 
     await expect(
-      hook().commitBoxSize(makeSelection("card", element), { width: 300, height: 90 }, undefined, restore),
+      hook().commitBoxSize(
+        makeSelection("card", element),
+        { width: 300, height: 90 },
+        undefined,
+        restore,
+      ),
     ).rejects.toThrow("no timeline session");
     expect(restore).toHaveBeenCalledTimes(1);
     expect(mutations).toHaveLength(0);
