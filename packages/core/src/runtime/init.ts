@@ -2645,7 +2645,9 @@ export function initSandboxRuntimeModular(): void {
     t: number,
     ahead = LOOKAHEAD_SECONDS,
   ) => {
-    const start = resolveStartForElement(node, Number.NaN);
+    const start = isMediaElement(node)
+      ? resolveAbsoluteMediaStartSeconds(node)
+      : resolveStartForElement(node, Number.NaN);
     return (start > t && start <= t + ahead) || visibleAt(node, t + ahead);
   };
   // Where Studio's loop wraps to (window.__hf.setLoopStart); null when it does not loop.

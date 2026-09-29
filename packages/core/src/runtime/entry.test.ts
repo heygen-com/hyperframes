@@ -479,6 +479,21 @@ describe("runtime entry", () => {
       expect(armed(otherHost, untrackedNext)).toEqual([false, false]);
     });
 
+    it("arms a short nested clip whose start is already root time before it is due", async () => {
+      spyLoad();
+      servePreview();
+      const host = timed(mountRoot(), "div", "5");
+      host.setAttribute("data-composition-id", "inner");
+      host.setAttribute("data-duration", "5");
+      const [clip] = videos(host, "6");
+      clip.setAttribute("data-hf-media-start-basis", "global");
+      clip.setAttribute("data-duration", "0.4");
+
+      await evaluateRuntime();
+      window.__player?.seek(4.5);
+      expect(armed(clip)).toEqual([true]);
+    });
+
     it("keeps the clips due at the loop start loaded while the loop plays", async () => {
       spyLoad();
       servePreview();
