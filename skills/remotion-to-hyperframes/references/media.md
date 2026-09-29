@@ -76,8 +76,8 @@ is the static baseline.
 
 ```html
 <video
-  muted
   playsinline
+  data-has-audio="true"
   data-start="0"
   data-duration="5"
   data-track-index="0"
@@ -89,8 +89,10 @@ is the static baseline.
 rendering. HF runs in headless Chrome already, so the off-thread variant
 collapses to a regular `<video>`.
 
-`muted` and `playsinline` are required for the runtime to autoplay
-(browser policy). Always emit them.
+`playsinline` is required for the runtime to autoplay (browser policy); always
+emit it. Remotion `<Video>` maps to `<video playsinline>` + `data-has-audio="true"`
+unless the Remotion source sets `muted` or `volume={0}` (then emit `muted`
+instead, as in the source above).
 
 ## `<Img>`
 

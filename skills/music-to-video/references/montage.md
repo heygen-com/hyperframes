@@ -15,7 +15,7 @@ realizes it inside the frame file (HOW). **Obey the frame's `pacing`.**
 The asset-driven analogue of a per-onset typographic group: cut to a new clip on each anchor
 (the frame's beats/onsets from the audiomap). Each clip is a `class="clip"` element
 (`<img>` for a photo, **muted** `<video>` for a motion clip) placed at its anchor with
-`data-start`/`data-duration`/`data-track-index` per the core clip contract. Between clips,
+`data-start`/`data-duration`/`data-track-index` per the core clip contract. (Muted on purpose: the music track drives the sound.) Between clips,
 crossfade the outgoing content to `opacity:0` ending **at** the next anchor.
 Cut on the **strong** anchors; land a hero clip on a `key_moment`/downbeat.
 

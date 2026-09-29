@@ -53,16 +53,16 @@ See [timing.md](timing.md) — this is the highest-leverage section.
 
 See [media.md](media.md) for trim, volume ramps, and decoder notes.
 
-| Remotion                               | HyperFrames                                                                                                                                      |
-| -------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------ |
-| `<Audio src volume>`                   | `<audio data-start data-duration data-track-index data-volume src>`                                                                              |
-| `<Audio playbackRate startFrom endAt>` | `data-playback-rate`, `data-trim-start`, `data-trim-end`                                                                                         |
-| `<Video src>`                          | `<video muted playsinline data-start data-duration data-track-index src>`                                                                        |
-| `<OffthreadVideo>`                     | `<video>` — HF doesn't need the off-thread variant (uses headless Chrome)                                                                        |
-| `<Img src>`                            | `<img>`                                                                                                                                          |
-| `<IFrame src>`                         | `<iframe>` — HF auto-falls back to screenshot mode for nested iframes                                                                            |
-| `staticFile("x.png")`                  | `"assets/x.png"` in the root, `"../assets/x.png"` inside a `compositions/` scene file — copy the file into `hf-src/assets/` next to `index.html` |
-| `delayRender()` / `continueRender()`   | drop — HF waits on asset readiness via the Frame Adapter pattern                                                                                 |
+| Remotion                               | HyperFrames                                                                                                                                            |
+| -------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `<Audio src volume>`                   | `<audio data-start data-duration data-track-index data-volume src>`                                                                                    |
+| `<Audio playbackRate startFrom endAt>` | `data-playback-rate`, `data-trim-start`, `data-trim-end`                                                                                               |
+| `<Video src>`                          | `<video playsinline data-has-audio="true" data-start data-duration data-track-index src>` (`muted` instead if the source sets `muted` or `volume={0}`) |
+| `<OffthreadVideo>`                     | `<video>` — HF doesn't need the off-thread variant (uses headless Chrome)                                                                              |
+| `<Img src>`                            | `<img>`                                                                                                                                                |
+| `<IFrame src>`                         | `<iframe>` — HF auto-falls back to screenshot mode for nested iframes                                                                                  |
+| `staticFile("x.png")`                  | `"assets/x.png"` in the root, `"../assets/x.png"` inside a `compositions/` scene file — copy the file into `hf-src/assets/` next to `index.html`       |
+| `delayRender()` / `continueRender()`   | drop — HF waits on asset readiness via the Frame Adapter pattern                                                                                       |
 
 ## Transitions
 
