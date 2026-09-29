@@ -28,7 +28,7 @@ interface CropGestureState {
 interface DomEditCropHandlesProps {
   selection: DomEditSelection;
   overlayRect: OverlayRect;
-  onStyleCommit?: (property: string, value: string) => Promise<void> | void;
+  onStyleCommit?: (property: string, value: string) => Promise<unknown> | void;
 }
 
 // Hit-strip size (px) for an edge crop handle: THICKNESS extends outward from

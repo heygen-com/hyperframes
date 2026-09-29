@@ -2,6 +2,7 @@
  * @vitest-environment jsdom
  */
 import { describe, it, expect } from "vitest";
+import { ensureHfIds } from "./hfIds.js";
 import {
   parseHtml,
   updateElementInHtml,
@@ -12,6 +13,34 @@ import {
 } from "./htmlParser.js";
 
 describe("parseHtml", () => {
+  it("preserves runtime HTML normalization for mixed-case attributes", () => {
+    const result = parseHtml(`<!doctype html><HTML DATA-RESOLUTION="square"><BODY>
+      <DIV ID="x" DATA-START="2" DATA-DURATION="3" DATA-TRACK-INDEX="4" DATA-NAME="UP"><DIV>hello</DIV></DIV>
+    </BODY></HTML>`);
+    expect(result.resolution).toBe("square");
+    expect(result.elements).toHaveLength(1);
+    expect(result.elements[0]).toMatchObject({
+      startTime: 2,
+      duration: 3,
+      zIndex: 4,
+      name: "UP",
+      content: "hello",
+    });
+  });
+
+  it.each([
+    `<DIV ID="x" DATA-START="2" DATA-DURATION="3" DATA-NAME="UP"><DIV>hello</DIV></DIV>`,
+    `<DIV ID="x" DATA-START="2" DATA-HF-ID="pinned" DATA-HF-STATE="ignored"><DIV>hello</DIV></DIV>`,
+  ])("matches persisted and runtime IDs for mixed-case HTML: %s", (body) => {
+    const html = `<!doctype html><html><body>${body}</body></html>`;
+    const first = parseHtml(html);
+    const persisted = parseHtml(ensureHfIds(html));
+    expect(first.elements.length).toBeGreaterThan(0);
+    expect(first.elements.map((element) => element.id)).toEqual(
+      persisted.elements.map((element) => element.id),
+    );
+  });
+
   it("extracts elements with data-start and data-end", () => {
     const html = `
       <html>
@@ -580,6 +609,19 @@ describe("removeElementFromHtml", () => {
     expect(updated).toContain('id="el2"');
   });
 
+  it("cascades DOM and stable ids for every descendant", () => {
+    const html = `<!doctype html><html><body>
+      <div id="parent"><div id="box" data-hf-id="hf-box"></div></div>
+      <script>const tl = gsap.timeline();
+        tl.to("#parent", { x: 10 }); tl.to("#box", { x: 20 });
+        tl.to('[data-hf-id="hf-box"]', { x: 30 });
+      </script></body></html>`;
+    const updated = removeElementFromHtml(html, "parent");
+    expect(updated).not.toContain("#parent");
+    expect(updated).not.toContain("#box");
+    expect(updated).not.toContain("hf-box");
+  });
+
   it("strips ALL gsap tweens for the removed element, not just the first", () => {
     // Two tweens on the same element → count-based ids renumber when the first is
     // removed, so a single up-front parse left the second tween orphaned.
@@ -746,6 +788,25 @@ describe("extractCompositionMetadata", () => {
     expect(meta.variables[0].type).toBe("string");
     expect(meta.variables[1].id).toBe("count");
     expect(meta.variables[1].type).toBe("number");
+  });
+
+  it("reads variables declared on the composition root, templated or not", () => {
+    const decl = (id: string, def = "x") =>
+      JSON.stringify([{ id, type: "string", label: id, default: def }]);
+    const onRoot = `<!DOCTYPE html><html><body><div data-composition-id="c" data-composition-variables='${decl("title")}'></div></body></html>`;
+    expect(extractCompositionMetadata(onRoot).variables.map((v) => v.id)).toEqual(["title"]);
+    const inTemplate = `<!DOCTYPE html><html><body><template id="c-template"><div data-composition-id="c" data-composition-variables='${decl("sub")}'></div></template></body></html>`;
+    expect(extractCompositionMetadata(inTemplate).variables.map((v) => v.id)).toEqual(["sub"]);
+  });
+
+  it("merges <html> and root declarations, the root winning a shared id", () => {
+    const html = `<!DOCTYPE html>
+<html data-composition-variables='[{"id":"title","type":"string","label":"T","default":"A"},{"id":"count","type":"number","label":"C","default":1}]'>
+<body><div data-composition-id="c" data-composition-variables='[{"id":"title","type":"string","label":"T","default":"B"}]'></div></body>
+</html>`;
+    const vars = extractCompositionMetadata(html).variables;
+    expect(vars.map((v) => v.id)).toEqual(["title", "count"]);
+    expect(vars[0]?.default).toBe("B");
   });
 
   // T9 — CompositionVariable font/image parse (WS-B R1 implemented).

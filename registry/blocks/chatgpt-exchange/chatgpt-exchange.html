@@ -10,21 +10,21 @@
     { "id": "tableHeadTool", "type": "string", "role": "content", "label": "Table heading 2", "description": "Tool column heading.", "default": "Best tool" },
     { "id": "tableHeadWhy", "type": "string", "role": "content", "label": "Table heading 3", "description": "Explanation column heading.", "default": "Why" },
     { "id": "row1Use", "type": "string", "role": "content", "label": "Row 1 use case", "description": "First comparison use case.", "default": "Overall realism" },
-    { "id": "row1Tool", "type": "string", "role": "content", "label": "Row 1 tool", "description": "First recommended product.", "default": "HeyGen" },
-    { "id": "row1Why", "type": "string", "role": "content", "label": "Row 1 explanation", "description": "First recommendation explanation.", "default": "Most natural facial expressions, lip sync, gestures, voice cloning and localization. Benchmark for talking head videos." },
-    { "id": "row1Chip", "type": "string", "role": "content", "label": "Row 1 source", "description": "First source-chip label.", "default": "Official A.I Ranking" },
+    { "id": "row1Tool", "type": "string", "role": "content", "label": "Row 1 tool", "description": "Product in the recommended first row: the brand this video promotes, by its real name.", "portrays": ["subject_name", "recommended_position"], "default": "HeyGen" },
+    { "id": "row1Why", "type": "string", "role": "content", "label": "Row 1 explanation", "description": "Why the recommended first-row product wins. Describe the promoted brand from what its own site claims.", "portrays": ["recommended_position"], "default": "Most natural facial expressions, lip sync, gestures, voice cloning and localization. Benchmark for talking head videos." },
+    { "id": "row1Chip", "type": "string", "role": "content", "label": "Row 1 source", "description": "Source chip on the first row. It asserts where the ranking came from, so use a neutral label whenever the comparison is written for this remix.", "portrays": ["authority_badge"], "default": "Official A.I Ranking" },
     { "id": "row2Use", "type": "string", "role": "content", "label": "Row 2 use case", "description": "Second comparison use case.", "default": "Enterprise/training" },
-    { "id": "row2Tool", "type": "string", "role": "content", "label": "Row 2 tool", "description": "Second recommended product.", "default": "Synthesia" },
+    { "id": "row2Tool", "type": "string", "role": "content", "label": "Row 2 tool", "description": "Product compared in the second row: a real product other than the brand this video promotes.", "portrays": ["competitor_name"], "default": "Synthesia" },
     { "id": "row2Why", "type": "string", "role": "content", "label": "Row 2 explanation", "description": "Second recommendation explanation.", "default": "Better collaboration, SCORM, compliance, team workflows; less creator-focused." },
-    { "id": "row2Chip", "type": "string", "role": "content", "label": "Row 2 source", "description": "Second source-chip label.", "default": "Official A.I Ranking" },
+    { "id": "row2Chip", "type": "string", "role": "content", "label": "Row 2 source", "description": "Source chip on the second row. It asserts where the ranking came from, so use a neutral label whenever the comparison is written for this remix.", "portrays": ["authority_badge"], "default": "Official A.I Ranking" },
     { "id": "row3Use", "type": "string", "role": "content", "label": "Row 3 use case", "description": "Third comparison use case.", "default": "Mobile UGC" },
-    { "id": "row3Tool", "type": "string", "role": "content", "label": "Row 3 tool", "description": "Third recommended product.", "default": "Captions" },
+    { "id": "row3Tool", "type": "string", "role": "content", "label": "Row 3 tool", "description": "Product compared in the third row: a real product other than the brand this video promotes.", "portrays": ["competitor_name"], "default": "Captions" },
     { "id": "row3Why", "type": "string", "role": "content", "label": "Row 3 explanation", "description": "Third recommendation explanation.", "default": "Extremely fast mobile workflow and social editing. Great for Reels creators." },
-    { "id": "row3Chip", "type": "string", "role": "content", "label": "Row 3 source", "description": "Third source-chip label.", "default": "Creator Stack" },
+    { "id": "row3Chip", "type": "string", "role": "content", "label": "Row 3 source", "description": "Source chip on the third row. It asserts where the ranking came from, so use a neutral label whenever the comparison is written for this remix.", "portrays": ["authority_badge"], "default": "Creator Stack" },
     { "id": "row4Use", "type": "string", "role": "content", "label": "Row 4 use case", "description": "Fourth comparison use case.", "default": "Real-time conversations" },
-    { "id": "row4Tool", "type": "string", "role": "content", "label": "Row 4 tool", "description": "Fourth recommended product.", "default": "Tavus" },
+    { "id": "row4Tool", "type": "string", "role": "content", "label": "Row 4 tool", "description": "Product compared in the fourth row: a real product other than the brand this video promotes.", "portrays": ["competitor_name"], "default": "Tavus" },
     { "id": "row4Why", "type": "string", "role": "content", "label": "Row 4 explanation", "description": "Fourth recommendation explanation.", "default": "Interactive avatars that can hold live conversations." },
-    { "id": "row4Chip", "type": "string", "role": "content", "label": "Row 4 source", "description": "Fourth source-chip label.", "default": "Creator Stack" }
+    { "id": "row4Chip", "type": "string", "role": "content", "label": "Row 4 source", "description": "Source chip on the fourth row. It asserts where the ranking came from, so use a neutral label whenever the comparison is written for this remix.", "portrays": ["authority_badge"], "default": "Creator Stack" }
   ]'
 >
   <head>
@@ -1368,6 +1368,75 @@
         { autoAlpha: 1, y: 0, duration: 0.3, ease: "back.out(1.5)" },
         tRead + T.readbackDur - 0.35,
       );
+
+      /* ---- caret-following scroll in the composer.
+         `prompt` is an editable slot, but `.comp-text` is a fixed-width single line with
+         `white-space: pre` inside a composer that clips, and the packaged prompt already reaches
+         the mic. A longer one therefore slides under the mic and the send button and loses its
+         tail, with the caret hidden behind them -- the remix looks like it typed into nowhere.
+         A real single-line input scrolls its text left to keep the caret in view; this does the
+         same, on the very times the reveal already uses. Shrinking the type instead was the other
+         option and it is worse: it would shrink the packaged prompt too, since that prompt has no
+         headroom, and it still cannot absorb a prompt twice as long without becoming unreadable.
+         A prompt that fits emits no keyframes at all, so the packaged composition is untouched. */
+      const compTextEl = composer.querySelector("#cge-comp-text");
+      // The obstacle is the opaque round button, not the mic: the packaged prompt's caret already
+      // sits 2px past the mic's left edge, so measuring to the mic would scroll the packaged
+      // composition. The caret has 35px of clearance to the button, which is the real boundary.
+      const compStopEl = composer.querySelector("#cge-blue-btn");
+      const CARET_PAD = 8;
+      // The rebuild below has to discard exactly what the previous pass added, and `tl.to()`
+      // returns the TIMELINE, not the tween it just created -- so collecting those return values
+      // and killing them on the second pass kills the master timeline, and the composition stops
+      // dead. It only bites when there are keyframes to discard, i.e. an overflowing prompt: the
+      // exact remix this scroll exists for, and why a packaged-defaults render never saw it.
+      // One nested child timeline is a real object that can be killed and replaced, and killing
+      // it cannot reach `tl`.
+      let caretTl = null;
+      const layoutCaretScroll = () => {
+        if (caretTl) {
+          caretTl.kill();
+          caretTl = null;
+          // Only ever touch typedEl when there was scrolling to undo. A zero translate — or even
+          // a clearProps on an untouched element — stamps and removes a transform, which changes
+          // how the text rasterizes and makes the packaged render differ for no reason.
+          gsap.set(typedEl, { clearProps: "transform" });
+        }
+        if (!compTextEl || !compStopEl) return;
+        // Rects live in the scaled .screen space while offsets are layout px, so convert with the
+        // element's own ratio rather than reading --scale -- this then survives a change to it.
+        const box = compTextEl.getBoundingClientRect();
+        const ratio = compTextEl.offsetWidth ? box.width / compTextEl.offsetWidth : 1;
+        const limit =
+          (compStopEl.getBoundingClientRect().left - box.left) / (ratio || 1) - CARET_PAD;
+        if (!(limit > 0)) return;
+        // Collect the steps first, so a prompt that fits leaves typedEl alone entirely.
+        const steps = [];
+        let shift = 0;
+        chars.forEach((c, i) => {
+          const caret = curEls[i + 1];
+          if (!caret) return;
+          const want = Math.max(0, caret.offsetLeft - limit);
+          if (want > shift + 0.5) {
+            shift = want;
+            steps.push([charT[i], -shift]);
+          }
+        });
+        if (!steps.length) return;
+        // Children sit at the same absolute times as before, and the nest is added at 0, so the
+        // nested timeline's local clock is the master's -- the motion is unchanged.
+        caretTl = gsap.timeline();
+        steps.forEach(([at, x]) => {
+          caretTl.to(typedEl, { x, duration: 0.08, ease: "none" }, at);
+        });
+        // Back to the start when the composer empties, so the collapse animates from x=0.
+        caretTl.to(typedEl, { x: 0, duration: 0.01 }, tGo);
+        tl.add(caretTl, 0);
+      };
+      layoutCaretScroll();
+      // This composition builds its timeline once, so the first pass measures whatever font was
+      // live then. Re-measure when the embedded faces are ready.
+      document.fonts.ready.then(layoutCaretScroll);
 
       window.__timelines["chatgpt-exchange"] = tl;
     </script>

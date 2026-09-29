@@ -100,7 +100,8 @@
   "files": [
     {
       "path": "lt-neon-border.html",
-      "type": "hyperframes:block"
+      "target": "compositions/lt-neon-border.html",
+      "type": "hyperframes:composition"
     }
   ],
   "params": [

@@ -15,11 +15,11 @@
  * the caller can fall back to the expression path rather than corrupting audio.
  */
 
-import { readFileSync, renameSync, writeFileSync } from "fs";
-import { randomBytes } from "crypto";
+import { mkdtempSync, readFileSync, renameSync, rmSync, writeFileSync } from "fs";
+import { dirname, join } from "path";
 import type { AudioVolumeKeyframe } from "./audioMixer.types.js";
 import { normaliseEnvelope } from "@hyperframes/core/media-volume-envelope";
-import { riffChunks } from "./wavChunks.js";
+import { riffChunks, wavFormatTag } from "./wavChunks.js";
 
 const PCM_FORMAT = 1; // WAVE_FORMAT_PCM
 const FLOAT_FORMAT = 3; // WAVE_FORMAT_IEEE_FLOAT
@@ -51,8 +51,8 @@ interface WavFmt {
 }
 
 /** The `fmt ` chunk, or null for a format this cannot safely edit in place. */
-function readFmtChunk(buffer: Buffer, body: number): WavFmt | null {
-  const format = buffer.readUInt16LE(body);
+function readFmtChunk(buffer: Buffer, body: number, size: number): WavFmt | null {
+  const format = wavFormatTag(buffer, body, size);
   const bits = buffer.readUInt16LE(body + 14);
   const float = format === FLOAT_FORMAT;
   if (!float && format !== PCM_FORMAT) return null;
@@ -78,7 +78,7 @@ function parseWavLayout(buffer: Buffer): WavLayout | null {
 
   for (const { id, body, size } of riffChunks(buffer)) {
     if (id === "fmt " && body + 16 <= buffer.length) {
-      fmt = readFmtChunk(buffer, body);
+      fmt = readFmtChunk(buffer, body, size);
     } else if (id === "data") {
       data = { offset: body, size: Math.min(size, buffer.length - body) };
     }
@@ -166,6 +166,7 @@ export function applyVolumeEnvelopeToWav(
   const gainAt = createEnvelopeWalker(keyframes, trackStart, baseVolume);
   if (!gainAt) return false;
 
+  let stagingDir: string | undefined;
   try {
     const buffer = readFileSync(wavPath);
     const layout = parseWavLayout(buffer);
@@ -173,17 +174,24 @@ export function applyVolumeEnvelopeToWav(
 
     scaleSamples(buffer, layout, gainAt);
 
-    // Write to a uniquely-named sibling then atomically rename over the
-    // original. The random name avoids following a pre-planted symlink at a
-    // predictable path, and the rename means a crash mid-write can't leave a
-    // truncated WAV for the downstream mix.
-    const tempPath = `${wavPath}.${randomBytes(6).toString("hex")}.tmp`;
-    writeFileSync(tempPath, buffer);
+    // A private sibling directory owns the staging file; the same-filesystem
+    // rename keeps a failed write from truncating the original WAV.
+    stagingDir = mkdtempSync(join(dirname(wavPath), ".hf-volume-"));
+    const tempPath = join(stagingDir, "audio.wav");
+    writeFileSync(tempPath, buffer, { flag: "wx" });
     renameSync(tempPath, wavPath);
     return true;
   } catch {
     // Any read/parse/write failure → leave the file untouched and let the
     // caller fall back to the ffmpeg expression path rather than losing audio.
     return false;
+  } finally {
+    if (stagingDir) {
+      try {
+        rmSync(stagingDir, { recursive: true, force: true });
+      } catch {
+        // Cleanup must not turn a successfully baked envelope into a fallback.
+      }
+    }
   }
 }

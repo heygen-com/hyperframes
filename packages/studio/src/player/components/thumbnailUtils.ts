@@ -1,11 +1,17 @@
-/** Rendered height of a timeline-clip thumbnail strip, in CSS px. */
-export const THUMBNAIL_CLIP_HEIGHT = 66;
+import { buildProjectApiPath } from "../../utils/projectRouting";
+import { MAX_VISIBLE_THUMBNAIL_FRAMES } from "../lib/timelineViewportBudgets";
 
 export interface ThumbnailStripLayout {
   /** Width of a single tile, in CSS px. */
   frameW: number;
   /** Number of tiles needed to fill the container. */
   frameCount: number;
+}
+
+/** Quantize request identities so a pixel-by-pixel resize does not thrash the cache. */
+export function quantizeThumbnailFrameCount(frameCount: number): number {
+  const safeCount = Math.max(1, Number.isFinite(frameCount) ? Math.ceil(frameCount) : 1);
+  return Math.min(MAX_VISIBLE_THUMBNAIL_FRAMES, 2 ** Math.ceil(Math.log2(safeCount)));
 }
 
 /**
@@ -55,19 +61,20 @@ export function probeImageAspect(
 }
 
 /**
- * Compute the film-strip tile layout for a clip thumbnail: fixed-height tiles
- * sized by the media's aspect ratio, repeated to fill the clip width.
- * Degenerate aspects (0, negative, NaN, Infinity) fall back to 16:9.
+ * Compute the film-strip tile layout for a clip thumbnail: tiles as tall as
+ * the measured strip, sized by the media's aspect ratio, repeated to fill the
+ * clip width. Degenerate aspects (0, negative, NaN, Infinity) fall back to 16:9.
  */
 export function computeThumbnailStrip(
   containerWidth: number,
   aspect: number,
-  clipHeight: number = THUMBNAIL_CLIP_HEIGHT,
+  clipHeight: number,
   minFrameWidth = 1,
 ): ThumbnailStripLayout {
   const safeAspect = Number.isFinite(aspect) && aspect > 0 ? aspect : 16 / 9;
   const frameW = Math.max(minFrameWidth, Math.round(clipHeight * safeAspect));
-  const frameCount = containerWidth > 0 ? Math.max(1, Math.ceil(containerWidth / frameW)) : 1;
+  const measured = containerWidth > 0 && clipHeight > 0;
+  const frameCount = measured ? Math.max(1, Math.ceil(containerWidth / frameW)) : 1;
   return { frameW, frameCount };
 }
 
@@ -113,7 +120,7 @@ export function resolveMediaPreviewUrl(
       return src;
     }
     if (!studioOrigin || parsed.origin !== studioOrigin) return src;
-    const previewPath = new URL(`/api/projects/${projectId}/preview/`, studioOrigin).pathname;
+    const previewPath = new URL(buildProjectApiPath(projectId, `/preview/`), studioOrigin).pathname;
     if (parsed.pathname.startsWith(previewPath)) return src;
     if (parsed.pathname.startsWith("/api/")) return src;
     try {
@@ -128,5 +135,8 @@ export function resolveMediaPreviewUrl(
     suffix = `${parsed.search}${parsed.hash}`;
   }
 
-  return `/api/projects/${projectId}/preview/${encodePreviewPath(relativePath.replace(/^\/+/, ""))}${suffix}`;
+  return buildProjectApiPath(
+    projectId,
+    `/preview/${encodePreviewPath(relativePath.replace(/^\/+/, ""))}${suffix}`,
+  );
 }

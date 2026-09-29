@@ -3,6 +3,7 @@ import { serializeStudioFileMutation } from "./studioFileMutationCoordinator";
 import type { RecordEditInput } from "./studioFileHistory";
 import { buildProjectApiPath } from "./projectRouting";
 import { studioWriteHeaders } from "./studioFileVersion";
+import { deriveTimelineStoreKeyForDomId } from "../player/lib/timelineElementHelpers";
 
 interface TimelineCompositionInsertionResult {
   path: string;
@@ -69,14 +70,13 @@ export async function commitTimelineCompositionInsertion(input: {
     try {
       await input.recordEdit({
         label: "Add composition to timeline",
-        kind: "timeline",
         files: { [input.targetPath]: { before: result.before, after: result.after } },
       });
     } catch (error) {
       await input.writeFile(input.targetPath, result.before, result.after);
       throw error;
     }
-    input.selectHost(`${input.targetPath}#${result.hostId}`);
+    input.selectHost(deriveTimelineStoreKeyForDomId(result.hostId, input.targetPath));
     try {
       input.resync?.();
     } catch (error) {

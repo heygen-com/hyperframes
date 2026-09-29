@@ -7,13 +7,15 @@ import { CompositionThumbnail, VideoThumbnail } from "../player";
 import { AudioWaveform } from "../player/components/AudioWaveform";
 import type { TimelineClipRenderContext } from "../player/components/TimelineTypes";
 import { usePlayerStore, type TimelineElement } from "../player/store/playerStore";
+import { buildCompositionThumbnailUrl } from "../player/components/CompositionThumbnail";
+import { compositionCardThumbnailUrl } from "../components/sidebar/CompositionsTab";
 import { normalizeCompositionSrc } from "./useRenderClipContent";
 import { useRenderClipContent } from "./useRenderClipContent";
 
 (globalThis as unknown as { IS_REACT_ACT_ENVIRONMENT: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
 afterEach(() => {
-  usePlayerStore.setState({ thumbnailMode: "hidden" });
+  usePlayerStore.setState({ thumbnailMode: "hidden", elements: [] });
   document.body.innerHTML = "";
 });
 
@@ -144,6 +146,36 @@ describe("useRenderClipContent", () => {
     }
   });
 
+  it("marks audio linked when a video clip uses the same file, and muted when hidden", () => {
+    usePlayerStore.setState({
+      thumbnailMode: "hidden",
+      elements: [
+        {
+          id: "picture",
+          tag: "video",
+          start: 0,
+          duration: 4,
+          track: 0,
+          src: "assets/clip.mp4",
+        },
+      ],
+    });
+    const linked = renderClipContent({
+      id: "bed",
+      tag: "audio",
+      start: 0,
+      duration: 4,
+      track: 1,
+      src: "assets/clip.mp4",
+      hidden: true,
+    });
+    expect(isValidElement<{ linked: boolean; muted: boolean }>(linked)).toBe(true);
+    if (isValidElement<{ linked: boolean; muted: boolean }>(linked)) {
+      expect(linked.props.linked).toBe(true);
+      expect(linked.props.muted).toBe(true);
+    }
+  });
+
   it("passes empty labels to thumbnail content so TimelineClip owns clip names", () => {
     usePlayerStore.setState({ thumbnailMode: "adaptive" });
 
@@ -208,7 +240,7 @@ describe("useRenderClipContent", () => {
     }
   });
 
-  it("forwards the viewport priority and interaction detail to media work", () => {
+  it("forwards the viewport priority to video media work", () => {
     usePlayerStore.setState({ thumbnailMode: "adaptive", timelineSessionEpoch: 7 });
 
     const content = renderClipContent(
@@ -229,7 +261,6 @@ describe("useRenderClipContent", () => {
         projectId: string;
         sessionEpoch: number;
         priority: string;
-        rich: boolean;
       }>(content),
     ).toBe(true);
     if (isValidElement(content)) {
@@ -237,8 +268,81 @@ describe("useRenderClipContent", () => {
         projectId: "my-project",
         sessionEpoch: 7,
         priority: "interaction",
-        rich: true,
+      });
+      expect(content.props).not.toHaveProperty("rich");
+    }
+  });
+
+  it("finds the revision of a composition mounted with a ./ path", () => {
+    usePlayerStore.setState({
+      thumbnailMode: "adaptive",
+      thumbnailRevisions: { "compositions/nested.html": 2 },
+    });
+
+    const content = renderClipContent({
+      id: "nested",
+      tag: "div",
+      start: 0,
+      duration: 4,
+      track: 0,
+      compositionSrc: "./compositions/nested.html",
+    });
+
+    expect(isValidElement(content) && content.props).toMatchObject({ contentRevision: 2 });
+  });
+
+  it("forwards persisted content revision to mounted composition thumbnails", () => {
+    usePlayerStore.setState({
+      thumbnailMode: "adaptive",
+      timelineSessionEpoch: 7,
+      thumbnailRevisions: { "*": 11, "compositions/nested.html": 2, "compositions/other.html": 5 },
+    });
+
+    const content = renderClipContent({
+      id: "nested",
+      tag: "div",
+      start: 0,
+      duration: 4,
+      track: 0,
+      compositionSrc: "compositions/nested.html",
+    });
+
+    expect(isValidElement(content)).toBe(true);
+    if (isValidElement(content)) {
+      expect(content.type).toBe(CompositionThumbnail);
+      expect(content.props).toMatchObject({
+        projectId: "my-project",
+        sessionEpoch: 7,
+        // its own composition's revision plus the all-compositions one, not a sibling's
+        contentRevision: 13,
       });
     }
   });
+
+  it.each(["compositions/scene-0.html", "compositions/scene [v2].html", "compositions/100%.html"])(
+    "asks for the same thumbnail as the card of %s, so one render serves both",
+    (compositionSrc) => {
+      usePlayerStore.setState({
+        thumbnailMode: "adaptive",
+        thumbnailRevisions: { [compositionSrc]: 3 },
+      });
+
+      const content = renderClipContent({
+        id: "scene-0",
+        tag: "div",
+        start: 10,
+        duration: 5,
+        track: 0,
+        compositionSrc,
+      });
+
+      expect(isValidElement(content)).toBe(true);
+      if (!isValidElement(content)) return;
+      const clipUrl = buildCompositionThumbnailUrl({
+        ...(content.props as Parameters<typeof buildCompositionThumbnailUrl>[0]),
+        origin: window.location.origin,
+      });
+      expect(clipUrl).toBe(compositionCardThumbnailUrl("my-project", compositionSrc, 3));
+    },
+  );
 });

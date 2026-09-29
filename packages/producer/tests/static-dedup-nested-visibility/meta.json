@@ -1,0 +1,13 @@
+{
+  "name": "Static dedup nested visibility",
+  "description": "Regression for #3767: static-frame verification must not leave a mounted sub-composition hidden after seeking backward across its own visibility kill.",
+  "tags": ["regression", "static-dedup", "sub-composition", "visibility"],
+  "minPsnr": 30,
+  "maxFrameFailures": 0,
+  "minAudioCorrelation": 0,
+  "maxAudioLagWindows": 1,
+  "renderConfig": {
+    "fps": 30,
+    "workers": 1
+  }
+}

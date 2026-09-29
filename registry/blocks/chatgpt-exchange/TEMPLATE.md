@@ -2,7 +2,7 @@
 
 ## Surface ownership
 
-This template depicts the ChatGPT application. OpenAI owns the surrounding application identity. The supplied website is only the subject discussed inside the conversation.
+This template depicts the ChatGPT application. OpenAI owns the surrounding application identity. The supplied website is the subject discussed inside the conversation, never the application around it. The remix is an advertisement for that brand: it takes the recommended first row under its real name, and the remaining rows name real competing products.
 
 ## Editable slots
 

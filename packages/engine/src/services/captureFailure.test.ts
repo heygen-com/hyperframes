@@ -6,11 +6,24 @@ describe("classifyCaptureFailure", () => {
     ["Target closed", "transient_browser"],
     ["Runtime.callFunctionOn timed out after 30000ms", "protocol_timeout"],
     ["Runtime.evaluate timed out", "protocol_timeout"],
+    ["Network.enable timed out. Increase the protocolTimeout setting.", "protocol_timeout"],
+    ["[Parallel] Capture failed: Worker 0: Network.enable timed out", "protocol_timeout"],
+    [
+      "Page.captureScreenshot timed out. Increase the 'protocolTimeout' setting in launch/connect calls for a higher timeout if needed.",
+      "protocol_timeout",
+    ],
     ["drawElement worker encode timed out (frame 42)", "protocol_timeout"],
     ["Waiting failed: 30000ms exceeded", "protocol_timeout"],
     ["JavaScript heap out of memory", "memory_exhaustion"],
     ["drawElement self-verify failed", "verification"],
     ["Composition has zero duration. Runtime ready: true", "authoring"],
+    ["Protocol error (Page.captureScreenshot): Unable to capture screenshot", "transient_browser"],
+    [
+      "[Parallel] Capture failed: Worker 0: Protocol error (Page.captureScreenshot): Unable to capture screenshot",
+      "transient_browser",
+    ],
+    // The timed-out variant of the same call stays protocol_timeout (checked first).
+    ["Protocol error (Page.captureScreenshot): waiting for debugger timed out", "protocol_timeout"],
   ] as const)("classifies %s as %s", (message, kind) => {
     expect(classifyCaptureFailure(new Error(message)).kind).toBe(kind);
   });
@@ -54,6 +67,20 @@ describe("classifyCaptureFailure", () => {
     expect(failure.workerDiagnostics[0]?.workerId).toBe(2);
     expect(Object.isFrozen(failure.workerDiagnostics)).toBe(true);
     expect(Object.isFrozen(failure.workerDiagnostics[0]?.lines)).toBe(true);
+  });
+
+  it("classifies a broken encoder pipe as io, not authoring", () => {
+    // The streaming encoder's stdin write fails this way when ffmpeg dies
+    // first. Bucketed as authoring, PostHog blamed the composition for a host
+    // event and the cohort could not be root-caused.
+    for (const code of ["EPIPE", "EOF", "ECONNRESET"]) {
+      const withCode = Object.assign(new Error(`write ${code}`), { code });
+      expect(classifyCaptureFailure(withCode).kind).toBe("io");
+      // Flattened through a worker-pool message boundary the code is lost;
+      // the message alone must still classify.
+      expect(classifyCaptureFailure(new Error(`[Parallel] write ${code}`)).kind).toBe("io");
+    }
+    expect(classifyCaptureFailure(new Error("write to EPIPEline")).kind).toBe("authoring");
   });
 
   it("classifies repeated operation text in linear time", () => {

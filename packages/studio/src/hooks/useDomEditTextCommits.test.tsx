@@ -66,6 +66,43 @@ function selectionFor(element: HTMLElement): DomEditSelection {
   };
 }
 
+/** A preview element inside a real iframe, which is where Studio's chrome expects to find it. */
+function previewElement(
+  html: string,
+  id: string,
+): { iframe: HTMLIFrameElement; element: HTMLElement } {
+  const iframe = document.createElement("iframe");
+  document.body.append(iframe);
+  const doc = iframe.contentDocument;
+  if (!doc) throw new Error("expected iframe document");
+  doc.body.innerHTML = html;
+  const element = doc.getElementById(id);
+  const HTMLElementCtor = doc.defaultView?.HTMLElement;
+  if (!HTMLElementCtor || !(element instanceof HTMLElementCtor)) {
+    throw new Error("expected preview element");
+  }
+  return { iframe, element };
+}
+
+/** Hook params with nothing selected and a writer that succeeds; override what the test is about. */
+function commitParams(
+  overrides: Partial<UseDomEditTextCommitsParams> = {},
+): UseDomEditTextCommitsParams {
+  return {
+    activeCompPath: "index.html",
+    previewIframeRef: { current: null },
+    showToast: vi.fn(),
+    domEditSelection: null,
+    applyDomSelection: vi.fn(),
+    refreshDomEditSelectionFromPreview: vi.fn(),
+    buildDomSelectionFromTarget: vi.fn(async () => null),
+    persistDomEditOperations: vi.fn().mockResolvedValue(undefined),
+    resolveImportedFontAsset: () => null,
+    readOnlyPreview: false,
+    ...overrides,
+  };
+}
+
 let cleanup: (() => void) | null = null;
 
 function renderTextCommitHook(params: UseDomEditTextCommitsParams) {
@@ -88,17 +125,81 @@ afterEach(() => {
 });
 
 describe("useDomEditTextCommits", () => {
-  it("does not let a stale failed fields commit revert newer text", async () => {
-    const iframe = document.createElement("iframe");
-    document.body.append(iframe);
-    const doc = iframe.contentDocument;
-    if (!doc) throw new Error("expected iframe document");
-    doc.body.innerHTML = '<div id="card">Original</div>';
-    const element = doc.getElementById("card");
-    const HTMLElementCtor = doc.defaultView?.HTMLElement;
-    if (!HTMLElementCtor || !(element instanceof HTMLElementCtor)) {
-      throw new Error("expected preview element");
+  function richTextProbe() {
+    const { iframe, element } = previewElement('<h1 id="t">Old</h1>', "t");
+    const persist = vi.fn().mockResolvedValue(undefined);
+    const base = commitParams({
+      previewIframeRef: { current: iframe },
+      domEditSelection: selectionFor(element),
+      persistDomEditOperations: persist,
+    });
+    const captured: { hook: ReturnType<typeof useDomEditTextCommits> | null } = { hook: null };
+    function Probe({ readOnlyPreview }: { readOnlyPreview: boolean }) {
+      captured.hook = useDomEditTextCommits({ ...base, readOnlyPreview });
+      return null;
     }
+    const root = mountReactHarness(<Probe readOnlyPreview={false} />);
+    cleanup = () => act(() => root.unmount());
+    const save = captured.hook!.handleDomRichTextCommit;
+    const commit = { element, html: "New", previousHtml: "Old" };
+    element.innerHTML = "New";
+    return { root, Probe, persist, element, save: () => act(async () => save(commit)) };
+  }
+
+  it("saves in-place text while the preview is editable", async () => {
+    const { persist, save } = richTextProbe();
+    await save();
+    expect(persist).toHaveBeenCalledTimes(1);
+  });
+
+  it("refuses in-place text once the preview turns read-only, through an earlier handler, and puts the old text back", async () => {
+    const { root, Probe, persist, element, save } = richTextProbe();
+    act(() => root.render(<Probe readOnlyPreview />));
+    await save();
+    expect(persist).not.toHaveBeenCalled();
+    expect(element.innerHTML).toBe("Old");
+  });
+
+  it("keeps concurrent text commit ownership isolated by target", async () => {
+    const { iframe, element: firstElement } = previewElement(
+      "<div id='first'>First</div><div id='second'>Second</div>",
+      "first",
+    );
+    const secondElement = iframe.contentDocument?.getElementById("second") as HTMLElement;
+    const firstSelection = selectionFor(firstElement);
+    const secondSelection = selectionFor(secondElement);
+    const firstPersist = createDeferred<void>();
+    const persistDomEditOperations = vi
+      .fn()
+      .mockImplementationOnce(() => firstPersist.promise)
+      .mockResolvedValueOnce(undefined);
+    vi.spyOn(console, "warn").mockImplementation(() => {});
+    const hook = renderTextCommitHook(
+      commitParams({
+        previewIframeRef: { current: iframe },
+        domEditSelection: firstSelection,
+        persistDomEditOperations,
+      }),
+    );
+
+    let firstCommit: Promise<unknown> | undefined;
+    act(() => {
+      firstCommit = hook.handleDomTextCommitForSelection(firstSelection, "Pending first", "self");
+    });
+    await act(async () => {
+      await hook.handleDomTextCommitForSelection(secondSelection, "Saved second", "self");
+    });
+    firstPersist.reject(new Error("first target failed"));
+    await act(async () => {
+      await firstCommit;
+    });
+
+    expect(firstElement.textContent).toBe("First");
+    expect(secondElement.textContent).toBe("Saved second");
+  });
+
+  it("does not let a stale failed fields commit revert newer text", async () => {
+    const { iframe, element } = previewElement("<div id='card'>Original</div>", "card");
     vi.spyOn(console, "warn").mockImplementation(() => {});
     const selection = selectionFor(element);
     const stalePersist = createDeferred<void>();
@@ -106,17 +207,13 @@ describe("useDomEditTextCommits", () => {
       .fn()
       .mockImplementationOnce(() => stalePersist.promise)
       .mockResolvedValueOnce(undefined);
-    const hook = renderTextCommitHook({
-      activeCompPath: "index.html",
-      previewIframeRef: { current: iframe },
-      showToast: vi.fn(),
-      domEditSelection: selection,
-      applyDomSelection: vi.fn(),
-      refreshDomEditSelectionFromPreview: vi.fn(),
-      buildDomSelectionFromTarget: vi.fn(async () => null),
-      persistDomEditOperations,
-      resolveImportedFontAsset: () => null,
-    });
+    const hook = renderTextCommitHook(
+      commitParams({
+        previewIframeRef: { current: iframe },
+        domEditSelection: selection,
+        persistDomEditOperations,
+      }),
+    );
 
     let staleCommit: Promise<void> | undefined;
     act(() => {
@@ -131,5 +228,182 @@ describe("useDomEditTextCommits", () => {
     });
 
     expect(element.innerHTML).toBe("Newest");
+  });
+
+  it("reports persist failure from a style commit instead of resolving silently", async () => {
+    const { iframe, element } = previewElement("<div id='card'>Original</div>", "card");
+    const selection = selectionFor(element);
+    const showToast = vi.fn();
+    const hook = renderTextCommitHook(
+      commitParams({
+        previewIframeRef: { current: iframe },
+        showToast,
+        domEditSelection: selection,
+        persistDomEditOperations: vi.fn().mockRejectedValue(new Error("server said no")),
+      }),
+    );
+
+    let outcome: unknown;
+    await act(async () => {
+      outcome = await hook.handleDomStyleCommit("color", "red");
+    });
+
+    expect(outcome).toEqual({ ok: false, reason: "persist-failed" });
+    // The human-facing behaviour must be unchanged: still toasts, still reverts.
+    expect(showToast).toHaveBeenCalled();
+    expect(element.style.getPropertyValue("color")).toBe("");
+  });
+
+  it("reports a successful style commit", async () => {
+    const { iframe, element } = previewElement("<div id='card'>Original</div>", "card");
+    const selection = selectionFor(element);
+    const persistence = {
+      sourceFile: "index.html",
+      version: '"sha256:after"',
+      changed: true,
+    } as const;
+    const hook = renderTextCommitHook(
+      commitParams({
+        previewIframeRef: { current: iframe },
+        domEditSelection: selection,
+        persistDomEditOperations: vi.fn().mockResolvedValue(persistence),
+      }),
+    );
+
+    let outcome: unknown;
+    await act(async () => {
+      outcome = await hook.handleDomStyleCommit("color", "red");
+    });
+
+    expect(outcome).toEqual({ ok: true, persistence });
+  });
+
+  it("declines a style commit with no selection, without reaching the writer", async () => {
+    const persistDomEditOperations = vi.fn().mockResolvedValue(undefined);
+    const hook = renderTextCommitHook(
+      commitParams({
+        domEditSelection: null,
+        persistDomEditOperations,
+      }),
+    );
+
+    let outcome: unknown;
+    await act(async () => {
+      outcome = await hook.handleDomStyleCommit("color", "red");
+    });
+
+    expect(outcome).toEqual({ ok: false, reason: "no-selection" });
+    expect(persistDomEditOperations).not.toHaveBeenCalled();
+  });
+
+  it("declines a style commit for a manual-geometry property", async () => {
+    const persistDomEditOperations = vi.fn().mockResolvedValue(undefined);
+    const { element } = previewElement("<div id='card'>Original</div>", "card");
+    const hook = renderTextCommitHook(
+      commitParams({
+        domEditSelection: selectionFor(element),
+        persistDomEditOperations,
+      }),
+    );
+
+    let outcome: unknown;
+    await act(async () => {
+      // `left` is a manual-geometry property the style path deliberately refuses.
+      outcome = await hook.handleDomStyleCommit("left", "10px");
+    });
+
+    expect(outcome).toEqual({ ok: false, reason: "geometry-property" });
+    expect(persistDomEditOperations).not.toHaveBeenCalled();
+  });
+
+  it("declines a style commit when the selection cannot edit styles", async () => {
+    const persistDomEditOperations = vi.fn().mockResolvedValue(undefined);
+    const { element } = previewElement("<div id='card'>Original</div>", "card");
+    const locked = selectionFor(element);
+    locked.capabilities = { ...locked.capabilities, canEditStyles: false };
+    const hook = renderTextCommitHook(
+      commitParams({
+        domEditSelection: locked,
+        persistDomEditOperations,
+      }),
+    );
+
+    let outcome: unknown;
+    await act(async () => {
+      outcome = await hook.handleDomStyleCommit("color", "red");
+    });
+
+    expect(outcome).toEqual({ ok: false, reason: "styles-not-editable" });
+    expect(persistDomEditOperations).not.toHaveBeenCalled();
+  });
+
+  it("reports persist failure from a text commit instead of resolving silently", async () => {
+    const { iframe, element } = previewElement("<div id='card'>Original</div>", "card");
+    const selection = selectionFor(element);
+    const hook = renderTextCommitHook(
+      commitParams({
+        previewIframeRef: { current: iframe },
+        domEditSelection: selection,
+        persistDomEditOperations: vi.fn().mockRejectedValue(new Error("server said no")),
+      }),
+    );
+
+    let outcome: unknown;
+    await act(async () => {
+      outcome = await hook.handleDomTextCommit("Updated");
+    });
+
+    expect(outcome).toEqual({ ok: false, reason: "persist-failed" });
+    expect(element.innerHTML).toBe("Original");
+  });
+
+  it("reports a text commit declined for an unselected target", async () => {
+    const persistDomEditOperations = vi.fn().mockResolvedValue(undefined);
+    const hook = renderTextCommitHook(commitParams({ persistDomEditOperations }));
+
+    let outcome: unknown;
+    await act(async () => {
+      outcome = await hook.handleDomTextCommit("Updated");
+    });
+
+    expect(outcome).toEqual({ ok: false, reason: "no-selection" });
+    expect(persistDomEditOperations).not.toHaveBeenCalled();
+  });
+
+  it("preserves text persistence evidence for an explicit selection", async () => {
+    const { iframe, element: ambientElement } = previewElement(
+      "<div id='ambient'>Ambient</div><div id='agent'>Agent</div>",
+      "ambient",
+    );
+    const agentElement = iframe.contentDocument?.getElementById("agent") as HTMLElement;
+    const ambientSelection = selectionFor(ambientElement);
+    const agentSelection = selectionFor(agentElement);
+    const persistence = {
+      sourceFile: "index.html",
+      version: '"sha256:text"',
+      changed: true,
+    } as const;
+    const persistDomEditOperations = vi.fn().mockResolvedValue(persistence);
+    const hook = renderTextCommitHook(
+      commitParams({
+        previewIframeRef: { current: iframe },
+        domEditSelection: ambientSelection,
+        persistDomEditOperations,
+      }),
+    );
+
+    let outcome: unknown;
+    await act(async () => {
+      outcome = await hook.handleDomTextCommitForSelection(agentSelection, "Edited", "self");
+    });
+
+    expect(outcome).toEqual({ ok: true, persistence });
+    expect(persistDomEditOperations).toHaveBeenCalledWith(
+      agentSelection,
+      expect.any(Array),
+      expect.any(Object),
+    );
+    expect(ambientElement.textContent).toBe("Ambient");
+    expect(agentElement.textContent).toBe("Edited");
   });
 });

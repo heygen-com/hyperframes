@@ -26,15 +26,13 @@ import { useMemo } from "react";
 
 /** Accent rail + inset marking a row as a group MEMBER, matching the level-2
  *  nesting its `aria-level` already reports. */
-const GROUP_MEMBER_RAIL = "#3CE6AC59";
+const GROUP_MEMBER_RAIL = "var(--timeline-accent-rail)";
 const GROUP_MEMBER_INDENT = 14;
-/** A hair lighter than `gutterBackground`, so a member row reads as sitting
- *  INSIDE its group rather than beside it. Overlaid rather than hard-coded so
- *  it tracks whatever the theme's gutter is. */
-const GROUP_MEMBER_TINT = "rgba(255,255,255,0.035)";
+/** A neutral wash keeps group membership visible without changing the row's hue. */
+const GROUP_MEMBER_TINT = "var(--timeline-group-member-tint)";
 
 /** The gutter fill for a row, tinted when it belongs to a group. */
-function gutterFill(base: string, isGroupMember: boolean): string {
+export function gutterFill(base: string, isGroupMember: boolean): string {
   return isGroupMember
     ? `linear-gradient(${GROUP_MEMBER_TINT}, ${GROUP_MEMBER_TINT}), ${base}`
     : base;
@@ -74,6 +72,7 @@ interface TimelineTrackHeaderProps {
   isGroupMember?: boolean;
   rovingTargetId?: string | null;
   theme: TimelineTheme;
+  showAudioEffects?: boolean;
   onToggleClipExpanded: () => void;
   onToggleTrackHidden: TimelineEditCallbacks["onToggleTrackHidden"];
   onTogglePropertyGroupKeyframe?: TimelineEditCallbacks["onTogglePropertyGroupKeyframe"];
@@ -100,6 +99,7 @@ export function TimelineTrackHeader({
   isAudioTrack,
   isGroupMember = false,
   theme,
+  showAudioEffects = true,
   onToggleClipExpanded,
   onToggleTrackHidden,
   onTogglePropertyGroupKeyframe,
@@ -216,8 +216,12 @@ export function TimelineTrackHeader({
   // track holding several ungrouped ones has no single chain — the design
   // doc refuses to build "N clips = N chains", so that case gets a pointer
   // at grouping (B6's normative rule) instead of a popover.
-  const { onGroupClips, onSetElementAttributeLive, onSetElementAttributeQuiet } =
-    useTimelineEditContextOptional();
+  const {
+    onGroupClips,
+    onSetElementAttributeLive,
+    onSetElementAttributeQuiet,
+    onRevertElementAttributeLive,
+  } = useTimelineEditContextOptional();
   const domEditActions = useDomEditActionsContextOptional();
   const singleAudioClip =
     isAudioTrack && clipCount === 1 && trackElements.length > 0 ? trackElements[0] : null;
@@ -227,10 +231,19 @@ export function TimelineTrackHeader({
   // needs to be TOLD that, so it earns the button and a refusal.
   const isVideoWithAudioTrack =
     !isAudioTrack && trackElements.some((el) => el.tag.toLowerCase() === "video");
-  const writeClipFxChain = (clip: TimelineElement, next: HfAudioFxChain, live: boolean) => {
+  const writeClipFxChain = (
+    clip: TimelineElement,
+    next: HfAudioFxChain,
+    live: boolean,
+    ended = false,
+  ) => {
     const value = next.nodes.length ? serializeAudioFxChain(next) : null;
-    if (live) onSetElementAttributeLive?.(clip, HF_AUDIO_FX_ATTR, value);
-    else void onSetElementAttributeQuiet?.(clip, HF_AUDIO_FX_ATTR, value, "Apply preset");
+    if (!live) {
+      void onSetElementAttributeQuiet?.(clip, HF_AUDIO_FX_ATTR, value, "Apply preset");
+      return;
+    }
+    onSetElementAttributeLive?.(clip, HF_AUDIO_FX_ATTR, value);
+    if (ended) onRevertElementAttributeLive?.(clip, HF_AUDIO_FX_ATTR);
   };
   const openClipFxRack = (clip: TimelineElement) => {
     void domEditActions?.handleTimelineElementSelect(clip);
@@ -259,7 +272,7 @@ export function TimelineTrackHeader({
     <div
       role="rowheader"
       aria-colindex={1}
-      className="sticky left-0 z-[12] shrink-0"
+      className="sticky left-0 z-12 shrink-0"
       style={{
         width: showTrackLabel ? LABEL_COL_W : contentOrigin,
         background: gutterFill(theme.gutterBackground, isGroupMember),
@@ -288,7 +301,7 @@ export function TimelineTrackHeader({
           <div
             className={
               showTrackLabel
-                ? "flex flex-col justify-center gap-0.5 px-1.5 text-white/55"
+                ? "flex flex-col justify-center gap-0.5 px-1.5 text-[var(--timeline-handle)]"
                 : "flex flex-col items-center justify-center gap-0.5"
             }
             style={{ height: TRACK_H }}
@@ -305,13 +318,15 @@ export function TimelineTrackHeader({
               // On the control line rather than a third row of its own.
               trailing={
                 <>
-                  {singleAudioClip && (
+                  {showAudioEffects && singleAudioClip && (
                     <TimelineFxButton
                       variant="chain"
                       fxChainRaw={singleAudioClip.fxChain}
                       trackKind={classifyAudioName(singleAudioClip.id, singleAudioClip.src)}
                       onChainChange={(next) => writeClipFxChain(singleAudioClip, next, false)}
-                      onChainPreview={(next) => writeClipFxChain(singleAudioClip, next, true)}
+                      onChainPreview={(next, ended) =>
+                        writeClipFxChain(singleAudioClip, next, true, ended)
+                      }
                       // Muted, an audition is silent — so the hover lifts the mute on
                       // the running graph and puts it back on the way out, the same
                       // borrow-and-return it already does with the playhead.
@@ -327,7 +342,8 @@ export function TimelineTrackHeader({
                       onOpenRack={() => openClipFxRack(singleAudioClip)}
                     />
                   )}
-                  {clipCount > 1 &&
+                  {showAudioEffects &&
+                    clipCount > 1 &&
                     !isTrackGrouped &&
                     (isAudioTrack ? canGroupWholeTrack : isVideoWithAudioTrack) && (
                       <TimelineFxButton
@@ -442,7 +458,7 @@ export function TimelineTrackHeader({
               // element, so a shared row's other envelopes belong to clips it is
               // not showing and there would be nothing to reveal.
               onReveal={
-                revealTarget && revealElementId && keyframeClip
+                showAudioEffects && revealTarget && revealElementId && keyframeClip
                   ? () => {
                       // Select FIRST: the rack is the property panel's view of
                       // the selected element, so a reveal aimed at an unselected

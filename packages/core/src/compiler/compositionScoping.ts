@@ -1,5 +1,6 @@
 import postcss, { type AtRule, type Node, type Rule } from "postcss";
 import { escapeCssIdentifier, replaceSelectorIdTokens } from "./selectorIdTokens";
+import { SCENE_PARTS_META } from "../sceneParts";
 
 const AUTHORED_ROOT_ID_ATTR = "data-hf-authored-id";
 const INNER_ROOT_ATTR = "data-hf-inner-root";
@@ -77,8 +78,9 @@ function scopeSelector(
     // caused the parent-body clobber, which is what this remap targets.
     return scopeRootSelectors ? compositionBoxSelector(scope) : selector;
   }
+  // Authored-root patterns must follow the renamed instance, not require a nested root.
   const compositionIdPattern = new RegExp(
-    `\\[\\s*data-composition-id\\s*=\\s*(["'])${escapeRegExp(compositionId)}\\1\\s*\\]`,
+    `\\[\\s*data-composition-id\\s*[\\^\\*\\$]?=\\s*(["'])${escapeRegExp(compositionId)}\\1\\s*\\]`,
     "g",
   );
   if (compositionIdPattern.test(trimmed)) {
@@ -170,7 +172,12 @@ export function scopeCssToComposition(
   const scope =
     scopeSelectorOverride ||
     `[data-composition-id="${escapeCssAttributeValue(trimmedCompositionId)}"]`;
-  const root = postcss.parse(css);
+  let root: postcss.Root;
+  try {
+    root = postcss.parse(css);
+  } catch {
+    return "";
+  }
 
   root.walkRules((rule) => {
     if (isInsideGlobalAtRule(rule)) return;
@@ -188,6 +195,55 @@ export function scopeCssToComposition(
   });
 
   return root.toResult({ map: false }).css;
+}
+
+function isFontFaceAtRule(node: { type: string; name?: string }): node is AtRule {
+  return node.type === "atrule" && (node as AtRule).name.toLowerCase() === "font-face";
+}
+
+function fontFaceKey(atRule: AtRule): string {
+  const decls: string[] = [];
+  atRule.walkDecls((decl) => {
+    // Collapse whitespace outside quoted strings only: "A  B" and "A B" name different families.
+    const value = decl.value.replace(
+      /("(?:\\.|[^"\\])*"|'(?:\\.|[^'\\])*')|\s+/g,
+      (_m, str) => str ?? " ",
+    );
+    decls.push(
+      `${decl.prop.trim().toLowerCase()}:${value.trim()}${decl.important ? "!important" : ""}`,
+    );
+  });
+  return decls.join(";");
+}
+
+/** Drops repeats of an identical `@font-face` across the given style texts, keeping the last copy:
+ * the last matching rule is the one the browser uses, so a rule in between never gains precedence. */
+export function dedupeFontFaceRules(styleTexts: string[]): string[] {
+  const seen = new Set<string>();
+  return [...styleTexts]
+    .reverse()
+    .map((css) => {
+      if (!css || !/@font-face/i.test(css)) return css;
+      let root: postcss.Root;
+      try {
+        root = postcss.parse(css);
+      } catch {
+        return css; // unparseable text ships as authored and takes no part
+      }
+      let changed = false;
+      for (const node of [...(root.nodes ?? [])].reverse()) {
+        if (!isFontFaceAtRule(node)) continue;
+        const key = fontFaceKey(node);
+        if (seen.has(key)) {
+          node.remove();
+          changed = true;
+        } else {
+          seen.add(key);
+        }
+      }
+      return changed ? root.toResult({ map: false }).css : css;
+    })
+    .reverse();
 }
 
 /**
@@ -210,6 +266,31 @@ function jsonScriptLiteral(value: unknown): string {
   return JSON.stringify(value).replace(/</g, "\\u003c");
 }
 
+const SCOPED_HYPERFRAMES_EXPRESSION = `!__hfBaseHyperframes
+    ? __hfBaseHyperframes
+    : Object.assign({}, __hfBaseHyperframes, {
+        assetUrl: function(path) {
+          var page = window.document.baseURI;
+          return new URL(path, __hfCompositionSrc ? new URL(__hfCompositionSrc, page) : page).href;
+        },
+        getVariables: function() {
+          var byComp = window.__hfVariablesByComp;
+          var scoped = byComp && __hfTimelineCompId ? byComp[__hfTimelineCompId] : null;
+          return scoped ? Object.assign({}, scoped) : {};
+        },
+      })`;
+
+export function scopedModulePrelude(
+  timelineCompositionId: string,
+  compositionSrc?: string | null,
+): string {
+  return `const __hyperframes = (function(__hfBaseHyperframes, __hfTimelineCompId, __hfCompositionSrc) {
+  return ${SCOPED_HYPERFRAMES_EXPRESSION};
+})(window.__hyperframes, ${jsonScriptLiteral(timelineCompositionId)}, ${jsonScriptLiteral(compositionSrc?.trim() || null)});
+${wrapScopedCompositionScript("", timelineCompositionId)}
+`;
+}
+
 export function wrapScopedCompositionScript(
   source: string,
   compositionId: string,
@@ -217,6 +298,7 @@ export function wrapScopedCompositionScript(
   scopeSelectorOverride?: string,
   timelineCompositionId = compositionId,
   authoredRootId?: string | null,
+  compositionSrc?: string | null,
 ): string {
   const compositionIdLiteral = jsonScriptLiteral(compositionId);
   const timelineCompositionIdLiteral = jsonScriptLiteral(timelineCompositionId);
@@ -230,14 +312,12 @@ export function wrapScopedCompositionScript(
   const timingSelectorPatternLiteral = jsonScriptLiteral(
     String.raw`\s*\[\s*data-(?:start|duration)\s*=\s*(?:"[^"]*"|'[^']*')\s*\]`,
   );
-  const authoredRootIdFormsLiteral = jsonScriptLiteral(
-    getAuthoredRootIdSelectorForms(authoredRootId?.trim() || ""),
-  );
   return `(function(){
   var __hfCompId = ${compositionIdLiteral};
   var __hfTimelineCompId = ${timelineCompositionIdLiteral};
   var __hfErrorLabel = ${errorLabelLiteral};
   var __hfAuthoredRootId = ${authoredRootIdLiteral};
+  var __hfCompositionSrc = ${jsonScriptLiteral(compositionSrc?.trim() || null)};
   var __hfAuthoredRootAttr = ${jsonScriptLiteral(AUTHORED_ROOT_ID_ATTR)};
   var __hfEscapeAttr = function(value) {
     return (value + "").replace(/\\\\/g, "\\\\\\\\").replace(/"/g, "\\\\\\"");
@@ -248,13 +328,9 @@ export function wrapScopedCompositionScript(
   var __hfRoot = null;
   var __hfRootSelectorPattern = ${rootSelectorPatternLiteral};
   var __hfTimingSelectorPattern = ${timingSelectorPatternLiteral};
-  var __hfAuthoredRootIdForms = ${authoredRootIdFormsLiteral};
   var __hfAuthoredRootSelector = __hfAuthoredRootId
     ? "[" + __hfAuthoredRootAttr + '="' + __hfEscapeAttr(__hfAuthoredRootId) + '"]'
     : "";
-  var __hfIsSelectorNameChar = function(char) {
-    return !!char && /[\\w-]/.test(char);
-  };
   var __hfCssEscape = function(value) {
     var text = value + "";
     if (typeof CSS !== "undefined" && CSS && typeof CSS.escape === "function") {
@@ -262,10 +338,7 @@ export function wrapScopedCompositionScript(
     }
     return text.replace(/[^a-zA-Z0-9_-]/g, function(char) { return "\\\\" + char; });
   };
-  // Every entry is one authored id that no longer sits on the element's real
-  // id attribute: { forms: spellings a selector may use for it, replacement:
-  // the selector text to splice in instead }. Longest form first so a short id
-  // never eats the prefix of a longer one.
+  // Decode complete CSS identifiers before comparing authored ids.
   var __hfRewriteIdSelectors = function(selector, entries) {
     if (!entries || !entries.length || typeof selector !== "string" || selector.indexOf("#") === -1) {
       return selector;
@@ -275,10 +348,17 @@ export function wrapScopedCompositionScript(
     var quote = null;
     for (var index = 0; index < selector.length; index += 1) {
       var char = selector[index];
-      var previousChar = index > 0 ? selector[index - 1] : "";
+      if (char === "\\\\") {
+        var escape = selector.slice(index).match(/^\\\\(?:[0-9a-fA-F]{1,6}(?:\\r\\n|[ \\t\\r\\n\\f])?|[\\s\\S])/);
+        if (escape) {
+          result += escape[0];
+          index += escape[0].length - 1;
+          continue;
+        }
+      }
       if (quote) {
         result += char;
-        if (char === quote && previousChar !== "\\\\") {
+        if (char === quote) {
           quote = null;
         }
         continue;
@@ -299,21 +379,16 @@ export function wrapScopedCompositionScript(
         continue;
       }
       if (char === "#" && bracketDepth === 0) {
-        var matched = null;
-        for (var entryIndex = 0; entryIndex < entries.length && !matched; entryIndex += 1) {
-          var forms = entries[entryIndex].forms;
-          for (var formIndex = 0; formIndex < forms.length; formIndex += 1) {
-            var form = forms[formIndex];
-            if (selector.slice(index + 1, index + 1 + form.length) === form &&
-                !__hfIsSelectorNameChar(selector[index + 1 + form.length])) {
-              matched = { form: form, replacement: entries[entryIndex].replacement };
-              break;
-            }
-          }
-        }
-        if (matched) {
-          result += matched.replacement;
-          index += matched.form.length;
+        var token = selector.slice(index + 1).match(/^(?:[\\w\\u0080-\\uffff-]|\\\\(?:[0-9a-fA-F]{1,6}(?:\\r\\n|[ \\t\\r\\n\\f])?|[^\\r\\n\\f]))+/);
+        if (token) {
+          var decoded = token[0].replace(/\\\\([0-9a-fA-F]{1,6})(?:\\r\\n|[ \\t\\r\\n\\f])?|\\\\([^\\r\\n\\f])/g, function(_, hex, escaped) {
+            if (!hex) return escaped;
+            var code = parseInt(hex, 16);
+            return String.fromCodePoint(!code || code > 0x10ffff || (code >= 0xd800 && code <= 0xdfff) ? 0xfffd : code);
+          });
+          var matched = entries.find(function(entry) { return entry.id === decoded; });
+          result += matched ? matched.replacement : "#" + token[0];
+          index += token[0].length;
           continue;
         }
       }
@@ -321,26 +396,15 @@ export function wrapScopedCompositionScript(
     }
     return result;
   };
-  var __hfSortEntriesLongestFirst = function(entries) {
-    entries.forEach(function(entry) {
-      entry.forms.sort(function(a, b) { return b.length - a.length; });
-    });
-    return entries.sort(function(a, b) { return b.forms[0].length - a.forms[0].length; });
-  };
-  var __hfAuthoredRootEntries = __hfAuthoredRootSelector && __hfAuthoredRootIdForms.length
-    ? __hfSortEntriesLongestFirst([{ forms: __hfAuthoredRootIdForms.slice(), replacement: __hfAuthoredRootSelector }])
+  var __hfAuthoredRootEntries = __hfAuthoredRootSelector
+    ? [{ id: __hfAuthoredRootId, replacement: __hfAuthoredRootSelector }]
     : [];
-  // Ids renamed at compile time to avoid a cross-composition collision (see
-  // svgIdNamespacing.ts) keep their authored value on data-hf-authored-id
-  // NEXT TO the new real id. #authored is rewritten to match either the
-  // untouched original (another instance, or this one when nothing collided)
-  // or the renamed element, so a selector keeps resolving inside whichever
-  // root it is evaluated against. Discovered from the DOM once per document:
-  // renaming is a compile-time decision and the compiled DOM is static.
+  // Include both renamed and untouched instances. Each wrapper refreshes this
+  // document-wide cache because preview scene swaps can introduce new ids.
   var __hfRenamedIdEntries = function() {
     if (window.__hfRenamedIdSelectorEntries) return window.__hfRenamedIdSelectorEntries;
     var entries = [];
-    var seen = {};
+    var seen = Object.create(null);
     var nodes;
     try {
       nodes = window.document.querySelectorAll("[" + __hfAuthoredRootAttr + "][id]");
@@ -352,13 +416,12 @@ export function wrapScopedCompositionScript(
       if (!authored || seen[authored] || authored === nodes[i].id) continue;
       seen[authored] = true;
       var escaped = __hfCssEscape(authored);
-      var forms = escaped === authored ? [authored] : [authored, escaped];
       entries.push({
-        forms: forms,
+        id: authored,
         replacement: ":is(#" + escaped + ", [" + __hfAuthoredRootAttr + '="' + __hfEscapeAttr(authored) + '"])',
       });
     }
-    window.__hfRenamedIdSelectorEntries = __hfSortEntriesLongestFirst(entries);
+    window.__hfRenamedIdSelectorEntries = entries;
     return window.__hfRenamedIdSelectorEntries;
   };
   // element.querySelector("#authored") on an arbitrary Element never passes
@@ -534,22 +597,15 @@ export function wrapScopedCompositionScript(
     : window;
   var __hfResolveGsapTarget = function(target) {
     if (typeof target === "string") return __hfQueryAll(target);
-    // GSAP accepts an array of selector strings and elements; resolve the
-    // strings through the same scoped lookup so they scope like a bare
-    // string target does.
-    if (Array.isArray(target)) {
-      var resolved = [];
-      for (var i = 0; i < target.length; i += 1) {
-        var item = target[i];
-        if (typeof item === "string") {
-          resolved = resolved.concat(Array.prototype.slice.call(__hfQueryAll(item)));
-        } else {
-          resolved.push(item);
-        }
+    if (!Array.isArray(target)) return target;
+    return target.reduce(function(resolved, item) {
+      if (typeof item === "string") {
+        return resolved.concat(Array.prototype.slice.call(__hfQueryAll(item)));
       }
+      resolved.push(item);
       return resolved;
-    }
-    return target;
+    }, []);
+
   };
   var __hfScopeTimeline = function(timeline) {
     if (!timeline || timeline.__hfScopedCompositionRoot === __hfFindRoot()) return timeline;
@@ -626,15 +682,7 @@ export function wrapScopedCompositionScript(
         },
       });
   var __hfBaseHyperframes = window.__hyperframes;
-  var __hfScopedHyperframes = !__hfBaseHyperframes
-    ? __hfBaseHyperframes
-    : Object.assign({}, __hfBaseHyperframes, {
-        getVariables: function() {
-          var byComp = window.__hfVariablesByComp;
-          var scoped = byComp && __hfTimelineCompId ? byComp[__hfTimelineCompId] : null;
-          return scoped ? Object.assign({}, scoped) : {};
-        },
-      });
+  var __hfScopedHyperframes = ${SCOPED_HYPERFRAMES_EXPRESSION};
   var __hfRun = function() {
     try {
       (function(document, gsap, window, __hyperframes) {
@@ -644,9 +692,35 @@ ${source.replace(/<\/(script)/gi, "<\\/$1")}
       console.error(__hfErrorLabel, __hfCompId, _err);
     }
   };
+  // What the script started on the global gsap timeline, by any route, for a scene swap to revert.
+  // Only a page with a scene manifest can swap; elsewhere the first script stores null and none records.
+  var __hfRecordAnimations = function(run) {
+    if (window.__hfSceneAnimations === undefined) {
+      window.__hfSceneAnimations = window.document.querySelector(${jsonScriptLiteral(`meta[name="${SCENE_PARTS_META}"]`)})
+        ? {}
+        : null;
+    }
+    var byComp = window.__hfSceneAnimations;
+    var globalTimeline = __hfBaseGsap && __hfBaseGsap.globalTimeline;
+    if (!byComp || !globalTimeline || !__hfTimelineCompId) return run();
+    var before = globalTimeline.getChildren(false);
+    // A set completes as it is made and would leave the timeline before the diff below.
+    var autoRemove = globalTimeline.autoRemoveChildren;
+    globalTimeline.autoRemoveChildren = false;
+    run();
+    globalTimeline.autoRemoveChildren = autoRemove;
+    var recorded = (byComp[__hfTimelineCompId] = byComp[__hfTimelineCompId] || []);
+    globalTimeline.getChildren(false).forEach(function(animation) {
+      if (before.indexOf(animation) >= 0) return;
+      recorded.push(animation);
+      // Dropped as the timeline drops a finished tween (it keeps a paused one); moved back, a tween re-adds itself.
+      if (autoRemove && !animation.getChildren && animation.totalProgress() === 1) globalTimeline.remove(animation);
+    });
+  };
   __hfFindRoot();
+  window.__hfRenamedIdSelectorEntries = null;
   __hfInstallRenamedIdSelectorShim();
-  __hfRun();
+  __hfRecordAnimations(__hfRun);
 })();`;
 }
 

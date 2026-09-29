@@ -4,9 +4,13 @@ import {
   parseTimelineCompositionPayload,
   TIMELINE_COMPOSITION_MIME,
 } from "../../utils/timelineCompositionDrop";
-import { usePlayerStore } from "../store/playerStore";
-import { resolveTimelineAssetDrop, type TimelineRowGeometry } from "./timelineLayout";
-import type { TimelineDropCallbacks } from "./timelineCallbacks";
+import {
+  getTimelineRowFromY,
+  resolveTimelineAssetDrop,
+  type TimelineRowGeometry,
+} from "./timelineLayout";
+import { resolveInsertRow } from "./timelineCollision";
+import type { TimelineDropCallbacks, TimelineDropPlacement } from "./timelineCallbacks";
 import {
   applyTimelineAutoScrollStep,
   resolveTimelineAutoScrollLoopAction,
@@ -15,14 +19,11 @@ import {
 interface UseTimelineAssetDropOptions extends TimelineDropCallbacks {
   scrollRef: RefObject<HTMLDivElement | null>;
   ppsRef: RefObject<number>;
-  durationRef: RefObject<number>;
   trackOrderRef: RefObject<number[]>;
   rowGeometryRef: RefObject<TimelineRowGeometry>;
   contentOrigin: number;
   sessionEpoch: number;
 }
-
-type TimelinePlacement = { start: number; track: number };
 
 /**
  * Parse a JSON drag payload and, if it yields a value, forward it to the drop
@@ -32,8 +33,8 @@ type TimelinePlacement = { start: number; track: number };
 function applyJsonDropPayload(
   raw: string,
   pick: (parsed: Record<string, string | undefined>) => string | undefined,
-  apply: (value: string, placement: TimelinePlacement) => void,
-  placement: TimelinePlacement,
+  apply: (value: string, placement: TimelineDropPlacement) => void,
+  placement: TimelineDropPlacement,
 ): boolean {
   try {
     const value = pick(JSON.parse(raw) as Record<string, string | undefined>);
@@ -45,6 +46,40 @@ function applyJsonDropPayload(
   }
 }
 
+/** Only file and asset drops are written by the asset op that can open a track. */
+function canInsertTrackFor(types: readonly string[]): boolean {
+  return types.includes("Files") || types.includes(TIMELINE_ASSET_MIME);
+}
+
+/** The row boundary a pointer at `contentY` opens a new track at, or null over a row. */
+export function resolveDropInsertRow(
+  contentY: number,
+  rowHeights: readonly number[] | undefined,
+  trackCount: number,
+): number | null {
+  if (trackCount === 0) return null;
+  const rowFloat = getTimelineRowFromY(contentY, rowHeights);
+  // Past the last lane the drop already appends a track (getDefaultDroppedTrack).
+  if (rowFloat >= trackCount) return null;
+  return resolveInsertRow(rowFloat, trackCount);
+}
+
+function placeDrop(
+  geometry: Parameters<typeof resolveTimelineAssetDrop>[0],
+  clientX: number,
+  clientY: number,
+  // Blocks and compositions are written by their own installers, which only take a track.
+  canInsertTrack: boolean,
+): TimelineDropPlacement {
+  const placement = resolveTimelineAssetDrop(geometry, clientX, clientY);
+  if (!canInsertTrack) return placement;
+  const contentY = clientY - geometry.rectTop + geometry.scrollTop;
+  const insertRow = resolveDropInsertRow(contentY, geometry.rowHeights, geometry.trackOrder.length);
+  return insertRow == null
+    ? placement
+    : { ...placement, insertRow, trackOrder: geometry.trackOrder };
+}
+
 function invokeDropCallback(callback: () => Promise<void> | void): void {
   try {
     void Promise.resolve(callback()).catch(() => undefined);
@@ -53,15 +88,10 @@ function invokeDropCallback(callback: () => Promise<void> | void): void {
   }
 }
 
-function resolveDropStart(usePointerStart: boolean, pointerStart: number): number {
-  if (usePointerStart) return pointerStart;
-  return Math.max(0, usePlayerStore.getState().currentTime);
-}
-
 function applyFileDrop(
   transfer: DataTransfer,
   onFileDrop: TimelineDropCallbacks["onFileDrop"],
-  placement: TimelinePlacement,
+  placement: TimelineDropPlacement,
 ): boolean {
   if (!onFileDrop || transfer.files.length === 0) return false;
   invokeDropCallback(() => onFileDrop(Array.from(transfer.files), placement));
@@ -72,8 +102,8 @@ function applyTypedJsonDrop(
   transfer: DataTransfer,
   mime: string,
   field: "name" | "path",
-  apply: ((value: string, placement: TimelinePlacement) => Promise<void> | void) | undefined,
-  placement: TimelinePlacement,
+  apply: ((value: string, placement: TimelineDropPlacement) => Promise<void> | void) | undefined,
+  placement: TimelineDropPlacement,
 ): boolean {
   if (!apply || !Array.from(transfer.types).includes(mime)) return false;
   const payload = transfer.getData(mime);
@@ -87,17 +117,13 @@ function applyTypedJsonDrop(
 }
 
 /**
- * Dropping an asset/file/block onto the timeline places it at the PLAYHEAD —
- * start is the current playhead time, only the track comes from the drop y.
- * Deliberate product choice (user preference, 2026-07-09): every add lands at
- * the playhead regardless of drop x, like CapCut's add-to-timeline. External
- * OS file drops and internal asset drops share this same placement path, so
- * both land identically.
+ * Dropping an asset/file/block/composition onto the timeline places it on the row
+ * and at the time it was dropped on; an asset moves to that row's nearest free time.
+ * Supersedes the prior playhead decision (#2291); see useAddAssetAtPlayhead.
  */
 export function useTimelineAssetDrop({
   scrollRef,
   ppsRef,
-  durationRef,
   trackOrderRef,
   rowGeometryRef,
   contentOrigin,
@@ -108,6 +134,7 @@ export function useTimelineAssetDrop({
   sessionEpoch,
 }: UseTimelineAssetDropOptions) {
   const [isDragOver, setIsDragOver] = useState(false);
+  const [dropPreview, setDropPreview] = useState<TimelineDropPlacement | null>(null);
   const dragPointerRef = useRef<{ clientX: number; clientY: number; sessionEpoch: number } | null>(
     null,
   );
@@ -152,6 +179,29 @@ export function useTimelineAssetDrop({
     [scrollRef, sessionEpoch, stepAutoScroll],
   );
 
+  const resolveDropPlacement = useCallback(
+    (clientX: number, clientY: number, canInsertTrack: boolean): TimelineDropPlacement => {
+      const scroll = scrollRef.current;
+      const rect = scroll?.getBoundingClientRect();
+      return placeDrop(
+        {
+          rectLeft: rect?.left ?? 0,
+          rectTop: rect?.top ?? 0,
+          scrollLeft: scroll?.scrollLeft ?? 0,
+          scrollTop: scroll?.scrollTop ?? 0,
+          contentOrigin,
+          pixelsPerSecond: ppsRef.current,
+          rowHeights: rowGeometryRef.current.rowHeights,
+          trackOrder: trackOrderRef.current,
+        },
+        clientX,
+        clientY,
+        canInsertTrack,
+      );
+    },
+    [scrollRef, ppsRef, trackOrderRef, rowGeometryRef, contentOrigin],
+  );
+
   const handleAssetDragOver = useCallback(
     (e: React.DragEvent) => {
       const types = Array.from(e.dataTransfer.types);
@@ -164,15 +214,22 @@ export function useTimelineAssetDrop({
       e.dataTransfer.dropEffect = "copy";
       activeDropEpochRef.current = sessionEpoch;
       setIsDragOver(true);
+      const next = resolveDropPlacement(e.clientX, e.clientY, canInsertTrackFor(types));
+      setDropPreview((prev) =>
+        prev?.start === next.start && prev.track === next.track && prev.insertRow === next.insertRow
+          ? prev
+          : next,
+      );
       syncAutoScroll(e.clientX, e.clientY);
     },
-    [sessionEpoch, syncAutoScroll],
+    [resolveDropPlacement, sessionEpoch, syncAutoScroll],
   );
 
   const clearDropPreview = useCallback(() => {
     activeDropEpochRef.current = null;
     stopAutoScroll();
     setIsDragOver(false);
+    setDropPreview(null);
   }, [stopAutoScroll]);
 
   const handleAssetDragLeave = useCallback(
@@ -184,49 +241,22 @@ export function useTimelineAssetDrop({
     [clearDropPreview],
   );
 
-  const resolveDropPlacement = useCallback(
-    (clientX: number, clientY: number, usePointerStart = false): TimelinePlacement => {
-      const scroll = scrollRef.current;
-      const rect = scroll?.getBoundingClientRect();
-      const pointer = resolveTimelineAssetDrop(
-        {
-          rectLeft: rect?.left ?? 0,
-          rectTop: rect?.top ?? 0,
-          scrollLeft: scroll?.scrollLeft ?? 0,
-          scrollTop: scroll?.scrollTop ?? 0,
-          contentOrigin,
-          pixelsPerSecond: ppsRef.current,
-          duration: durationRef.current,
-          clampStartToDuration: !usePointerStart,
-          rowHeights: rowGeometryRef.current.rowHeights,
-          trackOrder: trackOrderRef.current,
-        },
-        clientX,
-        clientY,
-      );
-      return {
-        start: resolveDropStart(usePointerStart, pointer.start),
-        track: pointer.track,
-      };
-    },
-    [scrollRef, ppsRef, durationRef, trackOrderRef, rowGeometryRef, contentOrigin],
-  );
-
   const handleAssetDrop = useCallback(
     (e: React.DragEvent) => {
       e.preventDefault();
       const canCommit = activeDropEpochRef.current === sessionEpoch;
       clearDropPreview();
       if (!canCommit) return;
+      const types = Array.from(e.dataTransfer.types);
+      const placement = resolveDropPlacement(e.clientX, e.clientY, canInsertTrackFor(types));
+
       const compositionPayload = parseTimelineCompositionPayload(
         e.dataTransfer.getData(TIMELINE_COMPOSITION_MIME),
       );
       if (compositionPayload && onCompositionDrop) {
-        const placement = resolveDropPlacement(e.clientX, e.clientY, true);
         invokeDropCallback(() => onCompositionDrop(compositionPayload.sourcePath, placement));
         return;
       }
-      const placement = resolveDropPlacement(e.clientX, e.clientY);
 
       if (applyFileDrop(e.dataTransfer, onFileDrop, placement)) return;
       if (applyTypedJsonDrop(e.dataTransfer, TIMELINE_ASSET_MIME, "path", onAssetDrop, placement)) {
@@ -256,6 +286,7 @@ export function useTimelineAssetDrop({
 
   return {
     isDragOver,
+    dropPreview,
     handleAssetDragOver,
     handleAssetDragLeave,
     handleAssetDrop,

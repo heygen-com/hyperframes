@@ -9,8 +9,9 @@
  * an argument, so each is callable — and readable — on its own.
  */
 
+import { createTimelineDomNodeResolver, findClipElementById } from "../lib/timelineElementHelpers";
 import { usePlayerStore } from "../store/playerStore";
-import type { TimelineElement, DomClipChild } from "../store/playerStore";
+import type { TimelineElement, DomClipChild, SubCompositionHostState } from "../store/playerStore";
 import { resolveCssStackingContextId } from "@hyperframes/core/runtime/stacking-context";
 import type { ClipTree } from "@hyperframes/core/runtime/clipTree";
 import { HF_AUDIO_GROUP_ATTR } from "@hyperframes/core/audio-groups";
@@ -18,9 +19,7 @@ import { groupInfoFor } from "../lib/timelineGroupInfo";
 import type { PlaybackAdapter, ClipManifestClip, IframeWindow } from "../lib/playbackTypes";
 import {
   buildStandaloneRootTimelineElement,
-  createImplicitTimelineLayersFromDOM,
   createTimelineElementFromManifestClip,
-  findTimelineDomNodeForClip,
   getTimelineElementSelector,
   parseTimelineFromDOM,
 } from "../lib/timelineDOM";
@@ -129,10 +128,56 @@ export function collectSubCompositionDomChildren(
   if (!iframeDoc) return out;
   for (const clip of clips) {
     if (clip.kind !== "composition" || !clip.id) continue;
-    const hostEl = iframeDoc.getElementById(clip.id);
+    const hostEl = findClipElementById(iframeDoc, clip);
     if (!hostEl) continue;
     const innerRoot = hostEl.querySelector("[data-hf-inner-root]") ?? hostEl;
     collectHostDomChildren(clip.id, innerRoot, clip.id, parentMap, out);
+  }
+  return out;
+}
+
+/** The host-element `data-*` state one element carries, or null when it has none. */
+function readSubCompositionHostState(el: Element): SubCompositionHostState | null {
+  const state: SubCompositionHostState = {};
+  if (el.hasAttribute("data-hidden")) state.hidden = true;
+  if (el.hasAttribute("data-timeline-locked")) state.timelineLocked = true;
+  const timelineRole = el.getAttribute("data-timeline-role");
+  if (timelineRole) state.timelineRole = timelineRole;
+  const fxChain = el.getAttribute("data-fx-chain");
+  if (fxChain) state.fxChain = fxChain;
+  const automation = el.getAttribute("data-automation");
+  if (automation) state.automation = automation;
+  return Object.keys(state).length > 0 ? state : null;
+}
+
+/**
+ * Host-element state for every id'd element inside every sub-composition.
+ *
+ * This walk exists because nothing else in the pipeline can see these
+ * attributes. A clip whose parent composition is itself in the manifest is
+ * filtered out before the flat store is built, so an expanded child has no twin
+ * to inherit from, and the manifest carries timing rather than attributes.
+ *
+ * Deliberately separate from {@link collectSubCompositionDomChildren}: that walk
+ * defines which rows exist and writes `parentMap`, and it stops at the first
+ * id'd descendant. Scene footage commonly sits one level below an id'd region
+ * wrapper, so it is never reached there. This one descends the whole subtree and
+ * touches neither rows nor parentage.
+ */
+export function collectSubCompositionHostState(
+  iframeDoc: Document | null,
+  clips: readonly ClipManifestClip[],
+): Map<string, SubCompositionHostState> {
+  const out = new Map<string, SubCompositionHostState>();
+  if (!iframeDoc) return out;
+  for (const clip of clips) {
+    if (clip.kind !== "composition" || !clip.id) continue;
+    const hostEl = findClipElementById(iframeDoc, clip);
+    if (!hostEl) continue;
+    for (const el of Array.from(hostEl.querySelectorAll("[id]"))) {
+      const state = readSubCompositionHostState(el);
+      if (state) out.set(el.id, state);
+    }
   }
   return out;
 }
@@ -149,19 +194,16 @@ export function safeContentDocument(iframe: HTMLIFrameElement | null): Document 
 
 /**
  * The manifest's root clips as TimelineElements, each bound to the live DOM node
- * it was authored as. `usedHostEls` makes the binding one-to-one: two clips with
+ * it was authored as. The pass-scoped resolver makes the binding one-to-one: two clips with
  * the same shape must not both claim the same element.
  */
 export function buildTimelineElementsFromClips(
   clips: readonly ClipManifestClip[],
   iframeDoc: Document | null,
 ): TimelineElement[] {
-  const usedHostEls = new Set<Element>();
+  const resolveHost = iframeDoc ? createTimelineDomNodeResolver(iframeDoc) : null;
   return clips.map((clip, index) => {
-    const hostEl = iframeDoc
-      ? findTimelineDomNodeForClip(iframeDoc, clip, index, usedHostEls)
-      : null;
-    if (hostEl) usedHostEls.add(hostEl);
+    const hostEl = resolveHost?.(clip, index) ?? null;
     return createTimelineElementFromManifestClip({
       clip,
       fallbackIndex: index,
@@ -172,27 +214,24 @@ export function buildTimelineElementsFromClips(
 }
 
 /**
- * The clamped manifest elements plus the layers that exist only in the DOM.
- * Both halves need the same resolved duration, which is why they land together.
- */
-export function withImplicitDomLayers(
-  els: readonly TimelineElement[],
-  iframeDoc: Document | null,
-  effectiveDuration: number,
-): TimelineElement[] {
-  const clamped = clampElementsToDuration(els, effectiveDuration);
-  if (!iframeDoc || effectiveDuration <= 0) return clamped;
-  return [
-    ...clamped,
-    ...createImplicitTimelineLayersFromDOM(iframeDoc, effectiveDuration, clamped),
-  ];
-}
-
-/**
  * Drop elements that start past the composition's end and trim the ones that
  * straddle it. A non-positive duration means "not known yet" — pass through
  * untouched rather than clamping everything to nothing.
  */
+/** Commits the manifest elements, including none. An empty manifest carries a 1s floor, not a duration. */
+export function syncManifestTimeline(
+  els: readonly TimelineElement[],
+  manifestDuration: number,
+  storeDuration: number,
+  sync: (els: TimelineElement[], duration?: number) => void,
+): void {
+  const hasDuration = manifestDuration > 0 && els.length > 0;
+  sync(
+    clampElementsToDuration(els, hasDuration ? manifestDuration : storeDuration),
+    hasDuration ? manifestDuration : undefined,
+  );
+}
+
 function clampElementsToDuration(
   els: readonly TimelineElement[],
   effectiveDuration: number,
@@ -244,6 +283,15 @@ export function resolveReloadSeekTime(input: {
   return Math.min(target, input.duration);
 }
 
+type SeekablePreview = Pick<PlaybackAdapter, "seek">;
+
+/** Re-run the current frame even when the runtime already reports that time. */
+export function reseekPreviewAtTime(preview: SeekablePreview, time: number): void {
+  const target = Number.isFinite(time) && time > 0 ? time : 0;
+  preview.seek(target > 0.001 ? Math.max(0, target - 0.001) : 0.001);
+  preview.seek(target);
+}
+
 export function seekAdapterToRestorePoint(
   adapter: PlaybackAdapter,
   pendingSeekRef: { current: number | null },
@@ -257,8 +305,7 @@ export function seekAdapterToRestorePoint(
   });
   pendingSeekRef.current = null;
   if (storeSeek != null) usePlayerStore.getState().clearSeekRequest();
-  adapter.seek(startTime > 0.001 ? Math.max(0, startTime - 0.001) : 0.001);
-  adapter.seek(startTime);
+  reseekPreviewAtTime(adapter, startTime);
   return startTime;
 }
 

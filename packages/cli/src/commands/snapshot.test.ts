@@ -1,7 +1,11 @@
+// fallow-ignore-file code-duplication
 import { describe, expect, it, vi } from "vitest";
 import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { tmpdir } from "node:os";
+import { execFileSync } from "node:child_process";
+import { findFFmpeg } from "../browser/ffmpeg.js";
+import { sourceTimeAt } from "@hyperframes/core";
 
 const snapshotState = vi.hoisted(() => ({
   openSettledPage: vi.fn(async () => {
@@ -23,12 +27,14 @@ vi.mock("../utils/staticProjectServer.js", () => ({
 }));
 
 import snapshotCommand, {
+  extractVideoFrameToBuffer,
   computeSnapshotTimes,
   formatSnapshotTimestamp,
   parseZoomScale,
   requireSnapshotFfmpeg,
   resolveSnapshotVideoClipStart,
   resolveSnapshotVideoFrameTime,
+  resolveSnapshotVideoRateSpec,
   tailFrameTime,
 } from "./snapshot.js";
 
@@ -74,6 +80,17 @@ describe("transparent snapshot capture", () => {
     expect(source).toContain("proxy: {");
     expect(source).toContain("autoProxy: args.proxy as boolean | undefined");
     expect(source).toContain("opts.autoProxy");
+  });
+
+  it("pairs every frame with the frame-exact reference frame under --against", () => {
+    const source = readFileSync(new URL("./snapshot.ts", import.meta.url), "utf8");
+    expect(source).toContain("against: {");
+    expect(source).toContain("extractVideoFrameToBuffer(opts.against, time, false, true)");
+    expect(source).toContain('labels: ["render", "reference"]');
+    // accurate seek = `-ss` after `-i`, never the keyframe-snap fast path
+    expect(source).toContain(
+      'accurateSeek ? ["-i", videoPath, ...seek] : [...seek, "-i", videoPath]',
+    );
   });
 
   it("resolves and forwards the shared local browser GPU policy", () => {
@@ -134,7 +151,7 @@ describe("snapshot lint preflight", () => {
 });
 
 describe("resolveSnapshotVideoFrameTime", () => {
-  it("keeps media active at the inclusive clip end and samples its last decodable frame", () => {
+  it("holds a clip ending with the composition on its last decodable frame", () => {
     expect(
       resolveSnapshotVideoFrameTime({
         globalTime: 15,
@@ -142,9 +159,49 @@ describe("resolveSnapshotVideoFrameTime", () => {
         clipDuration: 15,
         relativeTime: 15,
         sourceDuration: 15,
+        compositionDuration: 15,
       }),
     ).toBeCloseTo(15 - 1 / 30, 6);
   });
+
+  it.each([
+    [0.3, 0.1 + 0.2],
+    [26.2, 19.8 + 6.4],
+  ])(
+    "samples the first frame of a clip starting on a float sum at %s, as the preview does",
+    (globalTime, clipStart) => {
+      expect(
+        resolveSnapshotVideoFrameTime({
+          globalTime,
+          clipStart,
+          clipDuration: 0.2,
+          relativeTime: globalTime - clipStart,
+          sourceDuration: 10,
+          compositionDuration: 1,
+        }),
+      ).toBe(0);
+    },
+  );
+
+  it.each([
+    [5, 0, 5],
+    [7, 0, 7],
+    [3, 0, 8],
+  ])(
+    "holds a video whose source ends before its slot on its last frame at %s, as the preview does",
+    (globalTime, clipStart, relativeTime) => {
+      expect(
+        resolveSnapshotVideoFrameTime({
+          globalTime,
+          clipStart,
+          clipDuration: 10,
+          relativeTime,
+          sourceDuration: 5,
+          compositionDuration: 20,
+        }),
+      ).toBeCloseTo(5 - 1 / 30, 6);
+    },
+  );
 
   it("keeps ordinary in-window media timestamps unchanged", () => {
     expect(
@@ -154,21 +211,30 @@ describe("resolveSnapshotVideoFrameTime", () => {
         clipDuration: 15,
         relativeTime: 7.5,
         sourceDuration: 15,
+        compositionDuration: 15,
       }),
     ).toBe(7.5);
   });
 
-  it("does not activate media after the clip end", () => {
-    expect(
-      resolveSnapshotVideoFrameTime({
-        globalTime: 15.001,
-        clipStart: 0,
-        clipDuration: 15,
-        relativeTime: 15.001,
-        sourceDuration: 15,
-      }),
-    ).toBeNull();
-  });
+  it.each([
+    [15.001, 0, 15],
+    [15, 0, 15],
+    [0.3, 0.1, 0.1 + 0.2],
+  ])(
+    "leaves a clip that ends before the composition does at %s",
+    (globalTime, clipStart, clipEnd) => {
+      expect(
+        resolveSnapshotVideoFrameTime({
+          globalTime,
+          clipStart,
+          clipDuration: clipEnd - clipStart,
+          relativeTime: globalTime - clipStart,
+          sourceDuration: 15,
+          compositionDuration: 30,
+        }),
+      ).toBeNull();
+    },
+  );
 
   it.each([
     {
@@ -179,6 +245,7 @@ describe("resolveSnapshotVideoFrameTime", () => {
         clipDuration: 10,
         relativeTime: 0,
         sourceDuration: 10,
+        compositionDuration: 15,
       },
       expected: null,
     },
@@ -190,6 +257,7 @@ describe("resolveSnapshotVideoFrameTime", () => {
         clipDuration: 10,
         relativeTime: -0.1,
         sourceDuration: 10,
+        compositionDuration: 15,
       },
       expected: null,
     },
@@ -201,17 +269,19 @@ describe("resolveSnapshotVideoFrameTime", () => {
         clipDuration: 10,
         relativeTime: 10,
         sourceDuration: 0,
+        compositionDuration: 15,
       },
       expected: 10 - 1 / 30,
     },
     {
-      name: "offset clip inclusive end",
+      name: "offset clip held at the composition end",
       input: {
         globalTime: 15,
         clipStart: 5,
         clipDuration: 10,
         relativeTime: 10,
         sourceDuration: 10,
+        compositionDuration: 15,
       },
       expected: 10 - 1 / 30,
     },
@@ -223,6 +293,7 @@ describe("resolveSnapshotVideoFrameTime", () => {
         clipDuration: 10,
         relativeTime: 10,
         sourceDuration: 10,
+        compositionDuration: 15,
       },
       expected: 10 - 1 / 30,
     },
@@ -231,6 +302,31 @@ describe("resolveSnapshotVideoFrameTime", () => {
     if (expected === null) expect(result).toBeNull();
     else expect(result).toBeCloseTo(expected, 6);
   });
+});
+
+describe("extractVideoFrameToBuffer", () => {
+  const ffmpeg = findFFmpeg();
+
+  it.skipIf(!ffmpeg)(
+    "gives a 24 fps clip's real last frame for a held tail that lands past it",
+    async () => {
+      const dir = mkdtempSync(join(tmpdir(), "hf-snapshot-tail-"));
+      try {
+        const clip = join(dir, "clip.mp4");
+        const source = ["-f", "lavfi", "-i", "testsrc=d=1:r=24:s=160x90", "-pix_fmt", "yuv420p"];
+        execFileSync(ffmpeg!, ["-hide_banner", "-loglevel", "error", ...source, clip]);
+
+        const held = await extractVideoFrameToBuffer(clip, 1 - 1 / 30, false, false, true);
+        const lastFrame = await extractVideoFrameToBuffer(clip, 23 / 24, false, true);
+
+        expect(await extractVideoFrameToBuffer(clip, 1 - 1 / 30)).toBeNull();
+        expect(lastFrame).not.toBeNull();
+        expect(held?.equals(lastFrame!)).toBe(true);
+      } finally {
+        rmSync(dir, { recursive: true, force: true });
+      }
+    },
+  );
 });
 
 describe("resolveSnapshotVideoClipStart", () => {
@@ -259,6 +355,43 @@ describe("resolveSnapshotVideoClipStart", () => {
         runtimeResolvedStart: null,
       }),
     ).toBe(3);
+  });
+});
+
+describe("resolveSnapshotVideoRateSpec", () => {
+  it("prefers the authored data-playback-rate over the browser default", () => {
+    expect(resolveSnapshotVideoRateSpec({ authoredRate: "1.8", defaultRate: 1 })).toBe(1.8);
+  });
+
+  it("falls back to the browser default when the authored rate is invalid", () => {
+    expect(resolveSnapshotVideoRateSpec({ authoredRate: "abc", defaultRate: 2 })).toBe(2);
+    expect(resolveSnapshotVideoRateSpec({ authoredRate: "0", defaultRate: 2 })).toBe(2);
+  });
+
+  it("allows rates up to the shared 10x bound", () => {
+    expect(resolveSnapshotVideoRateSpec({ authoredRate: "8", defaultRate: 1 })).toBe(8);
+  });
+
+  it("maps a frame through a rate lane instead of the constant", () => {
+    const lane = JSON.stringify({
+      version: 1,
+      lanes: [
+        {
+          target: "rate",
+          points: [
+            { t: 0, v: 1 },
+            { t: 2, v: 3 },
+          ],
+        },
+      ],
+    });
+    const spec = resolveSnapshotVideoRateSpec({
+      authoredRate: "1",
+      authoredAutomation: lane,
+      defaultRate: 1,
+    });
+    expect(typeof spec).toBe("object");
+    expect(sourceTimeAt(spec, 2)).toBeCloseTo(3.641, 2);
   });
 });
 

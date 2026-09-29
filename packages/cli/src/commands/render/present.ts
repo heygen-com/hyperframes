@@ -42,18 +42,21 @@ function presentRenderSummary(plan: RenderPlan): void {
   if (plan.outputResolution) {
     console.log(c.dim("   Output resolution: " + plan.outputResolution));
   }
-  if (plan.useGpu || plan.browserGpuMode !== "software") {
-    const gpuModes = [
-      plan.useGpu ? "encoder GPU" : null,
-      plan.browserGpuMode === "hardware"
-        ? "browser GPU (forced)"
-        : plan.browserGpuMode === "auto"
-          ? "browser GPU (auto-detect)"
-          : null,
-    ].filter(Boolean);
-    console.log(c.dim("   GPU: " + gpuModes.join(" + ")));
+  if (plan.format === "hls") {
+    console.log(c.dim(`   HLS: ${plan.hlsSegmentSeconds}s segments in a playlist directory`));
   }
+  const gpuModes = formatGpuModes(plan);
+  if (gpuModes) console.log(c.dim("   GPU: " + gpuModes));
   console.log("");
+}
+
+/** The GPU line's accelerated modes, or undefined when neither is. */
+function formatGpuModes(plan: RenderPlan): string | undefined {
+  const modes: string[] = [];
+  if (plan.useGpu) modes.push("encoder GPU");
+  if (plan.browserGpuMode === "hardware") modes.push("browser GPU (forced)");
+  else if (plan.browserGpuMode === "auto") modes.push("browser GPU (auto-detect)");
+  return modes.length > 0 ? modes.join(" + ") : undefined;
 }
 
 async function warnForSlideshow(plan: RenderPlan): Promise<void> {

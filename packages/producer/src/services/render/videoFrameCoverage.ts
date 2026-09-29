@@ -1,7 +1,7 @@
 /**
  * Per-clip render-time frame-coverage accounting + threshold fail-loud gate.
  *
- * Sibling to #2474's `hasRuntimeInsertedMedia` probe: that PR guarantees the
+ * Sibling to #2474's `hasRuntimeMediaChanges` probe: that PR guarantees the
  * DISCOVERY of runtime-inserted media (so the browser probe launches and
  * reconciles element identity). This module owns the DELIVERY side —
  * for each authored/discovered video clip on the timeline, did the
@@ -45,7 +45,13 @@
  */
 
 import { parseHTML } from "linkedom";
-import { fpsToNumber, toFps, type FpsInput } from "@hyperframes/core";
+import {
+  fpsToNumber,
+  normalizeRateSpec,
+  sourceTimeAt,
+  toFps,
+  type FpsInput,
+} from "@hyperframes/core";
 import {
   extractionFrameCountForDuration,
   resolvePlayableVideoDuration,
@@ -166,7 +172,11 @@ function expectedFramesForVideo(
   fps: FpsInput,
 ): number {
   const rounding = entry && !entry.metadata.isVFR ? "nearest" : "ceil";
-  const slotFrames = expectedFramesForClip(video.start, video.end, fps, rounding);
+  const slotSourceDuration = sourceTimeAt(
+    normalizeRateSpec(video.playbackRate),
+    Math.max(0, video.end - video.start),
+  );
+  const slotFrames = expectedFramesForClip(0, slotSourceDuration, fps, rounding);
   if (!entry) return slotFrames;
 
   // A short source in a longer slot has a legitimate delivery ceiling of
@@ -256,7 +266,7 @@ export function assertVideoFrameCoverage(
  * composition is queryable in telemetry (the ts=1784144554 field signal
  * shape). Runtime `syncTimedElementVisibility` iterates the same set at
  * render time; counting statically here is a coarse proxy — dynamic
- * script-inserted `[data-start]` divs land in `hasRuntimeInsertedMedia`'s
+ * script-inserted `[data-start]` divs land in `hasRuntimeMediaChanges`'s
  * probe path (PR #2474), not this static scan.
  */
 export function countAuthoredTimedClips(html: string): number {

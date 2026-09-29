@@ -1,6 +1,7 @@
 // @vitest-environment happy-dom
 
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { DomEditSaveQueueOpenError } from "../../utils/domEditSaveQueue";
 import type { DomEditSelection } from "./domEditing";
 import type { GestureState, UseDomEditOverlayGesturesOptions } from "./domEditOverlayGestures";
 
@@ -75,7 +76,9 @@ interface CommitCall {
   offset: { x: number; y: number } | undefined;
 }
 
-function buildHarness() {
+function buildHarness(
+  onBoxSizeCommit?: UseDomEditOverlayGesturesOptions["onBoxSizeCommitRef"]["current"],
+) {
   const element = document.createElement("div");
   document.body.append(element);
 
@@ -136,9 +139,12 @@ function buildHarness() {
     onManualDragStartRef: ref(() => {}),
     onPathOffsetCommitRef: ref(() => {}),
     onGroupPathOffsetCommitRef: ref(() => {}),
-    onBoxSizeCommitRef: ref((_s, size, offset) => {
-      commits.push({ size, offset });
-    }),
+    onBoxSizeCommitRef: ref(
+      onBoxSizeCommit ??
+        ((_s, size, offset) => {
+          commits.push({ size, offset });
+        }),
+    ),
     onRotationCommitRef: ref(() => {}),
     onCanvasPointerMoveRef: ref(() => Promise.resolve(null)),
     onCanvasMouseDown: () => {},
@@ -170,6 +176,15 @@ function evt(clientX: number, clientY: number) {
     stopPropagation() {},
     currentTarget: { setPointerCapture() {} },
   } as unknown as React.PointerEvent<HTMLDivElement>;
+}
+
+async function finishResize(handlers: ReturnType<typeof createDomEditOverlayGestureHandlers>) {
+  handlers.startGesture("resize", evt(ORIGIN_CENTER.x + 100, ORIGIN_CENTER.y), {
+    resizeHandle: "se",
+  });
+  handlers.onPointerMove(evt(ORIGIN_CENTER.x + 150, ORIGIN_CENTER.y));
+  handlers.onPointerUp(evt(ORIGIN_CENTER.x + 150, ORIGIN_CENTER.y));
+  await Promise.resolve();
 }
 
 afterEach(() => {
@@ -210,5 +225,24 @@ describe("anchored corner resize — the release commit feeds the center-pin off
     // exactly the gesture-start center (offset = -(finalSize - origin)/2).
     expect(offset.x).toBeCloseTo(-(size.width - ORIGIN.width) / 2, 0);
     expect(offset.y).toBeCloseTo(-(size.height - ORIGIN.height) / 2, 0);
+  });
+
+  it("does not log a paused save queue as an ordinary resize failure", async () => {
+    const consoleError = vi.spyOn(console, "error").mockImplementation(() => {});
+    const { handlers } = buildHarness(() => Promise.reject(new DomEditSaveQueueOpenError()));
+
+    await finishResize(handlers);
+
+    expect(consoleError).not.toHaveBeenCalled();
+  });
+
+  it("still logs an ordinary resize failure", async () => {
+    const failure = new Error("save failed");
+    const consoleError = vi.spyOn(console, "error").mockImplementation(() => {});
+    const { handlers } = buildHarness(() => Promise.reject(failure));
+
+    await finishResize(handlers);
+
+    expect(consoleError).toHaveBeenCalledWith("resize commit failed", failure);
   });
 });

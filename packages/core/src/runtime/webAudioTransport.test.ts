@@ -31,17 +31,22 @@ function createMockAudioContext(currentTime = 100) {
     gain: { value: 1 },
     connect: vi.fn(),
   };
+  const monitorGain = {
+    gain: { value: 1 },
+    connect: vi.fn(),
+  };
   const ctx = {
     currentTime,
     state: "running",
     resume: vi.fn(),
+    suspend: vi.fn(() => Promise.resolve()),
     createBufferSource: vi.fn(() => sourceNode),
     createMediaElementSource: vi.fn(() => mediaElementSourceNode),
     createGain: vi.fn(() => gainNode),
     destination: {},
     close: vi.fn(),
   };
-  return { ctx, sourceNode, mediaElementSourceNode, gainNode, masterGain, startFn };
+  return { ctx, sourceNode, mediaElementSourceNode, gainNode, masterGain, monitorGain, startFn };
 }
 
 function setupTransport(currentTime = 100) {
@@ -49,6 +54,7 @@ function setupTransport(currentTime = 100) {
   const mock = createMockAudioContext(currentTime);
   (transport as unknown as { _ctx: unknown })._ctx = mock.ctx;
   (transport as unknown as { _masterGain: unknown })._masterGain = mock.masterGain;
+  (transport as unknown as { _monitorGain: unknown })._monitorGain = mock.monitorGain;
   const gen = transport.startGeneration();
   return { transport, mock, gen };
 }
@@ -57,6 +63,8 @@ const mockBuffer = {} as AudioBuffer;
 const mockEl = {
   muted: false,
   volume: 0.4,
+  paused: true,
+  addEventListener: () => {},
   getAttribute: (name: string) => (name === "data-playback-rate" ? "1" : null),
 } as unknown as HTMLMediaElement;
 
@@ -87,12 +95,12 @@ describe("WebAudioTransport author gain vs user volume", () => {
 
   it("keeps the user's master volume spec-clamped — it is a fader, not a gain", () => {
     const transport = new WebAudioTransport();
-    const master = { gain: { value: 1 }, connect: vi.fn() };
-    (transport as unknown as { _masterGain: unknown })._masterGain = master;
+    const monitor = { gain: { value: 1 }, connect: vi.fn() };
+    (transport as unknown as { _monitorGain: unknown })._monitorGain = monitor;
 
     transport.setVolume(99);
 
-    expect(master.gain.value).toBe(1);
+    expect(monitor.gain.value).toBe(1);
   });
 });
 
@@ -118,7 +126,29 @@ describe("WebAudioTransport", () => {
       expect(mock.gainNode.gain.value).toBe(0.8);
       expect(transport.ownsElement(mockEl)).toBe(false);
       expect(transport.routesElement(mockEl)).toBe(true);
-      expect(transport.isActive()).toBe(true);
+    });
+
+    it("leaves the clock to a routed element, which keeps its own time", async () => {
+      const { transport, gen } = setupTransport(100);
+
+      await transport.scheduleMediaElementPlayback(mockEl, 0, 0, 0, 1, gen, 1);
+
+      expect(transport.routesElement(mockEl)).toBe(true);
+      expect(transport.ownsClock()).toBe(false);
+    });
+
+    it("drops a schedule still waiting on resume() when stopAll comes first", async () => {
+      const { transport, mock, gen } = setupTransport(100);
+      let resume!: () => void;
+      mock.ctx.state = "suspended";
+      mock.ctx.resume = vi.fn(() => new Promise<void>((r) => (resume = r)));
+
+      const pending = transport.scheduleMediaElementPlayback(mockEl, 0, 0, 0, 1, gen, 1);
+      transport.stopAll();
+      resume();
+
+      expect(await pending).toBeNull();
+      expect(transport.routesElement(mockEl)).toBe(false);
     });
 
     it("creates one MediaElementAudioSourceNode per element and context", async () => {
@@ -156,7 +186,101 @@ describe("WebAudioTransport", () => {
       expect(mock.mediaElementSourceNode.disconnect).toHaveBeenCalled();
       expect(mockEl.muted).toBe(false);
       expect(mockEl.volume).toBe(0.4);
-      expect(transport.isActive()).toBe(false);
+      expect(transport.ownsClock()).toBe(false);
+    });
+
+    // #3458. `createMediaElementSource` over a CORS-cross-origin resource does
+    // not throw — the Web Audio spec asks the node for SILENCE — so the
+    // `try/catch` around it never fires and the composition plays through
+    // perfectly with no sound. The node also permanently steals the element's
+    // native output, so the only possible defence is to not build it.
+    it("never builds a source node over cross-origin media with no CORS opt-in", async () => {
+      const { transport, mock, gen } = setupTransport(100);
+      const el = document.createElement("audio");
+      el.setAttribute("src", "https://cdn.example.com/track.mp3");
+      vi.spyOn(console, "info").mockImplementation(() => {});
+
+      const scheduled = await transport.scheduleMediaElementPlayback(el, 0, 0, 0, 1, gen, 1);
+
+      expect(scheduled).toBeNull();
+      expect(mock.ctx.createMediaElementSource).not.toHaveBeenCalled();
+      // Untouched: the caller falls back, and a muted or re-levelled element
+      // would take the fallback's audio down with it.
+      expect(el.muted).toBe(false);
+      expect(transport.routesElement(el)).toBe(false);
+    });
+
+    it("still routes cross-origin media that carries the crossorigin opt-in", async () => {
+      const { transport, mock, gen } = setupTransport(100);
+      const el = document.createElement("audio");
+      el.setAttribute("src", "https://cdn.example.com/track.mp3");
+      el.setAttribute("crossorigin", "anonymous");
+
+      const scheduled = await transport.scheduleMediaElementPlayback(el, 0, 0, 0, 1, gen, 1);
+
+      expect(scheduled).not.toBeNull();
+      expect(mock.ctx.createMediaElementSource).toHaveBeenCalledWith(el);
+    });
+
+    it("still routes same-origin media", async () => {
+      const { transport, mock, gen } = setupTransport(100);
+      const el = document.createElement("audio");
+      el.setAttribute("src", "/assets/vo.mp3");
+
+      const scheduled = await transport.scheduleMediaElementPlayback(el, 0, 0, 0, 1, gen, 1);
+
+      expect(scheduled).not.toBeNull();
+      expect(mock.ctx.createMediaElementSource).toHaveBeenCalledWith(el);
+    });
+
+    // R2 finding: `_mediaElementSources` is keyed by element identity, not by
+    // asset. A cache hit alone said nothing about the element's CURRENT
+    // resource, so a pooled element reused for a new clip kept handing back
+    // the OLD (same-origin) node — and its stale `web-audio` verdict — after
+    // `src` moved to a cross-origin asset with no `crossorigin` opt-in. Only
+    // `destroy()` ever cleared the cache, so this silenced the element for the
+    // rest of the session.
+    it("stops returning the cached node once the same element's src moves cross-origin", async () => {
+      const { transport, mock, gen: gen1 } = setupTransport(100);
+      vi.spyOn(console, "info").mockImplementation(() => {});
+      const el = document.createElement("audio");
+      el.setAttribute("src", "/assets/vo.mp3");
+
+      const first = await transport.scheduleMediaElementPlayback(el, 0, 0, 0, 1, gen1, 1);
+      expect(first).not.toBeNull();
+      expect(mock.ctx.createMediaElementSource).toHaveBeenCalledTimes(1);
+
+      transport.stopAll();
+      // `stopAll()` itself disconnects the transient graph (see "disconnects
+      // the transient graph on stop but keeps the cached native source
+      // reusable" above) without evicting the cache — clear the spy so the
+      // assertion below is about the FIX's own eviction, not that call.
+      mock.mediaElementSourceNode.disconnect.mockClear();
+      el.setAttribute("src", "https://cdn.example.com/reused-clip.mp3");
+      const gen2 = transport.startGeneration();
+      const second = await transport.scheduleMediaElementPlayback(el, 0, 0, 0, 1, gen2, 1);
+
+      expect(second).toBeNull();
+      // The one-way door means a fresh node can't be built either — the
+      // fix's job is to stop HANDING BACK the stale one, not to conjure a
+      // new node over a src that was never eligible.
+      expect(mock.ctx.createMediaElementSource).toHaveBeenCalledTimes(1);
+      expect(mock.mediaElementSourceNode.disconnect).toHaveBeenCalledTimes(1);
+    });
+
+    it("keeps returning the cached node when a reused element's src stays eligible", async () => {
+      const { transport, mock, gen: gen1 } = setupTransport(100);
+      const el = document.createElement("audio");
+      el.setAttribute("src", "/assets/vo.mp3");
+
+      await transport.scheduleMediaElementPlayback(el, 0, 0, 0, 1, gen1, 1);
+      transport.stopAll();
+      el.setAttribute("src", "/assets/other-same-origin-clip.mp3");
+      const gen2 = transport.startGeneration();
+      const second = await transport.scheduleMediaElementPlayback(el, 0, 0, 0, 1, gen2, 1);
+
+      expect(second).not.toBeNull();
+      expect(mock.ctx.createMediaElementSource).toHaveBeenCalledTimes(1);
     });
   });
 
@@ -175,9 +299,9 @@ describe("WebAudioTransport", () => {
     expect(transport.getTime()).toBe(-1);
   });
 
-  it("isActive returns false initially", () => {
+  it("ownsClock returns false initially", () => {
     const transport = new WebAudioTransport();
-    expect(transport.isActive()).toBe(false);
+    expect(transport.ownsClock()).toBe(false);
   });
 
   it("stopAll restores el.muted to prior value", () => {
@@ -200,10 +324,10 @@ describe("WebAudioTransport", () => {
     ];
     (transport as unknown as { _paused: boolean })._paused = false;
 
-    expect(transport.isActive()).toBe(true);
+    expect(transport.ownsClock()).toBe(true);
     transport.stopAll();
     expect(mockEl.muted).toBe(false);
-    expect(transport.isActive()).toBe(false);
+    expect(transport.ownsClock()).toBe(false);
   });
 
   it("stopAll restores el.muted=true when element was already muted", () => {
@@ -231,25 +355,27 @@ describe("WebAudioTransport", () => {
     const transport = new WebAudioTransport();
     transport.stopAll();
     transport.stopAll();
-    expect(transport.isActive()).toBe(false);
+    expect(transport.ownsClock()).toBe(false);
   });
 
   it("destroy clears buffer cache and nulls context", () => {
     const transport = new WebAudioTransport();
     transport.destroy();
     expect(transport.context).toBeNull();
-    expect(transport.isActive()).toBe(false);
+    expect(transport.ownsClock()).toBe(false);
   });
 
   it("restores the configured master volume after user mute then unmute", () => {
     const { transport, mock } = setupTransport();
     transport.setVolume(0.4);
     transport.setMuted(true);
-    expect(mock.masterGain.gain.value).toBe(0);
+    expect(mock.monitorGain.gain.value).toBe(0);
+    expect(mock.masterGain.gain.value).toBe(1);
 
     transport.setMuted(false);
 
-    expect(mock.masterGain.gain.value).toBe(0.4);
+    expect(mock.monitorGain.gain.value).toBe(0.4);
+    expect(mock.masterGain.gain.value).toBe(1);
   });
 
   it("applies author and user volume once in separate gain layers", async () => {
@@ -258,8 +384,11 @@ describe("WebAudioTransport", () => {
     transport.setVolume(0.5);
 
     expect(mock.gainNode.gain.value).toBe(0.8);
-    expect(mock.masterGain.gain.value).toBe(0.5);
-    expect(mock.gainNode.gain.value * mock.masterGain.gain.value).toBeCloseTo(0.4);
+    expect(mock.masterGain.gain.value).toBe(1);
+    expect(mock.monitorGain.gain.value).toBe(0.5);
+    expect(
+      mock.gainNode.gain.value * mock.masterGain.gain.value * mock.monitorGain.gain.value,
+    ).toBeCloseTo(0.4);
   });
 
   describe("ownsElement (per-element mute gate)", () => {
@@ -309,7 +438,7 @@ describe("WebAudioTransport", () => {
     it("keeps author boost above unity on the per-element gain node", async () => {
       const { transport, mock, gen } = setupTransport(100);
 
-      await transport.schedulePlayback(mockEl, mockBuffer, 0, 0, 0, 1, gen);
+      await transport.schedulePlayback(mockEl, mockBuffer, 0, 0, () => 0, 1, gen);
       transport.setElementVolume(mockEl, 3.98);
 
       expect(mock.gainNode.gain.value).toBeCloseTo(3.98, 5);
@@ -318,7 +447,7 @@ describe("WebAudioTransport", () => {
     it("starts in-progress clips immediately with correct buffer offset", async () => {
       const { transport, mock, gen } = setupTransport(100);
 
-      await transport.schedulePlayback(mockEl, mockBuffer, 5, 0, 8, 1, gen);
+      await transport.schedulePlayback(mockEl, mockBuffer, 5, 0, () => 8, 1, gen);
 
       expect(mock.startFn).toHaveBeenCalledWith(0, 3);
     });
@@ -326,7 +455,7 @@ describe("WebAudioTransport", () => {
     it("starts in-progress clips with mediaStart offset", async () => {
       const { transport, mock, gen } = setupTransport(100);
 
-      await transport.schedulePlayback(mockEl, mockBuffer, 5, 2, 8, 1, gen);
+      await transport.schedulePlayback(mockEl, mockBuffer, 5, 2, () => 8, 1, gen);
 
       expect(mock.startFn).toHaveBeenCalledWith(0, 5);
     });
@@ -334,7 +463,7 @@ describe("WebAudioTransport", () => {
     it("schedules future clips with delay instead of playing immediately", async () => {
       const { transport, mock, gen } = setupTransport(100);
 
-      await transport.schedulePlayback(mockEl, mockBuffer, 10, 0, 2, 1, gen);
+      await transport.schedulePlayback(mockEl, mockBuffer, 10, 0, () => 2, 1, gen);
 
       expect(mock.startFn).toHaveBeenCalledWith(108, 0);
     });
@@ -342,7 +471,7 @@ describe("WebAudioTransport", () => {
     it("schedules future clips with correct mediaStart", async () => {
       const { transport, mock, gen } = setupTransport(100);
 
-      await transport.schedulePlayback(mockEl, mockBuffer, 10, 1.5, 2, 1, gen);
+      await transport.schedulePlayback(mockEl, mockBuffer, 10, 1.5, () => 2, 1, gen);
 
       expect(mock.startFn).toHaveBeenCalledWith(108, 1.5);
     });
@@ -350,7 +479,7 @@ describe("WebAudioTransport", () => {
     it("starts clips at exact composition start time immediately", async () => {
       const { transport, mock, gen } = setupTransport(100);
 
-      await transport.schedulePlayback(mockEl, mockBuffer, 5, 0, 5, 1, gen);
+      await transport.schedulePlayback(mockEl, mockBuffer, 5, 0, () => 5, 1, gen);
 
       expect(mock.startFn).toHaveBeenCalledWith(0, 0);
     });
@@ -360,21 +489,31 @@ describe("WebAudioTransport", () => {
     it("bounds an in-progress clip to its remaining authored window", async () => {
       const { transport, mock, gen } = setupTransport(100);
       // compStart=5, mediaStart=0, compTime=8 → elapsed=3; clipDuration=10 → 7 left
-      await transport.schedulePlayback(mockEl, mockBuffer, 5, 0, 8, 1, gen, 1, 10);
+      await transport.schedulePlayback(mockEl, mockBuffer, 5, 0, () => 8, 1, gen, 1, 10);
       expect(mock.startFn).toHaveBeenCalledWith(0, 3, 7);
     });
 
     it("bounds a future clip to its full authored window", async () => {
       const { transport, mock, gen } = setupTransport(100);
       // compStart=10, mediaStart=1.5, compTime=2 → elapsed=-8 → delay 8; clipDuration=4
-      await transport.schedulePlayback(mockEl, mockBuffer, 10, 1.5, 2, 1, gen, 1, 4);
+      await transport.schedulePlayback(mockEl, mockBuffer, 10, 1.5, () => 2, 1, gen, 1, 4);
       expect(mock.startFn).toHaveBeenCalledWith(108, 1.5, 4);
     });
 
     it("does not schedule a clip whose window has already elapsed", async () => {
       const { transport, mock, gen } = setupTransport(100);
       // elapsed=15 > clipDuration=10 → nothing to play
-      const result = await transport.schedulePlayback(mockEl, mockBuffer, 5, 0, 20, 1, gen, 1, 10);
+      const result = await transport.schedulePlayback(
+        mockEl,
+        mockBuffer,
+        5,
+        0,
+        () => 20,
+        1,
+        gen,
+        1,
+        10,
+      );
       expect(result).toBeNull();
       expect(mock.startFn).not.toHaveBeenCalled();
     });
@@ -382,13 +521,13 @@ describe("WebAudioTransport", () => {
     it("keeps source bounds in authored media time when global rate changes", async () => {
       const { transport, mock, gen } = setupTransport(100);
       // Global rate=2 changes wallclock speed, not source-time span.
-      await transport.schedulePlayback(mockEl, mockBuffer, 5, 0, 8, 1, gen, 2, 10);
+      await transport.schedulePlayback(mockEl, mockBuffer, 5, 0, () => 8, 1, gen, 2, 10);
       expect(mock.startFn).toHaveBeenCalledWith(0, 3, 7);
     });
 
     it("plays unbounded when clipDuration is omitted (legacy behavior)", async () => {
       const { transport, mock, gen } = setupTransport(100);
-      await transport.schedulePlayback(mockEl, mockBuffer, 5, 0, 8, 1, gen);
+      await transport.schedulePlayback(mockEl, mockBuffer, 5, 0, () => 8, 1, gen);
       expect(mock.startFn).toHaveBeenCalledWith(0, 3);
     });
   });
@@ -404,7 +543,7 @@ describe("WebAudioTransport", () => {
       // At composition t=0.5 with mediaStart=1, authored 2x has consumed one
       // source second. Global 0.5x makes the source node's wallclock rate 1x,
       // but the composition clock must still advance at global 0.5x.
-      await transport.schedulePlayback(el, mockBuffer, 0, 1, 0.5, 1, gen, 0.5, 2);
+      await transport.schedulePlayback(el, mockBuffer, 0, 1, () => 0.5, 1, gen, 0.5, 2);
 
       expect(mock.sourceNode.playbackRate.value).toBe(1);
       expect(mock.startFn).toHaveBeenCalledWith(0, 2, 3);
@@ -418,7 +557,7 @@ describe("WebAudioTransport", () => {
     it("sets sourceNode.playbackRate.value when rate is provided", async () => {
       const { transport, mock, gen } = setupTransport(100);
 
-      await transport.schedulePlayback(mockEl, mockBuffer, 5, 0, 8, 1, gen, 2);
+      await transport.schedulePlayback(mockEl, mockBuffer, 5, 0, () => 8, 1, gen, 2);
 
       expect(mock.sourceNode.playbackRate.value).toBe(2);
     });
@@ -426,7 +565,7 @@ describe("WebAudioTransport", () => {
     it("defaults rate to 1 when not provided", async () => {
       const { transport, mock, gen } = setupTransport(100);
 
-      await transport.schedulePlayback(mockEl, mockBuffer, 5, 0, 8, 1, gen);
+      await transport.schedulePlayback(mockEl, mockBuffer, 5, 0, () => 8, 1, gen);
 
       expect(mock.sourceNode.playbackRate.value).toBe(1);
     });
@@ -435,7 +574,7 @@ describe("WebAudioTransport", () => {
       const { transport, mock, gen } = setupTransport(100);
 
       // compStart=10, compositionTime=2, rate=2 → 8s of comp time = 4s wallclock
-      await transport.schedulePlayback(mockEl, mockBuffer, 10, 0, 2, 1, gen, 2);
+      await transport.schedulePlayback(mockEl, mockBuffer, 10, 0, () => 2, 1, gen, 2);
 
       expect(mock.startFn).toHaveBeenCalledWith(104, 0);
     });
@@ -443,7 +582,7 @@ describe("WebAudioTransport", () => {
     it("keeps in-progress buffer offset at elapsed + mediaStart regardless of rate", async () => {
       const { transport, mock, gen } = setupTransport(100);
 
-      await transport.schedulePlayback(mockEl, mockBuffer, 5, 0, 8, 1, gen, 2);
+      await transport.schedulePlayback(mockEl, mockBuffer, 5, 0, () => 8, 1, gen, 2);
 
       expect(mock.startFn).toHaveBeenCalledWith(0, 3);
     });
@@ -451,7 +590,7 @@ describe("WebAudioTransport", () => {
     it("setRate updates active sources in place", async () => {
       const { transport, mock, gen } = setupTransport(100);
 
-      await transport.schedulePlayback(mockEl, mockBuffer, 5, 0, 8, 1, gen, 1);
+      await transport.schedulePlayback(mockEl, mockBuffer, 5, 0, () => 8, 1, gen, 1);
       expect(mock.sourceNode.playbackRate.value).toBe(1);
 
       transport.setRate(2);
@@ -464,7 +603,7 @@ describe("WebAudioTransport", () => {
       // scheduled, so bumping playbackRate alone left every automated parameter
       // running its original plan over audio moving at a different speed.
       const { transport, mock, gen } = setupTransport(100);
-      await transport.schedulePlayback(mockEl, mockBuffer, 5, 0, 8, 1, gen, 1);
+      await transport.schedulePlayback(mockEl, mockBuffer, 5, 0, () => 8, 1, gen, 1);
       const active = (transport as unknown as { _activeSources: { fx?: unknown }[] })
         ._activeSources;
       const setRate = vi.fn();
@@ -483,7 +622,7 @@ describe("WebAudioTransport", () => {
 
     it("setRate is a no-op when the rate is unchanged", async () => {
       const { transport, mock, gen } = setupTransport(100);
-      await transport.schedulePlayback(mockEl, mockBuffer, 5, 0, 8, 1, gen, 2);
+      await transport.schedulePlayback(mockEl, mockBuffer, 5, 0, () => 8, 1, gen, 2);
 
       mock.ctx.currentTime = 100.5;
       const timeBefore = transport.getTime();
@@ -498,7 +637,7 @@ describe("WebAudioTransport", () => {
 
     it("setRate clamps non-finite or non-positive values to 1", async () => {
       const { transport, mock, gen } = setupTransport(100);
-      await transport.schedulePlayback(mockEl, mockBuffer, 5, 0, 8, 1, gen, 2);
+      await transport.schedulePlayback(mockEl, mockBuffer, 5, 0, () => 8, 1, gen, 2);
       expect(mock.sourceNode.playbackRate.value).toBe(2);
 
       transport.setRate(Number.NaN);
@@ -516,7 +655,7 @@ describe("WebAudioTransport", () => {
     it("getTime advances at the configured rate", async () => {
       const { transport, mock, gen } = setupTransport(100);
 
-      await transport.schedulePlayback(mockEl, mockBuffer, 5, 0, 8, 1, gen, 2);
+      await transport.schedulePlayback(mockEl, mockBuffer, 5, 0, () => 8, 1, gen, 2);
 
       // At schedule time, ctx.currentTime=100, compositionTime=8.
       expect(transport.getTime()).toBeCloseTo(8, 10);
@@ -530,7 +669,7 @@ describe("WebAudioTransport", () => {
     it("getTime tracks composition time after a mid-playback setRate", async () => {
       const { transport, mock, gen } = setupTransport(100);
 
-      await transport.schedulePlayback(mockEl, mockBuffer, 5, 0, 8, 1, gen, 1);
+      await transport.schedulePlayback(mockEl, mockBuffer, 5, 0, () => 8, 1, gen, 1);
       expect(transport.getTime()).toBeCloseTo(8, 10);
 
       // 0.5s passes at rate=1 → composition time = 8.5
@@ -555,13 +694,13 @@ describe("WebAudioTransport", () => {
         getAttribute: (name: string) => (name === "data-playback-rate" ? "1" : null),
       } as unknown as HTMLMediaElement;
 
-      await transport.schedulePlayback(el, mockBuffer, 0, 0, 0, 1, gen);
-      expect(transport.isActive()).toBe(true);
+      await transport.schedulePlayback(el, mockBuffer, 0, 0, () => 0, 1, gen);
+      expect(transport.ownsClock()).toBe(true);
       expect(el.muted).toBe(true);
 
       mock.sourceNode._fireEnded();
 
-      expect(transport.isActive()).toBe(false);
+      expect(transport.ownsClock()).toBe(false);
       expect(el.muted).toBe(false);
     });
 
@@ -572,13 +711,13 @@ describe("WebAudioTransport", () => {
         getAttribute: (name: string) => (name === "data-playback-rate" ? "1" : null),
       } as unknown as HTMLMediaElement;
 
-      await transport.schedulePlayback(el, mockBuffer, 0, 0, 0, 1, gen);
+      await transport.schedulePlayback(el, mockBuffer, 0, 0, () => 0, 1, gen);
       expect(el.muted).toBe(true);
 
       mock.sourceNode._fireEnded();
 
       expect(el.muted).toBe(true);
-      expect(transport.isActive()).toBe(false);
+      expect(transport.ownsClock()).toBe(false);
     });
 
     it("disposes the FX graph when a clip ends naturally", async () => {
@@ -586,7 +725,7 @@ describe("WebAudioTransport", () => {
       // already removed this entry — so the handle, its MutationObserver and any
       // running LFO survived the clip for the rest of the session.
       const { transport, mock, gen } = setupTransport(100);
-      await transport.schedulePlayback(mockEl, mockBuffer, 0, 0, 0, 1, gen);
+      await transport.schedulePlayback(mockEl, mockBuffer, 0, 0, () => 0, 1, gen);
 
       mock.sourceNode._fireEnded();
 
@@ -597,7 +736,7 @@ describe("WebAudioTransport", () => {
     it("registers onended listener on the sourceNode", async () => {
       const { transport, mock, gen } = setupTransport(100);
 
-      await transport.schedulePlayback(mockEl, mockBuffer, 0, 0, 0, 1, gen);
+      await transport.schedulePlayback(mockEl, mockBuffer, 0, 0, () => 0, 1, gen);
 
       expect(mock.sourceNode.addEventListener).toHaveBeenCalledWith("ended", expect.any(Function));
     });
@@ -609,19 +748,19 @@ describe("WebAudioTransport", () => {
         getAttribute: (name: string) => (name === "data-playback-rate" ? "1" : null),
       } as unknown as HTMLMediaElement;
 
-      await transport.schedulePlayback(el, mockBuffer, 0, 0, 0, 1, gen);
+      await transport.schedulePlayback(el, mockBuffer, 0, 0, () => 0, 1, gen);
       expect(el.muted).toBe(true);
 
       transport.stopAll();
       expect(el.muted).toBe(false);
-      expect(transport.isActive()).toBe(false);
+      expect(transport.ownsClock()).toBe(false);
 
       el.muted = true;
 
       mock.sourceNode._fireEnded();
 
       expect(el.muted).toBe(true);
-      expect(transport.isActive()).toBe(false);
+      expect(transport.ownsClock()).toBe(false);
     });
   });
 
@@ -642,11 +781,13 @@ describe("WebAudioTransport", () => {
         getFloatTimeDomainData: ReturnType<typeof vi.fn>;
       }[] = [];
       const masterGain = { gain: { value: 1 }, connect: vi.fn(), disconnect: vi.fn() };
+      const monitorGain = { gain: { value: 1 }, connect: vi.fn(), disconnect: vi.fn() };
       const mediaElementSource = { connect: vi.fn(), disconnect: vi.fn() };
       const ctx = {
         currentTime,
         state: "running",
         resume: vi.fn(),
+        suspend: vi.fn(() => Promise.resolve()),
         createBufferSource: vi.fn(() => ({
           buffer: null as AudioBuffer | null,
           playbackRate: { value: 1 },
@@ -688,6 +829,7 @@ describe("WebAudioTransport", () => {
           analysers.push(node);
           return node;
         }),
+        createChannelSplitter: vi.fn(() => ({ connect: vi.fn(), disconnect: vi.fn() })),
         // The media-element route needs this as much as the decoded one: without
         // it `scheduleMediaElementPlayback` throws and its catch returns null,
         // which reads as "the member did not play" rather than a missing stub.
@@ -695,7 +837,7 @@ describe("WebAudioTransport", () => {
         destination: {},
         close: vi.fn(),
       };
-      return { ctx, gainNodes, analysers, masterGain, mediaElementSource };
+      return { ctx, gainNodes, analysers, masterGain, monitorGain, mediaElementSource };
     }
 
     function setupGroupTransport(currentTime = 100) {
@@ -703,6 +845,7 @@ describe("WebAudioTransport", () => {
       const mock = createGroupMockAudioContext(currentTime);
       (transport as unknown as { _ctx: unknown })._ctx = mock.ctx;
       (transport as unknown as { _masterGain: unknown })._masterGain = mock.masterGain;
+      (transport as unknown as { _monitorGain: unknown })._monitorGain = mock.monitorGain;
       const gen = transport.startGeneration();
       return { transport, mock, gen };
     }
@@ -724,7 +867,7 @@ describe("WebAudioTransport", () => {
       groupId?: string,
     ): Promise<HTMLMediaElement> {
       const el = groupedAudioEl(id, groupId);
-      await transport.schedulePlayback(el, mockBuffer, 0, 0, 0, 1, gen);
+      await transport.schedulePlayback(el, mockBuffer, 0, 0, () => 0, 1, gen);
       return el;
     }
 
@@ -987,6 +1130,113 @@ describe("WebAudioTransport", () => {
       it("setGroupMuted on a group with no active member is a no-op, not a throw", () => {
         const { transport } = setupGroupTransport();
         expect(() => transport.setGroupMuted("never-played", true)).not.toThrow();
+      });
+    });
+
+    describe("level metering", () => {
+      const addGroup = (id: string) => {
+        document.body.insertAdjacentHTML(
+          "beforeend",
+          `<hf-audio-group id="${id}"></hf-audio-group>`,
+        );
+      };
+      const setLevel = (analyser: { getFloatTimeDomainData: unknown }, peak: number) => {
+        (analyser.getFloatTimeDomainData as ReturnType<typeof vi.fn>).mockImplementation(
+          (buf: Float32Array) => buf.fill(0).fill(-peak, 3, 4),
+        );
+      };
+
+      it("creates nothing until startMetering", async () => {
+        addGroup("vo");
+        const { transport, mock, gen } = setupGroupTransport();
+        await scheduleGrouped(transport, gen, "a", "vo");
+        expect(mock.ctx.createAnalyser).not.toHaveBeenCalled();
+        expect(transport.readLevels()).toEqual({ master: { l: 0, r: 0 }, groups: {} });
+      });
+
+      it("attaches the master tap once init() lands, even when startMetering ran while the context was still warming up", async () => {
+        const mock = createGroupMockAudioContext();
+        class MockAudioContext {
+          constructor() {
+            return mock.ctx as unknown as MockAudioContext;
+          }
+        }
+        vi.stubGlobal("AudioContext", MockAudioContext);
+        const transport = new WebAudioTransport();
+
+        transport.startMetering();
+        expect(mock.ctx.createAnalyser).not.toHaveBeenCalled();
+        expect(transport.readLevels()).toEqual({ master: { l: 0, r: 0 }, groups: {} });
+
+        const ok = await transport.init();
+
+        expect(ok).toBe(true);
+        expect(mock.ctx.createAnalyser).toHaveBeenCalled();
+        expect(transport.readLevels()).toEqual({ master: { l: 0, r: 0 }, groups: {} });
+        vi.unstubAllGlobals();
+      });
+
+      it("taps master and each group as side branches, once however often it starts", async () => {
+        addGroup("vo");
+        const { transport, mock, gen } = setupGroupTransport();
+        await scheduleGrouped(transport, gen, "a", "vo");
+        const groupOutput = mock.gainNodes[2]!;
+        const connectsBefore = groupOutput.connect.mock.calls.length;
+
+        transport.startMetering();
+        transport.startMetering();
+
+        expect(mock.analysers).toHaveLength(4);
+        expect(groupOutput.connect).toHaveBeenCalledTimes(connectsBefore + 1);
+        expect(groupOutput.connect).toHaveBeenCalledWith(mock.masterGain);
+        expect(mock.masterGain.connect).toHaveBeenCalledTimes(1);
+        expect(mock.monitorGain.connect).not.toHaveBeenCalled();
+      });
+
+      it("keeps program taps off the monitor fader", async () => {
+        addGroup("vo");
+        const { transport, mock, gen } = setupGroupTransport();
+        await scheduleGrouped(transport, gen, "a", "vo");
+        transport.startMetering();
+        transport.setVolume(0.5);
+        transport.setMuted(true);
+        const groupOutput = mock.gainNodes.find((n) =>
+          n.connect.mock.calls.some((call) => call[0] === mock.masterGain),
+        );
+        expect(mock.masterGain.gain.value).toBe(1);
+        expect(groupOutput?.gain.value).toBe(1);
+        expect(mock.monitorGain.gain.value).toBe(0);
+      });
+
+      it("reads the peak per channel and stops cleanly", async () => {
+        addGroup("vo");
+        const { transport, mock, gen } = setupGroupTransport();
+        await scheduleGrouped(transport, gen, "a", "vo");
+        transport.startMetering();
+        const [masterL, , groupL, groupR] = mock.analysers;
+        setLevel(masterL!, 0.5);
+        setLevel(groupL!, 0.25);
+        setLevel(groupR!, 0.125);
+
+        const levels = transport.readLevels();
+        expect(levels.master).toEqual({ l: 0.5, r: 0 });
+        expect(levels.groups.vo).toEqual({ l: 0.25, r: 0.125 });
+
+        transport.stopMetering();
+        expect(transport.readLevels()).toEqual({ master: { l: 0, r: 0 }, groups: {} });
+        expect(mock.gainNodes[2]!.disconnect).toHaveBeenCalled();
+      });
+
+      it("a group built after start is metered, and one removed from the document leaves the read", async () => {
+        const { transport, mock, gen } = setupGroupTransport();
+        transport.startMetering();
+        addGroup("late");
+        await scheduleGrouped(transport, gen, "a", "late");
+        expect(Object.keys(transport.readLevels().groups)).toEqual(["late"]);
+
+        document.querySelector("hf-audio-group")!.remove();
+        expect(transport.readLevels().groups).toEqual({});
+        expect(mock.analysers).toHaveLength(4);
       });
     });
   });

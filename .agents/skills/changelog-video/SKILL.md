@@ -1,6 +1,8 @@
 ---
 name: changelog-video
 description: Turn a weekly changelog .md into a finished branded changelog video (square 1080, ~45-60s, Annie VO, animated brand background, mock-UI visualizations, lowkey captions). Use when the user provides a changelog/digest markdown and wants the weekly video, or says "changelog video". Self-contained — fonts, background, lexicon, and scripts ship in this skill.
+metadata:
+  internal: true
 ---
 
 # Changelog → Branded Video
@@ -145,7 +147,7 @@ scaffold.
 
 ### 6 · Gates (all green before presenting)
 
-1. `bun run --cwd packages/cli hyperframes check --caption-zone "x0=0;y0=.90;x1=1;y1=1;severity=error;seek=.02,.06,.10,.14,.18,.22,.26,.30,.34,.38,.42,.46,.50,.54,.58,.62,.66,.70,.74,.78,.82,.86,.90,.94,.98"` (or the installed
+1. `node packages/cli/bin/hyperframes.mjs check --caption-zone "x0=0;y0=.90;x1=1;y1=1;severity=error;seek=.02,.06,.10,.14,.18,.22,.26,.30,.34,.38,.42,.46,.50,.54,.58,.62,.66,.70,.74,.78,.82,.86,.90,.94,.98"` (or the installed
    `hyperframes` CLI from the repo-local `skills/hyperframes-cli/` skill) —
    0 errors (contrast: dim text ≥ .66 alpha; scene content stays above the
    caption rail). Do NOT reach for

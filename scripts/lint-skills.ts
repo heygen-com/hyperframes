@@ -12,6 +12,7 @@
 import { readFileSync, readdirSync, statSync } from "node:fs";
 import { join, relative } from "node:path";
 import { parse as parseYaml, YAMLParseError } from "yaml";
+import type { RegistryManifest } from "../packages/core/src/index.js";
 
 const REPO_ROOT = join(import.meta.dirname, "..");
 // Every location that ships SKILL.md files gets linted. `skills/` is the
@@ -256,6 +257,79 @@ function lintInlinePatterns(file: string, stripped: string): Violation[] {
     .flatMap((line, i) => (line ? matchDangerousPatterns(file, line, i + 1) : []));
 }
 
+// ---------------------------------------------------------------------------
+// Registry-item references in hand-maintained snapshots
+// ---------------------------------------------------------------------------
+//
+// A skill doc that snapshots part of the component registry rots in silence:
+// nothing fails when an item is renamed or dropped, and the agent that follows
+// the doc runs `hyperframes add <gone>` and dies. A doc opts into this check
+// with a marker line, after which every registry-item-shaped identifier in a
+// backtick span must name a real item in registry/registry.json:
+//
+//   <!-- registry-items: allow=some-suffix,another-suffix -->
+//
+// Opt-in rather than repo-wide on purpose. Kebab-case backticks are also CSS
+// properties, `data-*` attributes, skill directory names, script names, and
+// motion-graphics category names, and a check that flags those is a check
+// people turn off. `allow=` carries the few non-item identifiers a snapshot
+// legitimately names (bare suffixes under a spelled-out prefix, ids the doc
+// itself marks as hand-authored).
+//
+// TWO KNOWN BLIND SPOTS, both deliberate, both false NEGATIVES (this check
+// never invents a violation, it only misses some):
+//
+//  1. Identifiers outside a backtick span are not seen. A bare `bar-chart-race`
+//     in prose slipped past this check while it was a live defect elsewhere.
+//  2. Single-word item names are not seen, because the pattern below requires a
+//     hyphen. Measured on the six currently-marked files: dropping the hyphen
+//     requirement would monitor 3 more real items (`glitch`, `flowchart`,
+//     `typewriter`) and force 46 new allow= entries for ordinary prose words
+//     ("add", "line", "name", "height", "text"). A 15:1 noise ratio is how a
+//     check gets switched off, so the hyphen requirement stays.
+const REGISTRY_MARKER = /<!--\s*registry-items:\s*(?:allow=([^\s]*))?\s*-->/;
+const REGISTRY_ITEM_ID = /^[a-z][a-z0-9]*(?:-[a-z0-9]+)+$/;
+
+function registryItemNames(): Set<string> {
+  const raw = readFileSync(join(REPO_ROOT, "registry", "registry.json"), "utf-8");
+  // The cast describes the file; it does not validate it. The runtime filter and
+  // the throw below are what actually stop us linting against an empty set.
+  const parsed = JSON.parse(raw) as RegistryManifest;
+  const names = (parsed.items ?? []).map((item) => item.name).filter((name) => Boolean(name));
+  if (names.length === 0) {
+    throw new Error("registry/registry.json parsed to zero item names — refusing to lint blind.");
+  }
+  return new Set(names);
+}
+
+/** `null` when the file is not marked as a registry snapshot; otherwise its violations. */
+export function lintRegistryItemRefs(content: string, known: Set<string>): LineViolation[] | null {
+  // Marker detection ignores fenced blocks so a doc that *documents* the marker
+  // syntax in an example does not arm the check on itself. The scan below still
+  // reads full content, so ids inside fenced examples stay covered.
+  const marker = stripFencedBlocks(content).match(REGISTRY_MARKER);
+  if (!marker) return null;
+  const allowed = new Set((marker[1] ?? "").split(",").filter(Boolean));
+  return content.split("\n").flatMap((line, index) => {
+    const dead = [...new Set([...line.matchAll(/`([^`\n]+)`/g)].map((m) => (m[1] ?? "").trim()))]
+      .filter((token) => REGISTRY_ITEM_ID.test(token))
+      .filter((token) => !known.has(token) && !allowed.has(token));
+    return dead.map((token) =>
+      violation(
+        index + 1,
+        `"${token}" is not an item in registry/registry.json, but this file is marked as a registry snapshot. Correct the name, remove it, or add it to the marker's allow= list if it is legitimately not an item.`,
+        line.trim(),
+      ),
+    );
+  });
+}
+
+function collectMarkdownFiles(dir: string): string[] {
+  return readdirSync(dir, { withFileTypes: true, recursive: true })
+    .filter((entry) => entry.isFile() && entry.name.endsWith(".md"))
+    .map((entry) => join(entry.parentPath, entry.name));
+}
+
 function lintFile(filePath: string): Violation[] {
   const raw = readFileSync(filePath, "utf-8");
   const file = relative(process.cwd(), filePath);
@@ -281,12 +355,27 @@ if (files.length === 0) {
 
 let totalViolations = 0;
 
-for (const file of files) {
-  const violations = lintFile(file);
+function report(file: string, violations: LineViolation[]): void {
   for (const v of violations) {
-    console.error(`${v.file}:${v.line}: ${v.message}`);
+    console.error(`${file}:${v.line}: ${v.message}`);
     console.error(`  ${v.text}\n`);
     totalViolations++;
+  }
+}
+
+for (const file of files) {
+  report(relative(process.cwd(), file), lintFile(file));
+}
+
+const knownItems = registryItemNames();
+let snapshotsChecked = 0;
+for (const dir of SKILLS_DIRS) {
+  if (!statSync(dir, { throwIfNoEntry: false })?.isDirectory()) continue;
+  for (const path of collectMarkdownFiles(dir)) {
+    const found = lintRegistryItemRefs(readFileSync(path, "utf-8"), knownItems);
+    if (found === null) continue;
+    snapshotsChecked++;
+    report(relative(process.cwd(), path), found);
   }
 }
 
@@ -294,5 +383,7 @@ if (totalViolations > 0) {
   console.error(`\n${totalViolations} skill lint error(s) found.`);
   process.exit(1);
 } else {
-  console.log(`Checked ${files.length} skill file(s) — no issues found.`);
+  console.log(
+    `Checked ${files.length} skill file(s) and ${snapshotsChecked} registry snapshot(s) against ${knownItems.size} registry items — no issues found.`,
+  );
 }

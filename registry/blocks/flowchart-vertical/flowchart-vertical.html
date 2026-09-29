@@ -119,6 +119,7 @@
               />
             </svg>
           </div>
+          <div class="selection-border"></div>
         </div>
         <div id="node-nocode" class="node blue" style="left: 600px; top: 960px">
           Try no-code first
@@ -310,7 +311,6 @@
         (function () {
           const tl = gsap.timeline({ paused: true });
           const S = "#flowchart-vertical";
-          const nodePython = document.querySelector(S + " #node-python");
           const pythonText = document.querySelector(S + " #python-text");
 
           // 1. Root node scales in
@@ -381,15 +381,7 @@
           tl.to(S + " #cursor", { x: -1110, y: -1560, duration: 1, ease: "power1.inOut" }, "hold3");
 
           // 10. Cursor clicks — selection border
-          tl.add(() => {
-            if (!nodePython) return;
-            if (!nodePython.querySelector(".selection-border")) {
-              const border = document.createElement("div");
-              border.className = "selection-border";
-              nodePython.appendChild(border);
-            }
-            gsap.set(S + " .selection-border", { opacity: 1 });
-          }, "hold3+=1");
+          tl.set(S + " .selection-border", { opacity: 1 }, "hold3+=1");
 
           tl.to(
             S + " #cursor",

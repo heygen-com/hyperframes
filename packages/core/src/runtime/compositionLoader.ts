@@ -1,5 +1,15 @@
-import { planCompositionAssembly } from "../compiler/compositionAssembly";
-import { scopeCssToComposition, wrapScopedCompositionScript } from "../compiler/compositionScoping";
+import {
+  planCompositionAssembly,
+  EXTRACTED_COMPOSITION_ASSET_SELECTOR,
+} from "../compiler/compositionAssembly";
+import {
+  scopeCssToComposition,
+  scopedModulePrelude,
+  wrapScopedCompositionScript,
+} from "../compiler/compositionScoping";
+import { parseImportMap } from "../compiler/importMaps";
+import { hasSameLink } from "../compiler/scriptRuns";
+import { parseLayoutDimension } from "./compositionDimension";
 import { markFlattenedInnerRoot } from "./flattenedRoot";
 import {
   applyCssVariables,
@@ -10,6 +20,7 @@ import {
   warnUnknownEnumValues,
   readRenderOverrides,
 } from "./getVariables";
+import { isElementNode, isHtmlElement, isLinkElement, isStyleElement } from "./domRealm";
 
 type LoadExternalCompositionsParams = {
   injectedStyles: HTMLStyleElement[];
@@ -192,7 +203,7 @@ function resetCompositionHost(host: Element) {
  * inline-template path, and mutating it would leave a remount with no styles.
  */
 function stripExtractedCompositionAssets(node: ParentNode): void {
-  for (const el of Array.from(node.querySelectorAll("style, script"))) {
+  for (const el of Array.from(node.querySelectorAll(EXTRACTED_COMPOSITION_ASSET_SELECTOR))) {
     el.remove();
   }
 }
@@ -200,10 +211,10 @@ function stripExtractedCompositionAssets(node: ParentNode): void {
 function prepareFlattenedInnerRoot(innerRoot: HTMLElement): HTMLElement {
   const prepared = document.importNode(innerRoot, true) as HTMLElement;
   markFlattenedInnerRoot(prepared);
-  const w = prepared.getAttribute("data-width");
-  const h = prepared.getAttribute("data-height");
-  prepared.style.width = w ? `${w}px` : "100%";
-  prepared.style.height = h ? `${h}px` : "100%";
+  const w = parseLayoutDimension(prepared.getAttribute("data-width"));
+  const h = parseLayoutDimension(prepared.getAttribute("data-height"));
+  prepared.style.width = w === null ? "100%" : `${w}px`;
+  prepared.style.height = h === null ? "100%" : `${h}px`;
   return prepared;
 }
 
@@ -426,7 +437,7 @@ async function mountCompositionContent(params: {
   });
   // The mount sizes and flattens the root, which needs an HTMLElement; a root
   // that is not one mounts as plain content, exactly as before.
-  const innerRoot = plan.innerRoot instanceof HTMLElement ? plan.innerRoot : null;
+  const innerRoot = isHtmlElement(plan.innerRoot) ? plan.innerRoot : null;
   const contentNode = innerRoot ?? params.sourceNode;
   const authoredScopeCompositionId = plan.authoredCompositionId;
   // Scripts follow the id the CONTENT declares, CSS the id the HOST asked for.
@@ -447,10 +458,10 @@ async function mountCompositionContent(params: {
     if (!rawHref) continue;
     const href = params.compositionUrl ? new URL(rawHref, params.compositionUrl).href : rawHref;
     if (params.compositionUrl && isSameDocumentUrl(href, params.compositionUrl)) continue;
-    if (document.head.querySelector(`link[href="${CSS.escape(href)}"]`)) continue;
     const clonedLink = link.cloneNode(true);
-    if (!(clonedLink instanceof HTMLLinkElement)) continue;
+    if (!isLinkElement(clonedLink)) continue;
     clonedLink.href = href;
+    if (hasSameLink(document.head, clonedLink)) continue;
     document.head.appendChild(clonedLink);
     params.injectedLinks.push(clonedLink);
   }
@@ -458,7 +469,7 @@ async function mountCompositionContent(params: {
   const injectScopedStyles = (styleEls: Iterable<Element>): void => {
     for (const style of styleEls) {
       const clonedStyle = style.cloneNode(true);
-      if (!(clonedStyle instanceof HTMLStyleElement)) continue;
+      if (!isStyleElement(clonedStyle)) continue;
       if (authoredScopeCompositionId) {
         clonedStyle.textContent = scopeCssToComposition(
           clonedStyle.textContent || "",
@@ -511,8 +522,8 @@ async function mountCompositionContent(params: {
     const heightPx = params.parseDimensionPx(heightRaw);
     if (widthRaw) params.host.setAttribute("data-width", widthRaw);
     if (heightRaw) params.host.setAttribute("data-height", heightRaw);
-    if (widthPx && params.host instanceof HTMLElement) params.host.style.width = widthPx;
-    if (heightPx && params.host instanceof HTMLElement) params.host.style.height = heightPx;
+    if (widthPx && isHtmlElement(params.host)) params.host.style.width = widthPx;
+    if (heightPx && isHtmlElement(params.host)) params.host.style.height = heightPx;
     if (innerRoot.hasAttribute("data-timeline-locked")) {
       params.host.setAttribute("data-timeline-locked", "");
     }
@@ -532,6 +543,7 @@ async function mountCompositionContent(params: {
     params.host.appendChild(mountedContent);
   } else {
     params.host.innerHTML = params.fallbackBodyInnerHtml;
+    stripExtractedCompositionAssets(params.host);
   }
 
   // Stash the per-instance variables BEFORE running scripts. The scoped
@@ -551,8 +563,19 @@ async function mountCompositionContent(params: {
     injectedScript.async = false;
     if (scriptPayload.kind === "external") {
       injectedScript.src = scriptPayload.src;
+    } else if (scriptPayload.type.toLowerCase() === "importmap") {
+      const map = parseImportMap(scriptPayload.content, (url) =>
+        resolveScriptSourceUrl(url, params.compositionUrl),
+      );
+      injectedScript.textContent = map ? JSON.stringify(map) : scriptPayload.content;
     } else if (scriptPayload.type.toLowerCase() === "module") {
-      injectedScript.textContent = scriptPayload.content;
+      const prelude = scriptPayload.scopeCompositionId
+        ? scopedModulePrelude(
+            runtimeScopeCompositionId || scriptPayload.scopeCompositionId,
+            params.compositionUrl?.href,
+          )
+        : "";
+      injectedScript.textContent = prelude + scriptPayload.content;
     } else if (scriptPayload.scopeCompositionId) {
       injectedScript.textContent = wrapScopedCompositionScript(
         scriptPayload.content,
@@ -561,6 +584,7 @@ async function mountCompositionContent(params: {
         runtimeScopeSelector,
         runtimeScopeCompositionId || scriptPayload.scopeCompositionId,
         authoredRootId,
+        params.compositionUrl?.href,
       );
     } else {
       injectedScript.textContent = `(function(){${scriptPayload.content}})();`;
@@ -770,7 +794,7 @@ function stashInstanceVariables(
 ): void {
   const declaredDefaults =
     params.declaredVariableDefaults ??
-    (contentNode instanceof Element ? readDeclaredDefaults(contentNode) : {});
+    (isElementNode(contentNode) ? readDeclaredDefaults(contentNode) : {});
   const merged = {
     ...declaredDefaults,
     ...parseHostVariableValues(params.host),
@@ -779,7 +803,7 @@ function stashInstanceVariables(
   // out-of-set enum guard runs here too, against the same merged values the
   // instance reads back out of __hfVariablesByComp.
   warnUnknownEnumValues(
-    params.variableDeclarer ?? (contentNode instanceof Element ? contentNode : null),
+    params.variableDeclarer ?? (isElementNode(contentNode) ? contentNode : null),
     merged,
     runtimeScopeCompositionId,
   );

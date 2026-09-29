@@ -6,11 +6,12 @@
  * that appears across audioMixer and chunkEncoder into a single helper.
  */
 
-import { spawn } from "child_process";
+import { spawn, type ChildProcess } from "child_process";
 import { getFfmpegBinary } from "./ffmpegBinaries.js";
 import { trackChildProcess } from "./processTracker.js";
 import {
   ManagedChildProcess,
+  type ManagedChildProcessOutcome,
   type ManagedProcessTerminationReason,
 } from "./managedChildProcess.js";
 
@@ -23,10 +24,30 @@ export interface RunFfmpegOptions {
 export interface RunFfmpegResult {
   success: boolean;
   exitCode: number | null;
+  signal?: NodeJS.Signals | null;
   stderr: string;
   durationMs: number;
   terminationReason: ManagedProcessTerminationReason;
+  failureReason?: "external_interruption";
   error?: Error;
+}
+
+const FFMPEG_SIGTERM_EXIT_LINE = /^Exiting normally, received signal 15\.?\r?$/m;
+
+/**
+ * Return true only when ffmpeg was terminated from outside this managed call.
+ *
+ * FFmpeg handles SIGTERM itself and can therefore report exit code 255 with a
+ * null Node signal. The exact terminal stderr line covers that case. Managed
+ * abort/deadline/inactivity reasons always take precedence so our own SIGTERM
+ * requests never become retryable lifecycle interruptions.
+ */
+export function isExternalFfmpegInterruption(
+  result: Pick<RunFfmpegResult, "exitCode" | "signal" | "stderr" | "terminationReason">,
+): boolean {
+  if (result.terminationReason !== "exit" || result.exitCode === 0) return false;
+  if (result.signal === "SIGTERM") return true;
+  return result.exitCode === 255 && FFMPEG_SIGTERM_EXIT_LINE.test(result.stderr);
 }
 
 const DEFAULT_TIMEOUT = 300_000;
@@ -90,26 +111,83 @@ export function formatFfmpegError(
     : `FFmpeg exited with code ${exitCode}`;
 }
 
-export async function runFfmpeg(args: string[], opts?: RunFfmpegOptions): Promise<RunFfmpegResult> {
-  const timeout = opts?.timeout ?? DEFAULT_TIMEOUT;
+function spawnFfmpeg(args: string[]): ChildProcess {
   // windowsHide: ffmpeg/ffprobe are console-subsystem binaries, so without
   // this Node opens a visible console window per spawn on Windows. A render
   // shells out dozens of times across parallel workers, which flashes a burst
   // of windows across the user's desktop. No-op on macOS and Linux.
   const ffmpeg = spawn(getFfmpegBinary(), args, { windowsHide: true });
   trackChildProcess(ffmpeg);
-  const managed = new ManagedChildProcess(ffmpeg, {
-    signal: opts?.signal,
-    deadlineAtMs: Date.now() + timeout,
-    onStderr: opts?.onStderr,
-  });
-  const outcome = await managed.wait();
-  return {
-    success: outcome.reason === "exit" && outcome.exitCode === 0,
+  return ffmpeg;
+}
+
+function succeeded(outcome: ManagedChildProcessOutcome): boolean {
+  return outcome.reason === "exit" && outcome.exitCode === 0;
+}
+
+function toResult(outcome: ManagedChildProcessOutcome, stderr = outcome.stderr): RunFfmpegResult {
+  const result: RunFfmpegResult = {
+    success: succeeded(outcome),
     exitCode: outcome.exitCode,
-    stderr: outcome.stderr,
+    signal: outcome.signal,
+    stderr,
     durationMs: outcome.durationMs,
     terminationReason: outcome.reason,
     error: outcome.error,
   };
+  if (isExternalFfmpegInterruption(result)) {
+    result.failureReason = "external_interruption";
+  }
+  return result;
+}
+
+export async function runFfmpeg(args: string[], opts?: RunFfmpegOptions): Promise<RunFfmpegResult> {
+  const timeout = opts?.timeout ?? DEFAULT_TIMEOUT;
+  const managed = new ManagedChildProcess(spawnFfmpeg(args), {
+    signal: opts?.signal,
+    deadlineAtMs: Date.now() + timeout,
+    onStderr: opts?.onStderr,
+  });
+  return toResult(await managed.wait());
+}
+
+/**
+ * Runs `ffmpeg <producerArgs> | ffmpeg <consumerArgs>`. Fails when either side
+ * fails and reports the first failure, its stderr last so error tails show it.
+ */
+export async function runFfmpegPipeline(
+  producerArgs: string[],
+  consumerArgs: string[],
+  opts?: RunFfmpegOptions,
+): Promise<RunFfmpegResult> {
+  const deadlineAtMs = Date.now() + (opts?.timeout ?? DEFAULT_TIMEOUT);
+  const producer = spawnFfmpeg(producerArgs);
+  const consumer = spawnFfmpeg(consumerArgs);
+  // Either side ending early, or failing to start, must release the other from the pipe.
+  consumer.stdin?.on("error", () => {});
+  for (const event of ["close", "error"] as const) {
+    consumer.once(event, () => producer.stdout?.destroy());
+    producer.once(event, () => consumer.stdin?.end());
+  }
+  if (consumer.stdin) producer.stdout?.pipe(consumer.stdin);
+  const settleOrder: ManagedChildProcessOutcome[] = [];
+  const outcomes = await Promise.all(
+    [producer, consumer].map((child) =>
+      new ManagedChildProcess(child, {
+        signal: opts?.signal,
+        deadlineAtMs,
+        onStderr: opts?.onStderr,
+      })
+        .wait()
+        .then((outcome) => {
+          settleOrder.push(outcome);
+          return outcome;
+        }),
+    ),
+  );
+  const reported = settleOrder.find((outcome) => !succeeded(outcome)) ?? outcomes[1]!;
+  const stderr = [...outcomes.filter((outcome) => outcome !== reported), reported]
+    .map((outcome) => outcome.stderr)
+    .join("");
+  return toResult(reported, stderr);
 }

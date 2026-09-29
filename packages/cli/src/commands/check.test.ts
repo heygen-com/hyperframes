@@ -32,6 +32,7 @@ import {
 } from "../utils/checkPipeline.js";
 import { resolveCompositionViewportFromHtml } from "../utils/compositionViewport.js";
 import { consumeCommandResult } from "../utils/commandResult.js";
+import { ambiguousIssue } from "../utils/motionAudit.js";
 import type { ProjectLintResult } from "../utils/lintProject.js";
 import type {
   LayoutIssue,
@@ -145,6 +146,7 @@ function fakeDriver(overrides: Partial<CheckAuditDriver> = {}): CheckAuditDriver
   return {
     initialize: vi.fn(async (_contrast: boolean) => undefined),
     getDuration: vi.fn(async () => 9),
+    hasNoTimelineDeclaration: vi.fn(async () => false),
     getTransitionBoundaries: vi.fn(async () => []),
     getCanvas: vi.fn(async () => ({ width: 1920, height: 1080 })),
     findAmbiguousSelectors: vi.fn(async (_selectors: string[]) => []),
@@ -266,6 +268,7 @@ function dependencies(
     runtime?: CheckFinding[];
     writeSnapshot?: CheckDependencies["writeSnapshot"];
     captureFindingCrops?: CheckDependencies["captureFindingCrops"];
+    inspectHdrAutoPromotion?: NonNullable<CheckDependencies["inspectHdrAutoPromotion"]>;
   } = {},
 ): { deps: CheckDependencies; runBrowserCheck: ReturnType<typeof vi.fn> } {
   const runBrowserCheck = vi.fn(
@@ -290,6 +293,7 @@ function dependencies(
         ),
       ),
     captureFindingCrops: options.captureFindingCrops ?? vi.fn(async () => []),
+    inspectHdrAutoPromotion: options.inspectHdrAutoPromotion ?? vi.fn(async () => null),
   };
   return { deps, runBrowserCheck };
 }
@@ -421,6 +425,45 @@ it("preserves --json after bare --frame-check", async () => {
   expect(log).toHaveBeenCalledWith(expect.stringContaining('"ok"'));
 });
 
+it("includes local HDR auto-promotion attribution in --json output", async () => {
+  const { report } = await runScenario(
+    fakeDriver(),
+    {},
+    {
+      inspectHdrAutoPromotion: vi.fn(async () => ({
+        triggeringAsset: "assets/source-hdr.mp4",
+        output: { colorSpace: "BT.2020", codec: "HEVC Main10" } as const,
+      })),
+    },
+  );
+  const log = vi.spyOn(console, "log").mockImplementation(() => undefined);
+  const command = createCheckCommand({
+    resolveProject: () => PROJECT,
+    runPipeline: vi.fn(async () => report),
+    withMeta: (value) => value,
+  });
+
+  await runCommand(command, { rawArgs: ["--json"] });
+
+  expect(log).toHaveBeenCalledTimes(1);
+  expect(JSON.parse(String(log.mock.calls[0]?.[0])).hdr.autoPromotion).toEqual({
+    triggeringAsset: "assets/source-hdr.mp4",
+    output: { colorSpace: "BT.2020", codec: "HEVC Main10" },
+  });
+});
+
+it("distinguishes unavailable HDR inspection from no promotion", async () => {
+  const { report } = await runScenario(
+    fakeDriver(),
+    {},
+    {
+      inspectHdrAutoPromotion: vi.fn(async () => Promise.reject(new Error("ffprobe unavailable"))),
+    },
+  );
+
+  expect(report.hdr).toEqual({ autoPromotion: null, inspection: "unavailable" });
+});
+
 it("threads --no-proxy into the browser check options", async () => {
   const { report } = await runScenario(fakeDriver());
   const runPipeline = vi.fn(async (_project: ProjectDir, _options: CheckOptions) => report);
@@ -460,7 +503,7 @@ it("rejects malformed caption-zone specs instead of silently disabling the gate"
   });
 });
 
-it("flags only text whose center is inside the caption band at the default end seek", async () => {
+it("flags text whose DOM box overlaps the caption band at the default end seek", async () => {
   const collectGeometryCandidates = vi.fn(async (time: number) => [
     geometryCandidate({
       kind: "text",
@@ -506,8 +549,56 @@ it("flags only text whose center is inside the caption band at the default end s
       text: "Centered title",
       time: 10,
     }),
+    expect.objectContaining({
+      code: "caption_zone_collision",
+      severity: "warning",
+      selector: "#overlap-only",
+      text: "Overlap only",
+      time: 10,
+    }),
   ]);
   expect(report.ok).toBe(true);
+});
+
+it("rejects a 1920×1080 card centered at y=.860 that overlaps the 5% keepout", async () => {
+  const collectGeometryCandidates = vi.fn(async (time: number) => [
+    geometryCandidate({
+      kind: "text",
+      tag: "div",
+      text: "Demand card",
+      selector: "#at-860",
+      rect: fixtureRect(200, 889, 400, 80),
+      time,
+    }),
+    geometryCandidate({
+      kind: "text",
+      tag: "div",
+      text: "Clear above keepout",
+      selector: "#tiny-860",
+      rect: fixtureRect(200, 919, 400, 20),
+      time,
+    }),
+  ]);
+  const { report } = await runScenario(
+    fakeDriver({
+      getDuration: vi.fn(async () => 10),
+      collectGeometryCandidates,
+    }),
+    {
+      samples: 1,
+      contrast: false,
+      captionZone: { x0: 0.118, y0: 0.875, x1: 0.882, y1: 0.925, severity: "error" },
+    },
+  );
+
+  expect(report.layout.findings).toEqual([
+    expect.objectContaining({
+      code: "caption_zone_collision",
+      severity: "error",
+      selector: "#at-860",
+    }),
+  ]);
+  expect(report.ok).toBe(false);
 });
 
 it("skips caption_zone_collision when data-layout-allow-caption-zone is set", async () => {
@@ -573,7 +664,7 @@ it("keeps overlap waivers from suppressing changelog caption-rail collisions", a
   expect(report.ok).toBe(false);
 });
 
-it("filters caption candidates by the element box while centering the text rect", async () => {
+it("skips full-frame and tiny wrappers when measuring the caption box", async () => {
   const collectGeometryCandidates = vi.fn(async (time: number) => [
     geometryCandidate({
       kind: "text",
@@ -872,6 +963,7 @@ function reportWithFindings(overrides: Partial<CheckReport> = {}): CheckReport {
     },
     motion: { ...emptySection(), enabled: false, samples: 0 },
     contrast: { ...emptySection(), enabled: true, samples: [], checked: 0, passed: 0 },
+    hdr: { autoPromotion: null, inspection: "available" },
     snapshots: { enabled: false, files: [], times: [], findingFiles: [] },
     ...overrides,
   };
@@ -1061,6 +1153,171 @@ describe("check pipeline", () => {
     expect(browser).toHaveBeenCalledTimes(1);
   });
 
+  it("still audits layout when the motion sidecar is invalid", async () => {
+    const motion: MotionSpecResolution = {
+      kind: "invalid",
+      path: "/project/index.motion.json",
+      message: 'assertions[0] (staysInFrame): "selector" must be a non-empty string',
+    };
+    const driver = fakeDriver({
+      collectLayout: vi.fn(async (time: number) => [layoutIssue("error", { time })]),
+    });
+    const { report, browser } = await runScenario(driver, {}, { motion });
+
+    expect(browser).toHaveBeenCalledTimes(1);
+    expect(report.layout.findings.length).toBeGreaterThan(0);
+    expect(report.motion.findings).toEqual([
+      expect.objectContaining({ code: "motion_spec_invalid", severity: "error" }),
+    ]);
+    expect(report.motion).toMatchObject({
+      enabled: true,
+      specPath: "/project/index.motion.json",
+      samples: 0,
+    });
+    expect(report.ok).toBe(false);
+  });
+
+  it("does not sample motion for an invalid sidecar", async () => {
+    const motion: MotionSpecResolution = {
+      kind: "invalid",
+      path: "/project/index.motion.json",
+      message: "version 2 is not supported",
+    };
+    const driver = fakeDriver();
+    const { report } = await runScenario(driver, {}, { motion });
+
+    expect(report.motion.samples).toBe(0);
+    expect(driver.collectMotionFrame).not.toHaveBeenCalled();
+  });
+
+  it("keeps evaluating the unambiguous assertions when one selector is ambiguous", async () => {
+    const motion: MotionSpecResolution = {
+      kind: "valid",
+      path: "/project/index.motion.json",
+      spec: {
+        assertions: [
+          { kind: "appearsBy", selector: ".item", bySec: 1 },
+          { kind: "appearsBy", selector: "#hero", bySec: 0.2 },
+        ],
+      },
+    };
+    const driver = fakeDriver({
+      getDuration: vi.fn(async () => 1),
+      findAmbiguousSelectors: vi.fn(async () => [
+        { ...layoutIssue("error", { code: "motion_selector_ambiguous" }), selector: ".item" },
+      ]),
+      collectMotionFrame: vi.fn(async (time: number) => heroMotionFrame(time, (t) => t >= 0.5)),
+    });
+    const { report } = await runScenario(driver, {}, { motion });
+
+    expect(report.motion.samples).toBeGreaterThan(0);
+    expect(report.motion.findings.map((finding) => finding.code).sort()).toEqual([
+      "motion_appears_late",
+      "motion_selector_ambiguous",
+    ]);
+    expect(report.ok).toBe(false);
+    expect(
+      report.motion.findings.find((finding) => finding.code === "motion_selector_ambiguous")
+        ?.message,
+    ).toContain("1 assertion(s) naming it were not evaluated");
+    expect(driver.collectMotionFrame).toHaveBeenCalledWith(expect.any(Number), ["#hero"], []);
+  });
+
+  it("separates the ambiguity message from the skipped-assertion count", async () => {
+    const motion: MotionSpecResolution = {
+      kind: "valid",
+      path: "/project/index.motion.json",
+      spec: { assertions: [{ kind: "appearsBy", selector: ".item", bySec: 1 }] },
+    };
+    const driver = fakeDriver({
+      getDuration: vi.fn(async () => 1),
+      findAmbiguousSelectors: vi.fn(async () => [
+        { ...layoutIssue("error"), ...ambiguousIssue(".item") },
+      ]),
+    });
+    const { report } = await runScenario(driver, {}, { motion });
+
+    const message = report.motion.findings.find(
+      (finding) => finding.code === "motion_selector_ambiguous",
+    )?.message;
+    expect(message).toContain("exactly one. 1 assertion(s)");
+  });
+
+  it("counts skipped assertions per ambiguous selector, not across all of them", async () => {
+    const motion: MotionSpecResolution = {
+      kind: "valid",
+      path: "/project/index.motion.json",
+      spec: {
+        assertions: [
+          { kind: "appearsBy", selector: ".item", bySec: 1 },
+          { kind: "appearsBy", selector: ".card", bySec: 1 },
+          { kind: "appearsBy", selector: ".card", bySec: 2 },
+        ],
+      },
+    };
+    const driver = fakeDriver({
+      getDuration: vi.fn(async () => 1),
+      findAmbiguousSelectors: vi.fn(async () => [
+        { ...layoutIssue("error", { code: "motion_selector_ambiguous" }), selector: ".item" },
+        { ...layoutIssue("error", { code: "motion_selector_ambiguous" }), selector: ".card" },
+      ]),
+    });
+    const { report } = await runScenario(driver, {}, { motion });
+
+    const messages = report.motion.findings
+      .filter((finding) => finding.code === "motion_selector_ambiguous")
+      .map((finding) => finding.message);
+    expect(messages.filter((m) => m.includes("1 assertion(s) naming it"))).toHaveLength(1);
+    expect(messages.filter((m) => m.includes("2 assertion(s) naming it"))).toHaveLength(1);
+  });
+
+  it("drops a before assertion when either side is ambiguous, keeping the rest", async () => {
+    const motion: MotionSpecResolution = {
+      kind: "valid",
+      path: "/project/index.motion.json",
+      spec: {
+        assertions: [
+          { kind: "before", a: "#hero", b: ".item" },
+          { kind: "appearsBy", selector: "#hero", bySec: 0.2 },
+        ],
+      },
+    };
+    const driver = fakeDriver({
+      getDuration: vi.fn(async () => 1),
+      findAmbiguousSelectors: vi.fn(async () => [
+        { ...layoutIssue("error", { code: "motion_selector_ambiguous" }), selector: ".item" },
+      ]),
+      collectMotionFrame: vi.fn(async (time: number) => heroMotionFrame(time, (t) => t >= 0.5)),
+    });
+    const { report } = await runScenario(driver, {}, { motion });
+
+    expect(report.motion.findings.map((finding) => finding.code).sort()).toEqual([
+      "motion_appears_late",
+      "motion_selector_ambiguous",
+    ]);
+    expect(driver.collectMotionFrame).toHaveBeenCalledWith(expect.any(Number), ["#hero"], []);
+  });
+
+  it("does not sample when every assertion names an ambiguous selector", async () => {
+    const motion: MotionSpecResolution = {
+      kind: "valid",
+      path: "/project/index.motion.json",
+      spec: { assertions: [{ kind: "appearsBy", selector: ".item", bySec: 1 }] },
+    };
+    const driver = fakeDriver({
+      getDuration: vi.fn(async () => 1),
+      findAmbiguousSelectors: vi.fn(async () => [
+        { ...layoutIssue("error", { code: "motion_selector_ambiguous" }), selector: ".item" },
+      ]),
+    });
+    const { report } = await runScenario(driver, {}, { motion });
+
+    expect(report.motion.samples).toBe(0);
+    expect(report.motion.findings.map((finding) => finding.code)).toEqual([
+      "motion_selector_ambiguous",
+    ]);
+  });
+
   it("reports a failing appearsBy sidecar as motion_appears_late", async () => {
     const motion: MotionSpecResolution = {
       kind: "valid",
@@ -1220,6 +1477,41 @@ describe("check pipeline", () => {
             finding.message.includes("did not advance"),
         ),
       ).toBe(true);
+    });
+
+    it("does not flag --at times the user picked on a still end card", async () => {
+      const driver = fakeDriver({
+        getDuration: vi.fn(async () => 53.7),
+        collectLayoutGeometry: vi.fn(async () => "frozen"),
+      });
+      const { report } = await runScenario(driver, { at: [51, 52.5] });
+
+      expect(report.layout.samples).toEqual([51, 52.5]);
+      expect(report.layout.findings.some((finding) => finding.code === "sweep_static")).toBe(false);
+    });
+
+    it("still judges the spread samples --at-transitions adds to an --at run", async () => {
+      const driver = fakeDriver({
+        getDuration: vi.fn(async () => 53.7),
+        getTransitionBoundaries: vi.fn(async () => [10, 20]),
+        collectLayoutGeometry: vi.fn(async () => "frozen"),
+      });
+      const { report } = await runScenario(driver, { at: [51, 52.5], atTransitions: true });
+
+      expect(report.layout.samples).toEqual([10, 15, 20, 51, 52.5]);
+      expect(report.layout.findings.some((finding) => finding.code === "sweep_static")).toBe(true);
+    });
+
+    it("does not flag intentional static content declared with data-no-timeline", async () => {
+      const driver = fakeDriver({
+        getDuration: vi.fn(async () => 6),
+        hasNoTimelineDeclaration: vi.fn(async () => true),
+        collectLayoutGeometry: vi.fn(async () => "frozen"),
+      });
+
+      const { report } = await runScenario(driver);
+
+      expect(report.layout.findings.some((finding) => finding.code === "sweep_static")).toBe(false);
     });
 
     it("does not flag a 1.5s static title card — too short for the guard to apply", async () => {

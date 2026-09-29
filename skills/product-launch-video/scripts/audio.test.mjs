@@ -34,6 +34,22 @@ test("passes --provider to the shared audio engine", () => {
   assert.equal(runAudio({ args: ["--provider", "kokoro"] }).provider, "kokoro");
 });
 
+test("passes Gemini model and delivery style through the workflow adapter", () => {
+  const request = runAudio({
+    args: [
+      "--provider",
+      "gemini",
+      "--tts-model",
+      "gemini-3.8-flash-lite-tts",
+      "--style",
+      "Warm and calm",
+    ],
+  });
+  assert.equal(request.provider, "gemini");
+  assert.equal(request.tts_model, "gemini-3.8-flash-lite-tts");
+  assert.equal(request.style, "Warm and calm");
+});
+
 test("uses HF_TTS_PROVIDER when --provider is omitted", () => {
   assert.equal(runAudio({ env: { HF_TTS_PROVIDER: "elevenlabs" } }).provider, "elevenlabs");
 });

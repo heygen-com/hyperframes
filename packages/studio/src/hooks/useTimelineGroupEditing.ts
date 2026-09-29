@@ -3,6 +3,7 @@
 import { useCallback, type MutableRefObject, type RefObject } from "react";
 import type { Composition } from "@hyperframes/sdk";
 import type { TimelineElement } from "../player";
+import { toAuthoredStart, toCompositionTime } from "../player/store/timelineElement";
 import {
   cutoverCommittedOrThrow,
   sdkTimingBatchPersist,
@@ -13,12 +14,13 @@ import {
   buildTimelineResizeTimingPatch,
   extendRootDurationIfNeeded,
   formatTimelineAttributeNumber,
+  formatTimelineMediaOffset,
   patchIframeDomTiming,
-  playbackStartAttributeForElement,
   persistTimelineBatchEdit,
   type PersistTimelineBatchChange,
   type RecordEditInput,
 } from "./timelineEditingHelpers";
+import { playbackStartAttributeForElement } from "../player/lib/timelineElementHelpers";
 import {
   captureDurationRollback,
   finishGroupTimingGsapFallback,
@@ -47,11 +49,19 @@ export interface TimelineGroupCommitOptions {
   coalesceKey?: string;
   /** Per-entry undo coalesce window override (ms) — see EditHistoryEntry.coalesceMs. */
   coalesceMs?: number;
+  /** Overrides the default "Move timeline clips" undo-history label. Coalescing
+   *  keeps the LAST entry's label (editHistory.ts), so a mechanical follow-up
+   *  move folded into another gesture's coalesceKey (e.g. the ripple after a
+   *  delete) should carry that gesture's own label, not its own. */
+  label?: string;
+  /** Skips this call's own generic failure toast (the error is still logged
+   *  to the console) — for a caller that shows its own more specific message
+   *  on the same failure, so the user isn't told about one action twice. */
+  suppressFailureToast?: boolean;
 }
 
 interface UseTimelineGroupEditingOptions {
   activeCompPath: string | null;
-  domEditSaveTimestampRef: MutableRefObject<number>;
   editQueueRef: MutableRefObject<Promise<unknown>>;
   forceReloadSdkSession?: () => void;
   invalidateGsapCache?: () => void;
@@ -108,7 +118,6 @@ function resizeHasPlaybackStartAdjustment(change: TimelineGroupResizeChange): bo
 
 export function useTimelineGroupEditing({
   activeCompPath,
-  domEditSaveTimestampRef,
   editQueueRef,
   forceReloadSdkSession,
   invalidateGsapCache,
@@ -160,7 +169,6 @@ export function useTimelineGroupEditing({
         changes: batchChanges,
         writeProjectFile,
         recordEdit,
-        domEditSaveTimestampRef,
         pendingTimelineEditPathRef,
         coalesceKey,
         coalesceMs,
@@ -169,7 +177,6 @@ export function useTimelineGroupEditing({
     },
     [
       activeCompPath,
-      domEditSaveTimestampRef,
       forceReloadSdkSession,
       pendingTimelineEditPathRef,
       recordEdit,
@@ -209,7 +216,6 @@ export function useTimelineGroupEditing({
           editHistory: { recordEdit },
           writeProjectFile,
           reloadPreview,
-          domEditSaveTimestampRef,
           compositionPath: activeCompPath,
           readProjectFile: (path) => readFileContent(projectIdRef.current ?? "", path),
           publishSession: publishSdkSession,
@@ -225,7 +231,6 @@ export function useTimelineGroupEditing({
     },
     [
       activeCompPath,
-      domEditSaveTimestampRef,
       projectIdRef,
       publishSdkSession,
       recordEdit,
@@ -240,7 +245,10 @@ export function useTimelineGroupEditing({
       if (changes.length === 0) return Promise.resolve();
       for (const change of changes) {
         const attrs: Array<[string, string]> = [
-          ["data-start", formatTimelineAttributeNumber(change.start)],
+          [
+            "data-start",
+            formatTimelineAttributeNumber(toAuthoredStart(change.element, change.start)),
+          ],
         ];
         if (change.track != null) {
           attrs.push(["data-track-index", formatTimelineAttributeNumber(change.track)]);
@@ -278,28 +286,31 @@ export function useTimelineGroupEditing({
       syncPreviewContentDuration(previewIframeRef.current);
       const coalesceKey = options?.coalesceKey ?? moveCoalesceKey(changes);
       const coalesceMs = options?.coalesceMs;
-      return enqueueGroupOperation("Move timeline clips", async (projectId) => {
+      const label = options?.label ?? "Move timeline clips";
+      return enqueueGroupOperation(label, async (projectId) => {
         await options?.beforeTiming;
         const handledBySdk = await trySdkBatchPersist({
           changes,
-          sdkChanges: toSdkTimingChanges(changes, (change) => ({ start: change.start })),
+          sdkChanges: toSdkTimingChanges(changes, (change) => ({
+            start: toAuthoredStart(change.element, change.start),
+          })),
           eligible: changes.every((change) => change.track == null),
           needsExtension,
-          label: "Move timeline clips",
+          label,
           coalesceKey,
           coalesceMs,
         });
         if (!handledBySdk) {
           await persistServerBatch(
             projectId,
-            "Move timeline clips",
+            label,
             changes.map((change) => ({
               element: change.element,
               buildPatches: (original, target) =>
                 buildTimelineMoveTimingPatch(
                   original,
                   target,
-                  change.start,
+                  toAuthoredStart(change.element, change.start),
                   change.element.duration,
                   change.track,
                 ),
@@ -321,10 +332,11 @@ export function useTimelineGroupEditing({
             projectId,
             iframe: previewIframeRef.current,
             reloadPreview,
-            label: "Move timeline clips",
+            label,
             errorLabel: "Failed to shift GSAP positions",
             coalesceKey,
             recordEdit,
+            writeProjectFile,
             activeCompPath,
             changes,
             resolveChangePath: (element) => targetPathFor(element, activeCompPath),
@@ -342,7 +354,11 @@ export function useTimelineGroupEditing({
         // Failed persist: revert the optimistic duration readout + live root
         // alongside the gesture owner's store rollback.
         rollbackDuration();
-        showToast(getStudioSaveErrorMessage(error), "error");
+        if (options?.suppressFailureToast) {
+          console.error("[Timeline] group move failed to persist", error);
+        } else {
+          showToast(getStudioSaveErrorMessage(error), "error");
+        }
         throw error;
       });
     },
@@ -356,6 +372,7 @@ export function useTimelineGroupEditing({
       trySdkBatchPersist,
       showToast,
       invalidateGsapCache,
+      writeProjectFile,
     ],
   );
 
@@ -364,12 +381,15 @@ export function useTimelineGroupEditing({
       if (changes.length === 0) return Promise.resolve();
       for (const change of changes) {
         const liveAttrs: Array<[string, string]> = [
-          ["data-start", formatTimelineAttributeNumber(change.start)],
+          [
+            "data-start",
+            formatTimelineAttributeNumber(toAuthoredStart(change.element, change.start)),
+          ],
           ["data-duration", formatTimelineAttributeNumber(change.duration)],
         ];
         if (change.playbackStart != null) {
           const liveAttr = playbackStartAttributeForElement(change.element);
-          liveAttrs.push([liveAttr, formatTimelineAttributeNumber(change.playbackStart)]);
+          liveAttrs.push([liveAttr, formatTimelineMediaOffset(change.playbackStart)]);
         }
         patchIframeDomTiming(previewIframeRef.current, change.element, liveAttrs, activeCompPath);
       }
@@ -391,7 +411,7 @@ export function useTimelineGroupEditing({
         const handledBySdk = await trySdkBatchPersist({
           changes,
           sdkChanges: toSdkTimingChanges(changes, (change) => ({
-            start: change.start,
+            start: toAuthoredStart(change.element, change.start),
             duration: change.duration,
           })),
           eligible: changes.every((change) => !resizeHasPlaybackStartAdjustment(change)),
@@ -428,6 +448,7 @@ export function useTimelineGroupEditing({
             errorLabel: "Failed to scale GSAP positions",
             coalesceKey,
             recordEdit,
+            writeProjectFile,
             activeCompPath,
             changes,
             resolveChangePath: (element) => targetPathFor(element, activeCompPath),
@@ -441,9 +462,9 @@ export function useTimelineGroupEditing({
                 projectId,
                 changePath,
                 domId,
-                change.element.start,
+                toCompositionTime(change.element, change.element.start),
                 change.element.duration,
-                change.start,
+                toCompositionTime(change.element, change.start),
                 change.duration,
               );
             },
@@ -469,6 +490,7 @@ export function useTimelineGroupEditing({
       trySdkBatchPersist,
       showToast,
       invalidateGsapCache,
+      writeProjectFile,
     ],
   );
 

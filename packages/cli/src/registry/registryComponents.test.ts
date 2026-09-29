@@ -22,9 +22,9 @@ async function invalidInstallableMedia(entryName: string): Promise<string[]> {
 
   for (const file of manifest.files) {
     if (file.type !== "hyperframes:snippet" || !file.path.endsWith(".html")) continue;
-    const result = await lintHyperframeHtml(readFileSync(join(itemDir, file.path), "utf8"), {
-      isSubComposition: true,
-    });
+    const html = readFileSync(join(itemDir, file.path), "utf8");
+    if (!/<(?:audio|video)\b/i.test(html)) continue;
+    const result = await lintHyperframeHtml(html, { isSubComposition: true });
     for (const finding of result.findings) {
       if (finding.code !== "media_missing_src") continue;
       invalidMedia.push(`${entryName}/${file.path}: ${finding.code}`);

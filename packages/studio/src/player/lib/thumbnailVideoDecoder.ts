@@ -44,7 +44,7 @@ interface DecodedResources {
 
 interface ThumbnailCanvasSink {
   canvasesAtTimestamps(
-    timestamps: number[],
+    timestamps: AsyncIterable<number>,
   ): AsyncIterable<{ canvas: HTMLCanvasElement | OffscreenCanvas } | null>;
 }
 
@@ -77,7 +77,7 @@ function targetDimensions(
 
 async function decodeFrames(
   sink: ThumbnailCanvasSink,
-  timestamps: number[],
+  timestamps: AsyncIterable<number>,
   signal: AbortSignal,
   resources: DecodedResources,
 ): Promise<void> {
@@ -89,6 +89,7 @@ async function decodeFrames(
     throwIfAborted(signal);
     resources.urls.push(URL.createObjectURL(blob));
   }
+  throwIfAborted(signal);
 }
 
 function loadedResult(
@@ -138,8 +139,12 @@ export async function decodeVideoThumbnail(
     }
     const metadataDuration = await track.getDurationFromMetadata({ skipLiveWait: true });
     throwIfAborted(signal);
-    const sourceDuration = Math.max(0, metadataDuration ?? request.sourceRangeDuration ?? 0);
-    const sourceStart = Math.min(Math.max(0, request.sourceStart ?? 0), sourceDuration);
+    const requestedStart = Math.max(0, request.sourceStart ?? 0);
+    const sourceDuration = Math.max(
+      0,
+      metadataDuration ?? requestedStart + (request.sourceRangeDuration ?? 0),
+    );
+    const sourceStart = Math.min(requestedStart, sourceDuration);
     const requestedDuration =
       request.sourceRangeDuration ?? Math.max(0, sourceDuration - sourceStart);
     const duration = Math.min(
@@ -151,6 +156,16 @@ export async function decodeVideoThumbnail(
       duration,
       Math.min(request.frameCount, budgets.richPreviewFrameCount),
     );
+    const keys = new mediabunny.EncodedPacketSink(track);
+    const maxKeyframeLead = duration / Math.max(2, timestamps.length - 1) / 2;
+    async function* decodeTimesAtNearbyKeyframes() {
+      for (const time of timestamps) {
+        const key = await keys.getKeyPacket(time, { metadataOnly: true });
+        if (signal.aborted) return;
+        const near = key && key.timestamp >= sourceStart && time - key.timestamp <= maxKeyframeLead;
+        yield near ? key.timestamp : time;
+      }
+    }
     const aspect = displayWidth / displayHeight;
     const target = targetDimensions(aspect, budgets);
     const sink = new mediabunny.CanvasSink(track, {
@@ -159,7 +174,7 @@ export async function decodeVideoThumbnail(
       fit: request.fit ?? "cover",
       poolSize: 1,
     });
-    await decodeFrames(sink, timestamps, signal, resources);
+    await decodeFrames(sink, decodeTimesAtNearbyKeyframes(), signal, resources);
     return loadedResult(resources, aspect, target.width, target.height);
   } catch (error) {
     releaseDecodedResources(resources);

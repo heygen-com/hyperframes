@@ -1,5 +1,10 @@
 export { createStudioApi } from "./createStudioApi.js";
 export { createProjectSignature, affectsProjectSignature } from "./helpers/projectSignature.js";
+export { compositionsAffectedBy } from "./helpers/compositionInputs.js";
+export { affectsPreview } from "./helpers/previewReads.js";
+export * from "./history/index.js";
+export { cleanupProxyCache } from "./helpers/proxyCache.js";
+export { CACHE_DIR_NAME as PROXY_CACHE_DIR_NAME } from "./helpers/proxyTranscoder.js";
 export type {
   StudioApiAdapter,
   ResolvedProject,
@@ -11,11 +16,34 @@ export type {
   StudioSelectionTextField,
 } from "./types.js";
 export { isSafePath, walkDir } from "./helpers/safePath.js";
+export { stampProjectHfIds } from "./helpers/hfIdPersist.js";
+export {
+  patchElementInHtml,
+  splitElementInHtml,
+  removeElementFromHtml,
+  findTargetElement,
+  parseSourceDocument,
+  dedupeClonedCompositionId,
+  type PatchOperation,
+  type SourceMutationTarget,
+} from "./helpers/sourceMutation.js";
+export { duplicateElementInHtml, type DuplicateElementResult } from "./helpers/duplicateElement.js";
+export {
+  applyFileMutations,
+  type AppliedFileMutation,
+  type FileMutationInput,
+} from "./helpers/applyFileMutations.js";
 export type { PreviewApiAdapter } from "./helpers/mediaProxyPreview.js";
+export { PREVIEW_BUNDLE_OPTIONS } from "./routes/preview.js";
+export { createPreviewDocumentStore } from "./helpers/previewDocumentStore.js";
 export { getMimeType, MIME_TYPES } from "./helpers/mime.js";
+export { requestSubPath } from "./helpers/requestSubPath.js";
 export {
   consumeFileWriteReceipt,
+  identifyFileWrite,
   fileContentVersion,
+  DELETED_VERSION,
+  settledFileTag,
   type FileWriteReceipt,
 } from "./helpers/fileVersion.js";
 export { buildSubCompositionHtml } from "./helpers/subComposition.js";

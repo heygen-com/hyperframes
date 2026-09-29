@@ -15,6 +15,7 @@
 
 import { existsSync, readFileSync, statSync, writeFileSync } from "node:fs";
 import { join, resolve } from "node:path";
+import { recordInManifest } from "./lib/media-record.mjs";
 
 const argv = process.argv.slice(2);
 const flag = (name, def) => {
@@ -48,10 +49,14 @@ function isProcessAlive(pid) {
 }
 
 function readTail(path, maxChars = 6000) {
-  if (!path || !existsSync(path)) return "";
-  const s = statSync(path);
-  const txt = readFileSync(path, "utf8");
-  return txt.slice(Math.max(0, txt.length - Math.min(maxChars, s.size)));
+  if (!path) return "";
+  try {
+    const txt = readFileSync(path, "utf8");
+    return txt.slice(Math.max(0, txt.length - maxChars));
+  } catch (error) {
+    if (error.code === "ENOENT" || error.code === "ENOTDIR") return "";
+    throw error;
+  }
 }
 
 function detectFailure(logTail) {
@@ -128,6 +133,9 @@ while (Date.now() - started <= timeoutMs) {
       message: `BGM ready at ${bgmPath}.`,
     });
     console.log(`✓ bgm: ready (${bgmPath}, ${size}B)`);
+    const generated = { path: bgmPath, type: "bgm", source: "generated", provider: base.provider };
+    for (const anomaly of recordInManifest(hyperframesDir, [generated]))
+      console.error(`  ${anomaly}`);
     process.exit(0);
   }
 

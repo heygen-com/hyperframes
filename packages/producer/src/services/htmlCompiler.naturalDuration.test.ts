@@ -79,6 +79,21 @@ describe("compileForRender natural media duration parity", () => {
     }
   });
 
+  it("marks only variable-bound media whose natural duration was inferred", async () => {
+    const { document } = await compile(`
+      <audio id="inferred" src="ten-seconds.wav" data-var-src="track"></audio>
+      <audio id="authored" src="ten-seconds.wav" data-var-src="track" data-duration="4"></audio>
+      <audio id="plain" src="ten-seconds.wav"></audio>`);
+
+    expect(document.getElementById("inferred")?.hasAttribute("data-hf-inferred-duration")).toBe(
+      true,
+    );
+    expect(document.getElementById("authored")?.hasAttribute("data-hf-inferred-duration")).toBe(
+      false,
+    );
+    expect(document.getElementById("plain")?.hasAttribute("data-hf-inferred-duration")).toBe(false);
+  });
+
   it("uses shared playback-start precedence and fallback semantics", async () => {
     const cases = [
       ["precedence", 'data-playback-start="2" data-media-start="7"', 8],

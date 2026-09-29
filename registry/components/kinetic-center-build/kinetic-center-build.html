@@ -1,0 +1,284 @@
+<!doctype html>
+<!--
+  Kinetic Center Build
+
+  Words enter from the right while the existing phrase shifts left, keeping
+  every intermediate phrase centered until the final line locks in place.
+
+  Native HyperFrames port prepared through Hyfrme from:
+  https://github.com/Remocn/remocn/blob/ea730a20b4ab09430ee7292aebc847c002375151/registry/remocn/kinetic-center-build/index.tsx
+
+  MIT License
+
+  Copyright (c) 2026 Remocn
+
+  Permission is hereby granted, free of charge, to any person obtaining a copy
+  of this software and associated documentation files (the "Software"), to deal
+  in the Software without restriction, including without limitation the rights
+  to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+  copies of the Software, and to permit persons to whom the Software is
+  furnished to do so, subject to the following conditions:
+
+  The above copyright notice and this permission notice shall be included in all
+  copies or substantial portions of the Software.
+
+  THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+  IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+  FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+  AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+  LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+  OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+  SOFTWARE.
+-->
+<html
+  lang="en"
+  data-composition-id="kinetic-center-build"
+  data-composition-duration="2"
+  data-composition-variables='[
+    { "id": "text", "type": "string", "role": "content", "label": "Text", "description": "Short phrase that builds one word at a time.", "default": "Words push left." },
+    { "id": "font_size", "type": "number", "role": "style", "label": "Font size", "description": "Maximum text size in pixels. Longer phrases shrink to stay inside the frame.", "default": 72, "min": 36, "max": 160, "step": 2, "unit": "px" },
+    { "id": "entry_offset", "type": "number", "role": "motion", "label": "Entry offset", "description": "Horizontal distance each new word travels before it lands.", "default": 88, "min": 20, "max": 160, "step": 4, "unit": "px" },
+    { "id": "color", "type": "color", "role": "style", "label": "Color", "description": "Text color for the full phrase.", "default": "#171717" },
+    { "id": "font_weight", "type": "enum", "role": "style", "label": "Font weight", "description": "Weight used by every word in the phrase.", "default": "600", "options": [{ "value": "500", "label": "Medium" }, { "value": "600", "label": "Semibold" }, { "value": "700", "label": "Bold" }, { "value": "800", "label": "Extra bold" }] }
+  ]'
+>
+  <head>
+    <meta charset="UTF-8" />
+    <title>Kinetic Center Build</title>
+  </head>
+  <body>
+    <template>
+      <link
+        rel="stylesheet"
+        href="https://fonts.googleapis.com/css2?family=Geist:wght@500;600;700;800&amp;display=block"
+      />
+
+      <style>
+        *,
+        *::before,
+        *::after {
+          box-sizing: border-box;
+        }
+
+        #root {
+          position: absolute;
+          inset: 0;
+          overflow: hidden;
+          container-type: size;
+          isolation: isolate;
+          color: var(--color, #171717);
+          font-family: var(--font-display, Geist, system-ui, sans-serif);
+          pointer-events: none;
+        }
+
+        .kcb-clip,
+        .kcb-stage {
+          position: absolute;
+          inset: 0;
+          overflow: hidden;
+        }
+
+        .kcb-stage {
+          letter-spacing: -0.03em;
+          white-space: nowrap;
+        }
+
+        .kcb-word {
+          --kcb-blur: 0px;
+          position: absolute;
+          left: 50%;
+          top: 50%;
+          display: inline-block;
+          color: inherit;
+          line-height: 1;
+          white-space: nowrap;
+          opacity: 0;
+          filter: blur(var(--kcb-blur));
+          backface-visibility: hidden;
+          will-change: transform, filter, opacity;
+        }
+      </style>
+
+      <div id="root" data-composition-id="kinetic-center-build" data-duration="2" data-fps="30">
+        <div
+          id="kcb-clip"
+          class="kcb-clip clip"
+          data-start="0"
+          data-duration="2"
+          data-track-index="0"
+        >
+          <div id="kcb-stage" class="kcb-stage" role="img"></div>
+        </div>
+
+        <script src="https://cdn.jsdelivr.net/npm/gsap@3.14.2/dist/gsap.min.js"></script>
+        <script src="https://cdn.jsdelivr.net/npm/gsap@3.14.2/dist/CustomEase.min.js"></script>
+        <script>
+          (function () {
+            "use strict";
+
+            var root = document.getElementById("root");
+            var stage = document.getElementById("kcb-stage");
+            var vars =
+              window.__hyperframes && window.__hyperframes.getVariables
+                ? window.__hyperframes.getVariables()
+                : {};
+
+            function numberBetween(value, fallback, min, max) {
+              var parsed = Number(value);
+              if (!Number.isFinite(parsed)) return fallback;
+              return Math.min(max, Math.max(min, parsed));
+            }
+
+            var text = typeof vars.text === "string" ? vars.text.trim() : "";
+            if (!text) text = "Words push left.";
+
+            var words = text.split(/\s+/);
+            var requestedFontSize = numberBetween(vars.font_size, 72, 36, 160);
+            var entryOffset = numberBetween(vars.entry_offset, 88, 20, 160);
+            var fontWeight =
+              vars.font_weight === "500" || vars.font_weight === "700" || vars.font_weight === "800"
+                ? vars.font_weight
+                : "600";
+
+            stage.style.fontWeight = fontWeight;
+            stage.setAttribute("aria-label", text);
+
+            var canvas = document.createElement("canvas");
+            var context = canvas.getContext("2d");
+            var measureFont = '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif';
+            var gapRatio = 10 / 72;
+
+            function measure(fontSize) {
+              if (!context) {
+                return words.map(function (word) {
+                  return word.length * fontSize * 0.55;
+                });
+              }
+              context.font = fontWeight + " " + fontSize + "px " + measureFont;
+              return words.map(function (word) {
+                return context.measureText(word).width;
+              });
+            }
+
+            var fontSize = requestedFontSize;
+            var widths = measure(fontSize);
+            var gap = fontSize * gapRatio;
+            var fullWidth = widths.reduce(
+              function (total, width) {
+                return total + width;
+              },
+              gap * Math.max(0, words.length - 1),
+            );
+            var maxWidth = Math.max(1, root.clientWidth * 0.9);
+
+            if (fullWidth > maxWidth) {
+              fontSize = Math.max(24, fontSize * (maxWidth / fullWidth));
+              widths = measure(fontSize);
+              gap = fontSize * gapRatio;
+            }
+
+            stage.style.fontSize = fontSize + "px";
+
+            var positionsAt = [];
+            for (var count = 1; count <= words.length; count += 1) {
+              var total = gap * (count - 1);
+              for (var widthIndex = 0; widthIndex < count; widthIndex += 1) {
+                total += widths[widthIndex];
+              }
+
+              var cursor = -total / 2;
+              var positions = [];
+              for (var positionIndex = 0; positionIndex < count; positionIndex += 1) {
+                positions.push(cursor + widths[positionIndex] / 2);
+                cursor += widths[positionIndex] + gap;
+              }
+              positionsAt.push(positions);
+            }
+
+            var elements = words.map(function (word, index) {
+              var element = document.createElement("span");
+              element.id = "kcb-word-" + index;
+              element.className = "kcb-word";
+              element.textContent = word;
+              element.setAttribute("aria-hidden", "true");
+              stage.appendChild(element);
+              return element;
+            });
+
+            gsap.registerPlugin(CustomEase);
+            var entryEase = CustomEase.create("kcb-entry-ease", "M0,0 C0.2,0.8 0.2,1 1,1");
+            var duration = Math.max(0.001, parseFloat(root.dataset.duration || "2"));
+            var firstDuration = 10 / 30;
+            var pushDuration = 13 / 30;
+            var authoredBuildDuration =
+              firstDuration + Math.max(0, words.length - 1) * pushDuration;
+            var availableBuildDuration = Math.max(0.25, duration - 0.5);
+            var timingScale = Math.min(1, availableBuildDuration / authoredBuildDuration);
+            firstDuration *= timingScale;
+            pushDuration *= timingScale;
+
+            var tl = gsap.timeline({ paused: true });
+
+            elements.forEach(function (element, index) {
+              var targetX = positionsAt[index][index];
+              var start = index === 0 ? 0 : firstDuration + (index - 1) * pushDuration;
+              var moveDuration = index === 0 ? firstDuration : pushDuration;
+              var fromX = index === 0 ? targetX : targetX + entryOffset;
+              var fromY = index === 0 ? 6 : 0;
+
+              tl.fromTo(
+                element,
+                {
+                  x: fromX,
+                  y: fromY,
+                  xPercent: -50,
+                  yPercent: -50,
+                  scale: 0.992,
+                  opacity: 0,
+                  "--kcb-blur": "3.5px",
+                },
+                {
+                  x: targetX,
+                  y: 0,
+                  xPercent: -50,
+                  yPercent: -50,
+                  scale: 1,
+                  opacity: 1,
+                  "--kcb-blur": "0px",
+                  duration: moveDuration,
+                  ease: entryEase,
+                  immediateRender: index === 0,
+                },
+                start,
+              );
+
+              if (index === 0) return;
+
+              for (var priorIndex = 0; priorIndex < index; priorIndex += 1) {
+                var priorElement = elements[priorIndex];
+                var nextX = positionsAt[index][priorIndex];
+                var blurPeak = start + moveDuration / 2;
+
+                tl.to(priorElement, { x: nextX, duration: moveDuration, ease: entryEase }, start);
+                tl.to(
+                  priorElement,
+                  { "--kcb-blur": "0.8px", duration: moveDuration / 2, ease: "none" },
+                  start,
+                );
+                tl.to(
+                  priorElement,
+                  { "--kcb-blur": "0px", duration: moveDuration / 2, ease: "none" },
+                  blurPeak,
+                );
+              }
+            });
+
+            tl.seek(0);
+            window.__timelines = window.__timelines || {};
+            window.__timelines["kinetic-center-build"] = tl;
+          })();
+        </script>
+      </div>
+    </template>
+  </body>
+</html>

@@ -3,7 +3,7 @@
 import React, { act } from "react";
 import { createRoot } from "react-dom/client";
 import type { GsapAnimation } from "@hyperframes/core/gsap-parser";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi, type Mock } from "vitest";
 import { AnimationCard } from "./AnimationCard";
 import { EASE_PRESETS } from "./easePresetLibrary";
 import type { AnimationKeyframeTarget } from "../../hooks/gsapTweenSynth";
@@ -118,8 +118,8 @@ function renderCard({
   animation?: GsapAnimation;
   defaultExpanded?: boolean;
   flat?: boolean;
-  onUpdateMeta?: ReturnType<typeof vi.fn>;
-  onUpdateKeyframeEase?: ReturnType<typeof vi.fn>;
+  onUpdateMeta?: Mock;
+  onUpdateKeyframeEase?: Mock;
   onDeleteAnimation?: (id: string) => void;
 } = {}) {
   const host = document.createElement("div");

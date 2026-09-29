@@ -6,6 +6,13 @@ export interface DomEditPatchBatch {
   patches: Array<{ target: PatchTarget; operations: PatchOperation[] }>;
 }
 
+/** Durable evidence returned by the one Studio DOM persistence actor. */
+export interface DomEditPersistOutcome {
+  sourceFile: string;
+  version: string;
+  changed: boolean;
+}
+
 export type CommitDomEditPatchBatches = (
   batches: DomEditPatchBatch[],
   options: {
@@ -49,4 +56,4 @@ export type PersistDomEditOperations = (
     prepareContent?: (html: string, sourceFile: string) => string;
     shouldSave?: () => boolean;
   },
-) => Promise<void>;
+) => Promise<DomEditPersistOutcome | undefined>;

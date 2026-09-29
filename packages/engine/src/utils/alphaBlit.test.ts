@@ -815,6 +815,29 @@ describe("blitRgb48leRegion", () => {
 // ── parseTransformMatrix tests ───────────────────────────────────────────────
 
 describe("parseTransformMatrix", () => {
+  it("preserves whitespace and numeric conversion for 2D and 3D matrices", () => {
+    expect(parseTransformMatrix("matrix(\t1 ,\n-0 , .5 , 1e0 , 0x10 ,  )")).toEqual([
+      1, -0, 0.5, 1, 16, 0,
+    ]);
+    expect(
+      parseTransformMatrix("matrix3d(\t1 , , 0, 0, .5, 1e0, 0, 0, 0, 0, 1, 0, 0x10, , 0, 1 )"),
+    ).toEqual([1, 0, 0.5, 1, 16, 0]);
+    expect(parseTransformMatrix("matrix(1,,0,1,0,0)")).toBeNull();
+  });
+
+  it.each([
+    "matrix(",
+    "matrix(1,",
+    "matrix(1,0,",
+    "matrix(1,0,0,",
+    "matrix(1,0,0,1,",
+    "matrix(1,0,0,1,0,",
+    "matrix(1,0,0,1,0,(",
+    "matrix3d(",
+  ])("rejects long malformed whitespace after %s", (prefix) => {
+    expect(parseTransformMatrix(prefix + " ".repeat(100_000) + "!")).toBeNull();
+  });
+
   it("returns null for 'none'", () => {
     expect(parseTransformMatrix("none")).toBeNull();
   });

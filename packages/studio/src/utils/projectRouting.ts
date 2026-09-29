@@ -5,6 +5,19 @@ export interface ProjectHashRoute {
   params: URLSearchParams;
 }
 
+/** Project names are single path segments, including when received from a hash or server. */
+export function isValidProjectId(value: string): boolean {
+  return (
+    value.length > 0 &&
+    value !== "." &&
+    value !== ".." &&
+    !value.includes(":") &&
+    !value.includes("/") &&
+    !value.includes("\\") &&
+    !Array.from(value).some((char) => char.charCodeAt(0) < 32)
+  );
+}
+
 function decodeHashProjectId(value: string): string {
   try {
     return decodeURIComponent(value);
@@ -28,6 +41,7 @@ function normalizeHashParams(
 }
 
 export function encodeProjectId(projectId: string): string {
+  if (!isValidProjectId(projectId)) throw new Error("Invalid project ID");
   return encodeURIComponent(projectId);
 }
 
@@ -47,9 +61,12 @@ export function parseProjectHashRoute(hash: string): ProjectHashRoute | null {
   const encodedProjectId = queryIndex >= 0 ? route.slice(0, queryIndex) : route;
   if (!encodedProjectId || encodedProjectId.includes("/")) return null;
 
+  const projectId = decodeHashProjectId(encodedProjectId);
+  if (!isValidProjectId(projectId)) return null;
+
   const rawParams = queryIndex >= 0 ? route.slice(queryIndex + 1) : "";
   return {
-    projectId: decodeHashProjectId(encodedProjectId),
+    projectId,
     params: new URLSearchParams(rawParams),
   };
 }

@@ -1,7 +1,13 @@
 import { useCallback } from "react";
 import type { DomEditSelection } from "../components/editor/domEditing";
-import { trackStudioSaveFailure } from "../utils/studioSaveDiagnostics";
+import { trackStudioEditBlocked, trackStudioSaveFailure } from "../utils/studioSaveDiagnostics";
 import { isGsapEditBlockedError } from "./gsapEditOutcome";
+import { wasAlreadyToasted } from "./domEditPersistFailure";
+
+function failureToast(error: unknown): string | null {
+  if (wasAlreadyToasted(error)) return null;
+  return isGsapEditBlockedError(error) ? error.message : "Failed to save animated edit.";
+}
 
 export function useGsapInteractionFailureTelemetry(
   activeCompPath: string | null,
@@ -9,7 +15,10 @@ export function useGsapInteractionFailureTelemetry(
 ) {
   return useCallback(
     (error: unknown, selection: DomEditSelection | null, mutationType: string, label: string) => {
-      trackStudioSaveFailure({
+      const report = isGsapEditBlockedError(error)
+        ? trackStudioEditBlocked
+        : trackStudioSaveFailure;
+      report({
         source: "gsap_commit",
         error,
         filePath: selection?.sourceFile ?? activeCompPath ?? "index.html",
@@ -19,10 +28,8 @@ export function useGsapInteractionFailureTelemetry(
         targetSelector: selection?.selector,
         targetSourceFile: selection?.sourceFile,
       });
-      showToast(
-        isGsapEditBlockedError(error) ? error.message : "Failed to save animated edit.",
-        "error",
-      );
+      const message = failureToast(error);
+      if (message) showToast(message, "error");
     },
     [activeCompPath, showToast],
   );

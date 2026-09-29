@@ -19,7 +19,7 @@
  *     frame.md over the project's, and print the brief values + skeleton path.
  *
  * When recipes are offered/consumed is the review loop's and the intent
- * layer's business — see hyperframes-core/references/review-loop.md § 4 and
+ * layer's business — see hyperframes/references/review-loop.md § 4 and
  * the intent layer's recipe check (hyperframes SKILL.md § 4).
  */
 import { parseArgs } from "node:util";

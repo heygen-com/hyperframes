@@ -93,7 +93,7 @@ export function EaseBezierField({
             }
           }}
           onBlur={(event) => commit(event.currentTarget.value)}
-          className={`w-full rounded border bg-black/20 px-1.5 py-1 font-mono text-[10px] text-neutral-300 outline-none ${
+          className={`w-full rounded border bg-black/20 px-1.5 py-1 font-mono text-[10px] text-neutral-300 outline-hidden ${
             error
               ? "border-red-500/70 focus:border-red-400"
               : "border-white/10 focus:border-panel-accent/50"
@@ -183,7 +183,7 @@ export function SpringBounceField({
           const bounce = parseSpringBounce(`spring(${value})`);
           if (bounce !== null) onCommit(`spring(${round2(bounce)})`);
         }}
-        className="w-16 rounded border border-white/10 bg-black/20 px-1.5 py-1 font-mono text-[10px] text-neutral-300 outline-none focus:border-panel-accent/50"
+        className="w-16 rounded-sm border border-white/10 bg-black/20 px-1.5 py-1 font-mono text-[10px] text-neutral-300 outline-hidden focus:border-panel-accent/50"
       />
     </div>
   );
@@ -207,7 +207,7 @@ export function WiggleField({
           min={1}
           step={1}
           onCommit={(value) => commitWiggle(onCommit, value, config.type, amplitude)}
-          className="w-14 rounded border border-white/10 bg-black/20 px-1.5 py-1 font-mono text-[10px] text-neutral-300 outline-none focus:border-panel-accent/50"
+          className="w-14 rounded-sm border border-white/10 bg-black/20 px-1.5 py-1 font-mono text-[10px] text-neutral-300 outline-hidden focus:border-panel-accent/50"
         />
       </div>
       <div className="flex items-center gap-1">
@@ -220,7 +220,7 @@ export function WiggleField({
               commitWiggle(onCommit, config.wiggles, event.currentTarget.value, amplitude);
             }
           }}
-          className="rounded border border-white/10 bg-black/20 px-1.5 py-1 text-[10px] text-neutral-300 outline-none focus:border-panel-accent/50"
+          className="rounded-sm border border-white/10 bg-black/20 px-1.5 py-1 text-[10px] text-neutral-300 outline-hidden focus:border-panel-accent/50"
         >
           {WIGGLE_TYPES.map((type) => (
             <option key={type} value={type}>
@@ -238,7 +238,7 @@ export function WiggleField({
           max={1}
           step={0.01}
           onCommit={(value) => commitWiggle(onCommit, config.wiggles, config.type, value)}
-          className="w-16 rounded border border-white/10 bg-black/20 px-1.5 py-1 font-mono text-[10px] text-neutral-300 outline-none focus:border-panel-accent/50"
+          className="w-16 rounded-sm border border-white/10 bg-black/20 px-1.5 py-1 font-mono text-[10px] text-neutral-300 outline-hidden focus:border-panel-accent/50"
         />
       </div>
     </div>

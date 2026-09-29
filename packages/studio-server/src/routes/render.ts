@@ -1,14 +1,24 @@
 import type { Hono } from "hono";
 import { streamSSE } from "hono/streaming";
-import { existsSync, readFileSync, mkdirSync, unlinkSync, readdirSync, statSync } from "node:fs";
+import { existsSync, readFileSync, unlinkSync, readdirSync, statSync } from "node:fs";
 import { join } from "node:path";
 import type { StudioApiAdapter, RenderJobState } from "../types.js";
 import { VALID_CANVAS_RESOLUTIONS, type CanvasResolution } from "@hyperframes/parsers";
 import { formatRenderOutputTimestamp, parseFps } from "@hyperframes/core";
-import { resolveWithinProject } from "../helpers/safePath.js";
+import { folderGone, mkdirWithinProject, resolveWithinProject } from "../helpers/safePath.js";
+import { projectDirMissing } from "../helpers/projectDirMissing.js";
 import { isVariablesPayload, VARIABLES_PAYLOAD_ERROR } from "../helpers/variablesPayload.js";
 
 const VALID_RESOLUTIONS = new Set<string>(VALID_CANVAS_RESOLUTIONS);
+
+function contentDispositionHeader(disposition: "inline" | "attachment", filename: string): string {
+  const fallback = filename.replace(/[^\x20-\x7e]|["\\]/g, "_");
+  const encoded = encodeURIComponent(filename).replace(
+    /[!'()*]/g,
+    (character) => `%${character.charCodeAt(0).toString(16).toUpperCase()}`,
+  );
+  return `${disposition}; filename="${fallback}"; filename*=UTF-8''${encoded}`;
+}
 
 export function registerRenderRoutes(api: Hono, adapter: StudioApiAdapter): void {
   // Scoped job store — not shared across createStudioApi() calls
@@ -96,6 +106,7 @@ export function registerRenderRoutes(api: Hono, adapter: StudioApiAdapter): void
       // resolveWithinProject dereferences symlinks, so an in-project symlink
       // pointing outside the root can't smuggle the render target out.
       if (!resolveWithinProject(project.dir, body.composition)) {
+        if (folderGone(project.dir)) return projectDirMissing(c);
         return c.json({ error: "composition path must be within the project directory" }, 400);
       }
       composition = body.composition;
@@ -114,7 +125,7 @@ export function registerRenderRoutes(api: Hono, adapter: StudioApiAdapter): void
     const now = new Date();
     const jobId = `${project.id}_${formatRenderOutputTimestamp(now)}`;
     const rendersDir = adapter.rendersDir(project);
-    if (!existsSync(rendersDir)) mkdirSync(rendersDir, { recursive: true });
+    mkdirWithinProject(project.dir, rendersDir);
     const ext = FORMAT_EXT[format] ?? ".mp4";
     const outputPath = join(rendersDir, `${jobId}${ext}`);
 
@@ -204,7 +215,7 @@ export function registerRenderRoutes(api: Hono, adapter: StudioApiAdapter): void
     return new Response(content, {
       headers: {
         "Content-Type": contentType,
-        "Content-Disposition": `inline; filename="${filename}"`,
+        "Content-Disposition": contentDispositionHeader("inline", filename),
         "Accept-Ranges": "bytes",
         "Content-Length": String(content.length),
       },
@@ -225,7 +236,7 @@ export function registerRenderRoutes(api: Hono, adapter: StudioApiAdapter): void
     return new Response(content, {
       headers: {
         "Content-Type": contentType,
-        "Content-Disposition": `attachment; filename="${filename}"`,
+        "Content-Disposition": contentDispositionHeader("attachment", filename),
       },
     });
   });
@@ -267,7 +278,7 @@ export function registerRenderRoutes(api: Hono, adapter: StudioApiAdapter): void
     return new Response(content, {
       headers: {
         "Content-Type": contentType,
-        "Content-Disposition": `inline; filename="${filename}"`,
+        "Content-Disposition": contentDispositionHeader("inline", filename),
         "Accept-Ranges": "bytes",
         "Content-Length": String(content.length),
       },

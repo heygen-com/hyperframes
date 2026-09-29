@@ -24,7 +24,11 @@ The domain skills (`/hyperframes-core`, `/hyperframes-animation`, `/hyperframes-
 
 > **Tailwind v4 projects** (`hyperframes init --tailwind`): see `/hyperframes-core` → `references/tailwind.md`.
 
-> **Skill missing or stale?** Run `npx hyperframes skills update <name>` to install/refresh
+> **Using a HyperFrames plugin?** Load skills from that installed bundle and follow
+> its `hyperframes/references/plugin-installation.md` execution rules. Update via
+> the plugin manager, not the standalone commands below.
+>
+> **Standalone skill missing or stale?** Run `npx hyperframes skills update <name>` to install/refresh
 > the specific skill you need (the `/hyperframes` router does this automatically before
 > entering a workflow), or bare `npx hyperframes skills update` to refresh the core set plus
 > everything already installed — neither pulls the full set. Restart the agent session so
@@ -90,11 +94,14 @@ Fix all errors before presenting the result. Warnings should be reviewed before 
 
 1. Every timed element needs `data-start` and a duration. `data-start` is what marks it as timed; `data-track-index` is an optional Studio display lane the render never reads
 2. Give timed visual elements `class="clip"`. The framework keys visibility off `data-start`, not the class, but the shared `.clip` CSS is what gives a scene its full-frame box, and `lint` warns without it
-3. Timelines must be paused and registered on `window.__timelines`:
+3. Register one paused root timeline per composition on `window.__timelines`:
    ```js
    window.__timelines = window.__timelines || {};
    window.__timelines["composition-id"] = gsap.timeline({ paused: true });
    ```
+   Scene timelines manually added to this root must not be paused. A paused
+   child does not advance when the root is seeked. The runtime activates
+   registered composition siblings, not arbitrary nested scene timelines.
 4. Videos use `muted` with a separate `<audio>` element for the audio track
 5. Sub-compositions use `data-composition-src="compositions/file.html"` to reference other HTML files
 6. Only deterministic logic — no `Date.now()`, no `Math.random()`, no network fetches

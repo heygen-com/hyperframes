@@ -45,6 +45,7 @@ import {
 import { resolveCenterResizeSize } from "./domEditResizeLocal";
 import { resolveResizeDraftRect } from "./resizeDraft";
 import {
+  notifyBlockedPress,
   startGesture as _startGesture,
   startGroupDrag as _startGroupDrag,
 } from "./domEditOverlayStartGesture";
@@ -58,6 +59,12 @@ import {
 import { logResize, logResizeMove, logResizeSettle } from "../../utils/resizeDebug";
 import { logDrag, logDragSettle, readDragPositions } from "../../utils/dragDebug";
 import { createGroupDragMover } from "./groupDragMove";
+import { DomEditSaveQueueOpenError } from "../../utils/domEditSaveQueue";
+
+function logGestureCommitFailure(message: string, error: unknown): void {
+  if (error instanceof DomEditSaveQueueOpenError) return;
+  console.error(message, error);
+}
 
 export function createDomEditOverlayGestureHandlers(opts: UseDomEditOverlayGesturesOptions) {
   const setDraftOverlayRect = (next: OverlayRect) => {
@@ -97,6 +104,15 @@ export function createDomEditOverlayGestureHandlers(opts: UseDomEditOverlayGestu
     },
   ) => _startGesture(kind, e, opts, options);
 
+  // A press on a box that cannot move says why at once.
+  const startBlockedMove = (e: React.PointerEvent<HTMLElement>, selection: DomEditSelection) => {
+    e.preventDefault();
+    e.stopPropagation();
+    e.currentTarget.setPointerCapture(e.pointerId);
+    opts.blockedMoveRef.current = { pointerId: e.pointerId, startX: e.clientX, startY: e.clientY };
+    notifyBlockedPress(e, opts, selection);
+  };
+
   const moveGroupDrag = createGroupDragMover(opts, setDraftGroupOverlayItems);
 
   // fallow-ignore-next-line complexity
@@ -110,13 +126,11 @@ export function createDomEditOverlayGestureHandlers(opts: UseDomEditOverlayGestu
       opts.onCanvasPointerMoveRef.current(e, { preferClipAncestor: false });
     }
 
-    if (blockedMove && sel) {
+    if (blockedMove) {
       const dx = e.clientX - blockedMove.startX;
       const dy = e.clientY - blockedMove.startY;
-      if (!blockedMove.notified && Math.hypot(dx, dy) >= BLOCKED_MOVE_THRESHOLD_PX) {
-        blockedMove.notified = true;
+      if (Math.hypot(dx, dy) >= BLOCKED_MOVE_THRESHOLD_PX) {
         opts.suppressNextBoxClickRef.current = true;
-        opts.onBlockedMoveRef.current(sel);
       }
       return;
     }
@@ -409,7 +423,7 @@ export function createDomEditOverlayGestureHandlers(opts: UseDomEditOverlayGestu
       }
       void Promise.resolve(opts.onRotationCommitRef.current(sel, finalRotation))
         .catch((error) => {
-          console.error("rotate commit failed", error);
+          logGestureCommitFailure("rotate commit failed", error);
           if (
             g.manualEditDragToken &&
             isStudioManualEditGestureCurrent(sel.element, g.manualEditDragToken)
@@ -493,7 +507,7 @@ export function createDomEditOverlayGestureHandlers(opts: UseDomEditOverlayGestu
         opts.onBoxSizeCommitRef.current(sel, finalSize, finalOffset ?? undefined, restore),
       )
         .catch((error) => {
-          console.error("resize commit failed", error);
+          logGestureCommitFailure("resize commit failed", error);
         })
         .finally(() => {
           if (member) endManualOffsetDragMembers([member]);
@@ -526,6 +540,10 @@ export function createDomEditOverlayGestureHandlers(opts: UseDomEditOverlayGestu
       restoreGestureOverlayRect(g);
     }
     if (g?.mode === "rotation" && sel) {
+      applyRotationDraftViaGsap(
+        sel.element,
+        g.actualRotation - (Number.parseFloat(g.initialRotation.studioRotation) || 0),
+      );
       restoreStudioRotation(sel.element, g.initialRotation);
       endStudioManualEditGesture(sel.element, g.manualEditDragToken);
     }
@@ -535,5 +553,12 @@ export function createDomEditOverlayGestureHandlers(opts: UseDomEditOverlayGestu
     opts.rafPausedRef.current = false;
   };
 
-  return { startGesture, startGroupDrag, onPointerMove, onPointerUp, clearPointerState };
+  return {
+    startGesture,
+    startGroupDrag,
+    startBlockedMove,
+    onPointerMove,
+    onPointerUp,
+    clearPointerState,
+  };
 }

@@ -1,0 +1,3 @@
+/scripts/check-pr-captures.mjs @miguel-heygen
+/scripts/check-pr-captures.test.mjs @miguel-heygen
+/.github/workflows/pr-captures.yml @miguel-heygen

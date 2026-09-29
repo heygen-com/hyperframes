@@ -33,6 +33,10 @@ const TYPING_SELECTOR = [
   "[role='textbox']",
   "[role='searchbox']",
   "[role='combobox']",
+  // A switch is a button in the DOM, but the native checkbox it replaces was an
+  // `input` and matched above. Without this row the shared Toggle would let a
+  // global shortcut claim Space instead of flipping the control (KTD13).
+  "[role='switch']",
   ".cm-editor",
 ].join(",");
 

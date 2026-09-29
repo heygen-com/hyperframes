@@ -35,13 +35,24 @@ HyperFrames is an open-source framework for turning HTML, CSS, media, and seekab
 
 ### With an AI coding agent
 
-Install the HyperFrames skills, then describe the video you want:
+For Claude Code, install the versioned plugin:
+
+```bash
+claude plugin marketplace add heygen-com/hyperframes
+claude plugin install hyperframes@hyperframes
+```
+
+Enable auto-update for the **hyperframes** marketplace in `/plugin` → **Marketplaces**,
+then use `/hyperframes:hyperframes`. See the [plugin guide](docs/guides/plugins.mdx)
+for Copilot, VS Code, Cursor, Gemini CLI, updates, and migration.
+
+For standalone skills (including OpenCode), use:
 
 ```bash
 npx skills add heygen-com/hyperframes
 ```
 
-> The picker opens with nothing pre-selected — the **Core Skills** group is all you need: the `/hyperframes` router installs each creation workflow on demand. Agents and non-interactive runs should use `npx hyperframes skills update` instead — it installs exactly the core set, whereas a non-interactive `skills add` without `--skill` installs all 20.
+> The picker opens with nothing pre-selected — the **Core Skills** group is all you need: the `/hyperframes` router installs each creation workflow on demand. Agents and non-interactive runs should use `npx hyperframes skills update` instead — it installs exactly the core set, whereas `skills add --all` installs all 21 published skills. The six repo-internal skills under `.claude/skills` / `.agents/skills` are excluded by default. For the full published set use `npx hyperframes skills`.
 >
 > `skills add` resolves the skills.sh registry blob, which can lag `main` by hours. `npx hyperframes skills update` installs from the current `main`, so reach for it when you need the newest copy of a skill.
 
@@ -49,15 +60,21 @@ Try a prompt like:
 
 > Using `/hyperframes`, create a 10-second product intro with a fade-in title, a background video, and subtle background music.
 
-The skills teach agents the HyperFrames production loop: plan the video, write valid HTML, wire seekable animations, add media, lint, preview, and render. They work with Claude Code, Cursor, Gemini CLI, Codex, and other coding agents that support skills.
+The skills teach agents the HyperFrames production loop: plan the video, write valid HTML, wire seekable animations, add media, lint, preview, and render. They work with Claude Code, Codex, Cursor, Gemini CLI, IBM Bob, and other coding agents that support skills.
 
 ## Skills
 
-HyperFrames ships 20 skills agents load on demand. Read `/hyperframes` first — it's the router and capability map; it picks a workflow for any "make me a…" request — video, deck, or composition port — and points to the domain skills below.
+HyperFrames ships 21 skills agents load on demand. Read `/hyperframes` first — it's the router and capability map; it picks a workflow for any "make me a…" request — video, deck, or composition port — and points to the domain skills below.
 
-Default to the **core set** — the router installs each creation workflow on demand. `npx hyperframes skills update` installs exactly that from anywhere; the interactive picker (`npx skills add heygen-com/hyperframes`) lists it as the "Core Skills" group, nothing pre-selected. The picker is interactive-only — a non-interactive or agent run without `--skill` installs all 20. Use `npx skills add heygen-com/hyperframes --all` to install all 20 deliberately (skips the picker), or `npx skills add heygen-com/hyperframes --skill <name>` for just one (bare name, no leading `/`).
+For standalone installation, default to the **core set** — the router installs each creation workflow on demand. `npx hyperframes skills update` installs exactly that from anywhere; the interactive picker (`npx skills add heygen-com/hyperframes`) lists it as the "Core Skills" group, nothing pre-selected. The picker is interactive-only — a non-interactive or agent run without `--skill` installs all 21. Use `npx skills add heygen-com/hyperframes --all` to install the complete published set deliberately (skips the picker), or `npx skills add heygen-com/hyperframes --skill <name>` for just one (bare name, no leading `/`).
 
-Installs stay lean after that: `npx hyperframes init` keeps the **core set** fresh (the router, the `hyperframes-*` domain skills, and `media-use` — plus whatever is already installed; `/figma` stays on demand) and never expands a partial install; the creation workflows install **on demand** — the router runs `npx hyperframes skills update <workflow>` before entering one. Nothing re-pulls the full set behind your back.
+Standalone installs stay lean after that: `npx hyperframes init` keeps the **core set** fresh (the router, the `hyperframes-*` domain skills, and `media-use` — plus whatever is already installed; `/figma` stays on demand) and never expands a partial install; the creation workflows install **on demand** — the router runs `npx hyperframes skills update <workflow>` before entering one. Nothing re-pulls the full set behind your back.
+
+### Plugin packages
+
+Plugins bundle the full skill catalog and use their agent's update manager.
+`bun run package:agent-plugin` builds the committed portable ZIP, source metadata,
+and SHA-256 checksum. See the [maintainer checklist](docs/contributing/agent-plugins.mdx).
 
 ### Upload to Codex
 
@@ -103,7 +120,7 @@ Atomic capabilities the creation workflows compose against — pull one when you
 | `/media-use`             | The media OS — resolve any media need (BGM, SFX, image, icon, logo, voice, color grade, LUT) into a frozen local file or paste-ready block + ledger record, generate via TTS/music/image models when the catalog misses, transcribe, caption, remove backgrounds, and reuse assets across projects. One shared audio engine + manifest tracking.                                                                                                                                     |
 | `/hyperframes-cli`       | CLI dev loop — `init`, `lint`, `check`, `snapshot`, `preview`, `render`, `publish`, `doctor`, plus HeyGen-hosted cloud rendering (`cloud render`) and AWS Lambda rendering (`lambda deploy / render / progress`).                                                                                                                                                                                                                                                                    |
 | `/hyperframes-audio`     | Mix the audio already placed in a composition — voiceover carve (dip a music bed only in the bands the voice occupies, static or dynamic, level match included), the effect chain (EQ, compressor, limiter, gate, saturation, delay, reverb, chorus, phaser, bitcrush), automation envelopes on volume or any effect parameter, and submix buses (`<hf-audio-group>`) carrying one chain, fader and automation clock for several tracks at once. Sourcing the audio is `/media-use`. |
-| `/hyperframes-registry`  | Install and wire registry blocks and components into compositions via `hyperframes add`. Authoring a new block or component to contribute upstream.                                                                                                                                                                                                                                                                                                                                  |
+| `/hyperframes-registry`  | Search, install and wire registry blocks and components into compositions via `hyperframes catalog` / `hyperframes add`. Load before hand-building any named look, effect, treatment or transition. Authoring a new block or component to contribute upstream.                                                                                                                                                                                                                       |
 | `/figma`                 | Import Figma assets, tokens, components, and storyboard sections → reconstructed motion (frames read as states, not slides) (REST/CLI) plus Motion animations (MCP) and shaders (MCP source / native export) into a composition.                                                                                                                                                                                                                                                     |
 
 For visual design handoff workflows, see the [Claude Design guide](https://hyperframes.heygen.com/guides/claude-design) and [Open Design guide](https://hyperframes.heygen.com/guides/open-design).

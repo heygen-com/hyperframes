@@ -1,5 +1,9 @@
 # text module · motion vocabulary (primitive → GSAP)
 
+<!-- registry-items: allow= -->
+
+**The live search is the source of truth for what the registry has.** The table(s) below are a hand-maintained sample and under-cover by design: run `npx hyperframes catalog --query "<what you want>" --json` — it needs nothing installed — before concluding the registry lacks something. Item names here are checked against `registry/registry.json` by `bun run lint:skills`.
+
 Named primitives the Director references in `motion` strings and the Builder implements. `code_hint`s are framework-neutral physics; the GSAP recipe is the HF implementation. Prefer an HF **registry component** (bottom) when one fits — don't reinvent.
 
 ## Entry

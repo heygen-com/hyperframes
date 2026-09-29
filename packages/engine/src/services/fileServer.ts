@@ -8,9 +8,10 @@
 
 import { Hono } from "hono";
 import { serve } from "@hono/node-server";
-import { readFileSync, existsSync, statSync } from "node:fs";
+import { readFileSync, openSync, fstatSync, closeSync, statSync, constants } from "node:fs";
 import { join, extname } from "node:path";
 import { injectScriptsIntoHtml } from "@hyperframes/core/compiler";
+import { isWithinProjectRoot } from "@hyperframes/parsers/asset-resolution";
 
 const MIME_TYPES: Record<string, string> = {
   ".html": "text/html; charset=utf-8",
@@ -24,12 +25,17 @@ const MIME_TYPES: Record<string, string> = {
   ".gif": "image/gif",
   ".svg": "image/svg+xml",
   ".webp": "image/webp",
+  ".avif": "image/avif",
+  ".ico": "image/vnd.microsoft.icon",
   ".mp4": "video/mp4",
+  ".mov": "video/quicktime",
   ".webm": "video/webm",
   ".mp3": "audio/mpeg",
   ".wav": "audio/wav",
   ".ogg": "audio/ogg",
   ".aac": "audio/aac",
+  ".flac": "audio/flac",
+  ".m4a": "audio/mp4",
   ".woff": "font/woff",
   ".woff2": "font/woff2",
   ".ttf": "font/ttf",
@@ -54,6 +60,49 @@ export interface FileServerHandle {
   close: () => void;
 }
 
+function readRegularFile(filePath: string): Buffer<ArrayBuffer> | null {
+  let fd: number;
+  try {
+    // Do not block on a named pipe before fstat can reject non-regular files.
+    fd = openSync(filePath, constants.O_RDONLY | constants.O_NONBLOCK);
+  } catch (error) {
+    if (
+      error instanceof Error &&
+      "code" in error &&
+      (error.code === "ENOENT" || error.code === "ENOTDIR")
+    )
+      return null;
+    // Platforms report different open errors for directories and sockets.
+    // This check only classifies a failed open; no read follows it.
+    if (!statSync(filePath, { throwIfNoEntry: false })?.isFile()) return null;
+    throw error;
+  }
+  try {
+    if (!fstatSync(fd).isFile()) return null;
+    return readFileSync(fd);
+  } finally {
+    closeSync(fd);
+  }
+}
+
+/**
+ * Resolves the request path against both roots and rejects the pair the
+ * moment either escapes -- lexically, so a symlinked asset directory still
+ * resolves (see the containment note at the call site).
+ */
+function resolveContainedPaths(
+  projectDir: string,
+  compiledDir: string | undefined,
+  relativePath: string,
+): { projectPath: string; compiledPath: string | null } | null {
+  const projectPath = join(projectDir, relativePath);
+  if (!isWithinProjectRoot(projectDir, projectPath)) return null;
+  if (!compiledDir) return { projectPath, compiledPath: null };
+  const compiledPath = join(compiledDir, relativePath);
+  if (!isWithinProjectRoot(compiledDir, compiledPath)) return null;
+  return { projectPath, compiledPath };
+}
+
 export function createFileServer(options: FileServerOptions): Promise<FileServerHandle> {
   const { projectDir, compiledDir, port = 0, stripEmbeddedRuntime = true } = options;
 
@@ -68,21 +117,21 @@ export function createFileServer(options: FileServerOptions): Promise<FileServer
 
     // Remove leading slash
     const relativePath = requestPath.replace(/^\//, "");
-    const compiledPath = compiledDir ? join(compiledDir, relativePath) : null;
-    const hasCompiledFile = Boolean(
-      compiledPath && existsSync(compiledPath) && statSync(compiledPath).isFile(),
-    );
-    const filePath = hasCompiledFile ? (compiledPath as string) : join(projectDir, relativePath);
+    // Percent escapes can decode into separators and dot segments before the
+    // join, so a hostile request can name files above either root -- see
+    // resolveContainedPaths for why the check stays lexical, not realpath.
+    const resolved = resolveContainedPaths(projectDir, compiledDir, relativePath);
+    if (!resolved) return c.text("Not found", 404);
+    const content =
+      (resolved.compiledPath ? readRegularFile(resolved.compiledPath) : null) ??
+      readRegularFile(resolved.projectPath);
+    if (content === null) return c.text("Not found", 404);
 
-    if (!existsSync(filePath) || !statSync(filePath).isFile()) {
-      return c.text("Not found", 404);
-    }
-
-    const ext = extname(filePath).toLowerCase();
+    const ext = extname(relativePath).toLowerCase();
     const contentType = MIME_TYPES[ext] || "application/octet-stream";
 
     if (ext === ".html") {
-      const rawHtml = readFileSync(filePath, "utf-8");
+      const rawHtml = content.toString("utf-8");
       const html =
         relativePath === "index.html"
           ? injectScriptsIntoHtml(rawHtml, headScripts, bodyScripts, stripEmbeddedRuntime)
@@ -90,7 +139,6 @@ export function createFileServer(options: FileServerOptions): Promise<FileServer
       return c.text(html, 200, { "Content-Type": contentType });
     }
 
-    const content = readFileSync(filePath);
     return new Response(content, {
       status: 200,
       headers: { "Content-Type": contentType },

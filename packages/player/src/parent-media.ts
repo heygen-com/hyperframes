@@ -11,6 +11,7 @@
 
 import { selectMediaObserverTargets } from "./mediaObserverScope.js";
 import { isRealmElement, isRealmHtmlMediaElement } from "./media-element-guards.js";
+import { isInClipWindow } from "@hyperframes/core/runtime/clip-window";
 import { readClipTiming } from "@hyperframes/core/composition-contract";
 
 /** Minimum absolute drift before a currentTime correction is attempted. */
@@ -93,6 +94,10 @@ export class ParentMediaManager {
     const wasPromoted = this._audioOwner === "parent";
     this._audioOwner = "runtime";
     this.pauseAll();
+    for (const m of this._entries) if (m !== this._urlAudioEntry) m.el.src = "";
+    this._entries = this._urlAudioEntry ? [this._urlAudioEntry] : [];
+    if (this._urlAudioSrc && !this._urlAudioEntry)
+      this._urlAudioEntry = this._createEntry(this._urlAudioSrc, "audio", 0, Infinity);
     this.teardownObserver();
     if (wasPromoted) {
       this._dispatchEvent(
@@ -138,8 +143,7 @@ export class ParentMediaManager {
   // window until the next mirrorTime tick gates them off.
   private _playEntryIfActive(m: ProxyEntry): void {
     this._refreshEntryBounds(m);
-    const relTime = this._getCurrentTime() - m.start;
-    if (relTime < 0 || relTime >= m.duration) return;
+    if (!this._inWindow(m, this._getCurrentTime())) return;
     this._playEntry(m);
   }
 
@@ -148,7 +152,7 @@ export class ParentMediaManager {
   private _refreshEntryBounds(m: ProxyEntry): void {
     if (!m.source?.isConnected) return;
     // Guard against a malformed (non-numeric) attribute parsing to NaN: an NaN
-    // duration makes every `relTime >= m.duration` window check false, so the
+    // duration makes every window check pass, so the
     // gate never closes and the proxy plays past its clip end.
     const timing = readClipTiming(m.source);
     m.start = timing.start ?? 0;
@@ -158,8 +162,12 @@ export class ParentMediaManager {
 
   // Pause the proxy outside its clip window; resume it on re-entry during
   // parent-owned playback. Returns whether the proxy is within the window.
-  private _gateEntryPlayback(m: ProxyEntry, relTime: number): boolean {
-    if (relTime < 0 || relTime >= m.duration) {
+  private _inWindow(m: ProxyEntry, timeSeconds: number): boolean {
+    return isInClipWindow(timeSeconds, m.start, m.start + m.duration);
+  }
+
+  private _gateEntryPlayback(m: ProxyEntry, timeSeconds: number): boolean {
+    if (!this._inWindow(m, timeSeconds)) {
       if (!m.el.paused) m.el.pause();
       m.driftSamples = 0;
       return false;
@@ -187,8 +195,7 @@ export class ParentMediaManager {
       // Re-read live bounds so a trim/move just before a paused scrub gates and
       // positions against the current clip window, not the adopt-time one.
       this._refreshEntryBounds(m);
-      const relTime = timeInSeconds - m.start;
-      if (relTime >= 0 && relTime < m.duration) m.el.currentTime = relTime;
+      if (this._inWindow(m, timeInSeconds)) m.el.currentTime = timeInSeconds - m.start;
     }
   }
 
@@ -202,9 +209,8 @@ export class ParentMediaManager {
   scrubAll(timeInSeconds: number): void {
     for (const m of this._entries) {
       this._refreshEntryBounds(m);
-      const relTime = timeInSeconds - m.start;
-      if (relTime >= 0 && relTime < m.duration) {
-        m.el.currentTime = relTime;
+      if (this._inWindow(m, timeInSeconds)) {
+        m.el.currentTime = timeInSeconds - m.start;
         this._playEntry(m);
       } else if (!m.el.paused) {
         m.el.pause();
@@ -222,8 +228,8 @@ export class ParentMediaManager {
     const force = options?.force === true;
     for (const m of this._entries) {
       this._refreshEntryBounds(m);
+      if (!this._gateEntryPlayback(m, timelineSeconds)) continue;
       const relTime = timelineSeconds - m.start;
-      if (!this._gateEntryPlayback(m, relTime)) continue;
       if (Math.abs(m.el.currentTime - relTime) > MIRROR_DRIFT_THRESHOLD_SECONDS) {
         m.driftSamples += 1;
         if (force || m.driftSamples >= MIRROR_REQUIRED_CONSECUTIVE_DRIFT_SAMPLES) {
@@ -262,6 +268,7 @@ export class ParentMediaManager {
         if (isRealmHtmlMediaElement(el)) el.muted = true;
       }
     }
+    for (const m of [...this._entries]) this._repointToSource(m);
 
     // One-shot alignment — bypass jitter-coalescing gate.
     const t = this._getCurrentTime();
@@ -298,13 +305,10 @@ export class ParentMediaManager {
     if (this._urlAudioSrc === audioSrc && this._urlAudioEntry) return;
     this.teardownUrlAudio();
     const entry = this._createEntry(audioSrc, "audio", 0, Infinity);
-    // `_createEntry` returns null when a proxy for this URL already exists
-    // (e.g. the composition already adopted the same media). In that case we do
-    // not own a proxy, so leave the tracking cleared rather than recording a
-    // src with no entry — otherwise teardown would target nothing and the
-    // no-op guard would never engage.
+    // Null when the composition already has a proxy for this URL: that one stays the
+    // composition's, and a reset creates ours once that document's proxies are gone.
     this._urlAudioEntry = entry;
-    this._urlAudioSrc = entry ? audioSrc : null;
+    this._urlAudioSrc = audioSrc;
     // If the parent already owns playback, bring the fresh proxy online so a
     // mid-playback swap is not silent until the next play tick.
     if (entry && this._audioOwner === "parent" && !this._isPaused()) {
@@ -351,7 +355,7 @@ export class ParentMediaManager {
     duration: number,
     source?: HTMLMediaElement | null,
   ): ProxyEntry | null {
-    if (this._entries.some((m) => m.el.src === src)) return null;
+    if (this._urlTaken(src)) return null;
 
     const el = tag === "video" ? document.createElement("video") : new Audio();
     el.preload = "auto";
@@ -376,8 +380,8 @@ export class ParentMediaManager {
 
   // fallow-ignore-next-line complexity
   private _adoptIframeMedia(iframeEl: HTMLMediaElement): void {
-    // Skip elements the preloader has demoted — the observer will re-trigger
-    // when the preload attribute is promoted to "auto".
+    // Skip elements the preloader has demoted: the observer adopts one when its preload turns
+    // "auto" and drops its proxy, which fetches the whole file, when it turns back.
     if (iframeEl.preload === "metadata" || iframeEl.preload === "none") return;
 
     const src = this._resolveIframeMediaSrc(iframeEl);
@@ -398,15 +402,46 @@ export class ParentMediaManager {
     }
   }
 
+  // The runtime re-points a clip (its preview copy, a new bound file). A proxy that is not
+  // playing keeps its file until the parent takes over, so the copy is not fetched twice.
+  private _followIframeMediaSrc(iframeEl: HTMLMediaElement): void {
+    const entry = this._entries.find((m) => m.source === iframeEl);
+    if (!entry) return this._adoptIframeMedia(iframeEl);
+    if (this._audioOwner !== "parent" || !this._repointToSource(entry)) return;
+    this.mirrorTime(this._getCurrentTime(), { force: true });
+    if (!this._isPaused()) this._playEntryIfActive(entry);
+  }
+
+  /** One proxy per file: a second clip on the same file is heard through the first one's proxy.
+   * A proxy's file is its clip's current one (a clip that left the page owns none). */
+  private _urlTaken(src: string, except?: ProxyEntry): boolean {
+    return this._entries.some((m) => {
+      if (m === except || (m.source && !m.source.isConnected)) return false;
+      return ((m.source && this._resolveIframeMediaSrc(m.source)) || m.el.src) === src;
+    });
+  }
+
+  private _repointToSource(entry: ProxyEntry): boolean {
+    const src = entry.source ? this._resolveIframeMediaSrc(entry.source) : null;
+    if (!src || entry.el.src === src) return false;
+    if (this._urlTaken(src, entry)) {
+      this._removeEntry(entry);
+      return false;
+    }
+    entry.el.src = src;
+    entry.el.load();
+    return true;
+  }
+
   private _detachIframeMedia(iframeEl: HTMLMediaElement): void {
-    const src = this._resolveIframeMediaSrc(iframeEl);
-    if (!src) return;
-    const idx = this._entries.findIndex((m) => m.el.src === src);
-    if (idx === -1) return;
-    const entry = this._entries[idx];
+    const entry = this._entries.find((m) => m.source === iframeEl);
+    if (entry) this._removeEntry(entry);
+  }
+
+  private _removeEntry(entry: ProxyEntry): void {
     entry.el.pause();
     entry.el.src = "";
-    this._entries.splice(idx, 1);
+    this._entries.splice(this._entries.indexOf(entry), 1);
   }
 
   private _observeDynamicMedia(doc: Document): void {
@@ -416,14 +451,24 @@ export class ParentMediaManager {
     // fallow-ignore-next-line complexity
     const obs = new MutationObserver((mutations) => {
       for (const m of mutations) {
+        if (m.type === "attributes" && m.attributeName === "src") {
+          const target = m.target;
+          if (
+            isRealmHtmlMediaElement(target) &&
+            target.matches("audio[data-start], video[data-start]")
+          ) {
+            this._followIframeMediaSrc(target);
+          }
+          continue;
+        }
         if (m.type === "attributes" && m.attributeName === "preload") {
           const target = m.target;
           if (
             isRealmHtmlMediaElement(target) &&
-            target.matches("audio[data-start], video[data-start]") &&
-            target.preload === "auto"
+            target.matches("audio[data-start], video[data-start]")
           ) {
-            this._adoptIframeMedia(target);
+            if (target.preload === "auto") this._adoptIframeMedia(target);
+            else this._detachIframeMedia(target);
           }
           continue;
         }
@@ -466,7 +511,7 @@ export class ParentMediaManager {
       childList: true,
       subtree: true,
       attributes: true,
-      attributeFilter: ["preload"],
+      attributeFilter: ["preload", "src"],
     };
 
     const targets = selectMediaObserverTargets(doc);

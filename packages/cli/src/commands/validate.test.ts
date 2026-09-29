@@ -17,6 +17,7 @@ import {
   raceMediaReady,
   resolveNavigationTimeoutMs,
   shouldIgnoreRequestFailure,
+  shouldIgnoreHttpError,
 } from "./validate.js";
 import { waitForPreferredSeekTarget } from "../capture/captureCompositionFrame.js";
 import type { ProjectLintResult } from "../utils/lintProject.js";
@@ -152,6 +153,18 @@ describe("raceMediaReady", () => {
 });
 
 describe("shouldIgnoreRequestFailure", () => {
+  it("ignores only the optional root caption overrides 404/abort", () => {
+    const url = "http://127.0.0.1:3000/caption-overrides.json";
+    expect(shouldIgnoreHttpError(url, 404)).toBe(true);
+    expect(shouldIgnoreRequestFailure(url, "net::ERR_ABORTED", "fetch")).toBe(true);
+    expect(shouldIgnoreHttpError(url, 500)).toBe(false);
+    expect(shouldIgnoreRequestFailure(url, "net::ERR_FAILED", "fetch")).toBe(false);
+    expect(shouldIgnoreHttpError("http://127.0.0.1:3000/transcript.json", 404)).toBe(false);
+    expect(shouldIgnoreHttpError("http://127.0.0.1:3000/assets/caption-overrides.json", 404)).toBe(
+      false,
+    );
+  });
+
   it("ignores aborted media preload requests", () => {
     expect(
       shouldIgnoreRequestFailure("http://127.0.0.1:3000/assets/sfx.wav", "net::ERR_ABORTED"),

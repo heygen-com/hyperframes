@@ -1,12 +1,14 @@
 import { describe, expect, it } from "vitest";
 import {
   buildOnionSvg,
+  buildRenderedStripSvg,
   fitTransform,
   ghostAlphas,
   parseAngle,
   resolveShotSelectors,
   sampleTimes,
   stripCells,
+  stripCaptureTimeCandidates,
   type OnionElement,
 } from "./motionShotLayout.js";
 
@@ -54,6 +56,11 @@ describe("resolveShotSelectors", () => {
 });
 
 describe("sampleTimes", () => {
+  it("offers one pre-end frame when an exact sample has no visible bounds", () => {
+    expect(stripCaptureTimeCandidates(4)).toEqual([4, 4 - 1 / 30]);
+    expect(stripCaptureTimeCandidates(0)).toEqual([0]);
+  });
+
   it("spreads N equal-time steps across the full duration", () => {
     expect(sampleTimes(4, 5, null, null)).toEqual([0, 1, 2, 3, 4]);
   });
@@ -149,6 +156,20 @@ const sample = (t: number) => ({
 const oneElement: OnionElement[] = [{ selector: "#hero", samples: [sample(0), sample(2)] }];
 
 describe("buildOnionSvg", () => {
+  it("builds a filmstrip from rendered selector crops", () => {
+    const svg = buildRenderedStripSvg(
+      [
+        { t: 0, dataUrl: "data:image/png;base64,AAA", width: 240, height: 160 },
+        { t: 2, dataUrl: "data:image/png;base64,BBB", width: 200, height: 200 },
+      ],
+      { width: 640, height: 360, label: "front · filmstrip" },
+    );
+
+    expect((svg.match(/<image/g) ?? []).length).toBe(2);
+    expect(svg).toContain("data:image/png;base64,AAA");
+    expect(svg).toContain("front · filmstrip");
+  });
+
   it("path layout: one ghost per sample, a connecting path, and centre dots", () => {
     const svg = buildOnionSvg(oneElement, { layout: "path", fit: true, width: 1000, height: 1000 });
     expect(svg.startsWith("<svg")).toBe(true);

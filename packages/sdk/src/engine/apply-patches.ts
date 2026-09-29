@@ -264,13 +264,19 @@ function applyOne(parsed: ParsedDocument, patch: JsonPatchOp, p: ParsedPath): vo
     case "variableDeclaration": {
       if (!p.id) return;
       if (patch.op === "remove") {
-        removeVariableDeclarationEntry(declarationElement(parsed.document, parsed.wrapped), p.id);
+        removeVariableDeclarationEntry(
+          declarationElement(parsed.document, parsed.wrapped, p.id),
+          p.id,
+        );
       } else if (isRawDeclarationEntry(patch.value)) {
         // Replay is faithful, not strict: inverse patches capture raw entries
         // (loose hand-authored declarations included) and undo must restore
         // them verbatim — gating on isCompositionVariable here would make
         // undo of a remove/update on a loose entry silently no-op.
-        writeVariableDeclaration(declarationElement(parsed.document, parsed.wrapped), patch.value);
+        writeVariableDeclaration(
+          declarationElement(parsed.document, parsed.wrapped, p.id),
+          patch.value,
+        );
       }
       break;
     }
@@ -282,7 +288,7 @@ function applyOne(parsed: ParsedDocument, patch: JsonPatchOp, p: ParsedPath): vo
       // CSS compat is handled by explicit style-path patches emitted by mutate.ts,
       // so we do NOT write CSS here — the style case above handles those patches.
       applyVariableDefault(
-        declarationElement(parsed.document, parsed.wrapped),
+        declarationElement(parsed.document, parsed.wrapped, p.id),
         p.id,
         patch.op === "remove" ? null : patch.value,
       );

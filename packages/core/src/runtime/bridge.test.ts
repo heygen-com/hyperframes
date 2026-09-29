@@ -14,22 +14,90 @@ function createMockDeps() {
     onSetNativeMediaSyncDisabled: vi.fn(),
     onSetWebAudioMediaDisabled: vi.fn(),
     onSetPlaybackRate: vi.fn(),
+    onSetIdleHeartbeat: vi.fn(),
     onSetColorGrading: vi.fn(),
     onSetColorGradingCompare: vi.fn(),
     onSetRootDuration: vi.fn(),
+    onSetPlayRange: vi.fn(),
     onEnablePickMode: vi.fn(),
     onDisablePickMode: vi.fn(),
+    onSetRuntimeData: vi.fn(),
+    onClearRuntimeData: vi.fn(),
     getCanonicalFps: vi.fn(() => 30),
   };
 }
 
 function makeControlMessage(action: string, extra?: Record<string, unknown>) {
   return new MessageEvent("message", {
+    source: window.parent,
     data: { source: "hf-parent", type: "control", action, ...extra },
   });
 }
 
 describe("installRuntimeControlBridge", () => {
+  it("ignores inherited and unknown action names from an authorized sender", () => {
+    const deps = createMockDeps();
+    const handler = installRuntimeControlBridge(deps);
+    try {
+      for (const action of [
+        "__proto__",
+        "constructor",
+        "hasOwnProperty",
+        "__defineGetter__",
+        "toString",
+        "unknown",
+      ]) {
+        expect(() => handler(makeControlMessage(action))).not.toThrow();
+      }
+      expect(deps.onPlay).not.toHaveBeenCalled();
+      handler(makeControlMessage("play"));
+      expect(deps.onPlay).toHaveBeenCalledOnce();
+    } finally {
+      window.removeEventListener("message", handler);
+    }
+  });
+  it("rejects foreign and null senders before dispatching controls", () => {
+    const foreign = document.createElement("iframe");
+    document.body.append(foreign);
+    const deps = createMockDeps();
+    const handler = installRuntimeControlBridge(deps);
+    try {
+      for (const source of [foreign.contentWindow, null]) {
+        handler(
+          new MessageEvent("message", {
+            source,
+            data: { source: "hf-parent", type: "control", action: "play" },
+          }),
+        );
+      }
+      expect(deps.onPlay).not.toHaveBeenCalled();
+      handler(
+        new MessageEvent("message", {
+          source: window,
+          data: { source: "hf-parent", type: "control", action: "play" },
+        }),
+      );
+      expect(deps.onPlay).toHaveBeenCalledOnce();
+    } finally {
+      window.removeEventListener("message", handler);
+      foreign.remove();
+    }
+  });
+  it("accepts an embedding parent distinct from the runtime window", () => {
+    const frame = document.createElement("iframe");
+    document.body.append(frame);
+    vi.stubGlobal("parent", frame.contentWindow);
+    const deps = createMockDeps();
+    const handler = installRuntimeControlBridge(deps);
+    try {
+      handler(makeControlMessage("play"));
+      expect(deps.onPlay).toHaveBeenCalledOnce();
+    } finally {
+      window.removeEventListener("message", handler);
+      vi.unstubAllGlobals();
+      frame.remove();
+    }
+  });
   it("dispatches play command", () => {
     const deps = createMockDeps();
     const handler = installRuntimeControlBridge(deps);
@@ -42,6 +110,18 @@ describe("installRuntimeControlBridge", () => {
     const handler = installRuntimeControlBridge(deps);
     handler(makeControlMessage("pause"));
     expect(deps.onPause).toHaveBeenCalledOnce();
+  });
+
+  it("dispatches set and clear runtime data without global invocation", () => {
+    const deps = createMockDeps();
+    const handler = installRuntimeControlBridge(deps);
+    const payload = { version: 3, segments: [] };
+    handler(
+      makeControlMessage("set-runtime-data", { channel: "captions", payload, requestId: 41 }),
+    );
+    handler(makeControlMessage("clear-runtime-data", { channel: "captions", requestId: 42 }));
+    expect(deps.onSetRuntimeData).toHaveBeenCalledWith("captions", payload, 41);
+    expect(deps.onClearRuntimeData).toHaveBeenCalledWith("captions", 42);
   });
 
   it("dispatches stop-media command", () => {
@@ -177,6 +257,17 @@ describe("installRuntimeControlBridge", () => {
     const handler = installRuntimeControlBridge(deps);
     handler(makeControlMessage("set-root-duration", { durationSeconds: "18.5" }));
     expect(deps.onSetRootDuration).toHaveBeenCalledWith(18.5);
+  });
+
+  it("dispatches set-play-range with numeric seconds, and null for an open end", () => {
+    const deps = createMockDeps();
+    const handler = installRuntimeControlBridge(deps);
+    handler(makeControlMessage("set-play-range", { startSeconds: "2", endSeconds: 3.5 }));
+    handler(makeControlMessage("set-play-range", { startSeconds: null, endSeconds: null }));
+    expect(deps.onSetPlayRange.mock.calls).toEqual([
+      [2, 3.5],
+      [0, null],
+    ]);
   });
 
   it("dispatches set-color-grading command with target and grading payload", () => {

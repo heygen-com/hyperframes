@@ -195,7 +195,7 @@ describe("resolveClipTimingBasis", () => {
   it("rebases an expanded sub-comp child by its host mount", () => {
     // Expanded children carry host-ABSOLUTE display starts; the tweens they own are
     // still composition-local, so the basis is the child's local start.
-    const pill = { id: "pill", domId: "pill", start: 8, duration: 4, expandedParentStart: 6 };
+    const pill = { id: "pill", domId: "pill", start: 8, duration: 4, parentCompositionStart: 6 };
     expect(resolveClipTimingBasis("pill", "scene.html", [pill], [])).toEqual({
       elStart: 2,
       elDuration: 4,

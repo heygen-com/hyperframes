@@ -1,5 +1,6 @@
 /** @vitest-environment jsdom */
-import { describe, expect, it } from "vitest";
+import gsap from "gsap";
+import { describe, expect, it, vi } from "vitest";
 import {
   interpolateVolumeGain,
   probeAndCacheElementVolume,
@@ -140,6 +141,120 @@ describe("probeAndCacheElementVolume", () => {
     expect(cache.has(audio)).toBe(false);
   });
 
+  it("does not seek to probe an element whose volume no tween names", () => {
+    const audio = document.createElement("audio");
+    audio.dataset.start = "0";
+    audio.dataset.duration = "25";
+    document.body.append(audio);
+    const title = document.createElement("h1");
+
+    let seekCount = 0;
+    const timeline = {
+      totalTime(next?: number) {
+        if (next !== undefined) seekCount += 1;
+        return 0;
+      },
+      getChildren: () => [
+        { targets: () => [title], vars: { volume: 0, opacity: 1 } },
+        { targets: () => [audio], vars: { playbackRate: 2 } },
+      ],
+    };
+    const cache = new WeakMap<HTMLMediaElement, { time: number; volume: number }[]>();
+
+    // What a rebind does for every bound media element: 25 s at 60 samples/s on main.
+    probeAndCacheElementVolume(audio, timeline, 25, cache);
+
+    expect(seekCount).toBe(0);
+    expect(cache.has(audio)).toBe(false);
+  });
+
+  it("samples a gain tweened through a plain-object proxy that writes the element's volume", () => {
+    const audio = document.createElement("audio");
+    audio.dataset.start = "0";
+    audio.dataset.duration = "1";
+    audio.dataset.volume = "0";
+    document.body.append(audio);
+    const proxy = {
+      get gain() {
+        return audio.volume;
+      },
+      set gain(value: number) {
+        audio.volume = value;
+      },
+    };
+    const timeline = gsap.timeline({ paused: true });
+    timeline.fromTo(proxy, { gain: 0 }, { gain: 0.75, duration: 1, ease: "none" }, 0);
+    const cache = new WeakMap<HTMLMediaElement, { time: number; volume: number }[]>();
+
+    probeAndCacheElementVolume(audio, timeline, 1, cache);
+
+    const envelope = cache.get(audio);
+    expect(envelope).toBeDefined();
+    expect(interpolateVolumeGain(envelope!, 0.5)).toBeCloseTo(0.375, 3);
+  });
+
+  it.each([
+    ["a {} spacer", (tl: gsap.core.Timeline) => tl.to({}, { duration: 25 })],
+    ["a tl.call", (tl: gsap.core.Timeline) => tl.call(() => {}, [], 3)],
+    ["a plain counter", (tl: gsap.core.Timeline) => tl.to({ n: 0 }, { n: 100, duration: 5 })],
+  ])("does not seek for %s", (_name, add) => {
+    const audio = document.createElement("audio");
+    audio.dataset.start = "0";
+    audio.dataset.duration = "25";
+    document.body.append(audio);
+    const timeline = gsap.timeline({ paused: true });
+    add(timeline);
+    const seek = vi.spyOn(timeline, "totalTime");
+
+    probeAndCacheElementVolume(audio, timeline, 25, new WeakMap());
+
+    expect(seek.mock.calls.filter((args) => args.length > 0)).toHaveLength(0);
+  });
+
+  it("samples a class instance whose volume setter writes the element", () => {
+    const audio = document.createElement("audio");
+    audio.dataset.start = "0";
+    audio.dataset.duration = "1";
+    audio.dataset.volume = "0";
+    document.body.append(audio);
+    class Fader {
+      get volume() {
+        return audio.volume;
+      }
+      set volume(value: number) {
+        audio.volume = value;
+      }
+    }
+    const timeline = gsap.timeline({ paused: true });
+    timeline.fromTo(new Fader(), { volume: 0 }, { volume: 0.5, duration: 1, ease: "none" }, 0);
+    const cache = new WeakMap<HTMLMediaElement, { time: number; volume: number }[]>();
+
+    probeAndCacheElementVolume(audio, timeline, 1, cache);
+
+    expect(interpolateVolumeGain(cache.get(audio) ?? [], 0.5)).toBeCloseTo(0.25, 3);
+  });
+
+  it("still samples a keyframed volume tween on the element", () => {
+    const audio = document.createElement("audio");
+    audio.dataset.volume = "1";
+    document.body.append(audio);
+
+    const timeline = {
+      totalTime(next?: number) {
+        if (next !== undefined) audio.volume = next >= 1 ? 0 : 1;
+        return 0;
+      },
+      getChildren: () => [{ targets: () => [audio], vars: { keyframes: [{ volume: 0 }] } }],
+    };
+    const cache = new WeakMap<HTMLMediaElement, { time: number; volume: number }[]>();
+
+    probeAndCacheElementVolume(audio, timeline, 2, cache);
+
+    expect(cache.get(audio)).toEqual(
+      expect.arrayContaining([expect.objectContaining({ volume: 0 })]),
+    );
+  });
+
   it("restores the timeline playhead after sampling volume automation", () => {
     const audio = document.createElement("audio");
     audio.dataset.volume = "1";
@@ -201,6 +316,41 @@ describe("probeAndCacheElementVolume", () => {
     expect(interpolateVolumeGain(envelope, 0.5)).toBeCloseTo(1, 5);
     expect(interpolateVolumeGain(envelope, 1)).toBeCloseTo(1, 5);
   });
+  it("uses the clip's absolute start, not its composition-local data-start", () => {
+    // Same fade as above, but the clip lives in a host composition that begins
+    // at t=2, so its `data-start="1"` means timeline t=3. Reading the attribute
+    // directly probed [1,2] — a window the clip is not even on screen for — and
+    // rebased the envelope 2s early.
+    const host = document.createElement("div");
+    host.setAttribute("data-composition-id", "scene-a");
+    host.dataset.start = "2";
+    document.body.append(host);
+    const audio = document.createElement("audio");
+    audio.dataset.start = "1";
+    audio.dataset.duration = "1";
+    audio.dataset.volume = "1";
+    host.append(audio);
+
+    const timeline = {
+      totalTime(next?: number) {
+        if (next !== undefined) {
+          // 0.05s linear fade-in at the clip's real start (timeline t=3).
+          audio.volume = Math.max(0, Math.min(1, (next - 3) / 0.05));
+        }
+        return 0;
+      },
+    };
+    const cache = new WeakMap<HTMLMediaElement, { time: number; volume: number }[]>();
+
+    probeAndCacheElementVolume(audio, timeline, 4, cache);
+
+    const envelope = cache.get(audio);
+    if (!envelope) throw new Error("Expected a cached envelope");
+    expect(interpolateVolumeGain(envelope, 0)).toBeCloseTo(0, 5);
+    expect(interpolateVolumeGain(envelope, 0.05)).toBeCloseTo(1, 5);
+    expect(interpolateVolumeGain(envelope, 1)).toBeCloseTo(1, 5);
+  });
+
   it("keeps a fade that starts from an above-unity authored gain", () => {
     const audio = document.createElement("audio");
     audio.dataset.start = "0";

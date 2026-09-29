@@ -1,3 +1,4 @@
+import { buildProjectApiPath } from "./projectRouting";
 import { isTypingTarget } from "./typingTarget";
 import type { TimelineElement } from "../player/store/playerStore";
 import type { DomEditSelection } from "../components/editor/domEditing";
@@ -21,13 +22,6 @@ export type RightPanelTab =
   | "block-params"
   | "slideshow"
   | "variables";
-export type RightInspectorPane = "layers" | "design";
-
-export interface RightInspectorPanes {
-  layers: boolean;
-  design: boolean;
-}
-
 export interface AgentModalAnchorPoint {
   x: number;
   y: number;
@@ -118,16 +112,32 @@ export function shouldIgnoreHistoryShortcut(target: EventTarget | null): boolean
   return isTypingTarget(target);
 }
 
-export function getHistoryShortcutLabel(action: "undo" | "redo"): string {
+function getHistoryShortcutLabel(action: "undo" | "redo"): string {
   const isMac =
     typeof navigator !== "undefined" && /Mac|iPhone|iPad|iPod/i.test(navigator.platform);
   const modifier = isMac ? "Cmd" : "Ctrl";
   return action === "undo" ? `${modifier}+Z` : `${modifier}+Shift+Z`;
 }
 
-type ElementMatchSelection = Pick<
+/** The Undo / Redo tooltip: the shortcut always, the last action's name when there is one. */
+export function historyTooltipLabel(
+  action: "undo" | "redo",
+  lastAction: string | null | undefined,
+): string {
+  const shortcut = getHistoryShortcutLabel(action);
+  const verb = action === "undo" ? "Undo" : "Redo";
+  return lastAction ? `${verb} ${lastAction} (${shortcut})` : `${verb} (${shortcut})`;
+}
+
+export type ElementMatchSelection = Pick<
   DomEditSelection,
-  "id" | "selector" | "selectorIndex" | "sourceFile" | "compositionSrc" | "isCompositionHost"
+  | "id"
+  | "hfId"
+  | "selector"
+  | "selectorIndex"
+  | "sourceFile"
+  | "compositionSrc"
+  | "isCompositionHost"
 >;
 
 function matchesByDomId(
@@ -138,6 +148,17 @@ function matchesByDomId(
   if (!selection.id) return false;
   return (
     element.domId === selection.id && (element.sourceFile || "index.html") === selectionSourceFile
+  );
+}
+
+function matchesByHfId(
+  selection: ElementMatchSelection,
+  element: TimelineElement,
+  selectionSourceFile: string,
+): boolean {
+  if (!selection.hfId) return false;
+  return (
+    element.hfId === selection.hfId && (element.sourceFile || "index.html") === selectionSourceFile
   );
 }
 
@@ -171,13 +192,21 @@ export function findMatchingTimelineElementId(
   // scan let `.find()` stop at an EARLIER, unrelated host that merely shares
   // the compositionSrc, before the scan ever reached the correct id/selector
   // match further down the list — collapsing every repeated host to the
-  // first one. Try id, then selector, across the WHOLE list first; only fall
-  // back to the coarser compositionSrc-only match when neither identifies a
-  // specific element.
+  // first one. Try id, then hfId, then selector, across the WHOLE list
+  // first; only fall back to the coarser compositionSrc-only match when
+  // none of them identifies a specific element.
   const byId = selection.id
     ? elements.find((el) => matchesByDomId(selection, el, selectionSourceFile))
     : undefined;
   if (byId) return byId.key ?? byId.id;
+
+  // hfId is the stable content-hash id every element gets regardless of
+  // whether it has a real DOM id — the only correlator for an element like
+  // an ungroup child that has neither an authored id nor a selector.
+  const byHfId = selection.hfId
+    ? elements.find((el) => matchesByHfId(selection, el, selectionSourceFile))
+    : undefined;
+  if (byHfId) return byHfId.key ?? byHfId.id;
 
   const bySelector = selection.selector
     ? elements.find((el) => matchesBySelector(selection, el))
@@ -195,6 +224,17 @@ export function findMatchingTimelineElementId(
   }
 
   return null;
+}
+
+// The element's track: authored if given, else the runtime's already-resolved
+// fallback — always rounded to an integer index either way. Shared by the
+// group/ungroup and razor-split flows so they can't drift out of sync again.
+export function resolveElementTrack(
+  element: Pick<TimelineElement, "authoredTrack" | "track">,
+): number {
+  return Math.round(
+    Number.isFinite(element.authoredTrack) ? (element.authoredTrack as number) : element.track,
+  );
 }
 
 /**
@@ -306,7 +346,7 @@ export async function resolveDroppedAssetDuration(
 
   const media = document.createElement(kind === "video" ? "video" : "audio");
   media.preload = "metadata";
-  media.src = `/api/projects/${projectId}/preview/${assetPath}`;
+  media.src = buildProjectApiPath(projectId, `/preview/${assetPath}`);
 
   const duration = await new Promise<number>((resolve) => {
     const timeout = window.setTimeout(() => resolve(DEFAULT_TIMELINE_ASSET_DURATION[kind]), 3000);
@@ -337,13 +377,34 @@ export async function resolveDroppedAssetDuration(
   return duration;
 }
 
+export function mediaMetadataUrl(projectId: string, assetPath: string): string {
+  return `/api/projects/${encodeURIComponent(projectId)}/media/metadata?path=${encodeURIComponent(assetPath)}`;
+}
+
+/** Dropped video audio stream from the metadata endpoint. Failure answers false so the drop still lands muted. */
+export async function resolveDroppedAssetHasAudio(
+  projectId: string,
+  assetPath: string,
+  kind: TimelineAssetKind,
+): Promise<boolean> {
+  if (kind !== "video") return false;
+  try {
+    const response = await fetch(mediaMetadataUrl(projectId, assetPath));
+    if (!response.ok) return false;
+    const data = (await response.json()) as { metadata?: { hasAudio?: boolean } } | null;
+    return data?.metadata?.hasAudio === true;
+  } catch {
+    return false;
+  }
+}
+
 export async function resolveDroppedAssetDimensions(
   projectId: string,
   assetPath: string,
   kind: TimelineAssetKind,
 ): Promise<{ width: number; height: number } | null> {
   if (kind === "audio") return null;
-  const src = `/api/projects/${projectId}/preview/${assetPath}`;
+  const src = buildProjectApiPath(projectId, `/preview/${assetPath}`);
 
   if (kind === "image") {
     return new Promise((resolve) => {

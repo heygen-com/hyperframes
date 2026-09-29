@@ -1,4 +1,5 @@
 // Types
+export type { RuntimeTimelineClipIdentity } from "./runtime/types.js";
 export type {
   ExecutionMode,
   Orientation,
@@ -183,7 +184,12 @@ export {
 export { RUNTIME_BOOTSTRAP_ATTR, stripEmbeddedRuntimeScripts } from "./compiler/htmlDocument";
 export { queryByAttr } from "./utils/cssSelector";
 export { decodeUrlPathVariants } from "./utils/urlPath";
-export { parseAnimatedGifMetadata, type AnimatedGifMetadata } from "./media/gif";
+export {
+  clearGifFramesBeforeNext,
+  gifClearsAfterLeavingFrameInPlace,
+  parseAnimatedGifMetadata,
+  type AnimatedGifMetadata,
+} from "./media/gif";
 export {
   HF_COLOR_GRADING_ATTR,
   HF_COLOR_GRADING_ADJUST_KEYS,
@@ -246,6 +252,12 @@ export {
   type ResolvedHfColorGrading,
 } from "./colorGrading";
 export { parseCubeLut, CubeLutParseError, type ParseCubeLutOptions } from "./colorLuts";
+export {
+  firstFrameColourArgs,
+  hdrToSdrToneMapFilter,
+  parseFirstFrameColour,
+  type ToneMapSourceColour,
+} from "./hdrToneMap";
 
 // Inline scripts
 export {
@@ -268,11 +280,23 @@ export {
 export {
   MEDIA_VISUAL_STYLE_PROPERTIES,
   copyMediaVisualStyles,
+  exportClipWindow,
+  quantizeSeekTime,
   quantizeTimeToFrame,
   type MediaVisualStyleProperty,
 } from "./inline-scripts/parityContract";
 export { redactKnownPaths, redactTelemetryString } from "./telemetryRedaction";
-export { isSafePath, resolveWithinProject } from "./safePath";
+export {
+  folderGone,
+  isProjectRootMissing,
+  isSafePath,
+  mkdirWithinProject,
+  ProjectRootMissingError,
+  realpath,
+  realProjectRoot,
+  resolveWithinProject,
+} from "./safePath";
+export { isHyperframesProject, PROJECT_MARKER_FILES } from "./projectRule";
 export type {
   HyperframePickerApi,
   HyperframePickerBoundingBox,
@@ -317,14 +341,19 @@ export {
 // publishConfig entry points at a file the pack doesn't contain
 // (verify:packed-manifests catches exactly that).
 export { createRuntimeStartTimeResolver } from "./runtime/startResolver.js";
+// Also exposed via the ./runtime/clip-window subpath; re-exported here for the same dist-emit reason.
+export { hasClipStarted, isClipVisibleAt, isInClipWindow } from "./runtime/clipWindow.js";
 export {
   normalizePlaybackRate,
+  normalizeRateSpec,
   parseStrictFiniteTimingNumber,
   readElementPlaybackRate,
+  readElementRateSpec,
   readMediaStart,
   resolveNaturalMediaTimelineDuration,
   resolveNaturalMediaTimelineDurationFromValues,
 } from "./runtime/playbackRate.js";
+export { shiftRateLane, sourceTimeAt, timeAtSourceTime, type RateSpec } from "./speedRamp.js";
 
 // Variable validation (CLI / tooling-side)
 export {
@@ -372,3 +401,21 @@ export {
   overdueCanaries,
   type CanaryDefinition,
 } from "./canaryRegistry.js";
+
+// VFX chain (data-vfx-chain) — defs, chain parse/serialize/normalize
+export {
+  HF_VFX_ATTR,
+  HF_VFX_CHAIN_VERSION,
+  HF_VFX,
+  chainCapture,
+  getVfxDef,
+  parseVfxChain,
+  serializeVfxChain,
+  normalizeVfxParams,
+  type HfVfxCapture,
+  type HfVfxChain,
+  type HfVfxDef,
+  type HfVfxNode,
+  type HfVfxParam,
+  type HfVfxParamValues,
+} from "./vfx.js";

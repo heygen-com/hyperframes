@@ -94,7 +94,11 @@ describe("tryGsapDragIntercept — stale-parse guard (no resurrection after dele
       vi.fn().mockResolvedValue([]),
     );
 
-    expect(result).toEqual({ status: "blocked", reason: "source-uneditable" });
+    expect(result).toEqual({
+      status: "blocked",
+      reason: "source-uneditable",
+      detail: "live-position-no-source-tween",
+    });
     expect(commitMutation).not.toHaveBeenCalled();
   });
 
@@ -354,7 +358,11 @@ describe("tryGsapRotationIntercept — instant holds", () => {
         fakeIframe("puck-b", [liveRotation]),
         commitMutation,
       ),
-    ).resolves.toEqual({ status: "blocked", reason: "source-uneditable" });
+    ).resolves.toEqual({
+      status: "blocked",
+      reason: "source-uneditable",
+      detail: "live-rotation-no-source-tween",
+    });
     expect(commitMutation).not.toHaveBeenCalled();
   });
 

@@ -13,7 +13,11 @@ import {
   seekCompositionTimeline,
   waitForPreferredSeekTarget,
 } from "../capture/captureCompositionFrame.js";
-import { auditClipDurations, shouldIgnoreRequestFailure } from "../commands/validate.js";
+import {
+  auditClipDurations,
+  shouldIgnoreHttpError,
+  shouldIgnoreRequestFailure,
+} from "../commands/validate.js";
 import { loadBrowserScript } from "../commands/layout.js";
 import { normalizeErrorMessage } from "./errorMessage.js";
 import { ambiguousIssue, type MotionFrame } from "./motionAudit.js";
@@ -264,6 +268,11 @@ export async function captureFindingCrops(
 // `console.info` from a composition author's own script must not.
 const MEDIA_PROXY_MARKER_PREFIX = "[hyperframes] runtime_media_proxy_";
 const MEDIA_PROXY_UNAVAILABLE_MARKER = "[hyperframes] runtime_media_proxy_unavailable";
+// `reportWebAudioMediaRoute` (packages/core/src/runtime/webAudioRoute.ts) uses
+// the same code-in-the-console-line contract. It is emitted from the media
+// DISCOVERY phase rather than from playback scheduling, precisely so this
+// scraper can see it — `check` seeks, it never plays.
+const WEB_AUDIO_BYPASS_MARKER = "[hyperframes] runtime_web_audio_bypass";
 const WEBGPU_RUNTIME_FAILURE =
   /\b(?:GPUValidationError|GPUOutOfMemoryError|GPUInternalError)\b|WebGPU uncaptured error|(?:destroyed\b.*\b(?:GPU )?(?:resource|buffer|texture)\b.*\bsubmit)|(?:(?:GPU )?(?:resource|buffer|texture)\b.*\bdestroyed\b.*\bsubmit)/i;
 
@@ -288,6 +297,20 @@ function pushRuntimeDraft(drafts: RuntimeDraft[], draft: RuntimeDraft): void {
     return;
   }
   drafts.push({ ...draft, count: 1 });
+}
+
+/**
+ * The finding code for a runtime-emitted `console.info` line, or null for the
+ * ordinary info logging a composition author's own script produces. Matching is
+ * prefix-anchored on the stable diagnostic codes the runtime deliberately embeds
+ * in the text, so a line that merely mentions one is not promoted.
+ */
+function runtimeInfoFindingCode(text: string): string | null {
+  if (text.startsWith(WEB_AUDIO_BYPASS_MARKER)) return "web_audio_bypass";
+  if (!text.startsWith(MEDIA_PROXY_MARKER_PREFIX)) return null;
+  return text.includes(MEDIA_PROXY_UNAVAILABLE_MARKER)
+    ? "media_proxy_unavailable"
+    : "media_proxy_fallback";
 }
 
 function wireRuntimeListeners(page: Page, drafts: RuntimeDraft[], currentTime: () => number): void {
@@ -315,12 +338,12 @@ function wireRuntimeListeners(page: Page, drafts: RuntimeDraft[], currentTime: (
         url: location.url,
         line: location.lineNumber,
       });
-    } else if (type === "info" && text.startsWith(MEDIA_PROXY_MARKER_PREFIX)) {
+    } else if (type === "info") {
+      const code = runtimeInfoFindingCode(text);
+      if (!code) return;
       const location = message.location();
       pushRuntimeDraft(drafts, {
-        code: text.includes(MEDIA_PROXY_UNAVAILABLE_MARKER)
-          ? "media_proxy_unavailable"
-          : "media_proxy_fallback",
+        code,
         severity: "info",
         message: text,
         time: currentTime(),
@@ -362,6 +385,7 @@ function wireNetworkListeners(page: Page, drafts: RuntimeDraft[], currentTime: (
     if (response.status() < 400) return;
     const url = response.url();
     if (url.includes("favicon")) return;
+    if (shouldIgnoreHttpError(url, response.status())) return;
     drafts.push({
       code: "http_error",
       severity: "error",
@@ -376,6 +400,7 @@ function createPageDriver(page: Page, setTime: (time: number) => void): CheckAud
   return {
     initialize: (contrast) => injectAuditScripts(page, contrast),
     getDuration: () => getCompositionDuration(page),
+    hasNoTimelineDeclaration: () => hasNoTimelineDeclaration(page),
     getTransitionBoundaries: () => collectTweenBoundaries(page),
     getCanvas: () =>
       page.evaluate(() => ({ width: window.innerWidth, height: window.innerHeight })),
@@ -399,6 +424,13 @@ function createPageDriver(page: Page, setTime: (time: number) => void): CheckAud
     anchorMotionIssues: (issues) => anchorLayoutIssues(page, issues),
     collectContrast: (time, annotations) => collectContrast(page, time, annotations),
   };
+}
+
+async function hasNoTimelineDeclaration(page: Page): Promise<boolean> {
+  return page.evaluate(
+    () =>
+      document.querySelector("[data-composition-id]")?.hasAttribute("data-no-timeline") ?? false,
+  );
 }
 
 async function injectAuditScripts(page: Page, contrast: boolean): Promise<void> {
@@ -1193,7 +1225,9 @@ const LAYOUT_ISSUE_CODES: readonly LayoutIssueCode[] = [
   "frame_out_of_frame",
   "escaped_container",
   "panel_out_of_canvas",
+  "canvas_content_at_edge",
   "connector_detached",
+  "connector_orphan",
   "rotation_pivot_drift",
   "off_pivot_rotation",
   "motion_appears_late",

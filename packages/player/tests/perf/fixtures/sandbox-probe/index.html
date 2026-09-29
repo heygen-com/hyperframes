@@ -1,0 +1,18 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>Sandbox origin probe</title>
+  </head>
+  <body>
+    <script>
+      let canAccessParent = false;
+      try {
+        canAccessParent = window.parent.document.body !== null;
+      } catch {
+        canAccessParent = false;
+      }
+      window.parent.postMessage({ source: "hf-sandbox-probe", canAccessParent }, "*");
+    </script>
+  </body>
+</html>

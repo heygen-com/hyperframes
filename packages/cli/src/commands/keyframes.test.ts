@@ -1,10 +1,37 @@
-import { existsSync, mkdtempSync, mkdirSync, writeFileSync } from "node:fs";
+import {
+  existsSync,
+  linkSync,
+  mkdtempSync,
+  mkdirSync,
+  readFileSync,
+  rmSync,
+  writeFileSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { beforeAll, describe, expect, it } from "vitest";
+import { beforeAll, describe, expect, it, onTestFinished } from "vitest";
+import type { ArgsDef } from "citty";
 import { ensureDOMParser } from "../utils/dom.js";
-import { collectShotSelectors, resolveScope, surfaceComposition } from "./keyframes.js";
+import keyframesCommand from "./keyframes.js";
+import {
+  collectCompositions,
+  collectShotSelectors,
+  resolveScope,
+  surfaceComposition,
+} from "./keyframes.js";
 import { ensureShotOutputDir } from "./motionShot.js";
+
+// citty types `args` as Resolvable<ArgsDef> (object | promise | thunk); this
+// command always uses a static object, same narrowing as assertKnownFlags.
+function layoutArgDescription(): string {
+  const rawDef = keyframesCommand.args;
+  const args = rawDef && typeof rawDef === "object" ? (rawDef as ArgsDef) : undefined;
+  const layout = args?.["layout"];
+  if (!layout || typeof layout !== "object" || !("description" in layout)) {
+    throw new Error("expected keyframesCommand.args.layout.description to be defined");
+  }
+  return String(layout.description);
+}
 
 beforeAll(() => ensureDOMParser());
 
@@ -14,6 +41,7 @@ const wrap = (script: string) =>
 describe("keyframes direct composition scope", () => {
   it("keeps the project root and passes the nested HTML entry to --shot", () => {
     const projectDir = mkdtempSync(join(tmpdir(), "hf-keyframes-target-"));
+    onTestFinished(() => rmSync(projectDir, { recursive: true, force: true }));
     const compositionsDir = join(projectDir, "compositions");
     mkdirSync(compositionsDir);
     writeFileSync(join(projectDir, "index.html"), wrap(""));
@@ -28,8 +56,34 @@ describe("keyframes direct composition scope", () => {
 });
 
 describe("keyframes shot output", () => {
+  it("rejects an output path that would overwrite the composition source", () => {
+    const projectDir = mkdtempSync(join(tmpdir(), "hf-keyframes-shot-source-"));
+    onTestFinished(() => rmSync(projectDir, { recursive: true, force: true }));
+    const sourcePath = join(projectDir, "index.html");
+    writeFileSync(sourcePath, wrap(""));
+
+    expect(() => ensureShotOutputDir(sourcePath, sourcePath)).toThrow(
+      /must not overwrite the composition source/,
+    );
+    expect(readFileSync(sourcePath, "utf8")).toBe(wrap(""));
+  });
+
+  it("rejects an existing output alias that refers to the composition source", () => {
+    const projectDir = mkdtempSync(join(tmpdir(), "hf-keyframes-shot-alias-"));
+    onTestFinished(() => rmSync(projectDir, { recursive: true, force: true }));
+    const sourcePath = join(projectDir, "index.html");
+    const aliasPath = join(projectDir, "shot.png");
+    writeFileSync(sourcePath, wrap(""));
+    linkSync(sourcePath, aliasPath);
+
+    expect(() => ensureShotOutputDir(aliasPath, sourcePath)).toThrow(
+      /must not overwrite the composition source/,
+    );
+  });
+
   it("creates a missing parent directory before writing --shot", () => {
     const projectDir = mkdtempSync(join(tmpdir(), "hf-keyframes-shot-dir-"));
+    onTestFinished(() => rmSync(projectDir, { recursive: true, force: true }));
     const outputDir = join(projectDir, "nested", "proofs");
     ensureShotOutputDir(join(outputDir, "shot.png"));
     expect(existsSync(outputDir)).toBe(true);
@@ -169,6 +223,20 @@ describe("keyframes runtime surfacing", () => {
 
     expect(selectors).toEqual(expect.arrayContaining([".dot", ".chip"]));
   });
+
+  it("does not forward unresolved static targets as concrete shot selectors", () => {
+    const html = wrap(`
+      const tl = gsap.timeline({ paused: true });
+      tl.to(runtimeOnlyTarget(), { x: 240, duration: 1 });
+      tl.to("#drag", { x: 240, duration: 1 });
+    `);
+
+    const selectors = collectShotSelectors([
+      surfaceComposition(html, "helper.html", "helper.html"),
+    ]).map((item) => item.selector);
+
+    expect(selectors).toEqual(["#drag"]);
+  });
 });
 
 describe("keyframes template-wrapped sub-compositions", () => {
@@ -280,5 +348,40 @@ describe("keyframes template-wrapped sub-compositions", () => {
     </script></body></html>`;
     const { tweens } = surfaceComposition(topLevel, "index.html", "index.html");
     expect(tweens.length).toBeGreaterThan(0);
+  });
+});
+
+// PRINFRA-667: `--layout strip` only does a real per-time pixel capture when
+// the sampled selector is an SVG element (see motionShot.ts's stripTargetsSvg
+// gate); every other selector -- including every nested sub-composition host,
+// always a <div data-composition-src> -- silently falls back to one live
+// frame plus vector position markers. The old help text's unqualified
+// "filmstrip by time" promised the former for the latter case. This guards
+// against reintroducing that over-promise without a matching capability.
+describe("--layout strip help text", () => {
+  it("does not promise a universal per-time filmstrip", () => {
+    expect(layoutArgDescription()).not.toMatch(
+      /^--shot layout: 'path'.*or 'strip' \(filmstrip by time/,
+    );
+  });
+
+  it("discloses the SVG-only condition for a real per-time capture", () => {
+    const description = layoutArgDescription();
+    expect(description).toContain("SVG");
+    expect(description.toLowerCase()).toContain("only when");
+  });
+});
+
+describe("keyframes project compositions", () => {
+  it("skips a data-composition-src that points at a folder instead of crashing", () => {
+    const dir = mkdtempSync(join(tmpdir(), "hf-keyframes-folder-src-"));
+    onTestFinished(() => rmSync(dir, { recursive: true, force: true }));
+    mkdirSync(join(dir, "compositions", "intro"), { recursive: true });
+    writeFileSync(
+      join(dir, "index.html"),
+      `<!doctype html><html><body><div data-composition-id="main" data-duration="4"><div data-composition-id="intro" data-composition-src="compositions/intro"></div></div></body></html>`,
+    );
+
+    expect(collectCompositions(join(dir, "index.html"))).toHaveLength(1);
   });
 });

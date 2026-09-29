@@ -4,6 +4,7 @@ import type { Canvas, MotionFrame } from "./motionAudit.js";
 import type { MotionSpec } from "./motionSpec.js";
 import type { ProjectDir } from "./project.js";
 import type { BrowserGpuMode } from "../browser/gpuPolicy.js";
+import type { HdrAutoPromotion } from "@hyperframes/engine";
 
 export interface CheckOptions {
   samples: number;
@@ -179,6 +180,8 @@ export type MotionSpecResolution =
 export interface CheckAuditDriver {
   initialize(contrast: boolean): Promise<void>;
   getDuration(): Promise<number>;
+  /** True when the root composition explicitly declares that it is intentionally timeline-free. */
+  hasNoTimelineDeclaration(): Promise<boolean>;
   getTransitionBoundaries(): Promise<number[]>;
   getCanvas(): Promise<Canvas>;
   findAmbiguousSelectors(selectors: string[]): Promise<AnchoredLayoutIssue[]>;
@@ -280,6 +283,7 @@ export interface CheckReport {
     checked: number;
     passed: number;
   };
+  hdr: { autoPromotion: HdrAutoPromotion | null; inspection: "available" | "unavailable" };
   snapshots: { enabled: boolean; files: string[]; times: number[]; findingFiles: string[] };
 }
 
@@ -302,6 +306,7 @@ export interface CheckDependencies {
     options: CheckOptions,
     requests: CheckFindingCropRequest[],
   ): Promise<string[]>;
+  inspectHdrAutoPromotion?(project: ProjectDir): Promise<CheckReport["hdr"]["autoPromotion"]>;
 }
 
 export function rectToBbox(rect: {

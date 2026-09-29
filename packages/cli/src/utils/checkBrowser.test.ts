@@ -436,6 +436,53 @@ it("surfaces the runtime's media-proxy-unavailable console.info line as its own 
   );
 });
 
+it("surfaces the runtime's web-audio-bypass console.info line as its own info finding", async () => {
+  // The whole complaint in #3458 is that nothing was reported. The runtime
+  // emits this from media DISCOVERY, not from playback scheduling, precisely
+  // because `check` seeks and never calls play() — a diagnostic raised from
+  // the transport would never reach this scraper.
+  vi.spyOn(Date, "now").mockReturnValue(100);
+  mountCanvasFixture();
+  const page = fakePage();
+  const bypassMessage = fakeConsoleMessage(
+    "info",
+    '[hyperframes] runtime_web_audio_bypass: "https://cdn.example.com/track.mp3" ' +
+      "(cross_origin_no_cors): Web Audio capture withheld; the track plays through native " +
+      "HTMLMediaElement output. Native playback cannot reproduce: fx-chain — proxy or download " +
+      "the asset to a same-origin URL to keep it.",
+  );
+  const authorInfo = fakeConsoleMessage("info", "debug runtime_web_audio_bypass lookalike");
+  page.on = vi.fn(
+    (event: string, handler: (message: ReturnType<typeof fakeConsoleMessage>) => void) => {
+      if (event === "console") {
+        handler(bypassMessage);
+        handler(authorInfo);
+      }
+    },
+  );
+  installSessionMock(page);
+
+  const result = await runBrowserCheck(
+    PROJECT,
+    { ...DEFAULT_CHECK_OPTIONS, samples: 1, contrast: false },
+    { kind: "none" },
+    runAuditGrid,
+  );
+
+  expect(result.runtimeFindings).toContainEqual(
+    expect.objectContaining({
+      code: "web_audio_bypass",
+      severity: "info",
+      message: bypassMessage.text(),
+    }),
+  );
+  // Prefix-anchored, so a composition author's own console.info that merely
+  // mentions the code is not promoted into a finding.
+  expect(result.runtimeFindings.some((finding) => finding.message === authorInfo.text())).toBe(
+    false,
+  );
+});
+
 it("elevates and deduplicates WebGPU validation warnings while preserving ordinary warnings", async () => {
   vi.spyOn(Date, "now").mockReturnValue(100);
   mountCanvasFixture();

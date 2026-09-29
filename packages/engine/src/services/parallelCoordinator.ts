@@ -86,6 +86,25 @@ export interface ParallelProgress {
   capturedFrames: number;
   activeWorkers: number;
   workerProgress: Map<number, number>;
+  /** Latest lifecycle transition; absent on ordinary completed-frame updates. */
+  latestWorkerPhase?: ParallelWorkerPhaseDiagnostic;
+}
+
+export type ParallelWorkerPhase =
+  | "browser_launch"
+  | "browser_probe"
+  | "session_init"
+  | "frame_capture"
+  | "frame_encode";
+
+export interface ParallelWorkerPhaseDiagnostic {
+  workerId: number;
+  phase: ParallelWorkerPhase;
+  frameIndex?: number;
+  browserExecutable: string;
+  browserVersion: string;
+  canvasDrawElement: boolean | "unknown";
+  gpuBackend: string;
 }
 
 export interface WorkerSizingConfig extends Partial<
@@ -461,6 +480,80 @@ export function shouldVerifyWorkerGpu(workerId: number, config?: Partial<EngineC
   return config?.browserGpuMode === "software" && workerId === 0;
 }
 
+/**
+ * Race a single in-flight capture call against `signal` actually firing.
+ *
+ * `captureFrame`/`captureFrameToBuffer`/`captureFrameToBufferPipelined` take
+ * no abort signal of their own — a native browser call wedged inside one of
+ * them (WSL2 hangs the very first drawElement/BeginFrame capture at frame 0
+ * with no error, heygen-com/hyperframes#3441) cannot be cancelled, only
+ * raced. Without this, the `signal?.aborted` checks at the top of the
+ * `captureFrameRange` loop are a no-op the moment a worker is already
+ * awaiting a hung call: nothing revisits that check until the await settles,
+ * which on a genuine hang is never. The DE parallel-router's stall watchdog
+ * (`captureStreamingStage.ts`) does fire `stallController.abort()` after
+ * `HF_DE_STALL_MS`, but until this call actually observes the signal, that
+ * abort has no effect on an already-wedged worker — `executeParallelCapture`'s
+ * `Promise.all` waits forever, so the render hangs indefinitely and the CLI's
+ * circuit breaker (which only runs after `executeRenderJob` settles) never
+ * gets a chance to trip.
+ */
+export function withParallelWorkerDeadline<T>(
+  promise: Promise<T>,
+  diagnostic: ParallelWorkerPhaseDiagnostic,
+  timeoutMs: number,
+  signal?: AbortSignal,
+): Promise<T> {
+  if (signal?.aborted) return Promise.reject(new Error("Parallel worker cancelled"));
+  return new Promise<T>((resolve, reject) => {
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const cleanup = () => {
+      if (timer) clearTimeout(timer);
+      signal?.removeEventListener("abort", onAbort);
+    };
+    const onAbort = () => {
+      cleanup();
+      reject(new Error("Parallel worker cancelled"));
+    };
+    signal?.addEventListener("abort", onAbort, { once: true });
+    if (timeoutMs > 0) {
+      timer = setTimeout(() => {
+        cleanup();
+        const error = new Error(
+          `Parallel worker operation timeout exceeded after ${timeoutMs}ms: ` +
+            `worker=${diagnostic.workerId} phase=${diagnostic.phase} ` +
+            `frame=${diagnostic.frameIndex ?? "n/a"} ` +
+            `browser=${diagnostic.browserExecutable} version=${diagnostic.browserVersion} ` +
+            `CanvasDrawElement=${diagnostic.canvasDrawElement} gpu=${diagnostic.gpuBackend}`,
+        );
+        error.name = "ParallelWorkerPhaseTimeoutError";
+        reject(error);
+      }, timeoutMs);
+      timer.unref?.();
+    }
+    promise.then(
+      (value) => {
+        cleanup();
+        resolve(value);
+      },
+      (error) => {
+        cleanup();
+        reject(error);
+      },
+    );
+  });
+}
+
+const LATE_LAUNCH_CLOSE_WAIT_MS = 10_000;
+
+function resolveParallelWorkerTimeoutMs(enabled: boolean): number {
+  if (!enabled) return 0;
+  const raw = process.env.HF_DE_PARALLEL_PHASE_TIMEOUT_MS;
+  if (raw === "0") return 0;
+  const parsed = raw ? Number(raw) : Number.NaN;
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : 30_000;
+}
+
 // fallow-ignore-next-line complexity
 async function captureFrameRange(
   session: CaptureSession,
@@ -471,10 +564,27 @@ async function captureFrameRange(
   onFrameBuffer:
     | ((frameIndex: number, buffer: Buffer, session: CaptureSession) => Promise<void>)
     | undefined,
+  phaseTimeoutMs: number,
+  diagnosticFor: (phase: ParallelWorkerPhase, frameIndex?: number) => ParallelWorkerPhaseDiagnostic,
+  onWorkerPhase: ((diagnostic: ParallelWorkerPhaseDiagnostic) => void) | undefined,
 ): Promise<number> {
   let framesCaptured = 0;
   const outputOffset = task.outputFrameOffset ?? 0;
   const stride = task.frameStride ?? 1;
+  const runCaptureOperation = <T>(
+    phase: ParallelWorkerPhase,
+    frameIndex: number,
+    operation: () => Promise<T>,
+  ): Promise<T> => {
+    const diagnostic = diagnosticFor(phase, frameIndex);
+    if (framesCaptured === 0) onWorkerPhase?.(diagnostic);
+    return withParallelWorkerDeadline(operation(), diagnostic, phaseTimeoutMs, signal);
+  };
+  const awaitEncode = (frameIndex: number, encodeResult: Promise<Buffer>): Promise<Buffer> => {
+    const diagnostic = diagnosticFor("frame_encode", frameIndex);
+    if (framesCaptured === 0) onWorkerPhase?.(diagnostic);
+    return withParallelWorkerDeadline(encodeResult, diagnostic, phaseTimeoutMs, signal);
+  };
   // Depth-2 pipelined drawElement produce (HF_DE_PARALLEL_STREAM spike): frame
   // k's in-page worker encode overlaps frame k+stride's produce phase — the
   // same shape as the sequential worker-encode loop. Only engaged when the
@@ -498,7 +608,9 @@ async function captureFrameRange(
       if (dbg && i < task.startFrame + dbgWin) {
         console.log(`[par:w${task.workerId}] +${Date.now() - dbgT0}ms produce ${i} start`);
       }
-      const { encodeResult } = await captureFrameToBufferPipelined(session, i - outputOffset, time);
+      const { encodeResult } = await runCaptureOperation("frame_capture", i, () =>
+        captureFrameToBufferPipelined(session, i - outputOffset, time),
+      );
       // Marks the promise "handled" for Node's unhandled-rejection detector
       // without affecting the real `await prev.encodeResult` below — if a
       // later iteration throws (abort, downstream writeFrame failure) before
@@ -514,7 +626,7 @@ async function captureFrameRange(
             `[par:w${task.workerId}] +${Date.now() - dbgT0}ms drain ${prev.idx} await-encode`,
           );
         }
-        const buf = await prev.encodeResult;
+        const buf = await awaitEncode(prev.idx, prev.encodeResult);
         if (dbg && prev.idx < task.startFrame + dbgWin) {
           console.log(
             `[par:w${task.workerId}] +${Date.now() - dbgT0}ms drain ${prev.idx} encoded ${buf.length}B`,
@@ -530,7 +642,7 @@ async function captureFrameRange(
       prev = { idx: i, encodeResult };
     }
     if (prev) {
-      await onFrameBuffer(prev.idx, await prev.encodeResult, session);
+      await onFrameBuffer(prev.idx, await awaitEncode(prev.idx, prev.encodeResult), session);
       framesCaptured++;
       if (onFrameCaptured) onFrameCaptured(task.workerId, prev.idx);
     }
@@ -542,10 +654,14 @@ async function captureFrameRange(
     const fileFrameIdx = i - outputOffset;
 
     if (onFrameBuffer) {
-      const { buffer } = await captureFrameToBuffer(session, fileFrameIdx, time);
+      const { buffer } = await runCaptureOperation("frame_capture", i, () =>
+        captureFrameToBuffer(session, fileFrameIdx, time),
+      );
       await onFrameBuffer(i, buffer, session);
     } else {
-      await captureFrame(session, fileFrameIdx, time);
+      await runCaptureOperation("frame_capture", i, () =>
+        captureFrame(session, fileFrameIdx, time),
+      );
     }
     framesCaptured++;
     if (onFrameCaptured) onFrameCaptured(task.workerId, i);
@@ -721,6 +837,7 @@ async function executeWorkerTask(
   config?: Partial<EngineConfig>,
   parallel?: boolean,
   onFailure?: (failure: CaptureFailure) => void,
+  onWorkerPhase?: (diagnostic: ParallelWorkerPhaseDiagnostic) => void,
 ): Promise<WorkerResult> {
   const startTime = Date.now();
   let framesCaptured = 0;
@@ -740,37 +857,83 @@ async function executeWorkerTask(
   const workerConfig: Partial<EngineConfig> | undefined = needsSeparateBrowsers
     ? { ...config, enableBrowserPool: false }
     : config;
+  const phaseTimeoutMs = resolveParallelWorkerTimeoutMs(
+    Boolean(parallel && onFrameBuffer && workerConfig?.useDrawElement),
+  );
+  let browserVersion = "unknown";
+  let canvasDrawElement: boolean | "unknown" = "unknown";
+  let gpuBackend = "unknown";
+  let browserExecutable = resolveHeadlessShellPath(workerConfig) ?? "system/default";
+  const diagnosticFor = (
+    phase: ParallelWorkerPhase,
+    frameIndex?: number,
+  ): ParallelWorkerPhaseDiagnostic => ({
+    workerId: task.workerId,
+    phase,
+    frameIndex,
+    browserExecutable,
+    browserVersion,
+    canvasDrawElement,
+    gpuBackend,
+  });
+  const runPhase = <T>(phase: ParallelWorkerPhase, operation: () => Promise<T>): Promise<T> => {
+    const diagnostic = diagnosticFor(phase);
+    onWorkerPhase?.(diagnostic);
+    return withParallelWorkerDeadline(operation(), diagnostic, phaseTimeoutMs, signal);
+  };
 
   try {
-    session = await createCaptureSession(
+    const launch = createCaptureSession(
       serverUrl,
       task.outputDir,
       captureOptions,
       createBeforeCaptureHook(),
       workerConfig,
     );
+    session = await runPhase("browser_launch", () => launch).catch(async (error: unknown) => {
+      // Close a launch that lost to cancel or its deadline before settling: Puppeteer's exit hook skips browsers.
+      const closing = launch.then(closeCaptureSession).catch(() => {});
+      await Promise.race([
+        closing,
+        new Promise((settle) => setTimeout(settle, LATE_LAUNCH_CLOSE_WAIT_MS).unref()),
+      ]);
+      throw error;
+    });
+    const activeSession = session;
+    browserExecutable = activeSession.browser?.process?.()?.spawnfile || browserExecutable;
     logParDebug(() => `[par:w${task.workerId}] session created`);
-    // Worker-0-only SwiftShader assertion — see `shouldVerifyWorkerGpu` and #955.
-    if (shouldVerifyWorkerGpu(task.workerId, workerConfig)) {
-      await assertSwiftShader(session.page, readWebGlVendorInfoFromCanvas);
-    }
-    await initializeSession(session);
+    browserVersion = await runPhase(
+      "browser_probe",
+      async () => (await activeSession.browser?.version?.().catch(() => "unknown")) ?? "unknown",
+    );
+    await runPhase("session_init", async () => {
+      // Worker-0-only SwiftShader assertion — see `shouldVerifyWorkerGpu` and #955.
+      if (shouldVerifyWorkerGpu(task.workerId, workerConfig)) {
+        await assertSwiftShader(activeSession.page, readWebGlVendorInfoFromCanvas);
+      }
+      await initializeSession(activeSession);
+    });
+    canvasDrawElement = activeSession.captureMode === "drawelement";
+    gpuBackend = activeSession.gpuRenderer ?? "unknown";
     logParDebug(
       () =>
         `[par:w${task.workerId}] init done (mode=${session?.captureMode} workerEncode=${session?.workerEncodeEnabled === true})`,
     );
     framesCaptured = await captureFrameRange(
-      session,
+      activeSession,
       task,
       captureOptions,
       signal,
       onFrameCaptured,
       onFrameBuffer,
+      phaseTimeoutMs,
+      diagnosticFor,
+      onWorkerPhase,
     );
 
-    await verifyDiskDrawElementSamples(session, task, Boolean(onFrameBuffer));
+    await verifyDiskDrawElementSamples(activeSession, task, Boolean(onFrameBuffer));
 
-    perf = getCapturePerfSummary(session);
+    perf = getCapturePerfSummary(activeSession);
     return {
       workerId: task.workerId,
       framesCaptured,
@@ -829,6 +992,68 @@ export function resolveParallelDeVerifySamples(
   return Math.min(8, 4 + 2 * (workerCount - 1));
 }
 
+/**
+ * Whether one worker's failure ends the whole pool. On the disk path a
+ * transient death (Target closed, Page crashed) is not fatal: the
+ * orchestrator's adaptive retry re-captures that worker's missing frames. On
+ * the streaming path (`onFrameBuffer` present) there is no per-worker retry
+ * and the dead worker's frames are gone, so its peers would park in the
+ * ordered writer waiting for a frame that never comes until the producer's
+ * no-progress watchdog relabelled the death as a stall a minute later.
+ * Every non-cancelled failure is therefore pool-fatal there; `cancelled`
+ * means the pool was already aborted and there is nothing left to propagate.
+ */
+export function isPoolFatalWorkerFailure(failure: CaptureFailure, streaming: boolean): boolean {
+  if (streaming) return failure.kind !== "cancelled";
+  return isFatalCaptureFailure(failure);
+}
+
+export interface ParallelCaptureHooks {
+  /**
+   * The first pool-fatal worker failure, delivered BEFORE peers are aborted
+   * so a streaming caller can release anything parked on the dead worker's
+   * frame (the ordered writer) with the original error, not a stall.
+   */
+  onWorkerFailure?: (failure: CaptureFailure) => void;
+}
+
+/**
+ * The pool's single failure gate. Both halves of the contract the streaming
+ * stage relies on live here so they can be pinned without a browser: the
+ * first pool-fatal failure reaches `hooks.onWorkerFailure` with the ORIGINAL
+ * `CaptureFailure` before the peers are aborted, and a hook that throws cannot
+ * skip that abort (the pool still rejects with its own classified failure,
+ * not the hook's error). Later failures are ignored: the first one owns the
+ * abort reason. `onFailure` runs synchronously at the tail of a worker's
+ * catch, before that worker's promise settles, so the hook always precedes
+ * the pool's rejection. Exported for tests.
+ */
+export function createPoolFailureHandler(args: {
+  streaming: boolean;
+  peerController: AbortController;
+  hooks?: ParallelCaptureHooks;
+}): {
+  onFailure: (failure: CaptureFailure) => void;
+  firstFatalFailure: () => CaptureFailure | undefined;
+} {
+  let firstFatalFailure: CaptureFailure | undefined;
+  return {
+    firstFatalFailure: () => firstFatalFailure,
+    onFailure: (failure) => {
+      if (firstFatalFailure || !isPoolFatalWorkerFailure(failure, args.streaming)) return;
+      firstFatalFailure = failure;
+      try {
+        args.hooks?.onWorkerFailure?.(failure);
+      } catch {
+        // A caller-supplied hook must not be able to disable the pool abort;
+        // the worker's classified failure is what the pool reports.
+      } finally {
+        args.peerController.abort(failure);
+      }
+    },
+  };
+}
+
 export async function executeParallelCapture(
   serverUrl: string,
   workDir: string,
@@ -839,6 +1064,7 @@ export async function executeParallelCapture(
   onProgress?: (progress: ParallelProgress) => void,
   onFrameBuffer?: (frameIndex: number, buffer: Buffer, session: CaptureSession) => Promise<void>,
   config?: Partial<EngineConfig>,
+  hooks?: ParallelCaptureHooks,
 ): Promise<WorkerResult[]> {
   // `endFrame - startFrame` is the correct per-task frame count for contiguous
   // tasks (stride 1), but for interleaved tasks (stride = workerCount) each
@@ -850,6 +1076,7 @@ export async function executeParallelCapture(
     0,
   );
   const workerProgress = new Map<number, number>();
+  const workerPhases = new Map<number, ParallelWorkerPhaseDiagnostic>();
 
   for (const task of tasks) workerProgress.set(task.workerId, 0);
 
@@ -867,6 +1094,18 @@ export async function executeParallelCapture(
       });
     }
   };
+  const onWorkerPhase = (diagnostic: ParallelWorkerPhaseDiagnostic) => {
+    workerPhases.set(diagnostic.workerId, diagnostic);
+    if (!onProgress) return;
+    const capturedFrames = Array.from(workerProgress.values()).reduce((a, b) => a + b, 0);
+    onProgress({
+      totalFrames,
+      capturedFrames,
+      activeWorkers: tasks.length,
+      workerProgress: new Map(workerProgress),
+      latestWorkerPhase: diagnostic,
+    });
+  };
 
   const parallel = tasks.length > 1;
   const deVerifySamples = resolveParallelDeVerifySamples(
@@ -881,12 +1120,12 @@ export async function executeParallelCapture(
   const workerSignal = signal
     ? AbortSignal.any([signal, peerController.signal])
     : peerController.signal;
-  let firstFatalFailure: CaptureFailure | undefined;
-  const onFailure = (failure: CaptureFailure): void => {
-    if (firstFatalFailure || !isFatalCaptureFailure(failure)) return;
-    firstFatalFailure = failure;
-    peerController.abort(failure);
-  };
+  const failureHandler = createPoolFailureHandler({
+    streaming: Boolean(onFrameBuffer),
+    peerController,
+    hooks,
+  });
+  const onFailure = failureHandler.onFailure;
   const results = await Promise.all(
     tasks.map((task) =>
       executeWorkerTask(
@@ -900,6 +1139,7 @@ export async function executeParallelCapture(
         config,
         parallel,
         onFailure,
+        onWorkerPhase,
       ),
     ),
   );
@@ -909,7 +1149,8 @@ export async function executeParallelCapture(
   const errors = results.filter((r) => r.failure || r.error);
   if (errors.length > 0) {
     const errorMessages = errors.map(formatWorkerFailure).join("; ");
-    const representative = firstFatalFailure ?? errors.find((result) => result.failure)?.failure;
+    const representative =
+      failureHandler.firstFatalFailure() ?? errors.find((result) => result.failure)?.failure;
     const workerDiagnostics = errors.flatMap((result) => result.failure?.workerDiagnostics ?? []);
     throw new CaptureFailure({
       kind: representative?.kind ?? "io",

@@ -18,6 +18,7 @@ import {
   hoverCacheDescribesPoint,
   resolveResizeCenterAnchorOffset,
 } from "./domEditOverlayGestures";
+import { usePlayerStore } from "../../player/store/playerStore";
 
 // React 19 warns unless the test environment opts into act().
 globalThis.IS_REACT_ACT_ENVIRONMENT = true;
@@ -241,6 +242,10 @@ function dispatchOverlayPointerDown(target: Element, clientX = 120, clientY = 80
     );
   });
 }
+
+beforeEach(() => {
+  usePlayerStore.setState({ previewBooted: true });
+});
 
 describe("focusDomEditOverlayElement", () => {
   it("focuses the canvas overlay without scrolling", () => {

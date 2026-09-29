@@ -21,7 +21,7 @@ export function CommitField({
   liveCommit?: boolean;
   align?: "left" | "right";
   onPreview?: (nextValue: string) => void;
-  onCommit: (nextValue: string) => void | Promise<void>;
+  onCommit: (nextValue: string) => void | Promise<unknown>;
 }) {
   const [draft, setDraft] = useState(value);
   const valueRef = useRef(value);
@@ -213,7 +213,7 @@ export function CommitField({
       }}
       onKeyDown={handleKeyDown}
       title={parseNumericToken(value) ? "Scroll or use Arrow keys to adjust" : undefined}
-      className={`min-w-0 w-full bg-transparent text-[11px] font-medium text-neutral-100 outline-none disabled:cursor-not-allowed disabled:text-neutral-600 ${
+      className={`min-w-0 w-full bg-transparent text-[11px] font-medium text-neutral-100 outline-hidden disabled:cursor-not-allowed disabled:text-neutral-600 ${
         align === "right" ? "text-right" : "text-left"
       }`}
     />

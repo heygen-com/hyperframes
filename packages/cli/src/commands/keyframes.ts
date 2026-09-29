@@ -1,5 +1,6 @@
 import { defineCommand } from "citty";
-import { existsSync, readFileSync, statSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
+import { readProjectFile } from "@hyperframes/parsers/asset-resolution";
 import { resolve, dirname, basename, join, relative, sep } from "node:path";
 import { parseGsapScript, type GsapAnimation } from "@hyperframes/core/gsap-parser";
 import type { Example } from "./_examples.js";
@@ -573,7 +574,7 @@ function groupTraces(tweens: SurfacedTween[]): SurfacedTrace[] {
   return traces;
 }
 
-function collectCompositions(indexPath: string): SurfacedComposition[] {
+export function collectCompositions(indexPath: string): SurfacedComposition[] {
   const html = readFileSync(indexPath, "utf-8");
   const baseDir = dirname(indexPath);
   const out: SurfacedComposition[] = [
@@ -589,9 +590,10 @@ function collectCompositions(indexPath: string): SurfacedComposition[] {
     const src = div.getAttribute("data-composition-src");
     if (!src) continue;
     const subPath = resolve(baseDir, src);
-    if (!existsSync(subPath)) continue;
+    const sub = readProjectFile(subPath);
+    if (sub.kind !== "file") continue;
     const id = div.getAttribute("data-composition-id") ?? src;
-    out.push(surfaceComposition(readFileSync(subPath, "utf-8"), id, src));
+    out.push(surfaceComposition(sub.text, id, src));
   }
   return out;
 }
@@ -659,7 +661,7 @@ function addTraceSelectors(selectors: Set<string>, cmp: SurfacedComposition): vo
 
 function addTweenSelectors(selectors: Set<string>, cmp: SurfacedComposition): void {
   for (const t of cmp.tweens) {
-    if (t.method !== "set") selectors.add(t.target);
+    if (t.method !== "set" && t.target !== "__unresolved__") selectors.add(t.target);
   }
 }
 
@@ -701,7 +703,7 @@ function onionShotGuardError(
   // The rendered onion (--ghost) screenshots the whole painted stage, so it does
   // not need an animated DOM element to sample — only the marker onion does.
   if (requests.length === 0 && !ghost)
-    return "--shot: no animated element to sample for the selection.";
+    return "--shot: no statically resolved animated element to sample for the selection. Use a direct DOM selector or --ghost for runtime-only targets.";
   return null;
 }
 
@@ -769,9 +771,10 @@ export function resolveScope(args: { target?: string; selector?: string }): {
   let projectName: string;
   let projectDir: string | undefined;
   let entryFile: string | undefined;
-  if (raw && raw.endsWith(".html") && existsSync(raw) && statSync(raw).isFile()) {
+  const entry = raw?.endsWith(".html") ? readProjectFile(raw) : undefined;
+  if (raw && entry?.kind === "file") {
     const entryPath = resolve(raw);
-    comps = [surfaceComposition(readFileSync(entryPath, "utf-8"), basename(entryPath), entryPath)];
+    comps = [surfaceComposition(entry.text, basename(entryPath), entryPath)];
     projectName = basename(entryPath);
     projectDir = findProjectRoot(entryPath);
     entryFile = relative(projectDir, entryPath).split(sep).join("/");
@@ -923,7 +926,7 @@ function createKeyframesCommand(options: Partial<KeyframesCommandOptions> = {}) 
       layout: {
         type: "string",
         description:
-          "--shot layout: 'path' (ghosts at real positions + path, default) or 'strip' (filmstrip by time — for in-place/overlapping motion).",
+          "--shot layout: 'path' (ghosts at real positions + path, default) or 'strip' (for in-place/overlapping motion). 'strip' captures a real per-time pixel filmstrip only when --selector targets an SVG element; any other selector (e.g. a DOM/sub-composition host) instead gets one live frame plus vector position markers.",
       },
       from: { type: "string", description: "--shot: sample only from this time (seconds)." },
       to: { type: "string", description: "--shot: sample only up to this time (seconds)." },

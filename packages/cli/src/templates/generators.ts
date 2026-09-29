@@ -20,7 +20,7 @@ export const BUNDLED_TEMPLATES: TemplateOption[] = [
   {
     id: "blank",
     label: "Blank",
-    hint: "Empty composition — just the scaffolding",
+    hint: "Centered Inter stage, paused timeline",
     source: "bundled",
   },
 ];

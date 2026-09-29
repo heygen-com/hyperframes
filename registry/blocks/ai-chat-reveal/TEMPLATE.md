@@ -2,7 +2,7 @@
 
 ## Surface ownership
 
-This is a generic assistant conversation followed by a brandable closing card. The website brand may appear in the declared conversation and closing-card slots; the chat shell and motion remain template-owned.
+This is a generic assistant conversation followed by a brandable closing card. The website brand appears in the declared conversation and closing-card slots; the chat shell and motion remain template-owned. The remix is an advertisement for that brand: the closing card carries its real name, its real domain, and its own mark, while the assistant answering in the conversation keeps its own name.
 
 ## Editable slots
 

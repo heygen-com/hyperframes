@@ -1,4 +1,4 @@
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import * as clack from "@clack/prompts";
@@ -7,6 +7,7 @@ import { runCommand } from "citty";
 import {
   default as previewCommand,
   foregroundPreviewReadyPayload,
+  prebuildPreview,
   handlePreviewKillAll,
   handlePreviewList,
   previewLaunchMode,
@@ -17,10 +18,19 @@ import {
   reportPreviewShutdown,
   studioReadyUrl,
   studioDeepLink,
-  studioLandingSearch,
   studioSummaryUrls,
   waitForStudioChildClose,
 } from "./preview.js";
+
+const lint = vi.hoisted(() => ({ inProcess: vi.fn(), worker: vi.fn() }));
+vi.mock("../utils/lintProject.js", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("../utils/lintProject.js")>()),
+  lintProject: lint.inProcess,
+}));
+vi.mock("../utils/cancellableProcess.js", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("../utils/cancellableProcess.js")>()),
+  runRenderSetupWorker: lint.worker,
+}));
 
 const tempDirs: string[] = [];
 
@@ -30,70 +40,25 @@ afterEach(() => {
   process.exitCode = undefined;
 });
 
-function projectWith(storyboard: string | null, frameFiles: string[] = []): string {
-  const dir = mkdtempSync(join(tmpdir(), "hf-preview-landing-"));
+function tempProject(): string {
+  const dir = mkdtempSync(join(tmpdir(), "hf-preview-"));
   tempDirs.push(dir);
-  if (storyboard !== null) writeFileSync(join(dir, "STORYBOARD.md"), storyboard);
-  for (const file of frameFiles) {
-    mkdirSync(join(dir, file, ".."), { recursive: true });
-    writeFileSync(join(dir, file), "<div></div>");
-  }
   return dir;
 }
 
-const FRAME = (n: number, status: string) =>
-  `## Frame ${n} — F${n}\n- status: ${status}\n- src: compositions/frames/0${n}.html\n\nBeat.\n`;
-
-describe("studioLandingSearch", () => {
-  it("returns no search without a storyboard", () => {
-    expect(studioLandingSearch(projectWith(null))).toBe("");
-  });
-
-  it("lands on the board while sketches are under review (any built frame)", () => {
-    const dir = projectWith(`${FRAME(1, "built")}${FRAME(2, "outline")}`, [
-      "compositions/frames/01.html",
-    ]);
-    expect(studioLandingSearch(dir)).toBe("?view=storyboard");
-  });
-
-  it("lands on the board during pure planning (srcs declared, none exist)", () => {
-    const dir = projectWith(`${FRAME(1, "outline")}${FRAME(2, "outline")}`);
-    expect(studioLandingSearch(dir)).toBe("?view=storyboard");
-  });
-
-  it("lands on the timeline once frames exist without a built status", () => {
-    const dir = projectWith(`${FRAME(1, "outline")}`, ["compositions/frames/01.html"]);
-    expect(studioLandingSearch(dir)).toBe("");
-  });
-
-  it("lands on the timeline for fully animated boards", () => {
-    const dir = projectWith(`${FRAME(1, "animated")}`, ["compositions/frames/01.html"]);
-    expect(studioLandingSearch(dir)).toBe("");
-  });
-});
-
 describe("Studio handoff URLs", () => {
   it("hands off the exact timeline project route", () => {
-    const dir = projectWith(null);
-    expect(studioDeepLink("http://127.0.0.1:3002", "demo", dir)).toBe(
+    expect(studioDeepLink("http://127.0.0.1:3002", "demo")).toBe(
       "http://127.0.0.1:3002/#project/demo",
     );
-    expect(studioSummaryUrls("demo", "http://127.0.0.1:3002", dir)).toEqual({
+    expect(studioSummaryUrls("demo", "http://127.0.0.1:3002")).toEqual({
       serverUrl: "http://127.0.0.1:3002",
       studioUrl: "http://127.0.0.1:3002/#project/demo",
     });
   });
 
-  it("hands off the exact storyboard route while a project is still planning", () => {
-    const dir = projectWith(FRAME(1, "outline"));
-    expect(studioDeepLink("http://127.0.0.1:3002", "demo", dir)).toBe(
-      "http://127.0.0.1:3002/?view=storyboard#project/demo",
-    );
-  });
-
   it("URL-encodes project names that have hash-route metacharacters", () => {
-    const dir = projectWith(null);
-    expect(studioDeepLink("http://127.0.0.1:3002", "Launch #1? 50%", dir)).toBe(
+    expect(studioDeepLink("http://127.0.0.1:3002", "Launch #1? 50%")).toBe(
       "http://127.0.0.1:3002/#project/Launch%20%231%3F%2050%25",
     );
   });
@@ -365,7 +330,7 @@ describe("preview lifecycle JSON failures", () => {
   });
 
   it("wraps managed-start validation failures in one JSON document", async () => {
-    const dir = projectWith(null);
+    const dir = tempProject();
     writeFileSync(join(dir, "index.html"), "<html></html>");
     const log = vi.spyOn(console, "log").mockImplementation(() => {});
 
@@ -421,9 +386,65 @@ describe("preview lifecycle JSON failures", () => {
   });
 });
 
+describe("prebuildPreview", () => {
+  it("asks the server for the opening film's preview document", async () => {
+    const fetchApp = vi.fn(async (_request: Request) => new Response(""));
+
+    await prebuildPreview(fetchApp, "http://localhost:3002", "Launch #1");
+
+    expect(fetchApp.mock.calls[0]![0].url).toBe(
+      "http://localhost:3002/api/projects/Launch%20%231/preview",
+    );
+  });
+
+  it("does not fail the start when the build throws", async () => {
+    const fetchApp = vi.fn(() => {
+      throw new Error("bundle failed");
+    });
+
+    await expect(prebuildPreview(fetchApp, "http://localhost:3002", "demo")).resolves.toBe(
+      undefined,
+    );
+  });
+});
+
+describe("startup lint", () => {
+  const neverSettles = () => new Promise<never>(() => {});
+
+  it("never lints for a --json start", async () => {
+    lint.inProcess.mockImplementation(neverSettles);
+    lint.worker.mockImplementation(neverSettles);
+    const dir = tempProject();
+    writeFileSync(join(dir, "index.html"), "<html></html>");
+    vi.spyOn(console, "log").mockImplementation(() => {});
+
+    await runCommand(previewCommand, {
+      rawArgs: [dir, "--background", "--json", "--user-data-dir", join(dir, "profile")],
+    });
+
+    expect(lint.inProcess).not.toHaveBeenCalled();
+    expect(lint.worker).not.toHaveBeenCalled();
+  });
+
+  it("does not hold a start behind a lint that has not finished", async () => {
+    lint.inProcess.mockImplementation(neverSettles);
+    lint.worker.mockImplementation(neverSettles);
+    const dir = tempProject();
+    writeFileSync(join(dir, "index.html"), "<html></html>");
+    const error = vi.spyOn(clack.log, "error").mockImplementation(() => {});
+
+    await runCommand(previewCommand, {
+      rawArgs: [dir, "--background", "--user-data-dir", join(dir, "profile")],
+    });
+
+    expect(error).toHaveBeenCalledWith(expect.stringContaining("--user-data-dir"));
+    expect(lint.inProcess).not.toHaveBeenCalled();
+  }, 5_000);
+});
+
 describe("foreground preview JSON", () => {
   it("emits the same ready session contract before remaining attached", () => {
-    const dir = projectWith(null);
+    const dir = tempProject();
     expect(foregroundPreviewReadyPayload("Launch #1", "http://localhost:4567", dir, 4321)).toEqual({
       schemaVersion: 1,
       operation: "start",

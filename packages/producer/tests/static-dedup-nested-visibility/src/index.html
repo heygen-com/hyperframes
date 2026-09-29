@@ -1,0 +1,26 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=640, height=360" />
+    <script src="https://cdn.jsdelivr.net/npm/gsap@3.14.2/dist/gsap.min.js"></script>
+    <style>
+      * { box-sizing: border-box; }
+      html, body { width: 640px; height: 360px; margin: 0; overflow: hidden; background: #101010; }
+      #root { position: relative; width: 640px; height: 360px; overflow: hidden; background: #101010; }
+      #dot { position: absolute; top: 32px; left: 32px; width: 24px; height: 24px; border-radius: 50%; background: #ff4040; }
+    </style>
+  </head>
+  <body>
+    <div id="root" data-composition-id="main" data-start="0" data-duration="10" data-width="640" data-height="360">
+      <div id="dot"></div>
+      <div id="sub-a-host" data-composition-id="sub-a" data-composition-src="compositions/sub-a.html" data-start="5.5" data-duration="3" data-track-index="2" data-width="640" data-height="360"></div>
+    </div>
+    <script>
+      window.__timelines = window.__timelines || {};
+      const tl = gsap.timeline({ paused: true });
+      tl.to("#dot", { x: 100, duration: 1, ease: "none" }, 0);
+      window.__timelines.main = tl;
+    </script>
+  </body>
+</html>

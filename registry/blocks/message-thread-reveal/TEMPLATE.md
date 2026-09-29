@@ -2,7 +2,7 @@
 
 ## Surface ownership
 
-This template depicts a phone messaging interface. The supplied website is the subject of the conversation, shared link, and closing card; it does not own the messaging application chrome.
+This template depicts a phone messaging interface. The supplied website is the subject of the conversation, shared link, and closing card; it does not own the messaging application chrome. The remix is an advertisement for that brand: the shared link card and the closing card carry its real name and its real domain.
 
 ## Editable slots
 

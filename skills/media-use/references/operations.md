@@ -79,7 +79,7 @@ node <SKILL_DIR>/scripts/dither.mjs \
   --palette '#0f380f,#306230,#8bac0f,#9bbc0f' \
   --point-size 3
 
-node <SKILL_DIR>/scripts/resolve.mjs \
+npx hyperframes media-use resolve \
   --from source.atkinson.mp4 --type video --project .
 ```
 
@@ -112,14 +112,16 @@ engine directly.
 # install once: uv venv ~/.venvs/parakeet && VIRTUAL_ENV=~/.venvs/parakeet uv pip install parakeet-mlx
 node <SKILL_DIR>/scripts/transcribe.mjs --input talk.mp4 --out talk.transcribe.json
 
-# equivalently, the hyperframes CLI has Parakeet built in (auto-detects it, whisper fallback):
+# the hyperframes CLI runs Parakeet on macOS, Linux and Windows once it is installed:
+npx hyperframes models install parakeet                 # once, ~640 MB, ask the user first
 npx hyperframes transcribe talk.mp4 --engine parakeet   # or --engine auto (default)
 ```
 
-VERIFIED on 24GB: accurate, ~3s (cached) for 8s audio. Parakeet covers English +
-25 European languages. For other languages, or when parakeet-mlx is not
-installed, transcribe.mjs auto-falls-back to whisper.cpp (99 languages) via
-`hyperframes transcribe`. `--engine parakeet|whisper` forces one. (Cohere
+VERIFIED on 24GB: accurate, ~3s (cached) for 8s audio. Parakeet covers 25
+European languages, English included. For other languages, or when parakeet-mlx is not
+installed, transcribe.mjs falls back to `hyperframes transcribe`, which uses the
+CLI's Parakeet when `models install parakeet` has run and whisper.cpp (99
+languages) otherwise. `--engine parakeet|whisper` forces one. (Cohere
 Transcribe tops the leaderboard on paper but its mlx-audio quants produced
 garbage and ran 40-70x slower on a Mac in testing, so it is not wired in.)
 
@@ -145,9 +147,10 @@ Use `--plan` first when you want to inspect the kept segment JSON before encodin
 
 ## Ducking (declare in-composition / bake for export)
 
-B1, declare ducking in the composition. `audio-duck.mjs` emits GSAP volume
-keyframes. Paste them into the composition timeline, the source file stays
-untouched.
+B1, declare ducking in the composition. `audio-duck.mjs` emits a volume lane
+as a `data-automation` attribute. Add it to the background `<audio>` element;
+the source file stays untouched. Lane times are clip-local, so pass
+`--composition` to let the script subtract the element's `data-start`.
 
 ```bash
 node <SKILL_DIR>/scripts/audio-duck.mjs \
@@ -156,10 +159,9 @@ node <SKILL_DIR>/scripts/audio-duck.mjs \
   --composition index.html
 ```
 
-```js
-// auto-duck: #bgm under narration (generated; base volume 0.6)
-tl.to("#bgm", { volume: 0.15, duration: 0.15 }, 3.42);
-tl.to("#bgm", { volume: 0.6, duration: 0.4 }, 9.87);
+```html
+<!-- auto-duck: #bgm under narration; add to its <audio> element -->
+data-automation='{"version":1,"lanes":[{"target":"volume","points":[{"t":0,"v":0.6},{"t":3.42,"v":0.6},{"t":3.57,"v":0.15},{"t":9.87,"v":0.15},{"t":10.27,"v":0.6}]}]}'
 ```
 
 B2, bake ducking only for exported or standalone files.

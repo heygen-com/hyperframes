@@ -6,11 +6,11 @@ import * as clack from "@clack/prompts";
 import open from "open";
 import type { Example } from "./_examples.js";
 import { trackCatalogSearchMiss, trackRenderFeedback } from "../telemetry/events.js";
-import { shouldTrack, flush } from "../telemetry/client.js";
+import { shouldTrack } from "../telemetry/client.js";
 import { getDoctorSummary } from "../telemetry/feedback.js";
 import { readConfig, type RecentRenderRecord } from "../telemetry/config.js";
 import { publishProjectArchive } from "../utils/publishProject.js";
-import { submitFeedback } from "../utils/submitFeedback.js";
+import { submitCatalogSearchMiss, submitFeedback } from "../utils/submitFeedback.js";
 import { buildIssueUrl, HYPERFRAMES_REPO_URL } from "../utils/feedbackIssue.js";
 import { VERSION } from "../version.js";
 import { c } from "../ui/colors.js";
@@ -205,13 +205,13 @@ export default defineCommand({
         console.log(c.dim("Telemetry is disabled. Nothing sent."));
         return;
       }
-      trackCatalogSearchMiss({
-        query: searchMiss,
-        wanted: normalizeComment(args.wanted),
-        tier: normalizeComment(args.tier),
-      });
-      await flush();
+      const wanted = normalizeComment(args.wanted);
+      const tier = normalizeComment(args.tier);
+      trackCatalogSearchMiss({ query: searchMiss, wanted, tier });
+      // Ack before the forward, which is best-effort and bounded, so the
+      // reporter is never left waiting on it.
       console.log(c.dim("Logged the gap. Thanks — that is how the catalog grows."));
+      await submitCatalogSearchMiss({ query: searchMiss, wanted, tier, cliVersion: VERSION });
       return;
     }
 
@@ -258,7 +258,6 @@ export default defineCommand({
       recentRenderIds: config.recentRenders?.map((r) => r.id),
     });
 
-    await flush();
     // Ack first so the user isn't kept waiting on the best-effort forward (which
     // is bounded to a few seconds and never surfaces an error either way).
     console.log(c.dim("Thanks for the feedback!"));

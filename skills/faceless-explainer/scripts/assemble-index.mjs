@@ -6,8 +6,7 @@
 //
 // index.html is a *standalone* composition (root <div id="root"> directly in
 // <body>, no <template> wrapper — template is for sub-comps). Structure is
-// modeled on the canonical fixture packages/studio/fixtures/storyboard-sample/
-// index.html and the authoritative head/audio template in
+// modeled on the canonical fixture project index.html and the authoritative head/audio template in
 // packages/core/docs/quickstart-template.html. Frame mount order = STORYBOARD
 // document order. Transitions are NOT written here — the transitions injector
 // mutates this file afterward (data-start/duration/track-index + GSAP).
@@ -58,7 +57,7 @@ import { parseStoryboard } from "./lib/storyboard.mjs";
 import { parseFormat } from "./lib/dimensions.mjs";
 import { stageAssets } from "./lib/assets.mjs";
 import { parseColors, semanticColors } from "./lib/tokens.mjs";
-import { bgmDefaultVolume } from "../../media-use/audio/scripts/lib/bgm.mjs";
+import { bgmDefaultVolume } from "./lib/bgm-volume.mjs";
 
 // ---------- argv ----------
 const argv = process.argv.slice(2);
@@ -92,7 +91,10 @@ function ensureBgmCovers(relPath, hyperframesDir, total) {
   if (!Number.isFinite(dur) || dur <= 0)
     return { looped: false, short: false, reason: "unreadable duration" };
   if (dur >= total - 0.1) return { looped: false, short: false, dur }; // already covers
-  const relOut = relPath.replace(/\.([^./]+)$/, ".loop.$1");
+  // Always emit .mp3: the encode below is libmp3lame regardless of the source
+  // extension, so preserving relPath's own extension (e.g. "bgm.wav") would
+  // smuggle an MP3 stream into a .wav-named file (PRINFRA-309).
+  const relOut = relPath.replace(/\.([^./]+)$/, ".loop.mp3");
   const absOut = join(hyperframesDir, relOut);
   const fadeOut = Math.max(0, total - 1.5);
   const ff = spawnSync(

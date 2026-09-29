@@ -1,5 +1,10 @@
 import { execFile } from "node:child_process";
 import { extname } from "node:path";
+import {
+  firstFrameColourArgs,
+  parseFirstFrameColour,
+  type ToneMapSourceColour,
+} from "@hyperframes/core";
 import { findFfBinary } from "@hyperframes/parsers/ff-binaries";
 
 export interface FfprobeRunResult {
@@ -28,7 +33,7 @@ const execFileRunner: FfprobeRunner = (command, args, options) =>
     execFile(
       command,
       args,
-      { timeout: options?.timeout, maxBuffer: options?.maxBuffer },
+      { timeout: options?.timeout, maxBuffer: options?.maxBuffer, windowsHide: true },
       (error, stdout, stderr) => {
         if (error && error.code === "ENOENT") {
           resolvePromise({ status: null, stdout: "", stderr: "", error });
@@ -66,6 +71,8 @@ export interface MediaColorMetadata {
 export interface MediaMetadata {
   kind: "video" | "image" | "audio" | "unknown";
   color: MediaColorMetadata;
+  /** Video audio stream, when probed. Absent means the drop path stays muted. */
+  hasAudio?: boolean;
   probeError?: string;
 }
 
@@ -94,7 +101,7 @@ const VIDEO_EXT = new Set([
   ".ts",
 ]);
 const IMAGE_EXT = new Set([".jpg", ".jpeg", ".png", ".webp", ".avif"]);
-const AUDIO_EXT = new Set([".mp3", ".wav", ".ogg", ".m4a", ".aac"]);
+const AUDIO_EXT = new Set([".mp3", ".wav", ".ogg", ".m4a", ".aac", ".flac"]);
 
 function lower(value: string | undefined): string {
   return value?.toLowerCase() ?? "";
@@ -175,6 +182,22 @@ export function classifyMediaColor(stream: FfprobeStream | null | undefined): Me
   };
 }
 
+/** The first shown frame's colour tags, which zscale reads per frame. Empty when unread. */
+export async function probeFirstFrameColour(
+  filePath: string,
+  runner: FfprobeRunner = execFileRunner,
+): Promise<ToneMapSourceColour> {
+  const ffmpegPath =
+    findFfBinary("ffmpeg", { configuredMustExist: true }) ??
+    (runner === execFileRunner ? undefined : "ffmpeg");
+  if (!ffmpegPath) return {};
+  const result = await runner(ffmpegPath, firstFrameColourArgs(filePath), {
+    timeout: 15_000,
+    maxBuffer: 1024 * 1024,
+  });
+  return result.status === 0 ? parseFirstFrameColour(String(result.stderr)) : {};
+}
+
 export async function probeMediaMetadata(
   filePath: string,
   runner: FfprobeRunner = execFileRunner,
@@ -221,7 +244,11 @@ export async function probeMediaMetadata(
       if (kind === "image") return item.codec_type === "video";
       return item.codec_type === kind && item.disposition?.attached_pic !== 1;
     });
-    return { kind, color: classifyMediaColor(stream) };
+    const metadata: MediaMetadata = { kind, color: classifyMediaColor(stream) };
+    if (kind === "video") {
+      metadata.hasAudio = (parsed.streams ?? []).some((item) => item.codec_type === "audio");
+    }
+    return metadata;
   } catch {
     return { kind, color: classifyMediaColor(null), probeError: "ffprobe returned invalid json" };
   }

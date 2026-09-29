@@ -852,8 +852,7 @@ async function streamVideo(
   destPath: string,
   asJson: boolean,
 ): Promise<{ bytes: number }> {
-  // `downloadToFile` already creates the parent directory and cleans
-  // up the partial file on error — no pre-mkdir needed here.
+  // `downloadToFile` creates the parent directory and preserves existing output on failure.
   if (!asJson) {
     console.log("");
     console.log(`${c.accent("◆")}  Downloading to ${c.accent(destPath)}`);

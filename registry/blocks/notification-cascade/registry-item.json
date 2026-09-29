@@ -57,7 +57,8 @@
       "type": "string",
       "role": "content",
       "label": "App name",
-      "description": "Small credit in the corner of every banner.",
+      "description": "Name of the brand this video promotes, credited in the corner of every banner. Use the real name of that brand.",
+      "portrays": ["subject_name"],
       "default": "HyperFrames"
     },
     {
@@ -81,7 +82,8 @@
       "type": "string",
       "role": "content",
       "label": "End-card footer",
-      "description": "URL or call to action under the headline.",
+      "description": "Domain of the brand this video promotes, under the end-card headline. Use the real domain, or a call to action when no domain fits.",
+      "portrays": ["subject_domain"],
       "default": "hyperframes.heygen.com"
     },
     {
@@ -89,7 +91,8 @@
       "type": "image",
       "role": "content",
       "label": "Brand logo",
-      "description": "Transparent logo centered on the closing card.",
+      "description": "Transparent mark of the brand this video promotes, centered on the closing card.",
+      "portrays": ["subject_logo"],
       "default": "assets/hyperframes-logo-white.svg"
     }
   ],

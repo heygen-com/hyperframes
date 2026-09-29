@@ -1,4 +1,4 @@
-import { useRef, type ReactNode, type RefObject } from "react";
+import { useEffect, useRef, type ReactNode, type RefObject } from "react";
 import { InlineTextToolbar } from "./InlineTextToolbar";
 import { useDomEditActionsContextOptional } from "../../contexts/DomEditContext";
 import { useInlineTextEdit } from "../../hooks/useInlineTextEdit";
@@ -12,6 +12,8 @@ import {
 } from "./domEditInlineText";
 import type { DomEditSelection } from "./domEditingTypes";
 
+type KeyChord = Pick<KeyboardEvent, "key" | "shiftKey" | "ctrlKey" | "metaKey" | "altKey">;
+
 /**
  * The canvas' side of editing text where it sits.
  *
@@ -23,18 +25,15 @@ import type { DomEditSelection } from "./domEditingTypes";
  * props, the same way the agent surfaces in that overlay read it, and it is
  * absent in standalone player mounts, which have no project to edit.
  */
-export function useInlineTextEditing(selectionRef: RefObject<DomEditSelection | null>): {
+export function useInlineTextEditing(
+  selectionRef: RefObject<DomEditSelection | null>,
+  { enterFromWindow = false }: { enterFromWindow?: boolean } = {},
+): {
   editing: boolean;
   /** Open an edit when this press pairs with the last one. */
   startFromPress: (event: { clientX: number; clientY: number }) => boolean;
   /** Handle a key on the canvas. Returns true when it opened an edit. */
-  handleKeyDown: (event: {
-    key: string;
-    shiftKey: boolean;
-    ctrlKey: boolean;
-    metaKey: boolean;
-    altKey: boolean;
-  }) => boolean;
+  handleKeyDown: (event: KeyChord) => boolean;
   /**
    * The styling controls for the current selection, for the caller to render.
    *
@@ -62,10 +61,8 @@ export function useInlineTextEditing(selectionRef: RefObject<DomEditSelection | 
   const elementUnderPress = (event: { clientX: number; clientY: number }) => {
     const iframe = actions?.previewIframeRef?.current;
     if (!iframe) return null;
-    // Studio suppresses pointer events inside the composition so the canvas
-    // overlay can own input, which means a plain elementFromPoint only ever
-    // finds wrappers. This helper lifts that for the length of the hit test,
-    // and is the same one the canvas uses to decide what was clicked.
+    // The same hit test the canvas uses to decide what was clicked; a plain
+    // elementFromPoint only finds wrappers, since Studio suppresses pointer events.
     return getPreviewTargetFromPointer(
       iframe,
       event.clientX,
@@ -84,6 +81,32 @@ export function useInlineTextEditing(selectionRef: RefObject<DomEditSelection | 
     return { x: (event.clientX - box.left) / scale, y: (event.clientY - box.top) / scale };
   };
 
+  // Enter opens the selected element's text, the way every design tool does,
+  // and is the dependable way in: a double press has to survive the canvas'
+  // gesture machinery, while this is one key on a selection that has settled.
+  const handleKeyDown = (event: KeyChord) => {
+    if (event.key !== "Enter" || event.shiftKey || event.ctrlKey || event.metaKey || event.altKey)
+      return false;
+    const target = selectionRef.current;
+    if (inlineText.session || !target || !canEditTextInline(target)) return false;
+    return inlineText.start(target.element);
+  };
+  const handleKeyDownRef = useRef(handleKeyDown);
+  handleKeyDownRef.current = handleKeyDown;
+  // A host-mode canvas takes no presses of its own, so it is rarely focused;
+  // with nothing focused, Enter comes via the window.
+  useEffect(() => {
+    if (!enterFromWindow) return;
+    const onKeyDown = (event: KeyboardEvent) => {
+      const { body, documentElement } = window.document;
+      if (event.defaultPrevented || (event.target !== body && event.target !== documentElement))
+        return;
+      if (handleKeyDownRef.current(event)) event.preventDefault();
+    };
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [enterFromWindow]);
+
   return {
     editing: inlineText.session !== null,
     toolbar: (
@@ -92,16 +115,7 @@ export function useInlineTextEditing(selectionRef: RefObject<DomEditSelection | 
         iframe={actions?.previewIframeRef?.current ?? null}
       />
     ),
-    // Enter opens the selected element's text, the way every design tool does,
-    // and is the dependable way in: a double press has to survive the canvas'
-    // gesture machinery, while this is one key on a selection that has settled.
-    handleKeyDown: (event) => {
-      if (event.key !== "Enter" || event.shiftKey || event.ctrlKey || event.metaKey || event.altKey)
-        return false;
-      const target = selectionRef.current;
-      if (inlineText.session || !target || !canEditTextInline(target)) return false;
-      return inlineText.start(target.element);
-    },
+    handleKeyDown,
     startFromPress: (event) => {
       if (inlineText.session) return false;
       const element = elementUnderPress(event);

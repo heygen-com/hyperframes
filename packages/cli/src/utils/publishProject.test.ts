@@ -283,6 +283,35 @@ describe("createPublishArchive", () => {
     }
   });
 
+  it("allows .hyperframesignore to re-include a hidden directory", () => {
+    const dir = makeProjectDir();
+    try {
+      writeFileSync(join(dir, "index.html"), "<html></html>", "utf-8");
+      mkdirSync(join(dir, ".media"));
+      writeFileSync(join(dir, ".media", "logo.png"), "logo", "utf-8");
+      writeFileSync(join(dir, ".hyperframesignore"), "!/.media/\n!/.media/**\n", "utf-8");
+
+      const zip = new AdmZip(createPublishArchive(dir).buffer);
+      expect(zip.getEntries().map((entry) => entry.entryName)).toContain(".media/logo.png");
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it("still excludes an unmatched hidden directory by default", () => {
+    const dir = makeProjectDir();
+    try {
+      writeFileSync(join(dir, "index.html"), "<html></html>", "utf-8");
+      mkdirSync(join(dir, ".cache"));
+      writeFileSync(join(dir, ".cache", "entry.bin"), "cache", "utf-8");
+
+      const zip = new AdmZip(createPublishArchive(dir).buffer);
+      expect(zip.getEntries().map((entry) => entry.entryName)).not.toContain(".cache/entry.bin");
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
   it("fails clearly when .hyperframesignore excludes index.html", () => {
     const dir = makeProjectDir();
     try {

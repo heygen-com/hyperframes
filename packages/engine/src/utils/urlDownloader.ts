@@ -162,7 +162,7 @@ function classifyDownloadFailure(error: unknown): UrlDownloadError {
       return new UrlDownloadError(
         "network",
         true,
-        "Download failed due to a transient network error",
+        `Download failed due to a transient network error${describeCause(current)}`,
       );
     }
     current =
@@ -173,8 +173,18 @@ function classifyDownloadFailure(error: unknown): UrlDownloadError {
   return new UrlDownloadError(
     "filesystem",
     false,
-    "Download failed while writing the local artifact",
+    `Download failed while writing the local artifact${describeCause(error)}`,
   );
+}
+
+// Only the error's name and code: its message can carry the signed request URL.
+function describeCause(error: unknown): string {
+  const name = error instanceof Error && /^[A-Za-z]{1,40}$/.test(error.name) ? error.name : "";
+  const rawCode =
+    typeof error === "object" && error !== null && "code" in error ? error.code : undefined;
+  const code = typeof rawCode === "string" && /^[A-Z0-9_]{1,40}$/.test(rawCode) ? rawCode : "";
+  const tag = [name, code].filter(Boolean).join(" ");
+  return tag ? ` (${tag})` : "";
 }
 
 const RETRYABLE_NETWORK_CODES = new Set(["ECONNRESET", "ECONNREFUSED", "ETIMEDOUT", "EAI_AGAIN"]);
@@ -226,9 +236,19 @@ for (const [network, prefix] of [
   NON_PUBLIC_IPV6_ADDRESSES.addSubnet(network, prefix, "ipv6");
 }
 
-function isBlockedHost(hostname: string): boolean {
-  const h = hostname.toLowerCase().replace(/^\[|\]$/g, "");
-  if (h === "localhost") return true;
+/** Literal-host policy shared by rendering and capture; DNS resolution remains trusted. */
+export function isBlockedNetworkHost(hostname: string): boolean {
+  const h = hostname
+    .toLowerCase()
+    .replace(/\.$/, "")
+    .replace(/^\[|\]$/g, "");
+  if (
+    h === "localhost" ||
+    h.endsWith(".localhost") ||
+    h.endsWith(".local") ||
+    h.endsWith(".internal")
+  )
+    return true;
   const addressType = isIP(h);
   if (addressType === 0) return false;
   return addressType === 4
@@ -251,7 +271,7 @@ export function assertPublicHttpsUrl(url: string): void {
   if (parsed.protocol !== "https:") {
     throw new Error(`[URLDownloader] Only HTTPS URLs are permitted in compositions`);
   }
-  if (isBlockedHost(parsed.hostname)) {
+  if (isBlockedNetworkHost(parsed.hostname)) {
     throw new Error("[URLDownloader] URL targets a private/reserved address and is not permitted");
   }
 }
@@ -858,7 +878,11 @@ async function fetchToPartial(
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const readableStream = Readable.fromWeb(response.body as any);
   const fileStream = createWriteStream(partialPath, { flags: "wx" });
-  await pipeline(readableStream, inspector, fileStream);
+  // The signal makes the attempt's deadline authoritative. Without it, the abort only
+  // reaches the fetch, and the pipeline depends on the web-to-Node bridge to pass it on:
+  // Bun 1.3.9's Readable.fromWeb can stop reading and never settle, and Bun 1.4.2's ends an
+  // aborted body as if it were complete, which a chunked response would publish truncated.
+  await pipeline(readableStream, inspector, fileStream, { signal: controller.signal });
   const localSize = statSync(partialPath).size;
   const sha256Bytes = sha256.digest();
   const localSha256 = sha256Bytes.toString("hex");
@@ -1113,7 +1137,22 @@ async function downloadWithRetry(
       return await runDownloadAttempt(url, localPath, timeoutMs, attempt + 1, options, signal);
     } catch (error) {
       const classified = classifyDownloadFailure(error);
-      if (!classified.locallyRetryable || attempt >= maxTransientRetries) throw classified;
+      if (!classified.locallyRetryable || attempt >= maxTransientRetries) {
+        const identity = safeDownloadUrlIdentity(url);
+        throw new UrlDownloadError(
+          classified.kind,
+          classified.retryable,
+          classified.message,
+          classified.status,
+          {
+            ...classified.telemetry,
+            urlFingerprint: identity.urlFingerprint,
+            initialHost: identity.host,
+            attempt: attempt + 1,
+          },
+          classified.locallyRetryable,
+        );
+      }
       if (classified.retryable) onTransientRetry?.(classified);
       const identity = safeDownloadUrlIdentity(url);
       emitDownloadTelemetry(options, {

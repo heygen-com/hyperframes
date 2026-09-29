@@ -107,6 +107,13 @@ jobs:
         if: matrix.shard == 'parity'
         uses: ./.github/actions/install-ffmpeg-linux
 
+      - name: Verify sandbox origin boundary (load shard only)
+        if: matrix.shard == 'load'
+        working-directory: packages/player
+        env:
+          PUPPETEER_EXECUTABLE_PATH: ${{ steps.setup-chrome.outputs.chrome-path }}
+        run: bun run test:browser-security
+
       - name: Run player perf — ${{ matrix.shard }} (measure mode)
         working-directory: packages/player
         env:

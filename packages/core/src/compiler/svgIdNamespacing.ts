@@ -1,60 +1,9 @@
 /**
- * Namespace COLLIDING SVG element ids after sub-composition inline.
- *
- * An element `id` is only unique within one composition FILE. The assembled
- * render/preview document is the inlined union of every file, so two nested
- * scenes that each declare their own `<clipPath id="clip">`, `<symbol
- * id="shape">` or `<filter id="fx">` — legal per file, and invisible to
- * `hyperframes check` — collide once inlined. Catalog blocks make this easy
- * to hit by accident: a block's markup hardcodes ids like
- * `url(#tracing-beam-glow)`, so using the SAME block twice collides without
- * the author duplicating anything by hand.
- *
- * `getElementById` was already scoped per composition in #646 (see
- * `compositionScoping.ts`'s `__hfGetElementById` shim) and media pipeline ids
- * were disambiguated with a parallel `data-hf-render-id` attribute in #3340
- * (`mediaRenderIds.ts`). Neither covers `url(#id)` funcrefs (`clip-path`,
- * `filter`, `mask`, `fill`, `stroke`, `marker-start/mid/end`, `cursor`,
- * `mask-image`, …) or bare `#id` fragment refs (`<use href="#id">`, `<a
- * href="#id">`, `<pattern>`/`<textPath>` `href`): those are resolved by the
- * BROWSER'S NATIVE SVG/CSS engine, which always binds to the first element in
- * DOCUMENT ORDER carrying that literal `id` attribute. No JS proxy can
- * intercept native resolution, so unlike the two fixes above, this one
- * actually renames the `id` attribute.
- *
- * Renaming is deliberately narrow, because a renamed id also disappears from
- * every author-side lookup (`svg.querySelector("#shape")`, `gsap.to("#shape")`)
- * that used to find it. Two independent gates decide whether an element is
- * renamed:
- *
- * 1. COLLISION-DRIVEN. An id is only renamed when the merged document would
- *    otherwise carry it more than once. A composition whose ids are already
- *    document-unique — including every single-composition project — comes
- *    out with its ids byte-for-byte unchanged. Among the colliding elements
- *    ONE keeps the original id (the "keeper"): the first element in document
- *    order that this module cannot rename (outside every inlined scope, or
- *    not natively referenced — see gate 2), or else simply the first element
- *    in document order. Native resolution binds to the first match in
- *    document order, so the keeper's own references keep resolving to it;
- *    every other renamable duplicate gets a document-unique id and has its
- *    references rewritten to match.
- *
- * 2. DEMAND-DRIVEN. Only ids that have a native `url(#id)` / `href="#id"`
- *    reference inside their own composition are renamable. An id referenced
- *    exclusively by JavaScript (e.g. GSAP's `tl.to("#cut-1")`) is never
- *    renamed: global libraries reach `document.querySelector` directly and
- *    bypass the composition-scoped Proxy, so a renamed JS-only id becomes
- *    unreachable. The residual cost of this gate is documented in
- *    `collectNativelyReferencedIds`.
- *
- * Every renamed element keeps its original id on `data-hf-authored-id` — the
- * attribute `__hfGetElementById`'s fallback already checks (introduced in
- * #646 for the composition ROOT's own id; reused here for any descendant).
- * The composition-scoped script runtime in `compositionScoping.ts` reads the
- * same attribute to keep `#authoredId` selectors resolving through the scoped
- * `document` proxy, the GSAP proxy and `Element.prototype.querySelector*`,
- * and `rewriteSvgIdReferencesInCss` below rewrites the composition's own
- * `<style>` text to match.
+ * Native SVG url()/href references resolve by document order, bypassing JS scoping.
+ * Rename only colliding, natively referenced SVG ids; leave JS-only ids reachable
+ * by libraries that bypass the scoped selector shim. The first unrenamable element
+ * keeps the authored id (otherwise the first element does). Renamed elements retain
+ * data-hf-authored-id for script lookup compatibility.
  */
 
 import postcss from "postcss";
@@ -97,7 +46,7 @@ function sanitizeNamespaceSegment(value: string): string {
 }
 
 function rewriteUrlHashRefs(value: string, idMap: ReadonlyMap<string, string>): string {
-  if (!value || !value.includes("url(")) return value;
+  if (!value || !value.toLowerCase().includes("url(")) return value;
   return value.replace(URL_HASH_REF_RE, (full, pre, quote, id: string, post) => {
     const mapped = idMap.get(id);
     return mapped ? `${pre}${quote}#${mapped}${quote}${post}` : full;
@@ -126,7 +75,7 @@ function rewriteElementIdReferences(el: Element, idMap: ReadonlyMap<string, stri
         continue;
       }
     }
-    if (value.includes("url(")) {
+    if (value.toLowerCase().includes("url(")) {
       const rewritten = rewriteUrlHashRefs(value, idMap);
       if (rewritten !== value) el.setAttribute(name, rewritten);
     }
@@ -219,11 +168,12 @@ function collectNativelyReferencedIds(
     for (const attr of el.attributes ? Array.from(el.attributes) : []) {
       if (!attr.value) continue;
       collectHrefFragmentRef(attr, svgIds, referenced);
-      if (attr.value.includes("url(")) collectUrlHashRefsFromText(attr.value, svgIds, referenced);
+      if (attr.value.toLowerCase().includes("url("))
+        collectUrlHashRefsFromText(attr.value, svgIds, referenced);
     }
   }
   for (const text of cssTexts) {
-    if (text.includes("url(")) collectUrlHashRefsFromText(text, svgIds, referenced);
+    if (text.toLowerCase().includes("url(")) collectUrlHashRefsFromText(text, svgIds, referenced);
   }
   return referenced;
 }
@@ -364,8 +314,8 @@ function applyRenames(resolved: ResolvedScope, idMap: ReadonlyMap<string, string
  * Returns one old-id -> new-id map per scope, in the same order, so the
  * caller can apply the identical substitution to that instance's separately
  * extracted `<style>` text via `rewriteSvgIdReferencesInCss`, which this
- * function never sees. A scope whose ids never collide gets an empty map and
- * is not mutated at all.
+ * function never sees. Maps include inherited references whose original target
+ * was renamed elsewhere; scopes with local definitions keep their own mapping.
  *
  * `document` must be the ASSEMBLED document every scope root lives in: the
  * collision census covers the whole thing, including ids the top-level
@@ -390,10 +340,24 @@ export function namespaceCollidingSvgIds(
   if (scopeIndexByRenamable.size === 0) return untouched;
 
   const idMaps = planRenames(census, scopes, scopeIndexByRenamable);
-  idMaps.forEach((idMap, index) => {
+  // A reference without a local definition keeps its original document-order target,
+  // even if that target was renamed in an ancestor or another composition.
+  const referenceMaps = resolved.map((scope, index) => {
+    const references = new Map(idMaps[index]);
+    const localIds = new Set(scope.elements.map((el) => el.getAttribute(ID_ATTR)));
+    for (const [id, elements] of census.elementsById) {
+      if (localIds.has(id)) continue;
+      const targetScope = scopeIndexByRenamable.get(elements[0]!);
+      if (targetScope === undefined) continue;
+      const mapped = idMaps[targetScope]!.get(id);
+      if (mapped) references.set(id, mapped);
+    }
+    return references;
+  });
+  referenceMaps.forEach((idMap, index) => {
     if (idMap.size > 0) applyRenames(resolved[index]!, idMap);
   });
-  return idMaps;
+  return referenceMaps;
 }
 
 /**
@@ -433,7 +397,7 @@ export function rewriteSvgIdReferencesInCss(
   idMap: ReadonlyMap<string, string>,
 ): string {
   if (!css || idMap.size === 0) return css;
-  if (!css.includes("#") && !css.includes("url(")) return css;
+  if (!css.includes("#") && !css.toLowerCase().includes("url(")) return css;
 
   let root: postcss.Root;
   try {

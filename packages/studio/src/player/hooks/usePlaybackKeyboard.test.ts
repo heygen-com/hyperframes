@@ -1,4 +1,5 @@
 // @vitest-environment happy-dom
+// fallow-ignore-file code-duplication
 
 import React, { act, useEffect } from "react";
 import { createRoot } from "react-dom/client";
@@ -170,6 +171,39 @@ describe("usePlaybackKeyboard — keyboard layout independence (#834)", () => {
     });
 
     expect(spies.play).toHaveBeenCalledTimes(1);
+  });
+
+  it("'A' does not seek to the in-point while the razor tool is armed, so it's free for the razor's own return-to-select binding", () => {
+    const { dispatch, spies } = setupHook();
+    usePlayerStore.setState({ inPoint: 1.5, activeTool: "razor" });
+
+    act(() => {
+      dispatch(keydown({ code: "KeyA", key: "a" }));
+    });
+
+    expect(spies.seek).not.toHaveBeenCalled();
+  });
+
+  it("'A' still seeks to the in-point when the razor tool isn't armed", () => {
+    const { dispatch, spies } = setupHook();
+    usePlayerStore.setState({ inPoint: 1.5, activeTool: "select" });
+
+    act(() => {
+      dispatch(keydown({ code: "KeyA", key: "a" }));
+    });
+
+    expect(spies.seek).toHaveBeenCalledWith(1.5, { keepPlaying: true });
+  });
+
+  it("Shift+A still seeks to the in-point while the razor is armed, since only plain A exits the razor", () => {
+    const { dispatch, spies } = setupHook();
+    usePlayerStore.setState({ inPoint: 1.5, activeTool: "razor" });
+
+    act(() => {
+      dispatch(keydown({ code: "KeyA", key: "a", shiftKey: true }));
+    });
+
+    expect(spies.seek).toHaveBeenCalledWith(1.5, { keepPlaying: true });
   });
 });
 

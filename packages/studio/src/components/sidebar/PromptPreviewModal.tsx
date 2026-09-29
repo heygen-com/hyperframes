@@ -46,7 +46,7 @@ export function PromptPreviewModal({
 
   return (
     <div
-      className={`fixed inset-0 z-[100] flex items-center justify-center bg-black/60 backdrop-blur-sm transition-opacity duration-150 ease-out ${
+      className={`fixed inset-0 z-100 flex items-center justify-center bg-black/60 backdrop-blur-xs transition-opacity duration-150 ease-out ${
         entered ? "opacity-100" : "opacity-0"
       }`}
       onClick={requestClose}
@@ -57,7 +57,7 @@ export function PromptPreviewModal({
         aria-modal="true"
         aria-label={`Ask agent — ${title}`}
         tabIndex={-1}
-        className="w-[560px] max-h-[80vh] flex flex-col rounded-2xl border border-neutral-800 bg-neutral-950 shadow-2xl outline-none"
+        className="w-[560px] max-h-[80vh] flex flex-col rounded-2xl border border-neutral-800 bg-neutral-950 shadow-2xl outline-hidden"
         onClick={(e) => e.stopPropagation()}
       >
         <div className="flex items-center justify-between px-5 py-4 border-b border-neutral-800/60">
@@ -96,7 +96,7 @@ export function PromptPreviewModal({
             onKeyDown={(e) => {
               if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) void handleCopy();
             }}
-            className="w-full min-h-[240px] text-[11px] text-neutral-200 leading-relaxed font-mono bg-neutral-900/60 rounded-lg p-3 border border-neutral-800 resize-y focus:outline-none focus:border-studio-accent/60 focus:ring-1 focus:ring-studio-accent/30"
+            className="w-full min-h-[240px] text-[11px] text-neutral-200 leading-relaxed font-mono bg-neutral-900/60 rounded-lg p-3 border border-neutral-800 resize-y focus:outline-hidden focus:border-studio-accent/60 focus:ring-1 focus:ring-studio-accent/30"
           />
         </div>
         <div className="flex items-center justify-between px-5 py-3 border-t border-neutral-800/60">

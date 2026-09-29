@@ -23,7 +23,7 @@ const W = "duotone" as const;
 
 export function FileIcon({ path }: { path: string }) {
   const ext = path.split(".").pop()?.toLowerCase() ?? "";
-  const c = "flex-shrink-0";
+  const c = "shrink-0";
   if (ext === "html") return <FileHtml size={SZ} weight={W} color="#E44D26" className={c} />;
   if (ext === "css") return <FileCss size={SZ} weight={W} color="#264DE4" className={c} />;
   if (ext === "js" || ext === "mjs" || ext === "cjs")

@@ -96,7 +96,8 @@ test("keyframes states truthful creator capabilities and ownership boundaries", 
   );
   assert.match(keyframes, /non-timed|non-clip/);
   assert.match(keyframes, /wrapper inside the clip|inner.*wrapper/i);
-  assert.match(keyframes, /speed ramps?[\s\S]{0,300}(not supported|preprocess)/i);
+  assert.match(keyframes, /speed ramps?[\s\S]{0,80}`rate` lane in `data-automation`/i);
+  assert.match(keyframes, /speed ramps?[\s\S]{0,220}wins over the constant/i);
   assert.match(keyframes, /arbitrary mid-source freeze[\s\S]{0,300}(not supported|preprocess)/i);
   assert.doesNotMatch(keyframes, /keyframe(?:d|ing)?\s+(?:the\s+)?data-playback-rate/i);
 });
@@ -132,7 +133,8 @@ test("audio skill owns placed-track fades, automation, ducking, and effects", as
     files.audio,
   );
   assert.match(audio, /constant.*playback rate|data-playback-rate/i);
-  assert.match(audio, /speed ramps?[\s\S]{0,220}(not supported|preprocess)/i);
+  assert.match(audio, /speed ramps?[\s\S]{0,80}`rate` lane in `data-automation`/i);
+  assert.match(audio, /speed ramps?[\s\S]{0,220}wins over the constant/i);
 });
 
 test("WebAudio scheduling combines per-element and global transport playback rates", async () => {
@@ -241,7 +243,7 @@ test("creator editing recipes are copyable, owned, mathematical, and limitation-
       /final-source[\s\S]{0,100}subcomp[\s\S]{0,100}visual pose/i,
       /arbitrary mid-source[\s\S]{0,120}preprocess/i,
       /distinct tracks[\s\S]{0,120}overlap[\s\S]{0,120}opposing/i,
-      /same-track overlap[\s\S]{0,80}invalid/i,
+      /same-track overlap is valid/i,
       /inner wrapper[\s\S]{0,100}not[\s\S]{0,50}(clip element|timed clip)/i,
       /source cuts[\s\S]{0,80}hyperframes-core/i,
     ],

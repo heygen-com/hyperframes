@@ -14,6 +14,11 @@
 import { readFileSync } from "node:fs";
 
 import {
+  installedOptionalPackageVersion,
+  loadInstalledOptionalPackage,
+  loadOptionalPackage,
+} from "../utils/optionalPackages.js";
+import {
   LOCAL_MODEL_DIMENSIONS,
   QUERY_INSTRUCTION,
   localModelPath,
@@ -28,26 +33,29 @@ export interface LocalEmbedder {
 /** Long inputs are truncated rather than rejected; the model has a 512 token limit. */
 const MAX_TOKENS = 512;
 
+const FEATURE = "on-device search";
+
 /**
- * Is the native ONNX runtime reachable in this install?
- *
- * It cannot be bundled: a single-file build leaves `onnxruntime-node` as an
- * unresolved import, so on-device search is unavailable there no matter what
- * else is on disk. Checking costs one dynamic import and saves a pointless
- * 32 MB download.
+ * Installs the native ONNX runtime if it is missing and reports whether it can load.
+ * Called before the model download so a missing runtime does not waste 32 MB of bandwidth.
  */
-export async function localRuntimeAvailable(): Promise<boolean> {
+export async function ensureLocalRuntime(): Promise<{ ok: true } | { ok: false; reason: string }> {
   try {
-    await import("onnxruntime-node");
-    return true;
-  } catch {
-    return false;
+    await loadOptionalPackage("onnxruntime-node", FEATURE);
+    return { ok: true };
+  } catch (err) {
+    return { ok: false, reason: (err as Error).message };
   }
 }
 
+export function hasLocalRuntime(): boolean {
+  return installedOptionalPackageVersion("onnxruntime-node") !== null;
+}
+
+/** Loads what is installed and never installs: only ensureLocalRuntime does, after consent is settled. */
 export async function loadLocalEmbedder(): Promise<LocalEmbedder> {
-  // Imported lazily so the CLI does not pay for the ONNX runtime on every run.
-  const ort = await import("onnxruntime-node");
+  const ort = loadInstalledOptionalPackage("onnxruntime-node");
+  if (ort === null) throw new Error("the on-device runtime is not installed yet");
   const config = configFromTokenizerJson(readFileSync(localTokenizerPath(), "utf-8"));
   const session = await ort.InferenceSession.create(localModelPath());
 

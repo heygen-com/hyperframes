@@ -176,13 +176,21 @@ function mirrorToInstalledAgents(): void {
   try {
     const names = hyperframesSkillNames({ scope: "global" });
     if (names.length === 0) return;
-    const { mirrored } = mirrorGlobalSkills({ skills: names });
+    const { mirrored, skipped } = mirrorGlobalSkills({ skills: names });
     const n = mirrored.length;
     if (n > 0) {
       // stderr (via diag): reachable from `skills update --json` (via installSkills)
       // before the JSON envelope is written to stdout.
       diag.notice(
         c.dim(`Linked skills into ${n} other agent ${n === 1 ? "directory" : "directories"}.`),
+      );
+    }
+    if (skipped.length > 0) {
+      const agents = [...new Set(skipped.map((entry) => entry.agent))].join(", ");
+      diag.warn(
+        c.warn(
+          `Skipped unsafe skill mirror target${skipped.length === 1 ? "" : "s"} for ${agents}; canonical skill stores were left unchanged.`,
+        ),
       );
     }
   } catch {
@@ -301,7 +309,12 @@ export interface UpdateSkillsResult {
  *   - the requested names (a workflow being routed to, e.g. `pr-to-video`),
  *   - the core set (entry router + shared domain skills — see skillsManifest),
  *   - with `refreshInstalled`, whatever is already installed (refreshed, so an
- *     update never *expands* a deliberate partial install).
+ *     update never *expands* a deliberate partial install),
+ *   - with `all`, every skill the manifest publishes. The upstream `*` wildcard
+ *     is not used on any path: it also sweeps up the repo-internal skills under
+ *     `.claude/skills` / `.agents/skills` (26 installed vs 20 published,
+ *     observed 2026-09-04). Offline, where the published set is unknowable, the
+ *     full install warns and degrades to the pinned core set instead.
  *
  * Only targets that are actually missing or outdated are passed to
  * `skills add` (one spawn, one `--skill` flag per name); when everything is
@@ -313,6 +326,8 @@ export async function updateSkills(
   opts: {
     requested?: readonly string[];
     refreshInstalled?: boolean;
+    /** Every skill the manifest publishes (bare `hyperframes skills`). */
+    all?: boolean;
     strict?: boolean;
     cwd?: string;
   } = {},
@@ -347,7 +362,19 @@ export async function updateSkills(
     }
     check = null; // manifest unreachable (offline / rate-limited) — presence mode below
   }
-  if (!check) return updateSkillsOffline(requested, { strict, cwd: opts.cwd });
+  if (!check) {
+    if (opts.all) {
+      // The published set is unknowable offline. Say so and degrade to the
+      // pinned core set — never the upstream wildcard, which would quietly
+      // reinstate the 26-skill sweep this path exists to avoid.
+      clack.log.warn(
+        c.warn(
+          "Can't resolve the published skill set (manifest unreachable) — installing the pinned core set only. Re-run `hyperframes skills` online for the full set.",
+        ),
+      );
+    }
+    return updateSkillsOffline(requested, { strict, cwd: opts.cwd });
+  }
 
   // "removed" entries are lock-attributed leftovers, not manifest skills —
   // they are `skills update`'s prune concern, never an update target.
@@ -365,6 +392,7 @@ export async function updateSkills(
 
   const targets = manifestSkills.filter(
     (s) =>
+      opts.all === true ||
       requested.includes(s.name) ||
       isCoreSkill(s.name) ||
       (opts.refreshInstalled === true && s.status !== "missing"),
@@ -785,7 +813,7 @@ export default defineCommand({
     // the positional so bare `hyperframes skills` installs, while
     // `hyperframes skills check|update` does not also re-install.
     if (!args._?.[0]) {
-      await installSkills("*");
+      await updateSkills({ all: true });
       // Same as updateSkills: a full install supersedes the background
       // nudge's cached pre-install verdict.
       invalidateSkillsCache();

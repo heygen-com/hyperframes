@@ -1,9 +1,16 @@
-import { resolveConfig, type ExtractionResult, type VideoElement } from "@hyperframes/engine";
+import {
+  resolveConfig,
+  safeDownloadUrlIdentity,
+  type ExtractionResult,
+  type VideoElement,
+} from "@hyperframes/engine";
 import { describe, expect, it, vi } from "vitest";
+import type { ProducerLogger } from "../../../logger.js";
 
 const extractionCalls = vi.hoisted(
   () => new Array<{ timelineEnd: number | undefined; durationSeconds: number }>(),
 );
+const toneMapHdrToSdrCalls = vi.hoisted(() => new Array<boolean | undefined>());
 const fixtureState = vi.hoisted(() => ({ sourceDurationSeconds: 60 }));
 
 vi.mock("@hyperframes/engine", async (importOriginal) => {
@@ -13,7 +20,7 @@ vi.mock("@hyperframes/engine", async (importOriginal) => {
     extractAllVideoFrames: async (
       videos: VideoElement[],
       _baseDir: string,
-      options: { timelineEnd?: number },
+      options: { timelineEnd?: number; toneMapHdrToSdr?: boolean },
     ): Promise<ExtractionResult> => {
       const sourceDurationSeconds = fixtureState.sourceDurationSeconds;
       const video = videos[0];
@@ -30,6 +37,7 @@ vi.mock("@hyperframes/engine", async (importOriginal) => {
           : Math.min(resolvedDuration, Math.max(0, options.timelineEnd - video.start));
       video.end = video.start + durationSeconds;
       extractionCalls.push({ timelineEnd: options.timelineEnd, durationSeconds });
+      toneMapHdrToSdrCalls.push(options.toneMapHdrToSdr);
       return {
         success: true,
         extracted: [],
@@ -61,13 +69,17 @@ vi.mock("@hyperframes/engine", async (importOriginal) => {
 import { createRenderJob } from "../../renderOrchestrator.js";
 import { runExtractVideosStage } from "./extractVideosStage.js";
 
-async function runStage(compositionDuration: number, materializeSymlinks: boolean): Promise<void> {
+async function runStage(
+  compositionDuration: number,
+  materializeSymlinks: boolean,
+  options: { source?: string; log?: ProducerLogger } = {},
+): Promise<void> {
   const composition = {
     duration: compositionDuration,
     videos: [
       {
         id: "root-video",
-        src: "long.mp4",
+        src: options.source ?? "long.mp4",
         start: 0,
         end: Number.POSITIVE_INFINITY,
         mediaStart: 0,
@@ -89,6 +101,7 @@ async function runStage(compositionDuration: number, materializeSymlinks: boolea
       hdrMode: "force-sdr",
     }),
     cfg: resolveConfig(),
+    log: options.log,
     composition,
     abortSignal: undefined,
     assertNotAborted: () => {},
@@ -102,6 +115,7 @@ describe.each([
 ] as const)("%s video extraction timeline bound", (_mode, materializeSymlinks) => {
   it("caps an open 60-second source to a two-second composition", async () => {
     extractionCalls.splice(0);
+    toneMapHdrToSdrCalls.splice(0);
     fixtureState.sourceDurationSeconds = 60;
 
     await runStage(2, materializeSymlinks);
@@ -111,10 +125,51 @@ describe.each([
 
   it("keeps a two-second natural source inside a ten-second composition", async () => {
     extractionCalls.splice(0);
+    toneMapHdrToSdrCalls.splice(0);
     fixtureState.sourceDurationSeconds = 2;
 
     await runStage(10, materializeSymlinks);
 
     expect(extractionCalls).toEqual([{ timelineEnd: 10, durationSeconds: 2 }]);
+  });
+
+  it("requests HDR-to-SDR tone mapping for forced-SDR extraction", async () => {
+    extractionCalls.splice(0);
+    toneMapHdrToSdrCalls.splice(0);
+
+    await runStage(2, materializeSymlinks);
+
+    expect(toneMapHdrToSdrCalls).toEqual([true]);
+  });
+});
+
+describe("video extraction source logging", () => {
+  it("keeps the actual logger message source-free and emits only safe remote metadata", async () => {
+    const source =
+      "https://media.customer-cdn.example/private/clip.mp4?X-Amz-Signature=must-not-log#fragment";
+    const log = {
+      error: vi.fn(),
+      warn: vi.fn(),
+      info: vi.fn(),
+      debug: vi.fn(),
+    } satisfies ProducerLogger;
+
+    await runStage(2, false, { source, log });
+
+    const extractionCall = log.info.mock.calls.find(([message]) =>
+      message.startsWith("Extracting frames from video"),
+    );
+    expect(extractionCall).toEqual([
+      "Extracting frames from video 1/1",
+      {
+        sourceType: "remote",
+        sourceFingerprint: `sha256:${safeDownloadUrlIdentity(source).urlFingerprint}`,
+        host: "media.customer-cdn.example",
+      },
+    ]);
+    const serializedCall = JSON.stringify(extractionCall);
+    expect(serializedCall).not.toContain(source);
+    expect(serializedCall).not.toContain("must-not-log");
+    expect(serializedCall).not.toContain("/private/clip.mp4");
   });
 });

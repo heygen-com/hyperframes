@@ -1,4 +1,5 @@
 #!/usr/bin/env node
+import { stageCapturedFonts } from "./lib/captured-fonts.mjs";
 // captions.mjs — build the captions sub-composition from STORYBOARD + audio_meta.
 //
 // One mode: `build`. Reads STORYBOARD.md (frame order + durations → cumulative
@@ -263,7 +264,7 @@ function buildFromSkin(skin, groups, total, W, H, tokens, die, faces = "", fonts
   out = fillOnce(
     out,
     /var GROUPS = \[\];/,
-    `var GROUPS = ${JSON.stringify(groups)};`,
+    `var GROUPS = ${JSON.stringify(groups).replace(/</g, "\\u003c")};`,
     "`var GROUPS = [];` hole",
   );
   out = fillOnce(out, /var DURATION = 0;/, `var DURATION = ${total};`, "`var DURATION = 0;` hole");
@@ -344,7 +345,8 @@ function brandFontFaces(framePath, hyperframesDir) {
   // underscore/hyphen-named brand font (e.g. TT Norms Pro), which is exactly the
   // font_family_without_font_face bug.
   const norm = (s) => s.toLowerCase().replace(/[^a-z0-9]/g, "");
-  const faces = [];
+  const captured = stageCapturedFonts(hyperframesDir, families);
+  const faces = [...captured.faces];
   const seen = new Set();
   const claimed = new Set(); // each file is claimed by the MOST SPECIFIC family only
   // Match the longest family key first so "TT Norms Pro" can't swallow the files that
@@ -363,12 +365,13 @@ function brandFontFaces(framePath, hyperframesDir) {
         if (!/\.(woff2|woff|ttf|otf)$/i.test(f)) continue;
         if (claimed.has(f)) continue; // a more specific family already took this file
         if (!norm(f.replace(/\.(woff2|woff|ttf|otf)$/i, "")).startsWith(key)) continue;
+        claimed.add(f);
+        if (captured.families.has(fam.toLowerCase())) continue;
         const w = weightOf(f);
         const style = styleOf(f);
         const dedup = `${fam}-${w}-${style}`;
         if (seen.has(dedup)) continue; // one src per face; assets/fonts wins over capture
         seen.add(dedup);
-        claimed.add(f);
         faces.push(
           `      @font-face { font-family: '${fam}'; src: url('${d.rel}/${f}') format('${fmtOf(f)}'); font-weight: ${w}; font-style: ${style}; font-display: block; }`,
         );
@@ -480,7 +483,7 @@ function buildCaptionsHtml(groups, total, W, H) {
   <script src="https://cdn.jsdelivr.net/npm/gsap@3.14.2/dist/gsap.min.js" integrity="sha384-sG0Hv1tP1lZCk9KQmrIbY/XNwi+OY84GQqhMscbnsoBFqAz8KNCil1kvfL3Hbbk2" crossorigin="anonymous"></script>
   <script>
     (function () {
-      var GROUPS = ${JSON.stringify(groups)};
+      var GROUPS = ${JSON.stringify(groups).replace(/</g, "\\u003c")};
       var cap = document.getElementById("cap");
       var tl = gsap.timeline({ paused: true });
       GROUPS.forEach(function (g) {

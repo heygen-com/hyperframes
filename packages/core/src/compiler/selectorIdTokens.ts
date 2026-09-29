@@ -152,7 +152,7 @@ export function escapeCssIdentifier(value: string): string {
  * branch (no ambiguous backtracking).
  */
 const GUARDED_SELECTOR_SEGMENT_RE =
-  /"(?:[^"\\]|\\.)*"|'(?:[^'\\]|\\.)*'|\[(?:"(?:[^"\\]|\\.)*"|'(?:[^'\\]|\\.)*'|[^\]"'])*\]/g;
+  /\\(?:[0-9a-fA-F]{1,6}(?:\r\n|[ \t\r\n\f])?|[\s\S])|"(?:[^"\\]|\\.)*"|'(?:[^'\\]|\\.)*'|\[(?:"(?:[^"\\]|\\.)*"|'(?:[^'\\]|\\.)*'|[^\]"'])*\]/g;
 
 /**
  * `mask[i]` is `true` when `selector[i]` sits outside both a quoted string

@@ -3,10 +3,10 @@ import { defineCommand } from "citty";
 import type { Example } from "./_examples.js";
 import * as clack from "@clack/prompts";
 import { execFileSync } from "node:child_process";
-import { existsSync, readFileSync, writeFileSync, renameSync } from "node:fs";
+import { existsSync, readFileSync, writeFileSync, renameSync, readdirSync } from "node:fs";
 import { resolve } from "node:path";
 import { c } from "../ui/colors.js";
-import { rewriteProjectPinnedScripts } from "../utils/projectPin.js";
+import { rewritePinnedHyperframesText, rewriteProjectPinnedScripts } from "../utils/projectPin.js";
 
 export const examples: Example[] = [
   ["Check for updates interactively", "hyperframes upgrade"],
@@ -197,13 +197,28 @@ export async function upgradeProjectPins(
   const { latest } = await checkForUpdate(true);
   if (!isSafeVersion(latest)) return { changed: false, from: [], to: latest, path: pkgPath };
   const rewrite = rewriteProjectPinnedScripts(scripts, latest);
+  const wrapperRewrites = readdirSync(dir, { withFileTypes: true })
+    .filter((entry) => entry.isFile() && entry.name.endsWith(".sh"))
+    .map((entry) => {
+      const path = resolve(dir, entry.name);
+      return { path, rewrite: rewritePinnedHyperframesText(readFileSync(path, "utf-8"), latest) };
+    });
   if (rewrite.changed && !opts.check) {
     raw.scripts = rewrite.scripts;
     const tmp = `${pkgPath}.tmp`;
     writeFileSync(tmp, `${JSON.stringify(raw, null, 2)}\n`, "utf-8");
     renameSync(tmp, pkgPath);
   }
-  return { changed: rewrite.changed, from: rewrite.fromVersions, to: latest, path: pkgPath };
+  if (!opts.check) {
+    for (const wrapper of wrapperRewrites) {
+      if (wrapper.rewrite.changed) writeFileSync(wrapper.path, wrapper.rewrite.text, "utf-8");
+    }
+  }
+  const from = new Set(rewrite.fromVersions);
+  for (const wrapper of wrapperRewrites) {
+    for (const version of wrapper.rewrite.fromVersions) from.add(version);
+  }
+  return { changed: from.size > 0, from: [...from].sort(), to: latest, path: pkgPath };
 }
 
 function printProjectPinResult(
@@ -215,12 +230,12 @@ function printProjectPinResult(
     return;
   }
   if (!res.changed) {
-    console.log(`   ${c.success("◇")}  Project scripts already on hyperframes@${res.to}`);
+    console.log(`   ${c.success("◇")}  Project pins already on hyperframes@${res.to}`);
     return;
   }
   const verb = checkOnly ? "would bump" : "bumped";
   console.log(
-    `   ${c.success("◇")}  ${verb} project scripts ${res.from.join(", ")} → ${c.accent(res.to)}`,
+    `   ${c.success("◇")}  ${verb} project pins ${res.from.join(", ")} → ${c.accent(res.to)}`,
   );
   if (checkOnly)
     console.log(`   ${c.dim("Run `npx hyperframes@latest upgrade --project` to apply.")}`);

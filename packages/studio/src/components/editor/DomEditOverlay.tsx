@@ -1,4 +1,4 @@
-import { memo, useEffect, useMemo, useRef, useState, type RefObject } from "react";
+import { memo, useEffect, useMemo, useRef, type RefObject } from "react";
 import { type DomEditSelection } from "./domEditing";
 import type { PreviewMouseDownOptions } from "../../hooks/usePreviewInteraction";
 import { useMarqueeGestures } from "./marqueeCommit";
@@ -16,24 +16,23 @@ import {
   resolveShiftClickCandidate,
 } from "./domEditOverlayGestures";
 import { useDomEditOverlayRects } from "./useDomEditOverlayRects";
-import { ChildRectOutlines, OffCanvasIndicators, type OffCanvasRect } from "./OffCanvasIndicators";
+import { ChildRectOutlines, OffCanvasIndicators } from "./OffCanvasIndicators";
 import { createDomEditOverlayGestureHandlers } from "./useDomEditOverlayGestures";
 import { useDomEditNudge } from "./useDomEditNudge";
 import { SnapGuideOverlay, type SnapGuidesState } from "./SnapGuideOverlay";
-import { GridOverlay } from "./GridOverlay";
 import type { GestureRecordingState } from "./GestureRecordControl";
 import { DomEditGroupChrome, DomEditSelectionChrome } from "./DomEditSelectionChrome";
 import { hugRectForElement } from "./domEditOverlayCrop";
 import { useCropOverlay } from "../../hooks/useCropOverlay";
 import { readDomEditSelectionShapeStyles, resolveBoxChromeClass } from "./domEditOverlayShape";
 import { useDomEditCompositionRect } from "./useDomEditCompositionRect";
-import { useMountEffect } from "../../hooks/useMountEffect";
-import { startOffCanvasIndicatorRefresh } from "./offCanvasIndicatorRefresh";
 import { CanvasContextMenu } from "./CanvasContextMenu";
 import { useInlineTextEditing } from "./useInlineTextEditing";
+import { usePreviewReadOnly } from "./previewReadOnlyContext";
 import type { ZOrderAction, ZOrderPatch } from "./canvasContextMenuZOrder";
 import { getPreviewTargetFromPointer } from "../../utils/studioPreviewHelpers";
 import { logSelect } from "../../utils/selectDebug";
+import { useOffCanvasIndicators } from "./useOffCanvasIndicators";
 
 // Re-exports for external consumers — preserving existing import paths.
 export {
@@ -48,13 +47,21 @@ export {
 } from "./domEditOverlayGestures";
 export type { DomEditGroupPathOffsetCommit } from "./domEditOverlayGestures";
 
-interface DomEditOverlayProps {
+export interface DomEditOverlayProps {
   iframeRef: RefObject<HTMLIFrameElement | null>;
   activeCompositionPath: string | null;
   selection: DomEditSelection | null;
   groupSelections?: DomEditSelection[];
   hoverSelection: DomEditSelection | null;
   allowCanvasMovement?: boolean;
+  /** "host": no hover, marquee or box re-select; Enter with nothing focused still opens text. */
+  canvasInput?: "overlay" | "host";
+  onTextEditingChange?: (editing: boolean) => void;
+  /** A click on a single selection's box, in either mode; the event may be the pointerup. */
+  onSelectionBoxClick?: (
+    event: React.MouseEvent<HTMLDivElement>,
+    selection: DomEditSelection,
+  ) => void;
   onCanvasMouseDown: (
     event: React.MouseEvent<HTMLDivElement>,
     options?: PreviewMouseDownOptions,
@@ -74,18 +81,19 @@ interface DomEditOverlayProps {
     selection: DomEditSelection,
     next: { x: number; y: number },
     modifiers?: { altKey?: boolean },
-  ) => Promise<void> | void;
-  onGroupPathOffsetCommit: (updates: DomEditGroupPathOffsetCommit[]) => Promise<void> | void;
+  ) => Promise<unknown> | void;
+  onGroupPathOffsetCommit: (updates: DomEditGroupPathOffsetCommit[]) => Promise<unknown> | void;
   onBoxSizeCommit: (
     selection: DomEditSelection,
     next: { width: number; height: number },
     offset?: { x: number; y: number },
     restore?: () => void,
-  ) => Promise<void> | void;
-  onRotationCommit: (selection: DomEditSelection, next: { angle: number }) => Promise<void> | void;
-  onStyleCommit?: (property: string, value: string) => Promise<void> | void;
-  gridVisible?: boolean;
-  gridSpacing?: number;
+  ) => Promise<unknown> | void;
+  onRotationCommit: (
+    selection: DomEditSelection,
+    next: { angle: number },
+  ) => Promise<unknown> | void;
+  onStyleCommit?: (property: string, value: string) => Promise<unknown> | void;
   recordingState?: GestureRecordingState;
   onToggleRecording?: () => void;
   onMarqueeSelect?: (selections: DomEditSelection[], additive: boolean) => void;
@@ -120,13 +128,14 @@ export const DomEditOverlay = memo(function DomEditOverlay({
   groupSelections = [],
   hoverSelection,
   allowCanvasMovement = true,
-  onCanvasMouseDown,
+  canvasInput = "overlay",
+  onTextEditingChange,
+  onSelectionBoxClick,
+  onCanvasMouseDown: onCanvasMouseDownProp,
   onCanvasPointerMove,
   onCanvasPointerLeave,
   onSelectionChange,
   onBlockedMove,
-  gridVisible = false,
-  gridSpacing = 50,
   onManualDragStart,
   onPathOffsetCommit,
   onGroupPathOffsetCommit,
@@ -137,6 +146,8 @@ export const DomEditOverlay = memo(function DomEditOverlay({
   onDeleteSelection,
   onApplyZIndex,
 }: DomEditOverlayProps) {
+  const readOnly = usePreviewReadOnly();
+  const hostInput = canvasInput === "host";
   const overlayRef = useRef<HTMLDivElement | null>(null);
   const boxRef = useRef<HTMLDivElement | null>(null);
   const onMarqueeSelectRef = useRef(onMarqueeSelect);
@@ -154,6 +165,13 @@ export const DomEditOverlay = memo(function DomEditOverlay({
 
   const selectionRef = useRef(selection);
   selectionRef.current = selection;
+  const onCanvasMouseDown: typeof onCanvasMouseDownProp = (event, options) => {
+    const sel = selectionRef.current;
+    if (sel && boxRef.current?.contains(event.target as Node | null)) {
+      onSelectionBoxClick?.(event, sel);
+    }
+    if (!hostInput) onCanvasMouseDownProp(event, options);
+  };
 
   // Brief highlight on the sibling a forward/backward z step crossed — drawn
   // in this studio overlay, never in the iframe DOM (see useZOrderCrossedFlash).
@@ -167,7 +185,14 @@ export const DomEditOverlay = memo(function DomEditOverlay({
   hoverSelectionRef.current = hoverSelection;
 
   // Double-click an element to edit its text where it sits.
-  const inlineText = useInlineTextEditing(selectionRef);
+  const inlineText = useInlineTextEditing(selectionRef, { enterFromWindow: hostInput });
+  const onTextEditingChangeRef = useRef(onTextEditingChange);
+  onTextEditingChangeRef.current = onTextEditingChange;
+  useEffect(() => {
+    if (!inlineText.editing) return;
+    onTextEditingChangeRef.current?.(true);
+    return () => onTextEditingChangeRef.current?.(false);
+  }, [inlineText.editing]);
   const onPathOffsetCommitRef = useRef(onPathOffsetCommit);
   onPathOffsetCommitRef.current = onPathOffsetCommit;
   const onGroupPathOffsetCommitRef = useRef(onGroupPathOffsetCommit);
@@ -220,39 +245,13 @@ export const DomEditOverlay = memo(function DomEditOverlay({
   const boxClipPath = hasCropInsets ? undefined : selectionShapeStyles.clipPath;
   const boxChromeClass = resolveBoxChromeClass(Boolean(cropOutlineInsetPx), boxClipPath);
 
-  // Off-canvas element indicators — dashed outlines for elements positioned
-  // outside the composition bounds so users can find them.
-  const offCanvasElementsRef = useRef<Map<string, HTMLElement>>(new Map());
-  const [offCanvasRects, setOffCanvasRects] = useState<OffCanvasRect[]>([]);
-  const offCanvasDirtyRef = useRef(true);
-  const offCanvasSigRef = useRef("");
-  const offCanvasObserverRef = useRef<MutationObserver | null>(null);
-  const offCanvasObservedDocRef = useRef<Document | null>(null);
-
-  // Positions depend on live iframe layout, not selection — the selected-element
-  // suppression is a render-time filter, so selection/groupSelections stay out
-  // of the geometry walk.
-  useMountEffect(() =>
-    startOffCanvasIndicatorRefresh({
-      iframeRef,
-      overlayRef,
-      compRectRef,
-      activeCompositionPathRef,
-      dirtyRef: offCanvasDirtyRef,
-      sigRef: offCanvasSigRef,
-      observerRef: offCanvasObserverRef,
-      observedDocRef: offCanvasObservedDocRef,
-      elementsRef: offCanvasElementsRef,
-      setRects: setOffCanvasRects,
-    }),
-  );
-
-  // Switching compositions may not swap the iframe document (so the observer's
-  // doc-swap detection wouldn't fire) yet changes which elements are off-canvas.
-  // Force a recompute explicitly on comp change.
-  useEffect(() => {
-    offCanvasDirtyRef.current = true;
-  }, [activeCompositionPath]);
+  const { offCanvasRects, offCanvasElementsRef } = useOffCanvasIndicators({
+    iframeRef,
+    overlayRef,
+    compRectRef,
+    activeCompositionPathRef,
+    activeCompositionPath,
+  });
 
   const gestures = createDomEditOverlayGestureHandlers({
     overlayRef,
@@ -280,12 +279,16 @@ export const DomEditOverlay = memo(function DomEditOverlay({
     snapGuidesRef,
   });
 
+  useEffect(() => {
+    if (readOnly) gestures.clearPointerState(selectionRef);
+  }, [gestures, readOnly, selectionRef]);
+
   // Arrow-key nudge (1px, Shift = 10px) — commits through the same
   // path-offset callbacks as a drag, one undo entry per key burst.
   const { flushNudge } = useDomEditNudge({
     selection,
     groupSelections,
-    allowCanvasMovement,
+    allowCanvasMovement: allowCanvasMovement && !readOnly,
     selectionRef,
     overlayRectRef,
     groupOverlayItemsRef,
@@ -348,7 +351,7 @@ export const DomEditOverlay = memo(function DomEditOverlay({
 
   // fallow-ignore-next-line complexity
   const handleOverlayPointerDown = (event: React.PointerEvent<HTMLDivElement>) => {
-    if (!allowCanvasMovement || event.button !== 0) return;
+    if (!allowCanvasMovement || hostInput || event.button !== 0) return;
     if (event.shiftKey) {
       const shiftIframe = iframeRef.current;
       const candidate = resolveShiftClickCandidate({
@@ -404,9 +407,7 @@ export const DomEditOverlay = memo(function DomEditOverlay({
           )
         : null;
       if (freshTarget) return;
-      const overlayEl = overlayRef.current;
-      if (overlayEl) {
-        const oRect = overlayEl.getBoundingClientRect();
+      if (overlayRef.current) {
         // Anywhere empty on the overlay starts one, not just inside the frame.
         // An element dragged past the edge sits OUT there in the grey, and a
         // rubber band that refuses to start there cannot reach it — which left
@@ -416,17 +417,7 @@ export const DomEditOverlay = memo(function DomEditOverlay({
         event.preventDefault();
         event.stopPropagation();
         suppressNextOverlayMouseDownRef.current = true;
-        (event.currentTarget as HTMLElement).setPointerCapture(event.pointerId);
-        const cx = event.clientX - oRect.left;
-        const cy = event.clientY - oRect.top;
-        marquee.marqueeRef.current = {
-          startX: cx,
-          startY: cy,
-          currentX: cx,
-          currentY: cy,
-          pointerId: event.pointerId,
-          pastThreshold: false,
-        };
+        marquee.begin(event);
         return;
       }
     }
@@ -465,8 +456,8 @@ export const DomEditOverlay = memo(function DomEditOverlay({
       ref={overlayRef}
       // Standing aside is the only way the caret below can be reached, and is
       // what keeps selection, drag and marquee from firing mid-edit.
-      className={`absolute inset-0 z-10 outline-none ${
-        inlineText.editing ? "pointer-events-none" : "pointer-events-auto"
+      className={`absolute inset-0 z-10 outline-hidden ${
+        inlineText.editing || hostInput ? "pointer-events-none" : "pointer-events-auto"
       }`}
       data-editing-text={inlineText.editing ? "true" : undefined}
       tabIndex={-1}
@@ -477,6 +468,7 @@ export const DomEditOverlay = memo(function DomEditOverlay({
         // A pointer gesture supersedes a pending nudge burst — commit it first
         // so the gesture's member snapshot starts from the nudged position.
         flushNudge();
+        suppressNextBoxClickRef.current = false;
         // Not while editing: taking focus back would send the keystroke nowhere.
         if (!inlineText.editing) {
           focusDomEditOverlayElement(event.currentTarget as FocusableDomEditOverlay);
@@ -493,9 +485,9 @@ export const DomEditOverlay = memo(function DomEditOverlay({
       onPointerLeave={() => onCanvasPointerLeaveRef.current()}
       onPointerUp={marquee.onPointerUp}
       onPointerCancel={marquee.onPointerCancel}
-      onContextMenu={handleContextMenu}
+      onContextMenu={hostInput ? undefined : handleContextMenu}
     >
-      {hoverSelection && hoverRect && compRect.width > 0 && (
+      {!hostInput && hoverSelection && hoverRect && compRect.width > 0 && (
         <div
           aria-hidden="true"
           data-dom-edit-hover-box="true"
@@ -529,7 +521,6 @@ export const DomEditOverlay = memo(function DomEditOverlay({
           boxClipPath={boxClipPath}
           selectionKey={selectionKey}
           groupSelectionCount={groupSelections.length}
-          blockedMoveRef={blockedMoveRef}
           gestures={gestures}
           onStyleCommit={onStyleCommitRef.current}
           onBoxMouseDown={suppressBoxMouseDown}
@@ -542,7 +533,7 @@ export const DomEditOverlay = memo(function DomEditOverlay({
           editing session, which does. */}
       {inlineText.toolbar}
       <OffCanvasIndicators
-        rects={offCanvasRects}
+        rects={hostInput ? [] : offCanvasRects}
         elements={offCanvasElementsRef}
         compRect={compRect}
         selection={selection}
@@ -558,7 +549,7 @@ export const DomEditOverlay = memo(function DomEditOverlay({
           selection={contextMenu.sel}
           onClose={closeContextMenu}
           onDelete={
-            onDeleteSelection
+            onDeleteSelection && !readOnly
               ? (sel) => {
                   closeContextMenu();
                   onDeleteSelection(sel);
@@ -566,7 +557,7 @@ export const DomEditOverlay = memo(function DomEditOverlay({
               : undefined
           }
           onApplyZIndex={
-            onApplyZIndex
+            onApplyZIndex && !readOnly
               ? (patches, action, crossed) => {
                   onApplyZIndex(contextMenu.sel, patches, action, crossed);
                 }
@@ -576,16 +567,6 @@ export const DomEditOverlay = memo(function DomEditOverlay({
         />
       )}
       <ZOrderCrossedFlash rect={zOrderFlashRect} />
-      <GridOverlay
-        visible={gridVisible}
-        spacing={gridSpacing}
-        scaleX={compRect.scaleX}
-        scaleY={compRect.scaleY}
-        compositionLeft={compRect.left}
-        compositionTop={compRect.top}
-        compositionWidth={compRect.width}
-        compositionHeight={compRect.height}
-      />
       <SnapGuideOverlay
         snapGuidesRef={snapGuidesRef}
         compositionLeft={compRect.left}

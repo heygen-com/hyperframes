@@ -16,7 +16,7 @@
  * flow, and captures the TRUE prior styles for its failure rollback.
  *
  * The prop MUST be wired at the call site to route through the full persist
- * path. PreviewOverlays.tsx builds the per-patch PatchTargets (the selected
+ * path. ConnectedDomEditOverlay.tsx builds the per-patch PatchTargets (the selected
  * element carries its full selection identity; sibling elements are iframe DOM
  * nodes, so their id / selector are derived from the node and they share the
  * selection's sourceFile) and forwards them to handleDomZIndexReorderCommit.
@@ -212,7 +212,7 @@ export const CanvasContextMenu = memo(function CanvasContextMenu({
   return createPortal(
     <div
       ref={menuRef}
-      className="fixed z-[200] bg-neutral-900 border border-neutral-700 rounded-md shadow-lg py-1 min-w-[180px]"
+      className="fixed z-200 bg-neutral-900 border border-neutral-700 rounded-md shadow-lg py-1 min-w-[180px]"
       style={{ left: adjustedX, top: adjustedY }}
       onPointerDown={stopBubble}
       onMouseDown={stopBubble}

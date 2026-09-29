@@ -1,11 +1,12 @@
 import { describe, expect, it, vi } from "vitest";
 
-// Dark-launch contract: with STUDIO_SDK_CUTOVER_ENABLED=false, EVERY cutover
+// Kill-switch contract: with VITE_STUDIO_SDK_CUTOVER_ENABLED=false, EVERY cutover
 // persist chokepoint must explicitly decline so the caller takes the legacy server
 // path — even when a valid SDK session exists (one always does, for
-// shadow/selection). This is the contract the prod flag-flip rests on; a future
-// refactor of the gate guards that silently re-enables cutover on flag-off
-// turns these red. (sdkCutover.test.ts mocks the flag TRUE; this is its sibling.)
+// shadow/selection). Default is ON (manualEditingAvailability.test.ts pins that);
+// this file pins that the env override still turns it fully off. A future
+// refactor of the gate guards that ignores the flag turns these red.
+// (sdkCutover.test.ts mocks the flag TRUE; this is its sibling.)
 vi.mock("../components/editor/manualEditingAvailability", () => ({
   STUDIO_SDK_CUTOVER_ENABLED: false,
   STUDIO_SDK_RESOLVER_SHADOW_ENABLED: false,
@@ -28,7 +29,6 @@ const makeDeps = () =>
     editHistory: { recordEdit: vi.fn().mockResolvedValue(undefined) },
     writeProjectFile: vi.fn().mockResolvedValue(undefined),
     reloadPreview: vi.fn(),
-    domEditSaveTimestampRef: { current: 0 },
   }) as never;
 
 describe("dark-launch gate — STUDIO_SDK_CUTOVER_ENABLED=false ⇒ persist declines", () => {

@@ -292,6 +292,25 @@ describe("namespaceCollidingSvgIds", () => {
   });
 });
 
+it("preserves the first document target when a child has no local definition", () => {
+  const { document, idMaps } = namespace(
+    [
+      {
+        namespace: "earlier",
+        html: '<svg><linearGradient id="paint"/><rect fill="url(#paint)"/></svg>',
+      },
+      {
+        namespace: "parent",
+        html: '<svg><linearGradient id="paint"/><rect fill="url(#paint)"/></svg>',
+      },
+      { namespace: "child", html: '<svg><rect class="child" fill="url(#paint)"/></svg>' },
+    ],
+    { after: '<svg><linearGradient id="paint"/></svg>' },
+  );
+  expect(document.querySelector(".child")!.getAttribute("fill")).toBe("url(#earlier--paint)");
+  expect(idMaps[2]!.get("paint")).toBe("earlier--paint");
+});
+
 describe("rewriteSvgIdReferencesInCss", () => {
   it("is a no-op with an empty map", () => {
     const css = "#clip { fill: red; }";
@@ -359,4 +378,19 @@ describe("rewriteSvgIdReferencesInCss", () => {
     const css = `[data-ref="#clip"] { fill: red; } .x::after { content: "#clip"; }`;
     expect(rewriteSvgIdReferencesInCss(css, idMap)).toBe(css);
   });
+});
+
+it("rewrites case-insensitive CSS URL functions in attributes and styles", () => {
+  const { roots, idMaps } = namespace([
+    { namespace: "a", html: CLIPPED },
+    {
+      namespace: "b",
+      html: '<svg><clipPath id="clip"/><rect clip-path="URL(#clip)"/></svg>',
+      cssTexts: ["rect { clip-path: Url(#clip) }"],
+    },
+  ]);
+  expect(roots[1]!.querySelector("rect")!.getAttribute("clip-path")).toBe("URL(#b--clip)");
+  expect(rewriteSvgIdReferencesInCss("rect { clip-path: Url(#clip) }", idMaps[1]!)).toContain(
+    "Url(#b--clip)",
+  );
 });

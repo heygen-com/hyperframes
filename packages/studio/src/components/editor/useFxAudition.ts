@@ -11,7 +11,7 @@ import type { HfAudioFxChain } from "@hyperframes/core/audio-fx";
 
 export function useFxAudition(
   chain: HfAudioFxChain,
-  onChainPreview: ((chain: HfAudioFxChain) => void) | undefined,
+  onChainPreview: ((chain: HfAudioFxChain, ended?: boolean) => void) | undefined,
   onAuditionTransport: ((on: boolean) => void) | undefined,
 ) {
   /**
@@ -45,7 +45,7 @@ export function useFxAudition(
         // Stop before reverting, for the mirror of that reason — the last thing
         // heard should be the preset, not a frame of the chain coming back.
         onAuditionTransport?.(false);
-        onChainPreview(auditionBase.current);
+        onChainPreview(auditionBase.current, true);
         auditionBase.current = null;
       }
     },
@@ -96,7 +96,7 @@ export function useFxAudition(
     () => () => {
       if (auditionBase.current) {
         transportRef.current?.(false);
-        previewRef.current?.(auditionBase.current);
+        previewRef.current?.(auditionBase.current, true);
       }
     },
     [],

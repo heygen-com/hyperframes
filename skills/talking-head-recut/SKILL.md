@@ -3,6 +3,8 @@ name: talking-head-recut
 description: Package an existing talking-head / interview / podcast video with timed, designed GRAPHIC OVERLAY cards — kinetic titles, lower-thirds, data callouts, quotes, side panels, picture-in-picture — synced to the transcript, on a 16:9 / 9:16 / 4:5 canvas of your choice; the clip plays untouched underneath. Trigger on "graphic overlays", "on-screen graphics", "package / dress up my video". Not plain subtitles (/embedded-captions). Unclear → /hyperframes.
 ---
 
+**Plugin installs:** Before setup or freshness commands, follow [plugin execution rules](../hyperframes/references/plugin-installation.md) when this skill is inside a HyperFrames plugin. Standalone installs keep the update instructions below.
+
 > **First, keep this skill fresh — confirm with the user before running:** `npx hyperframes skills update talking-head-recut`. A fast no-op when everything is current; otherwise it refreshes this skill plus the core domain skills it depends on before you rely on them.
 
 # Talking Head Recut
@@ -298,7 +300,7 @@ Rules that apply to every channel:
 - If the user has already pre-approved defaults ("just use defaults",
   "no need to ask", "auto-pick everything"), asked you not to ask, or the
   run carries an ongoing autonomous signal ("surprise me" / "decide for me" —
-  `../hyperframes-core/references/brief-contract.md` § 1) — **skip
+  `../hyperframes/references/brief-contract.md` § 1) — **skip
   the question entirely** and use: `recommendedRatio`, `layout="stack"`
   (safest cross-ratio default), `style` chosen from transcript tone in
   the most neutral group (editorial/data), `autoCount`. Tell the user
@@ -754,6 +756,13 @@ But for most cards, a single layout choice is fine — just pick the size
 table column that matches the storyboard's `layout` field.
 
 #### Available `data-anim` Kinds
+
+This list is closed, and deliberately so: a card is an HTML fragment whose motion this
+skill compiles into the shared overlay timeline in Step 9 (see the GSAP mapping table
+there). That is why this workflow does not search the HyperFrames component registry the
+way the composition workflows do — `npx hyperframes catalog` returns standalone
+compositions that carry their own timeline, and a card has no place to mount one. Reach a
+look the kinds below cannot express with plain CSS inside the card's scoped `<style>`.
 
 | kind            | use for             | key params                                                                                      |
 | --------------- | ------------------- | ----------------------------------------------------------------------------------------------- |

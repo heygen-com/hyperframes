@@ -5,7 +5,7 @@
  * frame can't jump. Split from gsapRuntimeBridge, which owns the shared
  * group-tween resolution used by the drag/resize/rotate intercepts.
  */
-import type { GsapAnimation, PropertyGroupName } from "@hyperframes/core/gsap-parser";
+import type { GsapAnimation } from "@hyperframes/core/gsap-parser";
 import type { DomEditSelection } from "../components/editor/domEditingTypes";
 import { clearStudioBoxSize } from "../components/editor/manualEdits";
 import {
@@ -14,7 +14,6 @@ import {
 } from "../components/editor/manualEditsTypes";
 import { setElementGsapPosition, setElementGsapScale } from "../utils/elementGsap";
 import { usePlayerStore } from "../player/store/playerStore";
-import { hasNonHoldTweenForElement } from "./gsapRuntimeKeyframes";
 import { readAllAnimatedProperties, readGsapProperty } from "./gsapRuntimeReaders";
 import {
   commitStaticGsapPosition,
@@ -35,11 +34,8 @@ import { isInstantHold, selectorFromSelection, writeTargetSelector } from "./gsa
 import { roundTo3 } from "../utils/rounding";
 import { resolveGroupTween } from "./gsapRuntimeBridge";
 import { logResize } from "../utils/resizeDebug";
-import {
-  animationWritesAnyProperty,
-  directEditOutcomeForProperties,
-  type GsapEditOutcome,
-} from "./gsapEditOutcome";
+import { animationWritesAnyProperty, type GsapEditOutcome } from "./gsapEditOutcome";
+import { preflightGsapResizeIntercept, resizeRoute } from "./gsapResizePreflight";
 
 const IDENTITY_ONE_PROPS = new Set(["opacity", "autoAlpha", "scale", "scaleX", "scaleY"]);
 
@@ -103,17 +99,12 @@ export async function tryGsapResizeIntercept(
   fetchFallbackAnimations?: () => Promise<GsapAnimation[]>,
 ): Promise<GsapEditOutcome> {
   const fetchedAnimations = fetchFallbackAnimations ? await fetchFallbackAnimations() : [];
-  const allKnownAnimations = [...animations, ...fetchedAnimations];
-  // If the element already has a scale-group tween, resize should modify scale
-  // (the user is resizing something whose visual size is driven by scale).
-  // Otherwise, use the size group (width/height).
-  const hasScaleGroup = allKnownAnimations.some((a) => a.propertyGroup === "scale");
-  const resizeGroup: PropertyGroupName = hasScaleGroup ? "scale" : "size";
-  const resizeProperties =
-    resizeGroup === "scale" ? new Set(["scale", "scaleX", "scaleY"]) : new Set(["width", "height"]);
-  const editability = directEditOutcomeForProperties(allKnownAnimations, resizeProperties);
-  if (editability.status === "blocked") return editability;
-  const workingAnimations = animations.length > 0 ? animations : fetchedAnimations;
+  const outcome = preflightGsapResizeIntercept(selection, animations, iframe, fetchedAnimations);
+  if (outcome.status === "blocked") return outcome;
+  const { resizeGroup, resizeProperties, workingAnimations } = resizeRoute(
+    animations,
+    fetchedAnimations,
+  );
   // The initial ownership fetch already supplied the complete parse. Only retain
   // the fetch callback when a legacy mixed tween may be split and must then be
   // re-read; otherwise resolveGroupTween would perform the same network read twice.
@@ -132,15 +123,8 @@ export async function tryGsapResizeIntercept(
     resolved?.anim && animationWritesAnyProperty(resolved.anim, resizeProperties)
       ? resolved.anim
       : null;
-  const liveSelector = selectorFromSelection(selection);
-  const hasLiveResizeTween = liveSelector
-    ? hasNonHoldTweenForElement(iframe, liveSelector, undefined, [...resizeProperties])
-    : false;
-  if (!anim && hasLiveResizeTween) {
-    return { status: "blocked", reason: "source-uneditable" };
-  }
   logResize("intercept-enter", {
-    hasScaleGroup,
+    hasScaleGroup: resizeGroup === "scale",
     resizeGroup,
     animMethod: anim?.method ?? null,
     animId: anim?.id ?? null,
@@ -194,7 +178,12 @@ export async function tryGsapResizeIntercept(
   }
 
   const tweenDuration = resolveTweenDuration(anim);
-  if (tweenDuration <= 0) return { status: "blocked", reason: "source-uneditable" };
+  if (tweenDuration <= 0) {
+    // The tween exists in source but has no positive duration, so there is no
+    // timeline position at which a resize could land — a different cause from
+    // the live-tween-without-a-source-match cases above.
+    return { status: "blocked", reason: "source-uneditable", detail: "zero-duration-tween" };
+  }
 
   const { activeKeyframePct, setActiveKeyframePct } = usePlayerStore.getState();
   const pct = activeKeyframePct ?? computeCurrentPercentage(selection, anim);

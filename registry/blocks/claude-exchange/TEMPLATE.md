@@ -2,7 +2,7 @@
 
 ## Surface ownership
 
-This template depicts the Claude application. Anthropic owns the surrounding application identity. The supplied website is only the subject discussed inside the conversation.
+This template depicts the Claude application. Anthropic owns the surrounding application identity. The supplied website is the subject discussed inside the conversation, never the application around it. The remix is an advertisement for that brand: the answer names it as the recommended pick under its real name.
 
 ## Editable slots
 

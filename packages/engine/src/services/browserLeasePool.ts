@@ -63,10 +63,13 @@ function fingerprintKey(fingerprint: Readonly<BrowserLaunchFingerprint>): string
 
 /** Owns pooled browser generations and hands callers exactly-once leases. */
 export class BrowserLeasePool {
+  /** Under the CLI's 3s exit watchdog, alongside the render-wait bound it races. */
+  private static readonly DRAIN_FORCE_CLOSE_MS = 1_000;
   private readonly available = new Map<string, BrowserPoolEntry>();
   private readonly entries = new Set<BrowserPoolEntry>();
   private readonly leasesByBrowser = new Map<Browser, Set<BrowserLease>>();
   private drainPromise: Promise<void> | null = null;
+  private closed = false;
 
   constructor(private readonly options: BrowserLeasePoolOptions) {}
 
@@ -74,7 +77,12 @@ export class BrowserLeasePool {
     fingerprintInput: BrowserLaunchFingerprint,
     pooled: boolean,
   ): Promise<BrowserLease> {
+    if (this.closed) throw new Error("Browser pool is closed; no new browsers can be acquired");
     if (this.drainPromise) await this.drainPromise;
+    // Re-check: close() can land while this call was awaiting an unrelated,
+    // already-resolving drain -- drainPromise resets to null on completion,
+    // so only `closed` (permanent) still catches a request that raced it.
+    if (this.closed) throw new Error("Browser pool is closed; no new browsers can be acquired");
 
     const fingerprint = freezeFingerprint(fingerprintInput);
     const entry = this.reserveEntry(fingerprint, pooled);
@@ -141,10 +149,27 @@ export class BrowserLeasePool {
     if (this.drainPromise) return this.drainPromise;
     const entries = [...this.entries];
     for (const entry of entries) this.requestClose(entry, false);
-    this.drainPromise = Promise.all(entries.map((entry) => entry.closePromise)).then(() => {
-      this.drainPromise = null;
-    });
+    const settle = Promise.all(entries.map((entry) => entry.closePromise));
+    const bound = new Promise<void>((resolve) =>
+      setTimeout(resolve, BrowserLeasePool.DRAIN_FORCE_CLOSE_MS).unref(),
+    );
+    this.drainPromise = Promise.race([settle, bound])
+      .then(() => {
+        // A close() past the bound gets escalated instead of left to block
+        // the caller's own shutdown deadline indefinitely.
+        for (const entry of entries) if (this.entries.has(entry)) this.requestClose(entry, true);
+        return settle;
+      })
+      .then(() => {
+        this.drainPromise = null;
+      });
     return this.drainPromise;
+  }
+
+  /** Terminal: drains every entry and refuses every `acquire()` after. */
+  close(): Promise<void> {
+    this.closed = true;
+    return this.drain();
   }
 
   /** Test-only state reset. Call `drain()` first when entries own real browsers. */
@@ -153,6 +178,7 @@ export class BrowserLeasePool {
     this.entries.clear();
     this.leasesByBrowser.clear();
     this.drainPromise = null;
+    this.closed = false;
   }
 
   private createEntry(

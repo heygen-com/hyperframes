@@ -2,35 +2,35 @@ import { COMPOSITION_ROOT_OPEN_TAG_RE } from "./compositionPatterns";
 
 const CLIPBOARD_MARKER = "hyperframes-clipboard:v1";
 
-export interface ClipboardPayload {
-  kind: "timeline-clip" | "dom-element";
+/** One clip's copied markup plus the original placement needed to preserve
+ *  relative offsets and tracks across a group paste. */
+export interface TimelineClipboardClip {
   html: string;
-  sourceFile: string;
-  originSelector?: string;
-  originSelectorIndex?: number;
+  start: number;
+  duration: number;
+  track: number;
 }
 
-interface SerializedPayload {
-  _marker: string;
-  kind: "timeline-clip" | "dom-element";
-  html: string;
-  sourceFile: string;
-  originSelector?: string;
-  originSelectorIndex?: number;
-}
+export type ClipboardPayload =
+  | { kind: "timeline-clip"; clips: TimelineClipboardClip[]; sourceFile: string }
+  | {
+      kind: "dom-element";
+      html: string;
+      sourceFile: string;
+      originSelector?: string;
+      originSelectorIndex?: number;
+    };
+
+type SerializedPayload = { _marker: string } & ClipboardPayload;
 
 export function serializeClipboardPayload(payload: ClipboardPayload): string {
-  const data: SerializedPayload = {
-    _marker: CLIPBOARD_MARKER,
-    kind: payload.kind,
-    html: payload.html,
-    sourceFile: payload.sourceFile,
-    originSelector: payload.originSelector,
-    originSelectorIndex: payload.originSelectorIndex,
-  };
+  const data: SerializedPayload = { _marker: CLIPBOARD_MARKER, ...payload };
   return JSON.stringify(data);
 }
 
+// Each branch validates one wire shape at the trust boundary; splitting further
+// would fragment one parse into partial validators with no independent reuse.
+// fallow-ignore-next-line complexity
 export function deserializeClipboardPayload(json: string): ClipboardPayload | null {
   let parsed: unknown;
   try {
@@ -41,16 +41,35 @@ export function deserializeClipboardPayload(json: string): ClipboardPayload | nu
   if (!parsed || typeof parsed !== "object") return null;
   const obj = parsed as Record<string, unknown>;
   if (obj._marker !== CLIPBOARD_MARKER) return null;
-  if (obj.kind !== "timeline-clip" && obj.kind !== "dom-element") return null;
-  if (typeof obj.html !== "string" || typeof obj.sourceFile !== "string") return null;
-  return {
-    kind: obj.kind,
-    html: obj.html,
-    sourceFile: obj.sourceFile,
-    originSelector: typeof obj.originSelector === "string" ? obj.originSelector : undefined,
-    originSelectorIndex:
-      typeof obj.originSelectorIndex === "number" ? obj.originSelectorIndex : undefined,
-  };
+  if (typeof obj.sourceFile !== "string") return null;
+  if (obj.kind === "timeline-clip") {
+    if (!Array.isArray(obj.clips)) return null;
+    const clips = obj.clips.filter((c): c is TimelineClipboardClip => {
+      const clip = c as Partial<TimelineClipboardClip> | null;
+      return (
+        !!clip &&
+        typeof clip === "object" &&
+        typeof clip.html === "string" &&
+        typeof clip.start === "number" &&
+        typeof clip.duration === "number" &&
+        typeof clip.track === "number"
+      );
+    });
+    if (clips.length === 0) return null;
+    return { kind: "timeline-clip", clips, sourceFile: obj.sourceFile };
+  }
+  if (obj.kind === "dom-element") {
+    if (typeof obj.html !== "string") return null;
+    return {
+      kind: "dom-element",
+      html: obj.html,
+      sourceFile: obj.sourceFile,
+      originSelector: typeof obj.originSelector === "string" ? obj.originSelector : undefined,
+      originSelectorIndex:
+        typeof obj.originSelectorIndex === "number" ? obj.originSelectorIndex : undefined,
+    };
+  }
+  return null;
 }
 
 /**
@@ -59,6 +78,7 @@ export function deserializeClipboardPayload(json: string): ClipboardPayload | nu
  * the composition root if the selector doesn't match — so paste never silently
  * drops the content.
  */
+// fallow-ignore-next-line complexity
 export function insertAsSibling(
   source: string,
   newHtml: string,
@@ -110,6 +130,7 @@ export function insertAsSibling(
   return source + newHtml;
 }
 
+// fallow-ignore-next-line complexity
 function findClosingTagPosition(html: string, openTagStart: number): number {
   // Find the end of the opening tag
   const openTagEnd = html.indexOf(">", openTagStart);
@@ -156,9 +177,13 @@ function findClosingTagPosition(html: string, openTagStart: number): number {
   return -1;
 }
 
+/** An `id="..."` attribute, not `data-id="..."` or similar — only matches
+ *  when preceded by whitespace, the way every generated attribute is. */
+export const ID_ATTR_RE = /(?<=\s)id="([^"]+)"/;
+
 export function deduplicateIds(html: string, existingIds: string[]): string {
   const existingSet = new Set(existingIds);
-  return html.replace(/(?<=\s)id="([^"]+)"/g, (full, id: string) => {
+  return html.replace(new RegExp(ID_ATTR_RE.source, "g"), (full, id: string) => {
     if (!existingSet.has(id)) return full;
     let counter = 2;
     while (existingSet.has(`${id}-${counter}`)) counter++;

@@ -15,28 +15,35 @@ function normalizeStudioFileChangePath(path: string): string {
     .replace(/^\.?\//, "");
 }
 
-function readStudioFileChangePathFromValue(value: unknown): string | null {
-  if (typeof value === "string") {
-    const trimmed = value.trim();
-    if (!trimmed) return null;
-    if (trimmed.startsWith("{")) {
-      try {
-        return readStudioFileChangePathFromValue(JSON.parse(trimmed) as unknown);
-      } catch {
-        return normalizeStudioFileChangePath(trimmed);
-      }
-    }
-    return normalizeStudioFileChangePath(trimmed);
-  }
+function asPayloadRecord(payload: unknown): Record<string, unknown> | null {
+  return payload && typeof payload === "object" ? (payload as Record<string, unknown>) : null;
+}
 
-  if (!value || typeof value !== "object") return null;
-  const record = value as Record<string, unknown>;
-  if (typeof record.path === "string") return normalizeStudioFileChangePath(record.path);
-  if (typeof record.filePath === "string") return normalizeStudioFileChangePath(record.filePath);
-  if ("data" in record) return readStudioFileChangePathFromValue(record.data);
-  return null;
+/**
+ * Read one string field out of an ALREADY-DECODED file-change payload. Every
+ * reader of that payload goes through here, so no reader can disagree with its
+ * siblings about the shape. Decoding a raw delivery is the transport's job.
+ */
+export function readFileChangeField(payload: unknown, key: string): string | null {
+  const value = asPayloadRecord(payload)?.[key];
+  return typeof value === "string" ? value : null;
 }
 
 export function readStudioFileChangePath(payload: unknown): string | null {
-  return readStudioFileChangePathFromValue(payload);
+  const path = readFileChangeField(payload, "path") ?? readFileChangeField(payload, "filePath");
+  return path === null ? null : normalizeStudioFileChangePath(path);
+}
+
+export function readFileChangeAffectsPreview(payload: unknown): boolean {
+  return asPayloadRecord(payload)?.affectsPreview !== false;
+}
+
+/**
+ * The compositions whose thumbnails a change can alter, or `null` for all of them. Anything
+ * but a list of paths (an older server, the Vite dev host) reads as "all".
+ */
+export function readFileChangeAffectedCompositions(payload: unknown): readonly string[] | null {
+  const value = asPayloadRecord(payload)?.affectedCompositions;
+  if (!Array.isArray(value) || !value.every((path) => typeof path === "string")) return null;
+  return value.map(normalizeStudioFileChangePath);
 }

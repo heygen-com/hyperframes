@@ -1,0 +1,86 @@
+<!doctype html>
+<!--
+  Kinetic Center Build demo. The 1280x720 frame and default values match the
+  pinned Hyfrme parity fixture so reviewers can compare the motion directly.
+-->
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=1280, height=720" />
+    <title>Kinetic Center Build Demo</title>
+    <link
+      rel="stylesheet"
+      href="https://fonts.googleapis.com/css2?family=Geist:wght@600&amp;display=block"
+    />
+    <style>
+      * {
+        margin: 0;
+        padding: 0;
+        box-sizing: border-box;
+      }
+
+      html,
+      body {
+        width: 1280px;
+        height: 720px;
+        overflow: hidden;
+      }
+
+      #root {
+        --font-display: Geist, system-ui, sans-serif;
+        position: relative;
+        width: 1280px;
+        height: 720px;
+        overflow: hidden;
+      }
+
+      .kcb-demo-background,
+      .kcb-demo-mount {
+        position: absolute;
+        inset: 0;
+        width: 1280px;
+        height: 720px;
+      }
+
+      .kcb-demo-background {
+        background: #ffffff;
+      }
+    </style>
+  </head>
+  <body>
+    <div
+      id="root"
+      data-composition-id="kinetic-center-build-demo"
+      data-start="0"
+      data-width="1280"
+      data-height="720"
+      data-duration="2"
+      data-fps="30"
+    >
+      <div
+        id="kcb-demo-background"
+        class="kcb-demo-background clip"
+        data-start="0"
+        data-duration="2"
+        data-track-index="0"
+      ></div>
+      <div
+        id="kcb-demo-mount"
+        class="kcb-demo-mount clip"
+        data-composition-id="kinetic-center-build"
+        data-composition-src="./kinetic-center-build.html"
+        data-start="0"
+        data-duration="2"
+        data-track-index="1"
+        data-width="1280"
+        data-height="720"
+      ></div>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/gsap@3.14.2/dist/gsap.min.js"></script>
+    <script>
+      window.__timelines = window.__timelines || {};
+      window.__timelines["kinetic-center-build-demo"] = gsap.timeline({ paused: true });
+    </script>
+  </body>
+</html>

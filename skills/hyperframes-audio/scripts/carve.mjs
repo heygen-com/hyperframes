@@ -34,17 +34,20 @@ import { pathToFileURL } from "node:url";
  *  bands and envelopes come out the same either way. */
 const SAMPLE_RATE = 48000;
 
+/** Default carve strength. 0.25 kept the bed present but still fighting the voice. */
+export const DEFAULT_STRENGTH = 0.8;
+
 const usage = `carve.mjs --comp <file.html> [--bed <elementId>] [--voice <elementId> ...]
               [--strength 0..1] [--dry-run] [--core <dir>]
 
   --bed       id of the music track that gets carved   (detected if omitted)
   --voice     id of a voice to make room for; repeatable (detected if omitted)
-  --strength  how hard to carve, 0..1 (default 0.25)
+  --strength  how hard to carve, 0..1 (default ${DEFAULT_STRENGTH})
   --dry-run   report what it would write, touch nothing
   --core      directory to resolve @hyperframes/core from (default: the comp's)`;
 
-function parseArgs(argv) {
-  const args = { strength: 0.25, dryRun: false, voices: [] };
+export function parseArgs(argv) {
+  const args = { strength: DEFAULT_STRENGTH, dryRun: false, voices: [] };
   for (let i = 0; i < argv.length; i += 1) {
     const flag = argv[i];
     const next = () => {

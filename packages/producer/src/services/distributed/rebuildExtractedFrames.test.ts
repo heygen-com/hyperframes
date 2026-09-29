@@ -178,6 +178,34 @@ describe("rebuildExtractedFramesFromPlanDir", () => {
     }
   });
 
+  it("orders mixed-width dense-v1 filenames by numeric ordinal", () => {
+    const planDir = mkdtempSync(join(tmpdir(), "hf-rebuild-frames-v1-mixed-width-"));
+    try {
+      const frameNames = Array.from({ length: 10 }, (_, index) => `frame_${index + 1}.jpg`);
+      makeFramesDir(planDir, "vid-v1-mixed-width", frameNames.toReversed());
+
+      const [extracted] = rebuildExtractedFramesFromPlanDir(planDir, [
+        {
+          videoId: "vid-v1-mixed-width",
+          srcPath: "/v1-mixed-width.mp4",
+          framePattern: "frame_%05d.jpg",
+          fps: 30,
+          totalFrames: frameNames.length,
+          metadata: VIDEO_METADATA_STUB,
+        },
+      ]);
+
+      expect(extracted!.framePaths.get(8)).toBe(
+        join(planDir, "video-frames", "vid-v1-mixed-width", "frame_9.jpg"),
+      );
+      expect(extracted!.framePaths.get(9)).toBe(
+        join(planDir, "video-frames", "vid-v1-mixed-width", "frame_10.jpg"),
+      );
+    } finally {
+      rmSync(planDir, { recursive: true, force: true });
+    }
+  });
+
   it("preserves original indexes for a sparse v2 chunk materialization", () => {
     const planDir = mkdtempSync(join(tmpdir(), "hf-rebuild-frames-sparse-"));
     try {

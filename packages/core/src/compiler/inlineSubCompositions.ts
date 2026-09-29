@@ -1,3 +1,11 @@
+import { readExternalScriptAttributes, type ExternalScriptAttributes } from "./externalScripts";
+import { parseImportMap, type ImportMap } from "./importMaps";
+import {
+  compositionStyle,
+  cssStyleMergeKey,
+  hasSameLink,
+  type CompositionStyle,
+} from "./scriptRuns";
 /**
  * Shared sub-composition inlining logic.
  *
@@ -19,15 +27,116 @@ import { warnUnknownEnumValues } from "../runtime/getVariables";
 import {
   scopeCssToComposition,
   wrapInlineScriptWithErrorBoundary,
+  scopedModulePrelude,
   wrapScopedCompositionScript,
 } from "./compositionScoping";
-import { checkSubCompositionUsability } from "@hyperframes/parsers/sub-composition-validity";
-import { enumerateNestedCompositionHosts, planCompositionAssembly } from "./compositionAssembly";
 import {
   namespaceCollidingSvgIds,
   rewriteSvgIdReferencesInCss,
   type SvgIdScope,
 } from "./svgIdNamespacing";
+import {
+  checkSubCompositionUsability,
+  resolveSubCompositionContent,
+} from "@hyperframes/parsers/sub-composition-validity";
+import {
+  enumerateNestedCompositionHosts,
+  planCompositionAssembly,
+  EXTRACTED_COMPOSITION_ASSET_SELECTOR,
+} from "./compositionAssembly";
+import { SCENE_NO_SWAP_ATTR, SCENE_PART_ATTR } from "../sceneParts";
+
+// Anything a scene script can leave running, pending or registered outside its timeline, or that
+// throws when run again: only the timeline is torn down when a scene is swapped, so when unsure, refuse.
+const SIDE_EFFECT_RE =
+  /\b(addEventListener|requestAnimationFrame|requestIdleCallback|setTimeout|setInterval|queueMicrotask|getContext|WebGL\w*|WebGPU\w*|gpu|Worker|WebSocket|EventSource|Audio\w*|\w*Observer|fetch|import|eval|Function|Promise|async|await|delayedCall|ScrollTrigger|Draggable|anime|customElements|registerProperty|addListener|BroadcastChannel|pushState|replaceState|adoptedStyleSheets|documentElement|getElementsByTagName|lottie|THREE|__hf[A-Z]\w*)\b|\.then\s*\(|\.animate\s*\(|\.ticker\b|repeat\s*:\s*-1|\.repeat\s*\(\s*-1|defineProperty\s*\(\s*(window|globalThis|self|document)\b|\bfonts\s*\.\s*add\b|\.on[a-z]+\s*=(?!=)|\bon(resize|scroll|message|key\w+|click|pointer\w+|mouse\w+|wheel|visibilitychange|hashchange|popstate|error|load)\s*=(?!=)|\[\s*["']on[a-z]+["']\s*\]|document\s*\.\s*(head|body)\b|querySelector(All)?\(\s*["'](head|body)["']|\bgsap\s*\.\s*(?:to|from|fromTo)\s*\(|\bgsap\s*\.\s*timeline\s*\((?:[^()]|\([^()]*\))*\)\s*\.\s*(?:to|from|fromTo|set|add|call)\s*\(/;
+
+// npm packages that only define globals when loaded; lottie-web is absent because it scans the page on load.
+const SWAP_SAFE_LIBRARY_URL =
+  /^https:\/\/(cdn\.jsdelivr\.net\/npm|unpkg\.com)\/(gsap|three|d3|d3-[a-z-]+|topojson-client|clipper-lib)(@[^/]+)?\//;
+const isSwapSafeLibrary = (src: string) =>
+  URL.canParse(src) && SWAP_SAFE_LIBRARY_URL.test(new URL(src).href);
+
+/** Why an authored scene script cannot be swapped out cleanly, or null when it can. */
+function sceneScriptSwapRefusal(script: string): string | null {
+  const match = SIDE_EFFECT_RE.exec(script);
+  return match ? `its script uses ${match[0].trim()}` : null;
+}
+
+// A quoted string in a script, in any of the three quote styles.
+const STRING_LITERAL_RE = /(["'`])((?:\\.|(?!\1)[^\\\n])*?)\1/g;
+// Text ending where createElement takes its tag: that string makes a node, it selects none.
+const CREATES_ELEMENT_RE = /createElement\s*\(\s*$|createElementNS\s*\([^()]*,\s*$/;
+// A "*" after a comma is a later argument, like postMessage's target origin; selector calls take it first.
+const isNotASelector = (script: string, at: number, literal: string) =>
+  CREATES_ELEMENT_RE.test(script.slice(Math.max(0, at - 60), at)) ||
+  (literal.trim() === "*" && /,\s*$/.test(script.slice(Math.max(0, at - 20), at)));
+
+/** Marks each scene whose nodes a script outside it names by selector, id or class: a swap would strand it. */
+export function refuseSwapsReachedByRootScripts(document: Document, rootScripts: string[]): void {
+  const hosts = [...document.querySelectorAll(`[${SCENE_PART_ATTR}]`)];
+  const byName = new Map<string, Set<Element>>();
+  for (const host of hosts) {
+    for (const el of [host, ...host.querySelectorAll("*")]) {
+      for (const name of [
+        el.localName,
+        el.id && `#${el.id}`,
+        ...[...el.classList].map((c) => `.${c}`),
+      ]) {
+        if (name) byName.set(name, (byName.get(name) ?? new Set()).add(host));
+      }
+    }
+  }
+  // A selector naming a tag the document lacks cannot match, so it is not worth a query.
+  const namesKnown = (selector: string) =>
+    selector
+      .split(",")
+      .some((alt) =>
+        alt
+          .split(/[\s>+~]+/)
+          .every(
+            (part) =>
+              !/^[a-z][\w-]*$/i.test(part) ||
+              byName.has(part.toLowerCase()) ||
+              document.querySelector(part) !== null,
+          ),
+      );
+  const literals = new Set(
+    rootScripts.flatMap((s) =>
+      [...s.matchAll(STRING_LITERAL_RE)]
+        .filter((m) => !isNotASelector(s, m.index, m[2] ?? ""))
+        .map((m) => m[2] ?? ""),
+    ),
+  );
+  for (const literal of literals) {
+    const open = hosts.filter((host) => !host.hasAttribute(SCENE_NO_SWAP_ATTR));
+    if (open.length === 0) return;
+    // Tag names match in any case; ids and classes do not.
+    const reached =
+      literal.trim() === "*"
+        ? open
+        : /^[A-Za-z_][\w-]*$/.test(literal)
+          ? [literal.toLowerCase(), `#${literal}`, `.${literal}`].flatMap((name) => [
+              ...(byName.get(name) ?? []),
+            ])
+          : /[#.[:>]|[\w\]*] *[\s,]+ *[\w*]/.test(literal) &&
+              literal.length <= 120 &&
+              namesKnown(literal)
+            ? open.filter((host) => reaches(host, literal))
+            : [];
+    for (const host of reached)
+      if (!host.hasAttribute(SCENE_NO_SWAP_ATTR))
+        host.setAttribute(SCENE_NO_SWAP_ATTR, `a script outside the scene selects ${literal}`);
+  }
+}
+
+const reaches = (host: Element, selector: string) => {
+  try {
+    return host.matches(selector) || host.querySelector(selector) !== null;
+  } catch {
+    return false;
+  }
+};
 
 // ---------------------------------------------------------------------------
 // Public interface
@@ -127,15 +236,50 @@ export interface InlineSubCompositionsOptions {
    * Defaults to `console.warn`.
    */
   onMissingComposition?: (srcPath: string, reason?: string) => void;
+  /** Tag each top-level host with `data-hf-scene` and report every part's scene, for preview swaps. */
+  tagScenes?: boolean;
+}
+
+export interface ExternalLink {
+  href: string;
+  rel: string;
+  crossorigin?: string;
+  media?: string;
+  title?: string;
+  type?: string;
+  disabled?: true;
+}
+
+/** Appends a hoisted link unless the document already has a live one it would duplicate. */
+export function ensureExternalLinkTag(doc: Document, link: ExternalLink): void {
+  const el = doc.createElement("link");
+  el.setAttribute("rel", link.rel);
+  el.setAttribute("href", link.href);
+  for (const name of ["crossorigin", "media", "title", "type"] as const) {
+    const value = link[name];
+    if (value != null) el.setAttribute(name, value);
+  }
+  if (link.disabled) el.setAttribute("disabled", "");
+  if (!hasSameLink(doc, el)) doc.head.appendChild(el);
 }
 
 export interface InlineSubCompositionsResult {
-  styles: string[];
+  styles: CompositionStyle[];
+  /** With `tagScenes`: the scene each entry of `styles` belongs to. */
+  styleScenes: string[];
   scripts: string[];
   externalScriptSrcs: string[];
-  scriptItems: Array<{ kind: "inline"; content: string } | { kind: "external"; src: string }>;
-  externalLinks: { href: string; rel: string; crossorigin?: string }[];
+  scriptItems: Array<
+    | { kind: "inline"; content: string; scene?: string }
+    | ({ kind: "external"; src: string; scene?: string } & ExternalScriptAttributes)
+  >;
+  /** May list one link more than once; `ensureExternalLinkTag` dedupes. */
+  externalLinks: ExternalLink[];
   variablesByComp: Record<string, Record<string, unknown>>;
+  /** Mounted files' import maps, addresses rebased; emit with `emitMountedModuleScripts`. */
+  importMaps: ImportMap[];
+  /** Mounted files' inline module scripts, each already carrying its scoped `__hyperframes`. */
+  moduleScripts: string[];
 }
 
 // ---------------------------------------------------------------------------
@@ -155,7 +299,7 @@ function defaultBuildScopeSelector(compId: string): string {
  * Inline sub-compositions into a document. For each host element in `hosts`:
  *
  * 1. Resolve the sub-composition HTML via `options.resolveHtml`
- * 2. Parse it, find `<template>` or `<body>` content
+ * 2. Parse it, resolve template, body, or bare-fragment content
  * 3. Find the inner `[data-composition-id]` root
  * 4. Extract `<style>` elements, scope CSS, collect them
  * 5. Extract `<script>` elements, wrap inline scripts, collect them
@@ -185,20 +329,28 @@ export function inlineSubCompositions(
     scriptErrorLabel = "[HyperFrames] composition script error:",
     onMissingComposition,
     assetExists,
+    tagScenes = false,
   } = options;
 
-  const styles: string[] = [];
+  const styles: CompositionStyle[] = [];
+  const styleScenes: string[] = [];
   const scripts: string[] = [];
   const externalScriptSrcs: string[] = [];
   const scriptItems: InlineSubCompositionsResult["scriptItems"] = [];
-  const externalLinks: { href: string; rel: string; crossorigin?: string }[] = [];
-  const seenLinkHrefs = new Set<string>();
+  const importMaps: ImportMap[] = [];
+  const moduleScripts: string[] = [];
+  const externalLinks: ExternalLink[] = [];
   const variablesByComp: Record<string, Record<string, unknown>> = {};
   const svgIdScopes: Array<SvgIdScope & { styleStart: number; styleEnd: number }> = [];
 
-  const queue = hosts.map((element) => ({ element, ancestry: [] as string[] }));
+  const sceneHosts = new Map<string, Element>();
+  const queue = hosts.map((element) => ({
+    element,
+    ancestry: [] as string[],
+    scene: undefined as string | undefined,
+  }));
   for (let queueIndex = 0; queueIndex < queue.length; queueIndex += 1) {
-    const { element: hostEl, ancestry } = queue[queueIndex]!;
+    const { element: hostEl, ancestry, scene: parentScene } = queue[queueIndex]!;
     const src = hostEl.getAttribute("data-composition-src");
     if (!src) continue;
 
@@ -236,9 +388,7 @@ export function inlineSubCompositions(
       runtimeCompId = compId || "";
     }
 
-    // Find content: prefer <template>, fall back to <body>
-    const contentRoot = compDoc.querySelector("template");
-    const contentHtml = contentRoot ? contentRoot.innerHTML || "" : compDoc.body?.innerHTML || "";
+    const { contentHtml, hasTemplate } = resolveSubCompositionContent(compHtml, compDoc);
     if (!contentHtml.trim()) {
       onMissingComposition?.(src);
       continue;
@@ -257,7 +407,7 @@ export function inlineSubCompositions(
       contentNode: contentDoc,
       head: compDoc.head,
       documentElement: compDoc.documentElement,
-      hasTemplate: Boolean(contentRoot),
+      hasTemplate,
       compositionId: compId,
     });
     const innerRoot = plan.innerRoot;
@@ -265,6 +415,18 @@ export function inlineSubCompositions(
     const scopeCompId = plan.authoredCompositionId || "";
     const scriptCompositionId = plan.scriptCompositionId || "";
     const runtimeScope = runtimeCompId ? buildScopeSelector(runtimeCompId) : "";
+    const scene = tagScenes ? (parentScene ?? (runtimeCompId || src)) : undefined;
+    if (scene && !parentScene) {
+      hostEl.setAttribute(SCENE_PART_ATTR, scene);
+      sceneHosts.set(scene, hostEl);
+    }
+    // Lazy, so renders (no scene hosts) never run the refusal checks.
+    const refuseSwap = (why: () => string | null) => {
+      const host = scene ? sceneHosts.get(scene) : undefined;
+      if (!host || host.hasAttribute(SCENE_NO_SWAP_ATTR)) return;
+      const reason = why();
+      if (reason) host.setAttribute(SCENE_NO_SWAP_ATTR, reason);
+    };
 
     // Variable merging (bundler feature). Read declared defaults from the
     // document element (full-document sub-comps) AND the inner composition root
@@ -310,17 +472,20 @@ export function inlineSubCompositions(
 
     // <link> hoisting is unconditional. A templated sub-composition's webfont
     // link is as load-bearing as a non-templated one's, and the mount path has
-    // always hoisted both; gating this on `!contentRoot` dropped a templated
+    // always hoisted both; gating this on `!hasTemplate` dropped a templated
     // composition's font from the render while preview kept it.
     for (const link of plan.linkSources) {
       const href = resolveSubAssetPath(link.getAttribute("href"));
-      if (href && !seenLinkHrefs.has(href)) {
-        seenLinkHrefs.add(href);
+      if (href) {
         const rel = (link.getAttribute("rel") || "").trim();
         const crossorigin = link.hasAttribute("crossorigin")
           ? link.getAttribute("crossorigin") || ""
           : undefined;
-        externalLinks.push({ href, rel, crossorigin });
+        const media = link.getAttribute("media") ?? undefined;
+        const title = link.getAttribute("title") ?? undefined;
+        const type = link.getAttribute("type") ?? undefined;
+        const disabled = link.hasAttribute("disabled") ? true : undefined;
+        externalLinks.push({ href, rel, crossorigin, media, title, type, disabled });
       }
     }
 
@@ -329,21 +494,55 @@ export function inlineSubCompositions(
     // (GSAP from a CDN) has to run before the content scripts calling into it.
     const styleStart = styles.length;
     for (const styleEl of plan.styleSources) {
-      styles.push(scopeSubStyle(styleEl.textContent || ""));
+      if (cssStyleMergeKey(styleEl) === undefined) continue;
+      styles.push(compositionStyle(styleEl, scopeSubStyle(styleEl.textContent || "")));
+      if (scene) styleScenes.push(scene);
       styleEl.remove();
     }
     const styleEnd = styles.length;
 
-    // Head- and content-sourced scripts take the same branch. The head loop
-    // used to handle only `src`, so an inline <head> script was silently
-    // discarded on render while the mount path executed it.
+    // Head- and content-sourced scripts take the same branch.
     for (const scriptEl of plan.scriptSources) {
       const externalSrc = resolveSubAssetPath(scriptEl.getAttribute("src"));
-      if (externalSrc) {
+      const type = (scriptEl.getAttribute("type") || "").trim().toLowerCase();
+      // A swap never re-runs external or module scripts: only a known library that just defines globals is safe.
+      refuseSwap(() =>
+        type === "importmap" || type === "module"
+          ? "it runs a module script or import map"
+          : !externalSrc
+            ? sceneScriptSwapRefusal(scriptEl.textContent || "")
+            : isSwapSafeLibrary(externalSrc)
+              ? null
+              : "it runs a script that is not a known library",
+      );
+      if (type === "importmap") {
+        const map = parseImportMap(scriptEl.textContent || "", (url) => {
+          // The rebase drops a leading "./" and a trailing "/"; an import map address needs both.
+          const authored = url.trim();
+          const rebased = resolveSubAssetPath(authored);
+          if (rebased === authored) return rebased;
+          const urlLike = /^(\/|\.\.?\/|[a-z][a-z\d+.-]*:)/i.test(rebased)
+            ? rebased
+            : `./${rebased}`;
+          return authored.endsWith("/") && !urlLike.endsWith("/") ? `${urlLike}/` : urlLike;
+        });
+        if (map) importMaps.push(map);
+        else console.warn(`[HyperFrames] ${src}: import map is not valid JSON, so it is skipped.`);
+      } else if (type === "module" && !externalSrc) {
+        const prelude = scriptCompositionId
+          ? scopedModulePrelude(runtimeCompId || scopeCompId || scriptCompositionId, src)
+          : "";
+        moduleScripts.push(prelude + (scriptEl.textContent || ""));
+      } else if (externalSrc) {
         if (!externalScriptSrcs.includes(externalSrc)) {
           externalScriptSrcs.push(externalSrc);
         }
-        scriptItems.push({ kind: "external", src: externalSrc });
+        scriptItems.push({
+          kind: "external",
+          src: externalSrc,
+          ...readExternalScriptAttributes(scriptEl),
+          ...(scene ? { scene } : {}),
+        });
       } else {
         const wrappedScript = scriptCompositionId
           ? wrapScopedCompositionScript(
@@ -353,10 +552,11 @@ export function inlineSubCompositions(
               runtimeScope || undefined,
               runtimeCompId || scopeCompId || scriptCompositionId,
               authoredRootId,
+              src,
             )
           : wrapInlineScriptWithErrorBoundary(scriptEl.textContent || "", scriptErrorLabel);
         scripts.push(wrappedScript);
-        scriptItems.push({ kind: "inline", content: wrappedScript });
+        scriptItems.push({ kind: "inline", content: wrappedScript, ...(scene ? { scene } : {}) });
       }
       scriptEl.remove();
     }
@@ -408,7 +608,8 @@ export function inlineSubCompositions(
     // Inject content into the host element
     if (innerRoot) {
       innerRoot.setAttribute("data-composition-file", src);
-      for (const child of [...innerRoot.querySelectorAll("style, script")]) child.remove();
+      for (const child of [...innerRoot.querySelectorAll(EXTRACTED_COMPOSITION_ASSET_SELECTOR)])
+        child.remove();
       if (flattenInnerRoot) {
         const prepared = flattenInnerRoot(innerRoot);
         if (!compId && scopeCompId) {
@@ -432,7 +633,8 @@ export function inlineSubCompositions(
         }
       }
     } else {
-      for (const child of [...contentDoc.querySelectorAll("style, script")]) child.remove();
+      for (const child of [...contentDoc.querySelectorAll(EXTRACTED_COMPOSITION_ASSET_SELECTOR)])
+        child.remove();
       // linkedom fragment parsing: when content is `<div data-composition-id="X">...</div>`,
       // the div becomes documentElement and body is empty. Fall back to documentElement.outerHTML
       // to preserve the composition wrapper.
@@ -449,7 +651,7 @@ export function inlineSubCompositions(
       onMissingComposition?.(skipped.src, skipped.reason);
     }
     for (const nestedHost of nested.hosts) {
-      queue.push({ element: nestedHost.host, ancestry: nestedAncestry });
+      queue.push({ element: nestedHost.host, ancestry: nestedAncestry, scene });
     }
 
     // Remember this instance for the SVG id pass below. Keyed on the
@@ -480,16 +682,26 @@ export function inlineSubCompositions(
       root,
       namespace,
       exclude,
-      cssTexts: styles.slice(styleStart, styleEnd),
+      cssTexts: styles.slice(styleStart, styleEnd).map((style) => style.css),
     })),
   );
   svgIdMaps.forEach((idMap, index) => {
     if (idMap.size === 0) return;
     const { styleStart, styleEnd } = svgIdScopes[index]!;
     for (let i = styleStart; i < styleEnd; i += 1) {
-      styles[i] = rewriteSvgIdReferencesInCss(styles[i]!, idMap);
+      styles[i]!.css = rewriteSvgIdReferencesInCss(styles[i]!.css, idMap);
     }
   });
 
-  return { styles, scripts, externalScriptSrcs, scriptItems, externalLinks, variablesByComp };
+  return {
+    styles,
+    styleScenes,
+    scripts,
+    externalScriptSrcs,
+    scriptItems,
+    externalLinks,
+    variablesByComp,
+    importMaps,
+    moduleScripts,
+  };
 }

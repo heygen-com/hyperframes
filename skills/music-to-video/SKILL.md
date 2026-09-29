@@ -3,13 +3,15 @@ name: music-to-video
 description: "Turn a music track (an audio file, a video to pull audio from, or a track generated from a mood brief) into a beat-synced video — lyric video, slideshow, or kinetic promo. The music drives all pacing; any user-supplied images/videos are cut onto the same beat grid, and a complete video needs zero assets. Narrated pieces → the input-matched workflow (see /hyperframes). Unclear → /hyperframes."
 ---
 
+**Plugin installs:** Before setup or freshness commands, follow [plugin execution rules](../hyperframes/references/plugin-installation.md) when this skill is inside a HyperFrames plugin. Standalone installs keep the update instructions below.
+
 > **First, keep this skill fresh — confirm with the user before running:** `npx hyperframes skills update music-to-video`. A fast no-op when everything is current; otherwise it refreshes this skill plus the core domain skills it depends on before you rely on them.
 
 # music-to-video — one music-grounded, beat-synced video workflow
 
 Use this skill to turn a **music track** into a beat-synced HyperFrames video. You analyze the track once, lay out the frames, fill in a per-frame plan, and build each frame as a composition. The input is a music track plus optional user images or videos — there is **no narration and no website capture**. Typography and templates are the floor (a complete video needs zero assets); any media the user supplies is cut in on the same beat grid.
 
-You are the **orchestrator**. Work in `videos/<project>/`. Run the steps in order and pass each **Gate** before moving on. Two steps need the user: **Step 3** (plan approval) and **Step 6** (render approval) — both are checkpoint gates per `../hyperframes-core/references/brief-contract.md` (read it before Step 0): in autonomous mode, post the summary as a heads-up and proceed instead of waiting. Do every step yourself except **Step 4**, where you dispatch **one sub-agent per frame**. Keep design and motion rules out of this file — they live in `references/` and the `frame-worker` sub-agent.
+You are the **orchestrator**. Work in `videos/<project>/`. Run the steps in order and pass each **Gate** before moving on. Two steps need the user: **Step 3** (plan approval) and **Step 6** (render approval) — both are checkpoint gates per `../hyperframes/references/brief-contract.md` (read it before Step 0): in autonomous mode, post the summary as a heads-up and proceed instead of waiting. Do every step yourself except **Step 4**, where you dispatch **one sub-agent per frame**. Keep design and motion rules out of this file — they live in `references/` and the `frame-worker` sub-agent.
 
 `SKILL_DIR` = this skill directory. `PROJECT_DIR` = `videos/<project-name>/`.
 
@@ -91,14 +93,14 @@ Goal: Turn the skeleton into an approved, complete `STORYBOARD.md`.
 Read [`references/planning.md`](references/planning.md), [`storyboard-format.md`](references/storyboard-format.md), [`template-catalog.md`](references/template-catalog.md), [`motion-primitive-catalog.md`](references/motion-primitive-catalog.md), and [`montage.md`](references/montage.md) (only if the user supplied assets). Editing the same file in place, do two things:
 
 1. **Pick the brand.** Choose one preset from `../hyperframes-creative/frame-presets/` using the table in `../hyperframes-creative/references/design-spec.md` (match the track's mood; **only its fonts and colors matter** — templates own composition). Copy it into `frame.md` **unmodified** and fill the frontmatter `style` (font + a ≤4–6 swatch palette) from it.
-2. **Fill every frame.** Decide its groups and give each a treatment: a matched template from the catalog (with bound params and real audiomap anchors), a free-compose from the primitive catalog, or an asset treatment that **obeys `pacing`**. Write the copy. You own WHAT (template / primitives + content + anchors); the frame-worker owns HOW — **never write millisecond tweens into the storyboard**.
+2. **Fill every frame.** Decide its groups and give each a treatment: a matched template from the catalog (with bound params and real audiomap anchors), a free-compose from the primitive catalog, or an asset treatment that **obeys `pacing`**. **Before you free-compose a named look, search the live catalog for it**: for every look, effect, treatment or transition the user asked for — "CRT scanlines", "glitch", "film grain", "shimmer sweep" — run `npx hyperframes catalog --query "<the look, in plain English>" --json` and read the top results. `template-catalog.md` and `motion-primitive-catalog.md` list only this skill's own local materials; the search ranks the whole hosted registry (~400 blocks and components) and needs **nothing installed** — no project, no prior `add`, no account. Free-compose a look only after a search for it came back with nothing that fits. Write the copy. You own WHAT (template / primitives + content + anchors); the frame-worker owns HOW — **never write millisecond tweens into the storyboard**.
 
 ```bash
 node <SKILL_DIR>/scripts/validate-plan.mjs --storyboard "$PROJECT_DIR/STORYBOARD.md" \
   --audiomap "$PROJECT_DIR/audiomap.json" --templates <SKILL_DIR>/references/templates
 ```
 
-Fix every `✗` (hard errors: duration mismatch, frames not tiling the track, a missing `src`); warnings are best-effort. Then show the user a frame-by-frame summary and iterate until they approve. In autonomous mode this is a checkpoint gate: post the summary as a heads-up and proceed (the `validate-plan.mjs` pass is a quality gate and still blocks).
+Fix every `✗` (hard errors: duration mismatch, frames not tiling the track, a missing `src`); warnings are best-effort. Then present the frame-by-frame summary in chat as a proposal (`../hyperframes/references/review-loop.md` § 1) and iterate on the user's replies until they approve; for `storyboard: yes`, also write it as `storyboard.html` (`../hyperframes-creative/references/storyboard-recipe.md` § 3) for them to open. In autonomous mode this is a checkpoint gate: post the summary as a heads-up and proceed (the `validate-plan.mjs` pass is a quality gate and still blocks).
 
 **Gate:** `frame.md` is a verbatim preset copy; `validate-plan.mjs` exits 0; the user approved the plan (autonomous: the summary was posted as a heads-up).
 
@@ -108,7 +110,7 @@ Fix every `✗` (hard errors: duration mismatch, frames not tiling the track, a 
 
 Goal: Build every frame as a self-contained composition file.
 
-Create `compositions/frames/`. Read [`sub-agents/frame-worker.md`](sub-agents/frame-worker.md) and `../hyperframes-core/references/subagent-dispatch.md`. Dispatch **one frame-worker per frame**, in parallel where possible (otherwise in waves). Each worker gets exactly one frame and this context:
+Create `compositions/frames/`. Read [`sub-agents/frame-worker.md`](sub-agents/frame-worker.md) and `../hyperframes/references/subagent-dispatch.md`. Dispatch **one frame-worker per frame**, in parallel where possible (otherwise in waves). Each worker gets exactly one frame and this context:
 
 ```text
 PROJECT_DIR: <abs path>
@@ -191,7 +193,7 @@ Inspect at `t=0`, each frame start, the strongest DROP / SURGE, every `hard_stop
 | [`references/motion-primitive-catalog.md`](references/motion-primitive-catalog.md)                             | Step 3/4: L0 recipes for free-compose                   |
 | [`references/montage.md`](references/montage.md)                                                               | Step 3/4: asset treatments (beat-cut / ken-burns)       |
 | [`sub-agents/frame-worker.md`](sub-agents/frame-worker.md)                                                     | Step 4: dispatch + build one frame                      |
-| `../hyperframes-core/references/subagent-dispatch.md`                                                          | Step 4: dispatch sub-agents safely                      |
+| `../hyperframes/references/subagent-dispatch.md`                                                               | Step 4: dispatch sub-agents safely                      |
 | `../hyperframes-creative/references/design-spec.md`                                                            | Step 3: pick the preset (the brand)                     |
 
 ## Directory layout
@@ -202,7 +204,7 @@ music-to-video/
   references/   frame-skeleton.md · planning.md · storyboard-format.md
                 template-catalog.md · motion-primitive-catalog.md · montage.md
                 templates/<id>/          { index.html (+ assets/ · program.json) }  ← L1 catalog impls
-                motion-primitives/<id>/  { index.html } (+ ../assets/gsap.min.js shared by recipes) ← L0 catalog impls
+                motion-primitives/<id>/  { index.html (mounts the scene), scene.html (the sub-composition) } (+ ../assets/gsap.min.js shared by recipes) ← L0 catalog impls
   scripts/      analyze-beatgrid.py · assemble-index.mjs · validate-plan.mjs · stage-assets.mjs · lib/storyboard.mjs
   sub-agents/   frame-worker.md   ← the one subagent (one per frame)
 ```

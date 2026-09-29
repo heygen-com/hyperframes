@@ -81,7 +81,12 @@ export function createDomEditSaveQueue(options: DomEditSaveQueueOptions = {}): D
   return {
     enqueue(save) {
       if (breakerOpen) return Promise.reject(new DomEditSaveQueueOpenError());
-      const queued = tail.catch(() => undefined).then(() => run(save));
+      const queued = tail
+        .catch(() => undefined)
+        .then(() => {
+          if (breakerOpen) throw new DomEditSaveQueueOpenError();
+          return run(save);
+        });
       tail = queued.then(
         () => undefined,
         () => undefined,

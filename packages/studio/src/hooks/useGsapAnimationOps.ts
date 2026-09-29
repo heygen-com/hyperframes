@@ -1,4 +1,8 @@
 import { useCallback } from "react";
+import {
+  serializeStudioFileMutation,
+  type StudioProjectFileWriter,
+} from "../utils/studioFileMutationCoordinator";
 import type { Composition } from "@hyperframes/sdk";
 import type { DomEditSelection } from "../components/editor/domEditingTypes";
 import { roundTo3 } from "../utils/rounding";
@@ -27,6 +31,7 @@ interface GsapAnimationOpsParams extends SdkAnimationDeps {
   commitMutation: CommitMutation;
   commitMutationSafely: SafeGsapCommitMutation;
   showToast: (message: string, tone?: "error" | "info") => void;
+  writeProjectFile?: StudioProjectFileWriter;
 }
 
 export function useGsapAnimationOps({
@@ -37,6 +42,7 @@ export function useGsapAnimationOps({
   showToast,
   sdkSession,
   sdkDeps,
+  writeProjectFile,
 }: GsapAnimationOpsParams) {
   const updateGsapMeta = useCallback(
     async (
@@ -55,7 +61,7 @@ export function useGsapAnimationOps({
         );
         if (cutoverCommittedOrThrow(handled)) return;
       }
-      commitMutationSafely(
+      return commitMutationSafely(
         selection,
         { type: "update-meta", animationId, updates },
         { label: "Edit GSAP animation", coalesceKey: `gsap:${animationId}:meta`, softReload: true },
@@ -77,10 +83,10 @@ export function useGsapAnimationOps({
         );
         if (cutoverCommittedOrThrow(handled)) return;
       }
-      commitMutationSafely(
+      return commitMutationSafely(
         selection,
         { type: "delete", animationId, stripStudioEdits: true },
-        { label: "Delete GSAP animation" },
+        { label: "Delete GSAP animation", softReload: true },
       );
     },
     [commitMutationSafely, activeCompPath, sdkSession, sdkDeps],
@@ -122,13 +128,17 @@ export function useGsapAnimationOps({
         const pid = projectIdRef.current;
         const targetPath = selection.sourceFile || activeCompPath || "index.html";
         if (!pid) return;
-        const assigned = await assignGsapTargetAutoIdIfNeeded({
-          projectId: pid,
-          targetPath,
-          selection,
-          autoId,
-          showToast,
-        });
+        const assign = () =>
+          assignGsapTargetAutoIdIfNeeded({
+            projectId: pid,
+            targetPath,
+            selection,
+            autoId,
+            showToast,
+          });
+        const assigned = await (writeProjectFile
+          ? serializeStudioFileMutation(writeProjectFile, targetPath, assign)
+          : assign());
         if (!assigned) return;
       }
 
@@ -178,10 +188,18 @@ export function useGsapAnimationOps({
           properties: toDefaults[method] ?? { opacity: 1 },
           fromProperties: method === "fromTo" ? { opacity: 0 } : undefined,
         },
-        { label: `Add GSAP ${method} animation` },
+        { label: `Add GSAP ${method} animation`, softReload: true },
       );
     },
-    [activeCompPath, commitMutation, projectIdRef, showToast, sdkSession, sdkDeps],
+    [
+      activeCompPath,
+      commitMutation,
+      projectIdRef,
+      showToast,
+      sdkSession,
+      sdkDeps,
+      writeProjectFile,
+    ],
   );
 
   type KeyframeEntry = {

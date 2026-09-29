@@ -1,0 +1,26 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <template>
+      <script src="https://cdn.jsdelivr.net/npm/gsap@3.14.2/dist/gsap.min.js"></script>
+      <style>
+        #sub-a-root { position: relative; width: 640px; height: 360px; overflow: hidden; }
+        #sub-a-square { position: absolute; top: 80px; left: 220px; width: 200px; height: 200px; background: #fff; opacity: 0; }
+        #sub-a-clip { position: absolute; width: 1px; height: 1px; opacity: 0; pointer-events: none; }
+      </style>
+      <div id="sub-a-root" data-composition-id="sub-a" data-start="0" data-duration="3" data-width="640" data-height="360">
+        <div id="sub-a-clip" class="clip" data-start="0" data-duration="3"></div>
+        <div id="sub-a-square"></div>
+      </div>
+      <script>
+        window.__timelines = window.__timelines || {};
+        const tl = gsap.timeline({ paused: true });
+        tl.to("#sub-a-square", { autoAlpha: 1, duration: 0.6, ease: "none" }, 0.2);
+        tl.set("#sub-a-root", { visibility: "hidden" }, 2.98);
+        window.__timelines["sub-a"] = tl;
+      </script>
+    </template>
+  </head>
+  <body></body>
+</html>

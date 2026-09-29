@@ -36,7 +36,7 @@ export function ambiguousIssue(selector: string): LayoutIssue {
     severity: "error",
     time: 0,
     selector,
-    message: `${selector} matches multiple elements — use a more specific selector so the assertion targets exactly one`,
+    message: `${selector} matches multiple elements — use a more specific selector so the assertion targets exactly one.`,
     rect: ZERO_RECT,
     fixHint:
       "Use #id or :nth-child() instead of a class selector when multiple elements share the same class.",
@@ -236,6 +236,26 @@ export function evaluateMotion(
   });
 }
 
+export function assertionTargets(assertion: MotionAssertion): {
+  selectors: string[];
+  scopes: string[];
+} {
+  switch (assertion.kind) {
+    case "appearsBy":
+    case "staysInFrame":
+      return { selectors: [assertion.selector], scopes: [] };
+    case "before":
+      return { selectors: [assertion.a, assertion.b], scopes: [] };
+    case "keepsMoving":
+      return { selectors: [], scopes: [assertion.withinSelector ?? "*"] };
+    default: {
+      const exhaustive: never = assertion;
+      void exhaustive;
+      return { selectors: [], scopes: [] };
+    }
+  }
+}
+
 /**
  * Selectors and liveness scopes the in-page sampler must read for a spec.
  * Selectors feed the per-element matrix; scopes feed keepsMoving liveness.
@@ -247,19 +267,9 @@ export function collectSamplingTargets(assertions: MotionAssertion[]): {
   const selectors = new Set<string>();
   const scopes = new Set<string>();
   for (const assertion of assertions) {
-    switch (assertion.kind) {
-      case "appearsBy":
-      case "staysInFrame":
-        selectors.add(assertion.selector);
-        break;
-      case "before":
-        selectors.add(assertion.a);
-        selectors.add(assertion.b);
-        break;
-      case "keepsMoving":
-        scopes.add(assertion.withinSelector ?? "*");
-        break;
-    }
+    const targets = assertionTargets(assertion);
+    for (const selector of targets.selectors) selectors.add(selector);
+    for (const scope of targets.scopes) scopes.add(scope);
   }
   return { selectors: [...selectors], livenessScopes: [...scopes] };
 }

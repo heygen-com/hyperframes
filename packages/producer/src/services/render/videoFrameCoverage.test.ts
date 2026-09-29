@@ -19,6 +19,7 @@ function makeVideo(overrides: Partial<VideoElement> & { id: string }): VideoElem
     start: overrides.start ?? 0,
     end: overrides.end ?? 1,
     mediaStart: overrides.mediaStart ?? 0,
+    playbackRate: overrides.playbackRate,
     loop: overrides.loop ?? false,
     hasAudio: overrides.hasAudio ?? false,
   };
@@ -133,6 +134,16 @@ describe("resolveVideoCoverageThreshold", () => {
 });
 
 describe("computeVideoFrameCoverage", () => {
+  it("expects only the source frames consumed by a slowed authored slot", () => {
+    const videos = [makeVideo({ id: "slow", start: 0, end: 4, playbackRate: 0.5 })];
+    const extracted = [makeExtracted("slow", 60, { durationSeconds: 4 })];
+
+    const reports = computeVideoFrameCoverage(videos, extracted, 30);
+
+    expect(reports[0]).toMatchObject({ expectedFrames: 60, capturedFrames: 60, ratio: 1 });
+    expect(() => assertVideoFrameCoverage(reports, 0.95)).not.toThrow();
+  });
+
   it("reports 1.0 ratio when every video delivered its authored window", () => {
     const videos = [
       makeVideo({ id: "a", start: 0, end: 1 }),

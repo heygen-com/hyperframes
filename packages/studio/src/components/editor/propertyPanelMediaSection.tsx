@@ -8,6 +8,7 @@ import {
   formatTimingValue,
   LABEL,
   parseNumericValue,
+  readClipInPoint,
   RESPONSIVE_GRID,
   stripQueryAndHash,
 } from "./propertyPanelHelpers";
@@ -35,7 +36,7 @@ export function MediaSection({
   projectDir: string | null;
   element: DomEditSelection;
   styles: Record<string, string>;
-  onSetStyle: (prop: string, value: string) => void | Promise<void>;
+  onSetStyle: (prop: string, value: string) => void | Promise<unknown>;
   onSetAttribute: (attr: string, value: string) => void | Promise<void>;
   onSetHtmlAttribute: (attr: string, value: string | null) => void | Promise<void>;
   onRemoveBackground?: (
@@ -57,10 +58,7 @@ export function MediaSection({
   const volume = parseNumericValue(element.dataAttributes.volume ?? "") ?? 1;
   const volumeFaderPosition = audioGainToFaderPosition(volume);
 
-  const mediaStart =
-    Number.parseFloat(
-      element.dataAttributes["media-start"] ?? element.dataAttributes["playback-start"] ?? "0",
-    ) || 0;
+  const { mediaStart, mediaStartAttr } = readClipInPoint(element.dataAttributes);
 
   const hasLoop = el.hasAttribute("loop");
   const hasMuted = el.hasAttribute("muted");
@@ -182,7 +180,7 @@ export function MediaSection({
                   event.stopPropagation();
                   void runBackgroundRemoval();
                 }}
-                className="flex h-8 flex-shrink-0 items-center gap-1.5 rounded-md bg-panel-input px-2.5 text-[11px] font-medium text-panel-text-2 transition-colors hover:bg-panel-hover hover:text-panel-text-1 disabled:cursor-not-allowed disabled:opacity-50"
+                className="flex h-8 shrink-0 items-center gap-1.5 rounded-md bg-panel-input px-2.5 text-[11px] font-medium text-panel-text-2 transition-colors hover:bg-panel-hover hover:text-panel-text-1 disabled:cursor-not-allowed disabled:opacity-50"
                 title={
                   canRemoveBackground
                     ? "Remove background and save a transparent asset"
@@ -297,7 +295,7 @@ export function MediaSection({
                 displayValue={formatTimingValue(mediaStart)}
                 formatDisplayValue={(next) => formatTimingValue(next / 100)}
                 onCommit={(next) => {
-                  void onSetAttribute("media-start", (next / 100).toFixed(2));
+                  void onSetAttribute(mediaStartAttr, (next / 100).toFixed(2));
                 }}
               />
             </div>

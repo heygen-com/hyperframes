@@ -13,6 +13,8 @@ description: >
   `/hyperframes-core`.
 ---
 
+**Plugin installs:** Before setup or freshness commands, follow [plugin execution rules](../hyperframes/references/plugin-installation.md) when this skill is inside a HyperFrames plugin. Standalone installs keep the update instructions below.
+
 # HyperFrames Audio
 
 A mix is a set of relationships, not a stack of processors. Two tracks that each
@@ -32,10 +34,11 @@ crossfade envelopes, track gain/track volume, volume and effect automation,
 ducking/voiceover carve, and the effect chain. `/media-use` owns sourcing,
 generation, and preprocessing.
 
-Constant `data-playback-rate` (`0.1..5`) is render-safe for picture and
+Constant `data-playback-rate` (`0.1..10`) is render-safe for picture and
 pitch-preserved sound when matching audio/video elements use the same timing,
-source offset, and rate. Source speed ramps are not supported because there is
-no rate envelope; preprocess a derived synchronized asset. HyperFrames does not
+source offset, and rate. A speed ramp is a `rate` lane in `data-automation`
+(see `docs/reference/speed-ramps`); it wins over the constant and keeps pitch
+in preview and render. HyperFrames does not
 provide automatic waveform sync or drift correction.
 For copyable cut/crossfade/retime recipes, use `/hyperframes-core` → `references/creator-editing-recipes.md`.
 
@@ -252,11 +255,7 @@ analysis time, so a clip added to the group later is covered without touching
 <audio id="vo-middle" data-audio-group="voiceover" …></audio>
 <audio id="vo-outro" data-audio-group="voiceover" …></audio>
 
-<audio
-  id="music"
-  data-fx-carve='{"enabled":true,"sources":["voiceover"],"strength":0.25}'
-  …
-></audio>
+<audio id="music" data-fx-carve='{"enabled":true,"sources":["voiceover"],"strength":0.8}' …></audio>
 ```
 
 A `sources` list naming two or more plain clip ids instead of a group is caught
@@ -355,17 +354,26 @@ many bands, how wide, how far to favour intelligibility over raw voice energy,
 how far the level may drop, how far under the voice to aim. Those six move
 together in any real mix — a gentle carve is a shallow cut in few bands with
 little ducking, a hard one is deeper in more bands with more — so they are one
-relationship written once, in `carveProfile`. Default is `0.25` — a 6 dB dip in
-three bands with 6 dB of level room, audible without sounding like a hole. At
-`0.5` the dip reaches 10 dB, which is where a carve starts being heard as an
-effect rather than as room for the voice; above that is deliberate territory for
-a loud bed under a quiet voice. `0` is spectral only — one band, no level match
-at all.
+relationship written once, in `carveProfile`. `carve.mjs` defaults to `0.8` —
+six bands from 250 Hz to 2.5 kHz cut about 7 dB each and 15 dB at 1.6 kHz, with
+19 dB of level room — because a bed under narration has to get out of the way
+first and be music second; `0.25` (a 6 dB dip in three bands, 6 dB of room) kept
+the bed present but still let it fight the voice, and was judged too weak in
+practice. At `0.5` the dip reaches 10 dB, which is where a carve starts being
+heard as an effect rather than as room for the voice. Drop the strength when the
+bed is the point and the voice is sparse. `0` is spectral only — one band, no
+level match at all.
 
-**Carve by default.** A bed playing under narration wants a carve; it is not a
-polish step to get to if there is time. Place both tracks, run the command below,
-listen. Skip it only when there is no narration for the music to sit under — a
-music video, a title card, a montage cut to the track.
+**Carve by default — required whenever music plays under a voice.** A bed
+under any voice track (narration, avatar speech, interview, voiceover) gets a
+carve as part of finishing the mix, not as a polish step to get to if there is
+time. Place both tracks, run the command below (default strength `0.8`; add
+`--bed` / `--voice` when detection picks wrong), confirm the written
+`data-fx-carve`, `data-fx-chain` and `data-automation` with `npx hyperframes check`,
+and only then render. A volume duck on its own is not a finished mix: it leaves
+the voice and the bed fighting in the 1–3 kHz band and costs the bed all of its
+presence for the whole voiceover. Skip the carve only when there is no voice for
+the music to sit under — a music video, a title card, a montage cut to the track.
 
 **It always follows the voice.** There is no static mode: a fixed depth thins the
 bed through every pause, and once you have heard both there is no reason to want it.
@@ -399,9 +407,9 @@ dynamically at the default strength, and prints what it decided:
 ```
 bed    music-bed (name looks like music)
 voice  narration (only track left)
-carve  strength 0.25 dynamic
-bands  400Hz -6dB q1.4, 1000Hz -3dB q1.4, 1600Hz -3.17dB q1.4
-level  216-point envelope, floor -6 dB
+carve  strength 0.8 dynamic
+bands  250Hz -7.4dB q2.06, 400Hz -7.4dB q2.06, 630Hz -7.4dB q2.06, 1000Hz -7.4dB q2.06, 1600Hz -14.8dB q2.06, 2500Hz -7.4dB q2.06
+level  273-point envelope, floor -19.2 dB
 ```
 
 Name the tracks with `--bed` / `--voice` (repeatable) when the automatic choice is

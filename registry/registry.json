@@ -4,42 +4,6 @@
   "homepage": "https://hyperframes.heygen.com",
   "items": [
     {
-      "name": "decision-tree",
-      "type": "hyperframes:example"
-    },
-    {
-      "name": "kinetic-type",
-      "type": "hyperframes:example"
-    },
-    {
-      "name": "nyt-graph",
-      "type": "hyperframes:example"
-    },
-    {
-      "name": "play-mode",
-      "type": "hyperframes:example"
-    },
-    {
-      "name": "product-promo",
-      "type": "hyperframes:example"
-    },
-    {
-      "name": "swiss-grid",
-      "type": "hyperframes:example"
-    },
-    {
-      "name": "vignelli",
-      "type": "hyperframes:example"
-    },
-    {
-      "name": "vscode-theme-visualizer",
-      "type": "hyperframes:example"
-    },
-    {
-      "name": "warm-grain",
-      "type": "hyperframes:example"
-    },
-    {
       "name": "ai-chat-reveal",
       "type": "hyperframes:block"
     },
@@ -69,6 +33,110 @@
     },
     {
       "name": "camera-dolly-zoom",
+      "type": "hyperframes:block"
+    },
+    {
+      "name": "canopy-part-title",
+      "type": "hyperframes:block"
+    },
+    {
+      "name": "carousel-circle-1",
+      "type": "hyperframes:block"
+    },
+    {
+      "name": "carousel-circle-2",
+      "type": "hyperframes:block"
+    },
+    {
+      "name": "carousel-circle-3",
+      "type": "hyperframes:block"
+    },
+    {
+      "name": "carousel-circle-4",
+      "type": "hyperframes:block"
+    },
+    {
+      "name": "carousel-circle-5",
+      "type": "hyperframes:block"
+    },
+    {
+      "name": "carousel-orbit-1",
+      "type": "hyperframes:block"
+    },
+    {
+      "name": "carousel-orbit-2",
+      "type": "hyperframes:block"
+    },
+    {
+      "name": "carousel-orbit-3",
+      "type": "hyperframes:block"
+    },
+    {
+      "name": "carousel-orbit-4",
+      "type": "hyperframes:block"
+    },
+    {
+      "name": "carousel-orbit-5",
+      "type": "hyperframes:block"
+    },
+    {
+      "name": "carousel-path-1",
+      "type": "hyperframes:block"
+    },
+    {
+      "name": "carousel-path-2",
+      "type": "hyperframes:block"
+    },
+    {
+      "name": "carousel-path-3",
+      "type": "hyperframes:block"
+    },
+    {
+      "name": "carousel-path-4",
+      "type": "hyperframes:block"
+    },
+    {
+      "name": "carousel-path-5",
+      "type": "hyperframes:block"
+    },
+    {
+      "name": "carousel-text-circle-1",
+      "type": "hyperframes:block"
+    },
+    {
+      "name": "carousel-text-circle-2",
+      "type": "hyperframes:block"
+    },
+    {
+      "name": "carousel-text-circle-3",
+      "type": "hyperframes:block"
+    },
+    {
+      "name": "carousel-text-circle-4",
+      "type": "hyperframes:block"
+    },
+    {
+      "name": "carousel-text-circle-5",
+      "type": "hyperframes:block"
+    },
+    {
+      "name": "carousel-vision-1",
+      "type": "hyperframes:block"
+    },
+    {
+      "name": "carousel-vision-2",
+      "type": "hyperframes:block"
+    },
+    {
+      "name": "carousel-vision-3",
+      "type": "hyperframes:block"
+    },
+    {
+      "name": "carousel-vision-4",
+      "type": "hyperframes:block"
+    },
+    {
+      "name": "carousel-vision-5",
       "type": "hyperframes:block"
     },
     {
@@ -116,51 +184,11 @@
       "type": "hyperframes:block"
     },
     {
-      "name": "code-snippet-apple-terminal-basic",
-      "type": "hyperframes:block"
-    },
-    {
-      "name": "code-snippet-apple-terminal-clear-dark",
-      "type": "hyperframes:block"
-    },
-    {
-      "name": "code-snippet-apple-terminal-clear-light",
-      "type": "hyperframes:block"
-    },
-    {
-      "name": "code-snippet-apple-terminal-grass",
-      "type": "hyperframes:block"
-    },
-    {
-      "name": "code-snippet-apple-terminal-homebrew",
-      "type": "hyperframes:block"
-    },
-    {
-      "name": "code-snippet-apple-terminal-man-page",
-      "type": "hyperframes:block"
-    },
-    {
-      "name": "code-snippet-apple-terminal-novel",
-      "type": "hyperframes:block"
-    },
-    {
-      "name": "code-snippet-apple-terminal-ocean",
+      "name": "code-slice-hero",
       "type": "hyperframes:block"
     },
     {
       "name": "code-snippet-apple-terminal-pro",
-      "type": "hyperframes:block"
-    },
-    {
-      "name": "code-snippet-apple-terminal-red-sands",
-      "type": "hyperframes:block"
-    },
-    {
-      "name": "code-snippet-apple-terminal-silver-aerogel",
-      "type": "hyperframes:block"
-    },
-    {
-      "name": "code-snippet-apple-terminal-solid-colors",
       "type": "hyperframes:block"
     },
     {
@@ -169,50 +197,6 @@
     },
     {
       "name": "code-snippet-dark-modern",
-      "type": "hyperframes:block"
-    },
-    {
-      "name": "code-snippet-dark-plus",
-      "type": "hyperframes:block"
-    },
-    {
-      "name": "code-snippet-flight",
-      "type": "hyperframes:block"
-    },
-    {
-      "name": "code-snippet-high-contrast",
-      "type": "hyperframes:block"
-    },
-    {
-      "name": "code-snippet-high-contrast-light",
-      "type": "hyperframes:block"
-    },
-    {
-      "name": "code-snippet-light-2026",
-      "type": "hyperframes:block"
-    },
-    {
-      "name": "code-snippet-light-modern",
-      "type": "hyperframes:block"
-    },
-    {
-      "name": "code-snippet-light-plus",
-      "type": "hyperframes:block"
-    },
-    {
-      "name": "code-snippet-monokai",
-      "type": "hyperframes:block"
-    },
-    {
-      "name": "code-snippet-solarized-light",
-      "type": "hyperframes:block"
-    },
-    {
-      "name": "code-snippet-visual-studio-dark",
-      "type": "hyperframes:block"
-    },
-    {
-      "name": "code-snippet-visual-studio-light",
       "type": "hyperframes:block"
     },
     {
@@ -225,6 +209,10 @@
     },
     {
       "name": "cross-warp-morph",
+      "type": "hyperframes:block"
+    },
+    {
+      "name": "cuboid-carousel",
       "type": "hyperframes:block"
     },
     {
@@ -256,7 +244,15 @@
       "type": "hyperframes:block"
     },
     {
+      "name": "frost-sequence-camera-orbit",
+      "type": "hyperframes:block"
+    },
+    {
       "name": "gallery-tunnel",
+      "type": "hyperframes:block"
+    },
+    {
+      "name": "glass-shard-title",
       "type": "hyperframes:block"
     },
     {
@@ -300,6 +296,10 @@
       "type": "hyperframes:block"
     },
     {
+      "name": "hw-write-title",
+      "type": "hyperframes:block"
+    },
+    {
       "name": "instagram-follow",
       "type": "hyperframes:block"
     },
@@ -312,14 +312,6 @@
       "type": "hyperframes:block"
     },
     {
-      "name": "liquid-glass-context-menu",
-      "type": "hyperframes:block"
-    },
-    {
-      "name": "liquid-glass-media-controls",
-      "type": "hyperframes:block"
-    },
-    {
       "name": "liquid-glass-notification",
       "type": "hyperframes:block"
     },
@@ -329,6 +321,10 @@
     },
     {
       "name": "logo-outro",
+      "type": "hyperframes:block"
+    },
+    {
+      "name": "lottie-character-walk",
       "type": "hyperframes:block"
     },
     {
@@ -437,6 +433,10 @@
     },
     {
       "name": "nyc-paris-flight",
+      "type": "hyperframes:block"
+    },
+    {
+      "name": "orbit-card",
       "type": "hyperframes:block"
     },
     {
@@ -621,6 +621,10 @@
     },
     {
       "name": "whip-pan",
+      "type": "hyperframes:block"
+    },
+    {
+      "name": "wireframe-portal-title",
       "type": "hyperframes:block"
     },
     {
@@ -828,6 +832,10 @@
       "type": "hyperframes:component"
     },
     {
+      "name": "colorama-wipe",
+      "type": "hyperframes:component"
+    },
+    {
       "name": "comparison-split",
       "type": "hyperframes:component"
     },
@@ -885,6 +893,10 @@
     },
     {
       "name": "echo-trail",
+      "type": "hyperframes:component"
+    },
+    {
+      "name": "extended-keyframe",
       "type": "hyperframes:component"
     },
     {
@@ -989,6 +1001,10 @@
     },
     {
       "name": "keyframe-scrub-stack",
+      "type": "hyperframes:component"
+    },
+    {
+      "name": "kinetic-center-build",
       "type": "hyperframes:component"
     },
     {
@@ -1256,11 +1272,11 @@
       "type": "hyperframes:component"
     },
     {
-      "name": "signup-flow",
+      "name": "shutter-slam",
       "type": "hyperframes:component"
     },
     {
-      "name": "simulated-cursor",
+      "name": "signup-flow",
       "type": "hyperframes:component"
     },
     {
@@ -1385,6 +1401,10 @@
     },
     {
       "name": "testimonial-proof-card",
+      "type": "hyperframes:component"
+    },
+    {
+      "name": "text-match-cut",
       "type": "hyperframes:component"
     },
     {
@@ -1526,9 +1546,41 @@
     {
       "name": "zoom-through-transition",
       "type": "hyperframes:component"
+    },
+    {
+      "name": "decision-tree",
+      "type": "hyperframes:example"
+    },
+    {
+      "name": "kinetic-type",
+      "type": "hyperframes:example"
+    },
+    {
+      "name": "nyt-graph",
+      "type": "hyperframes:example"
+    },
+    {
+      "name": "play-mode",
+      "type": "hyperframes:example"
+    },
+    {
+      "name": "product-promo",
+      "type": "hyperframes:example"
+    },
+    {
+      "name": "swiss-grid",
+      "type": "hyperframes:example"
+    },
+    {
+      "name": "vignelli",
+      "type": "hyperframes:example"
+    },
+    {
+      "name": "warm-grain",
+      "type": "hyperframes:example"
     }
   ],
   "catalogArtifact": {
-    "revision": "fb089c68adca459318a6d28b88c09a3ea9ead77d58ef8459bcf90ec79d0b61d9"
+    "revision": "973eda0eef98aed0e928080d20a64acacd8054e83611df7ed8b30ea96b25bf5b"
   }
 }

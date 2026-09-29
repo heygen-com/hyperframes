@@ -13,7 +13,8 @@ import type {
 } from "./types.js";
 import { validateCompositionGsap } from "./gsapSerialize";
 import { parseCompositionVariables } from "./compositionVariables.js";
-import { ensureHfIds, walkCompositionDescendants } from "./hfIds.js";
+import { walkCompositionDescendants } from "./hfIds.js";
+import { assignHfIds } from "./hfIdAssignment.js";
 import { parseGsapScriptAcornForWrite } from "./gsapParserAcorn.js";
 import { queryByAttr } from "./utils/cssSelector.js";
 import { removeAnimationFromScript } from "./gsapWriterAcorn.js";
@@ -178,9 +179,8 @@ function resolveResolutionFromDimensions(width: number, height: number): CanvasR
 }
 
 export function parseHtml(html: string): ParsedHtml {
-  const withIds = ensureHfIds(html);
   const parser = new DOMParser();
-  const doc = parser.parseFromString(withIds, "text/html");
+  const doc = parser.parseFromString(html, "text/html");
 
   const elements: TimelineElement[] = [];
   const keyframes: Record<string, Keyframe[]> = {};
@@ -190,6 +190,7 @@ export function parseHtml(html: string): ParsedHtml {
   if (!htmlEl) {
     throw new CompositionHtmlParseError("parseHtml: input HTML is empty or could not be parsed");
   }
+  if (doc.body) assignHfIds(doc.body);
   const customStylesAttr = htmlEl.getAttribute("data-custom-styles");
   let customStyles: string | null = null;
   if (customStylesAttr) {
@@ -268,7 +269,7 @@ export function parseHtml(html: string): ParsedHtml {
 
     if (type === "text") {
       const textEl = el.firstElementChild;
-      const content = textEl?.textContent || name;
+      const content = textEl?.textContent ?? name;
       const color = el.getAttribute("data-color") || undefined;
       const fontSizeAttr = el.getAttribute("data-font-size");
       const fontSize = fontSizeAttr ? parseInt(fontSizeAttr, 10) : undefined;
@@ -725,41 +726,47 @@ export function addElementToHtml(
   };
 }
 
-function selectorTargetsId(selector: string, id: string): boolean {
-  return (
-    selector === `#${id}` ||
-    selector === `[data-hf-id="${id}"]` ||
-    selector === `[data-hf-id='${id}']`
-  );
+function elementSelectors(element: Element): string[] {
+  const selectors: string[] = [];
+  const id = element.getAttribute("id");
+  const hfId = element.getAttribute("data-hf-id");
+  if (id) selectors.push(`#${id}`);
+  if (hfId) selectors.push(`[data-hf-id="${hfId}"]`, `[data-hf-id='${hfId}']`);
+  return selectors;
 }
 
-function stripGsapForId(script: string, elementId: string): string {
-  // Re-parse after every removal. Animation ids are count-based (positional), so
-  // removing one tween renumbers the survivors — ids captured from a single
-  // up-front parse go stale and silently no-op, orphaning later tweens on the
-  // now-deleted element. Always remove the FIRST still-matching animation in a
-  // freshly-parsed script until none remain.
-  let current = script;
-  for (;;) {
-    const parsed = parseGsapScriptAcornForWrite(current);
-    if (!parsed) return current;
-    const match = parsed.located.find((l) =>
-      selectorTargetsId(l.animation.targetSelector, elementId),
-    );
-    if (!match) return current;
-    const updated = removeAnimationFromScript(current, match.id);
-    // Guard against a non-removing match (would otherwise loop forever).
-    if (updated === current) return current;
-    current = updated;
-  }
-}
+/** Remove a source subtree and its unambiguous, directly targeted GSAP tweens. */
+export function removeElementWithGsapCascade(doc: Document, element: Element): void {
+  const removedSelectors = new Set(elementSelectors(element));
+  walkCompositionDescendants(element, (child) => {
+    for (const selector of elementSelectors(child)) removedSelectors.add(selector);
+  });
+  element.remove();
 
-function cascadeRemoveGsapById(doc: Document, elementId: string): void {
+  // Bare selectors can target repeated sub-composition instances. Keep a tween
+  // if any surviving element still uses its selector rather than erasing the
+  // surviving instance's animation along with the deleted subtree.
+  walkCompositionDescendants(doc, (survivor) => {
+    for (const selector of elementSelectors(survivor)) removedSelectors.delete(selector);
+  });
+  if (removedSelectors.size === 0) return;
+
   for (const script of findScriptElementsDeep(doc)) {
-    const text = script.textContent ?? "";
-    if (!text.includes("gsap") && !text.includes("ScrollTrigger")) continue;
-    const updated = stripGsapForId(text, elementId);
-    if (updated !== text) script.textContent = updated;
+    let current = script.textContent ?? "";
+    if (!current.includes("gsap") && !current.includes("ScrollTrigger")) continue;
+    // Writer ids are positional: reparse after each removal so later tweens
+    // cannot be skipped after an earlier deletion renumbers them.
+    for (;;) {
+      const parsed = parseGsapScriptAcornForWrite(current);
+      const match = parsed?.located.find((located) =>
+        removedSelectors.has(located.animation.targetSelector),
+      );
+      if (!match) break;
+      const updated = removeAnimationFromScript(current, match.id);
+      if (updated === current) break;
+      current = updated;
+    }
+    if (current !== script.textContent) script.textContent = current;
   }
 }
 
@@ -771,8 +778,8 @@ export function removeElementFromHtml(html: string, elementId: string): string {
       "removeElementFromHtml: input HTML is empty or could not be parsed",
     );
   }
-  doc.getElementById(elementId)?.remove();
-  cascadeRemoveGsapById(doc, elementId);
+  const element = doc.getElementById(elementId);
+  if (element) removeElementWithGsapCascade(doc, element);
   return "<!DOCTYPE html>\n" + doc.documentElement.outerHTML;
 }
 
@@ -796,11 +803,19 @@ export function extractCompositionMetadata(html: string): CompositionMetadata {
   const durationStr = htmlEl.getAttribute("data-composition-duration");
   const compositionDuration = durationStr ? parseFloat(durationStr) : null;
 
-  // TODO(template-var-carriers): reads `<html>` only. A template/fragment comp
-  // that declares variables on its `[data-composition-id]` root div (the
-  // dual-carrier contract from #2081) reports no variables when its metadata is
-  // extracted standalone (e.g. CLI --variables validation of a sub-comp file).
-  const variables = parseCompositionVariables(htmlEl);
+  // Declarations live on <html> or on the composition root (inside its <template> when
+  // templated); like the runtime, read both and let the root's win on a shared id.
+  const root = (doc.querySelector("template")?.content ?? doc).querySelector(
+    "[data-composition-id]",
+  );
+  const variables = [
+    ...new Map(
+      [
+        ...parseCompositionVariables(htmlEl),
+        ...(root && root !== htmlEl ? parseCompositionVariables(root) : []),
+      ].map((v) => [v.id, v]),
+    ).values(),
+  ];
 
   return {
     compositionId,

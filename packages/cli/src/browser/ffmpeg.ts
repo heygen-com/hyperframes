@@ -1,10 +1,18 @@
 import { execFileSync } from "node:child_process";
 import { findFfBinary } from "@hyperframes/parsers/ff-binaries";
 import { detectLinuxDistro, ffmpegInstallCommand } from "./linuxDeps.js";
+import { runCancellableProcess } from "../utils/cancellableProcess.js";
 
 export { FFMPEG_PATH_ENV, FFPROBE_PATH_ENV } from "@hyperframes/parsers/ff-binaries";
 
 export type H264EncoderMode = "software" | "gpu";
+
+export class H264EncoderUnavailableError extends Error {
+  constructor() {
+    super("This FFmpeg build has neither libx264 nor VideoToolbox H.264 encoding.");
+    this.name = "H264EncoderUnavailableError";
+  }
+}
 
 /**
  * Select the H.264 encoder class supported by an FFmpeg build.
@@ -20,7 +28,7 @@ export function resolveH264EncoderMode(
   if (gpuRequested) return "gpu";
   if (/\blibx264\b/.test(ffmpegEncodersOutput)) return "software";
   if (/\bh264_videotoolbox\b/.test(ffmpegEncodersOutput)) return "gpu";
-  throw new Error("This FFmpeg build has neither libx264 nor VideoToolbox H.264 encoding.");
+  throw new H264EncoderUnavailableError();
 }
 
 export function detectH264EncoderMode(ffmpegPath: string, gpuRequested: boolean): H264EncoderMode {
@@ -28,8 +36,21 @@ export function detectH264EncoderMode(ffmpegPath: string, gpuRequested: boolean)
     encoding: "utf-8",
     stdio: ["ignore", "pipe", "pipe"],
     timeout: 5000,
+    windowsHide: true,
   });
   return resolveH264EncoderMode(encoders, gpuRequested);
+}
+
+export async function detectH264EncoderModeForRender(
+  ffmpegPath: string,
+  gpuRequested: boolean,
+  signal: AbortSignal,
+): Promise<H264EncoderMode> {
+  const result = await runCancellableProcess(ffmpegPath, ["-hide_banner", "-encoders"], {
+    signal,
+    timeoutMs: 5000,
+  });
+  return resolveH264EncoderMode(result.stdout, gpuRequested);
 }
 
 // `configuredMustExist`: the CLI surfaces an install hint when a binary is

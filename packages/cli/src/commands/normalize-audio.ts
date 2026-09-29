@@ -405,10 +405,10 @@ async function measureAudio(
  * failures — this command exists to be driven by an agent, and an agent doing
  * `JSON.parse(stdout)` on a bare error line just throws.
  */
-function fail(message: string, json: boolean): never {
+function fail(message: string, json: boolean, cause?: unknown): never {
   if (json) console.log(JSON.stringify({ ok: false, error: message }, null, 2));
   else console.error(c.error(message));
-  failCommand();
+  failCommand(1, cause);
 }
 
 function byId(tags: readonly AudioTag[], rawId: string, role: string): AudioTag {
@@ -595,7 +595,7 @@ export default defineCommand({
       }
       printHumanResult(result);
     } catch (error) {
-      fail(error instanceof Error ? error.message : String(error), Boolean(args.json));
+      fail(error instanceof Error ? error.message : String(error), Boolean(args.json), error);
     }
   },
 });

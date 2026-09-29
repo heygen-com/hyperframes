@@ -1001,20 +1001,24 @@ describe("PropertyPanel — Motion is for things that move", () => {
         return element;
       },
     ],
-  ])("recognizes %s through the shared audio predicate", async (_label, makeElement) => {
-    const fixture = {
-      ...audioClipElement(),
-      element: makeElement(),
-      tagName: "div",
-    };
-    const { host, root } = await renderPanel(true, fixture);
-    const titles = Array.from(
-      host.querySelectorAll<HTMLElement>("[data-flat-group-collapsed], [data-flat-group-open]"),
-    ).map((node) => node.textContent ?? "");
-    expect(titles.some((title) => title.includes("Motion"))).toBe(false);
-    expect(titles.some((title) => title.includes("Timing"))).toBe(true);
-    act(() => root.unmount());
-  });
+  ])(
+    "recognizes %s through the shared audio predicate",
+    async (_label, makeElement) => {
+      const fixture = {
+        ...audioClipElement(),
+        element: makeElement(),
+        tagName: "div",
+      };
+      const { host, root } = await renderPanel(true, fixture);
+      const titles = Array.from(
+        host.querySelectorAll<HTMLElement>("[data-flat-group-collapsed], [data-flat-group-open]"),
+      ).map((node) => node.textContent ?? "");
+      expect(titles.some((title) => title.includes("Motion"))).toBe(false);
+      expect(titles.some((title) => title.includes("Timing"))).toBe(true);
+      act(() => root.unmount());
+    },
+    RENDER_TIMEOUT_MS,
+  );
 
   it(
     "calls the section Timing on an audio clip, and offers no tween editor",

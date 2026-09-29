@@ -92,6 +92,12 @@
             "minLength": 1,
             "description": "Source path, relative to registry-item.json."
           },
+          "url": {
+            "type": "string",
+            "format": "uri",
+            "pattern": "^https://",
+            "description": "Absolute https:// URL the bytes are fetched from, instead of <registry base>/<type dir>/<item>/<path>. Used for CDN-hosted binary assets so the registry stays text-only; `path` still says where the file lands relative to the item."
+          },
           "target": {
             "type": "string",
             "minLength": 1,

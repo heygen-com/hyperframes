@@ -4,6 +4,7 @@ import {
   existsSync,
   mkdirSync,
   mkdtempSync,
+  readFileSync,
   readdirSync,
   rmSync,
   truncateSync,
@@ -13,7 +14,15 @@ import {
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { pruneThumbnailCache, registerThumbnailRoutes } from "./thumbnail";
+import { PREVIEW_CAPTURE_PARAM } from "./preview";
 import type { StudioApiAdapter } from "../types";
+import { createProjectSignature } from "../helpers/projectSignature.js";
+import { proxyActivityMark } from "../helpers/proxyTranscoder.js";
+
+vi.mock("../helpers/proxyTranscoder.js", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("../helpers/proxyTranscoder.js")>()),
+  proxyActivityMark: vi.fn(() => "0"),
+}));
 
 const tempProjectDirs: string[] = [];
 
@@ -58,6 +67,23 @@ async function writeComposition(
 }
 
 describe("registerThumbnailRoutes", () => {
+  it("screenshots the capture variant of the preview document", async () => {
+    const adapter = createAdapter();
+    await writeComposition(adapter, 1920, 1080);
+    const app = new Hono();
+    registerThumbnailRoutes(app, adapter);
+    const loaded: string[] = [];
+    vi.mocked(adapter.generateThumbnail!).mockImplementation(async ({ previewUrl }) => {
+      loaded.push(new URL(previewUrl).search);
+      return Buffer.from("thumb");
+    });
+
+    await app.request("http://localhost/projects/demo/thumbnail/index.html?t=6");
+    await app.request("http://localhost/projects/demo/thumbnail/scenes%2Fb.html?t=6");
+
+    expect(loaded).toEqual([`?${PREVIEW_CAPTURE_PARAM}=1`, `?${PREVIEW_CAPTURE_PARAM}=1`]);
+  });
+
   it("forwards selector queries to thumbnail generation", async () => {
     const adapter = createAdapter();
     const app = new Hono();
@@ -93,13 +119,9 @@ describe("registerThumbnailRoutes", () => {
     const previewResponse = await app.request(
       "http://localhost/projects/demo/thumbnail/index.html?t=1.2&output=preview",
     );
-    const storyboardResponse = await app.request(
-      "http://localhost/projects/demo/thumbnail/index.html?t=1.2&output=storyboard",
-    );
 
     expect(sourceResponse.status).toBe(200);
     expect(previewResponse.status).toBe(200);
-    expect(storyboardResponse.status).toBe(200);
     expect(adapter.generateThumbnail).toHaveBeenNthCalledWith(
       1,
       expect.objectContaining({
@@ -112,30 +134,26 @@ describe("registerThumbnailRoutes", () => {
       2,
       expect.objectContaining({ outputWidth: 135, outputHeight: 135 }),
     );
-    expect(adapter.generateThumbnail).toHaveBeenNthCalledWith(
-      3,
-      expect.objectContaining({ outputWidth: 1080, outputHeight: 1080 }),
-    );
   });
 
-  it("caps storyboard output at a 1080px longest side", async () => {
+  it("answers a cache-only request from the cache, with no content and no render on a miss", async () => {
     const adapter = createAdapter();
+    await writeComposition(adapter, 1920, 1080);
     const app = new Hono();
     registerThumbnailRoutes(app, adapter);
-    await writeComposition(adapter, 7680, 4320);
+    const url = "http://localhost/projects/demo/thumbnail/index.html?t=0&output=source";
 
-    const response = await app.request(
-      "http://localhost/projects/demo/thumbnail/index.html?t=1.2&output=storyboard",
-    );
+    const miss = await app.request(`${url}&cached=1`);
+    expect(miss.status).toBe(204);
+    expect(miss.headers.get("Cache-Control")).toBe("no-cache");
+    expect(await miss.text()).toBe("");
+    expect(adapter.generateThumbnail).not.toHaveBeenCalled();
 
-    expect(response.status).toBe(200);
-    expect(adapter.generateThumbnail).toHaveBeenCalledWith(
-      expect.objectContaining({
-        format: "jpeg",
-        outputWidth: 1080,
-        outputHeight: 608,
-      }),
-    );
+    expect((await app.request(url)).status).toBe(200);
+    const hit = await app.request(`${url}&cached=1`);
+    expect(hit.status).toBe(200);
+    expect(await hit.text()).toBe("thumb");
+    expect(adapter.generateThumbnail).toHaveBeenCalledTimes(1);
   });
 
   it("deduplicates concurrent generation and writes one complete cache entry", async () => {
@@ -318,6 +336,203 @@ describe("registerThumbnailRoutes", () => {
     await app.request(url);
 
     expect(adapter.generateThumbnail).toHaveBeenCalledTimes(2);
+  });
+
+  it("regenerates a parent thumbnail when nested composition HTML changes", async () => {
+    const adapter = createAdapter();
+    const project = await adapter.resolveProject("demo");
+    if (!project) throw new Error("missing project");
+    const app = new Hono();
+    registerThumbnailRoutes(app, adapter);
+
+    writeFileSync(
+      join(project.dir, "index.html"),
+      `<div data-width="640" data-height="360" data-composition-src="compositions/nested.html"></div>`,
+    );
+    const compositionsDir = join(project.dir, "compositions");
+    mkdirSync(compositionsDir, { recursive: true });
+    const nestedPath = join(compositionsDir, "nested.html");
+    writeFileSync(nestedPath, `<div>before</div>`);
+    const url = "http://localhost/projects/demo/thumbnail/index.html?t=2&v=test";
+
+    await app.request(url);
+    writeFileSync(nestedPath, `<div>after with a different size</div>`);
+    await app.request(url);
+
+    expect(adapter.generateThumbnail).toHaveBeenCalledTimes(2);
+  });
+
+  function writeTwoScenes(dir: string): { sceneA: string; sceneB: string } {
+    writeFileSync(
+      join(dir, "index.html"),
+      `<head><style>body { margin: 0 }</style></head><div data-width="640" data-height="360">` +
+        `<div data-composition-src="compositions/a.html"></div>` +
+        `<div data-composition-src="compositions/b.html"></div></div>`,
+    );
+    mkdirSync(join(dir, "compositions"), { recursive: true });
+    const sceneA = join(dir, "compositions", "a.html");
+    const sceneB = join(dir, "compositions", "b.html");
+    writeFileSync(sceneA, `<template><div data-composition-id="a">A</div></template>`);
+    writeFileSync(sceneB, `<template><div data-composition-id="b">B</div></template>`);
+    return { sceneA, sceneB };
+  }
+
+  it("keeps a scene's cached thumbnail when a sibling scene changes", async () => {
+    const adapter = createAdapter();
+    const project = await adapter.resolveProject("demo");
+    if (!project) throw new Error("missing project");
+    const app = new Hono();
+    registerThumbnailRoutes(app, adapter);
+    const { sceneA } = writeTwoScenes(project.dir);
+    const url = "http://localhost/projects/demo/thumbnail/compositions/b.html?t=2&v=test";
+
+    await app.request(url);
+    writeFileSync(sceneA, `<template><div data-composition-id="a">A, edited</div></template>`);
+    await app.request(url);
+
+    expect(adapter.generateThumbnail).toHaveBeenCalledTimes(1);
+  });
+
+  it("regenerates a scene thumbnail when the root it is built on changes", async () => {
+    const adapter = createAdapter();
+    const project = await adapter.resolveProject("demo");
+    if (!project) throw new Error("missing project");
+    const app = new Hono();
+    registerThumbnailRoutes(app, adapter);
+    writeTwoScenes(project.dir);
+    const url = "http://localhost/projects/demo/thumbnail/compositions/b.html?t=2&v=test";
+
+    await app.request(url);
+    const root = join(project.dir, "index.html");
+    writeFileSync(root, readFileSync(root, "utf-8").replace("margin: 0", "margin: 4px"));
+    await app.request(url);
+
+    expect(adapter.generateThumbnail).toHaveBeenCalledTimes(2);
+  });
+
+  it("regenerates a thumbnail when imported CSS changes", async () => {
+    const adapter = createAdapter();
+    const project = await adapter.resolveProject("demo");
+    if (!project) throw new Error("missing project");
+    const app = new Hono();
+    registerThumbnailRoutes(app, adapter);
+
+    writeFileSync(
+      join(project.dir, "index.html"),
+      `<link rel="stylesheet" href="./styles.css"><div data-width="640" data-height="360"></div>`,
+    );
+    const stylesPath = join(project.dir, "styles.css");
+    writeFileSync(stylesPath, `.card { color: red; }`);
+    const url = "http://localhost/projects/demo/thumbnail/index.html?t=2&v=test";
+
+    await app.request(url);
+    writeFileSync(stylesPath, `.card { color: rebeccapurple; }`);
+    await app.request(url);
+
+    expect(adapter.generateThumbnail).toHaveBeenCalledTimes(2);
+  });
+
+  it("uses the adapter-cached project signature for disk reuse and in-flight dedupe", async () => {
+    const adapter = createAdapter();
+    const project = await adapter.resolveProject("demo");
+    if (!project) throw new Error("missing project");
+    const getProjectSignature = vi.fn(() => createProjectSignature(project.dir));
+    adapter.getProjectSignature = getProjectSignature;
+    let resolve!: (buffer: Buffer) => void;
+    const generated = new Promise<Buffer>((done) => (resolve = done));
+    adapter.generateThumbnail = vi.fn(async () => generated);
+    const app = new Hono();
+    registerThumbnailRoutes(app, adapter);
+    const url = "http://localhost/projects/demo/thumbnail/index.html?t=3";
+
+    const first = app.request(url);
+    const duplicate = app.request(url);
+    await vi.waitFor(() => expect(adapter.generateThumbnail).toHaveBeenCalledTimes(1));
+    resolve(Buffer.from("shared"));
+    expect(await (await first).text()).toBe("shared");
+    expect(await (await duplicate).text()).toBe("shared");
+    expect(await (await app.request(url)).text()).toBe("shared");
+
+    expect(adapter.generateThumbnail).toHaveBeenCalledTimes(1);
+    expect(getProjectSignature).toHaveBeenCalledTimes(4);
+    expect(getProjectSignature).toHaveBeenNthCalledWith(1, project.dir);
+  });
+
+  it("does not cache generated pixels when the composition's inputs changed in flight", async () => {
+    const adapter = createAdapter();
+    const project = await adapter.resolveProject("demo");
+    if (!project) throw new Error("missing project");
+    const { sceneB } = writeTwoScenes(project.dir);
+    adapter.generateThumbnail = vi
+      .fn()
+      .mockImplementationOnce(async () => {
+        writeFileSync(sceneB, `<template><div data-composition-id="b">B, edited</div></template>`);
+        return Buffer.from("rendered-after-change");
+      })
+      .mockResolvedValueOnce(Buffer.from("rendered-current"));
+    const app = new Hono();
+    registerThumbnailRoutes(app, adapter);
+    const url = "http://localhost/projects/demo/thumbnail/compositions/b.html?t=3";
+
+    expect(await (await app.request(url)).text()).toBe("rendered-after-change");
+    expect(existsSync(join(project.dir, ".thumbnails"))).toBe(false);
+    expect(await (await app.request(url)).text()).toBe("rendered-current");
+    expect(adapter.generateThumbnail).toHaveBeenCalledTimes(2);
+  });
+
+  it("does not cache a thumbnail rendered while a clip's preview copy is still being made", async () => {
+    const adapter = createAdapter();
+    await writeComposition(adapter, 1920, 1080);
+    const project = await adapter.resolveProject("demo");
+    if (!project) throw new Error("missing project");
+    vi.mocked(proxyActivityMark).mockReturnValueOnce(null).mockReturnValueOnce(null);
+    const app = new Hono();
+    registerThumbnailRoutes(app, adapter);
+    const url = "http://localhost/projects/demo/thumbnail/index.html?t=3";
+
+    expect((await app.request(url)).status).toBe(200);
+    expect(existsSync(join(project.dir, ".thumbnails"))).toBe(false);
+    expect((await app.request(url)).status).toBe(200);
+    expect(existsSync(join(project.dir, ".thumbnails"))).toBe(true);
+    expect(adapter.generateThumbnail).toHaveBeenCalledTimes(2);
+  });
+
+  it("does not cache a thumbnail when a preview copy starts or lands during the render", async () => {
+    const adapter = createAdapter();
+    await writeComposition(adapter, 1920, 1080);
+    const project = await adapter.resolveProject("demo");
+    if (!project) throw new Error("missing project");
+    vi.mocked(proxyActivityMark).mockReturnValueOnce("0").mockReturnValueOnce("1");
+    const app = new Hono();
+    registerThumbnailRoutes(app, adapter);
+
+    expect(
+      (await app.request("http://localhost/projects/demo/thumbnail/index.html?t=3")).status,
+    ).toBe(200);
+    expect(existsSync(join(project.dir, ".thumbnails"))).toBe(false);
+  });
+
+  it("does not cache pixels changed in flight behind a stale adapter signature", async () => {
+    const adapter = createAdapter();
+    const project = await adapter.resolveProject("demo");
+    if (!project) throw new Error("missing project");
+    const { sceneB } = writeTwoScenes(project.dir);
+    const stale = createProjectSignature(project.dir);
+    adapter.getProjectSignature = () => stale;
+    adapter.generateThumbnail = vi
+      .fn()
+      .mockImplementationOnce(async () => {
+        writeFileSync(sceneB, `<template><div data-composition-id="b">B, edited</div></template>`);
+        return Buffer.from("rendered-after-change");
+      })
+      .mockResolvedValueOnce(Buffer.from("rendered-again"));
+    const app = new Hono();
+    registerThumbnailRoutes(app, adapter);
+    const url = "http://localhost/projects/demo/thumbnail/compositions/b.html?t=3";
+
+    expect(await (await app.request(url)).text()).toBe("rendered-after-change");
+    expect(existsSync(join(project.dir, ".thumbnails"))).toBe(false);
+    expect(await (await app.request(url)).text()).toBe("rendered-again");
   });
 
   it("keeps changed studio motion separated in the disk cache", async () => {

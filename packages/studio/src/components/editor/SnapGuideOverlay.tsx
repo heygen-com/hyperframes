@@ -1,6 +1,7 @@
 import { memo, useRef, type RefObject } from "react";
 import { useMountEffect } from "../../hooks/useMountEffect";
 import { resolveGuideLineRect, type SnapGuide, type SpacingGuide } from "./snapEngine";
+import { subscribeOverlayFrame } from "./overlayFrameLoop";
 
 export interface SnapGuidesState {
   guides: SnapGuide[];
@@ -14,7 +15,7 @@ const GUIDE_COLOR = "rgba(255, 68, 204, 0.85)";
 const SPACING_COLOR = "rgba(255, 68, 204, 0.6)";
 const SPACING_BG = "rgba(255, 68, 204, 0.15)";
 
-interface SnapGuideOverlayProps {
+export interface SnapGuideOverlayProps {
   snapGuidesRef: RefObject<SnapGuidesState | null>;
   /** Composition rect in overlay space — guide lines span exactly this rect. */
   compositionLeft: number;
@@ -47,12 +48,8 @@ export const SnapGuideOverlay = memo(function SnapGuideOverlay({
   };
 
   useMountEffect(() => {
-    let frame = 0;
-
     // fallow-ignore-next-line complexity
     const update = () => {
-      frame = requestAnimationFrame(update);
-
       const state = snapGuidesRef.current;
       const guides = state?.guides ?? [];
       const spacingGuides = state?.spacingGuides ?? [];
@@ -116,8 +113,7 @@ export const SnapGuideOverlay = memo(function SnapGuideOverlay({
       }
     };
 
-    frame = requestAnimationFrame(update);
-    return () => cancelAnimationFrame(frame);
+    return subscribeOverlayFrame(update);
   });
 
   return (

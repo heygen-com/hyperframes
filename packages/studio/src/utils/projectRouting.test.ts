@@ -9,6 +9,15 @@ import {
 } from "./projectRouting";
 
 describe("project routing utilities", () => {
+  it.each(["C:", "C:demo", ".", "..", "../sessions", "a/b", "a\\b", "a\u0000b", "a\nb"])(
+    "rejects unsafe decoded project IDs: %s",
+    (id) => {
+      expect(parseProjectIdFromHash(`#project/${encodeURIComponent(id)}`)).toBeNull();
+      expect(() => buildProjectApiPath(id, "/files/index.html")).toThrow("Invalid project ID");
+      expect(() => buildProjectHash(id)).toThrow("Invalid project ID");
+    },
+  );
+
   it("decodes project ids from hash routes before building capture URLs", () => {
     vi.useFakeTimers();
     vi.setSystemTime(new Date("2026-05-01T12:00:00Z"));

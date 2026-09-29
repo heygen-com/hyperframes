@@ -3,6 +3,7 @@
 import React, { act } from "react";
 import { createRoot } from "react-dom/client";
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { PreviewReadOnlyProvider } from "../components/editor/previewReadOnlyContext";
 import { useInlineTextEdit, type InlineTextEditControls } from "./useInlineTextEdit";
 
 (globalThis as unknown as { IS_REACT_ACT_ENVIRONMENT: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
@@ -20,7 +21,7 @@ function heading(text = "Motion Playground"): HTMLElement {
   return element;
 }
 
-function mount(onCommit = vi.fn(), onPause = vi.fn()) {
+function mount(onCommit = vi.fn(), onPause = vi.fn(), readOnly = false) {
   const controls: { current: InlineTextEditControls | null } = { current: null };
   function Probe() {
     controls.current = useInlineTextEdit({ onCommit, onPause });
@@ -29,7 +30,13 @@ function mount(onCommit = vi.fn(), onPause = vi.fn()) {
   const host = document.createElement("div");
   document.body.append(host);
   const root = createRoot(host);
-  act(() => root.render(<Probe />));
+  act(() =>
+    root.render(
+      <PreviewReadOnlyProvider readOnly={readOnly}>
+        <Probe />
+      </PreviewReadOnlyProvider>,
+    ),
+  );
   return { controls: () => controls.current!, root, onCommit, onPause };
 }
 
@@ -161,6 +168,45 @@ describe("useInlineTextEdit", () => {
 
     expect(cancelFrame).toHaveBeenCalledWith(42);
     expect(element.hasAttribute("contenteditable")).toBe(false);
+  });
+
+  it("saves an open edit when the editor unmounts", () => {
+    const element = heading();
+    const { controls, root, onCommit } = mount();
+
+    act(() => {
+      controls().start(element);
+    });
+    element.textContent = "Motion Playground Live";
+    act(() => root.unmount());
+
+    expect(onCommit.mock.calls).toEqual([
+      [{ element, html: "Motion Playground Live", previousHtml: "Motion Playground" }],
+    ]);
+    expect(element.hasAttribute("contenteditable")).toBe(false);
+  });
+
+  it("keeps the edit open when the commit function changes", () => {
+    const element = heading();
+    const controls: { current: InlineTextEditControls | null } = { current: null };
+    function Probe({ onCommit }: { onCommit: () => void }) {
+      controls.current = useInlineTextEdit({ onCommit });
+      return null;
+    }
+    const root = createRoot(document.body.appendChild(document.createElement("div")));
+    const first = vi.fn();
+    const second = vi.fn();
+    act(() => root.render(<Probe onCommit={first} />));
+    act(() => {
+      controls.current!.start(element);
+    });
+    act(() => root.render(<Probe onCommit={second} />));
+
+    expect(controls.current!.session?.element).toBe(element);
+    expect(first).not.toHaveBeenCalled();
+    act(() => root.unmount());
+    expect(first).not.toHaveBeenCalled();
+    expect(second).toHaveBeenCalledTimes(1);
   });
 
   it("hands the current text over exactly once when it commits", () => {
@@ -550,6 +596,20 @@ describe("useInlineTextEdit with styled runs", () => {
 
     expect(event.defaultPrevented).toBe(true);
     expect(insertText).toHaveBeenCalledWith("insertText", false, "plain words");
+    act(() => root.unmount());
+  });
+
+  it("refuses to open an edit while the preview is read-only", () => {
+    const element = heading();
+    const { controls, root, onCommit, onPause } = mount(vi.fn(), vi.fn(), true);
+    let opened = true;
+    act(() => {
+      opened = controls().start(element);
+    });
+    expect(opened).toBe(false);
+    expect(element.hasAttribute("contenteditable")).toBe(false);
+    expect(onPause).not.toHaveBeenCalled();
+    expect(onCommit).not.toHaveBeenCalled();
     act(() => root.unmount());
   });
 });

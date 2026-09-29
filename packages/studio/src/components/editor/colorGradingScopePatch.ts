@@ -1,5 +1,5 @@
 const MEDIA_TAG_RE = /<\s*(video|img)\b(?:[^>"']|"[^"]*"|'[^']*')*>/gi;
-const COLOR_GRADING_ATTR_RE = /\sdata-color-grading=(["'])([\s\S]*?)\1/i;
+const COLOR_GRADING_ATTR_RE = /\sdata-color-grading=(?:"[^"]*"|'[^']*')/i;
 const IGNORED_HTML_RANGE_RE = /<!--[\s\S]*?-->|<(script|style)\b[\s\S]*?<\/\1\s*>/gi;
 
 interface TextRange {

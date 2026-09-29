@@ -89,6 +89,12 @@ Apply the correct template based on type. See [templates.md](templates.md) for c
 
 #### All types
 
+- **Load files the block ships through `__hyperframes.assetUrl("assets/...")`** whenever a script
+  builds the path (textures, fonts, JSON, models). Attributes like `src` and `href` are rebased
+  when the block is mounted; strings in a script are not, so a bare `"assets/..."` 404s once the
+  block lives under `compositions/<name>/`. A separate `.js` file gets the URLs from the block's
+  inline script. A block whose assets install to the project's own `assets/` (target
+  `compositions/<name>.html`) keeps plain project-root paths; `assetUrl` would look beside the file.
 - **Placeholder content is monochrome** — read
   [placeholder-material.md](placeholder-material.md) before choosing a single colour. Stand-in
   screens, images, cards, avatars, logos and chart series use four alpha steps of the
@@ -118,9 +124,9 @@ hyperframes snapshot --at "1.0,3.0,5.0,7.0"
 npx hyperframes publish
 ```
 
-**Catalog preview image** — The catalog card uses a PNG at `docs/images/catalog/{kind}/{name}.png` (where `{kind}` is `blocks` or `components`). Generate it from a snapshot, then:
+**Catalog preview image** — For the default PNG preview, save your snapshot at `docs/images/catalog/{kind}/{name}.png` in the repository checkout (`{kind}` is `blocks` or `components`). After upload, the catalog serves it from `https://static.heygen.ai/hyperframes-oss/docs/images/catalog/{kind}/{name}.png`. If `registry-item.json` declares `preview`, the card uses its `poster` URL; a `preview` without `poster` has no image fallback.
 
-- **HeyGen internal contributors:** run `scripts/upload-docs-images.sh` (requires AWS profile `engineering-767398024897`)
+- **HeyGen internal contributors:** run `scripts/upload-docs-images.sh` from the repository root (requires AWS profile `engineering-767398024897`)
 - **External contributors:** attach the preview MP4 to your PR description. A maintainer will generate and upload the catalog image before merging.
 
 ### Step 6: Ship

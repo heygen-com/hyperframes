@@ -17,6 +17,32 @@
 import type { Page } from "puppeteer-core";
 
 /**
+ * Discriminant prefix embedded in every "capture canvas isn't set up yet"
+ * error THIS module throws/returns (as opposed to the native
+ * `InvalidStateError: No cached paint record for element` DOMException that
+ * `drawElementImage` itself throws, which we don't control the text of).
+ *
+ * These errors cross a `page.evaluate` boundary: Puppeteer reconstructs them
+ * as a plain `Error` on the Node side (see puppeteer-core's
+ * `createEvaluationError`), so custom properties/subclasses don't survive —
+ * only `message` (and `name`, which for a plain `Error` thrown in-page is
+ * just `"Error"`) make the round trip. A stable, low-cardinality code baked
+ * into the message is therefore the closest available substitute for a real
+ * error-code discriminant. frameCapture.ts matches on this exact code
+ * (substring) rather than on the free-text tail, so classification survives
+ * the message being re-wrapped (e.g. `produceDrawElementFrameBatch`'s
+ * "batch produce failed at frame N: <code>: ..." wrapping) and won't
+ * false-positive on unrelated prose that happens to contain the words
+ * "canvas" and "initialized".
+ *
+ * IMPORTANT: because `page.evaluate` serializes closures via `Function#toString`,
+ * the three throw/return sites below CANNOT reference this constant directly
+ * (it wouldn't be in scope inside the browser) — they inline the same literal
+ * string. Keep all three in sync with this constant if it ever changes.
+ */
+export const DE_CANVAS_NOT_INITIALIZED_CODE = "HF_DE_CANVAS_NOT_INITIALIZED";
+
+/**
  * Resolve which capture mode to use when `useDrawElement` is true.
  *
  * Cases that fall back to screenshot (see docs/fast-capture-limitations.md):
@@ -331,7 +357,12 @@ export async function captureDrawElementFrame(
     }) => {
       const canvas = document.getElementById("__hf_de_canvas") as HTMLCanvasElement | null;
       const root = document.querySelector("[data-composition-id]") as HTMLElement | null;
-      if (!canvas || !root) throw new Error("drawElement canvas not initialized");
+      if (!root) {
+        throw new Error("HF_DE_COMPOSITION_ROOT_MISSING: drawElement composition root not found");
+      }
+      if (!canvas) {
+        throw new Error("HF_DE_CANVAS_NOT_INITIALIZED: drawElement canvas not initialized");
+      }
       const ctx = canvas.getContext("2d");
       if (!ctx) throw new Error("drawElement: 2d context unavailable");
       // Accelerated canvases (webgl/webgl2/webgpu) never repaint — their paint
@@ -772,7 +803,12 @@ export async function produceDrawElementFrame(
     ({ w, h, q, sync, fid }: { w: number; h: number; q: number; sync: boolean; fid: number }) => {
       const canvas = document.getElementById("__hf_de_canvas") as HTMLCanvasElement | null;
       const root = document.querySelector("[data-composition-id]") as HTMLElement | null;
-      if (!canvas || !root) throw new Error("drawElement canvas not initialized");
+      if (!root) {
+        throw new Error("HF_DE_COMPOSITION_ROOT_MISSING: drawElement composition root not found");
+      }
+      if (!canvas) {
+        throw new Error("HF_DE_CANVAS_NOT_INITIALIZED: drawElement canvas not initialized");
+      }
       const ctx = canvas.getContext("2d");
       if (!ctx) throw new Error("drawElement: 2d context unavailable");
 
@@ -999,7 +1035,18 @@ export async function produceDrawElementFrameBatch(
     }): Promise<{ failedAt: number | null; error?: string }> => {
       const canvas = document.getElementById("__hf_de_canvas") as HTMLCanvasElement | null;
       const root = document.querySelector("[data-composition-id]") as HTMLElement | null;
-      if (!canvas || !root) return { failedAt: 0, error: "drawElement canvas not initialized" };
+      if (!root) {
+        return {
+          failedAt: 0,
+          error: "HF_DE_COMPOSITION_ROOT_MISSING: drawElement composition root not found",
+        };
+      }
+      if (!canvas) {
+        return {
+          failedAt: 0,
+          error: "HF_DE_CANVAS_NOT_INITIALIZED: drawElement canvas not initialized",
+        };
+      }
       const ctx = canvas.getContext("2d");
       if (!ctx) return { failedAt: 0, error: "drawElement: 2d context unavailable" };
 

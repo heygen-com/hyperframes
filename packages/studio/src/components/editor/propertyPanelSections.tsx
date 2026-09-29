@@ -147,7 +147,7 @@ export function TextAreaField({
           onFocus={handleFocus}
           onChange={handleChange}
           onBlur={handleBlur}
-          className="[field-sizing:content] max-h-[40vh] min-h-12 w-full resize-y overflow-x-hidden overflow-y-auto bg-transparent font-mono text-[11px] leading-normal text-panel-text-0 outline-none disabled:cursor-not-allowed disabled:text-panel-text-4"
+          className="field-sizing-content max-h-[40vh] min-h-12 w-full resize-y overflow-x-hidden overflow-y-auto bg-transparent font-mono text-[11px] leading-normal text-panel-text-0 outline-hidden disabled:cursor-not-allowed disabled:text-panel-text-4"
         />
       </div>
     );
@@ -165,7 +165,7 @@ export function TextAreaField({
           onFocus={handleFocus}
           onChange={handleChange}
           onBlur={handleBlur}
-          className="[field-sizing:content] max-h-[40vh] min-h-20 w-full resize-y overflow-x-hidden overflow-y-auto bg-transparent text-[11px] font-medium text-neutral-100 outline-none disabled:cursor-not-allowed disabled:text-neutral-600"
+          className="field-sizing-content max-h-[40vh] min-h-20 w-full resize-y overflow-x-hidden overflow-y-auto bg-transparent text-[11px] font-medium text-neutral-100 outline-hidden disabled:cursor-not-allowed disabled:text-neutral-600"
         />
       </div>
     </label>
@@ -189,7 +189,7 @@ function FontWeightField({
   return (
     <div className={FIELD}>
       <div className="flex min-w-0 items-center gap-3">
-        <span className="flex-shrink-0 text-[11px] font-medium text-neutral-500">Weight</span>
+        <span className="shrink-0 text-[11px] font-medium text-neutral-500">Weight</span>
         <select
           value={value}
           disabled={disabled}
@@ -197,7 +197,7 @@ function FontWeightField({
             track("select", "Weight");
             onCommit(e.target.value);
           }}
-          className="min-w-0 w-full appearance-none bg-transparent text-[11px] font-medium text-neutral-100 outline-none disabled:cursor-not-allowed disabled:text-neutral-600"
+          className="min-w-0 w-full appearance-none bg-transparent text-[11px] font-medium text-neutral-100 outline-hidden disabled:cursor-not-allowed disabled:text-neutral-600"
         >
           {displayOptions.map((o) => (
             <option key={o} value={o}>
@@ -323,7 +323,7 @@ function TextFieldEditor({
               track("button", "Remove text field");
               onRemoveTextField(field.key);
             }}
-            className="inline-flex h-7 flex-shrink-0 items-center rounded-lg border border-neutral-700 bg-neutral-950 px-2.5 text-[11px] font-medium text-neutral-300 transition-colors hover:border-neutral-600 hover:text-white"
+            className="inline-flex h-7 shrink-0 items-center rounded-lg border border-neutral-700 bg-neutral-950 px-2.5 text-[11px] font-medium text-neutral-300 transition-colors hover:border-neutral-600 hover:text-white"
           >
             Remove
           </button>
@@ -476,7 +476,7 @@ export function TextSection({
             }}
             className="inline-flex h-7 max-w-full items-center gap-1.5 rounded-lg border border-neutral-700 bg-neutral-950 px-2.5 text-[11px] font-medium text-neutral-300 transition-colors hover:border-neutral-600 hover:text-white"
           >
-            <Plus size={12} className="flex-shrink-0" />
+            <Plus size={12} className="shrink-0" />
             <span className="truncate">Add text</span>
           </button>
         </div>
@@ -497,14 +497,14 @@ export function TextSection({
                 <div className="flex min-w-0 items-center justify-between gap-2">
                   <div className="flex min-w-0 items-center gap-2">
                     <span
-                      className="h-4 w-4 flex-shrink-0 rounded border border-neutral-700 bg-neutral-950"
+                      className="h-4 w-4 shrink-0 rounded-sm border border-neutral-700 bg-neutral-950"
                       style={{ backgroundColor: getTextFieldColor(field, styles) }}
                     />
                     <span className="min-w-0 truncate text-[11px] font-medium text-neutral-100">
                       {formatTextFieldPreview(field.value) || `Text ${index + 1}`}
                     </span>
                   </div>
-                  <span className="flex-shrink-0 rounded-md border border-neutral-700 bg-neutral-950 px-1.5 py-0.5 text-[10px] text-neutral-500">
+                  <span className="shrink-0 rounded-md border border-neutral-700 bg-neutral-950 px-1.5 py-0.5 text-[10px] text-neutral-500">
                     {field.tagName}
                   </span>
                 </div>

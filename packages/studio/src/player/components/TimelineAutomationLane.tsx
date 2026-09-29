@@ -27,6 +27,7 @@ import {
   type HfAutomationLane,
   type HfAutomationPoint,
 } from "@hyperframes/core/audio-automation";
+import type { TimelineEditOutcome } from "../../hooks/timelineEditPermission";
 import { envelopePath, fromUnit, laneFor, PAD_X, toUnit, withLane } from "./automationLaneGeometry";
 import { useAutomationLaneGestures } from "./useAutomationLaneGestures";
 import { AutomationValueInput } from "./AutomationValueInput";
@@ -75,7 +76,7 @@ function pointCircleStyle(
     radius: POINT_R * (dragging ? 1.3 : inRange ? 1.15 : 1),
     // A white ring rather than a different fill: the fill is the parameter's
     // own colour, and a lane with two envelopes on it is read by colour first.
-    stroke: inRange ? "#fff" : "rgba(0,0,0,0.5)",
+    stroke: inRange ? "var(--timeline-text-solid)" : "var(--timeline-automation-point-muted)",
     strokeWidth: inRange ? 1.5 : 1,
   };
 }
@@ -132,7 +133,7 @@ function ReadOnlyNote({
   return (
     <div
       data-automation-readonly-note=""
-      className="hf-automation-readonly-note pointer-events-none absolute rounded-[3px] bg-black/85 px-1.5 py-0.5 text-[9px] text-white/80"
+      className="hf-automation-readonly-note pointer-events-none absolute rounded-[3px] bg-[var(--timeline-overlay-bg-strong)] px-1.5 py-0.5 text-[9px] text-[var(--timeline-overlay-text)]"
       style={{ left: leftPx + 6, top: 2, zIndex: 3, maxWidth: Math.max(120, widthPx - 12) }}
     >
       {note}
@@ -180,9 +181,9 @@ export interface TimelineAutomationLaneProps {
   /** Clip-local seconds of the playhead, or null when it is outside the clip. */
   playheadSec: number | null;
   /** Continuous write while dragging; does not persist. */
-  onPreview(automation: HfAutomation): void;
+  onPreview(automation: HfAutomation, ended?: boolean): void;
   /** Gesture-end write; this is the one that persists and lands in undo. */
-  onCommit(automation: HfAutomation): void;
+  onCommit(automation: HfAutomation): Promise<TimelineEditOutcome | void> | void;
   /**
    * Clip-local times a dragged point snaps to — the beat grid, shifted into this
    * clip's frame. Its own neighbouring points are added on top.
@@ -241,14 +242,6 @@ export function TimelineAutomationLane({
     [draft, target, stored],
   );
 
-  // The draft is released when the automation it was drawn over actually
-  // changes — the persisted edit landing, or an edit from elsewhere. Releasing
-  // it merely because the drag ended would snap the point back to where it
-  // started for as long as the write takes to come around.
-  useEffect(() => {
-    if (draft && draft.basedOn !== automation) setDraft(null);
-  }, [automation, draft]);
-
   // A different parameter is a different envelope; the draft does not carry over.
   useEffect(() => {
     setDraft(null);
@@ -289,12 +282,16 @@ export function TimelineAutomationLane({
   );
 
   const commitPoints = useCallback(
-    (points: HfAutomationLane["points"], persist: boolean): void => {
+    (points: HfAutomationLane["points"], persist: boolean, ended?: boolean): void => {
       // Draw from the draft immediately; the write is what eventually agrees.
       setDraft({ points, basedOn: automation });
       const next = withLane(automation, { target, points });
-      if (persist) onCommit(next);
-      else onPreview(next);
+      if (!persist) return onPreview(next, ended);
+      void Promise.resolve(onCommit(next)).then((outcome) => {
+        if (outcome && outcome.status !== "saved") {
+          setDraft((current) => (current?.points === points ? null : current));
+        }
+      });
     },
     [automation, target, onCommit, onPreview],
   );
@@ -319,6 +316,7 @@ export function TimelineAutomationLane({
     duration,
     rangeSelection,
   });
+
   const {
     dragIndex,
     curveIndex,
@@ -329,6 +327,13 @@ export function TimelineAutomationLane({
     hint,
     editing,
   } = gestures;
+  // Released when the automation it was drawn over changes, not on drag end (the point would
+  // snap back until the write lands) and not under a live gesture (its release would commit
+  // an older save's points).
+  const gestureLive = [dragIndex, curveIndex, segmentDragIndex, edgeDrag].some((g) => g !== null);
+  useEffect(() => {
+    if (draft && draft.basedOn !== automation && !gestureLive) setDraft(null);
+  }, [automation, draft, gestureLive]);
 
   const removeAt = useCallback(
     (index: number): void => {
@@ -470,7 +475,7 @@ export function TimelineAutomationLane({
           x2={PAD_X + widthPx}
           y1={pad + inner / 2}
           y2={pad + inner / 2}
-          stroke="rgba(255,255,255,0.08)"
+          stroke="var(--timeline-automation-rail)"
           strokeDasharray="3 4"
         />
         {rangeSelection ? (
@@ -541,7 +546,7 @@ export function TimelineAutomationLane({
             cx={xOf(playheadSec)}
             cy={yOf(currentValue)}
             r={2.5}
-            fill="#fff"
+            fill="var(--timeline-text-solid)"
             opacity={0.8}
             pointerEvents="none"
           />
@@ -561,7 +566,7 @@ export function TimelineAutomationLane({
 
       {hint ? (
         <div
-          className="hf-automation-hint pointer-events-none absolute rounded-[3px] bg-black/80 px-1 py-0.5 font-mono text-[9px] text-white"
+          className="hf-automation-hint pointer-events-none absolute rounded-[3px] bg-[var(--timeline-overlay-bg)] px-1 py-0.5 font-mono text-[9px] text-[var(--timeline-text-solid)]"
           style={{ left: leftPx + 6, top: 2, zIndex: 3 }}
         >
           {hint}

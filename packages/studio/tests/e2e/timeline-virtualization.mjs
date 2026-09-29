@@ -21,10 +21,9 @@
  * rather than trusting the caller: the server is configured by whoever started
  * it, and a mismatch would otherwise pass silently against the wrong build.
  */
-import { existsSync, readdirSync } from "node:fs";
-import { homedir, platform, arch } from "node:os";
-import { join } from "node:path";
+import { platform, arch } from "node:os";
 import puppeteer from "puppeteer-core";
+import { resolveChromeExecutable } from "./chrome-executable.mjs";
 
 const STUDIO_URL = process.env.STUDIO_URL;
 const PROFILE = process.env.TIMELINE_PROFILE || "dense-short";
@@ -60,26 +59,6 @@ if (ROW_VIRTUALIZATION === "off" && ELEMENT_COUNT === 50_000) {
       "the unvirtualized build mounts every clip and cannot settle at 50000",
   );
   process.exit(2);
-}
-
-function resolveChromeExecutable() {
-  const chromeRoot = join(homedir(), ".cache", "puppeteer", "chrome");
-  const builds = existsSync(chromeRoot) ? readdirSync(chromeRoot).sort().reverse() : [];
-  const installedCandidates = builds.flatMap((build) =>
-    [
-      "chrome-mac-arm64/Google Chrome for Testing.app/Contents/MacOS/Google Chrome for Testing",
-      "chrome-mac-x64/Google Chrome for Testing.app/Contents/MacOS/Google Chrome for Testing",
-      "chrome-linux64/chrome",
-    ].map((relative) => join(chromeRoot, build, relative)),
-  );
-  return [
-    process.env.PUPPETEER_EXECUTABLE_PATH,
-    process.env.CHROME_PATH,
-    "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome",
-    "/usr/bin/google-chrome",
-    "/usr/bin/chromium",
-    ...installedCandidates,
-  ].find((candidate) => candidate && existsSync(candidate));
 }
 
 function percentile(values, ratio) {
@@ -124,7 +103,7 @@ async function collectRun(page, injectedLongTaskMs = 0) {
     }
 
     function findTimelineScroller() {
-      const root = document.querySelector('[aria-label="Timeline"]');
+      const root = document.querySelector('[aria-label="Timeline track view"]');
       if (!(root instanceof HTMLElement)) throw new Error("Timeline root not mounted");
       const scroller = root.querySelector("[data-timeline-scroll-viewport]");
       if (!(scroller instanceof HTMLElement)) throw new Error("Timeline scroller not mounted");
@@ -193,7 +172,7 @@ async function assertLongTaskCapture(browser, longTaskLimitMs, scrollSamplesPerR
   const injectedDurationMs = longTaskLimitMs + 25;
   try {
     await page.setContent(`
-      <div aria-label="Timeline">
+      <div aria-label="Timeline track view">
         <div data-timeline-scroll-viewport style="width:100px;height:100px;overflow:auto">
           <div style="width:1000px;height:1000px"></div>
         </div>
@@ -355,7 +334,9 @@ try {
   }
 
   await page.evaluate(() => window.__studioTest.resetTimelinePerformanceFixture());
-  await page.waitForFunction(() => document.querySelector('[aria-label="Timeline"]') === null);
+  await page.waitForFunction(
+    () => document.querySelector('[aria-label="Timeline track view"]') === null,
+  );
   await waitForStudioTestHookSettle(page);
   await loadFixtureAndWait(page, 1_000, PROFILE);
   await client.send("HeapProfiler.collectGarbage");
@@ -439,7 +420,7 @@ async function waitForFixtureRender(page, elementCount) {
       modelCount: window.__playerStore?.getState().elements.length ?? null,
       renderedCount:
         document
-          .querySelector('[aria-label="Timeline"]')
+          .querySelector('[aria-label="Timeline track view"]')
           ?.getAttribute("data-timeline-element-count") ?? null,
     }));
     if (observed.renderedCount === String(elementCount)) {

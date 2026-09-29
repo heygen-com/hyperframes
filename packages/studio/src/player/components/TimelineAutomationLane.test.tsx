@@ -1,6 +1,6 @@
 // @vitest-environment happy-dom
 import { act } from "react";
-import { describe, expect, it, vi } from "vitest";
+import { describe, expect, it, vi, type Mock } from "vitest";
 import { createRoot } from "react-dom/client";
 import { TimelineAutomationLane } from "./TimelineAutomationLane";
 import { PAD_X } from "./automationLaneGeometry";
@@ -338,6 +338,24 @@ describe("TimelineAutomationLane", () => {
     );
   });
 
+  it("drops the dragged position when the save does not land", async () => {
+    const onCommit = vi.fn(async () => ({ status: "refused" as const, reason: "Locked" }));
+    const { container } = render(
+      <TimelineAutomationLane {...laneProps({ automation: ramp, onCommit })} />,
+    );
+    const svg = container.querySelector("svg")!;
+    stubBox(svg, { left: 0, top: 0, width: 400, height: 48 });
+    const before = Number(container.querySelectorAll("circle")[0]!.getAttribute("cx"));
+    fire(svg, "pointerdown", { clientX: 0, clientY: 6 });
+    fire(svg, "pointermove", { clientX: 160, clientY: 40 });
+    fire(svg, "pointerup", { clientX: 160, clientY: 40 });
+    await act(async () => {});
+    expect(Number(container.querySelectorAll("circle")[0]!.getAttribute("cx"))).toBeCloseTo(
+      before,
+      5,
+    );
+  });
+
   it("follows the prop again once the store catches up", () => {
     const { container, rerender } = renderRerenderable(
       <TimelineAutomationLane {...laneProps({ automation: ramp })} />,
@@ -357,6 +375,25 @@ describe("TimelineAutomationLane", () => {
     const circles = container.querySelectorAll("circle");
     expect(circles.length).toBe(1);
     expect(Number(circles[0]!.getAttribute("cx"))).toBeCloseTo(PAD + 300, 0);
+  });
+
+  it("commits the dragged points when an older save lands mid-drag", () => {
+    const onCommit = vi.fn(async (_next: HfAutomation) => ({ status: "saved" as const }));
+    const { container, rerender } = renderRerenderable(
+      <TimelineAutomationLane {...laneProps({ automation: ramp, onCommit })} />,
+    );
+    const svg = container.querySelector("svg")!;
+    stubBox(svg, { left: 0, top: 0, width: 400, height: 48 });
+    fire(svg, "pointerdown", { clientX: 0, clientY: 6 });
+    fire(svg, "pointermove", { clientX: 160, clientY: 40 });
+    fire(svg, "pointerup", { clientX: 160, clientY: 40 });
+    const older = onCommit.mock.calls[0]![0];
+    fire(svg, "pointerdown", { clientX: 160, clientY: 40 });
+    fire(svg, "pointermove", { clientX: 320, clientY: 40 });
+    rerender(<TimelineAutomationLane {...laneProps({ automation: older, onCommit })} />);
+    fire(svg, "pointerup", { clientX: 320, clientY: 40 });
+    const released = onCommit.mock.calls[1]![0];
+    expect(released.lanes[0]!.points[0]!.t).toBeGreaterThan(older.lanes[0]!.points[0]!.t + 1);
   });
 
   it("keeps lane order when editing, so the view does not switch parameters", () => {
@@ -483,7 +520,7 @@ describe("TimelineAutomationLane", () => {
     // Bigger than the points around them, and ringed rather than recoloured — the
     // fill is the parameter's own colour and stays that way.
     expect(Math.min(...radii)).toBeGreaterThan(Math.max(...plain));
-    expect(marked[0]?.getAttribute("stroke")).toBe("#fff");
+    expect(marked[0]?.getAttribute("stroke")).toBe("var(--timeline-text-solid)");
   });
 
   it("marks nothing when there is no range", () => {
@@ -602,8 +639,8 @@ const mount = (automation: HfAutomation, over: Record<string, unknown> = {}) => 
   // assertion below reads the calls the lane made.
   const props = {
     ...base,
-    onPreview: base.onPreview as ReturnType<typeof vi.fn>,
-    onCommit: base.onCommit as ReturnType<typeof vi.fn>,
+    onPreview: base.onPreview as Mock,
+    onCommit: base.onCommit as Mock,
   };
   const { container } = render(<TimelineAutomationLane {...props} />);
   const svg = container.querySelector("svg")!;
@@ -685,7 +722,7 @@ describe("TimelineAutomationLane segment drag", () => {
     ],
   };
 
-  const previewedPoints = (props: { onPreview: ReturnType<typeof vi.fn> }) =>
+  const previewedPoints = (props: { onPreview: Mock }) =>
     props.onPreview.mock.calls.at(-1)?.[0].lanes[0].points as {
       t: number;
       v: number;
@@ -787,8 +824,8 @@ const mountRerenderable = (automation: HfAutomation, over: Record<string, unknow
   const base = laneProps({ automation, ...over });
   const props = {
     ...base,
-    onPreview: base.onPreview as ReturnType<typeof vi.fn>,
-    onCommit: base.onCommit as ReturnType<typeof vi.fn>,
+    onPreview: base.onPreview as Mock,
+    onCommit: base.onCommit as Mock,
   };
   const { container, rerender } = renderRerenderable(<TimelineAutomationLane {...props} />);
   const svg = container.querySelector("svg")!;
@@ -944,7 +981,7 @@ describe("TimelineAutomationLane modifiers", () => {
       },
     ],
   };
-  const draggedTimes = (props: { onPreview: ReturnType<typeof vi.fn> }) => {
+  const draggedTimes = (props: { onPreview: Mock }) => {
     const points = props.onPreview.mock.calls.at(-1)?.[0].lanes[0].points as
       | { t: number }[]
       | undefined;
@@ -1204,7 +1241,7 @@ describe("TimelineAutomationLane group drag", () => {
       },
     ],
   };
-  const pointsOf = (props: { onPreview: ReturnType<typeof vi.fn> }) =>
+  const pointsOf = (props: { onPreview: Mock }) =>
     props.onPreview.mock.calls.at(-1)?.[0].lanes[0].points as { t: number; v: number }[];
 
   it("moves every selected point by the same distance", () => {
@@ -1346,7 +1383,7 @@ describe("TimelineAutomationLane shift axis lock", () => {
       },
     ],
   };
-  const lastPoints = (props: { onPreview: ReturnType<typeof vi.fn> }) =>
+  const lastPoints = (props: { onPreview: Mock }) =>
     props.onPreview.mock.calls.at(-1)?.[0].lanes[0].points as { t: number; v: number }[];
 
   it("holds the value when the pointer travels mostly sideways", () => {
@@ -1627,6 +1664,7 @@ describe("TimelineAutomationLane stretch", () => {
     const reverted = (props.onPreview.mock.calls.at(-1)?.[0] as HfAutomation | undefined)?.lanes[0]
       ?.points;
     expect(reverted).toEqual(stretchable.lanes[0]?.points);
+    expect(props.onPreview.mock.calls.at(-1)?.[1]).toBe(true);
     expect(onRangeSelect).toHaveBeenLastCalledWith(0.5, 2.5, 0, 1);
   });
 

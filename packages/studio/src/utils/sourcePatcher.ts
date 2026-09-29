@@ -3,7 +3,7 @@
  * Handles inline style updates, attribute changes, and text content.
  */
 
-function escapeRegex(s: string): string {
+export function escapeRegex(s: string): string {
   return s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
 
@@ -184,10 +184,10 @@ function patchInlineStyleInTag(
   if (!tag) return html;
 
   // Check if there's an existing style attribute
-  const styleMatch = /\bstyle=(["'])([\s\S]*?)\1/.exec(tag);
+  const styleMatch = /\bstyle=(")([^"]*)"|\bstyle=(')([^']*)'/.exec(tag);
   if (styleMatch) {
-    const existingStyle = styleMatch[2];
-    const quote = styleMatch[1];
+    const existingStyle = styleMatch[2] ?? styleMatch[4];
+    const quote = styleMatch[1] ?? styleMatch[3];
     // Parse existing properties
     const props = new Map<string, string>();
     for (const part of splitInlineStyleDeclarations(existingStyle)) {
@@ -212,8 +212,8 @@ function patchInlineStyleInTag(
   } else {
     // No existing style attribute
     if (value === null) return html; // nothing to remove
-    const selfClosing = /\s*\/$/.test(tag);
-    const base = selfClosing ? tag.replace(/\s*\/$/, "") : tag;
+    const selfClosing = tag.endsWith("/");
+    const base = selfClosing ? tag.slice(0, -1).trimEnd() : tag;
     const newTag = `${base} style="${prop}: ${escapeStyleAttributeValue(value, '"')}"${selfClosing ? " /" : ""}`;
     return html.replace(tag, newTag);
   }
@@ -420,7 +420,7 @@ function findMatchingClosingTagIndex(html: string, tagName: string, contentStart
   return -1;
 }
 
-const HTML_BOOLEAN_ATTRIBUTES = new Set([
+export const HTML_BOOLEAN_ATTRIBUTES = new Set([
   "loop",
   "muted",
   "autoplay",

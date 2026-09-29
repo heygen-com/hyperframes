@@ -1,7 +1,10 @@
+import { formatTimelineBlock } from "../player/lib/describeClips";
+import { buildProjectApiPath } from "../utils/projectRouting";
 import { useState, useCallback, useRef, useEffect } from "react";
 import { copyTextToClipboard } from "../utils/clipboard";
 import { readTagSnippetByTarget } from "../utils/sourcePatcher";
 import { toProjectAbsolutePath, type AgentModalAnchorPoint } from "../utils/studioHelpers";
+import { liveMarkupWithoutPreviewMarks } from "../utils/authoredSource";
 import { buildElementAgentPrompt, type DomEditSelection } from "../components/editor/domEditing";
 import { usePlayerStore } from "../player";
 
@@ -53,7 +56,7 @@ export function useAskAgentModal({
       const targetPath = selection.sourceFile || activeCompPath || "index.html";
       try {
         const response = await fetch(
-          `/api/projects/${pid}/files/${encodeURIComponent(targetPath)}`,
+          buildProjectApiPath(pid, `/files/${encodeURIComponent(targetPath)}`),
         );
         if (!response.ok) return;
 
@@ -87,10 +90,12 @@ export function useAskAgentModal({
       if (!domEditSelection) return;
 
       const targetPath = domEditSelection.sourceFile || activeCompPath || "index.html";
-      const tagSnippet = agentPromptTagSnippet ?? domEditSelection.element.outerHTML;
+      const tagSnippet =
+        agentPromptTagSnippet ?? liveMarkupWithoutPreviewMarks(domEditSelection.element);
       const prompt = buildElementAgentPrompt({
         selection: domEditSelection,
         currentTime: usePlayerStore.getState().currentTime,
+        timeline: formatTimelineBlock(usePlayerStore.getState().elements),
         tagSnippet,
         selectionContext: agentPromptSelectionContext,
         userInstruction,

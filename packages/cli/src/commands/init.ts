@@ -4,6 +4,7 @@
 // own task.
 // fallow-ignore-file complexity
 import { failCommand, finishCommand } from "../utils/commandResult.js";
+import { writeNewFileSync } from "../utils/writeNewFile.js";
 import { defineCommand, runCommand } from "citty";
 import type { Example } from "./_examples.js";
 
@@ -14,14 +15,11 @@ export const examples: Example[] = [
   ["Scaffold a portrait video", "hyperframes init my-video --resolution portrait"],
   ["Start from an existing video file", "hyperframes init my-video --video clip.mp4"],
   ["Start from an audio file", "hyperframes init my-video --audio track.mp3"],
-  ["Scaffold with Tailwind CSS", "hyperframes init my-video --example blank --tailwind"],
-  [
-    "Non-interactive mode (for CI or AI agents)",
-    "hyperframes init my-video --example blank --non-interactive",
-  ],
+  ["Scaffold with Tailwind CSS", "hyperframes init my-video --tailwind"],
+  ["Non-interactive mode (for CI or AI agents)", "hyperframes init my-video --non-interactive"],
   [
     "Opt out of the GitHub skills check (CI/tests only)",
-    "HYPERFRAMES_SKIP_SKILLS=1 hyperframes init my-video --example blank --non-interactive",
+    "HYPERFRAMES_SKIP_SKILLS=1 hyperframes init my-video --non-interactive",
   ],
 ];
 import {
@@ -55,6 +53,18 @@ import {
   normalizeResolutionFlag,
   type CanvasResolution,
 } from "@hyperframes/core";
+import {
+  HTML_BODY_CSS_HEIGHT_FIRST_RE,
+  HTML_BODY_CSS_WIDTH_FIRST_RE,
+  VIEWPORT_META_SIZE_RE,
+} from "@hyperframes/parsers";
+
+function resolveScaffoldTemplateId(exampleFlag: string | undefined, hasMediaFile: boolean): string {
+  const example = exampleFlag === "agent" ? "blank" : exampleFlag;
+  if (example && example !== "blank") return example;
+  if (hasMediaFile) return "from-file";
+  return "blank";
+}
 
 interface VideoMeta {
   durationSeconds: number;
@@ -269,7 +279,7 @@ function writeDefaultPackageJson(destDir: string, projectName: string): void {
   const packageJsonPath = resolve(destDir, "package.json");
   if (existsSync(packageJsonPath)) return;
 
-  writeFileSync(
+  writeNewFileSync(
     packageJsonPath,
     `${JSON.stringify(
       {
@@ -281,7 +291,6 @@ function writeDefaultPackageJson(destDir: string, projectName: string): void {
       null,
       2,
     )}\n`,
-    "utf-8",
   );
 }
 
@@ -523,20 +532,18 @@ export function applyResolutionPreset(destDir: string, resolution: CanvasResolut
 
     // Inline `html, body { ... }` CSS: handle width-before-height and
     // height-before-width orderings. Hand-authored templates can use either.
-    const bodyCssRe = /(html\s*,\s*body\s*\{[^}]*?width:\s*)\d+px([^}]*?height:\s*)\d+px/i;
-    if (bodyCssRe.test(html)) {
-      html = html.replace(bodyCssRe, `$1${width}px$2${height}px`);
+    // Groups 1 and 3 are the text before each dimension, 2 and 4 the digits.
+    if (HTML_BODY_CSS_WIDTH_FIRST_RE.test(html)) {
+      html = html.replace(HTML_BODY_CSS_WIDTH_FIRST_RE, `$1${width}px$3${height}px`);
       changed = true;
     }
-    const bodyCssReverseRe = /(html\s*,\s*body\s*\{[^}]*?height:\s*)\d+px([^}]*?width:\s*)\d+px/i;
-    if (bodyCssReverseRe.test(html)) {
-      html = html.replace(bodyCssReverseRe, `$1${height}px$2${width}px`);
+    if (HTML_BODY_CSS_HEIGHT_FIRST_RE.test(html)) {
+      html = html.replace(HTML_BODY_CSS_HEIGHT_FIRST_RE, `$1${height}px$3${width}px`);
       changed = true;
     }
 
-    const viewportRe = /(<meta[^>]*name=["']viewport["'][^>]*content=["'])width=\d+,\s*height=\d+/i;
-    if (viewportRe.test(html)) {
-      html = html.replace(viewportRe, `$1width=${width}, height=${height}`);
+    if (VIEWPORT_META_SIZE_RE.test(html)) {
+      html = html.replace(VIEWPORT_META_SIZE_RE, `$1${width}$3${height}`);
       changed = true;
     }
 
@@ -592,11 +599,11 @@ async function scaffoldProject(
   // When the scaffolding workflow declared itself via --skill, stamp the owning
   // skill here so every later render of this project is attributed to it.
   if (!existsSync(resolve(destDir, "hyperframes.json"))) {
-    const { writeProjectConfig, DEFAULT_PROJECT_CONFIG } =
+    const { createProjectConfig, DEFAULT_PROJECT_CONFIG } =
       await import("../utils/projectConfig.js");
     const { normalizeSkillSlug } = await import("../telemetry/skill.js");
     const skill = normalizeSkillSlug(authoringSkill);
-    writeProjectConfig(
+    createProjectConfig(
       destDir,
       skill ? { ...DEFAULT_PROJECT_CONFIG, authoringSkill: skill } : DEFAULT_PROJECT_CONFIG,
     );
@@ -722,6 +729,11 @@ export default defineCommand({
       type: "boolean",
       description: "Disable interactive prompts (for CI/agents)",
     },
+    agent: {
+      type: "boolean",
+      hidden: true,
+      description: "Deprecated alias; default init is the centered blank",
+    },
     "skip-skills": {
       type: "boolean",
       description:
@@ -783,7 +795,7 @@ export default defineCommand({
     const skipSkills = process.env.HYPERFRAMES_SKIP_SKILLS === "1";
     const skipSkillsFlagIgnored = args["skip-skills"] === true && !skipSkills;
     const tailwind = args.tailwind === true;
-    const nonInteractive = args["non-interactive"] === true;
+    const nonInteractive = args["non-interactive"] === true || args.agent === true;
     const modelFlag = args.model;
     const languageFlag = args.language;
     const initialTranscriptionModel = initialModelForLanguage(
@@ -820,17 +832,7 @@ export default defineCommand({
     // Non-interactive mode — all inputs from flags, defaults where missing
     // -----------------------------------------------------------------------
     if (!interactive) {
-      if (!exampleFlag && !videoFlag && !audioFlag) {
-        console.error(
-          c.error(
-            "Non-interactive init requires --example, --video, or --audio. " +
-              "For an empty starter project, pass --example blank explicitly.",
-          ),
-        );
-        failCommand();
-      }
-
-      const templateId = exampleFlag ?? "blank";
+      const templateId = resolveScaffoldTemplateId(exampleFlag, Boolean(videoFlag || audioFlag));
       const name = args.name ?? "my-video";
       const destDir = resolve(name);
 
@@ -943,7 +945,9 @@ export default defineCommand({
       console.log("Get started:");
       console.log();
       if (skipSkills) {
-        console.log(`  ${c.accent("1.")} Install AI coding skills (one-time):`);
+        console.log(
+          `  ${c.accent("1.")} Use your HyperFrames plugin, or install standalone skills:`,
+        );
         console.log(`     ${c.accent("npx hyperframes skills update")}`);
       } else {
         console.log(
@@ -1091,8 +1095,8 @@ export default defineCommand({
     // 3. Pick example — skip prompt if --example was provided
     let templateId: string;
 
-    if (exampleFlag) {
-      templateId = exampleFlag;
+    if (exampleFlag || videoFlag || audioFlag) {
+      templateId = resolveScaffoldTemplateId(exampleFlag, Boolean(videoFlag || audioFlag));
     } else {
       // Resolve full template list (bundled + remote)
       const allTemplates = await resolveTemplateList();

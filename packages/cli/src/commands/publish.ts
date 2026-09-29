@@ -11,7 +11,7 @@ import {
   hasDefinitiveEntryMismatch,
   lintProject,
 } from "../utils/lintProject.js";
-import { formatLintFindings } from "../utils/lintFormat.js";
+import { formatLintStartupMessage } from "../utils/lintFormat.js";
 import {
   buildPublishFileMap,
   publishProjectArchive,
@@ -28,13 +28,14 @@ import {
 } from "../utils/projectLink.js";
 
 export const examples: Example[] = [
-  ["Publish the current project with a public URL", "hyperframes publish"],
+  ["Publish the current project privately to a stable URL", "hyperframes publish"],
   ["Publish a specific directory", "hyperframes publish ./my-video"],
   ["Make the claimed project public to anyone", "hyperframes publish --public"],
   ["Update an existing published project in place", "hyperframes publish --update <url|id>"],
   ["Publish to a shared team space", "hyperframes publish --space <space-id>"],
   ["Skip the consent prompt (scripts)", "hyperframes publish --yes"],
   ["Skip baking H.264 proxies for browser-hostile video codecs", "hyperframes publish --no-proxy"],
+  ["Show full lint findings instead of the summary line", "hyperframes publish --lint-verbose"],
 ];
 
 /** Extract a project id from a published URL (with or without scheme, query, or hash) or accept a bare id. */
@@ -56,7 +57,7 @@ export function parseUpdateTarget(value: string): string {
 export default defineCommand({
   meta: {
     name: "publish",
-    description: "Upload the project and return a stable public URL",
+    description: "Upload the project to a stable URL (private by default)",
   },
   args: {
     dir: { type: "positional", description: "Project directory", required: false },
@@ -84,6 +85,11 @@ export default defineCommand({
       description:
         "Bake H.264 proxies for browser-hostile video codecs (e.g. HEVC) into the published archive. Default: on, unless disabled via hyperframes.json media.autoProxy. Pass --no-proxy to skip.",
     },
+    "lint-verbose": {
+      type: "boolean",
+      description: "Show full lint findings before publishing (default: a one-line summary)",
+      default: false,
+    },
   },
   async run({ args }) {
     const rawArg = args.dir;
@@ -91,12 +97,18 @@ export default defineCommand({
     const indexPath = join(dir, "index.html");
     if (existsSync(indexPath)) {
       const lintResult = await lintProject(dir);
+      const definitiveEntryMismatch = hasDefinitiveEntryMismatch(lintResult);
       if (lintResult.totalErrors > 0 || lintResult.totalWarnings > 0) {
         console.log();
-        for (const line of formatLintFindings(lintResult)) console.log(line);
+        const verbose = Boolean(args["lint-verbose"]) || definitiveEntryMismatch;
+        for (const line of formatLintStartupMessage(
+          lintResult,
+          verbose ? { kind: "verbose" } : { kind: "summary" },
+        ))
+          console.log(line);
         console.log();
       }
-      if (hasDefinitiveEntryMismatch(lintResult)) {
+      if (definitiveEntryMismatch) {
         const candidate = definitiveEntryMismatchComposition(lintResult);
         console.log(c.error("  Aborting publish because the default index.html entry is blank."));
         if (candidate && posix.basename(candidate) === "index.html") {
@@ -121,12 +133,19 @@ export default defineCommand({
 
     if (args.yes !== true) {
       console.log();
-      console.log(
-        `  ${c.bold("hyperframes publish uploads this project and creates a stable public URL.")}`,
-      );
-      console.log(
-        `  ${c.dim("Anyone with the URL can open the published project and claim it after authenticating.")}`,
-      );
+      if (args.public === true) {
+        console.log(
+          `  ${c.bold("hyperframes publish uploads this project and requests public visibility at a stable URL.")}`,
+        );
+        console.log(`  ${c.dim("Anyone with the URL can open a claimed public project.")}`);
+      } else {
+        console.log(
+          `  ${c.bold("hyperframes publish uploads this project privately to a stable URL.")}`,
+        );
+        console.log(
+          `  ${c.dim("Viewing requires authentication and access. Pass --public to allow anyone with the URL.")}`,
+        );
+      }
       console.log();
       const approved = await clack.confirm({ message: "Publish this project?" });
       if (clack.isCancel(approved) || approved !== true) {
@@ -200,13 +219,15 @@ export default defineCommand({
       publishSpinner.stop(c.success("Project published"));
 
       console.log();
-      console.log(`  ${c.dim("Project")}    ${c.accent(published.title)}`);
-      console.log(`  ${c.dim("Files")}      ${String(published.fileCount)}`);
+      console.log(`  ${c.dim("Project")}              ${c.accent(published.title)}`);
+      console.log(`  ${c.dim("Files")}                ${String(published.fileCount)}`);
       if (proxyBakeManifest) {
-        console.log(`  ${c.dim("Proxies")}    ${String(proxyBakeManifest.proxied.length)} baked`);
+        console.log(
+          `  ${c.dim("Proxies")}              ${String(proxyBakeManifest.proxied.length)} baked`,
+        );
         if (proxyBakeManifest.skippedAlpha.length > 0) {
           console.log(
-            `  ${c.dim("Proxy note")} ${String(proxyBakeManifest.skippedAlpha.length)} alpha source(s) kept original`,
+            `  ${c.dim("Proxy note")}           ${String(proxyBakeManifest.skippedAlpha.length)} alpha source(s) kept original`,
           );
         }
       }
@@ -214,10 +235,26 @@ export default defineCommand({
       if (published.claimed) {
         // The server returns the same id on an in-place update, a fresh id on create.
         const updatedInPlace = published.projectId === requestedProjectId;
-        console.log(`  ${c.dim("URL")}        ${c.accent(published.url)}`);
+        console.log(`  ${c.dim("URL")}                  ${c.accent(published.url)}`);
+        // The CLI only ever states what it ASKED for: no response field carries the project's
+        // actual visibility. A re-publish without --public sends no visibility at all, so the
+        // server keeps whatever the project already had — saying "Private" there would claim
+        // a state we neither requested nor observed.
+        const requestedVisibility =
+          args.public === true
+            ? "Public — anyone with the URL"
+            : updatedInPlace
+              ? "Unchanged — keeps this project's current setting"
+              : "Private — authentication and access required";
+        console.log(`  ${c.dim("Requested visibility")} ${c.accent(requestedVisibility)}`);
         console.log(
-          `  ${c.dim("Status")}     ${c.accent(updatedInPlace ? "Updated existing project" : "Created new project")}`,
+          `  ${c.dim("Status")}               ${c.accent(updatedInPlace ? "Updated existing project" : "Created new project")}`,
         );
+        if (args.public !== true) {
+          console.log(
+            `  ${c.dim("Tip")}                  ${c.dim("Re-publish with --public to allow anyone with the URL.")}`,
+          );
+        }
         // Warn whenever we aimed at a KNOWN existing project (an explicit --update target or
         // a committed team id) but the server created a fresh one instead — so a teammate
         // whose space doesn't own the committed project doesn't silently lose the shared link.
@@ -249,7 +286,8 @@ export default defineCommand({
       } else {
         const claimUrl = new URL(published.url);
         claimUrl.searchParams.set("claim_token", published.claimToken);
-        console.log(`  ${c.dim("Public")}     ${c.accent(claimUrl.toString())}`);
+        console.log(`  ${c.dim("Claim URL")}  ${c.accent(claimUrl.toString())}`);
+        console.log(`  ${c.dim("Access")}     ${c.accent("Sign in required to claim")}`);
         console.log();
         if (updateTarget || spaceOverride) {
           // The pre-publish gate saw a credential, but the server didn't accept it (expired
@@ -263,12 +301,14 @@ export default defineCommand({
           );
         } else {
           console.log(
-            `  ${c.dim("Open the URL on hyperframes.dev to claim the project and continue editing.")}`,
+            `  ${c.dim("Open the claim URL on hyperframes.dev, sign in, and claim the project to continue editing.")}`,
           );
           console.log();
-          console.log(
-            `  ${c.dim("Tip: run 'hyperframes auth login' first for a stable link you can re-publish to.")}`,
-          );
+          const visibilityTip =
+            args.public === true
+              ? "--public applies to the claimed project; this claim URL still requires sign-in."
+              : "Run 'hyperframes auth login' first for a stable link you can re-publish to; add --public to allow signed-out viewing.";
+          console.log(`  ${c.dim(`Tip: ${visibilityTip}`)}`);
         }
         console.log();
       }

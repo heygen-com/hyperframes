@@ -48,8 +48,7 @@ So `<template>` is not just a wrapper — it is the **transport container**. If 
     <template>
       <!-- EVERYTHING the runtime needs goes here: styles, markup, scripts -->
       <style>
-        /* Root: style by #root, never a class. (At render the CSS is scoped to
-           data-composition-id, so a class on the root stops matching — see Pitfall 3.) */
+        /* Root: style by #root, never a class. lint: subcomposition_root_styled_by_class. See Pitfall 3. */
         #root {
           position: absolute;
           inset: 0;
@@ -63,7 +62,6 @@ So `<template>` is not just a wrapper — it is the **transport container**. If 
       </div>
 
       <script>
-        window.__timelines = window.__timelines || {};
         const tl = gsap.timeline({ paused: true });
         // ... build timeline ...
         window.__timelines["data-chart"] = tl;
@@ -77,7 +75,7 @@ Contrast with **standalone** compositions, which put the root directly in `<body
 
 ## Common pitfalls that pass static checks but break at render
 
-Static file checks cannot prove the **cross-file mount contract**. These failures appear only when the runtime mounts the sub-composition. Watch for them at author time and verify with the pre-render snapshot checklist below.
+Static file checks cannot prove the **cross-file mount contract**. These failures appear only when the runtime mounts the sub-composition.
 
 ### Pitfall 1 — `<style>` in `<head>` instead of inside `<template>`
 
@@ -137,68 +135,7 @@ Static file checks cannot prove the **cross-file mount contract**. These failure
 
 ### Pitfall 3 — Styling the root by a class instead of `#root`
 
-```html
-<!-- ❌ WRONG — class on the root, stylesheet keyed off it -->
-<template>
-  <style>
-    .frame {
-      position: absolute;
-      inset: 0;
-      background: #faf9f5;
-    }
-    .frame .title {
-      font-size: 120px;
-    }
-  </style>
-  <div id="root" class="frame" data-composition-id="03-scene" ...>
-    <div class="title">…</div>
-  </div>
-</template>
-
-<!-- ✅ RIGHT — root styled by #root, descendants by plain selectors -->
-<template>
-  <style>
-    #root {
-      position: absolute;
-      inset: 0;
-      background: #faf9f5;
-    }
-    .title {
-      font-size: 120px;
-    }
-  </style>
-  <div id="root" data-composition-id="03-scene" ...>
-    <div class="title">…</div>
-  </div>
-</template>
-```
-
-**Why this happens:** when sub-compositions are inlined into one composited render, the compiler **scopes each file's CSS to its own `data-composition-id`** so scenes can't leak styles into each other: every rule `S` becomes `[data-composition-id="<id>"] S` (a _descendant_ selector). A rule whose leftmost selector is the **root's own class** (`.frame`) therefore becomes `[data-composition-id="<id>"] .frame`, which cannot match the scoped element itself. `#root` is special-cased by the scoper and keeps matching the root; plain descendant selectors (`.title`) match normally. The per-scene class namespace is also just redundant, since the `data-composition-id` scope already isolates each scene's styles.
-
-**What actually happens today:** the render no longer drops these rules. Since #1886 the producer preserves the authored root as a `data-hf-inner-root` wrapper _inside_ the scoped element, so a class on the root still matches as a descendant and preview and render agree. The regression is pinned by `packages/producer/tests/sub-comp-class-selector/`.
-
-**So why still use `#root`?** Because `lint` rejects the class form outright (`subcomposition_root_styled_by_class`, **error**), and it is the pattern the registry blocks model (e.g. `apple-money-count`). Treat this as a lint constraint you must satisfy, not as a render bug you are avoiding. If you inherited a composition that styles its root by class, it renders correctly; you still have to convert it to `#root` to get a green `lint`.
-
-### Verification checklist before render
-
-```bash
-# For every sub-composition file in compositions/:
-#   1) <style> + <script> + main markup all live INSIDE <template>
-grep -n "<style\|<script\|<template" compositions/<scene>.html
-#      → first <style>/<script>/<div data-composition-id> should be AFTER <template>, before </template>
-
-#   2) host data-composition-id == internal data-composition-id == window.__timelines key
-grep "data-composition-id" index.html
-grep "data-composition-id\|__timelines\[" compositions/<scene>.html
-#      → all three strings must match exactly per scene
-
-#   3) the root is styled by #root, not by a class on the data-composition-id element
-grep -n 'data-composition-id=' compositions/<scene>.html
-#      → that element should NOT also carry a class="…" that the <style> keys off
-#        (e.g. `.frame { … }`); scoping drops it. Style the root via #root. See Pitfall 3.
-```
-
-For the runtime end-to-end check (a fast `snapshot` pass + per-scene frame eyeball), see the **Visual smoke test** step in `hyperframes-cli`'s Minimum Completion Gate — that is the only gate that catches these three pitfalls.
+`lint` still errors (`subcomposition_root_styled_by_class`) if a sub-composition styles the host root's own class. Style the root with `#root`.
 
 ## What HyperFrames Does With the Sub-Composition
 

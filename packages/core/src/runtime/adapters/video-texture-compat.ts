@@ -14,6 +14,7 @@
  */
 
 import { findInjectedRenderFrame } from "../renderFrameSibling.js";
+import { isImageElement, isVideoElement } from "../domRealm";
 
 /**
  * Resolve the decoded render-frame `<img>` for a source `<video>`, if the
@@ -28,7 +29,7 @@ import { findInjectedRenderFrame } from "../renderFrameSibling.js";
 function resolveRenderFrameImage(video: HTMLVideoElement): HTMLImageElement | null {
   const sibling = video.nextElementSibling;
   if (
-    sibling instanceof HTMLImageElement &&
+    isImageElement(sibling) &&
     sibling.classList.contains("__render_frame__") &&
     sibling.complete &&
     sibling.naturalWidth > 0
@@ -60,7 +61,7 @@ export function patchVideoTextureCompat(): void {
     destination: unknown,
     copySize: unknown,
   ) {
-    if (source?.source instanceof HTMLVideoElement) {
+    if (isVideoElement(source?.source)) {
       const img = resolveRenderFrameImage(source.source);
       if (img) {
         return orig.call(this, { ...source, source: img }, destination, copySize);
@@ -98,7 +99,7 @@ export function patchWebGLVideoTextureCompat(): void {
       const patched = function (this: unknown, ...args: unknown[]) {
         const lastIndex = args.length - 1;
         const last = args[lastIndex];
-        if (last instanceof HTMLVideoElement) {
+        if (isVideoElement(last)) {
           const img = resolveRenderFrameImage(last);
           if (img) args[lastIndex] = img;
         }

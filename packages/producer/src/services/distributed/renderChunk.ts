@@ -43,6 +43,7 @@ import {
   BROWSER_GPU_NOT_SOFTWARE,
   calculateOptimalWorkers,
   classifyCaptureFailure,
+  compositionRequiresWebGpu,
   type CaptureOptions,
   type CaptureMode,
   type CapturePerfSummary,
@@ -77,6 +78,7 @@ import {
   buildVirtualTimeShim,
   closeFileServerSafely,
   createFileServer,
+  resolveRenderFpsConfig,
   type FileServerHandle,
 } from "../fileServer.js";
 import {
@@ -215,7 +217,8 @@ interface DistributedCaptureSessionDependencies {
   readWebGlVendorInfo: typeof readWebGlVendorInfoFromCanvas;
 }
 
-const distributedCaptureSessionDependencies: DistributedCaptureSessionDependencies = {
+/** Mutable so tests can substitute a spy without a real browser; renderChunk() always calls through it. */
+export const distributedCaptureSessionDependencies: DistributedCaptureSessionDependencies = {
   createCaptureSession,
   assertSwiftShader,
   initializeSession,
@@ -324,6 +327,13 @@ export async function beginFrameSessionNeedsScreenshotFallback(
   return !(await probe(session.page, timeoutMs, probeTick, session.beginFrameIntervalMs));
 }
 
+function frameNumberFromFileName(name: string): number | null {
+  const match = /(\d+)(?=\.[^.]+$)/.exec(name);
+  if (!match) return null;
+  const frameNumber = Number(match[1]);
+  return Number.isSafeInteger(frameNumber) ? frameNumber : null;
+}
+
 /**
  * Rebuild the engine's in-memory `ExtractedFrames[]` from the on-disk
  * planDir layout. `<planDir>/video-frames/<videoId>/` holds the numbered
@@ -355,13 +365,18 @@ export function rebuildExtractedFramesFromPlanDir(
       );
     }
     // framePattern looks like `frame_%05d.jpg`; sprintf isn't available at
-    // runtime so list-and-sort the directory. Sorted-by-name matches
-    // sorted-by-frame-index because the extractor writes zero-padded
-    // monotonic indices.
+    // runtime so list the directory and order numeric names by their ordinal.
+    // Width changes once FFmpeg passes the padding minimum, so lexical order
+    // would interleave frame_100000 before frame_10001.
     const ext = (extname(v.framePattern) || ".jpg").toLowerCase();
     const frames = readdirSync(outputDir)
       .filter((name) => name.toLowerCase().endsWith(ext))
-      .sort();
+      .sort((left, right) => {
+        const leftNumber = frameNumberFromFileName(left);
+        const rightNumber = frameNumberFromFileName(right);
+        if (leftNumber === null || rightNumber === null) return left.localeCompare(right);
+        return leftNumber - rightNumber || left.localeCompare(right);
+      });
     const framePaths = new Map<number, string>();
     for (let i = 0; i < frames.length; i++) {
       const frameName = frames[i];
@@ -369,8 +384,8 @@ export function rebuildExtractedFramesFromPlanDir(
       // V1 plans preserve the historical sorted-position behavior even for
       // unusual zero-based filenames. V2 materialization is sparse, so only
       // that mode derives the original index from ffmpeg's 1-based filename.
-      const numbered = indexMode === "sparse-v2" ? /(\d+)(?=\.[^.]+$)/.exec(frameName) : null;
-      const frameIndex = numbered ? Number(numbered[1]) - 1 : i;
+      const frameNumber = indexMode === "sparse-v2" ? frameNumberFromFileName(frameName) : null;
+      const frameIndex = frameNumber === null ? i : frameNumber - 1;
       framePaths.set(frameIndex, join(outputDir, frameName));
     }
     result.push({
@@ -664,6 +679,7 @@ export async function renderChunk(
               planVideos.extracted,
               v2Manifest === null ? "dense-v1" : "sparse-v2",
             ),
+            resolveRenderFpsConfig(job.config.fps).value,
           )
         : null;
     const createChunkVideoFrameInjector = createChunkVideoFrameInjectorFactory(videoFrameLookup);
@@ -716,6 +732,9 @@ export async function renderChunk(
       // lock the BeginFrame warmup loop to a fixed iteration count so
       // `beginFrameTimeTicks` is host-independent. Only chunks ever set this.
       lockWarmupTicks: true,
+      requiresWebGpu: compositionRequiresWebGpu(
+        readFileSync(join(compiledDir, "index.html"), "utf-8"),
+      ),
     };
 
     // Resolve worker count up-front. Sequential capture reuses the initialized
@@ -945,6 +964,7 @@ export async function renderChunk(
         width: plan.dimensions.width * encoder.deviceScaleFactor,
         height: plan.dimensions.height * encoder.deviceScaleFactor,
         needsAlpha: plan.dimensions.format !== "mp4",
+        captureImageFormat: captureOptions.format ?? "jpeg",
         // Each chunk produces video only — audio is muxed once at assemble
         // time. Suppressing `hasAudio` skips the png-sequence audio sidecar
         // AND the mp4 audio mux.

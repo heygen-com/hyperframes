@@ -1,3 +1,6 @@
+import { readFileSync, readdirSync } from "node:fs";
+import { dirname, join, resolve } from "node:path";
+import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 
 import { hasNoSearchableTokens, rankByWords, searchByWords, tokenize } from "./localSearch.js";
@@ -231,5 +234,57 @@ describe("the two spellings of a compound word find the same items", () => {
     ];
 
     expect(searchByWords("typewriter", typing, fieldsOf)[0]?.name).toBe("typewriter");
+  });
+});
+
+// ── Catalog vocabulary regression, against the real registry ────────────────
+// A gap here is a tag gap, not a ranker gap: fix it in a registry-item.json.
+
+describe("editor vocabulary finds the real catalog items that already do it", () => {
+  const registryDir = resolve(dirname(fileURLToPath(import.meta.url)), "../../../../registry");
+
+  interface RealItem {
+    name: string;
+    title: string;
+    description: string;
+    tags: string[];
+  }
+
+  function loadRealCatalog(): RealItem[] {
+    const items: RealItem[] = [];
+    for (const type of ["blocks", "components"]) {
+      const typeDir = join(registryDir, type);
+      for (const entry of readdirSync(typeDir, { withFileTypes: true })) {
+        if (!entry.isDirectory()) continue;
+        const name = entry.name;
+        const manifestPath = join(typeDir, name, "registry-item.json");
+        const manifest = JSON.parse(readFileSync(manifestPath, "utf8")) as Partial<RealItem>;
+        items.push({
+          name: manifest.name ?? name,
+          title: manifest.title ?? "",
+          description: manifest.description ?? "",
+          tags: manifest.tags ?? [],
+        });
+      }
+    }
+    return items;
+  }
+
+  const realItems = loadRealCatalog();
+  // Mirrors how catalog.ts:609-612 splits an item's text for the word tier.
+  const realFieldsOf = (item: RealItem) => ({
+    strong: `${item.name} ${item.title}`,
+    weak: `${item.description} ${item.tags.join(" ")}`,
+  });
+
+  it.each([
+    ["crossfade", "fade-through"],
+    ["crossfade", "transitions-dissolve"],
+    ["cross dissolve", "transitions-dissolve"],
+    ["countdown timer", "count-up"],
+    ["split screen comparison", "comparison-split"],
+  ])("ranks %s -> %s in the top 3", (query, expectedName) => {
+    const ranked = searchByWords(query, realItems, realFieldsOf).slice(0, 3);
+    expect(ranked.map((item) => item.name)).toContain(expectedName);
   });
 });

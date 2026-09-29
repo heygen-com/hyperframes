@@ -4,12 +4,12 @@ Open-source video rendering framework: write HTML, render video.
 
 ## Skills
 
-This repo ships 20 AI agent skills via [vercel-labs/skills](https://github.com/vercel-labs/skills). Install them before writing compositions — they encode framework-specific patterns that generic docs don't cover. **Default to the core set**: the `/hyperframes` router installs each creation workflow on demand; install all 20 only when the user explicitly asks for the full set.
+This repo ships 21 AI agent skills via [vercel-labs/skills](https://github.com/vercel-labs/skills). Install them before writing compositions — they encode framework-specific patterns that generic docs don't cover. **Default to the core set**: the `/hyperframes` router installs each creation workflow on demand; install all 21 only when the user explicitly asks for the full set.
 
 ```bash
 npx hyperframes skills update                         # default: installs/refreshes the core set — workflows install on demand
-npx skills add heygen-com/hyperframes                 # interactive picker (terminal only — non-interactive without --skill installs all 20)
-npx skills add heygen-com/hyperframes --all           # all 20 at once — only on explicit request
+npx hyperframes skills                                # all 21 published skills at once — only on explicit request
+npx skills add heygen-com/hyperframes                 # interactive picker (terminal only; --all also pulls the 6 repo-internal skills under .claude/skills)
 npx skills add heygen-com/hyperframes --skill <name>  # just one (bare name, no leading slash)
 ```
 
@@ -41,7 +41,7 @@ Atomic capabilities the creation workflows compose against — pull one when you
 - `/media-use` — the media OS: resolve any media need (BGM, SFX, image, icon, logo, voice, color grade, LUT) into a frozen local file or paste-ready block + ledger record; generate via TTS / music / image models when the catalog misses; transcribe, caption, remove backgrounds, and reuse assets across projects. One shared `scripts/audio.mjs` engine + manifest tracking; keeps search noise on disk.
 - `/hyperframes-audio` — mix the audio already placed in a composition: voiceover carve (dip a music bed only in the bands the voice occupies, static or dynamic, level match included), the effect chain (EQ, compressor, limiter, gate, saturation, delay, reverb, chorus, phaser, bitcrush), automation envelopes on volume or any effect parameter, and submix buses (`<hf-audio-group>`) that carry one chain, fader and automation clock for several tracks at once. Sourcing the audio is `/media-use`; this is what happens to it afterwards.
 - `/hyperframes-cli` — CLI dev loop: `init`, `add`, `lint`, `check`, `snapshot`, `preview`, `render`, `publish`, `doctor`, `lambda` (AWS Lambda cloud rendering).
-- `/hyperframes-registry` — install and wire registry blocks and components into compositions via `hyperframes add`. Covers authoring a new block or component to contribute upstream.
+- `/hyperframes-registry` — search, install and wire registry blocks and components into compositions via `hyperframes catalog` / `hyperframes add`. Load it before hand-building any named look, effect, treatment or transition: the search ranks the whole hosted registry with nothing installed. Covers authoring a new block or component to contribute upstream.
 - `/figma` — import Figma assets, tokens, components, and storyboard sections → reconstructed motion (frames read as states, not slides) (REST/CLI) plus Motion animations (MCP) and shaders (MCP source / native export) into a composition.
 
 ## Skill catalog maintenance
@@ -111,7 +111,7 @@ skills/                 → AI agent skill definitions
 - **Package manager**: bun (not pnpm, not npm for workspace operations)
 - **Commit format**: Conventional commits (`feat:`, `fix:`, `docs:`, `refactor:`, `test:`)
 - **TypeScript**: Avoid `any` and `as T` assertions. Prefer type guards and narrowing.
-- **Compositions**: HTML files with `data-*` attributes. Clips need `class="clip"`. GSAP timelines must be paused and registered on `window.__timelines`.
+- **Compositions**: HTML files with `data-*` attributes. Clips need `class="clip"`. Register one paused GSAP root timeline per composition on `window.__timelines`. Scene timelines manually added to that root must not be paused, or they will not advance when the root is seeked.
 - **Frame Adapters**: Animation runtimes plug in via the seek-by-frame adapter pattern. GSAP is the primary adapter.
 - **Deterministic rendering**: No `Date.now()`, no unseeded `Math.random()`, no render-time network fetches.
 

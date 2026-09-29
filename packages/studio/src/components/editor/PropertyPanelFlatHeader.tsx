@@ -41,13 +41,13 @@ export function PropertyPanelFlatHeader({
       <Icon
         size={15}
         data-flat-header-icon="true"
-        className={`flex-shrink-0 ${ICON_COLOR_BY_KIND[elementKind]}`}
+        className={`shrink-0 ${ICON_COLOR_BY_KIND[elementKind]}`}
       />
       <div className="flex min-w-0 flex-1 items-baseline gap-2">
         <span className="truncate text-[13px] font-semibold text-panel-text-0">{name}</span>
         <span className="truncate font-mono text-[10px] text-panel-text-4">{meta}</span>
       </div>
-      <div className="flex flex-shrink-0 items-center gap-2.5 text-panel-text-3">
+      <div className="flex shrink-0 items-center gap-2.5 text-panel-text-3">
         {showUngroup && (
           <button
             type="button"

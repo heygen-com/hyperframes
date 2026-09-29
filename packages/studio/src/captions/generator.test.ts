@@ -1,5 +1,6 @@
 // @vitest-environment node
 import { describe, it, expect } from "vitest";
+import { Window } from "happy-dom";
 import { generateCaptionHtml } from "./generator";
 import { buildCaptionModel, TranscriptWord } from "./parser";
 
@@ -31,6 +32,35 @@ function buildTestModel(wordsPerGroup = 5) {
 // ---------------------------------------------------------------------------
 
 describe("generateCaptionHtml", () => {
+  it("keeps script-closing text and word IDs as data when HTML is parsed", () => {
+    const text = '</ScRiPt><img src=x onerror="alert(1)"><!-- <script> & end';
+    const id = '</script><svg onload="alert(2)">';
+    const model = buildCaptionModel([{ text, id, start: 0, end: 1 }], {
+      width: 1920,
+      height: 1080,
+      duration: 2,
+      wordsPerGroup: 5,
+    });
+    const window = new Window();
+    const template = window.document.createElement("template");
+    template.innerHTML = generateCaptionHtml(model);
+    const nested = template.content.querySelector("template");
+    expect(nested).not.toBeNull();
+    const content = nested!.content;
+    expect(content.querySelector("img, svg")).toBeNull();
+    const scripts = content.querySelectorAll("script");
+    expect(scripts).toHaveLength(1);
+    const script = scripts[0].textContent;
+    const transcript = script.match(/const TRANSCRIPT = ([\s\S]*?);/);
+    expect(transcript).not.toBeNull();
+    expect(JSON.parse(transcript![1])).toEqual([{ text, id, start: 0, end: 1 }]);
+    const wordText = script.match(/\.textContent = (.*);/);
+    const wordId = script.match(/\.id = (.*);/);
+    expect(JSON.parse(wordText![1])).toBe(text);
+    expect(JSON.parse(wordId![1])).toBe(id);
+    window.close();
+  });
+
   describe("HTML structure", () => {
     it("wraps output in a <template id='captions-template'>", () => {
       const model = buildTestModel();

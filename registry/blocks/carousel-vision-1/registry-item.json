@@ -1,0 +1,222 @@
+{
+  "$schema": "https://hyperframes.heygen.com/schema/registry-item.json",
+  "name": "carousel-vision-1",
+  "type": "hyperframes:block",
+  "title": "Vision Carousel 1",
+  "description": "A ring of large image cards tilted into a row under a 3D camera, each card turning toward the centre (Vision style 1); 12 image slots.",
+  "tags": ["carousel", "gallery", "images", "showcase", "vision", "3d"],
+  "author": "Jake Moran",
+  "dimensions": {
+    "width": 1920,
+    "height": 1080
+  },
+  "duration": 6,
+  "variables": [
+    {
+      "id": "image1",
+      "type": "image",
+      "role": "content",
+      "label": "Card image 1",
+      "description": "Image on card 1 of 12. Any aspect; it is fitted into the card box.",
+      "portrays": ["subject_image"],
+      "default": "assets/carousel-images/artist-bob-seger.jpg"
+    },
+    {
+      "id": "image2",
+      "type": "image",
+      "role": "content",
+      "label": "Card image 2",
+      "description": "Image on card 2 of 12. Any aspect; it is fitted into the card box.",
+      "portrays": ["subject_image"],
+      "default": "assets/carousel-images/artist-dire-straits.jpg"
+    },
+    {
+      "id": "image3",
+      "type": "image",
+      "role": "content",
+      "label": "Card image 3",
+      "description": "Image on card 3 of 12. Any aspect; it is fitted into the card box.",
+      "portrays": ["subject_image"],
+      "default": "assets/carousel-images/artist-faces.jpg"
+    },
+    {
+      "id": "image4",
+      "type": "image",
+      "role": "content",
+      "label": "Card image 4",
+      "description": "Image on card 4 of 12. Any aspect; it is fitted into the card box.",
+      "portrays": ["subject_image"],
+      "default": "assets/carousel-images/artist-little-feat.jpg"
+    },
+    {
+      "id": "image5",
+      "type": "image",
+      "role": "content",
+      "label": "Card image 5",
+      "description": "Image on card 5 of 12. Any aspect; it is fitted into the card box.",
+      "portrays": ["subject_image"],
+      "default": "assets/carousel-images/artist-north-mississippi-allstars.jpg"
+    },
+    {
+      "id": "image6",
+      "type": "image",
+      "role": "content",
+      "label": "Card image 6",
+      "description": "Image on card 6 of 12. Any aspect; it is fitted into the card box.",
+      "portrays": ["subject_image"],
+      "default": "assets/carousel-images/artist-sea-level.jpg"
+    },
+    {
+      "id": "image7",
+      "type": "image",
+      "role": "content",
+      "label": "Card image 7",
+      "description": "Image on card 7 of 12. Any aspect; it is fitted into the card box.",
+      "portrays": ["subject_image"],
+      "default": "assets/carousel-images/artist-taj-mahal.jpg"
+    },
+    {
+      "id": "image8",
+      "type": "image",
+      "role": "content",
+      "label": "Card image 8",
+      "description": "Image on card 8 of 12. Any aspect; it is fitted into the card box.",
+      "portrays": ["subject_image"],
+      "default": "assets/carousel-images/artist-tool.jpg"
+    },
+    {
+      "id": "image9",
+      "type": "image",
+      "role": "content",
+      "label": "Card image 9",
+      "description": "Image on card 9 of 12. Any aspect; it is fitted into the card box.",
+      "portrays": ["subject_image"],
+      "default": "assets/carousel-images/artist-van-morrison.jpg"
+    },
+    {
+      "id": "image10",
+      "type": "image",
+      "role": "content",
+      "label": "Card image 10",
+      "description": "Image on card 10 of 12. Any aspect; it is fitted into the card box.",
+      "portrays": ["subject_image"],
+      "default": "assets/carousel-images/pl-10-songs.jpg"
+    },
+    {
+      "id": "image11",
+      "type": "image",
+      "role": "content",
+      "label": "Card image 11",
+      "description": "Image on card 11 of 12. Any aspect; it is fitted into the card box.",
+      "portrays": ["subject_image"],
+      "default": "assets/carousel-images/pl-bangers.jpg"
+    },
+    {
+      "id": "image12",
+      "type": "image",
+      "role": "content",
+      "label": "Card image 12",
+      "description": "Image on card 12 of 12. Any aspect; it is fitted into the card box.",
+      "portrays": ["subject_image"],
+      "default": "assets/carousel-images/pl-bhindi-bhagee.jpg"
+    },
+    {
+      "id": "speed",
+      "type": "number",
+      "role": "style",
+      "label": "Speed",
+      "description": "Time scale of the carousel motion. 1 = the designed pace.",
+      "default": 1,
+      "min": 0.25,
+      "max": 3,
+      "step": 0.05
+    },
+    {
+      "id": "background",
+      "type": "color",
+      "role": "style",
+      "label": "Background",
+      "description": "Composition ground.",
+      "default": "#EDEDEF"
+    }
+  ],
+  "files": [
+    {
+      "path": "carousel-vision-1.html",
+      "target": "compositions/carousel-vision-1.html",
+      "type": "hyperframes:composition"
+    },
+    {
+      "path": "assets/carousel-images/artist-bob-seger.jpg",
+      "target": "assets/carousel-images/artist-bob-seger.jpg",
+      "type": "hyperframes:asset",
+      "url": "https://static.heygen.ai/hyperframes-oss/registry-assets/223d162eed10f08f.jpg"
+    },
+    {
+      "path": "assets/carousel-images/artist-dire-straits.jpg",
+      "target": "assets/carousel-images/artist-dire-straits.jpg",
+      "type": "hyperframes:asset",
+      "url": "https://static.heygen.ai/hyperframes-oss/registry-assets/5964f78a6c7c55f7.jpg"
+    },
+    {
+      "path": "assets/carousel-images/artist-faces.jpg",
+      "target": "assets/carousel-images/artist-faces.jpg",
+      "type": "hyperframes:asset",
+      "url": "https://static.heygen.ai/hyperframes-oss/registry-assets/e402bbb823b45122.jpg"
+    },
+    {
+      "path": "assets/carousel-images/artist-little-feat.jpg",
+      "target": "assets/carousel-images/artist-little-feat.jpg",
+      "type": "hyperframes:asset",
+      "url": "https://static.heygen.ai/hyperframes-oss/registry-assets/25fe4d416b4e318e.jpg"
+    },
+    {
+      "path": "assets/carousel-images/artist-north-mississippi-allstars.jpg",
+      "target": "assets/carousel-images/artist-north-mississippi-allstars.jpg",
+      "type": "hyperframes:asset",
+      "url": "https://static.heygen.ai/hyperframes-oss/registry-assets/5360277ad88fe1d4.jpg"
+    },
+    {
+      "path": "assets/carousel-images/artist-sea-level.jpg",
+      "target": "assets/carousel-images/artist-sea-level.jpg",
+      "type": "hyperframes:asset",
+      "url": "https://static.heygen.ai/hyperframes-oss/registry-assets/2726d9a6cdc429df.jpg"
+    },
+    {
+      "path": "assets/carousel-images/artist-taj-mahal.jpg",
+      "target": "assets/carousel-images/artist-taj-mahal.jpg",
+      "type": "hyperframes:asset",
+      "url": "https://static.heygen.ai/hyperframes-oss/registry-assets/9e4c4f735ff68582.jpg"
+    },
+    {
+      "path": "assets/carousel-images/artist-tool.jpg",
+      "target": "assets/carousel-images/artist-tool.jpg",
+      "type": "hyperframes:asset",
+      "url": "https://static.heygen.ai/hyperframes-oss/registry-assets/76ac64af4487c9f1.jpg"
+    },
+    {
+      "path": "assets/carousel-images/artist-van-morrison.jpg",
+      "target": "assets/carousel-images/artist-van-morrison.jpg",
+      "type": "hyperframes:asset",
+      "url": "https://static.heygen.ai/hyperframes-oss/registry-assets/f21ff2ce3281c61a.jpg"
+    },
+    {
+      "path": "assets/carousel-images/pl-10-songs.jpg",
+      "target": "assets/carousel-images/pl-10-songs.jpg",
+      "type": "hyperframes:asset",
+      "url": "https://static.heygen.ai/hyperframes-oss/registry-assets/4361229f4648df3d.jpg"
+    },
+    {
+      "path": "assets/carousel-images/pl-bangers.jpg",
+      "target": "assets/carousel-images/pl-bangers.jpg",
+      "type": "hyperframes:asset",
+      "url": "https://static.heygen.ai/hyperframes-oss/registry-assets/636f8577be7b9849.jpg"
+    },
+    {
+      "path": "assets/carousel-images/pl-bhindi-bhagee.jpg",
+      "target": "assets/carousel-images/pl-bhindi-bhagee.jpg",
+      "type": "hyperframes:asset",
+      "url": "https://static.heygen.ai/hyperframes-oss/registry-assets/74d11304a8ac596c.jpg"
+    }
+  ]
+}

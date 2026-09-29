@@ -7,6 +7,7 @@ import {
   externalizeDataUris,
   hostItemDirectory,
   localReferences,
+  MAX_HOSTED_DIRECTORY_BYTES,
   probableReferences,
   processAssets,
   withBaseHref,
@@ -106,6 +107,22 @@ describe("processAssets", () => {
     assert.equal(result.hosted, 0);
     assert.match(result.html, /data:model\/gltf-binary;base64,/);
     assert.ok(!existsSync(join(out.dir, "scene.glb")));
+  });
+
+  it("embeds a script as a data URI when no inliner owns the item", () => {
+    const dir = project({ "lib/a.js": "var a=1;" });
+    const result = processAssets(`<script src="lib/a.js"></script>`, dir, target());
+
+    assert.match(result.html, /src="data:text\/javascript;base64,/);
+    assert.deepEqual(result.unresolved, []);
+  });
+
+  it("leaves a script tag untouched when the caller's inliner owns it", () => {
+    const dir = project({ "lib/a.js": "var a=1;" });
+    const result = processAssets(`<script src="lib/a.js"></script>`, dir, target(), true);
+
+    assert.equal(result.html, `<script src="lib/a.js"></script>`);
+    assert.deepEqual(result.unresolved, ["lib/a.js"]);
   });
 
   it("gives the same output twice, so regeneration writes no new bytes", () => {
@@ -250,9 +267,9 @@ describe("hostItemDirectory", () => {
     // time, so the layout has to survive, not just the files.
     const dir = project({ "compositions/components/lava.png": Buffer.from([1]), "demo.html": "x" });
     const out = target();
-    const base = hostItemDirectory(dir, out.dir, "/public/catalog/items/x/");
+    const result = hostItemDirectory(dir, out.dir, "/public/catalog/items/x/");
 
-    assert.equal(base, "/public/catalog/items/x/");
+    assert.deepEqual(result, { status: "hosted", baseHref: "/public/catalog/items/x/" });
     assert.ok(existsSync(join(out.dir, "compositions/components/lava.png")));
   });
 
@@ -268,7 +285,15 @@ describe("hostItemDirectory", () => {
     const dir = project({ "scene.glb": Buffer.from([3]) });
     const out = target();
 
-    assert.equal(hostItemDirectory(dir, out.dir, "/base/"), "");
+    assert.deepEqual(hostItemDirectory(dir, out.dir, "/base/"), { status: "not-needed" });
+  });
+
+  it("reports over-budget distinctly from not-needed when the directory exceeds the cap", () => {
+    const dir = project({ "big.png": Buffer.alloc(MAX_HOSTED_DIRECTORY_BYTES + 1) });
+    const out = target();
+
+    assert.deepEqual(hostItemDirectory(dir, out.dir, "/base/"), { status: "over-budget" });
+    assert.equal(existsSync(join(out.dir, "big.png")), false);
   });
 });
 

@@ -552,13 +552,14 @@ const RELEASE_S = 0.25;
  * jumped to full the instant a word ended, and what you hear then is the effect
  * switching off rather than a mix breathing. Slower than any gap inside a
  * sentence, so it rides through the pauses between words and only recovers
- * between sentences.
+ * between sentences. 1.6s still read as the bed "coming back" at every sentence
+ * break on narrated builds; 2.4s lets it swell back over a breath instead.
  *
  * It also has to be well clear of the envelope's own step. A long voice is
  * measured about every 0.3s, so a release anywhere near that puts the entire
  * recovery inside one step — a jump, whatever the constant claims.
  */
-const DUCK_RELEASE_S = 1.6;
+const DUCK_RELEASE_S = 2.4;
 
 /**
  * Windows an envelope may spend. Held under `MAX_AUTOMATION_POINTS` with room

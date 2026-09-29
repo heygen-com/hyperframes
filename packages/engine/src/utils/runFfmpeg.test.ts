@@ -1,8 +1,71 @@
+import { spawnSync } from "node:child_process";
 import { EventEmitter } from "node:events";
-import { resolve } from "node:path";
+import { mkdtempSync, readdirSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join, resolve } from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { formatFfmpegError } from "./runFfmpeg.js";
+import { formatFfmpegError, isExternalFfmpegInterruption, runFfmpegPipeline } from "./runFfmpeg.js";
+
+const HAS_FFMPEG = spawnSync("ffmpeg", ["-version"]).status === 0;
+
+describe("isExternalFfmpegInterruption", () => {
+  const base = {
+    exitCode: 255,
+    signal: null,
+    stderr: "",
+    terminationReason: "exit" as const,
+  };
+
+  it("recognizes a direct external termination signal", () => {
+    expect(isExternalFfmpegInterruption({ ...base, exitCode: null, signal: "SIGTERM" })).toBe(true);
+  });
+
+  it("does not broaden the retry signal to SIGKILL", () => {
+    expect(isExternalFfmpegInterruption({ ...base, exitCode: null, signal: "SIGKILL" })).toBe(
+      false,
+    );
+  });
+
+  it("recognizes ffmpeg's handled SIGTERM exit-255 signature", () => {
+    expect(
+      isExternalFfmpegInterruption({
+        ...base,
+        stderr: "frame= 42\nExiting normally, received signal 15.\n",
+      }),
+    ).toBe(true);
+  });
+
+  it("does not classify an ordinary exit 255", () => {
+    expect(isExternalFfmpegInterruption({ ...base, stderr: "Encoder initialization failed" })).toBe(
+      false,
+    );
+  });
+
+  it("requires exit 255 when classification relies on ffmpeg stderr", () => {
+    expect(
+      isExternalFfmpegInterruption({
+        ...base,
+        exitCode: 1,
+        stderr: "Exiting normally, received signal 15.",
+      }),
+    ).toBe(false);
+  });
+
+  it.each(["abort", "deadline", "inactivity"] as const)(
+    "keeps a managed %s termination non-retryable",
+    (terminationReason) => {
+      expect(
+        isExternalFfmpegInterruption({
+          ...base,
+          signal: "SIGTERM",
+          stderr: "Exiting normally, received signal 15.",
+          terminationReason,
+        }),
+      ).toBe(false);
+    },
+  );
+});
 
 describe("formatFfmpegError", () => {
   const originalPlatform = process.platform;
@@ -115,5 +178,113 @@ describe("runFfmpeg binary resolution", () => {
 
     expect(result.success).toBe(true);
     expect(calls[0]).toEqual({ command: resolve("/tools/ffmpeg.exe"), args: ["-version"] });
+  });
+});
+
+describe.skipIf(!HAS_FFMPEG)("runFfmpegPipeline", () => {
+  const rawFrames = (source: string) => [
+    "-v",
+    "error",
+    "-f",
+    "lavfi",
+    "-i",
+    source,
+    "-c:v",
+    "rawvideo",
+    "-f",
+    "nut",
+    "pipe:1",
+  ];
+
+  it("hands every producer frame to the consumer", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "hf-pipeline-"));
+    try {
+      const result = await runFfmpegPipeline(rawFrames("testsrc2=s=64x16:d=0.2:r=30"), [
+        "-v",
+        "error",
+        "-f",
+        "nut",
+        "-i",
+        "pipe:0",
+        "-fps_mode",
+        "passthrough",
+        join(dir, "f_%03d.png"),
+      ]);
+      expect(result.success, result.stderr).toBe(true);
+      expect(readdirSync(dir)).toHaveLength(6);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  }, 30_000);
+
+  it("fails with the producer's error when the producer cannot start its input", async () => {
+    const result = await runFfmpegPipeline(
+      [
+        "-v",
+        "error",
+        "-i",
+        join(tmpdir(), "hf-missing-input.mp4"),
+        "-c:v",
+        "rawvideo",
+        "-f",
+        "nut",
+        "pipe:1",
+      ],
+      ["-v", "error", "-f", "nut", "-i", "pipe:0", "-f", "null", "-"],
+    );
+    expect(result.success).toBe(false);
+    expect(result.stderr).toMatch(/hf-missing-input\.mp4/);
+  }, 30_000);
+
+  it("stops an endless producer when the consumer fails", async () => {
+    const startedAt = Date.now();
+    const result = await runFfmpegPipeline(
+      rawFrames("testsrc2=s=320x240:r=30"),
+      ["-v", "error", "-f", "nut", "-i", "pipe:0", "-vf", "hf_missing_filter", "-f", "null", "-"],
+      { timeout: 20_000 },
+    );
+    expect(result.success).toBe(false);
+    expect(result.terminationReason).toBe("exit");
+    expect(result.stderr).toMatch(/hf_missing_filter/);
+    expect(Date.now() - startedAt).toBeLessThan(10_000);
+  }, 30_000);
+});
+
+describe("runFfmpegPipeline start failure", () => {
+  afterEach(() => {
+    vi.resetModules();
+    vi.doUnmock("child_process");
+  });
+
+  it("releases a waiting consumer when the producer cannot start", async () => {
+    const { PassThrough, Writable } = await import("node:stream");
+    const producer = Object.assign(new EventEmitter(), {
+      stdout: new PassThrough(),
+      stderr: new PassThrough(),
+      kill: vi.fn(),
+      pid: 4242,
+    });
+    const consumer = Object.assign(new EventEmitter(), {
+      stdout: new PassThrough(),
+      stderr: new PassThrough(),
+      stdin: new Writable({ write: (_chunk, _encoding, done) => done() }),
+      kill: vi.fn(),
+      pid: 4243,
+    });
+    consumer.stdin.on("finish", () => consumer.emit("close", 1, null));
+    const spawn = vi.fn().mockReturnValueOnce(producer).mockReturnValueOnce(consumer);
+    vi.resetModules();
+    vi.doMock("child_process", () => ({ spawn }));
+    const { runFfmpegPipeline: pipeline } = await import("./runFfmpeg.js");
+
+    const startedAt = Date.now();
+    const pending = pipeline(["-i", "in"], ["-i", "pipe:0"], { timeout: 5_000 });
+    consumer.emit("spawn");
+    producer.emit("error", Object.assign(new Error("spawn EMFILE"), { code: "EMFILE" }));
+    const result = await pending;
+
+    expect(result.success).toBe(false);
+    expect(result.terminationReason).toBe("spawn_error");
+    expect(Date.now() - startedAt).toBeLessThan(2_000);
   });
 });

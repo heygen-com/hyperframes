@@ -4,7 +4,10 @@ import React, { act } from "react";
 import { createRoot } from "react-dom/client";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { normalizeHfColorGrading } from "@hyperframes/core/color-grading";
+import { runtimeProtocolMetadata } from "@hyperframes/core/runtime/protocol";
+import { usePreviewIframeStore } from "../../player/store/previewIframeStore";
 import { useColorGradingController } from "./useColorGradingController";
+import { sceneSwapFor } from "../../player/sceneSwap";
 import type { DomEditSelection } from "./domEditing";
 
 function brightPopGrading() {
@@ -22,6 +25,7 @@ function cleanStudioGrading() {
 (globalThis as unknown as { IS_REACT_ACT_ENVIRONMENT: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
 afterEach(() => {
+  usePreviewIframeStore.setState({ iframe: null });
   document.body.innerHTML = "";
 });
 
@@ -387,6 +391,29 @@ describe("useColorGradingController", () => {
     vi.useRealTimers();
   });
 
+  it("re-sends the grade to the preview after edited scenes are swapped in", async () => {
+    vi.useFakeTimers();
+    const { contentWindow, iframe } = createPreviewFrame();
+    (contentWindow as unknown as { __hfSwapScenes: () => Promise<void> }).__hfSwapScenes =
+      async () => {};
+    vi.spyOn(globalThis, "fetch").mockResolvedValue(new Response("<html></html>"));
+    const postMessage = vi.spyOn(contentWindow, "postMessage");
+    const { root, getState } = renderHook(vi.fn(), makeElement(), { current: iframe });
+    act(() => getState().commitColorGrading(brightPopGrading()));
+    await act(async () => {
+      vi.advanceTimersByTime(100);
+      await vi.runAllTimersAsync();
+    });
+    postMessage.mockClear();
+
+    await act(() => sceneSwapFor(iframe)!("/preview", () => true));
+    const replayed = colorGradingMessages(postMessage.mock.calls);
+    expect(replayed.at(-1)?.grading).toMatchObject({ preset: "bright-pop" });
+
+    act(() => root.unmount());
+    vi.useRealTimers();
+  });
+
   it("animates only the selected video card without starting the project player", async () => {
     vi.useFakeTimers();
     const { contentWindow, iframe } = createPreviewFrame();
@@ -735,5 +762,40 @@ describe("useColorGradingController", () => {
     expect(second.getState().mediaMetadata?.color.dynamicRange).toBe("hdr");
     act(() => second.root.unmount());
     vi.unstubAllGlobals();
+  });
+});
+
+describe("useColorGradingController after the preview iframe is replaced", () => {
+  it("replays the grade to the new iframe on its ready message and ignores the old one", () => {
+    vi.useFakeTimers();
+    const a = createPreviewFrame();
+    const b = createPreviewFrame();
+    const ref = { current: a.iframe as HTMLIFrameElement | null };
+    usePreviewIframeStore.getState().setIframe(a.iframe);
+    const initialElement = makeElement({
+      dataAttributes: { "color-grading": JSON.stringify({ preset: "bright-pop", intensity: 1 }) },
+    });
+    const { root } = renderHook(vi.fn(), initialElement, ref);
+    act(() => vi.advanceTimersByTime(100));
+
+    const postToA = vi.spyOn(a.contentWindow, "postMessage");
+    const postToB = vi.spyOn(b.contentWindow, "postMessage");
+    act(() => {
+      ref.current = b.iframe;
+      usePreviewIframeStore.getState().setIframe(b.iframe);
+    });
+    const ready = { source: "hf-preview", type: "ready", ...runtimeProtocolMetadata(30) };
+    act(() => {
+      window.dispatchEvent(new MessageEvent("message", { data: ready, source: a.contentWindow }));
+    });
+    expect(colorGradingMessages(postToB.mock.calls)).toHaveLength(0);
+    act(() => {
+      window.dispatchEvent(new MessageEvent("message", { data: ready, source: b.contentWindow }));
+    });
+
+    expect(colorGradingMessages(postToB.mock.calls)).toHaveLength(1);
+    expect(postToA).not.toHaveBeenCalled();
+    act(() => root.unmount());
+    vi.useRealTimers();
   });
 });

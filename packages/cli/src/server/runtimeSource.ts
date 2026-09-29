@@ -1,5 +1,6 @@
 import { createHash } from "node:crypto";
-import { existsSync, readFileSync } from "node:fs";
+import { existsSync } from "node:fs";
+import { readBundleFile } from "./readBundleFile.js";
 import { resolve, dirname } from "node:path";
 
 const ARTIFACT_NAMES = ["hyperframe-runtime.js", "hyperframe.runtime.iife.js"];
@@ -73,7 +74,8 @@ function readPrebuiltArtifact(): string | null {
 function readFromDir(dir: string): string | null {
   for (const name of ARTIFACT_NAMES) {
     const path = resolve(dir, name);
-    if (existsSync(path)) return readFileSync(path, "utf-8");
+    const content = readBundleFile(path);
+    if (content !== null) return content.toString("utf-8");
   }
   return null;
 }

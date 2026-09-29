@@ -1,9 +1,12 @@
 import { resolve } from "node:path";
+import { insertBeforeCloseTag } from "@hyperframes/core/compiler/html-document";
 import type { StudioApiAdapter } from "../types.js";
 import {
   createMediaCodecProbeCache,
   proxyVariantFor,
+  recordProxyPrewarm,
   scanProjectMediaCodecMap,
+  shouldPrewarmProxy,
   type HtmlSourceLike,
   type MediaCodecMap,
   type MediaCodecProbeCache,
@@ -28,7 +31,14 @@ import { resolveProxy, PROXY_PARAMS_VERSION } from "./proxyTranscoder.js";
 export type PreviewApiAdapter = StudioApiAdapter & {
   autoProxy?: boolean;
   mediaCodecProbeCache?: MediaCodecProbeCache;
+  /** Keeps built preview documents across restarts, keyed by project id and preview ETag. */
+  previewDocuments?: PreviewDocumentStore;
 };
+
+export interface PreviewDocumentStore {
+  read(key: string): string | null;
+  write(key: string, html: string): void;
+}
 
 export function isAutoProxyEnabled(adapter: PreviewApiAdapter): boolean {
   return adapter.autoProxy !== false;
@@ -57,23 +67,18 @@ export function proxyEtagSalt(raw: string | undefined): string {
   return `:proxy:${raw}:${PROXY_PARAMS_VERSION}`;
 }
 
-// Mirrors `injectScriptTagIntoHead` in routes/preview.ts (kept local rather
-// than imported to avoid a helpers → routes dependency edge for one
-// two-line utility).
-function injectScriptTagIntoHead(html: string, scriptTag: string): string {
-  if (html.includes("</head>")) return html.replace("</head>", `${scriptTag}\n</head>`);
-  return `${scriptTag}\n${html}`;
-}
-
 /**
  * Injects `window.__HF_MEDIA_CODEC_MAP__` (the U1 codec-facts scan) into
  * served composition HTML, and fire-and-forget pre-warms `resolveProxy` for
- * every browser-hostile entry so an element's proactive swap usually hits a
- * warm cache (KTD: protects the per-origin connection budget under held
- * responses). No second concurrency limiter here — the transcoder's own
- * global bound throttles both pre-warm and element-triggered calls.
- * Pre-warm failures are swallowed; an actual `?hf-proxy=` request surfaces
- * them as a 502. Alpha-bearing entries pre-warm their VP8/WebM variant.
+ * every entry whose codec no browser decodes, so an element's proactive swap
+ * usually hits a warm cache (KTD: protects the per-origin connection budget
+ * under held responses). Conditionally hostile codecs are injected but NOT
+ * pre-warmed: the requesting browser usually plays them, and the transcode
+ * runs concurrently with its first layout. No second concurrency limiter here
+ * — the transcoder's own global bound throttles both pre-warm and
+ * element-triggered calls. Pre-warm failures are swallowed; an actual
+ * `?hf-proxy=` request surfaces them as a 502 and transcodes lazily.
+ * Alpha-bearing entries pre-warm their VP8/WebM variant.
  *
  * The single shared implementation for every auto-proxy surface — the studio
  * preview route (via `injectMediaCodecMap` below) and the CLI's composition /
@@ -100,24 +105,25 @@ export async function injectMediaCodecMapIntoHtml(
   }
   if (Object.keys(map).length === 0) return html;
   for (const [rootRelativePathname, facts] of Object.entries(map)) {
-    if (!facts.browserHostile) continue;
+    if (!shouldPrewarmProxy(facts)) continue;
+    recordProxyPrewarm();
     resolveProxy(
       projectDir,
       resolve(projectDir, rootRelativePathname.replace(/^\/+/, "")),
       proxyVariantFor(facts),
     ).catch(() => {
       // Swallowed: the pre-warm is best-effort. A real `?hf-proxy=` request
-      // for this asset re-attempts the transcode and reports failure (502).
+      // for this asset hears the remembered failure (502) or re-attempts it.
     });
   }
   // <-escape prevents a src path containing "</script>" from breaking out of
-  // the injected tag, mirroring injectPreviewVariables in routes/preview.ts.
+  // the injected tag, mirroring injectPreviewVariables in helpers/previewVariables.ts.
   const json = JSON.stringify(map)
     .replace(/</g, "\\u003c")
     .replace(/\u2028/g, "\\u2028")
     .replace(/\u2029/g, "\\u2029");
   const tag = `<script data-hf-media-codec-map>window.__HF_MEDIA_CODEC_MAP__=${json};</script>`;
-  return injectScriptTagIntoHead(html, tag);
+  return insertBeforeCloseTag(html, "head", `${tag}\n`) ?? `${tag}\n${html}`;
 }
 
 /**

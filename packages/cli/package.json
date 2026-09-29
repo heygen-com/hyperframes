@@ -1,6 +1,6 @@
 {
   "name": "@hyperframes/cli",
-  "version": "0.8.14",
+  "version": "0.8.93",
   "description": "HyperFrames CLI — create, preview, and render HTML video compositions",
   "license": "Apache-2.0",
   "repository": {
@@ -9,7 +9,8 @@
     "directory": "packages/cli"
   },
   "bin": {
-    "hyperframes": "./bin/hyperframes.mjs"
+    "hyperframes": "./bin/hyperframes.mjs",
+    "hyperframes-localize-fonts": "./bin/hyperframes-localize-fonts.mjs"
   },
   "files": [
     "bin",
@@ -26,29 +27,31 @@
     "build:copy": "node scripts/build-copy.mjs",
     "typecheck": "tsc --noEmit",
     "gen:skills-manifest": "tsx scripts/gen-skills-manifest.ts",
-    "gen:agent-dirs": "tsx scripts/sync-agent-dirs.ts"
+    "gen:agent-dirs": "tsx scripts/sync-agent-dirs.ts",
+    "bench:startup": "node scripts/bench-startup.mjs"
   },
   "dependencies": {
     "@hono/node-server": "^2.0.5",
-    "@puppeteer/browsers": "^3.2.1",
+    "@puppeteer/browsers": "^3.2.2",
     "adm-zip": "^0.6.0",
     "citty": "^0.2.1",
     "compare-versions": "^6.1.1",
+    "css-tree": "^3.2.1",
     "debug": "^4.4.0",
     "esbuild": "^0.25.12",
     "fontkit": "^2.0.4",
     "giget": "^3.2.0",
     "hono": "^4.0.0",
     "ignore": "^5.3.2",
-    "onnxruntime-node": "1.21.1",
     "open": "^10.0.0",
     "postcss": "^8.5.8",
     "prettier": "^3.8.1",
-    "puppeteer-core": "^25.8.0",
+    "puppeteer-core": "^25.10.0",
     "sharp": "^0.35.0"
   },
   "devDependencies": {
     "@clack/prompts": "^1.1.0",
+    "@google/genai": "1.52.0",
     "@hyperframes/aws-lambda": "workspace:*",
     "@hyperframes/core": "workspace:*",
     "@hyperframes/engine": "workspace:*",
@@ -58,19 +61,18 @@
     "@hyperframes/producer": "workspace:*",
     "@hyperframes/studio": "workspace:*",
     "@hyperframes/studio-server": "workspace:*",
+    "@types/css-tree": "^3.2.0",
     "@types/fontkit": "^2.0.9",
     "@types/mime-types": "^3.0.1",
     "@types/node": "^25.0.10",
     "ajv": "^8.20.0",
     "linkedom": "^0.18.12",
+    "onnxruntime-node": "1.21.1",
     "picocolors": "^1.1.1",
     "tsup": "^8.0.0",
     "tsx": "^4.0.0",
     "typescript": "^5.0.0",
-    "vitest": "^3.2.4"
-  },
-  "optionalDependencies": {
-    "@google/genai": "^1.50.1"
+    "vitest": "^4.1.11"
   },
   "engines": {
     "node": ">=22"

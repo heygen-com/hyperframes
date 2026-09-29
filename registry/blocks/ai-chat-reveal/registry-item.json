@@ -17,7 +17,8 @@
       "type": "string",
       "role": "content",
       "label": "Assistant name",
-      "description": "Title in the chat header.",
+      "description": "Name of the assistant answering in this mock chat. It belongs to the host product, never to the brand this video promotes.",
+      "portrays": ["host_identity"],
       "default": "Assistant"
     },
     {
@@ -33,7 +34,7 @@
       "type": "string",
       "role": "content",
       "label": "Answer paragraph 1",
-      "description": "First streamed paragraph.",
+      "description": "First streamed paragraph. It names the brand this video promotes and says what that brand does.",
       "default": "You do not need an editor. HyperFrames renders the HTML you already write into deterministic, pixel-perfect video."
     },
     {
@@ -89,7 +90,8 @@
       "type": "string",
       "role": "content",
       "label": "End-card subline",
-      "description": "Supporting sentence on the closing card.",
+      "description": "Positioning sentence of the brand this video promotes, on the closing card.",
+      "portrays": ["subject_tagline"],
       "default": "Open-source video rendering — write HTML, ship pixel-perfect video."
     },
     {
@@ -97,7 +99,8 @@
       "type": "string",
       "role": "content",
       "label": "End-card CTA",
-      "description": "Label on the closing card button.",
+      "description": "Closing-card button label, which names the brand this video promotes. Use the real name of that brand.",
+      "portrays": ["subject_name"],
       "default": "Try HyperFrames"
     },
     {
@@ -105,7 +108,8 @@
       "type": "string",
       "role": "content",
       "label": "End-card footer",
-      "description": "Letter-spaced line at the very bottom.",
+      "description": "Domain of the brand this video promotes, letter-spaced at the very bottom. Use the real domain.",
+      "portrays": ["subject_domain"],
       "default": "HYPERFRAMES.HEYGEN.COM"
     },
     {
@@ -113,7 +117,8 @@
       "type": "image",
       "role": "content",
       "label": "Brand logo",
-      "description": "Transparent logo in the closing-card header.",
+      "description": "Transparent mark of the brand this video promotes, in the closing-card header.",
+      "portrays": ["subject_logo"],
       "default": "assets/hyperframes-logo-white.svg"
     }
   ],

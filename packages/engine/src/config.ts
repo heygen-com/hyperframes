@@ -7,6 +7,7 @@
  */
 
 import { tmpdir } from "node:os";
+import { chromeMajorCeiling } from "./services/chromeHostCeiling.js";
 import { join } from "node:path";
 import {
   getSystemTotalMb,
@@ -160,11 +161,20 @@ export interface EngineConfig {
    */
   streamingEncodeAutoDisabledOnWin32Compound?: boolean;
   /**
-   * Max composition duration eligible for streaming encode (seconds).
-   * Mirrors GSAP rendering's 4-minute streaming guard: production has seen
-   * ffmpeg's streaming pipe hit FFMPEG_STREAMING_TIMEOUT_MS on longer videos.
+   * Max composition duration eligible for streaming encode (seconds). Only
+   * applied when `streamingEncodeDurationCapEnabled` is true. Historical: the
+   * 240 s default (#579) guarded a total-render ffmpeg timeout that became an
+   * inactivity timeout in efc16a945, so the cap is off by default. Because of
+   * that, `PRODUCER_STREAMING_ENCODE_MAX_DURATION_SECONDS=0` no longer
+   * disables streaming on its own; `PRODUCER_ENABLE_STREAMING_ENCODE=false`
+   * is the supported off switch.
    */
   streamingEncodeMaxDurationSeconds: number;
+  /**
+   * Apply `streamingEncodeMaxDurationSeconds`. Default false: long single-worker
+   * renders stream. Env: PRODUCER_STREAMING_ENCODE_DURATION_CAP_ENABLED.
+   */
+  streamingEncodeDurationCapEnabled: boolean;
 
   // ── FFmpeg timeouts ──────────────────────────────────────────────────
   /** Timeout for FFmpeg frame encoding (ms). Default: 600_000 */
@@ -294,6 +304,7 @@ export const DEFAULT_CONFIG: EngineConfig = {
   chunkSizeFrames: 360,
   enableStreamingEncode: true,
   streamingEncodeMaxDurationSeconds: 240,
+  streamingEncodeDurationCapEnabled: false,
 
   ffmpegEncodeTimeout: 600_000,
   ffmpegProcessTimeout: 300_000,
@@ -338,6 +349,7 @@ const BOOLEAN_ENGINE_CONFIG_FIELDS = [
   "enablePageSideCompositing",
   "enableChunkedEncode",
   "enableStreamingEncode",
+  "streamingEncodeDurationCapEnabled",
   "hdrAutoDetect",
   "verifyRuntime",
   "debug",
@@ -734,9 +746,12 @@ export function resolveDefaultDrawElement(args: {
   platform: NodeJS.Platform;
   browserGpuMode: EngineConfig["browserGpuMode"];
   workerEncode: boolean;
+  /** Set on hosts that cannot run Chrome 151+; Chrome <=150 damages video and stacked fades. */
+  chromeCeiling?: number;
 }): boolean {
   if (!args.useDrawElement) return false;
   if (args.explicitOptIn) return true;
+  if (args.chromeCeiling !== undefined) return false;
   if (!isDrawElementPlatform(args.platform) || args.browserGpuMode === "software") return false;
   return args.workerEncode;
 }
@@ -766,9 +781,11 @@ export function explainDrawElementDisabled(args: {
   platform: NodeJS.Platform;
   browserGpuMode: EngineConfig["browserGpuMode"];
   workerEncode: boolean;
-}): "unsupported_platform" | "software_gpu" | "worker_encode_off" | "disabled" {
+  chromeCeiling?: number;
+}): "unsupported_platform" | "old_chrome" | "software_gpu" | "worker_encode_off" | "disabled" {
   // Platform first: on an unsupported host the GPU mode is beside the point.
   if (!isDrawElementPlatform(args.platform)) return "unsupported_platform";
+  if (args.chromeCeiling !== undefined) return "old_chrome";
   if (args.browserGpuMode === "software") return "software_gpu";
   if (!args.workerEncode) return "worker_encode_off";
   return "disabled";
@@ -866,6 +883,10 @@ export function resolveConfig(overrides?: Partial<EngineConfig>): EngineConfig {
         DEFAULT_CONFIG.streamingEncodeMaxDurationSeconds,
       ),
     ),
+    streamingEncodeDurationCapEnabled: envBool(
+      "PRODUCER_STREAMING_ENCODE_DURATION_CAP_ENABLED",
+      DEFAULT_CONFIG.streamingEncodeDurationCapEnabled,
+    ),
 
     ffmpegEncodeTimeout: envNum("FFMPEG_ENCODE_TIMEOUT_MS", DEFAULT_CONFIG.ffmpegEncodeTimeout),
     ffmpegProcessTimeout: envNum("FFMPEG_PROCESS_TIMEOUT_MS", DEFAULT_CONFIG.ffmpegProcessTimeout),
@@ -955,6 +976,7 @@ export function resolveConfig(overrides?: Partial<EngineConfig>): EngineConfig {
     platform: process.platform,
     browserGpuMode: merged.browserGpuMode,
     workerEncode: merged.enableDrawElementWorkerEncode,
+    chromeCeiling: chromeMajorCeiling(),
   });
 
   // Software GPU implies screenshot capture.

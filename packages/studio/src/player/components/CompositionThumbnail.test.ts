@@ -3,6 +3,7 @@
 import React, { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { MockResizeObserver, reportResize } from "../../hooks/resizeObserverTestUtils";
 import { thumbnailScheduler } from "../lib/thumbnailScheduler";
 import { buildCompositionThumbnailUrl, CompositionThumbnail } from "./CompositionThumbnail";
 
@@ -10,12 +11,6 @@ Object.defineProperty(globalThis, "IS_REACT_ACT_ENVIRONMENT", {
   configurable: true,
   value: true,
 });
-
-class MockResizeObserver {
-  observe() {}
-  disconnect() {}
-  unobserve() {}
-}
 
 class MockImage {
   static instances: MockImage[] = [];
@@ -73,7 +68,7 @@ describe("buildCompositionThumbnailUrl", () => {
         origin: "http://localhost:3000",
       }),
     ).toBe(
-      "http://localhost:3000/api/projects/demo/thumbnail/index.html?t=2.00&v=v3&selector=.card&selectorIndex=2",
+      "http://localhost:3000/api/projects/demo/thumbnail/index.html?t=2.00&v=v3&revision=0&selector=.card&selectorIndex=2",
     );
   });
 
@@ -87,9 +82,16 @@ describe("buildCompositionThumbnailUrl", () => {
 
     expect(buildCompositionThumbnailUrl(base)).not.toContain("output=");
     expect(buildCompositionThumbnailUrl({ ...base, output: "source" })).toContain("output=source");
-    expect(buildCompositionThumbnailUrl({ ...base, output: "storyboard" })).toContain(
-      "output=storyboard",
-    );
+  });
+
+  it("includes the persisted content revision in the cache identity", () => {
+    const url = buildCompositionThumbnailUrl({
+      previewUrl: "/api/projects/demo/preview",
+      origin: "http://localhost:3000",
+      contentRevision: 7,
+    });
+
+    expect(new URL(url).searchParams.get("revision")).toBe("7");
   });
 });
 
@@ -130,6 +132,52 @@ describe("CompositionThumbnail", () => {
     const tiles = [...host.querySelectorAll("img")];
     expect(tiles.length).toBeGreaterThan(0);
     expect(tiles.every((tile) => !tile.classList.contains("hidden"))).toBe(true);
+    // Pictures read untinted by default, like video filmstrips; the theme tokens own any dimming.
+    expect(
+      tiles.every((tile) => tile.style.opacity === "var(--timeline-composition-thumbnail-opacity)"),
+    ).toBe(true);
+    expect(tiles[0]?.parentElement?.parentElement?.style.mixBlendMode).toBe(
+      "var(--timeline-composition-thumbnail-blend)",
+    );
+  });
+
+  it.each([
+    { name: "a wide", width: 2700, height: 1000, tileWidth: 108 },
+    { name: "a square", width: 1000, height: 1000, tileWidth: 48 },
+    { name: "a portrait", width: 1080, height: 1920, tileWidth: 48 },
+  ])(
+    "shows $name picture whole at the clip's measured height",
+    async ({ width, height, tileWidth }) => {
+      Object.defineProperty(host, "clientWidth", { configurable: true, value: 500 });
+      Object.defineProperty(host, "clientHeight", { configurable: true, value: 40 });
+      const probe = await renderThumbnail();
+
+      await act(async () => {
+        probe.naturalWidth = width;
+        probe.naturalHeight = height;
+        probe.onload?.();
+        await new Promise((resolve) => setTimeout(resolve, 0));
+      });
+
+      const img = host.querySelector("img")!;
+      expect(img.parentElement?.style.width).toBe(`${tileWidth}px`);
+      // A tile held at its minimum width letterboxes the picture instead of cropping it.
+      expect(img.classList.contains("object-contain")).toBe(true);
+    },
+  );
+
+  it("re-tiles at the height the resize observer reports", async () => {
+    const probe = await renderThumbnail();
+    await act(async () => {
+      probe.naturalWidth = 2700;
+      probe.naturalHeight = 1000;
+      probe.onload?.();
+      await new Promise((resolve) => setTimeout(resolve, 0));
+    });
+
+    act(() => reportResize(500, 40));
+
+    expect(host.querySelector("img")?.parentElement?.style.width).toBe("108px");
   });
 
   it("aborts its scheduled off-DOM image probe when unmounted", async () => {
@@ -147,5 +195,60 @@ describe("CompositionThumbnail", () => {
     expect(probe.onerror).toBeNull();
     expect(probe.src).toBe("");
     expect(URL.revokeObjectURL).toHaveBeenCalledWith("blob:composition-thumbnail");
+  });
+
+  it("releases the old request and ignores its late result when persisted content changes", async () => {
+    const signals: AbortSignal[] = [];
+    const resolveFetches: Array<(response: Response) => void> = [];
+    globalThis.fetch = vi.fn((_url, init) => {
+      signals.push(init?.signal as AbortSignal);
+      return new Promise<Response>((resolve) => resolveFetches.push(resolve));
+    });
+    root = createRoot(host);
+
+    await act(async () => {
+      root!.render(
+        React.createElement(CompositionThumbnail, {
+          previewUrl: "/api/projects/demo/preview",
+          label: "",
+          labelColor: "#fff",
+          projectId: "demo",
+          contentRevision: 0,
+        }),
+      );
+      await new Promise((resolve) => setTimeout(resolve, 0));
+    });
+    await act(async () => {
+      root!.render(
+        React.createElement(CompositionThumbnail, {
+          previewUrl: "/api/projects/demo/preview",
+          label: "",
+          labelColor: "#fff",
+          projectId: "demo",
+          contentRevision: 1,
+        }),
+      );
+      await new Promise((resolve) => setTimeout(resolve, 0));
+    });
+
+    expect(globalThis.fetch).toHaveBeenCalledTimes(2);
+    expect(signals[0]?.aborted).toBe(true);
+    expect(signals[1]?.aborted).toBe(false);
+    expect((globalThis.fetch as ReturnType<typeof vi.fn>).mock.calls[1]?.[0]).toContain(
+      "revision=1",
+    );
+
+    await act(async () => {
+      resolveFetches[0]?.(new Response(new Blob(["stale"]), { status: 200 }));
+      await new Promise((resolve) => setTimeout(resolve, 0));
+    });
+    expect(MockImage.instances).toHaveLength(0);
+
+    await act(async () => {
+      resolveFetches[1]?.(new Response(new Blob(["fresh"]), { status: 200 }));
+      await new Promise((resolve) => setTimeout(resolve, 0));
+    });
+    expect(MockImage.instances).toHaveLength(1);
+    expect(MockImage.instances[0]?.src).toBe("blob:composition-thumbnail");
   });
 });

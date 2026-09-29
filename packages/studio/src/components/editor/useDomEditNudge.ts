@@ -60,10 +60,10 @@ export interface UseDomEditNudgeParams {
       s: DomEditSelection,
       n: { x: number; y: number },
       m?: { altKey?: boolean },
-    ) => Promise<void> | void
+    ) => Promise<unknown> | void
   >;
   onGroupPathOffsetCommitRef: RefObject<
-    (updates: DomEditGroupPathOffsetCommit[]) => Promise<void> | void
+    (updates: DomEditGroupPathOffsetCommit[]) => Promise<unknown> | void
   >;
 }
 
@@ -166,6 +166,15 @@ export function useDomEditNudge(params: UseDomEditNudgeParams): { flushNudge: ()
   };
   const commitSessionRef = useRef(commitSession);
   commitSessionRef.current = commitSession;
+
+  useEffect(() => {
+    if (params.allowCanvasMovement || !sessionRef.current) return;
+    const session = sessionRef.current;
+    sessionRef.current = null;
+    if (session.timer) clearTimeout(session.timer);
+    restoreManualOffsetDragMembers(session.members);
+    endManualOffsetDragMembers(session.members);
+  }, [params.allowCanvasMovement]);
 
   // Build drag members for the current target set — the same member snapshot a
   // pointer drag starts from (startGesture / startGroupDrag), so the nudge

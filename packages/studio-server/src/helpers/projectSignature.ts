@@ -32,7 +32,7 @@ const SIGNATURE_EXCLUDED_DIRS = new Set([
   "renders",
 ]);
 const MAX_SIGNATURE_TEXT_BYTES = 2_000_000;
-const STUDIO_SIGNATURE_MANIFEST_PATHS = [
+export const STUDIO_SIGNATURE_MANIFEST_PATHS = [
   ".hyperframes/studio-manual-edits.json",
   ".hyperframes/studio-motion.json",
 ] as const;
@@ -70,6 +70,7 @@ export function affectsProjectSignature(projectDir: string, changedPath: string)
 interface ProjectSignatureFile {
   file: string;
   mtimeMs: number;
+  ctimeMs: number;
   size: number;
   textContentEligible: boolean;
 }
@@ -124,6 +125,7 @@ function collectProjectSignatureFiles(
       files.push({
         file,
         mtimeMs: stat.mtimeMs,
+        ctimeMs: stat.ctimeMs,
         size: stat.size,
         textContentEligible: isTextContentEligible(file, stat.size),
       });
@@ -149,6 +151,7 @@ function collectProjectSignatureManifestFiles(
     files.push({
       file,
       mtimeMs: stat.mtimeMs,
+      ctimeMs: stat.ctimeMs,
       size: stat.size,
       textContentEligible: isTextContentEligible(file, stat.size),
     });
@@ -165,10 +168,32 @@ function createProjectFingerprint(projectDir: string, files: ProjectSignatureFil
     hash.update("\0");
     hash.update(String(entry.mtimeMs));
     hash.update("\0");
+    hash.update(String(entry.ctimeMs));
+    hash.update("\0");
     hash.update(entry.textContentEligible ? "text" : "binary");
     hash.update("\0");
   }
   return hash.digest("hex").slice(0, 24);
+}
+
+function collectProjectFiles(normalizedProjectDir: string): ProjectSignatureFile[] {
+  const collected: ProjectSignatureFile[] = [];
+  collectProjectSignatureFiles(normalizedProjectDir, normalizedProjectDir, collected);
+  collectProjectSignatureManifestFiles(normalizedProjectDir, collected);
+  return collected;
+}
+
+/** The files a project is made of (the signature's set: source plus Studio's two manifests), paths with `/`. */
+export function listProjectFiles(
+  projectDir: string,
+): Array<{ path: string; size: number; mtimeMs: number; ctimeMs: number }> {
+  const normalizedProjectDir = resolve(projectDir);
+  return collectProjectFiles(normalizedProjectDir).map((entry) => ({
+    path: relative(normalizedProjectDir, entry.file).split(sep).join("/"),
+    size: entry.size,
+    mtimeMs: entry.mtimeMs,
+    ctimeMs: entry.ctimeMs,
+  }));
 }
 
 /**
@@ -192,16 +217,26 @@ export async function resolveProjectAndSignature(
 
 /**
  * Creates a stable preview cache-busting signature for project source plus Studio manifests.
+ * `excluding` (project-relative paths) leaves those files out.
  */
-export function createProjectSignature(projectDir: string): string {
+export function createProjectSignature(
+  projectDir: string,
+  excluding: ReadonlySet<string> = new Set(),
+): string {
   const normalizedProjectDir = resolve(projectDir);
-  const files: ProjectSignatureFile[] = [];
-  collectProjectSignatureFiles(normalizedProjectDir, normalizedProjectDir, files);
-  collectProjectSignatureManifestFiles(normalizedProjectDir, files);
+  const collected = collectProjectFiles(normalizedProjectDir);
+  const files = collected.filter(
+    (entry) => !excluding.has(relative(normalizedProjectDir, entry.file).split(sep).join("/")),
+  );
   files.sort((a, b) => a.file.localeCompare(b.file));
 
   const fingerprint = createProjectFingerprint(normalizedProjectDir, files);
-  const cached = projectSignatureCache.get(normalizedProjectDir);
+  const cacheKey = excluding.size
+    ? `${normalizedProjectDir}\0${createHash("sha256")
+        .update([...excluding].sort().join("\0"))
+        .digest("hex")}`
+    : normalizedProjectDir;
+  const cached = projectSignatureCache.get(cacheKey);
   if (cached?.fingerprint === fingerprint) return cached.signature;
 
   const hash = createHash("sha256");
@@ -223,6 +258,6 @@ export function createProjectSignature(projectDir: string): string {
     hash.update("\0");
   }
   const signature = hash.digest("hex").slice(0, 24);
-  projectSignatureCache.set(normalizedProjectDir, { fingerprint, signature });
+  projectSignatureCache.set(cacheKey, { fingerprint, signature });
   return signature;
 }

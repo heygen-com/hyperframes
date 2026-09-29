@@ -8,9 +8,11 @@ import {
 import { VOLUME_RANGE } from "../audioAutomation.js";
 import { audioGroupOf, readAudioGroupVolume, resolveGroupElement } from "../audioGroups.js";
 import { swallow } from "./diagnostics";
+import { createLevelTap, type LevelTap, type StereoLevel } from "./levelTap.js";
 import { clampAudioGain } from "../audioGain.js";
 import { getDebugSurface } from "./globals.js";
 import { readElementPlaybackRate } from "./media.js";
+import { classifyWebAudioMediaRoute, reportWebAudioMediaRoute } from "./webAudioRoute.js";
 
 function normalizeRate(rate: number): number {
   if (!Number.isFinite(rate) || rate <= 0) return 1;
@@ -132,6 +134,9 @@ function isBufferSource(
   return source.sourceKind === "buffer";
 }
 
+// A pause to scrub or a reschedule mid-play keeps the output awake; a real idle lets it sleep.
+const IDLE_SUSPEND_MS = 10000;
+
 export class WebAudioTransport {
   private _ctx: AudioContext | null = null;
   private _bufferCache = new Map<string, AudioBuffer>();
@@ -139,6 +144,8 @@ export class WebAudioTransport {
   private _mediaElementSources = new WeakMap<HTMLMediaElement, MediaElementAudioSourceNode>();
   private _activeSources: ScheduledSource[] = [];
   private _masterGain: GainNode | null = null;
+  /** Preview volume and mute. Downstream of `_masterGain`; meters tap the program. */
+  private _monitorGain: GainNode | null = null;
   private _masterVolume = 1;
   private _masterMuted = false;
   // One shared bus per group id, lazily built the first time a member of that
@@ -149,6 +156,10 @@ export class WebAudioTransport {
     string,
     {
       input: GainNode;
+      /** Where the bus meets master; the level meter taps here. */
+      output: GainNode;
+      /** False once the group's element is gone from the document. */
+      isPresent(): boolean;
       /** Post-FX fader: `data-volume` plus the volume lane. */
       fader: GainNode;
       muteGain: GainNode;
@@ -161,6 +172,10 @@ export class WebAudioTransport {
       dispose(): void;
     }
   >();
+  // Level taps exist only between `startMetering()` and `stopMetering()`.
+  private _metering = false;
+  private _masterTap: LevelTap | null = null;
+  private _groupTaps = new Map<string, LevelTap>();
   // Composition-time reference frame: at AudioContext time `_rateAnchorCtx`,
   // composition time was `_rateAnchorComp`, and time has been advancing at
   // `_rate` composition-seconds per wallclock-second since.
@@ -169,17 +184,54 @@ export class WebAudioTransport {
   private _rate = 1;
   private _paused = true;
   private _playGeneration = 0;
+  // A running context renders silence nonstop, so a paused transport keeps it
+  // suspended unless a captured track is sounding on the idle route (scrub).
+  private _playingCaptured = new Set<HTMLMediaElement>();
+  private _suspendPending = false;
+  private _restTimer: ReturnType<typeof setTimeout> | null = null;
 
   async init(): Promise<boolean> {
     try {
       this._ctx = new AudioContext();
+      this._ctx.onstatechange = () => this.rest();
       this._masterGain = this._ctx.createGain();
-      this._masterGain.connect(this._ctx.destination);
+      this._monitorGain = this._ctx.createGain();
+      this._masterGain.connect(this._monitorGain);
+      this._monitorGain.connect(this._ctx.destination);
       this.applyMasterGain();
+      if (this._metering) this.attachMasterTap();
       return true;
     } catch {
       return false;
     }
+  }
+
+  private async wake(): Promise<void> {
+    if (!this._ctx || (this._ctx.state === "running" && !this._suspendPending)) return;
+    this._suspendPending = false;
+    await this._ctx.resume();
+  }
+
+  private rest(): void {
+    if (this._restTimer !== null) clearTimeout(this._restTimer);
+    this._restTimer = null;
+    if (!this._ctx || this._ctx.state !== "running" || this._suspendPending) return;
+    this._restTimer = setTimeout(() => {
+      this._restTimer = null;
+      this.suspendIfIdle();
+    }, IDLE_SUSPEND_MS);
+  }
+
+  private suspendIfIdle(): void {
+    // `paused` is the truth; the load algorithm clears it without a "pause" event.
+    for (const el of this._playingCaptured) if (el.paused) this._playingCaptured.delete(el);
+    if (!this._ctx || !this._paused || this._suspendPending || this._playingCaptured.size > 0)
+      return;
+    this._suspendPending = true;
+    this._ctx.suspend().catch((err) => {
+      this._suspendPending = false;
+      swallow("webAudioTransport.suspend", err);
+    });
   }
 
   get context(): AudioContext | null {
@@ -243,6 +295,81 @@ export class WebAudioTransport {
   }
 
   /**
+   * The element's cached MediaElementAudioSourceNode, building it on first use
+   * — or `null` when this element must not be captured at all.
+   *
+   * That second outcome is the whole point. `createMediaElementSource` cannot
+   * report that it produced a silent node: over a CORS-cross-origin resource
+   * the Web Audio spec asks the node for SILENCE rather than an exception, so
+   * the caller's `try/catch` never fires and the composition plays through
+   * with no audio and no error (#3458). The call also permanently reroutes the
+   * element away from its native output, so the question has to be settled
+   * before it, and there is no undo afterwards.
+   *
+   * `init.ts` routes on the same verdict before ever calling in, and
+   * `AudioRow.tsx`'s standalone preview player classifies over its own
+   * throwaway `AudioContext` before its own `createMediaElementSource` call —
+   * this method is A enforcement point, not THE enforcement point; every
+   * caller that can reach `createMediaElementSource` is expected to classify
+   * first. What this method DOES own is the cache below: `_mediaElementSources`
+   * is keyed by element identity, not by asset, so a cache hit alone says
+   * nothing about the element's CURRENT resource. Reclassifying on every call
+   * — cache hit included — means a `src` mutation an outer caller missed (a
+   * pooled element swapped from a same-origin clip to a cross-origin one
+   * without going through a fresh generation) can't leave a stale
+   * `web-audio` verdict silently attached to the new resource.
+   */
+  private acquireMediaElementSource(el: HTMLMediaElement): MediaElementAudioSourceNode | null {
+    const cached = this._mediaElementSources.get(el);
+    if (cached) {
+      // The node itself doesn't change identity on a src swap, but its
+      // eligibility can: the Web Audio spec's tainted-origin check runs
+      // against the element's CURRENT underlying resource, not the one that
+      // was current when the node was built. A same-origin-to-cross-origin
+      // mutation on this element would otherwise keep returning the old
+      // (now-silent) node forever — `destroy()` was the only thing that ever
+      // cleared this cache, so a long-lived element that changed sources
+      // stayed silenced for the rest of the session (the R2 finding this
+      // block exists to close). The node is still a one-way door — it can't
+      // be un-created, and the element's native output is gone either way —
+      // so disconnecting it just stops it feeding a graph that no longer
+      // matches the asset; the caller falls back to the decode-only path.
+      const route = classifyWebAudioMediaRoute(el);
+      if (route.kind !== "web-audio") {
+        try {
+          cached.disconnect();
+        } catch {
+          // Already torn down.
+        }
+        this._mediaElementSources.delete(el);
+        reportWebAudioMediaRoute(el, route);
+        return null;
+      }
+      return cached;
+    }
+    if (!this._ctx) return null;
+    const route = classifyWebAudioMediaRoute(el);
+    if (route.kind !== "web-audio") {
+      reportWebAudioMediaRoute(el, route);
+      return null;
+    }
+    const sourceNode = this._ctx.createMediaElementSource(el);
+    this._mediaElementSources.set(el, sourceNode);
+    if (!el.paused) this._playingCaptured.add(el);
+    el.addEventListener("play", () => {
+      this._playingCaptured.add(el);
+      void this.wake();
+    });
+    const stopped = () => {
+      this._playingCaptured.delete(el);
+      this.rest();
+    };
+    el.addEventListener("pause", stopped);
+    el.addEventListener("emptied", stopped);
+    return sourceNode;
+  }
+
+  /**
    * Route the browser's pitch-preserving HTMLMediaElement transport through the
    * same FX, automation, element-gain, and master graph used by final audio.
    * The media element remains the source-time/rate owner; Web Audio is strictly
@@ -261,14 +388,12 @@ export class WebAudioTransport {
     if (generation !== this._playGeneration) return null;
 
     try {
-      if (this._ctx.state === "suspended") await this._ctx.resume();
+      await this.wake();
       if (generation !== this._playGeneration) return null;
 
-      let sourceNode = this._mediaElementSources.get(el);
-      if (!sourceNode) {
-        sourceNode = this._ctx.createMediaElementSource(el);
-        this._mediaElementSources.set(el, sourceNode);
-      }
+      const sourceNode = this.acquireMediaElementSource(el);
+      if (!sourceNode) return null;
+      sourceNode.disconnect();
 
       const safeRate = normalizeRate(rate);
       const gainNode = this._ctx.createGain();
@@ -392,6 +517,8 @@ export class WebAudioTransport {
 
     this._groups.set(groupId, {
       input,
+      output,
+      isPresent: () => resolveEl() !== null,
       fader,
       muteGain,
       fx,
@@ -423,7 +550,42 @@ export class WebAudioTransport {
         }
       },
     });
+    this.attachGroupTap(groupId, output);
     return input;
+  }
+
+  startMetering(): void {
+    this._metering = true;
+    this.attachMasterTap();
+    for (const [id, group] of this._groups) this.attachGroupTap(id, group.output);
+  }
+
+  stopMetering(): void {
+    this._metering = false;
+    this._masterTap?.dispose();
+    this._masterTap = null;
+    for (const tap of this._groupTaps.values()) tap.dispose();
+    this._groupTaps.clear();
+  }
+
+  readLevels(): { master: StereoLevel; groups: Record<string, StereoLevel> } {
+    const groups: Record<string, StereoLevel> = {};
+    for (const [id, tap] of this._groupTaps) {
+      if (this._groups.get(id)?.isPresent()) groups[id] = tap.read();
+    }
+    return { master: this._masterTap?.read() ?? { l: 0, r: 0 }, groups };
+  }
+
+  private attachMasterTap(): void {
+    if (this._ctx && this._masterGain && !this._masterTap) {
+      this._masterTap = createLevelTap(this._ctx, this._masterGain);
+    }
+  }
+
+  private attachGroupTap(id: string, output: GainNode): void {
+    if (this._metering && this._ctx && !this._groupTaps.has(id)) {
+      this._groupTaps.set(id, createLevelTap(this._ctx, output));
+    }
   }
 
   /**
@@ -500,7 +662,7 @@ export class WebAudioTransport {
     buffer: AudioBuffer,
     compositionStart: number,
     mediaStart: number,
-    compositionTime: number,
+    readCompositionTime: () => number,
     volume: number,
     generation: number,
     rate = 1,
@@ -510,10 +672,10 @@ export class WebAudioTransport {
     if (generation !== this._playGeneration) return null;
 
     try {
-      if (this._ctx.state === "suspended") {
-        await this._ctx.resume();
-      }
+      await this.wake();
       if (generation !== this._playGeneration) return null;
+      // Read after the wake: the clock kept running while the context resumed.
+      const compositionTime = readCompositionTime();
 
       const safeRate = normalizeRate(rate);
       const mediaRate = readElementPlaybackRate(el);
@@ -657,10 +819,16 @@ export class WebAudioTransport {
         // already stopped
       }
       if (isBufferSource(source)) source.el.muted = source.priorMuted;
-      else source.el.volume = source.priorVolume;
+      else {
+        source.el.volume = source.priorVolume;
+        // Captured, it has no native output; outside a play it sounds through the destination.
+        if (this._ctx) source.sourceNode.connect(this._ctx.destination);
+      }
     }
     this._activeSources = [];
     this._paused = true;
+    this._playGeneration += 1;
+    this.rest();
   }
 
   setVolume(volume: number): void {
@@ -698,11 +866,12 @@ export class WebAudioTransport {
   }
 
   private applyMasterGain(): void {
-    if (this._masterGain) this._masterGain.gain.value = this._masterMuted ? 0 : this._masterVolume;
+    if (this._monitorGain)
+      this._monitorGain.gain.value = this._masterMuted ? 0 : this._masterVolume;
   }
 
-  isActive(): boolean {
-    return this._activeSources.length > 0 && !this._paused;
+  ownsClock(): boolean {
+    return !this._paused && this._activeSources.some(isBufferSource);
   }
 
   /** Whether the transport currently plays THIS element (the runtime mutes it to
@@ -718,11 +887,16 @@ export class WebAudioTransport {
 
   destroy(): void {
     this.stopAll();
+    this.stopMetering();
     for (const group of this._groups.values()) group.dispose();
     this._groups.clear();
     this._bufferCache.clear();
     this._failedSrcs.clear();
     this._mediaElementSources = new WeakMap();
+    this._playingCaptured.clear();
+    this._suspendPending = false;
+    if (this._restTimer !== null) clearTimeout(this._restTimer);
+    this._restTimer = null;
     if (this._ctx) {
       try {
         void this._ctx.close();
@@ -732,6 +906,7 @@ export class WebAudioTransport {
     }
     this._ctx = null;
     this._masterGain = null;
+    this._monitorGain = null;
     this._masterVolume = 1;
     this._masterMuted = false;
   }

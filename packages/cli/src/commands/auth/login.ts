@@ -1,4 +1,5 @@
 import { failCommand, failUsage } from "../../utils/commandResult.js";
+import { envFlagEnabled, isAttendedTerminal } from "../../utils/attendedTerminal.js";
 /**
  * `hyperframes auth login` — sign in to HeyGen.
  *
@@ -117,13 +118,8 @@ function isRemoteOrHeadless(): boolean {
   );
 }
 
-function envFlagEnabled(name: string): boolean {
-  const value = process.env[name]?.trim().toLowerCase();
-  return Boolean(value && value !== "0" && value !== "false" && value !== "no");
-}
-
 function assertAttendedDeviceFlow(): void {
-  if (envFlagEnabled("CI") || process.stdin.isTTY !== true || process.stdout.isTTY !== true) {
+  if (!isAttendedTerminal()) {
     console.error(
       c.error(
         "`--device` requires an attended terminal and is disabled in CI. Use an API key or workload credential for automation.",

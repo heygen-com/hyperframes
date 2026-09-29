@@ -259,6 +259,64 @@ describe("applyUndoRestoreToPreview", () => {
     expect(reloadPreview).toHaveBeenCalledTimes(1);
   });
 
+  it("blanks a restored scene's live hash before reloading, so the scene swap takes it", () => {
+    const { iframe, doc } = buildLiveIframe(
+      `<div data-hf-scene="scene0" data-composition-file="scenes/intro.html"><h1>Rep0</h1></div>` +
+        `<div data-hf-scene="scene1" data-composition-file="scenes/outro.html"></div>`,
+    );
+    const meta = doc.createElement("meta");
+    meta.name = "hf-scene-parts";
+    meta.content = JSON.stringify({ shared: "s", scenes: { scene0: "h0", scene1: "h1" } });
+    doc.head.append(meta);
+    let partsAtReload: unknown;
+    const reloadPreview = vi.fn(() => (partsAtReload = JSON.parse(meta.content)));
+    const files = {
+      "scenes/intro.html": { previous: "<h1>Rep0</h1>", restored: "<h1>Alpha</h1>" },
+    };
+    expect(applyUndoRestoreToPreview(iframe, ROOT, files, 3, reloadPreview)).toBe("full");
+    expect(partsAtReload).toEqual({ shared: "s", scenes: { scene0: "", scene1: "h1" } });
+
+    const withRoot = {
+      ...files,
+      [ROOT]: { previous: wrap("<p>b</p>"), restored: wrap("<p>a</p>") },
+    };
+    applyUndoRestoreToPreview(iframe, ROOT, withRoot, 3, reloadPreview);
+    // A restored page outside every scene forces the full reload, never a partial swap.
+    expect(partsAtReload).toEqual({ shared: "", scenes: { scene0: "", scene1: "h1" } });
+  });
+
+  it("leaves the scene hashes alone on a soft restore, so the next edit can still swap", () => {
+    const { iframe, doc } = buildLiveIframe(`<div id="a" style="color: red">t</div>`);
+    const meta = doc.createElement("meta");
+    meta.name = "hf-scene-parts";
+    meta.content = JSON.stringify({ shared: "s", scenes: { scene0: "h0" } });
+    doc.head.append(meta);
+    const files = {
+      [ROOT]: {
+        previous: wrap(`<div id="a" style="color: red">t</div>`),
+        restored: wrap(`<div id="a" style="color: blue">t</div>`),
+      },
+    };
+    expect(applyUndoRestoreToPreview(iframe, ROOT, files, 3, vi.fn())).toBe("soft");
+    expect(JSON.parse(meta.content)).toEqual({ shared: "s", scenes: { scene0: "h0" } });
+  });
+
+  it.each([
+    ["a restored stylesheet leaves the shared hash", "styles.css", '{"shared":"s","scenes":{}}'],
+    ["an unreadable manifest still reloads", "scenes/intro.html", "not json"],
+  ])("%s", (_name, path, content) => {
+    const { iframe, doc } = buildLiveIframe(`<div id="a">t</div>`);
+    const meta = doc.createElement("meta");
+    meta.name = "hf-scene-parts";
+    meta.content = content;
+    doc.head.append(meta);
+    const reloadPreview = vi.fn();
+    const files = { [path]: { previous: "a", restored: "b" } };
+    expect(applyUndoRestoreToPreview(iframe, ROOT, files, 3, reloadPreview)).toBe("full");
+    expect(reloadPreview).toHaveBeenCalledTimes(1);
+    expect(meta.content).toBe(content);
+  });
+
   it("full-reloads when the restore touches a sub-comp, not the active comp", () => {
     const { iframe } = buildLiveIframe(`<div id="a">t</div>`);
     const reloadPreview = vi.fn();

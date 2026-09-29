@@ -1,5 +1,31 @@
-import { resolve, sep, join, dirname, basename } from "node:path";
-import { realpathSync } from "node:fs";
+import { resolve, sep, join, dirname, basename, relative, isAbsolute } from "node:path";
+import { lstatSync, mkdirSync, realpathSync, statSync } from "node:fs";
+
+export function realpath(path: string): string {
+  try {
+    return realpathSync.native(path);
+  } catch (error) {
+    // Some Windows volumes (RAM disks) refuse the native call with EISDIR.
+    if ((error as NodeJS.ErrnoException).code === "EISDIR") return realpathSync(path);
+    throw error;
+  }
+}
+
+// realpath also fails for dangling/cyclic symlinks. Existing entries must not
+// become missing segments: writes could follow them outside the project.
+function isMissingPath(path: string): boolean {
+  try {
+    lstatSync(path);
+    return false;
+  } catch (error) {
+    return Boolean(
+      error &&
+      typeof error === "object" &&
+      "code" in error &&
+      (error.code === "ENOENT" || error.code === "ENOTDIR"),
+    );
+  }
+}
 
 /**
  * Reject paths that escape the `base` directory — including via symlinks.
@@ -9,7 +35,7 @@ import { realpathSync } from "node:fs";
  * symlink that lives *inside* `base` but points outside it (e.g.
  * `base/link -> /etc`). A downstream `readFileSync`/`writeFileSync`/`statSync`
  * then follows that link to a file outside `base`. To close this we canonicalize
- * both sides with `realpathSync` before comparing.
+ * both sides with `realpathSync.native` (the on-disk letter case too) before comparing.
  *
  * The target may not exist yet (e.g. creating a new file), so we canonicalize the
  * deepest *existing* ancestor and re-attach the trailing not-yet-existing
@@ -26,7 +52,7 @@ import { realpathSync } from "node:fs";
 export function isSafePath(base: string, resolved: string): boolean {
   let baseReal: string;
   try {
-    baseReal = realpathSync(resolve(base));
+    baseReal = realpath(resolve(base));
   } catch {
     // Base must exist and be resolvable; fail closed if not.
     return false;
@@ -39,8 +65,9 @@ export function isSafePath(base: string, resolved: string): boolean {
   for (;;) {
     let ancestorReal: string;
     try {
-      ancestorReal = realpathSync(probe);
+      ancestorReal = realpath(probe);
     } catch {
+      if (!isMissingPath(probe)) return false;
       const parent = dirname(probe);
       if (parent === probe) return false; // walked past the filesystem root
       trailing.push(basename(probe));
@@ -69,4 +96,59 @@ export function isSafePath(base: string, resolved: string): boolean {
 export function resolveWithinProject(base: string, relativePath: string): string | null {
   const resolved = resolve(base, relativePath);
   return isSafePath(base, resolved) ? resolved : null;
+}
+
+/** The project folder is gone, renamed or deleted while open; a write must not bring it back. */
+export class ProjectRootMissingError extends Error {
+  constructor(readonly root: string) {
+    super(`Project folder not found: ${root}`);
+    this.name = "ProjectRootMissingError";
+  }
+}
+
+// By name, so a copy of this module bundled into another package still matches.
+export const isProjectRootMissing = (error: unknown): boolean =>
+  error instanceof Error && error.name === "ProjectRootMissingError";
+
+/** True only when nothing is at `dir` any more; a folder that cannot be looked at (EACCES, EIO) is not gone. */
+export function folderGone(dir: string): boolean {
+  try {
+    return !statSync(dir, { throwIfNoEntry: false });
+  } catch {
+    return false;
+  }
+}
+
+/** The project folder's real path; ProjectRootMissingError when it is gone. */
+export function realProjectRoot(root: string): string {
+  try {
+    return realpath(root);
+  } catch (error) {
+    if (folderGone(root)) throw new ProjectRootMissingError(root);
+    throw error;
+  }
+}
+
+/**
+ * Creates `dir` below `root` one folder at a time, so a root moved away fails instead of reappearing.
+ * A `dir` outside `root` is created recursively, but only while `root` exists.
+ */
+export function mkdirWithinProject(root: string, dir: string): void {
+  if (folderGone(root)) throw new ProjectRootMissingError(root);
+  const inside = relative(resolve(root), resolve(dir));
+  if (inside === ".." || inside.startsWith(`..${sep}`) || isAbsolute(inside)) {
+    mkdirSync(dir, { recursive: true });
+    return;
+  }
+  let path = resolve(root);
+  for (const part of inside.split(sep).filter(Boolean)) {
+    path = join(path, part);
+    try {
+      mkdirSync(path);
+    } catch (error) {
+      const code = (error as NodeJS.ErrnoException).code;
+      if (code === "ENOENT" && folderGone(root)) throw new ProjectRootMissingError(root);
+      if (code !== "EEXIST") throw error;
+    }
+  }
 }

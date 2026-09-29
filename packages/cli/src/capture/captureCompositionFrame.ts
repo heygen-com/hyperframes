@@ -2,12 +2,15 @@ import { spawn } from "node:child_process";
 import type { Browser, Page } from "puppeteer-core";
 import { c } from "../ui/colors.js";
 import {
-  assertWebGpuRequirement,
+  assertWebGpuAdapterAvailable,
+  compositionRequiresWebGpu,
   resolveCaptureBrowserGpuMode,
   resolveLocalBrowserGpuMode,
   type BrowserGpuMode,
 } from "../browser/gpuPolicy.js";
+import { windowsChromeCrashRemediation } from "../browser/windowsCrash.js";
 import { resolveCompositionViewportFromHtml } from "../utils/compositionViewport.js";
+import { normalizeErrorMessage } from "../utils/errorMessage.js";
 import { resolveDiagnosticNavigationTimeoutMs } from "../utils/renderArgs.js";
 
 const SHADER_TRANSITIONS_TIMEOUT_MS = 90_000;
@@ -167,27 +170,53 @@ export async function openSettledCompositionPage(
   options: OpenSettledCompositionPageOptions,
 ): Promise<SettledCompositionPage> {
   const viewport = resolveCompositionViewportFromHtml(html);
-  const { ensureBrowser } = await import("../browser/manager.js");
+  const { ensureBrowser, findSystemBrowser } = await import("../browser/manager.js");
   const browser = await ensureBrowser();
   const puppeteer = await import("puppeteer-core");
   const { buildChromeArgs } = await import("@hyperframes/engine");
   const requestedGpuMode = options.browserGpuMode ?? resolveCliChromeGpuMode();
-  const resolvedGpuMode = await resolveCaptureBrowserGpuMode(
-    requestedGpuMode,
-    browser.executablePath,
-  );
-  assertWebGpuRequirement(html, requestedGpuMode, resolvedGpuMode);
-
-  let chromeBrowser: Browser | undefined;
-  try {
-    chromeBrowser = await puppeteer.default.launch({
+  const requiresWebGpu = compositionRequiresWebGpu(html);
+  const launch = async (executablePath: string): Promise<Browser> => {
+    const resolvedGpuMode = await resolveCaptureBrowserGpuMode(requestedGpuMode, executablePath);
+    return puppeteer.default.launch({
       headless: true,
-      executablePath: browser.executablePath,
+      executablePath,
       args: buildChromeArgs(
-        { ...viewport, captureMode: "screenshot" },
+        { ...viewport, captureMode: "screenshot", requiresWebGpu },
         { browserGpuMode: resolvedGpuMode },
       ),
     });
+  };
+
+  let chromeBrowser: Browser | undefined;
+  try {
+    try {
+      chromeBrowser = await launch(browser.executablePath);
+    } catch (launchError) {
+      const message = normalizeErrorMessage(launchError);
+      const remediation = windowsChromeCrashRemediation(message);
+      if (!remediation) throw launchError;
+
+      const systemBrowser =
+        browser.source === "cache" || browser.source === "download"
+          ? findSystemBrowser()
+          : undefined;
+      if (!systemBrowser || systemBrowser.executablePath === browser.executablePath) {
+        throw new Error(`${message}\n\n${remediation}`, { cause: launchError });
+      }
+
+      console.warn(
+        `[hyperframes] Managed chrome-headless-shell crashed at launch; retrying once with system Chrome at ${systemBrowser.executablePath}.`,
+      );
+      try {
+        chromeBrowser = await launch(systemBrowser.executablePath);
+      } catch (fallbackError) {
+        throw new Error(
+          `System Chrome fallback also failed: ${normalizeErrorMessage(fallbackError)}\n\n${remediation}`,
+          { cause: fallbackError },
+        );
+      }
+    }
 
     const page = await chromeBrowser.newPage();
     await installPageFunctionGuard(page);
@@ -197,6 +226,7 @@ export async function openSettledCompositionPage(
       waitUntil: "domcontentloaded",
       timeout: resolveDiagnosticNavigationTimeoutMs(process.env, options.navigationTimeoutMs),
     });
+    await assertWebGpuAdapterAvailable(page, requiresWebGpu);
     const renderReadyTimedOut = !(await waitForCompositionSettle(page, options));
     return { browser: chromeBrowser, page, renderReadyTimedOut };
   } catch (err) {
@@ -510,7 +540,7 @@ export async function runFfmpegOnce(
   timeoutMs: number,
 ): Promise<FfmpegRunResult> {
   return await new Promise((resolvePromise) => {
-    const ff = spawn(ffmpegPath, args);
+    const ff = spawn(ffmpegPath, args, { windowsHide: true });
     let stderr = "";
     let timedOut = false;
     const timer = setTimeout(() => {

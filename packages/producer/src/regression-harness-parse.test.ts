@@ -6,7 +6,10 @@
 // must move together.
 
 import { describe, expect, it } from "bun:test";
-import { parseArgs } from "./regression-harness.js";
+import { mkdtempSync, mkdirSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { createRegressionTempRoot, parseArgs } from "./regression-harness.js";
 
 // parseArgs reads from index 2 onwards (node + script name are argv[0..1]).
 const withProgram = (rest: string[]): string[] => ["node", "regression-harness.ts", ...rest];
@@ -50,5 +53,31 @@ describe("parseArgs() — --exclude-tags", () => {
   it("defaults excludeTags to an empty array when the flag is absent", () => {
     const opts = parseArgs(withProgram([]));
     expect(opts.excludeTags).toEqual([]);
+  });
+});
+
+describe("regression temporary roots", () => {
+  it("isolates repeated suite runs and preserves the old predictable directory", () => {
+    const parent = mkdtempSync(join(tmpdir(), "hf-root-test-"));
+    try {
+      const legacy = join(parent, "hyperframes-tests", "same-suite");
+      mkdirSync(legacy, { recursive: true });
+      const sentinel = join(legacy, "keep.txt");
+      writeFileSync(sentinel, "unrelated data");
+      const first = createRegressionTempRoot("same-suite", parent);
+      const second = createRegressionTempRoot("same-suite", parent);
+      expect(first).not.toBe(second);
+      expect(first).not.toBe(legacy);
+      if (process.platform !== "win32") {
+        expect(statSync(first).mode & 0o777).toBe(0o700);
+        expect(statSync(second).mode & 0o777).toBe(0o700);
+      }
+      expect(readFileSync(sentinel, "utf8")).toBe("unrelated data");
+      rmSync(first, { recursive: true, force: true });
+      expect(statSync(second).isDirectory()).toBe(true);
+      expect(readFileSync(sentinel, "utf8")).toBe("unrelated data");
+    } finally {
+      rmSync(parent, { recursive: true, force: true });
+    }
   });
 });

@@ -1,5 +1,11 @@
 import { useEffect, useRef } from "react";
-import { Image, Magnet, MagnifyingGlassMinus, MagnifyingGlassPlus } from "@phosphor-icons/react";
+import {
+  ArrowsOutLineHorizontal,
+  Image,
+  Magnet,
+  MagnifyingGlassMinus,
+  MagnifyingGlassPlus,
+} from "@phosphor-icons/react";
 import {
   useEnableKeyframes,
   isPlayheadWithinTween,
@@ -16,10 +22,16 @@ import {
 import { useTimelineZoom } from "../player/components/useTimelineZoom";
 import { usePlayerStore, type TimelineElement } from "../player";
 import { Tooltip } from "./ui";
-import { Scissors } from "../icons/SystemIcons";
+import { AudioMetersIcon } from "./icons/AudioMetersIcon";
+import { RippleEditIcon } from "./icons/RippleEditIcon";
+import { flatActive, flatBtn, flatDisabled, flatIdle } from "./timelineToolbarStyles";
+import { TimelineHistoryButtons, type TimelineHistoryButtonsProps } from "./TimelineHistoryButtons";
+import { TimelineToolPicker } from "./TimelineToolPicker";
 import type { GsapAnimation } from "@hyperframes/core/gsap-parser";
 import type { DomEditSelection } from "./editor/domEditingTypes";
 import { canSplitElement } from "../utils/timelineElementSplit";
+import { useAudioMetersVisible } from "../utils/audioMeterVisibility";
+import { useProjectHasAudio } from "../utils/audioMeterMath";
 import { canAddBeatAt, addBeatAtCompositionTime } from "../utils/beatEditActions";
 
 interface DomEditSessionSlice extends EnableKeyframesSession {
@@ -27,9 +39,13 @@ interface DomEditSessionSlice extends EnableKeyframesSession {
   selectedGsapAnimations: GsapAnimation[];
 }
 
-interface TimelineToolbarProps {
+export interface TimelineToolbarProps {
   domEditSession?: DomEditSessionSlice;
   onSplitElement?: (element: TimelineElement, splitTime: number) => void;
+  history?: TimelineHistoryButtonsProps;
+  showAddBeat?: boolean;
+  /** Hides Add keyframe and auto-record, and turns off auto-record and the K shortcut with them. */
+  showKeyframes?: boolean;
 }
 
 interface KeyframeToggleState {
@@ -121,16 +137,25 @@ function useKeyframeToggle(session?: DomEditSessionSlice) {
 }
 
 // fallow-ignore-next-line complexity
-export function TimelineToolbar({ domEditSession, onSplitElement }: TimelineToolbarProps) {
-  const activeTool = usePlayerStore((s) => s.activeTool);
-  const setActiveTool = usePlayerStore((s) => s.setActiveTool);
+export function TimelineToolbar({
+  domEditSession,
+  onSplitElement,
+  history,
+  showAddBeat = true,
+  showKeyframes = true,
+}: TimelineToolbarProps) {
   const timelineSnapEnabled = usePlayerStore((s) => s.timelineSnapEnabled);
   const setTimelineSnapEnabled = usePlayerStore((s) => s.setTimelineSnapEnabled);
+  const rippleEditEnabled = usePlayerStore((s) => s.rippleEditEnabled);
+  const setRippleEditEnabled = usePlayerStore((s) => s.setRippleEditEnabled);
   const autoKeyframeEnabled = usePlayerStore((s) => s.autoKeyframeEnabled);
   const setAutoKeyframeEnabled = usePlayerStore((s) => s.setAutoKeyframeEnabled);
   const thumbnailMode = usePlayerStore((s) => s.thumbnailMode);
   const setThumbnailMode = usePlayerStore((s) => s.setThumbnailMode);
   const thumbnailsVisible = thumbnailMode === "adaptive";
+  const audioMetersVisible = useAudioMetersVisible((s) => s.visible);
+  const setAudioMetersVisible = useAudioMetersVisible((s) => s.setVisible);
+  const projectHasAudio = useProjectHasAudio();
   // Subscribe so the add-beat button reacts to playhead movement and analysis load.
   const currentTime = usePlayerStore((s) => s.currentTime);
   const beatAnalysisReady = usePlayerStore((s) => s.beatAnalysis !== null);
@@ -156,9 +181,13 @@ export function TimelineToolbar({ domEditSession, onSplitElement }: TimelineTool
   // Wire the "Add keyframe (K)" shortcut the toolbar advertises. Active only when
   // there's a keyframeable selection; otherwise K stays JKL-pause in playback.
   useKeyframeKeyboard({
-    enabled: Boolean(onToggleKeyframe),
+    enabled: showKeyframes && Boolean(onToggleKeyframe),
     onAddKeyframe: onToggleKeyframe,
   });
+
+  useEffect(() => {
+    if (!showKeyframes) setAutoKeyframeEnabled(false);
+  }, [showKeyframes, setAutoKeyframeEnabled]);
 
   // "N" toggles timeline snapping (industry convention: Resolve/FCP).
   // Skip when typing in an input/contenteditable.
@@ -178,43 +207,14 @@ export function TimelineToolbar({ domEditSession, onSplitElement }: TimelineTool
     return () => window.removeEventListener("keydown", onKeyDown);
   }, []);
 
-  // CapCut-flat icon buttons: no per-button border/box chrome — a transparent
-  // 28px hit area with a subtle rounded hover wash, consistent 16px glyphs.
-  const flatBtn = "flex h-7 w-7 items-center justify-center rounded-md transition-colors";
-  const flatIdle = `${flatBtn} text-neutral-400 hover:bg-white/[0.06] hover:text-neutral-200 active:scale-[0.98]`;
-  const flatActive = `${flatBtn} bg-white/[0.08] text-neutral-100 active:scale-[0.98]`;
-  const flatDisabled = `${flatBtn} text-neutral-700 cursor-not-allowed`;
-
   return (
     // The "TIMELINE" label is dropped for CapCut-like density — the pane's
     // position (tracks right below) makes it self-evident.
     <div className="border-b border-neutral-800/60">
       <div className="flex items-center justify-between px-2 py-0.5">
         <div className="flex items-center gap-0.5">
-          <Tooltip label="Selection tool (V)">
-            <button
-              type="button"
-              onClick={() => setActiveTool("select")}
-              aria-label="Selection tool"
-              aria-pressed={activeTool === "select"}
-              className={activeTool === "select" ? flatActive : flatIdle}
-            >
-              <svg width="16" height="16" viewBox="0 0 12 12" fill="currentColor">
-                <path d="M2 0.5L10 6L6.5 6.5L8.5 11L6.5 11.5L4.5 7L2 9Z" />
-              </svg>
-            </button>
-          </Tooltip>
-          <Tooltip label="Razor tool (B) — Shift+click splits all tracks">
-            <button
-              type="button"
-              onClick={() => setActiveTool("razor")}
-              aria-label="Razor tool"
-              aria-pressed={activeTool === "razor"}
-              className={activeTool === "razor" ? flatActive : flatIdle}
-            >
-              <Scissors size={16} />
-            </button>
-          </Tooltip>
+          <TimelineHistoryButtons {...history} />
+          <TimelineToolPicker />
           {/* Divider: tool-mode | editing-actions */}
           <div aria-hidden="true" className="mx-1 h-4 w-px bg-neutral-800" />
           <Tooltip label={timelineSnapEnabled ? "Snapping on (N)" : "Snapping off (N)"}>
@@ -228,107 +228,140 @@ export function TimelineToolbar({ domEditSession, onSplitElement }: TimelineTool
               <Magnet size={16} weight="bold" aria-hidden="true" />
             </button>
           </Tooltip>
-          {/* Always rendered (CapCut-style): with no keyframeable selection the
-              button fades to a disabled state instead of unmounting, so the
-              toolbar layout never shifts. */}
           <Tooltip
             label={
-              keyframePathEndpoint
-                ? "Motion path endpoints cannot be removed"
-                : !onToggleKeyframe
-                  ? "Select an animated element to add keyframes"
-                  : keyframeIsMotionPath
-                    ? keyframeWillExtend
-                      ? "Extend motion path to playhead (K)"
-                      : keyframeState === "active"
-                        ? "Remove waypoint from motion path (K)"
-                        : "Add waypoint to motion path (K)"
-                    : keyframeState === "active"
-                      ? "Remove keyframe at playhead (K)"
-                      : keyframeState === "inactive"
-                        ? keyframeWillExtend
-                          ? "Add keyframe at playhead, extends animation (K)"
-                          : "Add keyframe at playhead (K)"
-                        : "Add keyframe (K)"
+              rippleEditEnabled
+                ? "Ripple on — keeps the main track gapless"
+                : "Ripple off — deleting a main-track clip leaves a gap"
             }
           >
             <button
               type="button"
-              disabled={!onToggleKeyframe}
-              onClick={onToggleKeyframe}
-              aria-label={
-                keyframePathEndpoint
-                  ? "Motion path endpoint"
-                  : keyframeIsMotionPath
-                    ? keyframeState === "active"
-                      ? "Remove motion path waypoint"
-                      : keyframeWillExtend
-                        ? "Extend motion path to playhead"
-                        : "Add motion path waypoint"
-                    : keyframeState === "active"
-                      ? "Remove keyframe at playhead"
-                      : "Add keyframe at playhead"
-              }
-              className={
-                !onToggleKeyframe
-                  ? flatDisabled
-                  : `${flatBtn} active:scale-[0.98] hover:bg-white/[0.06] ${
-                      keyframeState === "active"
-                        ? "text-studio-accent"
-                        : keyframeState === "inactive"
-                          ? "text-neutral-400 hover:text-studio-accent"
-                          : "text-neutral-600 hover:text-neutral-400"
-                    }`
-              }
+              onClick={() => setRippleEditEnabled(!rippleEditEnabled)}
+              aria-label="Toggle ripple edit"
+              aria-pressed={rippleEditEnabled}
+              className={rippleEditEnabled ? flatActive : flatIdle}
             >
-              <svg width="16" height="16" viewBox="0 0 10 10" fill="currentColor">
-                {keyframeState === "active" ? (
-                  <path d="M5 0.5L9.5 5L5 9.5L0.5 5Z" />
-                ) : (
-                  <path
-                    d="M5 1.2L8.8 5L5 8.8L1.2 5Z"
-                    fill="none"
-                    stroke="currentColor"
-                    strokeWidth="1.2"
-                  />
-                )}
-              </svg>
+              <RippleEditIcon size={16} />
             </button>
           </Tooltip>
-          <Tooltip
-            label={
-              autoKeyframeEnabled
-                ? "Auto-record manual edits as keyframes (click to turn off)"
-                : "Manual edits will not be recorded as keyframes (click to turn on)"
-            }
-          >
-            <button
-              type="button"
-              onClick={() => setAutoKeyframeEnabled(!autoKeyframeEnabled)}
-              aria-label="Auto-record manual edits as keyframes"
-              aria-pressed={autoKeyframeEnabled}
-              className={`${flatBtn} active:scale-[0.98] hover:bg-white/[0.06] ${
-                autoKeyframeEnabled
-                  ? "text-red-400 hover:text-red-300"
-                  : "text-neutral-600 hover:text-neutral-400"
-              }`}
-            >
-              <svg width="16" height="16" viewBox="0 0 10 10" fill="none">
-                {/* Same diamond outline as the Add-keyframe icon, with a
+          {projectHasAudio && (
+            <Tooltip label={audioMetersVisible ? "Hide audio meters" : "Show audio meters"}>
+              <button
+                type="button"
+                onClick={() => setAudioMetersVisible(!audioMetersVisible)}
+                aria-label="Toggle audio meters"
+                aria-pressed={audioMetersVisible}
+                className={audioMetersVisible ? flatActive : flatIdle}
+              >
+                <AudioMetersIcon size={16} />
+              </button>
+            </Tooltip>
+          )}
+          {showKeyframes && (
+            <>
+              {/* With no keyframeable selection the button fades to disabled instead of
+              unmounting, so the toolbar layout never shifts (CapCut-style). */}
+              <Tooltip
+                label={
+                  keyframePathEndpoint
+                    ? "Motion path endpoints cannot be removed"
+                    : !onToggleKeyframe
+                      ? "Select an animated element to add keyframes"
+                      : keyframeIsMotionPath
+                        ? keyframeWillExtend
+                          ? "Extend motion path to playhead (K)"
+                          : keyframeState === "active"
+                            ? "Remove waypoint from motion path (K)"
+                            : "Add waypoint to motion path (K)"
+                        : keyframeState === "active"
+                          ? "Remove keyframe at playhead (K)"
+                          : keyframeState === "inactive"
+                            ? keyframeWillExtend
+                              ? "Add keyframe at playhead, extends animation (K)"
+                              : "Add keyframe at playhead (K)"
+                            : "Add keyframe (K)"
+                }
+              >
+                <button
+                  type="button"
+                  disabled={!onToggleKeyframe}
+                  onClick={onToggleKeyframe}
+                  aria-label={
+                    keyframePathEndpoint
+                      ? "Motion path endpoint"
+                      : keyframeIsMotionPath
+                        ? keyframeState === "active"
+                          ? "Remove motion path waypoint"
+                          : keyframeWillExtend
+                            ? "Extend motion path to playhead"
+                            : "Add motion path waypoint"
+                        : keyframeState === "active"
+                          ? "Remove keyframe at playhead"
+                          : "Add keyframe at playhead"
+                  }
+                  className={
+                    !onToggleKeyframe
+                      ? flatDisabled
+                      : `${flatBtn} active:scale-[0.98] hover:bg-white/6 ${
+                          keyframeState === "active"
+                            ? "text-studio-accent"
+                            : keyframeState === "inactive"
+                              ? "text-neutral-400 hover:text-studio-accent"
+                              : "text-neutral-600 hover:text-neutral-400"
+                        }`
+                  }
+                >
+                  <svg width="16" height="16" viewBox="0 0 10 10" fill="currentColor">
+                    {keyframeState === "active" ? (
+                      <path d="M5 0.5L9.5 5L5 9.5L0.5 5Z" />
+                    ) : (
+                      <path
+                        d="M5 1.2L8.8 5L5 8.8L1.2 5Z"
+                        fill="none"
+                        stroke="currentColor"
+                        strokeWidth="1.2"
+                      />
+                    )}
+                  </svg>
+                </button>
+              </Tooltip>
+              <Tooltip
+                label={
+                  autoKeyframeEnabled
+                    ? "Auto-record manual edits as keyframes (click to turn off)"
+                    : "Manual edits will not be recorded as keyframes (click to turn on)"
+                }
+              >
+                <button
+                  type="button"
+                  onClick={() => setAutoKeyframeEnabled(!autoKeyframeEnabled)}
+                  aria-label="Auto-record manual edits as keyframes"
+                  aria-pressed={autoKeyframeEnabled}
+                  className={`${flatBtn} active:scale-[0.98] hover:bg-white/6 ${
+                    autoKeyframeEnabled
+                      ? "text-red-400 hover:text-red-300"
+                      : "text-neutral-600 hover:text-neutral-400"
+                  }`}
+                >
+                  <svg width="16" height="16" viewBox="0 0 10 10" fill="none">
+                    {/* Same diamond outline as the Add-keyframe icon, with a
                       record-style dot inside: filled = auto-recording,
                       hollow = manual edits won't be keyframed. */}
-                <path d="M5 0.7L9.3 5L5 9.3L0.7 5Z" stroke="currentColor" strokeWidth="1" />
-                <circle
-                  cx="5"
-                  cy="5"
-                  r="1.8"
-                  fill={autoKeyframeEnabled ? "currentColor" : "none"}
-                  stroke="currentColor"
-                  strokeWidth="1"
-                />
-              </svg>
-            </button>
-          </Tooltip>
+                    <path d="M5 0.7L9.3 5L5 9.3L0.7 5Z" stroke="currentColor" strokeWidth="1" />
+                    <circle
+                      cx="5"
+                      cy="5"
+                      r="1.8"
+                      fill={autoKeyframeEnabled ? "currentColor" : "none"}
+                      stroke="currentColor"
+                      strokeWidth="1"
+                    />
+                  </svg>
+                </button>
+              </Tooltip>
+            </>
+          )}
           {onSplitElement &&
             (() => {
               // Render the button unconditionally (disabled when unusable):
@@ -381,7 +414,8 @@ export function TimelineToolbar({ domEditSession, onSplitElement }: TimelineTool
               );
             })()}
           {(() => {
-            // Always rendered (CapCut-style): before beat analysis loads (or when
+            if (!showAddBeat) return null;
+            // Rendered whenever shown (CapCut-style): before beat analysis loads (or when
             // the project has no analyzed music) the button fades to a disabled
             // state instead of unmounting, so the toolbar layout never shifts.
             const canAdd = beatAnalysisReady && canAddBeatAt(currentTime);
@@ -404,7 +438,7 @@ export function TimelineToolbar({ domEditSession, onSplitElement }: TimelineTool
                   }}
                   className={
                     canAdd
-                      ? `${flatBtn} text-neutral-400 hover:bg-white/[0.06] hover:text-[#22c55e] active:scale-[0.98]`
+                      ? `${flatBtn} text-neutral-400 hover:bg-white/6 hover:text-[#22c55e] active:scale-[0.98]`
                       : flatDisabled
                   }
                 >
@@ -442,7 +476,7 @@ export function TimelineToolbar({ domEditSession, onSplitElement }: TimelineTool
               className={`h-7 px-2 rounded-md text-[11px] font-medium transition-colors ${
                 thumbnailsVisible
                   ? "bg-studio-accent/10 text-studio-accent"
-                  : "text-neutral-400 hover:bg-white/[0.06] hover:text-neutral-200"
+                  : "text-neutral-400 hover:bg-white/6 hover:text-neutral-200"
               }`}
             >
               <Image size={16} aria-hidden="true" />
@@ -452,13 +486,15 @@ export function TimelineToolbar({ domEditSession, onSplitElement }: TimelineTool
             <button
               type="button"
               onClick={() => setZoomMode("fit")}
+              aria-label="Fit timeline to width"
+              aria-pressed={zoomMode === "fit"}
               className={`h-7 px-2 rounded-md text-[11px] font-medium transition-colors ${
                 zoomMode === "fit"
                   ? "bg-studio-accent/10 text-studio-accent"
-                  : "text-neutral-400 hover:bg-white/[0.06] hover:text-neutral-200"
+                  : "text-neutral-400 hover:bg-white/6 hover:text-neutral-200"
               }`}
             >
-              Fit
+              <ArrowsOutLineHorizontal size={16} aria-hidden="true" />
             </button>
           </Tooltip>
           <Tooltip label="Zoom out">

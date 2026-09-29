@@ -1357,7 +1357,11 @@ const MSG_HANDLERS: Record<string, (data: any) => void> = {
 };
 
 function onWindowMessage(e: MessageEvent) {
-  const handler = e.data && MSG_HANDLERS[e.data.type];
+  const frame = getFrame()?.contentWindow;
+  if (!frame || e.source !== frame) return;
+  const type = e.data?.type;
+  if (typeof type !== "string" || !Object.hasOwn(MSG_HANDLERS, type)) return;
+  const handler = MSG_HANDLERS[type];
   if (handler) handler(e.data);
 }
 
@@ -1462,5 +1466,9 @@ async function init() {
 }
 
 init().catch((err) => {
-  document.body.innerHTML = `<pre style="color:#f87171;padding:20px">${String(err)}</pre>`;
+  const message = document.createElement("pre");
+  message.style.color = "#f87171";
+  message.style.padding = "20px";
+  message.textContent = String(err);
+  document.body.replaceChildren(message);
 });

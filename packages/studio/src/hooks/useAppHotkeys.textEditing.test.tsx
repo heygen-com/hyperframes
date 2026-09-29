@@ -5,7 +5,6 @@ import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { TextAreaField } from "../components/editor/propertyPanelSections";
 import type { DomEditSelection } from "../components/editor/domEditing";
-import type { LeftSidebarHandle } from "../components/sidebar/LeftSidebar";
 import { usePlayerStore } from "../player/store/playerStore";
 import { useAppHotkeys } from "./useAppHotkeys";
 
@@ -70,8 +69,6 @@ function Harness() {
   const [selectionRefreshed, setSelectionRefreshed] = useState(false);
   const selectionRef = useRef<DomEditSelection | null>(parentWithTextChild());
   const clearSelectionRef = useRef<() => void>(() => undefined);
-  const saveTimestampRef = useRef(0);
-  const leftSidebarRef = useRef<LeftSidebarHandle | null>(null);
 
   useAppHotkeys({
     handleTimelineElementsDelete: timelineDeleteMany,
@@ -87,16 +84,16 @@ function Harness() {
     readOptionalProjectFile: vi.fn(async () => ""),
     readProjectFile: vi.fn(async () => ""),
     writeProjectFile: vi.fn(async () => undefined),
-    domEditSaveTimestampRef: saveTimestampRef,
     showToast: vi.fn(),
     syncHistoryPreviewAfterApply: vi.fn(async () => undefined),
     waitForPendingDomEditSaves: vi.fn(async () => undefined),
-    leftSidebarRef,
     handleCopy: vi.fn(() => false),
     handlePaste: vi.fn(async () => undefined),
     handleCut: vi.fn(async () => false),
+    handleDuplicate: vi.fn(async () => false),
     onResetKeyframes: vi.fn(() => false),
     onDeleteSelectedKeyframes: keyframeDelete,
+    readOnlyPreview: false,
   });
 
   return (

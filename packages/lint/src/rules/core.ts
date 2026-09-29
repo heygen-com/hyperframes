@@ -2,6 +2,11 @@ import type { LintContext, HyperframeLintFinding } from "../context";
 import postcss from "postcss";
 import selectorParser from "postcss-selector-parser";
 import {
+  HTML_BODY_CSS_WIDTH_FIRST_RE,
+  HTML_BODY_CSS_HEIGHT_FIRST_RE,
+  VIEWPORT_META_SIZE_RE,
+} from "@hyperframes/parsers/composition";
+import {
   readAttr,
   readDecodedAttr,
   truncateSnippet,
@@ -10,6 +15,7 @@ import {
   extractCompositionIdsFromCss,
   extractTimelineRegistryKeys,
   getInlineScriptSyntaxError,
+  hasUnquotedLessThan,
   TIMELINE_REGISTRY_INIT_PATTERN,
   TIMELINE_REGISTRY_ASSIGN_PATTERN,
   TIMELINE_REGISTRY_OBJECT_LITERAL_PATTERN,
@@ -95,6 +101,53 @@ function resolvedRuleSelectors(rule: postcss.Rule): string[] {
       return `${parentSelector} ${childSelector}`;
     }),
   );
+}
+
+function selectorAliasesRuntimeHiddenStyle(selector: string): boolean {
+  let unsafe = false;
+  try {
+    selectorParser((root) => {
+      root.each((selectorNode) => {
+        const subject: selectorParser.Node[] = [];
+        selectorNode.each((node) => {
+          if (node.type === "combinator") subject.length = 0;
+          else subject.push(node);
+        });
+
+        const hostScoped = subject.some(
+          (node) =>
+            node.type === "attribute" &&
+            ["data-composition-src", "data-composition-file"].includes(
+              node.attribute.toLowerCase(),
+            ),
+        );
+        if (hostScoped) return;
+
+        if (
+          subject.some((node) => {
+            if (node.type !== "attribute" || node.attribute.toLowerCase() !== "style") return false;
+            if (node.operator !== "*=" || !node.value) return false;
+            const needle = node.insensitive ? node.value.toLowerCase() : node.value;
+            if (!needle.includes("visibility") && !needle.includes("hidden")) return false;
+            return "visibility: hidden !important;".includes(needle);
+          })
+        ) {
+          unsafe = true;
+        }
+      });
+    }).processSync(selector);
+  } catch {
+    return false;
+  }
+  return unsafe;
+}
+
+function ruleForcesOpacityZero(rule: postcss.Rule): boolean {
+  let forcesOpacityZero = false;
+  rule.walkDecls(/^opacity$/i, (declaration) => {
+    if (Number(declaration.value.trim()) === 0) forcesOpacityZero = true;
+  });
+  return forcesOpacityZero;
 }
 
 function isStudioTimelineElement(tag: { raw: string; name: string }): boolean {
@@ -184,6 +237,80 @@ function findVisibleMarkupCommentLeak(source: string): string | null {
   return null;
 }
 
+type ScaffoldSize = { width: string; height: string };
+
+// Groups 1 and 3 are prefix text for applyResolutionPreset's in-place
+// replace; lint only reads the digit groups (2 and 4).
+function readHtmlBodyCssSize(source: string): ScaffoldSize | null {
+  const widthFirst = source.match(HTML_BODY_CSS_WIDTH_FIRST_RE);
+  if (widthFirst) {
+    const [, , width = "", , height = ""] = widthFirst;
+    return { width, height };
+  }
+  const heightFirst = source.match(HTML_BODY_CSS_HEIGHT_FIRST_RE);
+  if (heightFirst) {
+    const [, , height = "", , width = ""] = heightFirst;
+    return { width, height };
+  }
+  return null;
+}
+
+function readViewportMetaSize(source: string): ScaffoldSize | null {
+  const match = source.match(VIEWPORT_META_SIZE_RE);
+  if (!match) return null;
+  const [, , width = "", , height = ""] = match;
+  return { width, height };
+}
+
+function describeSizeMismatch(
+  label: string,
+  size: ScaffoldSize | null,
+  dataWidth: string,
+  dataHeight: string,
+): string | null {
+  if (!size || (size.width === dataWidth && size.height === dataHeight)) return null;
+  return `${label} is ${size.width}x${size.height}`;
+}
+
+// Only html/body CSS actually clips the root; the CDP viewport comes from
+// data-width/data-height, not `<meta viewport>` — so a viewport-only drift gets distinct wording.
+function describeRootDimensionsDrift(
+  source: string,
+  dataWidth: string,
+  dataHeight: string,
+): { message: string; fixHint: string } | null {
+  const bodyCssMismatch = describeSizeMismatch(
+    "html/body CSS",
+    readHtmlBodyCssSize(source),
+    dataWidth,
+    dataHeight,
+  );
+  const viewportMismatch = describeSizeMismatch(
+    "the viewport meta",
+    readViewportMetaSize(source),
+    dataWidth,
+    dataHeight,
+  );
+  if (!bodyCssMismatch && !viewportMismatch) return null;
+
+  const declared = `Root composition declares data-width="${dataWidth}" data-height="${dataHeight}"`;
+  if (!bodyCssMismatch) {
+    return {
+      message: `${declared}, but ${viewportMismatch}. The viewport meta has no effect on capture — the renderer sizes the viewport from the root's own data-width/data-height — so this is stale metadata, not a clipping risk.`,
+      fixHint:
+        "update the meta viewport to match, or scaffold with `hyperframes init --resolution portrait`",
+    };
+  }
+  const mismatches = viewportMismatch
+    ? `${bodyCssMismatch} and ${viewportMismatch}`
+    : bodyCssMismatch;
+  return {
+    message: `${declared}, but ${mismatches}. The scaffolded body clips the composition at its old size.`,
+    fixHint:
+      "update html/body CSS and the meta viewport to match, or scaffold with `hyperframes init --resolution portrait`",
+  };
+}
+
 export const coreRules: Array<(ctx: LintContext) => HyperframeLintFinding[]> = [
   // id_requires_css_escape
   ({ tags }) => {
@@ -229,6 +356,71 @@ export const coreRules: Array<(ctx: LintContext) => HyperframeLintFinding[]> = [
       });
     }
     return findings;
+  },
+
+  // root_dimensions_mismatch
+  //
+  // Render size and the runtime's forced #root size both read the root's own
+  // data-width/data-height, so they stay correct. But editing only those two
+  // attributes — rather than scaffolding with `hyperframes init --resolution`,
+  // which rewrites the scaffold's other copies of the resolution too — leaves
+  // the `html, body` CSS and the `<meta viewport>` at the old value, and a
+  // stale body with `overflow: hidden` visually clips the correctly-sized
+  // root. `hyperframes check`'s layout audits can't see it: they measure
+  // against the root's own (already-correct) rect, not the body's.
+  //
+  // Sub-compositions are exempt: loadExternalCompositions (packages/core/src/
+  // runtime/compositionLoader.ts) mounts only the matched <template>/<body>
+  // subtree, so a sub-comp's own <html>/<head>/<meta viewport> never reach
+  // the rendering document, even when it's a full standalone document.
+  ({ rootTag, source, options }) => {
+    if (!rootTag || options.isSubComposition) return [];
+    const dataWidth = readAttr(rootTag.raw, "data-width");
+    const dataHeight = readAttr(rootTag.raw, "data-height");
+    if (!dataWidth || !dataHeight) return [];
+
+    const drift = describeRootDimensionsDrift(source, dataWidth, dataHeight);
+    if (!drift) return [];
+
+    return [
+      {
+        code: "root_dimensions_mismatch",
+        severity: "warning",
+        message: drift.message,
+        elementId: readAttr(rootTag.raw, "id") || undefined,
+        fixHint: drift.fixHint,
+        snippet: truncateSnippet(rootTag.raw),
+      },
+    ];
+  },
+
+  // unbalanced_style_tags
+  ({ source }) => {
+    let opens = 0;
+    let closes = 0;
+    let firstTag = "";
+    for (const match of source.matchAll(
+      /<script\b[\s\S]*?<\/script[^>]*>|<style\b|<\/style\s*>/gi,
+    )) {
+      const token = match[0].toLowerCase();
+      if (token.startsWith("<script")) continue;
+      if (token.startsWith("</style")) closes += 1;
+      else opens += 1;
+      if (!firstTag) firstTag = match[0];
+    }
+    if (opens === closes) return [];
+    return [
+      {
+        code: "unbalanced_style_tags",
+        severity: "error",
+        message:
+          opens > closes
+            ? "A <style> block is never closed, so following markup is parsed as CSS and disappears from the frame."
+            : "An extra </style> closes the stylesheet early, so trailing CSS renders as visible on-screen text.",
+        fixHint: "Keep <style> and </style> paired. One extra closer dumps CSS into the body.",
+        snippet: truncateSnippet(firstTag || "<style>"),
+      },
+    ];
   },
 
   // visible_markup_comment
@@ -304,30 +496,78 @@ export const coreRules: Array<(ctx: LintContext) => HyperframeLintFinding[]> = [
     return findings;
   },
 
-  // repeated_id_descendant_selector
-  ({ styles }) => {
+  // CSS selector safety
+  ({ styles, locate }) => {
     const findings: HyperframeLintFinding[] = [];
-    const reported = new Set<string>();
+    const reportedRepeatedIds = new Set<string>();
+    const reportedHiddenStyleSelectors = new Set<string>();
     for (const style of styles) {
       let root: postcss.Root;
       try {
         root = postcss.parse(style.content);
-      } catch {
+      } catch (error) {
+        findings.push({
+          ...locate(
+            style,
+            error instanceof postcss.CssSyntaxError
+              ? cssErrorOffset(style.content, error)
+              : undefined,
+          ),
+          code: "css_parse_error",
+          severity: "error",
+          message: `CSS parse error: ${error instanceof Error ? error.message : "unknown"}`,
+        });
         continue;
       }
       root.walkRules((rule) => {
+        const forcesOpacityZero = ruleForcesOpacityZero(rule);
         for (const selector of resolvedRuleSelectors(rule)) {
           const repeatedId = repeatedDescendantId(selector);
-          if (!repeatedId || reported.has(repeatedId)) continue;
-          reported.add(repeatedId);
+          if (repeatedId && !reportedRepeatedIds.has(repeatedId)) {
+            reportedRepeatedIds.add(repeatedId);
+            findings.push({
+              code: "repeated_id_descendant_selector",
+              severity: "error",
+              message: `Selector "${selector}" requires #${repeatedId} to be nested inside another #${repeatedId}. IDs must be unique, so this selector cannot match a valid composition.`,
+              selector,
+              fixHint: `Remove the duplicate ancestor: change \`#${repeatedId} #${repeatedId}\` to \`#${repeatedId}\`.`,
+            });
+          }
+
+          if (
+            !forcesOpacityZero ||
+            reportedHiddenStyleSelectors.has(selector) ||
+            !selectorAliasesRuntimeHiddenStyle(selector)
+          ) {
+            continue;
+          }
+          reportedHiddenStyleSelectors.add(selector);
           findings.push({
-            code: "repeated_id_descendant_selector",
+            code: "runtime_hidden_style_opacity",
             severity: "error",
-            message: `Selector "${selector}" requires #${repeatedId} to be nested inside another #${repeatedId}. IDs must be unique, so this selector cannot match a valid composition.`,
+            message: `Selector "${selector}" observes HyperFrames' runtime-owned hidden style and forces opacity to zero. The renderer hides each native video before copying its computed opacity to the visible replacement frame, so this rule makes both transparent.`,
             selector,
-            fixHint: `Remove the duplicate ancestor: change \`#${repeatedId} #${repeatedId}\` to \`#${repeatedId}\`.`,
+            fixHint:
+              'Restrict the guard to sub-composition hosts, for example `[data-composition-src][style*="visibility: hidden"]` and `[data-composition-file][style*="visibility: hidden"]`. Do not derive arbitrary element or media opacity from runtime-owned inline visibility.',
+            snippet: truncateSnippet(rule.toString()),
           });
         }
+      });
+    }
+    return findings;
+  },
+
+  // unclosed_tag_swallowed_element
+  ({ tags }) => {
+    const findings: HyperframeLintFinding[] = [];
+    for (const tag of tags) {
+      if (!hasUnquotedLessThan(tag.attrs)) continue;
+      findings.push({
+        code: "unclosed_tag_swallowed_element",
+        severity: "error",
+        message: `<${tag.name}> is missing its closing \`>\` before the next \`<\` — the following element is swallowed as bogus attribute text and never becomes a real node.`,
+        fixHint: "Close the previous tag's `>` before opening the next element.",
+        snippet: truncateSnippet(tag.raw),
       });
     }
     return findings;
@@ -347,7 +587,7 @@ export const coreRules: Array<(ctx: LintContext) => HyperframeLintFinding[]> = [
   },
 
   // invalid_inline_script_syntax (JS parse error)
-  ({ scripts }) => {
+  ({ scripts, locate }) => {
     const findings: HyperframeLintFinding[] = [];
     for (const script of scripts) {
       const attrs = script.attrs || "";
@@ -361,9 +601,10 @@ export const coreRules: Array<(ctx: LintContext) => HyperframeLintFinding[]> = [
       const syntaxError = getInlineScriptSyntaxError(script.content);
       if (!syntaxError) continue;
       findings.push({
+        ...locate(script, syntaxError.offset),
         code: "invalid_inline_script_syntax",
         severity: "error",
-        message: `Inline script has invalid syntax: ${syntaxError}`,
+        message: `Inline script has invalid syntax: ${syntaxError.message}`,
         fixHint: "Fix the inline script syntax before render verification.",
         snippet: truncateSnippet(script.content),
       });
@@ -438,7 +679,7 @@ export const coreRules: Array<(ctx: LintContext) => HyperframeLintFinding[]> = [
   },
 
   // non_deterministic_code
-  ({ scripts }) => {
+  ({ scripts, locate }) => {
     const findings: HyperframeLintFinding[] = [];
     const patterns: Array<{
       pattern: RegExp;
@@ -473,7 +714,7 @@ export const coreRules: Array<(ctx: LintContext) => HyperframeLintFinding[]> = [
       {
         pattern: /crypto\.getRandomValues\s*\(/,
         label: "crypto.getRandomValues()",
-        hint: "Remove time-dependent code. Use a seeded PRNG for deterministic renders.",
+        hint: "Use a seeded PRNG (e.g. a simple mulberry32) so renders are deterministic across frames.",
       },
       {
         pattern: /gsap\.utils\.random\s*\(/,
@@ -500,8 +741,10 @@ export const coreRules: Array<(ctx: LintContext) => HyperframeLintFinding[]> = [
       // way to clear the error while still rendering the snippet.
       const executable = stripStringLiterals(withoutComments);
       for (const { pattern, label, hint, scansStrings } of patterns) {
-        if (pattern.test(scansStrings ? withoutComments : executable)) {
+        const match = pattern.exec(scansStrings ? withoutComments : executable);
+        if (match) {
           findings.push({
+            ...locate(script, match.index),
             code: "non_deterministic_code",
             severity: "error",
             message: `Script contains \`${label}\` which produces non-deterministic output. Renders may differ between frames or runs.`,
@@ -514,3 +757,20 @@ export const coreRules: Array<(ctx: LintContext) => HyperframeLintFinding[]> = [
     return findings;
   },
 ];
+
+function cssErrorOffset(source: string, error: postcss.CssSyntaxError): number | undefined {
+  // Current PostCSS supplies offsets, but its declaration type omits this field.
+  if (error.input && "offset" in error.input && typeof error.input.offset === "number")
+    return error.input.offset;
+  const { line, column } = error;
+  if (line === undefined || column === undefined) return undefined;
+  let offset = 0;
+  let currentLine = 1;
+  // PostCSS counts LF only; sourcePosition subsequently handles HTML newline conventions.
+  for (const match of source.matchAll(/\n/g)) {
+    if (currentLine >= line) break;
+    offset = match.index + 1;
+    currentLine++;
+  }
+  return currentLine === line ? offset + column - 1 : undefined;
+}

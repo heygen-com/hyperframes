@@ -5,7 +5,7 @@ import { createRoot, type Root } from "react-dom/client";
 import type { GsapAnimation, PropertyGroupName } from "@hyperframes/core/gsap-parser";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { TimelinePropertyLanes } from "./TimelinePropertyLanes";
-import { TimelineTrackHeader } from "./TimelineTrackHeader";
+import { TimelineTrackHeader, gutterFill } from "./TimelineTrackHeader";
 import { defaultTimelineTheme } from "./timelineTheme";
 import { type TimelineElement } from "../store/playerStore";
 import type { TimelineEditCallbacks } from "./timelineCallbacks";
@@ -75,6 +75,7 @@ interface RenderHeaderOptions {
   isAudioTrack?: boolean;
   isGroupMember?: boolean;
   isTrackHidden?: boolean;
+  showAudioEffects?: boolean;
 }
 
 function renderHeader(options: RenderHeaderOptions = {}): {
@@ -119,6 +120,7 @@ function renderHeader(options: RenderHeaderOptions = {}): {
           isAudioTrack={next.isAudioTrack}
           isGroupMember={next.isGroupMember}
           theme={defaultTimelineTheme}
+          showAudioEffects={next.showAudioEffects}
           onToggleClipExpanded={vi.fn()}
           onToggleTrackHidden={next.onToggleTrackHidden}
           onTogglePropertyGroupKeyframe={next.onTogglePropertyGroupKeyframe}
@@ -207,7 +209,7 @@ describe("TimelineTrackHeader", () => {
       start: 16.5,
       duration: 2,
       track: 0,
-      expandedParentStart: 16,
+      parentCompositionStart: 16,
       sourceFile: "scene.html",
     };
     const local: GsapAnimation = {
@@ -583,6 +585,31 @@ describe("TimelineTrackHeader", () => {
       }),
     } as TimelineElement;
 
+    it("offers the effect rack from an effect lane only while audio effects are shown", () => {
+      const clip = { ...BED, domId: "bed" } as TimelineElement;
+      const gainLabel = (showAudioEffects?: boolean) => {
+        const { host, root } = renderHeader({
+          keyframeClip: clip,
+          animations: [],
+          showAudioEffects,
+        });
+        const button = host
+          .querySelector('[data-automation-lane-label="Peaking EQ 1.6 kHz · Gain"]')
+          ?.querySelector("button");
+        const state = {
+          label: button?.getAttribute("aria-label") ?? null,
+          disabled: button?.disabled,
+        };
+        act(() => root.unmount());
+        return state;
+      };
+      expect(gainLabel()).toEqual({
+        label: "Show Peaking EQ 1.6 kHz · Gain in the effect rack",
+        disabled: false,
+      });
+      expect(gainLabel(false)).toEqual({ label: null, disabled: true });
+    });
+
     it("names every envelope in the label column", () => {
       const { host, root } = renderHeader({ keyframeClip: BED, animations: [] });
       const rows = Array.from(host.querySelectorAll<HTMLElement>("[data-automation-lane-label]"));
@@ -793,11 +820,7 @@ describe("TimelineTrackHeader", () => {
         isGroupMember: true,
       });
       expect(header()?.style.paddingLeft).toBe("14px");
-      expect(header()?.style.borderLeft).toContain("2px");
-      // And a lighter gutter, so the row reads as sitting INSIDE its group
-      // rather than beside it. Overlaid on the theme's own fill rather than a
-      // hard-coded colour, so it follows whatever the gutter is.
-      expect(header()?.style.background).toContain("linear-gradient");
+      expect(header()?.style.borderLeft).toContain("var(--timeline-accent-rail)");
       act(() => view.root.unmount());
     });
 
@@ -910,5 +933,30 @@ describe("TimelineTrackHeader", () => {
       expect(line?.querySelector('[aria-label="2 clips"]')).not.toBeNull();
       act(() => view.root.unmount());
     });
+  });
+});
+
+// A host themes the timeline by overriding --timeline-* on theme.css, so the
+// rendered gutter must carry the CSS variable, not a baked-in colour.
+describe("theming", () => {
+  it("reads the gutter background and border from timeline theme tokens", () => {
+    const view = renderHeader({});
+    const header = view.host.querySelector<HTMLElement>('[role="rowheader"]');
+    expect(header?.style.background).toBe(defaultTimelineTheme.gutterBackground);
+    expect(header?.style.background).toContain("var(--timeline-gutter-bg)");
+    expect(header?.style.borderRight).toContain(defaultTimelineTheme.gutterBorder);
+    act(() => view.root.unmount());
+  });
+
+  // happy-dom's `background` shorthand garbles a `var()` layer next to
+  // `linear-gradient(...)` (verified), so this checks the same value through
+  // the pure function instead of the broken CSSOM roundtrip.
+  it("overlays the group-member tint on the themed gutter, not a hard-coded colour", () => {
+    const filled = gutterFill(defaultTimelineTheme.gutterBackground, true);
+    expect(filled).toContain("linear-gradient");
+    expect(filled.endsWith(defaultTimelineTheme.gutterBackground)).toBe(true);
+    expect(gutterFill(defaultTimelineTheme.gutterBackground, false)).toBe(
+      defaultTimelineTheme.gutterBackground,
+    );
   });
 });

@@ -16,18 +16,27 @@ export function useFrameCapture({
   showToast,
   waitForPendingDomEditSaves,
 }: UseFrameCaptureParams) {
-  const [captureFrameTime, setCaptureFrameTime] = useState(0);
+  const [captureFrameTime, setCaptureFrameTime] = useState(
+    () => usePlayerStore.getState().currentTime,
+  );
   const [capturing, setCapturing] = useState(false);
   const capturingRef = useRef(false);
+  const livePlayheadRef = useRef(captureFrameTime);
 
-  useMountEffect(() => {
-    setCaptureFrameTime(usePlayerStore.getState().currentTime);
-    return liveTime.subscribe(setCaptureFrameTime);
-  });
+  useMountEffect(() =>
+    liveTime.subscribe((time) => {
+      livePlayheadRef.current = time;
+    }),
+  );
+
+  const playheadTime = useCallback(() => {
+    const { isPlaying, currentTime } = usePlayerStore.getState();
+    return isPlaying ? livePlayheadRef.current : currentTime;
+  }, []);
 
   const refreshCaptureFrameTime = useCallback(() => {
-    setCaptureFrameTime(usePlayerStore.getState().currentTime);
-  }, []);
+    setCaptureFrameTime(playheadTime());
+  }, [playheadTime]);
 
   const handleCaptureFrameClick = useCallback(
     async (event: MouseEvent<HTMLAnchorElement>) => {
@@ -39,7 +48,7 @@ export function useFrameCapture({
       capturingRef.current = true;
       setCapturing(true);
       try {
-        const time = usePlayerStore.getState().currentTime;
+        const time = playheadTime();
         setCaptureFrameTime(time);
         await Promise.race([
           waitForPendingDomEditSaves(),
@@ -91,7 +100,7 @@ export function useFrameCapture({
         setCapturing(false);
       }
     },
-    [activeCompPath, projectId, showToast, waitForPendingDomEditSaves],
+    [activeCompPath, playheadTime, projectId, showToast, waitForPendingDomEditSaves],
   );
 
   const captureFrameHref = projectId

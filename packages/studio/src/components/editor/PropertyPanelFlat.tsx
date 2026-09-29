@@ -285,17 +285,17 @@ export function PropertyPanelFlat({
         }
       : null;
   const audioSelection = isAudioDomElement(element.element);
-  // Handlers being wired is necessary but not sufficient: App.tsx always passes
-  // them, so this alone showed the tween editor for every selection — including
-  // an `<audio>` clip and an `<hf-audio-group>` bus, neither of which has a
-  // transform, an opacity or a box for a tween to move. Gated on the TAG, not on
-  // `sections.animation` (`animationCount > 0`): a div with no tweens yet must
-  // still offer "+ Add", so "has none" and "can have none" are different
-  // questions and only the second one belongs here.
+  // Gated on the tag, not `sections.animation` (`animationCount > 0`): an audio
+  // clip/bus has no tween to move, but a fresh div with no tweens yet must
+  // still offer "+ Add" — "has none" and "can have none" differ.
   const showMotionEffects = gsapEffectHandlers !== null && !audioSelection;
   const showMotionGroup = showMotionTiming || showMotionEffects;
 
-  const volumeAutomation = useVolumeAutomation(element, onSetAttributeQuiet ?? onSetAttributeLive);
+  const volumeAutomation = useVolumeAutomation(
+    element,
+    currentTime,
+    onSetAttributeQuiet ?? onSetAttributeLive,
+  );
 
   // The group this clip belongs to, if any — the Audio FX summary reads
   // "in Voiceover" for a member (see `audioFxSummary`). Membership lives on the

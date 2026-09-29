@@ -1,5 +1,5 @@
 import { useCallback, useRef } from "react";
-import type { PatchOperation } from "../utils/sourcePatcher";
+import { HTML_BOOLEAN_ATTRIBUTES, type PatchOperation } from "../utils/sourcePatcher";
 import {
   findElementForSelection,
   getDomEditTargetKey,
@@ -30,15 +30,6 @@ interface DataAttributeCommitOptions {
   refreshAfter?: boolean;
   onSettled?: (ok: boolean) => void;
   /**
-   * Undo grouping for a gesture that spans several commits.
-   *
-   * Without it the key is derived from the prefix, attribute and element, and the
-   * window is history's own 300ms — so a drag's moves and the release that ends it
-   * landed in different entries, and a drag slower than the window split further.
-   * A caller that knows a gesture is in progress passes one key for all of it.
-   */
-  coalesce?: { key: string; ms: number };
-  /**
    * Apply to the preview and stop there — no file write, no history entry.
    *
    * What a gesture wants from every pointermove: the preview document and the
@@ -53,6 +44,14 @@ interface DataAttributeCommitOptions {
 
 function resolveFullAttrName(attr: string, prefixData: boolean | undefined): string {
   return prefixData && !attr.startsWith("data-") ? `data-${attr}` : attr;
+}
+
+// Matches sourcePatcher's own boolean handling: "false" means "remove" only
+// for HTML_BOOLEAN_ATTRIBUTES (loop, muted, ...), so the live preview node
+// ends up holding what persist() actually writes to disk.
+export function resolveOptimisticAttributeValue(attr: string, value: string | null): string | null {
+  if (value === null) return null;
+  return value === "false" && HTML_BOOLEAN_ATTRIBUTES.has(attr) ? null : value;
 }
 
 function setOrRemovePreviewAttribute(
@@ -135,16 +134,14 @@ export function useDomEditAttributeCommits({
   refreshDomEditSelectionFromPreview,
   persistDomEditOperations,
 }: UseDomEditAttributeCommitsParams) {
-  const domAttributeCommitVersionRef = useRef(new Map<string, number>());
+  const domAttributeCommitVersionRef = useRef(new Map<string, symbol>());
 
   const commitDataAttribute = useCallback(
     async (attr: string, value: string | null, options: DataAttributeCommitOptions) => {
       if (!domEditSelection) return;
       const iframe = previewIframeRef.current;
       const fullAttr = resolveFullAttrName(attr, true);
-      const commitKey =
-        options.coalesce?.key ??
-        `${options.coalescePrefix}:${attr}:${getDomEditTargetKey(domEditSelection)}`;
+      const commitKey = `${options.coalescePrefix}:${attr}:${getDomEditTargetKey(domEditSelection)}`;
       const isLatestCommit = bumpDomEditCommitMapVersion(
         domAttributeCommitVersionRef.current,
         commitKey,
@@ -176,7 +173,6 @@ export function useDomEditAttributeCommits({
               persistDomEditOperations(domEditSelection, [op], {
                 label: options.label,
                 coalesceKey: commitKey,
-                ...(options.coalesce ? { coalesceMs: options.coalesce.ms } : {}),
                 skipRefresh: options.skipRefresh,
               }),
         shouldRevert: () => isLatestCommit(),
@@ -200,6 +196,7 @@ export function useDomEditAttributeCommits({
           syncStoredAutomationFromPreview(previewIframeRef.current?.contentDocument ?? null);
         },
         onSettled: options.onSettled,
+        onFinally: isLatestCommit.release,
       });
     },
     [
@@ -288,6 +285,7 @@ export function useDomEditAttributeCommits({
         shouldResync: () => isLatestCommit() && !!options.refreshAfter,
         resync: () => refreshDomEditSelectionFromPreview(selection),
         onSettled: options.onSettled,
+        onFinally: isLatestCommit.release,
       });
     },
     [
@@ -328,14 +326,13 @@ export function useDomEditAttributeCommits({
       attr: string,
       value: string | null,
       onSettled?: (ok: boolean) => void,
-      live?: { coalesce?: { key: string; ms: number }; previewOnly?: boolean },
+      live?: { previewOnly?: boolean },
     ) => {
       await commitDataAttribute(attr, value, {
         label: `Edit ${attr.replace(/^(data-)?/, "").replace(/-/g, " ")}`,
         coalescePrefix: "attr-live",
         skipRefresh: true,
         onSettled,
-        ...(live?.coalesce ? { coalesce: live.coalesce } : {}),
         ...(live?.previewOnly ? { previewOnly: true } : {}),
       });
     },
@@ -352,13 +349,12 @@ export function useDomEditAttributeCommits({
    * edit computes from a pre-edit value and appears to do nothing.
    */
   const handleDomAttributeQuietCommit = useCallback(
-    async (attr: string, value: string | null, coalesce?: { key: string; ms: number }) => {
+    async (attr: string, value: string | null) => {
       await commitDataAttribute(attr, value, {
         label: `Edit ${attr.replace(/^(data-)?/, "").replace(/-/g, " ")}`,
         coalescePrefix: "attr-quiet",
         skipRefresh: true,
         refreshAfter: true,
-        ...(coalesce ? { coalesce } : {}),
       });
     },
     [commitDataAttribute],
@@ -391,8 +387,11 @@ export function useDomEditAttributeCommits({
         },
         apply: () => {
           if (!editedElement) return;
-          const nextValue = value === null || value === "false" ? null : value;
-          setOrRemovePreviewAttribute(editedElement, attr, nextValue);
+          setOrRemovePreviewAttribute(
+            editedElement,
+            attr,
+            resolveOptimisticAttributeValue(attr, value),
+          );
         },
         persist: () =>
           persistDomEditOperations(domEditSelection, [op], {
@@ -420,6 +419,7 @@ export function useDomEditAttributeCommits({
           // shipped without one.
           syncStoredAutomationFromPreview(previewIframeRef.current?.contentDocument ?? null);
         },
+        onFinally: isLatestCommit.release,
       });
     },
     [

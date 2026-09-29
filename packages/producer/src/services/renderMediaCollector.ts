@@ -15,11 +15,20 @@
  */
 
 import { parseHTML } from "linkedom";
-import { MEDIA_RENDER_ID_ATTR } from "@hyperframes/core";
+import { MEDIA_RENDER_ID_ATTR, resolveAuthoredTimingWindow } from "@hyperframes/core";
+import {
+  MEDIA_START_BASIS_ATTR,
+  readMediaStartBasis,
+  resolveAbsoluteMediaStartSeconds,
+  type MediaStartBasis,
+} from "@hyperframes/core/media-timing";
 import {
   parseVideoElements,
   parseImageElements,
   parseAudioElements,
+  resolveReferencedStart,
+  type RefResolverEl,
+  type RefResolverDoc,
   type VideoElement,
   type ImageElement,
   type AudioElement,
@@ -32,31 +41,47 @@ import {
  */
 const COMPOSITION_HOST_ATTR = "data-composition-file";
 
+/**
+ * Where a composition host closes in its parent's time, or null when unbounded.
+ * Delegates to `resolveAuthoredTimingWindow`, the same window the runtime uses to hide descendants.
+ */
+function resolveHostEnd(host: Element, hostStart: number): number | null {
+  return (
+    resolveAuthoredTimingWindow({
+      start: hostStart,
+      duration: host.getAttribute("data-duration"),
+      end: host.getAttribute("data-end"),
+    })?.end ?? null
+  );
+}
+
 interface HostWindow {
   /** Seconds to add to a descendant's authored, scene-relative start. */
   offset: number;
   /** Absolute time past which a descendant is outside its host, or Infinity. */
   limit: number;
+  /** Whether authored media time is composition-local or legacy root-global. */
+  basis: MediaStartBasis;
 }
 
-const ROOT_WINDOW: HostWindow = { offset: 0, limit: Infinity };
-
-function parseNumeric(value: string | null): number | null {
-  if (value == null || value === "") return null;
-  const parsed = Number.parseFloat(value);
-  return Number.isFinite(parsed) ? parsed : null;
-}
+const ROOT_WINDOW: HostWindow = { offset: 0, limit: Infinity, basis: "local" };
 
 /**
  * Fold a media element's chain of composition hosts into one window.
  *
- * Mirrors the offset arithmetic `parseSubCompositions` applied while walking
- * the composition file tree, so a document that has no id collisions produces
- * exactly the timings it did before. Only `data-end` bounds a host: a host
- * carrying just `data-duration` was unbounded there too, and widening that here
- * would silently retime existing compositions rather than fix identity.
+ * Host `data-start` is resolved the same way media is (`resolveReferencedStart`):
+ * numeric literals, or an id / `data-composition-id` ref to a sibling slot's
+ * end (`data-start="hook"`). `parseFloat("hook")` is 0, which stacked every
+ * chained scene at 0–2s. Each host's end comes from `resolveHostEnd`, which
+ * shares the runtime's timing resolver, so the planner's media windows match
+ * the window in which the runtime shows the host's descendants.
  */
-function resolveHostWindow(element: Element): HostWindow {
+function resolveHostWindow(
+  element: Element,
+  document: RefResolverDoc,
+  startCache: Map<RefResolverEl, number>,
+  visiting: Set<RefResolverEl>,
+): HostWindow {
   const hosts: Element[] = [];
   for (let ancestor = element.parentElement; ancestor; ancestor = ancestor.parentElement) {
     if (ancestor.hasAttribute(COMPOSITION_HOST_ATTR)) hosts.push(ancestor);
@@ -67,12 +92,21 @@ function resolveHostWindow(element: Element): HostWindow {
   let limit = Infinity;
   // parentElement walks leaf → root; the offsets accumulate root → leaf.
   for (const host of hosts.reverse()) {
-    const hostStart = parseNumeric(host.getAttribute("data-start")) ?? 0;
-    const hostEnd = parseNumeric(host.getAttribute("data-end"));
+    const hostStart = resolveReferencedStart(document, host, startCache, visiting);
+    const hostEnd = resolveHostEnd(host, hostStart);
     if (hostEnd != null) limit = Math.min(limit, offset + hostEnd);
     offset += hostStart;
   }
-  return { offset, limit };
+  const tag = element.tagName.toLowerCase();
+  const basis =
+    tag === "video" || tag === "audio"
+      ? readMediaStartBasis(element.getAttribute(MEDIA_START_BASIS_ATTR))
+      : "local";
+  return {
+    offset,
+    limit,
+    basis,
+  };
 }
 
 /**
@@ -83,10 +117,15 @@ function resolveHostWindow(element: Element): HostWindow {
 function collectHostWindows(html: string): Map<string, HostWindow> {
   const { document } = parseHTML(html);
   const windows = new Map<string, HostWindow>();
+  const startCache = new Map<RefResolverEl, number>();
+  const visiting = new Set<RefResolverEl>();
   for (const element of document.querySelectorAll(`[${MEDIA_RENDER_ID_ATTR}]`)) {
     const renderId = element.getAttribute(MEDIA_RENDER_ID_ATTR);
     if (!renderId) continue;
-    windows.set(renderId, resolveHostWindow(element as unknown as Element));
+    windows.set(
+      renderId,
+      resolveHostWindow(element as unknown as Element, document, startCache, visiting),
+    );
   }
   return windows;
 }
@@ -101,9 +140,17 @@ function toAbsoluteWindow(
   end: number,
   window: HostWindow,
 ): { start: number; end: number } | null {
-  const absoluteStart = start + window.offset;
+  const absoluteStart = resolveAbsoluteMediaStartSeconds({
+    authoredStart: start,
+    hostStart: window.offset,
+    basis: window.basis,
+  });
   if (absoluteStart >= window.limit) return null;
-  const absoluteEnd = end + window.offset;
+  const absoluteEnd = resolveAbsoluteMediaStartSeconds({
+    authoredStart: end,
+    hostStart: window.offset,
+    basis: window.basis,
+  });
   return { start: absoluteStart, end: Math.min(absoluteEnd, window.limit) };
 }
 

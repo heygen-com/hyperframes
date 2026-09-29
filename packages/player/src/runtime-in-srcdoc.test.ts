@@ -68,4 +68,14 @@ describe("ensureRuntimeBeforeBodyScripts", () => {
 
     expect(out.indexOf(URL)).toBeLessThan(out.indexOf("read()"));
   });
+
+  it("does not mistake a longer tag name for head", () => {
+    const out = ensureRuntimeBeforeBodyScripts(
+      `<html><header><script>early()</script></header><body><script>read()</script></body></html>`,
+      URL,
+    );
+
+    expect(out.indexOf(URL)).toBeLessThan(out.indexOf("<body>"));
+    expect(out.indexOf(URL)).toBeGreaterThan(out.indexOf("</header>"));
+  });
 });

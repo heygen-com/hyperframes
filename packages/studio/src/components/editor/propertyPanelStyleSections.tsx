@@ -53,7 +53,7 @@ export function StyleSections({
   element: DomEditSelection;
   styles: Record<string, string>;
   assets: string[];
-  onSetStyle: (prop: string, value: string) => void | Promise<void>;
+  onSetStyle: (prop: string, value: string) => void | Promise<unknown>;
   onImportAssets?: (files: FileList) => Promise<string[]>;
   gsapBorderRadius?: { tl: number; tr: number; br: number; bl: number } | null;
   // When true, the Flex `Section` is suppressed. The flat inspector renders

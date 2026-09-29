@@ -1,11 +1,12 @@
 import type { RefObject } from "react";
 import { type DomEditSelection } from "./domEditing";
 import type { GroupOverlayItem, OverlayRect } from "./domEditOverlayGeometry";
-import type { BlockedMoveState, ResizeHandle } from "./domEditOverlayGestures";
+import type { ResizeHandle } from "./domEditOverlayGestures";
 import type { createDomEditOverlayGestureHandlers } from "./useDomEditOverlayGestures";
 import { DomEditCropHandles } from "./DomEditCropHandles";
 import { DomEditRotateHandle } from "./DomEditRotateHandle";
 import { resolveRotatedResizeCursor } from "./domEditResizeLocal";
+import { usePreviewReadOnly } from "./previewReadOnlyContext";
 
 // Corner resize handles, Canva-style: one per corner, diagonal cursors.
 // Corners scale about the element center; the translate keeps the center
@@ -75,6 +76,7 @@ export function DomEditGroupChrome({
   onBoxMouseDown,
   onBoxClick,
 }: DomEditGroupChromeProps) {
+  const canManipulate = allowCanvasMovement && !usePreviewReadOnly();
   return (
     <>
       {groupOverlayItems.map((item) => (
@@ -98,10 +100,10 @@ export function DomEditGroupChrome({
           top: groupBounds.top,
           width: groupBounds.width,
           height: groupBounds.height,
-          cursor: allowCanvasMovement && groupCanMove ? "move" : "default",
+          cursor: canManipulate && groupCanMove ? "move" : "default",
         }}
         onPointerDown={(e) => {
-          if (!allowCanvasMovement || !groupCanMove || e.shiftKey) return;
+          if (!canManipulate || e.shiftKey) return;
           gestures.startGroupDrag(e);
         }}
         onMouseDown={onBoxMouseDown}
@@ -121,9 +123,8 @@ interface DomEditSelectionChromeProps {
   boxClipPath: string | undefined;
   selectionKey: string;
   groupSelectionCount: number;
-  blockedMoveRef: RefObject<BlockedMoveState | null>;
   gestures: GestureHandlers;
-  onStyleCommit?: (property: string, value: string) => Promise<void> | void;
+  onStyleCommit?: (property: string, value: string) => Promise<unknown> | void;
   onBoxMouseDown: (e: React.MouseEvent) => void;
   onBoxClick: (event: React.MouseEvent<HTMLDivElement>) => void;
   /** The canvas' text-editing session: what opens one, and whether one is open. */
@@ -150,7 +151,6 @@ export function DomEditSelectionChrome({
   boxClipPath,
   selectionKey,
   groupSelectionCount,
-  blockedMoveRef,
   gestures,
   onStyleCommit,
   onBoxMouseDown,
@@ -164,6 +164,8 @@ export function DomEditSelectionChrome({
   // into: left interactive, it swallows every press, so the caret can never be
   // moved and characters can never be selected by dragging.
   const editing = inlineText?.editing ?? false;
+  const readOnly = usePreviewReadOnly();
+  const canManipulate = allowCanvasMovement && !readOnly;
 
   return (
     <>
@@ -174,7 +176,7 @@ export function DomEditSelectionChrome({
           transform: overlayRect.angle ? `rotate(${overlayRect.angle}deg)` : undefined,
         }}
       >
-        {allowCanvasMovement && !editing && selection.capabilities.canApplyManualRotation && (
+        {canManipulate && !editing && selection.capabilities.canApplyManualRotation && (
           <DomEditRotateHandle
             overlayRect={overlayRect}
             cropOutlineInsetPx={cropOutlineInsetPx}
@@ -196,9 +198,7 @@ export function DomEditSelectionChrome({
             height: overlayRect.height,
             clipPath: boxClipPath,
             cursor:
-              allowCanvasMovement && selection.capabilities.canApplyManualOffset
-                ? "move"
-                : "default",
+              canManipulate && selection.capabilities.canApplyManualOffset ? "move" : "default",
           }}
           onPointerDown={(e) => {
             // A second press opens the element's text for editing, and must be
@@ -211,20 +211,12 @@ export function DomEditSelectionChrome({
               e.stopPropagation();
               return;
             }
-            if (!allowCanvasMovement || e.shiftKey) return;
+            if (!canManipulate || e.shiftKey) return;
             if (selection.capabilities.canApplyManualOffset) {
               gestures.startGesture("drag", e);
               return;
             }
-            e.preventDefault();
-            e.stopPropagation();
-            e.currentTarget.setPointerCapture(e.pointerId);
-            blockedMoveRef.current = {
-              pointerId: e.pointerId,
-              startX: e.clientX,
-              startY: e.clientY,
-              notified: false,
-            };
+            gestures.startBlockedMove(e, selection);
           }}
           onMouseDown={onBoxMouseDown}
           onClick={onBoxClick}
@@ -245,7 +237,7 @@ export function DomEditSelectionChrome({
           children, so they paint strictly above the box border. Each handle
           is positioned relative to the overlay container using the
           overlayRect origin, matching the old child-relative offsets. */}
-        {allowCanvasMovement &&
+        {canManipulate &&
           !editing &&
           selection.capabilities.canApplyManualSize &&
           RESIZE_HANDLE_DEFS.map((def) =>
@@ -271,7 +263,7 @@ export function DomEditSelectionChrome({
       </div>
       {/* Crop owns its element-local oriented frame. Keep it outside the chrome's
           rotated plane or a rotated selection applies the angle twice. */}
-      {selection.capabilities.canCrop && !editing && groupSelectionCount <= 1 && (
+      {selection.capabilities.canCrop && !editing && !readOnly && groupSelectionCount <= 1 && (
         <DomEditCropHandles
           selection={selection}
           overlayRect={overlayRect}

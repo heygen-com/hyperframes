@@ -1,5 +1,6 @@
 import { useState, type RefObject } from "react";
 import { useMountEffect } from "../../hooks/useMountEffect";
+import { subscribeOverlayFrame } from "./overlayFrameLoop";
 
 export interface DomEditCompositionRect {
   left: number;
@@ -39,10 +40,8 @@ export function useDomEditCompositionRect({
   });
 
   useMountEffect(() => {
-    let frame = 0;
     // fallow-ignore-next-line complexity
     const update = () => {
-      frame = requestAnimationFrame(update);
       const iframe = iframeRef.current;
       const overlayEl = overlayRef.current;
       if (!iframe || !overlayEl) return;
@@ -60,8 +59,7 @@ export function useDomEditCompositionRect({
       const next = { left, top, width: iRect.width, height: iRect.height, scaleX, scaleY };
       setCompRect((prev) => (sameRect(prev, next) ? prev : next));
     };
-    frame = requestAnimationFrame(update);
-    return () => cancelAnimationFrame(frame);
+    return subscribeOverlayFrame(update);
   });
 
   return compRect;

@@ -2,11 +2,12 @@
 
 import React, { act } from "react";
 import { createRoot } from "react-dom/client";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi, type Mock } from "vitest";
 import { TIMELINE_ASSET_MIME, TIMELINE_BLOCK_MIME } from "../../utils/timelineAssetDrop";
 import { usePlayerStore } from "../store/playerStore";
 import { createTimelineRowGeometry } from "./timelineLayout";
-import { useTimelineAssetDrop } from "./timelineDragDrop";
+import { resolveDropInsertRow, useTimelineAssetDrop } from "./timelineDragDrop";
+import { getTimelineRowTop, TRACK_H } from "./timelineLayout";
 import { configureTimelineTestViewport } from "./timelineTestViewport";
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
@@ -37,9 +38,9 @@ function assetTransfer(payload: string): DropTransfer {
 }
 
 function renderHarness(
-  onAssetDrop: ReturnType<typeof vi.fn>,
+  onAssetDrop: Mock,
   sessionEpoch = 1,
-  options: { onBlockDrop?: ReturnType<typeof vi.fn>; strict?: boolean } = {},
+  options: { onBlockDrop?: Mock; strict?: boolean } = {},
 ) {
   const tracks = Array.from({ length: 100 }, (_, index) => index);
   const geometry = createTimelineRowGeometry(
@@ -56,7 +57,6 @@ function renderHarness(
     api = useTimelineAssetDrop({
       scrollRef: { current: scroll },
       ppsRef: { current: 40 },
-      durationRef: { current: 120 },
       trackOrderRef: { current: tracks },
       rowGeometryRef: { current: geometry },
       contentOrigin: 0,
@@ -138,7 +138,6 @@ describe("useTimelineAssetDrop", () => {
   it("drops once on a model row outside the mounted window and appends below the last row", () => {
     const onAssetDrop = vi.fn();
     const view = renderHarness(onAssetDrop);
-    usePlayerStore.getState().setCurrentTime(12.5);
     view.scroll.scrollTop = view.scroll.scrollHeight - view.scroll.clientHeight;
     const transfer = assetTransfer(JSON.stringify({ path: "/media/hero.mp4" }));
 
@@ -148,8 +147,26 @@ describe("useTimelineAssetDrop", () => {
     });
 
     expect(onAssetDrop).toHaveBeenCalledTimes(1);
-    expect(onAssetDrop).toHaveBeenCalledWith("/media/hero.mp4", { start: 12.5, track: 100 });
+    // pps=40, clientX=400 -> 10s at the pointer, not the playhead.
+    expect(onAssetDrop).toHaveBeenCalledWith("/media/hero.mp4", { start: 10, track: 100 });
     expect(view.api.isDragOver).toBe(false);
+    act(() => view.root.unmount());
+  });
+
+  it("places the drop at the pointer x, ignoring the playhead", () => {
+    const onAssetDrop = vi.fn();
+    const view = renderHarness(onAssetDrop);
+    usePlayerStore.getState().setCurrentTime(50);
+    const transfer = assetTransfer(JSON.stringify({ path: "/media/hero.mp4" }));
+
+    act(() => {
+      view.api.handleAssetDragOver(dragEvent(transfer, 80, 100));
+      view.api.handleAssetDrop(dragEvent(transfer, 80, 100));
+    });
+
+    // pps=40, clientX=80 -> 2s, far from the 50s playhead: proves start tracks
+    // the drop position, not usePlayerStore.currentTime.
+    expect(onAssetDrop).toHaveBeenCalledWith("/media/hero.mp4", { start: 2, track: 0 });
     act(() => view.root.unmount());
   });
 
@@ -190,7 +207,8 @@ describe("useTimelineAssetDrop", () => {
     });
 
     expect(onAssetDrop).not.toHaveBeenCalled();
-    expect(onBlockDrop).toHaveBeenCalledExactlyOnceWith("title-card", { start: 0, track: 0 });
+    // pps=40, clientX=400 -> 10s at the pointer.
+    expect(onBlockDrop).toHaveBeenCalledExactlyOnceWith("title-card", { start: 10, track: 0 });
     act(() => view.root.unmount());
   });
 
@@ -201,6 +219,110 @@ describe("useTimelineAssetDrop", () => {
 
     act(() => window.dispatchEvent(new Event("dragend")));
     expect(view.api.isDragOver).toBe(false);
+    act(() => view.root.unmount());
+  });
+
+  it("previews the exact placement the drop commits, and clears it after", () => {
+    const onAssetDrop = vi.fn();
+    const view = renderHarness(onAssetDrop);
+    const payload = JSON.stringify({ path: "assets/a.png" });
+
+    act(() => view.api.handleAssetDragOver(dragEvent(assetTransfer(payload), 400, 100)));
+    const preview = view.api.dropPreview;
+    expect(preview).toEqual({ start: 10, track: 0 });
+
+    act(() => view.api.handleAssetDrop(dragEvent(assetTransfer(payload), 400, 100)));
+    expect(onAssetDrop).toHaveBeenCalledExactlyOnceWith("assets/a.png", preview);
+    expect(view.api.dropPreview).toBeNull();
+    act(() => view.root.unmount());
+  });
+
+  it("moves the preview with the pointer and drops it when the drag leaves", () => {
+    const view = renderHarness(vi.fn());
+    act(() => view.api.handleAssetDragOver(dragEvent(assetTransfer("{}"), 400, 100)));
+    act(() => view.api.handleAssetDragOver(dragEvent(assetTransfer("{}"), 800, 100)));
+    expect(view.api.dropPreview?.start).toBe(20);
+
+    act(() =>
+      view.api.handleAssetDragLeave({
+        relatedTarget: null,
+        currentTarget: document.body,
+      } as unknown as React.DragEvent),
+    );
+    expect(view.api.dropPreview).toBeNull();
+    act(() => view.root.unmount());
+  });
+});
+
+describe("resolveDropInsertRow", () => {
+  const rows = [TRACK_H, TRACK_H, TRACK_H];
+  it("stays on the row at the boundary between two rows", () => {
+    for (const dy of [-1, 0, 1]) {
+      expect(resolveDropInsertRow(getTimelineRowTop(1, rows) + dy, rows, 3)).toBeNull();
+    }
+  });
+  it("arms a new track above the first lane", () => {
+    expect(resolveDropInsertRow(getTimelineRowTop(0, rows) - 4, rows, 3)).toBe(0);
+  });
+  it("stays on the lane when the pointer is over its middle", () => {
+    expect(resolveDropInsertRow(getTimelineRowTop(1, rows) + TRACK_H / 2, rows, 3)).toBeNull();
+  });
+  it("leaves the area below the last lane to the append path", () => {
+    expect(resolveDropInsertRow(getTimelineRowTop(2, rows) + TRACK_H + 4, rows, 3)).toBeNull();
+  });
+  it("never arms on an empty timeline", () => {
+    expect(resolveDropInsertRow(80, [], 0)).toBeNull();
+  });
+});
+
+describe("useTimelineAssetDrop new-track drops", () => {
+  it("drops an asset released at the top edge of a row onto that row, with no new track", () => {
+    const onAssetDrop = vi.fn();
+    const view = renderHarness(onAssetDrop);
+    const transfer = assetTransfer(JSON.stringify({ path: "assets/a.png" }));
+    const y = getTimelineRowTop(1) + 1;
+
+    act(() => view.api.handleAssetDragOver(dragEvent(transfer, 400, y)));
+    expect(view.api.dropPreview).toEqual({ start: 10, track: 1 });
+    act(() => view.api.handleAssetDrop(dragEvent(transfer, 400, y)));
+    expect(onAssetDrop).toHaveBeenCalledWith("assets/a.png", { start: 10, track: 1 });
+    act(() => view.root.unmount());
+  });
+
+  it("opens a new track for an asset released in the empty space above the first row", () => {
+    const onAssetDrop = vi.fn();
+    const view = renderHarness(onAssetDrop);
+    const transfer = assetTransfer(JSON.stringify({ path: "assets/a.png" }));
+    const y = getTimelineRowTop(0) - 4;
+
+    act(() => view.api.handleAssetDragOver(dragEvent(transfer, 400, y)));
+    act(() => view.api.handleAssetDrop(dragEvent(transfer, 400, y)));
+    expect(onAssetDrop).toHaveBeenCalledWith(
+      "assets/a.png",
+      expect.objectContaining({
+        start: 10,
+        insertRow: 0,
+        trackOrder: Array.from({ length: 100 }, (_, index) => index),
+      }),
+    );
+    act(() => view.root.unmount());
+  });
+
+  it("does not ask a block drop to insert a track", () => {
+    const onBlockDrop = vi.fn();
+    const view = renderHarness(vi.fn(), 1, { onBlockDrop });
+    const transfer: DropTransfer = {
+      types: [TIMELINE_BLOCK_MIME],
+      files: [],
+      dropEffect: "none",
+      getData: (type) => (type === TIMELINE_BLOCK_MIME ? JSON.stringify({ name: "b" }) : ""),
+    };
+    const y = getTimelineRowTop(1) + 1;
+    act(() => {
+      view.api.handleAssetDragOver(dragEvent(transfer, 400, y));
+      view.api.handleAssetDrop(dragEvent(transfer, 400, y));
+    });
+    expect(onBlockDrop).toHaveBeenCalledWith("b", { start: 10, track: 1 });
     act(() => view.root.unmount());
   });
 });

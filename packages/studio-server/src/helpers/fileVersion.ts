@@ -1,4 +1,5 @@
 import { createHash, randomUUID } from "node:crypto";
+import { realFilePath } from "./safePath.js";
 
 export interface FileWriteReceipt {
   path: string;
@@ -10,12 +11,39 @@ interface StoredReceipt extends FileWriteReceipt {
   recordedAt: number;
 }
 
+type OverwriteListener = (absPath: string, version: string, overwrote: string | Uint8Array) => void;
+
 const RECEIPT_TTL_MS = 10_000;
 const receipts = new Map<string, StoredReceipt[]>();
+const overwriteListeners = new Set<OverwriteListener>();
 
 /** Strong content version used as both the JSON version and HTTP ETag. */
-export function fileContentVersion(content: string): string {
-  return `"sha256:${createHash("sha256").update(content, "utf8").digest("hex")}"`;
+export function fileContentVersion(content: string | Uint8Array): string {
+  return hashVersion(createHash("sha256").update(content).digest("hex"));
+}
+
+/** The version a deletion's receipt is kept under: a deleted file has no bytes to hash. */
+export const DELETED_VERSION = '"deleted"';
+
+export function hashVersion(hex: string): string {
+  return `"sha256:${hex}"`;
+}
+
+/** The sha256 a version names, or undefined when it is not a content version. */
+export function hashOfVersion(version: string): string | undefined {
+  return /^"sha256:([0-9a-f]{64})"$/.exec(version)?.[1];
+}
+
+/** A validator from a file's inode, change time and size, or null while the change is under three
+ * seconds old. Change time, not mtime: copy tools (`cp -p`, rsync, robocopy) set mtime back but not
+ * ctime, which Node reads from NTFS ChangeTime on Windows. A same-size rewrite within one tick keeps
+ * both, so only a settled file is tagged. */
+export function settledFileTag(
+  stat: { ino: number; ctimeMs: number; size: number },
+  now = Date.now(),
+): string | null {
+  if (now - stat.ctimeMs < 3000) return null;
+  return [stat.ino, stat.ctimeMs, stat.size].map((n) => n.toString(36)).join("-");
 }
 
 export function createWriteToken(requestToken?: string): string {
@@ -23,32 +51,80 @@ export function createWriteToken(requestToken?: string): string {
   return token && token.length <= 200 ? token : randomUUID();
 }
 
-export function recordFileWriteReceipt(absPath: string, receipt: FileWriteReceipt): void {
-  const now = Date.now();
-  const current = (receipts.get(absPath) ?? []).filter(
-    (entry) => now - entry.recordedAt < RECEIPT_TTL_MS,
-  );
-  current.push({ ...receipt, recordedAt: now });
-  receipts.set(absPath, current);
+/** Hears the bytes each API write replaced, so a project history can keep a save it never saw. */
+export function onFileOverwritten(listener: OverwriteListener): () => void {
+  overwriteListeners.add(listener);
+  return () => overwriteListeners.delete(listener);
 }
 
-/** Attach one API write's identity to the watcher echo for its exact bytes. */
-export function consumeFileWriteReceipt(
-  absPath: string,
-  expectedVersion: string,
-): FileWriteReceipt | null {
+export function recordFileWriteReceipt(
+  filePath: string,
+  { overwrote, ...receipt }: FileWriteReceipt & { overwrote?: string | Uint8Array },
+): void {
+  const absPath = realFilePath(filePath);
+  if (overwrote !== undefined)
+    for (const listener of overwriteListeners) listener(absPath, receipt.version, overwrote);
   const now = Date.now();
+  for (const [path, list] of receipts) {
+    const live = list.filter((entry) => now - entry.recordedAt < RECEIPT_TTL_MS);
+    if (live.length > 0) receipts.set(path, live);
+    else receipts.delete(path);
+  }
+  receipts.set(absPath, [...(receipts.get(absPath) ?? []), { ...receipt, recordedAt: now }]);
+}
+
+export function clearFileWriteReceipt(filePath: string, version: string, writeToken: string): void {
+  const absPath = realFilePath(filePath);
   const current = (receipts.get(absPath) ?? []).filter(
-    (entry) => now - entry.recordedAt < RECEIPT_TTL_MS,
+    (entry) => entry.version !== version || entry.writeToken !== writeToken,
   );
-  const receiptIndex = current.findIndex((entry) => entry.version === expectedVersion);
-  const receipt = receiptIndex === -1 ? null : (current.splice(receiptIndex, 1)[0] ?? null);
   if (current.length > 0) receipts.set(absPath, current);
   else receipts.delete(absPath);
+}
+
+/**
+ * Attach one API write's identity to the watcher echo for its exact bytes.
+ *
+ * Reading is non-destructive: one watcher event fans out to every open SSE
+ * subscriber, and a receipt removed by the first reader leaves the rest seeing
+ * an unlabelled change and reloading the preview on Studio's own edit. Only the
+ * TTL removes a receipt.
+ */
+export function identifyFileWrite(
+  filePath: string,
+  expectedVersion: string,
+): FileWriteReceipt | null {
+  const receipt = newestReceipt(realFilePath(filePath), expectedVersion);
   if (!receipt) return null;
   const { path, version, writeToken } = receipt;
   return { path, version, writeToken };
 }
+
+function newestReceipt(absPath: string, expectedVersion: string): StoredReceipt | undefined {
+  const now = Date.now();
+  const current = (receipts.get(absPath) ?? []).filter(
+    (entry) => now - entry.recordedAt < RECEIPT_TTL_MS,
+  );
+  if (current.length > 0) receipts.set(absPath, current);
+  else receipts.delete(absPath);
+  // Newest match, not oldest: identical bytes written twice inside the TTL
+  // (undo, retyping a value) share a version, and the older token was already
+  // spent by the client on its own echo. The destructive read used to advance
+  // past it; scanning from the end keeps that cursor without the eviction.
+  let receipt: StoredReceipt | undefined;
+  for (let i = current.length - 1; i >= 0 && !receipt; i -= 1) {
+    if (current[i]?.version === expectedVersion) receipt = current[i];
+  }
+  return receipt;
+}
+
+/**
+ * @deprecated Renamed to {@link identifyFileWrite}, which despite this alias's
+ * name does NOT consume the receipt: one watcher event fans out to every SSE
+ * subscriber, so a destructive read left all but the first reloading on Studio's
+ * own write. Kept for one release; call `identifyFileWrite` instead.
+ */
+export const consumeFileWriteReceipt = identifyFileWrite;
 
 export function resetFileWriteReceipts(): void {
   receipts.clear();

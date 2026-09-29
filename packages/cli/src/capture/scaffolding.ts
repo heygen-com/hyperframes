@@ -5,8 +5,9 @@
  * (index.html, meta.json, AGENTS.md, CLAUDE.md).
  */
 
-import { existsSync, writeFileSync, readFileSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import { join, resolve } from "node:path";
+import { writeNewFileSync } from "../utils/writeNewFile.js";
 import type { CatalogedAsset } from "./assetCataloger.js";
 import type { CaptureResult, DesignTokens } from "./types.js";
 
@@ -71,10 +72,9 @@ export async function generateProjectScaffold(
   const metaPath = join(outputDir, "meta.json");
   if (!existsSync(metaPath)) {
     const hostname = new URL(url).hostname.replace(/^www\./, "");
-    writeFileSync(
+    writeNewFileSync(
       metaPath,
       JSON.stringify({ id: hostname + "-video", name: tokens.title || hostname }, null, 2),
-      "utf-8",
     );
   }
 

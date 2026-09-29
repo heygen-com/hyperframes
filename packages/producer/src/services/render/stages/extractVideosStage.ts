@@ -38,6 +38,7 @@ import {
   type FrameLookupTable,
   type HdrTransfer,
   type VideoExtractionFailureKind,
+  type VideoExtractionFailureGroupDetails,
   type VideoColorSpace,
   classifyVideoExtractionError,
   createFrameLookupTable,
@@ -47,6 +48,7 @@ import {
   isHdrColorSpace,
   resolveProjectRelativeSrc,
   runVideoExtractionWithRetry,
+  safeVideoExtractionSourceIdentity,
 } from "@hyperframes/engine";
 import {
   collectVideoMetadataHints,
@@ -54,7 +56,14 @@ import {
   type RenderJob,
 } from "../../renderOrchestrator.js";
 import { materializeExtractedFramesForCompiledDir, type CompositionMetadata } from "../shared.js";
+import { resolveRenderFpsConfig } from "../../fileServer.js";
 import type { ProducerLogger } from "../../../logger.js";
+import { encoderFailureError } from "../encoderInterruption.js";
+import {
+  compareExtractionFailureGroups,
+  extractionFailureGroupIdentityKey,
+  type ExtractionFailureMetadataV1,
+} from "../extractionFailureMetadata.js";
 
 export interface ExtractVideosStageInput {
   projectDir: string;
@@ -104,23 +113,65 @@ export interface ExtractVideosStageResult {
   failureToEnforce: VideoExtractionStageError | null;
 }
 
-/**
- * Whether the extract stage should COPY frames into the compiled dir instead of
- * symlinking them. Windows without Developer Mode / Administrator can't create
- * symlinks (`symlinkSync` throws EPERM), which failed local video renders; copy
- * there instead. Elsewhere symlinking is cheaper, so keep it. (The distributed
- * `plan()` path already forces copying for a different reason — a self-contained
- * planDir — by passing `materializeSymlinks: true` explicitly.)
- */
-export function shouldCopyExtractedFrames(platform: NodeJS.Platform): boolean {
-  return platform === "win32";
-}
-
 export type VideoExtractionStageErrorCode = "VIDEO_SOURCE_UNRENDERABLE" | "VIDEO_EXTRACTION_FAILED";
 
 export interface VideoExtractionStageFailureSummary {
   kind: VideoExtractionFailureKind;
   count: number;
+}
+
+const MAX_EXTRACTION_FAILURE_GROUPS = 8;
+
+interface ExtractionFailureAggregateInput extends VideoExtractionFailureGroupDetails {
+  kind: VideoExtractionFailureKind;
+  affectedElementCount: number;
+}
+
+function buildExtractionFailureMetadata(
+  inputs: readonly ExtractionFailureAggregateInput[],
+): ExtractionFailureMetadataV1 {
+  const kindCounts = new Map<VideoExtractionFailureKind, number>();
+  const grouped = new Map<string, ExtractionFailureAggregateInput>();
+  for (const input of inputs) {
+    kindCounts.set(input.kind, (kindCounts.get(input.kind) ?? 0) + input.affectedElementCount);
+    const key = extractionFailureGroupIdentityKey(input);
+    const existing = grouped.get(key);
+    if (existing) {
+      existing.affectedElementCount += input.affectedElementCount;
+    } else {
+      grouped.set(key, { ...input });
+    }
+  }
+
+  const allGroups = [...grouped.values()].sort(compareExtractionFailureGroups);
+  return {
+    schemaVersion: 1,
+    kindCounts: [...kindCounts]
+      .map(([kind, affectedElementCount]) => ({
+        kind,
+        affectedElementCount,
+      }))
+      .sort((a, b) => (a.kind < b.kind ? -1 : a.kind > b.kind ? 1 : 0)),
+    groups: allGroups.slice(0, MAX_EXTRACTION_FAILURE_GROUPS),
+    omittedGroupCount: Math.max(0, allGroups.length - MAX_EXTRACTION_FAILURE_GROUPS),
+  };
+}
+
+function extractionFailureMetadataFromResult(
+  result: ExtractionResult,
+): ExtractionFailureMetadataV1 {
+  return buildExtractionFailureMetadata(
+    result.errors.map((failure) => ({
+      kind: failure.kind ?? "internal",
+      affectedElementCount: 1,
+      ...failure.group,
+    })),
+  );
+}
+
+export function safeVideoExtractionSourceLogMetadata(source: string): Record<string, unknown> {
+  const identity = safeVideoExtractionSourceIdentity(source);
+  return identity ? { sourceType: "remote", ...identity } : { sourceType: "local" };
 }
 
 export type VideoExtractionFailureMode = "off" | "observe" | "enforce";
@@ -131,15 +182,17 @@ export interface VideoExtractionPolicy {
 }
 
 /**
- * Candidate-lane rollout controls. Stable behavior remains unchanged unless
- * explicitly enabled in the producer environment.
+ * Extraction failure policy. Defaults to `enforce` so per-source errors
+ * surface as render failures instead of being silently swallowed (#3372).
+ * Set `HF_VIDEO_EXTRACTION_FAILURE_MODE=off` to restore the old silent
+ * behavior, or `observe` to log without failing.
  */
 export function resolveVideoExtractionPolicy(
   env: Readonly<Record<string, string | undefined>> = process.env,
 ): VideoExtractionPolicy {
   const rawMode = env.HF_VIDEO_EXTRACTION_FAILURE_MODE?.trim().toLowerCase();
   const failureMode: VideoExtractionFailureMode =
-    rawMode === "observe" || rawMode === "enforce" ? rawMode : "off";
+    rawMode === "observe" || rawMode === "off" ? rawMode : "enforce";
   const maxTransientRetries =
     failureMode !== "off" && env.HF_VIDEO_EXTRACTION_MAX_RETRIES?.trim() === "1" ? 1 : 0;
   return { failureMode, maxTransientRetries };
@@ -154,21 +207,45 @@ export function resolveVideoExtractionPolicy(
  * the cause without leaking those values.
  */
 export class VideoExtractionStageError extends Error {
+  /**
+   * Producer servers may expose this explicitly public, JSON-compatible data
+   * without knowing its schema. Boundary adapters remain responsible for
+   * validating and applying policy to it.
+   */
+  readonly publicMetadata: Readonly<Record<string, unknown>>;
+
   constructor(
     readonly code: VideoExtractionStageErrorCode,
     readonly retryable: boolean,
     readonly failures: readonly VideoExtractionStageFailureSummary[],
+    readonly extractionFailure: ExtractionFailureMetadataV1 = buildExtractionFailureMetadata(
+      failures.map((failure) => ({
+        kind: failure.kind,
+        affectedElementCount: failure.count,
+      })),
+    ),
   ) {
     const total = failures.reduce((sum, failure) => sum + failure.count, 0);
     const breakdown = failures.map((failure) => `${failure.kind}=${failure.count}`).join(",");
     super(`Video extraction failed for ${total} source(s) [${code}; ${breakdown}]`);
     this.name = "VideoExtractionStageError";
+    this.publicMetadata = { extractionFailure };
   }
 }
 
 export function assertVideoExtractionSucceeded(result: ExtractionResult): void {
+  throwIfEncoderInterrupted(result);
   const error = buildVideoExtractionStageError(result);
   if (error) throw error;
+}
+
+function throwIfEncoderInterrupted(result: ExtractionResult): void {
+  const interrupted = result.errors.find((failure) => failure.kind === "external_interruption");
+  if (!interrupted) return;
+  throw encoderFailureError("Video frame extraction failed", {
+    error: String(interrupted.error),
+    failureReason: "external_interruption",
+  });
 }
 
 function buildVideoExtractionStageError(
@@ -189,6 +266,7 @@ function buildVideoExtractionStageError(
     retryable ? "VIDEO_EXTRACTION_FAILED" : "VIDEO_SOURCE_UNRENDERABLE",
     retryable,
     failures,
+    extractionFailureMetadataFromResult(result),
   );
 }
 
@@ -207,6 +285,12 @@ export function buildHdrProbeStageError(
     retryable ? "VIDEO_EXTRACTION_FAILED" : "VIDEO_SOURCE_UNRENDERABLE",
     retryable,
     summary,
+    buildExtractionFailureMetadata(
+      failures.map((failure) => ({
+        kind: failure.kind,
+        affectedElementCount: 1,
+      })),
+    ),
   );
 }
 
@@ -224,6 +308,16 @@ function throwHdrProbeFailures(
   mode: VideoExtractionFailureMode,
 ): void {
   if (failures.length === 0) return;
+  const interrupted = failures.find(
+    (failure) => failure.classified.kind === "external_interruption",
+  );
+  if (interrupted) {
+    throw encoderFailureError("Video HDR probe failed", {
+      error:
+        interrupted.error instanceof Error ? interrupted.error.message : String(interrupted.error),
+      failureReason: "external_interruption",
+    });
+  }
   if (mode === "enforce") {
     throw buildHdrProbeStageError(failures.map((failure) => failure.classified));
   }
@@ -388,7 +482,10 @@ export async function runExtractVideosStage(
     const totalVideos = composition.videos.length;
     for (let i = 0; i < totalVideos; i++) {
       const v = composition.videos[i]!;
-      log?.info(`Extracting frames from video ${i + 1}/${totalVideos}: ${v.src}`);
+      log?.info(
+        `Extracting frames from video ${i + 1}/${totalVideos}`,
+        safeVideoExtractionSourceLogMetadata(v.src),
+      );
     }
     extractionResult = await extractAllVideoFrames(
       composition.videos,
@@ -400,6 +497,7 @@ export async function runExtractVideosStage(
         fps: job.config.fps,
         outputDir: join(compiledDir, "__hyperframes_video_frames"),
         format: job.config.videoFrameFormat ?? "auto",
+        toneMapHdrToSdr: job.config.hdrMode === "force-sdr",
         timelineEnd: composition.duration,
         maxTransientRetries: extractionPolicy.maxTransientRetries,
         collectProbeFailures: extractionPolicy.failureMode === "enforce",
@@ -411,6 +509,7 @@ export async function runExtractVideosStage(
     extractionResult.phaseBreakdown.transientRetries =
       (extractionResult.phaseBreakdown.transientRetries ?? 0) + hdrProbeTransientRetries;
     assertNotAborted();
+    throwIfEncoderInterrupted(extractionResult);
     failureToEnforce = applyVideoExtractionFailurePolicy(extractionResult, extractionPolicy, log);
 
     materializeExtractedFramesForCompiledDir(extractionResult.extracted, compiledDir, {
@@ -418,7 +517,11 @@ export async function runExtractVideosStage(
     });
 
     if (extractionResult.extracted.length > 0) {
-      frameLookup = createFrameLookupTable(composition.videos, extractionResult.extracted);
+      frameLookup = createFrameLookupTable(
+        composition.videos,
+        extractionResult.extracted,
+        resolveRenderFpsConfig(job.config.fps).value,
+      );
     }
     videoReadinessSkipIds = collectVideoReadinessSkipIds(
       nativeHdrVideoIds,

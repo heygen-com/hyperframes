@@ -27,12 +27,12 @@ details (timing, transitions, etc.).
 
 See [sequencing.md](sequencing.md) for nesting and stagger details.
 
-| Remotion                                   | HyperFrames                                                                                               |
-| ------------------------------------------ | --------------------------------------------------------------------------------------------------------- |
-| `<Sequence from={F} durationInFrames={D}>` | `<div data-start="<F/fps>" data-duration="<D/fps>" data-track-index="N">`                                 |
-| `<Series>` + `<Series.Sequence>`           | siblings with sequential `data-start` values                                                              |
-| `<Loop durationInFrames={D}>`              | not a primitive — emit a bounded GSAP repeat from the available duration                                  |
-| `<Freeze frame={F}>`                       | drop the wrapper; HF doesn't have running animation outside the seek-driven timeline so freeze is a no-op |
+| Remotion                                   | HyperFrames                                                                                                                                                                                                                 |
+| ------------------------------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `<Sequence from={F} durationInFrames={D}>` | a host `<div data-composition-src="compositions/<name>.html" data-start="<F/fps>" data-duration="<D/fps>" data-track-index="N">` in the root, its content in that sub-composition file (see [sequencing.md](sequencing.md)) |
+| `<Series>` + `<Series.Sequence>`           | sibling scene hosts with sequential `data-start` values                                                                                                                                                                     |
+| `<Loop durationInFrames={D}>`              | not a primitive — emit a bounded GSAP repeat from the available duration                                                                                                                                                    |
+| `<Freeze frame={F}>`                       | drop the wrapper; HF doesn't have running animation outside the seek-driven timeline so freeze is a no-op                                                                                                                   |
 
 ## Timing
 
@@ -53,16 +53,16 @@ See [timing.md](timing.md) — this is the highest-leverage section.
 
 See [media.md](media.md) for trim, volume ramps, and decoder notes.
 
-| Remotion                               | HyperFrames                                                                 |
-| -------------------------------------- | --------------------------------------------------------------------------- |
-| `<Audio src volume>`                   | `<audio data-start data-duration data-track-index data-volume src>`         |
-| `<Audio playbackRate startFrom endAt>` | `data-playback-rate`, `data-trim-start`, `data-trim-end`                    |
-| `<Video src>`                          | `<video muted playsinline data-start data-duration data-track-index src>`   |
-| `<OffthreadVideo>`                     | `<video>` — HF doesn't need the off-thread variant (uses headless Chrome)   |
-| `<Img src>`                            | `<img>`                                                                     |
-| `<IFrame src>`                         | `<iframe>` — HF auto-falls back to screenshot mode for nested iframes       |
-| `staticFile("x.png")`                  | `"assets/x.png"` — copy the file into `hf-src/assets/` next to `index.html` |
-| `delayRender()` / `continueRender()`   | drop — HF waits on asset readiness via the Frame Adapter pattern            |
+| Remotion                               | HyperFrames                                                                                                                                      |
+| -------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `<Audio src volume>`                   | `<audio data-start data-duration data-track-index data-volume src>`                                                                              |
+| `<Audio playbackRate startFrom endAt>` | `data-playback-rate`, `data-trim-start`, `data-trim-end`                                                                                         |
+| `<Video src>`                          | `<video muted playsinline data-start data-duration data-track-index src>`                                                                        |
+| `<OffthreadVideo>`                     | `<video>` — HF doesn't need the off-thread variant (uses headless Chrome)                                                                        |
+| `<Img src>`                            | `<img>`                                                                                                                                          |
+| `<IFrame src>`                         | `<iframe>` — HF auto-falls back to screenshot mode for nested iframes                                                                            |
+| `staticFile("x.png")`                  | `"assets/x.png"` in the root, `"../assets/x.png"` inside a `compositions/` scene file — copy the file into `hf-src/assets/` next to `index.html` |
+| `delayRender()` / `continueRender()`   | drop — HF waits on asset readiness via the Frame Adapter pattern                                                                                 |
 
 ## Transitions
 

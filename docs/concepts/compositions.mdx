@@ -108,6 +108,12 @@ Use a separate file when you want to reuse it.
     It defaults to `0`. Trimming or splitting from the left pushes this offset
     forward by the time elapsed multiplied by `data-playback-rate`, so the
     nested animation keeps going instead of jumping back to its beginning.
+
+    Timing inside the child file is local to that composition. If this host
+    starts at `10` and a child video starts at `2`, the video starts at `12` on
+    the root timeline. Legacy projects that authored a media start in root time
+    can preserve it explicitly with `data-hf-media-start-basis="global"`; new
+    compositions should use local timing.
   </Tab>
   <Tab title="Inline">
     Write the nested composition straight into the parent. Simpler for
@@ -235,6 +241,35 @@ And the source file both cards share:
 script, CLI overrides, and which value wins. If you are building tooling on
 `@hyperframes/core`, `extractCompositionMetadata()` reads the same
 `data-composition-variables` array — that is how Studio builds its editing UI.
+
+## Load a composition's own files from its script
+
+When a composition is mounted, a `src` or `href` attribute that points at a
+file next to it is rewritten to where that file lives, so
+`<img src="assets/logo.png">` keeps working. A path your script builds is a
+plain string and is never rewritten, so resolve it with
+`window.__hyperframes.assetUrl()`. It takes a path written relative to the
+composition's own file and returns a URL the page can load, whether the file is
+mounted, previewed or opened on its own.
+
+A path meant from the project root, such as `assets/logo.png` in a composition
+at `compositions/intro.html` whose image sits in the project's own `assets/`
+folder, already resolves from the page. Leave it as a plain string:
+`assetUrl()` would look for it beside the composition and miss.
+
+```html compositions/globe/globe.html
+<div data-composition-id="globe" data-width="1920" data-height="1080">
+  <script>
+    const texture = new THREE.TextureLoader().load(
+      __hyperframes.assetUrl("assets/earth.jpg"),
+    );
+  </script>
+</div>
+```
+
+A separate script file (`<script src="...">`) has no composition of its own to
+resolve against. Resolve the URLs in the composition's inline script and hand
+them over, for example on a global the file reads.
 
 ## See every composition in a project
 

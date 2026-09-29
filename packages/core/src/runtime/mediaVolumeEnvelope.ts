@@ -1,6 +1,8 @@
 import type { RuntimeTimelineLike } from "./types";
 import { clampAudioGain, withUnclampedVolume } from "../audioGain.js";
 import { parseStrictFiniteTimingNumber } from "./playbackRate";
+import { createRuntimeStartTimeResolver } from "./startResolver";
+import { isMediaElement } from "./domRealm";
 
 /**
  * Shared volume-automation utilities used by both the renderer (offline PCM
@@ -102,11 +104,26 @@ function parseVolumeNumber(value: string | undefined): number | undefined {
   return Number.isFinite(parsed) ? parsed : undefined;
 }
 
+interface ProbeWindow {
+  start: number;
+  end: number;
+  staticVolume: number;
+}
+
 function resolveVolumeProbeWindow(
   el: HTMLAudioElement | HTMLVideoElement,
   compositionDuration: number,
-): { start: number; end: number; staticVolume: number } {
-  const start = parseStrictFiniteTimingNumber(el.dataset.start) ?? 0;
+): ProbeWindow {
+  // Probe samples are stamped with ROOT-timeline seek times, and
+  // `normaliseEnvelope` rebases them by this start — so it has to be the same
+  // absolute start the transport plays the clip at. Reading `data-start`
+  // directly gave a composition-local value, which put a nested clip's whole
+  // envelope at the wrong origin.
+  const start = createRuntimeStartTimeResolver({
+    timelineRegistry: (window as Window & { __timelines?: Record<string, RuntimeTimelineLike> })
+      .__timelines,
+    includeAuthoredTimingAttrs: true,
+  }).resolveMediaStartForElement(el);
   const endAttr = parseStrictFiniteTimingNumber(el.dataset.end) ?? undefined;
   const durAttr = parseStrictFiniteTimingNumber(el.dataset.duration) ?? undefined;
   let end = compositionDuration;
@@ -135,8 +152,25 @@ export function probeElementVolumeKeyframes(
   compositionDuration: number,
   sampleFps: number,
 ): VolumeKeyframe[] | null {
-  const { start, end, staticVolume } = resolveVolumeProbeWindow(el, compositionDuration);
+  return probeKeyframesInWindow(
+    el,
+    seekTimeline,
+    compositionDuration,
+    sampleFps,
+    resolveVolumeProbeWindow(el, compositionDuration),
+  );
+}
 
+/** Sampling half of the probe, given an already-resolved window. Split out so
+ *  `probeAndCacheElementVolume` resolves that window ONCE and reuses it for the
+ *  envelope rebase, instead of deriving the same start twice per element. */
+function probeKeyframesInWindow(
+  el: HTMLAudioElement | HTMLVideoElement,
+  seekTimeline: (t: number) => void,
+  compositionDuration: number,
+  sampleFps: number,
+  { start, end, staticVolume }: ProbeWindow,
+): VolumeKeyframe[] | null {
   const step = 1 / Math.min(60, Math.max(1, sampleFps));
   const sampleStart = Math.max(0, start);
   const sampleEnd = Math.min(compositionDuration, end);
@@ -168,7 +202,9 @@ export function probeElementVolumeKeyframes(
   return hasAutomation ? keyframes : null;
 }
 
-export type RuntimeTimelineRef = Partial<Pick<RuntimeTimelineLike, "totalTime" | "seek">>;
+export type RuntimeTimelineRef = Partial<
+  Pick<RuntimeTimelineLike, "totalTime" | "seek" | "getChildren">
+>;
 
 export interface VolumeProbeOptions {
   /**
@@ -180,6 +216,46 @@ export interface VolumeProbeOptions {
    * Preview callers omit this option and retain live automation discovery.
    */
   allowLiveTimelineSeek?: boolean;
+}
+
+function namesKey(vars: unknown, matches: (key: string) => boolean, depth = 0): boolean {
+  if (depth > 3 || vars === null || typeof vars !== "object") return false;
+  if (Array.isArray(vars)) return vars.some((item) => namesKey(item, matches, depth + 1));
+  if (Object.getPrototypeOf(vars) !== Object.prototype) return false;
+  return Object.entries(vars).some(
+    ([key, value]) => matches(key) || namesKey(value, matches, depth + 1),
+  );
+}
+
+const isDomNode = (target: unknown): boolean =>
+  typeof (target as { nodeType?: unknown } | null)?.nodeType === "number";
+
+function hasSetter(target: unknown, key: string): boolean {
+  for (let o = Object(target); o; o = Object.getPrototypeOf(o)) {
+    const descriptor = Object.getOwnPropertyDescriptor(o, key);
+    if (descriptor) return typeof descriptor.set === "function";
+  }
+  return false;
+}
+
+/**
+ * Whether seeking `timeline` can move `el.volume`: a tween on the element that names `volume`, or a tween
+ * on a non-DOM object whose tweened property is a setter (a gain proxy). Spacers, calls and counters skip.
+ */
+function timelineCanMoveVolume(timeline: RuntimeTimelineRef, el: HTMLMediaElement): boolean {
+  if (typeof timeline.getChildren !== "function") return true;
+  try {
+    return timeline.getChildren(true, true, false).some((tween) => {
+      const targets: unknown[] = tween.targets?.() ?? [];
+      return targets.some((target) =>
+        isDomNode(target)
+          ? target === el && namesKey(tween.vars, (key) => key === "volume")
+          : namesKey(tween.vars, (key) => hasSetter(target, key)),
+      );
+    });
+  } catch {
+    return true;
+  }
 }
 
 /**
@@ -202,8 +278,10 @@ export function probeAndCacheElementVolume(
 ): void {
   if (options.allowLiveTimelineSeek === false) return;
   if (!timeline) return;
-  if (!(mediaEl instanceof HTMLAudioElement) && !(mediaEl instanceof HTMLVideoElement)) return;
+  if (!isMediaElement(mediaEl)) return;
   if (compositionDuration <= 0) return;
+  // Sampling is ~60 whole-timeline seeks per second of clip, paid again on every rebind.
+  if (!timelineCanMoveVolume(timeline, mediaEl)) return;
 
   const seekFn = (t: number) => {
     try {
@@ -225,11 +303,11 @@ export function probeAndCacheElementVolume(
       : typeof timeline.seek === "function"
         ? Number(timeline.seek())
         : 0;
-  const keyframes = probeElementVolumeKeyframes(mediaEl, seekFn, compositionDuration, 60);
+  const probeWindow = resolveVolumeProbeWindow(mediaEl, compositionDuration);
+  const keyframes = probeKeyframesInWindow(mediaEl, seekFn, compositionDuration, 60, probeWindow);
   if (Number.isFinite(originalTime)) seekFn(originalTime);
   if (keyframes) {
-    const { start, staticVolume } = resolveVolumeProbeWindow(mediaEl, compositionDuration);
-    const envelope = normaliseEnvelope(keyframes, start, staticVolume);
+    const envelope = normaliseEnvelope(keyframes, probeWindow.start, probeWindow.staticVolume);
     if (envelope.length > 0) cache.set(mediaEl, envelope);
   }
 }

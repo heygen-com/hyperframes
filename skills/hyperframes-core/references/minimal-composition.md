@@ -19,8 +19,8 @@ The smallest renderable HyperFrames composition — a standalone (top-level) roo
       }
       #root {
         position: relative;
-        width: 1920px;
-        height: 1080px;
+        width: 100%;
+        height: 100%;
         overflow: hidden;
       }
       .clip {

@@ -14,6 +14,9 @@
  */
 
 import { describe, expect, it, mock } from "bun:test";
+import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import {
   buildPadTrimAudioArgs,
   buildPadTrimAudioPlan,
@@ -111,11 +114,15 @@ describe("buildPadTrimAudioArgs", () => {
 });
 
 describe("padOrTrimAudioToVideoFrameCount", () => {
-  // Build a minimal harness that stubs out the three injectables.
+  // Build a minimal harness that stubs out the duration probes and ffmpeg runner.
   function harness(opts: {
     video: ProbeVideoFrameInfo | "throw";
     audio: AudioProbeInfo | "throw";
-    ffmpeg?: (args: string[]) => Promise<{ success: boolean; error?: string }>;
+    ffmpeg?: (args: string[]) => Promise<{
+      success: boolean;
+      error?: string;
+      failureReason?: "external_interruption";
+    }>;
   }): { input: PadTrimAudioInput; captured: { args: string[][] } } {
     const captured = { args: [] as string[][] };
     const input: PadTrimAudioInput = {
@@ -268,6 +275,112 @@ describe("padOrTrimAudioToVideoFrameCount", () => {
     expect(result.error).toBe("synthetic ffmpeg failure");
     expect(result.operation).toBe("pad");
     expect(result.targetDurationSeconds).toBe(6);
+  });
+
+  it("preserves an external interruption from the audio pad/trim ffmpeg pass", async () => {
+    const { input } = harness({
+      video: { frameCount: 180, fpsNum: 30, fpsDen: 1 },
+      audio: { durationSeconds: 5.0 },
+      ffmpeg: async () => ({
+        success: false,
+        error: "synthetic interruption diagnostics",
+        failureReason: "external_interruption",
+      }),
+    });
+
+    const result = await padOrTrimAudioToVideoFrameCount(input);
+
+    expect(result).toMatchObject({
+      success: false,
+      failureReason: "external_interruption",
+    });
+  });
+
+  it("accepts silence as already below the AAC true-peak ceiling", async () => {
+    const { input, captured } = harness({
+      video: { frameCount: 90, fpsNum: 30, fpsDen: 1 },
+      audio: { durationSeconds: 3 },
+    });
+    input.probeAudioTruePeakDbfs = async () => Number.NEGATIVE_INFINITY;
+
+    const result = await padOrTrimAudioToVideoFrameCount(input);
+
+    expect(result.success).toBe(true);
+    expect(captured.args).toHaveLength(1);
+  });
+
+  it("attenuates the duration-normalized artifact with AAC correction headroom", async () => {
+    const calls: string[][] = [];
+    const { input } = harness({
+      video: { frameCount: 90, fpsNum: 30, fpsDen: 1 },
+      audio: { durationSeconds: 3.029333 },
+    });
+    input.probeAudioTruePeakDbfs = async () => 1.5;
+    input.runFfmpeg = async (args) => {
+      calls.push(args);
+      return calls.length === 1
+        ? { success: true }
+        : { success: false, error: "synthetic correction stop" };
+    };
+
+    const result = await padOrTrimAudioToVideoFrameCount(input);
+
+    expect(result.success).toBe(false);
+    expect(result.error).toBe("synthetic correction stop");
+    expect(calls).toHaveLength(2);
+    const correctionArgs = calls[1]!;
+    expect(correctionArgs[correctionArgs.indexOf("-af") + 1]).toBe("volume=-3.000dB");
+    expect(correctionArgs[correctionArgs.indexOf("-t") + 1]).toBe("3.000000");
+  });
+
+  it("uses correction headroom to converge within three AAC passes", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "hf-aac-convergence-"));
+    const corrections: number[] = [];
+    let attenuationDb = 0;
+    const { input } = harness({
+      video: { frameCount: 90, fpsNum: 30, fpsDen: 1 },
+      audio: { durationSeconds: 3 },
+    });
+    input.videoPath = join(dir, "video.mp4");
+    input.audioPath = join(dir, "source.m4a");
+    input.outputPath = join(dir, "normalized.m4a");
+    input.probeAudioTruePeakDbfs = async () => attenuationDb * 0.4;
+    input.runFfmpeg = async (args) => {
+      const filter = args[args.indexOf("-af") + 1];
+      if (filter?.startsWith("volume=")) {
+        attenuationDb = Number(filter.slice("volume=".length, -2));
+        corrections.push(attenuationDb);
+      }
+      writeFileSync(args.at(-1)!, "");
+      return { success: true };
+    };
+
+    try {
+      const result = await padOrTrimAudioToVideoFrameCount(input);
+
+      expect(result.success, result.error).toBe(true);
+      expect(corrections).toEqual([-1.5, -2.4, -2.94]);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it("reports every measured peak and attenuation when correction is exhausted", async () => {
+    const peaks = [0, -0.4, -0.6, -0.8];
+    let probeIndex = 0;
+    const { input } = harness({
+      video: { frameCount: 90, fpsNum: 30, fpsDen: 1 },
+      audio: { durationSeconds: 3 },
+    });
+    input.probeAudioTruePeakDbfs = async () => peaks[probeIndex++]!;
+
+    const result = await padOrTrimAudioToVideoFrameCount(input);
+
+    expect(result.success).toBe(false);
+    expect(result.error).toContain("pass 0: 0.000 dBFS at 0.000 dB attenuation");
+    expect(result.error).toContain("pass 1: -0.400 dBFS at -1.500 dB attenuation");
+    expect(result.error).toContain("pass 2: -0.600 dBFS at -2.600 dB attenuation");
+    expect(result.error).toContain("pass 3: -0.800 dBFS at -3.500 dB attenuation");
   });
 });
 

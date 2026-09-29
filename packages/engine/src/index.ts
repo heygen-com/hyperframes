@@ -74,13 +74,19 @@ export {
 } from "./services/systemMemory.js";
 
 // ── Browser management ─────────────────────────────────────────────────────────
+export { chromeMajorCeiling } from "./services/chromeHostCeiling.js";
 export {
   acquireBrowser,
+  setHostHandlesSigint,
   releaseBrowser,
   drainBrowserPool,
+  closeBrowserPool,
   resolveHeadlessShellPath,
   resolveBrowserGpuMode,
   buildChromeArgs,
+  compositionRequiresWebGpu,
+  assertWebGpuAdapterAvailable,
+  WebGpuUnavailableError,
   ENABLE_BROWSER_POOL,
   BrowserLeasePool,
   type BuildChromeArgsOptions,
@@ -136,6 +142,10 @@ export {
   type CaptureFailureKind,
   type CaptureWorkerDiagnostic,
 } from "./services/captureFailure.js";
+export {
+  createChromeMemorySampler,
+  type ChromeMemoryStats,
+} from "./services/chromeMemorySampler.js";
 
 // ── Screenshot (BeginFrame) ─────────────────────────────────────────────────────
 export {
@@ -158,13 +168,20 @@ export {
 export {
   buildEncoderArgs,
   encodeFramesFromDir,
+  buildConcatArgs,
+  concatVideoFiles,
   encodeFramesChunkedConcat,
   muxVideoWithAudio,
   applyFaststart,
+  packageHls,
   detectGpuEncoder,
   ENCODER_PRESETS,
   getEncoderPreset,
+  HLS_MASTER_PLAYLIST,
+  HLS_VIDEO_PLAYLIST,
+  HLS_AUDIO_PLAYLIST,
   type GpuEncoder,
+  type PackageHlsOptions,
 } from "./services/chunkEncoder.js";
 export type { EncoderOptions, EncodeResult, MuxResult } from "./services/chunkEncoder.types.js";
 
@@ -197,6 +214,7 @@ export {
   classifyVideoExtractionError,
   isVideoSourceExtractionError,
   runVideoExtractionWithRetry,
+  safeVideoExtractionSourceIdentity,
   VideoSourceExtractionError,
   type VideoElement,
   type ImageElement,
@@ -207,10 +225,23 @@ export {
   type TimelineExtractionWindow,
   type VideoExtractionFailure,
   type VideoExtractionFailureKind,
+  type VideoExtractionFailureGroupDetails,
+  type VideoExtractionFailureRetry,
+  type VideoExtractionFailureStatusClass,
+  type SafeVideoExtractionSourceIdentity,
   type VideoFrameFormat,
   VIDEO_FRAME_FORMATS,
   isVideoFrameFormat,
+  EXTRACT_CACHE_MIN_AGE_MS,
 } from "./services/videoFrameExtractor.js";
+export { directorySizeBytes, gcExtractionCache } from "./services/extractionCache.js";
+
+export {
+  resolveReferencedStart,
+  resolveReferencedDuration,
+  type RefResolverEl,
+  type RefResolverDoc,
+} from "./services/referenceResolver.js";
 
 export { createVideoFrameInjector } from "./services/videoFrameInjector.js";
 
@@ -241,6 +272,7 @@ export {
   executeParallelCapture,
   mergeWorkerFrames,
   getSystemResources,
+  shouldDisableBrowserPoolForParallelWorker,
   type WorkerTask,
   type WorkerResult,
   type WorkerSizing,
@@ -257,6 +289,8 @@ export {
 
 // ── Utilities ──────────────────────────────────────────────────────────────────
 export { quantizeTimeToFrame, MEDIA_VISUAL_STYLE_PROPERTIES } from "@hyperframes/core";
+export { frameFileExtension } from "./services/frameCapture.js";
+export type { MotionBlurOptions, MotionBlurBlendSpace } from "./services/motionBlur.js";
 
 export {
   assertSwiftShader,
@@ -290,6 +324,7 @@ export {
 
 export {
   assertPublicHttpsUrl,
+  isBlockedNetworkHost,
   downloadToTemp,
   fetchPublicHttpsText,
   isHttpUrl,
@@ -303,6 +338,7 @@ export {
 export {
   runFfmpeg,
   formatFfmpegError,
+  isExternalFfmpegInterruption,
   type RunFfmpegOptions,
   type RunFfmpegResult,
 } from "./utils/runFfmpeg.js";
@@ -387,9 +423,14 @@ export {
   detectTransfer,
   getHdrEncoderColorParams,
   analyzeCompositionHdr,
+  findHdrAutoPromotion,
+  formatHdrAutoPromotionWarning,
+  sanitizeHdrAutoPromotionAsset,
   DEFAULT_HDR10_MASTERING,
+  HDR_AUTO_PROMOTION_PIPELINE,
   type HdrTransfer,
   type HdrEncoderColorParams,
+  type HdrAutoPromotion,
   type CompositionHdrInfo,
   type HdrMasteringMetadata,
 } from "./utils/hdr.js";
@@ -404,3 +445,8 @@ export {
   PROVENANCE_VERSION,
   type RenderProvenance,
 } from "./utils/renderProvenance.js";
+
+export {
+  DrawElementCaptureError,
+  isDrawElementCaptureError,
+} from "./services/drawElementCaptureError.js";

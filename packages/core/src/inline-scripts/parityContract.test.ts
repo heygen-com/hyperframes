@@ -1,5 +1,9 @@
 import { describe, it, expect } from "vitest";
-import { quantizeTimeToFrame, MEDIA_VISUAL_STYLE_PROPERTIES } from "./parityContract.js";
+import {
+  quantizeTimeToFrame,
+  snapTimeToFrameBoundary,
+  MEDIA_VISUAL_STYLE_PROPERTIES,
+} from "./parityContract.js";
 
 describe("quantizeTimeToFrame", () => {
   it("quantizes a time to the nearest frame boundary at 30fps", () => {
@@ -40,6 +44,21 @@ describe("quantizeTimeToFrame", () => {
   it("handles 60fps correctly", () => {
     // 0.5s at 60fps: floor(0.5*60 + 1e-9) = 30 => 30/60 = 0.5
     expect(quantizeTimeToFrame(0.5, 60)).toBe(0.5);
+  });
+});
+
+describe("snapTimeToFrameBoundary", () => {
+  it("snaps decimal noise around an exact rational frame boundary", () => {
+    expect(snapTimeToFrameBoundary(19.466666666667, 30)).toBe(584 / 30);
+  });
+
+  it("preserves a genuinely fractional authored boundary", () => {
+    expect(snapTimeToFrameBoundary(1.01, 30)).toBe(1.01);
+    expect(snapTimeToFrameBoundary(79.402, 60)).toBe(79.402);
+  });
+
+  it("preserves exact frame boundaries", () => {
+    expect(snapTimeToFrameBoundary(79.4, 60)).toBe(79.4);
   });
 });
 

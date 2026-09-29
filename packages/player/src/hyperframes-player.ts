@@ -6,8 +6,15 @@ import { ParentMediaManager } from "./parent-media.js";
 import { isRealmHtmlMediaElement } from "./media-element-guards.js";
 import { handleRuntimeMessage } from "./runtime-message-handler.js";
 import {
+  isOutsidePlayRange,
+  type PlayRange,
+  playRangeStopTime,
+  resolvePlayRange,
+} from "./play-range.js";
+import {
   SHADER_CAPTURE_SCALE_ATTR,
   SHADER_LOADING_ATTR,
+  RUNTIME_SRC_ATTR,
   type ShaderLoadingMode,
   getShaderCaptureScaleFromElement,
   getShaderModeFromElement,
@@ -18,7 +25,13 @@ import { createShaderLoader } from "./shader-loader-element.js";
 import { ShaderLoaderState } from "./shader-loader-state.js";
 import { PLAYER_STYLES } from "./styles.js";
 import { type DirectTimelineAdapter } from "./timeline-adapters.js";
+import { createVideoSource, isVideoType, type VideoSource } from "./video-source.js";
 import { runtimeProtocolMetadata } from "@hyperframes/core/runtime/protocol";
+import {
+  FIRST_FRAME_READINESS_SCOPE,
+  scanPendingCompositionAssets,
+  settleFirstFrameCompositionReadiness,
+} from "@hyperframes/core/composition-readiness";
 
 // Playback-rate bounds mirror the runtime clamp in
 // packages/core/src/runtime/init.ts (applyPlaybackRate) and media.ts so the
@@ -29,6 +42,23 @@ import { runtimeProtocolMetadata } from "@hyperframes/core/runtime/protocol";
 // production browsers.
 const MIN_PLAYBACK_RATE = 0.1;
 const MAX_PLAYBACK_RATE = 5;
+const SANDBOX_ORIGIN_ATTR = "sandbox-origin";
+const RUNTIME_DATA_DELIVERY_TIMEOUT_MS = 10_000;
+// Bounds how long the player waits on a same-origin composition's readiness
+// inputs (media, compute, paint-and-idle) before playing anyway — a stuck
+// asset or a composition that never goes quiet must not block playback forever.
+const ASSETS_READY_TIMEOUT_MS = 8_000;
+const ASSETS_LOADING_ATTR = "assets-loading";
+// "player" (default) draws the loading-assets card; "none" never does, like shader-loading="none".
+const ASSETS_LOADING_UI_ATTR = "assets-loading-ui";
+const LOW_POWER_IDLE_ATTR = "low-power-idle";
+const DISABLE_CLICK_TO_PLAY_ATTR = "disable-click-to-play";
+const RANGE_START_ATTR = "range-start";
+const RANGE_END_ATTR = "range-end";
+// paint-and-idle now always has a frame to wait on, so the overlay would
+// flash on every single Play without this debounce. ponytail: 150ms is
+// unmeasured, retune once there's production data on paint-and-idle timing.
+const ASSETS_LOADING_SHOW_DELAY_MS = 150;
 
 export type ColorGradingTarget =
   | string
@@ -44,6 +74,16 @@ export type ColorGradingCompareState = {
   position?: number;
   softness?: number;
   lineWidth?: number;
+};
+
+type RuntimeDataBridge = {
+  setRuntimeData?: (channel: string, payload: unknown, requestId?: number) => void;
+  clearRuntimeData?: (channel: string, requestId?: number) => void;
+};
+
+type PendingRuntimeDataDelivery = {
+  requestId: number;
+  timeoutId: number;
 };
 
 function clampPlaybackRate(rate: number): number {
@@ -65,8 +105,15 @@ class HyperframesPlayer extends HTMLElement {
       "poster",
       "playback-rate",
       "audio-src",
+      "type",
+      SANDBOX_ORIGIN_ATTR,
+      RUNTIME_SRC_ATTR,
       SHADER_CAPTURE_SCALE_ATTR,
       SHADER_LOADING_ATTR,
+      ASSETS_LOADING_UI_ATTR,
+      LOW_POWER_IDLE_ATTR,
+      RANGE_START_ATTR,
+      RANGE_END_ATTR,
     ];
   }
 
@@ -80,6 +127,13 @@ class HyperframesPlayer extends HTMLElement {
   private probe: CompositionProbe;
 
   private _ready = false;
+  private _readyDocument: Document | null = null;
+  private _connected = false;
+  private _assetsReady = false;
+  private _painted = false;
+  private _pendingPlay = false;
+  private _assetsGeneration = 0;
+  private _assetsLoadingShowTimer: ReturnType<typeof setTimeout> | null = null;
   private _currentTime = 0;
   private _duration = 0;
   private _paused = true;
@@ -97,6 +151,16 @@ class HyperframesPlayer extends HTMLElement {
   private _media: ParentMediaManager;
   private _scenes: { id: string; start: number; duration: number }[] = [];
   private _runtimeFps = 30;
+  private _runtimeBridgeReady = false;
+  private _runtimeAssetsReadyGeneration = -1;
+  private _runtimeData = new Map<string, unknown>();
+  private _runtimeDataRequestId = 0;
+  private _pendingRuntimeData = new Map<string, PendingRuntimeDataDelivery>();
+  private _afterUpdate: Array<() => void> | null = null;
+  private _videoSource: VideoSource | null = null;
+  private _runtimeOwnsPlayRange = false;
+  private _enteringRange = false;
+  private _rangeClampReported = "";
 
   constructor() {
     super();
@@ -111,7 +175,7 @@ class HyperframesPlayer extends HTMLElement {
     this.shaderLoader = new ShaderLoaderState(loaderElements);
 
     this._media = new ParentMediaManager({
-      dispatchEvent: (e) => this.dispatchEvent(e),
+      dispatchEvent: (e) => this._emit(e),
       getMuted: () => this.muted,
       getVolume: () => this._volume,
       getPlaybackRate: () => this.playbackRate,
@@ -123,29 +187,29 @@ class HyperframesPlayer extends HTMLElement {
       onTimeUpdate: (currentTime, duration) => {
         this._currentTime = currentTime;
         this.controlsApi?.updateTime(currentTime, duration);
-        this.dispatchEvent(new CustomEvent("timeupdate", { detail: { currentTime } }));
+        this._emit(new CustomEvent("timeupdate", { detail: { currentTime } }));
       },
       getLoop: () => this.loop,
       restart: () => {
-        this.seek(0);
+        this.seek(this._playRange()?.start ?? 0);
         this.play();
       },
       onPaused: () => {
         if (this._media.audioOwner === "parent") this._media.pauseAll();
         this._paused = true;
         this.controlsApi?.updatePlaying(false);
-        this.dispatchEvent(new Event("ended"));
+        this._emit(new Event("ended"));
       },
       onEnded: () => this.loop,
     });
 
     this.probe = new CompositionProbe(this.iframe, {
       onReady: (result) => this._onProbeReady(result),
-      onError: (message) => this.dispatchEvent(new CustomEvent("error", { detail: { message } })),
+      onError: (message) => this._emit(new CustomEvent("error", { detail: { message } })),
     });
 
     this.addEventListener("click", (event) => {
-      if (isControlsClick(event)) return;
+      if (this.disableClickToPlay || isControlsClick(event)) return;
       if (this._paused) this.play();
       else this.pause();
     });
@@ -153,20 +217,22 @@ class HyperframesPlayer extends HTMLElement {
     this.resizeObserver = new ResizeObserver(() => this._rescale());
     this._onMessage = this._onMessage.bind(this);
     this._onIframeLoad = this._onIframeLoad.bind(this);
+    // Before any host can listen; _onIframeLoad skips the blank-document load before connect.
+    this.iframe.addEventListener("load", this._onIframeLoad);
   }
 
   connectedCallback() {
+    this._connected = true;
+    this._applySandboxOriginPolicy();
     this.resizeObserver.observe(this);
     window.addEventListener("message", this._onMessage);
-    this.iframe.addEventListener("load", this._onIframeLoad);
     if (this.hasAttribute("controls")) this._setupControls();
     if (this.hasAttribute("poster"))
       this.posterEl = setupPoster(this.shadow, this.getAttribute("poster"), this.posterEl);
     if (this.hasAttribute("audio-src")) this._media.setupFromUrl(this.getAttribute("audio-src")!);
     if (this.hasAttribute("srcdoc"))
       this.iframe.srcdoc = prepareSrcdocForElement(this, this.getAttribute("srcdoc")!);
-    if (this.hasAttribute("src"))
-      this.iframe.src = prepareSrcForElement(this, this.getAttribute("src")!);
+    if (this.hasAttribute("src")) this._loadSrc(this.getAttribute("src")!);
 
     // Host-environment audio lock: when the embedding host (e.g. Claude
     // desktop) drops the `audio-locked` attribute, attributeChangedCallback
@@ -177,11 +243,12 @@ class HyperframesPlayer extends HTMLElement {
   }
 
   disconnectedCallback() {
+    this._connected = false;
+    this._teardownVideo();
     this._sendControl("pause");
     this._stopIframeMedia();
     this.resizeObserver.disconnect();
     window.removeEventListener("message", this._onMessage);
-    this.iframe.removeEventListener("load", this._onIframeLoad);
     this.probe.stop();
     this._directTimelineClock.stop();
     this._stopParentTickClock();
@@ -191,34 +258,53 @@ class HyperframesPlayer extends HTMLElement {
     this.controlsApi?.destroy();
     this.controlsApi = null;
     this._paused = true;
-    this._ready = false;
+    this._pendingPlay = false;
+    this._abandonComposition("Player disconnected before runtime data was applied");
   }
 
   // fallow-ignore-next-line complexity
-  attributeChangedCallback(name: string, _old: string | null, val: string | null) {
+  attributeChangedCallback(name: string, oldVal: string | null, val: string | null) {
     switch (name) {
       case "src":
-        if (val) {
-          this._ready = false;
-          this.iframe.src = prepareSrcForElement(this, val);
+        // Custom-element attributes are normally assigned before insertion (React does this for
+        // every render). Navigating the inner iframe here would let its one-shot runtime `ready`
+        // message fire before connectedCallback installs the parent message listener. Initial
+        // attributes are applied below by connectedCallback; only live changes navigate here.
+        if (!this.isConnected) break;
+        if (val) this._navigateSrc(val);
+        break;
+      case "type": {
+        const src = this.getAttribute("src");
+        if (!this.isConnected || src === null || !!this._videoSource === this._wantsVideo()) break;
+        this._navigateSrc(src);
+        break;
+      }
+      case "srcdoc":
+        if (!this.isConnected) break;
+        this._pendingPlay = false;
+        this._abandonComposition("Composition navigated before runtime data was applied");
+        if (val !== null) {
+          this._pauseForVideoSwitch();
+          this._teardownVideo();
+          this.iframe.srcdoc = prepareSrcdocForElement(this, val);
+        } else {
+          this.iframe.removeAttribute("srcdoc");
+          const src = this.getAttribute("src");
+          if (src !== null && this._wantsVideo()) this._navigateSrc(src);
         }
         break;
-      case "srcdoc":
-        this._ready = false;
-        if (val !== null) this.iframe.srcdoc = prepareSrcdocForElement(this, val);
-        else this.iframe.removeAttribute("srcdoc");
+      case SANDBOX_ORIGIN_ATTR:
+        this._applySandboxOriginPolicy(this.isConnected && oldVal !== val);
         break;
       // Reject NaN/zero/negative dimensions the same way the composition
       // probe does (a typo like width="abc" or width="0" would otherwise
       // reach scaleIframeToFit as scale(NaN) or a division by zero and
       // blank the player); fall back to the defaults instead.
       case "width":
-        this._compositionWidth = readPositiveDimension(val) ?? 1920;
-        this._rescale();
+        this._setCompositionSize(readPositiveDimension(val) ?? 1920, this._compositionHeight);
         break;
       case "height":
-        this._compositionHeight = readPositiveDimension(val) ?? 1080;
-        this._rescale();
+        this._setCompositionSize(this._compositionWidth, readPositiveDimension(val) ?? 1080);
         break;
       case "controls":
         if (val !== null) this._setupControls();
@@ -236,7 +322,7 @@ class HyperframesPlayer extends HTMLElement {
         this._sendControl("set-playback-rate", { playbackRate: rate });
         this._directTimelineAdapter?.timeScale?.(rate);
         this.controlsApi?.updateSpeed(rate);
-        this.dispatchEvent(new Event("ratechange"));
+        this._emit(new Event("ratechange"));
         break;
       }
       case "muted":
@@ -248,21 +334,57 @@ class HyperframesPlayer extends HTMLElement {
       case "volume": {
         const v = Math.max(0, Math.min(1, parseFloat(val || "1")));
         this._volume = v;
+        this._syncVideoAudio();
         this._media.updateVolume(v);
         this._sendControl("set-volume", { volume: v });
         this.controlsApi?.updateVolume(v);
-        this.dispatchEvent(new Event("volumechange"));
+        this._emit(new Event("volumechange"));
         break;
       }
       case "audio-src":
         if (val) this._media.setupFromUrl(val);
         else this._media.teardownUrlAudio();
         break;
+      case ASSETS_LOADING_UI_ATTR:
+        if (val === "none") this.shaderLoader.hideAssetsLoading();
+        break;
+      case LOW_POWER_IDLE_ATTR:
+        this._sendControl("set-idle-heartbeat", { slow: val !== null });
+        break;
+      case RANGE_START_ATTR:
+      case RANGE_END_ATTR:
+        this._applyPlayRange(true);
+        break;
       case SHADER_CAPTURE_SCALE_ATTR:
       case SHADER_LOADING_ATTR:
+      case RUNTIME_SRC_ATTR:
+        if (!this.isConnected) break;
         this._reloadShaderOptions();
         break;
     }
+  }
+
+  private _applySandboxOriginPolicy(reloadActiveDocument = false): void {
+    if (this.hasAttribute(SANDBOX_ORIGIN_ATTR)) {
+      this.iframe.sandbox.remove("allow-same-origin");
+    } else {
+      this.iframe.sandbox.add("allow-same-origin");
+    }
+    if (reloadActiveDocument) this._reloadForSandboxOriginPolicy();
+  }
+
+  private _reloadForSandboxOriginPolicy(): void {
+    // A video does not play in the iframe, so neither reload applies to it.
+    if (this._videoSource) return;
+    this._abandonComposition("Sandbox policy changed before runtime data was applied");
+    const srcdoc = this.getAttribute("srcdoc");
+    if (srcdoc !== null) {
+      this.iframe.srcdoc = prepareSrcdocForElement(this, srcdoc);
+      return;
+    }
+    const src = this.getAttribute("src");
+    if (src === null) this.iframe.src = "about:blank";
+    else this._loadSrc(src);
   }
 
   /**
@@ -281,44 +403,72 @@ class HyperframesPlayer extends HTMLElement {
   }
 
   play() {
+    this._play(true);
+  }
+
+  // fallow-ignore-next-line complexity
+  private _play(announce: boolean) {
+    if (this._ready && !this._assetsReady) {
+      this._pendingPlay = true;
+      return;
+    }
+    this._pendingPlay = false;
     this.posterEl?.remove();
     this.posterEl = null;
-    if (this._duration > 0 && this._currentTime >= this._duration) this.seek(0);
+    const range = this._ready ? this._playRange() : null;
+    if (range) {
+      if (isOutsidePlayRange(this._currentTime, range, this._duration, this._runtimeFps)) {
+        this.seek(range.start);
+        this._enteringRange = true;
+      }
+    } else if (this._duration > 0 && this._currentTime >= this._duration) this.seek(0);
     // Must be set before _startParentTickClock so the RAF loop's `_paused`
     // check doesn't immediately self-terminate on the first callback.
     this._paused = false;
     const directTimelineStarted = this._tryDirectTimelinePlay();
+    // Set when the probe hasn't resolved yet: retried from _onProbeReady /
+    // _onRuntimeTimelineReady once ready, which is the call that actually
+    // starts playback — this premature call must not ALSO dispatch "play"
+    // for what hasn't started, or a host listener sees it fire twice.
+    let queuedForReady = false;
     if (!directTimelineStarted) {
       this._sendControl("play");
       // Only start the parent tick clock once the composition is ready and
       // confirmed on the runtime bridge path (not the direct-timeline path).
-      // Guards against firing ticks into an uninitialized iframe when play()
-      // is called before the probe has resolved.
       if (this._ready && !this._directTimelineAdapter) {
         this._startParentTickClock();
+      } else if (!this._ready) {
+        this._pendingPlay = true;
+        queuedForReady = true;
       }
     }
     if (this._media.audioOwner === "parent") this._media.playAll();
     this.controlsApi?.updatePlaying(true);
-    this.dispatchEvent(new Event("play"));
+    if (!queuedForReady && announce) this._emit(new Event("play"));
     if (directTimelineStarted && this._directTimelineAdapter) {
       this._directTimelineClock.start(
         this._directTimelineAdapter,
         () => this._currentTime,
         () => this._duration,
         () => this._paused,
+        () => this._clockStop(),
       );
     }
   }
 
   pause() {
+    // A play queued while assets were still buffering must not survive an
+    // explicit user pause — otherwise it fires once assets settle, seconds
+    // after the user stopped playback.
+    this._pendingPlay = false;
     if (!this._tryDirectTimelinePause()) this._sendControl("pause");
+    else this._showPausedVideoTime();
     this._directTimelineClock.stop();
     this._stopParentTickClock();
     if (this._media.audioOwner === "parent") this._media.pauseAll();
     this._paused = true;
     this.controlsApi?.updatePlaying(false);
-    this.dispatchEvent(new Event("pause"));
+    this._emit(new Event("pause"));
   }
 
   stopMedia() {
@@ -328,6 +478,10 @@ class HyperframesPlayer extends HTMLElement {
   }
 
   seek(timeInSeconds: number) {
+    // seek()'s own contract is that it lands paused, so a play still queued
+    // from the asset-buffering window is cancelled here too — same reason as
+    // pause() above.
+    this._pendingPlay = false;
     if (!this._trySyncSeek(timeInSeconds) && !this._tryDirectTimelineSeek(timeInSeconds)) {
       this._sendControl("seek", {
         timeSeconds: timeInSeconds,
@@ -380,6 +534,29 @@ class HyperframesPlayer extends HTMLElement {
     });
   }
 
+  /** Retain and deliver structured runtime data through the shared runtime protocol. */
+  setRuntimeData(channel: string, payload: unknown): void {
+    if (!/^[a-z][a-z0-9-]{0,63}$/.test(channel)) {
+      throw new Error(`Invalid HyperFrames runtime-data channel: ${channel}`);
+    }
+    if (typeof structuredClone !== "function") {
+      throw new Error(
+        "HyperFrames runtime data requires structuredClone support; refusing an unverified payload",
+      );
+    }
+    const retained = structuredClone(payload);
+    this._runtimeData.set(channel, retained);
+    this._deliverRuntimeData(channel, retained);
+  }
+
+  clearRuntimeData(channel: string): void {
+    if (!/^[a-z][a-z0-9-]{0,63}$/.test(channel)) {
+      throw new Error(`Invalid HyperFrames runtime-data channel: ${channel}`);
+    }
+    this._runtimeData.delete(channel);
+    this._deliverRuntimeDataClear(channel);
+  }
+
   get currentTime() {
     return this._currentTime;
   }
@@ -390,11 +567,33 @@ class HyperframesPlayer extends HTMLElement {
   get duration() {
     return this._duration;
   }
+
+  /** The composition's width, from the runtime or the `width` attribute. */
+  get compositionWidth() {
+    return this._compositionWidth;
+  }
+  /** The composition's height, from the runtime or the `height` attribute. */
+  get compositionHeight() {
+    return this._compositionHeight;
+  }
   get paused() {
     return this._paused;
   }
   get ready() {
     return this._ready;
+  }
+
+  /** True once every readiness input (media, compute, paint-and-idle) has
+   *  settled or the wait timed out. Mirrors `assetsready`. Always true for
+   *  cross-origin compositions, which the player has no DOM access to wait on. */
+  get assetsReady() {
+    return this._assetsReady;
+  }
+
+  /** True once assets are ready and the loading panel has finished fading out,
+   *  so the document is what is on screen. Mirrors `painted`; resets per load. */
+  get painted() {
+    return this._painted;
   }
 
   get playbackRate() {
@@ -417,6 +616,14 @@ class HyperframesPlayer extends HTMLElement {
   set shaderLoading(mode: ShaderLoadingMode) {
     if (mode === "composition") this.removeAttribute(SHADER_LOADING_ATTR);
     else this.setAttribute(SHADER_LOADING_ATTR, mode);
+  }
+
+  get assetsLoadingUi(): "player" | "none" {
+    return this.getAttribute(ASSETS_LOADING_UI_ATTR) === "none" ? "none" : "player";
+  }
+  set assetsLoadingUi(mode: "player" | "none") {
+    if (mode === "none") this.setAttribute(ASSETS_LOADING_UI_ATTR, "none");
+    else this.removeAttribute(ASSETS_LOADING_UI_ATTR);
   }
 
   get muted() {
@@ -469,10 +676,11 @@ class HyperframesPlayer extends HTMLElement {
       return;
     }
     this._media.updateMuted(val !== null);
+    this._syncVideoAudio();
     this._setIframeMediaMuted(val !== null);
     this._sendControl("set-muted", { muted: val !== null });
     this.controlsApi?.updateMuted(val !== null);
-    this.dispatchEvent(new Event("volumechange"));
+    this._emit(new Event("volumechange"));
   }
 
   /**
@@ -493,6 +701,13 @@ class HyperframesPlayer extends HTMLElement {
     this.setAttribute("volume", String(Math.max(0, Math.min(1, v))));
   }
 
+  get disableClickToPlay() {
+    return this.hasAttribute(DISABLE_CLICK_TO_PLAY_ATTR);
+  }
+  set disableClickToPlay(disabled: boolean) {
+    this.toggleAttribute(DISABLE_CLICK_TO_PLAY_ATTR, disabled);
+  }
+
   get loop() {
     return this.hasAttribute("loop");
   }
@@ -501,9 +716,112 @@ class HyperframesPlayer extends HTMLElement {
     else this.removeAttribute("loop");
   }
 
-  private _sendControl(action: string, extra: Record<string, unknown> = {}) {
+  /** Film time where range playback starts; null (no `range-start`) starts at 0. */
+  get rangeStart(): number | null {
+    return this._readSeconds(RANGE_START_ATTR);
+  }
+  set rangeStart(seconds: number | null) {
+    this._writeSeconds(RANGE_START_ATTR, seconds);
+  }
+
+  /** Film time where range playback ends or loops; null (no `range-end`) plays to the end.
+   *  When it ends inside the film, `currentTime` at `ended` is inside its last frame, before this. */
+  get rangeEnd(): number | null {
+    return this._readSeconds(RANGE_END_ATTR);
+  }
+  set rangeEnd(seconds: number | null) {
+    this._writeSeconds(RANGE_END_ATTR, seconds);
+  }
+
+  private _readSeconds(name: string): number | null {
+    const value = this.getAttribute(name);
+    return value === null ? null : Number(value);
+  }
+
+  private _writeSeconds(name: string, seconds: number | null): void {
+    if (seconds == null) this.removeAttribute(name);
+    else this.setAttribute(name, String(seconds));
+  }
+
+  private _hasPlayRange(): boolean {
+    return this.hasAttribute(RANGE_START_ATTR) || this.hasAttribute(RANGE_END_ATTR);
+  }
+
+  private _playRange(): PlayRange | null {
+    return resolvePlayRange(this.rangeStart, this.rangeEnd, this._duration).range;
+  }
+
+  private _sendPlayRange(range: PlayRange | null): void {
+    const endSeconds = range?.end ?? null;
+    this._sendControl("set-play-range", { startSeconds: range?.start ?? null, endSeconds });
+  }
+
+  /** A new range or duration: the runtime gets the new end and the host hears of a clamp. With
+   *  `park`, a paused player moves to the start and a playing one outside the range jumps there;
+   *  a queued play() starts at the range start itself. */
+  private _applyPlayRange(park: boolean): void {
+    const { range, clamped } = resolvePlayRange(this.rangeStart, this.rangeEnd, this._duration);
+    this._sendPlayRange(range);
+    if (!this._ready) return;
+    this._reportRangeClamp(range, clamped);
+    if (range && park && !this._pendingPlay) this._moveIntoPlayRange(range);
+  }
+
+  // Once per asked-for range and duration.
+  private _reportRangeClamp(range: PlayRange | null, clamped: boolean): void {
+    const clampKey = clamped ? `${this.rangeStart},${this.rangeEnd},${this._duration}` : "";
+    if (clampKey === this._rangeClampReported) return;
+    this._rangeClampReported = clampKey;
+    if (!clamped) return;
+    const detail = { rangeStart: range?.start ?? null, rangeEnd: range?.end ?? null };
+    this._emit(
+      new CustomEvent("rangeclamped", { detail: { ...detail, duration: this._duration } }),
+    );
+  }
+
+  private _moveIntoPlayRange(range: PlayRange): void {
+    if (!isOutsidePlayRange(this._currentTime, range, this._duration, this._runtimeFps)) return;
+    if (this._paused) this.seek(range.start);
+    else this._jumpWhilePlaying(range.start);
+  }
+
+  /** A `play-range` runtime jumps by itself and a player clock seeks without pausing; an older
+   *  runtime is seeked and resumed, with no second `play` event. */
+  private _jumpWhilePlaying(time: number): void {
+    if (this._directTimelineAdapter) {
+      this._directTimelineAdapter.seek(time, false);
+      this._currentTime = time;
+    } else if (!this._runtimeOwnsPlayRange) {
+      this.seek(time);
+      this._enteringRange = true;
+      this._play(false);
+    }
+  }
+
+  /** Where the player's own clock stops, and the time it then shows: mid last frame, since a video
+   *  seeked onto a frame boundary can decode the frame before it. */
+  private _clockStop(): { end: number; shown: number } {
+    const range = this._playRange();
+    const end = range?.end ?? this._duration;
+    if (!range) return { end, shown: end };
+    const hold = playRangeStopTime(range, this._duration, this._runtimeFps);
+    return { end, shown: hold < end ? (hold + end) / 2 : hold };
+  }
+
+  private _sendControl(action: string, extra: Record<string, unknown> = {}): boolean {
     try {
-      this.iframe.contentWindow?.postMessage(
+      const frameWindow = this.iframe.contentWindow;
+      if (!frameWindow) {
+        if (action === "set-runtime-data" || action === "clear-runtime-data") {
+          this._rejectRuntimeDataDelivery(
+            extra["channel"],
+            extra["requestId"],
+            "Composition iframe is unavailable",
+          );
+        }
+        return false;
+      }
+      frameWindow.postMessage(
         {
           ...extra,
           source: "hf-parent",
@@ -513,8 +831,125 @@ class HyperframesPlayer extends HTMLElement {
         },
         "*",
       );
+      return true;
+    } catch (error) {
+      if (action === "set-runtime-data" || action === "clear-runtime-data") {
+        this._rejectRuntimeDataDelivery(
+          extra["channel"],
+          extra["requestId"],
+          error instanceof Error ? error.message : String(error),
+        );
+      }
+      return false;
+    }
+  }
+
+  private _deliverRuntimeData(channel: string, payload: unknown): void {
+    if (!this.isConnected || !this._runtimeBridgeReady) return;
+    const requestId = this._beginRuntimeDataDelivery(channel);
+    if (this._trySetRuntimeDataDirect(channel, payload, requestId)) return;
+    this._sendControl("set-runtime-data", { channel, payload, requestId });
+  }
+
+  private _deliverRuntimeDataClear(channel: string): void {
+    if (!this.isConnected || !this._runtimeBridgeReady) return;
+    const requestId = this._beginRuntimeDataDelivery(channel);
+    if (this._tryClearRuntimeDataDirect(channel, requestId)) return;
+    this._sendControl("clear-runtime-data", { channel, requestId });
+  }
+
+  private _trySetRuntimeDataDirect(channel: string, payload: unknown, requestId: number): boolean {
+    try {
+      const bridge = (
+        this.iframe.contentWindow as (Window & { __hyperframes?: RuntimeDataBridge }) | null
+      )?.__hyperframes;
+      if (typeof bridge?.setRuntimeData !== "function") return false;
+      bridge.setRuntimeData(channel, payload, requestId);
+      return true;
     } catch {
-      /* cross-origin */
+      return false;
+    }
+  }
+
+  private _tryClearRuntimeDataDirect(channel: string, requestId: number): boolean {
+    try {
+      const bridge = (
+        this.iframe.contentWindow as (Window & { __hyperframes?: RuntimeDataBridge }) | null
+      )?.__hyperframes;
+      if (typeof bridge?.clearRuntimeData !== "function") return false;
+      bridge.clearRuntimeData(channel, requestId);
+      return true;
+    } catch {
+      return false;
+    }
+  }
+
+  private _replayRuntimeData(): void {
+    for (const [channel, payload] of this._runtimeData) {
+      this._deliverRuntimeData(channel, payload);
+    }
+  }
+
+  private _beginRuntimeDataDelivery(channel: string): number {
+    const previous = this._pendingRuntimeData.get(channel);
+    if (previous) window.clearTimeout(previous.timeoutId);
+    this._runtimeDataRequestId += 1;
+    const requestId = this._runtimeDataRequestId;
+    const timeoutId = window.setTimeout(() => {
+      this._rejectRuntimeDataDelivery(
+        channel,
+        requestId,
+        `Runtime data delivery timed out after ${RUNTIME_DATA_DELIVERY_TIMEOUT_MS}ms`,
+      );
+    }, RUNTIME_DATA_DELIVERY_TIMEOUT_MS);
+    this._pendingRuntimeData.set(channel, { requestId, timeoutId });
+    return requestId;
+  }
+
+  private _resolveRuntimeDataDelivery(channel: unknown, requestId: unknown): void {
+    const pending = this._takeRuntimeDataDelivery(channel, requestId);
+    if (!pending) return;
+    this._emit(
+      new CustomEvent("runtimedataapplied", {
+        detail: { channel, requestId: pending.requestId },
+      }),
+    );
+  }
+
+  private _rejectRuntimeDataDelivery(channel: unknown, requestId: unknown, message: unknown): void {
+    const pending = this._takeRuntimeDataDelivery(channel, requestId);
+    if (!pending) return;
+    this._emit(
+      new CustomEvent("runtimedataerror", {
+        detail: {
+          channel,
+          requestId: pending.requestId,
+          message: typeof message === "string" ? message : String(message),
+        },
+      }),
+    );
+  }
+
+  private _takeRuntimeDataDelivery(
+    channel: unknown,
+    requestId: unknown,
+  ): PendingRuntimeDataDelivery | null {
+    if (
+      typeof channel !== "string" ||
+      typeof requestId !== "number" ||
+      !Number.isSafeInteger(requestId)
+    )
+      return null;
+    const pending = this._pendingRuntimeData.get(channel);
+    if (!pending || pending.requestId !== requestId) return null;
+    window.clearTimeout(pending.timeoutId);
+    this._pendingRuntimeData.delete(channel);
+    return pending;
+  }
+
+  private _rejectAllRuntimeDataDeliveries(message: string): void {
+    for (const [channel, pending] of [...this._pendingRuntimeData]) {
+      this._rejectRuntimeDataDelivery(channel, pending.requestId, message);
     }
   }
 
@@ -566,20 +1001,138 @@ class HyperframesPlayer extends HTMLElement {
     this._sendControl("set-web-audio-media-disabled", {
       disabled: this._isSlideshowPlayer(),
     });
+    this._sendControl("set-idle-heartbeat", { slow: this.hasAttribute(LOW_POWER_IDLE_ATTR) });
   }
 
   private _reloadShaderOptions(): void {
-    if (getShaderModeFromElement(this) !== "player") this.shaderLoader.reset();
+    if (this._videoSource) return;
+    // This navigates the frame, so readiness has to fall with it. Leaving
+    // `_runtimeBridgeReady` true lets a delivery post into a document that is being
+    // replaced, where it can only end in a delivery timeout rather than the immediate,
+    // explanatory rejection the caller gets from every other navigating path.
+    this._abandonComposition("Shader options changed before runtime data was applied");
     if (this.hasAttribute("srcdoc")) {
       this.iframe.srcdoc = prepareSrcdocForElement(this, this.getAttribute("srcdoc") || "");
       return;
     }
-    if (this.hasAttribute("src")) {
-      this.iframe.src = prepareSrcForElement(this, this.getAttribute("src") || "");
+    if (this.hasAttribute("src")) this._loadSrc(this.getAttribute("src") || "");
+  }
+
+  // A different source inherits no queued play.
+  private _navigateSrc(src: string): void {
+    this._pendingPlay = false;
+    this._pauseForVideoSwitch();
+    this._abandonComposition("Composition navigated before runtime data was applied");
+    this._loadSrc(src);
+  }
+
+  /** A `type="video/..."` src plays in a `<video>`, unless `srcdoc` (which wins, as in an iframe)
+   *  shows a composition. */
+  private _wantsVideo(): boolean {
+    return isVideoType(this.getAttribute("type")) && !this.hasAttribute("srcdoc");
+  }
+
+  // Like a <video> given a new src, a switch into or out of a video starts paused.
+  private _pauseForVideoSwitch(): void {
+    if (!this._videoSource && !this._wantsVideo()) return;
+    this._paused = true;
+    this.controlsApi?.updatePlaying(false);
+  }
+
+  private _loadSrc(src: string): void {
+    if (this._wantsVideo()) {
+      this._loadVideo(src);
+      return;
+    }
+    this._teardownVideo();
+    this.iframe.src = prepareSrcForElement(this, src);
+  }
+
+  private _loadVideo(src: string): void {
+    if (!this._videoSource) {
+      this._videoSource = createVideoSource({
+        onMetadata: (video) => this._applyThenEmit(() => this._onVideoReady(video)),
+        onDurationChange: (video) => this._applyTimelineDuration(video.duration),
+        onResize: (video) => this._applyVideoSize(video),
+        // Follow a play or pause the page did not ask for, but not a queued one it since reversed.
+        onPlay: (video) => {
+          if (!video.paused && this._paused) this.play();
+        },
+        onPause: (video) => {
+          if (video.paused && !video.ended && !this._paused) this.pause();
+        },
+        // A background tab runs no animation frames; a range's end is checked on timeupdate instead.
+        onTimeUpdate: () => {
+          if (document.hidden && this._playRange()) this._directTimelineClock.poll();
+        },
+        onError: (message, code) => {
+          if (!this._paused) this.pause();
+          this._emit(new CustomEvent("error", { detail: { message, code } }));
+        },
+        onPlayRejected: (error) => this._onVideoPlayRejected(error),
+      });
+      this.container.appendChild(this._videoSource.video);
+      this.iframe.hidden = true;
+      // Unloads a composition this player was showing before it switched to video.
+      this.iframe.src = "about:blank";
+    }
+    this.probe.stop();
+    const { video, adapter } = this._videoSource;
+    this._directTimelineAdapter = adapter;
+    this._currentTime = 0;
+    this._duration = 0;
+    this.controlsApi?.updateTime(0, 0);
+    this._syncVideoAudio();
+    adapter.timeScale?.(this.playbackRate);
+    video.src = src;
+  }
+
+  private _teardownVideo(): void {
+    if (!this._videoSource) return;
+    this._videoSource.destroy();
+    this._videoSource = null;
+    this.iframe.hidden = false;
+  }
+
+  private _syncVideoAudio(): void {
+    if (!this._videoSource) return;
+    this._videoSource.video.muted = this.muted;
+    this._videoSource.video.volume = this._volume;
+  }
+
+  private _onVideoReady(video: HTMLVideoElement): void {
+    this._applyTimelineDuration(video.duration);
+    this._applyVideoSize(video);
+    this._ready = true;
+    this._dispatchReady();
+    // A video has no composition assets to wait on; this settles at once.
+    this._waitForAssetsReady(null);
+    this._afterEvents(() => {
+      if (this.hasAttribute("autoplay") && this._paused) this.play();
+    });
+  }
+
+  private _applyTimelineDuration(duration: number): void {
+    if (!Number.isFinite(duration) || duration <= 0) return;
+    this._setDuration(duration);
+    this.controlsApi?.updateTime(this._currentTime, duration);
+  }
+
+  private _applyVideoSize(video: HTMLVideoElement): void {
+    if (video.videoWidth > 0 && video.videoHeight > 0) {
+      this._setCompositionSize(video.videoWidth, video.videoHeight);
     }
   }
 
+  // Only a blocked play is a playbackerror: a failed load already fired `error`.
+  private _onVideoPlayRejected(error: unknown): void {
+    if (!(error instanceof DOMException && error.name === "NotAllowedError")) return;
+    if (!this._paused) this.pause();
+    this._emit(new CustomEvent("playbackerror", { detail: { source: "video", error } }));
+  }
+
   private _trySyncSeek(timeInSeconds: number): boolean {
+    if (this._videoSource) return false;
     try {
       const win = this.iframe.contentWindow as
         | (Window & { __player?: { seek?: (t: number) => void } })
@@ -594,10 +1147,14 @@ class HyperframesPlayer extends HTMLElement {
   }
 
   private _withDirectTimeline(fn: (tl: DirectTimelineAdapter) => void): boolean {
-    const tl = this._directTimelineAdapter || this.probe.resolveDirectTimelineAdapter();
+    const resolved = this._videoSource ? null : this.probe.resolveDirectTimelineAdapter();
+    const tl = resolved || this._directTimelineAdapter;
     if (!tl) return false;
     try {
       fn(tl);
+      if (resolved && resolved !== this._directTimelineAdapter) {
+        this._applyTimelineDuration(resolved.duration());
+      }
       this._directTimelineAdapter = tl;
       return true;
     } catch {
@@ -620,6 +1177,14 @@ class HyperframesPlayer extends HTMLElement {
   }
   private _tryDirectTimelinePause(): boolean {
     return this._withDirectTimeline((tl) => void tl.pause());
+  }
+
+  // The clock samples every ~100 ms; like a <video>, a pause reports the exact frame.
+  private _showPausedVideoTime(): void {
+    if (!this._videoSource) return;
+    this._currentTime = this._videoSource.video.currentTime;
+    this.controlsApi?.updateTime(this._currentTime, this._duration);
+    this._emit(new CustomEvent("timeupdate", { detail: { currentTime: this._currentTime } }));
   }
 
   /**
@@ -650,88 +1215,313 @@ class HyperframesPlayer extends HTMLElement {
   }
 
   private _onMessage(e: MessageEvent) {
+    // The iframe window outlives its documents: a late composition message must not reach a video.
+    if (this._videoSource) return;
+    this._applyThenEmit(() => this._handleRuntimeMessage(e));
+  }
+
+  private _handleRuntimeMessage(e: MessageEvent) {
     handleRuntimeMessage(e, this.iframe.contentWindow, {
       getPlaybackState: () => ({
         currentTime: this._currentTime,
         duration: this._duration,
         paused: this._paused,
         lastUpdateMs: this._lastUpdateMs,
+        enteringRange: this._enteringRange,
       }),
-      setPlaybackState: ({ currentTime, duration, paused, lastUpdateMs }) => {
+      setPlaybackState: ({ currentTime, duration, paused, lastUpdateMs, enteringRange }) => {
+        this._enteringRange = enteringRange === true;
         this._currentTime = currentTime;
-        this._duration = duration;
+        this._setDuration(duration);
         this._paused = paused;
         this._lastUpdateMs = lastUpdateMs;
       },
       getShaderLoadingMode: () => getShaderModeFromElement(this),
       shaderLoader: this.shaderLoader,
-      setCompositionSize: (w, h) => {
-        this._compositionWidth = w;
-        this._compositionHeight = h;
-        this._rescale();
-      },
+      setCompositionSize: (w, h) => this._setCompositionSize(w, h),
       sendControl: (action, extra) => this._sendControl(action, extra),
       getIframeDoc: () => this.iframe.contentDocument,
-      onRuntimeReady: () => this._replayBridgeState(),
-      onRuntimeTimelineReady: (duration) => this._onRuntimeTimelineReady(duration),
+      onRuntimeReady: () => {
+        this._runtimeBridgeReady = true;
+        this._replayBridgeState();
+        if (this._hasPlayRange()) this._sendPlayRange(this._playRange());
+        this._replayRuntimeData();
+      },
+      onRuntimeAssetsReady: () => {
+        if (this._runtimeAssetsReadyGeneration === this._assetsGeneration) {
+          this._settleAssetsReady(this._assetsGeneration);
+        }
+      },
+      onRuntimeDataApplied: (channel, requestId) =>
+        this._resolveRuntimeDataDelivery(channel, requestId),
+      onRuntimeDataError: (channel, requestId, message) =>
+        this._rejectRuntimeDataDelivery(channel, requestId, message),
+      onRuntimeTimelineReady: (duration, assetsReady) =>
+        this._onRuntimeTimelineReady(duration, assetsReady),
       setRuntimeFps: (fps) => {
         this._runtimeFps = fps;
+      },
+      setRuntimeOwnsPlayRange: (owns) => {
+        this._runtimeOwnsPlayRange = owns;
       },
       shouldPromoteMediaAutoplayFallback: () => !this._isSlideshowPlayer(),
       setScenes: (scenes) => {
         this._scenes = scenes;
-        this.dispatchEvent(new CustomEvent("scenes", { detail: { scenes } }));
+        this._emit(new CustomEvent("scenes", { detail: { scenes } }));
       },
       updateControlsTime: (t, d) => this.controlsApi?.updateTime(t, d),
       updateControlsPlaying: (p) => this.controlsApi?.updatePlaying(p),
-      dispatchEvent: (ev) => this.dispatchEvent(ev),
+      dispatchEvent: (ev) => this._emit(ev),
       seek: (t) => this.seek(t),
       play: () => this.play(),
       getLoop: () => this.loop,
+      getPlayRange: () => this._playRange(),
       media: this._media,
     });
   }
 
-  private _onRuntimeTimelineReady(duration: number) {
+  private _onRuntimeTimelineReady(duration: number, assetsReady: boolean | undefined) {
     if (this._ready) return;
     this.probe.stop();
-    this._duration = duration;
+    this._setDuration(duration);
     this._directTimelineAdapter = null;
     this._ready = true;
     this.controlsApi?.updateTime(this._currentTime, duration);
-    this.dispatchEvent(new CustomEvent("ready", { detail: { duration } }));
-    // stage-size may not have arrived yet (race in the runtime's postTimeline
-    // resolving the root's data-width/data-height on first paint) — rescale
-    // here too so cross-origin compositions never stay unscaled/untransformed.
-    this._rescale();
+    this._dispatchReady();
 
     const doc = this._getSameOriginIframeDocument();
     if (doc) this._media.setupFromIframe(doc);
 
     this._replayBridgeState();
     this._setIframeMediaMuted(this.muted);
-    if (this.hasAttribute("autoplay")) this.play();
+    this._waitForAssetsReady(doc, assetsReady);
+    this._playWhenWanted();
   }
 
-  private _onProbeReady({ duration, adapter, compositionSize }: ProbeResult) {
-    this._duration = duration;
+  private _onProbeReady(result: ProbeResult) {
+    this._applyThenEmit(() => this._applyProbeResult(result));
+  }
+
+  private _applyProbeResult({ duration, adapter, compositionSize }: ProbeResult) {
+    this._setDuration(duration);
     this._directTimelineAdapter = adapter.kind === "direct-timeline" ? adapter.timeline : null;
+    if (compositionSize) this._setCompositionSize(compositionSize.width, compositionSize.height);
     this._ready = true;
     this.controlsApi?.updateTime(0, duration);
-    this.dispatchEvent(new CustomEvent("ready", { detail: { duration } }));
-    if (compositionSize) {
-      this._compositionWidth = compositionSize.width;
-      this._compositionHeight = compositionSize.height;
-      this._rescale();
-    }
-    try {
-      const doc = this.iframe.contentDocument;
-      if (doc) this._media.setupFromIframe(doc);
-    } catch {
-      /* cross-origin */
-    }
+    this._dispatchReady();
+    const doc = this._getSameOriginIframeDocument();
+    if (doc) this._media.setupFromIframe(doc);
     this._setIframeMediaMuted(this.muted);
-    if (this.hasAttribute("autoplay")) this.play();
+    this._waitForAssetsReady(doc);
+    this._playWhenWanted();
+  }
+
+  /** Gates play() on composition readiness (media, compute, paint-and-idle),
+   * bounded by ASSETS_READY_TIMEOUT_MS. The overlay is debounced by
+   * ASSETS_LOADING_SHOW_DELAY_MS rather than shown the instant a wait
+   * starts, since one is now pending on nearly every Play. */
+  private _waitForAssetsReady(doc: Document | null, runtimeAssetsReady?: boolean): void {
+    this._clearAssetsLoadingShowTimer();
+    this._assetsReady = false;
+    this._painted = false;
+    // Invalidates any earlier wait still in flight (a composition swap, or
+    // disconnect, mid-wait) — its eventual settle checks this and no-ops
+    // rather than resolving a since-superseded generation.
+    const generation = ++this._assetsGeneration;
+    if (!doc) {
+      // An opaque-origin iframe cannot be scanned from here; a runtime that
+      // reports `assetsReady: false` runs the same scan itself and posts the result.
+      if (runtimeAssetsReady === false) {
+        this._runtimeAssetsReadyGeneration = generation;
+        this._startAssetsLoadingOverlayTimer(generation);
+        setTimeout(() => this._settleAssetsReady(generation), ASSETS_READY_TIMEOUT_MS);
+      } else {
+        this._settleAssetsReady(generation);
+      }
+      return;
+    }
+    settleFirstFrameCompositionReadiness(
+      doc,
+      ({ timedOut }) => {
+        if (generation !== this._assetsGeneration) return;
+        if (timedOut) this._warnStuckAssets(doc);
+        this._settleAssetsReady(generation);
+      },
+      { timeoutMs: ASSETS_READY_TIMEOUT_MS },
+    );
+    if (!this._assetsReady) this._startAssetsLoadingOverlayTimer(generation);
+  }
+
+  private _startAssetsLoadingOverlayTimer(generation: number): void {
+    this._assetsLoadingShowTimer = setTimeout(() => {
+      this._assetsLoadingShowTimer = null;
+      if (generation !== this._assetsGeneration || this._assetsReady) return;
+      this.setAttribute(ASSETS_LOADING_ATTR, "");
+      if (this.assetsLoadingUi !== "none") this.shaderLoader.showAssetsLoading();
+    }, ASSETS_LOADING_SHOW_DELAY_MS);
+  }
+
+  private _hasPendingFirstFrameAssets(doc: Document): boolean {
+    const { pendingMedia, pendingImages, fontsLoading } = scanPendingCompositionAssets(doc, {
+      scope: FIRST_FRAME_READINESS_SCOPE,
+    });
+    return pendingMedia.length > 0 || pendingImages.length > 0 || fontsLoading;
+  }
+
+  /** Timeout diagnostic. Re-scans since some assets may have resolved by
+   *  now. Compute can cause the timeout, so it's reported too. A hidden
+   *  document can starve paint-and-idle of frames for the full 8s — that's
+   *  reported directly rather than inferred, since it can't be bounded. */
+  private _warnStuckAssets(doc: Document): void {
+    const { pendingMedia, pendingImages, fontsLoading } = scanPendingCompositionAssets(doc, {
+      scope: FIRST_FRAME_READINESS_SCOPE,
+    });
+    const win = doc.defaultView as (Window & { __renderReady?: boolean }) | null;
+    console.warn(
+      `[hyperframes-player] assets-loading timed out after ${ASSETS_READY_TIMEOUT_MS}ms — playing anyway`,
+      {
+        stuckMedia: pendingMedia.map(
+          (el) => el.currentSrc || el.getAttribute("src") || `<${el.tagName.toLowerCase()}>`,
+        ),
+        stuckImages: pendingImages.map(
+          (img) => img.currentSrc || img.getAttribute("src") || "<img>",
+        ),
+        fontsLoading,
+        computeReady: win?.__renderReady === true,
+        documentHidden: doc.hidden === true,
+      },
+    );
+  }
+
+  private _settleAssetsReady(generation: number): void {
+    if (generation !== this._assetsGeneration || this._assetsReady) return;
+    this._clearAssetsLoadingShowTimer();
+    this._assetsReady = true;
+    this.removeAttribute(ASSETS_LOADING_ATTR);
+    this.shaderLoader.hideAssetsLoading();
+    this._emit(new Event("assetsready"));
+    this.shaderLoader.whenHidden(() => {
+      if (generation !== this._assetsGeneration) return;
+      this._painted = true;
+      this._emit(new Event("painted"));
+    });
+    this._afterEvents(() => {
+      if (this._pendingPlay) this.play();
+    });
+  }
+
+  /** Every host-driven navigation or teardown: the old document's handshake, asset wait and
+   *  data deliveries end here. A queued play is the caller's, so only its owners clear it. */
+  private _abandonComposition(reason: string): void {
+    this._ready = false;
+    this._readyDocument = null;
+    this._invalidateAssetsWait();
+    this._releaseDocument();
+    this._runtimeBridgeReady = false;
+    this._rejectAllRuntimeDataDeliveries(reason);
+  }
+
+  private _releaseDocument(): void {
+    this._runtimeOwnsPlayRange = false;
+    this._enteringRange = false;
+    this._directTimelineAdapter = null;
+    this._directTimelineClock.stop();
+    this._stopParentTickClock();
+    this.shaderLoader.reset();
+    this._media.resetForIframeLoad();
+  }
+
+  /** Abandons any in-flight asset wait — every `_ready = false` site calls
+   *  this first, so a stale wait's settle can't apply to what comes next. */
+  private _invalidateAssetsWait(): void {
+    this._clearAssetsLoadingShowTimer();
+    this._assetsReady = false;
+    this._painted = false;
+    this._assetsGeneration++;
+    this.removeAttribute(ASSETS_LOADING_ATTR);
+    this.shaderLoader.hide();
+  }
+
+  private _clearAssetsLoadingShowTimer(): void {
+    if (this._assetsLoadingShowTimer === null) return;
+    clearTimeout(this._assetsLoadingShowTimer);
+    this._assetsLoadingShowTimer = null;
+  }
+
+  private _dispatchReady(): void {
+    this._readyDocument = this._getSameOriginIframeDocument();
+    const detail = {
+      duration: this._duration,
+      compositionWidth: this._compositionWidth,
+      compositionHeight: this._compositionHeight,
+    };
+    this._emit(new CustomEvent("ready", { detail }));
+    // Once ready: covers a size message that never came, and lets a zero-size player warn.
+    this._rescale();
+    this._rangeClampReported = "";
+    if (this._hasPlayRange()) this._applyPlayRange(true);
+  }
+
+  /** `ready` carries the first duration; later changes fire `durationchange`. */
+  private _setDuration(duration: number): void {
+    if (duration === this._duration) return;
+    this._duration = duration;
+    if (!this._ready) return;
+    this._emit(new CustomEvent("durationchange", { detail: { duration } }));
+    if (this._hasPlayRange()) this._applyPlayRange(false);
+  }
+
+  private _setCompositionSize(width: number, height: number): void {
+    const changed = width !== this._compositionWidth || height !== this._compositionHeight;
+    this._compositionWidth = width;
+    this._compositionHeight = height;
+    this._rescale();
+    if (!changed) return;
+    const detail = { compositionWidth: width, compositionHeight: height };
+    this._emit(new CustomEvent("resize", { detail }));
+  }
+
+  /** Runs one update (a runtime message, a probe result), then the events and actions it raised,
+   *  so every listener sees the whole update applied. */
+  private _applyThenEmit(apply: () => void): void {
+    // A nested update joins the outer one's queue.
+    if (this._afterUpdate) {
+      apply();
+      return;
+    }
+    const queue: Array<() => void> = [];
+    this._afterUpdate = queue;
+    const errors: unknown[] = [];
+    const run = (step: () => void) => {
+      try {
+        step();
+      } catch (error) {
+        errors.push(error);
+      }
+    };
+    run(apply);
+    // Still open while flushing: whatever a listener raises goes behind the rest.
+    for (const action of queue) run(action);
+    this._afterUpdate = null;
+    if (errors.length > 0) throw errors[0];
+  }
+
+  /** Runs `action` once the current update's events have fired (at once outside an update). */
+  private _afterEvents(action: () => void): void {
+    if (this._afterUpdate) this._afterUpdate.push(action);
+    else action();
+  }
+
+  /** Autoplay, or a play() made before ready, decided after `ready`'s listeners had their turn. */
+  private _playWhenWanted(): void {
+    this._afterEvents(() => {
+      if (this.hasAttribute("autoplay") || this._pendingPlay) this.play();
+    });
+  }
+
+  /** Every event the player raises goes through here, so an update's events keep their order. */
+  private _emit(event: Event): void {
+    this._afterEvents(() => this.dispatchEvent(event));
   }
 
   private _rescale() {
@@ -760,12 +1550,25 @@ class HyperframesPlayer extends HTMLElement {
   }
 
   private _onIframeLoad() {
+    // In video mode the iframe only ever loads about:blank; its load must not reset the video.
+    if (!this._connected || this._videoSource) return;
+    // The runtime posts its timeline at DOMContentLoaded, before `load`, and every
+    // host-initiated navigation clears `_ready` first. So a ready player already holds this
+    // document's handshake (an opaque origin reads as null); a paused runtime never posts it again.
+    const doc = this._getSameOriginIframeDocument();
+    if (this._ready && doc === this._readyDocument) {
+      // Its asset wait scanned at DOMContentLoaded; a script may have added first-frame media since.
+      if (doc && this._hasPendingFirstFrameAssets(doc)) this._waitForAssetsReady(doc);
+      return;
+    }
+
     this._ready = false;
-    this._directTimelineAdapter = null;
-    this._directTimelineClock.stop();
-    this._stopParentTickClock();
-    this.shaderLoader.reset();
-    this._media.resetForIframeLoad();
+    // The runtime installs its bridge at DOMContentLoaded, posts `ready`, and only then does the
+    // iframe's load event fire. Do not erase that authoritative handshake here: doing so strands
+    // retained data set after load until a second `ready` that never comes. Source setters and
+    // sandbox-policy reloads already clear bridge readiness before starting a navigation.
+    this._invalidateAssetsWait();
+    this._releaseDocument();
     this.probe.start();
   }
 

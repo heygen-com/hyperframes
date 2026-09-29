@@ -1,8 +1,9 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { mkdtempSync, mkdirSync, writeFileSync, existsSync, rmSync } from "node:fs";
+import { mkdtempSync, mkdirSync, writeFileSync, existsSync, readFileSync, rmSync } from "node:fs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
+import { appendRecord } from "../../../scripts/lib/manifest.mjs";
 import { resolveSfx } from "./sfx.mjs";
 
 // Offline (no HeyGen) SFX resolution: the bundled library may ship manifest.json
@@ -65,5 +66,56 @@ test("offline: a matched-but-missing bundled file yields an anomaly and NO dangl
     assert.equal(anomalies.length, 1);
     assert.match(anomalies[0], /missing from the offline library/);
     assert.ok(!existsSync(join(projDir, "assets/sfx/whoosh.mp3")), "nothing copied");
+  });
+});
+
+const whooshLibrary = (libDir, withFile) => {
+  writeFileSync(
+    join(libDir, "manifest.json"),
+    JSON.stringify({ whoosh: { file: "whoosh.mp3", duration: 0.8 } }),
+  );
+  if (withFile) writeFileSync(join(libDir, "whoosh.mp3"), "ID3-library-bytes");
+};
+const record = (projDir, source) =>
+  appendRecord(projDir, { id: "sfx_001", type: "sfx", path: "assets/sfx/whoosh.mp3", source });
+const offline = (libDir, projDir) =>
+  resolveSfx({
+    cues: [{ id: "s1", name: "whoosh" }],
+    heygenOK: false,
+    hyperframesDir: projDir,
+    sfxLibDir: libDir,
+  });
+
+test("offline: the engine's earlier copy stands in for a library file this install lacks", async () => {
+  await withDirs(async ({ libDir, projDir }) => {
+    whooshLibrary(libDir, false);
+    mkdirSync(join(projDir, "assets/sfx"), { recursive: true });
+    writeFileSync(join(projDir, "assets/sfx/whoosh.mp3"), "engine copy");
+    record(projDir, "bundled");
+
+    const { sfx, anomalies } = await offline(libDir, projDir);
+
+    assert.deepEqual(
+      sfx.map(({ file }) => file),
+      ["assets/sfx/whoosh.mp3"],
+    );
+    assert.deepEqual(anomalies, []);
+  });
+});
+
+test("offline: a person's file with the library's bytes stays theirs once recorded as their own", async () => {
+  await withDirs(async ({ libDir, projDir }) => {
+    whooshLibrary(libDir, true);
+    mkdirSync(join(projDir, "assets/sfx"), { recursive: true });
+    writeFileSync(join(projDir, "assets/sfx/whoosh.mp3"), "ID3-library-bytes");
+    record(projDir, "existing");
+
+    const { sfx } = await offline(libDir, projDir);
+
+    assert.deepEqual(
+      sfx.map(({ file }) => file),
+      ["assets/sfx/whoosh-2.mp3"],
+    );
+    assert.equal(readFileSync(join(projDir, "assets/sfx/whoosh.mp3"), "utf8"), "ID3-library-bytes");
   });
 });

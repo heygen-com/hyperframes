@@ -1,3 +1,4 @@
+import { DEFAULT_IMAGE_TIMELINE_DURATION_SECONDS } from "@hyperframes/parsers/media-duration";
 import { describe, it, expect, afterEach } from "vitest";
 import { collectRuntimeTimelinePayload } from "./timeline";
 
@@ -326,6 +327,41 @@ describe("collectRuntimeTimelinePayload", () => {
     expect(result.clips[0].kind).toBe("image");
   });
 
+  it("gives a timed image with no data-duration the dropped-image default, not the composition remainder", () => {
+    const root = document.createElement("div");
+    root.setAttribute("data-composition-id", "main");
+    root.setAttribute("data-duration", "10");
+    document.body.appendChild(root);
+
+    const timed = document.createElement("img");
+    timed.id = "timed";
+    timed.setAttribute("data-start", "2");
+    root.appendChild(timed);
+
+    const timedClip = collectRuntimeTimelinePayload(defaultParams).clips.find(
+      (c) => c.id === "timed",
+    );
+    expect([timedClip?.start, timedClip?.duration]).toEqual([
+      2,
+      DEFAULT_IMAGE_TIMELINE_DURATION_SECONDS,
+    ]);
+  });
+
+  it("trims a timed image with data-end and no data-duration to end minus start", () => {
+    const root = document.createElement("div");
+    root.setAttribute("data-composition-id", "main");
+    root.setAttribute("data-duration", "10");
+    document.body.appendChild(root);
+    const img = document.createElement("img");
+    img.id = "trimmed";
+    img.setAttribute("data-start", "2");
+    img.setAttribute("data-end", "6");
+    root.appendChild(img);
+
+    const clip = collectRuntimeTimelinePayload(defaultParams).clips.find((c) => c.id === "trimmed");
+    expect([clip?.start, clip?.duration]).toEqual([2, 4]);
+  });
+
   it("identifies composition clips", () => {
     const root = document.createElement("div");
     root.setAttribute("data-composition-id", "main");
@@ -369,7 +405,7 @@ describe("collectRuntimeTimelinePayload", () => {
     [0, 2, 5],
     [2, 2, 4],
     [2, 0.01, 80],
-    [2, 20, 1.6],
+    [2, 20, 0.8],
     [0, "2x", 5],
     [0, "0x2", 10],
   ])("rate-scales natural media duration (start=%s rate=%s)", (mediaStart, rate, expected) => {
@@ -459,6 +495,45 @@ describe("collectRuntimeTimelinePayload", () => {
     const result = collectRuntimeTimelinePayload(defaultParams);
     expect(result.compositionWidth).toBe(3840);
     expect(result.compositionHeight).toBe(2160);
+  });
+
+  it("reads a px-suffixed composition size the way the runtime lays it out", () => {
+    const root = document.createElement("div");
+    root.setAttribute("data-composition-id", "main");
+    root.setAttribute("data-width", "1080px");
+    root.setAttribute("data-height", "1920px");
+    root.setAttribute("data-duration", "5");
+    document.body.appendChild(root);
+
+    const result = collectRuntimeTimelinePayload(defaultParams);
+    expect(result.compositionWidth).toBe(1080);
+    expect(result.compositionHeight).toBe(1920);
+  });
+
+  it("reads the size and duration of the explicit root when another composition comes first", () => {
+    document.body.innerHTML = `<div data-composition-id="card" data-duration="3" data-width="800" data-height="600"></div><div data-composition-id="main" data-root="true" data-width="1920" data-height="1080"></div>`;
+    (window as TimelineTestWindow).__timelines = { main: { duration: () => 7 } };
+
+    const result = collectRuntimeTimelinePayload(defaultParams);
+    expect(result.compositionWidth).toBe(1920);
+    expect(result.compositionHeight).toBe(1080);
+    expect(result.durationInFrames).toBe(210);
+  });
+
+  it("reports the real length of a film shorter than one second", () => {
+    document.body.innerHTML = `<div data-composition-id="main" data-duration="0.2"><div id="clip" data-start="0" data-duration="0.2"></div></div>`;
+    (window as TimelineTestWindow).__timelines = { main: { duration: () => 0.2 } };
+
+    const result = collectRuntimeTimelinePayload(defaultParams);
+    expect(result.durationSeconds).toBe(0.2);
+    expect(result.durationInFrames).toBe(6);
+  });
+
+  it("reports the real length of a sub-second root with no timed clips", () => {
+    document.body.innerHTML = `<div data-composition-id="main" data-duration="0.2"></div>`;
+
+    const result = collectRuntimeTimelinePayload(defaultParams);
+    expect(result.durationSeconds).toBe(0.2);
   });
 
   it("defaults composition dimensions to 1920x1080", () => {
@@ -989,5 +1064,37 @@ describe("collectRuntimeTimelinePayload", () => {
 
     const result = collectRuntimeTimelinePayload(defaultParams);
     expect(result.clips.find((c) => c.id === "my-script")).toBeUndefined();
+  });
+
+  describe("root duration with no data-duration and a GSAP timeline past the voiceover", () => {
+    function appendVoicedRoot(timelineSeconds: number) {
+      const root = document.createElement("div");
+      root.setAttribute("data-composition-id", "main");
+      document.body.appendChild(root);
+      const voiceover = document.createElement("audio");
+      voiceover.id = "voiceover";
+      voiceover.setAttribute("data-start", "0");
+      voiceover.setAttribute("data-duration", "154.8");
+      root.appendChild(voiceover);
+      (window as TimelineTestWindow).__timelines = { main: { duration: () => timelineSeconds } };
+    }
+
+    it("reports the timeline when its animations simply end after the voiceover", () => {
+      appendVoicedRoot(156);
+
+      const result = collectRuntimeTimelinePayload(defaultParams);
+
+      expect(result.durationSeconds).toBe(156);
+      expect(result.durationInFrames).toBe(156 * 30);
+    });
+
+    it("reports the voiceover's window for an endless loop (GSAP repeat: -1), never Infinity", () => {
+      appendVoicedRoot(1e10);
+
+      const result = collectRuntimeTimelinePayload(defaultParams);
+
+      expect(result.durationSeconds).toBe(154.8);
+      expect(result.durationInFrames).toBe(Math.ceil(154.8 * 30));
+    });
   });
 });

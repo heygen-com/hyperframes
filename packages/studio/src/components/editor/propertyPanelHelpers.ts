@@ -4,6 +4,11 @@ import type { DomEditSelection } from "./domEditing";
 import type { GsapAnimation } from "@hyperframes/parsers/gsap-parser";
 import type { TimelineElement } from "../../player";
 import { roundToCenti } from "../../utils/rounding";
+import { findPreviewNode } from "./domEditingElement";
+import {
+  playbackStartAttributeForElement,
+  readPlaybackStartAttributes,
+} from "../../player/lib/timelineElementHelpers";
 
 export type {
   BackgroundRemovalProgress,
@@ -222,6 +227,17 @@ export function parseNumericValue(value: string | undefined): number | null {
   if (!value) return null;
   const parsed = Number.parseFloat(value);
   return Number.isFinite(parsed) ? parsed : null;
+}
+
+export function readClipInPoint(dataAttributes: Record<string, string> | undefined): {
+  mediaStart: number;
+  mediaStartAttr: string;
+} {
+  const inPoint = readPlaybackStartAttributes((name) => dataAttributes?.[name.slice(5)]);
+  return {
+    mediaStart: inPoint.playbackStart ?? 0,
+    mediaStartAttr: playbackStartAttributeForElement(inPoint).slice(5),
+  };
 }
 
 export function formatTimingValue(seconds: number): string {
@@ -470,8 +486,6 @@ export function readGsapRuntimeValuesForPanel(
   if (!gsapAnimId || gsapAnimations.length === 0) return null;
   const iframe = previewIframeRef?.current;
   if (!iframe?.contentWindow) return null;
-  const selector = element.id ? `#${element.id}` : element.selector;
-  if (!selector) return null;
   try {
     const gsap = (
       iframe.contentWindow as unknown as {
@@ -479,7 +493,7 @@ export function readGsapRuntimeValuesForPanel(
       }
     ).gsap;
     if (!gsap?.getProperty) return null;
-    const el = iframe.contentDocument?.querySelector(selector);
+    const el = findPreviewNode(iframe.contentDocument, element);
     if (!el) return null;
     const propKeys = collectPanelPropKeys(gsapAnimations);
     const result: Record<string, number> = {};
@@ -508,10 +522,9 @@ export function readGsapBorderRadiusForPanel(
     if (!hasBRProp) return null;
   }
   const iframe = previewIframeRef?.current;
-  const selector = element.id ? `#${element.id}` : element.selector;
-  if (!iframe?.contentDocument || !selector) return null;
+  if (!iframe?.contentDocument) return null;
   try {
-    const el = iframe.contentDocument.querySelector(selector);
+    const el = findPreviewNode(iframe.contentDocument, element);
     if (!el || !iframe.contentWindow) return null;
     const cs = iframe.contentWindow.getComputedStyle(el);
     const parse = (v: string) => Number.parseFloat(v) || 0;

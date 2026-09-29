@@ -2,7 +2,7 @@
 
 ## Surface ownership
 
-This template depicts an operating-system share sheet. The supplied website is the item or sender shown inside that interface; it does not own the surrounding system UI.
+This template depicts an operating-system share sheet. The supplied website is the item or sender shown inside that interface; it does not own the surrounding system UI. The remix is an advertisement for that brand: the sender name, the brand strip, and the wordmark carry its real identity.
 
 ## Editable slots
 

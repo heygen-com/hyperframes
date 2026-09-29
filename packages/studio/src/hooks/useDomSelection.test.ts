@@ -208,6 +208,54 @@ describe("useDomSelection additive", () => {
 });
 
 describe("useDomSelection", () => {
+  it("ignores a repeated non-additive selection of the same target", () => {
+    const element = document.createElement("div");
+    element.id = "headline";
+    const first = makeSelection("Headline", element);
+    const repeated = makeSelection("Headline", element);
+    const harness = renderHarness({
+      activeCompPath: "intro.html",
+      projectId: "project-1",
+      refreshKey: 0,
+    });
+
+    act(() => harness.current().applyDomSelection(first));
+    harness.timeline.setSelectedTimelineElementId.mockClear();
+    harness.timeline.setTimelineSelectionSet.mockClear();
+
+    act(() => harness.current().applyDomSelection(repeated));
+
+    expect(harness.current().domEditSelection).toBe(first);
+    expect(harness.current().domEditGroupSelections).toEqual([first]);
+    expect(harness.timeline.setSelectedTimelineElementId).not.toHaveBeenCalled();
+    expect(harness.timeline.setTimelineSelectionSet).not.toHaveBeenCalled();
+    harness.cleanup();
+  });
+
+  it("still refreshes selection data for the same target when preserving the group", () => {
+    const element = document.createElement("div");
+    element.id = "headline";
+    const first = makeSelection("Headline", element);
+    const refreshed = makeSelection("Updated headline", element);
+    const harness = renderHarness({
+      activeCompPath: "intro.html",
+      projectId: "project-1",
+      refreshKey: 0,
+    });
+
+    act(() => harness.current().applyDomSelection(first));
+    act(() =>
+      harness.current().applyDomSelection(refreshed, {
+        preserveGroup: true,
+        revealPanel: false,
+      }),
+    );
+
+    expect(harness.current().domEditSelection).toBe(refreshed);
+    expect(harness.current().domEditGroupSelections).toEqual([refreshed]);
+    harness.cleanup();
+  });
+
   it("clears a committed selection when the active composition path changes", () => {
     const { selection, harness } = setupSelectedHarness();
     expect(harness.current().domEditSelection).toBe(selection);

@@ -65,7 +65,6 @@ describe("toggleTimelineTrackHidden", () => {
 
     const writes = new Map<string, string>();
     const recordEdit = vi.fn();
-    const timestampRef = { current: 0 };
     const pendingRef = { current: new Set<string>() };
 
     await toggleTimelineTrackHidden({
@@ -83,7 +82,6 @@ describe("toggleTimelineTrackHidden", () => {
         writes.set(path, content);
       },
       recordEdit,
-      domEditSaveTimestampRef: timestampRef,
       pendingTimelineEditPathRef: pendingRef,
     });
 
@@ -96,7 +94,6 @@ describe("toggleTimelineTrackHidden", () => {
     expect(writes.get("index.html")).toContain('id="skip" data-start="0" data-duration="2"');
     expect(writes.get("scene.html")).toContain('data-hidden=""');
     expect(pendingRef.current).toEqual(new Set(["index.html", "scene.html"]));
-    expect(timestampRef.current).toBeGreaterThan(0);
     expect(recordEdit).toHaveBeenCalledTimes(1);
     // Display row, not the raw key: track 0 is the first row, so it reads "1",
     // the same number the track header announces for that row.
@@ -133,7 +130,6 @@ describe("toggleTimelineTrackHidden", () => {
         writes.set(path, content);
       },
       recordEdit: vi.fn(),
-      domEditSaveTimestampRef: { current: 0 },
       pendingTimelineEditPathRef: { current: new Set() },
     });
 
@@ -164,7 +160,6 @@ describe("toggleTimelineTrackHidden", () => {
       previewIframe: null,
       writeProjectFile: async () => {},
       recordEdit,
-      domEditSaveTimestampRef: { current: 0 },
       pendingTimelineEditPathRef: { current: new Set() },
     });
 
@@ -191,7 +186,6 @@ describe("toggleTimelineTrackHidden", () => {
       previewIframe: null,
       writeProjectFile: async () => {},
       recordEdit,
-      domEditSaveTimestampRef: { current: 0 },
       pendingTimelineEditPathRef: { current: new Set() },
     });
 
@@ -215,7 +209,6 @@ describe("toggleTimelineTrackHidden", () => {
       previewIframe: null,
       writeProjectFile: async () => {},
       recordEdit,
-      domEditSaveTimestampRef: { current: 0 },
       pendingTimelineEditPathRef: { current: new Set() },
     });
 
@@ -246,7 +239,6 @@ describe("toggleTimelineTrackHidden", () => {
       previewIframe: null,
       writeProjectFile: async () => {},
       recordEdit,
-      domEditSaveTimestampRef: { current: 0 },
       pendingTimelineEditPathRef: { current: new Set() },
     });
 
@@ -272,7 +264,6 @@ describe("toggleTimelineTrackHidden", () => {
       previewIframe: null,
       writeProjectFile: async () => {},
       recordEdit,
-      domEditSaveTimestampRef: { current: 0 },
       pendingTimelineEditPathRef: { current: new Set() },
     });
 
@@ -303,7 +294,6 @@ describe("toggleTimelineTrackHidden", () => {
       previewIframe: null,
       writeProjectFile: async () => {},
       recordEdit,
-      domEditSaveTimestampRef: { current: 0 },
       pendingTimelineEditPathRef: { current: new Set() },
     });
 
@@ -316,10 +306,15 @@ describe("toggleTimelineElementHidden", () => {
     const iframe = document.createElement("iframe");
     document.body.append(iframe);
     const seek = vi.fn();
+    const forceTimelineRebind = vi.fn();
     const win = iframe.contentWindow;
     if (!win) throw new Error("Expected iframe contentWindow");
-    const playerWindow: Window & { __player?: { seek?: (time: number) => void } } = win;
+    const playerWindow: Window & {
+      __player?: { seek?: (time: number) => void };
+      __hfForceTimelineRebind?: () => void;
+    } = win;
     playerWindow.__player = { seek };
+    playerWindow.__hfForceTimelineRebind = forceTimelineRebind;
 
     const files = new Map([
       [
@@ -354,7 +349,6 @@ describe("toggleTimelineElementHidden", () => {
         writes.set(path, content);
       },
       recordEdit,
-      domEditSaveTimestampRef: { current: 0 },
       pendingTimelineEditPathRef: { current: new Set() },
     });
 
@@ -369,6 +363,7 @@ describe("toggleTimelineElementHidden", () => {
     expect(recordEdit).toHaveBeenCalledTimes(1);
     expect(recordEdit.mock.calls[0]?.[0]?.label).toBe("Hide element");
     expect(seek).toHaveBeenCalledWith(1.25);
+    expect(forceTimelineRebind).toHaveBeenCalledTimes(1);
     expect(
       usePlayerStore.getState().elements.find((el) => el.key === "index.html:#hero")?.hidden,
     ).toBe(true);
@@ -411,7 +406,6 @@ describe("toggleTimelineElementHidden", () => {
         writes.push({ path, content });
       },
       recordEdit,
-      domEditSaveTimestampRef: { current: 0 },
       pendingTimelineEditPathRef: { current: new Set() },
     });
 
@@ -478,7 +472,6 @@ describe("createAudioGroupAndAssignMembers", () => {
         writes.set(path, content);
       },
       recordEdit,
-      domEditSaveTimestampRef: { current: 0 },
       pendingTimelineEditPathRef: { current: new Set() },
     });
 
@@ -551,7 +544,6 @@ describe("createAudioGroupAndAssignMembers", () => {
         writes.set(path, content);
       },
       recordEdit: vi.fn(),
-      domEditSaveTimestampRef: { current: 0 },
       pendingTimelineEditPathRef: { current: new Set() },
     });
 
@@ -586,7 +578,6 @@ describe("createAudioGroupAndAssignMembers", () => {
         previewIframe: null,
         writeProjectFile: async () => {},
         recordEdit,
-        domEditSaveTimestampRef: { current: 0 },
         pendingTimelineEditPathRef: { current: new Set() },
       }),
     ).rejects.toThrow("a group needs at least two");
@@ -606,7 +597,6 @@ describe("createAudioGroupAndAssignMembers", () => {
         previewIframe: null,
         writeProjectFile: async () => {},
         recordEdit: vi.fn(),
-        domEditSaveTimestampRef: { current: 0 },
         pendingTimelineEditPathRef: { current: new Set() },
       }),
     ).rejects.toThrow("Invalid audio group id");
@@ -635,7 +625,6 @@ describe("createAudioGroupAndAssignMembers", () => {
         previewIframe: iframe,
         writeProjectFile: async () => {},
         recordEdit: vi.fn(),
-        domEditSaveTimestampRef: { current: 0 },
         pendingTimelineEditPathRef: { current: new Set() },
       }),
     ).rejects.toThrow();

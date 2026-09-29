@@ -1,19 +1,22 @@
 // @vitest-environment happy-dom
 import { act, createElement } from "react";
-import { createRoot, type Root } from "react-dom/client";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { TimelineElement } from "../store/playerStore";
 import { usePlayerStore } from "../store/playerStore";
 import { type KeyframeDiamondContextMenuState } from "./KeyframeDiamondContextMenu";
 import { TimelineOverlays, resolveTimelineContextElement } from "./TimelineOverlays";
+import {
+  TimelineContextProvider,
+  type TimelineContextValue,
+  type TimelineOverlaysState,
+} from "./TimelineProvider";
 import { defaultTimelineTheme } from "./timelineTheme";
+import { createHappyDomRootHarness } from "./testRootHarness";
 
 (globalThis as unknown as { IS_REACT_ACT_ENVIRONMENT: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
-const roots: Root[] = [];
+const { mount } = createHappyDomRootHarness();
 afterEach(() => {
-  for (const root of roots.splice(0)) act(() => root.unmount());
-  document.body.innerHTML = "";
   usePlayerStore.setState({ selectedElementId: null, timelineSessionEpoch: 0 });
 });
 
@@ -76,8 +79,7 @@ function renderKeyframeOverlay(options: {
 }) {
   const container = document.createElement("div");
   document.body.appendChild(container);
-  const root = createRoot(container);
-  roots.push(root);
+  const root = mount(container);
   const elements = [options.currentElement];
   const setKfContextMenu = options.setKfContextMenu ?? vi.fn();
   const onDeleteAllKeyframes = options.onDeleteAllKeyframes ?? vi.fn();
@@ -90,6 +92,64 @@ function renderKeyframeOverlay(options: {
     percentage: 50,
     animationId: "child-position",
   };
+  const overlays = {
+    elements,
+    elementsRef: { current: elements },
+    theme: defaultTimelineTheme,
+    showShortcutHint: false,
+    showPopover: false,
+    rangeSelection: null,
+    setShowPopover: vi.fn(),
+    setRangeSelection: vi.fn(),
+    kfContextMenu: menu,
+    setKfContextMenu,
+    onDeleteKeyframe: vi.fn(),
+    onDeleteAllKeyframes,
+    onMoveKeyframeToPlayhead: vi.fn(),
+    clipContextMenu: null,
+    setClipContextMenu: vi.fn(),
+    currentTime: 0,
+    onSplitElement: vi.fn(),
+    pinZoomBeforeEdit: vi.fn(),
+    onDeleteElement: vi.fn(),
+    gapContextMenu: null,
+    onDismissGapContextMenu: vi.fn(),
+    onCloseTrackGap: vi.fn(),
+    onCloseAllTrackGaps: vi.fn(),
+    onHoverGapAction: vi.fn(),
+  } satisfies TimelineOverlaysState;
+  const contextValue = {
+    state: {
+      timelineReady: true,
+      elements,
+      selectedElementId: null,
+      sessionEpoch: 0,
+      keyframeCache: new Map(),
+      canvas: {} as TimelineContextValue["state"]["canvas"],
+      overlays,
+    },
+    actions: {
+      renderClipContent: undefined,
+      renderClipOverlay: undefined,
+      setFocusedEaseSegment: vi.fn(),
+    },
+    meta: {} as TimelineContextValue["meta"],
+  } satisfies TimelineContextValue;
+
+  function TestTimelineContext({ value }: { value: TimelineContextValue }) {
+    const selectedElementId = usePlayerStore((state) => state.selectedElementId);
+    const sessionEpoch = usePlayerStore((state) => state.timelineSessionEpoch);
+    return createElement(
+      TimelineContextProvider,
+      {
+        value: {
+          ...value,
+          state: { ...value.state, selectedElementId, sessionEpoch },
+        },
+      },
+      createElement(TimelineOverlays),
+    );
+  }
 
   act(() => {
     usePlayerStore.setState({
@@ -97,32 +157,7 @@ function renderKeyframeOverlay(options: {
       timelineSessionEpoch: 2,
     });
     root.render(
-      createElement(TimelineOverlays, {
-        elements,
-        elementsRef: { current: elements },
-        theme: defaultTimelineTheme,
-        showShortcutHint: false,
-        showPopover: false,
-        rangeSelection: null,
-        setShowPopover: vi.fn(),
-        setRangeSelection: vi.fn(),
-        kfContextMenu: menu,
-        setKfContextMenu,
-        onDeleteKeyframe: vi.fn(),
-        onDeleteAllKeyframes,
-        onMoveKeyframeToPlayhead: vi.fn(),
-        clipContextMenu: null,
-        setClipContextMenu: vi.fn(),
-        currentTime: 0,
-        onSplitElement: vi.fn(),
-        pinZoomBeforeEdit: vi.fn(),
-        onDeleteElement: vi.fn(),
-        gapContextMenu: null,
-        onDismissGapContextMenu: vi.fn(),
-        onCloseTrackGap: vi.fn(),
-        onCloseAllTrackGaps: vi.fn(),
-        onHoverGapAction: vi.fn(),
-      }),
+      createElement(TestTimelineContext, { value: contextValue }, createElement(TimelineOverlays)),
     );
   });
   return { setKfContextMenu, onDeleteAllKeyframes };

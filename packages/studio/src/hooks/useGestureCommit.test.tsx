@@ -107,6 +107,7 @@ describe("useGestureCommit", () => {
         previewIframeRef: { current: iframe },
         showToast: vi.fn(),
         isGestureRecordingRef: { current: false },
+        readOnlyPreview: false,
       });
       return null;
     }
@@ -126,5 +127,33 @@ describe("useGestureCommit", () => {
     expect(options[0]).not.toHaveProperty("softReload");
     expect(options[1]).toEqual(expect.objectContaining({ coalesceMs: Infinity, softReload: true }));
     expect(options[1]).not.toHaveProperty("skipReload");
+  });
+
+  it("does not start a recording while the preview is read-only", () => {
+    const element = document.createElement("div");
+    const commitMutation = vi.fn(async () => {});
+    const captured: { hook: ReturnType<typeof useGestureCommit> | null } = { hook: null };
+    function Probe() {
+      captured.hook = useGestureCommit({
+        domEditSessionRef: {
+          current: {
+            domEditSelection: makeSelection(element),
+            selectedGsapAnimations: [],
+            commitMutation,
+          },
+        },
+        previewIframeRef: { current: document.createElement("iframe") },
+        showToast: vi.fn(),
+        isGestureRecordingRef: { current: false },
+        readOnlyPreview: true,
+      });
+      return null;
+    }
+    const root = mountReactHarness(<Probe />);
+    cleanup = () => act(() => root.unmount());
+
+    act(() => captured.hook?.handleToggleRecording());
+    expect(gestureRecording.startRecording).not.toHaveBeenCalled();
+    expect(commitMutation).not.toHaveBeenCalled();
   });
 });

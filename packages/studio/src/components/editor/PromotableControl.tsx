@@ -83,7 +83,7 @@ export function PromotableControl({
         <span
           // Sits above the row (not on top of top-0) so it clears a value that
           // renders flush to the row's right edge, e.g. flat Font/Color rows.
-          className="pointer-events-none absolute -top-2 right-1.5 z-10 inline-flex max-w-[60%] items-center gap-1 truncate rounded bg-studio-accent/20 px-1 py-px font-mono text-[8px] font-medium text-studio-accent"
+          className="pointer-events-none absolute -top-2 right-1.5 z-10 inline-flex max-w-[60%] items-center gap-1 truncate rounded-sm bg-studio-accent/20 px-1 py-px font-mono text-[8px] font-medium text-studio-accent"
           title={`Bound to variable "${promote.boundId}"`}
         >
           ◆ {promote.boundId}
@@ -97,7 +97,7 @@ export function PromotableControl({
             e.stopPropagation();
             promote.promote();
           }}
-          className="absolute -top-2 right-1.5 z-10 inline-flex items-center gap-1 rounded bg-neutral-800/80 px-1 py-px font-mono text-[8px] font-medium text-neutral-400 opacity-70 transition-colors hover:bg-studio-accent/20 hover:text-studio-accent hover:opacity-100"
+          className="absolute -top-2 right-1.5 z-10 inline-flex items-center gap-1 rounded-sm bg-neutral-800/80 px-1 py-px font-mono text-[8px] font-medium text-neutral-400 opacity-70 transition-colors hover:bg-studio-accent/20 hover:text-studio-accent hover:opacity-100"
         >
           ◇ var
         </button>

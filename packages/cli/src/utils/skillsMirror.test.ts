@@ -8,6 +8,7 @@ import {
   readFileSync,
   realpathSync,
   rmSync,
+  symlinkSync,
   writeFileSync,
 } from "node:fs";
 import { tmpdir } from "node:os";
@@ -46,6 +47,62 @@ afterEach(() => {
 });
 
 describe("mirrorGlobalSkills", () => {
+  it.each([
+    [
+      "absolute",
+      (home: string, source: string) => symlinkSync(source, join(home, ".cursor", "skills")),
+    ],
+    [
+      "relative",
+      (home: string) => symlinkSync("../.claude/skills", join(home, ".cursor", "skills")),
+    ],
+    ["intermediate", (home: string) => symlinkSync(".claude", join(home, ".cursor"))],
+  ])(
+    "fails closed when the target reaches the canonical store through a %s alias",
+    (_kind, alias) => {
+      const home = makeHome();
+      seedStore(home, ["hyperframes"]);
+      const source = join(home, ".claude", "skills");
+      if (_kind !== "intermediate") installMarker(home, ".cursor");
+      alias(home, source);
+
+      const result = mirrorGlobalSkills({
+        skills: ["hyperframes"],
+        home,
+        platform: "linux",
+        env: ENV,
+      });
+
+      expect(lstatSync(join(source, "hyperframes")).isDirectory()).toBe(true);
+      expect(readFileSync(join(source, "hyperframes", "SKILL.md"), "utf8")).toBe("# hyperframes\n");
+      expect(result.mirrored.map((entry) => entry.agent)).not.toContain("cursor");
+      expect(result.skipped).toContainEqual(
+        expect.objectContaining({ agent: "cursor", reason: "aliases_install_owned_store" }),
+      );
+    },
+  );
+
+  it("fails closed and reports an unresolvable self-loop before destructive mirroring", () => {
+    const home = makeHome();
+    seedStore(home, ["hyperframes"]);
+    installMarker(home, ".cursor");
+    symlinkSync("skills", join(home, ".cursor", "skills"));
+
+    const result = mirrorGlobalSkills({
+      skills: ["hyperframes"],
+      home,
+      platform: "linux",
+      env: ENV,
+    });
+
+    expect(readFileSync(join(home, ".claude", "skills", "hyperframes", "SKILL.md"), "utf8")).toBe(
+      "# hyperframes\n",
+    );
+    expect(result.skipped).toContainEqual(
+      expect.objectContaining({ agent: "cursor", reason: "unresolvable_target" }),
+    );
+  });
+
   it("no-ops when there is no global Claude store", () => {
     const home = makeHome();
     const result = mirrorGlobalSkills({
@@ -62,6 +119,7 @@ describe("mirrorGlobalSkills", () => {
     const home = makeHome();
     seedStore(home, ["hyperframes", "hyperframes-core"]);
     installMarker(home, ".cursor"); // cursor present
+    installMarker(home, ".bob"); // IBM Bob present
     installMarker(home, ".config/goose"); // goose present (XDG base)
     // windsurf NOT installed (no ~/.codeium/windsurf)
 
@@ -73,6 +131,7 @@ describe("mirrorGlobalSkills", () => {
     });
     const agents = mirrored.map((m) => m.agent);
     expect(agents).toContain("cursor");
+    expect(agents).toContain("bob");
     expect(agents).toContain("goose");
     expect(agents).not.toContain("windsurf");
 
@@ -81,6 +140,12 @@ describe("mirrorGlobalSkills", () => {
     expect(isAbsolute(readlinkSync(link))).toBe(false); // relative target
     expect(realpathSync(link)).toBe(realpathSync(join(home, ".claude", "skills", "hyperframes")));
     expect(existsSync(join(link, "SKILL.md"))).toBe(true);
+
+    const bobLink = join(home, ".bob", "skills", "hyperframes");
+    expect(lstatSync(bobLink).isSymbolicLink()).toBe(true);
+    expect(realpathSync(bobLink)).toBe(
+      realpathSync(join(home, ".claude", "skills", "hyperframes")),
+    );
 
     // goose lands in the XDG config dir (~/.config/goose), not ~/.goose
     expect(
@@ -226,6 +291,7 @@ describe("AGENT_GLOBAL_DIRS (generated table)", () => {
     const byAgent = new Map(AGENT_GLOBAL_DIRS.map((e) => [e.agent, e]));
     expect(byAgent.get("claude-code")).toMatchObject({ base: "claudeHome", sub: "skills" });
     expect(byAgent.get("cursor")).toMatchObject({ base: "home", sub: ".cursor/skills" });
+    expect(byAgent.get("bob")).toMatchObject({ base: "home", sub: ".bob/skills" });
     expect(byAgent.get("codex")).toMatchObject({ base: "codexHome", sub: "skills" });
     expect(byAgent.get("goose")).toMatchObject({ base: "configHome", sub: "goose/skills" });
     expect(byAgent.get("windsurf")).toMatchObject({

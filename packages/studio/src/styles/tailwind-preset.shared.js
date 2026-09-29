@@ -1,3 +1,6 @@
+/** @deprecated Superseded by `src/styles/theme.css` (published as
+ * `@hyperframes/studio/theme.css`); kept one more major for Tailwind v3
+ * consumers. Values are byte-identical; theme.test.ts fails if they drift. */
 const studioPreset = {
   theme: {
     extend: {

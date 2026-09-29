@@ -277,7 +277,7 @@ function generateJs(model: CaptionModel): string {
     }
   }
 
-  const transcriptJson = JSON.stringify(allSegments, null, 2);
+  const transcriptJson = JSON.stringify(allSegments, null, 2).replace(/</g, "\\u003c");
 
   const groupBlocks: string[] = [];
 
@@ -303,9 +303,11 @@ function generateJs(model: CaptionModel): string {
 
     // Build word spans
     const wordLines: string[] = groupSegments.map((seg) => {
-      const escaped = JSON.stringify(seg.text);
+      const escaped = JSON.stringify(seg.text).replace(/</g, "\\u003c");
       const segVar = `w_${seg.id.replace(/[^a-zA-Z0-9_]/g, "_")}`;
-      const idLine = seg.wordId ? `\n  ${segVar}.id = ${JSON.stringify(seg.wordId)};` : "";
+      const idLine = seg.wordId
+        ? `\n  ${segVar}.id = ${JSON.stringify(seg.wordId).replace(/</g, "\\u003c")};`
+        : "";
       return (
         `  const ${segVar} = document.createElement('span');` +
         `\n  ${segVar}.className = 'word clip';` +

@@ -86,4 +86,17 @@ describe("parseSubComposition", () => {
       elementCount: 1,
     });
   });
+
+  it("treats a data-composition-src that points at a folder as inline instead of crashing", () => {
+    const baseDir = mkdtempSync(join(tmpdir(), "hyperframes-compositions-"));
+
+    try {
+      mkdirSync(join(baseDir, "compositions", "intro"), { recursive: true });
+      const html = `<div data-composition-id="intro" data-composition-src="compositions/intro" data-width="1920" data-height="1080"></div>`;
+
+      expect(parseCompositions(html, baseDir)).toMatchObject([{ id: "intro" }]);
+    } finally {
+      rmSync(baseDir, { recursive: true, force: true });
+    }
+  });
 });

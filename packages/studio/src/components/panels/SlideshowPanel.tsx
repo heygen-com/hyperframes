@@ -156,7 +156,7 @@ export function makeSlideshowNotesController(): NotesController {
 // ── Component ─────────────────────────────────────────────────────────────
 
 export interface SlideshowPanelProps {
-  /** Scenes from the live clip manifest (passed from StudioRightPanel). */
+  /** Scenes from the live clip manifest (passed from StudioRightPanels). */
   scenes: import("./slideshowPanelHelpers").SceneInfo[];
   /**
    * Called with the updated manifest after every discrete edit (toggle, add,
@@ -435,7 +435,7 @@ export function SlideshowPanel({ scenes, onPersist, onPersistNotes }: SlideshowP
             type="button"
             disabled={retrying}
             onClick={handleRetryPersist}
-            className="px-2 py-0.5 text-[10px] rounded bg-red-600 text-white enabled:hover:bg-red-500 enabled:active:scale-[0.97] disabled:opacity-50 transition-colors"
+            className="px-2 py-0.5 text-[10px] rounded-sm bg-red-600 text-white enabled:hover:bg-red-500 enabled:active:scale-[0.97] disabled:opacity-50 transition-colors"
           >
             {retrying ? "Retrying…" : "Retry"}
           </button>
@@ -447,7 +447,7 @@ export function SlideshowPanel({ scenes, onPersist, onPersistNotes }: SlideshowP
             type="button"
             onClick={handleUndo}
             title="Undo last slideshow edit (⌘Z)"
-            className="px-2 py-0.5 text-[10px] rounded text-neutral-400 hover:text-neutral-200 hover:bg-neutral-800 active:scale-[0.97] transition-colors"
+            className="px-2 py-0.5 text-[10px] rounded-sm text-neutral-400 hover:text-neutral-200 hover:bg-neutral-800 active:scale-[0.97] transition-colors"
           >
             Undo ({undoDepth})
           </button>

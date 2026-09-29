@@ -5,7 +5,9 @@ import { describe, expect, it, vi } from "vitest";
 import { shouldUseSdkCutover } from "../utils/sdkCutover";
 import type { PatchOperation } from "../utils/sourcePatcher";
 import type { Composition } from "@hyperframes/sdk";
+import type { GsapAnimation } from "@hyperframes/core/gsap-parser";
 import type { DomEditSelection } from "../components/editor/domEditingTypes";
+import type { TimelineElement } from "../player";
 import type { UseDomEditSessionParams } from "./useDomEditSession";
 
 const styleOp = (property: string, value: string): PatchOperation => ({
@@ -61,6 +63,8 @@ const domEditSelectionRef: { current: DomEditSelection | null } = { current: nul
 const domEditGroupSelectionsRef: { current: DomEditSelection[] } = { current: [] };
 const groupSelectionSpy = vi.fn();
 const gsapCommitMutation = Object.assign(vi.fn(), { batch: vi.fn() });
+const neverParsed = new Promise<{ animations: GsapAnimation[] }>(() => undefined);
+const parsedFile = { current: neverParsed };
 
 function createSessionParams(
   overrides: Partial<UseDomEditSessionParams> = {},
@@ -84,7 +88,6 @@ function createSessionParams(
     readProjectFile: async () => "",
     writeProjectFile: async () => {},
     updateEditingFileContent: vi.fn(),
-    domEditSaveTimestampRef: { current: 0 },
     editHistory: { recordEdit: async () => {} },
     fileTree: [],
     importedFontAssetsRef: { current: [] },
@@ -98,6 +101,8 @@ function createSessionParams(
     syncPreviewHotkeys: vi.fn(),
     reloadPreview: vi.fn(),
     setRefreshKey: vi.fn(),
+    handleTimelineElementsDelete: vi.fn(),
+    readOnlyPreview: false,
     ...overrides,
   };
 }
@@ -106,6 +111,7 @@ vi.mock("../utils/sdkResolverShadow", () => ({
   runResolverShadow: vi.fn(),
   recordResolverParity: (...args: unknown[]) => recordResolverParity(...args),
 }));
+const handleDomEditElementsDeleteMock = vi.fn(async () => ({ ok: true }) as const);
 vi.mock("./useDomEditCommits", () => ({
   useDomEditCommits: (params: { onReorderShadow?: (targets: string[]) => void }) => {
     capturedOnReorderShadow.fn = params.onReorderShadow;
@@ -121,7 +127,7 @@ vi.mock("./useDomEditCommits", () => ({
       handleDomRemoveTextField: vi.fn(),
       handleDomBoxSizeCommit: vi.fn(),
       handleDomManualEditsReset: vi.fn(),
-      handleDomEditElementDelete: vi.fn(),
+      handleDomEditElementsDelete: handleDomEditElementsDeleteMock,
       handleDomZIndexReorderCommit: vi.fn(),
     };
   },
@@ -163,7 +169,12 @@ vi.mock("./useAskAgentModal", () => ({
 vi.mock("./useStudioSelectionPublisher", () => ({
   useStudioSelectionPublisher: () => {},
 }));
-vi.mock("./useGsapTweenCache", () => ({
+vi.mock("./keyframeCacheAstLoad", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("./keyframeCacheAstLoad")>()),
+  fetchParsedAnimations: () => parsedFile.current,
+}));
+vi.mock("./useGsapTweenCache", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("./useGsapTweenCache")>()),
   useGsapCacheVersion: () => ({ version: 0, bump: vi.fn() }),
 }));
 vi.mock("./useGsapScriptCommits", () => ({
@@ -410,6 +421,48 @@ describe("bulk segment ease commits", () => {
   });
 });
 
+describe("the session hands out selections narrowed to what the GSAP commit accepts", () => {
+  it("closes the move of a helper-loop element once its preflight lands", async () => {
+    const { useDomEditSession } = await import("./useDomEditSession");
+    domEditSelectionRef.current = {
+      id: "hero",
+      selector: "#hero",
+      element: document.createElement("div"),
+      sourceFile: "index.html",
+      capabilities: {
+        canApplyManualOffset: true,
+        canApplyManualSize: true,
+        canApplyManualRotation: true,
+      },
+    } as unknown as DomEditSelection;
+    const loop = { targetSelector: "#hero", properties: { x: 100 }, provenance: { kind: "loop" } };
+    parsedFile.current = Promise.resolve({ animations: [loop as unknown as GsapAnimation] });
+    const seen: { selection?: DomEditSelection | null } = {};
+    function Probe() {
+      seen.selection = useDomEditSession(createSessionParams()).domEditSelection;
+      return null;
+    }
+    const root = createRoot(document.createElement("div"));
+    try {
+      act(() => root.render(<Probe />));
+      expect(seen.selection?.capabilities.canApplyManualOffset).toBe(false);
+      await act(async () => {
+        for (let tick = 0; tick < 10; tick++) await Promise.resolve();
+      });
+      expect(seen.selection?.capabilities).toMatchObject({
+        canApplyManualOffset: false,
+        canApplyManualSize: true,
+        canApplyManualRotation: true,
+        reasonIfDisabled: expect.stringContaining("helper or loop"),
+      });
+    } finally {
+      domEditSelectionRef.current = null;
+      parsedFile.current = neverParsed;
+      act(() => root.unmount());
+    }
+  });
+});
+
 // ── Grouping refuses audio ───────────────────────────────────────────────────
 //
 // A layout group is a positioned wrapper: it takes the members' bounding box,
@@ -460,5 +513,91 @@ describe("handleGroupSelection with audio in the selection", () => {
   it("still groups a selection of layout elements", async () => {
     await group([sel("div"), sel("span")]);
     expect(groupSelectionSpy).toHaveBeenCalledTimes(1);
+  });
+});
+
+// ── Delete routing: a timeline row goes through the timeline's own delete op ──
+
+describe("handleDomEditElementDelete routing", () => {
+  const domSel = (id: string): DomEditSelection =>
+    ({
+      id,
+      element: document.createElement("div"),
+      sourceFile: "index.html",
+    }) as unknown as DomEditSelection;
+
+  async function deleteViaSession(
+    selection: DomEditSelection,
+    timelineElements: TimelineElement[],
+    options?: { expandGroup?: boolean; group?: DomEditSelection[] },
+  ) {
+    const { useDomEditSession } = await import("./useDomEditSession");
+    handleDomEditElementsDeleteMock.mockClear();
+    domEditGroupSelectionsRef.current = options?.group ?? [];
+    const handleTimelineElementsDelete = vi.fn(async () => {});
+    const captured: {
+      fn?: (selection: DomEditSelection, options?: { expandGroup?: boolean }) => Promise<void>;
+    } = {};
+    function Probe() {
+      captured.fn = useDomEditSession(
+        createSessionParams({ timelineElements, handleTimelineElementsDelete }),
+      ).handleDomEditElementDelete;
+      return null;
+    }
+    const root = createRoot(document.createElement("div"));
+    act(() => root.render(<Probe />));
+    await act(async () => captured.fn?.(selection, { expandGroup: options?.expandGroup }));
+    act(() => root.unmount());
+    domEditGroupSelectionsRef.current = [];
+    return { handleTimelineElementsDelete };
+  }
+
+  it("hands a selection that IS a timeline row to the timeline delete op, not the REST path", async () => {
+    const clip = {
+      id: "clip-a",
+      domId: "clip-a",
+      sourceFile: "index.html",
+      tag: "video",
+      start: 0,
+      duration: 2,
+      track: 0,
+    } as TimelineElement;
+    const { handleTimelineElementsDelete } = await deleteViaSession(domSel("clip-a"), [clip]);
+    expect(handleTimelineElementsDelete).toHaveBeenCalledWith([clip]);
+    expect(handleDomEditElementsDeleteMock).not.toHaveBeenCalled();
+  });
+
+  it("falls through to the REST path for a selection with no timeline row of its own", async () => {
+    const { handleTimelineElementsDelete } = await deleteViaSession(domSel("nested-child"), []);
+    expect(handleTimelineElementsDelete).not.toHaveBeenCalled();
+    expect(handleDomEditElementsDeleteMock).toHaveBeenCalledWith([domSel("nested-child")]);
+  });
+
+  it("expands a multi-member marquee group to the timeline op when every member resolves", async () => {
+    const clipA = {
+      id: "clip-a",
+      domId: "clip-a",
+      sourceFile: "index.html",
+      tag: "video",
+      start: 0,
+      duration: 2,
+      track: 0,
+    } as TimelineElement;
+    const clipB = {
+      id: "clip-b",
+      domId: "clip-b",
+      sourceFile: "index.html",
+      tag: "video",
+      start: 2,
+      duration: 2,
+      track: 0,
+    } as TimelineElement;
+    const group = [domSel("clip-a"), domSel("clip-b")];
+    const { handleTimelineElementsDelete } = await deleteViaSession(group[0], [clipA, clipB], {
+      expandGroup: true,
+      group,
+    });
+    expect(handleTimelineElementsDelete).toHaveBeenCalledWith([clipA, clipB]);
+    expect(handleDomEditElementsDeleteMock).not.toHaveBeenCalled();
   });
 });

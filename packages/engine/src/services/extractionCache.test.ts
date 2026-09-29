@@ -25,6 +25,8 @@ import {
   partialCacheEntryDir,
   publishCacheEntry,
   readKeyStat,
+  rehydrateCacheEntry,
+  touchCacheDir,
   type CacheKeyInput,
 } from "./extractionCache.js";
 
@@ -63,8 +65,8 @@ function seedPartialDir(entry: { dir: string; keyHash: string }, frameContent: s
 }
 
 describe("extractionCache constants", () => {
-  it("exposes the v4 schema prefix", () => {
-    expect(SCHEMA_PREFIX).toBe("hfcache-v4-");
+  it("exposes the v6 schema prefix", () => {
+    expect(SCHEMA_PREFIX).toBe("hfcache-v6-");
   });
 
   it("exposes the frame filename prefix shared with the extractor", () => {
@@ -73,6 +75,42 @@ describe("extractionCache constants", () => {
 
   it("uses a dotfile sentinel so ls-without-A hides it", () => {
     expect(COMPLETE_SENTINEL.startsWith(".")).toBe(true);
+  });
+});
+
+describe("rehydrateCacheEntry frame identity", () => {
+  it("fails loudly when a complete cache has a frame-number gap", () => {
+    const { tmpRoot } = makeCacheRoot();
+    try {
+      writeFileSync(join(tmpRoot, "frame_00001.jpg"), "one");
+      writeFileSync(join(tmpRoot, "frame_00003.jpg"), "three");
+
+      expect(() =>
+        rehydrateCacheEntry(
+          { dir: tmpRoot, keyHash: "a".repeat(64) },
+          {
+            videoId: "video-gap",
+            srcPath: "/video.mp4",
+            fps: 30,
+            format: "jpg",
+            metadata: {
+              durationSeconds: 1,
+              videoStreamDurationSeconds: 1,
+              width: 1920,
+              height: 1080,
+              fps: 30,
+              videoCodec: "h264",
+              hasAudio: false,
+              isVFR: false,
+              hasAlpha: false,
+              colorSpace: null,
+            },
+          },
+        ),
+      ).toThrow(/missing.*frame index 1/i);
+    } finally {
+      removeCacheRoot(tmpRoot);
+    }
   });
 });
 
@@ -227,11 +265,36 @@ describe("lookupCacheEntry / markCacheEntryComplete", () => {
   it("hits after ensureCacheEntryDir + markCacheEntryComplete", () => {
     const first = lookupCacheEntry(tmpRoot, base(sourceFile));
     ensureCacheEntryDir(first.entry);
+    writeFileSync(join(first.entry.dir, "frame_00001.jpg"), "x", "utf-8");
     markCacheEntryComplete(first.entry);
 
     const second = lookupCacheEntry(tmpRoot, base(sourceFile));
     expect(second.hit).toBe(true);
     expect(second.entry.dir).toBe(first.entry.dir);
+  });
+
+  it("treats a sentineled entry with no frames as a miss", () => {
+    const first = lookupCacheEntry(tmpRoot, base(sourceFile));
+    ensureCacheEntryDir(first.entry);
+    writeFileSync(join(first.entry.dir, "frame_00001.jpg"), "x", "utf-8");
+    markCacheEntryComplete(first.entry);
+    expect(lookupCacheEntry(tmpRoot, base(sourceFile)).hit).toBe(true);
+
+    // Any per-file cleanup can empty the directory while leaving the sentinel.
+    // Serving that as a hit rehydrates zero frames, so every later render of
+    // the project fails identically at the coverage gate.
+    rmSync(join(first.entry.dir, "frame_00001.jpg"));
+
+    expect(lookupCacheEntry(tmpRoot, base(sourceFile)).hit).toBe(false);
+  });
+
+  it("counts frames of any format when deciding a hit", () => {
+    const first = lookupCacheEntry(tmpRoot, base(sourceFile));
+    ensureCacheEntryDir(first.entry);
+    writeFileSync(join(first.entry.dir, "frame_00001.png"), "x", "utf-8");
+    markCacheEntryComplete(first.entry);
+
+    expect(lookupCacheEntry(tmpRoot, base(sourceFile)).hit).toBe(true);
   });
 
   it("treats an in-progress dir without the sentinel as a miss", () => {
@@ -353,6 +416,19 @@ describe("gcExtractionCache", () => {
     expect(stats.evictedEntries).toBe(1);
   });
 
+  it("counts the same evictions in a dry run and removes nothing", () => {
+    const old = makeEntry("old", 60, 120_000);
+    const young = makeEntry("young", 60, 1_000);
+    const options = { maxBytes: 0, minAgeMs: 60_000 };
+
+    const planned = gcExtractionCache(tmpRoot, { ...options, dryRun: true });
+    expect(existsSync(old)).toBe(true);
+    expect(gcExtractionCache(tmpRoot, options)).toEqual(planned);
+    expect(planned.evictedEntries).toBe(1);
+    expect(existsSync(old)).toBe(false);
+    expect(existsSync(young)).toBe(true);
+  });
+
   it("evicts oldest complete entries first until under maxBytes while respecting minAge", () => {
     const oldest = makeEntry("oldest", 60, 120_000);
     const middle = makeEntry("middle", 60, 90_000);
@@ -379,6 +455,23 @@ describe("gcExtractionCache", () => {
     expect(existsSync(freshPartial)).toBe(true);
   });
 
+  // A render still writing into its own (unpublished) partial dir depends on
+  // it exactly like a symlinked complete entry does. The aged-partial check
+  // reads the DIRECTORY's own mtime, not any sentinel — touchCacheDir must
+  // renew that too, or a long-lived partial dir is just as vulnerable to a
+  // concurrent GC sweep as an untouched complete entry.
+  it("touchCacheDir renews a partial directory's own mtime so a live writer survives the aged-partial sweep", () => {
+    const dependedOnPartial = join(tmpRoot, `${SCHEMA_PREFIX}ghi.partial-1234-cafef00d`);
+    mkdirSync(dependedOnPartial, { recursive: true });
+    const old = new Date(Date.now() - 120_000);
+    utimesSync(dependedOnPartial, old, old);
+
+    touchCacheDir(dependedOnPartial);
+    gcExtractionCache(tmpRoot, { maxBytes: 1_000_000, minAgeMs: 60_000 });
+
+    expect(existsSync(dependedOnPartial)).toBe(true);
+  });
+
   it("ignores non-cache-prefix directories under the same root", () => {
     const animatedGif = join(tmpRoot, "animated-gif");
     mkdirSync(animatedGif, { recursive: true });
@@ -395,5 +488,18 @@ describe("gcExtractionCache", () => {
     expect(() =>
       gcExtractionCache(join(tmpRoot, "missing"), { maxBytes: 1, minAgeMs: 60_000 }),
     ).not.toThrow();
+  });
+
+  // A render can keep reading an entry long after the one-time touch its
+  // cache-hit lookup performed. touchCacheDir is how a live reader proves the
+  // entry is still in use — without it, an in-use entry idle past minAge is
+  // indistinguishable from an abandoned one and gets swept like `oldest` above.
+  it("touchCacheDir renews an entry's LRU clock so a live dependent survives the sweep", () => {
+    const dependedOnDir = makeEntry("depended-on", 60, 120_000);
+
+    touchCacheDir(dependedOnDir);
+    gcExtractionCache(tmpRoot, { maxBytes: 1, minAgeMs: 60_000 });
+
+    expect(existsSync(dependedOnDir)).toBe(true);
   });
 });

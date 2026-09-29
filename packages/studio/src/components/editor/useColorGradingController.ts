@@ -1,3 +1,6 @@
+import { mediaMetadataUrl } from "../../utils/studioHelpers";
+import { useLivePreviewIframe } from "../../player/store/previewIframeStore";
+import { onPreviewContentReplaced } from "../../player/sceneSwap";
 import { useCallback, useEffect, useMemo, useRef, useState, type RefObject } from "react";
 import {
   HF_COLOR_GRADING_ATTR,
@@ -287,12 +290,7 @@ export function useColorGradingController({
       return;
     }
     const controller = new AbortController();
-    fetch(
-      `/api/projects/${encodeURIComponent(projectId)}/media/metadata?path=${encodeURIComponent(
-        selectedAssetPath,
-      )}`,
-      { signal: controller.signal },
-    )
+    fetch(mediaMetadataUrl(projectId, selectedAssetPath), { signal: controller.signal })
       .then(async (response) => {
         if (!response.ok) return { ok: false as const };
         const data: MediaMetadataResponse | null = await response.json();
@@ -430,6 +428,7 @@ export function useColorGradingController({
     [previewIframeRef, target],
   );
 
+  const livePreviewIframe = useLivePreviewIframe();
   useEffect(() => {
     const iframe = previewIframeRef?.current;
     if (!iframe) return;
@@ -447,15 +446,21 @@ export function useColorGradingController({
       if (!acceptStudioRuntimeMessage(data)) return;
       refreshAndReplay();
     };
-    iframe.addEventListener("load", refreshAndReplay);
     window.addEventListener("message", onMessage);
     const timer = window.setTimeout(refreshAndReplay, 80);
+    const stopReplay = onPreviewContentReplaced(iframe, refreshAndReplay);
     return () => {
-      iframe.removeEventListener("load", refreshAndReplay);
+      stopReplay();
       window.removeEventListener("message", onMessage);
       window.clearTimeout(timer);
     };
-  }, [postColorGrading, postCompare, previewIframeRef, scheduleRuntimeStatusRefresh]);
+  }, [
+    postColorGrading,
+    postCompare,
+    previewIframeRef,
+    scheduleRuntimeStatusRefresh,
+    livePreviewIframe,
+  ]);
 
   useEffect(
     () => () => {

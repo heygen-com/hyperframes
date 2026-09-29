@@ -75,10 +75,25 @@ describe("assignMediaRenderIds", () => {
     expect(ids[1]).toBe("clip__hf2");
   });
 
-  it("leaves media with no source at all alone", () => {
+  it("stamps empty-src media with colliding author ids", () => {
+    // `src=""` used to skip the stamp. The snapshot then keyed by raw id and
+    // colliding scenes collapsed. Runtime assignment is why the src is empty,
+    // not a second path this function sees.
+    const { document } = parseHTML(
+      '<video id="clip" src=""></video><video id="clip" src=""></video>',
+    );
+    assignMediaRenderIds(document as unknown as Parameters<typeof assignMediaRenderIds>[0]);
+    expect(
+      Array.from(document.querySelectorAll("video")).map((el) =>
+        el.getAttribute(MEDIA_RENDER_ID_ATTR),
+      ),
+    ).toEqual(["clip", "clip__hf2"]);
+  });
+
+  it("stamps a video with no source attribute at all", () => {
     const { document } = parseHTML('<video id="no-src"></video>');
     assignMediaRenderIds(document as unknown as Parameters<typeof assignMediaRenderIds>[0]);
-    expect(document.querySelector("video")?.hasAttribute(MEDIA_RENDER_ID_ATTR)).toBe(false);
+    expect(document.querySelector("video")?.getAttribute(MEDIA_RENDER_ID_ATTR)).toBe("no-src");
   });
 
   it("stamps media whose source is a <source> child rather than a src attribute", () => {
@@ -103,10 +118,10 @@ describe("assignMediaRenderIds", () => {
     expect(document.querySelector("audio")?.getAttribute(MEDIA_RENDER_ID_ATTR)).toBe("bed");
   });
 
-  it("ignores a <source> child that carries no src", () => {
+  it("stamps a video whose <source> child carries no src", () => {
     const { document } = parseHTML('<video id="empty"><source type="video/mp4"></video>');
     assignMediaRenderIds(document as unknown as Parameters<typeof assignMediaRenderIds>[0]);
-    expect(document.querySelector("video")?.hasAttribute(MEDIA_RENDER_ID_ATTR)).toBe(false);
+    expect(document.querySelector("video")?.getAttribute(MEDIA_RENDER_ID_ATTR)).toBe("empty");
   });
 });
 

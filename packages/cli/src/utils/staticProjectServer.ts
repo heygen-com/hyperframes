@@ -13,6 +13,7 @@ import {
   decideMediaProxyEligibility,
   isProxyVariantRequest,
   probeAssetCodec,
+  recordProxyRequest,
   resolveProxyVariantRequest,
   PROXY_VARIANT_CONFIG,
   type ProxyVariantRequest,
@@ -141,6 +142,7 @@ async function serveProxyRequest(
       res.end("media proxy variant does not match asset");
       return;
     }
+    recordProxyRequest();
     const proxyPath = await resolveProxy(projectDir, filePath, variant);
     // The await above can span a whole transcode; the client may be gone.
     if (res.writableEnded || res.destroyed) return;

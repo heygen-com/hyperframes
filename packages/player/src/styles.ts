@@ -30,6 +30,15 @@ export const PLAYER_STYLES = /* css */ `
     pointer-events: auto;
   }
 
+  .hfp-video {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    object-fit: contain;
+    pointer-events: none;
+  }
+
   .hfp-poster {
     position: absolute;
     inset: 0;
@@ -122,6 +131,10 @@ export const PLAYER_STYLES = /* css */ `
     -webkit-background-clip: text;
     background-clip: text;
     animation: hfp-shader-loader-sheen 1.9s linear infinite;
+  }
+
+  .hfp-shader-loader:not(.hfp-visible):not(.hfp-hiding) .hfp-shader-loader-title-text {
+    animation-play-state: paused;
   }
 
   .hfp-shader-loader-detail {

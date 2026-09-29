@@ -12,6 +12,31 @@ export interface PinRewriteResult {
   fromVersions: string[];
 }
 
+export interface TextPinRewriteResult {
+  changed: boolean;
+  text: string;
+  fromVersions: string[];
+}
+
+export function rewritePinnedHyperframesText(
+  text: string,
+  targetVersion: string,
+): TextPinRewriteResult {
+  if (!isSafeVersion(targetVersion)) {
+    return { changed: false, text, fromVersions: [] };
+  }
+  const fromVersions = new Set<string>();
+  const next = text.replace(HYPERFRAMES_PIN_RE, (_full, version: string) => {
+    if (version !== targetVersion) fromVersions.add(version);
+    return `hyperframes@${targetVersion}`;
+  });
+  return {
+    changed: fromVersions.size > 0,
+    text: next,
+    fromVersions: [...fromVersions].sort(),
+  };
+}
+
 export function readPinnedHyperframesVersions(scripts: Record<string, string>): string[] {
   const found = new Set<string>();
   for (const cmd of Object.values(scripts ?? {})) {
@@ -31,10 +56,9 @@ export function rewriteProjectPinnedScripts(
   const fromVersions = new Set<string>();
   const next: Record<string, string> = {};
   for (const [name, cmd] of Object.entries(scripts ?? {})) {
-    next[name] = cmd.replace(HYPERFRAMES_PIN_RE, (_full, version: string) => {
-      if (version !== targetVersion) fromVersions.add(version);
-      return `hyperframes@${targetVersion}`;
-    });
+    const rewrite = rewritePinnedHyperframesText(cmd, targetVersion);
+    next[name] = rewrite.text;
+    for (const version of rewrite.fromVersions) fromVersions.add(version);
   }
   return {
     changed: [...fromVersions].length > 0,

@@ -37,6 +37,10 @@ export interface GsapAnimationFetchOptions {
   fresh?: boolean;
 }
 
+export function gsapSourceFileForSelection(selection: DomEditSelection): string {
+  return selection.sourceFile || "index.html";
+}
+
 /**
  * Classify a parse result for one element. Differentiates a hard fetch failure
  * (`parsed === null`) from a warm-but-empty cold parse (`animations.length === 0`)
@@ -45,10 +49,14 @@ export interface GsapAnimationFetchOptions {
 export function selectElementAnimationsOrRetry(
   parsed: Pick<ParsedGsap, "animations"> | null,
   target: { id: string | null; selector: string | null },
+  element?: Element | null,
 ): ElementAnimationsOutcome {
   if (!parsed) return { kind: "fetch-error" };
   if (parsed.animations.length === 0) return { kind: "cold" };
-  return { kind: "resolved", animations: getAnimationsForElement(parsed.animations, target) };
+  return {
+    kind: "resolved",
+    animations: getAnimationsForElement(parsed.animations, target, element),
+  };
 }
 
 // Retry policy deliberately distinguishes cold parses from hard fetch errors.
@@ -57,6 +65,7 @@ async function fetchElementAnimationsWithRetry(
   projectId: string,
   gsapSourceFile: string,
   target: { id: string | null; selector: string | null },
+  element: Element,
   failOnFetchError: boolean,
   fresh: boolean,
 ): Promise<GsapAnimation[]> {
@@ -65,7 +74,7 @@ async function fetchElementAnimationsWithRetry(
   for (;;) {
     const parsed = await fetchParsedAnimations(projectId, gsapSourceFile, { fresh });
     fresh = false;
-    const outcome = selectElementAnimationsOrRetry(parsed, target);
+    const outcome = selectElementAnimationsOrRetry(parsed, target, element);
     if (outcome.kind === "resolved") return outcome.animations;
     if (outcome.kind === "fetch-error") {
       if (errorAttempts >= FETCH_ERROR_RETRIES) {
@@ -82,7 +91,7 @@ async function fetchElementAnimationsWithRetry(
   }
 }
 
-export function useGsapAnimationFetchFallback(projectId: string | null, gsapSourceFile: string) {
+export function useGsapAnimationFetchFallback(projectId: string | null) {
   return useCallback(
     (selection: DomEditSelection, options?: GsapAnimationFetchOptions) =>
       async (): Promise<GsapAnimation[]> => {
@@ -90,12 +99,13 @@ export function useGsapAnimationFetchFallback(projectId: string | null, gsapSour
         const target = { id: selection.id ?? null, selector: selection.selector ?? null };
         return fetchElementAnimationsWithRetry(
           projectId,
-          gsapSourceFile,
+          gsapSourceFileForSelection(selection),
           target,
+          selection.element,
           options?.failOnFetchError === true,
           options?.fresh === true,
         );
       },
-    [projectId, gsapSourceFile],
+    [projectId],
   );
 }

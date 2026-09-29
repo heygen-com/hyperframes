@@ -16,12 +16,14 @@ import {
   type LayoutRect,
 } from "./layoutAudit.js";
 import {
+  assertionTargets,
   collectSamplingTargets,
   evaluateMotion,
   type Canvas,
   type MotionFrame,
 } from "./motionAudit.js";
-import { findMotionSpec, readMotionSpec } from "./motionSpec.js";
+import { findMotionSpec, readMotionSpec, type MotionAssertion } from "./motionSpec.js";
+import { inspectHdrAutoPromotion } from "./hdrPromotion.js";
 import { normalizeErrorMessage } from "./errorMessage.js";
 import {
   parseColorRGBA,
@@ -108,6 +110,8 @@ function buildMotionSampleTimes(duration: number): number[] {
 interface SampleGrid {
   duration: number;
   layoutSamples: number[];
+  /** `--at` times: they can all land on a still stretch, so the frozen-sweep guard never judges them. */
+  userPickedSamples: number[];
   captionSamples: number[];
   frameSamples: number[];
   transitionSamples: number[];
@@ -156,6 +160,7 @@ async function buildSampleGrid(
   return {
     duration,
     layoutSamples,
+    userPickedSamples: options.at?.length ? baseSamples : [],
     captionSamples,
     frameSamples,
     transitionSamples: transitions.times,
@@ -169,6 +174,7 @@ interface MotionPlan {
   selectors: string[];
   livenessScopes: string[];
   preflightIssues: AnchoredLayoutIssue[];
+  assertions: MotionAssertion[];
 }
 
 async function planMotionSampling(
@@ -177,13 +183,30 @@ async function planMotionSampling(
   duration: number,
 ): Promise<MotionPlan> {
   if (motion.kind !== "valid") {
-    return { times: [], selectors: [], livenessScopes: [], preflightIssues: [] };
+    return { times: [], selectors: [], livenessScopes: [], preflightIssues: [], assertions: [] };
   }
-  const targets = collectSamplingTargets(motion.spec.assertions);
-  const preflightIssues = await driver.findAmbiguousSelectors(targets.selectors);
+  const preflightIssues = await driver.findAmbiguousSelectors(
+    collectSamplingTargets(motion.spec.assertions).selectors,
+  );
+  const ambiguous = new Set(preflightIssues.map((issue) => issue.selector));
+  const assertions = motion.spec.assertions.filter(
+    (assertion) =>
+      !assertionTargets(assertion).selectors.some((selector) => ambiguous.has(selector)),
+  );
+  noteSkippedAssertions(preflightIssues, motion.spec.assertions);
+  const targets = collectSamplingTargets(assertions);
   const times =
-    preflightIssues.length === 0 ? buildMotionSampleTimes(motion.spec.duration ?? duration) : [];
-  return { times, ...targets, preflightIssues };
+    assertions.length > 0 ? buildMotionSampleTimes(motion.spec.duration ?? duration) : [];
+  return { times, ...targets, preflightIssues, assertions };
+}
+
+function noteSkippedAssertions(issues: AnchoredLayoutIssue[], assertions: MotionAssertion[]): void {
+  for (const issue of issues) {
+    const skipped = assertions.filter((assertion) =>
+      assertionTargets(assertion).selectors.includes(issue.selector),
+    ).length;
+    if (skipped > 0) issue.message += ` ${skipped} assertion(s) naming it were not evaluated.`;
+  }
 }
 
 interface GridSamples {
@@ -193,7 +216,7 @@ interface GridSamples {
   screenshots: CheckScreenshot[];
   contrastMs: number;
   /** One geometry+opacity fingerprint per layout sample (#U10 frozen-sweep guard). */
-  geometrySignatures: string[];
+  geometrySignatures: { time: number; signature: string }[];
   /** Every rotatable element's geometry at each layout sample; grouped by
    * selector after the run to detect rotation_pivot_drift. */
   rotationSamples: RotationSample[];
@@ -240,19 +263,19 @@ function geometryIssueAnchor(candidate: CheckGeometryCandidate, time: number) {
   };
 }
 
-function captionCenterInZone(
-  rect: CheckGeometryCandidate["rect"],
+function captionBoxOverlapsZone(
+  box: CheckGeometryCandidate["elementRect"],
   zone: NonNullable<CheckOptions["captionZone"]>,
   canvas: Canvas,
-): { inside: boolean; cy: number } {
-  const cx = rect.left + rect.width / 2;
-  const cy = rect.top + rect.height / 2;
-  const inside =
-    cx >= zone.x0 * canvas.width &&
-    cx <= zone.x1 * canvas.width &&
-    cy >= zone.y0 * canvas.height &&
-    cy <= zone.y1 * canvas.height;
-  return { inside, cy };
+): { overlaps: boolean; cy: number } {
+  const zx0 = zone.x0 * canvas.width;
+  const zy0 = zone.y0 * canvas.height;
+  const zx1 = zone.x1 * canvas.width;
+  const zy1 = zone.y1 * canvas.height;
+  const bx1 = box.left + box.width;
+  const by1 = box.top + box.height;
+  const overlaps = box.left < zx1 && bx1 > zx0 && box.top < zy1 && by1 > zy0;
+  return { overlaps, cy: box.top + box.height / 2 };
 }
 
 function captionFinding(
@@ -265,8 +288,8 @@ function captionFinding(
   if (!zone || candidate.kind !== "text" || !candidateIsSized(candidate, canvas)) return null;
   // Backstop for mocks/non-browser sources; browser already strips via closest() (own attrs only here).
   if ("data-layout-allow-caption-zone" in candidate.dataAttributes) return null;
-  const { inside, cy } = captionCenterInZone(candidate.rect, zone, canvas);
-  if (!inside) return null;
+  const { overlaps, cy } = captionBoxOverlapsZone(candidate.elementRect, zone, canvas);
+  if (!overlaps) return null;
   const text = candidate.text.slice(0, 48);
   const pctFromBottom = Math.round(((canvas.height - cy) / canvas.height) * 100);
   return {
@@ -276,7 +299,7 @@ function captionFinding(
       code: "caption_zone_collision",
       severity: zone.severity === "error" ? "error" : "warning",
       text,
-      message: `<${candidate.tag}> "${text}" is centred in the reserved caption band (~${pctFromBottom}% up from the bottom).`,
+      message: `<${candidate.tag}> "${text}" overlaps the reserved caption band (~${pctFromBottom}% up from the bottom).`,
       fixHint:
         "Keep main content outside the configured caption band, or mark intentional lower-third copy with data-layout-allow-caption-zone.",
     },
@@ -397,7 +420,7 @@ async function collectGridSamples(
       const layoutIssues = await driver.collectLayout(time, options.tolerance, options.layout);
       collected.layoutIssues.push(...layoutIssues);
       issuesAtTime.push(...layoutIssues);
-      collected.geometrySignatures.push(await driver.collectLayoutGeometry());
+      collected.geometrySignatures.push({ time, signature: await driver.collectLayoutGeometry() });
       collected.rotationSamples.push(...(await driver.collectRotationSample(time)));
       collected.indicatorFrames.push(await driver.collectOffPivotRotationSample(time));
     }
@@ -492,7 +515,9 @@ function detectSweepStatic(
   duration: number,
   geometrySignatures: string[],
   motionIssues: AnchoredLayoutIssue[],
+  hasNoTimelineDeclaration: boolean,
 ): AnchoredLayoutIssue[] {
+  if (hasNoTimelineDeclaration) return [];
   if (duration < SWEEP_STATIC_MIN_DURATION_SEC) return [];
   if (geometrySignatures.length < 2) return [];
   if (motionIssues.some((issue) => issue.code === "motion_frozen")) return [];
@@ -1059,18 +1084,22 @@ export async function runAuditGrid(
   const seekLoopMs = Date.now() - seekLoopStart;
 
   let motionIssues = plan.preflightIssues;
-  if (motion.kind === "valid" && motionIssues.length === 0 && collected.motionFrames.length > 0) {
+  if (motion.kind === "valid" && plan.assertions.length > 0 && collected.motionFrames.length > 0) {
     const evaluated = evaluateMotion(
       collected.motionFrames,
-      motion.spec.assertions,
+      plan.assertions,
       await driver.getCanvas(),
     );
-    motionIssues = await driver.anchorMotionIssues(evaluated);
+    motionIssues = [...motionIssues, ...(await driver.anchorMotionIssues(evaluated))];
   }
+  const userPicked = new Set(grid.userPickedSamples);
   const sweepFindings = detectSweepStatic(
     grid.duration,
-    collected.geometrySignatures,
+    collected.geometrySignatures
+      .filter((sample) => !userPicked.has(sample.time))
+      .map((sample) => sample.signature),
     motionIssues,
+    await driver.hasNoTimelineDeclaration(),
   );
   const rotationFindings = detectRotationPivotDrift(
     collected.rotationSamples,
@@ -1123,20 +1152,38 @@ export async function runCheckPipeline(
   });
 
   const lint = buildLintSection(lintResult);
+  let hdrPromotion: CheckReport["hdr"]["autoPromotion"] = null;
+  let hdrInspection: CheckReport["hdr"]["inspection"] = "available";
+  try {
+    hdrPromotion = await (dependencies.inspectHdrAutoPromotion ?? inspectHdrAutoPromotion)(project);
+  } catch {
+    hdrInspection = "unavailable";
+  }
   if (shouldBlockRender(true, false, lintResult.totalErrors, lintResult.totalWarnings)) {
-    return buildReport(options, lint, emptyBrowserResult(), { kind: "none" }, [], []);
+    return buildReport(
+      options,
+      lint,
+      emptyBrowserResult(),
+      { kind: "none" },
+      [],
+      [],
+      hdrPromotion,
+      hdrInspection,
+    );
   }
 
   const motion = dependencies.resolveMotionSpec(project.dir);
-  if (motion.kind === "invalid") {
-    const finding = findingAtRoot(
-      "motion_spec_invalid",
-      "error",
-      motion.message,
-      relative(project.dir, motion.path) || "index.motion.json",
-    );
-    return buildReport(options, lint, emptyBrowserResult(), motion, [finding], []);
-  }
+  const specFindings =
+    motion.kind === "invalid"
+      ? [
+          findingAtRoot(
+            "motion_spec_invalid",
+            "error",
+            motion.message,
+            relative(project.dir, motion.path) || "index.motion.json",
+          ),
+        ]
+      : [];
 
   let browser: CheckBrowserResult;
   try {
@@ -1149,7 +1196,16 @@ export async function runCheckPipeline(
   const snapshotFiles = options.snapshots
     ? await writeContrastSnapshots(dependencies, project.dir, browser)
     : [];
-  const report = buildReport(options, lint, browser, motion, [], snapshotFiles);
+  const report = buildReport(
+    options,
+    lint,
+    browser,
+    motion,
+    specFindings,
+    snapshotFiles,
+    hdrPromotion,
+    hdrInspection,
+  );
   return options.snapshots
     ? await withFindingCrops(dependencies, project, options, report)
     : report;
@@ -1329,6 +1385,8 @@ function buildReport(
   motion: MotionSpecResolution,
   extraMotionFindings: CheckFinding[],
   snapshotFiles: string[],
+  hdrPromotion: CheckReport["hdr"]["autoPromotion"] = null,
+  hdrInspection: CheckReport["hdr"]["inspection"] = "available",
 ): CheckReport {
   const layout = shapeLayoutSection(browser.layoutIssues, browser, options);
   const shapedMotion = shapeLayoutFindings(browser.motionIssues, options);
@@ -1367,6 +1425,7 @@ function buildReport(
       checked: browser.contrastChecked,
       passed: browser.contrastPassed,
     },
+    hdr: { autoPromotion: hdrPromotion, inspection: hdrInspection },
     snapshots: {
       enabled: options.snapshots,
       files: snapshotFiles,
@@ -1571,4 +1630,5 @@ const DEFAULT_DEPENDENCIES: CheckDependencies = {
   runBrowserCheck,
   writeSnapshot,
   captureFindingCrops,
+  inspectHdrAutoPromotion,
 };

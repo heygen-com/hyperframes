@@ -7,6 +7,7 @@ import { trackStudioEvent } from "../../utils/studioTelemetry";
 import { Tooltip } from "../../components/ui";
 import { useMountEffect } from "../../hooks/useMountEffect";
 import { ShortcutsPanel } from "./ShortcutsPanel";
+import type { ShortcutSection } from "./studioShortcuts";
 import { SpeedMenu } from "./SpeedMenu";
 import { VolumeControl } from "./VolumeControl";
 
@@ -116,7 +117,7 @@ const FullscreenButton = memo(function FullscreenButton({
           trackStudioEvent("playback", { action: "fullscreen_toggle", active: !isFullscreen });
           onToggleFullscreen();
         }}
-        className={`flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-md transition-colors ${
+        className={`flex h-7 w-7 shrink-0 items-center justify-center rounded-md transition-colors ${
           isFullscreen ? "text-studio-accent" : "text-neutral-500 hover:text-neutral-200"
         }`}
         aria-label={isFullscreen ? "Exit fullscreen" : "Enter fullscreen"}
@@ -161,6 +162,8 @@ interface PlayerControlsProps {
   disabled?: boolean;
   isFullscreen?: boolean;
   onToggleFullscreen?: () => void;
+  /** Replaces the shortcuts panel's list, e.g. DEFAULT_SHORTCUT_SECTIONS with entries dropped or relabelled. */
+  shortcutSections?: readonly ShortcutSection[];
 }
 
 export const PlayerControls = memo(function PlayerControls({
@@ -169,6 +172,7 @@ export const PlayerControls = memo(function PlayerControls({
   disabled = false,
   isFullscreen = false,
   onToggleFullscreen,
+  shortcutSections,
 }: PlayerControlsProps) {
   const isPlaying = usePlayerStore((s) => s.isPlaying);
   const duration = usePlayerStore((s) => s.duration);
@@ -209,10 +213,11 @@ export const PlayerControls = memo(function PlayerControls({
       currentTimeRef.current = time;
       if (!timeDisplayRef.current) return;
       const currentDuration = durationRef.current;
-      timeDisplayRef.current.textContent =
+      const text =
         timeDisplayModeRef.current === "frame"
           ? formatFrameTime(time, currentDuration)
           : formatTime(time);
+      if (timeDisplayRef.current.textContent !== text) timeDisplayRef.current.textContent = text;
     };
     const unsubscribe = liveTime.subscribe(updateTime);
     updateTime(usePlayerStore.getState().currentTime);
@@ -291,6 +296,7 @@ export const PlayerControls = memo(function PlayerControls({
             setInPoint={setInPoint}
             setOutPoint={setOutPoint}
             onSeek={onSeek}
+            sections={shortcutSections}
           />
         </div>
       </div>

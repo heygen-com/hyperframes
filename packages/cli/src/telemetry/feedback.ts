@@ -102,6 +102,7 @@ export async function getDoctorSummary(): Promise<string> {
     ];
     if (sys.is_docker) parts.push("docker");
     if (sys.is_wsl) parts.push("wsl");
+    if (sys.client) parts.push(`client=${sys.client}`);
     return parts.join(" ");
   } catch {
     return "";

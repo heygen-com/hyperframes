@@ -5,6 +5,8 @@ import {
   buildTimelineElementAgentPrompt,
   buildTimelineAgentPrompt,
   clampTimelineGroupResizeDelta,
+  formatTimelineAttributeNumber,
+  formatTimelineMediaOffset,
   getTimelineEditCapabilities,
   hasPatchableTimelineTarget,
   resolveBlockedTimelineEditIntent,
@@ -366,6 +368,15 @@ describe("resolveTimelineGroupResize", () => {
       ],
     });
   });
+
+  it("derives a slowed member's playback start from its rounded start", () => {
+    const [member] = resolveTimelineGroupResize(
+      [{ start: 2, duration: 3, playbackStart: 1, playbackRate: 0.8 }],
+      "start",
+      0.373,
+    ).members;
+    expect(member!.start - member!.playbackStart! / 0.8).toBeCloseTo(2 - 1 / 0.8, 9);
+  });
 });
 
 describe("hasPatchableTimelineTarget", () => {
@@ -409,21 +420,6 @@ describe("getTimelineEditCapabilities", () => {
       canMove: true,
       canTrimStart: true,
       canTrimEnd: true,
-    });
-  });
-
-  it("keeps implicit layout layers selectable but not timeline-editable", () => {
-    expect(
-      getTimelineEditCapabilities({
-        duration: 8,
-        selector: ".scene-shell",
-        tag: "div",
-        timingSource: "implicit",
-      }),
-    ).toEqual({
-      canMove: false,
-      canTrimStart: false,
-      canTrimEnd: false,
     });
   });
 
@@ -496,7 +492,6 @@ describe("getTimelineEditCapabilities", () => {
         tag: "div",
         duration: 4,
         selector: "#hero-card",
-        timingSource: "authored",
       }),
     ).toEqual({
       canMove: true,
@@ -811,7 +806,7 @@ describe("resolveTimelineResize", () => {
         "start",
         0,
       ),
-    ).toEqual({ start: 0.8, duration: 3.2, playbackStart: 0 });
+    ).toEqual({ start: 0.8, duration: 3.2, playbackStart: expect.closeTo(0, 9) });
   });
 
   it("trims generic element start without media offset", () => {
@@ -846,6 +841,148 @@ describe("resolveTimelineResize", () => {
         -200,
       ),
     ).toEqual({ start: 0, duration: 4, playbackStart: undefined });
+  });
+
+  it("rounds a fully-left head trim inward so the in-point is never clamped off the media clock", () => {
+    const next = resolveTimelineResize(
+      {
+        start: 2,
+        duration: 3,
+        originClientX: 0,
+        pixelsPerSecond: 100,
+        minStart: 0,
+        maxEnd: 10,
+        playbackStart: 1,
+        playbackRate: 1.5,
+      },
+      "start",
+      -1000,
+    );
+    expect(next.start).toBe(1.34);
+    expect(next.start - next.playbackStart! / 1.5).toBeCloseTo(2 - 1 / 1.5, 9);
+  });
+
+  it("lets a fully-left head trim reach a reloaded in-point's media start at a 5-decimal speed", () => {
+    const next = resolveTimelineResize(
+      {
+        start: 2.37,
+        duration: 2.63,
+        originClientX: 0,
+        pixelsPerSecond: 100,
+        minStart: 0,
+        maxEnd: 10,
+        playbackStart: Number(formatTimelineMediaOffset(0.37 * 0.33333)),
+        playbackRate: 0.33333,
+      },
+      "start",
+      -1000,
+    );
+    expect(next.start).toBe(2);
+  });
+
+  function headTrimmedFullyRight(clip: { start: number; duration: number }) {
+    const single = resolveTimelineResize(
+      { ...clip, originClientX: 0, pixelsPerSecond: 100, minStart: 0, maxEnd: 10 },
+      "start",
+      1000,
+    );
+    const group = resolveTimelineGroupResize([clip], "start", 10).members[0]!;
+    return { single: single.duration, group: group.duration };
+  }
+
+  it.each([
+    { start: 1, duration: 0.625 },
+    { start: 1.005, duration: 2 },
+  ])("keeps the minimum duration when a head trim runs off the grid (%o)", (clip) => {
+    const { single, group } = headTrimmedFullyRight(clip);
+    expect(Math.min(single, group)).toBeGreaterThanOrEqual(0.1);
+  });
+
+  it("keeps the minimum duration for any off-grid start and length on a 1 ms grid", () => {
+    const short: string[] = [];
+    for (let i = 0; i < 20; i++) {
+      for (let j = 0; j < 18; j++) {
+        const clip = { start: (1000 + i * 13) / 1000, duration: (100 + j * 17) / 1000 };
+        const { single, group } = headTrimmedFullyRight(clip);
+        if (Math.min(single, group) < 0.1 - 1e-9) short.push(`${clip.start}+${clip.duration}`);
+      }
+    }
+    expect(short).toEqual([]);
+  });
+
+  it("stops a group head trim where the single-clip trim stops", () => {
+    const { single, group } = headTrimmedFullyRight({ start: 1.003, duration: 2 });
+    expect(group).toBe(single);
+  });
+
+  it("moves on-grid group members together when the tightest member sits 5 ms off the grid", () => {
+    const members = [
+      { start: 1.005, duration: 2 },
+      { start: 0, duration: 5 },
+      { start: 0.24, duration: 5 },
+    ];
+    const next = resolveTimelineGroupResize(members, "start", 10).members;
+    expect(next.map((m) => m.start)).toEqual([2.9, 1.89, 2.13]);
+  });
+
+  it("never moves a group head trim left of zero near the minimum length", () => {
+    const [member] = resolveTimelineGroupResize(
+      [{ start: 0.004, duration: 0.1 }],
+      "start",
+      10,
+    ).members;
+    expect(member!.start).toBeGreaterThanOrEqual(0);
+    expect(member!.duration).toBeGreaterThanOrEqual(0.1);
+  });
+
+  it("moves every group member by the same amount when one reaches its media start", () => {
+    const members = [
+      { start: 2, duration: 3, playbackStart: 1, playbackRate: 1.5 },
+      { start: 5, duration: 3, playbackStart: 4, playbackRate: 1 },
+    ];
+    const result = resolveTimelineGroupResize(members, "start", -10);
+    for (const [i, member] of members.entries()) {
+      const next = result.members[i]!;
+      expect(next.start - member.start).toBeCloseTo(result.delta, 9);
+      expect(next.start - next.playbackStart! / member.playbackRate).toBeCloseTo(
+        member.start - member.playbackStart / member.playbackRate,
+        9,
+      );
+    }
+  });
+
+  it("keeps a clip's media clock and end fixed across repeated head trims at any speed", () => {
+    const dragsPx = [37.3, -12.9, 81.7, -5.3];
+    for (const playbackRate of [0.25, 0.5, 0.8, 1, 1.25, 2]) {
+      let clip = { start: 2, duration: 6, playbackStart: 3 };
+      const clock = clip.start - clip.playbackStart / playbackRate;
+      const end = clip.start + clip.duration;
+      for (const clientX of dragsPx) {
+        const next = resolveTimelineResize(
+          {
+            ...clip,
+            originClientX: 0,
+            pixelsPerSecond: 100,
+            minStart: 0,
+            maxEnd: 20,
+            playbackRate,
+          },
+          "start",
+          clientX,
+        );
+        // Round-trip through the saved attributes, as a reload would.
+        const savedInPoint = formatTimelineMediaOffset(next.playbackStart!);
+        if (playbackRate === 1)
+          expect(savedInPoint).toBe(formatTimelineAttributeNumber(next.playbackStart!));
+        clip = {
+          start: Number(formatTimelineAttributeNumber(next.start)),
+          duration: Number(formatTimelineAttributeNumber(next.duration)),
+          playbackStart: Number(savedInPoint),
+        };
+        expect(clip.start - clip.playbackStart / playbackRate).toBeCloseTo(clock, 9);
+        expect(clip.start + clip.duration).toBeCloseTo(end, 9);
+      }
+    }
   });
 });
 

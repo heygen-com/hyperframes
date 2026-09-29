@@ -74,7 +74,7 @@ export function KeyframeEaseList({
               const next = e.target.value;
               if (next) onApplyAll(next);
             }}
-            className="ml-auto cursor-pointer rounded bg-neutral-800 px-1.5 py-0.5 text-[9px] text-neutral-300 outline-none hover:bg-neutral-700 focus:ring-1 focus:ring-panel-accent/40"
+            className="ml-auto cursor-pointer rounded-sm bg-neutral-800 px-1.5 py-0.5 text-[9px] text-neutral-300 outline-hidden hover:bg-neutral-700 focus:ring-1 focus:ring-panel-accent/40"
           >
             <option value="" disabled>
               Set all…

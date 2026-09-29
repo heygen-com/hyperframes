@@ -1,8 +1,9 @@
+import { buildProjectApiPath } from "../utils/projectRouting";
 import { useCallback } from "react";
 import { usePlayerStore } from "../player";
 import {
   readProjectFileContent,
-  saveProjectFilesWithHistory,
+  saveServerRewriteWithHistory,
   type DomEditCommitBaseParams,
 } from "../utils/studioFileHistory";
 import { createStudioSaveHttpError } from "../utils/studioSaveDiagnostics";
@@ -20,6 +21,7 @@ import {
   type LayerRevealCommitOwnership,
 } from "../components/editor/useLayerRevealOverride";
 import type { CommitDomEditPatchBatches, DomEditPatchBatch } from "./domEditCommitTypes";
+import { domEditCommitDeclined, type DomEditCommitOutcome } from "./domEditCommitRunner";
 import { cutoverCommittedOrThrow, type CutoverResult } from "../utils/sdkCutover";
 import { studioWriteHeaders } from "../utils/studioFileVersion";
 
@@ -54,7 +56,7 @@ let zReorderGestureSeq = 0;
  * fold can only ever merge records of the SAME gesture.
  *
  * Exported as THE single implementation of the key: the canvas z-order wiring
- * (PreviewOverlays) mints it once per gesture and passes the same instance to
+ * (ConnectedDomEditOverlay) mints it once per gesture and passes the same instance to
  * both the z persist and the timeline lane mirror (useCanvasZOrderTimelineMirror)
  * so editHistory folds the z write and the track write into one undo entry —
  * recomputing the key per record would silently split the undo.
@@ -73,7 +75,6 @@ export function useElementLifecycleOps({
   activeCompPath,
   showToast,
   writeProjectFile,
-  domEditSaveTimestampRef,
   editHistory,
   projectIdRef,
   reloadPreview,
@@ -87,11 +88,11 @@ export function useElementLifecycleOps({
   // fallow-ignore-next-line complexity
   const handleDomEditElementsDelete = useCallback(
     // fallow-ignore-next-line complexity
-    async (selections: DomEditSelection[]) => {
+    async (selections: DomEditSelection[]): Promise<DomEditCommitOutcome> => {
       const pid = projectIdRef.current;
-      if (!pid) return;
+      if (!pid) return domEditCommitDeclined("no-project");
       const [selection] = selections;
-      if (!selection) return;
+      if (!selection) return domEditCommitDeclined("no-selection");
       const label =
         selections.length === 1
           ? selection.label || selection.id || selection.selector || selection.tagName
@@ -110,8 +111,6 @@ export function useElementLifecycleOps({
         (candidate) => (candidate.sourceFile || activeCompPath || "index.html") === targetPath,
       );
       try {
-        const originalContent = await readProjectFileContent(pid, targetPath);
-
         const patchTargets = sameFile.map((member) => buildDomEditPatchTarget(member));
         if (patchTargets.some((t) => !t.id && !t.selector && !t.hfId)) {
           throw new Error("Selected element has no patchable target");
@@ -124,6 +123,7 @@ export function useElementLifecycleOps({
           .map((member) => member.hfId)
           .filter((hfId): hfId is string => Boolean(hfId));
         if (onTrySdkDelete && hfIds.length === sameFile.length) {
+          const originalContent = await readProjectFileContent(pid, targetPath);
           let allHandled = true;
           for (const hfId of hfIds) {
             // The SDK owns the document it edits, so every member is removed
@@ -141,61 +141,57 @@ export function useElementLifecycleOps({
               `Deleted ${label}. Use Undo to restore ${sameFile.length === 1 ? "it" : "them"}.`,
               "info",
             );
-            return;
+            return { ok: true } as const;
           }
         }
 
-        domEditSaveTimestampRef.current = Date.now();
         // One request for the whole selection. Removing members one at a time
         // cost a round trip and a rewrite of the file EACH, and a canvas
         // selection runs to hundreds of members — the file ended up correct, but
         // only after long enough that Delete looked like it had done nothing.
-        const removeResponse = await fetch(
-          `/api/projects/${pid}/file-mutations/remove-elements/${encodeURIComponent(targetPath)}`,
-          {
-            method: "POST",
-            headers: { "Content-Type": "application/json", ...studioWriteHeaders() },
-            body: JSON.stringify({ targets: patchTargets }),
+        const deleted = await saveServerRewriteWithHistory({
+          projectId: pid,
+          path: targetPath,
+          label: "Delete element",
+          writeFile: writeProjectFile,
+          recordEdit: editHistory.recordEdit,
+          rewrite: async (originalContent) => {
+            const removeResponse = await fetch(
+              buildProjectApiPath(
+                pid,
+                `/file-mutations/remove-elements/${encodeURIComponent(targetPath)}`,
+              ),
+              {
+                method: "POST",
+                headers: { "Content-Type": "application/json", ...studioWriteHeaders() },
+                body: JSON.stringify({ targets: patchTargets }),
+              },
+            );
+            if (!removeResponse.ok) {
+              throw await createStudioSaveHttpError(
+                removeResponse,
+                `Failed to delete element from ${targetPath}`,
+              );
+            }
+            const removeData = (await removeResponse.json()) as {
+              changed?: boolean;
+              content?: string;
+            };
+            if (!removeData.changed) return null;
+            return {
+              disk: typeof removeData.content === "string" ? removeData.content : originalContent,
+            };
           },
-        );
-        if (!removeResponse.ok) {
-          throw await createStudioSaveHttpError(
-            removeResponse,
-            `Failed to delete element from ${targetPath}`,
-          );
-        }
-        const removeData = (await removeResponse.json()) as {
-          changed?: boolean;
-          content?: string;
-        };
-        if (!removeData.changed) {
+        });
+        if (!deleted) {
           // A member the file no longer holds simply does not match, which is
           // normal for one nested inside another member already removed. Nothing
           // matching at all means the preview is describing a document the file
           // does not have — say so rather than reporting a delete that happened.
           reloadPreview();
-          throw new Error("Nothing to delete — the preview was out of date. Try again.");
+          showToast("Nothing to delete, the preview was out of date. Try again.");
+          return domEditCommitDeclined("preview-stale");
         }
-        const patchedContent =
-          typeof removeData.content === "string" ? removeData.content : originalContent;
-        // ponytail: the server remove-element route (removeElementFromHtml) strips
-        // only the element node — it does NOT cascade-remove GSAP tweens targeting
-        // it, unlike the SDK path (removeElement → cascadeRemoveAnimations). This
-        // fallback runs only when the element isn't in the SDK doc (e.g. runtime-
-        // generated / unaddressable), where targeting tweens are unlikely. Upgrade
-        // path: cascade in removeElementFromHtml by selector/hf-id to fully match.
-        await saveProjectFilesWithHistory({
-          projectId: pid,
-          label: "Delete element",
-          kind: "timeline",
-          files: { [targetPath]: patchedContent },
-          readFile: async () => originalContent,
-          // remove-element already wrote the removal, so disk holds THAT — not
-          // the content read at the top. Undo still goes back to the original.
-          diskContent: { [targetPath]: patchedContent },
-          writeFile: writeProjectFile,
-          recordEdit: editHistory.recordEdit,
-        });
 
         clearDomSelection();
         usePlayerStore.getState().setSelectedElementId(null);
@@ -208,15 +204,18 @@ export function useElementLifecycleOps({
           `Deleted ${label}. Use Undo to restore ${sameFile.length === 1 ? "it" : "them"}.`,
           "info",
         );
+        return { ok: true } as const;
       } catch (error) {
         const message = error instanceof Error ? error.message : "Failed to delete element";
         showToast(message);
+        // The toast is what tells the human. The returned outcome is what tells
+        // a caller that has no screen to read.
+        return domEditCommitDeclined("persist-failed");
       }
     },
     [
       activeCompPath,
       clearDomSelection,
-      domEditSaveTimestampRef,
       editHistory.recordEdit,
       onTrySdkDelete,
       onElementDeleted,
@@ -388,15 +387,7 @@ export function useElementLifecycleOps({
     [commitDomEditPatchBatches, onReorderShadow],
   );
 
-  const handleDomEditElementDelete = useCallback(
-    async (selection: DomEditSelection) => {
-      await handleDomEditElementsDelete([selection]);
-    },
-    [handleDomEditElementsDelete],
-  );
-
   return {
-    handleDomEditElementDelete,
     handleDomEditElementsDelete,
     handleDomZIndexReorderCommit,
   };

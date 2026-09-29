@@ -9,7 +9,8 @@ Animated **data-viz** from data. Asset-free (the "input" is the data). "One char
 ## Vocabulary / leans on
 
 - Block: **`data-chart`** (animated **bar + line**, staggered reveal, value labels — proven: borrowed + customized + rendered to MP4 in the prototype `charts-demo`).
-- Gaps (hand-author): **pie / donut, bar-chart-race, ring/%** — `data-chart` doesn't cover these. Use D3/visx for data→geometry + GSAP for motion.
+- Also in the registry: **`bar-chart-race`** — install it rather than hand-authoring a race.
+- Gaps (hand-author): **pie / donut, ring/%** — no registry block covers these. Search first (`npx hyperframes catalog --query "pie chart reveal" --json`), then use D3/visx for data→geometry + GSAP for motion.
 - Signature animations: bar stagger-grow · line `stroke-dashoffset` draw-on · pie radial sweep · ring fill · KPI count-up · race reorder.
 
 ## Build (reuse-first)

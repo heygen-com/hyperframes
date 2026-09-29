@@ -39,8 +39,9 @@ export interface DockerRenderOptions {
    */
   fps: Fps;
   quality: "draft" | "standard" | "high";
-  format: "mp4" | "webm" | "mov" | "png-sequence" | "gif";
+  format: "mp4" | "webm" | "mov" | "png-sequence" | "gif" | "hls";
   gifLoop?: number;
+  hlsSegmentSeconds?: number;
   workers?: number;
   gpu: boolean;
   browserGpu: boolean;
@@ -132,6 +133,9 @@ export function buildDockerRunArgs(input: DockerRunArgsInput): string[] {
     "--format",
     options.format,
     ...(options.gifLoop != null ? ["--gif-loop", String(options.gifLoop)] : []),
+    ...(options.hlsSegmentSeconds != null
+      ? ["--hls-segment-seconds", String(options.hlsSegmentSeconds)]
+      : []),
     ...(options.workers != null ? ["--workers", String(options.workers)] : []),
     ...(options.crf != null ? ["--crf", String(options.crf)] : []),
     ...(options.vp9CpuUsed != null ? ["--vp9-cpu-used", String(options.vp9CpuUsed)] : []),

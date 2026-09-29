@@ -75,7 +75,7 @@ export interface TimelineFxPopoverProps {
    *  selected clip's attribute — the caller resolves which). */
   onChainChange: (next: HfAudioFxChain) => void;
   /** Preview a hypothetical chain on the running graph without persisting. */
-  onChainPreview?: (next: HfAudioFxChain) => void;
+  onChainPreview?: (next: HfAudioFxChain, ended?: boolean) => void;
   onAuditionTransport?: (on: boolean) => void;
   /** Select the target the way clicking it in the timeline does, and ensure
    *  the property panel's Audio FX group is expanded. */
@@ -139,7 +139,7 @@ export function TimelineFxPopover({
       ref={rootRef}
       role="dialog"
       aria-label="Effects"
-      className="z-[200] flex flex-col overflow-hidden rounded-md border border-white/10 bg-[#1b1b1f] p-2 shadow-xl"
+      className="z-200 flex flex-col overflow-hidden rounded-md border border-white/10 bg-[#1b1b1f] p-2 shadow-xl"
       style={clampedStyle(anchorRect)}
       onKeyDown={onKeyDown}
       onPointerDown={(event) => event.stopPropagation()}

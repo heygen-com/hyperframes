@@ -71,6 +71,35 @@ npx hyperframes render -o output.mp4
 npx hyperframes render -c ./my-composition.html -o output.mp4
 ```
 
+Set `HYPERFRAMES_RENDER_DETACHED=1` when starting a render with `nohup` or
+`disown` so it keeps running after the invoking shell exits.
+
+### `publish`
+
+Upload a project directory and get a hosted URL that keeps working after the CLI exits.
+Published projects are private by default:
+
+```bash
+npx hyperframes publish
+npx hyperframes publish ./my-video
+npx hyperframes publish --public
+npx hyperframes publish --yes
+```
+
+Signed-out publishing returns an authentication-required claim URL; opening it
+lets someone sign in and claim the project. Sign in first with
+`npx hyperframes auth login` to publish an owned project you can update. Use
+`--public` to make the claimed project visible to anyone. `--yes` only skips the
+confirmation prompt and does not change visibility.
+
+Signed-in publishers can use `--update <url-or-id>` to target an existing project
+or `--space <space-id>` to publish into a shared team space. If the requested
+project is missing or inaccessible, publishing can create a new project instead;
+check the printed URL and status.
+
+See the [publish reference](https://hyperframes.heygen.com/packages/cli#publish)
+for all options, including video proxy settings.
+
 ### `lint`
 
 Validate your Hyperframes HTML:

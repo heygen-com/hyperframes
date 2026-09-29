@@ -79,10 +79,23 @@ export function shouldIgnoreRequestFailure(
   errorText: string | undefined,
   resourceType?: string,
 ): boolean {
+  if (errorText === "net::ERR_ABORTED" && isOptionalCaptionOverridesRequest(url)) return true;
   if (errorText !== "net::ERR_ABORTED") return false;
   if (resourceType === "media") return true;
   try {
     return MEDIA_EXTENSIONS.test(new URL(url).pathname);
+  } catch {
+    return false;
+  }
+}
+
+export function shouldIgnoreHttpError(url: string, status: number): boolean {
+  return status === 404 && isOptionalCaptionOverridesRequest(url);
+}
+
+function isOptionalCaptionOverridesRequest(url: string): boolean {
+  try {
+    return new URL(url).pathname === "/caption-overrides.json";
   } catch {
     return false;
   }
@@ -419,18 +432,21 @@ async function validateInBrowser(
     const puppeteer = await import("puppeteer-core");
     const { buildChromeArgs, analyzeClipMediaFit } = await import("@hyperframes/engine");
     const requestedGpuMode = resolveCliChromeGpuMode();
-    const { assertWebGpuRequirement, resolveCaptureBrowserGpuMode } =
-      await import("../browser/gpuPolicy.js");
+    const {
+      assertWebGpuAdapterAvailable,
+      compositionRequiresWebGpu,
+      resolveCaptureBrowserGpuMode,
+    } = await import("../browser/gpuPolicy.js");
     const resolvedGpuMode = await resolveCaptureBrowserGpuMode(
       requestedGpuMode,
       browser.executablePath,
     );
-    assertWebGpuRequirement(html, requestedGpuMode, resolvedGpuMode);
+    const requiresWebGpu = compositionRequiresWebGpu(html);
     const chromeBrowser = await puppeteer.default.launch({
       headless: true,
       executablePath: browser.executablePath,
       args: buildChromeArgs(
-        { ...viewport, captureMode: "screenshot" },
+        { ...viewport, captureMode: "screenshot", requiresWebGpu },
         { browserGpuMode: resolvedGpuMode },
       ),
     });
@@ -477,6 +493,7 @@ async function validateInBrowser(
       if (res.status() >= 400) {
         const url = res.url();
         if (url.includes("favicon")) return;
+        if (shouldIgnoreHttpError(url, res.status())) return;
         const path = decodeURIComponent(new URL(url).pathname).replace(/^\//, "");
         errors.push({ level: "error", text: `${res.status()} loading ${path}`, url });
       }
@@ -490,6 +507,7 @@ async function validateInBrowser(
       if (hinted) throw hinted;
       throw err;
     }
+    await assertWebGpuAdapterAvailable(page, requiresWebGpu);
     await new Promise((r) => setTimeout(r, opts.timeout ?? 3000));
 
     for (const w of await auditClipDurations(page, analyzeClipMediaFit, opts.timeout ?? 3000)) {

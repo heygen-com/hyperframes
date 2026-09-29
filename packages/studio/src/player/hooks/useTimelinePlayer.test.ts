@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { Window } from "happy-dom";
 import {
   buildStandaloneRootTimelineElement,
@@ -330,34 +330,17 @@ describe("findTimelineDomNodeForClip", () => {
 });
 
 describe("anonymous timeline identity", () => {
-  it("adds root-level untimed DOM layers as implicit full-duration layers", () => {
+  it("does not invent rows for root-level untimed wrappers", () => {
     const doc = createDocument(`
       <div data-composition-id="compare" data-start="0" data-duration="18">
-        <link rel="stylesheet" href="styles.css" />
-        <div class="scene-shell">
-          <div class="topline">Title</div>
-        </div>
+        <div class="scene-shell"><div class="topline">Title</div></div>
         <video id="main-video" class="clip main-video" data-start="0" data-duration="18" data-track-index="1"></video>
-        <script></script>
       </div>
     `);
 
     const elements = parseTimelineFromDOM(doc, 18);
 
-    expect(elements).toEqual(
-      expect.arrayContaining([
-        expect.objectContaining({
-          duration: 18,
-          label: "Scene Shell",
-          selector: ".scene-shell",
-          start: 0,
-          tag: "div",
-          timingSource: "implicit",
-        }),
-      ]),
-    );
-    expect(elements.find((element) => element.tag === "link")).toBeUndefined();
-    expect(elements.find((element) => element.tag === "script")).toBeUndefined();
+    expect(elements.map((element) => element.tag)).toEqual(["video"]);
   });
 
   it("keeps fallback-parsed anonymous clips distinct when labels match", () => {
@@ -611,6 +594,98 @@ describe("shouldIgnorePlaybackShortcutEvent", () => {
         isCaptionEditMode: false,
         selectedCaptionSegmentCount: 1,
       }),
+    ).toBe(false);
+  });
+});
+
+describe("shouldIgnorePlaybackShortcutEvent while a modal dialog is open", () => {
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  // happy-dom has no layout, so the `hidden` attribute stands in for checkVisibility.
+  function stubStudioDocument(markup: string): Document {
+    const document = createDocument(markup);
+    const elementProto = document.defaultView!.Element.prototype as {
+      checkVisibility?: (this: Element) => boolean;
+    };
+    elementProto.checkVisibility = function () {
+      return this.closest("[hidden]") === null;
+    };
+    vi.stubGlobal("document", document);
+    return document;
+  }
+
+  it("ignores playback keys with focus still on the page behind the dialog", () => {
+    const document = stubStudioDocument(
+      `<div role="dialog" aria-modal="true"><p>Lint results</p></div>`,
+    );
+    for (const code of ["Space", "ArrowRight", "KeyL"]) {
+      expect(
+        shouldIgnorePlaybackShortcutEvent(mockKeyboardEvent(code, { target: document.body })),
+      ).toBe(true);
+    }
+  });
+
+  it("ignores playback keys with focus inside the dialog", () => {
+    const document = stubStudioDocument(
+      `<div role="dialog" aria-modal="true" tabindex="-1"><p>Lint results</p></div>`,
+    );
+    const dialog = document.querySelector("[role='dialog']");
+    const text = document.querySelector("p");
+    expect(shouldIgnorePlaybackShortcutEvent(mockKeyboardEvent("Space", { target: dialog }))).toBe(
+      true,
+    );
+    expect(
+      shouldIgnorePlaybackShortcutEvent(mockKeyboardEvent("ArrowLeft", { target: text })),
+    ).toBe(true);
+  });
+
+  it("keeps playback keys for dialogs that are hidden, inert or not modal", () => {
+    for (const markup of [
+      `<div role="dialog" aria-modal="true" hidden></div>`,
+      `<div inert><div role="dialog" aria-modal="true"></div></div>`,
+      `<div role="dialog"></div>`,
+    ]) {
+      const document = stubStudioDocument(markup);
+      expect(
+        shouldIgnorePlaybackShortcutEvent(mockKeyboardEvent("Space", { target: document.body })),
+      ).toBe(false);
+    }
+  });
+
+  it("counts a dialog under fullscreen only when the fullscreen element holds it", () => {
+    const document = stubStudioDocument(
+      `<div id="stage"><div id="inner" role="dialog" aria-modal="true"></div></div>` +
+        `<div id="outer" role="dialog" aria-modal="true"></div>`,
+    );
+    const space = () =>
+      shouldIgnorePlaybackShortcutEvent(mockKeyboardEvent("Space", { target: document.body }));
+    const fullscreenOn = (id: string) =>
+      Object.defineProperty(document, "fullscreenElement", {
+        configurable: true,
+        value: document.getElementById(id),
+      });
+    fullscreenOn("stage");
+    expect(space()).toBe(true);
+    document.getElementById("inner")!.remove();
+    expect(space()).toBe(false);
+  });
+
+  it("counts an aria-modal dialog where the browser has no checkVisibility", () => {
+    const document = createDocument(`<div role="dialog" aria-modal="true"></div>`);
+    delete (document.defaultView!.Element.prototype as { checkVisibility?: unknown })
+      .checkVisibility;
+    vi.stubGlobal("document", document);
+    expect(
+      shouldIgnorePlaybackShortcutEvent(mockKeyboardEvent("Space", { target: document.body })),
+    ).toBe(true);
+  });
+
+  it("keeps playback keys when no dialog is open", () => {
+    const document = stubStudioDocument(`<main><p>Preview</p></main>`);
+    expect(
+      shouldIgnorePlaybackShortcutEvent(mockKeyboardEvent("Space", { target: document.body })),
     ).toBe(false);
   });
 });

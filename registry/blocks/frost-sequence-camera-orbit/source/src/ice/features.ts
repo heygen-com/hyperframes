@@ -1,0 +1,25 @@
+/** Feature switches preserve their individual amounts when disabled. */
+export const MATERIAL_FEATURES: Readonly<Record<string, boolean>> = Object.freeze({
+  transmission: true,
+  absorption: true,
+  dispersion: true,
+  reflections: true,
+  frost: true,
+  crystals: true,
+  grain: true,
+  cutNormals: true,
+  surfaceBumps: true,
+  smudges: false,
+  micro: false,
+  ripples: false,
+  cracks: false,
+  scatter: true,
+  clearcoat: true,
+  shardNormals: true,
+  shardFrost: true,
+  shardTransmission: true,
+  shardReflections: true,
+  shardSparkle: true,
+  shardEdges: true,
+});
+export const featureId = (name: string) => `material${name[0].toUpperCase()}${name.slice(1)}`;

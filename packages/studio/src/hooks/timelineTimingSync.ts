@@ -7,10 +7,18 @@ import { applySoftReload, applySoftReloadFinalization } from "../utils/gsapSoftR
 import { furthestClipEndFromDocument } from "../player/lib/timelineElementHelpers";
 import type { RecordEditInput } from "../utils/studioFileHistory";
 import { patchDocumentRootDuration } from "./timelineEditingGsap";
-import { studioWriteHeaders } from "../utils/studioFileVersion";
-
-class GsapPreviewConvergenceError extends Error {}
-class GsapOwnershipProtocolError extends GsapPreviewConvergenceError {}
+import {
+  GsapOwnershipProtocolError,
+  GsapPreviewConvergenceError,
+  postGsapMutation,
+  requireGsapOwnershipProtocol,
+  rollbackOwnedMutation,
+  type GsapMutationStatus,
+} from "./gsapMutationClient";
+import {
+  serializeStudioFileMutations,
+  type StudioProjectFileWriter,
+} from "../utils/studioFileMutationCoordinator";
 
 export async function readFileContent(projectId: string, targetPath: string): Promise<string> {
   if (targetPath.includes("\0") || targetPath.includes("..")) {
@@ -27,51 +35,6 @@ export async function readFileContent(projectId: string, targetPath: string): Pr
     throw new Error(`Missing file contents for ${targetPath}`);
   }
   return data.content;
-}
-
-/** Verify rollback ownership support before any GSAP mutation can land. */
-async function requireGsapOwnershipProtocol(projectId: string): Promise<void> {
-  const response = await fetch(
-    `/api/projects/${encodeURIComponent(projectId)}/gsap-mutation-capabilities`,
-  );
-  if (!response.ok) {
-    throw new GsapOwnershipProtocolError("Server does not support owned GSAP mutations");
-  }
-  const body = await response.json().catch(() => null);
-  if (!isRecord(body) || body.atomicOwnershipPairs !== true) {
-    throw new GsapOwnershipProtocolError("Invalid GSAP mutation capability response");
-  }
-}
-
-/** Atomically restore one GSAP mutation only while its exact output still owns
- * the file. The server performs compare + write synchronously, eliminating the
- * client GET→PUT window that could overwrite a successor edit. */
-async function rollbackOwnedMutation(
-  projectId: string,
-  targetPath: string,
-  expected: string,
-  restore: string,
-): Promise<"restored" | "conflict"> {
-  if (targetPath.includes("\0") || targetPath.includes("..")) {
-    throw new Error(`Unsafe path: ${targetPath}`);
-  }
-  const response = await fetch(
-    `/api/projects/${encodeURIComponent(projectId)}/gsap-mutation-rollback/${encodeURIComponent(targetPath)}`,
-    {
-      method: "POST",
-      // Deliberately unclaimed: a rollback runs because a mutation did not
-      // converge, so let the restored file reload the preview.
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ expected, restore }),
-    },
-  );
-  if (!response.ok) {
-    throw new Error(`Failed to restore ${targetPath}`);
-  }
-  const result = (await response.json()) as { restored?: unknown; conflict?: unknown };
-  if (result.restored === true && result.conflict === false) return "restored";
-  if (result.restored === false && result.conflict === true) return "conflict";
-  throw new Error(`Invalid restore response for ${targetPath}`);
 }
 
 /** Best-effort live-iframe wrapper for patchDocumentRootDuration (see timelineEditingGsap). */
@@ -100,79 +63,6 @@ export function captureDurationRollback(iframe: HTMLIFrameElement | null): () =>
     usePlayerStore.getState().setDuration(previousDuration);
     patchIframeRootDuration(iframe, previousDuration);
   };
-}
-
-/**
- * The bits of the server GSAP-mutation response the timeline edit path needs.
- * `scriptText` is the rewritten root GSAP script — feeding it to `applySoftReload`
- * swaps the runtime timeline in place (no iframe reload = no all-clips flash). Null
- * when the endpoint didn't return one (older server, or a multi-script comp the
- * soft path can't scope) — the caller then full-reloads when `mutated`, or
- * rebinds the runtime timing in place when nothing was rewritten (see
- * syncTimingEditPreview).
- */
-export type GsapMutationStatus = {
-  mutated: boolean;
-  scriptText: string | null;
-  /** Atomic whole-file ownership pair returned by the mutation endpoint. */
-  before?: string;
-  after?: string;
-};
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null;
-}
-
-function readMutationStatus(value: unknown): GsapMutationStatus {
-  if (
-    !isRecord(value) ||
-    typeof value.mutated !== "boolean" ||
-    typeof value.before !== "string" ||
-    typeof value.after !== "string" ||
-    value.mutated !== (value.before !== value.after) ||
-    ("changed" in value && value.changed !== value.mutated)
-  ) {
-    throw new GsapOwnershipProtocolError("Invalid owned GSAP mutation response");
-  }
-  return {
-    mutated: value.mutated,
-    scriptText: typeof value.scriptText === "string" ? value.scriptText : null,
-    before: value.before,
-    after: value.after,
-  };
-}
-
-function readMutationError(value: unknown, fallback: string): string {
-  if (isRecord(value) && typeof value.error === "string") return value.error;
-  return fallback;
-}
-
-async function postGsapMutation(
-  projectId: string,
-  filePath: string,
-  mutation: Record<string, unknown>,
-  fallback: string,
-): Promise<GsapMutationStatus> {
-  let response: Response;
-  try {
-    response = await fetch(
-      `/api/projects/${encodeURIComponent(projectId)}/gsap-mutations/${encodeURIComponent(filePath)}`,
-      {
-        method: "POST",
-        headers: { "Content-Type": "application/json", ...studioWriteHeaders() },
-        body: JSON.stringify(mutation),
-      },
-    );
-  } catch (error) {
-    throw new GsapPreviewConvergenceError(`${fallback}: mutation outcome unknown`, {
-      cause: error,
-    });
-  }
-  const body: unknown = await response.json().catch(() => null);
-  if (!response.ok) {
-    throw new GsapPreviewConvergenceError(readMutationError(body, fallback));
-  }
-  return readMutationStatus(body);
 }
 
 /** Re-derive live timing windows without re-executing composition scripts.
@@ -341,7 +231,7 @@ async function rollbackAfterFailure(
 // The ledger, reverse rollback, final ownership check, and history fold are one
 // transaction; extracting phases would obscure which function owns convergence.
 // fallow-ignore-next-line complexity
-async function foldGsapMutationIntoHistory(input: {
+async function foldGsapMutationInQueue(input: {
   projectId: string;
   label: string;
   coalesceKey?: string;
@@ -399,7 +289,6 @@ async function foldGsapMutationIntoHistory(input: {
       if (Object.keys(files).length > 0) {
         await input.recordEdit({
           label: input.label,
-          kind: "timeline",
           coalesceKey: input.coalesceKey,
           coalesceMs: GSAP_HISTORY_COALESCE_MS,
           files,
@@ -410,6 +299,18 @@ async function foldGsapMutationIntoHistory(input: {
     }
   }
   return status;
+}
+
+// The mutations, the ownership read and any rollback hold every touched file's queue.
+function foldGsapMutationIntoHistory(
+  input: Parameters<typeof foldGsapMutationInQueue>[0] & {
+    writeFile: StudioProjectFileWriter;
+    paths: readonly string[];
+  },
+): Promise<GsapMutationStatus> {
+  return serializeStudioFileMutations(input.writeFile, input.paths, () =>
+    foldGsapMutationInQueue(input),
+  );
 }
 
 /**
@@ -492,6 +393,7 @@ export function finishClipTimingFallback(input: {
   label: string;
   coalesceKey?: string;
   recordEdit: (edit: RecordEditInput) => Promise<void>;
+  writeProjectFile: StudioProjectFileWriter;
   edit: SingleClipGsapEdit;
 }): Promise<void> {
   const { projectId, targetPath, domId, edit } = input;
@@ -520,6 +422,8 @@ export function finishClipTimingFallback(input: {
       timingChanged && domId && projectId
         ? () =>
             foldGsapMutationIntoHistory({
+              writeFile: input.writeProjectFile,
+              paths: [targetPath],
               projectId,
               label: input.label,
               coalesceKey: input.coalesceKey,
@@ -553,6 +457,7 @@ export async function finishGroupTimingGsapFallback<C extends { element: Timelin
   errorLabel: string;
   coalesceKey?: string;
   recordEdit: (edit: RecordEditInput) => Promise<void>;
+  writeProjectFile: StudioProjectFileWriter;
   activeCompPath: string | null;
   changes: readonly C[];
   resolveChangePath: (element: TimelineElement) => string;
@@ -569,6 +474,8 @@ export async function finishGroupTimingGsapFallback<C extends { element: Timelin
     reloadPreview: input.reloadPreview,
     gsapMutation: () =>
       foldGsapMutationIntoHistory({
+        writeFile: input.writeProjectFile,
+        paths: input.changes.map((change) => input.resolveChangePath(change.element)),
         projectId: input.projectId,
         label: input.label,
         coalesceKey: input.coalesceKey,

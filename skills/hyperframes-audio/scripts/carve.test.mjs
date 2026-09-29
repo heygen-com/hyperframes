@@ -5,7 +5,13 @@ import { mkdirSync, mkdtempSync, rmSync, symlinkSync, writeFileSync } from "node
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { carveSources, groupSourceRefusal, loadCore } from "./carve.mjs";
+import {
+  DEFAULT_STRENGTH,
+  carveSources,
+  groupSourceRefusal,
+  loadCore,
+  parseArgs,
+} from "./carve.mjs";
 
 const SCRIPTS_DIR = dirname(fileURLToPath(import.meta.url));
 
@@ -236,4 +242,13 @@ test("members is required, so dropping it cannot silently restore the group form
   const voices = [voice("vo1", "voiceover"), voice("vo2", "voiceover")];
   assert.throws(() => carveSources(voices, bed("bgm", "music")), TypeError);
   assert.throws(() => groupSourceRefusal(voices, bed("bgm", "music")), TypeError);
+});
+
+test("the default strength is 0.8, and --strength still overrides it", () => {
+  // 0.25 left the bed audibly fighting the voice on narrated builds; a carve at
+  // the default has to already be a finished mix. Pinned so it cannot drift back
+  // unnoticed — core pins its own DEFAULT_CARVE the same way.
+  assert.equal(DEFAULT_STRENGTH, 0.8);
+  assert.equal(parseArgs(["--comp", "x.html"]).strength, 0.8);
+  assert.equal(parseArgs(["--comp", "x.html", "--strength", "0.25"]).strength, 0.25);
 });

@@ -1,9 +1,11 @@
+// fallow-ignore-file code-duplication
 // @vitest-environment happy-dom
 import { act } from "react";
 import { createRoot } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { StudioFileConflictError } from "../utils/studioSaveDiagnostics";
 import { markStudioWriteToken, resetStudioWriteTokens } from "../utils/studioFileVersion";
+import { markSelfWrite, resetSelfWriteRegistry } from "./sdkSelfWriteRegistry";
 import {
   useExternalFileChangeCoordinator,
   type ExternalFileChangeCoordinatorHandle,
@@ -29,6 +31,7 @@ async function mountCoordinator(overrides: Partial<CoordinatorOptions> = {}) {
     discardPendingChanges: vi.fn(),
     overwriteConflict: vi.fn(async () => undefined),
     readProjectFile: vi.fn(async () => "external"),
+    onAcceptedPersistedFileChange: vi.fn(),
   };
   const options = { ...defaults, ...overrides };
   const root = createRoot(document.createElement("div"));
@@ -45,6 +48,7 @@ describe("external file change coordinator", () => {
   beforeEach(() => {
     handler = null;
     resetStudioWriteTokens();
+    resetSelfWriteRegistry();
     vi.stubGlobal("__HF_STUDIO_HOT_TEST_ADAPTER__", {
       on: (_event: string, next: HotHandler) => {
         handler = next;
@@ -67,23 +71,145 @@ describe("external file change coordinator", () => {
         order.push("drain");
         return { status: "clean" };
       },
+      onAcceptedPersistedFileChange: () => order.push("thumbnail"),
       reloadPreview: () => order.push("preview"),
       reloadSdkSession: () => order.push("sdk"),
+      refreshFileTree: () => {
+        order.push("tree");
+      },
     });
     await act(async () => handler?.({ path: "index.html", content: "external", version: "v2" }));
-    expect(order).toEqual(["drain", "preview", "sdk"]);
+    expect(order).toEqual(["drain", "thumbnail", "preview", "sdk", "tree"]);
     expect(captured.handle?.blocked).toBeNull();
   });
 
-  it("suppresses an exact Studio write receipt", async () => {
+  // The file tree (useFileTree) is only ever refreshed from Studio's own file
+  // operations (create/delete/rename/upload) — never on an external change.
+  // Without this call, an agent removing or replacing a composition updates
+  // the preview and the SDK session but leaves the listing stale forever.
+  it("refreshes the file tree on an accepted external change", async () => {
+    const refreshFileTree = vi.fn();
+    await mountCoordinator({ refreshFileTree });
+    await act(async () => handler?.({ path: "index.html", content: "external", version: "v2" }));
+    expect(refreshFileTree).toHaveBeenCalledOnce();
+  });
+
+  it("refreshes the file tree but not Preview for a file the preview never loaded", async () => {
+    const order: string[] = [];
+    await mountCoordinator({
+      reloadPreview: () => order.push("preview"),
+      reloadSdkSession: () => order.push("sdk"),
+      refreshFileTree: () => {
+        order.push("tree");
+      },
+    });
+    await act(async () =>
+      handler?.({ path: "notes.md", content: "notes", version: "v1", affectsPreview: false }),
+    );
+    expect(order).toEqual(["sdk", "tree"]);
+  });
+
+  it("still reloads Preview when a notes change replaces a waiting film change", async () => {
+    let release = () => {};
+    const inFlight = new Promise<void>((resolve) => (release = resolve));
+    const reloadPreview = vi.fn();
+    const reloadSdkSession = vi.fn();
+    const onAcceptedPersistedFileChange = vi.fn();
+    let drains = 0;
+    await mountCoordinator({
+      reloadPreview,
+      reloadSdkSession,
+      onAcceptedPersistedFileChange,
+      drainPendingChanges: async () => {
+        if (drains++ === 0) await inFlight;
+        return { status: "clean" as const };
+      },
+    });
+    await act(async () => handler?.({ path: "index.html", content: "a", version: "v1" }));
+    await act(async () =>
+      handler?.({
+        path: "scene.html",
+        content: "b",
+        version: "v2",
+        affectedCompositions: ["scene.html"],
+      }),
+    );
+    await act(async () =>
+      handler?.({ path: "notes.md", content: "c", version: "v3", affectsPreview: false }),
+    );
+    await act(async () => release());
+    expect(reloadPreview).toHaveBeenCalledTimes(2);
+    expect(reloadSdkSession).toHaveBeenLastCalledWith("scene.html");
+    expect(onAcceptedPersistedFileChange).toHaveBeenLastCalledWith("scene.html", ["scene.html"]);
+  });
+
+  it("does not refresh the tree for a suppressed self-write echo", async () => {
+    const refreshFileTree = vi.fn();
+    await mountCoordinator({ refreshFileTree });
+    markStudioWriteToken("studio-write-1");
+    await act(async () =>
+      handler?.({
+        path: "index.html",
+        content: "studio",
+        version: "v2",
+        writeToken: "studio-write-1",
+      }),
+    );
+    expect(refreshFileTree).not.toHaveBeenCalled();
+  });
+
+  it("is optional — an accepted change with no refreshFileTree collaborator does not throw", async () => {
+    const { captured } = await mountCoordinator({ refreshFileTree: undefined });
+    await act(async () => handler?.({ path: "index.html", content: "external", version: "v2" }));
+    expect(captured.handle?.blocked).toBeNull();
+  });
+
+  it("refreshes thumbnails once but suppresses Preview reload for an exact Studio write", async () => {
     const drainPendingChanges = vi.fn(async () => ({ status: "clean" as const }));
     const reloadPreview = vi.fn();
     const reloadSdkSession = vi.fn();
-    await mountCoordinator({ drainPendingChanges, reloadPreview, reloadSdkSession });
+    const onAcceptedPersistedFileChange = vi.fn();
+    await mountCoordinator({
+      drainPendingChanges,
+      reloadPreview,
+      reloadSdkSession,
+      onAcceptedPersistedFileChange,
+    });
     markStudioWriteToken("studio-write-1");
+    const payload = {
+      path: "index.html",
+      content: "studio",
+      version: "v2",
+      writeToken: "studio-write-1",
+    };
+    await act(async () => handler?.(payload));
+    await act(async () => handler?.(payload));
+    expect(drainPendingChanges).not.toHaveBeenCalled();
+    expect(reloadPreview).not.toHaveBeenCalled();
+    expect(reloadSdkSession).not.toHaveBeenCalled();
+    expect(onAcceptedPersistedFileChange).toHaveBeenCalledOnce();
+    expect(onAcceptedPersistedFileChange).toHaveBeenCalledWith("index.html", null);
+  });
+
+  it("accepts a matching content echo without a write token and suppresses every reload", async () => {
+    const drainPendingChanges = vi.fn(async () => ({ status: "clean" as const }));
+    const reloadPreview = vi.fn();
+    const reloadSdkSession = vi.fn();
+    const onAcceptedPersistedFileChange = vi.fn();
+    await mountCoordinator({
+      drainPendingChanges,
+      reloadPreview,
+      reloadSdkSession,
+      onAcceptedPersistedFileChange,
+    });
+    markSelfWrite("index.html", "studio content");
+
     await act(async () =>
-      handler?.({ path: "index.html", content: "studio", writeToken: "studio-write-1" }),
+      handler?.({ path: "index.html", content: "studio content", version: "v2" }),
     );
+
+    expect(onAcceptedPersistedFileChange).toHaveBeenCalledOnce();
+    expect(onAcceptedPersistedFileChange).toHaveBeenCalledWith("index.html", null);
     expect(drainPendingChanges).not.toHaveBeenCalled();
     expect(reloadPreview).not.toHaveBeenCalled();
     expect(reloadSdkSession).not.toHaveBeenCalled();
@@ -115,18 +241,26 @@ describe("external file change coordinator", () => {
       attemptedContent: "studio",
     });
     const persistConflictSnapshot = vi.fn(async () => undefined);
+    const onAcceptedPersistedFileChange = vi.fn();
     const { captured, options } = await mountCoordinator({
       drainPendingChanges: async () => ({ status: "conflict", error: conflict }),
       persistConflictSnapshot,
+      onAcceptedPersistedFileChange,
     });
     await act(async () => handler?.({ path: "index.html", content: "external", version: "v2" }));
     expect(persistConflictSnapshot).toHaveBeenCalledWith("project-a", conflict);
     expect(captured.handle?.blocked).toMatchObject({ status: "conflict", error: conflict });
     expect(options.reloadPreview).not.toHaveBeenCalled();
     expect(options.reloadSdkSession).not.toHaveBeenCalled();
+    expect(onAcceptedPersistedFileChange).not.toHaveBeenCalled();
+
+    await act(async () => captured.handle?.useExternalFile());
+    expect(onAcceptedPersistedFileChange).toHaveBeenCalledOnce();
+    expect(options.reloadPreview).toHaveBeenCalledOnce();
+    expect(options.reloadSdkSession).toHaveBeenCalledOnce();
   });
 
-  it("ignores stale drain completion after a newer generation", async () => {
+  it("serializes drains and processes stashed events", async () => {
     const drains: Array<(result: { status: "clean" }) => void> = [];
     const { options } = await mountCoordinator({
       drainPendingChanges: () => new Promise((resolve) => drains.push(resolve)),
@@ -135,11 +269,14 @@ describe("external file change coordinator", () => {
       handler?.({ path: "index.html", content: "first", version: "v2" });
       handler?.({ path: "index.html", content: "second", version: "v3" });
     });
+    expect(drains).toHaveLength(1);
     await act(async () => drains[0]?.({ status: "clean" }));
-    expect(options.reloadPreview).not.toHaveBeenCalled();
-    await act(async () => drains[1]?.({ status: "clean" }));
     expect(options.reloadPreview).toHaveBeenCalledOnce();
-    expect(options.reloadSdkSession).toHaveBeenCalledOnce();
+    await act(async () => {});
+    expect(drains).toHaveLength(2);
+    await act(async () => drains[1]?.({ status: "clean" }));
+    expect(options.reloadPreview).toHaveBeenCalledTimes(2);
+    expect(options.reloadSdkSession).toHaveBeenCalledTimes(2);
   });
 
   it("restores a durable unresolved conflict after remount", async () => {
@@ -165,6 +302,7 @@ describe("external file change coordinator", () => {
     const failure = new Error("network unavailable");
     const persistFailureSnapshot = vi.fn(async () => undefined);
     const deleteConflictSnapshot = vi.fn(async () => undefined);
+    const onAcceptedPersistedFileChange = vi.fn();
     const { captured } = await mountCoordinator({
       drainPendingChanges: vi
         .fn()
@@ -173,6 +311,7 @@ describe("external file change coordinator", () => {
       getPendingCandidate: () => ({ path: "index.html", content: "final local candidate" }),
       persistFailureSnapshot,
       deleteConflictSnapshot,
+      onAcceptedPersistedFileChange,
     });
     await act(async () => handler?.({ path: "index.html" }));
     expect(captured.handle?.blocked).toMatchObject({
@@ -188,15 +327,19 @@ describe("external file change coordinator", () => {
       null,
       failure,
     );
+    expect(onAcceptedPersistedFileChange).not.toHaveBeenCalled();
     await act(async () => captured.handle?.retry());
     expect(deleteConflictSnapshot).toHaveBeenCalledWith("project-a", "index.html");
+    expect(onAcceptedPersistedFileChange).toHaveBeenCalledOnce();
   });
 
   it("restores and overwrites from a durable failed draft", async () => {
     const overwriteConflict = vi.fn(async () => undefined);
+    const onAcceptedPersistedFileChange = vi.fn();
     const { captured } = await mountCoordinator({
       recoveryFilePath: "index.html",
       overwriteConflict,
+      onAcceptedPersistedFileChange,
       loadConflictSnapshot: vi.fn(async () => ({
         kind: "failed" as const,
         projectId: "project-a",
@@ -217,5 +360,187 @@ describe("external file change coordinator", () => {
     expect(overwriteConflict).toHaveBeenCalledWith(
       expect.objectContaining({ attemptedContent: "recover me", currentVersion: "v2" }),
     );
+    expect(onAcceptedPersistedFileChange).not.toHaveBeenCalled();
+
+    markStudioWriteToken("keep-studio-write");
+    await act(async () =>
+      handler?.({
+        path: "index.html",
+        content: "recover me",
+        version: "v3",
+        writeToken: "keep-studio-write",
+      }),
+    );
+    expect(onAcceptedPersistedFileChange).toHaveBeenCalledOnce();
+  });
+
+  it("completes a reload after a burst of rapid external writes", async () => {
+    const drains: Array<(result: { status: "clean" }) => void> = [];
+    const reloadPreview = vi.fn();
+    const onAcceptedPersistedFileChange = vi.fn();
+    await mountCoordinator({
+      drainPendingChanges: vi.fn(
+        () => new Promise<{ status: "clean" }>((resolve) => drains.push(resolve)),
+      ),
+      reloadPreview,
+      onAcceptedPersistedFileChange,
+    });
+
+    // Fire three events in rapid succession (simulates generator + check + snapshot)
+    act(() => {
+      handler?.({ path: "index.html", content: "write-1", version: "v1" });
+      handler?.({ path: "index.html", content: "write-2", version: "v2" });
+      handler?.({ path: "index.html", content: "write-3", version: "v3" });
+    });
+
+    // Only one drain runs — events 2 and 3 are stashed (last one wins)
+    expect(drains).toHaveLength(1);
+
+    // Complete the first drain — triggers reload, then stashed event starts a second drain
+    await act(async () => drains[0]?.({ status: "clean" }));
+    expect(reloadPreview).toHaveBeenCalledOnce();
+    await act(async () => {});
+    expect(drains).toHaveLength(2);
+
+    // Complete the second drain — processes the final write
+    await act(async () => drains[1]?.({ status: "clean" }));
+    expect(reloadPreview).toHaveBeenCalledTimes(2);
+    expect(onAcceptedPersistedFileChange).toHaveBeenCalledTimes(2);
+  });
+
+  // `hyperframes preview` serves file-change over SSE, where the delivery is a
+  // MessageEvent whose `data` is a JSON STRING. Driven through the test adapter
+  // because vitest defines `import.meta.hot`, so the EventSource rung is
+  // unreachable here, which is exactly why decoding is shared by all rungs.
+  describe("SSE-shaped deliveries", () => {
+    const sseDelivery = (payload: unknown) =>
+      new MessageEvent("file-change", { data: JSON.stringify(payload) });
+
+    it("suppresses every reload for Studio's own write", async () => {
+      const drainPendingChanges = vi.fn(async () => ({ status: "clean" as const }));
+      const reloadPreview = vi.fn();
+      const onAcceptedPersistedFileChange = vi.fn();
+      await mountCoordinator({ drainPendingChanges, reloadPreview, onAcceptedPersistedFileChange });
+      markStudioWriteToken("studio-write-1");
+
+      await act(async () =>
+        handler?.(sseDelivery({ path: "index.html", version: "v2", writeToken: "studio-write-1" })),
+      );
+
+      expect(drainPendingChanges).not.toHaveBeenCalled();
+      expect(reloadPreview).not.toHaveBeenCalled();
+      expect(onAcceptedPersistedFileChange).toHaveBeenCalledWith("index.html", null);
+    });
+
+    it("hands the server's affected compositions to the thumbnail refresh", async () => {
+      const onAcceptedPersistedFileChange = vi.fn();
+      await mountCoordinator({ onAcceptedPersistedFileChange });
+
+      await act(async () =>
+        handler?.(
+          sseDelivery({
+            path: "compositions/scene-a.html",
+            version: "v3",
+            affectedCompositions: ["index.html", "compositions/scene-a.html"],
+          }),
+        ),
+      );
+      await act(async () =>
+        handler?.(
+          sseDelivery({ path: "assets/logo.svg", version: "v4", affectedCompositions: "all" }),
+        ),
+      );
+
+      expect(onAcceptedPersistedFileChange).toHaveBeenNthCalledWith(
+        1,
+        "compositions/scene-a.html",
+        ["index.html", "compositions/scene-a.html"],
+      );
+      expect(onAcceptedPersistedFileChange).toHaveBeenNthCalledWith(2, "assets/logo.svg", null);
+    });
+
+    it("reloads once when one watcher event reaches two subscribers", async () => {
+      const reloadPreview = vi.fn();
+      await mountCoordinator({ reloadPreview });
+
+      const external = { path: "index.html", version: "v2" };
+      await act(async () => handler?.(sseDelivery(external)));
+      await act(async () => handler?.(sseDelivery(external)));
+
+      expect(reloadPreview).toHaveBeenCalledOnce();
+    });
+
+    it("still reloads for a genuinely external write", async () => {
+      const reloadPreview = vi.fn();
+      await mountCoordinator({ reloadPreview });
+
+      await act(async () => handler?.(sseDelivery({ path: "index.html", version: "v9" })));
+
+      expect(reloadPreview).toHaveBeenCalledOnce();
+    });
+
+    it("drops an unparseable delivery instead of throwing", async () => {
+      const reloadPreview = vi.fn();
+      await mountCoordinator({ reloadPreview });
+
+      await act(async () => handler?.(new MessageEvent("file-change", { data: "not json" })));
+
+      expect(reloadPreview).not.toHaveBeenCalled();
+    });
+  });
+
+  // `/api/events` is one connection per SERVER (CLI host), not per project — a
+  // tab left open from a `preview` run whose port was later reused by a
+  // different project's `preview` shares this stream with it. Both projects
+  // commonly use the same default composition path, so without the filter a
+  // stale tab reloads its preview and re-reads its own composition on every
+  // save the OTHER project makes.
+  describe("cross-project deliveries on a shared connection", () => {
+    it("ignores a delivery whose projectId does not match this tab's", async () => {
+      const drainPendingChanges = vi.fn(async () => ({ status: "clean" as const }));
+      const reloadPreview = vi.fn();
+      const reloadSdkSession = vi.fn();
+      await mountCoordinator({ drainPendingChanges, reloadPreview, reloadSdkSession });
+
+      await act(async () =>
+        handler?.({
+          path: "index.html",
+          content: "other project",
+          version: "v9",
+          projectId: "project-b",
+        }),
+      );
+
+      expect(drainPendingChanges).not.toHaveBeenCalled();
+      expect(reloadPreview).not.toHaveBeenCalled();
+      expect(reloadSdkSession).not.toHaveBeenCalled();
+    });
+
+    it("still reloads for a delivery whose projectId matches this tab's", async () => {
+      const reloadPreview = vi.fn();
+      await mountCoordinator({ reloadPreview });
+
+      await act(async () =>
+        handler?.({
+          path: "index.html",
+          content: "same project",
+          version: "v9",
+          projectId: "project-a",
+        }),
+      );
+
+      expect(reloadPreview).toHaveBeenCalledOnce();
+    });
+
+    it("still reloads when projectId is absent (older server, one release of skew)", async () => {
+      const reloadPreview = vi.fn();
+      await mountCoordinator({ reloadPreview });
+
+      await act(async () =>
+        handler?.({ path: "index.html", content: "no project id", version: "v9" }),
+      );
+
+      expect(reloadPreview).toHaveBeenCalledOnce();
+    });
   });
 });

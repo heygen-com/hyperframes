@@ -5,5 +5,5 @@
   },
   "files": [],
   "include": ["src/runtime/**/*.ts"],
-  "exclude": ["node_modules", "dist", "**/*.test.ts"]
+  "exclude": ["node_modules", "dist", "**/*.test.ts", "**/*.test-helpers.ts"]
 }

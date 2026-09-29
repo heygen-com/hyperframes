@@ -80,7 +80,7 @@ export function GlobalAssetsView({ searchQuery }: { searchQuery: string }) {
           className="px-4 py-1.5 flex items-center gap-2.5 border-l-2 border-transparent hover:bg-neutral-800/50"
           title={`${row.id} · ${row.type}`}
         >
-          <span className="text-[9px] font-medium text-neutral-600 uppercase w-10 flex-shrink-0">
+          <span className="text-[9px] font-medium text-neutral-600 uppercase w-10 shrink-0">
             {row.type}
           </span>
           <span className="text-xs text-panel-text-1 truncate">{row.label}</span>

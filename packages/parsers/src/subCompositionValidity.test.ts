@@ -31,6 +31,24 @@ describe("checkSubCompositionUsability", () => {
     expect(checkSubCompositionUsability(VALID_HTML_NO_TEMPLATE, parse)).toEqual({ ok: true });
   });
 
+  it.each([
+    '<div data-composition-id="intro">Hello</div>',
+    '<style>.title { color: red }</style><div data-composition-id="intro">Hello</div><script>window.sceneLoaded = true;</script>',
+  ])("accepts a bare fragment: %s", (html) => {
+    expect(checkSubCompositionUsability(html, parse)).toEqual({ ok: true });
+  });
+
+  it("keeps an empty template authoritative over body content", () => {
+    const html =
+      '<html><body><template></template><div data-composition-id="intro">Hello</div></body></html>';
+    expect(checkSubCompositionUsability(html, parse).reason).toBe("no-content");
+  });
+
+  it("does not use head content when the body is empty", () => {
+    const html = '<html><head><meta data-composition-id="intro"></head><body></body></html>';
+    expect(checkSubCompositionUsability(html, parse).reason).toBe("no-content");
+  });
+
   it("rejects an empty string without ever calling parseHtml (avoids the linkedom null-deref crash)", () => {
     let parseCalled = false;
     const spyParse = (html: string): ParsableDocumentLike => {

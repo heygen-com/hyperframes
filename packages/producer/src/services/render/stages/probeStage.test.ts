@@ -1,4 +1,11 @@
-import { describe, expect, it, mock } from "bun:test";
+import { afterAll, describe, expect, it, mock } from "bun:test";
+import { mkdtempSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+
+const workDir = mkdtempSync(join(tmpdir(), "hf-stage-test-"));
+afterAll(() => rmSync(workDir, { recursive: true, force: true }));
+import { createHash } from "node:crypto";
 import {
   hasAutoStartVideos,
   hasScriptedAudioVolumeAutomation,
@@ -238,7 +245,7 @@ function makeProbeInput(overrides: {
 
   return {
     projectDir: "/tmp/hf-probe-test-project",
-    workDir: "/tmp/hf-probe-test-work",
+    workDir: workDir,
     job: {
       id: "probe-test",
       config: { fps: { num: 30, den: 1 }, quality: "standard" },
@@ -444,6 +451,79 @@ describe("runProbeStage — forceScreenshot threading", () => {
     expect(mediaPreflightComposition).toBe(input.composition);
   });
 
+  it("uses selected intrinsic duration only when the variable-bound duration was inferred", async () => {
+    resetRetryMocks();
+    const media = (
+      id: string,
+      duration: number,
+      durationInferred: boolean,
+    ): Record<string, unknown> => ({
+      id,
+      tagName: "audio",
+      src: `${id}-selected.wav`,
+      start: 0,
+      end: duration,
+      duration,
+      durationInferred,
+      mediaStart: 0,
+      loop: false,
+      hasAudio: true,
+      volume: 1,
+      muted: false,
+    });
+    browserMediaResults = [
+      media("longer-inferred", 6.530612, true),
+      media("longer-authored", 6.530612, false),
+      media("shorter-inferred", 3.836939, true),
+    ];
+    const { runProbeStage } = await import("./probeStage.js");
+    const input = makeProbeInput({});
+    input.composition.duration = 7;
+    input.composition.audios.push(
+      {
+        id: "longer-inferred",
+        src: "short.wav",
+        start: 0,
+        end: 3.836939,
+        mediaStart: 0,
+        layer: 0,
+        volume: 1,
+        type: "audio",
+      },
+      {
+        id: "longer-authored",
+        src: "short.wav",
+        start: 0,
+        end: 3.836939,
+        mediaStart: 0,
+        layer: 0,
+        volume: 1,
+        type: "audio",
+      },
+      {
+        id: "shorter-inferred",
+        src: "long.wav",
+        start: 0,
+        end: 6.530612,
+        mediaStart: 0,
+        layer: 0,
+        volume: 1,
+        type: "audio",
+      },
+    );
+    input.compiled.html = `
+      <audio id="longer-inferred" src="short.wav" data-var-src="a" data-hf-inferred-duration></audio>
+      <audio id="longer-authored" src="short.wav" data-var-src="b" data-duration="3.836939"></audio>
+      <audio id="shorter-inferred" src="long.wav" data-var-src="c" data-hf-inferred-duration></audio>`;
+    input.job.config.variables = { a: "a.wav", b: "b.wav", c: "c.wav" };
+
+    await runProbeStage(input);
+
+    expect(input.composition.audios.map((audio) => audio.end)).toEqual([
+      6.530612, 3.836939, 3.836939,
+    ]);
+  });
+
   it("passes cancellation through and closes probe-owned resources when preflight rejects", async () => {
     resetRetryMocks();
     mediaPreflightError = new Error("ASSET_MEDIA_TYPE_MISMATCH");
@@ -475,6 +555,24 @@ describe("runProbeStage — forceScreenshot threading", () => {
     expect(fileServerCloseCallCount).toBe(1);
   });
 
+  it.each([1, 2])(
+    "closes probe-owned resources when cancellation lands at the browser's check %i",
+    async (check) => {
+      resetRetryMocks();
+      const { runProbeStage } = await import("./probeStage.js");
+      const input = makeProbeInput({});
+      let checks = 0;
+      input.assertNotAborted = () => {
+        if (++checks === check) throw new Error("render cancelled");
+      };
+
+      await expect(runProbeStage(input)).rejects.toThrow("render cancelled");
+
+      expect(fileServerCloseCallCount).toBe(1);
+      expect(closeCaptureSessionCallCount).toBe(check === 1 ? 0 : 1);
+    },
+  );
+
   it("launches a probe when a static-duration composition inserts video at runtime", async () => {
     capturedCfgs.length = 0;
     const { runProbeStage } = await import("./probeStage.js");
@@ -504,6 +602,113 @@ describe("runProbeStage — forceScreenshot threading", () => {
       audio.src = "music.mp3";
       document.body.appendChild(audio);
     </script>`;
+
+    await runProbeStage(input);
+
+    expect(capturedCfgs.length).toBeGreaterThan(0);
+  });
+
+  it("probes and reconciles synchronous src mutations on existing video and audio", async () => {
+    resetRetryMocks();
+    capturedCfgs.length = 0;
+    const hash = (value: string) => createHash("sha256").update(value).digest("hex");
+    const videoA = `assets/video-a-${hash("sanitized-video-a")}.mp4`;
+    const videoB = `assets/video-b-${hash("sanitized-video-b")}.mp4`;
+    const audioA = `assets/audio-a-${hash("sanitized-audio-a")}.wav`;
+    const audioB = `assets/audio-b-${hash("sanitized-audio-b")}.wav`;
+    expect(hash("sanitized-video-a")).not.toBe(hash("sanitized-video-b"));
+    expect(hash("sanitized-audio-a")).not.toBe(hash("sanitized-audio-b"));
+    browserMediaResults = [
+      {
+        id: "clip",
+        tagName: "video",
+        src: videoB,
+        start: 0,
+        end: 5,
+        duration: 5,
+        mediaStart: 0,
+        loop: false,
+        hasAudio: false,
+        volume: 1,
+        muted: true,
+      },
+      {
+        id: "voice",
+        tagName: "audio",
+        src: audioB,
+        start: 0,
+        end: 5,
+        duration: 5,
+        mediaStart: 0,
+        loop: false,
+        hasAudio: true,
+        volume: 1,
+        muted: false,
+      },
+    ];
+    const { runProbeStage } = await import("./probeStage.js");
+    const input = makeProbeInput({});
+    input.composition.duration = 5;
+    input.composition.videos.push({
+      id: "clip",
+      src: videoA,
+      start: 0,
+      end: 5,
+      mediaStart: 0,
+      loop: false,
+      hasAudio: false,
+    });
+    input.composition.audios.push({
+      id: "voice",
+      src: audioA,
+      start: 0,
+      end: 5,
+      mediaStart: 0,
+      layer: 0,
+      volume: 1,
+      type: "audio",
+    });
+    input.compiled.html = `<video id="clip" src="${videoA}"></video>
+      <audio id="voice" src="${audioA}"></audio>
+      <script>
+        const clip = document.getElementById("clip");
+        clip.src = ${JSON.stringify(videoB)};
+        document.querySelector("#voice").setAttribute("src", ${JSON.stringify(audioB)});
+      </script>`;
+
+    await runProbeStage(input);
+
+    expect(capturedCfgs.length).toBeGreaterThan(0);
+    expect(input.composition.videos[0]?.src).toBe(videoB);
+    expect(input.composition.audios[0]?.src).toBe(audioB);
+    expect(mediaPreflightComposition).toBe(input.composition);
+  });
+
+  it("does not probe for img or script src mutations", async () => {
+    resetRetryMocks();
+    capturedCfgs.length = 0;
+    const { runProbeStage } = await import("./probeStage.js");
+    const input = makeProbeInput({});
+    input.composition.duration = 5;
+    input.compiled.html = `<img id="poster" src="a.png"><script id="loader"></script>
+      <script>
+        document.getElementById("poster").src = "b.png";
+        document.getElementById("loader").setAttribute("src", "loader-b.js");
+      </script>`;
+
+    await runProbeStage(input);
+
+    expect(capturedCfgs).toHaveLength(0);
+  });
+
+  it("probes when a source child of existing media is mutated", async () => {
+    resetRetryMocks();
+    capturedCfgs.length = 0;
+    const { runProbeStage } = await import("./probeStage.js");
+    const input = makeProbeInput({});
+    input.composition.duration = 5;
+    input.compiled.html = `<video id="clip"><source id="clip-source" src="video-a.mp4"></video>
+      <script>document.getElementById("clip-source").src = "video-b.mp4";</script>`;
 
     await runProbeStage(input);
 
@@ -622,6 +827,48 @@ describe("runProbeStage — render variable threading", () => {
 });
 
 describe("runProbeStage — decimal duration frame count", () => {
+  it("reproduces all 14 cumulative final-frame indices from the field report", async () => {
+    const { runProbeStage } = await import("./probeStage.js");
+    const segmentFrameCounts = [
+      484, 728, 551, 633, 477, 257, 383, 305, 446, 640, 414, 511, 904, 3028,
+    ];
+    const expectedTailFrames = [
+      483, 1211, 1762, 2395, 2872, 3129, 3512, 3817, 4263, 4903, 5317, 5828, 6732, 9760,
+    ];
+    let cumulativeFrames = 0;
+    const actualTailFrames: number[] = [];
+
+    for (const frameCount of segmentFrameCounts) {
+      const input = makeProbeInput({});
+      input.job.config.fps = { num: 30, den: 1 };
+      const duration = (frameCount - 0.01) / 30;
+      input.composition.duration = duration;
+      input.compiled.staticDuration = duration;
+
+      const result = await runProbeStage(input);
+
+      expect(result.totalFrames).toBe(frameCount);
+      cumulativeFrames += result.totalFrames;
+      actualTailFrames.push(cumulativeFrames - 1);
+    }
+
+    expect(actualTailFrames).toEqual(expectedTailFrames);
+    expect(cumulativeFrames).toBe(9761);
+  });
+
+  it("covers the final 60fps sample when duration extends fractionally past it", async () => {
+    const { runProbeStage } = await import("./probeStage.js");
+    const input = makeProbeInput({});
+    input.job.config.fps = { num: 60, den: 1 };
+    input.composition.duration = 79.402;
+    input.compiled.staticDuration = 79.402;
+
+    const result = await runProbeStage(input);
+
+    expect(result.totalFrames).toBe(4765);
+    expect((result.totalFrames - 1) / 60).toBeLessThan(result.duration);
+  });
+
   it("does not add a frame for a six-decimal duration rounded from an exact frame boundary", async () => {
     const { runProbeStage } = await import("./probeStage.js");
     const input = makeProbeInput({});

@@ -8,7 +8,7 @@ const CUE_MS = 1600;
 // Matches the focus treatment every other button in this panel uses. A control
 // the keyboard can reach but not see focus on is unusable without a mouse.
 const FOCUS_RING =
-  "outline-none focus-visible:outline focus-visible:outline-2 focus-visible:outline-studio-accent";
+  "outline-hidden focus-visible:outline-solid focus-visible:outline-2 focus-visible:outline-studio-accent";
 
 /**
  * Shown above Export when the dev server reports no usable FFmpeg.
@@ -81,7 +81,7 @@ export const FfmpegRequiredNotice = memo(function FfmpegRequiredNotice({
 
       {status.command ? (
         <div className="flex items-center gap-1.5">
-          <code className="flex-1 overflow-x-auto whitespace-nowrap rounded-sm bg-black/40 px-2 py-1 text-[10px] text-panel-text-2">
+          <code className="flex-1 overflow-x-auto whitespace-nowrap rounded-xs bg-black/40 px-2 py-1 text-[10px] text-panel-text-2">
             {status.command}
           </code>
           {/* Fixed width so swapping the label to "Copied" cannot shift the
@@ -89,7 +89,7 @@ export const FfmpegRequiredNotice = memo(function FfmpegRequiredNotice({
           <button
             type="button"
             onClick={() => void copy(status.command ?? "")}
-            className={`h-6 w-14 flex-shrink-0 rounded-sm border border-amber-500/30 text-[10px] font-medium text-amber-200 transition-colors hover:bg-amber-500/20 active:scale-[0.98] ${FOCUS_RING}`}
+            className={`h-6 w-14 shrink-0 rounded-xs border border-amber-500/30 text-[10px] font-medium text-amber-200 transition-colors hover:bg-amber-500/20 active:scale-[0.98] ${FOCUS_RING}`}
           >
             {copied ? "Copied" : "Copy"}
           </button>
@@ -107,7 +107,7 @@ export const FfmpegRequiredNotice = memo(function FfmpegRequiredNotice({
           type="button"
           onClick={onRecheck}
           disabled={checking}
-          className={`rounded-sm py-0.5 text-[10px] font-medium text-amber-200 underline-offset-2 transition-colors hover:underline disabled:opacity-50 ${FOCUS_RING}`}
+          className={`rounded-xs py-0.5 text-[10px] font-medium text-amber-200 underline-offset-2 transition-colors hover:underline disabled:opacity-50 ${FOCUS_RING}`}
         >
           {checking ? "Checking…" : "Recheck"}
         </button>
@@ -115,7 +115,7 @@ export const FfmpegRequiredNotice = memo(function FfmpegRequiredNotice({
           href={DOWNLOAD_URL}
           target="_blank"
           rel="noreferrer"
-          className={`rounded-sm py-0.5 text-[10px] text-panel-text-2 underline-offset-2 transition-colors hover:text-panel-text-0 hover:underline ${FOCUS_RING}`}
+          className={`rounded-xs py-0.5 text-[10px] text-panel-text-2 underline-offset-2 transition-colors hover:text-panel-text-0 hover:underline ${FOCUS_RING}`}
         >
           Other install options
         </a>

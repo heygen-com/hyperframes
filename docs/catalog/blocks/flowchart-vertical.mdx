@@ -1,28 +1,28 @@
 ---
 title: "Flowchart Vertical"
 description: "Portrait animated decision tree with SVG connectors, sticky-note nodes, cursor interaction, and typing correction"
+mode: "frame"
 ---
 
+import { CatalogDetail, CatalogSlot } from "/snippets/catalog-detail.jsx";
 import { InstallCommand } from "/snippets/install-command.jsx";
 
-<iframe
-  className="w-full aspect-video rounded-xl border-0 bg-zinc-100 dark:bg-zinc-800"
-  title="flowchart-vertical preview"
-  loading="lazy"
-  srcDoc={`<!doctype html><html><head><meta charset="utf-8"><style>html,body{margin:0;height:100%;overflow:hidden;background:transparent}hyperframes-player{display:block;width:100%;height:100%}</style><script src="https://cdn.jsdelivr.net/npm/@hyperframes/player@latest/dist/hyperframes-player.global.js"><\/script></head><body><script>fetch("/public/catalog/blocks/flowchart-vertical.json").then(function(r){return r.json()}).then(function(d){var p=document.createElement("hyperframes-player");p.setAttribute("srcdoc",d.html);p.setAttribute("controls","");p.setAttribute("autoplay","");p.setAttribute("loop","");p.setAttribute("muted","");p.setAttribute("poster","https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/flowchart-vertical.png");document.body.appendChild(p)});<\/script></body></html>`}
-/>
+<CatalogDetail
+  previewSrc="/public/catalog/blocks/flowchart-vertical.json"
+  compositionId="flowchart-vertical"
+  compositionSrc="compositions/flowchart-vertical.html"
+  title="Flowchart Vertical"
+  description="Portrait animated decision tree with SVG connectors, sticky-note nodes, cursor interaction, and typing correction"
+  variables={[]}
+  meta={{"duration":12,"width":1440,"height":2560,"category":"Blocks","badge":"Stable","codeLines":459}}
+  attribution={{"path":"registry/blocks/flowchart-vertical","tags":["diagram","flowchart","interactive","portrait"]}}
+  hasCode
+  rawUrl="https://raw.githubusercontent.com/heygen-com/hyperframes/main/registry/blocks/flowchart-vertical/flowchart-vertical.html"
+>
 
-## Install
+<CatalogSlot slot="code">
 
-<InstallCommand command="npx hyperframes add flowchart-vertical" item="flowchart-vertical" />
-
-That writes one file: `compositions/flowchart-vertical.html`.
-
-## Source
-
-<Accordion title={`flowchart-vertical.html`}>
-
-```html
+```html flowchart-vertical.html
 <!doctype html>
 <html lang="en">
   <head>
@@ -144,6 +144,7 @@ That writes one file: `compositions/flowchart-vertical.html`.
               />
             </svg>
           </div>
+          <div class="selection-border"></div>
         </div>
         <div id="node-nocode" class="node blue" style="left: 600px; top: 960px">
           Try no-code first
@@ -335,7 +336,6 @@ That writes one file: `compositions/flowchart-vertical.html`.
         (function () {
           const tl = gsap.timeline({ paused: true });
           const S = "#flowchart-vertical";
-          const nodePython = document.querySelector(S + " #node-python");
           const pythonText = document.querySelector(S + " #python-text");
 
           // 1. Root node scales in
@@ -406,15 +406,7 @@ That writes one file: `compositions/flowchart-vertical.html`.
           tl.to(S + " #cursor", { x: -1110, y: -1560, duration: 1, ease: "power1.inOut" }, "hold3");
 
           // 10. Cursor clicks — selection border
-          tl.add(() => {
-            if (!nodePython) return;
-            if (!nodePython.querySelector(".selection-border")) {
-              const border = document.createElement("div");
-              border.className = "selection-border";
-              nodePython.appendChild(border);
-            }
-            gsap.set(S + " .selection-border", { opacity: 1 });
-          }, "hold3+=1");
+          tl.set(S + " .selection-border", { opacity: 1 }, "hold3+=1");
 
           tl.to(
             S + " #cursor",
@@ -492,15 +484,36 @@ That writes one file: `compositions/flowchart-vertical.html`.
 </html>
 ```
 
-</Accordion>
+</CatalogSlot>
 
-## Usage
+<CatalogSlot slot="install">
 
-After installing, add the block to your host composition:
+<InstallCommand command="npx hyperframes add flowchart-vertical" item="flowchart-vertical" />
 
-```html
-<div data-composition-id="flowchart-vertical" data-composition-src="compositions/flowchart-vertical.html" data-start="0" data-duration="12" data-track-index="1" data-width="1440" data-height="2560"></div>
+That writes one file: `compositions/flowchart-vertical.html`.
+
+</CatalogSlot>
+
+<CatalogSlot slot="docs">
+
+## Add it to your video
+
+It runs for 12 seconds at 1440×2560. Paste this into your composition:
+
+```html index.html
+<div
+  data-composition-id="flowchart-vertical"
+  data-composition-src="compositions/flowchart-vertical.html"
+  data-start="0"
+  data-duration="12"
+  data-track-index="1"
+  data-width="1440"
+  data-height="2560"
+></div>
 ```
+
+Move it in time with `data-start`. Put it on a different timeline row with
+`data-track-index`. See [data attributes](/concepts/data-attributes) for the rest.
 
 {/* hf:generated-footer */}
 
@@ -511,3 +524,7 @@ Tagged `diagram` `flowchart` `interactive` `portrait`.
 - [Browse the complete Catalog](/catalog)
 - [Add assets and Catalog items in Studio](/studio/assets-and-blocks)
 - [Build a richer composition](/go-further)
+
+</CatalogSlot>
+
+</CatalogDetail>

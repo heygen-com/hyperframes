@@ -1,32 +1,41 @@
 import { createHash } from "node:crypto";
-import { mkdirSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
+import {
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  writeFileSync,
+  symlinkSync,
+  rmSync,
+  existsSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
-import { dirname, join } from "node:path";
-import { describe, expect, it, vi } from "vitest";
+import { join } from "node:path";
+import { describe, expect, it, onTestFinished, vi } from "vitest";
 import type { RegistryItem } from "@hyperframes/core";
 
 // The installer fetches over the network; the point of these tests is what it
-// does to files on disk, so the fetch is replaced by a local write.
+// does to files on disk, so the fetch returns controlled bytes.
 const remote = vi.hoisted(() => ({ contents: "REGISTRY VERSION\n" }));
 vi.mock("./remote.js", () => ({
   DEFAULT_REGISTRY_URL: "https://example.test/r",
-  fetchItemFile: vi.fn(async (_item: unknown, _file: unknown, destPath: string): Promise<void> => {
-    mkdirSync(dirname(destPath), { recursive: true });
-    writeFileSync(destPath, remote.contents, "utf-8");
-  }),
+  fetchItemFile: vi.fn(async () => Buffer.from(remote.contents)),
 }));
 
-const { hasLocalEdits, installItem } = await import("./installer.js");
+const { hasLocalEdits, installItem, prepareItem, publishItem } = await import("./installer.js");
 
 function project(): string {
-  return mkdtempSync(join(tmpdir(), "hf-installer-"));
+  const dir = mkdtempSync(join(tmpdir(), "hf-installer-"));
+  onTestFinished(() => rmSync(dir, { recursive: true, force: true }));
+  return dir;
 }
 
 const item = {
   name: "data-chart",
+  title: "Data chart",
+  description: "Chart component",
   type: "hyperframes:component",
   files: [
-    { path: "data-chart.html", target: "components/data-chart.html", type: "hyperframes:file" },
+    { path: "data-chart.html", target: "components/data-chart.html", type: "hyperframes:snippet" },
   ],
 } as unknown as RegistryItem;
 
@@ -52,6 +61,44 @@ describe("hasLocalEdits", () => {
 });
 
 describe("installItem", () => {
+  it("rejects a target directory symlink that escapes the project even with force", async () => {
+    const dir = project();
+    const outside = project();
+    symlinkSync(outside, join(dir, "components"), "junction");
+    await expect(installItem(item, { destDir: dir, force: true })).rejects.toThrow(/Unsafe target/);
+    expect(existsSync(join(outside, "data-chart.html"))).toBe(false);
+  });
+  it("preserves directory symlinks whose destination stays inside the project", async () => {
+    const dir = project();
+    mkdirSync(join(dir, "actual"));
+    symlinkSync(join(dir, "actual"), join(dir, "components"), "junction");
+    await installItem(item, { destDir: dir, force: true });
+    expect(readFileSync(join(dir, "actual/data-chart.html"), "utf8")).toContain("REGISTRY VERSION");
+  });
+  it.each(["darwin", "win32"] as const)(
+    "rejects absent case and Unicode aliases on %s before downloads",
+    async (platform) => {
+      vi.spyOn(process, "platform", "get").mockReturnValue(platform);
+      try {
+        for (const names of [
+          ["Foo.html", "foo.html"],
+          ["Café.html", "Cafe\u0301.html"],
+        ]) {
+          const dir = project();
+          const conflicting = {
+            ...item,
+            files: names.map((name) => ({ ...item.files[0]!, target: `components/${name}` })),
+          };
+          await expect(installItem(conflicting, { destDir: dir, force: true })).rejects.toThrow(
+            /duplicate/,
+          );
+          expect(existsSync(join(dir, "components"))).toBe(false);
+        }
+      } finally {
+        vi.restoreAllMocks();
+      }
+    },
+  );
   it("records what it installed, so a later install can tell", async () => {
     const dir = project();
     const result = await installItem(item, { destDir: dir });
@@ -86,6 +133,21 @@ describe("installItem", () => {
     expect(readFileSync(join(dir, target), "utf-8")).toBe("MY OWN COLOURS\n");
   });
 
+  it("keeps an edit saved while the rest of the plan was still downloading", async () => {
+    const dir = project();
+    await installItem(item, { destDir: dir });
+    remote.contents = "REGISTRY VERSION 2\n";
+    const prepared = await prepareItem(item, { destDir: dir });
+    remote.contents = "REGISTRY VERSION\n";
+    writeFileSync(join(dir, target), "MY OWN COLOURS\n", "utf-8");
+
+    const result = publishItem(prepared);
+
+    expect(result.written).toEqual([]);
+    expect(result.preserved).toHaveLength(1);
+    expect(readFileSync(join(dir, target), "utf-8")).toBe("MY OWN COLOURS\n");
+  });
+
   it("keeps a file that was there before any install", async () => {
     const dir = project();
     mkdirSync(join(dir, "components"), { recursive: true });
@@ -113,6 +175,10 @@ describe("installItem", () => {
     // the pre-marker bytes would make every reinstall look like an edit.
     const block = {
       name: "hero",
+      title: "Hero",
+      description: "Hero block",
+      dimensions: { width: 100, height: 100 },
+      duration: 1,
       type: "hyperframes:block",
       files: [{ path: "hero.html", target: "blocks/hero.html", type: "hyperframes:composition" }],
     } as unknown as RegistryItem;
@@ -129,12 +195,14 @@ describe("installItem", () => {
 describe("installing several items, as a dependency plan does", () => {
   const other = {
     name: "shared-caption",
+    title: "Shared caption",
+    description: "Shared component",
     type: "hyperframes:component",
     files: [
       {
         path: "shared-caption.html",
         target: "components/shared-caption.html",
-        type: "hyperframes:file",
+        type: "hyperframes:snippet",
       },
     ],
   } as unknown as RegistryItem;
@@ -167,4 +235,42 @@ describe("installing several items, as a dependency plan does", () => {
     expect(untouched.written).toHaveLength(1);
     expect(readFileSync(join(dir, target), "utf-8")).toBe("EDITED DEPENDENCY\n");
   });
+});
+
+describe("installing with --vars the item cannot take", () => {
+  const declaration = `<div data-composition-id="demo" data-composition-variables='[{"id":"maths","type":"boolean","label":"Maths","default":false}]'></div>`;
+  const block = {
+    name: "demo-block",
+    title: "Demo block",
+    description: "Block",
+    dimensions: { width: 100, height: 100 },
+    duration: 1,
+    type: "hyperframes:block",
+    files: [
+      {
+        path: "demo-block.html",
+        target: "compositions/demo-block.html",
+        type: "hyperframes:composition",
+      },
+    ],
+  } as unknown as RegistryItem;
+
+  it.each([
+    ["block", block, "compositions/demo-block.html"],
+    ["component", item, target],
+  ])(
+    "refuses a wrong-typed value for a %s and writes nothing",
+    async (_kind, installable, file) => {
+      const dir = project();
+      remote.contents = declaration;
+      try {
+        await expect(
+          installItem(installable, { destDir: dir, variableValues: { maths: 1 } }),
+        ).rejects.toThrow(/maths: expected boolean, got number/);
+        expect(existsSync(join(dir, file))).toBe(false);
+      } finally {
+        remote.contents = "REGISTRY VERSION\n";
+      }
+    },
+  );
 });

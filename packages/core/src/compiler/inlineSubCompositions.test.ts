@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { parseHTML } from "linkedom";
-import { inlineSubCompositions } from "./inlineSubCompositions";
+import { ensureExternalLinkTag, inlineSubCompositions } from "./inlineSubCompositions";
 import { readDeclaredDefaults, parseHostVariableValues } from "../runtime/getVariables";
 import { JSDOM } from "jsdom";
 
@@ -69,6 +69,26 @@ describe("inlineSubCompositions – #ID selector scoping divergence", () => {
     expect(result.scripts).toHaveLength(0);
   });
 
+  it("hoists stylesheet and preconnect links from a bare fragment", () => {
+    const document = makeHostDocument("intro");
+    const host = document.querySelector('[data-composition-src="intro.html"]')!;
+    const result = inlineSubCompositions(document, [host], {
+      resolveHtml: () => `<link rel="stylesheet" href="theme.css">
+<link rel="preconnect" href="https://fonts.example" crossorigin>
+<link rel="icon" href="favicon.ico">
+<div data-composition-id="intro"><link rel="stylesheet" href="nested.css"><link rel="icon" href="keep.ico"><div class="title">Hello</div></div>`,
+      parseHtml: (html) => parseHTML(html).document,
+    });
+
+    expect(result.externalLinks).toEqual([
+      { href: "theme.css", rel: "stylesheet", crossorigin: undefined },
+      { href: "https://fonts.example", rel: "preconnect", crossorigin: "" },
+      { href: "nested.css", rel: "stylesheet", crossorigin: undefined },
+    ]);
+    expect(host.querySelectorAll('link[rel="stylesheet"]')).toHaveLength(0);
+    expect(host.querySelectorAll('link[rel="icon"]')).toHaveLength(1);
+  });
+
   it("passes the failure reason through to onMissingComposition", () => {
     const document = makeHostDocument("intro");
     const host = document.querySelector('[data-composition-src="intro.html"]')!;
@@ -105,7 +125,7 @@ describe("inlineSubCompositions – #ID selector scoping divergence", () => {
 
     // CSS was scoped: #intro selectors should be rewritten to use
     // data-hf-authored-id attribute selector so they still resolve.
-    const scopedCss = result.styles.join("\n");
+    const scopedCss = result.styles.map((style) => style.css).join("\n");
     expect(scopedCss).toContain('[data-hf-authored-id="intro"]');
     expect(scopedCss).not.toContain("#intro");
   });
@@ -121,7 +141,7 @@ describe("inlineSubCompositions – #ID selector scoping divergence", () => {
 
     // The CSS scoper rewrites `#intro` to `[data-hf-authored-id="intro"]`
     // so that the selector resolves against the flattened structure.
-    const scopedCss = result.styles.join("\n");
+    const scopedCss = result.styles.map((style) => style.css).join("\n");
     expect(scopedCss).toContain('[data-hf-authored-id="intro"]');
     expect(scopedCss).toContain('[data-hf-authored-id="intro"] .title');
   });
@@ -163,7 +183,9 @@ describe("inlineSubCompositions – #ID selector scoping divergence", () => {
 
     expect(host.getAttribute("data-composition-id")).toBe("captions-comp");
     expect(host.querySelector('[data-composition-id="captions"]')).not.toBeNull();
-    expect(result.styles.join("\n")).toContain('[data-composition-id="captions-comp"]');
+    expect(result.styles.map((style) => style.css).join("\n")).toContain(
+      '[data-composition-id="captions-comp"]',
+    );
     const wrappedScript = result.scripts.join("\n");
     expect(wrappedScript).toContain('var __hfCompId = "captions"');
     expect(wrappedScript).toContain('var __hfTimelineCompId = "captions-comp"');
@@ -199,7 +221,7 @@ describe("inlineSubCompositions – #ID selector scoping divergence", () => {
     expect(authoredRoot).not.toBeNull();
 
     // CSS is still rewritten to use the attribute selector.
-    const scopedCss = result.styles.join("\n");
+    const scopedCss = result.styles.map((style) => style.css).join("\n");
     expect(scopedCss).toContain('[data-hf-authored-id="intro"]');
   });
 
@@ -245,7 +267,7 @@ describe("inlineSubCompositions – #ID selector scoping divergence", () => {
     const wrapper = host.querySelector("[data-hf-inner-root]");
     expect(wrapper?.getAttribute("data-composition-id")).toBe("scoped-text");
 
-    const scopedCss = result.styles.join("\n");
+    const scopedCss = result.styles.map((style) => style.css).join("\n");
     expect(scopedCss).toContain("display: flex");
   });
 
@@ -342,7 +364,7 @@ describe("inlineSubCompositions – #ID selector scoping divergence", () => {
     ]);
   });
 
-  it("deduplicates link hrefs across multiple sub-compositions", () => {
+  it("emits one link for the same link in two sub-compositions", () => {
     const subComp = `<!doctype html>
 <html><head>
   <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Montserrat:wght@800">
@@ -364,10 +386,10 @@ describe("inlineSubCompositions – #ID selector scoping divergence", () => {
       parseHtml: (html) => parseHTML(html).document,
     });
 
-    expect(result.externalLinks).toHaveLength(1);
-    expect(result.externalLinks[0]!.href).toBe(
-      "https://fonts.googleapis.com/css2?family=Montserrat:wght@800",
-    );
+    for (const link of result.externalLinks) ensureExternalLinkTag(document, link);
+    expect(
+      [...document.head.querySelectorAll("link")].map((el) => el.getAttribute("href")),
+    ).toEqual(["https://fonts.googleapis.com/css2?family=Montserrat:wght@800"]);
   });
 
   it("propagates data-timeline-locked from inner root to host element", () => {
@@ -426,7 +448,7 @@ describe("inlineSubCompositions – #ID selector scoping divergence", () => {
     expect(host.getAttribute("data-composition-id")).toBe("intro");
     expect(host.getAttribute("data-hf-authored-id")).toBe("intro");
 
-    const scopedCss = result.styles.join("\n");
+    const scopedCss = result.styles.map((style) => style.css).join("\n");
 
     // Root-only selector: must be compound
     expect(scopedCss).toMatch(/\[data-composition-id="intro"\]\[data-hf-authored-id="intro"\]/);
@@ -671,7 +693,9 @@ describe("inlineSubCompositions – sub-composition asset paths", () => {
   it("rewrites sibling refs in markup, hoisted CSS, and inline styles", () => {
     const { document, result } = inlineFrame();
     expect(document.querySelector("img")?.getAttribute("src")).toBe("design/styleframes/frame.png");
-    expect(result.styles.join("\n")).toContain("design/styleframes/frame.png");
+    expect(result.styles.map((style) => style.css).join("\n")).toContain(
+      "design/styleframes/frame.png",
+    );
     expect(document.querySelector("[style]")?.getAttribute("style")).toContain(
       "design/styleframes/frame.png",
     );
@@ -808,7 +832,7 @@ describe("inlineSubCompositions – #3490 nested SVG id collisions", () => {
     // — that is the caller's job) must resolve to the SAME renamed id the
     // element attribute above did, or the two diverge and the rule stops
     // matching once inlined.
-    const styles = result.styles.join("\n");
+    const styles = result.styles.map((style) => style.css).join("\n");
     const fxAId = styleFxA!.match(/url\(#([^)]+)\)/)?.[1];
     expect(fxAId).toBeTruthy();
     expect(styles).toContain(`filter: url(#${fxAId})`);
@@ -998,7 +1022,7 @@ describe("inlineSubCompositions – renamed SVG ids stay reachable from author s
 
     // Scene B's stylesheet was rewritten with a VALID escaped selector and a
     // matching url(); scene A's is untouched.
-    const [cssA, cssB] = result.styles;
+    const [cssA, cssB] = result.styles.map((style) => style.css);
     expect(cssA).toContain(String.raw`#fx\.1`);
     expect(cssA).toContain("url(#fx.1)");
     expect(cssB).toContain(String.raw`#scene-b--fx\.1`);
@@ -1017,5 +1041,54 @@ describe("inlineSubCompositions – renamed SVG ids stay reachable from author s
     // scoped document proxy in both scenes.
     expect(captured["scene-a"]).toBe(filterA);
     expect(captured["scene-b"]).toBe(filterB);
+  });
+});
+
+describe("SVG namespacing compatibility on current compiler", () => {
+  it.each([false, true])(
+    "preserves inherited native references and child styles (shadow=%s)",
+    (shadow) => {
+      const parent = `<div data-composition-id="parent"><svg><linearGradient id="paint"><stop stop-color="red"/></linearGradient><rect fill="url(#paint)"/></svg>
+      <div data-composition-id="child" data-composition-src="child.html"></div></div>`;
+      const child = `<div data-composition-id="child"><svg>${shadow ? '<linearGradient id="paint"><stop stop-color="green"/></linearGradient>' : ""}<rect class="child-paint" fill="url(#paint)"/></svg>
+      <style media="screen" title="child">.child-paint { fill: url(#paint) }</style></div>`;
+      const { document } = parseHTML(
+        '<html><body><div data-composition-id="parent" data-composition-src="parent.html"></div><svg><linearGradient id="paint"><stop stop-color="blue"/></linearGradient></svg></body></html>',
+      );
+      const result = inlineSubCompositions(
+        document,
+        [...document.querySelectorAll("[data-composition-src]")],
+        {
+          resolveHtml: (src) => (src === "parent.html" ? parent : child),
+          parseHtml: (html) => parseHTML(html).document,
+        },
+      );
+      const rect = document.querySelector(".child-paint")!;
+      const id = rect.getAttribute("fill")!.slice(5, -1);
+      expect(document.getElementById(id)!.querySelector("stop")!.getAttribute("stop-color")).toBe(
+        shadow ? "green" : "red",
+      );
+      expect(result.styles[0]).toEqual({
+        css: expect.stringContaining(`url(#${id})`),
+        media: "screen",
+        title: "child",
+      });
+    },
+  );
+
+  it("initializes selector compatibility for module-only compositions", () => {
+    const scene = (
+      id: string,
+    ) => `<div data-composition-id="${id}"><svg><path id="shape"/><use href="#shape"/></svg>
+      <script type="module">window.moduleHit = document.querySelector('[data-composition-id="b"]').querySelector('#shape').id;</script></div>`;
+    const { document, result } = inlineScenes({ "a.html": scene("a"), "b.html": scene("b") }, [
+      { compId: "a", src: "a.html" },
+      { compId: "b", src: "b.html" },
+    ]);
+    expect(result.scripts).toHaveLength(0);
+    const dom = new JSDOM(document.toString(), { runScripts: "outside-only" });
+    for (const script of result.moduleScripts) dom.window.eval(script);
+    expect(dom.window.moduleHit).toBe("b--shape");
+    dom.window.close();
   });
 });

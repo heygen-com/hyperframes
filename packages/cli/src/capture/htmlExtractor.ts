@@ -8,6 +8,7 @@
 import type { Page } from "puppeteer-core";
 import type { ExtractedHtml } from "./types.js";
 import { isPrivateUrl } from "./assetDownloader.js";
+import { CAPTURE_USER_AGENT } from "./userAgent.js";
 
 const DEFAULT_SETTLE_TIME = 3000;
 
@@ -35,7 +36,7 @@ export async function extractHtml(
       if (isPrivateUrl(href)) continue;
       const res = await fetch(href, {
         signal: AbortSignal.timeout(10000),
-        headers: { "User-Agent": "Mozilla/5.0" },
+        headers: { "User-Agent": CAPTURE_USER_AGENT },
       });
       if (!res.ok) continue;
       let css = await res.text();

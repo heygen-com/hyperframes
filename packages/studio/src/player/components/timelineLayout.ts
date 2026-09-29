@@ -55,11 +55,6 @@ export function getTimelineLaneTop(laneIndex: number): number {
   return TRACK_H + Math.max(0, Math.trunc(laneIndex)) * LANE_H;
 }
 /**
- * Collapsed-row characterization value for the new-track INSERT band. Runtime
- * hit-testing uses getTimelineInsertBoundaryBand with the concrete row height.
- */
-export const INSERT_BOUNDARY_BAND = CLIP_Y / TRACK_H;
-/**
  * Breathing room INSIDE the scroll area (CapCut-style), threaded through every
  * track-row y computation via {@link getTimelineRowTop} — never inline a magic
  * offset; a track row's top is always ruler + top pad + cumulative row heights.
@@ -263,17 +258,6 @@ export function getTimelineRowFromY(
   return getTimelineRowGeometry(rowHeights).getRowFromY(contentY);
 }
 
-export function getTimelineRowPositionFromY(
-  contentY: number,
-  rowHeights: readonly number[] = EMPTY_ROW_HEIGHTS,
-): { rowFloat: number; row: number; fraction: number; rowHeight: number } {
-  return getTimelineRowGeometry(rowHeights).getRowPositionFromY(contentY);
-}
-
-/** Fractional insert band for the concrete row under a pointer. */
-export function getTimelineInsertBoundaryBand(rowHeight: number): number {
-  return CLIP_Y / validRowHeight(rowHeight);
-}
 /**
  * While a clip drag is live, the rendered timeline extends this far past the
  * ghost's end so the right-edge auto-scroll zone always has room to keep
@@ -281,57 +265,51 @@ export function getTimelineInsertBoundaryBand(rowHeight: number): number {
  * rendered width (see Timeline.tsx displayContentWidth).
  */
 export const DRAG_EXTEND_MARGIN_PX = 160;
-/**
- * The rendered timeline always spans at least this many seconds of ruler +
- * track lanes, even when the composition is shorter — the empty space on the
- * right is a real, drag/drop-enabled surface (clips can be moved into it; the
- * composition grows on commit, content-driven). In fit mode the fit pps is
- * derived against this floor, so a 10s comp renders as ~1/6 of the viewport
- * with 60s of ruler after it.
- */
+/** The span the timeline maps while the composition's duration is unknown or 0. */
 export const MIN_TIMELINE_EXTENT_S = 60;
 /**
  * Fit-mode headroom (CapCut-style): "fit" maps `duration * 1.2` — not the bare
  * duration — onto the viewport, so the composition ends at ~83% of the width
  * and the trailing ~17% stays empty ruler + droppable lane surface (room to
  * drag clips past the current end without first zooming out). Applied ONLY
- * inside {@link getTimelineFitPps}, the single fit-pps source, so the ruler,
- * lanes, playhead, marquee, and drag math all inherit it consistently. Manual
+ * inside {@link getTimelineFitSpan}, which fit pps and the drawn width share, so
+ * the ruler, lanes, playhead, marquee, and drag math inherit it. Manual
  * zoom percentages stay defined relative to this fit basis (100% == fit).
  */
 export const FIT_ZOOM_HEADROOM = 1.2;
 
 /* ── Tick generation ──────────────────────────────────────────────── */
 /* ── Width / duration derivation ──────────────────────────────────── */
+/** Seconds the timeline maps: the composition plus FIT_ZOOM_HEADROOM, or the floor while its duration is unknown. */
+function getTimelineFitSpan(effectiveDuration: number): number {
+  return Number.isFinite(effectiveDuration) && effectiveDuration > 0
+    ? effectiveDuration * FIT_ZOOM_HEADROOM
+    : MIN_TIMELINE_EXTENT_S;
+}
+
 /**
  * Fit-mode pixels-per-second: fill the viewport with the composition plus
  * FIT_ZOOM_HEADROOM trailing headroom (CapCut-style — the comp never slams
- * into the right edge), and never map fewer than MIN_TIMELINE_EXTENT_S
- * seconds onto it — a short comp takes a fraction of the width and the
- * remaining ruler runs to 1:00.
- * Manual zoom multiplies this base, so the floor only anchors the default.
+ * into the right edge). Manual zoom multiplies this base.
  */
 export function getTimelineFitPps(
   viewportWidth: number,
   effectiveDuration: number,
   contentOrigin: number,
 ): number {
-  const safeDuration =
-    Number.isFinite(effectiveDuration) && effectiveDuration > 0 ? effectiveDuration : 0;
-  const span = Math.max(safeDuration * FIT_ZOOM_HEADROOM, MIN_TIMELINE_EXTENT_S);
   if (!Number.isFinite(viewportWidth) || viewportWidth <= contentOrigin) return 100;
-  return (viewportWidth - contentOrigin - 2) / span;
+  return (viewportWidth - contentOrigin - 2) / getTimelineFitSpan(effectiveDuration);
 }
 
 /**
  * The rendered timeline extent in px. Always covers, whichever is largest:
- * the actual clip content, the visible viewport (no dead black after short
+ * the visible viewport (no dead black after short
  * content — CapCut-style), a live drag or resize ghost plus the auto-scroll
- * margin (drag/trim-to-extend), and the MIN_TIMELINE_EXTENT_S floor. Only the
+ * margin (drag/trim-to-extend), and the fit span at this zoom. Only the
  * RENDERED extent grows; clip positions/durations are untouched.
  */
 export function getTimelineDisplayContentWidth(input: {
-  trackContentWidth: number;
+  effectiveDuration: number;
   viewportWidth: number;
   contentOrigin: number;
   pps: number;
@@ -340,11 +318,10 @@ export function getTimelineDisplayContentWidth(input: {
 }): number {
   const safePps = Number.isFinite(input.pps) ? Math.max(input.pps, 0) : 0;
   return Math.max(
-    input.trackContentWidth,
     input.viewportWidth - input.contentOrigin - 2,
     input.dragGhostEndPx ?? 0,
     input.resizeGhostEndPx ?? 0,
-    MIN_TIMELINE_EXTENT_S * safePps,
+    getTimelineFitSpan(input.effectiveDuration) * safePps,
   );
 }
 
@@ -568,8 +545,6 @@ export function resolveTimelineAssetDrop(
     scrollTop: number;
     contentOrigin: number;
     pixelsPerSecond: number;
-    duration: number;
-    clampStartToDuration?: boolean;
     rowHeights?: readonly number[];
     trackOrder: number[];
   },
@@ -584,10 +559,7 @@ export function resolveTimelineAssetDrop(
   });
   const contentY = clientY - input.rectTop + input.scrollTop;
   const pointerStart = Math.round((x / Math.max(input.pixelsPerSecond, 1)) * 100) / 100;
-  const start = Math.max(
-    0,
-    input.clampStartToDuration === false ? pointerStart : Math.min(input.duration, pointerStart),
-  );
+  const start = Math.max(0, pointerStart);
   // Row from the shared row→y inverse so the top pad is honoured; a drop in the
   // pad above the first lane floors to row 0, a drop in the bottom pad rounds
   // past the last lane (getDefaultDroppedTrack then appends a new track).

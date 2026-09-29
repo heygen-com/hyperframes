@@ -348,8 +348,9 @@ describe("analyseCarveDuck", () => {
     // of that rather than right against it.
     expect(at(duck, 2)).toBe(0);
     // Back to inaudible by the end of a long tail rather than held down for the
-    // clip; the envelope's last point is pinned at exactly no cut.
-    expect(at(duck, 15)).toBeCloseTo(0, 1);
+    // clip; the envelope's last point is pinned at exactly no cut. Ten seconds
+    // after the last word is four release constants, so the residue has snapped.
+    expect(at(duck, 15.9)).toBeCloseTo(0, 1);
     expect(duck.at(-1)?.v).toBe(0);
   });
 
@@ -383,10 +384,14 @@ describe("analyseCarveDuck", () => {
 
     // Still most of the way down a third of a second after the last word...
     expect(at(duck, 6.3)).toBeLessThan(atSpeech * 0.6);
-    // ...noticeably recovered by a second and a half...
-    expect(at(duck, 7.5)).toBeGreaterThan(atSpeech * 0.5);
-    // ...and within a hair of flat a few seconds later, rather than held down.
-    expect(at(duck, 11)).toBeGreaterThan(-0.6);
+    // Three seconds past the last word the bed is still audibly down — at a 1.6s
+    // release it is all but back (−1.5 dB), which is the sentence-break flip this
+    // constant exists to stop. This is the point that reds on the old value.
+    expect(at(duck, 9)).toBeLessThan(-2);
+    // ...noticeably recovered two and a half seconds on...
+    expect(at(duck, 8.5)).toBeGreaterThan(atSpeech * 0.5);
+    // ...and within a hair of flat several seconds later, rather than held down.
+    expect(at(duck, 13.5)).toBeGreaterThan(-0.6);
   });
 
   it("finishes the release past the last word instead of snapping at the end", () => {

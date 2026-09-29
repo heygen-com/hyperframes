@@ -1,10 +1,23 @@
+import { spawnSync } from "node:child_process";
 import { EventEmitter } from "node:events";
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 import { afterEach, describe, it, expect, vi } from "vitest";
-import { ENCODER_PRESETS, getEncoderPreset, buildEncoderArgs } from "./chunkEncoder.js";
+import {
+  ENCODER_PRESETS,
+  appendLockedGopArgs,
+  buildConcatArgs,
+  buildEncoderArgs,
+  getEncoderPreset,
+  lockedGopCodecParams,
+  resolveLockedGopSize,
+} from "./chunkEncoder.js";
 import { renderProvenanceArgs } from "../utils/renderProvenance.js";
+import { SDR_CAPTURE_TO_BT709_FILTER } from "../utils/sdrCaptureColor.js";
+import { getFfmpegBinary } from "../utils/ffmpegBinaries.js";
+
+const HAS_FFMPEG = spawnSync(getFfmpegBinary(), ["-version"]).status === 0;
 
 const TINY_PNG = Buffer.from(
   "iVBORw0KGgoAAAANSUhEUgAAAAIAAAACCAIAAAD91JpzAAAACXBIWXMAAAABAAAAAQBPJcTWAAAAEElEQVR4nGP8wwACLGCSAQANBAECv1AVswAAAABJRU5ErkJggg==",
@@ -229,6 +242,50 @@ describe("encodeFramesFromDir ffmpegEncodeTimeout", () => {
 });
 
 describe("encodeFramesChunkedConcat ffmpegEncodeTimeout", () => {
+  it("isolates concurrent encodes and preserves pre-existing chunk files", async () => {
+    const { spawn, calls } = createSpawnSpy();
+    vi.resetModules();
+    vi.doMock("child_process", () => ({ spawn }));
+    const { encodeFramesChunkedConcat } = await import("./chunkEncoder.js");
+    const { root, framesDir } = createFrameFixture();
+    const legacyDir = join(root, "chunk-encode");
+    mkdirSync(legacyDir);
+    const legacyList = join(legacyDir, "concat-list.txt");
+    writeFileSync(legacyList, "another render's concat list");
+
+    const results = ["first.mp4", "second.mp4"].map((name) =>
+      encodeFramesChunkedConcat(
+        framesDir,
+        "frame_%06d.png",
+        join(root, name),
+        tinyEncodeOptions,
+        30,
+      ),
+    );
+    expect(calls).toHaveLength(2);
+    const chunkPaths = calls.map((call) => call.args.at(-1));
+    for (const call of [...calls]) emitClose(call.proc, 0);
+    await flushManagedProcessResolution();
+    expect(calls).toHaveLength(4);
+    const lists = calls.slice(2).map((call) => call.args[call.args.indexOf("-i") + 1]);
+    for (const call of calls.slice(2)) emitClose(call.proc, 0);
+    const completed = await Promise.all(results);
+
+    expect(completed.every((result) => result.success && result.framesEncoded === 2)).toBe(true);
+    expect(new Set(chunkPaths).size).toBe(2);
+    expect(new Set(lists).size).toBe(2);
+    for (let index = 0; index < 2; index++) {
+      const chunkPath = chunkPaths[index];
+      const list = lists[index];
+      if (!chunkPath || !list) throw new Error("Expected chunk and concat paths");
+      expect(dirname(chunkPath)).not.toBe(legacyDir);
+      expect(dirname(list)).toBe(dirname(chunkPath));
+      expect(dirname(dirname(list))).toBe(root);
+      expect(readFileSync(list, "utf8")).toBe(`file '${chunkPath.replace(/'/g, "'\\''")}'`);
+    }
+    expect(readFileSync(legacyList, "utf8")).toBe("another render's concat list");
+  });
+
   it("passes config timeout to per-chunk encodes", async () => {
     vi.useFakeTimers();
     const { spawn, calls } = createSpawnSpy();
@@ -374,6 +431,45 @@ describe("encodeFramesChunkedConcat ffmpegEncodeTimeout", () => {
 });
 
 describe("muxVideoWithAudio audio codec handling", () => {
+  it("preserves an external interruption from mux", async () => {
+    const { spawn, calls } = createSpawnSpy();
+    vi.resetModules();
+    vi.doMock("child_process", () => ({ spawn }));
+
+    const { muxVideoWithAudio } = await import("./chunkEncoder.js");
+    const muxPromise = muxVideoWithAudio(
+      "/tmp/video-only.mp4",
+      "/tmp/audio.aac",
+      "/tmp/output.mp4",
+    );
+
+    await flushMuxCodecResolution();
+    calls[0]!.proc.stderr.emit("data", Buffer.from("Exiting normally, received signal 15.\n"));
+    emitClose(calls[0]!.proc, 255);
+
+    await expect(muxPromise).resolves.toMatchObject({
+      success: false,
+      failureReason: "external_interruption",
+    });
+  });
+
+  it("preserves an external interruption from faststart", async () => {
+    const { spawn, calls } = createSpawnSpy();
+    vi.resetModules();
+    vi.doMock("child_process", () => ({ spawn }));
+
+    const { applyFaststart } = await import("./chunkEncoder.js");
+    const faststartPromise = applyFaststart("/tmp/video-only.mp4", "/tmp/output.mp4");
+
+    calls[0]!.proc.stderr.emit("data", Buffer.from("Exiting normally, received signal 15.\n"));
+    emitClose(calls[0]!.proc, 255);
+
+    await expect(faststartPromise).resolves.toMatchObject({
+      success: false,
+      failureReason: "external_interruption",
+    });
+  });
+
   it("copies HyperFrames AAC sidecars into MP4 instead of re-encoding", async () => {
     const { spawn, calls } = createSpawnSpy();
     vi.resetModules();
@@ -402,8 +498,6 @@ describe("muxVideoWithAudio audio codec handling", () => {
       "copy",
       "-movflags",
       "+faststart",
-      "-avoid_negative_ts",
-      "make_zero",
       ...renderProvenanceArgs("/tmp/output.mp4"),
       "-r",
       "30",
@@ -424,7 +518,7 @@ describe("muxVideoWithAudio audio codec handling", () => {
     });
   });
 
-  it("keeps negative-timestamp repair for an M4A without a known priming edit list", async () => {
+  it("never repairs negative timestamps for an M4A sidecar (regression #3487)", async () => {
     const { spawn, calls } = createSpawnSpy();
     vi.resetModules();
     vi.doMock("child_process", () => ({ spawn }));
@@ -442,13 +536,15 @@ describe("muxVideoWithAudio audio codec handling", () => {
     await flushMuxCodecResolution();
     expect(calls).toHaveLength(1);
     expect(calls[0]!.args).toContain("copy");
-    expect(calls[0]!.args).toContain("-avoid_negative_ts");
+    // `make_zero` would discard the sidecar's AAC priming edit list, shift
+    // the copied video forward ~21ms and leave an empty video edit at t=0.
+    expect(calls[0]!.args).not.toContain("-avoid_negative_ts");
 
     emitClose(calls[0]!.proc, 0);
     await expect(muxPromise).resolves.toMatchObject({ success: true });
   });
 
-  it("preserves a known M4A priming edit list instead of shifting copied video", async () => {
+  it("ignores the deprecated preserveAudioPrimingEditList option", async () => {
     const { spawn, calls } = createSpawnSpy();
     vi.resetModules();
     vi.doMock("child_process", () => ({ spawn }));
@@ -459,7 +555,7 @@ describe("muxVideoWithAudio audio codec handling", () => {
       "/tmp/audio.duration-normalized.m4a",
       "/tmp/output.mp4",
       undefined,
-      { audioCodec: "aac", preserveAudioPrimingEditList: true },
+      { audioCodec: "aac", preserveAudioPrimingEditList: false },
       { num: 30, den: 1 },
     );
 
@@ -582,6 +678,7 @@ describe("muxVideoWithAudio audio codec handling", () => {
     expect(calls[0]!.args[calls[0]!.args.indexOf("-c:a") + 1]).toBe("aac");
     expect(calls[0]!.args).toContain("-b:a");
     expect(calls[0]!.args).toContain("+faststart");
+    expect(calls[0]!.args).not.toContain("-avoid_negative_ts");
 
     emitClose(calls[0]!.proc, 0);
     await expect(muxPromise).resolves.toMatchObject({ success: true });
@@ -629,6 +726,10 @@ describe("muxVideoWithAudio audio codec handling", () => {
       if (ext !== ".webm") await flushMuxCodecResolution();
       const call = calls[calls.length - 1]!;
       expect(call.args).not.toContain("-shortest");
+      // Same for every container we mux into: ffmpeg's `auto` default is
+      // already `disabled` for mp4/mov, and forcing `make_zero` breaks the
+      // AAC priming edit list (#3487).
+      expect(call.args).not.toContain("-avoid_negative_ts");
       emitClose(call.proc, 0);
       await muxPromise;
     }
@@ -847,6 +948,27 @@ describe("buildEncoderArgs GPU preset mapping", () => {
     expect(presetArg(args)).toBe("p5");
   });
 
+  it("uses a supported derived bitrate for high-quality VideoToolbox", () => {
+    const args = buildEncoderArgs(
+      {
+        fps: { num: 24, den: 1 },
+        width: 1920,
+        height: 1080,
+        codec: "h264",
+        preset: "slow",
+        quality: 15,
+        useGpu: true,
+      },
+      inputArgs,
+      "out.mp4",
+      "videotoolbox",
+    );
+
+    expect(args).not.toContain("-q:v");
+    expect(args[args.indexOf("-b:v") + 1]).toBe("12M");
+    expect(args[args.indexOf("-allow_sw") + 1]).toBe("1");
+  });
+
   // hevc_nvenc uses the same p1..p7 preset vocabulary as h264_nvenc, so the
   // mapping must apply to both codecs. Locks in "H.264 and H.265 NVENC share
   // the preset mapping" against a future refactor that might split the path.
@@ -954,7 +1076,7 @@ describe("buildEncoderArgs color space", () => {
     );
     const vfIdx = args.indexOf("-vf");
     expect(vfIdx).toBeGreaterThan(-1);
-    expect(args[vfIdx + 1]).toBe("scale=in_range=pc:out_range=tv");
+    expect(args[vfIdx + 1]).toBe(SDR_CAPTURE_TO_BT709_FILTER);
   });
 
   it("adds the pad after range conversion for odd CPU output dimensions", () => {
@@ -964,7 +1086,7 @@ describe("buildEncoderArgs color space", () => {
       "out.mp4",
     );
     const vfIdx = args.indexOf("-vf");
-    expect(args[vfIdx + 1]).toBe("scale=in_range=pc:out_range=tv,pad=ceil(iw/2)*2:ceil(ih/2)*2");
+    expect(args[vfIdx + 1]).toBe(`${SDR_CAPTURE_TO_BT709_FILTER},pad=ceil(iw/2)*2:ceil(ih/2)*2`);
   });
 
   it("prepends range conversion to VAAPI filter chain", () => {
@@ -976,10 +1098,10 @@ describe("buildEncoderArgs color space", () => {
     );
     const vfIdx = args.indexOf("-vf");
     expect(vfIdx).toBeGreaterThan(-1);
-    expect(args[vfIdx + 1]).toBe("scale=in_range=pc:out_range=tv,format=nv12,hwupload");
+    expect(args[vfIdx + 1]).toBe(`${SDR_CAPTURE_TO_BT709_FILTER},format=nv12,hwupload`);
   });
 
-  it("pads odd dimensions (no range scale) for non-VAAPI GPU encoding", () => {
+  it("converts to BT.709 and pads odd dimensions for non-VAAPI GPU encoding", () => {
     for (const gpu of ["nvenc", "videotoolbox", "qsv", "amf"] as const) {
       const args = buildEncoderArgs(
         {
@@ -995,10 +1117,7 @@ describe("buildEncoderArgs color space", () => {
         gpu,
       );
       const vfIdx = args.indexOf("-vf");
-      // 4:2:0 HW encode still aborts on odd dims, so the pad must be present —
-      // but the range scale belongs to the SW path only.
-      expect(args[vfIdx + 1]).toBe("pad=ceil(iw/2)*2:ceil(ih/2)*2");
-      expect(args[vfIdx + 1]).not.toContain("scale=in_range");
+      expect(args[vfIdx + 1]).toBe(`${SDR_CAPTURE_TO_BT709_FILTER},pad=ceil(iw/2)*2:ceil(ih/2)*2`);
       // but still has color metadata
       expect(args).toContain("-colorspace:v");
     }
@@ -1011,7 +1130,7 @@ describe("buildEncoderArgs color space", () => {
       "out.mp4",
       "videotoolbox",
     );
-    expect(args).not.toContain("-vf");
+    expect(args[args.indexOf("-vf") + 1]).toBe(SDR_CAPTURE_TO_BT709_FILTER);
   });
 
   it("pads odd dimensions for 10-bit (yuv420p10le) GPU HDR encoding", () => {
@@ -1024,6 +1143,7 @@ describe("buildEncoderArgs color space", () => {
         quality: 23,
         useGpu: true,
         pixelFormat: "yuv420p10le",
+        hdr: { transfer: "pq" },
       },
       inputArgs,
       "out.mp4",
@@ -1364,6 +1484,39 @@ describe("buildEncoderArgs lockGopForChunkConcat", () => {
     ).toThrow(/lockGopForChunkConcat=true requires a positive integer gopSize/);
   });
 
+  it("resolveLockedGopSize floors, passes through null, and rejects bad sizes", () => {
+    expect(resolveLockedGopSize({})).toBeNull();
+    expect(resolveLockedGopSize({ gopSize: 120 })).toBeNull();
+    expect(resolveLockedGopSize({ lockGopForChunkConcat: true, gopSize: 120.7 })).toBe(120);
+    for (const bad of [undefined, 0, -10, NaN, Infinity]) {
+      expect(() =>
+        resolveLockedGopSize({ lockGopForChunkConcat: true, gopSize: bad as number | undefined }),
+      ).toThrow(/lockGopForChunkConcat=true requires a positive integer gopSize/);
+    }
+  });
+
+  it("appendLockedGopArgs emits the closed-GOP quartet in order", () => {
+    const args: string[] = [];
+    appendLockedGopArgs(args, 120);
+    expect(args).toEqual([
+      "-g",
+      "120",
+      "-keyint_min",
+      "120",
+      "-sc_threshold",
+      "0",
+      "-force_key_frames",
+      "expr:eq(mod(n,120),0)",
+    ]);
+  });
+
+  it("lockedGopCodecParams adds keyint only for h265", () => {
+    expect(lockedGopCodecParams("h264", 120)).toBe("scenecut=0:open-gop=0:repeat-headers=1");
+    expect(lockedGopCodecParams("h265", 120)).toBe(
+      "keyint=120:min-keyint=120:scenecut=0:open-gop=0:repeat-headers=1",
+    );
+  });
+
   it("true is a no-op on ProRes (intra-only — no GOP forcing needed)", () => {
     const args = buildEncoderArgs(
       {
@@ -1534,14 +1687,14 @@ describe("buildEncoderArgs HDR color space", () => {
     expect(args[vfIdx + 1]).toContain("scale=in_range=pc:out_range=tv");
   });
 
-  it("uses same range conversion for SDR CPU encoding", () => {
+  it("converts SDR CPU captures to the BT.709 matrix", () => {
     const args = buildEncoderArgs(
       { ...baseOptions, codec: "h264", preset: "medium", quality: 23 },
       inputArgs,
       "out.mp4",
     );
     const vfIdx = args.indexOf("-vf");
-    expect(args[vfIdx + 1]).toContain("scale=in_range=pc:out_range=tv");
+    expect(args[vfIdx + 1]).toBe(SDR_CAPTURE_TO_BT709_FILTER);
   });
 
   it("tags BT.2020 + transfer for HDR GPU H.265 (no mastering metadata via -x265-params)", () => {
@@ -1568,4 +1721,101 @@ describe("buildEncoderArgs HDR color space", () => {
     expect(args[args.indexOf("-color_trc:v") + 1]).toBe("smpte2084");
     expect(args.indexOf("-x265-params")).toBe(-1);
   });
+});
+
+describe("buildConcatArgs", () => {
+  it("stream-copies the concat list and writes provenance before the output", () => {
+    const args = buildConcatArgs("/w/concat-list.txt", "/w/video-only.mp4");
+    expect(args.slice(0, 8)).toEqual([
+      "-f",
+      "concat",
+      "-safe",
+      "0",
+      "-i",
+      "/w/concat-list.txt",
+      "-c",
+      "copy",
+    ]);
+    // Provenance must land between the copy flags and the output path: the
+    // concat demuxer drops the per-chunk container metadata, so this file is
+    // the only place it can be re-asserted.
+    expect(args).toEqual(expect.arrayContaining(renderProvenanceArgs("/w/video-only.mp4")));
+    expect(args.at(-2)).toBe("-y");
+    expect(args.at(-1)).toBe("/w/video-only.mp4");
+  });
+});
+
+describe.skipIf(!HAS_FFMPEG)("buildEncoderArgs SDR colour", () => {
+  // Chrome captures are BT.601 JPEGs. A direct YUV-to-YUV scale keeps that matrix under the BT.709
+  // tag (ffmpeg 7 and older) or tints greys (8 and newer), so the encode goes through RGB.
+  it("delivers Chrome's JPEG colours in the BT.709 the mp4 is tagged with", () => {
+    const ffmpeg = getFfmpegBinary();
+    const dir = mkdtempSync(join(tmpdir(), "hf-sdr-colour-"));
+    const rgbAt = (file: string, decode: string, x: number): number[] => [
+      ...spawnSync(ffmpeg, [
+        "-v",
+        "error",
+        "-i",
+        file,
+        "-vf",
+        `${decode}format=rgb24,crop=1:1:${x}:8`,
+        "-frames:v",
+        "1",
+        "-f",
+        "rawvideo",
+        "-",
+      ]).stdout,
+    ];
+    try {
+      for (const color of ["0xC83C28", "0xFE0000", "0x101010", "0x2050E0"]) {
+        const jpg = join(dir, "frame.jpg");
+        const out = join(dir, "out.mp4");
+        const synth = spawnSync(ffmpeg, [
+          "-v",
+          "error",
+          "-y",
+          "-f",
+          "lavfi",
+          "-i",
+          `color=c=${color}:s=64x16,format=rgb24,drawbox=x=31:y=0:w=33:h=16:c=0x0000FE:t=fill`,
+          "-frames:v",
+          "1",
+          "-pix_fmt",
+          "yuvj420p",
+          jpg,
+        ]);
+        expect(synth.status).toBe(0);
+        const args = buildEncoderArgs(
+          {
+            fps: { num: 30, den: 1 },
+            width: 64,
+            height: 16,
+            codec: "h264",
+            preset: "ultrafast",
+            quality: 0,
+          },
+          ["-i", jpg],
+          out,
+        );
+        expect(spawnSync(ffmpeg, args).status).toBe(0);
+
+        // x=8 is flat colour; x=32 sits one pixel inside the blue edge, where a smoothing
+        // chroma resample bleeds the colour across.
+        for (const [x, limit] of [
+          [8, 2],
+          [32, 2],
+        ] as const) {
+          const captured = rgbAt(jpg, "", x);
+          const delivered = rgbAt(out, "scale=in_color_matrix=bt709:in_range=tv,", x);
+          const worst = Math.max(...delivered.map((v, i) => Math.abs(v - captured[i]!)));
+          expect(
+            worst,
+            `${color} x=${x}: capture ${captured} delivered ${delivered}`,
+          ).toBeLessThanOrEqual(limit);
+        }
+      }
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  }, 30_000);
 });

@@ -5,7 +5,7 @@
 // ship standalone: installed via `npx skills add`, a skill's scripts can't reach
 // the monorepo's core package, and the core export points at .ts source that
 // `node` (which runs these scripts) can't load. CANONICAL contract = the core
-// parser + skills/hyperframes-core/references/storyboard-format.md; keep this in
+// parser + skills/hyperframes/references/storyboard-format.md; keep this in
 // lockstep. Behavior: never throws, accepts freeform narrative, recognizes
 // Frame/Beat/Scene headings at H2/H3, preserves unknown keys verbatim under
 // `extra` (keys lowercased). Pure node — no deps.
