@@ -5,7 +5,7 @@
  * Processes and mixes audio tracks using FFmpeg.
  */
 
-import { isSelfOrAncestorHidden } from "./mediaHidden.js";
+import { isSelfOrAncestorHidden, memberGroupKey, isMemberGroupHidden } from "./mediaHidden.js";
 import { closeSync, existsSync, mkdirSync, mkdtempSync, openSync, rmSync, writeFileSync } from "fs";
 import { join, dirname, isAbsolute, relative } from "path";
 import { parseHTML } from "linkedom";
@@ -55,8 +55,7 @@ import {
   timeAtSourceTime,
   type RateSpec,
 } from "@hyperframes/core";
-import { HF_AUDIO_GROUP_ATTR, resolveAudioGroups } from "@hyperframes/core/audio-groups";
-import { AUDIO_GROUP_RENDER_ID_ATTR } from "@hyperframes/core";
+import { resolveAudioGroups } from "@hyperframes/core/audio-groups";
 import { applyAudioFxChain, AudioFxRenderError } from "./audioFxRender.js";
 import type { AudioVolumeKeyframe } from "./audioMixer.types.js";
 
@@ -76,21 +75,6 @@ export type { AudioElement, MixResult } from "./audioMixer.types.js";
  * the PNG-sequence sidecar, and all three have to agree.
  */
 export const MIXED_AUDIO_FILENAME = "audio.m4a";
-
-/**
- * The bus key a member belongs to, as `resolveAudioGroups` keys them.
- *
- * The compiler's `data-hf-group-render-id` names one INSTANCE of a bus; the
- * author's `data-audio-group` names it only within its own composition file. A
- * sub-composition declaring a bus and its members, used twice, therefore had
- * both instances' members under one key: one sub-mix for two independent buses,
- * one instance's fader and chain over the other's audio, and — with only the
- * second muted — BOTH instances dropped from the export. Uncompiled documents
- * (the live preview) carry no stamp and read exactly as before.
- */
-function memberGroupKey(el: RefResolverEl): string | null {
-  return el.getAttribute(AUDIO_GROUP_RENDER_ID_ATTR) ?? el.getAttribute(HF_AUDIO_GROUP_ATTR);
-}
 
 function clampVolume(volume: number): number {
   return clampAudioGain(volume);
@@ -598,10 +582,7 @@ export function parseAudioElements(html: string): AudioElement[] {
   const groupsById = new Map(
     resolveAudioGroups(document).map((group) => [group.id, group] as const),
   );
-  const memberGroupHidden = (el: AudioMediaElement): boolean => {
-    const groupId = memberGroupKey(el);
-    return groupId ? (groupsById.get(groupId)?.hidden ?? false) : false;
-  };
+  const memberGroupHidden = (el: AudioMediaElement): boolean => isMemberGroupHidden(groupsById, el);
 
   // <audio> and <video data-has-audio> tracks differ only in the emitted id
 
@@ -662,12 +643,12 @@ export function parseAudioElements(html: string): AudioElement[] {
   }
 
   for (const el of document.querySelectorAll('video[id][data-has-audio="true"]')) {
+    if (!isAudibleVideoElement(el)) continue;
     const id = trackId(el);
     const src = resolveMediaElementSrc(el);
-    const joinsGroup = isAudibleVideoElement(el);
-    if (!id || !src || isHidden(el) || (joinsGroup && memberGroupHidden(el))) continue;
+    if (!id || !src || isHidden(el) || memberGroupHidden(el)) continue;
     if (isKnownInactiveTimelineWindow(el, resolveStart(el))) continue;
-    elements.push(build(el, `${id}-audio`, src, "video", joinsGroup));
+    elements.push(build(el, `${id}-audio`, src, "video", true));
   }
 
   return elements;

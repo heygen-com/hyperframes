@@ -6,13 +6,14 @@
  * Videos are replaced with <img> elements during capture.
  */
 
-import { isSelfOrAncestorHidden } from "./mediaHidden.js";
+import { audioGroupsById, isMemberGroupHidden, isSelfOrAncestorHidden } from "./mediaHidden.js";
 import { copyFileSync, existsSync, linkSync, mkdirSync, rmSync } from "fs";
 import { join } from "path";
 import { parseHTML } from "linkedom";
 import { resolveProjectRelativeSrc } from "@hyperframes/parsers/asset-resolution";
 import {
   MEDIA_RENDER_ID_ATTR,
+  isAudibleVideoElement,
   fpsToFfmpegArg,
   fpsToNumber,
   MEDIA_DURATION_CLAMP_EPSILON_SECONDS,
@@ -667,6 +668,7 @@ export function parseVideoElements(html: string): VideoElement[] {
   const startCache = new Map<RefResolverEl, number>();
   const visiting = new Set<RefResolverEl>();
 
+  const groupsById = audioGroupsById(document);
   const videoEls = document.querySelectorAll("video");
   let autoIdCounter = 0;
   for (const el of videoEls) {
@@ -722,7 +724,10 @@ export function parseVideoElements(html: string): VideoElement[] {
       playbackRate: readElementRateSpec(el),
       loop: el.hasAttribute("loop"),
       hasAudio: hasAudioAttr === "true",
-      ...(isSelfOrAncestorHidden(el) ? { hidden: true } : {}),
+      ...(isSelfOrAncestorHidden(el) ||
+      (isAudibleVideoElement(el) && isMemberGroupHidden(groupsById, el))
+        ? { hidden: true }
+        : {}),
     });
   }
 
