@@ -1,5 +1,5 @@
 // fallow-ignore-file code-duplication complexity
-import { preloadMedia, releaseMedia, lengthIsAuthored } from "./preloadMedia";
+import { preloadMedia, releaseMedia, lengthIsAuthored, stopMediaDownload } from "./preloadMedia";
 import { installRuntimeControlBridge, postRuntimeMessage, setRuntimeProtocolFps } from "./bridge";
 import { instantTolerance } from "../clipFacts";
 import { isInClipWindow } from "./clipWindow";
@@ -2417,9 +2417,7 @@ export function initSandboxRuntimeModular(): void {
       if (mediaEl.isConnected) continue;
       unbindMedia(mediaEl);
       mediaEl.pause();
-      for (const source of mediaEl.querySelectorAll("source")) source.remove();
-      mediaEl.removeAttribute("src");
-      mediaEl.load();
+      stopMediaDownload(mediaEl);
     }
   };
 
@@ -2467,8 +2465,7 @@ export function initSandboxRuntimeModular(): void {
       maybeProxyProactively(mediaEl);
 
       // Studio's preview loads a timed clip only near the playhead; the visibility pass decides.
-      if (hiddenImagesSkipped && mediaEl.hasAttribute("data-start"))
-        nearPlayheadPending.push(mediaEl);
+      if (inPreloadWindow(mediaEl)) nearPlayheadPending.push(mediaEl);
       else preloadMedia(mediaEl);
 
       // Probe volume automation from the GSAP timeline — same approach as the
@@ -2640,22 +2637,30 @@ export function initSandboxRuntimeModular(): void {
 
   const hiddenImagesSkipped = skipsHiddenImages();
   const LOOKAHEAD_SECONDS = 2;
+  const RELEASE_LOOKAHEAD_SECONDS = 4;
   // Unskipped while due in the look-ahead window, so a clip shorter than the window still loads first.
   const dueSoon = (
     node: HTMLElement,
     visibleAt: ReturnType<typeof timedVisibilityAt>,
     t: number,
+    ahead = LOOKAHEAD_SECONDS,
   ) => {
     const start = resolveStartForElement(node, Number.NaN);
-    return (start > t && start <= t + LOOKAHEAD_SECONDS) || visibleAt(node, t + LOOKAHEAD_SECONDS);
+    return (start > t && start <= t + ahead) || visibleAt(node, t + ahead);
   };
+  // Where Studio's loop wraps to (window.__hf.setLoopStart); null when it does not loop.
+  let loopStartSeconds: number | null = null;
+  // A clip with no authored length loads as in a render: a reload would drop the duration it is
+  // timed by.
+  const inPreloadWindow = (el: HTMLMediaElement) =>
+    hiddenImagesSkipped && el.hasAttribute("data-start") && lengthIsAuthored(el);
 
   // Media on screen or due within the look-ahead loads; the rest stops holding a connection to
   // the origin that also serves Studio's thumbnails.
   const mediaNearPlayhead = new WeakMap<HTMLMediaElement, boolean>();
   // During playback a clip that starts arms the next clip on its track, which a cold 2 s look-ahead
   // cannot fetch in time on a slow link.
-  const armedNext = new WeakSet<HTMLMediaElement>();
+  const armedBy = new WeakMap<HTMLMediaElement, HTMLMediaElement>();
   const armedFrom = new WeakSet<HTMLMediaElement>();
   // An untracked clip (NaN) shares a track with nothing, as in the timeline payload.
   const hostOf = (el: Element) => el.parentElement?.closest("[data-composition-id]");
@@ -2676,8 +2681,8 @@ export function initSandboxRuntimeModular(): void {
         !(next && next.start <= clip.start)
       )
         next = clip;
-    if (!next) return;
-    armedNext.add(next.el);
+    if (!next || !inPreloadWindow(next.el)) return;
+    armedBy.set(next.el, el);
     if (mediaNearPlayhead.get(next.el) !== true) {
       mediaNearPlayhead.set(next.el, true);
       preloadMedia(next.el);
@@ -2685,20 +2690,19 @@ export function initSandboxRuntimeModular(): void {
   };
   const preloadNearPlayhead = (el: HTMLMediaElement, visible: boolean, upcoming: boolean) => {
     const playing = clock.isPlaying();
-    if (visible || !playing) armedNext.delete(el);
     if (!(visible && playing)) armedFrom.delete(el);
     else if (!armedFrom.has(el)) {
       armedFrom.add(el);
       armNextOnTrack(el);
     }
-    const near = visible || upcoming || armedNext.has(el);
+    // An arm lasts while the clip that set it plays on screen, so a jump away drops it.
+    const armer = armedBy.get(el);
+    const near = visible || upcoming || (armer !== undefined && armedFrom.has(armer));
     const decided = mediaNearPlayhead.get(el);
     if (decided === near) return;
     mediaNearPlayhead.set(el, near);
     if (!near) {
-      if (!lengthIsAuthored(el)) {
-        if (el.preload === "auto") el.preload = "metadata";
-      } else if (el.preload !== "none") {
+      if (el.preload !== "none") {
         el.preload = "none";
         // Frees a clip the window armed; on one the parser started, it would only restart the fetch.
         if (decided) releaseMedia(el);
@@ -2708,6 +2712,17 @@ export function initSandboxRuntimeModular(): void {
       preloadMedia(el);
     }
   };
+  // Held past the look-ahead so a scrub across its edge does not refetch, and while playing when
+  // due at the loop start.
+  const mediaStaysDue = (
+    el: HTMLMediaElement,
+    visibleAt: ReturnType<typeof timedVisibilityAt>,
+    t: number,
+  ) =>
+    (mediaNearPlayhead.get(el) === true && dueSoon(el, visibleAt, t, RELEASE_LOOKAHEAD_SECONDS)) ||
+    (loopStartSeconds !== null &&
+      clock.isPlaying() &&
+      (visibleAt(el, loopStartSeconds) || dueSoon(el, visibleAt, loopStartSeconds)));
 
   const applyTimedElementVisibility = (
     currentTime: number,
@@ -2748,8 +2763,12 @@ export function initSandboxRuntimeModular(): void {
       const upcoming =
         hiddenImagesSkipped && !isVisibleNow && dueSoon(rawNode, visibleAt, currentTime);
       rawNode.toggleAttribute(STUDIO_PREVIEW_UPCOMING_ATTR, upcoming);
-      if (hiddenImagesSkipped && isMediaElement(rawNode) && metadataBoundMedia.has(rawNode))
-        preloadNearPlayhead(rawNode, isVisibleNow, upcoming);
+      if (isMediaElement(rawNode) && metadataBoundMedia.has(rawNode) && inPreloadWindow(rawNode))
+        preloadNearPlayhead(
+          rawNode,
+          isVisibleNow,
+          upcoming || mediaStaysDue(rawNode, visibleAt, currentTime),
+        );
       if (!isMediaElement(rawNode) && !isImageElement(rawNode)) decidedTimedClip = true;
       if (isVideoElement(rawNode) || isImageElement(rawNode)) {
         colorGradingRuntime?.setSourceVisibility(rawNode, isVisibleNow);
@@ -2778,8 +2797,8 @@ export function initSandboxRuntimeModular(): void {
 
   // Scope 2 of 3 (see `withTimingResolver`). One resolver for the whole
   // visibility pass: every node costs 2 x (1 + ancestor depth) resolves, and
-  // ancestor chains are shared between siblings. Nothing in this body calls
-  // `el.load()` or awaits, so no duration can change under the cache.
+  // ancestor chains are shared between siblings. Its `el.load()` calls reach only clips timed by an
+  // authored length, and it never awaits, so no duration the cache read can change.
   const syncTimedElementVisibility = (
     currentTime: number,
     visibilityNodes: Element[] = Array.from(document.querySelectorAll("[data-start]")),
@@ -2963,6 +2982,9 @@ export function initSandboxRuntimeModular(): void {
   };
   window.__hf.leasePausedMedia = leasePausedMedia;
   window.__hf.releasePausedMedia = releasePausedMedia;
+  window.__hf.setLoopStart = (seconds) => {
+    loopStartSeconds = seconds != null && Number.isFinite(seconds) && seconds >= 0 ? seconds : null;
+  };
   // A sub-composition is hidden after its host clip, so its animation counts only until then.
   const autoNestedHostEndSeconds = (child: RuntimeTimelineChildLike): number => {
     const hostId = autoNestedHostIds.get(child);

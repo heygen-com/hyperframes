@@ -68,6 +68,8 @@ declare global {
        *  runtime's paused-side enforcement leaves it alone. Always release. */
       leasePausedMedia?: (el: HTMLMediaElement) => void;
       releasePausedMedia?: (el: HTMLMediaElement) => void;
+      /** Where Studio's loop wraps to while it plays, or null: the clips due there stay loaded. */
+      setLoopStart?: (seconds: number | null) => void;
       /** Read-only level taps for the Studio meters: nothing exists until
        *  `start()`, and `stop()` removes every tap. Peaks are linear per channel. */
       audioMeter?: {

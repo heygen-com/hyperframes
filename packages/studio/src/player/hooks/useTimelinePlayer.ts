@@ -152,12 +152,18 @@ export function useTimelinePlayer({
     [],
   );
 
+  const setLoopStart = useCallback((seconds: number | null) => {
+    try {
+      (iframeRef.current?.contentWindow as IframeWindow | null)?.__hf?.setLoopStart?.(seconds);
+    } catch {}
+  }, []);
   const { startRAFLoop, stopRAFLoop, stopReverseLoop } = useTimelinePlayerLoop({
     rafRef,
     reverseRafRef,
     getAdapter,
     setCurrentTime,
     setIsPlaying,
+    setLoopStart,
   });
 
   const applyPlaybackRate = useCallback((rate: number) => {

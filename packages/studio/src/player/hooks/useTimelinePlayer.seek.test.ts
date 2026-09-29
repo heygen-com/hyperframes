@@ -353,7 +353,11 @@ describe("useTimelinePlayer seek keepPlaying option (#834)", () => {
 describe("useTimelinePlayer RAF loop wrap-around", () => {
   type SeekCall = { time: number; options?: { keepPlaying?: boolean } };
 
-  function attachInstrumentedAdapter(api: ReturnType<typeof useTimelinePlayer>, duration = 30) {
+  function attachInstrumentedAdapter(
+    api: ReturnType<typeof useTimelinePlayer>,
+    duration = 30,
+    hooks: object = {},
+  ) {
     let currentTime = 0;
     let playing = false;
     const seekCalls: SeekCall[] = [];
@@ -377,6 +381,7 @@ describe("useTimelinePlayer RAF loop wrap-around", () => {
     };
     attachIframeWindow(api, {
       __player: adapter,
+      __hf: hooks,
       postMessage: () => {},
       scrollTo: () => {},
       addEventListener: () => {},
@@ -440,6 +445,29 @@ describe("useTimelinePlayer RAF loop wrap-around", () => {
       expect(adapter.play).toHaveBeenCalled();
       expect(usePlayerStore.getState().isPlaying).toBe(true);
 
+      unmountWithAct(root);
+    } finally {
+      raf.restore();
+    }
+  });
+
+  it("tells the preview where the loop wraps to while it plays, and that it stopped looping", () => {
+    const raf = installRafCapture();
+    try {
+      const { api, root } = renderTimelinePlayerHarness();
+      const setLoopStart = vi.fn();
+      const { adapter } = attachInstrumentedAdapter(api, 30, { setLoopStart });
+      act(() => {
+        usePlayerStore.getState().setInPoint(2);
+        usePlayerStore.getState().setOutPoint(5);
+        api.play();
+      });
+      adapter.setTime(3);
+      act(() => void raf.flushOne());
+      expect(setLoopStart).toHaveBeenLastCalledWith(2);
+      act(() => usePlayerStore.getState().setLoopEnabled(false));
+      act(() => void raf.flushOne());
+      expect(setLoopStart).toHaveBeenLastCalledWith(null);
       unmountWithAct(root);
     } finally {
       raf.restore();

@@ -13,27 +13,42 @@ export function preloadMedia(media: PreloadableMedia): void {
   if (media.readyState < 3 && !videoAlreadyLoading) media.load();
 }
 
-/** Ends a fetch in flight, which preload none alone does not; the src attribute ends unchanged. */
-export function releaseMedia(media: HTMLMediaElement): void {
+/** Ends a fetch in flight, which preload none alone does not; the returned call puts the sources back. */
+export function stopMediaDownload(media: HTMLMediaElement): () => void {
   const src = media.getAttribute("src");
-  if (src !== null) media.removeAttribute("src");
+  const sources = Array.from(media.children).filter((child) => child.tagName === "SOURCE");
+  media.removeAttribute("src");
+  for (const source of sources) source.remove();
   media.load();
-  if (src !== null) media.setAttribute("src", src);
+  return () => {
+    if (src !== null) media.setAttribute("src", src);
+    media.prepend(...sources);
+  };
+}
+
+export function releaseMedia(media: HTMLMediaElement): void {
+  stopMediaDownload(media)();
 }
 
 export function lengthIsAuthored(media: Element): boolean {
   return parseStrictFiniteTimingNumber(media.getAttribute("data-duration")) != null;
 }
 
-/** Preview only: later clips parse at preload none, as Chromium ignores a none set mid-fetch. */
+type DeferralWindow = Window & { __hfMediaDeferral?: MutationObserver };
+
+/** Preview only: later clips parse at preload none, as Chromium ignores a none set mid-fetch.
+ * One watcher per page: a runtime evaluated again replaces the last one's. */
 export function deferMediaUntilDue(): void {
+  const win = window as DeferralWindow;
+  win.__hfMediaDeferral?.disconnect();
+  win.__hfMediaDeferral = undefined;
+  if (!skipsHiddenImages()) return;
   const defer = (el: Element) => {
     const start = parseStrictFiniteTimingNumber(el.getAttribute("data-start"));
     if (start != null && start > 0 && lengthIsAuthored(el))
       (el as HTMLMediaElement).preload = "none";
   };
-  new MutationObserver((records) => {
-    if (!skipsHiddenImages()) return;
+  win.__hfMediaDeferral = new MutationObserver((records) => {
     for (const record of records)
       for (const node of record.addedNodes) {
         if (node.nodeType !== 1) continue;
@@ -41,5 +56,6 @@ export function deferMediaUntilDue(): void {
         if (el.matches("video, audio")) defer(el);
         for (const media of el.querySelectorAll("video, audio")) defer(media);
       }
-  }).observe(document.documentElement, { childList: true, subtree: true });
+  });
+  win.__hfMediaDeferral.observe(document.documentElement, { childList: true, subtree: true });
 }
