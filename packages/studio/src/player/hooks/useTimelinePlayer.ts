@@ -47,8 +47,8 @@ export interface UseTimelinePlayerOptions {
   onPreviewReloadFailed?: (message: string) => void;
 }
 
-const publishSeek = (time: number, options?: { restore?: boolean }) =>
-  options?.restore ? liveTime.notify(time) : liveTime.notifySeek(time);
+const publishSeek = (time: number, options?: { follow?: boolean }) =>
+  options?.follow === false ? liveTime.notify(time) : liveTime.notifySeek(time);
 
 export function useTimelinePlayer({
   onShadowPromoted,
@@ -279,7 +279,7 @@ export function useTimelinePlayer({
     stopRAFLoop();
   }, [getAdapter, setCurrentTime, setIsPlaying, stopRAFLoop, stopReverseLoop]);
   const seek = useCallback(
-    (time: number, options?: { keepPlaying?: boolean; restore?: boolean }) => {
+    (time: number, options?: { keepPlaying?: boolean; follow?: boolean }) => {
       const wasReverseShuttle = shuttleDirectionRef.current === "backward";
       stopReverseLoop();
       const adapter = getAdapter();
@@ -347,7 +347,7 @@ export function useTimelinePlayer({
         if (request.playing) play();
         else {
           pause();
-          if (request.returnTo !== null) seek(request.returnTo, { restore: true });
+          if (request.returnTo !== null) seek(request.returnTo, { follow: false });
         }
         usePlayerStore.getState().clearPlaybackRequest();
       }
@@ -412,7 +412,7 @@ export function useTimelinePlayer({
     onReloadFailed: onPreviewReloadFailed,
     handOverPlayback: (time, playing) => {
       // keepPlaying: move the playhead without the paused-seek audio scrub.
-      seek(time, { keepPlaying: true, restore: true });
+      seek(time, { keepPlaying: true, follow: false });
       const adapter = getAdapter();
       // An edit that cut the film short of the live time stops it at the new end, as playback does.
       if (playing && adapter && adapter.getTime() < adapter.getDuration()) play();

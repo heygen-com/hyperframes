@@ -513,9 +513,9 @@ describe("useTimelineClipDrag — trim guide and preview frame", () => {
     const h = renderResizeHarness([a], [], { onSeek });
     h.startResize(a, "end");
     h.movePointer(50);
-    expect(onSeek).toHaveBeenLastCalledWith(3.5 - 1 / 30, { keepPlaying: true });
+    expect(onSeek).toHaveBeenLastCalledWith(3.5 - 1 / 30, { keepPlaying: true, follow: false });
     await h.dropPointer();
-    expect(onSeek).toHaveBeenLastCalledWith(1.25, { keepPlaying: true });
+    expect(onSeek).toHaveBeenLastCalledWith(1.25, { keepPlaying: true, follow: false });
     h.unmount();
   });
 
@@ -525,7 +525,7 @@ describe("useTimelineClipDrag — trim guide and preview frame", () => {
     const h = renderResizeHarness([a], [], { onSeek });
     h.startResize(a, "start");
     h.movePointer(50);
-    expect(onSeek).toHaveBeenLastCalledWith(1.5, { keepPlaying: true });
+    expect(onSeek).toHaveBeenLastCalledWith(1.5, { keepPlaying: true, follow: false });
     h.unmount();
   });
 
@@ -545,7 +545,7 @@ describe("useTimelineClipDrag — trim guide and preview frame", () => {
     h.movePointer(80);
     h.movePointer(120);
     await h.dropPointer();
-    expect(onSeek).toHaveBeenLastCalledWith(1.25, { keepPlaying: true });
+    expect(onSeek).toHaveBeenLastCalledWith(1.25, { keepPlaying: true, follow: false });
     h.unmount();
   });
 
@@ -571,7 +571,10 @@ describe("useTimelineClipDrag — trim guide and preview frame", () => {
     const clip = h.getResizingClip()!;
     expect(clip.previewStart + clip.previewDuration).toBeCloseTo(3.1, 3);
     expect(clip).toMatchObject({ snapTime: null, snapType: null });
-    expect(onSeek).toHaveBeenLastCalledWith(expect.closeTo(3.1 - 1 / 30, 3), { keepPlaying: true });
+    expect(onSeek).toHaveBeenLastCalledWith(expect.closeTo(3.1 - 1 / 30, 3), {
+      keepPlaying: true,
+      follow: false,
+    });
     h.unmount();
   });
 });
