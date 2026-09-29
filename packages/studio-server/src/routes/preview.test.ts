@@ -435,6 +435,37 @@ describe("registerPreviewRoutes", () => {
     expect(html).toContain("Preview");
   });
 
+  it("does not keep a build under the signature a write replaced while it built", async () => {
+    const projectDir = createProjectDir();
+    const file = join(projectDir, "index.html");
+    const edited = "<html><head></head><body>Edited</body></html>";
+    writeFileSync(file, edited);
+    let release = () => {};
+    let gate: Promise<void> | null = new Promise<void>((resolve) => (release = resolve));
+    const app = new Hono();
+    registerPreviewRoutes(
+      app,
+      createAdapter(projectDir, {
+        bundle: async () => {
+          const wait = gate;
+          gate = null;
+          await wait;
+          return readFileSync(file, "utf-8");
+        },
+      }),
+    );
+
+    const inFlight = app.request("http://localhost/projects/demo/preview");
+    await vi.waitFor(() => expect(gate).toBeNull());
+    writeFileSync(file, "<html><head></head><body>Undone!</body></html>");
+    release();
+    expect(await (await inFlight).text()).toContain("Undone!");
+    writeFileSync(file, edited);
+
+    const redo = await app.request("http://localhost/projects/demo/preview?_t=2");
+    expect(await redo.text()).toContain("Edited");
+  });
+
   it("uses the adapter project signature when available", async () => {
     const projectDir = createProjectDir();
     const getProjectSignature = vi.fn(() => "cached-signature");

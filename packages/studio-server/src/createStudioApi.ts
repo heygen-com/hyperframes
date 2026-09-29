@@ -45,7 +45,9 @@ export function createStudioApi(adapter: StudioApiAdapter): Hono {
   api.use("/projects/:id/*", async function forgetSignatureAfterWrite(c, next) {
     await next();
     if (c.req.method === "GET" || c.req.method === "HEAD") return;
-    const project = await adapter.resolveProject(c.req.param("id"));
+    const project = await Promise.resolve()
+      .then(() => adapter.resolveProject(c.req.param("id")))
+      .catch(() => null);
     if (project) adapter.invalidateProjectSignature?.(project.dir);
   });
 
