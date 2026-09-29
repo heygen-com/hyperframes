@@ -8,6 +8,8 @@ import {
   extractGsapScriptText,
   findGsapScriptElements,
 } from "./gsapSoftReload";
+import { findAuthoredElement, parseSavedSource } from "./authoredSource";
+import { STUDIO_EDIT_ATTRS } from "../components/editor/manualEditsSeekReapply";
 import { markScenesStale } from "../player/sceneSwap";
 
 type PreviewWindow = Window & {
@@ -135,6 +137,17 @@ function syncElementAttributes(target: Element, source: Element): void {
   }
 }
 
+// A gesture folded into the script leaves marks on the live element that every seek would re-impose.
+function syncStaleEditMarks(doc: Document, restored: string): void {
+  const restoredDoc = parseSavedSource(restored);
+  for (const live of doc.querySelectorAll(STUDIO_EDIT_ATTRS.map((attr) => `[${attr}]`).join())) {
+    const source = findAuthoredElement(restoredDoc, live);
+    if (source && STUDIO_EDIT_ATTRS.some((a) => live.getAttribute(a) !== source.getAttribute(a))) {
+      syncElementAttributes(live, source);
+    }
+  }
+}
+
 function readGsapScriptTexts(html: string): string[] {
   const doc = new DOMParser().parseFromString(html, "text/html");
   return findGsapScriptElements(doc).map((script) => script.textContent ?? "");
@@ -248,9 +261,11 @@ export function applyUndoRestoreToPreview(
   const restoredScript = extractGsapScriptText(restored);
   const previousScript = extractGsapScriptText(previous);
   if (restoredScript && restoredScript !== previousScript) {
+    syncStaleEditMarks(doc, restored);
     const result = applySoftReload(iframe, restoredScript, {
       onAsyncFailure: reloadPreview,
       currentTimeOverride: currentTime,
+      authoredHtml: restored,
     });
     if (result === "cannot-soft-reload") {
       reloadPreview();

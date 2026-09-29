@@ -131,6 +131,16 @@ function verifyTimelinesPopulated(win: IframeWindow, targetKeys: string[]): bool
   return Object.keys(timelines).filter((k) => k !== "__proxied").length > 0;
 }
 
+// GSAP masks a folded CSS translate/rotate/scale with `none`; a fresh load has only what the file authors.
+function restoreAuthoredTransforms(el: HTMLElement, source: Element | null): void {
+  const authored = source instanceof HTMLElement ? source.style : null;
+  el.style.transform = authored?.transform ?? "";
+  if (!authored) return;
+  for (const prop of ["translate", "rotate", "scale"]) {
+    el.style.setProperty(prop, authored.getPropertyValue(prop));
+  }
+}
+
 /**
  * Outcome of a soft-reload attempt. Callers must distinguish PERMANENT failures
  * (the preview genuinely can't be soft-updated — escalate to a full reload) from
@@ -369,7 +379,7 @@ export function applySoftReload(
     // Reset GSAP's internal transform cache so from() tweens don't read stale
     // end values. `clearProps: "all"` is needed to flush the cache, but it also
     // nukes the element's CSS base (position, width, height, etc.) from the
-    // HTML `style=""` attribute. Save → clear → restore → strip `transform`.
+    // HTML `style=""` attribute. Save → clear → restore → authored transform props.
     if (allTargets.length > 0 && win.gsap?.set) {
       const saved: Array<[HTMLElement, string]> = [];
       for (const el of allTargets) {
@@ -384,7 +394,7 @@ export function applySoftReload(
       for (const [el, css] of saved) {
         const s = el.style;
         s.cssText = css;
-        s.removeProperty("transform");
+        restoreAuthoredTransforms(el, findAuthoredSource(el));
         // The restored cssText carries RUNTIME opacity, not authored opacity:
         // a mid-flight tween's interpolated value, or the color-grading hide
         // (`opacity: 0 !important`). The re-run script's tweens re-initialize

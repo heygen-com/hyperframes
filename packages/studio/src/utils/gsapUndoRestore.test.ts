@@ -161,6 +161,55 @@ describe("applyUndoRestoreToPreview", () => {
     },
   );
 
+  describe("an undo that re-runs a changed script matches a fresh load of the restored file", () => {
+    const script = (extra: string) => `window.__timelines["root"]=gsap.timeline();${extra}`;
+    const undoScriptEdit = (live: string, authored: string, edit: string) => {
+      const { iframe, contentWindow, doc } = buildLiveIframe(
+        `${live}<script>${script(edit)}</script>`,
+      );
+      const clearProps = (targets: HTMLElement[]) =>
+        targets.forEach((t) => t.removeAttribute("style"));
+      Object.assign(contentWindow.gsap, { set: clearProps });
+      for (const el of doc.querySelectorAll("[style*=transform]")) Object.assign(el, { _gsap: {} });
+      const files = {
+        [ROOT]: {
+          previous: wrap(`${authored}<script>${script(edit)}</script>`),
+          restored: wrap(`${authored}<script>${script("")}</script>`),
+        },
+      };
+      expect(applyUndoRestoreToPreview(iframe, ROOT, files, 3, vi.fn())).toBe("soft");
+      return doc;
+    };
+
+    it("drops the size marks a resize left on the live element", () => {
+      const doc = undoScriptEdit(
+        `<div id="a" data-hf-studio-box-size="true" style="width: 502px; --hf-studio-width: 502px; --hf-studio-height: 334px">t</div>`,
+        `<div id="a" style="width: 300px">t</div>`,
+        `tl.set("#a",{width:502,height:334},0);`,
+      );
+      expect(doc.getElementById("a")!.hasAttribute("data-hf-studio-box-size")).toBe(false);
+      expect(doc.getElementById("a")!.getAttribute("style")).toBe("width: 300px");
+    });
+
+    it("keeps the authored inline rotation of an element GSAP moved", () => {
+      const doc = undoScriptEdit(
+        `<div id="r" style="left: 10px; transform: translate(116px, 72px) rotate(20deg)">t</div>`,
+        `<div id="r" style="left: 10px; transform: rotate(20deg)">t</div>`,
+        `gsap.set("#r",{x:116,y:72});`,
+      );
+      expect(doc.getElementById("r")!.style.transform).toBe("rotate(20deg)");
+    });
+
+    it("drops the translate mask GSAP wrote over a stylesheet translate", () => {
+      const doc = undoScriptEdit(
+        `<h1 id="t" style="opacity: 0.5; translate: none; transform: translate(116px, -113px)">t</h1>`,
+        `<h1 id="t">t</h1>`,
+        `gsap.set("#t",{x:116,y:-113});`,
+      );
+      expect(doc.getElementById("t")!.style.getPropertyValue("translate")).toBe("");
+    });
+  });
+
   it("full-reloads without partially restoring when any changed live target is missing", () => {
     const { iframe, doc } = buildLiveIframe(`<div id="a" style="z-index: 8">a</div>`);
     const reloadPreview = vi.fn();

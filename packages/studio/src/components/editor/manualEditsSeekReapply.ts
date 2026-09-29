@@ -67,7 +67,11 @@ function reapplyRotations(doc: Document): void {
 }
 
 // Every mark a reapply below acts on, the legacy double-prefixed ones included.
-const STUDIO_EDIT_ATTRS = [STUDIO_PATH_OFFSET_ATTR, STUDIO_BOX_SIZE_ATTR, STUDIO_ROTATION_ATTR]
+export const STUDIO_EDIT_ATTRS = [
+  STUDIO_PATH_OFFSET_ATTR,
+  STUDIO_BOX_SIZE_ATTR,
+  STUDIO_ROTATION_ATTR,
+]
   .flatMap((attr) => [attr, `data-${attr}`])
   .concat(STUDIO_MOTION_ATTR);
 // One selector each: Chrome answers a lone attribute selector without walking the DOM, a comma list it walks.
