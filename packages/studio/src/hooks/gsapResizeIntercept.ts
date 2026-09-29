@@ -148,12 +148,16 @@ export async function tryGsapResizeIntercept(
         ? (anim ?? findSizeSetAnimation(workingAnimations, sel, selection.element))
         : findSizeSetAnimation(workingAnimations, sel, selection.element);
 
-    // If the element is animated (has a real tween, not just a static size
-    // hold), keyframe the size at the playhead so other keyframes keep theirs —
-    // instead of a global set that resizes every frame.
+    // Keyframe the size only when a real tween already animates it, as move and
+    // rotate do; a fade or a slide on the element gets a plain size.
     if (resizeGroup === "size") {
       const animatedTween = pickClosestToPlayhead(
-        workingAnimations.filter((a) => !isInstantHold(a) && resolveTweenDuration(a) > 0),
+        workingAnimations.filter(
+          (a) =>
+            !isInstantHold(a) &&
+            resolveTweenDuration(a) > 0 &&
+            animationWritesAnyProperty(a, resizeProperties),
+        ),
       );
       if (animatedTween) {
         logResize("intercept-route", { route: "keyframed-size", tweenId: animatedTween.id });

@@ -521,3 +521,49 @@ it("does not move a statically positioned element when a scale resize lands", as
   // And the live element ends on the drop point, not a drag away from it.
   expect(el.getBoundingClientRect().x).toBeCloseTo(603.3, 0);
 });
+
+function titleSelection(): DomEditSelection {
+  const el = document.createElement("h1");
+  el.id = "title";
+  document.body.append(el);
+  return { id: "title", selector: "#title", element: el } as DomEditSelection;
+}
+
+const KEYFRAME_MUTATIONS = new Set([
+  "add-keyframe",
+  "convert-to-keyframes",
+  "replace-with-keyframes",
+]);
+
+it("writes a plain size on an element whose only tween is a fade", async () => {
+  const fade = {
+    id: "#title-to-0-visual",
+    targetSelector: "#title",
+    propertyGroup: "visual",
+    method: "to",
+    properties: { opacity: 0.5 },
+    position: 0,
+    resolvedStart: 0,
+    duration: 10,
+  } as unknown as GsapAnimation;
+  const commitMutation = vi.fn();
+
+  const handled = await tryGsapResizeIntercept(
+    titleSelection(),
+    { width: 424, height: 237 },
+    [fade],
+    null,
+    commitMutation,
+  );
+
+  expect(handled).toMatchObject({ status: "persisted" });
+  const mutations = commitMutation.mock.calls.map((call) => call[1] as { type: string });
+  expect(mutations.filter((m) => KEYFRAME_MUTATIONS.has(m.type))).toEqual([]);
+  expect(mutations).toContainEqual({
+    type: "add",
+    targetSelector: "#title",
+    method: "set",
+    position: 0,
+    properties: { width: 424, height: 237 },
+  });
+});
