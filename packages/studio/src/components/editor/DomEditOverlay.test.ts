@@ -485,6 +485,45 @@ describe("DomEditOverlay", () => {
     host.remove();
   });
 
+  it.each([
+    { canvasInput: "overlay" as const, drags: true },
+    { canvasInput: "host" as const, drags: false },
+  ])("with body drag off, a $canvasInput canvas drags the body: $drags", async (c) => {
+    const restoreRect = stubViewportRect();
+    const host = document.createElement("div");
+    document.body.append(host);
+    const root = createRoot(host);
+    const selection = makeDomEditSelection();
+    const iframeRef = { current: document.createElement("iframe") as HTMLIFrameElement | null };
+    const originalPointerCapture = HTMLDivElement.prototype.setPointerCapture;
+    HTMLDivElement.prototype.setPointerCapture = () => {};
+    gestureSpies.startGesture.mockClear();
+
+    act(() => {
+      root.render(
+        React.createElement(DomEditOverlay, {
+          ...createOverlayProps({ iframeRef, selection, hoverSelection: null }),
+          allowBodyDrag: false,
+          canvasInput: c.canvasInput,
+        }),
+      );
+    });
+    await flushOverlayRaf();
+    const selectionBox = host.querySelector(
+      '[data-dom-edit-selection-box="true"]',
+    ) as HTMLDivElement;
+    dispatchOverlayPointerDown(selectionBox);
+
+    expect(gestureSpies.startGesture.mock.calls.some((call) => call[0] === "drag")).toBe(c.drags);
+
+    act(() => {
+      root.unmount();
+    });
+    HTMLDivElement.prototype.setPointerCapture = originalPointerCapture;
+    restoreRect();
+    host.remove();
+  });
+
   it("passes the tracked hover selection when clicking the existing selection box", async () => {
     const restoreRect = stubViewportRect();
 
