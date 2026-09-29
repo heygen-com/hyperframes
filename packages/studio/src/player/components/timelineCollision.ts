@@ -98,9 +98,9 @@ export function resolveNearestFreeStart(
     if (el) gapStart = Math.max(gapStart, ceilCenti(el.start + el.duration));
   }
   if (origin === null || origin < minStart || !isNearer(origin, best, start)) return best;
-  const clear = busy.every(
-    (el) => !timeRangesOverlap(origin, origin + duration, el.start, el.start + el.duration),
-  );
+  // Float slack at both ends: 0.333 + 1.733 is 2.0660000000000003, a hair past a neighbour at 2.066.
+  const [from, to] = [origin + 1e-6, origin + duration - 1e-6];
+  const clear = busy.every((el) => !timeRangesOverlap(from, to, el.start, el.start + el.duration));
   return clear ? origin : best;
 }
 

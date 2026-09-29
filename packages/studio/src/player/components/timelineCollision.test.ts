@@ -54,6 +54,13 @@ describe("resolveNearestFreeStart", () => {
     expect(resolveNearestFreeStart(tight, 0, 3.4, 3.333, null, 0, 3.333)).toBe(3.333);
   });
 
+  it("keeps the clip's own start when float sums land a hair past a neighbour's edge", () => {
+    const after = [el("a", 0, 0, 0.333), el("b", 0, 2.066, 1)]; // 0.333 + 1.733 = 2.0660000000000003
+    expect(resolveNearestFreeStart(after, 0, 0.333, 1.733, null, 0, 0.333)).toBe(0.333);
+    const before = [el("a", 0, 0.1, 0.2), el("b", 0, 1.3, 1)]; // a ends at 0.30000000000000004
+    expect(resolveNearestFreeStart(before, 0, 0.3, 1, null, 0, 0.3)).toBe(0.3);
+  });
+
   it("takes the clip's own start only when it is free, not below minStart, and nearest", () => {
     expect(resolveNearestFreeStart(row, 0, 4, 2, null, 0, 3.5)).toBe(5); // nearer, but its own spot overlaps a
     expect(resolveNearestFreeStart(row, 0, 0, 1, null, 1, 0.5)).toBe(1); // below the floor
