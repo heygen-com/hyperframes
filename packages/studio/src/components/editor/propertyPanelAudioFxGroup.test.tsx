@@ -103,11 +103,11 @@ function mount(dataAttributes: Record<string, string>, alone = false, voices = 2
   return { host, onSetAttributeQuiet, onSetAttributeLive };
 }
 
-function mountGroup(memberStart: number) {
+function mountGroup(memberStart: number, memberTag: "audio" | "video" = "audio") {
   const bus = document.createElement("hf-audio-group");
   bus.id = "voiceover";
   document.body.append(bus);
-  const member = document.createElement("audio");
+  const member = document.createElement(memberTag);
   member.id = "vo-1";
   member.setAttribute("data-audio-group", "voiceover");
   member.setAttribute("data-start", String(memberStart));
@@ -646,6 +646,16 @@ describe("AudioFxGroup dynamic carve", () => {
       const host = mountGroup(10);
       hoverPreset(host);
       expect(store().requestedSeekTime).toBe(10);
+      leaveShelf(host);
+    });
+
+    it("seeks a group audition to an audible video member's span", () => {
+      act(() =>
+        usePlayerStore.setState({ isPlaying: false, currentTime: 2, requestedSeekTime: null }),
+      );
+      const host = mountGroup(7, "video");
+      hoverPreset(host);
+      expect(store().requestedSeekTime).toBe(7);
       leaveShelf(host);
     });
 
