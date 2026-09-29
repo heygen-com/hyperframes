@@ -277,7 +277,24 @@ Timeline math: picture and sound share start/duration because the sound stays on
 A J cut or L cut is the case that needs a separate `<audio>`: picture and sound are cut independently, so the sound gets its own element (the same goes for replacement audio, a voiceover, or music). Mute the video whose sound you are replacing.
 
 ```html
-<!-- Separate audio: picture and sound are cut independently here. -->
+<!-- Outgoing shot: picture runs 0-5, its own sound is a separate clip that ends at the audio cut (4). -->
+<video
+  id="shot-1"
+  src="intro.mp4"
+  data-start="0"
+  data-duration="5"
+  data-track-index="0"
+  muted
+  playsinline
+></video>
+<audio
+  id="shot-1-audio"
+  src="intro.mp4"
+  data-start="0"
+  data-duration="4"
+  data-track-index="10"
+></audio>
+<!-- Incoming shot: picture starts at 5, its sound leads it by one second. -->
 <video
   id="shot-2"
   src="take.mp4"
@@ -298,7 +315,7 @@ A J cut or L cut is the case that needs a separate `<audio>`: picture and sound 
 ></audio>
 ```
 
-The sound leads the picture by one second (a J cut): the `<audio>` starts at 4 and reads from source 11, while the picture starts at 5 and reads from 12. Both stay on the same source clock. The outgoing clip's own sound must end at the audio cut (trim it or mute it) so two sounds don't overlap.
+The sound leads the picture by one second (a J cut): `shot-2-audio` starts at 4 and reads from source 11, while the picture starts at 5 and reads from 12. Both stay on the same source clock. Every video in a J or L cut is `muted` and its sound is its own `<audio>`: the outgoing shot's `<audio>` ends at the audio cut (4) while its picture carries on to 5, so two sounds never overlap on the same source. An audible `<video>` and an `<audio>` on the same file are only flagged when their time windows overlap.
 
 ## Align a sound to an on-screen event
 

@@ -75,9 +75,20 @@ is the static baseline.
 ```
 
 ```html
+<!-- intro.mp4 has an audio stream -->
 <video
   playsinline
   data-has-audio="true"
+  data-start="0"
+  data-duration="5"
+  data-track-index="0"
+  src="assets/intro.mp4"
+></video>
+
+<!-- intro.mp4 is silent (or the Remotion element is muted) -->
+<video
+  playsinline
+  muted
   data-start="0"
   data-duration="5"
   data-track-index="0"
@@ -90,9 +101,13 @@ rendering. HF runs in headless Chrome already, so the off-thread variant
 collapses to a regular `<video>`.
 
 `playsinline` is required for the runtime to autoplay (browser policy); always
-emit it. Remotion `<Video>` maps to `<video playsinline>` + `data-has-audio="true"`
-unless the Remotion source sets `muted` or `volume={0}` (then emit `muted`
-instead).
+emit it. Check the source file for an audio stream first:
+`ffprobe -v error -select_streams a -show_entries stream=codec_type -of csv=p=0 <file>`
+(non-empty output means it has audio). Remotion `<Video>` maps to
+`<video playsinline>` + `data-has-audio="true"` only when the file has an audio
+stream and the Remotion source does not set `muted` or `volume={0}`; otherwise
+emit `muted`. Silent b-roll with `data-has-audio="true"` aborts the render
+(`ASSET_MEDIA_TYPE_MISMATCH`).
 
 ## `<Img>`
 

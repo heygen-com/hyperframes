@@ -143,7 +143,9 @@ function main() {
     process.exit(2);
   }
   const audio = path.join(project, "audio.mp3");
-  if (!fs.existsSync(audio))
+  // A stray audio.mp3 in the project makes lint call the render silent; only remove one this run made.
+  const audioIsScratch = !fs.existsSync(audio);
+  if (audioIsScratch)
     cp.execFileSync(
       "ffmpeg",
       ["-y", "-i", src, "-vn", "-acodec", "libmp3lame", "-q:a", "2", audio],
@@ -280,6 +282,8 @@ function main() {
       words = keep;
     }
   }
+
+  if (audioIsScratch) fs.rmSync(audio, { force: true });
 
   const text = words
     .map((w) => w.text)
