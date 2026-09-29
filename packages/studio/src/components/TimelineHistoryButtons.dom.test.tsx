@@ -96,14 +96,25 @@ it("leaves enabled buttons without the disabled attribute", () => {
   expect(el.className).not.toContain("cursor-not-allowed");
 });
 
-it("orders the toolbar Undo, Redo, Select, Razor", () => {
+it("orders the toolbar Undo, Redo, then the tool picker showing the active tool", () => {
   const host = mount(<TimelineToolbar />);
   const labels = Array.from(host.querySelectorAll("button"))
     .map((b) => b.getAttribute("aria-label"))
     .filter((l) => l !== null)
-    .slice(0, 4);
+    .slice(0, 3);
 
-  expect(labels).toEqual(["Undo", "Redo", "Selection tool", "Razor tool"]);
+  expect(labels).toEqual(["Undo", "Redo", "Timeline tool: Select"]);
+});
+
+it("shows the Split tool on the picker while the razor is active", async () => {
+  const { usePlayerStore } = await import("../player");
+  usePlayerStore.setState({ activeTool: "razor" });
+  try {
+    const host = mount(<TimelineToolbar />);
+    expect(host.querySelector('button[aria-label="Timeline tool: Split"]')).not.toBeNull();
+  } finally {
+    usePlayerStore.setState({ activeTool: "select" });
+  }
 });
 
 it("classifies Undo and Redo for the hotkey filters at their new location (KTD13)", () => {
