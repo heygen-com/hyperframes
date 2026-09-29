@@ -1,6 +1,6 @@
 import { writeFileSync, mkdirSync } from "node:fs";
 import { dirname } from "node:path";
-import { readManifest, indexPath } from "./manifest.mjs";
+import { currentRecords, indexPath } from "./manifest.mjs";
 
 function pad(str, len) {
   return String(str ?? "").padEnd(len);
@@ -54,7 +54,7 @@ export function generateIndexContent(records) {
 }
 
 export function regenerateIndex(projectDir) {
-  const records = readManifest(projectDir);
+  const records = currentRecords(projectDir);
   const content = generateIndexContent(records);
   const p = indexPath(projectDir);
   mkdirSync(dirname(p), { recursive: true });

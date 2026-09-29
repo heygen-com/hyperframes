@@ -127,6 +127,7 @@ export interface TimelineViewportProps {
   ref: RefCallback<HTMLDivElement>;
   "data-timeline-scroll-viewport": boolean;
   "data-timeline-auto-scroll-left-inset": number;
+  "data-timeline-content-origin": number;
   tabIndex: number;
   className: string;
   onScroll: (event: UIEvent<HTMLDivElement>) => void;

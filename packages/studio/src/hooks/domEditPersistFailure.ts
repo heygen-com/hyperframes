@@ -46,6 +46,13 @@ function getSelectionLabel(selection: DomEditPersistFailureSelection): string {
   return selection.label || selection.selector || selection.id || "this element";
 }
 
+export function wasAlreadyToasted(error: unknown): boolean {
+  return (
+    (error instanceof DomEditPersistUnsafeValueError || error instanceof StudioSaveHttpError) &&
+    error.alreadyToasted
+  );
+}
+
 export function reportDomEditPersistFailure(
   selection: DomEditPersistFailureSelection,
   operations: PatchOperation[],
@@ -59,12 +66,7 @@ export function reportDomEditPersistFailure(
     error: detail,
   });
 
-  const wasAlreadyToasted =
-    (error instanceof DomEditPersistUnsafeValueError || error instanceof StudioSaveHttpError) &&
-    error.alreadyToasted;
-  if (wasAlreadyToasted) {
-    return;
-  }
+  if (wasAlreadyToasted(error)) return;
 
   showToast(`Couldn't save "${getSelectionLabel(selection)}": ${detail}`, "error");
 }

@@ -3,6 +3,7 @@
 import { useCallback, type MutableRefObject, type RefObject } from "react";
 import type { Composition } from "@hyperframes/sdk";
 import type { TimelineElement } from "../player";
+import { toAuthoredStart, toCompositionTime } from "../player/store/timelineElement";
 import {
   cutoverCommittedOrThrow,
   sdkTimingBatchPersist,
@@ -244,7 +245,10 @@ export function useTimelineGroupEditing({
       if (changes.length === 0) return Promise.resolve();
       for (const change of changes) {
         const attrs: Array<[string, string]> = [
-          ["data-start", formatTimelineAttributeNumber(change.start)],
+          [
+            "data-start",
+            formatTimelineAttributeNumber(toAuthoredStart(change.element, change.start)),
+          ],
         ];
         if (change.track != null) {
           attrs.push(["data-track-index", formatTimelineAttributeNumber(change.track)]);
@@ -287,7 +291,9 @@ export function useTimelineGroupEditing({
         await options?.beforeTiming;
         const handledBySdk = await trySdkBatchPersist({
           changes,
-          sdkChanges: toSdkTimingChanges(changes, (change) => ({ start: change.start })),
+          sdkChanges: toSdkTimingChanges(changes, (change) => ({
+            start: toAuthoredStart(change.element, change.start),
+          })),
           eligible: changes.every((change) => change.track == null),
           needsExtension,
           label,
@@ -304,7 +310,7 @@ export function useTimelineGroupEditing({
                 buildTimelineMoveTimingPatch(
                   original,
                   target,
-                  change.start,
+                  toAuthoredStart(change.element, change.start),
                   change.element.duration,
                   change.track,
                 ),
@@ -375,7 +381,10 @@ export function useTimelineGroupEditing({
       if (changes.length === 0) return Promise.resolve();
       for (const change of changes) {
         const liveAttrs: Array<[string, string]> = [
-          ["data-start", formatTimelineAttributeNumber(change.start)],
+          [
+            "data-start",
+            formatTimelineAttributeNumber(toAuthoredStart(change.element, change.start)),
+          ],
           ["data-duration", formatTimelineAttributeNumber(change.duration)],
         ];
         if (change.playbackStart != null) {
@@ -402,7 +411,7 @@ export function useTimelineGroupEditing({
         const handledBySdk = await trySdkBatchPersist({
           changes,
           sdkChanges: toSdkTimingChanges(changes, (change) => ({
-            start: change.start,
+            start: toAuthoredStart(change.element, change.start),
             duration: change.duration,
           })),
           eligible: changes.every((change) => !resizeHasPlaybackStartAdjustment(change)),
@@ -453,9 +462,9 @@ export function useTimelineGroupEditing({
                 projectId,
                 changePath,
                 domId,
-                change.element.start,
+                toCompositionTime(change.element, change.element.start),
                 change.element.duration,
-                change.start,
+                toCompositionTime(change.element, change.start),
                 change.duration,
               );
             },

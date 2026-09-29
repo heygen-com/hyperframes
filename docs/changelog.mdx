@@ -9,6 +9,127 @@ Recent HyperFrames releases, including user-facing features, fixes, and migratio
 {/* New release entries are prepended by `bun run changelog:draft <version> --write`. */}
 
 <Update
+  label="HyperFrames v0.8.91"
+  description="Released - 2026-09-29"
+  tags={["Release", "Studio", "Adopters"]}
+>
+An app that embeds the timeline can now map a ruler click to the right time, even when the track-name column is open. Clips inside nested compositions sit at their master time, and moving one word moves only that word.
+
+## Features
+
+- **Studio:** The timeline publishes where it draws 0 s, so an embedding app can map a click to a time ([b171ee571](https://github.com/heygen-com/hyperframes/commit/b171ee57169604f425082d48307ad9d0de18be5c), [#4724](https://github.com/heygen-com/hyperframes/pull/4724)).
+
+## Fixes
+
+- **Studio:** Clips inside nested compositions sit at their master time ([3dc3a9ca1](https://github.com/heygen-com/hyperframes/commit/3dc3a9ca1a48d6937f5e47e11c44c40b3b2f0ac2), [#4681](https://github.com/heygen-com/hyperframes/pull/4681)).
+- **Studio:** Moving one word moves only that word, not every word sharing its animation ([5606b3102](https://github.com/heygen-com/hyperframes/commit/5606b31020e14bcab3a031fc6db561441c980149), [#4705](https://github.com/heygen-com/hyperframes/pull/4705)).
+
+## Docs & Examples
+
+- **Adopters:** Add Skyflo ([c6b5edc96](https://github.com/heygen-com/hyperframes/commit/c6b5edc967b64ce7c838fe1525c41feae0b6c634), [#4655](https://github.com/heygen-com/hyperframes/pull/4655)).
+
+## Other Changes
+
+- Resync the generated cloud client ([f361ee4bc](https://github.com/heygen-com/hyperframes/commit/f361ee4bc4bbdf51f2ee31d3e093c062829140f9), [#4716](https://github.com/heygen-com/hyperframes/pull/4716)).
+
+[View the full commit range](https://github.com/heygen-com/hyperframes/compare/v0.8.90...v0.8.91).
+</Update>
+
+<Update
+  label="HyperFrames v0.8.90"
+  description="Released - 2026-09-29"
+  tags={["Release", "Studio"]}
+>
+Undo and redo in Studio update the preview in place instead of reloading it. Clicking an element in the preview selects it faster, without restyling the whole film.
+
+## Fixes
+
+- **Studio:** Undo and redo update the preview in place instead of reloading it ([9e1dbca7a](https://github.com/heygen-com/hyperframes/commit/9e1dbca7a2c2ea7486852efe737b606f86dd4e32), [#4718](https://github.com/heygen-com/hyperframes/pull/4718)).
+
+## Performance
+
+- **Studio:** Clicking an element in the preview selects it without restyling the whole film ([1bede4742](https://github.com/heygen-com/hyperframes/commit/1bede4742a502cf8f6dfaccfafa3f7ef01f12299), [#4707](https://github.com/heygen-com/hyperframes/pull/4707)).
+
+[View the full commit range](https://github.com/heygen-com/hyperframes/compare/v0.8.89...v0.8.90).
+</Update>
+
+<Update
+  label="HyperFrames v0.8.89"
+  description="Released - 2026-09-29"
+  tags={["Release", "Studio", "Media Use"]}
+>
+An app that embeds Studio can now save the moves, resizes and rotations made with Studio's handles. Media tools never replace a voice, music or sound file you put in the project.
+
+## Features
+
+- **Studio:** An embedding app can save canvas moves, resizes and rotations made with Studio's handles ([001d001c5](https://github.com/heygen-com/hyperframes/commit/001d001c589f43d47076219cc4ac6a1c71a9d7bf), [#4709](https://github.com/heygen-com/hyperframes/pull/4709)).
+
+## Fixes
+
+- **Media Use:** Never replace a voice, music or sound file the person put in the project ([2195db5e1](https://github.com/heygen-com/hyperframes/commit/2195db5e1d05f72d966e880e4d258a2e779fa143), [#4665](https://github.com/heygen-com/hyperframes/pull/4665)).
+
+[View the full commit range](https://github.com/heygen-com/hyperframes/compare/v0.8.88...v0.8.89).
+</Update>
+
+<Update
+  label="HyperFrames v0.8.88"
+  description="Released - 2026-09-29"
+  tags={["Release", "Studio"]}
+>
+The timeline has one tool picker that can select every clip to the left or right of the playhead. An embedding app can hide keyframe lanes and diamonds for editing without keyframes.
+
+## Features
+
+- **Studio:** The timeline has one tool picker, with tools that select every clip to the left or right ([6b59004de](https://github.com/heygen-com/hyperframes/commit/6b59004de2dd233ce32ae2cb0743b3867c154d41), [#4714](https://github.com/heygen-com/hyperframes/pull/4714)).
+- **Studio:** An embedding app can hide the timeline's keyframe lanes and diamonds ([00a907d6b](https://github.com/heygen-com/hyperframes/commit/00a907d6b3ed668b1796a6bf0c41119fb1974708), [#4715](https://github.com/heygen-com/hyperframes/pull/4715)).
+
+[View the full commit range](https://github.com/heygen-com/hyperframes/compare/v0.8.87...v0.8.88).
+</Update>
+
+<Update
+  label="HyperFrames v0.8.87"
+  description="Released - 2026-09-29"
+  tags={["Release", "CLI", "Studio", "Media Use"]}
+>
+An app that embeds Studio can now mount its canvas handles, save style edits and hide the audio effects controls. The player can loop a range of a film, `hyperframes clean` frees disk space, and sound effects start on time.
+
+## Features
+
+- **CLI:** `hyperframes clean` finds and removes what HyperFrames left on disk ([663b02297](https://github.com/heygen-com/hyperframes/commit/663b02297d58b56d7153bb156451ebb2b830941b), [#4701](https://github.com/heygen-com/hyperframes/pull/4701)).
+- **Studio:** An embedding app can mount Studio's move, resize and rotate handles over its own preview ([cc792d4a8](https://github.com/heygen-com/hyperframes/commit/cc792d4a8a9e79cca0678f1be68b54a51ae59d81), [#4708](https://github.com/heygen-com/hyperframes/pull/4708)).
+- **Player:** Play and loop a range of a film with range-start and range-end ([840f65702](https://github.com/heygen-com/hyperframes/commit/840f657028b9cf7f20a1a2efb9d436e52aa42d71), [#4688](https://github.com/heygen-com/hyperframes/pull/4688)).
+- **Studio:** An embedding app can hide the timeline's audio effects controls ([dc61ce105](https://github.com/heygen-com/hyperframes/commit/dc61ce105bc5ead8d4c0262298bc2aff5031c233), [#4704](https://github.com/heygen-com/hyperframes/pull/4704)).
+- **Studio:** An embedding app can save style edits on a selection through Studio's own style save ([0af671c6d](https://github.com/heygen-com/hyperframes/commit/0af671c6df8f8f740f2e982247ae3eab67dd0514), [#4698](https://github.com/heygen-com/hyperframes/pull/4698)).
+
+## Fixes
+
+- **Media Use:** Record agent-made voice, music and sound effects in the media manifest ([e25bc3a80](https://github.com/heygen-com/hyperframes/commit/e25bc3a80625af41ca576d80224f1dc1a621eb42), [#4648](https://github.com/heygen-com/hyperframes/pull/4648)).
+- **Studio Server:** The server loads where sharp's native binary is missing ([498643bea](https://github.com/heygen-com/hyperframes/commit/498643bea46b15ab717769c44bf0ef333381b4b0), [#4654](https://github.com/heygen-com/hyperframes/pull/4654)).
+- **Studio Server:** Undo keeps an outside change even when Studio's history claim arrives late ([381fb0fd9](https://github.com/heygen-com/hyperframes/commit/381fb0fd9a24b0c49713452bb61314eccce0aaae), [#4631](https://github.com/heygen-com/hyperframes/pull/4631)).
+- **Studio:** Studio hides the handles for edits it would refuse to save ([7e0711505](https://github.com/heygen-com/hyperframes/commit/7e0711505a1af0a767c6b6538d81583599859b18), [#4666](https://github.com/heygen-com/hyperframes/pull/4666)).
+- **Studio:** Escape cancels a marquee band on the preview and goes no further ([a51992743](https://github.com/heygen-com/hyperframes/commit/a519927436a75b48d8564c75206a8d9624fc0251), [#4703](https://github.com/heygen-com/hyperframes/pull/4703)).
+- **Studio:** Escape cancels a marquee band on the timeline and goes no further ([f7207247d](https://github.com/heygen-com/hyperframes/commit/f7207247de18c616dd03b063c29a00f3e5000068), [#4700](https://github.com/heygen-com/hyperframes/pull/4700)).
+- **Producer:** Renders leave no captured frames behind when interrupted ([f7ef18dca](https://github.com/heygen-com/hyperframes/commit/f7ef18dca80c791a2991a90280638b32c109d227), [#4694](https://github.com/heygen-com/hyperframes/pull/4694)).
+- **Core:** A sound effect starts on its time instead of a frame late ([e0b940aa3](https://github.com/heygen-com/hyperframes/commit/e0b940aa302efb011009395af54d4023ae08baf1), [#4696](https://github.com/heygen-com/hyperframes/pull/4696)).
+- **Studio:** Drilling in opens the composition's full project path ([a0c72ad64](https://github.com/heygen-com/hyperframes/commit/a0c72ad64a3a68b115495f544e4aa675a41dd74e), [#4689](https://github.com/heygen-com/hyperframes/pull/4689)).
+
+## Performance
+
+- **CLI:** Load each command's code only when that command runs ([e07ea1fc7](https://github.com/heygen-com/hyperframes/commit/e07ea1fc70335c6898c7fd1abaa31145c79c287a), [#4656](https://github.com/heygen-com/hyperframes/pull/4656)).
+- **Studio:** Swap an edited scene into the live preview instead of reloading ([303c8e922](https://github.com/heygen-com/hyperframes/commit/303c8e922f89f657557ad304557101e36fbd7750), [#4499](https://github.com/heygen-com/hyperframes/pull/4499)).
+
+## Docs & Examples
+
+- **Skills:** Studio agents answer questions before editing and plan new films like the launch films ([0c2c4248e](https://github.com/heygen-com/hyperframes/commit/0c2c4248e6a79654fe54e5a65c1f000fcde4dd34), [#4699](https://github.com/heygen-com/hyperframes/pull/4699)).
+
+## Catalog
+
+- **Catalog:** Add 3D objects, cursors, snow, starfield and paper transitions ([590c19249](https://github.com/heygen-com/hyperframes/commit/590c192498ed738941380da7b3a2f6211966ba94), [#4349](https://github.com/heygen-com/hyperframes/pull/4349)).
+
+[View the full commit range](https://github.com/heygen-com/hyperframes/compare/v0.8.86...v0.8.87).
+</Update>
+
+<Update
   label="HyperFrames v0.8.86"
   description="Released - 2026-09-28"
   tags={["Release", "Studio", "Studio Server", "Fonts"]}

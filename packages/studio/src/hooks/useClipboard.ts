@@ -2,6 +2,7 @@ import { useCallback, useRef } from "react";
 import { EXCLUDED_TAGS, mintHfId, walkCompositionDescendants } from "@hyperframes/parsers/hf-ids";
 import type { TimelineElement } from "../player";
 import { usePlayerStore } from "../player";
+import { toAuthoredStart } from "../player/store/timelineElement";
 import type { DomEditSelection } from "../components/editor/domEditing";
 import {
   type ClipboardPayload,
@@ -416,14 +417,22 @@ export function useClipboard({
     if (!pid) return false;
 
     const { elements } = targets;
-    const targetPath = elements[0]?.sourceFile || activeCompPath || "index.html";
-    const anchorTime = Math.max(...elements.map((el) => el.start + el.duration));
+    const pathOf = (el: TimelineElement) => el.sourceFile || activeCompPath || "index.html";
+    const targetPath = pathOf(elements[0]!);
+    // The copy lands in targetPath's own clock, so anchor and lane check are local to it.
+    const anchorTime = toAuthoredStart(
+      elements[0]!,
+      Math.max(...elements.map((el) => el.start + el.duration)),
+    );
 
     try {
       const clips = await readClips(targets);
       let ids: string[] = [];
       const duplicate = (originalContent: string) => {
-        const liveElements = usePlayerStore.getState().elements;
+        const liveElements = usePlayerStore
+          .getState()
+          .elements.filter((el) => pathOf(el) === targetPath)
+          .map((el) => ({ ...el, start: toAuthoredStart(el, el.start) }));
         const pasted = pasteTimelineClips(originalContent, clips, anchorTime, liveElements);
         ids = pasted.ids;
         return extendRootDurationInSource(pasted.content, pasted.requiredEnd);

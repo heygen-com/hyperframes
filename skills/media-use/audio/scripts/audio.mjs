@@ -55,6 +55,7 @@ import { generateBgmDetached, inferBgmPrompt, retrieveBgm } from "./lib/bgm.mjs"
 import { resolveSfx } from "./lib/sfx.mjs";
 import { mapWithConcurrency } from "./lib/concurrency.mjs";
 import { openAudioMeta } from "./lib/audio-meta.mjs";
+import { recordInManifest, voicePaths, writtenAssets } from "./lib/media-record.mjs";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const argv = process.argv.slice(2);
@@ -137,6 +138,7 @@ if (only.has("tts") && lines.length) {
     lang,
   });
   console.error(`· tts: ${ttsProvider} · voice ${voiceId} · ${lines.length} line(s)`);
+  const paths = voicePaths(hyperframesDir, lines, anomalies);
   const synthLine = async (line) => {
     const id = String(line.id);
     const text = String(line.text ?? "").trim();
@@ -144,7 +146,7 @@ if (only.has("tts") && lines.length) {
       anomalies.push(`line ${id}: empty text — skipped`);
       return null;
     }
-    const rel = `assets/voice/${id}.wav`;
+    const rel = paths.get(id);
     const abs = join(hyperframesDir, rel);
     const { ok, words, error } = await synthesizeOne({
       provider: ttsProvider,
@@ -216,6 +218,7 @@ if (only.has("bgm")) {
         headers: heygenAuthHeaders(),
         hyperframesDir,
         hasVoice,
+        anomalies,
       });
       if (bgm) {
         bgmFields.bgm_provider = "heygen";
@@ -242,6 +245,7 @@ if (only.has("bgm")) {
       lyriaRecipe: existsSync(lyriaRecipe) ? lyriaRecipe : null,
       seedSeconds,
       hasVoice,
+      anomalies,
     });
     if (gen.disabled) {
       anomalies.push(`bgm: ${gen.reason}`);
@@ -289,6 +293,8 @@ const meta = {
 };
 mkdirSync(dirname(outPath), { recursive: true });
 audioMeta.write(meta);
+const written = writtenAssets({ only, lines, voices, ttsProvider, bgm, bgmFields, sfx });
+anomalies.push(...recordInManifest(hyperframesDir, written));
 
 console.log(`✓ audio engine → ${outPath}`);
 console.log(`  heygen: ${heygenOK ? "yes" : "no"}  ·  ran: ${[...only].join(",")}`);

@@ -1,5 +1,11 @@
 import { readExternalScriptAttributes, type ExternalScriptAttributes } from "./externalScripts";
 import { parseImportMap, type ImportMap } from "./importMaps";
+import {
+  compositionStyle,
+  cssStyleMergeKey,
+  hasSameLink,
+  type CompositionStyle,
+} from "./scriptRuns";
 /**
  * Shared sub-composition inlining logic.
  *
@@ -229,8 +235,31 @@ export interface InlineSubCompositionsOptions {
   tagScenes?: boolean;
 }
 
+export interface ExternalLink {
+  href: string;
+  rel: string;
+  crossorigin?: string;
+  media?: string;
+  title?: string;
+  type?: string;
+  disabled?: true;
+}
+
+/** Appends a hoisted link unless the document already has a live one it would duplicate. */
+export function ensureExternalLinkTag(doc: Document, link: ExternalLink): void {
+  const el = doc.createElement("link");
+  el.setAttribute("rel", link.rel);
+  el.setAttribute("href", link.href);
+  for (const name of ["crossorigin", "media", "title", "type"] as const) {
+    const value = link[name];
+    if (value != null) el.setAttribute(name, value);
+  }
+  if (link.disabled) el.setAttribute("disabled", "");
+  if (!hasSameLink(doc, el)) doc.head.appendChild(el);
+}
+
 export interface InlineSubCompositionsResult {
-  styles: string[];
+  styles: CompositionStyle[];
   /** With `tagScenes`: the scene each entry of `styles` belongs to. */
   styleScenes: string[];
   scripts: string[];
@@ -239,7 +268,8 @@ export interface InlineSubCompositionsResult {
     | { kind: "inline"; content: string; scene?: string }
     | ({ kind: "external"; src: string; scene?: string } & ExternalScriptAttributes)
   >;
-  externalLinks: { href: string; rel: string; crossorigin?: string }[];
+  /** May list one link more than once; `ensureExternalLinkTag` dedupes. */
+  externalLinks: ExternalLink[];
   variablesByComp: Record<string, Record<string, unknown>>;
   /** Mounted files' import maps, addresses rebased; emit with `emitMountedModuleScripts`. */
   importMaps: ImportMap[];
@@ -297,15 +327,14 @@ export function inlineSubCompositions(
     tagScenes = false,
   } = options;
 
-  const styles: string[] = [];
+  const styles: CompositionStyle[] = [];
   const styleScenes: string[] = [];
   const scripts: string[] = [];
   const externalScriptSrcs: string[] = [];
   const scriptItems: InlineSubCompositionsResult["scriptItems"] = [];
   const importMaps: ImportMap[] = [];
   const moduleScripts: string[] = [];
-  const externalLinks: { href: string; rel: string; crossorigin?: string }[] = [];
-  const seenLinkHrefs = new Set<string>();
+  const externalLinks: ExternalLink[] = [];
   const variablesByComp: Record<string, Record<string, unknown>> = {};
 
   const sceneHosts = new Map<string, Element>();
@@ -441,13 +470,16 @@ export function inlineSubCompositions(
     // composition's font from the render while preview kept it.
     for (const link of plan.linkSources) {
       const href = resolveSubAssetPath(link.getAttribute("href"));
-      if (href && !seenLinkHrefs.has(href)) {
-        seenLinkHrefs.add(href);
+      if (href) {
         const rel = (link.getAttribute("rel") || "").trim();
         const crossorigin = link.hasAttribute("crossorigin")
           ? link.getAttribute("crossorigin") || ""
           : undefined;
-        externalLinks.push({ href, rel, crossorigin });
+        const media = link.getAttribute("media") ?? undefined;
+        const title = link.getAttribute("title") ?? undefined;
+        const type = link.getAttribute("type") ?? undefined;
+        const disabled = link.hasAttribute("disabled") ? true : undefined;
+        externalLinks.push({ href, rel, crossorigin, media, title, type, disabled });
       }
     }
 
@@ -455,7 +487,8 @@ export function inlineSubCompositions(
     // carries its backgrounds, positioning and fonts, and a <head> library tag
     // (GSAP from a CDN) has to run before the content scripts calling into it.
     for (const styleEl of plan.styleSources) {
-      styles.push(scopeSubStyle(styleEl.textContent || ""));
+      if (cssStyleMergeKey(styleEl) === undefined) continue;
+      styles.push(compositionStyle(styleEl, scopeSubStyle(styleEl.textContent || "")));
       if (scene) styleScenes.push(scene);
       styleEl.remove();
     }

@@ -103,6 +103,42 @@ describe("buildMissingCompositionElements — hfId (R7)", () => {
   });
 });
 
+describe("buildMissingCompositionElements — nested master time", () => {
+  it("places hosts two and three levels deep at their master time", () => {
+    const doc = makeDoc(`
+      <div data-composition-id="main" data-start="0" data-duration="20">
+        <div id="intro" data-composition-id="intro" data-start="2" data-duration="10">
+          <div data-composition-id="intro">
+            <div id="logo" data-composition-id="logo" data-start="3" data-duration="5">
+              <div data-composition-id="logo">
+                <div id="badge" data-composition-id="badge" data-start="1" data-duration="2"></div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    `);
+    const { missing } = buildMissingCompositionElements(doc, window as IframeWindow, [], 20);
+    expect(missing.map((e) => [e.domId, e.start, e.duration, e.parentCompositionStart])).toEqual([
+      ["intro", 2, 10, 0],
+      ["logo", 5, 5, 2],
+      ["badge", 6, 2, 5],
+    ]);
+  });
+
+  it("starts a host after a referenced scene's authored length", () => {
+    const doc = makeDoc(`
+      <div data-composition-id="main" data-start="0" data-duration="20">
+        <div id="s1" data-composition-id="s1" data-start="0" data-hf-authored-duration="8"></div>
+        <div id="s2" data-composition-id="s2" data-start="s1 + 1" data-duration="4"></div>
+      </div>
+    `);
+    const win = { __timelines: { s1: { duration: () => 6 } } } as unknown as IframeWindow;
+    const { missing } = buildMissingCompositionElements(doc, win, [], 20);
+    expect(missing.find((e) => e.domId === "s2")?.start).toBe(9);
+  });
+});
+
 describe("setPreviewMediaVolume", () => {
   it("sends a clamped runtime volume to a direct preview iframe", () => {
     const iframe = document.createElement("iframe");

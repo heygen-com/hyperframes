@@ -40,13 +40,16 @@ import {
   type BundledHostCompositionIdentity,
   buildVariablesByCompScript,
   inlineSubCompositions as inlineSubCompositionsShared,
+  ensureExternalLinkTag,
   ensureExternalScriptTag,
   emitMountedModuleScripts,
   prepareFlattenedInnerRoot,
   emitRootCompositionVariableStyles,
   readDeclaredDefaults,
   parseHostVariableValues,
+  headStyleRuns,
   inlineScriptRuns,
+  styleElementsFor,
   insertBeforeCloseTag,
 } from "@hyperframes/core/compiler";
 import {
@@ -854,8 +857,8 @@ class ProducerHostIdentityMap extends Map<Element, BundledHostCompositionIdentit
 }
 
 /**
- * Merge all `<head>` `<style>` blocks into a single tag with `@import` rules
- * at the top, and merge each run of adjacent inline `<body>` `<script>` blocks
+ * Merge each run of adjacent same-condition `<head>` `<style>` blocks into one, `@import`
+ * rules at its top, and merge each run of adjacent inline `<body>` `<script>` blocks
  * into one, without moving any of them past a `<script src>` or module script.
  *
  * Mirrors the bundler's `coalesceHeadStylesAndBodyScripts` to guarantee
@@ -870,13 +873,13 @@ function coalesceHeadStylesAndBodyScripts(html: string): string {
   if (!head) return html;
 
   const styleEls = Array.from(head.querySelectorAll("style"));
-  if (styleEls.length > 1) {
-    const importRe = /@import\s+url\([^)]*\)\s*;|@import\s+["'][^"']+["']\s*;/gi;
+  const importRe = /@import\s+url\([^)]*\)\s*;|@import\s+["'][^"']+["']\s*;/gi;
+  for (const run of styleEls.length > 1 ? headStyleRuns(styleEls) : []) {
     const imports: string[] = [];
     const cssParts: string[] = [];
     const seenImports = new Set<string>();
 
-    for (const el of styleEls) {
+    for (const el of run) {
       const raw = (el.textContent || "").trim();
       if (!raw) continue;
       const nonImportCss = raw.replace(importRe, (match) => {
@@ -892,14 +895,9 @@ function coalesceHeadStylesAndBodyScripts(html: string): string {
     }
 
     const mergedCss = [...imports, ...cssParts].join("\n\n").trim();
-    if (mergedCss) {
-      const firstStyleEl = styleEls[0];
-      if (firstStyleEl) firstStyleEl.textContent = mergedCss;
-      for (let i = 1; i < styleEls.length; i++) {
-        const el = styleEls[i];
-        if (el) el.remove();
-      }
-    }
+    if (!mergedCss) continue;
+    run[0]!.textContent = mergedCss;
+    for (const el of run.slice(1)) el.remove();
   }
 
   if (body) {
@@ -1037,23 +1035,13 @@ function inlineSubCompositions(
     }
   }
 
-  if (result.externalLinks.length && head) {
-    for (const link of result.externalLinks) {
-      const escapedHref = link.href.replace(/\\/g, "\\\\").replace(/"/g, '\\"');
-      if (document.querySelector(`link[href="${escapedHref}"]`)) continue;
-      const el = document.createElement("link");
-      el.setAttribute("rel", link.rel);
-      el.setAttribute("href", link.href);
-      if (link.crossorigin != null) el.setAttribute("crossorigin", link.crossorigin);
-      head.appendChild(el);
-    }
-  }
+  if (head) for (const link of result.externalLinks) ensureExternalLinkTag(document, link);
 
   // Append collected styles to <head>
-  if (result.styles.length && head) {
-    const styleEl = document.createElement("style");
-    styleEl.textContent = result.styles.join("\n\n");
-    head.appendChild(styleEl);
+  if (head) {
+    for (const style of styleElementsFor(document, result.styles, (css) => css.join("\n\n"))) {
+      head.appendChild(style);
+    }
   }
 
   // CDN and integrity-pinned scripts go first so plugins (e.g. TextPlugin,

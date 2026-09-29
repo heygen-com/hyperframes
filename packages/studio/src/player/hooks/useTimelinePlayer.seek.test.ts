@@ -6,6 +6,8 @@ import type { useTimelinePlayer } from "./useTimelinePlayer";
 import {
   attachIframeAdapter,
   attachIframeWindow,
+  makeAdapterWindow,
+  makeFakeIframe,
   renderTimelinePlayerHarness,
   resetPlayerStore,
 } from "./timelinePlayerTestHarness";
@@ -263,6 +265,48 @@ describe("useTimelinePlayer audio controls (#835)", () => {
 });
 
 describe("useTimelinePlayer seek keepPlaying option (#834)", () => {
+  it("publishes a seek as a person's seek, so a paused timeline follows it", () => {
+    const { root, api } = renderAttachedTimelinePlayer();
+    const before = liveTime.seekCount();
+    seekWithAct(api, 5);
+    expect(liveTime.seekCount()).toBe(before + 1);
+    expect(liveTime.latest()).toBe(5);
+    unmountWithAct(root);
+  });
+
+  it("does not count a reload's hand-over as a person's seek", () => {
+    const { getApi, root } = renderTimelinePlayerHarness();
+    act(() => {
+      getApi().iframeRef.current = makeFakeIframe(makeAdapterWindow().win);
+      getApi().onIframeLoad();
+    });
+    seekWithAct(getApi(), 7);
+    act(() => getApi().refreshPlayer());
+    const seeks = liveTime.seekCount();
+    const gen = getApi().previewSlots.find((s) => s.role === "shadow")!.gen;
+    const shadow = makeFakeIframe(makeAdapterWindow().win);
+    shadow.src = "http://localhost/api/projects/demo/preview?_t=1";
+    act(() => {
+      getApi().setShadowIframeNode(shadow);
+      getApi().onShadowIframeLoad(gen);
+      getApi().onShadowReadyChange(gen, true);
+    });
+    expect(getApi().iframeRef.current).toBe(shadow);
+    expect(liveTime.latest()).toBe(7);
+    expect(liveTime.seekCount()).toBe(seeks);
+    unmountWithAct(root);
+  });
+
+  it("does not count the audition's return to the paused time as a person's seek", () => {
+    const { api, root } = renderAttachedTimelinePlayer();
+    seekWithAct(api, 4);
+    const seeks = liveTime.seekCount();
+    act(() => usePlayerStore.getState().requestPlayback(false, 2));
+    expect(liveTime.latest()).toBe(2);
+    expect(liveTime.seekCount()).toBe(seeks);
+    unmountWithAct(root);
+  });
+
   it("default seek() clears isPlaying when the store reports playing", () => {
     const { api, root } = renderAttachedTimelinePlayer();
     setStorePlaying();

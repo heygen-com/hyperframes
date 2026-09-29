@@ -24,6 +24,7 @@ interface TimelineGroupHeaderProps {
   onOpenFxRack: () => void;
   columnWidth: number;
   theme: TimelineTheme;
+  showAudioEffects?: boolean;
 }
 
 /**
@@ -41,17 +42,19 @@ function GroupNameButton({
   label,
   memberCount,
   onOpenFxRack,
+  showAudioEffects,
 }: {
   label: string;
   memberCount: number;
   onOpenFxRack: () => void;
+  showAudioEffects: boolean;
 }) {
   return (
     <button
       type="button"
       tabIndex={-1}
-      aria-label={`Open ${label} effects`}
-      title="Open effects"
+      aria-label={showAudioEffects ? `Open ${label} effects` : `Select ${label}`}
+      title={showAudioEffects ? "Open effects" : "Select group"}
       // No `flex-1`: the row's control group owns the slack now (`ml-auto`), so
       // claiming it here would push the controls off the right edge — and the
       // count with them, since it rides inside this button.
@@ -97,6 +100,7 @@ export function TimelineGroupHeader({
   onOpenFxRack,
   columnWidth,
   theme,
+  showAudioEffects = true,
 }: TimelineGroupHeaderProps) {
   return (
     <div
@@ -137,17 +141,24 @@ export function TimelineGroupHeader({
               ▸ sits off-centre in its box because the glyph is not square. */}
         <span aria-hidden="true">{isExpanded ? "▾" : "▸"}</span>
       </button>
-      <GroupNameButton label={label} memberCount={memberCount} onOpenFxRack={onOpenFxRack} />
+      <GroupNameButton
+        label={label}
+        memberCount={memberCount}
+        onOpenFxRack={onOpenFxRack}
+        showAudioEffects={showAudioEffects}
+      />
       {/* `ml-auto` absorbs the slack the truncating name leaves, so the controls
           sit on the edge whatever the name's length. */}
       <div className="ml-auto flex shrink-0 items-center gap-1.5">
-        <TimelineFxButton
-          fxChainRaw={fxChain}
-          onChainChange={onFxChainChange}
-          onChainPreview={onFxChainPreview}
-          auditionSpans={auditionSpans}
-          onOpenRack={onOpenFxRack}
-        />
+        {showAudioEffects && (
+          <TimelineFxButton
+            fxChainRaw={fxChain}
+            onChainChange={onFxChainChange}
+            onChainPreview={onFxChainPreview}
+            auditionSpans={auditionSpans}
+            onOpenRack={onOpenFxRack}
+          />
+        )}
         {/* No lanes, no control: an author who opens it meets an empty row and
             learns nothing. A track header already gates its own `∿` this way
             (`disclosable`); the group's was the one that still offered a

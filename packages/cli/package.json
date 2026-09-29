@@ -1,6 +1,6 @@
 {
   "name": "@hyperframes/cli",
-  "version": "0.8.86",
+  "version": "0.8.91",
   "description": "HyperFrames CLI — create, preview, and render HTML video compositions",
   "license": "Apache-2.0",
   "repository": {
@@ -27,7 +27,8 @@
     "build:copy": "node scripts/build-copy.mjs",
     "typecheck": "tsc --noEmit",
     "gen:skills-manifest": "tsx scripts/gen-skills-manifest.ts",
-    "gen:agent-dirs": "tsx scripts/sync-agent-dirs.ts"
+    "gen:agent-dirs": "tsx scripts/sync-agent-dirs.ts",
+    "bench:startup": "node scripts/bench-startup.mjs"
   },
   "dependencies": {
     "@hono/node-server": "^2.0.5",

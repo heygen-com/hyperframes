@@ -1,4 +1,12 @@
-import { inlineScriptRuns } from "./scriptRuns";
+import {
+  compositionStyle,
+  cssStyleMergeKey,
+  UNCONDITIONAL_CSS_KEY,
+  headStyleRuns,
+  inlineScriptRuns,
+  styleElementsFor,
+  type CompositionStyle,
+} from "./scriptRuns";
 import { SCENE_PART_ATTR } from "../sceneParts";
 import {
   ensureExternalScriptTag,
@@ -34,7 +42,11 @@ import {
 import { validateHyperframeHtmlContract } from "./staticGuard";
 import { getHyperframeRuntimeScript } from "../generated/runtime-inline";
 import { readDeclaredDefaults } from "../runtime/getVariables";
-import { inlineSubCompositions, refuseSwapsReachedByRootScripts } from "./inlineSubCompositions";
+import {
+  ensureExternalLinkTag,
+  inlineSubCompositions,
+  refuseSwapsReachedByRootScripts,
+} from "./inlineSubCompositions";
 import { queryByAttr } from "../utils/cssSelector";
 import { isSafePath, resolveWithinProject } from "../safePath.js";
 import { ensureHfIds } from "@hyperframes/parsers/hf-ids";
@@ -704,12 +716,7 @@ function placeSceneStylesLikeRender(document: Document): void {
 }
 
 function isAlwaysAppliedStyle(el: Element): boolean {
-  const type = el.getAttribute("type")?.trim().toLowerCase();
-  return (
-    !el.hasAttribute("media") &&
-    (!type || type === "text/css") &&
-    !el.closest("template, noscript, svg")
-  );
+  return cssStyleMergeKey(el) === UNCONDITIONAL_CSS_KEY && !el.closest("template, noscript, svg");
 }
 
 type PartRun<T> = { scene?: string; chunks: T[] };
@@ -722,18 +729,14 @@ function pushRun<T>(runs: PartRun<T>[], scene: string | undefined, chunk: T): vo
 
 function coalesceHeadStylesAndBodyScripts(document: Document): void {
   const allHeadStyles = [...document.querySelectorAll("head style")];
-  const untaggedRuns: Element[][] = [[]];
-  for (const el of allHeadStyles) {
-    if (el.hasAttribute(SCENE_PART_ATTR)) untaggedRuns.push([]);
-    else untaggedRuns.at(-1)!.push(el);
-  }
-  for (const run of allHeadStyles.length > 1 ? untaggedRuns : []) {
+  const isScenePart = (el: Element) => el.hasAttribute(SCENE_PART_ATTR);
+  for (const run of allHeadStyles.length > 1 ? headStyleRuns(allHeadStyles, isScenePart) : []) {
     const merged = joinCssHoistingImports(run.map((el) => el.textContent || ""));
     if (!merged) continue;
     run[0]!.textContent = merged;
     for (const el of run.slice(1)) el.remove();
   }
-  if (untaggedRuns.length > 1) placeSceneStylesLikeRender(document);
+  if (allHeadStyles.some(isScenePart)) placeSceneStylesLikeRender(document);
 
   const isPinned = (el: Element) =>
     el.hasAttribute(RUNTIME_BOOTSTRAP_ATTR) || el.hasAttribute(SCENE_PART_ATTR);
@@ -996,36 +999,21 @@ async function bundleProject(projectDir: string, options?: BundleOptions): Promi
     rebaseEntryAuthoredAssetPaths(document, sourceDir, projectDir);
   }
 
-  // Inline local CSS
-  const localCssChunks: string[] = [];
-  let cssAnchorPlaced = false;
   for (const el of [...document.querySelectorAll('link[rel="stylesheet"]')]) {
     const href = el.getAttribute("href");
-    if (!href || !isRelativeUrl(href)) continue;
+    if (!href || !isRelativeUrl(href) || cssStyleMergeKey(el) === undefined) continue;
+    if (el.hasAttribute("disabled")) continue;
     const cssPath = resolveEntryPath(href);
     if (!cssPath) continue;
     const css = safeReadFile(cssPath);
     if (css == null) continue;
-    localCssChunks.push(inlineCssFile(css, dirname(cssPath), projectDir));
-    if (!cssAnchorPlaced) {
-      const anchor = document.createElement("style");
-      anchor.setAttribute("data-hf-bundled-local-css", "1");
-      el.replaceWith(anchor);
-      cssAnchorPlaced = true;
-    } else {
-      el.remove();
+    const style = document.createElement("style");
+    for (const name of ["media", "title"]) {
+      const value = el.getAttribute(name);
+      if (value !== null) style.setAttribute(name, value);
     }
-  }
-  if (localCssChunks.length > 0) {
-    const anchor = document.querySelector('style[data-hf-bundled-local-css="1"]');
-    if (anchor) {
-      anchor.removeAttribute("data-hf-bundled-local-css");
-      anchor.textContent = localCssChunks.join("\n\n");
-    } else {
-      const style = document.createElement("style");
-      style.textContent = localCssChunks.join("\n\n");
-      document.head.appendChild(style);
-    }
+    style.textContent = inlineCssFile(css, dirname(cssPath), projectDir);
+    el.replaceWith(style);
   }
 
   // Read before sub-compositions add theirs: only the root's own scripts can reach into scenes.
@@ -1079,10 +1067,12 @@ async function bundleProject(projectDir: string, options?: BundleOptions): Promi
     },
   });
   refuseSwapsReachedByRootScripts(document, rootScripts);
-  const styleRuns: PartRun<string>[] = [];
-  subCompResult.styles.forEach((css, i) => pushRun(styleRuns, subCompResult.styleScenes[i], css));
+  const styleRuns: PartRun<CompositionStyle>[] = [];
+  subCompResult.styles.forEach((style, i) =>
+    pushRun(styleRuns, subCompResult.styleScenes[i], style),
+  );
   const scriptRuns: PartRun<DeferredScriptChunk>[] = [];
-  const compStyleChunks: string[] = [];
+  const compStyleChunks: CompositionStyle[] = [];
   const compScriptChunks: DeferredScriptChunk[] = [];
   const compExternalLinks = [...subCompResult.externalLinks];
   const compVariablesByComp: Record<string, Record<string, unknown>> = {
@@ -1167,13 +1157,17 @@ async function bundleProject(projectDir: string, options?: BundleOptions): Promi
       if (innerRoot) {
         // Hoist styles into the collected style chunks
         for (const styleEl of [...innerRoot.querySelectorAll("style")]) {
+          if (cssStyleMergeKey(styleEl) === undefined) continue;
           const css = styleEl.textContent || "";
           compStyleChunks.push(
-            compId
-              ? scopeCssToComposition(css, compId, runtimeScope, authoredRootId, {
-                  scopeRootSelectors: true,
-                })
-              : css,
+            compositionStyle(
+              styleEl,
+              compId
+                ? scopeCssToComposition(css, compId, runtimeScope, authoredRootId, {
+                    scopeRootSelectors: true,
+                  })
+                : css,
+            ),
           );
           styleEl.remove();
         }
@@ -1198,13 +1192,17 @@ async function bundleProject(projectDir: string, options?: BundleOptions): Promi
       } else {
         // No matching inner root — inject all template content directly
         for (const styleEl of [...innerDoc.querySelectorAll("style")]) {
+          if (cssStyleMergeKey(styleEl) === undefined) continue;
           const css = styleEl.textContent || "";
           compStyleChunks.push(
-            compId
-              ? scopeCssToComposition(css, compId, runtimeScope, undefined, {
-                  scopeRootSelectors: true,
-                })
-              : css,
+            compositionStyle(
+              styleEl,
+              compId
+                ? scopeCssToComposition(css, compId, runtimeScope, undefined, {
+                    scopeRootSelectors: true,
+                  })
+                : css,
+            ),
           );
           styleEl.remove();
         }
@@ -1264,18 +1262,7 @@ async function bundleProject(projectDir: string, options?: BundleOptions): Promi
     }
   }
 
-  // Inject external scripts from sub-compositions (e.g., Lottie CDN)
-  // that aren't already present in the main document.
-  for (const link of compExternalLinks) {
-    const escapedHref = link.href.replace(/\\/g, "\\\\").replace(/"/g, '\\"');
-    if (!document.querySelector(`link[href="${escapedHref}"]`)) {
-      const linkEl = document.createElement("link");
-      linkEl.setAttribute("rel", link.rel);
-      linkEl.setAttribute("href", link.href);
-      if (link.crossorigin != null) linkEl.setAttribute("crossorigin", link.crossorigin);
-      document.head.appendChild(linkEl);
-    }
-  }
+  for (const link of compExternalLinks) ensureExternalLinkTag(document, link);
 
   for (const css of compStyleChunks) pushRun(styleRuns, undefined, css);
   for (const chunk of compScriptChunks) pushRun(scriptRuns, undefined, chunk);
@@ -1285,10 +1272,11 @@ async function bundleProject(projectDir: string, options?: BundleOptions): Promi
     else scriptRuns.unshift({ chunks: [variablesByCompScript] });
   }
   for (const { scene, chunks } of styleRuns) {
-    const style = document.createElement("style");
-    if (scene) style.setAttribute(SCENE_PART_ATTR, scene);
-    style.textContent = scene ? joinCssHoistingImports(chunks) : chunks.join("\n\n");
-    document.head.appendChild(style);
+    const join = scene ? joinCssHoistingImports : (css: string[]) => css.join("\n\n");
+    for (const style of styleElementsFor(document, chunks, join)) {
+      if (scene) style.setAttribute(SCENE_PART_ATTR, scene);
+      document.head.appendChild(style);
+    }
   }
   for (const { scene, chunks } of scriptRuns) {
     const script = document.createElement("script");
@@ -1553,7 +1541,7 @@ function pushSubCompVariableStyles(
   innerRoot: Element | null,
   mergedVariables: Record<string, unknown>,
   runtimeScope: string,
-  compStyleChunks: string[],
+  compStyleChunks: CompositionStyle[],
 ): void {
   if (!runtimeScope) return;
   const declaredForCss = readDeclaredDefaults(innerDoc.documentElement);
@@ -1563,5 +1551,5 @@ function pushSubCompVariableStyles(
     { ...declaredForCss, ...mergedVariables },
     runtimeScope,
   );
-  if (cssVars) compStyleChunks.push(cssVars);
+  if (cssVars) compStyleChunks.push({ css: cssVars, media: null, title: null });
 }

@@ -19,58 +19,12 @@ import {
   type MergeableKeyframe,
 } from "./gsapTweenSynth";
 import { fetchParsedAnimations, populateKeyframeCacheFromAst } from "./keyframeCacheAstLoad";
+import { getAnimationsForElement } from "./gsapElementMatch";
 
 // Re-exported so callers keep importing the GSAP cache surface from one module.
 export { resolveClipTimingBasis } from "./gsapShared";
 export { fetchParsedAnimations, resolveSelectorElementIds } from "./keyframeCacheAstLoad";
-
-/** The selected element's identity for matching tweens to it. */
-export interface GsapElementTarget {
-  id?: string | null;
-  selector?: string | null;
-}
-
-/**
- * A tween belongs to the selected element when its target selector addresses
- * that element — by id (`#id`), by the exact CSS selector the element was
- * selected through (`.kicker`), or as one member of a group selector
- * (`.clock-face, .clock-hand`, emitted for array/`toArray` targets). Real
- * compositions target tweens by class via `querySelector`, so id-only matching
- * misses them.
- *
- * When the live DOM `element` is supplied, each comma-part of a tween's selector
- * is also tested with `element.matches(part)` — true CSS semantics — so a
- * class/descendant tween shared across elements (e.g. `gsap.from(".dot", {stagger})`)
- * is attributed to *every* matching element, not just the one whose exact
- * selector string happens to equal the tween's.
- */
-export function getAnimationsForElement(
-  animations: GsapAnimation[],
-  target: GsapElementTarget,
-  element?: Element | null,
-): GsapAnimation[] {
-  const matchers = new Set<string>();
-  if (target.id) matchers.add(`#${target.id}`);
-  if (target.selector) matchers.add(target.selector);
-  if (matchers.size === 0 && !element) return [];
-  return animations.filter((a) =>
-    a.targetSelector.split(",").some((part) => {
-      const trimmed = part.trim();
-      if (!trimmed) return false;
-      if (matchers.has(trimmed)) return true;
-      const lastSimple = trimmed.split(/\s+/).pop();
-      if (lastSimple && matchers.has(lastSimple)) return true;
-      if (element) {
-        try {
-          if (element.matches(trimmed)) return true;
-        } catch {
-          /* tween selector isn't a valid CSS selector for matches() — skip */
-        }
-      }
-      return false;
-    }),
-  );
-}
+export { getAnimationsForElement } from "./gsapElementMatch";
 
 export function useGsapAnimationsForElement(
   projectId: string | null,

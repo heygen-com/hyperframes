@@ -7,6 +7,8 @@ import {
   mergeTimelineElementsPreservingDowngrades,
 } from "./timelineDOM";
 import { isTimelineIgnoredElement } from "./timelineElementHelpers";
+import { clipTimingStart, resolveClipTimingBasis } from "../../hooks/gsapShared";
+import { toAuthoredStart } from "../store/timelineElement";
 import { computeResizePreview } from "../components/timelineClipDragPreview";
 import type { TimelineElement } from "../store/playerStore";
 import {
@@ -24,6 +26,83 @@ function makeDoc(html: string): Document {
   d.body.innerHTML = html;
   return d;
 }
+
+describe("parseTimelineFromDOM — nested master time", () => {
+  it("adds every enclosing host's start to a clip inside a sub-composition", () => {
+    const doc = makeDoc(`
+      <div data-composition-id="main" data-start="0" data-duration="20">
+        <div id="intro" data-composition-id="intro" data-start="2" data-duration="10">
+          <div data-composition-id="intro">
+            <div id="logo" data-composition-id="logo" data-start="3" data-duration="5">
+              <div data-composition-id="logo">
+                <div id="badge" class="clip" data-start="1" data-duration="2"></div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    `);
+    const starts = parseTimelineFromDOM(doc, 20).map((e) => [
+      e.domId,
+      e.start,
+      e.parentCompositionStart,
+    ]);
+    expect(starts).toEqual([
+      ["intro", 2, 0],
+      ["logo", 5, 2],
+      ["badge", 6, 5],
+    ]);
+  });
+
+  it("places a clip inside a referenced scene after the scene's authored length", () => {
+    const doc = makeDoc(`
+      <div data-composition-id="main" data-start="0" data-duration="20">
+        <div id="s1" data-composition-id="s1" data-start="0" data-hf-authored-duration="8"></div>
+        <div id="s2" data-composition-id="s2" data-start="s1 + 1" data-duration="6">
+          <div data-composition-id="s2">
+            <div id="c" class="clip" data-start="1" data-duration="2"></div>
+          </div>
+        </div>
+      </div>
+    `);
+    const timelines = { s1: { duration: () => 6 } } as never;
+    const c = parseTimelineFromDOM(doc, 20, timelines).find((e) => e.domId === "c");
+    expect(c?.start).toBe(10);
+  });
+});
+
+describe("parseTimelineFromDOM — nested rows' keyframe basis", () => {
+  const doc = () =>
+    makeDoc(`
+      <div data-composition-id="main" data-start="0" data-duration="20">
+        <div id="intro" data-composition-id="intro" data-start="2" data-duration="10">
+          <div data-composition-id="intro">
+            <video id="vo" data-start="7" data-duration="2" data-hf-media-start-basis="global"></video>
+            <div id="logo" data-composition-id="logo" data-start="3" data-duration="5">
+              <div data-composition-id="logo">
+                <div id="badge" class="clip" data-start="1" data-duration="2"></div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    `);
+
+  it("measures diamonds and keyframe percentages against the local tween clock", () => {
+    const rows = parseTimelineFromDOM(doc(), 20);
+    const basis = (id: string) => resolveClipTimingBasis(id, "index.html", rows, []).elStart;
+    const at = (id: string) => rows.find((e) => e.domId === id)!;
+    expect([clipTimingStart(at("logo")), basis("logo")]).toEqual([3, 3]);
+    expect([clipTimingStart(at("badge")), basis("badge")]).toEqual([1, 1]);
+  });
+
+  it("keys a legacy root-time video on its host's clock but writes its start as master time", () => {
+    const vo = parseTimelineFromDOM(doc(), 20).find((e) => e.domId === "vo")!;
+    expect(vo.start).toBe(7);
+    expect(clipTimingStart(vo)).toBe(5);
+    expect(toAuthoredStart(vo, 8)).toBe(8);
+  });
+});
 
 describe("parseTimelineFromDOM — media in-point", () => {
   it("reads a negative in-point as 0, as the runtime does, so a head trim keeps the clip", () => {

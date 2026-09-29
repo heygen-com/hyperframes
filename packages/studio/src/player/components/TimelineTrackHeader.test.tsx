@@ -75,6 +75,7 @@ interface RenderHeaderOptions {
   isAudioTrack?: boolean;
   isGroupMember?: boolean;
   isTrackHidden?: boolean;
+  showAudioEffects?: boolean;
 }
 
 function renderHeader(options: RenderHeaderOptions = {}): {
@@ -119,6 +120,7 @@ function renderHeader(options: RenderHeaderOptions = {}): {
           isAudioTrack={next.isAudioTrack}
           isGroupMember={next.isGroupMember}
           theme={defaultTimelineTheme}
+          showAudioEffects={next.showAudioEffects}
           onToggleClipExpanded={vi.fn()}
           onToggleTrackHidden={next.onToggleTrackHidden}
           onTogglePropertyGroupKeyframe={next.onTogglePropertyGroupKeyframe}
@@ -207,7 +209,7 @@ describe("TimelineTrackHeader", () => {
       start: 16.5,
       duration: 2,
       track: 0,
-      expandedParentStart: 16,
+      parentCompositionStart: 16,
       sourceFile: "scene.html",
     };
     const local: GsapAnimation = {
@@ -582,6 +584,31 @@ describe("TimelineTrackHeader", () => {
         ],
       }),
     } as TimelineElement;
+
+    it("offers the effect rack from an effect lane only while audio effects are shown", () => {
+      const clip = { ...BED, domId: "bed" } as TimelineElement;
+      const gainLabel = (showAudioEffects?: boolean) => {
+        const { host, root } = renderHeader({
+          keyframeClip: clip,
+          animations: [],
+          showAudioEffects,
+        });
+        const button = host
+          .querySelector('[data-automation-lane-label="Peaking EQ 1.6 kHz · Gain"]')
+          ?.querySelector("button");
+        const state = {
+          label: button?.getAttribute("aria-label") ?? null,
+          disabled: button?.disabled,
+        };
+        act(() => root.unmount());
+        return state;
+      };
+      expect(gainLabel()).toEqual({
+        label: "Show Peaking EQ 1.6 kHz · Gain in the effect rack",
+        disabled: false,
+      });
+      expect(gainLabel(false)).toEqual({ label: null, disabled: true });
+    });
 
     it("names every envelope in the label column", () => {
       const { host, root } = renderHeader({ keyframeClip: BED, animations: [] });

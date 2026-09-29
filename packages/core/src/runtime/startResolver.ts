@@ -11,10 +11,15 @@ import {
 } from "./playbackRate";
 import { isMediaElement } from "./domRealm";
 import { parseStartExpression } from "./startExpression";
-import { MEDIA_START_BASIS_ATTR, resolveMediaStartSeconds } from "../mediaTiming";
+import {
+  isRootGlobalMediaStart,
+  MEDIA_START_BASIS_ATTR,
+  resolveMediaStartSeconds,
+  type MediaStartInput,
+} from "../mediaTiming";
 
 export function createRuntimeStartTimeResolver(params: {
-  timelineRegistry?: Record<string, RuntimeTimelineLike | undefined>;
+  timelineRegistry?: Record<string, Pick<RuntimeTimelineLike, "duration"> | undefined>;
   includeAuthoredTimingAttrs?: boolean;
   /**
    * The document that reference lookups (`data-start="intro + 2"`) resolve
@@ -27,6 +32,8 @@ export function createRuntimeStartTimeResolver(params: {
   resolveStartForElement: (element: Element, fallback?: number) => number;
   resolveDurationForElement: (element: Element) => number | null;
   resolveMediaStartForElement: (element: Element) => number;
+  resolveHostStartForElement: (element: Element) => number;
+  isRootGlobalMediaStartForElement: (element: Element) => boolean;
 } {
   const timelineRegistry = params.timelineRegistry ?? {};
   const includeAuthoredTimingAttrs = params.includeAuthoredTimingAttrs ?? false;
@@ -185,23 +192,34 @@ export function createRuntimeStartTimeResolver(params: {
    * cache, WebAudio scheduling — must come through here, or the timeline the
    * editor draws stops matching the timeline that plays.
    */
-  const resolveMediaStartForElement = (element: Element): number => {
+  const mediaStartInput = (element: Element): MediaStartInput => {
     const compositionRoot = element.closest("[data-composition-id]");
-    const hostStart = compositionRoot ? resolveStartForElementInternal(compositionRoot, 0) : 0;
-    return resolveMediaStartSeconds({
+    return {
       authoredStart: parseStrictFiniteTimingNumber(element.getAttribute("data-start")),
-      hostStart,
+      hostStart: compositionRoot ? resolveStartForElementInternal(compositionRoot, 0) : 0,
       hasAutoStart: element.hasAttribute("data-hf-auto-start"),
       basis: element.getAttribute(MEDIA_START_BASIS_ATTR),
-      ordinaryStart: () => resolveStartForElementInternal(element, hostStart),
+    };
+  };
+
+  const resolveMediaStartForElement = (element: Element): number => {
+    const input = mediaStartInput(element);
+    return resolveMediaStartSeconds({
+      ...input,
+      ordinaryStart: () => resolveStartForElementInternal(element, input.hostStart),
     });
   };
+
+  const isRootGlobalMediaStartForElement = (element: Element): boolean =>
+    isMediaElement(element) && isRootGlobalMediaStart(mediaStartInput(element));
 
   return {
     resolveStartForElement: (element: Element, fallback = 0) =>
       resolveStartForElementInternal(element, Math.max(0, fallback)),
     resolveDurationForElement: (element: Element) => resolveDurationForElement(element),
     resolveMediaStartForElement,
+    resolveHostStartForElement: (element: Element) => resolveHostOffsetForElement(element, 0),
+    isRootGlobalMediaStartForElement,
   };
 }
 

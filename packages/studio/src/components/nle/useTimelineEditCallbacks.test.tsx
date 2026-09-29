@@ -149,6 +149,59 @@ function arrangeClickedCircle(): {
   return { circle, selection: selectionForElement(circle) };
 }
 
+// main 0 > intro 2 > logo 3 > badge 1: rows are master time, tweens are local.
+function nestedKeyframedRow(id: string, start: number, duration: number, host: number) {
+  const row: TimelineElement = {
+    id,
+    key: `compositions/${id}-parent.html#${id}`,
+    domId: id,
+    tag: "div",
+    start,
+    duration,
+    track: 0,
+    sourceFile: `compositions/${id}-parent.html`,
+    parentCompositionStart: host,
+  };
+  const anim: GsapAnimation = {
+    ...authoredInteriorAnimation(),
+    id: `${id}-to-position`,
+    targetSelector: `#${id}`,
+    position: start - host,
+    resolvedStart: start - host,
+    duration,
+  };
+  usePlayerStore.setState({
+    elements: [row],
+    gsapAnimations: new Map([[row.key!, [anim]]]),
+  });
+  return { row, anim };
+}
+
+describe("keyframe drags on nested rows", () => {
+  it.each([
+    ["logo", 5, 5, 2, 60],
+    ["badge", 6, 2, 5, 75],
+  ])("re-keys %s's middle keyframe inside its local tween", async (id, start, dur, host, pct) => {
+    const { row, anim } = nestedKeyframedRow(id, start, dur, host);
+    const view = renderCallbacks();
+    await act(async () => {
+      await view.callbacks.onMoveKeyframe?.(
+        row.key!,
+        { percentage: 50, propertyGroup: "position", tweenPercentage: 50, animationId: anim.id },
+        pct,
+      );
+    });
+    expect(mocks.actions.handleGsapMoveKeyframe).toHaveBeenCalledWith(
+      anim.id,
+      50,
+      pct,
+      selectionForElement(row),
+    );
+    expect(mocks.actions.handleGsapResizeKeyframedTween).not.toHaveBeenCalled();
+    view.unmount();
+  });
+});
+
 beforeEach(() => {
   vi.clearAllMocks();
   mocks.animations = [flatAnimation];

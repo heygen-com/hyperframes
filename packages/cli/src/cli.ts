@@ -26,7 +26,7 @@ for (const stream of [process.stdout, process.stderr]) {
 // The shaderTransitionWorkerPool lives in the producer package and resolves
 // its worker entry by probing for a sibling `.js` file next to
 // `import.meta.url`. When this CLI is bundled by tsup, the producer code is
-// inlined into `cli.js`, but `import.meta.url` resolves to the producer's
+// bundled into chunks beside cli.js, but `import.meta.url` resolves to the producer's
 // own dist path (NOT cli.js) on some module-graph layouts — so the sibling
 // probe lands in a directory that does not contain the bundled worker.
 // We emit the worker entry next to cli.js (see tsup.config.ts) and tell
@@ -172,6 +172,7 @@ const commandLoaders = {
   tts: () => import("./commands/tts.js").then((m) => m.default),
   docs: () => import("./commands/docs.js").then((m) => m.default),
   doctor: () => import("./commands/doctor.js").then((m) => m.default),
+  clean: () => import("./commands/clean.js").then((m) => m.default),
   upgrade: () => import("./commands/upgrade.js").then((m) => m.default),
   skills: () => import("./commands/skills.js").then((m) => m.default),
   feedback: () => import("./commands/feedback.js").then((m) => m.default),
@@ -279,20 +280,24 @@ if (
   // we don't over-print.
   import("./utils/autoUpdate.js").then((mod) => mod.reportCompletedUpdate()).catch(() => {});
 
-  import("./utils/updateCheck.js").then(async (mod) => {
-    _printUpdateNotice = mod.printUpdateNotice;
-    _printStalePinNotice = mod.printStalePinNotice;
-    const result = mod.cachedUpdateCheck();
-    if (result.updateAvailable) {
-      const auto = await import("./utils/autoUpdate.js").catch(() => null);
-      auto?.scheduleBackgroundInstall(result.latest, result.current);
-    }
-  });
+  import("./utils/updateCheck.js")
+    .then(async (mod) => {
+      _printUpdateNotice = mod.printUpdateNotice;
+      _printStalePinNotice = mod.printStalePinNotice;
+      const result = mod.cachedUpdateCheck();
+      if (result.updateAvailable) {
+        const auto = await import("./utils/autoUpdate.js").catch(() => null);
+        auto?.scheduleBackgroundInstall(result.latest, result.current);
+      }
+    })
+    .catch(() => {});
 
   // Skills freshness nudge — same gating as the CLI self-update notice.
-  import("./utils/skillsUpdateCheck.js").then((mod) => {
-    _printSkillsUpdateNotice = mod.printSkillsUpdateNotice;
-  });
+  import("./utils/skillsUpdateCheck.js")
+    .then((mod) => {
+      _printSkillsUpdateNotice = mod.printSkillsUpdateNotice;
+    })
+    .catch(() => {});
 
   // The notices read the caches; a detached child refreshes them for the next run.
   import("./utils/backgroundChecks.js").then((mod) => mod.launchBackgroundChecks()).catch(() => {});

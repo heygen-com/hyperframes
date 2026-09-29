@@ -22,6 +22,7 @@ type RuntimeBridgeControlActionBase =
   | "set-web-audio-media-disabled"
   | "set-idle-heartbeat"
   | "set-root-duration"
+  | "set-play-range"
   | "stop-media"
   | "flash-elements";
 
@@ -34,6 +35,8 @@ type RuntimeBridgeControlMessageBase = {
   muted?: boolean;
   volume?: number;
   durationSeconds?: number;
+  startSeconds?: number | null;
+  endSeconds?: number | null;
   disabled?: boolean;
   slow?: boolean;
   playbackRate?: number;

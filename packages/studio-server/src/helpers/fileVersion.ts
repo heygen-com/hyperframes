@@ -9,12 +9,13 @@ export interface FileWriteReceipt {
 
 interface StoredReceipt extends FileWriteReceipt {
   recordedAt: number;
-  /** The bytes this write replaced, so the project history can keep a save that landed just before it. */
-  overwrote?: string | Uint8Array;
 }
+
+type OverwriteListener = (absPath: string, version: string, overwrote: string | Uint8Array) => void;
 
 const RECEIPT_TTL_MS = 10_000;
 const receipts = new Map<string, StoredReceipt[]>();
+const overwriteListeners = new Set<OverwriteListener>();
 
 /** Strong content version used as both the JSON version and HTTP ETag. */
 export function fileContentVersion(content: string | Uint8Array): string {
@@ -50,13 +51,20 @@ export function createWriteToken(requestToken?: string): string {
   return token && token.length <= 200 ? token : randomUUID();
 }
 
+/** Hears the bytes each API write replaced, so a project history can keep a save it never saw. */
+export function onFileOverwritten(listener: OverwriteListener): () => void {
+  overwriteListeners.add(listener);
+  return () => overwriteListeners.delete(listener);
+}
+
 export function recordFileWriteReceipt(
   filePath: string,
-  receipt: Omit<StoredReceipt, "recordedAt">,
+  { overwrote, ...receipt }: FileWriteReceipt & { overwrote?: string | Uint8Array },
 ): void {
   const absPath = realFilePath(filePath);
+  if (overwrote !== undefined)
+    for (const listener of overwriteListeners) listener(absPath, receipt.version, overwrote);
   const now = Date.now();
-  // Every path's expired receipts go, not just this one's: a receipt can hold a whole file's bytes.
   for (const [path, list] of receipts) {
     const live = list.filter((entry) => now - entry.recordedAt < RECEIPT_TTL_MS);
     if (live.length > 0) receipts.set(path, live);
@@ -90,20 +98,6 @@ export function identifyFileWrite(
   if (!receipt) return null;
   const { path, version, writeToken } = receipt;
   return { path, version, writeToken };
-}
-
-/** The bytes the API write of `version` replaced, while its receipt lives. */
-export function bytesOverwrittenBy(
-  filePath: string,
-  version: string,
-): string | Uint8Array | undefined {
-  return newestReceipt(realFilePath(filePath), version)?.overwrote;
-}
-
-/** Drops the replaced bytes a claim walked through, so a later claim can't walk back through them. */
-export function forgetOverwrittenBytes(filePath: string, versions: ReadonlySet<string>): void {
-  for (const receipt of receipts.get(realFilePath(filePath)) ?? [])
-    if (versions.has(receipt.version)) delete receipt.overwrote;
 }
 
 function newestReceipt(absPath: string, expectedVersion: string): StoredReceipt | undefined {

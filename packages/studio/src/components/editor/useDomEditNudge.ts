@@ -60,10 +60,10 @@ export interface UseDomEditNudgeParams {
       s: DomEditSelection,
       n: { x: number; y: number },
       m?: { altKey?: boolean },
-    ) => Promise<void> | void
+    ) => Promise<unknown> | void
   >;
   onGroupPathOffsetCommitRef: RefObject<
-    (updates: DomEditGroupPathOffsetCommit[]) => Promise<void> | void
+    (updates: DomEditGroupPathOffsetCommit[]) => Promise<unknown> | void
   >;
 }
 

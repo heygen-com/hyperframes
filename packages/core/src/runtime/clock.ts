@@ -1,5 +1,6 @@
 import { timeAtSourceTime, type RateSpec } from "../speedRamp.js";
 import { MEDIA_HARD_SYNC_SECONDS } from "./media.js";
+import { playRangeHoldTime } from "./protocol.js";
 
 export type TransportClockSnapshot = {
   time: number;
@@ -31,6 +32,9 @@ export class TransportClock {
   private _playStartMs: number | null = null;
   private _rate = 1;
   private _duration = Infinity;
+  private _playStart = 0;
+  private _playEnd = Infinity;
+  private _playHold = Infinity;
   private _nowMs: () => number;
   private _audioSource: AudioClockSource | null = null;
   /** Wall-clock time of the last `now()` read while playing; null while paused. */
@@ -64,7 +68,7 @@ export class TransportClock {
         audioTime = this._elementTimeNeverBehind(this._audioSource);
       }
       if (audioTime !== null) {
-        const t = Number.isFinite(this._duration) ? Math.min(audioTime, this._duration) : audioTime;
+        const t = Math.min(audioTime, this.getEnd());
         this._baseTime = Math.max(0, t);
         this._playStartMs = this._nowMs();
         this._lastReadMs = null;
@@ -77,7 +81,7 @@ export class TransportClock {
     this._applyStallCorrection();
     const elapsed = (this._nowMs() - this._playStartMs) / 1000;
     const t = this._baseTime + elapsed * this._rate;
-    this._lastNow = Math.max(0, Number.isFinite(this._duration) ? Math.min(t, this._duration) : t);
+    this._lastNow = Math.max(0, Math.min(t, this.getEnd()));
     return this._lastNow;
   }
 
@@ -113,7 +117,7 @@ export class TransportClock {
 
   play(): boolean {
     if (this._playStartMs !== null) return false;
-    if (Number.isFinite(this._duration) && this._baseTime >= this._duration) return false;
+    if (this._baseTime >= this.getEnd()) return false;
     this._playStartMs = this._nowMs();
     this._lastNow = this._baseTime;
     // Not a stall: the gap since the clock was last read (possibly a long
@@ -174,6 +178,25 @@ export class TransportClock {
     return this._duration;
   }
 
+  setPlayRange(start: number, end: number | null, fps: number): void {
+    this._playStart = Number.isFinite(start) && start > 0 ? start : 0;
+    this._playEnd = end !== null && Number.isFinite(end) && end > this._playStart ? end : Infinity;
+    this._playHold = playRangeHoldTime(this._playStart, this._playEnd, fps);
+  }
+
+  getPlayStart(): number {
+    return this._playStart;
+  }
+
+  getEnd(): number {
+    return Math.min(this._duration, this._playEnd);
+  }
+
+  /** Where a stop parks: the film's end, or a range's last frame, since the moment is [start, end). */
+  getStopTime(): number {
+    return this._playEnd < this._duration ? this._playHold : this.getEnd();
+  }
+
   attachAudioSource(source: AudioClockSource): void {
     this._audioSource = source;
   }
@@ -218,6 +241,7 @@ export class TransportClock {
   }
 
   reachedEnd(): boolean {
-    return Number.isFinite(this._duration) && this.now() >= this._duration;
+    const time = this.now();
+    return time >= this.getEnd() || (this._playStartMs === null && time >= this.getStopTime());
   }
 }

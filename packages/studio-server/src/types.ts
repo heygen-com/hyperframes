@@ -120,8 +120,9 @@ export interface StudioApiAdapter {
     options?: Pick<BundleOptions, "stampHfIds" | "onRead">,
   ): Promise<string | null>;
 
-  /** Optional: cached signature for project files that should invalidate preview frame caches. */
+  /** Optional: a cached `createProjectSignature(dir)`; preview caching checks builds against it. */
   getProjectSignature?: (projectDir: string) => string;
+  invalidateProjectSignature?: (projectDir: string) => void;
 
   /** Lint a single HTML string. */
   lint(

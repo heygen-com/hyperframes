@@ -1,4 +1,5 @@
 import { type TimelineElement, usePlayerStore } from "../player/store/playerStore";
+import { toAuthoredStart } from "../player/store/timelineElement";
 import {
   applyPatchByTarget,
   findTagByTarget,
@@ -274,7 +275,7 @@ export function buildTimelineResizeTimingPatch(
   let patched = applyPatchByTarget(original, target, {
     type: "attribute",
     property: "start",
-    value: formatTimelineAttributeNumber(updates.start),
+    value: formatTimelineAttributeNumber(toAuthoredStart(element, updates.start)),
   });
   patched = applyPatchByTarget(patched, target, {
     type: "attribute",
