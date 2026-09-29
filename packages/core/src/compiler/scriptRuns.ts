@@ -50,14 +50,25 @@ export function cssStyleMergeKey(el: Element): string | undefined {
 
 export const UNCONDITIONAL_CSS_KEY = JSON.stringify(["", ""]);
 
-/** Links with one key load one resource under one condition, so one can stand in for the other. */
-export function linkDedupeKey(el: Element, href = el.getAttribute("href")): string {
+/** One key: same href, rel, CSS condition, disabled, CORS mode, integrity and referrer policy; nothing else. */
+function linkDedupeKey(el: Element): string {
+  const cors = el.getAttribute("crossorigin");
   return JSON.stringify([
-    href,
+    el.getAttribute("href"),
     (el.getAttribute("rel") ?? "").trim().toLowerCase(),
     cssStyleMergeKey(el) ?? el.getAttribute("type"),
     el.hasAttribute("disabled"),
+    cors === null ? null : cors.trim().toLowerCase() === "use-credentials",
+    el.getAttribute("integrity"),
+    el.getAttribute("referrerpolicy"),
   ]);
+}
+
+export function hasSameLink(scope: ParentNode, link: Element): boolean {
+  const key = linkDedupeKey(link);
+  return [...scope.querySelectorAll("link[href]")].some(
+    (other) => !other.closest("template, noscript") && linkDedupeKey(other) === key,
+  );
 }
 
 /** Groups head styles into runs of adjacent styles with one merge key, so merging a run never reorders rules. */

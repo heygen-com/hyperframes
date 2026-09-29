@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { parseHTML } from "linkedom";
-import { inlineSubCompositions } from "./inlineSubCompositions";
+import { ensureExternalLinkTag, inlineSubCompositions } from "./inlineSubCompositions";
 import { readDeclaredDefaults, parseHostVariableValues } from "../runtime/getVariables";
 
 // Fixtures reference GSAP CDN but are never loaded in a real browser — resolveHtml is mocked.
@@ -363,7 +363,7 @@ describe("inlineSubCompositions – #ID selector scoping divergence", () => {
     ]);
   });
 
-  it("deduplicates link hrefs across multiple sub-compositions", () => {
+  it("emits one link for the same link in two sub-compositions", () => {
     const subComp = `<!doctype html>
 <html><head>
   <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Montserrat:wght@800">
@@ -385,10 +385,10 @@ describe("inlineSubCompositions – #ID selector scoping divergence", () => {
       parseHtml: (html) => parseHTML(html).document,
     });
 
-    expect(result.externalLinks).toHaveLength(1);
-    expect(result.externalLinks[0]!.href).toBe(
-      "https://fonts.googleapis.com/css2?family=Montserrat:wght@800",
-    );
+    for (const link of result.externalLinks) ensureExternalLinkTag(document, link);
+    expect(
+      [...document.head.querySelectorAll("link")].map((el) => el.getAttribute("href")),
+    ).toEqual(["https://fonts.googleapis.com/css2?family=Montserrat:wght@800"]);
   });
 
   it("propagates data-timeline-locked from inner root to host element", () => {

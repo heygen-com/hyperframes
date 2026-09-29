@@ -1539,12 +1539,12 @@ describe("bundleToSingleHtml", () => {
   });
 
   describe("composition links to the same file", () => {
-    async function sharedLinks(aLink: string, bLink: string, rootHead = "") {
+    async function sharedLinks(aLink: string, bLink: string, rootHead = "", rootBody = "") {
       const comp = (id: string, link: string) =>
         `<template id="${id}-template"><div data-composition-id="${id}" data-width="320" data-height="180">${link}<p class="${id}">x</p></div></template>`;
       const dir = makeTempProject({
         "index.html": `<!doctype html>
-<html><head>${rootHead}</head><body>
+<html><head>${rootHead}</head><body>${rootBody}
   <div data-composition-id="root" data-width="320" data-height="180">
     <div data-composition-id="a" data-composition-src="a.html"></div>
     <div data-composition-id="b" data-composition-src="b.html"></div>
@@ -1556,15 +1556,12 @@ describe("bundleToSingleHtml", () => {
         "shared.css": ".a,.b{color:green}",
       });
       const { document } = parseHTML(await bundleToSingleHtml(dir));
-      return [...document.querySelectorAll("link[href]")].map((el) => ({
-        href: el.getAttribute("href"),
-        rel: el.getAttribute("rel"),
-        media: el.getAttribute("media"),
-        title: el.getAttribute("title"),
-      }));
+      return [...document.querySelectorAll("link[href]")].map((el) =>
+        Object.fromEntries([...el.attributes].map((attr) => [attr.name, attr.value])),
+      );
     }
     const link = (attrs = "") => `<link rel="stylesheet" href="HREF"${attrs}>`;
-    const plain = { href: "shared.css", rel: "stylesheet", media: null, title: null };
+    const plain = { href: "shared.css", rel: "stylesheet" };
     const print = { ...plain, media: "print" };
 
     it.each([
@@ -1584,6 +1581,39 @@ describe("bundleToSingleHtml", () => {
       ],
       ["two print links", link(' media="print"'), link(' media="print"'), [print]],
       ["two plain links", link(), link(), [plain]],
+      [
+        "a plain link after a disabled one",
+        link(" disabled"),
+        link(),
+        [{ ...plain, disabled: "" }, plain],
+      ],
+      [
+        "a stylesheet after a preload of the same file",
+        '<link rel="preload" as="style" href="HREF">',
+        link(),
+        [plain, { href: "shared.css", rel: "preload", as: "style" }],
+      ],
+      [
+        "two links of different non-CSS types",
+        link(' type="text/x-scss"'),
+        link(' type="text/x-less"'),
+        [
+          { ...plain, type: "text/x-scss" },
+          { ...plain, type: "text/x-less" },
+        ],
+      ],
+      [
+        "a plain link after a CORS one",
+        link(" crossorigin"),
+        link(),
+        [{ ...plain, crossorigin: "" }, plain],
+      ],
+      [
+        "two anonymous CORS links spelled differently",
+        link(' crossorigin=""'),
+        link(' crossorigin="anonymous"'),
+        [{ ...plain, crossorigin: "" }],
+      ],
     ])("keeps %s under its own condition", async (_, aLink, bLink, expected) => {
       expect(await sharedLinks(aLink, bLink)).toEqual(expected);
     });
@@ -1604,6 +1634,36 @@ describe("bundleToSingleHtml", () => {
         `<link rel="stylesheet" href="${url}" media="print">`,
       );
       expect(links).toEqual([{ ...print, href: url }, { ...plain, href: url }, plain]);
+    });
+
+    it("keeps a composition's link when the root's same link differs in fetch or is in a noscript", async () => {
+      const url = "https://cdn.example/shared.css";
+      for (const [name, value] of [
+        ["integrity", "sha384-x"],
+        ["referrerpolicy", "no-referrer"],
+      ]) {
+        expect(
+          await sharedLinks(
+            link().replace("HREF", url),
+            "",
+            `<link rel="stylesheet" href="${url}" ${name}="${value}">`,
+          ),
+        ).toEqual([
+          { ...plain, href: url, [name!]: value },
+          { ...plain, href: url },
+        ]);
+      }
+      expect(
+        await sharedLinks(
+          link().replace("HREF", url),
+          "",
+          "",
+          `<noscript>${link().replace("HREF", url)}</noscript>`,
+        ),
+      ).toEqual([
+        { ...plain, href: url },
+        { ...plain, href: url },
+      ]);
     });
 
     it("carries a composition link's type and disabled state", async () => {

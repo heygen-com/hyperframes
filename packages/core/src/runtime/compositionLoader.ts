@@ -8,7 +8,7 @@ import {
   wrapScopedCompositionScript,
 } from "../compiler/compositionScoping";
 import { parseImportMap } from "../compiler/importMaps";
-import { linkDedupeKey } from "../compiler/scriptRuns";
+import { hasSameLink } from "../compiler/scriptRuns";
 import { parseLayoutDimension } from "./compositionDimension";
 import { markFlattenedInnerRoot } from "./flattenedRoot";
 import {
@@ -461,10 +461,7 @@ async function mountCompositionContent(params: {
     const clonedLink = link.cloneNode(true);
     if (!isLinkElement(clonedLink)) continue;
     clonedLink.href = href;
-    const key = linkDedupeKey(clonedLink);
-    if ([...document.head.querySelectorAll("link[href]")].some((el) => linkDedupeKey(el) === key)) {
-      continue;
-    }
+    if (hasSameLink(document.head, clonedLink)) continue;
     document.head.appendChild(clonedLink);
     params.injectedLinks.push(clonedLink);
   }
