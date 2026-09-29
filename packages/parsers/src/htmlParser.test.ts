@@ -908,3 +908,54 @@ describe("extractCompositionMetadata", () => {
     expect(meta.variables.find((v) => v.id === "ok")).toBeDefined();
   });
 });
+
+describe("video audio attributes", () => {
+  const DOC = `<!DOCTYPE html>
+<html><body>
+  <div id="stage">
+    <div id="stage-zoom-container"><video id="v" src="a.mp4" muted data-start="0" data-duration="2"></video></div>
+  </div>
+</body></html>`;
+
+  const videoTag = (html: string, id: string): string =>
+    html.match(new RegExp(`<video[^>]*id="${id}"[^>]*>`))?.[0] ?? "";
+
+  it("addElementToHtml: an audible video gets data-has-audio and no muted", () => {
+    const { html, id } = addElementToHtml(DOC, {
+      type: "video",
+      name: "Audible",
+      src: "b.mp4",
+      startTime: 0,
+      duration: 2,
+      zIndex: 0,
+      hasAudio: true,
+    });
+    const tag = videoTag(html, id);
+    expect(tag).toContain('data-has-audio="true"');
+    expect(tag).not.toMatch(/\bmuted\b/);
+  });
+
+  it("addElementToHtml: a silent video is muted with no data-has-audio", () => {
+    const { html, id } = addElementToHtml(DOC, {
+      type: "video",
+      name: "Silent",
+      src: "b.mp4",
+      startTime: 0,
+      duration: 2,
+      zIndex: 0,
+    });
+    const tag = videoTag(html, id);
+    expect(tag).toMatch(/\bmuted\b/);
+    expect(tag).not.toContain("data-has-audio");
+  });
+
+  it("updateElementInHtml hasAudio:true clears muted; false restores it", () => {
+    const on = updateElementInHtml(DOC, "v", { hasAudio: true });
+    expect(videoTag(on, "v")).not.toMatch(/\bmuted\b/);
+    expect(videoTag(on, "v")).toContain('data-has-audio="true"');
+    const off = updateElementInHtml(on, "v", { hasAudio: false });
+    const tag = videoTag(off, "v");
+    expect(tag).toMatch(/\bmuted\b/);
+    expect(tag).not.toContain("data-has-audio");
+  });
+});

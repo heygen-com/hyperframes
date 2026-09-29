@@ -620,8 +620,10 @@ export function updateElementInHtml(
   if ("hasAudio" in updates) {
     if (updates.hasAudio === true) {
       el.setAttribute("data-has-audio", "true");
+      el.removeAttribute("muted");
     } else {
       el.removeAttribute("data-has-audio");
+      el.setAttribute("muted", "");
     }
   }
 
@@ -672,12 +674,10 @@ export function addElementToHtml(
     case "video": {
       const mediaEl = element as TimelineMediaElement;
       newEl = doc.createElement("video");
-      newEl.setAttribute("muted", "");
       newEl.setAttribute("playsinline", "");
       applyMediaAttrs(newEl, mediaEl);
-      if (mediaEl.hasAudio) {
-        newEl.setAttribute("data-has-audio", "true");
-      }
+      if (mediaEl.hasAudio) newEl.setAttribute("data-has-audio", "true");
+      else newEl.setAttribute("muted", "");
       break;
     }
     case "image": {
