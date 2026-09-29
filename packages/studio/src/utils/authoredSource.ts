@@ -1,4 +1,8 @@
 import { ensureHfIds, isCompositionTemplate } from "@hyperframes/parsers/hf-ids";
+import {
+  STUDIO_PREVIEW_LAZY_ATTR,
+  STUDIO_PREVIEW_UPCOMING_ATTR,
+} from "@hyperframes/core/studio-preview-mark";
 
 // Stamped as the preview stamps the files it serves, so a live element's hf-id finds its source.
 export function parseSavedSource(html: string): Document {
@@ -87,6 +91,17 @@ export function authoredMarkup(authored: Element, live: Element, sourceFile: str
         ),
       );
     }
+  }
+  return copy.outerHTML;
+}
+
+export function liveMarkupWithoutPreviewMarks(live: Element): string {
+  const copy = live.cloneNode(true) as Element;
+  for (const el of [copy, ...Array.from(copy.querySelectorAll("*"))]) {
+    el.removeAttribute(STUDIO_PREVIEW_UPCOMING_ATTR);
+    if (!el.hasAttribute(STUDIO_PREVIEW_LAZY_ATTR)) continue;
+    el.removeAttribute("loading");
+    el.removeAttribute(STUDIO_PREVIEW_LAZY_ATTR);
   }
   return copy.outerHTML;
 }

@@ -7,9 +7,10 @@
     "  Refresh from a green main run when shards drift apart; no test asserts these values.",
     "distributed: fixtures run with --mode=distributed-simulated, mapped to why.",
     "  Mode is a per-invocation flag, so these get their own shards.",
-    "excluded: fixtures deliberately not run, each mapped to the reason why."
+    "excluded: fixtures deliberately not run, each mapped to the reason why.",
+    "nightly: scheduled fixtures that run only in the nightly regression job, mapped to why."
   ],
-  "shardCount": 8,
+  "shardCount": 9,
   "distributedShardCount": 1,
   "timings": {
     "animejs-adapter": 16,
@@ -17,6 +18,7 @@
     "audio-mux-parity": 16,
     "chat": 34,
     "css-spinner-render-compat": 14,
+    "dogs-captions": 524,
     "font-variant-numeric": 7,
     "gsap-letters-render-compat": 9,
     "hdr-hlg-regression": 125,
@@ -29,6 +31,7 @@
     "mp4-h265-sdr": 4,
     "overlay-montage-prod": 204,
     "parallel-capture-regression": 18,
+    "pip-video-late-host": 35,
     "plan-v2-partial-color": 2,
     "png-sequence": 3,
     "portrait-edge-bleed": 6,
@@ -70,7 +73,6 @@
     "css-import-scoping": "Rejected by the harness at load time (meta.json: maxAudioLagWindows must be >= 1), so it has never run despite looking scheduled-able. Fix the metadata, then schedule it.",
     "css-var-fonts": "Rejected by the harness at load time (meta.json: minAudioCorrelation must be between 0 and 1), so it has never run despite looking scheduled-able. Fix the metadata, then schedule it.",
     "d3-adapter": "Was absent from the hand-written shard matrix, so it has never run in CI and its cost and pass state are unknown. Triage and either schedule it or record a real reason here.",
-    "dogs-captions": "Was absent from the hand-written shard matrix, so it has never run in CI and its cost and pass state are unknown. Triage and either schedule it or record a real reason here.",
     "escape-hatch-fatal-fallback": "Was absent from the hand-written shard matrix, so it has never run in CI and its cost and pass state are unknown. Triage and either schedule it or record a real reason here.",
     "fast-capture-gsap": "Was absent from the hand-written shard matrix, so it has never run in CI and its cost and pass state are unknown. Triage and either schedule it or record a real reason here.",
     "google-maps-adapter": "Was absent from the hand-written shard matrix, so it has never run in CI and its cost and pass state are unknown. Triage and either schedule it or record a real reason here.",
@@ -82,7 +84,6 @@
     "maplibre-adapter": "Was absent from the hand-written shard matrix, so it has never run in CI and its cost and pass state are unknown. Triage and either schedule it or record a real reason here.",
     "nested-subcomp-depth-3": "Was absent from the hand-written shard matrix, so it has never run in CI and its cost and pass state are unknown. Triage and either schedule it or record a real reason here.",
     "page-side-shader-compositor-render-compat": "Was absent from the hand-written shard matrix, so it has never run in CI and its cost and pass state are unknown. Triage and either schedule it or record a real reason here.",
-    "pip-video-late-host": "Was absent from the hand-written shard matrix, so it has never run in CI and its cost and pass state are unknown. Triage and either schedule it or record a real reason here.",
     "render-video-overlay-stretch": "Was absent from the hand-written shard matrix, so it has never run in CI and its cost and pass state are unknown. Triage and either schedule it or record a real reason here.",
     "software-beginframe-yoyo-compositor": "Was absent from the hand-written shard matrix, so it has never run in CI and its cost and pass state are unknown. Triage and either schedule it or record a real reason here.",
     "spanish-empire-cdn-inline": "Was absent from the hand-written shard matrix, so it has never run in CI and its cost and pass state are unknown. Triage and either schedule it or record a real reason here.",
@@ -99,5 +100,8 @@
   "distributed": {
     "style-15-prod": "Renders 12.4x faster chunked (1413s -> 114s at 4 CPUs) because in-process capture is pinned to one worker by the auto-worker derate. Passes the same golden at the same 30dB bar, 0/100 failed frames, psnr min 39.3 vs 40.1 in-process, so the sensitivity cost is 0.8dB.",
     "sub-composition-video": "Renders 12.1x faster chunked (1346s -> 111s at 4 CPUs). Slow in-process for a different reason to style-15-prod (video decode rather than feTurbulence), which is why chunking helps both. Passes the same golden, 0/100 failed."
+  },
+  "nightly": {
+    "dogs-captions": "One long fixture: 7 to 10.5 min of rendering in its first two CI runs (timing is their median), and the slowest shard in both, 20s to 1m40s past the next. A single fixture cannot be split across shards, so it runs nightly instead of on every PR."
   }
 }

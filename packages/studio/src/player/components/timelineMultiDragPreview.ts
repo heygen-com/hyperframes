@@ -97,10 +97,13 @@ export function multiDragPassengerOffsetPx(
  * included). Only the lower bound (start ≥ 0) constrains a move; the timeline has
  * no fixed right wall (the composition grows on commit).
  */
-export function clampGroupMoveDelta(rawDelta: number, memberStarts: readonly number[]): number {
-  if (memberStarts.length === 0) return rawDelta;
-  // Leftmost member sets the floor: delta ≥ -min(start) keeps every start ≥ 0.
-  const minStart = Math.min(...memberStarts);
-  const minDelta = minStart === 0 ? 0 : -minStart; // avoid -0
+export function clampGroupMoveDelta(
+  rawDelta: number,
+  members: readonly { start: number; minStart?: number }[],
+): number {
+  if (members.length === 0) return rawDelta;
+  // The member nearest its own floor bounds the move: delta ≥ -(start - minStart) for each.
+  const room = Math.min(...members.map((m) => m.start - (m.minStart ?? 0)));
+  const minDelta = room === 0 ? 0 : -room; // avoid -0
   return rawDelta < minDelta ? minDelta : rawDelta;
 }

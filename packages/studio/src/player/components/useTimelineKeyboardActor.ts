@@ -1,5 +1,5 @@
 import { useCallback, useMemo, type FocusEvent, type KeyboardEvent, type RefObject } from "react";
-import { usePlayerStore } from "../store/playerStore";
+import { usePlayerStore, type TimelineElement } from "../store/playerStore";
 import type { TimelineRowGeometry } from "./timelineLayout";
 import {
   isTimelineNavigationKey,
@@ -14,6 +14,7 @@ interface TimelineKeyboardActorInput {
   rowGeometry: TimelineRowGeometry;
   scrollRef: RefObject<HTMLDivElement | null>;
   onToggleRow: (target: TimelineLogicalRow) => void;
+  onDrillDown?: (element: TimelineElement) => void;
 }
 
 function eventTarget(event: FocusEvent | KeyboardEvent): HTMLElement | null {
@@ -70,6 +71,7 @@ export function useTimelineKeyboardActor({
   rowGeometry,
   scrollRef,
   onToggleRow,
+  onDrillDown,
 }: TimelineKeyboardActorInput) {
   const rovingTargetId =
     (focusedTargetId && locateTimelineLogicalTarget(logicalRows, focusedTargetId)?.target.id) ??
@@ -130,6 +132,12 @@ export function useTimelineKeyboardActor({
         openContextMenu(targetElement);
         return;
       }
+      const composition = located.target.kind === "clip" && located.target.element;
+      if (event.key === "Enter" && composition && composition.compositionSrc && onDrillDown) {
+        event.preventDefault();
+        onDrillDown(composition);
+        return;
+      }
       if (
         (event.key !== "Enter" && event.key !== " ") ||
         located.target.kind !== "row" ||
@@ -140,7 +148,7 @@ export function useTimelineKeyboardActor({
       event.preventDefault();
       onToggleRow(located.target);
     },
-    [logicalRowCountByTrack, logicalRows, onToggleRow, rowGeometry, scrollRef],
+    [logicalRowCountByTrack, logicalRows, onDrillDown, onToggleRow, rowGeometry, scrollRef],
   );
 
   return { rovingTargetId, onFocus, onKeyDown };

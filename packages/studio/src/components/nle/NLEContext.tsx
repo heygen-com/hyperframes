@@ -21,7 +21,7 @@ export interface NLEContextValue {
   play: () => void;
   pause: () => void;
   togglePlay: () => void;
-  seek: (time: number, options?: { keepPlaying?: boolean }) => boolean;
+  seek: (time: number, options?: { keepPlaying?: boolean; follow?: boolean }) => boolean;
   refreshPlayer: () => void;
   onIframeLoad: () => void;
   // The hidden reload iframe NLEPreview renders next to the live one during a full reload.

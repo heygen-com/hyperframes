@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { parseHTML } from "linkedom";
-import { inlineSubCompositions } from "./inlineSubCompositions";
+import { ensureExternalLinkTag, inlineSubCompositions } from "./inlineSubCompositions";
 import { readDeclaredDefaults, parseHostVariableValues } from "../runtime/getVariables";
 
 // Fixtures reference GSAP CDN but are never loaded in a real browser — resolveHtml is mocked.
@@ -124,7 +124,7 @@ describe("inlineSubCompositions – #ID selector scoping divergence", () => {
 
     // CSS was scoped: #intro selectors should be rewritten to use
     // data-hf-authored-id attribute selector so they still resolve.
-    const scopedCss = result.styles.join("\n");
+    const scopedCss = result.styles.map((style) => style.css).join("\n");
     expect(scopedCss).toContain('[data-hf-authored-id="intro"]');
     expect(scopedCss).not.toContain("#intro");
   });
@@ -140,7 +140,7 @@ describe("inlineSubCompositions – #ID selector scoping divergence", () => {
 
     // The CSS scoper rewrites `#intro` to `[data-hf-authored-id="intro"]`
     // so that the selector resolves against the flattened structure.
-    const scopedCss = result.styles.join("\n");
+    const scopedCss = result.styles.map((style) => style.css).join("\n");
     expect(scopedCss).toContain('[data-hf-authored-id="intro"]');
     expect(scopedCss).toContain('[data-hf-authored-id="intro"] .title');
   });
@@ -182,7 +182,9 @@ describe("inlineSubCompositions – #ID selector scoping divergence", () => {
 
     expect(host.getAttribute("data-composition-id")).toBe("captions-comp");
     expect(host.querySelector('[data-composition-id="captions"]')).not.toBeNull();
-    expect(result.styles.join("\n")).toContain('[data-composition-id="captions-comp"]');
+    expect(result.styles.map((style) => style.css).join("\n")).toContain(
+      '[data-composition-id="captions-comp"]',
+    );
     const wrappedScript = result.scripts.join("\n");
     expect(wrappedScript).toContain('var __hfCompId = "captions"');
     expect(wrappedScript).toContain('var __hfTimelineCompId = "captions-comp"');
@@ -218,7 +220,7 @@ describe("inlineSubCompositions – #ID selector scoping divergence", () => {
     expect(authoredRoot).not.toBeNull();
 
     // CSS is still rewritten to use the attribute selector.
-    const scopedCss = result.styles.join("\n");
+    const scopedCss = result.styles.map((style) => style.css).join("\n");
     expect(scopedCss).toContain('[data-hf-authored-id="intro"]');
   });
 
@@ -264,7 +266,7 @@ describe("inlineSubCompositions – #ID selector scoping divergence", () => {
     const wrapper = host.querySelector("[data-hf-inner-root]");
     expect(wrapper?.getAttribute("data-composition-id")).toBe("scoped-text");
 
-    const scopedCss = result.styles.join("\n");
+    const scopedCss = result.styles.map((style) => style.css).join("\n");
     expect(scopedCss).toContain("display: flex");
   });
 
@@ -361,7 +363,7 @@ describe("inlineSubCompositions – #ID selector scoping divergence", () => {
     ]);
   });
 
-  it("deduplicates link hrefs across multiple sub-compositions", () => {
+  it("emits one link for the same link in two sub-compositions", () => {
     const subComp = `<!doctype html>
 <html><head>
   <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Montserrat:wght@800">
@@ -383,10 +385,10 @@ describe("inlineSubCompositions – #ID selector scoping divergence", () => {
       parseHtml: (html) => parseHTML(html).document,
     });
 
-    expect(result.externalLinks).toHaveLength(1);
-    expect(result.externalLinks[0]!.href).toBe(
-      "https://fonts.googleapis.com/css2?family=Montserrat:wght@800",
-    );
+    for (const link of result.externalLinks) ensureExternalLinkTag(document, link);
+    expect(
+      [...document.head.querySelectorAll("link")].map((el) => el.getAttribute("href")),
+    ).toEqual(["https://fonts.googleapis.com/css2?family=Montserrat:wght@800"]);
   });
 
   it("propagates data-timeline-locked from inner root to host element", () => {
@@ -445,7 +447,7 @@ describe("inlineSubCompositions – #ID selector scoping divergence", () => {
     expect(host.getAttribute("data-composition-id")).toBe("intro");
     expect(host.getAttribute("data-hf-authored-id")).toBe("intro");
 
-    const scopedCss = result.styles.join("\n");
+    const scopedCss = result.styles.map((style) => style.css).join("\n");
 
     // Root-only selector: must be compound
     expect(scopedCss).toMatch(/\[data-composition-id="intro"\]\[data-hf-authored-id="intro"\]/);
@@ -690,7 +692,9 @@ describe("inlineSubCompositions – sub-composition asset paths", () => {
   it("rewrites sibling refs in markup, hoisted CSS, and inline styles", () => {
     const { document, result } = inlineFrame();
     expect(document.querySelector("img")?.getAttribute("src")).toBe("design/styleframes/frame.png");
-    expect(result.styles.join("\n")).toContain("design/styleframes/frame.png");
+    expect(result.styles.map((style) => style.css).join("\n")).toContain(
+      "design/styleframes/frame.png",
+    );
     expect(document.querySelector("[style]")?.getAttribute("style")).toContain(
       "design/styleframes/frame.png",
     );

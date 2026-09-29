@@ -135,7 +135,7 @@ node <SKILL_DIR>/audio/scripts/audio.mjs \
   --request ./audio_request.json --hyperframes . --out ./audio_meta.json --only tts
 ```
 
-The engine saves `assets/voice/intro.wav`, measures its duration, and transcribes
+The engine saves `assets/voice/intro.wav` (or `intro-2.wav` when a file of yours already has that name; `voices[].path` says which), measures its duration, and transcribes
 it into `voices[].words` in `audio_meta.json`. Check that every requested line
 has audio and nonempty word timings before building a captioned video. Review
 the timings against the actual audio; transcription is estimated alignment,

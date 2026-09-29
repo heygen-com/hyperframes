@@ -1,6 +1,6 @@
 {
   "name": "@hyperframes/core",
-  "version": "0.8.79",
+  "version": "0.8.91",
   "description": "",
   "repository": {
     "type": "git",
@@ -52,6 +52,24 @@
       "import": "./src/utils/htmlAttrSafety.ts",
       "types": "./src/utils/htmlAttrSafety.ts"
     },
+    "./safe-path": {
+      "bun": "./src/safePath.ts",
+      "node": "./dist/safePath.js",
+      "import": "./src/safePath.ts",
+      "types": "./src/safePath.ts"
+    },
+    "./asset-paths": {
+      "bun": "./src/compiler/rewriteSubCompPaths.ts",
+      "node": "./dist/compiler/rewriteSubCompPaths.js",
+      "import": "./src/compiler/rewriteSubCompPaths.ts",
+      "types": "./src/compiler/rewriteSubCompPaths.ts"
+    },
+    "./runtime-script": {
+      "bun": "./src/generated/runtime-inline.ts",
+      "node": "./dist/generated/runtime-inline.js",
+      "import": "./src/generated/runtime-inline.ts",
+      "types": "./src/generated/runtime-inline.ts"
+    },
     "./rich-text-sanitize": {
       "bun": "./src/utils/richTextSanitize.ts",
       "node": "./dist/utils/richTextSanitize.js",
@@ -63,6 +81,12 @@
       "node": "./dist/compositionContract.js",
       "import": "./src/compositionContract.ts",
       "types": "./src/compositionContract.ts"
+    },
+    "./studio-preview-mark": {
+      "bun": "./src/studioPreviewMark.ts",
+      "node": "./dist/studioPreviewMark.js",
+      "import": "./src/studioPreviewMark.ts",
+      "types": "./src/studioPreviewMark.ts"
     },
     "./media-timing": {
       "bun": "./src/mediaTiming.ts",
@@ -117,6 +141,12 @@
       "node": "./dist/compiler/index.js",
       "import": "./src/compiler/index.ts",
       "types": "./src/compiler/index.ts"
+    },
+    "./projects": {
+      "bun": "./src/projects.ts",
+      "node": "./dist/projects.js",
+      "import": "./src/projects.ts",
+      "types": "./src/projects.ts"
     },
     "./audio-fx": {
       "bun": "./src/audioFx.ts",
@@ -458,6 +488,18 @@
         "import": "./dist/utils/htmlAttrSafety.js",
         "types": "./dist/utils/htmlAttrSafety.d.ts"
       },
+      "./safe-path": {
+        "import": "./dist/safePath.js",
+        "types": "./dist/safePath.d.ts"
+      },
+      "./asset-paths": {
+        "import": "./dist/compiler/rewriteSubCompPaths.js",
+        "types": "./dist/compiler/rewriteSubCompPaths.d.ts"
+      },
+      "./runtime-script": {
+        "import": "./dist/generated/runtime-inline.js",
+        "types": "./dist/generated/runtime-inline.d.ts"
+      },
       "./rich-text-sanitize": {
         "import": "./dist/utils/richTextSanitize.js",
         "types": "./dist/utils/richTextSanitize.d.ts"
@@ -465,6 +507,10 @@
       "./composition-contract": {
         "import": "./dist/compositionContract.js",
         "types": "./dist/compositionContract.d.ts"
+      },
+      "./studio-preview-mark": {
+        "import": "./dist/studioPreviewMark.js",
+        "types": "./dist/studioPreviewMark.d.ts"
       },
       "./media-timing": {
         "import": "./dist/mediaTiming.js",
@@ -501,6 +547,10 @@
       "./compiler": {
         "import": "./dist/compiler/index.js",
         "types": "./dist/compiler/index.d.ts"
+      },
+      "./projects": {
+        "import": "./dist/projects.js",
+        "types": "./dist/projects.d.ts"
       },
       "./audio-fx": {
         "import": "./dist/audioFx.js",

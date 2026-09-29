@@ -4,6 +4,7 @@ import { FONT_EXT, isMediaFile } from "../utils/mediaTypes";
 import { fontFamilyFromAssetPath, type ImportedFontAsset } from "../components/editor/fontAssets";
 import { findTagByTarget, type PatchTarget } from "../utils/sourcePatcher";
 import { StudioFileConflictError } from "../utils/studioSaveDiagnostics";
+import { serializeStudioFileMutation } from "../utils/studioFileMutationCoordinator";
 import { useFileTree } from "./useFileTree";
 import { useEditorSave } from "./useEditorSave";
 import { useProjectFileWriter } from "./useProjectFileWriter";
@@ -98,16 +99,18 @@ export function useFileManager({
 
   const overwriteExternalConflict = useCallback(
     async (conflict: StudioFileConflictError) => {
-      if (conflict.currentContent != null) {
-        await writeProjectFile(
-          conflict.filePath,
-          conflict.attemptedContent,
-          conflict.currentContent,
-        );
-      } else {
-        fileVersions.set(conflict.filePath, conflict.currentVersion);
-        await writeProjectFile(conflict.filePath, conflict.attemptedContent);
-      }
+      await serializeStudioFileMutation(writeProjectFile, conflict.filePath, async () => {
+        if (conflict.currentContent != null) {
+          await writeProjectFile(
+            conflict.filePath,
+            conflict.attemptedContent,
+            conflict.currentContent,
+          );
+        } else {
+          fileVersions.set(conflict.filePath, conflict.currentVersion);
+          await writeProjectFile(conflict.filePath, conflict.attemptedContent);
+        }
+      });
       updateEditingFileContent(conflict.filePath, conflict.attemptedContent);
     },
     [fileVersions, updateEditingFileContent, writeProjectFile],
@@ -207,8 +210,14 @@ export function useFileManager({
             showToast(`Skipped (too large): ${data.skipped.join(", ")}`);
           }
           if (data.invalid?.length) {
-            const names = data.invalid.map((entry: { name: string }) => entry.name).join(", ");
-            showToast(`Unsupported media skipped: ${names}`);
+            const why = data.invalid
+              .map((entry: { name: string; reason: string }) => `${entry.name} (${entry.reason})`)
+              .join(", ");
+            showToast(`Not added: ${why}`);
+          }
+          if (data.unchecked?.length) {
+            const names = data.unchecked.map((entry: { name: string }) => entry.name).join(", ");
+            showToast(`Added ${names}, ${data.unchecked[0].reason}`, "info");
           }
           await refreshFileTree();
           setRefreshKey((k) => k + 1);

@@ -10,12 +10,15 @@ import {
   stripEmbeddedRuntimeScripts,
   type BundleOptions,
 } from "@hyperframes/core/compiler";
+import { STUDIO_PREVIEW_MARK_META } from "@hyperframes/core/studio-preview-mark";
+import { injectTagsAtHeadStart } from "@hyperframes/core/compiler/html-document";
 import { isWithinProjectRoot } from "@hyperframes/parsers/asset-resolution";
 import type { ResolvedProject, StudioApiAdapter } from "../types.js";
-import { resolveWithinProject } from "../helpers/safePath.js";
+import { isProjectRootMissing, resolveWithinProject } from "../helpers/safePath.js";
 import { getMimeType } from "../helpers/mime.js";
 import { buildSubCompositionHtml, hasBaseElement } from "../helpers/subComposition.js";
 import {
+  createProjectSignature,
   resolveProjectAndSignature,
   resolveProjectSignature,
 } from "../helpers/projectSignature.js";
@@ -34,8 +37,11 @@ import { isVariablesPayload, VARIABLES_PAYLOAD_ERROR } from "../helpers/variable
 import { injectPreviewVariables } from "../helpers/previewVariables.js";
 import {
   resolveProxy,
+  waitForProxy,
   ProxyCapacityError,
   ProxyTranscodeError,
+  ProxyWaitTimeoutError,
+  PROXY_PENDING_RETRY_AFTER_SECONDS,
 } from "../helpers/proxyTranscoder.js";
 import {
   decideMediaProxyEligibility,
@@ -54,6 +60,7 @@ import {
   type PreviewApiAdapter,
 } from "../helpers/mediaProxyPreview.js";
 import { requestSubPath } from "../helpers/requestSubPath.js";
+import { lazyPreviewImages } from "../helpers/lazyPreviewImages.js";
 
 const PROJECT_SIGNATURE_META = "hyperframes-project-signature";
 const GSAP_CDN_VERSION = "3.15.0";
@@ -189,7 +196,8 @@ function injectStudioMotionScript(
   );
 }
 
-const GSAP_CDN_FALLBACK_SCRIPT = `<script data-hf-gsap-fallback>
+const GSAP_FALLBACK_ATTR = "data-hf-gsap-fallback";
+const GSAP_CDN_FALLBACK_SCRIPT = `<script ${GSAP_FALLBACK_ATTR}>
 (function(){
   var cdnBase="https://cdn.jsdelivr.net/npm/gsap@${GSAP_CDN_VERSION}/dist/";
   var loaded={};
@@ -211,7 +219,7 @@ const GSAP_CDN_FALLBACK_SCRIPT = `<script data-hf-gsap-fallback>
 </script>`;
 
 function injectGsapCdnFallback(html: string): string {
-  if (html.includes("data-hf-gsap-fallback")) return html;
+  if (html.includes(GSAP_FALLBACK_ATTR)) return html;
   if (html.includes("<head>")) return html.replace("<head>", "<head>" + GSAP_CDN_FALLBACK_SCRIPT);
   return GSAP_CDN_FALLBACK_SCRIPT + html;
 }
@@ -260,16 +268,23 @@ function previewVariablesFromRequest(rawVariables: string | undefined):
   return { raw: rawVariables, values: parse.values };
 }
 
+/** Captures screenshot right after a seek, so they get every image eager and no preview mark. */
+export const PREVIEW_CAPTURE_PARAM = "hf-capture";
+
 function injectStudioPreviewAugmentations(
   html: string,
   adapter: StudioApiAdapter,
   projectDir: string,
   activeCompositionPath: string,
+  capture: boolean,
 ): string {
+  const marked = capture
+    ? html
+    : injectTagsAtHeadStart(lazyPreviewImages(html), `<meta name="${STUDIO_PREVIEW_MARK_META}">`);
   return injectStudioMotionScript(
     injectMotionPathPluginIfNeeded(
       injectGsapCdnFallback(
-        injectProjectSignature(html, resolveProjectSignature(adapter, projectDir)),
+        injectProjectSignature(marked, resolveProjectSignature(adapter, projectDir)),
       ),
     ),
     projectDir,
@@ -357,6 +372,8 @@ export function registerPreviewRoutes(api: Hono, adapter: PreviewApiAdapter): vo
     project: ResolvedProject,
     previewVariables: Record<string, unknown> | null,
     builtKey: string,
+    capture: boolean,
+    signature: string,
   ): Promise<string | null> {
     const diskMain = resolveProjectMainHtml(project.dir, project.id);
     const normalizedDisk = diskMain ? ensureHfIds(diskMain.html) : null;
@@ -400,6 +417,7 @@ export function registerPreviewRoutes(api: Hono, adapter: PreviewApiAdapter): vo
         adapter,
         project.dir,
         mainCompositionPath,
+        capture,
       );
       if (previewVariables) bundled = injectPreviewVariables(bundled, previewVariables);
       bundled = await injectMediaCodecMap(
@@ -410,8 +428,10 @@ export function registerPreviewRoutes(api: Hono, adapter: PreviewApiAdapter): vo
         mediaCodecProbeCache,
       );
       bundled = addScenePartsManifest(bundled, [`meta[name="${PROJECT_SIGNATURE_META}"]`]);
-      rememberPreview(builtKey, bundled);
-      adapter.previewDocuments?.write(builtKey, bundled);
+      if (createProjectSignature(project.dir) === signature) {
+        rememberPreview(builtKey, bundled);
+        if (!capture) adapter.previewDocuments?.write(builtKey, bundled);
+      }
       return bundled;
     } catch {
       // Re-read disk on bundle failure so we serve the latest file content,
@@ -424,6 +444,7 @@ export function registerPreviewRoutes(api: Hono, adapter: PreviewApiAdapter): vo
           adapter,
           project.dir,
           fallback.compositionPath,
+          capture,
         );
         if (previewVariables) {
           fallbackAugmented = injectPreviewVariables(fallbackAugmented, previewVariables);
@@ -452,8 +473,9 @@ export function registerPreviewRoutes(api: Hono, adapter: PreviewApiAdapter): vo
     const vars = previewVariablesFromRequest(c.req.query("variables"));
     if (vars.error !== undefined) return c.json({ error: vars.error }, 400);
     const previewVariables = vars.values;
+    const capture = c.req.query(PREVIEW_CAPTURE_PARAM) !== undefined;
 
-    const etag = `"preview:${signature}${variablesEtagSalt(vars.raw)}"`;
+    const etag = `"preview:${signature}${variablesEtagSalt(vars.raw)}${capture ? ":capture" : ""}"`;
     const ifNoneMatch = c.req.header("If-None-Match");
     if (ifNoneMatch === etag) {
       return new Response(null, {
@@ -469,7 +491,7 @@ export function registerPreviewRoutes(api: Hono, adapter: PreviewApiAdapter): vo
     }
     let pending = previewBuilds.get(builtKey);
     if (!pending) {
-      pending = buildPreview(project, previewVariables, builtKey).finally(() =>
+      pending = buildPreview(project, previewVariables, builtKey, capture, signature).finally(() =>
         previewBuilds.delete(builtKey),
       );
       previewBuilds.set(builtKey, pending);
@@ -514,7 +536,8 @@ export function registerPreviewRoutes(api: Hono, adapter: PreviewApiAdapter): vo
     // a pre-pin cached response (preview-only ids, unstamped disk file) must
     // not revalidate to a 304 that skips the pin.
     const compPathHash = createHash("sha1").update(compPath).digest("hex");
-    const etag = `"comp:v2:${compPathHash}:${signature}${variablesEtagSalt(vars.raw)}"`;
+    const capture = c.req.query(PREVIEW_CAPTURE_PARAM) !== undefined;
+    const etag = `"comp:v2:${compPathHash}:${signature}${variablesEtagSalt(vars.raw)}${capture ? ":capture" : ""}"`;
     const ifNoneMatch = c.req.header("If-None-Match");
     if (ifNoneMatch === etag) {
       return new Response(null, {
@@ -537,7 +560,7 @@ export function registerPreviewRoutes(api: Hono, adapter: PreviewApiAdapter): vo
     if (!html) return c.text("not found", 404);
     recordPreviewReferences(project.dir, html);
     html = ensureHfIds(await transformPreviewHtml(html, adapter, project, compPath));
-    html = injectStudioPreviewAugmentations(html, adapter, project.dir, compPath);
+    html = injectStudioPreviewAugmentations(html, adapter, project.dir, compPath, capture);
     if (previewVariables) html = injectPreviewVariables(html, previewVariables);
     html = await injectMediaCodecMap(html, adapter, project.dir, compPath, mediaCodecProbeCache);
     return c.html(html, 200, previewCacheHeaders(etag));
@@ -612,19 +635,27 @@ export function registerPreviewRoutes(api: Hono, adapter: PreviewApiAdapter): vo
     let servedPath = file;
     let servedContentType = contentType;
     if (proxyVariant !== undefined) {
-      // Here, not at the eligibility gate above: one count per resolved proxy
-      // shares a unit with `prewarmsRequested`, and a revalidated repeat that
-      // 304s no longer counts as fresh demand.
-      recordProxyRequest();
       try {
-        servedPath = await resolveProxy(project.dir, file, proxyVariant);
+        // A cached copy settles before any timer; a transcode never holds one of
+        // the browser's few connections to this host. 202 until the copy lands.
+        servedPath = await waitForProxy(resolveProxy(project.dir, file, proxyVariant), 0);
       } catch (err) {
+        if (err instanceof ProxyWaitTimeoutError) {
+          return c.text("media proxy is being made", 202, {
+            "Retry-After": String(PROXY_PENDING_RETRY_AFTER_SECONDS),
+            "Cache-Control": "no-store",
+          });
+        }
         if (err instanceof ProxyCapacityError) {
           return c.text(err.message, 503, { "Retry-After": "5" });
         }
+        if (isProjectRootMissing(err)) throw err;
         const message = err instanceof ProxyTranscodeError ? err.message : "proxy transcode failed";
         return c.text(message, 502);
       }
+      // After the wait, not at the eligibility gate: one count per served proxy shares
+      // a unit with `prewarmsRequested`; a 304, a 202 or a failure serves none.
+      recordProxyRequest();
       servedContentType = PROXY_VARIANT_CONFIG[proxyVariant].contentType;
     }
 

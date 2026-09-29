@@ -46,6 +46,10 @@
     "packages/producer/src/services/healthWorkerThread.ts",
     // Render-setup worker, spawned by path from cancellableProcess.ts.
     "packages/cli/src/renderSetupWorker.ts",
+    // Update/skills cache refresh, spawned detached by path from backgroundChecks.ts.
+    "packages/cli/src/backgroundChecksWorker.ts",
+    // Parakeet decode worker, spawned by path from whisper/sherpa.ts.
+    "packages/cli/src/whisper/sherpaWorker.ts",
     // Test fixture worker, spawned by path via the pools' workerEntryPath
     // option from the crash-recovery tests; has no import-graph referrer.
     "packages/producer/src/services/__fixtures__/crashOnMessageWorker.mjs",
@@ -513,6 +517,8 @@
       "packages/studio-server/src/routes/files.test.ts",
       "packages/studio-server/src/routes/render.test.ts",
       "packages/studio-server/src/routes/lint.test.ts",
+      // extractionCache.test.ts: pre-existing parallel describe setup and publish-case arrange/assert blocks.
+      "packages/engine/src/services/extractionCache.test.ts",
       "packages/studio-server/src/routes/preview.test.ts",
       "packages/studio-server/src/routes/projects.test.ts",
       "packages/studio-server/src/helpers/backupJournal.test.ts",

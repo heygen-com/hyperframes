@@ -6,6 +6,7 @@ import { expect, it, vi } from "vitest";
 import type { DomEditSelection } from "./domEditing";
 import "./domEditOverlayTestMocks";
 import { DomEditOverlay } from "./DomEditOverlay";
+import { DomEditOverlay as PackageDomEditOverlay } from "../../index";
 
 (globalThis as unknown as { IS_REACT_ACT_ENVIRONMENT: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
@@ -73,4 +74,8 @@ it("rotates the hover box with the element", () => {
 
 it("leaves the hover box untransformed at angle zero", () => {
   expect(renderHover(0)).toBe("");
+});
+
+it("is exported from the package entry, so a host can mount it with its own commits", () => {
+  expect(PackageDomEditOverlay).toBe(DomEditOverlay);
 });

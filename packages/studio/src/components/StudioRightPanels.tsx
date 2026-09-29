@@ -23,14 +23,10 @@ import { useStudioPlaybackContext, useStudioShellContext } from "../contexts/Stu
 import { useFileManagerContext } from "../contexts/FileManagerContext";
 import { useDomEditContext } from "../contexts/DomEditContext";
 import { usePlayerStore } from "../player";
-import {
-  applyColorGradingScopeUpdate,
-  EMPTY_COLOR_GRADING_SCOPE_RESULT,
-  type ColorGradingScope,
-} from "./studioColorGradingScope";
 import { timelineKeysForSelections } from "../utils/studioHelpers";
 import { canHideSelections } from "../utils/timelineInspector";
 import { useRemoveBackground } from "../hooks/useRemoveBackground";
+import { useApplyColorGradingScope } from "../hooks/useApplyColorGradingScope";
 
 // fallow-ignore-next-line complexity
 export function StudioRightPanels({
@@ -49,14 +45,8 @@ export function StudioRightPanels({
   onAutoGroupCarveSources,
   onAddMediaOverlay,
 }: StudioRightPanelsProps) {
-  const {
-    previewIframeRef,
-    projectId,
-    activeCompPath,
-    showToast,
-    waitForPendingDomEditSaves,
-    renderQueue,
-  } = useStudioShellContext();
+  const { previewIframeRef, projectId, activeCompPath, showToast, renderQueue } =
+    useStudioShellContext();
   const { captionEditMode, refreshKey } = useStudioPlaybackContext();
 
   const {
@@ -114,7 +104,6 @@ export function StudioRightPanels({
     refreshFileTree,
     readProjectFile,
     writeProjectFile,
-    fileTree,
     editingFile,
   } = useFileManagerContext();
 
@@ -158,40 +147,7 @@ export function StudioRightPanels({
   });
   useCaptionDesignFocus(captionEditMode);
 
-  const handleApplyColorGradingScope = useCallback(
-    async (scope: ColorGradingScope, value: string | null) =>
-      applyColorGradingScopeUpdate({
-        scope,
-        value,
-        selectedSourceFile: domEditSelection?.sourceFile || activeCompPath || "index.html",
-        fileTree,
-        projectId,
-        waitForPendingDomEditSaves,
-        readProjectFile,
-        writeProjectFile,
-        recordEdit,
-        reloadPreview,
-        showToast,
-      }).catch((error) => {
-        showToast(
-          `Couldn't apply color grading: ${error instanceof Error ? error.message : String(error)}`,
-          "error",
-        );
-        return EMPTY_COLOR_GRADING_SCOPE_RESULT;
-      }),
-    [
-      activeCompPath,
-      domEditSelection?.sourceFile,
-      fileTree,
-      projectId,
-      readProjectFile,
-      recordEdit,
-      reloadPreview,
-      showToast,
-      waitForPendingDomEditSaves,
-      writeProjectFile,
-    ],
-  );
+  const handleApplyColorGradingScope = useApplyColorGradingScope(recordEdit, reloadPreview);
 
   const handleRemoveBackground = useRemoveBackground(projectId, refreshFileTree, showToast);
 

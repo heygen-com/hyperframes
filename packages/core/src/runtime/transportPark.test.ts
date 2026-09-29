@@ -123,6 +123,12 @@ describe("parked transport loop", () => {
     return frames;
   };
 
+  /** One frame at 120 Hz: the clock and the animation frame advance together. */
+  const frame120Hz = () => {
+    vi.advanceTimersByTime(8);
+    raf.step(8);
+  };
+
   /**
    * Park the transport AND drain init's own one-shot timers, several of which
    * post state and would otherwise be mistaken for a heartbeat. Leaves exactly
@@ -198,6 +204,88 @@ describe("parked transport loop", () => {
 
     const states = posted.filter((m) => m["type"] === "state");
     expect(states.at(-1)).toMatchObject({ isPlaying: false, ended: true, frame: 149 });
+  });
+
+  const setPlayRange = (startSeconds: number | null, endSeconds: number | null) =>
+    window.dispatchEvent(
+      new MessageEvent("message", {
+        source: window.parent,
+        data: {
+          source: "hf-parent",
+          type: "control",
+          action: "set-play-range",
+          startSeconds,
+          endSeconds,
+        },
+      }),
+    );
+  const stateMessages = () => posted.filter((m) => m["type"] === "state");
+
+  /** Mounts a 5 s film with clips a [0, 3) and b [3, 5), driven by a mocked clock. */
+  const mountRangeFilm = () => {
+    let nowMs = 1000;
+    vi.spyOn(performance, "now").mockImplementation(() => nowMs);
+    mount(
+      `<div id="a" data-start="0" data-duration="3"></div><div id="b" data-start="3" data-duration="2"></div>`,
+    );
+    const timeline = window.__timelines!.main!;
+    initSandboxRuntimeModular();
+    quiesce();
+    const frames: Array<{ time: number; b: string }> = [];
+    const step = () => {
+      nowMs += 7;
+      raf.step(7);
+      frames.push({ time: timeline.time(), b: document.getElementById("b")!.style.visibility });
+    };
+    const playOut = () => {
+      window.__player!.play();
+      for (let n = 0; n < 1000 && window.__player!.isPlaying(); n += 1) step();
+    };
+    return { timeline, frames, step, playOut };
+  };
+
+  it("stops on a play range's last frame, says it ended, and restarts at the range start only while it is set", () => {
+    const { timeline, frames, playOut } = mountRangeFilm();
+
+    setPlayRange(2, 3);
+    window.__player!.seek(2);
+    for (let wrap = 0; wrap < 3; wrap += 1) playOut();
+    expect(stateMessages().at(-1)).toMatchObject({ isPlaying: false, ended: true, frame: 89 });
+    expect(stateMessages().at(-1)?.["currentTime"]).toBeCloseTo(89 / 30, 9);
+    expect(timeline.time()).toBeCloseTo(89 / 30, 9);
+    expect(Math.max(...frames.map((f) => f.time))).toBeLessThan(3);
+    expect(frames.every((f) => f.b === "hidden")).toBe(true);
+    expect(document.getElementById("a")!.style.visibility).not.toBe("hidden");
+    expect(window.__player!.getDuration()).toBe(5);
+
+    const before = stateMessages().length;
+    window.__player!.play();
+    expect(stateMessages()[before]).toMatchObject({ isPlaying: true, frame: 60 });
+    window.__player!.pause();
+
+    setPlayRange(null, null);
+    playOut();
+    expect(stateMessages().at(-1)).toMatchObject({ isPlaying: false, ended: true, frame: 150 });
+    const atFilmEnd = stateMessages().length;
+    window.__player!.play();
+    expect(stateMessages()[atFilmEnd]).toMatchObject({ isPlaying: true, frame: 0 });
+  });
+
+  it("jumps to the range start and keeps playing when a new range leaves the playhead outside", () => {
+    const { step } = mountRangeFilm();
+    setPlayRange(2, 3);
+    window.__player!.seek(2.5);
+    window.__player!.play();
+    step();
+    const before = stateMessages().length;
+
+    setPlayRange(2, 2.4);
+
+    const after = stateMessages().slice(before);
+    expect(after.some((m) => m["ended"] === true)).toBe(false);
+    expect(after.at(-1)).toMatchObject({ isPlaying: true, currentTime: 2 });
+    expect(after.at(-1)?.["capabilities"]).toContain("play-range");
+    expect(window.__player!.isPlaying()).toBe(true);
   });
 
   // The render stops at the root's declared length too; a longer animation is cut off.
@@ -467,7 +555,7 @@ describe("parked transport loop", () => {
     expect(posted.filter((m) => m["type"] === "state")).toHaveLength(0);
   });
 
-  it("keeps the manifest on its frame cadence while playing, whatever the DOM does", () => {
+  it("rate-limits the manifest while playing, whatever the DOM does", () => {
     mount();
     initSandboxRuntimeModular();
     quiesce();
@@ -490,6 +578,85 @@ describe("parked transport loop", () => {
     const posts = posted.filter((m) => m["type"] === "timeline").length - before;
     // Main's cadence over 30 frames is one post per 20 frames, so at most two.
     expect(posts).toBeLessThanOrEqual(2);
+  });
+
+  it("does not re-post the manifest while playing a film that is not changing", () => {
+    mount();
+    initSandboxRuntimeModular();
+    quiesce();
+    window.__player!.play();
+    // Past the rebind policy's play hold, at 120 Hz.
+    for (let i = 0; i < 300; i += 1) frame120Hz();
+    const before = posted.filter((m) => m["type"] === "timeline").length;
+    for (let i = 0; i < 250; i += 1) frame120Hz();
+    expect(posted.filter((m) => m["type"] === "timeline").length - before).toBe(0);
+  });
+
+  it("posts a playing clip's new track, label and z-index on the next poll", async () => {
+    mount(
+      '<div id="clip" data-start="0" data-duration="5" data-track-index="0" data-timeline-label="Before" style="z-index: 1"></div>',
+    );
+    initSandboxRuntimeModular();
+    quiesce();
+    window.__player!.play();
+    for (let i = 0; i < 300; i += 1) frame120Hz();
+    const clip = document.getElementById("clip")!;
+    clip.setAttribute("data-track-index", "7");
+    clip.setAttribute("data-timeline-label", "After");
+    clip.style.zIndex = "9";
+    await flushObservers();
+    for (let i = 0; i < 130; i += 1) frame120Hz();
+    const clips = (posted.filter((m) => m["type"] === "timeline").at(-1)?.["clips"] ?? []) as Array<
+      Record<string, unknown>
+    >;
+    const clip_ = clips.find((c) => c["id"] === "clip");
+    expect([clip_?.["track"], clip_?.["timelineLabel"], clip_?.["zIndex"]]).toEqual([
+      7,
+      "After",
+      9,
+    ]);
+  });
+
+  it("posts a label edited while playing and paused before the next poll", async () => {
+    mount('<div id="clip" data-start="0" data-duration="5" data-timeline-label="Before"></div>');
+    initSandboxRuntimeModular();
+    quiesce();
+    window.__player!.play();
+    for (let i = 0; i < 300; i += 1) frame120Hz();
+    document.getElementById("clip")!.setAttribute("data-timeline-label", "After");
+    await flushObservers();
+    for (let i = 0; i < 12; i += 1) frame120Hz();
+    window.__player!.pause();
+    for (let i = 0; i < 300; i += 1) frame120Hz();
+    const clips = (posted.filter((m) => m["type"] === "timeline").at(-1)?.["clips"] ?? []) as Array<
+      Record<string, unknown>
+    >;
+    expect(clips.find((c) => c["id"] === "clip")?.["timelineLabel"]).toBe("After");
+  });
+
+  it("applies a data-width change while playing", async () => {
+    mount();
+    initSandboxRuntimeModular();
+    quiesce();
+    window.__player!.play();
+    for (let i = 0; i < 300; i += 1) frame120Hz();
+    const root = document.getElementById("root")!;
+    root.setAttribute("data-width", "640");
+    await flushObservers();
+    for (let i = 0; i < 60; i += 1) frame120Hz();
+    expect(root.style.width).toBe("640px");
+  });
+
+  it("applies a data-height change while parked", async () => {
+    mount();
+    initSandboxRuntimeModular();
+    quiesce();
+    const root = document.getElementById("root")!;
+    root.setAttribute("data-height", "360");
+    await flushObservers();
+    vi.advanceTimersByTime(PARK_HEARTBEAT_MS);
+    settle();
+    expect(root.style.height).toBe("360px");
   });
 
   it("does not park when the manifest post throws with a change still pending", async () => {

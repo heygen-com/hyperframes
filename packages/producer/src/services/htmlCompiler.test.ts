@@ -823,6 +823,27 @@ describe("detectRenderModeHints", () => {
     ).rejects.toThrow(/compositions\/intro\.html[\s\S]*compositions\/outro\.html/);
   });
 
+  it("compileForRender aborts naming a data-composition-src that points at a folder", async () => {
+    const projectDir = makeSubCompProject(
+      "hf-folder-subcomp-",
+      [{ id: "intro", src: "compositions/intro" }],
+      {},
+    );
+    try {
+      mkdirSync(join(projectDir, "compositions", "intro"));
+      writeFileSync(
+        join(projectDir, "compositions", "intro", "index.html"),
+        validSubCompHtml("intro", "Intro"),
+      );
+
+      await expect(
+        compileForRender(projectDir, join(projectDir, "index.html"), projectDir),
+      ).rejects.toThrow(/compositions\/intro[\s\S]*a folder, not an HTML file/);
+    } finally {
+      rmSync(projectDir, { recursive: true, force: true });
+    }
+  });
+
   it("compileForRender aborts when a data-composition-src reference points at a missing file", async () => {
     const projectDir = makeSubCompProject(
       "hf-missing-subcomp-",
@@ -1088,6 +1109,40 @@ describe("system-primary font normalization", () => {
     const rootStyle = document.querySelector('[data-composition-id="root"]')?.getAttribute("style");
     expect(rootStyle).toContain("--inline-system-font: Inter, system-ui, sans-serif");
     expect(rootStyle).toContain("font-family: Inter, sans-serif");
+  });
+
+  it("promotes Inter inside the fallback of an undefined var() before plan validation", async () => {
+    const projectDir = mkdtempSync(join(tmpdir(), "hf-var-system-font-"));
+    writeFileSync(
+      join(projectDir, "index.html"),
+      `<!doctype html>
+<html>
+  <head>
+    <style>
+      body {
+        font-family: var(
+          --font-display,
+          -apple-system,
+          BlinkMacSystemFont,
+          "Helvetica Neue",
+          Arial,
+          sans-serif
+        );
+      }
+    </style>
+  </head>
+  <body>
+    <div data-composition-id="root" data-width="640" data-height="360" data-duration="1">Hello</div>
+  </body>
+</html>`,
+    );
+
+    const compiled = await compileForRender(projectDir, join(projectDir, "index.html"), projectDir);
+
+    expect(() => validateNoSystemFonts(compiled.html)).not.toThrow();
+    expect(compiled.html.replace(/\s+/g, "")).toContain(
+      'font-family:var(--font-display,Inter,-apple-system,BlinkMacSystemFont,"HelveticaNeue",Arial,sans-serif)',
+    );
   });
 });
 

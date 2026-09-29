@@ -107,7 +107,7 @@ export function useEditorSave({
         projectId: candidate.projectId,
         label: "Edit source",
         coalesceKey: `source:${candidate.path}`,
-        files: { [candidate.path]: candidate.content },
+        files: { [candidate.path]: () => candidate.content },
         readFile: readProjectFile,
         writeFile: writeProjectFile,
         recordEdit,

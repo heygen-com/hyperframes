@@ -7,8 +7,15 @@ import {
   mergeTimelineElementsPreservingDowngrades,
 } from "./timelineDOM";
 import { isTimelineIgnoredElement } from "./timelineElementHelpers";
+import { clipTimingStart, resolveClipTimingBasis } from "../../hooks/gsapShared";
+import { toAuthoredStart } from "../store/timelineElement";
 import { computeResizePreview } from "../components/timelineClipDragPreview";
 import type { TimelineElement } from "../store/playerStore";
+import {
+  MAX_PLAYBACK_RATE,
+  MIN_PLAYBACK_RATE,
+  readMediaOffsetSeconds,
+} from "@hyperframes/parsers/media-duration";
 
 function el(id: string, extra: Partial<TimelineElement> = {}): TimelineElement {
   return { id, tag: "img", start: 0, duration: 5, track: 0, ...extra };
@@ -19,6 +26,129 @@ function makeDoc(html: string): Document {
   d.body.innerHTML = html;
   return d;
 }
+
+describe("parseTimelineFromDOM — nested master time", () => {
+  it("adds every enclosing host's start to a clip inside a sub-composition", () => {
+    const doc = makeDoc(`
+      <div data-composition-id="main" data-start="0" data-duration="20">
+        <div id="intro" data-composition-id="intro" data-start="2" data-duration="10">
+          <div data-composition-id="intro">
+            <div id="logo" data-composition-id="logo" data-start="3" data-duration="5">
+              <div data-composition-id="logo">
+                <div id="badge" class="clip" data-start="1" data-duration="2"></div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    `);
+    const starts = parseTimelineFromDOM(doc, 20).map((e) => [
+      e.domId,
+      e.start,
+      e.parentCompositionStart,
+    ]);
+    expect(starts).toEqual([
+      ["intro", 2, 0],
+      ["logo", 5, 2],
+      ["badge", 6, 5],
+    ]);
+  });
+
+  it("places a clip inside a referenced scene after the scene's authored length", () => {
+    const doc = makeDoc(`
+      <div data-composition-id="main" data-start="0" data-duration="20">
+        <div id="s1" data-composition-id="s1" data-start="0" data-hf-authored-duration="8"></div>
+        <div id="s2" data-composition-id="s2" data-start="s1 + 1" data-duration="6">
+          <div data-composition-id="s2">
+            <div id="c" class="clip" data-start="1" data-duration="2"></div>
+          </div>
+        </div>
+      </div>
+    `);
+    const timelines = { s1: { duration: () => 6 } } as never;
+    const c = parseTimelineFromDOM(doc, 20, timelines).find((e) => e.domId === "c");
+    expect(c?.start).toBe(10);
+  });
+});
+
+describe("parseTimelineFromDOM — nested rows' keyframe basis", () => {
+  const doc = () =>
+    makeDoc(`
+      <div data-composition-id="main" data-start="0" data-duration="20">
+        <div id="intro" data-composition-id="intro" data-start="2" data-duration="10">
+          <div data-composition-id="intro">
+            <video id="vo" data-start="7" data-duration="2" data-hf-media-start-basis="global"></video>
+            <div id="logo" data-composition-id="logo" data-start="3" data-duration="5">
+              <div data-composition-id="logo">
+                <div id="badge" class="clip" data-start="1" data-duration="2"></div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    `);
+
+  it("measures diamonds and keyframe percentages against the local tween clock", () => {
+    const rows = parseTimelineFromDOM(doc(), 20);
+    const basis = (id: string) => resolveClipTimingBasis(id, "index.html", rows, []).elStart;
+    const at = (id: string) => rows.find((e) => e.domId === id)!;
+    expect([clipTimingStart(at("logo")), basis("logo")]).toEqual([3, 3]);
+    expect([clipTimingStart(at("badge")), basis("badge")]).toEqual([1, 1]);
+  });
+
+  it("keys a legacy root-time video on its host's clock but writes its start as master time", () => {
+    const vo = parseTimelineFromDOM(doc(), 20).find((e) => e.domId === "vo")!;
+    expect(vo.start).toBe(7);
+    expect(clipTimingStart(vo)).toBe(5);
+    expect(toAuthoredStart(vo, 8)).toBe(8);
+  });
+});
+
+describe("parseTimelineFromDOM — media in-point", () => {
+  it("reads a negative in-point as 0, as the runtime does, so a head trim keeps the clip", () => {
+    const doc = makeDoc(`
+      <div data-composition-id="root">
+        <video id="v" class="clip" data-start="2" data-duration="1" data-media-start="-1"></video>
+      </div>
+    `);
+    const element = parseTimelineFromDOM(doc, 10).find((e) => e.domId === "v")!;
+    expect(element.playbackStart).toBe(0);
+
+    const preview = computeResizePreview(
+      {
+        element,
+        edge: "start",
+        originClientX: 0,
+        previewStart: 2,
+        previewDuration: 1,
+        started: true,
+      },
+      10,
+      { scroll: null, pps: 100, buildSnapTargets: () => [] },
+    );
+    expect(preview.previewDuration).toBe(0.9);
+  });
+});
+
+describe("parseTimelineFromDOM — in-point read as playback reads it", () => {
+  it.each([
+    ['data-playback-start="-1" data-media-start="2"', 2, "playback-start"],
+    ['data-playback-start="abc" data-media-start="2"', 2, "playback-start"],
+    ['data-media-start="junk"', 0, "media-start"],
+    ['data-media-start="1.5s"', 0, "media-start"],
+  ])("%s", (inPoint, playbackStart, playbackStartAttr) => {
+    const doc = makeDoc(
+      `<div data-composition-id="root"><video id="v" class="clip" data-start="0" data-duration="4" ${inPoint}></video></div>`,
+    );
+    const element = parseTimelineFromDOM(doc, 10).find((e) => e.domId === "v")!;
+    const video = doc.getElementById("v")!;
+    expect(element.playbackStart).toBe(readMediaOffsetSeconds((n) => video.getAttribute(n)));
+    expect([element.playbackStart, element.playbackStartAttr]).toEqual([
+      playbackStart,
+      playbackStartAttr,
+    ]);
+  });
+});
 
 describe("parseTimelineFromDOM — hfId from data-hf-id", () => {
   it("bridges a real GSAP transition marker onto both named clips", () => {
@@ -222,19 +352,49 @@ describe("group info cache", () => {
 
 describe("parseTimelineFromDOM — canonical playback rate", () => {
   it.each([
-    ["10", 5],
-    ["0.01", 0.1],
-  ])("clamps authored rate %s to %s for trim and split math", (authored, expected) => {
-    const doc = makeDoc(`
+    ["8", 8],
+    ["10", MAX_PLAYBACK_RATE],
+    ["50", MAX_PLAYBACK_RATE],
+    ["0.01", MIN_PLAYBACK_RATE],
+  ])(
+    "clamps authored rate %s to %s, as playback does, for trim and split math",
+    (authored, expected) => {
+      const doc = makeDoc(`
       <div data-composition-id="root">
         <div id="nested" class="clip" data-composition-src="scene.html"
           data-start="0" data-duration="5" data-playback-rate="${authored}"></div>
       </div>
     `);
 
-    const nested = parseTimelineFromDOM(doc, 10).find((entry) => entry.domId === "nested");
+      const nested = parseTimelineFromDOM(doc, 10).find((entry) => entry.domId === "nested");
 
-    expect(nested?.playbackRate).toBe(expected);
+      expect(nested?.playbackRate).toBe(expected);
+    },
+  );
+});
+
+describe("parseTimelineFromDOM — head trim at an authored speed above 5x", () => {
+  it("moves the in-point by the speed playback uses", () => {
+    const doc = makeDoc(`
+      <div data-composition-id="root">
+        <video id="v" class="clip" data-start="2" data-duration="4" data-media-start="1"
+          data-playback-rate="8"></video>
+      </div>
+    `);
+    const element = parseTimelineFromDOM(doc, 10).find((e) => e.domId === "v")!;
+    const preview = computeResizePreview(
+      {
+        element,
+        edge: "start",
+        originClientX: 0,
+        previewStart: 2,
+        previewDuration: 4,
+        started: true,
+      },
+      100,
+      { scroll: null, pps: 100, buildSnapTargets: () => [] },
+    );
+    expect([preview.previewStart, preview.previewPlaybackStart]).toEqual([3, 9]);
   });
 });
 
@@ -499,4 +659,75 @@ describe("a composition clip's source length", () => {
     expect(card?.src).toBe("card.png");
     expect(card?.sourceDuration).toBeUndefined();
   });
+});
+
+describe("what the live clip list says a clip plays", () => {
+  function manifestVideo(attrs: string): TimelineElement {
+    const doc = makeDoc(
+      `<div data-composition-id="root"><video id="v" src="a.mp4" data-start="0" data-duration="4" ${attrs}></video></div>`,
+    );
+    return createTimelineElementFromManifestClip({
+      clip: {
+        id: "v",
+        label: "v",
+        kind: "video",
+        tagName: "video",
+        start: 0,
+        duration: 4,
+        track: 0,
+        assetUrl: null,
+      },
+      fallbackIndex: 0,
+      doc,
+      hostEl: doc.getElementById("v"),
+    });
+  }
+
+  it("carries data-volume and muted from the element", () => {
+    expect(manifestVideo('data-volume="0" muted')).toMatchObject({ volume: 0, muted: true });
+    const plain = manifestVideo("");
+    expect(plain.volume).toBeUndefined();
+    expect(plain.muted).toBeUndefined();
+  });
+
+  it("carries the clip-edge fades, and drops a zero one", () => {
+    const faded = manifestVideo('data-fade-in="1.5" data-fade-out="0"');
+    expect(faded.fadeIn).toBe(1.5);
+    expect(faded.fadeOut).toBeUndefined();
+  });
+
+  it("gives a video with neither muted nor data-has-audio sound, as the compiler does", () => {
+    expect(manifestVideo("").hasAudio).toBe(true);
+    expect(manifestVideo("muted").hasAudio).toBeUndefined();
+    expect(manifestVideo('data-has-audio="false"').hasAudio).toBeUndefined();
+    expect(manifestVideo('muted data-has-audio="true"')).toMatchObject({
+      hasAudio: true,
+      muted: true,
+    });
+  });
+
+  it.each(["", ' data-has-audio="true"'])(
+    "does not give a timed wrapper the sound of an untimed video%s inside it",
+    (videoAttrs) => {
+      const doc = makeDoc(
+        `<div data-composition-id="root"><div id="w" data-start="0" data-duration="4"><video src="a.mp4"${videoAttrs}></video></div></div>`,
+      );
+      const wrapper = createTimelineElementFromManifestClip({
+        clip: {
+          id: "w",
+          label: "w",
+          kind: "element",
+          tagName: "div",
+          start: 0,
+          duration: 4,
+          track: 0,
+          assetUrl: null,
+        },
+        fallbackIndex: 0,
+        doc,
+        hostEl: doc.getElementById("w"),
+      });
+      expect(wrapper.hasAudio).toBeUndefined();
+    },
+  );
 });

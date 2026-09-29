@@ -44,6 +44,35 @@ describe("SidebarLintButton badge", () => {
     expect(badge?.textContent).toContain("including errors");
   });
 
+  it("pulses a few times and then holds still, so an idle Studio paints nothing", () => {
+    const badge = renderBadge(true);
+    expect(badge?.style.animationIterationCount).toBe("3");
+  });
+
+  it("pulses again when the finding count changes", () => {
+    const host = document.createElement("div");
+    document.body.append(host);
+    root = createRoot(host);
+    const render = (findingCount: number) =>
+      act(() => {
+        root?.render(
+          <SidebarLintButton
+            onLint={vi.fn()}
+            linting={false}
+            findingCount={findingCount}
+            hasError
+          />,
+        );
+      });
+    render(2);
+    const first = host.querySelector("[data-lint-badge]");
+    render(2);
+    expect(host.querySelector("[data-lint-badge]")).toBe(first);
+    render(3);
+    // A new element restarts its CSS animation; a text change on the old one would not.
+    expect(host.querySelector("[data-lint-badge]")).not.toBe(first);
+  });
+
   it("stays still when the findings are warnings only", () => {
     const badge = renderBadge(false);
     expect(badge?.dataset.lintBadge).toBe("warning");

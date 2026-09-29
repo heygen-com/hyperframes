@@ -269,6 +269,20 @@ describe("missing_or_empty_sub_composition", () => {
     expect(finding?.message).toContain("does not exist");
   });
 
+  it("errors, instead of crashing, when the referenced sub-composition is a folder", async () => {
+    const project = makeProject(htmlWithSubComp("compositions/scene-title"), {});
+    mkdirSync(join(project, "compositions", "scene-title"));
+    writeFileSync(join(project, "compositions", "scene-title", "index.html"), validSubCompHtml());
+    const { results } = await lintProject(project);
+    const finding = results
+      .flatMap((r) => r.result.findings)
+      .find((f) => f.code === "missing_or_empty_sub_composition");
+
+    expect(finding?.message).toContain("compositions/scene-title");
+    expect(finding?.message).toContain("a folder, not an HTML file");
+    expect(finding?.fixHint).toContain('"compositions/scene-title/index.html"');
+  });
+
   it("errors when the referenced sub-composition file has content but no data-composition-id root", async () => {
     const { finding, totalErrors } = await lintSubComp("compositions/scene-title.html", {
       "scene-title.html": "<!doctype html><html><body><p>TODO: scene content</p></body></html>",
@@ -660,6 +674,46 @@ describe("video_media_start_at_or_past_eof", () => {
     mockDurationProbe(2);
 
     expect(await mediaStartFindings(project)).toEqual([]);
+  });
+});
+
+describe("missing asset findings name the file that references them", () => {
+  it("points a draft section's missing image, audio and mask at the draft, not the film", async () => {
+    const project = makeProject(
+      `<html><body>
+  <div data-composition-id="main" data-width="1920" data-height="1080" data-start="0" data-duration="10">
+    <img src="assets/missing-in-film.png" />
+    <div data-composition-src="compositions/draft.html" data-composition-id="draft" data-start="0" data-duration="5"></div>
+  </div>
+</body></html>`,
+      {
+        "draft.html": `<!doctype html><html><body>
+  <div data-composition-id="draft" data-width="1920" data-height="1080">
+    <style>.masked { mask-image: url(../assets/missing-mask.png); }</style>
+    <img src="../assets/missing-in-draft.png" />
+    <audio src="../assets/missing-in-draft.mp3" data-start="0" data-duration="5"></audio>
+  </div>
+</body></html>`,
+      },
+    );
+
+    const { results } = await lintProject(project);
+    const fileOf = (code: string, name: string) =>
+      results
+        .flatMap((entry) => entry.result.findings)
+        .find((finding) => finding.code === code && finding.message.includes(name))?.file;
+
+    const draft = join(project, "compositions", "draft.html");
+    expect(fileOf("missing_local_asset", "missing-in-draft.png")).toBe(draft);
+    expect(fileOf("audio_src_not_found", "missing-in-draft.mp3")).toBe(draft);
+    expect(fileOf("texture_mask_asset_not_found", "missing-mask.png")).toBe(draft);
+    expect(fileOf("missing_local_asset", "missing-in-film.png")).toBe(join(project, "index.html"));
+    const entryOf = (name: string) =>
+      results.find((entry) => entry.result.findings.some((f) => f.message.includes(name)))?.file;
+    expect(entryOf("missing-in-draft.png")).toBe("compositions/draft.html");
+    expect(entryOf("missing-in-draft.mp3")).toBe("compositions/draft.html");
+    expect(entryOf("missing-mask.png")).toBe("compositions/draft.html");
+    expect(entryOf("missing-in-film.png")).toBe("index.html");
   });
 });
 

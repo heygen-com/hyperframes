@@ -1,13 +1,18 @@
 ---
 name: hyperframes-studio
 description: >
-  Use when building or editing a HyperFrames project that people open in
-  Studio: how the timeline should be laid out so it reads well (one caption
-  track, one element kind per track, every scene a sub-composition) and where
-  captions and key content may sit (safe zones). Don't use for how to perform an
+  Use when working with a person on a HyperFrames project in Studio: first,
+  whether their message asks for a change at all (questions, loose ideas and
+  "don't change anything" get an answer and a plan, not an edit); for a new
+  film, the plan, storyboard and build order that the HyperFrames launch films follow;
+  and how the timeline should be laid out so it reads well (one caption track,
+  one element kind per track, every scene a sub-composition) and where captions
+  and key content may sit (safe zones). Don't use for how to perform an
   individual edit (split, trim, retime, volume, copy, swap): that is
   `creator-editing-recipes.md` in `/hyperframes-core`.
 ---
+
+**Plugin installs:** Before setup or freshness commands, follow [plugin execution rules](../hyperframes/references/plugin-installation.md) when this skill is inside a HyperFrames plugin. Standalone installs keep the update instructions below.
 
 # HyperFrames Studio conventions
 
@@ -16,6 +21,39 @@ rules below opens as a short, readable timeline; one that does not opens as a wa
 of unlabeled rows the user cannot edit. These are conventions for what to build.
 For how to change a clip, follow `/hyperframes-core` `references/creator-editing-recipes.md`
 and never invent a different form of the same edit.
+
+## 0. Talk before you build
+
+Read the message before you open a file. Decide what it asks for:
+
+| The person                                                                                 | You                                                                                                                                                                   |
+| ------------------------------------------------------------------------------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| names a change, however politely ("make the title bigger", "can you cut the third scene?") | Make it.                                                                                                                                                              |
+| gives a felt note on the built film ("the intro feels jolty", "it doesn't go long enough") | Find the cause, change the measurable thing, say what the note meant and what moved, and record it per `/hyperframes-creative` `references/storyboard-recipe.md` § 4. |
+| asks a question and names no change ("why does the title jump?")                           | Answer it. Change nothing.                                                                                                                                            |
+| says don't change anything, hold, "just thinking", "let's talk"                            | Change no file, not even a fix you noticed. Offer it in words.                                                                                                        |
+| brings an idea for this film with no concrete change ("I want the ending to feel bigger")  | Propose the change and add it to the plan (below). Change no composition file.                                                                                        |
+| asks for a new film                                                                        | Plan it (§ 5).                                                                                                                                                        |
+| approves a plan ("build it", "go")                                                         | Build what was approved.                                                                                                                                              |
+
+A message that asks a question and names a change gets the answer and the change. Only when you
+cannot tell whether it asks for anything is it a conversation: a wrong answer costs one message; a
+wrong build costs a long run and a round of notes.
+
+A conversation reply:
+
+- Answer first, in plain words, in a few sentences.
+- Ask only questions whose answer changes the film, each with a recommended answer and its
+  trade-off ("30 seconds fits a feed; 60 leaves room for the demo").
+- When there is an idea to shape: for a new film, directions per `/hyperframes`
+  `references/pitch-round.md`; for an idea about this film, two or three options for the part named.
+  Recommend one.
+- End with the next step and the word that starts it ("Say build and I'll start").
+
+Keep the plan in the project, not only in the chat: the next message may start a new session that
+cannot see this one. Add it to STORYBOARD.md the way `/hyperframes-creative`
+`references/storyboard-recipe.md` § 4 records a round; never overwrite locked frames. If the person
+asked you to change nothing at all, write nothing: put the plan in the reply and offer to save it.
 
 ## 1. Every scene is a sub-composition
 
@@ -68,6 +106,33 @@ toggle draws them with a tick at the midpoint of every edge. Source:
 
 - Safe margins: everything visible stays inside the action-safe box (90%), and captions and key content stay inside the title-safe box (80%).
 - Two-up and 50/50 layouts keep each half's content inside the title-safe box.
+
+## 5. A new film: plan, storyboard, build
+
+The [hyperframes-launches](https://github.com/heygen-com/hyperframes-launches) films were made in
+this order. Each step has an owner; follow it and do not restate it here.
+
+| Step          | Owner                                                                                                                                                                                                                                                                                                                                                                                                                          |
+| ------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| 1. Brief      | `/hyperframes` `references/intent-interview.md`. Inside an existing project, only a follow-on to the same film stays: a new version or a cutdown, same workflow and aspect. Ask its must-have questions, skip `hyperframes init`, never overwrite BRIEF.md or STORYBOARD.md, add a new dated section to each, and say so in the reply. A film with a different workflow or aspect starts a new project, and the reply says so. |
+| 2. Directions | `/hyperframes` `references/pitch-round.md`                                                                                                                                                                                                                                                                                                                                                                                     |
+| 3. Storyboard | `/hyperframes-creative` `references/storyboard-recipe.md`                                                                                                                                                                                                                                                                                                                                                                      |
+| 4. Build      | The workflow the brief routes to (`/hyperframes` § 2) and its own references                                                                                                                                                                                                                                                                                                                                                   |
+| 5. Notes      | `/hyperframes` `references/review-loop.md`                                                                                                                                                                                                                                                                                                                                                                                     |
+
+What the launch films add, for a product launch. Where the workflow's chosen arc says otherwise,
+the arc wins.
+
+- **Real footage for the launched product.** Ask for a screen recording in the brief unless the workflow captures it itself (a site from its URL), and hold its
+  slot with a labelled placeholder until it arrives. Never approximate the launched product's UI. A
+  third-party tool shown as context (a chat app, an editor) is rebuilt faithfully from a capture.
+- **One world.** The same window or canvas continues across beats. Scrub every cut: whatever
+  persists must not jump.
+- **Cursors and scrolled content.** A cursor, or content the window itself scrolls out, leaves
+  through the window or frame edge, not by fading mid-frame. Element and text swaps follow the
+  workflow's `cut-catalog.md` where it has one.
+- **Close on the command or the address,** with the logo landing in footage that is still moving.
+- **State the runtime at every version.** Running past the target is the person's call, not yours.
 
 ## Checking your work
 

@@ -874,6 +874,100 @@ describe("syncRuntimeMedia", () => {
       expect(clip.el.play).not.toHaveBeenCalled();
     });
 
+    it("starts an audio clip due within the next tick, from its first sample", () => {
+      const clip = createMockClip({ start: 5, end: 6, mediaStart: 2 }, "audio");
+      syncRuntimeMedia({
+        clips: [clip],
+        timeSeconds: 4.99,
+        playing: true,
+        playbackRate: 1,
+        cueAheadSeconds: 0.017,
+      });
+      expect(clip.el.play).toHaveBeenCalledTimes(1);
+      expect(clip.el.currentTime).toBe(2);
+    });
+
+    it("does not start an audio clip further away than the next tick", () => {
+      const clip = createMockClip({ start: 5, end: 6 }, "audio");
+      syncRuntimeMedia({
+        clips: [clip],
+        timeSeconds: 4.95,
+        playing: true,
+        playbackRate: 1,
+        cueAheadSeconds: 0.017,
+      });
+      expect(clip.el.play).not.toHaveBeenCalled();
+    });
+
+    it("does not start a sped-up clip so early that its window opens it past strict sync", () => {
+      const clip = createMockClip({ start: 5, end: 6, rate: 3 }, "audio");
+      syncRuntimeMedia({
+        clips: [clip],
+        timeSeconds: 4.98,
+        playing: true,
+        playbackRate: 1,
+        cueAheadSeconds: 0.034,
+      });
+      expect(clip.el.play).not.toHaveBeenCalled();
+    });
+
+    it("keeps a clip it started early playing when the next tick is shorter", () => {
+      const clip = createMockClip({ start: 5, end: 6 }, "audio");
+      syncRuntimeMedia({
+        clips: [clip],
+        timeSeconds: 4.97,
+        playing: true,
+        playbackRate: 1,
+        cueAheadSeconds: 0.034,
+      });
+      Object.defineProperty(clip.el, "paused", {
+        value: false,
+        writable: true,
+        configurable: true,
+      });
+      syncRuntimeMedia({
+        clips: [clip],
+        timeSeconds: 4.98,
+        playing: true,
+        playbackRate: 1,
+        cueAheadSeconds: 0.01,
+      });
+      expect(clip.el.pause).not.toHaveBeenCalled();
+    });
+
+    it("does not start a clip again once the playhead is past it", () => {
+      const clip = createMockClip({ start: 5, end: 6 }, "audio");
+      syncRuntimeMedia({
+        clips: [clip],
+        timeSeconds: 6.01,
+        playing: true,
+        playbackRate: 1,
+        cueAheadSeconds: 0.017,
+      });
+      expect(clip.el.play).not.toHaveBeenCalled();
+    });
+
+    it("starts nothing early while paused, and never a video", () => {
+      const audio = createMockClip({ start: 5, end: 6 }, "audio");
+      syncRuntimeMedia({
+        clips: [audio],
+        timeSeconds: 4.99,
+        playing: false,
+        playbackRate: 1,
+        cueAheadSeconds: 0.017,
+      });
+      const video = createMockClip({ start: 5, end: 6 }, "video");
+      syncRuntimeMedia({
+        clips: [video],
+        timeSeconds: 4.99,
+        playing: true,
+        playbackRate: 1,
+        cueAheadSeconds: 0.017,
+      });
+      expect(audio.el.play).not.toHaveBeenCalled();
+      expect(video.el.play).not.toHaveBeenCalled();
+    });
+
     it("does not play() an element whose networkState is NO_SOURCE", () => {
       const clip = createMockClip({ start: 0, end: 10 });
       Object.defineProperty(clip.el, "networkState", { value: 3, configurable: true });

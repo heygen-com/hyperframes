@@ -8,6 +8,7 @@ import {
   wrapScopedCompositionScript,
 } from "../compiler/compositionScoping";
 import { parseImportMap } from "../compiler/importMaps";
+import { hasSameLink } from "../compiler/scriptRuns";
 import { parseLayoutDimension } from "./compositionDimension";
 import { markFlattenedInnerRoot } from "./flattenedRoot";
 import {
@@ -457,10 +458,10 @@ async function mountCompositionContent(params: {
     if (!rawHref) continue;
     const href = params.compositionUrl ? new URL(rawHref, params.compositionUrl).href : rawHref;
     if (params.compositionUrl && isSameDocumentUrl(href, params.compositionUrl)) continue;
-    if (document.head.querySelector(`link[href="${CSS.escape(href)}"]`)) continue;
     const clonedLink = link.cloneNode(true);
     if (!isLinkElement(clonedLink)) continue;
     clonedLink.href = href;
+    if (hasSameLink(document.head, clonedLink)) continue;
     document.head.appendChild(clonedLink);
     params.injectedLinks.push(clonedLink);
   }

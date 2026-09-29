@@ -2,6 +2,8 @@ import { copyFileSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { defineConfig } from "vitest/config";
+// Before workers fork, as below: the test run gets a home folder of its own.
+import "./scripts/test-home.mjs";
 
 // Windows: sharp's first text render builds Fontconfig's cache for every OS font (about 9 s on a
 // fresh runner). Set here, before workers fork, because an in-process env write never reaches it.

@@ -18,8 +18,9 @@ import { spawnSync } from "node:child_process";
 import { tmpdir } from "node:os";
 import { basename, dirname, join, relative } from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { fileContentVersion, recordFileWriteReceipt } from "../helpers/fileVersion";
+import { fileContentVersion, hashOfVersion, recordFileWriteReceipt } from "../helpers/fileVersion";
 import { HistoryBusyError } from "./ownerLock";
+import { HistoryIdError } from "./historyId";
 import { HistoryClosedError, openProjectHistory, type ProjectHistory } from "./projectHistory";
 import { START, type HistoryWho } from "./historyLog";
 
@@ -632,17 +633,96 @@ describe("openProjectHistory", () => {
     );
   });
 
-  it("gives a folder whose history record cannot prove it is that folder a history of its own", async () => {
+  it("keeps the history of a record 0.8.78 wrote for this folder, and records the folder's identity", async () => {
     const { history, write, projectDir, historyRoot } = await project({ "index.html": "v1" });
     await change(history, you, "Old change", () => write("index.html", "v2"));
     await history.close();
-    writeFileSync(
-      join(historyRoot, history.projectId, "project.json"),
-      JSON.stringify({ dir: projectDir }),
-    );
+    const record = join(historyRoot, history.projectId, "project.json");
+    writeFileSync(record, JSON.stringify({ dir: projectDir }));
 
     const again = await open(projectDir, historyRoot);
-    expect([again.projectId === history.projectId, again.list()]).toEqual([false, []]);
+    expect(again.projectId).toBe(history.projectId);
+    expect(again.list().map((entry) => entry.label)).toEqual(["Old change"]);
+    expect(JSON.parse(readFileSync(record, "utf-8"))).toMatchObject({
+      dir: projectDir,
+      ino: expect.any(Number),
+    });
+  });
+
+  describe("a history 0.8.78 wrote", () => {
+    const fixture = join(import.meta.dirname, "__fixtures__", "history-0.8.78");
+    const fixtureId = readFileSync(join(fixture, "history-id"), "utf-8").trim();
+
+    /** The fixture's project and history root, laid out as 0.8.78 left them. */
+    function legacyProject(recordedDir: (projectDir: string) => string) {
+      const projectDir = tempDir("hf-history-legacy-");
+      const historyRoot = tempDir("hf-history-legacy-root-");
+      cpSync(join(fixture, "root"), historyRoot, { recursive: true });
+      mkdirSync(join(projectDir, ".hyperframes"));
+      cpSync(join(fixture, "history-id"), join(projectDir, ".hyperframes", "history-id"));
+      cpSync(join(fixture, "index.html"), join(projectDir, "index.html"));
+      const record = join(historyRoot, fixtureId, "project.json");
+      writeFileSync(record, JSON.stringify({ dir: recordedDir(projectDir) }));
+      return { projectDir, historyRoot };
+    }
+
+    it.each([
+      ["at the path it was recorded for", (projectDir: string) => projectDir],
+      ["moved since", (projectDir: string) => `${projectDir}-before-the-move`],
+    ])("opens %s with every entry, and can undo them", async (_, recordedDir) => {
+      const { projectDir, historyRoot } = legacyProject(recordedDir);
+
+      const history = await open(projectDir, historyRoot);
+      expect(history.projectId).toBe(fixtureId);
+      expect(inside(projectDir, ".hyperframes/history-id").trim()).toBe(fixtureId);
+      const entries = history.list();
+      expect(entries.map((entry) => [entry.who.name, entry.label])).toEqual([
+        ["You", "Moved Title"],
+        ["Agent", "Agent turn"],
+      ]);
+      expect(await history.undo(entries[1]!.id, { who: you })).toMatchObject({ ok: true });
+      expect(inside(projectDir, "index.html")).toBe("<p>v2</p>\n");
+    });
+
+    it.each([
+      ["empty", ""],
+      ["null", "null"],
+    ])("keeps the id when the record is %s, as 0.8.78 did", async (_, record) => {
+      const { projectDir, historyRoot } = legacyProject((projectDir) => projectDir);
+      writeFileSync(join(historyRoot, fixtureId, "project.json"), record);
+
+      const history = await open(projectDir, historyRoot);
+      expect([history.projectId, history.list().length]).toEqual([fixtureId, 2]);
+    });
+
+    it("keeps the history when the record names the folder by another path to it", async () => {
+      const { projectDir, historyRoot } = legacyProject((projectDir) => `${projectDir}-link`);
+      symlinkSync(projectDir, `${projectDir}-link`, "junction");
+      cleanup.push(() => rmSync(`${projectDir}-link`, { force: true }));
+
+      const history = await open(projectDir, historyRoot);
+      expect([history.projectId, history.list().length]).toEqual([fixtureId, 2]);
+    });
+
+    it("gives a copy its own history while the recorded folder still carries the id", async () => {
+      const original = legacyProject((projectDir) => projectDir);
+      const copy = tempDir("hf-history-legacy-copy-");
+      cpSync(original.projectDir, copy, { recursive: true });
+
+      const copied = await open(copy, original.historyRoot);
+      expect([copied.projectId === fixtureId, copied.list()]).toEqual([false, []]);
+      expect((await open(original.projectDir, original.historyRoot)).list()).toHaveLength(2);
+    });
+  });
+
+  it("refuses to open, and leaves the file alone, when the history id cannot be read", async () => {
+    const projectDir = tempDir("hf-history-bad-id-");
+    writeFileSync(join(projectDir, "index.html"), "v1");
+    mkdirSync(join(projectDir, ".hyperframes"));
+    writeFileSync(join(projectDir, ".hyperframes", "history-id"), "not-an-id\n");
+
+    await expect(open(projectDir, tempDir("hf-history-root-"))).rejects.toThrow(HistoryIdError);
+    expect(inside(projectDir, ".hyperframes/history-id")).toBe("not-an-id\n");
   });
 
   it("leaves the id alone for a history root that has no history under it, so the open one keeps recording", async () => {
@@ -976,7 +1056,7 @@ describe("openProjectHistory", () => {
     expect(reopened.list().map((kept) => kept.label)).toEqual(["Second", "Third"]);
   });
 
-  it("mints its own id when the project's history-id is anything else, so a project cannot pick where history is written", async () => {
+  it("refuses a history-id that is anything else, so a project cannot pick where history is written", async () => {
     const projectDir = tempDir("hf-history-project-");
     const historyRoot = tempDir("hf-history-root-");
     const victim = tempDir("hf-history-victim-");
@@ -985,12 +1065,11 @@ describe("openProjectHistory", () => {
     mkdirSync(join(projectDir, ".hyperframes"));
     writeFileSync(join(projectDir, ".hyperframes", "history-id"), relative(historyRoot, victim));
 
-    const history = await open(projectDir, historyRoot);
-    expect(history.projectId).toMatch(/^[0-9a-f]{8}(-[0-9a-f]{4}){3}-[0-9a-f]{12}$/);
+    await expect(open(projectDir, historyRoot)).rejects.toThrow(/history-id/);
     expect(readdirSync(victim)).toEqual(["project.json"]);
     expect(readFileSync(join(victim, "project.json"), "utf-8")).toBe('{"precious":true}');
     const idFile = join(projectDir, ".hyperframes", "history-id");
-    expect(readFileSync(idFile, "utf-8").trim()).toBe(history.projectId);
+    expect(readFileSync(idFile, "utf-8")).toBe(relative(historyRoot, victim));
   });
 
   it("commits a window that is never closed when the history flushes, so an undo still reaches its writes", async () => {
@@ -1020,7 +1099,10 @@ describe("openProjectHistory", () => {
     expect((await window.close())?.id).toBe(window.id);
   });
 
-  it("keeps the bytes a claim cut at through a budget fold that runs before they are logged", async () => {
+  it.each([
+    ["while the claim runs", Infinity],
+    ["before the claim comes", 1],
+  ])("keeps the bytes a claim cut at through a budget fold %s", async (_when, dragIdleMs) => {
     const saved = "B".repeat(3000);
     const { history, write, read, projectDir } = await project(
       { "index.html": "a", "other.html": "o" },
@@ -1029,7 +1111,7 @@ describe("openProjectHistory", () => {
     await change(history, you, "Old", () => write("other.html", "o2"));
     history.pin((await change(history, you, "Pinned", () => write("other.html", "o3"))).id, true);
     write("other.html", "o4");
-    await history.claim(you, "Drag", ["other.html"], { coalesceKey: "drag" });
+    await history.claim(you, "Drag", ["other.html"], { coalesceKey: "drag", idleMs: dragIdleMs });
     // Studio's write of `edited` replaced a save it never read.
     const edited = `${saved}!`;
     write("index.html", edited);
@@ -1039,12 +1121,73 @@ describe("openProjectHistory", () => {
       writeToken: "studio",
       overwrote: saved,
     });
+    await new Promise((settle) => setTimeout(settle, 20));
 
     const edit = await history.claim(you, "Edit", ["index.html"], {
       overwrote: { "index.html": fileContentVersion("a") },
     });
     expect((await history.undo(edit!.id, { who: you })).ok).toBe(true);
     expect(read("index.html")).toBe(saved);
+  });
+
+  it("keeps the bytes an API write replaced when its history folder was removed while open", async () => {
+    const { history, write, read, projectDir, historyRoot } = await project({ "index.html": "a" });
+    rmSync(historyRoot, { recursive: true, force: true });
+    write("index.html", "E");
+    recordFileWriteReceipt(join(projectDir, "index.html"), {
+      path: "index.html",
+      version: fileContentVersion("E"),
+      writeToken: "studio",
+      overwrote: "S",
+    });
+
+    const edit = await history.claim(you, "Edit", ["index.html"], {
+      overwrote: { "index.html": fileContentVersion("a") },
+    });
+    expect((await history.undo(edit!.id, { who: you })).ok).toBe(true);
+    expect(read("index.html")).toBe("S");
+  });
+
+  it("forgets what an API write replaced once the file is removed", async () => {
+    const { history, write, read, projectDir } = await project({ "index.html": "a" });
+    write("index.html", "E");
+    recordFileWriteReceipt(join(projectDir, "index.html"), {
+      path: "index.html",
+      version: fileContentVersion("E"),
+      writeToken: "studio",
+      overwrote: "S",
+    });
+    rmSync(join(projectDir, "index.html"));
+    await history.claim(you, "sweep", []);
+    // Re-created outside Studio with the bytes the API wrote: nothing Studio wrote is on disk now.
+    write("index.html", "E");
+
+    const edit = await history.claim(you, "Edit", ["index.html"], {
+      overwrote: { "index.html": fileContentVersion("a") },
+    });
+    expect((await history.undo(edit!.id, { who: you })).ok).toBe(true);
+    expect(read("index.html")).toBe("a");
+  });
+
+  it("frees unreferenced bytes past its budget even when nothing is left to fold", async () => {
+    const saved = "B".repeat(3000);
+    const { history, write, projectDir } = await project(
+      { "index.html": "a", "other.html": "o" },
+      { budgetBytes: 2000 },
+    );
+    history.pin((await change(history, you, "Pinned", () => write("other.html", "o2"))).id, true);
+    const edited = `${saved}!`;
+    write("index.html", edited);
+    recordFileWriteReceipt(join(projectDir, "index.html"), {
+      path: "index.html",
+      version: fileContentVersion(edited),
+      writeToken: "agent",
+      overwrote: saved,
+    });
+    write("index.html", "x");
+    await history.flush();
+
+    await expect(history.readBlob(hashOfVersion(fileContentVersion(saved))!)).rejects.toThrow();
   });
 
   it("cuts a claim at a restored save, not at bytes an earlier claim already used", async () => {
@@ -1074,7 +1217,7 @@ describe("openProjectHistory", () => {
     expect(read("index.html")).toBe("X");
   });
 
-  it("keeps what a Studio write landing during a claim replaced, for the next claim", async () => {
+  it("keeps what a Studio write replaced over an unseen save, for the next claim", async () => {
     const { history, write, read, projectDir } = await project({ "index.html": "W" });
     const receipt = (content: string, overwrote: string) =>
       recordFileWriteReceipt(join(projectDir, "index.html"), {
@@ -1088,14 +1231,89 @@ describe("openProjectHistory", () => {
     });
     write("index.html", "X");
     receipt("X", "W");
-    // Studio's next write, over an editor's save B, lands after this claim's scan.
-    receipt("Y", "B");
     await history.claim(you, "First", ["index.html"], told("W"));
+    // Studio's next write lands over an editor's save B that the history never saw.
     write("index.html", "Y");
+    receipt("Y", "B");
 
     const second = await history.claim(you, "Second", ["index.html"], told("X"));
     expect((await history.undo(second!.id, { who: you })).ok).toBe(true);
     expect(read("index.html")).toBe("B");
+  });
+
+  it.each([
+    ["once its change is committed", true],
+    ["once an editor wrote over it", false],
+  ])(
+    "forgets what an API write replaced %s, so a later claim cannot cut at it",
+    async (_when, commit) => {
+      const { history, write, read, projectDir } = await project({ "index.html": "W" });
+      write("index.html", "X");
+      recordFileWriteReceipt(join(projectDir, "index.html"), {
+        path: "index.html",
+        version: fileContentVersion("X"),
+        writeToken: "agent",
+        overwrote: "W",
+      });
+      if (commit) await history.flush();
+      write("index.html", "C");
+      await history.flush();
+      // An editor, not the API, brings X back.
+      write("index.html", "X");
+
+      const edit = await history.claim(you, "Edit", ["index.html"], {
+        overwrote: { "index.html": fileContentVersion("C") },
+      });
+      expect((await history.undo(edit!.id, { who: you })).ok).toBe(true);
+      expect(read("index.html")).toBe("C");
+    },
+  );
+
+  it("cuts at an editor's save, not at what a rolled-back API write replaced", async () => {
+    const { history, write, read, projectDir } = await project({ "index.html": "W" });
+    const apiWrites = (content: string, overwrote?: string) => {
+      write("index.html", content);
+      recordFileWriteReceipt(join(projectDir, "index.html"), {
+        path: "index.html",
+        version: fileContentVersion(content),
+        writeToken: "api",
+        overwrote,
+      });
+    };
+    apiWrites("X", "W");
+    apiWrites("W");
+    apiWrites("K", "W");
+    await history.claim(you, "First", ["index.html"], {
+      overwrote: { "index.html": fileContentVersion("W") },
+    });
+    write("index.html", "X");
+    apiWrites("P", "X");
+
+    const second = await history.claim(you, "Second", ["index.html"], {
+      overwrote: { "index.html": fileContentVersion("K") },
+    });
+    expect((await history.undo(second!.id, { who: you })).ok).toBe(true);
+    expect(read("index.html")).toBe("X");
+  });
+
+  it("lets the budget free the bytes a committed API write replaced", async () => {
+    const saved = "B".repeat(3000);
+    const { history, write, projectDir } = await project(
+      { "index.html": "a", "other.html": "o" },
+      { budgetBytes: 2000 },
+    );
+    const edited = `${saved}!`;
+    write("index.html", edited);
+    recordFileWriteReceipt(join(projectDir, "index.html"), {
+      path: "index.html",
+      version: fileContentVersion(edited),
+      writeToken: "agent",
+      overwrote: saved,
+    });
+    await history.flush();
+
+    await change(history, you, "Other", () => write("other.html", "o2"));
+    expect(history.list().map((entry) => entry.label)).toContain("Other");
   });
 
   it("keeps the history of a small edit in a project larger than its budget", async () => {
@@ -1655,6 +1873,66 @@ describe("claim: a writer that records after writing", () => {
       entry: { label: "Redid: Moved Title" },
     });
     expect([read("index.html"), read("r.js")]).toEqual(["B", "2"]);
+  });
+
+  describe("with undoScope everyone", () => {
+    async function editThenTurn() {
+      const opened = await project({ "index.html": "A" }, { undoScope: "everyone" });
+      await change(opened.history, you, "Moved Title", () => opened.write("index.html", "B"));
+      const window = await opened.history.beginWindow(agent, "Agent turn");
+      opened.write("index.html", "C");
+      await window.close();
+      return opened;
+    }
+
+    it("Cmd+Z undoes the newest change whoever made it: the agent's turn, then the person's edit", async () => {
+      const { history, read } = await editThenTurn();
+
+      expect(await history.step("back", you)).toMatchObject({
+        ok: true,
+        entry: { label: "Undid: Agent turn" },
+      });
+      expect(read("index.html")).toBe("B");
+      expect(await history.step("back", you)).toMatchObject({
+        ok: true,
+        entry: { label: "Undid: Moved Title" },
+      });
+      expect(read("index.html")).toBe("A");
+    });
+
+    it("Shift+Cmd+Z brings them back in turn", async () => {
+      const { history, read } = await editThenTurn();
+      await history.step("back", you);
+      await history.step("back", you);
+
+      await history.step("forward", you);
+      expect(read("index.html")).toBe("B");
+      await history.step("forward", you);
+      expect(read("index.html")).toBe("C");
+    });
+
+    it("a new change by anyone ends Shift+Cmd+Z", async () => {
+      const { history, write } = await editThenTurn();
+      await history.step("back", you);
+      await change(history, agent, "Another turn", () => write("index.html", "D"));
+
+      expect(history.next("forward", you)).toBeUndefined();
+    });
+
+    it("leaves an agent's turn that is still open alone", async () => {
+      const { history, write, read } = await project(
+        { "index.html": "A", "r.js": "1" },
+        { undoScope: "everyone" },
+      );
+      await change(history, you, "Moved Title", () => write("index.html", "B"));
+      const window = await history.beginWindow(agent, "Agent turn");
+      write("r.js", "2");
+
+      expect(history.next("back", you)?.label).toBe("Moved Title");
+      await history.step("back", you);
+      expect([read("index.html"), read("r.js")]).toEqual(["A", "2"]);
+      await window.close();
+    });
   });
 
   it("an agent's turn the person undid and redid is the person's to Cmd+Z", async () => {

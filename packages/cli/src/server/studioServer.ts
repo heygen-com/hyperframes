@@ -7,7 +7,8 @@
 
 import { Hono, type Context } from "hono";
 import { streamSSE } from "hono/streaming";
-import { existsSync, readFileSync, realpathSync, writeFileSync, unlinkSync } from "node:fs";
+import { realpath } from "@hyperframes/core";
+import { existsSync, readFileSync, writeFileSync, unlinkSync } from "node:fs";
 import { createHash } from "node:crypto";
 import { fileURLToPath } from "node:url";
 import { resolve, join, basename, relative, sep } from "node:path";
@@ -465,7 +466,7 @@ export function createStudioServer(options: StudioServerOptions): StudioServer {
 
     // Salted with the running CLI file, so an upgraded CLI never serves an older build's document.
     previewDocuments: createPreviewDocumentStore(
-      join(projectDir, ".hyperframes", "preview"),
+      projectDir,
       createHash("sha256")
         .update(readFileSync(fileURLToPath(import.meta.url)))
         .digest("hex"),
@@ -517,6 +518,9 @@ export function createStudioServer(options: StudioServerOptions): StudioServer {
     },
 
     getProjectSignature: projectSignature,
+    invalidateProjectSignature: (dir: string) => {
+      if (resolve(dir) === resolve(projectDir)) cachedProjectSignature = null;
+    },
 
     async lint(html: string, opts?: { filePath?: string; isSubComposition?: boolean }) {
       const { lintHyperframeHtml } = await import("@hyperframes/lint");
@@ -784,7 +788,7 @@ export function createStudioServer(options: StudioServerOptions): StudioServer {
       recordRewrittenInstall(opts.project.dir, written);
 
       // The item's own file first, as add recorded it, since Studio mounts the first .html it gets.
-      const root = realpathSync(opts.project.dir);
+      const root = realpath(opts.project.dir);
       const primary = primaryInstalledTarget(item);
       const primaryPath = registryTargetPath(root, primary);
       const others = written

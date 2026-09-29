@@ -109,8 +109,8 @@ export interface StudioApiAdapter {
   resolveProject(id: string): Promise<ResolvedProject | null> | ResolvedProject | null;
 
   /**
-   * Optional: the project's history (openProjectHistory), one per project for the host's lifetime. Without it
-   * the history routes answer 404.
+   * Optional: the project's current history. A history refuses every call once its folder is replaced (a
+   * deleted `.hyperframes`, a new project there), so keep them in `historyCache`, which reopens. Else routes 404.
    */
   history?: (project: ResolvedProject) => Promise<ProjectHistory | null> | ProjectHistory | null;
 
@@ -120,8 +120,9 @@ export interface StudioApiAdapter {
     options?: Pick<BundleOptions, "stampHfIds" | "onRead">,
   ): Promise<string | null>;
 
-  /** Optional: cached signature for project files that should invalidate preview frame caches. */
+  /** Optional: a cached `createProjectSignature(dir)`; preview caching checks builds against it. */
   getProjectSignature?: (projectDir: string) => string;
+  invalidateProjectSignature?: (projectDir: string) => void;
 
   /** Lint a single HTML string. */
   lint(

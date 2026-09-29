@@ -38,6 +38,7 @@ import { applyPreviewVariablesToUrl } from "../../hooks/previewVariablesStore";
 import { createPreviewMessageHandler } from "./previewMessageRouter";
 import { timelineElementsChanged } from "./timelinePlayerSync";
 import { safeContentDocument } from "./timelineSyncHydration";
+import { sceneSwapFor } from "../sceneSwap";
 
 export interface UseTimelinePlayerOptions {
   /** Runs right after a reloaded preview becomes the live iframe. */
@@ -45,6 +46,9 @@ export interface UseTimelinePlayerOptions {
   /** A reload was abandoned (cause in the message); the previous preview is still showing. */
   onPreviewReloadFailed?: (message: string) => void;
 }
+
+const publishSeek = (time: number, options?: { follow?: boolean }) =>
+  options?.follow === false ? liveTime.notify(time) : liveTime.notifySeek(time);
 
 export function useTimelinePlayer({
   onShadowPromoted,
@@ -275,7 +279,7 @@ export function useTimelinePlayer({
     stopRAFLoop();
   }, [getAdapter, setCurrentTime, setIsPlaying, stopRAFLoop, stopReverseLoop]);
   const seek = useCallback(
-    (time: number, options?: { keepPlaying?: boolean }) => {
+    (time: number, options?: { keepPlaying?: boolean; follow?: boolean }) => {
       const wasReverseShuttle = shuttleDirectionRef.current === "backward";
       stopReverseLoop();
       const adapter = getAdapter();
@@ -294,7 +298,7 @@ export function useTimelinePlayer({
         nextTime,
       });
       adapter.seek(nextTime, options);
-      liveTime.notify(nextTime); // Direct DOM updates (playhead, timecode, progress) — no re-render
+      publishSeek(nextTime, options); // Direct DOM updates (playhead, timecode, progress) — no re-render
       setCurrentTime(nextTime); // sync store so Split/Delete have accurate time
       if (!shouldResumeAfterSeek && !keepPlaying) scrubMusicAtSeek(iframeRef.current, nextTime);
       if (shouldResumeAfterSeek) {
@@ -343,7 +347,7 @@ export function useTimelinePlayer({
         if (request.playing) play();
         else {
           pause();
-          if (request.returnTo !== null) seek(request.returnTo);
+          if (request.returnTo !== null) seek(request.returnTo, { follow: false });
         }
         usePlayerStore.getState().clearPlaybackRequest();
       }
@@ -391,6 +395,7 @@ export function useTimelinePlayer({
     setShadowIframeNode,
     beginShadowReload,
     resetPreviewSlots,
+    previewGeneration,
   } = useShadowPreviewReload({
     iframeRef,
     getAdapter,
@@ -407,7 +412,7 @@ export function useTimelinePlayer({
     onReloadFailed: onPreviewReloadFailed,
     handOverPlayback: (time, playing) => {
       // keepPlaying: move the playhead without the paused-seek audio scrub.
-      seek(time, { keepPlaying: true });
+      seek(time, { keepPlaying: true, follow: false });
       const adapter = getAdapter();
       // An edit that cut the film short of the live time stops it at the new end, as playback does.
       if (playing && adapter && adapter.getTime() < adapter.getDuration()) play();
@@ -443,19 +448,39 @@ export function useTimelinePlayer({
     setIsPlaying(false);
     return false;
   }, [getAdapter, stopRAFLoop, setIsPlaying, stopReverseLoop]);
+  const reloadWholeFilm = useCallback(
+    (url: string) => {
+      // The old iframe is no longer navigated away, so stop its playback (and audio) here.
+      if (!saveSeekPosition()) getAdapter()?.pause();
+      // The live iframe is never hidden; the reload loads in a shadow and is promoted once painted.
+      beginShadowReload(url);
+    },
+    [saveSeekPosition, getAdapter, beginShadowReload],
+  );
+  const refreshGenRef = useRef(0);
+  const swapCancelRef = useRef<AbortController | null>(null);
   const refreshPlayer = useCallback(() => {
     const iframe = iframeRef.current;
     if (!iframe) return;
+    swapCancelRef.current?.abort(new Error("superseded by a newer edit"));
+    const cancel = new AbortController();
+    swapCancelRef.current = cancel;
     logReload("refreshPlayer", () => ({ stack: new Error("refreshPlayer").stack }));
-    // The old iframe is no longer navigated away, so stop its playback (and audio) here.
-    if (!saveSeekPosition()) getAdapter()?.pause();
-    // The live iframe is never hidden; the reload loads in a shadow and is promoted once painted.
-    const src = iframe.src;
-    const url = new URL(src, window.location.origin);
+    const url = new URL(iframe.src, window.location.origin);
     url.searchParams.set("_t", String(Date.now()));
     applyPreviewVariablesToUrl(url);
-    beginShadowReload(url.toString());
-  }, [saveSeekPosition, getAdapter, beginShadowReload]);
+    const gen = ++refreshGenRef.current;
+    const slot = previewGeneration();
+    // A newer edit, or anything replacing the live preview (a reload, a composition switch), wins.
+    const isCurrent = () => gen === refreshGenRef.current && slot === previewGeneration();
+    const swap = sceneSwapFor(iframe);
+    if (!swap || isRefreshingRef.current) return reloadWholeFilm(url.toString());
+    swap(url.toString(), isCurrent, cancel.signal).catch((error: unknown) => {
+      if (!isCurrent()) return;
+      logReload("scene-swap-refused", { reason: String(error) });
+      reloadWholeFilm(url.toString());
+    });
+  }, [reloadWholeFilm, previewGeneration]);
   const pauseRef = useRef(pause);
   pauseRef.current = pause;
 

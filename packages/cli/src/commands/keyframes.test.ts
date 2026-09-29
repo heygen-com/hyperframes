@@ -13,7 +13,12 @@ import { beforeAll, describe, expect, it, onTestFinished } from "vitest";
 import type { ArgsDef } from "citty";
 import { ensureDOMParser } from "../utils/dom.js";
 import keyframesCommand from "./keyframes.js";
-import { collectShotSelectors, resolveScope, surfaceComposition } from "./keyframes.js";
+import {
+  collectCompositions,
+  collectShotSelectors,
+  resolveScope,
+  surfaceComposition,
+} from "./keyframes.js";
 import { ensureShotOutputDir } from "./motionShot.js";
 
 // citty types `args` as Resolvable<ArgsDef> (object | promise | thunk); this
@@ -364,5 +369,19 @@ describe("--layout strip help text", () => {
     const description = layoutArgDescription();
     expect(description).toContain("SVG");
     expect(description.toLowerCase()).toContain("only when");
+  });
+});
+
+describe("keyframes project compositions", () => {
+  it("skips a data-composition-src that points at a folder instead of crashing", () => {
+    const dir = mkdtempSync(join(tmpdir(), "hf-keyframes-folder-src-"));
+    onTestFinished(() => rmSync(dir, { recursive: true, force: true }));
+    mkdirSync(join(dir, "compositions", "intro"), { recursive: true });
+    writeFileSync(
+      join(dir, "index.html"),
+      `<!doctype html><html><body><div data-composition-id="main" data-duration="4"><div data-composition-id="intro" data-composition-src="compositions/intro"></div></div></body></html>`,
+    );
+
+    expect(collectCompositions(join(dir, "index.html"))).toHaveLength(1);
   });
 });

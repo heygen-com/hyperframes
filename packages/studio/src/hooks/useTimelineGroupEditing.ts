@@ -3,6 +3,7 @@
 import { useCallback, type MutableRefObject, type RefObject } from "react";
 import type { Composition } from "@hyperframes/sdk";
 import type { TimelineElement } from "../player";
+import { toAuthoredStart, toCompositionTime } from "../player/store/timelineElement";
 import {
   cutoverCommittedOrThrow,
   sdkTimingBatchPersist,
@@ -13,12 +14,13 @@ import {
   buildTimelineResizeTimingPatch,
   extendRootDurationIfNeeded,
   formatTimelineAttributeNumber,
+  formatTimelineMediaOffset,
   patchIframeDomTiming,
-  playbackStartAttributeForElement,
   persistTimelineBatchEdit,
   type PersistTimelineBatchChange,
   type RecordEditInput,
 } from "./timelineEditingHelpers";
+import { playbackStartAttributeForElement } from "../player/lib/timelineElementHelpers";
 import {
   captureDurationRollback,
   finishGroupTimingGsapFallback,
@@ -243,7 +245,10 @@ export function useTimelineGroupEditing({
       if (changes.length === 0) return Promise.resolve();
       for (const change of changes) {
         const attrs: Array<[string, string]> = [
-          ["data-start", formatTimelineAttributeNumber(change.start)],
+          [
+            "data-start",
+            formatTimelineAttributeNumber(toAuthoredStart(change.element, change.start)),
+          ],
         ];
         if (change.track != null) {
           attrs.push(["data-track-index", formatTimelineAttributeNumber(change.track)]);
@@ -286,7 +291,9 @@ export function useTimelineGroupEditing({
         await options?.beforeTiming;
         const handledBySdk = await trySdkBatchPersist({
           changes,
-          sdkChanges: toSdkTimingChanges(changes, (change) => ({ start: change.start })),
+          sdkChanges: toSdkTimingChanges(changes, (change) => ({
+            start: toAuthoredStart(change.element, change.start),
+          })),
           eligible: changes.every((change) => change.track == null),
           needsExtension,
           label,
@@ -303,7 +310,7 @@ export function useTimelineGroupEditing({
                 buildTimelineMoveTimingPatch(
                   original,
                   target,
-                  change.start,
+                  toAuthoredStart(change.element, change.start),
                   change.element.duration,
                   change.track,
                 ),
@@ -329,6 +336,7 @@ export function useTimelineGroupEditing({
             errorLabel: "Failed to shift GSAP positions",
             coalesceKey,
             recordEdit,
+            writeProjectFile,
             activeCompPath,
             changes,
             resolveChangePath: (element) => targetPathFor(element, activeCompPath),
@@ -364,6 +372,7 @@ export function useTimelineGroupEditing({
       trySdkBatchPersist,
       showToast,
       invalidateGsapCache,
+      writeProjectFile,
     ],
   );
 
@@ -372,12 +381,15 @@ export function useTimelineGroupEditing({
       if (changes.length === 0) return Promise.resolve();
       for (const change of changes) {
         const liveAttrs: Array<[string, string]> = [
-          ["data-start", formatTimelineAttributeNumber(change.start)],
+          [
+            "data-start",
+            formatTimelineAttributeNumber(toAuthoredStart(change.element, change.start)),
+          ],
           ["data-duration", formatTimelineAttributeNumber(change.duration)],
         ];
         if (change.playbackStart != null) {
           const liveAttr = playbackStartAttributeForElement(change.element);
-          liveAttrs.push([liveAttr, formatTimelineAttributeNumber(change.playbackStart)]);
+          liveAttrs.push([liveAttr, formatTimelineMediaOffset(change.playbackStart)]);
         }
         patchIframeDomTiming(previewIframeRef.current, change.element, liveAttrs, activeCompPath);
       }
@@ -399,7 +411,7 @@ export function useTimelineGroupEditing({
         const handledBySdk = await trySdkBatchPersist({
           changes,
           sdkChanges: toSdkTimingChanges(changes, (change) => ({
-            start: change.start,
+            start: toAuthoredStart(change.element, change.start),
             duration: change.duration,
           })),
           eligible: changes.every((change) => !resizeHasPlaybackStartAdjustment(change)),
@@ -436,6 +448,7 @@ export function useTimelineGroupEditing({
             errorLabel: "Failed to scale GSAP positions",
             coalesceKey,
             recordEdit,
+            writeProjectFile,
             activeCompPath,
             changes,
             resolveChangePath: (element) => targetPathFor(element, activeCompPath),
@@ -449,9 +462,9 @@ export function useTimelineGroupEditing({
                 projectId,
                 changePath,
                 domId,
-                change.element.start,
+                toCompositionTime(change.element, change.element.start),
                 change.element.duration,
-                change.start,
+                toCompositionTime(change.element, change.start),
                 change.duration,
               );
             },
@@ -477,6 +490,7 @@ export function useTimelineGroupEditing({
       trySdkBatchPersist,
       showToast,
       invalidateGsapCache,
+      writeProjectFile,
     ],
   );
 

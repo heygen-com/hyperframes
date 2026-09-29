@@ -59,8 +59,9 @@ from any command's output, without a second call:
 }
 ```
 
-The version numbers come from a cache refreshed at most once a day. `--json`
-never makes a network request of its own. Deprecated commands add
+The version numbers come from a cache refreshed at most once a day, in a
+background process, and never under CI or `HYPERFRAMES_NO_UPDATE_CHECK=1`.
+`--json` never makes a network request of its own. Deprecated commands add
 `_meta.deprecated: true`.
 
 **Flags, not prompts.** A missing required flag fails immediately with a usage
@@ -274,19 +275,22 @@ npx hyperframes transcribe transcript.json --to srt
 | Flag              | Description                                                                                                                                                                                       |
 | ----------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `--dir, -d`       | Project directory (default: current directory)                                                                                                                                                     |
-| `--engine, -e`    | ASR engine: `auto` (default — Parakeet if installed, else whisper), `parakeet`, or `whisper`                                                                                                        |
+| `--engine, -e`    | ASR engine: `auto` (default — Parakeet if installed and the language is one of its 25, else whisper), `parakeet` (fails if Parakeet is missing, broken, or lacks the `--language`), or `whisper` |
 | `--model, -m`     | Whisper model (default `small.en`): `tiny.en`, `base.en`, `small.en`, `medium.en`, `large-v3`                                                                                                       |
 | `--language, -l`  | Language code (`en`, `es`, `ja`, …). Filters out speech in other languages.                                                                                                                        |
 | `--to`            | Export a sidecar instead: `srt` or `vtt`                                                                                                                                                           |
 | `--output, -o`    | Where the exported SRT/VTT goes                                                                                                                                                                    |
 | `--preserve-cues` | Keep each transcript entry as its own caption cue, skipping word-level grouping                                                                                                                    |
-| `--optional`      | Skip and exit 0 when whisper-cpp is unavailable, instead of failing. For pipelines that can carry on without captions.                                                                              |
+| `--optional`      | Skip and exit 0 when whisper-cpp is unavailable, instead of failing. For pipelines that can carry on without captions. A broken Parakeet install is a real failure: it exits 1 even when whisper-cpp is missing. |
 | `--timeout`       | Whisper spawn timeout in ms, overriding the auto-scaled default. Raise it on slow or emulated CPUs where large models take many seconds per audio second. Whisper only — Parakeet has its own. Minimum 5000. Env: `HYPERFRAMES_TRANSCRIBE_TIMEOUT_MS`. |
 | `--json`          | Output the result as JSON                                                                                                                                                                          |
 
 The command works out what you gave it. Audio and video are transcribed
-locally — Parakeet when it is installed (`uv pip install parakeet-mlx`; faster
-and more accurate), whisper.cpp otherwise. Transcript files are imported and
+locally — Parakeet when it is installed (`hyperframes models install parakeet`;
+faster and more accurate), whisper.cpp otherwise. Parakeet covers en, es, fr,
+de, bg, hr, cs, da, nl, et, fi, el, hu, it, lv, lt, mt, pl, pt, ro, sk, sl, sv,
+ru and uk; `auto` uses whisper for any other `--language`. If Parakeet fails under
+`auto`, the run says why, names the repair command, and uses whisper. Transcript files are imported and
 normalized instead: whisper.cpp JSON, OpenAI Whisper API JSON with word
 timestamps, SRT, and VTT all land as the same `[{text, start, end}]` word array
 in `transcript.json`. If the project has caption HTML, it is patched
@@ -302,6 +306,26 @@ cues with no internal spaces — single-word or CJK captions.
   production content, transcribe through the OpenAI or Groq Whisper API and import
   the JSON.
 </Tip>
+
+### `models`
+
+Download an on-device model. Only asked-for installs happen; nothing downloads
+on first use.
+
+```bash
+npx hyperframes models install parakeet          # progress on stderr
+npx hyperframes models install parakeet --json   # one JSON result
+```
+
+`parakeet` installs the sherpa-onnx runtime from npm and NVIDIA's Parakeet TDT
+0.6B v3 speech model (int8, about 640 MB, CC-BY-4.0) into
+`~/.cache/hyperframes`. Every file is checked against a pinned size and
+sha256. Re-running loads the runtime in a separate process and re-checks each
+model file's sha256, reinstalls whichever fails, and changes nothing on a good
+install. It runs on macOS
+(arm64, x64), Windows (x64, ia32) and Linux (x64, arm64, glibc 2.32 or newer),
+and refuses up front anywhere else. Ctrl-C stops the download and keeps no
+partial file.
 
 ### `tts`
 
@@ -898,7 +922,7 @@ How it uses the machine, and when it gives up:
 | `--gpu`                                                  | off                                        | Hardware FFmpeg encoding (NVENC, VideoToolbox, AMF, VAAPI, QSV)                                                    |
 | `--browser-gpu` / `--no-browser-gpu`                     | auto locally, off in Docker                | Host GPU for Chrome and WebGL capture, or software rendering. Auto probes WebGL once and falls back.                |
 | `--require-beginframe`                                   | off                                        | Fail instead of falling back to screenshot capture when BeginFrame can't run. Rejected with `--docker`. Env: `PRODUCER_REQUIRE_BEGINFRAME`.  |
-| `--page-side-compositing` / `--no-page-side-compositing`  | on                                         | Page-side WebGL for compatible SDR shader transitions, ~6× faster. HDR, alpha, and video disable it themselves.     |
+| `--page-side-compositing` / `--no-page-side-compositing`  | on                                         | Page-side WebGL for SDR shader transitions in mp4, hls and gif, ~6× faster. webm and mov use the layered path; gif always uses page-side WebGL, even with `--no-page-side-compositing`. |
 | `--experimental-fast-capture`                            | on where it can engage                     | Chrome's draw-element capture, ~2× faster; falls back to screenshots on its own. Env: `PRODUCER_EXPERIMENTAL_FAST_CAPTURE`. |
 | `--frames-cache-dir`                                     | `<tmpdir>/hyperframes-extract-cache-<uid>` | Where extracted source frames cache. `off`, `none`, `false`, or `0` disables it. `doctor` reports the live value.   |
 | `--max-concurrent-renders`                               | `2`                                        | Concurrent jobs on the Producer server, 1–10                                                                       |
@@ -1114,6 +1138,27 @@ In JSON mode, paths inside `detail` and `hint` are redacted — your home
 directory becomes the literal `$HOME`, so output is safe to paste into a bug
 report or an agent context.
 
+### `clean`
+
+Find and remove what HyperFrames left on disk.
+
+```bash
+npx hyperframes clean --dry-run   # list it, remove nothing
+npx hyperframes clean
+npx hyperframes clean --snapshots # also remove snapshots/ folders
+npx hyperframes clean --json
+```
+
+It looks in the current project (not its subfolders) and every project the Studio history knows, and removes:
+
+- frames and staging folders left by renders that were killed or crashed (a render that is still running keeps its own);
+- work folders of `--debug` renders nothing has written to for six hours;
+- the history of projects that no longer exist;
+- extracted video frames and video proxies nobody has used for an hour (they rebuild on demand).
+
+`snapshots/` folders are listed as also reclaimable and removed only with `--snapshots`. Rendered outputs, source
+files, the browser download and models are never touched.
+
 ### `info` and `compositions`
 
 `npx hyperframes info [dir]` prints project metadata: name, resolution,
@@ -1213,10 +1258,12 @@ Studio installs and which of the two installed them, and system info — includi
 environment fingerprint: OS, kernel string, CPU and memory shape, sandbox
 runtime such as gVisor or Docker, and the _name_ of a coding agent driving the
 CLI when one is detected (`claude_code`, `codex`, `cursor`). That name is
-inferred from which well-known environment variables exist; their values are
-never read. Local paths and URL query strings are redacted from error and
+inferred from which well-known environment variables exist. Local paths and URL query strings are redacted from error and
 checkpoint messages. Project names, video content, and environment variable
-values are never collected.
+values are never collected, except short self-identifying names: `AGENT`,
+`AI_AGENT` and `TERM_PROGRAM` (filtered to short slugs), and `HYPERFRAMES_CLIENT`,
+the `<app>/<version>/<channel>` tag an app that launches the CLI sets, sent as
+`client` so reports from that app can be told apart.
 
 Nothing personally identifying is collected until you sign in. When you run
 `hyperframes auth login`, your HeyGen account email — or username, if the

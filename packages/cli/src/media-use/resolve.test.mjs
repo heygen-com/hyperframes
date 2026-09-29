@@ -13,7 +13,7 @@ import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { createServer } from "node:http";
 import { execFileSync, spawn, spawnSync } from "node:child_process";
-import { appendRecord, readManifest } from "./lib/manifest.mjs";
+import { appendRecord, findByPrompt, readManifest } from "./lib/manifest.mjs";
 import { regenerateIndex } from "./lib/index-gen.mjs";
 import { getProvider } from "./lib/providers.mjs";
 import { HEYGEN_NOT_FOUND_MESSAGE } from "./lib/heygen-cli.mjs";
@@ -514,6 +514,22 @@ test("--adopt registers existing assets/ files", () => {
   cleanup();
 });
 
+test("--adopt stops, adopting nothing, when HYPERFRAMES_FFPROBE_PATH cannot run", () => {
+  setup();
+  mkdirSync(join(tmp, "assets/bgm"), { recursive: true });
+  writeFileSync(join(tmp, "assets/bgm/track.mp3"), "fake mp3");
+
+  const result = spawnResolve(["--adopt", "--project", tmp, "--json"], {
+    env: { HYPERFRAMES_FFPROBE_PATH: join(tmp, "no-ffprobe") },
+  });
+  assert.equal(result.status, 1);
+  const report = JSON.parse(result.stdout.trim());
+  assert.equal(report.ok, false);
+  assert.match(report.error, /HYPERFRAMES_FFPROBE_PATH names .*no-ffprobe.*fix it or unset it/);
+  assert.equal(readManifest(tmp).length, 0);
+  cleanup();
+});
+
 test("--adopt skips already-registered assets", () => {
   setup();
   mkdirSync(join(tmp, "assets/bgm"), { recursive: true });
@@ -547,6 +563,153 @@ test("resolve finds existing unregistered asset before hitting providers", () =>
   assert.equal(parsed.ok, true);
   assert.equal(parsed.path, "assets/bgm/ambient-track.mp3");
   assert.equal(parsed._source, "existing");
+  cleanup();
+});
+
+test("--from records a file already in the project where it is, with how it was made", () => {
+  setup();
+  mkdirSync(join(tmp, "assets/voice"), { recursive: true });
+  writeFileSync(join(tmp, "assets/voice/01.wav"), "fake wav");
+
+  const out = runResolve([
+    "--from",
+    join(tmp, "assets/voice/01.wav"),
+    "--type",
+    "voice",
+    "--source",
+    "generated",
+    "--intent",
+    "Welcome to the launch",
+    "--project",
+    tmp,
+    "--json",
+  ]);
+
+  assert.equal(JSON.parse(out.trim()).path, "assets/voice/01.wav");
+  assert.deepEqual(
+    readManifest(tmp).map((r) => [r.path, r.source, r.description]),
+    [["assets/voice/01.wav", "generated", "Welcome to the launch"]],
+  );
+  assert.deepEqual(readdirSync(join(tmp, ".media/audio/voice")), []);
+  cleanup();
+});
+
+test("--from --source adds a record only when what it says changes", () => {
+  setup();
+  mkdirSync(join(tmp, "assets/bgm"), { recursive: true });
+  writeFileSync(join(tmp, "assets/bgm/track.mp3"), "fake mp3");
+  const from = join(tmp, "assets/bgm/track.mp3");
+  const record = (intent) =>
+    runResolve([
+      ...["--from", from, "--type", "bgm", "--source", "search", "--intent", intent],
+      ...["--project", tmp, "--json"],
+    ]);
+
+  record("calm underscore");
+  record("calm underscore");
+  record("upbeat synth");
+
+  assert.deepEqual(
+    readManifest(tmp).map((r) => [r.source, r.description]),
+    [
+      ["search", "calm underscore"],
+      ["search", "upbeat synth"],
+    ],
+  );
+  assert.equal(findByPrompt(tmp, "calm underscore", "bgm"), null);
+  const listed = runResolve([
+    ...["--candidates", "--type", "bgm", "--intent", "calm underscore"],
+    ...["--project", tmp, "--json"],
+  ]);
+  assert.deepEqual(
+    JSON.parse(listed)
+      .candidates.filter((c) => c.scope === "project")
+      .map((c) => c.description),
+    ["upbeat synth"],
+  );
+  const index = readFileSync(join(tmp, ".media/index.md"), "utf8");
+  assert.match(index, /upbeat synth/);
+  assert.doesNotMatch(index, /calm underscore/);
+  cleanup();
+});
+
+test("--from refuses a source it does not know", () => {
+  setup();
+  mkdirSync(join(tmp, "assets/voice"), { recursive: true });
+  writeFileSync(join(tmp, "assets/voice/01.wav"), "fake wav");
+  const from = join(tmp, "assets/voice/01.wav");
+
+  const r = spawnResolve(["--from", from, "--type", "voice", "--source", "mine", "--project", tmp]);
+
+  assert.equal(r.status, 2);
+  assert.deepEqual(readManifest(tmp), []);
+  cleanup();
+});
+
+test("resolve does not relabel a recorded file in assets/ as the person's own", () => {
+  setup();
+  mkdirSync(join(tmp, "assets/bgm"), { recursive: true });
+  writeFileSync(join(tmp, "assets/bgm/ambient-track.mp3"), "agent bgm");
+  appendRecord(tmp, {
+    id: "bgm_001",
+    type: "bgm",
+    path: "assets/bgm/ambient-track.mp3",
+    source: "existing",
+    description: "ambient track",
+    provenance: { provider: "local", adopted: true },
+  });
+  appendRecord(tmp, {
+    id: "bgm_002",
+    type: "bgm",
+    path: "assets/bgm/ambient-track.mp3",
+    source: "search",
+    description: "calm underscore",
+    provenance: { provider: "heygen" },
+  });
+
+  const out = runResolve([
+    "--type",
+    "bgm",
+    "--intent",
+    "ambient track",
+    "--project",
+    tmp,
+    "--json",
+  ]);
+
+  const parsed = JSON.parse(out.trim());
+  assert.equal(parsed.path, "assets/bgm/ambient-track.mp3");
+  assert.equal(parsed.source, "search");
+  assert.deepEqual(
+    readManifest(tmp).map((r) => r.source),
+    ["existing", "search"],
+  );
+  cleanup();
+});
+
+test("--from --source copies a file from outside the project, labelled with that source", () => {
+  setup();
+  const outside = mkdtempSync(join(tmpdir(), "mu-outside-"));
+  writeFileSync(join(outside, "take.wav"), "outside wav");
+  const args = ["--from", join(outside, "take.wav"), "--type", "voice", "--source", "generated"];
+
+  const out = runResolve([...args, "--project", tmp, "--json"]);
+
+  const parsed = JSON.parse(out.trim());
+  assert.match(parsed.path, /^\.media\/audio\/voice\//);
+  assert.equal(parsed.source, "generated");
+  rmSync(outside, { recursive: true, force: true });
+  cleanup();
+});
+
+test("--source is refused for a LUT and without --from", () => {
+  setup();
+  writeFileSync(join(tmp, "look.cube"), "LUT_3D_SIZE 2\n");
+  const lut = ["--from", join(tmp, "look.cube"), "--type", "lut", "--source", "generated"];
+
+  assert.equal(spawnResolve([...lut, "--project", tmp]).status, 2);
+  assert.equal(spawnResolve(["--source", "generated", "--project", tmp]).status, 2);
+  assert.deepEqual(readManifest(tmp), []);
   cleanup();
 });
 
@@ -686,6 +849,110 @@ test("--doctor --json reports dependency checks and top-level ok requires ffmpeg
   const strictOk = bundledSfx.ok && ffmpeg.ok && ffprobe.ok;
   assert.equal(parsed.ok, strictOk);
   assert.equal(result.status, strictOk ? 0 : 1);
+});
+
+test("--doctor checks the ffmpeg and ffprobe that HYPERFRAMES_FFMPEG_PATH and HYPERFRAMES_FFPROBE_PATH name", () => {
+  const dir = mkdtempSync(join(tmpdir(), "mu-doctor-ff-"));
+  for (const tool of ["ffmpeg", "ffprobe"]) {
+    writeFileSync(join(dir, tool), `#!/bin/sh\necho '${tool} version 9.9-fake'\n`);
+    chmodSync(join(dir, tool), 0o755);
+  }
+  try {
+    const result = spawnResolve(["--doctor", "--json"], {
+      env: {
+        HYPERFRAMES_FFMPEG_PATH: join(dir, "ffmpeg"),
+        HYPERFRAMES_FFPROBE_PATH: join(dir, "ffprobe"),
+      },
+    });
+    const byName = new Map(JSON.parse(result.stdout.trim()).checks.map((c) => [c.name, c]));
+    for (const tool of ["ffmpeg", "ffprobe"])
+      assert.deepEqual(
+        [byName.get(`${tool} on PATH`).ok, byName.get(`${tool} on PATH`).detail],
+        [true, `${tool} version 9.9-fake`],
+      );
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test("--doctor fails a HYPERFRAMES_FFPROBE_PATH that cannot run and says to fix or unset it", () => {
+  const missing = join(tmpdir(), "mu-doctor-no-ffprobe", "ffprobe");
+  const result = spawnResolve(["--doctor", "--json"], {
+    env: { HYPERFRAMES_FFPROBE_PATH: missing },
+  });
+  const report = JSON.parse(result.stdout.trim());
+  const check = report.checks.find((c) => c.name === "ffprobe on PATH");
+  assert.equal(report.ok, false);
+  assert.deepEqual(
+    [check.ok, check.detail, check.fix],
+    [
+      false,
+      `HYPERFRAMES_FFPROBE_PATH names "${missing}", which is not a working ffprobe: fix it or unset it.`,
+      "fix or unset that variable",
+    ],
+  );
+});
+
+test("--analyze refuses a HYPERFRAMES_FFPROBE_PATH that cannot run instead of reporting unknown", () => {
+  const missing = join(tmpdir(), "mu-analyze-no-ffprobe", "ffprobe");
+  const result = spawnResolve(["--analyze", "--type", "grade", "--for", RESOLVE_CLI, "--json"], {
+    env: { HYPERFRAMES_FFPROBE_PATH: missing },
+  });
+  assert.equal(result.status, 1);
+  const report = JSON.parse(result.stdout.trim());
+  assert.equal(report.ok, false);
+  assert.match(
+    report.error,
+    /HYPERFRAMES_FFPROBE_PATH names ".*mu-analyze-no-ffprobe.*fix it or unset it/,
+  );
+});
+
+test("--doctor fails a configured ffprobe that exists but exits with an error", () => {
+  const dir = mkdtempSync(join(tmpdir(), "mu-doctor-bad-ff-"));
+  const broken = join(dir, "ffprobe");
+  writeFileSync(broken, "#!/bin/sh\nexit 3\n");
+  chmodSync(broken, 0o755);
+  try {
+    const result = spawnResolve(["--doctor", "--json"], {
+      env: { HYPERFRAMES_FFPROBE_PATH: broken },
+    });
+    const check = JSON.parse(result.stdout.trim()).checks.find((c) => c.name === "ffprobe on PATH");
+    assert.deepEqual(
+      [check.ok, check.detail, check.fix],
+      [
+        false,
+        `HYPERFRAMES_FFPROBE_PATH names "${broken}", which is not a working ffprobe: fix it or unset it.`,
+        "fix or unset that variable",
+      ],
+    );
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test("a broken HYPERFRAMES_FFPROBE_PATH is named when local voice cannot run, not a generic miss", () => {
+  setup();
+  const missing = join(tmp, "no-ffprobe");
+  const result = spawnResolve(
+    [
+      "--type",
+      "voice",
+      "--intent",
+      "hello",
+      "--provider",
+      "kokoro.local",
+      "--project",
+      tmp,
+      "--json",
+    ],
+    { env: { HYPERFRAMES_FFPROBE_PATH: missing } },
+  );
+  assert.equal(result.status, 1);
+  assert.equal(
+    JSON.parse(result.stdout.trim()).error,
+    `HYPERFRAMES_FFPROBE_PATH names "${missing}", which is not a working ffprobe: fix it or unset it.`,
+  );
+  cleanup();
 });
 
 test("one-line output format matches contract", () => {

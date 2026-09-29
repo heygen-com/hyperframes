@@ -6,6 +6,7 @@ import { defineCommand, type ArgsDef } from "citty";
 import {
   HISTORY_START,
   HistoryBusyError,
+  HistoryIdError,
   type HistoryEntry,
   type HistoryListItem,
   type HistoryResult,
@@ -277,7 +278,8 @@ function guarded<A>(run: (args: A) => Promise<void>) {
       const refused =
         error instanceof Refusal ||
         error instanceof AmbiguousPreviewServerError ||
-        error instanceof HistoryBusyError;
+        error instanceof HistoryBusyError ||
+        error instanceof HistoryIdError;
       if (!refused) throw error;
       setCommandExitCode(2);
       const { message } = error as Error;

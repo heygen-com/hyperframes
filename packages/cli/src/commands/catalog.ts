@@ -7,15 +7,16 @@ export const examples: Example[] = [
   ["Filter by tag", "hyperframes catalog --type block --tag social"],
   ["Machine-readable JSON", "hyperframes catalog --json"],
   ["Interactive picker (install on select)", "hyperframes catalog --human-friendly"],
+  ["Search (positional, same as --query)", 'hyperframes catalog "crossfade"'],
 ];
 
 import * as clack from "@clack/prompts";
-import { type ItemType, type RegistryItem } from "@hyperframes/core";
+import { realpath, type ItemType, type RegistryItem } from "@hyperframes/core";
 import { c } from "../ui/colors.js";
 import { loadAllItems } from "../registry/resolver.js";
 import { fetchRegistryManifest } from "../registry/remote.js";
 import { loadProjectConfig, DEFAULT_PROJECT_CONFIG } from "../utils/projectConfig.js";
-import { resolve } from "node:path";
+import { relative, resolve } from "node:path";
 import { finishCommand } from "../utils/commandResult.js";
 import { isAttendedTerminal } from "../utils/attendedTerminal.js";
 import { runAdd } from "./add.js";
@@ -162,6 +163,11 @@ export default defineCommand({
     description: "Browse and install blocks and components from the registry",
   },
   args: {
+    words: {
+      type: "positional",
+      description: "Search words, same as --query (e.g. `catalog crossfade`)",
+      required: false,
+    },
     type: {
       type: "string",
       description: 'Filter by type: "block" or "component"',
@@ -181,7 +187,8 @@ export default defineCommand({
     query: {
       type: "string",
       description:
-        "Search by meaning when the on-device model is on, otherwise by name, title, description and tags",
+        "Search by meaning when the on-device model is on, otherwise by name, title, description and tags. " +
+        "A bare positional word works the same way (e.g. `catalog crossfade`).",
     },
     yes: {
       type: "boolean",
@@ -235,7 +242,8 @@ export default defineCommand({
       ? items.filter((item) => item.tags?.some((t) => t.toLowerCase() === tagFilter))
       : items;
 
-    const query = typeof args.query === "string" ? args.query.trim() : "";
+    const query =
+      (typeof args.query === "string" ? args.query.trim() : "") || args.words?.trim() || "";
     // Collected rather than only printed, so --json can carry the same reasons
     // the terminal shows. A machine that asked for a tier deserves to be told
     // it did not run.
@@ -472,9 +480,9 @@ export default defineCommand({
       }
       console.log("");
       console.log(`${c.success("✓")} Installed ${c.accent(result.name)} (${result.type})`);
+      const root = realpath(dir);
       for (const file of result.written) {
-        const rel = file.replace(dir + "/", "");
-        console.log(`  ${c.dim(rel)}`);
+        console.log(`  ${c.dim(relative(root, file))}`);
       }
       if (result.snippet) {
         console.log("");

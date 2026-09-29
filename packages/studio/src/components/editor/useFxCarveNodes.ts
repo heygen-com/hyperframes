@@ -23,6 +23,7 @@ import {
 } from "@hyperframes/core/audio-carve";
 import { fxAutomationTarget, type HfAutomationLane } from "@hyperframes/core/audio-automation";
 import { clipStart } from "./propertyPanelAudioFxGroupUtils.js";
+import { clipAudioOnItsClock, type ClipClock } from "./clipAudioClock.js";
 
 /** Decode rate every carve measurement shares — see `measureCarve`. */
 const DECODE_SAMPLE_RATE = 48000;
@@ -60,6 +61,13 @@ export function mintCarveNodes(
   };
 }
 
+/** A clip to decode, where it starts on the timeline, and how it plays its file. */
+export interface CarveClip {
+  src: string;
+  start: string | null | undefined;
+  clock: ClipClock;
+}
+
 /**
  * Decode every voice, mix them onto the bed's own clock, and measure the
  * bands (and, if the profile calls for it, the ducking envelope) from that
@@ -68,10 +76,9 @@ export function mintCarveNodes(
  */
 export async function measureCarve(
   doc: Document,
-  voices: { src: string; start: string | null }[],
+  voices: CarveClip[],
   strength: number,
-  bedStartAttr: string | null | undefined,
-  bedSrc: string | null | undefined,
+  bed: Omit<CarveClip, "src"> & { src: string | null | undefined },
 ): Promise<{
   bands: ReturnType<typeof analyseCarveBands>;
   carved: HfAudioFxChain;
@@ -86,11 +93,15 @@ export async function measureCarve(
     (window as unknown as { webkitOfflineAudioContext?: typeof OfflineAudioContext })
       .webkitOfflineAudioContext;
   if (!Ctor) return null;
-  const decode = async (relative: string): Promise<AudioBuffer> => {
+  // Each clip as it plays: trimmed to its in-point and duration, and at its own speed.
+  const decode = async (relative: string, clock: ClipClock): Promise<Float32Array> => {
     const res = await fetch(new URL(relative, doc.baseURI).href);
-    return new Ctor(1, 1, DECODE_SAMPLE_RATE).decodeAudioData(await res.arrayBuffer());
+    const buffer = await new Ctor(1, 1, DECODE_SAMPLE_RATE).decodeAudioData(
+      await res.arrayBuffer(),
+    );
+    return clipAudioOnItsClock(buffer.getChannelData(0), DECODE_SAMPLE_RATE, clock);
   };
-  const bedStart = clipStart(bedStartAttr);
+  const bedStart = clipStart(bed.start);
   // Every voice, summed onto the bed's own clock. One question — where and
   // when is speech masking this bed — with one answer, even when the answer
   // comes from three people talking at different times. Doing this before the
@@ -98,23 +109,24 @@ export async function measureCarve(
   // the chain is fixed, so there is no per-voice filter to switch between.
   const decoded = await Promise.all(
     voices.map(async (voice) => ({
-      samples: (await decode(voice.src)).getChannelData(0),
+      samples: await decode(voice.src, voice.clock),
       offsetSeconds: clipStart(voice.start) - bedStart,
     })),
   );
-  const voiceMix = mixCarveSources(decoded, DECODE_SAMPLE_RATE);
-  if (voiceMix.length === 0) return null;
+  const mixed = mixCarveSources(decoded, DECODE_SAMPLE_RATE);
+  if (mixed.length === 0) return null;
   // Strength is what the author set; these are the numbers it means.
   const profile = carveProfile(strength);
-  // The bed as well as the voice, when the carve is asked to match levels:
-  // "how far over the voice is this bed" cannot be answered by listening to
-  // one of them.
-  const bedBuffer = profile.duckDb > 0 && bedSrc ? await decode(bedSrc).catch(() => null) : null;
+  // The bed as it plays: its length bounds the speech worth carving, and the duck
+  // compares against it ("how far over the voice is this bed" needs both).
+  const bedSamples = bed.src ? await decode(bed.src, bed.clock).catch(() => null) : null;
+  // Speech after the bed stops has no bed to carve.
+  const voiceMix = bedSamples ? mixed.subarray(0, bedSamples.length) : mixed;
   const bands = analyseCarveBands(voiceMix, DECODE_SAMPLE_RATE, profile);
   // The level half of the carve, measured against the speech it has to sit
   // under. No offset to apply: the mix is already on the bed's clock.
-  const duck = bedBuffer
-    ? analyseCarveDuck(voiceMix, bedBuffer.getChannelData(0), DECODE_SAMPLE_RATE, profile, 0)
+  const duck = bedSamples
+    ? analyseCarveDuck(voiceMix, bedSamples, DECODE_SAMPLE_RATE, profile, 0)
     : [];
   return { bands, carved: carveBandsToChain(bands), duck, voiceMix };
 }

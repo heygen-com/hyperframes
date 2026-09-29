@@ -2,7 +2,6 @@ import type { Hono } from "hono";
 import { HTTPException } from "hono/http-exception";
 import { open, stat } from "node:fs/promises";
 import { createHash } from "node:crypto";
-import sharp from "sharp";
 import type { StudioApiAdapter } from "../types.js";
 import { pinWithinProject } from "../helpers/safePath.js";
 import { requestSubPath } from "../helpers/requestSubPath.js";
@@ -11,7 +10,20 @@ import { ThumbnailGenerationCoordinator } from "./thumbnailGenerationCoordinator
 const MAX_SOURCE_BYTES = 64 * 1024 * 1024;
 const MAX_CACHE_BYTES = 8 * 1024 * 1024;
 
+let sharpLoad: Promise<typeof import("sharp").default> | undefined;
+function loadSharp() {
+  sharpLoad ??= import("sharp").then(
+    (module) => module.default,
+    (error: unknown) => {
+      console.warn("[Studio] JPEG thumbnails are off: sharp could not load:", error);
+      throw error;
+    },
+  );
+  return sharpLoad;
+}
+
 async function generateThumbnail(path: string, signal: AbortSignal): Promise<Buffer> {
+  const sharp = await loadSharp();
   const file = await open(path, "r");
   try {
     const info = await file.stat();

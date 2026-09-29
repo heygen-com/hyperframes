@@ -60,7 +60,7 @@ function waveWarpChain(params: Record<string, number>): string {
  * `.hf-vfx-in` carries an explicit pixel box. Inside a `layoutsubtree` canvas
  * there is no containing block to resolve `inset: 0` against, so the wrapper
  * collapses to 0×0 and `drawElementImage` silently draws nothing — the same
- * collapse `engineModePageComposite.clonePinStyleFor` exists to undo.
+ * collapse the page-side compositor avoids by staging scene copies in a sized frame.
  */
 function fixture(chain: string, innerStyle = "", hostStyle = ""): string {
   return `<!doctype html>

@@ -73,4 +73,50 @@ describe("useTimelineStackingSync", () => {
     mocks.actions = null;
     iframe.remove();
   });
+
+  it("uses a host's iframe and commit over Studio's own", async () => {
+    const studioCommit = vi.fn().mockResolvedValue(undefined);
+    mocks.actions = {
+      previewIframeRef: { current: null },
+      handleDomZIndexReorderCommit: studioCommit,
+    };
+    const iframe = document.createElement("iframe");
+    document.body.appendChild(iframe);
+    const node = iframe.contentDocument!.createElement("div");
+    node.id = "a";
+    iframe.contentDocument!.body.appendChild(node);
+    const hostCommit = vi.fn().mockResolvedValue(undefined);
+    const element: TimelineElement = {
+      id: "a",
+      key: "a",
+      tag: "div",
+      start: 0,
+      duration: 2,
+      track: 0,
+    };
+    let sync: ReturnType<typeof useTimelineStackingSync> | null = null;
+    function Harness() {
+      sync = useTimelineStackingSync({
+        expandedElementsRef: { current: [element] },
+        previewIframeRef: { current: iframe },
+        onZIndexReorder: hostCommit,
+      });
+      return null;
+    }
+    const root = mountReactHarness(<Harness />);
+
+    await act(async () => {
+      await sync!.applyStackingPatches([{ key: "a", zIndex: 3 }]);
+    });
+
+    expect(sync!.zSyncEnabled).toBe(true);
+    expect(hostCommit).toHaveBeenCalledWith(
+      [expect.objectContaining({ element: node, zIndex: 3 })],
+      undefined,
+    );
+    expect(studioCommit).not.toHaveBeenCalled();
+    act(() => root.unmount());
+    mocks.actions = null;
+    iframe.remove();
+  });
 });

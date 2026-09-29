@@ -1,3 +1,5 @@
+const ERROR_PULSES_BEFORE_IDLE = 3;
+
 export function SidebarLintButton({
   onLint,
   linting,
@@ -31,7 +33,9 @@ export function SidebarLintButton({
         {linting ? "Linting…" : "Lint"}
         {!linting && findingCount != null && findingCount > 0 && (
           <span
+            key={findingCount}
             data-lint-badge={hasError ? "error" : "warning"}
+            style={hasError ? { animationIterationCount: ERROR_PULSES_BEFORE_IDLE } : undefined}
             className={
               hasError
                 ? "ml-1 min-w-[16px] rounded-full bg-panel-danger/25 px-1 text-[9px] font-bold text-panel-danger animate-pulse motion-reduce:animate-none"

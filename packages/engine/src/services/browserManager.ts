@@ -31,6 +31,15 @@ export type {
 
 let _puppeteer: PuppeteerNode | undefined;
 
+let hostHandlesSigint = false;
+
+/** Set while the host cancels renders on Ctrl+C; Puppeteer's own handler would exit before any cleanup ran. */
+export function setHostHandlesSigint(owned: boolean): void {
+  hostHandlesSigint = owned;
+}
+
+export const sigintLaunchOptions = () => ({ handleSIGINT: !hostHandlesSigint });
+
 interface WebGlProbeInfo {
   hasWebGL: boolean;
   vendor: string;
@@ -74,6 +83,7 @@ async function probeHardwareWebGlInfo(
   let probeBrowser: Browser | undefined;
   try {
     probeBrowser = await ppt.launch({
+      ...sigintLaunchOptions(),
       headless: true,
       args: options.args,
       defaultViewport: { width: 64, height: 64 },
@@ -709,6 +719,7 @@ async function launchBrowser(
   let browser: Browser | undefined;
   try {
     browser = await ppt.launch({
+      ...sigintLaunchOptions(),
       headless: true,
       args: [...fingerprint.args],
       defaultViewport: null,
@@ -747,6 +758,7 @@ async function launchBrowser(
         );
         captureMode = "screenshot";
         browser = await ppt.launch({
+          ...sigintLaunchOptions(),
           headless: true,
           args: stripBeginFrameFlags([...fingerprint.args]),
           defaultViewport: null,

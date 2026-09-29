@@ -5,7 +5,7 @@
  */
 import type { GsapAnimation } from "@hyperframes/parsers/gsap-parser";
 import type { DomEditSelection } from "./domEditing";
-import { writeTargetSelector } from "../../hooks/gsapShared";
+import { tweenTargetsElement, writeTargetSelector } from "../../hooks/gsapShared";
 
 /**
  * The selector the overlay both MEASURES the element by and authors a new
@@ -24,13 +24,20 @@ export function selectorFor(sel: DomEditSelection | null): string | null {
 
 /** The animation whose path is editable on-canvas: literal, statically resolved,
  *  and matching the rendered geometry kind. Returns null when the path can only
- *  be displayed (dynamic/helper tweens) — those nodes stay read-only. */
+ *  be displayed (dynamic/helper tweens, or a tween that also moves other
+ *  elements) — those nodes stay read-only and a press drags the element itself. */
 export function editableAnimationId(
   animations: GsapAnimation[],
   kind: "linear" | "arc",
+  sel: DomEditSelection | null,
 ): string | null {
+  const own = selectorFor(sel);
   const ok = (a: GsapAnimation) =>
-    !a.hasUnresolvedKeyframes && !a.hasUnresolvedSelector && !a.provenance;
+    !a.hasUnresolvedKeyframes &&
+    !a.hasUnresolvedSelector &&
+    !a.provenance &&
+    !!own &&
+    tweenTargetsElement(a.targetSelector, own, sel?.element);
   if (kind === "arc") return animations.find((a) => a.arcPath?.enabled && ok(a))?.id ?? null;
   const a = animations.find(
     (anim) =>

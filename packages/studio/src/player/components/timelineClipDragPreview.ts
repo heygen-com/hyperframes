@@ -1,5 +1,11 @@
 import { resolveTimelineMove, resolveTimelineResize } from "./timelineEditing";
+import {
+  applyClipStartTrimDelta,
+  clipStartTrimDeltaBounds,
+  resolveTimelineMinDuration,
+} from "./timelineGroupEditing";
 import type { TimelineElement } from "../store/playerStore";
+import { clampToHostStart } from "../store/timelineElement";
 import {
   getTimelineInsertBoundaryBand,
   getTimelineRowFromY,
@@ -75,10 +81,10 @@ function resolveDragMaxStart(scroll: HTMLDivElement | null, pps: number, duratio
 /**
  * Rigid group move: when the grabbed clip is part of a multi-selection, the
  * WHOLE formation shifts by its delta on commit (see timelineClipDragCommit).
- * Clamp that delta here — against every selected member's start — so the
- * grabbed clip can't out-run the group: it STOPS the instant any member would
- * cross 0, exactly as it lands on commit. Lane changes still apply to the
- * grabbed clip only, so only the start (x) is constrained.
+ * Clamp that delta here, and a lone clip's as a group of one, so the grabbed
+ * clip STOPS the instant any member would cross its floor (clampToHostStart),
+ * exactly as it lands on commit. Lane changes still apply to the grabbed clip
+ * only, so only the start (x) is constrained.
  */
 function resolveGroupClampedStart(
   snapStart: number,
@@ -87,10 +93,10 @@ function resolveGroupClampedStart(
   elements: TimelineElement[],
   selectedKeys: ReadonlySet<string>,
 ): number {
-  if (selectedKeys.size <= 1 || !selectedKeys.has(dragKey)) return snapStart;
-  const memberStarts = elements.filter((e) => selectedKeys.has(e.key ?? e.id)).map((e) => e.start);
-  const clampedDelta = clampGroupMoveDelta(snapStart - element.start, memberStarts);
-  return element.start + clampedDelta;
+  const inGroup = selectedKeys.size > 1 && selectedKeys.has(dragKey);
+  const members = inGroup ? elements.filter((e) => selectedKeys.has(e.key ?? e.id)) : [element];
+  const floors = members.map((e) => ({ start: e.start, minStart: clampToHostStart(e, 0) }));
+  return element.start + clampGroupMoveDelta(snapStart - element.start, floors);
 }
 
 /**
@@ -168,6 +174,7 @@ export function computeDragPreview(
       originScrollLeft: drag.originScrollLeft,
       currentScrollLeft: scroll?.scrollLeft ?? drag.originScrollLeft,
       pixelsPerSecond: pps,
+      minStart: clampToHostStart(drag.element, 0),
       maxStart: dragMaxStart,
       trackOrder,
     },
@@ -221,8 +228,8 @@ export function computeDragPreview(
     // deliberate vertical lane change from a horizontal drag merely bumped sideways.
     desiredTrack: nextMove.track,
     insertRow,
-    snapTime: snap.snapTime,
-    snapType: snap.snapType,
+    snapTime: previewStart === snap.start ? snap.snapTime : null,
+    snapType: previewStart === snap.start ? snap.snapType : null,
   };
 }
 
@@ -275,7 +282,6 @@ export function computeResizePreview(
   const normalizedTag = resize.element.tag.toLowerCase();
   const canSeedPlaybackStart =
     resize.element.kind === "composition" || normalizedTag === "audio" || normalizedTag === "video";
-  const playbackRate = Math.max(resize.element.playbackRate ?? 1, 0.1);
   // Trim limit = available source media only — NOT the composition length.
   // Duration is content-driven (the comp grows/shrinks to fit on commit), so
   // capping a trim at the current comp end both blocked extending the last clip
@@ -289,7 +295,7 @@ export function computeResizePreview(
       duration: resize.element.duration,
       originClientX: resize.originClientX,
       pixelsPerSecond: pps,
-      minStart: 0,
+      minStart: clampToHostStart(resize.element, 0),
       maxEnd,
       playbackStart:
         resize.edge === "start" && canSeedPlaybackStart
@@ -319,35 +325,23 @@ export function computeResizePreview(
       // Stay within [start+minDuration, maxEnd] so the snap can't create a
       // degenerate clip or run past the source/composition limit.
       const snappedDuration = Math.round((snapped - nextResize.start) * 1000) / 1000;
-      if (target && snapped <= maxEnd + 1e-6 && snappedDuration >= 0.05) {
+      if (
+        target &&
+        snapped <= maxEnd + 1e-6 &&
+        snappedDuration >= resolveTimelineMinDuration() - 1e-6
+      ) {
         // An edge already on the target still owns the guide; only move it when off.
         if (snapped !== edgeTime) nextResize = { ...nextResize, duration: snappedDuration };
         snap = target;
       }
     } else {
       const { time: snapped, target } = snapTimelineTime(nextResize.start, trimTargets, snapSecs);
-      const delta = nextResize.start - snapped; // >0 when snapping left
-      // Leftward snap reveals more source; cap so playbackStart can't go < 0.
-      const maxLeftDelta =
-        nextResize.playbackStart != null
-          ? nextResize.playbackStart / playbackRate
-          : Number.POSITIVE_INFINITY;
-      // Also require the resulting duration to stay >= minDuration so a rightward
-      // snap (delta < 0) can't collapse the clip to zero/negative.
-      const snappedDuration = Math.round((nextResize.duration + delta) * 1000) / 1000;
-      if (target && snapped >= 0 && delta <= maxLeftDelta + 1e-6 && snappedDuration >= 0.05) {
-        if (snapped !== nextResize.start) {
-          nextResize = {
-            ...nextResize,
-            start: snapped,
-            duration: snappedDuration,
-            playbackStart:
-              nextResize.playbackStart != null
-                ? Math.round(Math.max(0, nextResize.playbackStart - delta * playbackRate) * 1000) /
-                  1000
-                : undefined,
-          };
-        }
+      const clip = { ...nextResize, playbackRate: resize.element.playbackRate };
+      const delta = snapped - nextResize.start;
+      const floor = clampToHostStart(resize.element, 0);
+      const bounds = clipStartTrimDeltaBounds(clip, floor, resolveTimelineMinDuration());
+      if (target && delta >= bounds.minDelta - 1e-6 && delta <= bounds.maxDelta + 1e-6) {
+        if (snapped !== nextResize.start) nextResize = applyClipStartTrimDelta(clip, delta);
         snap = target;
       }
     }

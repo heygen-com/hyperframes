@@ -11,7 +11,7 @@ import {
   utimesSync,
   writeFileSync,
 } from "node:fs";
-import { join } from "node:path";
+import { basename, join } from "node:path";
 import { tmpdir } from "node:os";
 import { spawnSync } from "node:child_process";
 import {
@@ -68,6 +68,9 @@ import { RATE_RANGE } from "@hyperframes/core/audio-automation";
 // below run too — they exercise the extractor in isolation against a
 // synthesized VFR fixture.
 const HAS_FFMPEG = spawnSync("ffmpeg", ["-version"]).status === 0;
+const HAS_ZSCALE =
+  HAS_FFMPEG &&
+  /\szscale\s/.test(spawnSync("ffmpeg", ["-hide_banner", "-filters"]).stdout.toString());
 
 describe("resolveVideoExtractionDuration", () => {
   const metadata = (
@@ -1280,6 +1283,15 @@ const RED_SAMPLE_PIXELS = [
   [178, 92],
 ] as const;
 
+function pngChunkTypes(path: string): string[] {
+  const bytes = readFileSync(path);
+  const types: string[] = [];
+  for (let offset = 8; offset + 8 <= bytes.length; offset += 12 + bytes.readUInt32BE(offset)) {
+    types.push(bytes.toString("latin1", offset + 4, offset + 8));
+  }
+  return types;
+}
+
 function readFirstFramePixel(mediaPath: string, x: number, y: number): Rgb {
   const result = spawnSync(
     "ffmpeg",
@@ -1411,6 +1423,291 @@ describe.skipIf(!HAS_FFMPEG)("video frame extraction format", () => {
     expect(worstPngDelta).toBeLessThanOrEqual(worstDefaultDelta);
   }, 60_000);
 
+  // Chrome runs with --force-color-profile=srgb and colour-manages any frame not tagged sRGB;
+  // the SDR encoder writes the canvas code values as they are, so frames must reach it unconverted.
+  it.each([
+    ["BT.709", "bt709"],
+    ["BT.601", "smpte170m"],
+  ])(
+    "declares png frames of a %s source as sRGB so Chrome shows their code values",
+    async (name, tag) => {
+      const fixture = join(FIXTURE_DIR, `${tag}-shadow.mp4`);
+      const synth = await runFfmpeg([
+        "-y",
+        "-hide_banner",
+        "-loglevel",
+        "error",
+        "-f",
+        "lavfi",
+        "-i",
+        `color=c=0x101010:s=${UI_FIXTURE_WIDTH}x${UI_FIXTURE_HEIGHT}:d=1:r=1`,
+        "-vf",
+        `setparams=color_primaries=${tag}:color_trc=${tag}:colorspace=${tag}:range=tv`,
+        "-c:v",
+        "libx264",
+        "-preset",
+        "ultrafast",
+        "-crf",
+        "0",
+        "-pix_fmt",
+        "yuv420p",
+        fixture,
+      ]);
+      if (!synth.success) {
+        throw new Error(`${name} fixture synthesis failed: ${synth.stderr.slice(-400)}`);
+      }
+      expect((await extractVideoMetadata(fixture)).colorSpace?.colorTransfer).toBe(tag);
+      const outputDir = join(FIXTURE_DIR, `out-png-transfer-${tag}`);
+      mkdirSync(outputDir, { recursive: true });
+
+      const result = await extractAllVideoFrames(
+        [{ ...fixtureVideo(), id: tag, src: fixture }],
+        FIXTURE_DIR,
+        { fps: 1, outputDir, format: "png" },
+      );
+
+      expect(result.errors).toEqual([]);
+      const frame = result.extracted[0]!.framePaths.get(0)!;
+      // Chrome reads cICP before sRGB, and ffmpeg < 6.0 writes no cICP, so only an sRGB chunk
+      // without cICP means "these are sRGB code values" on every ffmpeg.
+      const chunks = pngChunkTypes(frame);
+      expect(chunks).toContain("sRGB");
+      expect(chunks).not.toContain("cICP");
+      expect(readFirstFramePixel(frame, 10, 10)).toEqual(readFirstFramePixel(fixture, 10, 10));
+    },
+    60_000,
+  );
+
+  it("extracts jpg frames of a BT.709 source as the BT.601 full range JPEG readers assume", async () => {
+    const fixture = join(FIXTURE_DIR, "bt709-patch.mp4");
+    const synth = await runFfmpeg([
+      "-y",
+      "-hide_banner",
+      "-loglevel",
+      "error",
+      "-f",
+      "lavfi",
+      "-i",
+      `color=c=0xC83C28:s=${UI_FIXTURE_WIDTH}x${UI_FIXTURE_HEIGHT}:d=1:r=1,format=rgb24,drawbox=x=31:y=0:w=64:h=${UI_FIXTURE_HEIGHT}:c=0x0000FE:t=fill`,
+      "-vf",
+      "scale=out_color_matrix=bt709:out_range=tv,format=yuv420p,setparams=color_primaries=bt709:color_trc=bt709:colorspace=bt709:range=tv",
+      "-c:v",
+      "libx264",
+      "-preset",
+      "ultrafast",
+      "-crf",
+      "0",
+      fixture,
+    ]);
+    if (!synth.success) throw new Error(`fixture synthesis failed: ${synth.stderr.slice(-400)}`);
+    const outputDir = join(FIXTURE_DIR, "out-jpg-matrix");
+    mkdirSync(outputDir, { recursive: true });
+
+    const result = await extractAllVideoFrames(
+      [{ ...fixtureVideo(), id: "bt709-jpg", src: fixture }],
+      FIXTURE_DIR,
+      { fps: 1, outputDir, format: "jpg" },
+    );
+
+    expect(result.errors).toEqual([]);
+    const frame = result.extracted[0]!.framePaths.get(0)!;
+    // x=10 is flat colour; x=32 sits one pixel inside the blue edge.
+    for (const x of [10, 32]) {
+      const source = readFirstFramePixel(fixture, x, 10);
+      const shown = readFirstFramePixel(frame, x, 10);
+      const worst = Math.max(...shown.map((v, i) => Math.abs(v - source[i]!)));
+      expect(worst, `x=${x}: source ${source} jpg ${shown}`).toBeLessThanOrEqual(3);
+    }
+  }, 60_000);
+
+  // Measured in Chrome 152: untagged H.264 plays as BT.601 at 1280x718 and BT.709 at 1280x720 or 406x720;
+  // untagged VP9 and AV1 play as BT.601 at every size.
+  it.each([
+    { codec: "libx264", height: 718, matrix: "bt601", format: "png" },
+    { codec: "libx264", height: 718, matrix: "bt601", format: "jpg" },
+    { codec: "libx264", height: 720, matrix: "bt709", format: "png" },
+    { codec: "libx264", height: 720, matrix: "bt709", format: "jpg" },
+    { codec: "libvpx-vp9", height: 720, matrix: "bt601", format: "png" },
+    { codec: "libaom-av1", height: 720, matrix: "bt601", format: "png" },
+  ] as const)(
+    "reads an untagged $height-line $codec source as $matrix like Chrome's own playback ($format)",
+    async ({ codec, height, matrix, format }) => {
+      const extension = codec === "libvpx-vp9" ? "webm" : "mp4";
+      const fixture = join(FIXTURE_DIR, `untagged-${codec}-${height}.${extension}`);
+      const synth = await runFfmpeg([
+        "-y",
+        "-v",
+        "error",
+        "-f",
+        "lavfi",
+        "-i",
+        `color=c=0xC83C28:s=64x${height}:d=1:r=1`,
+        "-vf",
+        "scale=out_color_matrix=bt601:out_range=tv,format=yuv420p,setparams=colorspace=unknown:color_primaries=unknown:color_trc=unknown:range=tv",
+        "-c:v",
+        codec,
+        ...(codec === "libx264" ? ["-qp", "0"] : ["-crf", "0", "-b:v", "0"]),
+        ...(codec === "libaom-av1" ? ["-cpu-used", "8"] : []),
+        fixture,
+      ]);
+      if (!synth.success) throw new Error(`fixture synthesis failed: ${synth.stderr.slice(-400)}`);
+      expect((await extractVideoMetadata(fixture)).colorSpace?.colorSpace ?? "unknown").toBe(
+        "unknown",
+      );
+
+      const result = await extractVideoFramesRange(
+        fixture,
+        `${basename(fixture)}-${format}`,
+        0,
+        1,
+        {
+          fps: 1,
+          outputDir: join(FIXTURE_DIR, "out-untagged"),
+          format,
+        },
+      );
+
+      const pixelAt = (file: string, decode: string): number[] => [
+        ...spawnSync("ffmpeg", [
+          "-v",
+          "error",
+          "-i",
+          file,
+          "-vf",
+          `${decode}format=rgb24,crop=1:1:10:10`,
+          "-frames:v",
+          "1",
+          "-f",
+          "rawvideo",
+          "-",
+        ]).stdout,
+      ];
+      const expected = pixelAt(fixture, `scale=in_color_matrix=${matrix}:in_range=tv,`);
+      const shown = pixelAt(result.framePaths.get(0)!, "");
+      expect([expected.length, shown.length]).toEqual([3, 3]);
+      const worst = Math.max(...shown.map((v, i) => Math.abs(v - expected[i]!)));
+      expect(worst, `${matrix} decode ${expected}, ${format} ${shown}`).toBeLessThanOrEqual(
+        format === "png" ? 1 : 3,
+      );
+    },
+    60_000,
+  );
+
+  // ffmpeg < 6.1 drops frame durations from CFR resampling once any -vf is set, so the colour
+  // filters would cut the still that ends this window short.
+  it.each([
+    {
+      name: "full range BT.709",
+      format: "png",
+      codec: "libx264",
+      pixFmt: "yuvj420p",
+      probed: { colorTransfer: "bt709" },
+      tags: "range=pc:color_primaries=bt709:color_trc=bt709:colorspace=bt709",
+    },
+    {
+      name: "full range BT.709",
+      format: "jpg",
+      codec: "libx264",
+      pixFmt: "yuvj420p",
+      probed: { colorTransfer: "bt709" },
+      tags: "range=pc:color_primaries=bt709:color_trc=bt709:colorspace=bt709",
+    },
+    {
+      name: "BT.470BG gamma 2.8",
+      format: "png",
+      codec: "libx264",
+      pixFmt: "yuv420p",
+      probed: { colorTransfer: "bt470bg" },
+      tags: "color_primaries=bt470bg:color_trc=bt470bg:colorspace=bt470bg",
+    },
+    {
+      name: "RGB",
+      format: "png",
+      codec: "libx264rgb",
+      pixFmt: "rgb24",
+      probed: { colorSpace: "gbr" },
+      tags: "",
+    },
+  ] as const)(
+    "keeps every frame and the colours of a $name VFR window that ends on a still ($format)",
+    async ({ name, format, codec, pixFmt, probed, tags }) => {
+      const fixture = join(FIXTURE_DIR, `vfr-still-${name.replace(/\W+/g, "-")}-${format}.mp4`);
+      const synth = await runFfmpeg([
+        "-y",
+        "-v",
+        "error",
+        "-f",
+        "lavfi",
+        "-i",
+        `color=c=0xC83C28:s=${UI_FIXTURE_WIDTH}x${UI_FIXTURE_HEIGHT}:d=2:r=60`,
+        "-vf",
+        `select='not(between(n\\,30\\,89))'${tags ? `,setparams=${tags}` : ""}`,
+        "-fps_mode",
+        "vfr",
+        "-c:v",
+        codec,
+        "-preset",
+        "ultrafast",
+        "-pix_fmt",
+        pixFmt,
+        fixture,
+      ]);
+      if (!synth.success) throw new Error(`fixture synthesis failed: ${synth.stderr.slice(-400)}`);
+      const window = 0.616666;
+      const unfilteredDir = join(FIXTURE_DIR, `out-${basename(fixture)}-unfiltered`);
+      mkdirSync(unfilteredDir, { recursive: true });
+      const unfiltered = await runFfmpeg([
+        "-v",
+        "error",
+        "-ss",
+        "0",
+        "-i",
+        fixture,
+        "-t",
+        String(window),
+        "-fps_mode",
+        "cfr",
+        "-r",
+        "30",
+        join(unfilteredDir, "f_%05d.png"),
+      ]);
+      expect(unfiltered.success).toBe(true);
+
+      const result = await extractVideoFramesRange(fixture, basename(fixture), 0, window, {
+        fps: 30,
+        outputDir: join(FIXTURE_DIR, "out-vfr-still"),
+        format,
+      });
+
+      expect(result.metadata.isVFR).toBe(true);
+      expect(result.metadata.colorSpace).toMatchObject(probed);
+      expect(result.totalFrames).toBe(readdirSync(unfilteredDir).length);
+      const last = result.framePaths.get(result.totalFrames - 1)!;
+      const source = readFirstFramePixel(fixture, 10, 10);
+      const shown = readFirstFramePixel(last, 10, 10);
+      const worst = Math.max(...shown.map((v, i) => Math.abs(v - source[i]!)));
+      expect(worst, `source ${source} ${format} ${shown}`).toBeLessThanOrEqual(
+        format === "png" ? 0 : 3,
+      );
+      if (format === "png") expect(pngChunkTypes(last)).toContain("sRGB");
+    },
+    60_000,
+  );
+
+  it("leaves SDR-to-HDR frames in the HDR colours they were converted to", async () => {
+    const outputDir = join(FIXTURE_DIR, "out-sdr-to-hdr-gate");
+    mkdirSync(outputDir, { recursive: true });
+
+    const result = await extractVideoFramesRange(UI_FIXTURE, "sdr-to-hdr-gate", 0, 1, {
+      fps: 1,
+      outputDir,
+      format: "png",
+      sdrToHdrTransfer: "pq",
+    });
+
+    expect(pngChunkTypes(result.framePaths.get(0)!)).not.toContain("sRGB");
+  }, 60_000);
+
   it("keeps jpg and png extraction caches separate", async () => {
     const cacheDir = mkdtempSync(join(tmpdir(), "hf-extract-format-cache-"));
     try {
@@ -1490,6 +1787,98 @@ describe.skipIf(!HAS_FFMPEG)("video frame extraction format", () => {
       first.totalFrames,
     );
   }, 60_000);
+});
+
+// Each output slot shows the frame on screen at its time, as the preview does.
+describe.skipIf(!HAS_FFMPEG)("frame sampling at the output frame rate", () => {
+  const FIXTURE_DIR = mkdtempSync(join(tmpdir(), "hf-video-frame-sampling-"));
+  const WIDTH = 32;
+  const HEIGHT = 16;
+  // Matroska stores whole-millisecond timestamps (a 30 fps frame at 66.67 ms reads 67 ms);
+  // a 1/30 timescale stores each frame exactly on a coarse tick.
+  const SOURCES = {
+    "mp4-60": { fps: 60, file: "index-60fps.mp4", muxer: [] },
+    "mkv-30": { fps: 30, file: "index-30fps.mkv", muxer: [] },
+    "mp4-30-timescale-30": {
+      fps: 30,
+      file: "index-30fps-ts30.mp4",
+      muxer: ["-video_track_timescale", "30"],
+    },
+  } as const;
+  type SourceName = keyof typeof SOURCES;
+  const sourcePath = (name: SourceName) => join(FIXTURE_DIR, SOURCES[name].file);
+
+  beforeAll(async () => {
+    for (const name of Object.keys(SOURCES) as SourceName[]) {
+      // Frame k carries luma 16 + 2k, so each extracted frame names its source index.
+      const result = await runFfmpeg([
+        "-y",
+        "-hide_banner",
+        "-loglevel",
+        "error",
+        "-f",
+        "lavfi",
+        "-i",
+        `nullsrc=s=${WIDTH}x${HEIGHT}:r=${SOURCES[name].fps}:d=1.5,geq=lum='16+2*N':cb=128:cr=128`,
+        "-c:v",
+        "libx264",
+        "-qp",
+        "0",
+        "-pix_fmt",
+        "yuv420p",
+        ...SOURCES[name].muxer,
+        sourcePath(name),
+      ]);
+      if (!result.success) throw new Error(`index fixture synthesis failed: ${result.stderr}`);
+    }
+  }, 30_000);
+
+  afterAll(() => {
+    rmSync(FIXTURE_DIR, { recursive: true, force: true });
+  });
+
+  function sourceIndexes(extracted: ExtractedFrames): number[] {
+    const decoded = spawnSync("ffmpeg", [
+      "-v",
+      "error",
+      "-i",
+      join(extracted.outputDir, extracted.framePattern),
+      "-f",
+      "rawvideo",
+      "-pix_fmt",
+      "gray",
+      "pipe:1",
+    ]);
+    if (decoded.status !== 0) throw new Error(decoded.stderr.toString());
+    const indexes: number[] = [];
+    for (let offset = 0; offset < decoded.stdout.length; offset += WIDTH * HEIGHT) {
+      indexes.push(Math.round(((decoded.stdout[offset] ?? 0) * 219) / 255 / 2));
+    }
+    return indexes;
+  }
+
+  it.each([
+    { source: "mp4-60", fps: 24, startTime: 0, duration: 0.5 },
+    { source: "mp4-60", fps: 10, startTime: 0.37, duration: 0.6 },
+    { source: "mkv-30", fps: 30, startTime: 0, duration: 0.5 },
+    { source: "mp4-30-timescale-30", fps: 60, startTime: 0, duration: 0.5 },
+  ] as const)(
+    "$source: samples the frame on screen at each $fps fps slot from $startTime s",
+    async (c) => {
+      const extracted = await extractVideoFramesRange(
+        sourcePath(c.source),
+        `${c.source}-${c.fps}`,
+        c.startTime,
+        c.duration,
+        { fps: c.fps, outputDir: FIXTURE_DIR, format: "png" },
+      );
+      const onScreen = Array.from({ length: Math.round(c.duration * c.fps) }, (_, i) =>
+        Math.floor((c.startTime + i / c.fps) * SOURCES[c.source].fps + 1e-9),
+      );
+      expect(sourceIndexes(extracted)).toEqual(onScreen);
+    },
+    30_000,
+  );
 });
 
 describe.skipIf(!HAS_FFMPEG)("held tails on sparse-timestamp sources", () => {
@@ -2754,7 +3143,17 @@ describe.skipIf(!HAS_FFMPEG)("extractAllVideoFrames on a VFR source", () => {
   }, 60_000);
 });
 
-describe.skipIf(!HAS_FFMPEG || process.platform === "darwin")("forced-SDR HDR extraction", () => {
+// Release builds print "version 8.1.3" or "n8.1.3"; master builds print "N-<number>" and are newer.
+const FFPROBE_VERSION = spawnSync("ffprobe", ["-version"]).stdout?.toString() ?? "";
+const FFPROBE_RELEASE = FFPROBE_VERSION.match(/version n?(\d+)\.(\d+)/)
+  ?.slice(1)
+  .map(Number);
+const FFPROBE_READS_CONTAINER_TRANSFER =
+  /version N-/.test(FFPROBE_VERSION) ||
+  (FFPROBE_RELEASE !== undefined &&
+    (FFPROBE_RELEASE[0]! > 8 || (FFPROBE_RELEASE[0] === 8 && FFPROBE_RELEASE[1]! >= 1)));
+
+describe.skipIf(!HAS_ZSCALE)("forced-SDR HDR extraction", () => {
   let fixtureDir = "";
 
   beforeAll(() => {
@@ -2765,8 +3164,11 @@ describe.skipIf(!HAS_FFMPEG || process.platform === "darwin")("forced-SDR HDR ex
     rmSync(fixtureDir, { recursive: true, force: true });
   });
 
-  it("matches Studio's HLG tone map and isolates transformed cache entries", async () => {
-    const source = join(fixtureDir, "hlg-warm.mp4");
+  async function synthesizeHlgClip(
+    path: string,
+    vui = "colour_primaries=9:transfer_characteristics=18:matrix_coefficients=9",
+    transfer = "arib-std-b67",
+  ): Promise<void> {
     const synthesized = await runFfmpeg([
       "-y",
       "-hide_banner",
@@ -2777,7 +3179,7 @@ describe.skipIf(!HAS_FFMPEG || process.platform === "darwin")("forced-SDR HDR ex
       "-i",
       "color=c=0xe0b080:s=64x64:r=1:d=1",
       "-vf",
-      "zscale=pin=bt709:tin=bt709:min=bt709:p=bt2020:t=arib-std-b67:m=bt2020nc:r=tv,format=yuv420p",
+      `zscale=pin=bt709:tin=bt709:min=bt709:p=bt2020:t=${transfer}:m=bt2020nc:r=tv,format=yuv420p`,
       "-c:v",
       "libx264",
       "-preset",
@@ -2785,16 +3187,197 @@ describe.skipIf(!HAS_FFMPEG || process.platform === "darwin")("forced-SDR HDR ex
       "-color_primaries",
       "bt2020",
       "-color_trc",
-      "arib-std-b67",
+      transfer,
       "-colorspace",
       "bt2020nc",
       "-bsf:v",
-      "h264_metadata=colour_primaries=9:transfer_characteristics=18:matrix_coefficients=9",
-      source,
+      `h264_metadata=${vui}`,
+      path,
     ]);
     if (!synthesized.success) {
       throw new Error(`HLG fixture synthesis failed: ${synthesized.stderr.slice(-400)}`);
     }
+  }
+
+  it.each([
+    [
+      "HLG",
+      "matrix",
+      "arib-std-b67",
+      "colour_primaries=9:transfer_characteristics=18:matrix_coefficients=2",
+    ],
+    [
+      "HLG",
+      "primaries",
+      "arib-std-b67",
+      "colour_primaries=2:transfer_characteristics=18:matrix_coefficients=9",
+    ],
+    [
+      "HLG",
+      "matrix and primaries",
+      "arib-std-b67",
+      "colour_primaries=2:transfer_characteristics=18:matrix_coefficients=2",
+    ],
+    [
+      "PQ",
+      "matrix and primaries",
+      "smpte2084",
+      "colour_primaries=2:transfer_characteristics=16:matrix_coefficients=2",
+    ],
+    [
+      "HLG",
+      "transfer",
+      "arib-std-b67",
+      "colour_primaries=9:transfer_characteristics=2:matrix_coefficients=9",
+    ],
+  ])(
+    "tone-maps %s footage whose video stream has no %s tag like the fully tagged clip",
+    async (name, missing, transfer, vui) => {
+      const slug = `${name}-no-${missing}`.replace(/\W+/g, "-");
+      const tagged = join(fixtureDir, `${name}-fully-tagged.mp4`);
+      const untagged = join(fixtureDir, `${slug}.mp4`);
+      const vuiTransfer = transfer === "smpte2084" ? 16 : 18;
+      await synthesizeHlgClip(
+        tagged,
+        `colour_primaries=9:transfer_characteristics=${vuiTransfer}:matrix_coefficients=9`,
+        transfer,
+      );
+      await synthesizeHlgClip(untagged, vui, transfer);
+      const extract = (source: string, id: string) =>
+        extractVideoFramesRange(source, id, 0, 1, {
+          fps: 1,
+          outputDir: join(fixtureDir, `out-${id}`),
+          format: "png",
+          toneMapHdrToSdr: true,
+        });
+
+      if (missing === "transfer") {
+        // ffprobe before 8.1 reads the stream's unspecified transfer, so the clip is SDR there, as on main.
+        if (!FFPROBE_READS_CONTAINER_TRANSFER) {
+          await expect(extract(untagged, slug)).resolves.toBeDefined();
+          return;
+        }
+        expect((await extractVideoMetadata(untagged)).colorSpace?.colorTransfer).toBe(transfer);
+      }
+      const reference = await extract(tagged, `ref-${slug}`);
+      const result = await extract(untagged, slug);
+
+      expect(readFileSync(result.framePaths.get(0)!)).toEqual(
+        readFileSync(reference.framePaths.get(0)!),
+      );
+    },
+    60_000,
+  );
+
+  // One stream with HLG frames, then PQ frames: each is tone-mapped with its own transfer.
+  it("tone-maps each frame of a mixed HLG and PQ stream with its own transfer", async () => {
+    const segment = async (name: string, transfer: number) => {
+      const path = join(fixtureDir, `mixed-${name}.h264`);
+      const result = await runFfmpeg([
+        "-y",
+        "-v",
+        "error",
+        "-f",
+        "lavfi",
+        "-i",
+        "testsrc2=s=160x90:r=25:d=0.2",
+        "-c:v",
+        "libx264",
+        // No B-frames: genpts stamps a raw stream in decode order, so reordered frames get wrong times.
+        "-bf",
+        "0",
+        "-pix_fmt",
+        "yuv420p",
+        "-bsf:v",
+        `h264_metadata=colour_primaries=9:transfer_characteristics=${transfer}:matrix_coefficients=9`,
+        "-f",
+        "h264",
+        path,
+      ]);
+      if (!result.success)
+        throw new Error(`segment synthesis failed: ${result.stderr.slice(-400)}`);
+      return readFileSync(path);
+    };
+    const mux = async (name: string, stream: Buffer) => {
+      const raw = join(fixtureDir, `${name}.h264`);
+      const path = join(fixtureDir, `${name}.mp4`);
+      writeFileSync(raw, stream);
+      const result = await runFfmpeg([
+        ...["-y", "-v", "error", "-fflags", "+genpts", "-r", "25", "-f", "h264", "-i", raw],
+        ...["-c", "copy", path],
+      ]);
+      if (!result.success) throw new Error(`mux failed: ${result.stderr.slice(-400)}`);
+      return path;
+    };
+    const hlg = await segment("hlg", 18);
+    const pq = await segment("pq", 16);
+    const mixed = await mux("mixed-hlg-pq", Buffer.concat([hlg, pq]));
+    const pqOnly = await mux("mixed-pq-only", pq);
+    const extract = (source: string, id: string, duration: number) =>
+      extractVideoFramesRange(source, id, 0, duration, {
+        fps: 25,
+        outputDir: join(fixtureDir, `out-${id}`),
+        format: "png",
+        toneMapHdrToSdr: true,
+      });
+
+    const mixedFrames = await extract(mixed, "mixed-hlg-pq", 0.4);
+    const pqFrames = await extract(pqOnly, "mixed-pq-only", 0.2);
+
+    expect(readFileSync(mixedFrames.framePaths.get(5)!)).toEqual(
+      readFileSync(pqFrames.framePaths.get(0)!),
+    );
+  }, 60_000);
+
+  // A stream-copy trim opens on edit-list pre-roll, which ffprobe counts as packets without frames.
+  it("keeps per-frame tags in a mixed HLG and PQ file trimmed with a stream copy", async () => {
+    const run = async (args: string[]) => {
+      const result = await runFfmpeg(["-y", "-v", "error", ...args]);
+      if (!result.success) throw new Error(`fixture failed: ${result.stderr.slice(-400)}`);
+    };
+    const segment = async (name: string, transfer: number) => {
+      const path = join(fixtureDir, `trim-${name}.h264`);
+      await run([
+        ...["-f", "lavfi", "-i", "testsrc2=s=160x90:r=25:d=2"],
+        ...["-c:v", "libx264", "-g", "50", "-bf", "0"],
+        ...["-pix_fmt", "yuv420p", "-bsf:v"],
+        `h264_metadata=colour_primaries=9:transfer_characteristics=${transfer}:matrix_coefficients=9`,
+        ...["-f", "h264", path],
+      ]);
+      return readFileSync(path);
+    };
+    const mux = async (name: string, stream: Buffer) => {
+      const raw = join(fixtureDir, `${name}.h264`);
+      const path = join(fixtureDir, `${name}.mp4`);
+      writeFileSync(raw, stream);
+      await run(["-fflags", "+genpts", "-r", "25", "-f", "h264", "-i", raw, "-c", "copy", path]);
+      return path;
+    };
+    const pq = await segment("pq", 16);
+    const mixed = await mux("trim-hlg-then-pq", Buffer.concat([await segment("hlg", 18), pq]));
+    const pqOnly = await mux("trim-pq-only", pq);
+    const trimmed = join(fixtureDir, "trim-from-hlg.mp4");
+    await run(["-ss", "1", "-i", mixed, "-c", "copy", trimmed]);
+    const extract = (source: string, id: string, start: number) =>
+      extractVideoFramesRange(source, id, start, 0.04, {
+        fps: 25,
+        outputDir: join(fixtureDir, `out-${id}`),
+        format: "png",
+        toneMapHdrToSdr: true,
+      });
+
+    // Trimmed 1.6 s is the mixed file's 2.6 s: the PQ segment's 0.6 s.
+    const fromTrim = await extract(trimmed, "trim-from-hlg", 1.6);
+    const fromPq = await extract(pqOnly, "trim-pq-only", 0.6);
+
+    const shown = readFirstFramePixel(fromTrim.framePaths.get(0)!, 40, 40);
+    const expected = readFirstFramePixel(fromPq.framePaths.get(0)!, 40, 40);
+    expect(Math.max(...shown.map((v, i) => Math.abs(v - expected[i]!)))).toBeLessThanOrEqual(2);
+  }, 60_000);
+
+  it("matches Studio's HLG tone map and isolates transformed cache entries", async () => {
+    const source = join(fixtureDir, "hlg-warm.mp4");
+    await synthesizeHlgClip(source);
 
     const reference = join(fixtureDir, "studio-reference.png");
     const referenceResult = await runFfmpeg([
@@ -2857,9 +3440,170 @@ describe.skipIf(!HAS_FFMPEG || process.platform === "darwin")("forced-SDR HDR ex
       if (!path) throw new Error("expected extracted frame");
       return readFileSync(path);
     };
-    expect(frame(toneMapped)).toEqual(readFileSync(reference));
+    // Same pixels as Studio's tone map, declared as sRGB so Chrome shows them unconverted.
+    const rgb = (path: string): Buffer =>
+      spawnSync("ffmpeg", ["-v", "error", "-i", path, "-f", "rawvideo", "-pix_fmt", "rgb24", "-"])
+        .stdout;
+    const toneMappedPath = toneMapped.extracted[0]!.framePaths.get(0)!;
+    expect(rgb(toneMappedPath)).toEqual(rgb(reference));
+    expect(pngChunkTypes(toneMappedPath)).toContain("sRGB");
+    expect(pngChunkTypes(toneMappedPath)).not.toContain("cICP");
     expect(frame(plain)).not.toEqual(frame(toneMapped));
+
+    const toneMappedJpg = await extractAllVideoFrames([video("tone-mapped-jpg")], fixtureDir, {
+      fps: 1,
+      outputDir: join(fixtureDir, "tone-mapped-jpg"),
+      format: "jpg",
+      toneMapHdrToSdr: true,
+    });
+    expect(toneMappedJpg.errors).toEqual([]);
+    const jpgPixels = rgb(toneMappedJpg.extracted[0]!.framePaths.get(0)!);
+    const referencePixels = rgb(reference);
+    const worst = Math.max(...[...jpgPixels].map((v, i) => Math.abs(v - referencePixels[i]!)));
+    expect(worst, "tone-mapped jpg against Studio's tone map").toBeLessThanOrEqual(3);
     expect(frame(toneMappedAgain)).toEqual(frame(toneMapped));
+
+    // A macOS ffmpeg that has zscale uses the same tone map, not VideoToolbox.
+    const platform = Object.getOwnPropertyDescriptor(process, "platform")!;
+    Object.defineProperty(process, "platform", { value: "darwin" });
+    try {
+      const mac = await extractAllVideoFrames([video("tone-mapped-mac")], fixtureDir, {
+        fps: 1,
+        outputDir: join(fixtureDir, "tone-mapped-mac"),
+        format: "png",
+        toneMapHdrToSdr: true,
+      });
+      expect(mac.errors).toEqual([]);
+      expect(rgb(mac.extracted[0]!.framePaths.get(0)!)).toEqual(rgb(reference));
+    } finally {
+      Object.defineProperty(process, "platform", platform);
+    }
+  }, 60_000);
+
+  it("warns once and keeps VideoToolbox, under its own cache key, when a macOS ffmpeg has no zscale", async () => {
+    const source = join(fixtureDir, "hlg-no-zscale.mp4");
+    await synthesizeHlgClip(source);
+    const cacheDir = join(fixtureDir, "no-zscale-cache");
+    const clip = (id: string): VideoElement => ({
+      id,
+      src: source,
+      start: 0,
+      end: 1,
+      mediaStart: 0,
+      loop: false,
+      hasAudio: false,
+    });
+    const options = (id: string) => ({
+      fps: 1,
+      outputDir: join(fixtureDir, id),
+      format: "png" as const,
+      toneMapHdrToSdr: true,
+    });
+    const zscale = await extractAllVideoFrames(
+      [clip("zscale")],
+      fixtureDir,
+      options("zscale"),
+      undefined,
+      {
+        extractCacheDir: cacheDir,
+      },
+    );
+    expect(zscale.errors).toEqual([]);
+
+    const realPlatform = process.platform;
+    vi.resetModules();
+    vi.doMock("../utils/psnrFilterAvailability.js", () => ({
+      isFfmpegFilterAvailable: async () => false,
+      isPsnrFilterAvailable: async () => false,
+    }));
+    const platform = Object.getOwnPropertyDescriptor(process, "platform")!;
+    Object.defineProperty(process, "platform", { value: "darwin" });
+    const stderr = vi.spyOn(process.stderr, "write").mockImplementation(() => true);
+    try {
+      const { extractAllVideoFrames: extractOnMac } = await import("./videoFrameExtractor.js");
+      for (const [i, id] of ["no-zscale-1", "no-zscale-2"].entries()) {
+        const result = await extractOnMac([clip(id)], fixtureDir, options(id), undefined, {
+          extractCacheDir: cacheDir,
+        });
+        // The zscale frames above must not be served for the VideoToolbox path.
+        if (i === 0) expect(result.phaseBreakdown.cacheHits).toBe(0);
+        // Off macOS the VideoToolbox decode itself fails, which proves it was attempted.
+        if (realPlatform !== "darwin")
+          expect(JSON.stringify(result.errors)).toMatch(/videotoolbox/i);
+      }
+      const zscaleWarnings = stderr.mock.calls.filter(([message]) =>
+        String(message).includes("no zscale filter"),
+      );
+      expect(zscaleWarnings).toHaveLength(1);
+    } finally {
+      stderr.mockRestore();
+      Object.defineProperty(process, "platform", platform);
+      vi.doUnmock("../utils/psnrFilterAvailability.js");
+      vi.resetModules();
+    }
+  }, 60_000);
+
+  // A second process would read the frames back without the HDR10 light-level metadata the tone map uses.
+  it("tone-maps a VFR HDR10 window in one process, exactly as the unfiltered resample would", async () => {
+    const source = join(fixtureDir, "pq-vfr-4000nit.mp4");
+    const synthesized = await runFfmpeg([
+      "-y",
+      "-v",
+      "error",
+      "-f",
+      "lavfi",
+      "-i",
+      "color=c=0xf0e0c0:s=64x64:r=60:d=2",
+      "-vf",
+      "select='not(between(n\\,30\\,89))',zscale=pin=bt709:tin=bt709:min=bt709:p=bt2020:t=smpte2084:m=bt2020nc:r=tv:npl=1000,format=yuv420p10le",
+      "-fps_mode",
+      "vfr",
+      "-c:v",
+      "libx265",
+      "-x265-params",
+      "log-level=error:hdr10=1:colorprim=bt2020:transfer=smpte2084:colormatrix=bt2020nc:max-cll=4000,400:master-display=G(13250,34500)B(7500,3000)R(34000,16000)WP(15635,16450)L(40000000,50)",
+      source,
+    ]);
+    if (!synthesized.success)
+      throw new Error(`PQ fixture synthesis failed: ${synthesized.stderr.slice(-400)}`);
+    const referenceDir = join(fixtureDir, "pq-vfr-reference");
+    mkdirSync(referenceDir, { recursive: true });
+    const reference = await runFfmpeg([
+      "-v",
+      "error",
+      "-ss",
+      "0",
+      "-i",
+      source,
+      "-t",
+      "0.616666",
+      "-vf",
+      "zscale=t=linear:npl=100,tonemap=hable:desat=0,zscale=p=bt709:t=bt709:m=bt709:r=tv,setparams=color_primaries=bt709:color_trc=iec61966-2-1",
+      "-fps_mode",
+      "cfr",
+      "-r",
+      "30",
+      "-q:v",
+      "0",
+      "-compression_level",
+      "1",
+      join(referenceDir, "frame_%05d.png"),
+    ]);
+    expect(reference.success, reference.stderr).toBe(true);
+
+    const result = await extractVideoFramesRange(source, "pq-vfr", 0, 0.616666, {
+      fps: 30,
+      outputDir: join(fixtureDir, "pq-vfr-out"),
+      format: "png",
+      toneMapHdrToSdr: true,
+    });
+
+    expect(result.metadata.isVFR).toBe(true);
+    const referenceFrames = readdirSync(referenceDir).sort();
+    expect(result.totalFrames).toBe(referenceFrames.length);
+    expect(readFileSync(result.framePaths.get(0)!)).toEqual(
+      readFileSync(join(referenceDir, referenceFrames[0]!)),
+    );
   }, 60_000);
 });
 

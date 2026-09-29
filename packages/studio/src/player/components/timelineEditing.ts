@@ -51,6 +51,7 @@ export interface TimelineMoveInput {
   originScrollLeft?: number;
   currentScrollLeft?: number;
   pixelsPerSecond: number;
+  minStart?: number;
   maxStart: number;
   trackOrder: number[];
   layerOrder?: TimelineLayerId[];
@@ -127,7 +128,7 @@ export function resolveTimelineMove(
   const deltaTrack = Math.round(trackDeltaRaw);
   const nextStart = clamp(
     roundToCentiseconds(input.start + deltaTime),
-    0,
+    input.minStart ?? 0,
     Math.max(0, input.maxStart),
   );
 
@@ -236,14 +237,7 @@ export function resolveTimelineResize(
 
   const { minDelta, maxDelta } = clipStartTrimDeltaBounds(input, input.minStart, minDuration);
   const clampedDelta = clamp(deltaTime, minDelta, maxDelta);
-  const trimmed = applyClipStartTrimDelta(input, clampedDelta);
-
-  return {
-    start: roundToCentiseconds(trimmed.start),
-    duration: roundToCentiseconds(trimmed.duration),
-    playbackStart:
-      trimmed.playbackStart != null ? roundToCentiseconds(trimmed.playbackStart) : undefined,
-  };
+  return applyClipStartTrimDelta(input, clampedDelta);
 }
 
 export interface TimelinePromptElement {
@@ -474,6 +468,10 @@ export function buildTimelineElementAgentPrompt(element: {
 }
 export function formatTimelineAttributeNumber(value: number): string {
   return Number(roundToCentiseconds(value).toFixed(2)).toString();
+}
+
+export function formatTimelineMediaOffset(value: number): string {
+  return Number(value.toFixed(6)).toString();
 }
 
 /**

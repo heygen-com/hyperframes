@@ -4,7 +4,7 @@ import { mkdtempSync, writeFileSync, rmSync, mkdirSync, statSync } from "node:fs
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { registerFileRoutes } from "./files.js";
-import { registerPreviewRoutes } from "./preview.js";
+import { PREVIEW_CAPTURE_PARAM, registerPreviewRoutes } from "./preview.js";
 import { registerThumbnailRoutes } from "./thumbnail.js";
 import { registerWaveformRoutes } from "./waveform.js";
 import { buildWaveformCacheKey } from "../helpers/waveform.js";
@@ -91,7 +91,7 @@ const RESERVED_NAMES = [
   "🎬 film",
 ];
 
-type ThumbnailCall = { compPath: string; previewUrl: string };
+type ThumbnailCall = { compPath: string; previewUrl: string; served?: string };
 
 async function requestProject(projectId: string, route: string, encodedSubPath: string) {
   const { dir, cleanup } = projectWithComposition();
@@ -104,15 +104,17 @@ async function requestProject(projectId: string, route: string, encodedSubPath: 
     "[0.5]",
   );
   const thumbnails: ThumbnailCall[] = [];
+  const app = new Hono();
   const adapter = {
     ...createAdapter(dir),
     generateThumbnail: async (opts: ThumbnailCall) => {
-      thumbnails.push({ compPath: opts.compPath, previewUrl: opts.previewUrl });
+      const page = await app.request(opts.previewUrl.replace("/api/", "/"));
+      const served = page.ok ? await page.text() : `${page.status}`;
+      thumbnails.push({ compPath: opts.compPath, previewUrl: opts.previewUrl, served });
       return Buffer.from("jpeg");
     },
   } as StudioApiAdapter;
   try {
-    const app = new Hono();
     registerFileRoutes(app, adapter);
     registerPreviewRoutes(app, adapter);
     registerThumbnailRoutes(app, adapter);
@@ -151,7 +153,8 @@ describe.each(RESERVED_NAMES)("project id %j", (projectId) => {
     expect(result.thumbnails).toHaveLength(1);
     expect(result.thumbnails[0]?.compPath).toBe("scenes/scene-1.html");
     const url = new URL(result.thumbnails[0]?.previewUrl ?? "");
-    expect(url.search + url.hash).toBe("");
+    expect(url.search + url.hash).toBe(`?${PREVIEW_CAPTURE_PARAM}=1`);
+    expect(result.thumbnails[0]?.served).toContain("SCENE ONE");
     const segments = url.pathname.split("/").map(decodeURIComponent);
     expect(segments).toEqual([
       "",

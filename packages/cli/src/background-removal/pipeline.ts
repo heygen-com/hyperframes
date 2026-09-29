@@ -14,7 +14,9 @@
  * decode the alpha plane.
  */
 import { spawn } from "node:child_process";
-import { extname } from "node:path";
+import { randomUUID } from "node:crypto";
+import { renameSync, rmSync } from "node:fs";
+import { basename, dirname, extname, join } from "node:path";
 import { findFFmpeg, findFFprobe, getFFmpegInstallHint } from "../browser/ffmpeg.js";
 import { createSession, type Session } from "./inference.js";
 import { type Device, type ModelId } from "./manager.js";
@@ -296,16 +298,20 @@ export async function render(options: RenderOptions): Promise<RenderResult> {
     onProgress: (msg) => options.onProgress?.({ kind: "info", message: msg }),
   });
 
+  const output = tempBeside(options.outputPath);
+  const background = options.backgroundOutputPath && tempBeside(options.backgroundOutputPath);
   try {
     const start = Date.now();
     const framesProcessed = await runPipeline(
-      options,
+      { ...options, outputPath: output, backgroundOutputPath: background },
       session,
       media,
       format,
       bgFormat,
       ffmpegPath,
     );
+    renameSync(output, options.outputPath);
+    if (background) renameSync(background, options.backgroundOutputPath!);
     const durationSeconds = (Date.now() - start) / 1000;
     const avgMsPerFrame = framesProcessed ? (durationSeconds * 1000) / framesProcessed : 0;
 
@@ -320,7 +326,14 @@ export async function render(options: RenderOptions): Promise<RenderResult> {
     };
   } finally {
     await session.close();
+    rmSync(output, { force: true, maxRetries: 3 });
+    if (background) rmSync(background, { force: true, maxRetries: 3 });
   }
+}
+
+/** ffmpeg follows a link planted at its output mid-job; a fresh unguessable name renamed over the output cannot. */
+function tempBeside(path: string): string {
+  return join(dirname(path), `.tmp-${randomUUID()}-${basename(path)}`);
 }
 
 const RECENT_WINDOW = 30;

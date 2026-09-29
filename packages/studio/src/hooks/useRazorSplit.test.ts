@@ -25,7 +25,7 @@ const rootElement: TimelineElement = {
 };
 
 // An expanded sub-comp child: `start` is in MASTER coordinates (offset by the
-// host's master start), `sourceFile` is the sub-comp, and `expandedParentStart`
+// host's master start), `sourceFile` is the sub-comp, and `parentCompositionStart`
 // is that host master start. Its authored time in the file is start - basis.
 const expandedChild: TimelineElement = {
   id: "child-clip",
@@ -35,7 +35,7 @@ const expandedChild: TimelineElement = {
   track: 1,
   domId: "child-clip",
   sourceFile: SUBCOMP_FILE,
-  expandedParentStart: 2,
+  parentCompositionStart: 2,
 };
 
 interface SplitRequest {
@@ -119,13 +119,13 @@ describe("useRazorSplit — sub-comp coordinate rebasing", () => {
     expect(harness.splitRequests).toHaveLength(1);
     const req = harness.splitRequests[0];
     expect(req.path).toBe(SUBCOMP_FILE);
-    expect(req.splitTime).toBe(3); // 5 - expandedParentStart(2), NOT 5
+    expect(req.splitTime).toBe(3); // 5 - parentCompositionStart(2), NOT 5
     expect(req.elementStart).toBe(0); // 2 - 2, NOT the master start 2
     expect(req.elementDuration).toBe(6);
   });
 
   it("leaves a root-level clip's coordinates unchanged", async () => {
-    // Master split time T = 4; no expandedParentStart, so nothing is rebased.
+    // Master split time T = 4; no parentCompositionStart, so nothing is rebased.
     await act(async () => {
       await harness.singleRef.current!(rootElement, 4);
     });
@@ -154,7 +154,7 @@ describe("useRazorSplit — sub-comp coordinate rebasing", () => {
     expect(rootReq.splitTime).toBe(3);
     expect(rootReq.elementStart).toBe(0);
 
-    // Expanded child: rebased by its OWN expandedParentStart, not the root's.
+    // Expanded child: rebased by its OWN parentCompositionStart, not the root's.
     expect(childReq.splitTime).toBe(1); // 3 - 2
     expect(childReq.elementStart).toBe(0); // 2 - 2
   });

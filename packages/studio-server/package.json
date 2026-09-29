@@ -1,6 +1,6 @@
 {
   "name": "@hyperframes/studio-server",
-  "version": "0.8.79",
+  "version": "0.8.91",
   "repository": {
     "type": "git",
     "url": "https://github.com/heygen-com/hyperframes",
@@ -26,6 +26,24 @@
       "node": "./dist/helpers/screenshotClip.js",
       "import": "./src/helpers/screenshotClip.ts",
       "types": "./src/helpers/screenshotClip.ts"
+    },
+    "./safe-path": {
+      "bun": "./src/helpers/safePath.ts",
+      "node": "./dist/helpers/safePath.js",
+      "import": "./src/helpers/safePath.ts",
+      "types": "./src/helpers/safePath.ts"
+    },
+    "./hf-ids": {
+      "bun": "./src/helpers/hfIdPersist.ts",
+      "node": "./dist/helpers/hfIdPersist.js",
+      "import": "./src/helpers/hfIdPersist.ts",
+      "types": "./src/helpers/hfIdPersist.ts"
+    },
+    "./history": {
+      "bun": "./src/history/index.ts",
+      "node": "./dist/history/index.js",
+      "import": "./src/history/index.ts",
+      "types": "./src/history/index.ts"
     },
     "./manual-edits-render-script": {
       "bun": "./src/helpers/manualEditsRenderScript.ts",
@@ -87,6 +105,18 @@
       "./screenshot-clip": {
         "import": "./dist/helpers/screenshotClip.js",
         "types": "./dist/helpers/screenshotClip.d.ts"
+      },
+      "./safe-path": {
+        "import": "./dist/helpers/safePath.js",
+        "types": "./dist/helpers/safePath.d.ts"
+      },
+      "./hf-ids": {
+        "import": "./dist/helpers/hfIdPersist.js",
+        "types": "./dist/helpers/hfIdPersist.d.ts"
+      },
+      "./history": {
+        "import": "./dist/history/index.js",
+        "types": "./dist/history/index.d.ts"
       },
       "./manual-edits-render-script": {
         "import": "./dist/helpers/manualEditsRenderScript.js",
