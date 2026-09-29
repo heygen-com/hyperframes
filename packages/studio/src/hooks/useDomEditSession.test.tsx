@@ -5,6 +5,7 @@ import { describe, expect, it, vi } from "vitest";
 import { shouldUseSdkCutover } from "../utils/sdkCutover";
 import type { PatchOperation } from "../utils/sourcePatcher";
 import type { Composition } from "@hyperframes/sdk";
+import type { GsapAnimation } from "@hyperframes/core/gsap-parser";
 import type { DomEditSelection } from "../components/editor/domEditingTypes";
 import type { TimelineElement } from "../player";
 import type { UseDomEditSessionParams } from "./useDomEditSession";
@@ -62,6 +63,8 @@ const domEditSelectionRef: { current: DomEditSelection | null } = { current: nul
 const domEditGroupSelectionsRef: { current: DomEditSelection[] } = { current: [] };
 const groupSelectionSpy = vi.fn();
 const gsapCommitMutation = Object.assign(vi.fn(), { batch: vi.fn() });
+const neverParsed = new Promise<{ animations: GsapAnimation[] }>(() => undefined);
+const parsedFile = { current: neverParsed };
 
 function createSessionParams(
   overrides: Partial<UseDomEditSessionParams> = {},
@@ -166,7 +169,12 @@ vi.mock("./useAskAgentModal", () => ({
 vi.mock("./useStudioSelectionPublisher", () => ({
   useStudioSelectionPublisher: () => {},
 }));
-vi.mock("./useGsapTweenCache", () => ({
+vi.mock("./keyframeCacheAstLoad", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("./keyframeCacheAstLoad")>()),
+  fetchParsedAnimations: () => parsedFile.current,
+}));
+vi.mock("./useGsapTweenCache", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("./useGsapTweenCache")>()),
   useGsapCacheVersion: () => ({ version: 0, bump: vi.fn() }),
 }));
 vi.mock("./useGsapScriptCommits", () => ({
@@ -408,6 +416,48 @@ describe("bulk segment ease commits", () => {
       }
     } finally {
       domEditSelectionRef.current = null;
+      act(() => root.unmount());
+    }
+  });
+});
+
+describe("the session hands out selections narrowed to what the GSAP commit accepts", () => {
+  it("closes the move of a helper-loop element once its preflight lands", async () => {
+    const { useDomEditSession } = await import("./useDomEditSession");
+    domEditSelectionRef.current = {
+      id: "hero",
+      selector: "#hero",
+      element: document.createElement("div"),
+      sourceFile: "index.html",
+      capabilities: {
+        canApplyManualOffset: true,
+        canApplyManualSize: true,
+        canApplyManualRotation: true,
+      },
+    } as unknown as DomEditSelection;
+    const loop = { targetSelector: "#hero", properties: { x: 100 }, provenance: { kind: "loop" } };
+    parsedFile.current = Promise.resolve({ animations: [loop as unknown as GsapAnimation] });
+    const seen: { selection?: DomEditSelection | null } = {};
+    function Probe() {
+      seen.selection = useDomEditSession(createSessionParams()).domEditSelection;
+      return null;
+    }
+    const root = createRoot(document.createElement("div"));
+    try {
+      act(() => root.render(<Probe />));
+      expect(seen.selection?.capabilities.canApplyManualOffset).toBe(false);
+      await act(async () => {
+        for (let tick = 0; tick < 10; tick++) await Promise.resolve();
+      });
+      expect(seen.selection?.capabilities).toMatchObject({
+        canApplyManualOffset: false,
+        canApplyManualSize: true,
+        canApplyManualRotation: true,
+        reasonIfDisabled: expect.stringContaining("helper or loop"),
+      });
+    } finally {
+      domEditSelectionRef.current = null;
+      parsedFile.current = neverParsed;
       act(() => root.unmount());
     }
   });

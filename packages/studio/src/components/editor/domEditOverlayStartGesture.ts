@@ -35,6 +35,15 @@ import { collectSnapContext, buildExcludeElements } from "./snapTargetCollection
 import { logResize, resetResizeMoveLog } from "../../utils/resizeDebug";
 import { logDrag, readDragPositions, resetDragMoveLog } from "../../utils/dragDebug";
 
+export function notifyBlockedPress(
+  e: React.PointerEvent<HTMLElement>,
+  opts: UseDomEditOverlayGesturesOptions,
+  selection: DomEditSelection,
+): void {
+  if (e.button !== 0 || selection.capabilities.commitCheckPending) return;
+  opts.onBlockedMoveRef.current(selection);
+}
+
 export function startGroupDrag(
   e: React.PointerEvent<HTMLElement>,
   opts: UseDomEditOverlayGesturesOptions,
@@ -48,7 +57,7 @@ export function startGroupDrag(
   if (blockedSelection) {
     e.preventDefault();
     e.stopPropagation();
-    opts.onBlockedMoveRef.current(blockedSelection);
+    notifyBlockedPress(e, opts, blockedSelection);
     return false;
   }
 

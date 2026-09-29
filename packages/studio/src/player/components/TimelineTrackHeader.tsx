@@ -72,6 +72,7 @@ interface TimelineTrackHeaderProps {
   isGroupMember?: boolean;
   rovingTargetId?: string | null;
   theme: TimelineTheme;
+  showAudioEffects?: boolean;
   onToggleClipExpanded: () => void;
   onToggleTrackHidden: TimelineEditCallbacks["onToggleTrackHidden"];
   onTogglePropertyGroupKeyframe?: TimelineEditCallbacks["onTogglePropertyGroupKeyframe"];
@@ -98,6 +99,7 @@ export function TimelineTrackHeader({
   isAudioTrack,
   isGroupMember = false,
   theme,
+  showAudioEffects = true,
   onToggleClipExpanded,
   onToggleTrackHidden,
   onTogglePropertyGroupKeyframe,
@@ -316,7 +318,7 @@ export function TimelineTrackHeader({
               // On the control line rather than a third row of its own.
               trailing={
                 <>
-                  {singleAudioClip && (
+                  {showAudioEffects && singleAudioClip && (
                     <TimelineFxButton
                       variant="chain"
                       fxChainRaw={singleAudioClip.fxChain}
@@ -340,7 +342,8 @@ export function TimelineTrackHeader({
                       onOpenRack={() => openClipFxRack(singleAudioClip)}
                     />
                   )}
-                  {clipCount > 1 &&
+                  {showAudioEffects &&
+                    clipCount > 1 &&
                     !isTrackGrouped &&
                     (isAudioTrack ? canGroupWholeTrack : isVideoWithAudioTrack) && (
                       <TimelineFxButton
@@ -455,7 +458,7 @@ export function TimelineTrackHeader({
               // element, so a shared row's other envelopes belong to clips it is
               // not showing and there would be nothing to reveal.
               onReveal={
-                revealTarget && revealElementId && keyframeClip
+                showAudioEffects && revealTarget && revealElementId && keyframeClip
                   ? () => {
                       // Select FIRST: the rack is the property panel's view of
                       // the selected element, so a reveal aimed at an unselected

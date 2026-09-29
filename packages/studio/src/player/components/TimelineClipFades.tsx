@@ -14,6 +14,7 @@ import {
 } from "@hyperframes/core/audio-fade";
 import type { TimelineElement } from "../store/playerStore";
 import { useTimelineEditContextOptional } from "../../contexts/TimelineEditContext";
+import { releasedOutsideWindow } from "./timelinePointerRelease";
 
 type FadeEdge = "in" | "out";
 
@@ -136,7 +137,7 @@ export function TimelineClipFades({ el, pps, widthPx, showHandles }: TimelineCli
   const finish = (e: PointerEvent<HTMLDivElement>, cancelled: boolean) => {
     const g = endGesture(e);
     if (!g) return;
-    if (cancelled || !g.moved) return revertGesture(g);
+    if (cancelled || !g.moved || releasedOutsideWindow(e)) return revertGesture(g);
     setDraft({ edge: g.edge, seconds: g.last });
     void onSetElementAttributeQuiet?.(
       el,

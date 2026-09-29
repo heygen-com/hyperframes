@@ -71,6 +71,7 @@ const GROUPS: Group[] = [
       ],
       ["browser", "Manage the Chrome browser used for rendering"],
       ["doctor", "Check system dependencies and environment"],
+      ["clean", "Find and remove what HyperFrames left on disk"],
       ["upgrade", "Check for updates and show upgrade instructions"],
     ],
   },

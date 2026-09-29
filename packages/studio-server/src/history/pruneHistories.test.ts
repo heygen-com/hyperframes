@@ -13,7 +13,11 @@ import { describe, expect, it, onTestFinished, vi } from "vitest";
 import { ID_PATH, readId } from "./historyId.js";
 import { takeHistoryOwnership } from "./ownerLock.js";
 import { openProjectHistory } from "./projectHistory.js";
-import { KEEP_GONE_PROJECT_HISTORY_MS, pruneGoneProjectHistories } from "./pruneHistories.js";
+import {
+  KEEP_GONE_PROJECT_HISTORY_MS,
+  listProjectHistories,
+  pruneGoneProjectHistories,
+} from "./pruneHistories.js";
 
 vi.mock("./ownerLock.js", async (importOriginal) => {
   const actual = await importOriginal<typeof import("./ownerLock.js")>();
@@ -278,5 +282,29 @@ describe("pruneGoneProjectHistories", () => {
 
     expect(await prunedIds(historyRoot)).toEqual([]);
     expect(existsSync(join(historyRoot, unreadable.id))).toBe(true);
+  });
+});
+
+describe("listProjectHistories", () => {
+  it("lists only histories whose project is still in its folder, and skips other folders", async () => {
+    const historyRoot = tempDir("hf-prune-root-");
+    const live = await projectWithHistory(historyRoot);
+    const gone = await projectWithHistory(historyRoot);
+    const replaced = await projectWithHistory(historyRoot);
+    await Promise.all([live, gone, replaced].map(({ history }) => history.close()));
+    rmSync(gone.projectDir, { recursive: true, force: true });
+    writeFileSync(join(replaced.projectDir, ID_PATH), "00000000-0000-4000-8000-000000000000\n");
+    mkdirSync(join(historyRoot, "backup"));
+
+    const listed = listProjectHistories(historyRoot);
+    expect(listed.map(({ id, projectDir }) => ({ id, projectDir }))).toEqual([
+      { id: live.id, projectDir: live.projectDir },
+    ]);
+    expect(listed[0]!.lastUsedMs).toBeGreaterThan(0);
+    expect(existsSync(join(historyRoot, gone.id))).toBe(true);
+  });
+
+  it("lists nothing for a history root that does not exist", () => {
+    expect(listProjectHistories(join(tmpdir(), "hf-no-such-history-root"))).toEqual([]);
   });
 });

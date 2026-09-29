@@ -1,0 +1,250 @@
+<!doctype html>
+<!--
+  torn-paper-rip demo. This standalone composition mounts the primitive
+  FULL-BLEED through data-composition-src, with right-to-left travel and a
+  rougher edge to prove the non-default variable path. A harbor at dusk
+  (procedural SVG) tears away to reveal a chapter title card.
+-->
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=1920, height=1080" />
+    <title>Torn Paper Rip Demo</title>
+    <style>
+      * {
+        margin: 0;
+        padding: 0;
+        box-sizing: border-box;
+      }
+      html,
+      body {
+        width: 1920px;
+        height: 1080px;
+        overflow: hidden;
+        background: #111318;
+      }
+      #root {
+        position: relative;
+        width: 1920px;
+        height: 1080px;
+        overflow: hidden;
+        background: #111318;
+      }
+      .mount-bleed {
+        position: absolute;
+        inset: 0;
+        container-type: size;
+        overflow: hidden;
+      }
+      .demo-photo {
+        position: absolute;
+        inset: 0;
+      }
+      .demo-photo img {
+        display: block;
+        width: 100%;
+        height: 100%;
+        object-fit: cover;
+      }
+      .demo-photo::after {
+        content: "";
+        position: absolute;
+        inset: 0;
+        box-shadow: inset 0 0 240px rgba(0, 0, 0, 0.45);
+      }
+      .demo-card {
+        position: absolute;
+        inset: 0;
+        display: flex;
+        flex-direction: column;
+        justify-content: flex-end;
+        gap: 40px;
+        padding: 0 160px 168px;
+        background: #c3ccd4;
+        color: #111318;
+      }
+      .demo-card-eyebrow {
+        font-family: "Inter", sans-serif;
+        font-weight: 500;
+        font-size: 30px;
+        letter-spacing: 0.18em;
+        text-transform: uppercase;
+        color: #5d6570;
+      }
+      .demo-card-title {
+        font-family: "Instrument Serif", serif;
+        font-weight: 400;
+        font-size: 176px;
+        line-height: 0.95;
+        letter-spacing: -0.01em;
+      }
+    </style>
+  </head>
+  <body>
+    <template data-slot="torn-paper-rip-from">
+      <div class="demo-photo">
+        <img alt="" src="" id="demo-scene-from-img" />
+      </div>
+    </template>
+    <template data-slot="torn-paper-rip-to">
+      <div class="demo-card">
+        <p class="demo-card-eyebrow">Chapter two</p>
+        <h2 class="demo-card-title">The morning after</h2>
+      </div>
+    </template>
+
+    <div
+      id="root"
+      data-composition-id="torn-paper-rip-demo"
+      data-start="0"
+      data-width="1920"
+      data-height="1080"
+      data-duration="2.4"
+      data-fps="30"
+    >
+      <div
+        id="torn-paper-rip-mount"
+        class="mount-bleed clip"
+        data-composition-id="torn-paper-rip"
+        data-composition-src="./torn-paper-rip.html"
+        data-variable-values='{"direction":"right-to-left","roughness":72}'
+        data-start="0"
+        data-duration="2.4"
+        data-track-index="0"
+        data-width="1920"
+        data-height="1080"
+      ></div>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/gsap@3.14.2/dist/gsap.min.js"></script>
+    <script>
+      (function () {
+        // Seeded, so the scene is identical on every load.
+        var seed = 7;
+        function rand() {
+          seed = (Math.imul(1664525, seed) + 1013904223) >>> 0;
+          return seed / 4294967296;
+        }
+        function rect(x, y, w, h, fill, opacity) {
+          return (
+            '<rect x="' +
+            x.toFixed(1) +
+            '" y="' +
+            y.toFixed(1) +
+            '" width="' +
+            w.toFixed(1) +
+            '" height="' +
+            h.toFixed(1) +
+            '" fill="' +
+            fill +
+            '" opacity="' +
+            opacity.toFixed(2) +
+            '"/>'
+          );
+        }
+
+        // A backlit harbor at dusk: silhouettes, a low sun and its broken
+        // reflection, so it reads as a photograph rather than flat vector.
+        function harborScene() {
+          var town = "";
+          var lights = "";
+          for (var bx = 20; bx < 600; ) {
+            var w = 18 + rand() * 34;
+            var h = 16 + rand() * 46;
+            var base = 566 + bx * 0.11;
+            town += rect(bx, base - h, w, h + 30, "#2a2036", 1);
+            if (rand() > 0.35) {
+              var lx = bx + 4 + rand() * (w - 10);
+              var ly = base - h + 5 + rand() * (h - 12);
+              lights += rect(lx, ly, 4, 5, "#ffc57a", 0.9);
+              lights += rect(lx, 654 + (650 - ly) * 0.2, 3, 26, "#ffc57a", 0.22);
+            }
+            bx += w + 2 + rand() * 6;
+          }
+          var posts = "";
+          for (var px = 1488; px < 1920; px += 44) posts += rect(px, 736, 7, 70, "#0e0a14", 1);
+          return (
+            '<svg xmlns="http://www.w3.org/2000/svg" width="1920" height="1080" viewBox="0 0 1920 1080">' +
+            "<defs>" +
+            '<linearGradient id="sky" gradientUnits="userSpaceOnUse" x1="0" y1="0" x2="0" y2="650">' +
+            '<stop offset="0" stop-color="#151c33"/><stop offset="0.35" stop-color="#2e3150"/>' +
+            '<stop offset="0.6" stop-color="#6b4863"/><stop offset="0.8" stop-color="#c46d5c"/>' +
+            '<stop offset="0.93" stop-color="#eea062"/><stop offset="1" stop-color="#f8c585"/></linearGradient>' +
+            '<linearGradient id="sea" gradientUnits="userSpaceOnUse" x1="0" y1="650" x2="0" y2="1080">' +
+            '<stop offset="0" stop-color="#d88f63"/><stop offset="0.12" stop-color="#9a5b5e"/>' +
+            '<stop offset="0.45" stop-color="#3c2a44"/><stop offset="1" stop-color="#120e1b"/></linearGradient>' +
+            '<filter id="b70" x="-50%" y="-50%" width="200%" height="200%"><feGaussianBlur stdDeviation="70"/></filter>' +
+            '<filter id="b8" x="-20%" y="-200%" width="140%" height="500%"><feGaussianBlur stdDeviation="8"/></filter>' +
+            '<filter id="b2"><feGaussianBlur stdDeviation="2"/></filter>' +
+            '<filter id="b1"><feGaussianBlur stdDeviation="1"/></filter>' +
+            '<linearGradient id="seaglint" gradientUnits="userSpaceOnUse" x1="0" y1="652" x2="0" y2="1080">' +
+            '<stop offset="0" stop-color="#f5b680" stop-opacity="0.8"/><stop offset="1" stop-color="#f5b680" stop-opacity="0.12"/></linearGradient>' +
+            '<linearGradient id="sunglint" gradientUnits="userSpaceOnUse" x1="0" y1="652" x2="0" y2="1080">' +
+            '<stop offset="0" stop-color="#ffe6b8"/><stop offset="1" stop-color="#ffe6b8" stop-opacity="0.4"/></linearGradient>' +
+            // Stretched noise keeps only its brightest streaks: broken water highlights.
+            '<filter id="water" x="0" y="0" width="100%" height="100%">' +
+            '<feTurbulence type="fractalNoise" baseFrequency="0.003 0.1" numOctaves="3" seed="11"/>' +
+            '<feColorMatrix type="matrix" values="0 0 0 0 0  0 0 0 0 0  0 0 0 0 0  3 0 0 0 -1.4" result="m"/>' +
+            '<feComposite in="SourceGraphic" in2="m" operator="in"/></filter>' +
+            '<filter id="sunwater" x="-20%" y="0" width="140%" height="100%">' +
+            '<feGaussianBlur in="SourceGraphic" stdDeviation="36 0" result="soft"/>' +
+            '<feTurbulence type="fractalNoise" baseFrequency="0.004 0.12" numOctaves="3" seed="4"/>' +
+            '<feColorMatrix type="matrix" values="0 0 0 0 0  0 0 0 0 0  0 0 0 0 0  4.5 0 0 0 -1.7" result="m"/>' +
+            '<feComposite in="soft" in2="m" operator="in"/></filter>' +
+            '<filter id="grain" x="0" y="0" width="100%" height="100%">' +
+            '<feTurbulence type="fractalNoise" baseFrequency="0.85" numOctaves="2" seed="3" stitchTiles="stitch"/>' +
+            '<feColorMatrix type="matrix" values="0 0 0 0 0  0 0 0 0 0  0 0 0 0 0  0.22 0 0 0 -0.04"/></filter>' +
+            '<g id="boat" fill="#120d19" stroke="#120d19">' +
+            '<path d="M-70 0 L72 0 L58 16 L-56 16 Z" stroke="none"/><rect x="-24" y="-12" width="40" height="12" stroke="none"/>' +
+            '<line x1="0" y1="0" x2="0" y2="-210" stroke-width="3.5"/><line x1="0" y1="-30" x2="60" y2="-26" stroke-width="3"/>' +
+            '<line x1="0" y1="-210" x2="70" y2="0" stroke-width="1.2"/><line x1="0" y1="-210" x2="-66" y2="0" stroke-width="1.2"/></g>' +
+            "</defs>" +
+            '<rect width="1920" height="650" fill="url(#sky)"/>' +
+            '<circle cx="1240" cy="628" r="260" fill="#ffb46a" opacity="0.55" filter="url(#b70)"/>' +
+            '<g filter="url(#b8)">' +
+            '<ellipse cx="520" cy="470" rx="420" ry="9" fill="#f3a372" opacity="0.45"/>' +
+            '<ellipse cx="1500" cy="520" rx="360" ry="7" fill="#f7b27c" opacity="0.5"/>' +
+            '<ellipse cx="900" cy="300" rx="520" ry="16" fill="#3b3050" opacity="0.6"/>' +
+            '<ellipse cx="1650" cy="250" rx="300" ry="12" fill="#453656" opacity="0.5"/></g>' +
+            '<circle cx="1240" cy="632" r="50" fill="#ffe2a8" opacity="0.6" filter="url(#b8)"/>' +
+            '<circle cx="1240" cy="632" r="38" fill="#fff0cf"/>' +
+            '<path d="M620 650 C760 628 860 612 1000 620 C1120 627 1180 640 1300 636 C1420 632 1520 606 1660 610 C1780 614 1860 628 1920 632 L1920 650 Z" fill="#6a4560" opacity="0.9" filter="url(#b2)"/>' +
+            '<rect y="650" width="1920" height="430" fill="url(#sea)"/>' +
+            '<rect y="647" width="1920" height="5" fill="#ffd39a" opacity="0.45" filter="url(#b2)"/>' +
+            '<rect y="652" width="1920" height="428" fill="url(#seaglint)" filter="url(#water)"/>' +
+            '<path d="M1222 652 L1258 652 L1400 1080 L1080 1080 Z" fill="url(#sunglint)" filter="url(#sunwater)"/>' +
+            '<path d="M0 560 C120 556 220 572 320 590 C420 606 520 618 640 630 C700 636 760 644 820 650 L0 650 Z" fill="#2a2036"/>' +
+            '<g filter="url(#b1)">' +
+            town +
+            '<rect x="296" y="512" width="22" height="100" fill="#2a2036"/><path d="M293 514 L307 470 L321 514 Z" fill="#2a2036"/></g>' +
+            '<g filter="url(#b1)">' +
+            lights +
+            "</g>" +
+            '<use href="#boat" transform="translate(820 760)"/>' +
+            '<use href="#boat" transform="translate(820 792) scale(1 -1)" opacity="0.3" filter="url(#b2)"/>' +
+            '<use href="#boat" transform="translate(520 712) scale(0.55)"/>' +
+            '<use href="#boat" transform="translate(1080 700) scale(0.4)"/>' +
+            rect(1480, 730, 440, 10, "#0e0a14", 1) +
+            posts +
+            '<rect x="1480" y="806" width="440" height="30" fill="#0e0a14" opacity="0.25" filter="url(#b2)"/>' +
+            '<g stroke="#0e0a14" stroke-width="3"><line x1="1560" y1="730" x2="1560" y2="650"/><line x1="1740" y1="730" x2="1740" y2="650"/></g>' +
+            '<g fill="#ffd08a"><circle cx="1560" cy="648" r="5"/><circle cx="1740" cy="648" r="5"/></g>' +
+            '<g fill="#ffd08a" opacity="0.5" filter="url(#b8)"><circle cx="1560" cy="648" r="18"/><circle cx="1740" cy="648" r="18"/></g>' +
+            '<rect width="1920" height="1080" filter="url(#grain)"/>' +
+            "</svg>"
+          );
+        }
+        // Elements inside an inert <template> are not in the live document,
+        // so they must be reached through the template's own content
+        // fragment, never document.getElementById.
+        document
+          .querySelector('template[data-slot="torn-paper-rip-from"]')
+          .content.getElementById("demo-scene-from-img").src =
+          "data:image/svg+xml;charset=utf-8," + encodeURIComponent(harborScene());
+
+        window.__timelines = window.__timelines || {};
+        window.__timelines["torn-paper-rip-demo"] = gsap.timeline({ paused: true });
+      })();
+    </script>
+  </body>
+</html>

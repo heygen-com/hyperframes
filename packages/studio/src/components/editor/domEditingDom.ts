@@ -199,6 +199,7 @@ export function getSourceFileForElement(
 export function normalizeTimelineCompositionSource(value: string | undefined): string | undefined {
   const trimmed = value?.trim();
   if (!trimmed) return undefined;
+  if (!/^([a-z][a-z0-9+.-]*:|\/)/i.test(trimmed)) return trimmed;
 
   let pathname = trimmed;
   try {

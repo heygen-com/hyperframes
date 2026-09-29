@@ -3,7 +3,7 @@ import React, { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { installReactActEnvironment, makeSelection } from "../../hooks/domSelectionTestHarness";
-import { resolveZIndexEntries } from "../nle/PreviewOverlays";
+import { resolveZIndexEntries } from "./ConnectedDomEditOverlay";
 import { useElementLifecycleOps } from "../../hooks/useElementLifecycleOps";
 import { makeLifecycleOpsParams } from "../../hooks/elementLifecycleOpsTestUtils";
 import type { DomEditPatchBatch } from "../../hooks/domEditCommitTypes";
@@ -138,7 +138,7 @@ describe("CanvasContextMenu — handler gating", () => {
   });
 });
 
-// ── Menu z-action → commit path (wired the way PreviewOverlays wires the app) ──
+// ── Menu z-action → commit path (wired the way ConnectedDomEditOverlay wires the app) ──
 
 function pressMenuItem(label: string) {
   const button = zOrderButtons().find((b) => b.textContent === label);
@@ -200,7 +200,7 @@ describe("CanvasContextMenu — z-action commit path", () => {
     const captured: CapturedBatchCall[] = [];
     const { commit, cleanup } = renderCommitHook(captured);
 
-    // Wire onApplyZIndex the way the app does (PreviewOverlays → the commit
+    // Wire onApplyZIndex the way the app does (ConnectedDomEditOverlay → the commit
     // hook), asserting the menu has NOT touched the DOM when it fires — the
     // hook must capture true pre-change styles for its rollback.
     const stylesAtApply: Array<{ zIndex: string; position: string }> = [];

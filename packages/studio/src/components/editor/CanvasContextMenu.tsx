@@ -16,7 +16,7 @@
  * flow, and captures the TRUE prior styles for its failure rollback.
  *
  * The prop MUST be wired at the call site to route through the full persist
- * path. PreviewOverlays.tsx builds the per-patch PatchTargets (the selected
+ * path. ConnectedDomEditOverlay.tsx builds the per-patch PatchTargets (the selected
  * element carries its full selection identity; sibling elements are iframe DOM
  * nodes, so their id / selector are derived from the node and they share the
  * selection's sourceFile) and forwards them to handleDomZIndexReorderCommit.

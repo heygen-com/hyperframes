@@ -22,6 +22,7 @@ type RuntimeBridgeControlActionBase =
   | "set-web-audio-media-disabled"
   | "set-idle-heartbeat"
   | "set-root-duration"
+  | "set-play-range"
   | "stop-media"
   | "flash-elements";
 
@@ -34,6 +35,8 @@ type RuntimeBridgeControlMessageBase = {
   muted?: boolean;
   volume?: number;
   durationSeconds?: number;
+  startSeconds?: number | null;
+  endSeconds?: number | null;
   disabled?: boolean;
   slow?: boolean;
   playbackRate?: number;
@@ -293,6 +296,16 @@ export type RuntimeTimelineChildLike = {
   data?: unknown;
   parent?: RuntimeTimelineChildLike;
   getChildren?: RuntimeTimelineLike["getChildren"];
+};
+
+/** A timeline or tween a composition script started, as a scene swap stops it. */
+export type SceneAnimation = {
+  targets?: () => unknown[];
+  duration?: () => number;
+  getChildren?: (nested?: boolean, tweens?: boolean, timelines?: boolean) => SceneAnimation[];
+  revert?: () => void;
+  kill?: () => void;
+  totalTime?: (timeSeconds?: number, suppressEvents?: boolean) => unknown;
 };
 
 export type RuntimeTimelineLike = {

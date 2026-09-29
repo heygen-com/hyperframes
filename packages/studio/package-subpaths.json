@@ -7,6 +7,18 @@
       "types": "./dist/index.d.ts",
       "environments": ["browser"]
     },
+    "./ui": {
+      "source": "./src/ui.ts",
+      "runtime": "./dist/ui.js",
+      "types": "./dist/ui.d.ts",
+      "environments": ["browser"]
+    },
+    "./player": {
+      "source": "./src/playerEntry.ts",
+      "runtime": "./dist/player.js",
+      "types": "./dist/player.d.ts",
+      "environments": ["browser"]
+    },
     "./tailwind-preset": {
       "source": "./src/styles/tailwind-preset.ts",
       "runtime": "./dist/styles/tailwind-preset.js",

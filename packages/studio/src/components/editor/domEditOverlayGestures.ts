@@ -102,7 +102,6 @@ export interface BlockedMoveState {
   pointerId: number;
   startX: number;
   startY: number;
-  notified: boolean;
 }
 
 export type FocusableDomEditOverlay = {

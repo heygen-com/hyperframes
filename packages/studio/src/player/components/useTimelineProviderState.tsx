@@ -19,7 +19,8 @@ import { useTimelineEditPinning } from "./useTimelineEditPinning";
 import { useTimelineStackingSync } from "./useTimelineStackingSync";
 import { useTimelineGeometry } from "./useTimelineGeometry";
 import { useAutoExpandKeyframedClips } from "./useAutoExpandKeyframedClips";
-import { GUTTER, LABEL_COL_W, TRACKS_LEFT_PAD } from "./timelineLayout";
+import { GUTTER, LABEL_COL_W } from "./timelineLayout";
+import { useTimelineLabelColumn } from "./useTimelineLabelColumn";
 import { useTimelineScrollViewport } from "./useTimelineScrollViewport";
 import { ClipContentOnceShown } from "./timelineClipChildren";
 import { useResolvedTimelineEditCallbacks } from "./useResolvedTimelineEditCallbacks";
@@ -33,11 +34,7 @@ import { useTimelineKeyframeHandlers } from "./useTimelineKeyframeHandlers";
 import { useTimelineGapHighlights } from "./useTimelineGapHighlights";
 import { TimelineRazorGuideOverlay, useTimelineRazorInteraction } from "./TimelineRazorInteraction";
 import { useTimelinePerformanceTelemetry } from "./useTimelinePerformanceTelemetry";
-import {
-  getEffectiveTimelineDuration,
-  getTimelinePreviewElement,
-  timelineNeedsLabelColumn,
-} from "./timelineViewModel";
+import { getEffectiveTimelineDuration, getTimelinePreviewElement } from "./timelineViewModel";
 import { useTimelineShiftModifier } from "./useTimelineShiftModifier";
 import { useTimelineTicks } from "./useTimelineTicks";
 import { getTimelineElementIdentity } from "../lib/timelineElementHelpers";
@@ -70,7 +67,10 @@ export function useTimelineProviderState({
   onDuplicateClip,
   canPasteClip,
   theme: themeOverrides,
+  showAudioEffects = true,
   sessionEpoch = 0,
+  previewIframeRef,
+  onZIndexReorder,
 }: TimelineProps = {}): TimelineContextValue {
   const {
     onMoveElement,
@@ -105,12 +105,7 @@ export function useTimelineProviderState({
   const selectedElementIds = usePlayerStore((s) => s.selectedElementIds);
   const focusedEaseSegment = usePlayerStore((s) => s.focusedEaseSegment);
   const gsapAnimations = usePlayerStore((s) => s.gsapAnimations);
-  const labelMode = useMemo(
-    () => timelineNeedsLabelColumn(gsapAnimations, timelineElements),
-    [gsapAnimations, timelineElements],
-  );
-  // The label column provides pre-t=0 space; otherwise keep TRACKS_LEFT_PAD after the gutter.
-  const contentOrigin = labelMode ? LABEL_COL_W + GUTTER : GUTTER + TRACKS_LEFT_PAD;
+  const { labelMode, contentOrigin } = useTimelineLabelColumn(gsapAnimations, timelineElements);
   const setSelectedElementId = usePlayerStore((s) => s.setSelectedElementId);
   const currentTime = usePlayerStore((s) => s.currentTime);
   const beatDragging = usePlayerStore((s) => s.beatDragging);
@@ -184,6 +179,8 @@ export function useTimelineProviderState({
   });
   const { readClipZIndex, applyStackingPatches, zSyncEnabled } = useTimelineStackingSync({
     expandedElementsRef: timelineElementsRef,
+    previewIframeRef,
+    onZIndexReorder,
   });
   const {
     draggedClip,
@@ -444,6 +441,7 @@ export function useTimelineProviderState({
     laneGapStrips,
     dropPreview: assetDrop.dropPreview,
     theme,
+    showAudioEffects,
     displayTrackOrder: displayLayout.displayTrackOrder,
     rowHeights: displayLayout.displayRowHeights,
     rowGeometry: displayLayout.rowGeometry,

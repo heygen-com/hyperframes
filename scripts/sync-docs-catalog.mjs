@@ -121,16 +121,15 @@ function walk(node, pathLabels) {
 }
 for (const g of tab.groups) walk(g, []);
 
-// Landing order: 3D motion first (once it exists — a separate initiative brings the
-// items in), Carousels second, everything else keeping the order the hand-authored nav
-// already had. Only "3d-motion" is pinned (two rows on the landing instead of one), matching
+// Landing order: 3D first, Carousels second, everything else keeping the order the
+// hand-authored nav already had. Only "3d" is pinned (two rows on the landing instead of one), matching
 // the reference gallery's own convention — it pins the one group, not every group.
-const PRIORITY = ["3d-motion", "carousels"];
+const PRIORITY = ["3d", "carousels"];
 const groups = groupsOrder
   .map((id) => ({
     id,
     label: groupLabels.get(id),
-    pinned: id === "3d-motion",
+    pinned: id === "3d",
     count: items.filter((i) => i.group === id).length,
   }))
   .filter((g) => g.count > 0)

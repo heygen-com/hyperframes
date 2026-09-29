@@ -240,7 +240,7 @@ export function useGsapAwareEditing({
             previewIframeRef.current,
             coalescedCommit,
             undefined,
-            { preflightOnly: true },
+            { preflightOnly: true, group: true },
           );
           assertGsapEditPersisted(outcome);
         }),

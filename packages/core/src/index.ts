@@ -252,6 +252,12 @@ export {
   type ResolvedHfColorGrading,
 } from "./colorGrading";
 export { parseCubeLut, CubeLutParseError, type ParseCubeLutOptions } from "./colorLuts";
+export {
+  firstFrameColourArgs,
+  hdrToSdrToneMapFilter,
+  parseFirstFrameColour,
+  type ToneMapSourceColour,
+} from "./hdrToneMap";
 
 // Inline scripts
 export {
@@ -280,7 +286,16 @@ export {
   type MediaVisualStyleProperty,
 } from "./inline-scripts/parityContract";
 export { redactKnownPaths, redactTelemetryString } from "./telemetryRedaction";
-export { isSafePath, realpath, resolveWithinProject } from "./safePath";
+export {
+  folderGone,
+  isProjectRootMissing,
+  isSafePath,
+  mkdirWithinProject,
+  ProjectRootMissingError,
+  realpath,
+  realProjectRoot,
+  resolveWithinProject,
+} from "./safePath";
 export { isHyperframesProject, PROJECT_MARKER_FILES } from "./projectRule";
 export type {
   HyperframePickerApi,

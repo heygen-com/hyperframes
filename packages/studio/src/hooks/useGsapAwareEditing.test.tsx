@@ -300,6 +300,10 @@ describe("useGsapAwareEditing anchored resize", () => {
     });
     expect(commitMutation).not.toHaveBeenCalled();
     expect(mocks.drag).toHaveBeenCalledTimes(2);
+    expect(mocks.drag.mock.calls.map((call) => call[6])).toEqual([
+      { preflightOnly: true, group: true },
+      { preflightOnly: true, group: true },
+    ]);
     expect(makeFetchFallback).toHaveBeenNthCalledWith(1, updates[0]!.selection, {
       failOnFetchError: true,
     });
