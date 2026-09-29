@@ -108,7 +108,6 @@ export function useTimelineProviderState({
   const currentTime = usePlayerStore((s) => s.currentTime);
   const beatDragging = usePlayerStore((s) => s.beatDragging);
   const timelineSessionEpoch = usePlayerStore((s) => s.timelineSessionEpoch);
-  // A host that omits the prop follows the store's session, so gestures are not refused.
   const sessionEpoch = sessionEpochProp ?? timelineSessionEpoch;
   const setFocusedEaseSegment = usePlayerStore((s) => s.setFocusedEaseSegment);
   const { zoomMode, manualZoomPercent, setZoomMode, setManualZoomPercent } = useTimelineZoom();
