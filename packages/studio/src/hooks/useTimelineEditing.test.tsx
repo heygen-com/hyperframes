@@ -1977,6 +1977,7 @@ const NESTED_PREVIEW = `
   <div data-composition-id="main" data-start="0" data-duration="20">
     <div id="intro" data-hf-id="hf-intro" data-composition-id="intro" data-start="2" data-duration="10">
       <div data-composition-id="intro" data-composition-file="compositions/intro.html">
+        <video id="vo" data-start="7" data-duration="2" data-hf-media-start-basis="global"></video>
         <div id="logo" data-hf-id="hf-logo" data-composition-id="logo" data-start="3" data-duration="5">
           <div data-composition-id="logo" data-composition-file="compositions/logo.html">
             <div id="badge" data-hf-id="hf-badge" class="clip" data-start="1" data-duration="2"></div>
@@ -1994,6 +1995,7 @@ const NESTED_FILES: Record<string, string> = {
   "compositions/intro.html": [
     `<div data-composition-id="intro" data-duration="10">`,
     `  <div id="intro-bg" class="clip" data-start="0" data-duration="10"></div>`,
+    `  <video id="vo" data-start="7" data-duration="2" data-hf-media-start-basis="global"></video>`,
     `  <div id="logo" data-composition-id="logo" data-composition-src="compositions/logo.html" data-start="3" data-duration="5"></div>`,
     `</div>`,
   ].join("\n"),
@@ -2011,11 +2013,16 @@ function setupNestedHarness() {
   const doc = iframe.contentDocument!;
   doc.body.innerHTML = NESTED_PREVIEW;
   const row = (domId: string) => parseTimelineFromDOM(doc, 20).find((e) => e.domId === domId)!;
-  const playsAt = (domId: string) =>
-    createRuntimeStartTimeResolver({
+  const playsAt = (domId: string) => {
+    const resolver = createRuntimeStartTimeResolver({
       includeAuthoredTimingAttrs: true,
       documentRef: doc,
-    }).resolveStartForElement(doc.getElementById(domId)!);
+    });
+    const el = doc.getElementById(domId)!;
+    return el.tagName === "VIDEO"
+      ? resolver.resolveMediaStartForElement(el)
+      : resolver.resolveStartForElement(el);
+  };
   const writeProjectFile = vi.fn<(path: string, content: string) => Promise<void>>(async () => {});
   const written = (path: string, domId: string, attr: string) => {
     const call = writeProjectFile.mock.calls.find(([p]) => p === path);
@@ -2074,6 +2081,21 @@ describe("useTimelineEditing: nested rows write composition-local starts", () =>
     expect(h.row("badge").start).toBe(7);
     expect(h.playsAt("badge")).toBe(7);
     expect(h.writtenRootDuration("compositions/logo.html")).toBe("5");
+    h.unmount();
+  });
+
+  it("round-trips a legacy root-time video inside a sub-composition, writing master time", async () => {
+    const h = setupNestedHarness();
+    const vo = h.row("vo");
+    expect(vo.start).toBe(7);
+
+    await act(async () => {
+      await h.move(vo, { start: 8, track: vo.track });
+    });
+
+    expect(h.written("compositions/intro.html", "vo", "data-start")).toBe("8");
+    expect(h.row("vo").start).toBe(8);
+    expect(h.playsAt("vo")).toBe(8);
     h.unmount();
   });
 
