@@ -109,7 +109,7 @@ function clampTimelineGroupMoveDelta(
   members: readonly TimelineGroupTimingMember[],
 ): number {
   if (members.length === 0) return 0;
-  const minDelta = Math.max(...members.map((member) => -member.start));
+  const minDelta = Math.max(...members.map((member) => -(member.start - (member.minStart ?? 0))));
   return roundTimelineTime(Math.max(rawDelta, minDelta));
 }
 

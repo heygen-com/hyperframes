@@ -7,7 +7,7 @@ import {
   type DragPreviewContext,
 } from "./timelineClipDragPreview";
 import type { DraggedClipState } from "./timelineClipDragTypes";
-import { commitDraggedClipMove } from "./timelineClipDragCommit";
+import { commitDraggedClipMove, persistMoveEdits } from "./timelineClipDragCommit";
 import { LANE_H, RULER_H, TRACKS_TOP_PAD, TRACK_H } from "./timelineLayout";
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -464,5 +464,74 @@ describe("computeDragPreview — the ghost start is the committed start", () => 
       expect(ghost.previewStart).toBe(childStart - hostStart);
       expect(committedStart(ghost, host, elements, keys)).toBe(0);
     }
+  });
+});
+
+describe("a nested clip's drop stops at its host's start in the preview", () => {
+  // Host at 2 s: the clip may not start before 2 unless it was authored there.
+  const logo: TimelineElement = { ...clip("logo", 0, 5, 5, 0, "div"), parentCompositionStart: 2 };
+  const saved = async (element: TimelineElement, start: number) => {
+    const updateElement = vi.fn();
+    await persistMoveEdits([{ element, updates: { start, track: element.track } }], {
+      elements: [element],
+      trackOrder: [0, 1, 2],
+      updateElement,
+      onMoveElements: vi.fn(async () => {}),
+    });
+    return updateElement.mock.calls[0]?.[1]?.start;
+  };
+
+  it("holds a drop that snapping would put before the host, and saves the same start", async () => {
+    const { drag, clientX, clientY } = horizontalDrag(logo, 0.5, -3.9);
+    const next = computeDragPreview(drag, clientX, clientY, {
+      ...ctx(undefined, [logo]),
+      buildSnapTargets: () => [{ time: 1.9, type: "beat" }],
+    });
+    expect(next.previewStart).toBe(2);
+    expect(next.snapTime).toBeNull();
+    expect(await saved(logo, next.previewStart)).toBe(2);
+  });
+
+  it("snaps from the floor, so an edge just past the host's start still catches", () => {
+    const { drag, clientX, clientY } = horizontalDrag(logo, 0.5, -3.9);
+    const next = computeDragPreview(drag, clientX, clientY, {
+      ...ctx(undefined, [logo]),
+      buildSnapTargets: () => [{ time: 2.1, type: "beat" }],
+    });
+    expect(next).toMatchObject({ previewStart: 2.1, snapTime: 2.1 });
+  });
+
+  it("keeps a mixed group's spacing when the nested member meets its floor", () => {
+    // Grab the top-level member: only the group clamp knows the nested one's floor.
+    const outro = clip("outro", 1, 8, 2, 0, "div");
+    const { drag, clientX, clientY } = horizontalDrag(outro, 1.5, -7);
+    const next = computeDragPreview(drag, clientX, clientY, {
+      ...ctx(undefined, [logo, outro]),
+      selectedKeys: new Set(["logo", "outro"]),
+    });
+    expect(next.previewStart).toBe(5);
+  });
+
+  it("leaves a clip authored before its host's start in place when grabbed", async () => {
+    const early: TimelineElement = { ...logo, id: "early", key: "early", domId: "early", start: 1 };
+    const { drag, clientX, clientY } = horizontalDrag(early, 0.5, 0);
+    expect(computeDragPreview(drag, clientX, clientY, ctx(undefined, [early])).previewStart).toBe(
+      1,
+    );
+    const trim = computeResizePreview(
+      {
+        element: early,
+        edge: "start",
+        originClientX: 0,
+        previewStart: 1,
+        previewDuration: 5,
+        started: true,
+        pointerId: 0,
+      },
+      0,
+      { scroll: fakeScroll(), pps: PPS, buildSnapTargets: () => [] },
+    );
+    expect(trim).toMatchObject({ previewStart: 1, previewDuration: 5 });
+    expect(await saved(early, 1)).toBe(1);
   });
 });
