@@ -20,8 +20,6 @@ export function stopMediaDownload(media: HTMLMediaElement): void {
   media.load();
 }
 
-/** Stops a clip's fetch and keeps its src. A clip on <source> children is left alone: putting them
- * back restarts the download and reorders the markup a scene swap compares. */
 export function releaseMedia(media: HTMLMediaElement): void {
   if (media.querySelector("source")) return;
   const src = media.getAttribute("src");
