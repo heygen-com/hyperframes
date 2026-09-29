@@ -43,6 +43,7 @@ export interface TimelineToolbarProps {
   domEditSession?: DomEditSessionSlice;
   onSplitElement?: (element: TimelineElement, splitTime: number) => void;
   history?: TimelineHistoryButtonsProps;
+  showHistory?: boolean;
   showAddBeat?: boolean;
   /** Hides Add keyframe and auto-record, and turns off auto-record and the K shortcut with them. */
   showKeyframes?: boolean;
@@ -141,6 +142,7 @@ export function TimelineToolbar({
   domEditSession,
   onSplitElement,
   history,
+  showHistory = true,
   showAddBeat = true,
   showKeyframes = true,
 }: TimelineToolbarProps) {
@@ -213,7 +215,7 @@ export function TimelineToolbar({
     <div className="border-b border-neutral-800/60">
       <div className="flex items-center justify-between px-2 py-0.5">
         <div className="flex items-center gap-0.5">
-          <TimelineHistoryButtons {...history} />
+          {showHistory && <TimelineHistoryButtons {...history} />}
           <TimelineToolPicker />
           {/* Divider: tool-mode | editing-actions */}
           <div aria-hidden="true" className="mx-1 h-4 w-px bg-neutral-800" />

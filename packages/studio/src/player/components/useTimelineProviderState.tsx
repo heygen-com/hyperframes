@@ -65,6 +65,7 @@ export function useTimelineProviderState({
   theme: themeOverrides,
   showAudioEffects = true,
   showKeyframes = true,
+  trackPadding,
   sessionEpoch = 0,
   previewIframeRef,
   onZIndexReorder,
@@ -143,6 +144,7 @@ export function useTimelineProviderState({
     gsapAnimations,
     selectedElementId,
     selectedElementIds,
+    trackPadding,
   );
   const timelineElementsRef = useRef(timelineElements);
   timelineElementsRef.current = timelineElements; // oxlint-disable-line react/refs -- event handlers read the latest elements

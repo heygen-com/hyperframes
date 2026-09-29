@@ -6,6 +6,8 @@ export { EditorShell } from "./components/EditorShell";
 export type { EditorShellProps } from "./components/EditorShell";
 export { NLEPreview } from "./components/nle/NLEPreview";
 export { DEFAULT_SHORTCUT_SECTIONS } from "./player/components/studioShortcuts";
+export { ShortcutsButton } from "./player/components/ShortcutsPanel";
+export type { ShortcutsButtonProps } from "./player/components/ShortcutsPanel";
 export type { ShortcutHint, ShortcutSection } from "./player/components/studioShortcuts";
 export { CompositionBreadcrumb } from "./components/nle/CompositionBreadcrumb";
 export type { CompositionLevel } from "./components/nle/CompositionBreadcrumb";
@@ -49,6 +51,8 @@ export {
 } from "./player/components/TimelineParts";
 export { TimelineProvider, useTimelineContext } from "./player/components/TimelineProvider";
 export type { TimelineTheme } from "./player/components/timelineTheme";
+export { TRACK_H } from "./player/components/timelineLayout";
+export type { TimelineTrackPadding } from "./player/components/timelineLayout";
 
 // Clip content thumbnails: used by a host rendering its own timeline lane.
 export { AudioWaveform } from "./player/components/AudioWaveform";

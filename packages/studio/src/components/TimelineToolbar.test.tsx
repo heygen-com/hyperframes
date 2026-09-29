@@ -278,6 +278,23 @@ describe("TimelineToolbar audio meters", () => {
   });
 });
 
+describe("TimelineToolbar history", () => {
+  const historyButtons = (host: HTMLElement) =>
+    host.querySelectorAll('button[aria-label="Undo"], button[aria-label="Redo"]').length;
+
+  it("shows Undo and Redo by default", () => {
+    const { host, root } = renderToolbar();
+    expect(historyButtons(host)).toBe(2);
+    act(() => root.unmount());
+  });
+
+  it("renders neither when the host hides history", () => {
+    const { host, root } = renderToolbar(undefined, { showHistory: false });
+    expect(historyButtons(host)).toBe(0);
+    act(() => root.unmount());
+  });
+});
+
 describe("TimelineToolbar add beat", () => {
   it("shows Add beat by default, as Studio does", () => {
     const { host, root } = renderToolbar();

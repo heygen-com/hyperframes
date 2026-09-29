@@ -66,6 +66,10 @@ export function getTimelineLaneTop(laneIndex: number): number {
  */
 export const TRACKS_TOP_PAD = 50;
 export const TRACKS_BOTTOM_PAD = Math.round(TRACK_H * 1.5);
+export interface TimelineTrackPadding {
+  top?: number;
+  bottom?: number;
+}
 /**
  * Breathing room LEFT of t=0 (CapCut-style), inside the scroll content — the
  * horizontal sibling of TRACKS_TOP_PAD: empty lane surface between the sticky
@@ -121,6 +125,7 @@ export interface TimelineRowGeometry {
   /** Cumulative row boundaries, including the final bottom boundary. */
   readonly rowOffsets: readonly number[];
   readonly rowsHeight: number;
+  readonly padding: Readonly<Required<TimelineTrackPadding>>;
   readonly canvasHeight: number;
   getRowIndex(rowKey: number): number;
   getRowHeight(row: number): number;
@@ -141,6 +146,10 @@ const EMPTY_ROW_HEIGHTS: readonly number[] = Object.freeze([]);
 export function createTimelineRowGeometry(
   rowKeys: readonly number[],
   rowHeights: readonly number[],
+  {
+    top: topPad = TRACKS_TOP_PAD,
+    bottom: bottomPad = TRACKS_BOTTOM_PAD,
+  }: TimelineTrackPadding = {},
 ): TimelineRowGeometry {
   const heights = Object.freeze(rowHeights.map(validRowHeight));
   const keys = Object.freeze(
@@ -165,7 +174,7 @@ export function createTimelineRowGeometry(
     return (offsets[wholeRow] ?? 0) + (row - wholeRow) * getRowHeight(wholeRow);
   };
   const getRowFromY = (contentY: number) => {
-    const y = contentY - RULER_H - TRACKS_TOP_PAD;
+    const y = contentY - RULER_H - topPad;
     if (heights.length === 0) return y / TRACK_H;
     if (y < 0) return y / getRowHeight(0);
     const rowsHeight = offsets[heights.length] ?? 0;
@@ -188,10 +197,11 @@ export function createTimelineRowGeometry(
     rowHeights: heights,
     rowOffsets: offsets,
     rowsHeight: offsets.at(-1) ?? 0,
-    canvasHeight: RULER_H + TRACKS_TOP_PAD + (offsets.at(-1) ?? 0) + TRACKS_BOTTOM_PAD,
+    padding: Object.freeze({ top: topPad, bottom: bottomPad }),
+    canvasHeight: RULER_H + topPad + (offsets.at(-1) ?? 0) + bottomPad,
     getRowIndex: (rowKey) => rowIndexByKey.get(rowKey) ?? -1,
     getRowHeight,
-    getRowTop: (row) => RULER_H + TRACKS_TOP_PAD + getRowOffset(row),
+    getRowTop: (row) => RULER_H + topPad + getRowOffset(row),
     getRowFromY,
     getRowPositionFromY: (contentY) => {
       const rowFloat = getRowFromY(contentY);
@@ -204,7 +214,7 @@ export function createTimelineRowGeometry(
   return frozenGeometry;
 }
 
-/** Compatibility accessor; repeated calls for one height-array reuse one snapshot. */
+/** Compatibility accessor: a geometry's own rowHeights resolves back to it, pads included. */
 export function getTimelineRowGeometry(rowHeights: readonly number[]): TimelineRowGeometry {
   const cached = rowGeometryCache.get(rowHeights);
   if (cached) return cached;
@@ -228,10 +238,6 @@ export function getTimelineRowHeight(
   return validRowHeight(rowHeights[row]);
 }
 
-function getTimelineRowOffset(row: number, rowHeights: readonly number[]): number {
-  return getTimelineRowGeometry(rowHeights).getRowTop(row) - RULER_H - TRACKS_TOP_PAD;
-}
-
 /**
  * The y (content-space) of the top edge of track ROW index `row` (0 = first
  * displayed lane). The single source of truth for row->y: the ruler height plus
@@ -243,7 +249,7 @@ export function getTimelineRowTop(
   row: number,
   rowHeights: readonly number[] = EMPTY_ROW_HEIGHTS,
 ): number {
-  return RULER_H + TRACKS_TOP_PAD + getTimelineRowOffset(row, rowHeights);
+  return getTimelineRowGeometry(rowHeights).getRowTop(row);
 }
 
 /**

@@ -6,7 +6,7 @@ import { liveTime, usePlayerStore } from "../store/playerStore";
 import { trackStudioEvent } from "../../utils/studioTelemetry";
 import { Tooltip } from "../../components/ui";
 import { useMountEffect } from "../../hooks/useMountEffect";
-import { ShortcutsPanel } from "./ShortcutsPanel";
+import { ShortcutsButton } from "./ShortcutsPanel";
 import type { ShortcutSection } from "./studioShortcuts";
 import { SpeedMenu } from "./SpeedMenu";
 import { VolumeControl } from "./VolumeControl";
@@ -185,10 +185,6 @@ export const PlayerControls = memo(function PlayerControls({
   const setAudioMuted = usePlayerStore.getState().setAudioMuted;
   const setAudioVolume = usePlayerStore.getState().setAudioVolume;
   const setLoopEnabled = usePlayerStore.getState().setLoopEnabled;
-  const inPoint = usePlayerStore((s) => s.inPoint);
-  const outPoint = usePlayerStore((s) => s.outPoint);
-  const setInPoint = usePlayerStore.getState().setInPoint;
-  const setOutPoint = usePlayerStore.getState().setOutPoint;
   const timeDisplayMode = usePlayerStore((s) => s.timeDisplayMode);
   const setTimeDisplayMode = usePlayerStore.getState().setTimeDisplayMode;
 
@@ -288,16 +284,7 @@ export const PlayerControls = memo(function PlayerControls({
           {onToggleFullscreen && (
             <FullscreenButton isFullscreen={isFullscreen} onToggleFullscreen={onToggleFullscreen} />
           )}
-          <ShortcutsPanel
-            disabled={disabled}
-            duration={duration}
-            inPoint={inPoint}
-            outPoint={outPoint}
-            setInPoint={setInPoint}
-            setOutPoint={setOutPoint}
-            onSeek={onSeek}
-            sections={shortcutSections}
-          />
+          <ShortcutsButton disabled={disabled} onSeek={onSeek} sections={shortcutSections} />
         </div>
       </div>
     </div>

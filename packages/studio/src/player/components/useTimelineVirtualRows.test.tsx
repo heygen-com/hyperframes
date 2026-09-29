@@ -171,4 +171,36 @@ describe("useTimelineVirtualRows", () => {
 
     act(() => root.unmount());
   });
+
+  it("offsets the mounted range by the geometry's own top pad", () => {
+    const keys = Array.from({ length: 1_000 }, (_, index) => index);
+    const topPad = 200 * 48;
+    const geometry = createTimelineRowGeometry(
+      keys,
+      keys.map(() => 48),
+      { top: topPad },
+    );
+    const scroll = createScrollElement(RULER_H + topPad + 300 * 48);
+    const scrollRef = { current: scroll };
+    let rows: ReturnType<typeof useTimelineVirtualRows> = [];
+
+    function Probe() {
+      rows = useTimelineVirtualRows({
+        enabled: true,
+        scrollRef,
+        viewport: viewport(scroll),
+        rowGeometry: geometry,
+        sessionEpoch: 1,
+        pinnedRowKeys: [],
+      });
+      return null;
+    }
+
+    const root = createRoot(document.createElement("div"));
+    act(() => root.render(React.createElement(Probe)));
+    act(() => {});
+    expect(rows.some((row) => row.index === 300)).toBe(true);
+    expect(rows.some((row) => row.index === 500)).toBe(false);
+    act(() => root.unmount());
+  });
 });

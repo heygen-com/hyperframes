@@ -3,6 +3,7 @@ import type { TimelineElement } from "../store/playerStore";
 import type { TimelineTimeRange } from "../store/rangeSelectionSlice";
 import type { TimelineDropCallbacks } from "./timelineCallbacks";
 import type { TimelineTheme } from "./timelineTheme";
+import type { TimelineTrackPadding } from "./timelineLayout";
 import type { TimelineEditOverrides } from "./useResolvedTimelineEditCallbacks";
 import type { TimelineStackingSyncProps } from "./useTimelineStackingSync";
 
@@ -35,4 +36,5 @@ export interface TimelineProps
   theme?: Partial<TimelineTheme>;
   showAudioEffects?: boolean;
   showKeyframes?: boolean;
+  trackPadding?: TimelineTrackPadding;
 }

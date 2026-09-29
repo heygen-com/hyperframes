@@ -10,6 +10,7 @@ import {
   TRACK_H,
   createTimelineRowGeometry,
   type TimelineRowGeometry,
+  type TimelineTrackPadding,
   trackHeights,
   type TimelineTrackHeightClip,
 } from "./timelineLayout";
@@ -164,7 +165,10 @@ function useTimelineRowHeights(
   selectedElementId: string | null,
   selectedElementIds: ReadonlySet<string>,
   groups: readonly TimelineTrackGroupInfo[],
+  trackPadding: TimelineTrackPadding | undefined,
 ) {
+  const padTop = trackPadding?.top;
+  const padBottom = trackPadding?.bottom;
   const expandedClipIds = usePlayerStore((s) => s.expandedClipIds);
   const expandedLaneOwnerIds = usePlayerStore((s) => s.expandedLaneOwnerIds);
   const { laneCounts, rowGeometry } = useMemo(() => {
@@ -207,9 +211,12 @@ function useTimelineRowHeights(
       rowGeometry: createTimelineRowGeometry(
         tracks.map(([track]) => track),
         rowHeights,
+        { top: padTop, bottom: padBottom },
       ),
     };
   }, [
+    padTop,
+    padBottom,
     expandedClipIds,
     expandedLaneOwnerIds,
     gsapAnimations,
@@ -233,6 +240,7 @@ export function useTimelineTrackLayout(
   gsapAnimations: Map<string, GsapAnimation[]>,
   selectedElementId: string | null,
   selectedElementIds: ReadonlySet<string>,
+  trackPadding?: TimelineTrackPadding,
 ) {
   const { tracks, trackStyles, trackOrder, groups, trackGroupOf } =
     useTimelineTrackDerivations(expandedElements);
@@ -244,6 +252,7 @@ export function useTimelineTrackLayout(
     selectedElementId,
     selectedElementIds,
     groups,
+    trackPadding,
   );
 
   return {
@@ -305,8 +314,8 @@ export function useTimelineDisplayLayout(
   const displayTrackOrder = useDisplayTrackOrder(draggedClip, trackOrder);
   const displayRowHeights = useDisplayRowHeights(displayTrackOrder, rowGeometry);
   const displayRowGeometry = useMemo(
-    () => createTimelineRowGeometry(displayTrackOrder, displayRowHeights),
-    [displayTrackOrder, displayRowHeights],
+    () => createTimelineRowGeometry(displayTrackOrder, displayRowHeights, rowGeometry.padding),
+    [displayTrackOrder, displayRowHeights, rowGeometry.padding],
   );
   return {
     displayTrackOrder,

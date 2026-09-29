@@ -2,6 +2,7 @@ import { useState, useCallback, useEffect, useId, useRef, memo } from "react";
 import { formatTime, frameToSeconds } from "../lib/time";
 import { Tooltip } from "../../components/ui";
 import { useContextMenuDismiss } from "../../hooks/useContextMenuDismiss";
+import { usePlayerStore } from "../store/playerStore";
 import { DEFAULT_SHORTCUT_SECTIONS, type ShortcutSection } from "./studioShortcuts";
 
 interface ShortcutsPanelProps {
@@ -262,3 +263,28 @@ export const ShortcutsPanel = memo(function ShortcutsPanel({
     </div>
   );
 });
+
+export interface ShortcutsButtonProps {
+  sections?: readonly ShortcutSection[];
+  disabled?: boolean;
+  onSeek?: (time: number) => void;
+}
+
+export function ShortcutsButton({ sections, disabled = false, onSeek }: ShortcutsButtonProps) {
+  const duration = usePlayerStore((s) => s.duration);
+  const inPoint = usePlayerStore((s) => s.inPoint);
+  const outPoint = usePlayerStore((s) => s.outPoint);
+  const { setInPoint, setOutPoint, requestSeek } = usePlayerStore.getState();
+  return (
+    <ShortcutsPanel
+      disabled={disabled}
+      duration={duration}
+      inPoint={inPoint}
+      outPoint={outPoint}
+      setInPoint={setInPoint}
+      setOutPoint={setOutPoint}
+      onSeek={onSeek ?? requestSeek}
+      sections={sections}
+    />
+  );
+}
