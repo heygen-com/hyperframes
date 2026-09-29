@@ -295,6 +295,7 @@ export function parseTimelineFromDOM(
       tag: tagLower,
       start,
       parentCompositionStart: masterStart.resolveHostStartForElement(el),
+      ...(masterStart.isRootGlobalMediaStartForElement(el) && { authoredStartIsMasterTime: true }),
       duration: dur,
       track,
       domId: el.id || undefined,

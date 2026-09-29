@@ -2037,7 +2037,12 @@ function setupNestedHarness() {
       .querySelector("[data-composition-id]")
       ?.getAttribute("data-duration");
   };
-  stubProjectFetch(NESTED_FILES);
+  const fetchMock = stubProjectFetch(NESTED_FILES);
+  const scaleCalls = () =>
+    fetchMock.mock.calls
+      .filter((call) => requestUrl(call[0]).includes("/gsap-mutations/"))
+      .map((call) => JSON.parse(String((call[1] as RequestInit).body)))
+      .filter((body) => body.type === "scale-positions");
   usePlayerStore.getState().setDuration(20);
   const hook = renderTimelineEditingHook({
     timelineElements: parseTimelineFromDOM(doc, 20),
@@ -2047,7 +2052,7 @@ function setupNestedHarness() {
     writeProjectFile,
     recordEdit: vi.fn(async () => {}),
   });
-  return { doc, row, playsAt, written, writtenRootDuration, writeProjectFile, ...hook };
+  return { doc, row, playsAt, written, writtenRootDuration, writeProjectFile, scaleCalls, ...hook };
 }
 
 describe("useTimelineEditing: nested rows write composition-local starts", () => {
@@ -2114,6 +2119,40 @@ describe("useTimelineEditing: nested rows write composition-local starts", () =>
     });
     expect(h.doc.getElementById("logo")?.getAttribute("data-start")).toBe("3.5");
     expect(h.doc.getElementById("logo")?.getAttribute("data-duration")).toBe("3");
+    h.unmount();
+  });
+
+  it("scales a head-trimmed nested row's tweens over its local window", async () => {
+    const h = setupNestedHarness();
+    await act(async () => {
+      await h.resize(h.row("logo"), { start: 5.5, duration: 4.5, playbackStart: undefined });
+    });
+    expect(h.scaleCalls()).toEqual([
+      expect.objectContaining({ oldStart: 3, oldDuration: 5, newStart: 3.5, newDuration: 4.5 }),
+    ]);
+    h.unmount();
+  });
+
+  it("writes local starts and a local scale window for a nested group resize", async () => {
+    const h = setupNestedHarness();
+    await act(async () => {
+      await h.groupResize([{ element: h.row("logo"), start: 5.5, duration: 4.5 }]);
+    });
+    expect(h.written("compositions/intro.html", "logo", "data-start")).toBe("3.5");
+    expect(h.scaleCalls()).toEqual([
+      expect.objectContaining({ oldStart: 3, oldDuration: 5, newStart: 3.5, newDuration: 4.5 }),
+    ]);
+    h.unmount();
+  });
+
+  it("clamps a nested row dropped before its host's start to the host's start", async () => {
+    const h = setupNestedHarness();
+    const logo = h.row("logo");
+    await act(async () => {
+      await h.move(logo, { start: 1, track: logo.track });
+    });
+    expect(h.written("compositions/intro.html", "logo", "data-start")).toBe("0");
+    expect(h.row("logo").start).toBe(2);
     h.unmount();
   });
 

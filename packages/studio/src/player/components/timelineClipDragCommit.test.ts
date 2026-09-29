@@ -315,7 +315,6 @@ describe("commitDraggedClipMove", () => {
     const child = {
       ...el("scene.html#title", 0.25, 12, 2),
       sourceFile: "scene.html",
-      expandedParentStart: 10,
       expandedHostKey: "host",
     };
     const { updateElement, onMoveElement, onMoveElements } = runClipMove(
@@ -338,7 +337,6 @@ describe("commitDraggedClipMove", () => {
     const child = {
       ...el("scene.html#title", 0.25, 12, 2),
       sourceFile: "scene.html",
-      expandedParentStart: 10,
       expandedHostKey: "host",
     };
     const { onMoveElement, onMoveElements } = runClipMove(
@@ -360,7 +358,6 @@ describe("commitDraggedClipMove", () => {
     const child = {
       ...el("scene.html#title", 0.25, 12, 2),
       sourceFile: "scene.html",
-      expandedParentStart: 10,
       expandedHostKey: "host",
     };
     const { onMoveElement, onMoveElements } = runClipMove(
@@ -382,7 +379,6 @@ describe("commitDraggedClipMove", () => {
     const child = {
       ...el("scene.html#title", 0.25, 12, 2),
       sourceFile: "scene.html",
-      expandedParentStart: 10,
       expandedHostKey: "host",
     };
     const { onMoveElement, onMoveElements } = runClipMove(
@@ -406,7 +402,6 @@ describe("commitDraggedClipMove", () => {
     const child = {
       ...el("scene.html#title", 0.25, 12, 2),
       sourceFile: "scene.html",
-      expandedParentStart: 10,
       expandedHostKey: "host",
     };
     const { onMoveElement, onMoveElements } = runClipMove(
@@ -1279,7 +1274,6 @@ describe("commitDraggedClipMove", () => {
         const child: TimelineElement = {
           ...el("child", 2, childStart, 4),
           expandedHostKey: "host",
-          expandedParentStart: hostStart,
         };
         const { onMoveElements } = runClipMove(
           drag(child, { previewStart: childStart, previewTrack: 0 }),
@@ -1399,12 +1393,10 @@ describe("commitZMirrorLaneMove", () => {
     const child1 = {
       ...el("child-1", 0.25, 0, 5),
       sourceFile: "scene.html",
-      expandedParentStart: 0,
     };
     const child2 = {
       ...el("child-2", 0.5, 0, 5),
       sourceFile: "scene.html",
-      expandedParentStart: 0,
     };
     const b = { ...el("b", 1, 0, 5), sourceFile: "index.html" };
     const t = { ...el("t", 2, 0, 5), sourceFile: "index.html" };

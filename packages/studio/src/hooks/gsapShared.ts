@@ -165,14 +165,16 @@ export function resolveSelectorElementIds(
 }
 
 /**
- * The clip start in the frame the element's OWN tweens are measured in. An
- * expanded sub-composition child sits on the master timeline at a host-absolute
- * `start`, but its tweens are parsed from its own source file and are local to
- * it, so the two must be brought into one frame before any clip-% math — or
- * every keyframe rebases to a percentage far outside the clip.
+ * The clip start in the frame the element's OWN tweens are measured in. A nested
+ * row sits on the master timeline at a master `start`, but its tweens are local
+ * to its composition, so the two must be brought into one frame before any clip-%
+ * math — or every keyframe rebases to a percentage far outside the clip.
  */
-export function clipTimingStart(element: { start: number; expandedParentStart?: number }): number {
-  return element.start - (element.expandedParentStart ?? 0);
+export function clipTimingStart(element: {
+  start: number;
+  parentCompositionStart?: number;
+}): number {
+  return element.start - (element.parentCompositionStart ?? 0);
 }
 
 export function selectorFromSelection(selection: DomEditSelection): string | null {
@@ -476,8 +478,8 @@ export function toAbsoluteTime(tweenPos: number, tweenDur: number, percentage: n
  * timeline element's start is main-timeline absolute, so passing the raw element
  * start subtracted two different frames from each other: a host mounted at 1.5s
  * cached its 0s tween at -12%, and a clip-relative percentage can never be
- * negative. The composition's mount is `expandedParentStart` for an expanded
- * child, the parent composition clip's start otherwise, and 0 for a
+ * negative. The composition's mount is the row's `parentCompositionStart` when
+ * set, the parent composition clip's start otherwise, and 0 for a
  * root-composition element, whose start already IS the tween frame.
  */
 export function resolveClipTimingBasis(
@@ -489,7 +491,7 @@ export function resolveClipTimingBasis(
     id: string;
     start: number;
     duration: number;
-    expandedParentStart?: number;
+    parentCompositionStart?: number;
     parentCompositionId?: string | null;
   }>,
   domClipChildren: ReadonlyArray<{ id: string; hostId: string }>,
@@ -502,8 +504,9 @@ export function resolveClipTimingBasis(
     const parent = parentId
       ? elements.find((el) => el.domId === parentId || el.id === parentId)
       : undefined;
-    const mount = direct.expandedParentStart ?? parent?.start;
-    if (mount !== undefined) return { elStart: direct.start - mount, elDuration: direct.duration };
+    if (direct.parentCompositionStart !== undefined)
+      return { elStart: clipTimingStart(direct), elDuration: direct.duration };
+    if (parent) return { elStart: direct.start - parent.start, elDuration: direct.duration };
     // No parent composition named, so this IS a main-timeline clip and its own
     // start is already the basis.
     if (!parentId) return { elStart: direct.start, elDuration: direct.duration };

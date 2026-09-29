@@ -456,7 +456,6 @@ describe("computeDragPreview — the ghost start is the committed start", () => 
       const child: TimelineElement = {
         ...clip("child", 2, childStart, 4, 5),
         expandedHostKey: "host",
-        expandedParentStart: hostStart,
       };
       const elements = [host, child];
       const keys = new Set(["host", "child"]);

@@ -207,7 +207,7 @@ describe("TimelineTrackHeader", () => {
       start: 16.5,
       duration: 2,
       track: 0,
-      expandedParentStart: 16,
+      parentCompositionStart: 16,
       sourceFile: "scene.html",
     };
     const local: GsapAnimation = {

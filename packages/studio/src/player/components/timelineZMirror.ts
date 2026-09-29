@@ -102,7 +102,7 @@ function expandedChildAllowedLanes(
   element: TimelineElement,
   elements: TimelineElement[],
 ): ReadonlySet<number> | null {
-  if (element.expandedParentStart == null) return null;
+  if (element.expandedHostKey == null) return null;
   const selfKey = keyOf(element);
   return new Set(
     elements

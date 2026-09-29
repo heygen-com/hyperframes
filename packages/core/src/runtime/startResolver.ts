@@ -33,6 +33,7 @@ export function createRuntimeStartTimeResolver(params: {
   resolveDurationForElement: (element: Element) => number | null;
   resolveMediaStartForElement: (element: Element) => number;
   resolveHostStartForElement: (element: Element) => number;
+  isRootGlobalMediaStartForElement: (element: Element) => boolean;
 } {
   const timelineRegistry = params.timelineRegistry ?? {};
   const includeAuthoredTimingAttrs = params.includeAuthoredTimingAttrs ?? false;
@@ -209,17 +210,16 @@ export function createRuntimeStartTimeResolver(params: {
     });
   };
 
-  const resolveHostStartForElement = (element: Element): number =>
-    isMediaElement(element) && isRootGlobalMediaStart(mediaStartInput(element))
-      ? 0
-      : resolveHostOffsetForElement(element, 0);
+  const isRootGlobalMediaStartForElement = (element: Element): boolean =>
+    isMediaElement(element) && isRootGlobalMediaStart(mediaStartInput(element));
 
   return {
     resolveStartForElement: (element: Element, fallback = 0) =>
       resolveStartForElementInternal(element, Math.max(0, fallback)),
     resolveDurationForElement: (element: Element) => resolveDurationForElement(element),
     resolveMediaStartForElement,
-    resolveHostStartForElement,
+    resolveHostStartForElement: (element: Element) => resolveHostOffsetForElement(element, 0),
+    isRootGlobalMediaStartForElement,
   };
 }
 
