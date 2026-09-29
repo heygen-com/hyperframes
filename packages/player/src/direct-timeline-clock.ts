@@ -10,6 +10,7 @@
 import type { DirectTimelineAdapter } from "./timeline-adapters.js";
 
 const UI_UPDATE_INTERVAL_MS = 100;
+const CURRENT_TIME_ROUNDING_S = 1e-3;
 
 export interface ClockCallbacks {
   /** Called every ~100ms and on completion with the current time. */
@@ -24,9 +25,21 @@ export interface ClockCallbacks {
   onPaused: () => void;
 }
 
+// A range ending inside the film stops a check early, so the frame past it does not show.
+function reachedStop(
+  time: number,
+  lookAhead: number,
+  stop: { end: number; shown: number },
+): boolean {
+  if (stop.end <= 0) return false;
+  const early = stop.shown < stop.end && lookAhead > 0 ? lookAhead + CURRENT_TIME_ROUNDING_S : 0;
+  return time + early >= stop.end;
+}
+
 export class DirectTimelineClock {
   private _raf: number | null = null;
   private _lastUpdateMs = 0;
+  private _tick: (() => void) | null = null;
 
   constructor(private readonly _callbacks: ClockCallbacks) {}
 
@@ -35,8 +48,12 @@ export class DirectTimelineClock {
     getCurrentTime: () => number,
     getDuration: () => number,
     isPaused: () => boolean,
+    getStop: () => { end: number; shown: number },
   ): void {
     this.stop();
+    let lastTime: number | null = null;
+    let lastStep = 0;
+    let lookAhead = 0;
 
     const tick = () => {
       if (isPaused()) {
@@ -53,9 +70,18 @@ export class DirectTimelineClock {
       }
 
       const duration = getDuration();
-      if (duration > 0) currentTime = Math.min(currentTime, duration);
+      const stop = getStop();
+      if (stop.end > 0) currentTime = Math.min(currentTime, stop.end);
 
-      const completedPlayback = duration > 0 && currentTime >= duration;
+      // The smaller of the last two moves, so one slow frame or a jump does not end the range early.
+      const step = lastTime === null ? 0 : currentTime - lastTime;
+      if (step !== 0) {
+        lookAhead = Math.min(step, lastStep);
+        lastStep = step;
+      }
+      lastTime = currentTime;
+      const completedPlayback = reachedStop(currentTime, lookAhead, stop);
+      if (completedPlayback) currentTime = stop.shown;
       const now = performance.now();
 
       if (now - this._lastUpdateMs > UI_UPDATE_INTERVAL_MS || completedPlayback) {
@@ -70,6 +96,7 @@ export class DirectTimelineClock {
         }
         try {
           timeline.pause();
+          if (stop.shown < stop.end) timeline.seek(stop.shown, false);
         } catch {
           /* ignore */
         }
@@ -81,7 +108,15 @@ export class DirectTimelineClock {
       this._raf = requestAnimationFrame(tick);
     };
 
+    this._tick = tick;
     this._raf = requestAnimationFrame(tick);
+  }
+
+  /** Runs one check now, for a hidden tab, which runs no animation frames. */
+  poll(): void {
+    if (this._raf === null || !this._tick) return;
+    cancelAnimationFrame(this._raf);
+    this._tick();
   }
 
   stop(): void {

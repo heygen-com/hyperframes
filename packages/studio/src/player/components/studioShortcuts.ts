@@ -1,5 +1,10 @@
-/** Bare keys Studio's app hotkeys bind; the shortcuts list names them from here. */
-export const STUDIO_PLAIN_KEYS = { fullscreen: "f", split: "s", record: "r" } as const;
+/** Bare keys Studio's hotkeys bind; the shortcuts list names them from here. */
+export const STUDIO_PLAIN_KEYS = {
+  fullscreen: "f",
+  split: "s",
+  record: "r",
+  addKeyframe: "k",
+} as const;
 
 export interface ShortcutHint {
   key: string;
@@ -32,10 +37,8 @@ export const DEFAULT_SHORTCUT_SECTIONS: readonly ShortcutSection[] = [
   {
     title: "Keyframes (when an element is selected)",
     hints: [
-      { key: "K", label: "Add keyframe at playhead" },
+      { key: hintKey(STUDIO_PLAIN_KEYS.addKeyframe), label: "Add / remove keyframe at playhead" },
       { key: "Del", label: "Delete selected keyframe" },
-      { key: "H", label: "Toggle hold / bezier" },
-      { key: "U", label: "Expand / collapse properties" },
       { key: hintKey(STUDIO_PLAIN_KEYS.record), label: "Record gesture" },
     ],
   },
@@ -49,6 +52,8 @@ export const DEFAULT_SHORTCUT_SECTIONS: readonly ShortcutSection[] = [
       { key: "⌘X", label: "Cut element" },
       { key: hintKey(STUDIO_PLAIN_KEYS.split), label: "Split clip at playhead" },
       { key: "⇧Click", label: "Razor tool: split all tracks" },
+      { key: "[", label: "Select clips starting before the playhead" },
+      { key: "]", label: "Select clips starting at or after the playhead" },
       { key: "⌘G", label: "Group elements" },
       { key: "⌘⇧G", label: "Ungroup" },
       { key: "Del", label: "Delete selected element (no keyframe selected)" },

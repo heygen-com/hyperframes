@@ -57,10 +57,13 @@ export function renderClipChildren(
       {renderClipOverlay?.(element)}
       {!renderClipContent && <ClipLintDot element={element} />}
       {renderClipContent && (
-        // borderRadius: inherit — the clip itself is overflow-visible (keyframe
-        // diamonds hang outside its bounds), so the thumbnail layer must clip
-        // itself to the clip's rounded corners or sharp corners poke out.
-        <div className="absolute inset-0 overflow-hidden" style={{ borderRadius: "inherit" }}>
+        // The picture can paint above the trim handles, so it takes no input and presses reach them.
+        // borderRadius: inherit clips it to the clip's rounded corners; the clip itself is
+        // overflow-visible because keyframe diamonds hang outside its bounds.
+        <div
+          className="absolute inset-0 overflow-hidden"
+          style={{ borderRadius: "inherit", pointerEvents: "none" }}
+        >
           {renderClipContent(element, clipStyle, context)}
         </div>
       )}

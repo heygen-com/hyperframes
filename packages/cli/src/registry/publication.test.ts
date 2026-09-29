@@ -1,4 +1,5 @@
 import {
+  existsSync,
   mkdtempSync,
   mkdirSync,
   readFileSync,
@@ -67,6 +68,17 @@ it("atomically replaces a hard-linked leaf without altering its other name", () 
     expect(readdirSync(root).some((name) => name.startsWith(".hf-install-"))).toBe(false);
   } finally {
     rmSync(root, { recursive: true, force: true });
+  }
+});
+
+it("does not recreate a project folder renamed away before an install", () => {
+  const parent = mkdtempSync(join(tmpdir(), "hf-publish-gone-"));
+  try {
+    const project = join(parent, "film");
+    expect(() => registryRoot(project)).toThrow(/Project folder not found/);
+    expect(existsSync(project)).toBe(false);
+  } finally {
+    rmSync(parent, { recursive: true, force: true });
   }
 });
 

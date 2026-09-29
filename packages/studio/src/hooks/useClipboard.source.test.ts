@@ -220,6 +220,27 @@ describe("copy takes a clip's saved markup, not the runtime's live styling", () 
   });
 });
 
+describe("copy of a clip missing from its saved file", () => {
+  it("takes the preview's markup without its lazy loading or look-ahead mark, keeping authored loading", async () => {
+    selectTitle();
+    const { clipboard, writes, files, iframe } = mountClipboard();
+    const title = iframe.contentDocument?.querySelector("h1") as Element;
+    title.setAttribute("data-hf-upcoming", "");
+    title.insertAdjacentHTML(
+      "beforeend",
+      '<img src="plate.png" loading="lazy" data-hf-preview-lazy><img src="own.png" loading="lazy">',
+    );
+    files["index.html"] = SAVED.replace(/<h1[\s\S]*<\/h1>/, "");
+    clipboard().handleCopy();
+    await clipboard().handlePaste();
+    expect(writes[0]).toMatch(
+      /<img src="plate.png" data-hf-id="[^"]+"><img src="own.png" loading="lazy"/,
+    );
+    expect(writes[0]).not.toContain("data-hf-preview-lazy");
+    expect(writes[0]).not.toContain("data-hf-upcoming");
+  });
+});
+
 const SUB_SELECTION = {
   hfId: SUB_HF_ID,
   selector: "h2",
@@ -315,6 +336,64 @@ describe("copy order", () => {
   });
 });
 
+describe("duplicate of a clip inside a sub-composition", () => {
+  it("writes the copy at local time right after the original", async () => {
+    // Host at 2 s, so the clip's local 1-3 s shows as a 3-5 s master row.
+    const sub: TimelineElement = {
+      id: SUB_HF_ID,
+      hfId: SUB_HF_ID,
+      tag: "h2",
+      start: 3,
+      duration: 2,
+      track: 0,
+      authoredTrack: 0,
+      sourceFile: "compositions/sub.html",
+      parentCompositionStart: 2,
+    };
+    usePlayerStore.setState({
+      elements: [TITLE, sub],
+      selectedElementId: sub.id,
+      selectedElementIds: new Set([sub.id]),
+    });
+    const { clipboard, writes } = mountClipboard(null, SUB, (host) =>
+      host.setAttribute("data-start", "2"),
+    );
+    await clipboard().handleDuplicate();
+    const starts = [...(writes[0] ?? "").matchAll(/<h2[^>]*data-start="([^"]+)"/g)].map(
+      (m) => m[1],
+    );
+    expect(starts.sort()).toEqual(["1", "3"]);
+  });
+
+  it("moves the copy off a lane its own file already fills right after the original", async () => {
+    // Host at 10 s: the clip is local 1-3 (master 11-13); its neighbour is local 3-5,
+    // exactly where the copy lands, so the lane check must compare in local time.
+    const sub: TimelineElement = {
+      id: SUB_HF_ID,
+      hfId: SUB_HF_ID,
+      tag: "h2",
+      start: 11,
+      duration: 2,
+      track: 0,
+      authoredTrack: 0,
+      sourceFile: "compositions/sub.html",
+      parentCompositionStart: 10,
+    };
+    const neighbour: TimelineElement = { ...sub, id: "next", hfId: "next", start: 13 };
+    usePlayerStore.setState({
+      elements: [TITLE, sub, neighbour],
+      selectedElementId: sub.id,
+      selectedElementIds: new Set([sub.id]),
+    });
+    const { clipboard, writes } = mountClipboard(null, SUB, (host) =>
+      host.setAttribute("data-start", "10"),
+    );
+    await clipboard().handleDuplicate();
+    const copy = /<h2[^>]*data-start="3"[^>]*>/.exec(writes[0] ?? "")?.[0] ?? "";
+    expect(copy).toContain('data-track-index="1"');
+  });
+});
+
 describe("a copy that fails", () => {
   it("leaves the previous copy on the clipboard", async () => {
     selectTitle();
@@ -335,6 +414,17 @@ describe("a copy that fails", () => {
     const { clipboard, deleted, fail } = mountClipboard();
     fail.on = true;
     expect(await clipboard().handleCut()).toBe(false);
+    expect(deleted).toEqual([]);
+  });
+});
+
+describe("with no DOM edit session", () => {
+  it("refuses copy, cut and duplicate when nothing is selected", async () => {
+    clearSelection();
+    const { clipboard, deleted } = mountClipboard();
+    expect(clipboard().handleCopy()).toBe(false);
+    expect(await clipboard().handleCut()).toBe(false);
+    expect(await clipboard().handleDuplicate()).toBe(false);
     expect(deleted).toEqual([]);
   });
 });

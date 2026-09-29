@@ -33,6 +33,7 @@ interface TimelineGroupRowProps {
   virtualized: boolean;
   contentOrigin: number;
   theme: TimelineTheme;
+  showAudioEffects?: boolean;
   rovingTargetId?: string | null;
   collapsedGroupIds: ReadonlySet<string>;
   expandedLaneOwnerIds: ReadonlySet<string>;
@@ -59,6 +60,7 @@ export function TimelineGroupRow({
   virtualized,
   contentOrigin,
   theme,
+  showAudioEffects = true,
   rovingTargetId = null,
   collapsedGroupIds,
   expandedLaneOwnerIds,
@@ -173,6 +175,7 @@ export function TimelineGroupRow({
           // stays pinned there through horizontal scroll.
           columnWidth={contentOrigin >= LABEL_COL_W ? LABEL_COL_W : contentOrigin}
           theme={theme}
+          showAudioEffects={showAudioEffects}
         />
         {/* The group's OWN curves, under the strip. Selected-gated exactly like a
           clip's: a lane is editable once the group is selected, which clicking
@@ -187,7 +190,7 @@ export function TimelineGroupRow({
             columnWidth={contentOrigin >= LABEL_COL_W ? LABEL_COL_W : contentOrigin}
             gutterBackground={theme.gutterBackground}
             accentColor={GROUP_LANE_ACCENT}
-            onReveal={openGroupFxRack}
+            onReveal={showAudioEffects ? openGroupFxRack : undefined}
           />
         )}
       </div>

@@ -948,6 +948,7 @@
             "group": "Agent setup",
             "pages": [
               "guides/authentication",
+              "guides/plugins",
               "guides/skills",
               "guides/webmcp"
             ]
@@ -958,6 +959,7 @@
               "contributing",
               "contributing/catalog",
               "contributing/release-channels",
+              "contributing/agent-plugins",
               "contributing/changelog-process",
               "contributing/testing-local-changes",
               "contributing/canary-rollouts",

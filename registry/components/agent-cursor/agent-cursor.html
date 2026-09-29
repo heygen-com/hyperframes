@@ -1,0 +1,398 @@
+<!doctype html>
+<!--
+  Agent Cursor (actor primitive), mountable sub-composition
+
+  concept: an AI agent operating a UI. The cursor carries an accent name label that types
+  out what the agent is doing, then the cursor moves to each target and clicks with a
+  small ring. The label slides to the tip's left on the right of the frame. The last step shows a check.
+
+  mount contract: loaded by a host through data-composition-src; only <template> is
+  cloned. #root fills the host clip (inset:0). See demo.html.
+
+  variables:
+    agent_name (string)   the name on the tag
+    steps (string)        comma-separated: a reading line, one line per target, a done line
+    targets (string)      semicolon-separated "x,y" click points in % of the host box
+    accent (color)        label fill and click ring color
+
+  envelope (default 4.8s, two targets): enter and read 0-0.95s, then per target 1.35s
+  (type 0.35s, move 0.5s, dwell 0.2s, click), done line, exit in the last 0.5s.
+-->
+<html
+  lang="en"
+  data-composition-id="agent-cursor"
+  data-composition-duration="4.8"
+  data-composition-variables='[
+    { "id": "agent_name", "type": "string", "role": "content", "label": "Agent name", "default": "Agent" },
+    { "id": "steps", "type": "string", "role": "content", "label": "Status steps", "description": "Comma-separated: a reading line, one line per target, then a done line.", "default": "Reading the page,Opening Settings,Turning on backups,Done" },
+    { "id": "targets", "type": "string", "role": "layout", "label": "Click targets", "description": "Semicolon-separated x,y points in percent of the frame.", "default": "25,47;76,30" },
+    { "id": "accent", "type": "color", "role": "style", "label": "Accent", "default": "#0a84ff" }
+  ]'
+>
+  <head>
+    <meta charset="UTF-8" />
+    <title>Agent Cursor</title>
+  </head>
+  <body>
+    <template>
+      <style>
+        #root {
+          position: absolute;
+          inset: 0;
+          overflow: hidden;
+          isolation: isolate;
+          pointer-events: none;
+          container-type: size;
+          font-family: var(--font-body, Inter, system-ui, sans-serif);
+          --ag-accent: #0a84ff;
+        }
+        .ag-actor {
+          position: absolute;
+          left: 0;
+          top: 0;
+          width: 0;
+          height: 0;
+        }
+        .ag-arrow {
+          position: absolute;
+          overflow: visible;
+          transform-origin: 20.833% 12.5%;
+          filter: drop-shadow(0 3px 4px rgba(0, 0, 0, 0.3));
+        }
+        .ag-arrow path {
+          fill: #ffffff;
+          stroke: #141414;
+          stroke-width: 1.4;
+          stroke-linejoin: round;
+        }
+        .ag-ring {
+          position: absolute;
+          left: 0;
+          top: 0;
+          box-sizing: border-box;
+          border-radius: 50%;
+          border: 1.5px solid var(--ag-accent);
+          opacity: 0;
+        }
+        .ag-tag {
+          position: absolute;
+          left: 0;
+          top: 0;
+          display: flex;
+          align-items: center;
+          gap: 0.5cqw;
+          padding: 0.45cqw 0.75cqw 0.45cqw 0.6cqw;
+          border-radius: 0.3cqw;
+          background: var(--ag-accent);
+          box-shadow: 0 0.2cqw 0.5cqw rgba(0, 0, 0, 0.22);
+          font-size: 1.15cqw;
+          line-height: 1.2;
+          white-space: nowrap;
+        }
+        .ag-mark {
+          position: relative;
+          width: 1cqw;
+          height: 1cqw;
+          flex: none;
+        }
+        .ag-dot,
+        .ag-check {
+          position: absolute;
+          inset: 0;
+          border-radius: 50%;
+          background: #fff;
+        }
+        .ag-check {
+          opacity: 0;
+        }
+        .ag-check svg {
+          position: absolute;
+          inset: 18%;
+          fill: none;
+          stroke: var(--ag-accent);
+          stroke-width: 3.2;
+          stroke-linecap: round;
+          stroke-linejoin: round;
+        }
+        .ag-name {
+          font-weight: 700;
+          color: #fff;
+        }
+        .ag-sep {
+          color: rgba(255, 255, 255, 0.6);
+        }
+        .ag-status {
+          font-weight: 500;
+          color: #fff;
+        }
+      </style>
+
+      <div id="root" data-composition-id="agent-cursor" data-duration="4.8">
+        <div class="ag-tag" id="ag-tag">
+          <span class="ag-mark">
+            <span class="ag-dot" id="ag-dot"></span>
+            <span class="ag-check" id="ag-check">
+              <svg viewBox="0 0 24 24"><path d="M5 12.5l4.5 4.5L19 7.5" /></svg>
+            </span>
+          </span>
+          <span class="ag-name" id="ag-name"></span>
+          <span class="ag-sep">·</span>
+          <span class="ag-status" id="ag-status"></span>
+        </div>
+        <div class="ag-ring" id="ag-ring"></div>
+        <div class="ag-actor" id="ag-actor">
+          <svg class="ag-arrow" id="ag-arrow" viewBox="0 0 24 24" aria-hidden="true">
+            <path d="M5 3 L5 19 L9 15 L12 22 L15 20.5 L11.5 14 L18 14 Z" />
+          </svg>
+        </div>
+      </div>
+
+      <script>
+        (function () {
+          "use strict";
+
+          var html = document.documentElement;
+          var root = document.getElementById("root");
+          var actor = document.getElementById("ag-actor");
+          var arrow = document.getElementById("ag-arrow");
+          var ring = document.getElementById("ag-ring");
+          var tag = document.getElementById("ag-tag");
+          var statusEl = document.getElementById("ag-status");
+          var dot = document.getElementById("ag-dot");
+          var check = document.getElementById("ag-check");
+
+          var DEFAULTS = {};
+          try {
+            JSON.parse(html.getAttribute("data-composition-variables") || "[]").forEach(
+              function (variable) {
+                DEFAULTS[variable.id] = variable.default;
+              },
+            );
+          } catch (error) {
+            /* malformed declaration falls back to the inline defaults below */
+          }
+          var scopedVariables = {};
+          try {
+            if (window.__hyperframes && typeof window.__hyperframes.getVariables === "function") {
+              scopedVariables = window.__hyperframes.getVariables() || {};
+            }
+          } catch (error) {
+            /* no scoped variables API in this context */
+          }
+          var vars = Object.assign({}, DEFAULTS, window.__hfVariables || {}, scopedVariables);
+
+          // Hardcoded: the compositor rewrites the wrapper's attributes on mount.
+          var compositionId = "agent-cursor";
+          var duration = Math.max(
+            0.001,
+            parseFloat(
+              root.dataset.duration || html.getAttribute("data-composition-duration") || "4.8",
+            ),
+          );
+          var W = root.clientWidth || 1920;
+          var H = root.clientHeight || 1080;
+          var ARROW = 64 * (W / 1920);
+          arrow.style.width = arrow.style.height = ARROW + "px";
+          arrow.style.left = (-5 / 24) * ARROW + "px";
+          arrow.style.top = (-3 / 24) * ARROW + "px";
+          var accent = /^#[0-9a-f]{3,8}$/i.test(String(vars.accent)) ? vars.accent : "#0a84ff";
+          root.style.setProperty("--ag-accent", accent);
+          document.getElementById("ag-name").textContent = String(vars.agent_name || "Agent");
+
+          var steps = String(vars.steps || "")
+            .split(",")
+            .map(function (s) {
+              return s.trim();
+            })
+            .filter(Boolean);
+          var targets = String(vars.targets || "")
+            .split(";")
+            .map(function (pair) {
+              var xy = pair.split(",").map(Number);
+              return { x: (xy[0] / 100) * W, y: (xy[1] / 100) * H };
+            })
+            .filter(function (p) {
+              return isFinite(p.x) && isFinite(p.y);
+            });
+          if (!targets.length) targets = [{ x: 0.5 * W, y: 0.5 * H }];
+          if (!steps.length) steps = ["Working"];
+          function stepText(i) {
+            return steps[Math.min(i, steps.length - 1)];
+          }
+
+          // Beats at the default duration; a shorter composition compresses them evenly.
+          var BEAT = 1.35;
+          var needed = 0.95 + targets.length * BEAT + 0.65 + 0.5;
+          var k = Math.min(1, duration / needed);
+          var T_ENTER = 0.55 * k;
+          var T_READ_END = 0.95 * k;
+          var beats = targets.map(function (p, i) {
+            var type = T_READ_END + i * BEAT * k;
+            var move = type + 0.35 * k;
+            return { type: type, move: move, land: move + 0.5 * k, click: move + 0.7 * k, to: p };
+          });
+          var T_DONE = T_READ_END + targets.length * BEAT * k;
+          var T_EXIT = Math.max(T_DONE + 0.4 * k, duration - 0.5 * k);
+
+          var first = targets[0];
+          var READ_A = { x: (0.5 * W + first.x) / 2 - 0.03 * W, y: (0.5 * H + first.y) / 2 };
+          var READ_B = { x: READ_A.x + 0.06 * W, y: READ_A.y + 0.01 * H };
+          var START = { x: 1.08 * W, y: 1.15 * H };
+          var END = { x: 1.1 * W, y: 1.2 * H };
+
+          function clamp01(u) {
+            return u < 0 ? 0 : u > 1 ? 1 : u;
+          }
+          var enter = gsap.parseEase("power3.out");
+          var reading = gsap.parseEase("sine.inOut");
+          var swap = gsap.parseEase("power2.inOut");
+          var fade = gsap.parseEase("power2.out");
+          var leave = gsap.parseEase("power2.in");
+          var pop = gsap.parseEase("back.out(2.4)");
+          function lerp(a, b, u) {
+            return { x: a.x + (b.x - a.x) * u, y: a.y + (b.y - a.y) * u };
+          }
+          function bent(a, b, u) {
+            var p = lerp(a, b, u);
+            var lift = Math.sin(Math.PI * u) * 0.12;
+            return { x: p.x - (b.y - a.y) * lift, y: p.y + (b.x - a.x) * lift };
+          }
+
+          function positionAt(t) {
+            if (t <= T_ENTER) return lerp(START, READ_A, enter(clamp01(t / T_ENTER)));
+            if (t <= T_READ_END)
+              return lerp(READ_A, READ_B, reading(clamp01((t - T_ENTER) / (T_READ_END - T_ENTER))));
+            var from = READ_B;
+            for (var i = 0; i < beats.length; i++) {
+              var b = beats[i];
+              if (t <= b.move) return from;
+              if (t <= b.land) return bent(from, b.to, enter((t - b.move) / (b.land - b.move)));
+              from = b.to;
+            }
+            if (t <= T_EXIT) return from;
+            return lerp(from, END, leave(clamp01((t - T_EXIT) / (duration - T_EXIT))));
+          }
+
+          // 1 when the tag belongs left of the tip, judged at the pose the tip is heading to.
+          function leftAt(t) {
+            var at = Math.min(Math.max(t, T_ENTER), T_EXIT);
+            beats.forEach(function (b) {
+              if (at > b.move && at < b.land) at = b.land;
+            });
+            return positionAt(at).x > 0.6 * W ? 1 : 0;
+          }
+          // Averaging the side over the last 0.3 s turns each flip into a seek-safe slide.
+          function flipAt(t) {
+            var n = 0;
+            for (var i = 0; i < 30; i++) n += leftAt(t - i * 0.01 * k);
+            return swap(n / 30);
+          }
+
+          function statusAt(t) {
+            var index = 0;
+            var since = t;
+            beats.forEach(function (b, i) {
+              if (t >= b.type) {
+                index = i + 1;
+                since = t - b.type;
+              }
+            });
+            if (t >= T_DONE) {
+              index = beats.length + 1;
+              since = t - T_DONE;
+            }
+            var text = stepText(index);
+            var typeDur = Math.min(0.3, text.length * 0.022) * k;
+            var shown = Math.floor(clamp01(since / typeDur) * text.length);
+            return text.slice(0, Math.max(index === 0 ? 0 : 1, shown));
+          }
+
+          function press(t) {
+            var depth = 0;
+            beats.forEach(function (b) {
+              var d = t - b.click;
+              if (d >= 0 && d < 0.08 * k) depth = d / (0.08 * k);
+              else if (d >= 0.08 * k && d < 0.26 * k) depth = 1 - (d - 0.08 * k) / (0.18 * k);
+            });
+            return 1 - 0.1 * depth;
+          }
+
+          function renderRing(t) {
+            var opacity = 0;
+            beats.forEach(function (b) {
+              var u = (t - b.click) / (0.28 * k);
+              if (u < 0 || u >= 1) return;
+              var e = fade(u);
+              var r = ((0.6 + 1.8 * e) * W) / 100;
+              opacity = 1 - e;
+              ring.style.width = ring.style.height = (2 * r).toFixed(2) + "px";
+              ring.style.transform =
+                "translate(" + (b.to.x - r).toFixed(2) + "px," + (b.to.y - r).toFixed(2) + "px)";
+            });
+            ring.style.opacity = opacity.toFixed(3);
+          }
+
+          function render(t) {
+            var p = positionAt(t);
+            var gone = t >= duration;
+            actor.style.transform = "translate(" + p.x.toFixed(2) + "px," + p.y.toFixed(2) + "px)";
+            arrow.style.transform = "scale(" + press(t).toFixed(3) + ")";
+            renderRing(t);
+
+            statusEl.textContent = statusAt(t);
+            // Slide between below-right of the tip and left of it, kept inside the frame.
+            var flip = flipAt(t);
+            var w = tag.offsetWidth;
+            var h = tag.offsetHeight;
+            var m = 0.01 * W;
+            var x = p.x + (1 - flip) * 0.016 * W - flip * (0.005 * W + w);
+            var y = p.y + (0.021 - 0.013 * flip) * W;
+            x = Math.min(Math.max(x, m), W - m - w);
+            y = Math.min(Math.max(y, m), H - m - h);
+            var scale = 0.9 + 0.1 * enter(clamp01((t - 0.15 * k) / (0.35 * k)));
+            tag.style.transformOrigin = (flip * 100).toFixed(1) + "% 0";
+            tag.style.transform =
+              "translate(" +
+              x.toFixed(2) +
+              "px," +
+              y.toFixed(2) +
+              "px) scale(" +
+              scale.toFixed(3) +
+              ")";
+            var leaving = clamp01((t - T_EXIT) / (0.25 * k));
+            var shown = clamp01((t - 0.15 * k) / (0.2 * k)) * (1 - leaving);
+            tag.style.opacity = gone ? "0" : shown.toFixed(3);
+
+            var done = clamp01((t - T_DONE) / (0.3 * k));
+            check.style.opacity = done.toFixed(3);
+            check.style.transform = "scale(" + (0.5 + 0.5 * pop(done)).toFixed(3) + ")";
+            dot.style.opacity = (1 - done).toFixed(3);
+            // The live dot breathes on a 1.2 s period until the check replaces it.
+            dot.style.transform =
+              "scale(" + (0.875 + 0.125 * Math.cos((2 * Math.PI * t) / 1.2)).toFixed(3) + ")";
+            actor.style.opacity = gone ? "0" : "1";
+          }
+
+          var clock = { t: 0 };
+          var tl = gsap.timeline({ paused: true });
+          tl.to(
+            clock,
+            {
+              t: duration,
+              duration: duration,
+              ease: "none",
+              onUpdate: function () {
+                render(clock.t);
+              },
+            },
+            0,
+          );
+          render(0);
+          tl.seek(0);
+          window.__timelines = window.__timelines || {};
+          window.__timelines[compositionId] = tl;
+        })();
+      </script>
+    </template>
+  </body>
+</html>

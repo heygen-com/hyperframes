@@ -19,7 +19,7 @@
 // Drift becomes a build error instead of silent absence.
 //
 // Usage:
-//   node scripts/plan-regression-shards.mjs [--shards N] [--pretty]
+//   node scripts/plan-regression-shards.mjs [--shards N] [--nightly] [--pretty]
 
 import { readdirSync, readFileSync, existsSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
@@ -103,11 +103,13 @@ export function planShards({
   testsDir = TESTS_DIR,
   scheduleFile = SCHEDULE_FILE,
   shardCount,
+  nightly = false,
 } = {}) {
   const schedule = JSON.parse(readFileSync(scheduleFile, "utf-8"));
   const timings = schedule.timings ?? {};
   const excluded = schedule.excluded ?? {};
   const distributed = schedule.distributed ?? {};
+  const nightlyOnly = schedule.nightly ?? {};
   const resolvedShardCount = shardCount ?? schedule.shardCount ?? DEFAULT_SHARD_COUNT;
   const resolvedDistributedShardCount =
     schedule.distributedShardCount ?? DEFAULT_DISTRIBUTED_SHARD_COUNT;
@@ -149,18 +151,23 @@ export function planShards({
     );
   }
 
-  // A distributed fixture must also be scheduled — the mode says *how* to run
-  // it, not *whether*. Listing one that is excluded or absent is a typo, and a
-  // silent one, since the mode map is not consulted when building the shard set.
-  const misdeclared = Object.keys(distributed).filter((name) => !(name in timings));
+  // A distributed or nightly fixture must also be scheduled — those maps say
+  // *how* or *when* to run it, not *whether*. Listing one that is excluded or
+  // absent is a typo, and a silent one, since neither map adds to the shard set.
+  const misdeclared = [...Object.keys(distributed), ...Object.keys(nightlyOnly)].filter(
+    (name) => !(name in timings),
+  );
   if (misdeclared.length > 0) {
     throw new Error(
-      `Fixtures marked "distributed" are not scheduled: ${misdeclared.join(", ")}.\n` +
-        `Add each to "timings" in ${scheduleFile}, or drop it from "distributed".`,
+      `Fixtures marked "distributed" or "nightly" are not scheduled: ${misdeclared.join(", ")}.\n` +
+        `Add each to "timings" in ${scheduleFile}, or drop it from that map.`,
     );
   }
 
-  const scheduled = onDisk.filter((name) => !(name in excluded));
+  // Nightly fixtures stay out of per-PR runs; the scheduled run passes --nightly.
+  const scheduled = onDisk.filter(
+    (name) => !(name in excluded) && (nightly || !(name in nightlyOnly)),
+  );
 
   // Harness mode is a per-invocation flag, so a shard cannot mix modes. Pack
   // each mode into its own shards rather than trying to interleave them.
@@ -205,7 +212,10 @@ function main() {
     throw new Error("--shards must be a positive integer");
   }
 
-  const { include, plan, excludedCount } = planShards({ shardCount });
+  const { include, plan, excludedCount } = planShards({
+    shardCount,
+    nightly: argv.includes("--nightly"),
+  });
 
   if (argv.includes("--pretty")) {
     const worst = Math.max(...plan.map((row) => row.estimatedMinutes));

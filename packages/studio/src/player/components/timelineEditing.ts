@@ -51,6 +51,7 @@ export interface TimelineMoveInput {
   originScrollLeft?: number;
   currentScrollLeft?: number;
   pixelsPerSecond: number;
+  minStart?: number;
   maxStart: number;
   trackOrder: number[];
   layerOrder?: TimelineLayerId[];
@@ -127,7 +128,7 @@ export function resolveTimelineMove(
   const deltaTrack = Math.round(trackDeltaRaw);
   const nextStart = clamp(
     roundToCentiseconds(input.start + deltaTime),
-    0,
+    input.minStart ?? 0,
     Math.max(0, input.maxStart),
   );
 

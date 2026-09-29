@@ -27,6 +27,7 @@ function inputs(overrides: Partial<TimelineMetaBuilderInputs> = {}): TimelineMet
       ref: vi.fn(),
       tabIndex: -1,
       labelMode: false,
+      contentOrigin: 80,
       zoomMode: "fit",
       onScroll: vi.fn(),
       onFocus: vi.fn(),

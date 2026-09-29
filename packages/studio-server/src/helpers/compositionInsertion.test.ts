@@ -196,4 +196,20 @@ describe("insertCompositionIntoSource", () => {
     expect(() => insert("intro")).toThrow(/folder, not an HTML file/);
     expect(() => insert("wraps-folder.html")).toThrow(/folder, not an HTML file/);
   });
+
+  it("says the project folder is gone rather than that the source escapes it", () => {
+    const dir = project();
+    rmSync(dir, { recursive: true });
+    const insert = () =>
+      insertCompositionIntoSource({
+        projectDir: dir,
+        targetPath: "index.html",
+        sourcePath: "headline.html",
+        parentSource: parent,
+        start: 0,
+        desiredTrack: 0,
+      });
+
+    expect(insert).toThrow(expect.objectContaining({ name: "ProjectRootMissingError" }));
+  });
 });

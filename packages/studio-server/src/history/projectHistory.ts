@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import { readdir, rm, rmdir, writeFile } from "node:fs/promises";
+import { mkdir, readdir, rm, rmdir, writeFile } from "node:fs/promises";
 import {
   type Dirent,
   type Stats,
@@ -16,16 +16,17 @@ import { homedir } from "node:os";
 import { dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
 import { replaceFileAtomically } from "../helpers/atomicFile.js";
 import {
-  bytesOverwrittenBy,
   DELETED_VERSION,
   fileContentVersion,
-  forgetOverwrittenBytes,
   hashOfVersion,
   hashVersion,
+  onFileOverwritten,
   recordFileWriteReceipt,
 } from "../helpers/fileVersion.js";
+import { realFilePath } from "../helpers/safePath.js";
 import { affectsProjectSignature, listProjectFiles } from "../helpers/projectSignature.js";
 import { openBlobStore, type BlobStore } from "./blobStore.js";
+import { pruneGoneProjectHistoriesDaily } from "./pruneHistories.js";
 import {
   ID_PATH,
   isRecordedFolder,
@@ -76,6 +77,8 @@ export interface ProjectHistoryOptions {
   ownerWaitMs?: number;
   /** A CLI turn's window from an earlier open: writes since, within its idle limit, become the entry with its id. */
   closedWindow?: ClosedWindow;
+  undoScope?: "own" | "everyone";
+  pruneGoneProjectsBudgetMs?: number;
 }
 
 interface ClaimOptions {
@@ -143,7 +146,7 @@ export interface ProjectHistory {
   /** A watcher saw `path` change (project-relative or absolute). */
   noteChange(path: string): void;
   list(): HistoryListItem[];
-  /** Cmd+Z (back) and Cmd+Shift+Z (forward) over `who`'s own and outside changes; `writeToken` labels the echo. */
+  /** Cmd+Z (back) and Cmd+Shift+Z (forward) over `who`'s own and outside changes, or all (undoScope everyone). */
   step(direction: "back" | "forward", who: HistoryWho, options?: Writing): Promise<HistoryResult>;
   /** The entry `who`'s next step reverts, pending changes included, as of the last scan (a step scans first). */
   next(direction: "back" | "forward", who: HistoryWho): HistoryEntry | undefined;
@@ -183,6 +186,7 @@ interface Group {
   lastWriteAt?: number;
   idleTimer?: NodeJS.Timeout;
   entry?: HistoryEntry | null;
+  parts?: Set<string>;
 }
 
 /**
@@ -256,6 +260,21 @@ const blocks = (removed: string, added: string) =>
 const takesWrite = (window: Group, at: number) =>
   window.idleMs === undefined || at - (window.lastWriteAt ?? at) <= window.idleMs;
 
+function chainBackFrom(
+  byAfter: Map<string, string> | undefined,
+  hash: string,
+): Map<string, string> {
+  const chain = new Map<string, string>();
+  let at = hash;
+  let prior = byAfter?.get(at);
+  while (prior !== undefined && !chain.has(at)) {
+    chain.set(at, prior);
+    at = prior;
+    prior = byAfter?.get(at);
+  }
+  return chain;
+}
+
 /** Files one change to a group; a later change to the same path keeps the group's first "before". */
 function addChange(group: Group, path: string, before: string | null, after: string | null): void {
   const earlier = group.changes.get(path);
@@ -275,6 +294,9 @@ class Engine {
   outside: Group | null = null;
   /** A coalescing claim, open until another key, its idle timer, an operation, a window, or another write. */
   claimed: { group: Group; key: string; timer?: NodeJS.Timeout } | null = null;
+  /** Per path and hash an API write left, the hash of the bytes it replaced, until walked or written past. */
+  overwritten = new Map<string, Map<string, string>>();
+  stopHearing: (() => void) | undefined;
   writeToken: string | undefined;
   quietTimer: NodeJS.Timeout | undefined;
   maxTimer: NodeJS.Timeout | undefined;
@@ -370,6 +392,46 @@ class Engine {
     await this.settleAll();
   }
 
+  hearWrites(): void {
+    const realDir = realFilePath(this.dir);
+    this.stopHearing = onFileOverwritten((absPath, version, bytes) => {
+      const after = hashOfVersion(version);
+      if (!after || !affectsProjectSignature(realDir, absPath)) return;
+      const replaced = hashOfVersion(fileContentVersion(bytes));
+      if (!replaced || replaced === after) return;
+      const path = relative(realDir, absPath).split(sep).join("/");
+      // One chain per file, a new Map per write (forgetWritesBefore checks identity); off-chain notes were overwritten.
+      this.overwritten.set(
+        path,
+        chainBackFrom(this.overwritten.get(path), replaced).set(after, replaced),
+      );
+      this.queue(async () => {
+        if (!this.blobs.has(replaced)) await this.storeBytes(bytes);
+      }).catch((error) => this.options.onError?.(error));
+    });
+  }
+
+  async storeBytes(bytes: string | Uint8Array): Promise<void> {
+    const staged = join(this.home, `overwrote-${randomUUID()}`);
+    await mkdir(this.home, { recursive: true });
+    await writeFile(staged, bytes);
+    try {
+      await this.blobs.put(staged);
+    } finally {
+      await rm(staged, { force: true });
+    }
+  }
+
+  /** Read at a state no API write left, with no write heard since `heard`: no walk passes it, so forget the rest. */
+  forgetWritesBefore(
+    path: string,
+    hash: string | null,
+    heard: Map<string, string> | undefined,
+  ): void {
+    if (this.overwritten.get(path) === heard && !(hash && heard?.has(hash)))
+      this.overwritten.delete(path);
+  }
+
   reopenClosedWindow(): void {
     const closed = this.options.closedWindow;
     if (!closed || this.log.entries.some((entry) => entry.id === closed.id)) return;
@@ -419,6 +481,7 @@ class Engine {
     const changedAt = (file: { mtimeMs: number; ctimeMs: number }) =>
       Math.min(sweptAt, Math.max(file.mtimeMs, file.ctimeMs));
     const seen = listProjectFiles(this.dir);
+    const heard = new Map(this.overwritten);
     const present = new Set(seen.map((file) => file.path));
     const removed = [...this.tracked.keys()]
       .filter((path) => !present.has(path))
@@ -446,6 +509,7 @@ class Engine {
       }
       const known = this.tracked.get(path)!;
       this.tracked.delete(path);
+      this.forgetWritesBefore(path, null, heard.get(path));
       await this.record(path, known.hash, null, at);
       changed = true;
     }
@@ -465,9 +529,11 @@ class Engine {
   async observe(path: string, stat: string, at: number): Promise<boolean> {
     const known = this.tracked.get(path) ?? { hash: null, stat: null };
     if (stat && known.stat === stat) return false;
+    const heard = this.overwritten.get(path);
     const hash = await this.storeIfPresent(path);
     if (hash === null || this.whereFolder() !== "here") return false;
     this.tracked.set(path, { hash, stat });
+    this.forgetWritesBefore(path, hash, heard);
     if (known.hash !== hash) await this.record(path, known.hash, hash, at);
     return known.hash !== hash || known.stat !== stat;
   }
@@ -571,39 +637,31 @@ class Engine {
     const walked = hits.map(() => new Set<string>());
     for (const [i, { change }] of hits.entries()) {
       const told = at.get(change.path);
-      cuts.push((await this.overwrittenBy(change, told, walked[i]!)) ?? told);
+      cuts.push(this.overwrittenBy(change, told, walked[i]!) ?? told);
     }
-    hits.forEach(({ change }, i) =>
-      forgetOverwrittenBytes(
-        join(this.dir, change.path),
-        new Set([...walked[i]!].map(hashVersion)),
-      ),
-    );
+    hits.forEach(({ change }, i) => this.forgetOverwritten(change.path, walked[i]!));
     return hits.flatMap(({ group, change }, i) => this.cutOut(group, change, cuts[i]) ?? []);
   }
 
-  /** Walks the server's writes back from `change.after` to the bytes they replaced, stored so an undo restores them. */
-  async overwrittenBy(change: HistoryFileChange, told: string | undefined, seen: Set<string>) {
-    const absPath = join(this.dir, change.path);
-    let bytes: string | Uint8Array | undefined;
+  /** Walks the server's writes back from `change.after` to the stored bytes they replaced. */
+  overwrittenBy(change: HistoryFileChange, told: string | undefined, seen: Set<string>) {
+    let found: string | undefined;
     for (let hash = change.after; hash; ) {
       // A loop (X, Y, back to X) says nothing about what was there first: the client's word stands.
       if (seen.has(hash)) return undefined;
       seen.add(hash);
-      const replaced = bytesOverwrittenBy(absPath, hashVersion(hash));
+      const replaced = this.overwritten.get(change.path)?.get(hash);
       if (replaced === undefined) break;
-      bytes = replaced;
-      hash = hashOfVersion(fileContentVersion(replaced))!;
+      found = hash = replaced;
       if (hash === change.before || hash === told) return hash;
     }
-    if (bytes === undefined) return undefined;
-    const staged = join(this.home, `overwrote-${randomUUID()}`);
-    await writeFile(staged, bytes);
-    try {
-      return await this.blobs.put(staged);
-    } finally {
-      await rm(staged, { force: true });
-    }
+    return found;
+  }
+
+  forgetOverwritten(path: string, hashes: Iterable<string>): void {
+    const byAfter = this.overwritten.get(path);
+    for (const hash of hashes) byAfter?.delete(hash);
+    if (byAfter?.size === 0) this.overwritten.delete(path);
   }
 
   cutOut(group: Group, change: HistoryFileChange, cut: string | undefined) {
@@ -621,6 +679,7 @@ class Engine {
       part.changes.set(path, window.changes.get(path)!);
       window.changes.delete(path);
     }
+    (window.parts ??= new Set()).add(part.id);
     window.entry = await this.commit(part);
   }
 
@@ -688,6 +747,11 @@ class Engine {
       throw error;
     }
     for (const listener of this.listeners) listener(entry);
+    for (const change of group.changes.values()) {
+      const walked = new Set<string>();
+      this.overwrittenBy(change, undefined, walked);
+      this.forgetOverwritten(change.path, walked);
+    }
     await this.keepWithinBudget();
     return entry;
   }
@@ -703,11 +767,16 @@ class Engine {
   async keepWithinBudget(): Promise<void> {
     const budget = this.options.budgetBytes ?? 2 * 1024 ** 3;
     let folded = false;
-    while (this.historyBytes() > budget && foldOldest(this.log)) {
-      folded = true;
+    while (this.historyBytes() > budget) {
       await this.blobs.prune(
-        new Set([...referencedHashes(this.log, this.manifest()), ...this.pendingHashes()]),
+        new Set([
+          ...referencedHashes(this.log, this.manifest()),
+          ...this.pendingHashes(),
+          ...[...this.overwritten.values()].flatMap((byAfter) => [...byAfter.values()]),
+        ]),
       );
+      if (this.historyBytes() <= budget || !foldOldest(this.log)) break;
+      folded = true;
     }
     if (folded) this.persistLog();
   }
@@ -909,7 +978,14 @@ class Engine {
       (group) => group?.changes.size && mine(group.who),
     );
     if (pending) return direction === "back" ? this.pendingEntry(pending) : undefined;
-    return stepTarget(this.log.entries, direction, (entry) => mine(entry.who));
+    const everyone = this.options.undoScope === "everyone";
+    const ofOpenTurn = (entry: HistoryEntry) =>
+      this.windows.some((open) => open.parts?.has(entry.id));
+    return stepTarget(
+      this.log.entries,
+      direction,
+      (entry) => mine(entry.who) || (everyone && !ofOpenTurn(entry)),
+    );
   }
 
   /** A pending group as the entry it becomes once committed (a window's part gets a fresh id). */
@@ -1033,6 +1109,7 @@ class Engine {
       close: () =>
         (this.closing ??= (async () => {
           if (this.notedTimer) clearTimeout(this.notedTimer);
+          this.stopHearing?.();
           const settled = this.queue(() => this.settleAll());
           this.closed = true;
           await settled;
@@ -1074,7 +1151,14 @@ export async function openProjectHistory(options: ProjectHistoryOptions): Promis
   try {
     const blobs = await openBlobStore(join(options.historyRoot, projectId, "blobs"));
     const engine = new Engine(options, projectId, blobs);
-    await engine.queue(() => engine.start());
+    await engine.queue(async () => {
+      await engine.start();
+      engine.hearWrites();
+    });
+    pruneGoneProjectHistoriesDaily(options.historyRoot, engine.now(), {
+      onError: options.onError,
+      budgetMs: options.pruneGoneProjectsBudgetMs,
+    });
     const api = engine.api();
     return {
       ...api,

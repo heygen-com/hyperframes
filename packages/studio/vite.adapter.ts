@@ -64,6 +64,7 @@ export interface ProjectSignatureCache {
   get(projectDir: string): string;
   /** Drop the signature of whichever project contains `changedPath`. */
   invalidate(changedPath: string): void;
+  forget(projectDir: string): void;
 }
 
 export function createProjectSignatureCache({
@@ -94,6 +95,9 @@ export function createProjectSignatureCache({
       for (const projectDir of signatures.keys()) {
         if (affectsProjectSignature(projectDir, changedPath)) signatures.delete(projectDir);
       }
+    },
+    forget(projectDir) {
+      signatures.delete(resolve(projectDir));
     },
   };
 }
@@ -281,6 +285,10 @@ export function createViteAdapter(
 
     getProjectSignature(projectDir: string): string {
       return signatureCache.get(projectDir);
+    },
+
+    invalidateProjectSignature(projectDir: string): void {
+      signatureCache.forget(projectDir);
     },
 
     async lint(html: string, opts?: { filePath?: string; isSubComposition?: boolean }) {

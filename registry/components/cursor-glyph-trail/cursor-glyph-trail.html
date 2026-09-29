@@ -1,75 +1,30 @@
 <!doctype html>
 <!--
-  cursor-glyph-trail: HyperFrames video primitive (product demo / trails)
+  cursor-glyph-trail: a tutorial cursor path, mountable sub-composition
 
-  An actor (default: a cursor dot) travels an authored path and deposits
-  small dithered glyphs at its past positions. Each glyph pops in where the
-  actor passed and decays in place; stamps land at fixed arc-length spacing,
-  so the per-second stamp rate scales with the actor's velocity. The jh3yy
-  stamp-and-decay register: the trail is the residue of the motion, and it
-  has fully dissolved before the hold.
+  concept: on a Settings screen the arrow clicks through three steps (turn on the email
+  digest, pick Weekly, save). Each move leaves a dotted trail spaced evenly by distance, each
+  click leaves a numbered step marker, and a step's trail fades as the next move begins, so
+  the viewer can follow the path without the screen filling up.
 
-  The actor is a SLOT. Callers supply content by placing an inert template
-  anywhere in the HOST page (templates never render, and the runtime wipes
-  the host clip's own children on mount, so the slot lives at document
-  level):
+  mount contract: loaded by a host through data-composition-src; only <template> is cloned.
+  #root fills the host clip (inset:0) and draws its own settings window. A host may replace
+  the arrow with <template data-slot="cursor-glyph-trail-actor"> at document level.
 
-    <template data-slot="cursor-glyph-trail-actor"> ... </template>
-
-  With no slot, the primitive renders a token cursor dot (accent core,
-  hairline ring).
-
-  Variables (declared in data-composition-variables below):
-    - glyphs (string): the stamp charset; one glyph is chosen per stamp by
-      a fixed-seed LCG. Default is a dithered block-and-punctuation set.
-    - density ("low" | "med" | "high", default "med"): arc-length spacing
-      between stamps; higher density means tighter spacing.
-    - path ("sweep" | "arc" | "zigzag", default "sweep"): the authored
-      travel path preset.
-    - fade (number seconds, default 0.8, clamped 0.3 to 1.5): the decay
-      window of each stamp; per-stamp decay varies 0.75x to 1.25x of it.
-    - accent ("green" | "blue" | "violet", default "green"): green rides
-      --brand, blue rides --accent, violet rides --accent-2.
-    - exit ("none" | "fade" | "up", default "none"): frame roots own
-      transitions; the default holds the final frame to the last pixel.
-
-  Envelope, fixed IN and OUT with elastic HOLD only (never timeScale):
-    IN_BASE  = TRAVEL (2.4s) + pop (0.07s) + fade * 1.25 + 0.05s margin;
-               the actor arrives at TRAVEL and every stamp's decay tween
-               ends inside IN, so the HOLD is truly still
-    HOLD     = max(0, D - IN - OUT)
-    OUT_BASE = 0.45s  only when exit != none
-    If D < IN_BASE + OUT_BASE, the whole envelope compresses together.
-
-  Determinism: the stamp table (positions, times, glyph choices, jitter,
-  sizes, peaks, decay multipliers) is computed exactly once during
-  synchronous mount from fixed LCG seed 0x67117a11. On every timeline
-  update, each stamp's opacity is recomputed as a pure function
-  f(tl.time() - t_i) of its table row, and the actor's position as a pure
-  function of tl.time(); stamps deliberately carry NO tweens (two
-  sequential tweens on one property render in direction-dependent order
-  under GSAP seeks, which breaks byte-identical frames). No Math.random
-  at runtime, no wall clock, no incremental state, no
-  requestAnimationFrame. Eventful seeks (suppressEvents=false, the
-  engine's render path) land identical frames in any order and either
-  direction.
-
-  Mount contract: the runtime clones only this template. #root fills the
-  host box (no data-width/data-height, container-type: size, cqmin units),
-  is styled via #root only, and registers one paused timeline under the
-  LITERAL "cursor-glyph-trail" key.
+  envelope (default 3.5s): moves 0.1, 1.1, 2.1 (0.5s each), clicks 0.8, 1.8, 2.8, hold,
+  optional 0.45s exit. Shorter durations compress every beat evenly.
 -->
 <html
   lang="en"
   data-composition-id="cursor-glyph-trail"
-  data-composition-duration="4"
+  data-composition-duration="3.5"
   data-composition-variables='[
-    { "id": "glyphs", "type": "string", "role": "content", "label": "Glyphs", "description": "Stamp charset; one glyph per stamp is chosen deterministically.", "default": "░▒▓+·×" },
-    { "id": "density", "type": "enum", "role": "style", "label": "Density", "description": "Arc-length spacing between stamps along the path.", "default": "med", "options": [{ "value": "low", "label": "Low" }, { "value": "med", "label": "Medium" }, { "value": "high", "label": "High" }] },
-    { "id": "path", "type": "enum", "role": "timing", "label": "Path", "description": "Authored travel path preset.", "default": "sweep", "options": [{ "value": "sweep", "label": "Sweep" }, { "value": "arc", "label": "Arc" }, { "value": "zigzag", "label": "Zigzag" }] },
-    { "id": "fade", "type": "number", "role": "timing", "label": "Fade", "description": "Per-stamp decay window in seconds, clamped 0.3 to 1.5.", "default": 0.8 },
-    { "id": "accent", "type": "enum", "role": "style", "label": "Accent", "description": "Trail and actor color: green rides --brand, blue rides --accent, violet rides --accent-2.", "default": "green", "options": [{ "value": "green", "label": "Green" }, { "value": "blue", "label": "Blue" }, { "value": "violet", "label": "Violet" }] },
-    { "id": "exit", "type": "enum", "role": "timing", "label": "Exit", "description": "Optional departure. Default none: the settled actor holds until the frame cuts.", "default": "none", "options": [{ "value": "none", "label": "None" }, { "value": "fade", "label": "Fade" }, { "value": "up", "label": "Up" }] }
+    { "id": "glyphs", "type": "string", "role": "content", "label": "Glyphs (deprecated)", "description": "Deprecated and ignored: the trail draws evenly spaced dots.", "default": "" },
+    { "id": "density", "type": "enum", "role": "style", "label": "Density", "description": "Spacing between trail dots.", "default": "med", "options": [{ "value": "low", "label": "Low" }, { "value": "med", "label": "Medium" }, { "value": "high", "label": "High" }] },
+    { "id": "path", "type": "enum", "role": "style", "label": "Path", "description": "How each move bends: sweep is a gentle curve, arc a deeper one, zigzag a straight line.", "default": "sweep", "options": [{ "value": "sweep", "label": "Sweep" }, { "value": "arc", "label": "Arc" }, { "value": "zigzag", "label": "Zigzag" }] },
+    { "id": "fade", "type": "number", "role": "timing", "label": "Fade", "description": "Seconds a step trail takes to fade once the next move begins, clamped 0.3 to 1.5.", "default": 0.5 },
+    { "id": "accent", "type": "enum", "role": "style", "label": "Accent", "description": "Trail and step marker color: green rides --brand, blue rides --accent, violet rides --accent-2.", "default": "green", "options": [{ "value": "green", "label": "Green" }, { "value": "blue", "label": "Blue" }, { "value": "violet", "label": "Violet" }] },
+    { "id": "exit", "type": "enum", "role": "timing", "label": "Exit", "description": "Optional departure. Default none: the finished screen holds until the frame cuts.", "default": "none", "options": [{ "value": "none", "label": "None" }, { "value": "fade", "label": "Fade" }, { "value": "up", "label": "Up" }] }
   ]'
 >
   <head>
@@ -78,313 +33,619 @@
   </head>
   <body>
     <template>
-      <div id="root" data-composition-id="cursor-glyph-trail" data-duration="4" data-fps="30">
-        <style>
-          *,
-          *::before,
-          *::after {
-            box-sizing: border-box;
-          }
+      <style>
+        #root {
+          position: absolute;
+          inset: 0;
+          overflow: hidden;
+          container-type: size;
+          font-family: Inter, system-ui, sans-serif;
+          -webkit-font-smoothing: antialiased;
+          color: #1d1d1f;
+          pointer-events: none;
+          --cgt-ink: #1d1d1f;
+          --cgt-dim: #6e6e73;
+          --cgt-line: rgba(0, 0, 0, 0.07);
+        }
+        .cgt-stage {
+          position: absolute;
+          inset: 0;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+        }
+        .cgt-win {
+          width: 60cqw;
+          border-radius: 1.1cqw;
+          background: #ffffff;
+          overflow: hidden;
+          box-shadow:
+            0 0 0 1px rgba(0, 0, 0, 0.06),
+            0 0.1cqw 0.2cqw rgba(0, 0, 0, 0.05),
+            0 1.4cqw 3.6cqw rgba(0, 0, 0, 0.1);
+        }
+        .cgt-bar {
+          position: relative;
+          display: flex;
+          align-items: center;
+          gap: 0.45cqw;
+          height: 2.8cqw;
+          padding: 0 1.1cqw;
+          border-bottom: 1px solid var(--cgt-line);
+        }
+        .cgt-bar i {
+          width: 0.62cqw;
+          height: 0.62cqw;
+          border-radius: 50%;
+          background: rgba(0, 0, 0, 0.12);
+        }
+        .cgt-bar span {
+          position: absolute;
+          left: 0;
+          right: 0;
+          text-align: center;
+          font-size: 0.8cqw;
+          font-weight: 600;
+          color: var(--cgt-dim);
+        }
+        .cgt-body {
+          display: flex;
+        }
+        .cgt-nav {
+          width: 14cqw;
+          padding: 1.2cqw 0.8cqw;
+          background: #f7f7f8;
+          border-right: 1px solid var(--cgt-line);
+          font-size: 0.86cqw;
+        }
+        .cgt-nav b {
+          display: block;
+          margin: 0.9cqw 0.6cqw 0.35cqw;
+          font-size: 0.66cqw;
+          font-weight: 600;
+          letter-spacing: 0.04em;
+          text-transform: uppercase;
+          color: var(--cgt-dim);
+        }
+        .cgt-nav b:first-child {
+          margin-top: 0;
+        }
+        .cgt-nav div {
+          padding: 0.42cqw 0.6cqw;
+          border-radius: 0.4cqw;
+          color: #3a3a3c;
+        }
+        .cgt-nav .is-on {
+          background: rgba(0, 0, 0, 0.06);
+          color: var(--cgt-ink);
+          font-weight: 600;
+        }
+        .cgt-main {
+          flex: 1;
+          padding: 2cqw 2.4cqw 1.8cqw;
+        }
+        .cgt-main h1 {
+          margin: 0;
+          font-size: 1.5cqw;
+          font-weight: 650;
+          letter-spacing: -0.01em;
+        }
+        .cgt-lede {
+          margin: 0.35cqw 0 1.2cqw;
+          font-size: 0.9cqw;
+          color: var(--cgt-dim);
+        }
+        .cgt-row {
+          display: flex;
+          align-items: center;
+          justify-content: space-between;
+          gap: 2cqw;
+          padding: 1.1cqw 0;
+          border-top: 1px solid var(--cgt-line);
+        }
+        .cgt-label {
+          font-size: 0.98cqw;
+          font-weight: 600;
+        }
+        .cgt-desc {
+          margin-top: 0.2cqw;
+          font-size: 0.84cqw;
+          color: var(--cgt-dim);
+        }
+        .cgt-toggle {
+          --cgt-on: 0;
+          position: relative;
+          flex: none;
+          width: 2.5cqw;
+          height: 1.44cqw;
+          border-radius: 1cqw;
+          background: #e3e3e6;
+        }
+        .cgt-toggle::before {
+          content: "";
+          position: absolute;
+          inset: 0;
+          border-radius: inherit;
+          background: var(--cgt-ink);
+          opacity: var(--cgt-on);
+        }
+        .cgt-toggle i {
+          position: absolute;
+          left: 0.16cqw;
+          top: 0.16cqw;
+          width: 1.12cqw;
+          height: 1.12cqw;
+          border-radius: 50%;
+          background: #ffffff;
+          box-shadow: 0 0.06cqw 0.16cqw rgba(0, 0, 0, 0.25);
+          transform: translateX(calc(var(--cgt-on) * 1.06cqw));
+        }
+        .cgt-seg {
+          position: relative;
+          display: flex;
+          flex: none;
+          padding: 0.16cqw;
+          border-radius: 0.55cqw;
+          background: #efeff1;
+          font-size: 0.84cqw;
+          font-weight: 500;
+        }
+        .cgt-seg span {
+          position: relative;
+          padding: 0.36cqw 0.95cqw;
+        }
+        .cgt-seg .cgt-pill {
+          position: absolute;
+          top: 0.16cqw;
+          bottom: 0.16cqw;
+          left: 0;
+          padding: 0;
+          border-radius: 0.42cqw;
+          background: #ffffff;
+          box-shadow:
+            0 0 0 0.5px rgba(0, 0, 0, 0.06),
+            0 0.06cqw 0.16cqw rgba(0, 0, 0, 0.14);
+        }
+        .cgt-foot {
+          display: flex;
+          justify-content: flex-end;
+          gap: 0.6cqw;
+          padding-top: 1.2cqw;
+          border-top: 1px solid var(--cgt-line);
+        }
+        .cgt-btn {
+          position: relative;
+          padding: 0.5cqw 1cqw;
+          border-radius: 0.5cqw;
+          font-size: 0.86cqw;
+          font-weight: 600;
+          box-shadow: inset 0 0 0 1px rgba(0, 0, 0, 0.12);
+        }
+        .cgt-primary {
+          background: var(--cgt-ink);
+          color: #ffffff;
+          box-shadow: none;
+        }
+        .cgt-primary span {
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          gap: 0.3cqw;
+        }
+        .cgt-primary .cgt-saved {
+          position: absolute;
+          inset: 0;
+          opacity: 0;
+        }
+        .cgt-saved svg {
+          width: 0.8cqw;
+          height: 0.8cqw;
+        }
+        .cgt-trail {
+          position: absolute;
+          inset: 0;
+          overflow: visible;
+        }
+        .cgt-trail polyline {
+          fill: none;
+          stroke: var(--cgt-accent);
+          stroke-linecap: round;
+        }
+        .cgt-trail circle {
+          fill: none;
+          stroke: var(--cgt-accent);
+        }
+        .cgt-step {
+          position: absolute;
+          left: 0;
+          top: 0;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          border-radius: 50%;
+          background: var(--cgt-accent);
+          color: #ffffff;
+          font-weight: 650;
+          font-variant-numeric: tabular-nums;
+          box-shadow: 0 0 0 0.12cqw #ffffff;
+          opacity: 0;
+        }
+        .cgt-actor {
+          position: absolute;
+          left: 0;
+          top: 0;
+        }
+        .cgt-cursor {
+          position: absolute;
+          transform-origin: 20.833% 12.5%;
+          filter: drop-shadow(0 3px 4px rgba(0, 0, 0, 0.3));
+        }
+        .cgt-cursor path {
+          fill: #ffffff;
+          stroke: #141414;
+          stroke-width: 1.4;
+          stroke-linejoin: round;
+        }
+        .cgt-slot {
+          position: absolute;
+          transform: translate(-50%, -50%);
+        }
+      </style>
 
-          #root {
-            position: absolute;
-            inset: 0;
-            overflow: hidden;
-            container-type: size;
-            isolation: isolate;
-            color: var(--fg, #f8fafc);
-            font-family: var(--font-mono, ui-monospace, "SF Mono", Menlo, Consolas, monospace);
-            pointer-events: none;
-          }
-
-          .cgt-clip {
-            position: absolute;
-            inset: 0;
-            overflow: hidden;
-            background: var(--bg, transparent);
-          }
-
-          .cgt-stage {
-            position: absolute;
-            inset: 0;
-            will-change: transform, opacity;
-          }
-
-          .cgt-field {
-            position: absolute;
-            inset: 0;
-          }
-
-          .cgt-stamp {
-            position: absolute;
-            opacity: 0;
-            line-height: 1;
-            font-weight: 500;
-            will-change: opacity;
-            user-select: none;
-          }
-
-          .cgt-actor {
-            position: absolute;
-            opacity: 0;
-            transform: translate(-50%, -50%);
-            will-change: opacity;
-          }
-
-          .cgt-dot {
-            width: 3.4cqmin;
-            height: 3.4cqmin;
-            border-radius: 50%;
-            background: var(--cgt-accent);
-            border: 0.35cqmin solid color-mix(in srgb, var(--fg, #f8fafc) 82%, var(--cgt-accent));
-            box-shadow: 0 0.6cqmin 2.4cqmin color-mix(in srgb, var(--bg, #000000) 35%, transparent);
-          }
-        </style>
-
-        <div
-          id="cursor-glyph-trail-clip"
-          class="cgt-clip clip"
-          data-start="0"
-          data-duration="4"
-          data-track-index="0"
-        >
-          <div class="cgt-stage">
-            <div class="cgt-field" aria-hidden="true"></div>
-            <div class="cgt-actor">
-              <div class="cgt-dot"></div>
+      <div id="root" data-composition-id="cursor-glyph-trail" data-duration="3.5">
+        <div class="cgt-stage" id="cgt-stage">
+          <div class="cgt-win" id="cgt-win">
+            <div class="cgt-bar"><i></i><i></i><i></i><span>Settings</span></div>
+            <div class="cgt-body">
+              <nav class="cgt-nav">
+                <b>Account</b>
+                <div>Profile</div>
+                <div class="is-on">Notifications</div>
+                <div>Appearance</div>
+                <b>Workspace</b>
+                <div>Members</div>
+                <div>Billing</div>
+                <div>Integrations</div>
+              </nav>
+              <section class="cgt-main">
+                <h1>Notifications</h1>
+                <p class="cgt-lede">Choose what we email you, and how often.</p>
+                <div class="cgt-row">
+                  <div>
+                    <div class="cgt-label">Email digest</div>
+                    <div class="cgt-desc">Comments, mentions and file changes in one email.</div>
+                  </div>
+                  <span class="cgt-toggle" id="cgt-digest"><i></i></span>
+                </div>
+                <div class="cgt-row" id="cgt-freq">
+                  <div>
+                    <div class="cgt-label">Frequency</div>
+                    <div class="cgt-desc">When the digest lands in your inbox.</div>
+                  </div>
+                  <div class="cgt-seg">
+                    <span class="cgt-pill" id="cgt-pill"></span><span id="cgt-daily">Daily</span
+                    ><span id="cgt-weekly">Weekly</span><span>Monthly</span>
+                  </div>
+                </div>
+                <div class="cgt-row">
+                  <div>
+                    <div class="cgt-label">Mentions</div>
+                    <div class="cgt-desc">Email me right away when someone mentions me.</div>
+                  </div>
+                  <span class="cgt-toggle" style="--cgt-on: 1"><i></i></span>
+                </div>
+                <div class="cgt-foot">
+                  <span class="cgt-btn">Cancel</span>
+                  <span class="cgt-btn cgt-primary" id="cgt-save"
+                    ><span id="cgt-save-label">Save changes</span
+                    ><span class="cgt-saved" id="cgt-saved"
+                      ><svg viewBox="0 0 16 16" aria-hidden="true">
+                        <path
+                          d="M3 8.5 L6.5 12 L13 4.5"
+                          fill="none"
+                          stroke="currentColor"
+                          stroke-width="2"
+                          stroke-linecap="round"
+                          stroke-linejoin="round"
+                        /></svg
+                      >Saved</span
+                    ></span
+                  >
+                </div>
+              </section>
             </div>
           </div>
+          <svg class="cgt-trail" id="cgt-trail" aria-hidden="true">
+            <polyline></polyline>
+            <polyline></polyline>
+            <polyline></polyline>
+            <circle></circle>
+          </svg>
+          <div class="cgt-step">1</div>
+          <div class="cgt-step">2</div>
+          <div class="cgt-step">3</div>
+          <div class="cgt-actor" id="cgt-actor">
+            <svg class="cgt-cursor" viewBox="0 0 24 24" aria-hidden="true">
+              <path d="M5 3 L5 19 L9 15 L12 22 L15 20.5 L11.5 14 L18 14 Z" />
+            </svg>
+          </div>
         </div>
-
-        <script src="https://cdn.jsdelivr.net/npm/gsap@3.14.2/dist/gsap.min.js"></script>
-        <script>
-          (function () {
-            "use strict";
-
-            var root = document.getElementById("root");
-            var stage = root.querySelector(".cgt-stage");
-            var field = root.querySelector(".cgt-field");
-            var actor = root.querySelector(".cgt-actor");
-            var vars =
-              window.__hyperframes && window.__hyperframes.getVariables
-                ? window.__hyperframes.getVariables()
-                : {};
-
-            // Arc-length spacing (percent-of-stage units). Fixed spacing
-            // along the path means the per-second stamp rate rises and
-            // falls with the actor's velocity: the density law.
-            var spacingByDensity = { low: 4.6, med: 2.9, high: 1.8 };
-            var density = Object.prototype.hasOwnProperty.call(spacingByDensity, vars.density)
-              ? vars.density
-              : "med";
-            var pathName = vars.path === "arc" || vars.path === "zigzag" ? vars.path : "sweep";
-            var glyphSource =
-              typeof vars.glyphs === "string" && vars.glyphs.length > 0 ? vars.glyphs : "░▒▓+·×";
-            var glyphSet = Array.from(glyphSource);
-            var fadeRaw = parseFloat(vars.fade);
-            var fade = isFinite(fadeRaw) ? Math.min(1.5, Math.max(0.3, fadeRaw)) : 0.8;
-            // Each enum choice routes to a DIFFERENT contract token so the
-            // variable stays meaningful under a theme.
-            var accentColors = {
-              green: "var(--brand, #52525b)",
-              blue: "var(--accent, #52525b)",
-              violet: "var(--accent-2, #52525b)",
-            };
-            var accent = Object.prototype.hasOwnProperty.call(accentColors, vars.accent)
-              ? vars.accent
-              : "green";
-            var exit = vars.exit === "fade" || vars.exit === "up" ? vars.exit : "none";
-
-            root.style.setProperty("--cgt-accent", accentColors[accent]);
-
-            // SLOT. Caller templates live at HOST DOCUMENT level (the mount
-            // wipes host-clip children, and templates never render).
-            var hostDoc = root.ownerDocument;
-            var slotTemplate = null;
-            try {
-              slotTemplate = hostDoc.querySelector(
-                'template[data-slot="cursor-glyph-trail-actor"]',
-              );
-            } catch (error) {
-              slotTemplate = null;
-            }
-            if (slotTemplate) {
-              actor.querySelector(".cgt-dot").remove();
-              actor.appendChild(hostDoc.importNode(slotTemplate.content, true));
-            }
-
-            // Envelope: fixed IN/OUT, elastic HOLD, never time-scaled.
-            var POP = 0.07;
-            var TRAVEL_BASE = 2.4;
-            var IN_BASE = TRAVEL_BASE + POP + fade * 1.25 + 0.05;
-            var OUT_BASE = exit === "none" ? 0 : 0.45;
-            var duration = Math.max(0.001, parseFloat(root.dataset.duration || "4"));
-            var totalBase = Math.max(0.001, IN_BASE + OUT_BASE);
-            var scale = duration < totalBase ? duration / totalBase : 1;
-            var TRAVEL = TRAVEL_BASE * scale;
-            var pop = POP * scale;
-            var fadeEff = fade * scale;
-            var IN = IN_BASE * scale;
-            var OUT = OUT_BASE * scale;
-            var HOLD = Math.max(0, duration - (IN + OUT));
-            var OUT_START = IN + HOLD;
-
-            // Path presets in percent-of-stage coordinates.
-            var zigzagPoints = [
-              { x: 10, y: 34 },
-              { x: 38, y: 70 },
-              { x: 64, y: 32 },
-              { x: 90, y: 64 },
-            ];
-            function pathPoint(u) {
-              if (pathName === "arc") {
-                return { x: 12 + 76 * u, y: 68 - 40 * Math.sin(Math.PI * u) };
-              }
-              if (pathName === "zigzag") {
-                var segs = zigzagPoints.length - 1;
-                var s = Math.min(segs - 1e-9, Math.max(0, u * segs));
-                var i = Math.floor(s);
-                var f = s - i;
-                var a = zigzagPoints[i];
-                var b = zigzagPoints[i + 1];
-                return { x: a.x + (b.x - a.x) * f, y: a.y + (b.y - a.y) * f };
-              }
-              // sweep: an S-curve from lower left to upper right.
-              return { x: 8 + 84 * u, y: 50 + 16 * Math.cos(Math.PI * u) };
-            }
-
-            // Shared travel ease, implemented once so the stamp table and
-            // the per-update actor position use the identical mapping.
-            function easeInOut(t) {
-              return t < 0.5 ? 2 * t * t : 1 - 2 * (1 - t) * (1 - t);
-            }
-            function clamp01(v) {
-              return v < 0 ? 0 : v > 1 ? 1 : v;
-            }
-
-            // The LCG and every per-stamp decision live here, computed once
-            // before timeline construction from a fixed seed. A stamp's
-            // opacity at any time is then a pure function of timeline time.
-            var lcgState = 0x67117a11;
-            function next() {
-              lcgState = (Math.imul(1664525, lcgState) + 1013904223) >>> 0;
-              return lcgState / 4294967296;
-            }
-
-            var spacing = spacingByDensity[density];
-            var STEPS = 600;
-            var stamps = [];
-            var acc = 0;
-            var prev = pathPoint(easeInOut(0));
-            for (var k = 1; k <= STEPS; k += 1) {
-              var f = k / STEPS;
-              var pos = pathPoint(easeInOut(f));
-              acc += Math.hypot(pos.x - prev.x, pos.y - prev.y);
-              prev = pos;
-              if (acc >= spacing) {
-                acc -= spacing;
-                stamps.push({
-                  t: f * TRAVEL,
-                  x: pos.x + (next() - 0.5) * 3.2,
-                  y: pos.y + (next() - 0.5) * 3.2,
-                  glyph: glyphSet[Math.floor(next() * glyphSet.length) % glyphSet.length],
-                  rot: (next() - 0.5) * 20,
-                  size: 1.9 + next() * 1.4,
-                  peak: 0.45 + next() * 0.45,
-                  mix: 55 + Math.floor(next() * 36),
-                  fadeMul: 0.75 + next() * 0.5,
-                });
-              }
-            }
-
-            var fragment = hostDoc.createDocumentFragment();
-            for (var s = 0; s < stamps.length; s += 1) {
-              var row = stamps[s];
-              var span = hostDoc.createElement("span");
-              span.className = "cgt-stamp";
-              span.textContent = row.glyph;
-              span.style.left = row.x.toFixed(3) + "%";
-              span.style.top = row.y.toFixed(3) + "%";
-              span.style.fontSize = row.size.toFixed(3) + "cqmin";
-              span.style.transform = "translate(-50%, -50%) rotate(" + row.rot.toFixed(2) + "deg)";
-              span.style.color =
-                "color-mix(in srgb, var(--cgt-accent) " + row.mix + "%, var(--fg, #f8fafc))";
-              row.el = span;
-              fragment.appendChild(span);
-            }
-            field.appendChild(fragment);
-
-            // Pure per-update apply: the actor position and every stamp's
-            // opacity are functions of tl.time() alone. A stamp pops in
-            // over `pop` seconds and decays over its table row's window;
-            // by IN every value is exactly zero. Writes are idempotent, so
-            // the HOLD repaints identical values and stays truly still.
-            function stampOpacity(row, timeSeconds) {
-              var dt = timeSeconds - row.t;
-              if (dt <= 0) return 0;
-              if (dt < pop) {
-                var g = dt / pop;
-                return row.peak * (1 - (1 - g) * (1 - g));
-              }
-              var u = (dt - pop) / (fadeEff * row.fadeMul);
-              if (u >= 1) return 0;
-              return row.peak * (1 - u * u);
-            }
-
-            function applyTime(timeSeconds) {
-              var u = easeInOut(clamp01(TRAVEL > 0 ? timeSeconds / TRAVEL : 1));
-              var p = pathPoint(u);
-              gsap.set(actor, { left: p.x.toFixed(4) + "%", top: p.y.toFixed(4) + "%" });
-              for (var i = 0; i < stamps.length; i += 1) {
-                stamps[i].el.style.opacity = stampOpacity(stamps[i], timeSeconds).toFixed(4);
-              }
-            }
-
-            gsap.set(stage, { opacity: 1, y: "0cqh" });
-
-            var tl = gsap.timeline({
-              paused: true,
-              onUpdate: function () {
-                applyTime(tl.time());
-              },
-            });
-
-            // Anchor tween: an inert plain-object tween spanning the full
-            // authored duration so the timeline covers [0, D], onUpdate
-            // fires for every eventful seek, and holds never clamp short.
-            tl.to({ p: 0 }, { p: 1, duration: duration, ease: "none" }, 0);
-
-            // Actor entrance: both endpoints authored.
-            tl.fromTo(
-              actor,
-              { opacity: 0 },
-              { opacity: 1, duration: 0.18 * scale, ease: "power2.out" },
-              0,
-            );
-
-            // Stamps carry no tweens: their opacity rides applyTime's pure
-            // table evaluation, and each decay completes inside IN by
-            // construction.
-
-            // HOLD: truly still. All stamps are exactly zero by IN and the
-            // actor rests at path(1); repeated repaints write identical
-            // values.
-
-            // OUT: optional departure; exit none holds until the frame cuts.
-            if (exit === "up") {
-              tl.to(stage, { y: "-4cqh", duration: OUT, ease: "power2.in" }, OUT_START);
-              tl.to(stage, { opacity: 0, duration: OUT, ease: "power2.in" }, OUT_START);
-            } else if (exit === "fade") {
-              tl.to(stage, { opacity: 0, duration: OUT, ease: "power2.in" }, OUT_START);
-            }
-
-            tl.seek(0);
-            applyTime(0);
-            window.__timelines = window.__timelines || {};
-            window.__timelines["cursor-glyph-trail"] = tl;
-          })();
-        </script>
       </div>
+
+      <script src="https://cdn.jsdelivr.net/npm/gsap@3.14.2/dist/gsap.min.js"></script>
+      <script>
+        (function () {
+          "use strict";
+
+          var html = document.documentElement;
+          var root = document.getElementById("root");
+          var stage = document.getElementById("cgt-stage");
+          var win = document.getElementById("cgt-win");
+          var trail = document.getElementById("cgt-trail");
+          var lines = trail.querySelectorAll("polyline");
+          var ring = trail.querySelector("circle");
+          var badges = root.querySelectorAll(".cgt-step");
+          var actor = document.getElementById("cgt-actor");
+          var cursor = actor.querySelector(".cgt-cursor");
+          var digest = document.getElementById("cgt-digest");
+          var freq = document.getElementById("cgt-freq");
+          var pill = document.getElementById("cgt-pill");
+          var daily = document.getElementById("cgt-daily");
+          var weekly = document.getElementById("cgt-weekly");
+          var save = document.getElementById("cgt-save");
+          var saveLabel = document.getElementById("cgt-save-label");
+          var saved = document.getElementById("cgt-saved");
+
+          var DEFAULTS = {};
+          try {
+            JSON.parse(html.getAttribute("data-composition-variables") || "[]").forEach(
+              function (variable) {
+                DEFAULTS[variable.id] = variable.default;
+              },
+            );
+          } catch (error) {
+            /* malformed declaration falls back to the inline defaults below */
+          }
+          var scopedVariables = {};
+          try {
+            if (window.__hyperframes && typeof window.__hyperframes.getVariables === "function") {
+              scopedVariables = window.__hyperframes.getVariables() || {};
+            }
+          } catch (error) {
+            /* no scoped variables API in this context */
+          }
+          var vars = Object.assign({}, DEFAULTS, window.__hfVariables || {}, scopedVariables);
+
+          // Hardcoded: the compositor rewrites the wrapper's attributes on mount.
+          var compositionId = "cursor-glyph-trail";
+          var duration = Math.max(
+            0.001,
+            parseFloat(
+              root.dataset.duration || html.getAttribute("data-composition-duration") || "3.5",
+            ),
+          );
+          var SPACING = { low: 30, med: 21, high: 15 }[vars.density] || 21;
+          var BEND = { sweep: 0.12, arc: 0.26, zigzag: 0 }[vars.path];
+          if (BEND === undefined) BEND = 0.12;
+          var fadeRaw = parseFloat(vars.fade);
+          var fade = isFinite(fadeRaw) ? Math.min(1.5, Math.max(0.3, fadeRaw)) : 0.5;
+          var accentColors = {
+            green: "var(--brand, #34c759)",
+            blue: "var(--accent, #0a84ff)",
+            violet: "var(--accent-2, #af52de)",
+          };
+          root.style.setProperty("--cgt-accent", accentColors[vars.accent] || accentColors.green);
+          var exit = vars.exit === "fade" || vars.exit === "up" ? vars.exit : "none";
+
+          var slot = document.querySelector('template[data-slot="cursor-glyph-trail-actor"]');
+          if (slot) {
+            var slotBox = document.createElement("div");
+            slotBox.className = "cgt-slot";
+            slotBox.appendChild(document.importNode(slot.content, true));
+            cursor.replaceWith(slotBox);
+            cursor = slotBox;
+          }
+
+          var W = root.clientWidth || 1920;
+          var u = W / 1920;
+          var ARROW = 64 * u;
+          if (!slot) {
+            cursor.style.width = cursor.style.height = ARROW + "px";
+            cursor.style.left = (-5 / 24) * ARROW + "px";
+            cursor.style.top = (-3 / 24) * ARROW + "px";
+          }
+          var DOT = 6 * u;
+          var BADGE = 30 * u;
+          lines.forEach(function (line) {
+            line.setAttribute("stroke-width", DOT);
+            line.setAttribute("stroke-dasharray", "0 " + SPACING * u);
+          });
+          ring.setAttribute("stroke-width", 2 * u);
+          badges.forEach(function (badge) {
+            badge.style.width = badge.style.height = BADGE + "px";
+            badge.style.fontSize = 15 * u + "px";
+          });
+
+          var BASE = 3.5;
+          var OUT_BASE = exit === "none" ? 0 : 0.45;
+          var squeeze = Math.min(1, duration / (BASE + OUT_BASE));
+          var MOVE = 0.5 * squeeze;
+          // Per step: move start, click; badge offset from the click point in 1920-wide px.
+          var STEPS = [
+            { go: 0.1, click: 0.8, bx: -34, by: -30 },
+            { go: 1.1, click: 1.8, bx: -28, by: -36 },
+            { go: 2.1, click: 2.8, bx: 34, by: -36 },
+          ];
+          STEPS.forEach(function (s) {
+            s.go *= squeeze;
+            s.click *= squeeze;
+          });
+          var LAST_FADE = 2.95 * squeeze;
+          var OUT = OUT_BASE * squeeze;
+          var OUT_START = duration - OUT;
+
+          var easeOut = gsap.parseEase("power3.out");
+          var easeInOut = gsap.parseEase("power2.inOut");
+          var fadeEase = gsap.parseEase("power1.out");
+          var exitEase = gsap.parseEase("power2.in");
+          var ringEase = gsap.parseEase("power2.out");
+          function seg(t, a, b) {
+            return Math.max(0, Math.min(1, (t - a) / (b - a)));
+          }
+
+          // Layout-space offsets, which ignore any transform a host puts on the player.
+          function offsetIn(el) {
+            var x = 0;
+            var y = 0;
+            while (el && el !== root) {
+              x += el.offsetLeft;
+              y += el.offsetTop;
+              el = el.offsetParent;
+            }
+            return { x: x, y: y };
+          }
+          function pointIn(el, fx, fy) {
+            var o = offsetIn(el);
+            return { x: o.x + el.offsetWidth * fx, y: o.y + el.offsetHeight * fy };
+          }
+
+          // A move is a quadratic curve sampled into a polyline with cumulative lengths.
+          function leg(a, b) {
+            var dx = b.x - a.x;
+            var dy = b.y - a.y;
+            var c = { x: (a.x + b.x) / 2 - dy * BEND, y: (a.y + b.y) / 2 + dx * BEND };
+            var pts = [];
+            var len = [0];
+            for (var i = 0; i <= 48; i++) {
+              var k = i / 48;
+              var m = 1 - k;
+              pts.push({
+                x: m * m * a.x + 2 * m * k * c.x + k * k * b.x,
+                y: m * m * a.y + 2 * m * k * c.y + k * k * b.y,
+              });
+              if (i)
+                len.push(len[i - 1] + Math.hypot(pts[i].x - pts[i - 1].x, pts[i].y - pts[i - 1].y));
+            }
+            return { pts: pts, len: len, total: len[48] };
+          }
+          function at(L, s) {
+            var i = 1;
+            while (i < 48 && L.len[i] < s) i++;
+            var k = (s - L.len[i - 1]) / (L.len[i] - L.len[i - 1] || 1);
+            var a = L.pts[i - 1];
+            var b = L.pts[i];
+            return { i: i, x: a.x + (b.x - a.x) * k, y: a.y + (b.y - a.y) * k };
+          }
+          // Trail dots start clear of the previous marker and stop at the tip.
+          function trailPoints(L, s0, s1) {
+            if (s1 <= s0) return "";
+            var p0 = at(L, s0);
+            var p1 = at(L, s1);
+            var out = [p0.x.toFixed(2) + "," + p0.y.toFixed(2)];
+            for (var i = p0.i; i < p1.i; i++)
+              out.push(L.pts[i].x.toFixed(2) + "," + L.pts[i].y.toFixed(2));
+            out.push(p1.x.toFixed(2) + "," + p1.y.toFixed(2));
+            return out.join(" ");
+          }
+          // Press to 0.9, a short hold, then release.
+          function press(t, click) {
+            var d = t - click;
+            if (d < 0 || d > 0.22 * squeeze) return 1;
+            if (d < 0.06 * squeeze) return 1 - 0.1 * (d / (0.06 * squeeze));
+            if (d < 0.1 * squeeze) return 0.9;
+            return 0.9 + 0.1 * easeOut(seg(d, 0.1 * squeeze, 0.22 * squeeze));
+          }
+
+          function render(t) {
+            var targets = [
+              pointIn(win, 1.1, 1.12),
+              pointIn(digest, 0.34, 0.5),
+              pointIn(weekly, 0.5, 0.55),
+              pointIn(save, 0.84, 0.62),
+            ];
+            var tip = targets[0];
+            var scale = 1;
+            var ringK = 0;
+            var ringAt = tip;
+            STEPS.forEach(function (s, k) {
+              var L = leg(targets[k], targets[k + 1]);
+              var e = easeOut(seg(t, s.go, s.go + MOVE));
+              var fadeFrom = k < 2 ? STEPS[k + 1].go : LAST_FADE;
+              var alpha = 1 - fadeEase(seg(t, fadeFrom, fadeFrom + fade * squeeze));
+              var shown = t > s.go && alpha > 0;
+              lines[k].setAttribute("points", shown ? trailPoints(L, 22 * u, e * L.total) : "");
+              lines[k].style.opacity = shown ? alpha.toFixed(4) : "0";
+              if (t >= s.go) tip = at(L, e * L.total);
+              scale *= press(t, s.click);
+
+              var r = seg(t, s.click, s.click + 0.3 * squeeze);
+              if (r > 0 && r < 1) {
+                ringK = r;
+                ringAt = targets[k + 1];
+              }
+              var b = easeOut(seg(t, s.click, s.click + 0.2 * squeeze));
+              badges[k].style.opacity = b.toFixed(4);
+              badges[k].style.transform =
+                "translate(" +
+                (targets[k + 1].x + s.bx * u - BADGE / 2) +
+                "px," +
+                (targets[k + 1].y + s.by * u - BADGE / 2) +
+                "px) scale(" +
+                (0.9 + 0.1 * b) +
+                ")";
+            });
+            var re = ringEase(ringK);
+            ring.setAttribute("cx", ringAt.x);
+            ring.setAttribute("cy", ringAt.y);
+            ring.setAttribute("r", (10 + 16 * re) * u);
+            ring.style.opacity = ringK > 0 ? (0.5 * (1 - re)).toFixed(4) : "0";
+
+            var on = easeOut(seg(t, STEPS[0].click, STEPS[0].click + 0.2 * squeeze));
+            digest.style.setProperty("--cgt-on", on.toFixed(4));
+            freq.style.opacity = (0.4 + 0.6 * on).toFixed(4);
+            var pick = easeInOut(seg(t, STEPS[1].click, STEPS[1].click + 0.24 * squeeze));
+            pill.style.width =
+              daily.offsetWidth + (weekly.offsetWidth - daily.offsetWidth) * pick + "px";
+            pill.style.transform =
+              "translateX(" +
+              (daily.offsetLeft + (weekly.offsetLeft - daily.offsetLeft) * pick) +
+              "px)";
+            var done = easeOut(
+              seg(t, STEPS[2].click + 0.06 * squeeze, STEPS[2].click + 0.24 * squeeze),
+            );
+            saveLabel.style.opacity = (1 - done).toFixed(4);
+            saved.style.opacity = done.toFixed(4);
+            var pressed = press(t, STEPS[2].click);
+            save.style.transform = "scale(" + (1 - (1 - pressed) * 0.3) + ")";
+
+            actor.style.transform = "translate(" + tip.x + "px," + tip.y + "px)";
+            cursor.style.transform = scale === 1 ? "" : "scale(" + scale + ")";
+
+            var x = exit === "none" ? 0 : exitEase(seg(t, OUT_START, OUT_START + OUT));
+            stage.style.opacity = (1 - x).toFixed(4);
+            stage.style.transform = exit === "up" ? "translateY(" + -4 * x + "cqh)" : "";
+          }
+
+          var clock = { t: 0 };
+          var tl = gsap.timeline({ paused: true });
+          tl.to(
+            clock,
+            {
+              t: duration,
+              duration: duration,
+              ease: "none",
+              onUpdate: function () {
+                render(clock.t);
+              },
+            },
+            0,
+          );
+          render(0);
+          tl.seek(0);
+          window.__timelines = window.__timelines || {};
+          window.__timelines[compositionId] = tl;
+        })();
+      </script>
     </template>
   </body>
 </html>

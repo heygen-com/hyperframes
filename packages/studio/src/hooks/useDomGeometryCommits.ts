@@ -14,6 +14,7 @@ import {
   clearStudioBoxSize,
   clearStudioRotation,
 } from "../components/editor/manualEdits";
+import { stageElementOffset } from "./elementOffsetStager";
 import {
   buildPathOffsetPatches,
   buildBoxSizePatches,
@@ -47,7 +48,7 @@ export interface UseDomGeometryCommitsParams {
   commitPositionPatchToHtml: (
     selection: DomEditSelection,
     patches: PatchOperation[],
-    options: { label: string; coalesceKey: string; skipRefresh?: boolean },
+    options: { label: string; coalesceKey: string; coalesceMs?: number; skipRefresh?: boolean },
   ) => Promise<void>;
   readOnlyPreview: boolean;
 }
@@ -58,6 +59,17 @@ export function useDomGeometryCommits({
   commitPositionPatchToHtml,
   readOnlyPreview,
 }: UseDomGeometryCommitsParams) {
+  const stageElementPositionOffset = useCallback(
+    (selection: DomEditSelection, next: { x: number; y: number }, coalesceKey?: string) =>
+      stageElementOffset(
+        { commitPositionPatchToHtml, showToast, readOnlyPreview },
+        selection,
+        next,
+        coalesceKey,
+      ),
+    [commitPositionPatchToHtml, readOnlyPreview, showToast],
+  );
+
   const handleDomPathOffsetCommit = useCallback(
     (selection: DomEditSelection, next: { x: number; y: number }) => {
       if (readOnlyPreview) return Promise.resolve();
@@ -163,6 +175,7 @@ export function useDomGeometryCommits({
   );
 
   return {
+    stageElementPositionOffset,
     handleDomPathOffsetCommit,
     handleDomBoxSizeCommit,
     handleDomRotationCommit,

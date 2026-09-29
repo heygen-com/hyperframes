@@ -70,28 +70,6 @@ function resolvePreviewLocalPointer(
   };
 }
 
-const POINTER_EVENTS_OVERRIDE_ID = "__hf_studio_pointer_events_override__";
-
-function forcePointerEventsAuto(doc: Document): HTMLStyleElement | null {
-  try {
-    const style = doc.createElement("style");
-    style.id = POINTER_EVENTS_OVERRIDE_ID;
-    style.textContent = "* { pointer-events: auto !important; }";
-    doc.head.appendChild(style);
-    return style;
-  } catch {
-    return null;
-  }
-}
-
-function removePointerEventsOverride(style: HTMLStyleElement | null): void {
-  try {
-    style?.remove();
-  } catch {
-    // cross-origin or detached doc
-  }
-}
-
 const pointerEventsInheritanceFallbackByDocument = new WeakMap<Document, boolean>();
 
 function needsPointerEventsInheritanceFallback(doc: Document, win: Window): boolean {
@@ -222,45 +200,33 @@ export function getPreviewTargetFromPointer(
   const localPointer = resolvePreviewLocalPointer(iframe, doc, win, clientX, clientY);
   if (!localPointer) return null;
 
-  let overrideStyle = forcePointerEventsAuto(doc);
-  try {
-    if (typeof doc.elementsFromPoint === "function") {
-      const elements = doc.elementsFromPoint(localPointer.x, localPointer.y);
-      removePointerEventsOverride(overrideStyle);
-      overrideStyle = null;
-      const candidates = filterAuthorInteractiveTargets(elements, activeCompositionPath);
-      const visualTarget =
-        candidates.find((el) => !isFullBleedTarget(el, localPointer.viewport)) ?? null;
-      if (visualTarget) return visualTarget;
-    }
-
-    // Belt-and-suspenders: elementsFromPoint is universally supported in the
-    // browsers this ships in, so the override is already removed by this
-    // point in practice — but guard the environment without it too, so
-    // hasAuthorPointerEventsNone below never reads a forced-auto value.
-    removePointerEventsOverride(overrideStyle);
-    overrideStyle = null;
-
-    // No element hit (e.g. empty space inside an animated group's overlay) — fall
-    // back to the group whose member-union contains the point, so the whole group
-    // area is hoverable/selectable, not just where a member currently sits.
-    const groupHit = findGroupAtPoint(doc, localPointer.x, localPointer.y);
-    if (
-      groupHit &&
-      !hasAuthorPointerEventsNone(groupHit) &&
-      getDomLayerPatchTarget(groupHit, activeCompositionPath)
-    )
-      return groupHit;
-
-    const fallback = getEventTargetElement(doc.elementFromPoint(localPointer.x, localPointer.y));
-    if (!fallback || !getDomLayerPatchTarget(fallback, activeCompositionPath)) return null;
-    if (hasAuthorPointerEventsNone(fallback)) return null;
-    if (!isElementComputedVisible(fallback)) return null;
-    if (isFullBleedTarget(fallback, localPointer.viewport)) return null;
-    return fallback;
-  } finally {
-    removePointerEventsOverride(overrideStyle);
+  // Hit-test without touching the preview document: any style added here, even
+  // briefly, restyles every element in the film on each click and hover.
+  if (typeof doc.elementsFromPoint === "function") {
+    const elements = doc.elementsFromPoint(localPointer.x, localPointer.y);
+    const candidates = filterAuthorInteractiveTargets(elements, activeCompositionPath);
+    const visualTarget =
+      candidates.find((el) => !isFullBleedTarget(el, localPointer.viewport)) ?? null;
+    if (visualTarget) return visualTarget;
   }
+
+  // No element hit (e.g. empty space inside an animated group's overlay) — fall
+  // back to the group whose member-union contains the point, so the whole group
+  // area is hoverable/selectable, not just where a member currently sits.
+  const groupHit = findGroupAtPoint(doc, localPointer.x, localPointer.y);
+  if (
+    groupHit &&
+    !hasAuthorPointerEventsNone(groupHit) &&
+    getDomLayerPatchTarget(groupHit, activeCompositionPath)
+  )
+    return groupHit;
+
+  const fallback = getEventTargetElement(doc.elementFromPoint(localPointer.x, localPointer.y));
+  if (!fallback || !getDomLayerPatchTarget(fallback, activeCompositionPath)) return null;
+  if (hasAuthorPointerEventsNone(fallback)) return null;
+  if (!isElementComputedVisible(fallback)) return null;
+  if (isFullBleedTarget(fallback, localPointer.viewport)) return null;
+  return fallback;
 }
 
 /** Returns all independently-selectable elements at the pointer (topmost first). */
@@ -283,27 +249,18 @@ export function getAllPreviewTargetsFromPointer(
   const localPointer = resolvePreviewLocalPointer(iframe, doc, win, clientX, clientY);
   if (!localPointer) return [];
 
-  let overrideStyle = forcePointerEventsAuto(doc);
-  try {
-    if (typeof doc.elementsFromPoint === "function") {
-      const elements = doc.elementsFromPoint(localPointer.x, localPointer.y);
-      removePointerEventsOverride(overrideStyle);
-      overrideStyle = null;
-      return filterAuthorInteractiveTargets(elements, activeCompositionPath).filter(
-        (el) => !isFullBleedTarget(el, localPointer.viewport),
-      );
-    }
-    const fallback = getEventTargetElement(doc.elementFromPoint(localPointer.x, localPointer.y));
-    if (!fallback || !getDomLayerPatchTarget(fallback, activeCompositionPath)) return [];
-    removePointerEventsOverride(overrideStyle);
-    overrideStyle = null;
-    if (hasAuthorPointerEventsNone(fallback)) return [];
-    if (!isElementComputedVisible(fallback)) return [];
-    if (isFullBleedTarget(fallback, localPointer.viewport)) return [];
-    return [fallback];
-  } finally {
-    removePointerEventsOverride(overrideStyle);
+  if (typeof doc.elementsFromPoint === "function") {
+    const elements = doc.elementsFromPoint(localPointer.x, localPointer.y);
+    return filterAuthorInteractiveTargets(elements, activeCompositionPath).filter(
+      (el) => !isFullBleedTarget(el, localPointer.viewport),
+    );
   }
+  const fallback = getEventTargetElement(doc.elementFromPoint(localPointer.x, localPointer.y));
+  if (!fallback || !getDomLayerPatchTarget(fallback, activeCompositionPath)) return [];
+  if (hasAuthorPointerEventsNone(fallback)) return [];
+  if (!isElementComputedVisible(fallback)) return [];
+  if (isFullBleedTarget(fallback, localPointer.viewport)) return [];
+  return [fallback];
 }
 
 function objectLike(value: unknown): object | null {

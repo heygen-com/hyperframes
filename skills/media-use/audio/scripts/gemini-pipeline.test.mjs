@@ -9,9 +9,15 @@ import { spawnSync } from "node:child_process";
 // external audio tools are fixtures. This is not a live synthesis/render test.
 for (const expired of [false, true]) {
   for (const only of ["tts", "tts,bgm,sfx"]) {
+    // With expired credentials the person already has an assets/voice/intro.wav, which the engine must keep.
+    const voicePath = expired ? "assets/voice/intro-2.wav" : "assets/voice/intro.wav";
     test(`Gemini engine returns caption metadata with ${expired ? "expired" : "absent"} HeyGen credentials (${only})`, (t) => {
       const dir = mkdtempSync(join(tmpdir(), "hf-gemini-pipeline-"));
       t.after(() => rmSync(dir, { recursive: true, force: true }));
+      if (expired) {
+        mkdirSync(join(dir, "assets/voice"), { recursive: true });
+        writeFileSync(join(dir, "assets/voice/intro.wav"), "the person's own intro");
+      }
       const config = join(dir, "heygen");
       mkdirSync(config);
       if (expired)
@@ -48,7 +54,7 @@ const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
 const args = process.argv.slice(2);
-assert.deepEqual(args.slice(0, 3), ['hyperframes', 'transcribe', 'assets/voice/intro.wav']);
+assert.deepEqual(args.slice(0, 3), ['hyperframes', 'transcribe', '${voicePath}']);
 assert.ok(fs.existsSync(args[2]));
 assert.equal(args[args.indexOf('--model')+1], 'small.en');
 fs.writeFileSync(path.join(args[args.indexOf('--dir')+1], 'transcript.json'), JSON.stringify([
@@ -99,7 +105,7 @@ fs.writeFileSync(path.join(args[args.indexOf('--dir')+1], 'transcript.json'), JS
       assert.deepEqual(meta.voices, [
         {
           id: "intro",
-          path: "assets/voice/intro.wav",
+          path: voicePath,
           duration_s: 1.25,
           words: [
             { id: "w0", text: "Hello", start: 0.1, end: 0.4 },
@@ -108,6 +114,18 @@ fs.writeFileSync(path.join(args[args.indexOf('--dir')+1], 'transcript.json'), JS
         },
       ]);
       assert.equal(meta.total_duration_s, 1.25);
+      const manifest = readFileSync(join(dir, ".media/manifest.jsonl"), "utf8").trim().split("\n");
+      assert.deepEqual(
+        manifest
+          .map((line) => JSON.parse(line))
+          .map(({ path, type, source }) => [path, type, source]),
+        [[voicePath, "voice", "generated"]],
+      );
+      if (expired)
+        assert.equal(
+          readFileSync(join(dir, "assets/voice/intro.wav"), "utf8"),
+          "the person's own intro",
+        );
     });
   }
 }

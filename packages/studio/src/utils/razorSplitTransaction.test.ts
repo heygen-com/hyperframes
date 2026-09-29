@@ -48,7 +48,7 @@ describe("buildAtomicCutIntents", () => {
 
   it("rebases each nested target into its own source-file coordinates", () => {
     const intents = buildAtomicCutIntents(
-      [element({ start: 8, duration: 4, expandedParentStart: 6, sourceFile: "scene.html" })],
+      [element({ start: 8, duration: 4, parentCompositionStart: 6, sourceFile: "scene.html" })],
       10,
       "index.html",
     );

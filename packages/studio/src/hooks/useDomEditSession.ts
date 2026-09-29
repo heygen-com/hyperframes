@@ -19,6 +19,7 @@ import { useDomEditWiring } from "./useDomEditWiring";
 import { useGsapAwareEditing } from "./useGsapAwareEditing";
 import { useStudioSelectionPublisher } from "./useStudioSelectionPublisher";
 import { useKeyframeEaseCommits } from "./useKeyframeEaseCommits";
+import { useCommitPreflightCapabilities } from "./useCommitPreflightCapabilities";
 import type { DomEditSelection } from "../components/editor/domEditingTypes";
 import { membersForDelete, timelineElementsForDelete } from "./domEditDeleteMembers";
 import type { RecordEditInput } from "./domEditDeleteMembers";
@@ -228,6 +229,7 @@ export function useDomEditSession({
     handleDomTextFieldStyleCommit,
     handleDomAddTextField,
     handleDomRemoveTextField,
+    stageElementPositionOffset,
     handleDomBoxSizeCommit,
     handleDomManualEditsReset,
     handleDomEditElementsDelete,
@@ -486,6 +488,7 @@ export function useDomEditSession({
     bumpGsapCache,
     makeFetchFallback,
     trackGsapInteractionFailure,
+    stageElementPositionOffset,
     handleDomBoxSizeCommit,
     addGsapAnimation,
     convertToKeyframes,
@@ -494,9 +497,17 @@ export function useDomEditSession({
   });
   const { handleUpdateSegmentEase, handleUpdateKeyframeEase, handleSetAllKeyframeEases } =
     useKeyframeEaseCommits({ gsapCommitMutation, domEditSelectionRef });
+  const committable = useCommitPreflightCapabilities({
+    projectId,
+    enabled: gsapCommitMutation !== null,
+    selection: domEditSelection,
+    groupSelections: domEditGroupSelections,
+    previewIframeRef,
+    version: gsapCacheVersion,
+  });
   return {
-    domEditSelection,
-    domEditGroupSelections,
+    domEditSelection: committable.selection,
+    domEditGroupSelections: committable.groupSelections,
     domEditHoverSelection,
     activeGroupElement,
     agentModalOpen,

@@ -18,15 +18,15 @@
       }
 
       /*
-        Host declares the 17-token theme contract. touch-indicator.html
-        consumes these via var(--token, fallback); it never redeclares them.
+        Host declares the 17-token theme contract; the phone UI below reads
+        these via var(--token, fallback).
       */
       #demo {
         width: 1920px;
         height: 1080px;
         display: grid;
         place-items: center;
-        background: #05060a;
+        background: #111318;
 
         --bg: #0b0c10;
         --fg: #f5f6f8;
@@ -68,93 +68,157 @@
         color: var(--fg, #f5f6f8);
       }
 
+      .phone__status {
+        height: 44px;
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        padding: 0 28px;
+        font-size: 15px;
+        font-weight: 600;
+        font-variant-numeric: tabular-nums;
+      }
+      .phone__status svg {
+        display: block;
+        fill: currentColor;
+      }
+
       .phone__header {
-        height: 64px;
+        height: 50px;
         display: flex;
         align-items: center;
-        padding: 0 var(--space-3, 24px);
+        padding: 0 16px;
         font-family: var(--font-display, sans-serif);
-        font-weight: 800;
-        font-size: 20px;
-        letter-spacing: -0.01em;
+        font-weight: 700;
+        font-size: 22px;
+        letter-spacing: -0.02em;
       }
 
-      .phone__media {
-        height: 380px;
-        margin: 0 var(--space-2, 16px);
-        border-radius: var(--radius, 20px);
-        /* Placeholder media: an L3 plate with a hairline, finely hatched so it
-           reads as a surface with content on it rather than an empty box. */
-        border: 1px solid color-mix(in srgb, var(--fg, #f5f6f8) 14%, transparent);
-        background:
-          repeating-linear-gradient(
-            0deg,
-            color-mix(in srgb, var(--fg, #f5f6f8) 5%, transparent) 0 1px,
-            transparent 1px 3px
-          ),
-          color-mix(in srgb, var(--fg, #f5f6f8) 18%, transparent);
-      }
-
-      .phone__row {
-        height: 64px;
+      .post__head {
+        height: 54px;
         display: flex;
         align-items: center;
-        gap: var(--space-2, 16px);
-        padding: 0 var(--space-3, 24px);
+        gap: 10px;
+        padding: 0 14px;
+        font-size: 13px;
+        line-height: 16px;
+      }
+      .avatar {
+        width: 32px;
+        height: 32px;
+        border-radius: 50%;
+        display: grid;
+        place-items: center;
+        font-size: 12px;
+        font-weight: 600;
+        color: #fff;
+        flex: none;
+      }
+      .post__user {
+        font-weight: 600;
+      }
+      .post__place {
+        color: var(--muted, #8b8f9a);
+        font-size: 12px;
+      }
+      .post__more {
+        margin-left: auto;
+        color: var(--fg, #f5f6f8);
+        font-size: 16px;
+        letter-spacing: 1px;
       }
 
+      .post__photo {
+        display: block;
+        width: 380px;
+        height: 380px;
+      }
+
+      .post__actions {
+        height: 46px;
+        display: flex;
+        align-items: center;
+        padding: 0 8px 0 16px;
+        font-size: 14px;
+        font-weight: 600;
+        font-variant-numeric: tabular-nums;
+      }
+      .icon {
+        width: 26px;
+        height: 26px;
+        fill: none;
+        stroke: currentColor;
+        stroke-width: 1.8;
+        stroke-linecap: round;
+        stroke-linejoin: round;
+        flex: none;
+      }
       .like-btn {
         position: relative;
         width: 44px;
         height: 44px;
-        border-radius: 50%;
+        margin-left: -9px;
         border: 0;
+        padding: 0;
         display: grid;
         place-items: center;
-        background: color-mix(in srgb, var(--surface, #16181d) 100%, transparent);
+        background: none;
+        color: var(--fg, #f5f6f8);
+      }
+      .like-btn .icon {
+        grid-area: 1 / 1;
+      }
+      .like-btn__filled {
+        fill: #ff3b5c;
+        stroke: #ff3b5c;
+        opacity: 0;
+      }
+      .post__stat {
+        margin: 0 18px 0 2px;
+      }
+      .post__save {
+        margin-left: auto;
+        margin-right: 8px;
+      }
+
+      .post__caption {
+        padding: 2px 16px 0;
+        font-size: 14px;
+        line-height: 19px;
+        text-wrap: pretty;
+      }
+      .post__meta {
+        margin-top: 4px;
         color: var(--muted, #8b8f9a);
-        padding: 0;
+        font-size: 13px;
       }
 
-      .like-btn__icon {
-        width: 22px;
-        height: 22px;
-        fill: none;
-        stroke: currentColor;
-        stroke-width: 2;
-        stroke-linecap: round;
-        stroke-linejoin: round;
+      .post--next {
+        margin-top: 14px;
       }
 
-      .like-count {
-        font-family: var(--font-mono, monospace);
-        font-size: 15px;
-        color: var(--muted, #8b8f9a);
-      }
-
-      .phone__list {
+      .phone__tabs {
         position: absolute;
         left: 0;
         right: 0;
-        top: 508px;
         bottom: 0;
-        padding: var(--space-2, 16px);
-        display: flex;
-        flex-direction: column;
-        gap: var(--space-1, 8px);
-      }
-      .phone__list-row {
         height: 56px;
-        border-radius: calc(var(--radius, 20px) * 0.6);
-        background: var(--surface, #16181d);
-        border: 1px solid var(--border, #262931);
+        display: flex;
+        align-items: center;
+        justify-content: space-around;
+        padding-bottom: 6px;
+        background: var(--bg, #0b0c10);
+        border-top: 1px solid var(--border, #262931);
+      }
+      .phone__tabs .avatar {
+        width: 26px;
+        height: 26px;
+        font-size: 10px;
       }
 
       /*
         Mount slot: fills the whole phone screen, so touch-indicator.html's
-        own container-query sizing resolves against a narrow (380px) host
-        box, not a full 1920-wide frame -- this is what proves the spec's
-        46px floor engages instead of the raw 5cqw target (19px here).
+        18cqw disc resolves against the 380px screen (68px), not the frame.
       */
       .touch-indicator-mount {
         position: absolute;
@@ -169,28 +233,163 @@
       data-start="0"
       data-width="1920"
       data-height="1080"
-      data-duration="3"
+      data-duration="1.5"
     >
       <div class="demo-frame">
         <div class="phone">
+          <div class="phone__status">
+            <span>9:41</span>
+            <svg width="44" height="12" viewBox="0 0 44 12" aria-hidden="true">
+              <rect x="0" y="8" width="3" height="4" rx="1" />
+              <rect x="5" y="6" width="3" height="6" rx="1" />
+              <rect x="10" y="3" width="3" height="9" rx="1" />
+              <rect x="15" y="0" width="3" height="12" rx="1" />
+              <rect
+                x="23.5"
+                y="0.5"
+                width="18"
+                height="11"
+                rx="3"
+                fill="none"
+                stroke="currentColor"
+                opacity="0.45"
+              />
+              <rect x="25.5" y="2.5" width="12" height="7" rx="1.5" />
+              <rect x="42.5" y="4" width="1.5" height="4" rx="0.75" opacity="0.45" />
+            </svg>
+          </div>
           <div class="phone__header">Feed</div>
-          <div class="phone__media"></div>
-          <div class="phone__row">
-            <button class="like-btn" type="button" aria-label="Like">
-              <svg class="like-btn__icon" viewBox="0 0 24 24" aria-hidden="true">
+
+          <div class="post__head">
+            <div class="avatar" style="background: #b8643f">ML</div>
+            <div>
+              <div class="post__user">maya.lin</div>
+              <div class="post__place">Lago di Braies, Italy</div>
+            </div>
+            <span class="post__more">&middot;&middot;&middot;</span>
+          </div>
+
+          <svg class="post__photo" viewBox="0 0 380 380" aria-label="Dawn over a mountain lake">
+            <defs>
+              <linearGradient id="sky" x1="0" y1="0" x2="0" y2="1">
+                <stop offset="0" stop-color="#1d2640" />
+                <stop offset="0.5" stop-color="#5d4f73" />
+                <stop offset="0.82" stop-color="#d98e6e" />
+                <stop offset="1" stop-color="#f4c794" />
+              </linearGradient>
+              <linearGradient id="lake" x1="0" y1="0" x2="0" y2="1">
+                <stop offset="0" stop-color="#d99a7c" />
+                <stop offset="0.3" stop-color="#6e5470" />
+                <stop offset="1" stop-color="#141827" />
+              </linearGradient>
+              <filter id="soft" x="-1" y="-1" width="3" height="3">
+                <feGaussianBlur stdDeviation="8" />
+              </filter>
+              <filter id="grain">
+                <feTurbulence type="fractalNoise" baseFrequency="0.85" numOctaves="2" seed="7" />
+                <feColorMatrix values="0 0 0 0 0.5  0 0 0 0 0.5  0 0 0 0 0.5  0 0 0 0.9 0" />
+              </filter>
+              <g id="range">
                 <path
-                  d="M12 21s-7.5-4.6-10-9.1C.6 8.6 2 5 5.6 5c2 0 3.4 1 4.4 2.6C11 6 12.4 5 14.4 5 18 5 19.4 8.6 22 11.9 19.5 16.4 12 21 12 21z"
+                  d="M0 196 L22 184 L40 190 L66 162 L80 170 L96 148 L112 164 L128 158 L150 182 L176 172 L198 186 L222 178 L244 198 L262 207 L284 192 L300 172 L316 154 L332 164 L350 142 L366 158 L380 152 L380 240 L0 240 Z"
+                  fill="#8e6a80"
+                />
+                <path
+                  d="M0 214 L30 201 L54 208 L90 187 L118 204 L150 197 L180 213 L230 223 L272 227 L310 211 L340 197 L362 205 L380 199 L380 240 L0 240 Z"
+                  fill="#473a56"
+                />
+                <path
+                  d="M0 240 L0 224 L6 214 L11 226 L17 206 L24 227 L31 216 L37 229 L46 212 L53 231 L62 222 L70 234 L300 235 L309 222 L316 232 L324 208 L332 230 L340 216 L347 231 L356 204 L364 229 L372 214 L380 226 L380 240 Z"
+                  fill="#151826"
+                />
+              </g>
+            </defs>
+            <rect width="380" height="240" fill="url(#sky)" />
+            <circle cx="262" cy="200" r="34" fill="#ffd9ad" opacity="0.6" filter="url(#soft)" />
+            <circle cx="262" cy="200" r="12" fill="#fff2d9" />
+            <use href="#range" />
+            <rect y="240" width="380" height="140" fill="url(#lake)" />
+            <use href="#range" transform="matrix(1 0 0 -1 0 480)" opacity="0.35" />
+            <ellipse
+              cx="262"
+              cy="268"
+              rx="9"
+              ry="30"
+              fill="#ffd9ad"
+              opacity="0.55"
+              filter="url(#soft)"
+            />
+            <path
+              d="M0 380 L0 334 C60 324 108 338 150 346 C188 354 214 366 236 380 Z"
+              fill="#0f111b"
+            />
+            <rect width="380" height="380" filter="url(#grain)" opacity="0.07" />
+          </svg>
+
+          <div class="post__actions">
+            <button class="like-btn" type="button" aria-label="Like">
+              <svg class="icon" viewBox="0 0 24 24" aria-hidden="true">
+                <path
+                  d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"
+                />
+              </svg>
+              <svg class="icon like-btn__filled" viewBox="0 0 24 24" aria-hidden="true">
+                <path
+                  d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"
                 />
               </svg>
             </button>
-            <span class="like-count">128</span>
+            <span class="post__stat like-count">128</span>
+            <svg class="icon" viewBox="0 0 24 24" aria-hidden="true">
+              <path
+                d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5z"
+              />
+            </svg>
+            <span class="post__stat">14</span>
+            <svg class="icon" viewBox="0 0 24 24" aria-hidden="true">
+              <path d="M22 2 11 13M22 2l-7 20-4-9-9-4z" />
+            </svg>
+            <svg class="icon post__save" viewBox="0 0 24 24" aria-hidden="true">
+              <path d="M19 21l-7-5-7 5V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z" />
+            </svg>
           </div>
-          <div class="phone__list">
-            <div class="phone__list-row"></div>
-            <div class="phone__list-row"></div>
-            <div class="phone__list-row"></div>
-            <div class="phone__list-row"></div>
-            <div class="phone__list-row"></div>
+
+          <div class="post__caption">
+            <span class="post__user">maya.lin</span> First light over the lake. Worth the
+            4&nbsp;a.m. alarm.
+            <div class="post__meta">View all 14 comments</div>
+            <div class="post__meta">2 hours ago</div>
+          </div>
+
+          <div class="post__head post--next">
+            <div class="avatar" style="background: #3f6b58">NC</div>
+            <div>
+              <div class="post__user">northside.coffee</div>
+              <div class="post__place">Portland, Oregon</div>
+            </div>
+            <span class="post__more">&middot;&middot;&middot;</span>
+          </div>
+
+          <div class="phone__tabs">
+            <svg class="icon" viewBox="0 0 24 24" aria-hidden="true">
+              <path
+                d="M3 10.5 12 3l9 7.5V20a1 1 0 0 1-1 1h-5v-6h-6v6H4a1 1 0 0 1-1-1z"
+                fill="currentColor"
+              />
+            </svg>
+            <svg class="icon" viewBox="0 0 24 24" aria-hidden="true">
+              <circle cx="11" cy="11" r="7" />
+              <path d="m20 20-3.5-3.5" />
+            </svg>
+            <svg class="icon" viewBox="0 0 24 24" aria-hidden="true">
+              <rect x="3" y="3" width="18" height="18" rx="5" />
+              <path d="M12 8v8M8 12h8" />
+            </svg>
+            <svg class="icon" viewBox="0 0 24 24" aria-hidden="true">
+              <rect x="3" y="3" width="18" height="18" rx="5" />
+              <path d="M10 9v6l5-3z" />
+            </svg>
+            <div class="avatar" style="background: #5a5f8a">JR</div>
           </div>
 
           <!--
@@ -199,19 +398,17 @@
             internal data-composition-id inside touch-indicator.html (and
             the window.__timelines key it registers under) -- see
             sub-compositions.md, Pitfall 2. targetX/Y re-aim the primitive's
-            own default landing point (50/55) at this card's like button
-            (12%, 63% of the mount box) via a per-instance variable
-            override, the documented way a host customizes a mounted
-            primitive instead of forking its file.
+            own default landing point (50/55) at the like button's center
+            (29px, 551px = 7.63%, 72.5% of the 380x760 mount box).
           -->
           <div
             id="touch-indicator-mount"
             class="clip touch-indicator-mount"
             data-composition-id="touch-indicator"
             data-composition-src="./touch-indicator.html"
-            data-variable-values='{"targetX":12,"targetY":63}'
+            data-variable-values='{"targetX":7.63,"targetY":72.5}'
             data-start="0.4"
-            data-duration="2.6"
+            data-duration="1.1"
             data-track-index="1"
             data-width="380"
             data-height="760"
@@ -221,10 +418,22 @@
     </div>
 
     <script>
-      // Host timeline: no chrome motion needed to prove the mount contract,
-      // just registration under the host's own data-composition-id.
       window.__timelines = window.__timelines || {};
-      window.__timelines["touch-indicator-demo"] = gsap.timeline({ paused: true });
+      var tl = gsap.timeline({ paused: true });
+
+      // Touch-down: the mount's data-start (0.4) + the disc's 4-frame appear.
+      var TAP = 0.4 + 4 / 60;
+      tl.set(".like-btn__filled", { opacity: 1 }, TAP);
+      tl.set(".like-count", { textContent: "129" }, TAP);
+      tl.fromTo(
+        ".like-btn",
+        { scale: 1 },
+        { scale: 1.2, duration: 0.1, ease: "power2.out", immediateRender: false },
+        TAP,
+      );
+      tl.to(".like-btn", { scale: 1, duration: 0.15, ease: "power2.out" }, TAP + 0.1);
+
+      window.__timelines["touch-indicator-demo"] = tl;
     </script>
   </body>
 </html>

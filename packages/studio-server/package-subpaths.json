@@ -20,6 +20,24 @@
       "types": "./dist/helpers/screenshotClip.d.ts",
       "environments": ["bun", "node"]
     },
+    "./safe-path": {
+      "source": "./src/helpers/safePath.ts",
+      "runtime": "./dist/helpers/safePath.js",
+      "types": "./dist/helpers/safePath.d.ts",
+      "environments": ["bun", "node"]
+    },
+    "./hf-ids": {
+      "source": "./src/helpers/hfIdPersist.ts",
+      "runtime": "./dist/helpers/hfIdPersist.js",
+      "types": "./dist/helpers/hfIdPersist.d.ts",
+      "environments": ["bun", "node"]
+    },
+    "./history": {
+      "source": "./src/history/index.ts",
+      "runtime": "./dist/history/index.js",
+      "types": "./dist/history/index.d.ts",
+      "environments": ["bun", "node"]
+    },
     "./manual-edits-render-script": {
       "source": "./src/helpers/manualEditsRenderScript.ts",
       "runtime": "./dist/helpers/manualEditsRenderScript.js",

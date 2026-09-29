@@ -1,11 +1,14 @@
 #!/usr/bin/env node
 
 import { spawnSync } from "node:child_process";
-import { existsSync, statSync, writeFileSync, renameSync, rmSync } from "node:fs";
-import { resolve, join, extname, basename } from "node:path";
+import { existsSync, statSync, writeFileSync, renameSync, rmSync, realpathSync } from "node:fs";
+import { resolve, join, extname, basename, relative, isAbsolute, sep } from "node:path";
 import { parseArgs } from "node:util";
 import {
+  AGENT_SOURCES,
   appendRecord,
+  latestRecordFor,
+  recordInPlace,
   findByPrompt,
   findByEntity,
   nextId,
@@ -23,6 +26,7 @@ import {
 } from "./lib/registry.mjs";
 import { freezeUrl, freezeLocalFile, isDirectMediaUrl } from "./lib/freeze.mjs";
 import { findExistingAsset } from "./lib/adopt.mjs";
+import { probe as probeMedia } from "./lib/probe.mjs";
 import { track } from "./lib/telemetry.mjs";
 import { recordMiss } from "./lib/misses.mjs";
 import { buildStats } from "./lib/stats.mjs";
@@ -33,6 +37,7 @@ import { heygenAuthMethod } from "../audio/scripts/lib/heygen.mjs";
 import { buildCube, paramsFromIntent } from "./lib/cube-build.mjs";
 import { validateCubeFile } from "./lib/cube-validate.mjs";
 import { analyzeMediaGrade, formatMeasuredNote } from "./lib/grade-analyzer.mjs";
+import { FfBinarySettingError, ffmpegBinary, ffprobeBinary } from "./lib/ff-binaries.mjs";
 import {
   freezeLibraryLut,
   isLibraryLutOfflineMiss,
@@ -88,6 +93,7 @@ const { values: args } = parseArgs({
     "dry-run": { type: "boolean", default: false },
     reuse: { type: "string" },
     from: { type: "string" },
+    source: { type: "string" },
     params: { type: "string" },
     for: { type: "string" },
     analyze: { type: "boolean", default: false },
@@ -124,6 +130,8 @@ Options:
   --reuse <sha>   Import a specific global-cache asset (by content sha/prefix,
                   from --candidates) into this project
   --from <file>   Freeze a local file or direct public URL (ingest)
+  --source <how>  With --from: how the file was made (${AGENT_SOURCES.join(" | ")}).
+                  A file already inside the project is then recorded where it is
   --params <json> Build an explicit parametric LUT (lut/grade only)
   --for <media>   Analyze a local image/video and add measured grade adjust
                   suggestions (grade only)
@@ -144,7 +152,12 @@ const entity = args.entity || null;
 
 if (args.adopt) {
   const { adoptExistingAssets } = await import("./lib/adopt.mjs");
-  const adopted = adoptExistingAssets(projectDir);
+  let adopted;
+  try {
+    adopted = adoptExistingAssets(projectDir);
+  } catch (err) {
+    exitError(err.message);
+  }
   if (args.json) {
     console.log(JSON.stringify({ ok: true, adopted: adopted.length, assets: adopted }));
   } else if (adopted.length === 0) {
@@ -202,6 +215,11 @@ if (args.reuse !== undefined) {
   process.exit(0);
 }
 
+if (args.source && !args.from) {
+  console.error("error: --source goes with --from <file>");
+  process.exit(2);
+}
+
 // Ingest: freeze a user-supplied local file or direct public URL (no search).
 if (args.from) {
   await ingest(args.from);
@@ -218,7 +236,15 @@ if (args.analyze) {
     console.error(`error: --for file not found: ${mediaPath}`);
     process.exit(2);
   }
-  const analysis = analyzeMediaGrade(mediaPath);
+  let analysis;
+  try {
+    analysis = analyzeMediaGrade(mediaPath, {
+      ffmpegPath: ffmpegBinary(),
+      ffprobePath: ffprobeBinary(),
+    });
+  } catch (err) {
+    exitError(err.message);
+  }
   if (args.json) {
     console.log(JSON.stringify({ ok: true, type: "grade-analysis", ...analysis }));
   } else {
@@ -339,6 +365,8 @@ async function run() {
       ? null
       : findExistingAsset(projectDir, intent, type);
   if (existingAsset) {
+    const recorded = latestRecordFor(projectDir, existingAsset.relativePath);
+    if (recorded) return result(recorded, "cached");
     const id = nextId(projectDir, type);
     const record = {
       id,
@@ -503,7 +531,8 @@ async function run() {
     // brand stays local: no frame.md/design.md -> upsell the HyperFrames design
     // flow rather than reporting a generic miss (B5).
     const msg =
-      providerFailure instanceof BundledSfxAssetsError
+      providerFailure instanceof BundledSfxAssetsError ||
+      providerFailure instanceof FfBinarySettingError
         ? providerFailure.message
         : type === "brand"
           ? "no brand spec found — add a frame.md or design.md (colors/font/logo) to this project. Run the HyperFrames design flow to create one; brand tokens are read locally for deterministic rendering."
@@ -594,7 +623,10 @@ function mergeSmartAdjust(block) {
   const mediaPath = resolve(args.for);
   // Clear upfront error beats an ffmpeg "No such file" stack on a typo'd path.
   if (!existsSync(mediaPath)) throw new Error(`--for file not found: ${mediaPath}`);
-  const analysis = analyzeMediaGrade(mediaPath);
+  const analysis = analyzeMediaGrade(mediaPath, {
+    ffmpegPath: ffmpegBinary(),
+    ffprobePath: ffprobeBinary(),
+  });
   console.error(formatMeasuredNote(mediaPath, analysis.measured));
   return {
     ...block,
@@ -886,6 +918,24 @@ async function ingest(src) {
     console.error(`error: refusing to ingest a 0-byte file: ${src}`);
     process.exit(2);
   }
+  if (args.source && !AGENT_SOURCES.includes(args.source)) {
+    console.error(`error: --source takes one of: ${AGENT_SOURCES.join(", ")}`);
+    process.exit(2);
+  }
+  if (args.source && (type === "lut" || type === "grade")) {
+    console.error("error: --source records media files; a LUT or grade is ingested without it");
+    process.exit(2);
+  }
+  const real = (path) => (existsSync(path) ? realpathSync(path) : path);
+  const inProject = args.source && !isUrl ? relative(real(projectDir), real(resolve(src))) : null;
+  if (
+    inProject &&
+    inProject !== ".." &&
+    !inProject.startsWith(`..${sep}`) &&
+    !isAbsolute(inProject)
+  ) {
+    return recordProjectFile(inProject.split(sep).join("/"));
+  }
   const ext = extname(isUrl ? new URL(src).pathname : src) || defaultExt(type);
   const { id, localPath, fullPath } = await withReservedFile(
     projectDir,
@@ -910,7 +960,7 @@ async function ingest(src) {
     id,
     type,
     path: localPath,
-    source: "ingested",
+    source: args.source || "ingested",
     description: basename(src.split("?")[0]),
     provenance: { provider: "local", from: src },
   };
@@ -922,6 +972,30 @@ async function ingest(src) {
     // best-effort
   }
   await result(record, "ingested");
+}
+
+async function recordProjectFile(path) {
+  let duration;
+  try {
+    duration = probeMedia(join(projectDir, path)).duration;
+  } catch (err) {
+    exitError(err.message);
+  }
+  const record = recordInPlace(projectDir, {
+    type,
+    path,
+    source: args.source,
+    description: intent,
+    duration,
+    provenance: {
+      provider: args.provider || "local",
+      from: path,
+      ...(intent && { prompt: intent }),
+    },
+  });
+  regenerateIndex(projectDir);
+  // "recorded", not the record's source, so usage counts keep meaning fetches.
+  await result(record, "recorded");
 }
 
 async function showCandidates() {
@@ -1060,21 +1134,7 @@ function runDoctor() {
     checks.push(heygenAuthCheck());
   }
 
-  const ffmpegProbe = runCommand("ffmpeg", ["-version"]);
-  checks.push({
-    name: "ffmpeg on PATH",
-    ok: ffmpegProbe.status === 0,
-    detail: ffmpegProbe.status === 0 ? firstLine(ffmpegProbe.stdout) : "ffmpeg not found",
-    fix: ffmpegProbe.status === 0 ? "" : "brew install ffmpeg",
-  });
-
-  const ffprobeProbe = runCommand("ffprobe", ["-version"]);
-  checks.push({
-    name: "ffprobe on PATH",
-    ok: ffprobeProbe.status === 0,
-    detail: ffprobeProbe.status === 0 ? firstLine(ffprobeProbe.stdout) : "ffprobe not found",
-    fix: ffprobeProbe.status === 0 ? "" : "brew install ffmpeg",
-  });
+  checks.push(ffDoctorCheck("ffmpeg", ffmpegBinary), ffDoctorCheck("ffprobe", ffprobeBinary));
 
   const nodeOk = !versionLessThan(process.versions.node, MIN_NODE_VERSION);
   checks.push({
@@ -1138,6 +1198,28 @@ function printMap(label, values) {
     return;
   }
   for (const [key, value] of entries) console.log(`  ${key}: ${value}`);
+}
+
+function ffDoctorCheck(name, binary) {
+  let bin;
+  try {
+    bin = binary();
+  } catch (err) {
+    return {
+      name: `${name} on PATH`,
+      ok: false,
+      detail: err.message,
+      fix: "fix or unset that variable",
+    };
+  }
+  const probe = runCommand(bin, ["-version"]);
+  const ok = probe.status === 0;
+  return {
+    name: `${name} on PATH`,
+    ok,
+    detail: ok ? firstLine(probe.stdout) : `${name} not found`,
+    fix: ok ? "" : "brew install ffmpeg",
+  };
 }
 
 function runCommand(bin, argv) {

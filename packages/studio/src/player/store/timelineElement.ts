@@ -55,8 +55,9 @@ export interface TimelineElement {
   playbackRate?: number;
   sourceDuration?: number;
   volume?: number;
-  /** `data-has-audio="true"` on a video: its sound is mixed, so it takes audio affordances (fades). */
+  /** A video with sound to mix (`data-has-audio`, or unmuted without it); `muted` silences it. */
   hasAudio?: boolean;
+  muted?: boolean;
   /** Clip-edge fades from `data-fade-in` / `data-fade-out`, seconds; absent means none. */
   fadeIn?: number;
   fadeOut?: number;
@@ -83,11 +84,36 @@ export interface TimelineElement {
   audioGroupFxChain?: string;
   audioGroupAutomation?: string;
   /**
-   * Legacy source-coordinate marker for an inline sub-composition child. The
-   * current timeline keeps sub-compositions as single rows.
+   * Master start of the composition this row runs in, which its tweens and its
+   * `data-start` are local to; 0 at the root. Writes go through toAuthoredStart.
    */
-  expandedParentStart?: number;
+  parentCompositionStart?: number;
+  /** A legacy root-global media start: its `data-start` is already master time. */
+  authoredStartIsMasterTime?: boolean;
+  /** Legacy marker for an inline sub-composition child; current rows never set it. */
   expandedHostKey?: string;
+}
+
+type RowClock = Pick<
+  TimelineElement,
+  "start" | "parentCompositionStart" | "authoredStartIsMasterTime"
+>;
+const authoredOffset = (element: RowClock) =>
+  element.authoredStartIsMasterTime ? 0 : (element.parentCompositionStart ?? 0);
+
+/** The earliest master start this row can take: its host's start, or its own if already earlier. */
+export function clampToHostStart(element: RowClock, masterTime: number): number {
+  return Math.max(Math.min(authoredOffset(element), element.start), masterTime);
+}
+
+/** A master-time position on this row, as the `data-start` its source file stores. */
+export function toAuthoredStart(element: RowClock, masterTime: number): number {
+  return Math.max(0, clampToHostStart(element, masterTime) - authoredOffset(element));
+}
+
+/** A master-time position on the clock this row's tweens run on. */
+export function toCompositionTime(element: RowClock, masterTime: number): number {
+  return masterTime - (element.parentCompositionStart ?? 0);
 }
 
 /**

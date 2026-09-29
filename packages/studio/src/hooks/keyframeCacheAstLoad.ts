@@ -53,12 +53,15 @@ function hasAnimations(value: unknown): value is ParsedGsapAnimations {
  */
 const inFlightParses = new Map<string, Promise<ParsedGsapAnimations | null>>();
 
+export const parseCacheKey = (projectId: string, sourceFile: string) =>
+  `${projectId}|${sourceFile}`;
+
 export function fetchParsedAnimations(
   projectId: string,
   sourceFile: string,
   options: { fresh?: boolean } = {},
 ): Promise<ParsedGsapAnimations | null> {
-  const key = `${projectId}|${sourceFile}`;
+  const key = parseCacheKey(projectId, sourceFile);
   if (options.fresh) inFlightParses.delete(key);
   const inFlight = inFlightParses.get(key);
   if (inFlight) return inFlight;

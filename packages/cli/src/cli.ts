@@ -26,7 +26,7 @@ for (const stream of [process.stdout, process.stderr]) {
 // The shaderTransitionWorkerPool lives in the producer package and resolves
 // its worker entry by probing for a sibling `.js` file next to
 // `import.meta.url`. When this CLI is bundled by tsup, the producer code is
-// inlined into `cli.js`, but `import.meta.url` resolves to the producer's
+// bundled into chunks beside cli.js, but `import.meta.url` resolves to the producer's
 // own dist path (NOT cli.js) on some module-graph layouts — so the sibling
 // probe lands in a directory that does not contain the bundled worker.
 // We emit the worker entry next to cli.js (see tsup.config.ts) and tell
@@ -116,6 +116,9 @@ import {
   registerRootExitRequester,
   type CommandResult,
 } from "./utils/commandResult.js";
+import { registerRunningCli } from "./utils/runningCli.js";
+
+registerRunningCli();
 
 const isHelp = process.argv.includes("--help") || process.argv.includes("-h");
 
@@ -165,9 +168,11 @@ const commandLoaders = {
   browser: () => import("./commands/browser.js").then((m) => m.default),
   "remove-background": () => import("./commands/remove-background.js").then((m) => m.default),
   transcribe: () => import("./commands/transcribe.js").then((m) => m.default),
+  models: () => import("./commands/models.js").then((m) => m.default),
   tts: () => import("./commands/tts.js").then((m) => m.default),
   docs: () => import("./commands/docs.js").then((m) => m.default),
   doctor: () => import("./commands/doctor.js").then((m) => m.default),
+  clean: () => import("./commands/clean.js").then((m) => m.default),
   upgrade: () => import("./commands/upgrade.js").then((m) => m.default),
   skills: () => import("./commands/skills.js").then((m) => m.default),
   feedback: () => import("./commands/feedback.js").then((m) => m.default),
@@ -214,7 +219,6 @@ const hasJsonFlag = process.argv.includes("--json");
 // Captured references — populated when the lazy imports resolve.
 // Used in exit handlers where dynamic import() is unsafe (beforeExit loops,
 // exit handler is synchronous-only).
-let _flush: (() => Promise<void>) | undefined;
 let _flushSync: (() => void) | undefined;
 let _trackCliError:
   | ((props: {
@@ -244,7 +248,6 @@ let telemetryReady: Promise<void> = Promise.resolve();
 // printed into a skill's captured output).
 if (!isHelp && command !== "telemetry" && command !== "events" && command !== "unknown") {
   telemetryReady = import("./telemetry/index.js").then((mod) => {
-    _flush = mod.flush;
     _flushSync = mod.flushSync;
     _trackCliError = mod.trackCliError;
     _trackCommandResult = mod.trackCommandResult;
@@ -277,22 +280,27 @@ if (
   // we don't over-print.
   import("./utils/autoUpdate.js").then((mod) => mod.reportCompletedUpdate()).catch(() => {});
 
-  import("./utils/updateCheck.js").then(async (mod) => {
-    _printUpdateNotice = mod.printUpdateNotice;
-    _printStalePinNotice = mod.printStalePinNotice;
-    const result = await mod.checkForUpdate().catch(() => null);
-    if (result?.updateAvailable) {
-      const auto = await import("./utils/autoUpdate.js").catch(() => null);
-      auto?.scheduleBackgroundInstall(result.latest, result.current);
-    }
-  });
+  import("./utils/updateCheck.js")
+    .then(async (mod) => {
+      _printUpdateNotice = mod.printUpdateNotice;
+      _printStalePinNotice = mod.printStalePinNotice;
+      const result = mod.cachedUpdateCheck();
+      if (result.updateAvailable) {
+        const auto = await import("./utils/autoUpdate.js").catch(() => null);
+        auto?.scheduleBackgroundInstall(result.latest, result.current);
+      }
+    })
+    .catch(() => {});
 
-  // Skills freshness nudge — same gating as the CLI self-update notice. The
-  // check is cached (24h) and best-effort: it never blocks or fails the command.
-  import("./utils/skillsUpdateCheck.js").then(async (mod) => {
-    _printSkillsUpdateNotice = mod.printSkillsUpdateNotice;
-    await mod.checkSkillsForUpdate().catch(() => null);
-  });
+  // Skills freshness nudge — same gating as the CLI self-update notice.
+  import("./utils/skillsUpdateCheck.js")
+    .then((mod) => {
+      _printSkillsUpdateNotice = mod.printSkillsUpdateNotice;
+    })
+    .catch(() => {});
+
+  // The notices read the caches; a detached child refreshes them for the next run.
+  import("./utils/backgroundChecks.js").then((mod) => mod.launchBackgroundChecks()).catch(() => {});
 }
 
 const commandStart = Date.now();
@@ -322,7 +330,7 @@ async function finalizeCli(result: CommandResult): Promise<void> {
     durationMs: Date.now() - commandStart,
     runId,
   });
-  await _flush?.().catch(() => {});
+  // No network wait: the exit handler's flushSync() delivers what is still queued.
   if (!hasJsonFlag) {
     _printUpdateNotice?.();
     _printStalePinNotice?.();
@@ -361,12 +369,8 @@ process.on(
         runId,
       });
     }
-    // Unconditional — `finalized` only means finalizeCli STARTED its awaited
-    // flush(). A process.exit() racing that flush (the EPIPE path under agent
-    // pipes) kills the in-flight request, and gating this fallback behind
-    // `finalized` silently dropped the still-queued events — the 0.7.65
-    // render_complete regression. flushSync() is safe to over-call: an empty
-    // queue is a no-op, and event uuids make re-sends idempotent.
+    // Unconditional: this is the exit-time delivery for every command (gating it on `finalized`
+    // was the 0.7.65 render_complete loss). Empty queue is a no-op; uuids make re-sends idempotent.
     _flushSync?.();
   },
 );

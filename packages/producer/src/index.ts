@@ -10,6 +10,7 @@
 export {
   createRenderJob,
   executeRenderJob,
+  resolveRenderDebugDir,
   RenderCancelledError,
   RenderQualityError,
   applyRenderWarningPolicy,
@@ -23,6 +24,11 @@ export {
   type RenderPerfSummary,
   type ProgressCallback,
 } from "./services/renderOrchestrator.js";
+export {
+  RENDER_JOB_DIR,
+  createOwnedRenderDir,
+  listAbandonedRenderDirs,
+} from "./services/render/renderDirOwner.js";
 export {
   RENDER_REQUEST_VERSION,
   createRenderRequest,

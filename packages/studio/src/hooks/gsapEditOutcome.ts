@@ -43,9 +43,10 @@ export type GsapEditOutcome =
        */
       ownsDragOffset?: boolean;
     }
-  | { status: "blocked"; reason: GsapEditBlockReason; detail?: GsapEditBlockDetail };
+  | { status: "blocked"; reason: GsapEditBlockReason; detail?: GsapEditBlockDetail }
+  | { status: "element-offset" };
 
-const COPY: Record<GsapEditBlockReason, string> = {
+export const GSAP_EDIT_BLOCK_COPY: Record<GsapEditBlockReason, string> = {
   "no-selector": "This layer needs a stable selector before Studio can save the edit.",
   "unroll-required":
     "This motion comes from a helper or loop. Choose Unroll to edit it explicitly.",
@@ -57,7 +58,7 @@ export class GsapEditBlockedError extends Error {
     readonly reason: GsapEditBlockReason,
     readonly detail?: GsapEditBlockDetail,
   ) {
-    super(COPY[reason]);
+    super(GSAP_EDIT_BLOCK_COPY[reason]);
     this.name = "GsapEditBlockedError";
   }
 }

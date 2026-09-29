@@ -5,6 +5,7 @@ import {
   resolveTimelineMinDuration,
 } from "./timelineGroupEditing";
 import type { TimelineElement } from "../store/playerStore";
+import { clampToHostStart } from "../store/timelineElement";
 import {
   getTimelineInsertBoundaryBand,
   getTimelineRowFromY,
@@ -80,10 +81,10 @@ function resolveDragMaxStart(scroll: HTMLDivElement | null, pps: number, duratio
 /**
  * Rigid group move: when the grabbed clip is part of a multi-selection, the
  * WHOLE formation shifts by its delta on commit (see timelineClipDragCommit).
- * Clamp that delta here — against every selected member's start — so the
- * grabbed clip can't out-run the group: it STOPS the instant any member would
- * cross 0, exactly as it lands on commit. Lane changes still apply to the
- * grabbed clip only, so only the start (x) is constrained.
+ * Clamp that delta here, and a lone clip's as a group of one, so the grabbed
+ * clip STOPS the instant any member would cross its floor (clampToHostStart),
+ * exactly as it lands on commit. Lane changes still apply to the grabbed clip
+ * only, so only the start (x) is constrained.
  */
 function resolveGroupClampedStart(
   snapStart: number,
@@ -92,10 +93,10 @@ function resolveGroupClampedStart(
   elements: TimelineElement[],
   selectedKeys: ReadonlySet<string>,
 ): number {
-  if (selectedKeys.size <= 1 || !selectedKeys.has(dragKey)) return snapStart;
-  const memberStarts = elements.filter((e) => selectedKeys.has(e.key ?? e.id)).map((e) => e.start);
-  const clampedDelta = clampGroupMoveDelta(snapStart - element.start, memberStarts);
-  return element.start + clampedDelta;
+  const inGroup = selectedKeys.size > 1 && selectedKeys.has(dragKey);
+  const members = inGroup ? elements.filter((e) => selectedKeys.has(e.key ?? e.id)) : [element];
+  const floors = members.map((e) => ({ start: e.start, minStart: clampToHostStart(e, 0) }));
+  return element.start + clampGroupMoveDelta(snapStart - element.start, floors);
 }
 
 /**
@@ -173,6 +174,7 @@ export function computeDragPreview(
       originScrollLeft: drag.originScrollLeft,
       currentScrollLeft: scroll?.scrollLeft ?? drag.originScrollLeft,
       pixelsPerSecond: pps,
+      minStart: clampToHostStart(drag.element, 0),
       maxStart: dragMaxStart,
       trackOrder,
     },
@@ -226,8 +228,8 @@ export function computeDragPreview(
     // deliberate vertical lane change from a horizontal drag merely bumped sideways.
     desiredTrack: nextMove.track,
     insertRow,
-    snapTime: snap.snapTime,
-    snapType: snap.snapType,
+    snapTime: previewStart === snap.start ? snap.snapTime : null,
+    snapType: previewStart === snap.start ? snap.snapType : null,
   };
 }
 
@@ -293,7 +295,7 @@ export function computeResizePreview(
       duration: resize.element.duration,
       originClientX: resize.originClientX,
       pixelsPerSecond: pps,
-      minStart: 0,
+      minStart: clampToHostStart(resize.element, 0),
       maxEnd,
       playbackStart:
         resize.edge === "start" && canSeedPlaybackStart
@@ -336,7 +338,8 @@ export function computeResizePreview(
       const { time: snapped, target } = snapTimelineTime(nextResize.start, trimTargets, snapSecs);
       const clip = { ...nextResize, playbackRate: resize.element.playbackRate };
       const delta = snapped - nextResize.start;
-      const bounds = clipStartTrimDeltaBounds(clip, 0, resolveTimelineMinDuration());
+      const floor = clampToHostStart(resize.element, 0);
+      const bounds = clipStartTrimDeltaBounds(clip, floor, resolveTimelineMinDuration());
       if (target && delta >= bounds.minDelta - 1e-6 && delta <= bounds.maxDelta + 1e-6) {
         if (snapped !== nextResize.start) nextResize = applyClipStartTrimDelta(clip, delta);
         snap = target;

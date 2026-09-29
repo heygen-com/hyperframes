@@ -125,6 +125,7 @@ describe("createPickerModule", () => {
       expect(typeof api.getCandidatesAtPoint).toBe("function");
       expect(typeof api.pickAtPoint).toBe("function");
       expect(typeof api.pickManyAtPoint).toBe("function");
+      expect(typeof api.describe).toBe("function");
     });
 
     it("isActive returns pick mode state", () => {
@@ -303,6 +304,22 @@ describe("createPickerModule", () => {
         "#aroll",
         "#root",
       ]);
+    });
+
+    it("describe returns what a click on the same element returns", () => {
+      const picker = createPickerModule({ postMessage: createMockPostMessage() });
+      picker.installPickerApi();
+      document.body.innerHTML = `<div id="root" data-composition-id="main"><p>a</p>
+        <p class="card" data-start="1">b</p></div>`;
+      const card = document.querySelector(".card")!;
+      const api = (window as any).__HF_PICKER_API;
+      const restore = emulateHitTest(() => [card, document.getElementById("root")!]);
+      try {
+        expect(api.describe(card)).toEqual(api.getCandidatesAtPoint(10, 10)[0]);
+      } finally {
+        restore();
+      }
+      expect(api.describe(document.createTextNode("x"))).toBeNull();
     });
 
     it("a section background click picks the host, and an inner root never gets a bare tag selector", () => {

@@ -2,6 +2,12 @@ import { useCallback } from "react";
 import type { DomEditSelection } from "../components/editor/domEditing";
 import { trackStudioEditBlocked, trackStudioSaveFailure } from "../utils/studioSaveDiagnostics";
 import { isGsapEditBlockedError } from "./gsapEditOutcome";
+import { wasAlreadyToasted } from "./domEditPersistFailure";
+
+function failureToast(error: unknown): string | null {
+  if (wasAlreadyToasted(error)) return null;
+  return isGsapEditBlockedError(error) ? error.message : "Failed to save animated edit.";
+}
 
 export function useGsapInteractionFailureTelemetry(
   activeCompPath: string | null,
@@ -22,10 +28,8 @@ export function useGsapInteractionFailureTelemetry(
         targetSelector: selection?.selector,
         targetSourceFile: selection?.sourceFile,
       });
-      showToast(
-        isGsapEditBlockedError(error) ? error.message : "Failed to save animated edit.",
-        "error",
-      );
+      const message = failureToast(error);
+      if (message) showToast(message, "error");
     },
     [activeCompPath, showToast],
   );

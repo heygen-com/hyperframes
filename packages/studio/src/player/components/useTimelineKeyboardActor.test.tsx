@@ -3,7 +3,7 @@
 import React, { act, useRef } from "react";
 import { createRoot } from "react-dom/client";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { usePlayerStore } from "../store/playerStore";
+import { usePlayerStore, type TimelineElement } from "../store/playerStore";
 import { createTimelineRowGeometry } from "./timelineLayout";
 import type { TimelineLogicalRow } from "./timelineKeyboardNavigation";
 import { useTimelineKeyboardActor } from "./useTimelineKeyboardActor";
@@ -57,6 +57,7 @@ interface HarnessProps {
   logicalRows?: readonly TimelineLogicalRow[];
   rowHeights?: readonly number[];
   onToggleRow?: (target: TimelineLogicalRow) => void;
+  onDrillDown?: (element: TimelineElement) => void;
 }
 
 function Harness({
@@ -64,6 +65,7 @@ function Harness({
   logicalRows = rows,
   rowHeights = logicalRows.map(() => 48),
   onToggleRow = vi.fn(),
+  onDrillDown,
 }: HarnessProps) {
   const scrollRef = useRef<HTMLDivElement>(null);
   const keyboard = useTimelineKeyboardActor({
@@ -75,6 +77,7 @@ function Harness({
     ),
     scrollRef,
     onToggleRow,
+    onDrillDown,
   });
   return (
     <div ref={scrollRef} onFocus={keyboard.onFocus} onKeyDown={keyboard.onKeyDown}>
@@ -225,6 +228,26 @@ describe("useTimelineKeyboardActor", () => {
     if (!enter.defaultPrevented) act(() => clip.click());
     expect(nativeClick).toHaveBeenCalledOnce();
     expect(onToggleRow).toHaveBeenCalledTimes(2);
+    act(() => root.unmount());
+  });
+
+  it("drills into a composition clip on Enter and leaves a plain clip alone", () => {
+    const scene = { id: "scene", tag: "div", start: 0, duration: 2, track: 1 };
+    const withElements = rows.map((row, index) => ({
+      ...row,
+      items: row.items.map((item) => ({
+        ...item,
+        element: index === 0 ? { ...scene, compositionSrc: "scene.html" } : scene,
+      })),
+    }));
+    const onDrillDown = vi.fn();
+    const { host, root } = renderHarness({ logicalRows: withElements, onDrillDown });
+    const composition = host.querySelector<HTMLElement>('[data-timeline-focus-id="clip-1"]')!;
+    const plain = host.querySelector<HTMLElement>('[data-timeline-focus-id="clip-2"]')!;
+    expect(key(plain, "Enter").defaultPrevented).toBe(false);
+    expect(onDrillDown).not.toHaveBeenCalled();
+    expect(key(composition, "Enter").defaultPrevented).toBe(true);
+    expect(onDrillDown).toHaveBeenCalledWith(withElements[0]!.items[0]!.element);
     act(() => root.unmount());
   });
 

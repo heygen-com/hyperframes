@@ -9,6 +9,18 @@ import { usePlayerStore, type TimelineElement } from "../player";
 import { jsonResponse, requestUrl } from "./fetchStubTestUtils";
 import { useElementLifecycleOps } from "./useElementLifecycleOps";
 import { useTimelineEditing } from "./useTimelineEditing";
+import {
+  buildMissingCompositionElements,
+  createTimelineElementFromManifestClip,
+  parseTimelineFromDOM,
+} from "../player/lib/timelineDOM";
+import type { ClipManifestClip, IframeWindow } from "../player/lib/playbackTypes";
+import { computeResizePreview } from "../player/components/timelineClipDragPreview";
+import {
+  buildTimelineGroupResizeMembers,
+  resolveTimelineGroupResizeChanges,
+} from "../player/components/timelineGroupEditing";
+import { createRuntimeStartTimeResolver } from "@hyperframes/core/runtime/start-resolver";
 
 vi.mock("../components/editor/manualEditingAvailability", async (importOriginal) => {
   const actual =
@@ -1967,5 +1979,377 @@ describe("useTimelineEditing effect saves report what happened", () => {
     expect(outcome).toEqual({ status: "refused", reason: "Reserved by an agent" });
     expect(writeProjectFile).not.toHaveBeenCalled();
     unmount();
+  });
+});
+
+// main 0 > intro 2 > logo 3 > badge 1: rows are master time, files are local.
+const NESTED_PREVIEW = `
+  <div data-composition-id="main" data-start="0" data-duration="20">
+    <div id="intro" data-hf-id="hf-intro" data-composition-id="intro" data-start="2" data-duration="10">
+      <div data-composition-id="intro" data-composition-file="compositions/intro.html">
+        <video id="vo" data-start="7" data-duration="2" data-hf-media-start-basis="global"></video>
+        <div id="logo" data-hf-id="hf-logo" data-composition-id="logo" data-start="3" data-duration="5">
+          <div data-composition-id="logo" data-composition-file="compositions/logo.html">
+            <div id="badge" data-hf-id="hf-badge" class="clip" data-start="1" data-duration="2"></div>
+            <div id="star" data-hf-id="hf-star" data-composition-id="star" data-start="1.5" data-duration="2">
+              <div data-composition-id="star" data-composition-file="compositions/star.html"></div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>`;
+const NESTED_FILES: Record<string, string> = {
+  "index.html": [
+    `<div data-composition-id="main" data-duration="20">`,
+    `  <div id="intro" data-composition-id="intro" data-composition-src="compositions/intro.html" data-start="2" data-duration="10"></div>`,
+    `</div>`,
+  ].join("\n"),
+  "compositions/intro.html": [
+    `<div data-composition-id="intro" data-duration="10">`,
+    `  <div id="intro-bg" class="clip" data-start="0" data-duration="10"></div>`,
+    `  <video id="vo" data-start="7" data-duration="2" data-hf-media-start-basis="global"></video>`,
+    `  <div id="logo" data-composition-id="logo" data-composition-src="compositions/logo.html" data-start="3" data-duration="5"></div>`,
+    `</div>`,
+  ].join("\n"),
+  "compositions/logo.html": [
+    `<div data-composition-id="logo" data-duration="5">`,
+    `  <div id="logo-bg" class="clip" data-start="0" data-duration="5"></div>`,
+    `  <div id="badge" class="clip" data-start="1" data-duration="2"></div>`,
+    `  <div id="star" data-composition-id="star" data-composition-src="compositions/star.html" data-start="1.5" data-duration="2"></div>`,
+    `</div>`,
+  ].join("\n"),
+};
+
+function setupNestedHarness() {
+  const iframe = document.createElement("iframe");
+  document.body.append(iframe);
+  const doc = iframe.contentDocument!;
+  doc.body.innerHTML = NESTED_PREVIEW;
+  const row = (domId: string) => parseTimelineFromDOM(doc, 20).find((e) => e.domId === domId)!;
+  // The app's path: the runtime manifest's root clips, then the missing-host pass.
+  const manifestRow = (domId: string) => {
+    const intro = { id: "intro", start: 2, duration: 10, track: 0, kind: "composition" };
+    const clip = { ...intro, tagName: "div", compositionId: "intro" } as ClipManifestClip;
+    const hostEl = doc.getElementById("intro");
+    const roots = [createTimelineElementFromManifestClip({ clip, fallbackIndex: 0, doc, hostEl })];
+    const win = iframe.contentWindow as IframeWindow;
+    return buildMissingCompositionElements(doc, win, roots, 20).missing.find(
+      (e) => e.domId === domId,
+    )!;
+  };
+  const playsAt = (domId: string) => {
+    const resolver = createRuntimeStartTimeResolver({
+      includeAuthoredTimingAttrs: true,
+      documentRef: doc,
+    });
+    const el = doc.getElementById(domId)!;
+    return el.tagName === "VIDEO"
+      ? resolver.resolveMediaStartForElement(el)
+      : resolver.resolveStartForElement(el);
+  };
+  const writeProjectFile = vi.fn<(path: string, content: string) => Promise<void>>(async () => {});
+  const written = (path: string, domId: string, attr: string) => {
+    const call = writeProjectFile.mock.calls.find(([p]) => p === path);
+    if (!call) throw new Error(`nothing written to ${path}`);
+    const el = new DOMParser().parseFromString(call[1], "text/html").getElementById(domId);
+    return el?.getAttribute(attr);
+  };
+  const writtenRootDuration = (path: string) => {
+    const call = writeProjectFile.mock.calls.find(([p]) => p === path)!;
+    return new DOMParser()
+      .parseFromString(call[1], "text/html")
+      .querySelector("[data-composition-id]")
+      ?.getAttribute("data-duration");
+  };
+  const fetchMock = stubProjectFetch(NESTED_FILES);
+  const scaleCalls = () =>
+    fetchMock.mock.calls
+      .filter((call) => requestUrl(call[0]).includes("/gsap-mutations/"))
+      .map((call) => JSON.parse(String((call[1] as RequestInit).body)))
+      .filter((body) => body.type === "scale-positions");
+  usePlayerStore.getState().setDuration(20);
+  const hook = renderTimelineEditingHook({
+    timelineElements: parseTimelineFromDOM(doc, 20),
+    iframe,
+    onZIndexCommit: vi.fn().mockResolvedValue(undefined),
+    projectId: "p1",
+    writeProjectFile,
+    recordEdit: vi.fn(async () => {}),
+  });
+  return {
+    doc,
+    row,
+    manifestRow,
+    playsAt,
+    written,
+    writtenRootDuration,
+    writeProjectFile,
+    scaleCalls,
+    ...hook,
+  };
+}
+
+describe("useTimelineEditing: nested rows write composition-local starts", () => {
+  it("round-trips a depth-2 drag: drawn and played at the drop point, written local", async () => {
+    const h = setupNestedHarness();
+    const logo = h.row("logo");
+    expect(logo.start).toBe(5);
+
+    await act(async () => {
+      await h.move(logo, { start: 6, track: logo.track });
+    });
+
+    expect(h.written("compositions/intro.html", "logo", "data-start")).toBe("4");
+    expect(h.doc.getElementById("logo")?.getAttribute("data-start")).toBe("4");
+    expect(h.row("logo").start).toBe(6);
+    expect(h.playsAt("logo")).toBe(6);
+    expect(h.writtenRootDuration("compositions/intro.html")).toBe("10");
+    h.unmount();
+  });
+
+  it("round-trips a depth-3 drag through two enclosing hosts", async () => {
+    const h = setupNestedHarness();
+    const badge = h.row("badge");
+    expect(badge.start).toBe(6);
+
+    await act(async () => {
+      await h.move(badge, { start: 7, track: badge.track });
+    });
+
+    expect(h.written("compositions/logo.html", "badge", "data-start")).toBe("2");
+    expect(h.row("badge").start).toBe(7);
+    expect(h.playsAt("badge")).toBe(7);
+    expect(h.writtenRootDuration("compositions/logo.html")).toBe("5");
+    h.unmount();
+  });
+
+  it("round-trips a legacy root-time video inside a sub-composition, writing master time", async () => {
+    const h = setupNestedHarness();
+    const vo = h.row("vo");
+    expect(vo.start).toBe(7);
+
+    await act(async () => {
+      await h.move(vo, { start: 8, track: vo.track });
+    });
+
+    expect(h.written("compositions/intro.html", "vo", "data-start")).toBe("8");
+    expect(h.row("vo").start).toBe(8);
+    expect(h.playsAt("vo")).toBe(8);
+    h.unmount();
+  });
+
+  it("writes a local start on a head trim and leaves a tail trim's start alone", async () => {
+    const h = setupNestedHarness();
+    await act(async () => {
+      await h.resize(h.row("logo"), { start: 5.5, duration: 4.5, playbackStart: undefined });
+    });
+    expect(h.written("compositions/intro.html", "logo", "data-start")).toBe("3.5");
+    expect(h.written("compositions/intro.html", "logo", "data-duration")).toBe("4.5");
+    expect(h.row("logo")).toMatchObject({ start: 5.5, duration: 4.5 });
+
+    h.writeProjectFile.mockClear();
+    await act(async () => {
+      await h.resize(h.row("logo"), { start: 5.5, duration: 3, playbackStart: undefined });
+    });
+    expect(h.doc.getElementById("logo")?.getAttribute("data-start")).toBe("3.5");
+    expect(h.doc.getElementById("logo")?.getAttribute("data-duration")).toBe("3");
+    h.unmount();
+  });
+
+  it("scales a head-trimmed nested row's tweens over its local window", async () => {
+    const h = setupNestedHarness();
+    await act(async () => {
+      await h.resize(h.row("logo"), { start: 5.5, duration: 4.5, playbackStart: undefined });
+    });
+    expect(h.scaleCalls()).toEqual([
+      expect.objectContaining({ oldStart: 3, oldDuration: 5, newStart: 3.5, newDuration: 4.5 }),
+    ]);
+    h.unmount();
+  });
+
+  it("writes local starts and a local scale window for a nested group resize", async () => {
+    const h = setupNestedHarness();
+    await act(async () => {
+      await h.groupResize([{ element: h.row("logo"), start: 5.5, duration: 4.5 }]);
+    });
+    expect(h.written("compositions/intro.html", "logo", "data-start")).toBe("3.5");
+    expect(h.scaleCalls()).toEqual([
+      expect.objectContaining({ oldStart: 3, oldDuration: 5, newStart: 3.5, newDuration: 4.5 }),
+    ]);
+    h.unmount();
+  });
+
+  it("scales a legacy root-time video's tweens on its host's clock, single and group", async () => {
+    const window = { oldStart: 5, oldDuration: 2, newStart: 5.5, newDuration: 1.5 };
+    for (const group of [false, true]) {
+      const h = setupNestedHarness();
+      const vo = h.row("vo");
+      await act(async () => {
+        if (group) await h.groupResize([{ element: vo, start: 7.5, duration: 1.5 }]);
+        else await h.resize(vo, { start: 7.5, duration: 1.5, playbackStart: undefined });
+      });
+      expect(h.scaleCalls()).toEqual([expect.objectContaining(window)]);
+      h.unmount();
+      vi.unstubAllGlobals();
+    }
+  });
+
+  it("stops a head trim past the host's start at the host's start, end held", async () => {
+    const h = setupNestedHarness();
+    const logo = h.manifestRow("logo");
+    expect(logo).toMatchObject({ start: 5, duration: 5, parentCompositionStart: 2 });
+    const pps = 100;
+    const preview = computeResizePreview(
+      {
+        element: logo,
+        edge: "start",
+        originClientX: 0,
+        previewStart: 5,
+        previewDuration: 5,
+        started: true,
+        pointerId: 1,
+      },
+      -4 * pps,
+      { scroll: null, pps, buildSnapTargets: () => [] },
+    );
+    expect(preview).toMatchObject({ previewStart: 2, previewDuration: 8 });
+
+    await act(async () => {
+      await h.resize(logo, {
+        start: preview.previewStart,
+        duration: preview.previewDuration,
+        playbackStart: undefined,
+      });
+    });
+    expect(h.written("compositions/intro.html", "logo", "data-start")).toBe("0");
+    expect(h.written("compositions/intro.html", "logo", "data-duration")).toBe("8");
+    expect(h.row("logo")).toMatchObject({ start: 2, duration: 8 });
+    expect(h.scaleCalls()).toEqual([
+      expect.objectContaining({ oldStart: 3, oldDuration: 5, newStart: 0, newDuration: 8 }),
+    ]);
+    h.unmount();
+  });
+
+  it("stops a group head trim at the nested member's host start", async () => {
+    const h = setupNestedHarness();
+    const logo = h.manifestRow("logo");
+    const outro: TimelineElement = {
+      ...logo,
+      id: "outro",
+      key: "outro",
+      domId: undefined,
+      start: 12,
+      parentCompositionStart: 0,
+    };
+    const members = buildTimelineGroupResizeMembers(
+      [logo, outro],
+      new Set([logo.key ?? logo.id, "outro"]),
+      logo.key ?? logo.id,
+      "start",
+    )!;
+    const changes = resolveTimelineGroupResizeChanges(members, "start", -4);
+    const logoChange = changes.find((c) => c.key === (logo.key ?? logo.id))!;
+    expect(logoChange).toMatchObject({ start: 2, duration: 8 });
+
+    await act(async () => {
+      await h.groupResize([
+        { element: logo, start: logoChange.start, duration: logoChange.duration },
+      ]);
+    });
+    expect(h.written("compositions/intro.html", "logo", "data-start")).toBe("0");
+    expect(h.written("compositions/intro.html", "logo", "data-duration")).toBe("8");
+    expect(h.scaleCalls()).toEqual([
+      expect.objectContaining({ oldStart: 3, oldDuration: 5, newStart: 0, newDuration: 8 }),
+    ]);
+    h.unmount();
+  });
+
+  it("round-trips a depth-3 host from the manifest path", async () => {
+    const h = setupNestedHarness();
+    const star = h.manifestRow("star");
+    expect(star).toMatchObject({ start: 6.5, parentCompositionStart: 5 });
+
+    await act(async () => {
+      await h.move(star, { start: 7.5, track: star.track });
+    });
+
+    expect(h.written("compositions/logo.html", "star", "data-start")).toBe("2.5");
+    expect(h.playsAt("star")).toBe(7.5);
+    expect(h.manifestRow("star").start).toBe(7.5);
+    h.unmount();
+  });
+
+  it("clamps a nested row dropped before its host's start to the host's start", async () => {
+    const h = setupNestedHarness();
+    const logo = h.row("logo");
+    await act(async () => {
+      await h.move(logo, { start: 1, track: logo.track });
+    });
+    expect(h.written("compositions/intro.html", "logo", "data-start")).toBe("0");
+    expect(h.row("logo").start).toBe(2);
+    h.unmount();
+  });
+
+  it("writes local starts for nested rows in a group move", async () => {
+    const h = setupNestedHarness();
+    await act(async () => {
+      await h.groupMove([{ element: h.row("logo"), start: 6 }]);
+    });
+    expect(h.written("compositions/intro.html", "logo", "data-start")).toBe("4");
+    expect(h.row("logo").start).toBe(6);
+    h.unmount();
+  });
+
+  it("leaves a top-level row's start as written", async () => {
+    const h = setupNestedHarness();
+    const intro = h.row("intro");
+    expect(intro.parentCompositionStart).toBe(0);
+
+    await act(async () => {
+      await h.move(intro, { start: 3, track: intro.track });
+    });
+
+    expect(h.written("index.html", "intro", "data-start")).toBe("3");
+    expect(h.row("intro").start).toBe(3);
+    h.unmount();
+  });
+
+  it("hands the SDK a local start for a nested clip in the open file", async () => {
+    const source = [
+      `<div data-hf-id="hf-main" data-hf-root data-composition-id="main" data-duration="20">`,
+      `  <div id="intro" data-hf-id="hf-intro" data-composition-id="intro" data-start="2" data-duration="10">`,
+      `    <div id="clip" data-hf-id="hf-clip" data-start="1" data-duration="2"></div>`,
+      `  </div>`,
+      `</div>`,
+    ].join("\n");
+    const iframe = document.createElement("iframe");
+    document.body.append(iframe);
+    iframe.contentDocument!.body.innerHTML = source;
+    const clip = parseTimelineFromDOM(iframe.contentDocument!, 20).find((e) => e.domId === "clip")!;
+    expect(clip.start).toBe(3);
+    const sdkSession = await openComposition(source);
+    const writeProjectFile = vi.fn<(...args: unknown[]) => Promise<void>>(async () => {});
+    stubProjectFetch(source);
+    usePlayerStore.getState().setDuration(20);
+    const hook = renderTimelineEditingHook({
+      timelineElements: [clip],
+      iframe,
+      onZIndexCommit: vi.fn().mockResolvedValue(undefined),
+      projectId: "p1",
+      writeProjectFile,
+      recordEdit: vi.fn(async () => {}),
+      sdkSession,
+      publishSdkSession: vi.fn<TimelinePublishSdkSession>(() => "published"),
+    });
+
+    await act(async () => {
+      await hook.move(clip, { start: 4, track: clip.track });
+    });
+
+    expect(writeProjectFile.mock.calls[0]?.[1]).toContain(
+      'id="clip" data-hf-id="hf-clip" data-start="2"',
+    );
+    hook.unmount();
   });
 });

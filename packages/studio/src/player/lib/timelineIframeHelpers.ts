@@ -13,6 +13,7 @@
 import type { TimelineElement } from "../store/playerStore";
 import type { IframeWindow } from "./playbackTypes";
 import { readClipTiming } from "@hyperframes/core/composition-contract";
+import { createRuntimeStartTimeResolver } from "@hyperframes/core/runtime/start-resolver";
 import {
   getTimelineElementSelector,
   getTimelineElementSourceFile,
@@ -414,15 +415,16 @@ function buildMissingCompositionEntry(params: {
   rootDuration: number;
   fallbackIndex: number;
   resolveEnd: (refId: string, visiting: ReadonlySet<string>) => number | null;
+  masterTime: ReturnType<typeof createRuntimeStartTimeResolver>;
 }): TimelineElement | null {
-  const { doc, iframeWin, element, compositionId, rootDuration, fallbackIndex, resolveEnd } =
-    params;
+  const { doc, iframeWin, element, compositionId, rootDuration, fallbackIndex } = params;
+  const { resolveEnd, masterTime } = params;
   const transitionLabels = transitionLabelsForDocument(doc, iframeWin.__timelines);
   const timing = readClipTiming(element, {
     resolveReferenceEnd: (refId) => resolveEnd(refId, new Set([compositionId])),
   });
   const window = clampCompositionWindow(
-    timing.start ?? 0,
+    masterTime.resolveStartForElement(element),
     timing.duration ?? timelineDuration(iframeWin, compositionId),
     rootDuration,
   );
@@ -456,6 +458,7 @@ function buildMissingCompositionEntry(params: {
     key: identity.key,
     tag: element.tagName.toLowerCase(),
     start: window.start,
+    parentCompositionStart: masterTime.resolveHostStartForElement(element),
     duration: window.duration,
     track: timing.trackIndex,
     authoredTrack: timing.trackIndex,
@@ -494,6 +497,11 @@ export function buildMissingCompositionElements(
   const missing: TimelineElement[] = [];
 
   const resolveEnd = createReferenceEndResolver(createTimedElementLookup(doc), iframeWin);
+  const masterTime = createRuntimeStartTimeResolver({
+    timelineRegistry: iframeWin.__timelines,
+    includeAuthoredTimingAttrs: true,
+    documentRef: doc,
+  });
 
   for (const host of hosts) {
     const el = host as HTMLElement;
@@ -508,6 +516,7 @@ export function buildMissingCompositionElements(
       rootDuration,
       fallbackIndex: missing.length,
       resolveEnd,
+      masterTime,
     });
     if (entry) missing.push(entry);
   }

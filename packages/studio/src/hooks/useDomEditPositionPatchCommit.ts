@@ -4,6 +4,7 @@ import type { PatchOperation } from "../utils/sourcePatcher";
 import { trackStudioSaveFailure } from "../utils/studioSaveDiagnostics";
 import { DomEditSaveQueueOpenError } from "../utils/domEditSaveQueue";
 import type { PersistDomEditOperations } from "./domEditCommitTypes";
+import { wasAlreadyToasted } from "./domEditPersistFailure";
 
 interface UseDomEditPositionPatchCommitParams {
   activeCompPath: string | null;
@@ -39,7 +40,9 @@ export function useDomEditPositionPatchCommit({
           // resolved the commit, which skipped the caller's revert, so the element
           // stayed where the drag put it while nothing reached the file.
           if (error instanceof DomEditSaveQueueOpenError) throw error;
-          showToast(error instanceof Error ? error.message : "Failed to save position");
+          if (!wasAlreadyToasted(error)) {
+            showToast(error instanceof Error ? error.message : "Failed to save position");
+          }
           trackStudioSaveFailure({
             source: "dom_edit",
             error,

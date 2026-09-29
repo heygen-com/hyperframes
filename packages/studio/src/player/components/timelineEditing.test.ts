@@ -880,6 +880,61 @@ describe("resolveTimelineResize", () => {
     expect(next.start).toBe(2);
   });
 
+  function headTrimmedFullyRight(clip: { start: number; duration: number }) {
+    const single = resolveTimelineResize(
+      { ...clip, originClientX: 0, pixelsPerSecond: 100, minStart: 0, maxEnd: 10 },
+      "start",
+      1000,
+    );
+    const group = resolveTimelineGroupResize([clip], "start", 10).members[0]!;
+    return { single: single.duration, group: group.duration };
+  }
+
+  it.each([
+    { start: 1, duration: 0.625 },
+    { start: 1.005, duration: 2 },
+  ])("keeps the minimum duration when a head trim runs off the grid (%o)", (clip) => {
+    const { single, group } = headTrimmedFullyRight(clip);
+    expect(Math.min(single, group)).toBeGreaterThanOrEqual(0.1);
+  });
+
+  it("keeps the minimum duration for any off-grid start and length on a 1 ms grid", () => {
+    const short: string[] = [];
+    for (let i = 0; i < 20; i++) {
+      for (let j = 0; j < 18; j++) {
+        const clip = { start: (1000 + i * 13) / 1000, duration: (100 + j * 17) / 1000 };
+        const { single, group } = headTrimmedFullyRight(clip);
+        if (Math.min(single, group) < 0.1 - 1e-9) short.push(`${clip.start}+${clip.duration}`);
+      }
+    }
+    expect(short).toEqual([]);
+  });
+
+  it("stops a group head trim where the single-clip trim stops", () => {
+    const { single, group } = headTrimmedFullyRight({ start: 1.003, duration: 2 });
+    expect(group).toBe(single);
+  });
+
+  it("moves on-grid group members together when the tightest member sits 5 ms off the grid", () => {
+    const members = [
+      { start: 1.005, duration: 2 },
+      { start: 0, duration: 5 },
+      { start: 0.24, duration: 5 },
+    ];
+    const next = resolveTimelineGroupResize(members, "start", 10).members;
+    expect(next.map((m) => m.start)).toEqual([2.9, 1.89, 2.13]);
+  });
+
+  it("never moves a group head trim left of zero near the minimum length", () => {
+    const [member] = resolveTimelineGroupResize(
+      [{ start: 0.004, duration: 0.1 }],
+      "start",
+      10,
+    ).members;
+    expect(member!.start).toBeGreaterThanOrEqual(0);
+    expect(member!.duration).toBeGreaterThanOrEqual(0.1);
+  });
+
   it("moves every group member by the same amount when one reaches its media start", () => {
     const members = [
       { start: 2, duration: 3, playbackStart: 1, playbackRate: 1.5 },

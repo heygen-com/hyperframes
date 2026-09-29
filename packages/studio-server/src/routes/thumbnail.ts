@@ -4,7 +4,6 @@ import {
   type Dirent,
   fstatSync,
   openSync,
-  mkdirSync,
   readFileSync,
   readdirSync,
   renameSync,
@@ -22,7 +21,13 @@ import { createProjectSignature, resolveProjectAndSignature } from "../helpers/p
 import { STUDIO_MOTION_PATH } from "../helpers/studioMotionRenderScript.js";
 import { thumbnailGenerationCoordinator } from "./thumbnailGenerationCoordinator.js";
 import { requestSubPath } from "../helpers/requestSubPath.js";
-import { resolveWithinProject } from "../helpers/safePath.js";
+import {
+  isProjectRootMissing,
+  mkdirWithinProject,
+  resolveWithinProject,
+} from "../helpers/safePath.js";
+import { proxyActivityMark } from "../helpers/proxyTranscoder.js";
+import { PREVIEW_CAPTURE_PARAM } from "./preview.js";
 
 const THUMBNAIL_CACHE_VERSION = "v4";
 const THUMBNAIL_MAX_OUTPUT_WIDTH = 240;
@@ -179,10 +184,11 @@ export function registerThumbnailRoutes(api: Hono, adapter: StudioApiAdapter): v
     sourceMtime = Math.max(sourceMtime, manualEdits.mtimeMs, motion.mtimeMs);
 
     const projectUrl = `http://${c.req.header("host")}/api/projects/${encodeURIComponent(project.id)}`;
-    const previewUrl =
+    const previewPath =
       compPath === "index.html"
         ? `${projectUrl}/preview`
         : `${projectUrl}/preview/comp/${compPath.split("/").map(encodeURIComponent).join("/")}`;
+    const previewUrl = `${previewPath}?${PREVIEW_CAPTURE_PARAM}=1`;
 
     // Cache
     const cacheDir = join(project.dir, ".thumbnails");
@@ -214,13 +220,15 @@ export function registerThumbnailRoutes(api: Hono, adapter: StudioApiAdapter): v
         headers: { "Content-Type": contentType, "Cache-Control": "no-cache" },
       });
     }
-    if (url.searchParams.get("cached") === "1") return c.body(null, 404);
+    if (url.searchParams.get("cached") === "1")
+      return c.body(null, 204, { "Cache-Control": "no-cache" });
 
     try {
       const buffer = await thumbnailGenerationCoordinator.acquire(
         cachePath,
         c.req.raw.signal,
         async (signal) => {
+          const previewCopiesAtStart = proxyActivityMark(project.dir);
           const generated = await adapter.generateThumbnail!({
             project,
             compPath,
@@ -236,11 +244,14 @@ export function registerThumbnailRoutes(api: Hono, adapter: StudioApiAdapter): v
             signal,
           });
           if (!generated) return null;
+          const previewCopiesAtEnd = proxyActivityMark(project.dir);
           const afterGeneration = await resolveProjectAndSignature(adapter, project.id);
           const inputsUnchanged = (signature: string) =>
             compositionInputSignature(project.dir, compPath, signature) === inputSignature;
           // Both the adapter's signature and a fresh one: the adapter's can lag the watcher.
           if (
+            previewCopiesAtStart === null ||
+            previewCopiesAtEnd !== previewCopiesAtStart ||
             afterGeneration?.project.dir !== project.dir ||
             !inputsUnchanged(afterGeneration.signature) ||
             !inputsUnchanged(createProjectSignature(project.dir))
@@ -250,7 +261,7 @@ export function registerThumbnailRoutes(api: Hono, adapter: StudioApiAdapter): v
             // but never file them under a signature they do not prove.
             return generated;
           }
-          mkdirSync(cacheDir, { recursive: true });
+          mkdirWithinProject(project.dir, cacheDir);
           writeThumbnailAtomically(cachePath, generated);
           return generated;
         },
@@ -269,6 +280,7 @@ export function registerThumbnailRoutes(api: Hono, adapter: StudioApiAdapter): v
       if (err instanceof DOMException && err.name === "AbortError") {
         return new Response(null, { status: 499 });
       }
+      if (isProjectRootMissing(err)) throw err;
       const msg = err instanceof Error ? err.message : String(err);
       return c.json({ error: `Thumbnail generation failed: ${msg}` }, 500);
     }

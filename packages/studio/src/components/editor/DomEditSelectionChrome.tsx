@@ -1,7 +1,7 @@
 import type { RefObject } from "react";
 import { type DomEditSelection } from "./domEditing";
 import type { GroupOverlayItem, OverlayRect } from "./domEditOverlayGeometry";
-import type { BlockedMoveState, ResizeHandle } from "./domEditOverlayGestures";
+import type { ResizeHandle } from "./domEditOverlayGestures";
 import type { createDomEditOverlayGestureHandlers } from "./useDomEditOverlayGestures";
 import { DomEditCropHandles } from "./DomEditCropHandles";
 import { DomEditRotateHandle } from "./DomEditRotateHandle";
@@ -103,7 +103,7 @@ export function DomEditGroupChrome({
           cursor: canManipulate && groupCanMove ? "move" : "default",
         }}
         onPointerDown={(e) => {
-          if (!canManipulate || !groupCanMove || e.shiftKey) return;
+          if (!canManipulate || e.shiftKey) return;
           gestures.startGroupDrag(e);
         }}
         onMouseDown={onBoxMouseDown}
@@ -123,7 +123,6 @@ interface DomEditSelectionChromeProps {
   boxClipPath: string | undefined;
   selectionKey: string;
   groupSelectionCount: number;
-  blockedMoveRef: RefObject<BlockedMoveState | null>;
   gestures: GestureHandlers;
   onStyleCommit?: (property: string, value: string) => Promise<unknown> | void;
   onBoxMouseDown: (e: React.MouseEvent) => void;
@@ -152,7 +151,6 @@ export function DomEditSelectionChrome({
   boxClipPath,
   selectionKey,
   groupSelectionCount,
-  blockedMoveRef,
   gestures,
   onStyleCommit,
   onBoxMouseDown,
@@ -218,15 +216,7 @@ export function DomEditSelectionChrome({
               gestures.startGesture("drag", e);
               return;
             }
-            e.preventDefault();
-            e.stopPropagation();
-            e.currentTarget.setPointerCapture(e.pointerId);
-            blockedMoveRef.current = {
-              pointerId: e.pointerId,
-              startX: e.clientX,
-              startY: e.clientY,
-              notified: false,
-            };
+            gestures.startBlockedMove(e, selection);
           }}
           onMouseDown={onBoxMouseDown}
           onClick={onBoxClick}

@@ -76,7 +76,17 @@ function parseApplicationExtension(
   return null;
 }
 
-export function parseAnimatedGifMetadata(bytes: Uint8Array): AnimatedGifMetadata | null {
+const PLAIN_TEXT_LABEL = 0x01;
+
+export interface GifFrameLayout {
+  controlPackedOffset: number | null;
+  localColorTable: boolean;
+}
+
+export function parseAnimatedGifMetadata(
+  bytes: Uint8Array,
+  onFrame?: (frame: GifFrameLayout) => void,
+): AnimatedGifMetadata | null {
   if (bytes.length < 13) return null;
   const signature = readAscii(bytes, 0, 6);
   if (signature !== "GIF87a" && signature !== "GIF89a") return null;
@@ -92,6 +102,7 @@ export function parseAnimatedGifMetadata(bytes: Uint8Array): AnimatedGifMetadata
   }
 
   let frameCount = 0;
+  let controlPackedOffset: number | null = null;
   const delaysCentiseconds: number[] = [];
   let loopCount: number | null = null;
 
@@ -113,6 +124,7 @@ export function parseAnimatedGifMetadata(bytes: Uint8Array): AnimatedGifMetadata
         const delay = readU16LE(bytes, pos + 2);
         if (delay == null) return null;
         delaysCentiseconds.push(normalizeDelayCentiseconds(delay));
+        controlPackedOffset = pos + 1;
         pos += 1 + blockSize;
         if (bytes[pos] !== 0) return null;
         pos += 1;
@@ -127,6 +139,7 @@ export function parseAnimatedGifMetadata(bytes: Uint8Array): AnimatedGifMetadata
         continue;
       }
 
+      if (label === PLAIN_TEXT_LABEL) controlPackedOffset = null;
       const next = skipSubBlocks(bytes, pos);
       if (next == null) return null;
       pos = next;
@@ -136,8 +149,11 @@ export function parseAnimatedGifMetadata(bytes: Uint8Array): AnimatedGifMetadata
     if (introducer === 0x2c) {
       if (pos + 9 > bytes.length) return null;
       const imagePacked = bytes[pos + 8] ?? 0;
+      const localColorTable = (imagePacked & 0b1000_0000) !== 0;
+      onFrame?.({ controlPackedOffset, localColorTable });
+      controlPackedOffset = null;
       pos += 9;
-      if ((imagePacked & 0b1000_0000) !== 0) {
+      if (localColorTable) {
         pos += colorTableByteLength(imagePacked);
       }
       if (pos >= bytes.length) return null;
@@ -163,4 +179,57 @@ export function parseAnimatedGifMetadata(bytes: Uint8Array): AnimatedGifMetadata
     loopCount,
     animated: frameCount > 1,
   };
+}
+
+const DISPOSAL_BITS = 0b0001_1100;
+const LEAVE_IN_PLACE = 1 << 2;
+const DISPOSE_TO_BACKGROUND = 2 << 2;
+const HAS_TRANSPARENT_INDEX = 0b0000_0001;
+const TRANSPARENT_INDEX_AFTER_PACKED = 3;
+
+function frameLayouts(bytes: Uint8Array): GifFrameLayout[] | null {
+  const frames: GifFrameLayout[] = [];
+  return parseAnimatedGifMetadata(bytes, (frame) => frames.push(frame)) === null ? null : frames;
+}
+
+function disposalOf(bytes: Uint8Array, frame: GifFrameLayout): number | null {
+  return frame.controlPackedOffset === null
+    ? null
+    : (bytes[frame.controlPackedOffset] ?? 0) & DISPOSAL_BITS;
+}
+
+export function gifClearsAfterLeavingFrameInPlace(bytes: Uint8Array): boolean | null {
+  const frames = frameLayouts(bytes);
+  if (frames === null) return null;
+  let sawOpaque = false;
+  for (const frame of frames) {
+    const disposal = disposalOf(bytes, frame);
+    if (disposal === LEAVE_IN_PLACE) sawOpaque = true;
+    else if (disposal === DISPOSE_TO_BACKGROUND && sawOpaque) return true;
+  }
+  return false;
+}
+
+export function clearGifFramesBeforeNext(bytes: Uint8Array): boolean {
+  const frames = frameLayouts(bytes);
+  if (frames === null) return false;
+  const controls = frames.flatMap((f) =>
+    f.controlPackedOffset === null ? [] : [f.controlPackedOffset],
+  );
+  const shared = frames.flatMap((f) =>
+    f.controlPackedOffset === null || f.localColorTable ? [] : [f.controlPackedOffset],
+  );
+  const hasIndex = (at: number) => ((bytes[at] ?? 0) & HAS_TRANSPARENT_INDEX) !== 0;
+  const source = shared.find(hasIndex);
+  for (const at of controls) {
+    bytes[at] = ((bytes[at] ?? 0) & ~DISPOSAL_BITS) | DISPOSE_TO_BACKGROUND;
+  }
+  if (source === undefined) return true;
+  for (const at of shared) {
+    if (hasIndex(at)) continue;
+    bytes[at] = (bytes[at] ?? 0) | HAS_TRANSPARENT_INDEX;
+    bytes[at + TRANSPARENT_INDEX_AFTER_PACKED] =
+      bytes[source + TRANSPARENT_INDEX_AFTER_PACKED] ?? 0;
+  }
+  return true;
 }
