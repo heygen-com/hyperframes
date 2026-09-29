@@ -92,11 +92,8 @@ export function resolveNearestFreeStart(
   return best;
 }
 
-/**
- * Where a dragged clip lands. A drop on an existing row of the clip's kind-zone stays on that
- * row at the nearest free time: never a new track, never an overlap. Only an aim outside all
- * rows, or into a zone with no row yet, opens a track (`insertRow`).
- */
+// Where a dragged clip lands: on the aimed row of its kind, at the nearest free time there. Only an aim outside all
+// rows, or into a kind with no row yet, opens a track (`insertRow`).
 export function resolveZoneDropPlacement(input: {
   order: number[];
   audioTracks: ReadonlySet<number>;

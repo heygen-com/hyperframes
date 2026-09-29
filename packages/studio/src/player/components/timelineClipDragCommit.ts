@@ -202,21 +202,8 @@ function resolveMultiSelection(
   return { keys, movedStart };
 }
 
-/**
- * Commit a finished clip drag.
- *
- * The lane model is CapCut-stable: a clip's display lane is its track, and editing
- * ONE clip must never re-lane or rewrite OTHER clips. Three outcomes:
- *
- * - **Pure time-move** (dragged clip keeps its lane, no insert): persist just the
- *   dragged clip's start (multi-selection shifts every moving clip in time).
- * - **Lane change** (the dragged clip's OWN lane changes, no new track): persist
- *   ONLY the dragged clip's start + lane. No other clip is touched. z is synced
- *   only when the pointer aimed at another lane.
- * - **Track insert** (a new lane above or below all rows): the dragged clip lands on
- *   the new lane and the clips at/below the insert are renumbered by +1 (the ONLY
- *   permitted multi-clip write) via a whole-set re-normalize; persisted atomically.
- */
+// A time move writes the dragged clip's start (each moving clip's, in a group); a lane change also writes its lane
+// and touches no other clip; only an insert outside all rows renumbers the rows below it.
 // fallow-ignore-next-line complexity
 export function commitDraggedClipMove(drag: DraggedClipState, deps: DragCommitDeps): void {
   const hostAlias = resolveExpandedHostAlias(drag, deps);
