@@ -529,12 +529,6 @@ function titleSelection(): DomEditSelection {
   return { id: "title", selector: "#title", element: el } as DomEditSelection;
 }
 
-const KEYFRAME_MUTATIONS = new Set([
-  "add-keyframe",
-  "convert-to-keyframes",
-  "replace-with-keyframes",
-]);
-
 it("writes a plain size on an element whose only tween is a fade", async () => {
   const fade = {
     id: "#title-to-0-visual",
@@ -558,7 +552,7 @@ it("writes a plain size on an element whose only tween is a fade", async () => {
 
   expect(handled).toMatchObject({ status: "persisted" });
   const mutations = commitMutation.mock.calls.map((call) => call[1] as { type: string });
-  expect(mutations.filter((m) => KEYFRAME_MUTATIONS.has(m.type))).toEqual([]);
+  expect(mutations.filter((m) => /keyframe/i.test(m.type))).toEqual([]);
   expect(mutations).toContainEqual({
     type: "add",
     targetSelector: "#title",
