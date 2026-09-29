@@ -263,6 +263,15 @@ describe("useTimelinePlayer audio controls (#835)", () => {
 });
 
 describe("useTimelinePlayer seek keepPlaying option (#834)", () => {
+  it("publishes a seek as a person's seek, so a paused timeline follows it", () => {
+    const { root, api } = renderAttachedTimelinePlayer();
+    const before = liveTime.seekCount();
+    seekWithAct(api, 5);
+    expect(liveTime.seekCount()).toBe(before + 1);
+    expect(liveTime.latest()).toBe(5);
+    unmountWithAct(root);
+  });
+
   it("default seek() clears isPlaying when the store reports playing", () => {
     const { api, root } = renderAttachedTimelinePlayer();
     setStorePlaying();

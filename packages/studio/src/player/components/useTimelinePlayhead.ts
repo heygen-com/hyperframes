@@ -80,6 +80,7 @@ export function useTimelinePlayhead({
   const userZoomCount = usePlayerStore((s) => s.userZoomCount);
   const previousZoomCountRef = useRef(userZoomCount);
   const lastLiveTimeRef = useRef(usePlayerStore.getState().currentTime);
+  const lastSeekCountRef = useRef(liveTime.seekCount());
   const skipCenterAnchorRef = useRef(false);
   const contentOriginRef = useRef(contentOrigin);
   contentOriginRef.current = contentOrigin;
@@ -169,14 +170,15 @@ export function useTimelinePlayhead({
       if (prev.isPlaying && !state.isPlaying) place(lastLiveTimeRef.current, true);
     });
     const unsub = liveTime.subscribe((t) => {
-      const moved = t !== lastLiveTimeRef.current;
+      const sought = liveTime.seekCount() !== lastSeekCountRef.current;
+      lastSeekCountRef.current = liveTime.seekCount();
       lastLiveTimeRef.current = t;
       const playing = usePlayerStore.getState().isPlaying;
       if (!place(t, !playing)) return;
       const playheadX = contentOriginRef.current + Math.max(0, t) * ppsRef.current;
       const scroll = scrollRef.current;
-      // Paused, only a new playhead time scrolls, so a person's own scroll stays where they put it.
-      if (!scroll || isDragging.current || zoomModeRef.current === "fit" || (!playing && !moved)) {
+      // Paused, only a seek scrolls: a reload's republish, frame-rounded, must not undo a person's scroll.
+      if (!scroll || isDragging.current || zoomModeRef.current === "fit" || (!playing && !sought)) {
         return;
       }
       const nextScrollLeft = playing

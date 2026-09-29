@@ -269,9 +269,7 @@ export function useTimelinePlayer({
     const adapter = getAdapter();
     if (!adapter) return;
     adapter.pause();
-    const time = adapter.getTime();
-    liveTime.notify(time);
-    setCurrentTime(time); // sync store so Split/Delete have accurate time
+    setCurrentTime(adapter.getTime()); // sync store so Split/Delete have accurate time
     setIsPlaying(false);
     shuttleDirectionRef.current = null;
     shuttleSpeedIndexRef.current = 0;
@@ -297,7 +295,7 @@ export function useTimelinePlayer({
         nextTime,
       });
       adapter.seek(nextTime, options);
-      liveTime.notify(nextTime); // Direct DOM updates (playhead, timecode, progress) — no re-render
+      liveTime.notifySeek(nextTime); // Direct DOM updates (playhead, timecode, progress) — no re-render
       setCurrentTime(nextTime); // sync store so Split/Delete have accurate time
       if (!shouldResumeAfterSeek && !keepPlaying) scrubMusicAtSeek(iframeRef.current, nextTime);
       if (shouldResumeAfterSeek) {

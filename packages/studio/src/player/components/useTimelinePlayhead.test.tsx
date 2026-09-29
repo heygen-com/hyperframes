@@ -174,23 +174,32 @@ describe("useTimelinePlayhead follow while paused", () => {
   it("scrolls a paused seek that lands off screen into view", () => {
     const scroll = scrollBox(0);
     mount({ pps: 100, scroll });
-    act(() => liveTime.notify(30));
+    act(() => liveTime.notifySeek(30));
     expectVisible(scroll, 30, 100);
   });
 
   it("leaves the view alone when a paused seek lands on screen, even past the follow line", () => {
     const scroll = scrollBox(0);
     mount({ pps: 100, scroll });
-    act(() => liveTime.notify(7));
+    act(() => liveTime.notifySeek(7));
     expect(scroll.scrollLeft).toBe(0);
   });
 
-  it("does not undo a person's own scroll when the paused time is published again", () => {
+  it("scrolls back to the playhead when a person seeks to the time it already has", () => {
     const scroll = scrollBox(0);
     mount({ pps: 100, scroll });
-    act(() => liveTime.notify(30));
+    act(() => liveTime.notifySeek(30));
     scroll.scrollLeft = 0;
-    act(() => liveTime.notify(30));
+    act(() => liveTime.notifySeek(30));
+    expectVisible(scroll, 30, 100);
+  });
+
+  it("keeps a person's scroll when a reload republishes the seek rounded to a frame", () => {
+    const scroll = scrollBox(0);
+    mount({ pps: 100, scroll });
+    act(() => liveTime.notifySeek(12.3456));
+    scroll.scrollLeft = 0;
+    act(() => liveTime.notify(Math.floor(12.3456 * 30) / 30));
     expect(scroll.scrollLeft).toBe(0);
   });
 
@@ -200,7 +209,6 @@ describe("useTimelinePlayhead follow while paused", () => {
     act(() => usePlayerStore.setState({ isPlaying: true }));
     act(() => liveTime.notify(30));
     act(() => {
-      liveTime.notify(30.012);
       usePlayerStore.getState().setCurrentTime(30.012);
       usePlayerStore.setState({ isPlaying: false });
     });
@@ -225,14 +233,14 @@ describe("useTimelinePlayhead follow while paused", () => {
   it("does not scroll while the playhead is being dragged", () => {
     const scroll = scrollBox(0);
     mount({ pps: 100, scroll, dragging: true });
-    act(() => liveTime.notify(30));
+    act(() => liveTime.notifySeek(30));
     expect(scroll.scrollLeft).toBe(0);
   });
 
   it("does not scroll in Fit", () => {
     const scroll = scrollBox(0);
     mount({ pps: 100, scroll, zoomMode: "fit" });
-    act(() => liveTime.notify(30));
+    act(() => liveTime.notifySeek(30));
     expect(scroll.scrollLeft).toBe(0);
   });
 });
