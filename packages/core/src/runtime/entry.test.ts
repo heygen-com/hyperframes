@@ -495,6 +495,34 @@ describe("runtime entry", () => {
       expect(armed(now)).toEqual([false]);
     });
 
+    it("holds the loop start only while playing, and for a loop start that is a time", async () => {
+      spyLoad();
+      servePreview();
+      const { now } = tracks(mountRoot());
+
+      await evaluateRuntime();
+      window.__hf?.setLoopStart?.(0);
+      window.__player?.play();
+      window.__player?.seek(9.5, { keepPlaying: true });
+      window.__player?.pause();
+      expect(armed(now)).toEqual([false]);
+      window.__hf?.setLoopStart?.(-1);
+      window.__player?.play();
+      expect(armed(now)).toEqual([false]);
+    });
+
+    it("never arms a next clip with no authored length, so it is not reloaded", async () => {
+      spyLoad();
+      servePreview();
+      const { next } = tracks(mountRoot());
+      next.removeAttribute("data-duration");
+
+      await evaluateRuntime();
+      const atBind = loadsOf(next)[0];
+      window.__player?.play();
+      expect(loadsOf(next)).toEqual([atBind]);
+    });
+
     it("keeps an armed next clip through a window pass that finds it outside the look-ahead", async () => {
       spyLoad();
       servePreview();

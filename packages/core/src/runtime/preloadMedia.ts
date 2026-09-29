@@ -13,21 +13,20 @@ export function preloadMedia(media: PreloadableMedia): void {
   if (media.readyState < 3 && !videoAlreadyLoading) media.load();
 }
 
-/** Ends a fetch in flight, which preload none alone does not; the returned call puts the sources back. */
-export function stopMediaDownload(media: HTMLMediaElement): () => void {
-  const src = media.getAttribute("src");
-  const sources = Array.from(media.children).filter((child) => child.tagName === "SOURCE");
+/** Ends a fetch in flight for good, which preload none alone does not. */
+export function stopMediaDownload(media: HTMLMediaElement): void {
+  for (const source of media.querySelectorAll("source")) source.remove();
   media.removeAttribute("src");
-  for (const source of sources) source.remove();
   media.load();
-  return () => {
-    if (src !== null) media.setAttribute("src", src);
-    media.prepend(...sources);
-  };
 }
 
+/** Stops a clip's fetch and keeps its src. A clip on <source> children is left alone: putting them
+ * back restarts the download and reorders the markup a scene swap compares. */
 export function releaseMedia(media: HTMLMediaElement): void {
-  stopMediaDownload(media)();
+  if (media.querySelector("source")) return;
+  const src = media.getAttribute("src");
+  stopMediaDownload(media);
+  if (src !== null) media.setAttribute("src", src);
 }
 
 export function lengthIsAuthored(media: Element): boolean {
