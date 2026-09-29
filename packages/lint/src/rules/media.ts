@@ -1,5 +1,15 @@
 import type { LintContext, HyperframeLintFinding, OpenTag } from "../context";
-import { readAttr, readDecodedAttr, stripJsComments, truncateSnippet, isMediaTag } from "../utils";
+import {
+  readAttr,
+  readDecodedAttr,
+  stripJsComments,
+  truncateSnippet,
+  isMediaTag,
+  hasAttrName,
+  isAudibleVideoTag,
+  mediaTimeWindow,
+  mediaWindowsOverlap,
+} from "../utils";
 import { validateColorGradingContract } from "@hyperframes/parsers/color-grading-contract";
 import { extractMediaSrcMutations } from "@hyperframes/parsers/composition";
 import { parseHTML } from "linkedom";
@@ -35,12 +45,6 @@ function tweensVolumeInSameCall(script: string, id: string): boolean {
 
 function escapeRegExp(value: string): string {
   return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-}
-
-function hasAttrName(tagSource: string, attr: string): boolean {
-  const escaped = escapeRegExp(attr);
-  const attrs = tagSource.replace(/^<\s*[a-z][\w:-]*/i, "");
-  return new RegExp(`(?:^|\\s)${escaped}(?:\\s*=|\\s|/?>)`, "i").test(attrs);
 }
 
 const IMAGE_SRC_EXT = new Set([
@@ -513,7 +517,8 @@ export const mediaRules: Array<(ctx: LintContext) => HyperframeLintFinding[]> = 
       if (tag.name !== "video") continue;
       const hasMuted = hasAttrName(tag.raw, "muted");
       const hasDeclaredAudio = readAttr(tag.raw, "data-has-audio") === "true";
-      if (!hasMuted && !hasDeclaredAudio && readAttr(tag.raw, "data-start")) {
+      const declaresAudioState = hasAttrName(tag.raw, "data-has-audio");
+      if (!hasMuted && !declaresAudioState && readAttr(tag.raw, "data-start")) {
         const elementId = readAttr(tag.raw, "id") || undefined;
         findings.push({
           code: "video_missing_muted",
@@ -769,31 +774,34 @@ export const mediaRules: Array<(ctx: LintContext) => HyperframeLintFinding[]> = 
   // <audio> pointing to the same file, which causes double playback at runtime
   ({ tags }) => {
     const findings: HyperframeLintFinding[] = [];
-    const videoSources = new Map<string, { id?: string; raw: string }>();
-    const audioSources = new Map<string, { id?: string; raw: string }>();
+    type Source = { id?: string; raw: string };
+    const videos: Array<[string, Source]> = [];
+    const audios: Array<[string, Source]> = [];
 
     for (const tag of tags) {
       if (!readAttr(tag.raw, "data-start")) continue;
       const src = readAttr(tag.raw, "src");
       if (!src) continue;
-      const elementId = readAttr(tag.raw, "id") || undefined;
+      const source = { id: readAttr(tag.raw, "id") || undefined, raw: tag.raw };
       if (tag.name === "video") {
-        const isMuted = hasAttrName(tag.raw, "muted");
-        if (!isMuted) {
-          videoSources.set(src, { id: elementId, raw: tag.raw });
-        }
+        if (isAudibleVideoTag(tag.raw)) videos.push([src, source]);
       } else if (tag.name === "audio") {
-        audioSources.set(src, { id: elementId, raw: tag.raw });
+        audios.push([src, source]);
       }
     }
 
-    for (const [src, audioInfo] of audioSources) {
-      const videoInfo = videoSources.get(src);
-      if (!videoInfo) continue;
+    for (const [src, audioInfo] of audios) {
+      const match = videos.find(
+        ([videoSrc, video]) =>
+          videoSrc === src &&
+          mediaWindowsOverlap(mediaTimeWindow(video.raw), mediaTimeWindow(audioInfo.raw)),
+      );
+      if (!match) continue;
+      const videoInfo = match[1];
       findings.push({
         code: "video_audio_double_source",
         severity: "error",
-        message: `<audio${audioInfo.id ? ` id="${audioInfo.id}"` : ""}> and <video${videoInfo.id ? ` id="${videoInfo.id}"` : ""}> both point to the same source. The unmuted video already provides audio — the duplicate <audio> will cause double playback and echo.`,
+        message: `<audio${audioInfo.id ? ` id="${audioInfo.id}"` : ""}> and <video${videoInfo.id ? ` id="${videoInfo.id}"` : ""}> both point to the same source at the same time. The unmuted video already provides audio — the duplicate <audio> will cause double playback and echo.`,
         elementId: audioInfo.id,
         fixHint:
           "Remove the <audio> element and let the video carry its own sound (recommended), or mute the video (add `muted`) and keep the separate <audio> when picture and sound must be cut independently.",

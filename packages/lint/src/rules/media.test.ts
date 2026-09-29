@@ -325,6 +325,61 @@ describe("media rules", () => {
     expect(finding?.fixHint?.startsWith("Remove the <audio>")).toBe(true);
   });
 
+  const wrap = (body: string) => `
+<html><body>
+  <div id="root" data-composition-id="c1" data-width="1920" data-height="1080">
+    ${body}
+  </div>
+  <script>window.__timelines = window.__timelines || {}; window.__timelines["c1"] = gsap.timeline({ paused: true });</script>
+</body></html>`;
+  const codes = async (html: string) =>
+    (await lintHyperframeHtml(html)).findings.map((f) => f.code);
+
+  it.each(['data-has-audio="false"', 'data-has-audio=""', "data-has-audio"])(
+    "video_missing_muted stays quiet when the video declares its audio state (%s)",
+    async (attr) => {
+      const found = await codes(
+        wrap(`<video id="v" data-start="0" data-duration="5" ${attr} src="clip.mp4"></video>`),
+      );
+      expect(found).not.toContain("video_missing_muted");
+    },
+  );
+
+  it.each(['data-has-audio="false"', 'data-has-audio=""', "muted"])(
+    "video_audio_double_source ignores an explicitly silent video (%s)",
+    async (attr) => {
+      const found = await codes(
+        wrap(`<video id="v" data-start="0" data-duration="5" ${attr} src="clip.mp4"></video>
+    <audio id="a" data-start="0" data-duration="5" src="clip.mp4"></audio>`),
+      );
+      expect(found).not.toContain("video_audio_double_source");
+    },
+  );
+
+  it("video_audio_double_source ignores same-src clips that do not overlap in time", async () => {
+    const found = await codes(
+      wrap(`<video id="v" data-start="0" data-duration="4" data-has-audio="true" src="clip.mp4"></video>
+    <audio id="a" data-start="4" data-duration="4" src="clip.mp4"></audio>`),
+    );
+    expect(found).not.toContain("video_audio_double_source");
+  });
+
+  it("video_audio_double_source flags same-src clips that overlap in time", async () => {
+    const found = await codes(
+      wrap(`<video id="v" data-start="0" data-duration="4" data-has-audio="true" src="clip.mp4"></video>
+    <audio id="a" data-start="3" data-duration="4" src="clip.mp4"></audio>`),
+    );
+    expect(found).toContain("video_audio_double_source");
+  });
+
+  it("video_audio_double_source keeps flagging when a duration is not numeric", async () => {
+    const found = await codes(
+      wrap(`<video id="v" data-start="0" data-has-audio="true" src="clip.mp4"></video>
+    <audio id="a" data-start="9" data-duration="4" src="clip.mp4"></audio>`),
+    );
+    expect(found).toContain("video_audio_double_source");
+  });
+
   it("does NOT flag <video> as nested in a void element with data-start (regression)", async () => {
     // Regression: void elements like <img> have no closing tag, so the previous
     // implementation kept them on the parent stack indefinitely and flagged any
