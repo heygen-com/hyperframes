@@ -3177,6 +3177,102 @@ describe("initSandboxRuntimeModular", () => {
     expect(childTimeline.time()).toBeCloseTo(1, 1);
   });
 
+  const mountLateSfx = () => {
+    const raf = createManualRaf();
+    vi.spyOn(performance, "now").mockImplementation(() => raf.now());
+    window.requestAnimationFrame = raf.requestAnimationFrame as typeof window.requestAnimationFrame;
+    window.cancelAnimationFrame = raf.cancelAnimationFrame as typeof window.cancelAnimationFrame;
+    const root = document.createElement("div");
+    root.setAttribute("data-composition-id", "main");
+    root.setAttribute("data-root", "true");
+    root.setAttribute("data-start", "0");
+    root.setAttribute("data-duration", "4");
+    root.setAttribute("data-width", "1920");
+    root.setAttribute("data-height", "1080");
+    document.body.appendChild(root);
+    const sfx = document.createElement("audio");
+    sfx.setAttribute("data-start", "1");
+    sfx.setAttribute("data-duration", "1");
+    sfx.setAttribute("src", "/assets/click.mp3");
+    Object.defineProperty(sfx, "paused", { value: true, writable: true, configurable: true });
+    Object.defineProperty(sfx, "currentTime", { value: 0, writable: true, configurable: true });
+    Object.defineProperty(sfx, "readyState", { value: 4, configurable: true });
+    const startedAt: number[] = [];
+    sfx.play = vi.fn(() => {
+      startedAt.push(window.__player!.getTime());
+      Object.assign(sfx, { paused: false });
+      return Promise.resolve();
+    });
+    sfx.pause = vi.fn(() => Object.assign(sfx, { paused: true }));
+    root.appendChild(sfx);
+    window.__timelines = { main: createMockTimeline(4) };
+    initSandboxRuntimeModular();
+    return { raf, sfx, startedAt };
+  };
+
+  it("starts an audio clip on the tick before its time, not the tick after", () => {
+    const { raf, startedAt } = mountLateSfx();
+    window.__player?.play();
+    for (let frame = 0; frame < 75; frame++) raf.step(16);
+
+    expect(startedAt.length).toBeGreaterThan(0);
+    expect(startedAt[0]).toBeLessThan(1);
+    expect(startedAt[0]).toBeGreaterThanOrEqual(1 - 0.02);
+  });
+
+  const setRate = (playbackRate: number) =>
+    window.dispatchEvent(
+      new MessageEvent("message", {
+        source: window.parent,
+        data: { source: "hf-parent", type: "control", action: "set-playback-rate", playbackRate },
+      }),
+    );
+
+  it.each([1, 4])(
+    "stops a clip it started early when a seek jumps back before it, at %sx",
+    (rate) => {
+      const { raf, sfx, startedAt } = mountLateSfx();
+      setRate(rate);
+      window.__player?.play();
+      for (let frame = 0; frame < 120 && startedAt.length === 0; frame++) raf.step(13);
+      expect(startedAt[0]).toBeLessThan(1);
+
+      window.__player?.seek(0, { keepPlaying: true });
+      raf.step(16);
+
+      expect(sfx.pause).toHaveBeenCalled();
+    },
+  );
+
+  it("does not start a clip early on the tick a seek lands just before it", () => {
+    const { raf, startedAt } = mountLateSfx();
+    window.__player?.play();
+    raf.step(16);
+    window.__player?.seek(0.99, { keepPlaying: true }); // lands on the frame at 0.967
+
+    expect(startedAt).toEqual([]);
+    for (let frame = 0; frame < 10 && startedAt.length === 0; frame++) raf.step(16);
+    expect(startedAt[0]).toBeGreaterThanOrEqual(1 - 0.02);
+  });
+
+  it("starts a clip at most 40 ms of real time early at a slow speed", () => {
+    const { raf, startedAt } = mountLateSfx();
+    setRate(0.25);
+    window.__player?.play();
+    for (let frame = 0; frame < 60 && startedAt.length === 0; frame++) raf.step(76);
+
+    expect(startedAt[0]).toBeGreaterThanOrEqual(1 - 0.04 * 0.25);
+  });
+
+  it("starts a clip at most 40 ms of film time early at a fast speed", () => {
+    const { raf, startedAt } = mountLateSfx();
+    setRate(4);
+    window.__player?.play();
+    for (let frame = 0; frame < 30 && startedAt.length === 0; frame++) raf.step(18);
+
+    expect(startedAt[0]).toBeGreaterThanOrEqual(1 - 0.04);
+  });
+
   it.each([24, 30, 60, 30_000 / 1_001])(
     "preserves public playback state across keepPlaying seeks at %s fps",
     (fps) => {

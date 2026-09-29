@@ -1,3 +1,4 @@
+// @vitest-environment jsdom
 import { describe, it, expect, vi } from "vitest";
 import type { GsapAnimation } from "@hyperframes/parsers/gsap-parser";
 import { editableAnimationId } from "./motionPathSelection";
@@ -19,10 +20,13 @@ const anim = (over: Partial<GsapAnimation>): GsapAnimation =>
     ...over,
   }) as GsapAnimation;
 
+// The element the default `#el` tweens target.
+const elSel = { id: "el" } as never;
+
 describe("editableAnimationId", () => {
   it("picks the arc animation for an arc path", () => {
     const arc = anim({ id: "arc1", arcPath: { enabled: true, autoRotate: false, segments: [] } });
-    expect(editableAnimationId([anim({ id: "other" }), arc], "arc")).toBe("arc1");
+    expect(editableAnimationId([anim({ id: "other" }), arc], "arc", elSel)).toBe("arc1");
   });
 
   it("picks a position-keyframe animation for a linear path", () => {
@@ -34,7 +38,7 @@ describe("editableAnimationId", () => {
         keyframes: [{ percentage: 0, properties: { x: 0, y: 0 } }],
       } as never,
     });
-    expect(editableAnimationId([kf], "linear")).toBe("kf1");
+    expect(editableAnimationId([kf], "linear", elSel)).toBe("kf1");
   });
 
   it("returns null for dynamic (unresolved) tweens — read-only", () => {
@@ -43,7 +47,7 @@ describe("editableAnimationId", () => {
       arcPath: { enabled: true, autoRotate: false, segments: [] },
       hasUnresolvedKeyframes: true,
     });
-    expect(editableAnimationId([dyn], "arc")).toBeNull();
+    expect(editableAnimationId([dyn], "arc", elSel)).toBeNull();
   });
 
   it("returns null for non-literal (helper) provenance — read-only", () => {
@@ -52,11 +56,27 @@ describe("editableAnimationId", () => {
       arcPath: { enabled: true, autoRotate: false, segments: [] },
       provenance: { kind: "helper" } as never,
     });
-    expect(editableAnimationId([helper], "arc")).toBeNull();
+    expect(editableAnimationId([helper], "arc", elSel)).toBeNull();
+  });
+
+  it("leaves a tween that also moves the element's siblings read-only", () => {
+    document.body.innerHTML = `<span class="w" data-hf-id="w0">How</span><span class="w" data-hf-id="w1">we</span>`;
+    const word = document.querySelector<HTMLElement>('[data-hf-id="w0"]')!;
+    const stagger = anim({
+      id: "stagger",
+      targetSelector: ".w",
+      propertyGroup: "position",
+      keyframes: {
+        format: "percentage",
+        keyframes: [{ percentage: 0, properties: { x: 0, y: 0 } }],
+      } as never,
+    });
+    const wordSel = { selector: ".w", selectorIndex: 0, hfId: "w0", element: word } as never;
+    expect(editableAnimationId([stagger], "linear", wordSel)).toBeNull();
   });
 
   it("returns null when nothing matches", () => {
-    expect(editableAnimationId([anim({ id: "x" })], "linear")).toBeNull();
+    expect(editableAnimationId([anim({ id: "x" })], "linear", elSel)).toBeNull();
   });
 });
 

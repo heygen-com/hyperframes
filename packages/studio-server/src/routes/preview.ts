@@ -18,6 +18,7 @@ import { isProjectRootMissing, resolveWithinProject } from "../helpers/safePath.
 import { getMimeType } from "../helpers/mime.js";
 import { buildSubCompositionHtml, hasBaseElement } from "../helpers/subComposition.js";
 import {
+  createProjectSignature,
   resolveProjectAndSignature,
   resolveProjectSignature,
 } from "../helpers/projectSignature.js";
@@ -36,8 +37,11 @@ import { isVariablesPayload, VARIABLES_PAYLOAD_ERROR } from "../helpers/variable
 import { injectPreviewVariables } from "../helpers/previewVariables.js";
 import {
   resolveProxy,
+  waitForProxy,
   ProxyCapacityError,
   ProxyTranscodeError,
+  ProxyWaitTimeoutError,
+  PROXY_PENDING_RETRY_AFTER_SECONDS,
 } from "../helpers/proxyTranscoder.js";
 import {
   decideMediaProxyEligibility,
@@ -369,6 +373,7 @@ export function registerPreviewRoutes(api: Hono, adapter: PreviewApiAdapter): vo
     previewVariables: Record<string, unknown> | null,
     builtKey: string,
     capture: boolean,
+    signature: string,
   ): Promise<string | null> {
     const diskMain = resolveProjectMainHtml(project.dir, project.id);
     const normalizedDisk = diskMain ? ensureHfIds(diskMain.html) : null;
@@ -423,8 +428,10 @@ export function registerPreviewRoutes(api: Hono, adapter: PreviewApiAdapter): vo
         mediaCodecProbeCache,
       );
       bundled = addScenePartsManifest(bundled, [`meta[name="${PROJECT_SIGNATURE_META}"]`]);
-      rememberPreview(builtKey, bundled);
-      if (!capture) adapter.previewDocuments?.write(builtKey, bundled);
+      if (createProjectSignature(project.dir) === signature) {
+        rememberPreview(builtKey, bundled);
+        if (!capture) adapter.previewDocuments?.write(builtKey, bundled);
+      }
       return bundled;
     } catch {
       // Re-read disk on bundle failure so we serve the latest file content,
@@ -484,7 +491,7 @@ export function registerPreviewRoutes(api: Hono, adapter: PreviewApiAdapter): vo
     }
     let pending = previewBuilds.get(builtKey);
     if (!pending) {
-      pending = buildPreview(project, previewVariables, builtKey, capture).finally(() =>
+      pending = buildPreview(project, previewVariables, builtKey, capture, signature).finally(() =>
         previewBuilds.delete(builtKey),
       );
       previewBuilds.set(builtKey, pending);
@@ -628,13 +635,17 @@ export function registerPreviewRoutes(api: Hono, adapter: PreviewApiAdapter): vo
     let servedPath = file;
     let servedContentType = contentType;
     if (proxyVariant !== undefined) {
-      // Here, not at the eligibility gate above: one count per resolved proxy
-      // shares a unit with `prewarmsRequested`, and a revalidated repeat that
-      // 304s no longer counts as fresh demand.
-      recordProxyRequest();
       try {
-        servedPath = await resolveProxy(project.dir, file, proxyVariant);
+        // A cached copy settles before any timer; a transcode never holds one of
+        // the browser's few connections to this host. 202 until the copy lands.
+        servedPath = await waitForProxy(resolveProxy(project.dir, file, proxyVariant), 0);
       } catch (err) {
+        if (err instanceof ProxyWaitTimeoutError) {
+          return c.text("media proxy is being made", 202, {
+            "Retry-After": String(PROXY_PENDING_RETRY_AFTER_SECONDS),
+            "Cache-Control": "no-store",
+          });
+        }
         if (err instanceof ProxyCapacityError) {
           return c.text(err.message, 503, { "Retry-After": "5" });
         }
@@ -642,6 +653,9 @@ export function registerPreviewRoutes(api: Hono, adapter: PreviewApiAdapter): vo
         const message = err instanceof ProxyTranscodeError ? err.message : "proxy transcode failed";
         return c.text(message, 502);
       }
+      // After the wait, not at the eligibility gate: one count per served proxy shares
+      // a unit with `prewarmsRequested`; a 304, a 202 or a failure serves none.
+      recordProxyRequest();
       servedContentType = PROXY_VARIANT_CONFIG[proxyVariant].contentType;
     }
 

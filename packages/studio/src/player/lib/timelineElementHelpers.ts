@@ -13,7 +13,11 @@ import { isFinitePositive } from "./playbackAdapter";
 import { getSourceScopedSelectorIndex } from "../../utils/sourceScopedSelectorIndex";
 import { HF_AUDIO_GROUP_TAG } from "@hyperframes/core/audio-groups";
 import { readElementFades } from "@hyperframes/core/audio-fade";
-import { type AttrReader, readMediaOffsetSeconds } from "@hyperframes/parsers/media-duration";
+import {
+  type AttrReader,
+  clampPlaybackRate,
+  readMediaOffsetSeconds,
+} from "@hyperframes/parsers/media-duration";
 
 // ---------------------------------------------------------------------------
 // Layer-reveal lift transparency
@@ -77,10 +81,6 @@ function readDurationAttribute(el: Element | null | undefined): number {
     Number.parseFloat(el.getAttribute("data-duration") ?? "") ||
     Number.parseFloat(el.getAttribute("data-hf-authored-duration") ?? "");
   return isFinitePositive(duration) ? duration : 0;
-}
-
-function normalizePlaybackRate(raw: number): number {
-  return Number.isFinite(raw) && raw > 0 ? Math.max(0.1, Math.min(5, raw)) : 1;
 }
 
 export function isTimelineIgnoredElement(el: Element): boolean {
@@ -199,7 +199,7 @@ function applyPlaybackMetadataFromElement(entry: TimelineElement, el: Element): 
 
   const authoredPlaybackRate = Number.parseFloat(el.getAttribute("data-playback-rate") ?? "");
   if (Number.isFinite(authoredPlaybackRate) && authoredPlaybackRate > 0) {
-    entry.playbackRate = normalizePlaybackRate(authoredPlaybackRate);
+    entry.playbackRate = clampPlaybackRate(authoredPlaybackRate);
   }
 }
 
@@ -262,7 +262,7 @@ export function applyMediaMetadataFromElement(entry: TimelineElement, el: Elemen
 
   const playbackRate = mediaEl.defaultPlaybackRate;
   if (entry.playbackRate == null && Number.isFinite(playbackRate) && playbackRate > 0) {
-    entry.playbackRate = normalizePlaybackRate(playbackRate);
+    entry.playbackRate = clampPlaybackRate(playbackRate);
   }
 }
 

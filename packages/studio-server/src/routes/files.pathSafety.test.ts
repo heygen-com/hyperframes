@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, it, vi, type TestContext } from "vitest";
 import { Hono } from "hono";
 import {
+  chmodSync,
   existsSync,
   mkdirSync,
   mkdtempSync,
@@ -15,6 +16,7 @@ import { join, relative } from "node:path";
 import { registerFileRoutes } from "./files";
 import { createStudioApi } from "../createStudioApi";
 import { fileContentVersion } from "../helpers/fileVersion";
+import { ProjectRootMissingError } from "@hyperframes/core";
 import { mkdirWithinProject } from "../helpers/safePath";
 import type { StudioApiAdapter } from "../types";
 
@@ -308,6 +310,123 @@ describe("resolveProjectPath why", () => {
     await expectProjectGone(await upload(createStudioApi(adapter)), project);
   });
 
+  describe.each([
+    ["a host that keeps resolving the project", (adapter: StudioApiAdapter) => adapter],
+    [
+      "a host that stops resolving a vanished project",
+      (adapter: StudioApiAdapter): StudioApiAdapter => ({
+        ...adapter,
+        resolveProject: async (id) => {
+          const project = await adapter.resolveProject(id);
+          return project && existsSync(project.dir) ? project : null;
+        },
+      }),
+    ],
+  ])("on %s", (_, host) => {
+    function vanishWhileReading(
+      read: "arrayBuffer" | "text",
+      method: string,
+      route: string,
+      body: string,
+    ) {
+      const { project, adapter } = fixture();
+      const readBody = Request.prototype[read];
+      vi.spyOn(Request.prototype, read).mockImplementation(function (this: Request) {
+        renameSync(project, `${project}-renamed`);
+        return readBody.call(this);
+      });
+      const response = createStudioApi(host(adapter)).request(
+        `http://localhost/projects/demo/${route}`,
+        {
+          method,
+          headers: { "Content-Type": "application/json", "If-Match": fileContentVersion("inside") },
+          body,
+        },
+      );
+      return { project, response };
+    }
+
+    it.each([
+      ["a save", "arrayBuffer", "PUT", "files/inside.txt", "new"],
+      ["a rename", "text", "PATCH", "files/inside.txt", JSON.stringify({ newPath: "moved.txt" })],
+      ["a duplicate", "text", "POST", "duplicate-file", JSON.stringify({ path: "inside.txt" })],
+      [
+        "a render that names a composition",
+        "text",
+        "POST",
+        "render",
+        JSON.stringify({ composition: "index.html" }),
+      ],
+    ] as const)(
+      "answers that the project folder is gone when it vanishes while %s reads its body",
+      async (_, read, method, route, body) => {
+        const { project, response } = vanishWhileReading(read, method, route, body);
+        await expectProjectGone(await response, project);
+      },
+    );
+
+    it("keeps a malformed request's 400 when the folder vanishes", async () => {
+      const { response } = vanishWhileReading("text", "PATCH", "files/inside.txt", "{}");
+      expect((await response).status).toBe(400);
+    });
+
+    it("keeps a save conflict's 409 while the folder is there", async () => {
+      const { adapter } = fixture();
+      const response = await createStudioApi(host(adapter)).request(fileUrl("inside.txt"), {
+        method: "PUT",
+        headers: { "If-Match": fileContentVersion("stale") },
+        body: "new",
+      });
+      expect(response.status).toBe(409);
+    });
+  });
+
+  it.skipIf(process.platform === "win32" || process.getuid?.() === 0)(
+    "keeps a route's error when the project folder is there but cannot be looked at",
+    async () => {
+      const { project, adapter } = fixture();
+      const api = createStudioApi(adapter);
+      api.get("/projects/:id/broken", () => {
+        throw new Error("read failed");
+      });
+      chmodSync(join(project, ".."), 0o000);
+      try {
+        expect((await api.request("http://localhost/projects/demo/broken")).status).toBe(500);
+      } finally {
+        chmodSync(join(project, ".."), 0o700);
+      }
+    },
+  );
+
+  it.each([
+    ["an error after the folder vanished", () => new Error("read failed"), true],
+    ["the missing-folder error", () => new ProjectRootMissingError("gone"), false],
+  ])(
+    "keeps the host's headers but not the route's on the 404 when a route throws %s",
+    async (_, error, removeFolder) => {
+      const { project, adapter } = fixture();
+      const api = createStudioApi(adapter);
+      api.get("/projects/:id/cached", (c) => {
+        c.header("ETag", '"thumb"');
+        throw error();
+      });
+      const host = new Hono();
+      host.use(async (c, next) => {
+        c.header("Access-Control-Allow-Origin", "*");
+        await next();
+      });
+      host.route("/api", api);
+      if (removeFolder) rmSync(project, { recursive: true, force: true });
+
+      const response = await host.request("http://localhost/api/projects/demo/cached");
+
+      expect(response.status).toBe(404);
+      expect(await response.json()).toMatchObject({ why: "project_dir_missing" });
+      expect(response.headers.get("ETag")).toBeNull();
+      expect(response.headers.get("Access-Control-Allow-Origin")).toBe("*");
+    },
+  );
+
   it("does not start a render into an outside folder once the project folder is gone", async () => {
     const { project, adapter } = fixture();
     const startRender = vi.fn(adapter.startRender);
@@ -322,6 +441,30 @@ describe("resolveProjectPath why", () => {
     await expectProjectGone(response, project);
     expect(startRender).not.toHaveBeenCalled();
     expect(existsSync(adapter.rendersDir({ id: "demo", dir: project }))).toBe(false);
+  });
+
+  it("refuses a render composition that leaves a symlinked project folder through ..", async (context) => {
+    const { project, adapter } = fixture();
+    const root = join(project, "..");
+    mkdirSync(join(root, "data"));
+    renameSync(project, join(root, "data", "project"));
+    mkdirSync(join(root, "home", "project"), { recursive: true });
+    writeFileSync(join(root, "home", "project", "secret.html"), "<html></html>");
+    linkOrSkip(context, join(root, "data", "project"), join(root, "home", "link"), "dir");
+    const startRender = vi.fn(adapter.startRender);
+    const api = createStudioApi({
+      ...adapter,
+      resolveProject: async (id) => ({ id, dir: join(root, "home", "link") }),
+      startRender,
+    });
+
+    const response = await api.request("http://localhost/projects/demo/render", {
+      method: "POST",
+      body: JSON.stringify({ composition: "../project/secret.html" }),
+    });
+
+    expect(response.status).toBe(400);
+    expect(startRender).not.toHaveBeenCalled();
   });
 
   it("reports a missing project directory as 404, not 403", async () => {

@@ -27,6 +27,7 @@ import { replaceFileAtomically } from "../helpers/atomicFile.js";
 import { generateWaveformCache } from "../helpers/waveform.js";
 import { validateUploadedMediaBuffer } from "../helpers/mediaValidation.js";
 import {
+  folderGone,
   isSafePath,
   mkdirWithinProject,
   pinWithinProject,
@@ -197,7 +198,7 @@ async function resolveProjectPath(
   // `realpathSync(base)` throws when the base itself is gone) and reported as
   // `403 forbidden` — indistinguishable from a real path-traversal attempt.
   // Checked here, once, so every route built on this shares the fix.
-  if (!existsSync(project.dir)) {
+  if (folderGone(project.dir)) {
     return { error: projectDirMissing(c) } as const;
   }
 
@@ -2341,6 +2342,9 @@ async function processUploadedFiles(
 
 // ── Route registration ──────────────────────────────────────────────────────
 
+const MAX_TEXT_READ_BYTES = 32 * 1024 * 1024;
+const GIT_BINARY_SNIFF_BYTES = 8000;
+
 export function registerFileRoutes(api: Hono, adapter: StudioApiAdapter): void {
   // ── Read ──
 
@@ -2375,13 +2379,20 @@ export function registerFileRoutes(api: Hono, adapter: StudioApiAdapter): void {
       // Hono answers as a plain-text 500. The caller already handles a 404
       // with `why`; this reports the same shape instead of an opaque server
       // error for something that is not one.
-      if (!fstatSync(fd).isFile()) {
+      const stat = fstatSync(fd);
+      if (!stat.isFile()) {
         return c.json({ error: "not found", why: "not_a_file" }, 404);
+      }
+      if (stat.size > MAX_TEXT_READ_BYTES) {
+        return c.json({ error: "too large to read as text", why: "too_large" }, 413);
       }
 
       const content = readFileSync(fd);
       const version = fileContentVersion(content);
       c.header("ETag", version);
+      if (content.subarray(0, GIT_BINARY_SNIFF_BYTES).includes(0)) {
+        return c.json({ error: "not a text file", why: "binary", version }, 415);
+      }
       // `missing: false` on the read path too, so its PRESENCE is what tells a
       // caller this server distinguishes the two empty answers at all. Without
       // it here, a real 0-byte file from a new server looks exactly like either
@@ -3252,7 +3263,7 @@ export function registerFileRoutes(api: Hono, adapter: StudioApiAdapter): void {
     async (c) => {
       const project = await adapter.resolveProject(c.req.param("id"));
       if (!project) return c.json({ error: "not found" }, 404);
-      if (!existsSync(project.dir)) return projectDirMissing(c);
+      if (folderGone(project.dir)) return projectDirMissing(c);
 
       // Optional subdirectory within the project (e.g. "assets/audio")
       const subDir = c.req.query("dir") ?? "";
@@ -3262,7 +3273,7 @@ export function registerFileRoutes(api: Hono, adapter: StudioApiAdapter): void {
       const formData = await c.req.formData();
       mkdirWithinProject(project.dir, targetDir);
       const result = await processUploadedFiles(formData, targetDir, project.dir);
-      if (!existsSync(project.dir)) return projectDirMissing(c);
+      if (folderGone(project.dir)) return projectDirMissing(c);
 
       return c.json(
         {

@@ -104,7 +104,7 @@ export function useTimelinePlayhead({
 
   useEffect(() => {
     syncPlayheadPosition(currentTime);
-  }, [currentTime, pps, syncPlayheadPosition]);
+  }, [currentTime, pps, syncPlayheadPosition, timelineReady, elementsLength]);
 
   useLayoutEffect(() => {
     const scroll = scrollRef.current;

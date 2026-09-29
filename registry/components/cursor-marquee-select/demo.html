@@ -1,0 +1,64 @@
+<!doctype html>
+<!--
+  Marquee Select Cursor, standalone demo: mounts cursor-marquee-select.html full-frame over a
+  flat backdrop. The photo grid and every reaction live inside the component.
+-->
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=1920, height=1080" />
+    <title>Marquee Select Cursor, Demo</title>
+    <script src="https://cdn.jsdelivr.net/npm/gsap@3.14.2/dist/gsap.min.js"></script>
+    <style>
+      *,
+      *::before,
+      *::after {
+        box-sizing: border-box;
+      }
+      html,
+      body {
+        margin: 0;
+        width: 100%;
+        height: 100%;
+        overflow: hidden;
+      }
+      #root {
+        position: relative;
+        width: 1920px;
+        height: 1080px;
+        overflow: hidden;
+        background: #111318;
+      }
+    </style>
+  </head>
+  <body>
+    <div
+      id="root"
+      data-composition-id="cursor-marquee-select-demo"
+      data-start="0"
+      data-width="1920"
+      data-height="1080"
+      data-duration="3.4"
+    >
+      <div
+        class="clip"
+        id="cursor-marquee-select"
+        data-composition-id="cursor-marquee-select"
+        data-composition-src="./cursor-marquee-select.html"
+        data-variable-values='{"accent":"#0a84ff","pill_label":"selected"}'
+        data-start="0"
+        data-duration="3.4"
+        data-track-index="1"
+        data-width="1920"
+        data-height="1080"
+        style="position: absolute; inset: 0; width: 1920px; height: 1080px"
+      ></div>
+    </div>
+
+    <script>
+      window.__timelines = window.__timelines || {};
+      var tl = gsap.timeline({ paused: true });
+      window.__timelines["cursor-marquee-select-demo"] = tl;
+    </script>
+  </body>
+</html>

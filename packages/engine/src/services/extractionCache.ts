@@ -336,7 +336,7 @@ function isPartialChild(name: string): boolean {
   return name.includes(".partial-");
 }
 
-function directorySizeBytes(path: string): number {
+export function directorySizeBytes(path: string): number {
   try {
     const stat = lstatSync(path);
     if (!stat.isDirectory()) return stat.size;
@@ -394,11 +394,12 @@ function collectGcEntry(
   now: number,
   minAgeMs: number,
   stats: GcStats,
+  remove: (dir: string) => void,
 ): GcEntry | null {
   try {
     const dirStat = statSync(dir);
     if (isPartialChild(name) && now - dirStat.mtimeMs >= minAgeMs) {
-      removeDir(dir);
+      remove(dir);
       stats.agedPartialsRemoved += 1;
       return null;
     }
@@ -445,16 +446,21 @@ export function gcSweepDue(rootDir: string, maxAgeMs: number): boolean {
   }
 }
 
-export function gcExtractionCache(
-  rootDir: string,
-  opts: { maxBytes: number; minAgeMs: number },
-): GcStats {
-  const stats: GcStats = { evictedEntries: 0, evictedBytes: 0, agedPartialsRemoved: 0 };
+function markGcSweep(rootDir: string): void {
   try {
     writeFileSync(join(rootDir, GC_MARKER), "", "utf-8");
   } catch {
     // Unwritable root: the sweep below will no-op on the same root anyway.
   }
+}
+
+export function gcExtractionCache(
+  rootDir: string,
+  opts: { maxBytes: number; minAgeMs: number; dryRun?: boolean },
+): GcStats {
+  const stats: GcStats = { evictedEntries: 0, evictedBytes: 0, agedPartialsRemoved: 0 };
+  const remove = opts.dryRun ? () => {} : removeDir;
+  if (!opts.dryRun) markGcSweep(rootDir);
   try {
     const now = Date.now();
     const entries: GcEntry[] = [];
@@ -466,6 +472,7 @@ export function gcExtractionCache(
         now,
         opts.minAgeMs,
         stats,
+        remove,
       );
       if (entry) entries.push(entry);
     }
@@ -477,7 +484,7 @@ export function gcExtractionCache(
     for (const entry of entries) {
       // ponytail: age-based liveness guard, not a lock; a render longer than minAge with a full cache could lose entries mid-read - acceptable, next render re-extracts.
       if (entry.ageMs < opts.minAgeMs) continue;
-      removeDir(entry.dir);
+      remove(entry.dir);
       stats.evictedEntries += 1;
       stats.evictedBytes += entry.size;
       totalBytes -= entry.size;

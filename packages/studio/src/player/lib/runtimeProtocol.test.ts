@@ -20,6 +20,7 @@ describe("Studio runtime protocol", () => {
         "seek-keep-playing",
         "composition-manifest-v1",
         "runtime-data",
+        "play-range",
       ],
       fps: { numerator: 60, denominator: 1 },
       timeSeconds: 1.25,

@@ -1,3 +1,4 @@
+import { setHostHandlesSigint } from "@hyperframes/engine";
 import {
   processAncestorSnapshot,
   processIdentity,
@@ -115,6 +116,7 @@ export function createRenderCancellationScope(
 
   const detached = options.detached ?? process.env.HYPERFRAMES_RENDER_DETACHED === "1";
   const signalHandlers = installSignalHandlers(detached, signalTarget, abort);
+  setHostHandlesSigint(true);
   const lookupIdentity = options.identity ?? processIdentity;
   const isAlive = options.isAlive ?? processIsAlive;
   const platform = options.platform ?? process.platform;
@@ -155,6 +157,7 @@ export function createRenderCancellationScope(
       disposed = true;
       if (watchdogTimer !== undefined) clearInterval(watchdogTimer);
       for (const [signal, handler] of signalHandlers) signalTarget.off(signal, handler);
+      setHostHandlesSigint(false);
     },
   };
 }

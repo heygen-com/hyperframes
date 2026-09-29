@@ -1,5 +1,5 @@
 // fallow-ignore-file code-duplication
-import { useCallback, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import type { DomEditSelection } from "./domEditing";
 import { collectDomEditLayerItems, resolveDomEditSelection } from "./domEditingLayers";
 import { isElementComputedVisible } from "./domEditingElement";
@@ -208,6 +208,18 @@ export function useMarqueeGestures<T>(deps: MarqueeGesturesDeps<T>): MarqueeGest
     releaseCapture(marqueeRef.current);
     reset();
   }, [reset]);
+
+  useEffect(() => {
+    const cancelBandBeforeHostEscape = (e: KeyboardEvent) => {
+      if (e.key !== "Escape" || !marqueeRef.current) return;
+      e.preventDefault();
+      e.stopPropagation();
+      cancel();
+    };
+    window.addEventListener("keydown", cancelBandBeforeHostEscape, { capture: true });
+    return () =>
+      window.removeEventListener("keydown", cancelBandBeforeHostEscape, { capture: true });
+  }, [cancel]);
 
   const onPointerMove = useCallback(
     (event: React.PointerEvent<HTMLDivElement>) => {

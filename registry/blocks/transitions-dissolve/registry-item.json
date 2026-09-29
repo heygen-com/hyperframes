@@ -4,7 +4,7 @@
   "type": "hyperframes:block",
   "title": "Dissolve Transitions",
   "description": "Showcase of dissolve and fade transitions",
-  "tags": ["transition", "showcase"],
+  "tags": ["transition", "showcase", "crossfade"],
   "dimensions": {
     "width": 1920,
     "height": 1080

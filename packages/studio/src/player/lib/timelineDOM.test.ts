@@ -9,7 +9,11 @@ import {
 import { isTimelineIgnoredElement } from "./timelineElementHelpers";
 import { computeResizePreview } from "../components/timelineClipDragPreview";
 import type { TimelineElement } from "../store/playerStore";
-import { readMediaOffsetSeconds } from "@hyperframes/parsers/media-duration";
+import {
+  MAX_PLAYBACK_RATE,
+  MIN_PLAYBACK_RATE,
+  readMediaOffsetSeconds,
+} from "@hyperframes/parsers/media-duration";
 
 function el(id: string, extra: Partial<TimelineElement> = {}): TimelineElement {
   return { id, tag: "img", start: 0, duration: 5, track: 0, ...extra };
@@ -269,19 +273,49 @@ describe("group info cache", () => {
 
 describe("parseTimelineFromDOM — canonical playback rate", () => {
   it.each([
-    ["10", 5],
-    ["0.01", 0.1],
-  ])("clamps authored rate %s to %s for trim and split math", (authored, expected) => {
-    const doc = makeDoc(`
+    ["8", 8],
+    ["10", MAX_PLAYBACK_RATE],
+    ["50", MAX_PLAYBACK_RATE],
+    ["0.01", MIN_PLAYBACK_RATE],
+  ])(
+    "clamps authored rate %s to %s, as playback does, for trim and split math",
+    (authored, expected) => {
+      const doc = makeDoc(`
       <div data-composition-id="root">
         <div id="nested" class="clip" data-composition-src="scene.html"
           data-start="0" data-duration="5" data-playback-rate="${authored}"></div>
       </div>
     `);
 
-    const nested = parseTimelineFromDOM(doc, 10).find((entry) => entry.domId === "nested");
+      const nested = parseTimelineFromDOM(doc, 10).find((entry) => entry.domId === "nested");
 
-    expect(nested?.playbackRate).toBe(expected);
+      expect(nested?.playbackRate).toBe(expected);
+    },
+  );
+});
+
+describe("parseTimelineFromDOM — head trim at an authored speed above 5x", () => {
+  it("moves the in-point by the speed playback uses", () => {
+    const doc = makeDoc(`
+      <div data-composition-id="root">
+        <video id="v" class="clip" data-start="2" data-duration="4" data-media-start="1"
+          data-playback-rate="8"></video>
+      </div>
+    `);
+    const element = parseTimelineFromDOM(doc, 10).find((e) => e.domId === "v")!;
+    const preview = computeResizePreview(
+      {
+        element,
+        edge: "start",
+        originClientX: 0,
+        previewStart: 2,
+        previewDuration: 4,
+        started: true,
+      },
+      100,
+      { scroll: null, pps: 100, buildSnapTargets: () => [] },
+    );
+    expect([preview.previewStart, preview.previewPlaybackStart]).toEqual([3, 9]);
   });
 });
 

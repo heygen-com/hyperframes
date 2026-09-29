@@ -29,6 +29,7 @@ export interface TimelineLaneBaseProps {
   contentGutter: number;
   trackContentWidth: number;
   theme: TimelineTheme;
+  showAudioEffects?: boolean;
   displayTrackOrder: number[];
   rowHeights: readonly number[];
   rowGeometry: TimelineRowGeometry;

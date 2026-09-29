@@ -2,7 +2,7 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import { mkdtempSync, rmSync, statSync, utimesSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 import { type Page } from "puppeteer-core";
 import { COMPLETE_SENTINEL } from "./extractionCache.js";
 
@@ -25,7 +25,7 @@ vi.mock("./screenshotService.js", () => ({
 }));
 
 import { __testing, createVideoFrameInjector } from "./videoFrameInjector.js";
-import { type FrameLookupTable } from "./videoFrameExtractor.js";
+import { type ExtractedFrames, FrameLookupTable } from "./videoFrameExtractor.js";
 import { type BeforeCaptureHook } from "./frameCapture.js";
 import { DEFAULT_CONFIG } from "../config.js";
 
@@ -178,6 +178,7 @@ describe("createVideoFrameInjector cache hygiene against page-side skips", () =>
   // table is exercised exhaustively in videoFrameExtractor.test.ts.
   function fakeTable(payload: { videoId: string; framePath: string; frameIndex: number }) {
     return {
+      frameDirs: () => [],
       getActiveFramePayloads: () =>
         new Map([
           [payload.videoId, { framePath: payload.framePath, frameIndex: payload.frameIndex }],
@@ -338,6 +339,7 @@ describe("createVideoFrameInjector extraction-cache lease renewal", () => {
 
   function makeHook(framePath: string): BeforeCaptureHook {
     const table = {
+      frameDirs: () => [dirname(framePath)],
       getActiveFramePayloads: () => new Map([["v", { framePath, frameIndex: 0 }]]),
     } as unknown as FrameLookupTable;
     const hook = createVideoFrameInjector(table, { frameSrcResolver: inlineResolver });
@@ -374,6 +376,18 @@ describe("createVideoFrameInjector extraction-cache lease renewal", () => {
     const hook = makeHook(join(cacheDir, "frame_00001.jpg"));
 
     await hook(fakePage, 0);
+
+    expect(sentinelMtimeMs()).toBeGreaterThan(before);
+  });
+
+  it("renews the entry of a clip that is not on screen yet", async () => {
+    const table = new FrameLookupTable();
+    const lateClip = { videoId: "late", outputDir: cacheDir, framePaths: new Map() };
+    table.addVideo(lateClip as unknown as ExtractedFrames, 3600, 3660, 0);
+    const hook = createVideoFrameInjector(table, { frameSrcResolver: inlineResolver });
+    const before = sentinelMtimeMs();
+
+    await hook?.(fakePage, 0);
 
     expect(sentinelMtimeMs()).toBeGreaterThan(before);
   });

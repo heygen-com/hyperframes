@@ -30,14 +30,16 @@ import {
 import { sourceTimeAt } from "../speedRamp";
 import { createWaapiAdapter } from "./adapters/waapi";
 import {
+  MEDIA_SYNC_TOLERANCE_SECONDS,
+  isUnplayable,
   readElementPlaybackRate,
-  readElementRateSpec,
   readElementPlaybackStart,
+  readElementRateSpec,
   refreshRuntimeMediaCache,
-  resolveRuntimeMediaClipDuration,
   resolveNaturalMediaTimelineDuration,
-  type RuntimeMediaClip,
+  resolveRuntimeMediaClipDuration,
   syncRuntimeMedia,
+  type RuntimeMediaClip,
 } from "./media";
 import { handleErrorForProxy, handleMetadataForProxy, maybeProxyProactively } from "./mediaProxy";
 import { probeAndCacheElementVolume, type VolumeKeyframe } from "./mediaVolumeEnvelope.js";
@@ -2842,8 +2844,8 @@ export function initSandboxRuntimeModular(): void {
    * The media elements this pass must visit, and the argument that the rest can
    * be skipped.
    *
-   * `isActive` requires `isInClipWindow`, so a clip whose window excludes the
-   * new time is inactive there no matter what its element state is. A clip that
+   * `isActive` requires `isInClipWindow` (or, for audio, a start within the early-start
+   * margin), so a clip outside that is inactive there whatever its element state. A clip that
    * is in neither the previous in-window set nor the set of windows whose
    * endpoint the transport just crossed was therefore out of window BEFORE and
    * is out of window NOW — the pass would only have evicted sync state that is
@@ -2857,6 +2859,7 @@ export function initSandboxRuntimeModular(): void {
   const collectMediaElementsToVisit = (
     index: MediaClipIndex,
     toSeconds: number,
+    cueAheadSeconds: number,
   ): Array<HTMLVideoElement | HTMLAudioElement> => {
     const fromSeconds = lastSyncedMediaTimeSeconds;
     if (fromSeconds === null) return index.clips.map((clip) => clip.el);
@@ -2866,7 +2869,12 @@ export function initSandboxRuntimeModular(): void {
     const hi = Math.max(fromSeconds, toSeconds) + sameInstantMargin;
     const visiting = new Set<HTMLVideoElement | HTMLAudioElement>();
     for (const clip of mediaClipsInWindow) visiting.add(clip.el);
-    for (const clip of clipsWithEndpointBetween(index.byStart, (c) => c.start, lo, hi)) {
+    for (const clip of clipsWithEndpointBetween(
+      index.byStart,
+      (c) => c.start,
+      lo,
+      hi + cueAheadSeconds,
+    )) {
       visiting.add(clip.el);
     }
     for (const clip of clipsWithEndpointBetween(index.byEnd, (c) => c.end, lo, hi)) {
@@ -2970,6 +2978,13 @@ export function initSandboxRuntimeModular(): void {
     // stale one cannot be recovered, so it visits all of them exactly as before.
     // Same reasoning, and the same latch, as the duration floors above.
     const indexed = !renderCaptureSeekStarted;
+    const cueAheadSeconds =
+      state.isPlaying && !state.mediaForceSyncNextTick && lastSyncedMediaTimeSeconds !== null
+        ? Math.min(
+            Math.max(0, state.currentTime - lastSyncedMediaTimeSeconds),
+            MEDIA_SYNC_TOLERANCE_SECONDS * Math.min(1, state.playbackRate),
+          )
+        : 0;
     const mediaClips = withTimingResolver(() => {
       if (!indexed) return buildRuntimeMediaCache().mediaClips;
       const index = resolveMediaClipIndex();
@@ -2977,8 +2992,9 @@ export function initSandboxRuntimeModular(): void {
       // is re-read here: `el.duration` is reset by any `el.load()` the retry path
       // made last pass, and a cached copy of it would be exactly the stale
       // duration the two-scope rule exists to prevent.
-      return buildRuntimeMediaCache(collectMediaElementsToVisit(index, state.currentTime))
-        .mediaClips;
+      return buildRuntimeMediaCache(
+        collectMediaElementsToVisit(index, state.currentTime, cueAheadSeconds),
+      ).mediaClips;
     });
     // Attach probed volume keyframes to clips so syncRuntimeMedia can use the
     // same envelope the renderer uses instead of tracking GSAP-change diffs.
@@ -3007,6 +3023,7 @@ export function initSandboxRuntimeModular(): void {
         userMuted: state.bridgeMuted,
         userVolume: state.bridgeVolume,
         forceSync,
+        cueAheadSeconds,
         getCompositionDuration: () =>
           getSafeTimelineDurationSeconds(state.capturedTimeline, 0, timingRevision),
         onElementVolume: (el, _effectiveVolume, authorVolume) =>
@@ -3024,7 +3041,7 @@ export function initSandboxRuntimeModular(): void {
         // Every clip not visited was out of window at both ends of this seek, so
         // the visited ones are the only possible members.
         mediaClipsInWindow = mediaClips.filter((clip) =>
-          isInClipWindow(state.currentTime, clip.start, clip.end),
+          isInClipWindow(state.currentTime, clip.start - MEDIA_SYNC_TOLERANCE_SECONDS, clip.end),
         );
       } else {
         lastSyncedMediaTimeSeconds = null;
@@ -3693,9 +3710,10 @@ export function initSandboxRuntimeModular(): void {
       if (dur > 0) {
         clock.setDuration(dur);
         if (clock.reachedEnd()) {
-          clock.seek(0);
-          state.currentTime = 0;
-          seekTimelineAndAdapters(0);
+          const start = clock.getPlayStart();
+          clock.seek(start);
+          state.currentTime = start;
+          seekTimelineAndAdapters(start);
         }
       } else {
         const rootEl = resolveRootCompositionElement();
@@ -4511,10 +4529,12 @@ export function initSandboxRuntimeModular(): void {
           }
         } else {
           const audioEls = document.querySelectorAll("audio[data-start]");
+          const followed = clock.audioElement();
           let foundActive = false;
-          for (const rawEl of audioEls) {
+          for (const rawEl of followed ? [followed, ...audioEls] : audioEls) {
             if (!isMediaElement(rawEl) || !rawEl.isConnected) continue;
-            if (isSilencedByHidden(rawEl)) continue;
+            if (isSilencedByHidden(rawEl) || isUnplayable(rawEl)) continue;
+            if (!rawEl.hasAttribute("src") && !rawEl.querySelector("source[src]")) continue;
             const start = resolveAbsoluteMediaStartSeconds(rawEl);
             const durAttr = parseStrictFiniteTimingNumber(rawEl.dataset.duration);
             const end = durAttr != null && durAttr > 0 ? start + durAttr : Infinity;
@@ -4528,7 +4548,7 @@ export function initSandboxRuntimeModular(): void {
                   rate: readElementRateSpec(rawEl),
                 });
                 foundActive = true;
-              } else if (!rawEl.error && rawEl.readyState < HTMLMediaElement.HAVE_FUTURE_DATA) {
+              } else if (rawEl.readyState < HTMLMediaElement.HAVE_FUTURE_DATA) {
                 // Audio is buffering — freeze visuals at last known position
                 // instead of falling through to monotonic (which runs ahead).
                 clock.attachAudioSource({ currentTimeSeconds: state.currentTime });
@@ -4575,21 +4595,19 @@ export function initSandboxRuntimeModular(): void {
         colorGrading.redrawAnimated();
       }
 
-      // Looping is handled at the player layer (<hyperframes-player>),
-      // not the runtime. The clock pauses at duration; GSAP's repeat:-1
-      // is bypassed because we drive tl.totalTime(t) directly. The
-      // parent observes isPlaying=false at end and re-issues seek(0)+play()
-      // if its loop attribute is set.
+      // The clock stops at its end (GSAP's repeat:-1 is bypassed: we drive
+      // tl.totalTime(t) directly); the parent loops by seeking to its range
+      // start, or 0, and playing again.
       if (clock.isPlaying() && clock.reachedEnd()) {
         webAudio.stopAll();
         clock.detachAudioSource();
         clock.pause();
         state.isPlaying = false;
-        const dur = clock.getDuration();
-        if (Number.isFinite(dur)) {
-          clock.seek(dur);
-          state.currentTime = dur;
-          seekTimelineAndAdapters(dur);
+        const stop = clock.getStopTime();
+        if (Number.isFinite(stop)) {
+          clock.seek(stop);
+          state.currentTime = stop;
+          seekTimelineAndAdapters(stop);
         }
         runAdapters("pause");
         syncMediaForCurrentState(timingRevision);
@@ -4871,6 +4889,15 @@ export function initSandboxRuntimeModular(): void {
       wakeTransport();
     },
     onSetRootDuration: growRootDurationLive,
+    onSetPlayRange: (startSeconds, endSeconds) => {
+      clock.setPlayRange(startSeconds, endSeconds, state.canonicalFps);
+      const start = clock.getPlayStart();
+      if (clock.isPlaying() && (clock.now() < start || clock.reachedEnd())) {
+        transport.seek(start, { keepPlaying: true });
+        return;
+      }
+      postState(true);
+    },
     onSetColorGrading: (target, grading) => {
       colorGrading.setGrading(target, grading);
     },
@@ -4887,11 +4914,11 @@ export function initSandboxRuntimeModular(): void {
         clock.detachAudioSource();
         clock.pause();
         state.isPlaying = false;
-        const dur = clock.getDuration();
-        if (Number.isFinite(dur)) {
-          clock.seek(dur);
-          state.currentTime = dur;
-          seekTimelineAndAdapters(dur);
+        const stop = clock.getStopTime();
+        if (Number.isFinite(stop)) {
+          clock.seek(stop);
+          state.currentTime = stop;
+          seekTimelineAndAdapters(stop);
         }
         runAdapters("pause");
         syncMediaForCurrentState();

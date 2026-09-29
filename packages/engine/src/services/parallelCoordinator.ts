@@ -544,6 +544,8 @@ export function withParallelWorkerDeadline<T>(
   });
 }
 
+const LATE_LAUNCH_CLOSE_WAIT_MS = 10_000;
+
 function resolveParallelWorkerTimeoutMs(enabled: boolean): number {
   if (!enabled) return 0;
   const raw = process.env.HF_DE_PARALLEL_PHASE_TIMEOUT_MS;
@@ -881,15 +883,22 @@ async function executeWorkerTask(
   };
 
   try {
-    session = await runPhase("browser_launch", () =>
-      createCaptureSession(
-        serverUrl,
-        task.outputDir,
-        captureOptions,
-        createBeforeCaptureHook(),
-        workerConfig,
-      ),
+    const launch = createCaptureSession(
+      serverUrl,
+      task.outputDir,
+      captureOptions,
+      createBeforeCaptureHook(),
+      workerConfig,
     );
+    session = await runPhase("browser_launch", () => launch).catch(async (error: unknown) => {
+      // Close a launch that lost to cancel or its deadline before settling: Puppeteer's exit hook skips browsers.
+      const closing = launch.then(closeCaptureSession).catch(() => {});
+      await Promise.race([
+        closing,
+        new Promise((settle) => setTimeout(settle, LATE_LAUNCH_CLOSE_WAIT_MS).unref()),
+      ]);
+      throw error;
+    });
     const activeSession = session;
     browserExecutable = activeSession.browser?.process?.()?.spawnfile || browserExecutable;
     logParDebug(() => `[par:w${task.workerId}] session created`);

@@ -28,13 +28,15 @@ import {
   readMediaStart,
   toFps,
   type FpsInput,
+  firstFrameColourArgs,
+  hdrToSdrToneMapFilter,
+  parseFirstFrameColour,
 } from "@hyperframes/core";
 import { resolveReferencedStart, type RefResolverEl } from "./referenceResolver.js";
 import { isKnownInactiveTimelineWindow } from "./mediaTimelineWindow.js";
 import {
   extractFinalVideoFrameTimestamp,
   extractMediaMetadata,
-  type VideoColorSpace,
   type VideoMetadata,
 } from "../utils/ffprobe.js";
 import {
@@ -217,11 +219,9 @@ export interface ExtractionOptions {
   collectProbeFailures?: boolean;
 }
 
-const EXTRACT_CACHE_MIN_AGE_MS = 60 * 60 * 1000;
+export const EXTRACT_CACHE_MIN_AGE_MS = 60 * 60 * 1000;
 const GC_STALENESS_MS = 24 * 60 * 60 * 1000;
 const SDR_TO_HDR_COLORSPACE_FILTER = "colorspace=all=bt2020:iall=bt709:range=tv";
-const HDR_TO_SDR_TONEMAP_FILTER =
-  "zscale=t=linear:npl=100,tonemap=hable:desat=0,zscale=p=bt709:t=bt709:m=bt709:r=tv";
 const HDR_TO_SDR_ZSCALE_TRANSFORM_KEY = "hdr2sdr-hable-srgb";
 const HDR_TO_SDR_VIDEOTOOLBOX_TRANSFORM_KEY = "hdr2sdr-videotoolbox-hdr";
 const SDR_CANVAS_PASSTHROUGH_FILTER = "setparams=color_primaries=bt709:color_trc=iec61966-2-1";
@@ -776,37 +776,10 @@ export function parseImageElements(html: string): ImageElement[] {
   return images;
 }
 
-/** zscale reads each frame's own tags; set only those the first frame lacks, from ffprobe or BT.2020. */
-function hdrFrameColourTags(metadata: VideoMetadata, frame: Partial<VideoColorSpace>): string[] {
-  const known = (value: string | undefined) =>
-    value && value !== "unknown" && value !== "reserved" ? value : undefined;
-  const probed = metadata.colorSpace;
-  const fill = (key: keyof VideoColorSpace, fallback?: string) =>
-    known(frame[key]) ? undefined : (known(probed?.[key]) ?? fallback);
-  const tags = [
-    ["colorspace", fill("colorSpace", "bt2020nc")],
-    ["color_primaries", fill("colorPrimaries", "bt2020")],
-    ["color_trc", fill("colorTransfer")],
-  ].filter(([, value]) => value);
-  return tags.length
-    ? [`setparams=${tags.map(([key, value]) => `${key}=${value}`).join(":")}`]
-    : [];
-}
-
-/** The first shown frame's tags, read by ffmpeg, which decodes past the edit-list pre-roll ffprobe counts. */
-async function readFirstFrameColour(
-  videoPath: string,
-  signal?: AbortSignal,
-): Promise<Partial<VideoColorSpace>> {
-  const result = await runFfmpeg(
-    [
-      ...["-hide_banner", "-nostats", "-i", videoPath, "-map", "0:v:0", "-frames:v", "1"],
-      ...["-vf", "showinfo", "-f", "null", "-"],
-    ],
-    { signal },
-  );
-  const tags = / color_space:(\S+) color_primaries:(\S+) color_trc:(\S+)/.exec(result.stderr);
-  return tags ? { colorSpace: tags[1], colorPrimaries: tags[2], colorTransfer: tags[3] } : {};
+/** The first shown frame's colour tags; see {@link firstFrameColourArgs}. */
+async function readFirstFrameColour(videoPath: string, signal?: AbortSignal) {
+  const result = await runFfmpeg(firstFrameColourArgs(videoPath), { signal });
+  return parseFirstFrameColour(result.stderr);
 }
 
 /** Chrome plays untagged VP9 and AV1 as BT.601, H.264 and VP8 as BT.709 from 720 coded lines (assumed for the rest). */
@@ -984,7 +957,7 @@ export async function extractVideoFramesRange(
   }
   if (toneMappedToSdr) {
     const frameColour = await readFirstFrameColour(videoPath, signal);
-    vfFilters.push(...hdrFrameColourTags(metadata, frameColour), HDR_TO_SDR_TONEMAP_FILTER);
+    vfFilters.push(hdrToSdrToneMapFilter(metadata.colorSpace ?? {}, frameColour));
   }
   if (toneMappedToSdr || (!isHdr && !options.sdrToHdrTransfer)) {
     vfFilters.push(
@@ -2493,6 +2466,10 @@ export class FrameLookupTable {
       video.playbackRate,
     );
     return frameIndex == null ? null : video.extracted.framePaths.get(frameIndex) || null;
+  }
+
+  frameDirs(): string[] {
+    return [...new Set(Array.from(this.videos.values(), (video) => video.extracted.outputDir))];
   }
 
   private resetActiveState(): void {

@@ -20,6 +20,11 @@ const layout = vi.hoisted(() => ({
   offCanvasElements: new Map<string, HTMLElement>(),
 }));
 
+const actions = vi.hoisted(() => ({ current: null as unknown }));
+vi.mock("../../contexts/DomEditContext", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("../../contexts/DomEditContext")>()),
+  useDomEditActionsContextOptional: () => actions.current,
+}));
 vi.mock("./useOffCanvasIndicators", () => ({
   useOffCanvasIndicators: () => ({
     offCanvasRects: layout.offCanvas,
@@ -141,6 +146,7 @@ beforeEach(() => {
 
 afterEach(() => {
   act(() => root.unmount());
+  actions.current = null;
   document.body.innerHTML = "";
   layout.group = [];
   layout.hover = null;
@@ -454,10 +460,18 @@ describe("DomEditOverlay onTextEditingChange", () => {
     expect(spies.onTextEditingChange.mock.calls).toEqual([[true], [false]]);
   });
 
-  it("reports false when the overlay unmounts mid-edit", () => {
-    const { spies, overlay } = fixture();
+  it("saves the typed words and reports false when the overlay unmounts mid-edit", () => {
+    const handleDomRichTextCommit = vi.fn();
+    actions.current = { handleDomRichTextCommit };
+    const { spies, selection, overlay } = fixture();
     pressEnter(overlay);
+    selection.element.textContent = "Typed";
     act(() => root.unmount());
+    expect(handleDomRichTextCommit).toHaveBeenCalledWith({
+      element: selection.element,
+      html: "Typed",
+      previousHtml: "Title",
+    });
     expect(spies.onTextEditingChange.mock.calls).toEqual([[true], [false]]);
   });
 });

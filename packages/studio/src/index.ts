@@ -9,6 +9,7 @@ export { DEFAULT_SHORTCUT_SECTIONS } from "./player/components/studioShortcuts";
 export type { ShortcutHint, ShortcutSection } from "./player/components/studioShortcuts";
 export { CompositionBreadcrumb } from "./components/nle/CompositionBreadcrumb";
 export type { CompositionLevel } from "./components/nle/CompositionBreadcrumb";
+export { useCompositionStack } from "./components/nle/useCompositionStack";
 
 // Player (preview, timeline, playback controls)
 export {
@@ -166,7 +167,7 @@ export type { AudioMeterStripProps } from "./components/nle/AudioMeterStrip";
 export { useClipboard } from "./hooks/useClipboard";
 export type { UseClipboardOptions } from "./hooks/useClipboard";
 
-// DOM editing: the canvas session, persistence and overlay, for a host outside EditorShell.
+// DOM editing for a host outside EditorShell; the Commit hooks save without useDomEditSession.
 export { useDomEditSession } from "./hooks/useDomEditSession";
 export type { UseDomEditSessionParams } from "./hooks/useDomEditSession";
 export { usePreviewPersistence } from "./hooks/usePreviewPersistence";
@@ -176,6 +177,17 @@ export { PreviewReadOnlyProvider } from "./components/editor/previewReadOnlyCont
 export { ConnectedDomEditOverlay } from "./components/editor/ConnectedDomEditOverlay";
 export type { ConnectedDomEditOverlayProps } from "./components/editor/ConnectedDomEditOverlay";
 export type { DomEditCapabilities, DomEditSelection } from "./components/editor/domEditingTypes";
+export { useDomStyleCommit } from "./hooks/useDomStyleCommit";
+export type { UseDomStyleCommitOptions } from "./hooks/useDomStyleCommit";
+export type { DomEditCommitDeclineReason, DomEditCommitOutcome } from "./hooks/domEditCommitRunner";
+export { resolveDomEditSelection } from "./components/editor/domEditingLayers";
+export { useDomGeometryCommit } from "./hooks/useDomGeometryCommit";
+export type { DomGeometryCommits, UseDomGeometryCommitOptions } from "./hooks/useDomGeometryCommit";
+export { DomEditOverlay } from "./components/editor/DomEditOverlay";
+export type {
+  DomEditGroupPathOffsetCommit,
+  DomEditOverlayProps,
+} from "./components/editor/DomEditOverlay";
 
 export {
   playSeamTransitionLoop,

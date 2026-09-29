@@ -61,10 +61,8 @@ export function useInlineTextEditing(
   const elementUnderPress = (event: { clientX: number; clientY: number }) => {
     const iframe = actions?.previewIframeRef?.current;
     if (!iframe) return null;
-    // Studio suppresses pointer events inside the composition so the canvas
-    // overlay can own input, which means a plain elementFromPoint only ever
-    // finds wrappers. This helper lifts that for the length of the hit test,
-    // and is the same one the canvas uses to decide what was clicked.
+    // The same hit test the canvas uses to decide what was clicked; a plain
+    // elementFromPoint only finds wrappers, since Studio suppresses pointer events.
     return getPreviewTargetFromPointer(
       iframe,
       event.clientX,

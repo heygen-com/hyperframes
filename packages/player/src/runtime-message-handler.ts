@@ -49,6 +49,7 @@ export interface MessageHandlerCallbacks extends PlaybackStateCallbacks {
    *  same-origin composition probe cannot inspect CDN iframes. */
   onRuntimeTimelineReady: (duration: number, assetsReady: boolean | undefined) => void;
   setRuntimeFps?: (fps: number) => void;
+  setRuntimeOwnsPlayRange?: (owns: boolean) => void;
   /** Called with the scene list whenever a "timeline" message is received. */
   setScenes: (scenes: SceneRecord[]) => void;
   /** Return false to ignore the iframe runtime's audible-media autoplay fallback.
@@ -76,6 +77,9 @@ export function handleRuntimeMessage(
     return;
   }
   callbacks.setRuntimeFps?.(protocol.fps);
+  const ownsPlayRange =
+    protocol.status === "supported" && protocol.metadata.capabilities.includes("play-range");
+  callbacks.setRuntimeOwnsPlayRange?.(ownsPlayRange);
 
   if (data["type"] === "shader-transition-state") {
     const state: ShaderTransitionState =
@@ -119,6 +123,7 @@ export function handleRuntimeMessage(
           currentTime: data["currentTime"] as number | undefined,
           ended: typeof data["ended"] === "boolean" ? data["ended"] : undefined,
           isPlaying: !!data["isPlaying"],
+          ownsRange: ownsPlayRange,
         },
         protocol.fps,
         callbacks.getPlaybackState(),

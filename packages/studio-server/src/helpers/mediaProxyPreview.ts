@@ -113,7 +113,7 @@ export async function injectMediaCodecMapIntoHtml(
       proxyVariantFor(facts),
     ).catch(() => {
       // Swallowed: the pre-warm is best-effort. A real `?hf-proxy=` request
-      // for this asset re-attempts the transcode and reports failure (502).
+      // for this asset hears the remembered failure (502) or re-attempts it.
     });
   }
   // <-escape prevents a src path containing "</script>" from breaking out of
