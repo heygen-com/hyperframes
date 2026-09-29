@@ -5,6 +5,7 @@ import { createRoot } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { GridOverlay } from "./GridOverlay";
 import { PreviewOverlayProvider } from "./PreviewOverlayProvider";
+import { SnapToolbar } from "./SnapToolbar";
 import { usePreviewIframeStore } from "../../player/store/previewIframeStore";
 import { usePlayerStore } from "../../player/store/playerStore";
 
@@ -91,5 +92,23 @@ describe("PreviewOverlayProvider", () => {
     act(() => root.unmount());
 
     expect(usePreviewIframeStore.getState().iframe).toBe(ownerIframe);
+  });
+
+  it("lets presses reach the preview beneath it, except on children that opt in", () => {
+    const host = document.createElement("div");
+    document.body.append(host);
+    const root = createRoot(host);
+    act(() => {
+      root.render(
+        <PreviewOverlayProvider iframe={null}>
+          <SnapToolbar />
+        </PreviewOverlayProvider>,
+      );
+    });
+
+    const layer = host.firstElementChild;
+    expect(layer?.classList.contains("pointer-events-none")).toBe(true);
+    expect(layer?.firstElementChild?.classList.contains("pointer-events-auto")).toBe(true);
+    act(() => root.unmount());
   });
 });

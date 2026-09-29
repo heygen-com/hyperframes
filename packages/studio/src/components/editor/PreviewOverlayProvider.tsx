@@ -71,7 +71,7 @@ export function PreviewOverlayProvider({ iframe, children }: PreviewOverlayProvi
 
   return (
     <PreviewOverlayContext.Provider value={contextValue}>
-      <div ref={overlayRef} className="absolute inset-0">
+      <div ref={overlayRef} className="pointer-events-none absolute inset-0">
         {children}
       </div>
     </PreviewOverlayContext.Provider>
