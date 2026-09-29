@@ -44,6 +44,8 @@ import { useTimelineLaneMoveRefresh } from "./useTimelineLaneMoveRefresh";
 import { useTimelineLogicalFocus } from "./useTimelineLogicalFocus";
 import { useTimelineEditContextOptional } from "../../contexts/TimelineEditContext";
 import { resolveSnapGuide } from "./timelineSnapping";
+const NO_ANIMATIONS = new Map();
+const NO_KEYFRAMES = new Map();
 export function useTimelineProviderState({
   onSeek,
   onDrillDown,
@@ -68,6 +70,7 @@ export function useTimelineProviderState({
   canPasteClip,
   theme: themeOverrides,
   showAudioEffects = true,
+  showKeyframes = true,
   sessionEpoch = 0,
   previewIframeRef,
   onZIndexReorder,
@@ -104,7 +107,8 @@ export function useTimelineProviderState({
   const selectedElementId = usePlayerStore((s) => s.selectedElementId);
   const selectedElementIds = usePlayerStore((s) => s.selectedElementIds);
   const focusedEaseSegment = usePlayerStore((s) => s.focusedEaseSegment);
-  const gsapAnimations = usePlayerStore((s) => s.gsapAnimations);
+  const storeAnimations = usePlayerStore((s) => s.gsapAnimations);
+  const gsapAnimations = showKeyframes ? storeAnimations : NO_ANIMATIONS;
   const { labelMode, contentOrigin } = useTimelineLabelColumn(gsapAnimations, timelineElements);
   const setSelectedElementId = usePlayerStore((s) => s.setSelectedElementId);
   const currentTime = usePlayerStore((s) => s.currentTime);
@@ -130,7 +134,8 @@ export function useTimelineProviderState({
     () => getEffectiveTimelineDuration(duration, timelineElements),
     [duration, timelineElements],
   );
-  const keyframeCache = usePlayerStore((s) => s.keyframeCache);
+  const storeKeyframes = usePlayerStore((s) => s.keyframeCache);
+  const keyframeCache = showKeyframes ? storeKeyframes : NO_KEYFRAMES;
   useAutoExpandKeyframedClips(gsapAnimations);
   const {
     tracks,
