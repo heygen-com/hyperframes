@@ -88,6 +88,7 @@ Surfaced here; full rationale in the linked reference. Do not violate:
 - Adding a clip: set its `data-start`/`data-duration` intentionally against the clips around it. `data-track-index` is a Studio display lane, not a timing constraint, so it does not need to be free.
 - A clip that ends past the root `data-duration` is cut off: extend the root `data-duration` to the clip's end in the same edit (`lint` warns `clip_ends_past_root_duration`).
 - `data-hidden` on any composition element hides it in BOTH preview and render, overriding its time window; it is non-destructive/reversible and toggled by Studio's timeline eye icon.
+- Keep `data-hf-id` and every `data-derived-*` / `data-media-source` attribute when you edit an element: `data-hf-id` is its identity in the app, and `data-derived-src` is the picture it was made from. To put an original back, set `src` to `data-derived-src` and remove `data-derived-src`, `data-derived-edit` and `data-media-source`.
 - Adding a sub-composition: verify its internal `data-composition-id` before wiring the host.
 
 ## Validation
