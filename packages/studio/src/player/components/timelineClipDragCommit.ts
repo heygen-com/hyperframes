@@ -202,8 +202,8 @@ function resolveMultiSelection(
   return { keys, movedStart };
 }
 
-// A time move writes the dragged clip's start (each moving clip's, in a group); a lane change also writes its lane
-// and touches no other clip; only an insert outside all rows renumbers the rows below it.
+// A move writes the dragged clip's start (each moving clip's, in a group); a lane change also writes its lane and
+// re-lanes no other clip; only a new track renumbers the rows below it.
 // fallow-ignore-next-line complexity
 export function commitDraggedClipMove(drag: DraggedClipState, deps: DragCommitDeps): void {
   const hostAlias = resolveExpandedHostAlias(drag, deps);
