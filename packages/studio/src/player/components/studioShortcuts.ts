@@ -52,6 +52,8 @@ export const DEFAULT_SHORTCUT_SECTIONS: readonly ShortcutSection[] = [
       { key: "⌘X", label: "Cut element" },
       { key: hintKey(STUDIO_PLAIN_KEYS.split), label: "Split clip at playhead" },
       { key: "⇧Click", label: "Razor tool: split all tracks" },
+      { key: "[", label: "Select clips starting before the playhead" },
+      { key: "]", label: "Select clips starting at or after the playhead" },
       { key: "⌘G", label: "Group elements" },
       { key: "⌘⇧G", label: "Ungroup" },
       { key: "Del", label: "Delete selected element (no keyframe selected)" },

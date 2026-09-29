@@ -15,6 +15,8 @@ One music bed per composition, produced by the shared audio engine (`scripts/aud
 - **`query`** — the mood, used for retrieval and as a fallback prompt seed (e.g. a storyboard's `music:` field, falling back to `message` → `arc` → `"calm cinematic underscore"`).
 - **`prompt`** — an explicit full prompt for generation; omit and the engine infers one (see Mood inference). Optional `blob` / `archetype` / `arc` feed that inference.
 
+Both routes keep a file of yours already at the output name: the engine writes the next free name (`track-2.mp3`), reports it as an anomaly, and `bgm.path` carries the real path.
+
 ## HeyGen retrieval (default)
 
 `searchSounds(query, "music", { limit: 5 })` → `GET /audio/sounds?query=<mood>&type=music&limit=5`. Take the top result (ranked by `score`), download its presigned `audio_url` → `assets/bgm/track.mp3`. Synchronous. No match → skip (BGM is optional; never fail the render over it). Cue written to `audio_meta.json`:

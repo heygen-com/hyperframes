@@ -416,6 +416,19 @@ describe("gcExtractionCache", () => {
     expect(stats.evictedEntries).toBe(1);
   });
 
+  it("counts the same evictions in a dry run and removes nothing", () => {
+    const old = makeEntry("old", 60, 120_000);
+    const young = makeEntry("young", 60, 1_000);
+    const options = { maxBytes: 0, minAgeMs: 60_000 };
+
+    const planned = gcExtractionCache(tmpRoot, { ...options, dryRun: true });
+    expect(existsSync(old)).toBe(true);
+    expect(gcExtractionCache(tmpRoot, options)).toEqual(planned);
+    expect(planned.evictedEntries).toBe(1);
+    expect(existsSync(old)).toBe(false);
+    expect(existsSync(young)).toBe(true);
+  });
+
   it("evicts oldest complete entries first until under maxBytes while respecting minAge", () => {
     const oldest = makeEntry("oldest", 60, 120_000);
     const middle = makeEntry("middle", 60, 90_000);

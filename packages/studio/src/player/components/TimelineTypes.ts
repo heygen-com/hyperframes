@@ -34,4 +34,5 @@ export interface TimelineProps
   canPasteClip?: () => boolean;
   theme?: Partial<TimelineTheme>;
   showAudioEffects?: boolean;
+  showKeyframes?: boolean;
 }

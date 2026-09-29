@@ -1,5 +1,6 @@
 import {
   existsSync,
+  lstatSync,
   mkdtempSync,
   readFileSync,
   readdirSync,
@@ -16,6 +17,8 @@ export const TRANSACTION_BACKUP = "backup";
 // The names mkdtemp gives a render's temp dirs: work-<job uuid>-, hf-render- (Windows) and .<output>.hf-transaction-.
 const RENDER_TEMP_DIR =
   /^(work-[0-9a-f]{8}(-[0-9a-f]{4}){3}-[0-9a-f]{12}|hf-render|\..+\.hf-transaction)-[A-Za-z0-9]{6}$/;
+/** A `--debug` render's work dir, named by its job id. */
+export const RENDER_JOB_DIR = /^[0-9a-f]{8}(-[0-9a-f]{4}){3}-[0-9a-f]{12}$/;
 
 /**
  * Where a pid means this process: host and boot, plus the Linux pid namespace. Containers and machines on a shared
@@ -56,56 +59,88 @@ function alive(pid: number): boolean {
   }
 }
 
-/**
- * True only for an owner in this process's pid scope that has exited; no owner file, another scope or an unreadable
- * owner all mean "not provably abandoned".
- */
-function ownerIsGone(dir: string): boolean {
-  let owner: { pid?: unknown; host?: unknown; boot?: unknown; pidns?: unknown };
+type OwnerRecord = { pid?: unknown; host?: unknown; boot?: unknown; pidns?: unknown };
+
+function inThisPidScope(owner: OwnerRecord): boolean {
+  const scope = pidScope();
+  return owner.host === scope.host && owner.boot === scope.boot && owner.pidns === scope.pidns;
+}
+
+/** "gone" only for an owner in this pid scope that has exited; "none" when there is no owner file, else "unknown". */
+function ownerState(dir: string): "gone" | "live" | "unknown" | "none" {
+  let owner: OwnerRecord;
   try {
     owner = JSON.parse(readFileSync(join(dir, OWNER_FILE), "utf-8"));
-  } catch {
-    return false;
+  } catch (error) {
+    return (error as NodeJS.ErrnoException).code === "ENOENT" ? "none" : "unknown";
   }
-  const scope = pidScope();
   const { pid } = owner;
-  return (
-    owner.host === scope.host &&
-    owner.boot === scope.boot &&
-    owner.pidns === scope.pidns &&
-    typeof pid === "number" &&
-    Number.isInteger(pid) &&
-    pid > 0 &&
-    !alive(pid)
+  if (!inThisPidScope(owner) || typeof pid !== "number" || !Number.isInteger(pid) || pid <= 0) {
+    return "unknown";
+  }
+  return alive(pid) ? "live" : "gone";
+}
+
+function newestWriteMs(path: string): number {
+  const stat = lstatSync(path);
+  if (!stat.isDirectory()) return stat.mtimeMs;
+  return readdirSync(path).reduce(
+    (newest, name) => Math.max(newest, newestWriteMs(join(path, name))),
+    stat.mtimeMs,
   );
 }
 
-/** A staging dir that still holds {@link TRANSACTION_BACKUP} (its render died mid-swap) is left alone. */
-function removeAbandonedRenderDirs(parent: string): void {
+function isAbandoned(dir: string, ownerlessIdleMs: number | undefined, now: number): boolean {
+  try {
+    if (!lstatSync(dir).isDirectory() || existsSync(join(dir, TRANSACTION_BACKUP))) return false;
+    const owner = ownerState(dir);
+    if (owner === "gone") return true;
+    return (
+      owner === "none" &&
+      ownerlessIdleMs !== undefined &&
+      now - newestWriteMs(dir) >= ownerlessIdleMs
+    );
+  } catch {
+    // Vanished or unreadable mid-scan: not provably abandoned.
+    return false;
+  }
+}
+
+export interface AbandonedRenderDirOptions {
+  /** Also count dirs with no owner record once nothing in them has been written for this long. */
+  ownerlessIdleMs?: number;
+  /** Names to consider instead of render temp dir names. */
+  names?: RegExp;
+}
+
+/** Render temp dirs under `parent` no running render owns; never a staging dir holding {@link TRANSACTION_BACKUP}. */
+export function listAbandonedRenderDirs(
+  parent: string,
+  options: AbandonedRenderDirOptions = {},
+): string[] {
   let names: string[];
   try {
     names = readdirSync(parent);
   } catch {
-    return;
+    return [];
   }
-  for (const name of names) {
-    const dir = join(parent, name);
-    if (
-      !RENDER_TEMP_DIR.test(name) ||
-      !ownerIsGone(dir) ||
-      existsSync(join(dir, TRANSACTION_BACKUP))
-    )
-      continue;
-    try {
-      rmSync(dir, { recursive: true, force: true, maxRetries: 3, retryDelay: 100 });
-    } catch {
-      // Reclaiming a dead render's dir is best-effort; it must never fail the render that found it.
-    }
-  }
+  const now = Date.now();
+  return names
+    .filter((name) => (options.names ?? RENDER_TEMP_DIR).test(name))
+    .map((name) => join(parent, name))
+    .filter((dir) => isAbandoned(dir, options.ownerlessIdleMs, now));
 }
 
 /** Creates a render's work dir after reclaiming dirs of renders that were killed outright (no cleanup ran). */
 export function createRenderWorkDir(prefix: string, outputDir: string): string {
-  for (const dir of new Set([outputDir, dirname(prefix)])) removeAbandonedRenderDirs(dir);
+  for (const parent of new Set([outputDir, dirname(prefix)])) {
+    for (const dir of listAbandonedRenderDirs(parent)) {
+      try {
+        rmSync(dir, { recursive: true, force: true, maxRetries: 3, retryDelay: 100 });
+      } catch {
+        // Reclaiming a dead render's dir is best-effort; it must never fail the render that found it.
+      }
+    }
+  }
   return createOwnedRenderDir(prefix);
 }

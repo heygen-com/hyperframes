@@ -5,7 +5,7 @@
 // overlap but never filters a candidate out on zero overlap (that would
 // pre-empt the agent's judgment); the agent does the semantic call.
 
-import { readManifest } from "./manifest.mjs";
+import { currentRecords } from "./manifest.mjs";
 import { readGlobalManifest } from "./cache.mjs";
 import { tokenOverlap, typesMatch } from "./match.mjs";
 
@@ -49,7 +49,7 @@ function rankScope(records, scope, type, intent) {
 //   total:      { project, global } counts before the cap (machine-readable)
 //   similar:    count of candidates with lexical overlap > 0 (drives the nudge)
 export function listCandidates({ projectDir, type, intent = "", cap = CANDIDATE_CAP }) {
-  const project = rankScope(readManifest(projectDir), "project", type, intent);
+  const project = rankScope(currentRecords(projectDir), "project", type, intent);
   const global = rankScope(readGlobalManifest(), "global", type, intent);
   const candidates = [...project.slice(0, cap), ...global.slice(0, cap)];
   return {

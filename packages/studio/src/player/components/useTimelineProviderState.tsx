@@ -21,6 +21,7 @@ import { useTimelineGeometry } from "./useTimelineGeometry";
 import { useAutoExpandKeyframedClips } from "./useAutoExpandKeyframedClips";
 import { GUTTER, LABEL_COL_W } from "./timelineLayout";
 import { useTimelineLabelColumn } from "./useTimelineLabelColumn";
+import { useTimelineKeyframeData } from "./useTimelineKeyframeData";
 import { useTimelineScrollViewport } from "./useTimelineScrollViewport";
 import { ClipContentOnceShown } from "./timelineClipChildren";
 import { useResolvedTimelineEditCallbacks } from "./useResolvedTimelineEditCallbacks";
@@ -68,6 +69,7 @@ export function useTimelineProviderState({
   canPasteClip,
   theme: themeOverrides,
   showAudioEffects = true,
+  showKeyframes = true,
   sessionEpoch = 0,
   previewIframeRef,
   onZIndexReorder,
@@ -104,8 +106,9 @@ export function useTimelineProviderState({
   const selectedElementId = usePlayerStore((s) => s.selectedElementId);
   const selectedElementIds = usePlayerStore((s) => s.selectedElementIds);
   const focusedEaseSegment = usePlayerStore((s) => s.focusedEaseSegment);
-  const gsapAnimations = usePlayerStore((s) => s.gsapAnimations);
-  const { labelMode, contentOrigin } = useTimelineLabelColumn(gsapAnimations, timelineElements);
+  const { gsapAnimations, keyframeCache } = useTimelineKeyframeData(showKeyframes);
+  const namedAnimations = usePlayerStore((s) => s.gsapAnimations);
+  const { labelMode, contentOrigin } = useTimelineLabelColumn(namedAnimations, timelineElements);
   const setSelectedElementId = usePlayerStore((s) => s.setSelectedElementId);
   const currentTime = usePlayerStore((s) => s.currentTime);
   const beatDragging = usePlayerStore((s) => s.beatDragging);
@@ -130,7 +133,6 @@ export function useTimelineProviderState({
     () => getEffectiveTimelineDuration(duration, timelineElements),
     [duration, timelineElements],
   );
-  const keyframeCache = usePlayerStore((s) => s.keyframeCache);
   useAutoExpandKeyframedClips(gsapAnimations);
   const {
     tracks,

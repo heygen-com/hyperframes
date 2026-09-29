@@ -15,6 +15,8 @@
 import { copyFileSync, existsSync, mkdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { downloadTo, searchSounds } from "./heygen.mjs";
+import { latestRecordFor } from "../../../scripts/lib/manifest.mjs";
+import { agentWritePath } from "./media-record.mjs";
 
 const SFX_VOLUME = 0.35;
 const slug = (s) =>
@@ -31,6 +33,8 @@ export async function resolveSfx({ cues, heygenOK, headers, hyperframesDir, sfxL
   const sfx = [];
   const anomalies = [];
   const destDir = join(hyperframesDir, "assets", "sfx");
+  // Each effect's file this run: one effect named twice gets one file, and two effects never share one.
+  const fileFor = new Map();
 
   // Dedupe identical (id,name) cues — the same effect named twice in one line
   // downloads/copies once.
@@ -57,8 +61,14 @@ export async function resolveSfx({ cues, heygenOK, headers, hyperframesDir, sfxL
           continue;
         }
         const top = results[0];
-        const file = `assets/sfx/${slug(name)}.mp3`;
+        const file =
+          fileFor.get(slug(name)) ??
+          agentWritePath(hyperframesDir, `assets/sfx/${slug(name)}.mp3`, {
+            anomalies,
+            taken: new Set(fileFor.values()),
+          });
         await downloadTo(top.audio_url, join(hyperframesDir, file));
+        fileFor.set(slug(name), file);
         sfx.push({
           id,
           name,
@@ -111,24 +121,36 @@ export async function resolveSfx({ cues, heygenOK, headers, hyperframesDir, sfxL
       continue;
     }
     const src = join(sfxLibDir, hit.file);
-    const destRel = `assets/sfx/${hit.file}`;
+    const library = existsSync(src) ? readFileSync(src) : null;
+    const isLibraryCopy = (rel) =>
+      library &&
+      existsSync(join(hyperframesDir, rel)) &&
+      readFileSync(join(hyperframesDir, rel)).equals(library);
+    const destRel =
+      fileFor.get(hit.file) ??
+      agentWritePath(hyperframesDir, `assets/sfx/${hit.file}`, {
+        anomalies,
+        taken: new Set(fileFor.values()),
+        // An unrecorded copy of the library file is one an engine run made before the manifest had it.
+        reusable: (rel) => !latestRecordFor(hyperframesDir, rel) && isLibraryCopy(rel),
+      });
     const dest = join(hyperframesDir, destRel);
     // The bundled library may be incomplete: some installs of the skill ship
     // manifest.json without the actual mp3s. Pushing an sfx entry that points at
     // a file we never copied produces a dangling reference that silently drops
     // downstream ("not on disk"). Surface it as a loud anomaly and skip the cue
     // instead, so the audio_meta never references a missing file.
-    if (!existsSync(dest)) {
-      if (!existsSync(src)) {
-        anomalies.push(
-          `sfx "${name}" (id ${id}): bundled file ${hit.file} missing from the offline ` +
-            `library (${sfxLibDir}) — skipped. Reinstall the media-use skill to ` +
-            `restore assets/sfx/*.mp3, or configure a HeyGen credential for retrieval.`,
-        );
-        continue;
-      }
-      copyFileSync(src, dest);
-    }
+    if (library) {
+      if (!isLibraryCopy(destRel)) copyFileSync(src, dest);
+    } else if (!existsSync(dest)) {
+      anomalies.push(
+        `sfx "${name}" (id ${id}): bundled file ${hit.file} missing from the offline ` +
+          `library (${sfxLibDir}) — skipped. Reinstall the media-use skill to ` +
+          `restore assets/sfx/*.mp3, or configure a HeyGen credential for retrieval.`,
+      );
+      continue;
+    } // else the engine's earlier copy at dest stands in for the file this install lacks
+    fileFor.set(hit.file, destRel);
     sfx.push({
       id,
       name,

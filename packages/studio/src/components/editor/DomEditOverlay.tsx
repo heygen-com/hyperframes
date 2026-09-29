@@ -47,7 +47,7 @@ export {
 } from "./domEditOverlayGestures";
 export type { DomEditGroupPathOffsetCommit } from "./domEditOverlayGestures";
 
-interface DomEditOverlayProps {
+export interface DomEditOverlayProps {
   iframeRef: RefObject<HTMLIFrameElement | null>;
   activeCompositionPath: string | null;
   selection: DomEditSelection | null;

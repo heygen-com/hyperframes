@@ -3,6 +3,8 @@ export { createProjectSignature, affectsProjectSignature } from "./helpers/proje
 export { compositionsAffectedBy } from "./helpers/compositionInputs.js";
 export { affectsPreview } from "./helpers/previewReads.js";
 export * from "./history/index.js";
+export { cleanupProxyCache } from "./helpers/proxyCache.js";
+export { CACHE_DIR_NAME as PROXY_CACHE_DIR_NAME } from "./helpers/proxyTranscoder.js";
 export type {
   StudioApiAdapter,
   ResolvedProject,
