@@ -15,14 +15,14 @@ afterEach(() => {
   document.body.innerHTML = "";
 });
 
-async function mountKeyframed(showKeyframes?: boolean) {
+async function mountKeyframed(showKeyframes?: boolean, withLanes = true) {
   usePlayerStore.setState({
     duration: 10,
     currentTime: 0,
     timelineReady: true,
     selectedElementId: "card",
     elements: [{ id: "card", label: "Hero card", tag: "div", start: 0, duration: 4, track: 0 }],
-    gsapAnimations: new Map([
+    gsapAnimations: withLanes ? new Map([
       [
         "card",
         [
@@ -44,7 +44,7 @@ async function mountKeyframed(showKeyframes?: boolean) {
           },
         ],
       ],
-    ]),
+    ]) : new Map(),
     keyframeCache: new Map([
       [
         "card",
@@ -70,11 +70,11 @@ async function mountKeyframed(showKeyframes?: boolean) {
 
 describe("Timeline showKeyframes", () => {
   it("draws a keyframed clip's diamonds by default", async () => {
-    expect((await mountKeyframed()).diamonds).toBeGreaterThan(0);
+    expect((await mountKeyframed(undefined, false)).diamonds).toBeGreaterThan(0);
   });
 
   it("draws no keyframe diamonds when the host turns keyframes off", async () => {
-    expect((await mountKeyframed(false)).diamonds).toBe(0);
+    expect((await mountKeyframed(false, false)).diamonds).toBe(0);
   });
 
   it("draws the keyframe lanes by default and none when keyframes are off", async () => {
