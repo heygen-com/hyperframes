@@ -108,4 +108,11 @@ describe("Timeline ruler origin", () => {
     expect(origin).toBe("80px");
     expect(published).toBe("80");
   });
+
+  it("seeks on a press when the host omits sessionEpoch after a session began", async () => {
+    usePlayerStore.getState().beginTimelineSession("host-project");
+    expect(usePlayerStore.getState().timelineSessionEpoch).toBeGreaterThan(0);
+    const { time, tickTime } = await seekOnFirstTick({}, false);
+    expect(time).toBeCloseTo(tickTime, 1);
+  });
 });
