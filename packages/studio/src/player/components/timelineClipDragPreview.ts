@@ -5,6 +5,7 @@ import {
   resolveTimelineMinDuration,
 } from "./timelineGroupEditing";
 import type { TimelineElement } from "../store/playerStore";
+import { clampToHostStart } from "../store/timelineElement";
 import { getTimelineRowFromY } from "./timelineLayout";
 import { isMusicTrack, isAudioTimelineElement } from "../../utils/timelineInspector";
 import {
@@ -117,11 +118,11 @@ function resolveGroupDrag(drag: DraggedClipState, ctx: DragPreviewContext): Grou
     ctx.selectedKeys,
     drag.element.key ?? drag.element.id,
   );
-  if (!movers) return { obstacles: ctx.elements, floor: 0 };
+  if (!movers) return { obstacles: ctx.elements, floor: groupMoveFloor(drag.element, []) };
   const moving = new Set(movers.map((e) => e.key ?? e.id));
   return {
     obstacles: ctx.elements.filter((e) => !moving.has(e.key ?? e.id)),
-    floor: groupMoveFloor(drag.element.start, movers),
+    floor: groupMoveFloor(drag.element, movers),
   };
 }
 
@@ -153,6 +154,7 @@ export function computeDragPreview(
       originScrollLeft: drag.originScrollLeft,
       currentScrollLeft: scroll?.scrollLeft ?? drag.originScrollLeft,
       pixelsPerSecond: pps,
+      minStart: clampToHostStart(drag.element, 0),
       maxStart: dragMaxStart,
       trackOrder,
     },
@@ -190,8 +192,8 @@ export function computeDragPreview(
     // tell a deliberate vertical lane change from a horizontal drag.
     desiredTrack: nextMove.track,
     insertRow,
-    snapTime: snap.snapTime,
-    snapType: snap.snapType,
+    snapTime: previewStart === snap.start ? snap.snapTime : null,
+    snapType: previewStart === snap.start ? snap.snapType : null,
   };
 }
 
@@ -257,7 +259,7 @@ export function computeResizePreview(
       duration: resize.element.duration,
       originClientX: resize.originClientX,
       pixelsPerSecond: pps,
-      minStart: 0,
+      minStart: clampToHostStart(resize.element, 0),
       maxEnd,
       playbackStart:
         resize.edge === "start" && canSeedPlaybackStart
@@ -300,7 +302,8 @@ export function computeResizePreview(
       const { time: snapped, target } = snapTimelineTime(nextResize.start, trimTargets, snapSecs);
       const clip = { ...nextResize, playbackRate: resize.element.playbackRate };
       const delta = snapped - nextResize.start;
-      const bounds = clipStartTrimDeltaBounds(clip, 0, resolveTimelineMinDuration());
+      const floor = clampToHostStart(resize.element, 0);
+      const bounds = clipStartTrimDeltaBounds(clip, floor, resolveTimelineMinDuration());
       if (target && delta >= bounds.minDelta - 1e-6 && delta <= bounds.maxDelta + 1e-6) {
         if (snapped !== nextResize.start) nextResize = applyClipStartTrimDelta(clip, delta);
         snap = target;

@@ -5,7 +5,7 @@ description: "Watch finished HyperFrames videos, inspect real production project
 
 import { DocsVideo } from "/snippets/docs-video.jsx";
 import { ReplicaCompare } from "/snippets/replica-compare.jsx";
-import { HoverVideo } from "/snippets/hover-video.jsx";
+import { ExamplePlayer } from "/snippets/example-player.jsx";
 
 ## What HyperFrames can make
 
@@ -17,23 +17,23 @@ A whole product cut into a launch film — its own screens, type and colour.
 
 <div className="not-prose grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 my-6">
   <div className="group overflow-hidden rounded-xl border border-zinc-200 bg-white text-inherit no-underline dark:border-zinc-800 dark:bg-zinc-950">
-    <HoverVideo className="aspect-video w-full object-cover bg-zinc-100 dark:bg-zinc-900" src="https://static.heygen.ai/hyperframes-oss/docs/images/showcase/launch-HF-heygen-stripe-v1-s.mp4" poster="https://static.heygen.ai/hyperframes-oss/docs/images/showcase/launch-HF-heygen-stripe-v1.jpg" />
+    <ExamplePlayer title="HeyGen × Stripe" className="aspect-video w-full object-cover bg-zinc-100 dark:bg-zinc-900" src="https://static.heygen.ai/hyperframes-oss/docs/images/showcase/launch-HF-heygen-stripe-v1-s.mp4" poster="https://static.heygen.ai/hyperframes-oss/docs/images/showcase/launch-HF-heygen-stripe-v1.jpg" />
     <div className="p-4"><strong className="block text-sm">HeyGen × Stripe</strong><span className="mt-1 block text-xs text-zinc-500 dark:text-zinc-400">Product launch, 4K · 100% HyperFrames</span></div>
   </div>
-  <a className="group overflow-hidden rounded-xl border border-zinc-200 bg-white text-inherit no-underline dark:border-zinc-800 dark:bg-zinc-950" href="https://github.com/heygen-com/hyperframes-launches/tree/main/hyperframes-launch">
-    <HoverVideo className="aspect-video w-full object-cover bg-zinc-100 dark:bg-zinc-900" src="https://static.heygen.ai/hyperframes-oss/docs/images/showcase/launch-hyperframes-launch-v1-s.mp4" poster="https://static.heygen.ai/hyperframes-oss/docs/images/showcase/launch-hyperframes-launch-v1.jpg" />
-    <div className="p-4"><strong className="block text-sm">HyperFrames launch</strong><span className="mt-1 block text-xs text-zinc-500 dark:text-zinc-400">The framework's own launch · source included</span></div>
-  </a>
-  <a className="group overflow-hidden rounded-xl border border-zinc-200 bg-white text-inherit no-underline dark:border-zinc-800 dark:bg-zinc-950" href="https://github.com/heygen-com/hyperframes-launches/tree/main/website-to-hyperframes">
-    <HoverVideo className="aspect-video w-full object-cover bg-zinc-100 dark:bg-zinc-900" src="https://static.heygen.ai/hyperframes-oss/docs/images/showcase/launch-website-to-hyperframes-v1-s.mp4" poster="https://static.heygen.ai/hyperframes-oss/docs/images/showcase/launch-website-to-hyperframes-v1.jpg" />
-    <div className="p-4"><strong className="block text-sm">Website → video</strong><span className="mt-1 block text-xs text-zinc-500 dark:text-zinc-400">A live site becomes a promo · source included</span></div>
-  </a>
-  <a className="group overflow-hidden rounded-xl border border-zinc-200 bg-white text-inherit no-underline dark:border-zinc-800 dark:bg-zinc-950" href="https://github.com/heygen-com/hyperframes-launches/tree/main/spacex-launch">
-    <HoverVideo className="aspect-video w-full object-cover bg-zinc-100 dark:bg-zinc-900" src="https://static.heygen.ai/hyperframes-oss/docs/images/showcase/launch-spacex-launch-v1-s.mp4" poster="https://static.heygen.ai/hyperframes-oss/docs/images/showcase/launch-spacex-launch-v1.jpg" />
-    <div className="p-4"><strong className="block text-sm">SpaceX explainer</strong><span className="mt-1 block text-xs text-zinc-500 dark:text-zinc-400">Data and motion at scale · source included</span></div>
-  </a>
   <div className="group overflow-hidden rounded-xl border border-zinc-200 bg-white text-inherit no-underline dark:border-zinc-800 dark:bg-zinc-950">
-    <HoverVideo className="aspect-video w-full object-cover bg-zinc-100 dark:bg-zinc-900" src="https://static.heygen.ai/hyperframes-oss/docs/images/showcase/launch-k3-promo-v1-s.mp4" poster="https://static.heygen.ai/hyperframes-oss/docs/images/showcase/launch-k3-promo-v1.jpg" />
+    <ExamplePlayer title="HyperFrames launch" className="aspect-video w-full object-cover bg-zinc-100 dark:bg-zinc-900" src="https://static.heygen.ai/hyperframes-oss/docs/images/showcase/launch-hyperframes-launch-v1-s.mp4" poster="https://static.heygen.ai/hyperframes-oss/docs/images/showcase/launch-hyperframes-launch-v1.jpg" />
+    <div className="p-4"><strong className="block text-sm"><a href="https://github.com/heygen-com/hyperframes-launches/tree/main/hyperframes-launch">HyperFrames launch</a></strong><span className="mt-1 block text-xs text-zinc-500 dark:text-zinc-400">The framework's own launch · source included</span></div>
+  </div>
+  <div className="group overflow-hidden rounded-xl border border-zinc-200 bg-white text-inherit no-underline dark:border-zinc-800 dark:bg-zinc-950">
+    <ExamplePlayer title="Website → video" className="aspect-video w-full object-cover bg-zinc-100 dark:bg-zinc-900" src="https://static.heygen.ai/hyperframes-oss/docs/images/showcase/launch-website-to-hyperframes-v1-s.mp4" poster="https://static.heygen.ai/hyperframes-oss/docs/images/showcase/launch-website-to-hyperframes-v1.jpg" />
+    <div className="p-4"><strong className="block text-sm"><a href="https://github.com/heygen-com/hyperframes-launches/tree/main/website-to-hyperframes">Website → video</a></strong><span className="mt-1 block text-xs text-zinc-500 dark:text-zinc-400">A live site becomes a promo · source included</span></div>
+  </div>
+  <div className="group overflow-hidden rounded-xl border border-zinc-200 bg-white text-inherit no-underline dark:border-zinc-800 dark:bg-zinc-950">
+    <ExamplePlayer title="SpaceX explainer" className="aspect-video w-full object-cover bg-zinc-100 dark:bg-zinc-900" src="https://static.heygen.ai/hyperframes-oss/docs/images/showcase/launch-spacex-launch-v1-s.mp4" poster="https://static.heygen.ai/hyperframes-oss/docs/images/showcase/launch-spacex-launch-v1.jpg" />
+    <div className="p-4"><strong className="block text-sm"><a href="https://github.com/heygen-com/hyperframes-launches/tree/main/spacex-launch">SpaceX explainer</a></strong><span className="mt-1 block text-xs text-zinc-500 dark:text-zinc-400">Data and motion at scale · source included</span></div>
+  </div>
+  <div className="group overflow-hidden rounded-xl border border-zinc-200 bg-white text-inherit no-underline dark:border-zinc-800 dark:bg-zinc-950">
+    <ExamplePlayer title="K3 promo" className="aspect-video w-full object-cover bg-zinc-100 dark:bg-zinc-900" src="https://static.heygen.ai/hyperframes-oss/docs/images/showcase/launch-k3-promo-v1-s.mp4" poster="https://static.heygen.ai/hyperframes-oss/docs/images/showcase/launch-k3-promo-v1.jpg" />
     <div className="p-4"><strong className="block text-sm">K3 promo</strong><span className="mt-1 block text-xs text-zinc-500 dark:text-zinc-400">Short product spot · 100% HyperFrames</span></div>
   </div>
 </div>
@@ -44,29 +44,29 @@ Each film is HyperFrames demonstrating one of its own features.
 
 <div className="not-prose grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 my-6">
   <div className="group overflow-hidden rounded-xl border border-zinc-200 bg-white text-inherit no-underline dark:border-zinc-800 dark:bg-zinc-950">
-    <HoverVideo className="aspect-video w-full object-cover bg-zinc-100 dark:bg-zinc-900" src="https://static.heygen.ai/hyperframes-oss/docs/images/showcase/launch-skills-launch-video-v1-s.mp4" poster="https://static.heygen.ai/hyperframes-oss/docs/images/showcase/launch-skills-launch-video-v1.jpg" />
+    <ExamplePlayer title="Agent skills" className="aspect-video w-full object-cover bg-zinc-100 dark:bg-zinc-900" src="https://static.heygen.ai/hyperframes-oss/docs/images/showcase/launch-skills-launch-video-v1-s.mp4" poster="https://static.heygen.ai/hyperframes-oss/docs/images/showcase/launch-skills-launch-video-v1.jpg" />
     <div className="p-4"><strong className="block text-sm">Agent skills</strong><span className="mt-1 block text-xs text-zinc-500 dark:text-zinc-400">The skill system · 100% HyperFrames</span></div>
   </div>
   <div className="group overflow-hidden rounded-xl border border-zinc-200 bg-white text-inherit no-underline dark:border-zinc-800 dark:bg-zinc-950">
-    <HoverVideo className="aspect-video w-full object-cover bg-zinc-100 dark:bg-zinc-900" src="https://static.heygen.ai/hyperframes-oss/docs/images/showcase/launch-keyframes-launch-v1-s.mp4" poster="https://static.heygen.ai/hyperframes-oss/docs/images/showcase/launch-keyframes-launch-v1.jpg" />
+    <ExamplePlayer title="Keyframes" className="aspect-video w-full object-cover bg-zinc-100 dark:bg-zinc-900" src="https://static.heygen.ai/hyperframes-oss/docs/images/showcase/launch-keyframes-launch-v1-s.mp4" poster="https://static.heygen.ai/hyperframes-oss/docs/images/showcase/launch-keyframes-launch-v1.jpg" />
     <div className="p-4"><strong className="block text-sm">Keyframes</strong><span className="mt-1 block text-xs text-zinc-500 dark:text-zinc-400">Seek-safe animation · 100% HyperFrames</span></div>
   </div>
-  <a className="group overflow-hidden rounded-xl border border-zinc-200 bg-white text-inherit no-underline dark:border-zinc-800 dark:bg-zinc-950" href="https://github.com/heygen-com/hyperframes-launches/tree/main/timeline-launch">
-    <HoverVideo className="aspect-video w-full object-cover bg-zinc-100 dark:bg-zinc-900" src="https://static.heygen.ai/hyperframes-oss/docs/images/showcase/launch-timeline-launch-v1-s.mp4" poster="https://static.heygen.ai/hyperframes-oss/docs/images/showcase/launch-timeline-launch-v1.jpg" />
-    <div className="p-4"><strong className="block text-sm">Timeline editor</strong><span className="mt-1 block text-xs text-zinc-500 dark:text-zinc-400">Studio timeline · source included</span></div>
-  </a>
-  <a className="group overflow-hidden rounded-xl border border-zinc-200 bg-white text-inherit no-underline dark:border-zinc-800 dark:bg-zinc-950" href="https://github.com/heygen-com/hyperframes-launches/tree/main/inspector-launch">
-    <HoverVideo className="aspect-video w-full object-cover bg-zinc-100 dark:bg-zinc-900" src="https://static.heygen.ai/hyperframes-oss/docs/images/showcase/launch-inspector-launch-v1-s.mp4" poster="https://static.heygen.ai/hyperframes-oss/docs/images/showcase/launch-inspector-launch-v1.jpg" />
-    <div className="p-4"><strong className="block text-sm">Studio inspector</strong><span className="mt-1 block text-xs text-zinc-500 dark:text-zinc-400">Editing on the canvas · source included</span></div>
-  </a>
-  <a className="group overflow-hidden rounded-xl border border-zinc-200 bg-white text-inherit no-underline dark:border-zinc-800 dark:bg-zinc-950" href="https://github.com/heygen-com/hyperframes-launches/tree/main/variables-launch">
-    <HoverVideo className="aspect-video w-full object-cover bg-zinc-100 dark:bg-zinc-900" src="https://static.heygen.ai/hyperframes-oss/docs/images/showcase/launch-variables-launch-v1-s.mp4" poster="https://static.heygen.ai/hyperframes-oss/docs/images/showcase/launch-variables-launch-v1.jpg" />
-    <div className="p-4"><strong className="block text-sm">Variables</strong><span className="mt-1 block text-xs text-zinc-500 dark:text-zinc-400">One composition, many versions · source included</span></div>
-  </a>
-  <a className="group overflow-hidden rounded-xl border border-zinc-200 bg-white text-inherit no-underline dark:border-zinc-800 dark:bg-zinc-950" href="https://github.com/heygen-com/hyperframes-launches/tree/main/cloud-render-launch">
-    <HoverVideo className="aspect-video w-full object-cover bg-zinc-100 dark:bg-zinc-900" src="https://static.heygen.ai/hyperframes-oss/docs/images/showcase/launch-cloud-render-launch-v1-s.mp4" poster="https://static.heygen.ai/hyperframes-oss/docs/images/showcase/launch-cloud-render-launch-v1.jpg" />
-    <div className="p-4"><strong className="block text-sm">Cloud rendering</strong><span className="mt-1 block text-xs text-zinc-500 dark:text-zinc-400">Render on HeyGen's cloud · source included</span></div>
-  </a>
+  <div className="group overflow-hidden rounded-xl border border-zinc-200 bg-white text-inherit no-underline dark:border-zinc-800 dark:bg-zinc-950">
+    <ExamplePlayer title="Timeline editor" className="aspect-video w-full object-cover bg-zinc-100 dark:bg-zinc-900" src="https://static.heygen.ai/hyperframes-oss/docs/images/showcase/launch-timeline-launch-v1-s.mp4" poster="https://static.heygen.ai/hyperframes-oss/docs/images/showcase/launch-timeline-launch-v1.jpg" />
+    <div className="p-4"><strong className="block text-sm"><a href="https://github.com/heygen-com/hyperframes-launches/tree/main/timeline-launch">Timeline editor</a></strong><span className="mt-1 block text-xs text-zinc-500 dark:text-zinc-400">Studio timeline · source included</span></div>
+  </div>
+  <div className="group overflow-hidden rounded-xl border border-zinc-200 bg-white text-inherit no-underline dark:border-zinc-800 dark:bg-zinc-950">
+    <ExamplePlayer title="Studio inspector" className="aspect-video w-full object-cover bg-zinc-100 dark:bg-zinc-900" src="https://static.heygen.ai/hyperframes-oss/docs/images/showcase/launch-inspector-launch-v1-s.mp4" poster="https://static.heygen.ai/hyperframes-oss/docs/images/showcase/launch-inspector-launch-v1.jpg" />
+    <div className="p-4"><strong className="block text-sm"><a href="https://github.com/heygen-com/hyperframes-launches/tree/main/inspector-launch">Studio inspector</a></strong><span className="mt-1 block text-xs text-zinc-500 dark:text-zinc-400">Editing on the canvas · source included</span></div>
+  </div>
+  <div className="group overflow-hidden rounded-xl border border-zinc-200 bg-white text-inherit no-underline dark:border-zinc-800 dark:bg-zinc-950">
+    <ExamplePlayer title="Variables" className="aspect-video w-full object-cover bg-zinc-100 dark:bg-zinc-900" src="https://static.heygen.ai/hyperframes-oss/docs/images/showcase/launch-variables-launch-v1-s.mp4" poster="https://static.heygen.ai/hyperframes-oss/docs/images/showcase/launch-variables-launch-v1.jpg" />
+    <div className="p-4"><strong className="block text-sm"><a href="https://github.com/heygen-com/hyperframes-launches/tree/main/variables-launch">Variables</a></strong><span className="mt-1 block text-xs text-zinc-500 dark:text-zinc-400">One composition, many versions · source included</span></div>
+  </div>
+  <div className="group overflow-hidden rounded-xl border border-zinc-200 bg-white text-inherit no-underline dark:border-zinc-800 dark:bg-zinc-950">
+    <ExamplePlayer title="Cloud rendering" className="aspect-video w-full object-cover bg-zinc-100 dark:bg-zinc-900" src="https://static.heygen.ai/hyperframes-oss/docs/images/showcase/launch-cloud-render-launch-v1-s.mp4" poster="https://static.heygen.ai/hyperframes-oss/docs/images/showcase/launch-cloud-render-launch-v1.jpg" />
+    <div className="p-4"><strong className="block text-sm"><a href="https://github.com/heygen-com/hyperframes-launches/tree/main/cloud-render-launch">Cloud rendering</a></strong><span className="mt-1 block text-xs text-zinc-500 dark:text-zinc-400">Render on HeyGen's cloud · source included</span></div>
+  </div>
 </div>
 
 ### Motion, sound & effects
@@ -75,21 +75,21 @@ Motion is the message — kinetic type, beat-synced cuts, texture and VFX.
 
 <div className="not-prose grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 my-6">
   <div className="group overflow-hidden rounded-xl border border-zinc-200 bg-white text-inherit no-underline dark:border-zinc-800 dark:bg-zinc-950">
-    <HoverVideo className="aspect-video w-full object-cover bg-zinc-100 dark:bg-zinc-900" src="https://static.heygen.ai/hyperframes-oss/docs/images/showcase/launch-texture-launch-video-v1-s.mp4" poster="https://static.heygen.ai/hyperframes-oss/docs/images/showcase/launch-texture-launch-video-v1.jpg" />
+    <ExamplePlayer title="Texture launch" className="aspect-video w-full object-cover bg-zinc-100 dark:bg-zinc-900" src="https://static.heygen.ai/hyperframes-oss/docs/images/showcase/launch-texture-launch-video-v1-s.mp4" poster="https://static.heygen.ai/hyperframes-oss/docs/images/showcase/launch-texture-launch-video-v1.jpg" />
     <div className="p-4"><strong className="block text-sm">Texture launch</strong><span className="mt-1 block text-xs text-zinc-500 dark:text-zinc-400">Motion design · 100% HyperFrames</span></div>
   </div>
   <div className="group overflow-hidden rounded-xl border border-zinc-200 bg-white text-inherit no-underline dark:border-zinc-800 dark:bg-zinc-950">
-    <HoverVideo className="aspect-video w-full object-cover bg-zinc-100 dark:bg-zinc-900" src="https://static.heygen.ai/hyperframes-oss/docs/images/showcase/launch-vfx-heygen-combined-v1-s.mp4" poster="https://static.heygen.ai/hyperframes-oss/docs/images/showcase/launch-vfx-heygen-combined-v1.jpg" />
+    <ExamplePlayer title="VFX reel" className="aspect-video w-full object-cover bg-zinc-100 dark:bg-zinc-900" src="https://static.heygen.ai/hyperframes-oss/docs/images/showcase/launch-vfx-heygen-combined-v1-s.mp4" poster="https://static.heygen.ai/hyperframes-oss/docs/images/showcase/launch-vfx-heygen-combined-v1.jpg" />
     <div className="p-4"><strong className="block text-sm">VFX reel</strong><span className="mt-1 block text-xs text-zinc-500 dark:text-zinc-400">Shaders and effects · 100% HyperFrames</span></div>
   </div>
   <div className="group overflow-hidden rounded-xl border border-zinc-200 bg-white text-inherit no-underline dark:border-zinc-800 dark:bg-zinc-950">
-    <HoverVideo className="aspect-video w-full object-cover bg-zinc-100 dark:bg-zinc-900" src="https://static.heygen.ai/hyperframes-oss/docs/images/showcase/launch-music-to-video-launch-v1-s.mp4" poster="https://static.heygen.ai/hyperframes-oss/docs/images/showcase/launch-music-to-video-launch-v1.jpg" />
+    <ExamplePlayer title="Music to video" className="aspect-video w-full object-cover bg-zinc-100 dark:bg-zinc-900" src="https://static.heygen.ai/hyperframes-oss/docs/images/showcase/launch-music-to-video-launch-v1-s.mp4" poster="https://static.heygen.ai/hyperframes-oss/docs/images/showcase/launch-music-to-video-launch-v1.jpg" />
     <div className="p-4"><strong className="block text-sm">Music to video</strong><span className="mt-1 block text-xs text-zinc-500 dark:text-zinc-400">Cuts synced to a track · 100% HyperFrames</span></div>
   </div>
-  <a className="group overflow-hidden rounded-xl border border-zinc-200 bg-white text-inherit no-underline dark:border-zinc-800 dark:bg-zinc-950" href="https://github.com/heygen-com/hyperframes-launches/tree/main/sfx-music-launch">
-    <HoverVideo className="aspect-video w-full object-cover bg-zinc-100 dark:bg-zinc-900" src="https://static.heygen.ai/hyperframes-oss/docs/images/showcase/launch-sfx-music-launch-v1-s.mp4" poster="https://static.heygen.ai/hyperframes-oss/docs/images/showcase/launch-sfx-music-launch-v1.jpg" />
-    <div className="p-4"><strong className="block text-sm">Sound & music</strong><span className="mt-1 block text-xs text-zinc-500 dark:text-zinc-400">SFX and music with the CLI · source included</span></div>
-  </a>
+  <div className="group overflow-hidden rounded-xl border border-zinc-200 bg-white text-inherit no-underline dark:border-zinc-800 dark:bg-zinc-950">
+    <ExamplePlayer title="Sound & music" className="aspect-video w-full object-cover bg-zinc-100 dark:bg-zinc-900" src="https://static.heygen.ai/hyperframes-oss/docs/images/showcase/launch-sfx-music-launch-v1-s.mp4" poster="https://static.heygen.ai/hyperframes-oss/docs/images/showcase/launch-sfx-music-launch-v1.jpg" />
+    <div className="p-4"><strong className="block text-sm"><a href="https://github.com/heygen-com/hyperframes-launches/tree/main/sfx-music-launch">Sound & music</a></strong><span className="mt-1 block text-xs text-zinc-500 dark:text-zinc-400">SFX and music with the CLI · source included</span></div>
+  </div>
 </div>
 
 ### Workflows & integrations
@@ -97,43 +97,43 @@ Motion is the message — kinetic type, beat-synced cuts, texture and VFX.
 A PR, a Figma file, a design brief — turned into a finished film.
 
 <div className="not-prose grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 my-6">
-  <a className="group overflow-hidden rounded-xl border border-zinc-200 bg-white text-inherit no-underline dark:border-zinc-800 dark:bg-zinc-950" href="https://github.com/heygen-com/hyperframes-launches/tree/main/pr-to-video-launch">
-    <HoverVideo className="aspect-video w-full object-cover bg-zinc-100 dark:bg-zinc-900" src="https://static.heygen.ai/hyperframes-oss/docs/images/showcase/launch-pr-to-video-launch-v1-s.mp4" poster="https://static.heygen.ai/hyperframes-oss/docs/images/showcase/launch-pr-to-video-launch-v1.jpg" />
-    <div className="p-4"><strong className="block text-sm">PR to video</strong><span className="mt-1 block text-xs text-zinc-500 dark:text-zinc-400">A GitHub PR as a reveal · source included</span></div>
-  </a>
-  <a className="group overflow-hidden rounded-xl border border-zinc-200 bg-white text-inherit no-underline dark:border-zinc-800 dark:bg-zinc-950" href="https://github.com/heygen-com/hyperframes-launches/tree/main/figma-launch">
-    <HoverVideo className="aspect-video w-full object-cover bg-zinc-100 dark:bg-zinc-900" src="https://static.heygen.ai/hyperframes-oss/docs/images/showcase/launch-figma-launch-v1-s.mp4" poster="https://static.heygen.ai/hyperframes-oss/docs/images/showcase/launch-figma-launch-v1.jpg" />
-    <div className="p-4"><strong className="block text-sm">Figma → HyperFrames</strong><span className="mt-1 block text-xs text-zinc-500 dark:text-zinc-400">A design brought to motion · source included</span></div>
-  </a>
   <div className="group overflow-hidden rounded-xl border border-zinc-200 bg-white text-inherit no-underline dark:border-zinc-800 dark:bg-zinc-950">
-    <HoverVideo className="aspect-video w-full object-cover bg-zinc-100 dark:bg-zinc-900" src="https://static.heygen.ai/hyperframes-oss/docs/images/showcase/launch-claude-design-hyperframes-video-v1-s.mp4" poster="https://static.heygen.ai/hyperframes-oss/docs/images/showcase/launch-claude-design-hyperframes-video-v1.jpg" />
+    <ExamplePlayer title="PR to video" className="aspect-video w-full object-cover bg-zinc-100 dark:bg-zinc-900" src="https://static.heygen.ai/hyperframes-oss/docs/images/showcase/launch-pr-to-video-launch-v1-s.mp4" poster="https://static.heygen.ai/hyperframes-oss/docs/images/showcase/launch-pr-to-video-launch-v1.jpg" />
+    <div className="p-4"><strong className="block text-sm"><a href="https://github.com/heygen-com/hyperframes-launches/tree/main/pr-to-video-launch">PR to video</a></strong><span className="mt-1 block text-xs text-zinc-500 dark:text-zinc-400">A GitHub PR as a reveal · source included</span></div>
+  </div>
+  <div className="group overflow-hidden rounded-xl border border-zinc-200 bg-white text-inherit no-underline dark:border-zinc-800 dark:bg-zinc-950">
+    <ExamplePlayer title="Figma → HyperFrames" className="aspect-video w-full object-cover bg-zinc-100 dark:bg-zinc-900" src="https://static.heygen.ai/hyperframes-oss/docs/images/showcase/launch-figma-launch-v1-s.mp4" poster="https://static.heygen.ai/hyperframes-oss/docs/images/showcase/launch-figma-launch-v1.jpg" />
+    <div className="p-4"><strong className="block text-sm"><a href="https://github.com/heygen-com/hyperframes-launches/tree/main/figma-launch">Figma → HyperFrames</a></strong><span className="mt-1 block text-xs text-zinc-500 dark:text-zinc-400">A design brought to motion · source included</span></div>
+  </div>
+  <div className="group overflow-hidden rounded-xl border border-zinc-200 bg-white text-inherit no-underline dark:border-zinc-800 dark:bg-zinc-950">
+    <ExamplePlayer title="Claude Design" className="aspect-video w-full object-cover bg-zinc-100 dark:bg-zinc-900" src="https://static.heygen.ai/hyperframes-oss/docs/images/showcase/launch-claude-design-hyperframes-video-v1-s.mp4" poster="https://static.heygen.ai/hyperframes-oss/docs/images/showcase/launch-claude-design-hyperframes-video-v1.jpg" />
     <div className="p-4"><strong className="block text-sm">Claude Design</strong><span className="mt-1 block text-xs text-zinc-500 dark:text-zinc-400">From a design draft · 100% HyperFrames</span></div>
   </div>
-  <a className="group overflow-hidden rounded-xl border border-zinc-200 bg-white text-inherit no-underline dark:border-zinc-800 dark:bg-zinc-950" href="https://github.com/heygen-com/hyperframes-launches/tree/main/frame-md-launch-storyboard">
-    <HoverVideo className="aspect-video w-full object-cover bg-zinc-100 dark:bg-zinc-900" src="https://static.heygen.ai/hyperframes-oss/docs/images/showcase/launch-frame-md-launch-storyboard-v1-s.mp4" poster="https://static.heygen.ai/hyperframes-oss/docs/images/showcase/launch-frame-md-launch-storyboard-v1.jpg" />
-    <div className="p-4"><strong className="block text-sm">FRAME.md storyboard</strong><span className="mt-1 block text-xs text-zinc-500 dark:text-zinc-400">Brief-driven direction · source included</span></div>
-  </a>
+  <div className="group overflow-hidden rounded-xl border border-zinc-200 bg-white text-inherit no-underline dark:border-zinc-800 dark:bg-zinc-950">
+    <ExamplePlayer title="FRAME.md storyboard" className="aspect-video w-full object-cover bg-zinc-100 dark:bg-zinc-900" src="https://static.heygen.ai/hyperframes-oss/docs/images/showcase/launch-frame-md-launch-storyboard-v1-s.mp4" poster="https://static.heygen.ai/hyperframes-oss/docs/images/showcase/launch-frame-md-launch-storyboard-v1.jpg" />
+    <div className="p-4"><strong className="block text-sm"><a href="https://github.com/heygen-com/hyperframes-launches/tree/main/frame-md-launch-storyboard">FRAME.md storyboard</a></strong><span className="mt-1 block text-xs text-zinc-500 dark:text-zinc-400">Brief-driven direction · source included</span></div>
+  </div>
 </div>
 
 ### Where HyperFrames plugs in
 
-The same engine, reached from the tools teams already use. Hover any card to hear it.
+The same engine, reached from the tools teams already use. Use the player controls to watch and listen.
 
 <div className="not-prose grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 my-6">
   <div className="group overflow-hidden rounded-xl border border-zinc-200 bg-white text-inherit no-underline dark:border-zinc-800 dark:bg-zinc-950">
-    <HoverVideo className="aspect-video w-full object-cover bg-zinc-100 dark:bg-zinc-900" src="https://static.heygen.ai/hyperframes-oss/docs/images/showcase/launch-integration-codex-v1-s.mp4" poster="https://static.heygen.ai/hyperframes-oss/docs/images/showcase/launch-integration-codex-v1.jpg" />
+    <ExamplePlayer title="Codex plugin" className="aspect-video w-full object-cover bg-zinc-100 dark:bg-zinc-900" src="https://static.heygen.ai/hyperframes-oss/docs/images/showcase/launch-integration-codex-v1-s.mp4" poster="https://static.heygen.ai/hyperframes-oss/docs/images/showcase/launch-integration-codex-v1.jpg" />
     <div className="p-4"><strong className="block text-sm">Codex plugin</strong><span className="mt-1 block text-xs text-zinc-500 dark:text-zinc-400">HyperFrames inside Codex · 100% HyperFrames</span></div>
   </div>
   <div className="group overflow-hidden rounded-xl border border-zinc-200 bg-white text-inherit no-underline dark:border-zinc-800 dark:bg-zinc-950">
-    <HoverVideo className="aspect-video w-full object-cover bg-zinc-100 dark:bg-zinc-900" src="https://static.heygen.ai/hyperframes-oss/docs/images/showcase/launch-integration-vercel-v1-s.mp4" poster="https://static.heygen.ai/hyperframes-oss/docs/images/showcase/launch-integration-vercel-v1.jpg" />
+    <ExamplePlayer title="Vercel" className="aspect-video w-full object-cover bg-zinc-100 dark:bg-zinc-900" src="https://static.heygen.ai/hyperframes-oss/docs/images/showcase/launch-integration-vercel-v1-s.mp4" poster="https://static.heygen.ai/hyperframes-oss/docs/images/showcase/launch-integration-vercel-v1.jpg" />
     <div className="p-4"><strong className="block text-sm">Vercel</strong><span className="mt-1 block text-xs text-zinc-500 dark:text-zinc-400">Deploy from a template · 100% HyperFrames</span></div>
   </div>
   <div className="group overflow-hidden rounded-xl border border-zinc-200 bg-white text-inherit no-underline dark:border-zinc-800 dark:bg-zinc-950">
-    <HoverVideo className="aspect-video w-full object-cover bg-zinc-100 dark:bg-zinc-900" src="https://static.heygen.ai/hyperframes-oss/docs/images/showcase/launch-integration-ollama-v1-s.mp4" poster="https://static.heygen.ai/hyperframes-oss/docs/images/showcase/launch-integration-ollama-v1.jpg" />
+    <ExamplePlayer title="Open models (Ollama)" className="aspect-video w-full object-cover bg-zinc-100 dark:bg-zinc-900" src="https://static.heygen.ai/hyperframes-oss/docs/images/showcase/launch-integration-ollama-v1-s.mp4" poster="https://static.heygen.ai/hyperframes-oss/docs/images/showcase/launch-integration-ollama-v1.jpg" />
     <div className="p-4"><strong className="block text-sm">Open models (Ollama)</strong><span className="mt-1 block text-xs text-zinc-500 dark:text-zinc-400">Build with local models · 100% HyperFrames</span></div>
   </div>
   <div className="group overflow-hidden rounded-xl border border-zinc-200 bg-white text-inherit no-underline dark:border-zinc-800 dark:bg-zinc-950">
-    <HoverVideo className="aspect-video w-full object-cover bg-zinc-100 dark:bg-zinc-900" src="https://static.heygen.ai/hyperframes-oss/docs/images/showcase/launch-integration-community-v1-s.mp4" poster="https://static.heygen.ai/hyperframes-oss/docs/images/showcase/launch-integration-community-v1.jpg" />
+    <ExamplePlayer title="Community · hyperframes.dev" className="aspect-video w-full object-cover bg-zinc-100 dark:bg-zinc-900" src="https://static.heygen.ai/hyperframes-oss/docs/images/showcase/launch-integration-community-v1-s.mp4" poster="https://static.heygen.ai/hyperframes-oss/docs/images/showcase/launch-integration-community-v1.jpg" />
     <div className="p-4"><strong className="block text-sm">Community · hyperframes.dev</strong><span className="mt-1 block text-xs text-zinc-500 dark:text-zinc-400">Publish and remix · 100% HyperFrames</span></div>
   </div>
 </div>

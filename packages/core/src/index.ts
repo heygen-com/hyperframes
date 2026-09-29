@@ -252,6 +252,12 @@ export {
   type ResolvedHfColorGrading,
 } from "./colorGrading";
 export { parseCubeLut, CubeLutParseError, type ParseCubeLutOptions } from "./colorLuts";
+export {
+  firstFrameColourArgs,
+  hdrToSdrToneMapFilter,
+  parseFirstFrameColour,
+  type ToneMapSourceColour,
+} from "./hdrToneMap";
 
 // Inline scripts
 export {
@@ -281,6 +287,7 @@ export {
 } from "./inline-scripts/parityContract";
 export { redactKnownPaths, redactTelemetryString } from "./telemetryRedaction";
 export {
+  folderGone,
   isProjectRootMissing,
   isSafePath,
   mkdirWithinProject,

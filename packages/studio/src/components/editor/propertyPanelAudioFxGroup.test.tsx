@@ -989,6 +989,141 @@ describe("AudioFxGroup dynamic carve", () => {
     expect(onSetAttributeLive.mock.calls.every((c) => c[0] === "data-fx-carve")).toBe(true);
     expect(onSetAttributeQuiet.mock.calls.some((c) => c[0] === "data-fx-chain")).toBe(false);
   });
+
+  describe("on each clip's own clock", () => {
+    type Point = { t: number; v: number };
+    /** `hz` at `amp` over [from, to) of a `seconds`-long file, silence elsewhere. */
+    const tone = (seconds: number, [from, to]: [number, number], hz = 1000, amp = 0.7) =>
+      Float32Array.from({ length: SAMPLE_RATE * seconds }, (_, i) => {
+        const t = i / SAMPLE_RATE;
+        return t >= from && t < to ? amp * Math.sin(2 * Math.PI * hz * t) : 0;
+      });
+
+    /** Each file decodes to its own samples, found by the URL that was fetched. */
+    function stubFiles(files: Record<string, Float32Array>): void {
+      vi.stubGlobal(
+        "fetch",
+        vi.fn(async (url: string) => ({ arrayBuffer: async () => url })),
+      );
+      vi.stubGlobal(
+        "OfflineAudioContext",
+        class {
+          decodeAudioData = async (url: string) => {
+            const data = Object.entries(files).find(([name]) => url.endsWith(name))![1];
+            return { sampleRate: SAMPLE_RATE, getChannelData: () => data };
+          };
+        },
+      );
+    }
+
+    const valueAt = (points: Point[], t: number): number => {
+      const i = points.findIndex((p) => p.t >= t);
+      if (i <= 0) return points.at(i)!.v;
+      const [a, b] = [points[i - 1]!, points[i]!];
+      return a.v + ((b.v - a.v) * (t - a.t)) / (b.t - a.t);
+    };
+
+    /** Carves the bed against `vo` and reads back the lane driving the first node of `type`. */
+    async function carveLane(
+      type: string,
+      voice: Record<string, string>,
+      bed: Record<string, string> = {},
+      strength = 0,
+    ) {
+      const { host, onSetAttributeQuiet } = mount({
+        "fx-chain": carvedChain,
+        "fx-carve": settings(true, { strength, sources: [] }),
+        start: "0",
+        ...bed,
+      });
+      const vo = document.getElementById("vo")!;
+      vo.setAttribute("src", "voice.wav");
+      for (const [name, value] of Object.entries(voice)) vo.setAttribute(`data-${name}`, value);
+      document.getElementById("bed")!.setAttribute("src", "bed.wav");
+      await act(async () => {
+        pickSource(host, "vo");
+      });
+      const calls = onSetAttributeQuiet.mock.calls;
+      const nodes = parseWrite(writeTo(calls, "data-fx-chain")!).nodes as {
+        id: string;
+        type: string;
+        params: { gain: number; frequency: number };
+      }[];
+      const node = nodes.find((n) => n.type === type)!;
+      const lanes = parseWrite(writeTo(calls, "data-automation")!).lanes as {
+        target: string;
+        points: Point[];
+      }[];
+      const points = lanes.find((l) => l.target === `fx.${node.id}.gain`)!.points;
+      return {
+        depth: node.params.gain,
+        frequency: node.params.frequency,
+        points,
+        at: (t: number) => valueAt(points, t),
+      };
+    }
+
+    /** Quiet 1 kHz speech at 0-2 s, loud 4 kHz speech at 4-6 s, in an 8 s file. */
+    const lateSpeech = () => {
+      const after = tone(8, [4, 6], 4000, 0.9);
+      return tone(8, [0, 2], 1000, 0.3).map((v, i) => v + after[i]!);
+    };
+
+    it("ignores speech after the bed has stopped playing", async () => {
+      // The bed file runs 8 s, but the clip plays only its first 3 s.
+      stubFiles({ "voice.wav": lateSpeech(), "bed.wav": tone(8, [0, 8], 200) });
+      const lane = await carveLane("peaking", { start: "0" }, { duration: "3" });
+      expect(lane.frequency).toBe(1000);
+    });
+
+    it("ignores speech after a bed with no duration runs out, when it ducks", async () => {
+      // No data-duration: the bed plays its 3 s file. Strength 0.05 ducks and keeps one band.
+      stubFiles({ "voice.wav": lateSpeech(), "bed.wav": tone(3, [0, 3], 200) });
+      const lane = await carveLane("peaking", { start: "0" }, {}, 0.05);
+      expect(lane.frequency).toBe(1000);
+    });
+
+    it.each([
+      ["no duration", {}],
+      ["a duration longer than its file", { duration: "6" }],
+    ])("ignores speech after a 3 s bed file with %s, without ducking", async (_, bed) => {
+      stubFiles({ "voice.wav": lateSpeech(), "bed.wav": tone(3, [0, 3], 200) });
+      const lane = await carveLane("peaking", { start: "0" }, bed);
+      expect(lane.frequency).toBe(1000);
+    });
+
+    it("cuts where a trimmed voice speaks, not where its file does", async () => {
+      // File speech 2-3.5 s; the clip plays 2-4 s of it, so the bed hears it at 0-1.5 s.
+      stubFiles({ "voice.wav": tone(6, [2, 3.5]), "bed.wav": tone(8, [0, 8], 200) });
+      const lane = await carveLane("peaking", { start: "0", "media-start": "2", duration: "2" });
+      expect({ speaking: lane.at(0.8) <= lane.depth * 0.5, after: lane.at(3) }).toEqual({
+        speaking: true,
+        after: 0,
+      });
+    });
+
+    it("cuts over half the source length for a voice at 2x", async () => {
+      // File speech 1-3 s at 2x: the bed hears it at 0.5-1.5 s.
+      stubFiles({ "voice.wav": tone(4, [1, 3]), "bed.wav": tone(8, [0, 8], 200) });
+      const lane = await carveLane("peaking", { start: "0", "playback-rate": "2", duration: "2" });
+      expect({
+        speaking: lane.at(0.8) <= lane.depth * 0.5 && lane.at(1.3) <= lane.depth * 0.5,
+        after: lane.at(2.5),
+      }).toEqual({ speaking: true, after: 0 });
+    });
+
+    it("ducks against the part of the bed that plays", async () => {
+      // The bed file is silent for 4 s and loud after; the clip starts 4 s in, so it is loud under the voice.
+      stubFiles({ "voice.wav": tone(4, [1, 3]), "bed.wav": tone(8, [4, 8], 200, 0.9) });
+      const lane = await carveLane(
+        "gain",
+        { start: "0" },
+        { "media-start": "4", duration: "4" },
+        1,
+      );
+      expect(Math.min(...lane.points.map((p) => p.v))).toBeLessThan(0);
+    });
+  });
 });
 
 describe("AudioFxGroup successive edits", () => {

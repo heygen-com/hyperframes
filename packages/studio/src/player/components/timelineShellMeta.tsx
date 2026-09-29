@@ -31,6 +31,7 @@ export interface TimelineShellMetaInputs {
   activeTool: string;
   shiftHeld: boolean;
   labelMode: boolean;
+  contentOrigin: number;
   zoomMode: "fit" | "manual";
   theme: Pick<TimelineTheme, "shellBackground" | "shellBorder">;
   razor: {
@@ -69,6 +70,7 @@ export function buildTimelineShellMeta(input: TimelineShellMetaInputs): Timeline
       ref: input.setScrollRef,
       tabIndex: -1,
       labelMode: input.labelMode,
+      contentOrigin: input.contentOrigin,
       zoomMode: input.zoomMode,
       onScroll: (e) => {
         input.lastScrollLeftRef.current = e.currentTarget.scrollLeft;

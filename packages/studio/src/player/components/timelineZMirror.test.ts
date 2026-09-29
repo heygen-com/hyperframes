@@ -622,7 +622,7 @@ describe("expanded sub-comp children — lane scoping", () => {
   const child = (id: string, track: number, start: number, duration: number) =>
     el(id, track, start, duration, {
       sourceFile: "scene.html",
-      expandedParentStart: 5,
+      expandedHostKey: "host",
     });
 
   it("a child mirrors onto a SIBLING's lane and persists the sibling's AUTHORED track", () => {
@@ -630,7 +630,7 @@ describe("expanded sub-comp children — lane scoping", () => {
     // file) but sits elsewhere in time → its lane is free over t's span.
     const c1 = el("c1", 0.25, 20, 3, {
       sourceFile: "scene.html",
-      expandedParentStart: 5,
+      expandedHostKey: "host",
       authoredTrack: 2,
     });
     const c2 = child("c2", 0.5, 5, 5);

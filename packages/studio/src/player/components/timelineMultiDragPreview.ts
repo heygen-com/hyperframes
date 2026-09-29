@@ -1,4 +1,5 @@
 import type { TimelineElement } from "../store/playerStore";
+import { clampToHostStart } from "../store/timelineElement";
 import { canMoveTimelineElement } from "./timelineAuthoredMoveTarget";
 
 /**
@@ -95,8 +96,12 @@ export function resolveGroupMovers(
   return elements.filter((e) => selectedKeys.has(e.key ?? e.id) && canMoveTimelineElement(e));
 }
 
-/** The lowest start the grabbed clip may take so the whole group moves rigidly and no mover
- *  crosses 0 (the commit floors each member at 0, which would deform the group). */
-export function groupMoveFloor(grabbedStart: number, movers: readonly TimelineElement[]): number {
-  return grabbedStart - Math.min(grabbedStart, ...movers.map((e) => e.start));
+/** The lowest start the grabbed clip may take so the whole group moves rigidly and no clip
+ *  crosses its own floor, its host composition's start (the commit floors each one there). */
+export function groupMoveFloor(
+  grabbed: TimelineElement,
+  movers: readonly TimelineElement[],
+): number {
+  const room = Math.min(...[grabbed, ...movers].map((e) => e.start - clampToHostStart(e, 0)));
+  return grabbed.start - room;
 }

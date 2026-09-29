@@ -29,6 +29,7 @@ export interface GsapDragCommitCallbacks {
     options: {
       label: string;
       coalesceKey?: string;
+      coalesceMs?: number;
       softReload?: boolean;
       skipReload?: boolean;
       beforeReload?: () => void;

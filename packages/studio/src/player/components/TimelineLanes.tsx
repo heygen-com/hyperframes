@@ -41,6 +41,7 @@ export function TimelineLanes({
   contentGutter,
   trackContentWidth,
   theme,
+  showAudioEffects,
   displayTrackOrder,
   rowGeometry,
   virtualRows,
@@ -115,11 +116,8 @@ export function TimelineLanes({
   // synthetic lane element spans the whole composition rather than a clip.
   const compositionDuration = usePlayerStore((s) => s.duration);
   useAutomationSelectionKeyboard({ lanes: automationLanes });
-  const { logicalRowsByTrack, groupByAnchor } = useTimelineLaneRowIndexes(logicalRows, groups);
-  const groupMemberTracks = useMemo(
-    () => new Set(groups.flatMap((group) => group.memberTracks)),
-    [groups],
-  );
+  const rowIndexes = useTimelineLaneRowIndexes(logicalRows, groups);
+  const { logicalRowsByTrack, groupByAnchor, groupMemberTracks } = rowIndexes;
   const {
     toggleRowExpanded: toggleRowExpandedTracked,
     toggleClipExpanded: toggleClipExpandedTracked,
@@ -134,9 +132,8 @@ export function TimelineLanes({
     focusedTargetId,
     rowGeometry,
     scrollRef,
-    onToggleRow: (row) => {
-      if (row.elementId) toggleClipExpandedTracked(row.elementId);
-    },
+    onToggleRow: (row) => row.elementId && toggleClipExpandedTracked(row.elementId),
+    onDrillDown,
   });
   return (
     <div
@@ -169,6 +166,7 @@ export function TimelineLanes({
                 virtualized={rowsVirtualized}
                 contentOrigin={contentOrigin}
                 theme={theme}
+                showAudioEffects={showAudioEffects}
                 rovingTargetId={keyboard.rovingTargetId}
                 collapsedGroupIds={collapsedGroupIds}
                 expandedLaneOwnerIds={expandedLaneOwnerIds}
@@ -293,6 +291,7 @@ export function TimelineLanes({
                 isAudioTrack={isAudioTrack}
                 isGroupMember={groupMemberTracks.has(trackNum)}
                 theme={theme}
+                showAudioEffects={showAudioEffects}
                 onToggleClipExpanded={() => {
                   const keys = els.map(getTimelineElementIdentity);
                   if (keys.length > 0) toggleRowExpandedTracked(keys);

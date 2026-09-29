@@ -1,35 +1,5 @@
 // UI primitives
-export { Button, buttonBase, buttonSizes, buttonVariants } from "./components/ui/Button";
-export type { ButtonSize, ButtonVariant, PreviewState } from "./components/ui/Button";
-export { HyperframesLogo } from "./components/StudioHeader";
-export { IconButton } from "./components/ui/IconButton";
-export { Tab, TabPanel, Tabs, TabsList } from "./components/ui/Tabs";
-export { HyperframesLoader } from "./components/ui/HyperframesLoader";
-export type { HyperframesLoaderProps } from "./components/ui/HyperframesLoader";
-export { Tooltip } from "./components/ui/Tooltip";
-export { cn } from "./components/ui/cn";
-export {
-  ContextMenu,
-  Menu,
-  MenuItem,
-  MenuRadioGroup,
-  MenuRadioItem,
-  MenuSeparator,
-  MenuShortcut,
-  popupSurface,
-} from "./components/ui/Menu";
-export type { MenuItemTone, PopupPreviewState } from "./components/ui/Menu";
-export { Popover } from "./components/ui/Popover";
-export { Input, fieldBase, fieldText } from "./components/ui/Input";
-export type { InputProps } from "./components/ui/Input";
-export { NumberField } from "./components/ui/NumberField";
-export type { NumberFieldProps } from "./components/ui/NumberField";
-export { Select } from "./components/ui/Select";
-export type { SelectOption, SelectProps } from "./components/ui/Select";
-export { Slider } from "./components/ui/Slider";
-export type { SliderProps } from "./components/ui/Slider";
-export { Toggle } from "./components/ui/Toggle";
-export type { ToggleProps } from "./components/ui/Toggle";
+export * from "./ui";
 
 // NLE Layout
 export { EditorShell } from "./components/EditorShell";
@@ -39,6 +9,7 @@ export { DEFAULT_SHORTCUT_SECTIONS } from "./player/components/studioShortcuts";
 export type { ShortcutHint, ShortcutSection } from "./player/components/studioShortcuts";
 export { CompositionBreadcrumb } from "./components/nle/CompositionBreadcrumb";
 export type { CompositionLevel } from "./components/nle/CompositionBreadcrumb";
+export { useCompositionStack } from "./components/nle/useCompositionStack";
 
 // Player (preview, timeline, playback controls)
 export {
@@ -195,6 +166,28 @@ export { AudioMeterStrip } from "./components/nle/AudioMeterStrip";
 export type { AudioMeterStripProps } from "./components/nle/AudioMeterStrip";
 export { useClipboard } from "./hooks/useClipboard";
 export type { UseClipboardOptions } from "./hooks/useClipboard";
+
+// DOM editing for a host outside EditorShell; the Commit hooks save without useDomEditSession.
+export { useDomEditSession } from "./hooks/useDomEditSession";
+export type { UseDomEditSessionParams } from "./hooks/useDomEditSession";
+export { usePreviewPersistence } from "./hooks/usePreviewPersistence";
+export type { UsePreviewPersistenceParams } from "./hooks/usePreviewPersistence";
+export { DomEditProvider, useDomEditSelectionContext } from "./contexts/DomEditContext";
+export { PreviewReadOnlyProvider } from "./components/editor/previewReadOnlyContext";
+export { ConnectedDomEditOverlay } from "./components/editor/ConnectedDomEditOverlay";
+export type { ConnectedDomEditOverlayProps } from "./components/editor/ConnectedDomEditOverlay";
+export type { DomEditCapabilities, DomEditSelection } from "./components/editor/domEditingTypes";
+export { useDomStyleCommit } from "./hooks/useDomStyleCommit";
+export type { UseDomStyleCommitOptions } from "./hooks/useDomStyleCommit";
+export type { DomEditCommitDeclineReason, DomEditCommitOutcome } from "./hooks/domEditCommitRunner";
+export { resolveDomEditSelection } from "./components/editor/domEditingLayers";
+export { useDomGeometryCommit } from "./hooks/useDomGeometryCommit";
+export type { DomGeometryCommits, UseDomGeometryCommitOptions } from "./hooks/useDomGeometryCommit";
+export { DomEditOverlay } from "./components/editor/DomEditOverlay";
+export type {
+  DomEditGroupPathOffsetCommit,
+  DomEditOverlayProps,
+} from "./components/editor/DomEditOverlay";
 
 export {
   playSeamTransitionLoop,

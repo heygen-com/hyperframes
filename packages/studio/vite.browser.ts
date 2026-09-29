@@ -228,6 +228,7 @@ async function prepareThumbnailPage(
     })
     .catch(() => {});
   await seekThumbnailPreview(page, opts.seekTime);
+  await page.evaluate("window.__hfWaitForSeekCompletion?.()");
   await applyStudioRenderBodyScriptsToThumbnailPage(page, opts.project.dir, opts.compPath);
   await page.evaluate("document.fonts?.ready");
   await new Promise((resolve) => setTimeout(resolve, 200));

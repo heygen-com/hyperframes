@@ -127,7 +127,11 @@ export const MotionPathOverlay = memo(function MotionPathOverlay({
   // just in render, after the early returns) so the park-timer cleanup can key on
   // it: a pending park seek belongs to the OLD animation, so firing it after the
   // active animation changed would jump the playhead onto a stale keyframe.
-  const animId = editableAnimationId(selectedGsapAnimations ?? [], geometry?.kind ?? "linear");
+  const animId = editableAnimationId(
+    selectedGsapAnimations ?? [],
+    geometry?.kind ?? "linear",
+    selection,
+  );
   // Clear the debounced park timer on unmount AND whenever the active animation id
   // changes — not unmount-only, or a queued seek from the previous selection still
   // fires against the new one.

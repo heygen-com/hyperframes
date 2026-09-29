@@ -15,6 +15,7 @@ const RENDERED_FIELDS: readonly (keyof TimelineElement)[] = [
   "audioGroupHidden",
   "fadeIn",
   "fadeOut",
+  "src",
 ];
 
 /** Whether a derived timeline changes any field that affects rendering. */

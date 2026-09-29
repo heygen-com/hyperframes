@@ -245,15 +245,11 @@ export function useInlineTextEdit({
     };
   }, [session, commit, cancel]);
 
-  // Navigation can remove the overlay while the opening frame is pending.
-  // Teardown is the single owner of cancelling that frame and restoring the
-  // composition node, so unmount closes through the same path as every exit.
-  useEffect(
-    () => () => {
-      teardown();
-    },
-    [teardown],
-  );
+  // Unmount keeps the typed words, as blur does. Read through a ref so a new
+  // onCommit never closes the session mid-edit.
+  const commitRef = useRef(commit);
+  commitRef.current = commit;
+  useEffect(() => () => commitRef.current(), []);
 
   return { session, start, commit, cancel };
 }

@@ -49,10 +49,14 @@ export function gsapSourceFileForSelection(selection: DomEditSelection): string 
 export function selectElementAnimationsOrRetry(
   parsed: Pick<ParsedGsap, "animations"> | null,
   target: { id: string | null; selector: string | null },
+  element?: Element | null,
 ): ElementAnimationsOutcome {
   if (!parsed) return { kind: "fetch-error" };
   if (parsed.animations.length === 0) return { kind: "cold" };
-  return { kind: "resolved", animations: getAnimationsForElement(parsed.animations, target) };
+  return {
+    kind: "resolved",
+    animations: getAnimationsForElement(parsed.animations, target, element),
+  };
 }
 
 // Retry policy deliberately distinguishes cold parses from hard fetch errors.
@@ -61,6 +65,7 @@ async function fetchElementAnimationsWithRetry(
   projectId: string,
   gsapSourceFile: string,
   target: { id: string | null; selector: string | null },
+  element: Element,
   failOnFetchError: boolean,
   fresh: boolean,
 ): Promise<GsapAnimation[]> {
@@ -69,7 +74,7 @@ async function fetchElementAnimationsWithRetry(
   for (;;) {
     const parsed = await fetchParsedAnimations(projectId, gsapSourceFile, { fresh });
     fresh = false;
-    const outcome = selectElementAnimationsOrRetry(parsed, target);
+    const outcome = selectElementAnimationsOrRetry(parsed, target, element);
     if (outcome.kind === "resolved") return outcome.animations;
     if (outcome.kind === "fetch-error") {
       if (errorAttempts >= FETCH_ERROR_RETRIES) {
@@ -96,6 +101,7 @@ export function useGsapAnimationFetchFallback(projectId: string | null) {
           projectId,
           gsapSourceFileForSelection(selection),
           target,
+          selection.element,
           options?.failOnFetchError === true,
           options?.fresh === true,
         );

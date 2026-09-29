@@ -9,6 +9,7 @@ import type { DomEditLayerItem } from "./domEditingTypes";
 import { createRafThrottle, LayersPanel, sortLayersByZIndex } from "./LayersPanel";
 import { isLayerDraggable } from "./useLayerDrag";
 import { liveTime } from "../../player";
+import { sceneSwapFor } from "../../player/sceneSwap";
 
 (globalThis as unknown as { IS_REACT_ACT_ENVIRONMENT: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
@@ -291,5 +292,18 @@ describe("LayersPanel preview promotion", () => {
       b.dispatchEvent(new Event("load"));
     });
     expect(collectedRootIds()).toEqual(["b"]);
+  });
+  it("recollects layers when edited scenes are swapped into the live document", async () => {
+    const a = makeIframe("a");
+    Object.defineProperty(a, "contentWindow", { value: { __hfSwapScenes: async () => {} } });
+    const fetchSpy = vi.spyOn(globalThis, "fetch").mockResolvedValue(new Response("<html></html>"));
+    mocks.previewIframeRef.current = a;
+    usePreviewIframeStore.setState({ iframe: a });
+    act(() => root.render(createElement(LayersPanel)));
+    mocks.collect.mockClear();
+
+    await act(() => sceneSwapFor(a)!("/preview", () => true));
+    expect(collectedRootIds()).toEqual(["a"]);
+    fetchSpy.mockRestore();
   });
 });

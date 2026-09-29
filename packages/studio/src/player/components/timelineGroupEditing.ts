@@ -1,6 +1,7 @@
 import { clampPlaybackRate } from "@hyperframes/parsers/media-duration";
 import { roundToCenti } from "../../utils/rounding";
 import type { TimelineElement } from "../store/playerStore";
+import { clampToHostStart } from "../store/timelineElement";
 import { getTimelineEditCapabilities } from "./timelineEditCapabilities";
 
 const DEFAULT_TIMELINE_MIN_DURATION = 0.1;
@@ -88,6 +89,7 @@ export interface TimelineGroupTimingMember {
   duration: number;
   playbackStart?: number;
   playbackRate?: number;
+  minStart?: number;
 }
 
 export type TimelineGroupResizeEdge = "start" | "end";
@@ -107,7 +109,7 @@ function clampTimelineGroupMoveDelta(
   members: readonly TimelineGroupTimingMember[],
 ): number {
   if (members.length === 0) return 0;
-  const minDelta = Math.max(...members.map((member) => -member.start));
+  const minDelta = Math.max(...members.map((member) => -(member.start - (member.minStart ?? 0))));
   return roundTimelineTime(Math.max(rawDelta, minDelta));
 }
 
@@ -139,7 +141,9 @@ export function clampTimelineGroupResizeDelta(
   }
 
   // Rigid group: the applied delta is bounded by the most-constrained member.
-  const bounds = members.map((member) => clipStartTrimDeltaBounds(member, 0, minDuration));
+  const bounds = members.map((member) =>
+    clipStartTrimDeltaBounds(member, member.minStart ?? 0, minDuration),
+  );
   const minDelta = ceilTimelineTime(Math.max(...bounds.map((b) => b.minDelta)));
   const maxDelta = Math.min(...bounds.map((b) => b.maxDelta));
   const delta = roundTimelineTime(clamp(rawDelta, minDelta, maxDelta));
@@ -243,6 +247,7 @@ export function buildTimelineGroupResizeMembers(
         ? (element.playbackStart ?? 0)
         : element.playbackStart,
     playbackRate: element.playbackRate,
+    minStart: clampToHostStart(element, 0),
   }));
 }
 

@@ -1,3 +1,5 @@
+// @vitest-environment happy-dom
+
 import { describe, expect, it } from "vitest";
 import type { GsapAnimation, ParsedGsap } from "@hyperframes/core/gsap-parser";
 import {
@@ -38,6 +40,16 @@ describe("selectElementAnimationsOrRetry", () => {
     expect(outcome.kind).toBe("resolved");
     expect(outcome.kind === "resolved" && outcome.animations.map((a) => a.targetSelector)).toEqual([
       "#puck-a",
+    ]);
+  });
+
+  it("matches a class tween through the live element, as the selected-element list does", () => {
+    const element = document.createElement("div");
+    element.id = "puck-a";
+    element.className = "puck";
+    const outcome = selectElementAnimationsOrRetry(parsed([anim(".puck")]), target, element);
+    expect(outcome.kind === "resolved" && outcome.animations.map((a) => a.targetSelector)).toEqual([
+      ".puck",
     ]);
   });
 

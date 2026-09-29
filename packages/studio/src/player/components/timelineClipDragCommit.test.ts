@@ -315,7 +315,6 @@ describe("commitDraggedClipMove", () => {
     const child = {
       ...el("scene.html#title", 0.25, 12, 2),
       sourceFile: "scene.html",
-      expandedParentStart: 10,
       expandedHostKey: "host",
     };
     const { updateElement, onMoveElement, onMoveElements } = runClipMove(
@@ -338,7 +337,6 @@ describe("commitDraggedClipMove", () => {
     const child = {
       ...el("scene.html#title", 0.25, 12, 2),
       sourceFile: "scene.html",
-      expandedParentStart: 10,
       expandedHostKey: "host",
     };
     const { onMoveElement, onMoveElements } = runClipMove(
@@ -360,7 +358,6 @@ describe("commitDraggedClipMove", () => {
     const child = {
       ...el("scene.html#title", 0.25, 12, 2),
       sourceFile: "scene.html",
-      expandedParentStart: 10,
       expandedHostKey: "host",
     };
     const { onMoveElement, onMoveElements } = runClipMove(
@@ -382,7 +379,6 @@ describe("commitDraggedClipMove", () => {
     const child = {
       ...el("scene.html#title", 0.25, 12, 2),
       sourceFile: "scene.html",
-      expandedParentStart: 10,
       expandedHostKey: "host",
     };
     const { onMoveElement, onMoveElements } = runClipMove(
@@ -406,7 +402,6 @@ describe("commitDraggedClipMove", () => {
     const child = {
       ...el("scene.html#title", 0.25, 12, 2),
       sourceFile: "scene.html",
-      expandedParentStart: 10,
       expandedHostKey: "host",
     };
     const { onMoveElement, onMoveElements } = runClipMove(
@@ -1232,7 +1227,6 @@ describe("commitDraggedClipMove", () => {
         const child: TimelineElement = {
           ...el("child", 2, childStart, 4),
           expandedHostKey: "host",
-          expandedParentStart: hostStart,
         };
         const { onMoveElements } = runClipMove(
           drag(child, { previewStart: childStart, previewTrack: 0 }),
@@ -1355,12 +1349,10 @@ describe("commitZMirrorLaneMove", () => {
     const child1 = {
       ...el("child-1", 0.25, 0, 5),
       sourceFile: "scene.html",
-      expandedParentStart: 0,
     };
     const child2 = {
       ...el("child-2", 0.5, 0, 5),
       sourceFile: "scene.html",
-      expandedParentStart: 0,
     };
     const b = { ...el("b", 1, 0, 5), sourceFile: "index.html" };
     const t = { ...el("t", 2, 0, 5), sourceFile: "index.html" };
@@ -1469,6 +1461,24 @@ describe("commitZMirrorLaneMove", () => {
     );
     expect(moved).toBe(false);
     expect(onMoveElements).not.toHaveBeenCalled();
+  });
+});
+
+describe("persistMoveEdits: a nested row dropped before its host", () => {
+  it("lands at the host's start in the store and in the persist", async () => {
+    const logo = { ...el("logo", 0, 5, 5, "div"), parentCompositionStart: 2 };
+    const updateElement = vi.fn();
+    const onMoveElements = vi.fn(async (_edits: TimelineMoveEdit[]) => {});
+    await persistMoveEdits([{ element: logo, updates: { start: 1, track: 0 } }], {
+      elements: [logo],
+      trackOrder: [0],
+      updateElement,
+      onMoveElements,
+    });
+    expect(updateElement).toHaveBeenCalledWith("logo", { start: 2, track: 0 });
+    expect(onMoveElements.mock.calls[0]?.[0]).toEqual([
+      { element: logo, updates: { start: 2, track: 0 } },
+    ]);
   });
 });
 

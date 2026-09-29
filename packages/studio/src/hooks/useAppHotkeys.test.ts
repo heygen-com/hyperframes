@@ -1,7 +1,7 @@
 // @vitest-environment happy-dom
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { dispatchModifierKey, dispatchPlainKey, type HotkeyCallbacks } from "./appHotkeysDispatch";
-import { usePlayerStore } from "../player/store/playerStore";
+import { liveTime, usePlayerStore } from "../player/store/playerStore";
 import type { DomEditSelection } from "../components/editor/domEditing";
 import { clearAutomationClipboard, copyRange } from "../player/components/automationClipboard";
 import { VOLUME_RANGE } from "@hyperframes/core/audio-automation";
@@ -57,6 +57,63 @@ afterEach(() => {
     selectedElementId: null,
     selectedElementIds: new Set<string>(),
     selectedKeyframes: new Set<string>(),
+  });
+});
+
+describe("dispatchPlainKey — select leftward / rightward", () => {
+  const clips = [
+    { ...bgmElement, id: "early", key: "early", start: 0, track: 0 },
+    { ...bgmElement, id: "at", key: "at", start: 4, track: 1 },
+    { ...bgmElement, id: "late", key: "late", start: 7, track: 2 },
+  ];
+  beforeEach(() => usePlayerStore.setState({ elements: clips, currentTime: 4 }));
+
+  it("[ selects every clip starting before the playhead, on every track", () => {
+    const event = press("[");
+    dispatchPlainKey(event, "[", callbacks());
+    expect([...usePlayerStore.getState().selectedElementIds]).toEqual(["early"]);
+    expect(usePlayerStore.getState().selectedElementId).toBe("early");
+    expect(event.defaultPrevented).toBe(true);
+  });
+
+  it("uses the live playhead while playing, not the time stored at play start", () => {
+    usePlayerStore.setState({ isPlaying: true, currentTime: 0 });
+    liveTime.notify(8);
+    try {
+      dispatchPlainKey(press("["), "[", callbacks());
+      expect([...usePlayerStore.getState().selectedElementIds].sort()).toEqual([
+        "at",
+        "early",
+        "late",
+      ]);
+    } finally {
+      usePlayerStore.setState({ isPlaying: false });
+      liveTime.notify(0);
+    }
+  });
+
+  it("clears a clicked keyframe like any other selection change", () => {
+    usePlayerStore.setState({ activeKeyframePct: 50 });
+    dispatchPlainKey(press("]"), "]", callbacks());
+    expect(usePlayerStore.getState().activeKeyframePct).toBeNull();
+  });
+
+  it("] selects every clip starting at or after the playhead, on every track", () => {
+    dispatchPlainKey(press("]"), "]", callbacks());
+    const { selectedElementIds, selectedElementId } = usePlayerStore.getState();
+    expect([...selectedElementIds].sort()).toEqual(["at", "late"]);
+    expect(selectedElementId).toBe("at");
+  });
+
+  it("selects nothing when no clip is on that side", () => {
+    usePlayerStore.setState({
+      currentTime: 0,
+      selectedElementId: "late",
+      selectedElementIds: new Set(["late"]),
+    });
+    dispatchPlainKey(press("["), "[", callbacks());
+    expect(usePlayerStore.getState().selectedElementIds.size).toBe(0);
+    expect(usePlayerStore.getState().selectedElementId).toBeNull();
   });
 });
 

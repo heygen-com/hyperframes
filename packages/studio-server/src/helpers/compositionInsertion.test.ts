@@ -174,4 +174,20 @@ describe("insertCompositionIntoSource", () => {
     expect(() => insert("invalid.html")).toThrow(/valid data-composition-duration/);
     expect(() => insert("../outside.html")).toThrow(CompositionInsertionError);
   });
+
+  it("says the project folder is gone rather than that the source escapes it", () => {
+    const dir = project();
+    rmSync(dir, { recursive: true });
+    const insert = () =>
+      insertCompositionIntoSource({
+        projectDir: dir,
+        targetPath: "index.html",
+        sourcePath: "headline.html",
+        parentSource: parent,
+        start: 0,
+        desiredTrack: 0,
+      });
+
+    expect(insert).toThrow(expect.objectContaining({ name: "ProjectRootMissingError" }));
+  });
 });

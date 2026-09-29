@@ -14,7 +14,8 @@ export interface GestureTransaction {
   element: HTMLElement;
   label: string;
   settle(): void;
-  persist(commit: TxCommit): Promise<void>;
+  persist(commit: TxCommit, coalesceKey: string): Promise<void>;
+  afterBufferedCommitsSaved?(): Promise<void>;
   restore(): void;
   skipPixelAssert?: boolean;
 }
@@ -142,9 +143,10 @@ export function runGestureTransaction(tx: GestureTransaction): Promise<void> {
   };
 
   return tx
-    .persist(commit)
+    .persist(commit, coalesceKey)
     .then(async () => {
       reloadCount = await dispatchBufferedCommits(bufferedCommits);
+      await tx.afterBufferedCommitsSaved?.();
       const durationMs = Math.round(performance.now() - startedAt);
       logCommit("persisted", { label: tx.label, coalesceKey });
       if (before) {

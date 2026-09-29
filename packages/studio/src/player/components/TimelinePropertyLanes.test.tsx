@@ -189,7 +189,7 @@ describe("TimelinePropertyLanes", () => {
   // host-absolute start while its tweens are parsed from its own file and are
   // local to it. clipTimingStart is what brings the two into one frame.
   it("keeps an expanded sub-comp child's lane percentages inside the clip", () => {
-    const child = { start: 16.5, duration: 2, expandedParentStart: 16 };
+    const child = { start: 16.5, duration: 2, parentCompositionStart: 16 };
     const local = animation("pill-tween", "position", [
       { percentage: 0, properties: { x: 0 } },
       { percentage: 100, properties: { x: 100 } },

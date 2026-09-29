@@ -107,12 +107,18 @@ const at = (id: string, start: number, locked = false): TimelineElement => ({
 
 describe("groupMoveFloor (rigid group move)", () => {
   it("lets the grabbed clip go as far left as the leftmost mover allows, and no further", () => {
-    expect(groupMoveFloor(10, [at("g", 10), at("p", 1), at("q", 4)])).toBe(9);
-    expect(groupMoveFloor(5, [at("g", 5), at("p", 8)])).toBe(0); // the grabbed clip is leftmost
+    expect(groupMoveFloor(at("g", 10), [at("g", 10), at("p", 1), at("q", 4)])).toBe(9);
+    expect(groupMoveFloor(at("g", 5), [at("g", 5), at("p", 8)])).toBe(0); // the grabbed clip is leftmost
   });
 
   it("forbids any leftward move once a mover sits at 0", () => {
-    expect(groupMoveFloor(3, [at("g", 3), at("p", 0)])).toBe(3);
+    expect(groupMoveFloor(at("g", 3), [at("g", 3), at("p", 0)])).toBe(3);
+  });
+
+  it("stops a nested mover at its host composition's start, and a lone clip at its own host", () => {
+    const nested = { ...at("p", 3), parentCompositionStart: 2 };
+    expect(groupMoveFloor(at("g", 10), [at("g", 10), nested])).toBe(9);
+    expect(groupMoveFloor(nested, [])).toBe(2);
   });
 });
 

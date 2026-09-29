@@ -435,6 +435,37 @@ describe("registerPreviewRoutes", () => {
     expect(html).toContain("Preview");
   });
 
+  it("does not keep a build under the signature a write replaced while it built", async () => {
+    const projectDir = createProjectDir();
+    const file = join(projectDir, "index.html");
+    const edited = "<html><head></head><body>Edited</body></html>";
+    writeFileSync(file, edited);
+    let release = () => {};
+    let gate: Promise<void> | null = new Promise<void>((resolve) => (release = resolve));
+    const app = new Hono();
+    registerPreviewRoutes(
+      app,
+      createAdapter(projectDir, {
+        bundle: async () => {
+          const wait = gate;
+          gate = null;
+          await wait;
+          return readFileSync(file, "utf-8");
+        },
+      }),
+    );
+
+    const inFlight = app.request("http://localhost/projects/demo/preview");
+    await vi.waitFor(() => expect(gate).toBeNull());
+    writeFileSync(file, "<html><head></head><body>Undone!</body></html>");
+    release();
+    expect(await (await inFlight).text()).toContain("Undone!");
+    writeFileSync(file, edited);
+
+    const redo = await app.request("http://localhost/projects/demo/preview?_t=2");
+    expect(await redo.text()).toContain("Edited");
+  });
+
   it("uses the adapter project signature when available", async () => {
     const projectDir = createProjectDir();
     const getProjectSignature = vi.fn(() => "cached-signature");
@@ -1014,8 +1045,15 @@ describe("hf-proxy negotiation and media codec map injection (U3)", () => {
           "",
         );
       });
+    const { waitForProxy, ProxyWaitTimeoutError, PROXY_PENDING_RETRY_AFTER_SECONDS } =
+      await vi.importActual<typeof import("../helpers/proxyTranscoder.js")>(
+        "../helpers/proxyTranscoder.js",
+      );
     vi.doMock("../helpers/proxyTranscoder.js", () => ({
       resolveProxy,
+      waitForProxy,
+      ProxyWaitTimeoutError,
+      PROXY_PENDING_RETRY_AFTER_SECONDS,
       ProxyTranscodeError: FakeProxyTranscodeError,
       ProxyCapacityError: FakeProxyCapacityError,
       PROXY_PARAMS_VERSION: "v1",
@@ -1350,6 +1388,44 @@ describe("hf-proxy negotiation and media codec map injection (U3)", () => {
       );
       expect(res.status).toBe(503);
       expect(res.headers.get("Retry-After")).toBe("5");
+    });
+
+    it("answers 202 at once while the copy is made, then serves the copy once it lands", async () => {
+      const projectDir = createProjectDir();
+      writeFileSync(join(projectDir, "clip.mp4"), "original-hevc-bytes");
+      const proxyPath = join(projectDir, "proxy.mp4");
+      let landCopy!: () => void;
+      const transcode = new Promise<string>((resolveCopy) => {
+        landCopy = () => {
+          writeFileSync(proxyPath, "proxy-bytes");
+          resolveCopy(proxyPath);
+        };
+      });
+      const { registerPreviewRoutes: register } = await loadPreviewModule({
+        resolveProxyImpl: () => transcode,
+      });
+      const { mediaProxyDemand } = await import("../helpers/mediaCodecMap.js");
+      const before = mediaProxyDemand().proxyRequests;
+      const app = new Hono();
+      register(app, createAdapter(projectDir));
+      const url = "http://localhost/projects/demo/preview/clip.mp4?hf-proxy=h264";
+
+      const pending = await Promise.race([
+        app.request(url),
+        new Promise<"held">((resolveHeld) => setTimeout(resolveHeld, 1000, "held")),
+      ]);
+      expect(pending, "a cold copy must not hold the request for the transcode").not.toBe("held");
+      const cold = pending as Response;
+      expect(cold.status).toBe(202);
+      expect(cold.headers.get("Retry-After")).toBe("2");
+      expect(cold.headers.get("Cache-Control")).toBe("no-store");
+      expect(mediaProxyDemand().proxyRequests - before).toBe(0);
+
+      landCopy();
+      const ready = await app.request(url);
+      expect(ready.status).toBe(200);
+      expect(await ready.text()).toBe("proxy-bytes");
+      expect(mediaProxyDemand().proxyRequests - before).toBe(1);
     });
 
     it("rejects a path-traversal attempt through the proxied path (404, no transcode)", async () => {
@@ -1785,6 +1861,31 @@ describe("hf-proxy codec probe", () => {
         tempDirs.push(`${projectDir}-renamed`);
         renameSync(projectDir, `${projectDir}-renamed`);
         return { kind: "video" as const, color: { codecName: "hevc", pixelFormat: "yuv420p" } };
+      },
+    }));
+    const { createStudioApi: create } = await import("../createStudioApi.js");
+    const api = create(createAdapter(projectDir));
+
+    const response = await api.request(
+      "http://localhost/projects/demo/preview/clip.mp4?hf-proxy=h264",
+    );
+
+    expect(response.status).toBe(404);
+    expect(await response.json()).toMatchObject({ why: "project_dir_missing" });
+  });
+
+  it("answers that the project folder is gone when a rename makes the codec probe fail", async () => {
+    const projectDir = createProjectDir();
+    writeFileSync(join(projectDir, "clip.mp4"), "original-hevc-bytes");
+    vi.resetModules();
+    vi.doMock("../helpers/mediaMetadata.js", async () => ({
+      ...(await vi.importActual<typeof import("../helpers/mediaMetadata.js")>(
+        "../helpers/mediaMetadata.js",
+      )),
+      probeMediaMetadata: async () => {
+        tempDirs.push(`${projectDir}-renamed`);
+        renameSync(projectDir, `${projectDir}-renamed`);
+        return { kind: "video" as const, color: {}, probeError: "ffprobe failed" };
       },
     }));
     const { createStudioApi: create } = await import("../createStudioApi.js");

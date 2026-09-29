@@ -1,11 +1,14 @@
 #!/usr/bin/env node
 
 import { spawnSync } from "node:child_process";
-import { existsSync, statSync, writeFileSync, renameSync, rmSync } from "node:fs";
-import { resolve, join, extname, basename } from "node:path";
+import { existsSync, statSync, writeFileSync, renameSync, rmSync, realpathSync } from "node:fs";
+import { resolve, join, extname, basename, relative, isAbsolute, sep } from "node:path";
 import { parseArgs } from "node:util";
 import {
+  AGENT_SOURCES,
   appendRecord,
+  latestRecordFor,
+  recordInPlace,
   findByPrompt,
   findByEntity,
   nextId,
@@ -23,6 +26,7 @@ import {
 } from "./lib/registry.mjs";
 import { freezeUrl, freezeLocalFile, isDirectMediaUrl } from "./lib/freeze.mjs";
 import { findExistingAsset } from "./lib/adopt.mjs";
+import { probe as probeMedia } from "./lib/probe.mjs";
 import { track } from "./lib/telemetry.mjs";
 import { recordMiss } from "./lib/misses.mjs";
 import { buildStats } from "./lib/stats.mjs";
@@ -89,6 +93,7 @@ const { values: args } = parseArgs({
     "dry-run": { type: "boolean", default: false },
     reuse: { type: "string" },
     from: { type: "string" },
+    source: { type: "string" },
     params: { type: "string" },
     for: { type: "string" },
     analyze: { type: "boolean", default: false },
@@ -125,6 +130,8 @@ Options:
   --reuse <sha>   Import a specific global-cache asset (by content sha/prefix,
                   from --candidates) into this project
   --from <file>   Freeze a local file or direct public URL (ingest)
+  --source <how>  With --from: how the file was made (${AGENT_SOURCES.join(" | ")}).
+                  A file already inside the project is then recorded where it is
   --params <json> Build an explicit parametric LUT (lut/grade only)
   --for <media>   Analyze a local image/video and add measured grade adjust
                   suggestions (grade only)
@@ -206,6 +213,11 @@ if (args.stats) {
 if (args.reuse !== undefined) {
   await reuseGlobal(args.reuse);
   process.exit(0);
+}
+
+if (args.source && !args.from) {
+  console.error("error: --source goes with --from <file>");
+  process.exit(2);
 }
 
 // Ingest: freeze a user-supplied local file or direct public URL (no search).
@@ -353,6 +365,8 @@ async function run() {
       ? null
       : findExistingAsset(projectDir, intent, type);
   if (existingAsset) {
+    const recorded = latestRecordFor(projectDir, existingAsset.relativePath);
+    if (recorded) return result(recorded, "cached");
     const id = nextId(projectDir, type);
     const record = {
       id,
@@ -904,6 +918,24 @@ async function ingest(src) {
     console.error(`error: refusing to ingest a 0-byte file: ${src}`);
     process.exit(2);
   }
+  if (args.source && !AGENT_SOURCES.includes(args.source)) {
+    console.error(`error: --source takes one of: ${AGENT_SOURCES.join(", ")}`);
+    process.exit(2);
+  }
+  if (args.source && (type === "lut" || type === "grade")) {
+    console.error("error: --source records media files; a LUT or grade is ingested without it");
+    process.exit(2);
+  }
+  const real = (path) => (existsSync(path) ? realpathSync(path) : path);
+  const inProject = args.source && !isUrl ? relative(real(projectDir), real(resolve(src))) : null;
+  if (
+    inProject &&
+    inProject !== ".." &&
+    !inProject.startsWith(`..${sep}`) &&
+    !isAbsolute(inProject)
+  ) {
+    return recordProjectFile(inProject.split(sep).join("/"));
+  }
   const ext = extname(isUrl ? new URL(src).pathname : src) || defaultExt(type);
   const { id, localPath, fullPath } = await withReservedFile(
     projectDir,
@@ -928,7 +960,7 @@ async function ingest(src) {
     id,
     type,
     path: localPath,
-    source: "ingested",
+    source: args.source || "ingested",
     description: basename(src.split("?")[0]),
     provenance: { provider: "local", from: src },
   };
@@ -940,6 +972,30 @@ async function ingest(src) {
     // best-effort
   }
   await result(record, "ingested");
+}
+
+async function recordProjectFile(path) {
+  let duration;
+  try {
+    duration = probeMedia(join(projectDir, path)).duration;
+  } catch (err) {
+    exitError(err.message);
+  }
+  const record = recordInPlace(projectDir, {
+    type,
+    path,
+    source: args.source,
+    description: intent,
+    duration,
+    provenance: {
+      provider: args.provider || "local",
+      from: path,
+      ...(intent && { prompt: intent }),
+    },
+  });
+  regenerateIndex(projectDir);
+  // "recorded", not the record's source, so usage counts keep meaning fetches.
+  await result(record, "recorded");
 }
 
 async function showCandidates() {

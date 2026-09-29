@@ -165,6 +165,7 @@ const quietMedia = () => {
   vi.spyOn(HTMLMediaElement.prototype, "load").mockImplementation(() => {});
 };
 const proxyHostile = () => {
+  vi.spyOn(globalThis, "fetch").mockImplementation(async () => new Response("x", { status: 206 }));
   window.__HF_MEDIA_CODEC_MAP__ = {
     "/clip.mov": { codecName: "prores", browserHostile: true, representativeMime: null },
   };
@@ -422,9 +423,11 @@ describe("__hfSwapScenes", () => {
     const withVideo = { ...B, body: '<video data-var-src="clip" src="clip.mov"></video>' };
     boot([A1, withVideo], root);
     await tick();
+    await tick();
     const video = sceneHost("b").querySelector("video")!;
     expect(video.src).toBe(proxied);
     await window.__hfSwapScenes!(preview([A2, withVideo]).html);
+    await tick();
     expect(video.src).toBe(proxied);
   });
 
@@ -439,6 +442,7 @@ describe("__hfSwapScenes", () => {
     await window.__hfSwapScenes!(
       preview([{ ...A2, body: `<p>A two</p>${video}${video}` }, B]).html,
     );
+    await tick();
     const videos = Array.from(sceneHost("a").querySelectorAll("video"));
     expect(videos.map((v) => v.src)).toEqual([proxied, proxied]);
   });

@@ -1,4 +1,5 @@
 import type { TimelineElement } from "../store/playerStore";
+import { clampToHostStart } from "../store/timelineElement";
 import type { DraggedClipState } from "./useTimelineClipDrag";
 // Type-only: erased at runtime, so the timelineZMirror → timelineClipDragCommit
 // value-import edge stays acyclic.
@@ -108,6 +109,10 @@ export function persistMoveEdits(
   coalesceMs?: number,
 ): Promise<boolean> {
   if (edits.length === 0) return Promise.resolve(true);
+  edits = edits.map((e) => {
+    const start = clampToHostStart(e.element, e.updates.start);
+    return start === e.updates.start ? e : { ...e, updates: { ...e.updates, start } };
+  });
   const { updateElement, onMoveElement, onMoveElements } = deps;
   if (!onMoveElements) {
     console.warn(

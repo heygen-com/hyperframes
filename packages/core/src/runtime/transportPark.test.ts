@@ -206,6 +206,88 @@ describe("parked transport loop", () => {
     expect(states.at(-1)).toMatchObject({ isPlaying: false, ended: true, frame: 149 });
   });
 
+  const setPlayRange = (startSeconds: number | null, endSeconds: number | null) =>
+    window.dispatchEvent(
+      new MessageEvent("message", {
+        source: window.parent,
+        data: {
+          source: "hf-parent",
+          type: "control",
+          action: "set-play-range",
+          startSeconds,
+          endSeconds,
+        },
+      }),
+    );
+  const stateMessages = () => posted.filter((m) => m["type"] === "state");
+
+  /** Mounts a 5 s film with clips a [0, 3) and b [3, 5), driven by a mocked clock. */
+  const mountRangeFilm = () => {
+    let nowMs = 1000;
+    vi.spyOn(performance, "now").mockImplementation(() => nowMs);
+    mount(
+      `<div id="a" data-start="0" data-duration="3"></div><div id="b" data-start="3" data-duration="2"></div>`,
+    );
+    const timeline = window.__timelines!.main!;
+    initSandboxRuntimeModular();
+    quiesce();
+    const frames: Array<{ time: number; b: string }> = [];
+    const step = () => {
+      nowMs += 7;
+      raf.step(7);
+      frames.push({ time: timeline.time(), b: document.getElementById("b")!.style.visibility });
+    };
+    const playOut = () => {
+      window.__player!.play();
+      for (let n = 0; n < 1000 && window.__player!.isPlaying(); n += 1) step();
+    };
+    return { timeline, frames, step, playOut };
+  };
+
+  it("stops on a play range's last frame, says it ended, and restarts at the range start only while it is set", () => {
+    const { timeline, frames, playOut } = mountRangeFilm();
+
+    setPlayRange(2, 3);
+    window.__player!.seek(2);
+    for (let wrap = 0; wrap < 3; wrap += 1) playOut();
+    expect(stateMessages().at(-1)).toMatchObject({ isPlaying: false, ended: true, frame: 89 });
+    expect(stateMessages().at(-1)?.["currentTime"]).toBeCloseTo(89 / 30, 9);
+    expect(timeline.time()).toBeCloseTo(89 / 30, 9);
+    expect(Math.max(...frames.map((f) => f.time))).toBeLessThan(3);
+    expect(frames.every((f) => f.b === "hidden")).toBe(true);
+    expect(document.getElementById("a")!.style.visibility).not.toBe("hidden");
+    expect(window.__player!.getDuration()).toBe(5);
+
+    const before = stateMessages().length;
+    window.__player!.play();
+    expect(stateMessages()[before]).toMatchObject({ isPlaying: true, frame: 60 });
+    window.__player!.pause();
+
+    setPlayRange(null, null);
+    playOut();
+    expect(stateMessages().at(-1)).toMatchObject({ isPlaying: false, ended: true, frame: 150 });
+    const atFilmEnd = stateMessages().length;
+    window.__player!.play();
+    expect(stateMessages()[atFilmEnd]).toMatchObject({ isPlaying: true, frame: 0 });
+  });
+
+  it("jumps to the range start and keeps playing when a new range leaves the playhead outside", () => {
+    const { step } = mountRangeFilm();
+    setPlayRange(2, 3);
+    window.__player!.seek(2.5);
+    window.__player!.play();
+    step();
+    const before = stateMessages().length;
+
+    setPlayRange(2, 2.4);
+
+    const after = stateMessages().slice(before);
+    expect(after.some((m) => m["ended"] === true)).toBe(false);
+    expect(after.at(-1)).toMatchObject({ isPlaying: true, currentTime: 2 });
+    expect(after.at(-1)?.["capabilities"]).toContain("play-range");
+    expect(window.__player!.isPlaying()).toBe(true);
+  });
+
   // The render stops at the root's declared length too; a longer animation is cut off.
   it.each([
     ["3 s, shorter than its animation", "3", 90],

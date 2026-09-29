@@ -1,5 +1,10 @@
 import { execFile } from "node:child_process";
 import { extname } from "node:path";
+import {
+  firstFrameColourArgs,
+  parseFirstFrameColour,
+  type ToneMapSourceColour,
+} from "@hyperframes/core";
 import { findFfBinary } from "@hyperframes/parsers/ff-binaries";
 
 export interface FfprobeRunResult {
@@ -175,6 +180,22 @@ export function classifyMediaColor(stream: FfprobeStream | null | undefined): Me
     colorPrimaries: stream?.color_primaries,
     bitsPerRawSample: stream?.bits_per_raw_sample,
   };
+}
+
+/** The first shown frame's colour tags, which zscale reads per frame. Empty when unread. */
+export async function probeFirstFrameColour(
+  filePath: string,
+  runner: FfprobeRunner = execFileRunner,
+): Promise<ToneMapSourceColour> {
+  const ffmpegPath =
+    findFfBinary("ffmpeg", { configuredMustExist: true }) ??
+    (runner === execFileRunner ? undefined : "ffmpeg");
+  if (!ffmpegPath) return {};
+  const result = await runner(ffmpegPath, firstFrameColourArgs(filePath), {
+    timeout: 15_000,
+    maxBuffer: 1024 * 1024,
+  });
+  return result.status === 0 ? parseFirstFrameColour(String(result.stderr)) : {};
 }
 
 export async function probeMediaMetadata(
