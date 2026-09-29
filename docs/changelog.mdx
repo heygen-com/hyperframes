@@ -9,6 +9,24 @@ Recent HyperFrames releases, including user-facing features, fixes, and migratio
 {/* New release entries are prepended by `bun run changelog:draft <version> --write`. */}
 
 <Update
+  label="HyperFrames v0.8.90"
+  description="Released - 2026-09-29"
+  tags={["Release", "Studio"]}
+>
+Undo and redo in Studio update the preview in place instead of reloading it. Clicking an element in the preview selects it faster, without restyling the whole film.
+
+## Fixes
+
+- **Studio:** Undo and redo update the preview in place instead of reloading it ([9e1dbca7a](https://github.com/heygen-com/hyperframes/commit/9e1dbca7a2c2ea7486852efe737b606f86dd4e32), [#4718](https://github.com/heygen-com/hyperframes/pull/4718)).
+
+## Performance
+
+- **Studio:** Clicking an element in the preview selects it without restyling the whole film ([1bede4742](https://github.com/heygen-com/hyperframes/commit/1bede4742a502cf8f6dfaccfafa3f7ef01f12299), [#4707](https://github.com/heygen-com/hyperframes/pull/4707)).
+
+[View the full commit range](https://github.com/heygen-com/hyperframes/compare/v0.8.89...v0.8.90).
+</Update>
+
+<Update
   label="HyperFrames v0.8.89"
   description="Released - 2026-09-29"
   tags={["Release", "Studio", "Media Use"]}
