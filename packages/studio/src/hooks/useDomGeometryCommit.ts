@@ -2,7 +2,7 @@ import { useCallback, useMemo, useRef } from "react";
 import type { GsapAnimation } from "@hyperframes/core/gsap-parser";
 import type { DomEditSelection } from "../components/editor/domEditing";
 import type { DomEditGroupPathOffsetCommit } from "../components/editor/DomEditOverlay";
-import { usePlayerStore } from "../player/store/playerStore";
+import { isPreviewBooted } from "../player/store/playerStore";
 import type { DomEditCommitOutcome } from "./domEditCommitRunner";
 import type { UseDomStyleCommitOptions } from "./useDomStyleCommit";
 import { useGsapAnimationFetchFallback } from "./useGsapAnimationFetchFallback";
@@ -11,7 +11,10 @@ import { useGsapInteractionFailureTelemetry } from "./useGsapInteractionFailureT
 import { useGsapScriptCommits } from "./useGsapScriptCommits";
 import { useGsapCacheVersion } from "./useGsapTweenCache";
 
-/** The host must first call `usePlayerStore.getState().beginTimelineSession(projectId)`. */
+/**
+ * Studio's `Player` must show the project, with `beginTimelineSession(projectId)` run before it
+ * mounts; drain `waitForPendingSaves` before switching projects.
+ */
 export interface UseDomGeometryCommitOptions extends UseDomStyleCommitOptions {
   /** Called when a save cannot patch the preview in place; defaults to reloading the iframe. */
   reloadPreview?: () => void;
@@ -101,11 +104,12 @@ export function useDomGeometryCommit({
     async (commit: () => Promise<void>, restore = noop): Promise<DomEditCommitOutcome> => {
       const refusal = !projectIdRef.current
         ? "No project is open"
-        : usePlayerStore.getState().timelineProjectId !== projectIdRef.current
-          ? "The player store has no timeline session for this project"
+        : !isPreviewBooted(projectIdRef.current)
+          ? "The preview for this project has not loaded yet"
           : null;
       if (refusal) {
         restore();
+        showToast(refusal, "error");
         throw new Error(refusal);
       }
       const run = commit();
@@ -117,7 +121,7 @@ export function useDomGeometryCommit({
       }
       return { ok: true };
     },
-    [pending],
+    [pending, showToast],
   );
   return useMemo(
     () => ({

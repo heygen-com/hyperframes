@@ -176,11 +176,15 @@ describe("useDomGeometryCommit, from the package entry", () => {
     unmount();
   });
 
-  it("refuses at once when the player store has no timeline session for the project", async () => {
+  it.each([
+    ["the player shows another project", { timelineProjectId: "another-project" }],
+    ["the preview has not booted", { previewBooted: false }],
+  ])("refuses at once when %s", async (_state, store) => {
     const mutations = stubServer();
-    usePlayerStore.setState({ timelineProjectId: "another-project" });
+    usePlayerStore.setState(store);
     const restore = vi.fn();
-    const { element, hook, unmount } = renderHost();
+    const showToast = vi.fn();
+    const { element, hook, unmount } = renderHost({ showToast });
 
     await expect(
       hook().commitBoxSize(
@@ -189,8 +193,9 @@ describe("useDomGeometryCommit, from the package entry", () => {
         undefined,
         restore,
       ),
-    ).rejects.toThrow("no timeline session");
+    ).rejects.toThrow("has not loaded yet");
     expect(restore).toHaveBeenCalledTimes(1);
+    expect(showToast).toHaveBeenCalledWith(expect.stringContaining("not loaded"), "error");
     expect(mutations).toHaveLength(0);
     unmount();
   });
