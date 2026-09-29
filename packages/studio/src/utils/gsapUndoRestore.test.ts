@@ -275,6 +275,14 @@ describe("applyUndoRestoreToPreview", () => {
     };
     expect(applyUndoRestoreToPreview(iframe, ROOT, files, 3, reloadPreview)).toBe("full");
     expect(partsAtReload).toEqual({ shared: "s", scenes: { scene0: "", scene1: "h1" } });
+
+    const withRoot = {
+      ...files,
+      [ROOT]: { previous: wrap("<p>b</p>"), restored: wrap("<p>a</p>") },
+    };
+    applyUndoRestoreToPreview(iframe, ROOT, withRoot, 3, reloadPreview);
+    // A restored page outside every scene forces the full reload, never a partial swap.
+    expect(partsAtReload).toEqual({ shared: "", scenes: { scene0: "", scene1: "h1" } });
   });
 
   it("full-reloads when the restore touches a sub-comp, not the active comp", () => {

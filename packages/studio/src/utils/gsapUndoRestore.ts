@@ -185,7 +185,7 @@ export function applyUndoRestoreToPreview(
   activeCompPath: string | null,
   files: Record<string, UndoRestoreFile> | undefined,
   currentTime: number,
-  reloadPreview: () => void,
+  reload: () => void,
 ): "soft" | "full" {
   // The master view carries a NULL activeCompPath but the root iframe shows
   // index.html — the codebase-wide convention (`activeCompPath || "index.html"`).
@@ -193,7 +193,10 @@ export function applyUndoRestoreToPreview(
   // full-reloaded: the original "undo always blinks".
   const activeDocPath = activeCompPath ?? "index.html";
   const paths = files ? Object.keys(files) : [];
-  markScenesStale(iframe, paths);
+  const reloadPreview = () => {
+    markScenesStale(iframe, paths);
+    reload();
+  };
   // Soft path only covers the single active-comp document in the root iframe.
   if (!iframe || !files || paths.length !== 1 || paths[0] !== activeDocPath) {
     reloadPreview();

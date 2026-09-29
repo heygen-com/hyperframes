@@ -21,9 +21,16 @@ export function markScenesStale(iframe: HTMLIFrameElement | null, files: readonl
   const doc = iframe?.contentDocument;
   const meta = doc?.querySelector<HTMLMetaElement>('meta[name="hf-scene-parts"]');
   if (!doc || !meta) return;
-  const parts = JSON.parse(meta.content) as { scenes: Record<string, string> };
+  let parts: { shared: string; scenes: Record<string, string> };
+  try {
+    parts = JSON.parse(meta.content);
+  } catch {
+    return;
+  }
   for (const file of files) {
-    for (const host of doc.querySelectorAll(`[data-composition-file="${CSS.escape(file)}"]`)) {
+    const hosts = doc.querySelectorAll(`[data-composition-file="${CSS.escape(file)}"]`);
+    if (hosts.length === 0 && file.endsWith(".html")) parts.shared = "";
+    for (const host of hosts) {
       const scene = host.closest("[data-hf-scene]")?.getAttribute("data-hf-scene");
       if (scene && scene in parts.scenes) parts.scenes[scene] = "";
     }
