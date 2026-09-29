@@ -9,6 +9,9 @@ import { hugRectForElement } from "./domEditOverlayCrop";
 import { composeElementTransform, type PlanarTransformOps } from "./domEditOverlayTransform";
 import { type OverlayMeasurePass, readThroughPass } from "./domEditOverlayMeasurePass";
 
+/** Screen-px square each corner resize dot owns, centered on its corner. */
+export const RESIZE_HANDLE_HIT_PX = 16;
+
 export interface OverlayRect {
   left: number;
   top: number;

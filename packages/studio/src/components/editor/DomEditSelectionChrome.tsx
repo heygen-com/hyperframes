@@ -1,6 +1,10 @@
 import type { RefObject } from "react";
 import { type DomEditSelection } from "./domEditing";
-import type { GroupOverlayItem, OverlayRect } from "./domEditOverlayGeometry";
+import {
+  type GroupOverlayItem,
+  type OverlayRect,
+  RESIZE_HANDLE_HIT_PX,
+} from "./domEditOverlayGeometry";
 import type { ResizeHandle } from "./domEditOverlayGestures";
 import type { createDomEditOverlayGestureHandlers } from "./useDomEditOverlayGestures";
 import { DomEditCropHandles } from "./DomEditCropHandles";
@@ -22,10 +26,6 @@ const RESIZE_HANDLE_DEFS: Array<{
   { handle: "sw", cursor: "nesw-resize", x: "left", y: "bottom" },
   { handle: "se", cursor: "nwse-resize", x: "right", y: "bottom" },
 ];
-
-// Visible dot is 9px; the pointer target is a 16px invisible square centered
-// on the corner so click targets don't shrink with the smaller dot.
-const RESIZE_HANDLE_HIT_PX = 16;
 
 type CropInset = { top: number; right: number; bottom: number; left: number };
 const NO_CROP_INSET: CropInset = { top: 0, right: 0, bottom: 0, left: 0 };

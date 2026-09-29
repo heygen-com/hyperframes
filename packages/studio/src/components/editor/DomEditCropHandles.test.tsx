@@ -36,6 +36,7 @@ function makeEl(id: string, clip: string): HTMLElement {
 function render(
   el: HTMLElement,
   onStyleCommit: (property: string, value: string) => Promise<unknown> | void = () => undefined,
+  rect: OverlayRect = overlayRect,
 ): { root: Root; rerender: (next: HTMLElement) => void } {
   const host = document.createElement("div");
   document.body.append(host);
@@ -45,7 +46,7 @@ function render(
       root.render(
         <DomEditCropHandles
           selection={selectionFor(target)}
-          overlayRect={overlayRect}
+          overlayRect={rect}
           onStyleCommit={onStyleCommit}
         />,
       );
@@ -153,5 +154,90 @@ describe("DomEditCropHandles clip lift/restore", () => {
 
     expect(a.style.getPropertyValue("clip-path")).toBe("none");
     act(() => root.unmount());
+  });
+});
+
+describe("DomEditCropHandles leaves the corner resize dots free", () => {
+  type Box = { left: number; top: number; width: number; height: number };
+  const HIT = 16;
+  const cornerSquares = (r: Box): Box[] =>
+    [
+      [r.left, r.top],
+      [r.left + r.width, r.top],
+      [r.left, r.top + r.height],
+      [r.left + r.width, r.top + r.height],
+    ].map(([x, y]) => ({ left: x - HIT / 2, top: y - HIT / 2, width: HIT, height: HIT }));
+  const overlaps = (a: Box, b: Box) =>
+    a.left < b.left + b.width &&
+    b.left < a.left + a.width &&
+    a.top < b.top + b.height &&
+    b.top < a.top + a.height;
+  const handles = () =>
+    [...document.querySelectorAll<HTMLElement>("[data-dom-edit-crop-handle]")].map((el) => ({
+      label: el.getAttribute("aria-label"),
+      box: {
+        left: parseFloat(el.style.left),
+        top: parseFloat(el.style.top),
+        width: parseFloat(el.style.width),
+        height: parseFloat(el.style.height),
+      },
+    }));
+  const rectOf = (width: number, height: number): OverlayRect => ({
+    left: 0,
+    top: 0,
+    width,
+    height,
+    editScaleX: 1,
+    editScaleY: 1,
+  });
+
+  it.each([
+    {
+      name: "29x14",
+      size: [29, 14],
+      clip: "",
+      cropped: { left: 0, top: 0, width: 29, height: 14 },
+    },
+    {
+      name: "40x40",
+      size: [40, 40],
+      clip: "",
+      cropped: { left: 0, top: 0, width: 40, height: 40 },
+    },
+    {
+      name: "29x14",
+      size: [29, 14],
+      clip: "inset(2px)",
+      cropped: { left: 2, top: 2, width: 25, height: 10 },
+    },
+    {
+      name: "200x100",
+      size: [200, 100],
+      clip: "inset(10px)",
+      cropped: { left: 10, top: 10, width: 180, height: 80 },
+    },
+  ])("no crop handle covers a corner of a $name box clipped '$clip'", (c) => {
+    render(makeEl("a", c.clip), undefined, rectOf(c.size[0], c.size[1]));
+    const found = handles();
+    expect(found.length).toBeGreaterThan(0);
+    for (const handle of found) {
+      for (const corner of cornerSquares(c.cropped)) {
+        expect(overlaps(handle.box, corner), `${handle.label} covers a corner`).toBe(false);
+      }
+    }
+  });
+
+  it("keeps every handle where the edges have room, and drops only those with none", () => {
+    render(makeEl("a", "inset(10px)"), undefined, rectOf(200, 100));
+    expect(handles().map((h) => h.label)).toEqual([
+      "Reposition crop",
+      "Crop top",
+      "Crop right",
+      "Crop bottom",
+      "Crop left",
+    ]);
+    document.body.innerHTML = "";
+    render(makeEl("b", ""), undefined, rectOf(29, 14));
+    expect(handles().map((h) => h.label)).toEqual(["Crop top", "Crop bottom"]);
   });
 });
