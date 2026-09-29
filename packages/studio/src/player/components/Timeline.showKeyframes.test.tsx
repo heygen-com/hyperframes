@@ -22,29 +22,31 @@ async function mountKeyframed(showKeyframes?: boolean, withLanes = true) {
     timelineReady: true,
     selectedElementId: "card",
     elements: [{ id: "card", label: "Hero card", tag: "div", start: 0, duration: 4, track: 0 }],
-    gsapAnimations: withLanes ? new Map([
-      [
-        "card",
-        [
-          {
-            id: "card-position",
-            targetSelector: "#card",
-            method: "to",
-            position: 0,
-            duration: 2,
-            properties: {},
-            propertyGroup: "position",
-            keyframes: {
-              format: "percentage",
-              keyframes: [
-                { percentage: 0, properties: { x: 0 } },
-                { percentage: 50, properties: { x: 100 } },
-              ],
-            },
-          },
-        ],
-      ],
-    ]) : new Map(),
+    gsapAnimations: withLanes
+      ? new Map([
+          [
+            "card",
+            [
+              {
+                id: "card-position",
+                targetSelector: "#card",
+                method: "to",
+                position: 0,
+                duration: 2,
+                properties: {},
+                propertyGroup: "position",
+                keyframes: {
+                  format: "percentage",
+                  keyframes: [
+                    { percentage: 0, properties: { x: 0 } },
+                    { percentage: 50, properties: { x: 100 } },
+                  ],
+                },
+              },
+            ],
+          ],
+        ])
+      : new Map(),
     keyframeCache: new Map([
       [
         "card",
