@@ -169,6 +169,7 @@ export function useTimelinePlayhead({
     const unsubPlaying = usePlayerStore.subscribe((state, prev) => {
       if (prev.isPlaying && !state.isPlaying) place(lastLiveTimeRef.current, true);
     });
+    lastSeekCountRef.current = liveTime.seekCount();
     const unsub = liveTime.subscribe((t) => {
       const sought = liveTime.seekCount() !== lastSeekCountRef.current;
       lastSeekCountRef.current = liveTime.seekCount();

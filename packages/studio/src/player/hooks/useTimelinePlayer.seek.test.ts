@@ -6,6 +6,8 @@ import type { useTimelinePlayer } from "./useTimelinePlayer";
 import {
   attachIframeAdapter,
   attachIframeWindow,
+  makeAdapterWindow,
+  makeFakeIframe,
   renderTimelinePlayerHarness,
   resetPlayerStore,
 } from "./timelinePlayerTestHarness";
@@ -269,6 +271,29 @@ describe("useTimelinePlayer seek keepPlaying option (#834)", () => {
     seekWithAct(api, 5);
     expect(liveTime.seekCount()).toBe(before + 1);
     expect(liveTime.latest()).toBe(5);
+    unmountWithAct(root);
+  });
+
+  it("does not count a reload's hand-over as a person's seek", () => {
+    const { getApi, root } = renderTimelinePlayerHarness();
+    act(() => {
+      getApi().iframeRef.current = makeFakeIframe(makeAdapterWindow().win);
+      getApi().onIframeLoad();
+    });
+    seekWithAct(getApi(), 7);
+    act(() => getApi().refreshPlayer());
+    const seeks = liveTime.seekCount();
+    const gen = getApi().previewSlots.find((s) => s.role === "shadow")!.gen;
+    const shadow = makeFakeIframe(makeAdapterWindow().win);
+    shadow.src = "http://localhost/api/projects/demo/preview?_t=1";
+    act(() => {
+      getApi().setShadowIframeNode(shadow);
+      getApi().onShadowIframeLoad(gen);
+      getApi().onShadowReadyChange(gen, true);
+    });
+    expect(getApi().iframeRef.current).toBe(shadow);
+    expect(liveTime.latest()).toBe(7);
+    expect(liveTime.seekCount()).toBe(seeks);
     unmountWithAct(root);
   });
 
