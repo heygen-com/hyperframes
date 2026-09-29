@@ -16,17 +16,15 @@ import type { GroupGestureState } from "./domEditOverlayGestures";
  * well, and the flag is set before the two diverge so neither can forget.
  */
 describe("dropping a dragged group eats the click that follows", () => {
-  function harness(travel: { dx: number; dy: number }, refused = false) {
+  function harness(travel: { dx: number; dy: number }) {
     const suppressNextBoxClickRef = { current: false };
     const groupGestureRef = {
-      current: refused
-        ? null
-        : ({
-            startX: 0,
-            startY: 0,
-            originItems: [],
-            members: [],
-          } as unknown as GroupGestureState),
+      current: {
+        startX: 0,
+        startY: 0,
+        originItems: [],
+        members: [],
+      } as unknown as GroupGestureState,
     };
     const handlers = createDomEditOverlayGestureHandlers({
       overlayRef: { current: null },
@@ -54,16 +52,6 @@ describe("dropping a dragged group eats the click that follows", () => {
       snapGuidesRef: { current: null },
     } as never);
 
-    if (refused) {
-      handlers.startStillGroupPress({
-        clientX: 0,
-        clientY: 0,
-        pointerId: 1,
-        preventDefault: vi.fn(),
-        stopPropagation: vi.fn(),
-        currentTarget: { setPointerCapture: vi.fn() },
-      } as never);
-    }
     handlers.onPointerUp({
       clientX: travel.dx,
       clientY: travel.dy,
@@ -78,9 +66,5 @@ describe("dropping a dragged group eats the click that follows", () => {
 
   it("still eats it after a press that never travelled", () => {
     expect(harness({ dx: 1, dy: 0 }).current).toBe(true);
-  });
-
-  it("eats it after a still press on a group whose body drag the host turned off", () => {
-    expect(harness({ dx: 1, dy: 0 }, true).current).toBe(true);
   });
 });

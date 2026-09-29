@@ -102,14 +102,10 @@ export function DomEditGroupChrome({
           top: groupBounds.top,
           width: groupBounds.width,
           height: groupBounds.height,
-          cursor: canManipulate && allowBodyDrag && groupCanMove ? "move" : "default",
+          cursor: !allowBodyDrag ? undefined : canManipulate && groupCanMove ? "move" : "default",
         }}
         onPointerDown={(e) => {
-          if (!canManipulate || e.shiftKey) return;
-          if (!allowBodyDrag) {
-            gestures.startStillGroupPress(e);
-            return;
-          }
+          if (!canManipulate || e.shiftKey || !allowBodyDrag) return;
           gestures.startGroupDrag(e);
         }}
         onMouseDown={onBoxMouseDown}
@@ -205,8 +201,9 @@ export function DomEditSelectionChrome({
             width: overlayRect.width,
             height: overlayRect.height,
             clipPath: boxClipPath,
-            cursor:
-              canManipulate && allowBodyDrag && selection.capabilities.canApplyManualOffset
+            cursor: !allowBodyDrag
+              ? undefined
+              : canManipulate && selection.capabilities.canApplyManualOffset
                 ? "move"
                 : "default",
           }}
@@ -221,11 +218,7 @@ export function DomEditSelectionChrome({
               e.stopPropagation();
               return;
             }
-            if (!canManipulate || e.shiftKey) return;
-            if (!allowBodyDrag) {
-              gestures.startStillPress(e);
-              return;
-            }
+            if (!allowBodyDrag || !canManipulate || e.shiftKey) return;
             if (selection.capabilities.canApplyManualOffset) {
               gestures.startGesture("drag", e);
               return;

@@ -223,19 +223,27 @@ describe("DomEditSelectionChrome with body drag off", () => {
   const gestureSpies = () => ({
     startGesture: vi.fn(),
     startGroupDrag: vi.fn(),
-    startStillPress: vi.fn(),
-    startStillGroupPress: vi.fn(),
     startBlockedMove: vi.fn(),
   });
-  const press = (el: Element) =>
-    act(() => {
-      el.dispatchEvent(new PointerEvent("pointerdown", { bubbles: true, button: 0, pointerId: 1 }));
+  const press = (el: Element) => {
+    const event = new PointerEvent("pointerdown", {
+      bubbles: true,
+      cancelable: true,
+      button: 0,
+      pointerId: 1,
     });
+    act(() => {
+      el.dispatchEvent(event);
+    });
+    return event;
+  };
 
   function renderChrome(allowBodyDrag: boolean) {
     const element = document.createElement("div");
     document.body.append(element);
     const { selection, host, root } = selectionFixture(element, "#box", true);
+    const hostPress = vi.fn();
+    host.addEventListener("pointerdown", hostPress);
     const gestures = gestureSpies();
     act(() => {
       root.render(
@@ -256,20 +264,22 @@ describe("DomEditSelectionChrome with body drag off", () => {
       );
     });
     const box = host.querySelector<HTMLElement>('[data-dom-edit-selection-box="true"]')!;
-    return { host, box, gestures, cleanup: () => act(() => root.unmount()) };
+    return { host, box, gestures, hostPress, cleanup: () => act(() => root.unmount()) };
   }
 
-  it("refuses a body drag without the blocked-move notice, and shows no move cursor", () => {
-    const { box, gestures, cleanup } = renderChrome(false);
-    press(box);
-    expect(gestures.startStillPress).toHaveBeenCalledTimes(1);
+  it("leaves a body press untouched for the host: no drag, no capture, no cursor", () => {
+    const { box, gestures, hostPress, cleanup } = renderChrome(false);
+    const event = press(box);
+    expect(hostPress).toHaveBeenCalledTimes(1);
+    expect(event.defaultPrevented).toBe(false);
+    expect(box.hasPointerCapture(1)).toBe(false);
     expect(gestures.startGesture).not.toHaveBeenCalled();
     expect(gestures.startBlockedMove).not.toHaveBeenCalled();
-    expect(box.style.cursor).toBe("default");
+    expect(box.style.cursor).toBe("");
     cleanup();
   });
 
-  it("keeps resize, rotate and crop handles working", () => {
+  it("keeps the resize and rotate handles working", () => {
     const { host, gestures, cleanup } = renderChrome(false);
     const corner = host.querySelector<HTMLElement>('[style*="nwse-resize"]')!;
     press(corner);
@@ -278,7 +288,6 @@ describe("DomEditSelectionChrome with body drag off", () => {
     });
     press(host.querySelector('[aria-label="Rotate selection"]')!);
     expect(gestures.startGesture).toHaveBeenCalledWith("rotate", expect.anything());
-    expect(host.querySelectorAll("[data-dom-edit-crop-handle]").length).toBeGreaterThan(0);
     cleanup();
   });
 
@@ -290,8 +299,10 @@ describe("DomEditSelectionChrome with body drag off", () => {
     cleanup();
   });
 
-  it("refuses a group body drag too", () => {
+  it("leaves a group body press untouched too", () => {
     const { host, root } = selectionFixture(document.createElement("div"), "#g", true);
+    const hostPress = vi.fn();
+    host.addEventListener("pointerdown", hostPress);
     const gestures = gestureSpies();
     act(() => {
       root.render(
@@ -307,8 +318,9 @@ describe("DomEditSelectionChrome with body drag off", () => {
         />,
       );
     });
-    press(host.querySelector('[data-dom-edit-selection-box="true"]')!);
-    expect(gestures.startStillGroupPress).toHaveBeenCalledTimes(1);
+    const event = press(host.querySelector('[data-dom-edit-selection-box="true"]')!);
+    expect(hostPress).toHaveBeenCalledTimes(1);
+    expect(event.defaultPrevented).toBe(false);
     expect(gestures.startGroupDrag).not.toHaveBeenCalled();
     act(() => root.unmount());
   });

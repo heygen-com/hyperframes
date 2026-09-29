@@ -104,21 +104,12 @@ export function createDomEditOverlayGestureHandlers(opts: UseDomEditOverlayGestu
     },
   ) => _startGesture(kind, e, opts, options);
 
-  const startStillPress = (e: React.PointerEvent<HTMLElement>) => {
+  // A press on a box that cannot move says why at once.
+  const startBlockedMove = (e: React.PointerEvent<HTMLElement>, selection: DomEditSelection) => {
     e.preventDefault();
     e.stopPropagation();
     e.currentTarget.setPointerCapture(e.pointerId);
     opts.blockedMoveRef.current = { pointerId: e.pointerId, startX: e.clientX, startY: e.clientY };
-  };
-
-  const startStillGroupPress = (e: React.PointerEvent<HTMLElement>) => {
-    startStillPress(e);
-    opts.suppressNextBoxClickRef.current = true;
-  };
-
-  // A press on a box that cannot move says why at once.
-  const startBlockedMove = (e: React.PointerEvent<HTMLElement>, selection: DomEditSelection) => {
-    startStillPress(e);
     notifyBlockedPress(e, opts, selection);
   };
 
@@ -565,8 +556,6 @@ export function createDomEditOverlayGestureHandlers(opts: UseDomEditOverlayGestu
   return {
     startGesture,
     startGroupDrag,
-    startStillPress,
-    startStillGroupPress,
     startBlockedMove,
     onPointerMove,
     onPointerUp,
