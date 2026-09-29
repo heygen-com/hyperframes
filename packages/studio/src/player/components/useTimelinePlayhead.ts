@@ -166,10 +166,7 @@ export function useTimelinePlayhead({
       return true;
     };
     const unsubPlaying = usePlayerStore.subscribe((state, prev) => {
-      if (!prev.isPlaying || state.isPlaying) return;
-      // pause() stores the adapter's time without publishing it, so a reload's republish is no move.
-      lastLiveTimeRef.current = state.currentTime;
-      place(state.currentTime, true);
+      if (prev.isPlaying && !state.isPlaying) place(lastLiveTimeRef.current, true);
     });
     const unsub = liveTime.subscribe((t) => {
       const moved = t !== lastLiveTimeRef.current;

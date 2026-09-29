@@ -269,7 +269,9 @@ export function useTimelinePlayer({
     const adapter = getAdapter();
     if (!adapter) return;
     adapter.pause();
-    setCurrentTime(adapter.getTime()); // sync store so Split/Delete have accurate time
+    const time = adapter.getTime();
+    liveTime.notify(time);
+    setCurrentTime(time); // sync store so Split/Delete have accurate time
     setIsPlaying(false);
     shuttleDirectionRef.current = null;
     shuttleSpeedIndexRef.current = 0;

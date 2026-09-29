@@ -2,7 +2,7 @@
 
 import { act } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { usePlayerStore } from "../store/playerStore";
+import { liveTime, usePlayerStore } from "../store/playerStore";
 import {
   attachIframeWindow,
   makeAdapterWindow,
@@ -16,6 +16,19 @@ afterEach(() => {
   vi.restoreAllMocks();
   document.body.innerHTML = "";
   resetPlayerStore();
+});
+
+describe("useTimelinePlayer pause", () => {
+  it("publishes the paused time, as a seek does", () => {
+    const { api, root } = renderTimelinePlayerHarness();
+    const { adapter, win } = makeAdapterWindow();
+    attachIframeWindow(api, win);
+    act(() => api.play());
+    adapter.seek(6);
+    act(() => api.pause());
+    expect(liveTime.latest()).toBe(6);
+    act(() => root.unmount());
+  });
 });
 
 describe("useTimelinePlayer tab hidden while playing", () => {

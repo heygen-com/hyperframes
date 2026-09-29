@@ -200,11 +200,25 @@ describe("useTimelinePlayhead follow while paused", () => {
     act(() => usePlayerStore.setState({ isPlaying: true }));
     act(() => liveTime.notify(30));
     act(() => {
+      liveTime.notify(30.012);
       usePlayerStore.getState().setCurrentTime(30.012);
       usePlayerStore.setState({ isPlaying: false });
     });
     scroll.scrollLeft = 0;
     act(() => liveTime.notify(30.012));
+    expect(scroll.scrollLeft).toBe(0);
+  });
+
+  it("keeps a person's scroll when a reload stops a reverse shuttle", () => {
+    usePlayerStore.setState({ currentTime: 30 });
+    const scroll = scrollBox(0);
+    mount({ pps: 100, scroll });
+    act(() => usePlayerStore.setState({ isPlaying: true }));
+    act(() => liveTime.notify(29));
+    act(() => liveTime.notify(20));
+    act(() => usePlayerStore.setState({ isPlaying: false }));
+    scroll.scrollLeft = 0;
+    act(() => liveTime.notify(20));
     expect(scroll.scrollLeft).toBe(0);
   });
 
