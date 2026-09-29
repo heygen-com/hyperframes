@@ -12,7 +12,9 @@ import { HF_AUDIO_GROUP_ATTR } from "@hyperframes/core/audio-groups";
 import {
   escapeHtmlAttribute,
   findTagByTarget,
+  applyPatchByTarget,
   readAttributeByTarget,
+  unescapeHtmlAttribute,
   type PatchOperation,
   type PatchTarget,
 } from "../../utils/sourcePatcher";
@@ -23,6 +25,9 @@ import { generateId } from "../../utils/generateId";
 
 const MEDIA_LINK_ATTR = "data-link";
 const SOUND_KEPT_ON_LINKED_AUDIO_STAGE = "Background removed. Sound kept on a linked audio track.";
+
+const SOUND_NOT_KEPT_MESSAGE =
+  "Background removed, but the sound could not be kept on a linked audio track. Undo to restore the original clip.";
 
 const MOVED_SOUND_ATTRS = [
   "data-volume",
@@ -131,6 +136,15 @@ function formatAttrs(attrs: Array<[string, string]>): string {
   return attrs.map(([name, value]) => `${name}="${escapeHtmlAttribute(value)}"`).join(" ");
 }
 
+function readAuthoredSrc(source: string, target: PatchTarget): string {
+  const tag = findTagByTarget(source, target);
+  if (!tag) return "";
+  const own = /\bsrc=(["'])([^"']*)\1/.exec(tag.tag);
+  if (own?.[2]) return unescapeHtmlAttribute(own[2]);
+  const firstSource = /^\s*<source\b[^>]*?\bsrc=(["'])([^"']*)\1/i.exec(source.slice(tag.end + 1));
+  return firstSource?.[2] ? unescapeHtmlAttribute(firstSource[2]) : "";
+}
+
 function insertBeforeTarget(source: string, target: PatchTarget, markup: string): string {
   const match = findTagByTarget(source, target);
   if (!match) return source;
@@ -145,6 +159,7 @@ function insertBeforeTarget(source: string, target: PatchTarget, markup: string)
 export interface KeepSoundCutoutEdit {
   ops: PatchOperation[];
   prepareContent: (source: string) => string;
+  audioInserted: () => boolean;
 }
 
 export function buildKeepSoundCutoutEdit(input: {
@@ -155,10 +170,11 @@ export function buildKeepSoundCutoutEdit(input: {
 }): KeepSoundCutoutEdit {
   const { video, target } = input;
   const linkId = mintLinkId(video.ownerDocument);
-  const originalSrc = video.getAttribute("src") ?? "";
+  let audioInserted = false;
 
   const movedSound: Array<[string, string]> = [];
-  const ops: PatchOperation[] = [...cutoutOps({ isVideo: true, cutoutSrc: input.cutoutSrc })];
+  const cutoutSrcOp = htmlAttr("src", input.cutoutSrc);
+  const ops: PatchOperation[] = [htmlAttr("muted", "true"), dataAttr("has-audio", null)];
   for (const name of MOVED_SOUND_ATTRS) {
     const value = video.getAttribute(name);
     if (value === null) continue;
@@ -174,6 +190,7 @@ export function buildKeepSoundCutoutEdit(input: {
   ops.push(dataAttr(stripDataPrefix(MEDIA_LINK_ATTR), linkId));
 
   const prepareContent = (source: string): string => {
+    const originalSrc = readAuthoredSrc(source, target);
     const audioId = firstFreeName(
       `${input.videoId || "video"}-audio`,
       new Set(collectHtmlIds(source)),
@@ -193,10 +210,14 @@ export function buildKeepSoundCutoutEdit(input: {
       [MEDIA_LINK_ATTR, linkId],
       ...movedSound,
     ];
-    return insertBeforeTarget(source, target, `<audio ${formatAttrs(attrs)}></audio>`);
+    if (video.hasAttribute("loop")) attrs.push(["loop", ""]);
+    const cut = applyPatchByTarget(source, target, cutoutSrcOp);
+    const inserted = insertBeforeTarget(cut, target, `<audio ${formatAttrs(attrs)}></audio>`);
+    audioInserted = inserted !== cut;
+    return inserted;
   };
 
-  return { ops, prepareContent };
+  return { ops, prepareContent, audioInserted: () => audioInserted };
 }
 
 export interface MediaEditContext {
@@ -231,23 +252,31 @@ export async function commitCutout(
   const isVideo = isVideoSelection(ctx.element);
   const label = "Remove background";
   const keep = isVideo && keepSound;
-  const landed = keep
-    ? await commitKeepSoundCutout(ctx, cutoutSrc, label)
-    : await ctx.commit(ctx.element, cutoutOps({ isVideo, cutoutSrc }), { label });
+  if (!keep) {
+    const applied = await ctx.commit(ctx.element, cutoutOps({ isVideo, cutoutSrc }), { label });
+    if (!applied) throw new Error("Couldn't apply the cutout");
+    return "Applied cutout";
+  }
+  const { landed, soundKept } = await commitKeepSoundCutout(ctx, cutoutSrc, label);
   if (!landed) throw new Error("Couldn't apply the cutout");
-  return keep ? SOUND_KEPT_ON_LINKED_AUDIO_STAGE : "Applied cutout";
+  if (!soundKept) throw new Error(SOUND_NOT_KEPT_MESSAGE);
+  return SOUND_KEPT_ON_LINKED_AUDIO_STAGE;
 }
 
-function commitKeepSoundCutout(
+async function commitKeepSoundCutout(
   ctx: MediaEditContext,
   cutoutSrc: string,
   label: string,
-): Promise<boolean> {
+): Promise<{ landed: boolean; soundKept: boolean }> {
   const edit = buildKeepSoundCutoutEdit({
     video: ctx.element.element,
     videoId: ctx.element.id ?? null,
     target: buildDomEditPatchTarget(ctx.element),
     cutoutSrc,
   });
-  return ctx.commit(ctx.element, edit.ops, { label, prepareContent: edit.prepareContent });
+  const landed = await ctx.commit(ctx.element, edit.ops, {
+    label,
+    prepareContent: edit.prepareContent,
+  });
+  return { landed, soundKept: landed && edit.audioInserted() };
 }

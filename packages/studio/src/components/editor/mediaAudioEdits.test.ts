@@ -209,4 +209,63 @@ describe("buildKeepSoundCutoutEdit", () => {
     const doc = parse(applyEdit(taken, edit));
     expect(doc.getElementById("clip-audio-2")?.getAttribute("src")).toBe("assets/talk.mp4");
   });
+
+  it("reads the authored src from the source, not the live element", () => {
+    const sub = source.replace('src="assets/talk.mp4"', 'src="../assets/a.mp4"');
+    const edit = buildKeepSoundCutoutEdit({
+      video: liveVideo(),
+      videoId: "clip",
+      target: { id: "clip" },
+      cutoutSrc: "assets/cut.webm",
+    });
+    const doc = parse(applyEdit(sub, edit));
+    expect(doc.getElementById("clip-audio")?.getAttribute("src")).toBe("../assets/a.mp4");
+    expect(doc.getElementById("clip")?.getAttribute("src")).toBe("assets/cut.webm");
+  });
+
+  it("takes the first <source> child when the video has no src attribute", () => {
+    const withSource = source.replace(
+      /<video id="clip"([^>]*?) src="assets\/talk.mp4"([^>]*)><\/video>/,
+      '<video id="clip"$1$2><source src="assets/s.mp4" type="video/mp4"></video>',
+    );
+    const edit = buildKeepSoundCutoutEdit({
+      video: liveVideo(),
+      videoId: "clip",
+      target: { id: "clip" },
+      cutoutSrc: "assets/cut.webm",
+    });
+    const doc = parse(applyEdit(withSource, edit));
+    expect(doc.getElementById("clip-audio")?.getAttribute("src")).toBe("assets/s.mp4");
+  });
+
+  it("reports when the audio insert did not land", () => {
+    const edit = buildKeepSoundCutoutEdit({
+      video: liveVideo(),
+      videoId: "clip",
+      target: { id: "missing" },
+      cutoutSrc: "assets/cut.webm",
+    });
+    edit.prepareContent(source);
+    expect(edit.audioInserted()).toBe(false);
+    const ok = buildKeepSoundCutoutEdit({
+      video: liveVideo(),
+      videoId: "clip",
+      target: { id: "clip" },
+      cutoutSrc: "assets/cut.webm",
+    });
+    ok.prepareContent(source);
+    expect(ok.audioInserted()).toBe(true);
+  });
+
+  it("copies loop onto the linked audio", () => {
+    const video = makeVideo({ id: "clip", src: "assets/talk.mp4", loop: "" });
+    const edit = buildKeepSoundCutoutEdit({
+      video,
+      videoId: "clip",
+      target: { id: "clip" },
+      cutoutSrc: "assets/cut.webm",
+    });
+    const doc = parse(applyEdit(source, edit));
+    expect(doc.getElementById("clip-audio")?.hasAttribute("loop")).toBe(true);
+  });
 });
