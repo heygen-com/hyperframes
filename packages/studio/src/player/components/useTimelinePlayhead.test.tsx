@@ -65,7 +65,11 @@ function mount(props: HarnessProps) {
   const root = createRoot(document.createElement("div"));
   roots.push(root);
   act(() => root.render(<Harness {...props} />));
-  return (next: Partial<HarnessProps>) => act(() => root.render(<Harness {...props} {...next} />));
+  return (next: Partial<HarnessProps>, byPerson = false) =>
+    act(() => {
+      if (byPerson) usePlayerStore.setState((s) => ({ userZoomCount: s.userZoomCount + 1 }));
+      root.render(<Harness {...props} {...next} />);
+    });
 }
 
 beforeEach(() => {
@@ -104,20 +108,50 @@ describe("useTimelinePlayhead zoom anchor", () => {
     usePlayerStore.setState({ currentTime: 6 });
     const scroll = scrollBox(400);
     const before = onScreenX(scroll, 6, 100);
-    mount({ pps: 100, scroll, percent: 100 })({ pps: 200, percent: 200 });
+    mount({ pps: 100, scroll, percent: 100 })({ pps: 200, percent: 200 }, true);
     expect(onScreenX(scroll, 6, 200)).toBeCloseTo(before);
   });
 
   it("stays at 00:00 when a zoom is set with the playhead at 0, as a zoom restored on open is", () => {
     const scroll = scrollBox(0);
-    mount({ pps: 100, scroll, percent: 100 })({ pps: 250, percent: 250 });
+    mount({ pps: 100, scroll, percent: 100 })({ pps: 250, percent: 250 }, true);
     expect(scroll.scrollLeft).toBe(0);
   });
 
   it("brings an off-screen playhead into view when the toolbar zooms", () => {
     usePlayerStore.setState({ currentTime: 30 });
     const scroll = scrollBox(0);
-    mount({ pps: 100, scroll, percent: 100 })({ pps: 200, percent: 200 });
+    mount({ pps: 100, scroll, percent: 100 })({ pps: 200, percent: 200 }, true);
+    const x = onScreenX(scroll, 30, 200);
+    expect(x).toBeGreaterThanOrEqual(ORIGIN);
+    expect(x).toBeLessThanOrEqual(800);
+  });
+});
+
+describe("useTimelinePlayhead zoom anchor, percent written by Studio itself", () => {
+  it("keeps 00:00 when the window resizes after an edit pinned the zoom", () => {
+    usePlayerStore.setState({ currentTime: 6 });
+    const scroll = scrollBox(0);
+    const update = mount({ pps: 100, scroll, percent: 200 });
+    update({ percent: 100 });
+    update({ pps: 130, percent: 100 });
+    expect(scroll.scrollLeft).toBe(0);
+  });
+
+  it("leaves an off-screen playhead alone when a length change re-pins the zoom", () => {
+    usePlayerStore.setState({ currentTime: 30 });
+    const scroll = scrollBox(400);
+    const update = mount({ pps: 100, scroll, percent: 150 });
+    update({ pps: 90, percent: 150 });
+    update({ pps: 101, percent: 168 });
+    const x = onScreenX(scroll, 30, 101);
+    expect(x > 800 || x < ORIGIN).toBe(true);
+  });
+
+  it("anchors a person's zoom that lands on the percent already stored", () => {
+    usePlayerStore.setState({ currentTime: 30 });
+    const scroll = scrollBox(0);
+    mount({ pps: 100, scroll, percent: 200 })({ pps: 200, percent: 200 }, true);
     const x = onScreenX(scroll, 30, 200);
     expect(x).toBeGreaterThanOrEqual(ORIGIN);
     expect(x).toBeLessThanOrEqual(800);

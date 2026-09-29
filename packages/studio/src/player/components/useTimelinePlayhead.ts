@@ -77,7 +77,8 @@ export function useTimelinePlayhead({
   // A toolbar zoom keeps the playhead in place; a resize keeps the centre, or 00:00 at the start.
   // The pinch handler anchors at the cursor instead, so it opts out via `skipCenterAnchorRef`.
   const previousAnchorPpsRef = useRef(pps);
-  const previousAnchorPercentRef = useRef(manualZoomPercentRef.current);
+  const userZoomCount = usePlayerStore((s) => s.userZoomCount);
+  const previousZoomCountRef = useRef(userZoomCount);
   const lastLiveTimeRef = useRef(usePlayerStore.getState().currentTime);
   const skipCenterAnchorRef = useRef(false);
   const contentOriginRef = useRef(contentOrigin);
@@ -87,15 +88,15 @@ export function useTimelinePlayhead({
     const scroll = scrollRef.current;
     const prevPps = previousAnchorPpsRef.current;
     previousAnchorPpsRef.current = pps;
-    const prevPercent = previousAnchorPercentRef.current;
-    previousAnchorPercentRef.current = manualZoomPercentRef.current;
+    const prevZoomCount = previousZoomCountRef.current;
+    previousZoomCountRef.current = userZoomCount;
     // Always consume the skip flag, even when pps didn't change — otherwise a
     // pinch that produced no pps change (already at the zoom clamp) would strand
     // it true and the next toolbar zoom would wrongly skip center-anchoring.
     const skip = skipCenterAnchorRef.current;
     skipCenterAnchorRef.current = false;
     if (!scroll || pps === prevPps || skip) return;
-    const zoomed = manualZoomPercentRef.current !== prevPercent;
+    const zoomed = userZoomCount !== prevZoomCount;
     if (!zoomed && scroll.scrollLeft < 1) return;
     const time = Math.max(0, lastLiveTimeRef.current);
     const playheadX = contentOrigin + time * prevPps;
@@ -114,7 +115,7 @@ export function useTimelinePlayhead({
     scroll.scrollLeft = zoomed
       ? revealPlayheadScrollLeft(scroll, contentOrigin + time * pps, contentOrigin, anchored)
       : anchored;
-  }, [pps, scrollRef, durationRef, contentOrigin, manualZoomPercentRef]);
+  }, [pps, userZoomCount, scrollRef, durationRef, contentOrigin]);
 
   const syncPlayheadPosition = useCallback(
     (time: number) => {
