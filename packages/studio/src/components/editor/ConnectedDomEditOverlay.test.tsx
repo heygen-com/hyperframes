@@ -149,11 +149,13 @@ describe("ConnectedDomEditOverlay", () => {
         showHoverSelection={false}
         shouldShowSelectedDomBounds={true}
         canvasInput="host"
+        allowBodyDrag={false}
         onTextEditingChange={onTextEditingChange}
       />,
     );
     expect(props).toMatchObject({
       canvasInput: "host",
+      allowBodyDrag: false,
       onTextEditingChange,
       hoverSelection: null,
       selection: ctx.selection.domEditSelection,

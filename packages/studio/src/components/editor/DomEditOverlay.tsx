@@ -54,6 +54,8 @@ export interface DomEditOverlayProps {
   groupSelections?: DomEditSelection[];
   hoverSelection: DomEditSelection | null;
   allowCanvasMovement?: boolean;
+  /** False: dragging a selection's body never moves it; its handles still resize, rotate and crop. */
+  allowBodyDrag?: boolean;
   /** "host": no hover, marquee or box re-select; Enter with nothing focused still opens text. */
   canvasInput?: "overlay" | "host";
   onTextEditingChange?: (editing: boolean) => void;
@@ -128,6 +130,7 @@ export const DomEditOverlay = memo(function DomEditOverlay({
   groupSelections = [],
   hoverSelection,
   allowCanvasMovement = true,
+  allowBodyDrag = true,
   canvasInput = "overlay",
   onTextEditingChange,
   onSelectionBoxClick,
@@ -503,6 +506,7 @@ export const DomEditOverlay = memo(function DomEditOverlay({
           groupOverlayItems={groupOverlayItems}
           groupBounds={groupBounds}
           allowCanvasMovement={allowCanvasMovement}
+          allowBodyDrag={allowBodyDrag}
           groupCanMove={groupCanMove}
           gestures={gestures}
           onBoxMouseDown={suppressBoxMouseDown}
@@ -515,6 +519,7 @@ export const DomEditOverlay = memo(function DomEditOverlay({
           selection={selection}
           overlayRect={overlayRect}
           allowCanvasMovement={allowCanvasMovement}
+          allowBodyDrag={allowBodyDrag}
           cropOutlineInsetPx={cropOutlineInsetPx ?? undefined}
           boxRef={boxRef}
           boxChromeClass={boxChromeClass}

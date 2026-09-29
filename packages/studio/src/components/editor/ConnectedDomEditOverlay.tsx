@@ -13,7 +13,7 @@ import { runZLaneGesture } from "../nle/zLaneGesture";
 
 type HostInputProps = Pick<
   ComponentProps<typeof DomEditOverlay>,
-  "canvasInput" | "onSelectionBoxClick"
+  "canvasInput" | "onSelectionBoxClick" | "allowBodyDrag"
 >;
 
 export interface ConnectedDomEditOverlayProps extends HostInputProps {
@@ -121,6 +121,7 @@ export function ConnectedDomEditOverlay({
   shouldShowSelectedDomBounds,
   isGestureRecording,
   canvasInput,
+  allowBodyDrag,
   onTextEditingChange,
   onSelectionBoxClick,
 }: ConnectedDomEditOverlayProps) {
@@ -154,6 +155,7 @@ export function ConnectedDomEditOverlay({
       groupSelections={shouldShowSelectedDomBounds ? domEditGroupSelections : []}
       allowCanvasMovement={!isGestureRecording}
       canvasInput={canvasInput}
+      allowBodyDrag={allowBodyDrag}
       onTextEditingChange={onTextEditingChange}
       onSelectionBoxClick={onSelectionBoxClick}
       onCanvasMouseDown={handlePreviewCanvasMouseDown}
