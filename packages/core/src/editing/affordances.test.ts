@@ -140,6 +140,16 @@ describe("resolveEditingAffordances — sections", () => {
     expect(s).toMatchObject({ media: true, colorGrading: true });
   });
 
+  it("audible video: audioFx; silent video: no audioFx", () => {
+    expect(
+      resolveEditingAffordances(baseFacts({ tag: "video", hasAudio: true })).sections.audioFx,
+    ).toBe(true);
+    expect(
+      resolveEditingAffordances(baseFacts({ tag: "video", hasAudio: false })).sections.audioFx,
+    ).toBe(false);
+    expect(resolveEditingAffordances(baseFacts({ tag: "video" })).sections.audioFx).toBe(false);
+  });
+
   it("audio: media but not colorGrading", () => {
     const s = resolveEditingAffordances(baseFacts({ tag: "audio" })).sections;
     expect(s).toMatchObject({ media: true, colorGrading: false });

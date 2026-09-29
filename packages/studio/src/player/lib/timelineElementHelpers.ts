@@ -231,6 +231,15 @@ export function isVideoAudible(opts: {
   return opts.tag.toLowerCase() === "video" && !opts.muted;
 }
 
+export function isAudibleVideoNode(el: Element): boolean {
+  if (el.tagName.toLowerCase() !== "video" || el.hasAttribute("muted")) return false;
+  return isVideoAudible({
+    tag: "video",
+    hasAudioAttr: el.getAttribute("data-has-audio"),
+    muted: false,
+  });
+}
+
 /** What the mixer gets: the compiler's `data-has-audio` rule, muted and volume. */
 function applyAudioMetadataFromElement(entry: TimelineElement, el: Element): void {
   const media = resolveMediaElement(el) ?? el;
