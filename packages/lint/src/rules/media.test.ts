@@ -808,9 +808,21 @@ describe("audio_group_no_members", () => {
     expect(finding?.message).not.toContain('"music"');
   });
 
-  it("does not count video as group membership", async () => {
+  it("counts an audible video as group membership", async () => {
     const res = await lintHyperframeHtml(
-      doc(`${BUS}<video id="v" src="v.mp4" data-start="0" data-duration="5" data-audio-group="voiceover"></video>
+      doc(`${BUS}<video id="v" src="v.mp4" data-start="0" data-duration="5" data-has-audio="true" data-audio-group="voiceover"></video>
+        <audio id="s-1" src="s.wav" data-start="0" data-duration="2" data-audio-group="sfx"></audio>`),
+    );
+    expect(
+      res.findings.some(
+        (finding) => finding.code === "audio_group_no_members" && finding.elementId === "voiceover",
+      ),
+    ).toBe(false);
+  });
+
+  it("does not count a muted video as group membership", async () => {
+    const res = await lintHyperframeHtml(
+      doc(`${BUS}<video id="v" src="v.mp4" data-start="0" data-duration="5" muted data-audio-group="voiceover"></video>
         <audio id="s-1" src="s.wav" data-start="0" data-duration="2" data-audio-group="sfx"></audio>`),
     );
     expect(

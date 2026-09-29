@@ -544,3 +544,26 @@ describe("duplicate bus instances", () => {
     ]);
   });
 });
+
+describe("audible video members", () => {
+  const withBus = (busAttrs: string, videoAttrs: string) =>
+    `<div id="root" data-composition-id="main" data-start="0" data-duration="4">
+      <hf-audio-group id="vo" data-volume="0.5" ${busAttrs}></hf-audio-group>
+      <video id="talk" src="talk.mp4" data-start="0" data-duration="4"
+        data-has-audio="true" data-audio-group="vo" ${videoAttrs}></video>
+    </div>`;
+
+  it("puts an audible video's track in its group sub-mix", () => {
+    const tracks = parseAudioElements(withBus("", ""));
+    expect(tracks.map((t) => [t.type, t.groupId, t.groupVolume])).toEqual([["video", "vo", 0.5]]);
+  });
+
+  it("drops an audible video from the mix when its group is hidden", () => {
+    expect(parseAudioElements(withBus("data-hidden", ""))).toEqual([]);
+  });
+
+  it("ignores a muted video's group membership", () => {
+    const tracks = parseAudioElements(withBus("data-hidden", "muted"));
+    expect(tracks.every((t) => t.groupId === undefined)).toBe(true);
+  });
+});

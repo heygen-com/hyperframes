@@ -44,6 +44,7 @@ import {
 } from "@hyperframes/core/audio-automation";
 import { chainTailSeconds } from "@hyperframes/core/audio-fx-tail";
 import {
+  isAudibleVideoElement,
   MEDIA_RENDER_ID_ATTR,
   normalizePlaybackRate,
   normalizeRateSpec,
@@ -610,15 +611,14 @@ export function parseAudioElements(html: string): AudioElement[] {
     id: string,
     src: string,
     type: AudioElement["type"],
+    joinsGroup: boolean,
   ): AudioElement => {
     const layerAttr = el.getAttribute("data-layer");
     const volumeAttr = el.getAttribute("data-volume");
     const fades = readElementFades(el);
     const fxChain = el.getAttribute(HF_AUDIO_FX_ATTR);
     const automation = el.getAttribute(HF_AUDIO_AUTOMATION_ATTR);
-    // Audio only in v1 (matches resolveAudioGroups, which only scans
-    // `audio[data-audio-group]`) — a stray attribute on a <video> is inert.
-    const groupId = type === "audio" ? memberGroupKey(el) : null;
+    const groupId = joinsGroup ? memberGroupKey(el) : null;
     const group = groupId ? groupsById.get(groupId) : undefined;
     return {
       id,
@@ -658,15 +658,16 @@ export function parseAudioElements(html: string): AudioElement[] {
     // member from the mix, the same way `isHidden` drops one track.
     if (!id || !src || isHidden(el) || memberGroupHidden(el)) continue;
     if (isKnownInactiveTimelineWindow(el, resolveStart(el))) continue;
-    elements.push(build(el, id, src, "audio"));
+    elements.push(build(el, id, src, "audio", true));
   }
 
   for (const el of document.querySelectorAll('video[id][data-has-audio="true"]')) {
     const id = trackId(el);
     const src = resolveMediaElementSrc(el);
-    if (!id || !src || isHidden(el)) continue;
+    const joinsGroup = isAudibleVideoElement(el);
+    if (!id || !src || isHidden(el) || (joinsGroup && memberGroupHidden(el))) continue;
     if (isKnownInactiveTimelineWindow(el, resolveStart(el))) continue;
-    elements.push(build(el, `${id}-audio`, src, "video"));
+    elements.push(build(el, `${id}-audio`, src, "video", joinsGroup));
   }
 
   return elements;

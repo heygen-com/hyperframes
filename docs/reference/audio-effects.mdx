@@ -20,10 +20,10 @@ nothing to load beside the markup.
 | `data-fx-chain` | The effects, in signal order | JSON | `<audio>`, `<video>`, `<hf-audio-group>` | Yes |
 | `data-automation` | Envelopes on volume or an effect parameter | JSON | `<audio>`, `<video>`, `<hf-audio-group>` | Yes |
 | `data-fx-carve` | A voiceover carve's own settings | JSON | `<audio>`, `<video>` | No — see [below](#data-fx-carve) |
-| `data-audio-group` | The id of the group this clip belongs to | A plain id, not JSON | `<audio>` only | Yes |
+| `data-audio-group` | The id of the group this clip belongs to | A plain id, not JSON | `<audio>`, audible `<video>` | Yes |
 
-`data-audio-group` is the odd one: a bare string, and **ignored on `<video>`**.
-The other three are JSON. Of those, only `data-fx-chain` and `data-automation`
+`data-audio-group` is the odd one: a bare string, and **ignored on a muted
+`<video>`** (`muted`, or `data-has-audio="false"`). The other three are JSON. Of those, only `data-fx-chain` and `data-automation`
 can also sit on an `<hf-audio-group>`, where they apply to the group's whole bus;
 `data-fx-carve` belongs to a clip.
 
@@ -170,8 +170,9 @@ dangles.
 - `<hf-audio-group>` is optional metadata: `data-label`, `data-volume`,
   `data-hidden`, and its own `data-fx-chain` / `data-automation`. A group with
   members but no element still resolves, using its id as the label.
-- **Audio only.** `data-audio-group` on a `<video>` is ignored, and groups do
-  not nest.
+- **Audio and audible video.** A `<video>` with sound (`data-has-audio="true"`,
+  no `muted`) joins its group in preview and render; on a muted video
+  `data-audio-group` is ignored. Groups do not nest.
 - `data-audio-group=""` is no group at all.
 - The element must be inert. The runtime injects
   `hf-audio-group{display:none!important}` so an unknown custom element cannot
