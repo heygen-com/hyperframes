@@ -23,6 +23,7 @@ import { createRangeSelectionSlice, type RangeSelectionSlice } from "./rangeSele
 import { createTimelineResetState } from "./timelineResetState";
 export type { KeyframeCacheEntry } from "./keyframeSlice";
 export { liveTime } from "./liveTime";
+import { liveTime } from "./liveTime";
 export { createTimelineResetState };
 
 import type {
@@ -37,10 +38,6 @@ type TimelineTool = "select" | "razor";
 
 export interface SelectElementOptions {
   preserveSet?: boolean;
-}
-
-function selectClipsWhere(elements: TimelineElement[], keep: (el: TimelineElement) => boolean) {
-  return resolveElementSelection(elements.filter(keep).map((el) => el.key ?? el.id));
 }
 
 function resolveElementSelection(
@@ -258,6 +255,17 @@ interface BeatHistoryEntry {
   label: string;
 }
 
+/** Selects like the marquee: the primary first, so its resets run, then the whole set. */
+function selectAroundPlayhead(
+  state: PlayerState,
+  keep: (start: number, playhead: number) => boolean,
+): void {
+  const playhead = state.isPlaying ? liveTime.latest() : state.currentTime;
+  const ids = state.elements.filter((el) => keep(el.start, playhead)).map((el) => el.key ?? el.id);
+  state.setSelectedElementId(ids[0] ?? null);
+  state.setSelectedElementIds(new Set(ids));
+}
+
 export const usePlayerStore = create<PlayerState>((set, get) => ({
   isPlaying: false,
   currentTime: 0,
@@ -281,9 +289,8 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
 
   activeTool: "select",
   setActiveTool: (tool) => set({ activeTool: tool }),
-  selectLeftward: () => set((s) => selectClipsWhere(s.elements, (el) => el.start < s.currentTime)),
-  selectRightward: () =>
-    set((s) => selectClipsWhere(s.elements, (el) => el.start >= s.currentTime)),
+  selectLeftward: () => selectAroundPlayhead(get(), (start, playhead) => start < playhead),
+  selectRightward: () => selectAroundPlayhead(get(), (start, playhead) => start >= playhead),
 
   ...createKeyframeSlice(set, () => ({
     timelineProjectId: get().timelineProjectId,
