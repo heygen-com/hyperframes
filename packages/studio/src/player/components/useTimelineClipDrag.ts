@@ -66,7 +66,7 @@ interface UseTimelineClipDragInput {
   onResizeElements?: NonNullable<TimelineEditCallbacks["onResizeElements"]>;
   onBlockedEditAttempt?: (element: TimelineElement, intent: BlockedClipState["intent"]) => void;
   /** Seeks the preview; a trim shows the frame at its dragged edge. */
-  onSeek?: (time: number, options?: { keepPlaying?: boolean }) => void;
+  onSeek?: (time: number, options?: { keepPlaying?: boolean; follow?: boolean }) => void;
   setShowPopover: (show: boolean) => void;
   /** Stable ref to the range selection setter — wired after mount to break circular dependency. */
   setRangeSelectionRef: React.RefObject<((sel: null) => void) | null>;
@@ -311,6 +311,7 @@ export function useTimelineClipDrag({
         // and it only resumes playback if it was already playing.
         onSeekRef.current?.(trimPreviewTime(resize.edge, v.previewStart, v.previewDuration), {
           keepPlaying: true,
+          follow: false,
         });
         publishResizingClip(
           resizingClipRef.current ? { ...resizingClipRef.current, started: true, ...v } : null,
@@ -361,7 +362,7 @@ export function useTimelineClipDrag({
     if (trimSeekOriginRef.current != null) {
       // Paused: put the playhead back. Playing: leave it, a backward jump would rewind live playback.
       if (!usePlayerStore.getState().isPlaying) {
-        onSeekRef.current?.(trimSeekOriginRef.current, { keepPlaying: true });
+        onSeekRef.current?.(trimSeekOriginRef.current, { keepPlaying: true, follow: false });
       }
       trimSeekOriginRef.current = null;
     }

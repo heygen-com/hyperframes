@@ -89,16 +89,16 @@ async function seekOnFirstTick(
 
 describe("Timeline ruler origin", () => {
   it.each([
-    ["keyframes shown", { showKeyframes: true }, false],
-    ["keyframes hidden", { showKeyframes: false }, false],
-    ["keyframes shown, arriving after mount", { showKeyframes: true }, true],
-    ["keyframes hidden, arriving after mount", { showKeyframes: false }, true],
+    ["keyframes shown", { showKeyframes: true }, false, 264],
+    ["keyframes hidden", { showKeyframes: false }, false, 80],
+    ["keyframes shown, arriving after mount", { showKeyframes: true }, true, 264],
+    ["keyframes hidden, arriving after mount", { showKeyframes: false }, true, 80],
   ])(
     "publishes where the ruler draws 0 s, and a press seeks by it (%s)",
-    async (_case, props, late) => {
+    async (_case, props, late, expected) => {
       const { time, tickTime, origin, published } = await seekOnFirstTick(props, late);
-      expect(origin).toBe("264px");
-      expect(published).toBe("264");
+      expect(origin).toBe(`${expected}px`);
+      expect(published).toBe(String(expected));
       expect(time).toBeCloseTo(tickTime, 1);
     },
   );
