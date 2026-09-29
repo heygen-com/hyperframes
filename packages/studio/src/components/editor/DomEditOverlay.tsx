@@ -54,7 +54,6 @@ export interface DomEditOverlayProps {
   groupSelections?: DomEditSelection[];
   hoverSelection: DomEditSelection | null;
   allowCanvasMovement?: boolean;
-  /** False: dragging a selection's body never moves it; its handles still resize, rotate and crop. */
   allowBodyDrag?: boolean;
   /** "host": no hover, marquee or box re-select; Enter with nothing focused still opens text. */
   canvasInput?: "overlay" | "host";

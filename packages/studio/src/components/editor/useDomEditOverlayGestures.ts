@@ -104,7 +104,6 @@ export function createDomEditOverlayGestureHandlers(opts: UseDomEditOverlayGestu
     },
   ) => _startGesture(kind, e, opts, options);
 
-  // A press that must not move the box: no drag, and no click once it travels.
   const startStillPress = (e: React.PointerEvent<HTMLElement>) => {
     e.preventDefault();
     e.stopPropagation();
