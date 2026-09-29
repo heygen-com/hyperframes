@@ -128,10 +128,10 @@ describe("useTimelinePlayhead follow while paused", () => {
     expect(x).toBeLessThanOrEqual(800);
   });
 
-  it("leaves the view alone when a paused seek lands on screen", () => {
+  it("leaves the view alone when a paused seek lands on screen, even past the follow line", () => {
     const scroll = scrollBox(0);
     mount({ pps: 100, scroll });
-    act(() => liveTime.notify(5));
+    act(() => liveTime.notify(7));
     expect(scroll.scrollLeft).toBe(0);
   });
 
