@@ -20,6 +20,23 @@ function word(style: string, anchoredRight = false): HTMLElement {
 }
 
 describe("applyElementPositionOffset", () => {
+  it("persists position for a static word the Layers panel lifted to relative", () => {
+    const el = word("position: relative");
+    el.setAttribute("data-hf-reveal-prior-pos", "static");
+    expect(applyElementPositionOffset(el, { x: 40, y: 20 })).toEqual([
+      { type: "inline-style", property: "position", value: "relative" },
+      { type: "inline-style", property: "left", value: "40px" },
+      { type: "inline-style", property: "top", value: "20px" },
+    ]);
+    expect(el.hasAttribute("data-hf-reveal-prior-pos")).toBe(false);
+  });
+
+  it("names percent positioning as the reason it refuses", () => {
+    const el = word("position: relative; left: 10%; top: 0px");
+    expect(applyElementPositionOffset(el, { x: 40, y: 20 })).toBe("percent");
+    expect(el.style.left).toBe("10%");
+  });
+
   it("moves a static element by relative left/top", () => {
     const el = word("");
     expect(applyElementPositionOffset(el, { x: 40, y: 20 })).toEqual([
@@ -39,7 +56,7 @@ describe("applyElementPositionOffset", () => {
 
   it("refuses, leaving the element untouched, when left does not move the box", () => {
     const el = word("position: absolute; right: 30px", true);
-    expect(applyElementPositionOffset(el, { x: 40, y: 20 })).toBeNull();
+    expect(applyElementPositionOffset(el, { x: 40, y: 20 })).toBe("anchored");
     expect([el.style.left, el.style.top, el.style.right]).toEqual(["", "", "30px"]);
   });
 });

@@ -1,4 +1,5 @@
 import type { PatchOperation } from "../../utils/sourcePatcher";
+import { LAYER_REVEAL_PRIOR_POSITION_ATTR } from "../../player/lib/timelineElementHelpers";
 
 interface LayoutBox {
   left: number;
@@ -19,22 +20,22 @@ function readDragStart(el: HTMLElement, axis: "x" | "y"): number {
   return Number.isFinite(value) ? value : 0;
 }
 
-/**
- * Moves one element by `left`/`top` on itself, the channel for an element whose GSAP
- * position tween also moves its siblings: GSAP never parses left/top, so the offset
- * renders once and the shared entrance still plays. Adds to any left/top it already
- * has. Returns null, with the element untouched, when the layout would not shift by
- * exactly the delta (a right/bottom-anchored or stretched box).
- */
+export type ElementOffsetRefusal = "percent" | "anchored";
+
+/** Moves one element by adding to its own `left`/`top` (GSAP never parses them), or
+ *  names why not, leaving the element untouched. */
 export function applyElementPositionOffset(
   el: HTMLElement,
   gestureOffset: { x: number; y: number },
-): PatchOperation[] | null {
+): PatchOperation[] | ElementOffsetRefusal {
   const cs = el.ownerDocument.defaultView?.getComputedStyle(el);
-  if (!cs) return null;
+  if (!cs) return "anchored";
   const dx = Math.round(gestureOffset.x - readDragStart(el, "x"));
   const dy = Math.round(gestureOffset.y - readDragStart(el, "y"));
-  const isStatic = !/^(relative|absolute|fixed|sticky)$/.test(cs.position);
+  // A Layers-panel pick lifts a static element to relative for display only.
+  const lifted = el.getAttribute(LAYER_REVEAL_PRIOR_POSITION_ATTR) === "static";
+  const isStatic = lifted || !/^(relative|absolute|fixed|sticky)$/.test(cs.position);
+  if (!isStatic && (cs.left.endsWith("%") || cs.top.endsWith("%"))) return "percent";
   const baseLeft = isStatic ? 0 : Number.parseFloat(cs.left) || 0;
   const baseTop = isStatic ? 0 : Number.parseFloat(cs.top) || 0;
   const previous = { position: el.style.position, left: el.style.left, top: el.style.top };
@@ -50,8 +51,9 @@ export function applyElementPositionOffset(
     Math.abs(after.height - before.height) <= 1;
   if (!shiftedExactly) {
     Object.assign(el.style, previous);
-    return null;
+    return "anchored";
   }
+  if (lifted) el.removeAttribute(LAYER_REVEAL_PRIOR_POSITION_ATTR);
   return [
     ...(isStatic
       ? [{ type: "inline-style", property: "position", value: "relative" } as const]

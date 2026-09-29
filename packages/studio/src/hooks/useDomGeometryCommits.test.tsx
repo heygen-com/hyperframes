@@ -158,7 +158,7 @@ describe("useDomGeometryCommits element position offset", () => {
       .mockResolvedValue(undefined);
     const { commits, unmount } = mountCommits(commitPositionPatchToHtml);
 
-    await commits().commitElementPositionOffset(selection, { x: 40, y: 20 });
+    await commits().stageElementPositionOffset(selection, { x: 40, y: 20 }).save();
 
     const patches = commitPositionPatchToHtml.mock.calls[0]![1];
     expect(patches).toEqual([

@@ -77,11 +77,11 @@ export interface UseGsapAwareEditingParams {
     label: string,
   ) => void;
   // DOM fallbacks (from useDomEditCommits)
-  commitElementPositionOffset: (
+  stageElementPositionOffset: (
     selection: DomEditSelection,
     next: { x: number; y: number },
     coalesceKey?: string,
-  ) => Promise<void>;
+  ) => { save: () => Promise<void>; rollback: () => void };
   handleDomBoxSizeCommit: (
     selection: DomEditSelection,
     next: { width: number; height: number },
@@ -128,7 +128,7 @@ export function useGsapAwareEditing({
   bumpGsapCache,
   makeFetchFallback,
   trackGsapInteractionFailure,
-  commitElementPositionOffset,
+  stageElementPositionOffset,
   handleDomBoxSizeCommit,
   addGsapAnimation,
   convertToKeyframes,
@@ -166,7 +166,7 @@ export function useGsapAwareEditing({
             makeFetchFallback(selection),
             modifiers,
           );
-          await saveMove(outcome, () => commitElementPositionOffset(selection, next));
+          await saveMove(outcome, () => stageElementPositionOffset(selection, next).save());
         } catch (error) {
           trackGsapInteractionFailure(error, selection, "drag", "Move animated layer");
           throw error;
@@ -179,7 +179,7 @@ export function useGsapAwareEditing({
       makeFetchFallback,
       trackGsapInteractionFailure,
       getGsapAnimationsForSelection,
-      commitElementPositionOffset,
+      stageElementPositionOffset,
     ],
   );
 
@@ -276,7 +276,7 @@ export function useGsapAwareEditing({
       for (const [index, { selection, next }] of updates.entries()) {
         renderOnCommit = index === lastScriptWrite;
         if (offsetMembers.has(selection)) {
-          await commitElementPositionOffset(selection, next, coalesceKey);
+          await stageElementPositionOffset(selection, next, coalesceKey).save();
           continue;
         }
         try {
@@ -315,7 +315,7 @@ export function useGsapAwareEditing({
       previewIframeRef,
       makeFetchFallback,
       trackGsapInteractionFailure,
-      commitElementPositionOffset,
+      stageElementPositionOffset,
     ],
   );
 
@@ -347,6 +347,7 @@ export function useGsapAwareEditing({
         animCount: targetAnimations.length,
         animGroups: targetAnimations.map((a) => `${a.propertyGroup}:${a.method}`),
       });
+      let anchorMove: ReturnType<typeof stageElementPositionOffset> | null = null;
       return runGestureTransaction({
         element: selection.element,
         label: "Resize layer",
@@ -362,7 +363,7 @@ export function useGsapAwareEditing({
           logResize("sync-settle", { gsapPos, offset, newX, newY });
           setElementGsapPosition(selection.element, newX, newY);
         },
-        persist: async (commit) => {
+        persist: async (commit, coalesceKey) => {
           if (gsapCommitMutation) {
             const commitMutation = commit(gsapCommitMutation);
             try {
@@ -398,7 +399,10 @@ export function useGsapAwareEditing({
                   commitMutation,
                   makeFetchFallback(selection),
                 );
-                await saveMove(dragOutcome, () => commitElementPositionOffset(selection, offset));
+                // Saved after the size, under its undo key, so the two are one step.
+                await saveMove(dragOutcome, async () => {
+                  anchorMove = stageElementPositionOffset(selection, offset, coalesceKey);
+                });
               }
               logResizeSettle(selection.element, ownsDragOffset ? "gsap-scale" : "gsap-size");
               return;
@@ -415,13 +419,17 @@ export function useGsapAwareEditing({
           logResizeSettle(selection.element, "dom-route");
           await handleDomBoxSizeCommit(selection, next, offset);
         },
-        restore,
+        afterBufferedCommitsSaved: () => anchorMove?.save() ?? Promise.resolve(),
+        restore: () => {
+          anchorMove?.rollback();
+          restore();
+        },
         skipPixelAssert: hasLivePositionTween,
       });
     },
     [
       handleDomBoxSizeCommit,
-      commitElementPositionOffset,
+      stageElementPositionOffset,
       gsapCommitMutation,
       previewIframeRef,
       makeFetchFallback,

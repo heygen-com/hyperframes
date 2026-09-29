@@ -199,13 +199,8 @@ function oneUndoStep(
     commit(selection, mutation, { ...options, coalesceKey, coalesceMs: Number.POSITIVE_INFINITY });
 }
 
-/**
- * Attempt to handle a drag commit via the GSAP script mutation path.
- *
- * Returns persisted, blocked, or element-offset (only a shared tween positions the
- * element: the caller saves the move on the element itself). Callers must reject
- * blocked outcomes so the gesture layer restores its runtime and overlay drafts.
- */
+/** Commits a drag through the GSAP script. Callers reject `blocked` (the gesture layer
+ *  restores its drafts) and save `element-offset` on the element itself. */
 export async function tryGsapDragIntercept(
   selection: DomEditSelection,
   offset: { x: number; y: number },

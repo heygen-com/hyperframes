@@ -52,7 +52,9 @@ function mountResizeHandler(
   const element = document.createElement("div");
   const selection = { element, id: "clip", selector: "#clip" } as unknown as DomEditSelection;
   const fallback = vi.fn().mockResolvedValue(undefined);
-  const elementOffset = vi.fn().mockResolvedValue(undefined);
+  const anchorSave = vi.fn().mockResolvedValue(undefined);
+  const anchorRollback = vi.fn();
+  const elementOffset = vi.fn(() => ({ save: anchorSave, rollback: anchorRollback }));
   const commitMutation = vi.fn().mockResolvedValue(undefined);
   let resize:
     | ((
@@ -72,7 +74,7 @@ function mountResizeHandler(
       bumpGsapCache: vi.fn(),
       makeFetchFallback: () => vi.fn().mockResolvedValue(targetAnimations),
       trackGsapInteractionFailure: vi.fn(),
-      commitElementPositionOffset: elementOffset,
+      stageElementPositionOffset: elementOffset,
       handleDomBoxSizeCommit: fallback,
       addGsapAnimation: vi.fn(),
       convertToKeyframes: vi.fn(),
@@ -82,7 +84,16 @@ function mountResizeHandler(
     return null;
   }
   const root = mountReactHarness(<Harness />);
-  return { selection, fallback, elementOffset, commitMutation, resize: resize!, root };
+  return {
+    selection,
+    fallback,
+    elementOffset,
+    anchorSave,
+    anchorRollback,
+    commitMutation,
+    resize: resize!,
+    root,
+  };
 }
 
 type AwareEditingParams = Parameters<typeof useGsapAwareEditing>[0];
@@ -91,11 +102,9 @@ function mountGroupHandler({
   gsapCommitMutation,
   makeFetchFallback,
   trackGsapInteractionFailure = vi.fn(),
-  commitElementPositionOffset = vi.fn(),
+  stageElementPositionOffset = vi.fn(),
 }: Pick<AwareEditingParams, "gsapCommitMutation" | "makeFetchFallback"> &
-  Partial<
-    Pick<AwareEditingParams, "trackGsapInteractionFailure" | "commitElementPositionOffset">
-  >) {
+  Partial<Pick<AwareEditingParams, "trackGsapInteractionFailure" | "stageElementPositionOffset">>) {
   let groupCommit!: (updates: DomEditGroupPathOffsetCommit[]) => Promise<void>;
   let pathOffsetCommit!: (
     selection: DomEditSelection,
@@ -111,7 +120,7 @@ function mountGroupHandler({
       bumpGsapCache: vi.fn(),
       makeFetchFallback,
       trackGsapInteractionFailure,
-      commitElementPositionOffset,
+      stageElementPositionOffset,
       handleDomBoxSizeCommit: vi.fn(),
       addGsapAnimation: vi.fn(),
       convertToKeyframes: vi.fn(),
@@ -134,16 +143,18 @@ function mountGroupHandler({
 describe("useGsapAwareEditing shared-tween moves", () => {
   it("saves a single drag through the element's own offset", async () => {
     mocks.drag.mockResolvedValue({ status: "element-offset" });
-    const commitElementPositionOffset = vi.fn().mockResolvedValue(undefined);
+    const save = vi.fn().mockResolvedValue(undefined);
+    const stageElementPositionOffset = vi.fn(() => ({ save, rollback: vi.fn() }));
     const commitMutation = vi.fn();
     const { pathOffsetCommit, root } = mountGroupHandler({
       gsapCommitMutation: commitMutation,
       makeFetchFallback: () => vi.fn().mockResolvedValue([]),
-      commitElementPositionOffset,
+      stageElementPositionOffset,
     });
     const word = { element: document.createElement("span"), hfId: "w0", selector: ".w" };
     await act(() => pathOffsetCommit(word as unknown as DomEditSelection, { x: 40, y: 20 }));
-    expect(commitElementPositionOffset).toHaveBeenCalledWith(word, { x: 40, y: 20 });
+    expect(stageElementPositionOffset).toHaveBeenCalledWith(word, { x: 40, y: 20 });
+    expect(save).toHaveBeenCalledTimes(1);
     expect(commitMutation).not.toHaveBeenCalled();
     act(() => root.unmount());
   });
@@ -154,11 +165,12 @@ describe("useGsapAwareEditing shared-tween moves", () => {
       if (!options?.preflightOnly) await commit(selection, { type: "move" }, { label: "Move" });
       return { status: "persisted" };
     });
-    const commitElementPositionOffset = vi.fn().mockResolvedValue(undefined);
+    const save = vi.fn().mockResolvedValue(undefined);
+    const stageElementPositionOffset = vi.fn(() => ({ save, rollback: vi.fn() }));
     const { groupCommit, root } = mountGroupHandler({
       gsapCommitMutation: vi.fn().mockResolvedValue(undefined),
       makeFetchFallback: () => vi.fn().mockResolvedValue([]),
-      commitElementPositionOffset,
+      stageElementPositionOffset,
     });
     const word = { element: document.createElement("span"), hfId: "w0", selector: ".w" };
     const box = { element: document.createElement("div"), id: "box", selector: "#box" };
@@ -168,7 +180,7 @@ describe("useGsapAwareEditing shared-tween moves", () => {
         { selection: box, next: { x: 40, y: 20 } },
       ] as unknown as DomEditGroupPathOffsetCommit[]),
     );
-    expect(commitElementPositionOffset).toHaveBeenCalledWith(
+    expect(stageElementPositionOffset).toHaveBeenCalledWith(
       word,
       { x: 40, y: 20 },
       expect.stringMatching(/^group-drag:\d+$/),
@@ -224,12 +236,36 @@ describe("useGsapAwareEditing anchored resize", () => {
     act(() => h.root.unmount());
   });
 
-  it("persists the anchor as the element's own offset when its position tween is shared", async () => {
-    mocks.resize.mockResolvedValue({ status: "persisted" });
+  function resizeWritesSize() {
+    mocks.resize.mockImplementation(async (selection, _next, _a, _i, commit) => {
+      await commit(selection, { type: "size" }, { label: "Resize", softReload: true });
+      return { status: "persisted" };
+    });
     mocks.drag.mockResolvedValue({ status: "element-offset" });
+  }
+
+  it("saves a shared-tween word's anchor move after its size, under the resize's undo key", async () => {
+    resizeWritesSize();
     const h = mountResizeHandler([]);
     await act(() => h.resize(h.selection, { width: 300, height: 200 }, { x: -50, y: -25 }));
-    expect(h.elementOffset).toHaveBeenCalledWith(h.selection, { x: -50, y: -25 });
+    const key = h.commitMutation.mock.calls[0]![2].coalesceKey;
+    expect(key).toMatch(/^tx:/);
+    expect(h.elementOffset).toHaveBeenCalledWith(h.selection, { x: -50, y: -25 }, key);
+    expect(h.anchorSave.mock.invocationCallOrder[0]).toBeGreaterThan(
+      h.commitMutation.mock.invocationCallOrder[0]!,
+    );
+    act(() => h.root.unmount());
+  });
+
+  it("does not keep the anchor move when the size save fails", async () => {
+    resizeWritesSize();
+    const h = mountResizeHandler([]);
+    h.commitMutation.mockRejectedValueOnce(new Error("size save failed"));
+    await expect(
+      act(() => h.resize(h.selection, { width: 300, height: 200 }, { x: -50, y: -25 })),
+    ).rejects.toThrow("size save failed");
+    expect(h.anchorSave).not.toHaveBeenCalled();
+    expect(h.anchorRollback).toHaveBeenCalledTimes(1);
     act(() => h.root.unmount());
   });
 
