@@ -1,4 +1,4 @@
-import { closeSync, constants, existsSync, fstatSync, openSync, readFileSync } from "node:fs";
+import { closeSync, existsSync, fstatSync, openSync, readFileSync } from "node:fs";
 import { isAbsolute, join, posix, relative, resolve, sep } from "node:path";
 import { decodeUrlPathVariants } from "./composition.js";
 
@@ -252,8 +252,7 @@ export type ProjectFileRead =
 export function readProjectFile(path: string): ProjectFileRead {
   let fd: number;
   try {
-    // Non-blocking, so a named pipe is reported instead of hanging the open.
-    fd = openSync(path, constants.O_RDONLY | (constants.O_NONBLOCK ?? 0));
+    fd = openSync(path, "r");
   } catch (error) {
     const code = (error as NodeJS.ErrnoException).code;
     if (code === "EISDIR") return { kind: "folder" };
