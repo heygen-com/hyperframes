@@ -1,4 +1,5 @@
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { execFileSync } from "node:child_process";
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, posix, win32 } from "node:path";
@@ -282,6 +283,11 @@ describe("readProjectFile", () => {
 
   it("names a folder instead of throwing EISDIR", () => {
     expect(readProjectFile(join(dir, "intro"))).toEqual({ kind: "folder" });
+  });
+
+  it.skipIf(process.platform === "win32")("reports a named pipe without blocking on it", () => {
+    execFileSync("mkfifo", [join(dir, "pipe.html")]);
+    expect(readProjectFile(join(dir, "pipe.html"))).toEqual({ kind: "folder" });
   });
 
   it("reports a missing path, including one under a file", () => {
