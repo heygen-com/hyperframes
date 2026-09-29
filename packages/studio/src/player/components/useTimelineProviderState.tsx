@@ -21,6 +21,7 @@ import { useTimelineGeometry } from "./useTimelineGeometry";
 import { useAutoExpandKeyframedClips } from "./useAutoExpandKeyframedClips";
 import { GUTTER, LABEL_COL_W } from "./timelineLayout";
 import { useTimelineLabelColumn } from "./useTimelineLabelColumn";
+import { useTimelineKeyframeData } from "./useTimelineKeyframeData";
 import { useTimelineScrollViewport } from "./useTimelineScrollViewport";
 import { ClipContentOnceShown } from "./timelineClipChildren";
 import { useResolvedTimelineEditCallbacks } from "./useResolvedTimelineEditCallbacks";
@@ -44,8 +45,6 @@ import { useTimelineLaneMoveRefresh } from "./useTimelineLaneMoveRefresh";
 import { useTimelineLogicalFocus } from "./useTimelineLogicalFocus";
 import { useTimelineEditContextOptional } from "../../contexts/TimelineEditContext";
 import { resolveSnapGuide } from "./timelineSnapping";
-const NO_ANIMATIONS = new Map();
-const NO_KEYFRAMES = new Map();
 export function useTimelineProviderState({
   onSeek,
   onDrillDown,
@@ -107,8 +106,7 @@ export function useTimelineProviderState({
   const selectedElementId = usePlayerStore((s) => s.selectedElementId);
   const selectedElementIds = usePlayerStore((s) => s.selectedElementIds);
   const focusedEaseSegment = usePlayerStore((s) => s.focusedEaseSegment);
-  const storeAnimations = usePlayerStore((s) => s.gsapAnimations);
-  const gsapAnimations = showKeyframes ? storeAnimations : NO_ANIMATIONS;
+  const { gsapAnimations, keyframeCache } = useTimelineKeyframeData(showKeyframes);
   const { labelMode, contentOrigin } = useTimelineLabelColumn(gsapAnimations, timelineElements);
   const setSelectedElementId = usePlayerStore((s) => s.setSelectedElementId);
   const currentTime = usePlayerStore((s) => s.currentTime);
@@ -134,8 +132,6 @@ export function useTimelineProviderState({
     () => getEffectiveTimelineDuration(duration, timelineElements),
     [duration, timelineElements],
   );
-  const storeKeyframes = usePlayerStore((s) => s.keyframeCache);
-  const keyframeCache = showKeyframes ? storeKeyframes : NO_KEYFRAMES;
   useAutoExpandKeyframedClips(gsapAnimations);
   const {
     tracks,

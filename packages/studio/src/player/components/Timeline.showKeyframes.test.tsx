@@ -20,16 +20,15 @@ async function diamondCount(showKeyframes?: boolean) {
     duration: 10,
     currentTime: 0,
     timelineReady: true,
+    selectedElementId: "card",
     elements: [{ id: "card", tag: "div", start: 0, duration: 4, track: 0 }],
+    gsapAnimations: new Map(),
     keyframeCache: new Map([
       [
         "card",
         {
-          format: "gsap",
-          keyframes: [
-            { percentage: 0, properties: { x: 0 } },
-            { percentage: 50, properties: { x: 100 } },
-          ],
+          format: "percentage",
+          keyframes: [{ percentage: 50, properties: { x: 100 }, tweenPercentage: 50 }],
         },
       ],
     ]),
@@ -38,7 +37,7 @@ async function diamondCount(showKeyframes?: boolean) {
   document.body.append(host);
   const root = createRoot(host);
   await act(async () => root.render(<Timeline showKeyframes={showKeyframes} />));
-  const count = host.querySelectorAll("[data-keyframe-percentage]").length;
+  const count = host.querySelectorAll('button[title="50%"]').length;
   act(() => root.unmount());
   return count;
 }
