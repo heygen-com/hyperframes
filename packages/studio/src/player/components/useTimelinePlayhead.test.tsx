@@ -1,11 +1,14 @@
 // @vitest-environment happy-dom
 
-import { act, createRef } from "react";
-import { createRoot } from "react-dom/client";
-import { describe, expect, it } from "vitest";
+import { act } from "react";
+import { createRoot, type Root } from "react-dom/client";
+import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { liveTime, usePlayerStore, type ZoomMode } from "../store/playerStore";
 import { useTimelinePlayhead } from "./useTimelinePlayhead";
 
 Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true });
+
+const ORIGIN = 32;
 
 function scrollBox(scrollLeft: number) {
   const el = document.createElement("div");
@@ -18,18 +21,26 @@ function scrollBox(scrollLeft: number) {
   return el;
 }
 
-function Harness({ pps, scroll }: { pps: number; scroll: HTMLDivElement }) {
+interface HarnessProps {
+  pps: number;
+  scroll: HTMLDivElement;
+  percent?: number;
+  dragging?: boolean;
+  zoomMode?: ZoomMode;
+}
+
+function Harness({ pps, scroll, percent = 100, dragging = false, zoomMode = "manual" }: HarnessProps) {
   useTimelinePlayhead({
-    playheadRef: createRef(),
+    playheadRef: { current: document.createElement("div") },
     scrollRef: { current: scroll },
     ppsRef: { current: pps },
     durationRef: { current: 60 },
-    isDragging: { current: false },
+    isDragging: { current: dragging },
     currentTime: 0,
-    zoomMode: "manual",
-    manualZoomPercent: 100,
-    zoomModeRef: { current: "manual" },
-    manualZoomPercentRef: { current: 100 },
+    zoomMode,
+    manualZoomPercent: percent,
+    zoomModeRef: { current: zoomMode },
+    manualZoomPercentRef: { current: percent },
     fitPps: pps,
     fitPpsRef: { current: pps },
     effectiveDuration: 60,
@@ -38,28 +49,112 @@ function Harness({ pps, scroll }: { pps: number; scroll: HTMLDivElement }) {
     elementsLength: 1,
     setZoomMode: () => {},
     setManualZoomPercent: () => {},
-    contentOrigin: 32,
+    contentOrigin: ORIGIN,
   });
   return null;
 }
 
-function zoom(scrollLeft: number, fromPps: number, toPps: number) {
-  const scroll = scrollBox(scrollLeft);
-  const host = document.createElement("div");
-  const root = createRoot(host);
-  act(() => root.render(<Harness pps={fromPps} scroll={scroll} />));
-  act(() => root.render(<Harness pps={toPps} scroll={scroll} />));
-  act(() => root.unmount());
-  return scroll.scrollLeft;
+const roots: Root[] = [];
+function mount(props: HarnessProps) {
+  const root = createRoot(document.createElement("div"));
+  roots.push(root);
+  act(() => root.render(<Harness {...props} />));
+  return (next: Partial<HarnessProps>) => act(() => root.render(<Harness {...props} {...next} />));
 }
 
-describe("useTimelinePlayhead centre anchor", () => {
-  it("keeps a view at the start at the start when the scale changes", () => {
-    expect(zoom(0, 100, 114)).toBe(0);
+beforeEach(() => {
+  usePlayerStore.setState({ currentTime: 0, isPlaying: false });
+});
+afterEach(() => {
+  for (const root of roots.splice(0)) act(() => root.unmount());
+});
+
+/** Where the playhead at `time` sits inside the 800px viewport. */
+const onScreenX = (scroll: HTMLDivElement, time: number, pps: number) =>
+  ORIGIN + time * pps - scroll.scrollLeft;
+
+describe("useTimelinePlayhead zoom anchor", () => {
+  it("keeps a view at the start at the start when the window resizes", () => {
+    const scroll = scrollBox(0);
+    mount({ pps: 100, scroll })({ pps: 114 });
+    expect(scroll.scrollLeft).toBe(0);
   });
 
-  it("keeps the time at the viewport centre when the view is scrolled", () => {
+  it("keeps the time at the viewport centre when a scrolled window resizes", () => {
+    const scroll = scrollBox(400);
     // Centre time (400 + 400 - 32) / 100 = 7.68s lands at 32 + 7.68 * 200 - 400.
-    expect(zoom(400, 100, 200)).toBe(1168);
+    mount({ pps: 100, scroll })({ pps: 200 });
+    expect(scroll.scrollLeft).toBe(1168);
+  });
+
+  it("keeps a view at 00:00 on a resize even when the playhead is mid-film", () => {
+    usePlayerStore.setState({ currentTime: 6 });
+    const scroll = scrollBox(0);
+    mount({ pps: 100, scroll })({ pps: 150 });
+    expect(scroll.scrollLeft).toBe(0);
+  });
+
+  it("keeps the playhead where it is on screen when the toolbar zooms", () => {
+    usePlayerStore.setState({ currentTime: 6 });
+    const scroll = scrollBox(400);
+    const before = onScreenX(scroll, 6, 100);
+    mount({ pps: 100, scroll, percent: 100 })({ pps: 200, percent: 200 });
+    expect(onScreenX(scroll, 6, 200)).toBeCloseTo(before);
+  });
+
+  it("stays at 00:00 when a zoom is set with the playhead at 0, as a zoom restored on open is", () => {
+    const scroll = scrollBox(0);
+    mount({ pps: 100, scroll, percent: 100 })({ pps: 250, percent: 250 });
+    expect(scroll.scrollLeft).toBe(0);
+  });
+
+  it("brings an off-screen playhead into view when the toolbar zooms", () => {
+    usePlayerStore.setState({ currentTime: 30 });
+    const scroll = scrollBox(0);
+    mount({ pps: 100, scroll, percent: 100 })({ pps: 200, percent: 200 });
+    const x = onScreenX(scroll, 30, 200);
+    expect(x).toBeGreaterThanOrEqual(ORIGIN);
+    expect(x).toBeLessThanOrEqual(800);
+  });
+});
+
+describe("useTimelinePlayhead follow while paused", () => {
+  it("scrolls a paused seek that lands off screen into view", () => {
+    const scroll = scrollBox(0);
+    mount({ pps: 100, scroll });
+    act(() => liveTime.notify(30));
+    const x = onScreenX(scroll, 30, 100);
+    expect(x).toBeGreaterThanOrEqual(ORIGIN);
+    expect(x).toBeLessThanOrEqual(800);
+  });
+
+  it("leaves the view alone when a paused seek lands on screen", () => {
+    const scroll = scrollBox(0);
+    mount({ pps: 100, scroll });
+    act(() => liveTime.notify(5));
+    expect(scroll.scrollLeft).toBe(0);
+  });
+
+  it("does not undo a person's own scroll when the paused time is published again", () => {
+    const scroll = scrollBox(0);
+    mount({ pps: 100, scroll });
+    act(() => liveTime.notify(30));
+    scroll.scrollLeft = 0;
+    act(() => liveTime.notify(30));
+    expect(scroll.scrollLeft).toBe(0);
+  });
+
+  it("does not scroll while the playhead is being dragged", () => {
+    const scroll = scrollBox(0);
+    mount({ pps: 100, scroll, dragging: true });
+    act(() => liveTime.notify(30));
+    expect(scroll.scrollLeft).toBe(0);
+  });
+
+  it("does not scroll in Fit", () => {
+    const scroll = scrollBox(0);
+    mount({ pps: 100, scroll, zoomMode: "fit" });
+    act(() => liveTime.notify(30));
+    expect(scroll.scrollLeft).toBe(0);
   });
 });
