@@ -9,6 +9,8 @@ import { usePlayerStore, type TimelineElement } from "../player";
 import { jsonResponse, requestUrl } from "./fetchStubTestUtils";
 import { useElementLifecycleOps } from "./useElementLifecycleOps";
 import { useTimelineEditing } from "./useTimelineEditing";
+import { parseTimelineFromDOM } from "../player/lib/timelineDOM";
+import { createRuntimeStartTimeResolver } from "@hyperframes/core/runtime/start-resolver";
 
 vi.mock("../components/editor/manualEditingAvailability", async (importOriginal) => {
   const actual =
@@ -1967,5 +1969,191 @@ describe("useTimelineEditing effect saves report what happened", () => {
     expect(outcome).toEqual({ status: "refused", reason: "Reserved by an agent" });
     expect(writeProjectFile).not.toHaveBeenCalled();
     unmount();
+  });
+});
+
+// main 0 > intro 2 > logo 3 > badge 1: rows are master time, files are local.
+const NESTED_PREVIEW = `
+  <div data-composition-id="main" data-start="0" data-duration="20">
+    <div id="intro" data-hf-id="hf-intro" data-composition-id="intro" data-start="2" data-duration="10">
+      <div data-composition-id="intro" data-composition-file="compositions/intro.html">
+        <div id="logo" data-hf-id="hf-logo" data-composition-id="logo" data-start="3" data-duration="5">
+          <div data-composition-id="logo" data-composition-file="compositions/logo.html">
+            <div id="badge" data-hf-id="hf-badge" class="clip" data-start="1" data-duration="2"></div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>`;
+const NESTED_FILES: Record<string, string> = {
+  "index.html": [
+    `<div data-composition-id="main" data-duration="20">`,
+    `  <div id="intro" data-composition-id="intro" data-composition-src="compositions/intro.html" data-start="2" data-duration="10"></div>`,
+    `</div>`,
+  ].join("\n"),
+  "compositions/intro.html": [
+    `<div data-composition-id="intro" data-duration="10">`,
+    `  <div id="intro-bg" class="clip" data-start="0" data-duration="10"></div>`,
+    `  <div id="logo" data-composition-id="logo" data-composition-src="compositions/logo.html" data-start="3" data-duration="5"></div>`,
+    `</div>`,
+  ].join("\n"),
+  "compositions/logo.html": [
+    `<div data-composition-id="logo" data-duration="5">`,
+    `  <div id="logo-bg" class="clip" data-start="0" data-duration="5"></div>`,
+    `  <div id="badge" class="clip" data-start="1" data-duration="2"></div>`,
+    `</div>`,
+  ].join("\n"),
+};
+
+function setupNestedHarness() {
+  const iframe = document.createElement("iframe");
+  document.body.append(iframe);
+  const doc = iframe.contentDocument!;
+  doc.body.innerHTML = NESTED_PREVIEW;
+  const row = (domId: string) => parseTimelineFromDOM(doc, 20).find((e) => e.domId === domId)!;
+  const playsAt = (domId: string) =>
+    createRuntimeStartTimeResolver({
+      includeAuthoredTimingAttrs: true,
+      documentRef: doc,
+    }).resolveStartForElement(doc.getElementById(domId)!);
+  const writeProjectFile = vi.fn<(path: string, content: string) => Promise<void>>(async () => {});
+  const written = (path: string, domId: string, attr: string) => {
+    const call = writeProjectFile.mock.calls.find(([p]) => p === path);
+    if (!call) throw new Error(`nothing written to ${path}`);
+    const el = new DOMParser().parseFromString(call[1], "text/html").getElementById(domId);
+    return el?.getAttribute(attr);
+  };
+  const writtenRootDuration = (path: string) => {
+    const call = writeProjectFile.mock.calls.find(([p]) => p === path)!;
+    return new DOMParser()
+      .parseFromString(call[1], "text/html")
+      .querySelector("[data-composition-id]")
+      ?.getAttribute("data-duration");
+  };
+  stubProjectFetch(NESTED_FILES);
+  usePlayerStore.getState().setDuration(20);
+  const hook = renderTimelineEditingHook({
+    timelineElements: parseTimelineFromDOM(doc, 20),
+    iframe,
+    onZIndexCommit: vi.fn().mockResolvedValue(undefined),
+    projectId: "p1",
+    writeProjectFile,
+    recordEdit: vi.fn(async () => {}),
+  });
+  return { doc, row, playsAt, written, writtenRootDuration, writeProjectFile, ...hook };
+}
+
+describe("useTimelineEditing: nested rows write composition-local starts", () => {
+  it("round-trips a depth-2 drag: drawn and played at the drop point, written local", async () => {
+    const h = setupNestedHarness();
+    const logo = h.row("logo");
+    expect(logo.start).toBe(5);
+
+    await act(async () => {
+      await h.move(logo, { start: 6, track: logo.track });
+    });
+
+    expect(h.written("compositions/intro.html", "logo", "data-start")).toBe("4");
+    expect(h.doc.getElementById("logo")?.getAttribute("data-start")).toBe("4");
+    expect(h.row("logo").start).toBe(6);
+    expect(h.playsAt("logo")).toBe(6);
+    expect(h.writtenRootDuration("compositions/intro.html")).toBe("10");
+    h.unmount();
+  });
+
+  it("round-trips a depth-3 drag through two enclosing hosts", async () => {
+    const h = setupNestedHarness();
+    const badge = h.row("badge");
+    expect(badge.start).toBe(6);
+
+    await act(async () => {
+      await h.move(badge, { start: 7, track: badge.track });
+    });
+
+    expect(h.written("compositions/logo.html", "badge", "data-start")).toBe("2");
+    expect(h.row("badge").start).toBe(7);
+    expect(h.playsAt("badge")).toBe(7);
+    expect(h.writtenRootDuration("compositions/logo.html")).toBe("5");
+    h.unmount();
+  });
+
+  it("writes a local start on a head trim and leaves a tail trim's start alone", async () => {
+    const h = setupNestedHarness();
+    await act(async () => {
+      await h.resize(h.row("logo"), { start: 5.5, duration: 4.5, playbackStart: undefined });
+    });
+    expect(h.written("compositions/intro.html", "logo", "data-start")).toBe("3.5");
+    expect(h.written("compositions/intro.html", "logo", "data-duration")).toBe("4.5");
+    expect(h.row("logo")).toMatchObject({ start: 5.5, duration: 4.5 });
+
+    h.writeProjectFile.mockClear();
+    await act(async () => {
+      await h.resize(h.row("logo"), { start: 5.5, duration: 3, playbackStart: undefined });
+    });
+    expect(h.doc.getElementById("logo")?.getAttribute("data-start")).toBe("3.5");
+    expect(h.doc.getElementById("logo")?.getAttribute("data-duration")).toBe("3");
+    h.unmount();
+  });
+
+  it("writes local starts for nested rows in a group move", async () => {
+    const h = setupNestedHarness();
+    await act(async () => {
+      await h.groupMove([{ element: h.row("logo"), start: 6 }]);
+    });
+    expect(h.written("compositions/intro.html", "logo", "data-start")).toBe("4");
+    expect(h.row("logo").start).toBe(6);
+    h.unmount();
+  });
+
+  it("leaves a top-level row's start as written", async () => {
+    const h = setupNestedHarness();
+    const intro = h.row("intro");
+    expect(intro.parentCompositionStart).toBe(0);
+
+    await act(async () => {
+      await h.move(intro, { start: 3, track: intro.track });
+    });
+
+    expect(h.written("index.html", "intro", "data-start")).toBe("3");
+    expect(h.row("intro").start).toBe(3);
+    h.unmount();
+  });
+
+  it("hands the SDK a local start for a nested clip in the open file", async () => {
+    const source = [
+      `<div data-hf-id="hf-main" data-hf-root data-composition-id="main" data-duration="20">`,
+      `  <div id="intro" data-hf-id="hf-intro" data-composition-id="intro" data-start="2" data-duration="10">`,
+      `    <div id="clip" data-hf-id="hf-clip" data-start="1" data-duration="2"></div>`,
+      `  </div>`,
+      `</div>`,
+    ].join("\n");
+    const iframe = document.createElement("iframe");
+    document.body.append(iframe);
+    iframe.contentDocument!.body.innerHTML = source;
+    const clip = parseTimelineFromDOM(iframe.contentDocument!, 20).find((e) => e.domId === "clip")!;
+    expect(clip.start).toBe(3);
+    const sdkSession = await openComposition(source);
+    const writeProjectFile = vi.fn<(...args: unknown[]) => Promise<void>>(async () => {});
+    stubProjectFetch(source);
+    usePlayerStore.getState().setDuration(20);
+    const hook = renderTimelineEditingHook({
+      timelineElements: [clip],
+      iframe,
+      onZIndexCommit: vi.fn().mockResolvedValue(undefined),
+      projectId: "p1",
+      writeProjectFile,
+      recordEdit: vi.fn(async () => {}),
+      sdkSession,
+      publishSdkSession: vi.fn<TimelinePublishSdkSession>(() => "published"),
+    });
+
+    await act(async () => {
+      await hook.move(clip, { start: 4, track: clip.track });
+    });
+
+    expect(writeProjectFile.mock.calls[0]?.[1]).toContain(
+      'id="clip" data-hf-id="hf-clip" data-start="2"',
+    );
+    hook.unmount();
   });
 });

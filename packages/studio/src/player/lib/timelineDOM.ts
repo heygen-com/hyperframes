@@ -294,6 +294,7 @@ export function parseTimelineFromDOM(
               : "element",
       tag: tagLower,
       start,
+      parentCompositionStart: masterStart.resolveHostStartForElement(el),
       duration: dur,
       track,
       domId: el.id || undefined,

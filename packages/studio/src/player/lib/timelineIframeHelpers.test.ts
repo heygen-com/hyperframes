@@ -119,10 +119,10 @@ describe("buildMissingCompositionElements — nested master time", () => {
       </div>
     `);
     const { missing } = buildMissingCompositionElements(doc, window as IframeWindow, [], 20);
-    expect(missing.map((e) => [e.domId, e.start, e.duration])).toEqual([
-      ["intro", 2, 10],
-      ["logo", 5, 5],
-      ["badge", 6, 2],
+    expect(missing.map((e) => [e.domId, e.start, e.duration, e.parentCompositionStart])).toEqual([
+      ["intro", 2, 10, 0],
+      ["logo", 5, 5, 2],
+      ["badge", 6, 2, 5],
     ]);
   });
 

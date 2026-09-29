@@ -27,6 +27,7 @@ export function createRuntimeStartTimeResolver(params: {
   resolveStartForElement: (element: Element, fallback?: number) => number;
   resolveDurationForElement: (element: Element) => number | null;
   resolveMediaStartForElement: (element: Element) => number;
+  resolveHostStartForElement: (element: Element) => number;
 } {
   const timelineRegistry = params.timelineRegistry ?? {};
   const includeAuthoredTimingAttrs = params.includeAuthoredTimingAttrs ?? false;
@@ -202,6 +203,7 @@ export function createRuntimeStartTimeResolver(params: {
       resolveStartForElementInternal(element, Math.max(0, fallback)),
     resolveDurationForElement: (element: Element) => resolveDurationForElement(element),
     resolveMediaStartForElement,
+    resolveHostStartForElement: (element: Element) => resolveHostOffsetForElement(element, 0),
   };
 }
 

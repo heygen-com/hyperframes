@@ -40,11 +40,15 @@ describe("parseTimelineFromDOM — nested master time", () => {
         </div>
       </div>
     `);
-    const starts = parseTimelineFromDOM(doc, 20).map((e) => [e.domId, e.start]);
+    const starts = parseTimelineFromDOM(doc, 20).map((e) => [
+      e.domId,
+      e.start,
+      e.parentCompositionStart,
+    ]);
     expect(starts).toEqual([
-      ["intro", 2],
-      ["logo", 5],
-      ["badge", 6],
+      ["intro", 2, 0],
+      ["logo", 5, 2],
+      ["badge", 6, 5],
     ]);
   });
 

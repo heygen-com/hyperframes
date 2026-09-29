@@ -84,11 +84,24 @@ export interface TimelineElement {
   audioGroupFxChain?: string;
   audioGroupAutomation?: string;
   /**
+   * Master start of the composition this row's `data-start` is local to; absent
+   * or 0 at the root. `start` is master time, so writes go through toAuthoredStart.
+   */
+  parentCompositionStart?: number;
+  /**
    * Legacy source-coordinate marker for an inline sub-composition child. The
    * current timeline keeps sub-compositions as single rows.
    */
   expandedParentStart?: number;
   expandedHostKey?: string;
+}
+
+/** A master-time position on this row, as the `data-start` its source file stores. */
+export function toAuthoredStart(
+  element: Pick<TimelineElement, "parentCompositionStart">,
+  masterTime: number,
+): number {
+  return masterTime - (element.parentCompositionStart ?? 0);
 }
 
 /**

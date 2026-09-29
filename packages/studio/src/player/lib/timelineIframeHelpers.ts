@@ -415,16 +415,16 @@ function buildMissingCompositionEntry(params: {
   rootDuration: number;
   fallbackIndex: number;
   resolveEnd: (refId: string, visiting: ReadonlySet<string>) => number | null;
-  resolveMasterStart: (element: Element) => number;
+  masterTime: ReturnType<typeof createRuntimeStartTimeResolver>;
 }): TimelineElement | null {
   const { doc, iframeWin, element, compositionId, rootDuration, fallbackIndex } = params;
-  const { resolveEnd, resolveMasterStart } = params;
+  const { resolveEnd, masterTime } = params;
   const transitionLabels = transitionLabelsForDocument(doc, iframeWin.__timelines);
   const timing = readClipTiming(element, {
     resolveReferenceEnd: (refId) => resolveEnd(refId, new Set([compositionId])),
   });
   const window = clampCompositionWindow(
-    resolveMasterStart(element),
+    masterTime.resolveStartForElement(element),
     timing.duration ?? timelineDuration(iframeWin, compositionId),
     rootDuration,
   );
@@ -458,6 +458,7 @@ function buildMissingCompositionEntry(params: {
     key: identity.key,
     tag: element.tagName.toLowerCase(),
     start: window.start,
+    parentCompositionStart: masterTime.resolveHostStartForElement(element),
     duration: window.duration,
     track: timing.trackIndex,
     authoredTrack: timing.trackIndex,
@@ -496,7 +497,7 @@ export function buildMissingCompositionElements(
   const missing: TimelineElement[] = [];
 
   const resolveEnd = createReferenceEndResolver(createTimedElementLookup(doc), iframeWin);
-  const { resolveStartForElement } = createRuntimeStartTimeResolver({
+  const masterTime = createRuntimeStartTimeResolver({
     timelineRegistry: iframeWin.__timelines,
     includeAuthoredTimingAttrs: true,
     documentRef: doc,
@@ -515,7 +516,7 @@ export function buildMissingCompositionElements(
       rootDuration,
       fallbackIndex: missing.length,
       resolveEnd,
-      resolveMasterStart: resolveStartForElement,
+      masterTime,
     });
     if (entry) missing.push(entry);
   }
