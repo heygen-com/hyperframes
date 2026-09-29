@@ -958,4 +958,15 @@ describe("video audio attributes", () => {
     expect(tag).toMatch(/\bmuted\b/);
     expect(tag).not.toContain("data-has-audio");
   });
+
+  it("updateElementInHtml hasAudio only touches videos, and only true/false", () => {
+    const html =
+      '<html><body><video id="v" src="a.mp4" data-has-audio="true"></video><audio id="a" src="m.wav"></audio></body></html>';
+    const audio = updateElementInHtml(html, "a", { hasAudio: false });
+    expect(audio).not.toMatch(/<audio\b[^>]*\bmuted\b/);
+    expect(audio).not.toMatch(/<audio\b[^>]*data-has-audio/);
+    const untouched = updateElementInHtml(html, "v", { hasAudio: undefined });
+    expect(videoTag(untouched, "v")).toContain('data-has-audio="true"');
+    expect(videoTag(untouched, "v")).not.toMatch(/\bmuted\b/);
+  });
 });

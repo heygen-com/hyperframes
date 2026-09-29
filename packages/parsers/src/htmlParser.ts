@@ -617,11 +617,11 @@ export function updateElementInHtml(
   }
 
   // Handle hasAudio property for videos
-  if ("hasAudio" in updates) {
+  if (el.tagName.toLowerCase() === "video" && "hasAudio" in updates) {
     if (updates.hasAudio === true) {
       el.setAttribute("data-has-audio", "true");
       el.removeAttribute("muted");
-    } else {
+    } else if (updates.hasAudio === false) {
       el.removeAttribute("data-has-audio");
       el.setAttribute("muted", "");
     }
