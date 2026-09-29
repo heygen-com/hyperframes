@@ -1,3 +1,7 @@
+import type { TimelineElement } from "../store/playerStore";
+import { clampToHostStart } from "../store/timelineElement";
+import { canMoveTimelineElement } from "./timelineAuthoredMoveTarget";
+
 /**
  * Pure geometry for the LIVE multi-selection drag preview.
  *
@@ -9,11 +13,11 @@
  * behind individually — the whole formation moves by one delta, spacing locked.
  *
  * That single delta is the GRABBED clip's `draggedPreviewStart − draggedOriginStart`.
- * The preview start is ALREADY group-clamped upstream (updateDraggedClipPreview
- * runs clampGroupMoveDelta before setting it), so this delta is the clamped delta:
+ * The preview start is ALREADY group-clamped upstream (computeDragPreview floors it
+ * at groupMoveFloor), so this delta is the clamped delta:
  * the instant any member would cross 0 the grabbed clip stops and every passenger
  * stops with it — the formation never deforms. On DROP the commit shifts every
- * selected clip by this same delta (see timelineClipDragCommit / useTimelineClipDrag).
+ * moving clip (resolveGroupMovers) by this same delta (see timelineClipDragCommit).
  *
  * Track changes apply to the grabbed clip only (mirroring the commit); passengers
  * keep their lanes, so only their x moves.
@@ -81,29 +85,23 @@ export function multiDragPassengerOffsetPx(
   return multiDragDeltaSeconds(input) * pps;
 }
 
-/**
- * Clamp a group move so the WHOLE selection moves as ONE rigid formation.
- *
- * The grabbed clip proposes a raw delta (its desired preview start minus its
- * origin start, after its own snapping). Applied naively, a passenger could be
- * pushed below 0 (or past any other member bound), and the commit's per-clip
- * `Math.max(0, …)` would then deform the formation — the grabbed clip out-runs
- * the group while a passenger sticks at the wall. This ports main's model
- * (useTimelineClipGroupDrag / clampTimelineGroupMoveDelta): the applied delta is
- * bounded by the MOST-CONSTRAINED member, so the grabbed clip STOPS the instant
- * any member hits 0 and the formation never deforms.
- *
- * `memberStarts` are the pre-drag starts of every selected clip (the grabbed clip
- * included). Only the lower bound (start ≥ 0) constrains a move; the timeline has
- * no fixed right wall (the composition grows on commit).
- */
-export function clampGroupMoveDelta(
-  rawDelta: number,
-  members: readonly { start: number; minStart?: number }[],
+/** The selected clips a group drag moves: a locked clip swept into the selection stays put.
+ *  Null when the grabbed clip is not part of a multi-selection. */
+export function resolveGroupMovers(
+  elements: readonly TimelineElement[],
+  selectedKeys: ReadonlySet<string> | null | undefined,
+  dragKey: string,
+): TimelineElement[] | null {
+  if (!selectedKeys || selectedKeys.size <= 1 || !selectedKeys.has(dragKey)) return null;
+  return elements.filter((e) => selectedKeys.has(e.key ?? e.id) && canMoveTimelineElement(e));
+}
+
+/** The lowest start the grabbed clip may take so the whole group moves rigidly and no clip
+ *  crosses its own floor, its host composition's start (the commit floors each one there). */
+export function groupMoveFloor(
+  grabbed: TimelineElement,
+  movers: readonly TimelineElement[],
 ): number {
-  if (members.length === 0) return rawDelta;
-  // The member nearest its own floor bounds the move: delta ≥ -(start - minStart) for each.
-  const room = Math.min(...members.map((m) => m.start - (m.minStart ?? 0)));
-  const minDelta = room === 0 ? 0 : -room; // avoid -0
-  return rawDelta < minDelta ? minDelta : rawDelta;
+  const room = Math.min(...[grabbed, ...movers].map((e) => e.start - clampToHostStart(e, 0)));
+  return grabbed.start - room;
 }

@@ -5,7 +5,7 @@ import type { DraggedClipState } from "./useTimelineClipDrag";
 // value-import edge stays acyclic.
 import type { ZMirrorLaneMove } from "./timelineZMirror";
 import { classifyZone } from "./timelineZones";
-import { layoutAfterTrackInsert, resolveDragLandingStart } from "./timelineDragLanding";
+import { layoutAfterTrackInsert } from "./timelineDragLanding";
 import { computeStackingPatches, type StackingPatch } from "./timelineStackingSync";
 import {
   canMoveTimelineElement as canMoveElement,
@@ -19,6 +19,7 @@ import {
 import { runLaneZGesture } from "../../components/nle/zLaneGesture";
 import { refreshAfterDurableLaneMove } from "./timelineLaneMoveRefresh";
 import { authoredTrackForLane } from "./timelineAuthoredTrack";
+import { resolveGroupMovers } from "./timelineMultiDragPreview";
 
 type StartTrack = Pick<TimelineElement, "start" | "track">;
 export interface TimelineMoveEdit {
@@ -63,9 +64,9 @@ export interface DragCommitDeps {
    * the edited clip(s) get z-index patches so their canvas stacking matches lane
    * order (higher lane = on top) relative to time-overlapping clips — see
    * timelineStackingSync. Both deps must be supplied to engage; if either is
-   * absent the z-sync is skipped (pure time-moves and horizontal collision bumps
-   * never restack). `readZIndex` returns the clip's current z-index (from the
-   * live DOM inline style / computed; "auto" ⇒ 0).
+   * absent the z-sync is skipped (pure time-moves never restack). `readZIndex`
+   * returns the clip's current z-index (from the live DOM inline style / computed;
+   * "auto" ⇒ 0).
    */
   readZIndex?: (element: TimelineElement) => number;
   /**
@@ -191,41 +192,20 @@ function resolveMultiSelection(
   keys: ReadonlySet<string>;
   movedStart: (e: TimelineElement) => number;
 } | null {
-  const { elements, selectedKeys } = deps;
   const dragKey = keyOf(drag.element);
-  if (!selectedKeys || selectedKeys.size <= 1 || !selectedKeys.has(dragKey)) return null;
-  const keys = new Set(
-    [...selectedKeys].filter((k) => {
-      const el = elements.find((e) => keyOf(e) === k);
-      return el ? canMoveElement(el) : false;
-    }),
-  );
+  const movers = resolveGroupMovers(deps.elements, deps.selectedKeys, dragKey);
+  if (!movers) return null;
+  const keys = new Set(movers.map(keyOf));
   const delta = drag.previewStart - drag.element.start;
   const movedStart = (e: TimelineElement): number =>
     keyOf(e) === dragKey ? drag.previewStart : Math.max(0, round3(e.start + delta));
   return { keys, movedStart };
 }
 
-/**
- * Commit a finished clip drag.
- *
- * The lane model is CapCut-stable: a clip's display lane is its track, and editing
- * ONE clip must never re-lane or rewrite OTHER clips. Three outcomes:
- *
- * - **Pure time-move** (dragged clip keeps its lane, no insert): persist just the
- *   dragged clip's start (multi-selection shifts every selected clip in time).
- * - **Lane change / collision relocation** (the dragged clip's OWN lane changes,
- *   no new track): persist ONLY the dragged clip's start + lane. No other clip is
- *   touched. z is synced only when the gesture is a DELIBERATE vertical move
- *   (the pointer aimed at another lane) — a horizontal drag merely bumped to a
- *   free lane never restacks.
- * - **Track insert** (a new lane at a gap boundary): the dragged clip lands on
- *   the new lane and the clips at/below the insert are renumbered by +1 (the ONLY
- *   permitted multi-clip write) via a whole-set re-normalize; persisted atomically.
- */
+// A move writes the dragged clip's start (each moving clip's, in a group); a lane change also writes its lane and
+// re-lanes no other clip; only a new track renumbers the rows below it.
 // fallow-ignore-next-line complexity
-export function commitDraggedClipMove(rawDrag: DraggedClipState, deps: DragCommitDeps): void {
-  const drag = { ...rawDrag, previewStart: resolveDragLandingStart(rawDrag, deps) };
+export function commitDraggedClipMove(drag: DraggedClipState, deps: DragCommitDeps): void {
   const hostAlias = resolveExpandedHostAlias(drag, deps);
   if (hostAlias) {
     commitDraggedClipMove(hostAlias.drag, { ...deps, selectedKeys: hostAlias.selectedKeys });
@@ -236,11 +216,8 @@ export function commitDraggedClipMove(rawDrag: DraggedClipState, deps: DragCommi
   const dragKey = keyOf(drag.element);
   const isInsert = drag.insertRow != null;
   const laneChanged = drag.previewTrack !== drag.element.track;
-  // Deliberate VERTICAL gesture: the pointer aimed at a different lane, or at a
-  // gap boundary (insert). A plain HORIZONTAL drag whose target span is occupied
-  // gets the DRAGGED clip bumped to a free lane (previewTrack differs) while the
-  // pointer never left its lane (desiredTrack === element.track) — that is NOT a
-  // vertical move: it must neither rewrite other clips nor touch z.
+  // Deliberate VERTICAL gesture: the pointer aimed at a different lane, or at the
+  // empty space outside the rows (insert). Anything else never touches z.
   const aimTrack = drag.desiredTrack ?? drag.previewTrack;
   const isVertical = isInsert || aimTrack !== drag.element.track;
   const multi = resolveMultiSelection(drag, deps);
@@ -279,7 +256,7 @@ export function commitDraggedClipMove(rawDrag: DraggedClipState, deps: DragCommi
     return;
   }
 
-  // ── Lane change / collision relocation: persist ONLY the dragged clip ────────
+  // ── Lane change: persist ONLY the dragged clip ──────────────────────────────
   // CapCut invariant — one edit never re-lanes another clip. The dragged clip
   // takes its new lane (previewTrack); the rest of any selection shifts in time
   // only. Nothing else is written.

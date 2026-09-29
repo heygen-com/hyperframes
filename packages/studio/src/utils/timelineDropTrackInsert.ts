@@ -1,6 +1,9 @@
 import type { TimelineElement } from "../player";
 import { layoutAfterTrackInsert } from "../player/components/timelineDragLanding";
 import { canMoveTimelineElement } from "../player/components/timelineAuthoredMoveTarget";
+import { resolveNearestFreeStart } from "../player/components/timelineCollision";
+import { authoredTrackForLane } from "../player/components/timelineAuthoredTrack";
+import { isAudioTimelineElement } from "./timelineInspector";
 import type { TimelineDropPlacement } from "../player/components/timelineCallbacks";
 import { applyPatchByTarget, readAttributeByTarget } from "./sourcePatcher";
 import { buildPatchTarget } from "../hooks/timelineEditingHelpers";
@@ -67,17 +70,45 @@ export function applyTrackRenumbers(source: string, plan: DropTrackInsertPlan): 
   return out;
 }
 
-/** The lane a dropped clip is written on and the source with any lanes pushed down to make room. */
+type DroppedClip = Pick<TimelineElement, "id" | "tag" | "start" | "duration">;
+
+/** The file track a drop on display row `lane` is written to, and its nearest free start there.
+ *  The timeline's own clips decide the track; `placed` clips only block, like same-kind clips there. */
+function resolveRowDrop(
+  elements: TimelineElement[],
+  placed: readonly TimelineElement[],
+  lane: number,
+  dropped: DroppedClip,
+): { track: number; start: number } {
+  const audio = isAudioTimelineElement(dropped);
+  const row = elements.filter((e) => e.track === lane);
+  const otherKindRow = row.length > 0 && !row.some((e) => isAudioTimelineElement(e) === audio);
+  const asClip = { ...dropped, key: dropped.id, track: lane, sourceFile: elements[0]?.sourceFile };
+  const track = otherKindRow ? lane : authoredTrackForLane(lane, elements, asClip);
+  const onTrack = [...elements, ...placed]
+    .filter((e) => isAudioTimelineElement(e) === audio && (e.authoredTrack ?? e.track) === track)
+    .map((e) => ({ ...e, track }));
+  return {
+    track,
+    start: resolveNearestFreeStart(onTrack, track, dropped.start, dropped.duration, null),
+  };
+}
+
+/** Where a dropped clip is written: the aimed row's file track at its nearest free time, or a new track. */
 export function resolveDropTrack(input: {
   source: string;
   elements: TimelineElement[];
+  /** Clips this drop gesture already wrote, which `elements` does not hold yet. */
+  placed?: readonly TimelineElement[];
   placement: TimelineDropPlacement;
-  dropped: Pick<TimelineElement, "id" | "tag" | "start" | "duration">;
-}): { source: string; track: number } {
+  dropped: DroppedClip;
+}): { source: string; track: number; start: number } {
   const { source, elements, placement, dropped } = input;
-  if (placement.insertRow == null) return { source, track: placement.track };
+  if (placement.insertRow == null) {
+    return { source, ...resolveRowDrop(elements, input.placed ?? [], placement.track, dropped) };
+  }
   const { insertRow, trackOrder } = placement;
   const plan = planDropTrackInsert({ elements, trackOrder, insertRow, dropped });
   if (!plan) throw new Error("Cannot open a new track here: a locked clip would have to move.");
-  return { source: applyTrackRenumbers(source, plan), track: plan.track };
+  return { source: applyTrackRenumbers(source, plan), track: plan.track, start: dropped.start };
 }

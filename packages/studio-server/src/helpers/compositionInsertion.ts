@@ -1,4 +1,5 @@
-import { existsSync, readFileSync } from "node:fs";
+import { existsSync } from "node:fs";
+import { readProjectFile } from "@hyperframes/parsers/asset-resolution";
 import { randomUUID } from "node:crypto";
 import { dirname, relative, resolve, sep } from "node:path";
 import { parseHTML } from "linkedom";
@@ -52,6 +53,17 @@ function canonicalProjectPath(projectDir: string, candidate: string | null): str
   return canonical;
 }
 
+function readCompositionSource(file: string): string {
+  const read = readProjectFile(file);
+  if (read.kind === "folder") {
+    throw new CompositionInsertionError("Composition source is a folder, not an HTML file", 400);
+  }
+  if (read.kind === "missing") {
+    throw new CompositionInsertionError("Composition source was not found", 404);
+  }
+  return read.text;
+}
+
 function validateSourcePath(sourcePath: string): void {
   if (!sourcePath.trim() || sourcePath.includes("\0") || /^[a-z]+:/i.test(sourcePath)) {
     throw new CompositionInsertionError("Invalid composition source path", 400);
@@ -83,7 +95,7 @@ function validateDependencyGraph(projectDir: string, targetAbs: string, sourceAb
     }
     if (visited.has(file)) return;
     visiting.add(file);
-    const source = readFileSync(file, "utf-8");
+    const source = readCompositionSource(file);
     const { document } = compositionRoot(source);
     for (const host of descendants(document, "[data-composition-src]")) {
       const dependency = host.getAttribute("data-composition-src");
@@ -169,7 +181,7 @@ export function insertCompositionIntoSource(input: {
   const sourceAbs = canonicalProjectFile(input.projectDir, input.sourcePath);
   validateDependencyGraph(input.projectDir, targetAbs, sourceAbs);
 
-  const source = readFileSync(sourceAbs, "utf-8");
+  const source = readCompositionSource(sourceAbs);
   const sourceComposition = compositionRoot(source).root;
   const duration = positiveAttribute(
     sourceComposition,

@@ -1,4 +1,4 @@
-import { existsSync } from "node:fs";
+import { closeSync, constants, existsSync, fstatSync, openSync, readFileSync } from "node:fs";
 import { isAbsolute, join, posix, relative, resolve, sep } from "node:path";
 import { decodeUrlPathVariants } from "./composition.js";
 
@@ -241,4 +241,29 @@ export function maskNonScannableRanges(html: string): string {
   out = maskRange(out, /<style\b[^>]*>[\s\S]*?<\/style\b[^>]*>/gi);
   out = maskRange(out, /<script\b[^>]*>[\s\S]*?<\/script\b[^>]*>/gi);
   return out;
+}
+
+export type ProjectFileRead =
+  | { kind: "file"; text: string }
+  | { kind: "folder" }
+  | { kind: "missing" };
+
+/** Reads through one descriptor, so the file-type check and the read see the same file. */
+export function readProjectFile(path: string): ProjectFileRead {
+  let fd: number;
+  try {
+    // Non-blocking so a named pipe is reported, not waited on; the mode never applies (no O_CREAT).
+    fd = openSync(path, constants.O_RDONLY | (constants.O_NONBLOCK ?? 0), 0o600);
+  } catch (error) {
+    const code = (error as NodeJS.ErrnoException).code ?? "";
+    if (["EISDIR", "ENXIO"].includes(code)) return { kind: "folder" };
+    if (["ENOENT", "ENOTDIR", "ELOOP", "ENAMETOOLONG"].includes(code)) return { kind: "missing" };
+    throw error;
+  }
+  try {
+    if (!fstatSync(fd).isFile()) return { kind: "folder" };
+    return { kind: "file", text: readFileSync(fd, "utf-8") };
+  } finally {
+    closeSync(fd);
+  }
 }

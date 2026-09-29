@@ -55,11 +55,6 @@ export function getTimelineLaneTop(laneIndex: number): number {
   return TRACK_H + Math.max(0, Math.trunc(laneIndex)) * LANE_H;
 }
 /**
- * Collapsed-row characterization value for the new-track INSERT band. Runtime
- * hit-testing uses getTimelineInsertBoundaryBand with the concrete row height.
- */
-export const INSERT_BOUNDARY_BAND = CLIP_Y / TRACK_H;
-/**
  * Breathing room INSIDE the scroll area (CapCut-style), threaded through every
  * track-row y computation via {@link getTimelineRowTop} — never inline a magic
  * offset; a track row's top is always ruler + top pad + cumulative row heights.
@@ -263,17 +258,6 @@ export function getTimelineRowFromY(
   return getTimelineRowGeometry(rowHeights).getRowFromY(contentY);
 }
 
-export function getTimelineRowPositionFromY(
-  contentY: number,
-  rowHeights: readonly number[] = EMPTY_ROW_HEIGHTS,
-): { rowFloat: number; row: number; fraction: number; rowHeight: number } {
-  return getTimelineRowGeometry(rowHeights).getRowPositionFromY(contentY);
-}
-
-/** Fractional insert band for the concrete row under a pointer. */
-export function getTimelineInsertBoundaryBand(rowHeight: number): number {
-  return CLIP_Y / validRowHeight(rowHeight);
-}
 /**
  * While a clip drag is live, the rendered timeline extends this far past the
  * ghost's end so the right-edge auto-scroll zone always has room to keep

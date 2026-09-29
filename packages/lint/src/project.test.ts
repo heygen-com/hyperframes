@@ -269,6 +269,20 @@ describe("missing_or_empty_sub_composition", () => {
     expect(finding?.message).toContain("does not exist");
   });
 
+  it("errors, instead of crashing, when the referenced sub-composition is a folder", async () => {
+    const project = makeProject(htmlWithSubComp("compositions/scene-title"), {});
+    mkdirSync(join(project, "compositions", "scene-title"));
+    writeFileSync(join(project, "compositions", "scene-title", "index.html"), validSubCompHtml());
+    const { results } = await lintProject(project);
+    const finding = results
+      .flatMap((r) => r.result.findings)
+      .find((f) => f.code === "missing_or_empty_sub_composition");
+
+    expect(finding?.message).toContain("compositions/scene-title");
+    expect(finding?.message).toContain("a folder, not an HTML file");
+    expect(finding?.fixHint).toContain('"compositions/scene-title/index.html"');
+  });
+
   it("errors when the referenced sub-composition file has content but no data-composition-id root", async () => {
     const { finding, totalErrors } = await lintSubComp("compositions/scene-title.html", {
       "scene-title.html": "<!doctype html><html><body><p>TODO: scene content</p></body></html>",

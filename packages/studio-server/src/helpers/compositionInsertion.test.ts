@@ -1,4 +1,4 @@
-import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
@@ -173,6 +173,28 @@ describe("insertCompositionIntoSource", () => {
     expect(() => insert("missing.html")).toThrow(CompositionInsertionError);
     expect(() => insert("invalid.html")).toThrow(/valid data-composition-duration/);
     expect(() => insert("../outside.html")).toThrow(CompositionInsertionError);
+  });
+
+  it("rejects a source, or a source's dependency, that is a folder", () => {
+    const dir = project();
+    writeFixture(dir);
+    mkdirSync(join(dir, "intro"));
+    writeFileSync(
+      join(dir, "wraps-folder.html"),
+      `<div data-composition-id="wrap" data-width="1" data-height="1" data-duration="1"><div data-composition-src="intro"></div></div>`,
+    );
+    const insert = (sourcePath: string) =>
+      insertCompositionIntoSource({
+        projectDir: dir,
+        targetPath: "index.html",
+        sourcePath,
+        parentSource: parent,
+        start: 0,
+        desiredTrack: 0,
+      });
+
+    expect(() => insert("intro")).toThrow(/folder, not an HTML file/);
+    expect(() => insert("wraps-folder.html")).toThrow(/folder, not an HTML file/);
   });
 
   it("says the project folder is gone rather than that the source escapes it", () => {

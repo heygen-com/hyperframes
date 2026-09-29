@@ -1,5 +1,6 @@
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { execFileSync } from "node:child_process";
+import { mkdirSync, mkdtempSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, posix, win32 } from "node:path";
 import {
@@ -7,6 +8,7 @@ import {
   isUnresolvedAssetPlaceholder,
   isWithinProjectRoot,
   maskNonScannableRanges,
+  readProjectFile,
   resolveProjectRelativeSrc,
 } from "./assetResolution.js";
 
@@ -263,5 +265,39 @@ describe("isWithinProjectRoot", () => {
 
   it("allows the root itself", () => {
     expect(isWithinProjectRoot("/project", "/project", posix)).toBe(true);
+  });
+});
+
+describe("readProjectFile", () => {
+  let dir: string;
+  beforeAll(() => {
+    dir = mkdtempSync(join(tmpdir(), "hf-read-project-file-"));
+    writeFileSync(join(dir, "scene.html"), "<div></div>");
+    mkdirSync(join(dir, "intro"));
+  });
+  afterAll(() => rmSync(dir, { recursive: true, force: true }));
+
+  it("reads a file's text", () => {
+    expect(readProjectFile(join(dir, "scene.html"))).toEqual({ kind: "file", text: "<div></div>" });
+  });
+
+  it("names a folder instead of throwing EISDIR", () => {
+    expect(readProjectFile(join(dir, "intro"))).toEqual({ kind: "folder" });
+  });
+
+  it("reports a missing path, including one under a file", () => {
+    expect(readProjectFile(join(dir, "gone.html"))).toEqual({ kind: "missing" });
+    expect(readProjectFile(join(dir, "scene.html", "inner.html"))).toEqual({ kind: "missing" });
+  });
+
+  it("reports a name too long or a symlink loop as missing, as existsSync did", () => {
+    expect(readProjectFile(join(dir, `${"a".repeat(300)}.html`))).toEqual({ kind: "missing" });
+    symlinkSync(join(dir, "loop.html"), join(dir, "loop.html"));
+    expect(readProjectFile(join(dir, "loop.html"))).toEqual({ kind: "missing" });
+  });
+
+  it.skipIf(process.platform === "win32")("reports a named pipe without blocking on it", () => {
+    execFileSync("mkfifo", [join(dir, "pipe.html")]);
+    expect(readProjectFile(join(dir, "pipe.html"))).toEqual({ kind: "folder" });
   });
 });

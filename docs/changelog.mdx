@@ -9,6 +9,23 @@ Recent HyperFrames releases, including user-facing features, fixes, and migratio
 {/* New release entries are prepended by `bun run changelog:draft <version> --write`. */}
 
 <Update
+  label="HyperFrames v0.8.92"
+  description="Released - 2026-09-29"
+  tags={["Release", "Studio", "Core"]}
+>
+A clip you drop on a row now stays on that row, and hidden keyframes no longer widen the timeline. Rendering a folder source names the folder instead of crashing.
+
+## Fixes
+
+- **Studio:** A clip dropped on a row stays on that row at the nearest free time ([65d66cb2c](https://github.com/heygen-com/hyperframes/commit/65d66cb2c3494e498780897eb4a371ee05e27735), [#4663](https://github.com/heygen-com/hyperframes/pull/4663)).
+- Render names a folder composition source instead of crashing ([481dae1ed](https://github.com/heygen-com/hyperframes/commit/481dae1ed92ff5e65156a0fe18705ea4e7b32517), [#4613](https://github.com/heygen-com/hyperframes/pull/4613)).
+- **Core:** Bundling and rendering keep print-only, titled and non-CSS styles conditional ([c5a69727f](https://github.com/heygen-com/hyperframes/commit/c5a69727ffddc960dea6e940ab1d1a916854bc7e), [#4664](https://github.com/heygen-com/hyperframes/pull/4664)).
+- **Studio:** With keyframes hidden, a keyframed clip no longer opens the track-name column ([ca714f10b](https://github.com/heygen-com/hyperframes/commit/ca714f10b55c0bf10e35f412e6c53c0ca8126e9e), [#4725](https://github.com/heygen-com/hyperframes/pull/4725)).
+
+[View the full commit range](https://github.com/heygen-com/hyperframes/compare/v0.8.91...v0.8.92).
+</Update>
+
+<Update
   label="HyperFrames v0.8.91"
   description="Released - 2026-09-29"
   tags={["Release", "Studio", "Adopters"]}

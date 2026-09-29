@@ -99,6 +99,54 @@ describe("applyTrackRenumbers", () => {
 });
 
 describe("resolveDropTrack", () => {
+  // Title shows on row 0; Music is written on track 0 too but shows on audio row 1.
+  const shown = (
+    id: string,
+    tag: string,
+    row: number,
+    track: number,
+    start: number,
+    length: number,
+  ) => ({
+    ...clip(id, row, start),
+    tag,
+    duration: length,
+    authoredTrack: track,
+  });
+  const title = shown("title", "div", 0, 0, 0, 10);
+  const music = shown("music", "audio", 1, 0, 2, 3);
+  const song = { id: "song", tag: "audio", start: 2, duration: 3 };
+  const drop = (elements: TimelineElement[], row: number, dropped = song) =>
+    resolveDropTrack({ source, elements, placement: { track: row }, dropped });
+
+  it("joins an audio row's file track at the nearest free time, not a new track", () => {
+    expect(drop([title, music], 1)).toMatchObject({ track: 0, start: 5 });
+  });
+
+  it("keeps an audio file dropped on a visual row off the audio clip on the track it is written to", () => {
+    expect(drop([title, music], 0)).toMatchObject({ track: 0, start: 5 });
+  });
+
+  it("writes a drop on a shown row to that row's file track and checks the clips there", () => {
+    const top = shown("top", "div", 0, 0, 0, 4);
+    const lower = shown("lower", "div", 1, 2, 0, 4); // file track 2, shown as row 1
+    const image = { id: "image", tag: "img", start: 1, duration: 3 };
+    expect(drop([top, lower], 1, image)).toMatchObject({ track: 2, start: 4 });
+  });
+
+  it("lets only clips of the dropped file's kind block it on the row", () => {
+    const title = clip("title", 0, 0);
+    const music = { ...clip("music", 0, 0), tag: "audio" };
+    const song = { id: "song", tag: "audio", start: 1, duration: 3 };
+    // An audio file shows in the audio rows wherever it is written, so a visual clip never blocks it.
+    expect(
+      resolveDropTrack({ source, elements: [title], placement: { track: 0 }, dropped: song }).start,
+    ).toBe(1);
+    expect(
+      resolveDropTrack({ source, elements: [music], placement: { track: 0 }, dropped: song }).start,
+    ).toBe(2);
+  });
+
   it("keeps the aimed lane and the source when no insert is asked for", () => {
     const out = resolveDropTrack({
       source,
@@ -106,7 +154,17 @@ describe("resolveDropTrack", () => {
       placement: { track: 2 },
       dropped,
     });
-    expect(out).toEqual({ source, track: 2 });
+    expect(out).toEqual({ source, track: 2, start: 5 });
+  });
+
+  it("moves a drop on an occupied row to that row's nearest free time, with no new track", () => {
+    const out = resolveDropTrack({
+      source,
+      elements,
+      placement: { track: 1 },
+      dropped: { ...dropped, start: 1 },
+    });
+    expect(out).toEqual({ source, track: 1, start: 2 });
   });
 
   it("returns the new lane and the source with the lanes below pushed down", () => {
@@ -117,6 +175,7 @@ describe("resolveDropTrack", () => {
       dropped,
     });
     expect(out.track).toBe(1);
+    expect(out.start).toBe(5);
     expect(out.source).toContain('id="b" data-start="0" data-track-index="2"');
   });
 

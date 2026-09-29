@@ -30,14 +30,20 @@ import { extendRootDurationInSource } from "../utils/rootDuration";
 import { deriveTimelineStoreKeyForDomId } from "../player/lib/timelineElementHelpers";
 import { selectAndRevealTimelineElement } from "../player/components/timelineDropReveal";
 
-/** The first uploaded file opens the new track (if asked); the rest land on the lane it landed on. */
+/** The first uploaded file opens the new track (if asked); each next one aims right after the previous. */
 function fileDropPlacement(
   index: number,
   next: { start: number; track: number },
   dropped: TimelineDropPlacement | undefined,
-  landedTrack: number | undefined,
+  previous: TimelineElement | undefined,
 ): TimelineDropPlacement {
-  return index === 0 ? { ...dropped, ...next } : { ...next, track: landedTrack ?? next.track };
+  if (index === 0) return { ...dropped, ...next };
+  return previous ? { start: previous.start + previous.duration, track: previous.track } : next;
+}
+
+interface DropGesture {
+  placed: TimelineElement[];
+  onNewTrack: boolean;
 }
 
 function timelineDropTarget(
@@ -90,7 +96,8 @@ export function useTimelineAssetDropOps({
       assetPath: string,
       placement: TimelineDropPlacement,
       durationOverride?: number,
-    ): Promise<number | undefined> => {
+      gesture: DropGesture = { placed: [], onNewTrack: false },
+    ): Promise<TimelineElement | undefined> => {
       if (isRecordingRef?.current) {
         showToast("Cannot edit timeline while recording", "error");
         return undefined;
@@ -121,28 +128,32 @@ export function useTimelineAssetDropOps({
         const resolvedAssetSrc = resolveTimelineAssetSrc(targetPath, assetPath);
 
         const resolvedTargetPath = targetPath || "index.html";
-        const relevantElements = timelineElements.filter(
-          (te) => (te.sourceFile || activeCompPath || "index.html") === resolvedTargetPath,
-        );
-        const newElementZIndex = Math.max(1, relevantElements.length + 1);
+        const fileElements = timelineElements
+          .filter((te) => (te.sourceFile || activeCompPath || "index.html") === resolvedTargetPath)
+          .map((te) => ({ ...te, sourceFile: resolvedTargetPath }));
+        const newElementZIndex = Math.max(1, fileElements.length + gesture.placed.length + 1);
+        const tag = kind === "image" ? "img" : kind;
 
         let newId = "";
         let track = 0;
+        let start = normalizedStart;
         const insertAsset = (originalContent: string) => {
           newId = buildTimelineAssetId(assetPath, collectHtmlIds(originalContent));
           const resolved = resolveDropTrack({
             source: originalContent,
-            // insertRow counts the rows the timeline shows, so plan against those.
-            elements: relevantElements,
+            // Rows and insertRow count the rows the timeline shows; a track this drop opened has no others.
+            elements: gesture.onNewTrack ? [] : fileElements,
+            placed: gesture.placed,
             placement,
             dropped: {
               id: newId,
-              tag: kind === "image" ? "img" : kind,
+              tag,
               start: normalizedStart,
               duration: normalizedDuration,
             },
           });
           track = resolved.track;
+          start = resolved.start;
           return extendRootDurationInSource(
             insertTimelineAssetIntoSource(
               resolved.source,
@@ -151,7 +162,7 @@ export function useTimelineAssetDropOps({
                 hfId: `hf-${generateId()}`,
                 assetPath: resolvedAssetSrc,
                 kind,
-                start: normalizedStart,
+                start,
                 duration: normalizedDuration,
                 track,
                 zIndex: newElementZIndex,
@@ -162,7 +173,7 @@ export function useTimelineAssetDropOps({
                 ),
               }),
             ),
-            normalizedStart + normalizedDuration,
+            start + normalizedDuration,
           );
         };
 
@@ -178,7 +189,15 @@ export function useTimelineAssetDropOps({
         selectAndRevealTimelineElement(deriveTimelineStoreKeyForDomId(newId, targetPath));
         forceReloadSdkSession?.();
         reloadPreview();
-        return track;
+        const lane = placement.insertRow == null ? placement.track : track;
+        return {
+          id: newId,
+          tag,
+          start,
+          duration: normalizedDuration,
+          track: lane,
+          authoredTrack: track,
+        };
       } catch (error) {
         const message =
           error instanceof Error ? error.message : "Failed to drop asset onto timeline";
@@ -234,15 +253,18 @@ export function useTimelineAssetDropOps({
         placement ?? { start: 0, track: 0 },
         durations,
       );
-      let landedTrack: number | undefined;
+      const gesture: DropGesture = { placed: [], onNewTrack: false };
       for (const [index, assetPath] of uploaded.entries()) {
         const next = placements[index] ?? placements[0];
-        const track = await dropAssetAt(
+        const clip = await dropAssetAt(
           assetPath,
-          fileDropPlacement(index, next, placement, landedTrack),
+          fileDropPlacement(index, next, placement, gesture.placed.at(-1)),
           durations[index],
+          gesture,
         );
-        if (index === 0) landedTrack = track;
+        if (!clip) continue;
+        gesture.placed.push(clip);
+        if (index === 0 && placement?.insertRow != null) gesture.onNewTrack = true;
       }
     },
     [
