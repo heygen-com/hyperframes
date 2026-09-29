@@ -1493,6 +1493,19 @@ describe("bundleToSingleHtml", () => {
       ]);
     });
 
+    it("inlines a linked sheet whose type carries a charset, but not a style with that type", async () => {
+      expect(
+        await bundledHeadStyles(
+          `<link rel="stylesheet" type="text/css; charset=utf-8" href="a.css">` +
+            `<style type="text/css; charset=utf-8">p{color:red}</style>`,
+          { "a.css": "p{color:blue}" },
+        ),
+      ).toEqual([
+        { media: null, type: null, css: "p{color:blue}" },
+        { media: null, type: "text/css; charset=utf-8", css: "p{color:red}" },
+      ]);
+    });
+
     it("keeps the untitled copy of a @font-face that a later alternate style repeats", async () => {
       const face = `@font-face{font-family:"PF";src:url(https://cdn.example/f.woff2)}`;
       const dir = makeTempProject({
@@ -1506,6 +1519,22 @@ describe("bundleToSingleHtml", () => {
       const { document } = parseHTML(await bundleToSingleHtml(dir));
       const untitled = [...document.querySelectorAll("head style:not([title])")];
       expect(untitled.map((el) => el.textContent).join("")).toContain("@font-face");
+    });
+
+    it("keeps a root-less template's non-CSS style out of CSS", async () => {
+      const dir = makeTempProject({
+        "index.html": `<!doctype html>
+<html><head></head><body>
+  <div data-composition-id="root" data-width="320" data-height="180">
+    <div data-composition-id="bare"></div>
+  </div>
+  <template id="bare-template"><style type="text/x-tpl">.bare-t{color:red}</style><p>x</p></template>
+  <script>window.__timelines = window.__timelines || {}; window.__timelines.root = {}</script>
+</body></html>`,
+      });
+      const { document } = parseHTML(await bundleToSingleHtml(dir));
+      const css = [...document.querySelectorAll("style:not([type])")].map((el) => el.textContent);
+      expect(css.join("\n")).not.toContain(".bare-t{");
     });
   });
 

@@ -40,7 +40,9 @@ export function inlineScriptRuns(
 
 /** Undefined for a type the browser never applies as CSS; `media="all"` and an empty title count as none. */
 export function cssStyleMergeKey(el: Element): string | undefined {
-  const type = el.getAttribute("type") ?? "";
+  const rawType = el.getAttribute("type") ?? "";
+  // Chrome reads a link's type as a MIME type, so parameters are allowed; a style's must match exactly.
+  const type = el.tagName.toLowerCase() === "link" ? rawType.split(";")[0]!.trim() : rawType;
   if (type !== "" && type.toLowerCase() !== "text/css") return undefined;
   const media = (el.getAttribute("media") ?? "").trim().toLowerCase();
   return JSON.stringify([media === "all" ? "" : media, el.getAttribute("title") ?? ""]);
