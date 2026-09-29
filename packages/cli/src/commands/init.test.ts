@@ -220,9 +220,55 @@ describe("hyperframes init flag rename", () => {
       const res = runInit([target, "--non-interactive", "--skip-transcribe", "--video", clip]);
       expect(res.status).toBe(0);
       const html = readFileSync(join(target, "index.html"), "utf-8");
-      expect(html).toContain('id="a-roll"');
-      expect(html).toContain('src="clip.mp4"');
+      const video = html.match(/<video\b[^>]*>/)?.[0] ?? "";
+      expect(video).toContain('id="a-roll"');
+      expect(video).toContain('src="clip.mp4"');
+      expect(video).toContain('data-has-audio="true"');
+      expect(video).not.toMatch(/\bmuted\b/);
+      expect(html).not.toMatch(/<audio\b/);
       expect(existsSync(join(target, "clip.mp4"))).toBe(true);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it("scaffolds a silent --video as a muted clip with no audio element", () => {
+    const dir = mkdtempSync(join(tmpdir(), "hf-init-silent-"));
+    const target = join(dir, "proj");
+    const clip = join(dir, "silent.mp4");
+    copyFileSync(resolve(fileURLToPath(import.meta.url), "../__fixtures__/silent.mp4"), clip);
+    try {
+      const res = runInit([target, "--non-interactive", "--skip-transcribe", "--video", clip]);
+      expect(res.status).toBe(0);
+      const html = readFileSync(join(target, "index.html"), "utf-8");
+      const video = html.match(/<video\b[^>]*>/)?.[0] ?? "";
+      expect(video).toMatch(/\bmuted\b/);
+      expect(video).not.toContain("data-has-audio");
+      expect(html).not.toMatch(/<audio\b/);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it("wires --audio into the composition without creating a video clip", () => {
+    const dir = mkdtempSync(join(tmpdir(), "hf-init-audio-test-"));
+    const target = join(dir, "proj");
+    const audio = join(dir, "track.wav");
+    copyFileSync(
+      resolve(
+        fileURLToPath(import.meta.url),
+        "../../../../producer/tests/audio-mux-parity/src/assets/tone.wav",
+      ),
+      audio,
+    );
+    try {
+      const res = runInit([target, "--non-interactive", "--skip-transcribe", "--audio", audio]);
+      expect(res.status).toBe(0);
+      const html = readFileSync(join(target, "index.html"), "utf-8");
+      expect(html).toMatch(/<audio\b[^>]*src="track\.wav"/);
+      expect(html).not.toMatch(/<video\b/);
+      expect(html).not.toContain("__VIDEO_SRC__");
+      expect(html).not.toContain("__AUDIO_SRC__");
     } finally {
       rmSync(dir, { recursive: true, force: true });
     }
