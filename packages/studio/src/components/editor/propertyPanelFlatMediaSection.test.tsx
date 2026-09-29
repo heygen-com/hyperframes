@@ -356,6 +356,7 @@ describe("FlatMediaSection — loop/muted/has-audio", () => {
     const onSetHtmlAttribute = vi.fn();
     const onSetAttribute = vi.fn();
     const element = makeVideoElement();
+    element.element.setAttribute("muted", "");
     const host = document.createElement("div");
     document.body.append(host);
     const root = createRoot(host);
@@ -543,7 +544,9 @@ describe("FlatMediaSection — audio clips", () => {
     );
     act(() => audio.root.unmount());
 
-    const silentVideo = renderWithRate(makeVideoElement({ dataAttributes: { duration: "10" } }));
+    const mutedSelection = makeVideoElement({ dataAttributes: { duration: "10" } });
+    mutedSelection.element.setAttribute("muted", "");
+    const silentVideo = renderWithRate(mutedSelection);
     expect(labelsOf(silentVideo.host)).not.toContain("Fade in");
     act(() => silentVideo.root.unmount());
 

@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { isVideoAudible } from "../../player/lib/timelineElementHelpers";
 import { Check, ClipboardList, Film, Music, Scissors } from "../../icons/SystemIcons";
 import type { DomEditSelection } from "./domEditing";
 import {
@@ -62,7 +63,11 @@ export function MediaSection({
 
   const hasLoop = el.hasAttribute("loop");
   const hasMuted = el.hasAttribute("muted");
-  const hasAudio = element.dataAttributes["has-audio"] === "true";
+  const hasAudio = isVideoAudible({
+    tag: el.tagName,
+    hasAudioAttr: element.dataAttributes["has-audio"],
+    muted: el.hasAttribute("muted"),
+  });
 
   const playbackRate = Number.parseFloat(element.dataAttributes["playback-rate"] ?? "1") || 1;
 
@@ -97,6 +102,12 @@ export function MediaSection({
   }, [srcAttr]);
 
   const applyCutoutResult = async (result: BackgroundRemovalResult) => {
+    if (isVideo && hasAudio) {
+      const keep = window.confirm(
+        "Removing the background swaps in a silent cutout, so this clip's sound will be dropped. Continue?",
+      );
+      if (!keep) return;
+    }
     await onSetHtmlAttribute("src", result.outputPath);
     if (isVideo) {
       await onSetAttribute("has-audio", "");
