@@ -2722,7 +2722,8 @@ export function initSandboxRuntimeModular(): void {
     (mediaNearPlayhead.get(el) === true && dueSoon(el, visibleAt, t, RELEASE_LOOKAHEAD_SECONDS)) ||
     (loopStartSeconds !== null &&
       clock.isPlaying() &&
-      (visibleAt(el, loopStartSeconds) || dueSoon(el, visibleAt, loopStartSeconds)));
+      (visibleAt(el, loopStartSeconds) ||
+        dueSoon(el, visibleAt, loopStartSeconds, RELEASE_LOOKAHEAD_SECONDS)));
 
   const applyTimedElementVisibility = (
     currentTime: number,

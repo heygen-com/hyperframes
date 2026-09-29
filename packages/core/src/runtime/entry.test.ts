@@ -482,16 +482,16 @@ describe("runtime entry", () => {
     it("keeps the clips due at the loop start loaded while the loop plays", async () => {
       spyLoad();
       servePreview();
-      const { now, next } = tracks(mountRoot());
+      const { now, next, afterNext } = tracks(mountRoot());
 
       await evaluateRuntime();
       window.__hf?.setLoopStart?.(0);
       window.__player?.play();
-      window.__player?.seek(8.5, { keepPlaying: true });
-      expect(armed(now, next)).toEqual([true, false]);
-      expect(loadsOf(now)).toEqual([1]);
+      window.__player?.seek(9.5, { keepPlaying: true });
+      expect(armed(now, next, afterNext)).toEqual([true, true, false]);
+      expect(loadsOf(now, next)).toEqual([1, 1]);
       window.__hf?.setLoopStart?.(null);
-      window.__player?.seek(8.6, { keepPlaying: true });
+      window.__player?.seek(9.6, { keepPlaying: true });
       expect(armed(now)).toEqual([false]);
     });
 
