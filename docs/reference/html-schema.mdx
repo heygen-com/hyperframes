@@ -133,8 +133,7 @@ Video and audio may omit `data-duration` when their intrinsic duration is known
 and the whole remaining source should play.
 
 Do not imperatively call `play()`, `pause()`, or set `currentTime`.
-HyperFrames owns media playback and seeking. A video should be `muted` unless it
-is intentionally audible and declares `data-has-audio="true"`.
+HyperFrames owns media playback and seeking. A `<video>` with sound declares `data-has-audio="true"` and is not muted. Silent footage is `muted`. Every timed `<video>` must say one or the other (lint `video_missing_muted`).
 
 Media can live inside nested composition markup. Keep element IDs unique across
 the assembled project because render-time frame injection targets those IDs.

@@ -95,7 +95,8 @@ The skeleton above is how you ask. This is what the agent writes, and it's worth
 | `class="clip"` | Marks a timed section. The framework owns its visibility — never animate a clip's own opacity or `display` to hide it. |
 | `data-start` / `data-duration` / `data-track-index` | When the clip begins, how long it runs, and which track it sits on. Two clips on the same track index must not overlap in time. |
 | `window.__timelines["<id>"]` | Every GSAP-driven composition registers exactly one paused timeline here, built synchronously at load. The renderer seeks that timeline frame by frame — which is why nothing may depend on wall-clock time or unseeded randomness. Other adapters, including Lottie, CSS animations, and WAAPI, register through their own seekable runtime contracts. |
-| `<video muted>` + a separate `<audio>` | Video elements render muted and their sound rides a sibling audio element, so the mixer can duck and balance it independently. |
+| Footage with sound | `<video playsinline data-has-audio="true">` — the sound stays on the clip |
+| Music / voiceover | separate `<audio>` |
 
 You rarely write these by hand, but naming them in a prompt is legitimate and sometimes necessary — "put the captions on their own track index," "keep it one composition file, one timeline" — and it's the vocabulary every error message uses. The full contract lives in the `/hyperframes-core` skill; the [appendix](/prompting/rules-and-anti-patterns) carries the rules that most often bite.
 
