@@ -8,6 +8,8 @@ const DEFAULT_MIN_SWEEP_INTERVAL_MS = 5 * 60 * 1000;
 const PROXY_EXTENSIONS: ReadonlySet<string> = new Set(
   Object.values(PROXY_VARIANT_CONFIG).map(({ extension }) => extension),
 );
+const TRANSCODER_PROXY_NAME = /^[0-9a-f]{64}\.\w+$/;
+const TRANSCODER_TEMP_NAME = /^\.tmp-[0-9a-f-]{36}-[0-9a-f]{64}\.\w+$/;
 
 export interface ProxyCacheCleanupOptions {
   maxBytes?: number;
@@ -79,9 +81,12 @@ function readCacheInventory(
       modifiedAt: stat.mtimeMs,
       protected: protectedPaths.has(path),
     };
-    if (dirent.name.startsWith(".tmp-")) {
+    if (TRANSCODER_TEMP_NAME.test(dirent.name)) {
       if (now - stat.mtimeMs >= staleTempMs) staleTemps.push(entry);
-    } else if (PROXY_EXTENSIONS.has(extname(dirent.name))) {
+    } else if (
+      TRANSCODER_PROXY_NAME.test(dirent.name) &&
+      PROXY_EXTENSIONS.has(extname(dirent.name))
+    ) {
       entries.push(entry);
     }
   }
