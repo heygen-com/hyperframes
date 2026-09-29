@@ -233,17 +233,13 @@ export function readAttr(tagSource: string, attr: string): string | null {
   return match?.[1] || null;
 }
 
-/** Attribute presence, so a valueless or empty `data-has-audio` still counts as declared. */
 export function hasAttrName(tagSource: string, attr: string): boolean {
   const escaped = attr.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
   const attrs = tagSource.replace(/^<\s*[a-z][\w:-]*/i, "");
   return new RegExp(`(?:^|\\s)${escaped}(?:\\s*=|\\s|/?>)`, "i").test(attrs);
 }
 
-/**
- * A `<video>` contributes sound unless it is `muted` or its explicit `data-has-audio` says
- * false/empty; the compiler treats an explicit attribute as authoritative.
- */
+// An explicit data-has-audio is authoritative for the compiler; "false" and empty mean silent.
 export function isAudibleVideoTag(tagSource: string): boolean {
   if (hasAttrName(tagSource, "muted")) return false;
   if (!hasAttrName(tagSource, "data-has-audio")) return true;
@@ -251,7 +247,6 @@ export function isAudibleVideoTag(tagSource: string): boolean {
   return declared !== null && declared.trim().toLowerCase() !== "false";
 }
 
-/** `[start, end)` of a timed media tag; null when either bound is not a plain number. */
 export function mediaTimeWindow(tagSource: string): { start: number; end: number } | null {
   const start = Number(readAttr(tagSource, "data-start"));
   const duration = Number(readAttr(tagSource, "data-duration"));
@@ -260,7 +255,6 @@ export function mediaTimeWindow(tagSource: string): { start: number; end: number
   return { start, end: start + duration };
 }
 
-/** Do two windows share time? An unknown window is assumed to overlap. */
 export function mediaWindowsOverlap(
   a: { start: number; end: number } | null,
   b: { start: number; end: number } | null,
