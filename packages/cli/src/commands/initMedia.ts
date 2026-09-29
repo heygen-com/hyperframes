@@ -26,9 +26,11 @@ function stripPlaceholder(html: string, tag: "video" | "audio", placeholder: str
 
 function setVideoAudio(html: string, hasAudio: boolean): string {
   return html.replace(new RegExp(openTag("video", VIDEO_SRC), "g"), (tag) => {
-    const cleaned = tag
-      .replace(/\s+muted(?:="[^"]*")?(?=[\s>])/g, "")
-      .replace(/\s+data-has-audio="[^"]*"/g, "");
+    // Attribute-by-attribute so a quoted value (class="a muted b") is consumed whole and never matched.
+    const cleaned = tag.replace(
+      /\s+([^\s=>"']+)(?:\s*=\s*(?:"[^"]*"|'[^']*'|[^\s>"']+))?/g,
+      (attr, name: string) => (name === "muted" || name === "data-has-audio" ? "" : attr),
+    );
     const attr = hasAudio ? ' data-has-audio="true"' : " muted";
     return cleaned.replace(/\s*>$/, `${attr}>`);
   });

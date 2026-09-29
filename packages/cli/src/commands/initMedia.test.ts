@@ -74,15 +74,27 @@ describe("patchMediaPlaceholders — new template", () => {
   });
 
   it("no media: strips both placeholders and defaults duration to 10", () => {
-    const out = patchMediaPlaceholders(NEW_TEMPLATE, {});
+    const out = patchMediaPlaceholders(
+      NEW_TEMPLATE.replace('<div id="root">', '<div id="root" data-duration="__VIDEO_DURATION__">'),
+      {},
+    );
     expect(out).not.toMatch(/<video\b|<audio\b/);
     expect(out).not.toContain("__");
+    expect(out).toContain('<div id="root" data-duration="10">');
   });
 
   it('normalises muted="" and a stray data-has-audio on the placeholder', () => {
     const html = `<video src="__VIDEO_SRC__" muted="" data-has-audio="false" data-x="1"></video>`;
     const out = patchMediaPlaceholders(html, { video: { filename: "a.mp4", hasAudio: true } });
     expect(out).toBe(`<video src="a.mp4" data-x="1" data-has-audio="true"></video>`);
+  });
+});
+
+describe("patchMediaPlaceholders — muted token matching", () => {
+  it("does not strip the word muted from another attribute's value", () => {
+    const html = `<video src="__VIDEO_SRC__" class="a muted b" muted></video>`;
+    const out = patchMediaPlaceholders(html, { video: { filename: "a.mp4", hasAudio: true } });
+    expect(out).toBe(`<video src="a.mp4" class="a muted b" data-has-audio="true"></video>`);
   });
 });
 
@@ -115,6 +127,10 @@ describe("registry examples use the audio-on-video form", () => {
   const withVideoSlot = readdirSync(examplesDir)
     .map((name) => join(examplesDir, name, "index.html"))
     .filter((file) => existsSync(file) && readFileSync(file, "utf-8").includes("__VIDEO_SRC__"));
+
+  it("finds the examples that carry a video slot", () => {
+    expect(withVideoSlot.length).toBeGreaterThan(0);
+  });
 
   it.each(withVideoSlot)("%s has no muted placeholder video and no __VIDEO_SRC__ audio", (file) => {
     const html = readFileSync(file, "utf-8");

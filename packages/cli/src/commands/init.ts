@@ -83,7 +83,7 @@ const DEFAULT_META: VideoMeta = {
   width: 1920,
   height: 1080,
   fps: 30,
-  // ffprobe unavailable: assume sound. A wrong guess fails loudly at lint/render; assuming silence would mute real audio.
+  // ffprobe unavailable: assume sound. A wrong guess fails loudly at RENDER (lint catches it only once #3638 lands); assuming silence would mute real audio.
   hasAudio: true,
   videoCodec: "h264",
 };
@@ -387,7 +387,7 @@ async function handleVideoFile(
       );
     }
   } else {
-    const msg = `ffprobe not found — using defaults (1920x1080, 5s, 30fps). Install: ${getFFmpegInstallHint()}`;
+    const msg = `ffprobe not found — using defaults (1920x1080, 5s, 30fps) and assuming the video has sound (data-has-audio="true"); if it is silent, replace that with muted. Install: ${getFFmpegInstallHint()}`;
     if (interactive) {
       clack.log.warn(msg);
     } else {
