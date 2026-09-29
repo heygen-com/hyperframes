@@ -2638,7 +2638,8 @@ export function initSandboxRuntimeModular(): void {
   const hiddenImagesSkipped = skipsHiddenImages();
   const LOOKAHEAD_SECONDS = 2;
   const RELEASE_LOOKAHEAD_SECONDS = 4;
-  // Unskipped while due in the look-ahead window, so a clip shorter than the window still loads first.
+  // Unskipped while within the window on either side of the playhead, so a step or shuttle back
+  // across a cut finds the clip it left still loaded; the edge checks catch a clip shorter than it.
   const dueSoon = (
     node: HTMLElement,
     visibleAt: ReturnType<typeof timedVisibilityAt>,
@@ -2648,7 +2649,12 @@ export function initSandboxRuntimeModular(): void {
     const start = isMediaElement(node)
       ? resolveAbsoluteMediaStartSeconds(node)
       : resolveStartForElement(node, Number.NaN);
-    return (start > t && start <= t + ahead) || visibleAt(node, t + ahead);
+    const end = start + (resolveDurationForElement(node) ?? Number.NaN);
+    return (
+      (start > t && start <= t + ahead) ||
+      (end <= t && end >= t - ahead) ||
+      visibleAt(node, t + ahead)
+    );
   };
   // Where Studio's loop wraps to (window.__hf.setLoopStart); null when it does not loop.
   let loopStartSeconds: number | null = null;

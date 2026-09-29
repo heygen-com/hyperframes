@@ -323,7 +323,7 @@ describe("runtime entry", () => {
     it("loads a preview's media only on screen or due within the look-ahead, and frees what the playhead left", async () => {
       spyLoad();
       servePreview();
-      const [now, soon, later] = videos(mountRoot(), "0", "1.5", "5");
+      const [now, soon, later] = videos(mountRoot(), "0", "1.5", "9");
 
       await evaluateRuntime();
       expect(armed(now, soon, later)).toEqual([true, true, false]);
@@ -333,7 +333,7 @@ describe("runtime entry", () => {
       now.setAttribute("src", "now.mp4");
       const srcWrites = new MutationObserver(() => {});
       srcWrites.observe(now, { attributeFilter: ["src"] });
-      window.__player?.seek(3.6);
+      window.__player?.seek(7.6);
       expect(armed(now, soon, later)).toEqual([false, false, true]);
       // The two that left are reloaded empty with src dropped for the reload, ending any fetch in flight.
       expect([now.preload, soon.preload]).toEqual(["none", "none"]);
@@ -423,27 +423,77 @@ describe("runtime entry", () => {
       expect(armed(later)).toEqual([false]);
     });
 
+    it("keeps the clip a step back across a cut returns to loaded", async () => {
+      spyLoad();
+      servePreview();
+      const [outgoing, incoming] = videos(mountRoot(), "0", "2");
+
+      await evaluateRuntime();
+      window.__player?.seek(2.1);
+      expect(armed(outgoing, incoming)).toEqual([true, true]);
+      window.__player?.seek(1.9);
+      expect(armed(outgoing)).toEqual([true]);
+      expect(loadsOf(outgoing)).toEqual([1]);
+    });
+
+    it("arms a clip behind a playhead shuttling back before the playhead reaches it", async () => {
+      spyLoad();
+      servePreview();
+      const [earlier, current] = videos(mountRoot(), "0", "2");
+      current.setAttribute("data-duration", "6");
+
+      await evaluateRuntime();
+      window.__player?.seek(6.5);
+      expect(armed(earlier)).toEqual([false]);
+      let armedAt: number | undefined;
+      for (let tenths = 45; tenths >= 20 && armedAt === undefined; tenths--) {
+        window.__player?.seek(tenths / 10);
+        if (armed(earlier)[0]) armedAt = tenths / 10;
+      }
+      // Within the 2 s look-ahead of its end, as a clip ahead is armed within 2 s of its start.
+      expect(armedAt).toBe(4);
+    });
+
+    it("still frees a clip that ended well behind the playhead", async () => {
+      spyLoad();
+      servePreview();
+      const [earlier, current] = videos(mountRoot(), "0", "2");
+      current.setAttribute("data-duration", "6");
+
+      await evaluateRuntime();
+      window.__player?.seek(2.1);
+      window.__player?.seek(5.9);
+      expect(armed(earlier)).toEqual([true]);
+      expect(loadsOf(earlier)).toEqual([1]);
+      window.__player?.seek(6.1);
+      expect(armed(earlier)).toEqual([false]);
+      expect(earlier.preload).toBe("none");
+      expect(loadsOf(earlier)).toEqual([2]);
+    });
+
     it("drops an arm once the clip that set it leaves the screen, as a jump while playing does", async () => {
       spyLoad();
       servePreview();
-      const { next, afterNext } = tracks(mountRoot());
+      const { next } = tracks(mountRoot());
+      window.__timelines = { main: pausedTimeline(20) };
 
       await evaluateRuntime();
       window.__player?.play();
-      window.__player?.seek(7.5, { keepPlaying: true });
-      expect(armed(next, afterNext)).toEqual([false, true]);
+      window.__player?.seek(10.5, { keepPlaying: true });
+      expect(armed(next)).toEqual([false]);
     });
 
     it("stops holding a clip it armed once that clip has played", async () => {
       spyLoad();
       servePreview();
-      const { next, afterNext } = tracks(mountRoot());
+      const { next } = tracks(mountRoot());
+      window.__timelines = { main: pausedTimeline(20) };
 
       await evaluateRuntime();
       window.__player?.play();
       window.__player?.seek(4.5, { keepPlaying: true });
-      window.__player?.seek(8.2, { keepPlaying: true });
-      expect(armed(next, afterNext)).toEqual([false, true]);
+      window.__player?.seek(10.5, { keepPlaying: true });
+      expect(armed(next)).toEqual([false]);
     });
 
     it("arms a clip that starts exactly where the playing one ends", async () => {
@@ -498,15 +548,16 @@ describe("runtime entry", () => {
       spyLoad();
       servePreview();
       const { now, next, afterNext } = tracks(mountRoot());
+      window.__timelines = { main: pausedTimeline(20) };
 
       await evaluateRuntime();
       window.__hf?.setLoopStart?.(0);
       window.__player?.play();
-      window.__player?.seek(9.5, { keepPlaying: true });
+      window.__player?.seek(19.5, { keepPlaying: true });
       expect(armed(now, next, afterNext)).toEqual([true, true, false]);
       expect(loadsOf(now, next)).toEqual([1, 1]);
       window.__hf?.setLoopStart?.(null);
-      window.__player?.seek(9.6, { keepPlaying: true });
+      window.__player?.seek(19.6, { keepPlaying: true });
       expect(armed(now)).toEqual([false]);
     });
 
