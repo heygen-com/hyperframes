@@ -465,10 +465,11 @@ export class ParentMediaManager {
           const target = m.target;
           if (
             isRealmHtmlMediaElement(target) &&
-            target.matches("audio[data-start], video[data-start]") &&
-            target.preload === "auto"
+            target.matches("audio[data-start], video[data-start]")
           ) {
-            this._adoptIframeMedia(target);
+            // A clip the runtime stops preloading must not keep a proxy fetching its whole file.
+            if (target.preload === "auto") this._adoptIframeMedia(target);
+            else this._detachIframeMedia(target);
           }
           continue;
         }

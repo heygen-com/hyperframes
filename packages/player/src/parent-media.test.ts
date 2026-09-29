@@ -220,6 +220,21 @@ describe("ParentMediaManager following its clips", () => {
 
   const copy = "https://example.test/clip.mov?hf-proxy=h264";
 
+  it("drops a clip's proxy when the runtime stops preloading the clip, and adopts it again when due", async () => {
+    const mgr = makeManager();
+    const clip = adoptedClip(mgr, "https://example.test/clip.mp4");
+    const proxy = mgr.entries[0].el;
+
+    clip.preload = "none";
+    await flushObserver();
+    expect(mgr.entries).toHaveLength(0);
+    expect(proxy.getAttribute("src")).toBe("");
+
+    clip.preload = "auto";
+    await flushObserver();
+    expect(mgr.entries.map((m) => m.el.src)).toEqual(["https://example.test/clip.mp4"]);
+  });
+
   it("keeps a re-pointed clip's proxy on its file while the composition owns playback", async () => {
     const mgr = makeManager();
     const clip = adoptedClip(mgr, "https://example.test/clip.mov");
