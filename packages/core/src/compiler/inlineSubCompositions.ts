@@ -268,6 +268,7 @@ export interface InlineSubCompositionsResult {
     | { kind: "inline"; content: string; scene?: string }
     | ({ kind: "external"; src: string; scene?: string } & ExternalScriptAttributes)
   >;
+  /** May list one link more than once; `ensureExternalLinkTag` dedupes. */
   externalLinks: ExternalLink[];
   variablesByComp: Record<string, Record<string, unknown>>;
   /** Mounted files' import maps, addresses rebased; emit with `emitMountedModuleScripts`. */

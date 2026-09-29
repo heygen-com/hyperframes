@@ -1603,13 +1603,13 @@ describe("bundleToSingleHtml", () => {
         ],
       ],
       [
-        "a plain link after a CORS one",
+        "a plain link after a CORS one, as one link",
         link(" crossorigin"),
         link(),
-        [{ ...plain, crossorigin: "" }, plain],
+        [{ ...plain, crossorigin: "" }],
       ],
       [
-        "two anonymous CORS links spelled differently",
+        "two CORS links spelled differently, as one link",
         link(' crossorigin=""'),
         link(' crossorigin="anonymous"'),
         [{ ...plain, crossorigin: "" }],
@@ -1636,23 +1636,23 @@ describe("bundleToSingleHtml", () => {
       expect(links).toEqual([{ ...print, href: url }, { ...plain, href: url }, plain]);
     });
 
-    it("keeps a composition's link when the root's same link differs in fetch or is in a noscript", async () => {
+    it("lets the root's link stand for a composition's that differs only in fetch attributes", async () => {
       const url = "https://cdn.example/shared.css";
-      for (const [name, value] of [
-        ["integrity", "sha384-x"],
-        ["referrerpolicy", "no-referrer"],
+      const snippet = ' integrity="sha512-x" crossorigin="anonymous" referrerpolicy="no-referrer"';
+      for (const [rootAttrs, compAttrs] of [
+        [' integrity="sha384-x"', ""],
+        [' referrerpolicy="no-referrer"', ""],
+        [" crossorigin", ""],
+        [snippet, snippet],
       ]) {
-        expect(
-          await sharedLinks(
-            link().replace("HREF", url),
-            "",
-            `<link rel="stylesheet" href="${url}" ${name}="${value}">`,
-          ),
-        ).toEqual([
-          { ...plain, href: url, [name!]: value },
-          { ...plain, href: url },
-        ]);
+        const rootLink = link(rootAttrs).replace("HREF", url);
+        const links = await sharedLinks(link(compAttrs).replace("HREF", url), "", rootLink);
+        expect(links).toHaveLength(1);
       }
+    });
+
+    it("keeps a composition's link when the root's same link is in a noscript", async () => {
+      const url = "https://cdn.example/shared.css";
       expect(
         await sharedLinks(
           link().replace("HREF", url),

@@ -50,24 +50,20 @@ export function cssStyleMergeKey(el: Element): string | undefined {
 
 export const UNCONDITIONAL_CSS_KEY = JSON.stringify(["", ""]);
 
-/** One key: same href, rel, CSS condition, disabled, CORS mode, integrity and referrer policy; nothing else. */
+/** A link's identity and condition; fetch attributes (crossorigin, integrity, referrerpolicy) are not compared. */
 function linkDedupeKey(el: Element): string {
-  const cors = el.getAttribute("crossorigin");
   return JSON.stringify([
     el.getAttribute("href"),
     (el.getAttribute("rel") ?? "").trim().toLowerCase(),
     cssStyleMergeKey(el) ?? el.getAttribute("type"),
     el.hasAttribute("disabled"),
-    cors === null ? null : cors.trim().toLowerCase() === "use-credentials",
-    el.getAttribute("integrity"),
-    el.getAttribute("referrerpolicy"),
   ]);
 }
 
 export function hasSameLink(scope: ParentNode, link: Element): boolean {
   const key = linkDedupeKey(link);
   return [...scope.querySelectorAll("link[href]")].some(
-    (other) => !other.closest("template, noscript") && linkDedupeKey(other) === key,
+    (other) => !other.closest("noscript") && linkDedupeKey(other) === key,
   );
 }
 
