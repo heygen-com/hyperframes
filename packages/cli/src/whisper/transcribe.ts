@@ -159,7 +159,7 @@ export function resolveAudioPreparationTimeoutMs(durationSeconds: number | null)
   );
 }
 
-function getMediaDurationSeconds(filePath: string): number | null {
+export function getMediaDurationSeconds(filePath: string): number | null {
   try {
     const ffprobePath = findFFprobe();
     if (!ffprobePath) return null;

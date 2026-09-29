@@ -140,3 +140,32 @@ describe("registry examples use the audio-on-video form", () => {
     expect(html).not.toMatch(/<audio\b[^>]*src="__VIDEO_SRC__"/);
   });
 });
+
+describe("patchMediaPlaceholders — hostile filenames", () => {
+  const cases: Array<[string, string]> = [
+    ["beat$$.wav", "beat$$.wav"],
+    ["cut$'s.mp4", "cut$'s.mp4"],
+    ["Track #1.wav", "Track%20%231.wav"],
+    ['a"b.mp4', "a%22b.mp4"],
+    ["q?x&y.mp4", "q%3Fx&y.mp4"],
+    ["p$&q.mp4", "p$&q.mp4"],
+  ];
+  it.each(cases)("video %s is inserted literally as an encoded src", (name, encoded) => {
+    const out = patchMediaPlaceholders(NEW_TEMPLATE, {
+      video: { filename: name, hasAudio: true },
+      durationSeconds: 6,
+    });
+    expect(out).toContain(`src="${encoded}"`);
+    expect(out).toContain('data-duration="6"');
+    expect(out).toContain("</div>");
+    expect(out).not.toContain("__");
+  });
+  it.each(cases)("audio %s is inserted literally as an encoded src", (name, encoded) => {
+    const out = patchMediaPlaceholders(NEW_TEMPLATE, {
+      audio: { filename: name },
+      durationSeconds: 6,
+    });
+    expect(out).toContain(`src="${encoded}"`);
+    expect(out).not.toContain("__");
+  });
+});

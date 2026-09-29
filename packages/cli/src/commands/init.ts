@@ -865,6 +865,8 @@ export default defineCommand({
       if (audioPath) {
         sourceFilePath = audioPath;
         copyFileSync(audioPath, resolve(destDir, basename(audioPath)));
+        const { getMediaDurationSeconds } = await import("../whisper/transcribe.js");
+        videoDuration = getMediaDurationSeconds(audioPath) ?? undefined;
         console.log(`Audio: ${basename(audioPath)}`);
       }
 
@@ -1033,6 +1035,8 @@ export default defineCommand({
       mkdirSync(destDir, { recursive: true });
       sourceFilePath = audioPath;
       copyFileSync(audioPath, resolve(destDir, basename(audioPath)));
+      const { getMediaDurationSeconds } = await import("../whisper/transcribe.js");
+      videoDuration = getMediaDurationSeconds(audioPath) ?? undefined;
       clack.log.info(`Audio copied to ${c.accent(basename(audioPath))}`);
     }
 

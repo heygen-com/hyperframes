@@ -267,6 +267,9 @@ describe("hyperframes init flag rename", () => {
       const html = readFileSync(join(target, "index.html"), "utf-8");
       expect(html).toMatch(/<audio\b[^>]*src="track\.wav"/);
       expect(html).not.toMatch(/<video\b/);
+      // tone.wav is 3 s; the root and the <audio> both carry the probed length, not the 10 s default.
+      expect(html).toMatch(/<audio\b[^>]*data-duration="3"/);
+      expect(html).toMatch(/<div[^>]*id="root"[^>]*data-duration="3"/);
       expect(html).not.toContain("__VIDEO_SRC__");
       expect(html).not.toContain("__AUDIO_SRC__");
     } finally {

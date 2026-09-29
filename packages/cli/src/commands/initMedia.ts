@@ -12,6 +12,11 @@ const VIDEO_SRC = "__VIDEO_SRC__";
 const AUDIO_SRC = "__AUDIO_SRC__";
 const DURATION = "__VIDEO_DURATION__";
 
+// encodeURI leaves `#` and `?` alone, which would truncate the path at the URL fragment/query.
+function toSrcValue(filename: string): string {
+  return encodeURI(filename).replace(/#/g, "%23").replace(/\?/g, "%3F");
+}
+
 function openTag(tag: "video" | "audio", placeholder: string): string {
   return `<${tag}\\b[^>]*src="${placeholder}"[^>]*>`;
 }
@@ -47,12 +52,14 @@ export function patchMediaPlaceholders(html: string, opts: InitMediaOptions): st
     } else {
       out = setVideoAudio(out, opts.video.hasAudio);
     }
-    out = out.replaceAll(VIDEO_SRC, opts.video.filename);
+    const videoSrc = toSrcValue(opts.video.filename);
+    out = out.replaceAll(VIDEO_SRC, () => videoSrc);
   } else if (opts.audio) {
     out = stripPlaceholder(out, "video", VIDEO_SRC);
-    out = out.replaceAll(AUDIO_SRC, opts.audio.filename);
+    const audioSrc = toSrcValue(opts.audio.filename);
+    out = out.replaceAll(AUDIO_SRC, () => audioSrc);
     // Legacy templates carry the audio slot on __VIDEO_SRC__.
-    out = out.replaceAll(VIDEO_SRC, opts.audio.filename);
+    out = out.replaceAll(VIDEO_SRC, () => audioSrc);
   } else {
     out = stripPlaceholder(out, "video", VIDEO_SRC);
     out = stripPlaceholder(out, "audio", VIDEO_SRC);
