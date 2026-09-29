@@ -113,7 +113,7 @@ export interface AbandonedRenderDirOptions {
   names?: RegExp;
 }
 
-/** Render temp dirs under `parent` that no running render owns, never a staging dir holding {@link TRANSACTION_BACKUP}. */
+/** Render temp dirs under `parent` no running render owns; never a staging dir holding {@link TRANSACTION_BACKUP}. */
 export function listAbandonedRenderDirs(
   parent: string,
   options: AbandonedRenderDirOptions = {},
