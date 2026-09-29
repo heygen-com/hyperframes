@@ -115,7 +115,6 @@ export class ThumbnailScheduler {
   private nextSequence = 1;
   private scrolling = false;
   private previewReloading = false;
-  private readonly stalledPreviews = new Set<object>();
   private cacheBytes = 0;
   private waveformCacheBytes = 0;
   private readonly activeByBucket = { video: 0, composition: 0, general: 0 };
@@ -226,22 +225,8 @@ export class ThumbnailScheduler {
       this.pump();
       return;
     }
-    this.preemptLoading((entry) => entry.request.kind === "composition");
-  }
-
-  setPreviewMediaStalled(preview: object, stalled: boolean): void {
-    const wasHeld = this.stalledPreviews.size > 0;
-    if (stalled) this.stalledPreviews.add(preview);
-    else this.stalledPreviews.delete(preview);
-    const held = this.stalledPreviews.size > 0;
-    if (held === wasHeld) return;
-    if (held) this.preemptLoading(() => true);
-    else this.pump();
-  }
-
-  private preemptLoading(matches: (entry: ThumbnailEntry) => boolean): void {
     for (const entry of this.entries.values()) {
-      if (entry.state !== "loading" || !matches(entry)) continue;
+      if (entry.state !== "loading" || entry.request.kind !== "composition") continue;
       entry.preempted = true;
       entry.controller?.abort();
     }
@@ -285,7 +270,6 @@ export class ThumbnailScheduler {
   }
 
   private pump(): void {
-    if (this.stalledPreviews.size > 0) return;
     const queued = Array.from(this.entries.values())
       .filter((entry) => entry.state === "queued" && entry.leases.size > 0)
       .sort((left, right) => {
@@ -472,12 +456,6 @@ export class ThumbnailScheduler {
           new Error(`Thumbnail load timed out after ${this.budgets.thumbnailLoadTimeoutMs}ms`),
         );
       }, this.budgets.thumbnailLoadTimeoutMs);
-      controller.signal.addEventListener("abort", () => {
-        if (settled) return;
-        settled = true;
-        clearTimeout(timeout);
-        reject(new DOMException("Aborted", "AbortError"));
-      });
 
       load.then(
         (result) => {

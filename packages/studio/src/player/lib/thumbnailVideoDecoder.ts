@@ -124,7 +124,6 @@ export async function decodeVideoThumbnail(
     source: new mediabunny.UrlSource(request.source),
     formats: mediabunny.ALL_FORMATS,
   });
-  signal.addEventListener("abort", () => input.dispose(), { once: true });
   const resources: DecodedResources = { urls: [], canvases: new Set() };
   try {
     const track = await input.getPrimaryVideoTrack();

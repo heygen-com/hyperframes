@@ -5,8 +5,6 @@ import { useMountEffect } from "../../hooks/useMountEffect";
 import { applyPreviewVariablesToUrl } from "../../hooks/previewVariablesStore";
 import { HyperframesLoader } from "../../components/ui";
 import { usePlayerStore } from "../store/playerStore";
-import { thumbnailScheduler } from "../lib/thumbnailScheduler";
-import type { IframeWindow } from "../lib/playbackTypes";
 // Importing "@hyperframes/player" registers a class extending HTMLElement at
 // module load, which throws under SSR, hence the dynamic import behind a
 // `typeof window` guard. Kicking it here rather than in the mount effect puts
@@ -128,20 +126,6 @@ export function hasUnloadedAssets(iframe: HTMLIFrameElement, lastResult: boolean
   } catch {
     return lastResult;
   }
-}
-
-/** Media fires waiting only while it should be playing; the hold lasts until the transport stops. */
-export function holdThumbnailsWhilePreviewStalls(iframe: HTMLIFrameElement): void {
-  thumbnailScheduler.setPreviewMediaStalled(iframe, false);
-  const doc = iframe.contentDocument;
-  if (!doc) return;
-  const win = iframe.contentWindow as IframeWindow | null;
-  const stall = () => thumbnailScheduler.setPreviewMediaStalled(iframe, true);
-  const release = () => {
-    if (!win?.__player?.isPlaying()) thumbnailScheduler.setPreviewMediaStalled(iframe, false);
-  };
-  doc.addEventListener("waiting", stall, true);
-  doc.addEventListener("pause", release, true);
 }
 
 /**
@@ -274,7 +258,6 @@ export const Player = forwardRef<HTMLIFrameElement, PlayerProps>(
             container.addEventListener("animationend", onEnd, { once: true });
           }
           onLoadRef.current();
-          holdThumbnailsWhilePreviewStalls(iframe);
 
           // Show a loading overlay until every `<video>`/`<audio>` and Lottie
           // asset is ready. Without this users can click play before audio has
@@ -371,7 +354,6 @@ export const Player = forwardRef<HTMLIFrameElement, PlayerProps>(
           player.removeEventListener("error", handleError);
           if (assetPollRef.current) clearInterval(assetPollRef.current);
           assetPollRef.current = null;
-          thumbnailScheduler.setPreviewMediaStalled(iframe, false);
           // `remove()` rather than `container.removeChild(player)`: by the time
           // this cleanup runs the element may already be detached — React can
           // re-render the container, a crossfade refresh can swap it, or a
