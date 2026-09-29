@@ -64,8 +64,7 @@ Do not invent synonyms for these states. An ongoing “just build it” signal i
 For a hard cut, trim, splice, or reorder of existing footage, duplicate the same
 video source into multiple clip elements. On each copy, set the source range
 with `data-media-start` plus `data-duration`, then set authored placement/order
-with `data-start`. Separately authored audio follows the identical clip ranges
-and timing on matching `<audio>` elements. `/hyperframes-core` owns this temporal
+with `data-start`. Each video segment keeps its sound: the sound stays on the clip (`data-has-audio="true"`), so cutting the video cuts its sound. `/hyperframes-core` owns this temporal
 edit; use `/hyperframes-keyframes` only for visual-property animation such as
 zoom, punch, pan, crop, mask, or `clip-path` on an inner wrapper.
 Copy the full contracts from `../hyperframes-core/references/creator-editing-recipes.md`.

@@ -8,7 +8,7 @@ A clip is any DOM element with `data-start` and, where required, `data-duration`
 
 - **Visual `<div>` clips** — scenes, cards, overlays. Always require `data-duration`.
 - **Sub-composition hosts** — `<div>` with `data-composition-src`. Always require `data-duration`.
-- **Video clips** — `<video>` with `muted` and `playsinline`. Duration can default to media length.
+- **Video clips** — `<video playsinline>`. With sound: `data-has-audio="true"` (the sound stays on the clip). Silent: `muted`. Duration can default to media length.
 - **Audio clips** — `<audio>`. Duration can default to media length.
 - **Image clips** — `<img>`. `data-duration` is optional and defaults to 3 seconds; write it only for another length.
 
@@ -46,9 +46,7 @@ multiple clip elements. Each copy selects its source range with
 timeline with `data-start`. Change the source offsets and placement order; do
 not try to keyframe source cutting.
 
-Separately authored audio gives each audio copy the identical source range and
-timing as its matching video clip (`data-media-start`, `data-duration`, and
-`data-start`). Video stays muted; the separate audio elements carry sound.
+Each video segment keeps its sound: the sound stays on the clip (`data-has-audio="true"`), so cutting the video cuts its sound. A separate `<audio>` is for other sound (music, voiceover, replacement audio, J/L cuts).
 
 ## Relative Timing
 
