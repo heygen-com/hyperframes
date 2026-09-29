@@ -5,6 +5,7 @@
  * Processes and mixes audio tracks using FFmpeg.
  */
 
+import { isSelfOrAncestorHidden } from "./mediaHidden.js";
 import { closeSync, existsSync, mkdirSync, mkdtempSync, openSync, rmSync, writeFileSync } from "fs";
 import { join, dirname, isAbsolute, relative } from "path";
 import { parseHTML } from "linkedom";
@@ -588,12 +589,7 @@ export function parseAudioElements(html: string): AudioElement[] {
   const parseEnd = (raw: string | null): number => {
     return parseStrictFiniteTimingNumber(raw) ?? 0;
   };
-  const isHidden = (el: AudioMediaElement): boolean => {
-    for (let current: AudioMediaElement | null = el; current; current = current.parentElement) {
-      if (current.hasAttribute("data-hidden")) return true;
-    }
-    return false;
-  };
+  const isHidden = isSelfOrAncestorHidden;
 
   // Resolved once per parse. A group element carrying `data-hidden` drops
   // every member from the render (RULES: mute-by-drop, never

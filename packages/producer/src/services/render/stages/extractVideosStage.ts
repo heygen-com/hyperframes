@@ -562,7 +562,7 @@ export function appendAutoDetectedVideoAudio(
   for (const ext of extracted) {
     if (!ext.metadata.hasAudio) continue;
     const video = composition.videos.find((v) => v.id === ext.videoId);
-    if (!video || !video.hasAudio || existingAudioSrcs.has(video.src)) continue;
+    if (!video || !video.hasAudio || video.hidden || existingAudioSrcs.has(video.src)) continue;
     composition.audios.push({
       id: `${video.id}-audio`,
       src: video.src,

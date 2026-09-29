@@ -6,6 +6,7 @@
  * Videos are replaced with <img> elements during capture.
  */
 
+import { isSelfOrAncestorHidden } from "./mediaHidden.js";
 import { copyFileSync, existsSync, linkSync, mkdirSync, rmSync } from "fs";
 import { join } from "path";
 import { parseHTML } from "linkedom";
@@ -81,6 +82,7 @@ export interface VideoElement {
   playbackRate?: RateSpec;
   loop: boolean;
   hasAudio: boolean;
+  hidden?: boolean;
 }
 
 export interface ExtractedFrames {
@@ -720,6 +722,7 @@ export function parseVideoElements(html: string): VideoElement[] {
       playbackRate: readElementRateSpec(el),
       loop: el.hasAttribute("loop"),
       hasAudio: hasAudioAttr === "true",
+      ...(isSelfOrAncestorHidden(el) ? { hidden: true } : {}),
     });
   }
 
