@@ -547,6 +547,7 @@ export function useTimelineProviderState({
       ref: setScrollRef,
       tabIndex: -1,
       labelMode,
+      contentOrigin,
       zoomMode,
       onScroll: (e) => {
         lastScrollLeftRef.current = e.currentTarget.scrollLeft;
