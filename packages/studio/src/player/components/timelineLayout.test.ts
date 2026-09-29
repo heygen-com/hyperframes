@@ -19,6 +19,7 @@ import {
   getTimelineBeatEntries,
 } from "./timelineLayout";
 import { generateTicks, getTimelineMajorTickInterval } from "./timelineRulerGeometry";
+import { resolveInsertRow } from "./timelineCollision";
 import { getTimelineRenderTimeRange } from "./timelineViewportGeometry";
 
 describe("horizontal timeline window", () => {
@@ -124,27 +125,27 @@ describe("variable timeline row geometry", () => {
 
 describe("collapsed timeline row geometry characterization", () => {
   it.each([
-    [0, 74],
-    [1, 122],
-    [4, 266],
+    [0, 32],
+    [1, 80],
+    [4, 224],
   ])("keeps row %i at content y=%i", (row, expectedTop) => {
     expect(getTimelineRowTop(row)).toBe(expectedTop);
   });
 
   it.each([
-    [74, 0],
-    [86, 0.25],
-    [146, 1.5],
-    [290, 4.5],
+    [32, 0],
+    [44, 0.25],
+    [104, 1.5],
+    [248, 4.5],
   ])("maps content y=%i to fractional row %f", (contentY, expectedRow) => {
     expect(getTimelineRowFromY(contentY)).toBe(expectedRow);
   });
 
   it.each([
-    [0, 146],
-    [1, 194],
-    [3, 290],
-    [5, 386],
+    [0, 80],
+    [1, 128],
+    [3, 224],
+    [5, 320],
   ])("keeps the %i-track canvas height at %i", (trackCount, expectedHeight) => {
     expect(getTimelineCanvasHeight(baseRows(trackCount))).toBe(expectedHeight);
   });
@@ -291,6 +292,34 @@ describe("host track padding", () => {
   it("keeps the default pads when a host passes none", () => {
     const defaults = createTimelineRowGeometry([0], baseRows(1));
     expect(defaults.padding).toEqual({ top: TRACKS_TOP_PAD, bottom: TRACKS_BOTTOM_PAD });
+  });
+});
+
+describe("default track pads", () => {
+  const rows = [TRACK_H, TRACK_H, TRACK_H];
+  const lastLaneBottom = RULER_H + 8 + 3 * TRACK_H;
+
+  it("sits the first row 8px under the ruler and leaves one track below the last", () => {
+    expect(getTimelineRowTop(0)).toBe(RULER_H + 8);
+    expect(getTimelineCanvasHeight(rows)).toBe(lastLaneBottom + TRACK_H);
+  });
+
+  it("opens a new track from anywhere in the bottom lane", () => {
+    const drop = {
+      rectLeft: 0,
+      rectTop: 0,
+      scrollLeft: 0,
+      scrollTop: 0,
+      contentOrigin: GUTTER,
+      pixelsPerSecond: 100,
+      rowHeights: rows,
+      trackOrder: [0, 1, 2],
+    };
+    for (const y of [lastLaneBottom, getTimelineCanvasHeight(rows) - 1]) {
+      expect(resolveTimelineAssetDrop(drop, GUTTER, y).track).toBe(3);
+      expect(resolveInsertRow(getTimelineRowFromY(y, rows), rows.length)).toBe(3);
+    }
+    expect(resolveTimelineAssetDrop(drop, GUTTER, lastLaneBottom - 1).track).toBe(2);
   });
 });
 

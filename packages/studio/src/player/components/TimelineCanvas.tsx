@@ -24,6 +24,13 @@ export const TimelineCanvas = memo(function TimelineCanvas() {
   const dropRowIndex = dropTrackIndex < 0 ? displayTrackOrder.length : dropTrackIndex;
   const insertLineRow =
     (draggedClip?.started ? draggedClip.insertRow : null) ?? props.dropPreview?.insertRow ?? null;
+  const ghostLaneActive =
+    (insertLineRow ?? -1) >= props.trackOrder.length ||
+    (props.dropPreview?.insertRow == null && props.dropPreview != null && dropTrackIndex < 0);
+  // A host bottom pad shorter than a track leaves no lane to draw.
+  const showGhostLane = props.rowGeometry.padding.bottom >= TRACK_H;
+  // Past the last committed track: a drag's new bottom-track preview row is the lane itself.
+  const ghostLaneRow = props.rowGeometry.getRowIndex(props.trackOrder.at(-1) ?? Number.NaN) + 1;
   const draggedRowHeight = getTimelineRowHeight(draggedRowIndex, props.rowHeights);
   // A clip bar in an EXPANDED row still renders at TRACK_H (the property lanes
   // occupy the rest of the row — see TimelineLanes' clipHeight), so the drag
@@ -61,13 +68,34 @@ export const TimelineCanvas = memo(function TimelineCanvas() {
         onRazorSplitAll={props.onRazorSplitAll}
       />
 
-      {/* Breathing room below the last track lane (1.5 tracks by default) — a real
+      {/* Breathing room below the last track lane (one track by default) — a real
           scrollable surface, so a clip can be dragged into the void to create a
-          new bottom track comfortably (see TimelineRowGeometry.padding / canvasHeight). */}
+          new bottom track (see TimelineRowGeometry.padding / canvasHeight). */}
       <div
         aria-hidden="true"
         style={{ height: props.rowsVirtualized ? 0 : props.rowGeometry.padding.bottom }}
       />
+
+      {showGhostLane && (
+        <div
+          aria-hidden="true"
+          data-testid="timeline-ghost-lane"
+          data-active={ghostLaneActive || undefined}
+          className={`pointer-events-none absolute flex items-center justify-center rounded-lg border border-dashed text-[11px] transition-colors duration-150 ${
+            ghostLaneActive
+              ? "border-studio-accent/60 bg-studio-accent/6 text-studio-accent"
+              : "border-neutral-700/50 text-neutral-500"
+          }`}
+          style={{
+            top: props.rowGeometry.getRowTop(ghostLaneRow) + CLIP_Y,
+            left: props.contentOrigin,
+            width: props.trackContentWidth,
+            height: TRACK_H - CLIP_Y * 2,
+          }}
+        >
+          {props.acceptsMediaDrop && "Drop media here"}
+        </div>
+      )}
 
       {/* Gap strips — loud dashed fill for the gap(s) a hovered "Close gap(s)"
           menu row would collapse; a quiet tint for every gap on the selected

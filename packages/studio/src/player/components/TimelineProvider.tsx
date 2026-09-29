@@ -51,6 +51,7 @@ export type TimelineCanvasState = Omit<
   playheadRef: React.RefObject<HTMLDivElement | null>;
   laneGapStrips: TimelineLaneGapStrips[];
   dropPreview: TimelineDropPlacement | null;
+  acceptsMediaDrop: boolean;
   setRangeSelection: (value: TimelineRangeSelection | null) => void;
   setResizingClip: (value: ResizingClipState | null) => void;
   setDraggedClip: (value: TimelineLaneBaseProps["draggedClip"]) => void;

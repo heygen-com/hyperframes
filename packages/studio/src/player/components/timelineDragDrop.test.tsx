@@ -12,6 +12,8 @@ import { configureTimelineTestViewport } from "./timelineTestViewport";
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
+const ROW0_MID_Y = getTimelineRowTop(0) + TRACK_H / 2;
+
 interface DropTransfer {
   types: string[];
   files: File[];
@@ -124,7 +126,7 @@ describe("useTimelineAssetDrop", () => {
     const parent = document.createElement("div");
     const child = document.createElement("div");
     parent.append(child);
-    act(() => view.api.handleAssetDragOver(dragEvent(assetTransfer("{}"), 400, 100)));
+    act(() => view.api.handleAssetDragOver(dragEvent(assetTransfer("{}"), 400, ROW0_MID_Y)));
     act(() =>
       view.api.handleAssetDragLeave({
         relatedTarget: child,
@@ -160,8 +162,8 @@ describe("useTimelineAssetDrop", () => {
     const transfer = assetTransfer(JSON.stringify({ path: "/media/hero.mp4" }));
 
     act(() => {
-      view.api.handleAssetDragOver(dragEvent(transfer, 80, 100));
-      view.api.handleAssetDrop(dragEvent(transfer, 80, 100));
+      view.api.handleAssetDragOver(dragEvent(transfer, 80, ROW0_MID_Y));
+      view.api.handleAssetDrop(dragEvent(transfer, 80, ROW0_MID_Y));
     });
 
     // pps=40, clientX=80 -> 2s, far from the 50s playhead: proves start tracks
@@ -175,12 +177,12 @@ describe("useTimelineAssetDrop", () => {
     const view = renderHarness(onAssetDrop, 1);
     const transfer = assetTransfer("not-json");
 
-    act(() => view.api.handleAssetDragOver(dragEvent(transfer, 400, 100)));
+    act(() => view.api.handleAssetDragOver(dragEvent(transfer, 400, ROW0_MID_Y)));
     expect(view.api.isDragOver).toBe(true);
     view.rerender(2);
     expect(view.api.isDragOver).toBe(false);
 
-    act(() => view.api.handleAssetDrop(dragEvent(transfer, 400, 100)));
+    act(() => view.api.handleAssetDrop(dragEvent(transfer, 400, ROW0_MID_Y)));
     expect(onAssetDrop).not.toHaveBeenCalled();
     act(() => view.root.unmount());
   });
@@ -202,8 +204,8 @@ describe("useTimelineAssetDrop", () => {
     };
 
     act(() => {
-      view.api.handleAssetDragOver(dragEvent(transfer, 400, 100));
-      view.api.handleAssetDrop(dragEvent(transfer, 400, 100));
+      view.api.handleAssetDragOver(dragEvent(transfer, 400, ROW0_MID_Y));
+      view.api.handleAssetDrop(dragEvent(transfer, 400, ROW0_MID_Y));
     });
 
     expect(onAssetDrop).not.toHaveBeenCalled();
@@ -214,7 +216,7 @@ describe("useTimelineAssetDrop", () => {
 
   it("clears an escaped drag after StrictMode effect replay", () => {
     const view = renderHarness(vi.fn(), 1, { strict: true });
-    act(() => view.api.handleAssetDragOver(dragEvent(assetTransfer("{}"), 400, 100)));
+    act(() => view.api.handleAssetDragOver(dragEvent(assetTransfer("{}"), 400, ROW0_MID_Y)));
     expect(view.api.isDragOver).toBe(true);
 
     act(() => window.dispatchEvent(new Event("dragend")));
@@ -227,11 +229,11 @@ describe("useTimelineAssetDrop", () => {
     const view = renderHarness(onAssetDrop);
     const payload = JSON.stringify({ path: "assets/a.png" });
 
-    act(() => view.api.handleAssetDragOver(dragEvent(assetTransfer(payload), 400, 100)));
+    act(() => view.api.handleAssetDragOver(dragEvent(assetTransfer(payload), 400, ROW0_MID_Y)));
     const preview = view.api.dropPreview;
     expect(preview).toEqual({ start: 10, track: 0 });
 
-    act(() => view.api.handleAssetDrop(dragEvent(assetTransfer(payload), 400, 100)));
+    act(() => view.api.handleAssetDrop(dragEvent(assetTransfer(payload), 400, ROW0_MID_Y)));
     expect(onAssetDrop).toHaveBeenCalledExactlyOnceWith("assets/a.png", preview);
     expect(view.api.dropPreview).toBeNull();
     act(() => view.root.unmount());
@@ -239,8 +241,8 @@ describe("useTimelineAssetDrop", () => {
 
   it("moves the preview with the pointer and drops it when the drag leaves", () => {
     const view = renderHarness(vi.fn());
-    act(() => view.api.handleAssetDragOver(dragEvent(assetTransfer("{}"), 400, 100)));
-    act(() => view.api.handleAssetDragOver(dragEvent(assetTransfer("{}"), 800, 100)));
+    act(() => view.api.handleAssetDragOver(dragEvent(assetTransfer("{}"), 400, ROW0_MID_Y)));
+    act(() => view.api.handleAssetDragOver(dragEvent(assetTransfer("{}"), 800, ROW0_MID_Y)));
     expect(view.api.dropPreview?.start).toBe(20);
 
     act(() =>

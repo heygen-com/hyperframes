@@ -58,13 +58,13 @@ export function getTimelineLaneTop(laneIndex: number): number {
  * Default breathing room INSIDE the scroll area (CapCut-style). A host overrides
  * it per Timeline; rows always read TimelineRowGeometry.padding, never these.
  *
- * - TRACKS_TOP_PAD: empty space between the (sticky) ruler and the first track
- *   (~half a track height) so the first clip isn't jammed under the ruler.
- * - TRACKS_BOTTOM_PAD: empty space below the last track (~1.5 track heights),
- *   enough to comfortably drag a clip into the void to create a new bottom lane.
+ * - TRACKS_TOP_PAD: empty space between the (sticky) ruler and the first track,
+ *   just enough that the first clip isn't jammed under the ruler.
+ * - TRACKS_BOTTOM_PAD: one empty track below the last, drawn as a ghost lane;
+ *   dropping a clip or file there creates a new bottom track.
  */
-export const TRACKS_TOP_PAD = 50;
-export const TRACKS_BOTTOM_PAD = Math.round(TRACK_H * 1.5);
+export const TRACKS_TOP_PAD = 8;
+export const TRACKS_BOTTOM_PAD = TRACK_H;
 export interface TimelineTrackPadding {
   top?: number;
   bottom?: number;

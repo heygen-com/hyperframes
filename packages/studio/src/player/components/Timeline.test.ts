@@ -35,6 +35,7 @@ import {
   getTimelineDisplayContentWidth,
   getTimelineFitPps,
   getTimelineLaneTop,
+  getTimelineRowTop,
   createTimelineRowGeometry,
 } from "./timelineLayout";
 import { AUTOMATION_LANE_H } from "./automationLaneHeight";
@@ -1292,9 +1293,8 @@ describe("resolveTimelineAssetDrop", () => {
           trackOrder: [0, 3, 7],
         },
         432, // rectLeft(100) + GUTTER(32) + 3s*100pps  (contentOrigin = GUTTER)
-        // clientY: rectTop(200) + RULER_H(24) + TRACKS_TOP_PAD(72) + TRACK_H(48)
-        // + TRACK_H/2(24) = 368 → row 1 → track 3.
-        368,
+        // clientY: rectTop(200) + the middle of row 1 → track 3.
+        200 + getTimelineRowTop(1) + TRACK_H / 2,
       ),
     ).toEqual({ start: 3, track: 3 });
   });
