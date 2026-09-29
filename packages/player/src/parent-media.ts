@@ -380,8 +380,8 @@ export class ParentMediaManager {
 
   // fallow-ignore-next-line complexity
   private _adoptIframeMedia(iframeEl: HTMLMediaElement): void {
-    // Skip elements the preloader has demoted — the observer will re-trigger
-    // when the preload attribute is promoted to "auto".
+    // Skip elements the preloader has demoted: the observer adopts one when its preload turns
+    // "auto" and drops its proxy, which fetches the whole file, when it turns back.
     if (iframeEl.preload === "metadata" || iframeEl.preload === "none") return;
 
     const src = this._resolveIframeMediaSrc(iframeEl);
@@ -467,7 +467,6 @@ export class ParentMediaManager {
             isRealmHtmlMediaElement(target) &&
             target.matches("audio[data-start], video[data-start]")
           ) {
-            // A clip the runtime stops preloading must not keep a proxy fetching its whole file.
             if (target.preload === "auto") this._adoptIframeMedia(target);
             else this._detachIframeMedia(target);
           }
