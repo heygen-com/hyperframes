@@ -97,9 +97,7 @@ interface PlayerState extends PlayerStoreSlices {
 
   activeTool: TimelineTool;
   setActiveTool: (tool: TimelineTool) => void;
-  /** Select every clip, on every track, that starts before the playhead. */
   selectLeftward: () => void;
-  /** Select every clip, on every track, that starts at or after the playhead. */
   selectRightward: () => void;
 
   /** Tween-relative percentage of the last-clicked keyframe diamond. Operations
