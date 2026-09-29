@@ -84,8 +84,26 @@ describe("Timeline showKeyframes", () => {
     expect((await mountKeyframed(false)).lanes).toBe(false);
   });
 
-  it("keeps each track's name in the header when keyframes are off", async () => {
+  it("opens the track-name column for a keyframed clip only while keyframes are shown", async () => {
     expect((await mountKeyframed()).named).toBe(true);
-    expect((await mountKeyframed(false)).named).toBe(true);
+    expect((await mountKeyframed(false)).named).toBe(false);
+  });
+
+  it("still opens the column for an audio group when keyframes are off", async () => {
+    usePlayerStore.setState({
+      duration: 10,
+      timelineReady: true,
+      gsapAnimations: new Map(),
+      elements: [
+        { id: "vo", label: "Voice", tag: "audio", start: 0, duration: 4, track: 0, audioGroup: "g" },
+      ],
+    });
+    const host = document.createElement("div");
+    document.body.append(host);
+    const root = createRoot(host);
+    await act(async () => root.render(<Timeline showKeyframes={false} />));
+    const corner = host.querySelector<HTMLElement>(".sticky.top-0.flex > div");
+    expect(corner?.style.width).toBe("264px");
+    act(() => root.unmount());
   });
 });
