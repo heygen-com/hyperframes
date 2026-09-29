@@ -203,27 +203,33 @@ describe("ShortcutsPanel", () => {
   });
 
   it("renders standalone for a host toolbar, reading the player store", () => {
-    const original = usePlayerStore.getState().requestSeek;
+    const { duration, inPoint, requestSeek: storeSeek } = usePlayerStore.getState();
     const requestSeek = vi.fn();
     usePlayerStore.setState({ duration: 10, inPoint: 2, requestSeek });
-    const host = document.createElement("div");
-    document.body.append(host);
-    act(() => {
-      mount(host).render(<ShortcutsButton sections={[{ title: "Host", hints: [] }]} />);
-    });
-    openPanel(host.querySelector<HTMLButtonElement>('button[aria-label="Shortcuts and tools"]')!);
-    expect(host.textContent).toContain("Host");
-    expect(host.textContent).toContain("00:02");
+    try {
+      const host = document.createElement("div");
+      document.body.append(host);
+      act(() => {
+        mount(host).render(<ShortcutsButton sections={[{ title: "Host", hints: [] }]} />);
+      });
+      openPanel(host.querySelector<HTMLButtonElement>('button[aria-label="Shortcuts and tools"]')!);
+      expect(host.textContent).toContain("Host");
+      expect(host.textContent).toContain("00:02");
 
-    const input = host.querySelector<HTMLInputElement>('input[aria-label="Jump to frame"]')!;
-    act(() => {
-      Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")!.set!.call(input, "30");
-      input.dispatchEvent(new Event("input", { bubbles: true }));
-    });
-    act(() => {
-      input.form!.dispatchEvent(new Event("submit", { bubbles: true, cancelable: true }));
-    });
-    expect(requestSeek).toHaveBeenCalledWith(1);
-    usePlayerStore.setState({ inPoint: null, requestSeek: original });
+      const input = host.querySelector<HTMLInputElement>('input[aria-label="Jump to frame"]')!;
+      act(() => {
+        Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")!.set!.call(
+          input,
+          "30",
+        );
+        input.dispatchEvent(new Event("input", { bubbles: true }));
+      });
+      act(() => {
+        input.form!.dispatchEvent(new Event("submit", { bubbles: true, cancelable: true }));
+      });
+      expect(requestSeek).toHaveBeenCalledWith(1);
+    } finally {
+      usePlayerStore.setState({ duration, inPoint, requestSeek: storeSeek });
+    }
   });
 });

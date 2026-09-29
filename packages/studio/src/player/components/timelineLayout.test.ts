@@ -279,6 +279,15 @@ describe("host track padding", () => {
     expect(resolveTimelineAssetDrop(drop, GUTTER, inBottomPad).track).toBe(3);
   });
 
+  it("clamps a negative pad to 0 and replaces a non-finite one with the default", () => {
+    const odd = createTimelineRowGeometry([0], baseRows(1), { top: -20, bottom: Number.NaN });
+    expect(odd.padding).toEqual({ top: 0, bottom: TRACKS_BOTTOM_PAD });
+    expect(odd.getRowTop(0)).toBe(RULER_H);
+    expect(odd.canvasHeight).toBe(RULER_H + TRACK_H + TRACKS_BOTTOM_PAD);
+    const infinite = createTimelineRowGeometry([0], baseRows(1), { top: Infinity });
+    expect(infinite.padding.top).toBe(TRACKS_TOP_PAD);
+  });
+
   it("keeps the default pads when a host passes none", () => {
     const defaults = createTimelineRowGeometry([0], baseRows(1));
     expect(defaults.padding).toEqual({ top: TRACKS_TOP_PAD, bottom: TRACKS_BOTTOM_PAD });

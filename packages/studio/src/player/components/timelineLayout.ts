@@ -55,9 +55,8 @@ export function getTimelineLaneTop(laneIndex: number): number {
   return TRACK_H + Math.max(0, Math.trunc(laneIndex)) * LANE_H;
 }
 /**
- * Breathing room INSIDE the scroll area (CapCut-style), threaded through every
- * track-row y computation via {@link getTimelineRowTop} — never inline a magic
- * offset; a track row's top is always ruler + top pad + cumulative row heights.
+ * Default breathing room INSIDE the scroll area (CapCut-style). A host overrides
+ * it per Timeline; rows always read TimelineRowGeometry.padding, never these.
  *
  * - TRACKS_TOP_PAD: empty space between the (sticky) ruler and the first track
  *   (~half a track height) so the first clip isn't jammed under the ruler.
@@ -119,6 +118,10 @@ function validRowHeight(height: number | undefined): number {
   return height;
 }
 
+function validPad(pad: number | undefined, fallback: number): number {
+  return pad !== undefined && Number.isFinite(pad) ? Math.max(0, pad) : fallback;
+}
+
 export interface TimelineRowGeometry {
   readonly rowKeys: readonly number[];
   readonly rowHeights: readonly number[];
@@ -146,11 +149,10 @@ const EMPTY_ROW_HEIGHTS: readonly number[] = Object.freeze([]);
 export function createTimelineRowGeometry(
   rowKeys: readonly number[],
   rowHeights: readonly number[],
-  {
-    top: topPad = TRACKS_TOP_PAD,
-    bottom: bottomPad = TRACKS_BOTTOM_PAD,
-  }: TimelineTrackPadding = {},
+  padding: TimelineTrackPadding = {},
 ): TimelineRowGeometry {
+  const topPad = validPad(padding.top, TRACKS_TOP_PAD);
+  const bottomPad = validPad(padding.bottom, TRACKS_BOTTOM_PAD);
   const heights = Object.freeze(rowHeights.map(validRowHeight));
   const keys = Object.freeze(
     heights.map((_, row) => {
@@ -490,9 +492,8 @@ export function getTimelinePlaybackFollowScrollLeft(input: {
 }
 
 export function getTimelineCanvasHeight(rowHeights: readonly number[]): number {
-  // RULER_H + top pad + lanes + bottom pad. The old TIMELINE_SCROLL_BUFFER is
-  // subsumed by TRACKS_BOTTOM_PAD (which is larger), so the drag-into-void space
-  // below the last lane is real scrollable surface, not a hidden buffer.
+  // RULER_H + top pad + lanes + bottom pad, read from the geometry's padding.
+  // The drag-into-void space below the last lane is real scrollable surface.
   return getTimelineRowGeometry(rowHeights).canvasHeight;
 }
 
