@@ -54,9 +54,8 @@ export interface DomEditOverlayProps {
   groupSelections?: DomEditSelection[];
   hoverSelection: DomEditSelection | null;
   allowCanvasMovement?: boolean;
-  /** With canvasInput "host": false hands a body press to the host untouched; handles still work. */
   allowBodyDrag?: boolean;
-  /** "host": no hover, marquee or box re-select; Enter with nothing focused still opens text. */
+  /** "host": no hover, marquee or box re-select, and allowBodyDrag false hands body presses to the host. */
   canvasInput?: "overlay" | "host";
   onTextEditingChange?: (editing: boolean) => void;
   /** A click on a single selection's box, in either mode; the event may be the pointerup. */
