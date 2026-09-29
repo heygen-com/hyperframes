@@ -1,5 +1,8 @@
 import { describe, expect, it } from "vitest";
 import { patchMediaPlaceholders } from "./initMedia.js";
+import { readdirSync, readFileSync, existsSync } from "node:fs";
+import { join, resolve } from "node:path";
+import { fileURLToPath } from "node:url";
 
 const NEW_TEMPLATE = `<div id="root">
       <video
@@ -104,5 +107,20 @@ describe("patchMediaPlaceholders — legacy remote templates", () => {
     const out = patchMediaPlaceholders(LEGACY_TEMPLATE, { audio: { filename: "track.wav" } });
     expect(out).toMatch(/<audio\b[^>]*src="track\.wav"/);
     expect(out).not.toMatch(/<video\b/);
+  });
+});
+
+describe("registry examples use the audio-on-video form", () => {
+  const examplesDir = resolve(fileURLToPath(import.meta.url), "../../../../../registry/examples");
+  const withVideoSlot = readdirSync(examplesDir)
+    .map((name) => join(examplesDir, name, "index.html"))
+    .filter((file) => existsSync(file) && readFileSync(file, "utf-8").includes("__VIDEO_SRC__"));
+
+  it.each(withVideoSlot)("%s has no muted placeholder video and no __VIDEO_SRC__ audio", (file) => {
+    const html = readFileSync(file, "utf-8");
+    const video = html.match(/<video\b[^>]*src="__VIDEO_SRC__"[^>]*>/)?.[0] ?? "";
+    expect(video).toContain('data-has-audio="true"');
+    expect(video).not.toMatch(/\bmuted\b/);
+    expect(html).not.toMatch(/<audio\b[^>]*src="__VIDEO_SRC__"/);
   });
 });
