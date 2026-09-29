@@ -5,11 +5,13 @@ import { createRoot, type Root } from "react-dom/client";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   hasUnloadedAssets,
+  holdThumbnailsWhilePreviewStalls,
   Player,
   readPreviewErrorMessage,
   shouldShowCompositionLoadingOverlay,
 } from "./Player";
 import { usePlayerStore } from "../store/playerStore";
+import { thumbnailScheduler } from "../lib/thumbnailScheduler";
 
 vi.mock("@hyperframes/player", () => ({}));
 
@@ -96,6 +98,25 @@ function createAudioIframe() {
   iframe.contentDocument?.body.appendChild(audio!);
   return { audio: audio!, iframe };
 }
+
+describe("thumbnails while the preview plays", () => {
+  it("holds them from a media stall until the transport stops, not at a clip's own pause", () => {
+    const { audio, iframe } = createAudioIframe();
+    let playing = true;
+    Object.assign(iframe.contentWindow!, { __player: { isPlaying: () => playing } });
+    const stalled = vi.spyOn(thumbnailScheduler, "setPreviewMediaStalled");
+    holdThumbnailsWhilePreviewStalls(iframe);
+
+    audio.dispatchEvent(new Event("waiting"));
+    expect(stalled).toHaveBeenLastCalledWith(iframe, true);
+    audio.dispatchEvent(new Event("pause"));
+    expect(stalled).toHaveBeenLastCalledWith(iframe, true);
+    playing = false;
+    audio.dispatchEvent(new Event("pause"));
+    expect(stalled).toHaveBeenLastCalledWith(iframe, false);
+    stalled.mockRestore();
+  });
+});
 
 describe("preview errors", () => {
   it("reads the player probe error for the visible retry state", () => {

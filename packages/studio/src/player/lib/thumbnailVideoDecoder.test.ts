@@ -18,7 +18,13 @@ vi.mock("mediabunny", () => ({
   },
   Input: class {
     getPrimaryVideoTrack = input.getPrimaryVideoTrack;
-    dispose = input.dispose;
+    private disposed = false;
+    // Idempotent, as mediabunny's own Input.dispose is.
+    dispose = () => {
+      if (this.disposed) return;
+      this.disposed = true;
+      input.dispose();
+    };
   },
   CanvasSink: class {
     canvasesAtTimestamps = canvasesAtTimestamps;
@@ -84,6 +90,16 @@ describe("decodeVideoThumbnail", () => {
     result.dispose?.();
     result.dispose?.();
     expect(URL.revokeObjectURL).toHaveBeenCalledTimes(2);
+    expect(dispose).toHaveBeenCalledTimes(1);
+  });
+
+  it("disposes the input, ending its fetches, as soon as the job is aborted", async () => {
+    input.getPrimaryVideoTrack.mockReturnValue(new Promise(() => {}));
+    const controller = new AbortController();
+    void decodeVideoThumbnail({ source: "/clip.mp4", frameCount: 2 }, controller.signal);
+    await vi.waitFor(() => expect(input.getPrimaryVideoTrack).toHaveBeenCalled());
+    expect(dispose).not.toHaveBeenCalled();
+    controller.abort();
     expect(dispose).toHaveBeenCalledTimes(1);
   });
 

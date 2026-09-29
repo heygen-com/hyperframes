@@ -186,6 +186,54 @@ describe("ThumbnailScheduler", () => {
     });
   });
 
+  it("holds all work while a playing preview stalls and re-runs what it preempted", async () => {
+    const scheduler = new ThumbnailScheduler();
+    const signals: AbortSignal[] = [];
+    const video = vi.fn((signal: AbortSignal) => {
+      signals.push(signal);
+      return new Promise<ThumbnailLoadedResult>((resolve, reject) => {
+        signal.addEventListener("abort", () => reject(new DOMException("Aborted", "AbortError")));
+        if (signals.length > 1) resolve(result("strip"));
+      });
+    });
+    const image = vi.fn(async () => result("still"));
+    const strip = request("strip", video, "visible", { kind: "video" });
+    const live = {};
+    const shadow = {};
+
+    scheduler.acquire(strip, vi.fn());
+    scheduler.setPreviewMediaStalled(live, true);
+    scheduler.setPreviewMediaStalled(shadow, true);
+    await flush();
+    expect(signals[0]?.aborted).toBe(true);
+    scheduler.acquire(request("still", image), vi.fn());
+    scheduler.setPreviewMediaStalled(live, false);
+    await flush();
+    expect(image).not.toHaveBeenCalled();
+    expect(video).toHaveBeenCalledTimes(1);
+
+    scheduler.setPreviewMediaStalled(shadow, false);
+    await flush();
+    expect(image).toHaveBeenCalledTimes(1);
+    expect(video).toHaveBeenCalledTimes(2);
+    expect(scheduler.getSnapshot(strip)).toMatchObject({ status: "ready" });
+  });
+
+  it("re-runs a preempted job even when its loader ignores the abort", async () => {
+    const scheduler = new ThumbnailScheduler(
+      resolveTimelineViewportBudgets({ concurrentVideoDecodes: 1 }),
+    );
+    const stuck = vi.fn(() => new Promise<ThumbnailLoadedResult>(() => {}));
+    const preview = {};
+    scheduler.acquire(request("stuck", stuck, "visible", { kind: "video" }), vi.fn());
+
+    scheduler.setPreviewMediaStalled(preview, true);
+    await flush();
+    scheduler.setPreviewMediaStalled(preview, false);
+    await flush();
+    expect(stuck).toHaveBeenCalledTimes(2);
+  });
+
   it("aborts queued and active jobs after the final release", async () => {
     const scheduler = new ThumbnailScheduler(
       resolveTimelineViewportBudgets({ concurrentVideoDecodes: 1 }),
