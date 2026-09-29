@@ -25,6 +25,7 @@ import {
   carverAgainst,
   collectCarveCandidates,
   CARVE_ABORTED,
+  isCarveVoiceElement,
   isPromiseLike,
   resolveNextCarveSettings,
 } from "./useFxCarveGrouping.js";
@@ -101,7 +102,7 @@ function resolveCarveVoices(doc: Document, sources: readonly string[]): CarveCli
     // By tag name, not `instanceof HTMLAudioElement`: these elements belong to
     // the composition's iframe document, so the constructor they were made
     // from is not this realm's and the instanceof is false for every one.
-    if (el?.tagName !== "AUDIO") continue;
+    if (!isCarveVoiceElement(el)) continue;
     const src = el.getAttribute("src");
     if (!src) continue;
     const clock = readClipClock((name) => el.getAttribute(name));
@@ -179,7 +180,7 @@ export function useFxCarve(
   } => {
     const doc = element.element?.ownerDocument;
     if (!doc || !couldBeBed) return { sourceOptions: [], autoSourceIds: [] };
-    const others = Array.from(doc.querySelectorAll<HTMLAudioElement>("audio[id]")).filter(
+    const others = Array.from(doc.querySelectorAll("audio[id], video[id]")).filter(
       (a) => a.id !== element.id,
     );
     // Only tracks that are actually playing while this bed is. A voice somewhere
