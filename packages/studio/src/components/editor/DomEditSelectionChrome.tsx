@@ -107,7 +107,7 @@ export function DomEditGroupChrome({
         onPointerDown={(e) => {
           if (!canManipulate || e.shiftKey) return;
           if (!allowBodyDrag) {
-            gestures.startStillPress(e);
+            gestures.startStillGroupPress(e);
             return;
           }
           gestures.startGroupDrag(e);

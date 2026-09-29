@@ -224,6 +224,7 @@ describe("DomEditSelectionChrome with body drag off", () => {
     startGesture: vi.fn(),
     startGroupDrag: vi.fn(),
     startStillPress: vi.fn(),
+    startStillGroupPress: vi.fn(),
     startBlockedMove: vi.fn(),
   });
   const press = (el: Element) =>
@@ -307,7 +308,7 @@ describe("DomEditSelectionChrome with body drag off", () => {
       );
     });
     press(host.querySelector('[data-dom-edit-selection-box="true"]')!);
-    expect(gestures.startStillPress).toHaveBeenCalledTimes(1);
+    expect(gestures.startStillGroupPress).toHaveBeenCalledTimes(1);
     expect(gestures.startGroupDrag).not.toHaveBeenCalled();
     act(() => root.unmount());
   });
