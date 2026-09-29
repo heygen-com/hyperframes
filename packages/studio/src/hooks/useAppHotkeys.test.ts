@@ -60,6 +60,36 @@ afterEach(() => {
   });
 });
 
+describe("dispatchPlainKey — select leftward / rightward", () => {
+  const clips = [
+    { ...bgmElement, id: "early", key: "early", start: 0, track: 0 },
+    { ...bgmElement, id: "at", key: "at", start: 4, track: 1 },
+    { ...bgmElement, id: "late", key: "late", start: 7, track: 2 },
+  ];
+  beforeEach(() => usePlayerStore.setState({ elements: clips, currentTime: 4 }));
+
+  it("[ selects every clip starting before the playhead, on every track", () => {
+    const event = press("[");
+    dispatchPlainKey(event, "[", callbacks());
+    expect([...usePlayerStore.getState().selectedElementIds]).toEqual(["early"]);
+    expect(event.defaultPrevented).toBe(true);
+  });
+
+  it("] selects every clip starting at or after the playhead, on every track", () => {
+    dispatchPlainKey(press("]"), "]", callbacks());
+    const { selectedElementIds, selectedElementId } = usePlayerStore.getState();
+    expect([...selectedElementIds].sort()).toEqual(["at", "late"]);
+    expect(selectedElementId).toBe("at");
+  });
+
+  it("selects nothing when no clip is on that side", () => {
+    usePlayerStore.setState({ currentTime: 0 });
+    dispatchPlainKey(press("["), "[", callbacks());
+    expect(usePlayerStore.getState().selectedElementIds.size).toBe(0);
+    expect(usePlayerStore.getState().selectedElementId).toBeNull();
+  });
+});
+
 describe("dispatchPlainKey — Delete arbitration", () => {
   const selectBgm = () =>
     usePlayerStore.setState({ elements: [bgmElement], selectedElementId: "bgm" });

@@ -39,6 +39,10 @@ export interface SelectElementOptions {
   preserveSet?: boolean;
 }
 
+function selectClipsWhere(elements: TimelineElement[], keep: (el: TimelineElement) => boolean) {
+  return resolveElementSelection(elements.filter(keep).map((el) => el.key ?? el.id));
+}
+
 function resolveElementSelection(
   ids: Iterable<string>,
   anchor?: string | null,
@@ -96,6 +100,10 @@ interface PlayerState extends PlayerStoreSlices {
 
   activeTool: TimelineTool;
   setActiveTool: (tool: TimelineTool) => void;
+  /** Select every clip, on every track, that starts before the playhead. */
+  selectLeftward: () => void;
+  /** Select every clip, on every track, that starts at or after the playhead. */
+  selectRightward: () => void;
 
   /** Tween-relative percentage of the last-clicked keyframe diamond. Operations
    *  (drag, resize, rotate) target this instead of recomputing from playhead. */
@@ -273,6 +281,9 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
 
   activeTool: "select",
   setActiveTool: (tool) => set({ activeTool: tool }),
+  selectLeftward: () => set((s) => selectClipsWhere(s.elements, (el) => el.start < s.currentTime)),
+  selectRightward: () =>
+    set((s) => selectClipsWhere(s.elements, (el) => el.start >= s.currentTime)),
 
   ...createKeyframeSlice(set, () => ({
     timelineProjectId: get().timelineProjectId,

@@ -207,6 +207,14 @@ export function dispatchPlainKey(event: KeyboardEvent, key: string, cb: HotkeyCa
     return;
   }
 
+  if ((key === "[" || key === "]") && !event.shiftKey && !event.altKey) {
+    event.preventDefault();
+    const store = usePlayerStore.getState();
+    if (key === "[") store.selectLeftward();
+    else store.selectRightward();
+    return;
+  }
+
   // CapCut returns to the select tool with "A". Scoped to the razor being
   // armed; usePlaybackKeyboard.ts's own "A" (seek to in-point) checks the
   // same activeTool to stay out of the way.
