@@ -1,6 +1,6 @@
 // @vitest-environment happy-dom
 
-import { act } from "react";
+import { act, useRef } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { liveTime, usePlayerStore, type ZoomMode } from "../store/playerStore";
@@ -36,11 +36,13 @@ function Harness({
   dragging = false,
   zoomMode = "manual",
 }: HarnessProps) {
+  const scrollRef = useRef(scroll);
+  const durationRef = useRef(60);
   useTimelinePlayhead({
     playheadRef: { current: document.createElement("div") },
-    scrollRef: { current: scroll },
+    scrollRef,
     ppsRef: { current: pps },
-    durationRef: { current: 60 },
+    durationRef,
     isDragging: { current: dragging },
     currentTime: 0,
     zoomMode,
@@ -123,6 +125,15 @@ describe("useTimelinePlayhead zoom anchor", () => {
     expect(scroll.scrollLeft).toBe(0);
   });
 
+  it("keeps the centre on a resize after a toolbar zoom that hit the zoom limit", () => {
+    usePlayerStore.setState({ currentTime: 6 });
+    const scroll = scrollBox(400);
+    const update = mount({ pps: 100, scroll });
+    update({}, true);
+    update({ pps: 200 });
+    expect(scroll.scrollLeft).toBe(1168);
+  });
+
   it("brings an off-screen playhead into view when the toolbar zooms", () => {
     usePlayerStore.setState({ currentTime: 30 });
     const scroll = scrollBox(0);
@@ -180,6 +191,20 @@ describe("useTimelinePlayhead follow while paused", () => {
     act(() => liveTime.notify(30));
     scroll.scrollLeft = 0;
     act(() => liveTime.notify(30));
+    expect(scroll.scrollLeft).toBe(0);
+  });
+
+  it("keeps a person's scroll when a reload follows a keyboard pause", () => {
+    const scroll = scrollBox(0);
+    mount({ pps: 100, scroll });
+    act(() => usePlayerStore.setState({ isPlaying: true }));
+    act(() => liveTime.notify(30));
+    act(() => {
+      usePlayerStore.getState().setCurrentTime(30.012);
+      usePlayerStore.setState({ isPlaying: false });
+    });
+    scroll.scrollLeft = 0;
+    act(() => liveTime.notify(30.012));
     expect(scroll.scrollLeft).toBe(0);
   });
 
