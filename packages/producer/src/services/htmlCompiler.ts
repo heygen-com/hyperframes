@@ -11,7 +11,7 @@
  */
 
 import { createHash } from "node:crypto";
-import { createReadStream, existsSync, mkdirSync, readFileSync, statSync } from "fs";
+import { createReadStream, existsSync, mkdirSync, readFileSync } from "fs";
 import { join, dirname, resolve, basename, relative } from "path";
 import { parseHTML } from "linkedom";
 import {
@@ -53,7 +53,10 @@ import {
   checkSubCompositionUsability,
   type ParsableDocumentLike,
 } from "@hyperframes/parsers/sub-composition-validity";
-import { isUnresolvedAssetPlaceholder } from "@hyperframes/parsers/asset-resolution";
+import {
+  isUnresolvedAssetPlaceholder,
+  readProjectFile,
+} from "@hyperframes/parsers/asset-resolution";
 import { extractMediaMetadata, extractAudioMetadata } from "../utils/ffprobe.js";
 import { isPathInside, toExternalAssetKey } from "../utils/paths.js";
 import { collectRenderMedia } from "./renderMediaCollector.js";
@@ -114,9 +117,6 @@ export interface CompiledComposition {
 }
 
 const INFERRED_MEDIA_DURATION_ATTR = "data-hf-inferred-duration";
-
-const isRegularFile = (path: string) =>
-  statSync(path, { throwIfNoEntry: false })?.isFile() ?? false;
 
 /** Adapts linkedom's `parseHTML` to the `checkSubCompositionUsability` contract. */
 function parseSubCompHtmlForValidity(html: string): ParsableDocumentLike {
@@ -209,16 +209,17 @@ function assertSubCompositionsUsable(
     // silence here rather than pretend it surfaces an error somewhere else.
     if (visited.has(filePath)) continue;
 
-    if (!existsSync(filePath)) {
+    const read = readProjectFile(filePath);
+    if (read.kind === "missing") {
       problems.push({ srcPath, detail: "the file does not exist" });
       continue;
     }
-    if (!isRegularFile(filePath)) {
+    if (read.kind === "folder") {
       problems.push({ srcPath, detail: "it is a folder, not an HTML file" });
       continue;
     }
 
-    const fileHtml = readFileSync(filePath, "utf-8");
+    const fileHtml = read.text;
     const validity = checkSubCompositionUsability(fileHtml, parseSubCompHtmlForValidity);
     if (!validity.ok) {
       problems.push({
@@ -712,11 +713,12 @@ async function parseSubCompositions(
       continue;
     }
 
-    if (!isRegularFile(filePath)) {
+    const read = readProjectFile(filePath);
+    if (read.kind !== "file") {
       continue;
     }
 
-    const rawSubHtml = readFileSync(filePath, "utf-8");
+    const rawSubHtml = read.text;
     const nestedVisited = new Set(visited);
     nestedVisited.add(filePath);
 
@@ -990,10 +992,8 @@ function inlineSubCompositions(
       resolveHtml: (srcPath: string) => {
         let compHtml = subCompositions.get(srcPath) || null;
         if (!compHtml) {
-          const filePath = resolve(projectDir, srcPath);
-          if (isRegularFile(filePath)) {
-            compHtml = readFileSync(filePath, "utf-8");
-          }
+          const read = readProjectFile(resolve(projectDir, srcPath));
+          if (read.kind === "file") compHtml = read.text;
         }
         return compHtml;
       },

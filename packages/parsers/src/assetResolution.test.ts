@@ -7,6 +7,7 @@ import {
   isUnresolvedAssetPlaceholder,
   isWithinProjectRoot,
   maskNonScannableRanges,
+  readProjectFile,
   resolveProjectRelativeSrc,
 } from "./assetResolution.js";
 
@@ -263,5 +264,28 @@ describe("isWithinProjectRoot", () => {
 
   it("allows the root itself", () => {
     expect(isWithinProjectRoot("/project", "/project", posix)).toBe(true);
+  });
+});
+
+describe("readProjectFile", () => {
+  let dir: string;
+  beforeAll(() => {
+    dir = mkdtempSync(join(tmpdir(), "hf-read-project-file-"));
+    writeFileSync(join(dir, "scene.html"), "<div></div>");
+    mkdirSync(join(dir, "intro"));
+  });
+  afterAll(() => rmSync(dir, { recursive: true, force: true }));
+
+  it("reads a file's text", () => {
+    expect(readProjectFile(join(dir, "scene.html"))).toEqual({ kind: "file", text: "<div></div>" });
+  });
+
+  it("names a folder instead of throwing EISDIR", () => {
+    expect(readProjectFile(join(dir, "intro"))).toEqual({ kind: "folder" });
+  });
+
+  it("reports a missing path, including one under a file", () => {
+    expect(readProjectFile(join(dir, "gone.html"))).toEqual({ kind: "missing" });
+    expect(readProjectFile(join(dir, "scene.html", "inner.html"))).toEqual({ kind: "missing" });
   });
 });

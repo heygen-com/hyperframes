@@ -1,6 +1,7 @@
 import { defineCommand } from "citty";
 import type { Example } from "./_examples.js";
-import { readFileSync, statSync } from "node:fs";
+import { readFileSync } from "node:fs";
+import { readProjectFile } from "@hyperframes/parsers/asset-resolution";
 import { resolve, dirname } from "node:path";
 
 export const examples: Example[] = [
@@ -64,9 +65,9 @@ export function parseCompositions(html: string, baseDir: string): CompositionInf
     // If this references an external sub-composition, parse that file
     if (compositionSrc) {
       const subPath = resolve(baseDir, compositionSrc);
-      if (statSync(subPath, { throwIfNoEntry: false })?.isFile()) {
-        const subHtml = readFileSync(subPath, "utf-8");
-        const subInfo = parseSubComposition(subHtml, id, width, height);
+      const sub = readProjectFile(subPath);
+      if (sub.kind === "file") {
+        const subInfo = parseSubComposition(sub.text, id, width, height);
         compositions.push({ ...subInfo, source: compositionSrc });
         return;
       }

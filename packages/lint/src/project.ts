@@ -1,6 +1,6 @@
 export { shouldBlockRender } from "./shouldBlockRender.js";
 import { createHash } from "node:crypto";
-import { existsSync, readFileSync, readdirSync, statSync } from "node:fs";
+import { existsSync, readFileSync, readdirSync } from "node:fs";
 import { dirname, extname, join, relative, resolve } from "node:path";
 import { rewriteAssetPath } from "@hyperframes/parsers/asset-paths";
 import { checkSubCompositionUsability } from "@hyperframes/parsers/sub-composition-validity";
@@ -12,6 +12,7 @@ import {
   isUnresolvedAssetPlaceholder,
   isWithinProjectRoot,
   maskNonScannableRanges,
+  readProjectFile,
   resolveExistingLocalAsset,
   resolveLocalAssetCandidates,
   resolveProjectRelativeSrc,
@@ -636,13 +637,14 @@ function lintMissingOrEmptySubComposition(
       if (visited.has(filePath)) continue;
       visited.add(filePath);
 
-      if (!existsSync(filePath)) {
+      const read = readProjectFile(filePath);
+      if (read.kind === "missing") {
         if (!checked.has(srcPath)) {
           checked.set(srcPath, { srcPath, problem: "the file does not exist" });
         }
         continue;
       }
-      if (!statSync(filePath).isFile()) {
+      if (read.kind === "folder") {
         if (!checked.has(srcPath)) {
           checked.set(srcPath, {
             srcPath,
@@ -653,7 +655,7 @@ function lintMissingOrEmptySubComposition(
         continue;
       }
 
-      const fileHtml = readFileSync(filePath, "utf-8");
+      const fileHtml = read.text;
       const validity = checkSubCompositionUsability(fileHtml, parseSubCompHtml);
       if (!validity.ok) {
         if (!checked.has(srcPath)) {
