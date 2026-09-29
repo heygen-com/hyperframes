@@ -5,6 +5,7 @@ import {
   resolveTimelineMinDuration,
 } from "./timelineGroupEditing";
 import type { TimelineElement } from "../store/playerStore";
+import { clampToHostStart } from "../store/timelineElement";
 import {
   getTimelineInsertBoundaryBand,
   getTimelineRowFromY,
@@ -293,7 +294,7 @@ export function computeResizePreview(
       duration: resize.element.duration,
       originClientX: resize.originClientX,
       pixelsPerSecond: pps,
-      minStart: 0,
+      minStart: clampToHostStart(resize.element, 0),
       maxEnd,
       playbackStart:
         resize.edge === "start" && canSeedPlaybackStart
@@ -336,7 +337,8 @@ export function computeResizePreview(
       const { time: snapped, target } = snapTimelineTime(nextResize.start, trimTargets, snapSecs);
       const clip = { ...nextResize, playbackRate: resize.element.playbackRate };
       const delta = snapped - nextResize.start;
-      const bounds = clipStartTrimDeltaBounds(clip, 0, resolveTimelineMinDuration());
+      const floor = clampToHostStart(resize.element, 0);
+      const bounds = clipStartTrimDeltaBounds(clip, floor, resolveTimelineMinDuration());
       if (target && delta >= bounds.minDelta - 1e-6 && delta <= bounds.maxDelta + 1e-6) {
         if (snapped !== nextResize.start) nextResize = applyClipStartTrimDelta(clip, delta);
         snap = target;

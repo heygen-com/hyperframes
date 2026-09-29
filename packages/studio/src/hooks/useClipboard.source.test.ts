@@ -364,6 +364,34 @@ describe("duplicate of a clip inside a sub-composition", () => {
     );
     expect(starts.sort()).toEqual(["1", "3"]);
   });
+
+  it("moves the copy off a lane its own file already fills right after the original", async () => {
+    // Host at 10 s: the clip is local 1-3 (master 11-13); its neighbour is local 3-5,
+    // exactly where the copy lands, so the lane check must compare in local time.
+    const sub: TimelineElement = {
+      id: SUB_HF_ID,
+      hfId: SUB_HF_ID,
+      tag: "h2",
+      start: 11,
+      duration: 2,
+      track: 0,
+      authoredTrack: 0,
+      sourceFile: "compositions/sub.html",
+      parentCompositionStart: 10,
+    };
+    const neighbour: TimelineElement = { ...sub, id: "next", hfId: "next", start: 13 };
+    usePlayerStore.setState({
+      elements: [TITLE, sub, neighbour],
+      selectedElementId: sub.id,
+      selectedElementIds: new Set([sub.id]),
+    });
+    const { clipboard, writes } = mountClipboard(null, SUB, (host) =>
+      host.setAttribute("data-start", "10"),
+    );
+    await clipboard().handleDuplicate();
+    const copy = /<h2[^>]*data-start="3"[^>]*>/.exec(writes[0] ?? "")?.[0] ?? "";
+    expect(copy).toContain('data-track-index="1"');
+  });
 });
 
 describe("a copy that fails", () => {
