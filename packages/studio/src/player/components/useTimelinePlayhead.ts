@@ -166,6 +166,7 @@ export function useTimelinePlayhead({
       );
       return true;
     };
+    const dragging = () => isDragging.current || usePlayerStore.getState().beatDragging;
     const unsubPlaying = usePlayerStore.subscribe((state, prev) => {
       if (prev.isPlaying && !state.isPlaying) place(lastLiveTimeRef.current, true);
     });
@@ -179,9 +180,7 @@ export function useTimelinePlayhead({
       const playheadX = contentOriginRef.current + Math.max(0, t) * ppsRef.current;
       const scroll = scrollRef.current;
       // Paused, only a seek scrolls: a reload's republish, frame-rounded, must not undo a person's scroll.
-      if (!scroll || isDragging.current || zoomModeRef.current === "fit" || (!playing && !sought)) {
-        return;
-      }
+      if (!scroll || dragging() || zoomModeRef.current === "fit" || (!playing && !sought)) return;
       const nextScrollLeft = playing
         ? getTimelinePlaybackFollowScrollLeft({
             playheadX,

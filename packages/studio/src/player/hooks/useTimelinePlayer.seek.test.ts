@@ -297,6 +297,16 @@ describe("useTimelinePlayer seek keepPlaying option (#834)", () => {
     unmountWithAct(root);
   });
 
+  it("does not count the audition's return to the paused time as a person's seek", () => {
+    const { api, root } = renderAttachedTimelinePlayer();
+    seekWithAct(api, 4);
+    const seeks = liveTime.seekCount();
+    act(() => usePlayerStore.getState().requestPlayback(false, 2));
+    expect(liveTime.latest()).toBe(2);
+    expect(liveTime.seekCount()).toBe(seeks);
+    unmountWithAct(root);
+  });
+
   it("default seek() clears isPlaying when the store reports playing", () => {
     const { api, root } = renderAttachedTimelinePlayer();
     setStorePlaying();

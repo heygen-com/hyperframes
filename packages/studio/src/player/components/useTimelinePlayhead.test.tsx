@@ -75,7 +75,7 @@ function mount(props: HarnessProps) {
 }
 
 beforeEach(() => {
-  usePlayerStore.setState({ currentTime: 0, isPlaying: false });
+  usePlayerStore.setState({ currentTime: 0, isPlaying: false, beatDragging: false });
 });
 afterEach(() => {
   for (const root of roots.splice(0)) act(() => root.unmount());
@@ -233,6 +233,14 @@ describe("useTimelinePlayhead follow while paused", () => {
   it("does not scroll while the playhead is being dragged", () => {
     const scroll = scrollBox(0);
     mount({ pps: 100, scroll, dragging: true });
+    act(() => liveTime.notifySeek(30));
+    expect(scroll.scrollLeft).toBe(0);
+  });
+
+  it("does not scroll while a beat is being dragged past the edge", () => {
+    usePlayerStore.setState({ beatDragging: true });
+    const scroll = scrollBox(0);
+    mount({ pps: 100, scroll });
     act(() => liveTime.notifySeek(30));
     expect(scroll.scrollLeft).toBe(0);
   });

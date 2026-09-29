@@ -347,7 +347,7 @@ export function useTimelinePlayer({
         if (request.playing) play();
         else {
           pause();
-          if (request.returnTo !== null) seek(request.returnTo);
+          if (request.returnTo !== null) seek(request.returnTo, { restore: true });
         }
         usePlayerStore.getState().clearPlaybackRequest();
       }
