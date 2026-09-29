@@ -1492,6 +1492,21 @@ describe("bundleToSingleHtml", () => {
         { media: null, type: null, css: "p{color:green}" },
       ]);
     });
+
+    it("keeps the untitled copy of a @font-face that a later alternate style repeats", async () => {
+      const face = `@font-face{font-family:"PF";src:url(https://cdn.example/f.woff2)}`;
+      const dir = makeTempProject({
+        "index.html": `<!doctype html>
+<html><head><style>${face}.t{font-family:"PF"}</style><style title="main">.x{}</style>
+<style title="alt">${face}</style></head><body>
+  <div data-composition-id="root" data-width="320" data-height="180"></div>
+  <script>window.__timelines = window.__timelines || {}; window.__timelines.root = {}</script>
+</body></html>`,
+      });
+      const { document } = parseHTML(await bundleToSingleHtml(dir));
+      const untitled = [...document.querySelectorAll("head style:not([title])")];
+      expect(untitled.map((el) => el.textContent).join("")).toContain("@font-face");
+    });
   });
 
   describe("composition links to the same file", () => {

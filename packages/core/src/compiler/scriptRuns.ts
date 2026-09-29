@@ -46,6 +46,9 @@ export function cssStyleMergeKey(el: Element): string | undefined {
   return JSON.stringify([media === "all" ? "" : media, el.getAttribute("title") ?? ""]);
 }
 
+/** The merge key of CSS that applies with no media, title or type condition. */
+export const UNCONDITIONAL_CSS_KEY = JSON.stringify(["", ""]);
+
 /** Links with one key load one resource under one condition, so one can stand in for the other. */
 export function linkDedupeKey(el: Element, href = el.getAttribute("href")): string {
   return JSON.stringify([

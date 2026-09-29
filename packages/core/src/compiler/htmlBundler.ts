@@ -1,6 +1,7 @@
 import {
   compositionStyle,
   cssStyleMergeKey,
+  UNCONDITIONAL_CSS_KEY,
   headStyleRuns,
   inlineScriptRuns,
   styleElementsFor,
@@ -715,12 +716,7 @@ function placeSceneStylesLikeRender(document: Document): void {
 }
 
 function isAlwaysAppliedStyle(el: Element): boolean {
-  const type = el.getAttribute("type")?.trim().toLowerCase();
-  return (
-    !el.hasAttribute("media") &&
-    (!type || type === "text/css") &&
-    !el.closest("template, noscript, svg")
-  );
+  return cssStyleMergeKey(el) === UNCONDITIONAL_CSS_KEY && !el.closest("template, noscript, svg");
 }
 
 type PartRun<T> = { scene?: string; chunks: T[] };
