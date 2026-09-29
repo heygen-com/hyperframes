@@ -95,7 +95,15 @@ describe("Timeline showKeyframes", () => {
       timelineReady: true,
       gsapAnimations: new Map(),
       elements: [
-        { id: "vo", label: "Voice", tag: "audio", start: 0, duration: 4, track: 0, audioGroup: "g" },
+        {
+          id: "vo",
+          label: "Voice",
+          tag: "audio",
+          start: 0,
+          duration: 4,
+          track: 0,
+          audioGroup: "g",
+        },
       ],
     });
     const host = document.createElement("div");
