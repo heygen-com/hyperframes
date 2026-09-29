@@ -479,6 +479,48 @@ describe("computeDragPreview — the ghost start is the committed start", () => 
     });
   });
 
+  describe("a clip released on or near its own spot stays there", () => {
+    // Frame-aligned edges with three decimals: no centisecond start fits m's own slot.
+    const a = clip("a", 0, 0, 3.333, 1);
+    const m = clip("m", 0, 3.333, 3.333, 1);
+    const b = clip("b", 0, 6.666, 4, 1);
+    const row = [a, m, b];
+
+    it("keeps its start and writes nothing when released where it started", () => {
+      const ghost = preview(m, row, 0, 0.5);
+      expect(ghost).toMatchObject({ previewTrack: 0, insertRow: null, previewStart: 3.333 });
+      expect(committedStart(ghost, m, row)).toBeUndefined();
+    });
+
+    it("goes back to its own spot from a small nudge, snapped or not", () => {
+      const snapped = [{ time: 3.333, type: "clip-edge" as const }];
+      for (const targets of [[], snapped]) {
+        const { drag, clientX, clientY } = horizontalDrag(m, 0.5, 0.1);
+        const ghost = computeDragPreview(drag, clientX, clientY, {
+          ...ctx(undefined, row),
+          buildSnapTargets: () => targets,
+        });
+        expect(ghost).toMatchObject({ previewTrack: 0, previewStart: 3.333 });
+      }
+    });
+  });
+
+  it("drops the snap guide when the row moves the clip off the snapped time", () => {
+    const a = clip("a", 0, 0, 6, 1);
+    const b = clip("b", 1, 3, 2, 1);
+    const { drag, clientX } = horizontalDrag(b, 1.5, 0);
+    const ghost = computeDragPreview(drag, clientX, yForRow(0.5), {
+      ...ctx(undefined, [a, b]),
+      buildSnapTargets: () => [{ time: 3, type: "beat" }],
+    });
+    expect(ghost).toMatchObject({
+      previewTrack: 0,
+      previewStart: 6,
+      snapTime: null,
+      snapType: null,
+    });
+  });
+
   it("expanded child dragged with its host: the host keeps its start and the ghost matches", () => {
     for (const [hostStart, childStart] of [
       [30, 32],
@@ -567,6 +609,18 @@ describe("computeDragPreview — a group move keeps its shape", () => {
     const written = groupMove(b, [a, b], new Set(["a", "b"]), 0, -20);
     expect(written.a.start).toBe(0);
     expect(written.b.start).toBeCloseTo(6.667, 6);
+  });
+
+  it("does not treat the clips moving with it as obstacles", () => {
+    const a = clip("a", 0, 0, 2, 1);
+    const b = clip("b", 0, 3, 2, 1);
+    const { drag, clientX, clientY } = horizontalDrag(a, 0.5, 2);
+    const ghost = computeDragPreview(drag, clientX, clientY, {
+      ...ctx(undefined, [a, b]),
+      selectedKeys: new Set(["a", "b"]),
+    });
+    // b moves 2 s too, so a may take 2 to 4 s; were b an obstacle, a would stop at 1 s.
+    expect(ghost).toMatchObject({ previewTrack: 0, previewStart: 2 });
   });
 
   it("treats a locked clip swept into the selection as an obstacle, since it does not move", () => {

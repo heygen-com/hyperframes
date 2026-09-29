@@ -65,9 +65,16 @@ function outOfRangeZoneInsertRow(
 const floorCenti = (v: number) => Math.floor(v * 100 + 1e-6) / 100;
 const ceilCenti = (v: number) => Math.ceil(v * 100 - 1e-6) / 100;
 
+/** Whether `candidate` is nearer `start` than `best`; a tie goes to the later time. */
+const isNearer = (candidate: number, best: number, start: number) => {
+  const gap = Math.abs(candidate - start) - Math.abs(best - start);
+  return gap < 0 || (gap === 0 && candidate > best);
+};
+
 /** The start nearest `start`, not below `minStart`, at which [start, start + duration) overlaps
  *  no clip on `track`. Ties go to the later time. The gap after the row's last clip always fits,
- *  so a row with no gap long enough puts the clip right after its last clip. */
+ *  so a row with no gap long enough puts the clip right after its last clip. `origin` is the
+ *  clip's own start on this track: keeping it rewrites nothing, so it fits between any edges. */
 export function resolveNearestFreeStart(
   elements: readonly TimelineElement[],
   track: number,
@@ -75,6 +82,7 @@ export function resolveNearestFreeStart(
   duration: number,
   excludeKey: string | null,
   minStart = 0,
+  origin: number | null = null,
 ): number {
   const busy = elements
     .filter((el) => (el.key ?? el.id) !== excludeKey && el.track === track)
@@ -89,7 +97,11 @@ export function resolveNearestFreeStart(
     }
     if (el) gapStart = Math.max(gapStart, ceilCenti(el.start + el.duration));
   }
-  return best;
+  if (origin === null || origin < minStart || !isNearer(origin, best, start)) return best;
+  const clear = busy.every(
+    (el) => !timeRangesOverlap(origin, origin + duration, el.start, el.start + el.duration),
+  );
+  return clear ? origin : best;
 }
 
 // Where a dragged clip lands: on the aimed row of its kind, at the nearest free time there. Only an aim outside all
@@ -106,6 +118,8 @@ export function resolveZoneDropPlacement(input: {
   isAudio: boolean;
   /** Lowest start the clip may take (every moving clip stays at or after its host's start). */
   minStart?: number;
+  /** Where the dragged clip sits now. */
+  origin?: { track: number; start: number };
 }): { track: number; insertRow: number | null; start: number } {
   const { order, audioTracks, elements, desiredTrack, deliberateInsertRow } = input;
   const { start, duration, dragKey, isAudio, minStart } = input;
@@ -129,7 +143,16 @@ export function resolveZoneDropPlacement(input: {
         : desiredRow + 1;
     return { track: desired, insertRow, start };
   }
-  const freeStart = resolveNearestFreeStart(elements, desired, start, duration, dragKey, minStart);
+  const origin = input.origin?.track === desired ? input.origin.start : null;
+  const freeStart = resolveNearestFreeStart(
+    elements,
+    desired,
+    start,
+    duration,
+    dragKey,
+    minStart,
+    origin,
+  );
   return { track: desired, insertRow: null, start: freeStart };
 }
 

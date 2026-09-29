@@ -102,6 +102,7 @@ function resolveDropPlacement(
     dragKey,
     isAudio: isAudioTimelineElement(drag.element),
     minStart: group.floor,
+    origin: { track: drag.element.track, start: drag.element.start },
   });
 }
 
@@ -192,8 +193,8 @@ export function computeDragPreview(
     // tell a deliberate vertical lane change from a horizontal drag.
     desiredTrack: nextMove.track,
     insertRow,
-    snapTime: previewStart === snap.start ? snap.snapTime : null,
-    snapType: previewStart === snap.start ? snap.snapType : null,
+    snapTime: placement.start === snap.start ? snap.snapTime : null,
+    snapType: placement.start === snap.start ? snap.snapType : null,
   };
 }
 

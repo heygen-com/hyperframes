@@ -47,6 +47,20 @@ describe("resolveNearestFreeStart", () => {
     expect(resolveNearestFreeStart(row, 1, 3, 4, null)).toBe(3); // another row
   });
 
+  it("keeps the clip's own start between edges no centisecond start fits", () => {
+    const tight = [el("a", 0, 0, 3.333), el("b", 0, 6.666, 4)];
+    expect(resolveNearestFreeStart(tight, 0, 3.333, 3.333, null)).toBe(10.67);
+    expect(resolveNearestFreeStart(tight, 0, 3.333, 3.333, null, 0, 3.333)).toBe(3.333);
+    expect(resolveNearestFreeStart(tight, 0, 3.4, 3.333, null, 0, 3.333)).toBe(3.333);
+  });
+
+  it("takes the clip's own start only when it is free, not below minStart, and nearest", () => {
+    expect(resolveNearestFreeStart(row, 0, 4, 2, null, 0, 3.5)).toBe(5); // nearer, but its own spot overlaps a
+    expect(resolveNearestFreeStart(row, 0, 0, 1, null, 1, 0.5)).toBe(1); // below the floor
+    expect(resolveNearestFreeStart(row, 0, 6, 1, null, 0, 5.5)).toBe(6); // the release time is nearer
+    expect(resolveNearestFreeStart(row, 0, 6.5, 1, null, 0, 6)).toBe(6.5); // nearer again, not the origin
+  });
+
   it("moves an overlapping span to the nearest time it fits", () => {
     expect(resolveNearestFreeStart(row, 0, 4, 2, null)).toBe(5); // 1 s later beats 2 s earlier
     expect(resolveNearestFreeStart(row, 0, 2.2, 1.5, null)).toBe(0.5); // 1.7 s earlier beats 2.8 s later
