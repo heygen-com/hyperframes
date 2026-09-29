@@ -55,6 +55,32 @@ test("falls back to the canonical name (loud failure, unchanged) when nothing ru
   );
 });
 
+// Regression (#4614): on PEP 668 systems the documented setup is a venv named
+// by HYPERFRAMES_PYTHON; the audio engine ignored it and probed the bare
+// system python3, so MusicGen BGM was skipped while `doctor` said installed.
+const VENV = "/home/u/.venvs/hf/bin/python";
+
+test("HYPERFRAMES_PYTHON wins over python3 on PATH when it runs", () => {
+  const env = { HYPERFRAMES_PYTHON: VENV };
+  assert.deepEqual(resolvePythonCommand("darwin", probeFor(VENV, "python3"), env), [VENV]);
+  assert.deepEqual(resolvePythonCommand("win32", probeFor(VENV, "python", "py"), env), [VENV]);
+});
+
+test("a HYPERFRAMES_PYTHON that doesn't run falls through to the PATH probe", () => {
+  const env = { HYPERFRAMES_PYTHON: "/nope/python" };
+  assert.deepEqual(resolvePythonCommand("linux", probeFor("python3"), env), ["python3"]);
+});
+
+test("an empty HYPERFRAMES_PYTHON is ignored without being probed", () => {
+  const seen = [];
+  const probe = (cmd) => {
+    seen.push(cmd);
+    return cmd === "python3";
+  };
+  assert.deepEqual(resolvePythonCommand("linux", probe, { HYPERFRAMES_PYTHON: "" }), ["python3"]);
+  assert.deepEqual(seen, ["python3"]);
+});
+
 test("pythonInvocation prepends the resolved prefix ahead of caller args", () => {
   assert.deepEqual(pythonInvocation(["-c", "import x"], ["python"]), {
     cmd: "python",
