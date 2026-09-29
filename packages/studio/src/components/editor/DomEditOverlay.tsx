@@ -89,7 +89,10 @@ export interface DomEditOverlayProps {
     offset?: { x: number; y: number },
     restore?: () => void,
   ) => Promise<unknown> | void;
-  onRotationCommit: (selection: DomEditSelection, next: { angle: number }) => Promise<unknown> | void;
+  onRotationCommit: (
+    selection: DomEditSelection,
+    next: { angle: number },
+  ) => Promise<unknown> | void;
   onStyleCommit?: (property: string, value: string) => Promise<unknown> | void;
   recordingState?: GestureRecordingState;
   onToggleRecording?: () => void;

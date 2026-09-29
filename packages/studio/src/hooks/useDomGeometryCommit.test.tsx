@@ -17,7 +17,7 @@ vi.mock("../utils/studioTelemetry", () => ({ trackStudioEvent: vi.fn() }));
 const SOURCE = '<div id="card">Card</div><div id="other">Other</div>';
 
 /** A warm parse where only another element animates, and a GSAP writer answering `status`. */
-function stubServer(status = 200) {
+function stubServer(status = 200, parseStatus = 200) {
   const mutations: unknown[] = [];
   vi.stubGlobal(
     "fetch",
@@ -29,6 +29,7 @@ function stubServer(status = 200) {
           headers: { "content-type": "application/json" },
         });
       if (url.includes("/api/projects/p1/gsap-animations/")) {
+        if (parseStatus !== 200) return json({ error: "down" }, parseStatus);
         return json({
           animations: [
             {
@@ -62,15 +63,17 @@ function renderHost(options: Partial<UseDomGeometryCommitOptions> = {}) {
   doc.body.innerHTML = SOURCE;
   const element = doc.getElementById("card") as HTMLElement;
   const recordEdit = vi.fn(async () => {});
+  const writeProjectFile = vi.fn(async () => {});
+  const reloadPreview = vi.fn();
   const api: { current: ReturnType<typeof useDomGeometryCommit> | null } = { current: null };
   function Host() {
     const iframeRef = useRef<HTMLIFrameElement | null>(iframe);
     api.current = useDomGeometryCommit({
       projectId: "p1",
       iframeRef,
-      writeProjectFile: vi.fn(async () => {}),
+      writeProjectFile,
       recordEdit,
-      reloadPreview: vi.fn(),
+      reloadPreview,
       ...options,
     });
     return null;
@@ -81,7 +84,13 @@ function renderHost(options: Partial<UseDomGeometryCommitOptions> = {}) {
     if (!api.current) throw new Error("Expected the hook to render");
     return api.current;
   };
-  return { element, recordEdit, hook, unmount: () => act(() => root.unmount()) };
+  return {
+    element,
+    recordEdit,
+    hook,
+    rerender: () => act(() => root.render(createElement(Host))),
+    unmount: () => act(() => root.unmount()),
+  };
 }
 
 beforeEach(() => {
@@ -123,6 +132,16 @@ describe("useDomGeometryCommit, from the package entry", () => {
     unmount();
   });
 
+  it("keeps the same commits across renders, so the overlay's handlers stay put", () => {
+    stubServer();
+    const { hook, rerender, unmount } = renderHost();
+    const first = hook();
+    rerender();
+    expect(hook().commitPathOffset).toBe(first.commitPathOffset);
+    expect(hook().commitRotation).toBe(first.commitRotation);
+    unmount();
+  });
+
   it("rejects a move the server refuses, so the overlay undoes it", async () => {
     stubServer(500);
     const showToast = vi.fn();
@@ -133,6 +152,49 @@ describe("useDomGeometryCommit, from the package entry", () => {
     ).rejects.toThrow();
     expect(recordEdit).not.toHaveBeenCalled();
     expect(showToast).toHaveBeenCalledWith(expect.any(String), "error");
+    unmount();
+  });
+
+  it("undoes a resize whose animations cannot be read, and saves nothing", async () => {
+    const mutations = stubServer(200, 500);
+    const showToast = vi.fn();
+    const restore = vi.fn();
+    const { element, recordEdit, hook, unmount } = renderHost({ showToast });
+
+    await expect(
+      hook().commitBoxSize(makeSelection("card", element), { width: 300, height: 90 }, undefined, restore),
+    ).rejects.toThrow();
+    expect(restore).toHaveBeenCalledTimes(1);
+    expect(showToast).toHaveBeenCalledWith(expect.any(String), "error");
+    expect(mutations).toHaveLength(0);
+    expect(recordEdit).not.toHaveBeenCalled();
+    unmount();
+  });
+
+  it("refuses at once when the player store has no timeline session for the project", async () => {
+    const mutations = stubServer();
+    usePlayerStore.setState({ timelineProjectId: "another-project" });
+    const restore = vi.fn();
+    const { element, hook, unmount } = renderHost();
+
+    await expect(
+      hook().commitBoxSize(makeSelection("card", element), { width: 300, height: 90 }, undefined, restore),
+    ).rejects.toThrow("no timeline session");
+    expect(restore).toHaveBeenCalledTimes(1);
+    expect(mutations).toHaveLength(0);
+    unmount();
+  });
+
+  it("waits for a move still being saved", async () => {
+    const mutations = stubServer();
+    const { element, recordEdit, hook, unmount } = renderHost();
+
+    const move = hook().commitPathOffset(makeSelection("card", element), { x: 40, y: 20 });
+    await hook().waitForPendingSaves();
+
+    expect(mutations).toHaveLength(1);
+    expect(recordEdit).toHaveBeenCalledTimes(1);
+    await move;
     unmount();
   });
 
