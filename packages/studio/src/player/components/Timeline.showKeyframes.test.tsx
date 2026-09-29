@@ -15,14 +15,36 @@ afterEach(() => {
   document.body.innerHTML = "";
 });
 
-async function diamondCount(showKeyframes?: boolean) {
+async function mountKeyframed(showKeyframes?: boolean) {
   usePlayerStore.setState({
     duration: 10,
     currentTime: 0,
     timelineReady: true,
     selectedElementId: "card",
-    elements: [{ id: "card", tag: "div", start: 0, duration: 4, track: 0 }],
-    gsapAnimations: new Map(),
+    elements: [{ id: "card", label: "Hero card", tag: "div", start: 0, duration: 4, track: 0 }],
+    gsapAnimations: new Map([
+      [
+        "card",
+        [
+          {
+            id: "card-position",
+            targetSelector: "#card",
+            method: "to",
+            position: 0,
+            duration: 2,
+            properties: {},
+            propertyGroup: "position",
+            keyframes: {
+              format: "percentage",
+              keyframes: [
+                { percentage: 0, properties: { x: 0 } },
+                { percentage: 50, properties: { x: 100 } },
+              ],
+            },
+          },
+        ],
+      ],
+    ]),
     keyframeCache: new Map([
       [
         "card",
@@ -37,17 +59,31 @@ async function diamondCount(showKeyframes?: boolean) {
   document.body.append(host);
   const root = createRoot(host);
   await act(async () => root.render(<Timeline showKeyframes={showKeyframes} />));
-  const count = host.querySelectorAll('button[title="50%"]').length;
+  const diamonds = host.querySelectorAll('button[title="50%"]').length;
+  const named = Array.from(host.querySelectorAll("[role=rowheader]")).some((h) =>
+    h.textContent?.includes("Hero card"),
+  );
+  const lanes = host.textContent?.includes("Position") ?? false;
   act(() => root.unmount());
-  return count;
+  return { diamonds, named, lanes };
 }
 
 describe("Timeline showKeyframes", () => {
   it("draws a keyframed clip's diamonds by default", async () => {
-    expect(await diamondCount()).toBeGreaterThan(0);
+    expect((await mountKeyframed()).diamonds).toBeGreaterThan(0);
   });
 
   it("draws no keyframe diamonds when the host turns keyframes off", async () => {
-    expect(await diamondCount(false)).toBe(0);
+    expect((await mountKeyframed(false)).diamonds).toBe(0);
+  });
+
+  it("draws the keyframe lanes by default and none when keyframes are off", async () => {
+    expect((await mountKeyframed()).lanes).toBe(true);
+    expect((await mountKeyframed(false)).lanes).toBe(false);
+  });
+
+  it("keeps each track's name in the header when keyframes are off", async () => {
+    expect((await mountKeyframed()).named).toBe(true);
+    expect((await mountKeyframed(false)).named).toBe(true);
   });
 });

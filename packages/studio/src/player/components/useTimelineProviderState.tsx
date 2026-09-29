@@ -107,7 +107,8 @@ export function useTimelineProviderState({
   const selectedElementIds = usePlayerStore((s) => s.selectedElementIds);
   const focusedEaseSegment = usePlayerStore((s) => s.focusedEaseSegment);
   const { gsapAnimations, keyframeCache } = useTimelineKeyframeData(showKeyframes);
-  const { labelMode, contentOrigin } = useTimelineLabelColumn(gsapAnimations, timelineElements);
+  const namedAnimations = usePlayerStore((s) => s.gsapAnimations);
+  const { labelMode, contentOrigin } = useTimelineLabelColumn(namedAnimations, timelineElements);
   const setSelectedElementId = usePlayerStore((s) => s.setSelectedElementId);
   const currentTime = usePlayerStore((s) => s.currentTime);
   const beatDragging = usePlayerStore((s) => s.beatDragging);
