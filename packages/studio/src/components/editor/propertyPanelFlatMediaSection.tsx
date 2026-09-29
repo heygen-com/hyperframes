@@ -373,7 +373,11 @@ export function FlatMediaSection({
           <FlatToggle
             label="Muted"
             checked={hasMuted}
-            onChange={(next) => void onSetHtmlAttribute("muted", next ? "true" : null)}
+            onChange={(next) => {
+              void onSetHtmlAttribute("muted", next ? "true" : null);
+              // A video's sound lives on the clip: muting drops has-audio, unmuting restores it.
+              if (isVideo) void onSetAttribute("has-audio", next ? "" : "true");
+            }}
           />
           {isVideo && (
             <FlatToggle

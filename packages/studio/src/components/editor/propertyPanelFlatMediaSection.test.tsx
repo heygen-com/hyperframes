@@ -711,3 +711,139 @@ function typeInto(input: HTMLInputElement, value: string) {
   setter?.call(input, value);
   input.dispatchEvent(new Event("input", { bubbles: true }));
 }
+
+type PanelKind = "flat" | "design";
+
+function mountPanel(
+  kind: PanelKind,
+  element: DomEditSelection,
+  handlers: {
+    onSetAttribute: (name: string, value: string) => void;
+    onSetHtmlAttribute: (name: string, value: string | null) => void;
+    onRemoveBackground?: () => Promise<{ outputPath: string }>;
+  },
+) {
+  const host = document.createElement("div");
+  document.body.append(host);
+  const root = createRoot(host);
+  const Panel = kind === "flat" ? FlatMediaSection : MediaSection;
+  act(() => {
+    root.render(
+      <Panel projectDir={null} element={element} styles={{}} onSetStyle={vi.fn()} {...handlers} />,
+    );
+  });
+  return { host, root };
+}
+
+function clickMuted(kind: PanelKind, host: HTMLElement, next: "on" | "off") {
+  if (kind === "flat") {
+    const toggle = host.querySelector<HTMLButtonElement>(
+      '[data-flat-toggle="true"][aria-label="Muted"]',
+    );
+    act(() => toggle?.dispatchEvent(new MouseEvent("click", { bubbles: true })));
+    return;
+  }
+  const row = Array.from(host.querySelectorAll("span")).find(
+    (n) => n.textContent === "Muted",
+  )?.parentElement;
+  const label = next === "on" ? "On" : "Off";
+  const button = Array.from(row?.querySelectorAll("button") ?? []).find(
+    (b) => b.textContent === label,
+  );
+  if (!button) throw new Error("expected Muted segmented button");
+  act(() => button.dispatchEvent(new MouseEvent("click", { bubbles: true })));
+}
+
+describe.each<PanelKind>(["flat", "design"])("%s panel — Muted keeps has-audio in step", (kind) => {
+  it("video Muted -> On clears has-audio", () => {
+    const onSetAttribute = vi.fn();
+    const onSetHtmlAttribute = vi.fn();
+    const element = makeVideoElement({ dataAttributes: { "has-audio": "true" } });
+    const { host, root } = mountPanel(kind, element, { onSetAttribute, onSetHtmlAttribute });
+    clickMuted(kind, host, "on");
+    expect(onSetHtmlAttribute).toHaveBeenCalledWith("muted", "true");
+    expect(onSetAttribute).toHaveBeenCalledWith("has-audio", "");
+    act(() => root.unmount());
+  });
+
+  it("video Muted -> Off sets has-audio true", () => {
+    const onSetAttribute = vi.fn();
+    const onSetHtmlAttribute = vi.fn();
+    const element = makeVideoElement();
+    element.element.setAttribute("muted", "");
+    const { host, root } = mountPanel(kind, element, { onSetAttribute, onSetHtmlAttribute });
+    clickMuted(kind, host, "off");
+    expect(onSetHtmlAttribute).toHaveBeenCalledWith("muted", null);
+    expect(onSetAttribute).toHaveBeenCalledWith("has-audio", "true");
+    act(() => root.unmount());
+  });
+
+  it("audio Muted toggles only the muted attribute", () => {
+    const onSetAttribute = vi.fn();
+    const onSetHtmlAttribute = vi.fn();
+    const element = makeAudioElement({});
+    const { host, root } = mountPanel(kind, element, { onSetAttribute, onSetHtmlAttribute });
+    clickMuted(kind, host, "on");
+    expect(onSetHtmlAttribute).toHaveBeenCalledWith("muted", "true");
+    expect(onSetAttribute).not.toHaveBeenCalled();
+    act(() => root.unmount());
+  });
+});
+
+describe.each<PanelKind>(["flat", "design"])("%s panel — cutout sound confirm", (kind) => {
+  async function runCutout(element: DomEditSelection) {
+    const onSetAttribute = vi.fn();
+    const onSetHtmlAttribute = vi.fn();
+    const onRemoveBackground = vi.fn().mockResolvedValue({ outputPath: "assets/cut.webm" });
+    const { host, root } = mountPanel(kind, element, {
+      onSetAttribute,
+      onSetHtmlAttribute,
+      onRemoveBackground,
+    });
+    const button =
+      kind === "flat"
+        ? host.querySelector<HTMLButtonElement>('[data-flat-media-remove-bg="true"]')
+        : Array.from(host.querySelectorAll("button")).find((b) =>
+            /remove bg/i.test(b.textContent ?? ""),
+          );
+    if (!button) throw new Error("expected remove background button");
+    await act(async () => {
+      button.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+      for (let i = 0; i < 6; i++) await Promise.resolve();
+    });
+    act(() => root.unmount());
+    return { onSetAttribute, onSetHtmlAttribute };
+  }
+
+  afterEach(() => vi.restoreAllMocks());
+
+  it("audible video + declined confirm leaves the src alone", async () => {
+    const confirm = vi.spyOn(window, "confirm").mockReturnValue(false);
+    const { onSetAttribute, onSetHtmlAttribute } = await runCutout(
+      makeVideoElement({ dataAttributes: { "has-audio": "true" } }),
+    );
+    expect(confirm).toHaveBeenCalledTimes(1);
+    expect(onSetHtmlAttribute).not.toHaveBeenCalled();
+    expect(onSetAttribute).not.toHaveBeenCalled();
+  });
+
+  it("audible video + accepted confirm swaps the src and mutes", async () => {
+    const confirm = vi.spyOn(window, "confirm").mockReturnValue(true);
+    const { onSetAttribute, onSetHtmlAttribute } = await runCutout(
+      makeVideoElement({ dataAttributes: { "has-audio": "true" } }),
+    );
+    expect(confirm).toHaveBeenCalledTimes(1);
+    expect(onSetHtmlAttribute).toHaveBeenCalledWith("src", "assets/cut.webm");
+    expect(onSetHtmlAttribute).toHaveBeenCalledWith("muted", "true");
+    expect(onSetAttribute).toHaveBeenCalledWith("has-audio", "");
+  });
+
+  it("silent video never asks", async () => {
+    const confirm = vi.spyOn(window, "confirm").mockReturnValue(false);
+    const silent = makeVideoElement();
+    silent.element.setAttribute("muted", "");
+    const { onSetHtmlAttribute } = await runCutout(silent);
+    expect(confirm).not.toHaveBeenCalled();
+    expect(onSetHtmlAttribute).toHaveBeenCalledWith("src", "assets/cut.webm");
+  });
+});

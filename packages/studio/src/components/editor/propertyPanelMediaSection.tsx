@@ -333,6 +333,8 @@ export function MediaSection({
                   value={hasMuted ? "on" : "off"}
                   onChange={(next) => {
                     void onSetHtmlAttribute("muted", next === "on" ? "true" : null);
+                    // A video's sound lives on the clip: muting drops has-audio, unmuting restores it.
+                    if (isVideo) void onSetAttribute("has-audio", next === "on" ? "" : "true");
                   }}
                   options={[
                     { label: "On", value: "on" },
