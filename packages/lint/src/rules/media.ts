@@ -518,10 +518,10 @@ export const mediaRules: Array<(ctx: LintContext) => HyperframeLintFinding[]> = 
         findings.push({
           code: "video_missing_muted",
           severity: "error",
-          message: `<video${elementId ? ` id="${elementId}"` : ""}> has data-start but is not muted. Mark audible videos with data-has-audio="true"; otherwise keep video muted and use a separate <audio> element for sound.`,
+          message: `<video${elementId ? ` id="${elementId}"` : ""}> has data-start but declares neither muted nor data-has-audio. If the file has sound, add data-has-audio="true" (the sound stays on this clip). If it is silent, add muted.`,
           elementId,
           fixHint:
-            'Add the `muted` attribute for silent video, or add data-has-audio="true" when the video track should contribute audio.',
+            'Add data-has-audio="true" when the file has sound (recommended — keeps picture and sound on one clip), or add `muted` for silent footage.',
           snippet: truncateSnippet(tag.raw),
         });
       }
@@ -796,7 +796,7 @@ export const mediaRules: Array<(ctx: LintContext) => HyperframeLintFinding[]> = 
         message: `<audio${audioInfo.id ? ` id="${audioInfo.id}"` : ""}> and <video${videoInfo.id ? ` id="${videoInfo.id}"` : ""}> both point to the same source. The unmuted video already provides audio — the duplicate <audio> will cause double playback and echo.`,
         elementId: audioInfo.id,
         fixHint:
-          "Either mute the video (add `muted` attribute) and keep the separate <audio>, or remove the <audio> element and let the video provide its own audio track.",
+          "Remove the <audio> element and let the video carry its own sound (recommended), or mute the video (add `muted`) and keep the separate <audio> when picture and sound must be cut independently.",
         snippet: truncateSnippet(audioInfo.raw),
       });
     }

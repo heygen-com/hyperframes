@@ -293,6 +293,38 @@ describe("media rules", () => {
     expect(finding?.elementId).toBe("demo-video");
   });
 
+  it("video_missing_muted recommends data-has-audio first", async () => {
+    const html = `
+<html><body>
+  <div id="root" data-composition-id="c1" data-width="1920" data-height="1080">
+    <video id="v" data-start="0" data-duration="5" src="clip.mp4" playsinline></video>
+  </div>
+  <script>window.__timelines = window.__timelines || {}; window.__timelines["c1"] = gsap.timeline({ paused: true });</script>
+</body></html>`;
+    const result = await lintHyperframeHtml(html);
+    const finding = result.findings.find((f) => f.code === "video_missing_muted");
+    expect(finding?.severity).toBe("error");
+    expect(finding?.message).toContain("declares neither muted nor data-has-audio");
+    expect(finding?.message).not.toContain("separate <audio>");
+    expect(finding?.fixHint?.indexOf("data-has-audio")).toBeLessThan(
+      finding?.fixHint?.indexOf("muted") ?? -1,
+    );
+  });
+
+  it("video_audio_double_source suggests removing the <audio> first", async () => {
+    const html = `
+<html><body>
+  <div id="root" data-composition-id="c1" data-width="1920" data-height="1080">
+    <video id="v" data-start="0" data-duration="5" data-has-audio="true" src="clip.mp4" playsinline></video>
+    <audio id="a" data-start="0" data-duration="5" src="clip.mp4"></audio>
+  </div>
+  <script>window.__timelines = window.__timelines || {}; window.__timelines["c1"] = gsap.timeline({ paused: true });</script>
+</body></html>`;
+    const result = await lintHyperframeHtml(html);
+    const finding = result.findings.find((f) => f.code === "video_audio_double_source");
+    expect(finding?.fixHint?.startsWith("Remove the <audio>")).toBe(true);
+  });
+
   it("does NOT flag <video> as nested in a void element with data-start (regression)", async () => {
     // Regression: void elements like <img> have no closing tag, so the previous
     // implementation kept them on the parent stack indefinitely and flagged any
