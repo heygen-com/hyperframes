@@ -146,6 +146,55 @@ describe("distributed video metadata", () => {
   });
 
   it.each([
+    { name: "1.5x", playbackRate: 1.5, expectedFrame: 3 },
+    { name: "0.5x", playbackRate: 0.5, expectedFrame: 1 },
+    {
+      name: "rate lane",
+      playbackRate: {
+        target: "rate",
+        points: [
+          { t: 0, v: 1.5 },
+          { t: 4, v: 1.5 },
+        ],
+      },
+      expectedFrame: 3,
+    },
+  ])(
+    "keeps a $name clip's playback rate across the plan boundary",
+    ({ playbackRate, expectedFrame }) => {
+      const metadata = extractedMetadata();
+      const written = buildPlanVideosJson({
+        videos: [video({ playbackRate })],
+        extracted: [metadata],
+        compositionEnd: 8,
+      });
+      const read = parsePlanVideosJson(JSON.parse(JSON.stringify(written)));
+      const lookup = createFrameLookupTable(read.videos, [extractedFrames(metadata)]);
+
+      expect(read.videos[0]?.playbackRate).toEqual(playbackRate);
+      expect(lookup.getActiveFramePayloads(3).get("hero")?.frameIndex).toBe(expectedFrame);
+    },
+  );
+
+  it("rejects a malformed playback rate", () => {
+    const valid = buildPlanVideosJson({
+      videos: [video()],
+      extracted: [extractedMetadata()],
+      compositionEnd: 8,
+    });
+
+    expect(() =>
+      parsePlanVideosJson({ ...valid, videos: [{ ...valid.videos[0], playbackRate: "1.5" }] }),
+    ).toThrow(/playbackRate must be an object/);
+    expect(() =>
+      parsePlanVideosJson({
+        ...valid,
+        videos: [{ ...valid.videos[0], playbackRate: { target: "rate" } }],
+      }),
+    ).toThrow(/playbackRate.points must be an array/);
+  });
+
+  it.each([
     { loop: false, expectedFrame: 3 },
     { loop: true, expectedFrame: 2 },
   ])(

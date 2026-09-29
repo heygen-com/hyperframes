@@ -9,7 +9,7 @@ import { dirname, join } from "node:path";
 import { existsSync, readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { promisify } from "node:util";
-import { type Fps } from "@hyperframes/core";
+import { type Fps, type RateSpec } from "@hyperframes/core";
 import {
   getFfmpegBinary,
   MIXED_AUDIO_FILENAME,
@@ -173,6 +173,17 @@ function readNonNegativeInteger(value: unknown, field: string): number {
   return value;
 }
 
+function readRateSpec(value: unknown, field: string): RateSpec | undefined {
+  if (value === undefined) return undefined;
+  if (typeof value === "number") return readFiniteNumber(value, field);
+  const lane = readRecord(value, field);
+  if (!Array.isArray(lane.points)) {
+    metadataError(`${field}.points`, "must be an array");
+  }
+  // The planner serialized this lane from the clip's parsed `data-automation` rate lane.
+  return lane as unknown as Exclude<RateSpec, number>;
+}
+
 function readVideoMetadata(
   value: unknown,
   field: string,
@@ -233,6 +244,7 @@ export function parsePlanVideosJson(value: unknown): PlanVideosJson {
       start: readFiniteNumber(video.start, `${field}.start`),
       end: readFiniteNumber(video.end, `${field}.end`),
       mediaStart: readFiniteNumber(video.mediaStart, `${field}.mediaStart`),
+      playbackRate: readRateSpec(video.playbackRate, `${field}.playbackRate`),
       loop: readBoolean(video.loop, `${field}.loop`),
       hasAudio: readBoolean(video.hasAudio, `${field}.hasAudio`),
     };
