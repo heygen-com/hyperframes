@@ -167,7 +167,7 @@ export type { AudioMeterStripProps } from "./components/nle/AudioMeterStrip";
 export { useClipboard } from "./hooks/useClipboard";
 export type { UseClipboardOptions } from "./hooks/useClipboard";
 
-// DOM editing for a host outside EditorShell; useDomStyleCommit saves styles without the session.
+// DOM editing for a host outside EditorShell; the Commit hooks save without useDomEditSession.
 export { useDomEditSession } from "./hooks/useDomEditSession";
 export type { UseDomEditSessionParams } from "./hooks/useDomEditSession";
 export { usePreviewPersistence } from "./hooks/usePreviewPersistence";
@@ -181,6 +181,8 @@ export { useDomStyleCommit } from "./hooks/useDomStyleCommit";
 export type { UseDomStyleCommitOptions } from "./hooks/useDomStyleCommit";
 export type { DomEditCommitDeclineReason, DomEditCommitOutcome } from "./hooks/domEditCommitRunner";
 export { resolveDomEditSelection } from "./components/editor/domEditingLayers";
+export { useDomGeometryCommit } from "./hooks/useDomGeometryCommit";
+export type { DomGeometryCommits, UseDomGeometryCommitOptions } from "./hooks/useDomGeometryCommit";
 export { DomEditOverlay } from "./components/editor/DomEditOverlay";
 export type {
   DomEditGroupPathOffsetCommit,

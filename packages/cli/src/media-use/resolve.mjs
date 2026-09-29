@@ -5,6 +5,7 @@ import { existsSync, statSync, writeFileSync, renameSync, rmSync, realpathSync }
 import { resolve, join, extname, basename, relative, isAbsolute, sep } from "node:path";
 import { parseArgs } from "node:util";
 import {
+  AGENT_SOURCES,
   appendRecord,
   latestRecordFor,
   recordInPlace,
@@ -60,7 +61,6 @@ import {
 } from "./lib/local-media-search.mjs";
 
 const INGEST_TYPES = listTypes();
-const RECORDED_SOURCES = ["generated", "search", "bundled"];
 const DEFAULT_EXT = {
   bgm: ".wav",
   sfx: ".mp3",
@@ -130,7 +130,7 @@ Options:
   --reuse <sha>   Import a specific global-cache asset (by content sha/prefix,
                   from --candidates) into this project
   --from <file>   Freeze a local file or direct public URL (ingest)
-  --source <how>  With --from: how the file was made (${RECORDED_SOURCES.join(" | ")}).
+  --source <how>  With --from: how the file was made (${AGENT_SOURCES.join(" | ")}).
                   A file already inside the project is then recorded where it is
   --params <json> Build an explicit parametric LUT (lut/grade only)
   --for <media>   Analyze a local image/video and add measured grade adjust
@@ -918,8 +918,8 @@ async function ingest(src) {
     console.error(`error: refusing to ingest a 0-byte file: ${src}`);
     process.exit(2);
   }
-  if (args.source && !RECORDED_SOURCES.includes(args.source)) {
-    console.error(`error: --source takes one of: ${RECORDED_SOURCES.join(", ")}`);
+  if (args.source && !AGENT_SOURCES.includes(args.source)) {
+    console.error(`error: --source takes one of: ${AGENT_SOURCES.join(", ")}`);
     process.exit(2);
   }
   if (args.source && (type === "lut" || type === "grade")) {

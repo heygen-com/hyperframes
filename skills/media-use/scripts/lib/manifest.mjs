@@ -79,6 +79,9 @@ export function appendRecord(projectDir, record) {
   appendFileSync(p, line);
 }
 
+/** Sources that mean the agent made or fetched the file; any other file is the person's own. */
+export const AGENT_SOURCES = ["generated", "search", "bundled"];
+
 /** The record a path has now: the manifest only appends, so the last one for a path wins. */
 export function latestRecordFor(projectDir, path) {
   return readManifest(projectDir).findLast((record) => record.path === path);

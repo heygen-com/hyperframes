@@ -81,15 +81,18 @@ export interface DomEditOverlayProps {
     selection: DomEditSelection,
     next: { x: number; y: number },
     modifiers?: { altKey?: boolean },
-  ) => Promise<void> | void;
-  onGroupPathOffsetCommit: (updates: DomEditGroupPathOffsetCommit[]) => Promise<void> | void;
+  ) => Promise<unknown> | void;
+  onGroupPathOffsetCommit: (updates: DomEditGroupPathOffsetCommit[]) => Promise<unknown> | void;
   onBoxSizeCommit: (
     selection: DomEditSelection,
     next: { width: number; height: number },
     offset?: { x: number; y: number },
     restore?: () => void,
-  ) => Promise<void> | void;
-  onRotationCommit: (selection: DomEditSelection, next: { angle: number }) => Promise<void> | void;
+  ) => Promise<unknown> | void;
+  onRotationCommit: (
+    selection: DomEditSelection,
+    next: { angle: number },
+  ) => Promise<unknown> | void;
   onStyleCommit?: (property: string, value: string) => Promise<unknown> | void;
   recordingState?: GestureRecordingState;
   onToggleRecording?: () => void;

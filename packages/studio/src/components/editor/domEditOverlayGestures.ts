@@ -247,10 +247,10 @@ export type UseDomEditOverlayGesturesOptions = {
       s: DomEditSelection,
       n: { x: number; y: number },
       m?: { altKey?: boolean },
-    ) => Promise<void> | void
+    ) => Promise<unknown> | void
   >;
   onGroupPathOffsetCommitRef: RefObject<
-    (updates: DomEditGroupPathOffsetCommit[]) => Promise<void> | void
+    (updates: DomEditGroupPathOffsetCommit[]) => Promise<unknown> | void
   >;
   onBoxSizeCommitRef: RefObject<
     (
@@ -258,10 +258,10 @@ export type UseDomEditOverlayGesturesOptions = {
       n: { width: number; height: number },
       offset?: { x: number; y: number },
       restore?: () => void,
-    ) => Promise<void> | void
+    ) => Promise<unknown> | void
   >;
   onRotationCommitRef: RefObject<
-    (s: DomEditSelection, n: { angle: number }) => Promise<void> | void
+    (s: DomEditSelection, n: { angle: number }) => Promise<unknown> | void
   >;
   onCanvasPointerMoveRef: RefObject<
     (

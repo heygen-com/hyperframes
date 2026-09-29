@@ -16,15 +16,14 @@ Each line names the effects it wants: `lines[].sfx: ["whoosh", "ui click"]`. The
   "id": "3",                       // joins the cue to the caller's model (frame / scene / segment)
   "name": "whoosh",
   "file": "assets/sfx/whoosh.mp3", // downloaded or copied, relative to project root
-  "source": "heygen" | "local" | "project", // which route resolved it; "project": a file already
-                                   // in assets/sfx under that name that is not the library's copy
+  "source": "heygen" | "local",    // which route resolved it
   "offset_s": 0,                   // delay from the line's start
   "duration_s": 0.57,
   "volume": 0.35                   // SFX sit UNDER voice + BGM
 }
 ```
 
-A cue that matches nothing is **skipped** (recorded as an anomaly); SFX never blocks a render.
+A cue that matches nothing is **skipped** (recorded as an anomaly); SFX never blocks a render. Neither route replaces a file of yours already at the output name: the cue gets the next free name (`whoosh-2.mp3`), reported as an anomaly, and `file` carries the real path.
 
 ## HeyGen retrieval (credentialed)
 

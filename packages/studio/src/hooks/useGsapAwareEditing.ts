@@ -326,10 +326,15 @@ export function useGsapAwareEditing({
       offset?: { x: number; y: number },
       restore: () => void = () => undefined,
     ) => {
-      const ownedAnimations = getGsapAnimationsForSelection(selection);
-      const targetAnimations = Array.isArray(ownedAnimations)
-        ? ownedAnimations
-        : await ownedAnimations;
+      let targetAnimations: GsapAnimation[];
+      try {
+        const ownedAnimations = getGsapAnimationsForSelection(selection);
+        targetAnimations = Array.isArray(ownedAnimations) ? ownedAnimations : await ownedAnimations;
+      } catch (error) {
+        restore();
+        trackGsapInteractionFailure(error, selection, "resize", "Resize animated layer");
+        throw error;
+      }
       const scaleRoute = targetAnimations.some((anim) => anim.propertyGroup === "scale");
       const selector = selectorFromSelection(selection);
       const hasLivePositionTween = selector
