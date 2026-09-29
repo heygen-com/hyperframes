@@ -127,6 +127,8 @@ export interface TimelineViewportProps {
   ref: RefCallback<HTMLDivElement>;
   "data-timeline-scroll-viewport": boolean;
   "data-timeline-auto-scroll-left-inset": number;
+  /** Viewport px from the scroll content's left edge to t = 0, for a host mapping pointer x to time. */
+  "data-timeline-content-origin": number;
   tabIndex: number;
   className: string;
   onScroll: (event: UIEvent<HTMLDivElement>) => void;
