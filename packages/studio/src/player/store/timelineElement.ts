@@ -85,6 +85,8 @@ export interface TimelineElement {
   audioGroupAutomation?: string;
   link?: string;
   compositionScope?: string;
+  /** `data-sync-origin`: shared by a video and audio from one source; outlives `link`. */
+  syncOrigin?: string;
   /**
    * Master start of the composition this row runs in, which its tweens and its
    * `data-start` are local to; 0 at the root. Writes go through toAuthoredStart.

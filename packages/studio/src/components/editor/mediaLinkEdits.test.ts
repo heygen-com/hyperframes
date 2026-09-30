@@ -54,6 +54,7 @@ describe("detachAudioInSource", () => {
       "data-playback-rate": "1",
       "data-track-index": "2",
       "data-link": result?.linkId,
+      "data-sync-origin": result?.linkId,
       "data-volume": "0.5",
       "data-fade-in": "0.3",
       "data-fade-out": "0.2",
@@ -68,6 +69,7 @@ describe("detachAudioInSource", () => {
     const after = attrsOf(result?.html ?? "", "video#talk");
     expect(after).toHaveProperty("muted");
     expect(after["data-link"]).toBe(result?.linkId);
+    expect(after["data-sync-origin"]).toBe(result?.linkId);
     for (const gone of [
       "data-has-audio",
       "data-volume",
@@ -179,7 +181,14 @@ describe("removeElementInSource", () => {
 describe("linkInSource", () => {
   it("mints an id no element or link already uses", () => {
     const src = '<video id="lk-1" data-link="lk-2"></video><audio id="a"></audio>';
-    expect(linkInSource(src, [{ id: "a" }])).toContain('<audio id="a" data-link="lk-3">');
+    expect(linkInSource(src, [{ id: "a" }])).toContain(
+      '<audio id="a" data-link="lk-3" data-sync-origin="lk-3">',
+    );
+  });
+
+  it("skips ids already used as a sync origin", () => {
+    const src = '<video id="v" data-sync-origin="lk-1"></video><audio id="a"></audio>';
+    expect(linkInSource(src, [{ id: "a" }])).toContain('data-link="lk-2"');
   });
 });
 
@@ -191,6 +200,17 @@ describe("setLinkInSource", () => {
       '<video id="v" data-link="lk-1"></video><audio id="a" data-link="lk-1"></audio>',
     );
     expect(setLinkInSource(linked, [{ id: "v" }, { id: "a" }], null)).toBe(src);
+  });
+
+  it("keeps the sync origin when unlinking", () => {
+    const linked = linkInSource('<video id="v"></video><audio id="a"></audio>', [
+      { id: "v" },
+      { id: "a" },
+    ]);
+    const unlinked = setLinkInSource(linked, [{ id: "v" }, { id: "a" }], null);
+    expect(unlinked).toBe(
+      '<video id="v" data-sync-origin="lk-1"></video><audio id="a" data-sync-origin="lk-1"></audio>',
+    );
   });
 });
 

@@ -1,5 +1,5 @@
 import { HF_AUDIO_AUTOMATION_ATTR } from "@hyperframes/core/audio-automation";
-import { MEDIA_LINK_ATTR, mintLinkId } from "@hyperframes/core/media-link";
+import { MEDIA_LINK_ATTR, SYNC_ORIGIN_ATTR, mintLinkId } from "@hyperframes/core/media-link";
 import { sameCompositionScope, type TimelineElement } from "../../player/store/timelineElement";
 import { mediaAssetIdentity, sharesLinkGroup } from "../../player/components/audioClipLink";
 import {
@@ -23,6 +23,7 @@ import {
 
 const LINK_PROPERTY = MEDIA_LINK_ATTR.slice("data-".length);
 const HIDDEN_ATTR = "data-hidden";
+const SYNC_ORIGIN_PROPERTY = SYNC_ORIGIN_ATTR.slice("data-".length);
 const SYNC_TOLERANCE_S = 1e-3;
 
 const dataOp = (property: string, value: string | null): PatchOperation => ({
@@ -43,7 +44,7 @@ function applyOps(source: string, target: PatchTarget, ops: readonly PatchOperat
 
 function mintLinkIdForSource(source: string): string {
   const links = Array.from(
-    source.matchAll(/\bdata-link=["']([^"']+)["']/g),
+    source.matchAll(/\bdata-(?:link|sync-origin)=["']([^"']+)["']/g),
     (match) => match[1] ?? "",
   );
   return mintLinkId([...collectHtmlIds(source), ...links]);
@@ -61,9 +62,14 @@ export function setLinkInSource(
   );
 }
 
-/** Link the targets under one freshly minted id. */
+/** Link the targets under one freshly minted id, which is also their sync origin. */
 export function linkInSource(source: string, targets: readonly PatchTarget[]): string {
-  return setLinkInSource(source, targets, mintLinkIdForSource(source));
+  const linkId = mintLinkIdForSource(source);
+  return targets.reduce(
+    (html, target) =>
+      applyOps(html, target, [dataOp(LINK_PROPERTY, linkId), dataOp(SYNC_ORIGIN_PROPERTY, linkId)]),
+    source,
+  );
 }
 
 /** Remove one element (open tag through its matching close tag) and its line's indentation. */
@@ -126,7 +132,7 @@ export function detachAudioInSource(
     moved.push([HF_AUDIO_AUTOMATION_ATTR, audioTakes]);
     videoOps.push(dataOp(HF_AUDIO_AUTOMATION_ATTR, videoKeeps));
   }
-  videoOps.push(dataOp(LINK_PROPERTY, linkId));
+  videoOps.push(dataOp(LINK_PROPERTY, linkId), dataOp(SYNC_ORIGIN_PROPERTY, linkId));
 
   const timing: Array<[string, string]> = [];
   for (const name of COPIED_TIMING_ATTRS) {
@@ -141,6 +147,7 @@ export function detachAudioInSource(
     ...timing,
     ["data-track-index", String(input.track)],
     [MEDIA_LINK_ATTR, linkId],
+    [SYNC_ORIGIN_ATTR, linkId],
     ...moved,
   ];
   if (hasBooleanAttr(source, target, "loop")) attrs.push(["loop", ""]);
@@ -172,7 +179,12 @@ export function mergeAudioInSource(
   }
   const automation = readAttributeByTarget(source, audioTarget, HF_AUDIO_AUTOMATION_ATTR);
   if (automation !== undefined) videoOps.push(dataOp(HF_AUDIO_AUTOMATION_ATTR, automation));
-  videoOps.push(htmlOp("muted", null), dataOp(LINK_PROPERTY, null), dataOp("has-audio", "true"));
+  videoOps.push(
+    htmlOp("muted", null),
+    dataOp(LINK_PROPERTY, null),
+    dataOp(SYNC_ORIGIN_PROPERTY, null),
+    dataOp("has-audio", "true"),
+  );
   return applyOps(removeElementInSource(source, audioTarget), videoTarget, videoOps);
 }
 

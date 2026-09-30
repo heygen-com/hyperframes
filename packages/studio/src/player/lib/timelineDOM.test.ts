@@ -282,13 +282,15 @@ describe("parseTimelineFromDOM — hfId from data-hf-id", () => {
     expect(element.hidden).toBe(true);
   });
 
-  it("reads data-link on both the DOM and manifest paths", () => {
+  it("reads data-link and data-sync-origin on both the DOM and manifest paths", () => {
     const doc = makeDoc(`
       <div data-composition-id="root">
-        <video id="talk" class="clip" src="t.mp4" muted data-link="lk-1" data-start="0" data-duration="5"></video>
+        <video id="talk" class="clip" src="t.mp4" muted data-link="lk-1" data-sync-origin="lk-1" data-start="0" data-duration="5"></video>
       </div>
     `);
-    expect(parseTimelineFromDOM(doc, 10).find((el) => el.domId === "talk")?.link).toBe("lk-1");
+    const fromDom = parseTimelineFromDOM(doc, 10).find((el) => el.domId === "talk");
+    expect(fromDom?.link).toBe("lk-1");
+    expect(fromDom?.syncOrigin).toBe("lk-1");
     const element = createTimelineElementFromManifestClip({
       clip: {
         id: "talk",
@@ -308,6 +310,7 @@ describe("parseTimelineFromDOM — hfId from data-hf-id", () => {
       hostEl: doc.getElementById("talk"),
     });
     expect(element.link).toBe("lk-1");
+    expect(element.syncOrigin).toBe("lk-1");
   });
 });
 

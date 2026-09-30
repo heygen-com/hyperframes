@@ -23,7 +23,11 @@ import type { CommitDomAttributeBatch } from "../../hooks/domEditCommitTypes";
 import { buildDomEditPatchTarget, type DomEditSelection } from "./domEditing";
 import { generateId } from "../../utils/generateId";
 
-import { MEDIA_LINK_ATTR, mintLinkId as mintLinkIdFrom } from "@hyperframes/core/media-link";
+import {
+  MEDIA_LINK_ATTR,
+  SYNC_ORIGIN_ATTR,
+  mintLinkId as mintLinkIdFrom,
+} from "@hyperframes/core/media-link";
 const SOUND_KEPT_ON_LINKED_AUDIO_STAGE = "Background removed. Sound kept on a linked audio track.";
 
 const SOUND_NOT_KEPT_MESSAGE =
@@ -100,10 +104,14 @@ export function firstFreeName(base: string, taken: Set<string>): string {
 
 export function mintLinkId(doc: Document): string {
   const taken = new Set<string>();
-  for (const el of Array.from(doc.querySelectorAll(`[id], [${MEDIA_LINK_ATTR}]`))) {
-    if (el.id) taken.add(el.id);
-    const link = el.getAttribute(MEDIA_LINK_ATTR);
-    if (link) taken.add(link);
+  const selector = `[id], [${MEDIA_LINK_ATTR}], [${SYNC_ORIGIN_ATTR}]`;
+  for (const el of Array.from(doc.querySelectorAll(selector))) {
+    for (const value of [
+      el.id,
+      el.getAttribute(MEDIA_LINK_ATTR),
+      el.getAttribute(SYNC_ORIGIN_ATTR),
+    ])
+      if (value) taken.add(value);
   }
   return mintLinkIdFrom(taken);
 }
@@ -187,7 +195,10 @@ export function buildKeepSoundCutoutEdit(input: {
     movedSound.push([HF_AUDIO_AUTOMATION_ATTR, audioTakes]);
     ops.push(dataAttr(stripDataPrefix(HF_AUDIO_AUTOMATION_ATTR), videoKeeps));
   }
-  ops.push(dataAttr(stripDataPrefix(MEDIA_LINK_ATTR), linkId));
+  ops.push(
+    dataAttr(stripDataPrefix(MEDIA_LINK_ATTR), linkId),
+    dataAttr(stripDataPrefix(SYNC_ORIGIN_ATTR), linkId),
+  );
 
   const prepareContent = (source: string): string => {
     const originalSrc = readAuthoredSrc(source, target);
@@ -208,6 +219,7 @@ export function buildKeepSoundCutoutEdit(input: {
       ...timing,
       ["data-track-index", String(firstFreeTrackIndex(source))],
       [MEDIA_LINK_ATTR, linkId],
+      [SYNC_ORIGIN_ATTR, linkId],
       ...movedSound,
     ];
     if (video.hasAttribute("loop")) attrs.push(["loop", ""]);

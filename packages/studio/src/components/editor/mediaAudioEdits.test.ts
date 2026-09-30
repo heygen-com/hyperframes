@@ -177,6 +177,8 @@ describe("buildKeepSoundCutoutEdit", () => {
     ]);
     expect(audio.getAttribute("data-link")).toBe(video.getAttribute("data-link"));
     expect(video.getAttribute("data-link")).toBe("lk-1");
+    expect(video.getAttribute("data-sync-origin")).toBe("lk-1");
+    expect(audio.getAttribute("data-sync-origin")).toBe("lk-1");
     expect(audio.parentElement).toBe(video.parentElement);
   });
 
