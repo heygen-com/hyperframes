@@ -200,6 +200,12 @@
       "types": "./dist/audioCarve.d.ts",
       "environments": ["browser", "bun", "node"]
     },
+    "./media-link": {
+      "source": "./src/mediaLink.ts",
+      "runtime": "./dist/mediaLink.js",
+      "types": "./dist/mediaLink.d.ts",
+      "environments": ["browser", "bun", "node"]
+    },
     "./audio-groups": {
       "source": "./src/audioGroups.ts",
       "runtime": "./dist/audioGroups.js",

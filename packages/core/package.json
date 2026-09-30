@@ -214,6 +214,12 @@
       "import": "./src/audioCarve.ts",
       "types": "./src/audioCarve.ts"
     },
+    "./media-link": {
+      "bun": "./src/mediaLink.ts",
+      "node": "./dist/mediaLink.js",
+      "import": "./src/mediaLink.ts",
+      "types": "./src/mediaLink.ts"
+    },
     "./audio-groups": {
       "bun": "./src/audioGroups.ts",
       "node": "./dist/audioGroups.js",
@@ -607,6 +613,10 @@
       "./audio-carve": {
         "import": "./dist/audioCarve.js",
         "types": "./dist/audioCarve.d.ts"
+      },
+      "./media-link": {
+        "import": "./dist/mediaLink.js",
+        "types": "./dist/mediaLink.d.ts"
       },
       "./audio-groups": {
         "import": "./dist/audioGroups.js",
