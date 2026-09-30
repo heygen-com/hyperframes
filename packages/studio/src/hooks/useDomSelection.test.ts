@@ -29,9 +29,13 @@ function renderHarness(
   cleanup: () => void;
   timeline: TimelineSpies;
 } {
+  // Reads back what was last published, as the timeline store does.
+  let publishedSet: ReadonlySet<string> = new Set();
   const timeline: TimelineSpies = {
     setSelectedTimelineElementId: vi.fn(),
-    setTimelineSelectionSet: vi.fn(),
+    setTimelineSelectionSet: vi.fn((ids: Set<string>) => {
+      publishedSet = ids;
+    }),
   };
   const host = document.createElement("div");
   document.body.append(host);
@@ -47,7 +51,7 @@ function renderHarness(
       captionEditMode: false,
       previewIframeRef: { current: null },
       timelineElements: options.timelineElements ?? [],
-      getTimelineSelectionSet: () => new Set(),
+      getTimelineSelectionSet: () => publishedSet,
       setSelectedTimelineElementId: timeline.setSelectedTimelineElementId,
       setTimelineSelectionSet: timeline.setTimelineSelectionSet,
       setRightCollapsed: vi.fn(),
@@ -107,6 +111,17 @@ function timelineElement(domId: string): TimelineElement {
   } as TimelineElement;
 }
 
+function renderCardAndChip() {
+  const card = makeSelection("Card", Object.assign(document.createElement("div"), { id: "card" }));
+  const chip = makeSelection("Chip", Object.assign(document.createElement("div"), { id: "chip" }));
+  document.body.append(card.element, chip.element);
+  const harness = renderHarness(
+    { activeCompPath: "index.html", projectId: "project-1", refreshKey: 0 },
+    { timelineElements: [timelineElement("card"), timelineElement("chip")] },
+  );
+  return { harness, card, chip };
+}
+
 /**
  * A marquee builds the group correctly and then used to lose it: it announced only
  * the primary to the timeline, the timeline is the source of truth for what is
@@ -116,24 +131,9 @@ function timelineElement(domId: string): TimelineElement {
  */
 describe("useDomSelection marquee", () => {
   it("announces every marquee'd element to the timeline, anchored on the primary", () => {
-    const first = document.createElement("div");
-    first.id = "card";
-    const second = document.createElement("div");
-    second.id = "chip";
-    document.body.append(first, second);
-    const harness = renderHarness(
-      { activeCompPath: "index.html", projectId: "project-1", refreshKey: 0 },
-      { timelineElements: [timelineElement("card"), timelineElement("chip")] },
-    );
+    const { harness, card, chip } = renderCardAndChip();
 
-    act(() =>
-      harness
-        .current()
-        .applyMarqueeSelection(
-          [makeSelection("Card", first), makeSelection("Chip", second)],
-          false,
-        ),
-    );
+    act(() => harness.current().applyMarqueeSelection([card, chip], false));
 
     expect(harness.current().domEditGroupSelections).toHaveLength(2);
     expect(harness.timeline.setTimelineSelectionSet).toHaveBeenCalledWith(
@@ -181,20 +181,10 @@ describe("useDomSelection marquee", () => {
  */
 describe("useDomSelection additive", () => {
   it("announces both members when a second element joins the selection", () => {
-    const first = document.createElement("div");
-    first.id = "card";
-    const second = document.createElement("div");
-    second.id = "chip";
-    document.body.append(first, second);
-    const harness = renderHarness(
-      { activeCompPath: "index.html", projectId: "project-1", refreshKey: 0 },
-      { timelineElements: [timelineElement("card"), timelineElement("chip")] },
-    );
+    const { harness, card, chip } = renderCardAndChip();
 
-    act(() => harness.current().applyDomSelection(makeSelection("Card", first)));
-    act(() =>
-      harness.current().applyDomSelection(makeSelection("Chip", second), { additive: true }),
-    );
+    act(() => harness.current().applyDomSelection(card));
+    act(() => harness.current().applyDomSelection(chip, { additive: true }));
 
     expect(harness.current().domEditGroupSelections).toHaveLength(2);
     expect(harness.timeline.setTimelineSelectionSet).toHaveBeenLastCalledWith(
@@ -203,6 +193,37 @@ describe("useDomSelection additive", () => {
     expect(harness.timeline.setSelectedTimelineElementId).toHaveBeenLastCalledWith("chip", {
       preserveSet: true,
     });
+    harness.cleanup();
+  });
+
+  // The timeline syncs its set back onto the canvas, so a set left at two re-adds the member.
+  it.each([
+    ["shift+click removes a member", "toggle"],
+    ["a marquee catches one member of a live group", "marquee"],
+  ] as const)("publishes the smaller set when %s", (_, shrink) => {
+    const { harness, card, chip } = renderCardAndChip();
+
+    act(() => harness.current().applyMarqueeSelection([card, chip], false));
+    act(() =>
+      shrink === "toggle"
+        ? harness.current().applyDomSelection(chip, { additive: true })
+        : harness.current().applyMarqueeSelection([card], false),
+    );
+
+    expect(harness.current().domEditGroupSelections).toHaveLength(1);
+    expect(harness.timeline.setTimelineSelectionSet).toHaveBeenLastCalledWith(new Set(["card"]));
+    harness.cleanup();
+  });
+
+  it("keeps the live set when a single member is re-announced", () => {
+    const { harness, card, chip } = renderCardAndChip();
+
+    act(() => harness.current().applyMarqueeSelection([card, chip], false));
+    act(() => harness.current().applyDomSelection(chip));
+
+    expect(harness.timeline.setTimelineSelectionSet).toHaveBeenLastCalledWith(
+      new Set(["card", "chip"]),
+    );
     harness.cleanup();
   });
 });
