@@ -543,6 +543,38 @@ describe("shadow reload store ownership and readiness", () => {
     unmount(root);
   });
 
+  it("takes a section the edit removed off the timeline, though the old document still has it", () => {
+    const { getApi, gen, liveIframe, shadowIframe, root } = setup();
+    const host = (id: string) =>
+      `<div id="${id}" data-composition-id="${id}" data-composition-src="compositions/${id}.html" data-start="0" data-duration="3"></div>`;
+    liveIframe.contentDocument!.body.innerHTML = `<div data-composition-id="main">${host("benefit")}<p id="a"></p></div>`;
+    shadowIframe.contentDocument!.body.innerHTML = `<div data-composition-id="main"><p id="a"></p></div>`;
+    const a = { id: "a", domId: "a", tag: "p", start: 0, duration: 3, track: 0 };
+    const benefit = {
+      id: "benefit",
+      domId: "benefit",
+      tag: "div",
+      kind: "composition" as const,
+      start: 0,
+      duration: 3,
+      track: 1,
+      compositionSrc: "compositions/benefit.html",
+    };
+    act(() => usePlayerStore.getState().setElements([a, benefit]));
+    (shadowIframe.contentWindow as Record<string, unknown>).__clipManifest = {
+      source: "hf-preview",
+      type: "timeline",
+      durationInFrames: 1260,
+      clips: [
+        { id: "a", label: "A", start: 0, duration: 3, track: 0, kind: "element", tagName: "p" },
+      ],
+    };
+    act(() => getApi().onShadowIframeLoad(gen));
+    act(() => getApi().onShadowReadyChange(gen, true));
+    expect(usePlayerStore.getState().elements.map((element) => element.id)).toEqual(["a"]);
+    unmount(root);
+  });
+
   it("never writes a failed shadow's timeline into the store", () => {
     vi.spyOn(console, "error").mockImplementation(() => {});
     const { getApi, gen, root } = setup();

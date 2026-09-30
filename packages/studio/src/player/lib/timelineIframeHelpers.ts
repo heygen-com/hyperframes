@@ -456,6 +456,8 @@ function buildMissingCompositionEntry(params: {
     transitionLabel:
       transitionLabels.get(element) ?? element.getAttribute("data-transition-label") ?? undefined,
     key: identity.key,
+    // A host, as parseTimelineFromDOM names the same node, so lookups resolve it by its own composition.
+    kind: "composition",
     tag: element.tagName.toLowerCase(),
     start: window.start,
     parentCompositionStart: masterTime.resolveHostStartForElement(element),

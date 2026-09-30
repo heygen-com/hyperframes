@@ -9,6 +9,7 @@ import {
   stopScrubPreviewAudio,
 } from "./timelineIframeHelpers";
 import type { IframeWindow } from "./playbackTypes";
+import { findTimelineElementInIframe } from "../../hooks/timelineEditingHelpers";
 
 function makeDoc(html: string): Document {
   const d = document.implementation.createHTMLDocument();
@@ -40,6 +41,21 @@ describe("buildMissingCompositionElements — hfId (R7)", () => {
       10,
     );
     expect([patched, updatedEls[0]?.compositionSrc]).toEqual([true, "compositions/scene.html"]);
+  });
+
+  it("adds a host as a composition, so the timeline's lookups find it in its preview", () => {
+    const doc = makeDoc(`
+      <div data-composition-id="root">
+        <div id="benefit-fresh" data-composition-id="benefit-fresh" data-composition-src="compositions/benefit-fresh.html"
+          data-start="0" data-duration="3"></div>
+      </div>
+    `);
+    const { missing } = buildMissingCompositionElements(doc, window as IframeWindow, [], 10);
+    const iframe = { contentDocument: doc } as unknown as HTMLIFrameElement;
+    expect(missing.map((row) => row.kind)).toEqual(["composition"]);
+    expect(findTimelineElementInIframe(iframe, missing[0]!)).toBe(
+      doc.getElementById("benefit-fresh"),
+    );
   });
 
   it("harvests hfId from data-hf-id on composition host elements", () => {
