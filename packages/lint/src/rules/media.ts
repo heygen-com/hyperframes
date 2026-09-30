@@ -13,6 +13,7 @@ import {
 import { validateColorGradingContract } from "@hyperframes/parsers/color-grading-contract";
 import { extractMediaSrcMutations } from "@hyperframes/parsers/composition";
 import { parseHTML } from "linkedom";
+import { findLinkedClipFindings } from "./linkedClips";
 
 /**
  * Does the GSAP call that names `#id` also set `volume` in the same call?
@@ -831,6 +832,9 @@ export const mediaRules: Array<(ctx: LintContext) => HyperframeLintFinding[]> = 
 
   // audio_group_carve_attr
   findAudioGroupCarveAttrFindings,
+
+  // linked_clips_out_of_sync + linked_clip_orphan
+  findLinkedClipFindings,
 ];
 
 /**
