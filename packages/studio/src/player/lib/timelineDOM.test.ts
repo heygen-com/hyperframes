@@ -534,6 +534,17 @@ describe("mergeTimelineElementsPreservingDowngrades — genuine removal vs trans
     expect(merged.map((e) => e.id).sort()).toEqual(["a", "sub-child"]);
   });
 
+  it("drops a section whose host left the preview (undo of an agent's build)", () => {
+    const current = [
+      el("a"),
+      el("benefit-fresh", { compositionSrc: "compositions/benefit-fresh.html" }),
+    ];
+    const next = [el("a")]; // the reverted film's manifest: the built section is gone
+    const inPreview = (element: { id: string }) => element.id !== "benefit-fresh";
+    const merged = mergeTimelineElementsPreservingDowngrades(current, next, 30, 30, inPreview);
+    expect(merged.map((e) => e.id)).toEqual(["a"]);
+  });
+
   it("trusts the fresh scan fully when it is not shorter", () => {
     const current = [el("a"), el("b", { compositionSrc: "sub.html" })];
     const next = [el("a"), el("c")];
