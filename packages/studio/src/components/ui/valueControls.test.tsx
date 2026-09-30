@@ -15,6 +15,7 @@ vi.mock("../../utils/studioTelemetry", () => ({
 
 import { Input } from "./Input";
 import { NumberField } from "./NumberField";
+import { POPUP_LAYER } from "./Menu";
 import { Select } from "./Select";
 import { Slider } from "./Slider";
 import { Toggle } from "./Toggle";
@@ -454,6 +455,33 @@ describe("Select", () => {
     expect(commits).toEqual(["600"]);
     expect(designInputCalls()).toHaveLength(1);
     expect(trigger.getAttribute("aria-expanded")).toBe("false");
+  });
+
+  it("opens its portaled popup on the menu layer, above panel chrome", async () => {
+    // Without the layer the popup painted at z-index auto, under the Renders
+    // panel's Frame rate and Quality controls, so its options were unclickable.
+    const host = render(
+      <Select
+        label="Format"
+        value="mp4"
+        options={[
+          { label: "MP4", value: "mp4" },
+          { label: "MOV (ProRes)", value: "mov" },
+        ]}
+        onCommit={() => {}}
+      />,
+    );
+    const trigger = host.querySelector('[role="combobox"]') as HTMLElement;
+
+    act(() => trigger.click());
+    await settle();
+
+    const option = document.querySelector('[role="option"]');
+    expect(option).not.toBeNull();
+    expect(host.contains(option)).toBe(false);
+    const layer = option?.closest(`.${POPUP_LAYER}`);
+    expect(layer).not.toBeNull();
+    expect(layer?.contains(document.querySelector('[role="listbox"]'))).toBe(true);
   });
 });
 
