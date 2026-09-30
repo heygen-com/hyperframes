@@ -5,7 +5,7 @@ import type { Hono } from "hono";
 import { findFfBinary } from "@hyperframes/parsers/ff-binaries";
 import type { StudioApiAdapter } from "../types.js";
 import { mkdirWithinProject, pinWithinProject } from "../helpers/safePath.js";
-import { replaceFileAtomically } from "../helpers/atomicFile.js";
+import { replaceFileAtomically } from "@hyperframes/core/atomic-file";
 import { backupPathForResponse, snapshotBeforeWrite } from "../helpers/backupJournal.js";
 import {
   createWriteToken,
