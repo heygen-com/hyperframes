@@ -81,6 +81,12 @@
       "import": "./src/helpers/mediaCodecMap.ts",
       "types": "./src/helpers/mediaCodecMap.ts"
     },
+    "./loudness": {
+      "bun": "./src/helpers/loudness.ts",
+      "node": "./dist/helpers/loudness.js",
+      "import": "./src/helpers/loudness.ts",
+      "types": "./src/helpers/loudness.ts"
+    },
     "./proxy-transcoder": {
       "bun": "./src/helpers/proxyTranscoder.ts",
       "node": "./dist/helpers/proxyTranscoder.js",
@@ -141,6 +147,10 @@
       "./media-codec-map": {
         "import": "./dist/helpers/mediaCodecMap.js",
         "types": "./dist/helpers/mediaCodecMap.d.ts"
+      },
+      "./loudness": {
+        "import": "./dist/helpers/loudness.js",
+        "types": "./dist/helpers/loudness.d.ts"
       },
       "./proxy-transcoder": {
         "import": "./dist/helpers/proxyTranscoder.js",
