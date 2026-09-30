@@ -152,7 +152,6 @@ const EDIT_COMMITS = [
   "handleSetAllKeyframeEases",
 ] as const satisfies ReadonlyArray<keyof DomEditActionsValue>;
 
-// A failed edit rolls itself back and reports itself; undo only has to wait for it to settle.
 function trackEditCommits(actions: DomEditActionsValue): DomEditActionsValue {
   const tracked: Record<string, unknown> = { ...actions };
   for (const key of EDIT_COMMITS) {

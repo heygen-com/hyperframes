@@ -6,6 +6,7 @@ import { installReactActEnvironment, makeSelection } from "../../hooks/domSelect
 import { useDomEditNudge, type UseDomEditNudgeParams } from "./useDomEditNudge";
 import { CANVAS_NUDGE_COMMIT_DEBOUNCE_MS, CANVAS_NUDGE_STEP_PX } from "./domEditNudge";
 import { __resetForTests } from "../../utils/canvasNudgeGate";
+import { flushStudioPendingEdits } from "../../utils/studioPendingEdits";
 import type { DomEditSelection } from "./domEditing";
 import type { OverlayRect } from "./domEditOverlayGeometry";
 
@@ -289,5 +290,34 @@ describe("useDomEditNudge carries the route its press chose", () => {
     );
     act(() => root.unmount());
     element.remove();
+  });
+});
+
+describe("useDomEditNudge — undo right after a burst", () => {
+  it("undo's drain commits a burst still inside its debounce and waits for its save", async () => {
+    __resetForTests();
+    const root = createRoot(document.body.appendChild(document.createElement("div")));
+    const element = document.body.appendChild(document.createElement("div"));
+    element.id = "dot-undo";
+    let saved!: () => void;
+    const commit = vi.fn(() => new Promise<void>((resolve) => (saved = resolve)));
+    act(() => {
+      root.render(
+        React.createElement(Harness, {
+          selection: makeSelection("Dot", element),
+          onPathOffsetCommit: commit,
+        }),
+      );
+    });
+    act(() => dispatchArrowRight());
+
+    let drained = false;
+    const drain = flushStudioPendingEdits().then(() => (drained = true));
+    await vi.waitFor(() => expect(commit).toHaveBeenCalledTimes(1));
+    expect(drained).toBe(false);
+    saved();
+    await drain;
+    expect(drained).toBe(true);
+    act(() => root.unmount());
   });
 });
