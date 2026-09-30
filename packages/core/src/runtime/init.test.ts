@@ -5046,7 +5046,7 @@ describe("initSandboxRuntimeModular", () => {
       expect(String(line?.[0])).toContain("fx-chain");
     });
 
-    it("says nothing about a cross-origin <video>, which never routes through Web Audio", () => {
+    it("says nothing about a cross-origin <video> at unity, which never routes through Web Audio", () => {
       const root = document.createElement("div");
       root.setAttribute("data-composition-id", "main");
       root.setAttribute("data-root", "true");
@@ -5158,6 +5158,37 @@ describe("initSandboxRuntimeModular", () => {
 
       expect(captureSpy).not.toHaveBeenCalled();
       expect(ctx.mediaElementSources).toBe(0);
+    });
+
+    it("silences a captured video hidden after its volume drops to 1", async () => {
+      const raf = createManualRaf();
+      vi.spyOn(performance, "now").mockImplementation(() => raf.now());
+      window.requestAnimationFrame =
+        raf.requestAnimationFrame as typeof window.requestAnimationFrame;
+      window.cancelAnimationFrame = raf.cancelAnimationFrame as typeof window.cancelAnimationFrame;
+      const video = mountAudio("/assets/broll.mp4", { "data-volume": "1.5" }, "video");
+      Object.defineProperty(video, "paused", { value: false, configurable: true });
+      Object.defineProperty(video, "readyState", { value: 4, configurable: true });
+      const captureSpy = vi.spyOn(WebAudioTransport.prototype, "scheduleMediaElementPlayback");
+      const step = async () => {
+        for (let frame = 0; frame < 5; frame++) {
+          ctx.time += 1 / 60;
+          raf.step(1000 / 60);
+          await Promise.resolve();
+        }
+      };
+
+      await startPlayback();
+      await captureSpy.mock.results[0]?.value;
+      const transport = captureSpy.mock.contexts[0] as WebAudioTransport;
+      await step();
+      video.setAttribute("data-volume", "1");
+      await step();
+      video.setAttribute("data-hidden", "");
+      await step();
+
+      expect(transport.routesElement(video)).toBe(false);
+      expect(video.volume).toBe(0);
     });
 
     it("keeps a cross-origin boosted video native and never decodes it", async () => {

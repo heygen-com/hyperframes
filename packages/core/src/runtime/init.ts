@@ -2386,8 +2386,8 @@ export function initSandboxRuntimeModular(): void {
     }
   };
 
-  // Only what `joinsWebAudio` admits reaches `createMediaElementSource`, so no other
-  // cross-origin media may be reported as if it did.
+  // Only media `joinsWebAudio` admits when a play is scheduled reaches
+  // `createMediaElementSource`, so no other cross-origin media may be reported as if it did.
   const reportWebAudioRoute = (mediaEl: HTMLMediaElement) => {
     if (!joinsWebAudio(mediaEl)) return;
     // Before resource selection settles, the verdict is built from `<source>`
@@ -2576,8 +2576,12 @@ export function initSandboxRuntimeModular(): void {
   // started a second buffer source for every in-window clip on top of the ones
   // still sounding: the whole mix audibly doubled, slightly out of phase.
   let hiddenAudioDirty = false;
+  const affectsAudio = (el: Element): boolean =>
+    isMediaElement(el) &&
+    el.hasAttribute("data-start") &&
+    (joinsWebAudio(el) || webAudio.routesElement(el));
   const nodeAffectsAudio = (node: HTMLElement): boolean =>
-    (node.matches(WEB_AUDIO_MEDIA) && joinsWebAudio(node)) || webAudioMediaIn(node).length > 0;
+    affectsAudio(node) || Array.from(node.querySelectorAll(WEB_AUDIO_MEDIA)).some(affectsAudio);
 
   // An `<hf-audio-group>` carries no `data-start`, so it is never among
   // `visibilityNodes` above — group mute needs its own small diff pass.
@@ -2586,8 +2590,8 @@ export function initSandboxRuntimeModular(): void {
   // sync with a `data-hidden` toggle made mid-playback.
   const groupHiddenLast = new WeakMap<Element, boolean>();
   const groupHasUncapturedMember = (groupId: string, currentTime: number): boolean => {
-    for (const el of webAudioMediaIn(document)) {
-      if (audioGroupOf(el) !== groupId) continue;
+    for (const el of document.querySelectorAll("audio[data-start]")) {
+      if (!isMediaElement(el) || audioGroupOf(el) !== groupId) continue;
       if (webAudio.routesElement(el) || isSilencedByHidden(el)) continue;
       const start = resolveAbsoluteMediaStartSeconds(el);
       const duration = parseStrictFiniteTimingNumber(el.dataset.duration);
