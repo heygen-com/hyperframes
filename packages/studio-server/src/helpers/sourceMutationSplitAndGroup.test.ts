@@ -4,6 +4,7 @@ import { describe, expect, it } from "vitest";
 import { readMediaOffsetSeconds } from "@hyperframes/parsers/media-duration";
 import {
   splitElementInHtml,
+  relinkSplitHalvesInHtml,
   unwrapElementsFromHtml,
   wrapElementsInHtml,
 } from "./sourceMutation.js";
@@ -393,5 +394,25 @@ describe("wrapElementsInHtml / unwrapElementsFromHtml", () => {
     const result = unwrapElementsFromHtml(html, { id: "plain" });
     expect(result.unwrapped).toBe(false);
     expect(result.html).toBe(html);
+  });
+});
+
+describe("relinkSplitHalvesInHtml", () => {
+  it("makes each half of a split linked pair its own pair", () => {
+    const source =
+      '<div data-composition-id="c"><video id="v" src="t.mp4" muted data-link="lk-1" data-start="0" data-duration="4"></video><audio id="a" src="t.mp4" data-link="lk-1" data-start="0" data-duration="4"></audio></div>';
+    const first = splitElementInHtml(source, { id: "v" }, 2, "v-split");
+    const second = splitElementInHtml(first.html, { id: "a" }, 2, "a-split");
+    const html = relinkSplitHalvesInHtml(second.html, ["v-split", "a-split"]);
+    const link = (id: string) => new RegExp(`id="${id}"[^>]*data-link="([^"]+)"`).exec(html)?.[1];
+    expect(link("v")).toBe("lk-1");
+    expect(link("a")).toBe("lk-1");
+    expect(link("v-split")).toBe("lk-2");
+    expect(link("a-split")).toBe("lk-2");
+  });
+
+  it("leaves unlinked splits byte-identical", () => {
+    const source = '<div><img id="i" data-start="0" data-duration="4"></div>';
+    expect(relinkSplitHalvesInHtml(source, ["i"])).toBe(source);
   });
 });
