@@ -12,7 +12,6 @@ export interface TimelineClipRenderContext {
   rich: boolean;
 }
 
-/** A host's own clip-menu action, listed above Studio's. */
 export interface TimelineClipMenuItem {
   id: string;
   label: string;
@@ -43,7 +42,6 @@ export interface TimelineProps
   onPasteClip?: () => Promise<void>;
   onDuplicateClip?: () => Promise<boolean>;
   canPasteClip?: () => boolean;
-  /** The host's items for a clip's right-click menu, shown first. */
   clipMenuItems?: (element: TimelineElement) => readonly TimelineClipMenuItem[];
   theme?: Partial<TimelineTheme>;
   showAudioEffects?: boolean;
