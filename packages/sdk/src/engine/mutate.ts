@@ -17,6 +17,8 @@ import type {
   JsonPatchOp,
 } from "../types.js";
 import type { ParsedDocument } from "./model.js";
+import { MEDIA_LINK_ATTR } from "@hyperframes/core/media-link";
+import { idsToUnlink, linkedPartnerIds } from "./linkedTiming.js";
 import {
   resolveScoped,
   escapeHfId,
@@ -276,6 +278,36 @@ function applyGsapOp(parsed: ParsedDocument, op: EditOp): MutationResult | undef
   }
 }
 
+const concatResults = (a: MutationResult, b: MutationResult): MutationResult => ({
+  forward: [...a.forward, ...b.forward],
+  inverse: [...a.inverse, ...b.inverse],
+});
+
+/**
+ * Timing edits apply to link partners too (start/duration; each keeps its own
+ * track). `linked: false` edits the targets alone and unlinks them.
+ */
+function applySetTiming(
+  parsed: ParsedDocument,
+  op: Extract<EditOp, { type: "setTiming" }>,
+): MutationResult {
+  const ids = targets(op.target);
+  const timing = { start: op.start, duration: op.duration, trackIndex: op.trackIndex };
+  if (op.linked === false) {
+    const unlink = idsToUnlink(parsed.document, ids);
+    const own = handleSetTiming(parsed, ids, timing);
+    return concatResults(own, handleSetAttribute(parsed, unlink, MEDIA_LINK_ATTR, null));
+  }
+  const own = handleSetTiming(parsed, ids, timing);
+  if (op.start === undefined && op.duration === undefined) return own;
+  const partners = linkedPartnerIds(parsed.document, ids);
+  if (partners.length === 0) return own;
+  return concatResults(
+    own,
+    handleSetTiming(parsed, partners, { start: op.start, duration: op.duration }),
+  );
+}
+
 export function applyOp(parsed: ParsedDocument, op: EditOp): MutationResult {
   const gsap = applyGsapOp(parsed, op);
   if (gsap !== undefined) return gsap;
@@ -287,11 +319,7 @@ export function applyOp(parsed: ParsedDocument, op: EditOp): MutationResult {
     case "setAttribute":
       return handleSetAttribute(parsed, targets(op.target), op.name, op.value);
     case "setTiming":
-      return handleSetTiming(parsed, targets(op.target), {
-        start: op.start,
-        duration: op.duration,
-        trackIndex: op.trackIndex,
-      });
+      return applySetTiming(parsed, op);
     case "setHold":
       return handleSetHold(parsed, targets(op.target), op.hold);
     case "moveElement":

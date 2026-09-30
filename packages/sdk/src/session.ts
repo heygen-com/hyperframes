@@ -161,8 +161,12 @@ class CompositionImpl implements Composition {
     this.dispatch({ type: "setAttribute", target: id, name, value });
   }
 
-  setTiming(id: HfId, timing: { start?: number; duration?: number; trackIndex?: number }): void {
-    this.dispatch({ type: "setTiming", target: id, ...timing });
+  setTiming(
+    id: HfId,
+    timing: { start?: number; duration?: number; trackIndex?: number },
+    opts?: { linked?: boolean },
+  ): void {
+    this.dispatch({ type: "setTiming", target: id, ...timing, ...opts });
   }
 
   removeElement(id: HfId): void {
@@ -563,7 +567,8 @@ class CompositionImpl implements Composition {
       setText: (value) => this.dispatch({ type: "setText", target: ids, value }),
       setAttribute: (name, value) =>
         this.dispatch({ type: "setAttribute", target: ids, name, value }),
-      setTiming: (timing) => this.dispatch({ type: "setTiming", target: ids, ...timing }),
+      setTiming: (timing, opts) =>
+        this.dispatch({ type: "setTiming", target: ids, ...timing, ...opts }),
       removeElement: () => this.dispatch({ type: "removeElement", target: ids }),
     };
   }
@@ -575,7 +580,8 @@ class CompositionImpl implements Composition {
       setText: (value) => this.dispatch({ type: "setText", target: id, value }),
       setAttribute: (name, value) =>
         this.dispatch({ type: "setAttribute", target: id, name, value }),
-      setTiming: (timing) => this.dispatch({ type: "setTiming", target: id, ...timing }),
+      setTiming: (timing, opts) =>
+        this.dispatch({ type: "setTiming", target: id, ...timing, ...opts }),
       removeElement: () => this.dispatch({ type: "removeElement", target: id }),
     };
   }
