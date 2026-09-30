@@ -65,10 +65,13 @@ export function resolveLinkMenuItems(input: {
   return items;
 }
 
+/** `link` = the sound-group items; `delete` = "Delete this clip only", placed beside Delete. */
 export function ClipMenuLinkItems({
+  part,
   element,
   onClose,
 }: {
+  part: "link" | "delete";
   element: TimelineElement;
   onClose: () => void;
 }) {
@@ -81,7 +84,7 @@ export function ClipMenuLinkItems({
     selectedKeys,
     onLinkEdit,
     onDeleteElementOnly,
-  });
+  }).filter((item) => (item.destructive === true) === (part === "delete"));
   if (items.length === 0) return null;
   return (
     <>
@@ -104,7 +107,6 @@ export function ClipMenuLinkItems({
           )}
         </button>
       ))}
-      <div className="my-1 border-t border-neutral-700/60" />
     </>
   );
 }

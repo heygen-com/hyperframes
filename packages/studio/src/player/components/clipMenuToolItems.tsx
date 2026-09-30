@@ -175,7 +175,7 @@ function FreezeFrameItem({ element, currentTime, onClose }: Omit<ClipMenuToolIte
   );
 }
 
-/** Freeze (time), Voice (sound), Look and Crop (picture); sound and picture end in their own divider. */
+/** Freeze (time), Voice (sound), Look and Crop (picture). */
 export function ClipMenuToolItems(props: ClipMenuToolItemsProps) {
   if (props.group === "time") return <FreezeFrameItem {...props} />;
   return <ClipMenuAttributeItems {...props} />;
@@ -204,7 +204,6 @@ function ClipMenuAttributeItems({ group, element, onClose }: ClipMenuToolItemsPr
             write(HF_AUDIO_FX_ATTR, chainWithVoicePreset(state.fxChain, id), "Voice preset")
           }
         />
-        <div className="my-1 border-t border-neutral-700/60" />
       </>
     );
   }
@@ -229,7 +228,6 @@ function ClipMenuAttributeItems({ group, element, onClose }: ClipMenuToolItemsPr
       >
         <span>Crop</span>
       </button>
-      <div className="my-1 border-t border-neutral-700/60" />
     </>
   );
 }

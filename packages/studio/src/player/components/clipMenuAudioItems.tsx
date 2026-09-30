@@ -23,11 +23,13 @@ const DUCK_TOAST: Record<DuckOutcome, string> = {
   aborted: "Could not group the voices to duck under.",
 };
 
-/** Sound group of the clip menu: Normalize loudness (one-shot) and Duck under voice (toggle). */
+/** Normalize loudness (one-shot) or Duck under voice (toggle), placed separately in the sound group. */
 export function ClipMenuAudioItems({
+  part,
   element,
   onClose,
 }: {
+  part: "normalize" | "duck";
   element: TimelineElement;
   onClose: () => void;
 }) {
@@ -84,25 +86,25 @@ export function ClipMenuAudioItems({
     showToast(DUCK_TOAST[outcome], outcome === "aborted" ? "error" : "info");
   };
 
-  return (
-    <>
+  if (part === "normalize") {
+    return (
       <button type="button" role="menuitem" className={ITEM_CLASS} onClick={() => void normalize()}>
         <span>Normalize loudness</span>
       </button>
-      {isDuckableBed(bed) && (
-        <button
-          type="button"
-          role="menuitemcheckbox"
-          aria-checked={ducked}
-          className={ITEM_CLASS}
-          onClick={() => void toggleDuck()}
-        >
-          <span>
-            <span className="inline-block w-3">{ducked ? "✓" : ""}</span>Duck under voice
-          </span>
-        </button>
-      )}
-      <div className="my-1 border-t border-neutral-700/60" />
-    </>
+    );
+  }
+  if (!isDuckableBed(bed)) return null;
+  return (
+    <button
+      type="button"
+      role="menuitemcheckbox"
+      aria-checked={ducked}
+      className={ITEM_CLASS}
+      onClick={() => void toggleDuck()}
+    >
+      <span>
+        <span className="inline-block w-3">{ducked ? "✓" : ""}</span>Duck under voice
+      </span>
+    </button>
   );
 }

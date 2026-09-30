@@ -22,11 +22,13 @@ vi.mock("../../contexts/TimelineEditContext", () => ({
 
 const harness = createHappyDomRootHarness();
 
-function render(element: TimelineElement) {
+function render(element: TimelineElement, part: "normalize" | "duck" = "normalize") {
   const host = document.createElement("div");
   document.body.appendChild(host);
   act(() =>
-    harness.mount(host).render(<ClipMenuAudioItems element={element} onClose={() => {}} />),
+    harness
+      .mount(host)
+      .render(<ClipMenuAudioItems part={part} element={element} onClose={() => {}} />),
   );
   return host;
 }
