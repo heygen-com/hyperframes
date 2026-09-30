@@ -17,7 +17,7 @@ import {
   resolveDomEditCapabilities,
   resolveDomEditSelection,
 } from "./domEditing";
-import { normalizeTimelineCompositionSource } from "./domEditingDom";
+import { buildElementLabel, normalizeTimelineCompositionSource } from "./domEditingDom";
 
 function createDocument(markup: string): Document {
   const window = new Window();
@@ -923,6 +923,14 @@ describe("resolveDomEditSelection", () => {
     expect(normalizeTimelineCompositionSource("/api/projects/p/preview/comp/sections/x.html")).toBe(
       "sections/x.html",
     );
+  });
+
+  it("names a repeated section by its authored id, not its runtime instance id", () => {
+    const document = createDocument(`
+      <div data-composition-id="benefit-fresh__hf2" data-hf-original-composition-id="benefit-fresh"></div>
+    `);
+
+    expect(buildElementLabel(document.querySelector("div") as HTMLElement)).toBe("Benefit Fresh");
   });
 
   it("finds a composition host authored with a ./ path", () => {
