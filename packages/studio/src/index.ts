@@ -175,6 +175,7 @@ export { TimelineHistoryButtons } from "./components/TimelineHistoryButtons";
 export type { TimelineHistoryButtonsProps } from "./components/TimelineHistoryButtons";
 export { AudioMeterStrip } from "./components/nle/AudioMeterStrip";
 export type { AudioMeterStripProps } from "./components/nle/AudioMeterStrip";
+export { useAudioMetersVisible } from "./utils/audioMeterVisibility";
 export { useClipboard } from "./hooks/useClipboard";
 export type { UseClipboardOptions } from "./hooks/useClipboard";
 
