@@ -1,5 +1,5 @@
 // @vitest-environment happy-dom
-import { act, useRef, useState } from "react";
+import { act, StrictMode, useRef, useState } from "react";
 import { createRoot } from "react-dom/client";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { TimelineElement } from "../store/playerStore";
@@ -142,7 +142,14 @@ function openFrom(focus: "existing" | "mounted") {
   const host = document.createElement("div");
   document.body.appendChild(host);
   const root = createRoot(host);
-  act(() => root.render(<FocusHost focus={focus} />));
+  // StrictMode runs the menu's effect cleanup once while it is still mounted, as Studio's dev build does.
+  act(() =>
+    root.render(
+      <StrictMode>
+        <FocusHost focus={focus} />
+      </StrictMode>,
+    ),
+  );
   const clip = document.body.querySelector<HTMLButtonElement>("[data-testid=clip]")!;
   clip.focus();
   act(() => clip.click());
