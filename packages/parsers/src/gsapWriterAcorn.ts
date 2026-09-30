@@ -32,11 +32,7 @@ import {
 } from "./gsapObjectArrayTiming.js";
 import type { SplitAnimationsOptions, SplitAnimationsResult } from "./gsapSerialize.js";
 import * as acornWalk from "acorn-walk";
-import {
-  clipQueryRoot,
-  clipTweenMatcher,
-  hasExplicitTime,
-} from "./clipTweens.js";
+import { clipQueryRoot, clipTweenMatcher, hasExplicitTime } from "./clipTweens.js";
 
 export { clipQueryRoot, clipTweenMatcher, hasExplicitTime };
 
