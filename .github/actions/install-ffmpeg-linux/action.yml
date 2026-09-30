@@ -27,7 +27,7 @@ runs:
         set -euo pipefail
         archive="$RUNNER_TEMP/${URL##*/}"
         # Two attempts of at most 20 s keep the install under a minute.
-        curl -fsSL --retry 1 --retry-all-errors --connect-timeout 10 --max-time 20 \
+        curl -fsSL --retry 1 --retry-all-errors --retry-max-time 25 --connect-timeout 10 --max-time 20 \
           --speed-limit 5000000 --speed-time 10 -o "$archive" "$URL"
         sha256sum -c --quiet <<<"$SHA256  $archive"
         bin="$RUNNER_TEMP/ffmpeg-bin"
