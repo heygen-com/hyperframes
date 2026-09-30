@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 import {
   audioPillFlags,
   expandToLinkedMembers,
+  dropMisalignedTrimPartners,
   linkedGestureKeys,
   linkedMembersOf,
   mediaAssetIdentity,
@@ -227,5 +228,17 @@ describe("Linked Selection off", () => {
     } finally {
       useLinkedClipPreferences.getState().setLinkedSelection(true);
     }
+  });
+});
+
+describe("dropMisalignedTrimPartners", () => {
+  const v = { id: "v", link: "lk", start: 2, duration: 6 };
+  const a = { id: "a", link: "lk", start: 3, duration: 5 };
+  const keys = new Set(["v", "a"]);
+  it("keeps a partner whose grabbed edge is at the same time", () => {
+    expect(dropMisalignedTrimPartners(keys, v, [v, a], "end")).toEqual(keys);
+  });
+  it("trims only the grabbed clip when the partner's edge is elsewhere", () => {
+    expect(dropMisalignedTrimPartners(keys, v, [v, a], "start")).toEqual(new Set(["v"]));
   });
 });

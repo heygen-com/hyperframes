@@ -2,12 +2,18 @@ import { usePlayerStore, type TimelineElement } from "../store/playerStore";
 import { useTimelineEditContextOptional } from "../../contexts/TimelineEditContext";
 import type { TimelineLinkEdit } from "./timelineCallbacks";
 import { linkedMembersOf } from "./audioClipLink";
-import { canDetachAudio, canLinkPair, findMergePair } from "../../components/editor/mediaLinkEdits";
+import {
+  canDetachAudio,
+  canLinkPair,
+  findMergePair,
+  isPairInSync,
+} from "../../components/editor/mediaLinkEdits";
 
 interface LinkMenuItem {
   label: string;
   shortcut?: string;
   destructive?: boolean;
+  disabledReason?: string;
   run: () => void;
 }
 
@@ -61,6 +67,7 @@ export function resolveLinkMenuItems(input: {
   if (pair) {
     items.push({
       label: "Merge audio back into video",
+      disabledReason: isPairInSync(pair.video, pair.audio) ? undefined : "Move into Sync first",
       run: () => onLinkEdit({ kind: "merge", ...pair }),
     });
   }
@@ -102,8 +109,12 @@ export function ClipMenuLinkItems({
           key={item.label}
           type="button"
           role="menuitem"
-          className={`w-full flex items-center justify-between px-3 py-1.5 text-xs text-left outline-hidden cursor-pointer hover:bg-neutral-800 focus-visible:bg-neutral-800 ${
-            item.destructive ? "text-red-400" : "text-neutral-300"
+          disabled={item.disabledReason !== undefined}
+          title={item.disabledReason}
+          className={`w-full flex items-center justify-between px-3 py-1.5 text-xs text-left outline-hidden ${
+            item.disabledReason !== undefined
+              ? "text-neutral-600 cursor-not-allowed"
+              : `cursor-pointer hover:bg-neutral-800 focus-visible:bg-neutral-800 ${item.destructive ? "text-red-400" : "text-neutral-300"}`
           }`}
           onClick={() => {
             item.run();

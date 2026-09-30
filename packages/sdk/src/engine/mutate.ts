@@ -298,16 +298,51 @@ function applySetTiming(
     const own = handleSetTiming(parsed, ids, timing);
     return concatResults(own, handleSetAttribute(parsed, unlink, MEDIA_LINK_ATTR, null));
   }
+  const before = new Map(
+    ids.map((id) => {
+      const el = resolveScoped(parsed.document, id);
+      return [el?.getAttribute(MEDIA_LINK_ATTR) ?? "", el ? readClipTiming(el) : null] as const;
+    }),
+  );
   const partners =
     op.start === undefined && op.duration === undefined
       ? []
       : linkedPartnerIds(parsed.document, ids);
   const own = handleSetTiming(parsed, ids, timing);
-  if (partners.length === 0) return own;
-  return concatResults(
-    own,
-    handleSetTiming(parsed, partners, { start: op.start, duration: op.duration }),
-  );
+  let result = own;
+  for (const partner of partners) {
+    const el = resolveScoped(parsed.document, partner);
+    const grabbed = before.get(el?.getAttribute(MEDIA_LINK_ATTR) ?? "");
+    if (!el || !grabbed) continue;
+    result = concatResults(
+      result,
+      handleSetTiming(parsed, [partner], partnerTiming(grabbed, readClipTiming(el), timing)),
+    );
+  }
+  return result;
+}
+
+type ClipWindow = { start: number | null; duration: number | null };
+const ALIGN_EPSILON_S = 1e-3;
+
+/**
+ * A partner follows the edit without resyncing: a start change shifts it by the
+ * same delta (keeping any offset); a duration change carries over only when the
+ * partner's end sat at the edited clip's end.
+ */
+function partnerTiming(
+  grabbed: ClipWindow,
+  partner: ClipWindow,
+  edit: { start?: number; duration?: number },
+): { start?: number; duration?: number } {
+  const timing: { start?: number; duration?: number } = {};
+  const [gStart, pStart] = [grabbed.start ?? 0, partner.start ?? 0];
+  if (edit.start !== undefined) timing.start = pStart + (edit.start - gStart);
+  const endsTogether =
+    Math.abs(pStart + (partner.duration ?? 0) - (gStart + (grabbed.duration ?? 0))) <
+    ALIGN_EPSILON_S;
+  if (edit.duration !== undefined && endsTogether) timing.duration = edit.duration;
+  return timing;
 }
 
 export function applyOp(parsed: ParsedDocument, op: EditOp): MutationResult {

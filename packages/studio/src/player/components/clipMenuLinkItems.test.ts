@@ -87,4 +87,43 @@ describe("resolveLinkMenuItems", () => {
     })[0]?.run();
     expect(onLinkEdit).toHaveBeenCalledWith({ kind: "detach", element: talk });
   });
+
+  it("offers Link for a trimmed audio and its video (timing does not matter)", () => {
+    const video = clip("talk", "video", { muted: true });
+    const audio = clip("talk-audio", "audio", { start: 1, duration: 2, playbackStart: 1 });
+    expect(labels(video, [video, audio], ["talk", "talk-audio"])[0]).toBe("Link to audio");
+  });
+
+  it("offers Link for a pair of different files", () => {
+    const video = clip("talk", "video", { muted: true });
+    const music = clip("bgm", "audio", { src: "bgm.mp3" });
+    expect(labels(music, [video, music], ["talk", "bgm"])).toEqual(["Link to video"]);
+  });
+
+  it("offers no Link when one selected clip is already linked elsewhere", () => {
+    const video = clip("talk", "video", { muted: true, link: "lk-9" });
+    const audio = clip("bgm", "audio", { src: "bgm.mp3" });
+    const partner = clip("talk-audio", "audio", { link: "lk-9" });
+    expect(labels(audio, [video, audio, partner], ["talk", "bgm"])).toEqual([]);
+  });
+
+  it("disables Merge back with a tooltip while the pair is out of sync", () => {
+    const video = clip("talk", "video", { muted: true, link: "lk-1" });
+    const audio = clip("talk-audio", "audio", { link: "lk-1", start: 0.5 });
+    const merge = resolveLinkMenuItems({
+      element: audio,
+      elements: [video, audio],
+      selectedKeys: new Set(),
+      onLinkEdit: vi.fn(),
+    }).find((item) => item.label === "Merge audio back into video");
+    expect(merge?.disabledReason).toBe("Move into Sync first");
+    const synced = clip("talk-audio", "audio", { link: "lk-1" });
+    const enabled = resolveLinkMenuItems({
+      element: synced,
+      elements: [video, synced],
+      selectedKeys: new Set(),
+      onLinkEdit: vi.fn(),
+    }).find((item) => item.label === "Merge audio back into video");
+    expect(enabled?.disabledReason).toBeUndefined();
+  });
 });

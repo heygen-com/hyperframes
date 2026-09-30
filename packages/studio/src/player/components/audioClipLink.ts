@@ -78,3 +78,24 @@ export function linkedGestureKeys(
   const base = selected.has(grabbedKey) ? selected : [grabbedKey];
   return expandToLinkedMembers(base, elements, linked);
 }
+
+type TimedLinked = LinkedElement & Pick<TimelineElement, "start" | "duration">;
+
+const edgeTime = (el: Pick<TimelineElement, "start" | "duration">, edge: "start" | "end") =>
+  edge === "start" ? el.start : el.start + el.duration;
+
+/** A trim drags a link partner along only when its edge sits at the grabbed clip's edge time. */
+export function dropMisalignedTrimPartners(
+  keys: ReadonlySet<string>,
+  grabbed: TimedLinked,
+  elements: readonly TimedLinked[],
+  edge: "start" | "end",
+): Set<string> {
+  const kept = new Set(keys);
+  if (!isLinked(grabbed)) return kept;
+  for (const el of elements) {
+    if (el.link !== grabbed.link || keyOf(el) === keyOf(grabbed)) continue;
+    if (Math.abs(edgeTime(el, edge) - edgeTime(grabbed, edge)) > 1e-3) kept.delete(keyOf(el));
+  }
+  return kept;
+}

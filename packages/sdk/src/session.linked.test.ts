@@ -36,6 +36,18 @@ describe("setTiming on linked clips", () => {
     expect(attr(html, "hf-talk-audio", "data-duration")).toBe("6");
   });
 
+  it("moves a misaligned pair by the same delta, preserving the offset", async () => {
+    const html = LINKED_HTML.replace(
+      'src="talk.mp4" data-link="lk-1" data-start="2"',
+      'src="talk.mp4" data-link="lk-1" data-start="3"',
+    );
+    const comp = await openComposition(html);
+    comp.setTiming("hf-talk", { start: 5 });
+    const out = comp.serialize();
+    expect(attr(out, "hf-talk", "data-start")).toBe("5");
+    expect(attr(out, "hf-talk-audio", "data-start")).toBe("6");
+  });
+
   it("{ linked: false } edits one member and unlinks the pair", async () => {
     const comp = await openComposition(LINKED_HTML);
     comp.setTiming("hf-talk", { start: 5 }, { linked: false });

@@ -27,7 +27,7 @@ import type {
   BlockedClipState,
 } from "./timelineClipDragTypes";
 import { getTimelineElementIndexes } from "../lib/timelineElementIndexes";
-import { linkedGestureKeys } from "./audioClipLink";
+import { dropMisalignedTrimPartners, linkedGestureKeys } from "./audioClipLink";
 import { isLinkedSelectionOn } from "../../utils/linkedClipPreferences";
 import type { TimelineRowGeometry } from "./timelineLayout";
 import {
@@ -242,12 +242,17 @@ export function useTimelineClipDrag({
         return;
       }
       beginGesture("resize", next.pointerId);
-      gestureSelectedKeysRef.current = linkedGestureKeys(
-        gestureSelectedKeysRef.current,
+      gestureSelectedKeysRef.current = dropMisalignedTrimPartners(
+        linkedGestureKeys(
+          gestureSelectedKeysRef.current,
+          next.element,
+          elementsRef.current,
+          next.altKey === true,
+          isLinkedSelectionOn(),
+        ),
         next.element,
         elementsRef.current,
-        next.altKey === true,
-        isLinkedSelectionOn(),
+        next.edge,
       );
       publishResizingClip(next);
     },
