@@ -16,6 +16,7 @@ import { registerGlobalAssetRoutes } from "./routes/globalAssets.js";
 import { registerHistoryRoutes } from "./routes/history.js";
 import { replaceWithProjectDirMissing } from "./helpers/projectDirMissing.js";
 import { folderGone, isProjectRootMissing } from "./helpers/safePath.js";
+import { forgetProjectSignature } from "./helpers/projectSignature.js";
 
 /**
  * Create a Hono sub-app with all studio API routes.
@@ -48,7 +49,10 @@ export function createStudioApi(adapter: StudioApiAdapter): Hono {
     const project = await Promise.resolve()
       .then(() => adapter.resolveProject(c.req.param("id")))
       .catch(() => null);
-    if (project) adapter.invalidateProjectSignature?.(project.dir);
+    if (!project) return;
+    // A same-size rewrite inside one file-time tick keeps size and times, so only the contents can tell.
+    forgetProjectSignature(project.dir);
+    adapter.invalidateProjectSignature?.(project.dir);
   });
 
   registerProjectRoutes(api, adapter);
