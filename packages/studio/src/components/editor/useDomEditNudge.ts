@@ -189,7 +189,7 @@ export function useDomEditNudge(params: UseDomEditNudgeParams): { flushNudge: ()
     if (!targets) return null;
     const members: ManualOffsetDragMember[] = [];
     for (const target of targets) {
-      const result = createManualOffsetDragMember(target);
+      const result = createManualOffsetDragMember({ ...target, gesture: "nudge" });
       if (!result.ok) {
         restoreManualOffsetDragMembers(members);
         return null;

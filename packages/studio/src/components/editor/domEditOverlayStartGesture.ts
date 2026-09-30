@@ -70,6 +70,7 @@ export function startGroupDrag(
       selection: item.selection,
       element: item.element,
       rect: item.rect,
+      gesture: "drag",
     });
     if (!result.ok) {
       restoreManualOffsetDragMembers(members);
@@ -198,6 +199,7 @@ export function startGesture(
       selection: sel,
       element: sel.element,
       rect,
+      gesture: "drag",
     });
     if (!result.ok) {
       opts.onBlockedMoveRef.current(result.selection);

@@ -405,6 +405,44 @@ export function hasNonHoldTweenForElement(
   return !!targetEl && hasNonHoldTween(timelinesOf(iframe), targetEl, channels, compositionId);
 }
 
+// Position channels — used to scope the "has a live position tween?" check so a
+// sibling rotation/scale animation never forces a static position hold into the
+// keyframe branch (which corrupts it into a frozen duration-0 keyframed tween).
+export const POSITION_CHANNELS: string[] = [
+  "x",
+  "y",
+  "xPercent",
+  "yPercent",
+  "left",
+  "top",
+  // GSAP normalizes translateX/Y to x/y at play time, but readTween reads the
+  // AUTHORED shape — include them so a hand-authored translateX/Y position tween
+  // still counts as a live position tween.
+  "translateX",
+  "translateY",
+];
+const MOVE_CHANNELS = [...POSITION_CHANNELS, "motionPath"];
+
+/** Whether a live timeline tween or hold writes any of `channels` on `el`. Sync, no fetch. */
+export function gsapWritesChannels(el: Element, channels: string[]): boolean {
+  const win = el.ownerDocument.defaultView as { __timelines?: Record<string, RuntimeTimeline> };
+  return Object.values(win?.__timelines ?? {}).some((tl) =>
+    (tl?.getChildren?.(true) ?? []).some(
+      (tween) =>
+        !!tween.vars &&
+        matchesElement(tween, el) &&
+        (channels.some((ch) => ch in tween.vars!) || keyframeVarsCarryChannel(tween.vars, channels)),
+    ),
+  );
+}
+
+/** GSAP owns this element's position: a tween or hold writes it, or GSAP already renders its
+ *  transform (a CSS translate would then apply twice). Everything else moves by plain CSS. */
+export function gsapWritesPosition(el: Element): boolean {
+  const cache = (el as { _gsap?: { renderTransform?: unknown } })._gsap;
+  return !!cache?.renderTransform || gsapWritesChannels(el, MOVE_CHANNELS);
+}
+
 /** `hasNonHoldTweenForElement` for an element in hand, read from its own window's timelines. */
 export function elementHasNonHoldTween(el: Element, channels?: string[]): boolean {
   const win = el.ownerDocument.defaultView as {

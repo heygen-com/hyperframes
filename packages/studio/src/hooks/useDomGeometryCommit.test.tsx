@@ -16,6 +16,11 @@ vi.mock("../utils/studioTelemetry", () => ({ trackStudioEvent: vi.fn() }));
 
 const SOURCE = '<div id="card">Card</div><div id="other">Other</div>';
 
+/** GSAP already renders this element's transform, so a move takes the GSAP writer. */
+function gsapPositioned(element: HTMLElement): HTMLElement {
+  return Object.assign(element, { _gsap: { renderTransform: () => {} } });
+}
+
 /** A warm parse where only another element animates, and a GSAP writer answering `status`. */
 function stubServer(status = 200, parseStatus = 200) {
   const mutations: unknown[] = [];
@@ -116,7 +121,8 @@ describe("useDomGeometryCommit, from the package entry", () => {
       onRotationCommit: hook().commitRotation,
     };
 
-    const outcome = await overlayCommits.onPathOffsetCommit(makeSelection("card", element), {
+    const card = makeSelection("card", gsapPositioned(element));
+    const outcome = await overlayCommits.onPathOffsetCommit(card, {
       x: 40,
       y: 20,
     });
@@ -129,6 +135,37 @@ describe("useDomGeometryCommit, from the package entry", () => {
     expect(recordEdit).toHaveBeenCalledWith(
       expect.objectContaining({ files: { "index.html": { before: "BEFORE", after: "AFTER" } } }),
     );
+    unmount();
+  });
+
+  it("saves a GSAP-free move as its inline translate, with no GSAP script and no animation read", async () => {
+    const urls: string[] = [];
+    const patches: unknown[] = [];
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+        const url = String(input instanceof Request ? input.url : input);
+        urls.push(url);
+        if (url.includes("/file-mutations/patch-element/")) patches.push(JSON.parse(String(init?.body)));
+        const body = url.includes("/files/")
+          ? { content: SOURCE }
+          : { ok: true, changed: true, matched: true, content: "AFTER", version: "v2" };
+        return new Response(JSON.stringify(body), { headers: { "content-type": "application/json" } });
+      }),
+    );
+    const { element, recordEdit, hook, unmount } = renderHost();
+
+    const card = makeSelection("card", element);
+    await expect(hook().commitPathOffset(card, { x: 130.5, y: 90 })).resolves.toEqual({ ok: true });
+
+    expect(element.style.getPropertyValue("translate")).toBe("130.5px 90px");
+    expect(patches).toEqual([
+      expect.objectContaining({
+        operations: [{ type: "inline-style", property: "translate", value: "130.5px 90px" }],
+      }),
+    ]);
+    expect(urls.filter((url) => url.includes("gsap"))).toEqual([]);
+    expect(recordEdit).toHaveBeenCalledTimes(1);
     unmount();
   });
 
@@ -148,7 +185,7 @@ describe("useDomGeometryCommit, from the package entry", () => {
     const { element, recordEdit, hook, unmount } = renderHost({ showToast });
 
     await expect(
-      hook().commitPathOffset(makeSelection("card", element), { x: 40, y: 20 }),
+      hook().commitPathOffset(makeSelection("card", gsapPositioned(element)), { x: 40, y: 20 }),
     ).rejects.toThrow();
     expect(recordEdit).not.toHaveBeenCalled();
     expect(showToast).toHaveBeenCalledWith(expect.any(String), "error");
@@ -204,7 +241,8 @@ describe("useDomGeometryCommit, from the package entry", () => {
     const mutations = stubServer();
     const { element, recordEdit, hook, unmount } = renderHost();
 
-    const move = hook().commitPathOffset(makeSelection("card", element), { x: 40, y: 20 });
+    const card = makeSelection("card", gsapPositioned(element));
+    const move = hook().commitPathOffset(card, { x: 40, y: 20 });
     await hook().waitForPendingSaves();
 
     expect(mutations).toHaveLength(1);
@@ -280,7 +318,8 @@ describe("useDomGeometryCommit, one word of a staggered phrase", () => {
       offsetLeft: { get: () => 100 + (Number.parseFloat(word.style.left) || 0) },
       offsetTop: { get: () => 200 + (Number.parseFloat(word.style.top) || 0) },
     });
-    return { ...makeSelection("How", word), id: undefined, selector: ".w", hfId: "hf-w0" };
+    const selection = makeSelection("How", gsapPositioned(word));
+    return { ...selection, id: undefined, selector: ".w", hfId: "hf-w0" };
   }
 
   it("saves left/top on the dragged word only and never rewrites the shared tween", async () => {
