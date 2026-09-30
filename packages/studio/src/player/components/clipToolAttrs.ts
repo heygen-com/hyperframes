@@ -4,11 +4,13 @@
  */
 
 import {
+  getAudioFxDef,
   parseAudioFxChain,
   serializeAudioFxChain,
   type HfAudioFxChain,
+  type HfAudioFxNode,
 } from "@hyperframes/core/audio-fx";
-import { activeAudioFxPresetIds } from "@hyperframes/core/audio-fx-presets";
+import { activeAudioFxPresetIds, getAudioFxPreset } from "@hyperframes/core/audio-fx-presets";
 import { normalizeHfColorGrading } from "@hyperframes/core/color-grading";
 import { parseRateLane } from "@hyperframes/core/speed-ramp";
 import { applyPresetToChain } from "../../components/editor/useApplyAudioFxPreset";
@@ -135,13 +137,6 @@ export function hasCrop(clipPath: string | null | undefined): boolean {
   return value !== "" && value !== "none" && !ZERO_INSET.test(value);
 }
 
-export type ClipBadgeKind = "link" | "look" | "voice" | "ramp" | "crop" | "ducked" | "volume";
-
-export interface ClipBadge {
-  kind: ClipBadgeKind;
-  label: string;
-}
-
 /** What a clip's attributes say is applied; the element's own attributes, as read off its node. */
 export interface ClipToolState {
   tag: string;
@@ -153,46 +148,44 @@ export interface ClipToolState {
   colorGrading: string | null;
   clipPath: string | null;
   carve: string | null;
-  link: string | null;
 }
 
-function volumeBadge(state: ClipToolState): ClipBadge | null {
-  const isAudio = state.tag === "audio";
-  if (!isAudio && !state.hasSound) return null;
-  if (state.muted) return { kind: "volume", label: "Muted" };
+/** The volume badge text, or null at 100% and on clips with no sound. */
+export function clipVolumeBadge(state: ClipToolState): string | null {
+  if (state.tag !== "audio" && !state.hasSound) return null;
+  if (state.muted) return "Muted";
   const volume = state.volume ?? 1;
   if (Math.abs(volume - 1) < 0.005) return null;
-  return { kind: "volume", label: `${Math.round(volume * 100)}%` };
+  return `${Math.round(volume * 100)}%`;
 }
 
-/** Badges in the wireframe's order: look, voice, ramp, crop, ducked, volume. The link badge leads. */
-export function readClipBadges(state: ClipToolState): ClipBadge[] {
-  const look = lookLabel(activeLook(state.colorGrading));
-  const voice = voicePresetLabel(activeVoicePreset(state.fxChain));
-  const volume = volumeBadge(state);
-  const badges: Array<ClipBadge | null> = [
-    state.link ? { kind: "link", label: "Linked" } : null,
-    look ? { kind: "look", label: look } : null,
-    voice ? { kind: "voice", label: `Voice: ${voice}` } : null,
-    hasRateRamp(state.automation) ? { kind: "ramp", label: "Ramp" } : null,
-    hasCrop(state.clipPath) ? { kind: "crop", label: "Crop" } : null,
-    isDucked(state.carve) ? { kind: "ducked", label: "Ducked" } : null,
-    volume,
+function lookEffect(rawGrading: string | null): string | null {
+  const grading = normalizeHfColorGrading(parseJson(rawGrading));
+  if (!grading) return null;
+  const label = lookLabel(grading.preset ?? null);
+  return label ? `Look: ${label}` : "Look";
+}
+
+function presetEffect(presetId: string): string {
+  const voice = voicePresetLabel(presetId);
+  return voice ? `Voice: ${voice}` : (getAudioFxPreset(presetId)?.label ?? presetId);
+}
+
+function chainNodeEffect(node: HfAudioFxNode): string | null {
+  if (node.enabled === false || node.fromCarve) return null;
+  if (node.fromPreset) return presetEffect(node.fromPreset);
+  if (node.fromEq) return "EQ";
+  if (node.fromLeveller) return "Leveller";
+  return node.label ?? getAudioFxDef(node.type)?.label ?? node.type;
+}
+
+/** Every effect on the clip, in the fx badge tooltip's order; empty means a grey badge. */
+export function readClipEffects(state: ClipToolState): string[] {
+  const effects: Array<string | null> = [
+    lookEffect(state.colorGrading),
+    ...parseChainOrEmpty(state.fxChain).nodes.map(chainNodeEffect),
+    hasCrop(state.clipPath) ? "Crop" : null,
+    isDucked(state.carve) ? "Ducked" : null,
   ];
-  return badges.filter((badge): badge is ClipBadge => badge !== null);
-}
-
-const MAX_VISIBLE_BADGES = 2;
-
-/** The link badge is always shown; the rest cap at two, then `+N`. */
-export function splitVisibleBadges(badges: readonly ClipBadge[]): {
-  visible: ClipBadge[];
-  hidden: ClipBadge[];
-} {
-  const link = badges.filter((badge) => badge.kind === "link");
-  const rest = badges.filter((badge) => badge.kind !== "link");
-  return {
-    visible: [...link, ...rest.slice(0, MAX_VISIBLE_BADGES)],
-    hidden: rest.slice(MAX_VISIBLE_BADGES),
-  };
+  return [...new Set(effects.filter((effect): effect is string => effect !== null))];
 }

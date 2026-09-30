@@ -211,7 +211,7 @@ export const TimelineClip = memo(function TimelineClip({
         </div>
       )}
       {showLabel && <span className="timeline-clip__label">{displayLabel}</span>}
-      {showLabel && !isGestureActor && <ClipBadges el={el} />}
+      {showLabel && !isGestureActor && <ClipBadges el={el} onOpenMenu={onContextMenu} />}
       {!isGestureActor && el.syncOrigin && <OutOfSyncBadge el={el} />}
       {showDefaultText && (
         <span className="timeline-clip__timecode">

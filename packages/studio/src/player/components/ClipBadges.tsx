@@ -1,6 +1,6 @@
-import { memo } from "react";
+import { memo, type MouseEvent } from "react";
 import type { TimelineElement } from "../store/playerStore";
-import { readClipBadges, splitVisibleBadges, type ClipBadge } from "./clipToolAttrs";
+import { clipVolumeBadge, readClipEffects } from "./clipToolAttrs";
 import { useClipToolState } from "./useClipToolState";
 
 function SpeakerGlyph({ muted }: { muted: boolean }) {
@@ -21,47 +21,53 @@ function SpeakerGlyph({ muted }: { muted: boolean }) {
   );
 }
 
-function BadgeContent({ badge }: { badge: ClipBadge }) {
-  if (badge.kind === "link") return <span aria-hidden="true">🔗</span>;
-  if (badge.kind === "volume") {
-    const muted = badge.label === "Muted";
-    return (
-      <>
-        <SpeakerGlyph muted={muted} />
-        {muted ? null : <span>{badge.label}</span>}
-      </>
-    );
-  }
-  return <span>{badge.label}</span>;
-}
-
 const BADGE_CLASS =
-  "inline-flex items-center gap-0.5 rounded-[3px] border border-white/20 bg-black/55 px-1 text-[9px] leading-[14px] text-white/90 whitespace-nowrap";
+  "timeline-clip__badge inline-flex items-center gap-0.5 rounded-[3px] border bg-black/55 px-1 text-[9px] leading-[14px] whitespace-nowrap";
+const FX_ON = "border-white/40 text-white font-semibold";
+const FX_OFF = "border-white/10 text-white/35";
 
-/** What is applied to a clip, read from its attributes: a link badge, then at most two more and `+N`. */
-export const ClipBadges = memo(function ClipBadges({ el }: { el: TimelineElement }) {
+/** Premiere's fx badge — grey with no effects, white with any; hover lists them, click opens the clip menu. */
+export const ClipBadges = memo(function ClipBadges({
+  el,
+  onOpenMenu,
+}: {
+  el: TimelineElement;
+  onOpenMenu?: (event: MouseEvent) => void;
+}) {
   const state = useClipToolState(el);
-  const { visible, hidden } = splitVisibleBadges(readClipBadges(state));
-  if (visible.length === 0) return null;
+  const effects = readClipEffects(state);
+  const volume = clipVolumeBadge(state);
+  const hasEffects = effects.length > 0;
+  const openMenu = (event: MouseEvent) => {
+    event.stopPropagation();
+    onOpenMenu?.(event);
+  };
   return (
     <span
       className="pointer-events-none absolute right-1.5 top-0.5 z-[3] flex gap-1"
       data-testid="clip-badges"
     >
-      {visible.map((badge) => (
-        <span key={badge.kind} className={BADGE_CLASS} title={badge.label} data-badge={badge.kind}>
-          <BadgeContent badge={badge} />
-        </span>
-      ))}
-      {hidden.length > 0 && (
+      {volume && (
         <span
-          className={`${BADGE_CLASS} pointer-events-auto`}
-          title={hidden.map((badge) => badge.label).join(", ")}
-          data-badge="more"
+          className={`${BADGE_CLASS} border-white/20 text-white/90`}
+          title={volume}
+          data-badge="volume"
         >
-          +{hidden.length}
+          <SpeakerGlyph muted={volume === "Muted"} />
+          {volume === "Muted" ? null : <span>{volume}</span>}
         </span>
       )}
+      <span
+        className={`${BADGE_CLASS} pointer-events-auto cursor-pointer ${hasEffects ? FX_ON : FX_OFF}`}
+        title={hasEffects ? effects.join(" · ") : "No effects"}
+        data-badge="fx"
+        data-fx-active={hasEffects ? "true" : "false"}
+        onPointerDown={(event) => event.stopPropagation()}
+        onClick={openMenu}
+        onContextMenu={openMenu}
+      >
+        fx
+      </span>
     </span>
   );
 });
