@@ -62,7 +62,10 @@ export type { ImageThumbnailProps } from "./player/components/ImageThumbnail";
 export { useRenderClipContent } from "./hooks/useRenderClipContent";
 export type { UseRenderClipContentOptions } from "./hooks/useRenderClipContent";
 export type { ThumbnailPriority } from "./player/lib/thumbnailScheduler";
-export type { TimelineClipRenderContext } from "./player/components/TimelineTypes";
+export type {
+  TimelineClipMenuItem,
+  TimelineClipRenderContext,
+} from "./player/components/TimelineTypes";
 
 // Host overlays: draw over the preview in composition coordinates (see EditorShellProps.gestureOverlay)
 export { usePreviewCompositionRect } from "./components/editor/usePreviewCompositionRect";

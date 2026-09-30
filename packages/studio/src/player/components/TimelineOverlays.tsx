@@ -183,6 +183,7 @@ export function TimelineClipMenuOverlay() {
       onPaste={overlay.onPasteClip}
       onDuplicate={overlay.onDuplicateClip}
       canPaste={overlay.canPasteClip?.() ?? false}
+      hostItems={overlay.clipMenuItems?.(element)}
     />
   );
 }
