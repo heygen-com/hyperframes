@@ -48,6 +48,38 @@ not try to keyframe source cutting.
 
 Each video segment keeps its sound: the sound stays on the clip (`data-has-audio="true"`), so cutting the video cuts its sound. A separate `<audio>` is for other sound (music, voiceover, replacement audio, J/L cuts).
 
+## Linked clips
+
+`data-link="<id>"` marks clips that are edited as one: in Studio, moving, trimming, splitting or deleting one member does the same to the others. Detach audio in Studio produces a pair, a muted `<video>` and an `<audio>` over the same file:
+
+```html
+<video
+  id="talk"
+  src="talk.mp4"
+  muted
+  data-link="lk-1"
+  data-start="2"
+  data-duration="6"
+  data-media-start="1"
+  data-track-index="0"
+></video>
+<audio
+  id="talk-audio"
+  src="talk.mp4"
+  data-link="lk-1"
+  data-start="2"
+  data-duration="6"
+  data-media-start="1"
+  data-track-index="2"
+></audio>
+```
+
+- **Keep members in sync.** Every member needs the same `data-start`, `data-duration`, `data-media-start` (absent = 0) and `data-playback-rate` (absent = 1). Track index, volume, fades and FX may differ. When you retime one member by hand, retime all of them, or `lint` warns `linked_clips_out_of_sync`.
+- **Unlink** by removing `data-link` from every member. Removing it from one leaves the other alone with the id, which `lint` flags as `linked_clip_orphan`.
+- The render ignores `data-link`: an out-of-sync pair still plays exactly what its timings say.
+- Prefer a single `<video data-has-audio="true">` for footage with sound. Link only when the sound needs its own clip (its own track, volume or FX); to undo a detach, move the audio attributes back onto the video and delete the `<audio>`.
+- `@hyperframes/sdk` `setTiming` applies to link partners by default; pass `{ linked: false }` to edit one member, which unlinks it.
+
 ## Relative Timing
 
 `data-start` accepts a clip ID instead of a number, meaning "start when that clip ends". Add `+ N` / `- N` to offset; negative produces overlap (useful for crossfades).
