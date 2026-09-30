@@ -79,3 +79,36 @@ describe("linkedGestureKeys", () => {
     );
   });
 });
+
+describe("selectClipWithLinks", () => {
+  const linkedPair = [
+    { id: "talk", tag: "video", start: 0, duration: 4, track: 0, link: "lk-1" },
+    { id: "talk-audio", tag: "audio", start: 0, duration: 4, track: 1, link: "lk-1" },
+    { id: "title", tag: "div", start: 0, duration: 4, track: 2 },
+  ];
+
+  async function store() {
+    const { usePlayerStore } = await import("../store/playerStore");
+    const { selectClipWithLinks } = await import("./timelineLinkSelection");
+    usePlayerStore.getState().setElements(linkedPair);
+    const click = (key: string, alt = false) =>
+      selectClipWithLinks(key, alt, usePlayerStore.getState().setSelectedElementId);
+    return { usePlayerStore, click };
+  }
+
+  it("a click selects the whole pair; Alt-click then narrows to one member", async () => {
+    const { usePlayerStore, click } = await store();
+    click("talk");
+    expect(usePlayerStore.getState().selectedElementIds).toEqual(new Set(["talk", "talk-audio"]));
+    click("talk-audio", true);
+    expect(usePlayerStore.getState().selectedElementIds).toEqual(new Set(["talk-audio"]));
+  });
+
+  it("a plain click collapses a larger selection to the clicked clip's link group", async () => {
+    const { usePlayerStore, click } = await store();
+    usePlayerStore.getState().setSelection(["talk", "talk-audio", "title"], "title");
+    click("talk");
+    expect(usePlayerStore.getState().selectedElementIds).toEqual(new Set(["talk", "talk-audio"]));
+    expect(usePlayerStore.getState().selectedElementId).toBe("talk");
+  });
+});

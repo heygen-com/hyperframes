@@ -8,7 +8,7 @@ import {
 import type { TimelineEditCapabilities } from "./timelineEditCapabilities";
 import type { TimelineEditCallbacks } from "./timelineCallbacks";
 import { CLIP_HANDLE_W } from "./timelineLayout";
-import { selectLinkPartners } from "./timelineLinkSelection";
+import { selectClipWithLinks } from "./timelineLinkSelection";
 import { SPLIT_BOUNDARY_EPSILON_S } from "../../utils/timelineElementSplit";
 
 export interface ClipGestureDeps {
@@ -220,8 +220,7 @@ export function createClipGestureHandlers(
       return;
     }
     // Clip selection is idempotent; empty timeline space owns deselection.
-    setSelectedElementId(elementKey);
-    if (!e.altKey) selectLinkPartners(elementKey);
+    selectClipWithLinks(elementKey, e.altKey, setSelectedElementId);
     onSelectElement?.(el);
   };
 

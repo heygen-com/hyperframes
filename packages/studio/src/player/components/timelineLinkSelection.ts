@@ -1,10 +1,22 @@
 import { usePlayerStore } from "../store/playerStore";
 import { expandToLinkedMembers } from "./audioClipLink";
 
-/** After selecting `key`, widen the selection to its link partners (primary stays `key`). */
-export function selectLinkPartners(key: string): void {
+/**
+ * Select `key` the way a clip click does, then widen to link partners; Alt
+ * selects `key` alone even when it sat inside a larger selection.
+ */
+export function selectClipWithLinks(
+  key: string,
+  altKey: boolean,
+  setSelectedElementId: (id: string) => void,
+): void {
   const state = usePlayerStore.getState();
-  const expanded = expandToLinkedMembers([key], state.elements);
-  if (expanded.size <= 1) return;
-  state.setSelection(expanded, key);
+  if (altKey) {
+    state.setSelection([key], key);
+    return;
+  }
+  setSelectedElementId(key);
+  const { selectedElementIds, elements } = usePlayerStore.getState();
+  const expanded = expandToLinkedMembers(selectedElementIds, elements);
+  if (expanded.size > selectedElementIds.size) state.setSelection(expanded, key);
 }
