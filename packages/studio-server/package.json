@@ -81,17 +81,17 @@
       "import": "./src/helpers/mediaCodecMap.ts",
       "types": "./src/helpers/mediaCodecMap.ts"
     },
-    "./loudness": {
-      "bun": "./src/helpers/loudness.ts",
-      "node": "./dist/helpers/loudness.js",
-      "import": "./src/helpers/loudness.ts",
-      "types": "./src/helpers/loudness.ts"
-    },
     "./proxy-transcoder": {
       "bun": "./src/helpers/proxyTranscoder.ts",
       "node": "./dist/helpers/proxyTranscoder.js",
       "import": "./src/helpers/proxyTranscoder.ts",
       "types": "./src/helpers/proxyTranscoder.ts"
+    },
+    "./loudness": {
+      "bun": "./src/helpers/loudness.ts",
+      "node": "./dist/helpers/loudness.js",
+      "import": "./src/helpers/loudness.ts",
+      "types": "./src/helpers/loudness.ts"
     },
     "./media-proxy-preview": {
       "bun": "./src/helpers/mediaProxyPreview.ts",
@@ -148,13 +148,13 @@
         "import": "./dist/helpers/mediaCodecMap.js",
         "types": "./dist/helpers/mediaCodecMap.d.ts"
       },
-      "./loudness": {
-        "import": "./dist/helpers/loudness.js",
-        "types": "./dist/helpers/loudness.d.ts"
-      },
       "./proxy-transcoder": {
         "import": "./dist/helpers/proxyTranscoder.js",
         "types": "./dist/helpers/proxyTranscoder.d.ts"
+      },
+      "./loudness": {
+        "import": "./dist/helpers/loudness.js",
+        "types": "./dist/helpers/loudness.d.ts"
       },
       "./media-proxy-preview": {
         "import": "./dist/helpers/mediaProxyPreview.js",
