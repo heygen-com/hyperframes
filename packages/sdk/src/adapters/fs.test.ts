@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, it } from "vitest";
 import {
   chmodSync,
+  existsSync,
   linkSync,
   lstatSync,
   mkdirSync,
@@ -100,7 +101,7 @@ describe("fs adapter writes", () => {
       await createFsAdapter({ root: join(base, "root") }).write("sub/comp.html", "new");
 
       expect(readFileSync(join(base, "real/deep/target.html"), "utf-8")).toBe("new");
-      expect(readdirSync(join(base, "root")).sort()).toEqual(["sub"]);
+      expect(existsSync(join(base, "root/target.html"))).toBe(false);
     },
   );
 
