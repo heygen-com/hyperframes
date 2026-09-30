@@ -25,25 +25,8 @@ export function isCropBarTarget(element: Element, target: CropPresetBarTarget | 
   return Boolean(target.id) && element.id === target.id;
 }
 
-/**
- * The committed clip-path of an element whose crop the canvas handles have lifted to `none`
- * while it is selected, so readers of the live node still see the crop that will render.
- */
-const liftedCrops = new WeakMap<Element, string>();
-
-export function rememberLiftedCrop(element: Element, clipPath: string): void {
-  liftedCrops.set(element, clipPath);
-}
-
-export function forgetLiftedCrop(element: Element): void {
-  liftedCrops.delete(element);
-}
-
+/** The crop lift is a stylesheet rule, so the inline clip-path is still the committed one. */
 export function committedClipPath(element: Element): string | null {
-  return liftedCrops.get(element) ?? readInlineClipPath(element);
-}
-
-function readInlineClipPath(element: Element): string | null {
   const style = element.getAttribute("style") ?? "";
   const match = /(?:^|;)\s*clip-path\s*:\s*([^;]+)/i.exec(style);
   return match?.[1]?.trim() ?? null;
