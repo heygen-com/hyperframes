@@ -16,7 +16,7 @@ const VIEWPORT_MARGIN = 8;
 
 /** The arrow's 14x8 box overlaps the popup's border by 1px, so its fill hides the border where it meets the popup. */
 const ARROW_PX = 7;
-const ROTATED_ARROW_CORNER_CLEARANCE = 10;
+const ARROW_CORNER_CLEARANCE = 10;
 const arrowPlace = cn(
   "data-[side=bottom]:-top-[7px] data-[side=top]:-bottom-[7px] data-[side=top]:rotate-180",
   "data-[side=left]:-right-[10px] data-[side=left]:rotate-90",
@@ -69,7 +69,7 @@ export function Popover({
           align={align}
           sideOffset={sideOffset}
           collisionPadding={VIEWPORT_MARGIN}
-          arrowPadding={ROTATED_ARROW_CORNER_CLEARANCE}
+          arrowPadding={ARROW_CORNER_CLEARANCE}
           className="z-200"
         >
           <BasePopover.Popup
