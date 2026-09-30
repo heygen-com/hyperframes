@@ -93,7 +93,11 @@ export function useTimelinePlayer({
             elements,
             state.duration,
             resolvedDuration,
-            (element) => findTimelineElementInIframe(iframeRef.current, element) !== null,
+            (element) =>
+              findTimelineElementInIframe(iframeRef.current, {
+                ...element,
+                kind: "composition",
+              }) !== null,
           ),
           state.timelineProjectId,
         ),

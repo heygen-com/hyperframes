@@ -575,6 +575,43 @@ describe("shadow reload store ownership and readiness", () => {
     unmount(root);
   });
 
+  it("keeps a section the new document still hosts but its manifest misses, without dropping it once", () => {
+    const { getApi, gen, liveIframe, shadowIframe, root } = setup();
+    const film = `<div data-composition-id="main"><div id="benefit" data-composition-id="benefit"
+      data-composition-src="compositions/benefit.html" data-start="0" data-duration="3"></div><p id="a"></p></div>`;
+    liveIframe.contentDocument!.body.innerHTML = film;
+    shadowIframe.contentDocument!.body.innerHTML = film;
+    const a = { id: "a", domId: "a", tag: "p", start: 0, duration: 3, track: 0 };
+    // As enrichment adds it: no kind.
+    const benefit = {
+      id: "benefit",
+      domId: "benefit",
+      tag: "div",
+      start: 0,
+      duration: 3,
+      track: 1,
+      compositionSrc: "compositions/benefit.html",
+    };
+    act(() => usePlayerStore.getState().setElements([a, benefit]));
+    const seen: string[][] = [];
+    const stop = usePlayerStore.subscribe((state) =>
+      seen.push(state.elements.map((element) => element.id)),
+    );
+    (shadowIframe.contentWindow as Record<string, unknown>).__clipManifest = {
+      source: "hf-preview",
+      type: "timeline",
+      durationInFrames: 1260,
+      clips: [
+        { id: "a", label: "A", start: 0, duration: 3, track: 0, kind: "element", tagName: "p" },
+      ],
+    };
+    act(() => getApi().onShadowIframeLoad(gen));
+    act(() => getApi().onShadowReadyChange(gen, true));
+    stop();
+    expect(seen.every((ids) => ids.includes("benefit"))).toBe(true);
+    unmount(root);
+  });
+
   it("never writes a failed shadow's timeline into the store", () => {
     vi.spyOn(console, "error").mockImplementation(() => {});
     const { getApi, gen, root } = setup();
