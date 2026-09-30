@@ -6,6 +6,7 @@ import { useContextMenuDismiss } from "../../hooks/useContextMenuDismiss";
 import { useMenuKeyboardNav } from "./menuKeyboardNav";
 import type { TimelineClipMenuItem } from "./TimelineTypes";
 import { ClipMenuToolItems } from "./clipMenuToolItems";
+import { ClipMenuAudioItems } from "./clipMenuAudioItems";
 
 interface ClipContextMenuProps {
   x: number;
@@ -154,6 +155,8 @@ export const ClipContextMenu = memo(function ClipContextMenu({
           <div className="my-1 border-t border-neutral-700/60" />
         </>
       )}
+
+      <ClipMenuAudioItems element={element} onClose={onClose} />
 
       {(onCopy || onPaste || onDuplicate) && (
         <>

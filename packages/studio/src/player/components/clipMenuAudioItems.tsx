@@ -1,0 +1,86 @@
+import { formatAudioGain } from "@hyperframes/core/audio-gain";
+import type { TimelineElement } from "../store/timelineElement";
+import { useTimelineEditContextOptional } from "../../contexts/TimelineEditContext";
+import { useStudioShellContextOptional } from "../../contexts/StudioContext";
+import { clipHasSound, normalizeToastText, requestNormalizePlan } from "./clipMenuNormalize";
+import { isDuckableBed, readBedCarve, setDuckUnderVoice, type DuckOutcome } from "./clipMenuDuck";
+
+const ITEM_CLASS =
+  "w-full flex items-center justify-between px-3 py-1.5 text-xs text-left outline-hidden text-neutral-300 hover:bg-neutral-800 focus-visible:bg-neutral-800 cursor-pointer";
+
+const DUCK_TOAST: Record<DuckOutcome, string> = {
+  ducked: "Ducks under the voice. Normalize the voice first for the most even result.",
+  off: "No longer ducks under the voice.",
+  "no-voice": "No overlapping voice to duck under.",
+  aborted: "Could not group the voices to duck under.",
+};
+
+/** Sound group of the clip menu: Normalize loudness (one-shot) and Duck under voice (toggle). */
+export function ClipMenuAudioItems({
+  element,
+  onClose,
+}: {
+  element: TimelineElement;
+  onClose: () => void;
+}) {
+  const shell = useStudioShellContextOptional();
+  const { onSetElementAttributeQuiet, onGroupClips } = useTimelineEditContextOptional();
+  const doc = shell?.previewIframeRef.current?.contentDocument ?? null;
+  const bed = doc?.getElementById(element.domId ?? element.id) ?? null;
+  const ducked = bed ? readBedCarve(bed)?.enabled === true : false;
+  if (!clipHasSound(element) || !shell || !onSetElementAttributeQuiet) return null;
+  const { showToast, projectId } = shell;
+
+  const normalize = async () => {
+    onClose();
+    try {
+      const plan = await requestNormalizePlan(projectId, element);
+      await onSetElementAttributeQuiet(
+        element,
+        "data-volume",
+        formatAudioGain(plan.volume),
+        "Normalize loudness",
+      );
+      showToast(normalizeToastText(plan), "info");
+    } catch (error) {
+      showToast(error instanceof Error ? error.message : String(error), "error");
+    }
+  };
+
+  const toggleDuck = async () => {
+    onClose();
+    if (!doc || !bed) return;
+    const outcome = await setDuckUnderVoice(
+      doc,
+      bed,
+      !ducked,
+      async (attr, value) => {
+        await onSetElementAttributeQuiet(element, attr, value, "Duck under voice");
+      },
+      onGroupClips ? (ids, groupId) => onGroupClips(ids, groupId, "Voice") : undefined,
+    ).catch((): DuckOutcome => "aborted");
+    showToast(DUCK_TOAST[outcome], outcome === "aborted" ? "error" : "info");
+  };
+
+  return (
+    <>
+      <button type="button" role="menuitem" className={ITEM_CLASS} onClick={() => void normalize()}>
+        <span>Normalize loudness</span>
+      </button>
+      {isDuckableBed(bed) && (
+        <button
+          type="button"
+          role="menuitemcheckbox"
+          aria-checked={ducked}
+          className={ITEM_CLASS}
+          onClick={() => void toggleDuck()}
+        >
+          <span>
+            <span className="inline-block w-3">{ducked ? "✓" : ""}</span>Duck under voice
+          </span>
+        </button>
+      )}
+      <div className="my-1 border-t border-neutral-700/60" />
+    </>
+  );
+}

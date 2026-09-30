@@ -1,4 +1,5 @@
 import { buildProjectApiPath } from "../utils/projectRouting";
+import { resolvePreviewRelative } from "../utils/previewRelativePath";
 import { useCallback, type ReactNode } from "react";
 import { createElement } from "react";
 import { CompositionThumbnail, VideoThumbnail } from "../player";
@@ -31,24 +32,6 @@ export function normalizeCompositionSrc(
     // already relative
   }
   return compSrc;
-}
-
-/** Resolve a media src to its project-relative preview path, or null. */
-function resolvePreviewRelative(
-  src: string | undefined,
-  pid: string,
-  origin: string,
-): string | null {
-  if (!src) return null;
-  try {
-    const parsed = new URL(src, origin);
-    const base = new URL(buildProjectApiPath(pid, `/preview/`), origin).pathname;
-    return parsed.pathname.startsWith(base)
-      ? decodeURIComponent(parsed.pathname.slice(base.length))
-      : null;
-  } catch {
-    return null;
-  }
 }
 
 /**
