@@ -117,14 +117,8 @@ function mountGroupHandler({
   makeFetchFallback,
   trackGsapInteractionFailure = vi.fn(),
   stageElementPositionOffset = vi.fn(),
-  commitPositionPatchToHtml = vi.fn(),
 }: Pick<AwareEditingParams, "gsapCommitMutation" | "makeFetchFallback"> &
-  Partial<
-    Pick<
-      AwareEditingParams,
-      "trackGsapInteractionFailure" | "stageElementPositionOffset" | "commitPositionPatchToHtml"
-    >
-  >) {
+  Partial<Pick<AwareEditingParams, "trackGsapInteractionFailure" | "stageElementPositionOffset">>) {
   let groupCommit!: (updates: DomEditGroupPathOffsetCommit[]) => Promise<void>;
   let pathOffsetCommit!: (
     selection: DomEditSelection,
@@ -142,7 +136,7 @@ function mountGroupHandler({
       trackGsapInteractionFailure,
       stageElementPositionOffset,
       handleDomBoxSizeCommit: vi.fn(),
-      commitPositionPatchToHtml,
+      commitPositionPatchToHtml: vi.fn(),
       addGsapAnimation: vi.fn(),
       convertToKeyframes: vi.fn(),
       setArcPath: vi.fn(),
@@ -162,70 +156,23 @@ function mountGroupHandler({
 }
 
 describe("useGsapAwareEditing moves of an element GSAP does not position", () => {
-  const translatePatch = (value: string) => [{ type: "inline-style", property: "translate", value }];
-
-  it("writes its inline translate as drawn, with no GSAP write and no animation read", async () => {
-    const commitPositionPatchToHtml = vi.fn().mockResolvedValue(undefined);
+  it("saves the move on the element itself, with no GSAP write and no animation read", async () => {
+    const save = vi.fn().mockResolvedValue(undefined);
+    const stageElementPositionOffset = vi.fn(() => ({ save, rollback: vi.fn() }));
     const gsapCommitMutation = vi.fn();
     const makeFetchFallback = vi.fn();
     const { pathOffsetCommit, root } = mountGroupHandler({
       gsapCommitMutation,
       makeFetchFallback,
-      commitPositionPatchToHtml,
+      stageElementPositionOffset,
     });
     const box = { element: document.createElement("div"), id: "box", selector: "#box" };
     await act(() => pathOffsetCommit(box as unknown as DomEditSelection, { x: 130.25, y: 90 }));
-    expect(box.element.style.getPropertyValue("translate")).toBe("130.25px 90px");
-    expect(commitPositionPatchToHtml).toHaveBeenCalledWith(
-      box,
-      translatePatch("130.25px 90px"),
-      expect.objectContaining({ label: "Move layer" }),
-    );
+    expect(stageElementPositionOffset).toHaveBeenCalledWith(box, { x: 130.25, y: 90 });
+    expect(save).toHaveBeenCalledTimes(1);
     expect(gsapCommitMutation).not.toHaveBeenCalled();
     expect(makeFetchFallback).not.toHaveBeenCalled();
     expect(mocks.drag).not.toHaveBeenCalled();
-    act(() => root.unmount());
-  });
-
-  it("puts the live translate back when the save fails", async () => {
-    const commitPositionPatchToHtml = vi.fn().mockRejectedValue(new Error("offline"));
-    const gsapCommitMutation = vi.fn();
-    const { pathOffsetCommit, root } = mountGroupHandler({
-      gsapCommitMutation,
-      makeFetchFallback: vi.fn(),
-      commitPositionPatchToHtml,
-    });
-    const box = { element: document.createElement("div"), id: "box", selector: "#box" };
-    box.element.style.setProperty("translate", "40px 30px");
-    await expect(pathOffsetCommit(box as unknown as DomEditSelection, { x: 1, y: 2 })).rejects.toThrow(
-      "offline",
-    );
-    expect(box.element.style.getPropertyValue("translate")).toBe("40px 30px");
-    act(() => root.unmount());
-  });
-
-  it("writes a GSAP-free group member by translate under the group key, the rest through GSAP", async () => {
-    mocks.drag.mockResolvedValue({ status: "persisted" });
-    const commitPositionPatchToHtml = vi.fn().mockResolvedValue(undefined);
-    const { groupCommit, root } = mountGroupHandler({
-      gsapCommitMutation: vi.fn().mockResolvedValue(undefined),
-      makeFetchFallback: () => vi.fn().mockResolvedValue([]),
-      commitPositionPatchToHtml,
-    });
-    const plain = { element: document.createElement("div"), id: "plain", selector: "#plain" };
-    const animated = { element: gsapPositioned("div"), id: "anim", selector: "#anim" };
-    await act(() =>
-      groupCommit([
-        { selection: plain, next: { x: 10, y: 20 } },
-        { selection: animated, next: { x: 10, y: 20 } },
-      ] as unknown as DomEditGroupPathOffsetCommit[]),
-    );
-    expect(commitPositionPatchToHtml).toHaveBeenCalledWith(
-      plain,
-      translatePatch("10px 20px"),
-      expect.objectContaining({ coalesceKey: expect.stringMatching(/^group-drag:\d+$/) }),
-    );
-    expect(mocks.drag.mock.calls.map((call) => call[0])).toEqual([animated, animated]);
     act(() => root.unmount());
   });
 });
@@ -249,7 +196,7 @@ describe("useGsapAwareEditing shared-tween moves", () => {
     act(() => root.unmount());
   });
 
-  it("saves a group member that shares a tween through its own offset, under the group key", async () => {
+  it("saves shared-tween and GSAP-free group members on themselves, under the group key", async () => {
     mocks.drag.mockImplementation(async (selection, _next, _a, _i, commit, _f, options) => {
       if (selection.hfId === "w0") return { status: "element-offset" };
       if (!options?.preflightOnly) await commit(selection, { type: "move" }, { label: "Move" });
@@ -264,17 +211,18 @@ describe("useGsapAwareEditing shared-tween moves", () => {
     });
     const word = { element: gsapPositioned("span"), hfId: "w0", selector: ".w" };
     const box = { element: gsapPositioned("div"), id: "box", selector: "#box" };
+    const plain = { element: document.createElement("div"), id: "plain", selector: "#plain" };
     await act(() =>
       groupCommit([
         { selection: word, next: { x: 40, y: 20 } },
         { selection: box, next: { x: 40, y: 20 } },
+        { selection: plain, next: { x: 40, y: 20 } },
       ] as unknown as DomEditGroupPathOffsetCommit[]),
     );
-    expect(stageElementPositionOffset).toHaveBeenCalledWith(
-      word,
-      { x: 40, y: 20 },
-      expect.stringMatching(/^group-drag:\d+$/),
-    );
+    const groupKey = expect.stringMatching(/^group-drag:\d+$/);
+    expect(stageElementPositionOffset).toHaveBeenCalledWith(word, { x: 40, y: 20 }, groupKey);
+    expect(stageElementPositionOffset).toHaveBeenCalledWith(plain, { x: 40, y: 20 }, groupKey);
+    expect(mocks.drag.mock.calls.some((call) => call[0] === plain)).toBe(false);
     act(() => root.unmount());
   });
 });

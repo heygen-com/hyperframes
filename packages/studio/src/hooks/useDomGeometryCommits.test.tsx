@@ -147,8 +147,10 @@ describe("useDomGeometryCommits read-only preview", () => {
 });
 
 describe("useDomGeometryCommits element position offset", () => {
-  it("persists left/top on the element and no translate offset", async () => {
-    const element = document.createElement("span");
+  it("persists left/top on a word a shared tween positions, and no translate offset", async () => {
+    const element = Object.assign(document.createElement("span"), {
+      _gsap: { renderTransform: () => {} },
+    });
     Object.defineProperties(element, {
       offsetLeft: { get: () => 100 + (Number.parseFloat(element.style.left) || 0) },
       offsetTop: { get: () => 200 + (Number.parseFloat(element.style.top) || 0) },

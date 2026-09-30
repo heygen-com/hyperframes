@@ -337,13 +337,11 @@ export function createManualOffsetDragMember(input: {
   selection: DomEditSelection;
   element: HTMLElement;
   rect: ManualOffsetDragRect;
-  /** A move or nudge; a resize's anchor member keeps the legacy offset channel. */
-  gesture?: "drag" | "nudge";
+  gesture?: "drag" | "nudge"; // a resize's anchor member keeps the legacy offset channel
 }): ManualOffsetDragMemberResult {
   const plainTranslate = !!input.gesture && !gsapWritesPosition(input.element);
-  // Base the drag on the offset ACTUALLY applied, never the raw (possibly dormant)
-  // var — see readAppliedStudioPathOffset. This keeps the commit purely relative
-  // (applied + delta) so a stale offset can't fling the element off-screen.
+  // Base the drag on the offset ACTUALLY applied, never a dormant var (readAppliedStudioPathOffset),
+  // so a stale offset can't fling the element off-screen.
   const initialOffset = plainTranslate
     ? readTranslatePx(input.element)
     : readAppliedStudioPathOffset(input.element);
@@ -479,7 +477,8 @@ function applyManualOffsetCommitValue(
   member: ManualOffsetDragMember,
   offset: { x: number; y: number },
 ): { x: number; y: number } {
-  if (!member.plainTranslate) stampGestureBase(member.element, member.initialOffset, member.baseGsap);
+  if (!member.plainTranslate)
+    stampGestureBase(member.element, member.initialOffset, member.baseGsap);
   drawMemberOffset(member, offset, true);
   return offset;
 }

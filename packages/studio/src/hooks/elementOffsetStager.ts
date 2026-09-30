@@ -5,6 +5,8 @@ import {
 } from "../components/editor/elementPositionOffset";
 import { LAYER_REVEAL_PRIOR_POSITION_ATTR } from "../player/lib/timelineElementHelpers";
 import type { PatchOperation } from "../utils/sourcePatcher";
+import { translatePatch } from "../components/editor/plainTranslate";
+import { gsapWritesPosition } from "./gsapRuntimeKeyframes";
 
 const ELEMENT_OFFSET_REFUSED: Record<ElementOffsetRefusal, string> = {
   anchored: "This layer is anchored from its right or bottom edge. Move it in the Code tab.",
@@ -30,8 +32,34 @@ function settleGsapDraftAtGestureStart(el: HTMLElement): void {
   if (gsap && Number.isFinite(x) && Number.isFinite(y)) gsap.set(el, { x, y });
 }
 
-/** Applies a shared-tween element's move live now; `save` persists it as left/top on that
- *  element, `rollback` takes the live move back. Throws, after a toast, when it cannot. */
+let plainMoveCounter = 0;
+
+/** GSAP does not position the element: `next` is its whole translate, live now and saved as drawn. */
+function stagePlainTranslate(
+  commitPositionPatchToHtml: ElementOffsetStagerDeps["commitPositionPatchToHtml"],
+  selection: DomEditSelection,
+  next: { x: number; y: number },
+  coalesceKey?: string,
+): { save: () => Promise<void>; rollback: () => void } {
+  const style = selection.element.style;
+  const before = style.getPropertyValue("translate");
+  const patch = translatePatch(next);
+  style.setProperty("translate", patch.value);
+  const rollback = () => {
+    if (style.getPropertyValue("translate") === patch.value) style.setProperty("translate", before);
+  };
+  const key = coalesceKey ?? `move:${++plainMoveCounter}`;
+  const options = { label: "Move layer", coalesceKey: key, coalesceMs: Number.POSITIVE_INFINITY };
+  const save = () =>
+    commitPositionPatchToHtml(selection, [patch], options).catch((error) => {
+      rollback();
+      throw error;
+    });
+  return { save, rollback };
+}
+
+/** Applies a move on the element itself live now: its translate when GSAP does not position it,
+ *  else left/top for a shared-tween element. Throws, after a toast, when it cannot. */
 export function stageElementOffset(
   { commitPositionPatchToHtml, showToast, readOnlyPreview }: ElementOffsetStagerDeps,
   selection: DomEditSelection,
@@ -40,6 +68,9 @@ export function stageElementOffset(
 ): { save: () => Promise<void>; rollback: () => void } {
   const el = selection.element;
   if (readOnlyPreview) return { save: () => Promise.resolve(), rollback: () => undefined };
+  if (!gsapWritesPosition(el)) {
+    return stagePlainTranslate(commitPositionPatchToHtml, selection, next, coalesceKey);
+  }
   const previous = { position: el.style.position, left: el.style.left, top: el.style.top };
   const liftMarker = el.getAttribute(LAYER_REVEAL_PRIOR_POSITION_ATTR);
   const result = applyElementPositionOffset(el, next);

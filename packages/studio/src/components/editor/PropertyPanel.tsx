@@ -210,7 +210,6 @@ export const PropertyPanel = memo(function PropertyPanel(props: PropertyPanelPro
     manualSize.height > 0
       ? manualSize.height
       : (parsePxMetricValue(styles.height ?? "") ?? element.boundingBox.height);
-
   const manualRotation = readStudioRotation(element.element);
 
   const elStart = Number.parseFloat(element?.dataAttributes?.start ?? "0") || 0;
