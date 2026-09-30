@@ -196,7 +196,7 @@ describe("useRenderClipContent", () => {
     }
   });
 
-  it("marks audio linked when a video clip uses the same file, and muted when hidden", () => {
+  it("marks audio linked by data-link, and muted when hidden", () => {
     usePlayerStore.setState({
       thumbnailMode: "hidden",
       elements: [
@@ -217,6 +217,7 @@ describe("useRenderClipContent", () => {
       duration: 4,
       track: 1,
       src: "assets/clip.mp4",
+      link: "lk-1",
       hidden: true,
     });
     expect(isValidElement<{ linked: boolean; muted: boolean }>(linked)).toBe(true);
