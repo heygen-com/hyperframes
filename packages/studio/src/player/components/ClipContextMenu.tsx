@@ -7,6 +7,7 @@ import { useMenuKeyboardNav } from "./menuKeyboardNav";
 import type { TimelineClipMenuItem } from "./TimelineTypes";
 import { ClipMenuToolItems } from "./clipMenuToolItems";
 import { ClipMenuAudioItems } from "./clipMenuAudioItems";
+import { ClipMenuLinkItems } from "./clipMenuLinkItems";
 
 interface ClipContextMenuProps {
   x: number;
@@ -157,6 +158,7 @@ export const ClipContextMenu = memo(function ClipContextMenu({
       )}
 
       <ClipMenuAudioItems element={element} onClose={onClose} />
+      <ClipMenuLinkItems element={element} onClose={onClose} />
 
       {(onCopy || onPaste || onDuplicate) && (
         <>

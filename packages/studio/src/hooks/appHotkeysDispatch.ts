@@ -9,6 +9,7 @@ import { shouldIgnoreHistoryShortcut } from "../utils/studioHelpers";
 import { canSplitElement } from "../utils/timelineElementSplit";
 import { trackStudioEvent } from "../utils/studioTelemetry";
 import { STUDIO_PLAIN_KEYS } from "../player/components/studioShortcuts";
+import type { LinkShortcutCallbacks } from "./linkShortcuts";
 
 // Extracted from useAppHotkeys.ts to keep it under the studio 600-line cap,
 // following useTimelineDeleteOps's precedent. Pure functions, no hooks — the
@@ -29,7 +30,7 @@ function handleUndoRedoKey(event: KeyboardEvent, onUndo: () => void, onRedo: () 
   return false;
 }
 
-export interface HotkeyCallbacks {
+export interface HotkeyCallbacks extends LinkShortcutCallbacks {
   handleTimelineElementsDelete: (elements: TimelineElement[]) => Promise<void>;
   handleTimelineElementSplit: (element: TimelineElement, splitTime: number) => Promise<void>;
   handleDomEditElementDelete: (

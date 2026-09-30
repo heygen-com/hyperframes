@@ -2,6 +2,8 @@ import { useCallback, useEffect, useRef } from "react";
 import { usePlayerStore } from "../player";
 import type { TimelineElement } from "../player";
 import type { DomEditSelection } from "../components/editor/domEditing";
+import { isTypingTarget } from "../utils/typingTarget";
+import { dispatchLinkShortcut, type LinkShortcutCallbacks } from "./linkShortcuts";
 import { useCaptionStore } from "../captions/store";
 import {
   applyCaptionModelToIframe,
@@ -71,6 +73,8 @@ function tryApplyBeatHistory(
 
 interface UseAppHotkeysParams {
   handleTimelineElementsDelete: (elements: TimelineElement[]) => Promise<void>;
+  handleLinkEdit?: LinkShortcutCallbacks["handleLinkEdit"];
+  handleTimelineElementDeleteOnly?: LinkShortcutCallbacks["handleTimelineElementDeleteOnly"];
   handleTimelineElementSplit: (element: TimelineElement, splitTime: number) => Promise<void>;
   handleDomEditElementDelete: (
     selection: DomEditSelection,
@@ -114,6 +118,8 @@ interface UseAppHotkeysParams {
 
 export function useAppHotkeys({
   handleTimelineElementsDelete,
+  handleLinkEdit,
+  handleTimelineElementDeleteOnly,
   handleTimelineElementSplit,
   handleDomEditElementDelete,
   domEditSelectionRef,
@@ -192,6 +198,8 @@ export function useAppHotkeys({
   const cbRef = useRef<HotkeyCallbacks>(null!);
   cbRef.current = {
     handleTimelineElementsDelete,
+    handleLinkEdit,
+    handleTimelineElementDeleteOnly,
     handleTimelineElementSplit,
     handleDomEditElementDelete,
     handleUndo,
@@ -215,6 +223,7 @@ export function useAppHotkeys({
   const handleAppKeyDown = useCallback((event: KeyboardEvent) => {
     const cb = cbRef.current;
     const key = event.key.toLowerCase();
+    if (!isTypingTarget(event.target) && dispatchLinkShortcut(event, cb)) return;
     if (event.metaKey || event.ctrlKey) {
       dispatchModifierKey(event, key, cb);
       return;
