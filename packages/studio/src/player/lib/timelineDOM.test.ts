@@ -71,6 +71,20 @@ describe("parseTimelineFromDOM — nested master time", () => {
   });
 });
 
+describe("parseTimelineFromDOM — repeated sections", () => {
+  it("names each instance by its authored id and keeps them apart", () => {
+    const doc = makeDoc(`
+      <div data-composition-id="main" data-start="0" data-duration="20">
+        <div data-composition-id="card__hf1" data-hf-original-composition-id="card" data-start="0" data-duration="4"></div>
+        <div data-composition-id="card__hf2" data-hf-original-composition-id="card" data-start="4" data-duration="4"></div>
+      </div>
+    `);
+    const rows = parseTimelineFromDOM(doc, 20);
+    expect(rows.map((e) => e.label)).toEqual(["card", "card"]);
+    expect(new Set(rows.map((e) => e.id)).size).toBe(2);
+  });
+});
+
 describe("parseTimelineFromDOM — nested rows' keyframe basis", () => {
   const doc = () =>
     makeDoc(`
