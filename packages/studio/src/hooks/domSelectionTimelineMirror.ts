@@ -74,7 +74,7 @@ export function announceTimelineSelection(
     return;
   }
   // A late async primary inside the live set keeps the group. A click outside it, or a
-  // group the caller states in full (`replaceSet`: shift toggle, marquee), is published
+  // group the caller states in full (`replaceSet`: shift toggle, marquee, timeline sync), is published
   // first; otherwise `preserveSet` clears or keeps a stale set and sync undoes the canvas.
   if (replaceSet || group.length > 1 || !getTimelineSelectionSet().has(timelineAnchor)) {
     setTimelineSelectionSet(publishedMembers);

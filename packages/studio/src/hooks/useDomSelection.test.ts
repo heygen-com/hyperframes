@@ -212,6 +212,9 @@ describe("useDomSelection additive", () => {
 
     expect(harness.current().domEditGroupSelections).toHaveLength(1);
     expect(harness.timeline.setTimelineSelectionSet).toHaveBeenLastCalledWith(new Set(["card"]));
+    expect(harness.timeline.setSelectedTimelineElementId).toHaveBeenLastCalledWith("card", {
+      preserveSet: true,
+    });
     harness.cleanup();
   });
 
