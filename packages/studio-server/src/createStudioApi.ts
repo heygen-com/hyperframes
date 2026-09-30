@@ -50,7 +50,6 @@ export function createStudioApi(adapter: StudioApiAdapter): Hono {
       .then(() => adapter.resolveProject(c.req.param("id")))
       .catch(() => null);
     if (!project) return;
-    // A same-size rewrite inside one file-time tick keeps size and times, so only the contents can tell.
     forgetProjectSignature(project.dir);
     adapter.invalidateProjectSignature?.(project.dir);
   });

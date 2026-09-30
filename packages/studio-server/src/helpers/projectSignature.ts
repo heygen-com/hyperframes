@@ -219,7 +219,6 @@ export async function resolveProjectAndSignature(
  * Creates a stable preview cache-busting signature for project source plus Studio manifests.
  * `excluding` (project-relative paths) leaves those files out.
  */
-/** Drops the project's size-and-time shortcut, so its next signature reads the files it hashes. */
 export function forgetProjectSignature(projectDir: string): void {
   const dir = resolve(projectDir);
   for (const key of projectSignatureCache.keys()) {
