@@ -31,6 +31,8 @@ function tempDir(prefix: string): string {
 }
 
 const DAY_MS = 24 * 60 * 60 * 1000;
+// Date.now() rounds down to the millisecond; a file written in that millisecond can carry a later mtime.
+const pastKeepWindow = () => Date.now() + 1 + KEEP_GONE_PROJECT_HISTORY_MS;
 
 async function projectWithHistory(
   historyRoot: string,
@@ -105,7 +107,7 @@ describe("pruneGoneProjectHistories", () => {
     expect(await prunedIds(historyRoot, { ...elsewhere, now: Date.now() + 13 * DAY_MS })).toEqual(
       [],
     );
-    expect(await prunedIds(historyRoot, { ...elsewhere, now: Date.now() + 14 * DAY_MS })).toEqual([
+    expect(await prunedIds(historyRoot, { ...elsewhere, now: pastKeepWindow() })).toEqual([
       gone.id,
     ]);
   });
@@ -178,7 +180,7 @@ describe("pruneGoneProjectHistories", () => {
 
       chmodSync(locked, 0o000);
       try {
-        const later = Date.now() + KEEP_GONE_PROJECT_HISTORY_MS;
+        const later = pastKeepWindow();
         const onError = (error: unknown) => errors.push(error);
         expect(await prunedIds(historyRoot, { now: later, onError })).toEqual([gone.id]);
       } finally {
@@ -206,7 +208,7 @@ describe("pruneGoneProjectHistories", () => {
     rmSync(join(mountPoint.projectDir, ".hyperframes"), { recursive: true, force: true });
     rmSync(dirname(deleted.projectDir), { recursive: true, force: true });
 
-    const later = Date.now() + KEEP_GONE_PROJECT_HISTORY_MS;
+    const later = pastKeepWindow();
     expect(await prunedIds(historyRoot, { tempDir: historyRoot, now: later })).toEqual([
       deleted.id,
     ]);
@@ -227,7 +229,7 @@ describe("pruneGoneProjectHistories", () => {
     rmSync(folderGone.projectDir, { recursive: true, force: true });
     rmSync(dirname(parentGone.projectDir), { recursive: true, force: true });
 
-    const later = Date.now() + KEEP_GONE_PROJECT_HISTORY_MS;
+    const later = pastKeepWindow();
     expect(await prunedIds(historyRoot, { tempDir: historyRoot, now: later })).toEqual([
       emptied.id,
     ]);
