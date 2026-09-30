@@ -44,7 +44,6 @@ export interface TimelineToolbarProps {
   onSplitElement?: (element: TimelineElement, splitTime: number) => void;
   history?: TimelineHistoryButtonsProps;
   showHistory?: boolean;
-  /** Hides Select leftward and rightward from the tool menu; the [ and ] shortcuts stay. */
   showSelectAroundPlayhead?: boolean;
   showAddBeat?: boolean;
   /** Hides Add keyframe and auto-record, and turns off auto-record and the K shortcut with them. */
