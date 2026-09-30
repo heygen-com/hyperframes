@@ -13,11 +13,8 @@ import { BACKGROUND, COMPOSITION, PLAYHEAD, TARGET } from "./grid.mjs";
 
 const FPS = { num: 30, den: 1 };
 
-/**
- * Sub-pixel box from anti-aliased coverage over the whole frame, decoded in a page of the bench's Chrome.
- * Coverage comes from luminance between the two fixture colours (JPEG keeps luminance at full resolution);
- * the shape's area moments give its centre and sides, so rotated and cropped rectangles measure the same way.
- */
+// Sub-pixel box from luminance coverage between the two fixture colours (JPEG keeps full-res luminance).
+// Area moments give the centre and sides, so rotated and cropped rectangles measure the same way.
 function pixelBox(b64, bgY, fgY) {
   // fallow-ignore-next-line complexity
   return (async () => {
