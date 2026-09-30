@@ -450,7 +450,7 @@ describe("GSAP-element drag — dot-a flies regressions", () => {
 });
 
 describe("a stylesheet translate after a committed GSAP drag", () => {
-  function draggedTitle(css: string, oldOffsetChannel = false) {
+  function draggedTitle(css: string, oldOffsetChannel = false, withGsap = true) {
     const window = new Window();
     const style = window.document.createElement("style");
     style.textContent = css;
@@ -465,7 +465,7 @@ describe("a stylesheet translate after a committed GSAP drag", () => {
     }
     window.document.body.append(element);
     element.getBoundingClientRect = () => new window.DOMRect(10, 20, 100, 50);
-    (window as unknown as { gsap: unknown }).gsap = {
+    (window as unknown as { gsap: unknown }).gsap = withGsap && {
       set: (el: HTMLElement, vars: { x?: number; y?: number }) =>
         el.style.setProperty("transform", `translate(${vars.x ?? 0}px, ${vars.y ?? 0}px)`),
       getProperty: () => 0,
@@ -478,7 +478,7 @@ describe("a stylesheet translate after a committed GSAP drag", () => {
     });
     if (!result.ok) throw new Error("member not created");
     applyManualOffsetDragCommit(result.member, 40, 30);
-    expect(element.style.getPropertyValue("translate")).toBe("none");
+    if (withGsap) expect(element.style.getPropertyValue("translate")).toBe("none");
     endManualOffsetDragMembers([result.member]);
     return element;
   }
@@ -493,6 +493,11 @@ describe("a stylesheet translate after a committed GSAP drag", () => {
     const element = draggedTitle("#title { translate: 0 -200px; }", true);
     expect(element.hasAttribute("data-hf-studio-path-offset")).toBe(false);
     expect(element.style.getPropertyValue("translate")).toBe("none");
+  });
+
+  it("is not masked when GSAP does not own the position", () => {
+    const element = draggedTitle("#title { translate: 0 -200px; }", true, false);
+    expect(element.style.getPropertyValue("translate")).not.toBe("none");
   });
 
   it("is not left behind when nothing sits under the draft's mask", () => {
