@@ -67,4 +67,29 @@ describe("useSetElementsAttribute", () => {
     expect(out).toContain('id="a" data-volume="0.5"');
     expect(out).toMatch(/id="b"[^>]*data-volume="2"/);
   });
+
+  it("refuses while recording, like the single-clip write", async () => {
+    saved.inputs.length = 0;
+    const showToast = vi.fn();
+    let write: ReturnType<typeof useSetElementsAttribute> | null = null;
+    function Probe() {
+      write = useSetElementsAttribute({
+        projectIdRef: { current: "p1" },
+        activeCompPath: "index.html",
+        showToast,
+        writeProjectFile: vi.fn(async () => {}),
+        recordEdit: vi.fn(async () => {}),
+        previewIframeRef: { current: null },
+        pendingTimelineEditPathRef: { current: new Set<string>() },
+        isRecordingRef: { current: true },
+      });
+      return null;
+    }
+    const root = createRoot(document.createElement("div"));
+    act(() => root.render(createElement(Probe)));
+    await write?.([{ element: clip("a"), value: "0.5" }], "data-volume", "Audio Gain");
+    act(() => root.unmount());
+    expect(saved.inputs).toHaveLength(0);
+    expect(showToast).toHaveBeenCalledWith("Cannot edit timeline while recording", "error");
+  });
 });

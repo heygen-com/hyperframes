@@ -9,6 +9,7 @@ import {
   readFileContent,
 } from "./timelineEditingHelpers";
 import type { UseTimelineElementVisibilityEditingInput } from "./timelineTrackVisibility";
+import { projectForTimelineSave } from "./timelineEditPermission";
 
 type ElementAttributeEdits = Parameters<
   NonNullable<TimelineEditCallbacks["onSetElementsAttributeQuiet"]>
@@ -53,11 +54,16 @@ export function useSetElementsAttribute({
   recordEdit,
   previewIframeRef,
   pendingTimelineEditPathRef,
+  isRecordingRef,
 }: UseTimelineElementVisibilityEditingInput) {
   return useCallback(
     async (edits: ElementAttributeEdits, attr: string, label: string): Promise<void> => {
-      const projectId = projectIdRef.current;
-      if (!projectId || edits.length === 0) return;
+      const projectId = projectForTimelineSave(
+        isRecordingRef?.current,
+        projectIdRef.current,
+        showToast,
+      );
+      if (typeof projectId !== "string" || edits.length === 0) return;
       try {
         const byFile = editsByFile(edits, activeCompPath);
         const files = Object.fromEntries(
@@ -93,6 +99,7 @@ export function useSetElementsAttribute({
       recordEdit,
       previewIframeRef,
       pendingTimelineEditPathRef,
+      isRecordingRef,
     ],
   );
 }

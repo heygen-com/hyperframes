@@ -418,6 +418,7 @@ export function useTimelineEditing({
     recordEdit,
     previewIframeRef,
     pendingTimelineEditPathRef,
+    isRecordingRef,
   });
 
   const setAudioGroupAttribute = useSetAudioGroupAttribute({
