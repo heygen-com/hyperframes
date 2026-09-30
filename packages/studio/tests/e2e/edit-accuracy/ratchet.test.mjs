@@ -10,6 +10,9 @@ const good = {
   undo: true,
   dropped: 0,
   controlDropped: 0,
+  flash: 0,
+  paint: 1,
+  paintMs: 5,
   work: 3,
   frameP95: 20,
 };
@@ -25,6 +28,7 @@ const run = (id, drop = 0) => ({
   checks: { undo: true },
   smooth: { p95: 20, dropped: 0, workP95: 3, control: { dropped: 0 } },
   unsettled: [],
+  flash: { bad: 0, uncovered: false, paint: { frames: 1, ms: 5 } },
 });
 const baseline = (cases) => ({ cases });
 
@@ -40,9 +44,36 @@ describe("accurate", () => {
     expect(accurate({ ...good, pressJump: 0.51 })).toBe(false);
     expect(accurate({ ...good, unsettled: ["committed"] })).toBe(false);
     expect(accurate({ ...good, render: null, renderError: true })).toBe(false);
+    expect(accurate({ ...good, flash: 1 })).toBe(false);
+    expect(accurate({ ...good, flash: 0, flashUncovered: true })).toBe(false);
+    expect(accurate({ ...good, paint: 2 })).toBe(false);
+    expect(accurate({ ...good, paint: null })).toBe(false);
+    expect(accurate({ ...good, paintMs: 507 })).toBe(false);
     expect(accurate({ ...good, undo: false })).toBe(false);
     expect(accurate({ pass: false, error: true })).toBe(false);
     expect(accurate(undefined)).toBe(false);
+  });
+});
+
+describe("a metric the base branch never measured", () => {
+  const { flash: _f, paint: _p, ...older } = good;
+
+  it("is judged only where the like entry holds it", () => {
+    expect(accurate({ ...good, flash: 2, paint: 9 }, older)).toBe(true);
+    expect(accurate({ ...good, flash: 2 }, good)).toBe(false);
+  });
+
+  it("cannot regress a case or lower the count, and still needs banking to pass", () => {
+    const flashing = {
+      ...run("a"),
+      flash: { bad: 3, uncovered: false, paint: { frames: 4, ms: 60 } },
+    };
+    const g = gate(baseline({ a: older }), baseline({ a: { ...good, flash: 3 } }), [flashing]);
+    expect(g.regressed).toEqual([]);
+    expect(g.headPassing).toBe(1);
+    expect(g.overclaimed).toEqual([]);
+    expect(g.ok).toBe(true);
+    expect(flipped(baseline({ a: older }), [flashing])).toEqual([]);
   });
 });
 

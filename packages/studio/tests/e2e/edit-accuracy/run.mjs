@@ -15,6 +15,7 @@ import { buildGrid, writeFixture } from "./grid.mjs";
 import { killServers, runCase, startServer, stopServer } from "./case.mjs";
 import { METRICS, score, writeReport } from "./report.mjs";
 import { renderBox } from "./render.mjs";
+import { scoreFlash } from "./flash.mjs";
 import { aabb, boxDistance } from "./geometry.mjs";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
@@ -54,6 +55,8 @@ function saveEvidence(id, evidence) {
     writeFileSync(join(caseDir, `saved-${name.replace("/", "-")}`), text);
   if (evidence.renderFailed && evidence.frame)
     writeFileSync(join(caseDir, "producer.jpg"), evidence.frame);
+  for (const [name, png] of evidence.flashFrames ?? [])
+    writeFileSync(join(caseDir, `flash-${name}.png`), Buffer.from(png, "base64"));
 }
 
 function verdict(r) {
@@ -115,7 +118,8 @@ async function runOne(spec, browser, decoder, port) {
     });
     await stopServer(server);
     server = null;
-    result = await withRender(dir, decoder, measured, evidence);
+    const flash = await scoreFlash(decoder, measured.flash, evidence);
+    result = await withRender(dir, decoder, { ...measured, flash }, evidence);
   } catch (error) {
     result = errorResult(error, log);
   } finally {

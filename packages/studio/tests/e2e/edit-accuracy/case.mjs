@@ -3,6 +3,7 @@ import { spawn } from "node:child_process";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { COMPOSITION, PLAYHEAD } from "./grid.mjs";
+import { panes, startCapture } from "./flash.mjs";
 import {
   angleOf,
   centre,
@@ -27,6 +28,10 @@ const ROTATE_BY = (25 * Math.PI) / 180;
 const CROP_BY = 40;
 const NUDGES = 5;
 const ZOOM_SENSITIVITY = 0.007; // previewZoom.ts: one wheel unit scales zoom by exp(0.007)
+// Flash controls, for proving the metric only: tap (release without a move), blinkN (hide the preview for N frames
+// after the release), reload (reload the preview frame mid-settle). EDIT_BENCH_MARKER=0 captures without the marker.
+const CONTROL = process.env.EDIT_BENCH_CONTROL;
+const CAPTURE = { marker: process.env.EDIT_BENCH_MARKER !== "0" };
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
@@ -242,7 +247,7 @@ async function settled(ctx, timeout = 15_000) {
 
 /** Ready once Studio's own seek tool reports the composition and the playhead landed. */
 // fallow-ignore-next-line complexity
-async function openStudio(ctx) {
+async function openStudio(ctx, onReady) {
   ctx.handles = null;
   await ctx.page.waitForFunction(() => window.__editBench?.has("studio_seek"), { timeout: 90_000 });
   let seek = null;
@@ -255,6 +260,7 @@ async function openStudio(ctx) {
     seek = null;
   }
   if (!seek) throw new Error("studio never reported a seekable composition");
+  await onReady?.();
   await sleep(1000);
   return settled(ctx);
 }
@@ -508,7 +514,11 @@ function smoothness(rec) {
 const CONTROL_PAGE = `data:text/html,<body style="margin:0;background:%23202020"><div id="box"
   style="position:absolute;left:600px;top:300px;width:240px;height:160px;background:%23f0c020"></div>`;
 
-/** The case's drag schedule and per-frame reads on a blank page in the same Chrome: the machine's own frame drops. */
+/**
+ * The case's drag schedule and per-frame reads on a blank page in the same Chrome: the machine's own frame drops.
+ * Then 1 s of screencast there: the capture coverage the machine reaches right now.
+ */
+// fallow-ignore-next-line complexity
 async function controlDrag(browser, gesture) {
   const context = await browser.createBrowserContext();
   try {
@@ -519,33 +529,45 @@ async function controlDrag(browser, gesture) {
     const box = await page.$("#box");
     const ctx = { page, handles: { target: box, root: box } };
     const read = () => readQuads(ctx);
+    let smooth;
     if (gesture === "nudge") {
       await recording(page, true);
-      for (let i = 0; i < NUDGES; i++) {
+      for (let i = 1; i < NUDGES; i++) {
         await page.keyboard.press("ArrowRight");
         await nextFrame(page);
       }
       await nextFrame(page, 2);
-      return smoothness(await recording(page, false));
-    }
-    await page.mouse.move(700, 380);
-    await page.mouse.down();
-    await nextFrame(page);
-    await read();
-    await recording(page, true);
-    for (let i = 1; i <= STEPS; i++) {
-      await page.mouse.move(700 + (MOVE_BY[0] * i) / STEPS, 380 + (MOVE_BY[1] * i) / STEPS);
+      smooth = smoothness(await recording(page, false));
+    } else {
+      await page.mouse.move(700, 380);
+      await page.mouse.down();
       await nextFrame(page);
       await read();
+      await recording(page, true);
+      for (let i = 1; i <= STEPS; i++) {
+        await page.mouse.move(700 + (MOVE_BY[0] * i) / STEPS, 380 + (MOVE_BY[1] * i) / STEPS);
+        await nextFrame(page);
+        await read();
+      }
+      smooth = smoothness(await recording(page, false));
+      await page.mouse.up();
     }
-    const smooth = smoothness(await recording(page, false));
-    await page.mouse.up();
-    return smooth;
+    const capture = await startCapture(page, CAPTURE);
+    await sleep(1000);
+    return { smooth, capture: await capture.stop() };
   } finally {
     await context.close().catch(() => undefined);
   }
 }
 
+/** The element's perimeter in screen px: how many pixels a 0.5 px shift of its edges touches. */
+const perimeterPx = (m) =>
+  Math.ceil(
+    m.visible.map(m.map.toScreen).reduce((sum, p, i, q) => sum + dist(p, q[(i + 1) % 4]), 0),
+  );
+
+/** Drives the drag and returns with the button still down; `release` (pointer-up) runs in the flash window. */
+// fallow-ignore-next-line complexity
 async function pointerGesture(ctx, gesture, pre) {
   const press = await handlePoint(ctx, pre, gesture);
   const pressComp = pre.map.toComp(press);
@@ -563,7 +585,7 @@ async function pointerGesture(ctx, gesture, pre) {
   await recording(ctx.page, true);
   const errors = [];
   let last = s0;
-  for (const p of g.path) {
+  for (const p of CONTROL === "tap" ? g.path.map(() => press) : g.path) {
     await ctx.page.mouse.move(p[0], p[1]);
     await nextFrame(ctx.page);
     last = await sample(ctx, gesture, g.point, p);
@@ -571,11 +593,12 @@ async function pointerGesture(ctx, gesture, pre) {
   }
   const rec = await recording(ctx.page, false);
   const smooth = smoothness(rec);
-  await ctx.page.mouse.up();
   const lastQuad = gesture === "crop" ? last.m.outline : last.m.visible;
   return {
-    errors,
-    lastQuad,
+    release: async () => {
+      await ctx.page.mouse.up();
+      return { errors, lastQuad };
+    },
     pressJump: quadDistance(s0.m.visible, pre.visible),
     smooth,
     diag: {
@@ -586,29 +609,64 @@ async function pointerGesture(ctx, gesture, pre) {
   };
 }
 
+/** Nudges all but the last step traced; `release` presses the last one in the flash window, so a key commits there. */
 async function nudgeGesture(ctx, pre) {
   await recording(ctx.page, true);
-  for (let i = 0; i < NUDGES; i++) {
+  for (let i = 1; i < NUDGES; i++) {
     await ctx.page.keyboard.press("ArrowRight");
     await nextFrame(ctx.page);
   }
   await nextFrame(ctx.page, 2);
   const smooth = smoothness(await recording(ctx.page, false));
-  const m = await measure(ctx);
-  const [a, b] = [centre(pre.visible), centre(m.visible)];
   return {
-    errors: [dist([b[0] - a[0], b[1] - a[1]], [NUDGES, 0])],
-    lastQuad: m.visible,
+    release: async () => {
+      await ctx.page.keyboard.press("ArrowRight");
+      await nextFrame(ctx.page, 2);
+      const m = await measure(ctx);
+      const [a, b] = [centre(pre.visible), centre(m.visible)];
+      return { errors: [dist([b[0] - a[0], b[1] - a[1]], [NUDGES, 0])], lastQuad: m.visible };
+    },
     pressJump: null,
     smooth,
     diag: {},
   };
 }
 
+/** The positive flash controls, started right after the committing input. */
+function injectControl(page) {
+  const blink = /^blink(\d+)$/.exec(CONTROL ?? "");
+  if (blink)
+    return page.evaluate((frames) => {
+      const s = document.querySelector('[data-testid="preview-zoom-stage"]').style;
+      const hide = (left) =>
+        requestAnimationFrame(() => {
+          s.opacity = left ? "0" : "";
+          if (left) hide(left - 1);
+        });
+      hide(frames);
+    }, Number(blink[1]));
+  if (CONTROL === "reload")
+    return page.evaluate(async () => {
+      await new Promise((r) => setTimeout(r, 100));
+      const url = (f) => {
+        try {
+          return f.contentWindow.location.href;
+        } catch {
+          return "";
+        }
+      };
+      const frames = [...document.querySelectorAll("iframe")].filter((f) =>
+        url(f).includes("/preview"),
+      );
+      const area = (f) => f.offsetWidth * f.offsetHeight;
+      frames.reduce((a, b) => (area(b) > area(a) ? b : a)).contentWindow.location.reload();
+    });
+}
+
 /** One case, end to end, in a fresh browser context against a Studio already serving `dir`. */
 // fallow-ignore-next-line complexity
 export async function runCase({ browser, spec, dir, files, url, evidence }) {
-  const control = await controlDrag(browser, spec.gesture);
+  const { smooth: control, capture: controlCapture } = await controlDrag(browser, spec.gesture);
   const context = await browser.createBrowserContext();
   const page = await context.newPage();
   const ctx = { page, dir, files, handles: null };
@@ -634,8 +692,19 @@ export async function runCase({ browser, spec, dir, files, url, evidence }) {
       spec.gesture === "nudge"
         ? await nudgeGesture(ctx, pre)
         : await pointerGesture(ctx, spec.gesture, pre);
+    // Flash windows: each action to its settle is screencast, untraced; the drag's trace has already stopped.
+    const flash = {
+      regions: await panes(page),
+      tolPx: perimeterPx(pre),
+      windows: {},
+      control: controlCapture,
+    };
+    let capture = await startCapture(page, CAPTURE);
+    const { errors, lastQuad } = await drive.release();
+    await injectControl(page);
     await waitForFiles(ctx, { from: original, timeout: spec.gesture === "nudge" ? 6000 : 5000 });
-    await nextFrame(page, 2);
+    await settled(ctx);
+    flash.windows.release = await capture.stop();
     await blurPreview(page);
     await page.keyboard.press("Escape");
     const committed = await settled(ctx);
@@ -646,22 +715,32 @@ export async function runCase({ browser, spec, dir, files, url, evidence }) {
     // Undo and redo run before any reload. Each waits up to 15 s for its own write; redo waits for undo.
     const landed = (from) =>
       saved ? waitForFiles(ctx, { from, timeout: 15_000 }) : { reached: true, files: from };
+    capture = await startCapture(page, CAPTURE);
     await chord(page, "Control+z");
     const undo = await landed(committedFiles);
     const undone = await settled(ctx);
+    flash.windows.undo = await capture.stop();
     await shoot("undone");
     let [redo, redone] = [{ reached: false }, null];
     if (undo.reached) {
       await blurPreview(page);
+      capture = await startCapture(page, CAPTURE);
       await chord(page, "Control+Shift+z");
       redo = await landed(undo.files);
       redone = await settled(ctx);
+      flash.windows.redo = await capture.stop();
     }
     // A late write must not land under the reload.
     await waitForFiles(ctx, { timeout: 15_000 });
 
+    // The reload window starts once Studio can seek the composition; before that Studio itself is loading.
+    const lastSettled = (flash.windows.redo ?? flash.windows.undo).frames.at(-1);
     await page.reload();
-    const reloaded = await openStudio(ctx);
+    const reloaded = await openStudio(
+      ctx,
+      async () => (capture = await startCapture(page, CAPTURE)),
+    );
+    flash.windows.reload = { ...(await capture.stop()), before: lastSettled };
     await shoot("reloaded");
     const quads = Object.fromEntries(
       Object.entries({ pre, committed, undone, redone, reloaded }).filter(([, m]) => m),
@@ -671,12 +750,12 @@ export async function runCase({ browser, spec, dir, files, url, evidence }) {
       zoom,
       saved,
       tracking: {
-        max: Math.max(...drive.errors),
-        p95: percentile(drive.errors, 95),
-        frames: drive.errors.length,
+        max: Math.max(...errors),
+        p95: percentile(errors, 95),
+        frames: errors.length,
       },
       pressJump: drive.pressJump,
-      drop: quadDistance(drive.lastQuad, committed.visible),
+      drop: quadDistance(lastQuad, committed.visible),
       reload: quadDistance(committed.visible, reloaded.visible),
       undo: {
         bytes: saved && undo.reached && sameFiles(undo.files, original),
@@ -687,6 +766,7 @@ export async function runCase({ browser, spec, dir, files, url, evidence }) {
       // Which write never landed within 15 s; a redo that was never sent is untested, so undo fails.
       undoTimeout: saved && !undo.reached ? "undo" : saved && !redo.reached ? "redo" : null,
       smooth: { ...drive.smooth, control },
+      flash,
       unsettled: Object.keys(quads).filter((k) => quads[k].unsettled),
       reloaded,
       diag: {

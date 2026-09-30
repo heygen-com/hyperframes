@@ -5,24 +5,31 @@
 import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { LIMIT_PX, entry, writeReport } from "./report.mjs";
+import { LIMIT_PX, entry, paintOk, writeReport } from "./report.mjs";
 
 const GATED_PX = ["tracking", "pressJump", "drop", "reload", "render"];
 const LISTED = 30;
 
-/** Passes every gated metric; an unsettled preview fails the metrics it fed, all of them gated. */
+/**
+ * Passes every gated metric; an unsettled preview fails the metrics it fed, all of them gated. Flash and
+ * edit-to-paint count only where `like` measured them, so a metric the base branch never measured cannot regress.
+ */
 // fallow-ignore-next-line complexity
-export const accurate = (e) =>
+export const accurate = (e, like = e) =>
   Boolean(e) &&
   !e.error &&
   !e.unsettled &&
   !e.renderError &&
   e.undo === true &&
-  GATED_PX.every((m) => !(e[m] > LIMIT_PX));
+  GATED_PX.every((m) => !(e[m] > LIMIT_PX)) &&
+  (!like || !("flash" in like) || (e.flash === 0 && !e.flashUncovered)) &&
+  (!like || !("paint" in like) || paintOk(e.paint, e.paintMs));
 
 /** Cases whose verdict here differs from the base branch, either way: each is re-run twice before the gate. */
 export const flipped = (base, results) =>
-  results.filter((r) => accurate(base.cases[r.id]) !== accurate(entry(r))).map((r) => r.id);
+  results
+    .filter((r) => accurate(base.cases[r.id]) !== accurate(entry(r), base.cases[r.id]))
+    .map((r) => r.id);
 
 const summary = (e) =>
   e.error ? "error" : `${GATED_PX.map((m) => `${m} ${e[m] ?? "-"}`).join(", ")}, undo ${e.undo}`;
@@ -33,21 +40,24 @@ export function gate(base, head, runs) {
   const seen = new Map();
   for (const r of runs) seen.set(r.id, [...(seen.get(r.id) ?? []), entry(r)]);
   const cases = [...seen].map(([id, entries]) => {
-    const fails = entries.filter((e) => !accurate(e)).length;
+    const like = base.cases[id];
+    const majority = (judge) => entries.filter((e) => !judge(e)).length * 2 < entries.length;
     return {
       id,
       entries,
-      passed: fails * 2 < entries.length,
-      basePassed: accurate(base.cases[id]),
+      passed: majority((e) => accurate(e)),
+      // Judged on the base entry's metrics, for regressions and the count.
+      passedLike: majority((e) => accurate(e, like)),
+      basePassed: accurate(like),
     };
   });
   const passing = cases.filter((c) => c.passed);
   const result = {
-    basePassing: Object.values(base.cases).filter(accurate).length,
-    headPassing: passing.length,
-    regressed: cases.filter((c) => c.basePassed && !c.passed).map((c) => c.id),
+    basePassing: Object.values(base.cases).filter((e) => accurate(e)).length,
+    headPassing: cases.filter((c) => c.passedLike).length,
+    regressed: cases.filter((c) => c.basePassed && !c.passedLike).map((c) => c.id),
     unstable: cases
-      .filter((c) => new Set(c.entries.map(accurate)).size > 1)
+      .filter((c) => new Set(c.entries.map((e) => accurate(e))).size > 1)
       .map((c) => ({ id: c.id, runs: c.entries.map(summary) })),
     newlyPassing: passing.filter((c) => !c.basePassed).map((c) => c.id),
     unbanked: passing.filter((c) => !accurate(head.cases[c.id])).map((c) => c.id),
