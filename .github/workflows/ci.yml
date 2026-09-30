@@ -114,6 +114,7 @@ jobs:
               - "tsconfig*.json"
               - "Dockerfile*"
               - ".github/workflows/**"
+              - ".github/actions/**"
             cli:
               - "packages/cli/**"
               - "package.json"
@@ -133,6 +134,7 @@ jobs:
               - "scripts/check-skill-mirror.mjs"
               - "package.json"
               - ".github/workflows/ci.yml"
+              - ".github/actions/**"
             codex_plugin:
               - "skills-manifest.json"
               - "packages/cli/package.json"

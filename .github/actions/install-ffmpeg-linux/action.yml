@@ -1,8 +1,8 @@
 name: Install ffmpeg (Linux)
 description: >-
   Put a pinned static ffmpeg and ffprobe on PATH, restored from the Actions
-  cache or downloaded from BtbN/FFmpeg-Builds. Replaces an apt install whose
-  mirror took up to 10 minutes and timed out test shards.
+  cache or downloaded from BtbN/FFmpeg-Builds. No apt: its mirror has taken
+  up to 10 minutes.
 
 inputs:
   release-url:
@@ -32,12 +32,11 @@ runs:
       run: |
         set -euo pipefail
         archive="$HOME/.cache/hf-ffmpeg/${URL##*/}"
-        mkdir -p "${archive%/*}"
-        if ! echo "$SHA256  $archive" | sha256sum -c --quiet >/dev/null 2>&1; then
-          # Each attempt aborts after 40 s, or sooner if under 1 MB/s for 15 s.
-          curl -fsSL --retry 2 --retry-all-errors --connect-timeout 10 --max-time 40 \
-            --speed-limit 1000000 --speed-time 15 -o "$archive" "$URL"
-          echo "$SHA256  $archive" | sha256sum -c --quiet
+        if ! sha256sum -c --status <<<"$SHA256  $archive"; then
+          # Two attempts of at most 20 s keep a cache miss under a minute.
+          curl -fsSL --create-dirs --retry 1 --retry-all-errors --connect-timeout 10 --max-time 20 \
+            --speed-limit 5000000 --speed-time 10 -o "$archive" "$URL"
+          sha256sum -c --quiet <<<"$SHA256  $archive"
         fi
         bin="$RUNNER_TEMP/ffmpeg-bin"
         mkdir -p "$bin"
