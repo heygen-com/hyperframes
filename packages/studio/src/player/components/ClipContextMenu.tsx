@@ -5,6 +5,7 @@ import { canSplitElement } from "../../utils/timelineElementSplit";
 import { useContextMenuDismiss } from "../../hooks/useContextMenuDismiss";
 import { useMenuKeyboardNav } from "./menuKeyboardNav";
 import type { TimelineClipMenuItem } from "./TimelineTypes";
+import { ClipMenuToolItems } from "./clipMenuToolItems";
 
 interface ClipContextMenuProps {
   x: number;
@@ -198,6 +199,8 @@ export const ClipContextMenu = memo(function ClipContextMenu({
         </>
       )}
 
+      <ClipMenuToolItems group="sound" element={element} onClose={onClose} />
+      <ClipMenuToolItems group="picture" element={element} onClose={onClose} />
       <button
         type="button"
         role="menuitem"

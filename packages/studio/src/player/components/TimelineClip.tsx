@@ -11,6 +11,7 @@ import { isAudioTimelineElement } from "../../utils/timelineInspector";
 import { timelineClipFocusId } from "./timelineNavigationIdentity";
 import { ClipFadesContext, TimelineClipFades, useClipFadeDraft } from "./TimelineClipFades";
 import { rendersWaveform } from "./AudioWaveform";
+import { ClipBadges } from "./ClipBadges";
 
 interface TimelineClipProps {
   el: TimelineElement;
@@ -204,6 +205,7 @@ export const TimelineClip = memo(function TimelineClip({
         </div>
       )}
       {showLabel && <span className="timeline-clip__label">{displayLabel}</span>}
+      {showLabel && !isGestureActor && <ClipBadges el={el} />}
       {showDefaultText && (
         <span className="timeline-clip__timecode">
           {startLabel}-{endLabel}s
