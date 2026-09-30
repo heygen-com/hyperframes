@@ -9,6 +9,34 @@ Recent HyperFrames releases, including user-facing features, fixes, and migratio
 {/* New release entries are prepended by `bun run changelog:draft <version> --write`. */}
 
 <Update
+  label="HyperFrames v0.8.98"
+  description="Released - 2026-09-30"
+  tags={["Release", "Studio"]}
+>
+Manual editing in Studio is steadier. A click after an empty-canvas press now selects on the first try, and drags no longer stall on the font list. Moves in files without GSAP save right away, and hosts can add their own items to a clip’s right-click menu.
+
+## Features
+
+- **Studio:** Hosts can add their own items to the clip right-click menu ([5b79038ca](https://github.com/heygen-com/hyperframes/commit/5b79038ca4b2213f0089ec43404dc5927ec0d561), [#4784](https://github.com/heygen-com/hyperframes/pull/4784)).
+
+## Fixes
+
+- **Studio:** Save moves in GSAP-free files without a 2 s wait for a warm parse ([8d537dea9](https://github.com/heygen-com/hyperframes/commit/8d537dea9f7ce01b8c4f97b96dbeb42fcb23e70d), [#4770](https://github.com/heygen-com/hyperframes/pull/4770)).
+- **Studio:** A click after an empty-canvas press selects on the first try ([d1a5a0560](https://github.com/heygen-com/hyperframes/commit/d1a5a05609a1c53996cb96c1ae2c9a57d09313aa), [#4759](https://github.com/heygen-com/hyperframes/pull/4759)).
+
+## Performance
+
+- **Studio:** Stop sorting the font list while the font picker is closed ([0f390167d](https://github.com/heygen-com/hyperframes/commit/0f390167df97928eb82cdbb03d1116890d732282), [#4769](https://github.com/heygen-com/hyperframes/pull/4769)).
+
+## Internal
+
+- **Studio:** An edit accuracy benchmark for manual editing ([0c6f5fd80](https://github.com/heygen-com/hyperframes/commit/0c6f5fd80edcdf8286d463c4f3dc886ac0d07e70), [#4760](https://github.com/heygen-com/hyperframes/pull/4760)).
+- Install a pinned static ffmpeg on linux instead of apt ([d572fe3ba](https://github.com/heygen-com/hyperframes/commit/d572fe3baf099a260d28ad92a9ac3f1faf4baeb4), [#4782](https://github.com/heygen-com/hyperframes/pull/4782)).
+
+[View the full commit range](https://github.com/heygen-com/hyperframes/compare/v0.8.97...v0.8.98).
+</Update>
+
+<Update
   label="HyperFrames v0.8.97"
   description="Released - 2026-09-30"
   tags={["Release", "Studio"]}
