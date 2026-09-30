@@ -16,6 +16,8 @@ const VIEWPORT_MARGIN = 8;
 
 /** The arrow's 14x8 box overlaps the popup's border by 1px, so its fill hides the border where it meets the popup. */
 const ARROW_PX = 7;
+// A left or right arrow is rotated, 14px along the edge, so it needs this room to clear the rounded corner.
+const ARROW_PADDING = 10;
 const arrowPlace = cn(
   "data-[side=bottom]:-top-[7px] data-[side=top]:-bottom-[7px] data-[side=top]:rotate-180",
   "data-[side=left]:-right-[10px] data-[side=left]:rotate-90",
@@ -30,7 +32,7 @@ interface PopoverProps extends Omit<ComponentPropsWithoutRef<typeof BasePopover.
   side?: "top" | "bottom" | "left" | "right";
   align?: "start" | "center" | "end";
   sideOffset?: number;
-  /** Points the popup at its trigger. Off by default; the gap from the trigger grows by the arrow's height. */
+  /** Points the popup at its trigger. Off by default; the default gap from the trigger grows by the arrow's height. */
   arrow?: boolean;
   /** Portal target. Pass the shadow root when the trigger lives in one. */
   container?: PortalContainer;
@@ -68,6 +70,7 @@ export function Popover({
           align={align}
           sideOffset={sideOffset}
           collisionPadding={VIEWPORT_MARGIN}
+          arrowPadding={ARROW_PADDING}
           className="z-200"
         >
           <BasePopover.Popup

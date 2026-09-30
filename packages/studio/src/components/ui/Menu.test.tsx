@@ -309,8 +309,9 @@ describe("Popover", () => {
     };
     renderOpen(false);
     await settle();
-    expect(document.querySelector("[role=dialog] svg")).toBeNull();
+    expect(one("[role=dialog]", "popup").querySelector("svg")).toBeNull();
     act(() => mounted?.root.unmount());
+    mounted?.host.remove();
     mounted = null;
 
     renderOpen(true);
