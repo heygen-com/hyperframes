@@ -2,6 +2,7 @@
 import type { useDomEditSession } from "../hooks/useDomEditSession";
 import { useCallback, useContext, useMemo, useRef, type ReactNode } from "react";
 import { createStableContext } from "../utils/hmrStableContext";
+import { trackStudioPendingEdit } from "../utils/studioPendingEdits";
 
 type DomEditValue = ReturnType<typeof useDomEditSession>;
 
@@ -97,6 +98,73 @@ export interface DomEditSelectionValue extends Pick<
   | "copiedAgentPrompt"
   | "agentPromptSelectionContext"
 > {}
+
+/** Every action that saves an edit. Undo drains them, so each counts from its call, not from its first write. */
+const EDIT_COMMITS = [
+  "handleDomStyleCommit",
+  "handleDomStyleCommitForSelection",
+  "handleDomAttributeCommit",
+  "handleDomAttributeQuietCommit",
+  "handleDomHtmlAttributeCommit",
+  "handleDomAttributesCommit",
+  "handleDomPathOffsetCommit",
+  "handleDomGroupPathOffsetCommit",
+  "handleDomZIndexReorderCommit",
+  "handleDomBoxSizeCommit",
+  "handleDomRotationCommit",
+  "handleDomManualEditsReset",
+  "handleDomTextCommit",
+  "handleDomTextCommitForSelection",
+  "handleDomRichTextCommit",
+  "handleDomTextFieldStyleCommit",
+  "handleDomAddTextField",
+  "handleDomRemoveTextField",
+  "handleDomEditElementDelete",
+  "handleGroupSelection",
+  "handleUngroupSelection",
+  "handleGsapUpdateProperty",
+  "handleGsapUpdateMeta",
+  "handleGsapDeleteAnimation",
+  "handleGsapDeleteAllForElement",
+  "handleGsapAddAnimation",
+  "handleGsapAddProperty",
+  "handleGsapRemoveProperty",
+  "handleGsapUpdateFromProperty",
+  "handleGsapAddFromProperty",
+  "handleGsapRemoveFromProperty",
+  "handleGsapAddKeyframe",
+  "handleGsapAddKeyframeBatch",
+  "handleGsapRemoveKeyframe",
+  "handleGsapMoveKeyframeToPlayhead",
+  "handleGsapMoveKeyframe",
+  "handleGsapResizeKeyframedTween",
+  "handleGsapConvertToKeyframes",
+  "handleGsapRemoveAllKeyframes",
+  "handleResetSelectedElementKeyframes",
+  "commitAnimatedProperty",
+  "commitAnimatedProperties",
+  "handleSetArcPath",
+  "handleUpdateArcSegment",
+  "handleUnroll",
+  "commitMutation",
+  "handleUpdateKeyframeEase",
+  "handleUpdateSegmentEase",
+  "handleSetAllKeyframeEases",
+] as const satisfies ReadonlyArray<keyof DomEditActionsValue>;
+
+// A failed edit rolls itself back and reports itself; undo only has to wait for it to settle.
+function trackEditCommits(actions: DomEditActionsValue): DomEditActionsValue {
+  const tracked: Record<string, unknown> = { ...actions };
+  for (const key of EDIT_COMMITS) {
+    const commit = actions[key] as (...args: unknown[]) => unknown;
+    tracked[key] = (...args: unknown[]) => {
+      const result = commit(...args);
+      if (result instanceof Promise) trackStudioPendingEdit(result.catch(() => undefined));
+      return result;
+    };
+  }
+  return tracked as unknown as DomEditActionsValue;
+}
 
 const DomEditActionsContext = createStableContext<DomEditActionsValue | null>(
   "DomEditActionsContext",
@@ -242,7 +310,7 @@ export function DomEditProvider({
     [],
   );
 
-  const actions = useMemo<DomEditActionsValue>(
+  const untrackedActions = useMemo<DomEditActionsValue>(
     () => ({
       handleTimelineElementSelect,
       handlePreviewCanvasMouseDown,
@@ -394,6 +462,8 @@ export function DomEditProvider({
       handleSetAllKeyframeEases,
     ],
   );
+
+  const actions = useMemo(() => trackEditCommits(untrackedActions), [untrackedActions]);
 
   const selection = useMemo<DomEditSelectionValue>(
     () => ({
