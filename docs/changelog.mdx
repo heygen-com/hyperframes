@@ -9,6 +9,29 @@ Recent HyperFrames releases, including user-facing features, fixes, and migratio
 {/* New release entries are prepended by `bun run changelog:draft <version> --write`. */}
 
 <Update
+  label="HyperFrames v0.8.99"
+  description="Released - 2026-09-30"
+  tags={["Release", "Studio", "Core", "Parsers"]}
+>
+Manual editing in Studio is more exact. Dragged and rotated elements follow the pointer and land where you drop them. Resizing a cropped element keeps the same part in view, and moving a clip on the timeline moves its animations too.
+
+## Fixes
+
+- **Studio:** A dragged or rotated element follows the pointer exactly and keeps its sub-pixel spot on drop ([ca3a3f6e0](https://github.com/heygen-com/hyperframes/commit/ca3a3f6e0b37c993ec25a5280bd74fbfc828c0db), [#4766](https://github.com/heygen-com/hyperframes/pull/4766)).
+- **Core:** Pair a staged scene copy's video with its own render frame ([7b0ec6970](https://github.com/heygen-com/hyperframes/commit/7b0ec697040083a9b92c0b4fb87abdb5f6774bc7), [#4791](https://github.com/heygen-com/hyperframes/pull/4791)).
+- **Parsers:** Moving a clip on the timeline moves its inner animations too ([f1c1f1d69](https://github.com/heygen-com/hyperframes/commit/f1c1f1d69cfe3a6b1c2d80bc88043e26fd52b907), [#4761](https://github.com/heygen-com/hyperframes/pull/4761)).
+- Readers never see an empty or half-written project file ([567525a8c](https://github.com/heygen-com/hyperframes/commit/567525a8c2e420c8590f7858d522bd13a20c0783), [#4777](https://github.com/heygen-com/hyperframes/pull/4777)).
+- **Studio:** Resizing a cropped element keeps the same part of it in view ([76c634dfa](https://github.com/heygen-com/hyperframes/commit/76c634dfa5f9d0119342e0eda80325aee518dff4), [#4743](https://github.com/heygen-com/hyperframes/pull/4743)).
+
+## Internal
+
+- **Studio:** Measure render drift against a producer frame in the edit accuracy bench ([ca5463146](https://github.com/heygen-com/hyperframes/commit/ca5463146499dc17f0d7b0350e8325640edba580), [#4764](https://github.com/heygen-com/hyperframes/pull/4764)).
+- **Tests:** Stop two merge-queue flakes in the history prune and timeline tests ([299670e21](https://github.com/heygen-com/hyperframes/commit/299670e210c2dfb5c3f51b0fb9ed5ab748b0a513), [#4786](https://github.com/heygen-com/hyperframes/pull/4786)).
+
+[View the full commit range](https://github.com/heygen-com/hyperframes/compare/v0.8.98...v0.8.99).
+</Update>
+
+<Update
   label="HyperFrames v0.8.98"
   description="Released - 2026-09-30"
   tags={["Release", "Studio"]}
