@@ -21,6 +21,7 @@ import {
 } from "./gsapMutationClient";
 import type { CutoverResult } from "../utils/sdkEditTransaction";
 import { findTimelineScript } from "@hyperframes/core/gsap-parser-acorn";
+import { walkCompositionDescendants } from "@hyperframes/parsers/hf-ids";
 import {
   serializeStudioFileMutations,
   type StudioProjectFileWriter,
@@ -375,13 +376,13 @@ export async function scaleGsapPositions(
 export function sdkTimingGsapSync(
   result: Extract<CutoverResult, { status: "committed" }>,
 ): GsapMutationStatus | null {
-  // Script bodies straight from the bytes: a DOM parse hides the ones inside a <template>.
-  const timelineText = (html: string) =>
-    findTimelineScript(
-      [...html.matchAll(/<script\b[^>]*>([\s\S]*?)<\/script>/gi)].map((m) => ({
-        textContent: m[1]!,
-      })),
-    )?.textContent ?? null;
+  const timelineText = (html: string) => {
+    const scripts: Element[] = [];
+    walkCompositionDescendants(new DOMParser().parseFromString(html, "text/html"), (el) => {
+      if (el.tagName.toLowerCase() === "script") scripts.push(el);
+    });
+    return findTimelineScript(scripts)?.textContent ?? null;
+  };
   if (timelineText(result.before) === timelineText(result.after)) return null;
   return { mutated: true, scriptText: extractGsapScriptText(result.after) };
 }

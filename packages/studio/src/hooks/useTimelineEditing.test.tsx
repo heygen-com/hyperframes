@@ -2249,8 +2249,8 @@ describe("clip timing edits sync GSAP exactly once", () => {
       const before = files[path]!;
       const doc = new DOMParser().parseFromString(before, "text/html");
       const root = doc.querySelector("template")?.content ?? doc;
-      const old = [...before.matchAll(/<script>([\s\S]*?)<\/script>/g)]
-        .map((match) => match[1]!)
+      const old = [...root.querySelectorAll("script")]
+        .map((script) => script.textContent ?? "")
         .find((text) => text.includes("gsap.timeline"))!;
       const next =
         body.type === "shift-positions"
