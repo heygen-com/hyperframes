@@ -2,7 +2,6 @@ export interface ImportedFontAsset {
   family: string;
   path: string;
   url: string;
-  /** The weights this file draws: "700" for a static file, "100 900" for a variable one. */
   weight?: string;
   style?: "normal" | "italic";
 }
@@ -30,7 +29,6 @@ export function fontFamilyFromAssetPath(path: string): string {
   return family || fileName;
 }
 
-// A face with a weight or style lets several files of one family sit side by side, each drawing its own texts.
 export function importedFontFaceCss(asset: ImportedFontAsset, url: string = asset.url): string {
   const weight =
     asset.weight && /^\d{1,4}( \d{1,4})?$/.test(asset.weight)
