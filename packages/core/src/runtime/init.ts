@@ -329,8 +329,7 @@ function pageAnimationsForOnePass(): () => Animation[] {
   return () => (list ??= document.getAnimations());
 }
 
-// Every `<audio>` clip plays through Web Audio; a `<video>` only for a gain `el.volume` cannot
-// express (above 1), since capturing an element is a one-way door off its native output.
+// A `<video>` joins only for a gain `el.volume` cannot express: capture is a one-way door.
 const joinsWebAudio = (el: Element): el is HTMLMediaElement =>
   isAudioElement(el) || (isVideoElement(el) && Number.parseFloat(el.dataset.volume ?? "") > 1);
 const WEB_AUDIO_MEDIA = "audio[data-start], video[data-start]";
@@ -2387,9 +2386,8 @@ export function initSandboxRuntimeModular(): void {
     }
   };
 
-  // Only what `joinsWebAudio` admits reaches `createMediaElementSource`, so a
-  // cross-origin `<video>` at or below unity is not affected and must not be
-  // reported as if it were.
+  // Only what `joinsWebAudio` admits reaches `createMediaElementSource`, so no other
+  // cross-origin media may be reported as if it did.
   const reportWebAudioRoute = (mediaEl: HTMLMediaElement) => {
     if (!joinsWebAudio(mediaEl)) return;
     // Before resource selection settles, the verdict is built from `<source>`
