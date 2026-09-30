@@ -61,8 +61,11 @@ export function stepClipLatch(latched: boolean, master: StereoLevel | undefined)
 function paintClipLight(el: HTMLElement | null, lit: boolean): void {
   if (!el) return;
   el.dataset.lit = String(lit);
-  el.style.setProperty("background-color", lit ? "rgb(239 68 68)" : "rgb(38 38 38)");
-  el.style.setProperty("color", lit ? "#fff" : "rgb(115 115 115)");
+  el.style.setProperty(
+    "background-color",
+    lit ? "var(--color-red-500)" : "var(--color-neutral-800)",
+  );
+  el.style.setProperty("color", lit ? "var(--color-white)" : "var(--color-neutral-500)");
 }
 
 /** Where the fill turns amber, then red, on the same piecewise dB scale the marks use. */
