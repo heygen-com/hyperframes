@@ -136,6 +136,7 @@ import {
   isMediaElement,
   isVideoElement,
 } from "./domRealm";
+import { isAudibleVideoElement } from "../audibleVideo";
 
 /**
  * A `window.__timelines` entry is authored content and may be a PARTIAL
@@ -331,7 +332,13 @@ function pageAnimationsForOnePass(): () => Animation[] {
 
 // A `<video>` joins only for a gain `el.volume` cannot express: capture is a one-way door.
 const joinsWebAudio = (el: Element): el is HTMLMediaElement =>
-  isAudioElement(el) || (isVideoElement(el) && Number.parseFloat(el.dataset.volume ?? "") > 1);
+  isAudioElement(el) ||
+  (isVideoElement(el) &&
+    isAudibleVideoElement(el) &&
+    (Number.parseFloat(el.dataset.volume ?? "") > 1 ||
+      el.hasAttribute("data-fx-chain") ||
+      el.hasAttribute("data-automation") ||
+      el.hasAttribute("data-audio-group")));
 const WEB_AUDIO_MEDIA = "audio[data-start], video[data-start]";
 const webAudioMediaIn = (root: ParentNode): HTMLMediaElement[] =>
   Array.from(root.querySelectorAll(WEB_AUDIO_MEDIA)).filter(joinsWebAudio);
@@ -2589,8 +2596,8 @@ export function initSandboxRuntimeModular(): void {
   // sync with a `data-hidden` toggle made mid-playback.
   const groupHiddenLast = new WeakMap<Element, boolean>();
   const groupHasUncapturedMember = (groupId: string, currentTime: number): boolean => {
-    for (const el of document.querySelectorAll("audio[data-start]")) {
-      if (!isMediaElement(el) || audioGroupOf(el) !== groupId) continue;
+    for (const el of webAudioMediaIn(document)) {
+      if (audioGroupOf(el) !== groupId) continue;
       if (webAudio.routesElement(el) || isSilencedByHidden(el)) continue;
       const start = resolveAbsoluteMediaStartSeconds(el);
       const duration = parseStrictFiniteTimingNumber(el.dataset.duration);

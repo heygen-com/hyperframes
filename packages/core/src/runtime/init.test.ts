@@ -5279,6 +5279,135 @@ describe("initSandboxRuntimeModular", () => {
       expect(seeks.filter((t) => t > 0.1)).toEqual([]);
     });
   });
+  describe("an audible <video> routed through Web Audio", () => {
+    const ctx = useMockAudioContext();
+
+    function mountMedia(tag: "audio" | "video", attrs: Record<string, string> = {}) {
+      let root = document.querySelector<HTMLElement>("[data-root]");
+      if (!root) {
+        root = document.createElement("div");
+        root.setAttribute("data-composition-id", "main");
+        root.setAttribute("data-root", "true");
+        root.setAttribute("data-start", "0");
+        root.setAttribute("data-duration", "10");
+        root.setAttribute("data-width", "1920");
+        root.setAttribute("data-height", "1080");
+        document.body.appendChild(root);
+      }
+      const el = document.createElement(tag);
+      el.setAttribute("data-start", "0");
+      el.setAttribute("data-duration", "10");
+      el.setAttribute("src", "/assets/talk.mp4");
+      for (const [name, value] of Object.entries(attrs)) el.setAttribute(name, value);
+      el.load = () => {};
+      el.play = vi.fn(() => Promise.resolve());
+      root.appendChild(el);
+      window.__timelines = { main: createMockTimeline(10) };
+      return el;
+    }
+
+    function spyCapture() {
+      return vi
+        .spyOn(WebAudioTransport.prototype, "scheduleMediaElementPlayback")
+        .mockResolvedValue(null);
+    }
+
+    it("schedules it through the media-element transport with its above-unity gain", async () => {
+      const video = mountMedia("video", { "data-has-audio": "true", "data-volume": "2" });
+      const captureSpy = spyCapture();
+
+      await startPlayback();
+
+      expect(captureSpy).toHaveBeenCalledTimes(1);
+      expect(captureSpy.mock.calls[0]?.[0]).toBe(video);
+      expect(captureSpy.mock.calls[0]?.[4]).toBe(2);
+    });
+
+    it("leaves a plain audible video at unity on native output", async () => {
+      mountMedia("video", { "data-has-audio": "true" });
+
+      await startPlayback();
+      await Promise.resolve();
+
+      expect(ctx.mediaElementSources).toBe(0);
+    });
+
+    it.each([
+      ["data-fx-chain", "[]"],
+      ["data-automation", "[]"],
+      ["data-audio-group", "music"],
+    ])("acquires a media element source for an audible video carrying %s", async (name, value) => {
+      mountMedia("video", { "data-has-audio": "true", [name]: value });
+
+      await startPlayback();
+      await Promise.resolve();
+
+      expect(ctx.mediaElementSources).toBe(1);
+    });
+
+    it("never schedules a muted or data-has-audio=false video", async () => {
+      mountMedia("video", { "data-has-audio": "true", muted: "" });
+      mountMedia("video", { "data-has-audio": "false" });
+      const captureSpy = spyCapture();
+
+      await startPlayback();
+
+      expect(captureSpy).not.toHaveBeenCalled();
+    });
+
+    it("routes only the <audio> of a legacy split (muted video + audio on the same file)", async () => {
+      mountMedia("video", { muted: "" });
+      const audio = mountMedia("audio");
+      const captureSpy = spyCapture();
+
+      await startPlayback();
+
+      expect(captureSpy).toHaveBeenCalledTimes(1);
+      expect(captureSpy.mock.calls[0]?.[0]).toBe(audio);
+    });
+
+    it("never whole-file decodes a video whose capture failed, and leaves it unmuted", async () => {
+      const video = mountMedia("video", {
+        "data-has-audio": "true",
+        "data-fx-chain": "[]",
+        "data-playback-rate": "2",
+      });
+      const plainVideo = mountMedia("video", { "data-has-audio": "true" });
+      const audio = mountMedia("audio");
+      spyCapture();
+      const decodeSpy = vi
+        .spyOn(WebAudioTransport.prototype, "decodeAudioElement")
+        .mockResolvedValue(null);
+
+      await startPlayback();
+      await Promise.resolve();
+
+      expect(decodeSpy).toHaveBeenCalledWith(audio);
+      expect(decodeSpy).not.toHaveBeenCalledWith(video);
+      expect(decodeSpy).not.toHaveBeenCalledWith(plainVideo);
+      expect(video.muted).toBe(false);
+    });
+
+    it("adds exactly one reschedule when a routed video's data-hidden toggles mid-playback", async () => {
+      const video = mountMedia("video", {
+        "data-has-audio": "true",
+        "data-fx-chain": "[]",
+        "data-hidden": "",
+      });
+      await startPlayback();
+      const captureSpy = spyCapture();
+      const generationSpy = vi.spyOn(WebAudioTransport.prototype, "startGeneration");
+
+      window.__player?.seek(1, { keepPlaying: true });
+      const seekOnly = generationSpy.mock.calls.length;
+      generationSpy.mockClear();
+      video.removeAttribute("data-hidden");
+      window.__player?.seek(2, { keepPlaying: true });
+
+      expect(generationSpy.mock.calls.length).toBe(seekOnly + 1);
+      expect(captureSpy.mock.calls.at(-1)?.[0]).toBe(video);
+    });
+  });
 });
 
 /**

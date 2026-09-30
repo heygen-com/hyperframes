@@ -5,7 +5,7 @@ import { postRuntimeMessage } from "./bridge";
 import type { RuntimeJson } from "./types";
 
 /**
- * Which transport may claim an `<audio>` element's output.
+ * Which transport may claim an `<audio>` or audible `<video>` element's output.
  *
  * `createMediaElementSource()` is the runtime's PRIMARY audio path, and it is
  * a one-way door: the node permanently reroutes the element away from its
@@ -259,8 +259,8 @@ export function nativeUnexpressibleProcessing(el: HTMLMediaElement): string[] {
  * element is not the audio source there in the first place.
  *
  * Same signal `mediaProxy.ts`'s `isRenderMode` gates on. The `<video>` half of
- * that check (the injected render-frame sibling) is deliberately not mirrored:
- * only `<audio>` ever reaches this module.
+ * that check (the injected render-frame sibling) is not mirrored: the
+ * export-seek config alone gates reporting.
  */
 function isRenderMode(): boolean {
   // Read through an inline cast rather than the ambient `Window` augmentation
