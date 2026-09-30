@@ -207,10 +207,7 @@ describe("Studio catalog install", () => {
     await installer(link)("studio-drop-block");
 
     const block = join("scenes", "studio-drop-block.html");
-    expect(readFileSync(join(real, block), "utf-8")).toContain(
-      (content = width = 1920),
-      (height = 1080),
-    );
+    expect(readFileSync(join(real, block), "utf-8")).toContain('content="width=1920, height=1080"');
     const inPlace = vi
       .mocked(writeFileSync)
       .mock.calls.filter(([path]) => String(path).endsWith(block));

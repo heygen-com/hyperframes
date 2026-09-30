@@ -1,7 +1,8 @@
+// @vitest-environment node
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import * as fs from "node:fs";
 import { tmpdir } from "node:os";
-import { basename, join } from "node:path";
+import { join } from "node:path";
 import { Hono } from "hono";
 import { registerFileRoutes } from "./files";
 import type { StudioApiAdapter } from "../types";
@@ -33,7 +34,8 @@ function app(): Hono {
 
 // A write opened on the destination itself exposes an empty file until it finishes.
 function writesOpenedOn(name: string): unknown[][] {
-  const onDest = ([path]: unknown[]) => basename(String(path)) === name;
+  const dests = [join(project, name), join(fs.realpathSync(project), name)];
+  const onDest = ([path]: unknown[]) => dests.includes(String(path));
   return [
     ...vi.mocked(fs.writeFileSync).mock.calls.filter(onDest),
     ...vi.mocked(fs.openSync).mock.calls.filter((call) => onDest(call) && call[1] !== "r"),
