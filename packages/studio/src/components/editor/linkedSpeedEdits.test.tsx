@@ -13,6 +13,7 @@ import {
   type LinkedSpeedCommit,
 } from "./linkedSpeedEdits";
 import { useVolumeAutomation } from "./useVolumeAutomation";
+import { useLinkedClipPreferences } from "../../utils/linkedClipPreferences";
 
 const clip = (id: string, tag: string, link?: string): TimelineElement => ({
   id,
@@ -71,6 +72,15 @@ describe("linkedPartnerTargets", () => {
   it("returns the other data-link members and nothing for an unlinked clip", () => {
     expect(linkedPartnerTargets({ id: "talk" }, elements)).toEqual([{ id: "talk-audio" }]);
     expect(linkedPartnerTargets({ id: "music" }, elements)).toEqual([]);
+  });
+
+  it("reaches no partner with Linked Selection off", () => {
+    useLinkedClipPreferences.getState().setLinkedSelection(false);
+    try {
+      expect(linkedPartnerTargets({ id: "talk" }, elements)).toEqual([]);
+    } finally {
+      useLinkedClipPreferences.getState().setLinkedSelection(true);
+    }
   });
 });
 

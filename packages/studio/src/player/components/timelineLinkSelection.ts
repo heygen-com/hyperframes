@@ -1,9 +1,10 @@
 import { usePlayerStore } from "../store/playerStore";
 import { expandToLinkedMembers } from "./audioClipLink";
+import { isLinkedSelectionOn } from "../../utils/linkedClipPreferences";
 
 /**
  * Select `key` the way a clip click does, then widen to link partners; Alt
- * selects `key` alone even when it sat inside a larger selection.
+ * (or Linked Selection off) selects `key` alone, even inside a larger selection.
  */
 export function selectClipWithLinks(
   key: string,
@@ -11,7 +12,7 @@ export function selectClipWithLinks(
   setSelectedElementId: (id: string) => void,
 ): void {
   const state = usePlayerStore.getState();
-  if (altKey) {
+  if (altKey || !isLinkedSelectionOn()) {
     state.setSelection([key], key);
     return;
   }

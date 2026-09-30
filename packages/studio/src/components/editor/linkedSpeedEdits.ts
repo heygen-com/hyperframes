@@ -1,5 +1,6 @@
 import { usePlayerStore, type TimelineElement } from "../../player/store/playerStore";
 import { expandToLinkedMembers } from "../../player/components/audioClipLink";
+import { isLinkedSelectionOn } from "../../utils/linkedClipPreferences";
 import {
   applyPatchByTarget,
   readAttributeByTarget,
@@ -30,7 +31,7 @@ export function linkedPartnerTargets(
 ): PatchTarget[] {
   const self = elements.find((el) => isSelected(el, selection));
   if (!self?.link) return [];
-  const members = expandToLinkedMembers([keyOf(self)], elements);
+  const members = expandToLinkedMembers([keyOf(self)], elements, isLinkedSelectionOn());
   members.delete(keyOf(self));
   return elements
     .filter((el) => members.has(keyOf(el)))

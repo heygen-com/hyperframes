@@ -28,6 +28,7 @@ import type {
 } from "./timelineClipDragTypes";
 import { getTimelineElementIndexes } from "../lib/timelineElementIndexes";
 import { linkedGestureKeys } from "./audioClipLink";
+import { isLinkedSelectionOn } from "../../utils/linkedClipPreferences";
 import type { TimelineRowGeometry } from "./timelineLayout";
 import {
   mountTimelineClipDragGestureLifecycle,
@@ -228,6 +229,7 @@ export function useTimelineClipDrag({
         next.element,
         elementsRef.current,
         next.altKey === true,
+        isLinkedSelectionOn(),
       );
       publishDraggedClip(next);
     },
@@ -245,6 +247,7 @@ export function useTimelineClipDrag({
         next.element,
         elementsRef.current,
         next.altKey === true,
+        isLinkedSelectionOn(),
       );
       publishResizingClip(next);
     },

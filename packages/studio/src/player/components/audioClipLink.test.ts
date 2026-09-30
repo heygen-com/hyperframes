@@ -158,6 +158,12 @@ describe("linkedGestureKeys", () => {
     );
   });
 
+  it("Linked Selection off edits the grabbed clip alone without Alt", () => {
+    expect(linkedGestureKeys(new Set(["talk"]), video, elements, false, false)).toEqual(
+      new Set(["talk"]),
+    );
+  });
+
   it("Alt edits the grabbed clip alone", () => {
     expect(linkedGestureKeys(new Set(["talk", "talk-audio"]), video, elements, true)).toEqual(
       new Set(["talk"]),
@@ -195,5 +201,31 @@ describe("selectClipWithLinks", () => {
     click("talk");
     expect(usePlayerStore.getState().selectedElementIds).toEqual(new Set(["talk", "talk-audio"]));
     expect(usePlayerStore.getState().selectedElementId).toBe("talk");
+  });
+});
+
+describe("Linked Selection off", () => {
+  const linkedPair = [
+    { id: "talk", tag: "video", start: 0, duration: 4, track: 0, link: "lk-1" },
+    { id: "talk-audio", tag: "audio", start: 0, duration: 4, track: 1, link: "lk-1" },
+  ];
+
+  it("expands and lists nothing past the clip itself", () => {
+    expect(expandToLinkedMembers(["talk"], linkedPair, false)).toEqual(new Set(["talk"]));
+    expect(linkedMembersOf(linkedPair[0], linkedPair, false)).toEqual([linkedPair[0]]);
+  });
+
+  it("a click selects only the clicked clip", async () => {
+    const { usePlayerStore } = await import("../store/playerStore");
+    const { selectClipWithLinks } = await import("./timelineLinkSelection");
+    const { useLinkedClipPreferences } = await import("../../utils/linkedClipPreferences");
+    usePlayerStore.getState().setElements(linkedPair);
+    useLinkedClipPreferences.getState().setLinkedSelection(false);
+    try {
+      selectClipWithLinks("talk", false, usePlayerStore.getState().setSelectedElementId);
+      expect(usePlayerStore.getState().selectedElementIds).toEqual(new Set(["talk"]));
+    } finally {
+      useLinkedClipPreferences.getState().setLinkedSelection(true);
+    }
   });
 });

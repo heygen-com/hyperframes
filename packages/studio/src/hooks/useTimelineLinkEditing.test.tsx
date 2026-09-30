@@ -4,6 +4,7 @@ import { createRoot } from "react-dom/client";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { usePlayerStore, type TimelineElement } from "../player";
 import { useTimelineLinkEditing, withLinkPartners } from "./useTimelineLinkEditing";
+import { useLinkedClipPreferences } from "../utils/linkedClipPreferences";
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
@@ -71,6 +72,20 @@ describe("useTimelineLinkEditing", () => {
       "talk",
       "talk-audio",
     ]);
+    unmount();
+  });
+
+  it("with Linked Selection off, delete removes the clip alone and unlinks the survivor", async () => {
+    const del = vi.fn().mockResolvedValue(undefined);
+    const { api, unmount } = await renderLinkEditing(del);
+    useLinkedClipPreferences.getState().setLinkedSelection(false);
+    try {
+      expect(withLinkPartners([video])).toEqual([video]);
+      await act(async () => api.handleLinkedElementDelete(video));
+      expect(del).toHaveBeenCalledWith([video], [audio]);
+    } finally {
+      useLinkedClipPreferences.getState().setLinkedSelection(true);
+    }
     unmount();
   });
 
