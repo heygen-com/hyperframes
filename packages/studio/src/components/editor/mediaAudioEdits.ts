@@ -29,7 +29,7 @@ const SOUND_KEPT_ON_LINKED_AUDIO_STAGE = "Background removed. Sound kept on a li
 const SOUND_NOT_KEPT_MESSAGE =
   "Background removed, but the sound could not be kept on a linked audio track. Undo to restore the original clip.";
 
-const MOVED_SOUND_ATTRS = [
+export const MOVED_SOUND_ATTRS = [
   "data-volume",
   HF_AUDIO_FADE_IN_ATTR,
   HF_AUDIO_FADE_OUT_ATTR,
@@ -38,7 +38,7 @@ const MOVED_SOUND_ATTRS = [
   HF_AUDIO_GROUP_ATTR,
 ];
 
-const COPIED_TIMING_ATTRS = [
+export const COPIED_TIMING_ATTRS = [
   "start",
   "end",
   "duration",
@@ -91,7 +91,7 @@ export function cutoutOps(input: { isVideo: boolean; cutoutSrc: string }): Patch
   return input.isVideo ? [src, htmlAttr("muted", "true"), dataAttr("has-audio", null)] : [src];
 }
 
-function firstFreeName(base: string, taken: Set<string>): string {
+export function firstFreeName(base: string, taken: Set<string>): string {
   if (!taken.has(base)) return base;
   let n = 2;
   while (taken.has(`${base}-${n}`)) n += 1;
@@ -117,7 +117,7 @@ function firstFreeTrackIndex(source: string): number {
   return track;
 }
 
-function splitAutomation(raw: string): { videoKeeps: string | null; audioTakes: string } {
+export function splitAutomation(raw: string): { videoKeeps: string | null; audioTakes: string } {
   let lanes: HfAutomationLane[];
   try {
     lanes = parseAutomation(raw).lanes;
@@ -132,11 +132,11 @@ function splitAutomation(raw: string): { videoKeeps: string | null; audioTakes: 
   };
 }
 
-function formatAttrs(attrs: Array<[string, string]>): string {
+export function formatAttrs(attrs: Array<[string, string]>): string {
   return attrs.map(([name, value]) => `${name}="${escapeHtmlAttribute(value)}"`).join(" ");
 }
 
-function readAuthoredSrc(source: string, target: PatchTarget): string {
+export function readAuthoredSrc(source: string, target: PatchTarget): string {
   const tag = findTagByTarget(source, target);
   if (!tag) return "";
   const own = /\bsrc=(["'])([^"']*)\1/.exec(tag.tag);
@@ -145,7 +145,7 @@ function readAuthoredSrc(source: string, target: PatchTarget): string {
   return firstSource?.[2] ? unescapeHtmlAttribute(firstSource[2]) : "";
 }
 
-function insertBeforeTarget(source: string, target: PatchTarget, markup: string): string {
+export function insertBeforeTarget(source: string, target: PatchTarget, markup: string): string {
   const match = findTagByTarget(source, target);
   if (!match) return source;
   const lineStart = source.lastIndexOf("\n", match.start) + 1;
