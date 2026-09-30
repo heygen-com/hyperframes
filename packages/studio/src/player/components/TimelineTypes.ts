@@ -37,8 +37,6 @@ export interface TimelineProps
   showAudioEffects?: boolean;
   showKeyframes?: boolean;
   trackPadding?: TimelineTrackPadding;
-  /** Seek, scroll, zoom, hover and selection stay live; every edit is refused before it starts. */
   readOnly?: boolean;
-  /** Called once for each press read-only refused. */
   onReadOnlyPress?: () => void;
 }

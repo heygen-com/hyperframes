@@ -2,7 +2,6 @@ export interface TimelineEditCapabilities {
   canMove: boolean;
   canTrimStart: boolean;
   canTrimEnd: boolean;
-  /** The whole timeline is read-only: a press on the clip is refused, not ignored. */
   readOnly?: boolean;
 }
 

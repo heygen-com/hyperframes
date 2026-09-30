@@ -22,3 +22,12 @@ const READ_ONLY_CLIP: TimelineEditCapabilities = {
 export function useTimelineClipCapabilities(): typeof getTimelineEditCapabilities {
   return useTimelineReadOnlyPress() ? () => READ_ONLY_CLIP : getTimelineEditCapabilities;
 }
+
+/** Read-only swaps each callback for the refusal: the press is reported instead of acted on. */
+export function refuseWhenReadOnly<T extends object>(
+  readOnlyPress: (() => void) | null,
+  callbacks: T,
+): T {
+  if (!readOnlyPress) return callbacks;
+  return Object.fromEntries(Object.keys(callbacks).map((key) => [key, readOnlyPress])) as T;
+}

@@ -194,8 +194,6 @@ export function TimelineProvider({
     () => (readOnly ? () => onReadOnlyPress?.() : null),
     [readOnly, onReadOnlyPress],
   );
-  // One tree shape for both modes, so toggling read-only keeps scroll, zoom and selection. Host edit
-  // props still reach the state: each path that would use one is refused where its gesture starts.
   return (
     <TimelineReadOnlyContext.Provider value={readOnlyPress}>
       <TimelineEditProvider value={readOnly ? NO_EDITS : (editContext ?? props)}>

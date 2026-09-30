@@ -27,3 +27,27 @@ export function installTimelineMountEnv(): void {
     document.body.innerHTML = "";
   });
 }
+
+export const KEYFRAMED_CARD = new Map([
+  [
+    "card",
+    [
+      {
+        id: "card-position",
+        targetSelector: "#card",
+        method: "to" as const,
+        position: 0,
+        duration: 2,
+        properties: {},
+        propertyGroup: "position" as const,
+        keyframes: {
+          format: "percentage" as const,
+          keyframes: [
+            { percentage: 0, properties: { x: 0 } },
+            { percentage: 50, properties: { x: 100 } },
+          ],
+        },
+      },
+    ],
+  ],
+]);

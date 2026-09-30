@@ -23,7 +23,6 @@ interface UseTimelineAssetDropOptions extends TimelineDropCallbacks {
   rowGeometryRef: RefObject<TimelineRowGeometry>;
   contentOrigin: number;
   sessionEpoch: number;
-  /** Read-only: refuse the drag (no preview, no drop) and report it once. */
   readOnlyPress?: (() => void) | null;
 }
 
@@ -215,7 +214,6 @@ export function useTimelineAssetDrop({
       const hasComposition = types.includes(TIMELINE_COMPOSITION_MIME);
       if (!hasFiles && !hasAsset && !hasBlock && !hasComposition) return;
       if (readOnlyPress) {
-        // Not cancelled, so the browser shows no-drop and never fires drop here.
         e.dataTransfer.dropEffect = "none";
         if (!refusedDragRef.current) readOnlyPress();
         refusedDragRef.current = true;

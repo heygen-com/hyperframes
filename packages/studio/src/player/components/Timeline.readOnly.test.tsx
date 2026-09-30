@@ -4,7 +4,7 @@ import React, { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeAll, describe, expect, it, vi } from "vitest";
 import { Timeline } from "./Timeline";
-import { installTimelineMountEnv } from "./timelineMountTestEnv";
+import { installTimelineMountEnv, KEYFRAMED_CARD } from "./timelineMountTestEnv";
 import { usePlayerStore, type TimelineElement } from "../store/playerStore";
 import { TimelineEditProvider } from "../../contexts/TimelineEditContext";
 import type { TimelineProps } from "./TimelineTypes";
@@ -124,6 +124,13 @@ function mount(props: TimelineProps, elements: TimelineElement[] = CLIPS, wired 
         );
       });
     },
+    /** Right-click the first lane's empty space, past clip `a`. */
+    laneMenu() {
+      const cell = host.querySelector<HTMLElement>('[role="gridcell"][aria-colindex="2"]')!;
+      cell.getBoundingClientRect = () =>
+        ({ left: 0, top: 0, right: 900, bottom: 40, width: 900, height: 40 }) as DOMRect;
+      this.contextMenu(cell, 350);
+    },
     dragFileOver() {
       const dataTransfer = {
         types: ["Files"],
@@ -151,9 +158,6 @@ function mount(props: TimelineProps, elements: TimelineElement[] = CLIPS, wired 
     },
   };
 }
-
-const laneCell = (host: HTMLElement) =>
-  host.querySelector<HTMLElement>('[role="gridcell"][aria-colindex="2"]')!;
 
 describe("Timeline readOnly", () => {
   it("still scrubs from the ruler", () => {
@@ -201,10 +205,7 @@ describe("Timeline readOnly", () => {
   it("opens no gap menu on an empty lane and reports it once", () => {
     const onReadOnlyPress = vi.fn();
     const t = mount({ readOnly: true, onReadOnlyPress });
-    const cell = laneCell(t.host);
-    cell.getBoundingClientRect = () =>
-      ({ left: 0, top: 0, right: 900, bottom: 40, width: 900, height: 40 }) as DOMRect;
-    t.contextMenu(cell, 350);
+    t.laneMenu();
     expect(document.body.textContent).not.toContain("Close gap");
     expect(onReadOnlyPress).toHaveBeenCalledTimes(1);
   });
@@ -253,29 +254,6 @@ const CARD: TimelineElement[] = [
     track: 0,
   },
 ];
-const CARD_ANIMATIONS = new Map([
-  [
-    "card",
-    [
-      {
-        id: "card-position",
-        targetSelector: "#card",
-        method: "to" as const,
-        position: 0,
-        duration: 2,
-        properties: {},
-        propertyGroup: "position" as const,
-        keyframes: {
-          format: "percentage" as const,
-          keyframes: [
-            { percentage: 0, properties: { x: 0 } },
-            { percentage: 50, properties: { x: 100 } },
-          ],
-        },
-      },
-    ],
-  ],
-]);
 const CARD_KEYFRAMES = new Map([
   [
     "card",
@@ -336,7 +314,7 @@ function oneShotGestures(readOnly: boolean) {
     open: document.querySelector('[role="menu"][aria-label="Keyframe actions"]') !== null,
   };
 
-  usePlayerStore.setState({ selectedElementId: "card", gsapAnimations: CARD_ANIMATIONS });
+  usePlayerStore.setState({ selectedElementId: "card", gsapAnimations: KEYFRAMED_CARD });
   t = remount(CARD);
   const beforeToggle = reported();
   act(() =>
@@ -400,10 +378,7 @@ describe("Timeline without readOnly (unchanged)", () => {
     expect(document.querySelector('[role="menu"][aria-label="Clip actions"]')).not.toBeNull();
     act(() => document.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape" })));
 
-    const cell = laneCell(t.host);
-    cell.getBoundingClientRect = () =>
-      ({ left: 0, top: 0, right: 900, bottom: 40, width: 900, height: 40 }) as DOMRect;
-    t.contextMenu(cell, 350);
+    t.laneMenu();
     expect(document.body.textContent).toContain("Close gap");
 
     const drag = t.dragFileOver();

@@ -4,7 +4,7 @@ import React, { act } from "react";
 import { createRoot } from "react-dom/client";
 import { afterEach, beforeAll, describe, expect, it, vi } from "vitest";
 import { Timeline } from "./Timeline";
-import { installTimelineMountEnv } from "./timelineMountTestEnv";
+import { installTimelineMountEnv, KEYFRAMED_CARD as KEYFRAMED } from "./timelineMountTestEnv";
 import { usePlayerStore } from "../store/playerStore";
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
@@ -19,30 +19,6 @@ beforeAll(() => {
 afterEach(() => {
   document.body.innerHTML = "";
 });
-
-const KEYFRAMED = new Map([
-  [
-    "card",
-    [
-      {
-        id: "card-position",
-        targetSelector: "#card",
-        method: "to" as const,
-        position: 0,
-        duration: 2,
-        properties: {},
-        propertyGroup: "position" as const,
-        keyframes: {
-          format: "percentage" as const,
-          keyframes: [
-            { percentage: 0, properties: { x: 0 } },
-            { percentage: 50, properties: { x: 100 } },
-          ],
-        },
-      },
-    ],
-  ],
-]);
 
 /** Presses the ruler exactly on the first drawn tick after 0 and returns its time and the seek. */
 async function seekOnFirstTick(
