@@ -47,3 +47,23 @@ it("two weights of one family are both kept in the file and both drawn in the pr
   injectPreviewImportedFont(document, bold);
   expect(document.head.querySelectorAll("style")).toHaveLength(2);
 });
+
+it("a weight the browser would drop is left out, and a family cannot close the style block", () => {
+  for (const weight of ["0", "5000", "bold", "700;}"])
+    expect(importedFontFaceCss(face("x.ttf", { weight }))).not.toContain("font-weight");
+  expect(importedFontFaceCss(face("x.ttf", { weight: "1000" }))).toContain("font-weight: 1000;");
+  expect(importedFontFaceCss({ ...face("x.ttf"), family: "</style><b>x" })).not.toContain(
+    "</style>",
+  );
+});
+
+it("a file name with a replacement pattern is saved as written, not expanded into the page", () => {
+  const html = "<html><head></head><body>rest</body></html>";
+  const odd = { family: "Cash", path: "assets/Cash$'Font.ttf", url: "/Cash$'Font.ttf" };
+  const saved = ensureImportedFontFace(html, odd, "index.html");
+  expect(saved).toContain("Cash$'Font.ttf");
+  expect(saved.match(/<body>/g)).toHaveLength(1);
+  const again = ensureImportedFontFace(saved, { ...odd, path: "assets/Cash$&.ttf" }, "index.html");
+  expect(again).toContain("Cash$&.ttf");
+  expect(again.match(/<body>/g)).toHaveLength(1);
+});

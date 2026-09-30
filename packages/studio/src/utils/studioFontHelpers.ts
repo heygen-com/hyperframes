@@ -72,12 +72,15 @@ export function ensureImportedFontFace(
   const styleMatch = styleRe.exec(html);
   if (styleMatch) {
     const nextCss = `${styleMatch[2].trim()}\n${css}`.trim();
-    return html.replace(styleMatch[0], `<style data-hf-studio-fonts="true">\n${nextCss}\n</style>`);
+    return html.replace(
+      styleMatch[0],
+      () => `<style data-hf-studio-fonts="true">\n${nextCss}\n</style>`,
+    );
   }
 
   const styleTag = `<style data-hf-studio-fonts="true">\n${css}\n</style>`;
   if (/<\/head>/i.test(html)) {
-    return html.replace(/<\/head>/i, `  ${styleTag}\n  </head>`);
+    return html.replace(/<\/head>/i, () => `  ${styleTag}\n  </head>`);
   }
   return `${styleTag}\n${html}`;
 }

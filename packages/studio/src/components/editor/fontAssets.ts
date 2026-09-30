@@ -11,7 +11,7 @@ const FONT_STYLE_SUFFIX_RE =
   /\s+(thin|extralight|extra light|light|regular|roman|medium|semibold|semi bold|bold|extrabold|extra bold|black|italic|oblique|variable)$/i;
 
 function cssString(value: string): string {
-  return JSON.stringify(value);
+  return JSON.stringify(value).replace(/</g, "\\3c ");
 }
 
 export function fontFamilyFromAssetPath(path: string): string {
@@ -31,7 +31,7 @@ export function fontFamilyFromAssetPath(path: string): string {
 
 export function importedFontFaceCss(asset: ImportedFontAsset, url: string = asset.url): string {
   const weight =
-    asset.weight && /^\d{1,4}( \d{1,4})?$/.test(asset.weight)
+    asset.weight && /^(?:[1-9]\d{0,2}|1000)(?: (?:[1-9]\d{0,2}|1000))?$/.test(asset.weight)
       ? ` font-weight: ${asset.weight};`
       : "";
   const style = asset.style
