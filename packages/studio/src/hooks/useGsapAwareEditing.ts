@@ -33,7 +33,8 @@ import { setElementGsapPosition } from "../utils/elementGsap";
 import { logResize, logResizeSettle } from "../utils/resizeDebug";
 import type { DomEditGroupPathOffsetCommit } from "../components/editor/DomEditOverlay";
 import { runGestureTransaction } from "./gestureTransaction";
-import { hasNonHoldTweenForElement } from "./gsapRuntimeKeyframes";
+import { gsapWritesPosition, hasNonHoldTweenForElement } from "./gsapRuntimeKeyframes";
+import { translatePatch } from "../components/editor/plainTranslate";
 import { assertGsapEditPersisted, saveMove } from "./gsapEditOutcome";
 import type { GsapAnimationFetchOptions } from "./useGsapAnimationFetchFallback";
 import type { ElementOffsetStagerDeps } from "./elementOffsetStager";
@@ -46,6 +47,7 @@ import {
 // Distinct coalesceKey per group drag so consecutive group drags don't fold
 // into one another's undo entry (module-local counter, not Date.now()).
 let groupDragCommitCounter = 0;
+let plainMoveCounter = 0;
 
 function firstPreflightFailure(
   results: PromiseSettledResult<void>[],
@@ -147,12 +149,33 @@ export function useGsapAwareEditing({
     [domEditSelection, selectedGsapAnimations, makeFetchFallback],
   );
 
+  // The one move writer for an element GSAP does not position: its inline translate, as drawn.
+  const commitPlainTranslate = useCallback(
+    (selection: DomEditSelection, next: { x: number; y: number }, coalesceKey?: string) => {
+      const style = selection.element.style;
+      const before = style.getPropertyValue("translate");
+      const patch = translatePatch(next);
+      const value = patch.value;
+      style.setProperty("translate", value);
+      return commitPositionPatchToHtml(selection, [patch], {
+        label: "Move layer",
+        coalesceKey: coalesceKey ?? `move:${++plainMoveCounter}`,
+        coalesceMs: Number.POSITIVE_INFINITY,
+      }).catch((error) => {
+        if (style.getPropertyValue("translate") === value) style.setProperty("translate", before);
+        throw error;
+      });
+    },
+    [commitPositionPatchToHtml],
+  );
+
   const handleGsapAwarePathOffsetCommit = useCallback(
     async (
       selection: DomEditSelection,
       next: { x: number; y: number },
       modifiers?: { altKey?: boolean },
     ) => {
+      if (!gsapWritesPosition(selection.element)) return commitPlainTranslate(selection, next);
       if (gsapCommitMutation) {
         try {
           const ownedAnimations = getGsapAnimationsForSelection(selection);
@@ -182,14 +205,12 @@ export function useGsapAwareEditing({
       trackGsapInteractionFailure,
       getGsapAnimationsForSelection,
       stageElementPositionOffset,
+      commitPlainTranslate,
     ],
   );
 
-  // Multi-select (group) drag: route EACH element through the SAME GSAP intercept as
-  // a single drag, so every position is written as GSAP code (tl.set / keyframes /
-  // gsap.set) — NEVER the deprecated `--hf-studio-offset` CSS var, and GSAP-animated
-  // elements are no longer blocked in a group. No CSS fallback: with no GSAP
-  // composition there's nothing to write (a no-op, exactly like the single-drag path).
+  // Multi-select (group) drag: each member takes the single drag's writer, its inline
+  // translate unless GSAP positions it, else the GSAP intercept.
   const handleGsapAwareGroupPathOffsetCommit = useCallback(
     async (updates: DomEditGroupPathOffsetCommit[]) => {
       if (!gsapCommitMutation || updates.length === 0) return;
@@ -238,6 +259,9 @@ export function useGsapAwareEditing({
       };
       const preflightAnimations = new Map<DomEditSelection, GsapAnimation[]>();
       const offsetMembers = new Set<DomEditSelection>();
+      const plainMembers = new Set(
+        updates.filter((u) => !gsapWritesPosition(u.selection.element)).map((u) => u.selection),
+      );
       // Editability is user-atomic: prove every member can be written before
       // the first source mutation. Network failures after this point retain the
       // existing multi-request semantics, but a blocked member can never leave
@@ -247,6 +271,7 @@ export function useGsapAwareEditing({
       // turns N sequential round trips into one.
       const preflightResults = await Promise.allSettled(
         updates.map(async ({ selection }) => {
+          if (plainMembers.has(selection)) return;
           const animations = await makeFetchFallback(selection, { failOnFetchError: true })();
           preflightAnimations.set(selection, animations);
           const outcome = await tryGsapDragIntercept(
@@ -273,10 +298,14 @@ export function useGsapAwareEditing({
         throw preflightFailure.error;
       }
       const lastScriptWrite = updates.findLastIndex(
-        ({ selection }) => !offsetMembers.has(selection),
+        ({ selection }) => !offsetMembers.has(selection) && !plainMembers.has(selection),
       );
       for (const [index, { selection, next }] of updates.entries()) {
         renderOnCommit = index === lastScriptWrite;
+        if (plainMembers.has(selection)) {
+          await commitPlainTranslate(selection, next, coalesceKey);
+          continue;
+        }
         if (offsetMembers.has(selection)) {
           await stageElementPositionOffset(selection, next, coalesceKey).save();
           continue;
@@ -318,6 +347,7 @@ export function useGsapAwareEditing({
       makeFetchFallback,
       trackGsapInteractionFailure,
       stageElementPositionOffset,
+      commitPlainTranslate,
     ],
   );
 

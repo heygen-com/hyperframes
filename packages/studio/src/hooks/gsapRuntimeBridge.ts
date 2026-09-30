@@ -35,7 +35,7 @@ import {
   pickClosestToPlayhead,
   readGsapPositionFromIframe,
 } from "./gsapPositionDetection";
-import { hasNonHoldTweenForElement } from "./gsapRuntimeKeyframes";
+import { hasNonHoldTweenForElement, POSITION_CHANNELS } from "./gsapRuntimeKeyframes";
 import { getAnimationsForElement } from "./gsapElementMatch";
 import {
   animationWritesAnyProperty,
@@ -43,22 +43,7 @@ import {
   type GsapEditOutcome,
 } from "./gsapEditOutcome";
 
-// Position channels — used to scope the "has a live position tween?" check so a
-// sibling rotation/scale animation never forces a static position hold into the
-// keyframe branch (which corrupts it into a frozen duration-0 keyframed tween).
-export const POSITION_CHANNELS: string[] = [
-  "x",
-  "y",
-  "xPercent",
-  "yPercent",
-  "left",
-  "top",
-  // GSAP normalizes translateX/Y to x/y at play time, but readTween reads the
-  // AUTHORED shape — include them so a hand-authored translateX/Y position tween
-  // still counts as a live position tween.
-  "translateX",
-  "translateY",
-];
+export { POSITION_CHANNELS };
 const POSITION_CHANNEL_SET = new Set<string>(POSITION_CHANNELS);
 
 const ROTATION_CHANNELS: string[] = ["rotation", "rotationX", "rotationY", "rotationZ"];

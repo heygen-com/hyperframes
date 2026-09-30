@@ -1,5 +1,6 @@
 import type { DomEditSelection } from "./domEditingTypes";
-import { readStudioBoxSize, readStudioPathOffset } from "./manualEdits";
+import { readStudioBoxSize } from "./manualEdits";
+import { readMoveOffset } from "./plainTranslate";
 import { parsePxMetricValue, type PropertyPanelProps } from "./propertyPanelHelpers";
 
 interface TransformCommitDeps {
@@ -73,7 +74,7 @@ export function createTransformCommitHandlers({
       )
     )
       return;
-    const current = readStudioPathOffset(element.element);
+    const current = readMoveOffset(element.element);
     await Promise.resolve(
       onSetManualOffset(element, {
         x: axis === "x" ? parsed : current.x,
