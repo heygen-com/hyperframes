@@ -7,3 +7,10 @@ export class NavigationDeadlineError extends Error {
     this.name = "NavigationDeadlineError";
   }
 }
+
+export class CaptureDirRefusedError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "CaptureDirRefusedError";
+  }
+}

@@ -1,5 +1,6 @@
 import { existsSync } from "node:fs";
 import { ensureCaptureDirSync, writeCaptureFileSync } from "./captureFile.js";
+import { CaptureDirRefusedError } from "./captureErrors.js";
 import { join } from "node:path";
 import {
   downloadAssets,
@@ -422,8 +423,10 @@ export async function runPostExtraction(input: PostExtractionInput): Promise<Pos
             );
         };
         await runSvgContactSheet();
-      } catch {
-        /* contact sheets are non-critical — agent can still read images individually */
+      } catch (err) {
+        if (err instanceof CaptureDirRefusedError)
+          warnings.push(`SVG contact sheet skipped: ${err.message}`);
+        /* otherwise non-critical — agent can still read images individually */
       }
       phase(
         "contact-sheets",

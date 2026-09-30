@@ -8,6 +8,7 @@ import {
   writeFileSync,
 } from "node:fs";
 import { basename, dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
+import { CaptureDirRefusedError } from "./captureErrors.js";
 
 type WriteOptions = Parameters<typeof writeFileSync>[2];
 
@@ -88,7 +89,7 @@ export function ensureCaptureDirSync(root: string, dir: string): string {
   const target = resolve(dir);
   const rel = relative(rootPath, target);
   if (rel === ".." || rel.startsWith(`..${sep}`) || isAbsolute(rel)) {
-    throw new Error(
+    throw new CaptureDirRefusedError(
       `Refusing to create ${target}: it is outside the capture directory ${rootPath}`,
     );
   }
@@ -104,12 +105,12 @@ export function ensureCaptureDirSync(root: string, dir: string): string {
       if (!hasCode(error, "EEXIST")) throw error;
     }
     if (resolvedPath(current) !== expected) {
-      throw new Error(
+      throw new CaptureDirRefusedError(
         `Refusing to write into ${current}: it resolves outside the capture directory ${rootPath}`,
       );
     }
     if (!statSync(current).isDirectory()) {
-      throw new Error(`Refusing to write into ${current}: it is not a directory`);
+      throw new CaptureDirRefusedError(`Refusing to write into ${current}: it is not a directory`);
     }
   }
   return target;

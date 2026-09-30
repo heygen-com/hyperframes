@@ -26,10 +26,11 @@ describe("runPostExtraction", () => {
       symlinkSync(outside, join(outputDir, "assets", "svgs"));
 
       const state = createPartialCaptureState({ url: "https://example.com", outputDir });
+      const warnings: string[] = [];
       await runPostExtraction({
         state,
         outputDir,
-        warnings: [],
+        warnings,
         progress: () => {},
         remainingMs: () => 60_000,
         phase: () => {},
@@ -49,6 +50,9 @@ describe("runPostExtraction", () => {
       });
 
       expect(readdirSync(outside)).toEqual(["planted.svg"]);
+      expect(warnings).toEqual([
+        expect.stringMatching(/^SVG contact sheet skipped: Refusing to write/),
+      ]);
     },
   );
 });

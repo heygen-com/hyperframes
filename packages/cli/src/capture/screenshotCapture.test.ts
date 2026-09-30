@@ -1,5 +1,13 @@
 import { describe, expect, it, onTestFinished, vi } from "vitest";
-import { existsSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
+import {
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  readdirSync,
+  rmSync,
+  symlinkSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { Page } from "puppeteer-core";
@@ -9,6 +17,7 @@ import {
   MAX_PLATE_HEIGHT_PX,
   pngHeight,
 } from "./screenshotCapture.js";
+import { CaptureDirRefusedError } from "./captureErrors.js";
 
 function tempDir(prefix: string): string {
   const dir = mkdtempSync(join(tmpdir(), prefix));
@@ -262,4 +271,24 @@ describe("captureFullPagePlate — the guard sees the post-neutralisation page (
     // Bailing out early must still hand the page back unmodified.
     expect(String(evaluate.mock.calls.at(-1)?.[0])).toContain("removeAttribute");
   });
+});
+
+describe("captureScrollScreenshots — planted screenshots link (#4304)", () => {
+  // Creating symlinks needs elevated rights on Windows.
+  it.skipIf(process.platform === "win32")(
+    "refuses a planted screenshots/ symlink before touching the page",
+    async () => {
+      const dir = tempDir("hf-scroll-planted-");
+      const outside = join(dir, "outside");
+      mkdirSync(outside);
+      symlinkSync(outside, join(dir, "screenshots"));
+      const { page, evaluate, screenshot } = fakePage();
+
+      await expect(captureScrollScreenshots(page, dir)).rejects.toThrow(CaptureDirRefusedError);
+
+      expect(readdirSync(outside)).toEqual([]);
+      expect(evaluate).not.toHaveBeenCalled();
+      expect(screenshot).not.toHaveBeenCalled();
+    },
+  );
 });

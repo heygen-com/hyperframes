@@ -50,8 +50,10 @@ function liveRemainingMs(budget: RemainingBudget, fallbackMs: number): number {
 export async function saveLottieAnimations(
   discoveredLotties: DiscoveredLottie[],
   lottieDir: string,
+  outputDir: string,
   budget: RemainingBudget = {},
 ): Promise<number> {
+  ensureCaptureDirSync(outputDir, lottieDir);
   const byteBudget = budget.byteBudget ?? createCaptureDownloadBudget();
   let savedCount = 0;
   const savedHashes = new Set<string>(); // Deduplicate by content
