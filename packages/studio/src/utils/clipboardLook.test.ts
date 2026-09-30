@@ -81,24 +81,28 @@ describe("a pasted clip takes its original's look and motion", () => {
     ]);
   });
 
-  it("moves a sequenced tween's copy from its own start, and runs a timeline declared in a block", () => {
+  it("never moves the film's own tweens, whatever their timing, and runs a timeline declared in a block", () => {
     const film = FILM.replace(
       /    <script>[\s\S]*<\/script>/,
       `    <script>
       if (gsap) {
         const tl = gsap.timeline({ paused: true });
-        tl.to("#title", { opacity: 0.5, duration: 1 });
-        tl.from("#goodbye", { opacity: 0, duration: 0.5 });
+        const title = "#title";
+        tl.from("#goodbye", { opacity: 0, duration: 0.5, stagger: 0.1, delay: 0.2 }, 1);
+        tl.to(title, { opacity: 0.5, duration: 1 });
+        tl.addLabel("late", "+=0.5");
+        tl.to("#goodbye", { y: 10, duration: 0.5 }, "late");
+        for (const id of ["#title"]) tl.to(id, { x: 5, duration: 0.5 });
+        tl.to("#goodbye", { scale: 1.1, duration: 0.5 });
         window.__timelines["main"] = tl;
       }
     </script>`,
     );
     const { content } = pasteTimelineClips(film, [goodbye], 4, [], true);
-    expect(tweenStarts(content)).toEqual([
-      ["goodbye", 1],
-      ["goodbye-2", 4],
-      ["title", 0],
-    ]);
+    const own = (html: string) => tweenStarts(html).filter(([id]) => id !== "goodbye-2");
+    expect(own(content)).toEqual(own(film));
+    // Only the tween at a number is copied: its copy starts 3 s after it (1.2 s with its delay), like the clip.
+    expect(tweenStarts(content).filter(([id]) => id === "goodbye-2")).toEqual([["goodbye-2", 4.2]]);
   });
 
   it("copies only the selectors naming the original, and leaves a style inside a script alone", () => {

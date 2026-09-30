@@ -465,18 +465,20 @@ window.__timelines["t"] = tl;`;
       (a) => a.targetSelector === "#goodbye-2" && a.method !== "set",
     );
     expect(copies?.map((a) => a.position)).toEqual([4]);
-    // The original lines are left as they were; the tween's copy follows the block's last tween.
-    expect(result.replace(/.*goodbye-2.*\n?/g, "")).toBe(script);
-    expect(result).toMatch(/tl\.to\("#title".*\);\ntl\.from\("#goodbye-2"/);
+    // The original lines are left as they were; the tween's copy ends the timeline's block.
+    expect(result.replace(/\n?.*goodbye-2.*/g, "")).toBe(script.replace(/\n?.*goodbye-2.*/g, ""));
+    expect(
+      result.endsWith(`= tl;\ntl.from("#goodbye-2", { opacity: 0, y: 40, ease: EASE }, 4);`),
+    ).toBe(true);
   });
 
-  it("starts a tween written without a position at its own start, moved", () => {
-    const sequenced = `var tl = gsap.timeline();
+  it("copies no tween whose start is not a number, rather than guess it", () => {
+    const unsure = `var tl = gsap.timeline();
 tl.to("#title", { x: 1, duration: 2 });
-tl.from("#goodbye", { opacity: 0 });`;
-    expect(copyAnimationsInScript(sequenced, "#goodbye", "#goodbye-2", 3)).toContain(
-      `tl.from("#goodbye-2", { opacity: 0 }, 5);`,
-    );
+tl.from("#goodbye", { opacity: 0 });
+tl.addLabel("end");
+tl.to("#goodbye", { x: 2 }, "end");`;
+    expect(copyAnimationsInScript(unsure, "#goodbye", "#goodbye-2", 3)).toBe(unsure);
   });
 
   it("keeps the copy in the block that declares the timeline", () => {
@@ -486,7 +488,18 @@ tl.from("#goodbye", { opacity: 0 });`;
   window.__timelines["main"] = tl;
 }`;
     expect(copyAnimationsInScript(guarded, "#goodbye", "#goodbye-2", 3)).toContain(
-      `  tl.from("#goodbye", { opacity: 0 }, 1);\n  tl.from("#goodbye-2", { opacity: 0 }, 4);\n  window`,
+      `  window.__timelines["main"] = tl;\n  tl.from("#goodbye-2", { opacity: 0 }, 4);\n}`,
+    );
+  });
+
+  it("puts the copy before the block's return", () => {
+    const built = `function build() {
+  const tl = gsap.timeline();
+  tl.from("#goodbye", { opacity: 0, stagger: 0.1 }, 1);
+  return tl;
+}`;
+    expect(copyAnimationsInScript(built, "#goodbye", "#goodbye-2", 3)).toContain(
+      `  tl.from("#goodbye-2", { opacity: 0, stagger: 0.1 }, 4);\n  return tl;`,
     );
   });
 

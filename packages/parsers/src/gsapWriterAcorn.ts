@@ -469,7 +469,8 @@ export function shiftPositionsInScript(
 
 /**
  * Add a copy of every tween targeting `fromSelector`, retargeted to `toSelector` and moved by `delta`
- * seconds, so a pasted clip moves like its original. Each copy keeps the original's own argument text.
+ * seconds, so a pasted clip moves like its original. A copy is exact or absent: only a tween at a number, written
+ * straight in the block that declares the timeline, is copied, keeping the original's own argument text.
  */
 export function copyAnimationsInScript(
   script: string,
@@ -479,56 +480,76 @@ export function copyAnimationsInScript(
 ): string {
   const parsed = parseGsapScriptAcornForWrite(script);
   if (!parsed) return script;
-  // A tween in a loop runs once per pass, and one on a variable reads a name bound elsewhere: neither is copied.
-  const copyable = parsed.located.filter(
-    ({ call }) =>
-      call.node.arguments[0]?.type === "Literal" && !call.ancestors.some(isLoopOrForEach),
-  );
-  const timed = copyable.filter(({ call }) => !call.global);
-  if (timed.length === 0) return script;
-  // Copies go after the last tween of its block, where the timeline and what the tweens read are in scope,
-  // and a tween placed after the timeline's end moves nothing that follows it.
-  const anchor = timed.reduce((last, entry) =>
-    statementOf(entry.call).end > statementOf(last.call).end ? entry : last,
-  );
-  const block = blockOf(anchor.call);
-  const indentAt = (at: number) =>
-    /^[ \t]*/.exec(script.slice(script.lastIndexOf("\n", at - 1) + 1))![0];
+  const block = timelineBlock(parsed);
   const target = JSON.stringify(toSelector);
   const ms = new MagicString(script);
   const tweens: string[] = [];
-  for (const { animation, call } of copyable) {
-    if (animation.targetSelector !== fromSelector || blockOf(call) !== block) continue;
-    const args = call.node.arguments
-      .slice(1)
-      .filter((arg: Node) => arg !== call.positionArg)
-      .map((arg: Node) => script.slice(arg.start, arg.end));
-    const statement = statementOf(call);
-    if (call.global) {
-      const set = `gsap.set(${[target, ...args].join(", ")});`;
-      ms.appendLeft(statement.end, `\n${indentAt(statement.start)}${set}`);
-    } else if (typeof animation.resolvedStart === "number") {
-      const position = valueToCode(shiftedPosition(animation.resolvedStart, delta));
-      tweens.push(
-        `${parsed.timelineVar}.${call.method}(${[target, ...args, position].join(", ")});`,
+  for (const { animation, call } of parsed.located) {
+    if (animation.targetSelector !== fromSelector || !copyable(call)) continue;
+    const args = [target, ...argumentText(call, script)];
+    const statement = findEnclosingExpressionStatement(call.ancestors);
+    if (call.global && statement) {
+      ms.appendLeft(
+        statement.end,
+        `\n${indentAt(script, statement.start)}gsap.set(${args.join(", ")});`,
       );
+    } else if (block.body.includes(statement) && typeof call.positionArg?.value === "number") {
+      const position = valueToCode(shiftedPosition(call.positionArg.value, delta));
+      tweens.push(`${parsed.timelineVar}.${call.method}(${[...args, position].join(", ")});`);
     }
   }
-  const at = statementOf(anchor.call);
-  ms.appendLeft(at.end, tweens.map((tween) => `\n${indentAt(at.start)}${tween}`).join(""));
+  appendAtBlockEnd(ms, script, block, tweens);
   return ms.toString();
+}
+
+/** A tween in a loop runs once per pass, and one on a variable reads a name bound elsewhere: neither is copied. */
+function copyable(call: TweenCallInfo): boolean {
+  return call.node.arguments[0]?.type === "Literal" && !call.ancestors.some(isLoopOrForEach);
+}
+
+/** The call's own text for every argument but its target and position. */
+function argumentText(call: TweenCallInfo, script: string): string[] {
+  return call.node.arguments
+    .slice(1)
+    .filter((arg: Node) => arg !== call.positionArg)
+    .map((arg: Node) => script.slice(arg.start, arg.end));
+}
+
+function indentAt(script: string, at: number): string {
+  return /^[ \t]*/.exec(script.slice(script.lastIndexOf("\n", at - 1) + 1))![0];
+}
+
+/** At the end of the timeline's own block, before its return, so nothing that follows in its scope is pushed back. */
+function appendAtBlockEnd(
+  ms: MagicString,
+  script: string,
+  block: { body: Node[]; end: number },
+  lines: string[],
+): void {
+  if (lines.length === 0) return;
+  const last = block.body.at(-1);
+  const indent = last ? indentAt(script, last.start) : "";
+  const code = lines.map((line) => `${indent}${line}`).join("\n");
+  if (last?.type === "ReturnStatement") ms.appendLeft(last.start, `${code.trimStart()}\n${indent}`);
+  else ms.appendLeft(last?.end ?? block.end, `\n${code}`);
 }
 
 function shiftedPosition(position: number, delta: number): number {
   return Math.max(0, Math.round((position + delta) * 1000) / 1000);
 }
 
-function statementOf(call: TweenCallInfo): Node {
-  return findEnclosingExpressionStatement(call.ancestors) ?? call.node;
-}
-
-function blockOf(call: TweenCallInfo): Node {
-  return call.ancestors[call.ancestors.indexOf(statementOf(call)) - 1];
+/** The block (or program) whose statements declare the timeline; a timeline with no declaration lives at the top. */
+function timelineBlock(parsed: ParsedGsapAcornForWrite): { body: Node[]; end: number } {
+  const declaration = findTimelineDeclarationStatement(parsed.ast, parsed.timelineVar);
+  let block: Node = parsed.ast;
+  if (declaration) {
+    acornWalk.ancestor(parsed.ast, {
+      VariableDeclaration(node: Node, _state: unknown, ancestors: Node[]) {
+        if (node === declaration) block = ancestors[ancestors.length - 2];
+      },
+    });
+  }
+  return Array.isArray(block?.body) ? block : parsed.ast;
 }
 
 function isLoopOrForEach(node: Node): boolean {
