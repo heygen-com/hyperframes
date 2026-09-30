@@ -4,7 +4,6 @@ type LinkedElement = Pick<TimelineElement, "id" | "key" | "link">;
 
 const keyOf = (element: Pick<TimelineElement, "id" | "key">) => element.key ?? element.id;
 
-/** Same file name, ignoring folder, query and case: how a detached audio names its video. */
 export function mediaFileKey(src: string | undefined): string | null {
   if (!src) return null;
   const path = src.split(/[?#]/, 1)[0] ?? "";
@@ -26,7 +25,6 @@ export function audioPillFlags(
   };
 }
 
-/** Every member of `element`'s link group, itself included; just `[element]` when unlinked. */
 export function linkedMembersOf<T extends LinkedElement>(element: T, elements: readonly T[]): T[] {
   if (!isLinked(element)) return [element];
   const members = elements.filter((candidate) => candidate.link === element.link);
@@ -35,7 +33,6 @@ export function linkedMembersOf<T extends LinkedElement>(element: T, elements: r
     : [element, ...members];
 }
 
-/** The one place link semantics live: `keys` plus every clip sharing a link with any of them. */
 export function expandToLinkedMembers(
   keys: Iterable<string>,
   elements: readonly LinkedElement[],
@@ -51,10 +48,6 @@ export function expandToLinkedMembers(
   return expanded;
 }
 
-/**
- * The clips a drag or trim of `grabbed` moves. Alt edits the grabbed clip alone;
- * otherwise the selection (when it holds the grabbed clip) plus link partners.
- */
 export function linkedGestureKeys(
   selected: ReadonlySet<string>,
   grabbed: LinkedElement,

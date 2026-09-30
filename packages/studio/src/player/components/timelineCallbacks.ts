@@ -39,7 +39,6 @@ export interface TimelineDropCallbacks {
   ) => Promise<void> | void;
 }
 
-/** Link-model edits (spec: linked A/V). Each is one undo step. */
 export type TimelineLinkEdit =
   | { kind: "unlink"; elements: readonly TimelineElement[] }
   | { kind: "link"; elements: readonly TimelineElement[] }
@@ -123,7 +122,6 @@ export interface TimelineEditCallbacks {
   ) => Promise<TimelineEditOutcome | void>;
   onBlockedEditAttempt?: (element: TimelineElement, intent: BlockedTimelineEditIntent) => void;
   onLinkEdit?: (edit: TimelineLinkEdit) => Promise<void> | void;
-  /** Delete one clip without its link partners; an orphaned survivor is unlinked. */
   onDeleteElementOnly?: (element: TimelineElement) => Promise<void> | void;
   onSplitElement?: (element: TimelineElement, splitTime: number) => Promise<void> | void;
   onRazorSplit?: (element: TimelineElement, splitTime: number) => Promise<void> | void;

@@ -83,7 +83,6 @@ export interface TimelineElement {
   /** The owning group's serialized `data-fx-chain`, when set — resolved once per parse. */
   audioGroupFxChain?: string;
   audioGroupAutomation?: string;
-  /** Verbatim `data-link`: clips sharing it are edited as one (move, trim, split, delete). */
   link?: string;
   /**
    * Master start of the composition this row runs in, which its tweens and its

@@ -230,7 +230,6 @@ export function mountTimelineClipDragGestureLifecycle({
     if (drag && pointerMatchesGesture(event)) handleDragPointerMove(event, drag);
   };
 
-  /** An Alt edit changes one member alone, so it leaves its link group. */
   const unlinkAltEdited = (gesture: { element: TimelineElement; altKey?: boolean }) => {
     if (!gesture.altKey || !gesture.element.link) return;
     void onLinkEditRef.current?.({ kind: "unlink", elements: [gesture.element] });

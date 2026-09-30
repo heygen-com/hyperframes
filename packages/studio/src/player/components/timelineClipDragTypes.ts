@@ -33,7 +33,6 @@ export interface DraggedClipState {
   snapTime: number | null;
   snapType: TimelineSnapType | null;
   started: boolean;
-  /** Alt held at pointerdown: edit this clip alone and unlink it from its partners. */
   altKey?: boolean;
 }
 
@@ -65,7 +64,6 @@ export interface ResizingClipState {
     playbackStart?: number;
   }[];
   started: boolean;
-  /** Alt held at pointerdown: trim this clip alone and unlink it from its partners. */
   altKey?: boolean;
 }
 
