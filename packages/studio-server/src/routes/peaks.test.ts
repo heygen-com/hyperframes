@@ -40,6 +40,20 @@ describe("GET /projects/:id/peaks/*", () => {
     expect(decode).toHaveBeenCalledTimes(1);
   });
 
+  it("decodes a file once when several clips ask at the same time", async () => {
+    let finish: (bins: number[]) => void = () => {};
+    const decode = vi.fn(() => new Promise<number[]>((resolve) => (finish = resolve)));
+    const app = setup(decode);
+    const both = Promise.all([
+      app.request("http://localhost/projects/p/peaks/talk.mp4"),
+      app.request("http://localhost/projects/p/peaks/talk.mp4"),
+    ]);
+    await vi.waitFor(() => expect(decode).toHaveBeenCalled());
+    finish([0.5]);
+    for (const res of await both) expect((await res.json()).bins).toEqual([0.5]);
+    expect(decode).toHaveBeenCalledTimes(1);
+  });
+
   it("404s a missing file and a path outside the project", async () => {
     const app = setup(async () => []);
     expect((await app.request("http://localhost/projects/p/peaks/nope.mp4")).status).toBe(404);

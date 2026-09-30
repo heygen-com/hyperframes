@@ -15,6 +15,7 @@ import { resolveCarveSourceIds } from "@hyperframes/core/audio-groups";
 import { parseAutomation, type HfAutomation } from "@hyperframes/core/audio-automation";
 import {
   carveBedRoles,
+  carverAgainst,
   collectCarveCandidates,
   CARVE_ABORTED,
   isPromiseLike,
@@ -65,7 +66,8 @@ function readAutomation(bed: Element): HfAutomation {
 }
 
 export function isDuckableBed(bed: Element | null): bed is Element {
-  return bed !== null && carveBedRoles(bed.id, bed).couldBeBed;
+  if (bed === null || !carveBedRoles(bed.id, bed).couldBeBed) return false;
+  return carverAgainst(bed.ownerDocument, bed.id) === null;
 }
 
 /** Every overlapping clip with speech, including a video's own sound; never the bed itself. */

@@ -9,6 +9,16 @@ import { requestSubPath } from "../helpers/requestSubPath.js";
 
 type DecodePeaks = (mediaPath: string) => Promise<number[]>;
 
+const decodesInFlight = new Map<string, Promise<number[]>>();
+
+function decodeOnce(cachePath: string, mediaPath: string, decode: DecodePeaks): Promise<number[]> {
+  const pending = decodesInFlight.get(cachePath);
+  if (pending) return pending;
+  const started = decode(mediaPath).finally(() => decodesInFlight.delete(cachePath));
+  decodesInFlight.set(cachePath, started);
+  return started;
+}
+
 function readCachedBins(cacheDir: string, cachePath: string): number[] | null {
   try {
     if (!isWaveformCacheDirectory(cacheDir) || !existsSync(cachePath)) return null;
@@ -42,7 +52,7 @@ export function registerPeakRoutes(
 
     let bins: number[];
     try {
-      bins = await decode(mediaPath);
+      bins = await decodeOnce(cachePath, mediaPath, decode);
     } catch {
       return c.json({ error: "failed to decode audio" }, 500);
     }

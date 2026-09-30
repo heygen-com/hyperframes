@@ -28,6 +28,13 @@ describe("isDuckableBed", () => {
     expect(isDuckableBed(doc.getElementById("music"))).toBe(true);
     expect(isDuckableBed(doc.getElementById("voiceover"))).toBe(false);
   });
+
+  it("refuses a clip another bed is already carving against", () => {
+    const doc = compose(
+      `<audio id="music" src="music.mp3" data-fx-carve='{"enabled":true,"sources":["sting"],"strength":0.25}'></audio><audio id="sting" src="sting-bed.mp3"></audio>`,
+    );
+    expect(isDuckableBed(doc.getElementById("sting"))).toBe(false);
+  });
 });
 
 describe("setDuckUnderVoice", () => {
