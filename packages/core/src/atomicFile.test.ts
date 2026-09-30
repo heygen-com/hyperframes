@@ -1,9 +1,16 @@
+// @vitest-environment node
 import { afterEach, describe, expect, it, vi } from "vitest";
+import * as crypto from "node:crypto";
 import * as fs from "node:fs";
 import { lstatSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { createFileAtomically, replaceFileAtomically, resolveWritePath } from "./atomicFile.js";
+
+vi.mock("node:crypto", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("node:crypto")>();
+  return { ...actual, randomBytes: vi.fn(actual.randomBytes) };
+});
 
 describe("replaceFileAtomically", () => {
   const dirs: string[] = [];
@@ -207,7 +214,7 @@ describe("createFileAtomically", () => {
     };
   }
 
-  it.each(["EPERM", "ENOTSUP", "EOPNOTSUPP", "EXDEV"])(
+  it.each(["EPERM", "ENOTSUP", "EOPNOTSUPP", "EXDEV", "EISDIR"])(
     "writes directly on a volume without hard links (%s)",
     (code) => {
       const dir = tempDir();
@@ -246,6 +253,37 @@ describe("createFileAtomically", () => {
     expect(readFileSync(file, "utf-8")).toBe("html");
     expect(warn).toHaveBeenCalledOnce();
     warn.mockRestore();
+  });
+
+  function nextTempNames(...hex: string[]) {
+    for (const name of hex)
+      vi.mocked(crypto.randomBytes).mockImplementationOnce(() => Buffer.from(name, "hex") as never);
+  }
+
+  it("takes a fresh temporary name when another writer holds one, leaving theirs alone", () => {
+    const dir = tempDir();
+    const file = join(dir, "index.html");
+    writeFileSync(`${file}.deadbeef.tmp`, "theirs");
+    nextTempNames("deadbeef");
+
+    createFileAtomically(file, "html");
+
+    expect(readFileSync(file, "utf-8")).toBe("html");
+    expect(readFileSync(`${file}.deadbeef.tmp`, "utf-8")).toBe("theirs");
+  });
+
+  it("gives up after three taken temporary names without touching them", () => {
+    const dir = tempDir();
+    const file = join(dir, "index.html");
+    for (const name of ["00000001", "00000002", "00000003"])
+      writeFileSync(`${file}.${name}.tmp`, "theirs");
+    nextTempNames("00000001", "00000002", "00000003");
+
+    expect(() => createFileAtomically(file, "html")).toThrow(
+      expect.objectContaining({ code: "EEXIST" }),
+    );
+    expect(fs.readdirSync(dir)).toHaveLength(3);
+    expect(fs.existsSync(file)).toBe(false);
   });
 
   it("creates and replaces a name close to the filesystem's 255-byte limit", () => {
@@ -355,6 +393,25 @@ describe.skipIf(process.platform === "win32")("resolveWritePath", () => {
     expect(resolveWritePath(join(base, "root/sub/new.html"))).toBe(
       join(base, "real/deep/sub/new.html"),
     );
+  });
+
+  it("reads a link through a linked folder and .. the way the system does", () => {
+    const base = linkedFolder();
+    fs.mkdirSync(join(base, "real/a/b"), { recursive: true });
+    symlinkSync(join(base, "real/a/b"), join(base, "root/x"));
+    writeFileSync(join(base, "real/a/t.html"), "old");
+    symlinkSync("x/../t.html", join(base, "root/comp.html"));
+
+    expect(resolveWritePath(join(base, "root/comp.html"))).toBe(join(base, "real/a/t.html"));
+  });
+
+  it("follows a dangling link through a linked folder and .. the way the system does", () => {
+    const base = linkedFolder();
+    fs.mkdirSync(join(base, "real/a/b"), { recursive: true });
+    symlinkSync(join(base, "real/a/b"), join(base, "root/x"));
+    symlinkSync("x/../t.html", join(base, "root/comp.html"));
+
+    expect(resolveWritePath(join(base, "root/comp.html"))).toBe(join(base, "real/a/t.html"));
   });
 
   it("stops a link loop with ELOOP", () => {

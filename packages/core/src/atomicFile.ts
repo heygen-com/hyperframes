@@ -1,16 +1,18 @@
 import * as fs from "node:fs";
 import { randomBytes } from "node:crypto";
-import { basename, dirname, join, resolve } from "node:path";
+import { basename, dirname, isAbsolute, join, resolve, sep } from "node:path";
 import { realpath } from "./safePath.js";
 
 type SiblingFileSystem = Pick<typeof fs, "writeFileSync" | "chmodSync" | "unlinkSync">;
 
 // Codes a volume without hard links (FAT, exFAT, some network shares) answers link() with.
-const NO_HARD_LINKS = new Set(["EPERM", "ENOTSUP", "EOPNOTSUPP", "EXDEV"]);
+// EISDIR: libuv maps Windows ERROR_INVALID_FUNCTION (FAT/exFAT refusing a link) to it; nodejs/node#65817.
+const NO_HARD_LINKS = new Set(["EPERM", "ENOTSUP", "EOPNOTSUPP", "EXDEV", "EISDIR"]);
 // Windows refuses a rename while another process briefly holds the target open.
 const BUSY_RENAME = new Set(["EPERM", "EBUSY", "EACCES"]);
 const RENAME_RETRY_DELAYS_MS = [10, 20, 30, 40];
 const MAX_LINK_HOPS = 40;
+const TEMP_NAME_TRIES = 3;
 
 /** Replace a file only after the complete sibling temp file is written. No mode: the default one. */
 export function replaceFileAtomically(
@@ -51,10 +53,18 @@ export function createFileAtomically(
 export function resolveWritePath(filePath: string): string {
   let path = resolve(filePath);
   for (let hop = 0; hop < MAX_LINK_HOPS; hop++) {
-    const real = join(realpath(dirname(path)), basename(path));
-    if (!fs.lstatSync(real, { throwIfNoEntry: false })?.isSymbolicLink()) return real;
-    // A dangling link resolves to the file a write through it creates.
-    path = resolve(dirname(real), fs.readlinkSync(real));
+    try {
+      return realpath(path);
+    } catch (error) {
+      if (errorCode(error) !== "ENOENT") throw error;
+    }
+    // Missing: a new file, or a dangling link to the file a write through it creates.
+    const parent = realpath(dirname(path));
+    const leaf = join(parent, basename(path));
+    if (!fs.lstatSync(leaf, { throwIfNoEntry: false })?.isSymbolicLink()) return leaf;
+    // Not normalized: `x/..` must climb out of where link `x` points, as the system reads it.
+    const target = fs.readlinkSync(leaf);
+    path = isAbsolute(target) ? target : `${parent}${sep}${target}`;
   }
   throw Object.assign(new Error(`ELOOP: too many symbolic links, '${filePath}'`), {
     code: "ELOOP",
@@ -68,10 +78,8 @@ function publishSibling(
   operations: SiblingFileSystem,
   publish: (tempPath: string) => void,
 ): void {
-  // Short, so a name near the filesystem's limit still fits.
-  const tempPath = `${filePath}.${randomBytes(4).toString("hex")}.tmp`;
+  const tempPath = writeTempSibling(filePath, content, mode, operations);
   try {
-    operations.writeFileSync(tempPath, content, { encoding: "utf-8", mode, flag: "wx" });
     if (mode !== undefined) operations.chmodSync(tempPath, mode);
     publish(tempPath);
   } catch (error) {
@@ -81,6 +89,34 @@ function publishSibling(
       // Preserve the write error; cleanup is best effort.
     }
     throw error;
+  }
+}
+
+/** A new temp file beside `filePath`; a name another writer already holds is never touched. */
+function writeTempSibling(
+  filePath: string,
+  content: string | Uint8Array,
+  mode: number | undefined,
+  operations: SiblingFileSystem,
+): string {
+  for (let attempt = 1; ; attempt++) {
+    // Short, so a name near the filesystem's limit still fits.
+    const tempPath = `${filePath}.${randomBytes(4).toString("hex")}.tmp`;
+    try {
+      operations.writeFileSync(tempPath, content, { encoding: "utf-8", mode, flag: "wx" });
+      return tempPath;
+    } catch (error) {
+      if (errorCode(error) === "EEXIST") {
+        if (attempt < TEMP_NAME_TRIES) continue;
+        throw error;
+      }
+      try {
+        operations.unlinkSync(tempPath);
+      } catch {
+        // Preserve the write error; cleanup is best effort.
+      }
+      throw error;
+    }
   }
 }
 
