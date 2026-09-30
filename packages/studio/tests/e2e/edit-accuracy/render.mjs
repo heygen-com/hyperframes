@@ -19,6 +19,7 @@ const FPS = { num: 30, den: 1 };
  * the shape's area moments give its centre and sides, so rotated and cropped rectangles measure the same way.
  */
 function pixelBox(b64, bgY, fgY) {
+  // fallow-ignore-next-line complexity
   return (async () => {
     const img = new Image();
     img.src = `data:image/jpeg;base64,${b64}`;
