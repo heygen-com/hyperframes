@@ -66,6 +66,7 @@ interface UseTimelineClipDragInput {
   ) => Promise<void> | void;
   onResizeElements?: NonNullable<TimelineEditCallbacks["onResizeElements"]>;
   onBlockedEditAttempt?: (element: TimelineElement, intent: BlockedClipState["intent"]) => void;
+  onLinkEdit?: TimelineEditCallbacks["onLinkEdit"];
   /** Seeks the preview; a trim shows the frame at its dragged edge. */
   onSeek?: (time: number, options?: { keepPlaying?: boolean; follow?: boolean }) => void;
   setShowPopover: (show: boolean) => void;
@@ -96,6 +97,7 @@ export function useTimelineClipDrag({
   onResizeElement,
   onResizeElements,
   onBlockedEditAttempt,
+  onLinkEdit,
   onSeek,
   setShowPopover,
   setRangeSelectionRef,
@@ -262,6 +264,8 @@ export function useTimelineClipDrag({
   onMoveElementsRef.current = onMoveElements;
   const onBlockedEditAttemptRef = useRef(onBlockedEditAttempt);
   onBlockedEditAttemptRef.current = onBlockedEditAttempt;
+  const onLinkEditRef = useRef(onLinkEdit);
+  onLinkEditRef.current = onLinkEdit;
   const onResizeElementRef = useRef(onResizeElement);
   onResizeElementRef.current = onResizeElement;
   const onResizeElementsRef = useRef(onResizeElements);
@@ -435,6 +439,7 @@ export function useTimelineClipDrag({
       refreshAfterLaneMoveRef,
       readZIndexRef,
       onBlockedEditAttemptRef,
+      onLinkEditRef,
       onResizeElementsRef,
       onResizeElementRef,
       onMoveElementsRef,

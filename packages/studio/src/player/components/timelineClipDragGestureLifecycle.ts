@@ -70,6 +70,7 @@ interface TimelineClipDragGestureLifecycleInput {
   onBlockedEditAttemptRef: RefObject<
     ((element: TimelineElement, intent: BlockedClipState["intent"]) => void) | undefined
   >;
+  onLinkEditRef: RefObject<TimelineEditCallbacks["onLinkEdit"]>;
   readZIndexRef: RefObject<((element: TimelineElement) => number) | undefined>;
   onStackingPatchesRef: RefObject<
     ((patches: StackingPatch[]) => Promise<unknown> | void) | undefined
@@ -107,6 +108,7 @@ export function mountTimelineClipDragGestureLifecycle({
   onResizeElementRef,
   onResizeElementsRef,
   onBlockedEditAttemptRef,
+  onLinkEditRef,
   readZIndexRef,
   onStackingPatchesRef,
   refreshAfterLaneMoveRef,
@@ -228,6 +230,12 @@ export function mountTimelineClipDragGestureLifecycle({
     if (drag && pointerMatchesGesture(event)) handleDragPointerMove(event, drag);
   };
 
+  /** An Alt edit changes one member alone, so it leaves its link group. */
+  const unlinkAltEdited = (gesture: { element: TimelineElement; altKey?: boolean }) => {
+    if (!gesture.altKey || !gesture.element.link) return;
+    void onLinkEditRef.current?.({ kind: "unlink", elements: [gesture.element] });
+  };
+
   const commitResizePointerUp = (
     resize: ResizingClipState,
     groupSession: TimelineGroupResizeSession | null,
@@ -271,6 +279,7 @@ export function mountTimelineClipDragGestureLifecycle({
       ]);
       console.error("[Timeline] Failed to persist clip resize", error);
     });
+    unlinkAltEdited(resize);
   };
 
   const finishBlockedPointerUp = (blocked: BlockedClipState) => {
@@ -293,6 +302,7 @@ export function mountTimelineClipDragGestureLifecycle({
       onStackingPatches: onStackingPatchesRef.current,
       refreshAfterLaneMove: refreshAfterLaneMoveRef.current,
     });
+    unlinkAltEdited(drag);
   };
 
   /** Group gestures commit atomically: one missing member cancels the whole resize. */

@@ -4,6 +4,7 @@ import { usePlayerStore } from "../player";
 import { getTimelineElementLabel } from "../utils/studioHelpers";
 import { trackStudioRazorSplit } from "../telemetry/events";
 import { canSplitElementAt, selectSplittableElements } from "../utils/timelineElementSplit";
+import { linkedMembersOf } from "../player/components/audioClipLink";
 import { buildAtomicCutIntents, runAtomicCutTransaction } from "../utils/razorSplitTransaction";
 import type { RecordEditInput } from "./timelineEditingHelpers";
 import { useFreezeFrame } from "./useFreezeFrame";
@@ -103,7 +104,12 @@ export function useRazorSplit({
       }
       if (!canSplitElementAt(element, splitTime)) return;
       try {
-        const result = await runCut([element], splitTime, "single");
+        const members = linkedMembersOf(element, usePlayerStore.getState().elements);
+        const result = await runCut(
+          members.filter((member) => canSplitElementAt(member, splitTime)),
+          splitTime,
+          "single",
+        );
         if (!result) return;
         if (result.syncFailed) return;
         showToast(`Split ${getTimelineElementLabel(element)} at ${splitTime.toFixed(2)}s`, "info");

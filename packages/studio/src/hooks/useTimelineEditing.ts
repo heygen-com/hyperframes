@@ -27,6 +27,12 @@ import type { PersistTimelineEditInput } from "./timelineEditingHelpers";
 import { useSetAudioGroupAttribute } from "./timelineAudioGroupVolume";
 import { useSetElementAttribute } from "./timelineElementFxAttribute";
 import { useTimelineDeleteOps } from "./useTimelineDeleteOps";
+import { useTimelineEditGuard } from "./useTimelineEditGuard";
+import {
+  linkEditTargets,
+  useTimelineLinkEditing,
+  withLinkPartners,
+} from "./useTimelineLinkEditing";
 import { useTrackPendingTimelineEdit } from "./useTrackPendingTimelineEdit";
 import { useAudioGroupCarveAssignment } from "./timelineAudioGroupCreate";
 import {
@@ -35,25 +41,11 @@ import {
 } from "./timelineTrackVisibility";
 import { useTimelineGroupEditing } from "./useTimelineGroupEditing";
 import { useBlockedTimelineEditToast } from "./useBlockedTimelineEditToast";
-import {
-  useTimelineEditGate,
-  useTimelineEditRefusal,
-  type TimelineEditOutcome,
-} from "./timelineEditPermission";
+import { useTimelineEditGate, type TimelineEditOutcome } from "./timelineEditPermission";
 import { serializeZLaneGesture } from "../components/nle/zLaneGesture";
 import { cutoverCommittedOrThrow, sdkTimingPersist } from "../utils/sdkCutover";
 import type { TimelineMoveUpdates, UseTimelineEditingOptions } from "./useTimelineEditingTypes";
 import { getStudioSaveErrorMessage } from "../utils/studioSaveDiagnostics";
-
-type GuardedTimelineHandler = (...args: never[]) => Promise<unknown>;
-type GuardedTimelineResolver = (...args: never[]) => readonly TimelineElement[];
-type GuardedTimelineRefusal = (reason: string, ...args: never[]) => unknown;
-
-interface GuardedTimelineEntry {
-  resolveTargets: GuardedTimelineResolver;
-  onRefused?: GuardedTimelineRefusal;
-  wrapped: GuardedTimelineHandler;
-}
 
 export function useTimelineEditing({
   projectId,
@@ -80,40 +72,7 @@ export function useTimelineEditing({
   const editQueueRef = useRef(Promise.resolve());
   const track = useTrackPendingTimelineEdit();
   const checkEditable = useTimelineEditGate(canEdit, showToast);
-  const refuseEdit = useTimelineEditRefusal(canEdit, showToast);
-  const refuseEditRef = useRef(refuseEdit);
-  refuseEditRef.current = refuseEdit;
-  const guardedRef = useRef(new WeakMap<GuardedTimelineHandler, GuardedTimelineEntry>());
-  // Refuses (no call, no write, no history entry) when any target is
-  // blocked; otherwise runs fn as before. Cached by fn identity — like
-  // track() — so a fresh closure here doesn't defeat track's own cache.
-  const guard = useCallback(
-    <H extends (...args: never[]) => Promise<unknown>>(
-      resolveTargets: (...args: Parameters<H>) => readonly TimelineElement[],
-      fn: H,
-      onRefused?: (reason: string, ...args: Parameters<H>) => Awaited<ReturnType<H>>,
-    ): H => {
-      const key = fn as unknown as GuardedTimelineHandler;
-      const cached = guardedRef.current.get(key);
-      if (cached) {
-        cached.resolveTargets = resolveTargets as unknown as GuardedTimelineResolver;
-        cached.onRefused = onRefused as unknown as GuardedTimelineRefusal | undefined;
-        return cached.wrapped as H;
-      }
-      const entry = {} as GuardedTimelineEntry;
-      entry.resolveTargets = resolveTargets as unknown as GuardedTimelineResolver;
-      entry.onRefused = onRefused as unknown as GuardedTimelineRefusal | undefined;
-      entry.wrapped = ((...args: Parameters<H>) => {
-        const reason = refuseEditRef.current(entry.resolveTargets(...(args as never[])));
-        if (reason !== null)
-          return Promise.resolve(entry.onRefused?.(reason, ...(args as never[])));
-        return fn(...args);
-      }) as H as unknown as GuardedTimelineHandler;
-      guardedRef.current.set(key, entry);
-      return entry.wrapped as H;
-    },
-    [],
-  );
+  const guard = useTimelineEditGuard(canEdit, showToast);
 
   const enqueueEdit = useCallback(
     (
@@ -252,7 +211,7 @@ export function useTimelineEditing({
         return reorderDone
           .then(() => {
             // SDK setTiming writes start only; a lane change needs the fallback's track patch.
-            if (sdkSession && element.hfId && !needsExtension && !trackChanged) {
+            if (sdkSession && element.hfId && !element.link && !needsExtension && !trackChanged) {
               return sdkTimingPersist(
                 element.hfId,
                 targetPath,
@@ -359,7 +318,7 @@ export function useTimelineEditing({
           finishResizeGsapSync(),
         );
       const persistDone =
-        sdkSession && element.hfId && !hasPbsAdjustment && !needsExtension
+        sdkSession && element.hfId && !element.link && !hasPbsAdjustment && !needsExtension
           ? sdkTimingPersist(
               element.hfId,
               targetPath,
@@ -461,7 +420,7 @@ export function useTimelineEditing({
     isRecordingRef,
   });
 
-  const { handleTimelineElementsDelete, handleTimelineElementDelete } = useTimelineDeleteOps({
+  const { handleTimelineElementsDelete } = useTimelineDeleteOps({
     projectIdRef,
     activeCompPath,
     timelineElements,
@@ -490,6 +449,20 @@ export function useTimelineEditing({
       observeProjectFileVersion,
       checkEditable,
     });
+
+  const linkEditing = useTimelineLinkEditing({
+    projectIdRef,
+    activeCompPath,
+    editQueueRef,
+    pendingTimelineEditPathRef,
+    isRecordingRef,
+    showToast,
+    writeProjectFile,
+    recordEdit,
+    reloadPreview,
+    forceReloadSdkSession,
+    handleTimelineElementsDelete,
+  });
 
   const handleBlockedTimelineEdit = useBlockedTimelineEditToast(showToast);
   const { handleRazorSplit, handleRazorSplitAll, handleFreezeFrame } = useRazorSplit({
@@ -526,7 +499,9 @@ export function useTimelineEditing({
   // Every write-handler is tracked here, the one place all hand edits
   // converge, so undo never races a write; canEdit gates the same point.
   // Coverage boundary: see the PR body, not every kind resolves an element.
-  const trackedRazorSplit = track(guard((element) => [element], handleRazorSplit));
+  const trackedRazorSplit = track(
+    guard((element) => withLinkPartners([element]), handleRazorSplit),
+  );
   return {
     handleTimelineElementMove: track(guard((element) => [element], handleTimelineElementMove)),
     handleTimelineElementResize: track(guard((element) => [element], handleTimelineElementResize)),
@@ -568,10 +543,16 @@ export function useTimelineEditing({
         ),
       ),
     },
-    handleTimelineElementDelete: track(guard((element) => [element], handleTimelineElementDelete)),
-    handleTimelineElementsDelete: track(
-      guard((elements) => elements, handleTimelineElementsDelete),
+    handleTimelineElementDelete: track(
+      guard((element) => withLinkPartners([element]), linkEditing.handleLinkedElementDelete),
     ),
+    handleTimelineElementsDelete: track(
+      guard(withLinkPartners, linkEditing.handleLinkedElementsDelete),
+    ),
+    handleTimelineElementDeleteOnly: track(
+      guard((element) => [element], linkEditing.handleDeleteElementOnly),
+    ),
+    handleLinkEdit: track(guard(linkEditTargets, linkEditing.handleLinkEdit)),
     handleTimelineElementSplit: trackedRazorSplit,
     handleRazorSplit: trackedRazorSplit,
     handleFreezeFrame: track(guard((element) => [element], handleFreezeFrame)),

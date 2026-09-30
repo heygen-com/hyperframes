@@ -39,6 +39,8 @@ const EDIT_CALLBACK_KEY_SET: Record<keyof TimelineEditCallbacks, true> = {
   onSetElementAttributeQuiet: true,
   onRevertElementAttributeLive: true,
   onBlockedEditAttempt: true,
+  onLinkEdit: true,
+  onDeleteElementOnly: true,
   onSplitElement: true,
   onRazorSplit: true,
   onRazorSplitAll: true,

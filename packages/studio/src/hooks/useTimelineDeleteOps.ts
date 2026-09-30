@@ -10,6 +10,7 @@ import { studioWriteHeaders } from "../utils/studioFileVersion";
 import { getTimelineElementLabel } from "../utils/studioHelpers";
 import { buildPatchTarget, removeIframeTimelineElements } from "./timelineEditingHelpers";
 import { captureDurationRollback } from "./timelineTimingSync";
+import { setLinkInSource } from "../components/editor/mediaLinkEdits";
 import { setCompositionDurationToContent } from "../utils/timelineAssetDrop";
 import { furthestClipEndFromSource } from "../player/lib/timelineElementHelpers";
 import {
@@ -60,6 +61,11 @@ interface UseTimelineDeleteOpsOptions {
 // timelineGapCommit.ts.
 let deleteGestureSeq = 0;
 
+function unlinkInSource(source: string, survivors: readonly TimelineElement[]): string {
+  const targets = survivors.map(buildPatchTarget).filter((target) => target !== null);
+  return targets.length > 0 ? setLinkInSource(source, targets, null) : source;
+}
+
 export function useTimelineDeleteOps({
   projectIdRef,
   activeCompPath,
@@ -80,7 +86,7 @@ export function useTimelineDeleteOps({
   // fallow-ignore-next-line complexity
   const handleTimelineElementsDelete = useCallback(
     // fallow-ignore-next-line complexity
-    async (selection: TimelineElement[]) => {
+    async (selection: TimelineElement[], alsoUnlink: readonly TimelineElement[] = []) => {
       if (isRecordingRef?.current) {
         showToast("Cannot edit timeline while recording", "error");
         return;
@@ -150,9 +156,9 @@ export function useTimelineDeleteOps({
               // Shrink to the furthest remaining clip end, read from the post-removal source:
               // store durations are runtime-truncated.
               const deleteContentEnd = furthestClipEndFromSource(removedContent);
-              const patchedContent = setCompositionDurationToContent(
-                removedContent,
-                deleteContentEnd,
+              const patchedContent = unlinkInSource(
+                setCompositionDurationToContent(removedContent, deleteContentEnd),
+                alsoUnlink,
               );
               // Optimistically reflect the shrunk length in the readout/seek bar,
               // rolling it back if the persist below fails (see captureDurationRollback).

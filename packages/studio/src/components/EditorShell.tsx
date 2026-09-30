@@ -104,6 +104,8 @@ export function EditorShell({
   handleRazorSplit,
   handleRazorSplitAll,
   handleFreezeFrame,
+  handleLinkEdit,
+  handleTimelineElementDeleteOnly,
   onCopyClip,
   onPasteClip,
   onDuplicateClip,
@@ -165,6 +167,8 @@ export function EditorShell({
     handleRazorSplit,
     handleRazorSplitAll,
     handleFreezeFrame,
+    handleLinkEdit,
+    handleTimelineElementDeleteOnly,
   });
 
   return (

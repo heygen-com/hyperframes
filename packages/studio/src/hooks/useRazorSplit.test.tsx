@@ -95,3 +95,51 @@ describe("useRazorSplit mutation versions", () => {
     container.remove();
   });
 });
+
+describe("useRazorSplit linked clips", () => {
+  afterEach(() => vi.restoreAllMocks());
+
+  it("splits every member of a linked pair in one cut", async () => {
+    const { usePlayerStore } = await import("../player");
+    const clip = (id: string, tag: string): TimelineElement => ({
+      id,
+      domId: id,
+      tag,
+      start: 0,
+      duration: 4,
+      track: tag === "audio" ? 1 : 0,
+      link: "lk-1",
+    });
+    const video = clip("talk", "video");
+    usePlayerStore.getState().setElements([video, clip("talk-audio", "audio")]);
+    const bodies: string[] = [];
+    vi.spyOn(globalThis, "fetch").mockImplementation(async (input, init) => {
+      const url = String(input);
+      if (url.includes("/files/")) return jsonResponse({ content: "", version: '"v0"' });
+      bodies.push(String(init?.body ?? ""));
+      return jsonResponse({ error: "stop" }, 409);
+    });
+    let split: ((element: TimelineElement, splitTime: number) => Promise<void>) | undefined;
+    const root = createRoot(document.body.appendChild(document.createElement("div")));
+    function Harness() {
+      split = useRazorSplit({
+        projectId: "p1",
+        activeCompPath: "index.html",
+        showToast: vi.fn(),
+        writeProjectFile: vi.fn(),
+        recordEdit: vi.fn(),
+        reloadPreview: vi.fn(),
+      }).handleRazorSplit;
+      return null;
+    }
+    await act(async () => root.render(React.createElement(Harness)));
+    await act(async () => {
+      await split?.(video, 2);
+    });
+    const targets = JSON.parse(bodies[0] ?? "{}").files[0].targets.map(
+      (cut: { originalId: string }) => cut.originalId,
+    );
+    expect(targets).toEqual(["talk", "talk-audio"]);
+    act(() => root.unmount());
+  });
+});
