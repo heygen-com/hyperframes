@@ -161,8 +161,6 @@ export const DomEditOverlay = memo(function DomEditOverlay({
   const groupGestureRef = useRef<GroupGestureState | null>(null);
   const blockedMoveRef = useRef<BlockedMoveState | null>(null);
   const suppressNextBoxClickRef = useRef(false);
-  const suppressNextBoxMouseDownRef = useRef(false);
-  const suppressNextOverlayMouseDownRef = useRef(false);
   const snapGuidesRef = useRef<SnapGuidesState | null>(null);
   const rafPausedRef = useRef(false);
 
@@ -329,15 +327,6 @@ export const DomEditOverlay = memo(function DomEditOverlay({
 
   const handleOverlayMouseDown = (event: React.MouseEvent<HTMLDivElement>) => {
     if (!allowCanvasMovement) return;
-    if (suppressNextOverlayMouseDownRef.current) {
-      logSelect("mousedown-suppressed", { shift: event.shiftKey });
-      suppressNextOverlayMouseDownRef.current = false;
-      suppressNextBoxMouseDownRef.current = false;
-      suppressNextBoxClickRef.current = false;
-      event.preventDefault();
-      event.stopPropagation();
-      return;
-    }
     const target = event.target as HTMLElement | null;
     const onBox = Boolean(target?.closest('[data-dom-edit-selection-box="true"]'));
     logSelect("mousedown", { shift: event.shiftKey, onBox });
@@ -346,10 +335,6 @@ export const DomEditOverlay = memo(function DomEditOverlay({
     // extend beyond the composition rect into the gray zone, and users need
     // to select/deselect them by clicking there.
     onCanvasMouseDown(event, { hoverSelection: hoverSelectionRef.current });
-    if (event.shiftKey) {
-      suppressNextBoxMouseDownRef.current = true;
-      suppressNextBoxClickRef.current = true;
-    }
   };
 
   // fallow-ignore-next-line complexity
@@ -373,8 +358,6 @@ export const DomEditOverlay = memo(function DomEditOverlay({
       if (!candidate) return;
       event.preventDefault();
       event.stopPropagation();
-      suppressNextOverlayMouseDownRef.current = true;
-      suppressNextBoxMouseDownRef.current = true;
       suppressNextBoxClickRef.current = true;
       onSelectionChangeRef.current(candidate, { additive: true });
       return;
@@ -419,7 +402,6 @@ export const DomEditOverlay = memo(function DomEditOverlay({
         // so those elements were always selectable once the band could begin.
         event.preventDefault();
         event.stopPropagation();
-        suppressNextOverlayMouseDownRef.current = true;
         marquee.begin(event);
         return;
       }
@@ -435,13 +417,6 @@ export const DomEditOverlay = memo(function DomEditOverlay({
       return;
     }
     onCanvasMouseDown(event, { hoverSelection: hoverSelectionRef.current });
-  };
-
-  const suppressBoxMouseDown = (e: React.MouseEvent) => {
-    if (!suppressNextBoxMouseDownRef.current) return;
-    suppressNextBoxMouseDownRef.current = false;
-    e.preventDefault();
-    e.stopPropagation();
   };
 
   // Right-click state + handler: select the element under the pointer (if
@@ -509,7 +484,6 @@ export const DomEditOverlay = memo(function DomEditOverlay({
           allowBodyDrag={bodyDrag}
           groupCanMove={groupCanMove}
           gestures={gestures}
-          onBoxMouseDown={suppressBoxMouseDown}
           onBoxClick={handleBoxClick}
         />
       )}
@@ -528,7 +502,6 @@ export const DomEditOverlay = memo(function DomEditOverlay({
           groupSelectionCount={groupSelections.length}
           gestures={gestures}
           onStyleCommit={onStyleCommitRef.current}
-          onBoxMouseDown={suppressBoxMouseDown}
           onBoxClick={handleBoxClick}
         />
       )}

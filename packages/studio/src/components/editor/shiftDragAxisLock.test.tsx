@@ -193,7 +193,6 @@ describe("a shift press on a selected box starts the drag", () => {
         selectionKey="box"
         groupSelectionCount={0}
         gestures={spies as never}
-        onBoxMouseDown={vi.fn()}
         onBoxClick={vi.fn()}
       />
     ));
@@ -207,7 +206,6 @@ describe("a shift press on a selected box starts the drag", () => {
         allowBodyDrag
         groupCanMove={groupCanMove}
         gestures={spies as never}
-        onBoxMouseDown={vi.fn()}
         onBoxClick={vi.fn()}
       />
     ));

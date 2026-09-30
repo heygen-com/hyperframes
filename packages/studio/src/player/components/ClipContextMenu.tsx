@@ -4,6 +4,7 @@ import { usePlayerStore, type TimelineElement } from "../store/playerStore";
 import { canSplitElement } from "../../utils/timelineElementSplit";
 import { useContextMenuDismiss } from "../../hooks/useContextMenuDismiss";
 import { useMenuKeyboardNav } from "./menuKeyboardNav";
+import type { TimelineClipMenuItem } from "./TimelineTypes";
 
 interface ClipContextMenuProps {
   x: number;
@@ -17,6 +18,51 @@ interface ClipContextMenuProps {
   onPaste?: () => Promise<void>;
   onDuplicate?: () => Promise<boolean>;
   canPaste?: boolean;
+  hostItems?: readonly TimelineClipMenuItem[] | undefined;
+}
+
+// Same enabled/disabled menu-item pattern as the sibling TrackGapContextMenu.
+const itemClass = (enabled: boolean) =>
+  `w-full flex items-center justify-between px-3 py-1.5 text-xs text-left outline-none${
+    enabled
+      ? " focus-visible:bg-neutral-800 text-neutral-300 hover:bg-neutral-800 cursor-pointer"
+      : " text-neutral-600 cursor-not-allowed"
+  }`;
+
+/** The host's items, above Studio's. A pick closes the menu; focus the item moves stays where it went. */
+function HostItems({
+  items,
+  onClose,
+}: {
+  items: readonly TimelineClipMenuItem[];
+  onClose: () => void;
+}) {
+  return (
+    <>
+      {items.map((item) => (
+        <button
+          key={item.id}
+          type="button"
+          role="menuitem"
+          className={itemClass(!item.disabled)}
+          disabled={item.disabled}
+          onClick={() => {
+            onClose();
+            item.onSelect();
+          }}
+        >
+          <span className="flex items-center gap-2">
+            {item.icon}
+            {item.label}
+          </span>
+          {item.shortcut && (
+            <span className="text-neutral-500 text-[10px] ml-3">{item.shortcut}</span>
+          )}
+        </button>
+      ))}
+      <div className="my-1 border-t border-neutral-700/60" />
+    </>
+  );
 }
 
 // A menu with many independently gated items (Split/Delete/Copy/Paste/Duplicate).
@@ -33,6 +79,7 @@ export const ClipContextMenu = memo(function ClipContextMenu({
   onPaste,
   onDuplicate,
   canPaste,
+  hostItems = [],
 }: ClipContextMenuProps) {
   const menuRef = useContextMenuDismiss(onClose);
   useMenuKeyboardNav(menuRef);
@@ -57,21 +104,15 @@ export const ClipContextMenu = memo(function ClipContextMenu({
       : "Split (move playhead inside clip)";
 
   const clipboardItemCount = [onCopy, onPaste, onDuplicate].filter(Boolean).length;
-  const rowCount = (splitLabel ? 1 : 0) + clipboardItemCount + 1; // + Delete, always present
-  const dividerCount = (splitLabel ? 1 : 0) + (clipboardItemCount > 0 ? 1 : 0);
+  const hostRows = hostItems.length;
+  const rowCount = hostRows + (splitLabel ? 1 : 0) + clipboardItemCount + 1; // + Delete, always present
+  const dividerCount =
+    (hostRows > 0 ? 1 : 0) + (splitLabel ? 1 : 0) + (clipboardItemCount > 0 ? 1 : 0);
   const menuWidth = 200;
   const menuHeight = rowCount * 30 + dividerCount * 9 + 8;
   const overflowY = y + menuHeight - window.innerHeight;
   const adjustedX = x + menuWidth > window.innerWidth ? x - menuWidth : x;
   const adjustedY = overflowY > 0 ? y - overflowY - 8 : y;
-
-  // Same enabled/disabled menu-item pattern as the sibling TrackGapContextMenu.
-  const itemClass = (enabled: boolean) =>
-    `w-full flex items-center justify-between px-3 py-1.5 text-xs text-left outline-none${
-      enabled
-        ? " focus-visible:bg-neutral-800 text-neutral-300 hover:bg-neutral-800 cursor-pointer"
-        : " text-neutral-600 cursor-not-allowed"
-    }`;
 
   return createPortal(
     <div
@@ -81,6 +122,7 @@ export const ClipContextMenu = memo(function ClipContextMenu({
       className="fixed z-200 bg-neutral-900 border border-neutral-700 rounded-md shadow-lg py-1 min-w-[180px]"
       style={{ left: adjustedX, top: adjustedY }}
     >
+      {hostRows > 0 && <HostItems items={hostItems} onClose={onClose} />}
       {splitLabel && (
         <>
           <button

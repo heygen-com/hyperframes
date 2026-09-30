@@ -56,7 +56,6 @@ describe("DomEditSelectionChrome crop composition", () => {
           groupSelectionCount={0}
           gestures={{ startGesture: vi.fn() } as never}
           onStyleCommit={vi.fn()}
-          onBoxMouseDown={vi.fn()}
           onBoxClick={vi.fn()}
         />,
       );
@@ -112,7 +111,6 @@ describe("DomEditSelectionChrome crop composition", () => {
           groupSelectionCount={0}
           gestures={{ startGesture: vi.fn() } as never}
           onStyleCommit={vi.fn()}
-          onBoxMouseDown={vi.fn()}
           onBoxClick={vi.fn()}
         />,
       );
@@ -173,7 +171,6 @@ describe("DomEditSelectionChrome while editing text", () => {
           groupSelectionCount={0}
           gestures={{ startGesture: vi.fn() } as never}
           onStyleCommit={vi.fn()}
-          onBoxMouseDown={vi.fn()}
           onBoxClick={vi.fn()}
           inlineText={{ editing, startFromPress: vi.fn() }}
         />,
@@ -258,7 +255,6 @@ describe("DomEditSelectionChrome with body drag off", () => {
           selectionKey="box"
           groupSelectionCount={0}
           gestures={gestures as never}
-          onBoxMouseDown={vi.fn()}
           onBoxClick={vi.fn()}
         />,
       );
@@ -313,7 +309,6 @@ describe("DomEditSelectionChrome with body drag off", () => {
           allowBodyDrag={false}
           groupCanMove
           gestures={gestures as never}
-          onBoxMouseDown={vi.fn()}
           onBoxClick={vi.fn()}
         />,
       );

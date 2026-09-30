@@ -18,6 +18,7 @@ import type { GestureRecordingState } from "./editor/GestureRecordControl";
 import { useTimelineSelectionPreviewSync } from "../hooks/useTimelineSelectionPreviewSync";
 import { StudioAgentTools } from "../webmcp/StudioAgentTools";
 import type { TimelineDropPlacement } from "../player/components/timelineCallbacks";
+import type { TimelineProps } from "../player/components/TimelineTypes";
 import { Dock } from "./dock/Dock";
 
 type RenderClipContent = (
@@ -57,6 +58,7 @@ export interface EditorShellProps extends TimelineEditCallbackDeps {
   onPasteClip: () => Promise<void>;
   onDuplicateClip: () => Promise<boolean>;
   canPasteClip: () => boolean;
+  clipMenuItems?: TimelineProps["clipMenuItems"];
   setCompIdToSrc: (map: Map<string, string>) => void;
   setCompositionLoading: (loading: boolean) => void;
   shouldShowMotionPath: boolean;
@@ -105,6 +107,7 @@ export function EditorShell({
   onPasteClip,
   onDuplicateClip,
   canPasteClip,
+  clipMenuItems,
   setCompIdToSrc,
   setCompositionLoading,
   shouldShowMotionPath,
@@ -201,6 +204,7 @@ export function EditorShell({
               onPasteClip={onPasteClip}
               onDuplicateClip={onDuplicateClip}
               canPasteClip={canPasteClip}
+              clipMenuItems={clipMenuItems}
               previewOverlay={
                 <PreviewOverlays
                   shouldShowMotionPath={shouldShowMotionPath}
@@ -244,6 +248,7 @@ interface EditorShellBodyProps {
   onPasteClip: () => Promise<void>;
   onDuplicateClip: () => Promise<boolean>;
   canPasteClip: () => boolean;
+  clipMenuItems?: TimelineProps["clipMenuItems"];
 }
 
 function EditorShellBody({
@@ -264,6 +269,7 @@ function EditorShellBody({
   onPasteClip,
   onDuplicateClip,
   canPasteClip,
+  clipMenuItems,
 }: EditorShellBodyProps) {
   const { compositionStack, updateCompositionStack, containerRef } = useNLEContext();
 
@@ -316,6 +322,7 @@ function EditorShellBody({
             onPasteClip={onPasteClip}
             onDuplicateClip={onDuplicateClip}
             canPasteClip={canPasteClip}
+            clipMenuItems={clipMenuItems}
             onSelectTimelineElement={onSelectTimelineElement}
             timelineFooter={
               captionEditMode ? (

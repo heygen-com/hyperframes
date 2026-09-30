@@ -41,7 +41,6 @@ export function useGsapAnimationsForElement(
   const [multipleTimelines, setMultipleTimelines] = useState(false);
   const [unsupportedTimelinePattern, setUnsupportedTimelinePattern] = useState(false);
   const lastFetchKeyRef = useRef("");
-  const retryTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   // Re-run the per-element cache populate when sub-comp DOM children appear, so a
   // sub-comp element gets its host-relative keyframe percentages (not elDuration=1).
   const domClipChildrenKey = usePlayerStore((s) =>
@@ -53,11 +52,6 @@ export function useGsapAnimationsForElement(
     const fetchKey = `${projectId}:${sourceFile}:${version}:${targetKey}`;
     if (fetchKey === lastFetchKeyRef.current) return;
     lastFetchKeyRef.current = fetchKey;
-
-    if (retryTimerRef.current) {
-      clearTimeout(retryTimerRef.current);
-      retryTimerRef.current = null;
-    }
 
     if (!projectId) {
       setAllAnimations([]);
@@ -80,28 +74,10 @@ export function useGsapAnimationsForElement(
       setAllAnimations(parsed.animations);
       setMultipleTimelines(parsed.multipleTimelines === true);
       setUnsupportedTimelinePattern(parsed.unsupportedTimelinePattern === true);
-
-      // Retry once if initial fetch returned 0 animations — handles
-      // cold-load race where the sourceFile isn't resolved yet.
-      if (parsed.animations.length === 0 && targetKey) {
-        retryTimerRef.current = setTimeout(() => {
-          if (cancelled) return;
-          fetchParsedAnimations(projectId, sourceFile).then((retryParsed) => {
-            if (cancelled) return;
-            if (retryParsed && retryParsed.animations.length > 0) {
-              setAllAnimations(retryParsed.animations);
-            }
-          });
-        }, 800);
-      }
     });
 
     return () => {
       cancelled = true;
-      if (retryTimerRef.current) {
-        clearTimeout(retryTimerRef.current);
-        retryTimerRef.current = null;
-      }
     };
   }, [projectId, sourceFile, version, target?.id, target?.selector]);
 

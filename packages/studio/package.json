@@ -75,6 +75,7 @@
     "build": "vite build && tsup",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
+    "test:edit-accuracy": "bun tests/e2e/edit-accuracy/run.mjs",
     "test:webmcp-edit-loop": "node tests/e2e/webmcp-edit-loop.mjs",
     "test:timeline-virtualization": "TIMELINE_ROW_VIRTUALIZATION=on TIMELINE_ELEMENT_COUNT=50000 node tests/e2e/timeline-virtualization.mjs",
     "test:watch": "vitest",

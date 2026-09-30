@@ -62,7 +62,6 @@ interface DomEditGroupChromeProps {
   allowBodyDrag: boolean;
   groupCanMove: boolean;
   gestures: GestureHandlers;
-  onBoxMouseDown: (e: React.MouseEvent) => void;
   onBoxClick: (event: React.MouseEvent<HTMLDivElement>) => void;
 }
 
@@ -75,7 +74,6 @@ export function DomEditGroupChrome({
   allowBodyDrag,
   groupCanMove,
   gestures,
-  onBoxMouseDown,
   onBoxClick,
 }: DomEditGroupChromeProps) {
   const canManipulate = allowCanvasMovement && !usePreviewReadOnly();
@@ -108,7 +106,6 @@ export function DomEditGroupChrome({
           if (!canManipulate || !allowBodyDrag || (e.shiftKey && !groupCanMove)) return;
           gestures.startGroupDrag(e);
         }}
-        onMouseDown={onBoxMouseDown}
         onClick={onBoxClick}
       />
     </>
@@ -128,7 +125,6 @@ interface DomEditSelectionChromeProps {
   groupSelectionCount: number;
   gestures: GestureHandlers;
   onStyleCommit?: (property: string, value: string) => Promise<unknown> | void;
-  onBoxMouseDown: (e: React.MouseEvent) => void;
   onBoxClick: (event: React.MouseEvent<HTMLDivElement>) => void;
   /** The canvas' text-editing session: what opens one, and whether one is open. */
   inlineText?: {
@@ -157,7 +153,6 @@ export function DomEditSelectionChrome({
   groupSelectionCount,
   gestures,
   onStyleCommit,
-  onBoxMouseDown,
   onBoxClick,
   inlineText,
 }: DomEditSelectionChromeProps) {
@@ -225,7 +220,6 @@ export function DomEditSelectionChrome({
             }
             if (!e.shiftKey) gestures.startBlockedMove(e, selection);
           }}
-          onMouseDown={onBoxMouseDown}
           onClick={onBoxClick}
         >
           {cropOutlineInsetPx && (
