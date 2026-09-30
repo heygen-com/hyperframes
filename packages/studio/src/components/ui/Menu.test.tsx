@@ -298,6 +298,27 @@ describe("Popover", () => {
     expect(document.activeElement).toBe(input);
     expect(document.querySelector('[role="menu"]')).toBeNull();
   });
+
+  it("points at its trigger only when asked", async () => {
+    const renderOpen = (arrow: boolean) => {
+      render(
+        <Popover trigger={<button data-testid="trigger">Speed</button>} arrow={arrow} defaultOpen>
+          <span>1x</span>
+        </Popover>,
+      );
+    };
+    renderOpen(false);
+    await settle();
+    expect(one("[role=dialog]", "popup").querySelector("svg")).toBeNull();
+    act(() => mounted?.root.unmount());
+    mounted?.host.remove();
+    mounted = null;
+
+    renderOpen(true);
+    await settle();
+    const arrow = one("[role=dialog] svg", "arrow").parentElement!;
+    expect(arrow.getAttribute("data-side")).toBe("bottom");
+  });
 });
 
 describe("hotkey classification", () => {

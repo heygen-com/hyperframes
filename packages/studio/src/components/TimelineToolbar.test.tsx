@@ -8,6 +8,7 @@ import { usePlayerStore } from "../player/store/playerStore";
 import { makeSelection } from "../hooks/domSelectionTestHarness";
 import { useAudioMetersVisible } from "../utils/audioMeterVisibility";
 import { readStudioUiPreferences } from "../utils/studioUiPreferences";
+import { dispatchPlainKey, type HotkeyCallbacks } from "../hooks/appHotkeysDispatch";
 import { AudioMeterStrip } from "./nle/AudioMeterStrip";
 import { TimelineToolbar } from "./TimelineToolbar";
 
@@ -292,6 +293,67 @@ describe("TimelineToolbar history", () => {
     const { host, root } = renderToolbar(undefined, { showHistory: false });
     expect(historyButtons(host)).toBe(0);
     act(() => root.unmount());
+  });
+});
+
+describe("TimelineToolbar tool menu", () => {
+  async function openMenuRows(props: Partial<React.ComponentProps<typeof TimelineToolbar>>) {
+    const { host, root } = renderToolbar(undefined, props);
+    const trigger = host.querySelector<HTMLButtonElement>('button[aria-label^="Timeline tool:"]')!;
+    await act(async () => {
+      trigger.click();
+      await new Promise((resolve) => setTimeout(resolve, 0));
+    });
+    const rows = [...document.querySelectorAll('[role="menuitem"] > span:first-child')].map(
+      (label) => label.textContent,
+    );
+    act(() => root.unmount());
+    return rows;
+  }
+
+  it("lists Select, Split, Select leftward and Select rightward by default", async () => {
+    expect(await openMenuRows({})).toEqual([
+      "Select",
+      "Split",
+      "Select leftward",
+      "Select rightward",
+    ]);
+  });
+
+  it("lists only Select and Split when the host hides select around the playhead", async () => {
+    expect(await openMenuRows({ showSelectAroundPlayhead: false })).toEqual(["Select", "Split"]);
+  });
+
+  it.each([true, false])("[ and ] select around the playhead with the rows shown: %s", (shown) => {
+    usePlayerStore.setState({
+      currentTime: 4,
+      elements: [0, 4, 7].map((start, track) => ({
+        id: `c${start}`,
+        key: `c${start}`,
+        tag: "div",
+        start,
+        duration: 2,
+        track,
+      })),
+    });
+    const { root } = renderToolbar(undefined, { showSelectAroundPlayhead: shown });
+    const press = (key: string) =>
+      act(() =>
+        dispatchPlainKey(new KeyboardEvent("keydown", { key }), key, {} as HotkeyCallbacks),
+      );
+    try {
+      press("[");
+      expect([...usePlayerStore.getState().selectedElementIds]).toEqual(["c0"]);
+      press("]");
+      expect([...usePlayerStore.getState().selectedElementIds].sort()).toEqual(["c4", "c7"]);
+    } finally {
+      act(() => root.unmount());
+      usePlayerStore.setState({
+        elements: [],
+        selectedElementId: null,
+        selectedElementIds: new Set(),
+      });
+    }
   });
 });
 

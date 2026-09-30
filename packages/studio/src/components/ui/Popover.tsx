@@ -14,6 +14,15 @@ type PortalContainer = ComponentPropsWithoutRef<typeof BasePopover.Portal>["cont
 const SIDE_OFFSET = 6;
 const VIEWPORT_MARGIN = 8;
 
+/** The arrow's 14x8 box overlaps the popup's border by 1px, so its fill hides the border where it meets the popup. */
+const ARROW_PX = 7;
+const ARROW_CORNER_CLEARANCE = 10;
+const arrowPlace = cn(
+  "data-[side=bottom]:-top-[7px] data-[side=top]:-bottom-[7px] data-[side=top]:rotate-180",
+  "data-[side=left]:-right-[10px] data-[side=left]:rotate-90",
+  "data-[side=right]:-left-[10px] data-[side=right]:-rotate-90",
+);
+
 interface PopoverProps extends Omit<ComponentPropsWithoutRef<typeof BasePopover.Root>, "children"> {
   /** A single element. It becomes the trigger; no wrapper is added around it. */
   trigger: ReactElement;
@@ -22,6 +31,8 @@ interface PopoverProps extends Omit<ComponentPropsWithoutRef<typeof BasePopover.
   side?: "top" | "bottom" | "left" | "right";
   align?: "start" | "center" | "end";
   sideOffset?: number;
+  /** Points the popup at its trigger. Off by default; the default gap from the trigger grows by the arrow's height. */
+  arrow?: boolean;
   /** Portal target. Pass the shadow root when the trigger lives in one. */
   container?: PortalContainer;
   /** Names the popup for assistive tech. */
@@ -40,7 +51,8 @@ export function Popover({
   children,
   side = "bottom",
   align = "center",
-  sideOffset = SIDE_OFFSET,
+  arrow = false,
+  sideOffset = arrow ? SIDE_OFFSET + ARROW_PX : SIDE_OFFSET,
   container,
   className,
   initialFocus,
@@ -57,6 +69,7 @@ export function Popover({
           align={align}
           sideOffset={sideOffset}
           collisionPadding={VIEWPORT_MARGIN}
+          arrowPadding={ARROW_CORNER_CLEARANCE}
           className="z-200"
         >
           <BasePopover.Popup
@@ -65,6 +78,13 @@ export function Popover({
             data-preview-state={previewState}
             className={cn(popupSurface, "p-3 text-step-11 text-text-1 shadow-popover", className)}
           >
+            {arrow && (
+              <BasePopover.Arrow className={arrowPlace}>
+                <svg width="14" height="8" viewBox="0 0 14 8" aria-hidden="true" className="block">
+                  <path d="M0 8 L7 1 L14 8" className="fill-surface stroke-border-input" />
+                </svg>
+              </BasePopover.Arrow>
+            )}
             {children}
           </BasePopover.Popup>
         </BasePopover.Positioner>

@@ -12,7 +12,12 @@ export interface TimelineClipboardClip {
 }
 
 export type ClipboardPayload =
-  | { kind: "timeline-clip"; clips: TimelineClipboardClip[]; sourceFile: string }
+  | {
+      kind: "timeline-clip";
+      clips: TimelineClipboardClip[];
+      sourceFile: string;
+      projectId?: string;
+    }
   | {
       kind: "dom-element";
       html: string;
@@ -56,7 +61,8 @@ export function deserializeClipboardPayload(json: string): ClipboardPayload | nu
       );
     });
     if (clips.length === 0) return null;
-    return { kind: "timeline-clip", clips, sourceFile: obj.sourceFile };
+    const projectId = typeof obj.projectId === "string" ? obj.projectId : undefined;
+    return { kind: "timeline-clip", clips, sourceFile: obj.sourceFile, projectId };
   }
   if (obj.kind === "dom-element") {
     if (typeof obj.html !== "string") return null;

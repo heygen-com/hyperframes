@@ -28,6 +28,7 @@ export {
 import type { PlaybackAdapter, IframeWindow } from "../lib/playbackTypes";
 import { releaseStaticSeekCache, type StaticSeekCacheEntry } from "../lib/playbackAdapter";
 import { mergeTimelineElementsPreservingDowngrades } from "../lib/timelineDOM";
+import { findTimelineElementInIframe } from "../../hooks/timelineEditingHelpers";
 import { normalizeToZones } from "../components/timelineZones";
 import { applyPreviewAudioFlags, setPreviewPlaybackRate } from "../lib/timelineIframeHelpers";
 import { scrubMusicAtSeek, stopScrubPreviewAudio } from "../lib/playbackScrub";
@@ -92,6 +93,11 @@ export function useTimelinePlayer({
             elements,
             state.duration,
             resolvedDuration,
+            (element) =>
+              findTimelineElementInIframe(iframeRef.current, {
+                ...element,
+                kind: "composition",
+              }) !== null,
           ),
           state.timelineProjectId,
         ),

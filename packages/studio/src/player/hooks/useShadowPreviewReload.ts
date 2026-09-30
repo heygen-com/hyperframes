@@ -118,9 +118,9 @@ export function useShadowPreviewReload({
       const liveTime = live?.getTime();
       const playing = usePlayerStore.getState().isPlaying;
       live?.pause();
-      // The store takes the new document's timeline only now that it is the one on screen.
-      pending.commit();
+      // The store takes the new document's timeline only now that it is the one on screen, and reads it there.
       iframeRef.current = shadow;
+      pending.commit();
       shadowIframeRef.current = null;
       attachIframeShortcutListeners();
       applyPreviewAudioState();

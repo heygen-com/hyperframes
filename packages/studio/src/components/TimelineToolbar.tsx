@@ -44,6 +44,7 @@ export interface TimelineToolbarProps {
   onSplitElement?: (element: TimelineElement, splitTime: number) => void;
   history?: TimelineHistoryButtonsProps;
   showHistory?: boolean;
+  showSelectAroundPlayhead?: boolean;
   showAddBeat?: boolean;
   /** Hides Add keyframe and auto-record, and turns off auto-record and the K shortcut with them. */
   showKeyframes?: boolean;
@@ -143,6 +144,7 @@ export function TimelineToolbar({
   onSplitElement,
   history,
   showHistory = true,
+  showSelectAroundPlayhead = true,
   showAddBeat = true,
   showKeyframes = true,
 }: TimelineToolbarProps) {
@@ -216,7 +218,7 @@ export function TimelineToolbar({
       <div className="flex items-center justify-between px-2 py-0.5">
         <div className="flex items-center gap-0.5">
           {showHistory && <TimelineHistoryButtons {...history} />}
-          <TimelineToolPicker />
+          <TimelineToolPicker showSelectAroundPlayhead={showSelectAroundPlayhead} />
           {/* Divider: tool-mode | editing-actions */}
           <div aria-hidden="true" className="mx-1 h-4 w-px bg-neutral-800" />
           <Tooltip label={timelineSnapEnabled ? "Snapping on (N)" : "Snapping off (N)"}>
