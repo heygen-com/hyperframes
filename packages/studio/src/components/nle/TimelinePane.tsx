@@ -1,6 +1,7 @@
 import type { ReactNode } from "react";
 import { Timeline } from "../../player";
 import type { TimelineElement, TimelineTimeRange } from "../../player";
+import type { TimelineProps } from "../../player/components/TimelineTypes";
 import type { BlockedTimelineEditIntent } from "../../player/components/timelineEditing";
 import { AudioMeterStrip } from "./AudioMeterStrip";
 import { useTimelineEditContext } from "../../contexts/TimelineEditContext";
@@ -45,6 +46,7 @@ export interface TimelinePaneProps {
   onPasteClip?: () => Promise<void>;
   onDuplicateClip?: () => Promise<boolean>;
   canPasteClip?: () => boolean;
+  clipMenuItems?: TimelineProps["clipMenuItems"];
 }
 
 export function TimelinePane({
@@ -64,6 +66,7 @@ export function TimelinePane({
   onPasteClip,
   onDuplicateClip,
   canPasteClip,
+  clipMenuItems,
 }: TimelinePaneProps) {
   const {
     seek,
@@ -119,6 +122,7 @@ export function TimelinePane({
               onPasteClip={onPasteClip}
               onDuplicateClip={onDuplicateClip}
               canPasteClip={canPasteClip}
+              clipMenuItems={clipMenuItems}
             />
           </div>
           <AudioMeterStrip />

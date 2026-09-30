@@ -29,7 +29,7 @@ const itemClass = (enabled: boolean) =>
       : " text-neutral-600 cursor-not-allowed"
   }`;
 
-/** The host's items, above Studio's. The menu closes before an item acts, so what it opens can take the focus. */
+/** The host's items, above Studio's. A pick closes the menu; focus the item moves stays where it went. */
 function HostItems({
   items,
   onClose,

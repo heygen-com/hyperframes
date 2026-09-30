@@ -71,11 +71,12 @@ describe("resolveTimelineContextElement", () => {
   });
 });
 
-function renderKeyframeOverlay(options: {
+function renderOverlay(options: {
   capturedElement: TimelineElement;
   currentElement: TimelineElement;
   setKfContextMenu?: ReturnType<typeof vi.fn>;
   onDeleteAllKeyframes?: ReturnType<typeof vi.fn>;
+  overlays?: Partial<TimelineOverlaysState>;
 }) {
   const container = document.createElement("div");
   document.body.appendChild(container);
@@ -117,6 +118,7 @@ function renderKeyframeOverlay(options: {
     onCloseTrackGap: vi.fn(),
     onCloseAllTrackGaps: vi.fn(),
     onHoverGapAction: vi.fn(),
+    ...options.overlays,
   } satisfies TimelineOverlaysState;
   const contextValue = {
     state: {
@@ -151,22 +153,24 @@ function renderKeyframeOverlay(options: {
     );
   }
 
+  const render = () =>
+    root.render(
+      createElement(TestTimelineContext, { value: contextValue }, createElement(TimelineOverlays)),
+    );
   act(() => {
     usePlayerStore.setState({
       selectedElementId: options.capturedElement.key ?? options.capturedElement.id,
       timelineSessionEpoch: 2,
     });
-    root.render(
-      createElement(TestTimelineContext, { value: contextValue }, createElement(TimelineOverlays)),
-    );
+    render();
   });
-  return { setKfContextMenu, onDeleteAllKeyframes };
+  return { setKfContextMenu, onDeleteAllKeyframes, rerender: () => act(render) };
 }
 
 describe("TimelineOverlays context lifecycle", () => {
   it("dismisses a keyframe menu when its selected target becomes stale", () => {
     const setKfContextMenu = vi.fn();
-    renderKeyframeOverlay({
+    renderOverlay({
       capturedElement: captured,
       currentElement: captured,
       setKfContextMenu,
@@ -180,7 +184,7 @@ describe("TimelineOverlays context lifecycle", () => {
   it("dispatches a menu action with the current model element", () => {
     const current = { ...captured, start: 4, track: 7 };
     const onDeleteAllKeyframes = vi.fn();
-    renderKeyframeOverlay({
+    renderOverlay({
       capturedElement: captured,
       currentElement: current,
       onDeleteAllKeyframes,
@@ -192,5 +196,24 @@ describe("TimelineOverlays context lifecycle", () => {
     act(() => button?.click());
 
     expect(onDeleteAllKeyframes).toHaveBeenCalledExactlyOnceWith(current, "child-position");
+  });
+
+  it("builds the host's clip menu items once for the current model element and lists them first", () => {
+    const current = { ...captured, start: 4, track: 7 };
+    const clipMenuItems = vi.fn(() => [{ id: "ask", label: "Ask", onSelect: vi.fn() }]);
+    const { rerender } = renderOverlay({
+      capturedElement: captured,
+      currentElement: current,
+      overlays: {
+        kfContextMenu: null,
+        clipContextMenu: { x: 10, y: 10, sessionEpoch: 2, element: captured },
+        clipMenuItems,
+      },
+    });
+
+    rerender();
+
+    expect(clipMenuItems).toHaveBeenCalledExactlyOnceWith(current);
+    expect(document.body.querySelector('[role="menuitem"]')?.textContent).toBe("Ask");
   });
 });

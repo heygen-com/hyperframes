@@ -2,10 +2,10 @@ import { useEffect, type RefObject } from "react";
 
 /**
  * APG menu keyboard basics for the timeline context menus: focuses the first
- * menu item on open, moves focus with ArrowUp/ArrowDown/Home/End, and restores
- * focus to the previously focused element when the menu unmounts. Pair with
- * `role="menu"` on the container and `role="menuitem"` on the buttons
- * (dismiss/Escape handling stays in useContextMenuDismiss).
+ * menu item on open, moves focus with ArrowUp/ArrowDown/Home/End, and gives
+ * focus back to the previously focused element on unmount unless an item moved
+ * it elsewhere. Pair with `role="menu"` on the container and `role="menuitem"`
+ * on the buttons (dismiss/Escape handling stays in useContextMenuDismiss).
  */
 export function useMenuKeyboardNav(menuRef: RefObject<HTMLDivElement | null>): void {
   useEffect(() => {
@@ -39,7 +39,14 @@ export function useMenuKeyboardNav(menuRef: RefObject<HTMLDivElement | null>): v
 
     return () => {
       menu.removeEventListener("keydown", onKeyDown);
-      if (previouslyFocused instanceof HTMLElement && document.contains(previouslyFocused)) {
+      const active = document.activeElement;
+      const focusLeftWithMenu =
+        active === null || active === document.body || menu.contains(active);
+      if (
+        focusLeftWithMenu &&
+        previouslyFocused instanceof HTMLElement &&
+        document.contains(previouslyFocused)
+      ) {
         previouslyFocused.focus();
       }
     };
