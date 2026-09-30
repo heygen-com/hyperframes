@@ -32,6 +32,7 @@ const row: TimelineRow = {
   durationSource: "authored",
   pendingReason: null,
   laneError: null,
+  syncOffsetFrames: null,
 };
 
 describe("parseTimeExpression", () => {
