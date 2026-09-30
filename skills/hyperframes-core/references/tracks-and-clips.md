@@ -58,6 +58,7 @@ Each video segment keeps its sound: the sound stays on the clip (`data-has-audio
   src="talk.mp4"
   muted
   data-link="lk-1"
+  data-sync-origin="lk-1"
   data-start="2"
   data-duration="6"
   data-media-start="1"
@@ -67,6 +68,7 @@ Each video segment keeps its sound: the sound stays on the clip (`data-has-audio
   id="talk-audio"
   src="talk.mp4"
   data-link="lk-1"
+  data-sync-origin="lk-1"
   data-start="2"
   data-duration="6"
   data-media-start="1"
@@ -78,6 +80,7 @@ Each video segment keeps its sound: the sound stays on the clip (`data-has-audio
 - **Unlink** by removing `data-link` from every member. Removing it from one leaves the other alone with the id, which `lint` flags as `linked_clip_orphan`.
 - The render ignores `data-link`: an out-of-sync pair still plays exactly what its timings say.
 - Prefer a single `<video data-has-audio="true">` for footage with sound. Link only when the sound needs its own clip (its own track, volume or FX); to undo a detach, move the audio attributes back onto the video and delete the `<audio>`.
+- **Sync origin.** `data-sync-origin="<id>"` marks a video and an audio from one source file; Detach and Link write it, and Unlink keeps it. When the pair drifts (their source-zero points, `data-start − data-media-start / data-playback-rate`, differ), Studio shows a red offset in frames on both halves with Move into Sync / Slip into Sync, `hyperframes timeline` prints `out-of-sync=±Nf`, and the SDK offers `syncOffset`, `moveIntoSync` and `slipIntoSync`. Leave it alone when retiming by hand; remove it only when the clips are no longer one source.
 - `@hyperframes/sdk` `setTiming` applies to link partners by default; pass `{ linked: false }` to edit one member, which unlinks it.
 
 ## Relative Timing
