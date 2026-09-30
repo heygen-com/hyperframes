@@ -196,7 +196,8 @@ export function computeDragPreview(
   return {
     ...drag,
     started: true,
-    pointerClientX: clientX,
+    // The drag actor follows the pointer, so a partner-video clamp holds it back by the same amount.
+    pointerClientX: clientX - (floored - previewStart) * pps,
     pointerClientY: clientY,
     previewStart: placement.start,
     previewTrack,

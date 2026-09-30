@@ -748,9 +748,9 @@ describe("an audio clip stays inside its partner video", () => {
   it("a drag past the video's end stops with the audio's end on it", () => {
     const a = audio();
     const { drag, clientX, clientY } = horizontalDrag(a, 1.5, 30);
-    expect(computeDragPreview(drag, clientX, clientY, audioCtx([video(), a])).previewStart).toBe(
-      22,
-    );
+    const next = computeDragPreview(drag, clientX, clientY, audioCtx([video(), a]));
+    expect(next.previewStart).toBe(22);
+    expect(next.pointerClientX).toBe(drag.originClientX + 10 * PPS);
   });
 
   it("a drag before the video's start stops at it, linked or same-source", () => {
