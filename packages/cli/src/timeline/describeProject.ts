@@ -8,7 +8,9 @@ import {
 import { HF_AUDIO_FX_ATTR, parseAudioFxChain } from "@hyperframes/core/audio-fx";
 import { HF_AUDIO_GROUP_ATTR } from "@hyperframes/core/audio-groups";
 import { byStart, type ClipFact, type ClipLane } from "@hyperframes/core/clip-facts";
-import { parseNumeric } from "@hyperframes/core";
+import { fpsToNumber, parseFpsWithDefault, parseNumeric } from "@hyperframes/core";
+import { findSyncPartner, readLinkTiming, syncOffsetFrames } from "@hyperframes/core/media-link";
+import { readCompositionFps } from "../utils/compositionFps.js";
 import {
   readMediaOffsetSeconds,
   readPlaybackRate,
@@ -60,6 +62,8 @@ export interface TimelineRow extends ClipFact {
   hostRow: RowPointer | null;
   /** Where this row's sub-composition clips are (one level only); each is a full row in its kind's `rows`. */
   children: RowPointer[];
+  /** Signed frames from its `data-sync-origin` partner (+ = late); `null` unpaired or rates differ. */
+  syncOffsetFrames: number | null;
 }
 
 export interface RowPointer {
@@ -137,6 +141,7 @@ interface DocScope {
   withProbeSlot: <T>(fn: () => Promise<T>) => Promise<T>;
   measure: MeasureMedia;
   sourceOverrides: ReadonlyMap<string, string>;
+  fps: number;
 }
 
 /** Source length in seconds of a media file. ffprobe in production; tests pass a recorded fake. */
@@ -312,7 +317,13 @@ function describeRowFields(scope: DocScope, node: DomNode, timing: RowTiming): C
     warnings: [],
     elementId: el.id || null,
     hfId: el.getAttribute("data-hf-id"),
+    syncOffsetFrames: syncOffsetOf(el, scope.fps),
   };
+}
+
+function syncOffsetOf(el: Element, fps: number): number | null {
+  const partner = findSyncPartner(el);
+  return partner ? syncOffsetFrames(readLinkTiming(el), readLinkTiming(partner), fps) : null;
 }
 
 async function describeRow(scope: DocScope, node: DomNode, depth: number): Promise<ClipDraft> {
@@ -343,6 +354,7 @@ async function readSubComposition(
     withProbeSlot: parent.withProbeSlot,
     measure: parent.measure,
     sourceOverrides: parent.sourceOverrides,
+    fps: parent.fps,
   };
   const rows = await Promise.all(
     topLevelElements(toNode(root)).map((node) => describeRow(scope, node, 1)),
@@ -416,6 +428,11 @@ function flatten(top: ClipDraft[]): TimelineTrack[] {
   }));
 }
 
+function projectFps(source: string): number {
+  const parsed = parseFpsWithDefault(readCompositionFps(source) ?? undefined);
+  return fpsToNumber(parsed.ok ? parsed.value : { num: 30, den: 1 });
+}
+
 /** Needs a global DOMParser (`ensureDOMParser`). Reads `index.html` and one level of sub-compositions. */
 export async function describeProject(
   indexPath: string,
@@ -437,6 +454,7 @@ export async function describeProject(
     withProbeSlot: createProbeGate(PROBE_CONCURRENCY),
     measure,
     sourceOverrides,
+    fps: projectFps(source),
   };
   const rows = (
     await Promise.all(topLevelElements(toNode(root)).map((node) => describeRow(scope, node, 0)))
