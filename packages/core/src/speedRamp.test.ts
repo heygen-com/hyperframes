@@ -122,3 +122,37 @@ describe("presets", () => {
     }
   });
 });
+
+describe("gentle ramp presets", () => {
+  const speeds = (id: "ramp-in" | "ramp-out" | "slowmo-middle", duration: number) =>
+    speedPresetLane(id, duration).points.map((p) => [p.t, p.v]);
+
+  it("ramp-in eases from half speed up to normal", () => {
+    expect(speeds("ramp-in", 4)).toEqual([
+      [0, 0.5],
+      [4, 1],
+    ]);
+  });
+
+  it("ramp-out eases from normal down to half speed", () => {
+    expect(speeds("ramp-out", 4)).toEqual([
+      [0, 1],
+      [4, 0.5],
+    ]);
+  });
+
+  it("slowmo-middle holds 0.35x through the middle third and returns to normal", () => {
+    const lane = speedPresetLane("slowmo-middle", 6);
+    expect(rateAt(lane, 0)).toBe(1);
+    expect(rateAt(lane, 2)).toBeCloseTo(0.35, 5);
+    expect(rateAt(lane, 3)).toBeCloseTo(0.35, 5);
+    expect(rateAt(lane, 4)).toBeCloseTo(0.35, 5);
+    expect(rateAt(lane, 6)).toBe(1);
+  });
+
+  it("each consumes less source than the clip at normal speed", () => {
+    for (const id of ["ramp-in", "ramp-out", "slowmo-middle"] as const) {
+      expect(sourceTimeAt(speedPresetLane(id, 6), 6)).toBeLessThan(6);
+    }
+  });
+});
