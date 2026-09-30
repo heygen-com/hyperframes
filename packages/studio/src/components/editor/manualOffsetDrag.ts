@@ -514,6 +514,7 @@ export function applyManualOffsetNudgeCommit(
 
 function restoreManualOffsetDragMember(member: ManualOffsetDragMember): void {
   restoreStudioPathOffset(member.element, member.initialPathOffset);
+  getOffsetDragGsap(member.element)?.set(member.element, { ...member.baseGsap });
   endStudioManualEditGesture(member.element, member.gestureToken);
 }
 

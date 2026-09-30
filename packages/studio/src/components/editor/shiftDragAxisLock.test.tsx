@@ -1,10 +1,11 @@
 // @vitest-environment happy-dom
 import React, { act, createRef } from "react";
 import { createRoot } from "react-dom/client";
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import type { DomEditSelection } from "./domEditing";
 import type { GestureState, GroupGestureState } from "./domEditOverlayGestures";
 import { DomEditGroupChrome, DomEditSelectionChrome } from "./DomEditSelectionChrome";
+import { createManualOffsetDragMember } from "./manualOffsetDrag";
 import { resolveSnapAdjustment } from "./snapEngine";
 import { createDomEditOverlayGestureHandlers } from "./useDomEditOverlayGestures";
 
@@ -25,6 +26,8 @@ function gestureHarness(gesture: Partial<GestureState> | null, group: GroupGestu
     setGroupOverlayItems: vi.fn(),
     onCanvasMouseDown: vi.fn(),
     onCanvasPointerMoveRef: { current: vi.fn() },
+    onPathOffsetCommitRef: { current: vi.fn() },
+    onGroupPathOffsetCommitRef: { current: vi.fn() },
   };
   const handlers = createDomEditOverlayGestureHandlers(opts as never);
   const pointer = (clientX: number, clientY: number, shiftKey: boolean) =>
@@ -119,16 +122,22 @@ describe("shift+drag locks a move to the axis the pointer travels further on", (
   });
 });
 
-describe("shift+click on a selected group still toggles the member under the pointer", () => {
-  it("hands a shift press that never travelled to the canvas as an additive click", () => {
-    const { opts, handlers, pointer } = gestureHarness(null, groupGesture());
-    handlers.onPointerUp(pointer(101, 100, true));
-    expect(opts.onCanvasMouseDown).toHaveBeenCalledWith(
-      expect.objectContaining({ shiftKey: true }),
-      expect.objectContaining({ preferClipAncestor: false }),
-    );
-    expect(opts.suppressNextBoxClickRef.current).toBe(true);
-  });
+describe("shift+click on a selected box still toggles the element under the pointer", () => {
+  it.each([
+    ["group", () => gestureHarness(null, groupGesture())],
+    ["single", () => singleMemberDrag()],
+  ])(
+    "hands a %s shift press that never travelled to the canvas as an additive click",
+    (_, make) => {
+      const { opts, handlers, pointer } = make();
+      handlers.onPointerUp(pointer(101, 100, true));
+      expect(opts.onCanvasMouseDown).toHaveBeenCalledWith(
+        expect.objectContaining({ shiftKey: true }),
+        expect.objectContaining({ preferClipAncestor: false }),
+      );
+      expect(opts.suppressNextBoxClickRef.current).toBe(true);
+    },
+  );
 
   it("leaves a plain press on the group box alone", () => {
     const { opts, handlers, pointer } = gestureHarness(null, groupGesture());
@@ -226,5 +235,112 @@ describe("a shift press on a selected box starts the drag", () => {
     shiftPress(many.box);
     expect(many.spies.startGroupDrag).not.toHaveBeenCalled();
     many.unmount();
+  });
+});
+
+type GsapStub = {
+  set: (el: Element, vars: object) => void;
+  getProperty: (el: Element, p: string) => number;
+};
+
+function previewGsap(): GsapStub {
+  const win = window as unknown as { gsap?: GsapStub };
+  if (win.gsap) return win.gsap;
+  const positions = new WeakMap<Element, Record<string, number>>();
+  win.gsap = {
+    set: (el, vars) => positions.set(el, { ...positions.get(el), ...vars }),
+    getProperty: (el, prop) => positions.get(el)?.[prop] ?? 0,
+  };
+  return win.gsap;
+}
+
+function draggableMember(key: string) {
+  const gsap = previewGsap();
+  const element = document.createElement("div");
+  document.body.append(element);
+  gsap.set(element, { x: 10, y: -10 });
+  const selection = {
+    element,
+    capabilities: { canApplyManualOffset: true },
+  } as unknown as DomEditSelection;
+  const result = createManualOffsetDragMember({
+    key,
+    selection,
+    element,
+    rect: { left: 0, top: 0, width: 50, height: 40, editScaleX: 1, editScaleY: 1 },
+  } as never);
+  if (!result.ok) throw new Error(result.reason);
+  const at = () => [gsap.getProperty(element, "x"), gsap.getProperty(element, "y")];
+  return { member: result.member, selection, at };
+}
+
+function singleMemberDrag() {
+  const { member, selection, at } = draggableMember("single");
+  const harness = gestureHarness(
+    {
+      kind: "drag",
+      mode: "path-offset",
+      selection,
+      startX: 100,
+      startY: 100,
+      originLeft: 0,
+      originTop: 0,
+      originWidth: 50,
+      originHeight: 40,
+      editScaleX: 1,
+      editScaleY: 1,
+      actualRotation: 0,
+      pathOffsetMember: member,
+      initialPathOffset: member.initialPathOffset,
+      manualEditDragToken: member.gestureToken,
+    },
+    null,
+  );
+  return { ...harness, at };
+}
+
+function groupMemberDrag() {
+  const a = draggableMember("a");
+  const b = draggableMember("b");
+  const group = { startX: 100, startY: 100, originItems: [], members: [a.member, b.member] };
+  const harness = gestureHarness(null, group as unknown as GroupGestureState);
+  return { ...harness, at: () => [a.at(), b.at()] };
+}
+
+afterEach(() => {
+  delete (window as unknown as { gsap?: GsapStub }).gsap;
+});
+
+describe("a press that stays under the drag threshold puts the preview back where it started", () => {
+  it.each([true, false])("single, shift %s", (shift) => {
+    const { handlers, pointer, at } = singleMemberDrag();
+    handlers.onPointerMove(pointer(102, 100, shift));
+    expect(at()).toEqual([12, -10]);
+    handlers.onPointerUp(pointer(102, 100, shift));
+    expect(at()).toEqual([10, -10]);
+  });
+
+  it.each([true, false])("group, shift %s", (shift) => {
+    const { handlers, pointer, at } = groupMemberDrag();
+    handlers.onPointerMove(pointer(102, 100, shift));
+    handlers.onPointerUp(pointer(102, 100, shift));
+    expect(at()).toEqual([
+      [10, -10],
+      [10, -10],
+    ]);
+  });
+});
+
+describe("a drag that travelled is not a click, even when it ends near its start", () => {
+  it.each([
+    ["single", singleMemberDrag, "onPathOffsetCommitRef"],
+    ["group", groupMemberDrag, "onGroupPathOffsetCommitRef"],
+  ] as const)("commits a %s shift drag instead of toggling", (_, make, commit) => {
+    const { opts, handlers, pointer } = make();
+    handlers.onPointerMove(pointer(180, 100, true));
+    handlers.onPointerMove(pointer(101, 100, true));
+    handlers.onPointerUp(pointer(101, 100, true));
+    expect(opts.onCanvasMouseDown).not.toHaveBeenCalled();
+    expect(opts[commit].current).toHaveBeenCalledTimes(1);
   });
 });

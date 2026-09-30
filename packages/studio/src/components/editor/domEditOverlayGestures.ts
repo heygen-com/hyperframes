@@ -87,6 +87,7 @@ export interface GestureState {
   snapContext?: SnapContext;
   lastSnappedDx?: number;
   lastSnappedDy?: number;
+  travelled?: boolean;
   /** Corner the resize gesture grabbed (resize gestures only). */
   resizeHandle?: ResizeHandle;
   /** Last anchoring translation applied during a corner resize (overlay px). */
@@ -110,6 +111,7 @@ export interface GroupGestureState {
   snapContext?: SnapContext;
   lastSnappedDx?: number;
   lastSnappedDy?: number;
+  travelled?: boolean;
 }
 
 export interface BlockedMoveState {

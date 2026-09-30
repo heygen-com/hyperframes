@@ -12,7 +12,6 @@ import {
   applyRotationDraftViaGsap,
   endManualOffsetDragMembers,
   restoreManualOffsetDragMembers,
-  resumeGsapTimelines,
 } from "./manualOffsetDrag";
 import {
   applyStudioBoxSize,
@@ -61,6 +60,13 @@ import { logResize, logResizeMove, logResizeSettle } from "../../utils/resizeDeb
 import { logDrag, logDragSettle, readDragPositions } from "../../utils/dragDebug";
 import { createGroupDragMover } from "./groupDragMove";
 import { DomEditSaveQueueOpenError } from "../../utils/domEditSaveQueue";
+
+function isTap(g: { startX: number; startY: number; travelled?: boolean }, e: React.PointerEvent) {
+  return (
+    !g.travelled &&
+    Math.hypot(e.clientX - g.startX, e.clientY - g.startY) < BLOCKED_MOVE_THRESHOLD_PX
+  );
+}
 
 function logGestureCommitFailure(message: string, error: unknown): void {
   if (error instanceof DomEditSaveQueueOpenError) return;
@@ -137,11 +143,13 @@ export function createDomEditOverlayGestureHandlers(opts: UseDomEditOverlayGestu
     }
 
     if (groupG) {
+      if (!isTap(groupG, e)) groupG.travelled = true;
       moveGroupDrag(groupG, e);
       return;
     }
 
     if (!g || !sel) return;
+    if (!isTap(g, e)) g.travelled = true;
     let dx = e.clientX - g.startX;
     let dy = e.clientY - g.startY;
 
@@ -307,7 +315,7 @@ export function createDomEditOverlayGestureHandlers(opts: UseDomEditOverlayGestu
       // ordinary click — which lands between the members, resolves to nothing,
       // and deselects the group the drag just moved.
       opts.suppressNextBoxClickRef.current = true;
-      if (Math.hypot(rawDx, rawDy) < BLOCKED_MOVE_THRESHOLD_PX) {
+      if (isTap(groupG, e)) {
         restoreGroupPathOffsets(groupG);
         if (e.shiftKey) {
           opts.onCanvasMouseDown(e as unknown as React.MouseEvent<HTMLDivElement>, {
@@ -371,10 +379,8 @@ export function createDomEditOverlayGestureHandlers(opts: UseDomEditOverlayGestu
     opts.rafPausedRef.current = false;
     const movedDistance = Math.hypot(e.clientX - g.startX, e.clientY - g.startY);
 
-    if (g.kind === "drag" && movedDistance < BLOCKED_MOVE_THRESHOLD_PX) {
-      restoreStudioPathOffset(sel.element, g.initialPathOffset);
-      endStudioManualEditGesture(sel.element, g.manualEditDragToken);
-      resumeGsapTimelines(sel.element);
+    if (g.kind === "drag" && isTap(g, e)) {
+      if (g.pathOffsetMember) restoreManualOffsetDragMembers([g.pathOffsetMember]);
       if (box) {
         box.style.left = `${g.originLeft}px`;
         box.style.top = `${g.originTop}px`;
@@ -536,9 +542,7 @@ export function createDomEditOverlayGestureHandlers(opts: UseDomEditOverlayGestu
     const g = opts.gestureRef.current;
     const sel = g?.selection ?? selectionRef.current;
     if (g?.mode === "path-offset" && sel) {
-      restoreStudioPathOffset(sel.element, g.initialPathOffset);
-      endStudioManualEditGesture(sel.element, g.manualEditDragToken);
-      resumeGsapTimelines(sel.element);
+      if (g.pathOffsetMember) restoreManualOffsetDragMembers([g.pathOffsetMember]);
       restoreGestureOverlayRect(g);
     }
     if (g?.mode === "box-size" && sel) {
