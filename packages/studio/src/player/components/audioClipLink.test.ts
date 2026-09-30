@@ -17,11 +17,6 @@ const plain = { id: "title" };
 const elements = [video, audio, other, otherAudio, plain];
 
 describe("audioPillFlags", () => {
-  it("is linked only by data-link, never by a shared file name", () => {
-    expect(audioPillFlags({ link: "lk-1" }).linked).toBe(true);
-    expect(audioPillFlags({}).linked).toBe(false);
-  });
-
   it("greys a hidden clip and a muted group", () => {
     expect(audioPillFlags({ hidden: true }).muted).toBe(true);
     expect(audioPillFlags({ audioGroupHidden: true }).muted).toBe(true);

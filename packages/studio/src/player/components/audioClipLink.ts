@@ -34,13 +34,10 @@ export function sharesLinkGroup(
 }
 
 export function audioPillFlags(
-  audio: Pick<TimelineElement, "hidden" | "audioGroupHidden" | "link">,
+  audio: Pick<TimelineElement, "hidden" | "audioGroupHidden">,
   _elements?: readonly unknown[],
-): { muted: boolean; linked: boolean } {
-  return {
-    muted: audio.hidden === true || audio.audioGroupHidden === true,
-    linked: isLinked(audio),
-  };
+): { muted: boolean } {
+  return { muted: audio.hidden === true || audio.audioGroupHidden === true };
 }
 
 export function linkedMembersOf<T extends LinkedElement>(element: T, elements: readonly T[]): T[] {

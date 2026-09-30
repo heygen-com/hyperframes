@@ -296,17 +296,6 @@
   transition: none;
 }
 
-.timeline-audio-link {
-  position: absolute;
-  z-index: 4;
-  top: -9px;
-  left: 50%;
-  width: 1px;
-  height: 10px;
-  background: var(--timeline-audio-link);
-  pointer-events: none;
-}
-
 .timeline-clip.is-hovered {
   background-color: var(--clip-bg-hover);
 }

@@ -196,7 +196,7 @@ describe("useRenderClipContent", () => {
     }
   });
 
-  it("marks audio linked by data-link, and muted when hidden", () => {
+  it("marks hidden audio muted and leaves the link to the chain badge", () => {
     usePlayerStore.setState({
       thumbnailMode: "hidden",
       elements: [
@@ -220,9 +220,9 @@ describe("useRenderClipContent", () => {
       link: "lk-1",
       hidden: true,
     });
-    expect(isValidElement<{ linked: boolean; muted: boolean }>(linked)).toBe(true);
-    if (isValidElement<{ linked: boolean; muted: boolean }>(linked)) {
-      expect(linked.props.linked).toBe(true);
+    expect(isValidElement<{ linked?: boolean; muted: boolean }>(linked)).toBe(true);
+    if (isValidElement<{ linked?: boolean; muted: boolean }>(linked)) {
+      expect(linked.props.linked).toBeUndefined();
       expect(linked.props.muted).toBe(true);
     }
   });

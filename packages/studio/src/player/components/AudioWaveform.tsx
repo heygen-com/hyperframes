@@ -18,8 +18,6 @@ export interface AudioWaveformProps {
   priority: ThumbnailPriority;
   /** `data-hidden` or a muted audio group. Greys the pill; the clip stays. */
   muted?: boolean;
-  /** Same media file as a video clip. Draws the 1px parent tick. */
-  linked?: boolean;
 }
 
 const BAR_STEP = 3;
@@ -167,7 +165,6 @@ export const AudioWaveform = memo(function AudioWaveform({
   sessionEpoch,
   priority,
   muted = false,
-  linked = false,
 }: AudioWaveformProps) {
   const rootRef = useRef<HTMLDivElement | null>(null);
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
@@ -236,7 +233,6 @@ export const AudioWaveform = memo(function AudioWaveform({
 
   return (
     <div ref={rootRef} className="absolute inset-0">
-      {linked ? <span className="timeline-audio-link" aria-hidden="true" /> : null}
       <div className="absolute inset-0 overflow-hidden" style={{ zIndex: 10 }}>
         <canvas
           ref={setCanvasRef}
