@@ -170,6 +170,25 @@ describe("DomEditCropHandles clip lift/restore", () => {
     expect(onStyleCommit).toHaveBeenCalledWith("clip-path", "inset(10px 30px 10px 10px)");
   });
 
+  it("keeps a first crop on deselect when the release beats the last render", async () => {
+    const a = makeEl("a", "");
+    const { root } = render(a, (property, value) => void a.style.setProperty(property, value));
+    const handle = document.querySelector<HTMLButtonElement>('[aria-label="Crop right"]')!;
+    act(() => {
+      for (const [type, clientX] of [
+        ["pointerdown", 100],
+        ["pointermove", 90],
+        ["pointermove", 80],
+        ["pointerup", 80],
+      ] as const) {
+        handle.dispatchEvent(new PointerEvent(type, { bubbles: true, pointerId: 5, clientX }));
+      }
+    });
+    await act(async () => undefined);
+    act(() => root.unmount());
+    expect(a.style.getPropertyValue("clip-path")).toBe("inset(0px 20px 0px 0px)");
+  });
+
   it("re-lifts when the crop commit rejects", async () => {
     const a = makeEl("a", "inset(10px)");
     const onStyleCommit = vi.fn((property: string, value: string) => {
