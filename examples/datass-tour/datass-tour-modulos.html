@@ -1,0 +1,852 @@
+<!doctype html>
+<html lang="es" style="overflow:hidden;margin:0">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=1920,height=1080"/>
+
+<script src="https://cdn.jsdelivr.net/npm/gsap@3.14.2/dist/gsap.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@hyperframes/core/dist/hyperframe.runtime.iife.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@hyperframes/shader-transitions/dist/index.global.js"></script>
+
+<style>
+/* ── Brand tokens ─────────────────────────────────────── */
+:root{
+  --bg:#04090F;
+  --panel:#0A1524;
+  --ink:#EDF2F8;
+  --muted:rgba(237,242,248,.58);
+  --accent:#1558C8;     /* DATASS primary blue */
+  --accent2:#38BDF8;    /* highlight / accent-2 */
+  --bezel:#040710;
+  --font:"Segoe UI",system-ui,-apple-system,sans-serif;
+}
+
+*{margin:0;padding:0;box-sizing:border-box}
+html,body{width:1920px;height:1080px;overflow:hidden;background:var(--bg);color:var(--ink);font-family:var(--font)}
+
+.scene{position:absolute;top:0;left:0;width:1920px;height:1080px;overflow:hidden}
+.scene-content{width:100%;height:100%;position:relative;z-index:1}
+.glow{position:absolute;border-radius:50%;filter:blur(170px);opacity:.22;pointer-events:none;z-index:0}
+
+/* typography */
+.kicker{font-weight:700;font-size:24px;letter-spacing:.22em;text-transform:uppercase;color:var(--accent2)}
+.display{font-weight:800;line-height:1.06}
+.body-txt{font-weight:400;font-size:28px;color:var(--muted);line-height:1.4}
+
+/* module header */
+.module-header{position:absolute;top:66px;left:0;right:0;text-align:center;z-index:2}
+.step-pill{
+  display:inline-flex;align-items:center;gap:12px;background:var(--panel);
+  border:1px solid rgba(255,255,255,.07);border-radius:999px;
+  padding:10px 26px 10px 14px;margin-bottom:14px;
+}
+.step-pill .num{
+  width:34px;height:34px;border-radius:50%;background:var(--accent);
+  display:flex;align-items:center;justify-content:center;font-weight:800;font-size:18px;
+}
+.step-pill span.label{font-weight:700;font-size:20px;letter-spacing:.02em}
+
+/* phone frame */
+.frame{
+  position:absolute;left:50%;top:592px;transform:translate(-50%,-50%);
+  width:460px;height:940px;background:var(--bezel);border-radius:58px;
+  box-shadow:0 50px 140px rgba(0,0,0,.75),inset 0 0 0 2px rgba(255,255,255,.055);
+  padding:16px;z-index:3;
+}
+.frame .notch{
+  position:absolute;top:16px;left:50%;transform:translateX(-50%);
+  width:160px;height:30px;background:var(--bezel);border-radius:0 0 18px 18px;z-index:5;
+}
+.frame .home-bar{
+  position:absolute;bottom:12px;left:50%;transform:translateX(-50%);
+  width:120px;height:5px;border-radius:3px;background:rgba(255,255,255,.28);z-index:5;
+}
+.screen{position:relative;width:100%;height:100%;border-radius:42px;overflow:hidden;background:#F8F9FF}
+.slot{position:absolute;inset:0;overflow:hidden}
+
+/* highlight ring */
+.ring{
+  position:absolute;border:4px solid var(--accent2);border-radius:16px;
+  box-shadow:0 0 0 6px rgba(56,189,248,.17),0 0 28px rgba(56,189,248,.32);
+  pointer-events:none;z-index:6;opacity:0;
+}
+
+/* cursor + ripple */
+.cursor{
+  position:absolute;width:42px;height:42px;border-radius:50%;
+  background:radial-gradient(circle at 35% 35%,#fff,var(--accent) 72%);
+  box-shadow:0 6px 18px rgba(0,0,0,.45);z-index:8;pointer-events:none;
+}
+.ripple{
+  position:absolute;width:42px;height:42px;border-radius:50%;
+  border:4px solid var(--accent2);z-index:7;pointer-events:none;
+  opacity:0;transform:translate(-50%,-50%) scale(0);
+}
+
+/* tip cards */
+.tips{position:absolute;right:110px;top:50%;transform:translateY(-50%);width:420px;z-index:2}
+.tip{
+  background:var(--panel);border:1px solid rgba(255,255,255,.07);
+  border-left:6px solid var(--accent2);border-radius:16px;
+  padding:22px 26px;margin-bottom:18px;
+  box-shadow:0 20px 50px rgba(0,0,0,.4);
+}
+.tip b{display:block;font-weight:700;font-size:20px;color:var(--accent2);margin-bottom:6px}
+.tip p{font-size:19px;color:var(--muted);line-height:1.4}
+
+/* progress bar */
+.prog-rail{position:absolute;left:130px;right:130px;bottom:54px;height:6px;background:rgba(255,255,255,.07);border-radius:3px;z-index:2}
+.prog-fill{position:absolute;left:0;top:0;bottom:0;width:0%;background:var(--accent);border-radius:3px}
+
+/* grain overlay */
+.grain{position:absolute;inset:0;pointer-events:none;z-index:50;opacity:.09;mix-blend-mode:overlay;
+  background-image:radial-gradient(rgba(255,255,255,.08) 1px,transparent 1.2px),radial-gradient(rgba(0,0,0,.18) 1px,transparent 1.2px);
+  background-size:3px 3px,5px 5px;background-position:0 0,1px 2px}
+
+/* ── DATASS SCREEN COMPONENTS (all prefixed "z-") ─────── */
+/* These render inside the 428×908px phone screen */
+.z-root{display:flex;flex-direction:column;height:908px;width:428px;background:#F8F9FF;color:#191C20;font-family:Roboto,"Segoe UI",system-ui,sans-serif;font-size:14px;line-height:1.43;overflow:hidden}
+/* status bar */
+.z-sb{height:34px;flex:none;display:flex;align-items:center;justify-content:space-between;padding:4px 22px 0 26px;font-size:12px;font-weight:500;background:#1558C8;color:#fff}
+.z-sb .r{display:flex;align-items:center;gap:5px}
+.z-sb svg{width:14px;height:14px;fill:#fff;display:block}
+/* app bar */
+.z-ab{flex:none;display:flex;align-items:center;gap:6px;padding:7px 8px 9px 4px;background:#1558C8;color:#fff;min-height:54px}
+.z-ab-t{flex:1;font-size:19px;font-weight:400;padding-left:8px;line-height:1.2}
+.z-ab-t small{display:block;font-size:12px;opacity:.72;font-weight:400}
+.z-ib{width:42px;height:42px;border-radius:50%;display:flex;align-items:center;justify-content:center;border:0;background:transparent;flex-shrink:0}
+.z-ib svg{width:24px;height:24px;fill:#fff}
+/* content */
+.z-scroll{flex:1;overflow:hidden;padding:12px 14px 94px;display:flex;flex-direction:column;gap:10px}
+.z-scroll.nofab{padding-bottom:16px}
+/* bottom nav */
+.z-bnav{height:80px;flex:none;display:flex;background:#ECEEF4;position:absolute;left:0;right:0;bottom:0;border-radius:0 0 42px 42px}
+.z-bnav button{flex:1;border:0;background:transparent;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:3px;color:#43474E;font-size:12px;font-weight:500}
+.z-bnav .ind{width:64px;height:32px;border-radius:16px;display:flex;align-items:center;justify-content:center}
+.z-bnav svg{width:24px;height:24px;fill:currentColor}
+.z-bnav button.on{color:#191C20}
+.z-bnav button.on .ind{background:#DCE8FD;color:#0A2D6B}
+/* navigation-3 buttons bar */
+.z-nav3{height:44px;flex:none;display:flex;justify-content:space-around;align-items:center;background:#ECEEF4}
+.z-nav3 button{width:60px;height:40px;border:0;background:transparent;border-radius:20px;display:flex;align-items:center;justify-content:center;color:#43474E}
+.z-nav3 svg{width:18px;height:18px;fill:none;stroke:currentColor;stroke-width:2}
+/* cards */
+.z-card{background:#ECEEF4;border-radius:12px;padding:12px 14px;display:flex;flex-direction:column;gap:5px}
+.z-card .row{display:flex;justify-content:space-between;align-items:center;gap:8px}
+.z-card .t{font-size:15px;font-weight:500}
+.z-card .s{font-size:13px;color:#43474E}
+/* badges */
+.z-badge{font-size:11px;font-weight:500;padding:3px 9px;border-radius:8px}
+.z-ok{background:#C4EFD2;color:#1E6B3F}
+.z-warn{background:#FFDEA6;color:#7A5300}
+.z-blue{background:#DCE8FD;color:#0A2D6B}
+.z-red{background:#FFDAD6;color:#93000A}
+/* list items */
+.z-lst{display:flex;flex-direction:column;background:#fff;border-radius:14px;overflow:hidden;box-shadow:0 0 0 1px #C3C6CF}
+.z-li{display:grid;grid-template-columns:44px 1fr auto;gap:12px;align-items:center;padding:12px 14px;border-bottom:1px solid #ECEEF4}
+.z-li:last-child{border-bottom:0}
+.z-lead{width:40px;height:40px;border-radius:50%;display:flex;align-items:center;justify-content:center;flex-shrink:0;background:#DCE8FD;color:#0A2D6B}
+.z-lead svg{width:22px;height:22px;fill:currentColor}
+.z-li-t{font-size:15px;color:#191C20;line-height:1.3}
+.z-li-s{font-size:12.5px;color:#43474E}
+.z-frac{font-size:13px;font-weight:500;padding:3px 8px;border-radius:7px;background:#ECEEF4;color:#43474E}
+.z-frac.some{background:#DCE8FD;color:#0A2D6B}
+.z-frac.all{background:#C4EFD2;color:#1E6B3F}
+.z-chev{display:flex;align-items:center;color:#73777F}
+.z-chev svg{width:22px;height:22px;fill:currentColor}
+/* section label */
+.z-sect{font-size:13px;font-weight:500;color:#1558C8;letter-spacing:.02em;margin-top:4px}
+/* module tiles */
+.z-mtiles{display:grid;grid-template-columns:repeat(3,1fr);gap:8px}
+.z-mtile{border:0;border-radius:14px;background:#ECEEF4;display:flex;flex-direction:column;align-items:center;gap:4px;padding:10px 4px 8px;text-align:center}
+.z-mtile .ml{width:40px;height:40px;border-radius:50%;display:flex;align-items:center;justify-content:center;flex-shrink:0}
+.z-mtile .ml svg{width:22px;height:22px;fill:#fff}
+.z-ml-mon{background:#1558C8}
+.z-ml-lim{background:#1E7A45}
+.z-ml-clo{background:#8A5200}
+.z-ml-man{background:#C00000}
+.z-ml-san{background:#0E6F7A}
+.z-mtile b{font-size:12px;font-weight:500;color:#191C20;line-height:1.2}
+.z-mtile small{font-size:10px;color:#43474E;line-height:1.2}
+/* home header */
+.z-homehd{display:flex;align-items:center;gap:12px;padding:4px 0 2px}
+.z-ava{width:42px;height:42px;border-radius:50%;background:#DCE8FD;color:#0A2D6B;display:flex;align-items:center;justify-content:center;font-weight:700;font-size:16px;flex-shrink:0}
+.z-homehd small{font-size:12px;color:#43474E;display:block}
+.z-homehd b{font-size:15px;color:#191C20}
+/* htabs */
+.z-htabs{display:flex;border-radius:10px;background:#ECEEF4;gap:0;overflow:hidden;margin-bottom:4px;position:relative}
+.z-htabs button{flex:1;border:0;background:transparent;color:#43474E;height:36px;font-size:13px;font-weight:500;cursor:pointer;position:relative}
+.z-htabs button.on{color:#191C20}
+.z-htabs button.on::after{content:"";position:absolute;bottom:0;left:10%;right:10%;height:3px;background:#1558C8;border-radius:1.5px}
+/* login */
+.z-loginhd{display:flex;flex-direction:column;align-items:center;gap:5px;padding:22px 16px 12px}
+.z-loginhd .logo{width:64px;height:64px;border-radius:32px;background:#1558C8;display:flex;align-items:center;justify-content:center;margin-bottom:4px}
+.z-loginhd .logo svg{width:34px;height:34px;fill:#fff}
+.z-loginhd b{font-size:22px;font-weight:700}
+.z-loginhd small{font-size:12px;color:#43474E;text-align:center}
+.z-profsel{display:flex;flex-direction:column;gap:8px;margin:0 0 10px}
+.z-prof{display:flex;align-items:center;gap:12px;border:1px solid #C3C6CF;border-radius:14px;padding:10px 14px;background:#F8F9FF}
+.z-prof.on{border-color:#1558C8;background:#DCE8FD}
+.z-av2{width:36px;height:36px;border-radius:50%;background:#DCE8FD;color:#0A2D6B;display:flex;align-items:center;justify-content:center;font-weight:600;font-size:14px;flex-shrink:0}
+.z-prof b{font-size:14px;font-weight:600}
+.z-prof small{font-size:12px;color:#43474E;display:block}
+/* big button */
+.z-btn{height:44px;border-radius:22px;border:0;background:#1558C8;color:#fff;display:flex;align-items:center;justify-content:center;gap:8px;font-size:14px;font-weight:500;width:100%}
+.z-btn svg{width:18px;height:18px;fill:#fff}
+.z-support{font-size:12px;color:#43474E;text-align:center}
+/* breadcrumb */
+.z-crumb{font-size:12px;color:#43474E;padding:0 14px 6px 16px;display:flex;gap:5px;align-items:center;background:#F8F9FF;flex-wrap:wrap;flex-shrink:0}
+.z-crumb b{color:#1558C8;font-weight:500}
+.z-crumb svg{width:14px;height:14px;fill:#43474E}
+/* steps bar */
+.z-steps{display:grid;grid-template-columns:repeat(3,1fr);gap:5px;margin-bottom:2px}
+.z-step{border:1px solid #C3C6CF;background:#F8F9FF;border-radius:12px;padding:8px 4px;display:flex;flex-direction:column;align-items:center;gap:2px}
+.z-step .sn{width:24px;height:24px;border-radius:50%;background:#ECEEF4;display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:500;flex-shrink:0}
+.z-step .sn svg{width:14px;height:14px;fill:currentColor}
+.z-step .sl{font-size:13px;font-weight:500}
+.z-step small{font-size:10px;color:#43474E;text-align:center;line-height:1.2}
+.z-step.done .sn{background:#C4EFD2;color:#1E6B3F}
+.z-step.on{border:2px solid #1558C8;background:#DCE8FD;padding:7px 3px}
+.z-step.on small,.z-step.on .sl{color:#0A2D6B}
+/* camera */
+.z-cam{flex:1;min-height:0;display:flex;flex-direction:column;background:#000;color:#fff}
+.z-cam-top{display:flex;align-items:center;justify-content:space-between;padding:4px 8px}
+.z-cam-top svg{width:24px;height:24px;fill:#fff}
+.z-cam-vf{flex:1;position:relative;background:linear-gradient(180deg,#0A1A2E 0%,#173355 40%,#205470 75%,#183E3E 100%)}
+.z-cam-grid{position:absolute;inset:0;background-image:linear-gradient(rgba(255,255,255,.06) 1px,transparent 1px),linear-gradient(90deg,rgba(255,255,255,.06) 1px,transparent 1px);background-size:calc(100%/3) calc(100%/3)}
+.z-cam-lbl{position:absolute;left:10px;top:10px;font-size:11px;font-weight:500;letter-spacing:.06em;background:rgba(0,0,0,.52);padding:3px 8px;border-radius:10px}
+.z-cam-chip{display:inline-flex;align-items:center;gap:5px;font-size:11.5px;padding:4px 10px;border-radius:14px;background:rgba(255,255,255,.14);color:#fff}
+.z-cam-chip svg{width:13px;height:13px;fill:#fff}
+.z-cam-mid{padding:8px 14px 0;display:flex;flex-direction:column;gap:5px;font-size:12px}
+.z-cam-bottom{display:flex;align-items:center;justify-content:space-around;padding:14px 28px 14px;background:rgba(0,0,0,.38)}
+.z-shutter{width:68px;height:68px;border-radius:50%;border:4px solid #fff;background:transparent;display:flex;align-items:center;justify-content:center}
+.z-shutter i{width:52px;height:52px;border-radius:50%;background:#fff;display:block}
+.z-cam-prev{width:50px;height:50px;border-radius:10px;background:#1B3A3A;border:2px solid rgba(255,255,255,.3);overflow:hidden}
+.z-cam-prev img{width:100%;height:100%;object-fit:cover;display:block}
+.z-cam-flip{width:48px;height:48px;border-radius:50%;background:rgba(255,255,255,.14);display:flex;align-items:center;justify-content:center}
+.z-cam-flip svg{width:22px;height:22px;fill:#fff;opacity:.55}
+/* thumbs */
+.z-thumbs{display:grid;grid-template-columns:repeat(3,1fr);gap:4px}
+.z-thumb{border-radius:8px;overflow:hidden;aspect-ratio:4/3;background:#ECEEF4;position:relative;display:block}
+.z-thumb-ok::after{content:"";position:absolute;top:3px;right:3px;width:18px;height:18px;border-radius:50%;background:#1E6B3F;display:flex;align-items:center;justify-content:center}
+.z-thumb-empty{border:1.5px dashed #73777F;background:#F8F9FF}
+/* photo pair (before/after) */
+.z-pair{display:grid;grid-template-columns:1fr 1fr;gap:6px}
+.z-pair figure{margin:0;display:flex;flex-direction:column;gap:3px}
+.z-pair figcaption{font-size:10px;font-weight:600;letter-spacing:.06em;text-transform:uppercase;color:#43474E}
+.z-pair-img{width:100%;border-radius:6px;aspect-ratio:4/3;object-fit:cover;display:block;background:#ECEEF4}
+/* resumen KV rows */
+.z-kv{display:flex;justify-content:space-between;gap:10px;padding:10px 0;border-bottom:1px solid #ECEEF4;font-size:14px}
+.z-kv span:last-child{color:#43474E;text-align:right;font-size:13.5px}
+/* note banner */
+.z-note{border-radius:10px;padding:10px 12px;font-size:13px;display:flex;gap:10px;align-items:flex-start;background:#DCE8FD;color:#0A2D6B}
+.z-note svg{width:18px;height:18px;fill:currentColor;flex-shrink:0;margin-top:1px}
+/* sap card */
+.z-sapcard{display:flex;gap:12px;align-items:flex-start;background:#fff;border-radius:12px;padding:12px 14px;box-shadow:0 0 0 1px #ECEEF4}
+.z-sapcard .lead{width:40px;height:40px;border-radius:50%;background:#DCE8FD;color:#0A2D6B;display:flex;align-items:center;justify-content:center;flex-shrink:0}
+.z-sapcard .lead svg{width:22px;height:22px;fill:currentColor}
+.z-sapcard b{font-size:14px;font-weight:600;display:block}
+.z-sapcard span{font-size:12.5px;color:#43474E;display:block;line-height:1.4}
+/* progress bars */
+.z-prog{height:5px;border-radius:3px;background:#ECEEF4;overflow:hidden}
+.z-prog i{display:block;height:100%;background:#1558C8;border-radius:3px}
+/* "enviado" big check */
+.z-sent{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:14px;padding:28px}
+.z-sent-circle{width:80px;height:80px;border-radius:50%;background:#C4EFD2;display:flex;align-items:center;justify-content:center}
+.z-sent-circle svg{width:44px;height:44px;fill:#1E6B3F}
+.z-sent b{font-size:20px;font-weight:600;color:#191C20;text-align:center}
+.z-sent p{font-size:13.5px;color:#43474E;text-align:center;line-height:1.4}
+.z-upload-row{background:#F8F9FF;border-radius:10px;border:1px solid #ECEEF4;padding:10px 12px;display:flex;flex-direction:column;gap:6px;font-size:13px}
+.z-upload-row b{display:flex;justify-content:space-between;align-items:center;font-weight:500}
+.z-upload-row b span{font-size:12px;font-weight:400;color:#43474E}
+</style>
+</head>
+<body>
+
+<!-- ═══════════════════════════════════════════════════════════
+     RAÍZ DE LA COMPOSICIÓN  — 38 s total, 6 escenas
+     ═══════════════════════════════════════════════════════════ -->
+<div id="main" data-composition-id="main" data-width="1920" data-height="1080" data-start="0" data-duration="38">
+
+  <!-- ═══ ESCENA 1 – INTRO (0-3 s) ═════════════════════════ -->
+  <div class="scene clip" id="s1" data-start="0" data-duration="3" data-track-index="0">
+    <div class="glow" style="width:980px;height:980px;background:#1558C8;top:-340px;left:-180px"></div>
+    <div class="glow" style="width:600px;height:600px;background:#38BDF8;top:400px;right:60px"></div>
+    <div class="scene-content" style="display:flex;flex-direction:column;justify-content:center;align-items:center;gap:14px">
+      <div id="s1-kick" class="kicker">Módulos del sistema</div>
+      <h1 id="s1-title" class="display" style="font-size:100px">DATASS <span style="font-weight:300">Offline</span></h1>
+      <p id="s1-sub" class="body-txt" style="font-size:28px;text-align:center;max-width:900px">Registro de evidencia para sistemas rurales de agua y saneamiento</p>
+    </div>
+    <div class="grain"></div>
+  </div>
+
+  <!-- ═══ ESCENA 2 – INGRESO Y PANEL PRINCIPAL (3-11 s) ═════ -->
+  <div class="scene clip" id="s2" data-start="3" data-duration="8" data-track-index="0" style="visibility:hidden">
+    <div class="scene-content">
+      <div class="module-header">
+        <div class="step-pill" id="s2-pill">
+          <span class="num">1</span>
+          <span class="label">Ingreso y panel principal</span>
+        </div>
+      </div>
+
+      <div class="frame" id="s2-frame">
+        <div class="notch"></div>
+        <div class="screen">
+          <div class="slot">
+            <!-- ── DATASS: Pantalla de login ── -->
+            <div class="z-root">
+              <div class="z-sb">
+                <span>9:41</span>
+                <span class="r">
+                  <svg viewBox="0 0 24 24"><path d="M1 9l2 2c4.97-4.97 13.03-4.97 18 0l2-2C16.93 2.93 7.08 2.93 1 9zm8 8 3 3 3-3a4.24 4.24 0 0 0-6 0zm-4-4 2 2a7.07 7.07 0 0 1 10 0l2-2C15.14 9.14 8.87 9.14 5 13z"/></svg>
+                  <svg viewBox="0 0 24 24"><path d="M15.67 4H14V2h-4v2H8.33C7.6 4 7 4.6 7 5.33v15.33C7 21.4 7.6 22 8.33 22h7.33c.74 0 1.34-.6 1.34-1.33V5.33C17 4.6 16.4 4 15.67 4z"/></svg>
+                </span>
+              </div>
+              <div class="z-scroll nofab">
+                <div class="z-loginhd">
+                  <div class="logo">
+                    <!-- water drop DATASS icon -->
+                    <svg viewBox="0 0 24 24"><path d="M12 2.69 6.34 8.34a8 8 0 1 0 11.32 0L12 2.69z"/></svg>
+                  </div>
+                  <b>DATASS offline</b>
+                  <small>Ministerio de Vivienda, Construcción y Saneamiento</small>
+                </div>
+                <div class="z-sect">¿Quién ingresa?</div>
+                <div class="z-profsel">
+                  <div class="z-prof on">
+                    <div class="z-av2">AT</div>
+                    <div><b>Responsable ATM</b><small>Unidad técnica municipal</small></div>
+                  </div>
+                  <div class="z-prof">
+                    <div class="z-av2">JE</div>
+                    <div><b>Jefe de la UC</b><small>Valida registros del ATM</small></div>
+                  </div>
+                  <div class="z-prof">
+                    <div class="z-av2">OP</div>
+                    <div><b>Operador JASS</b><small>Registro en campo</small></div>
+                  </div>
+                </div>
+                <button class="z-btn">
+                  <svg viewBox="0 0 24 24"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-1 14H9V8h2v8zm4 0h-2V8h2v8z"/></svg>
+                  Ingresar sin conexión
+                </button>
+                <p class="z-support">Usarás los datos sincronizados previamente. Todo se envía cuando vuelva la señal.</p>
+              </div>
+              <div class="z-nav3">
+                <button><svg viewBox="0 0 24 24"><rect x="4" y="11" width="16" height="2" rx="1"/></svg></button>
+                <button><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="8" stroke-width="2"/></svg></button>
+                <button><svg viewBox="0 0 24 24"><polyline points="9,18 15,12 9,6" stroke-width="2"/></svg></button>
+              </div>
+            </div>
+          </div>
+          <!-- Ring: Ingresar button -->
+          <div class="ring" id="s2-ring-login" style="left:26px;top:492px;width:378px;height:52px;border-radius:26px"></div>
+          <!-- Ring: module tiles area (will be revealed in tip step B) -->
+          <div class="ring" id="s2-ring-prof" style="left:26px;top:198px;width:378px;height:152px"></div>
+        </div>
+        <div class="home-bar"></div>
+      </div>
+
+      <div class="tips">
+        <div class="tip">
+          <b>Paso 1: Selecciona tu perfil</b>
+          <p>Elige el perfil según tu rol: ATM, Jefe UC u Operador JASS para acceder a los módulos correspondientes.</p>
+        </div>
+        <div class="tip" id="s2-tip2" style="opacity:0">
+          <b>Ingreso sin conexión</b>
+          <p>Funciona en campo sin señal. Los registros se sincronizan automáticamente cuando hay internet.</p>
+        </div>
+        <div class="tip" id="s2-tip3" style="opacity:0">
+          <b>5 módulos de registro</b>
+          <p>Monitoreo · Limpieza · Cloración · Mantenimiento · Saneamiento. Cada uno con su flujo guiado.</p>
+        </div>
+      </div>
+
+      <div class="cursor" id="s2-cursor" style="left:2000px;top:1080px;opacity:0"></div>
+      <div class="ripple" id="s2-ripple" style="left:0;top:0"></div>
+    </div>
+  </div>
+
+  <!-- ═══ ESCENA 3 – PANEL DE MÓDULOS Y SELECCIÓN (11-19 s) ═ -->
+  <div class="scene clip" id="s3" data-start="11" data-duration="8" data-track-index="0" style="visibility:hidden">
+    <div class="scene-content">
+      <div class="module-header">
+        <div class="step-pill" id="s3-pill">
+          <span class="num">2</span>
+          <span class="label">Módulos y selección de sistema</span>
+        </div>
+      </div>
+
+      <div class="frame" id="s3-frame">
+        <div class="notch"></div>
+        <div class="screen">
+          <div class="slot">
+            <!-- ── DATASS: Home — panel de módulos ── -->
+            <div class="z-root">
+              <div class="z-sb">
+                <span>9:43</span>
+                <span class="r">
+                  <svg viewBox="0 0 24 24"><path d="M1 9l2 2c4.97-4.97 13.03-4.97 18 0l2-2C16.93 2.93 7.08 2.93 1 9zm8 8 3 3 3-3a4.24 4.24 0 0 0-6 0zm-4-4 2 2a7.07 7.07 0 0 1 10 0l2-2C15.14 9.14 8.87 9.14 5 13z"/></svg>
+                  <svg viewBox="0 0 24 24"><path d="M15.67 4H14V2h-4v2H8.33C7.6 4 7 4.6 7 5.33v15.33C7 21.4 7.6 22 8.33 22h7.33c.74 0 1.34-.6 1.34-1.33V5.33C17 4.6 16.4 4 15.67 4z"/></svg>
+                </span>
+              </div>
+              <div class="z-ab">
+                <div class="z-ab-t">Buenos días<small>Responsable ATM · MPDP</small></div>
+                <div class="z-ib"><svg viewBox="0 0 24 24"><path d="M12 12c2.21 0 4-1.79 4-4s-1.79-4-4-4-4 1.79-4 4 1.79 4 4 4zm0 2c-2.67 0-8 1.34-8 4v2h16v-2c0-2.66-5.33-4-8-4z"/></svg></div>
+              </div>
+              <div class="z-scroll" style="padding-bottom:94px">
+                <div class="z-htabs">
+                  <button class="on">¿Qué registrar?</button>
+                  <button>Para hoy <span style="display:inline-block;width:6px;height:6px;border-radius:50%;background:#BA1A1A;margin-left:3px;vertical-align:middle"></span></button>
+                  <button>Mis registros</button>
+                </div>
+                <div class="z-sect" style="margin-top:2px">Elige el módulo</div>
+                <div class="z-mtiles">
+                  <button class="z-mtile">
+                    <div class="z-ml z-ml-mon"><svg viewBox="0 0 24 24"><path d="M12 2.69 6.34 8.34a8 8 0 1 0 11.32 0L12 2.69z"/></svg></div>
+                    <b>Monitoreo</b><small>Calidad + continuidad</small>
+                  </button>
+                  <button class="z-mtile">
+                    <div class="z-ml z-ml-lim"><svg viewBox="0 0 24 24"><path d="M19 9l1.25-2.75L23 5l-2.75-1.25L19 1l-1.25 2.75L15 5l2.75 1.25L19 9zm-7.5.5L9 4 6.5 9.5 1 12l5.5 2.5L9 20l2.5-5.5L17 12l-5.5-2.5zM19 15l-1.25 2.75L15 19l2.75 1.25L19 23l1.25-2.75L23 19l-2.75-1.25L19 15z"/></svg></div>
+                    <b>Limpieza</b><small>Componentes SAP</small>
+                  </button>
+                  <button class="z-mtile">
+                    <div class="z-ml z-ml-clo"><svg viewBox="0 0 24 24"><path d="M19.8 18.4 14 10.67V6.5l1.35-1.69c.26-.33.03-.81-.39-.81H9.04c-.42 0-.65.48-.39.81L10 6.5v4.17L4.2 18.4c-.49.66-.02 1.6.8 1.6h14c.82 0 1.29-.94.8-1.6z"/></svg></div>
+                    <b>Cloración</b><small>Dosificación</small>
+                  </button>
+                  <button class="z-mtile">
+                    <div class="z-ml z-ml-man"><svg viewBox="0 0 24 24"><path d="M22.7 19l-9.1-9.1c.9-2.3.4-5-1.5-6.9-2-2-5-2.4-7.4-1.3L9 6 6 9 1.6 4.7C.4 7.1.9 10.1 2.9 12.1c1.9 1.9 4.6 2.4 6.9 1.5l9.1 9.1c.4.4 1 .4 1.4 0l2.3-2.3c.5-.4.5-1.1.1-1.4z"/></svg></div>
+                    <b>Mantenimiento</b><small>Panel fotográfico</small>
+                  </button>
+                  <button class="z-mtile">
+                    <div class="z-ml z-ml-san"><svg viewBox="0 0 24 24"><path d="M17 12h-5v5h5v-5zM16 1v2H8V1H6v2H5c-1.11 0-1.99.9-1.99 2L3 19a2 2 0 0 0 2 2h14c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2h-1V1h-2zm3 18H5V8h14v11z"/></svg></div>
+                    <b>Saneamiento</b><small>Alcantarillado</small>
+                  </button>
+                </div>
+                <!-- pending alert card -->
+                <div class="z-card" style="border-left:4px solid #BA1A1A;background:#FFF0EE">
+                  <div class="row">
+                    <span class="t" style="color:#93000A">Recarga de cloro pendiente</span>
+                    <span class="z-badge z-red">2 SAP</span>
+                  </div>
+                  <span class="s">La solución se agota en ≤ 2 días</span>
+                </div>
+              </div>
+              <!-- bottom nav -->
+              <div class="z-bnav" style="position:absolute">
+                <button class="on"><div class="ind"><svg viewBox="0 0 24 24"><path d="M10 20v-6h4v6h5v-8h3L12 3 2 12h3v8z"/></svg></div>Inicio</button>
+                <button><div class="ind"><svg viewBox="0 0 24 24"><path d="M19.35 10.04A7.49 7.49 0 0 0 12 4C9.11 4 6.6 5.64 5.35 8.04A5.994 5.994 0 0 0 0 14c0 3.31 2.69 6 6 6h13c2.76 0 5-2.24 5-5 0-2.64-2.05-4.78-4.65-4.96z"/></svg></div>Datos</button>
+                <button><div class="ind"><svg viewBox="0 0 24 24"><path d="M12 12c2.21 0 4-1.79 4-4s-1.79-4-4-4-4 1.79-4 4 1.79 4 4 4zm0 2c-2.67 0-8 1.34-8 4v2h16v-2c0-2.66-5.33-4-8-4z"/></svg></div>Perfil</button>
+              </div>
+              <div class="z-nav3">
+                <button><svg viewBox="0 0 24 24"><rect x="4" y="11" width="16" height="2" rx="1"/></svg></button>
+                <button><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="8" stroke-width="2"/></svg></button>
+                <button><svg viewBox="0 0 24 24"><polyline points="9,18 15,12 9,6" stroke-width="2"/></svg></button>
+              </div>
+            </div>
+          </div>
+          <!-- Ring: Monitoreo tile -->
+          <div class="ring" id="s3-ring-mon" style="left:26px;top:210px;width:120px;height:88px"></div>
+          <!-- Ring: system alert -->
+          <div class="ring" id="s3-ring-alert" style="left:26px;top:320px;width:378px;height:72px"></div>
+        </div>
+        <div class="home-bar"></div>
+      </div>
+
+      <div class="tips">
+        <div class="tip">
+          <b>Paso 2: Elige el módulo</b>
+          <p>El panel muestra los 5 módulos de registro disponibles según tu perfil y el ámbito asignado.</p>
+        </div>
+        <div class="tip" id="s3-tip2" style="opacity:0">
+          <b>Monitoreo del agua</b>
+          <p>Registra la calidad del agua (cloro residual, turbidez) y la continuidad del servicio por punto de monitoreo.</p>
+        </div>
+        <div class="tip" id="s3-tip3" style="opacity:0">
+          <b>Alertas automáticas</b>
+          <p>La app avisa cuando la cloración está por agotarse o hay registros observados que corregir.</p>
+        </div>
+      </div>
+
+      <div class="cursor" id="s3-cursor" style="left:2000px;top:1080px;opacity:0"></div>
+      <div class="ripple" id="s3-ripple" style="left:0;top:0"></div>
+    </div>
+  </div>
+
+  <!-- ═══ ESCENA 4 – NAVEGACIÓN Y REGISTRO EN CAMPO (19-27 s) -->
+  <div class="scene clip" id="s4" data-start="19" data-duration="8" data-track-index="0" style="visibility:hidden">
+    <div class="scene-content">
+      <div class="module-header">
+        <div class="step-pill" id="s4-pill">
+          <span class="num">3</span>
+          <span class="label">Navegación y registro fotográfico</span>
+        </div>
+      </div>
+
+      <div class="frame" id="s4-frame">
+        <div class="notch"></div>
+        <div class="screen">
+          <div class="slot">
+            <!-- ── DATASS: Selector de sistema + Componentes ── -->
+            <div class="z-root">
+              <div class="z-sb">
+                <span>9:47</span>
+                <span class="r">
+                  <svg viewBox="0 0 24 24"><path d="M1 9l2 2c4.97-4.97 13.03-4.97 18 0l2-2C16.93 2.93 7.08 2.93 1 9zm8 8 3 3 3-3a4.24 4.24 0 0 0-6 0zm-4-4 2 2a7.07 7.07 0 0 1 10 0l2-2C15.14 9.14 8.87 9.14 5 13z"/></svg>
+                  <svg viewBox="0 0 24 24"><path d="M15.67 4H14V2h-4v2H8.33C7.6 4 7 4.6 7 5.33v15.33C7 21.4 7.6 22 8.33 22h7.33c.74 0 1.34-.6 1.34-1.33V5.33C17 4.6 16.4 4 15.67 4z"/></svg>
+                </span>
+              </div>
+              <div class="z-ab">
+                <div class="z-ib"><svg viewBox="0 0 24 24"><path d="M20 11H7.83l5.59-5.59L12 4l-8 8 8 8 1.41-1.41L7.83 13H20v-2z"/></svg></div>
+                <div class="z-ab-t">Limpieza y desinfección<small>SAP • Selección de sistema</small></div>
+              </div>
+              <div class="z-crumb">
+                <b>Daniel A. Carrión</b>
+                <svg viewBox="0 0 24 24"><path d="M10 6 8.59 7.41 13.17 12l-4.58 4.59L10 18l6-6z"/></svg>
+                <b>Yanacancha</b>
+                <svg viewBox="0 0 24 24"><path d="M10 6 8.59 7.41 13.17 12l-4.58 4.59L10 18l6-6z"/></svg>
+                <span>SAP</span>
+              </div>
+              <div class="z-scroll" style="padding-bottom:16px">
+                <div class="z-lst">
+                  <button class="z-li">
+                    <div class="z-lead"><svg viewBox="0 0 24 24"><path d="M12 2.69 6.34 8.34a8 8 0 1 0 11.32 0L12 2.69z"/></svg></div>
+                    <div>
+                      <div class="z-li-t">SAP-001 · Pucará Alto</div>
+                      <div class="z-li-s">Presa + canaleta · Bueno</div>
+                    </div>
+                    <div class="z-frac some">2/8</div>
+                  </button>
+                  <button class="z-li">
+                    <div class="z-lead"><svg viewBox="0 0 24 24"><path d="M12 2.69 6.34 8.34a8 8 0 1 0 11.32 0L12 2.69z"/></svg></div>
+                    <div>
+                      <div class="z-li-t">SAP-002 · Pucará Bajo</div>
+                      <div class="z-li-s">Captación ladera · Regular</div>
+                    </div>
+                    <div class="z-frac">0/6</div>
+                  </button>
+                  <button class="z-li">
+                    <div class="z-lead"><svg viewBox="0 0 24 24"><path d="M12 2.69 6.34 8.34a8 8 0 1 0 11.32 0L12 2.69z"/></svg></div>
+                    <div>
+                      <div class="z-li-t">SAP-003 · Yanachaca</div>
+                      <div class="z-li-s">Sistema por gravedad · Bueno</div>
+                    </div>
+                    <div class="z-frac all">6/6</div>
+                  </button>
+                  <button class="z-li">
+                    <div class="z-lead"><svg viewBox="0 0 24 24"><path d="M12 2.69 6.34 8.34a8 8 0 1 0 11.32 0L12 2.69z"/></svg></div>
+                    <div>
+                      <div class="z-li-t">SAP-004 · Milpo</div>
+                      <div class="z-li-s">Captación manantial · Bueno</div>
+                    </div>
+                    <div class="z-frac">0/5</div>
+                  </button>
+                </div>
+                <!-- SAP selected info -->
+                <div class="z-sapcard">
+                  <div class="lead"><svg viewBox="0 0 24 24"><path d="M12 2.69 6.34 8.34a8 8 0 1 0 11.32 0L12 2.69z"/></svg></div>
+                  <div>
+                    <b>SAP-001 · Pucará Alto</b>
+                    <span>Centro poblado: Yanacancha</span>
+                    <span>Dist. Daniel A. Carrión · Pasco</span>
+                  </div>
+                </div>
+                <div class="z-steps">
+                  <div class="z-step done">
+                    <div class="sn"><svg viewBox="0 0 24 24"><path d="M9 16.17 4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41z"/></svg></div>
+                    <div class="sl">Antes</div>
+                    <small>2 fotos</small>
+                  </div>
+                  <div class="z-step on">
+                    <div class="sn">2</div>
+                    <div class="sl">Estado</div>
+                    <small>Clasificación</small>
+                  </div>
+                  <div class="z-step">
+                    <div class="sn">3</div>
+                    <div class="sl">Después</div>
+                    <small>Evidencia</small>
+                  </div>
+                </div>
+              </div>
+              <div class="z-nav3">
+                <button><svg viewBox="0 0 24 24"><rect x="4" y="11" width="16" height="2" rx="1"/></svg></button>
+                <button><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="8" stroke-width="2"/></svg></button>
+                <button><svg viewBox="0 0 24 24"><polyline points="9,18 15,12 9,6" stroke-width="2"/></svg></button>
+              </div>
+            </div>
+          </div>
+          <!-- Ring: sistema list -->
+          <div class="ring" id="s4-ring-sys" style="left:26px;top:190px;width:378px;height:220px"></div>
+          <!-- Ring: steps bar -->
+          <div class="ring" id="s4-ring-steps" style="left:26px;top:656px;width:378px;height:80px"></div>
+        </div>
+        <div class="home-bar"></div>
+      </div>
+
+      <div class="tips">
+        <div class="tip">
+          <b>Paso 3: Selecciona el SAP</b>
+          <p>Navega por Departamento → Distrito → Centro poblado hasta el sistema de agua que vas a registrar.</p>
+        </div>
+        <div class="tip" id="s4-tip2" style="opacity:0">
+          <b>Barra de progreso</b>
+          <p>Cada SAP muestra cuántos componentes has completado (p.ej. 2/8). Los sistemas completados se marcan en verde.</p>
+        </div>
+        <div class="tip" id="s4-tip3" style="opacity:0">
+          <b>Flujo guiado: Antes → Estado → Después</b>
+          <p>La app te lleva paso a paso: foto del antes, clasificación del estado y foto del después de cada componente.</p>
+        </div>
+      </div>
+
+      <div class="cursor" id="s4-cursor" style="left:2000px;top:1080px;opacity:0"></div>
+      <div class="ripple" id="s4-ripple" style="left:0;top:0"></div>
+    </div>
+  </div>
+
+  <!-- ═══ ESCENA 5 – CÁMARA Y ENVÍO (27-35 s) ═══════════════ -->
+  <div class="scene clip" id="s5" data-start="27" data-duration="8" data-track-index="0" style="visibility:hidden">
+    <div class="scene-content">
+      <div class="module-header">
+        <div class="step-pill" id="s5-pill">
+          <span class="num">4</span>
+          <span class="label">Cámara, resumen y envío</span>
+        </div>
+      </div>
+
+      <div class="frame" id="s5-frame">
+        <div class="notch"></div>
+        <div class="screen">
+          <div class="slot">
+            <!-- ── DATASS: Vista de cámara + Resumen ── -->
+            <div class="z-root">
+              <div class="z-sb" style="background:#000;position:relative;z-index:2">
+                <span>9:52</span>
+                <span class="r">
+                  <svg viewBox="0 0 24 24"><path d="M1 9l2 2c4.97-4.97 13.03-4.97 18 0l2-2C16.93 2.93 7.08 2.93 1 9zm8 8 3 3 3-3a4.24 4.24 0 0 0-6 0zm-4-4 2 2a7.07 7.07 0 0 1 10 0l2-2C15.14 9.14 8.87 9.14 5 13z"/></svg>
+                  <svg viewBox="0 0 24 24"><path d="M15.67 4H14V2h-4v2H8.33C7.6 4 7 4.6 7 5.33v15.33C7 21.4 7.6 22 8.33 22h7.33c.74 0 1.34-.6 1.34-1.33V5.33C17 4.6 16.4 4 15.67 4z"/></svg>
+                </span>
+              </div>
+              <div class="z-cam">
+                <div class="z-cam-top">
+                  <div class="z-ib"><svg viewBox="0 0 24 24"><path d="M19 6.41 17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg></div>
+                  <div class="z-cam-chip" style="font-size:11px">
+                    <svg viewBox="0 0 24 24"><path d="M12 2C8.13 2 5 5.13 5 9c0 5.25 7 13 7 13s7-7.75 7-13c0-3.87-3.13-7-7-7zm0 9.5a2.5 2.5 0 0 1 0-5 2.5 2.5 0 0 1 0 5z"/></svg>
+                    GPS activo
+                  </div>
+                  <div class="z-ib"></div>
+                </div>
+                <div class="z-cam-vf" style="flex:1">
+                  <div class="z-cam-grid"></div>
+                  <div class="z-cam-lbl">ANTES · SAP-001</div>
+                  <!-- simulated landscape / reservoir scene -->
+                  <div style="position:absolute;bottom:30%;left:0;right:0;height:2px;background:rgba(255,255,255,.18)"></div>
+                  <div style="position:absolute;bottom:0;left:0;right:0;height:30%;background:linear-gradient(180deg,#1B5C7A 0%,#0D3F55 100%)"></div>
+                  <!-- cross-hairs -->
+                  <div style="position:absolute;top:50%;left:50%;width:48px;height:48px;transform:translate(-50%,-50%)">
+                    <div style="position:absolute;left:50%;top:0;width:1px;height:35%;background:rgba(255,255,255,.6)"></div>
+                    <div style="position:absolute;left:50%;bottom:0;width:1px;height:35%;background:rgba(255,255,255,.6)"></div>
+                    <div style="position:absolute;top:50%;left:0;width:35%;height:1px;background:rgba(255,255,255,.6)"></div>
+                    <div style="position:absolute;top:50%;right:0;width:35%;height:1px;background:rgba(255,255,255,.6)"></div>
+                  </div>
+                </div>
+                <div class="z-cam-mid">
+                  <div style="display:flex;justify-content:space-between;font-size:11.5px">
+                    <span style="opacity:.8">Reservorio principal – 15 m³</span>
+                    <span style="color:#C4EFD2">✓ GPS</span>
+                  </div>
+                </div>
+                <div class="z-cam-bottom">
+                  <div class="z-cam-prev">
+                    <!-- placeholder thumbnail -->
+                    <div style="width:100%;height:100%;background:linear-gradient(135deg,#1F4E79,#2B7BB9)"></div>
+                  </div>
+                  <div class="z-shutter"><i></i></div>
+                  <div class="z-cam-flip">
+                    <svg viewBox="0 0 24 24"><path d="M20 5h-3.17L15 3H9L7.17 5H4c-1.1 0-2 .9-2 2v12c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V7c0-1.1-.9-2-2-2zm-5 11.5V14H9v2.5L5.5 13 9 9.5V12h6V9.5l3.5 3.5-3.5 3.5z" fill="#fff" opacity=".55"/></svg>
+                  </div>
+                </div>
+              </div>
+              <div class="z-nav3" style="background:#000">
+                <button style="color:#888"><svg viewBox="0 0 24 24"><rect x="4" y="11" width="16" height="2" rx="1"/></svg></button>
+                <button style="color:#888"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="8" stroke-width="2"/></svg></button>
+                <button style="color:#888"><svg viewBox="0 0 24 24"><polyline points="9,18 15,12 9,6" stroke-width="2"/></svg></button>
+              </div>
+            </div>
+          </div>
+          <!-- Ring: viewfinder / shutter area -->
+          <div class="ring" id="s5-ring-cam" style="left:26px;top:240px;width:378px;height:380px;border-radius:12px"></div>
+          <!-- Ring: shutter button -->
+          <div class="ring" id="s5-ring-shutter" style="left:180px;top:770px;width:92px;height:92px;border-radius:50%"></div>
+        </div>
+        <div class="home-bar"></div>
+      </div>
+
+      <div class="tips">
+        <div class="tip">
+          <b>Paso 4: Fotografía la evidencia</b>
+          <p>La app abre la cámara directamente en el componente a registrar. El GPS, fecha y hora se capturan de forma automática.</p>
+        </div>
+        <div class="tip" id="s5-tip2" style="opacity:0">
+          <b>Antes y después documentados</b>
+          <p>Para cada componente se registra la foto del estado inicial (antes) y el resultado de la intervención (después).</p>
+        </div>
+        <div class="tip" id="s5-tip3" style="opacity:0">
+          <b>Envío automático cuando hay señal</b>
+          <p>Trabaja sin conexión. Las fotos se sincronizan en segundo plano al detectar WiFi o datos móviles.</p>
+        </div>
+      </div>
+
+      <div class="cursor" id="s5-cursor" style="left:2000px;top:1080px;opacity:0"></div>
+      <div class="ripple" id="s5-ripple" style="left:0;top:0"></div>
+    </div>
+  </div>
+
+  <!-- ═══ ESCENA 6 – CIERRE (35-38 s) ══════════════════════ -->
+  <div class="scene clip" id="s6" data-start="35" data-duration="3" data-track-index="0" style="visibility:hidden">
+    <div class="glow" style="width:900px;height:900px;background:#1558C8;bottom:-280px;left:50%;transform:translateX(-50%)"></div>
+    <div class="glow" style="width:500px;height:500px;background:#38BDF8;top:80px;right:100px"></div>
+    <div class="scene-content" style="display:flex;flex-direction:column;justify-content:center;align-items:center;gap:14px">
+      <h2 id="s6-title" class="display" style="font-size:72px;text-align:center">DATASS: evidencia completa</h2>
+      <p id="s6-sub" class="body-txt" style="font-size:26px;text-align:center">
+        Monitoreo &nbsp;·&nbsp; Limpieza &nbsp;·&nbsp; Cloración &nbsp;·&nbsp; Mantenimiento &nbsp;·&nbsp; Saneamiento
+      </p>
+    </div>
+    <div class="grain"></div>
+  </div>
+
+  <!-- barra de progreso -->
+  <div class="prog-rail" id="prog-rail" style="z-index:10">
+    <div class="prog-fill" id="prog-fill"></div>
+  </div>
+
+</div><!-- /#main -->
+
+<script>
+window.__timelines = window.__timelines || {};
+var tl = gsap.timeline({ paused: true });
+
+/* ── Visibilidad de escenas ── */
+tl.set("#s1",{autoAlpha:0},3);
+tl.set("#s2",{autoAlpha:1},3);  tl.set("#s2",{autoAlpha:0},11);
+tl.set("#s3",{autoAlpha:1},11); tl.set("#s3",{autoAlpha:0},19);
+tl.set("#s4",{autoAlpha:1},19); tl.set("#s4",{autoAlpha:0},27);
+tl.set("#s5",{autoAlpha:1},27); tl.set("#s5",{autoAlpha:0},35);
+tl.set("#s6",{autoAlpha:1},35);
+
+tl.to("#prog-fill",{width:"100%",duration:38,ease:"none"},0);
+
+/* ═══ ESCENA 1 – INTRO (0-3 s) ═══════════════════════════ */
+tl.from("#s1-kick", {autoAlpha:0,y:16,duration:.4,ease:"power2.out"},0.15);
+tl.from("#s1-title",{autoAlpha:0,yPercent:30,duration:.65,ease:"back.out(1.6)"},0.3);
+tl.from("#s1-sub",  {autoAlpha:0,y:14,duration:.4,ease:"power2.out"},0.8);
+tl.to(".scene#s1 .glow",{scale:1.1,duration:1.4,ease:"sine.inOut",yoyo:true,repeat:1},0.4);
+
+/* ═══ ESCENA 2 – Login y panel principal (3-11 s) ════════ */
+tl.from("#s2-pill",  {autoAlpha:0,y:-16,duration:.4,ease:"power2.out"},3.15);
+tl.from("#s2-frame", {autoAlpha:0,y:44,duration:.65,ease:"power3.out"},3.2);
+tl.from(".scene#s2 .tip:first-child",{autoAlpha:0,x:28,duration:.5,ease:"power2.out"},3.5);
+
+/* Paso A: cursor → perfil → ring perfil → tip 2 */
+tl.set("#s2-cursor",{autoAlpha:0},3);
+tl.to("#s2-cursor",{autoAlpha:1,left:960,top:358,duration:.7,ease:"power2.out"},4.3);
+tl.to("#s2-cursor",{scale:.7,duration:.12,ease:"power1.out",yoyo:true,repeat:1},5.0);
+tl.set("#s2-ripple",{left:960,top:358,scale:0,opacity:1},5.0);
+tl.to("#s2-ripple",{scale:2.2,opacity:0,duration:.5,ease:"power1.out"},5.05);
+tl.to("#s2-ring-prof",{opacity:1,duration:.3},5.1);
+tl.to("#s2-tip2",{opacity:1,duration:.4,ease:"power2.out"},5.2);
+
+/* Paso B: cursor → botón Ingresar → ring login → tip 3 */
+tl.to("#s2-cursor",{left:960,top:650,duration:.7,ease:"power2.out"},6.8);
+tl.to("#s2-cursor",{scale:.7,duration:.12,ease:"power1.out",yoyo:true,repeat:1},7.5);
+tl.set("#s2-ripple",{left:960,top:650,scale:0,opacity:1},7.5);
+tl.to("#s2-ripple",{scale:2.2,opacity:0,duration:.5,ease:"power1.out"},7.55);
+tl.to("#s2-ring-prof",{opacity:0,duration:.2},7.5);
+tl.to("#s2-ring-login",{opacity:1,duration:.3},7.6);
+tl.to("#s2-tip3",{opacity:1,duration:.4,ease:"power2.out"},7.7);
+tl.to("#s2-cursor",{autoAlpha:0,duration:.3},10.4);
+
+/* ═══ ESCENA 3 – Módulos (11-19 s) ══════════════════════ */
+tl.from("#s3-pill",  {autoAlpha:0,y:-16,duration:.4,ease:"power2.out"},11.15);
+tl.from("#s3-frame", {autoAlpha:0,y:44,duration:.65,ease:"power3.out"},11.2);
+tl.from(".scene#s3 .tip:first-child",{autoAlpha:0,x:28,duration:.5,ease:"power2.out"},11.5);
+
+/* Paso A: cursor → módulo Monitoreo → ring → tip 2 */
+tl.set("#s3-cursor",{autoAlpha:0},11);
+tl.to("#s3-cursor",{autoAlpha:1,left:850,top:460,duration:.7,ease:"power2.out"},12.4);
+tl.to("#s3-cursor",{scale:.7,duration:.12,ease:"power1.out",yoyo:true,repeat:1},13.1);
+tl.set("#s3-ripple",{left:850,top:460,scale:0,opacity:1},13.1);
+tl.to("#s3-ripple",{scale:2.2,opacity:0,duration:.5,ease:"power1.out"},13.15);
+tl.to("#s3-ring-mon",{opacity:1,duration:.3},13.2);
+tl.to("#s3-tip2",{opacity:1,duration:.4,ease:"power2.out"},13.3);
+
+/* Paso B: cursor → alerta cloración → ring → tip 3 */
+tl.to("#s3-cursor",{left:960,top:576,duration:.7,ease:"power2.out"},14.8);
+tl.to("#s3-cursor",{scale:.7,duration:.12,ease:"power1.out",yoyo:true,repeat:1},15.5);
+tl.set("#s3-ripple",{left:960,top:576,scale:0,opacity:1},15.5);
+tl.to("#s3-ripple",{scale:2.2,opacity:0,duration:.5,ease:"power1.out"},15.55);
+tl.to("#s3-ring-mon",{opacity:0,duration:.2},15.5);
+tl.to("#s3-ring-alert",{opacity:1,duration:.3},15.6);
+tl.to("#s3-tip3",{opacity:1,duration:.4,ease:"power2.out"},15.7);
+tl.to("#s3-cursor",{autoAlpha:0,duration:.3},18.4);
+
+/* ═══ ESCENA 4 – Navegación y componentes (19-27 s) ═════ */
+tl.from("#s4-pill",  {autoAlpha:0,y:-16,duration:.4,ease:"power2.out"},19.15);
+tl.from("#s4-frame", {autoAlpha:0,y:44,duration:.65,ease:"power3.out"},19.2);
+tl.from(".scene#s4 .tip:first-child",{autoAlpha:0,x:28,duration:.5,ease:"power2.out"},19.5);
+
+/* Paso A: cursor → lista de sistemas → ring → tip 2 */
+tl.set("#s4-cursor",{autoAlpha:0},19);
+tl.to("#s4-cursor",{autoAlpha:1,left:960,top:460,duration:.7,ease:"power2.out"},20.4);
+tl.to("#s4-cursor",{scale:.7,duration:.12,ease:"power1.out",yoyo:true,repeat:1},21.1);
+tl.set("#s4-ripple",{left:960,top:460,scale:0,opacity:1},21.1);
+tl.to("#s4-ripple",{scale:2.2,opacity:0,duration:.5,ease:"power1.out"},21.15);
+tl.to("#s4-ring-sys",{opacity:1,duration:.3},21.2);
+tl.to("#s4-tip2",{opacity:1,duration:.4,ease:"power2.out"},21.3);
+
+/* Paso B: cursor → barra de pasos → ring → tip 3 */
+tl.to("#s4-cursor",{left:960,top:862,duration:.7,ease:"power2.out"},22.8);
+tl.to("#s4-cursor",{scale:.7,duration:.12,ease:"power1.out",yoyo:true,repeat:1},23.5);
+tl.set("#s4-ripple",{left:960,top:862,scale:0,opacity:1},23.5);
+tl.to("#s4-ripple",{scale:2.2,opacity:0,duration:.5,ease:"power1.out"},23.55);
+tl.to("#s4-ring-sys",{opacity:0,duration:.2},23.5);
+tl.to("#s4-ring-steps",{opacity:1,duration:.3},23.6);
+tl.to("#s4-tip3",{opacity:1,duration:.4,ease:"power2.out"},23.7);
+tl.to("#s4-cursor",{autoAlpha:0,duration:.3},26.4);
+
+/* ═══ ESCENA 5 – Cámara y envío (27-35 s) ══════════════ */
+tl.from("#s5-pill",  {autoAlpha:0,y:-16,duration:.4,ease:"power2.out"},27.15);
+tl.from("#s5-frame", {autoAlpha:0,y:44,duration:.65,ease:"power3.out"},27.2);
+tl.from(".scene#s5 .tip:first-child",{autoAlpha:0,x:28,duration:.5,ease:"power2.out"},27.5);
+
+/* Paso A: cursor → visor cámara → ring → tip 2 */
+tl.set("#s5-cursor",{autoAlpha:0},27);
+tl.to("#s5-cursor",{autoAlpha:1,left:960,top:500,duration:.8,ease:"power2.out"},28.5);
+tl.to("#s5-cursor",{scale:.7,duration:.12,ease:"power1.out",yoyo:true,repeat:1},29.3);
+tl.set("#s5-ripple",{left:960,top:500,scale:0,opacity:1},29.3);
+tl.to("#s5-ripple",{scale:2.2,opacity:0,duration:.5,ease:"power1.out"},29.35);
+tl.to("#s5-ring-cam",{opacity:1,duration:.3},29.4);
+tl.to("#s5-tip2",{opacity:1,duration:.4,ease:"power2.out"},29.5);
+
+/* Paso B: cursor → botón disparador → ring shutter → tip 3 */
+tl.to("#s5-cursor",{left:960,top:862,duration:.8,ease:"power2.out"},31.2);
+tl.to("#s5-cursor",{scale:.7,duration:.12,ease:"power1.out",yoyo:true,repeat:1},32.0);
+tl.set("#s5-ripple",{left:960,top:862,scale:0,opacity:1},32.0);
+tl.to("#s5-ripple",{scale:2.6,opacity:0,duration:.6,ease:"power1.out"},32.05);
+tl.to("#s5-ring-cam",{opacity:0,duration:.2},32.0);
+tl.to("#s5-ring-shutter",{opacity:1,duration:.3},32.1);
+tl.to("#s5-tip3",{opacity:1,duration:.4,ease:"power2.out"},32.2);
+/* leve "respiración" mientras se lee el tip final */
+tl.to("#s5-frame",{y:-6,duration:.7,ease:"sine.inOut",yoyo:true,repeat:1},33.0);
+tl.to("#s5-cursor",{autoAlpha:0,duration:.3},34.4);
+
+/* ═══ ESCENA 6 – Cierre (35-38 s) ══════════════════════ */
+tl.from("#s6-title",{autoAlpha:0,yPercent:28,duration:.65,ease:"back.out(1.6)"},35.2);
+tl.from("#s6-sub",  {autoAlpha:0,y:14,duration:.4,ease:"power2.out"},35.7);
+tl.to(".scene#s6 .glow",{scale:1.1,duration:1.6,ease:"sine.inOut",yoyo:true,repeat:1},35.9);
+
+window.__timelines["main"] = tl;
+</script>
+</body>
+</html>

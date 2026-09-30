@@ -99,6 +99,8 @@ examples/*
 !examples/gcp-cloud-run/**
 !examples/docs-reference-project
 !examples/docs-reference-project/**
+!examples/datass-tour
+!examples/datass-tour/**
 # …but never the local smoke run's build/render artifacts.
 examples/gcp-cloud-run/scripts/gcp-smoke-artifacts/
 packages/studio/data/
@@ -152,6 +154,8 @@ captures/
 !registry/blocks/slack-notification-ad/
 !registry/blocks/slack-notification-ad/**
 *-tour/
+!examples/datass-tour/
+!examples/datass-tour/**
 *-brand/
 
 # Local regression-test and video project scratch directories.
