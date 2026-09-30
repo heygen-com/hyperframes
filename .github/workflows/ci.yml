@@ -134,7 +134,7 @@ jobs:
               - "scripts/check-skill-mirror.mjs"
               - "package.json"
               - ".github/workflows/ci.yml"
-              - ".github/actions/**"
+              - ".github/actions/install-ffmpeg-linux/**"
             codex_plugin:
               - "skills-manifest.json"
               - "packages/cli/package.json"
