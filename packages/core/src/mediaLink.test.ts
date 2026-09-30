@@ -1,7 +1,13 @@
 import { describe, expect, it } from "vitest";
 import {
   MEDIA_LINK_ATTR,
+  SYNC_ORIGIN_ATTR,
+  formatSyncOffset,
   linkTimingMismatches,
+  moveIntoSyncStart,
+  slipIntoSyncMediaStart,
+  sourceZeroTime,
+  syncOffsetFrames,
   mintLinkId,
   readLinkTiming,
   relinkSplitHalves,
@@ -95,5 +101,74 @@ describe("relinkSplitHalves", () => {
     expect(new Set(ids).size).toBe(2);
     expect(ids).not.toContain("lk-1");
     expect(ids).not.toContain("lk-7");
+  });
+});
+
+describe("relinkSplitHalves sync origin", () => {
+  it("gives right halves their own shared sync origin, even when unlinked", () => {
+    document.body.innerHTML = `
+      <video id="v" data-sync-origin="lk-1"></video><video id="v2" data-sync-origin="lk-1"></video>
+      <audio id="a" data-sync-origin="lk-1"></audio><audio id="a2" data-sync-origin="lk-1"></audio>`;
+    relinkSplitHalves(document, ["v2", "a2"]);
+    const origin = (id: string) => document.getElementById(id)?.getAttribute(SYNC_ORIGIN_ATTR);
+    expect(origin("v")).toBe("lk-1");
+    expect(origin("a")).toBe("lk-1");
+    expect(origin("v2")).not.toBe("lk-1");
+    expect(origin("v2")).toBe(origin("a2"));
+  });
+});
+
+describe("sync offset", () => {
+  const clip = (start: number, mediaStart = 0, playbackRate = 1) => ({
+    start,
+    mediaStart,
+    playbackRate,
+  });
+
+  it("places source zero at start minus media-start over rate", () => {
+    expect(sourceZeroTime(clip(4, 2, 2))).toBe(3);
+  });
+
+  it("is zero for a pair in sync, whatever their shared media start", () => {
+    expect(syncOffsetFrames(clip(2, 1), clip(2, 1), 30)).toBe(0);
+    expect(syncOffsetFrames(clip(3, 2), clip(2, 1), 30)).toBe(0);
+  });
+
+  it("is signed from the clip's side: late is positive, and the partner reads the negation", () => {
+    expect(syncOffsetFrames(clip(2 + 10 / 30), clip(2), 30)).toBe(10);
+    expect(syncOffsetFrames(clip(2), clip(2 + 10 / 30), 30)).toBe(-10);
+  });
+
+  it("counts media start: a slipped clip is out of sync in place", () => {
+    expect(syncOffsetFrames(clip(2, 0.5), clip(2, 0), 30)).toBe(-15);
+  });
+
+  it("divides media start by the shared rate", () => {
+    expect(syncOffsetFrames(clip(2, 1, 2), clip(2, 0, 2), 30)).toBe(-15);
+  });
+
+  it("has no offset when the rates differ", () => {
+    expect(syncOffsetFrames(clip(2, 0, 1.5), clip(2, 0, 1), 30)).toBeNull();
+  });
+
+  it("formats frames, then seconds:frames past one second", () => {
+    expect(formatSyncOffset(10, 30)).toBe("+10");
+    expect(formatSyncOffset(-51, 30)).toBe("-1:21");
+    expect(formatSyncOffset(30, 30)).toBe("+1:00");
+    expect(formatSyncOffset(-3, 24)).toBe("-3");
+  });
+
+  it("moves the clip onto its partner, or refuses before zero", () => {
+    expect(moveIntoSyncStart(clip(2.5, 0.5), clip(1, 0))).toBeCloseTo(1.5);
+    expect(syncOffsetFrames(clip(1.5, 0.5), clip(1, 0), 30)).toBe(0);
+    expect(moveIntoSyncStart(clip(0, 2), clip(0, 0))).toBeCloseTo(2);
+    expect(moveIntoSyncStart(clip(1, 0), clip(0, 2))).toBeNull();
+  });
+
+  it("slips the clip's media in place, scaled by rate, or refuses before the file start", () => {
+    expect(slipIntoSyncMediaStart(clip(3, 0), clip(2, 0))).toBeCloseTo(1);
+    expect(slipIntoSyncMediaStart(clip(3, 0, 2), clip(2, 0, 2))).toBeCloseTo(2);
+    expect(syncOffsetFrames(clip(3, 2, 2), clip(2, 0, 2), 30)).toBe(0);
+    expect(slipIntoSyncMediaStart(clip(1, 0), clip(2, 0))).toBeNull();
   });
 });
