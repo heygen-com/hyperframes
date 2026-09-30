@@ -1926,6 +1926,18 @@ const parseMemo = new Map<string, ParsedGsap>();
  * Browser-safe equivalent of `parseGsapScript` (gsapParser.ts).
  * Uses acorn + acorn-walk instead of recast + @babel/parser.
  */
+/** The script that holds a file's timeline: the first to declare one, else the first with tween calls. */
+export function findTimelineScript<T extends { textContent: string | null }>(
+  scripts: readonly T[],
+): T | null {
+  const text = (script: T) => script.textContent ?? "";
+  return (
+    scripts.find((script) => text(script).includes("gsap.timeline")) ??
+    scripts.find((script) => /\.(set|to)\(/.test(text(script))) ??
+    null
+  );
+}
+
 export function parseGsapScriptAcorn(script: string): ParsedGsap {
   const parsed = parseMemo.get(script) ?? parseGsapScriptAcornUncached(script);
   parseMemo.delete(script);

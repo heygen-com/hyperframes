@@ -93,7 +93,7 @@ describe("useElementLifecycleOps — deleting a canvas multi-selection", () => {
     const ops = mountDeleteOps({
       projectIdRef: { current: "p1" },
       onTrySdkDelete: vi.fn(
-        async () => ({ status: "committed", version: "v1", after: "" }) as const,
+        async () => ({ status: "committed", version: "v1", before: "", after: "" }) as const,
       ),
     });
 

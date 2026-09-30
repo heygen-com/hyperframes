@@ -2297,8 +2297,8 @@ describe("clip timing edits sync GSAP exactly once", () => {
     return { files, fetchMock, writeProjectFile };
   }
 
-  async function setupScene(withSdk: boolean) {
-    const project = stubProjectFiles({ [SCENE_PATH]: SCENE_SOURCE });
+  async function setupScene(withSdk: boolean, source = SCENE_SOURCE) {
+    const project = stubProjectFiles({ [SCENE_PATH]: source });
     const iframe = createPreviewIframe([
       { id: "scene", track: 0 },
       { id: "side", track: 1 },
@@ -2328,13 +2328,36 @@ describe("clip timing edits sync GSAP exactly once", () => {
       activeCompPath: SCENE_PATH,
       writeProjectFile: project.writeProjectFile,
       recordEdit: vi.fn(async () => {}),
-      sdkSession: withSdk ? await openComposition(SCENE_SOURCE) : undefined,
+      sdkSession: withSdk ? await openComposition(source) : undefined,
       publishSdkSession: vi.fn<TimelinePublishSdkSession>(() => "published"),
     });
     const tweens = () =>
       project.files[SCENE_PATH]!.split("\n").filter((line) => line.startsWith("tl."));
     return { ...project, hook, scene, side, tweens };
   }
+
+  it("a move then a stretch through the SDK sync the timeline script behind a config script", async () => {
+    const withConfig = SCENE_SOURCE.replace(
+      "<script>",
+      "<script>gsap.config({ nullTargetWarn: false });</script>\n<script>",
+    );
+    const h = await setupScene(true, withConfig);
+    await act(async () => {
+      await h.hook.move(h.scene, { start: 3, track: h.scene.track });
+      await flushAsyncWork();
+    });
+    const moved = { ...h.scene, start: 3 };
+    await act(async () => {
+      await h.hook.resize(moved, { start: 3, duration: 6, playbackStart: undefined });
+      await flushAsyncWork();
+    });
+    expect(h.tweens()).toEqual([
+      `tl.to("#scene", { x: 1, duration: 1.5 }, 3);`,
+      `tl.from("#scene h1", { y: 20, duration: 1.5 }, 3.75);`,
+      `tl.to("#side", { x: 5, duration: 1 }, 2);`,
+    ]);
+    h.hook.unmount();
+  });
 
   for (const withSdk of [true, false]) {
     const via = withSdk ? "through the SDK" : "through the server (no SDK session)";

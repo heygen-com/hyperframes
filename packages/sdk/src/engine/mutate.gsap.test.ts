@@ -1103,6 +1103,21 @@ window.__timelines["t"] = tl;</script>
     expect(script).toContain('tl.to("#side", { y: 1, duration: 0.5 }, 3);');
   });
 
+  it("moving a clip syncs the timeline script even when a config script comes first", () => {
+    const parsed =
+      parseMutable(`<div data-hf-id="hf-stage" data-hf-root style="width: 1280px; height: 720px">
+  <div id="scene" data-hf-id="hf-scene" data-start="1" data-duration="3"><h1 data-hf-id="hf-title">Hi</h1></div>
+  <script>gsap.config({ nullTargetWarn: false });</script>
+  <script>var tl = gsap.timeline({ paused: true });
+tl.from("#scene h1", { y: 20, duration: 1 }, 1.5);
+window.__timelines["t"] = tl;</script>
+</div>`);
+    applyOp(parsed, { type: "setTiming", target: "hf-scene", start: 3 });
+    const html = serializeDocument(parsed);
+    expect(html).toContain("gsap.config({ nullTargetWarn: false });");
+    expect(html).toContain('tl.from("#scene h1", { y: 20, duration: 1 }, 3.5);');
+  });
+
   it("moving a clip in a template-wrapped composition carries its tweens", () => {
     const parsed = parseMutable(`<template id="card-template">
   <div data-composition-id="card-comp" data-hf-id="hf-comp" data-width="1280" data-height="720">

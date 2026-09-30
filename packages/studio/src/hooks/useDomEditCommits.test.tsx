@@ -1204,7 +1204,12 @@ describe("useDomEditCommits style persist handling", () => {
     const fetchMock = stubPatchFetch({ ok: true, changed: true, matched: true });
     const { iframe, element } = createPreviewElement();
     const rendered = renderDomEditCommits(createSelection(element), iframe, {
-      onTrySdkPersist: async () => ({ status: "committed", version: "sdk-version-2", after: "" }),
+      onTrySdkPersist: async () => ({
+        status: "committed",
+        version: "sdk-version-2",
+        before: "",
+        after: "",
+      }),
     });
 
     try {

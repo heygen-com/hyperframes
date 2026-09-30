@@ -48,7 +48,7 @@ import {
 } from "../helpers/finiteMutation.js";
 import type { GsapAnimation } from "@hyperframes/parsers";
 import { classifyPropertyGroup } from "@hyperframes/parsers/gsap-constants";
-import { parseGsapScriptAcorn } from "@hyperframes/parsers/gsap-parser-acorn";
+import { findTimelineScript, parseGsapScriptAcorn } from "@hyperframes/parsers/gsap-parser-acorn";
 import { unrollComputedTimeline } from "@hyperframes/parsers";
 import {
   updateAnimationInScript,
@@ -687,25 +687,17 @@ function extractGsapScriptBlock(html: string): {
       Array.from(tmpl.querySelectorAll("script:not([src])")),
     ),
   ];
-  for (const script of scripts) {
-    const content = script.textContent || "";
-    if (
-      content.includes("gsap.timeline") ||
-      content.includes(".set(") ||
-      content.includes(".to(")
-    ) {
-      return {
-        scriptText: content,
-        document,
-        root: clipQueryRoot(script),
-        replaceScript(newText: string): string {
-          script.textContent = newText;
-          return document.toString();
-        },
-      };
-    }
-  }
-  return null;
+  const script = findTimelineScript(scripts);
+  if (!script) return null;
+  return {
+    scriptText: script.textContent || "",
+    document,
+    root: clipQueryRoot(script),
+    replaceScript(newText: string): string {
+      script.textContent = newText;
+      return document.toString();
+    },
+  };
 }
 
 /**

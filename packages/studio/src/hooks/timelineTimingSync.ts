@@ -20,6 +20,7 @@ import {
   type GsapMutationStatus,
 } from "./gsapMutationClient";
 import type { CutoverResult } from "../utils/sdkEditTransaction";
+import { findTimelineScript } from "@hyperframes/core/gsap-parser-acorn";
 import {
   serializeStudioFileMutations,
   type StudioProjectFileWriter,
@@ -370,10 +371,15 @@ export async function scaleGsapPositions(
   );
 }
 
-/** A committed SDK timing write already moved the clip's tweens (setTiming syncs GSAP); this is that sync. */
+/** The GSAP sync a committed SDK timing write made, or null when its timeline script is unchanged. */
 export function sdkTimingGsapSync(
   result: Extract<CutoverResult, { status: "committed" }>,
-): GsapMutationStatus {
+): GsapMutationStatus | null {
+  const timelineText = (html: string) =>
+    findTimelineScript([
+      ...new DOMParser().parseFromString(html, "text/html").querySelectorAll("script"),
+    ])?.textContent ?? null;
+  if (timelineText(result.before) === timelineText(result.after)) return null;
   return { mutated: true, scriptText: extractGsapScriptText(result.after) };
 }
 
@@ -407,7 +413,7 @@ export function finishClipTimingFallback(input: {
   recordEdit: (edit: RecordEditInput) => Promise<void>;
   writeProjectFile: StudioProjectFileWriter;
   edit: SingleClipGsapEdit;
-  sdkGsap?: GsapMutationStatus;
+  sdkGsap?: GsapMutationStatus | null;
 }): Promise<void> {
   const { projectId, targetPath, domId, edit, sdkGsap } = input;
   const timingChanged =

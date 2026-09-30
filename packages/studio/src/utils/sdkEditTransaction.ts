@@ -11,7 +11,7 @@ import {
 
 export type CutoverResult =
   | { status: "declined"; reason: string }
-  | { status: "committed"; version: string; after: string }
+  | { status: "committed"; version: string; before: string; after: string }
   | { status: "failed"; error: Error };
 
 export interface SdkSessionPublication {
@@ -302,7 +302,12 @@ async function commitCandidateEdit(
     });
   }
   if (refreshTarget) refreshCommittedEdit(edit.after, deps, options);
-  return { status: "committed", version: hashContent(edit.after), after: edit.after };
+  return {
+    status: "committed",
+    version: hashContent(edit.after),
+    before: originalContent,
+    after: edit.after,
+  };
 }
 
 export async function persistSdkCandidateMutation(

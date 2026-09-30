@@ -6,6 +6,7 @@
  */
 
 import { parseHTML } from "linkedom";
+import { findTimelineScript } from "@hyperframes/core/gsap-parser-acorn";
 import { findVariableDeclaration } from "./variableModel.js";
 import {
   ensureHfIds,
@@ -475,11 +476,12 @@ export function getGsapScripts(document: Document): string[] {
 }
 
 export function findGsapScriptElement(document: Document): Element | null {
-  for (const script of findScriptElementsDeep(document)) {
-    const text = script.textContent ?? "";
-    if (isGsapScriptText(text)) return script;
-  }
-  return null;
+  const scripts = findScriptElementsDeep(document);
+  return (
+    findTimelineScript(scripts) ??
+    scripts.find((s) => isGsapScriptText(s.textContent ?? "")) ??
+    null
+  );
 }
 
 export function getGsapScript(document: Document): string | null {
