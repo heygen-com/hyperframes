@@ -13,7 +13,7 @@ import {
   VOLUME_LANE_REFUSAL,
   volumeLaneOwnsGain,
 } from "./clipMenuNormalize";
-import { isDuckableBed, readBedCarve, setDuckUnderVoice, type DuckOutcome } from "./clipMenuDuck";
+import { offersDuck, readBedCarve, setDuckUnderVoice, type DuckOutcome } from "./clipMenuDuck";
 
 const ITEM_CLASS =
   "w-full flex items-center justify-between px-3 py-1.5 text-xs text-left outline-hidden text-neutral-300 hover:bg-neutral-800 focus-visible:bg-neutral-800 cursor-pointer";
@@ -100,7 +100,7 @@ export function ClipMenuAudioItems({
       </button>
     );
   }
-  if (!isDuckableBed(bed)) return null;
+  if (!offersDuck(doc, bed)) return null;
   return (
     <button
       type="button"
@@ -109,9 +109,8 @@ export function ClipMenuAudioItems({
       className={ITEM_CLASS}
       onClick={() => void toggleDuck()}
     >
-      <span>
-        <span className="inline-block w-3">{ducked ? "✓" : ""}</span>Duck under voice
-      </span>
+      <span>Duck under voice</span>
+      <span aria-hidden="true">{ducked ? "✓" : ""}</span>
     </button>
   );
 }

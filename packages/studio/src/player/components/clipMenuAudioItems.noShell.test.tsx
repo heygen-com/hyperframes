@@ -34,7 +34,7 @@ function mountPreview(): void {
   const doc = iframe.contentDocument;
   if (!doc) throw new Error("iframe has no document");
   doc.body.innerHTML =
-    '<video id="tour" src="tour.mp4" data-has-audio="true" data-start="0" data-duration="4"></video>';
+    '<video id="tour" src="tour.mp4" data-has-audio="true" data-start="0" data-duration="4"></video><audio id="voiceover" src="vo.wav" data-start="1" data-duration="2"></audio>';
   usePreviewIframeStore.getState().setIframe(iframe);
 }
 

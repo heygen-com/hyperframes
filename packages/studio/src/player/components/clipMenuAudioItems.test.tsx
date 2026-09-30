@@ -7,7 +7,12 @@ import type { TimelineElement } from "../store/timelineElement";
 
 const showToast = vi.fn();
 const setQuiet = vi.fn<(...args: unknown[]) => Promise<unknown>>(async () => {});
-const iframe = document.createElement("iframe");
+let previewDoc: Document | null = null;
+const iframe = {
+  get contentDocument() {
+    return previewDoc;
+  },
+};
 
 vi.mock("../../contexts/StudioContext", () => ({
   useStudioShellContextOptional: () => ({
@@ -50,6 +55,44 @@ describe("ClipMenuAudioItems", () => {
   it("offers nothing on a muted video", () => {
     const host = render({ ...base, id: "b", tag: "video", hasAudio: true, muted: true });
     expect(host.textContent).toBe("");
+  });
+
+  describe("Duck under voice", () => {
+    const duckLabel = (host: HTMLElement) =>
+      [...host.querySelectorAll("button")].find((b) => b.textContent?.includes("Duck under voice"));
+    const compose = (body: string) => {
+      previewDoc = document.implementation.createHTMLDocument("c");
+      previewDoc.body.innerHTML = body;
+    };
+    const music: TimelineElement = { ...base, id: "music", tag: "audio", src: "music.mp3" };
+
+    it("is hidden on a lone video with sound", () => {
+      compose(
+        `<video id="a-roll" src="a.mp4" data-start="0" data-duration="4" data-has-audio="true"></video>`,
+      );
+      const host = render(
+        { ...base, id: "a-roll", tag: "video", hasAudio: true, src: "a.mp4" },
+        "duck",
+      );
+      expect(duckLabel(host)).toBeUndefined();
+    });
+
+    it("shows for a music bed with an overlapping voice", () => {
+      compose(`<audio id="music" src="music.mp3" data-start="0" data-duration="4"></audio>
+        <audio id="voiceover" src="vo.wav" data-start="1" data-duration="2"></audio>`);
+      const host = render(music, "duck");
+      expect(duckLabel(host)?.getAttribute("aria-checked")).toBe("false");
+    });
+
+    it("stays available, checked, once ducked even with the voice gone", () => {
+      compose(
+        `<audio id="music" src="music.mp3" data-start="0" data-duration="4" data-fx-carve='{"enabled":true,"sources":["voiceover"],"strength":0.25}'></audio>`,
+      );
+      const host = render(music, "duck");
+      const item = duckLabel(host);
+      expect(item?.getAttribute("aria-checked")).toBe("true");
+      expect(item?.textContent).toBe("Duck under voice✓");
+    });
   });
 
   it("normalizes a video with sound by writing data-volume as one edit", async () => {
@@ -106,22 +149,20 @@ describe("ClipMenuAudioItems", () => {
   });
 
   it("stops ducking at the first refused save and says why", async () => {
-    document.body.appendChild(iframe);
-    const doc = iframe.contentDocument;
-    if (!doc) throw new Error("fixture");
-    doc.body.innerHTML = `<audio id="music" src="music.mp3" data-start="0" data-duration="10"></audio>
+    previewDoc = document.implementation.createHTMLDocument("c");
+    previewDoc.body.innerHTML = `<audio id="music" src="music.mp3" data-start="0" data-duration="10"></audio>
       <audio id="voiceover" src="vo.wav" data-start="1" data-duration="3"></audio>`;
     setQuiet.mockResolvedValue({
       status: "refused",
       reason: "Cannot edit timeline while recording",
     });
-    const host = render({ ...base, id: "music", tag: "audio", src: "music.mp3" });
+    const host = render({ ...base, id: "music", tag: "audio", src: "music.mp3" }, "duck");
     await clickItem(host, "Duck under voice");
     await vi.waitFor(() =>
       expect(showToast).toHaveBeenCalledWith("Cannot edit timeline while recording", "error"),
     );
     expect(setQuiet).toHaveBeenCalledTimes(1);
     expect(showToast).not.toHaveBeenCalledWith(expect.stringContaining("Ducks under"), "info");
-    iframe.remove();
+    previewDoc = null;
   });
 });

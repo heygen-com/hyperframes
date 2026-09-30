@@ -83,6 +83,12 @@ export function duckVoiceSources(doc: Document, bed: Element): string[] {
     .map((candidate) => candidate.id);
 }
 
+/** A bed offers Duck when a voice overlaps it, or it is already ducked so the user can turn it off. */
+export function offersDuck(doc: Document | null, bed: Element | null): boolean {
+  if (!doc || !isDuckableBed(bed)) return false;
+  return readBedCarve(bed)?.enabled === true || duckVoiceSources(doc, bed).length > 0;
+}
+
 async function writeMeasuredCarve(
   doc: Document,
   bed: Element,
