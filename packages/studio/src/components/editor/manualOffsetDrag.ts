@@ -525,11 +525,13 @@ export function restoreManualOffsetDragMembers(members: ManualOffsetDragMember[]
   }
 }
 
-// Clear the draft's `translate: none` so the soft reload starts clean (#1673), unless a
-// stylesheet translate sits under it: GSAP folded that into the transform, so it would apply twice.
-function releaseDraftTranslateMask(element: HTMLElement): void {
-  if (element.style.getPropertyValue("translate") !== "none") return;
-  element.style.removeProperty("translate");
+// Drop the draft's `translate: none` so the soft reload starts clean (#1673). When GSAP owns
+// the position it folded any translate into its transform, so one still showing applies twice.
+function settleDraftTranslate(element: HTMLElement, gsapOwnsPosition: boolean): void {
+  if (element.style.getPropertyValue("translate") === "none") {
+    element.style.removeProperty("translate");
+  }
+  if (!gsapOwnsPosition) return;
   const view = element.ownerDocument.defaultView;
   const underneath = view?.getComputedStyle(element).getPropertyValue("translate");
   if (underneath && underneath !== "none") element.style.setProperty("translate", "none");
@@ -545,16 +547,15 @@ export function endManualOffsetDragMembers(members: ManualOffsetDragMember[]): v
     member.element.removeAttribute("data-hf-drag-gsap-base-y");
     // Do NOT clearProps:"transform" — that nukes the committed GSAP position
     // and causes a visual snap-back before the soft reload re-applies it.
-    releaseDraftTranslateMask(member.element);
+    const gsapOwnsPosition = Boolean(getOffsetDragGsap(member.element));
     // Migration: when GSAP owns the position (the committed value lives in the
     // GSAP transform), the legacy `--hf-studio-offset` CSS channel is obsolete.
     // Clear it on the LIVE element — otherwise the leftover `translate:
     // var(--hf-studio-offset)` composes with the GSAP transform and the element
     // renders offset by the stale value until a full page reload (the source is
     // already stripped). clearStudioPathOffset leaves `transform` untouched.
-    if (getOffsetDragGsap(member.element)) {
-      clearStudioPathOffset(member.element);
-    }
+    if (gsapOwnsPosition) clearStudioPathOffset(member.element);
+    settleDraftTranslate(member.element, gsapOwnsPosition);
     resumeGsapTimelines(member.element);
   }
 }
