@@ -13,6 +13,7 @@ import { audioPillFlags } from "../player/components/audioClipLink";
 import { AudioWaveform, rendersWaveform } from "../player/components/AudioWaveform";
 import { ImageThumbnail } from "../player/components/ImageThumbnail";
 import { AudibleVideoClipContent } from "../player/components/AudibleVideoClipContent";
+import { ClipPeakMarks } from "../player/components/ClipPeakMarks";
 import { clipHasSound } from "../player/components/clipMenuNormalize";
 import { encodePreviewPath, resolveMediaPreviewUrl } from "../player/components/thumbnailUtils";
 import { usePlayerStore } from "../player/store/playerStore";
@@ -73,7 +74,7 @@ function renderAudioClip(
     ? buildProjectApiPath(pid, `/waveform/${encodedRelative}`)
     : undefined;
   const { start, end } = trimFractions(el);
-  return createElement(AudioWaveform, {
+  const waveform = createElement(AudioWaveform, {
     audioUrl,
     waveformUrl,
     label: "",
@@ -85,6 +86,18 @@ function renderAudioClip(
     priority: context.priority,
     ...audioPillFlags(el, elements),
   });
+  return createElement(
+    ClipPeakMarks,
+    {
+      peaksUrl: encodedRelative ? buildProjectApiPath(pid, `/peaks/${encodedRelative}`) : undefined,
+      sourceWindow: {
+        mediaStart: el.playbackStart ?? 0,
+        sourceSpan: el.duration * (el.playbackRate ?? 1),
+      },
+      gain: el.volume ?? 1,
+    },
+    waveform,
+  );
 }
 
 function withSoundStrip(

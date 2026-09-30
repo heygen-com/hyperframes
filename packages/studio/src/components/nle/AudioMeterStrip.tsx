@@ -21,6 +21,7 @@ import type { StereoLevel } from "@hyperframes/core/runtime/levelTap";
 import { usePlayerStore } from "../../player";
 import { clampNumber } from "../../utils/studioHelpers";
 import { useAudioMetersVisible } from "../../utils/audioMeterVisibility";
+import { EXPORT_PEAK_CEILING } from "../../utils/exportPeakCeiling";
 import { useStudioShellContextOptional } from "../../contexts/StudioContext";
 import { useTimelineEditContextOptional } from "../../contexts/TimelineEditContext";
 import {
@@ -50,8 +51,8 @@ type StripBars = [Bars, Bars];
 
 const MONITOR_LABEL = "Monitor";
 
-/** Sample peak at the export ceiling (−1 dBFS); the CLIP light latches here, stricter than RED_AT. */
-export const CLIP_LATCH_PEAK = 10 ** (-1 / 20);
+/** The CLIP light latches at the export ceiling, stricter than RED_AT. */
+export const CLIP_LATCH_PEAK = EXPORT_PEAK_CEILING;
 
 export function stepClipLatch(latched: boolean, master: StereoLevel | undefined): boolean {
   if (latched || !master) return latched;

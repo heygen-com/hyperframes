@@ -10,6 +10,7 @@ import { registerThumbnailRoutes } from "./routes/thumbnail.js";
 import { registerWaveformRoutes } from "./routes/waveform.js";
 import { registerFreezeFrameRoutes } from "./routes/freezeFrame.js";
 import { registerLoudnessRoutes } from "./routes/loudness.js";
+import { registerPeakRoutes } from "./routes/peaks.js";
 import { registerFontRoutes } from "./routes/fonts.js";
 import { registerRegistryRoutes } from "./routes/registry.js";
 import { registerSelectionRoutes } from "./routes/selection.js";
@@ -65,6 +66,7 @@ export function createStudioApi(adapter: StudioApiAdapter): Hono {
   registerWaveformRoutes(api, adapter);
   registerFreezeFrameRoutes(api, adapter);
   registerLoudnessRoutes(api, adapter);
+  registerPeakRoutes(api, adapter);
   registerFontRoutes(api);
   registerRegistryRoutes(api, adapter);
   registerGlobalAssetRoutes(api);

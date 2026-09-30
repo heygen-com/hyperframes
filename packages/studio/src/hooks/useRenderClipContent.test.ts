@@ -6,6 +6,13 @@ import { afterEach, describe, expect, it } from "vitest";
 import { CompositionThumbnail, VideoThumbnail } from "../player";
 import { AudioWaveform } from "../player/components/AudioWaveform";
 import { AudibleVideoClipContent } from "../player/components/AudibleVideoClipContent";
+import { ClipPeakMarks } from "../player/components/ClipPeakMarks";
+
+function unwrapPeakMarks(node: ReactNode): ReactNode {
+  return isValidElement<{ children?: ReactNode }>(node) && node.type === ClipPeakMarks
+    ? node.props.children
+    : node;
+}
 import type { TimelineClipRenderContext } from "../player/components/TimelineTypes";
 import { usePlayerStore, type TimelineElement } from "../player/store/playerStore";
 import { buildCompositionThumbnailUrl } from "../player/components/CompositionThumbnail";
@@ -94,8 +101,50 @@ describe("useRenderClipContent", () => {
       root.render(React.createElement(Harness));
     });
     act(() => root.unmount());
+    return unwrapPeakMarks(content);
+  }
+
+  function renderRaw(el: TimelineElement): ReactNode {
+    const host = document.createElement("div");
+    document.body.append(host);
+    const root = createRoot(host);
+    let content: ReactNode = null;
+    function Harness() {
+      const render = useRenderClipContent({
+        projectIdRef: { current: "my-project" },
+        compIdToSrc: new Map(),
+        activePreviewUrl: null,
+        effectiveTimelineDuration: 12,
+      });
+      content = render(el, { clip: "#222", label: "#fff" });
+      return null;
+    }
+    act(() => root.render(React.createElement(Harness)));
+    act(() => root.unmount());
     return content;
   }
+
+  it("wraps a clip's waveform in peak marks at its own gain over its played source window", () => {
+    const content = renderRaw({
+      id: "voiceover",
+      tag: "audio",
+      start: 1,
+      duration: 4,
+      track: 1,
+      src: "assets/voiceover.mp3",
+      playbackStart: 2,
+      playbackRate: 1.5,
+      volume: 2,
+    });
+    expect(isValidElement(content) && content.type).toBe(ClipPeakMarks);
+    if (isValidElement<Record<string, unknown>>(content)) {
+      expect(content.props).toMatchObject({
+        peaksUrl: "/api/projects/my-project/peaks/assets/voiceover.mp3",
+        sourceWindow: { mediaStart: 2, sourceSpan: 6 },
+        gain: 2,
+      });
+    }
+  });
 
   it("renders audio clips as waveforms even when a composition preview URL is active", () => {
     const content = renderClipContent({
@@ -194,7 +243,8 @@ describe("useRenderClipContent", () => {
     expect(isValidElement<{ thumbnail: ReactNode; waveform: ReactNode }>(content)).toBe(true);
     if (!isValidElement<{ thumbnail: ReactNode; waveform: ReactNode }>(content)) return;
     expect(content.type).toBe(AudibleVideoClipContent);
-    const { thumbnail, waveform } = content.props;
+    const { thumbnail } = content.props;
+    const waveform = unwrapPeakMarks(content.props.waveform);
     expect(isValidElement(thumbnail) && thumbnail.type).toBe(VideoThumbnail);
     expect(isValidElement<{ waveformUrl: string }>(waveform) && waveform.props.waveformUrl).toBe(
       "/api/projects/my-project/waveform/talk.mp4",
