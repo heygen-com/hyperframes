@@ -1,8 +1,8 @@
 import type { PersistAdapter, PersistVersionEntry } from "./types.js";
 import type { PersistErrorEvent } from "../types.js";
-import { readFile, writeFile, mkdir, readdir, unlink, readlink, stat } from "node:fs/promises";
-import { replaceFileAtomically } from "@hyperframes/core/atomic-file";
-import { join, dirname, resolve } from "node:path";
+import { readFile, writeFile, mkdir, readdir, unlink, stat } from "node:fs/promises";
+import { replaceFileAtomically, resolveWritePath } from "@hyperframes/core/atomic-file";
+import { join, dirname } from "node:path";
 
 export interface FsAdapterOptions {
   /** Root directory for composition files */
@@ -50,7 +50,7 @@ class FsAdapter implements PersistAdapter {
     try {
       const abs = this.abs(path);
       await mkdir(dirname(abs), { recursive: true });
-      const target = await linkTarget(abs);
+      const target = resolveWritePath(abs);
       const mode = await stat(target).then(
         (s) => s.mode,
         (err: unknown) => {
@@ -141,22 +141,6 @@ class FsAdapter implements PersistAdapter {
       await Promise.all(all.slice(0, excess).map((f) => unlink(join(dir, f)).catch(() => {})));
     }
   }
-}
-
-const MAX_LINK_HOPS = 40;
-
-/** The file writeFile would land on: links followed, a dangling one to the target it would create. */
-async function linkTarget(path: string): Promise<string> {
-  for (let hop = 0; hop < MAX_LINK_HOPS; hop++) {
-    try {
-      path = resolve(dirname(path), await readlink(path));
-    } catch (err) {
-      const code = (err as NodeJS.ErrnoException)?.code;
-      if (code === "EINVAL" || code === "ENOENT") return path;
-      throw err;
-    }
-  }
-  throw Object.assign(new Error(`ELOOP: too many symbolic links, '${path}'`), { code: "ELOOP" });
 }
 
 function isNotFound(err: unknown): boolean {

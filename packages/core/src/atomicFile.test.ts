@@ -1,9 +1,9 @@
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import * as fs from "node:fs";
 import { lstatSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { createFileAtomically, replaceFileAtomically } from "./atomicFile.js";
+import { createFileAtomically, replaceFileAtomically, resolveWritePath } from "./atomicFile.js";
 
 describe("replaceFileAtomically", () => {
   const dirs: string[] = [];
@@ -54,7 +54,7 @@ describe("replaceFileAtomically", () => {
     replaceFileAtomically(file, "new complete html", 0o640, operations);
 
     expect(events).toHaveLength(2);
-    expect(events[0]).toMatch(new RegExp(`^write:${file}\\.\\d+\\.[0-9a-f-]+\\.tmp$`));
+    expect(events[0]).toMatch(new RegExp(`^write:${file}\\.[0-9a-f]{8}\\.tmp$`));
     const tempPath = events[0]!.slice("write:".length);
     expect(events[1]).toBe(`rename:${tempPath}:${file}`);
     expect(readFileSync(file, "utf-8")).toBe("new complete html");
@@ -119,7 +119,7 @@ describe("replaceFileAtomically", () => {
 
     expect(() => replaceFileAtomically(file, "new", 0o640, operations)).toThrow("publish failed");
     expect(tempPaths).toHaveLength(1);
-    expect(tempPaths[0]).toMatch(new RegExp(`^${file}\\.\\d+\\.[0-9a-f-]+\\.tmp$`));
+    expect(tempPaths[0]).toMatch(new RegExp(`^${file}\\.[0-9a-f]{8}\\.tmp$`));
     expect(removed).toEqual(tempPaths);
   });
 
@@ -196,21 +196,174 @@ describe("createFileAtomically", () => {
     },
   );
 
-  it("writes directly on a volume without hard links", () => {
-    const dir = tempDir();
-    const file = join(dir, "index.html");
-    const operations = {
+  function failingLink(code: string) {
+    return {
       writeFileSync: fs.writeFileSync,
       chmodSync: fs.chmodSync,
       linkSync: () => {
-        throw Object.assign(new Error("no hard links"), { code: "EPERM" });
+        throw Object.assign(new Error(code), { code });
       },
       unlinkSync: fs.unlinkSync,
+    };
+  }
+
+  it.each(["EPERM", "ENOTSUP", "EOPNOTSUPP", "EXDEV"])(
+    "writes directly on a volume without hard links (%s)",
+    (code) => {
+      const dir = tempDir();
+      const file = join(dir, "index.html");
+
+      createFileAtomically(file, "html", failingLink(code));
+
+      expect(readFileSync(file, "utf-8")).toBe("html");
+      expect(fs.readdirSync(dir)).toEqual(["index.html"]);
+    },
+  );
+
+  it("propagates any other link failure without writing the destination", () => {
+    const dir = tempDir();
+    const file = join(dir, "index.html");
+
+    expect(() => createFileAtomically(file, "html", failingLink("EIO"))).toThrow("EIO");
+    expect(fs.readdirSync(dir)).toEqual([]);
+  });
+
+  it("reports success when only the temporary file's cleanup fails", () => {
+    const dir = tempDir();
+    const file = join(dir, "index.html");
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    const operations = {
+      writeFileSync: fs.writeFileSync,
+      chmodSync: fs.chmodSync,
+      linkSync: fs.linkSync,
+      unlinkSync: () => {
+        throw Object.assign(new Error("EBUSY"), { code: "EBUSY" });
+      },
     };
 
     createFileAtomically(file, "html", operations);
 
     expect(readFileSync(file, "utf-8")).toBe("html");
+    expect(warn).toHaveBeenCalledOnce();
+    warn.mockRestore();
+  });
+
+  it("creates and replaces a name close to the filesystem's 255-byte limit", () => {
+    const dir = tempDir();
+    const file = join(dir, `${"n".repeat(237)}.html`);
+
+    createFileAtomically(file, "first");
+    replaceFileAtomically(file, "second");
+
+    expect(readFileSync(file, "utf-8")).toBe("second");
+  });
+});
+
+describe("replaceFileAtomically on a busy target", () => {
+  const dirs: string[] = [];
+  afterEach(() => {
+    for (const dir of dirs.splice(0)) rmSync(dir, { recursive: true, force: true });
+  });
+
+  function renamingAfter(failures: number, code: string) {
+    const dir = mkdtempSync(join(tmpdir(), "atomic-busy-test-"));
+    dirs.push(dir);
+    const file = join(dir, "index.html");
+    writeFileSync(file, "old");
+    let attempts = 0;
+    const operations = {
+      writeFileSync: fs.writeFileSync,
+      chmodSync: fs.chmodSync,
+      unlinkSync: fs.unlinkSync,
+      renameSync: (from: fs.PathLike, to: fs.PathLike) => {
+        if (++attempts <= failures) throw Object.assign(new Error(code), { code });
+        fs.renameSync(from, to);
+      },
+    };
+    return { dir, file, operations, attempts: () => attempts };
+  }
+
+  it.each(["EPERM", "EBUSY", "EACCES"])("retries a rename refused with %s", (code) => {
+    const { file, operations, attempts } = renamingAfter(2, code);
+
+    replaceFileAtomically(file, "new", 0o644, operations);
+
+    expect(readFileSync(file, "utf-8")).toBe("new");
+    expect(attempts()).toBe(3);
+  });
+
+  it("gives up after five attempts and keeps the old file", () => {
+    const { dir, file, operations, attempts } = renamingAfter(Infinity, "EBUSY");
+
+    expect(() => replaceFileAtomically(file, "new", 0o644, operations)).toThrow("EBUSY");
+    expect(attempts()).toBe(5);
+    expect(readFileSync(file, "utf-8")).toBe("old");
     expect(fs.readdirSync(dir)).toEqual(["index.html"]);
+  });
+
+  it("does not retry other rename errors", () => {
+    const { file, operations, attempts } = renamingAfter(Infinity, "ENOSPC");
+
+    expect(() => replaceFileAtomically(file, "new", 0o644, operations)).toThrow("ENOSPC");
+    expect(attempts()).toBe(1);
+  });
+});
+
+// Windows needs a privilege to create symlinks.
+describe.skipIf(process.platform === "win32")("resolveWritePath", () => {
+  const dirs: string[] = [];
+  afterEach(() => {
+    for (const dir of dirs.splice(0)) rmSync(dir, { recursive: true, force: true });
+  });
+
+  /** root/sub links to real/deep/sub, as when a project is opened through a linked folder. */
+  function linkedFolder() {
+    const base = fs.realpathSync(mkdtempSync(join(tmpdir(), "atomic-resolve-test-")));
+    dirs.push(base);
+    fs.mkdirSync(join(base, "real/deep/sub"), { recursive: true });
+    fs.mkdirSync(join(base, "root"));
+    symlinkSync(join(base, "real/deep/sub"), join(base, "root/sub"));
+    return base;
+  }
+
+  it("resolves a relative link against the folder a linked folder points at", () => {
+    const base = linkedFolder();
+    writeFileSync(join(base, "real/deep/target.html"), "old");
+    symlinkSync("../target.html", join(base, "real/deep/sub/comp.html"));
+
+    expect(resolveWritePath(join(base, "root/sub/comp.html"))).toBe(
+      join(base, "real/deep/target.html"),
+    );
+  });
+
+  it("resolves a dangling link to the file a write through it creates", () => {
+    const base = linkedFolder();
+    symlinkSync("../missing.html", join(base, "real/deep/sub/comp.html"));
+
+    expect(resolveWritePath(join(base, "root/sub/comp.html"))).toBe(
+      join(base, "real/deep/missing.html"),
+    );
+  });
+
+  it("returns a plain file's real path and a new file's path unchanged", () => {
+    const base = linkedFolder();
+    writeFileSync(join(base, "real/deep/sub/plain.html"), "x");
+
+    expect(resolveWritePath(join(base, "root/sub/plain.html"))).toBe(
+      join(base, "real/deep/sub/plain.html"),
+    );
+    expect(resolveWritePath(join(base, "root/sub/new.html"))).toBe(
+      join(base, "real/deep/sub/new.html"),
+    );
+  });
+
+  it("stops a link loop with ELOOP", () => {
+    const base = linkedFolder();
+    symlinkSync("b.html", join(base, "root/a.html"));
+    symlinkSync("a.html", join(base, "root/b.html"));
+
+    expect(() => resolveWritePath(join(base, "root/a.html"))).toThrow(
+      expect.objectContaining({ code: "ELOOP" }),
+    );
   });
 });

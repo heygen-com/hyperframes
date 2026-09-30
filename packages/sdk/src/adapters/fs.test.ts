@@ -3,6 +3,7 @@ import {
   chmodSync,
   linkSync,
   lstatSync,
+  mkdirSync,
   mkdtempSync,
   readdirSync,
   readFileSync,
@@ -85,6 +86,23 @@ describe("fs adapter writes", () => {
     expect(lstatSync(join(dir, "middle.html")).isSymbolicLink()).toBe(true);
     expect(readFileSync(join(dir, "target.html"), "utf-8")).toBe("new");
   });
+
+  it.skipIf(process.platform === "win32")(
+    "follows a relative link inside a linked project folder to the real target",
+    async () => {
+      const base = root();
+      mkdirSync(join(base, "real/deep/sub"), { recursive: true });
+      mkdirSync(join(base, "root"));
+      symlinkSync(join(base, "real/deep/sub"), join(base, "root/sub"));
+      writeFileSync(join(base, "real/deep/target.html"), "old");
+      symlinkSync("../target.html", join(base, "real/deep/sub/comp.html"));
+
+      await createFsAdapter({ root: join(base, "root") }).write("sub/comp.html", "new");
+
+      expect(readFileSync(join(base, "real/deep/target.html"), "utf-8")).toBe("new");
+      expect(readdirSync(join(base, "root")).sort()).toEqual(["sub"]);
+    },
+  );
 
   it("creates a new file in a new folder", async () => {
     const dir = root();
