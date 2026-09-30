@@ -344,3 +344,15 @@ describe("a drag that travelled is not a click, even when it ends near its start
     expect(opts[commit].current).toHaveBeenCalledTimes(1);
   });
 });
+
+describe("a cancelled drag puts the preview back where it started", () => {
+  it("returns a single drag that travelled to its start and saves nothing", () => {
+    const { opts, handlers, pointer, at } = singleMemberDrag();
+    handlers.onPointerMove(pointer(140, 100, false));
+    expect(at()).toEqual([50, -10]);
+    handlers.clearPointerState({ current: null });
+    expect(at()).toEqual([10, -10]);
+    expect(opts.gestureRef.current).toBeNull();
+    expect(opts.onPathOffsetCommitRef.current).not.toHaveBeenCalled();
+  });
+});
