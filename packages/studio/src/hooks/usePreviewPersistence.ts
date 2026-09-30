@@ -8,10 +8,12 @@ import { STUDIO_MOTION_PATH } from "../components/editor/studioMotion";
 import { createDomEditSaveQueue, type DomEditSaveDrainResult } from "../utils/domEditSaveQueue";
 import {
   flushStudioPendingEdits,
+  hasStudioPendingEdits,
   type StudioPendingEditsDrainResult,
 } from "../utils/studioPendingEdits";
 import { trackStudioEvent } from "../utils/studioTelemetry";
 import { applyUndoRestoreToPreview, type UndoRestoreFile } from "../utils/gsapUndoRestore";
+import { findGsapScriptElements } from "../utils/gsapSoftReload";
 import { usePlayerStore } from "../player";
 import { syncStoredAutomationFromPreview } from "../player/lib/automationStoreSync";
 
@@ -217,6 +219,28 @@ export function usePreviewPersistence({
     [previewIframeRef, activeCompPathRef, reloadPreview],
   );
 
+  // A restore the server has not confirmed yet: in place now, or not at all. A GSAP script re-run is not
+  // synchronous, and a pending save would land under it.
+  const showHistoryRestoreNow = useCallback(
+    (files: Record<string, UndoRestoreFile>): boolean => {
+      if (!domEditSaveQueueRef.current?.isIdle() || hasStudioPendingEdits()) return false;
+      if (Object.values(files).some((f) => hasGsapScript(f.previous) || hasGsapScript(f.restored)))
+        return false;
+      let refused = false;
+      applyUndoRestoreToPreview(
+        previewIframeRef.current,
+        activeCompPathRef.current,
+        files,
+        usePlayerStore.getState().currentTime,
+        () => {
+          refused = true;
+        },
+      );
+      return !refused;
+    },
+    [previewIframeRef, activeCompPathRef],
+  );
+
   // ── Migrate legacy studio-motion.json ──
   // Projects that used the old JSON-file approach may still have a populated
   // `.hyperframes/studio-motion.json`. The studio no longer reads from it, but
@@ -239,5 +263,10 @@ export function usePreviewPersistence({
     applyCurrentStudioManualEditsToPreview,
     applyStudioManualEditsToPreview,
     syncHistoryPreviewAfterApply,
+    showHistoryRestoreNow,
   };
+}
+
+function hasGsapScript(html: string): boolean {
+  return findGsapScriptElements(new DOMParser().parseFromString(html, "text/html")).length > 0;
 }

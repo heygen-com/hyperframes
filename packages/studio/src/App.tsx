@@ -254,6 +254,7 @@ export function StudioApp({ readOnlyPreview = false, readOnlyPreviewReason }: St
     writeProjectFile: fileManager.writeProjectFile,
     showToast,
     syncHistoryPreviewAfterApply: previewPersistence.syncHistoryPreviewAfterApply,
+    showHistoryRestoreNow: previewPersistence.showHistoryRestoreNow,
     waitForPendingDomEditSaves: previewPersistence.waitForPendingDomEditSaves,
     handleCopy,
     handlePaste,

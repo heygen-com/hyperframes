@@ -11,16 +11,23 @@ import { useEditHistoryActions, type EditHistoryHandle } from "./useEditHistoryA
 let root: Root | null = null;
 afterEach(() => act(() => root?.unmount()));
 
-function mount(result: {
-  ok: boolean;
-  reason?: string;
-  message?: string;
-  label?: string;
-  paths?: string[];
-}) {
+type RestoreFiles = Record<string, { previous: string; restored: string }>;
+
+function mount(
+  result: {
+    ok: boolean;
+    reason?: string;
+    message?: string;
+    label?: string;
+    paths?: string[];
+    files?: RestoreFiles;
+  },
+  predicted?: RestoreFiles,
+) {
   const editHistory = {
     undo: vi.fn<EditHistoryHandle["undo"]>(async () => result),
     redo: vi.fn<EditHistoryHandle["redo"]>(async () => result),
+    predict: () => predicted ?? null,
   };
   const deps = {
     editHistory,
@@ -28,7 +35,8 @@ function mount(result: {
     readProjectFile: vi.fn(async () => ""),
     writeProjectFile: vi.fn(async () => undefined),
     showToast: vi.fn(),
-    syncHistoryPreviewAfterApply: vi.fn(async () => undefined),
+    syncHistoryPreviewAfterApply: vi.fn(async (_restore: unknown) => undefined),
+    showHistoryRestoreNow: vi.fn((_files: RestoreFiles) => true),
     waitForPendingDomEditSaves: vi.fn(async () => undefined),
     onAfterUndoRedo: vi.fn(),
     activeCompPath: "index.html",
@@ -44,7 +52,35 @@ function mount(result: {
   return { deps, actions };
 }
 
+const PREDICTED = { "index.html": { previous: "B", restored: "A" } };
+
 describe("useEditHistoryActions", () => {
+  it("corrects a shown step from the server's restore, diffed from what the preview shows", async () => {
+    const files = { "index.html": { previous: "B", restored: "A2" } };
+    const { deps, actions } = mount(
+      { ok: true, label: "Undid: Move", paths: ["index.html"], files },
+      PREDICTED,
+    );
+    await act(() => actions.undo());
+    expect(deps.showHistoryRestoreNow).toHaveBeenCalledWith(PREDICTED);
+    expect(deps.syncHistoryPreviewAfterApply).toHaveBeenCalledWith({
+      paths: ["index.html"],
+      files: { "index.html": { previous: "A", restored: "A2" } },
+    });
+  });
+
+  it("takes a shown step back when the server refuses it", async () => {
+    const { deps, actions } = mount(
+      { ok: false, reason: "failed", message: "disk full" },
+      PREDICTED,
+    );
+    await act(() => actions.undo());
+    expect(deps.syncHistoryPreviewAfterApply).toHaveBeenCalledWith({
+      paths: ["index.html"],
+      files: { "index.html": { previous: "A", restored: "B" } },
+    });
+  });
+
   it("undo resyncs the preview and toasts the step as the history names it", async () => {
     const { deps, actions } = mount({ ok: true, label: "Undid: Move clip", paths: ["index.html"] });
     await act(() => actions.undo());
@@ -80,7 +116,7 @@ describe("useEditHistoryActions", () => {
     expect(deps.syncHistoryPreviewAfterApply).not.toHaveBeenCalled();
   });
 
-  it("says why when the history could not take the step", async () => {
+  it("says why when the history could not take the step, with nothing shown to take back", async () => {
     const { deps, actions } = mount({ ok: false, reason: "failed", message: "disk full" });
     await act(() => actions.undo());
     expect(deps.showToast).toHaveBeenCalledWith("Undo failed: disk full", "error");

@@ -241,3 +241,24 @@ it("a step that cannot reach the server says so", async () => {
     message: "Studio could not reach its server.",
   });
 });
+
+it("predicts a step from what this tab wrote, and not while a claim or step may have moved the history", async () => {
+  const { hook, save, readFile } = await studio();
+  save("B");
+  const claim = hook().recordEdit({
+    label: "Moved Title",
+    files: { "index.html": { before: "A", after: "B" } },
+  });
+  expect(hook().predict("undo")).toBeNull();
+  await act(() => claim);
+  await vi.waitFor(() =>
+    expect(hook().predict("undo")).toEqual({ "index.html": { previous: "B", restored: "A" } }),
+  );
+
+  const undone = hook().undo({ readFile });
+  expect(hook().predict("undo")).toBeNull();
+  await act(() => undone);
+  await vi.waitFor(() =>
+    expect(hook().predict("redo")).toEqual({ "index.html": { previous: "A", restored: "B" } }),
+  );
+});

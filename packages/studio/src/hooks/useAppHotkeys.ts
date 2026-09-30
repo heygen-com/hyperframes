@@ -86,6 +86,7 @@ interface UseAppHotkeysParams {
   writeProjectFile: (path: string, content: string) => Promise<void>;
   showToast: (message: string, tone?: "error" | "info") => void;
   syncHistoryPreviewAfterApply: UseEditHistoryActionsOptions["syncHistoryPreviewAfterApply"];
+  showHistoryRestoreNow?: UseEditHistoryActionsOptions["showHistoryRestoreNow"];
   waitForPendingDomEditSaves: () => Promise<void>;
   handleCopy: () => boolean;
   handlePaste: () => Promise<void>;
@@ -124,6 +125,7 @@ export function useAppHotkeys({
   writeProjectFile,
   showToast,
   syncHistoryPreviewAfterApply,
+  showHistoryRestoreNow,
   waitForPendingDomEditSaves,
   handleCopy,
   handlePaste,
@@ -150,6 +152,7 @@ export function useAppHotkeys({
     writeProjectFile,
     showToast,
     syncHistoryPreviewAfterApply,
+    showHistoryRestoreNow,
     waitForPendingDomEditSaves,
     onAfterUndoRedo,
     activeCompPath,

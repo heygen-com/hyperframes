@@ -27,6 +27,19 @@ function inspectDrainFailures(results: PromiseSettledResult<unknown>[]): {
   return { firstFailure };
 }
 
+function focusedField(): HTMLElement | null {
+  const active = document.activeElement;
+  return active instanceof HTMLElement &&
+    active.matches('input, textarea, select, [contenteditable="true"], [role="textbox"]')
+    ? active
+    : null;
+}
+
+/** An edit is still saving, or a focused field holds one a flush would commit. */
+export function hasStudioPendingEdits(): boolean {
+  return pendingEditPromises.size > 0 || focusedField() !== null;
+}
+
 export function trackStudioPendingEdit(
   result: Promise<unknown> | unknown,
 ): Promise<unknown> | undefined {
@@ -41,11 +54,8 @@ export function trackStudioPendingEdit(
 }
 
 export async function flushStudioPendingEdits(): Promise<StudioPendingEditsDrainResult> {
-  const active = document.activeElement;
-  if (
-    active instanceof HTMLElement &&
-    active.matches('input, textarea, select, [contenteditable="true"], [role="textbox"]')
-  ) {
+  const active = focusedField();
+  if (active) {
     active.blur();
     // ponytail: Preserve synchronous/microtask blur commits, then cross one task boundary
     // so React effects triggered by the blur can register their flush listener.
