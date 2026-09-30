@@ -52,7 +52,7 @@ export function injectPreviewGoogleFont(doc: Document, fontFamilyValue: string):
 }
 
 export function injectPreviewImportedFont(doc: Document, asset: ImportedFontAsset): void {
-  const id = `studio-imported-font-${asset.family.toLowerCase().replace(/[^a-z0-9]+/g, "-")}`;
+  const id = `studio-imported-font-${asset.path.toLowerCase().replace(/[^a-z0-9]+/g, "-")}`;
   if (doc.getElementById(id)) return;
   const style = doc.createElement("style");
   style.id = id;
