@@ -138,34 +138,53 @@ describe("useDomGeometryCommit, from the package entry", () => {
     unmount();
   });
 
-  it("saves a GSAP-free move as its inline translate, with no GSAP script and no animation read", async () => {
-    const urls: string[] = [];
-    const patches: unknown[] = [];
+  function stubPatchServer(patchStatus = 200) {
+    const calls = { urls: [] as string[], patches: [] as unknown[] };
     vi.stubGlobal(
       "fetch",
       vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
         const url = String(input instanceof Request ? input.url : input);
-        urls.push(url);
-        if (url.includes("/file-mutations/patch-element/")) patches.push(JSON.parse(String(init?.body)));
-        const body = url.includes("/files/")
-          ? { content: SOURCE }
-          : { ok: true, changed: true, matched: true, content: "AFTER", version: "v2" };
-        return new Response(JSON.stringify(body), { headers: { "content-type": "application/json" } });
+        calls.urls.push(url);
+        if (url.includes("/patch-element/")) calls.patches.push(JSON.parse(String(init?.body)));
+        const saved = { ok: true, changed: true, matched: true, content: "AFTER", version: "v2" };
+        const body = url.includes("/files/") ? { content: SOURCE } : saved;
+        const status = url.includes("/patch-element/") ? patchStatus : 200;
+        return new Response(JSON.stringify(body), {
+          status,
+          headers: { "content-type": "application/json" },
+        });
       }),
     );
+    return calls;
+  }
+
+  it("saves a GSAP-free move as its inline translate, with no GSAP script and no animation read", async () => {
+    const calls = stubPatchServer();
     const { element, recordEdit, hook, unmount } = renderHost();
 
     const card = makeSelection("card", element);
     await expect(hook().commitPathOffset(card, { x: 130.5, y: 90 })).resolves.toEqual({ ok: true });
 
     expect(element.style.getPropertyValue("translate")).toBe("130.5px 90px");
-    expect(patches).toEqual([
+    expect(calls.patches).toEqual([
       expect.objectContaining({
         operations: [{ type: "inline-style", property: "translate", value: "130.5px 90px" }],
       }),
     ]);
-    expect(urls.filter((url) => url.includes("gsap"))).toEqual([]);
+    expect(calls.urls.filter((url) => url.includes("gsap"))).toEqual([]);
     expect(recordEdit).toHaveBeenCalledTimes(1);
+    unmount();
+  });
+
+  it("puts a GSAP-free element's translate back when its move cannot be saved", async () => {
+    stubPatchServer(500);
+    const { element, hook, unmount } = renderHost();
+    element.style.setProperty("translate", "40px 30px");
+
+    await expect(
+      hook().commitPathOffset(makeSelection("card", element), { x: 1, y: 2 }),
+    ).rejects.toThrow();
+    expect(element.style.getPropertyValue("translate")).toBe("40px 30px");
     unmount();
   });
 

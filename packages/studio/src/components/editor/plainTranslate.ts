@@ -31,11 +31,10 @@ export function readTranslatePx(el: HTMLElement): Point {
 }
 
 /** Plain px only: GSAP's CSSPlugin splits `translate` on spaces and drops a calc(). */
-export function formatTranslatePx(p: Point): string {
+function formatTranslatePx(p: Point): string {
   return `${roundTo3(p.x)}px ${roundTo3(p.y)}px`;
 }
 
-/** The source patch that saves a move: the same literal the live element shows. */
 export function translatePatch(p: Point): PatchOperation & { value: string } {
   return { type: "inline-style", property: "translate", value: formatTranslatePx(p) };
 }

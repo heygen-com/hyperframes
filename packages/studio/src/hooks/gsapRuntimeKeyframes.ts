@@ -405,9 +405,7 @@ export function hasNonHoldTweenForElement(
   return !!targetEl && hasNonHoldTween(timelinesOf(iframe), targetEl, channels, compositionId);
 }
 
-// Position channels — used to scope the "has a live position tween?" check so a
-// sibling rotation/scale animation never forces a static position hold into the
-// keyframe branch (which corrupts it into a frozen duration-0 keyframed tween).
+// A sibling rotation/scale tween must never push a static position hold into the keyframe branch.
 export const POSITION_CHANNELS: string[] = [
   "x",
   "y",
@@ -415,23 +413,22 @@ export const POSITION_CHANNELS: string[] = [
   "yPercent",
   "left",
   "top",
-  // GSAP normalizes translateX/Y to x/y at play time, but readTween reads the
-  // AUTHORED shape — include them so a hand-authored translateX/Y position tween
-  // still counts as a live position tween.
+  // readTween reads the authored translateX/Y; GSAP normalizes them to x/y only at play time.
   "translateX",
   "translateY",
 ];
 const MOVE_CHANNELS = [...POSITION_CHANNELS, "motionPath"];
 
 /** Whether a live timeline tween or hold writes any of `channels` on `el`. Sync, no fetch. */
-export function gsapWritesChannels(el: Element, channels: string[]): boolean {
+function gsapWritesChannels(el: Element, channels: string[]): boolean {
   const win = el.ownerDocument.defaultView as { __timelines?: Record<string, RuntimeTimeline> };
   return Object.values(win?.__timelines ?? {}).some((tl) =>
     (tl?.getChildren?.(true) ?? []).some(
       (tween) =>
         !!tween.vars &&
         matchesElement(tween, el) &&
-        (channels.some((ch) => ch in tween.vars!) || keyframeVarsCarryChannel(tween.vars, channels)),
+        (channels.some((ch) => ch in tween.vars!) ||
+          keyframeVarsCarryChannel(tween.vars, channels)),
     ),
   );
 }
