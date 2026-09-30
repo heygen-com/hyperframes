@@ -257,10 +257,10 @@ interface BeatHistoryEntry {
 /** Selects like the marquee: the primary first, so its resets run, then the whole set. */
 function selectAroundPlayhead(
   state: PlayerState,
-  keep: (start: number, playhead: number) => boolean,
+  keep: (el: TimelineElement, playhead: number) => boolean,
 ): void {
   const playhead = state.isPlaying ? liveTime.latest() : state.currentTime;
-  const ids = state.elements.filter((el) => keep(el.start, playhead)).map((el) => el.key ?? el.id);
+  const ids = state.elements.filter((el) => keep(el, playhead)).map((el) => el.key ?? el.id);
   state.setSelectedElementId(ids[0] ?? null);
   state.setSelectedElementIds(new Set(ids));
 }
@@ -289,8 +289,8 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
 
   activeTool: "select",
   setActiveTool: (tool) => set({ activeTool: tool }),
-  selectLeftward: () => selectAroundPlayhead(get(), (start, playhead) => start < playhead),
-  selectRightward: () => selectAroundPlayhead(get(), (start, playhead) => start >= playhead),
+  selectLeftward: () => selectAroundPlayhead(get(), (el, t) => el.start < t),
+  selectRightward: () => selectAroundPlayhead(get(), (el, t) => el.start + el.duration > t),
 
   ...createKeyframeSlice(set, () => ({
     timelineProjectId: get().timelineProjectId,

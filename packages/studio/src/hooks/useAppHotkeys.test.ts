@@ -65,13 +65,14 @@ describe("dispatchPlainKey — select leftward / rightward", () => {
     { ...bgmElement, id: "early", key: "early", start: 0, track: 0 },
     { ...bgmElement, id: "at", key: "at", start: 4, track: 1 },
     { ...bgmElement, id: "late", key: "late", start: 7, track: 2 },
+    { ...bgmElement, id: "gone", key: "gone", start: 0, duration: 2, track: 3 },
   ];
   beforeEach(() => usePlayerStore.setState({ elements: clips, currentTime: 4 }));
 
-  it("[ selects every clip starting before the playhead, on every track", () => {
+  it("[ selects every clip that started before the playhead, crossing clips included", () => {
     const event = press("[");
     dispatchPlainKey(event, "[", callbacks());
-    expect([...usePlayerStore.getState().selectedElementIds]).toEqual(["early"]);
+    expect([...usePlayerStore.getState().selectedElementIds].sort()).toEqual(["early", "gone"]);
     expect(usePlayerStore.getState().selectedElementId).toBe("early");
     expect(event.defaultPrevented).toBe(true);
   });
@@ -84,6 +85,7 @@ describe("dispatchPlainKey — select leftward / rightward", () => {
       expect([...usePlayerStore.getState().selectedElementIds].sort()).toEqual([
         "at",
         "early",
+        "gone",
         "late",
       ]);
     } finally {
@@ -98,11 +100,11 @@ describe("dispatchPlainKey — select leftward / rightward", () => {
     expect(usePlayerStore.getState().activeKeyframePct).toBeNull();
   });
 
-  it("] selects every clip starting at or after the playhead, on every track", () => {
+  it("] selects every clip still running at or after the playhead, crossing clips included", () => {
     dispatchPlainKey(press("]"), "]", callbacks());
     const { selectedElementIds, selectedElementId } = usePlayerStore.getState();
-    expect([...selectedElementIds].sort()).toEqual(["at", "late"]);
-    expect(selectedElementId).toBe("at");
+    expect([...selectedElementIds].sort()).toEqual(["at", "early", "late"]);
+    expect(selectedElementId).toBe("early");
   });
 
   it("selects nothing when no clip is on that side", () => {
