@@ -2,6 +2,11 @@ import type { TimelineElement } from "../player";
 import type { TimelineLinkEdit } from "../player/components/timelineCallbacks";
 import { buildPatchTarget, type PatchTarget } from "./timelineEditingHelpers";
 import { sharesLinkGroup } from "../player/components/audioClipLink";
+import { toAuthoredStart } from "../player/store/timelineElement";
+import { formatTimelineMediaOffset } from "../player/components/timelineEditing";
+import { applyPatchByTarget } from "../utils/sourcePatcher";
+import { setCompositionDurationToContent } from "../utils/timelineAssetDrop";
+import { furthestClipEndFromSource } from "../player/lib/timelineElementHelpers";
 import {
   detachAudioInSource,
   linkInSource,
@@ -42,6 +47,35 @@ export function clipsToUnlink(
   return [...removed.filter((el) => el.link), ...orphans.values()];
 }
 
+type SyncEdit = Extract<TimelineLinkEdit, { kind: "move-into-sync" | "slip-into-sync" }>;
+
+function planSyncEdit(edit: SyncEdit): LinkEditPlan | null {
+  const target = buildPatchTarget(edit.element);
+  if (!target) return null;
+  if (edit.kind === "move-into-sync") {
+    const value = formatTimelineMediaOffset(toAuthoredStart(edit.element, edit.start));
+    return {
+      label: "Move into Sync",
+      anchor: edit.element,
+      transform: (s) => {
+        const moved = applyPatchByTarget(s, target, {
+          type: "attribute",
+          property: "start",
+          value,
+        });
+        return setCompositionDurationToContent(moved, furthestClipEndFromSource(moved));
+      },
+    };
+  }
+  const property = edit.element.playbackStartAttr ?? "media-start";
+  const value = formatTimelineMediaOffset(edit.mediaStart);
+  return {
+    label: "Slip into Sync",
+    anchor: edit.element,
+    transform: (s) => applyPatchByTarget(s, target, { type: "attribute", property, value }),
+  };
+}
+
 export function planLinkEdit(
   edit: TimelineLinkEdit,
   elements: readonly TimelineElement[],
@@ -72,6 +106,9 @@ export function planLinkEdit(
           null,
       };
     }
+    case "move-into-sync":
+    case "slip-into-sync":
+      return planSyncEdit(edit);
     case "merge": {
       const videoTarget = buildPatchTarget(edit.video);
       const audioTarget = buildPatchTarget(edit.audio);

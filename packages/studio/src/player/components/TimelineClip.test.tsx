@@ -105,6 +105,23 @@ describe("TimelineClip", () => {
     expect(seen).toEqual([{ fadeIn: 1, fadeOut: 0.5, duration: 4 }, null]);
   });
 
+  it("gives both halves of a link group the same label colour, and unlinked clips none", () => {
+    const colorOf = (element: TimelineElement) => {
+      const { host, root } = renderClip({ element });
+      const clip = host.querySelector<HTMLElement>(".timeline-clip");
+      const color = clip?.getAttribute("data-link-color") ?? null;
+      expect(clip?.style.getPropertyValue("--clip-link-color") || null).toBe(color);
+      act(() => root.unmount());
+      return color;
+    };
+    const base = { start: 0, duration: 2, track: 0 };
+    const video = colorOf({ id: "v", tag: "video", link: "lk-3", ...base });
+    expect(video).not.toBeNull();
+    expect(colorOf({ id: "a", tag: "audio", link: "lk-3", ...base })).toBe(video);
+    expect(colorOf({ id: "b", tag: "audio", link: "lk-4", ...base })).not.toBe(video);
+    expect(colorOf({ id: "c", tag: "audio", ...base })).toBeNull();
+  });
+
   it("renders the clip label above custom content without showing default timecode", () => {
     const { host, root } = renderClip({
       element: { id: "hero", label: "Hero", tag: "div", start: 1, duration: 1, track: 0 },

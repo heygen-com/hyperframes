@@ -78,3 +78,36 @@ describe("planLinkEdit", () => {
     expect(out).toContain('data-track-index="1"');
   });
 });
+
+describe("planLinkEdit into sync", () => {
+  const drifted =
+    '<div data-composition-id="main" data-duration="10"><video id="talk" src="talk.mp4" muted data-sync-origin="lk-1" data-start="2" data-duration="6"></video><audio id="talk-audio" src="talk.mp4" data-sync-origin="lk-1" data-start="2.5" data-duration="6" data-media-start="0"></audio></div>';
+  const late = clip("talk-audio", "audio", { start: 2.5, playbackStart: 0 });
+
+  it("moves one clip's start, leaving its partner and link alone", () => {
+    const plan = planLinkEdit({ kind: "move-into-sync", element: late, start: 2 }, [video, late]);
+    expect(plan?.label).toBe("Move into Sync");
+    const html = plan?.transform(drifted) ?? "";
+    expect(html).toContain('id="talk-audio" src="talk.mp4" data-sync-origin="lk-1" data-start="2"');
+    expect(html).toContain('id="talk" src="talk.mp4" muted data-sync-origin="lk-1" data-start="2"');
+  });
+
+  it("slips one clip's media start in place", () => {
+    const plan = planLinkEdit({ kind: "slip-into-sync", element: late, mediaStart: 0.5 }, [
+      video,
+      late,
+    ]);
+    expect(plan?.label).toBe("Slip into Sync");
+    const html = plan?.transform(drifted) ?? "";
+    expect(html).toContain('data-start="2.5" data-duration="6" data-media-start="0.5"');
+  });
+
+  it("slips the legacy playback-start attribute when that is what the clip uses", () => {
+    const legacy = { ...late, playbackStartAttr: "playback-start" as const };
+    const html =
+      planLinkEdit({ kind: "slip-into-sync", element: legacy, mediaStart: 0.5 }, [])?.transform(
+        '<audio id="talk-audio" data-playback-start="0"></audio>',
+      ) ?? "";
+    expect(html).toBe('<audio id="talk-audio" data-playback-start="0.5"></audio>');
+  });
+});

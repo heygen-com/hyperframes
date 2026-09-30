@@ -43,7 +43,9 @@ export type TimelineLinkEdit =
   | { kind: "unlink"; elements: readonly TimelineElement[] }
   | { kind: "link"; elements: readonly TimelineElement[] }
   | { kind: "detach"; element: TimelineElement }
-  | { kind: "merge"; video: TimelineElement; audio: TimelineElement };
+  | { kind: "merge"; video: TimelineElement; audio: TimelineElement }
+  | { kind: "move-into-sync"; element: TimelineElement; start: number }
+  | { kind: "slip-into-sync"; element: TimelineElement; mediaStart: number };
 
 export interface TimelineEditCallbacks {
   onMoveElement?: (

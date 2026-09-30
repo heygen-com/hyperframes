@@ -351,6 +351,16 @@
   white-space: nowrap;
 }
 
+/* Link groups share a label colour on the border and the name chip. */
+.timeline-clip[data-link-color] {
+  border-color: var(--clip-link-color);
+}
+
+.timeline-clip[data-link-color] .timeline-clip__label {
+  box-shadow: inset 3px 0 0 var(--clip-link-color);
+  padding-left: 8px;
+}
+
 .timeline-clip.is-audio .timeline-clip__label {
   top: 11px;
   left: 9px;
