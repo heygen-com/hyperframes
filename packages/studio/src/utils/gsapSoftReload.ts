@@ -132,12 +132,14 @@ function verifyTimelinesPopulated(win: IframeWindow, targetKeys: string[]): bool
 }
 
 // GSAP masks a folded CSS translate/rotate/scale with `none`; a fresh load has only what the file authors.
-function restoreAuthoredTransforms(el: HTMLElement, source: Element | null): void {
-  const authored = source instanceof HTMLElement ? source.style : null;
-  el.style.transform = authored?.transform ?? "";
+function restoreAuthoredTransforms(
+  style: CSSStyleDeclaration,
+  authored: CSSStyleDeclaration | null,
+) {
+  style.transform = authored?.transform ?? "";
   if (!authored) return;
   for (const prop of ["translate", "rotate", "scale"]) {
-    el.style.setProperty(prop, authored.getPropertyValue(prop));
+    style.setProperty(prop, authored.getPropertyValue(prop));
   }
 }
 
@@ -191,7 +193,7 @@ export interface SoftReloadOptions {
   onAsyncFailure?: () => void;
   /** Seek target for the rebuilt timeline; defaults to the iframe player time. */
   currentTimeOverride?: number;
-  /** After-write file HTML — the primary source for authored-opacity restore. */
+  /** After-write file HTML — the primary source for the authored opacity and transform restore. */
   authoredHtml?: string;
 }
 
@@ -309,7 +311,7 @@ export function applySoftReload(
   // parse-time stamp (data-hf-authored-opacity, installAuthoredOpacityCapture)
   // covers elements the file lookup can't resolve. Parsed lazily, at most once.
   let authoredDoc: Document | null | undefined;
-  const findAuthoredSource = (el: HTMLElement): Element | null => {
+  const findAuthoredStyle = (el: HTMLElement): CSSStyleDeclaration | null => {
     if (authoredDoc === undefined) {
       try {
         authoredDoc = authoredHtml ? parseSavedSource(authoredHtml) : null;
@@ -317,13 +319,12 @@ export function applySoftReload(
         authoredDoc = null;
       }
     }
-    return authoredDoc ? findAuthoredElement(authoredDoc, el) : null;
+    const source = authoredDoc ? findAuthoredElement(authoredDoc, el) : null;
+    // The parsed file lives in this realm, so instanceof holds here, unlike for the iframe nodes below.
+    return source instanceof HTMLElement || source instanceof SVGElement ? source.style : null;
   };
-  const readAuthoredOpacity = (el: HTMLElement): string | null => {
-    const source = findAuthoredSource(el);
-    if (source instanceof HTMLElement) return source.style.opacity;
-    return readStampedAuthoredOpacity(el);
-  };
+  const readAuthoredOpacity = (el: HTMLElement): string | null =>
+    findAuthoredStyle(el)?.opacity ?? readStampedAuthoredOpacity(el);
 
   // fallow-ignore-next-line complexity
   const doReload = () => {
@@ -337,6 +338,7 @@ export function applySoftReload(
         const tl = timelines[key] as
           | {
               kill?: () => void;
+              clear?: () => void;
               getChildren?: (deep: boolean) => Array<{ targets?: () => Element[] }>;
             }
           | undefined;
@@ -351,6 +353,8 @@ export function applySoftReload(
           } catch {}
         }
         try {
+          // kill() keeps the children, and the finalize seek renders this timeline until the rebind swaps it.
+          tl.clear?.();
           tl.kill?.();
         } catch {}
         delete timelines[key];
@@ -394,7 +398,7 @@ export function applySoftReload(
       for (const [el, css] of saved) {
         const s = el.style;
         s.cssText = css;
-        restoreAuthoredTransforms(el, findAuthoredSource(el));
+        restoreAuthoredTransforms(s, findAuthoredStyle(el));
         // The restored cssText carries RUNTIME opacity, not authored opacity:
         // a mid-flight tween's interpolated value, or the color-grading hide
         // (`opacity: 0 !important`). The re-run script's tweens re-initialize

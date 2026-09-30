@@ -426,8 +426,8 @@ describe("ensureMotionPathPluginLoaded", () => {
 // to its AUTHORED value — from the after-write file HTML when provided, else
 // from the parse-time stamp. Otherwise a runtime transient (the color-grading
 // hide's 0, a mid-flight tween value) becomes a permanent tween bound.
-describe("applySoftReload authored-opacity restore", () => {
-  function buildIframeWithTarget(el: HTMLElement, overrides: Record<string, unknown> = {}) {
+describe("applySoftReload authored-style restore", () => {
+  function buildIframeWithTarget(el: Element, overrides: Record<string, unknown> = {}) {
     const scriptEl = document.createElement("script");
     scriptEl.textContent =
       'const tl = gsap.timeline({ paused: true }); tl.to("#box", { opacity: 0.5 });';
@@ -531,5 +531,54 @@ describe("applySoftReload authored-opacity restore", () => {
     el.style.opacity = "0";
 
     expect(restoreOpacity(el)).toBe("");
+  });
+
+  it("restores the file's inline translate, rotate and scale and drops GSAP's transform", () => {
+    const el = document.createElement("div");
+    el.setAttribute("data-hf-id", "hf-1");
+    el.style.cssText =
+      "left: 10px; translate: none; rotate: none; scale: none; transform: translate(9px, 9px)";
+    const { iframe } = buildIframeWithTarget(el);
+    const authoredHtml = `<html><body><div data-hf-id="hf-1" style="translate: 60px 40px; rotate: 15deg; scale: 1.5"></div></body></html>`;
+    expect(applySoftReload(iframe, SCRIPT_TEXT, { authoredHtml })).toBe("applied");
+    const read = (prop: string) => el.style.getPropertyValue(prop);
+    expect(["translate", "rotate", "scale", "transform"].map(read)).toEqual([
+      "60px 40px",
+      "15deg",
+      "1.5",
+      "",
+    ]);
+  });
+
+  it("keeps an SVG child's authored inline transform", () => {
+    const el = document.createElementNS("http://www.w3.org/2000/svg", "rect");
+    el.setAttribute("data-hf-id", "hf-1");
+    el.setAttribute("style", "transform: translate(9px, 9px) rotate(20deg)");
+    const { iframe } = buildIframeWithTarget(el);
+    const authoredHtml = `<html><body><svg><rect data-hf-id="hf-1" style="transform: rotate(20deg)"></rect></svg></body></html>`;
+    applySoftReload(iframe, SCRIPT_TEXT, { authoredHtml });
+    expect(el.style.transform).toBe("rotate(20deg)");
+  });
+
+  it("the finalize seek cannot paint the killed timeline over the restored transform", () => {
+    const el = document.createElement("div");
+    el.style.cssText = "translate: none; transform: translate3d(77.5px, 40px, 0px)";
+    const children = [{ targets: () => [el] }];
+    const killed = {
+      kill: vi.fn(),
+      getChildren: () => children,
+      clear: () => void children.splice(0),
+    };
+    // The runtime still seeks the timeline it captured at load until the rebind swaps it.
+    const seek = () =>
+      children.forEach(() => (el.style.transform = "translate3d(77.5px, 0px, 0px)"));
+    let transformAtRebind: string | null = null;
+    const { iframe } = buildIframeWithTarget(el, {
+      __timelines: { root: killed },
+      __player: { getTime: () => 1, seek },
+      __hfForceTimelineRebind: () => (transformAtRebind = el.style.transform),
+    });
+    applySoftReload(iframe, SCRIPT_TEXT);
+    expect(transformAtRebind).toBe("");
   });
 });
