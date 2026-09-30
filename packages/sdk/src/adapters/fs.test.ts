@@ -60,6 +60,32 @@ describe("fs adapter writes", () => {
     expect(readFileSync(join(dir, "target.html"), "utf-8")).toBe("new");
   });
 
+  it.skipIf(process.platform === "win32")(
+    "creates the target of a link that points at no file yet",
+    async () => {
+      const dir = root();
+      symlinkSync(join(dir, "target.html"), join(dir, "comp.html"));
+
+      await createFsAdapter({ root: dir }).write("comp.html", "new");
+
+      expect(lstatSync(join(dir, "comp.html")).isSymbolicLink()).toBe(true);
+      expect(readFileSync(join(dir, "target.html"), "utf-8")).toBe("new");
+    },
+  );
+
+  it.skipIf(process.platform === "win32")("follows a chain of relative links", async () => {
+    const dir = root();
+    writeFileSync(join(dir, "target.html"), "old");
+    symlinkSync("target.html", join(dir, "middle.html"));
+    symlinkSync("middle.html", join(dir, "comp.html"));
+
+    await createFsAdapter({ root: dir }).write("comp.html", "new");
+
+    expect(lstatSync(join(dir, "comp.html")).isSymbolicLink()).toBe(true);
+    expect(lstatSync(join(dir, "middle.html")).isSymbolicLink()).toBe(true);
+    expect(readFileSync(join(dir, "target.html"), "utf-8")).toBe("new");
+  });
+
   it("creates a new file in a new folder", async () => {
     const dir = root();
 

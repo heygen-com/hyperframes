@@ -1,8 +1,8 @@
 import type { PersistAdapter, PersistVersionEntry } from "./types.js";
 import type { PersistErrorEvent } from "../types.js";
-import { readFile, writeFile, mkdir, readdir, unlink, realpath, stat } from "node:fs/promises";
+import { readFile, writeFile, mkdir, readdir, unlink, readlink, stat } from "node:fs/promises";
 import { replaceFileAtomically } from "@hyperframes/core/atomic-file";
-import { join, dirname } from "node:path";
+import { join, dirname, resolve } from "node:path";
 
 export interface FsAdapterOptions {
   /** Root directory for composition files */
@@ -50,13 +50,15 @@ class FsAdapter implements PersistAdapter {
     try {
       const abs = this.abs(path);
       await mkdir(dirname(abs), { recursive: true });
-      // Resolved like writeFile would, so a linked file keeps its link and its mode.
-      const target = await realpath(abs).catch((err: unknown) => {
-        if (isNotFound(err)) return undefined;
-        throw err;
-      });
-      const mode = target ? (await stat(target)).mode : undefined;
-      replaceFileAtomically(target ?? abs, content, mode);
+      const target = await linkTarget(abs);
+      const mode = await stat(target).then(
+        (s) => s.mode,
+        (err: unknown) => {
+          if (isNotFound(err)) return undefined;
+          throw err;
+        },
+      );
+      replaceFileAtomically(target, content, mode);
       await this.appendVersion(path, content);
     } catch (err) {
       for (const h of this.errorHandlers) h({ error: { message: String(err), cause: err } });
@@ -139,6 +141,22 @@ class FsAdapter implements PersistAdapter {
       await Promise.all(all.slice(0, excess).map((f) => unlink(join(dir, f)).catch(() => {})));
     }
   }
+}
+
+const MAX_LINK_HOPS = 40;
+
+/** The file writeFile would land on: links followed, a dangling one to the target it would create. */
+async function linkTarget(path: string): Promise<string> {
+  for (let hop = 0; hop < MAX_LINK_HOPS; hop++) {
+    try {
+      path = resolve(dirname(path), await readlink(path));
+    } catch (err) {
+      const code = (err as NodeJS.ErrnoException)?.code;
+      if (code === "EINVAL" || code === "ENOENT") return path;
+      throw err;
+    }
+  }
+  throw Object.assign(new Error(`ELOOP: too many symbolic links, '${path}'`), { code: "ELOOP" });
 }
 
 function isNotFound(err: unknown): boolean {
