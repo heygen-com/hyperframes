@@ -4945,7 +4945,11 @@ describe("initSandboxRuntimeModular", () => {
     await Promise.resolve();
   }
 
-  function mountAudio(src: string, attrs: Record<string, string> = {}) {
+  function mountAudio(
+    src: string,
+    attrs: Record<string, string> = {},
+    tag: "audio" | "video" = "audio",
+  ) {
     const root = document.createElement("div");
     root.setAttribute("data-composition-id", "main");
     root.setAttribute("data-root", "true");
@@ -4955,7 +4959,7 @@ describe("initSandboxRuntimeModular", () => {
     root.setAttribute("data-height", "1080");
     document.body.appendChild(root);
 
-    const audio = document.createElement("audio");
+    const audio = document.createElement(tag);
     audio.setAttribute("data-start", "0");
     audio.setAttribute("data-duration", "10");
     audio.setAttribute("src", src);
@@ -5125,6 +5129,51 @@ describe("initSandboxRuntimeModular", () => {
 
         expect(audio.muted).toBe(false);
       });
+    });
+  });
+
+  // `el.volume` stops at 1, so a video's authored boost can only be carried by a Web Audio gain.
+  describe("a video's sound above unity", () => {
+    const ctx = useMockAudioContext();
+
+    it("plays a video at data-volume 1.5 through a Web Audio gain of 1.5", async () => {
+      const video = mountAudio("/assets/broll.mp4", { "data-volume": "1.5" }, "video");
+      const captureSpy = vi.spyOn(WebAudioTransport.prototype, "scheduleMediaElementPlayback");
+
+      await startPlayback();
+      const scheduled = await captureSpy.mock.results[0]?.value;
+
+      expect(captureSpy.mock.calls[0]?.[0]).toBe(video);
+      expect(ctx.mediaElementSources).toBe(1);
+      expect(scheduled?.gainNode.gain.value).toBe(1.5);
+      expect(video.volume).toBe(1);
+      expect(video.muted).toBe(false);
+    });
+
+    it("leaves a video at unity on its native output", async () => {
+      mountAudio("/assets/broll.mp4", { "data-volume": "1" }, "video");
+      const captureSpy = vi.spyOn(WebAudioTransport.prototype, "scheduleMediaElementPlayback");
+
+      await startPlayback();
+
+      expect(captureSpy).not.toHaveBeenCalled();
+      expect(ctx.mediaElementSources).toBe(0);
+    });
+
+    it("keeps a cross-origin boosted video native and never decodes it", async () => {
+      const video = mountAudio(
+        "https://cdn.example.com/broll.mp4",
+        { "data-volume": "1.5" },
+        "video",
+      );
+      vi.spyOn(console, "info").mockImplementation(() => {});
+      const decodeSpy = vi.spyOn(WebAudioTransport.prototype, "decodeAudioElement");
+
+      await startPlayback();
+
+      expect(ctx.mediaElementSources).toBe(0);
+      expect(decodeSpy).not.toHaveBeenCalled();
+      expect(video.muted).toBe(false);
     });
   });
 
