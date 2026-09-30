@@ -2,7 +2,7 @@
 
 import { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { TimelineElement } from "../store/playerStore";
 import { TimelineEditProvider } from "../../contexts/TimelineEditContext";
 import { useCropPresetBarStore } from "../../components/editor/cropPresetStore";
@@ -15,7 +15,10 @@ Object.defineProperty(globalThis, "IS_REACT_ACT_ENVIRONMENT", {
 
 let root: Root | null = null;
 
+beforeEach(() => vi.useFakeTimers());
+
 afterEach(() => {
+  vi.useRealTimers();
   act(() => root?.unmount());
   root = null;
   document.body.innerHTML = "";
@@ -31,7 +34,14 @@ const video: TimelineElement = {
   hasAudio: true,
 };
 
-function renderItems(group: ClipMenuToolGroup, element: TimelineElement, currentTime = 2) {
+function renderItems(
+  group: ClipMenuToolGroup,
+  element: TimelineElement,
+  currentTime = 2,
+  withLive = true,
+) {
+  const setLive = vi.fn((_el: TimelineElement, _attr: string, _value: string | null) => undefined);
+  const revertLive = vi.fn((_el: TimelineElement, _attr: string) => undefined);
   const setQuiet = vi.fn(
     async (_el: TimelineElement, _attr: string, _value: string | null, _label: string) => undefined,
   );
@@ -42,7 +52,15 @@ function renderItems(group: ClipMenuToolGroup, element: TimelineElement, current
   root = createRoot(host);
   act(() => {
     root?.render(
-      <TimelineEditProvider value={{ onSetElementAttributeQuiet: setQuiet, onFreezeFrame: freeze }}>
+      <TimelineEditProvider
+        value={{
+          onSetElementAttributeQuiet: setQuiet,
+          onFreezeFrame: freeze,
+          ...(withLive
+            ? { onSetElementAttributeLive: setLive, onRevertElementAttributeLive: revertLive }
+            : {}),
+        }}
+      >
         <ClipMenuToolItems
           group={group}
           element={element}
@@ -52,7 +70,7 @@ function renderItems(group: ClipMenuToolGroup, element: TimelineElement, current
       </TimelineEditProvider>,
     );
   });
-  return { setQuiet, onClose, freeze };
+  return { setQuiet, onClose, freeze, setLive, revertLive };
 }
 
 function openSubmenu(label: string) {
@@ -135,5 +153,113 @@ describe("ClipMenuToolItems", () => {
     document.body.innerHTML = "";
     renderItems("time", { ...video, tag: "img" });
     expect(document.body.textContent).toBe("");
+  });
+
+  describe("Look hover preview", () => {
+    function option(text: string) {
+      const found = Array.from(
+        document.querySelectorAll<HTMLButtonElement>('[role="menuitemradio"]'),
+      ).find((button) => button.textContent?.endsWith(text));
+      if (!found) throw new Error(`no option ${text}`);
+      return found;
+    }
+    const enter = (text: string) =>
+      option(text).dispatchEvent(new MouseEvent("mouseover", { bubbles: true }));
+    const hover = (text: string) => {
+      act(() => {
+        enter(text);
+        vi.advanceTimersByTime(100);
+      });
+    };
+    const leave = () => {
+      const wrapper = document.querySelector('[role="menu"]')?.parentElement;
+      act(() => {
+        wrapper?.dispatchEvent(
+          new MouseEvent("mouseout", { bubbles: true, relatedTarget: document.body }),
+        );
+      });
+    };
+
+    it("hover applies the look live after the debounce, without saving", () => {
+      const { setLive, setQuiet } = renderItems("picture", video);
+      openSubmenu("Look");
+      act(() => {
+        enter("Warm daylight");
+        vi.advanceTimersByTime(40);
+      });
+      expect(setLive).not.toHaveBeenCalled();
+      act(() => vi.advanceTimersByTime(60));
+      expect(setLive).toHaveBeenCalledWith(
+        video,
+        "data-color-grading",
+        '{"preset":"warm-daylight","intensity":1}',
+      );
+      expect(setQuiet).not.toHaveBeenCalled();
+    });
+
+    it("opening the submenu by click does not preview the auto-focused first option", () => {
+      const { setLive } = renderItems("picture", video);
+      openSubmenu("Look");
+      act(() => vi.advanceTimersByTime(200));
+      expect(setLive).not.toHaveBeenCalled();
+    });
+
+    it("keyboard focus previews and None previews no look", () => {
+      const { setLive } = renderItems("picture", video);
+      openSubmenu("Look");
+      act(() => {
+        option("None").dispatchEvent(new FocusEvent("focusin", { bubbles: true }));
+        vi.advanceTimersByTime(100);
+      });
+      expect(setLive).toHaveBeenCalledWith(video, "data-color-grading", null);
+    });
+
+    it("leaving the submenu reverts to the saved look", () => {
+      const { revertLive } = renderItems("picture", video);
+      openSubmenu("Look");
+      hover("Warm daylight");
+      leave();
+      expect(revertLive).toHaveBeenCalledWith(video, "data-color-grading");
+    });
+
+    it("leaving before the debounce fires never previews or reverts", () => {
+      const { setLive, revertLive } = renderItems("picture", video);
+      openSubmenu("Look");
+      act(() => enter("Warm daylight"));
+      leave();
+      act(() => vi.advanceTimersByTime(200));
+      expect(setLive).not.toHaveBeenCalled();
+      expect(revertLive).not.toHaveBeenCalled();
+    });
+
+    it("clicking commits once and does not revert afterwards", () => {
+      const { setQuiet, revertLive } = renderItems("picture", video);
+      openSubmenu("Look");
+      hover("Warm daylight");
+      act(() => option("Warm daylight").click());
+      act(() => root?.unmount());
+      root = null;
+      expect(setQuiet).toHaveBeenCalledTimes(1);
+      expect(revertLive).not.toHaveBeenCalled();
+    });
+
+    it("closing the menu while previewing reverts", () => {
+      const { revertLive } = renderItems("picture", video);
+      openSubmenu("Look");
+      hover("Warm daylight");
+      act(() => root?.unmount());
+      root = null;
+      expect(revertLive).toHaveBeenCalledWith(video, "data-color-grading");
+    });
+
+    it("does nothing when the host has no live callbacks", () => {
+      const { setQuiet } = renderItems("picture", video, 2, false);
+      openSubmenu("Look");
+      expect(() => {
+        hover("Warm daylight");
+        leave();
+      }).not.toThrow();
+      expect(setQuiet).not.toHaveBeenCalled();
+    });
   });
 });
