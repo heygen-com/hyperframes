@@ -88,6 +88,8 @@ export function useDomEditTextCommits({
 }: UseDomEditTextCommitsParams) {
   const latestReadOnlyPreviewRef = useRef(readOnlyPreview);
   latestReadOnlyPreviewRef.current = readOnlyPreview;
+  const latestSelectionRef = useRef(domEditSelection);
+  latestSelectionRef.current = domEditSelection;
   const domTextCommitVersionRef = useRef(new Map<string, symbol>());
   const domStyleCommitVersionRef = useRef(new Map<string, symbol>());
 
@@ -243,7 +245,7 @@ export function useDomEditTextCommits({
       // is selected, and a host can clear the selection before the edit closes.
       const doc = previewIframeRef.current?.contentDocument;
       if (!doc || !element.isConnected || element.ownerDocument !== doc) {
-        return refuse("the preview reloaded while the text was being edited");
+        return refuse("the text's element is gone from the preview");
       }
       const selection = await buildDomSelectionFromTarget(element, {
         exactTarget: true,
@@ -288,7 +290,8 @@ export function useDomEditTextCommits({
           }
         },
         onError: (error) => reportDomEditPersistFailure(selection, operations, error, showToast),
-        shouldResync: isLatestTextCommit,
+        // Re-select only what is still selected: the selection may have moved on, or a host cleared it.
+        shouldResync: () => isLatestTextCommit() && latestSelectionRef.current?.element === element,
         resync: () =>
           resyncDomTextSelectionFromPreview(
             doc,

@@ -160,10 +160,15 @@ describe("useDomEditTextCommits", () => {
     };
   }
 
-  it("saves in-place text while the preview is editable", async () => {
-    const { persist, save } = richTextProbe();
+  it("saves in-place text while the preview is editable, and refreshes the selection it edited", async () => {
+    const applyDomSelection = vi.fn();
+    const { persist, element, save } = richTextProbe(undefined, () => ({ applyDomSelection }));
     await save();
     expect(persist).toHaveBeenCalledTimes(1);
+    expect(applyDomSelection).toHaveBeenCalledWith(
+      expect.objectContaining({ element }),
+      expect.objectContaining({ preserveGroup: true }),
+    );
   });
 
   it("refuses in-place text once the preview turns read-only, through an earlier handler, and puts the old text back", async () => {
@@ -174,15 +179,17 @@ describe("useDomEditTextCommits", () => {
     expect(element.innerHTML).toBe("Old");
   });
 
-  it("saves the edited element to its own file when the selection is another element or none", async () => {
+  it("saves the edited element, and leaves the selection alone, when the selection is another element or none", async () => {
     for (const selected of ["card", null]) {
+      const applyDomSelection = vi.fn();
       const { persist, element, save } = richTextProbe(
         '<div id="card"><p id="t">Old</p></div>',
         (doc) => ({
           domEditSelection: selected ? selectionFor(doc.getElementById(selected)!) : null,
+          applyDomSelection,
           buildDomSelectionFromTarget: vi.fn(async (target: HTMLElement) => ({
             ...selectionFor(target),
-            sourceFile: "compositions/badge.html",
+            label: "Resolved from the edited element",
           })),
         }),
       );
@@ -190,8 +197,9 @@ describe("useDomEditTextCommits", () => {
       expect(persist).toHaveBeenCalledTimes(1);
       expect(persist.mock.calls[0]![0]).toMatchObject({
         element,
-        sourceFile: "compositions/badge.html",
+        label: "Resolved from the edited element",
       });
+      expect(applyDomSelection).not.toHaveBeenCalled();
       cleanup?.();
       cleanup = null;
     }

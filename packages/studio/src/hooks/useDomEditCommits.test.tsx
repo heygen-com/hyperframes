@@ -918,7 +918,9 @@ describe("useDomEditCommits rich-text persist handling", () => {
       expect(replacement.innerHTML).toBe("Reloaded elsewhere");
       expect(fetchMock).not.toHaveBeenCalled();
       expect(rendered.showToast).toHaveBeenCalledWith(
-        expect.stringMatching(/Couldn't save the text edit: the preview reloaded/),
+        expect.stringMatching(
+          /Couldn't save the text edit: the text's element is gone from the preview/,
+        ),
         "error",
       );
     } finally {
