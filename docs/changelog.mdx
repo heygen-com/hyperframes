@@ -9,6 +9,21 @@ Recent HyperFrames releases, including user-facing features, fixes, and migratio
 {/* New release entries are prepended by `bun run changelog:draft <version> --write`. */}
 
 <Update
+  label="HyperFrames v0.8.96"
+  description="Released - 2026-09-30"
+  tags={["Release", "Studio"]}
+>
+Two Studio editing fixes. An element placed with a stylesheet translate no longer jumps when you move or resize it, and a crop drag that ends where it started no longer adds an undo step.
+
+## Fixes
+
+- **Studio:** A crop drag that ends where it started saves nothing ([67327a8b2](https://github.com/heygen-com/hyperframes/commit/67327a8b25a4502b7c29571505be9c575c675ea2), [#4745](https://github.com/heygen-com/hyperframes/pull/4745)).
+- **Studio:** An element placed by a stylesheet translate stays put after a move or resize ([4825f7929](https://github.com/heygen-com/hyperframes/commit/4825f792949282d561cdfe32cdcc7fce1cf2605d), [#4734](https://github.com/heygen-com/hyperframes/pull/4734)).
+
+[View the full commit range](https://github.com/heygen-com/hyperframes/compare/v0.8.95...v0.8.96).
+</Update>
+
+<Update
   label="HyperFrames v0.8.95"
   description="Released - 2026-09-30"
   tags={["Release", "Studio", "Core"]}
