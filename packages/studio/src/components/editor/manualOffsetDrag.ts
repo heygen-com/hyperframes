@@ -525,6 +525,16 @@ export function restoreManualOffsetDragMembers(members: ManualOffsetDragMember[]
   }
 }
 
+// Clear the draft's `translate: none` so the soft reload starts clean (#1673), unless a
+// stylesheet translate sits under it: GSAP folded that into the transform, so it would apply twice.
+function releaseDraftTranslateMask(element: HTMLElement): void {
+  if (element.style.getPropertyValue("translate") !== "none") return;
+  element.style.removeProperty("translate");
+  const view = element.ownerDocument.defaultView;
+  const underneath = view?.getComputedStyle(element).getPropertyValue("translate") ?? "none";
+  if (underneath !== "none") element.style.setProperty("translate", "none");
+}
+
 /** Teardown after a COMMITTED drag. */
 export function endManualOffsetDragMembers(members: ManualOffsetDragMember[]): void {
   for (const member of members) {
@@ -533,14 +543,9 @@ export function endManualOffsetDragMembers(members: ManualOffsetDragMember[]): v
     member.element.removeAttribute("data-hf-drag-initial-offset-y");
     member.element.removeAttribute("data-hf-drag-gsap-base-x");
     member.element.removeAttribute("data-hf-drag-gsap-base-y");
-    // Clear the draft's `translate: none` so the soft reload starts clean —
-    // otherwise button-less pointermoves after the reload compute deltas
-    // from a stale base and fling the element off-screen (#1673).
     // Do NOT clearProps:"transform" — that nukes the committed GSAP position
     // and causes a visual snap-back before the soft reload re-applies it.
-    if (member.element.style.getPropertyValue("translate") === "none") {
-      member.element.style.removeProperty("translate");
-    }
+    releaseDraftTranslateMask(member.element);
     // Migration: when GSAP owns the position (the committed value lives in the
     // GSAP transform), the legacy `--hf-studio-offset` CSS channel is obsolete.
     // Clear it on the LIVE element — otherwise the leftover `translate:
