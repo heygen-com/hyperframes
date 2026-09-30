@@ -72,7 +72,8 @@ describe("replaceFileAtomically", () => {
     expectTempSiblingOf(tempPath, file);
     expect(events[1]).toBe(`rename:${tempPath}:${file}`);
     expect(readFileSync(file, "utf-8")).toBe("new complete html");
-    expect(fs.statSync(file).mode & 0o777).toBe(0o640);
+    // Windows keeps only a read-only bit, no group or other permissions.
+    if (process.platform !== "win32") expect(fs.statSync(file).mode & 0o777).toBe(0o640);
   });
 
   it("replaces an existing destination", () => {

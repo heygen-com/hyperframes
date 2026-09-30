@@ -40,7 +40,8 @@ describe("fs adapter writes", () => {
     expect(readdirSync(dir).filter((name) => name.endsWith(".tmp"))).toEqual([]);
   });
 
-  it("keeps the file's mode", async () => {
+  // Windows keeps only a read-only bit, no group or other permissions.
+  it.skipIf(process.platform === "win32")("keeps the file's mode", async () => {
     const dir = root();
     writeFileSync(join(dir, "comp.html"), "old");
     chmodSync(join(dir, "comp.html"), 0o640);
