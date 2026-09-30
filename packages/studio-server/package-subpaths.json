@@ -84,7 +84,7 @@
       "source": "./src/helpers/loudness.ts",
       "runtime": "./dist/helpers/loudness.js",
       "types": "./dist/helpers/loudness.d.ts",
-      "environments": ["bun",  "node"]
+      "environments": ["bun", "node"]
     },
     "./media-proxy-preview": {
       "source": "./src/helpers/mediaProxyPreview.ts",
