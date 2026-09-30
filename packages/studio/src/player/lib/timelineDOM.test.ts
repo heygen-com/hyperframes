@@ -281,6 +281,34 @@ describe("parseTimelineFromDOM — hfId from data-hf-id", () => {
 
     expect(element.hidden).toBe(true);
   });
+
+  it("reads data-link on both the DOM and manifest paths", () => {
+    const doc = makeDoc(`
+      <div data-composition-id="root">
+        <video id="talk" class="clip" src="t.mp4" muted data-link="lk-1" data-start="0" data-duration="5"></video>
+      </div>
+    `);
+    expect(parseTimelineFromDOM(doc, 10).find((el) => el.domId === "talk")?.link).toBe("lk-1");
+    const element = createTimelineElementFromManifestClip({
+      clip: {
+        id: "talk",
+        label: "Talk",
+        kind: "element",
+        tagName: "video",
+        start: 0,
+        duration: 5,
+        track: 0,
+        compositionId: null,
+        parentCompositionId: null,
+        compositionSrc: null,
+        assetUrl: null,
+      },
+      fallbackIndex: 0,
+      doc,
+      hostEl: doc.getElementById("talk"),
+    });
+    expect(element.link).toBe("lk-1");
+  });
 });
 
 describe("group info cache", () => {

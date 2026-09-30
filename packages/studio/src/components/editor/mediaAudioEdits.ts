@@ -23,7 +23,7 @@ import type { CommitDomAttributeBatch } from "../../hooks/domEditCommitTypes";
 import { buildDomEditPatchTarget, type DomEditSelection } from "./domEditing";
 import { generateId } from "../../utils/generateId";
 
-const MEDIA_LINK_ATTR = "data-link";
+import { MEDIA_LINK_ATTR, mintLinkId as mintLinkIdFrom } from "@hyperframes/core/media-link";
 const SOUND_KEPT_ON_LINKED_AUDIO_STAGE = "Background removed. Sound kept on a linked audio track.";
 
 const SOUND_NOT_KEPT_MESSAGE =
@@ -105,7 +105,7 @@ export function mintLinkId(doc: Document): string {
     const link = el.getAttribute(MEDIA_LINK_ATTR);
     if (link) taken.add(link);
   }
-  return firstFreeName("link", taken);
+  return mintLinkIdFrom(taken);
 }
 
 function firstFreeTrackIndex(source: string): number {

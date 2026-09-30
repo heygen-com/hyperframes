@@ -879,10 +879,10 @@ describe.each<PanelKind>(["flat", "design"])("%s panel — cutout keeps the soun
       htmlOp("muted", "true"),
       dataOp("has-audio", null),
       dataOp("volume", null),
-      dataOp("link", "link"),
+      dataOp("link", "lk-1"),
     ]);
     const source =
-      '<div data-composition-id="main"><video id="s1-bg" src="assets/intro-loop.mp4" muted data-start="2" data-duration="3" data-track-index="0" data-link="link"></video></div>';
+      '<div data-composition-id="main"><video id="s1-bg" src="assets/intro-loop.mp4" muted data-start="2" data-duration="3" data-track-index="0" data-link="lk-1"></video></div>';
     const prepared = options?.prepareContent?.(source) ?? "";
     const audio = new DOMParser()
       .parseFromString(prepared, "text/html")
@@ -890,7 +890,7 @@ describe.each<PanelKind>(["flat", "design"])("%s panel — cutout keeps the soun
     expect(audio?.getAttribute("src")).toBe("assets/intro-loop.mp4");
     expect(audio?.getAttribute("data-start")).toBe("2");
     expect(audio?.getAttribute("data-duration")).toBe("3");
-    expect(audio?.getAttribute("data-link")).toBe("link");
+    expect(audio?.getAttribute("data-link")).toBe("lk-1");
     expect(audio?.getAttribute("data-volume")).toBe("0.5");
     expect(text).toContain("Background removed. Sound kept on a linked audio track.");
   });

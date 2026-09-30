@@ -150,6 +150,8 @@ export function createTimelineElementFromManifestClip(params: {
     if (hostEl.hasAttribute("data-hidden")) entry.hidden = true;
     const timelineRole = hostEl.getAttribute("data-timeline-role");
     if (timelineRole) entry.timelineRole = timelineRole;
+    const link = hostEl.getAttribute("data-link");
+    if (link) entry.link = link;
     const audioGroup = hostEl.getAttribute("data-audio-group");
     if (audioGroup) {
       entry.audioGroup = audioGroup;
@@ -337,6 +339,8 @@ export function parseTimelineFromDOM(
 
     const timelineRole = el.getAttribute("data-timeline-role");
     if (timelineRole) entry.timelineRole = timelineRole;
+    const domLink = el.getAttribute("data-link");
+    if (domLink) entry.link = domLink;
 
     const domAudioGroup = el.getAttribute("data-audio-group");
     if (domAudioGroup) {

@@ -27,6 +27,7 @@ import type {
   BlockedClipState,
 } from "./timelineClipDragTypes";
 import { getTimelineElementIndexes } from "../lib/timelineElementIndexes";
+import { linkedGestureKeys } from "./audioClipLink";
 import type { TimelineRowGeometry } from "./timelineLayout";
 import {
   mountTimelineClipDragGestureLifecycle,
@@ -220,6 +221,12 @@ export function useTimelineClipDrag({
         return;
       }
       beginGesture("drag", next.pointerId);
+      gestureSelectedKeysRef.current = linkedGestureKeys(
+        gestureSelectedKeysRef.current,
+        next.element,
+        elementsRef.current,
+        next.altKey === true,
+      );
       publishDraggedClip(next);
     },
     [beginGesture, publishDraggedClip],
@@ -231,6 +238,12 @@ export function useTimelineClipDrag({
         return;
       }
       beginGesture("resize", next.pointerId);
+      gestureSelectedKeysRef.current = linkedGestureKeys(
+        gestureSelectedKeysRef.current,
+        next.element,
+        elementsRef.current,
+        next.altKey === true,
+      );
       publishResizingClip(next);
     },
     [beginGesture, publishResizingClip],

@@ -88,9 +88,9 @@ describe("cutoutOps", () => {
 describe("mintLinkId", () => {
   it("dedupes against element ids and existing links", () => {
     const doc = document.implementation.createHTMLDocument("t");
-    expect(mintLinkId(doc)).toBe("link");
-    doc.body.innerHTML = '<div id="link"></div><video data-link="link-2"></video>';
-    expect(mintLinkId(doc)).toBe("link-3");
+    expect(mintLinkId(doc)).toBe("lk-1");
+    doc.body.innerHTML = '<div id="lk-1"></div><video data-link="lk-2"></video>';
+    expect(mintLinkId(doc)).toBe("lk-3");
   });
 });
 
@@ -176,7 +176,7 @@ describe("buildKeepSoundCutoutEdit", () => {
       { target: "rate", points: [{ t: 0, v: 2 }] },
     ]);
     expect(audio.getAttribute("data-link")).toBe(video.getAttribute("data-link"));
-    expect(video.getAttribute("data-link")).toBe("link");
+    expect(video.getAttribute("data-link")).toBe("lk-1");
     expect(audio.parentElement).toBe(video.parentElement);
   });
 
