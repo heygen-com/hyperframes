@@ -497,7 +497,7 @@ describe("a stylesheet translate after a committed GSAP drag", () => {
 
   it("is not masked when GSAP does not own the position", () => {
     const element = draggedTitle("#title { translate: 0 -200px; }", true, false);
-    expect(element.style.getPropertyValue("translate")).not.toBe("none");
+    expect(element.style.getPropertyValue("translate")).toContain(STUDIO_OFFSET_X_PROP);
   });
 
   it("is not left behind when nothing sits under the draft's mask", () => {
