@@ -32,7 +32,7 @@ describe("resolveLinkMenuItems", () => {
     const video = clip("talk", "video", { muted: true, link: "lk-1" });
     const audio = clip("talk-audio", "audio", { link: "lk-1" });
     expect(labels(audio, [video, audio])).toEqual([
-      "Unlink",
+      "Unlink from video",
       "Merge audio back into video",
       "Delete this clip only",
     ]);
@@ -42,9 +42,26 @@ describe("resolveLinkMenuItems", () => {
     const video = clip("talk", "video", { muted: true });
     const audio = clip("talk-audio", "audio");
     expect(labels(video, [video, audio], ["talk", "talk-audio"])).toEqual([
-      "Link",
+      "Link to audio",
       "Merge audio back into video",
     ]);
+    expect(labels(audio, [video, audio], ["talk", "talk-audio"])[0]).toBe("Link to video");
+  });
+
+  it("names the audio partner when unlinking from the video side", () => {
+    const video = clip("talk", "video", { muted: true, link: "lk-1" });
+    const audio = clip("talk-audio", "audio", { link: "lk-1" });
+    expect(labels(video, [video, audio])[0]).toBe("Unlink from audio");
+  });
+
+  it("falls back to plain Unlink for groups of three or same-kind partners", () => {
+    const video = clip("talk", "video", { muted: true, link: "lk-1" });
+    const audio = clip("talk-audio", "audio", { link: "lk-1" });
+    const second = clip("talk-audio2", "audio", { link: "lk-1" });
+    expect(labels(video, [video, audio, second])[0]).toBe("Unlink");
+    const twin = clip("talk2", "video", { muted: true, link: "lk-2" });
+    const twin2 = clip("talk3", "video", { muted: true, link: "lk-2" });
+    expect(labels(twin, [twin, twin2])[0]).toBe("Unlink");
   });
 
   it("offers nothing for a silent video or without a link handler", () => {

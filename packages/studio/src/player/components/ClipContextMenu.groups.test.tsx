@@ -87,7 +87,7 @@ describe("ClipContextMenu order", () => {
       "Normalize loudness",
       "Voice",
       "Detach audio",
-      "Unlink",
+      "Unlink from audio",
       "Look",
       "Crop",
       "Delete",

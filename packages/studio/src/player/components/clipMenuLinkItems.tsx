@@ -13,6 +13,17 @@ interface LinkMenuItem {
 
 const keyOf = (el: TimelineElement) => el.key ?? el.id;
 
+const tagOf = (el: TimelineElement) => el.tag.trim().toLowerCase();
+
+/** " audio"/" video" naming the lone opposite-kind partner; empty when the group is not a plain video+audio pair. */
+function partnerSuffix(element: TimelineElement, others: readonly TimelineElement[]): string {
+  const partners = others.filter((el) => keyOf(el) !== keyOf(element));
+  const [partner] = partners;
+  if (partners.length !== 1 || !partner) return "";
+  const pair = [tagOf(element), tagOf(partner)].sort().join("+");
+  return pair === "audio+video" ? ` ${tagOf(partner)}` : "";
+}
+
 /** The link-model items for a clip, in wireframe order (detach · unlink/link · merge · delete-one). */
 export function resolveLinkMenuItems(input: {
   element: TimelineElement;
@@ -36,13 +47,13 @@ export function resolveLinkMenuItems(input: {
   const selected = elements.filter((el) => selectedKeys.has(keyOf(el)));
   if (linked) {
     items.push({
-      label: "Unlink",
+      label: `Unlink${partnerSuffix(element, members) && ` from${partnerSuffix(element, members)}`}`,
       shortcut: "⌘L",
       run: () => onLinkEdit({ kind: "unlink", elements: members }),
     });
   } else if (canLinkPair(selected) && selectedKeys.has(keyOf(element))) {
     items.push({
-      label: "Link",
+      label: `Link${partnerSuffix(element, selected) && ` to${partnerSuffix(element, selected)}`}`,
       shortcut: "⌘L",
       run: () => onLinkEdit({ kind: "link", elements: selected }),
     });
