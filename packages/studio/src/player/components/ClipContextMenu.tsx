@@ -16,7 +16,14 @@ const GROUP_CLASS = "empty:hidden mb-1 pb-1 border-b border-neutral-700/60";
 function useMeasuredHeight(ref: RefObject<HTMLDivElement | null>, anchorKey: string): number {
   const [height, setHeight] = useState(0);
   useLayoutEffect(() => {
-    setHeight(ref.current?.offsetHeight ?? 0);
+    const node = ref.current;
+    if (!node) return;
+    setHeight(node.offsetHeight);
+    // Items that read the live preview can appear after mount; follow them.
+    if (typeof ResizeObserver === "undefined") return;
+    const observer = new ResizeObserver(() => setHeight(node.offsetHeight));
+    observer.observe(node);
+    return () => observer.disconnect();
   }, [ref, anchorKey]);
   return height;
 }

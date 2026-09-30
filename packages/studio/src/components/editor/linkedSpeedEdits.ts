@@ -6,6 +6,7 @@ import {
   type PatchTarget,
 } from "../../utils/sourcePatcher";
 import type { CommitDomAttributeBatch } from "../../hooks/domEditCommitTypes";
+import { buildPatchTarget } from "../../hooks/timelineEditingHelpers";
 import type { DomEditSelection } from "./domEditingTypes";
 
 type AttributeValueFor = (current: string | undefined) => string | null;
@@ -17,12 +18,6 @@ export interface LinkedSpeedCommit {
 
 const keyOf = (el: TimelineElement) => el.key ?? el.id;
 const dataProperty = (attr: string) => (attr.startsWith("data-") ? attr.slice(5) : attr);
-
-function targetOf(el: TimelineElement): PatchTarget {
-  const target: PatchTarget = { id: el.domId ?? el.id };
-  if (el.hfId) target.hfId = el.hfId;
-  return target;
-}
 
 function isSelected(el: TimelineElement, selection: PatchTarget): boolean {
   if (selection.hfId && el.hfId) return el.hfId === selection.hfId;
@@ -37,7 +32,10 @@ export function linkedPartnerTargets(
   if (!self?.link) return [];
   const members = expandToLinkedMembers([keyOf(self)], elements);
   members.delete(keyOf(self));
-  return elements.filter((el) => members.has(keyOf(el))).map(targetOf);
+  return elements
+    .filter((el) => members.has(keyOf(el)))
+    .map(buildPatchTarget)
+    .filter((target): target is NonNullable<typeof target> => target !== null);
 }
 
 export function fanOutAttributeInSource(
