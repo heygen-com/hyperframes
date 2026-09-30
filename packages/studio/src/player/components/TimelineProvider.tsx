@@ -1,7 +1,9 @@
 import {
   createContext,
+  useCallback,
   useContext,
-  useMemo,
+  useLayoutEffect,
+  useRef,
   type ComponentProps,
   type CSSProperties,
   type MouseEvent,
@@ -190,10 +192,12 @@ export function TimelineProvider({
   ...props
 }: TimelineProps & { children: ReactNode }) {
   const editContext = useTimelineEditContextValue();
-  const readOnlyPress = useMemo(
-    () => (readOnly ? () => onReadOnlyPress?.() : null),
-    [readOnly, onReadOnlyPress],
-  );
+  const onReadOnlyPressRef = useRef(onReadOnlyPress);
+  useLayoutEffect(() => {
+    onReadOnlyPressRef.current = onReadOnlyPress;
+  });
+  const refuse = useCallback(() => onReadOnlyPressRef.current?.(), []);
+  const readOnlyPress = readOnly ? refuse : null;
   return (
     <TimelineReadOnlyContext.Provider value={readOnlyPress}>
       <TimelineEditProvider value={readOnly ? NO_EDITS : (editContext ?? props)}>

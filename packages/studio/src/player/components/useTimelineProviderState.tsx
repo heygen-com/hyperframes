@@ -27,7 +27,10 @@ import {
   useTimelineDisplayLayout,
   useTimelineTrackLayout,
 } from "./useTimelineTrackLayout";
-import { useTimelineKeyframeHandlers } from "./useTimelineKeyframeHandlers";
+import {
+  cancelTimelineKeyframeRetime,
+  useTimelineKeyframeHandlers,
+} from "./useTimelineKeyframeHandlers";
 import { useTimelineGapHighlights } from "./useTimelineGapHighlights";
 import { useTimelineRazorInteraction } from "./TimelineRazorInteraction";
 import { useTimelinePerformanceTelemetry } from "./useTimelinePerformanceTelemetry";
@@ -40,7 +43,12 @@ import { useTimelineActiveClips } from "./useTimelineActiveClips";
 import { useTimelineLaneMoveRefresh } from "./useTimelineLaneMoveRefresh";
 import { useTimelineLogicalFocus } from "./useTimelineLogicalFocus";
 import { useTimelineEditContextOptional } from "../../contexts/TimelineEditContext";
-import { refuseWhenReadOnly, useTimelineReadOnlyPress } from "./timelineReadOnly";
+import {
+  refuseWhenReadOnly,
+  useAbandonEditsOnReadOnly,
+  useTimelineReadOnlyPress,
+} from "./timelineReadOnly";
+import { cancelBeatDrag } from "./BeatStrip";
 export function useTimelineProviderState({
   onSeek,
   onDrillDown,
@@ -414,6 +422,14 @@ export function useTimelineProviderState({
     handlePointerCancel,
   } = overlaysProps;
   const { rangeSelection, setRangeSelection } = overlays;
+  useAbandonEditsOnReadOnly(readOnlyPress !== null, () => {
+    setDraggedClip(null);
+    cancelBeatDrag();
+    cancelTimelineKeyframeRetime(scrollRef.current);
+    setClipContextMenu(null);
+    setKfContextMenu(null);
+    overlays.onDismissGapContextMenu();
+  });
   const laneGapStrips = useTimelineGapHighlights({
     gapHighlight,
     tracks,

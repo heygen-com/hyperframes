@@ -89,7 +89,7 @@ function claimBeatDrag(pointerId?: number): BeatDragActor | null {
   return actor;
 }
 
-function cancelBeatDrag(): void {
+export function cancelBeatDrag(): void {
   claimBeatDrag();
 }
 

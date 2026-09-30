@@ -48,32 +48,37 @@ function mount(props: TimelineProps, elements: TimelineElement[] = CLIPS, wired 
     onRazorSplit: vi.fn(),
     onRazorSplitAll: vi.fn(),
     onTogglePropertyGroupKeyframe: vi.fn(),
+    onMoveKeyframe: vi.fn().mockResolvedValue(true),
+    onDeleteElement: vi.fn(),
   };
   const onSeek = vi.fn();
   const onFileDrop = vi.fn();
   const host = document.createElement("div");
   document.body.append(host);
   root = createRoot(host);
-  act(() =>
-    root!.render(
-      !wired ? (
-        <Timeline {...props} onSeek={onSeek} />
-      ) : (
-        <TimelineEditProvider value={edits}>
-          {/* The host's edits arrive both ways: through the edit context and as Timeline props. */}
-          <Timeline
-            {...props}
-            onSeek={onSeek}
-            onFileDrop={onFileDrop}
-            onMoveElement={edits.onMoveElement}
-            onMoveElements={edits.onMoveElements}
-            onResizeElement={edits.onResizeElement}
-            onBlockedEditAttempt={edits.onBlockedEditAttempt}
-          />
-        </TimelineEditProvider>
+  const render = (next: TimelineProps) =>
+    act(() =>
+      root!.render(
+        !wired ? (
+          <Timeline {...next} onSeek={onSeek} />
+        ) : (
+          <TimelineEditProvider value={edits}>
+            {/* The host's edits arrive both ways: through the edit context and as Timeline props. */}
+            <Timeline
+              {...next}
+              onSeek={onSeek}
+              onFileDrop={onFileDrop}
+              onMoveElement={edits.onMoveElement}
+              onMoveElements={edits.onMoveElements}
+              onResizeElement={edits.onResizeElement}
+              onBlockedEditAttempt={edits.onBlockedEditAttempt}
+              onDeleteElement={edits.onDeleteElement}
+            />
+          </TimelineEditProvider>
+        ),
       ),
-    ),
-  );
+    );
+  render(props);
   const viewport = host.querySelector<HTMLElement>("[data-timeline-scroll-viewport]")!;
   if (elements.length > 0) {
     viewport.getBoundingClientRect = () =>
@@ -93,6 +98,7 @@ function mount(props: TimelineProps, elements: TimelineElement[] = CLIPS, wired 
     onSeek,
     onFileDrop,
     clip,
+    rerender: render,
     /** Press clip `a`, travel past the drag threshold, and report whether a drag had started. */
     dragClip() {
       const target = clip("a")!;
@@ -217,6 +223,15 @@ describe("Timeline readOnly", () => {
     expect(drag).toEqual({ dropEffect: "none", accepted: false, preview: false });
     expect(t.onFileDrop).not.toHaveBeenCalled();
     expect(onReadOnlyPress).toHaveBeenCalledTimes(1);
+  });
+
+  it("reports to the host's latest callback after it re-renders with a new one", () => {
+    const first = vi.fn();
+    const latest = vi.fn();
+    const t = mount({ readOnly: true, onReadOnlyPress: first });
+    t.rerender({ readOnly: true, onReadOnlyPress: latest });
+    act(() => t.host.querySelector<HTMLElement>('button[aria-label^="Hide track"]')!.click());
+    expect([first.mock.calls.length, latest.mock.calls.length]).toEqual([0, 1]);
   });
 
   it("reports the track eye instead of toggling it", () => {
@@ -346,6 +361,118 @@ describe("Timeline readOnly one-shot edits", () => {
       keyframeMenu: { reported: 0, open: true },
       propertyToggle: { reported: 0, toggled: 1 },
     });
+  });
+});
+
+const LOCKED: TimelineProps = { readOnly: true, onReadOnlyPress: vi.fn() };
+const press = (x: number, y = 10) => ({
+  bubbles: true,
+  button: 0,
+  pointerId: 1,
+  clientX: x,
+  clientY: y,
+});
+const onWindow = (type: string, x: number) =>
+  act(() => {
+    window.dispatchEvent(new PointerEvent(type, press(x)));
+  });
+const pressOn = (el: Element, x: number) =>
+  act(() => {
+    el.dispatchEvent(new PointerEvent("pointerdown", press(x)));
+  });
+
+describe("Timeline switched to readOnly mid-edit", () => {
+  it("drops a clip drag without committing it", () => {
+    const t = mount({});
+    pressOn(t.clip("a")!, 0);
+    onWindow("pointermove", 30);
+    onWindow("pointermove", 60);
+    expect(t.clip("a")).toBeNull();
+    t.rerender(LOCKED);
+    onWindow("pointerup", 60);
+    expect(t.edits.onMoveElement).not.toHaveBeenCalled();
+    expect(t.edits.onMoveElements).not.toHaveBeenCalled();
+  });
+
+  it("drops a clip resize without committing it", () => {
+    const t = mount({});
+    act(() => t.clip("a")!.click());
+    pressOn(t.clip("a")!.querySelector('[style*="col-resize"]')!, 0);
+    onWindow("pointermove", 20);
+    onWindow("pointermove", 40);
+    t.rerender(LOCKED);
+    onWindow("pointerup", 40);
+    expect(t.edits.onResizeElement).not.toHaveBeenCalled();
+  });
+
+  it("drops a beat drag without committing it", () => {
+    const commitBeatEdits = vi.fn();
+    const t = mount({}, [
+      {
+        id: "music",
+        tag: "audio",
+        src: "m.mp3",
+        start: 0,
+        duration: 10,
+        track: 0,
+        timelineRole: "music",
+      },
+    ]);
+    // The music analysis resets the beats on mount, so they arrive afterwards.
+    act(() =>
+      usePlayerStore.setState({
+        beatAnalysis: {
+          beatTimes: [1, 3],
+          beatStrengths: [0.5, 0.8],
+          bpm: 120,
+          bpmConfidence: "high",
+          channelData: null,
+          sampleRate: 48_000,
+          peak: 1,
+        },
+        commitBeatEdits,
+      }),
+    );
+    pressOn(t.host.querySelector('[title="Drag to move · ⌥-click to delete"]')!, 100);
+    expect(usePlayerStore.getState().beatDragging).toBe(true);
+    onWindow("pointermove", 160);
+    t.rerender(LOCKED);
+    expect(usePlayerStore.getState().beatDragging).toBe(false);
+    onWindow("pointerup", 160);
+    expect(commitBeatEdits).not.toHaveBeenCalled();
+  });
+
+  it("drops a keyframe retime without committing it", () => {
+    usePlayerStore.setState({ selectedElementId: "card", gsapAnimations: KEYFRAMED_CARD });
+    const t = mount({}, CARD);
+    pressOn(t.host.querySelector('button[title="25%"]')!, 80);
+    t.rerender(LOCKED);
+    onWindow("pointerup", 120);
+    expect(t.edits.onMoveKeyframe).not.toHaveBeenCalled();
+  });
+
+  it("closes an open clip menu, gap menu and keyframe menu", () => {
+    const t = mount({});
+    t.contextMenu(t.clip("a")!, 20);
+    t.rerender(LOCKED);
+    const clipMenu = document.querySelector('[role="menu"][aria-label="Clip actions"]');
+    t.rerender({});
+    t.laneMenu();
+    t.rerender(LOCKED);
+    const gapMenu = document.body.textContent?.includes("Close gap");
+    act(() => root!.unmount());
+    root = null;
+    usePlayerStore.setState({ gsapAnimations: new Map(), keyframeCache: CARD_KEYFRAMES });
+    const k = mount({}, CARD);
+    k.contextMenu(k.host.querySelector<HTMLElement>('button[title="50%"]')!, 60);
+    k.rerender(LOCKED);
+    const keyframeMenu = document.querySelector('[role="menu"][aria-label="Keyframe actions"]');
+    expect({ clipMenu, gapMenu, keyframeMenu }).toEqual({
+      clipMenu: null,
+      gapMenu: false,
+      keyframeMenu: null,
+    });
+    expect(t.edits.onDeleteElement).not.toHaveBeenCalled();
   });
 });
 
@@ -481,10 +608,10 @@ describe("read-only children", () => {
     expect(onReadOnlyPress).toHaveBeenCalledTimes(1);
   });
 
-  it("a keyframe diamond is not retimed by a drag but still selects", () => {
+  it("a keyframe diamond is not retimed by a drag, reports the drag once, and still selects", () => {
     const onMoveKeyframe = vi.fn().mockResolvedValue(true);
     const onClickKeyframe = vi.fn();
-    const { host } = mountReadOnly(
+    const { host, onReadOnlyPress } = mountReadOnly(
       <TimelineDiamondLane
         keyframesData={{
           format: "percentage",
@@ -530,11 +657,14 @@ describe("read-only children", () => {
       diamond.dispatchEvent(
         new PointerEvent("pointerdown", { bubbles: true, button: 0, clientX: 80 }),
       );
+      window.dispatchEvent(new PointerEvent("pointermove", { bubbles: true, clientX: 90 }));
+      window.dispatchEvent(new PointerEvent("pointermove", { bubbles: true, clientX: 100 }));
       diamond.dispatchEvent(
         new PointerEvent("pointerup", { bubbles: true, button: 0, clientX: 100 }),
       );
     });
     expect(onMoveKeyframe).not.toHaveBeenCalled();
     expect(onClickKeyframe).toHaveBeenCalledTimes(1);
+    expect(onReadOnlyPress).toHaveBeenCalledTimes(1);
   });
 });

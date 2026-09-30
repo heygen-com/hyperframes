@@ -3,6 +3,7 @@ import { act } from "react";
 import { describe, expect, it, vi, type Mock } from "vitest";
 import { createRoot } from "react-dom/client";
 import { TimelineAutomationLane } from "./TimelineAutomationLane";
+import { TimelineReadOnlyContext } from "./timelineReadOnly";
 import { PAD_X } from "./automationLaneGeometry";
 import { AUTOMATION_LANE_H } from "./automationLaneHeight";
 import type { HfAudioFxChain } from "@hyperframes/core/audio-fx";
@@ -1963,5 +1964,27 @@ describe("TimelineAutomationLane — a read-only lane offers nothing to grab", (
     );
     hover(container);
     expect(container.querySelector("[data-automation-readonly-note]")).toBeNull();
+  });
+});
+
+describe("TimelineAutomationLane inside a read-only timeline", () => {
+  it("reports a point drag and a double-click once each, and writes nothing", () => {
+    const onReadOnlyPress = vi.fn();
+    const props = laneProps({ automation: ramp, readOnly: true });
+    const { container } = render(
+      <TimelineReadOnlyContext.Provider value={onReadOnlyPress}>
+        <TimelineAutomationLane {...props} />
+      </TimelineReadOnlyContext.Provider>,
+    );
+    const svg = container.querySelector("svg")!;
+    stubBox(svg, BOX);
+    fire(svg, "pointerdown", at(0, 1));
+    fire(svg, "pointermove", at(1, 0.6));
+    fire(svg, "pointermove", at(2, 0.4));
+    fire(svg, "pointerup", at(2, 0.4));
+    expect(onReadOnlyPress).toHaveBeenCalledTimes(1);
+    fire(svg, "dblclick", at(2, 0.4));
+    expect(onReadOnlyPress).toHaveBeenCalledTimes(2);
+    expect(props.onCommit).not.toHaveBeenCalled();
   });
 });

@@ -26,6 +26,7 @@ import {
   type ShiftAxis,
 } from "./automationLaneDragMath";
 import { useAutomationSegmentDrag } from "./useAutomationSegmentDrag";
+import { reportPressOnTravel, useTimelineReadOnlyPress } from "./timelineReadOnly";
 
 /** How far a press may travel and still count as a click rather than a drag. */
 const CLICK_SLOP_PX = 3;
@@ -109,6 +110,7 @@ export function useAutomationLaneGestures({
   duration,
   rangeSelection,
 }: UseAutomationLaneGesturesInput): UseAutomationLaneGesturesResult {
+  const timelineReadOnlyPress = useTimelineReadOnlyPress();
   const [dragIndex, setDragIndex] = useState<number | null>(null);
   const [curveIndex, setCurveIndex] = useState<number | null>(null);
   const [hint, setHint] = useState<string | null>(null);
@@ -267,6 +269,13 @@ export function useAutomationLaneGestures({
     [hitIndex, segmentDrag, segmentIndex],
   );
 
+  const reportLaneEditPress = useCallback(
+    (e: ReactPointerEvent<SVGSVGElement>) => {
+      if (gestureAt(e)) reportPressOnTravel(e, timelineReadOnlyPress);
+    },
+    [gestureAt, timelineReadOnlyPress],
+  );
+
   const onPointerDown = useCallback(
     (e: ReactPointerEvent<SVGSVGElement>): void => {
       if (e.button !== 0) return;
@@ -281,6 +290,7 @@ export function useAutomationLaneGestures({
       // so the field sat open until Enter however far away the next click landed.
       if (editing) commitEdit();
       if (readOnly) {
+        reportLaneEditPress(e);
         // The lane sits below the clip bar, so the timeline's selection handler
         // never sees this press; selecting here is the only way in. The press then
         // goes on to arm a range drag rather than being spent on the selection: a
@@ -323,6 +333,7 @@ export function useAutomationLaneGestures({
       gestureAt,
       lane,
       readOnly,
+      reportLaneEditPress,
       onSelect,
       rangeDrag,
       editing,
@@ -526,7 +537,7 @@ export function useAutomationLaneGestures({
 
   const onDoubleClick = useCallback(
     (e: ReactPointerEvent<SVGSVGElement>): void => {
-      if (readOnly) return;
+      if (readOnly) return timelineReadOnlyPress?.();
       e.stopPropagation();
       e.preventDefault();
       const onPoint = hitIndex(e.clientX, e.clientY);
@@ -550,7 +561,7 @@ export function useAutomationLaneGestures({
       const { t, v } = pointAt(e.clientX, e.clientY);
       commitPoints(mergeInsertPoint(lane.points, t, v), true);
     },
-    [lane, pointAt, commitPoints, readOnly, hitIndex, segmentIndex],
+    [lane, pointAt, commitPoints, readOnly, timelineReadOnlyPress, hitIndex, segmentIndex],
   );
 
   return {

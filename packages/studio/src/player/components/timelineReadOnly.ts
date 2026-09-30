@@ -1,4 +1,4 @@
-import { createContext, useContext } from "react";
+import { createContext, useContext, useEffect, useEffectEvent } from "react";
 import {
   getTimelineEditCapabilities,
   type TimelineEditCapabilities,
@@ -30,4 +30,35 @@ export function refuseWhenReadOnly<T extends object>(
 ): T {
   if (!readOnlyPress) return callbacks;
   return Object.fromEntries(Object.keys(callbacks).map((key) => [key, readOnlyPress])) as T;
+}
+
+/** Once the switch into read-only lands, drop every edit already in flight without committing it. */
+export function useAbandonEditsOnReadOnly(readOnly: boolean, abandon: () => void): void {
+  const abandonNow = useEffectEvent(abandon);
+  useEffect(() => {
+    if (readOnly) abandonNow();
+  }, [readOnly]);
+}
+
+/** Reports once if the press that started at `start` travels far enough to have been a drag. */
+export function reportPressOnTravel(
+  start: { clientX: number; clientY: number },
+  refuse: (() => void) | null,
+  threshold = 4,
+): void {
+  if (!refuse) return;
+  const stop = () => {
+    window.removeEventListener("pointermove", onMove, true);
+    window.removeEventListener("pointerup", stop, true);
+    window.removeEventListener("pointercancel", stop, true);
+  };
+  const onMove = (event: PointerEvent) => {
+    if (Math.hypot(event.clientX - start.clientX, event.clientY - start.clientY) < threshold)
+      return;
+    stop();
+    refuse();
+  };
+  window.addEventListener("pointermove", onMove, true);
+  window.addEventListener("pointerup", stop, true);
+  window.addEventListener("pointercancel", stop, true);
 }
