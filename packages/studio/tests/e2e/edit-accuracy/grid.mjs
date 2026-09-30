@@ -6,8 +6,8 @@ import { join } from "node:path";
 export const COMPOSITION = { width: 1920, height: 1080 };
 /** Frame-aligned at 30 fps, inside every tween, so preview and producer sample the same instant. */
 export const PLAYHEAD = 1;
-const TARGET = { width: 240, height: 160, color: "#f0c020" };
-const BACKGROUND = "#202020";
+export const TARGET = { width: 240, height: 160, color: "#f0c020" };
+export const BACKGROUND = "#202020";
 const NESTED_HOST = { left: 160, top: 90, width: 1600, height: 900 };
 const GSAP_CDN = "https://cdn.jsdelivr.net/npm/gsap@3.14.2/dist/gsap.min.js";
 

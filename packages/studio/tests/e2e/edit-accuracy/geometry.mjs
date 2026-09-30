@@ -53,6 +53,20 @@ export const quadDistance = (a, b) => Math.max(...a.map((p, i) => dist(p, b[i]))
 export const angleOf = (q) => Math.atan2(q[1][1] - q[0][1], q[1][0] - q[0][0]);
 export const normalizeAngle = (a) => Math.atan2(Math.sin(a), Math.cos(a));
 
+export function aabb(q) {
+  const xs = q.map((p) => p[0]);
+  const ys = q.map((p) => p[1]);
+  return {
+    left: Math.min(...xs),
+    top: Math.min(...ys),
+    right: Math.max(...xs),
+    bottom: Math.max(...ys),
+  };
+}
+
+export const boxDistance = (a, b) =>
+  Math.max(...["left", "top", "right", "bottom"].map((k) => Math.abs(a[k] - b[k])));
+
 /** `inset(t r b l [round ...])` in px, as getComputedStyle reports it; none means no crop. */
 export function parseInset(clipPath) {
   const zero = { top: 0, right: 0, bottom: 0, left: 0 };

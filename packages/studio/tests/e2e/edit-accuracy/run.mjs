@@ -13,6 +13,8 @@ import { resolveHeadlessShellPath } from "../../../../engine/src/index.ts";
 import { buildGrid, writeFixture } from "./grid.mjs";
 import { killServers, runCase, startServer, stopServer } from "./case.mjs";
 import { METRICS, score, writeReport } from "./report.mjs";
+import { renderBox } from "./render.mjs";
+import { aabb, boxDistance } from "./geometry.mjs";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const REPO = resolve(HERE, "../../../../..");
@@ -47,6 +49,8 @@ function saveEvidence(id, evidence) {
     writeFileSync(join(caseDir, `${name}.jpg`), jpeg);
   for (const [name, text] of Object.entries(evidence.files ?? {}))
     writeFileSync(join(caseDir, `saved-${name.replace("/", "-")}`), text);
+  if (evidence.renderFailed && evidence.frame)
+    writeFileSync(join(caseDir, "producer.jpg"), evidence.frame);
 }
 
 function verdict(r) {
@@ -62,7 +66,24 @@ const errorResult = (error, log) => ({
 
 const liveRoots = new Set();
 
-async function runOne(spec, browser, port) {
+/** Render drift: the reloaded preview's visible box against the target's pixel box in a producer frame. */
+async function withRender(dir, decoder, { reloaded, ...measured }, evidence) {
+  const expected = aabb(reloaded.visible);
+  const render = await renderBox(dir, decoder);
+  evidence.frame = render.jpeg;
+  return {
+    ...measured,
+    render: boxDistance(render.box, expected),
+    diag: {
+      ...measured.diag,
+      previewBox: expected,
+      pixelBox: render.box,
+      producerDomRect: render.domRect,
+    },
+  };
+}
+
+async function runOne(spec, browser, decoder, port) {
   const started = Date.now();
   const root = mkdtempSync(join(tmpdir(), "hf-edit-accuracy-"));
   liveRoots.add(root);
@@ -74,7 +95,7 @@ async function runOne(spec, browser, port) {
   let server;
   try {
     server = await startServer(opt.cli, dir, port, log, join(root, "home"));
-    result = await runCase({
+    const measured = await runCase({
       browser,
       spec,
       dir,
@@ -82,13 +103,16 @@ async function runOne(spec, browser, port) {
       url: `http://127.0.0.1:${port}/#project/case`,
       evidence,
     });
+    await stopServer(server);
+    server = null;
+    result = await withRender(dir, decoder, measured, evidence);
   } catch (error) {
     result = errorResult(error, log);
   } finally {
     if (server) await stopServer(server);
   }
   const scored = { ...score(spec, result), seconds: (Date.now() - started) / 1000 };
-  if (!scored.pass) saveEvidence(spec.id, evidence);
+  if (!scored.pass) saveEvidence(spec.id, { ...evidence, renderFailed: !scored.checks.render });
   rmSync(root, { recursive: true, force: true });
   liveRoots.delete(root);
   console.log(verdict(scored));
@@ -111,7 +135,7 @@ function acquireLock(path) {
 const LOCK_CHUNK = 8;
 
 // fallow-ignore-next-line complexity
-async function runChunks(queue, browsers, results) {
+async function runChunks(queue, browsers, decoders, results) {
   for (let start = 0; start < queue.length; start += opt.lock ? LOCK_CHUNK : queue.length) {
     const chunk = queue.slice(start, opt.lock ? start + LOCK_CHUNK : queue.length);
     const release = opt.lock ? await acquireLock(opt.lock) : () => undefined;
@@ -119,7 +143,7 @@ async function runChunks(queue, browsers, results) {
       await Promise.all(
         browsers.map(async (browser, i) => {
           for (let spec = chunk.shift(); spec; spec = chunk.shift())
-            results.push(await runOne(spec, browser, Number(opt.port) + i));
+            results.push(await runOne(spec, browser, decoders[i], Number(opt.port) + i));
         }),
       );
     } finally {
@@ -174,7 +198,8 @@ const browsers = await Promise.all(
   ),
 );
 try {
-  await runChunks([...cases], browsers, results);
+  const decoders = await Promise.all(browsers.map((b) => b.newPage()));
+  await runChunks([...cases], browsers, decoders, results);
 } finally {
   await Promise.all(browsers.map((b) => b.close()));
 }
