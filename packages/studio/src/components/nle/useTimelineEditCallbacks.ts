@@ -72,6 +72,7 @@ export interface TimelineEditCallbackDeps {
       value: string | null,
       label: string,
     ) => Promise<TimelineEditOutcome | void>;
+    setMany?: TimelineEditCallbacks["onSetElementsAttributeQuiet"];
   };
 }
 
@@ -228,6 +229,7 @@ export function useTimelineEditCallbacks({
       onGroupClips: handleGroupClips,
       onSetElementAttributeLive: setElementFxAttribute?.setLive,
       onSetElementAttributeQuiet: setElementFxAttribute?.setQuiet,
+      onSetElementsAttributeQuiet: setElementFxAttribute?.setMany,
       onRevertElementAttributeLive: setElementFxAttribute?.revertLive,
       onBlockedEditAttempt: handleBlockedTimelineEdit,
       onSplitElement: handleTimelineElementSplit,

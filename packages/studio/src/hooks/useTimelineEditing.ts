@@ -26,6 +26,7 @@ import {
 import type { PersistTimelineEditInput } from "./timelineEditingHelpers";
 import { useSetAudioGroupAttribute } from "./timelineAudioGroupVolume";
 import { useSetElementAttribute } from "./timelineElementFxAttribute";
+import { useSetElementsAttribute } from "./timelineElementsAttribute";
 import { useTimelineDeleteOps } from "./useTimelineDeleteOps";
 import { useTimelineEditGuard } from "./useTimelineEditGuard";
 import {
@@ -409,6 +410,16 @@ export function useTimelineEditing({
     isRecordingRef,
   });
 
+  const setElementsAttribute = useSetElementsAttribute({
+    projectIdRef,
+    activeCompPath,
+    showToast,
+    writeProjectFile,
+    recordEdit,
+    previewIframeRef,
+    pendingTimelineEditPathRef,
+  });
+
   const setAudioGroupAttribute = useSetAudioGroupAttribute({
     projectIdRef,
     activeCompPath,
@@ -532,6 +543,7 @@ export function useTimelineEditing({
     },
     setElementFxAttribute: {
       ...setElementFxAttribute,
+      setMany: track(guard((edits) => edits.map((edit) => edit.element), setElementsAttribute)),
       setQuiet: track(
         guard(
           (element) => [element],

@@ -14,6 +14,7 @@ import { AudioWaveform, rendersWaveform } from "../player/components/AudioWavefo
 import { ImageThumbnail } from "../player/components/ImageThumbnail";
 import { AudibleVideoClipContent } from "../player/components/AudibleVideoClipContent";
 import { ClipPeakMarks } from "../player/components/ClipPeakMarks";
+import { clipPeaksUrl, clipSourceWindow } from "../player/components/clipPeakMap";
 import { clipHasSound } from "../player/components/clipMenuNormalize";
 import { encodePreviewPath, resolveMediaPreviewUrl } from "../player/components/thumbnailUtils";
 import { usePlayerStore } from "../player/store/playerStore";
@@ -91,11 +92,8 @@ function renderAudioClip(
   return createElement(
     ClipPeakMarks,
     {
-      peaksUrl: encodedRelative ? buildProjectApiPath(pid, `/peaks/${encodedRelative}`) : undefined,
-      sourceWindow: {
-        mediaStart: el.playbackStart ?? 0,
-        sourceSpan: el.duration * (el.playbackRate ?? 1),
-      },
+      peaksUrl: clipPeaksUrl(el.src, pid),
+      sourceWindow: clipSourceWindow(el),
       gain: el.volume ?? 1,
     },
     waveform,

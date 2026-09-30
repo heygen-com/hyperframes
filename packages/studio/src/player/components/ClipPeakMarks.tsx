@@ -1,18 +1,6 @@
 import { useEffect, useState, type ReactNode } from "react";
-import { clipPeakRuns, isPeakMap, type ClipSourceWindow, type PeakMap } from "./clipPeakRuns";
-
-const peakMapRequests = new Map<string, Promise<PeakMap | null>>();
-
-function loadPeakMap(url: string): Promise<PeakMap | null> {
-  const pending = peakMapRequests.get(url);
-  if (pending) return pending;
-  const request = fetch(url)
-    .then((res) => (res.ok ? res.json() : null))
-    .then((body: unknown) => (isPeakMap(body) ? body : null))
-    .catch(() => null);
-  peakMapRequests.set(url, request);
-  return request;
-}
+import { clipPeakRuns, type ClipSourceWindow, type PeakMap } from "./clipPeakRuns";
+import { loadPeakMap } from "./clipPeakMap";
 
 const dbText = (db: number) => `${db < 0 ? "−" : "+"}${Math.abs(db).toFixed(1)} dBFS`;
 

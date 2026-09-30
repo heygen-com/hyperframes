@@ -4,6 +4,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import { createHappyDomRootHarness } from "./testRootHarness";
 import { ClipMenuAudioItems } from "./clipMenuAudioItems";
 import type { TimelineElement } from "../store/timelineElement";
+import { useAudioGainDialogStore } from "./audioGainDialogStore";
 
 const showToast = vi.fn();
 const setQuiet = vi.fn<(...args: unknown[]) => Promise<unknown>>(async () => {});
@@ -27,7 +28,7 @@ vi.mock("../../contexts/TimelineEditContext", () => ({
 
 const harness = createHappyDomRootHarness();
 
-function render(element: TimelineElement, part: "normalize" | "duck" = "normalize") {
+function render(element: TimelineElement, part: "gain" | "duck" = "gain") {
   const host = document.createElement("div");
   document.body.appendChild(host);
   act(() =>
@@ -95,12 +96,8 @@ describe("ClipMenuAudioItems", () => {
     });
   });
 
-  it("normalizes a video with sound by writing data-volume as one edit", async () => {
-    const plan = { targetLufs: -16, projectedLufs: -16, volume: 2, changeDb: 6, limitedBy: null };
-    vi.stubGlobal(
-      "fetch",
-      vi.fn(async () => Response.json({ plan })),
-    );
+  it("Audio Gain… opens the G dialog for the clicked clip", async () => {
+    useAudioGainDialogStore.getState().close();
     const element: TimelineElement = {
       ...base,
       id: "a-roll",
@@ -110,13 +107,12 @@ describe("ClipMenuAudioItems", () => {
     };
     const host = render(element);
     const button = [...host.querySelectorAll("button")].find((b) =>
-      b.textContent?.includes("Normalize loudness"),
+      b.textContent?.includes("Audio Gain…"),
     );
+    expect(button?.textContent).toBe("Audio Gain…G");
     await act(async () => button?.click());
-    await vi.waitFor(() => expect(setQuiet).toHaveBeenCalled());
-    expect(setQuiet).toHaveBeenCalledWith(element, "data-volume", "2", "Normalize loudness");
-    expect(showToast).toHaveBeenCalledWith("Normalized to −16 LUFS (+6.0 dB)", "info");
-    vi.unstubAllGlobals();
+    expect(useAudioGainDialogStore.getState().targetKeys).toEqual(["a-roll"]);
+    expect(host.textContent).not.toContain("Normalize loudness");
   });
 
   it("refuses to normalize a clip whose volume lane owns its gain", async () => {

@@ -175,7 +175,7 @@ export const ClipContextMenu = memo(function ClipContextMenu({
       </div>
 
       <div role="group" aria-label="Sound" className={GROUP_CLASS}>
-        <ClipMenuAudioItems part="normalize" element={element} onClose={onClose} />
+        <ClipMenuAudioItems part="gain" element={element} onClose={onClose} />
         <ClipMenuToolItems
           group="sound"
           element={element}

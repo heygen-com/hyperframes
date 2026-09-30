@@ -3,6 +3,7 @@ import { act } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { createHappyDomRootHarness } from "./testRootHarness";
 import { ClipMenuAudioItems } from "./clipMenuAudioItems";
+import { AudioGainDialog } from "./AudioGainDialog";
 import { usePlayerStore } from "../store/playerStore";
 import { usePreviewIframeStore } from "../store/previewIframeStore";
 import type { TimelineElement } from "../store/timelineElement";
@@ -38,7 +39,7 @@ function mountPreview(): void {
   usePreviewIframeStore.getState().setIframe(iframe);
 }
 
-function render(part: "normalize" | "duck") {
+function render(part: "gain" | "duck") {
   const host = document.createElement("div");
   document.body.appendChild(host);
   act(() =>
@@ -55,23 +56,30 @@ afterEach(() => {
 });
 
 describe("ClipMenuAudioItems in a host without Studio's shell", () => {
-  it("offers Normalize and Duck from the timeline session and the live preview", () => {
+  it("offers Audio Gain and Duck from the timeline session and the live preview", () => {
     usePlayerStore.getState().beginTimelineSession("p1");
     mountPreview();
-    expect(render("normalize").textContent).toContain("Normalize loudness");
+    expect(render("gain").textContent).toContain("Audio Gain…");
     expect(render("duck").textContent).toContain("Duck under voice");
   });
 
-  it("normalizes through the session's project and reports through onNotice", async () => {
+  it("the dialog's loudness row normalizes through the session's project and onNotice", async () => {
     usePlayerStore.getState().beginTimelineSession("p1");
-    mountPreview();
     const plan = { targetLufs: -16, projectedLufs: -16, volume: 2, changeDb: 6, limitedBy: null };
     const fetchSpy = vi.fn(async (_url: string) => Response.json({ plan }));
     vi.stubGlobal("fetch", fetchSpy);
-    const button = render("normalize").querySelector("button");
-    await act(async () => button?.click());
+    const host = document.createElement("div");
+    document.body.appendChild(host);
+    act(() => harness.mount(host).render(<AudioGainDialog elements={[tour]} onClose={() => {}} />));
+    const loudness = [...document.querySelectorAll("label")].find((l) =>
+      l.textContent?.includes("−16 LUFS"),
+    );
+    act(() => loudness?.querySelector("input")?.click());
+    const ok = [...document.querySelectorAll("button")].find((b) => b.textContent === "OK");
+    await act(async () => ok?.click());
     await vi.waitFor(() => expect(onNotice).toHaveBeenCalled());
-    expect(String(fetchSpy.mock.calls[0]?.[0])).toContain("/api/projects/p1/loudness/normalize");
+    const urls = fetchSpy.mock.calls.map((call) => String(call[0]));
+    expect(urls).toContain("/api/projects/p1/loudness/normalize");
     expect(setQuiet).toHaveBeenCalledWith(tour, "data-volume", "2", "Normalize loudness");
     expect(onNotice).toHaveBeenCalledWith("Normalized to −16 LUFS (+6.0 dB)", "info");
   });

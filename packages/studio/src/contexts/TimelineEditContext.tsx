@@ -37,6 +37,7 @@ const EDIT_CALLBACK_KEY_SET: Record<keyof TimelineEditCallbacks, true> = {
   onGroupClips: true,
   onSetElementAttributeLive: true,
   onSetElementAttributeQuiet: true,
+  onSetElementsAttributeQuiet: true,
   onRevertElementAttributeLive: true,
   onBlockedEditAttempt: true,
   onLinkEdit: true,
