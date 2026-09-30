@@ -18,6 +18,7 @@ export interface AudioWaveformProps {
   priority: ThumbnailPriority;
   /** `data-hidden` or a muted audio group. Greys the pill; the clip stays. */
   muted?: boolean;
+  labelInset?: number;
 }
 
 const BAR_STEP = 3;
@@ -165,6 +166,7 @@ export const AudioWaveform = memo(function AudioWaveform({
   sessionEpoch,
   priority,
   muted = false,
+  labelInset = 16,
 }: AudioWaveformProps) {
   const rootRef = useRef<HTMLDivElement | null>(null);
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
@@ -237,12 +239,13 @@ export const AudioWaveform = memo(function AudioWaveform({
         <canvas
           ref={setCanvasRef}
           className="absolute inset-x-0 bottom-0 w-full"
-          style={{ top: 16, height: "calc(100% - 16px)" }}
+          style={{ top: labelInset, height: `calc(100% - ${labelInset}px)` }}
         />
         {snapshot.status === "loading" && (
           <div
-            className="absolute inset-x-0 bottom-0 top-4 animate-pulse"
+            className="absolute inset-x-0 bottom-0 animate-pulse"
             style={{
+              top: labelInset,
               background: "var(--timeline-thumbnail-shimmer)",
             }}
           />
@@ -252,7 +255,7 @@ export const AudioWaveform = memo(function AudioWaveform({
         {snapshot.status === "error" && (
           <div
             className="absolute inset-x-0 flex items-center justify-center gap-1.5"
-            style={{ top: 16, bottom: 0 }}
+            style={{ top: labelInset, bottom: 0 }}
           >
             <div
               className="absolute inset-x-0"

@@ -2,6 +2,8 @@ import { formatAudioGain } from "@hyperframes/core/audio-gain";
 import type { TimelineElement } from "../store/timelineElement";
 import { useTimelineEditContextOptional } from "../../contexts/TimelineEditContext";
 import { useStudioShellContextOptional } from "../../contexts/StudioContext";
+import { usePlayerStore } from "../store/playerStore";
+import { useLivePreviewIframe } from "../store/previewIframeStore";
 import {
   clipHasSound,
   normalizeToastText,
@@ -34,12 +36,17 @@ export function ClipMenuAudioItems({
   onClose: () => void;
 }) {
   const shell = useStudioShellContextOptional();
-  const { onSetElementAttributeQuiet, onGroupClips } = useTimelineEditContextOptional();
-  const doc = shell?.previewIframeRef.current?.contentDocument ?? null;
+  const { onSetElementAttributeQuiet, onGroupClips, onNotice } = useTimelineEditContextOptional();
+  const liveIframe = useLivePreviewIframe();
+  const sessionProjectId = usePlayerStore((s) => s.timelineProjectId);
+  const projectId = shell?.projectId ?? sessionProjectId;
+  const showToast = shell?.showToast ?? onNotice;
+  const doc = (shell?.previewIframeRef.current ?? liveIframe)?.contentDocument ?? null;
   const bed = doc?.getElementById(element.domId ?? element.id) ?? null;
   const ducked = bed ? readBedCarve(bed)?.enabled === true : false;
-  if (!clipHasSound(element) || !shell || !onSetElementAttributeQuiet) return null;
-  const { showToast, projectId } = shell;
+  if (!clipHasSound(element) || !projectId || !showToast || !onSetElementAttributeQuiet) {
+    return null;
+  }
 
   const normalize = async () => {
     onClose();

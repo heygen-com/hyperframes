@@ -121,4 +121,33 @@ describe("AudioWaveform", () => {
     act(() => root.unmount());
     expect(host.hasAttribute("data-audio-muted")).toBe(false);
   });
+
+  it("fills a short sound strip when the label band is dropped", () => {
+    const heights = [16, 0].map((labelInset) => {
+      const host = document.createElement("div");
+      document.body.append(host);
+      const root = createRoot(host);
+      act(() => {
+        root.render(
+          <AudioWaveform
+            audioUrl="/media/talk.mp4"
+            label=""
+            labelColor="#fff"
+            projectId="project-a"
+            sessionEpoch={1}
+            priority="visible"
+            {...(labelInset === 16 ? {} : { labelInset })}
+          />,
+        );
+      });
+      const canvas = host.querySelector("canvas");
+      const box = { top: canvas?.style.top, height: canvas?.style.height };
+      act(() => root.unmount());
+      return box;
+    });
+    expect(heights).toEqual([
+      { top: "16px", height: "calc(100% - 16px)" },
+      { top: "0px", height: "calc(100% - 0px)" },
+    ]);
+  });
 });

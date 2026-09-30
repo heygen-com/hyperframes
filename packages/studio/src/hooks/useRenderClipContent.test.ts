@@ -250,6 +250,7 @@ describe("useRenderClipContent", () => {
     expect(isValidElement<{ waveformUrl: string }>(waveform) && waveform.props.waveformUrl).toBe(
       "/api/projects/my-project/waveform/talk.mp4",
     );
+    expect(isValidElement<{ labelInset?: number }>(waveform) && waveform.props.labelInset).toBe(0);
   });
 
   it("keeps a muted or silent video to thumbnails only", () => {

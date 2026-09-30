@@ -63,6 +63,7 @@ function renderAudioClip(
   labelColor: string,
   context: TimelineClipRenderContext,
   elements: readonly TimelineElement[],
+  labelInset?: number,
 ): ReactNode {
   const audioUrl = resolveMediaPreviewUrl(el.src ?? "", pid, window.location.origin);
   const srcRelative = resolvePreviewRelative(audioUrl, pid, window.location.origin);
@@ -84,6 +85,7 @@ function renderAudioClip(
     projectId: pid,
     sessionEpoch,
     priority: context.priority,
+    labelInset,
     ...audioPillFlags(el, elements),
   });
   return createElement(
@@ -103,10 +105,10 @@ function renderAudioClip(
 function withSoundStrip(
   el: TimelineElement,
   thumbnail: ReactNode,
-  waveform: () => ReactNode,
+  waveform: (labelInset: number) => ReactNode,
 ): ReactNode {
   if (el.tag !== "video" || !clipHasSound(el)) return thumbnail;
-  return createElement(AudibleVideoClipContent, { thumbnail, waveform: waveform() });
+  return createElement(AudibleVideoClipContent, { thumbnail, waveform: waveform(0) });
 }
 
 export interface UseRenderClipContentOptions {
@@ -141,7 +143,8 @@ export function useRenderClipContent({
 
       // Thumbnail generation disabled (perf) -> plain clip bars. Audio still shows
       // its waveform (cheap, not a frame thumbnail). Toggle: timeline toolbar.
-      const waveform = () => renderAudioClip(el, pid, sessionEpoch, style.label, context, elements);
+      const waveform = (labelInset?: number) =>
+        renderAudioClip(el, pid, sessionEpoch, style.label, context, elements, labelInset);
       if (effectiveMode === "hidden") {
         return rendersWaveform(el) ? waveform() : withSoundStrip(el, null, waveform);
       }
