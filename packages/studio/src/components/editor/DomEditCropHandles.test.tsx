@@ -126,22 +126,48 @@ describe("DomEditCropHandles clip lift/restore", () => {
     expect(a.style.getPropertyValue("clip-path")).toBe("inset(10px 30px 10px 10px)");
   });
 
-  it("commits nothing when a crop drag ends where it started", () => {
-    const a = makeEl("a", "inset(10px)");
+  it.each([
+    { name: "a crop edge", clip: "inset(10px)", handle: "Crop right", dx: -20, dy: 0 },
+    {
+      name: "the reposition handle on fractional insets",
+      clip: "inset(20px 0.42px 40px 0.03px)",
+      handle: "Reposition crop",
+      dx: 0,
+      dy: 10,
+    },
+  ])("commits nothing when $name is dragged back to where it started", (c) => {
     const onStyleCommit = vi.fn();
-    render(a, onStyleCommit);
-    const handle = document.querySelector<HTMLButtonElement>('[aria-label="Crop right"]')!;
-    for (const [type, clientX] of [
-      ["pointerdown", 100],
-      ["pointermove", 80],
-      ["pointermove", 100],
-      ["pointerup", 100],
+    render(makeEl("a", c.clip), onStyleCommit);
+    const handle = document.querySelector<HTMLButtonElement>(`[aria-label="${c.handle}"]`)!;
+    for (const [type, d] of [
+      ["pointerdown", 0],
+      ["pointermove", 1],
+      ["pointermove", 0],
+      ["pointerup", 0],
     ] as const) {
+      const at = { clientX: 100 + d * c.dx, clientY: 50 + d * c.dy };
       act(() =>
-        handle.dispatchEvent(new PointerEvent(type, { bubbles: true, pointerId: 3, clientX })),
+        handle.dispatchEvent(new PointerEvent(type, { bubbles: true, pointerId: 3, ...at })),
       );
     }
     expect(onStyleCommit).not.toHaveBeenCalled();
+  });
+
+  it("commits where the pointer was released, even before its last move renders", () => {
+    const onStyleCommit = vi.fn();
+    render(makeEl("a", "inset(10px)"), onStyleCommit);
+    const handle = document.querySelector<HTMLButtonElement>('[aria-label="Crop right"]')!;
+    act(() => {
+      for (const [type, clientX] of [
+        ["pointerdown", 100],
+        ["pointermove", 90],
+        ["pointermove", 80],
+        ["pointerup", 80],
+      ] as const) {
+        handle.dispatchEvent(new PointerEvent(type, { bubbles: true, pointerId: 4, clientX }));
+      }
+    });
+    expect(onStyleCommit).toHaveBeenCalledWith("clip-path", "inset(10px 30px 10px 10px)");
   });
 
   it("re-lifts when the crop commit rejects", async () => {

@@ -18,6 +18,7 @@ interface CropGestureState {
   startX: number;
   startY: number;
   startInsets: ClipPathInsetSides;
+  insets: ClipPathInsetSides;
   /** Element frame captured at gesture start: pointer deltas rotate into it. */
   angleDeg: number;
   scaleX: number;
@@ -185,6 +186,7 @@ export function DomEditCropHandles({
       startX: event.clientX,
       startY: event.clientY,
       startInsets: state.insets,
+      insets: state.insets,
       angleDeg: frame.angleDeg,
       scaleX: frame.scaleX,
       scaleY: frame.scaleY,
@@ -215,6 +217,7 @@ export function DomEditCropHandles({
       gesture.edge === "move"
         ? resolveCropInsetFromMoveDrag(drag)
         : resolveCropInsetFromEdgeDrag({ ...drag, edge: gesture.edge, width, height });
+    gesture.insets = nextInsets;
     setState((prev) => ({ ...prev, insets: nextInsets }));
   };
 
@@ -231,7 +234,6 @@ export function DomEditCropHandles({
   const finishCropGesture = (event: ReactPointerEvent<HTMLElement>) => {
     const gesture = endCropGesture(event);
     if (!gesture) return;
-    if (EDGES.every((edge) => state.insets[edge] === gesture.startInsets[edge])) return;
     // Commit to the file. The commit path re-applies the value to the live
     // element synchronously, so re-lift in the same turn to keep showing the full
     // content + dim while selected. Re-lift again on rejection so a failed commit
@@ -240,12 +242,10 @@ export function DomEditCropHandles({
     const reLift = () => {
       if (liftedRef.current) el.style.setProperty("clip-path", "none");
     };
-    const committedValue = buildInsetClipPathSides(state.insets, state.radius);
-    const cropped =
-      state.insets.top > 0 ||
-      state.insets.right > 0 ||
-      state.insets.bottom > 0 ||
-      state.insets.left > 0;
+    const { insets } = gesture;
+    const committedValue = buildInsetClipPathSides(insets, state.radius);
+    if (committedValue === buildInsetClipPathSides(gesture.startInsets, state.radius)) return;
+    const cropped = insets.top > 0 || insets.right > 0 || insets.bottom > 0 || insets.left > 0;
     const commit = onStyleCommit?.("clip-path", committedValue);
     // handleDomStyleCommit applies the persisted value to the live element
     // synchronously before its first await. Restore the crop-mode lift in this
