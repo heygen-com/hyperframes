@@ -166,11 +166,10 @@ export function pasteElementHtml(
   return insertAsSibling(content, deduped, payload.originSelector, payload.originSelectorIndex);
 }
 
-/** Shared insertion path for paste and duplicate, anchored at the playhead or
- *  the selection's end respectively. Returns the final ids so the caller can
- *  select what it just placed, and the furthest end any clip lands at so the
- *  caller can grow the root composition's duration to cover it. `fromThisFile`
- *  says the clips were copied from `content`, so a renamed copy takes its original's look. */
+/** Shared insertion path for paste and duplicate, anchored at the playhead or the selection's end. Returns the
+ *  final ids so the caller can select what it placed, and the furthest end any clip lands at so it can grow the
+ *  root duration to cover it. `fromThisFile`: the clips came from `content`, so a renamed copy takes its
+ *  original's look. */
 export function pasteTimelineClips(
   content: string,
   clips: readonly TimelineClipboardClip[],
@@ -213,7 +212,6 @@ export function pasteTimelineClips(
     const withPatched = patchedRootTag + deduped.slice(rootTagEnd + 1);
     result = insertTimelineAssetIntoSource(result, withPatched);
     if (fromThisFile) {
-      // A start written as a reference ("title + 1") has no number here; the clip's own start stands in.
       const authored = Number(rootTag.match(/data-start="([^"]*)"/)?.[1]);
       const authoredStart = Number.isFinite(authored) ? authored : clip.start;
       result = carryLook(result, renamedIds(reminted, deduped), newStart - authoredStart);

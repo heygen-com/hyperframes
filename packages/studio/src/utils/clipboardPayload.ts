@@ -16,7 +16,6 @@ export type ClipboardPayload =
       kind: "timeline-clip";
       clips: TimelineClipboardClip[];
       sourceFile: string;
-      /** The project copied from: a same-named file in another project is another film. */
       projectId?: string;
     }
   | {

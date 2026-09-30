@@ -209,7 +209,6 @@ function humanizeTimelineToken(value: string): string {
   return normalized.replace(/\b\w/g, (char) => char.toUpperCase());
 }
 
-// A second instance of a scene is renamed at load (`intro__hf2`); its name is still the authored id.
 function authoredCompositionId(node: Element): string | null {
   return (
     node.getAttribute("data-hf-original-composition-id") ?? node.getAttribute("data-composition-id")

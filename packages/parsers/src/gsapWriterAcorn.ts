@@ -467,11 +467,8 @@ export function shiftPositionsInScript(
   return changed ? ms.toString() : script;
 }
 
-/**
- * Add a copy of every tween targeting `fromSelector`, retargeted to `toSelector` and moved by `delta`
- * seconds, so a pasted clip moves like its original. A copy is exact or absent: only a tween at a number, written
- * straight in the block that declares the timeline, is copied, keeping the original's own argument text.
- */
+/** Copies each tween on `fromSelector` for `toSelector`, `delta` seconds later, in its own argument text. Exact or
+ *  absent: only a tween at a number, written straight in the timeline's own block, is copied. */
 export function copyAnimationsInScript(
   script: string,
   fromSelector: string,
