@@ -15,7 +15,7 @@ const worstValue = {
   press: (r) => r.pressJump ?? 0,
   drop: (r) => r.drop,
   reload: (r) => r.reload,
-  undo: (r) => Math.max(r.undo.box, r.undo.redoBox),
+  undo: (r) => Math.max(r.undo.box, r.undo.redoBox ?? 0),
   smooth: (r) => r.smooth.dropped - r.smooth.control.dropped,
 };
 
@@ -113,6 +113,7 @@ function summarize(results, seconds) {
     },
     perMetric,
     unsettled: measured.filter((r) => r.unsettled.length).length,
+    undoTimeouts: measured.filter((r) => r.undoTimeout).length,
     smooth: smoothSummary(measured),
     seconds: Math.round(seconds),
   };
@@ -124,15 +125,16 @@ const metricRow = (m, total) =>
 
 function table(summary, meta, results) {
   const lines = [
-    `# Edit accuracy: ${summary.passing}/${summary.total} cases pass`,
+    `# Edit accuracy: ${summary.accurate}/${summary.total} cases pass`,
     "",
-    `${summary.accurate}/${summary.total} pass every metric except smoothness.`,
+    `Every metric counts except smoothness, which is reported against the blank-page control: ${summary.perMetric.find((m) => m.metric === "smooth").pass}/${summary.total} pass it, and ${summary.passing}/${summary.total} pass everything including it.`,
     "",
     `Studio ${meta.studio} (build ${meta.build}), bench ${meta.bench}, grid \`${meta.grid}\`, ${meta.date}, ${summary.seconds}s with ${meta.jobs} jobs, ${summary.errors} harness errors, load ${meta.load}.`,
     `Pass: tracking, press jump, drop and reload ≤ ${LIMIT_PX} px; undo and redo byte-identical with the box ≤ ${LIMIT_PX} px; no more frames over ${DROPPED_FRAME_MS} ms than the blank-page control, and main-thread work ≤ ${WORK_MS} ms per frame at p95.`,
     "",
     `Undo or redo left different bytes in ${summary.bytesDiffer.undo} undo and ${summary.bytesDiffer.redo} redo cases.`,
     `The preview never held still for 1 s within 15 s in ${summary.unsettled} cases; the metrics that snapshot feeds fail.`,
+    `An undo or redo write never landed within 15 s in ${summary.undoTimeouts} cases; undo fails there.`,
     `Smoothness: ${summary.smooth.unknown} cases with unknown work; dropped frames per case (median/max) ${summary.smooth.dropped}, blank-page control ${summary.smooth.control}; raw rAF p95 (median/max) ${summary.smooth.p95} ms, control ${summary.smooth.controlP95} ms.`,
     "",
     "| Metric | Pass | Worst | Worst case |",
@@ -170,6 +172,7 @@ function baseline(meta, results) {
             work: roundUp(r.smooth.workP95),
             frameP95: roundUp(r.smooth.p95),
             ...(r.unsettled.length && { unsettled: r.unsettled }),
+            ...(r.undoTimeout && { undoTimeout: r.undoTimeout }),
           };
       return `    ${JSON.stringify(r.id)}: ${JSON.stringify(v)}`;
     });

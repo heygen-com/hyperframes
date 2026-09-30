@@ -135,7 +135,7 @@ function readFiles(dir, files) {
 }
 const sameFiles = (a, b) => Object.keys(a).every((f) => a[f] === b[f]);
 
-/** Waits until the files differ from `from` (or equal `want`) and then hold still for 300 ms. */
+/** Waits until the files differ from `from` (or equal `want`, or just exist) and then hold still for 300 ms. */
 // fallow-ignore-next-line complexity
 async function waitForFiles(ctx, { from, want, timeout = 5000 }) {
   const deadline = Date.now() + timeout;
@@ -144,7 +144,7 @@ async function waitForFiles(ctx, { from, want, timeout = 5000 }) {
   for (; Date.now() < deadline; await sleep(50)) {
     const now = readFiles(ctx.dir, ctx.files);
     if (!sameFiles(now, last)) [last, stableSince] = [now, Date.now()];
-    const reached = want ? sameFiles(now, want) : !sameFiles(now, from);
+    const reached = want ? sameFiles(now, want) : !from || !sameFiles(now, from);
     if (reached && Date.now() - stableSince >= 300) return { reached: true, files: now };
   }
   return { reached: false, files: last };
@@ -226,17 +226,18 @@ const previewFrames = (page) =>
 // fallow-ignore-next-line complexity
 async function settled(ctx, timeout = 15_000) {
   const deadline = Date.now() + timeout;
-  let prev = { m: await measure(ctx), frames: previewFrames(ctx.page) };
+  let start = { m: await measure(ctx), frames: previewFrames(ctx.page) };
+  let now = start;
+  // Compared with the window's first read, so a drift too slow to show read to read still restarts it.
   for (let since = Date.now(); Date.now() - since < STILL_MS; ) {
     // A preview that never holds still is a Studio defect: the metrics it feeds fail, the rest still count.
-    if (Date.now() > deadline) return { ...prev.m, unsettled: true };
+    if (Date.now() > deadline) return { ...now.m, unsettled: true };
     await nextFrame(ctx.page);
-    const now = { m: await measure(ctx), frames: previewFrames(ctx.page) };
-    if (now.frames !== prev.frames || quadDistance(now.m.visible, prev.m.visible) >= 0.01)
-      since = Date.now();
-    prev = now;
+    now = { m: await measure(ctx), frames: previewFrames(ctx.page) };
+    if (now.frames !== start.frames || quadDistance(now.m.visible, start.m.visible) >= 0.01)
+      [start, since] = [now, Date.now()];
   }
-  return prev.m;
+  return now.m;
 }
 
 /** Ready once Studio's own seek tool reports the composition and the playhead landed. */
@@ -642,20 +643,29 @@ export async function runCase({ browser, spec, dir, files, url, evidence }) {
     committedFiles = readFiles(dir, files);
     const saved = !sameFiles(committedFiles, original);
 
-    // Undo and redo run before any reload, against the files as they stood once the commit settled.
+    // Undo and redo run before any reload. Each waits up to 15 s for its own write; redo waits for undo.
+    const landed = (from) =>
+      saved ? waitForFiles(ctx, { from, timeout: 15_000 }) : { reached: true, files: from };
     await chord(page, "Control+z");
-    const undo = await waitForFiles(ctx, { want: original, timeout: 4000 });
+    const undo = await landed(committedFiles);
     const undone = await settled(ctx);
     await shoot("undone");
-    await blurPreview(page);
-    await chord(page, "Control+Shift+z");
-    const redo = await waitForFiles(ctx, { want: committedFiles, timeout: 4000 });
-    const redone = await settled(ctx);
+    let [redo, redone] = [{ reached: false }, null];
+    if (undo.reached) {
+      await blurPreview(page);
+      await chord(page, "Control+Shift+z");
+      redo = await landed(undo.files);
+      redone = await settled(ctx);
+    }
+    // A late write must not land under the reload.
+    await waitForFiles(ctx, { timeout: 15_000 });
 
     await page.reload();
     const reloaded = await openStudio(ctx);
     await shoot("reloaded");
-    const quads = { pre, committed, undone, redone, reloaded };
+    const quads = Object.fromEntries(
+      Object.entries({ pre, committed, undone, redone, reloaded }).filter(([, m]) => m),
+    );
     const round = (m) => m.visible.map((p) => p.map((v) => Math.round(v * 100) / 100));
     return {
       zoom,
@@ -669,11 +679,13 @@ export async function runCase({ browser, spec, dir, files, url, evidence }) {
       drop: quadDistance(drive.lastQuad, committed.visible),
       reload: quadDistance(committed.visible, reloaded.visible),
       undo: {
-        bytes: saved && undo.reached,
+        bytes: saved && undo.reached && sameFiles(undo.files, original),
         box: quadDistance(undone.visible, pre.visible),
-        redoBytes: saved && redo.reached,
-        redoBox: quadDistance(redone.visible, committed.visible),
+        redoBytes: saved && redo.reached && sameFiles(redo.files, committedFiles),
+        redoBox: redone && quadDistance(redone.visible, committed.visible),
       },
+      // Which write never landed within 15 s; a redo that was never sent is untested, so undo fails.
+      undoTimeout: saved && !undo.reached ? "undo" : saved && !redo.reached ? "redo" : null,
       smooth: { ...drive.smooth, control },
       unsettled: Object.keys(quads).filter((k) => quads[k].unsettled),
       diag: {

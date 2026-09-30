@@ -142,9 +142,15 @@ for (const signal of ["SIGINT", "SIGTERM", "SIGHUP"]) {
 // Stamped at start from the CLI that runs: its tree's commit and a hash of the CLI and Studio bundles.
 // cli.js alone does not change with Studio; the Studio index.html names its hashed assets.
 const git = (args) => execSync(`git ${args}`, { cwd: REPO }).toString().trim();
-const studio = execSync("git rev-parse --short HEAD", { cwd: dirname(opt.cli) })
-  .toString()
-  .trim();
+const studio = (() => {
+  try {
+    return execSync("git rev-parse --short HEAD", { cwd: dirname(opt.cli), stdio: "pipe" })
+      .toString()
+      .trim();
+  } catch {
+    return "outside git"; // An extracted CLI artifact; the build hash still identifies it.
+  }
+})();
 const build = createHash("sha256")
   .update(readFileSync(opt.cli))
   .update(readFileSync(join(dirname(opt.cli), "studio/index.html")))
