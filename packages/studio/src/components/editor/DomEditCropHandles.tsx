@@ -18,7 +18,6 @@ interface CropGestureState {
   startX: number;
   startY: number;
   startInsets: ClipPathInsetSides;
-  didMove: boolean;
   /** Element frame captured at gesture start: pointer deltas rotate into it. */
   angleDeg: number;
   scaleX: number;
@@ -186,7 +185,6 @@ export function DomEditCropHandles({
       startX: event.clientX,
       startY: event.clientY,
       startInsets: state.insets,
-      didMove: false,
       angleDeg: frame.angleDeg,
       scaleX: frame.scaleX,
       scaleY: frame.scaleY,
@@ -217,7 +215,6 @@ export function DomEditCropHandles({
       gesture.edge === "move"
         ? resolveCropInsetFromMoveDrag(drag)
         : resolveCropInsetFromEdgeDrag({ ...drag, edge: gesture.edge, width, height });
-    gesture.didMove = true;
     setState((prev) => ({ ...prev, insets: nextInsets }));
   };
 
@@ -234,7 +231,7 @@ export function DomEditCropHandles({
   const finishCropGesture = (event: ReactPointerEvent<HTMLElement>) => {
     const gesture = endCropGesture(event);
     if (!gesture) return;
-    if (!gesture.didMove) return;
+    if (EDGES.every((edge) => state.insets[edge] === gesture.startInsets[edge])) return;
     // Commit to the file. The commit path re-applies the value to the live
     // element synchronously, so re-lift in the same turn to keep showing the full
     // content + dim while selected. Re-lift again on rejection so a failed commit

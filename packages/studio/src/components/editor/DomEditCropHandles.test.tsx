@@ -126,6 +126,24 @@ describe("DomEditCropHandles clip lift/restore", () => {
     expect(a.style.getPropertyValue("clip-path")).toBe("inset(10px 30px 10px 10px)");
   });
 
+  it("commits nothing when a crop drag ends where it started", () => {
+    const a = makeEl("a", "inset(10px)");
+    const onStyleCommit = vi.fn();
+    render(a, onStyleCommit);
+    const handle = document.querySelector<HTMLButtonElement>('[aria-label="Crop right"]')!;
+    for (const [type, clientX] of [
+      ["pointerdown", 100],
+      ["pointermove", 80],
+      ["pointermove", 100],
+      ["pointerup", 100],
+    ] as const) {
+      act(() =>
+        handle.dispatchEvent(new PointerEvent(type, { bubbles: true, pointerId: 3, clientX })),
+      );
+    }
+    expect(onStyleCommit).not.toHaveBeenCalled();
+  });
+
   it("re-lifts when the crop commit rejects", async () => {
     const a = makeEl("a", "inset(10px)");
     const onStyleCommit = vi.fn((property: string, value: string) => {
