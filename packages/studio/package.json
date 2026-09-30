@@ -103,7 +103,7 @@
     "@hyperframes/studio-server": "workspace:*",
     "@mcp-b/global": "^5.0.1",
     "@phosphor-icons/react": "^2.1.10",
-    "@tanstack/react-virtual": "^3.14.6",
+    "@tanstack/react-virtual": "^3.14.13",
     "bpm-detective": "^2.0.5",
     "cn": "0.2.4",
     "dockview-react": "8.3.1",

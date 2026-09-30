@@ -2,6 +2,12 @@
 
 import React, { act } from "react";
 import { createRoot } from "react-dom/client";
+import {
+  elementScroll,
+  observeElementOffset,
+  observeElementRect,
+  Virtualizer,
+} from "@tanstack/react-virtual";
 import { afterAll, afterEach, beforeAll, describe, expect, it } from "vitest";
 import { createTimelineRowGeometry, RULER_H, TRACKS_TOP_PAD } from "./timelineLayout";
 import { extractTimelineVirtualRowRange, useTimelineVirtualRows } from "./useTimelineVirtualRows";
@@ -202,5 +208,31 @@ describe("useTimelineVirtualRows", () => {
     expect(rows.some((row) => row.index === 300)).toBe(true);
     expect(rows.some((row) => row.index === 500)).toBe(false);
     act(() => root.unmount());
+  });
+
+  // A scroll-end timer left running fires into the torn-down test window ("window is not defined").
+  it("gets no virtualizer change after unmount from a scroll just before it", async () => {
+    const scroll = createScrollElement(0);
+    let changesAfterUnmount = 0;
+    let unmounted = false;
+    const virtualizer = new Virtualizer<HTMLDivElement, Element>({
+      count: 100,
+      getScrollElement: () => scroll,
+      estimateSize: () => 48,
+      scrollToFn: elementScroll,
+      observeElementRect,
+      observeElementOffset,
+      onChange: () => {
+        if (unmounted) changesAfterUnmount++;
+      },
+    });
+    const unmount = virtualizer._didMount();
+    virtualizer._willUpdate();
+    scroll.dispatchEvent(new Event("scroll"));
+    unmount();
+    unmounted = true;
+
+    await new Promise((settle) => setTimeout(settle, 300));
+    expect(changesAfterUnmount).toBe(0);
   });
 });
