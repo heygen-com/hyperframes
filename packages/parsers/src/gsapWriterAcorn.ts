@@ -461,8 +461,7 @@ export function shiftPositionsInScript(
   for (const entry of parsed.located) {
     if (entry.animation.targetSelector !== targetSelector) continue;
     if (typeof entry.animation.position !== "number") continue;
-    const newPos = Math.max(0, Math.round((entry.animation.position + delta) * 1000) / 1000);
-    overwritePosition(ms, entry.call, newPos);
+    overwritePosition(ms, entry.call, shiftedPosition(entry.animation.position, delta));
     changed = true;
   }
   return changed ? ms.toString() : script;
@@ -480,49 +479,60 @@ export function copyAnimationsInScript(
 ): string {
   const parsed = parseGsapScriptAcornForWrite(script);
   if (!parsed) return script;
+  // A tween in a loop runs once per pass, and one on a variable reads a name bound elsewhere: neither is copied.
+  const copyable = parsed.located.filter(
+    ({ call }) =>
+      call.node.arguments[0]?.type === "Literal" && !call.ancestors.some(isLoopOrForEach),
+  );
+  const timed = copyable.filter(({ call }) => !call.global);
+  if (timed.length === 0) return script;
+  // Copies go after the last tween of its block, where the timeline and what the tweens read are in scope,
+  // and a tween placed after the timeline's end moves nothing that follows it.
+  const anchor = timed.reduce((last, entry) =>
+    statementOf(entry.call).end > statementOf(last.call).end ? entry : last,
+  );
+  const block = blockOf(anchor.call);
+  const indentAt = (at: number) =>
+    /^[ \t]*/.exec(script.slice(script.lastIndexOf("\n", at - 1) + 1))![0];
   const target = JSON.stringify(toSelector);
-  const sets: string[] = [];
+  const ms = new MagicString(script);
   const tweens: string[] = [];
-  for (const { animation, call } of parsed.located) {
-    if (animation.targetSelector !== fromSelector) continue;
-    // ponytail: a tween inside a function or loop reads names only in scope there; it is not copied.
-    if (call.ancestors.some(isFunctionOrLoop)) continue;
+  for (const { animation, call } of copyable) {
+    if (animation.targetSelector !== fromSelector || blockOf(call) !== block) continue;
     const args = call.node.arguments
       .slice(1)
       .filter((arg: Node) => arg !== call.positionArg)
       .map((arg: Node) => script.slice(arg.start, arg.end));
+    const statement = statementOf(call);
     if (call.global) {
-      sets.push(`gsap.set(${[target, ...args].join(", ")});`);
-    } else if (typeof animation.position === "number") {
-      const position = Math.max(0, Math.round((animation.position + delta) * 1000) / 1000);
-      const code = [target, ...args, valueToCode(position)].join(", ");
-      tweens.push(`${parsed.timelineVar}.${call.method}(${code});`);
+      const set = `gsap.set(${[target, ...args].join(", ")});`;
+      ms.appendLeft(statement.end, `\n${indentAt(statement.start)}${set}`);
+    } else if (typeof animation.resolvedStart === "number") {
+      const position = valueToCode(shiftedPosition(animation.resolvedStart, delta));
+      tweens.push(
+        `${parsed.timelineVar}.${call.method}(${[target, ...args, position].join(", ")});`,
+      );
     }
   }
-  if (sets.length === 0 && tweens.length === 0) return script;
-  const indentAt = (at: number) =>
-    /^[ \t]*/.exec(script.slice(script.lastIndexOf("\n", at - 1) + 1))![0];
-  const ms = new MagicString(script);
-  const setsAt = findGlobalSetInsertionPoint(parsed, script);
-  if (sets.length > 0 && setsAt !== null) {
-    ms.appendLeft(setsAt, sets.map((set) => `${indentAt(setsAt)}${set}\n`).join(""));
-  }
-  if (tweens.length > 0) {
-    // After every top-level statement that adds a tween, so no tween placed after the timeline's end moves.
-    const last = lastTweenStatement(parsed);
-    ms.appendLeft(last.end, tweens.map((tween) => `\n${indentAt(last.start)}${tween}`).join(""));
-  }
-  return ms.hasChanged() ? ms.toString() : script;
+  const at = statementOf(anchor.call);
+  ms.appendLeft(at.end, tweens.map((tween) => `\n${indentAt(at.start)}${tween}`).join(""));
+  return ms.toString();
 }
 
-function lastTweenStatement(parsed: ParsedGsapAcornForWrite): Node {
-  return parsed.located
-    .map(({ call }) => call.ancestors[1])
-    .reduce((last, statement) => (statement.end > last.end ? statement : last));
+function shiftedPosition(position: number, delta: number): number {
+  return Math.max(0, Math.round((position + delta) * 1000) / 1000);
 }
 
-function isFunctionOrLoop(node: Node): boolean {
-  return /Function|^For|^While|^DoWhile/.test(node?.type ?? "") || isForEachStatement(node);
+function statementOf(call: TweenCallInfo): Node {
+  return findEnclosingExpressionStatement(call.ancestors) ?? call.node;
+}
+
+function blockOf(call: TweenCallInfo): Node {
+  return call.ancestors[call.ancestors.indexOf(statementOf(call)) - 1];
+}
+
+function isLoopOrForEach(node: Node): boolean {
+  return isLoopNode(node) || isForEachStatement(node) || node?.type === "DoWhileStatement";
 }
 
 /**

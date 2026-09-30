@@ -3,16 +3,18 @@ import { ID_ATTR_RE } from "./clipboardPayload";
 import { escapeRegex } from "./sourcePatcher";
 
 const ID_ATTRS = new RegExp(ID_ATTR_RE.source, "g");
-const STYLE_BLOCK = /(<style\b[^>]*>)([\s\S]*?)(<\/style>)/gi;
-const INLINE_SCRIPT = /(<script\b(?![^>]*\bsrc=)[^>]*>)([\s\S]*?)(<\/script>)/gi;
+// One pass over both, so a `<style>` written inside a script's text is left as script.
+const BLOCKS =
+  /(<script\b(?![^>]*\bsrc=)[^>]*>)([\s\S]*?)(<\/script>)|(<style\b[^>]*>)([\s\S]*?)(<\/style>)/gi;
 
 /** Each id a paste renamed (`goodbye` to `goodbye-2`), from the same markup before and after the rename. */
 export function renamedIds(before: string, after: string): Map<string, string> {
-  const renamed = Array.from(after.matchAll(ID_ATTRS), (match) => match[1] as string);
+  const ids = (html: string) => Array.from(html.matchAll(ID_ATTRS), (match) => match[1] as string);
+  const renamed = ids(after);
   const renames = new Map<string, string>();
-  Array.from(before.matchAll(ID_ATTRS), (match, index) => {
+  ids(before).forEach((from, index) => {
     const to = renamed[index];
-    if (to && to !== match[1]) renames.set(match[1] as string, to);
+    if (to && to !== from) renames.set(from, to);
   });
   return renames;
 }
@@ -26,13 +28,15 @@ export function carryLook(
 ): string {
   let result = html;
   for (const [from, to] of renames) {
-    result = result
-      .replace(STYLE_BLOCK, (_, open, css, close) => open + withCopiedRules(css, from, to) + close)
-      .replace(
-        INLINE_SCRIPT,
-        (_, open, script, close) =>
-          open + copyAnimationsInScript(script, `#${from}`, `#${to}`, delta) + close,
-      );
+    result = result.replace(
+      BLOCKS,
+      (block, scriptOpen, script, scriptClose, styleOpen, css, styleClose) =>
+        scriptOpen !== undefined
+          ? scriptOpen + copyAnimationsInScript(script, `#${from}`, `#${to}`, delta) + scriptClose
+          : styleOpen !== undefined
+            ? styleOpen + withCopiedRules(css, from, to) + styleClose
+            : block,
+    );
   }
   return result;
 }
@@ -42,13 +46,37 @@ function withCopiedRules(css: string, from: string, to: string): string {
   const sheet = new CSSStyleSheet();
   sheet.replaceSync(css);
   const id = new RegExp(`#${escapeRegex(from)}(?![\\w-])`, "g");
+  const excluded = new RegExp(`:not\\([^)]*#${escapeRegex(from)}(?![\\w-])`);
   const indent = css.match(/\n([ \t]*)\S/)?.[1] ?? "";
   const copies = Array.from(sheet.cssRules).flatMap((rule) => {
-    if (!(rule instanceof CSSStyleRule) || !rule.selectorText.match(id)) return [];
-    const selector = rule.selectorText.replace(id, `#${to}`);
-    return [`\n${indent}${selector}${rule.cssText.slice(rule.selectorText.length)}`];
+    if (!(rule instanceof CSSStyleRule)) return [];
+    // Only the selectors naming the original, so the copy restyles nothing else.
+    const selectors = selectorList(rule.selectorText).filter(
+      (selector) => selector.match(id) && !excluded.test(selector),
+    );
+    if (selectors.length === 0) return [];
+    const copied = selectors.map((selector) => selector.replace(id, `#${to}`)).join(", ");
+    return [`\n${indent}${copied}${rule.cssText.slice(rule.selectorText.length)}`];
   });
   if (copies.length === 0) return css;
   const body = css.trimEnd();
   return body + copies.join("") + css.slice(body.length);
+}
+
+/** A selector list's own entries: its commas outside brackets and parentheses. */
+function selectorList(text: string): string[] {
+  const selectors: string[] = [];
+  let depth = 0;
+  let start = 0;
+  for (let index = 0; index < text.length; index++) {
+    const char = text[index];
+    if (char === "(" || char === "[") depth++;
+    else if (char === ")" || char === "]") depth--;
+    else if (char === "," && depth === 0) {
+      selectors.push(text.slice(start, index).trim());
+      start = index + 1;
+    }
+  }
+  selectors.push(text.slice(start).trim());
+  return selectors;
 }

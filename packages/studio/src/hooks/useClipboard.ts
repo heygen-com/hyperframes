@@ -213,7 +213,9 @@ export function pasteTimelineClips(
     const withPatched = patchedRootTag + deduped.slice(rootTagEnd + 1);
     result = insertTimelineAssetIntoSource(result, withPatched);
     if (fromThisFile) {
-      const authoredStart = Number(rootTag.match(/data-start="([^"]*)"/)?.[1] ?? clip.start);
+      // A start written as a reference ("title + 1") has no number here; the clip's own start stands in.
+      const authored = Number(rootTag.match(/data-start="([^"]*)"/)?.[1]);
+      const authoredStart = Number.isFinite(authored) ? authored : clip.start;
       result = carryLook(result, renamedIds(reminted, deduped), newStart - authoredStart);
     }
 
@@ -301,7 +303,12 @@ export function useClipboard({
     const sourceFile = targets.elements[0]?.sourceFile || activeCompPath || "index.html";
     return readClips(targets).then((clips) => {
       showToast(clips.length > 1 ? `Copied ${clips.length} clips` : "Copied clip", "info");
-      return { kind: "timeline-clip", clips, sourceFile };
+      return {
+        kind: "timeline-clip",
+        clips,
+        sourceFile,
+        projectId: projectIdRef.current ?? undefined,
+      };
     });
   }, [activeCompPath, findSelectedClips, readClips, showToast]);
 
@@ -376,7 +383,7 @@ export function useClipboard({
           payload.clips,
           currentTime,
           elements,
-          payload.sourceFile === targetPath,
+          payload.sourceFile === targetPath && payload.projectId === pid,
         );
         pastedIds = pasted.ids;
         // A clip pasted past the current composition end would exist in the

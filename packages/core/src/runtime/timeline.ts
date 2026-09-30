@@ -688,7 +688,7 @@ export function collectRuntimeTimelinePayload(params: {
       id: compositionId,
       label:
         compositionNode.getAttribute("data-label") ??
-        compositionNode.getAttribute("data-hf-original-composition-id") ??
+        authoredCompositionId(compositionNode) ??
         compositionId,
       start,
       duration: clampedDuration,

@@ -465,9 +465,39 @@ window.__timelines["t"] = tl;`;
       (a) => a.targetSelector === "#goodbye-2" && a.method !== "set",
     );
     expect(copies?.map((a) => a.position)).toEqual([4]);
-    // The original lines are left as they were; the copy of a tween comes after every top-level one.
+    // The original lines are left as they were; the tween's copy follows the block's last tween.
     expect(result.replace(/.*goodbye-2.*\n?/g, "")).toBe(script);
-    expect(result).toMatch(/function pop.*\ntl\.from\("#goodbye-2"/);
+    expect(result).toMatch(/tl\.to\("#title".*\);\ntl\.from\("#goodbye-2"/);
+  });
+
+  it("starts a tween written without a position at its own start, moved", () => {
+    const sequenced = `var tl = gsap.timeline();
+tl.to("#title", { x: 1, duration: 2 });
+tl.from("#goodbye", { opacity: 0 });`;
+    expect(copyAnimationsInScript(sequenced, "#goodbye", "#goodbye-2", 3)).toContain(
+      `tl.from("#goodbye-2", { opacity: 0 }, 5);`,
+    );
+  });
+
+  it("keeps the copy in the block that declares the timeline", () => {
+    const guarded = `if (window.gsap) {
+  const tl = gsap.timeline();
+  tl.from("#goodbye", { opacity: 0 }, 1);
+  window.__timelines["main"] = tl;
+}`;
+    expect(copyAnimationsInScript(guarded, "#goodbye", "#goodbye-2", 3)).toContain(
+      `  tl.from("#goodbye", { opacity: 0 }, 1);\n  tl.from("#goodbye-2", { opacity: 0 }, 4);\n  window`,
+    );
+  });
+
+  it("puts a set's copy right after it, where what it reads is defined", () => {
+    const late = `const tl = gsap.timeline();
+const X = 40;
+gsap.set("#goodbye", { x: X });
+tl.from("#goodbye", { opacity: 0 }, 1);`;
+    expect(copyAnimationsInScript(late, "#goodbye", "#goodbye-2", 3)).toContain(
+      `gsap.set("#goodbye", { x: X });\ngsap.set("#goodbye-2", { x: X });`,
+    );
   });
 
   it("leaves the script as it was when nothing targets the original", () => {

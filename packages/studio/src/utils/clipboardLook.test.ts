@@ -81,6 +81,42 @@ describe("a pasted clip takes its original's look and motion", () => {
     ]);
   });
 
+  it("moves a sequenced tween's copy from its own start, and runs a timeline declared in a block", () => {
+    const film = FILM.replace(
+      /    <script>[\s\S]*<\/script>/,
+      `    <script>
+      if (gsap) {
+        const tl = gsap.timeline({ paused: true });
+        tl.to("#title", { opacity: 0.5, duration: 1 });
+        tl.from("#goodbye", { opacity: 0, duration: 0.5 });
+        window.__timelines["main"] = tl;
+      }
+    </script>`,
+    );
+    const { content } = pasteTimelineClips(film, [goodbye], 4, [], true);
+    expect(tweenStarts(content)).toEqual([
+      ["goodbye", 1],
+      ["goodbye-2", 4],
+      ["title", 0],
+    ]);
+  });
+
+  it("copies only the selectors naming the original, and leaves a style inside a script alone", () => {
+    const styleInScript = `document.head.insertAdjacentHTML("beforeend", "<style>#goodbye{color:red}</style>");`;
+    const film = FILM.replace(
+      "      #title { font-size: 72px; }",
+      "      #title, #goodbye { letter-spacing: 2px; }\n      #title { letter-spacing: 9px; }",
+    ).replace("      window.__timelines", `      ${styleInScript}\n      window.__timelines`);
+    const { content } = pasteTimelineClips(film, [goodbye], 4, [], true);
+
+    expect(rulesFor(content, "#goodbye-2")).toEqual([
+      ...rulesFor(film, "#goodbye"),
+      "letter-spacing: 2px;",
+    ]);
+    expect(content.match(/#title/g)?.length).toBe(film.match(/#title/g)?.length);
+    expect(content).toContain(styleInScript);
+  });
+
   it("copies nothing for a clip from another file, whose id means something else here", () => {
     const { content } = pasteTimelineClips(FILM, [goodbye], 4, []);
     expect(rulesFor(content, "#goodbye-2")).toEqual([]);
