@@ -9,6 +9,26 @@ Recent HyperFrames releases, including user-facing features, fixes, and migratio
 {/* New release entries are prepended by `bun run changelog:draft <version> --write`. */}
 
 <Update
+  label="HyperFrames v0.8.95"
+  description="Released - 2026-09-30"
+  tags={["Release", "Studio", "Core"]}
+>
+The Studio timeline now shows an empty lane below the last track where you can drop media. Video clips can play louder than 100% in the preview, and undo puts a resized, rotated or moved element back where it was.
+
+## Features
+
+- **Studio:** Draw the empty lane below the last track as a drop target and tighten the top gap ([c3f7066bf](https://github.com/heygen-com/hyperframes/commit/c3f7066bf33f9b5b826d5de933a414ddc59bd6df), [#4741](https://github.com/heygen-com/hyperframes/pull/4741)).
+
+## Fixes
+
+- **Core:** A video's sound plays at its boosted volume in the preview ([2fc5a37fc](https://github.com/heygen-com/hyperframes/commit/2fc5a37fcebaaa1ed9b2dd7f2f6dd4b2983efe30), [#4746](https://github.com/heygen-com/hyperframes/pull/4746)).
+- **Studio:** Undo puts a resized, rotated or moved element back on screen ([efd3c51ac](https://github.com/heygen-com/hyperframes/commit/efd3c51ac9b7ce89e8c8fb72b60c96918f012f5d), [#4740](https://github.com/heygen-com/hyperframes/pull/4740)).
+- **Studio:** A timeline scrubs when its host omits sessionEpoch ([7a1869d92](https://github.com/heygen-com/hyperframes/commit/7a1869d9218caf8bf3e95ef4eaea27d57b80f724), [#4742](https://github.com/heygen-com/hyperframes/pull/4742)).
+
+[View the full commit range](https://github.com/heygen-com/hyperframes/compare/v0.8.94...v0.8.95).
+</Update>
+
+<Update
   label="HyperFrames v0.8.94"
   description="Released - 2026-09-30"
   tags={["Release", "Studio", "Core", "Producer"]}
