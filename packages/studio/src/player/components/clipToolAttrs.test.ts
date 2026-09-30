@@ -5,6 +5,7 @@ import {
   activeLook,
   activeVoicePreset,
   chainWithVoicePreset,
+  clipSpeedSuffix,
   hasCrop,
   isDucked,
   lookAttrValue,
@@ -157,5 +158,19 @@ describe("readClipBadges", () => {
     const { visible, hidden } = splitVisibleBadges(badges);
     expect(visible.map((b) => b.label)).toEqual(["Linked", "Mono", "Crop"]);
     expect(hidden.map((b) => b.label)).toEqual(["60%"]);
+  });
+});
+
+describe("clipSpeedSuffix", () => {
+  it("shows a constant speed as a percentage and hides 100%", () => {
+    expect(clipSpeedSuffix(1.5, null)).toBe(" [150%]");
+    expect(clipSpeedSuffix(0.35, null)).toBe(" [35%]");
+    expect(clipSpeedSuffix(1, null)).toBe("");
+    expect(clipSpeedSuffix(undefined, null)).toBe("");
+  });
+
+  it("shows a rate lane as a ramp, whatever the base rate", () => {
+    expect(clipSpeedSuffix(2, rampAutomation)).toBe(" [ramp]");
+    expect(clipSpeedSuffix(1, rampAutomation)).toBe(" [ramp]");
   });
 });

@@ -133,6 +133,47 @@ describe("TimelineClip", () => {
     act(() => root.unmount());
   });
 
+  it("names a speed-changed clip like Premiere: [150%] for a constant rate, [ramp] for a lane", () => {
+    const fast = renderClip({
+      element: {
+        id: "a",
+        label: "Hero",
+        tag: "video",
+        start: 0,
+        duration: 2,
+        track: 0,
+        playbackRate: 1.5,
+      },
+    });
+    expect(fast.host.querySelector(".timeline-clip__label")?.textContent).toBe("Hero [150%]");
+    act(() => fast.root.unmount());
+    const automation = JSON.stringify({
+      version: 1,
+      lanes: [
+        {
+          target: "rate",
+          points: [
+            { t: 0, v: 0.5 },
+            { t: 1, v: 1 },
+          ],
+        },
+      ],
+    });
+    const ramp = renderClip({
+      element: {
+        id: "b",
+        label: "Hero",
+        tag: "video",
+        start: 0,
+        duration: 2,
+        track: 0,
+        automation,
+      },
+    });
+    expect(ramp.host.querySelector(".timeline-clip__label")?.textContent).toBe("Hero [ramp]");
+    act(() => ramp.root.unmount());
+  });
+
   it("drops the label chip under 60px even when the clip is selected", () => {
     const { host, root } = renderClip({
       element: { id: "fx", label: "FX", tag: "div", start: 0, duration: 1, track: 0 },

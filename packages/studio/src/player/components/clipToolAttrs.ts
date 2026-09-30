@@ -117,6 +117,17 @@ function hasRateRamp(rawAutomation: string | null | undefined): boolean {
   return parseRateLane(rawAutomation) !== null;
 }
 
+/** Premiere's speed cue on the clip name: ` [ramp]` under a rate lane, else ` [150%]` off 100%. */
+export function clipSpeedSuffix(
+  playbackRate: number | null | undefined,
+  rawAutomation: string | null | undefined,
+): string {
+  if (hasRateRamp(rawAutomation)) return " [ramp]";
+  const rate = playbackRate ?? 1;
+  if (!Number.isFinite(rate) || Math.abs(rate - 1) < 0.005) return "";
+  return ` [${Math.round(rate * 100)}%]`;
+}
+
 const ZERO_INSET = /^inset\(\s*0(px|%)?\s*\)$/i;
 
 export function hasCrop(clipPath: string | null | undefined): boolean {
