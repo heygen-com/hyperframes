@@ -36,10 +36,9 @@ import {
   clipQueryRoot,
   clipTweenMatcher,
   hasExplicitTime,
-  outsideFollowerPins,
 } from "./clipTweens.js";
 
-export { clipQueryRoot, clipTweenMatcher, hasExplicitTime, outsideFollowerPins };
+export { clipQueryRoot, clipTweenMatcher, hasExplicitTime };
 
 // acorn ESTree nodes are structurally untyped here; mirror gsapParserAcorn.ts /
 // gsapInline.ts rather than re-deriving the full ESTree union for every access.
@@ -473,9 +472,6 @@ export function shiftPositionsInScript(
     overwritePosition(ms, entry.call, shiftedPosition(entry.animation.position, delta));
     changed = true;
   }
-  for (const { entry, start } of outsideFollowerPins(parsed.located, carries, hasExplicitTime)) {
-    overwritePosition(ms, entry.call, start);
-  }
   return changed ? ms.toString() : script;
 }
 
@@ -611,10 +607,6 @@ export function scalePositionsInScript(
       upsertProp(ms, entry.call.varsArg, "duration", newDur);
     }
     changed = true;
-  }
-  const retimed = (animation: GsapAnimation) => typeof animation.position === "number";
-  for (const { entry, start } of outsideFollowerPins(parsed.located, carries, retimed)) {
-    overwritePosition(ms, entry.call, start);
   }
   return changed ? ms.toString() : script;
 }

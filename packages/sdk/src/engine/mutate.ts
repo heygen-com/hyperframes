@@ -81,7 +81,6 @@ import {
   clipQueryRoot,
   clipTweenMatcher,
   hasExplicitTime,
-  outsideFollowerPins,
 } from "@hyperframes/core/gsap-writer-acorn";
 import { deriveKeyframeBackfillDefaults } from "./keyframeBackfill.js";
 import {
@@ -599,11 +598,6 @@ function handleSetTiming(
         }
         if (Object.keys(updates).length === 0) continue;
         currentScript = updateAnimationInScript(currentScript, animId, updates);
-      }
-      const retimed = (animation: GsapAnimation) =>
-        (startChanged || durChanged) && typeof animation.position === "number";
-      for (const { entry, start } of outsideFollowerPins(parsedGsap.located, carries, retimed)) {
-        currentScript = updateAnimationInScript(currentScript, entry.id, { position: start });
       }
     }
   }

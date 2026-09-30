@@ -2,7 +2,6 @@ import type { GsapAnimation } from "./gsapSerialize.js";
 
 type TweenTarget = Pick<GsapAnimation, "targetSelector" | "hasPartialSelector">;
 type TweenTime = Pick<GsapAnimation, "position" | "implicitPosition">;
-type Located = { animation: TweenTarget & TweenTime & Pick<GsapAnimation, "resolvedStart"> };
 
 // Tweens a timeline move or retime of a clip carries: an own selector, plus (given a DOM) a fully known target
 // set that is the clip or sits inside it with no nearer `data-start` clip. A tween also aiming outside stays put.
@@ -37,24 +36,6 @@ export function hasExplicitTime<T extends TweenTime>(
   animation: T,
 ): animation is T & { position: number } {
   return typeof animation.position === "number" && !animation.implicitPosition;
-}
-
-/** Outside tweens that start from the timeline before them, after the first retimed carried one, keep their start. */
-export function outsideFollowerPins<T extends Located>(
-  located: readonly T[],
-  carries: (tween: TweenTarget) => boolean,
-  retimed: (animation: T["animation"]) => boolean,
-): Array<{ entry: T; start: number }> {
-  const first = located.findIndex((entry) => carries(entry.animation) && retimed(entry.animation));
-  if (first < 0) return [];
-  return located.slice(first + 1).flatMap((entry) => {
-    const { animation } = entry;
-    const follows =
-      animation.implicitPosition === true ||
-      (typeof animation.position === "string" && /^\s*([+-]=|[<>])/.test(animation.position));
-    if (!follows || typeof animation.resolvedStart !== "number" || carries(animation)) return [];
-    return [{ entry, start: Math.round(animation.resolvedStart * 1000) / 1000 }];
-  });
 }
 
 function queryAll(root: ParentNode, selector: string): Element[] {

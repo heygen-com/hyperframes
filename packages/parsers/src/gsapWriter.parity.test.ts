@@ -2018,12 +2018,22 @@ tl.to(".card", { x: 1, duration: 1 }, 1);`;
       expect(timings(shift(bareScript, "#bare", 1, bare))).toEqual([[".card", 2, 1]]);
     });
 
+    it(`${name}: known limit, an outside tween chained after moved content moves with it`, () => {
+      const sibling = (out: string) => parseGsapScriptAcorn(out).animations[3]!;
+      expect(sibling(script)).toMatchObject({ targetSelector: "#sibling", resolvedStart: 3.5 });
+      expect(sibling(shift(script, "#scene", 2, document))).toMatchObject({
+        targetSelector: "#sibling",
+        implicitPosition: true,
+        resolvedStart: 5.5,
+      });
+    });
+
     it(`${name}: a shift moves the clip and its descendants, never outside or nested clips`, () => {
       expect(timings(shift(script, "#scene", 2, document))).toEqual([
         ["#scene", 3, 1],
         ["#scene h1", 3.5, 1],
         ["#child", "chained", 1],
-        ["#sibling", 3.5, 0.5],
+        ["#sibling", "chained", 0.5],
         ["#child", 4, 1],
         ["#child, #scene h1", 5, 1],
         [".inner", 5.5, 1],
@@ -2040,7 +2050,7 @@ tl.to(".card", { x: 1, duration: 1 }, 1);`;
         ["#scene", 1, 2],
         ["#scene h1", 2, 2],
         ["#child", "chained", 2],
-        ["#sibling", 3.5, 0.5],
+        ["#sibling", "chained", 0.5],
         ["#child", 3, 2],
         ["#child, #scene h1", 5, 2],
         [".inner", 6, 2],
