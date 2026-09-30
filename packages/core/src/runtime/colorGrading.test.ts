@@ -781,6 +781,47 @@ describe("createColorGradingRuntime", () => {
     expect(canvas.style.opacity).toBe("0.75");
   });
 
+  it("keeps a staged scene copy's canvas on its own render frame (#3994)", async () => {
+    // Page-side shader transitions clone the scene, ids included, into a staging
+    // layer. When both videos paired with the live frame, their canvases traded
+    // places after it on every mutation and the render stalled.
+    function makeRenderFrame(): HTMLImageElement {
+      const frame = document.createElement("img");
+      frame.id = "__render_frame_hero-video__";
+      frame.className = "__render_frame__";
+      Object.defineProperty(frame, "complete", { value: true, configurable: true });
+      Object.defineProperty(frame, "naturalWidth", { value: 640, configurable: true });
+      Object.defineProperty(frame, "naturalHeight", { value: 360, configurable: true });
+      return frame;
+    }
+    const live = document.createElement("div");
+    live.append(makeDrawableVideo(), makeRenderFrame());
+    document.body.appendChild(live);
+    runtime = createColorGradingRuntime();
+
+    let canvasMoves = 0;
+    const insertBefore = Node.prototype.insertBefore;
+    const spy = vi.spyOn(Node.prototype, "insertBefore").mockImplementation(function <
+      T extends Node,
+    >(this: Node, node: T, child: Node | null): T {
+      // Stop moving canvases after a bound, so the loop cannot hang the test.
+      if (node instanceof HTMLCanvasElement && ++canvasMoves > 100) return node;
+      return insertBefore.call(this, node, child) as T;
+    });
+    const staged = document.createElement("div");
+    staged.append(makeDrawableVideo(), makeRenderFrame());
+    document.body.appendChild(staged);
+    for (let i = 0; i < 5; i++) await new Promise((resolve) => window.setTimeout(resolve, 0));
+    runtime.redraw();
+    spy.mockRestore();
+
+    expect(canvasMoves).toBeLessThan(10);
+    for (const scene of [live, staged]) {
+      const frame = scene.querySelector("img.__render_frame__");
+      expect(frame?.nextElementSibling?.hasAttribute("data-hf-color-grading-canvas")).toBe(true);
+    }
+  });
+
   it("hides the canvas when an ancestor clip goes out of its visibility window", () => {
     // A graded <img> inside a timed sub-composition carries no data-start of its
     // own, so nothing tells grading the clip left the screen — the canvas has to

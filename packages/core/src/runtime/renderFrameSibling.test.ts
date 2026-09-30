@@ -67,6 +67,37 @@ describe("findInjectedRenderFrame", () => {
     );
   });
 
+  it("resolves a staged copy of a scene to the copy's own frame (#3994)", () => {
+    // Page-side shader transitions clone the scene, ids included, into a staging
+    // layer. The copy's video must pair with the copy's frame: pairing it with the
+    // live one sent two color-grading canvases fighting over one <img>.
+    const scene =
+      `<div class="scene"><video id="clip" ${MEDIA_RENDER_ID_ATTR}="clip"></video>` +
+      `<img id="__render_frame_clip__" class="__render_frame__"></div>`;
+    document.body.innerHTML = scene + `<div class="staging">${scene}</div>`;
+
+    const [liveVideo, stagedVideo] = Array.from(document.querySelectorAll("video"));
+    const [liveFrame, stagedFrame] = Array.from(document.querySelectorAll("img"));
+    expect(findInjectedRenderFrame(liveVideo!)).toBe(liveFrame);
+    expect(findInjectedRenderFrame(stagedVideo!)).toBe(stagedFrame);
+  });
+
+  it("finds its frame past a node inserted between them", () => {
+    document.body.innerHTML =
+      '<video id="solo"></video><canvas></canvas><img id="__render_frame_solo__" class="__render_frame__">';
+    expect(findInjectedRenderFrame(document.querySelector("video")!)).toBe(
+      document.querySelector("img"),
+    );
+  });
+
+  it("still resolves a frame that is not a sibling, by id", () => {
+    document.body.innerHTML =
+      '<div><video id="solo"></video></div><img id="__render_frame_solo__" class="__render_frame__">';
+    expect(findInjectedRenderFrame(document.querySelector("video")!)).toBe(
+      document.querySelector("img"),
+    );
+  });
+
   it("returns null in preview, where no sibling exists", () => {
     document.body.innerHTML = '<video id="solo"></video>';
     expect(findInjectedRenderFrame(document.querySelector("video")!)).toBeNull();
