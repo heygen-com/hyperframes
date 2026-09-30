@@ -23,7 +23,7 @@ interface ToolRow {
 }
 
 /** One button for the active timeline tool; its menu switches tools or selects clips around the playhead. */
-export function TimelineToolPicker() {
+export function TimelineToolPicker({ showSelectAroundPlayhead = true }) {
   const activeTool = usePlayerStore((s) => s.activeTool);
   const store = () => usePlayerStore.getState();
   const rows: ToolRow[] = [
@@ -41,21 +41,25 @@ export function TimelineToolPicker() {
       active: activeTool === "razor",
       run: () => store().setActiveTool("razor"),
     },
-    {
-      label: "Select leftward",
-      shortcut: "[",
-      icon: <ArrowLineLeft size={16} aria-hidden="true" />,
-      active: false,
-      run: () => store().selectLeftward(),
-    },
-    {
-      label: "Select rightward",
-      shortcut: "]",
-      icon: <ArrowLineRight size={16} aria-hidden="true" />,
-      active: false,
-      run: () => store().selectRightward(),
-    },
   ];
+  if (showSelectAroundPlayhead) {
+    rows.push(
+      {
+        label: "Select leftward",
+        shortcut: "[",
+        icon: <ArrowLineLeft size={16} aria-hidden="true" />,
+        active: false,
+        run: () => store().selectLeftward(),
+      },
+      {
+        label: "Select rightward",
+        shortcut: "]",
+        icon: <ArrowLineRight size={16} aria-hidden="true" />,
+        active: false,
+        run: () => store().selectRightward(),
+      },
+    );
+  }
   const current = rows.find((row) => row.active) ?? rows[0];
   return (
     <Menu
