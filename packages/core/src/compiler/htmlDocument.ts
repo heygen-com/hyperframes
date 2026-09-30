@@ -207,7 +207,7 @@ function inlineScriptTags(scripts: readonly string[]): string {
 
 const RAW_TEXT_TAGS = ["script", "style", "title", "textarea"] as const;
 
-type DocumentTag = "<head" | "</head" | "<body" | "</body";
+type DocumentTag = "<head" | "</head" | "<body" | "</body" | "</template";
 const COMMENT_END = /--!?>/g;
 
 function* markupStarts(lowered: string): Generator<number> {
@@ -290,15 +290,25 @@ function findRawTextClose(lowered: string, name: string, from: number): number {
   return -1;
 }
 
+function findOuterTemplateClose(html: string): number {
+  const lowered = lowerAscii(html);
+  let depth = 0;
+  for (const open of markupStarts(lowered)) {
+    if (isTagAt(lowered, open, "<template")) depth++;
+    else if (isTagAt(lowered, open, "</template") && --depth === 0) return open;
+  }
+  return -1;
+}
+
 function insertBeforeDocumentTag(html: string, tag: DocumentTag, markup: string): string | null {
-  const at = findDocumentTag(html, tag);
+  const at = tag === "</template" ? findOuterTemplateClose(html) : findDocumentTag(html, tag);
   return at === -1 ? null : html.slice(0, at) + markup + html.slice(at);
 }
 
-/** Insert markup just before the document's own `</head>` or `</body>`; null when it has none. */
+/** Insert markup before the document's own `</head>`, `</body>` or `</template>`; null if it has none. */
 export function insertBeforeCloseTag(
   html: string,
-  name: "head" | "body",
+  name: "head" | "body" | "template",
   markup: string,
 ): string | null {
   return insertBeforeDocumentTag(html, `</${name}`, markup);

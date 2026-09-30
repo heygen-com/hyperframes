@@ -1319,7 +1319,10 @@ async function prepareGsapMutationScript(
       `window.__timelines["${compId}"] = tl;`,
       "</script>",
     ].join("\n");
-    html = insertBeforeCloseTag(html, "body", `${bootstrap}\n`) ?? `${html}\n${bootstrap}`;
+    html =
+      insertBeforeCloseTag(html, "body", `${bootstrap}\n`) ??
+      insertBeforeCloseTag(html, "template", `${bootstrap}\n`) ??
+      `${html}\n${bootstrap}`;
     block = extractGsapScriptBlock(html);
   }
   if (

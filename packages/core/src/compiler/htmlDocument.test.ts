@@ -196,6 +196,14 @@ describe("htmlDocument helpers", () => {
     );
   });
 
+  it("puts markup before the outer </template>, past a nested one and a commented one", () => {
+    const sub =
+      "<template id=t><div><template><i></i></template></div></template>\n<!-- </template> -->";
+    expect(insertBeforeCloseTag(sub, "template", "X")).toBe(
+      "<template id=t><div><template><i></i></template></div>X</template>\n<!-- </template> -->",
+    );
+  });
+
   it("ends a comment at --!>, but not on its own opening dashes", () => {
     expect(insertBeforeCloseTag("<head><!-- a --!></head>", "head", "X")).toBe(
       "<head><!-- a --!>X</head>",
