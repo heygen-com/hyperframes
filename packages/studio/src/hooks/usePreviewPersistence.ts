@@ -206,7 +206,6 @@ export function usePreviewPersistence({
         usePlayerStore.getState().currentTime,
         reloadPreview,
       );
-      // The timeline keeps its clips until the reloaded preview reports its own, as after any other reload.
       if (strategy === "full") {
         usePlayerStore.getState().setSelectedElementId(null);
         return;
