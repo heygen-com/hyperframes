@@ -880,6 +880,7 @@ describe.each<PanelKind>(["flat", "design"])("%s panel — cutout keeps the soun
       dataOp("has-audio", null),
       dataOp("volume", null),
       dataOp("link", "lk-1"),
+      dataOp("sync-origin", "lk-1"),
     ]);
     const source =
       '<div data-composition-id="main"><video id="s1-bg" src="assets/intro-loop.mp4" muted data-start="2" data-duration="3" data-track-index="0" data-link="lk-1"></video></div>';
