@@ -329,6 +329,8 @@ export function useTimelineClipDrag({
         scroll: scrollRef.current,
         pps: ppsRef.current,
         buildSnapTargets,
+        elements: elementsRef.current,
+        gestureKeys: gestureSelectedKeysRef.current,
       });
       trimSeekOriginRef.current ??= usePlayerStore.getState().currentTime;
       const setResizeState = (v: ResizePreviewResult) => {

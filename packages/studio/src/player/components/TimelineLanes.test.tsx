@@ -83,7 +83,13 @@ interface RenderLanesOptions {
   hoveredClip?: string | null;
   renderClipContent?: React.ComponentProps<typeof TimelineLanes>["renderClipContent"];
   snapGuide?: { time: number; type: "beat" | "clip-edge" | "playhead" } | null;
+  withoutSelectHandler?: boolean;
 }
+
+const selectHandlerFor = (
+  options: RenderLanesOptions,
+  handler: (element: TimelineElement | null) => void,
+) => (options.withoutSelectHandler ? undefined : handler);
 
 function renderLanes(options: RenderLanesOptions = {}): {
   host: HTMLDivElement;
@@ -173,7 +179,7 @@ function renderLanes(options: RenderLanesOptions = {}): {
           onTogglePropertyGroupKeyframe={vi.fn()}
           onResizeElement={vi.fn()}
           onMoveElement={vi.fn()}
-          onSelectElement={onSelectElement}
+          onSelectElement={selectHandlerFor(next, onSelectElement)}
           onRazorSplit={vi.fn()}
           onRazorSplitAll={vi.fn()}
         />,
@@ -462,6 +468,20 @@ describe("TimelineLanes selection", () => {
       act(() => view.root.unmount());
     },
   );
+  it("Cmd-click adds a clip in a host that passes no onSelectElement", () => {
+    const first = element("clip-a", TRACK_A);
+    const second = element("clip-b", TRACK_B);
+    usePlayerStore.getState().setElements([first, second]);
+    usePlayerStore.getState().setSelection([first.id], first.id);
+    const view = renderLanes({ elements: [first, second], withoutSelectHandler: true });
+    act(() =>
+      view.host
+        .querySelector('[data-el-id="clip-b"]')
+        ?.dispatchEvent(new MouseEvent("click", { bubbles: true, metaKey: true })),
+    );
+    expect(usePlayerStore.getState().selectedElementIds).toEqual(new Set(["clip-a", "clip-b"]));
+    act(() => view.root.unmount());
+  });
 });
 
 describe("TimelineLanes clip thumbnails", () => {

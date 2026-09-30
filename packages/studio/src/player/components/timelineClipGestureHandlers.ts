@@ -210,7 +210,8 @@ export function createClipGestureHandlers(
       return;
     }
     if (isAdditiveClick(e)) {
-      onSelectElement?.(toggleClipWithLinks(elementKey, e.altKey));
+      const primary = toggleClipWithLinks(elementKey, e.altKey);
+      onSelectElement?.(primary);
       return;
     }
     // Clip selection is idempotent; empty timeline space owns deselection.

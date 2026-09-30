@@ -1,4 +1,5 @@
 import { sameCompositionScope, type TimelineElement } from "../store/timelineElement";
+import { syncPartnerOf } from "./clipSync";
 
 type LinkScoped = Pick<TimelineElement, "sourceFile" | "compositionScope">;
 type LinkedElement = Pick<TimelineElement, "id" | "key" | "link"> & LinkScoped;
@@ -98,4 +99,53 @@ export function dropMisalignedTrimPartners(
     if (Math.abs(edgeTime(el, edge) - edgeTime(grabbed, edge)) > 1e-3) kept.delete(keyOf(el));
   }
   return kept;
+}
+
+type BoundedElement = Pick<
+  TimelineElement,
+  | "id"
+  | "key"
+  | "tag"
+  | "start"
+  | "duration"
+  | "link"
+  | "syncOrigin"
+  | "playbackStart"
+  | "playbackRate"
+>;
+
+const tagOf = (el: Pick<TimelineElement, "tag">) => el.tag.trim().toLowerCase();
+
+/** The timeline span of an audio clip's video: linked to it, else from the same source (sync origin). */
+function partnerVideoBounds(
+  audio: BoundedElement,
+  elements: readonly BoundedElement[],
+): { videoKey: string; start: number; end: number } | null {
+  if (tagOf(audio) !== "audio") return null;
+  const linkedVideo = isLinked(audio)
+    ? elements.find((el) => el.link === audio.link && tagOf(el) === "video")
+    : undefined;
+  const video = linkedVideo ?? syncPartnerOf(audio, elements);
+  return video
+    ? { videoKey: keyOf(video), start: video.start, end: video.start + video.duration }
+    : null;
+}
+
+/** `start` moved so a clip of `duration` sits inside `bounds`; a clip longer than them pins to their start. */
+export function clampStartIntoBounds(
+  start: number,
+  duration: number,
+  bounds: { start: number; end: number },
+): number {
+  return Math.max(bounds.start, Math.min(start, bounds.end - duration));
+}
+
+/** The partner video's span, unless that video moves in the same gesture. */
+export function heldPartnerVideoBounds(
+  audio: BoundedElement,
+  elements: readonly BoundedElement[],
+  gestureKeys: ReadonlySet<string>,
+): { start: number; end: number } | null {
+  const bounds = partnerVideoBounds(audio, elements);
+  return bounds && !gestureKeys.has(bounds.videoKey) ? bounds : null;
 }

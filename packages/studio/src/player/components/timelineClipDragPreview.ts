@@ -23,6 +23,7 @@ import {
 import { groupMoveFloor, resolveGroupMovers } from "./timelineMultiDragPreview";
 import type { DraggedClipState, ResizingClipState } from "./timelineClipDragTypes";
 import { STUDIO_PREVIEW_FPS } from "../lib/time";
+import { clampStartIntoBounds, heldPartnerVideoBounds } from "./audioClipLink";
 
 /** Snap-target builder closure supplied by the hook (closes over refs + store). */
 type BuildSnapTargets = (
@@ -111,6 +112,8 @@ interface GroupDrag {
   obstacles: TimelineElement[];
   /** Lowest start the grabbed clip may take (see groupMoveFloor). */
   floor: number;
+  /** Every clip the gesture moves, the grabbed one included. */
+  moving: ReadonlySet<string>;
 }
 
 function resolveGroupDrag(drag: DraggedClipState, ctx: DragPreviewContext): GroupDrag {
@@ -119,11 +122,15 @@ function resolveGroupDrag(drag: DraggedClipState, ctx: DragPreviewContext): Grou
     ctx.selectedKeys,
     drag.element.key ?? drag.element.id,
   );
-  if (!movers) return { obstacles: ctx.elements, floor: groupMoveFloor(drag.element, []) };
+  if (!movers) {
+    const moving = new Set([drag.element.key ?? drag.element.id]);
+    return { obstacles: ctx.elements, floor: groupMoveFloor(drag.element, []), moving };
+  }
   const moving = new Set(movers.map((e) => e.key ?? e.id));
   return {
     obstacles: ctx.elements.filter((e) => !moving.has(e.key ?? e.id)),
     floor: groupMoveFloor(drag.element, movers),
+    moving,
   };
 }
 
@@ -179,7 +186,11 @@ export function computeDragPreview(
   );
   // A group moves rigidly: the grabbed clip stops where any mover would cross its host's start.
   const group = resolveGroupDrag(drag, ctx);
-  const previewStart = Math.max(snap.start, group.floor);
+  const video = heldPartnerVideoBounds(drag.element, ctx.elements, group.moving);
+  const floored = Math.max(snap.start, group.floor);
+  const previewStart = video
+    ? clampStartIntoBounds(floored, drag.element.duration, video)
+    : floored;
   const placement = resolveDropPlacement(drag, clientY, previewStart, nextMove.track, ctx, group);
   const { track: previewTrack, insertRow } = placement;
   return {
@@ -210,6 +221,9 @@ export interface ResizePreviewContext {
   scroll: HTMLDivElement | null;
   pps: number;
   buildSnapTargets: BuildSnapTargets;
+  /** With them, an audio trim stays inside its partner video unless the video trims with it. */
+  elements?: readonly TimelineElement[];
+  gestureKeys?: ReadonlySet<string>;
 }
 
 export interface ResizePreviewResult {
@@ -253,14 +267,18 @@ export function computeResizePreview(
   // rightward and, after a far move, collapsed a clip to the sliver between its
   // start and the comp end (the 8s→0.95s audio incident). Images/text/shapes
   // have no source, so they extend freely.
-  const maxEnd = resize.element.start + sourceRemaining;
+  const video = ctx.elements
+    ? heldPartnerVideoBounds(resize.element, ctx.elements, ctx.gestureKeys ?? new Set())
+    : null;
+  const minStart = Math.max(clampToHostStart(resize.element, 0), video?.start ?? 0);
+  const maxEnd = Math.min(resize.element.start + sourceRemaining, video?.end ?? Infinity);
   let nextResize = resolveTimelineResize(
     {
       start: resize.element.start,
       duration: resize.element.duration,
       originClientX: resize.originClientX,
       pixelsPerSecond: pps,
-      minStart: clampToHostStart(resize.element, 0),
+      minStart,
       maxEnd,
       playbackStart:
         resize.edge === "start" && canSeedPlaybackStart
@@ -303,8 +321,7 @@ export function computeResizePreview(
       const { time: snapped, target } = snapTimelineTime(nextResize.start, trimTargets, snapSecs);
       const clip = { ...nextResize, playbackRate: resize.element.playbackRate };
       const delta = snapped - nextResize.start;
-      const floor = clampToHostStart(resize.element, 0);
-      const bounds = clipStartTrimDeltaBounds(clip, floor, resolveTimelineMinDuration());
+      const bounds = clipStartTrimDeltaBounds(clip, minStart, resolveTimelineMinDuration());
       if (target && delta >= bounds.minDelta - 1e-6 && delta <= bounds.maxDelta + 1e-6) {
         if (snapped !== nextResize.start) nextResize = applyClipStartTrimDelta(clip, delta);
         snap = target;
