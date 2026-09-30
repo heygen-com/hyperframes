@@ -411,6 +411,19 @@ describe("relinkSplitHalvesInHtml", () => {
     expect(link("a-split")).toBe("lk-2");
   });
 
+  it("gives an unlinked pair's right halves their own sync origin", () => {
+    const source =
+      '<div data-composition-id="c"><video id="v" src="t.mp4" muted data-sync-origin="lk-1" data-start="0" data-duration="4"></video><audio id="a" src="t.mp4" data-sync-origin="lk-1" data-start="0" data-duration="4"></audio></div>';
+    const first = splitElementInHtml(source, { id: "v" }, 2, "v-split");
+    const second = splitElementInHtml(first.html, { id: "a" }, 2, "a-split");
+    const html = relinkSplitHalvesInHtml(second.html, ["v-split", "a-split"]);
+    const origin = (id: string) =>
+      new RegExp(`id="${id}"[^>]*data-sync-origin="([^"]+)"`).exec(html)?.[1];
+    expect(origin("v")).toBe("lk-1");
+    expect(origin("v-split")).not.toBe("lk-1");
+    expect(origin("v-split")).toBe(origin("a-split"));
+  });
+
   it("leaves unlinked splits byte-identical", () => {
     const source = '<div><img id="i" data-start="0" data-duration="4"></div>';
     expect(relinkSplitHalvesInHtml(source, ["i"])).toBe(source);

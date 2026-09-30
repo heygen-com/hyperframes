@@ -702,10 +702,14 @@ export function unwrapElementsFromHtml(
   };
 }
 
-/** After a cut, give each linked group's right halves their own shared `data-link`. */
+/** After a cut, give each linked group's right halves their own `data-link` and `data-sync-origin`. */
 export function relinkSplitHalvesInHtml(source: string, rightHalfIds: readonly string[]): string {
   const { document, wrappedFragment } = parseSourceDocument(source);
-  if (!rightHalfIds.some((id) => document.getElementById(id)?.hasAttribute("data-link"))) {
+  const carriesPairing = (id: string) => {
+    const el = document.getElementById(id);
+    return Boolean(el?.hasAttribute("data-link") || el?.hasAttribute("data-sync-origin"));
+  };
+  if (!rightHalfIds.some(carriesPairing)) {
     return source;
   }
   relinkSplitHalves(document, rightHalfIds);
