@@ -12,6 +12,7 @@ import {
   resolveTimelineAutoScrollLoopAction,
 } from "./timelineEditing";
 import { getTimelineElementIndexes } from "../lib/timelineElementIndexes";
+import { useTimelineReadOnlyPress } from "./timelineReadOnly";
 
 export const BEAT_BAND_H = 14; // dark band height at top of track
 const BEAT_HIT_W = 24; // grab width per beat (px) — ≥24px pointer target
@@ -377,6 +378,7 @@ export const BeatStrip = memo(function BeatStrip({
   );
   const sessionEpoch = usePlayerStore((state) => state.timelineSessionEpoch);
   const projectId = usePlayerStore((state) => state.timelineProjectId);
+  const readOnlyPress = useTimelineReadOnlyPress();
 
   if (!beatTimes || beatsTooDense(beatTimes, pps)) return null;
   const activeBeatIndex = activeActor
@@ -420,7 +422,7 @@ export const BeatStrip = memo(function BeatStrip({
               top: 0,
               width: BEAT_HIT_W,
               height: BEAT_BAND_H,
-              cursor: "ew-resize",
+              cursor: readOnlyPress ? "default" : "ew-resize",
               pointerEvents: "auto",
               touchAction: "none",
             }}
@@ -429,13 +431,14 @@ export const BeatStrip = memo(function BeatStrip({
               // selection (which otherwise "selects" the whole panel mid-drag).
               e.preventDefault();
               e.stopPropagation();
+              if (readOnlyPress) return readOnlyPress();
               // ⌥ starts no drag: the delete lands on release below, so a
               // slipped ⌥-drag abandons instead of destroying the beat.
               if (e.altKey) return;
               beginBeatDrag(e, t, pps);
             }}
             onClick={(e) => {
-              if (!e.altKey) return;
+              if (!e.altKey || readOnlyPress) return;
               // ⌥-click deletes. Deliberately NOT double-click: a stuttered drag
               // attempt reads as a double-click and would destroy the beat.
               e.stopPropagation();

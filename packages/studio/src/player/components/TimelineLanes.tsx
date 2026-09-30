@@ -17,7 +17,7 @@ import {
 } from "./useTimelineTrackLayout";
 import { trackDisplayNumber, trackDisplaySuffix } from "./timelineTrackDisplay";
 import { clipTimingStart } from "../../hooks/gsapShared";
-import { getTimelineEditCapabilities } from "./timelineEditing";
+import { useTimelineClipCapabilities } from "./timelineReadOnly";
 import { CLIP_Y, TRACK_H } from "./timelineLayout";
 import { usePlayerStore } from "../store/playerStore";
 import { isMultiDragPassenger, multiDragPassengerOffsetPx } from "./timelineMultiDragPreview";
@@ -107,6 +107,7 @@ export function TimelineLanes({
   const { collapsedGroupIds, expandedLaneOwnerIds, toggleGroupExpanded, toggleLaneOwnerExpanded } =
     useTimelineGroupDisclosure();
   const automationLanes = useAutomationLanes();
+  const getClipCapabilities = useTimelineClipCapabilities();
   const transitionSeamsByTrack = useMemo(
     () =>
       deriveTimelineTransitionSeamsByTrack(tracks.flatMap(([, els]) => els.map(getPreviewElement))),
@@ -368,7 +369,7 @@ export function TimelineLanes({
                     // diamonds on their own bar instead.
                     const isTrackKeyframeClip = elementKey === keyframeClipKey;
                     const showsLanes = isTrackKeyframeClip && rowExpanded;
-                    const capabilities = getTimelineEditCapabilities(el);
+                    const capabilities = getClipCapabilities(el);
                     const isSelected =
                       selectedElementId === elementKey || selectedElementIds.has(elementKey);
                     const isComposition = !!el.compositionSrc;

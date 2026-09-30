@@ -58,10 +58,12 @@ type PointerDownAction =
  */
 function isIntentBlocked(
   intent: BlockedTimelineEditIntent | null,
+  capabilities: TimelineEditCapabilities,
   onResizeElement: ClipGestureDeps["onResizeElement"],
   onMoveElement: ClipGestureDeps["onMoveElement"],
 ): intent is BlockedTimelineEditIntent {
   if (!intent) return false;
+  if (capabilities.readOnly) return true;
   return intent === "move" ? Boolean(onMoveElement) : Boolean(onResizeElement);
 }
 
@@ -88,7 +90,7 @@ function resolvePointerDownAction(
     handleWidth: CLIP_HANDLE_W,
     capabilities,
   });
-  if (isIntentBlocked(intent, onResizeElement, onMoveElement)) {
+  if (isIntentBlocked(intent, capabilities, onResizeElement, onMoveElement)) {
     return { kind: "block", intent, rect };
   }
 

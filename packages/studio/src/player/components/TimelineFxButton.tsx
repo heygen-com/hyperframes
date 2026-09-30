@@ -11,6 +11,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
+import { useTimelineReadOnlyPress } from "./timelineReadOnly";
 import {
   enabledAudioFxNodes,
   parseAudioFxChain,
@@ -197,8 +198,10 @@ export function TimelineFxButton(props: TimelineFxButtonProps) {
   const transport = useAuditionTransport();
   /** Whether THIS audition lifted a mute, so only it puts one back. */
   const borrowedMute = useRef(false);
+  const readOnlyPress = useTimelineReadOnlyPress();
 
   const openAt = () => {
+    if (readOnlyPress) return readOnlyPress();
     setAnchorRect(buttonRef.current?.getBoundingClientRect() ?? null);
     setOpen(true);
   };

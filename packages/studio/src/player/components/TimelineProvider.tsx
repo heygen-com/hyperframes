@@ -1,6 +1,7 @@
 import {
   createContext,
   useContext,
+  useMemo,
   type ComponentProps,
   type CSSProperties,
   type MouseEvent,
@@ -26,6 +27,7 @@ import type { TimelineTheme } from "./timelineTheme";
 import type { TimelineEditCallbacks } from "./timelineCallbacks";
 import type { KeyframeDiamondContextMenuState } from "./KeyframeDiamondContextMenu";
 import { useTimelineProviderState } from "./useTimelineProviderState";
+import { TimelineReadOnlyContext } from "./timelineReadOnly";
 import {
   TimelineEditProvider,
   useTimelineEditContextValue,
@@ -179,16 +181,28 @@ export interface TimelineContextValue {
 
 const TimelineContext = createContext<TimelineContextValue | null>(null);
 
-export function TimelineProvider({ children, ...props }: TimelineProps & { children: ReactNode }) {
+const NO_EDITS: TimelineEditCallbacks = {};
+
+export function TimelineProvider({
+  children,
+  readOnly = false,
+  onReadOnlyPress,
+  ...props
+}: TimelineProps & { children: ReactNode }) {
   const editContext = useTimelineEditContextValue();
-  if (!editContext) {
-    return (
-      <TimelineEditProvider value={props}>
+  const readOnlyPress = useMemo(
+    () => (readOnly ? () => onReadOnlyPress?.() : null),
+    [readOnly, onReadOnlyPress],
+  );
+  // One tree shape for both modes, so toggling read-only keeps scroll, zoom and selection. Host edit
+  // props still reach the state: each path that would use one is refused where its gesture starts.
+  return (
+    <TimelineReadOnlyContext.Provider value={readOnlyPress}>
+      <TimelineEditProvider value={readOnly ? NO_EDITS : (editContext ?? props)}>
         <TimelineProviderState {...props}>{children}</TimelineProviderState>
       </TimelineEditProvider>
-    );
-  }
-  return <TimelineProviderState {...props}>{children}</TimelineProviderState>;
+    </TimelineReadOnlyContext.Provider>
+  );
 }
 
 function TimelineProviderState({ children, ...props }: TimelineProps & { children: ReactNode }) {

@@ -40,6 +40,7 @@ import { useTimelineActiveClips } from "./useTimelineActiveClips";
 import { useTimelineLaneMoveRefresh } from "./useTimelineLaneMoveRefresh";
 import { useTimelineLogicalFocus } from "./useTimelineLogicalFocus";
 import { useTimelineEditContextOptional } from "../../contexts/TimelineEditContext";
+import { useTimelineReadOnlyPress } from "./timelineReadOnly";
 export function useTimelineProviderState({
   onSeek,
   onDrillDown,
@@ -92,6 +93,7 @@ export function useTimelineProviderState({
   });
   const theme = useMemo(() => ({ ...defaultTimelineTheme, ...themeOverrides }), [themeOverrides]);
   const editContext = useTimelineEditContextOptional();
+  const readOnlyPress = useTimelineReadOnlyPress();
   const refreshAfterLaneMove = useTimelineLaneMoveRefresh();
   useMusicBeatAnalysis();
   const timelineElements = usePlayerStore((s) => s.elements);
@@ -197,7 +199,7 @@ export function useTimelineProviderState({
     onMoveElements: pinnedOnMoveElements,
     onResizeElement: pinnedOnResizeElement,
     onResizeElements: pinnedOnResizeElements,
-    onBlockedEditAttempt,
+    onBlockedEditAttempt: readOnlyPress ?? onBlockedEditAttempt,
     onSeek,
     setShowPopover,
     setRangeSelectionRef,
@@ -217,6 +219,7 @@ export function useTimelineProviderState({
     onBlockDrop: pinnedOnBlockDrop,
     onCompositionDrop: pinnedOnCompositionDrop,
     sessionEpoch,
+    readOnlyPress,
   });
   const displayLayout = useTimelineDisplayLayout(draggedClip, trackOrder, rowGeometry);
   const { resizingElementIds, getPreviewElement, draggedElement, multiDragPreview, snapGuide } =
@@ -336,7 +339,7 @@ export function useTimelineProviderState({
       scrollRef,
       contentOrigin,
       pixelsPerSecond: pps,
-      onSplitAll: onRazorSplitAll,
+      onSplitAll: readOnlyPress ?? onRazorSplitAll,
     });
   const overlaysProps = useTimelineOverlaysState({
     elements: timelineElements,
@@ -482,10 +485,11 @@ export function useTimelineProviderState({
     onClickKeyframe,
     onShiftClickKeyframe,
     onMoveKeyframe,
-    onContextMenuKeyframe,
-    onContextMenuClip,
+    onContextMenuKeyframe: readOnlyPress ?? onContextMenuKeyframe,
+    onContextMenuClip: readOnlyPress ?? onContextMenuClip,
     onContextMenuLane: (e: React.MouseEvent, track: number, time: number) => {
       if (draggedClip?.started || resizingClip) return;
+      if (readOnlyPress) return readOnlyPress();
       setClipContextMenu(null);
       openGapMenu({ x: e.clientX, y: e.clientY, track, time });
     },
@@ -495,9 +499,10 @@ export function useTimelineProviderState({
     draggedElement,
     snapGuide,
     multiDragPreview,
-    onToggleTrackHidden: editContext.onToggleTrackHidden,
-    onTogglePropertyGroupKeyframe: editContext.onTogglePropertyGroupKeyframe,
-    onRazorSplit: editContext.onRazorSplit,
+    // One-click edits with no preview: read-only reports the click instead of acting on it.
+    onToggleTrackHidden: readOnlyPress ?? editContext.onToggleTrackHidden,
+    onTogglePropertyGroupKeyframe: readOnlyPress ?? editContext.onTogglePropertyGroupKeyframe,
+    onRazorSplit: readOnlyPress ?? editContext.onRazorSplit,
     onRazorSplitAll: editContext.onRazorSplitAll,
   };
   const holdNewClipContent = timelineFocus.rowVirtualizationActive && viewport.isScrolling;
@@ -513,7 +518,7 @@ export function useTimelineProviderState({
   );
   const timelineMeta = buildTimelineShellMeta({
     isDragOver: assetDrop.isDragOver,
-    hasFileDrop: !!onFileDrop,
+    hasFileDrop: !!onFileDrop && !readOnlyPress,
     drop: {
       onDragOver: assetDrop.handleAssetDragOver,
       onDragLeave: assetDrop.handleAssetDragLeave,

@@ -23,6 +23,8 @@ interface UseTimelineAssetDropOptions extends TimelineDropCallbacks {
   rowGeometryRef: RefObject<TimelineRowGeometry>;
   contentOrigin: number;
   sessionEpoch: number;
+  /** Read-only: refuse the drag (no preview, no drop) and report it once. */
+  readOnlyPress?: (() => void) | null;
 }
 
 /**
@@ -132,6 +134,7 @@ export function useTimelineAssetDrop({
   onBlockDrop,
   onCompositionDrop,
   sessionEpoch,
+  readOnlyPress,
 }: UseTimelineAssetDropOptions) {
   const [isDragOver, setIsDragOver] = useState(false);
   const [dropPreview, setDropPreview] = useState<TimelineDropPlacement | null>(null);
@@ -140,6 +143,7 @@ export function useTimelineAssetDrop({
   );
   const autoScrollRafRef = useRef(0);
   const activeDropEpochRef = useRef<number | null>(null);
+  const refusedDragRef = useRef(false);
 
   const stopAutoScroll = useCallback(() => {
     dragPointerRef.current = null;
@@ -210,6 +214,13 @@ export function useTimelineAssetDrop({
       const hasBlock = types.includes(TIMELINE_BLOCK_MIME);
       const hasComposition = types.includes(TIMELINE_COMPOSITION_MIME);
       if (!hasFiles && !hasAsset && !hasBlock && !hasComposition) return;
+      if (readOnlyPress) {
+        // Not cancelled, so the browser shows no-drop and never fires drop here.
+        e.dataTransfer.dropEffect = "none";
+        if (!refusedDragRef.current) readOnlyPress();
+        refusedDragRef.current = true;
+        return;
+      }
       e.preventDefault();
       e.dataTransfer.dropEffect = "copy";
       activeDropEpochRef.current = sessionEpoch;
@@ -222,11 +233,12 @@ export function useTimelineAssetDrop({
       );
       syncAutoScroll(e.clientX, e.clientY);
     },
-    [resolveDropPlacement, sessionEpoch, syncAutoScroll],
+    [readOnlyPress, resolveDropPlacement, sessionEpoch, syncAutoScroll],
   );
 
   const clearDropPreview = useCallback(() => {
     activeDropEpochRef.current = null;
+    refusedDragRef.current = false;
     stopAutoScroll();
     setIsDragOver(false);
     setDropPreview(null);
