@@ -552,6 +552,7 @@ export function StudioApp({ readOnlyPreview = false, readOnlyPreviewReason }: St
                   handleTimelineElementSplit={timelineEditing.handleTimelineElementSplit}
                   handleRazorSplit={timelineEditing.handleRazorSplit}
                   handleRazorSplitAll={timelineEditing.handleRazorSplitAll}
+                  handleFreezeFrame={timelineEditing.handleFreezeFrame}
                   onCopyClip={handleCopy}
                   onPasteClip={handlePaste}
                   onDuplicateClip={handleDuplicate}

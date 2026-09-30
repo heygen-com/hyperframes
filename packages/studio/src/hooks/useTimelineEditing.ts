@@ -492,8 +492,7 @@ export function useTimelineEditing({
     });
 
   const handleBlockedTimelineEdit = useBlockedTimelineEditToast(showToast);
-
-  const { handleRazorSplit, handleRazorSplitAll } = useRazorSplit({
+  const { handleRazorSplit, handleRazorSplitAll, handleFreezeFrame } = useRazorSplit({
     projectId,
     activeCompPath,
     showToast,
@@ -575,6 +574,7 @@ export function useTimelineEditing({
     ),
     handleTimelineElementSplit: trackedRazorSplit,
     handleRazorSplit: trackedRazorSplit,
+    handleFreezeFrame: track(guard((element) => [element], handleFreezeFrame)),
     // Same selection the handler itself splits (useRazorSplit.ts).
     handleRazorSplitAll: track(
       guard(

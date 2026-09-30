@@ -6,6 +6,7 @@ import { trackStudioRazorSplit } from "../telemetry/events";
 import { canSplitElementAt, selectSplittableElements } from "../utils/timelineElementSplit";
 import { buildAtomicCutIntents, runAtomicCutTransaction } from "../utils/razorSplitTransaction";
 import type { RecordEditInput } from "./timelineEditingHelpers";
+import { useFreezeFrame } from "./useFreezeFrame";
 
 interface UseRazorSplitOptions {
   projectId: string | null;
@@ -135,5 +136,17 @@ export function useRazorSplit({
     [isRecordingRef, runCut, showToast],
   );
 
-  return { handleRazorSplit, handleRazorSplitAll };
+  const handleFreezeFrame = useFreezeFrame({
+    projectId,
+    activeCompPath,
+    showToast,
+    writeProjectFile,
+    observeProjectFileVersion,
+    recordEdit,
+    reloadPreview,
+    forceReloadSdkSession,
+    isRecordingRef,
+  });
+
+  return { handleRazorSplit, handleRazorSplitAll, handleFreezeFrame };
 }

@@ -16,16 +16,19 @@ import {
 } from "./clipToolAttrs";
 import { useClipToolState } from "./useClipToolState";
 
-export type ClipMenuToolGroup = "sound" | "picture";
+export type ClipMenuToolGroup = "time" | "sound" | "picture";
 
 interface ClipMenuToolItemsProps {
   group: ClipMenuToolGroup;
   element: TimelineElement;
+  currentTime: number;
   onClose: () => void;
 }
 
 const ROW_CLASS =
   "w-full flex items-center justify-between px-3 py-1.5 text-xs text-left outline-none focus-visible:bg-neutral-800 text-neutral-300 hover:bg-neutral-800 cursor-pointer";
+const DISABLED_ROW_CLASS =
+  "w-full flex items-center justify-between px-3 py-1.5 text-xs text-left outline-none text-neutral-600 cursor-not-allowed";
 const SUBMENU_WIDTH = 170;
 
 interface ChoiceSection {
@@ -152,8 +155,33 @@ function isPictureClip(tag: string): boolean {
   return tag === "video" || tag === "img";
 }
 
-/** Voice, Look and Crop for the clip menu; each group renders its own trailing divider when it has items. */
-export function ClipMenuToolItems({ group, element, onClose }: ClipMenuToolItemsProps) {
+function FreezeFrameItem({ element, currentTime, onClose }: Omit<ClipMenuToolItemsProps, "group">) {
+  const { onFreezeFrame } = useTimelineEditContextOptional();
+  if (!onFreezeFrame || element.tag.trim().toLowerCase() !== "video") return null;
+  const inside = currentTime > element.start && currentTime < element.start + element.duration;
+  return (
+    <button
+      type="button"
+      role="menuitem"
+      className={inside ? ROW_CLASS : DISABLED_ROW_CLASS}
+      disabled={!inside}
+      onClick={() => {
+        void onFreezeFrame(element, currentTime);
+        onClose();
+      }}
+    >
+      <span>{inside ? "Freeze frame" : "Freeze frame (move playhead inside clip)"}</span>
+    </button>
+  );
+}
+
+/** Freeze (time), Voice (sound), Look and Crop (picture); sound and picture end in their own divider. */
+export function ClipMenuToolItems(props: ClipMenuToolItemsProps) {
+  if (props.group === "time") return <FreezeFrameItem {...props} />;
+  return <ClipMenuAttributeItems {...props} />;
+}
+
+function ClipMenuAttributeItems({ group, element, onClose }: ClipMenuToolItemsProps) {
   const { onSetElementAttributeQuiet } = useTimelineEditContextOptional();
   const state = useClipToolState(element);
   const openCropBar = useCropPresetBarStore((s) => s.open);

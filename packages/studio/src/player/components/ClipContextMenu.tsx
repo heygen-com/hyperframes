@@ -145,6 +145,12 @@ export const ClipContextMenu = memo(function ClipContextMenu({
             <span>{splitLabel}</span>
             <span className="text-neutral-500 text-[10px] ml-3">S</span>
           </button>
+          <ClipMenuToolItems
+            group="time"
+            element={element}
+            currentTime={currentTime}
+            onClose={onClose}
+          />
           <div className="my-1 border-t border-neutral-700/60" />
         </>
       )}
@@ -199,8 +205,18 @@ export const ClipContextMenu = memo(function ClipContextMenu({
         </>
       )}
 
-      <ClipMenuToolItems group="sound" element={element} onClose={onClose} />
-      <ClipMenuToolItems group="picture" element={element} onClose={onClose} />
+      <ClipMenuToolItems
+        group="sound"
+        element={element}
+        currentTime={currentTime}
+        onClose={onClose}
+      />
+      <ClipMenuToolItems
+        group="picture"
+        element={element}
+        currentTime={currentTime}
+        onClose={onClose}
+      />
       <button
         type="button"
         role="menuitem"

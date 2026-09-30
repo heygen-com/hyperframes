@@ -31,22 +31,28 @@ const video: TimelineElement = {
   hasAudio: true,
 };
 
-function renderItems(group: ClipMenuToolGroup, element: TimelineElement) {
+function renderItems(group: ClipMenuToolGroup, element: TimelineElement, currentTime = 2) {
   const setQuiet = vi.fn(
     async (_el: TimelineElement, _attr: string, _value: string | null, _label: string) => undefined,
   );
   const onClose = vi.fn();
+  const freeze = vi.fn((_el: TimelineElement, _time: number) => undefined);
   const host = document.createElement("div");
   document.body.append(host);
   root = createRoot(host);
   act(() => {
     root?.render(
-      <TimelineEditProvider value={{ onSetElementAttributeQuiet: setQuiet }}>
-        <ClipMenuToolItems group={group} element={element} onClose={onClose} />
+      <TimelineEditProvider value={{ onSetElementAttributeQuiet: setQuiet, onFreezeFrame: freeze }}>
+        <ClipMenuToolItems
+          group={group}
+          element={element}
+          currentTime={currentTime}
+          onClose={onClose}
+        />
       </TimelineEditProvider>,
     );
   });
-  return { setQuiet, onClose };
+  return { setQuiet, onClose, freeze };
 }
 
 function openSubmenu(label: string) {
@@ -110,6 +116,24 @@ describe("ClipMenuToolItems", () => {
 
   it("offers no picture tools on an audio clip", () => {
     renderItems("picture", { ...video, tag: "audio" });
+    expect(document.body.textContent).toBe("");
+  });
+
+  it("Freeze frame calls the freeze mutation at the playhead on a video", () => {
+    const { freeze } = renderItems("time", video, 3.2);
+    const item = document.querySelector<HTMLButtonElement>('[role="menuitem"]');
+    expect(item?.textContent).toBe("Freeze frame");
+    act(() => item?.click());
+    expect(freeze).toHaveBeenCalledWith(video, 3.2);
+  });
+
+  it("Freeze frame is disabled outside the clip and absent on images", () => {
+    renderItems("time", video, 9);
+    expect(document.querySelector<HTMLButtonElement>('[role="menuitem"]')?.disabled).toBe(true);
+    act(() => root?.unmount());
+    root = null;
+    document.body.innerHTML = "";
+    renderItems("time", { ...video, tag: "img" });
     expect(document.body.textContent).toBe("");
   });
 });
