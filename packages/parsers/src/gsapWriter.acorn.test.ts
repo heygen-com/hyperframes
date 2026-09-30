@@ -492,6 +492,17 @@ tl.to("#goodbye", { x: 2 }, "end");`;
     );
   });
 
+  it("copies no tween inside a callback or a guard, which may never run", () => {
+    const deferred = `var tl = gsap.timeline();
+el.addEventListener("click", () => tl.to("#goodbye", { x: 1 }, 1));
+window.go && tl.from("#goodbye", { opacity: 0 }, 1);
+tl.call(() => tl.to("#goodbye", { y: 1 }, 1));
+tl.to("#title", { x: 1 }, 0).from("#goodbye", { opacity: 0 }, 2);`;
+    const result = copyAnimationsInScript(deferred, "#goodbye", "#goodbye-2", 3);
+    expect(result.match(/goodbye-2/g)).toEqual(["goodbye-2"]);
+    expect(result).toContain(`tl.from("#goodbye-2", { opacity: 0 }, 5);`);
+  });
+
   it("puts the copy before the block's return", () => {
     const built = `function build() {
   const tl = gsap.timeline();

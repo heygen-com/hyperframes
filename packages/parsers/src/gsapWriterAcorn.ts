@@ -502,9 +502,14 @@ export function copyAnimationsInScript(
   return ms.toString();
 }
 
-/** A tween in a loop runs once per pass, and one on a variable reads a name bound elsewhere: neither is copied. */
+/** A tween in a loop runs once per pass, one on a variable reads a name bound elsewhere, and one inside a callback or a
+ *  guard may never run: none is copied. The statement must be the tween's own chain. */
 function copyable(call: TweenCallInfo): boolean {
-  return call.node.arguments[0]?.type === "Literal" && !call.ancestors.some(isLoopOrForEach);
+  if (call.node.arguments[0]?.type !== "Literal" || call.ancestors.some(isLoopOrForEach))
+    return false;
+  let link = findEnclosingExpressionStatement(call.ancestors)?.expression;
+  while (link?.type === "CallExpression" && link !== call.node) link = link.callee?.object;
+  return link === call.node;
 }
 
 /** The call's own text for every argument but its target and position. */

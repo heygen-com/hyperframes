@@ -94,6 +94,7 @@ describe("a pasted clip takes its original's look and motion", () => {
         tl.to("#goodbye", { y: 10, duration: 0.5 }, "late");
         for (const id of ["#title"]) tl.to(id, { x: 5, duration: 0.5 });
         tl.to("#goodbye", { scale: 1.1, duration: 0.5 });
+        tl.to(title, { y: 5, duration: 0.5 });
         window.__timelines["main"] = tl;
       }
     </script>`,
