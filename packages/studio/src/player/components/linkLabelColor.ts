@@ -3,12 +3,12 @@
  * clips, audio clips, selection, the out-of-sync badge), so none appear here.
  */
 export const LINK_LABEL_COLORS = [
-  "#f59e0b",
-  "#38bdf8",
-  "#a3e635",
-  "#f472b6",
-  "#fb923c",
-  "#facc15",
+  "var(--color-amber-500)",
+  "var(--color-sky-400)",
+  "var(--color-green-400)",
+  "var(--color-pink-400)",
+  "var(--color-orange-400)",
+  "var(--color-amber-300)",
 ] as const;
 
 function stableIndex(link: string): number {
