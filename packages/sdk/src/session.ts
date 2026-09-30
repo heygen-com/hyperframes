@@ -31,6 +31,7 @@ import type {
 } from "./types.js";
 import { ORIGIN_APPLY_PATCHES, ORIGIN_LOCAL } from "./types.js";
 import { buildRoots, flatElements, parsedAnimationIds } from "./document.js";
+import { syncFixFor, syncOffsetOf } from "./engine/syncTiming.js";
 import type { PersistAdapter, PreviewAdapter } from "./adapters/types.js";
 import { parseMutable } from "./engine/model.js";
 import type { ParsedDocument } from "./engine/model.js";
@@ -167,6 +168,23 @@ class CompositionImpl implements Composition {
     opts?: { linked?: boolean },
   ): void {
     this.dispatch({ type: "setTiming", target: id, ...timing, ...opts });
+  }
+
+  syncOffset(id: HfId, fps = 30): number | null {
+    return syncOffsetOf(this.parsed.document, id, fps);
+  }
+
+  /** Moves `id` alone; a link group it belongs to is left (as `setTiming` `linked: false`). */
+  moveIntoSync(id: HfId): void {
+    const fix = syncFixFor(this.parsed.document, id, "move");
+    if (fix.kind === "move")
+      this.dispatch({ type: "setTiming", target: id, start: fix.start, linked: false });
+  }
+
+  slipIntoSync(id: HfId): void {
+    const fix = syncFixFor(this.parsed.document, id, "slip");
+    if (fix.kind === "slip")
+      this.dispatch({ type: "setAttribute", target: id, name: fix.name, value: fix.value });
   }
 
   removeElement(id: HfId): void {

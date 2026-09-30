@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   MEDIA_LINK_ATTR,
   SYNC_ORIGIN_ATTR,
+  findSyncPartner,
   formatSyncOffset,
   linkTimingMismatches,
   moveIntoSyncStart,
@@ -170,5 +171,20 @@ describe("sync offset", () => {
     expect(slipIntoSyncMediaStart(clip(3, 0, 2), clip(2, 0, 2))).toBeCloseTo(2);
     expect(syncOffsetFrames(clip(3, 2, 2), clip(2, 0, 2), 30)).toBe(0);
     expect(slipIntoSyncMediaStart(clip(1, 0), clip(2, 0))).toBeNull();
+  });
+});
+
+describe("findSyncPartner", () => {
+  it("finds the opposite kind sharing the origin, preferring the most shared timeline", () => {
+    document.body.innerHTML = `<div data-composition-id="m">
+      <video id="v" data-sync-origin="lk-1" data-start="0" data-duration="4"></video>
+      <video id="v2" data-sync-origin="lk-1" data-start="4" data-duration="4"></video>
+      <audio id="a" data-sync-origin="lk-1" data-start="4.2" data-duration="4"></audio>
+      <audio id="x" data-sync-origin="lk-9" data-start="4" data-duration="4"></audio></div>`;
+    const byId = (id: string) => document.getElementById(id);
+    const a = byId("a");
+    const x = byId("x");
+    expect(a && findSyncPartner(a)?.id).toBe("v2");
+    expect(x && findSyncPartner(x)).toBeNull();
   });
 });

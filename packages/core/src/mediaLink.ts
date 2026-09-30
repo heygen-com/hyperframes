@@ -159,3 +159,38 @@ export function slipIntoSyncMediaStart(clip: SyncTiming, partner: SyncTiming): n
   const mediaStart = (clip.start - sourceZeroTime(partner)) * rateOf(clip);
   return mediaStart >= -SYNC_TOLERANCE_S ? Math.max(0, mediaStart) : null;
 }
+
+interface PairableElement extends AttributeReader {
+  tagName: string;
+  closest(selectors: string): Element | null;
+  ownerDocument: Document;
+}
+
+function sharedSeconds(a: LinkTiming, b: LinkTiming): number {
+  return Math.min(a.start + a.duration, b.start + b.duration) - Math.max(a.start, b.start);
+}
+
+/**
+ * The other half of `el`'s source pair in its composition: the audio for a
+ * video and the reverse, sharing `data-sync-origin`. After splits the one
+ * sharing the most timeline wins, then the nearest start.
+ */
+export function findSyncPartner(el: PairableElement): Element | null {
+  const origin = el.getAttribute(SYNC_ORIGIN_ATTR);
+  const tag = el.tagName.toLowerCase();
+  if (!origin || (tag !== "video" && tag !== "audio")) return null;
+  const partnerTag = tag === "video" ? "audio" : "video";
+  const scope = el.closest("[data-composition-id]") ?? el.ownerDocument;
+  const own = readLinkTiming(el);
+  let best: { el: Element; shared: number; distance: number } | null = null;
+  for (const candidate of Array.from(scope.querySelectorAll(partnerTag))) {
+    if (candidate.getAttribute(SYNC_ORIGIN_ATTR) !== origin) continue;
+    const timing = readLinkTiming(candidate);
+    const shared = sharedSeconds(own, timing);
+    const distance = Math.abs(timing.start - own.start);
+    if (!best || shared > best.shared || (shared === best.shared && distance < best.distance)) {
+      best = { el: candidate, shared, distance };
+    }
+  }
+  return best?.el ?? null;
+}

@@ -435,6 +435,15 @@ export interface Composition {
     timing: { start?: number; duration?: number; trackIndex?: number },
     opts?: { linked?: boolean },
   ): void;
+  /**
+   * Frames `id` sits from the other half of its source pair (`data-sync-origin`):
+   * positive when it plays late. Null when unpaired or the halves' rates differ.
+   */
+  syncOffset(id: HfId, fps?: number): number | null;
+  /** Premiere's Move into Sync: move `id` alone so its offset is zero. */
+  moveIntoSync(id: HfId): void;
+  /** Premiere's Slip into Sync: keep `id` in place and slip its media start. */
+  slipIntoSync(id: HfId): void;
   removeElement(id: HfId): void;
   /**
    * Insert an HTML fragment as a child of `parent` at `index` (WS-D).
