@@ -674,6 +674,19 @@ describe("collectRuntimeTimelinePayload", () => {
     expect(result.clips[0].label).toBe("Hero Card");
   });
 
+  it("names each instance of a repeated scene by its authored id, not the id the loader gave it", () => {
+    document.body.innerHTML = `<div data-composition-id="main" data-duration="10">
+      <div class="clip" data-composition-id="benefit-fresh__hf1" data-hf-original-composition-id="benefit-fresh"
+        data-start="0" data-duration="3"></div>
+      <div class="clip" data-composition-id="benefit-fresh__hf2" data-hf-original-composition-id="benefit-fresh"
+        data-start="3" data-duration="3"></div>
+    </div>`;
+
+    const result = collectRuntimeTimelinePayload(defaultParams);
+    expect(result.clips.map((clip) => clip.label)).toEqual(["Benefit Fresh", "Benefit Fresh"]);
+    expect(result.scenes.map((scene) => scene.label)).toEqual(["benefit-fresh", "benefit-fresh"]);
+  });
+
   it("falls back to a readable ordinal label instead of a node index id", () => {
     const root = document.createElement("div");
     root.setAttribute("data-composition-id", "main");

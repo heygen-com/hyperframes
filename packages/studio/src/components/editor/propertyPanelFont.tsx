@@ -276,6 +276,7 @@ export function FontFamilyField({
   );
 
   const options = useMemo(() => {
+    if (!open) return [];
     const documentFonts = collectDocumentFontFamilies();
     const googleSet = new Set(googleFonts.map((f) => f.toLowerCase()));
     const taggedLocal = localFonts.map(
@@ -294,7 +295,7 @@ export function FontFamilyField({
         ...DEFAULT_FONT_FAMILIES.map((f): FontOption => ({ family: f, source: "System" })),
       ]),
     );
-  }, [currentFamily, googleFonts, localFonts, projectFontAssets]);
+  }, [open, currentFamily, googleFonts, localFonts, projectFontAssets]);
 
   const filteredOptions = useMemo(() => {
     const matches = options.filter((o) => fontMatchesQuery(o.family, query));

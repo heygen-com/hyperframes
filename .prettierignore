@@ -9,6 +9,9 @@ packages/gcp-cloud-run/terraform/workflow.yaml
 # toMatchFileSnapshot golden files — vitest writes these; oxfmt must not reformat them.
 packages/**/__goldens__/
 
+# Edit accuracy baseline, written by the bench one line per case so a diff reads case by case.
+packages/studio/tests/e2e/edit-accuracy/baseline.json
+
 # vendored third-party bundles inside skills — never reformat
 skills/**/assets/vendor/
 skills/**/*.min.js

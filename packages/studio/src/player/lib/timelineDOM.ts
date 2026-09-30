@@ -265,7 +265,7 @@ export function parseTimelineFromDOM(
     const sourceFile = getTimelineElementSourceFile(el);
     const selectorIndex = getTimelineElementSelectorIndex(doc, el, selector);
     const label = getTimelineElementDisplayLabel({
-      id: el.id || compId || null,
+      id: el.id || el.getAttribute("data-hf-original-composition-id") || compId || null,
       label: el.getAttribute("data-timeline-label") ?? el.getAttribute("data-label"),
       tag: tagLower,
     });

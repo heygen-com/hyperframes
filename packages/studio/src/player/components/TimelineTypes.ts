@@ -12,6 +12,15 @@ export interface TimelineClipRenderContext {
   rich: boolean;
 }
 
+export interface TimelineClipMenuItem {
+  id: string;
+  label: string;
+  icon?: ReactNode;
+  shortcut?: string;
+  disabled?: boolean;
+  onSelect: () => void;
+}
+
 export interface TimelineProps
   extends TimelineDropCallbacks, TimelineEditOverrides, TimelineStackingSyncProps {
   /** Project-scoped reset boundary; soft source refreshes retain the same epoch. */
@@ -33,6 +42,7 @@ export interface TimelineProps
   onPasteClip?: () => Promise<void>;
   onDuplicateClip?: () => Promise<boolean>;
   canPasteClip?: () => boolean;
+  clipMenuItems?: (element: TimelineElement) => readonly TimelineClipMenuItem[];
   theme?: Partial<TimelineTheme>;
   showAudioEffects?: boolean;
   showKeyframes?: boolean;

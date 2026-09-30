@@ -1,4 +1,4 @@
-import { useEffect } from "react";
+import { useEffect, useMemo } from "react";
 import type { TimelineElement } from "../store/playerStore";
 import { EditPopover } from "./EditModal";
 import { KeyframeDiamondContextMenu } from "./KeyframeDiamondContextMenu";
@@ -152,6 +152,11 @@ export function TimelineClipMenuOverlay() {
   useEffect(() => {
     if (clipContextMenu && !element) setClipContextMenu(null);
   }, [element, clipContextMenu, setClipContextMenu]);
+  const { clipMenuItems } = overlay;
+  const hostItems = useMemo(
+    () => (element ? clipMenuItems?.(element) : undefined),
+    [clipMenuItems, element],
+  );
   if (!clipContextMenu || !element) return null;
   const readCurrentElement = () =>
     resolveTimelineContextElement({
@@ -183,6 +188,7 @@ export function TimelineClipMenuOverlay() {
       onPaste={overlay.onPasteClip}
       onDuplicate={overlay.onDuplicateClip}
       canPaste={overlay.canPasteClip?.() ?? false}
+      hostItems={hostItems}
     />
   );
 }
