@@ -15,7 +15,7 @@ const worstValue = {
   press: (r) => r.pressJump ?? 0,
   drop: (r) => r.drop,
   reload: (r) => r.reload,
-  render: (r) => r.render,
+  render: (r) => r.render ?? 0,
   undo: (r) => Math.max(r.undo.box, r.undo.redoBox ?? 0),
   smooth: (r) => r.smooth.dropped - r.smooth.control.dropped,
 };
@@ -52,7 +52,7 @@ export function score(spec, r) {
     press: r.pressJump === null || r.pressJump <= LIMIT_PX,
     drop: r.drop <= LIMIT_PX,
     reload: r.reload <= LIMIT_PX,
-    render: r.render <= LIMIT_PX,
+    render: r.render !== null && r.render <= LIMIT_PX,
     undo: r.undo.bytes && r.undo.redoBytes && Math.max(r.undo.box, r.undo.redoBox) <= LIMIT_PX,
     // Only drops beyond the blank page's, driven the same way in the same Chrome, are the edit's.
     smooth:
@@ -116,6 +116,7 @@ function summarize(results, seconds) {
     perMetric,
     unsettled: measured.filter((r) => r.unsettled.length).length,
     undoTimeouts: measured.filter((r) => r.undoTimeout).length,
+    renderErrors: measured.filter((r) => r.renderError).length,
     smooth: smoothSummary(measured),
     seconds: Math.round(seconds),
   };
@@ -137,6 +138,7 @@ function table(summary, meta, results) {
     `Undo or redo left different bytes in ${summary.bytesDiffer.undo} undo and ${summary.bytesDiffer.redo} redo cases.`,
     `The preview never held still for 1 s within 15 s in ${summary.unsettled} cases; the metrics that snapshot feeds fail.`,
     `An undo or redo write never landed within 15 s in ${summary.undoTimeouts} cases; undo fails there.`,
+    `The producer failed to render ${summary.renderErrors} cases; render fails there.`,
     `Smoothness: ${summary.smooth.unknown} cases with unknown work; dropped frames per case (median/max) ${summary.smooth.dropped}, blank-page control ${summary.smooth.control}; raw rAF p95 (median/max) ${summary.smooth.p95} ms, control ${summary.smooth.controlP95} ms.`,
     "",
     "| Metric | Pass | Worst | Worst case |",
@@ -159,6 +161,7 @@ function table(summary, meta, results) {
 function baseline(meta, results) {
   const entries = [...results]
     .sort((a, b) => a.id.localeCompare(b.id))
+    // fallow-ignore-next-line complexity
     .map((r) => {
       const v = r.error
         ? { pass: false, error: true }
@@ -176,6 +179,7 @@ function baseline(meta, results) {
             frameP95: roundUp(r.smooth.p95),
             ...(r.unsettled.length && { unsettled: r.unsettled }),
             ...(r.undoTimeout && { undoTimeout: r.undoTimeout }),
+            ...(r.renderError && { renderError: true }),
           };
       return `    ${JSON.stringify(r.id)}: ${JSON.stringify(v)}`;
     });

@@ -69,7 +69,14 @@ const liveRoots = new Set();
 /** Render drift: the reloaded preview's visible box against the target's pixel box in a producer frame. */
 async function withRender(dir, decoder, { reloaded, ...measured }, evidence) {
   const expected = aabb(reloaded.visible);
-  const render = await renderBox(dir, decoder);
+  const render = await renderBox(dir, decoder).catch((error) => ({ error }));
+  // A producer failure fails render alone; the case's other metrics still count.
+  if (render.error)
+    return {
+      ...measured,
+      render: null,
+      renderError: `${render.error?.message ?? render.error}`.slice(0, 600),
+    };
   evidence.frame = render.jpeg;
   return {
     ...measured,
