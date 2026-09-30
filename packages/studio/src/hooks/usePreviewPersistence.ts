@@ -206,17 +206,15 @@ export function usePreviewPersistence({
         usePlayerStore.getState().currentTime,
         reloadPreview,
       );
+      // The timeline keeps its clips until the reloaded preview reports its own, as after any other reload.
       if (strategy === "full") {
-        const player = usePlayerStore.getState();
-        player.setElements([]);
-        player.setSelectedElementId(null);
-        player.setTimelineReady(false);
+        usePlayerStore.getState().setSelectedElementId(null);
         return;
       }
       // A soft restore patched the reverted attributes onto the live preview, but the
       // player store keeps its own copy and that copy is what the automation lanes
       // draw — so without this an undone envelope edit stayed invisible until a
-      // reload. The full path above clears the store and waits for discovery instead.
+      // reload. The full path above waits for the reloaded preview to report instead.
       syncStoredAutomationFromPreview(previewIframeRef.current?.contentDocument ?? null);
     },
     [previewIframeRef, activeCompPathRef, reloadPreview],
