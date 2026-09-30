@@ -503,6 +503,13 @@ tl.to("#title", { x: 1 }, 0).from("#goodbye", { opacity: 0 }, 2);`;
     expect(result).toContain(`tl.from("#goodbye-2", { opacity: 0 }, 5);`);
   });
 
+  it("copies no set that is the bare body of an if or an else", () => {
+    const guarded = `var tl = gsap.timeline();
+if (window.go) gsap.set("#goodbye", { x: 9 });
+else gsap.set("#goodbye", { x: 1 });`;
+    expect(copyAnimationsInScript(guarded, "#goodbye", "#goodbye-2", 3)).toBe(guarded);
+  });
+
   it("puts the copy before the block's return", () => {
     const built = `function build() {
   const tl = gsap.timeline();

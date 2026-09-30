@@ -488,7 +488,7 @@ export function copyAnimationsInScript(
     if (animation.targetSelector !== fromSelector || !copyable(call)) continue;
     const args = [target, ...argumentText(call, script)];
     const statement = findEnclosingExpressionStatement(call.ancestors);
-    if (call.global && statement) {
+    if (call.global && statement && inBlock(call, statement)) {
       ms.appendLeft(
         statement.end,
         `\n${indentAt(script, statement.start)}gsap.set(${args.join(", ")});`,
@@ -510,6 +510,11 @@ function copyable(call: TweenCallInfo): boolean {
   let link = findEnclosingExpressionStatement(call.ancestors)?.expression;
   while (link?.type === "CallExpression" && link !== call.node) link = link.callee?.object;
   return link === call.node;
+}
+
+/** A statement straight in a block or the script: one that is an `if`'s bare body runs only when the `if` does. */
+function inBlock(call: TweenCallInfo, statement: Node): boolean {
+  return Array.isArray(call.ancestors[call.ancestors.indexOf(statement) - 1]?.body);
 }
 
 /** The call's own text for every argument but its target and position. */

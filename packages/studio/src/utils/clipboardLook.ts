@@ -41,7 +41,7 @@ export function carryLook(
   return result;
 }
 
-// ponytail: top-level rules only; a rule inside @media or @supports is not copied.
+// Top-level rules only: a rule inside @media or @supports is not copied.
 function withCopiedRules(css: string, from: string, to: string): string {
   const sheet = new CSSStyleSheet();
   sheet.replaceSync(css);
