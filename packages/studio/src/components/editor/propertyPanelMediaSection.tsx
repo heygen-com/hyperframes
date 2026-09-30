@@ -24,6 +24,7 @@ import {
   audioGainToText,
 } from "@hyperframes/core/audio-gain";
 import type { CommitDomAttributeBatch } from "../../hooks/domEditCommitTypes";
+import { useLinkedSpeedCommit, withLinkedPlaybackRate } from "./linkedSpeedEdits";
 import { commitCutout, commitHasAudioToggle, commitMutedToggle } from "./mediaAudioEdits";
 
 // fallow-ignore-next-line complexity
@@ -56,6 +57,10 @@ export function MediaSection({
   ) => Promise<BackgroundRemovalResult>;
 }) {
   const track = useTrackDesignInput();
+  const setRate = withLinkedPlaybackRate(
+    onSetAttribute,
+    useLinkedSpeedCommit(element, onSetAttributeBatch),
+  );
   const isVideo = element.tagName === "video";
   const isAudio = element.tagName === "audio";
   const isImage = element.tagName === "img";
@@ -279,7 +284,7 @@ export function MediaSection({
                 displayValue={`${formatNumericValue(playbackRate)}x`}
                 formatDisplayValue={(next) => `${formatNumericValue(next / 100)}x`}
                 onCommit={(next) => {
-                  void onSetAttribute("playback-rate", formatNumericValue(next / 100));
+                  void setRate("playback-rate", formatNumericValue(next / 100));
                 }}
               />
             </div>
