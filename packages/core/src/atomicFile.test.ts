@@ -12,6 +12,12 @@ vi.mock("node:crypto", async (importOriginal) => {
   return { ...actual, randomBytes: vi.fn(actual.randomBytes) };
 });
 
+/** `<file>.<8 hex>.tmp`, checked without building a regex from a path (Windows paths hold backslashes). */
+function expectTempSiblingOf(tempPath: string, file: string): void {
+  expect(tempPath.startsWith(`${file}.`)).toBe(true);
+  expect(tempPath.slice(file.length)).toMatch(/^\.[0-9a-f]{8}\.tmp$/);
+}
+
 describe("replaceFileAtomically", () => {
   const dirs: string[] = [];
 
@@ -61,8 +67,9 @@ describe("replaceFileAtomically", () => {
     replaceFileAtomically(file, "new complete html", 0o640, operations);
 
     expect(events).toHaveLength(2);
-    expect(events[0]).toMatch(new RegExp(`^write:${file}\\.[0-9a-f]{8}\\.tmp$`));
+    expect(events[0]!.startsWith("write:")).toBe(true);
     const tempPath = events[0]!.slice("write:".length);
+    expectTempSiblingOf(tempPath, file);
     expect(events[1]).toBe(`rename:${tempPath}:${file}`);
     expect(readFileSync(file, "utf-8")).toBe("new complete html");
     expect(fs.statSync(file).mode & 0o777).toBe(0o640);
@@ -126,7 +133,7 @@ describe("replaceFileAtomically", () => {
 
     expect(() => replaceFileAtomically(file, "new", 0o640, operations)).toThrow("publish failed");
     expect(tempPaths).toHaveLength(1);
-    expect(tempPaths[0]).toMatch(new RegExp(`^${file}\\.[0-9a-f]{8}\\.tmp$`));
+    expectTempSiblingOf(tempPaths[0]!, file);
     expect(removed).toEqual(tempPaths);
   });
 

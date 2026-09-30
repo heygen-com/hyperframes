@@ -1099,6 +1099,14 @@ export const ALLOWED_DELETIONS = new Map([
   ],
   ["docs/images/preview-reload-evidence/after.webm", "evidence video no page referenced"],
   ["docs/images/preview-reload-evidence/before.webm", "evidence video no page referenced"],
+  [
+    "packages/studio-server/src/helpers/atomicFile.ts",
+    "moved to @hyperframes/core/atomic-file (packages/core/src/atomicFile.ts) as the single atomic writer for core, sdk, cli and studio-server",
+  ],
+  [
+    "packages/studio-server/src/helpers/atomicFile.test.ts",
+    "its tests moved with it to packages/core/src/atomicFile.test.ts",
+  ],
 ]);
 
 export function parseBase(argv, fallback = "origin/main") {
