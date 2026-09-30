@@ -48,6 +48,51 @@ describe("resolveLinkMenuItems", () => {
     expect(labels(audio, [video, audio], ["talk", "talk-audio"])[0]).toBe("Link to video");
   });
 
+  it("offers Link to the lone same-file partner on another track when one clip is right-clicked", () => {
+    const video = clip("talk", "video", { track: 0 });
+    const audio = clip("talk-audio", "audio", { track: 1, start: 2 });
+    expect(labels(audio, [video, audio], ["talk-audio"])[0]).toBe("Link to video");
+    expect(labels(video, [video, audio])[0]).toBe("Link to audio");
+  });
+
+  it("dispatches the convenience link with the clip and its partner", () => {
+    const onLinkEdit = vi.fn();
+    const video = clip("talk", "video", { track: 0 });
+    const audio = clip("talk-audio", "audio", { track: 1 });
+    const [link] = resolveLinkMenuItems({
+      element: audio,
+      elements: [video, audio],
+      selectedKeys: new Set(["talk-audio"]),
+      onLinkEdit,
+    });
+    link?.run();
+    expect(onLinkEdit).toHaveBeenCalledWith({ kind: "link", elements: [audio, video] });
+  });
+
+  it("offers no convenience Link when the partner is ambiguous, linked, another file or the same track", () => {
+    const audio = clip("talk-audio", "audio", { track: 1 });
+    const video = clip("talk", "video", { track: 0 });
+    const twin = clip("talk-2", "video", { track: 2 });
+    expect(labels(audio, [video, twin, audio], ["talk-audio"])).not.toContain("Link to video");
+    const linked = clip("talk", "video", { track: 0, link: "lk-9" });
+    expect(labels(audio, [linked, audio], ["talk-audio"])).not.toContain("Link to video");
+    const other = clip("other", "video", { track: 0, src: "other.mp4" });
+    expect(labels(audio, [other, audio], ["talk-audio"])).not.toContain("Link to video");
+    const sameTrack = clip("talk", "video", { track: 1 });
+    expect(labels(audio, [sameTrack, audio], ["talk-audio"])).not.toContain("Link to video");
+  });
+
+  it("offers no convenience Link while other clips are also selected", () => {
+    const audio = clip("talk-audio", "audio", { track: 1 });
+    const video = clip("talk", "video", { track: 0 });
+    const title = clip("title", "div", { track: 2 });
+    expect(
+      labels(audio, [video, audio, title], ["talk-audio", "title"]).some((l) =>
+        l.startsWith("Link"),
+      ),
+    ).toBe(false);
+  });
+
   it("names the audio partner when unlinking from the video side", () => {
     const video = clip("talk", "video", { muted: true, link: "lk-1" });
     const audio = clip("talk-audio", "audio", { link: "lk-1" });
