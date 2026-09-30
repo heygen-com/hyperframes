@@ -262,3 +262,19 @@ it("predicts a step from what this tab wrote, and not while a claim or step may 
     expect(hook().predict("redo")).toEqual({ "index.html": { previous: "A", restored: "B" } }),
   );
 });
+
+it("an undo taken before the view caught up with the edit still reports the preview's before and after", async () => {
+  const { hook, save, readFile } = await studio();
+  save("B");
+  const record = hook().recordEdit({
+    label: "Moved Title",
+    files: { "index.html": { before: "A", after: "B" } },
+  });
+  const undo = hook().undo;
+  await act(() => record);
+  const undone = await act(() => undo({ readFile }));
+  expect(undone).toMatchObject({
+    ok: true,
+    files: { "index.html": { previous: "B", restored: "A" } },
+  });
+});

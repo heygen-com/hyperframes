@@ -87,6 +87,9 @@ function createOwnHistory() {
       ]);
       remember(entry.id, Object.fromEntries(swapped));
     },
+    /** What this tab last wrote to each file of an entry, which a step over it starts from. */
+    afterOf: (id: string | undefined): Record<string, string> =>
+      Object.fromEntries(Object.entries((id && own.get(id)) || {}).map(([p, f]) => [p, f.after])),
     predict: (direction: "undo" | "redo"): Record<string, ApplyRestoredFile> | null => {
       const step = next?.[direction];
       const files = step ? own.get(step.id) : undefined;
@@ -262,7 +265,13 @@ export function usePersistentEditHistory({ projectId }: UsePersistentEditHistory
           ok: true,
           label: reply.entry.label,
           paths: changed,
-          files: await restoredFiles(changed, previous, callbacks.readFile),
+          // A step taken before the view caught up read no file first; the server only steps over
+          // an entry whose files are still as it left them, so that is where this one starts.
+          files: await restoredFiles(
+            changed,
+            { ...own.afterOf(reply.entry.undoes), ...previous },
+            callbacks.readFile,
+          ),
         };
       };
       return callbacks.serialize ? callbacks.serialize(paths, run) : run();
