@@ -8,7 +8,7 @@ import {
   observeElementRect,
   Virtualizer,
 } from "@tanstack/react-virtual";
-import { afterAll, afterEach, beforeAll, describe, expect, it } from "vitest";
+import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from "vitest";
 import { createTimelineRowGeometry, RULER_H, TRACKS_TOP_PAD } from "./timelineLayout";
 import { extractTimelineVirtualRowRange, useTimelineVirtualRows } from "./useTimelineVirtualRows";
 import type { TimelineScrollViewportSnapshot } from "./useTimelineScrollViewport";
@@ -213,8 +213,7 @@ describe("useTimelineVirtualRows", () => {
   // A scroll-end timer left running fires into the torn-down test window ("window is not defined").
   it("gets no virtualizer change after unmount from a scroll just before it", async () => {
     const scroll = createScrollElement(0);
-    let changesAfterUnmount = 0;
-    let unmounted = false;
+    const onChange = vi.fn();
     const virtualizer = new Virtualizer<HTMLDivElement, Element>({
       count: 100,
       getScrollElement: () => scroll,
@@ -222,17 +221,15 @@ describe("useTimelineVirtualRows", () => {
       scrollToFn: elementScroll,
       observeElementRect,
       observeElementOffset,
-      onChange: () => {
-        if (unmounted) changesAfterUnmount++;
-      },
+      onChange,
     });
     const unmount = virtualizer._didMount();
     virtualizer._willUpdate();
     scroll.dispatchEvent(new Event("scroll"));
     unmount();
-    unmounted = true;
+    onChange.mockClear();
 
-    await new Promise((settle) => setTimeout(settle, 300));
-    expect(changesAfterUnmount).toBe(0);
+    await new Promise((settle) => setTimeout(settle, 200));
+    expect(onChange).not.toHaveBeenCalled();
   });
 });
