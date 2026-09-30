@@ -375,10 +375,13 @@ export async function scaleGsapPositions(
 export function sdkTimingGsapSync(
   result: Extract<CutoverResult, { status: "committed" }>,
 ): GsapMutationStatus | null {
+  // Script bodies straight from the bytes: a DOM parse hides the ones inside a <template>.
   const timelineText = (html: string) =>
-    findTimelineScript([
-      ...new DOMParser().parseFromString(html, "text/html").querySelectorAll("script"),
-    ])?.textContent ?? null;
+    findTimelineScript(
+      [...html.matchAll(/<script\b[^>]*>([\s\S]*?)<\/script>/gi)].map((m) => ({
+        textContent: m[1]!,
+      })),
+    )?.textContent ?? null;
   if (timelineText(result.before) === timelineText(result.after)) return null;
   return { mutated: true, scriptText: extractGsapScriptText(result.after) };
 }

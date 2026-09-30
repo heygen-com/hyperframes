@@ -2247,11 +2247,11 @@ describe("clip timing edits sync GSAP exactly once", () => {
     const pathAfter = (url: string, marker: string) => decodeURIComponent(url.split(marker)[1]!);
     const applyServerMutation = (path: string, body: Record<string, unknown>) => {
       const before = files[path]!;
-      const root = new DOMParser().parseFromString(before, "text/html");
-      const script = [...root.querySelectorAll("script")].find((s) =>
-        s.textContent?.includes("gsap.timeline"),
-      )!;
-      const old = script.textContent!;
+      const doc = new DOMParser().parseFromString(before, "text/html");
+      const root = doc.querySelector("template")?.content ?? doc;
+      const old = [...before.matchAll(/<script>([\s\S]*?)<\/script>/g)]
+        .map((match) => match[1]!)
+        .find((text) => text.includes("gsap.timeline"))!;
       const next =
         body.type === "shift-positions"
           ? shiftPositionsInScript(old, String(body.targetSelector), Number(body.delta), root)
@@ -2336,11 +2336,11 @@ describe("clip timing edits sync GSAP exactly once", () => {
     return { ...project, hook, scene, side, tweens };
   }
 
-  it("a move then a stretch through the SDK sync the timeline script behind a config script", async () => {
-    const withConfig = SCENE_SOURCE.replace(
+  it("a move then a stretch through the SDK sync once in a template file with a config script first", async () => {
+    const withConfig = `<template id="scene-template">\n${SCENE_SOURCE.replace(
       "<script>",
       "<script>gsap.config({ nullTargetWarn: false });</script>\n<script>",
-    );
+    )}\n</template>`;
     const h = await setupScene(true, withConfig);
     await act(async () => {
       await h.hook.move(h.scene, { start: 3, track: h.scene.track });
