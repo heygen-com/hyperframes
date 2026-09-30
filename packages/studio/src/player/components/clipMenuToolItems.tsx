@@ -195,7 +195,7 @@ export function ClipMenuToolItems({ group, element, onClose }: ClipMenuToolItems
         role="menuitem"
         className={ROW_CLASS}
         onClick={() => {
-          openCropBar(element.key ?? element.id);
+          openCropBar({ hfId: element.hfId, id: element.domId ?? element.id });
           onClose();
         }}
       >

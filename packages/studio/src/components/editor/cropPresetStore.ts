@@ -1,17 +1,29 @@
 import { create } from "zustand";
 
-/** The clip the crop preset bar is open for, by timeline identity (`key ?? id`). */
+export interface CropPresetBarTarget {
+  hfId?: string;
+  id?: string;
+}
+
 interface CropPresetBarState {
-  openFor: string | null;
-  open: (clipIdentity: string) => void;
+  openFor: CropPresetBarTarget | null;
+  open: (target: CropPresetBarTarget) => void;
   close: () => void;
 }
 
+/** Which clip the crop preset bar is open for; the canvas shows it while that element is selected. */
 export const useCropPresetBarStore = create<CropPresetBarState>((set) => ({
   openFor: null,
-  open: (clipIdentity) => set({ openFor: clipIdentity }),
+  open: (target) => set({ openFor: target }),
   close: () => set({ openFor: null }),
 }));
+
+export function isCropBarTarget(element: Element, target: CropPresetBarTarget | null): boolean {
+  if (!target) return false;
+  const hfId = element.getAttribute("data-hf-id");
+  if (target.hfId && hfId) return target.hfId === hfId;
+  return Boolean(target.id) && element.id === target.id;
+}
 
 /**
  * The committed clip-path of an element whose crop the canvas handles have lifted to `none`

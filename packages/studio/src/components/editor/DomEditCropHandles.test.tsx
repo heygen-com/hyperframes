@@ -6,6 +6,7 @@ import type { DomEditSelection } from "./domEditing";
 import type { OverlayRect } from "./domEditOverlayGeometry";
 import { DomEditCropHandles } from "./DomEditCropHandles";
 import { isElementCropLifted } from "./domEditOverlayCrop";
+import { useCropPresetBarStore } from "./cropPresetStore";
 
 (globalThis as unknown as { IS_REACT_ACT_ENVIRONMENT: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
@@ -270,5 +271,48 @@ describe("DomEditCropHandles leaves the corner resize dots free", () => {
     document.body.innerHTML = "";
     render(makeEl("b", ""), undefined, rectOf(29, 14));
     expect(handles().map((h) => h.label)).toEqual(["Crop top", "Crop bottom"]);
+  });
+});
+
+describe("DomEditCropHandles preset bar", () => {
+  const click = (label: string) => {
+    const button = Array.from(document.querySelectorAll<HTMLButtonElement>("button")).find(
+      (b) => b.textContent === label,
+    );
+    act(() => button?.click());
+  };
+
+  afterEach(() => useCropPresetBarStore.getState().close());
+
+  it("shows only for the clip the menu opened it for", () => {
+    const a = makeEl("a", "");
+    useCropPresetBarStore.getState().open({ id: "other" });
+    render(a);
+    expect(document.querySelector("[data-dom-edit-crop-bar]")).toBeNull();
+  });
+
+  it("commits a centred 1:1 crop, then Reset removes the clip-path", async () => {
+    const a = makeEl("a", "");
+    const commits: string[] = [];
+    useCropPresetBarStore.getState().open({ id: "a" });
+    const { root } = render(a, (_property, value) => {
+      commits.push(value);
+    });
+    click("1:1");
+    await act(async () => {});
+    expect(commits[0]).toBe("inset(0px 50px 0px 50px)");
+    click("Reset");
+    await act(async () => {});
+    expect(commits[1]).toBe("");
+    act(() => root.unmount());
+    expect(a.style.getPropertyValue("clip-path")).toBe("");
+  });
+
+  it("Done closes the bar", () => {
+    const a = makeEl("a", "");
+    useCropPresetBarStore.getState().open({ id: "a" });
+    render(a);
+    click("Done");
+    expect(useCropPresetBarStore.getState().openFor).toBeNull();
   });
 });

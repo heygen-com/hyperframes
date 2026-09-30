@@ -105,7 +105,7 @@ describe("ClipMenuToolItems", () => {
       (button) => button.textContent === "Crop",
     );
     act(() => crop?.click());
-    expect(useCropPresetBarStore.getState().openFor).toBe("talk");
+    expect(useCropPresetBarStore.getState().openFor).toEqual({ hfId: undefined, id: "talk" });
   });
 
   it("offers no picture tools on an audio clip", () => {
