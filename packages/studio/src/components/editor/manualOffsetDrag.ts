@@ -531,8 +531,8 @@ function releaseDraftTranslateMask(element: HTMLElement): void {
   if (element.style.getPropertyValue("translate") !== "none") return;
   element.style.removeProperty("translate");
   const view = element.ownerDocument.defaultView;
-  const underneath = view?.getComputedStyle(element).getPropertyValue("translate") ?? "none";
-  if (underneath !== "none") element.style.setProperty("translate", "none");
+  const underneath = view?.getComputedStyle(element).getPropertyValue("translate");
+  if (underneath && underneath !== "none") element.style.setProperty("translate", "none");
 }
 
 /** Teardown after a COMMITTED drag. */
