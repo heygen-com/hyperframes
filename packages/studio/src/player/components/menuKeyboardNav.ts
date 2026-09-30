@@ -3,7 +3,7 @@ import { useEffect, type RefObject } from "react";
 /**
  * APG menu keyboard basics for the timeline context menus: focuses the first
  * menu item on open, moves focus with ArrowUp/ArrowDown/Home/End, and gives
- * focus back to the previously focused element on unmount unless an item moved
+ * focus back to the element that held it at open, on unmount, unless an item moved
  * it elsewhere. Pair with `role="menu"` on the container and `role="menuitem"`
  * on the buttons (dismiss/Escape handling stays in useContextMenuDismiss).
  */
