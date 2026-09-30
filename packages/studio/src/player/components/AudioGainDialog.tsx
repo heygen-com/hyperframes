@@ -200,7 +200,7 @@ export function AudioGainDialog({
             type="button"
             disabled={!canApply}
             autoFocus
-            className="rounded bg-blue-600 px-3 py-1 text-white disabled:opacity-40"
+            className="rounded bg-blue-500 px-3 py-1 text-white disabled:opacity-40"
             onClick={() => void apply()}
           >
             OK
