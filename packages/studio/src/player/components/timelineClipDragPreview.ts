@@ -112,7 +112,6 @@ interface GroupDrag {
   obstacles: TimelineElement[];
   /** Lowest start the grabbed clip may take (see groupMoveFloor). */
   floor: number;
-  /** Every clip the gesture moves, the grabbed one included. */
   moving: ReadonlySet<string>;
 }
 
@@ -196,7 +195,6 @@ export function computeDragPreview(
   return {
     ...drag,
     started: true,
-    // The drag actor follows the pointer, so a partner-video clamp holds it back by the same amount.
     pointerClientX: clientX - (floored - previewStart) * pps,
     pointerClientY: clientY,
     previewStart: placement.start,
@@ -222,7 +220,6 @@ export interface ResizePreviewContext {
   scroll: HTMLDivElement | null;
   pps: number;
   buildSnapTargets: BuildSnapTargets;
-  /** With them, an audio trim stays inside its partner video unless the video trims with it. */
   elements?: readonly TimelineElement[];
   gestureKeys?: ReadonlySet<string>;
 }

@@ -116,7 +116,6 @@ type BoundedElement = Pick<
 
 const tagOf = (el: Pick<TimelineElement, "tag">) => el.tag.trim().toLowerCase();
 
-/** The timeline span of an audio clip's video: linked to it, else from the same source (sync origin). */
 function partnerVideoBounds(
   audio: BoundedElement,
   elements: readonly BoundedElement[],
@@ -140,7 +139,6 @@ export function clampStartIntoBounds(
   return Math.max(bounds.start, Math.min(start, bounds.end - duration));
 }
 
-/** The partner video's span, unless that video moves in the same gesture. */
 export function heldPartnerVideoBounds(
   audio: BoundedElement,
   elements: readonly BoundedElement[],
