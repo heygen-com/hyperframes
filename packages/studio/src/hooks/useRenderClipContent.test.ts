@@ -5,6 +5,7 @@ import { createRoot } from "react-dom/client";
 import { afterEach, describe, expect, it } from "vitest";
 import { CompositionThumbnail, VideoThumbnail } from "../player";
 import { AudioWaveform } from "../player/components/AudioWaveform";
+import { AudibleVideoClipContent } from "../player/components/AudibleVideoClipContent";
 import type { TimelineClipRenderContext } from "../player/components/TimelineTypes";
 import { usePlayerStore, type TimelineElement } from "../player/store/playerStore";
 import { buildCompositionThumbnailUrl } from "../player/components/CompositionThumbnail";
@@ -174,6 +175,57 @@ describe("useRenderClipContent", () => {
       expect(linked.props.linked).toBe(true);
       expect(linked.props.muted).toBe(true);
     }
+  });
+
+  it("draws a waveform strip under the thumbnails of a video with sound", () => {
+    usePlayerStore.setState({ thumbnailMode: "adaptive" });
+    const content = renderClipContent(
+      {
+        id: "talk",
+        tag: "video",
+        start: 0,
+        duration: 4,
+        track: 0,
+        src: "talk.mp4",
+        hasAudio: true,
+      },
+      null,
+    );
+    expect(isValidElement<{ thumbnail: ReactNode; waveform: ReactNode }>(content)).toBe(true);
+    if (!isValidElement<{ thumbnail: ReactNode; waveform: ReactNode }>(content)) return;
+    expect(content.type).toBe(AudibleVideoClipContent);
+    const { thumbnail, waveform } = content.props;
+    expect(isValidElement(thumbnail) && thumbnail.type).toBe(VideoThumbnail);
+    expect(isValidElement<{ waveformUrl: string }>(waveform) && waveform.props.waveformUrl).toBe(
+      "/api/projects/my-project/waveform/talk.mp4",
+    );
+  });
+
+  it("keeps a muted or silent video to thumbnails only", () => {
+    usePlayerStore.setState({ thumbnailMode: "adaptive" });
+    for (const extra of [{ hasAudio: true, muted: true }, { hasAudio: false }]) {
+      const content = renderClipContent(
+        { id: "b", tag: "video", start: 0, duration: 4, track: 0, src: "b.mp4", ...extra },
+        null,
+      );
+      expect(isValidElement(content) && content.type).toBe(VideoThumbnail);
+    }
+  });
+
+  it("still shows the sound strip when thumbnails are off", () => {
+    const content = renderClipContent(
+      {
+        id: "talk",
+        tag: "video",
+        start: 0,
+        duration: 4,
+        track: 0,
+        src: "talk.mp4",
+        hasAudio: true,
+      },
+      null,
+    );
+    expect(isValidElement(content) && content.type).toBe(AudibleVideoClipContent);
   });
 
   it("passes empty labels to thumbnail content so TimelineClip owns clip names", () => {

@@ -12,6 +12,8 @@ import type { TimelineClipRenderContext } from "../player/components/TimelineTyp
 import { audioPillFlags } from "../player/components/audioClipLink";
 import { AudioWaveform, rendersWaveform } from "../player/components/AudioWaveform";
 import { ImageThumbnail } from "../player/components/ImageThumbnail";
+import { AudibleVideoClipContent } from "../player/components/AudibleVideoClipContent";
+import { clipHasSound } from "../player/components/clipMenuNormalize";
 import { encodePreviewPath, resolveMediaPreviewUrl } from "../player/components/thumbnailUtils";
 import { usePlayerStore } from "../player/store/playerStore";
 import { thumbnailRevisionOf } from "../player/store/thumbnailSlice";
@@ -85,6 +87,15 @@ function renderAudioClip(
   });
 }
 
+function withSoundStrip(
+  el: TimelineElement,
+  thumbnail: ReactNode,
+  waveform: () => ReactNode,
+): ReactNode {
+  if (el.tag !== "video" || !clipHasSound(el)) return thumbnail;
+  return createElement(AudibleVideoClipContent, { thumbnail, waveform: waveform() });
+}
+
 export interface UseRenderClipContentOptions {
   projectIdRef: { current: string | null };
   compIdToSrc: Map<string, string>;
@@ -117,10 +128,9 @@ export function useRenderClipContent({
 
       // Thumbnail generation disabled (perf) -> plain clip bars. Audio still shows
       // its waveform (cheap, not a frame thumbnail). Toggle: timeline toolbar.
+      const waveform = () => renderAudioClip(el, pid, sessionEpoch, style.label, context, elements);
       if (effectiveMode === "hidden") {
-        return rendersWaveform(el)
-          ? renderAudioClip(el, pid, sessionEpoch, style.label, context, elements)
-          : null;
+        return rendersWaveform(el) ? waveform() : withSoundStrip(el, null, waveform);
       }
 
       let compSrc = el.compositionSrc;
@@ -205,7 +215,7 @@ export function useRenderClipContent({
             rich: context.rich,
           });
         }
-        return createElement(VideoThumbnail, {
+        const thumbnail = createElement(VideoThumbnail, {
           videoSrc: mediaSrc,
           label: "",
           labelColor: style.label,
@@ -216,6 +226,7 @@ export function useRenderClipContent({
           sessionEpoch,
           priority: context.priority,
         });
+        return withSoundStrip(el, thumbnail, waveform);
       }
 
       if (htmlPreviewEligible) {
