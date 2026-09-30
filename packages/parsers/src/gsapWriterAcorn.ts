@@ -469,6 +469,63 @@ export function shiftPositionsInScript(
 }
 
 /**
+ * Add a copy of every tween targeting `fromSelector`, retargeted to `toSelector` and moved by `delta`
+ * seconds, so a pasted clip moves like its original. Each copy keeps the original's own argument text.
+ */
+export function copyAnimationsInScript(
+  script: string,
+  fromSelector: string,
+  toSelector: string,
+  delta: number,
+): string {
+  const parsed = parseGsapScriptAcornForWrite(script);
+  if (!parsed) return script;
+  const target = JSON.stringify(toSelector);
+  const sets: string[] = [];
+  const tweens: string[] = [];
+  for (const { animation, call } of parsed.located) {
+    if (animation.targetSelector !== fromSelector) continue;
+    // ponytail: a tween inside a function or loop reads names only in scope there; it is not copied.
+    if (call.ancestors.some(isFunctionOrLoop)) continue;
+    const args = call.node.arguments
+      .slice(1)
+      .filter((arg: Node) => arg !== call.positionArg)
+      .map((arg: Node) => script.slice(arg.start, arg.end));
+    if (call.global) {
+      sets.push(`gsap.set(${[target, ...args].join(", ")});`);
+    } else if (typeof animation.position === "number") {
+      const position = Math.max(0, Math.round((animation.position + delta) * 1000) / 1000);
+      const code = [target, ...args, valueToCode(position)].join(", ");
+      tweens.push(`${parsed.timelineVar}.${call.method}(${code});`);
+    }
+  }
+  if (sets.length === 0 && tweens.length === 0) return script;
+  const indentAt = (at: number) =>
+    /^[ \t]*/.exec(script.slice(script.lastIndexOf("\n", at - 1) + 1))![0];
+  const ms = new MagicString(script);
+  const setsAt = findGlobalSetInsertionPoint(parsed, script);
+  if (sets.length > 0 && setsAt !== null) {
+    ms.appendLeft(setsAt, sets.map((set) => `${indentAt(setsAt)}${set}\n`).join(""));
+  }
+  if (tweens.length > 0) {
+    // After every top-level statement that adds a tween, so no tween placed after the timeline's end moves.
+    const last = lastTweenStatement(parsed);
+    ms.appendLeft(last.end, tweens.map((tween) => `\n${indentAt(last.start)}${tween}`).join(""));
+  }
+  return ms.hasChanged() ? ms.toString() : script;
+}
+
+function lastTweenStatement(parsed: ParsedGsapAcornForWrite): Node {
+  return parsed.located
+    .map(({ call }) => call.ancestors[1])
+    .reduce((last, statement) => (statement.end > last.end ? statement : last));
+}
+
+function isFunctionOrLoop(node: Node): boolean {
+  return /Function|^For|^While|^DoWhile/.test(node?.type ?? "") || isForEachStatement(node);
+}
+
+/**
  * Linearly remap every tween targeting `targetSelector` from the old clip
  * [oldStart, oldDuration] onto the new [newStart, newDuration] (position and,
  * when present, duration scaled by the duration ratio). Mirrors recast's

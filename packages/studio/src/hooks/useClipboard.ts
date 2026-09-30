@@ -11,6 +11,7 @@ import {
   deduplicateIds,
   insertAsSibling,
 } from "../utils/clipboardPayload";
+import { carryLook, renamedIds } from "../utils/clipboardLook";
 import { collectHtmlIds } from "../utils/studioHelpers";
 import { insertTimelineAssetIntoSource } from "../utils/timelineAssetDrop";
 import { extendRootDurationInSource } from "../utils/rootDuration";
@@ -168,12 +169,14 @@ export function pasteElementHtml(
 /** Shared insertion path for paste and duplicate, anchored at the playhead or
  *  the selection's end respectively. Returns the final ids so the caller can
  *  select what it just placed, and the furthest end any clip lands at so the
- *  caller can grow the root composition's duration to cover it. */
+ *  caller can grow the root composition's duration to cover it. `fromThisFile`
+ *  says the clips were copied from `content`, so a renamed copy takes its original's look. */
 export function pasteTimelineClips(
   content: string,
   clips: readonly TimelineClipboardClip[],
   anchorTime: number,
   liveElements: readonly TimelineElement[],
+  fromThisFile = false,
 ): { content: string; ids: string[]; requiredEnd: number } {
   const groupMinStart = Math.min(...clips.map((c) => c.start));
   let existingIds = collectHtmlIds(content);
@@ -209,6 +212,10 @@ export function pasteTimelineClips(
       .replace(/data-track-index="[^"]*"/, `data-track-index="${newTrack}"`);
     const withPatched = patchedRootTag + deduped.slice(rootTagEnd + 1);
     result = insertTimelineAssetIntoSource(result, withPatched);
+    if (fromThisFile) {
+      const authoredStart = Number(rootTag.match(/data-start="([^"]*)"/)?.[1] ?? clip.start);
+      result = carryLook(result, renamedIds(reminted, deduped), newStart - authoredStart);
+    }
 
     const id = patchedRootTag.match(ID_ATTR_RE)?.[1];
     if (id) ids.push(id);
@@ -364,7 +371,13 @@ export function useClipboard({
       const paste = (originalContent: string) => {
         if (payload.kind !== "timeline-clip") return pasteElementHtml(originalContent, payload);
         const { currentTime, elements } = usePlayerStore.getState();
-        const pasted = pasteTimelineClips(originalContent, payload.clips, currentTime, elements);
+        const pasted = pasteTimelineClips(
+          originalContent,
+          payload.clips,
+          currentTime,
+          elements,
+          payload.sourceFile === targetPath,
+        );
         pastedIds = pasted.ids;
         // A clip pasted past the current composition end would exist in the
         // file but never appear on the timeline or in playback/export (the
@@ -433,7 +446,7 @@ export function useClipboard({
           .getState()
           .elements.filter((el) => pathOf(el) === targetPath)
           .map((el) => ({ ...el, start: toAuthoredStart(el, el.start) }));
-        const pasted = pasteTimelineClips(originalContent, clips, anchorTime, liveElements);
+        const pasted = pasteTimelineClips(originalContent, clips, anchorTime, liveElements, true);
         ids = pasted.ids;
         return extendRootDurationInSource(pasted.content, pasted.requiredEnd);
       };

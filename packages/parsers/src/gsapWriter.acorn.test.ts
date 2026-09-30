@@ -10,6 +10,7 @@ import {
   addAnimationToScript,
   addKeyframeToScript,
   convertToKeyframesFromScript,
+  copyAnimationsInScript,
   removeAnimationFromScript,
   removeKeyframeFromScript,
   updateAnimationInScript,
@@ -443,5 +444,33 @@ window.__timelines["t"] = tl;`;
     const reparsed = parseGsapScript(result).animations[0];
     expect(reparsed.keyframes).toBeTruthy();
     expect(reparsed.global).toBeFalsy();
+  });
+});
+
+describe("copyAnimationsInScript", () => {
+  const script = `\
+gsap.set("#goodbye", { rotation: 4 });
+var tl = gsap.timeline({ paused: true });
+tl.from("#goodbye", { opacity: 0, y: 40, ease: EASE }, 1);
+tl.to("#title", { opacity: 0.5, duration: 10 });
+function pop(sel) { tl.to(sel, { scale: 1.2 }, 2); }
+pop("#goodbye");
+window.__timelines["t"] = tl;`;
+
+  it("adds each tween on the original for the copy, moved by the delta, with its own argument text", () => {
+    const result = copyAnimationsInScript(script, "#goodbye", "#goodbye-2", 3);
+    expect(result).toContain(`tl.from("#goodbye-2", { opacity: 0, y: 40, ease: EASE }, 4);`);
+    expect(result).toContain(`gsap.set("#goodbye-2", { rotation: 4 });\nvar tl`);
+    const copies = parseGsapScriptAcorn(result)?.animations.filter(
+      (a) => a.targetSelector === "#goodbye-2" && a.method !== "set",
+    );
+    expect(copies?.map((a) => a.position)).toEqual([4]);
+    // The original lines are left as they were; the copy of a tween comes after every top-level one.
+    expect(result.replace(/.*goodbye-2.*\n?/g, "")).toBe(script);
+    expect(result).toMatch(/function pop.*\ntl\.from\("#goodbye-2"/);
+  });
+
+  it("leaves the script as it was when nothing targets the original", () => {
+    expect(copyAnimationsInScript(script, "#tag", "#tag-2", 3)).toBe(script);
   });
 });
