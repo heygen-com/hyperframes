@@ -105,7 +105,7 @@ export function DomEditGroupChrome({
           cursor: !allowBodyDrag ? undefined : canManipulate && groupCanMove ? "move" : "default",
         }}
         onPointerDown={(e) => {
-          if (!canManipulate || e.shiftKey || !allowBodyDrag) return;
+          if (!canManipulate || !allowBodyDrag || (e.shiftKey && !groupCanMove)) return;
           gestures.startGroupDrag(e);
         }}
         onMouseDown={onBoxMouseDown}
@@ -218,12 +218,12 @@ export function DomEditSelectionChrome({
               e.stopPropagation();
               return;
             }
-            if (!allowBodyDrag || !canManipulate || e.shiftKey) return;
+            if (!allowBodyDrag || !canManipulate) return;
             if (selection.capabilities.canApplyManualOffset) {
               gestures.startGesture("drag", e);
               return;
             }
-            gestures.startBlockedMove(e, selection);
+            if (!e.shiftKey) gestures.startBlockedMove(e, selection);
           }}
           onMouseDown={onBoxMouseDown}
           onClick={onBoxClick}

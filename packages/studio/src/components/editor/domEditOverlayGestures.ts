@@ -18,6 +18,20 @@ export type GestureKind = "drag" | "resize" | "rotate";
 export type ResizeHandle = "nw" | "ne" | "sw" | "se";
 
 export const BLOCKED_MOVE_THRESHOLD_PX = 4;
+
+export interface AxisLockedDelta {
+  dx: number;
+  dy: number;
+  lockedAxis?: "x" | "y";
+}
+
+export function lockDragToDominantAxis(dx: number, dy: number, shiftKey: boolean): AxisLockedDelta {
+  if (!shiftKey) return { dx, dy };
+  return Math.abs(dx) >= Math.abs(dy)
+    ? { dx, dy: 0, lockedAxis: "y" }
+    : { dx: 0, dy, lockedAxis: "x" };
+}
+
 const ROTATION_COMMIT_EPSILON_DEGREES = 0.05;
 const ROTATION_SNAP_DEGREES = 15;
 /**

@@ -40,6 +40,7 @@ import {
   type UseDomEditOverlayGesturesOptions,
   ROTATED_SNAP_BYPASS_DEGREES,
   hasDomEditRotationChanged,
+  lockDragToDominantAxis,
   resolveDomEditRotationGesture,
 } from "./domEditOverlayGestures";
 import { resolveCenterResizeSize } from "./domEditResizeLocal";
@@ -164,6 +165,9 @@ export function createDomEditOverlayGestureHandlers(opts: UseDomEditOverlayGestu
     }
 
     if (g.kind === "drag") {
+      const lock = lockDragToDominantAxis(dx, dy, e.shiftKey);
+      dx = lock.dx;
+      dy = lock.dy;
       const sc = g.snapContext;
       // Bypass edge-snapping for rotated elements — the snap targets and the
       // snapped rect are axis-aligned, so snapping a rotated box's AABB shifts it
@@ -196,6 +200,7 @@ export function createDomEditOverlayGestureHandlers(opts: UseDomEditOverlayGestu
           gridEdges: sc.gridEdges ?? undefined,
           threshold: SNAP_THRESHOLD_PX,
           disabled: e.altKey,
+          lockedAxis: lock.lockedAxis,
         });
         dx = snap.dx;
         dy = snap.dy;
@@ -304,6 +309,12 @@ export function createDomEditOverlayGestureHandlers(opts: UseDomEditOverlayGestu
       opts.suppressNextBoxClickRef.current = true;
       if (Math.hypot(rawDx, rawDy) < BLOCKED_MOVE_THRESHOLD_PX) {
         restoreGroupPathOffsets(groupG);
+        if (e.shiftKey) {
+          opts.onCanvasMouseDown(e as unknown as React.MouseEvent<HTMLDivElement>, {
+            preferClipAncestor: false,
+            hoverSelection: opts.hoverSelectionRef.current,
+          });
+        }
         return;
       }
       const dx = groupG.lastSnappedDx ?? rawDx;
