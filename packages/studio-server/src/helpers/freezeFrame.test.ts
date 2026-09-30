@@ -142,8 +142,8 @@ describe("applyFreezeFrameToHtml", () => {
   it("splits the linked audio, leaving a silent gap, and links the right halves together", () => {
     expect(timing(html, "talk-audio")).toEqual(["1", "2.2"]);
     expect(timing(html, "talk-audio-split")).toEqual(["5.2", "3.8"]);
-    expect(at(html, "talk-split")?.getAttribute("data-link")).toBe("L-2");
-    expect(at(html, "talk-audio-split")?.getAttribute("data-link")).toBe("L-2");
+    expect(at(html, "talk-split")?.getAttribute("data-link")).toBe("lk-1");
+    expect(at(html, "talk-audio-split")?.getAttribute("data-link")).toBe("lk-1");
     expect(at(html, "talk-audio")?.getAttribute("data-link")).toBe("L");
   });
 

@@ -2,6 +2,7 @@ import { createHash, randomBytes } from "node:crypto";
 import { ensureHfIds } from "@hyperframes/parsers/hf-ids";
 import { readMediaOffsetSeconds } from "@hyperframes/parsers/media-duration";
 import { resolveRateSpec, sourceTimeAt } from "@hyperframes/core/speed-ramp";
+import { MEDIA_LINK_ATTR as LINK_ATTR, relinkSplitHalves } from "@hyperframes/core/media-link";
 import {
   findTargetElement,
   isHTMLElement,
@@ -11,7 +12,6 @@ import {
 } from "./sourceMutation.js";
 
 const FREEZE_HOLD_SECONDS = 2;
-const LINK_ATTR = "data-link";
 const EPSILON = 1e-3;
 
 const round3 = (value: number) => Math.round(value * 1000) / 1000;
@@ -195,12 +195,6 @@ function splitAll(
   return { html: next, rightHalfIds };
 }
 
-function relinkRightHalves(document: Document, link: string | null, ids: readonly string[]): void {
-  if (!link) return;
-  const rightLink = uniqueLink(document, link);
-  for (const id of ids) document.getElementById(id)?.setAttribute(LINK_ATTR, rightLink);
-}
-
 /**
  * Split the video at the playhead, put a still of that frame in the gap and push the rest of its
  * track (and a linked partner's, which is split too and left silent for the hold) right by the hold.
@@ -228,7 +222,7 @@ export function applyFreezeFrameToHtml(
   if (!cut) return null;
 
   const { document, wrappedFragment } = parseSourceDocument(cut.html);
-  relinkRightHalves(document, video.getAttribute(LINK_ATTR), cut.rightHalfIds);
+  relinkSplitHalves(document, cut.rightHalfIds);
   shiftTracks(document, tracks, input.playhead, hold);
   const leftHalf = findTargetElement(document, input.target);
   if (!leftHalf?.parentElement) return null;
@@ -245,13 +239,4 @@ export function applyFreezeFrameToHtml(
     html: ensureHfIds(wrappedFragment ? document.body.innerHTML || "" : document.toString()),
     freezeId,
   };
-}
-
-function uniqueLink(document: Document, base: string): string {
-  const taken = new Set(
-    Array.from(document.querySelectorAll(`[${LINK_ATTR}]`)).map((el) => el.getAttribute(LINK_ATTR)),
-  );
-  let candidate = `${base}-2`;
-  for (let n = 3; taken.has(candidate); n++) candidate = `${base}-${n}`;
-  return candidate;
 }
