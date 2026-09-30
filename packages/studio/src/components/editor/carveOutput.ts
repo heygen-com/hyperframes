@@ -19,21 +19,12 @@ export function withoutCarveLanes(automation: HfAutomation, chain: HfAudioFxChai
   };
 }
 
-/**
- * Every named voice that is actually there with something to decode. A source
- * naming a deleted track is skipped rather than failing the whole analysis.
- *
- * Read out to plain values here rather than carrying elements around: it is
- * what lets the src and the start be non-null by construction downstream
- * instead of by assertion.
- */
+/** Every named voice still present with a src; a deleted source is skipped, not fatal. */
 export function resolveCarveVoices(doc: Document, sources: readonly string[]): CarveClip[] {
   const voices: CarveClip[] = [];
   for (const id of sources) {
     const el = doc.getElementById(id);
-    // By tag name, not `instanceof HTMLAudioElement`: these elements belong to
-    // the composition's iframe document, so the constructor they were made
-    // from is not this realm's and the instanceof is false for every one.
+    // By tag name: iframe-realm elements fail `instanceof HTMLAudioElement`.
     if (!isCarveVoiceElement(el)) continue;
     const src = el.getAttribute("src");
     if (!src) continue;
@@ -43,12 +34,7 @@ export function resolveCarveVoices(doc: Document, sources: readonly string[]): C
   return voices;
 }
 
-/**
- * What the carve generated is only justified by the voices it was measured
- * from: switched off, or left naming none — every source deleted, say — there
- * is nothing those filters are making room for. Left behind they keep dipping
- * the bed with nothing in the panel to explain them.
- */
+/** Remove the filters and lanes a carve generated once it no longer names a voice. */
 export async function dropCarveOutput(
   chain: HfAudioFxChain,
   automation: HfAutomation,
