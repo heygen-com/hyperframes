@@ -17,6 +17,24 @@ export function onPreviewContentReplaced(
   };
 }
 
+const PREVIEW_PROMOTED = "hf-preview-promoted";
+export type PreviewPromotion = { retired: HTMLIFrameElement | null; live: HTMLIFrameElement };
+
+export function announcePreviewPromoted(promotion: PreviewPromotion): void {
+  promotion.live.ownerDocument.dispatchEvent(
+    new CustomEvent(PREVIEW_PROMOTED, { detail: promotion }),
+  );
+}
+
+export function onPreviewPromoted(
+  doc: Document,
+  listener: (promotion: PreviewPromotion) => void,
+): () => void {
+  const handle = (event: Event) => listener((event as CustomEvent<PreviewPromotion>).detail);
+  doc.addEventListener(PREVIEW_PROMOTED, handle);
+  return () => doc.removeEventListener(PREVIEW_PROMOTED, handle);
+}
+
 export function markScenesStale(iframe: HTMLIFrameElement | null, files: readonly string[]): void {
   const doc = iframe?.contentDocument;
   const meta = doc?.querySelector<HTMLMetaElement>('meta[name="hf-scene-parts"]');

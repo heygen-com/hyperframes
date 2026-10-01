@@ -14,6 +14,7 @@ import {
 } from "./useTimelineSyncCallbacks";
 import type { IframeWindow, PlaybackAdapter } from "../lib/playbackTypes";
 import { thumbnailScheduler } from "../lib/thumbnailScheduler";
+import { announcePreviewPromoted } from "../sceneSwap";
 import { usePlayerStore } from "../store/playerStore";
 
 // One wait budget for a shadow: the player's 8s asset cap plus its 0.42s loader fade
@@ -119,6 +120,7 @@ export function useShadowPreviewReload({
       const playing = usePlayerStore.getState().isPlaying;
       live?.pause();
       // The store takes the new document's timeline only now that it is the one on screen, and reads it there.
+      const retired = iframeRef.current;
       iframeRef.current = shadow;
       pending.commit();
       shadowIframeRef.current = null;
@@ -126,6 +128,7 @@ export function useShadowPreviewReload({
       applyPreviewAudioState();
       setPreviewSlots((prev) => planShadowPromotion(prev, gen));
       if (liveTime != null) handOverPlaybackRef.current(liveTime, playing);
+      announcePreviewPromoted({ retired, live: shadow });
       onPromotedRef.current?.();
       thumbnailScheduler.setPreviewReloading(false);
     },

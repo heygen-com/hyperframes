@@ -16,6 +16,7 @@ function gestureHarness(gesture: Partial<GestureState> | null, group: GroupGestu
     gestureRef: { current: gesture },
     groupGestureRef: { current: group },
     selectionRef: { current: null },
+    iframeRef: { current: null },
     hoverSelectionRef: { current: null },
     boxRef: { current: null },
     blockedMoveRef: { current: null },
