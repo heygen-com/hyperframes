@@ -1,12 +1,6 @@
 #!/usr/bin/env node
-/**
- * Measures the fade handle dots in a real browser layout against a running
- * Studio preview of the adjacent fade-handles fixture: on a clip narrower than
- * two hit boxes, each dot must still lay out as a 10 x 10 box.
- *
- * STUDIO_URL=http://127.0.0.1:5190/#project/fade-handles \
- *   node packages/studio/tests/e2e/fade-handles.mjs
- */
+// On a clip narrower than two fade hit boxes, each dot must still lay out at 10 x 10.
+// Flex shrinking only happens in real layout, so this measures it in Chrome.
 import puppeteer from "puppeteer-core";
 import { resolveChromeExecutable } from "./chrome-executable.mjs";
 
