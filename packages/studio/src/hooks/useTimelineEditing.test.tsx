@@ -248,7 +248,6 @@ function renderTimelineEditingHookWithLifecycle(input: {
       projectIdRef: { current: "p1" },
       reloadPreview: vi.fn(),
       clearDomSelection: vi.fn(),
-      readOnlyPreview: false,
       commitDomEditPatchBatches: input.commitDomEditPatchBatches,
     });
     const commitRef = useRef(lifecycle.handleDomZIndexReorderCommit);

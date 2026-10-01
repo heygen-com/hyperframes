@@ -108,11 +108,11 @@ export function resolveZIndexEntries(
 }
 
 export interface DomEditZOrder {
-  /** False in a read-only preview, for an element no longer in the preview, or at that end of its stacking set. */
+  /** False in a read-only preview, for an element no longer in the live preview, or at that end of its stacking set. */
   enabled: (sel: DomEditSelection, action: ZOrderAction) => boolean;
   /** Resolve and commit one step; false when nothing is sent to be saved. */
   apply: (sel: DomEditSelection, action: ZOrderAction) => boolean;
-  /** Commit patches already resolved (the canvas menu resolves its own); false when none could be saved. */
+  /** Commit patches already resolved (the canvas menu resolves its own); false when none could be sent to be saved. */
   commit: (
     sel: DomEditSelection,
     patches: ReadonlyArray<ZOrderPatch>,
@@ -120,6 +120,10 @@ export interface DomEditZOrder {
     crossed: HTMLElement | null,
   ) => boolean;
 }
+
+/** A selection from before a preview reload holds an element of a document no window shows, with stale z values. */
+const isLive = (element: HTMLElement) =>
+  element.isConnected && element.ownerDocument.defaultView !== null;
 
 // The canvas menu's z-order (write, undo, lane mirror) for any caller in DomEditProvider.
 export function useDomEditZOrder(): DomEditZOrder {
@@ -129,8 +133,7 @@ export function useDomEditZOrder(): DomEditZOrder {
   const activeCompPath = useStudioShellContextOptional()?.activeCompPath ?? null;
 
   const enabled = useCallback<DomEditZOrder["enabled"]>(
-    (sel, action) =>
-      !readOnly && sel.element.isConnected && isZOrderActionEnabled(sel.element, action),
+    (sel, action) => !readOnly && isLive(sel.element) && isZOrderActionEnabled(sel.element, action),
     [readOnly],
   );
 
@@ -171,8 +174,7 @@ export function useDomEditZOrder(): DomEditZOrder {
 
   const apply = useCallback<DomEditZOrder["apply"]>(
     (sel, action) => {
-      // A selection from before a preview reload holds a detached element and stale z values.
-      if (!sel.element.isConnected) return false;
+      if (!isLive(sel.element)) return false;
       const step = resolveZOrderStep(sel.element, action);
       return step !== null && commit(sel, step.patches, action, step.crossed);
     },

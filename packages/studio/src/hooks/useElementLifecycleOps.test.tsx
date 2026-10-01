@@ -121,28 +121,6 @@ describe("useElementLifecycleOps — z-index reorder payload", () => {
     act(() => root.unmount());
   });
 
-  it("a read-only preview reorders nothing and reports it unsaved, so the lane mirror is skipped", async () => {
-    const el = document.body.appendChild(document.createElement("div"));
-    el.id = "card";
-    const batches = vi.fn(async () => ({ durable: true, allMatched: true, changed: true }));
-    let commit: ReorderCommit | undefined;
-    function Harness() {
-      commit = useElementLifecycleOps(
-        makeLifecycleOpsParams({ commitDomEditPatchBatches: batches, readOnlyPreview: true }),
-      ).handleDomZIndexReorderCommit;
-      return null;
-    }
-    const root = mountReactHarness(<Harness />);
-    const result = await commit!([
-      { element: el, zIndex: 3, id: "card", sourceFile: "index.html" },
-    ]);
-    expect(result).toEqual({ durable: false, allMatched: false, changed: false });
-    expect(batches).not.toHaveBeenCalled();
-    expect(el.style.zIndex).toBe("");
-    act(() => root.unmount());
-    el.remove();
-  });
-
   it("requests skipReload on every z-reorder persist (live DOM already final)", async () => {
     // The commit applies the z-index (and any injected position) to the live
     // iframe DOM and the store synchronously, so the persisted style-only patch

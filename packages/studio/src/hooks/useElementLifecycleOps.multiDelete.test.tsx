@@ -105,16 +105,6 @@ describe("useElementLifecycleOps — deleting a canvas multi-selection", () => {
     expect(requests.some((url) => url.includes("remove-elements"))).toBe(false);
   });
 
-  it("deletes nothing in a read-only preview and says why", async () => {
-    const ops = mountDeleteOps({ projectIdRef: { current: "p1" }, readOnlyPreview: true });
-    let outcome: unknown;
-    await act(async () => {
-      outcome = await ops.handleDomEditElementsDelete([selectionFor("a")]);
-    });
-    expect(outcome).toEqual({ ok: false, reason: "read-only" });
-    expect(requests).toEqual([]);
-  });
-
   it("reports missing project and selection without starting a request", async () => {
     const projectIdRef = { current: null as string | null };
     const ops = mountDeleteOps({ projectIdRef });

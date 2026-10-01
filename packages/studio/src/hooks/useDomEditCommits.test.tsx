@@ -42,6 +42,7 @@ interface RenderDomEditCommitsOptions {
   onTrySdkPersist?: () => Promise<CutoverResult>;
   queueDomEditSave?: <T>(save: () => Promise<T>) => Promise<T>;
   projectIdRef?: MutableRefObject<string | null>;
+  readOnlyPreview?: boolean;
 }
 
 type FetchHandler = (
@@ -230,7 +231,7 @@ function renderDomEditCommits(
       refreshDomEditSelectionFromPreview: vi.fn(),
       buildDomSelectionFromTarget: vi.fn(async () => null),
       onTrySdkPersist: options.onTrySdkPersist,
-      readOnlyPreview: false,
+      readOnlyPreview: options.readOnlyPreview ?? false,
     });
     return null;
   }
@@ -264,97 +265,100 @@ describe("useDomEditCommits z-index reorder persistence", () => {
     document.body.replaceChildren();
   });
 
-  it("persists an N-element reorder with one batch POST, one undo entry, and NO iframe reload", async () => {
-    const original =
-      '<div id="a" style="z-index: 1"></div><div id="b" style="z-index: 2"></div><div id="c" style="z-index: 3"></div>';
-    const after =
-      '<div id="a" style="z-index: 3"></div><div id="b" style="z-index: 2"></div><div id="c" style="z-index: 1"></div>';
-    const fetchMock = vi.fn(
-      async (
-        input: Parameters<typeof fetch>[0],
-        _init?: Parameters<typeof fetch>[1],
-      ): Promise<Response> => {
-        const url = requestUrl(input);
-        if (url.endsWith("/file-mutations/patch-element-batches")) {
-          return jsonResponse({
-            durable: true,
-            files: [
-              {
-                sourceFile: "index.html",
-                changed: true,
-                matched: [true, true, true],
-                before: original,
-                after,
-              },
-            ],
-          });
-        }
-        throw new Error(`Unexpected fetch: ${url}`);
-      },
-    );
-    vi.stubGlobal("fetch", fetchMock);
-    const { iframe, element } = createPreviewElement(
-      '<div data-hf-id="hf-card"></div><div id="b"></div><div id="c"></div>',
-    );
-    element.id = "a";
-    const elements = [
-      element,
-      iframe.contentDocument!.getElementById("b")!,
-      iframe.contentDocument!.getElementById("c")!,
-    ];
-    const rendered = renderDomEditCommits(createSelection(element), iframe);
+  it.each([false, true])(
+    "persists an N-element reorder with one batch POST, one undo entry, and NO iframe reload (read-only preview %s: the timeline's z sync stays editable)",
+    async (readOnlyPreview) => {
+      const original =
+        '<div id="a" style="z-index: 1"></div><div id="b" style="z-index: 2"></div><div id="c" style="z-index: 3"></div>';
+      const after =
+        '<div id="a" style="z-index: 3"></div><div id="b" style="z-index: 2"></div><div id="c" style="z-index: 1"></div>';
+      const fetchMock = vi.fn(
+        async (
+          input: Parameters<typeof fetch>[0],
+          _init?: Parameters<typeof fetch>[1],
+        ): Promise<Response> => {
+          const url = requestUrl(input);
+          if (url.endsWith("/file-mutations/patch-element-batches")) {
+            return jsonResponse({
+              durable: true,
+              files: [
+                {
+                  sourceFile: "index.html",
+                  changed: true,
+                  matched: [true, true, true],
+                  before: original,
+                  after,
+                },
+              ],
+            });
+          }
+          throw new Error(`Unexpected fetch: ${url}`);
+        },
+      );
+      vi.stubGlobal("fetch", fetchMock);
+      const { iframe, element } = createPreviewElement(
+        '<div data-hf-id="hf-card"></div><div id="b"></div><div id="c"></div>',
+      );
+      element.id = "a";
+      const elements = [
+        element,
+        iframe.contentDocument!.getElementById("b")!,
+        iframe.contentDocument!.getElementById("c")!,
+      ];
+      const rendered = renderDomEditCommits(createSelection(element), iframe, { readOnlyPreview });
 
-    try {
-      await act(async () => {
-        await rendered.hook.handleDomZIndexReorderCommit(
-          elements.map((item, index) => ({
-            element: item,
-            zIndex: 3 - index,
-            id: item.id,
-            sourceFile: "index.html",
-          })),
-          "z-reorder:test",
+      try {
+        await act(async () => {
+          await rendered.hook.handleDomZIndexReorderCommit(
+            elements.map((item, index) => ({
+              element: item,
+              zIndex: 3 - index,
+              id: item.id,
+              sourceFile: "index.html",
+            })),
+            "z-reorder:test",
+          );
+        });
+
+        const batchPosts = fetchMock.mock.calls.filter(([input]) =>
+          requestUrl(input).endsWith("/file-mutations/patch-element-batches"),
         );
-      });
-
-      const batchPosts = fetchMock.mock.calls.filter(([input]) =>
-        requestUrl(input).endsWith("/file-mutations/patch-element-batches"),
-      );
-      const singlePosts = fetchMock.mock.calls.filter(([input]) =>
-        requestUrl(input).includes("/file-mutations/patch-elements-batch/"),
-      );
-      expect(batchPosts).toHaveLength(1);
-      expect(singlePosts).toHaveLength(0);
-      expect(JSON.parse(String(batchPosts[0]?.[1]?.body))).toEqual({
-        batches: [
-          {
-            sourceFile: "index.html",
-            patches: expect.arrayContaining([
-              expect.objectContaining({ target: expect.objectContaining({ id: "a" }) }),
-              expect.objectContaining({ target: expect.objectContaining({ id: "b" }) }),
-              expect.objectContaining({ target: expect.objectContaining({ id: "c" }) }),
-            ]),
-          },
-        ],
-      });
-      expect(rendered.recordEdit).toHaveBeenCalledTimes(1);
-      expect(rendered.recordEdit).toHaveBeenCalledWith({
-        label: "Reorder layers",
-        coalesceKey: "z-reorder:test",
-        // Unbounded per-gesture fold window (keys are unique per gesture):
-        // the z entry and its mirror/lane counterpart fold across the server
-        // round-trip that separates them.
-        coalesceMs: Number.POSITIVE_INFINITY,
-        files: { "index.html": { before: original, after } },
-      });
-      // FIX: a z-only reorder must NOT remount the preview iframe ("the blink").
-      // The live DOM + store already hold the final state and the server matched
-      // every style-only patch, so the reload is provably redundant.
-      expect(rendered.reloadPreview).not.toHaveBeenCalled();
-    } finally {
-      rendered.cleanup();
-    }
-  });
+        const singlePosts = fetchMock.mock.calls.filter(([input]) =>
+          requestUrl(input).includes("/file-mutations/patch-elements-batch/"),
+        );
+        expect(batchPosts).toHaveLength(1);
+        expect(singlePosts).toHaveLength(0);
+        expect(JSON.parse(String(batchPosts[0]?.[1]?.body))).toEqual({
+          batches: [
+            {
+              sourceFile: "index.html",
+              patches: expect.arrayContaining([
+                expect.objectContaining({ target: expect.objectContaining({ id: "a" }) }),
+                expect.objectContaining({ target: expect.objectContaining({ id: "b" }) }),
+                expect.objectContaining({ target: expect.objectContaining({ id: "c" }) }),
+              ]),
+            },
+          ],
+        });
+        expect(rendered.recordEdit).toHaveBeenCalledTimes(1);
+        expect(rendered.recordEdit).toHaveBeenCalledWith({
+          label: "Reorder layers",
+          coalesceKey: "z-reorder:test",
+          // Unbounded per-gesture fold window (keys are unique per gesture):
+          // the z entry and its mirror/lane counterpart fold across the server
+          // round-trip that separates them.
+          coalesceMs: Number.POSITIVE_INFINITY,
+          files: { "index.html": { before: original, after } },
+        });
+        // FIX: a z-only reorder must NOT remount the preview iframe ("the blink").
+        // The live DOM + store already hold the final state and the server matched
+        // every style-only patch, so the reload is provably redundant.
+        expect(rendered.reloadPreview).not.toHaveBeenCalled();
+      } finally {
+        rendered.cleanup();
+      }
+    },
+  );
 
   it("falls back to reloading when the server response omits matched[]", async () => {
     // Without a matched[] confirmation the persist can't be proven in sync with

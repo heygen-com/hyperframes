@@ -150,7 +150,9 @@ describe("DOM editing package exports", () => {
     expect(zOrder?.apply(sel, "bring-to-front")).toBe(false);
     expect(zOrder?.commit(sel, [{ element: back, zIndex: 1 }], "bring-to-front", null)).toBe(false);
     await mount(false);
-    parent.remove();
+    // A reload leaves the old nodes connected to their old document, one no window shows.
+    document.implementation.createHTMLDocument().body.append(parent);
+    expect(back.isConnected).toBe(true);
     expect(zOrder?.enabled(sel, "bring-to-front"), "a selection from before a reload").toBe(false);
     expect(zOrder?.apply(sel, "bring-to-front")).toBe(false);
     expect(commitZ).not.toHaveBeenCalled();

@@ -91,8 +91,7 @@ export type DomEditCommitDeclineReason =
   | "styles-not-editable"
   | "not-text-editable"
   | "preview-stale"
-  | "persist-failed"
-  | "read-only";
+  | "persist-failed";
 
 export type DomEditCommitOutcome =
   | { ok: true; persistence?: DomEditPersistOutcome }

@@ -37,7 +37,6 @@ interface UseElementLifecycleOpsParams extends DomEditCommitBaseParams {
   /** Resync the SDK session after a server-fallback delete. */
   forceReloadSdkSession?: () => void;
   commitDomEditPatchBatches: CommitDomEditPatchBatches;
-  readOnlyPreview: boolean;
   /** Stage 7 Step 3b: called after a successful server-side element delete (shadow). */
   onElementDeleted?: (selection: DomEditSelection) => void;
 }
@@ -84,14 +83,12 @@ export function useElementLifecycleOps({
   onReorderShadow,
   forceReloadSdkSession,
   commitDomEditPatchBatches,
-  readOnlyPreview,
   onElementDeleted,
 }: UseElementLifecycleOpsParams) {
   // fallow-ignore-next-line complexity
   const handleDomEditElementsDelete = useCallback(
     // fallow-ignore-next-line complexity
     async (selections: DomEditSelection[]): Promise<DomEditCommitOutcome> => {
-      if (readOnlyPreview) return domEditCommitDeclined("read-only");
       const pid = projectIdRef.current;
       if (!pid) return domEditCommitDeclined("no-project");
       const [selection] = selections;
@@ -224,7 +221,6 @@ export function useElementLifecycleOps({
       onElementDeleted,
       forceReloadSdkSession,
       projectIdRef,
-      readOnlyPreview,
       reloadPreview,
       showToast,
       writeProjectFile,
@@ -250,9 +246,6 @@ export function useElementLifecycleOps({
       actionKind?: string,
     ) => {
       if (entries.length === 0) return Promise.resolve();
-      // Refused before any write, so the lane mirror after it is skipped too.
-      if (readOnlyPreview)
-        return Promise.resolve({ durable: false, allMatched: false, changed: false });
       // One async owner must bracket reveal tokens, optimistic DOM/store state,
       // atomic persistence, rollback, and the final persistence-count release.
       // Splitting those phases would make transaction ownership less explicit.
@@ -391,7 +384,7 @@ export function useElementLifecycleOps({
         }
       })();
     },
-    [commitDomEditPatchBatches, onReorderShadow, readOnlyPreview],
+    [commitDomEditPatchBatches, onReorderShadow],
   );
 
   return {
