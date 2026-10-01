@@ -48,7 +48,6 @@ import {
 } from "./gsapEditOutcome";
 
 const POSITION_CHANNEL_SET = new Set<string>(POSITION_CHANNELS);
-
 const ROTATION_CHANNEL_SET = new Set<string>(ROTATION_CHANNELS);
 
 // ── Property-group tween resolution ───────────────────────────────────────
