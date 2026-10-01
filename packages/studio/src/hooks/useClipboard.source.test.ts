@@ -429,6 +429,21 @@ describe("a copy in place, as the canvas makes one", () => {
     expect(pastedSubStarts(writes[0])).toEqual(["3"]);
   });
 
+  it("duplicates a sub-composition's clip at its own local time, on another track", async () => {
+    usePlayerStore.setState({
+      elements: [TITLE, SUB_CLIP],
+      selectedElementId: SUB_CLIP.id,
+      selectedElementIds: new Set([SUB_CLIP.id]),
+    });
+    const { clipboard, writes } = mountClipboard(null, SUB, (host) =>
+      host.setAttribute("data-start", "2"),
+    );
+    await clipboard().handleDuplicate({ inPlace: true });
+    const copy = /<h2[^>]*data-hf-id[^>]*>/.exec(writes[0] ?? "")?.[0] ?? "";
+    expect(copy).toContain('data-start="1"');
+    expect(copy).toContain('data-track-index="1"');
+  });
+
   it("pastes at the playhead once the edited composition is another, whose clock differs", async () => {
     usePlayerStore.setState({
       elements: [TITLE, SUB_CLIP],
