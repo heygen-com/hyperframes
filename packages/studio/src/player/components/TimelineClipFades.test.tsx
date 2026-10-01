@@ -411,27 +411,56 @@ describe("TimelineClipFades", () => {
     expect(onSetElementAttributeQuiet).not.toHaveBeenCalled();
   });
 
-  it("steps from the fade it shows when both fades overrun a short clip", () => {
-    // 1.5 s + 1.5 s on a 2 s clip shows 1 s each; a step up must not shrink it.
-    const short = { ...clip, duration: 2, fadeIn: 1.5, fadeOut: 1.5 };
-    const { host, onSetElementAttributeQuiet } = render(short, { focusable: true });
-    const handle = host.querySelector<HTMLElement>('[data-testid="clip-fade-handle-in"]');
-    key(handle, "keydown", { key: "ArrowRight" });
-    key(handle, "keyup", { key: "ArrowRight" });
-    expect(onSetElementAttributeQuiet).toHaveBeenCalledWith(short, "data-fade-in", "1", "Fade in");
-  });
-
-  it("drops the draft and the live value when the save fails", async () => {
+  it("drops the draft when the save fails, leaving the live value to the save path", async () => {
     const { host, onSetElementAttributeQuiet, onRevertElementAttributeLive } = render(clip);
     onSetElementAttributeQuiet.mockResolvedValueOnce({ status: "failed", reason: "disk full" });
     const handle = armedHandle(host, "in");
     press(handle, [100], [300]);
     act(() => handle.dispatchEvent(pointer("pointerup", 300)));
     await act(async () => {});
-    expect(onRevertElementAttributeLive).toHaveBeenCalledWith(clip, "data-fade-in");
+    expect(onRevertElementAttributeLive).not.toHaveBeenCalled();
     expect(host.querySelector('[data-testid="clip-fade-in"]')?.getAttribute("points")).toBe(
       "0,0 100,0 0,100",
     );
+  });
+
+  it("steps from a pressed value whose save has not landed yet", () => {
+    const { host, onSetElementAttributeQuiet } = render(clip, { focusable: true });
+    onSetElementAttributeQuiet.mockReturnValue(new Promise(() => {}));
+    const handle = host.querySelector<HTMLElement>('[data-testid="clip-fade-handle-in"]');
+    for (let tap = 0; tap < 2; tap++) {
+      key(handle, "keydown", { key: "ArrowRight" });
+      key(handle, "keyup", { key: "ArrowRight" });
+    }
+    expect(onSetElementAttributeQuiet.mock.calls.map(([, , value]) => value)).toEqual([
+      "1.1",
+      "1.2",
+    ]);
+  });
+
+  it("saves a held key before a press on the handle starts a drag", () => {
+    const { host, onSetElementAttributeQuiet } = render(clip, { focusable: true });
+    const handle = armedHandle(host, "in");
+    key(handle, "keydown", { key: "ArrowRight" });
+    press(handle, [100]);
+    expect(onSetElementAttributeQuiet).toHaveBeenCalledWith(clip, "data-fade-in", "1.1", "Fade in");
+  });
+
+  it("gives a fade that fills the clip the only handle at its end", () => {
+    const { host } = render({ ...clip, fadeIn: 10, fadeOut: undefined });
+    // The fade-out can neither grow nor shrink, so it does not sit on top of the fade-in's tab.
+    expect(host.querySelector('[data-testid="clip-fade-handle-out"]')).toBeNull();
+    const inHandle = host.querySelector<HTMLElement>('[data-testid="clip-fade-handle-in"]');
+    expect([inHandle?.style.left, inHandle?.style.width]).toEqual(["976px", "24px"]);
+  });
+
+  it("splits two nearby boxes at the midpoint between their tabs on a tiny clip", () => {
+    // A 40 px clip with a 30 px fade-in: tabs at 30 and 33 px, boxes meet at 31.5.
+    const { host } = render({ ...clip, duration: 0.4, fadeIn: 0.3, fadeOut: undefined });
+    const inHandle = host.querySelector<HTMLElement>('[data-testid="clip-fade-handle-in"]');
+    const outHandle = host.querySelector<HTMLElement>('[data-testid="clip-fade-handle-out"]');
+    expect([inHandle?.style.left, inHandle?.style.width]).toEqual(["11.5px", "20px"]);
+    expect([outHandle?.style.left, outHandle?.style.width]).toEqual(["31.5px", "8.5px"]);
   });
 
   it("keeps a long fade's hit box on its tab", () => {

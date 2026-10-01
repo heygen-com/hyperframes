@@ -1,7 +1,7 @@
 // @vitest-environment happy-dom
 
 import { afterEach, describe, expect, it } from "vitest";
-import { isTypingTarget } from "./typingTarget";
+import { isTypingTarget, ownsPlainKeys } from "./typingTarget";
 import { isEditableTarget } from "./timelineDiscovery";
 
 afterEach(() => {
@@ -41,8 +41,11 @@ describe("isTypingTarget", () => {
     expect(isTypingTarget(mount('<div role="combobox"></div>'))).toBe(true);
   });
 
-  it("gives a focused slider its own keys, as the native range input has them", () => {
-    expect(isTypingTarget(mount('<div role="slider" tabindex="0"></div>'))).toBe(true);
+  it("gives a focused slider its plain keys but leaves Cmd shortcuts to the app", () => {
+    const slider = mount('<div role="slider" tabindex="0"></div>');
+    expect(ownsPlainKeys(slider)).toBe(true);
+    // Undo, copy and group still reach the app while a slider has focus.
+    expect(isTypingTarget(slider)).toBe(false);
   });
 
   it("leaves the keys alone for anything that is not being typed into", () => {

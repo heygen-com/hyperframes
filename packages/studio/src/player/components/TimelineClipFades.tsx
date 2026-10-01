@@ -56,7 +56,11 @@ export function useClipFadeDraft(el: TimelineElement) {
   const [draft, setDraft] = useState<FadeDraft>(null);
   const authoredIn = el.fadeIn ?? 0;
   const authoredOut = el.fadeOut ?? 0;
-  useEffect(() => setDraft(null), [authoredIn, authoredOut]);
+  const savedDraft =
+    draft !== null && draft.seconds === (draft.edge === "in" ? authoredIn : authoredOut);
+  useEffect(() => {
+    if (savedDraft) setDraft(null);
+  }, [savedDraft]);
   const { fadeIn, fadeOut } = clampFadesToDuration(
     {
       fadeIn: draft?.edge === "in" ? draft.seconds : authoredIn,
@@ -68,7 +72,7 @@ export function useClipFadeDraft(el: TimelineElement) {
     () => ({ fadeIn, fadeOut, duration: el.duration }),
     [fadeIn, fadeOut, el.duration],
   );
-  return { setDraft, shape };
+  return { draft, setDraft, shape };
 }
 
 interface TimelineClipFadesProps {
@@ -162,9 +166,10 @@ export function TimelineClipFades({
     edge === "in" ? HF_AUDIO_FADE_IN_ATTR : HF_AUDIO_FADE_OUT_ATTR;
   const attrText = (seconds: number) => (seconds > 0 ? formatFadeSeconds(seconds) : null);
   const labelFor = (edge: FadeEdge) => (edge === "in" ? "Fade in" : "Fade out");
-  const shownSeconds = (edge: FadeEdge) => (edge === "in" ? fades.fadeIn : fades.fadeOut);
+  const currentSeconds = (edge: FadeEdge) =>
+    fade.draft?.edge === edge ? fade.draft.seconds : edge === "in" ? authoredIn : authoredOut;
   const limitFor = (edge: FadeEdge) =>
-    Math.max(0, el.duration - shownSeconds(edge === "in" ? "out" : "in"));
+    Math.max(0, el.duration - currentSeconds(edge === "in" ? "out" : "in"));
 
   /** Moves the fade's end onto a playhead or clip edge within the timeline's snap radius. */
   const snapSeconds = (g: NonNullable<typeof gesture.current>, seconds: number) => {
@@ -195,15 +200,16 @@ export function TimelineClipFades({
     e.stopPropagation();
     e.preventDefault();
     e.currentTarget.setPointerCapture(e.pointerId);
+    flushKeys();
     const store = usePlayerStore.getState();
     gesture.current = {
       edge,
       pointerId: e.pointerId,
       originClientX: e.clientX,
-      originSeconds: edge === "in" ? authoredIn : authoredOut,
-      otherSeconds: edge === "in" ? authoredOut : authoredIn,
+      originSeconds: currentSeconds(edge),
+      otherSeconds: currentSeconds(edge === "in" ? "out" : "in"),
       moved: false,
-      last: edge === "in" ? authoredIn : authoredOut,
+      last: currentSeconds(edge),
       snapTargets: store.timelineSnapEnabled
         ? collectTimelineSnapTargets({
             elements: store.elements,
@@ -256,10 +262,7 @@ export function TimelineClipFades({
 
   const commit = (edge: FadeEdge, seconds: number) => {
     setDraft({ edge, seconds });
-    const dropDraft = () => {
-      onRevertElementAttributeLive?.(el, attrFor(edge));
-      setDraft(null);
-    };
+    const dropDraft = () => setDraft(null);
     void onSetElementAttributeQuiet?.(el, attrFor(edge), attrText(seconds), labelFor(edge)).then(
       (outcome) => outcome && outcome.status !== "saved" && dropDraft(),
       dropDraft,
@@ -274,7 +277,7 @@ export function TimelineClipFades({
   };
 
   const onHandleDoubleClick = (edge: FadeEdge) => {
-    commit(edge, shownSeconds(edge) > 0 ? 0 : Math.min(DEFAULT_FADE_SECONDS, limitFor(edge)));
+    commit(edge, currentSeconds(edge) > 0 ? 0 : Math.min(DEFAULT_FADE_SECONDS, limitFor(edge)));
   };
 
   const keyBurst = useRef<{ edge: FadeEdge; seconds: number } | null>(null);
@@ -287,7 +290,7 @@ export function TimelineClipFades({
   // A held key previews live and saves once on release: one undo step per burst.
   const onHandleKeyDown = (edge: FadeEdge) => (e: KeyboardEvent<HTMLDivElement>) => {
     if (gesture.current || !canEdit) return;
-    const next = keyedFadeSeconds(e.key, e.shiftKey, shownSeconds(edge), limitFor(edge));
+    const next = keyedFadeSeconds(e.key, e.shiftKey, currentSeconds(edge), limitFor(edge));
     if (next === null) return;
     e.preventDefault();
     e.stopPropagation();
@@ -326,24 +329,26 @@ export function TimelineClipFades({
   };
   const boxLeft = (x: number) => Math.min(widthPx - hitWidth, Math.max(0, x - hitWidth / 2));
   const [inX, outX] = [tabX("in"), tabX("out")];
-  const overlap = boxLeft(inX) + hitWidth > boxLeft(outX);
+  const mid = (inX + outX) / 2;
+  // A handle that can neither grow nor shrink is not drawn: its twin owns the spot.
+  const drawn = (edge: FadeEdge) => currentSeconds(edge) > 0 || limitFor(edge) > 0;
+  const overlap = drawn("in") && drawn("out") && boxLeft(inX) + hitWidth > boxLeft(outX);
   const handleGeometry = (edge: FadeEdge) => {
     const x = edge === "in" ? inX : outX;
-    // Boxes that would overlap split at the midpoint between the two tabs.
-    const mid = Math.min(widthPx - hitWidth, Math.max(hitWidth, (inX + outX) / 2));
-    const left = !overlap
-      ? boxLeft(x)
+    // Boxes that would overlap meet at the midpoint between the two tabs.
+    const [left, right] = !overlap
+      ? [boxLeft(x), boxLeft(x) + hitWidth]
       : edge === "in"
-        ? Math.min(boxLeft(x), mid - hitWidth)
-        : Math.max(boxLeft(x), mid);
+        ? [Math.max(0, mid - hitWidth), mid]
+        : [mid, Math.min(widthPx, mid + hitWidth)];
     const edgeY = topEdgeY(x, widthPx, clipBox.height, clipBox.radius);
-    return { left, tabLeft: x - left, top: edgeY + 1 - TAB_CENTER_IN_HIT };
+    return { left, width: right - left, tabLeft: x - left, top: edgeY + 1 - TAB_CENTER_IN_HIT };
   };
-  const handleStyle = (geometry: { left: number; top: number }): CSSProperties => ({
+  const handleStyle = (geometry: { left: number; top: number; width: number }): CSSProperties => ({
     position: "absolute",
     top: geometry.top,
     left: geometry.left,
-    width: hitWidth,
+    width: geometry.width,
     height: HANDLE_HIT,
     cursor: "ew-resize",
     opacity: handlesVisible ? 1 : 0,
@@ -396,7 +401,7 @@ export function TimelineClipFades({
         </svg>
       )}
       {canEdit &&
-        (["in", "out"] as const).map((edge) => {
+        (["in", "out"] as const).filter(drawn).map((edge) => {
           const geometry = handleGeometry(edge);
           return (
             <FadeHandle
