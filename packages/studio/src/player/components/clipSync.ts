@@ -9,7 +9,8 @@ import type { TimelineElement } from "../store/timelineElement";
 type SyncElement = Pick<
   TimelineElement,
   "id" | "key" | "tag" | "start" | "duration" | "playbackStart" | "playbackRate" | "syncOrigin"
->;
+> &
+  Pick<TimelineElement, "sourceFile">;
 
 const keyOf = (el: Pick<TimelineElement, "id" | "key">) => el.key ?? el.id;
 const kindOf = (el: Pick<TimelineElement, "tag">) => el.tag.trim().toLowerCase();
@@ -35,6 +36,7 @@ export function syncPartnerOf<T extends SyncElement>(el: T, elements: readonly T
     (other) =>
       keyOf(other) !== keyOf(el) &&
       other.syncOrigin === el.syncOrigin &&
+      (other.sourceFile ?? "") === (el.sourceFile ?? "") &&
       kindOf(other) === partnerKind,
   );
   const rank = (other: T) => [overlap(el, other), -Math.abs(other.start - el.start)] as const;

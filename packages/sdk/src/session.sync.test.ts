@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { readMediaOffsetSeconds } from "@hyperframes/parsers/media-duration";
 import { openComposition } from "./session.js";
 
 const DRIFTED = `
@@ -36,6 +37,19 @@ describe("sync origin on the SDK", () => {
     const html = comp.serialize();
     expect(attr(html, "hf-talk-audio", "data-start")).toBe("2.5");
     expect(attr(html, "hf-talk-audio", "data-media-start")).toBe("0.5");
+    expect(comp.syncOffset("hf-talk-audio")).toBe(0);
+  });
+
+  it("slips the attribute playback reads when both in-point attributes are authored", async () => {
+    const both = DRIFTED.replace(
+      'data-media-start="0"',
+      'data-playback-start="0" data-media-start="0"',
+    );
+    const comp = await openComposition(both);
+    comp.slipIntoSync("hf-talk-audio");
+    const html = comp.serialize();
+    const played = readMediaOffsetSeconds((name) => attr(html, "hf-talk-audio", name));
+    expect(played).toBeCloseTo(0.5, 6);
     expect(comp.syncOffset("hf-talk-audio")).toBe(0);
   });
 

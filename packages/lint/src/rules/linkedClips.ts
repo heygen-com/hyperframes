@@ -6,7 +6,7 @@ const SYNC_TOLERANCE_S = 1e-3;
 const LINKED_TIMING_FIELDS: ReadonlyArray<{ field: string; attrs: string[]; fallback: number }> = [
   { field: "start", attrs: ["data-start"], fallback: 0 },
   { field: "duration", attrs: ["data-duration"], fallback: 0 },
-  { field: "media-start", attrs: ["data-media-start", "data-playback-start"], fallback: 0 },
+  { field: "media-start", attrs: ["data-playback-start", "data-media-start"], fallback: 0 },
   { field: "playback-rate", attrs: ["data-playback-rate"], fallback: 1 },
 ];
 

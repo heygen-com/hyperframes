@@ -26,6 +26,11 @@ describe("syncPartnerOf", () => {
     expect(syncPartnerOf({ ...v, syncOrigin: undefined }, [v])).toBeNull();
   });
 
+  it("never pairs across source files reusing an origin", () => {
+    const v = clip("v", "video", 0);
+    expect(syncPartnerOf(v, [v, clip("a", "audio", 0, { sourceFile: "child.html" })])).toBeNull();
+  });
+
   it("after a split, picks the partner sharing the most timeline", () => {
     const a = clip("a", "audio", 4.2);
     const left = clip("v", "video", 0);

@@ -1,3 +1,5 @@
+import { readMediaOffsetSeconds } from "@hyperframes/parsers/media-duration";
+
 /**
  * Linked clips: members sharing a `data-link` id are edited as one (a detached
  * video + its audio). An editing contract only; playback and render ignore it.
@@ -38,7 +40,7 @@ export function readLinkTiming(el: AttributeReader): LinkTiming {
   return {
     start: readNumber(el, ["data-start"], 0),
     duration: readNumber(el, ["data-duration"], 0),
-    mediaStart: readNumber(el, ["data-media-start", "data-playback-start"], 0),
+    mediaStart: readMediaOffsetSeconds((name) => el.getAttribute(name)),
     playbackRate: readNumber(el, ["data-playback-rate"], 1),
   };
 }
@@ -96,22 +98,29 @@ function renameShared(
   }
 }
 
-/**
- * After a split, the right halves are clones still carrying the left halves'
- * link id and sync origin. Give each group's right halves one fresh shared id
- * of each, so each half of a pair is its own pair.
- */
+/** Split right halves get a fresh link id; a sync origin is reminted only when video and audio were both cut. */
 export function relinkSplitHalves(doc: Document, rightHalfIds: readonly string[]): void {
   const taken = new Set(takenLinkIds(doc));
   renameShared(doc, rightHalfIds, MEDIA_LINK_ATTR, taken);
-  renameShared(doc, rightHalfIds, SYNC_ORIGIN_ATTR, taken);
+  renameShared(doc, idsWithBothSidesCut(doc, rightHalfIds), SYNC_ORIGIN_ATTR, taken);
 }
 
-/**
- * Sync origin: the id a detached (or linked) video + audio share from the same
- * source file. It survives Unlink, so a pair that drifts apart can still say by
- * how much, and be moved or slipped back.
- */
+function idsWithBothSidesCut(doc: Document, rightHalfIds: readonly string[]): string[] {
+  const tagsByOrigin = new Map<string, Set<string>>();
+  const originOf = (id: string) => doc.getElementById(id)?.getAttribute(SYNC_ORIGIN_ATTR) ?? null;
+  for (const id of rightHalfIds) {
+    const origin = originOf(id);
+    const tag = doc.getElementById(id)?.tagName.toLowerCase();
+    if (!origin || !tag) continue;
+    tagsByOrigin.set(origin, (tagsByOrigin.get(origin) ?? new Set()).add(tag));
+  }
+  return rightHalfIds.filter((id) => {
+    const tags = tagsByOrigin.get(originOf(id) ?? "");
+    return tags?.has("video") === true && tags.has("audio");
+  });
+}
+
+/** Shared by a detached or linked video + audio of one file; it survives Unlink so a drifted pair can resync. */
 export const SYNC_ORIGIN_ATTR = "data-sync-origin";
 
 export type SyncTiming = Pick<LinkTiming, "start" | "mediaStart" | "playbackRate">;
@@ -123,10 +132,7 @@ export function sourceZeroTime(timing: SyncTiming): number {
   return timing.start - timing.mediaStart / rateOf(timing);
 }
 
-/**
- * How far `clip` sits from `partner`, in frames: positive when `clip` plays its
- * source late. Null when their rates differ (no single offset exists).
- */
+/** Frames `clip` sits from `partner`, positive when it plays late; null when their rates differ. */
 export function syncOffsetFrames(
   clip: SyncTiming,
   partner: SyncTiming,
@@ -170,11 +176,7 @@ function sharedSeconds(a: LinkTiming, b: LinkTiming): number {
   return Math.min(a.start + a.duration, b.start + b.duration) - Math.max(a.start, b.start);
 }
 
-/**
- * The other half of `el`'s source pair in its composition: the audio for a
- * video and the reverse, sharing `data-sync-origin`. After splits the one
- * sharing the most timeline wins, then the nearest start.
- */
+/** `el`'s source partner (same sync origin, other tag): most shared timeline, then nearest start. */
 export function findSyncPartner(el: PairableElement): Element | null {
   const origin = el.getAttribute(SYNC_ORIGIN_ATTR);
   const tag = el.tagName.toLowerCase();
@@ -185,6 +187,7 @@ export function findSyncPartner(el: PairableElement): Element | null {
   let best: { el: Element; shared: number; distance: number } | null = null;
   for (const candidate of Array.from(scope.querySelectorAll(partnerTag))) {
     if (candidate.getAttribute(SYNC_ORIGIN_ATTR) !== origin) continue;
+    if ((candidate.closest("[data-composition-id]") ?? el.ownerDocument) !== scope) continue;
     const timing = readLinkTiming(candidate);
     const shared = sharedSeconds(own, timing);
     const distance = Math.abs(timing.start - own.start);

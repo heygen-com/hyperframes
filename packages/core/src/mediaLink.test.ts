@@ -31,6 +31,11 @@ describe("readLinkTiming", () => {
   it("reads data-playback-start as the media-start alias", () => {
     expect(readLinkTiming(attrs({ "data-playback-start": "1.5" })).mediaStart).toBe(1.5);
   });
+
+  it("lets data-playback-start win over data-media-start, as playback does", () => {
+    const both = attrs({ "data-playback-start": "0", "data-media-start": "0.5" });
+    expect(readLinkTiming(both).mediaStart).toBe(0);
+  });
 });
 
 describe("linkTimingMismatches", () => {
@@ -91,6 +96,17 @@ describe("relinkSplitHalves", () => {
     expect(link("v-split")).toBe("lk-2");
     expect(link("a-split")).toBe("lk-2");
     expect(link("i-split")).toBeNull();
+  });
+
+  it("keeps the source origin when only one member of an unlinked pair is cut", () => {
+    const d = doc(`
+      <video id="v" data-sync-origin="lk-1" data-start="0" data-duration="10"></video>
+      <audio id="a" data-sync-origin="lk-1" data-start="0" data-duration="4"></audio>
+      <audio id="a-split" data-sync-origin="lk-1" data-start="4" data-duration="6"></audio>`);
+    relinkSplitHalves(d, ["a-split"]);
+    const right = d.getElementById("a-split");
+    expect(right?.getAttribute(SYNC_ORIGIN_ATTR)).toBe("lk-1");
+    expect(right && findSyncPartner(right)?.id).toBe("v");
   });
 
   it("mints distinct ids for distinct groups", () => {
@@ -186,5 +202,15 @@ describe("findSyncPartner", () => {
     const x = byId("x");
     expect(a && findSyncPartner(a)?.id).toBe("v2");
     expect(x && findSyncPartner(x)).toBeNull();
+  });
+
+  it("never takes a partner from a nested composition reusing the origin", () => {
+    document.body.innerHTML = `<div data-composition-id="m">
+      <video id="v" data-sync-origin="lk-1" data-start="0" data-duration="4"></video>
+      <div data-composition-id="child">
+        <audio id="ca" data-sync-origin="lk-1" data-start="0" data-duration="4"></audio>
+      </div></div>`;
+    const v = document.getElementById("v");
+    expect(v && findSyncPartner(v)).toBeNull();
   });
 });

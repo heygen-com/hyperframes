@@ -43,8 +43,8 @@ export function syncFixFor(document: Document, id: HfId, mode: "move" | "slip"):
   }
   const mediaStart = slipIntoSyncMediaStart(own, partner);
   if (mediaStart === null) throw new Error(`slipping ${id} into sync would start before its file`);
-  const legacy =
-    !pair.own.hasAttribute("data-media-start") && pair.own.hasAttribute("data-playback-start");
-  const name = legacy ? "data-playback-start" : "data-media-start";
+  const name = pair.own.hasAttribute("data-playback-start")
+    ? "data-playback-start"
+    : "data-media-start";
   return { kind: "slip", name, value: formatSeconds(mediaStart) };
 }
