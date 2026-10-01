@@ -12,18 +12,33 @@ function scopePrefix(id: HfId): string {
   return cut < 0 ? "" : id.slice(0, cut + 1);
 }
 
-/** Every element sharing `id`'s link, addressed in `id`'s scope, `id` included. */
+/**
+ * Every element sharing `id`'s link, addressed in `id`'s scope, `id` included.
+ * Throws when a member's address resolves to a different element (a duplicate
+ * id elsewhere), since editing that address would change the wrong clip.
+ */
 function linkGroup(document: Document, id: HfId): LinkMember[] {
   const el = resolveScoped(document, id);
   const link = el?.getAttribute(MEDIA_LINK_ATTR);
   if (!el || !link) return [];
   const scope = linkScopeOf(el);
   const prefix = scopePrefix(id);
-  return querySelectorAllDeep(scope ?? document, `[${MEDIA_LINK_ATTR}="${escapeHfId(link)}"]`)
-    .filter((member) => linkScopeOf(member) === scope)
-    .map((member) => member.getAttribute("data-hf-id"))
-    .filter((hfId): hfId is string => Boolean(hfId))
-    .map((hfId) => ({ id: `${prefix}${hfId}`, link }));
+  const members: LinkMember[] = [];
+  for (const member of querySelectorAllDeep(
+    scope ?? document,
+    `[${MEDIA_LINK_ATTR}="${escapeHfId(link)}"]`,
+  )) {
+    const hfId = member.getAttribute("data-hf-id");
+    if (!hfId || linkScopeOf(member) !== scope) continue;
+    const memberId = `${prefix}${hfId}`;
+    if (resolveScoped(document, memberId) !== member) {
+      throw new Error(
+        `Link partner "${memberId}" of "${id}" is not uniquely addressable; give it a unique data-hf-id.`,
+      );
+    }
+    members.push({ id: memberId, link });
+  }
+  return members;
 }
 
 /** Link partners of `ids` that are not themselves in `ids`. */

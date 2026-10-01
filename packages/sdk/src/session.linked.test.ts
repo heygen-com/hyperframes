@@ -110,4 +110,21 @@ describe("setTiming on linked clips", () => {
     expect(attr(html, "hf-v", "data-link")).toBe("lk-1");
     expect(attr(html, "hf-a", "data-link")).toBe("lk-1");
   });
+
+  it("refuses to edit a link partner whose id also names a root clip", async () => {
+    const html = `
+<div data-hf-id="hf-stage" data-hf-root style="width:1280px;height:720px" data-duration="10">
+  <audio data-hf-id="hf-a" src="bgm.mp3" data-start="0" data-duration="10" data-track-index="1"></audio>
+  <div data-hf-id="hf-child" data-composition-id="child" data-start="0" data-duration="10" data-track-index="2">
+    <video data-hf-id="hf-cv" src="b.mp4" muted data-link="lk-1" data-start="5" data-duration="4" data-track-index="0"></video>
+    <audio data-hf-id="hf-a" src="b.mp4" data-link="lk-1" data-start="5" data-duration="4" data-track-index="1"></audio>
+  </div>
+</div>`.trim();
+    const comp = await openComposition(html);
+    expect(() => comp.setTiming("hf-cv", { start: 2 })).toThrow(/not uniquely addressable/);
+    expect(() => comp.setTiming("hf-cv", { start: 2 }, { linked: false })).toThrow(
+      /not uniquely addressable/,
+    );
+    expect(comp.serialize()).toBe((await openComposition(html)).serialize());
+  });
 });

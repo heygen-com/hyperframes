@@ -298,9 +298,11 @@ function applySetTiming(
     const own = handleSetTiming(parsed, ids, timing);
     return concatResults(own, handleSetAttribute(parsed, unlink, MEDIA_LINK_ATTR, null));
   }
+  const partners =
+    op.start === undefined && op.duration === undefined
+      ? []
+      : linkedPartnerIds(parsed.document, ids);
   const own = handleSetTiming(parsed, ids, timing);
-  if (op.start === undefined && op.duration === undefined) return own;
-  const partners = linkedPartnerIds(parsed.document, ids);
   if (partners.length === 0) return own;
   return concatResults(
     own,
