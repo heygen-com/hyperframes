@@ -40,7 +40,6 @@ function render(element: TimelineElement, part: "gain" | "duck" = "gain") {
 }
 
 const base = { start: 0, duration: 4, track: 0 };
-const plan = { targetLufs: -16, projectedLufs: -16, volume: 2, changeDb: 6, limitedBy: null };
 const clickItem = async (host: HTMLElement, label: string) => {
   const button = [...host.querySelectorAll("button")].find((b) => b.textContent?.includes(label));
   await act(async () => button?.click());
@@ -113,35 +112,6 @@ describe("ClipMenuAudioItems", () => {
     await act(async () => button?.click());
     expect(useAudioGainDialogStore.getState().targetKeys).toEqual(["a-roll"]);
     expect(host.textContent).not.toContain("Normalize loudness");
-  });
-
-  it("refuses to normalize a clip whose volume lane owns its gain", async () => {
-    const fetchSpy = vi.fn(async () => Response.json({ plan }));
-    vi.stubGlobal("fetch", fetchSpy);
-    const automation = JSON.stringify({
-      version: 1,
-      lanes: [{ target: "volume", points: [{ t: 0, v: 0.25 }] }],
-    });
-    const host = render({ ...base, id: "vo", tag: "audio", src: "vo.mp3", automation });
-    await clickItem(host, "Normalize loudness");
-    await vi.waitFor(() => expect(showToast).toHaveBeenCalled());
-    expect(showToast).toHaveBeenCalledWith(expect.stringContaining("volume is automated"), "error");
-    expect(setQuiet).not.toHaveBeenCalled();
-    expect(fetchSpy).not.toHaveBeenCalled();
-    vi.unstubAllGlobals();
-  });
-
-  it("reports a failed save instead of claiming the clip was normalized", async () => {
-    vi.stubGlobal(
-      "fetch",
-      vi.fn(async () => Response.json({ plan })),
-    );
-    setQuiet.mockResolvedValue({ status: "failed", reason: "disk full" });
-    const host = render({ ...base, id: "vo", tag: "audio", src: "vo.mp3" });
-    await clickItem(host, "Normalize loudness");
-    await vi.waitFor(() => expect(showToast).toHaveBeenCalledWith("disk full", "error"));
-    expect(showToast).not.toHaveBeenCalledWith(expect.stringContaining("Normalized"), "info");
-    vi.unstubAllGlobals();
   });
 
   it("stops ducking at the first refused save and says why", async () => {

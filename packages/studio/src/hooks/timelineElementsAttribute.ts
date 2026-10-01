@@ -9,7 +9,7 @@ import {
   readFileContent,
 } from "./timelineEditingHelpers";
 import type { UseTimelineElementVisibilityEditingInput } from "./timelineTrackVisibility";
-import { projectForTimelineSave } from "./timelineEditPermission";
+import { projectForTimelineSave, type TimelineEditOutcome } from "./timelineEditPermission";
 
 type ElementAttributeEdits = Parameters<
   NonNullable<TimelineEditCallbacks["onSetElementsAttributeQuiet"]>
@@ -57,13 +57,18 @@ export function useSetElementsAttribute({
   isRecordingRef,
 }: UseTimelineElementVisibilityEditingInput) {
   return useCallback(
-    async (edits: ElementAttributeEdits, attr: string, label: string): Promise<void> => {
+    async (
+      edits: ElementAttributeEdits,
+      attr: string,
+      label: string,
+    ): Promise<TimelineEditOutcome> => {
       const projectId = projectForTimelineSave(
         isRecordingRef?.current,
         projectIdRef.current,
         showToast,
       );
-      if (typeof projectId !== "string" || edits.length === 0) return;
+      if (typeof projectId !== "string") return projectId;
+      if (edits.length === 0) return { status: "saved" };
       try {
         const byFile = editsByFile(edits, activeCompPath);
         const files = Object.fromEntries(
@@ -87,8 +92,11 @@ export function useSetElementsAttribute({
           recordEdit,
         });
         patchLive(previewIframeRef.current, edits, attr, activeCompPath);
+        return { status: "saved" };
       } catch (error) {
-        showToast(error instanceof Error ? error.message : "Could not save the clips", "error");
+        const reason = error instanceof Error ? error.message : "Could not save the clips";
+        showToast(reason, "error");
+        return { status: "failed", reason };
       }
     },
     [

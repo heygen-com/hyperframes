@@ -127,7 +127,7 @@ export interface TimelineEditCallbacks {
     edits: ReadonlyArray<{ element: TimelineElement; value: string | null }>,
     attr: string,
     label: string,
-  ) => Promise<void>;
+  ) => Promise<TimelineEditOutcome | void>;
   onBlockedEditAttempt?: (element: TimelineElement, intent: BlockedTimelineEditIntent) => void;
   onLinkEdit?: (edit: TimelineLinkEdit) => Promise<void> | void;
   onDeleteElementOnly?: (element: TimelineElement) => Promise<void> | void;

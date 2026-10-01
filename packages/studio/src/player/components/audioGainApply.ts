@@ -1,7 +1,13 @@
 import { formatAudioGain } from "@hyperframes/core/audio-gain";
 import type { TimelineElement } from "../store/timelineElement";
 import type { TimelineEditCallbacks } from "./timelineCallbacks";
-import { normalizeToastText, requestNormalizePlan } from "./clipMenuNormalize";
+import {
+  normalizeToastText,
+  requestNormalizePlan,
+  throwUnlessSaved,
+  VOLUME_LANE_REFUSAL,
+  volumeLaneOwnsGain,
+} from "./clipMenuNormalize";
 
 export const AUDIO_GAIN_LABEL = "Audio Gain";
 
@@ -16,13 +22,18 @@ export async function writeClipGains(
   writers: VolumeWriters,
   label = AUDIO_GAIN_LABEL,
 ): Promise<void> {
+  if (edits.some(({ element }) => volumeLaneOwnsGain(element))) {
+    throw new Error(VOLUME_LANE_REFUSAL);
+  }
   const values = edits.map(({ element, gain }) => ({ element, value: formatAudioGain(gain) }));
   if (values.length > 1 && writers.onSetElementsAttributeQuiet) {
-    await writers.onSetElementsAttributeQuiet(values, "data-volume", label);
+    throwUnlessSaved(await writers.onSetElementsAttributeQuiet(values, "data-volume", label));
     return;
   }
   for (const { element, value } of values) {
-    await writers.onSetElementAttributeQuiet?.(element, "data-volume", value, label);
+    throwUnlessSaved(
+      await writers.onSetElementAttributeQuiet?.(element, "data-volume", value, label),
+    );
   }
 }
 
@@ -32,6 +43,7 @@ export async function normalizeClipsLoudness(
   elements: readonly TimelineElement[],
   writers: VolumeWriters,
 ): Promise<string> {
+  if (elements.some(volumeLaneOwnsGain)) throw new Error(VOLUME_LANE_REFUSAL);
   const plans = await Promise.all(elements.map((el) => requestNormalizePlan(projectId, el)));
   await writeClipGains(
     elements.map((element, index) => ({ element, gain: plans[index]?.volume ?? 1 })),
