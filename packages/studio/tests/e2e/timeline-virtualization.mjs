@@ -23,7 +23,11 @@
  */
 import { platform, arch } from "node:os";
 import { launchStudioChrome } from "./chrome-executable.mjs";
-import { gatePassed, judgeResponsiveness } from "./timeline-viewport-verdict.mjs";
+import {
+  gatePassed,
+  judgeResponsiveness,
+  responsivenessLimits,
+} from "./timeline-viewport-verdict.mjs";
 
 const STUDIO_URL = process.env.STUDIO_URL;
 const PROFILE = process.env.TIMELINE_PROFILE || "dense-short";
@@ -291,10 +295,11 @@ try {
   }
 
   const runs = [];
-  const interactionLimitMs =
-    TIER === "primary" ? budgets.interactionP95Ms : budgets.constrainedInteractionP95Ms;
-  const frameIntervalLimitMs =
-    TIER === "primary" ? budgets.frameIntervalP95Ms : budgets.constrainedFrameIntervalP95Ms;
+  const { interactionLimitMs, frameIntervalLimitMs } = responsivenessLimits(
+    budgets,
+    TIER,
+    ROW_VIRTUALIZATION,
+  );
   for (let index = 0; index < budgets.warmupRuns + budgets.measuredRuns; index += 1) {
     const run = await collectRun(page);
     if (index >= budgets.warmupRuns) runs.push(run);

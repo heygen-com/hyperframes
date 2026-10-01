@@ -1,5 +1,11 @@
 import { describe, expect, it } from "vitest";
-import { gatePassed, judgeResponsiveness, percentile } from "./timeline-viewport-verdict.mjs";
+import { TIMELINE_VIEWPORT_BUDGETS } from "../../src/player/lib/timelineViewportBudgets";
+import {
+  gatePassed,
+  judgeResponsiveness,
+  percentile,
+  responsivenessLimits,
+} from "./timeline-viewport-verdict.mjs";
 
 const LIMITS = { samplesPerRun: 63, interactionLimitMs: 75, frameIntervalLimitMs: 75 };
 const FAST = 49;
@@ -66,6 +72,48 @@ describe("judgeResponsiveness", () => {
     measured[1] = { interactions: [], frameIntervals: [] };
     expect(() => judgeResponsiveness(measured, LIMITS)).toThrow("Expected 315 scroll samples");
     expect(() => judgeResponsiveness([], LIMITS)).toThrow("Expected 0 scroll samples");
+  });
+});
+
+describe("the CI virtualized arm's limits", () => {
+  const limits = {
+    samplesPerRun: 63,
+    ...responsivenessLimits(TIMELINE_VIEWPORT_BUDGETS, "ci", "on"),
+  };
+  // Two frames is a normal step, three a dropped frame; one frame is a normal interval, two a dropped one.
+  const steps = (count, normal, slow) =>
+    Array.from({ length: 5 }, (_, run) =>
+      Array.from({ length: 63 }, (_, step) => (run * 63 + step < count ? slow : normal)),
+    );
+  const interactionRuns = (count) =>
+    steps(count, 33.3, 50).map((interactions) => ({
+      interactions,
+      frameIntervals: interactions.map(() => 16.7),
+    }));
+  const frameRuns = (count) =>
+    steps(count, 16.7, 33.3).map((frameIntervals) => ({
+      interactions: frameIntervals.map(() => 33.3),
+      frameIntervals,
+    }));
+
+  it("fails 16 of 315 steps that drop a frame and passes 15", () => {
+    expect(judgeResponsiveness(interactionRuns(16), limits).passed).toBe(false);
+    expect(judgeResponsiveness(interactionRuns(15), limits).passed).toBe(true);
+  });
+
+  it("fails 16 of 315 frame intervals that drop a frame and passes 15", () => {
+    expect(judgeResponsiveness(frameRuns(16), limits).passed).toBe(false);
+    expect(judgeResponsiveness(frameRuns(15), limits).passed).toBe(true);
+  });
+
+  it("leaves the unvirtualized arm and the other constrained tiers at 75 ms", () => {
+    const loose = { interactionLimitMs: 75, frameIntervalLimitMs: 75 };
+    expect(responsivenessLimits(TIMELINE_VIEWPORT_BUDGETS, "ci", "off")).toEqual(loose);
+    expect(responsivenessLimits(TIMELINE_VIEWPORT_BUDGETS, "low-resource", "on")).toEqual(loose);
+    expect(responsivenessLimits(TIMELINE_VIEWPORT_BUDGETS, "primary", "on")).toEqual({
+      interactionLimitMs: 50,
+      frameIntervalLimitMs: 33.3,
+    });
   });
 });
 

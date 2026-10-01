@@ -9,6 +9,24 @@ export function percentile(values, ratio) {
   return sorted[Math.min(sorted.length - 1, Math.ceil(sorted.length * ratio) - 1)];
 }
 
+/** The p95 pair a tier is held to; the CI virtualized arm has its own, tighter one. */
+export function responsivenessLimits(budgets, tier, rowVirtualization) {
+  if (tier === "primary")
+    return {
+      interactionLimitMs: budgets.interactionP95Ms,
+      frameIntervalLimitMs: budgets.frameIntervalP95Ms,
+    };
+  if (tier === "ci" && rowVirtualization === "on")
+    return {
+      interactionLimitMs: budgets.ciVirtualizedInteractionP95Ms,
+      frameIntervalLimitMs: budgets.ciVirtualizedFrameIntervalP95Ms,
+    };
+  return {
+    interactionLimitMs: budgets.constrainedInteractionP95Ms,
+    frameIntervalLimitMs: budgets.constrainedFrameIntervalP95Ms,
+  };
+}
+
 function assertSampleCount(expected, interactions, frameIntervals) {
   if (expected > 0 && interactions.length === expected && frameIntervals.length === expected)
     return;
