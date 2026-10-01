@@ -42,7 +42,6 @@ const VMIN = -HR / S; // bottom of visible view (undershoot headroom)
 // of snapping to the view edge; the handle DOT is still clampView'd into view.
 const DRAG_VMAX = 2;
 const DRAG_VMIN = -1;
-const ACCENT = "var(--color-accent-ink)";
 
 // Figma-style ease-type dropdown: the current ease (glyph + name) as a button
 // that opens the preset grid in a popover. This is where a preset is selected —
@@ -476,7 +475,7 @@ export function EaseCurveSection({
                     y1={a0.y}
                     x2={p1.x}
                     y2={p1.y}
-                    style={{ stroke: ACCENT }}
+                    className="stroke-accent-ink"
                     strokeWidth="1.5"
                   />
                   <line
@@ -484,7 +483,7 @@ export function EaseCurveSection({
                     y1={a1.y}
                     x2={p2.x}
                     y2={p2.y}
-                    style={{ stroke: ACCENT }}
+                    className="stroke-accent-ink"
                     strokeWidth="1.5"
                   />
                 </>
@@ -493,13 +492,13 @@ export function EaseCurveSection({
               <path
                 d={curvePath}
                 fill="none"
-                style={{ stroke: ACCENT }}
+                className="stroke-accent-ink"
                 strokeWidth="2.5"
                 strokeLinecap="round"
               />
               {/* Anchors at (0,0) and (1,1) */}
-              <circle cx={a0.x} cy={a0.y} r="3" style={{ fill: ACCENT }} />
-              <circle cx={a1.x} cy={a1.y} r="3" style={{ fill: ACCENT }} />
+              <circle cx={a0.x} cy={a0.y} r="3" className="fill-accent-ink" />
+              <circle cx={a1.x} cy={a1.y} r="3" className="fill-accent-ink" />
               {/* Draggable control handles (large transparent hit area + visible dot) */}
               {showHandles &&
                 [["p1", p1] as const, ["p2", p2] as const].map(([key, pt]) => (
@@ -526,9 +525,8 @@ export function EaseCurveSection({
                       cx={pt.x}
                       cy={pt.y}
                       r={hover === key || draggingRef.current === key ? 7 : 5.5}
-                      style={{ stroke: ACCENT }}
                       strokeWidth="2.5"
-                      className="pointer-events-none fill-input transition-[r]"
+                      className="pointer-events-none fill-input stroke-accent-ink transition-[r]"
                     />
                   </g>
                 ))}

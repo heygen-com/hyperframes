@@ -327,11 +327,11 @@ function debtIssue(row: Measurement, baseline: ContrastBaseline): string[] {
   return changedRatioIssue(row, previous);
 }
 function changedRatioIssue(row: Measurement, previous: number): string[] {
-  if (!(Math.abs(row.ratio - previous) <= 1e-10))
-    return [
-      `${row.id}: ratio ${row.ratio}, baseline ${previous}; bank improvements, reject regressions`,
-    ];
-  return [];
+  return Math.abs(row.ratio - previous) <= 1e-10
+    ? []
+    : [
+        `${row.id}: ratio ${row.ratio}, baseline ${previous}; bank improvements, reject regressions`,
+      ];
 }
 function baselineDirection(id: string, ratio: number, previous: ContrastBaseline): string[] {
   return ratio < (previous[id] ?? Infinity) ? [`${id}: baseline may only improve`] : [];

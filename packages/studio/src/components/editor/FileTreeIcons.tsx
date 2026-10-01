@@ -46,7 +46,7 @@ const ICONS = new Map<string, [Icon, string]>([
   ["mp3", [Waveform, "text-[light-dark(oklch(0.53_0.159_165),#3CE6AC)]"]],
   ["woff", [TextAa, DIM]],
 ]);
-const SAME = new Map(
+const ALIAS = new Map(
   Object.entries({
     mjs: "js",
     cjs: "js",
@@ -68,7 +68,7 @@ const SAME = new Map(
 
 export function FileIcon({ path }: { path: string }) {
   const ext = path.split(".").pop()?.toLowerCase() ?? "";
-  const [Glyph, color] = ICONS.get(SAME.get(ext) ?? ext) ?? [File, DIM];
+  const [Glyph, color] = ICONS.get(ALIAS.get(ext) ?? ext) ?? [File, DIM];
   return <Glyph size={SZ} weight={W} className={`shrink-0 ${color}`} />;
 }
 

@@ -138,12 +138,9 @@ describe("Studio colour syntax", () => {
     expect(light!.selectors).toEqual([":root", ".light"]);
   });
   it("counts a ratio it could not measure as debt", () => {
-    expect(
-      verdict([{ id: "dark/label", ratio: Number.NaN, minimum: 4.5 }], {}).join("\n"),
-    ).toContain("new contrast debt");
-    expect(
-      verdict([{ id: "dark/label", ratio: Number.NaN, minimum: 4.5 }], { "dark/label": 3 }),
-    ).not.toEqual([]);
+    const unmeasured = [{ id: "dark/label", ratio: Number.NaN, minimum: 4.5 }];
+    expect(verdict(unmeasured, {}).join("\n")).toContain("new contrast debt");
+    expect(verdict(unmeasured, { "dark/label": 3 })).not.toEqual([]);
   });
 });
 

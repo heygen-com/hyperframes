@@ -1364,6 +1364,7 @@ describe("FlatSlider — typed value", () => {
     const still = host.querySelector<HTMLInputElement>('[data-flat-slider-input="true"]');
     expect(still).not.toBeNull();
     expect(still?.getAttribute("aria-invalid")).toBe("true");
+    expect(still?.className).toContain("border-dashed");
     act(() => still?.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true })));
     expect(host.querySelector('[data-flat-slider-input="true"]')).toBeNull();
     expect(host.querySelector('[data-flat-slider-value="true"]')?.textContent).toBe("1x");

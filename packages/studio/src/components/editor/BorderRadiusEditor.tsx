@@ -26,11 +26,6 @@ function scaleRadius(v: number, maxPx: number): number {
   return clampRadius(Math.round((v / Math.max(maxPx, 1)) * MAX_RADIUS));
 }
 
-const dotFill = (linked: boolean) =>
-  linked
-    ? "fill-[light-dark(oklch(0.5_0.2_260),#3b82f6)]"
-    : "fill-[light-dark(oklch(0.55_0.2_294),#a78bfa)]";
-
 export function BorderRadiusEditor({
   tl,
   tr,
@@ -68,6 +63,9 @@ export function BorderRadiusEditor({
   }, [linked, uniform, tl, onCommit]);
 
   const path = buildRoundedRectPath(PREVIEW_W, PREVIEW_H, sTL, sTR, sBR, sBL);
+  const dotFill = linked
+    ? "fill-[light-dark(oklch(0.5_0.2_260),#3b82f6)]"
+    : "fill-[light-dark(oklch(0.55_0.2_294),#a78bfa)]";
 
   return (
     <div className="space-y-3">
@@ -79,10 +77,10 @@ export function BorderRadiusEditor({
           className="shrink-0"
         >
           <path d={path} className="fill-text-0/[0.06] stroke-text-0/25" strokeWidth={1.5} />
-          <circle cx={sTL} cy={sTL} r={3} className={dotFill(linked)} />
-          <circle cx={PREVIEW_W - sTR} cy={sTR} r={3} className={dotFill(linked)} />
-          <circle cx={PREVIEW_W - sBR} cy={PREVIEW_H - sBR} r={3} className={dotFill(linked)} />
-          <circle cx={sBL} cy={PREVIEW_H - sBL} r={3} className={dotFill(linked)} />
+          <circle cx={sTL} cy={sTL} r={3} className={dotFill} />
+          <circle cx={PREVIEW_W - sTR} cy={sTR} r={3} className={dotFill} />
+          <circle cx={PREVIEW_W - sBR} cy={PREVIEW_H - sBR} r={3} className={dotFill} />
+          <circle cx={sBL} cy={PREVIEW_H - sBL} r={3} className={dotFill} />
         </svg>
 
         <button
