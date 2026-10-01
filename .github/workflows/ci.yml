@@ -846,6 +846,8 @@ jobs:
             packages/studio/data/projects/timeline-virtualization
           cp -R packages/studio/tests/e2e/fixtures/studio-open \
             packages/studio/data/projects/studio-open
+          cp -R packages/studio/tests/e2e/fixtures/fade-handles \
+            packages/studio/data/projects/fade-handles
       - name: Read the base branch's work-count ceilings
         # A ceiling may not disappear, or rise without a new reason, against the branch this PR merges into.
         if: github.event_name == 'pull_request'
@@ -953,6 +955,23 @@ jobs:
           node packages/studio/tests/e2e/perf-ratchet.mjs check \
             packages/studio/tests/e2e/perf-ceilings.json studio-open /tmp/studio-open-counts.json \
             /tmp/base-perf-ceilings.json
+      - name: Measure the fade handle dots on a narrow clip
+        if: success() || failure()
+        run: |
+          set -euo pipefail
+          NODE_ENV=production bun run --cwd packages/studio dev -- --port 5316 --strictPort &
+          SERVER_PID=$!
+          trap 'kill "$SERVER_PID" 2>/dev/null || true' EXIT
+          for i in $(seq 1 60); do
+            if curl -sf "http://localhost:5316/" >/dev/null 2>&1; then break; fi
+            sleep 1
+          done
+          if ! curl -sf "http://localhost:5316/" >/dev/null 2>&1; then
+            echo "FAIL: studio dev server did not start on port 5316"
+            exit 1
+          fi
+          STUDIO_URL="http://localhost:5316/#project/fade-handles" \
+            node packages/studio/tests/e2e/fade-handles.mjs
       - name: Upload gate evidence
         # The gate's whole output is machine-readable evidence, and a red run is
         # exactly when someone needs to read it. Keep it on failure too.

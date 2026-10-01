@@ -125,7 +125,7 @@ describe("TimelineClipFades", () => {
     const handle = host.querySelector<HTMLElement>('[data-testid="clip-fade-handle-in"]');
     if (!handle) throw new Error("expected a fade-in handle");
     armCapture(handle);
-    // The handle sits at the 1 s mark (x=100). Drag 150 px right → 2.5 s.
+    // 150 px of rightward travel adds 1.5 s to the 1 s fade-in, wherever the press lands.
     act(() => handle.dispatchEvent(pointer("pointerdown", 100)));
     act(() => handle.dispatchEvent(pointer("pointermove", 200)));
     act(() => handle.dispatchEvent(pointer("pointermove", 250)));
@@ -146,7 +146,7 @@ describe("TimelineClipFades", () => {
     const handle = host.querySelector<HTMLElement>('[data-testid="clip-fade-handle-out"]');
     if (!handle) throw new Error("expected a fade-out handle");
     armCapture(handle);
-    // Pressed at x=1000 with a 2 s fade-out. 300 px left → 5 s.
+    // 300 px of leftward travel adds 3 s to the 2 s fade-out, wherever the press lands.
     act(() => handle.dispatchEvent(pointer("pointerdown", 1000)));
     act(() => handle.dispatchEvent(pointer("pointermove", 700)));
     expect(onSetElementAttributeLive).toHaveBeenLastCalledWith(clip, "data-fade-out", "5");
@@ -269,7 +269,11 @@ describe("TimelineClipFades", () => {
     const fadeOut = host.querySelector<HTMLElement>('[data-testid="clip-fade-handle-out"]');
     expect([fadeIn?.style.left, fadeIn?.style.width]).toEqual(["0px", "15px"]);
     expect([fadeOut?.style.left, fadeOut?.style.width]).toEqual(["15px", "15px"]);
-    expect((fadeIn?.firstElementChild as HTMLElement | null)?.style.width).toBe("10px");
+    const dot = fadeIn?.firstElementChild as HTMLElement;
+    expect(getComputedStyle(dot).width).toBe("10px");
+    // Layout is not real here; tests/e2e/fade-handles.mjs measures the box in Chrome.
+    expect(getComputedStyle(dot).flexShrink).toBe("0");
+    expect(getComputedStyle(dot).pointerEvents).toBe("none");
   });
 
   it("does not let a press on the dot start the clip's own move gesture", () => {

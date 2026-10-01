@@ -333,6 +333,8 @@ function FadeDot({ active }: { active: boolean }) {
       aria-hidden="true"
       style={{
         display: "block",
+        flexShrink: 0,
+        pointerEvents: "none",
         width: HANDLE_SIZE,
         height: HANDLE_SIZE,
         borderRadius: "50%",

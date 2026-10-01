@@ -1,0 +1,71 @@
+#!/usr/bin/env node
+/**
+ * Measures the fade handle dots in a real browser layout against a running
+ * Studio preview of the adjacent fade-handles fixture: on a clip narrower than
+ * two hit boxes, each dot must still lay out as a 10 x 10 box.
+ *
+ * STUDIO_URL=http://127.0.0.1:5190/#project/fade-handles \
+ *   node packages/studio/tests/e2e/fade-handles.mjs
+ */
+import puppeteer from "puppeteer-core";
+import { resolveChromeExecutable } from "./chrome-executable.mjs";
+
+const STUDIO_URL = process.env.STUDIO_URL;
+const DOT_PX = 10;
+const NARROW_CLIP_MAX_PX = 20;
+
+if (!STUDIO_URL) {
+  console.error("STUDIO_URL is required and must point at the fade-handles fixture");
+  process.exit(2);
+}
+const executablePath = resolveChromeExecutable();
+if (!executablePath) {
+  console.error("No Chrome executable found; set PUPPETEER_EXECUTABLE_PATH");
+  process.exit(2);
+}
+
+const browser = await puppeteer.launch({
+  executablePath,
+  headless: true,
+  args: ["--no-sandbox", "--disable-dev-shm-usage", "--disable-gpu"],
+});
+const failures = [];
+let evidence = {};
+try {
+  const page = await browser.newPage();
+  await page.setViewport({ width: 1440, height: 900 });
+  await page.goto(STUDIO_URL, { waitUntil: "domcontentloaded" });
+  const clipSelector = '.timeline-clip[data-el-id$="narrow-tone"]';
+  await page.waitForSelector(clipSelector, { timeout: 60_000 });
+  const clip = await page.$(clipSelector);
+  const box = await clip.boundingBox();
+  await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
+  await page.waitForSelector('[data-testid="clip-fade-handle-out"]', { timeout: 10_000 });
+  evidence = await page.$eval(clipSelector, (el) => {
+    const rect = (node) => {
+      const r = node.getBoundingClientRect();
+      return { x: r.x, y: r.y, width: r.width, height: r.height };
+    };
+    return {
+      clip: rect(el),
+      handles: ["in", "out"].map((edge) => {
+        const handle = el.querySelector(`[data-testid="clip-fade-handle-${edge}"]`);
+        return { edge, hit: rect(handle), dot: rect(handle.firstElementChild) };
+      }),
+    };
+  });
+  if (evidence.clip.width >= NARROW_CLIP_MAX_PX) {
+    failures.push(
+      `fixture clip is ${evidence.clip.width}px wide, not under ${NARROW_CLIP_MAX_PX}px`,
+    );
+  }
+  for (const { edge, dot } of evidence.handles) {
+    if (dot.width !== DOT_PX || dot.height !== DOT_PX) {
+      failures.push(`fade-${edge} dot is ${dot.width}x${dot.height}, expected ${DOT_PX}x${DOT_PX}`);
+    }
+  }
+} finally {
+  await browser.close();
+}
+console.log(JSON.stringify({ evidence, failures }, null, 2));
+if (failures.length > 0) process.exit(1);
