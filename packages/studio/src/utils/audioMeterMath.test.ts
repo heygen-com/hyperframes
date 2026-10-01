@@ -55,8 +55,24 @@ describe("hasProjectAudio", () => {
     ...overrides,
   });
 
-  it("counts an audible video as project audio", () => {
-    expect(hasProjectAudio([clip({ tag: "video", hasAudio: true })])).toBe(true);
+  it("ignores an audible video left on native output at unity gain", () => {
+    expect(hasProjectAudio([clip({ tag: "video", hasAudio: true })])).toBe(false);
+    expect(hasProjectAudio([clip({ tag: "video", hasAudio: true, volume: 1 })])).toBe(false);
+  });
+
+  it.each<[string, Partial<TimelineElement>]>([
+    ["an above-unity gain", { volume: 2 }],
+    ["an fx chain", { fxChain: "[]" }],
+    ["automation", { automation: "{}" }],
+    ["a group", { audioGroup: "music" }],
+  ])("counts an audible video routed through Web Audio by %s", (_, fields) => {
+    expect(hasProjectAudio([clip({ tag: "video", hasAudio: true, ...fields })])).toBe(true);
+  });
+
+  it("ignores a muted video even when it carries processing", () => {
+    expect(hasProjectAudio([clip({ tag: "video", hasAudio: true, muted: true, volume: 2 })])).toBe(
+      false,
+    );
   });
 
   it("ignores a silent video", () => {

@@ -218,6 +218,12 @@
       "types": "./dist/clipFacts.d.ts",
       "environments": ["browser", "bun", "node"]
     },
+    "./audible-video": {
+      "source": "./src/audibleVideo.ts",
+      "runtime": "./dist/audibleVideo.js",
+      "types": "./dist/audibleVideo.d.ts",
+      "environments": ["browser", "bun", "node"]
+    },
     "./audio-gain": {
       "source": "./src/audioGain.ts",
       "runtime": "./dist/audioGain.js",

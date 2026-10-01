@@ -183,7 +183,11 @@ export {
 } from "./compiler/subCompositionValidity";
 export { RUNTIME_BOOTSTRAP_ATTR, stripEmbeddedRuntimeScripts } from "./compiler/htmlDocument";
 export { queryByAttr } from "./utils/cssSelector";
-export { AUDIBLE_MEDIA_SELECTOR, isAudibleVideoElement } from "./audibleVideo";
+export {
+  AUDIBLE_MEDIA_SELECTOR,
+  audibleVideoNeedsWebAudio,
+  isAudibleVideoElement,
+} from "./audibleVideo";
 export { decodeUrlPathVariants } from "./utils/urlPath";
 export {
   clearGifFramesBeforeNext,

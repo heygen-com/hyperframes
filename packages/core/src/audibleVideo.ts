@@ -12,3 +12,14 @@ export function isAudibleVideoElement(el: {
   const declared = el.getAttribute("data-has-audio");
   return declared === null || declared === "true";
 }
+
+export function audibleVideoNeedsWebAudio(fields: {
+  volume?: number | null;
+  fxChain?: string | null;
+  automation?: string | null;
+  audioGroup?: string | null;
+}): boolean {
+  return (
+    (fields.volume ?? 1) > 1 || Boolean(fields.fxChain || fields.automation || fields.audioGroup)
+  );
+}

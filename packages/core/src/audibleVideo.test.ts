@@ -1,5 +1,9 @@
 import { describe, expect, it } from "vitest";
-import { AUDIBLE_MEDIA_SELECTOR, isAudibleVideoElement } from "./audibleVideo";
+import {
+  AUDIBLE_MEDIA_SELECTOR,
+  audibleVideoNeedsWebAudio,
+  isAudibleVideoElement,
+} from "./audibleVideo";
 
 const el = (tagName: string, attrs: Record<string, string>) => ({
   tagName,
@@ -41,4 +45,19 @@ describe("AUDIBLE_MEDIA_SELECTOR", () => {
       .map((n) => n.id);
     expect(audibleVideos).toEqual(matched.filter((id) => id.startsWith("v-")));
   });
+});
+
+describe("audibleVideoNeedsWebAudio", () => {
+  it("keeps a unity, unprocessed video on native output", () => {
+    expect(audibleVideoNeedsWebAudio({})).toBe(false);
+    expect(audibleVideoNeedsWebAudio({ volume: 1, fxChain: "", automation: null })).toBe(false);
+    expect(audibleVideoNeedsWebAudio({ volume: Number.NaN })).toBe(false);
+  });
+
+  it.each([{ volume: 1.5 }, { fxChain: "[]" }, { automation: "{}" }, { audioGroup: "music" }])(
+    "routes a video carrying %o",
+    (fields) => {
+      expect(audibleVideoNeedsWebAudio(fields)).toBe(true);
+    },
+  );
 });
