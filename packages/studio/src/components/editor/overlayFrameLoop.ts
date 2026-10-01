@@ -39,18 +39,32 @@ let awakeUntil = 0;
 let listenersAttached = false;
 let stopBootWake: (() => void) | null = null;
 
-/** Wake sources. All passive reads; none of them can be cancelled by us. */
-const WINDOW_EVENTS = [
+/** The user's own input. Idle work waits only for these, never for playback or programmatic wakes. */
+const INPUT_EVENTS = [
   "pointerdown",
   "pointermove",
   "pointerup",
   "wheel",
   "keydown",
   "keyup",
-  "scroll",
-  "resize",
-  "visibilitychange",
 ] as const;
+
+/** Wake sources. All passive reads; none of them can be cancelled by us. */
+const WINDOW_EVENTS = [...INPUT_EVENTS, "scroll", "resize", "visibilitychange"] as const;
+
+let lastInputAt = Number.NEGATIVE_INFINITY;
+let inputWatched = false;
+const noteInput = () => {
+  lastInputAt = performance.now();
+};
+
+function watchInput(): void {
+  if (inputWatched || typeof window === "undefined") return;
+  inputWatched = true;
+  for (const type of INPUT_EVENTS) {
+    window.addEventListener(type, noteInput, { capture: true, passive: true });
+  }
+}
 
 // The preview posts a `state` message on a fixed interval even when the
 // playhead has not moved — the control bridge's paused heartbeat, which exists
@@ -147,11 +161,12 @@ function schedule(): void {
 export const IDLE_SLICE_MS = 3;
 
 /**
- * Runs `step` in idle slices once no input has woken the loop for AWAKE_MS, so it never shares a gesture's
+ * Runs `step` in idle slices once there has been no input for AWAKE_MS, so it never shares a gesture's
  * frames. `step` works while `timeLeft()` is positive and returns true when it has finished.
  */
 export function runWhenInputIdle(step: (timeLeft: () => number) => boolean): void {
-  const wait = awakeUntil - performance.now();
+  watchInput();
+  const wait = lastInputAt + AWAKE_MS - performance.now();
   if (wait > 0) {
     setTimeout(() => runWhenInputIdle(step), wait);
     return;
@@ -159,7 +174,7 @@ export function runWhenInputIdle(step: (timeLeft: () => number) => boolean): voi
   const idle = window.requestIdleCallback ?? ((callback: () => void) => setTimeout(callback, 0));
   idle(() => {
     const end = performance.now() + IDLE_SLICE_MS;
-    if (performance.now() < awakeUntil || !step(() => end - performance.now()))
+    if (performance.now() < lastInputAt + AWAKE_MS || !step(() => end - performance.now()))
       runWhenInputIdle(step);
   });
 }
@@ -177,6 +192,7 @@ export function requestOverlayFrames(): void {
 function attachListeners(): void {
   if (listenersAttached || typeof window === "undefined") return;
   listenersAttached = true;
+  watchInput();
   for (const type of WINDOW_EVENTS) {
     window.addEventListener(type, requestOverlayFrames, { capture: true, passive: true });
   }
@@ -230,6 +246,11 @@ export function resetOverlayFrameLoopForTests(): void {
   frameId = null;
   idleTimerId = null;
   awakeUntil = 0;
+  lastInputAt = Number.NEGATIVE_INFINITY;
+  if (inputWatched) {
+    for (const type of INPUT_EVENTS) window.removeEventListener(type, noteInput, { capture: true });
+    inputWatched = false;
+  }
   lastPreviewFrame = null;
   lastPreviewPlaying = null;
   detachListeners();

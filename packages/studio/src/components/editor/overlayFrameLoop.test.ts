@@ -74,8 +74,9 @@ describe("overlay frame loop", () => {
   });
 
   it("runs idle work in capped slices, only while no input arrives", () => {
+    subscribeOverlayFrame(() => undefined);
     const budgets: number[] = [];
-    requestOverlayFrames();
+    window.dispatchEvent(new Event("pointermove"));
     runWhenInputIdle((timeLeft) => {
       budgets.push(timeLeft());
       return budgets.length === 3;
@@ -90,12 +91,30 @@ describe("overlay frame loop", () => {
     const slices: number[] = [];
     runWhenInputIdle(() => {
       slices.push(performance.now());
-      if (slices.length === 1) requestOverlayFrames();
+      if (slices.length === 1) window.dispatchEvent(new Event("keydown"));
       return slices.length === 2;
     });
     vi.advanceTimersByTime(1000);
     expect(slices).toHaveLength(2);
     expect(slices[1] - slices[0]).toBeGreaterThanOrEqual(400);
+  });
+
+  it("holds an idle slice when input lands after it was queued", () => {
+    const ran: number[] = [];
+    runWhenInputIdle(() => ran.push(performance.now()) > 0);
+    window.dispatchEvent(new Event("wheel"));
+    vi.advanceTimersByTime(1);
+    expect(ran).toEqual([]);
+    vi.advanceTimersByTime(500);
+    expect(ran).toHaveLength(1);
+  });
+
+  it("does not hold idle work for playback frames or programmatic wakes", () => {
+    const ran: number[] = [];
+    requestOverlayFrames();
+    runWhenInputIdle(() => ran.push(performance.now()) > 0);
+    vi.advanceTimersByTime(1);
+    expect(ran).toHaveLength(1);
   });
 
   it("runs every subscriber on one frame, not one frame each", () => {

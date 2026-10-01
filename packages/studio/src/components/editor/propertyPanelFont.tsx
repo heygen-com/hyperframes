@@ -152,14 +152,19 @@ function loadFontLists(): void {
       const googleKeys = new Set<string>();
       let next = 0;
       runWhenInputIdle((timeLeft) => {
-        while (next < names.length && timeLeft() > 0) {
-          const batch = names.slice(next, next + 200);
-          next += batch.length;
-          families.push(...uniqueFontFamilies(batch, googleKeys));
+        try {
+          while (next < names.length && timeLeft() > 0) {
+            const batch = names.slice(next, next + 200);
+            next += batch.length;
+            families.push(...uniqueFontFamilies(batch, googleKeys));
+          }
+          if (next < names.length) return false;
+          fontLists = { loaded: true, google: families, googleKeys, installed };
+          for (const listener of fontListListeners) listener();
+        } catch (error) {
+          fontListsRequest = null;
+          console.error("Processing the font lists failed; the next picker open retries", error);
         }
-        if (next < names.length) return false;
-        fontLists = { loaded: true, google: families, googleKeys, installed };
-        for (const listener of fontListListeners) listener();
         return true;
       });
     })

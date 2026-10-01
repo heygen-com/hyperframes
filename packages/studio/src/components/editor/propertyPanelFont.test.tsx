@@ -131,6 +131,28 @@ describe("FontFamilyField session font lists", () => {
     }
   });
 
+  it("retries on the next open when processing the lists throws", async () => {
+    const t = await fresh();
+    vi.mocked(t.uniqueFontFamilies).mockImplementationOnce(() => {
+      throw new Error("bad list");
+    });
+    const logged = vi.spyOn(console, "error").mockImplementation(() => undefined);
+    try {
+      await act(async () => t.render("Georgia"));
+      await act(async () => new Promise((resolve) => setTimeout(resolve, 10)));
+      expect(t.host.textContent).not.toContain("Roboto Slab");
+
+      await act(async () => t.toggle());
+      await act(async () => new Promise((resolve) => setTimeout(resolve, 10)));
+      expect(fetch).toHaveBeenCalledTimes(4);
+      expect(t.host.textContent).toContain("Roboto Slab");
+      expect(logged).toHaveBeenCalledTimes(1);
+    } finally {
+      logged.mockRestore();
+      t.done();
+    }
+  });
+
   it("retries a failed list fetch when the picker opens", async () => {
     vi.mocked(fetch).mockRejectedValueOnce(new Error("offline"));
     const t = await fresh();
