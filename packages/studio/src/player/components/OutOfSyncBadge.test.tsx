@@ -78,4 +78,14 @@ describe("OutOfSyncBadge", () => {
     expect(edit.mediaStart).toBeCloseTo(51 / 30);
     document.body.removeEventListener("contextmenu", clipClick);
   });
+
+  it("flips the menu above the pointer near the bottom edge", () => {
+    const { badge } = render(lateAudio);
+    const y = window.innerHeight - 10;
+    act(() => badge()?.dispatchEvent(new MouseEvent("click", { bubbles: true, clientY: y })));
+    const menu = document.querySelector<HTMLElement>('[role="menu"]');
+    const top = Number.parseFloat(menu?.style.top ?? "");
+    expect(top).toBeLessThan(y);
+    expect(top).toBeGreaterThanOrEqual(0);
+  });
 });

@@ -31,14 +31,16 @@ function SyncMenu({
   const { onLinkEdit } = useTimelineEditContextOptional();
   const { moveStart, slipMediaStart } = sync;
   const menuWidth = 170;
+  const menuHeight = 66;
   const left = x + menuWidth > window.innerWidth ? x - menuWidth : x;
+  const top = y + menuHeight > window.innerHeight ? Math.max(0, y - menuHeight) : y;
   return createPortal(
     <div
       ref={menuRef}
       role="menu"
       aria-label="Out of sync"
       className="fixed z-200 min-w-[170px] rounded-sm border border-neutral-700 bg-neutral-900 py-1 shadow-lg"
-      style={{ left, top: y }}
+      style={{ left, top }}
     >
       <button
         type="button"
