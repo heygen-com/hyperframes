@@ -35,7 +35,7 @@ function Overlay() {
       onPointerMove={marquee.onPointerMove}
       onPointerUp={marquee.onPointerUp}
     >
-      {marquee.marqueeRect && <div data-band />}
+      {marquee.marqueeRect && <div data-band data-width={marquee.marqueeRect.width} />}
     </div>
   );
 }
@@ -45,7 +45,14 @@ const pointer = (type: string, clientX: number, clientY: number) =>
     document
       .querySelector("[data-overlay]")!
       .dispatchEvent(
-        new PointerEvent(type, { bubbles: true, button: 0, pointerId: 1, clientX, clientY }),
+        new PointerEvent(type, {
+          bubbles: true,
+          buttons: type === "pointerup" ? 0 : 1,
+          button: 0,
+          pointerId: 1,
+          clientX,
+          clientY,
+        }),
       );
   });
 const escape = () => {
@@ -84,6 +91,27 @@ it("an escape cancels a preview band while the pointer is still down, and stops 
   expect(document.querySelector("[data-band]")).toBeNull();
   expect(event.defaultPrevented).toBe(true);
   expect(hostEscapes).toHaveLength(0);
+});
+
+it("a buttonless move back at the start does not shrink the band", () => {
+  pointer("pointerdown", 10, 10);
+  pointer("pointermove", 120, 90);
+  const band = () => document.querySelector<HTMLElement>("[data-band]")?.dataset.width;
+  expect(band()).toBe("110");
+  act(() => {
+    document
+      .querySelector("[data-overlay]")!
+      .dispatchEvent(
+        new PointerEvent("pointermove", {
+          bubbles: true,
+          pointerId: 1,
+          buttons: 0,
+          clientX: 10,
+          clientY: 10,
+        }),
+      );
+  });
+  expect(band()).toBe("110");
 });
 
 it("an escape with no band in flight still reaches the host", () => {
@@ -133,6 +161,7 @@ it("a reload promoted mid-band selects from the preview on screen, not the retir
         new PointerEvent(type, {
           bubbles: true,
           button: 0,
+          buttons: type === "pointerup" ? 0 : 1,
           pointerId: 1,
           clientX: x,
           clientY: y,

@@ -443,7 +443,14 @@ describe("useDomGeometryCommits resize of a cropped element", () => {
       const handle = document.querySelector<HTMLButtonElement>('[aria-label="Crop right"]')!;
       const press = (type: string, clientX: number) =>
         act(() =>
-          handle.dispatchEvent(new PointerEvent(type, { bubbles: true, pointerId: 3, clientX })),
+          handle.dispatchEvent(
+            new PointerEvent(type, {
+              bubbles: true,
+              pointerId: 3,
+              buttons: type === "pointerup" ? 0 : 1,
+              clientX,
+            }),
+          ),
         );
       press("pointerdown", 100);
       press("pointermove", 100 - by);

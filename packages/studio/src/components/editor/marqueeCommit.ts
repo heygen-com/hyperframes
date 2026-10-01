@@ -6,6 +6,7 @@ import { isElementComputedVisible } from "./domEditingElement";
 import { coversComposition } from "../../utils/studioPreviewHelpers";
 import { rectsOverlap, type Rect } from "../../utils/marqueeGeometry";
 import { toVisibleOverlayRect } from "./domEditOverlayGeometry";
+import { movesGesture } from "./domEditOverlayGestures";
 
 interface MarqueeState {
   startX: number;
@@ -230,6 +231,7 @@ export function useMarqueeGestures<T>(deps: MarqueeGesturesDeps<T>): MarqueeGest
     (event: React.PointerEvent<HTMLDivElement>) => {
       const m = marqueeRef.current;
       if (m) {
+        if (!movesGesture(m, event)) return;
         const oRect = deps.overlayRef.current?.getBoundingClientRect();
         if (!oRect) return;
         m.currentX = event.clientX - oRect.left;

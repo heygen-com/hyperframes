@@ -111,7 +111,14 @@ describe("DomEditCropHandles clip lift", () => {
     ] as const) {
       const at = { clientX: 100 + d * c.dx, clientY: 50 + d * c.dy };
       act(() =>
-        handle.dispatchEvent(new PointerEvent(type, { bubbles: true, pointerId: 3, ...at })),
+        handle.dispatchEvent(
+          new PointerEvent(type, {
+            bubbles: true,
+            buttons: type === "pointerup" ? 0 : 1,
+            pointerId: 3,
+            ...at,
+          }),
+        ),
       );
     }
     expect(onStyleCommit).not.toHaveBeenCalled();
@@ -128,7 +135,33 @@ describe("DomEditCropHandles clip lift", () => {
         ["pointermove", 80],
         ["pointerup", 80],
       ] as const) {
-        handle.dispatchEvent(new PointerEvent(type, { bubbles: true, pointerId: 4, clientX }));
+        handle.dispatchEvent(
+          new PointerEvent(type, {
+            bubbles: true,
+            buttons: type === "pointerup" ? 0 : 1,
+            pointerId: 4,
+            clientX,
+          }),
+        );
+      }
+    });
+    expect(onStyleCommit).toHaveBeenCalledWith("clip-path", "inset(10px 30px 10px 10px)");
+  });
+
+  it("commits where the pointer let go, not at a buttonless move back at the press point", () => {
+    const onStyleCommit = vi.fn();
+    render(makeEl("a", "inset(10px)"), onStyleCommit);
+    const handle = document.querySelector<HTMLButtonElement>('[aria-label="Crop right"]')!;
+    act(() => {
+      for (const [type, clientX, buttons] of [
+        ["pointerdown", 100, 1],
+        ["pointermove", 80, 1],
+        ["pointermove", 100, 0],
+        ["pointerup", 80, 0],
+      ] as const) {
+        handle.dispatchEvent(
+          new PointerEvent(type, { bubbles: true, pointerId: 6, buttons, clientX }),
+        );
       }
     });
     expect(onStyleCommit).toHaveBeenCalledWith("clip-path", "inset(10px 30px 10px 10px)");
@@ -145,7 +178,14 @@ describe("DomEditCropHandles clip lift", () => {
         ["pointermove", 80],
         ["pointerup", 80],
       ] as const) {
-        handle.dispatchEvent(new PointerEvent(type, { bubbles: true, pointerId: 5, clientX }));
+        handle.dispatchEvent(
+          new PointerEvent(type, {
+            bubbles: true,
+            buttons: type === "pointerup" ? 0 : 1,
+            pointerId: 5,
+            clientX,
+          }),
+        );
       }
     });
     await act(async () => undefined);
@@ -163,7 +203,14 @@ describe("DomEditCropHandles clip lift", () => {
     const handle = document.querySelector<HTMLButtonElement>('[aria-label="Crop right"]')!;
     const press = (type: string, clientX: number) =>
       act(() =>
-        handle.dispatchEvent(new PointerEvent(type, { bubbles: true, pointerId: 1, clientX })),
+        handle.dispatchEvent(
+          new PointerEvent(type, {
+            bubbles: true,
+            buttons: type === "pointerup" ? 0 : 1,
+            pointerId: 1,
+            clientX,
+          }),
+        ),
       );
     press("pointerdown", 100);
     press("pointermove", 80);
