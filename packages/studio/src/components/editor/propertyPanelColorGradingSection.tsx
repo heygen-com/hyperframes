@@ -18,7 +18,7 @@ function StatusPill({ status }: { status: RuntimeColorGradingStatus }) {
       : status.state === "pending"
         ? "bg-warning-ink"
         : status.state === "unavailable"
-          ? "bg-danger"
+          ? "bg-danger-ink"
           : "bg-panel-text-5";
   return (
     <div

@@ -76,7 +76,7 @@ export function FlatSliderReadout({
         }}
         onBlur={() => commit(false)}
         className={`w-11 shrink-0 rounded-[3px] border bg-panel-surface px-1 text-right font-mono text-[10px] text-panel-text-0 outline-none ${
-          invalid ? "border-danger" : "border-panel-accent"
+          invalid ? "border-danger-ink" : "border-panel-accent"
         }`}
       />
     );

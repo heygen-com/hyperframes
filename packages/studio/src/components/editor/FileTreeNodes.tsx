@@ -280,7 +280,7 @@ export function InlineInput({
           onBlur={handleBlur}
           aria-invalid={error ? true : undefined}
           className={`w-full min-w-0 bg-neutral-800 text-neutral-200 text-xs px-1.5 py-0.5 rounded border outline-hidden ${
-            error ? "border-danger/70" : "border-neutral-600 focus:border-[#3CE6AC]"
+            error ? "border-danger-ink" : "border-neutral-600 focus:border-accent-ink"
           }`}
           spellCheck={false}
         />
@@ -506,7 +506,7 @@ export const TreeFolder = memo(function TreeFolder({
         }}
         onDragLeave={onDragLeave}
         className={`w-full flex items-center gap-1.5 px-2.5 py-1 min-h-7 text-left text-xs text-neutral-400 hover:bg-neutral-800/30 hover:text-neutral-300 transition-colors ${
-          isDragOver ? "bg-[#3CE6AC]/10 outline-solid outline-1 outline-[#3CE6AC]/40" : ""
+          isDragOver ? "bg-accent/10 outline-solid outline-1 outline-accent-ink" : ""
         }`}
         style={{ paddingLeft: `${8 + depth * 12}px` }}
       >

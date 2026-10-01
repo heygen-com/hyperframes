@@ -477,7 +477,6 @@ export function EaseCurveSection({
                     x2={p1.x}
                     y2={p1.y}
                     style={{ stroke: ACCENT }}
-                    strokeOpacity="0.5"
                     strokeWidth="1.5"
                   />
                   <line
@@ -486,7 +485,6 @@ export function EaseCurveSection({
                     x2={p2.x}
                     y2={p2.y}
                     style={{ stroke: ACCENT }}
-                    strokeOpacity="0.5"
                     strokeWidth="1.5"
                   />
                 </>

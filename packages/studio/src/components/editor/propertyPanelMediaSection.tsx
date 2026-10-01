@@ -231,7 +231,7 @@ export function MediaSection({
                 <div className="h-1 overflow-hidden rounded-full bg-panel-border">
                   <div
                     className={`h-full rounded-full ${
-                      removeProgress.status === "failed" ? "bg-danger" : "bg-studio-accent"
+                      removeProgress.status === "failed" ? "bg-danger-ink" : "bg-studio-accent"
                     }`}
                     style={{ width: `${Math.max(0, Math.min(100, removeProgress.progress))}%` }}
                   />

@@ -231,7 +231,7 @@ export function FlatMediaSection({
               <div className="h-1 overflow-hidden rounded-full bg-panel-hover">
                 <div
                   className={`h-full rounded-full ${
-                    removeProgress.status === "failed" ? "bg-danger" : "bg-panel-accent"
+                    removeProgress.status === "failed" ? "bg-danger-ink" : "bg-panel-accent"
                   }`}
                   style={{ width: `${Math.max(0, Math.min(100, removeProgress.progress))}%` }}
                 />

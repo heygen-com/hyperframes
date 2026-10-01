@@ -31,7 +31,23 @@ function expectDeclaration(ruleBody: string, property: string): string {
   return declarationMatch?.[1].trim() ?? "";
 }
 
+function themeTokenValue(token: string): string {
+  const match = new RegExp(`${token}:\\s*([^;]+);`).exec(themeCss);
+  expect(match?.[1]).toBeDefined();
+  return match?.[1].trim() ?? "";
+}
+
 describe("timeline motion styles", () => {
+  it.each([
+    ["--timeline-track-label", "var(--color-text-muted)"],
+    ["--timeline-tick-text", "var(--color-text-2)"],
+    ["--timeline-border-strong", "color-mix(in oklab, var(--color-text-0) 20%, transparent)"],
+    ["--timeline-group-member-tint", "color-mix(in oklab, var(--color-text-0) 3.5%, transparent)"],
+    ["--timeline-overlay-text", "var(--color-text-2)"],
+    ["--timeline-playhead-glow", "color-mix(in oklab, var(--color-accent) 14%, transparent)"],
+  ])("keeps the migrated default for %s", (token, expected) => {
+    expect(themeTokenValue(token)).toBe(expected);
+  });
   it("keeps clip motion reduced-motion gated and layout safe", () => {
     const mediaStart = studioCss.indexOf("@media (prefers-reduced-motion: no-preference)");
     expect(mediaStart).toBeGreaterThanOrEqual(0);

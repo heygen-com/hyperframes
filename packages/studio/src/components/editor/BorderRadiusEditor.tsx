@@ -74,15 +74,30 @@ export function BorderRadiusEditor({
           className="shrink-0"
         >
           <path d={path} className="fill-text-0/[0.06] stroke-text-0/25" strokeWidth={1.5} />
-          <circle cx={sTL} cy={sTL} r={3} fill={linked ? "#3b82f6" : "#a78bfa"} />
-          <circle cx={PREVIEW_W - sTR} cy={sTR} r={3} fill={linked ? "#3b82f6" : "#a78bfa"} />
+          <circle
+            cx={sTL}
+            cy={sTL}
+            r={3}
+            className={linked ? "fill-[#3b82f6]" : "fill-[light-dark(oklch(0.55_0.2_294),#a78bfa)]"}
+          />
+          <circle
+            cx={PREVIEW_W - sTR}
+            cy={sTR}
+            r={3}
+            className={linked ? "fill-[#3b82f6]" : "fill-[light-dark(oklch(0.55_0.2_294),#a78bfa)]"}
+          />
           <circle
             cx={PREVIEW_W - sBR}
             cy={PREVIEW_H - sBR}
             r={3}
-            fill={linked ? "#3b82f6" : "#a78bfa"}
+            className={linked ? "fill-[#3b82f6]" : "fill-[light-dark(oklch(0.55_0.2_294),#a78bfa)]"}
           />
-          <circle cx={sBL} cy={PREVIEW_H - sBL} r={3} fill={linked ? "#3b82f6" : "#a78bfa"} />
+          <circle
+            cx={sBL}
+            cy={PREVIEW_H - sBL}
+            r={3}
+            className={linked ? "fill-[#3b82f6]" : "fill-[light-dark(oklch(0.55_0.2_294),#a78bfa)]"}
+          />
         </svg>
 
         <button

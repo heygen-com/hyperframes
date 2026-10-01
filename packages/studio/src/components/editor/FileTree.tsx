@@ -263,7 +263,7 @@ export const FileTree = memo(function FileTree({
       <div
         className={`flex-1 overflow-y-auto py-1 transition-colors ${
           dragOverFolder === ""
-            ? "bg-[#3CE6AC]/5 outline-solid outline-1 outline-[#3CE6AC]/30 -outline-offset-1"
+            ? "bg-accent/5 outline-solid outline-1 outline-accent-ink -outline-offset-1"
             : ""
         }`}
         onContextMenu={handleRootContextMenu}

@@ -7,7 +7,7 @@ import type { ColorGradingControllerState } from "./useColorGradingController";
 const STATUS_DOT_CLASS: Record<ColorGradingControllerState["runtimeStatus"]["state"], string> = {
   active: "bg-accent",
   pending: "bg-warning-ink",
-  unavailable: "bg-danger",
+  unavailable: "bg-danger-ink",
   missing: "bg-panel-text-5",
   inactive: "bg-panel-text-5",
 };

@@ -344,7 +344,7 @@ export function TimelineToolbar({
                   aria-pressed={autoKeyframeEnabled}
                   className={`${flatBtn} active:scale-[0.98] hover:bg-hover ${
                     autoKeyframeEnabled
-                      ? "text-danger-ink hover:bg-danger/15"
+                      ? "text-danger-ink"
                       : "text-neutral-600 hover:text-neutral-400"
                   }`}
                 >
