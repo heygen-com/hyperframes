@@ -6,26 +6,59 @@ import type { PatchOperation } from "../../utils/sourcePatcher";
 
 type Point = { x: number; y: number };
 
-const TERM = /^(-?\d*\.?\d+(?:e[-+]?\d+)?)(px|%)$/i;
+const TOKEN = /\s*(?:(\d*\.?\d+(?:e[-+]?\d+)?)(px|%)?|([a-z]+)\(|([-+*/(),]))/giy;
+const FUNCTIONS: Record<string, (args: number[]) => number> = {
+  "(": ([a = Number.NaN]) => a,
+  "calc(": ([a = Number.NaN]) => a,
+  "min(": (args) => Math.min(...args),
+  "max(": (args) => Math.max(...args),
+  "clamp(": ([lo = Number.NaN, v = Number.NaN, hi = Number.NaN]) => Math.max(lo, Math.min(v, hi)),
+};
 
-const SIGN: Record<string, number> = { "+": 1, "-": -1 };
-
-function termPx(term: string | undefined, side: number): number | null {
-  const match = TERM.exec(term ?? "");
-  return match ? Number(match[1]) * (match[2] === "%" ? side / 100 : 1) : null;
+/** Lengths become px against `side`; functions keep their "(" so they can't pass for an operator. */
+function tokenize(value: string, side: number): (number | string)[] {
+  const tokens: (number | string)[] = [];
+  const end = value.trimEnd().length;
+  TOKEN.lastIndex = 0;
+  for (let m = TOKEN.exec(value); m; m = TOKEN.lastIndex < end ? TOKEN.exec(value) : null) {
+    if (m[1]) tokens.push(Number(m[1]) * (m[2] === "%" ? side / 100 : 1));
+    else tokens.push(m[3] ? `${m[3].toLowerCase()}(` : (m[4] ?? ""));
+  }
+  return TOKEN.lastIndex < end ? [] : tokens;
 }
 
-/** px, %, or Chrome's computed `calc(P% + Lpx)`, against the border-box side; null for min()/max()/clamp(). */
-function resolveLength(value: string, side: number): number | null {
-  const parts = (/^calc\((.*)\)$/.exec(value)?.[1] ?? value).split(" ");
-  if (parts.length % 2 === 0) return null;
-  let total = termPx(parts[0], side);
-  for (let i = 1; i < parts.length && total !== null; i += 2) {
-    const term = termPx(parts[i + 1], side);
-    const sign = SIGN[parts[i] ?? ""];
-    total = term === null || !sign ? null : total + sign * term;
+/** Chrome's computed length (px, %, calc/min/max/clamp, + - * /) in px against `side`; NaN otherwise. */
+function evaluateLength(value: string, side: number): number {
+  const tokens = tokenize(value, side);
+  let i = 0;
+  const next = () => tokens[i++];
+  const take = (...ops: string[]) => ops.includes(tokens[i] as string) && next();
+  function sum(): number {
+    let total = product();
+    for (let op = take("+", "-"); op; op = take("+", "-"))
+      total += (op === "+" ? 1 : -1) * product();
+    return total;
   }
-  return total;
+  function product(): number {
+    let total = unary();
+    for (let op = take("*", "/"); op; op = take("*", "/"))
+      total = op === "*" ? total * unary() : total / unary();
+    return total;
+  }
+  function unary(): number {
+    return take("-") ? -unary() : atom();
+  }
+  function atom(): number {
+    const token = next();
+    if (typeof token === "number") return token;
+    const fn = FUNCTIONS[token ?? ""];
+    if (!fn) return Number.NaN;
+    const args = [sum()];
+    while (take(",")) args.push(sum());
+    return take(")") ? fn(args) : Number.NaN;
+  }
+  const total = tokens.length ? sum() : Number.NaN;
+  return i === tokens.length ? total : Number.NaN;
 }
 
 function borderBox(
@@ -40,30 +73,20 @@ function borderBox(
   return n(size) + (cs.boxSizing === "border-box" ? 0 : pad);
 }
 
-// Chrome resolves min()/max()/clamp() inside a transform function to a matrix; an unrendered box has none.
-function resolveInTransform(el: HTMLElement, x: string, y: string): Point {
-  const style = el.style;
-  const saved = [style.getPropertyValue("transform"), style.getPropertyPriority("transform")];
-  style.setProperty("transform", `translate(${x}, ${y})`, "important");
-  try {
-    const resolved = el.ownerDocument.defaultView?.getComputedStyle(el).transform ?? "";
-    const matrix = new DOMMatrixReadOnly(resolved.startsWith("matrix") ? resolved : undefined);
-    return { x: matrix.m41, y: matrix.m42 };
-  } finally {
-    style.setProperty("transform", saved[0] ?? "", saved[1] ?? "");
-  }
-}
-
 /** The element's CSS `translate` in px, as it renders now. */
 // ponytail: a 3-value translate loses its z on the next move; keep z when a fixture needs it.
 export function readTranslatePx(el: HTMLElement): Point {
   const cs = el.ownerDocument.defaultView?.getComputedStyle(el);
-  const value = el.style.getPropertyValue("translate") || cs?.translate || "none";
+  // Computed first: Chrome resolves em, vw and var() there and leaves only % to work out.
+  const value = cs?.translate || el.style.getPropertyValue("translate") || "none";
   if (value === "none") return { x: 0, y: 0 };
   const [x = "0px", y = "0px"] = splitTopLevelWhitespace(value);
-  const px = cs && resolveLength(x, borderBox(cs, "width", "left", "right"));
-  const py = cs && resolveLength(y, borderBox(cs, "height", "top", "bottom"));
-  return px != null && py != null ? { x: px, y: py } : resolveInTransform(el, x, y);
+  const side = (size: "width" | "height", a: string, b: string) =>
+    cs ? borderBox(cs, size, a, b) : 0;
+  return {
+    x: evaluateLength(x, side("width", "left", "right")),
+    y: evaluateLength(y, side("height", "top", "bottom")),
+  };
 }
 
 /** Plain px only: GSAP's CSSPlugin splits `translate` on spaces and drops a calc(). */

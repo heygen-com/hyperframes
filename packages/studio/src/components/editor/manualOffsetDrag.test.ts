@@ -596,6 +596,20 @@ describe("a move of an element GSAP does not position", () => {
     return { window, element, gsapCalls, member };
   }
 
+  it("refuses a translate it can't read instead of guessing, and leaves the element alone", () => {
+    const { element } = plainBox();
+    element.style.setProperty("translate", "abs(-10px) 0px");
+    const result = createManualOffsetDragMember({
+      key: "box",
+      selection: { element } as never,
+      element,
+      rect: { left: 10, top: 20, width: 100, height: 50, editScaleX: 1, editScaleY: 1 },
+      gesture: "drag",
+    });
+    expect(result.ok).toBe(false);
+    expect(element.style.getPropertyValue("translate")).toBe("abs(-10px) 0px");
+  });
+
   it("drafts and drops the element's own translate in plain px, never touching GSAP", () => {
     const { element, gsapCalls, member } = plainBox({ gsapLoaded: true });
     const m = member();

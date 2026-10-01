@@ -28,17 +28,20 @@ describe("readTranslatePx", () => {
   });
 
   it.each([
-    "min(10px, 5%) 0px",
-    "calc(2 * 10px) 0px",
-    "calc(10px +) 0px",
-    "clamp(0px, 10%, 30px) 5px",
-  ])("hands %s to Chrome's own resolution and puts the element's style back", (translate) => {
-    const element = box(`translate: ${translate}; transform: rotate(5deg)`);
-    const before = element.getAttribute("style");
-    const read = readTranslatePx(element);
-    expect(Number.isFinite(read.x) && Number.isFinite(read.y)).toBe(true);
-    expect(element.getAttribute("style")).toBe(before);
+    ["min(10px, 5%) max(-20%, -40px)", { x: 10, y: -32 }],
+    ["clamp(0px, 10%, 30px) 5px", { x: 24, y: 5 }],
+    ["calc(min(50%, 100px) * 2 - (10px + 5%)) calc(-1 * clamp(10%, 1px, 20%))", { x: 178, y: -16 }],
+    ["calc(2 * 10px) calc(80px / 4)", { x: 20, y: 20 }],
+  ])("works out %s by arithmetic", (translate, want) => {
+    expect(readTranslatePx(box(`translate: ${translate}`))).toEqual(want);
   });
+
+  it.each(["calc(10px +) 0px", "abs(-10px) 0px", "10em 0px", "min(10px 5%) 0px"])(
+    "reads %s as NaN, never as a guess",
+    (translate) => {
+      expect(readTranslatePx(box(`translate: ${translate}`)).x).toBeNaN();
+    },
+  );
 
   it("counts padding and border in the box a percent resolves against", () => {
     const element = box(
@@ -47,16 +50,19 @@ describe("readTranslatePx", () => {
     expect(readTranslatePx(element)).toEqual({ x: 135, y: 95 });
   });
 
-  it("writes nothing to the element it reads", () => {
-    const element = box("translate: -50% -50%");
-    const before = element.getAttribute("style");
-    const writes: MutationRecord[] = [];
-    const observer = new MutationObserver((records) => writes.push(...records));
-    observer.observe(element, { attributes: true });
-    readTranslatePx(element);
-    writes.push(...observer.takeRecords());
-    observer.disconnect();
-    expect(writes).toEqual([]);
-    expect(element.getAttribute("style")).toBe(before);
-  });
+  it.each(["-50% -50%", "min(10px, 5%) clamp(0px, 10%, 30px)"])(
+    "writes nothing to the element while it reads %s",
+    (translate) => {
+      const element = box(`translate: ${translate}; transform: rotate(5deg)`);
+      const before = element.getAttribute("style");
+      const writes: MutationRecord[] = [];
+      const observer = new MutationObserver((records) => writes.push(...records));
+      observer.observe(element, { attributes: true });
+      readTranslatePx(element);
+      writes.push(...observer.takeRecords());
+      observer.disconnect();
+      expect(writes).toEqual([]);
+      expect(element.getAttribute("style")).toBe(before);
+    },
+  );
 });

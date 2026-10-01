@@ -345,6 +345,8 @@ export function createManualOffsetDragMember(input: {
   const initialOffset = plainTranslate
     ? readTranslatePx(input.element)
     : readAppliedStudioPathOffset(input.element);
+  if (!finitePoint(initialOffset))
+    return { ok: false, reason: "Unreadable translate.", selection: input.selection };
   const win = input.element.ownerDocument.defaultView as
     | (Window & {
         gsap?: { getProperty?: (el: Element, prop: string) => number };
@@ -382,10 +384,8 @@ export function createManualOffsetDragMember(input: {
     plainTranslate,
   });
   if (!measured.ok) {
-    // Fallback: when GSAP transforms interfere with probe measurement, use
-    // the preview scale as an approximation. The commit path reads the actual
-    // GSAP position from the iframe runtime, so visual imprecision during
-    // drag is acceptable — the final committed position is always exact.
+    // GSAP transforms can defeat the probe: approximate with the preview scale. The commit
+    // reads GSAP's real position, so only the drag preview is imprecise.
     const scaleX = input.rect.editScaleX || 1;
     const scaleY = input.rect.editScaleY || 1;
     const w = readTransformWDivisor(input.element);
