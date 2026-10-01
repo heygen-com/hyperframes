@@ -9,7 +9,7 @@ import { translatePatch } from "../components/editor/plainTranslate";
 import { gsapRendersTransform } from "./gsapRuntimeKeyframes";
 
 const GSAP_TOOK_OVER =
-  "The animation took over this layer's position during the move, so it was not saved. Reload the preview.";
+  "The animation took over this layer's position during the move, so it was not saved.";
 
 const ELEMENT_OFFSET_REFUSED: Record<ElementOffsetRefusal, string> = {
   anchored: "This layer is anchored from its right or bottom edge. Move it in the Code tab.",
@@ -26,10 +26,14 @@ export interface ElementOffsetStagerDeps {
   readOnlyPreview?: boolean;
 }
 
+function gsapOf(el: HTMLElement): { set: (t: Element, v: object) => void } | undefined {
+  return (el.ownerDocument.defaultView as { gsap?: { set: (t: Element, v: object) => void } })
+    ?.gsap;
+}
+
 /** The drag draft moved GSAP's x/y; left/top carries the move now, so put them back. */
 function settleGsapDraftAtGestureStart(el: HTMLElement): void {
-  const gsap = (el.ownerDocument.defaultView as { gsap?: { set: (t: Element, v: object) => void } })
-    ?.gsap;
+  const gsap = gsapOf(el);
   const x = Number.parseFloat(el.getAttribute("data-hf-drag-gsap-base-x") ?? "");
   const y = Number.parseFloat(el.getAttribute("data-hf-drag-gsap-base-y") ?? "");
   if (gsap && Number.isFinite(x) && Number.isFinite(y)) gsap.set(el, { x, y });
@@ -74,6 +78,7 @@ export function stageElementOffset(
   if (readOnlyPreview) return { save: () => Promise.resolve(), rollback: () => undefined };
   if (plainTranslate) {
     if (gsapRendersTransform(el)) {
+      gsapOf(el)?.set(el, { clearProps: "transform" });
       showToast(GSAP_TOOK_OVER, "error");
       throw new Error(GSAP_TOOK_OVER);
     }
