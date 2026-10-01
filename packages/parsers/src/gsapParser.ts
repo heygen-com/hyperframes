@@ -49,7 +49,11 @@ export {
   classifyPropertyGroup,
   classifyTweenPropertyGroup,
 } from "./gsapConstants";
-import { classifyPropertyGroup, classifyTweenPropertyGroup } from "./gsapConstants";
+import {
+  classifyPropertyGroup,
+  classifyTweenPropertyGroup,
+  isXYPositionWrite,
+} from "./gsapConstants";
 import type { PropertyGroupName } from "./gsapConstants";
 import { clipTweenMatcher, hasExplicitTime } from "./clipTweens";
 import {
@@ -1790,8 +1794,8 @@ function removeCallFromAst(call: TweenCallInfo): void {
 /**
  * Recast twin of {@link dedupePositionWritesInScript} (acorn). Enforce "exactly
  * one position write per element": keep `keepId` (or the LAST position write in
- * source order if stale), remove every OTHER pure-position write
- * (`propertyGroup === "position"` — tl.to/from/fromTo flat-or-keyframed, tl.set,
+ * source order if stale), remove every OTHER x/y position write
+ * (`isXYPositionWrite` — tl.to/from/fromTo flat-or-keyframed, tl.set,
  * standalone gsap.set, incl. degenerate duration:0 tweens). Non-position writes
  * for the selector are left untouched.
  */
@@ -1807,7 +1811,7 @@ export function dedupePositionWritesInScript(
     return script;
   }
   const posWrites = parsed.located.filter(
-    (l) => l.animation.targetSelector === selector && l.animation.propertyGroup === "position",
+    (l) => l.animation.targetSelector === selector && isXYPositionWrite(l.animation),
   );
   if (posWrites.length <= 1) return script;
   const keeper = posWrites.find((l) => l.id === keepId) ?? posWrites[posWrites.length - 1]!;

@@ -198,6 +198,17 @@ describe("parity: dedupePositionWritesInScript (recast vs acorn)", () => {
     expect(modelOf(acornOut)).toEqual(modelOf(recastOut));
   });
 
+  it("keeps an xPercent/yPercent centring set beside an x/y tween in both writers", () => {
+    const centred = `
+      const tl = gsap.timeline({ paused: true });
+      gsap.set("#box", { xPercent: -50, yPercent: -50 });
+      tl.to("#box", { x: 120, y: 60, duration: 4, ease: "none" }, 0);
+    `;
+    const keepId = parseGsapScriptAcorn(centred).animations.find((a) => a.method === "to")!.id;
+    expect(dedupePosAcorn(centred, "#box", keepId)).toBe(centred);
+    expect(dedupePosRecast(centred, "#box", keepId)).toBe(centred);
+  });
+
   it("no-op when 0 or 1 position writes — both writers", () => {
     const single = `
       const tl = gsap.timeline({ paused: true });

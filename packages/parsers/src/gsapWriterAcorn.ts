@@ -24,7 +24,7 @@ import {
   type ParsedGsapAcornForWrite,
   type TweenCallInfo,
 } from "./gsapParserAcorn.js";
-import { classifyPropertyGroup } from "./gsapConstants.js";
+import { classifyPropertyGroup, isXYPositionWrite } from "./gsapConstants.js";
 import type { PropertyGroupName } from "./gsapConstants.js";
 import {
   findObjectArrayKeyframeIndex,
@@ -686,7 +686,7 @@ export function removeAnimationFromScript(script: string, animationId: string): 
  *
  * Keeps `keepId` (the write the commit just edited); falls back to the LAST
  * position write in source order (the runtime-effective one) if `keepId` is stale.
- * Removes every OTHER pure-position write (`propertyGroup === "position"`, which
+ * Removes every OTHER x/y position write (`isXYPositionWrite`, which
  * covers tl.to/from/fromTo flat-or-keyframed, tl.set, and standalone gsap.set,
  * including degenerate duration:0 tweens). Non-position writes for the same
  * selector (rotation / opacity / size / mixed) are left untouched.
@@ -699,7 +699,7 @@ export function dedupePositionWritesInScript(
   const parsed = parseGsapScriptAcornForWrite(script);
   if (!parsed) return script;
   const posWrites = parsed.located.filter(
-    (l) => l.animation.targetSelector === selector && l.animation.propertyGroup === "position",
+    (l) => l.animation.targetSelector === selector && isXYPositionWrite(l.animation),
   );
   if (posWrites.length <= 1) return script;
   const keeper = posWrites.find((l) => l.id === keepId) ?? posWrites[posWrites.length - 1]!;

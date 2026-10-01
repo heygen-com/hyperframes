@@ -567,3 +567,58 @@ describe("tryGsapDragIntercept — motion paths", () => {
     );
   });
 });
+
+describe("tryGsapDragIntercept — position self-heal", () => {
+  const xyTween = {
+    ...stalePositionAnim,
+    id: "#puck-b-to-0-position",
+    position: 0,
+    resolvedStart: 0,
+  };
+  const centringSet = {
+    id: "#puck-b-set-0-position",
+    targetSelector: "#puck-b",
+    propertyGroup: "position",
+    method: "set",
+    properties: { xPercent: -50, yPercent: -50 },
+    position: 0,
+    duration: 0,
+  } as unknown as GsapAnimation;
+  const xySet = { ...centringSet, properties: { x: 10, y: 20 } } as GsapAnimation;
+  const liveTween = {
+    targets: () => [{ id: "puck-b" }],
+    vars: { x: -180, y: -60, duration: 2 },
+    duration: () => 2,
+    startTime: () => 0,
+  };
+
+  async function drag(second: GsapAnimation) {
+    usePlayerStore.setState({ currentTime: 1 });
+    const animations = [second, xyTween];
+    const commitMutation = vi.fn();
+    await tryGsapDragIntercept(
+      selection,
+      { x: -50, y: 30 },
+      animations,
+      fakeIframe("puck-b", [liveTween]),
+      commitMutation,
+      async () => animations,
+    );
+    return commitMutation.mock.calls.map(([, mutation]) => mutation);
+  }
+
+  it("keeps an xPercent/yPercent centring set and moves the x/y tween", async () => {
+    const mutations = await drag(centringSet);
+    expect(mutations.map((m) => m.type)).not.toContain("consolidate-position-writes");
+    expect(mutations.length).toBeGreaterThan(0);
+    expect(mutations.every((m) => m.animationId === xyTween.id)).toBe(true);
+  });
+
+  it("consolidates a second x/y write", async () => {
+    const mutations = await drag(xySet);
+    expect(mutations[0]).toMatchObject({
+      type: "consolidate-position-writes",
+      keepAnimationId: xyTween.id,
+    });
+  });
+});
