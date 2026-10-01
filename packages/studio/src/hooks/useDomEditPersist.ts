@@ -11,6 +11,7 @@ import {
 } from "./domEditPersistFailure";
 import { formatUnsafeFieldList, postPatchElement } from "./useDomEditCommitsHelpers";
 import { importedFontFaceCssFor } from "../utils/studioFontHelpers";
+import { countStudioManualEditSave } from "../components/editor/manualEditsDom";
 import type { CutoverResult } from "../utils/sdkCutover";
 import { reseekPreviewRuntime } from "./timelineTrackVisibility";
 import { serializeStudioFileMutations } from "../utils/studioFileMutationCoordinator";
@@ -206,9 +207,12 @@ export function useDomEditPersist({
     (selection, operations, options) => {
       const expectedProjectId = projectIdRef.current;
       if (!expectedProjectId) return Promise.reject(new Error("No active project"));
-      return queueDomEditSave(() =>
-        performPersistDomEditOperations(selection, operations, options, expectedProjectId),
-      );
+      // Counted, so a preview reload requested before this save settles is not shown over it.
+      const save = () =>
+        queueDomEditSave(() =>
+          performPersistDomEditOperations(selection, operations, options, expectedProjectId),
+        );
+      return selection.element ? countStudioManualEditSave(selection.element, save) : save();
     },
     [performPersistDomEditOperations, projectIdRef, queueDomEditSave],
   );
