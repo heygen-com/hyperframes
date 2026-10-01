@@ -81,6 +81,7 @@ interface ProjectSignatureCacheEntry {
 }
 
 const projectSignatureCache = new Map<string, ProjectSignatureCacheEntry>();
+const COARSEST_FILE_TIME_TICK_MS = 2000;
 
 function isPathWithin(parentDir: string, childPath: string): boolean {
   const childRelativePath = relative(parentDir, childPath);
@@ -215,13 +216,6 @@ export async function resolveProjectAndSignature(
   return { project, signature: resolveProjectSignature(adapter, project.dir) };
 }
 
-export function forgetProjectSignature(projectDir: string): void {
-  const dir = resolve(projectDir);
-  for (const key of projectSignatureCache.keys()) {
-    if (key === dir || key.startsWith(`${dir}\0`)) projectSignatureCache.delete(key);
-  }
-}
-
 /**
  * Creates a stable preview cache-busting signature for project source plus Studio manifests.
  * `excluding` (project-relative paths) leaves those files out.
@@ -231,6 +225,7 @@ export function createProjectSignature(
   excluding: ReadonlySet<string> = new Set(),
 ): string {
   const normalizedProjectDir = resolve(projectDir);
+  const signedAt = Date.now();
   const collected = collectProjectFiles(normalizedProjectDir);
   const files = collected.filter(
     (entry) => !excluding.has(relative(normalizedProjectDir, entry.file).split(sep).join("/")),
@@ -265,6 +260,9 @@ export function createProjectSignature(
     hash.update("\0");
   }
   const signature = hash.digest("hex").slice(0, 24);
-  projectSignatureCache.set(cacheKey, { fingerprint, signature });
+  const settledATickBeforeSigning = files.every(
+    (entry) => Math.max(entry.mtimeMs, entry.ctimeMs) < signedAt - COARSEST_FILE_TIME_TICK_MS,
+  );
+  if (settledATickBeforeSigning) projectSignatureCache.set(cacheKey, { fingerprint, signature });
   return signature;
 }
