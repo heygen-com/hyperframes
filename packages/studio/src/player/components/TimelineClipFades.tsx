@@ -21,6 +21,7 @@ type FadeEdge = "in" | "out";
 
 const HANDLE_SIZE = 10;
 const HANDLE_HIT = 24;
+const HANDLE_Z_ABOVE_CLIP_CONTENT = 30;
 const SUPPRESS_CLIP_NATIVE_TITLE = "";
 /** Pixels of pointer travel before a press on the handle counts as a drag. */
 const DRAG_THRESHOLD_PX = 2;
@@ -163,17 +164,18 @@ export function TimelineClipFades({ el, pps, widthPx, showHandles }: TimelineCli
   const handlesVisible = showHandles || dragging !== null;
   if (!showIn && !showOut && !handlesVisible) return null;
 
-  const handleStyle = (leftPx: number): CSSProperties => ({
+  const hitWidth = Math.min(HANDLE_HIT, widthPx / 2);
+  const handleStyle = (edge: FadeEdge): CSSProperties => ({
     position: "absolute",
     top: -(HANDLE_HIT - HANDLE_SIZE) / 2 + 1,
-    left: leftPx - HANDLE_HIT / 2,
-    width: HANDLE_HIT,
+    left: edge === "in" ? 0 : widthPx - hitWidth,
+    width: hitWidth,
     height: HANDLE_HIT,
     display: "flex",
     alignItems: "center",
     justifyContent: "center",
     cursor: "ew-resize",
-    zIndex: 6,
+    zIndex: HANDLE_Z_ABOVE_CLIP_CONTENT,
     opacity: handlesVisible ? 1 : 0,
     pointerEvents: handlesVisible && canEdit ? "auto" : "none",
     touchAction: "none",
@@ -193,7 +195,8 @@ export function TimelineClipFades({ el, pps, widthPx, showHandles }: TimelineCli
             height: "100%",
             pointerEvents: "none",
             zIndex: 5,
-            overflow: "visible",
+            overflow: "hidden",
+            borderRadius: "inherit",
           }}
           viewBox={`0 0 ${Math.max(widthPx, 1)} 100`}
           preserveAspectRatio="none"
@@ -247,7 +250,7 @@ export function TimelineClipFades({ el, pps, widthPx, showHandles }: TimelineCli
             direction="in"
             value={fades.fadeIn}
             max={Math.max(0, el.duration - fades.fadeOut)}
-            style={handleStyle(inPx)}
+            style={handleStyle("in")}
             dragging={dragging === "in"}
             onPointerDown={onHandlePointerDown("in")}
             onPointerMove={onHandlePointerMove}
@@ -259,7 +262,7 @@ export function TimelineClipFades({ el, pps, widthPx, showHandles }: TimelineCli
             direction="out"
             value={fades.fadeOut}
             max={Math.max(0, el.duration - fades.fadeIn)}
-            style={handleStyle(widthPx - outPx)}
+            style={handleStyle("out")}
             dragging={dragging === "out"}
             onPointerDown={onHandlePointerDown("out")}
             onPointerMove={onHandlePointerMove}
@@ -298,7 +301,7 @@ function FadeHandle({
 }) {
   const label = direction === "in" ? "Fade in" : "Fade out";
   return (
-    <Tooltip label={`${label} ${value.toFixed(1)} s`}>
+    <Tooltip label={`${label} ${formatFadeSeconds(value)} s`}>
       <div
         role="slider"
         tabIndex={-1}

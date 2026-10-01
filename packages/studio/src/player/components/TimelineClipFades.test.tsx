@@ -1,7 +1,7 @@
 // @vitest-environment happy-dom
 
 import React, { act } from "react";
-import { createRoot } from "react-dom/client";
+import { createRoot, type Root } from "react-dom/client";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { TimelineElement } from "../store/playerStore";
 import { TimelineClipFades } from "./TimelineClipFades";
@@ -9,7 +9,10 @@ import { TimelineEditProvider } from "../../contexts/TimelineEditContext";
 
 (globalThis as unknown as { IS_REACT_ACT_ENVIRONMENT: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
+const mounted: Root[] = [];
+
 afterEach(() => {
+  act(() => mounted.splice(0).forEach((root) => root.unmount()));
   document.body.innerHTML = "";
 });
 
@@ -31,6 +34,7 @@ function render(
   const host = document.createElement("div");
   document.body.append(host);
   const root = createRoot(host);
+  mounted.push(root);
   const onSetElementAttributeLive = vi.fn();
   const onSetElementAttributeQuiet = vi.fn().mockResolvedValue(undefined);
   const onRevertElementAttributeLive = vi.fn();
@@ -94,6 +98,14 @@ describe("TimelineClipFades", () => {
     expect(fadeOut?.getAttribute("points")).toBe("800,0 1000,0 1000,100");
     // Outside a provider there is nothing to write to, so no handles either.
     expect(host.querySelector('[data-testid="clip-fade-handle-in"]')).toBeNull();
+    act(() => root.unmount());
+  });
+
+  it("clips the ramps to the clip's rounded corners", () => {
+    const { host, root } = render(clip, { showHandles: false, provide: false });
+    const ramps = host.querySelector<SVGElement>('[data-testid="clip-fade-ramps"]');
+    expect(ramps?.style.overflow).toBe("hidden");
+    expect(ramps?.style.borderRadius).toBe("inherit");
     act(() => root.unmount());
   });
 
@@ -201,12 +213,12 @@ describe("TimelineClipFades", () => {
   });
 
   it.each([
-    ["in", "Fade in 0.3 s"],
+    ["in", "Fade in 0.25 s"],
     ["out", "Fade out 0.4 s"],
   ])(
     "gives the fade-%s handle a 24 px target and a tooltip naming its length",
     async (edge, text) => {
-      const { host, root } = render({ ...clip, fadeIn: 0.3, fadeOut: 0.4 });
+      const { host, root } = render({ ...clip, fadeIn: 0.25, fadeOut: 0.4 });
       const handle = host.querySelector<HTMLElement>(`[data-testid="clip-fade-handle-${edge}"]`);
       if (!handle) throw new Error(`expected a fade-${edge} handle`);
       expect(parseFloat(handle.style.width)).toBeGreaterThanOrEqual(24);
@@ -220,6 +232,45 @@ describe("TimelineClipFades", () => {
       act(() => root.unmount());
     },
   );
+
+  it.each([0.3, 3])("pins the handles to the top corners for a %s s fade-in", (fadeIn) => {
+    const { host } = render({ ...clip, fadeIn, fadeOut: 0.4 });
+    const inHandle = host.querySelector<HTMLElement>('[data-testid="clip-fade-handle-in"]');
+    const fadeOut = host.querySelector<HTMLElement>('[data-testid="clip-fade-handle-out"]');
+    expect(inHandle?.style.left).toBe("0px");
+    expect(fadeOut?.style.left).toBe(`${1000 - 24}px`);
+  });
+
+  it("lengthens a fade by the pointer's inward travel from wherever the press lands", () => {
+    const { host, onSetElementAttributeLive } = render(clip);
+    const fadeIn = host.querySelector<HTMLElement>('[data-testid="clip-fade-handle-in"]');
+    const fadeOut = host.querySelector<HTMLElement>('[data-testid="clip-fade-handle-out"]');
+    if (!fadeIn || !fadeOut) throw new Error("expected both handles");
+    armCapture(fadeIn);
+    armCapture(fadeOut);
+    act(() => fadeIn.dispatchEvent(pointer("pointerdown", 12)));
+    act(() => fadeIn.dispatchEvent(pointer("pointermove", 162)));
+    expect(onSetElementAttributeLive).toHaveBeenLastCalledWith(clip, "data-fade-in", "2.5");
+    act(() => fadeIn.dispatchEvent(pointer("pointerup", 162)));
+    act(() => fadeOut.dispatchEvent(pointer("pointerdown", 988, 2)));
+    act(() => fadeOut.dispatchEvent(pointer("pointermove", 888, 2)));
+    expect(onSetElementAttributeLive).toHaveBeenLastCalledWith(clip, "data-fade-out", "3");
+  });
+
+  it("paints the handles above the clip's waveform and thumbnail layers", () => {
+    const { host } = render(clip);
+    const handle = host.querySelector<HTMLElement>('[data-testid="clip-fade-handle-in"]');
+    expect(Number(handle?.style.zIndex)).toBeGreaterThan(10);
+  });
+
+  it("splits a clip narrower than two targets between the handles", () => {
+    const { host } = render({ ...clip, duration: 0.3, fadeIn: 0.1, fadeOut: 0.1 });
+    const fadeIn = host.querySelector<HTMLElement>('[data-testid="clip-fade-handle-in"]');
+    const fadeOut = host.querySelector<HTMLElement>('[data-testid="clip-fade-handle-out"]');
+    expect([fadeIn?.style.left, fadeIn?.style.width]).toEqual(["0px", "15px"]);
+    expect([fadeOut?.style.left, fadeOut?.style.width]).toEqual(["15px", "15px"]);
+    expect((fadeIn?.firstElementChild as HTMLElement | null)?.style.width).toBe("10px");
+  });
 
   it("does not let a press on the dot start the clip's own move gesture", () => {
     const outer = vi.fn();
