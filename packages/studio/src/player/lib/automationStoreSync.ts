@@ -16,12 +16,18 @@
 
 import { HF_AUDIO_AUTOMATION_ATTR } from "@hyperframes/core/audio-automation";
 import { HF_AUDIO_FX_ATTR } from "@hyperframes/core/audio-fx";
+import {
+  HF_AUDIO_FADE_IN_ATTR,
+  HF_AUDIO_FADE_OUT_ATTR,
+  readElementFades,
+  readFadeSeconds,
+} from "@hyperframes/core/audio-fade";
 import { usePlayerStore, type TimelineElement } from "../store/playerStore";
 import { groupInfoFor } from "./timelineGroupInfo";
 import { getTimelineElementIdentity, previewElementFinder } from "./timelineElementHelpers";
 
 /**
- * Re-read every element's automation and FX-chain attributes from the preview
+ * Re-read every element's automation, FX-chain and fade attributes from the preview
  * document, for a change that reached the DOM without going through this store.
  *
  * That is undo and redo. A soft restore patches the reverted attributes onto the
@@ -46,9 +52,12 @@ import { getTimelineElementIdentity, previewElementFinder } from "./timelineElem
  */
 function syncedFields(doc: Document, element: TimelineElement, node: Element) {
   const group = element.audioGroup ? groupInfoFor(doc, element.audioGroup) : null;
+  const fades = readElementFades(node);
   return {
     automation: node.getAttribute(HF_AUDIO_AUTOMATION_ATTR) ?? undefined,
     fxChain: node.getAttribute(HF_AUDIO_FX_ATTR) ?? undefined,
+    fadeIn: storedFade(fades.fadeIn),
+    fadeOut: storedFade(fades.fadeOut),
     audioGroupAutomation: group?.automation,
     audioGroupFxChain: group?.fxChain,
   };
@@ -74,27 +83,33 @@ export function syncStoredAutomationFromPreview(doc: Document | null | undefined
   });
 }
 
-const STORED_FIELD: Record<string, "automation" | "fxChain"> = {
-  [HF_AUDIO_AUTOMATION_ATTR]: "automation",
-  [HF_AUDIO_FX_ATTR]: "fxChain",
+/** Discovery's rule (applyFadeMetadataFromElement): a fade of 0 is no fade. */
+const storedFade = (seconds: number) => (seconds > 0 ? seconds : undefined);
+
+const STORED_FIELD: Record<string, (value: string | null) => Partial<TimelineElement>> = {
+  [HF_AUDIO_AUTOMATION_ATTR]: (value) => ({ automation: value ?? undefined }),
+  [HF_AUDIO_FX_ATTR]: (value) => ({ fxChain: value ?? undefined }),
+  [HF_AUDIO_FADE_IN_ATTR]: (value) => ({ fadeIn: storedFade(readFadeSeconds(value)) }),
+  [HF_AUDIO_FADE_OUT_ATTR]: (value) => ({ fadeOut: storedFade(readFadeSeconds(value)) }),
 };
 
-/** Record a saved automation or FX-chain value on one element's stored copy. */
+/** Record a saved automation, FX-chain or fade value on one element's stored copy. */
 export function syncStoredElementAttribute(
   target: TimelineElement,
   attr: string,
   value: string | null,
 ): void {
-  const field = STORED_FIELD[attr];
-  if (!field) return;
+  const fields = STORED_FIELD[attr]?.(value);
+  if (!fields) return;
   const key = getTimelineElementIdentity(target);
-  const next = value ?? undefined;
+  const same = (element: TimelineElement) =>
+    (Object.keys(fields) as (keyof TimelineElement)[]).every((k) => element[k] === fields[k]);
   usePlayerStore.setState((state) => {
     let changed = false;
     const elements = state.elements.map((element) => {
-      if (getTimelineElementIdentity(element) !== key || element[field] === next) return element;
+      if (getTimelineElementIdentity(element) !== key || same(element)) return element;
       changed = true;
-      return { ...element, [field]: next };
+      return { ...element, ...fields };
     });
     return changed ? { elements } : {};
   });

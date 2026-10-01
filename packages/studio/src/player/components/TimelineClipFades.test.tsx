@@ -525,6 +525,32 @@ describe("TimelineClipFades", () => {
     expect(onSetElementAttributeQuiet).not.toHaveBeenCalled();
   });
 
+  it("keeps a pending save's draft through a click that never moves", () => {
+    const { host, onSetElementAttributeQuiet } = render({ ...clip, fadeIn: undefined });
+    onSetElementAttributeQuiet.mockReturnValue(new Promise(() => {}));
+    const handle = armedHandle(host, "in");
+    const doubleClick = () => {
+      press(handle, [12]);
+      act(() => handle.dispatchEvent(pointer("pointerup", 12)));
+      act(() => handle.dispatchEvent(new MouseEvent("dblclick", { bubbles: true })));
+    };
+    doubleClick();
+    doubleClick();
+    // Add 0.5 s, then take it away again, though the first save never landed.
+    expect(onSetElementAttributeQuiet.mock.calls.map(([, , value]) => value)).toEqual([
+      "0.5",
+      null,
+    ]);
+  });
+
+  it("shrinks a single fade longer than its clip from the clip's length, as main does", () => {
+    const long = { ...clip, duration: 3, fadeIn: 5, fadeOut: undefined };
+    const { host, onSetElementAttributeLive } = render(long);
+    const handle = armedHandle(host, "in");
+    press(handle, [200], [195]);
+    expect(onSetElementAttributeLive).toHaveBeenLastCalledWith(long, "data-fade-in", "3");
+  });
+
   it("gives a fade that fills the clip the only handle at its end", () => {
     const { host } = render({ ...clip, fadeIn: 10, fadeOut: undefined });
     // The fade-out can neither grow nor shrink, so it does not sit on top of the fade-in's tab.

@@ -166,9 +166,11 @@ export function TimelineClipFades({
   const limitFor = (edge: FadeEdge) =>
     Math.max(0, el.duration - currentSeconds(edge === "in" ? "out" : "in"));
 
-  // Like the keys, a drag never pulls a fade below where it started when the pair overruns the clip.
+  // When the other fade makes the pair overrun the clip, neither a key nor a drag pulls this one lower.
+  const stepLimit = (current: number, other: number) =>
+    Math.max(0, el.duration - other, other > 0 ? current : 0);
   const dragLimit = (g: { otherSeconds: number; originSeconds: number }) =>
-    Math.max(0, el.duration - g.otherSeconds, g.originSeconds);
+    stepLimit(g.originSeconds, g.otherSeconds);
 
   /** Moves the fade's end onto a playhead or clip edge within the timeline's snap radius. */
   const snapSeconds = (g: NonNullable<typeof gesture.current>, seconds: number) => {
@@ -252,10 +254,9 @@ export function TimelineClipFades({
 
   /** Puts the live document back where the file has it and drops the draft. */
   const revertGesture = (g: Gesture) => {
-    if (g.moved) {
-      onSetElementAttributeLive?.(el, attrFor(g.edge), attrText(g.originSeconds));
-      onRevertElementAttributeLive?.(el, attrFor(g.edge));
-    }
+    if (!g.moved) return;
+    onSetElementAttributeLive?.(el, attrFor(g.edge), attrText(g.originSeconds));
+    onRevertElementAttributeLive?.(el, attrFor(g.edge));
     setDraft(null);
   };
 
@@ -294,7 +295,7 @@ export function TimelineClipFades({
   const onHandleKeyDown = (edge: FadeEdge) => (e: KeyboardEvent<HTMLDivElement>) => {
     if (gesture.current || !canEdit) return;
     const current = currentSeconds(edge);
-    const limit = Math.max(limitFor(edge), current);
+    const limit = stepLimit(current, currentSeconds(edge === "in" ? "out" : "in"));
     const next = keyedFadeSeconds(e.key, e.shiftKey, current, limit);
     if (next === null) return;
     e.preventDefault();
