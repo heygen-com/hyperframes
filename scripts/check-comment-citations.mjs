@@ -165,7 +165,8 @@ function literalEnd(line, start, regex) {
 }
 
 /** stripStrings for C-like code, plus regex literals, so `/["'`]/` opens no string or template.
- *  A `/` after a value (`a / b`, `f() / 2`) is division. Stops at the first comment. */
+ *  A `/` after a value, `<`, `++` or `--` is division or a tag (`a / b`, `</p>`, `i++ / 2`).
+ *  Stops at the first comment. */
 function stripLiterals(line) {
   let out = "";
   for (let i = 0; i < line.length; ) {
@@ -173,8 +174,10 @@ function stripLiterals(line) {
     const comment = ch === "/" && (line[i + 1] === "/" || line[i + 1] === "*");
     if (comment) return out + line.slice(i);
     // ponytail: `return /re/` reads as division; add a keyword check if that ever hides a comment.
-    const regex = ch === "/" && !/[\w$)\]]/.test(out.trimEnd().slice(-1));
-    const end = regex || `"'\``.includes(ch) ? literalEnd(line, i, regex) : -1;
+    const regex = ch === "/" && !/(?:[\w$)\]<]|\+\+|--)$/.test(out.trimEnd());
+    let end = regex || `"'\``.includes(ch) ? literalEnd(line, i, regex) : -1;
+    // A regex never closes on a comment opener: this `/` is division, e.g. continued from the line above.
+    if (regex && (line[end] === "/" || line[end] === "*")) end = -1;
     if (end === -1) {
       out += ch;
       i++;

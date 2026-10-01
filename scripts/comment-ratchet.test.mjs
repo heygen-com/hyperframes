@@ -44,6 +44,25 @@ test("quotes inside a regex literal open no string, so later comments still coun
   assert.equal(measure(source, ".ts").comment, 4);
 });
 
+test("a JSX closing tag's slash opens no regex", () => {
+  assert.equal(measure("const a = <p>x</p>; // c\n", ".tsx").comment, 1);
+  assert.equal(measure("const a = <a>x</a>{/* note */};\n", ".tsx").comment, 1);
+  assert.equal(measure("const a = <div></div> {/* note */};\n", ".tsx").comment, 1);
+  assert.equal(measure("const a = <p>x</p>, b = 'a/b'; // it's\n", ".tsx").comment, 1);
+});
+
+test("a slash after ++ or -- is division", () => {
+  assert.equal(measure("const a = i++ / 2; // c\n", ".ts").comment, 1);
+  assert.equal(measure("const a = i-- / 2; // c\n", ".ts").comment, 1);
+  assert.equal(measure("const a = i++ / 2 + 'a/b'; // it's\n", ".ts").comment, 1);
+});
+
+test("a line opening with division continued from the line above keeps its comment", () => {
+  assert.equal(measure("const a = total\n  / 2; // c\n", ".ts").comment, 1);
+  assert.equal(measure("const a = total\n  / 2; /* c */\n", ".ts").comment, 1);
+  assert.equal(measure("const a = ok &&\n  /[\"'`]/.test(s); // c\n", ".ts").comment, 1);
+});
+
 // 14 physical lines: a bare opener, 12 of prose, a bare closer.
 test("a docblock is measured from its opener to its closer", () => {
   const body = Array.from({ length: 12 }, (_, i) => ` * line ${i + 1}`).join("\n");
