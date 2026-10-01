@@ -260,6 +260,7 @@ export const unsettledBy = (start, now) =>
   quadDistance(now.m.visible, start.m.visible) >= 0.01;
 
 /** Measures once the shown preview and the box have held still for STILL_MS; Studio updates both after a save. */
+// fallow-ignore-next-line complexity
 export async function settled(ctx, timeout = 15_000) {
   const deadline = Date.now() + timeout;
   const read = async () => ({
@@ -351,23 +352,25 @@ const declarations = (text = "") =>
       .filter((d) => d.length > 1)
       .map(([k, ...v]) => [k.trim(), v.join(":").trim()]),
   );
+const capture = (re, text = "") => re.exec(text)?.[1];
 const targetCss = (html) => ({
-  rule: declarations(/#target\s*\{([^}]*)\}/.exec(html)?.[1]),
-  inline: declarations(
-    /\bstyle="([^"]*)"/.exec(/<[^>]*\bid="target"[^>]*>/.exec(html)?.[0] ?? "")?.[1],
-  ),
+  rule: declarations(capture(/#target\s*\{([^}]*)\}/, html)),
+  inline: declarations(capture(/\bstyle="([^"]*)"/, capture(/(<[^>]*\bid="target"[^>]*>)/, html))),
 });
 
 /** Plain CSS the edit wrote for a property GSAP animates: it would override or fight the timeline. */
 export function strayCss(original, saved, props) {
-  const stray = [];
-  for (const file of Object.keys(original)) {
+  const changed = (a, b, file, where) =>
+    props
+      .filter((p) => a[p] !== b[p])
+      .map((p) => `${file} ${where} ${p}: ${a[p] ?? "-"} -> ${b[p] ?? "-"}`);
+  const stray = Object.keys(original).flatMap((file) => {
     const [a, b] = [targetCss(original[file]), targetCss(saved[file])];
-    for (const where of ["rule", "inline"])
-      for (const p of props)
-        if (a[where][p] !== b[where][p])
-          stray.push(`${file} ${where} ${p}: ${a[where][p] ?? "-"} -> ${b[where][p] ?? "-"}`);
-  }
+    return [
+      ...changed(a.rule, b.rule, file, "rule"),
+      ...changed(a.inline, b.inline, file, "inline"),
+    ];
+  });
   return { pass: stray.length === 0, stray };
 }
 
