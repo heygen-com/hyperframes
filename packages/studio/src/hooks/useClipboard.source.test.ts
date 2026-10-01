@@ -256,6 +256,17 @@ const SUB_SELECTION = {
   sourceFile: "compositions/sub.html",
 } as DomEditSelection;
 
+const copySubNext = ({ clipboard, domSelectionRef }: ReturnType<typeof mountClipboard>) => {
+  clearSelection();
+  domSelectionRef.current = SUB_SELECTION;
+  clipboard().handleCopy();
+};
+
+const expectSubPastedAlone = (writes: string[]) => {
+  expect(writes[0]).toContain(">Sub</h2>");
+  expect(writes[0]?.match(/>Title<\/h1>/g)).toHaveLength(1);
+};
+
 describe("paste of an element styled by its id", () => {
   it("gives the copy the look its original has", async () => {
     clearSelection();
@@ -342,30 +353,24 @@ describe("copy order", () => {
 
   it("pastes the second of two copies", async () => {
     selectTitle();
-    const { clipboard, writes, domSelectionRef } = mountClipboard();
-    clipboard().handleCopy();
+    const view = mountClipboard();
+    view.clipboard().handleCopy();
     await new Promise((resolve) => setTimeout(resolve, 10));
-    clearSelection();
-    domSelectionRef.current = SUB_SELECTION;
-    clipboard().handleCopy();
-    await clipboard().handlePaste();
-    expect(writes[0]).toContain(">Sub</h2>");
-    expect(writes[0]?.match(/>Title<\/h1>/g)).toHaveLength(1);
+    copySubNext(view);
+    await view.clipboard().handlePaste();
+    expectSubPastedAlone(view.writes);
   });
 
   it("pastes the later copy even when the earlier copy's read lands last", async () => {
     selectTitle();
-    const { clipboard, writes, delayMs, domSelectionRef } = mountClipboard();
-    delayMs["index.html"] = 20;
-    clipboard().handleCopy();
-    clearSelection();
-    domSelectionRef.current = SUB_SELECTION;
-    clipboard().handleCopy();
+    const view = mountClipboard();
+    view.delayMs["index.html"] = 20;
+    view.clipboard().handleCopy();
+    copySubNext(view);
     await new Promise((resolve) => setTimeout(resolve, 40));
-    delayMs["index.html"] = 0;
-    await clipboard().handlePaste();
-    expect(writes[0]).toContain(">Sub</h2>");
-    expect(writes[0]?.match(/>Title<\/h1>/g)).toHaveLength(1);
+    view.delayMs["index.html"] = 0;
+    await view.clipboard().handlePaste();
+    expectSubPastedAlone(view.writes);
   });
 
   it("duplicates a hidden clip with its saved markup", async () => {

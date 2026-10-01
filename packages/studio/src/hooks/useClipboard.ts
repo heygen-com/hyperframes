@@ -42,6 +42,14 @@ const pasteStart = (
     ? Math.min(...payload.clips.map((clip) => clip.start))
     : playhead;
 
+const pasteWords = (payload: ClipboardPayload) =>
+  payload.kind === "timeline-clip"
+    ? {
+        label: clipLabel("Paste", payload.clips.length),
+        toast: clipToast("Pasted", payload.clips.length),
+      }
+    : { label: "Paste element", toast: "Pasted element" };
+
 interface RecordEditInput {
   label: string;
   coalesceKey?: string;
@@ -414,10 +422,7 @@ export function useClipboard({
           return extendRootDurationInSource(pasted.content, pasted.requiredEnd);
         };
 
-        const label =
-          payload.kind === "timeline-clip"
-            ? clipLabel("Paste", payload.clips.length)
-            : "Paste element";
+        const { label, toast } = pasteWords(payload);
 
         await saveProjectFilesWithHistory({
           projectId: pid,
@@ -436,12 +441,7 @@ export function useClipboard({
           usePlayerStore.getState().setSelection(pastedIds.map((id) => elementKey(id, targetPath)));
         }
         reloadPreview();
-        showToast(
-          payload.kind === "timeline-clip"
-            ? clipToast("Pasted", payload.clips.length)
-            : "Pasted element",
-          "info",
-        );
+        showToast(toast, "info");
       } catch (error) {
         const message = error instanceof Error ? error.message : "Failed to paste";
         showToast(message);
