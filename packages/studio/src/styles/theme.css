@@ -77,6 +77,16 @@
   --color-media: light-dark(oklch(0.5 0.1 215), #00e3ff);
   --color-container: light-dark(oklch(0.55 0.13 70), #f5a623);
 
+  /* Code editor syntax: One Light and One Dark hues, held at 4.5:1 on a line, the active line and a selection. */
+  --color-code-keyword: light-dark(oklch(0.524 0.211 329), oklch(0.764 0.164 318));
+  --color-code-name: light-dark(oklch(0.524 0.179 28), oklch(0.766 0.145 17));
+  --color-code-function: light-dark(oklch(0.512 0.193 263), oklch(0.745 0.121 245));
+  --color-code-constant: light-dark(oklch(0.509 0.116 77), oklch(0.752 0.095 64));
+  --color-code-type: light-dark(oklch(0.508 0.138 76), oklch(0.825 0.097 82));
+  --color-code-operator: light-dark(oklch(0.496 0.127 237), oklch(0.738 0.092 206));
+  --color-code-comment: light-dark(oklch(0.505 0.009 279), oklch(0.746 0.03 262));
+  --color-code-string: light-dark(oklch(0.493 0.142 143), oklch(0.768 0.11 133));
+
   /* The two stops of the HeyGen brand gradient, worn by the header logo. Fixed brand values
    * rather than roles, so they are not reachable as a background or text colour by mistake. */
   --color-brand-gradient-from: #06e3fa;

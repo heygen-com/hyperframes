@@ -435,6 +435,70 @@
           "role": "text",
           "minimum": 4.5,
           "sources": ["packages/studio/src/styles/theme.css"]
+        },
+        {
+          "id": "code-keyword",
+          "foreground": "--color-code-keyword",
+          "role": "text",
+          "minimum": 4.5,
+          "sources": ["packages/studio/src/components/editor/studioCodeTheme.ts"],
+          "on": ["panel", "panel-hover", "panel-on"]
+        },
+        {
+          "id": "code-name",
+          "foreground": "--color-code-name",
+          "role": "text",
+          "minimum": 4.5,
+          "sources": ["packages/studio/src/components/editor/studioCodeTheme.ts"],
+          "on": ["panel", "panel-hover", "panel-on"]
+        },
+        {
+          "id": "code-function",
+          "foreground": "--color-code-function",
+          "role": "text",
+          "minimum": 4.5,
+          "sources": ["packages/studio/src/components/editor/studioCodeTheme.ts"],
+          "on": ["panel", "panel-hover", "panel-on"]
+        },
+        {
+          "id": "code-constant",
+          "foreground": "--color-code-constant",
+          "role": "text",
+          "minimum": 4.5,
+          "sources": ["packages/studio/src/components/editor/studioCodeTheme.ts"],
+          "on": ["panel", "panel-hover", "panel-on"]
+        },
+        {
+          "id": "code-type",
+          "foreground": "--color-code-type",
+          "role": "text",
+          "minimum": 4.5,
+          "sources": ["packages/studio/src/components/editor/studioCodeTheme.ts"],
+          "on": ["panel", "panel-hover", "panel-on"]
+        },
+        {
+          "id": "code-operator",
+          "foreground": "--color-code-operator",
+          "role": "text",
+          "minimum": 4.5,
+          "sources": ["packages/studio/src/components/editor/studioCodeTheme.ts"],
+          "on": ["panel", "panel-hover", "panel-on"]
+        },
+        {
+          "id": "code-comment",
+          "foreground": "--color-code-comment",
+          "role": "text",
+          "minimum": 4.5,
+          "sources": ["packages/studio/src/components/editor/studioCodeTheme.ts"],
+          "on": ["panel", "panel-hover", "panel-on"]
+        },
+        {
+          "id": "code-string",
+          "foreground": "--color-code-string",
+          "role": "text",
+          "minimum": 4.5,
+          "sources": ["packages/studio/src/components/editor/studioCodeTheme.ts"],
+          "on": ["panel", "panel-hover", "panel-on"]
         }
       ],
       "surfaces": {
