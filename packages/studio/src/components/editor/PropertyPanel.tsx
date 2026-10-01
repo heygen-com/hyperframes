@@ -179,7 +179,7 @@ export const PropertyPanel = memo(function PropertyPanel(props: PropertyPanelPro
   };
   // Unconditional like the hooks above: must not sit behind the `!element` return below.
   const { manualOffsetEditingDisabled, manualSizeEditingDisabled, manualRotationEditingDisabled } =
-    useManualEditDisabledFlags(element?.capabilities);
+    useManualEditDisabledFlags(element?.capabilities, element?.element);
 
   if (!element) {
     return (

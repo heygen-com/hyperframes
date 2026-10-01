@@ -12,7 +12,7 @@ import {
 } from "./manualEdits";
 import { computeDraggedGsapPosition } from "../../hooks/draggedGsapPosition";
 import { gsapWritesPosition } from "../../hooks/gsapRuntimeKeyframes";
-import { readTranslatePx, writeTranslatePx } from "./plainTranslate";
+import { readTranslatePx, UNREADABLE_TRANSLATE, writeTranslatePx } from "./plainTranslate";
 
 interface OffsetDragGsap {
   set: (el: Element, vars: Record<string, number | string>) => void;
@@ -346,7 +346,7 @@ export function createManualOffsetDragMember(input: {
     ? readTranslatePx(input.element)
     : readAppliedStudioPathOffset(input.element);
   if (!finitePoint(initialOffset))
-    return { ok: false, reason: "Unreadable translate.", selection: input.selection };
+    return { ok: false, reason: UNREADABLE_TRANSLATE, selection: input.selection };
   const win = input.element.ownerDocument.defaultView as
     | (Window & {
         gsap?: { getProperty?: (el: Element, prop: string) => number };

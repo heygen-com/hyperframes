@@ -55,6 +55,7 @@ export interface UseDomEditNudgeParams {
   groupGestureRef: RefObject<GroupGestureState | null>;
   blockedMoveRef: RefObject<BlockedMoveState | null>;
   onManualDragStartRef: RefObject<(() => void) | undefined>;
+  onBlockedMoveRef: RefObject<(selection: DomEditSelection, reason?: string) => void>;
   onPathOffsetCommitRef: RefObject<
     (
       s: DomEditSelection,
@@ -192,6 +193,7 @@ export function useDomEditNudge(params: UseDomEditNudgeParams): { flushNudge: ()
       const result = createManualOffsetDragMember({ ...target, gesture: "nudge" });
       if (!result.ok) {
         restoreManualOffsetDragMembers(members);
+        p.onBlockedMoveRef.current(result.selection, result.reason);
         return null;
       }
       members.push(result.member);

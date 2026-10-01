@@ -253,7 +253,7 @@ export type UseDomEditOverlayGesturesOptions = {
   suppressNextBoxClickRef: RefObject<boolean>;
   setOverlayRect: (next: OverlayRect | null) => void;
   setGroupOverlayItems: (next: GroupOverlayItem[]) => void;
-  onBlockedMoveRef: RefObject<(selection: DomEditSelection) => void>;
+  onBlockedMoveRef: RefObject<(selection: DomEditSelection, reason?: string) => void>;
   onManualDragStartRef: RefObject<(() => void) | undefined>;
   onPathOffsetCommitRef: RefObject<
     (

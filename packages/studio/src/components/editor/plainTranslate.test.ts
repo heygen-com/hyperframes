@@ -36,10 +36,20 @@ describe("readTranslatePx", () => {
     expect(readTranslatePx(box(`translate: ${translate}`))).toEqual(want);
   });
 
-  it.each(["calc(10px +) 0px", "abs(-10px) 0px", "10em 0px", "min(10px 5%) 0px"])(
+  it.each(["calc(10px +) 0px", "abs(10% - 50px) 0px", "round(10%, 7px) 0px", "min(10px 5%) 0px"])(
     "reads %s as NaN, never as a guess",
     (translate) => {
       expect(readTranslatePx(box(`translate: ${translate}`)).x).toBeNaN();
+    },
+  );
+
+  it.each(["content-box", "fill-box"])(
+    "resolves a percent against the content box under transform-box: %s",
+    (transformBox) => {
+      const element = box(
+        `translate: 50% 50%; padding: 10px; border: 5px solid; box-sizing: content-box; transform-box: ${transformBox}`,
+      );
+      expect(readTranslatePx(element)).toEqual({ x: 120, y: 80 });
     },
   );
 

@@ -1,6 +1,6 @@
 import type { DomEditSelection } from "./domEditingTypes";
 import { readStudioBoxSize } from "./manualEdits";
-import { readMoveOffset } from "./plainTranslate";
+import { readMoveOffset, UNREADABLE_TRANSLATE } from "./plainTranslate";
 import { parsePxMetricValue, type PropertyPanelProps } from "./propertyPanelHelpers";
 
 interface TransformCommitDeps {
@@ -75,6 +75,8 @@ export function createTransformCommitHandlers({
     )
       return;
     const current = readMoveOffset(element.element);
+    if (!Number.isFinite(current.x) || !Number.isFinite(current.y))
+      return void showToast?.(UNREADABLE_TRANSLATE);
     await Promise.resolve(
       onSetManualOffset(element, {
         x: axis === "x" ? parsed : current.x,

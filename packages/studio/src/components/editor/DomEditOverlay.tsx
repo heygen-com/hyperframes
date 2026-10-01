@@ -76,7 +76,7 @@ export interface DomEditOverlayProps {
     selection: DomEditSelection,
     options?: { revealPanel?: boolean; additive?: boolean },
   ) => void;
-  onBlockedMove: (selection: DomEditSelection) => void;
+  onBlockedMove: (selection: DomEditSelection, reason?: string) => void;
   onManualDragStart?: () => void;
   onPathOffsetCommit: (
     selection: DomEditSelection,
@@ -296,6 +296,7 @@ export const DomEditOverlay = memo(function DomEditOverlay({
     gestureRef,
     groupGestureRef,
     blockedMoveRef,
+    onBlockedMoveRef,
     onManualDragStartRef,
     onPathOffsetCommitRef,
     onGroupPathOffsetCommitRef,

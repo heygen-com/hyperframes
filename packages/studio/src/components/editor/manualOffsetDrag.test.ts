@@ -13,6 +13,7 @@ import {
   resolveManualOffsetForPointerDelta,
   type ManualOffsetDragMatrix,
 } from "./manualOffsetDrag";
+import { UNREADABLE_TRANSLATE } from "./plainTranslate";
 import { STUDIO_OFFSET_X_PROP, STUDIO_OFFSET_Y_PROP } from "./manualEdits";
 import { computeDraggedGsapPosition } from "../../hooks/draggedGsapPosition";
 
@@ -598,7 +599,7 @@ describe("a move of an element GSAP does not position", () => {
 
   it("refuses a translate it can't read instead of guessing, and leaves the element alone", () => {
     const { element } = plainBox();
-    element.style.setProperty("translate", "abs(-10px) 0px");
+    element.style.setProperty("translate", "abs(10% - 50px) 0px");
     const result = createManualOffsetDragMember({
       key: "box",
       selection: { element } as never,
@@ -607,7 +608,8 @@ describe("a move of an element GSAP does not position", () => {
       gesture: "drag",
     });
     expect(result.ok).toBe(false);
-    expect(element.style.getPropertyValue("translate")).toBe("abs(-10px) 0px");
+    expect(result.ok ? "" : result.reason).toBe(UNREADABLE_TRANSLATE);
+    expect(element.style.getPropertyValue("translate")).toBe("abs(10% - 50px) 0px");
   });
 
   it("drafts and drops the element's own translate in plain px, never touching GSAP", () => {

@@ -76,7 +76,7 @@ export function startGroupDrag(
       restoreManualOffsetDragMembers(members);
       e.preventDefault();
       e.stopPropagation();
-      opts.onBlockedMoveRef.current(result.selection);
+      opts.onBlockedMoveRef.current(result.selection, result.reason);
       return false;
     }
     members.push(result.member);
@@ -198,7 +198,7 @@ export function startGesture(
       gesture: "drag",
     });
     if (!result.ok) {
-      opts.onBlockedMoveRef.current(result.selection);
+      opts.onBlockedMoveRef.current(result.selection, result.reason);
       return false;
     }
     pathOffsetMember = result.member;

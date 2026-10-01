@@ -1,9 +1,13 @@
 // @vitest-environment happy-dom
 
+import React, { act } from "react";
+import { createRoot } from "react-dom/client";
 import { describe, expect, it, vi } from "vitest";
+import { useManualEditDisabledFlags } from "./previewReadOnlyContext";
 import type { DomEditSelection } from "./domEditingTypes";
 import { GsapEditBlockedError } from "../../hooks/gsapEditOutcome";
 import { createTransformCommitHandlers } from "./propertyPanelTransformCommit";
+import { UNREADABLE_TRANSLATE } from "./plainTranslate";
 
 describe("createTransformCommitHandlers", () => {
   it.each([
@@ -53,5 +57,52 @@ describe("createTransformCommitHandlers", () => {
     expect(onSetManualOffset).not.toHaveBeenCalled();
     expect(onSetManualSize).not.toHaveBeenCalled();
     expect(onSetManualRotation).not.toHaveBeenCalled();
+  });
+});
+
+describe("the panel's position fields on a translate Studio can't read", () => {
+  it("are disabled", () => {
+    (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
+    const box = document.createElement("div");
+    box.style.setProperty("translate", "abs(10% - 50px) 30px");
+    const seen: boolean[] = [];
+    function Probe({ element }: { element: HTMLElement }) {
+      seen.push(
+        useManualEditDisabledFlags({ canApplyManualOffset: true } as never, element)
+          .manualOffsetEditingDisabled,
+      );
+      return null;
+    }
+    const root = createRoot(document.createElement("div"));
+    act(() => root.render(React.createElement(Probe, { element: box })));
+    box.style.setProperty("translate", "40px 30px");
+    act(() => root.render(React.createElement(Probe, { element: box })));
+    act(() => root.unmount());
+    expect(seen).toEqual([true, false]);
+  });
+
+  it("commit nothing and say why", async () => {
+    const onSetManualOffset = vi.fn();
+    const showToast = vi.fn();
+    const box = document.createElement("div");
+    box.style.setProperty("translate", "abs(10% - 50px) 30px");
+    const element = { id: "box", selector: "#box", element: box } as unknown as DomEditSelection;
+    const handlers = createTransformCommitHandlers({
+      element,
+      styles: {},
+      hasGsapAnimation: false,
+      gsapAnimId: null,
+      gsapKeyframes: null,
+      currentPct: 0,
+      onCommitAnimatedProperty: undefined,
+      onAddKeyframe: undefined,
+      onSetManualOffset,
+      onSetManualSize: vi.fn(),
+      onSetManualRotation: vi.fn(),
+      showToast,
+    });
+    await handlers.commitManualOffset("y", "20px");
+    expect(onSetManualOffset).not.toHaveBeenCalled();
+    expect(showToast).toHaveBeenCalledWith(UNREADABLE_TRANSLATE);
   });
 });

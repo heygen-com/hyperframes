@@ -61,7 +61,10 @@ function evaluateLength(value: string, side: number): number {
   return i === tokens.length ? total : Number.NaN;
 }
 
-function borderBox(
+const CONTENT_BOXES = new Set(["content-box", "fill-box"]);
+
+/** The side % resolves against: the box `transform-box` names (fill-box is the content box on HTML). */
+function referenceBox(
   cs: CSSStyleDeclaration,
   size: "width" | "height",
   a: string,
@@ -70,7 +73,8 @@ function borderBox(
   const n = (prop: string) => Number.parseFloat(cs.getPropertyValue(prop)) || 0;
   const pad =
     n(`padding-${a}`) + n(`padding-${b}`) + n(`border-${a}-width`) + n(`border-${b}-width`);
-  return n(size) + (cs.boxSizing === "border-box" ? 0 : pad);
+  const content = n(size) - (cs.boxSizing === "border-box" ? pad : 0);
+  return CONTENT_BOXES.has(cs.getPropertyValue("transform-box")) ? content : content + pad;
 }
 
 /** The element's CSS `translate` in px, as it renders now. */
@@ -82,12 +86,15 @@ export function readTranslatePx(el: HTMLElement): Point {
   if (value === "none") return { x: 0, y: 0 };
   const [x = "0px", y = "0px"] = splitTopLevelWhitespace(value);
   const side = (size: "width" | "height", a: string, b: string) =>
-    cs ? borderBox(cs, size, a, b) : 0;
+    cs ? referenceBox(cs, size, a, b) : 0;
   return {
     x: evaluateLength(x, side("width", "left", "right")),
     y: evaluateLength(y, side("height", "top", "bottom")),
   };
 }
+
+export const UNREADABLE_TRANSLATE =
+  "Studio can't read this layer's translate. Move it in the Code tab.";
 
 /** Plain px only: GSAP's CSSPlugin splits `translate` on spaces and drops a calc(). */
 function formatTranslatePx(p: Point): string {
