@@ -562,6 +562,24 @@ describe("audible video members", () => {
     expect(parseAudioElements(withBus("data-hidden", ""))).toEqual([]);
   });
 
+  it("keeps a ramped audible video in its group sub-mix with its rate lane", () => {
+    const lane = JSON.stringify({
+      version: 1,
+      lanes: [
+        {
+          target: "rate",
+          points: [
+            { t: 0, v: 1 },
+            { t: 2, v: 2 },
+          ],
+        },
+      ],
+    });
+    const [track] = parseAudioElements(withBus("", `data-automation='${lane}'`));
+    expect(track?.groupId).toBe("vo");
+    expect(typeof track?.playbackRate).toBe("object");
+  });
+
   it("ignores a muted video's group membership", () => {
     const tracks = parseAudioElements(withBus("data-hidden", "muted"));
     expect(tracks.every((t) => t.groupId === undefined)).toBe(true);

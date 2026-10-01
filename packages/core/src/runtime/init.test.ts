@@ -5388,6 +5388,46 @@ describe("initSandboxRuntimeModular", () => {
       expect(video.muted).toBe(false);
     });
 
+    const rateRamp = JSON.stringify({
+      version: 1,
+      lanes: [
+        {
+          target: "rate",
+          points: [
+            { t: 0, v: 1 },
+            { t: 5, v: 2 },
+          ],
+        },
+      ],
+    });
+
+    it("captures a ramped audible video in a group, so the group bus carries it", async () => {
+      const video = mountMedia("video", {
+        "data-has-audio": "true",
+        "data-audio-group": "music",
+        "data-automation": rateRamp,
+      });
+      const captureSpy = spyCapture();
+
+      await startPlayback();
+
+      expect(captureSpy.mock.calls.map((call) => call[0])).toContain(video);
+    });
+
+    it("never decodes a ramped audio clip whose capture failed", async () => {
+      const audio = mountMedia("audio", { "data-automation": rateRamp });
+      spyCapture();
+      const decodeSpy = vi
+        .spyOn(WebAudioTransport.prototype, "decodeAudioElement")
+        .mockResolvedValue(null);
+
+      await startPlayback();
+      await Promise.resolve();
+
+      expect(decodeSpy).not.toHaveBeenCalledWith(audio);
+      expect(audio.muted).toBe(false);
+    });
+
     it("adds exactly one reschedule when a routed video's data-hidden toggles mid-playback", async () => {
       const video = mountMedia("video", {
         "data-has-audio": "true",
