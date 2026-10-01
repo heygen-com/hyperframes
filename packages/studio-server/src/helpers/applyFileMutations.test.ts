@@ -105,6 +105,27 @@ describe("applyFileMutations", () => {
     expectStaleMutation("after", false);
   });
 
+  it("leaves a receipt saying which bytes the write started from", () => {
+    resetFileWriteReceipts();
+    const projectDir = mkdtempSync(join(tmpdir(), "hf-mutation-from-"));
+    const path = join(projectDir, "index.html");
+    try {
+      // Someone else's change lands before the patch reads the file: the receipt names it as the start.
+      writeFileSync(path, "external", "utf8");
+      applyFileMutations(
+        projectDir,
+        [{ sourceFile: "index.html", absPath: path, after: "patched" }],
+        "hand",
+      );
+      expect(identifyFileWrite(path, fileContentVersion("patched"))).toMatchObject({
+        writeToken: "hand",
+        from: fileContentVersion("external"),
+      });
+    } finally {
+      rmSync(projectDir, { recursive: true, force: true });
+    }
+  });
+
   it("clears receipts for writes rolled back after a partial batch", () => {
     resetFileWriteReceipts();
     const projectDir = mkdtempSync(join(tmpdir(), "hf-mutation-rollback-"));

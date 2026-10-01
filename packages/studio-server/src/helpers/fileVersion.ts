@@ -5,6 +5,9 @@ export interface FileWriteReceipt {
   path: string;
   version: string;
   writeToken: string;
+  /** The version the write replaced, when the writer read it: a host can tell a write applied to the bytes it last
+   * showed from one that merged someone else's change landing just before it. */
+  from?: string;
 }
 
 interface StoredReceipt extends FileWriteReceipt {
@@ -70,7 +73,11 @@ export function recordFileWriteReceipt(
     if (live.length > 0) receipts.set(path, live);
     else receipts.delete(path);
   }
-  receipts.set(absPath, [...(receipts.get(absPath) ?? []), { ...receipt, recordedAt: now }]);
+  const from = overwrote === undefined ? undefined : fileContentVersion(overwrote);
+  receipts.set(absPath, [
+    ...(receipts.get(absPath) ?? []),
+    { ...receipt, ...(from && { from }), recordedAt: now },
+  ]);
 }
 
 export function clearFileWriteReceipt(filePath: string, version: string, writeToken: string): void {
@@ -96,8 +103,8 @@ export function identifyFileWrite(
 ): FileWriteReceipt | null {
   const receipt = newestReceipt(realFilePath(filePath), expectedVersion);
   if (!receipt) return null;
-  const { path, version, writeToken } = receipt;
-  return { path, version, writeToken };
+  const { path, version, writeToken, from } = receipt;
+  return { path, version, writeToken, ...(from && { from }) };
 }
 
 function newestReceipt(absPath: string, expectedVersion: string): StoredReceipt | undefined {
