@@ -24,6 +24,7 @@
 import { platform, arch } from "node:os";
 import puppeteer from "puppeteer-core";
 import { resolveChromeExecutable } from "./chrome-executable.mjs";
+import { gatePassed, judgeResponsiveness } from "./timeline-viewport-verdict.mjs";
 
 const STUDIO_URL = process.env.STUDIO_URL;
 const PROFILE = process.env.TIMELINE_PROFILE || "dense-short";
@@ -59,12 +60,6 @@ if (ROW_VIRTUALIZATION === "off" && ELEMENT_COUNT === 50_000) {
       "the unvirtualized build mounts every clip and cannot settle at 50000",
   );
   process.exit(2);
-}
-
-function percentile(values, ratio) {
-  if (values.length === 0) return 0;
-  const sorted = [...values].sort((a, b) => a - b);
-  return sorted[Math.min(sorted.length - 1, Math.ceil(sorted.length * ratio) - 1)];
 }
 
 async function collectHeapBytes(client) {
@@ -331,12 +326,11 @@ try {
       : null;
     run.passed = run.longTaskPassed && run.timelineMounted && run.domSizePassed !== false;
   }
-  // Pooled over every measured step: one run's p95 is only its 4th-worst step, so a brief runner stall failed it.
-  const pooled = (key) => runs.flatMap((run) => run[key]);
-  const interactionP95Ms = percentile(pooled("interactions"), 0.95);
-  const frameIntervalP95Ms = percentile(pooled("frameIntervals"), 0.95);
-  const responsivenessPassed =
-    interactionP95Ms <= interactionLimitMs && frameIntervalP95Ms <= frameIntervalLimitMs;
+  const responsiveness = judgeResponsiveness(runs, {
+    samplesPerRun: budgets.scrollSamplesPerRun,
+    interactionLimitMs,
+    frameIntervalLimitMs,
+  });
 
   await page.evaluate(() => window.__studioTest.resetTimelinePerformanceFixture());
   await page.waitForFunction(
@@ -391,9 +385,9 @@ try {
     directScrollGate,
     runs,
     aggregate: {
-      interactionP95Ms,
-      frameIntervalP95Ms,
-      responsivenessPassed,
+      interactionP95Ms: responsiveness.interactionP95Ms,
+      frameIntervalP95Ms: responsiveness.frameIntervalP95Ms,
+      responsivenessPassed: responsiveness.passed,
       passingRuns,
       baselineHeapBytes,
       returnedHeapBytes,
@@ -401,13 +395,15 @@ try {
     },
   };
   console.log(JSON.stringify(evidence, null, 2));
-  exitCode =
-    directScrollGate.decision === "approved" &&
-    responsivenessPassed &&
-    passingRuns >= budgets.requiredPassingRuns &&
-    memoryReturned
-      ? 0
-      : 1;
+  exitCode = gatePassed({
+    directScrollApproved: directScrollGate.decision === "approved",
+    responsivenessPassed: responsiveness.passed,
+    passingRuns,
+    requiredPassingRuns: budgets.requiredPassingRuns,
+    memoryReturned,
+  })
+    ? 0
+    : 1;
 } finally {
   await browser.close();
 }
