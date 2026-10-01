@@ -293,6 +293,27 @@ describe("media rules", () => {
     expect(finding?.elementId).toBe("demo-video");
   });
 
+  it("does not treat text inside quoted attributes as muted attribute", async () => {
+    const wrap = (body: string) =>
+      `<html><body><div id="main" data-composition-id="main" data-no-timeline data-width="1920" data-height="1080" data-duration="10">${body}</div></body></html>`;
+    const htmlWithTitle = wrap(
+      '<video id="v" class="clip" title="an unmuted muted clip" src="a.mp4" data-start="0" data-duration="3"></video><audio id="a" src="a.mp4" data-start="0" data-duration="3"></audio>',
+    );
+    const result = await lintHyperframeHtml(htmlWithTitle);
+    const codes = result.findings.map((f) => f.code);
+    expect(codes).toContain("video_missing_muted");
+    expect(codes).toContain("video_audio_double_source");
+  });
+
+  it("recognizes bare, valued, and case-insensitive muted attributes", async () => {
+    const wrap = (attr: string) =>
+      `<html><body><div id="main" data-composition-id="main" data-no-timeline data-width="1920" data-height="1080" data-duration="10"><video id="v" class="clip" ${attr} src="a.mp4" data-start="0" data-duration="3"></video></div></body></html>`;
+    for (const attr of ["muted", 'muted=""', 'muted="muted"', 'muted="false"', "MUTED"]) {
+      const result = await lintHyperframeHtml(wrap(attr));
+      expect(result.findings.find((f) => f.code === "video_missing_muted")).toBeUndefined();
+    }
+  });
+
   it("does NOT flag <video> as nested in a void element with data-start (regression)", async () => {
     // Regression: void elements like <img> have no closing tag, so the previous
     // implementation kept them on the parent stack indefinitely and flagged any
@@ -519,6 +540,19 @@ describe("media rules", () => {
 <html><body>
   <div id="root" data-composition-id="c1" data-width="1920" data-height="1080">
     <video id="v1" src="https://cdn.example.com/clip.mp4" data-start="0" data-duration="5" muted playsinline></video>
+  </div>
+  <script>window.__timelines = window.__timelines || {}; window.__timelines["c1"] = gsap.timeline({ paused: true });</script>
+</body></html>`;
+    const result = await lintHyperframeHtml(html);
+    const finding = result.findings.find((f) => f.code === "media_crossorigin_breaks_preview");
+    expect(finding).toBeUndefined();
+  });
+
+  it("does not flag media when crossorigin only appears in a quoted attribute value", async () => {
+    const html = `
+<html><body>
+  <div id="root" data-composition-id="c1" data-width="1920" data-height="1080">
+    <video id="v1" title="element with crossorigin guidance" src="https://cdn.example.com/clip.mp4" data-start="0" data-duration="5" muted playsinline></video>
   </div>
   <script>window.__timelines = window.__timelines || {}; window.__timelines["c1"] = gsap.timeline({ paused: true });</script>
 </body></html>`;

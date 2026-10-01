@@ -3,6 +3,7 @@ import { readAttr, readDecodedAttr, stripJsComments, truncateSnippet, isMediaTag
 import { validateColorGradingContract } from "@hyperframes/parsers/color-grading-contract";
 import { extractMediaSrcMutations } from "@hyperframes/parsers/composition";
 import { parseHTML } from "linkedom";
+import { Parser } from "htmlparser2";
 
 /**
  * Does the GSAP call that names `#id` also set `volume` in the same call?
@@ -38,9 +39,20 @@ function escapeRegExp(value: string): string {
 }
 
 function hasAttrName(tagSource: string, attr: string): boolean {
-  const escaped = escapeRegExp(attr);
-  const attrs = tagSource.replace(/^<\s*[a-z][\w:-]*/i, "");
-  return new RegExp(`(?:^|\\s)${escaped}(?:\\s*=|\\s|/?>)`, "i").test(attrs);
+  if (!tagSource) return false;
+  let found = false;
+  const target = attr.toLowerCase();
+  const input = tagSource.endsWith(">") ? tagSource : `${tagSource}>`;
+  const parser = new Parser(
+    {
+      onattribute(name) {
+        if (name.toLowerCase() === target) found = true;
+      },
+    },
+    { decodeEntities: false, lowerCaseAttributeNames: false, lowerCaseTags: true },
+  );
+  parser.end(input);
+  return found;
 }
 
 const IMAGE_SRC_EXT = new Set([
