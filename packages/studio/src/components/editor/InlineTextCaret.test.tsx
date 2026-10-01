@@ -1,0 +1,93 @@
+// @vitest-environment happy-dom
+
+import React, { act } from "react";
+import { createRoot } from "react-dom/client";
+import { afterEach, describe, expect, it, vi } from "vitest";
+import { CARET_PX, InlineTextCaret } from "./InlineTextCaret";
+import type { InlineTextEditSession } from "../../hooks/useInlineTextEdit";
+
+(globalThis as unknown as { IS_REACT_ACT_ENVIRONMENT: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
+
+afterEach(() => {
+  document.body.innerHTML = "";
+  vi.restoreAllMocks();
+});
+
+/** A text open for editing in a fake frame shown at a quarter of the composition's width, its caret after "Ti". */
+function scene() {
+  document.body.innerHTML = `<h1 contenteditable="true" style="color: rgb(250, 250, 250)">Title</h1>`;
+  const element = document.body.firstElementChild as HTMLElement;
+  const iframe = document.createElement("iframe");
+  document.body.append(iframe);
+  iframe.getBoundingClientRect = () =>
+    ({ left: 100, top: 50, width: window.innerWidth / 4 }) as DOMRect;
+  vi.spyOn(Range.prototype, "getClientRects").mockReturnValue([
+    { left: 400, top: 200, height: 120 },
+  ] as unknown as DOMRectList);
+  element.focus();
+  const text = element.firstChild as Text;
+  window.getSelection()!.collapse(text, 2);
+  const session: InlineTextEditSession = {
+    element,
+    original: "Title",
+    outline: "",
+    outlineOffset: "",
+  };
+  return { element, iframe, session, text };
+}
+
+function render(session: InlineTextEditSession | null, iframe: HTMLIFrameElement | null) {
+  const host = document.createElement("div");
+  document.body.append(host);
+  const root = createRoot(host);
+  act(() => root.render(<InlineTextCaret session={session} iframe={iframe} />));
+  return { root, caret: () => document.querySelector<HTMLElement>("[data-inline-text-caret]") };
+}
+
+const fire = (target: EventTarget, type: string) =>
+  act(() => void target.dispatchEvent(new Event(type)));
+
+describe("InlineTextCaret", () => {
+  it("draws a 2 px caret on Studio's screen where the composition's caret stands, in the text's colour", () => {
+    const { iframe, session } = scene();
+    const caret = render(session, iframe).caret();
+    expect(caret).not.toBeNull();
+    expect(caret!.style.left).toBe(`${100 + 400 / 4 - CARET_PX / 2}px`);
+    expect(caret!.style.top).toBe(`${50 + 200 / 4}px`);
+    expect(caret!.style.height).toBe(`${120 / 4}px`);
+    expect(caret!.style.width).toBe(`${CARET_PX}px`);
+    expect(caret!.style.background).toBe("rgb(250, 250, 250)");
+  });
+
+  it("shows no caret while a range is selected, and again once the selection collapses", () => {
+    const { iframe, session, text } = scene();
+    const { caret } = render(session, iframe);
+    act(() => window.getSelection()!.setBaseAndExtent(text, 0, text, 3));
+    fire(document, "selectionchange");
+    expect(caret()).toBeNull();
+    act(() => window.getSelection()!.collapse(text, 3));
+    fire(document, "selectionchange");
+    expect(caret()).not.toBeNull();
+  });
+
+  it("shows no caret while an input method composes, nor once the text loses focus", () => {
+    const { element, iframe, session } = scene();
+    const { caret } = render(session, iframe);
+    fire(element, "compositionstart");
+    expect(caret()).toBeNull();
+    fire(element, "compositionend");
+    expect(caret()).not.toBeNull();
+    act(() => element.blur());
+    fire(element, "blur");
+    expect(caret()).toBeNull();
+  });
+
+  it("hides the browser's own caret while it draws one, and gives it back after", () => {
+    const { element, iframe, session } = scene();
+    element.style.caretColor = "red";
+    const { root } = render(session, iframe);
+    expect(element.style.caretColor).toBe("transparent");
+    act(() => root.render(<InlineTextCaret session={null} iframe={iframe} />));
+    expect(element.style.caretColor).toBe("red");
+  });
+});

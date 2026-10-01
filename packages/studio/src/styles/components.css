@@ -517,6 +517,23 @@
   transition: transform 160ms ease;
 }
 
+/* The caret of a text edited in place (InlineTextCaret): lit half the time, like the system caret */
+.hf-inline-text-caret {
+  animation: hf-inline-text-caret-blink 1.06s step-end infinite;
+}
+
+@keyframes hf-inline-text-caret-blink {
+  50% {
+    opacity: 0;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .hf-inline-text-caret {
+    animation: none;
+  }
+}
+
 /* Toast enter/exit (StudioToast) */
 @keyframes hf-toast-in {
   from {
