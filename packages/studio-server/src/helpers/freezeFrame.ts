@@ -1,4 +1,6 @@
+import { createHash, randomBytes } from "node:crypto";
 import { ensureHfIds } from "@hyperframes/parsers/hf-ids";
+import { readMediaOffsetSeconds } from "@hyperframes/parsers/media-duration";
 import { resolveRateSpec, sourceTimeAt } from "@hyperframes/core/speed-ramp";
 import {
   findTargetElement,
@@ -38,12 +40,19 @@ export function freezeFrameMediaTime(input: {
 }
 
 export function freezeExtractArgs(src: string, mediaTime: number, output: string): string[] {
-  return ["-y", "-ss", String(round3(mediaTime)), "-i", src, "-frames:v", "1", output];
+  return ["-n", "-ss", String(round3(mediaTime)), "-i", src, "-frames:v", "1", output];
 }
 
-export function freezeStillFileName(clipId: string, playhead: number): string {
-  const stem = clipId.replace(/[^A-Za-z0-9_-]/g, "_").slice(0, 80) || "clip";
-  return `${stem}-${Math.round(playhead * 1000)}.png`;
+export const randomStillToken = (): string => randomBytes(4).toString("hex");
+
+export function freezeStillFileName(
+  clipId: string,
+  playhead: number,
+  token: string = randomStillToken(),
+): string {
+  const stem = clipId.replace(/[^A-Za-z0-9_-]/g, "_").slice(0, 48) || "clip";
+  const idHash = createHash("sha256").update(clipId).digest("hex").slice(0, 10);
+  return `${stem}-${idHash}-${Math.round(playhead * 1000)}-${token}.png`;
 }
 
 export interface FreezeSource {
@@ -72,7 +81,7 @@ export function readFreezeSource(
     mediaTime: freezeFrameMediaTime({
       clipStart: start,
       playhead,
-      mediaStart: numberAttr(el, "data-media-start") ?? numberAttr(el, "data-playback-start") ?? 0,
+      mediaStart: readMediaOffsetSeconds((name) => el.getAttribute(name)),
       playbackRate: numberAttr(el, "data-playback-rate") ?? 1,
       automation: el.getAttribute("data-automation"),
     }),

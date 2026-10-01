@@ -2,7 +2,7 @@ import { afterEach, describe, expect, it } from "vitest";
 import { Hono } from "hono";
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { dirname, join } from "node:path";
+import { basename, dirname, join } from "node:path";
 import { registerFreezeFrameRoutes, type FrameExtractor } from "./freezeFrame";
 import { fileContentVersion } from "../helpers/fileVersion";
 import type { StudioApiAdapter } from "../types";
@@ -16,7 +16,11 @@ const html = `<div data-composition-id="main" data-start="0" data-duration="6">
 <video id="talk" class="clip" src="media/talk.mp4" data-start="0" data-duration="6" data-track-index="0"></video>
 </div>`;
 
-function setup(extract: FrameExtractor, file = { path: "index.html", html }) {
+function setup(
+  extract: FrameExtractor,
+  file = { path: "index.html", html },
+  stillToken?: () => string,
+) {
   const dir = mkdtempSync(join(tmpdir(), "hf-freeze-"));
   tempDirs.push(dir);
   mkdirSync(dirname(join(dir, file.path)), { recursive: true });
@@ -31,7 +35,7 @@ function setup(extract: FrameExtractor, file = { path: "index.html", html }) {
     startRender: () => ({ id: "j", status: "rendering", progress: 0, outputPath: "/tmp/o.mp4" }),
   };
   const app = new Hono();
-  registerFreezeFrameRoutes(app, adapter, extract);
+  registerFreezeFrameRoutes(app, adapter, extract, stillToken);
   const post = (body: unknown) =>
     app.request("http://localhost/projects/demo/file-mutations/freeze-frame", {
       method: "POST",
@@ -56,17 +60,20 @@ describe("freeze-frame route", () => {
     });
     const body: { before?: string; after?: string; imageSrc?: string } = await res.json();
     expect(res.status).toBe(200);
+    const output = calls[0]?.at(-1) ?? "";
     expect(calls[0]).toEqual([
-      "-y",
+      "-n",
       "-ss",
       "2.5",
       "-i",
       join(dir, "media/talk.mp4"),
       "-frames:v",
       "1",
-      join(dir, "assets/freeze/talk-2500.png"),
+      output,
     ]);
-    expect(body.imageSrc).toBe("assets/freeze/talk-2500.png");
+    expect(dirname(output)).toBe(join(dir, "assets/freeze"));
+    expect(basename(output)).toMatch(/^talk-[0-9a-f]{10}-2500-[0-9a-f]{8}\.png$/);
+    expect(body.imageSrc).toBe(`assets/freeze/${basename(output)}`);
     expect(body.before).toBe(html);
     expect(readFileSync(join(dir, "index.html"), "utf-8")).toBe(body.after);
     expect(body.after).toContain('id="talk-freeze"');
@@ -118,11 +125,102 @@ describe("freeze-frame route", () => {
     });
     const body: { imageSrc?: string; after?: string } = await res.json();
     expect(res.status).toBe(200);
-    const output = calls[0]?.at(-1);
-    expect(output).toBe(join(dir, "assets/freeze/____________outside_frame-2500.png"));
-    expect(dirname(output ?? "")).toBe(join(dir, "assets/freeze"));
-    expect(body.imageSrc).toBe("../assets/freeze/____________outside_frame-2500.png");
-    expect(body.after).toContain('src="../assets/freeze/____________outside_frame-2500.png"');
+    const output = calls[0]?.at(-1) ?? "";
+    expect(basename(output)).toMatch(/^____________outside_frame-[0-9a-f]{10}-2500-/);
+    expect(dirname(output)).toBe(join(dir, "assets/freeze"));
+    expect(body.imageSrc).toBe(`../assets/freeze/${basename(output)}`);
+    expect(body.after).toContain(`src="../assets/freeze/${basename(output)}"`);
     expect(existsSync(join(dir, "..", "outside"))).toBe(false);
+  });
+
+  describe("still identity", () => {
+    const twoVideos = (
+      a: string,
+      b: string,
+    ) => `<div data-composition-id="main" data-start="0" data-duration="6">
+<video id="${a}" class="clip" src="media/a.mp4" data-start="0" data-duration="6" data-track-index="0"></video>
+<video id="${b}" class="clip" src="media/b.mp4" data-start="0" data-duration="6" data-track-index="1"></video>
+</div>`;
+
+    function writingExtractor(outputs: string[]): FrameExtractor {
+      return async (args) => {
+        const output = args.at(-1) ?? "";
+        outputs.push(output);
+        await new Promise((resolve) => setTimeout(resolve, 5));
+        try {
+          writeFileSync(output, `frame of ${args[4]} #${outputs.length}`, {
+            flag: args.includes("-y") ? "w" : "wx",
+          });
+          return { ok: true };
+        } catch (error) {
+          return { ok: false, error: String(error) };
+        }
+      };
+    }
+
+    function freeze(post: (body: unknown) => Promise<Response>, dir: string, id: string) {
+      return post({
+        path: "index.html",
+        expectedVersion: fileContentVersion(readFileSync(join(dir, "index.html"), "utf-8")),
+        target: { id },
+        playhead: 2.5,
+      });
+    }
+
+    it("gives two ids that sanitise alike distinct stills and keeps the first one's pixels", async () => {
+      const outputs: string[] = [];
+      const source = twoVideos("a.b", "a_b");
+      const { dir, post } = setup(writingExtractor(outputs), { path: "index.html", html: source });
+      expect((await freeze(post, dir, "a.b")).status).toBe(200);
+      const first = readFileSync(outputs[0] ?? "", "utf-8");
+      expect((await freeze(post, dir, "a_b")).status).toBe(200);
+      expect(outputs[1]).not.toBe(outputs[0]);
+      expect(readFileSync(outputs[0] ?? "", "utf-8")).toBe(first);
+    });
+
+    it("keeps ids sharing an 80-character prefix apart", async () => {
+      const outputs: string[] = [];
+      const prefix = "v".repeat(80);
+      const source = twoVideos(`${prefix}1`, `${prefix}2`);
+      const { dir, post } = setup(writingExtractor(outputs), { path: "index.html", html: source });
+      expect((await freeze(post, dir, `${prefix}1`)).status).toBe(200);
+      expect((await freeze(post, dir, `${prefix}2`)).status).toBe(200);
+      expect(new Set(outputs).size).toBe(2);
+    });
+
+    it("writes a new still when the same clip is frozen again at the same time", async () => {
+      const outputs: string[] = [];
+      const { dir, post } = setup(writingExtractor(outputs));
+      expect((await freeze(post, dir, "talk")).status).toBe(200);
+      const first = readFileSync(outputs[0] ?? "", "utf-8");
+      writeFileSync(join(dir, "index.html"), html);
+      expect((await freeze(post, dir, "talk")).status).toBe(200);
+      expect(outputs[1]).not.toBe(outputs[0]);
+      expect(readFileSync(outputs[0] ?? "", "utf-8")).toBe(first);
+    });
+
+    it("gives concurrent requests distinct stills", async () => {
+      const outputs: string[] = [];
+      const { dir, post } = setup(writingExtractor(outputs));
+      const results = await Promise.all([freeze(post, dir, "talk"), freeze(post, dir, "talk")]);
+      expect(results.map((res) => res.status).sort()).toEqual([200, 409]);
+      expect(new Set(outputs).size).toBe(2);
+      expect(outputs.map((output) => readFileSync(output, "utf-8"))).toEqual([
+        expect.stringContaining("#"),
+        expect.stringContaining("#"),
+      ]);
+    });
+
+    it("refuses, without extracting, when the still's name is already taken", async () => {
+      const outputs: string[] = [];
+      const { dir, post } = setup(writingExtractor(outputs), undefined, () => "fixed");
+      expect((await freeze(post, dir, "talk")).status).toBe(200);
+      const first = readFileSync(outputs[0] ?? "", "utf-8");
+      writeFileSync(join(dir, "index.html"), html);
+      expect((await freeze(post, dir, "talk")).status).toBe(409);
+      expect(outputs).toHaveLength(1);
+      expect(readFileSync(outputs[0] ?? "", "utf-8")).toBe(first);
+      expect(readFileSync(join(dir, "index.html"), "utf-8")).toBe(html);
+    });
   });
 });

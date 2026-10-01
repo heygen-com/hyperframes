@@ -61,9 +61,9 @@ describe("freezeFrameMediaTime", () => {
 });
 
 describe("freezeExtractArgs", () => {
-  it("seeks before the input and writes one frame", () => {
+  it("seeks before the input and writes one frame, never over an existing file", () => {
     expect(freezeExtractArgs("/p/a.mp4", 7.2004, "/p/assets/freeze/a-3200.png")).toEqual([
-      "-y",
+      "-n",
       "-ss",
       "7.2",
       "-i",
@@ -96,6 +96,14 @@ describe("readFreezeSource", () => {
       src: "talk.mp4",
       mediaTime: 4.2,
     });
+  });
+
+  it("reads the in-point as playback does: data-playback-start before data-media-start", () => {
+    const both = project.replace(
+      'data-media-start="2"',
+      'data-media-start="2" data-playback-start="5"',
+    );
+    expect(readFreezeSource(both, { id: "talk" }, 3.2)?.mediaTime).toBe(7.2);
   });
 
   it("refuses a playhead outside the clip or a non-video", () => {
@@ -156,9 +164,23 @@ describe("applyFreezeFrameToHtml", () => {
 
 describe("freezeStillFileName", () => {
   it("reduces a clip id to one safe filename component", () => {
-    expect(freezeStillFileName("talk", 2.5)).toBe("talk-2500.png");
-    expect(freezeStillFileName("../../etc/x", 1)).toBe("______etc_x-1000.png");
-    expect(freezeStillFileName("a\\b:c", 1)).toBe("a_b_c-1000.png");
-    expect(freezeStillFileName("", 1)).toBe("clip-1000.png");
+    expect(freezeStillFileName("talk", 2.5, "t0")).toMatch(/^talk-[0-9a-f]{10}-2500-t0\.png$/);
+    expect(freezeStillFileName("../../etc/x", 1, "t0")).toMatch(
+      /^______etc_x-[0-9a-f]{10}-1000-t0\.png$/,
+    );
+    expect(freezeStillFileName("a\\b:c", 1, "t0")).toMatch(/^a_b_c-[0-9a-f]{10}-1000-t0\.png$/);
+    expect(freezeStillFileName("", 1, "t0")).toMatch(/^clip-[0-9a-f]{10}-1000-t0\.png$/);
+  });
+
+  it("keeps ids that sanitise or truncate alike apart", () => {
+    expect(freezeStillFileName("a.b", 2.5, "t0")).not.toBe(freezeStillFileName("a_b", 2.5, "t0"));
+    const prefix = "v".repeat(80);
+    expect(freezeStillFileName(`${prefix}1`, 2.5, "t0")).not.toBe(
+      freezeStillFileName(`${prefix}2`, 2.5, "t0"),
+    );
+  });
+
+  it("names every extraction of one clip at one time differently", () => {
+    expect(freezeStillFileName("talk", 2.5)).not.toBe(freezeStillFileName("talk", 2.5));
   });
 });

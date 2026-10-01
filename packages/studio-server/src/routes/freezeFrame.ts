@@ -1,5 +1,5 @@
 import { execFile } from "node:child_process";
-import { readFileSync, statSync } from "node:fs";
+import { existsSync, readFileSync, statSync } from "node:fs";
 import { dirname, join, relative, sep } from "node:path";
 import type { Hono } from "hono";
 import { findFfBinary } from "@hyperframes/parsers/ff-binaries";
@@ -16,6 +16,7 @@ import {
   applyFreezeFrameToHtml,
   freezeExtractArgs,
   freezeStillFileName,
+  randomStillToken,
   readFreezeSource,
   type FreezeSource,
 } from "../helpers/freezeFrame.js";
@@ -84,19 +85,21 @@ async function extractStill(
   absPath: string,
   source: FreezeSource,
   playhead: number,
-  extract: FrameExtractor,
+  tools: { extract: FrameExtractor; stillToken: () => string },
 ): Promise<{ imageSrc: string } | Failure> {
   const fileDir = dirname(absPath);
   const mediaPath = pinWithinProject(projectDir, relative(projectDir, join(fileDir, source.src)));
   if (!mediaPath) return { error: `forbidden media path: ${source.src}`, status: 403 };
   const freezeDir = join(projectDir, ...FREEZE_DIR);
-  const fileName = freezeStillFileName(source.id, playhead);
+  const fileName = freezeStillFileName(source.id, playhead, tools.stillToken());
   mkdirWithinProject(projectDir, freezeDir);
   const imagePath = pinWithinProject(projectDir, join(...FREEZE_DIR, fileName));
   if (!imagePath || dirname(imagePath) !== freezeDir) {
     return { error: `forbidden freeze path: ${fileName}`, status: 403 };
   }
-  const extracted = await extract(freezeExtractArgs(mediaPath, source.mediaTime, imagePath));
+  if (existsSync(imagePath))
+    return { error: `freeze still already exists: ${fileName}`, status: 409 };
+  const extracted = await tools.extract(freezeExtractArgs(mediaPath, source.mediaTime, imagePath));
   if (!extracted.ok) {
     return {
       error: `Could not extract the frame: ${extracted.error ?? "ffmpeg failed"}`,
@@ -132,6 +135,7 @@ export function registerFreezeFrameRoutes(
   api: Hono,
   adapter: StudioApiAdapter,
   extract: FrameExtractor = ffmpegExtractor,
+  stillToken: () => string = randomStillToken,
 ): void {
   // A straight line of request guards, each its own early return.
   // fallow-ignore-next-line complexity
@@ -151,7 +155,10 @@ export function registerFreezeFrameRoutes(
 
     const source = readFreezeSource(before, body.target, body.playhead);
     if (!source) return c.json({ error: "Move the playhead inside a video clip to freeze" }, 400);
-    const still = await extractStill(project.dir, absPath, source, body.playhead, extract);
+    const still = await extractStill(project.dir, absPath, source, body.playhead, {
+      extract,
+      stillToken,
+    });
     if ("error" in still) return c.json({ error: still.error }, still.status);
     const { imageSrc } = still;
     const folded = applyFreezeFrameToHtml(before, {
