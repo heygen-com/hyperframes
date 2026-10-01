@@ -10,11 +10,7 @@
 import { useCallback } from "react";
 import type { GsapAnimation } from "@hyperframes/core/gsap-parser";
 import type { DomEditSelection } from "../components/editor/domEditingTypes";
-import {
-  POSITION_CHANNELS,
-  tryGsapDragIntercept,
-  tryGsapRotationIntercept,
-} from "./gsapRuntimeBridge";
+import { tryGsapDragIntercept, tryGsapRotationIntercept } from "./gsapRuntimeBridge";
 import { tryGsapResizeIntercept } from "./gsapResizeIntercept";
 import { computeDraggedGsapPosition } from "./draggedGsapPosition";
 import { readGsapPositionFromIframe } from "./gsapPositionDetection";
@@ -33,7 +29,11 @@ import { setElementGsapPosition } from "../utils/elementGsap";
 import { logResize, logResizeSettle } from "../utils/resizeDebug";
 import type { DomEditGroupPathOffsetCommit } from "../components/editor/DomEditOverlay";
 import { runGestureTransaction } from "./gestureTransaction";
-import { gsapWritesPosition, hasNonHoldTweenForElement } from "./gsapRuntimeKeyframes";
+import {
+  gsapWritesPosition,
+  hasNonHoldTweenForElement,
+  POSITION_CHANNELS,
+} from "./gsapRuntimeKeyframes";
 import { assertGsapEditPersisted, saveMove } from "./gsapEditOutcome";
 import type { GsapAnimationFetchOptions } from "./useGsapAnimationFetchFallback";
 import type { ElementOffsetStagerDeps } from "./elementOffsetStager";

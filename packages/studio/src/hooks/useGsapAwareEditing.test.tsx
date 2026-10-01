@@ -22,7 +22,6 @@ const mocks = vi.hoisted(() => ({
 
 vi.mock("./gsapResizeIntercept", () => ({ tryGsapResizeIntercept: mocks.resize }));
 vi.mock("./gsapRuntimeBridge", () => ({
-  POSITION_CHANNELS: ["x", "y"],
   tryGsapDragIntercept: mocks.drag,
   tryGsapRotationIntercept: vi.fn(),
 }));

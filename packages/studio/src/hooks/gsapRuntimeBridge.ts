@@ -43,7 +43,6 @@ import {
   type GsapEditOutcome,
 } from "./gsapEditOutcome";
 
-export { POSITION_CHANNELS };
 const POSITION_CHANNEL_SET = new Set<string>(POSITION_CHANNELS);
 
 const ROTATION_CHANNELS: string[] = ["rotation", "rotationX", "rotationY", "rotationZ"];
