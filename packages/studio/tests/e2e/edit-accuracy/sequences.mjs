@@ -150,6 +150,8 @@ async function driveStep(ctx, step, state) {
   if (step.do === "undo") {
     await blurPreview(page);
     await chord(page, "Control+z");
+    // A key's DOM change reaches the CDP quads only after a frame; the next step reads from them.
+    await nextFrame(page);
     state.depth -= 1;
     // Undone back to the start, the box belongs where it began; any other undo leaves it unknown here.
     state.intended = state.depth === 0 ? state.start : null;
@@ -255,6 +257,7 @@ async function editText(c, step, state) {
   if (opened) {
     await page.keyboard.type(step.word);
     await page.keyboard.press("Enter");
+    await nextFrame(page);
   }
   state.smooth.push(smoothness(await recording(page, false)));
   state.depth += 1;
