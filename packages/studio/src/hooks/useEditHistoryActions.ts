@@ -3,6 +3,7 @@ import { useCallback, useMemo } from "react";
 import { STUDIO_MOTION_PATH } from "../components/editor/studioMotion";
 import { serializeStudioFileMutations } from "../utils/studioFileMutationCoordinator";
 import type { RestoreFiles } from "../utils/gsapUndoRestore";
+import { revertNewestStudioPendingEdit } from "../utils/studioPendingEdits";
 
 interface HistoryResult {
   ok: boolean;
@@ -74,7 +75,10 @@ export function useEditHistoryActions({
       const noun = direction === "undo" ? "Undo" : "Redo";
       // Paint the step in the key's own task when this tab knows it; the server's answer then confirms or corrects.
       const predicted = editHistory.predict?.(direction) ?? null;
-      const putBack = predicted ? (showHistoryRestoreNow?.(predicted.files) ?? null) : null;
+      const predictedShown = predicted ? (showHistoryRestoreNow?.(predicted.files) ?? null) : null;
+      const pendingEditShown =
+        !predictedShown && direction === "undo" ? revertNewestStudioPendingEdit() : null;
+      const putBack = predictedShown ?? pendingEditShown;
       let result: HistoryResult = { ok: false, reason: "failed" };
       let serverSteppedShown = false;
       try {
@@ -83,8 +87,10 @@ export function useEditHistoryActions({
           readFile: readHistoryFile,
           serialize: serializeHistoryFiles,
         });
-        serverSteppedShown =
-          Boolean(putBack && result.ok && result.label) && result.undoes === predicted?.id;
+        const stepped = Boolean(result.ok && result.label);
+        serverSteppedShown = predictedShown
+          ? stepped && result.undoes === predicted?.id
+          : stepped && Boolean(pendingEditShown);
       } finally {
         if (putBack && !serverSteppedShown) putBack();
       }
@@ -100,7 +106,10 @@ export function useEditHistoryActions({
         return;
       }
       if (result.ok && result.label) {
-        const files = serverSteppedShown ? fromShown(result.files, predicted!.files) : result.files;
+        const files =
+          serverSteppedShown && predictedShown
+            ? fromShown(result.files, predicted!.files)
+            : result.files;
         const restore = { paths: result.paths, files };
         onAfterUndoRedo?.(restore);
         if (activeCompPath && result.paths?.includes(activeCompPath)) {

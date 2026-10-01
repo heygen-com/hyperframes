@@ -11,6 +11,7 @@ import {
   applyManualOffsetDragDraft,
   endManualOffsetDragMembers,
   restoreManualOffsetDragMembers,
+  manualOffsetMoveRevert,
 } from "./manualOffsetDrag";
 import { applyRotationDraft, restoreRotationDraft } from "./rotationDraft";
 import {
@@ -57,6 +58,7 @@ import { logResize, logResizeMove, logResizeSettle } from "../../utils/resizeDeb
 import { logDrag, logDragSettle, readDragPositions } from "../../utils/dragDebug";
 import { createGroupDragMover } from "./groupDragMove";
 import { DomEditSaveQueueOpenError } from "../../utils/domEditSaveQueue";
+import { beginStudioPendingEdit } from "../../utils/studioPendingEdits";
 
 function isTap(g: { startX: number; startY: number; travelled?: boolean }, e: React.PointerEvent) {
   return (
@@ -344,7 +346,10 @@ export function createDomEditOverlayGestureHandlers(opts: UseDomEditOverlayGestu
         ),
         at: readDragPositions(groupG.members),
       });
-      void Promise.resolve(opts.onGroupPathOffsetCommitRef.current(updates))
+      const groupEdit = beginStudioPendingEdit(manualOffsetMoveRevert(groupG.members));
+      const groupSaved = Promise.resolve(
+        groupEdit.adopt(() => opts.onGroupPathOffsetCommitRef.current(updates)),
+      )
         .catch(() => {
           for (const member of groupG.members) {
             if (
@@ -363,6 +368,7 @@ export function createDomEditOverlayGestureHandlers(opts: UseDomEditOverlayGestu
           // so this is where a snap-back would show.
           logDragSettle("settle", groupG.members);
         });
+      groupEdit.settle(groupSaved);
       return;
     }
 
@@ -469,11 +475,15 @@ export function createDomEditOverlayGestureHandlers(opts: UseDomEditOverlayGestu
         box.style.left = `${nextBoxLeft}px`;
         box.style.top = `${nextBoxTop}px`;
       }
-      void Promise.resolve(
-        opts.onPathOffsetCommitRef.current(sel, finalOffset, {
-          altKey: e.altKey,
-          plainTranslate: g.pathOffsetMember.plainTranslate,
-        }),
+      const member = g.pathOffsetMember;
+      const edit = beginStudioPendingEdit(manualOffsetMoveRevert([member]));
+      const saved = Promise.resolve(
+        edit.adopt(() =>
+          opts.onPathOffsetCommitRef.current(sel, finalOffset, {
+            altKey: e.altKey,
+            plainTranslate: member.plainTranslate,
+          }),
+        ),
       )
         .catch(() => {
           if (
@@ -485,6 +495,7 @@ export function createDomEditOverlayGestureHandlers(opts: UseDomEditOverlayGestu
         .finally(() => {
           if (g.pathOffsetMember) endManualOffsetDragMembers([g.pathOffsetMember]);
         });
+      edit.settle(saved);
     } else {
       opts.suppressNextBoxClickRef.current = true;
       const finalSize = readStudioBoxSize(sel.element);
