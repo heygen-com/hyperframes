@@ -1485,7 +1485,6 @@ export function initSandboxRuntimeModular(): void {
         try {
           fallbackTimeline.add(existingRootTimeline, 0);
         } catch (err) {
-          // keep fallback resilient if root add fails
           swallow("runtime.init.site2", err);
         }
         // A paused child never renders under its parent's seek; the wrapper drives it now.
