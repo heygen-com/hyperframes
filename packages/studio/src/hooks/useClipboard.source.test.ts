@@ -413,31 +413,25 @@ describe("a copy in place, as the canvas makes one", () => {
   };
   const pastedSubStarts = (html: string | undefined) =>
     [...(html ?? "").matchAll(/<h2[^>]*data-hf-id[^>]*data-start="([^"]+)"/g)].map((m) => m[1]);
-
-  it("pastes a sub-composition's clip into the film at the moment the film shows it", async () => {
+  const mountSubClip = (currentTime = 0, view = { path: "index.html" }) => {
     usePlayerStore.setState({
       elements: [TITLE, SUB_CLIP],
       selectedElementId: SUB_CLIP.id,
       selectedElementIds: new Set([SUB_CLIP.id]),
-      currentTime: 7,
+      currentTime,
     });
-    const { clipboard, writes } = mountClipboard(null, SUB, (host) =>
-      host.setAttribute("data-start", "2"),
-    );
+    return mountClipboard(null, SUB, (host) => host.setAttribute("data-start", "2"), SAVED, view);
+  };
+
+  it("pastes a sub-composition's clip into the film at the moment the film shows it", async () => {
+    const { clipboard, writes } = mountSubClip(7);
     clipboard().handleCopy();
     await clipboard().handlePaste({ inPlace: true });
     expect(pastedSubStarts(writes[0])).toEqual(["3"]);
   });
 
   it("duplicates a sub-composition's clip at its own local time, on another track", async () => {
-    usePlayerStore.setState({
-      elements: [TITLE, SUB_CLIP],
-      selectedElementId: SUB_CLIP.id,
-      selectedElementIds: new Set([SUB_CLIP.id]),
-    });
-    const { clipboard, writes } = mountClipboard(null, SUB, (host) =>
-      host.setAttribute("data-start", "2"),
-    );
+    const { clipboard, writes } = mountSubClip();
     await clipboard().handleDuplicate({ inPlace: true });
     const copy = /<h2[^>]*data-hf-id[^>]*>/.exec(writes[0] ?? "")?.[0] ?? "";
     expect(copy).toContain('data-start="1"');
@@ -445,20 +439,8 @@ describe("a copy in place, as the canvas makes one", () => {
   });
 
   it("pastes at the playhead once the edited composition is another, whose clock differs", async () => {
-    usePlayerStore.setState({
-      elements: [TITLE, SUB_CLIP],
-      selectedElementId: SUB_CLIP.id,
-      selectedElementIds: new Set([SUB_CLIP.id]),
-      currentTime: 0.5,
-    });
     const view = { path: "index.html" };
-    const { clipboard, writes, rerender } = mountClipboard(
-      null,
-      SUB,
-      (host) => host.setAttribute("data-start", "2"),
-      SAVED,
-      view,
-    );
+    const { clipboard, writes, rerender } = mountSubClip(0.5, view);
     clipboard().handleCopy();
     view.path = "compositions/sub.html";
     rerender();

@@ -32,6 +32,16 @@ import { serializeStudioFileMutations } from "../utils/studioFileMutationCoordin
 
 type InPlace = { inPlace?: boolean };
 
+const pasteStart = (
+  payload: Extract<ClipboardPayload, { kind: "timeline-clip" }>,
+  targetPath: string,
+  playhead: number,
+  options?: InPlace,
+) =>
+  options?.inPlace && payload.copiedInComposition === targetPath
+    ? Math.min(...payload.clips.map((clip) => clip.start))
+    : playhead;
+
 interface RecordEditInput {
   label: string;
   coalesceKey?: string;
@@ -393,9 +403,7 @@ export function useClipboard({
           const pasted = pasteTimelineClips(
             originalContent,
             payload.clips,
-            options?.inPlace && payload.copiedInComposition === targetPath
-              ? Math.min(...payload.clips.map((clip) => clip.start))
-              : currentTime,
+            pasteStart(payload, targetPath, currentTime, options),
             elements,
             fromThisFile,
           );
@@ -442,8 +450,8 @@ export function useClipboard({
     [activeCompPath, recordEdit, reloadPreview, showToast, writeProjectFile],
   );
 
-  // Duplicates the selection right after it, or with `inPlace` at its own time on the next free
-  // track, without touching the clipboard — a pending copy must survive a Cmd+D. Shares
+  // Duplicates the selection right after it, or with `inPlace` at its own time on a track of its own,
+  // without touching the clipboard — a pending copy must survive a Cmd+D. Shares
   // pasteTimelineClips with handlePaste; only the anchor and clip source differ (the
   // selection's end or start here, the playhead or the copy's own time there).
   const handleDuplicate = useCallback(
