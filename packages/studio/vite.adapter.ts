@@ -102,6 +102,8 @@ export function createProjectSignatureCache({
   };
 }
 
+const isWindowsStreamId = (id: string) => process.platform === "win32" && id.includes(":");
+
 export function createViteAdapter(
   dataDir: string,
   server: ViteDevServer,
@@ -233,7 +235,7 @@ export function createViteAdapter(
 
     // fallow-ignore-next-line complexity
     resolveProject(id: string) {
-      if (!isValidProjectId(id)) return null;
+      if (!isValidProjectId(id) || isWindowsStreamId(id)) return null;
       let projectDir = resolve(dataDir, id);
       if (!isPathWithin(dataDir, projectDir)) return null;
       if (!existsSync(projectDir)) {

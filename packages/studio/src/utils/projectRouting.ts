@@ -5,13 +5,15 @@ export interface ProjectHashRoute {
   params: URLSearchParams;
 }
 
+const WINDOWS_DRIVE_PREFIX = /^[a-z]:/i;
+
 /** Project names are single path segments, including when received from a hash or server. */
 export function isValidProjectId(value: string): boolean {
   return (
     value.length > 0 &&
     value !== "." &&
     value !== ".." &&
-    !value.includes(":") &&
+    !WINDOWS_DRIVE_PREFIX.test(value) &&
     !value.includes("/") &&
     !value.includes("\\") &&
     !Array.from(value).some((char) => char.charCodeAt(0) < 32)
