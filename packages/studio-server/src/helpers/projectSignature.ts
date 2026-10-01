@@ -215,10 +215,6 @@ export async function resolveProjectAndSignature(
   return { project, signature: resolveProjectSignature(adapter, project.dir) };
 }
 
-/**
- * Creates a stable preview cache-busting signature for project source plus Studio manifests.
- * `excluding` (project-relative paths) leaves those files out.
- */
 export function forgetProjectSignature(projectDir: string): void {
   const dir = resolve(projectDir);
   for (const key of projectSignatureCache.keys()) {
@@ -226,6 +222,10 @@ export function forgetProjectSignature(projectDir: string): void {
   }
 }
 
+/**
+ * Creates a stable preview cache-busting signature for project source plus Studio manifests.
+ * `excluding` (project-relative paths) leaves those files out.
+ */
 export function createProjectSignature(
   projectDir: string,
   excluding: ReadonlySet<string> = new Set(),
