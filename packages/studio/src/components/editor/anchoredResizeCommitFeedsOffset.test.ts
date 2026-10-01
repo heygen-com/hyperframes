@@ -196,6 +196,7 @@ function evt(clientX: number, clientY: number) {
     clientY,
     pointerId: 1,
     button: 0,
+    buttons: 1,
     altKey: false,
     shiftKey: false,
     preventDefault() {},
