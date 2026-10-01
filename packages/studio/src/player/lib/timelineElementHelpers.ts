@@ -213,7 +213,6 @@ function setOptional<K extends keyof TimelineElement>(
   else entry[key] = value;
 }
 
-/** A `data-volume` as the store keeps it: a number, or none when absent or unreadable. */
 export function parseStoredVolume(text: string | null): number | undefined {
   const volume = Number.parseFloat(text ?? "");
   return Number.isFinite(volume) ? volume : undefined;
@@ -243,7 +242,6 @@ function readVolume(el: Element, media: Element): number | undefined {
   return parseStoredVolume(el.getAttribute("data-volume") ?? media.getAttribute("data-volume"));
 }
 
-/** An element's stored volume, read as discovery reads it: its own `data-volume`, else its media's. */
 export const elementVolume = (el: Element) => readVolume(el, resolveMediaElement(el) ?? el);
 
 /** What the mixer gets: the compiler's `data-has-audio` rule, muted and volume. */
