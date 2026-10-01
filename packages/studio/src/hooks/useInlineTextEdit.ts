@@ -141,7 +141,7 @@ export function useInlineTextEdit({
         original: element.innerHTML,
         outline: element.style.outline,
         outlineOffset: element.style.outlineOffset,
-        gesture: beginStudioManualEditGesture(element),
+        gesture: beginStudioManualEditGesture(element, "edit"),
       };
       // Drawn on the element itself, not in Studio's overlay above it. This is
       // the only mark that says the caret is in the TEXT rather than the
