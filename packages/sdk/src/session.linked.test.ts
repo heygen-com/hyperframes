@@ -48,6 +48,19 @@ describe("setTiming on linked clips", () => {
     expect(attr(out, "hf-talk-audio", "data-start")).toBe("6");
   });
 
+  it("keeps a common end when partners start at different times", async () => {
+    const offset = LINKED_HTML.replace(
+      'data-hf-id="hf-talk-audio" src="talk.mp4" data-link="lk-1" data-start="2" data-duration="6"',
+      'data-hf-id="hf-talk-audio" src="talk.mp4" data-link="lk-1" data-start="3" data-duration="5"',
+    );
+    const comp = await openComposition(offset);
+    comp.setTiming("hf-talk", { duration: 4 });
+    const html = comp.serialize();
+    expect(attr(html, "hf-talk", "data-duration")).toBe("4");
+    expect(attr(html, "hf-talk-audio", "data-start")).toBe("3");
+    expect(attr(html, "hf-talk-audio", "data-duration")).toBe("3");
+  });
+
   it("{ linked: false } edits one member and unlinks the pair", async () => {
     const comp = await openComposition(LINKED_HTML);
     comp.setTiming("hf-talk", { start: 5 }, { linked: false });

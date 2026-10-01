@@ -341,7 +341,11 @@ function partnerTiming(
   const endsTogether =
     Math.abs(pStart + (partner.duration ?? 0) - (gStart + (grabbed.duration ?? 0))) <
     ALIGN_EPSILON_S;
-  if (edit.duration !== undefined && endsTogether) timing.duration = edit.duration;
+  if (edit.duration !== undefined && endsTogether) {
+    const end = (edit.start ?? gStart) + edit.duration;
+    const duration = end - (timing.start ?? pStart);
+    if (duration > 0) timing.duration = duration;
+  }
   return timing;
 }
 
