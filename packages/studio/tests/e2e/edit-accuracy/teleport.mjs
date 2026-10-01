@@ -101,7 +101,7 @@ export function quadOf(el, top = el.ownerDocument.defaultView.top) {
  */
 function frameSampler() {
   if (window.top !== window) return;
-  const rec = { on: false, selector: null, pointer: null, down: false, ups: 0, samples: [] };
+  const rec = { on: false, selector: null, pointer: null, down: false, samples: [] };
   window.__editBenchFrames = rec;
   for (const type of ["pointerdown", "pointermove", "pointerup"])
     window.addEventListener(
@@ -112,7 +112,9 @@ function frameSampler() {
         rec.pointer = [e.clientX, e.clientY];
         // From the buttons, not the event type: a move after release is not a drag.
         rec.down = (e.buttons & 1) === 1;
-        if (type === "pointerup") rec.ups += 1;
+        // Kept as it happens, so a release that no frame painted still ends the drag at its own point.
+        if (type === "pointerup" && rec.on)
+          rec.samples.push({ t: performance.now(), up: rec.pointer });
       },
       true,
     );
@@ -150,7 +152,6 @@ function frameSampler() {
       t: performance.now(),
       pointer: rec.pointer,
       down: rec.down,
-      ups: rec.ups,
       ...(root && { root: quadOf(root) }),
       ...(el && {
         quad: quadOf(el),
@@ -277,19 +278,23 @@ export function scoreTeleport(gesture, samples) {
   }));
   let worst = { max: 0, frame: 0, kind: null, point: 0 };
   const trace = [];
+  // The drag's own pointer-up; a later one in the window is the next element's selection click.
+  const up = samples.find((s) => s.up);
   let [pressedAt, released] = [-1, false];
   for (const [i, s] of frames.entries()) {
     if (pressedAt < 0 && s.down) pressedAt = i;
-    // A pointer-up ends the drag even when no frame painted between it and the next press (selecting the next element).
-    released ||=
-      pressedAt >= 0 && i > pressedAt && (!s.down || (s.ups ?? 0) > (frames[0].ups ?? 0));
+    released ||= up ? s.t >= up.t : pressedAt >= 0 && i > pressedAt && !s.down;
     // fallow-ignore-next-line complexity
     const row = tracked.map((t, k) => {
       const g = t.grab(s);
-      // After release the pointer no longer drags the box: it stays owed the release point.
-      const want = released ? t.allowed.at(-1) : t.implied(pointer(s));
+      // After release the pointer no longer drags the box: it is owed the release point, wherever the pointer goes.
+      if (released && !t.release)
+        t.release = up
+          ? t.implied(s.map.toComp(up.up))
+          : (t.allowed.at(-1) ?? t.implied(pointer(s)));
+      const want = released ? t.release : t.implied(pointer(s));
       if (!released) t.allowed.push(want);
-      const places = released ? [t.allowed.at(-1)] : t.allowed;
+      const places = released ? [t.release] : t.allowed;
       const off = Math.min(...places.map((a) => dist(g, a)));
       // Lag is not a jump: a box that catches up after lagging frames may move all the pointer travel it owes.
       const owed = (t.prev?.owed ?? 0) + (t.prev ? dist(want, t.prev.want) : 0);
@@ -306,7 +311,7 @@ export function scoreTeleport(gesture, samples) {
     ...worst,
     pass: worst.max <= LIMIT_PX,
     frames: frames.length,
-    unmeasured: samples.length - frames.length,
+    unmeasured: samples.filter((s) => !s.up).length - frames.length,
     // Kept only when it fails: each tracked point and where the pointer put it, every frame.
     trace: worst.max > LIMIT_PX ? trace : undefined,
   };
