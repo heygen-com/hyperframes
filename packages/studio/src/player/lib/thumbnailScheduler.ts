@@ -23,6 +23,7 @@ export interface ThumbnailRequest {
   priority: ThumbnailPriority;
   /** Rich work is paused while the timeline is fast-scrolling. */
   rich?: boolean;
+  /** For work whose result nobody reads: it is dropped, not cached, once its last lease ends. */
   discardWhenReleased?: boolean;
   load: (signal: AbortSignal) => Promise<ThumbnailLoadedResult>;
 }
@@ -215,10 +216,7 @@ export class ThumbnailScheduler {
     if (!scrolling) this.pump();
   }
 
-  /**
-   * Hold server-rendered composition thumbnails while the preview loads a new document: both
-   * are served by the same Studio server, and the preview is what the person is waiting for.
-   */
+  /** Holds composition renders while the preview loads: same server, and the preview is what the person awaits. */
   setPreviewReloading(reloading: boolean): void {
     if (this.previewReloading === reloading) return;
     this.previewReloading = reloading;

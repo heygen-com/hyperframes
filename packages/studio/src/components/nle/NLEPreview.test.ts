@@ -439,6 +439,9 @@ describe("NLEPreview", () => {
       const view = renderPreview();
       settle(view, ["ready", "missing"]);
       expect(renders()).toEqual([renderUrl]);
+      expect(fetchSpy.mock.calls[0]?.[1]?.signal, "rendered as scheduler work").toBeInstanceOf(
+        AbortSignal,
+      );
       expect(view.stage.querySelector('[data-testid="preview-poster"]')).toBeNull();
       view.cleanup();
     });

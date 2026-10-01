@@ -20,6 +20,21 @@ class DecodingImage {
   }
 }
 
+let autoIntersect = true;
+const observed: Array<{ element: Element; callback: IntersectionObserverCallback }> = [];
+class ViewportObserver {
+  constructor(private readonly callback: IntersectionObserverCallback) {}
+  observe(element: Element) {
+    observed.push({ element, callback: this.callback });
+    if (autoIntersect) this.enter();
+  }
+  enter() {
+    const entry = { isIntersecting: true } as IntersectionObserverEntry;
+    this.callback([entry], this as unknown as IntersectionObserver);
+  }
+  disconnect() {}
+}
+
 interface Render {
   url: URL;
   signal: AbortSignal;
@@ -27,6 +42,7 @@ interface Render {
 }
 
 const real = {
+  IntersectionObserver: globalThis.IntersectionObserver,
   fetch: globalThis.fetch,
   Image: globalThis.Image,
   create: URL.createObjectURL,
@@ -58,13 +74,19 @@ beforeEach(() => {
       }),
   ) as typeof fetch;
   globalThis.Image = DecodingImage as unknown as typeof Image;
+  globalThis.IntersectionObserver = ViewportObserver as unknown as typeof IntersectionObserver;
+  [autoIntersect, observed.length] = [true, 0];
   URL.createObjectURL = vi.fn(() => `blob:frame-${++frames}`);
   URL.revokeObjectURL = vi.fn();
   usePlayerStore.setState({ previewBooted: true });
 });
 
 afterEach(() => {
-  Object.assign(globalThis, { fetch: real.fetch, Image: real.Image });
+  Object.assign(globalThis, {
+    fetch: real.fetch,
+    Image: real.Image,
+    IntersectionObserver: real.IntersectionObserver,
+  });
   Object.assign(URL, { createObjectURL: real.create, revokeObjectURL: real.revoke });
 });
 
@@ -97,6 +119,39 @@ describe("composition card thumbnails", () => {
 
     act(() => usePlayerStore.getState().setTimelineReady(false));
     expect(shown(host)).toBe("blob:frame-1");
+  });
+
+  it("wait until a card is near the viewport, so an offscreen card never renders ahead of a visible one", () => {
+    autoIntersect = false;
+    mount(["compositions/above.html", "compositions/seen.html", "compositions/below.html"]);
+    expect(renders).toHaveLength(0);
+
+    const seen = observed.find((o) =>
+      o.element.closest("[draggable]")?.textContent?.includes("seen"),
+    )!;
+    act(() =>
+      seen.callback(
+        [{ isIntersecting: true } as IntersectionObserverEntry],
+        {} as IntersectionObserver,
+      ),
+    );
+    expect(renders.map((r) => r.url.pathname)).toEqual([
+      "/api/projects/demo/thumbnail/compositions/seen.html",
+    ]);
+  });
+
+  it("keep showing the last frame, leased, until the next revision's frame is ready", async () => {
+    const host = mount();
+    renders[0]!.answer();
+    await settle();
+    act(() => usePlayerStore.getState().bumpThumbnailRevisions(null));
+    expect(shown(host)).toBe("blob:frame-1");
+    thumbnailScheduler.invalidateProject("demo");
+    expect(URL.revokeObjectURL).not.toHaveBeenCalledWith("blob:frame-1");
+
+    renders.at(-1)!.answer();
+    await settle();
+    expect(shown(host)).toBe("blob:frame-2");
   });
 
   it("share one render with the timeline's thumbnail of the same composition", () => {

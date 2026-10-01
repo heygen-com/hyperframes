@@ -1,6 +1,7 @@
 import { buildProjectApiPath } from "../../utils/projectRouting";
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useThumbnailLease } from "../../hooks/useThumbnailLease";
+import type { ThumbnailRequest, ThumbnailSnapshot } from "../../player/lib/thumbnailScheduler";
 import {
   buildCompositionThumbnailUrl,
   compositionThumbnailRequest,
@@ -127,6 +128,25 @@ export function syncIframePlayback(iframe: HTMLIFrameElement | null, shouldPlay:
   }
 }
 
+const imageUrlOf = (snapshot: ThumbnailSnapshot) =>
+  snapshot.status === "ready" && snapshot.value.kind === "image" ? snapshot.value.url : null;
+
+function useNearViewport<T extends Element>(): [(element: T | null) => void, boolean] {
+  const [element, setElement] = useState<T | null>(null);
+  const [near, setNear] = useState(false);
+  useEffect(() => {
+    if (!element || near) return;
+    if (typeof IntersectionObserver === "undefined") return setNear(true);
+    const observer = new IntersectionObserver(
+      (entries) => entries.some((entry) => entry.isIntersecting) && setNear(true),
+      { rootMargin: "200px" },
+    );
+    observer.observe(element);
+    return () => observer.disconnect();
+  }, [element, near]);
+  return [setElement, near];
+}
+
 function CompCard({
   projectId,
   comp,
@@ -193,18 +213,25 @@ function CompCard({
   const name = comp.replace(/^compositions\//, "").replace(/\.html$/, "");
   const previewUrl = compositionPreviewUrl(projectId, comp);
   const thumbnailUrl = compositionCardThumbnailUrl(projectId, comp, contentRevision);
+  const [thumbnailBox, nearViewport] = useNearViewport<HTMLDivElement>();
   const timelineSessionEpoch = usePlayerStore((state) => state.timelineSessionEpoch);
   const thumbnailRequest = useMemo(
     () =>
-      previewBooted
+      previewBooted && nearViewport
         ? compositionThumbnailRequest(thumbnailUrl, projectId, {
             sessionEpoch: timelineSessionEpoch,
             rich: true,
           })
         : null,
-    [previewBooted, thumbnailUrl, projectId, timelineSessionEpoch],
+    [previewBooted, nearViewport, thumbnailUrl, projectId, timelineSessionEpoch],
   );
   const thumbnail = useThumbnailLease(thumbnailRequest);
+  const [shownRequest, setShownRequest] = useState<ThumbnailRequest | null>(null);
+  if (thumbnail.status === "ready" && shownRequest !== thumbnailRequest) {
+    setShownRequest(thumbnailRequest);
+  }
+  const previous = useThumbnailLease(thumbnail.status === "ready" ? null : shownRequest);
+  const frameUrl = imageUrlOf(thumbnail) ?? imageUrlOf(previous);
   const thumbnailFailed = thumbnail.status === "error";
   const previewScale = resolveCompositionPreviewScale({
     cardWidth: CARD_W,
@@ -263,14 +290,17 @@ function CompCard({
           : "border-l-2 border-transparent hover:bg-neutral-800/50"
       }`}
     >
-      <div className="w-20 h-[45px] rounded-sm overflow-hidden bg-neutral-900 shrink-0 relative">
+      <div
+        ref={thumbnailBox}
+        className="w-20 h-[45px] rounded-sm overflow-hidden bg-neutral-900 shrink-0 relative"
+      >
         {thumbnailFailed ? (
           <div className="absolute inset-0 flex items-center justify-center px-1 text-center text-[8px] leading-tight text-neutral-600">
             Preview unavailable
           </div>
-        ) : thumbnail.status !== "ready" || thumbnail.value.kind !== "image" ? null : (
+        ) : !frameUrl ? null : (
           <img
-            src={thumbnail.value.url}
+            src={frameUrl}
             alt=""
             draggable={false}
             decoding="async"
