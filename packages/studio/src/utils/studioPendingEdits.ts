@@ -39,6 +39,27 @@ export function hasStudioPendingEdits(): boolean {
   return pendingEditPromises.size > 0 || focusedField() !== null;
 }
 
+export function isStudioEditSaving(): boolean {
+  return pendingEditPromises.size > 0;
+}
+
+export function afterStudioPendingEdits(run: () => void): () => void {
+  let waiting = true;
+  const check = () => {
+    if (!waiting) return;
+    if (isStudioEditSaving()) {
+      void Promise.allSettled([...pendingEditPromises]).then(check);
+      return;
+    }
+    waiting = false;
+    run();
+  };
+  check();
+  return () => {
+    waiting = false;
+  };
+}
+
 export function trackStudioPendingEdit(
   result: Promise<unknown> | unknown,
 ): Promise<unknown> | undefined {

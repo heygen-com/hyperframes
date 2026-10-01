@@ -15,6 +15,7 @@ import {
 import type { DomEditSelection } from "./domEditing";
 import "./domEditOverlayTestMocks";
 import { DomEditOverlay } from "./DomEditOverlay";
+import { PreviewReadOnlyProvider } from "./previewReadOnlyContext";
 import { STUDIO_MANUAL_EDIT_GESTURE_ATTR } from "./manualEditsTypes";
 
 (globalThis as unknown as { IS_REACT_ACT_ENVIRONMENT: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
@@ -91,28 +92,32 @@ function mountEditor(group: boolean) {
   );
   const host = document.body.appendChild(document.createElement("div"));
   overlayRoot = createRoot(host);
-  act(() =>
-    overlayRoot.render(
-      <DomEditOverlay
-        iframeRef={api().iframeRef}
-        activeCompositionPath={null}
-        selection={group ? null : selections[0]!}
-        groupSelections={group ? selections : []}
-        hoverSelection={null}
-        onCanvasMouseDown={() => undefined}
-        onCanvasPointerMove={() => Promise.resolve(null)}
-        onCanvasPointerLeave={() => undefined}
-        onSelectionChange={() => undefined}
-        onBlockedMove={() => undefined}
-        onPathOffsetCommit={onPathOffsetCommit}
-        onGroupPathOffsetCommit={onGroupPathOffsetCommit}
-        onBoxSizeCommit={() => undefined}
-        onRotationCommit={() => undefined}
-      />,
-    ),
-  );
-  const overlay = host.firstElementChild as HTMLElement;
-  return { live, overlay, box: overlay.querySelector(BOX)!, onPathOffsetCommit };
+  const render = (readOnly: boolean) =>
+    act(() =>
+      overlayRoot.render(
+        <PreviewReadOnlyProvider readOnly={readOnly}>
+          <DomEditOverlay
+            iframeRef={api().iframeRef}
+            activeCompositionPath={null}
+            selection={group ? null : selections[0]!}
+            groupSelections={group ? selections : []}
+            hoverSelection={null}
+            onCanvasMouseDown={() => undefined}
+            onCanvasPointerMove={() => Promise.resolve(null)}
+            onCanvasPointerLeave={() => undefined}
+            onSelectionChange={() => undefined}
+            onBlockedMove={() => undefined}
+            onPathOffsetCommit={onPathOffsetCommit}
+            onGroupPathOffsetCommit={onGroupPathOffsetCommit}
+            onBoxSizeCommit={() => undefined}
+            onRotationCommit={() => undefined}
+          />
+        </PreviewReadOnlyProvider>,
+      ),
+    );
+  render(false);
+  const overlay = host.querySelector('[aria-label="Composition canvas"]') as HTMLElement;
+  return { live, overlay, box: overlay.querySelector(BOX)!, onPathOffsetCommit, render };
 }
 
 /** A reload whose shadow paints while the gesture is still live. */
@@ -142,52 +147,69 @@ afterEach(() => {
   resetPlayerStore();
 });
 
-describe("a reload that paints during a drag", () => {
+describe("a reload during a drag", () => {
   it.each([
     ["one layer", false],
     ["a group", true],
-  ])("of %s waits for the drop, then shows the drop from a fresh load", async (_, group) => {
-    const { live, overlay, box } = mountEditor(group);
-    pointer(box, "pointerdown", 150, 150);
-    pointer(overlay, "pointermove", 170, 160);
-    pointer(overlay, "pointermove", 190, 170);
-    const held = await reloadMidGesture();
-    expect(api().iframeRef.current, "promoted under the pointer").toBe(live);
+  ])(
+    "that paints before the drop of %s waits, then shows the drop from a fresh load",
+    async (_, group) => {
+      const { live, overlay, box } = mountEditor(group);
+      pointer(box, "pointerdown", 150, 150);
+      pointer(overlay, "pointermove", 170, 160);
+      pointer(overlay, "pointermove", 190, 170);
+      const held = await reloadMidGesture();
+      expect(api().iframeRef.current, "promoted under the pointer").toBe(live);
 
+      pointer(overlay, "pointerup", 190, 170);
+      await settle();
+      expect(byId(live, "title").style.getPropertyValue("translate")).toBe("40px 20px");
+      expect(file.title).toBe("translate: 40px 20px");
+      if (group) expect(file.sub).toBe("translate: 40px 20px");
+      expect(marked(live.contentDocument!)).toHaveLength(0);
+      expect(api().iframeRef.current, "the shadow loaded before the drop").toBe(live);
+
+      const fresh = served("?_t=2");
+      expect(await paintShadow(api, fresh)).toBeGreaterThan(held.gen);
+      expect(api().iframeRef.current).toBe(fresh);
+      expect(byId(fresh, "title").style.getPropertyValue("translate")).toBe("40px 20px");
+      if (group) expect(byId(fresh, "sub").style.getPropertyValue("translate")).toBe("40px 20px");
+    },
+  );
+
+  it("that paints after the drop shows the drop from a fresh load, not the file before it", async () => {
+    const { live, overlay, box } = mountEditor(false);
+    pointer(box, "pointerdown", 150, 150);
+    pointer(overlay, "pointermove", 190, 170);
+    act(() => api().refreshPlayer());
+    const beforeDrop = served("?_t=1");
     pointer(overlay, "pointerup", 190, 170);
     await settle();
-    expect(byId(live, "title").style.getPropertyValue("translate")).toBe("40px 20px");
     expect(file.title).toBe("translate: 40px 20px");
-    if (group) expect(file.sub).toBe("translate: 40px 20px");
-    expect(marked(live.contentDocument!)).toHaveLength(0);
-    expect(api().iframeRef.current, "the shadow loaded before the drop").toBe(live);
 
+    const requested = await paintShadow(api, beforeDrop);
+    expect(api().iframeRef.current, "the file before the drop").toBe(live);
     const fresh = served("?_t=2");
-    expect(await paintShadow(api, fresh)).toBeGreaterThan(held.gen);
-    expect(api().iframeRef.current).toBe(fresh);
+    expect(await paintShadow(api, fresh)).toBeGreaterThan(requested);
     expect(byId(fresh, "title").style.getPropertyValue("translate")).toBe("40px 20px");
-    if (group) expect(byId(fresh, "sub").style.getPropertyValue("translate")).toBe("40px 20px");
   });
 });
 
-describe("every way a drag ends without a drop clears its mark, so the held reload goes on", () => {
+type Editor = ReturnType<typeof mountEditor>;
+
+describe("every way a drag ends without a drop clears its mark and promotes the held reload", () => {
   it.each([
-    [
-      "pointercancel",
-      (e: ReturnType<typeof mountEditor>) => pointer(e.overlay, "pointercancel", 0, 0),
-    ],
-    [
-      "lostpointercapture",
-      (e: ReturnType<typeof mountEditor>) => pointer(e.box, "lostpointercapture", 0, 0),
-    ],
+    ["pointercancel", (e: Editor) => pointer(e.overlay, "pointercancel", 0, 0)],
+    ["lostpointercapture", (e: Editor) => pointer(e.box, "lostpointercapture", 0, 0)],
     ["window blur", () => act(() => void window.dispatchEvent(new Event("blur")))],
+    ["a switch to read-only", (e: Editor) => e.render(true)],
     ["overlay unmount", () => act(() => overlayRoot.unmount())],
   ])("%s", async (_, end) => {
     const editor = mountEditor(false);
     pointer(editor.box, "pointerdown", 150, 150);
     pointer(editor.overlay, "pointermove", 190, 170);
     expect(marked(editor.live.contentDocument!)).toHaveLength(1);
-    await reloadMidGesture();
+    const held = await reloadMidGesture();
     expect(api().iframeRef.current).toBe(editor.live);
 
     end(editor);
@@ -195,18 +217,37 @@ describe("every way a drag ends without a drop clears its mark, so the held relo
     expect(marked(editor.live.contentDocument!)).toHaveLength(0);
     expect(byId(editor.live, "title").style.getPropertyValue("translate")).not.toBe("40px 20px");
     expect(editor.onPathOffsetCommit).not.toHaveBeenCalled();
-    const fresh = served("?_t=2");
-    await paintShadow(api, fresh);
-    expect(api().iframeRef.current).toBe(fresh);
+    expect(api().iframeRef.current, "nothing was saved, so the held copy is current").toBe(
+      held.shadow,
+    );
+  });
+
+  it("a press that throws before the drag is armed leaves no mark behind", async () => {
+    const editor = mountEditor(false);
+    HTMLElement.prototype.setPointerCapture = () => {
+      throw new Error("capture refused");
+    };
+    const swallow = (event: ErrorEvent) => event.preventDefault();
+    window.addEventListener("error", swallow);
+    try {
+      pointer(editor.box, "pointerdown", 150, 150);
+    } catch {
+      // React may rethrow the handler's error; either way the mark must be gone.
+    } finally {
+      window.removeEventListener("error", swallow);
+    }
+    expect(marked(editor.live.contentDocument!)).toHaveLength(0);
+    const { shadow } = await reloadMidGesture();
+    expect(api().iframeRef.current).toBe(shadow);
   });
 });
 
 describe("an inline text edit", () => {
-  it("holds a reload from the first key until its text is saved", async () => {
+  it("holds a reload while open, and the reload after it shows the saved text", async () => {
     const live = makePreview(TWO_LAYERS);
     player = mountPlayerWithPreview(live);
-    let saved: () => void = () => {};
-    const onCommit = vi.fn(() => new Promise<void>((resolve) => (saved = resolve)));
+    let land: () => void = () => {};
+    const onCommit = vi.fn(() => new Promise<void>((resolve) => (land = resolve)));
     let controls: ReturnType<typeof useInlineTextEdit> | null = null;
     function Editor() {
       controls = useInlineTextEdit({ onCommit });
@@ -215,17 +256,20 @@ describe("an inline text edit", () => {
     overlayRoot = createRoot(document.body.appendChild(document.createElement("div")));
     act(() => overlayRoot.render(<Editor />));
     act(() => void controls!.start(byId(live, "title")));
-    await reloadMidGesture();
+    const held = await reloadMidGesture();
     expect(api().iframeRef.current).toBe(live);
 
     act(() => controls!.commit());
     await settle();
     expect(onCommit).toHaveBeenCalledTimes(1);
-    expect(marked(live.contentDocument!), "held until the save lands").toHaveLength(1);
-    await act(async () => saved());
-    expect(marked(live.contentDocument!)).toHaveLength(0);
-    const fresh = served("?_t=2");
-    await paintShadow(api, fresh);
-    expect(api().iframeRef.current).toBe(fresh);
+    expect(marked(live.contentDocument!), "closed, though the save is still out").toHaveLength(0);
+    expect(api().iframeRef.current, "the held copy predates the text").toBe(live);
+    expect(api().previewSlots.find((slot) => slot.role === "shadow")?.gen).toBe(held.gen);
+
+    await act(async () => land());
+    await settle();
+    const afterSave = served("?_t=2");
+    expect(await paintShadow(api, afterSave)).toBeGreaterThan(held.gen);
+    expect(api().iframeRef.current).toBe(afterSave);
   });
 });

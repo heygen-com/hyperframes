@@ -72,6 +72,18 @@ export function afterStudioManualEditGestures(doc: Document, run: () => void): (
   return stop;
 }
 
+const gestureSaves = new WeakMap<Document, number>();
+
+export function studioManualEditSavesIn(doc: Document): number {
+  return gestureSaves.get(doc) ?? 0;
+}
+
+/** A gesture's save in `element`'s document: a reload requested before it shows the file before it. */
+export function noteStudioManualEditSave(element: HTMLElement): void {
+  const doc = element.ownerDocument;
+  gestureSaves.set(doc, studioManualEditSavesIn(doc) + 1);
+}
+
 function isStudioManualEditGestureActive(element: HTMLElement): boolean {
   return element.hasAttribute(STUDIO_MANUAL_EDIT_GESTURE_ATTR);
 }

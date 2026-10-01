@@ -1,9 +1,11 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { sanitizeRichTextChildren } from "@hyperframes/core/rich-text-sanitize";
 import { usePreviewReadOnly } from "../components/editor/previewReadOnlyContext";
+import { trackStudioPendingEdit } from "../utils/studioPendingEdits";
 import {
   beginStudioManualEditGesture,
   endStudioManualEditGesture,
+  noteStudioManualEditSave,
 } from "../components/editor/manualEditsDom";
 
 /**
@@ -47,7 +49,7 @@ export interface InlineTextEditSession {
   outline: string;
   /** The element's own outline offset, restored with the outline. */
   outlineOffset: string;
-  /** Holds the preview on screen from the first key until the text is saved or put back. */
+  /** Holds the preview on screen while the edit is open. */
   gesture?: string;
 }
 
@@ -112,6 +114,7 @@ export function useInlineTextEdit({
       framesRef.current = null;
     }
     openRef.current = null;
+    endStudioManualEditGesture(open.element, open.gesture);
     setSession(null);
     // An element removed from the document mid-session is not an error, it is
     // just nothing left to clean up.
@@ -175,13 +178,14 @@ export function useInlineTextEdit({
     // saved rather than something the server will quietly cut down.
     sanitizeRichTextChildren(open.element);
     const html = open.element.innerHTML;
+    // Counted and pending before the edit closes, so a reload waits for the save, not the mark.
+    let save: (saving: unknown) => void = () => {};
+    trackStudioPendingEdit(new Promise((resolve) => (save = resolve)));
+    noteStudioManualEditSave(open.element);
     teardown();
     // After teardown, so the commit path's own resync does not fight an
     // element that is still editable.
-    const end = () => endStudioManualEditGesture(open.element, open.gesture);
-    void Promise.resolve(
-      onCommit({ element: open.element, html, previousHtml: open.original }),
-    ).finally(end);
+    save(onCommit({ element: open.element, html, previousHtml: open.original }));
   }, [onCommit, teardown]);
 
   const cancel = useCallback(() => {
@@ -189,7 +193,6 @@ export function useInlineTextEdit({
     if (!open) return;
     if (open.element.isConnected) open.element.innerHTML = open.original;
     teardown();
-    endStudioManualEditGesture(open.element, open.gesture);
   }, [teardown]);
 
   // Read-only can be enabled while an edit is already open. Close that

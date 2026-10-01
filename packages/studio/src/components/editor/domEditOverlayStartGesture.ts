@@ -12,6 +12,7 @@ import {
 import { readCssRotationTarget, readRotationBase } from "./rotationDraft";
 import {
   beginStudioManualEditGesture,
+  endStudioManualEditGesture,
   captureStudioBoxSize,
   captureStudioPathOffset,
   captureStudioRotation,
@@ -81,48 +82,54 @@ export function startGroupDrag(
     }
     members.push(result.member);
   }
-  resetDragMoveLog();
-  logDrag("group-start", {
-    // A member whose mapping differs from its neighbours travels a different
-    // distance for the same pointer delta, which is the group coming apart.
-    members: Object.fromEntries(
-      members.map((member) => [
-        member.key,
-        {
-          map: `${member.screenToOffset.a.toFixed(3)},${member.screenToOffset.d.toFixed(3)}`,
-          base: `${Math.round(member.baseGsap.x)},${Math.round(member.baseGsap.y)}`,
-          offset: `${Math.round(member.initialOffset.x)},${Math.round(member.initialOffset.y)}`,
-        },
-      ]),
-    ),
-    at: readDragPositions(members),
-  });
+  try {
+    resetDragMoveLog();
+    logDrag("group-start", {
+      // A member whose mapping differs from its neighbours travels a different
+      // distance for the same pointer delta, which is the group coming apart.
+      members: Object.fromEntries(
+        members.map((member) => [
+          member.key,
+          {
+            map: `${member.screenToOffset.a.toFixed(3)},${member.screenToOffset.d.toFixed(3)}`,
+            base: `${Math.round(member.baseGsap.x)},${Math.round(member.baseGsap.y)}`,
+            offset: `${Math.round(member.initialOffset.x)},${Math.round(member.initialOffset.y)}`,
+          },
+        ]),
+      ),
+      at: readDragPositions(members),
+    });
 
-  const overlayEl = opts.overlayRef.current;
-  const iframe = opts.iframeRef.current;
-  const snapContext =
-    overlayEl && iframe
-      ? collectSnapContext({
-          overlayEl,
-          iframe,
-          excludeElements: buildExcludeElements({
+    const overlayEl = opts.overlayRef.current;
+    const iframe = opts.iframeRef.current;
+    const snapContext =
+      overlayEl && iframe
+        ? collectSnapContext({
+            overlayEl,
             iframe,
-            groupSelections: items.map((i) => i.selection),
-          }),
-        })
-      : undefined;
+            excludeElements: buildExcludeElements({
+              iframe,
+              groupSelections: items.map((i) => i.selection),
+            }),
+          })
+        : undefined;
 
-  e.preventDefault();
-  e.stopPropagation();
-  e.currentTarget.setPointerCapture(e.pointerId);
-  opts.rafPausedRef.current = true;
-  opts.groupGestureRef.current = {
-    startX: e.clientX,
-    startY: e.clientY,
-    originItems: items,
-    members,
-    snapContext,
-  };
+    e.preventDefault();
+    e.stopPropagation();
+    e.currentTarget.setPointerCapture(e.pointerId);
+    opts.rafPausedRef.current = true;
+    opts.groupGestureRef.current = {
+      startX: e.clientX,
+      startY: e.clientY,
+      originItems: items,
+      members,
+      snapContext,
+    };
+  } catch (error) {
+    opts.groupGestureRef.current = null;
+    restoreManualOffsetDragMembers(members);
+    throw error;
+  }
   return true;
 }
 
@@ -219,84 +226,89 @@ export function startGesture(
     }
   }
 
-  // Rotation base: the angle the element shows. An element GSAP does not turn, or a plain-translate
-  // move, never asks GSAP: reading a property makes it bake the CSS into its transform.
-  const plain = !!pathOffsetMember?.plainTranslate || !gsapWritesRotation(sel.element);
-  const plainRotation = plain && kind === "rotate" ? readCssRotationTarget(sel.element) : null;
-  const rotation = { angle: readRotationBase(sel.element, plain) };
-  const overlayBounds = overlayEl?.getBoundingClientRect();
-  const centerX = (overlayBounds?.left ?? 0) + rect.left + rect.width / 2;
-  const centerY = (overlayBounds?.top ?? 0) + rect.top + rect.height / 2;
+  // A throw before the gesture is armed would leave its mark, and the mark holds every reload.
+  try {
+    // Rotation base: the angle the element shows. An element GSAP does not turn, or a plain-translate
+    // move, never asks GSAP: reading a property makes it bake the CSS into its transform.
+    const plain = !!pathOffsetMember?.plainTranslate || !gsapWritesRotation(sel.element);
+    const plainRotation = plain && kind === "rotate" ? readCssRotationTarget(sel.element) : null;
+    const rotation = { angle: readRotationBase(sel.element, plain) };
+    const overlayBounds = overlayEl?.getBoundingClientRect();
+    const centerX = (overlayBounds?.left ?? 0) + rect.left + rect.width / 2;
+    const centerY = (overlayBounds?.top ?? 0) + rect.top + rect.height / 2;
 
-  const iframe = opts.iframeRef.current;
+    const iframe = opts.iframeRef.current;
 
-  // For a center-anchored corner resize, capture the element's rendered CENTER (the
-  // centroid of its four real, rotation-aware corners) now, so per-frame anchoring
-  // can pin that exact point instead of an axis-aligned width/height delta (which
-  // only holds the center still when the element grows symmetrically from an
-  // unrotated layout box). Present whenever an anchor member exists (all corners).
-  let resizeFixedCenterStart: { x: number; y: number } | undefined;
-  if (kind === "resize" && pathOffsetMember && overlayEl && iframe) {
-    const corners = elementCornerOverlayPoints(overlayEl, iframe, sel.element);
-    if (corners) resizeFixedCenterStart = overlayCornersCentroid(corners);
-  }
-  const snapContext =
-    (kind === "drag" || kind === "resize") && overlayEl && iframe
-      ? collectSnapContext({
-          overlayEl,
-          iframe,
-          excludeElements: buildExcludeElements({ iframe, selection: sel }),
-        })
-      : undefined;
-  e.preventDefault();
-  e.stopPropagation();
-  e.currentTarget.setPointerCapture(e.pointerId);
-  opts.rafPausedRef.current = true;
-  opts.gestureRef.current = {
-    kind,
-    mode,
-    selection: sel,
-    startX: e.clientX,
-    startY: e.clientY,
-    centerX,
-    centerY,
-    initialPathOffset,
-    initialRotation: captureStudioRotation(sel.element),
-    initialBoxSize: captureStudioBoxSize(sel.element),
-    pathOffsetMember,
-    originLeft: rect.left,
-    originTop: rect.top,
-    originWidth: rect.width,
-    originHeight: rect.height,
-    actualWidth,
-    actualHeight,
-    actualRotation: rotation.angle,
-    plainRotation,
-    editScaleX: rect.editScaleX,
-    editScaleY: rect.editScaleY,
-    contentScaleX,
-    contentScaleY,
-    manualEditDragToken,
-    snapContext,
-    resizeHandle: kind === "resize" ? (options?.resizeHandle ?? "se") : undefined,
-    resizeFixedCenterStart,
-  };
-  if (kind === "resize") {
-    resetResizeMoveLog();
-    logResize("start", {
-      handle: options?.resizeHandle ?? "se",
-      pointer: { x: e.clientX, y: e.clientY },
-      center: { x: centerX, y: centerY },
-      origin: { left: rect.left, top: rect.top, w: rect.width, h: rect.height },
-      actual: { w: actualWidth, h: actualHeight },
-      editScale: { x: rect.editScaleX, y: rect.editScaleY },
-      contentScale: { x: contentScaleX, y: contentScaleY },
-      rotation: rotation.angle,
-      hasOffsetMember: !!pathOffsetMember,
-      fixedCenterStart: resizeFixedCenterStart ?? null,
-      initialBoxSize: opts.gestureRef.current?.initialBoxSize ?? null,
-      initialInlineStyle: sel.element.getAttribute("style"),
-    });
+    // A corner resize pins the centroid of the four rotation-aware corners: an axis-aligned
+    // size delta only holds the centre still for a symmetric, unrotated growth.
+    let resizeFixedCenterStart: { x: number; y: number } | undefined;
+    if (kind === "resize" && pathOffsetMember && overlayEl && iframe) {
+      const corners = elementCornerOverlayPoints(overlayEl, iframe, sel.element);
+      if (corners) resizeFixedCenterStart = overlayCornersCentroid(corners);
+    }
+    const snapContext =
+      (kind === "drag" || kind === "resize") && overlayEl && iframe
+        ? collectSnapContext({
+            overlayEl,
+            iframe,
+            excludeElements: buildExcludeElements({ iframe, selection: sel }),
+          })
+        : undefined;
+    e.preventDefault();
+    e.stopPropagation();
+    e.currentTarget.setPointerCapture(e.pointerId);
+    opts.rafPausedRef.current = true;
+    opts.gestureRef.current = {
+      kind,
+      mode,
+      selection: sel,
+      startX: e.clientX,
+      startY: e.clientY,
+      centerX,
+      centerY,
+      initialPathOffset,
+      initialRotation: captureStudioRotation(sel.element),
+      initialBoxSize: captureStudioBoxSize(sel.element),
+      pathOffsetMember,
+      originLeft: rect.left,
+      originTop: rect.top,
+      originWidth: rect.width,
+      originHeight: rect.height,
+      actualWidth,
+      actualHeight,
+      actualRotation: rotation.angle,
+      plainRotation,
+      editScaleX: rect.editScaleX,
+      editScaleY: rect.editScaleY,
+      contentScaleX,
+      contentScaleY,
+      manualEditDragToken,
+      snapContext,
+      resizeHandle: kind === "resize" ? (options?.resizeHandle ?? "se") : undefined,
+      resizeFixedCenterStart,
+    };
+    if (kind === "resize") {
+      resetResizeMoveLog();
+      logResize("start", {
+        handle: options?.resizeHandle ?? "se",
+        pointer: { x: e.clientX, y: e.clientY },
+        center: { x: centerX, y: centerY },
+        origin: { left: rect.left, top: rect.top, w: rect.width, h: rect.height },
+        actual: { w: actualWidth, h: actualHeight },
+        editScale: { x: rect.editScaleX, y: rect.editScaleY },
+        contentScale: { x: contentScaleX, y: contentScaleY },
+        rotation: rotation.angle,
+        hasOffsetMember: !!pathOffsetMember,
+        fixedCenterStart: resizeFixedCenterStart ?? null,
+        initialBoxSize: opts.gestureRef.current?.initialBoxSize ?? null,
+        initialInlineStyle: sel.element.getAttribute("style"),
+      });
+    }
+  } catch (error) {
+    opts.gestureRef.current = null;
+    if (pathOffsetMember) restoreManualOffsetDragMembers([pathOffsetMember]);
+    else if (manualEditDragToken) endStudioManualEditGesture(sel.element, manualEditDragToken);
+    throw error;
   }
   return true;
 }
