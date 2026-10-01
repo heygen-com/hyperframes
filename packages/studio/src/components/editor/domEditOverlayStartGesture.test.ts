@@ -10,6 +10,32 @@ afterEach(() => {
   document.body.innerHTML = "";
 });
 
+const PRESS = {
+  clientX: 10,
+  clientY: 10,
+  pointerId: 1,
+  button: 0,
+  preventDefault() {},
+  stopPropagation() {},
+  currentTarget: { setPointerCapture() {} },
+};
+
+function pressOptions(element: HTMLElement) {
+  const ref = <T>(current: T) => ({ current });
+  const selection = { element, capabilities: { canApplyManualOffset: true } };
+  return {
+    selectionRef: ref(selection as unknown as DomEditSelection),
+    overlayRectRef: ref({ left: 0, top: 0, width: 240, height: 160, editScaleX: 1, editScaleY: 1 }),
+    boxRef: ref(null),
+    overlayRef: ref(null),
+    iframeRef: ref(null),
+    gestureRef: ref<GestureState | null>(null),
+    rafPausedRef: ref(false),
+    onManualDragStartRef: ref(vi.fn()),
+    onBlockedMoveRef: ref(vi.fn()),
+  };
+}
+
 describe("a drag press on a page that loads GSAP", () => {
   it.each([
     ["GSAP animates nothing", false],
@@ -27,38 +53,9 @@ describe("a drag press on a page that loads GSAP", () => {
       const tween = { targets: () => [parent], vars: { x: 100 }, duration: () => 2 };
       const timelines = { main: { getChildren: () => (parentTween ? [tween] : []) } };
       Object.assign(window, { gsap: { getProperty, set }, __timelines: timelines });
-      const selection = { element, capabilities: { canApplyManualOffset: true } };
-      const ref = <T>(current: T) => ({ current });
-      const opts = {
-        selectionRef: ref(selection as unknown as DomEditSelection),
-        overlayRectRef: ref({
-          left: 0,
-          top: 0,
-          width: 50,
-          height: 40,
-          editScaleX: 1,
-          editScaleY: 1,
-        }),
-        boxRef: ref(null),
-        overlayRef: ref(null),
-        iframeRef: ref(null),
-        gestureRef: ref<GestureState | null>(null),
-        rafPausedRef: ref(false),
-        onManualDragStartRef: ref(vi.fn()),
-        onBlockedMoveRef: ref(vi.fn()),
-      };
-      const press = {
-        clientX: 10,
-        clientY: 10,
-        pointerId: 1,
-        button: 0,
-        preventDefault() {},
-        stopPropagation() {},
-        currentTarget: { setPointerCapture() {} },
-      };
-
+      const opts = pressOptions(element);
       const handlers = createDomEditOverlayGestureHandlers(opts as never);
-      expect(handlers.startGesture("drag", press as never)).toBe(true);
+      expect(handlers.startGesture("drag", PRESS as never)).toBe(true);
 
       expect(opts.gestureRef.current?.pathOffsetMember?.plainTranslate).toBe(true);
       expect(getProperty).not.toHaveBeenCalled();
@@ -66,4 +63,19 @@ describe("a drag press on a page that loads GSAP", () => {
       expect(element.style.getPropertyValue("translate")).toBe("40px 30px");
     },
   );
+});
+
+describe("a drag press on a centred element without GSAP", () => {
+  it("starts from its -50% translate in px and leaves its style as it was", () => {
+    const element = document.createElement("div");
+    element.style.cssText =
+      "position: absolute; left: 50%; top: 50%; width: 240px; height: 160px; translate: -50% -50%";
+    document.body.append(element);
+    const style = element.getAttribute("style");
+    const opts = pressOptions(element);
+    const handlers = createDomEditOverlayGestureHandlers(opts as never);
+    expect(handlers.startGesture("drag", PRESS as never)).toBe(true);
+    expect(opts.gestureRef.current?.pathOffsetMember?.initialOffset).toEqual({ x: -120, y: -80 });
+    expect(element.getAttribute("style")).toBe(style);
+  });
 });
