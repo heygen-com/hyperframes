@@ -33,7 +33,6 @@ type LastActive = Partial<Record<PanelZone, PanelId>>;
 
 interface DockLayoutState extends DockSnapshot {
   controller: DockController | null;
-  /** The panels the mounted dock has, in Window menu order. */
   panels: readonly PanelId[];
   lastActive: LastActive;
   /** An activation requested before the dock mounted; Dock.Root applies it on ready. */

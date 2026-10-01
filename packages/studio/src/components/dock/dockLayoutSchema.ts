@@ -55,8 +55,7 @@ function collectFloatingViews(floating: unknown, into: unknown[]): boolean {
   });
 }
 
-/** Parses a stored layout at the trust boundary; null (stale or foreign shape, or a panel this
- * dock lacks) means use the default preset. */
+/** Parses a stored layout at the trust boundary; null (stale or foreign shape) means use the default preset. */
 export function parseDockLayout(
   value: unknown,
   allowed: readonly PanelId[] = PANEL_IDS,

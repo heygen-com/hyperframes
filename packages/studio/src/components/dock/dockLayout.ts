@@ -8,7 +8,6 @@ const MIN_TIMELINE_H = 100;
 const MIN_SIDE_W = 200;
 const MIN_SIDE_W_FLOOR = 120;
 const DEFAULT_TIMELINE_H = 360;
-// The default side columns, first tab active; a dock without a panel leaves it out.
 const DEFAULT_LEFT = ["compositions", "assets", "code", "catalog"] as const;
 const DEFAULT_RIGHT = ["design", "layers", "renders", "variables"] as const;
 
@@ -85,7 +84,6 @@ export function addRegisteredPanel(
   });
 }
 
-/** One default side column of the panels this dock has, beside the preview; returns its active tab. */
 function addSideColumn(
   api: DockviewApi,
   ids: readonly PanelId[],
@@ -101,8 +99,7 @@ function addSideColumn(
   return first;
 }
 
-/** The default Edit layout: [library | preview | inspector] over a full-width timeline, of the
- * panels this dock has (preview and timeline always). */
+/** The default Edit layout: [library | preview | inspector] over a full-width timeline. */
 export function buildEditLayout(
   api: DockviewApi,
   viewportWidth: number,

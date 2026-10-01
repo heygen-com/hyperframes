@@ -153,8 +153,7 @@ function readStorage(storage: Storage | null, key: string): StudioUiPreferences 
 
 /** `projectId` opts a caller into a per-project entry (falls back once to the
  *  shared entry so a project's first read isn't blank). Defaults to `null`:
- *  most callers read once at mount, never on a live project switch. `key` is
- *  a host's own entry in place of Studio's. */
+ *  most callers read once at mount, never on a live project switch. */
 export function readStudioUiPreferences(
   storage: Storage | null = getBrowserStorage(),
   projectId: string | null = null,

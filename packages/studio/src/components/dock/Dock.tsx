@@ -85,13 +85,9 @@ function snapshot(api: DockviewApi): DockSnapshot {
   };
 }
 
-/** What a host changes about the dock; each default is Studio's own. */
 interface DockOptions {
-  /** Which of Studio's panels this dock has; preview and timeline always. */
   panels: readonly PanelId[];
-  /** Keeps the layout under this key (plus `:projectId`) in place of Studio's preferences. */
   storageKey?: string | undefined;
-  /** The width sides are sized against. */
   dockWidth: () => number;
 }
 
@@ -99,9 +95,8 @@ function createController(api: DockviewApi, options: DockOptions): DockControlle
   const open = (id: PanelId) => {
     if (api.getPanel(id)) return;
     const { zone, reopen: preferred } = PANEL_DEFINITIONS[id];
-    // Without the panel it reopens near, it goes beside the preview on its own side.
     const reopen: PanelDefinition["reopen"] =
-      zone === "center" || api.getPanel(preferred.near)
+      zone === "center" || options.panels.includes(preferred.near)
         ? preferred
         : { near: "preview", direction: zone };
     // Side columns are tab groups; preview and timeline are separate groups in the centre.
@@ -185,7 +180,7 @@ function Root({
       const root = api.groups[0]?.element.closest<HTMLElement>(".hf-dock");
       const disposeAccessibility = root ? installDockAccessibility(api, root) : () => {};
       const disposeTabFill = root ? installTabFill(api, root) : () => {};
-      // Sides size against dockWidth (the window by default); the dock's own box lags a resize.
+      // Sides size against dockWidth, the window by default; the dock's own box lags a resize.
       const resizeObserver = new ResizeObserver(() => applySideMinimums(api, dockWidth()));
       if (root) resizeObserver.observe(root);
       const store = useDockLayoutStore.getState();

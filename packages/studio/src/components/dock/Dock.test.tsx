@@ -48,9 +48,14 @@ class ResizeObserverStub {
 
 vi.mock("./dockLayout", async (importOriginal) => {
   const actual = await importOriginal<typeof import("./dockLayout")>();
-  return { ...actual, applySideMinimums: vi.fn(actual.applySideMinimums) };
+  return {
+    ...actual,
+    applySideMinimums: vi.fn(actual.applySideMinimums),
+    addRegisteredPanel: vi.fn(actual.addRegisteredPanel),
+  };
 });
 const applySideMinimums = vi.mocked(dockLayout.applySideMinimums);
+const addRegisteredPanel = vi.mocked(dockLayout.addRegisteredPanel);
 
 let root: Root | null = null;
 
@@ -173,6 +178,16 @@ describe("Dock on React 19", () => {
     act(() => togglePanel("compositions"));
     expect(useDockLayoutStore.getState().openPanels.has("compositions")).toBe(true);
     expect(useDockLayoutStore.getState().visiblePanels.has("compositions")).toBe(true);
+  });
+
+  it("reopens a panel whose usual neighbour is only closed exactly as before: no new position", () => {
+    mount("p1");
+    const { closePanel, togglePanel } = useDockLayoutStore.getState();
+    for (const id of ["compositions", "assets", "code", "catalog"] as const)
+      act(() => closePanel(id));
+    addRegisteredPanel.mockClear();
+    act(() => togglePanel("assets"));
+    expect(addRegisteredPanel).toHaveBeenCalledWith(expect.anything(), "assets", undefined);
   });
 
   it("reopens the timeline as its own group, never as a tab of the preview", () => {
