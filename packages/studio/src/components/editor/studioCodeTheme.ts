@@ -4,8 +4,6 @@ import { tags as t } from "@lezer/highlight";
 
 // One Dark's layout on Studio's tokens: every colour is a theme.css variable, so the editor
 // follows the light or dark theme the page paints with no editor reconfiguration.
-const code = (role: string) => `var(--color-code-${role})`;
-
 const editorTheme = EditorView.theme({
   "&": { height: "100%", color: "var(--color-text-0)", backgroundColor: "var(--color-surface)" },
   ".cm-scroller": { overflow: "auto" },
@@ -14,12 +12,12 @@ const editorTheme = EditorView.theme({
   "&.cm-focused > .cm-scroller > .cm-selectionLayer .cm-selectionBackground, .cm-selectionBackground, .cm-content ::selection":
     { backgroundColor: "var(--color-on)" },
   ".cm-activeLine": { backgroundColor: "var(--color-hover)" },
-  ".cm-selectionMatch": { backgroundColor: "var(--color-hover)" },
+  ".cm-selectionMatch": { outline: "1px solid var(--color-border-strong)" },
   ".cm-searchMatch": {
     backgroundColor: "var(--color-on)",
-    outline: "1px solid var(--color-accent-ink)",
+    outline: "1px solid var(--color-border-strong)",
   },
-  ".cm-searchMatch.cm-searchMatch-selected": { backgroundColor: "var(--color-on-hover)" },
+  ".cm-searchMatch.cm-searchMatch-selected": { outline: "1px solid var(--color-accent-ink)" },
   "&.cm-focused .cm-matchingBracket, &.cm-focused .cm-nonmatchingBracket": {
     backgroundColor: "var(--color-on)",
   },
@@ -48,22 +46,21 @@ const editorTheme = EditorView.theme({
     color: "var(--color-text-0)",
     border: "1px solid var(--color-border)",
   },
-  ".cm-tooltip": {
-    border: "1px solid var(--color-border)",
-    backgroundColor: "var(--color-raised)",
-    color: "var(--color-text-0)",
+  "&.cm-editor .cm-button:active": {
+    backgroundImage: "none",
+    backgroundColor: "var(--color-press)",
   },
-  ".cm-tooltip-autocomplete > ul > li[aria-selected]": {
-    backgroundColor: "var(--color-on)",
-    color: "var(--color-text-0)",
-  },
+  ".cm-specialChar": { color: "var(--color-danger-ink)" },
 });
 
 const highlightStyle = HighlightStyle.define([
-  { tag: t.keyword, color: code("keyword") },
-  { tag: [t.name, t.deleted, t.character, t.propertyName, t.macroName], color: code("name") },
-  { tag: [t.function(t.variableName), t.labelName], color: code("function") },
-  { tag: [t.color, t.constant(t.name), t.standard(t.name)], color: code("constant") },
+  { tag: t.keyword, color: "var(--color-code-keyword)" },
+  {
+    tag: [t.name, t.deleted, t.character, t.propertyName, t.macroName],
+    color: "var(--color-code-name)",
+  },
+  { tag: [t.function(t.variableName), t.labelName], color: "var(--color-code-function)" },
+  { tag: [t.color, t.constant(t.name), t.standard(t.name)], color: "var(--color-code-constant)" },
   { tag: [t.definition(t.name), t.separator], color: "var(--color-text-0)" },
   {
     tag: [
@@ -76,20 +73,20 @@ const highlightStyle = HighlightStyle.define([
       t.self,
       t.namespace,
     ],
-    color: code("type"),
+    color: "var(--color-code-type)",
   },
   {
     tag: [t.operator, t.operatorKeyword, t.url, t.escape, t.regexp, t.special(t.string)],
-    color: code("operator"),
+    color: "var(--color-code-operator)",
   },
-  { tag: [t.meta, t.comment], color: code("comment") },
+  { tag: [t.meta, t.comment], color: "var(--color-code-comment)" },
   { tag: t.strong, fontWeight: "bold" },
   { tag: t.emphasis, fontStyle: "italic" },
   { tag: t.strikethrough, textDecoration: "line-through" },
-  { tag: t.link, color: code("comment"), textDecoration: "underline" },
-  { tag: t.heading, fontWeight: "bold", color: code("name") },
-  { tag: [t.atom, t.bool, t.special(t.variableName)], color: code("constant") },
-  { tag: [t.processingInstruction, t.string, t.inserted], color: code("string") },
+  { tag: t.link, color: "var(--color-code-comment)", textDecoration: "underline" },
+  { tag: t.heading, fontWeight: "bold", color: "var(--color-code-name)" },
+  { tag: [t.atom, t.bool, t.special(t.variableName)], color: "var(--color-code-constant)" },
+  { tag: [t.processingInstruction, t.string, t.inserted], color: "var(--color-code-string)" },
   { tag: t.invalid, color: "var(--color-danger-ink)" },
 ]);
 

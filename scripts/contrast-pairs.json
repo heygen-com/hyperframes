@@ -442,7 +442,7 @@
           "role": "text",
           "minimum": 4.5,
           "sources": ["packages/studio/src/components/editor/studioCodeTheme.ts"],
-          "on": ["panel", "panel-hover", "panel-on"]
+          "on": ["panel", "panel-hover", "panel-on", "panel-hover-on"]
         },
         {
           "id": "code-name",
@@ -450,7 +450,7 @@
           "role": "text",
           "minimum": 4.5,
           "sources": ["packages/studio/src/components/editor/studioCodeTheme.ts"],
-          "on": ["panel", "panel-hover", "panel-on"]
+          "on": ["panel", "panel-hover", "panel-on", "panel-hover-on"]
         },
         {
           "id": "code-function",
@@ -458,7 +458,7 @@
           "role": "text",
           "minimum": 4.5,
           "sources": ["packages/studio/src/components/editor/studioCodeTheme.ts"],
-          "on": ["panel", "panel-hover", "panel-on"]
+          "on": ["panel", "panel-hover", "panel-on", "panel-hover-on"]
         },
         {
           "id": "code-constant",
@@ -466,7 +466,7 @@
           "role": "text",
           "minimum": 4.5,
           "sources": ["packages/studio/src/components/editor/studioCodeTheme.ts"],
-          "on": ["panel", "panel-hover", "panel-on"]
+          "on": ["panel", "panel-hover", "panel-on", "panel-hover-on"]
         },
         {
           "id": "code-type",
@@ -474,7 +474,7 @@
           "role": "text",
           "minimum": 4.5,
           "sources": ["packages/studio/src/components/editor/studioCodeTheme.ts"],
-          "on": ["panel", "panel-hover", "panel-on"]
+          "on": ["panel", "panel-hover", "panel-on", "panel-hover-on"]
         },
         {
           "id": "code-operator",
@@ -482,7 +482,7 @@
           "role": "text",
           "minimum": 4.5,
           "sources": ["packages/studio/src/components/editor/studioCodeTheme.ts"],
-          "on": ["panel", "panel-hover", "panel-on"]
+          "on": ["panel", "panel-hover", "panel-on", "panel-hover-on"]
         },
         {
           "id": "code-comment",
@@ -490,7 +490,7 @@
           "role": "text",
           "minimum": 4.5,
           "sources": ["packages/studio/src/components/editor/studioCodeTheme.ts"],
-          "on": ["panel", "panel-hover", "panel-on"]
+          "on": ["panel", "panel-hover", "panel-on", "panel-hover-on"]
         },
         {
           "id": "code-string",
@@ -498,7 +498,7 @@
           "role": "text",
           "minimum": 4.5,
           "sources": ["packages/studio/src/components/editor/studioCodeTheme.ts"],
-          "on": ["panel", "panel-hover", "panel-on"]
+          "on": ["panel", "panel-hover", "panel-on", "panel-hover-on"]
         }
       ],
       "surfaces": {
@@ -511,7 +511,8 @@
         "panel-pressed": ["--color-surface", "--color-press"],
         "panel-on": ["--color-surface", "--color-on"],
         "panel-on-hover": ["--color-surface", "--color-on-hover"],
-        "raised-on-hover": ["--color-raised", "--color-on-hover"]
+        "raised-on-hover": ["--color-raised", "--color-on-hover"],
+        "panel-hover-on": ["--color-surface", "--color-hover", "--color-on"]
       }
     },
     {

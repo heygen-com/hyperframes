@@ -7,15 +7,14 @@ const themeCss = read("../../styles/theme.css");
 
 describe("the code editor theme", () => {
   it("takes every colour from a token theme.css declares", () => {
-    const used = [
-      ...source.matchAll(/var\((--color-[\w-]+)\)/g),
-      ...source.matchAll(/code\("([\w-]+)"\)/g),
-    ].map((match) => (match[1]!.startsWith("--") ? match[1]! : `--color-code-${match[1]}`));
+    const used = [...source.matchAll(/var\((--color-[\w-]+)\)/g)].map((match) => match[1]!);
     expect(used.length).toBeGreaterThan(20);
     for (const token of new Set(used)) expect(themeCss, token).toContain(`${token}:`);
   });
 
   it("paints no literal colour of its own", () => {
-    expect(source).not.toMatch(/#[\da-f]{3,8}\b|rgba?\(|oklch\(|hsla?\(/i);
+    expect(source).not.toMatch(
+      /#[\da-f]{3,8}\b|\b(rgba?|hsla?|hwb|lab|lch|oklab|oklch|color|color-mix)\(|"(white|red|green|blue|gray|grey)"/i,
+    );
   });
 });
