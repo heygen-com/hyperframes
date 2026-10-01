@@ -1488,6 +1488,10 @@ export function initSandboxRuntimeModular(): void {
           // keep fallback resilient if root add fails
           swallow("runtime.init.site2", err);
         }
+        // A paused child never renders under its parent's seek; the wrapper drives it now.
+        ensureChildCandidatesActive(
+          nestedCandidates(fallbackTimeline, [{ timeline: existingRootTimeline }]),
+        );
       }
       const withTween = fallbackTimeline as RuntimeTimelineLike & {
         to?: (target: object, vars: { duration?: number; data?: string }) => unknown;
@@ -1592,11 +1596,7 @@ export function initSandboxRuntimeModular(): void {
     };
     const rootChildCandidates = collectRootChildCandidates();
     const ensureChildCandidatesActive = (
-      candidates: Array<{
-        compositionId: string;
-        timeline: RuntimeTimelineLike;
-        durationSeconds: number;
-      }>,
+      candidates: Array<{ timeline: RuntimeTimelineLike }>,
     ): void => {
       for (const candidate of candidates) {
         const timelineWithPaused = candidate.timeline as RuntimeTimelineLike & {

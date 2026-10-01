@@ -1717,6 +1717,45 @@ describe("initSandboxRuntimeModular", () => {
     });
   });
 
+  describe("duration floor under real GSAP", () => {
+    type Timeline = ReturnType<typeof gsap.timeline>;
+    const seekBoxWidthAt = (time: number, build: (box: HTMLElement) => Timeline) => {
+      const root = document.createElement("div");
+      root.setAttribute("data-composition-id", "main");
+      root.setAttribute("data-root", "true");
+      root.setAttribute("data-duration", "4");
+      const box = document.createElement("div");
+      box.style.width = "240px";
+      root.appendChild(box);
+      document.body.appendChild(root);
+      const main = build(box);
+      window.gsap = gsap as unknown as typeof window.gsap;
+      window.__timelines = { main: main as unknown as RuntimeTimelineLike };
+      initSandboxRuntimeModular();
+      window.__player?.seek(time);
+      return box.style.width;
+    };
+
+    it("renders a set-only root that the floor wraps", () => {
+      const width = seekBoxWidthAt(1, (box) =>
+        gsap.timeline({ paused: true }).set(box, { width: 340 }, 0),
+      );
+      expect(window.__player?.getDuration()).toBe(4);
+      expect(width).toBe("340px");
+    });
+
+    it("leaves a root as long as the floor unwrapped", () => {
+      let main: Timeline | undefined;
+      const width = seekBoxWidthAt(1, (box) => {
+        main = gsap.timeline({ paused: true }).set(box, { width: 340 }, 0).to({}, { duration: 4 });
+        return main;
+      });
+      expect(main?.parent).toBe(gsap.globalTimeline);
+      expect(main?.paused()).toBe(true);
+      expect(width).toBe("340px");
+    });
+  });
+
   // #6: a single timeline registered under a key that does NOT match the root's
   // data-composition-id must still bind (sole-timeline fallback) instead of
   // silently rendering the frozen t=0 DOM.
