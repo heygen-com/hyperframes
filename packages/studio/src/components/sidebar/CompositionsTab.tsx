@@ -1,7 +1,9 @@
 import { buildProjectApiPath } from "../../utils/projectRouting";
-import { memo, useCallback, useEffect, useRef, useState } from "react";
+import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useThumbnailLease } from "../../hooks/useThumbnailLease";
 import {
   buildCompositionThumbnailUrl,
+  compositionThumbnailRequest,
   resolveThumbnailSeekTime,
   THUMBNAIL_SEEK_TIME_SECONDS,
 } from "../../player/components/CompositionThumbnail";
@@ -153,7 +155,6 @@ function CompCard({
   const [hovered, setHovered] = useState(false);
   const [stageSize, setStageSize] = useState(DEFAULT_PREVIEW_STAGE);
   const [livePreviewLoaded, setLivePreviewLoaded] = useState(false);
-  const [failedThumbnailUrl, setFailedThumbnailUrl] = useState<string | null>(null);
   const iframeRef = useRef<HTMLIFrameElement | null>(null);
   const hoverTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const syncTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -192,7 +193,12 @@ function CompCard({
   const name = comp.replace(/^compositions\//, "").replace(/\.html$/, "");
   const previewUrl = compositionPreviewUrl(projectId, comp);
   const thumbnailUrl = compositionCardThumbnailUrl(projectId, comp, contentRevision);
-  const thumbnailFailed = failedThumbnailUrl === thumbnailUrl;
+  const thumbnailRequest = useMemo(
+    () => (previewBooted ? compositionThumbnailRequest(thumbnailUrl, projectId) : null),
+    [previewBooted, thumbnailUrl, projectId],
+  );
+  const thumbnail = useThumbnailLease(thumbnailRequest);
+  const thumbnailFailed = thumbnail.status === "error";
   const previewScale = resolveCompositionPreviewScale({
     cardWidth: CARD_W,
     cardHeight: CARD_H,
@@ -255,14 +261,12 @@ function CompCard({
           <div className="absolute inset-0 flex items-center justify-center px-1 text-center text-[8px] leading-tight text-neutral-600">
             Preview unavailable
           </div>
-        ) : !previewBooted ? null : (
+        ) : thumbnail.status !== "ready" || thumbnail.value.kind !== "image" ? null : (
           <img
-            src={thumbnailUrl}
+            src={thumbnail.value.url}
             alt=""
             draggable={false}
-            loading="lazy"
             decoding="async"
-            onError={() => setFailedThumbnailUrl(thumbnailUrl)}
             className={`absolute inset-0 h-full w-full object-contain transition-opacity ${
               livePreviewLoaded ? "opacity-0" : "opacity-100"
             }`}

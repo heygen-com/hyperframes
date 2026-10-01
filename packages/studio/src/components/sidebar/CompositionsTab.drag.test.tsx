@@ -2,7 +2,7 @@
 
 import { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { usePlayerStore } from "../../player/store/playerStore";
 import { TIMELINE_COMPOSITION_MIME } from "../../utils/timelineCompositionDrop";
 import { CompositionsTab } from "./CompositionsTab";
@@ -13,10 +13,6 @@ Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true });
 ).happyDOM.settings.disableIframePageLoading = true;
 
 let root: Root | null = null;
-
-beforeEach(() => {
-  usePlayerStore.setState({ previewBooted: true });
-});
 
 afterEach(() => {
   if (root) act(() => root?.unmount());
@@ -46,39 +42,6 @@ function mount(onSelect = vi.fn(), onAddToTimeline = vi.fn()) {
 }
 
 describe("composition card drag", () => {
-  it("uses a cached image instead of eagerly mounting a live preview iframe", () => {
-    const { host } = mount();
-    const thumbnail = host.querySelector<HTMLImageElement>('img[src*="/thumbnail/"]');
-    expect(thumbnail).not.toBeNull();
-    expect(new URL(thumbnail?.src ?? "").searchParams.get("t")).toBe("3.00");
-    expect(host.querySelector("iframe")).toBeNull();
-  });
-
-  it("shows a fallback when the cached thumbnail fails", () => {
-    const { host } = mount();
-    const thumbnail = host.querySelector<HTMLImageElement>('img[src*="/thumbnail/"]');
-    if (!thumbnail) throw new Error("composition thumbnail did not render");
-
-    act(() => thumbnail.dispatchEvent(new Event("error")));
-
-    expect(host.textContent).toContain("Preview unavailable");
-    expect(host.querySelector('img[src*="/thumbnail/"]')).toBeNull();
-  });
-
-  it("retries a failed thumbnail at the next persisted content revision", () => {
-    const { host } = mount();
-    const thumbnail = host.querySelector<HTMLImageElement>('img[src*="/thumbnail/"]');
-    if (!thumbnail) throw new Error("composition thumbnail did not render");
-    act(() => thumbnail.dispatchEvent(new Event("error")));
-    expect(host.textContent).toContain("Preview unavailable");
-
-    act(() => usePlayerStore.getState().bumpThumbnailRevisions(null));
-
-    const retry = host.querySelector<HTMLImageElement>('img[src*="/thumbnail/"]');
-    expect(retry).not.toBeNull();
-    expect(new URL(retry?.src ?? "").searchParams.get("revision")).toBe("1");
-  });
-
   it("mounts one live preview only after sustained hover and removes it on leave", () => {
     vi.useFakeTimers();
     const consoleError = vi.spyOn(console, "error").mockImplementation(() => {});

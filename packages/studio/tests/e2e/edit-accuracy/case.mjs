@@ -145,7 +145,8 @@ async function waitForFiles(ctx, { from, want, timeout = 5000 }) {
     const now = readFiles(ctx.dir, ctx.files);
     if (!sameFiles(now, last)) [last, stableSince] = [now, Date.now()];
     const reached = want ? sameFiles(now, want) : !from || !sameFiles(now, from);
-    if (reached && Date.now() - stableSince >= 300) return { reached: true, files: now };
+    if (reached && Date.now() - stableSince >= 300)
+      return { reached: true, files: now, at: stableSince };
   }
   return { reached: false, files: last };
 }
@@ -634,7 +635,11 @@ export async function runCase({ browser, spec, dir, files, url, evidence }) {
       spec.gesture === "nudge"
         ? await nudgeGesture(ctx, pre)
         : await pointerGesture(ctx, spec.gesture, pre);
-    await waitForFiles(ctx, { from: original, timeout: spec.gesture === "nudge" ? 6000 : 5000 });
+    const releasedAt = Date.now();
+    const save = await waitForFiles(ctx, {
+      from: original,
+      timeout: spec.gesture === "nudge" ? 6000 : 5000,
+    });
     await nextFrame(page, 2);
     await blurPreview(page);
     await page.keyboard.press("Escape");
@@ -646,13 +651,15 @@ export async function runCase({ browser, spec, dir, files, url, evidence }) {
     // Undo and redo run before any reload. Each waits up to 15 s for its own write; redo waits for undo.
     const landed = (from) =>
       saved ? waitForFiles(ctx, { from, timeout: 15_000 }) : { reached: true, files: from };
+    const undoKeyAt = Date.now();
     await chord(page, "Control+z");
     const undo = await landed(committedFiles);
     const undone = await settled(ctx);
     await shoot("undone");
-    let [redo, redone] = [{ reached: false }, null];
+    let [redo, redone, redoKeyAt] = [{ reached: false }, null, 0];
     if (undo.reached) {
       await blurPreview(page);
+      redoKeyAt = Date.now();
       await chord(page, "Control+Shift+z");
       redo = await landed(undo.files);
       redone = await settled(ctx);
@@ -683,7 +690,11 @@ export async function runCase({ browser, spec, dir, files, url, evidence }) {
         box: quadDistance(undone.visible, pre.visible),
         redoBytes: saved && redo.reached && sameFiles(redo.files, committedFiles),
         redoBox: redone && quadDistance(redone.visible, committed.visible),
+        ms: undo.at ? undo.at - undoKeyAt : null,
+        redoMs: redo.at ? redo.at - redoKeyAt : null,
       },
+      // From release (or the last nudge key) to the edit's file write.
+      saveMs: save.at ? save.at - releasedAt : null,
       // Which write never landed within 15 s; a redo that was never sent is untested, so undo fails.
       undoTimeout: saved && !undo.reached ? "undo" : saved && !redo.reached ? "redo" : null,
       smooth: { ...drive.smooth, control },

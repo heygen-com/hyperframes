@@ -23,6 +23,7 @@ export interface ThumbnailRequest {
   priority: ThumbnailPriority;
   /** Rich work is paused while the timeline is fast-scrolling. */
   rich?: boolean;
+  discardWhenReleased?: boolean;
   load: (signal: AbortSignal) => Promise<ThumbnailLoadedResult>;
 }
 
@@ -362,7 +363,7 @@ export class ThumbnailScheduler {
     const byteBudget = isWaveform
       ? this.budgets.waveformCacheBytes
       : this.budgets.thumbnailCacheBytes;
-    entry.cached = entry.weight <= byteBudget;
+    entry.cached = !entry.request.discardWhenReleased && entry.weight <= byteBudget;
     if (!entry.cached) return;
     if (isWaveform) this.waveformCacheBytes += entry.weight;
     else this.cacheBytes += entry.weight;
