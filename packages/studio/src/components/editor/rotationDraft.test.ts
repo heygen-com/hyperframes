@@ -71,6 +71,7 @@ describe("rotate in a composition without GSAP", () => {
       property: "transform",
       prefix: "translate(-120px, -80px)",
       share: expect.closeTo(30),
+      inline: false,
     });
     applyRotationDraft(element, 55, target);
     expect(element.style.getPropertyValue("transform")).toBe(

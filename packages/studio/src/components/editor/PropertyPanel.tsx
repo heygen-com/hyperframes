@@ -3,8 +3,8 @@ import { memo, useMemo, useRef, useState } from "react";
 import { Move } from "../../icons/SystemIcons";
 import { InspectorHeaderActions } from "./InspectorHeaderActions";
 import { useStudioShellContext } from "../../contexts/StudioContext";
-import { readStudioBoxSize, readStudioRotation } from "./manualEdits";
-import { readMoveOffset } from "./plainTranslate";
+import { readStudioBoxSize } from "./manualEdits";
+import { readMoveOffset, readShownRotation } from "./plainTranslate";
 import {
   buildElementInfoText,
   EMPTY_STYLES,
@@ -210,7 +210,7 @@ export const PropertyPanel = memo(function PropertyPanel(props: PropertyPanelPro
     manualSize.height > 0
       ? manualSize.height
       : (parsePxMetricValue(styles.height ?? "") ?? element.boundingBox.height);
-  const manualRotation = readStudioRotation(element.element);
+  const manualRotation = readShownRotation(element.element);
 
   const elStart = Number.parseFloat(element?.dataAttributes?.start ?? "0") || 0;
   const elDuration = Number.parseFloat(element?.dataAttributes?.duration ?? "1") || 0;

@@ -440,7 +440,11 @@ function gsapWritesChannels(el: Element, channels: string[]): boolean {
   );
 }
 
-export const ROTATION_CHANNELS: string[] = ["rotation", "rotationX", "rotationY", "rotationZ"];
+// GSAP's CSSPlugin also takes rotate, rotateX/Y/Z for rotation.
+export const ROTATION_CHANNELS: string[] = [
+  ...["rotation", "rotationX", "rotationY", "rotationZ"],
+  ...["rotate", "rotateX", "rotateY", "rotateZ"],
+];
 
 const gsapRendersTransform = (el: Element) =>
   !!(el as { _gsap?: { renderTransform?: unknown } })._gsap?.renderTransform;

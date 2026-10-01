@@ -83,6 +83,7 @@ export function captureStudioRotation(element: HTMLElement): StudioRotationSnaps
   return {
     rotate: element.style.getPropertyValue("rotate"),
     transform: element.style.getPropertyValue("transform"),
+    display: element.style.getPropertyValue("display"),
     transformOrigin: element.style.getPropertyValue("transform-origin"),
     studioRotation: element.style.getPropertyValue(STUDIO_ROTATION_PROP),
     marker: element.getAttribute(STUDIO_ROTATION_ATTR),

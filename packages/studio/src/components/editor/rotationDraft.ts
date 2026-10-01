@@ -40,36 +40,46 @@ export interface CssRotationTarget {
   property: "rotate" | "transform";
   prefix: string;
   share: number;
+  /** An inline box does not transform, so the turn makes it inline-block. */
+  inline: boolean;
 }
 
 export function readCssRotationTarget(element: HTMLElement): CssRotationTarget {
+  const view = element.ownerDocument.defaultView;
+  const inline = view?.getComputedStyle(element).display === "inline";
   const transform = translatingTransform(element);
-  if (!transform) return { property: "rotate", prefix: "", share: readCssRotation(element, false) };
+  if (!transform) {
+    return { property: "rotate", prefix: "", share: readCssRotation(element, false), inline };
+  }
   const prefix = transform.replace(TRAILING_TURN, "");
   const style = element.style;
-  const inline = [style.getPropertyValue("transform"), style.getPropertyPriority("transform")];
+  const saved = [style.getPropertyValue("transform"), style.getPropertyPriority("transform")];
   style.setProperty("transform", prefix || "none");
   const share = readCssRotation(element);
-  style.setProperty("transform", inline[0] ?? "", inline[1] ?? "");
-  return { property: "transform", prefix, share };
+  style.setProperty("transform", saved[0] ?? "", saved[1] ?? "");
+  return { property: "transform", prefix, share, inline };
 }
 
-/** Draws `angle` where `target` says, and returns the source patch that saves it as drawn. */
+/** Draws `angle` where `target` says, and returns the source patches that save it as drawn. */
 export function applyCssRotation(
   element: HTMLElement,
   angle: number,
   target = readCssRotationTarget(element),
-): PatchOperation & { value: string } {
+): Array<PatchOperation & { value: string }> {
   const turn = `${roundTo3(angle - target.share)}deg`;
   const value = target.property === "rotate" ? turn : `${target.prefix} rotate(${turn})`.trim();
-  element.style.setProperty(target.property, value);
-  return { type: "inline-style", property: target.property, value };
+  const patches = [{ type: "inline-style" as const, property: target.property, value }];
+  if (target.inline)
+    patches.unshift({ type: "inline-style", property: "display", value: "inline-block" });
+  for (const patch of patches) element.style.setProperty(patch.property, patch.value);
+  return patches;
 }
 
 /** Back to the press: the rotation snapshot and, for a plain rotate, the inline transform it drew in. */
 export function restorePlainRotation(element: HTMLElement, snapshot: StudioRotationSnapshot): void {
   restoreStudioRotation(element, snapshot);
   element.style.setProperty("transform", snapshot.transform);
+  element.style.setProperty("display", snapshot.display);
 }
 
 // `plain`, read at press: where a turn GSAP does not own draws; null for GSAP's rotation.
@@ -78,14 +88,10 @@ export function applyRotationDraft(
   angle: number,
   plain: CssRotationTarget | null,
 ): void {
-  const gsap = plain ? null : getOffsetDragGsap(element);
-  if (!gsap) return void applyCssRotation(element, angle, plain ?? undefined);
+  if (plain) return void applyCssRotation(element, angle, plain);
   element.style.setProperty("rotate", "none");
-  gsap.set(element, { rotation: angle });
+  getOffsetDragGsap(element)?.set(element, { rotation: angle });
 }
-
-const rotationGsap = (element: HTMLElement, plain: boolean) =>
-  plain ? null : getOffsetDragGsap(element);
 
 /** Back to the gesture start: the CSS snapshot, and GSAP's rotation without the legacy var. */
 export function restoreRotationDraft(
@@ -103,7 +109,7 @@ export function restoreRotationDraft(
 
 /** The angle a rotate gesture starts from, as the element shows it. */
 export function readRotationBase(element: HTMLElement, plain: boolean): number {
-  const gsap = rotationGsap(element, plain);
-  if (!gsap) return readCssRotation(element);
-  return Number(gsap.getProperty(element, "rotation")) + readStudioRotation(element).angle;
+  if (plain) return readCssRotation(element);
+  const gsapRotation = Number(getOffsetDragGsap(element)?.getProperty(element, "rotation") ?? 0);
+  return gsapRotation + readStudioRotation(element).angle;
 }

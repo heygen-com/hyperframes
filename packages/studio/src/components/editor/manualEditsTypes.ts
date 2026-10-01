@@ -100,6 +100,7 @@ export interface StudioBoxSizeSnapshot {
 export interface StudioRotationSnapshot {
   rotate: string;
   transform: string;
+  display: string;
   transformOrigin: string;
   studioRotation: string;
   marker: string | null;

@@ -9,6 +9,7 @@ import {
 import { STUDIO_ROTATION_ATTR } from "../components/editor/manualEditsTypes";
 import type { ElementOffsetStagerDeps } from "./elementOffsetStager";
 import { savePlainRotation } from "./plainRotation";
+import { readShownRotation } from "../components/editor/plainTranslate";
 
 function rotate(
   element: HTMLElement,
@@ -91,5 +92,31 @@ describe("savePlainRotation", () => {
     ]);
     await expect(saved).rejects.toThrow("offline");
     expect(element.style.getPropertyValue("transform")).toBe("translate(-120px, -80px)");
+  });
+
+  it("makes an inline element inline-block, as a turn needs, and puts it back on a failed save", async () => {
+    const element = document.createElement("span");
+    element.style.setProperty("display", "inline");
+    const { saved, commitPositionPatchToHtml } = rotate(element, 20, {
+      save: () => Promise.reject(new Error("offline")),
+    });
+    expect(commitPositionPatchToHtml.mock.calls[0]![1]).toEqual([
+      { type: "inline-style", property: "display", value: "inline-block" },
+      { type: "inline-style", property: "rotate", value: "20deg" },
+    ]);
+    await expect(saved).rejects.toThrow("offline");
+    expect(element.style.getPropertyValue("display")).toBe("inline");
+  });
+});
+
+describe("readShownRotation", () => {
+  it("shows an element's own CSS turn, and GSAP's legacy reading once GSAP turns it", () => {
+    const element = document.createElement("div");
+    document.body.append(element);
+    element.style.setProperty("rotate", "25deg");
+    expect(readShownRotation(element)).toEqual({ angle: 25 });
+    Object.assign(element, { _gsap: { renderTransform: () => {} } });
+    applyStudioRotation(element, { angle: 15 });
+    expect(readShownRotation(element)).toEqual({ angle: 15 });
   });
 });

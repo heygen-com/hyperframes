@@ -15,7 +15,7 @@ import {
 } from "./manualOffsetDrag";
 import { UNREADABLE_TRANSLATE } from "./plainTranslate";
 import { STUDIO_OFFSET_X_PROP, STUDIO_OFFSET_Y_PROP } from "./manualEdits";
-import { computeDraggedGsapPosition, readCssRotation } from "../../hooks/draggedGsapPosition";
+import { computeDraggedGsapPosition } from "../../hooks/draggedGsapPosition";
 
 function expectMatrixClose(actual: ManualOffsetDragMatrix, expected: ManualOffsetDragMatrix): void {
   expect(actual.a).toBeCloseTo(expected.a, 6);

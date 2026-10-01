@@ -23,13 +23,14 @@ export function savePlainRotation(
     : [];
   if (patches.length) clearStudioRotation(element);
   const drawn = applyCssRotation(element, next.angle);
-  patches.push(drawn);
+  patches.push(...drawn);
+  const turn = drawn.at(-1)!;
   return commitPositionPatchToHtml(selection, patches, {
     label: "Rotate layer",
     coalesceKey: `rotate:${++plainRotateCounter}`,
     coalesceMs: Number.POSITIVE_INFINITY,
   }).catch((error) => {
-    if (element.style.getPropertyValue(drawn.property) === drawn.value) {
+    if (element.style.getPropertyValue(turn.property) === turn.value) {
       restorePlainRotation(element, before);
     }
     throw error;
