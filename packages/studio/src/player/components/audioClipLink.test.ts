@@ -4,7 +4,7 @@ import {
   expandToLinkedMembers,
   linkedGestureKeys,
   linkedMembersOf,
-  mediaFileKey,
+  mediaAssetIdentity,
 } from "./audioClipLink";
 
 const video = { id: "talk", link: "lk-1" };
@@ -26,9 +26,21 @@ describe("audioPillFlags", () => {
   });
 });
 
-describe("mediaFileKey", () => {
-  it("matches the same file across folders, query strings and case", () => {
-    expect(mediaFileKey("assets/City Ride.mp4?v=2")).toBe(mediaFileKey("/preview/city ride.mp4"));
+describe("mediaAssetIdentity", () => {
+  it("tells same-named files in different folders apart", () => {
+    expect(mediaAssetIdentity({ src: "assets/one/talk.mp4" })).not.toBe(
+      mediaAssetIdentity({ src: "assets/two/talk.mp4" }),
+    );
+  });
+
+  it("resolves a src against its own source file and drops query and hash", () => {
+    expect(mediaAssetIdentity({ src: "../assets/talk.mp4?v=2", sourceFile: "scenes/a.html" })).toBe(
+      mediaAssetIdentity({ src: "./assets/talk.mp4#t=1" }),
+    );
+    expect(mediaAssetIdentity({ src: "assets/City%20Ride.mp4" })).toBe(
+      mediaAssetIdentity({ src: "assets/City Ride.mp4" }),
+    );
+    expect(mediaAssetIdentity({ src: "" })).toBeNull();
   });
 });
 
@@ -50,6 +62,25 @@ describe("expandToLinkedMembers", () => {
       { id: "b", key: "k-b", link: "lk-9" },
     ];
     expect(expandToLinkedMembers(["k-a"], keyed)).toEqual(new Set(["k-a", "k-b"]));
+  });
+});
+
+describe("link groups stay inside their source file", () => {
+  const root = [
+    { id: "v", link: "lk-1", sourceFile: undefined },
+    { id: "a", link: "lk-1", sourceFile: undefined },
+  ];
+  const child = [
+    { id: "cv", key: "child.html#cv", link: "lk-1", sourceFile: "child.html" },
+    { id: "ca", key: "child.html#ca", link: "lk-1", sourceFile: "child.html" },
+  ];
+  const all = [...root, ...child];
+
+  it("does not pull a child file's same-id link into the root group", () => {
+    expect(linkedMembersOf(root[0] ?? video, all).map((el) => el.id)).toEqual(["v", "a"]);
+    expect(expandToLinkedMembers(["child.html#cv"], all)).toEqual(
+      new Set(["child.html#cv", "child.html#ca"]),
+    );
   });
 });
 

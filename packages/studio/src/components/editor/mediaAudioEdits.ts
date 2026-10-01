@@ -211,6 +211,7 @@ export function buildKeepSoundCutoutEdit(input: {
       ...movedSound,
     ];
     if (video.hasAttribute("loop")) attrs.push(["loop", ""]);
+    if (video.hasAttribute("data-hidden")) attrs.push(["data-hidden", ""]);
     const cut = applyPatchByTarget(source, target, cutoutSrcOp);
     const inserted = insertBeforeTarget(cut, target, `<audio ${formatAttrs(attrs)}></audio>`);
     audioInserted = inserted !== cut;

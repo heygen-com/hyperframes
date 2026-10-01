@@ -37,6 +37,12 @@ describe("clipsToUnlink", () => {
   it("ignores unlinked clips", () => {
     expect(clipsToUnlink([title], [video, audio, title])).toEqual([]);
   });
+
+  it("never reaches a same-id link in another source file", () => {
+    const childVideo = clip("c", "video", { link: "lk-1", sourceFile: "child.html" });
+    const removed = clipsToUnlink([video], [video, audio, childVideo]).map((el) => el.id);
+    expect(removed).toEqual(["talk", "talk-audio"]);
+  });
 });
 
 describe("planLinkEdit", () => {

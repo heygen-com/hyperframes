@@ -180,6 +180,20 @@ describe("buildKeepSoundCutoutEdit", () => {
     expect(audio.parentElement).toBe(video.parentElement);
   });
 
+  it("keeps a hidden video's sound silent on the linked audio", () => {
+    const video = liveVideo();
+    video.setAttribute("data-hidden", "");
+    const edit = buildKeepSoundCutoutEdit({
+      video,
+      videoId: "clip",
+      target: { id: "clip" },
+      cutoutSrc: "assets/talk-cutout.webm",
+    });
+    const hidden = source.replace('<video id="clip"', '<video id="clip" data-hidden');
+    const doc = parse(applyEdit(hidden, edit));
+    expect(doc.getElementById("clip-audio")?.hasAttribute("data-hidden")).toBe(true);
+  });
+
   it("drops the video's automation attribute when it held no rate lane", () => {
     const video = makeVideo({
       id: "clip",

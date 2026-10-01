@@ -133,6 +133,41 @@ describe("mergeAudioInSource", () => {
   });
 });
 
+describe("mergeAudioInSource refusals", () => {
+  const pair = (videoAttrs: string, audioAttrs: string) =>
+    [
+      "<div>",
+      `  <video id="v" src="assets/one/talk.mp4" muted data-start="0" data-duration="4"${videoAttrs}></video>`,
+      `  <audio id="a" src="assets/one/talk.mp4" data-start="0" data-duration="4"${audioAttrs}></audio>`,
+      "</div>",
+    ].join("\n");
+  const merge = (source: string) =>
+    mergeAudioInSource(source, { videoTarget: { id: "v" }, audioTarget: { id: "a" } });
+
+  it("refuses an audio of a different file with the same name", () => {
+    expect(
+      merge(
+        pair("", "").replace('<audio id="a" src="assets/one/', '<audio id="a" src="assets/two/'),
+      ),
+    ).toBeNull();
+  });
+
+  it("refuses when only one member is hidden, which would change what is heard", () => {
+    expect(merge(pair("", " data-hidden"))).toBeNull();
+    expect(merge(pair(" data-hidden", ""))).toBeNull();
+    expect(merge(pair(" data-hidden", " data-hidden"))).not.toBeNull();
+  });
+});
+
+describe("detachAudioInSource on a hidden video", () => {
+  it("keeps the detached sound silent", () => {
+    const hidden = SOURCE.replace('<video id="talk"', '<video id="talk" data-hidden');
+    const result = detachAudioInSource(hidden, { target: video, videoId: "talk", track: 2 });
+    expect(attrsOf(result?.html ?? "", "audio#talk-audio")).toHaveProperty("data-hidden");
+    expect(attrsOf(result?.html ?? "", "video#talk")).toHaveProperty("data-hidden");
+  });
+});
+
 describe("removeElementInSource", () => {
   it("removes the element and its whole line", () => {
     expect(removeElementInSource('<div>\n  <audio id="a"></audio>\n</div>', { id: "a" })).toBe(
@@ -200,6 +235,35 @@ describe("predicates", () => {
     expect(canLinkPair([el("v", "video", { link: "x" }), el("a", "audio", { link: "x" })])).toBe(
       false,
     );
+  });
+});
+
+describe("predicates compare the whole asset path", () => {
+  const one = { src: "assets/one/talk.mp4" };
+  const two = { src: "assets/two/talk.mp4" };
+
+  it("does not pair same-named files in different folders", () => {
+    const v = el("v", "video", { muted: true, ...one });
+    const a = el("a", "audio", two);
+    expect(findMergePair(v, [v, a])).toBeNull();
+    expect(canLinkPair([el("v", "video", one), el("a", "audio", two)])).toBe(false);
+  });
+
+  it("resolves each src against its own source file", () => {
+    const v = el("v", "video", { src: "../assets/talk.mp4", sourceFile: "scenes/a.html" });
+    const a = el("a", "audio", { src: "./assets/talk.mp4", sourceFile: "index.html" });
+    expect(canLinkPair([v, a])).toBe(true);
+  });
+
+  it("does not take a same-id link from another source file as the merge partner", () => {
+    const v = el("v", "video", { muted: true, link: "lk-1", sourceFile: "index.html" });
+    const a = el("a", "audio", { start: 3, link: "lk-1", sourceFile: "child.html" });
+    expect(findMergePair(v, [v, a])).toBeNull();
+  });
+
+  it("does not merge a hidden audio back into a visible video", () => {
+    const v = el("v", "video", { muted: true });
+    expect(findMergePair(v, [v, el("a", "audio", { hidden: true })])).toBeNull();
   });
 });
 

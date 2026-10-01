@@ -1,18 +1,33 @@
 import type { TimelineElement } from "../store/timelineElement";
 
-type LinkedElement = Pick<TimelineElement, "id" | "key" | "link">;
+type LinkedElement = Pick<TimelineElement, "id" | "key" | "link" | "sourceFile">;
 
 const keyOf = (element: Pick<TimelineElement, "id" | "key">) => element.key ?? element.id;
 
-export function mediaFileKey(src: string | undefined): string | null {
+const SOURCE_BASE = "https://project.invalid/";
+
+export function mediaAssetIdentity(
+  element: Pick<TimelineElement, "src" | "sourceFile">,
+): string | null {
+  const src = element.src?.trim();
   if (!src) return null;
-  const path = src.split(/[?#]/, 1)[0] ?? "";
-  const segment = path.split(/[/\\]/).pop()?.trim().toLowerCase() ?? "";
-  return segment.length > 0 ? segment : null;
+  try {
+    const url = new URL(src, new URL(element.sourceFile ?? "index.html", SOURCE_BASE));
+    return decodeURIComponent(`${url.origin}${url.pathname}`);
+  } catch {
+    return null;
+  }
 }
 
 function isLinked(element: Pick<TimelineElement, "link">): boolean {
   return typeof element.link === "string" && element.link.length > 0;
+}
+
+export function sharesLinkGroup(
+  a: Pick<TimelineElement, "link" | "sourceFile">,
+  b: Pick<TimelineElement, "link" | "sourceFile">,
+): boolean {
+  return isLinked(a) && a.link === b.link && (a.sourceFile ?? "") === (b.sourceFile ?? "");
 }
 
 export function audioPillFlags(
@@ -27,7 +42,7 @@ export function audioPillFlags(
 
 export function linkedMembersOf<T extends LinkedElement>(element: T, elements: readonly T[]): T[] {
   if (!isLinked(element)) return [element];
-  const members = elements.filter((candidate) => candidate.link === element.link);
+  const members = elements.filter((candidate) => sharesLinkGroup(candidate, element));
   return members.some((member) => keyOf(member) === keyOf(element))
     ? members
     : [element, ...members];
@@ -38,12 +53,9 @@ export function expandToLinkedMembers(
   elements: readonly LinkedElement[],
 ): Set<string> {
   const expanded = new Set(keys);
-  const links = new Set(
-    elements.filter((el) => expanded.has(keyOf(el)) && isLinked(el)).map((el) => el.link),
-  );
-  if (links.size === 0) return expanded;
+  const seeds = elements.filter((el) => expanded.has(keyOf(el)) && isLinked(el));
   for (const element of elements) {
-    if (isLinked(element) && links.has(element.link)) expanded.add(keyOf(element));
+    if (seeds.some((seed) => sharesLinkGroup(seed, element))) expanded.add(keyOf(element));
   }
   return expanded;
 }

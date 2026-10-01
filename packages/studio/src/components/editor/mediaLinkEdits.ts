@@ -1,7 +1,7 @@
 import { HF_AUDIO_AUTOMATION_ATTR } from "@hyperframes/core/audio-automation";
 import { MEDIA_LINK_ATTR, mintLinkId } from "@hyperframes/core/media-link";
 import type { TimelineElement } from "../../player/store/timelineElement";
-import { mediaFileKey } from "../../player/components/audioClipLink";
+import { mediaAssetIdentity, sharesLinkGroup } from "../../player/components/audioClipLink";
 import {
   applyPatchByTarget,
   findTagByTarget,
@@ -22,6 +22,7 @@ import {
 } from "./mediaAudioEdits";
 
 const LINK_PROPERTY = MEDIA_LINK_ATTR.slice("data-".length);
+const HIDDEN_ATTR = "data-hidden";
 const SYNC_TOLERANCE_S = 1e-3;
 
 const dataOp = (property: string, value: string | null): PatchOperation => ({
@@ -86,7 +87,7 @@ export function removeElementInSource(source: string, target: PatchTarget): stri
 
 function hasBooleanAttr(source: string, target: PatchTarget, name: string): boolean {
   const tag = findTagByTarget(source, target)?.tag ?? "";
-  return new RegExp(`\\s${name}(?=[\\s=/>])`, "i").test(tag);
+  return new RegExp(`\\s${name}(?=[\\s=/>]|$)`, "i").test(tag);
 }
 
 export interface DetachAudioResult {
@@ -143,6 +144,7 @@ export function detachAudioInSource(
     ...moved,
   ];
   if (hasBooleanAttr(source, target, "loop")) attrs.push(["loop", ""]);
+  if (hasBooleanAttr(source, target, HIDDEN_ATTR)) attrs.push([HIDDEN_ATTR, ""]);
   const inserted = insertBeforeTarget(source, target, `<audio ${formatAttrs(attrs)}></audio>`);
   return { html: applyOps(inserted, target, videoOps), audioId, linkId };
 }
@@ -157,6 +159,12 @@ export function mergeAudioInSource(
 ): string | null {
   const { videoTarget, audioTarget } = input;
   if (!findTagByTarget(source, videoTarget) || !findTagByTarget(source, audioTarget)) return null;
+  const assetOf = (target: PatchTarget) =>
+    mediaAssetIdentity({ src: readAuthoredSrc(source, target) });
+  const videoAsset = assetOf(videoTarget);
+  if (!videoAsset || videoAsset !== assetOf(audioTarget)) return null;
+  const hiddenOf = (target: PatchTarget) => hasBooleanAttr(source, target, HIDDEN_ATTR);
+  if (hiddenOf(videoTarget) !== hiddenOf(audioTarget)) return null;
   const videoOps: PatchOperation[] = [];
   for (const name of MOVED_SOUND_ATTRS) {
     const value = readAttributeByTarget(source, audioTarget, name);
@@ -172,7 +180,7 @@ type TimedElement = Pick<
   TimelineElement,
   "id" | "key" | "tag" | "src" | "start" | "duration" | "playbackStart" | "playbackRate" | "link"
 > &
-  Pick<TimelineElement, "muted" | "hasAudio">;
+  Pick<TimelineElement, "muted" | "hasAudio" | "hidden" | "sourceFile">;
 
 const tagOf = (el: Pick<TimelineElement, "tag">) => el.tag.trim().toLowerCase();
 const keyOf = (el: Pick<TimelineElement, "id" | "key">) => el.key ?? el.id;
@@ -188,8 +196,8 @@ function hasIdenticalTiming(a: TimedElement, b: TimedElement): boolean {
 }
 
 const sameFile = (a: TimedElement, b: TimedElement) => {
-  const key = mediaFileKey(a.src);
-  return key !== null && key === mediaFileKey(b.src);
+  const asset = mediaAssetIdentity(a);
+  return asset !== null && asset === mediaAssetIdentity(b);
 };
 
 /** A video whose sound is on the video itself: what Detach audio acts on. */
@@ -212,11 +220,12 @@ export function findMergePair<T extends TimedElement>(
     (el) => keyOf(el) !== keyOf(element) && tagOf(el) === partnerTag && sameFile(el, element),
   );
   const partner =
-    (element.link ? candidates.find((el) => el.link === element.link) : undefined) ??
+    candidates.find((el) => sharesLinkGroup(el, element)) ??
     candidates.find((el) => hasIdenticalTiming(el, element));
   if (!partner) return null;
   const video = isVideo ? element : partner;
   const audio = isVideo ? partner : element;
+  if ((video.hidden === true) !== (audio.hidden === true)) return null;
   return video.muted === true ? { video, audio } : null;
 }
 
@@ -227,7 +236,7 @@ export function canLinkPair(selected: readonly TimedElement[]): boolean {
   if (!a || !b) return false;
   const tags = new Set([tagOf(a), tagOf(b)]);
   if (!tags.has("video") || !tags.has("audio")) return false;
-  if (a.link && a.link === b.link) return false;
+  if (sharesLinkGroup(a, b)) return false;
   return sameFile(a, b) && hasIdenticalTiming(a, b);
 }
 

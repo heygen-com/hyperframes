@@ -1,6 +1,7 @@
 import type { TimelineElement } from "../player";
 import type { TimelineLinkEdit } from "../player/components/timelineCallbacks";
 import { buildPatchTarget, type PatchTarget } from "./timelineEditingHelpers";
+import { sharesLinkGroup } from "../player/components/audioClipLink";
 import {
   detachAudioInSource,
   linkInSource,
@@ -31,13 +32,14 @@ export function clipsToUnlink(
   elements: readonly TimelineElement[],
 ): TimelineElement[] {
   const removedKeys = new Set(removed.map(keyOf));
-  const links = new Set(removed.map((el) => el.link).filter(Boolean));
-  const orphans: TimelineElement[] = [];
-  for (const link of links) {
-    const survivors = elements.filter((el) => el.link === link && !removedKeys.has(keyOf(el)));
-    if (survivors.length === 1 && survivors[0]) orphans.push(survivors[0]);
+  const orphans = new Map<string, TimelineElement>();
+  for (const leaving of removed) {
+    const survivors = elements.filter(
+      (el) => sharesLinkGroup(el, leaving) && !removedKeys.has(keyOf(el)),
+    );
+    if (survivors.length === 1 && survivors[0]) orphans.set(keyOf(survivors[0]), survivors[0]);
   }
-  return [...removed.filter((el) => el.link), ...orphans];
+  return [...removed.filter((el) => el.link), ...orphans.values()];
 }
 
 export function planLinkEdit(
