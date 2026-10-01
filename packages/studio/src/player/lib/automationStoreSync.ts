@@ -44,11 +44,8 @@ import { getTimelineElementIdentity, previewElementFinder } from "./timelineElem
  *
  * Its own four come off its node; the other two are its copy of what its group
  * carries. The timeline derives a group's lanes and chain from these mirrors,
- * never from the group element — and the FX rack is not group-aware: selecting
- * a group and automating one of its parameters writes `data-automation` on the
- * group node through the ordinary element path, which used to refresh an
- * element's own two fields and nothing else. So the group's row went on reading
- * the value it was born with, and its `∿` never appeared.
+ * never from the group element, and automating a group writes `data-automation`
+ * on the group node through the ordinary element path, so both halves are re-read.
  */
 function syncedFields(doc: Document, element: TimelineElement, node: Element) {
   const group = element.audioGroup ? groupInfoFor(doc, element.audioGroup) : null;

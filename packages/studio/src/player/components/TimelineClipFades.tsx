@@ -169,7 +169,6 @@ export function TimelineClipFades({
   // When the other fade makes the pair overrun the clip, neither a key nor a drag lowers this one.
   const stepLimit = (current: number, other: number) =>
     Math.max(0, el.duration - other, other > 0 ? current : 0);
-  /** Where a key or drag starts: the fade as drawn, so a lone fade past the clip starts at its end. */
   const startSeconds = (edge: FadeEdge) => {
     const current = currentSeconds(edge);
     return Math.min(current, stepLimit(current, currentSeconds(edge === "in" ? "out" : "in")));
