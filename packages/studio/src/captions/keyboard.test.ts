@@ -53,4 +53,10 @@ describe("shouldHandleCaptionNudgeKey", () => {
     expect(shouldHandleCaptionNudgeKey(mockKeyboardEvent("ArrowUp"), div)).toBe(true);
     expect(shouldHandleCaptionNudgeKey(mockKeyboardEvent("ArrowUp"), null)).toBe(true);
   });
+
+  it.each(["video", "audio"])("leaves the arrows to a focused <%s controls>", (tag) => {
+    const player = document.createElement(tag);
+    player.setAttribute("controls", "");
+    expect(shouldHandleCaptionNudgeKey(mockKeyboardEvent("ArrowRight"), player)).toBe(false);
+  });
 });

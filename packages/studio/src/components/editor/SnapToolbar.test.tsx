@@ -133,6 +133,37 @@ describe("SnapToolbar keyboard shortcuts", () => {
   });
 });
 
+describe("SnapToolbar keys and a focused control", () => {
+  let root: ReturnType<typeof createRoot> | null = null;
+  afterEach(() => {
+    act(() => root?.unmount());
+    root = null;
+  });
+
+  const controls: Array<[string, string, string, string]> = [
+    ["a combobox", "button", "role", "combobox"],
+    ["a select", "select", "name", "font"],
+    ["a switch", "button", "role", "switch"],
+    ["a video player", "video", "controls", ""],
+  ];
+
+  it.each(controls)("leaves S and G alone while %s has focus", (_name, tag, attr, value) => {
+    root = renderToolbar().root;
+    const control = document.body.appendChild(document.createElement(tag));
+    control.setAttribute(attr, value);
+    act(() => {
+      for (const key of ["s", "g"])
+        control.dispatchEvent(
+          new KeyboardEvent("keydown", { key, bubbles: true, cancelable: true }),
+        );
+    });
+
+    const prefs = JSON.parse(window.localStorage.getItem("hf-studio-ui-preferences") ?? "{}");
+    expect(prefs.snapEnabled).not.toBe(false);
+    expect(prefs.gridVisible).not.toBe(true);
+  });
+});
+
 describe("SnapToolbar ruler and safe-margin toggles", () => {
   it.each([
     ["Toggle ruler", "rulerVisible"],

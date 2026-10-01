@@ -59,3 +59,16 @@ describe("isTypingTarget", () => {
     expect(isTypingTarget({} as EventTarget)).toBe(false);
   });
 });
+
+describe("ownsPlainKeys", () => {
+  it("is true for a native player with controls and for anything typing claims", () => {
+    expect(ownsPlainKeys(mount("<video controls></video>"))).toBe(true);
+    expect(ownsPlainKeys(mount("<audio controls></audio>"))).toBe(true);
+    expect(ownsPlainKeys(mount("<input />"))).toBe(true);
+  });
+
+  it("is false for a player without controls and for plain elements", () => {
+    expect(ownsPlainKeys(mount("<video></video>"))).toBe(false);
+    expect(ownsPlainKeys(mount("<div></div>"))).toBe(false);
+  });
+});

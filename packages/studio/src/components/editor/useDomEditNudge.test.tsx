@@ -259,6 +259,51 @@ describe("useDomEditNudge — selection cleanup keyed on stable identity", () =>
   });
 });
 
+describe("useDomEditNudge — a focused native player owns the arrow keys", () => {
+  beforeEach(() => {
+    vi.useFakeTimers();
+    __resetForTests();
+  });
+  let root: ReturnType<typeof createRoot> | null = null;
+  afterEach(() => {
+    act(() => root?.unmount());
+    root = null;
+    document.body.innerHTML = "";
+    vi.useRealTimers();
+  });
+
+  it.each(["video", "audio"])(
+    "does not nudge the selection while a <%s controls> has focus",
+    (tag) => {
+      root = createRoot(document.body.appendChild(document.createElement("div")));
+      const element = document.body.appendChild(document.createElement("div"));
+      element.id = "dot";
+      const player = document.body.appendChild(document.createElement(tag));
+      player.setAttribute("controls", "");
+      const commit = vi.fn();
+      act(() => {
+        root?.render(
+          React.createElement(Harness, {
+            selection: makeSelection("Dot", element),
+            onPathOffsetCommit: commit,
+          }),
+        );
+      });
+      const event = new KeyboardEvent("keydown", {
+        key: "ArrowRight",
+        bubbles: true,
+        cancelable: true,
+      });
+      act(() => {
+        player.dispatchEvent(event);
+        vi.advanceTimersByTime(CANVAS_NUDGE_COMMIT_DEBOUNCE_MS + 10);
+      });
+      expect(event.defaultPrevented).toBe(false);
+      expect(commit).not.toHaveBeenCalled();
+    },
+  );
+});
+
 describe("useDomEditNudge carries the route its press chose", () => {
   beforeEach(() => {
     vi.useFakeTimers();

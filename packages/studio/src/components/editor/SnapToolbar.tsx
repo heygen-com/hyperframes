@@ -2,6 +2,7 @@ import { memo, useCallback, useEffect, useRef, useState } from "react";
 import { MagnetStraight, GridFour, Path, Ruler, FrameCorners } from "@phosphor-icons/react";
 import { usePlayerStore } from "../../player/store/playerStore";
 import { usePreviewOverlayContext } from "./PreviewOverlayProvider";
+import { ownsPlainKeys } from "../../utils/typingTarget";
 
 // fallow-ignore-next-line complexity
 export const SnapToolbar = memo(function SnapToolbar() {
@@ -35,10 +36,8 @@ export const SnapToolbar = memo(function SnapToolbar() {
     // fallow-ignore-next-line complexity
     const handleKeyDown = (e: KeyboardEvent) => {
       if (e.defaultPrevented) return;
-      const t = e.target;
-      if (t instanceof HTMLInputElement || t instanceof HTMLTextAreaElement) return;
-      if (t instanceof HTMLElement && t.isContentEditable) return;
-      if (t instanceof HTMLIFrameElement) return;
+      if (ownsPlainKeys(e.target)) return;
+      if (e.target instanceof HTMLIFrameElement) return;
       if (e.key === "s" && !e.metaKey && !e.ctrlKey && !e.altKey) {
         e.preventDefault();
         updatePrefs({ snapEnabled: !prefs.snapEnabled });

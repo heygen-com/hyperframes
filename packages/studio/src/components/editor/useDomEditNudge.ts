@@ -127,7 +127,7 @@ function resolveSingleNudgeTarget(
 
 /**
  * True when a keydown must not start/extend a nudge: canvas movement disabled,
- * a pointer gesture already owns the element, or the user is typing in a field.
+ * a pointer gesture already owns the element, or focus is in a field or a native player.
  */
 function shouldIgnoreNudgeKey(p: UseDomEditNudgeParams, event: KeyboardEvent): boolean {
   if (!p.allowCanvasMovement || event.defaultPrevented) return true;

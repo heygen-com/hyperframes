@@ -61,6 +61,9 @@ afterEach(() => {
 });
 
 describe("keys on a focused slider", () => {
+  afterEach(() => {
+    document.body.innerHTML = "";
+  });
   const slider = () => {
     const el = document.createElement("div");
     el.setAttribute("role", "slider");
@@ -81,6 +84,20 @@ describe("keys on a focused slider", () => {
     });
     const cb = callbacks();
     dispatchPlainKey(from(slider(), { key: "Delete" }), "delete", cb);
+    expect(cb.handleTimelineElementsDelete).not.toHaveBeenCalled();
+    expect(cb.handleTimelineElementDelete).not.toHaveBeenCalled();
+  });
+
+  it.each(["video", "audio"])("leaves Delete to a focused <%s controls>", (tag) => {
+    usePlayerStore.setState({
+      elements: [bgmElement],
+      selectedElementId: "bgm",
+      selectedElementIds: new Set(["bgm"]),
+    });
+    const player = document.body.appendChild(document.createElement(tag));
+    player.setAttribute("controls", "");
+    const cb = callbacks();
+    dispatchPlainKey(from(player, { key: "Delete" }), "delete", cb);
     expect(cb.handleTimelineElementsDelete).not.toHaveBeenCalled();
     expect(cb.handleTimelineElementDelete).not.toHaveBeenCalled();
   });

@@ -33,6 +33,7 @@ import { canSplitElement } from "../utils/timelineElementSplit";
 import { useAudioMetersVisible } from "../utils/audioMeterVisibility";
 import { useProjectHasAudio } from "../utils/audioMeterMath";
 import { canAddBeatAt, addBeatAtCompositionTime } from "../utils/beatEditActions";
+import { isTypingTarget } from "../utils/typingTarget";
 
 interface DomEditSessionSlice extends EnableKeyframesSession {
   domEditSelection: DomEditSelection | null;
@@ -196,14 +197,10 @@ export function TimelineToolbar({
   // "N" toggles timeline snapping (industry convention: Resolve/FCP).
   // Skip when typing in an input/contenteditable.
   useEffect(() => {
-    // fallow-ignore-next-line complexity
     const onKeyDown = (e: KeyboardEvent) => {
       if (e.key !== "n" && e.key !== "N") return;
       if (e.metaKey || e.ctrlKey || e.altKey) return;
-      const target = e.target instanceof HTMLElement ? e.target : null;
-      if (target?.isContentEditable) return;
-      const tag = target?.tagName?.toLowerCase() ?? "";
-      if (tag === "input" || tag === "textarea" || tag === "select") return;
+      if (isTypingTarget(e.target)) return;
       const store = usePlayerStore.getState();
       store.setTimelineSnapEnabled(!store.timelineSnapEnabled);
     };

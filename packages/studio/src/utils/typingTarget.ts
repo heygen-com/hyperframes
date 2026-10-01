@@ -21,10 +21,13 @@ export function isTypingTarget(target: EventTarget | null): boolean {
   return element.closest(TYPING_SELECTOR) !== null;
 }
 
-/** Plain keys (arrows, Delete) also belong to a focused slider; Cmd shortcuts still do not. */
+/** Plain keys (arrows, Space, Delete) also belong to a focused slider or player; Cmd shortcuts still do not. */
 export function ownsPlainKeys(target: EventTarget | null): boolean {
-  return isTypingTarget(target) || asElement(target)?.closest("[role='slider']") != null;
+  return isTypingTarget(target) || asElement(target)?.closest(KEY_OWNING_CONTROLS) != null;
 }
+
+// A slider steps and a native player seeks and plays with these keys themselves.
+const KEY_OWNING_CONTROLS = "[role='slider'],video[controls],audio[controls]";
 
 /**
  * Things a keystroke belongs to rather than to a shortcut. `contenteditable` is
