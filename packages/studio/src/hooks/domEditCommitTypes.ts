@@ -53,6 +53,7 @@ export type PersistDomEditOperations = (
     coalesceKey?: string;
     coalesceMs?: number;
     skipRefresh?: boolean;
+    deferRender?: boolean;
     prepareContent?: (html: string, sourceFile: string) => string;
     shouldSave?: () => boolean;
   },

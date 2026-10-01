@@ -17,6 +17,7 @@ type PositionPatchOptions = {
   coalesceKey: string;
   coalesceMs?: number;
   skipRefresh?: boolean;
+  deferRender?: boolean;
 };
 
 export function useDomEditPositionPatchCommit({
@@ -31,6 +32,7 @@ export function useDomEditPositionPatchCommit({
         coalesceKey: options.coalesceKey,
         coalesceMs: options.coalesceMs,
         skipRefresh: options.skipRefresh ?? true,
+        deferRender: options.deferRender,
       })
         .then(() => undefined)
         .catch((error) => {

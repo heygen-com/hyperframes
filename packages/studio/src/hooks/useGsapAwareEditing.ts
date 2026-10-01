@@ -366,7 +366,7 @@ export function useGsapAwareEditing({
       });
       let anchorMove: ReturnType<typeof stageElementPositionOffset> | null = null;
       const stageCrop = prepareCropResize(selection.element);
-      let saveSizeAfterCommits: (() => Promise<void>) | null = null;
+      let cropUndoKey: string | null = null;
       return runGestureTransaction({
         element: selection.element,
         label: "Resize layer",
@@ -395,11 +395,10 @@ export function useGsapAwareEditing({
                 makeFetchFallback(selection),
               );
               assertGsapEditPersisted(outcome);
-              saveSizeAfterCommits =
-                outcome.status === "element-size"
-                  ? () => handleDomBoxSizeCommit(selection, next, undefined, undefined, coalesceKey)
-                  : () =>
-                      saveCropResize(stageCrop, selection, commitPositionPatchToHtml, coalesceKey);
+              // Saved before the buffered GSAP writes, so their reload stays the gesture's last render.
+              if (outcome.status === "element-size")
+                await handleDomBoxSizeCommit(selection, next, undefined, undefined, coalesceKey);
+              else cropUndoKey = coalesceKey;
               // What the resize did, not what its tweens suggest: a scale hold still commits a size.
               const ownsDragOffset =
                 outcome.status === "persisted" && outcome.ownsDragOffset === true;
@@ -437,7 +436,9 @@ export function useGsapAwareEditing({
         afterBufferedCommitsSaved: async () => {
           await anchorMove?.save();
           // Only now is the size live for every caller, drag or not.
-          await saveSizeAfterCommits?.();
+          if (cropUndoKey) {
+            await saveCropResize(stageCrop, selection, commitPositionPatchToHtml, cropUndoKey);
+          }
         },
         restore: () => {
           anchorMove?.rollback();

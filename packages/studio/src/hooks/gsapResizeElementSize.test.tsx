@@ -112,6 +112,11 @@ describe("resizing an element GSAP positions", () => {
     );
     expect(patches.filter((p: { property: string }) => p.property === "scale")).toEqual([]);
     expect(options.coalesceKey).toBe(h.commitMutation.mock.calls[0]![2].coalesceKey);
+    // Saved before the GSAP write and without its own render, so the GSAP reload renders last.
+    expect(options.deferRender).toBe(true);
+    expect(h.commitPatch.mock.invocationCallOrder.at(-1)).toBeLessThan(
+      h.commitMutation.mock.invocationCallOrder[0]!,
+    );
     act(() => h.root.unmount());
   });
 

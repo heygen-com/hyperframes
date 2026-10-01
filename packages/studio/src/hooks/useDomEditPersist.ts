@@ -77,7 +77,8 @@ export function useDomEditPersist({
 
       const targetPath = selection.sourceFile || activeCompPath || "index.html";
       const completePersistence = <T>(result: T, changed: boolean): T => {
-        if (options?.skipRefresh && changed) reseekPreviewRuntime(previewIframeRef.current);
+        if (options?.skipRefresh && changed && !options.deferRender)
+          reseekPreviewRuntime(previewIframeRef.current);
         return result;
       };
 
