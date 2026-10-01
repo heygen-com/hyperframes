@@ -81,8 +81,8 @@
   --color-code-keyword: light-dark(oklch(0.509 0.211 329), oklch(0.829 0.164 318));
   --color-code-name: light-dark(oklch(0.504 0.179 28), oklch(0.856 0.145 17));
   --color-code-function: light-dark(oklch(0.492 0.193 263), oklch(0.805 0.121 245));
-  --color-code-constant: light-dark(oklch(0.484 0.116 77), oklch(0.812 0.095 64));
-  --color-code-type: light-dark(oklch(0.483 0.138 76), oklch(0.825 0.097 82));
+  --color-code-constant: light-dark(oklch(0.495 0.13 50), oklch(0.815 0.11 50));
+  --color-code-type: light-dark(oklch(0.48 0.12 92), oklch(0.805 0.1 92));
   --color-code-operator: light-dark(oklch(0.471 0.127 237), oklch(0.793 0.092 206));
   --color-code-comment: light-dark(oklch(0.48 0.009 279), oklch(0.806 0.03 262));
   --color-code-string: light-dark(oklch(0.468 0.142 143), oklch(0.793 0.11 133));

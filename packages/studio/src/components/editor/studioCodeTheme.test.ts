@@ -14,7 +14,7 @@ describe("the code editor theme", () => {
 
   it("paints no literal colour of its own", () => {
     expect(source).not.toMatch(
-      /#[\da-f]{3,8}\b|\b(rgba?|hsla?|hwb|lab|lch|oklab|oklch|color|color-mix)\(|"(white|red|green|blue|gray|grey)"/i,
+      /#[\da-f]{3,8}\b|\b(rgba?|hsla?|hwb|lab|lch|oklab|oklch|color|color-mix)\(|"(white|black|red|orange|yellow|green|blue|purple|pink|gray|grey|silver|lime|cyan|magenta)"/i,
     );
   });
 });

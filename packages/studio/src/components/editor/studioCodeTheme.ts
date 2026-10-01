@@ -12,12 +12,18 @@ const editorTheme = EditorView.theme({
   "&.cm-focused > .cm-scroller > .cm-selectionLayer .cm-selectionBackground, .cm-selectionBackground, .cm-content ::selection":
     { backgroundColor: "var(--color-on)" },
   ".cm-activeLine": { backgroundColor: "var(--color-hover)" },
-  ".cm-selectionMatch": { outline: "1px solid var(--color-border-strong)" },
-  ".cm-searchMatch": {
-    backgroundColor: "var(--color-on)",
+  ".cm-selectionMatch": {
+    backgroundColor: "transparent",
     outline: "1px solid var(--color-border-strong)",
   },
-  ".cm-searchMatch.cm-searchMatch-selected": { outline: "1px solid var(--color-accent-ink)" },
+  ".cm-searchMatch": {
+    backgroundColor: "transparent",
+    outline: "1px solid var(--color-text-muted)",
+  },
+  ".cm-searchMatch.cm-searchMatch-selected": {
+    backgroundColor: "transparent",
+    outline: "1px solid var(--color-accent-ink)",
+  },
   "&.cm-focused .cm-matchingBracket, &.cm-focused .cm-nonmatchingBracket": {
     backgroundColor: "var(--color-on)",
   },
