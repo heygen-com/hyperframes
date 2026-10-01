@@ -30,6 +30,8 @@ import {
 } from "../utils/authoredSource";
 import { serializeStudioFileMutations } from "../utils/studioFileMutationCoordinator";
 
+type InPlace = { inPlace?: boolean };
+
 interface RecordEditInput {
   label: string;
   coalesceKey?: string;
@@ -369,7 +371,7 @@ export function useClipboard({
 
   // Two independent paste modes (timeline clip vs DOM element) behind one guarded save.
   // fallow-ignore-next-line complexity
-  const handlePaste = useCallback(async () => {
+  const handlePaste = useCallback(async ({ inPlace = false }: InPlace = {}) => {
     const payload = await clipboardRef.current;
     if (!payload) {
       showToast("Nothing to paste.", "info");
@@ -389,7 +391,7 @@ export function useClipboard({
         const pasted = pasteTimelineClips(
           originalContent,
           payload.clips,
-          currentTime,
+          inPlace ? Math.min(...payload.clips.map((clip) => clip.start)) : currentTime,
           elements,
           fromThisFile,
         );
@@ -434,11 +436,11 @@ export function useClipboard({
     }
   }, [activeCompPath, recordEdit, reloadPreview, showToast, writeProjectFile]);
 
-  // Duplicates the current selection in place, immediately after it, without
-  // touching the clipboard — a pending copy must survive a Cmd+D. Shares
-  // pasteTimelineClips with handlePaste; only the anchor and clip source
-  // differ (the selection's own end here, the playhead there).
-  const handleDuplicate = useCallback(async (): Promise<boolean> => {
+  // Duplicates the selection right after it, or with `inPlace` at its own time on the next free
+  // track, without touching the clipboard — a pending copy must survive a Cmd+D. Shares
+  // pasteTimelineClips with handlePaste; only the anchor and clip source differ (the
+  // selection's end or start here, the playhead or the copy's own time there).
+  const handleDuplicate = useCallback(async ({ inPlace = false }: InPlace = {}): Promise<boolean> => {
     const targets = findSelectedClips();
     if (!targets) return false;
     const pid = projectIdRef.current;
@@ -450,7 +452,9 @@ export function useClipboard({
     // The copy lands in targetPath's own clock, so anchor and lane check are local to it.
     const anchorTime = toAuthoredStart(
       elements[0]!,
-      Math.max(...elements.map((el) => el.start + el.duration)),
+      inPlace
+        ? Math.min(...elements.map((el) => el.start))
+        : Math.max(...elements.map((el) => el.start + el.duration)),
     );
 
     try {

@@ -374,6 +374,29 @@ describe("copy order", () => {
   });
 });
 
+describe("a copy in place, as the canvas makes one", () => {
+  // The copy's start and track: the saved original has no data-hf-id, its copy is minted one.
+  const copyAt = (html: string | undefined) => {
+    const copy = html?.match(/<h1[^>]*data-hf-id[^>]*>Title<\/h1>/)?.[0] ?? "";
+    return [copy.match(/data-start="([^"]*)"/)?.[1], copy.match(/data-track-index="([^"]*)"/)?.[1]];
+  };
+
+  it("duplicates at the clip's own time, on the next free track", async () => {
+    selectTitle();
+    const { clipboard, writes } = mountClipboard();
+    await clipboard().handleDuplicate({ inPlace: true });
+    expect(copyAt(writes[0])).toEqual(["2", "1"]);
+  });
+
+  it("pastes at the copied clip's time, not the playhead's", async () => {
+    selectTitle();
+    const { clipboard, writes } = mountClipboard();
+    clipboard().handleCopy();
+    await clipboard().handlePaste({ inPlace: true });
+    expect(copyAt(writes[0])).toEqual(["2", "1"]);
+  });
+});
+
 describe("duplicate of a clip inside a sub-composition", () => {
   it("writes the copy at local time right after the original", async () => {
     // Host at 2 s, so the clip's local 1-3 s shows as a 3-5 s master row.
