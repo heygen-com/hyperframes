@@ -385,6 +385,15 @@ describe("TimelineClipFades", () => {
     expect(outer).not.toHaveBeenCalled();
   });
 
+  it.each(["ArrowRight", "End"])("saves nothing for %s on a lone fade past the clip's end", (k) => {
+    const long = { ...clip, duration: 3, fadeIn: 5, fadeOut: undefined };
+    const { host, onSetElementAttributeQuiet } = render(long, { focusable: true });
+    const handle = host.querySelector<HTMLElement>('[data-testid="clip-fade-handle-in"]');
+    key(handle, "keydown", { key: k });
+    key(handle, "keyup", { key: k });
+    expect(onSetElementAttributeQuiet).not.toHaveBeenCalled();
+  });
+
   it("previews a held key live and saves it as one step", () => {
     const { host, onSetElementAttributeLive, onSetElementAttributeQuiet } = render(clip, {
       focusable: true,
@@ -543,12 +552,12 @@ describe("TimelineClipFades", () => {
     ]);
   });
 
-  it("shrinks a single fade longer than its clip from the clip's length, as main does", () => {
+  it("shrinks a single fade longer than its clip from the clip's end, with no dead travel", () => {
     const long = { ...clip, duration: 3, fadeIn: 5, fadeOut: undefined };
     const { host, onSetElementAttributeLive } = render(long);
     const handle = armedHandle(host, "in");
-    press(handle, [200], [195]);
-    expect(onSetElementAttributeLive).toHaveBeenLastCalledWith(long, "data-fade-in", "3");
+    press(handle, [200], [195], [100]);
+    expect(onSetElementAttributeLive).toHaveBeenLastCalledWith(long, "data-fade-in", "2");
   });
 
   it("gives a fade that fills the clip the only handle at its end", () => {

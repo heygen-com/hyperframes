@@ -40,9 +40,9 @@ import { getTimelineElementIdentity, previewElementFinder } from "./timelineElem
  * reverted is only known by looking.
  */
 /**
- * What an element's four synced fields SHOULD read, given the preview.
+ * What an element's six synced fields SHOULD read, given the preview.
  *
- * Its own two come off its node; the other two are its copy of what its group
+ * Its own four come off its node; the other two are its copy of what its group
  * carries. The timeline derives a group's lanes and chain from these mirrors,
  * never from the group element — and the FX rack is not group-aware: selecting
  * a group and automating one of its parameters writes `data-automation` on the

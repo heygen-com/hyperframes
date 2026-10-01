@@ -51,7 +51,7 @@ export type ClipFadeShape = AudioFades & { duration: number };
 export const ClipFadesContext = createContext<ClipFadeShape | null>(null);
 
 // Owned by TimelineClip so the handles and the waveform share the value under the pointer;
-// the draft also bridges release until the store re-reads the file.
+// the draft also bridges release until the save lands in the store.
 export function useClipFadeDraft(el: TimelineElement) {
   const [draft, setDraft] = useState<FadeDraft>(null);
   const authoredIn = el.fadeIn ?? 0;
@@ -166,9 +166,14 @@ export function TimelineClipFades({
   const limitFor = (edge: FadeEdge) =>
     Math.max(0, el.duration - currentSeconds(edge === "in" ? "out" : "in"));
 
-  // When the other fade makes the pair overrun the clip, neither a key nor a drag pulls this one lower.
+  // When the other fade makes the pair overrun the clip, neither a key nor a drag lowers this one.
   const stepLimit = (current: number, other: number) =>
     Math.max(0, el.duration - other, other > 0 ? current : 0);
+  /** Where a key or drag starts: the fade as drawn, so a lone fade past the clip starts at its end. */
+  const startSeconds = (edge: FadeEdge) => {
+    const current = currentSeconds(edge);
+    return Math.min(current, stepLimit(current, currentSeconds(edge === "in" ? "out" : "in")));
+  };
   const dragLimit = (g: { otherSeconds: number; originSeconds: number }) =>
     stepLimit(g.originSeconds, g.otherSeconds);
 
@@ -207,10 +212,10 @@ export function TimelineClipFades({
       edge,
       pointerId: e.pointerId,
       originClientX: e.clientX,
-      originSeconds: currentSeconds(edge),
+      originSeconds: startSeconds(edge),
       otherSeconds: currentSeconds(edge === "in" ? "out" : "in"),
       moved: false,
-      last: currentSeconds(edge),
+      last: startSeconds(edge),
       snapTargets: store.timelineSnapEnabled
         ? collectTimelineSnapTargets({
             elements: store.elements,
@@ -294,7 +299,7 @@ export function TimelineClipFades({
   // A held key previews live and saves once on release: one undo step per burst.
   const onHandleKeyDown = (edge: FadeEdge) => (e: KeyboardEvent<HTMLDivElement>) => {
     if (gesture.current || !canEdit) return;
-    const current = currentSeconds(edge);
+    const current = startSeconds(edge);
     const limit = stepLimit(current, currentSeconds(edge === "in" ? "out" : "in"));
     const next = keyedFadeSeconds(e.key, e.shiftKey, current, limit);
     if (next === null) return;
