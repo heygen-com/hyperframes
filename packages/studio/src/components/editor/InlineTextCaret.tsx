@@ -4,7 +4,7 @@ import type { InlineTextEditSession } from "../../hooks/useInlineTextEdit";
 /** The drawn caret's width on screen, whatever the preview's scale. */
 export const CARET_PX = 2;
 
-export interface CaretPlacement {
+interface CaretPlacement {
   left: number;
   top: number;
   height: number;
@@ -34,6 +34,12 @@ export function InlineTextCaret({
     }
     const doc = element.ownerDocument;
     const view = doc.defaultView;
+    const studio = iframe.ownerDocument.defaultView;
+    // The player scales the iframe by a transform when its own box resizes, which the iframe's size never shows.
+    const player =
+      iframe.getRootNode() instanceof ShadowRoot
+        ? (iframe.getRootNode() as ShadowRoot).host
+        : iframe;
     const color = caretColorOf(element);
     const ownCaret = element.style.caretColor;
     element.style.caretColor = "transparent";
@@ -46,7 +52,7 @@ export function InlineTextCaret({
     const start = composition(true);
     const end = composition(false);
     const resized = new ResizeObserver(update);
-    resized.observe(iframe);
+    resized.observe(player);
     doc.addEventListener("selectionchange", update);
     element.addEventListener("input", update);
     element.addEventListener("focus", update);
@@ -54,6 +60,8 @@ export function InlineTextCaret({
     element.addEventListener("compositionstart", start);
     element.addEventListener("compositionend", end);
     view?.addEventListener("resize", update);
+    view?.addEventListener("scroll", update, true);
+    studio?.addEventListener("scroll", update, true);
     update();
     return () => {
       resized.disconnect();
@@ -64,6 +72,8 @@ export function InlineTextCaret({
       element.removeEventListener("compositionstart", start);
       element.removeEventListener("compositionend", end);
       view?.removeEventListener("resize", update);
+      view?.removeEventListener("scroll", update, true);
+      studio?.removeEventListener("scroll", update, true);
       element.style.caretColor = ownCaret;
     };
   }, [element, iframe]);
@@ -96,7 +106,7 @@ function caretColorOf(element: HTMLElement): string {
 
 /** Where the caret stands on Studio's screen, or null when there is none to draw: a range selected, the text not
  * focused, or the selection outside it. */
-export function placeAtCaret(
+function placeAtCaret(
   element: HTMLElement,
   iframe: HTMLIFrameElement,
   color: string,
@@ -120,12 +130,13 @@ export function placeAtCaret(
   };
 }
 
-/** The collapsed range's box on its line. An empty text or line has none, so the caret stands at the text's start,
- * one line tall. */
+/** The collapsed range's box on its line. A caret between two nodes has none, so it stands beside them; an empty
+ * text has neither, so it stands at the text's start, one line tall. */
 function caretRect(range: Range, element: HTMLElement, view: Window) {
-  const rects = range.getClientRects();
-  const last = rects[rects.length - 1];
-  if (last && last.height > 0) return { left: last.left, top: last.top, height: last.height };
+  const last = [...range.getClientRects()].reverse().find((rect) => rect.height > 0);
+  if (last) return { left: last.left, top: last.top, height: last.height };
+  const beside = besideNode(range);
+  if (beside) return beside;
   const style = view.getComputedStyle(element);
   const box = element.getBoundingClientRect();
   const fontSize = Number.parseFloat(style.fontSize) || 16;
@@ -135,4 +146,21 @@ function caretRect(range: Range, element: HTMLElement, view: Window) {
     top: box.top + (Number.parseFloat(style.paddingTop) || 0),
     height: line,
   };
+}
+
+/** At an element boundary: the end of the node before, or the start of the node after (a line break's own line). */
+function besideNode(range: Range) {
+  const { startContainer: at, startOffset: offset } = range;
+  // An empty text node is a boundary too, between its siblings.
+  const text = at.nodeType === Node.TEXT_NODE;
+  const before = text ? at.previousSibling : at.childNodes[offset - 1];
+  const after = text ? at.nextSibling : at.childNodes[offset];
+  const node = before && before.nodeName !== "BR" ? before : (after ?? before);
+  if (!node) return null;
+  const around = range.cloneRange();
+  around.selectNode(node);
+  const rects = [...around.getClientRects()].filter((rect) => rect.height > 0);
+  const rect = node === before ? rects.at(-1) : rects[0];
+  if (!rect) return null;
+  return { left: node === before ? rect.right : rect.left, top: rect.top, height: rect.height };
 }

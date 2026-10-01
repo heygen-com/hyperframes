@@ -37,9 +37,7 @@ function scene() {
 }
 
 function render(session: InlineTextEditSession | null, iframe: HTMLIFrameElement | null) {
-  const host = document.createElement("div");
-  document.body.append(host);
-  const root = createRoot(host);
+  const root = createRoot(document.body.appendChild(document.createElement("div")));
   act(() => root.render(<InlineTextCaret session={session} iframe={iframe} />));
   return { root, caret: () => document.querySelector<HTMLElement>("[data-inline-text-caret]") };
 }
