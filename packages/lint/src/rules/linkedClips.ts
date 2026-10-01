@@ -39,7 +39,11 @@ function compositionScopeOf(tag: OpenTag, compositions: readonly OpenTag[]): num
 }
 
 function groupByLink(tags: readonly OpenTag[]): Map<string, { link: string; members: OpenTag[] }> {
-  const compositions = tags.filter((tag) => readAttr(tag.raw, "data-composition-id") !== null);
+  const compositions = tags.filter((tag) =>
+    ["data-composition-id", "data-composition-file"].some(
+      (name) => readAttr(tag.raw, name) !== null,
+    ),
+  );
   const groups = new Map<string, { link: string; members: OpenTag[] }>();
   for (const tag of tags) {
     const link = readAttr(tag.raw, "data-link");

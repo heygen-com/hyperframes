@@ -249,15 +249,25 @@ describe("predicates compare the whole asset path", () => {
     expect(canLinkPair([el("v", "video", one), el("a", "audio", two)])).toBe(false);
   });
 
-  it("resolves each src against its own source file", () => {
+  it("resolves each src against its own source file, and links only inside one", () => {
     const v = el("v", "video", { src: "../assets/talk.mp4", sourceFile: "scenes/a.html" });
     const a = el("a", "audio", { src: "./assets/talk.mp4", sourceFile: "index.html" });
-    expect(canLinkPair([v, a])).toBe(true);
+    expect(canLinkPair([v, a])).toBe(false);
+    expect(
+      canLinkPair([v, { ...a, src: "../assets/./talk.mp4", sourceFile: "scenes/a.html" }]),
+    ).toBe(true);
   });
 
   it("does not take a same-id link from another source file as the merge partner", () => {
     const v = el("v", "video", { muted: true, link: "lk-1", sourceFile: "index.html" });
     const a = el("a", "audio", { start: 3, link: "lk-1", sourceFile: "child.html" });
+    expect(findMergePair(v, [v, a])).toBeNull();
+  });
+
+  it("does not link or merge a pair split across inline compositions", () => {
+    const v = el("v", "video", { muted: true, compositionScope: "main" });
+    const a = el("a", "audio", { compositionScope: "child" });
+    expect(canLinkPair([v, a])).toBe(false);
     expect(findMergePair(v, [v, a])).toBeNull();
   });
 

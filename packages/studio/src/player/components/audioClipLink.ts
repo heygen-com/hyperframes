@@ -1,6 +1,7 @@
-import type { TimelineElement } from "../store/timelineElement";
+import { sameCompositionScope, type TimelineElement } from "../store/timelineElement";
 
-type LinkedElement = Pick<TimelineElement, "id" | "key" | "link" | "sourceFile">;
+type LinkScoped = Pick<TimelineElement, "sourceFile" | "compositionScope">;
+type LinkedElement = Pick<TimelineElement, "id" | "key" | "link"> & LinkScoped;
 
 const keyOf = (element: Pick<TimelineElement, "id" | "key">) => element.key ?? element.id;
 
@@ -24,10 +25,10 @@ function isLinked(element: Pick<TimelineElement, "link">): boolean {
 }
 
 export function sharesLinkGroup(
-  a: Pick<TimelineElement, "link" | "sourceFile">,
-  b: Pick<TimelineElement, "link" | "sourceFile">,
+  a: Pick<TimelineElement, "link"> & LinkScoped,
+  b: Pick<TimelineElement, "link"> & LinkScoped,
 ): boolean {
-  return isLinked(a) && a.link === b.link && (a.sourceFile ?? "") === (b.sourceFile ?? "");
+  return isLinked(a) && a.link === b.link && sameCompositionScope(a, b);
 }
 
 export function audioPillFlags(

@@ -53,6 +53,11 @@ export function linkTimingMismatches(members: readonly AttributeReader[]): strin
   ).map(([, field]) => field);
 }
 
+/** The composition a link group stays inside: the nearest inline composition or file host. */
+export function linkScopeOf(el: Element): Element | null {
+  return el.parentElement?.closest("[data-composition-id], [data-composition-file]") ?? null;
+}
+
 export function mintLinkId(taken: Iterable<string>): string {
   const used = new Set(taken);
   let n = 1;

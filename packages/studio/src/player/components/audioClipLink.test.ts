@@ -1,3 +1,4 @@
+// @vitest-environment happy-dom
 import { describe, expect, it } from "vitest";
 import {
   audioPillFlags,
@@ -6,6 +7,7 @@ import {
   linkedMembersOf,
   mediaAssetIdentity,
 } from "./audioClipLink";
+import { createTimelineElementFromManifestClip, parseTimelineFromDOM } from "../lib/timelineDOM";
 
 const video = { id: "talk", link: "lk-1" };
 const audio = { id: "talk-audio", link: "lk-1" };
@@ -65,7 +67,7 @@ describe("expandToLinkedMembers", () => {
   });
 });
 
-describe("link groups stay inside their source file", () => {
+describe("link groups stay inside their composition", () => {
   const root = [
     { id: "v", link: "lk-1", sourceFile: undefined },
     { id: "a", link: "lk-1", sourceFile: undefined },
@@ -81,6 +83,48 @@ describe("link groups stay inside their source file", () => {
     expect(expandToLinkedMembers(["child.html#cv"], all)).toEqual(
       new Set(["child.html#cv", "child.html#ca"]),
     );
+  });
+
+  const media = (id: string, tag: string, start: number) =>
+    `<${tag} id="${id}" class="clip" src="${id}.mp4" data-link="lk-1" data-start="${start}" data-duration="4"></${tag}>`;
+  const inlineDoc = () => {
+    const doc = document.implementation.createHTMLDocument();
+    doc.body.innerHTML = `<div data-composition-id="main" data-duration="20">
+      ${media("v", "video", 0)}${media("a", "audio", 0)}
+      <div id="child" data-composition-id="child" data-start="0" data-duration="10">
+        ${media("cv", "video", 5)}${media("ca", "audio", 5)}
+      </div>
+    </div>`;
+    return doc;
+  };
+
+  it("does not pull an inline composition's same-id link into the root group", () => {
+    const rows = parseTimelineFromDOM(inlineDoc(), 20).filter((row) => row.link);
+    const byId = (id: string) => rows.find((row) => row.domId === id) ?? video;
+    expect(linkedMembersOf(byId("v"), rows).map((row) => row.domId)).toEqual(["v", "a"]);
+    expect(linkedMembersOf(byId("cv"), rows).map((row) => row.domId)).toEqual(["cv", "ca"]);
+  });
+
+  it("keeps the inline composition apart on rows built from the runtime manifest", () => {
+    const doc = inlineDoc();
+    const rows = ["v", "a", "cv", "ca"].map((id, fallbackIndex) =>
+      createTimelineElementFromManifestClip({
+        clip: {
+          ...{ id, label: id, start: 0, duration: 4, track: 0, kind: "video", tagName: "video" },
+          ...{
+            compositionId: null,
+            parentCompositionId: null,
+            compositionSrc: null,
+            assetUrl: null,
+          },
+        },
+        fallbackIndex,
+        doc,
+        hostEl: doc.getElementById(id),
+      }),
+    );
+    const [rootVideo] = rows;
+    expect(linkedMembersOf(rootVideo ?? video, rows).map((row) => row.domId)).toEqual(["v", "a"]);
   });
 });
 

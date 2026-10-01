@@ -1,6 +1,6 @@
 import { HF_AUDIO_AUTOMATION_ATTR } from "@hyperframes/core/audio-automation";
 import { MEDIA_LINK_ATTR, mintLinkId } from "@hyperframes/core/media-link";
-import type { TimelineElement } from "../../player/store/timelineElement";
+import { sameCompositionScope, type TimelineElement } from "../../player/store/timelineElement";
 import { mediaAssetIdentity, sharesLinkGroup } from "../../player/components/audioClipLink";
 import {
   applyPatchByTarget,
@@ -180,7 +180,7 @@ type TimedElement = Pick<
   TimelineElement,
   "id" | "key" | "tag" | "src" | "start" | "duration" | "playbackStart" | "playbackRate" | "link"
 > &
-  Pick<TimelineElement, "muted" | "hasAudio" | "hidden" | "sourceFile">;
+  Pick<TimelineElement, "muted" | "hasAudio" | "hidden" | "sourceFile" | "compositionScope">;
 
 const tagOf = (el: Pick<TimelineElement, "tag">) => el.tag.trim().toLowerCase();
 const keyOf = (el: Pick<TimelineElement, "id" | "key">) => el.key ?? el.id;
@@ -195,9 +195,9 @@ function hasIdenticalTiming(a: TimedElement, b: TimedElement): boolean {
   );
 }
 
-const sameFile = (a: TimedElement, b: TimedElement) => {
+const sameAssetInScope = (a: TimedElement, b: TimedElement) => {
   const asset = mediaAssetIdentity(a);
-  return asset !== null && asset === mediaAssetIdentity(b);
+  return asset !== null && asset === mediaAssetIdentity(b) && sameCompositionScope(a, b);
 };
 
 /** A video whose sound is on the video itself: what Detach audio acts on. */
@@ -217,7 +217,8 @@ export function findMergePair<T extends TimedElement>(
   if (!isVideo && tagOf(element) !== "audio") return null;
   const partnerTag = isVideo ? "audio" : "video";
   const candidates = elements.filter(
-    (el) => keyOf(el) !== keyOf(element) && tagOf(el) === partnerTag && sameFile(el, element),
+    (el) =>
+      keyOf(el) !== keyOf(element) && tagOf(el) === partnerTag && sameAssetInScope(el, element),
   );
   const partner =
     candidates.find((el) => sharesLinkGroup(el, element)) ??
@@ -237,7 +238,7 @@ export function canLinkPair(selected: readonly TimedElement[]): boolean {
   const tags = new Set([tagOf(a), tagOf(b)]);
   if (!tags.has("video") || !tags.has("audio")) return false;
   if (sharesLinkGroup(a, b)) return false;
-  return sameFile(a, b) && hasIdenticalTiming(a, b);
+  return sameAssetInScope(a, b) && hasIdenticalTiming(a, b);
 }
 
 type TrackedElement = Pick<TimelineElement, "tag" | "track" | "start" | "duration"> & {

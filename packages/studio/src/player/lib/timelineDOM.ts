@@ -12,6 +12,7 @@ import type { TimelineElement } from "../store/playerStore";
 import type { ClipManifestClip, IframeWindow, TimelineLike } from "./playbackTypes";
 import { resolveCssStackingContextId } from "@hyperframes/core/runtime/stacking-context";
 import { readClipTiming } from "@hyperframes/core/composition-contract";
+import { linkScopeOf } from "@hyperframes/core/media-link";
 import { createRuntimeStartTimeResolver } from "@hyperframes/core/runtime/start-resolver";
 import { groupInfoFor } from "./timelineGroupInfo";
 import { transitionLabelsForDocument } from "./timelineTransitionMetadata";
@@ -152,6 +153,8 @@ export function createTimelineElementFromManifestClip(params: {
     if (timelineRole) entry.timelineRole = timelineRole;
     const link = hostEl.getAttribute("data-link");
     if (link) entry.link = link;
+    const compositionScope = linkScopeOf(hostEl)?.getAttribute("data-composition-id");
+    if (compositionScope) entry.compositionScope = compositionScope;
     const audioGroup = hostEl.getAttribute("data-audio-group");
     if (audioGroup) {
       entry.audioGroup = audioGroup;
@@ -341,6 +344,8 @@ export function parseTimelineFromDOM(
     if (timelineRole) entry.timelineRole = timelineRole;
     const domLink = el.getAttribute("data-link");
     if (domLink) entry.link = domLink;
+    const domCompositionScope = linkScopeOf(el)?.getAttribute("data-composition-id");
+    if (domCompositionScope) entry.compositionScope = domCompositionScope;
 
     const domAudioGroup = el.getAttribute("data-audio-group");
     if (domAudioGroup) {

@@ -70,4 +70,14 @@ describe("linked clip rules", () => {
       [],
     );
   });
+
+  it("treats an inlined file host as its own composition too", async () => {
+    const hosted = `<div id="host" data-composition-file="child.html" data-start="0">
+      <video ${VIDEO.replace('id="talk"', 'id="h-talk"').replace('data-start="2"', 'data-start="5"')}></video>
+    </div>`;
+    const findings = await linkFindings(
+      `<video ${VIDEO}></video><audio ${AUDIO}></audio>${hosted}`,
+    );
+    expect(findings.map((f) => [f.code, f.elementId])).toEqual([["linked_clip_orphan", "h-talk"]]);
+  });
 });
