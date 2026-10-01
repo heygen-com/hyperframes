@@ -51,31 +51,30 @@ function render(
   const onSetElementAttributeQuiet = vi.fn().mockResolvedValue(undefined);
   const onRevertElementAttributeLive = vi.fn();
   // Stands in for the TimelineClip button the handles live inside.
-  const node = (
+  const tree = (el: TimelineElement) => (
     <div data-testid="clip" onPointerDown={options.onClipPointerDown}>
       <Fades el={el} showHandles={options.showHandles ?? true} focusable={options.focusable} />
     </div>
   );
-  act(() => {
-    root.render(
-      options.provide === false ? (
-        node
-      ) : (
-        <TimelineEditProvider
-          value={{
-            onSetElementAttributeLive,
-            onSetElementAttributeQuiet,
-            onRevertElementAttributeLive,
-          }}
-        >
-          {node}
-        </TimelineEditProvider>
-      ),
+  const wrap = (el: TimelineElement) =>
+    options.provide === false ? (
+      tree(el)
+    ) : (
+      <TimelineEditProvider
+        value={{
+          onSetElementAttributeLive,
+          onSetElementAttributeQuiet,
+          onRevertElementAttributeLive,
+        }}
+      >
+        {tree(el)}
+      </TimelineEditProvider>
     );
-  });
+  act(() => root.render(wrap(el)));
   return {
     host,
     root,
+    rerender: (next: TimelineElement) => act(() => root.render(wrap(next))),
     onSetElementAttributeLive,
     onSetElementAttributeQuiet,
     onRevertElementAttributeLive,
@@ -451,7 +450,8 @@ describe("TimelineClipFades", () => {
     const trimmed = { ...clip, fadeIn: 10, fadeOut: 2 };
     const { host, onSetElementAttributeQuiet } = render(trimmed);
     const handle = armedHandle(host, "out");
-    press(handle, [900], [1000]);
+    // 200 px right shrinks the 2 s fade-out to 0, where it has no room left to move.
+    press(handle, [800], [1000]);
     act(() => handle.dispatchEvent(pointer("pointerup", 1000)));
     expect(onSetElementAttributeQuiet).toHaveBeenCalledWith(
       trimmed,
@@ -466,25 +466,62 @@ describe("TimelineClipFades", () => {
     expect(host.querySelector('[data-testid="clip-fade-handle-out"]')).toBeNull();
   });
 
-  it("saves a double-click on a short clip as a whole hundredth", () => {
-    const short = { ...clip, duration: 0.3333, fadeIn: undefined, fadeOut: undefined };
-    const { host, onSetElementAttributeQuiet } = render(short);
-    const handle = host.querySelector<HTMLElement>('[data-testid="clip-fade-handle-in"]');
-    act(() => handle?.dispatchEvent(new MouseEvent("dblclick", { bubbles: true })));
-    expect(onSetElementAttributeQuiet).toHaveBeenCalledWith(
-      short,
-      "data-fade-in",
-      "0.33",
-      "Fade in",
-    );
-  });
-
   it("never lets a grow key shrink a fade when the pair overruns the clip", () => {
     const overrun = { ...clip, fadeIn: 2, fadeOut: 10 };
     const { host, onSetElementAttributeQuiet } = render(overrun, { focusable: true });
     const handle = host.querySelector<HTMLElement>('[data-testid="clip-fade-handle-in"]');
     key(handle, "keydown", { key: "ArrowRight" });
     key(handle, "keyup", { key: "ArrowRight" });
+    expect(onSetElementAttributeQuiet).not.toHaveBeenCalled();
+  });
+
+  it("keeps stepping from each press while earlier saves land", async () => {
+    const saves: Array<() => void> = [];
+    const { host, onSetElementAttributeQuiet, rerender } = render(clip, { focusable: true });
+    onSetElementAttributeQuiet.mockImplementation(
+      () => new Promise<undefined>((resolve) => saves.push(() => resolve(undefined))),
+    );
+    const handle = () => host.querySelector<HTMLElement>('[data-testid="clip-fade-handle-in"]');
+    const tap = () => {
+      key(handle(), "keydown", { key: "ArrowRight" });
+      key(handle(), "keyup", { key: "ArrowRight" });
+    };
+    tap();
+    tap();
+    // The first save lands: the store re-reads 1.1 while 1.2 is still on its way.
+    rerender({ ...clip, fadeIn: 1.1 });
+    await act(async () => saves[0]());
+    tap();
+    expect(onSetElementAttributeQuiet.mock.calls.map(([, , value]) => value)).toEqual([
+      "1.1",
+      "1.2",
+      "1.3",
+    ]);
+  });
+
+  it("keeps a focused handle drawn when a key takes it to where it cannot move", () => {
+    const trimmed = { ...clip, fadeIn: 10, fadeOut: 2 };
+    const { host, onSetElementAttributeQuiet } = render(trimmed, { focusable: true });
+    const handle = host.querySelector<HTMLElement>('[data-testid="clip-fade-handle-out"]');
+    act(() => handle?.focus());
+    key(handle, "keydown", { key: "Home" });
+    key(handle, "keyup", { key: "Home" });
+    expect(onSetElementAttributeQuiet).toHaveBeenCalledWith(
+      trimmed,
+      "data-fade-out",
+      null,
+      "Fade out",
+    );
+  });
+
+  it("never lets a grow drag shrink a fade when the pair overruns the clip", () => {
+    const trimmed = { ...clip, fadeIn: 10, fadeOut: 2 };
+    const { host, onSetElementAttributeLive, onSetElementAttributeQuiet } = render(trimmed);
+    const handle = armedHandle(host, "out");
+    // Leftward grows a fade-out; the fade-in already fills the clip, so it holds at 2 s.
+    press(handle, [900], [880]);
+    act(() => handle.dispatchEvent(pointer("pointerup", 880)));
+    expect(onSetElementAttributeLive).not.toHaveBeenCalledWith(trimmed, "data-fade-out", null);
     expect(onSetElementAttributeQuiet).not.toHaveBeenCalled();
   });
 

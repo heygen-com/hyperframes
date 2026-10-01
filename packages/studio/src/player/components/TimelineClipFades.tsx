@@ -56,7 +56,6 @@ export function useClipFadeDraft(el: TimelineElement) {
   const [draft, setDraft] = useState<FadeDraft>(null);
   const authoredIn = el.fadeIn ?? 0;
   const authoredOut = el.fadeOut ?? 0;
-  useEffect(() => setDraft(null), [authoredIn, authoredOut]);
   const { fadeIn, fadeOut } = clampFadesToDuration(
     {
       fadeIn: draft?.edge === "in" ? draft.seconds : authoredIn,
@@ -167,13 +166,17 @@ export function TimelineClipFades({
   const limitFor = (edge: FadeEdge) =>
     Math.max(0, el.duration - currentSeconds(edge === "in" ? "out" : "in"));
 
+  // Like the keys, a drag never pulls a fade below where it started when the pair overruns the clip.
+  const dragLimit = (g: { otherSeconds: number; originSeconds: number }) =>
+    Math.max(0, el.duration - g.otherSeconds, g.originSeconds);
+
   /** Moves the fade's end onto a playhead or clip edge within the timeline's snap radius. */
   const snapSeconds = (g: NonNullable<typeof gesture.current>, seconds: number) => {
     const knee = g.edge === "in" ? el.start + seconds : el.start + el.duration - seconds;
     const snapped = snapTimelineTime(knee, g.snapTargets, TIMELINE_SNAP_PX / Math.max(pps, 1e-6));
     if (!snapped.target) return { seconds, type: null };
     const next = g.edge === "in" ? snapped.time - el.start : el.start + el.duration - snapped.time;
-    const limit = Math.max(0, el.duration - g.otherSeconds);
+    const limit = dragLimit(g);
     return next >= 0 && next <= limit
       ? { seconds: next, type: snapped.target.type }
       : { seconds, type: null };
@@ -185,7 +188,7 @@ export function TimelineClipFades({
     const deltaSeconds = (clientX - g.originClientX) / Math.max(pps, 1e-6);
     // Fade-in grows to the right, fade-out grows to the left.
     const raw = g.edge === "in" ? g.originSeconds + deltaSeconds : g.originSeconds - deltaSeconds;
-    const limit = Math.max(0, el.duration - g.otherSeconds);
+    const limit = dragLimit(g);
     const clamped = Math.min(limit, Math.max(0, raw));
     return Math.round(clamped * 100) / 100;
   };
@@ -256,20 +259,23 @@ export function TimelineClipFades({
     setDraft(null);
   };
 
-  const commit = (edge: FadeEdge, raw: number) => {
-    const seconds = Math.round(raw * 100) / 100;
-    setDraft({ edge, seconds });
-    const dropDraft = () => setDraft(null);
+  // The save syncs the store before it settles, so its own draft can go then; a newer draft stays.
+  const commit = (edge: FadeEdge, seconds: number) => {
+    const draft = { edge, seconds };
+    setDraft(draft);
+    const settle = () => setDraft((current) => (current === draft ? null : current));
     void onSetElementAttributeQuiet?.(el, attrFor(edge), attrText(seconds), labelFor(edge)).then(
-      (outcome) => outcome && outcome.status !== "saved" && dropDraft(),
-      dropDraft,
+      settle,
+      settle,
     );
   };
 
   const finish = (e: PointerEvent<HTMLDivElement>, cancelled: boolean) => {
     const g = endGesture(e);
     if (!g) return;
-    if (cancelled || !g.moved || releasedOutsideWindow(e)) return revertGesture(g);
+    if (cancelled || !g.moved || g.last === g.originSeconds || releasedOutsideWindow(e)) {
+      return revertGesture(g);
+    }
     commit(g.edge, g.last);
   };
 
@@ -330,9 +336,12 @@ export function TimelineClipFades({
   const boxLeft = (x: number) => Math.min(widthPx - hitWidth, Math.max(0, x - hitWidth / 2));
   const [inX, outX] = [tabX("in"), tabX("out")];
   const mid = (inX + outX) / 2;
-  // A handle that can neither grow nor shrink is not drawn: its twin owns the spot.
+  // A handle with no 0.01 s step to move is not drawn, unless in use: its twin owns the spot.
   const drawn = (edge: FadeEdge) =>
-    currentSeconds(edge) > 0 || limitFor(edge) >= 0.01 || dragging === edge || focused === edge;
+    currentSeconds(edge) > 0 ||
+    Math.round(limitFor(edge) * 100) >= 1 ||
+    dragging === edge ||
+    focused === edge;
   const overlap = drawn("in") && drawn("out") && boxLeft(inX) + hitWidth > boxLeft(outX);
   const handleGeometry = (edge: FadeEdge) => {
     const x = edge === "in" ? inX : outX;
