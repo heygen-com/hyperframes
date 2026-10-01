@@ -13,6 +13,9 @@ import {
   readStudioRotation,
 } from "../components/editor/manualEdits";
 import { useDomGeometryCommits, type UseDomGeometryCommitsParams } from "./useDomGeometryCommits";
+import { reapplyPositionEditsAfterSeek } from "../components/editor/manualEdits";
+import { writeTranslatePx } from "../components/editor/plainTranslate";
+import { applyPatch } from "../utils/sourcePatcher";
 import { DomEditCropHandles } from "../components/editor/DomEditCropHandles";
 import { withInlineLayoutBox } from "./domSelectionTestHarness";
 
@@ -226,6 +229,180 @@ describe("useDomGeometryCommits resize rollback", () => {
       commits().handleDomBoxSizeCommit(selection, { width: 50, height: 40 }, undefined, restore),
     ).rejects.toBe(failure);
     expect(restore).toHaveBeenCalledTimes(1);
+    unmount();
+  });
+});
+
+describe("a plain move of an element an older Studio moved by its offset vars", () => {
+  function legacyMoved() {
+    const element = document.createElement("div");
+    element.id = "legacy";
+    element.style.setProperty("translate", "10px 5px");
+    document.body.append(element);
+    applyStudioPathOffset(element, { x: 40, y: 30 });
+    const selection = { id: "legacy", selector: "#legacy", element } as unknown as DomEditSelection;
+    return { element, selection };
+  }
+  const legacyEnds = [
+    { type: "inline-style", property: "--hf-studio-offset-x", value: null },
+    { type: "inline-style", property: "--hf-studio-offset-y", value: null },
+    { type: "attribute", property: "data-hf-studio-path-offset", value: null },
+  ];
+  const keptMarks = [
+    "data-hf-studio-original-inline-translate",
+    "data-hf-studio-original-translate",
+  ];
+  const studioMarks = (el: HTMLElement) =>
+    el
+      .getAttributeNames()
+      .filter((name) => name.startsWith("data-hf-studio"))
+      .sort();
+
+  it("saves the move as its translate, ends the old offset, and a seek keeps it", async () => {
+    const { element, selection } = legacyMoved();
+    const commitPositionPatchToHtml = vi
+      .fn<UseDomGeometryCommitsParams["commitPositionPatchToHtml"]>()
+      .mockResolvedValue(undefined);
+    const { commits, unmount } = mountCommits(commitPositionPatchToHtml);
+
+    await commits().stageElementPositionOffset(selection, { x: 140, y: 30 }, true).save();
+    reapplyPositionEditsAfterSeek(document);
+
+    expect(element.style.getPropertyValue("translate")).toBe("140px 30px");
+    expect(commitPositionPatchToHtml.mock.calls[0]![1]).toEqual([
+      { type: "inline-style", property: "translate", value: "140px 30px" },
+      {
+        type: "attribute",
+        property: "data-hf-studio-original-inline-translate",
+        value: "10px 5px",
+      },
+      ...legacyEnds,
+    ]);
+    expect(studioMarks(element)).toEqual(keptMarks);
+    unmount();
+  });
+
+  it("resizes with the anchor as its translate, ends the old offset, and a seek keeps it", async () => {
+    const { element, selection } = legacyMoved();
+    const commit = vi
+      .fn<UseDomGeometryCommitsParams["commitPositionPatchToHtml"]>()
+      .mockResolvedValue(undefined);
+    const { commits, unmount } = mountCommits(commit);
+
+    await commits().handleDomBoxSizeCommit(selection, { width: 80, height: 60 }, { x: 60, y: 40 });
+    reapplyPositionEditsAfterSeek(document);
+
+    expect(element.style.getPropertyValue("translate")).toBe("60px 40px");
+    expect(commit.mock.calls[0]![1]).toEqual(expect.arrayContaining(legacyEnds));
+    expect(studioMarks(element)).toEqual(expect.arrayContaining(keptMarks));
+    expect(element.hasAttribute("data-hf-studio-path-offset")).toBe(false);
+    unmount();
+  });
+
+  it.each(["move", "resize"])(
+    "puts the old offset back whole when the %s save fails",
+    async (kind) => {
+      const { element, selection } = legacyMoved();
+      const translate = element.style.getPropertyValue("translate");
+      const { commits, unmount } = mountCommits(
+        vi.fn().mockRejectedValue(new Error("save failed")),
+      );
+
+      const save =
+        kind === "move"
+          ? commits().stageElementPositionOffset(selection, { x: 140, y: 30 }, true).save()
+          : commits().handleDomBoxSizeCommit(
+              selection,
+              { width: 80, height: 60 },
+              { x: 60, y: 40 },
+            );
+      await expect(save).rejects.toThrow();
+      expect(element.style.getPropertyValue("translate")).toBe(translate);
+      expect(element.hasAttribute("data-hf-studio-path-offset")).toBe(true);
+      expect(readStudioPathOffset(element)).toEqual({ x: 40, y: 30 });
+      unmount();
+    },
+  );
+});
+
+describe("Reset after a plain move puts the author's translate back", () => {
+  function authoredLayer(translate: string | null, legacy = false) {
+    const element = document.createElement("div");
+    element.id = "layer";
+    if (translate) element.style.setProperty("translate", translate);
+    document.body.append(element);
+    if (legacy) applyStudioPathOffset(element, { x: 40, y: 30 });
+    const project = { file: element.outerHTML, history: [] as string[] };
+    const commit = vi.fn<UseDomGeometryCommitsParams["commitPositionPatchToHtml"]>(
+      async (_selection, patches) => {
+        project.history.push(project.file);
+        project.file = patches.reduce((html, op) => applyPatch(html, "layer", op), project.file);
+      },
+    );
+    const selection = { id: "layer", selector: "#layer", element } as unknown as DomEditSelection;
+    return { element, selection, project, ...mountCommits(commit) };
+  }
+  const saved = (html: string) =>
+    new DOMParser().parseFromString(html, "text/html").getElementById("layer")!;
+  const studioLeftovers = (el: Element) => [
+    ...el.getAttributeNames().filter((name) => name.startsWith("data-hf-studio")),
+    ...((el as HTMLElement).style.cssText.match(/--hf-studio-[\w-]+/g) ?? []),
+  ];
+
+  it("restores an older Studio's layer to its authored 50% 10px, in the file and live", async () => {
+    const { element, selection, project, commits, unmount } = authoredLayer("50% 10px", true);
+
+    await commits().stageElementPositionOffset(selection, { x: 140, y: 30 }, true).save();
+    await commits().handleDomManualEditsReset(selection);
+
+    expect(saved(project.file).style.getPropertyValue("translate")).toBe("50% 10px");
+    expect(element.style.getPropertyValue("translate")).toBe("50% 10px");
+    expect(studioLeftovers(saved(project.file))).toEqual([]);
+    expect(studioLeftovers(element)).toEqual([]);
+    unmount();
+  });
+
+  it("restores the authored 12px 4px after a drag and a second move", async () => {
+    const { element, selection, project, commits, unmount } = authoredLayer("12px 4px");
+
+    writeTranslatePx(element, { x: 90, y: 0 });
+    await commits().stageElementPositionOffset(selection, { x: 140, y: 30 }, true).save();
+    await commits().stageElementPositionOffset(selection, { x: 200, y: 50 }, true).save();
+    await commits().handleDomManualEditsReset(selection);
+
+    expect(saved(project.file).style.getPropertyValue("translate")).toBe("12px 4px");
+    expect(element.style.getPropertyValue("translate")).toBe("12px 4px");
+    expect(studioLeftovers(saved(project.file))).toEqual([]);
+    unmount();
+  });
+
+  it("removes the translate of a layer that had none, in the file and live", async () => {
+    const { element, selection, project, commits, unmount } = authoredLayer(null);
+
+    await commits().stageElementPositionOffset(selection, { x: 140, y: 30 }, true).save();
+    await commits().handleDomManualEditsReset(selection);
+
+    expect(saved(project.file).style.getPropertyValue("translate")).toBe("");
+    expect(element.style.getPropertyValue("translate")).toBe("");
+    expect(studioLeftovers(saved(project.file))).toEqual([]);
+    unmount();
+  });
+
+  it("undo of the Reset brings the move back, and Reset still restores the author's", async () => {
+    const { selection, project, commits, unmount } = authoredLayer("12px 4px");
+
+    await commits().stageElementPositionOffset(selection, { x: 140, y: 30 }, true).save();
+    const moved = project.file;
+    await commits().handleDomManualEditsReset(selection);
+    project.file = project.history.pop()!;
+    expect(project.file).toBe(moved);
+
+    const reloaded = saved(project.file) as HTMLElement;
+    document.body.append(reloaded);
+    expect(reloaded.style.getPropertyValue("translate")).toBe("140px 30px");
+    await commits().handleDomManualEditsReset({ ...selection, element: reloaded });
+    expect(saved(project.file).style.getPropertyValue("translate")).toBe("12px 4px");
+    expect(reloaded.style.getPropertyValue("translate")).toBe("12px 4px");
     unmount();
   });
 });

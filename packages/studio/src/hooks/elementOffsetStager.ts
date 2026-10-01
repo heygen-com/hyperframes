@@ -5,7 +5,8 @@ import {
 } from "../components/editor/elementPositionOffset";
 import { LAYER_REVEAL_PRIOR_POSITION_ATTR } from "../player/lib/timelineElementHelpers";
 import type { PatchOperation } from "../utils/sourcePatcher";
-import { translatePatch } from "../components/editor/plainTranslate";
+import { writePlainMove } from "../components/editor/plainTranslate";
+import { captureStudioPathOffset, restoreStudioPathOffset } from "../components/editor/manualEdits";
 import { gsapHoldsTranslate } from "./gsapRuntimeKeyframes";
 import { markStudioSaveErrorAlreadyToasted } from "../utils/studioSaveDiagnostics";
 
@@ -59,17 +60,17 @@ function stagePlainTranslate(
   next: { x: number; y: number },
   coalesceKey?: string,
 ): { save: () => Promise<void>; rollback: () => void } {
-  const style = selection.element.style;
-  const before = style.getPropertyValue("translate");
-  const patch = translatePatch(next);
-  style.setProperty("translate", patch.value);
+  const el = selection.element;
+  const before = captureStudioPathOffset(el);
+  const patches = writePlainMove(el, next);
+  const written = el.style.getPropertyValue("translate");
   const rollback = () => {
-    if (style.getPropertyValue("translate") === patch.value) style.setProperty("translate", before);
+    if (el.style.getPropertyValue("translate") === written) restoreStudioPathOffset(el, before);
   };
   const key = coalesceKey ?? `move:${++plainMoveCounter}`;
   const options = { label: "Move layer", coalesceKey: key, coalesceMs: Number.POSITIVE_INFINITY };
   const save = () =>
-    commitPositionPatchToHtml(selection, [patch], options).catch((error) => {
+    commitPositionPatchToHtml(selection, patches, options).catch((error) => {
       rollback();
       throw error;
     });

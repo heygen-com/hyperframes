@@ -265,6 +265,7 @@ function restoreOriginalTranslateProperty(element: HTMLElement): void {
 export function clearStudioPathOffset(element: HTMLElement): void {
   if (
     element.hasAttribute(STUDIO_PATH_OFFSET_ATTR) ||
+    element.hasAttribute(STUDIO_ORIGINAL_INLINE_TRANSLATE_ATTR) ||
     styleUsesStudioOffset(element.style.getPropertyValue("translate"))
   ) {
     restoreOriginalTranslateProperty(element);

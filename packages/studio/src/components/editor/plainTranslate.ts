@@ -1,8 +1,14 @@
 import { roundTo3 } from "../../utils/rounding";
 import { gsapWritesPosition, gsapWritesRotation } from "../../hooks/gsapRuntimeKeyframes";
 import { readCssRotation } from "../../hooks/draggedGsapPosition";
-import { readStudioPathOffset, readStudioRotation } from "./manualEditsDom";
+import { readStudioPathOffset, readStudioRotation, styleUsesStudioOffset } from "./manualEditsDom";
 import { splitTopLevelWhitespace } from "./manualEditsStyleHelpers";
+import {
+  STUDIO_OFFSET_X_PROP,
+  STUDIO_OFFSET_Y_PROP,
+  STUDIO_ORIGINAL_INLINE_TRANSLATE_ATTR,
+  STUDIO_PATH_OFFSET_ATTR,
+} from "./manualEditsTypes";
 import type { PatchOperation } from "../../utils/sourcePatcher";
 
 type Point = { x: number; y: number };
@@ -102,11 +108,36 @@ function formatTranslatePx(p: Point): string {
   return `${roundTo3(p.x)}px ${roundTo3(p.y)}px`;
 }
 
-export function translatePatch(p: Point): PatchOperation & { value: string } {
-  return { type: "inline-style", property: "translate", value: formatTranslatePx(p) };
+const LEGACY_OFFSET_VARS = [STUDIO_OFFSET_X_PROP, STUDIO_OFFSET_Y_PROP];
+
+/** Writes a move as the element's own translate; ends a legacy offset's vars and mark. */
+export function writePlainMove(el: HTMLElement, p: Point): PatchOperation[] {
+  writeTranslatePx(el, p);
+  const patches: PatchOperation[] = [
+    { type: "inline-style", property: "translate", value: formatTranslatePx(p) },
+    {
+      type: "attribute",
+      property: STUDIO_ORIGINAL_INLINE_TRANSLATE_ATTR,
+      value: el.getAttribute(STUDIO_ORIGINAL_INLINE_TRANSLATE_ATTR),
+    },
+  ];
+  for (const prop of LEGACY_OFFSET_VARS.filter((v) => el.style.getPropertyValue(v))) {
+    el.style.removeProperty(prop);
+    patches.push({ type: "inline-style", property: prop, value: null });
+  }
+  if (el.hasAttribute(STUDIO_PATH_OFFSET_ATTR)) {
+    el.removeAttribute(STUDIO_PATH_OFFSET_ATTR);
+    patches.push({ type: "attribute", property: STUDIO_PATH_OFFSET_ATTR, value: null });
+  }
+  return patches;
 }
 
+/** The first write records the author's own translate ("" for none), which Reset puts back. */
 export function writeTranslatePx(el: HTMLElement, p: Point): void {
+  if (!el.hasAttribute(STUDIO_ORIGINAL_INLINE_TRANSLATE_ATTR)) {
+    const own = el.style.getPropertyValue("translate");
+    el.setAttribute(STUDIO_ORIGINAL_INLINE_TRANSLATE_ATTR, styleUsesStudioOffset(own) ? "" : own);
+  }
   el.style.setProperty("translate", formatTranslatePx(p));
 }
 

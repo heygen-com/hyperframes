@@ -17,7 +17,7 @@ import {
 import { stageElementOffset } from "./elementOffsetStager";
 import { savePlainRotation } from "./plainRotation";
 import { prepareCropResize } from "../components/editor/cropResize";
-import { translatePatch, writeTranslatePx } from "../components/editor/plainTranslate";
+import { writePlainMove } from "../components/editor/plainTranslate";
 import {
   buildPathOffsetPatches,
   buildBoxSizePatches,
@@ -110,7 +110,7 @@ export function useDomGeometryCommits({
       if (readOnlyPreview) return Promise.resolve();
       const element = selection.element;
       const beforeSize = captureStudioBoxSize(element);
-      const beforeTranslate = element.style.getPropertyValue("translate");
+      const beforeOffset = captureStudioPathOffset(element);
       const stageCrop = prepareCropResize(element);
       applyStudioBoxSize(element, next);
       const crop = stageCrop();
@@ -118,16 +118,13 @@ export function useDomGeometryCommits({
       // (as a move writes it) that keeps the centre planted.
       const patches = buildBoxSizePatches(element);
       if (crop) patches.push(crop.patch);
-      if (offset) {
-        writeTranslatePx(element, offset);
-        patches.push(translatePatch(offset));
-      }
+      if (offset) patches.push(...writePlainMove(element, offset));
       return commitPositionPatchToHtml(selection, patches, {
         label: "Resize layer box",
         coalesceKey: `box-size:${getDomEditTargetKey(selection)}`,
       }).catch((error) => {
         restoreStudioBoxSize(element, beforeSize);
-        if (offset) element.style.setProperty("translate", beforeTranslate);
+        if (offset) restoreStudioPathOffset(element, beforeOffset);
         crop?.revert();
         restore?.();
         throw error;

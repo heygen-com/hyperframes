@@ -168,7 +168,10 @@ describe("useDomGeometryCommit, from the package entry", () => {
     expect(element.style.getPropertyValue("translate")).toBe("130.5px 90px");
     expect(calls.patches).toEqual([
       expect.objectContaining({
-        operations: [{ type: "inline-style", property: "translate", value: "130.5px 90px" }],
+        operations: [
+          { type: "inline-style", property: "translate", value: "130.5px 90px" },
+          { type: "attribute", property: "data-hf-studio-original-inline-translate", value: "" },
+        ],
       }),
     ]);
     expect(calls.urls.filter((url) => url.includes("gsap"))).toEqual([]);
