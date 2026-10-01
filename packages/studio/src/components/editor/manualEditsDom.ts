@@ -78,10 +78,14 @@ export function studioManualEditSavesIn(doc: Document): number {
   return gestureSaves.get(doc) ?? 0;
 }
 
-/** A gesture's save in `element`'s document: a reload requested before it shows the file before it. */
-export function noteStudioManualEditSave(element: HTMLElement): void {
+/** Runs a gesture's save, counted as it starts and as it settles: a reload requested before shows the old file. */
+export function countStudioManualEditSave<R>(element: HTMLElement, save: () => R): R {
   const doc = element.ownerDocument;
-  gestureSaves.set(doc, studioManualEditSavesIn(doc) + 1);
+  const count = () => void gestureSaves.set(doc, studioManualEditSavesIn(doc) + 1);
+  count();
+  const result = save();
+  void Promise.resolve(result).then(count, count);
+  return result;
 }
 
 function isStudioManualEditGestureActive(element: HTMLElement): boolean {

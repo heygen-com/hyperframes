@@ -32,7 +32,7 @@ import { CanvasContextMenu } from "./CanvasContextMenu";
 import { useInlineTextEditing } from "./useInlineTextEditing";
 import { usePreviewReadOnly } from "./previewReadOnlyContext";
 import { useMountEffect } from "../../hooks/useMountEffect";
-import { noteStudioManualEditSave as noteSave } from "./manualEditsDom";
+import { countStudioManualEditSave as counted } from "./manualEditsDom";
 import type { ZOrderAction, ZOrderPatch } from "./canvasContextMenuZOrder";
 import { getPreviewTargetFromPointer } from "../../utils/studioPreviewHelpers";
 import { logSelect } from "../../utils/selectDebug";
@@ -195,33 +195,27 @@ export const DomEditOverlay = memo(function DomEditOverlay({
     onTextEditingChangeRef.current?.(true);
     return () => onTextEditingChangeRef.current?.(false);
   }, [inlineText.editing]);
-  // Each canvas save is counted before it starts, so a reload requested earlier loads again.
+  // Each canvas save is counted, so a reload requested before it settles loads again.
   const onPathOffsetCommitRef = useRef(onPathOffsetCommit);
-  onPathOffsetCommitRef.current = (sel, ...rest) => {
-    noteSave(sel.element);
-    return onPathOffsetCommit(sel, ...rest);
-  };
+  onPathOffsetCommitRef.current = (sel, ...rest) =>
+    counted(sel.element, () => onPathOffsetCommit(sel, ...rest));
   const onGroupPathOffsetCommitRef = useRef(onGroupPathOffsetCommit);
   onGroupPathOffsetCommitRef.current = (updates) => {
-    if (updates[0]) noteSave(updates[0].selection.element);
-    return onGroupPathOffsetCommit(updates);
+    const save = () => onGroupPathOffsetCommit(updates);
+    return updates[0] ? counted(updates[0].selection.element, save) : save();
   };
   const onBoxSizeCommitRef = useRef(onBoxSizeCommit);
-  onBoxSizeCommitRef.current = (sel, ...rest) => {
-    noteSave(sel.element);
-    return onBoxSizeCommit(sel, ...rest);
-  };
+  onBoxSizeCommitRef.current = (sel, ...rest) =>
+    counted(sel.element, () => onBoxSizeCommit(sel, ...rest));
   const onRotationCommitRef = useRef(onRotationCommit);
-  onRotationCommitRef.current = (sel, next) => {
-    noteSave(sel.element);
-    return onRotationCommit(sel, next);
-  };
+  onRotationCommitRef.current = (sel, next) =>
+    counted(sel.element, () => onRotationCommit(sel, next));
   const onStyleCommitRef = useRef(onStyleCommit);
   onStyleCommitRef.current =
     onStyleCommit &&
     ((property, value) => {
-      if (selectionRef.current) noteSave(selectionRef.current.element);
-      return onStyleCommit(property, value);
+      const save = () => onStyleCommit(property, value);
+      return selectionRef.current ? counted(selectionRef.current.element, save) : save();
     });
   const onBlockedMoveRef = useRef(onBlockedMove);
   onBlockedMoveRef.current = onBlockedMove;

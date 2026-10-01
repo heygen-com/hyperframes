@@ -72,18 +72,22 @@ function pointer(target: Element, type: string, x: number, y: number) {
 }
 
 /** The real player with a two-layer preview, and the real overlay editing it. */
-function mountEditor(group: boolean) {
+function mountEditor(
+  group: boolean,
+  saving: { landed: Promise<void> } = { landed: Promise.resolve() },
+) {
   file = { title: "", sub: "" };
   const live = makePreview(TWO_LAYERS);
   player = mountPlayerWithPreview(live);
   const selections = ["title", "sub"].map((id) => makeSelection(id, byId(live, id)));
+  for (const s of selections) s.capabilities.canApplyManualRotation = true;
+  const saveStyle = (sel: DomEditSelection | null, style: string) =>
+    saving.landed.then(() => void (file = { ...file, [sel?.id ?? "title"]: style }));
   layout.group = group
     ? selections.map((s) => ({ key: s.id, selection: s, element: s.element, rect: RECT }))
     : [];
-  const write = (sel: DomEditSelection, next: { x: number; y: number }) => {
-    file = { ...file, [sel.id!]: `translate: ${next.x}px ${next.y}px` };
-    return Promise.resolve();
-  };
+  const write = (sel: DomEditSelection, next: { x: number; y: number }) =>
+    saveStyle(sel, `translate: ${next.x}px ${next.y}px`);
   const onPathOffsetCommit = vi.fn(write);
   const onGroupPathOffsetCommit = vi.fn(
     async (updates: { selection: DomEditSelection; next: { x: number; y: number } }[]) => {
@@ -109,8 +113,9 @@ function mountEditor(group: boolean) {
             onBlockedMove={() => undefined}
             onPathOffsetCommit={onPathOffsetCommit}
             onGroupPathOffsetCommit={onGroupPathOffsetCommit}
-            onBoxSizeCommit={() => undefined}
-            onRotationCommit={() => undefined}
+            onBoxSizeCommit={(sel, size) => saveStyle(sel, `width: ${size.width}px`)}
+            onRotationCommit={(sel, next) => saveStyle(sel, `rotate: ${next.angle}deg`)}
+            onStyleCommit={(property, value) => saveStyle(selections[0]!, `${property}: ${value}`)}
           />
         </PreviewReadOnlyProvider>,
       ),
@@ -177,18 +182,70 @@ describe("a reload during a drag", () => {
     },
   );
 
-  it("that paints after the drop shows the drop from a fresh load, not the file before it", async () => {
-    const { live, overlay, box } = mountEditor(false);
-    pointer(box, "pointerdown", 150, 150);
-    pointer(overlay, "pointermove", 190, 170);
+  const handle = (overlay: HTMLElement, selector: string) => overlay.querySelector(selector)!;
+  const corner = (overlay: HTMLElement) =>
+    [...overlay.querySelectorAll<HTMLElement>("div.h-4.w-4")].reduce((a, b) =>
+      parseFloat(b.style.left) + parseFloat(b.style.top) >
+      parseFloat(a.style.left) + parseFloat(a.style.top)
+        ? b
+        : a,
+    );
+  // Each edit presses at `from`, drags to `to`, and releases on `on`.
+  const edits = {
+    move: (o: HTMLElement) => ({ press: handle(o, BOX), on: o, from: [150, 150], to: [190, 170] }),
+    resize: (o: HTMLElement) => ({ press: corner(o), on: o, from: [300, 200], to: [340, 220] }),
+    rotate: (o: HTMLElement) => ({
+      press: handle(o, '[aria-label="Rotate selection"]'),
+      on: o,
+      from: [200, 80],
+      to: [270, 150],
+    }),
+    crop: (o: HTMLElement) => {
+      const edge = handle(o, '[aria-label="Crop left"]');
+      return { press: edge, on: edge, from: [100, 150], to: [140, 150] };
+    },
+  };
+
+  function drag(edit: ReturnType<(typeof edits)["move"]>) {
+    pointer(edit.press, "pointerdown", edit.from[0]!, edit.from[1]!);
+    pointer(edit.on, "pointermove", edit.to[0]!, edit.to[1]!);
+  }
+
+  it.each(Object.keys(edits) as (keyof typeof edits)[])(
+    "that paints after a %s shows it from a fresh load, not the file before it",
+    async (kind) => {
+      const { live, overlay } = mountEditor(false);
+      const edit = edits[kind](overlay);
+      drag(edit);
+      act(() => api().refreshPlayer());
+      const beforeDrop = served("?_t=1");
+      pointer(edit.on, "pointerup", edit.to[0]!, edit.to[1]!);
+      await settle();
+      expect(file.title, "the edit saved").not.toBe("");
+
+      const requested = await paintShadow(api, beforeDrop);
+      expect(api().iframeRef.current, "the file before the edit").toBe(live);
+      const fresh = served("?_t=2");
+      expect(await paintShadow(api, fresh)).toBeGreaterThan(requested);
+      expect(byId(fresh, "title").getAttribute("style")).toBe(file.title);
+    },
+  );
+
+  it("requested while the drop is still saving shows the drop from a fresh load", async () => {
+    let land: () => void = () => {};
+    const { live, overlay } = mountEditor(false, { landed: new Promise((r) => (land = r)) });
+    const edit = edits.move(overlay);
+    drag(edit);
+    pointer(edit.on, "pointerup", edit.to[0]!, edit.to[1]!);
+    await settle();
     act(() => api().refreshPlayer());
-    const beforeDrop = served("?_t=1");
-    pointer(overlay, "pointerup", 190, 170);
+    const beforeSave = served("?_t=1");
+    await act(async () => land());
     await settle();
     expect(file.title).toBe("translate: 40px 20px");
 
-    const requested = await paintShadow(api, beforeDrop);
-    expect(api().iframeRef.current, "the file before the drop").toBe(live);
+    const requested = await paintShadow(api, beforeSave);
+    expect(api().iframeRef.current, "the file before the save").toBe(live);
     const fresh = served("?_t=2");
     expect(await paintShadow(api, fresh)).toBeGreaterThan(requested);
     expect(byId(fresh, "title").style.getPropertyValue("translate")).toBe("40px 20px");
@@ -222,24 +279,30 @@ describe("every way a drag ends without a drop clears its mark and promotes the 
     );
   });
 
-  it("a press that throws before the drag is armed leaves no mark behind", async () => {
-    const editor = mountEditor(false);
-    HTMLElement.prototype.setPointerCapture = () => {
-      throw new Error("capture refused");
-    };
-    const swallow = (event: ErrorEvent) => event.preventDefault();
-    window.addEventListener("error", swallow);
-    try {
-      pointer(editor.box, "pointerdown", 150, 150);
-    } catch {
-      // React may rethrow the handler's error; either way the mark must be gone.
-    } finally {
-      window.removeEventListener("error", swallow);
-    }
-    expect(marked(editor.live.contentDocument!)).toHaveLength(0);
-    const { shadow } = await reloadMidGesture();
-    expect(api().iframeRef.current).toBe(shadow);
-  });
+  it.each([
+    ["one layer", false],
+    ["a group", true],
+  ])(
+    "a press on %s that throws before the drag is armed leaves no mark behind",
+    async (_, group) => {
+      const editor = mountEditor(group);
+      HTMLElement.prototype.setPointerCapture = () => {
+        throw new Error("capture refused");
+      };
+      const swallow = (event: ErrorEvent) => event.preventDefault();
+      window.addEventListener("error", swallow);
+      try {
+        pointer(editor.box, "pointerdown", 150, 150);
+      } catch {
+        // React may rethrow the handler's error; either way the mark must be gone.
+      } finally {
+        window.removeEventListener("error", swallow);
+      }
+      expect(marked(editor.live.contentDocument!)).toHaveLength(0);
+      const { shadow } = await reloadMidGesture();
+      expect(api().iframeRef.current).toBe(shadow);
+    },
+  );
 });
 
 describe("an inline text edit", () => {

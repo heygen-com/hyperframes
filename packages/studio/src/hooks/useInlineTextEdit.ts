@@ -5,7 +5,7 @@ import { trackStudioPendingEdit } from "../utils/studioPendingEdits";
 import {
   beginStudioManualEditGesture,
   endStudioManualEditGesture,
-  noteStudioManualEditSave,
+  countStudioManualEditSave,
 } from "../components/editor/manualEditsDom";
 
 /**
@@ -181,11 +181,13 @@ export function useInlineTextEdit({
     // Counted and pending before the edit closes, so a reload waits for the save, not the mark.
     let save: (saving: unknown) => void = () => {};
     trackStudioPendingEdit(new Promise((resolve) => (save = resolve)));
-    noteStudioManualEditSave(open.element);
-    teardown();
-    // After teardown, so the commit path's own resync does not fight an
-    // element that is still editable.
-    save(onCommit({ element: open.element, html, previousHtml: open.original }));
+    const commitText = () => {
+      teardown();
+      // After teardown, so the commit path's own resync does not fight an
+      // element that is still editable.
+      return onCommit({ element: open.element, html, previousHtml: open.original });
+    };
+    save(countStudioManualEditSave(open.element, commitText));
   }, [onCommit, teardown]);
 
   const cancel = useCallback(() => {
