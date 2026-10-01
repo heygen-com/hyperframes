@@ -68,7 +68,6 @@ export function resolveDropInsertRow(
   return resolveInsertRow(rowFloat, trackCount);
 }
 
-/** An empty or new lane takes a drop at 0; on a lane with clips it snaps to the nearest clip edge. */
 function alignDropStart(
   placement: TimelineDropPlacement,
   elements: readonly TimelineElement[],
@@ -137,9 +136,8 @@ function applyTypedJsonDrop(
 }
 
 /**
- * Dropping an asset/file/block/composition onto the timeline places it on the row
- * and at the time it was dropped on (see alignDropStart); an asset moves to that row's
- * nearest free time.
+ * Dropping an asset/file/block/composition places it on the row at 0 on an empty lane, else at
+ * the pointer snapped to a near clip edge; an asset moves to that row's nearest free time.
  * Supersedes the prior playhead decision (#2291); see useAddAssetAtPlayhead.
  */
 export function useTimelineAssetDrop({
