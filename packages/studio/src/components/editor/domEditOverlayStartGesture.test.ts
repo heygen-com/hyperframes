@@ -20,6 +20,15 @@ const PRESS = {
   currentTarget: { setPointerCapture() {} },
 };
 
+/** Presses a drag on the element and returns the gesture it started. */
+function pressDrag(element: HTMLElement): GestureState | null {
+  const opts = pressOptions(element);
+  expect(
+    createDomEditOverlayGestureHandlers(opts as never).startGesture("drag", PRESS as never),
+  ).toBe(true);
+  return opts.gestureRef.current;
+}
+
 function pressOptions(element: HTMLElement) {
   const ref = <T>(current: T) => ({ current });
   const selection = { element, capabilities: { canApplyManualOffset: true } };
@@ -53,11 +62,7 @@ describe("a drag press on a page that loads GSAP", () => {
       const tween = { targets: () => [parent], vars: { x: 100 }, duration: () => 2 };
       const timelines = { main: { getChildren: () => (parentTween ? [tween] : []) } };
       Object.assign(window, { gsap: { getProperty, set }, __timelines: timelines });
-      const opts = pressOptions(element);
-      const handlers = createDomEditOverlayGestureHandlers(opts as never);
-      expect(handlers.startGesture("drag", PRESS as never)).toBe(true);
-
-      expect(opts.gestureRef.current?.pathOffsetMember?.plainTranslate).toBe(true);
+      expect(pressDrag(element)?.pathOffsetMember?.plainTranslate).toBe(true);
       expect(getProperty).not.toHaveBeenCalled();
       expect(set).not.toHaveBeenCalled();
       expect(element.style.getPropertyValue("translate")).toBe("40px 30px");
@@ -72,10 +77,7 @@ describe("a drag press on a centred element without GSAP", () => {
       "position: absolute; left: 50%; top: 50%; width: 240px; height: 160px; translate: -50% -50%";
     document.body.append(element);
     const style = element.getAttribute("style");
-    const opts = pressOptions(element);
-    const handlers = createDomEditOverlayGestureHandlers(opts as never);
-    expect(handlers.startGesture("drag", PRESS as never)).toBe(true);
-    expect(opts.gestureRef.current?.pathOffsetMember?.initialOffset).toEqual({ x: -120, y: -80 });
+    expect(pressDrag(element)?.pathOffsetMember?.initialOffset).toEqual({ x: -120, y: -80 });
     expect(element.getAttribute("style")).toBe(style);
   });
 });
