@@ -3,7 +3,6 @@ import { getDomEditTargetKey, type DomEditSelection } from "../components/editor
 import {
   applyStudioPathOffset,
   applyStudioBoxSize,
-  applyStudioRotation,
   captureStudioPathOffset,
   captureStudioBoxSize,
   captureStudioRotation,
@@ -15,12 +14,12 @@ import {
   clearStudioRotation,
 } from "../components/editor/manualEdits";
 import { stageElementOffset } from "./elementOffsetStager";
+import { savePlainRotation } from "./plainRotation";
 import { prepareCropResize } from "../components/editor/cropResize";
 import { translatePatch, writeTranslatePx } from "../components/editor/plainTranslate";
 import {
   buildPathOffsetPatches,
   buildBoxSizePatches,
-  buildRotationPatches,
   buildClearPathOffsetPatches,
   buildClearBoxSizePatches,
   buildClearRotationPatches,
@@ -137,21 +136,9 @@ export function useDomGeometryCommits({
   );
 
   const handleDomRotationCommit = useCallback(
-    (selection: DomEditSelection, next: { angle: number }) => {
-      if (readOnlyPreview) return Promise.resolve();
-      const gsapFallback = rejectGsapCssFallback(selection, previewIframeRef, showToast);
-      if (gsapFallback) return gsapFallback;
-      const before = captureStudioRotation(selection.element);
-      applyStudioRotation(selection.element, next);
-      return commitPositionPatchToHtml(selection, buildRotationPatches(selection.element), {
-        label: "Rotate layer",
-        coalesceKey: `rotation:${getDomEditTargetKey(selection)}`,
-      }).catch((error) => {
-        restoreStudioRotation(selection.element, before);
-        throw error;
-      });
-    },
-    [commitPositionPatchToHtml, previewIframeRef, showToast, readOnlyPreview],
+    (selection: DomEditSelection, next: { angle: number }) =>
+      savePlainRotation({ commitPositionPatchToHtml, readOnlyPreview }, selection, next),
+    [commitPositionPatchToHtml, readOnlyPreview],
   );
 
   const handleDomManualEditsReset = useCallback(

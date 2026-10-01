@@ -19,7 +19,7 @@ interface OffsetDragGsap {
   getProperty: (el: Element, prop: string) => number;
 }
 
-function getOffsetDragGsap(element: HTMLElement): OffsetDragGsap | null {
+export function getOffsetDragGsap(element: HTMLElement): OffsetDragGsap | null {
   const win = element.ownerDocument.defaultView as
     | (Window & { gsap?: Partial<OffsetDragGsap> })
     | null;
@@ -51,27 +51,6 @@ function applyOffsetDragDraftViaGsap(
   const { newX, newY } = computeDraggedGsapPosition(element, offset, baseGsap);
   gsap.set(element, { x: newX, y: newY });
   return true;
-}
-
-/**
- * Live rotation preview through the GSAP channel — the SAME channel the commit
- * lands in (a `tl.set`/keyframe rotation), mirroring `applyOffsetDragDraftViaGsap`.
- * GSAP owns the transform rotation, so neutralize the CSS `rotate` longhand to keep
- * the two channels from composing. `angle` is the absolute target rotation. Returns
- * false when gsap is unavailable (caller falls back to the CSS draft).
- */
-export function applyRotationDraftViaGsap(element: HTMLElement, angle: number): boolean {
-  const gsap = getOffsetDragGsap(element);
-  if (!gsap) return false;
-  element.style.setProperty("rotate", "none");
-  gsap.set(element, { rotation: angle });
-  return true;
-}
-
-/** Current GSAP transform rotation — the single-source rotation base. 0 if gsap is unavailable. */
-export function readGsapRotation(element: HTMLElement): number {
-  const gsap = getOffsetDragGsap(element);
-  return gsap ? Number(gsap.getProperty(element, "rotation")) || 0 : 0;
 }
 
 const DEFAULT_OFFSET_PROBE_PX = 100;

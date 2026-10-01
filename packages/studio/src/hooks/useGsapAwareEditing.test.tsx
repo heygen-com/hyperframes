@@ -41,6 +41,7 @@ vi.mock("./useSafeGsapCommitMutation", () => ({
 }));
 
 import { useGsapAwareEditing } from "./useGsapAwareEditing";
+import { tryGsapRotationIntercept } from "./gsapRuntimeBridge";
 
 afterEach(() => {
   vi.clearAllMocks();
@@ -87,6 +88,7 @@ function mountResizeHandler(
       trackGsapInteractionFailure: vi.fn(),
       stageElementPositionOffset: elementOffset,
       handleDomBoxSizeCommit: fallback,
+      handleDomRotationCommit: vi.fn(),
       commitPositionPatchToHtml: commitPatch,
       addGsapAnimation: vi.fn(),
       convertToKeyframes: vi.fn(),
@@ -120,14 +122,21 @@ function mountGroupHandler({
   makeFetchFallback,
   trackGsapInteractionFailure = vi.fn(),
   stageElementPositionOffset = vi.fn(),
+  handleDomRotationCommit = vi.fn(),
 }: Pick<AwareEditingParams, "gsapCommitMutation" | "makeFetchFallback"> &
-  Partial<Pick<AwareEditingParams, "trackGsapInteractionFailure" | "stageElementPositionOffset">>) {
+  Partial<
+    Pick<
+      AwareEditingParams,
+      "trackGsapInteractionFailure" | "stageElementPositionOffset" | "handleDomRotationCommit"
+    >
+  >) {
   let groupCommit!: (updates: DomEditGroupPathOffsetCommit[]) => Promise<void>;
   let pathOffsetCommit!: (
     selection: DomEditSelection,
     next: { x: number; y: number },
     route?: { plainTranslate?: boolean },
   ) => Promise<void>;
+  let rotationCommit!: (selection: DomEditSelection, next: { angle: number }) => Promise<void>;
   function Harness() {
     const editing = useGsapAwareEditing({
       domEditSelection: null,
@@ -140,6 +149,7 @@ function mountGroupHandler({
       trackGsapInteractionFailure,
       stageElementPositionOffset,
       handleDomBoxSizeCommit: vi.fn(),
+      handleDomRotationCommit,
       commitPositionPatchToHtml: vi.fn(),
       addGsapAnimation: vi.fn(),
       convertToKeyframes: vi.fn(),
@@ -148,6 +158,7 @@ function mountGroupHandler({
     });
     groupCommit = editing.handleGsapAwareGroupPathOffsetCommit;
     pathOffsetCommit = editing.handleGsapAwarePathOffsetCommit;
+    rotationCommit = editing.handleGsapAwareRotationCommit;
     return null;
   }
   const root = mountReactHarness(<Harness />);
@@ -158,6 +169,8 @@ function mountGroupHandler({
       next: { x: number; y: number },
       route?: { plainTranslate?: boolean },
     ) => pathOffsetCommit(selection, next, route),
+    rotationCommit: (selection: DomEditSelection, next: { angle: number }) =>
+      rotationCommit(selection, next),
     root,
   };
 }
@@ -240,6 +253,45 @@ describe("useGsapAwareEditing refuses a group GSAP took over before writing any 
     ).rejects.toThrow(/animation took over/);
     expect(stageElementPositionOffset).not.toHaveBeenCalled();
     act(() => root.unmount());
+  });
+});
+
+describe("useGsapAwareEditing rotation routing", () => {
+  function rotate(element: HTMLElement) {
+    const handleDomRotationCommit = vi.fn().mockResolvedValue(undefined);
+    const gsapCommitMutation = vi.fn();
+    const h = mountGroupHandler({
+      gsapCommitMutation,
+      makeFetchFallback: () => vi.fn().mockResolvedValue([]),
+      handleDomRotationCommit,
+    });
+    const box = { element, id: "box", selector: "#box" } as unknown as DomEditSelection;
+    return { ...h, box, handleDomRotationCommit, gsapCommitMutation };
+  }
+
+  it("turns an element GSAP does not turn by the CSS writer, with no GSAP write", async () => {
+    const h = rotate(document.createElement("div"));
+    await act(() => h.rotationCommit(h.box, { angle: 55 }));
+    expect(h.handleDomRotationCommit).toHaveBeenCalledWith(h.box, { angle: 55 });
+    expect(tryGsapRotationIntercept).not.toHaveBeenCalled();
+    expect(h.gsapCommitMutation).not.toHaveBeenCalled();
+    act(() => h.root.unmount());
+  });
+
+  it("leaves an element a GSAP tween turns to the GSAP rotation route", async () => {
+    vi.mocked(tryGsapRotationIntercept).mockResolvedValue({ status: "persisted" });
+    const element = document.createElement("div");
+    const h = rotate(element);
+    const tween = { vars: { rotation: 30 }, targets: () => [element] };
+    Object.assign(window, { __timelines: { main: { getChildren: () => [tween] } } });
+    try {
+      await act(() => h.rotationCommit(h.box, { angle: 55 }));
+    } finally {
+      delete (window as { __timelines?: unknown }).__timelines;
+    }
+    expect(tryGsapRotationIntercept).toHaveBeenCalledTimes(1);
+    expect(h.handleDomRotationCommit).not.toHaveBeenCalled();
+    act(() => h.root.unmount());
   });
 });
 

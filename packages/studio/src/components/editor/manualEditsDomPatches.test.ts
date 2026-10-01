@@ -46,7 +46,6 @@ import {
   buildClearPathOffsetPatches,
   buildBoxSizePatches,
   buildClearBoxSizePatches,
-  buildRotationPatches,
   buildClearRotationPatches,
   buildMotionPatches,
   buildClearMotionPatches,
@@ -335,45 +334,7 @@ describe("anchored-corner combined patch: [...buildBoxSizePatches, ...buildPathO
 
 /* ── Rotation ────────────────────────────────────────────────────────────── */
 
-describe("buildRotationPatches / buildClearRotationPatches", () => {
-  function populatedRotEl(): HTMLElement {
-    const e = div();
-    e.style.setProperty(STUDIO_ROTATION_PROP, "45");
-    e.style.setProperty("rotate", "45deg");
-    e.style.setProperty("transform-origin", "left center");
-    e.style.setProperty("display", "block");
-    e.setAttribute(STUDIO_ORIGINAL_ROTATE_ATTR, "0deg");
-    e.setAttribute(STUDIO_ORIGINAL_INLINE_ROTATE_ATTR, "0deg");
-    e.setAttribute(STUDIO_ORIGINAL_ROTATION_TRANSFORM_ORIGIN_ATTR, "center center");
-    e.setAttribute(STUDIO_ORIGINAL_TRANSFORM_DISPLAY_ATTR, "flex");
-    return e;
-  }
-
-  it("populated: captures rotation styles, attrs, and transform-display marker in declaration order", () => {
-    const ops = buildRotationPatches(populatedRotEl());
-    expect(ops).toEqual([
-      { type: "inline-style", property: STUDIO_ROTATION_PROP, value: "45" },
-      { type: "inline-style", property: "rotate", value: "45deg" },
-      { type: "inline-style", property: "transform-origin", value: "left center" },
-      { type: "inline-style", property: "display", value: "block" },
-      { type: "attribute", property: STUDIO_ROTATION_ATTR, value: "true" },
-      { type: "attribute", property: STUDIO_ORIGINAL_ROTATE_ATTR, value: "0deg" },
-      { type: "attribute", property: STUDIO_ORIGINAL_INLINE_ROTATE_ATTR, value: "0deg" },
-      {
-        type: "attribute",
-        property: STUDIO_ORIGINAL_ROTATION_TRANSFORM_ORIGIN_ATTR,
-        value: "center center",
-      },
-      { type: "attribute", property: STUDIO_ORIGINAL_TRANSFORM_DISPLAY_ATTR, value: "flex" },
-    ]);
-  });
-
-  it("empty: bare element yields only the rotation marker", () => {
-    expect(buildRotationPatches(div())).toEqual([
-      { type: "attribute", property: STUDIO_ROTATION_ATTR, value: "true" },
-    ]);
-  });
-
+describe("buildClearRotationPatches", () => {
   it("clear: restores rotate and transform-origin from orig attrs, nulls draft attr", () => {
     const e = div();
     e.setAttribute(STUDIO_ORIGINAL_INLINE_ROTATE_ATTR, "30deg");
@@ -404,11 +365,6 @@ describe("buildRotationPatches / buildClearRotationPatches", () => {
     e.setAttribute(STUDIO_ORIGINAL_INLINE_ROTATE_ATTR, "");
     const ops = buildClearRotationPatches(e);
     expect(ops.find((o) => o.property === "rotate")?.value).toBeNull();
-  });
-
-  it("build/clear symmetry: clear addresses every {type,property} key that build emits", () => {
-    const e = populatedRotEl();
-    assertClearCoversKeys(buildRotationPatches(e), buildClearRotationPatches(e));
   });
 });
 

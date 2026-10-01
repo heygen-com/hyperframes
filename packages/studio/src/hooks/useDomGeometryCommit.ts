@@ -108,12 +108,13 @@ export function useDomGeometryCommit({
     },
     [commitPositionPatchToHtml, queue],
   );
-  const { stageElementPositionOffset, handleDomBoxSizeCommit } = useDomGeometryCommits({
-    previewIframeRef: iframeRef,
-    showToast,
-    commitPositionPatchToHtml: commitWithFreshQueue,
-    readOnlyPreview: false,
-  });
+  const { stageElementPositionOffset, handleDomBoxSizeCommit, handleDomRotationCommit } =
+    useDomGeometryCommits({
+      previewIframeRef: iframeRef,
+      showToast,
+      commitPositionPatchToHtml: commitWithFreshQueue,
+      readOnlyPreview: false,
+    });
   const makeFetchFallback = useGsapAnimationFetchFallback(projectId);
   const trackGsapInteractionFailure = useGsapInteractionFailureTelemetry(activeCompPath, showToast);
   const {
@@ -133,6 +134,7 @@ export function useDomGeometryCommit({
     trackGsapInteractionFailure,
     stageElementPositionOffset,
     handleDomBoxSizeCommit,
+    handleDomRotationCommit,
     commitPositionPatchToHtml: commitWithFreshQueue,
     addGsapAnimation: gsap.addGsapAnimation,
     convertToKeyframes: gsap.convertToKeyframes,

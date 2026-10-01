@@ -24,8 +24,7 @@ import type { DomEditSelection } from "../components/editor/domEditingTypes";
 import { membersForDelete, timelineElementsForDelete } from "./domEditDeleteMembers";
 import type { RecordEditInput } from "./domEditDeleteMembers";
 import type { DomEditTimelineParams } from "./useDomSelectionTypes";
-// Re-exported: the delete rule lives in its own module now, and callers (and its
-// own test) have always imported it from here.
+// Re-exported: the delete rule lives in its own module; callers and its test import it from here.
 export { membersForDelete };
 
 export interface UseDomEditSessionParams extends DomEditTimelineParams {
@@ -232,6 +231,7 @@ export function useDomEditSession({
     stageElementPositionOffset,
     commitPositionPatchToHtml,
     handleDomBoxSizeCommit,
+    handleDomRotationCommit: handleDomCssRotationCommit,
     handleDomManualEditsReset,
     handleDomEditElementsDelete,
     handleDomZIndexReorderCommit,
@@ -256,9 +256,8 @@ export function useDomEditSession({
     readOnlyPreview,
     onTrySdkPersist: sdkSession
       ? (selection, operations, originalContent, targetPath, options) => {
-          // Decoupled tripwire, runs regardless of the cutover flag. originalContent lets
-          // the runtime-node filter suppress hf-ids absent from source (script-created
-          // nodes); the paths let a cross-file edit skip instead of a false not-found.
+          // Decoupled tripwire, regardless of the cutover flag. originalContent lets the runtime-node
+          // filter drop hf-ids absent from source; the paths skip a cross-file edit, not a not-found.
           runResolverShadow(sdkSession, selection.hfId, operations, originalContent, {
             targetPath,
             compositionPath: activeCompPath,
@@ -491,6 +490,7 @@ export function useDomEditSession({
     trackGsapInteractionFailure,
     stageElementPositionOffset,
     handleDomBoxSizeCommit,
+    handleDomRotationCommit: handleDomCssRotationCommit,
     commitPositionPatchToHtml,
     addGsapAnimation,
     convertToKeyframes,

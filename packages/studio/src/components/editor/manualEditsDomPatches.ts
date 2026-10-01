@@ -185,28 +185,6 @@ export function buildClearBoxSizePatches(element: HTMLElement): PatchOperation[]
 
 /* ── Rotation patches ────────────────────────────────────────────── */
 
-const ROTATION_STYLE_PROPS = [
-  STUDIO_ROTATION_PROP,
-  "rotate",
-  "transform-origin",
-  "display",
-] as const;
-
-const ROTATION_ORIG_ATTRS = [
-  STUDIO_ORIGINAL_ROTATE_ATTR,
-  STUDIO_ORIGINAL_INLINE_ROTATE_ATTR,
-  STUDIO_ORIGINAL_ROTATION_TRANSFORM_ORIGIN_ATTR,
-  STUDIO_ORIGINAL_TRANSFORM_DISPLAY_ATTR,
-] as const;
-
-export function buildRotationPatches(element: HTMLElement): PatchOperation[] {
-  const ops: PatchOperation[] = [];
-  collectInlineStyleOps(element, ROTATION_STYLE_PROPS, ops);
-  ops.push({ type: "attribute", property: STUDIO_ROTATION_ATTR, value: "true" });
-  collectAttributeOps(element, ROTATION_ORIG_ATTRS, ops);
-  return ops;
-}
-
 export function buildClearRotationPatches(element: HTMLElement): PatchOperation[] {
   const origInlineRotate = element.getAttribute(STUDIO_ORIGINAL_INLINE_ROTATE_ATTR);
   const origRotationTransformOrigin = element.getAttribute(

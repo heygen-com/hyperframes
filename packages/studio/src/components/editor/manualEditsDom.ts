@@ -538,13 +538,3 @@ export function applyStudioRotation(element: HTMLElement, rotation: { angle: num
     composeStudioRotationValue(element, `var(${STUDIO_ROTATION_PROP}, 0deg)`),
   );
 }
-
-export function applyStudioRotationDraft(element: HTMLElement, rotation: { angle: number }): void {
-  promoteInlineForTransform(element);
-  writeStudioRotationVars(element, rotation, { updateBase: false });
-  element.setAttribute(STUDIO_ROTATION_DRAFT_ATTR, "true");
-  element.style.setProperty(
-    "rotate",
-    composeStudioRotationValue(element, `${roundTo3(rotation.angle)}deg`),
-  );
-}
