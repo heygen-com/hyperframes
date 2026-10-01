@@ -14,6 +14,8 @@ import { STUDIO_PLAIN_KEYS } from "../player/components/studioShortcuts";
 // following useTimelineDeleteOps's precedent. Pure functions, no hooks — the
 // hook still owns the actual keydown listeners and calls into these.
 
+const historyKeysAlreadyStepped = new WeakSet<KeyboardEvent>();
+
 /** Exported so useAppHotkeys's own history-only preview listener can reuse
  *  the same undo/redo key arbitration without duplicating it. */
 export function handleUndoRedoKey(
@@ -22,17 +24,15 @@ export function handleUndoRedoKey(
   onRedo: () => void,
 ): boolean {
   const key = event.key.toLowerCase();
-  if (key === "z" && !event.shiftKey) {
-    event.preventDefault();
-    onUndo();
-    return true;
-  }
-  if ((key === "z" && event.shiftKey) || (event.ctrlKey && !event.metaKey && key === "y")) {
-    event.preventDefault();
-    onRedo();
-    return true;
-  }
-  return false;
+  const undo = key === "z" && !event.shiftKey;
+  const redo = (key === "z" && event.shiftKey) || (event.ctrlKey && !event.metaKey && key === "y");
+  if (!undo && !redo) return false;
+  event.preventDefault();
+  if (historyKeysAlreadyStepped.has(event)) return true;
+  historyKeysAlreadyStepped.add(event);
+  if (undo) onUndo();
+  else onRedo();
+  return true;
 }
 
 export interface HotkeyCallbacks {

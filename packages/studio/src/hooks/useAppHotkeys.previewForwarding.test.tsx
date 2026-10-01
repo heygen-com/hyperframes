@@ -11,6 +11,7 @@ import { mountReactHarness } from "./domSelectionTestHarness";
 (globalThis as unknown as { IS_REACT_ACT_ENVIRONMENT: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
 const domDelete = vi.fn(async () => undefined);
+const historyUndo = vi.fn(async () => ({ ok: false }));
 let root: Root | null = null;
 let sync: ((iframe: HTMLIFrameElement | null) => void) | null = null;
 
@@ -35,7 +36,7 @@ function Harness() {
     domEditSelectionRef: selectionRef,
     clearDomSelectionRef: useRef<() => void>(() => undefined),
     editHistory: {
-      undo: vi.fn(async () => ({ ok: false })),
+      undo: historyUndo,
       redo: vi.fn(async () => ({ ok: false })),
       state: { undo: [], redo: [] },
     },
@@ -62,6 +63,7 @@ afterEach(() => {
   document.body.innerHTML = "";
   usePlayerStore.getState().reset();
   domDelete.mockClear();
+  historyUndo.mockClear();
 });
 
 describe("preview iframe hotkey forwarding", () => {
@@ -86,5 +88,22 @@ describe("preview iframe hotkey forwarding", () => {
     );
 
     expect(domDelete).toHaveBeenCalledTimes(1);
+  });
+
+  it("takes one undo step per Cmd+Z pressed inside the preview", async () => {
+    root = mountReactHarness(<Harness />);
+    const iframe = document.createElement("iframe");
+    document.body.append(iframe);
+    act(() => sync?.(iframe));
+
+    const inner = iframe.contentWindow as (Window & typeof globalThis) | null;
+    if (!inner) throw new Error("expected an iframe window");
+    await act(async () => {
+      inner.document.body.dispatchEvent(
+        new inner.KeyboardEvent("keydown", { key: "z", ctrlKey: true, bubbles: true }),
+      );
+    });
+
+    expect(historyUndo).toHaveBeenCalledTimes(1);
   });
 });
