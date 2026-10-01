@@ -93,6 +93,7 @@ export interface UseGsapAwareEditingParams {
     next: { width: number; height: number },
     offset?: { x: number; y: number },
     restore?: () => void,
+    undoKey?: string,
   ) => Promise<void>;
   commitPositionPatchToHtml: ElementOffsetStagerDeps["commitPositionPatchToHtml"];
   // GSAP script commit ops (from useGsapScriptCommits)
@@ -366,6 +367,7 @@ export function useGsapAwareEditing({
       let anchorMove: ReturnType<typeof stageElementPositionOffset> | null = null;
       const stageCrop = prepareCropResize(selection.element);
       let cropUndoKey: string | null = null;
+      let plainSize = false;
       return runGestureTransaction({
         element: selection.element,
         label: "Resize layer",
@@ -395,6 +397,7 @@ export function useGsapAwareEditing({
               );
               assertGsapEditPersisted(outcome);
               cropUndoKey = coalesceKey;
+              plainSize = outcome.status === "element-size";
               // What the resize actually did, not what its animations suggest
               // it would do. An element whose scale is an instant hold has a
               // scale-group tween and still commits width/height, so guessing
@@ -436,9 +439,11 @@ export function useGsapAwareEditing({
         afterBufferedCommitsSaved: async () => {
           await anchorMove?.save();
           // Only now is the size live for every caller, drag or not.
-          if (cropUndoKey) {
-            await saveCropResize(stageCrop, selection, commitPositionPatchToHtml, cropUndoKey);
-          }
+          if (!cropUndoKey) return;
+          // The script never sizes it: its own CSS width/height and crop, in the same undo step.
+          if (plainSize)
+            await handleDomBoxSizeCommit(selection, next, undefined, undefined, cropUndoKey);
+          else await saveCropResize(stageCrop, selection, commitPositionPatchToHtml, cropUndoKey);
         },
         restore: () => {
           anchorMove?.rollback();

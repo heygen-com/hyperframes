@@ -273,14 +273,9 @@ export async function commitStaticGsapRotation(
 }
 
 /**
- * Commit a STATIC element resize as a `tl.set("#el",{width,height})` — the
- * single-source size channel for elements with no size animation (mirrors
- * `commitStaticGsapPosition`). Use this instead of a single-stop `keyframes`
- * tween: one keyframe at the playhead % renders NaN/0 at every other frame, so
- * the element collapses/disappears (worst when resized off the 0% mark). A `set`
- * holds the size at all times. Re-resizing an element that already has a size
- * `set` UPDATES it in place with one `update-properties`; a new element
- * gets one `add` with `method:"set"`.
+ * A static resize as `tl.set("#el",{width,height})`, only where the script already writes the size
+ * (else it is CSS). A set, not a one-stop keyframe tween, which renders NaN/0 off its keyframe.
+ * Updates an existing size set in place, else adds one.
  */
 export async function commitStaticGsapSize(
   selection: DomEditSelection,

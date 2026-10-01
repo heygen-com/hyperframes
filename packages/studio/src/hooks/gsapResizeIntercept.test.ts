@@ -529,7 +529,7 @@ function titleSelection(): DomEditSelection {
   return { id: "title", selector: "#title", element: el } as DomEditSelection;
 }
 
-it("writes a plain size on an element whose only tween is a fade", async () => {
+it("hands the size to the element's CSS when its only tween is a fade", async () => {
   const fade = {
     id: "#title-to-0-visual",
     targetSelector: "#title",
@@ -550,14 +550,6 @@ it("writes a plain size on an element whose only tween is a fade", async () => {
     commitMutation,
   );
 
-  expect(handled).toMatchObject({ status: "persisted" });
-  const mutations = commitMutation.mock.calls.map((call) => call[1] as { type: string });
-  expect(mutations.filter((m) => /keyframe/i.test(m.type))).toEqual([]);
-  expect(mutations).toContainEqual({
-    type: "add",
-    targetSelector: "#title",
-    method: "set",
-    position: 0,
-    properties: { width: 424, height: 237 },
-  });
+  expect(handled).toEqual({ status: "element-size" });
+  expect(commitMutation).not.toHaveBeenCalled();
 });

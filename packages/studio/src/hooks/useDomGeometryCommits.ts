@@ -65,6 +65,7 @@ export function useDomGeometryCommits({
       next: { width: number; height: number },
       offset?: { x: number; y: number },
       restore?: () => void,
+      undoKey?: string,
     ) => {
       if (readOnlyPreview) return Promise.resolve();
       const element = selection.element;
@@ -80,7 +81,10 @@ export function useDomGeometryCommits({
       if (offset) patches.push(...writePlainMove(element, offset));
       return commitPositionPatchToHtml(selection, patches, {
         label: "Resize layer box",
-        coalesceKey: `box-size:${getDomEditTargetKey(selection)}`,
+        // `undoKey`: one step with the GSAP position write of the same resize.
+        ...(undoKey
+          ? { coalesceKey: undoKey, coalesceMs: Number.POSITIVE_INFINITY }
+          : { coalesceKey: `box-size:${getDomEditTargetKey(selection)}` }),
       }).catch((error) => {
         restoreStudioBoxSize(element, beforeSize);
         if (offset) restoreStudioPathOffset(element, beforeOffset);
