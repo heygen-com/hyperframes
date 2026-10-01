@@ -5,7 +5,7 @@ import { findFfBinary } from "@hyperframes/parsers/ff-binaries";
 export const PEAK_BIN_SECONDS = 0.05;
 const PEAK_SAMPLE_RATE = 48_000;
 const execFileAsync = promisify(execFile);
-const PEAK_MAP_CACHE_VERSION = "peaks-v1";
+const PEAK_MAP_CACHE_VERSION = "peaks-v2";
 
 /**
  * Running max-abs per bin over interleaved f32le at the source's own channel
@@ -92,6 +92,8 @@ export async function decodePeakMap(mediaPath: string): Promise<number[]> {
         "error",
         "-i",
         mediaPath,
+        "-map",
+        "0:a:0",
         "-vn",
         "-ar",
         String(PEAK_SAMPLE_RATE),

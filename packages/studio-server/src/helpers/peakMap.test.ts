@@ -66,7 +66,7 @@ describe("buildPeakMapCacheKey", () => {
     expect(a).toBe(buildPeakMapCacheKey("a/talk.mp4", { size: 10, mtimeMs: 1 }));
     expect(a).not.toBe(buildPeakMapCacheKey("a/talk.mp4", { size: 11, mtimeMs: 1 }));
     expect(a).not.toBe(buildPeakMapCacheKey("a/talk.mp4", { size: 10, mtimeMs: 2 }));
-    expect(a).toMatch(/^peaks-v1_a_talk\.mp4_10-1\.json$/);
+    expect(a).toMatch(/^peaks-v2_a_talk\.mp4_10-1\.json$/);
   });
 });
 
@@ -104,6 +104,43 @@ describe("decodePeakMap", () => {
         expect(Math.max(...loud)).toBeGreaterThan(0.95);
         expect(Math.max(...quiet)).toBeLessThan(0.3);
         expect(loud.length).toBeGreaterThanOrEqual(19);
+      } finally {
+        rmSync(dir, { recursive: true, force: true });
+      }
+    },
+  );
+
+  it.skipIf(!ffmpeg)(
+    "decodes the probed first audio stream when a louder stereo stream follows it",
+    async () => {
+      const dir = mkdtempSync(join(tmpdir(), "hf-peaks-"));
+      try {
+        const file = join(dir, "multi.mkv");
+        execFileSync(ffmpeg ?? "ffmpeg", [
+          "-v",
+          "error",
+          "-f",
+          "lavfi",
+          "-i",
+          "aevalsrc=0.1*sin(2*PI*440*t):s=48000:d=1",
+          "-f",
+          "lavfi",
+          "-i",
+          "aevalsrc=0.9*sin(2*PI*440*t)|0.9*sin(2*PI*440*t):s=48000:d=1",
+          "-map",
+          "0:a",
+          "-map",
+          "1:a",
+          "-c:a",
+          "pcm_f32le",
+          "-disposition:a",
+          "0",
+          file,
+        ]);
+        const peaks = await decodePeakMap(file);
+        expect(peaks.length).toBeGreaterThanOrEqual(19);
+        expect(peaks.length).toBeLessThanOrEqual(21);
+        expect(Math.max(...peaks)).toBeCloseTo(0.1, 2);
       } finally {
         rmSync(dir, { recursive: true, force: true });
       }
