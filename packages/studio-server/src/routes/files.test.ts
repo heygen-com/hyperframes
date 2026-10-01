@@ -664,6 +664,8 @@ describe("registerFileRoutes", () => {
 
     expect((await patch({ fontFaceCss: "</style><script>x</script>" })).status).toBe(400);
     expect((await patch({ fontFaceCss: `${css} body{display:none}` })).status).toBe(400);
+    const quotedBreakout = '@font-face { font-family: "x</style><script>"; }';
+    expect((await patch({ fontFaceCss: quotedBreakout })).status).toBe(400);
     expect((await patch({ fontFaceCss: css }, { id: "missing" })).status).toBe(200);
     expect(readFileSync(join(projectDir, "index.html"), "utf-8")).toBe(original);
 
@@ -674,6 +676,10 @@ describe("registerFileRoutes", () => {
     expect(saved).toContain(css);
     expect(((await response.json()) as { content?: string }).content).toBe(saved);
     expect(readdirSync(join(projectDir, ".hyperframes", "backup"))).toHaveLength(1);
+
+    const braces = '@font-face { font-family: "Brand {1}"; src: url("assets/Brand{1}.ttf"); }';
+    expect((await patch({ fontFaceCss: braces })).status).toBe(200);
+    expect(readFileSync(join(projectDir, "index.html"), "utf-8")).toContain(braces);
   });
 
   it("fails structured DOM mutations closed when the backup cannot be created", async () => {

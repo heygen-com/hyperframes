@@ -42,6 +42,11 @@ describe("isStudioFontFaceCss", () => {
     expect(isStudioFontFaceCss("body { color: red }")).toBe(false);
     expect(isStudioFontFaceCss(`${bold} body{display:none}`)).toBe(false);
     expect(isStudioFontFaceCss(`${bold}\n${regular}`)).toBe(false);
+    expect(isStudioFontFaceCss('@font-face { src: url("assets/Brand{1}.ttf"); }')).toBe(true);
+    expect(isStudioFontFaceCss('@font-face { font-family: "x</style><script>"; }')).toBe(false);
+    expect(isStudioFontFaceCss('@font-face { font-family: "x; } body{display:none}')).toBe(false);
+    expect(isStudioFontFaceCss('@font-face { font-family: "x\\"; } body{display:none}')).toBe(false);
+    expect(isStudioFontFaceCss('@font-face { font-family: "x\\""; } body{display:none}')).toBe(false);
     expect(isStudioFontFaceCss('@font-face { src: url("x") } </style><script>')).toBe(false);
     expect(isStudioFontFaceCss(42)).toBe(false);
   });
