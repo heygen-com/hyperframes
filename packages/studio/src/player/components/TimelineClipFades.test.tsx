@@ -191,6 +191,30 @@ describe("TimelineClipFades", () => {
     act(() => root.unmount());
   });
 
+  it("cancels a drag on Escape pressed while focus is elsewhere, and saves nothing", () => {
+    const { host, onSetElementAttributeQuiet, onRevertElementAttributeLive } = render(clip);
+    const elsewhere = document.createElement("button");
+    document.body.append(elsewhere);
+    elsewhere.focus();
+    const handle = host.querySelector<HTMLElement>('[data-testid="clip-fade-handle-in"]');
+    if (!handle) throw new Error("expected a fade-in handle");
+    armCapture(handle);
+    act(() => handle.dispatchEvent(pointer("pointerdown", 100)));
+    act(() => handle.dispatchEvent(pointer("pointermove", 300)));
+    expect(document.activeElement).toBe(elsewhere);
+    act(() => {
+      document.activeElement?.dispatchEvent(
+        new KeyboardEvent("keydown", { key: "Escape", bubbles: true, cancelable: true }),
+      );
+    });
+    act(() => handle.dispatchEvent(pointer("pointerup", 300)));
+    expect(onSetElementAttributeQuiet).not.toHaveBeenCalled();
+    expect(onRevertElementAttributeLive).toHaveBeenCalledWith(clip, "data-fade-in");
+    expect(host.querySelector('[data-testid="clip-fade-in"]')?.getAttribute("points")).toBe(
+      "0,0 100,0 0,100",
+    );
+  });
+
   it.each([
     ["above the window", 300, -40],
     ["on the window's right edge", window.innerWidth, 10],

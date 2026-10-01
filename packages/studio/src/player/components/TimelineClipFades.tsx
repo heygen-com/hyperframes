@@ -1,11 +1,4 @@
-import {
-  useEffect,
-  useRef,
-  useState,
-  type CSSProperties,
-  type KeyboardEvent,
-  type PointerEvent,
-} from "react";
+import { useEffect, useRef, useState, type CSSProperties, type PointerEvent } from "react";
 import {
   HF_AUDIO_FADE_IN_ATTR,
   HF_AUDIO_FADE_OUT_ATTR,
@@ -150,14 +143,20 @@ export function TimelineClipFades({ el, pps, widthPx, showHandles }: TimelineCli
     );
   };
 
-  const onHandleKeyDown = (e: KeyboardEvent<HTMLDivElement>) => {
-    const g = gesture.current;
-    if (e.key !== "Escape" || !g) return;
-    e.preventDefault();
-    gesture.current = null;
-    setDragging(null);
-    revertGesture(g);
-  };
+  useEffect(() => {
+    if (dragging === null) return;
+    const cancelOnWindowEscape = (e: KeyboardEvent) => {
+      const g = gesture.current;
+      if (e.key !== "Escape" || !g) return;
+      e.preventDefault();
+      e.stopPropagation();
+      gesture.current = null;
+      setDragging(null);
+      revertGesture(g);
+    };
+    window.addEventListener("keydown", cancelOnWindowEscape, { capture: true });
+    return () => window.removeEventListener("keydown", cancelOnWindowEscape, { capture: true });
+  });
 
   const showIn = fades.fadeIn > 0;
   const showOut = fades.fadeOut > 0;
@@ -256,7 +255,6 @@ export function TimelineClipFades({ el, pps, widthPx, showHandles }: TimelineCli
             onPointerMove={onHandlePointerMove}
             onPointerUp={(e) => finish(e, false)}
             onPointerCancel={(e) => finish(e, true)}
-            onKeyDown={onHandleKeyDown}
           />
           <FadeHandle
             direction="out"
@@ -268,7 +266,6 @@ export function TimelineClipFades({ el, pps, widthPx, showHandles }: TimelineCli
             onPointerMove={onHandlePointerMove}
             onPointerUp={(e) => finish(e, false)}
             onPointerCancel={(e) => finish(e, true)}
-            onKeyDown={onHandleKeyDown}
           />
         </>
       )}
@@ -286,7 +283,6 @@ function FadeHandle({
   onPointerMove,
   onPointerUp,
   onPointerCancel,
-  onKeyDown,
 }: {
   direction: "in" | "out";
   value: number;
@@ -297,7 +293,6 @@ function FadeHandle({
   onPointerMove: (event: PointerEvent<HTMLDivElement>) => void;
   onPointerUp: (event: PointerEvent<HTMLDivElement>) => void;
   onPointerCancel: (event: PointerEvent<HTMLDivElement>) => void;
-  onKeyDown: (event: KeyboardEvent<HTMLDivElement>) => void;
 }) {
   const label = direction === "in" ? "Fade in" : "Fade out";
   return (
@@ -317,7 +312,6 @@ function FadeHandle({
         onPointerMove={onPointerMove}
         onPointerUp={onPointerUp}
         onPointerCancel={onPointerCancel}
-        onKeyDown={onKeyDown}
         onClick={(e) => e.stopPropagation()}
         onDoubleClick={(e) => e.stopPropagation()}
       >
