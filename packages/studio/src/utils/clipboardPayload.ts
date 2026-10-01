@@ -17,6 +17,7 @@ export type ClipboardPayload =
       clips: TimelineClipboardClip[];
       sourceFile: string;
       projectId?: string;
+      copiedInComposition?: string;
     }
   | {
       kind: "dom-element";
@@ -63,7 +64,15 @@ export function deserializeClipboardPayload(json: string): ClipboardPayload | nu
     });
     if (clips.length === 0) return null;
     const projectId = typeof obj.projectId === "string" ? obj.projectId : undefined;
-    return { kind: "timeline-clip", clips, sourceFile: obj.sourceFile, projectId };
+    const copiedInComposition =
+      typeof obj.copiedInComposition === "string" ? obj.copiedInComposition : undefined;
+    return {
+      kind: "timeline-clip",
+      clips,
+      sourceFile: obj.sourceFile,
+      projectId,
+      copiedInComposition,
+    };
   }
   if (obj.kind === "dom-element") {
     if (typeof obj.html !== "string") return null;

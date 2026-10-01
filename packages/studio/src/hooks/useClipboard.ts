@@ -315,6 +315,7 @@ export function useClipboard({
         clips,
         sourceFile,
         projectId: projectIdRef.current ?? undefined,
+        copiedInComposition: activeCompPath || "index.html",
       };
     });
   }, [activeCompPath, findSelectedClips, readClips, showToast]);
@@ -391,7 +392,9 @@ export function useClipboard({
         const pasted = pasteTimelineClips(
           originalContent,
           payload.clips,
-          inPlace ? Math.min(...payload.clips.map((clip) => clip.start)) : currentTime,
+          inPlace && payload.copiedInComposition === targetPath
+            ? Math.min(...payload.clips.map((clip) => clip.start))
+            : currentTime,
           elements,
           fromThisFile,
         );

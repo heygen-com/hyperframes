@@ -98,6 +98,7 @@ function mountClipboard(
   sub = SUB,
   bundle: (host: Element) => void = () => {},
   saved = SAVED,
+  view = { path: "index.html" },
 ) {
   const files: Record<string, string> = { "index.html": saved, "compositions/sub.html": sub };
   const fail = { on: false };
@@ -115,7 +116,7 @@ function mountClipboard(
   function Harness() {
     api = useClipboard({
       projectId: "p",
-      activeCompPath: "index.html",
+      activeCompPath: view.path,
       domEditSelectionRef: domSelectionRef,
       showToast: () => {},
       writeProjectFile,
@@ -134,7 +135,9 @@ function mountClipboard(
   root = createRoot(document.createElement("div"));
   act(() => root?.render(React.createElement(Harness)));
   const clipboard = () => api as ReturnType<typeof useClipboard>;
+  const rerender = () => act(() => root?.render(React.createElement(Harness)));
   return {
+    rerender,
     clipboard,
     writes,
     deleted,
@@ -394,6 +397,58 @@ describe("a copy in place, as the canvas makes one", () => {
     clipboard().handleCopy();
     await clipboard().handlePaste({ inPlace: true });
     expect(copyAt(writes[0])).toEqual(["2", "1"]);
+  });
+
+  // Host at 2 s: the clip's local 1-3 s shows as a 3-5 s master row, the clock the film's own timeline has.
+  const SUB_CLIP: TimelineElement = {
+    id: SUB_HF_ID,
+    hfId: SUB_HF_ID,
+    tag: "h2",
+    start: 3,
+    duration: 2,
+    track: 0,
+    authoredTrack: 0,
+    sourceFile: "compositions/sub.html",
+    parentCompositionStart: 2,
+  };
+  const pastedSubStarts = (html: string | undefined) =>
+    [...(html ?? "").matchAll(/<h2[^>]*data-hf-id[^>]*data-start="([^"]+)"/g)].map((m) => m[1]);
+
+  it("pastes a sub-composition's clip into the film at the moment the film shows it", async () => {
+    usePlayerStore.setState({
+      elements: [TITLE, SUB_CLIP],
+      selectedElementId: SUB_CLIP.id,
+      selectedElementIds: new Set([SUB_CLIP.id]),
+      currentTime: 7,
+    });
+    const { clipboard, writes } = mountClipboard(null, SUB, (host) =>
+      host.setAttribute("data-start", "2"),
+    );
+    clipboard().handleCopy();
+    await clipboard().handlePaste({ inPlace: true });
+    expect(pastedSubStarts(writes[0])).toEqual(["3"]);
+  });
+
+  it("pastes at the playhead once the edited composition is another, whose clock differs", async () => {
+    usePlayerStore.setState({
+      elements: [TITLE, SUB_CLIP],
+      selectedElementId: SUB_CLIP.id,
+      selectedElementIds: new Set([SUB_CLIP.id]),
+      currentTime: 0.5,
+    });
+    const view = { path: "index.html" };
+    const { clipboard, writes, rerender } = mountClipboard(
+      null,
+      SUB,
+      (host) => host.setAttribute("data-start", "2"),
+      SAVED,
+      view,
+    );
+    clipboard().handleCopy();
+    view.path = "compositions/sub.html";
+    rerender();
+    await clipboard().handlePaste({ inPlace: true });
+    expect(pastedSubStarts(writes[0])).toEqual(["0.5"]);
   });
 });
 
