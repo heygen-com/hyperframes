@@ -90,6 +90,8 @@ async function collectRun(page, injectedLongTaskMs = 0) {
       interactionP95Ms: percentileInPage(interactions, 0.95),
       frameIntervalP95Ms: percentileInPage(frameIntervals, 0.95),
       scrollSampleCount: interactions.length,
+      interactions,
+      frameIntervals,
       longestTaskMs: Math.max(0, ...longTasks),
       scrollWidth: scroller.scrollWidth,
       scrollHeight: scroller.scrollHeight,
@@ -319,10 +321,7 @@ try {
   // so a skipped budget never reads as a passed one.
   const domBudgetsApply = ROW_VIRTUALIZATION === "on";
   for (const run of runs) {
-    run.responsivenessPassed =
-      run.interactionP95Ms <= interactionLimitMs &&
-      run.frameIntervalP95Ms <= frameIntervalLimitMs &&
-      run.longestTaskMs <= longTaskLimitMs;
+    run.longTaskPassed = run.longestTaskMs <= longTaskLimitMs;
     run.timelineMounted = run.diagnostics.timelineRoots === 1;
     run.domSizePassed = domBudgetsApply
       ? run.diagnostics.mountedRows <= budgets.maxMountedRows &&
@@ -330,8 +329,13 @@ try {
         run.diagnostics.maxMountedClipRootsInOneRow <= budgets.maxMountedClipRootsPerRow &&
         run.diagnostics.mountedTimelineDescendants <= budgets.maxMountedTimelineDescendants
       : null;
-    run.passed = run.responsivenessPassed && run.timelineMounted && run.domSizePassed !== false;
+    run.passed = run.longTaskPassed && run.timelineMounted && run.domSizePassed !== false;
   }
+  // Pooled over every measured step: one run's p95 is only its 4th-worst step, so a brief runner stall failed it.
+  const interactionP95Ms = percentile(runs.flatMap((run) => run.interactions), 0.95);
+  const frameIntervalP95Ms = percentile(runs.flatMap((run) => run.frameIntervals), 0.95);
+  const responsivenessPassed =
+    interactionP95Ms <= interactionLimitMs && frameIntervalP95Ms <= frameIntervalLimitMs;
 
   await page.evaluate(() => window.__studioTest.resetTimelinePerformanceFixture());
   await page.waitForFunction(
@@ -386,14 +390,9 @@ try {
     directScrollGate,
     runs,
     aggregate: {
-      interactionP95Ms: percentile(
-        runs.map((run) => run.interactionP95Ms),
-        0.95,
-      ),
-      frameIntervalP95Ms: percentile(
-        runs.map((run) => run.frameIntervalP95Ms),
-        0.95,
-      ),
+      interactionP95Ms,
+      frameIntervalP95Ms,
+      responsivenessPassed,
       passingRuns,
       baselineHeapBytes,
       returnedHeapBytes,
@@ -403,6 +402,7 @@ try {
   console.log(JSON.stringify(evidence, null, 2));
   exitCode =
     directScrollGate.decision === "approved" &&
+    responsivenessPassed &&
     passingRuns >= budgets.requiredPassingRuns &&
     memoryReturned
       ? 0
