@@ -74,6 +74,40 @@ render up front and produces a filmstrip nothing can retime. But compared to a
 and `none` capture are slower. Budget for it, and don't add a chain to a layer
 that doesn't need per-pixel treatment.
 
+## Reading another host's output
+
+A `ref` param (`map`, `matte`) names another element by id. What the runtime
+reads depends on what that element is:
+
+- **A wrapper** (an element containing a `.hf-vfx-src` canvas, and no `data-vfx-chain`
+  of its own): the runtime captures the wrapper, as before.
+- **Another vfx host** (an element with `data-vfx-chain`): the runtime uploads that
+  host's finished `.hf-vfx-out` as `u_src2`. This is automatic.
+
+```html
+<div id="warp" data-vfx-chain='…'>…</div>
+<div id="shade" data-vfx-chain='{"version":1,"nodes":[{"type":"luma-matte","id":"n1","params":{"matte":"warp","mode":3}}]}'>…</div>
+```
+
+<Warning>
+  A `ref` that names a host used to read that host's own `.hf-vfx-src` — its layer
+  before the effects it runs. It now reads the host's **output**, after them (After
+  Effects' "Effects & Masks" layer source). A chain that relied on the old
+  reading needs a separate wrapper element around the raw layer, named by the `ref`
+  instead.
+</Warning>
+
+- The host's output is read, never captured a second time, so a host that already
+  captures itself does not end up inside a second `layoutsubtree` canvas (which
+  hangs `drawElementImage`).
+- Hosts are painted in dependency order, whatever their order in the document.
+- A host outside its `data-start`/`data-duration` window reads as empty, like a
+  hidden capture source.
+- `data-vfx-ref-visible` does nothing on a host: a host already paints itself on the
+  page, so there is no separate bitmap to keep.
+- A ref cycle (`#a` reads `#b` reads `#a`), or a ref to a host whose chain failed
+  to register, is reported loudly and the referencing chain is not painted.
+
 ## Determinism
 
 Same backend, same `(u_t, params)` → byte-identical `.hf-vfx-out` pixels. A

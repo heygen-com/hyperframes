@@ -13,6 +13,8 @@ const override = vi.hoisted(() => ({
   capture: null as HfVfxCapture | null,
   /** Appends a `ref` param with this key to every def, as `luma-matte` has. */
   refKey: null as string | null,
+  /** Per first-node id: lifts only those chains, leaving the rest at `none`. */
+  captureById: null as Record<string, HfVfxCapture> | null,
 }));
 
 vi.mock("../vfx", async (importOriginal) => {
@@ -20,7 +22,9 @@ vi.mock("../vfx", async (importOriginal) => {
   return {
     ...actual,
     chainCapture: (chain: import("../vfx").HfVfxChain) =>
-      override.capture ?? actual.chainCapture(chain),
+      override.captureById
+        ? (override.captureById[chain.nodes[0]?.id ?? ""] ?? "none")
+        : (override.capture ?? actual.chainCapture(chain)),
     getVfxDef: (id: string) => {
       const def = actual.getVfxDef(id);
       if (!def) return def;
@@ -188,6 +192,7 @@ function installVfxHarness(capture: HfVfxCapture | null, refKey: string | null =
   errors = [];
   override.capture = capture;
   override.refKey = refKey;
+  override.captureById = null;
   // `paintVfx` registers its preview capture into the module-level
   // seek-completion set; a leftover entry would stall the next test's barrier.
   resetSeekDispatchState();
@@ -203,6 +208,7 @@ function releaseVfxHarness(): void {
   document.body.innerHTML = "";
   override.capture = null;
   override.refKey = null;
+  override.captureById = null;
   initVfx(document.body, 30);
   clearCompositeSlot();
   resetSeekDispatchState();
@@ -1087,26 +1093,6 @@ describe("vfx runtime — ref (second source) params", () => {
     expect(errors).toEqual([]);
   });
 
-  it("reads one visible flag for a canvas reached as a host's own source and as a ref", () => {
-    // `#owner` runs its own chain (self-ref) and is also `#cap`'s matte: two
-    // capture sources for one canvas must not disagree on keepBitmap (#4405).
-    const owner = makeCaptureHost(
-      createMockCtx2d(),
-      "matte-1",
-      '{"version":1,"nodes":[{"type":"fractal-noise","id":"n1","params":{"matte":"matte-1"}}]}',
-    );
-    owner.querySelector("canvas.hf-vfx-src")?.setAttribute("data-vfx-ref-visible", "");
-    makeCaptureHost(createMockCtx2d(), "cap", REF_NODE);
-
-    const entries = initVfx(document.body, 30);
-    const own = entries.find((e) => e.host.id === "matte-1")?.src;
-    const viaRef = entries.find((e) => e.host.id === "cap")?.passes[0]?.ref;
-
-    expect(errors).toEqual([]);
-    expect(own?.visible).toBe(true);
-    expect(viaRef?.visible).toBe(true);
-  });
-
   it("clears an ordinary ref's bitmap and draws it at the host's box", () => {
     const matteCtx = createMockCtx2d();
     const matte = makeRefTarget(matteCtx);
@@ -1328,5 +1314,327 @@ describe("vfx runtime — an optional ref (displacement-map's map)", () => {
 
     expect(initVfx(document.body, 30)).toHaveLength(0);
     expect(String(errors[0]![1])).toMatch(/"map" source/);
+  });
+});
+
+/**
+ * A `ref` that names another vfx HOST reads that host's finished `.hf-vfx-out`
+ * instead of capturing it a second time (a second `layoutsubtree` canvas around
+ * a host that already captures itself is the nest of #4405). Automatic: any ref
+ * that resolves to an element with `data-vfx-chain` reads its output. That changes
+ * a ref that used to name a host and read the host's own `.hf-vfx-src`; a ref to a
+ * non-host wrapper is untouched.
+ */
+describe("vfx runtime — a ref that names another host's output", () => {
+  const chain = (matte: string): string =>
+    `{"version":1,"nodes":[{"type":"fractal-noise","id":"n1","params":{"matte":"${matte}"}}]}`;
+
+  /** Records texture uploads in `gl.calls`, telling a host-output read from a capture. */
+  function recordUploads(): unknown[][] {
+    const uploads: unknown[][] = [];
+    vi.spyOn(gl!, "texImage2D").mockImplementation((...args: unknown[]) => {
+      uploads.push(args);
+      const source = args[5];
+      const isOut = source instanceof HTMLCanvasElement && source.classList.contains("hf-vfx-out");
+      gl!.calls.push(isOut ? "hostref" : "upload");
+    });
+    return uploads;
+  }
+
+  /** `#b` runs its own self-capture kernel; refs read its output. */
+  function makeOutputHost(ctx: unknown, id = "b", matte = id): HTMLElement {
+    return makeCaptureHost(ctx, id, chain(matte));
+  }
+
+  afterEach(releaseVfxHarness);
+
+  describe("over self-capture hosts", () => {
+    beforeEach(() => installVfxHarness("self", "matte"));
+
+    it("binds the host's output as u_src2 without capturing it a second time", () => {
+      const ctxA = createMockCtx2d();
+      const ctxB = createMockCtx2d();
+      makeCaptureHost(ctxA, "a", chain("b"));
+      const b = makeOutputHost(ctxB);
+      recordUploads();
+
+      const registry = initVfx(document.body, 30);
+      paintVfx(0, { engineMode: true });
+      compositeWindow().__hf_page_composite_resolve!();
+
+      const a = registry.find((e) => e.host.id === "a");
+      expect(a?.passes[0]?.hostRef?.host).toBe(b);
+      expect(a?.passes[0]?.ref).toBeUndefined();
+      // b drew its own capture once; `a` added no capture of b.
+      expect(ctxB.drawn).toHaveLength(1);
+      expect(gl!.calls).toContain("hostref");
+      expect(gl!.uniforms["u_src2"]).toBe(1);
+      expect(gl!.uniforms["u_hasSrc2"]).toBe(1);
+      expect(errors).toEqual([]);
+    });
+
+    it("orders the registry so a host comes after the host it reads", () => {
+      makeCaptureHost(createMockCtx2d(), "a", chain("b"));
+      makeOutputHost(createMockCtx2d());
+
+      const registry = initVfx(document.body, 30);
+
+      expect(registry.map((e) => e.host.id)).toEqual(["b", "a"]);
+    });
+
+    it("paints the referenced host first, then reads its output, in the engine path", () => {
+      makeCaptureHost(createMockCtx2d(), "a", chain("b"));
+      makeOutputHost(createMockCtx2d());
+      recordUploads();
+      initVfx(document.body, 30);
+
+      paintVfx(0, { engineMode: true });
+      gl!.calls.length = 0;
+      compositeWindow().__hf_page_composite_resolve!();
+
+      // Programs are numbered in DOM order: a = 1, b = 2.
+      expect(gl!.calls.filter((c) => c.startsWith("draw") || c === "hostref")).toEqual([
+        "draw:2",
+        "hostref",
+        "draw:1",
+      ]);
+    });
+
+    it("holds the referencing host until the referenced host has painted (preview)", async () => {
+      vi.stubGlobal("requestAnimationFrame", () => 1);
+      const a = makeCaptureHost(createMockCtx2d(), "a", chain("b"));
+      const b = makeOutputHost(createMockCtx2d());
+      recordUploads();
+      initVfx(document.body, 30);
+
+      paintVfx(0.5);
+      gl!.calls.length = 0;
+      a.querySelector("canvas.hf-vfx-src")!.dispatchEvent(new Event("paint"));
+      await flushTasks();
+      const beforeB = gl!.calls.filter((c) => c.startsWith("draw") || c === "hostref");
+
+      b.querySelector("canvas.hf-vfx-src")!.dispatchEvent(new Event("paint"));
+      await flushTasks();
+      const afterB = gl!.calls.filter((c) => c.startsWith("draw") || c === "hostref");
+
+      expect({ beforeB, afterB }).toEqual({
+        beforeB: [],
+        afterB: ["draw:2", "hostref", "draw:1"],
+      });
+    });
+
+    it("reads a referenced host that is outside its window as empty", () => {
+      makeCaptureHost(createMockCtx2d(), "a", chain("b"));
+      const b = makeOutputHost(createMockCtx2d());
+      const uploads = recordUploads();
+      initVfx(document.body, 30);
+      b.style.visibility = "hidden";
+
+      paintVfx(0, { engineMode: true });
+      compositeWindow().__hf_page_composite_resolve!();
+
+      // The host-output read is a 1×1 transparent texture, not b's stale canvas.
+      const empty = uploads.find((args) => args[3] === 1 && args[4] === 1);
+      expect(empty).toBeDefined();
+      expect(gl!.calls).not.toContain("hostref");
+    });
+
+    /** `#b` inside a wrapper, so a test can hide it through an ANCESTOR. */
+    function wrapB(b: HTMLElement): HTMLElement {
+      const wrap = document.createElement("div");
+      document.body.appendChild(wrap);
+      wrap.appendChild(b);
+      return wrap;
+    }
+
+    const isEmptyUpload = (args: unknown[]): boolean => args[3] === 1 && args[4] === 1;
+
+    it("reads a referenced host hidden by an ancestor as empty (engine path)", () => {
+      makeCaptureHost(createMockCtx2d(), "a", chain("b"));
+      const wrap = wrapB(makeOutputHost(createMockCtx2d()));
+      const uploads = recordUploads();
+      initVfx(document.body, 30);
+
+      paintVfx(0, { engineMode: true });
+      compositeWindow().__hf_page_composite_resolve!();
+      const liveRead = gl!.calls.includes("hostref");
+
+      // The ancestor's display:none leaves #b's own style at `block`.
+      wrap.style.display = "none";
+      gl!.calls.length = 0;
+      uploads.length = 0;
+      paintVfx(0, { engineMode: true });
+      compositeWindow().__hf_page_composite_resolve!();
+
+      expect(liveRead).toBe(true);
+      expect(gl!.calls).not.toContain("hostref");
+      expect(uploads.some(isEmptyUpload)).toBe(true);
+    });
+
+    it("reads a referenced host hidden by an ancestor as empty (preview path)", async () => {
+      vi.stubGlobal("requestAnimationFrame", () => 1);
+      const a = makeCaptureHost(createMockCtx2d(), "a", chain("b"));
+      const b = makeOutputHost(createMockCtx2d());
+      const wrap = wrapB(b);
+      const uploads = recordUploads();
+      initVfx(document.body, 30);
+      const paintBoth = async (t: number): Promise<void> => {
+        paintVfx(t);
+        for (const host of [a, b]) {
+          host.querySelector("canvas.hf-vfx-src")!.dispatchEvent(new Event("paint"));
+        }
+        await flushTasks();
+      };
+
+      await paintBoth(0.5);
+      const liveRead = gl!.calls.includes("hostref");
+      wrap.style.display = "none";
+      gl!.calls.length = 0;
+      uploads.length = 0;
+      await paintBoth(1);
+
+      expect(liveRead).toBe(true);
+      expect(gl!.calls).not.toContain("hostref");
+      expect(uploads.some(isEmptyUpload)).toBe(true);
+    });
+
+    it("drops both hosts of a ref cycle loudly instead of looping", () => {
+      makeOutputHost(createMockCtx2d(), "a", "b");
+      makeOutputHost(createMockCtx2d(), "b", "a");
+
+      expect(initVfx(document.body, 30)).toHaveLength(0);
+      expect(errors.map((e) => String(e[1])).filter((m) => /cycle/.test(m))).toHaveLength(2);
+    });
+
+    it("drops a host that waits on a cycle, not only the cycle itself", () => {
+      makeOutputHost(createMockCtx2d(), "a", "b");
+      makeOutputHost(createMockCtx2d(), "b", "a");
+      makeCaptureHost(createMockCtx2d(), "c", chain("a"));
+
+      expect(initVfx(document.body, 30)).toHaveLength(0);
+    });
+
+    it("drops a host whose referenced host failed to register", () => {
+      makeCaptureHost(createMockCtx2d(), "a", chain("b"));
+      makeHost('{"version":2,"nodes":[]}', "b");
+
+      expect(initVfx(document.body, 30)).toHaveLength(0);
+      expect(errors.map((e) => String(e[1])).some((m) => /no working vfx chain/.test(m))).toBe(
+        true,
+      );
+    });
+
+    it("still captures a non-host wrapper the way it always did", () => {
+      const ctxA = createMockCtx2d();
+      const ctxWrapper = createMockCtx2d();
+      const wrapper = document.createElement("div");
+      wrapper.id = "w";
+      sizeHost(wrapper);
+      wrapper.appendChild(makeCaptureWrapper(ctxWrapper));
+      document.body.appendChild(wrapper);
+      makeCaptureHost(ctxA, "a", chain("w"));
+      recordUploads();
+
+      const registry = initVfx(document.body, 30);
+      paintVfx(0, { engineMode: true });
+      compositeWindow().__hf_page_composite_resolve!();
+
+      const a = registry.find((e) => e.host.id === "a");
+      expect(a?.passes[0]?.hostRef).toBeUndefined();
+      expect(a?.passes[0]?.ref?.canvas).toBe(wrapper.querySelector("canvas.hf-vfx-src"));
+      expect(ctxWrapper.drawn).toHaveLength(1);
+      expect(gl!.calls).not.toContain("hostref");
+      expect(errors).toEqual([]);
+    });
+
+    it("reads a host's output, not its own capture canvas, for the old data-vfx-ref-visible shape", () => {
+      // Formerly: `#owner` runs its own chain, carries data-vfx-ref-visible, and
+      // is `#cap`'s matte — the ref captured `#owner`'s raw `.hf-vfx-src`, and the
+      // same canvas could end up with two sources holding opposite `visible`
+      // flags (#4405 M3). Now the ref reads `#owner`'s output, no second source
+      // exists for the canvas, and the attribute is a no-op on a host.
+      const ctxOwner = createMockCtx2d();
+      const owner = makeCaptureHost(ctxOwner, "owner", chain("owner"));
+      owner.querySelector("canvas.hf-vfx-src")?.setAttribute("data-vfx-ref-visible", "");
+      makeCaptureHost(createMockCtx2d(), "cap", chain("owner"));
+      recordUploads();
+
+      const registry = initVfx(document.body, 30);
+      paintVfx(0, { engineMode: true });
+      compositeWindow().__hf_page_composite_resolve!();
+
+      const own = registry.find((e) => e.host.id === "owner");
+      const cap = registry.find((e) => e.host.id === "cap");
+      expect(cap?.passes[0]?.hostRef?.host).toBe(owner);
+      expect(cap?.passes[0]?.ref).toBeUndefined();
+      expect(own?.src?.visible).toBe(false);
+      expect(ctxOwner.drawn).toHaveLength(1);
+      expect(gl!.calls).toContain("hostref");
+      expect(errors).toEqual([]);
+    });
+
+    it("ignores data-vfx-ref-visible on a host it reads", () => {
+      makeCaptureHost(createMockCtx2d(), "a", chain("b"));
+      const b = makeOutputHost(createMockCtx2d());
+      b.querySelector("canvas.hf-vfx-src")!.setAttribute("data-vfx-ref-visible", "");
+
+      const registry = initVfx(document.body, 30);
+
+      const a = registry.find((e) => e.host.id === "a");
+      expect(a?.passes[0]?.hostRef?.host).toBe(b);
+      expect(a?.passes[0]?.ref).toBeUndefined();
+      expect(registry.find((e) => e.host.id === "b")?.src?.visible).toBe(false);
+      expect(errors).toEqual([]);
+    });
+  });
+
+  describe("over a host with no capture", () => {
+    beforeEach(() => installVfxHarness(null, "matte"));
+
+    it("still reads the host's output, after that host has painted", async () => {
+      const a = makeHost(chain("b"), "a");
+      makeHost(chain("b"), "b");
+      recordUploads();
+      const registry = initVfx(document.body, 30);
+
+      paintVfx(0);
+      await flushTasks();
+
+      expect(registry.map((e) => e.host.id)).toEqual(["b", "a"]);
+      expect(a.querySelector("canvas.hf-vfx-out")).not.toBeNull();
+      // b paints inline (draw:2) before a's deferred paint reads it.
+      expect(gl!.calls.filter((c) => c.startsWith("draw") || c === "hostref")).toEqual([
+        "draw:2",
+        "hostref",
+        "draw:1",
+      ]);
+      expect(errors).toEqual([]);
+    });
+
+    it("waits for a capturing host it reads even though it captures nothing itself", async () => {
+      vi.stubGlobal("requestAnimationFrame", () => 1);
+      const nodeChain = (id: string, matte: string): string =>
+        `{"version":1,"nodes":[{"type":"fractal-noise","id":"${id}","params":{"matte":"${matte}"}}]}`;
+      override.captureById = { nb: "self" };
+      makeHost(nodeChain("na", "b"), "a");
+      const b = makeCaptureHost(createMockCtx2d(), "b", nodeChain("nb", "b"));
+      recordUploads();
+      initVfx(document.body, 30);
+
+      paintVfx(0.5);
+      gl!.calls.length = 0;
+      await flushTasks();
+      const beforeB = gl!.calls.filter((c) => c.startsWith("draw") || c === "hostref");
+
+      b.querySelector("canvas.hf-vfx-src")!.dispatchEvent(new Event("paint"));
+      await flushTasks();
+      const afterB = gl!.calls.filter((c) => c.startsWith("draw") || c === "hostref");
+
+      // `a` has no source of its own, yet must not paint ahead of `b`'s capture.
+      expect({ beforeB, afterB }).toEqual({
+        beforeB: [],
+        afterB: ["draw:2", "hostref", "draw:1"],
+      });
+    });
   });
 });

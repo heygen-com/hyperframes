@@ -143,6 +143,23 @@ interface PassLocations {
   params: Record<string, WebGLUniformLocation | null>;
 }
 
+/**
+ * A `ref` that names another vfx host. Its second source is that host's finished
+ * `.hf-vfx-out`, uploaded into a texture of THIS entry's GL context (textures do
+ * not cross contexts) — no capture canvas, so nothing nests.
+ *
+ * - The wrapper-ref attribute `data-vfx-ref-visible` does not apply: a host
+ *   already paints its own output on the page, there is no bitmap to keep.
+ *   Nor does a host's own `.hf-vfx-src` ever count as visible.
+ * - `entry` is linked once every host has registered (`linkHostRefs`); the
+ *   target may come later in the DOM than the host that names it.
+ */
+interface VfxHostRef {
+  host: HTMLElement;
+  texture: WebGLTexture;
+  entry?: VfxEntry;
+}
+
 interface VfxPass {
   node: HfVfxNode;
   def: HfVfxDef;
@@ -153,6 +170,8 @@ interface VfxPass {
   /** `u_src2`: the element this node's `ref` param named. Per NODE, not per
    *  entry — two nodes in one chain may matte against different elements. */
   ref?: VfxCaptureSource;
+  /** `u_src2`: the `ref` param names another vfx HOST, read from its `.hf-vfx-out`. */
+  hostRef?: VfxHostRef;
   /**
    * The `ref` param names this pass's OWN host — the self-referential stencil
    * shape (`target === host` in `resolveRefSource`). There is no second
@@ -314,7 +333,8 @@ type RefResolution =
   | { kind: "none" }
   | { kind: "self" }
   | { kind: "error" }
-  | { kind: "source"; source: VfxCaptureSource };
+  | { kind: "source"; source: VfxCaptureSource }
+  | { kind: "host"; ref: VfxHostRef };
 
 /**
  * The element a `ref` param names, wrapped in its own capture canvas.
@@ -343,6 +363,38 @@ function resolveEmptyRefParam(
       `param naming the id of the element to read as its second source.`,
   );
   return { kind: "error" };
+}
+
+/**
+ * A `ref` naming some OTHER element: a vfx host (`data-vfx-chain`) is read
+ * through its finished `.hf-vfx-out`, anything else through the capture wrapper
+ * it contains.
+ *
+ * A ref that names a host used to read the host's own `.hf-vfx-src` (the layer
+ * before its effects). The output is what After Effects' "Effects & Masks" gives,
+ * and the only reading that avoids a second `layoutsubtree` canvas around a host
+ * that captures itself. `data-vfx-ref-visible` means nothing on a host: it
+ * already paints itself.
+ */
+function resolveOtherElementRef(
+  host: HTMLElement,
+  param: HfVfxRefParam,
+  target: HTMLElement,
+  gl: WebGL2RenderingContext,
+  cache: Map<HTMLElement, VfxCaptureSource>,
+): RefResolution {
+  // Never a second capture of a host: a second `layoutsubtree` canvas around a
+  // self-capturing host is the nest that hangs `drawElementImage`.
+  if (target.hasAttribute(HF_VFX_ATTR)) {
+    return { kind: "host", ref: { host: target, texture: createCaptureTexture(gl) } };
+  }
+  const cached = cache.get(target);
+  if (cached) return { kind: "source", source: cached };
+  const source = resolveCaptureSource(target, gl, `${describeHost(host)}: "${param.key}" source`);
+  if (!source) return { kind: "error" };
+  source.visible = source.canvas.hasAttribute(VFX_REF_VISIBLE_ATTR);
+  cache.set(target, source);
+  return { kind: "source", source };
 }
 
 function resolveRefSource(
@@ -380,12 +432,7 @@ function resolveRefSource(
   // always samples `u_src2` — so a real `"self"` kind is the only way `u_src2`
   // gets bound at all; `bindPass` points it at `u_src`'s own texture unit.
   if (target === host) return param.optional ? { kind: "none" } : { kind: "self" };
-  const cached = cache.get(target);
-  if (cached) return { kind: "source", source: cached };
-  const source = resolveCaptureSource(target, gl, `${describeHost(host)}: "${param.key}" source`);
-  if (!source) return { kind: "error" };
-  cache.set(target, source);
-  return { kind: "source", source };
+  return resolveOtherElementRef(host, param, target, gl, cache);
 }
 
 function buildPasses(
@@ -418,6 +465,7 @@ function buildPasses(
       params,
       locations: resolveUniformLocations(gl, program, def),
       ...(resolved.kind === "source" ? { ref: resolved.source } : {}),
+      ...(resolved.kind === "host" ? { hostRef: resolved.ref } : {}),
       selfRef: resolved.kind === "self",
     });
   }
@@ -518,9 +566,9 @@ function resolveCaptureSource(
     ctx,
     texture: createCaptureTexture(gl),
     backdrop: backdrop !== null,
-    // Read here, not by the caller: a canvas reached as a host's own source
-    // and as a ref would otherwise get two objects with opposite `keepBitmap`.
-    visible: canvas.hasAttribute(VFX_REF_VISIBLE_ATTR),
+    // Only a `ref` wrapper may be visible; `resolveOtherElementRef` sets it. A
+    // chain host's own source never is — a host paints itself.
+    visible: false,
     emptyBoxReported: false,
   };
 }
@@ -619,10 +667,24 @@ function isPaintableHost(host: HTMLElement): boolean {
  */
 function isPaintableSource(src: VfxCaptureSource): boolean {
   if (getComputedStyle(src.inner).visibility === "hidden") return false;
-  for (let el: HTMLElement | null = src.inner; el; el = el.parentElement) {
-    if (getComputedStyle(el).display === "none") return false;
+  return isDisplayed(src.inner);
+}
+
+/** `display` does not inherit, so a `display:none` ANCESTOR needs the walk. */
+function isDisplayed(el: HTMLElement): boolean {
+  for (let node: HTMLElement | null = el; node; node = node.parentElement) {
+    if (getComputedStyle(node).display === "none") return false;
   }
   return true;
+}
+
+/**
+ * Whether a referenced host is on screen right now. An ancestor's `display:none`
+ * leaves the host's own style `block`, but it has no box and never repaints, while
+ * its preserved `.hf-vfx-out` still holds the last frame.
+ */
+function isHostOnScreen(host: HTMLElement): boolean {
+  return isPaintableHost(host) && deviceSize(host) !== null && isDisplayed(host);
 }
 
 function describeHost(host: HTMLElement): string {
@@ -666,16 +728,98 @@ function visibleRefSources(entry: VfxEntry): VfxCaptureSource[] {
   return sources;
 }
 
+/** Drop the GL objects one entry owns. */
+function releaseEntry(entry: VfxEntry): void {
+  const { gl } = entry;
+  for (const pass of entry.passes) {
+    gl.deleteProgram(pass.program);
+    if (pass.hostRef) gl.deleteTexture(pass.hostRef.texture);
+  }
+  for (const source of entrySources(entry)) gl.deleteTexture(source.texture);
+  if (!entry.ping) return;
+  for (const texture of entry.ping.textures) gl.deleteTexture(texture);
+  for (const framebuffer of entry.ping.framebuffers) gl.deleteFramebuffer(framebuffer);
+}
+
 /** Drop the GL objects the outgoing registry owns before replacing it. */
 function releaseRegistry(): void {
-  for (const entry of registry) {
-    const { gl } = entry;
-    for (const pass of entry.passes) gl.deleteProgram(pass.program);
-    for (const source of entrySources(entry)) gl.deleteTexture(source.texture);
-    if (!entry.ping) continue;
-    for (const texture of entry.ping.textures) gl.deleteTexture(texture);
-    for (const framebuffer of entry.ping.framebuffers) gl.deleteFramebuffer(framebuffer);
+  for (const entry of registry) releaseEntry(entry);
+}
+
+/** The entries whose `.hf-vfx-out` this entry reads as a second source. */
+function hostDeps(entry: VfxEntry): VfxEntry[] {
+  const deps: VfxEntry[] = [];
+  for (const pass of entry.passes) {
+    const dep = pass.hostRef?.entry;
+    if (dep && !deps.includes(dep)) deps.push(dep);
   }
+  return deps;
+}
+
+/**
+ * Whether an entry's frame is more than an inline paint: it captures something,
+ * or it reads another host's output and so has to wait for that host to paint.
+ */
+function needsDeferredPaint(entry: VfxEntry): boolean {
+  return entrySources(entry).length > 0 || entry.passes.some((pass) => pass.hostRef);
+}
+
+function dropEntry(entry: VfxEntry, reason: string): void {
+  reportVfxError(`${describeHost(entry.host)}: ${reason}, so its chain is not painted.`);
+  releaseEntry(entry);
+  entry.out.remove();
+}
+
+/**
+ * Resolve every host `ref` to its registered entry and order the registry so a
+ * host comes after every host it reads. `paintVfx` and `resolveVfxCapture` walk
+ * the registry in order, so this sort makes the referenced host paint this
+ * frame before the referencing host samples it; the preview path waits on the
+ * same edges (`capturePreviewThenPaint`).
+ *
+ * A ref to a host that did not register, and any ref cycle, drop the referencing
+ * entry loudly: a cycle has no paint order and would sample a previous frame.
+ * The sort only places an entry once its dependencies are placed, so a cycle
+ * (and whatever waits on it) is never placed and nothing loops.
+ */
+function linkHostRefs(entries: VfxEntry[]): VfxEntry[] {
+  let live = entries;
+  for (;;) {
+    const byHost = new Map(live.map((entry) => [entry.host, entry]));
+    const next = live.filter((entry) => {
+      for (const pass of entry.passes) {
+        const ref = pass.hostRef;
+        if (!ref) continue;
+        const target = byHost.get(ref.host);
+        if (!target) {
+          dropEntry(
+            entry,
+            `its ref names ${describeHost(ref.host)}, which has no working vfx chain`,
+          );
+          return false;
+        }
+        ref.entry = target;
+      }
+      return true;
+    });
+    if (next.length === live.length) break;
+    live = next;
+  }
+  const ordered: VfxEntry[] = [];
+  let placedAny = true;
+  while (placedAny) {
+    placedAny = false;
+    for (const entry of live) {
+      if (ordered.includes(entry)) continue;
+      if (!hostDeps(entry).every((dep) => ordered.includes(dep))) continue;
+      ordered.push(entry);
+      placedAny = true;
+    }
+  }
+  for (const entry of live) {
+    if (!ordered.includes(entry)) dropEntry(entry, "its host refs form a cycle (or wait on one)");
+  }
+  return ordered;
 }
 
 /**
@@ -690,12 +834,14 @@ export function initVfx(root: HTMLElement, fps: number): VfxRegistry {
   releaseRegistry();
   registry = [];
   registryFps = Number.isFinite(fps) && fps > 0 ? fps : 30;
+  const entries: VfxEntry[] = [];
   const hosts = root.querySelectorAll(`[${HF_VFX_ATTR}]`);
   for (const host of hosts) {
     if (!isHtmlElement(host)) continue;
     const entry = registerVfxHost(host);
-    if (entry) registry.push(entry);
+    if (entry) entries.push(entry);
   }
+  registry = linkHostRefs(entries);
   return registry;
 }
 
@@ -791,7 +937,7 @@ function setPassUniforms(
   // input; on a shader without the uniform the location is null and this is a
   // defined no-op. A self-referential ref counts as resolved too — `u_src2`
   // reads real data, just from unit 0 rather than a second capture.
-  gl.uniform1f(locations.hasSrc2, pass.ref || pass.selfRef ? 1 : 0);
+  gl.uniform1f(locations.hasSrc2, pass.ref || pass.hostRef || pass.selfRef ? 1 : 0);
   for (const param of pass.def.params) {
     const value = paramUniformValue(param, pass, style);
     if (value === null) continue;
@@ -823,8 +969,9 @@ function bindPass(entry: VfxEntry, index: number, last: number, ping: PingPong |
   // Unit 1 for `u_src2`, then back to unit 0 so every other bind in this
   // module — the next pass's, and `uploadCaptureTexture`'s — starts from the
   // same active unit no matter which passes carry a ref.
-  if (pass.ref) {
-    bindSampler(gl, pass.locations.src2, pass.ref.texture, 1);
+  const refTexture = pass.ref?.texture ?? pass.hostRef?.texture;
+  if (refTexture) {
+    bindSampler(gl, pass.locations.src2, refTexture, 1);
     gl.activeTexture(gl.TEXTURE0);
   } else if (pass.selfRef && source) {
     // A `ref` param naming its own host: `u_src2` reads exactly what `u_src`
@@ -846,10 +993,36 @@ function bindSampler(
   gl.uniform1i(location, unit);
 }
 
+/**
+ * Read the referenced host's finished `.hf-vfx-out` into this entry's texture.
+ * The canvas keeps its drawing buffer, so it holds that host's last paint; the
+ * registry order (and `capturePreviewThenPaint`) makes that this frame's. A host
+ * that is not on screen reads as EMPTY, as a hidden capture source does: under
+ * Alpha the layer it mattes disappears.
+ */
+function uploadHostRef(gl: WebGL2RenderingContext, ref: VfxHostRef): void {
+  gl.activeTexture(gl.TEXTURE0);
+  gl.bindTexture(gl.TEXTURE_2D, ref.texture);
+  const out = ref.entry?.out;
+  if (out && out.width > 0 && out.height > 0 && isHostOnScreen(ref.host)) {
+    gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL, 1);
+    gl.pixelStorei(gl.UNPACK_PREMULTIPLY_ALPHA_WEBGL, 1);
+    gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, out);
+    gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL, 0);
+    gl.pixelStorei(gl.UNPACK_PREMULTIPLY_ALPHA_WEBGL, 0);
+    return;
+  }
+  const empty = new Uint8Array(4);
+  gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, 1, 1, 0, gl.RGBA, gl.UNSIGNED_BYTE, empty);
+}
+
 function paintEntry(entry: VfxEntry, t: number): void {
   const size = deviceSize(entry.host);
   if (!size) return;
   const { gl, out, passes } = entry;
+  for (const pass of passes) {
+    if (pass.hostRef) uploadHostRef(gl, pass.hostRef);
+  }
   if (out.width !== size.width) out.width = size.width;
   if (out.height !== size.height) out.height = size.height;
   const ping = passes.length > 1 ? ensurePingPong(entry, size.width, size.height) : null;
@@ -1028,7 +1201,7 @@ function captureBox(
 function captureEntry(entry: VfxEntry, quiet = false): boolean {
   const size = deviceSize(entry.host);
   const sources = entrySources(entry);
-  if (!size || sources.length === 0) return false;
+  if (!size) return false;
   let captured = true;
   for (const source of sources) {
     const mode = source.visible ? CAPTURE_VISIBLE_SOURCE : CAPTURE_TO_TEXTURE;
@@ -1101,7 +1274,7 @@ function resolveVfxCapture(): boolean {
   let painted = false;
   for (const entry of registry) {
     if (entry.contextLost) continue;
-    if (entrySources(entry).length === 0) continue;
+    if (!needsDeferredPaint(entry)) continue;
     if (!isPaintableHost(entry.host)) {
       if (captureHiddenEntry(entry)) painted = true;
       continue;
@@ -1283,6 +1456,7 @@ async function capturePaintedHost(
   t: number,
   seq: number,
   speculative: boolean,
+  after: Promise<unknown>,
 ): Promise<void> {
   // A pass-through frame needs the backdrop wrapper's paint record plus any
   // visible ref's; a ref-only frame needs only the visible ref's; a painting
@@ -1290,6 +1464,8 @@ async function capturePaintedHost(
   // the waits are too.
   const mode = frameCaptureMode(entry);
   if (!(await awaitSourcePaints(entry, sourcesForFrame(entry, mode)))) return;
+  // Hosts this one reads as a second source paint first (`linkHostRefs`).
+  await after;
   if (!stillOwnsFrame(entry, seq)) return;
   if (mode === "passThrough") {
     capturePassThrough(entry, speculative);
@@ -1312,7 +1488,18 @@ async function capturePreviewThenPaint(
   // In parallel, not in sequence: each wait costs up to two animation frames,
   // so N hosts awaited one after another cost 2N — more slack than the CLI's
   // post-barrier settle leaves, and the cost grows with the composition.
-  await Promise.all(entries.map((entry) => capturePaintedHost(entry, t, seq, speculative)));
+  // `entries` keeps registry order, which puts every host after the hosts it
+  // reads, so each host's dependencies already have a promise when it is reached.
+  const done = new Map<VfxEntry, Promise<void>>();
+  for (const entry of entries) {
+    const waits: Promise<void>[] = [];
+    for (const dep of hostDeps(entry)) {
+      const pending = done.get(dep);
+      if (pending) waits.push(pending);
+    }
+    done.set(entry, capturePaintedHost(entry, t, seq, speculative, Promise.all(waits)));
+  }
+  await Promise.all(done.values());
 }
 
 /**
@@ -1365,7 +1552,7 @@ export function paintVfx(t: number, options?: { engineMode?: boolean }): void {
       if (isBackdropEntry(entry) || visibleRefSources(entry).length > 0) capturing.push(entry);
       continue;
     }
-    if (entrySources(entry).length > 0) capturing.push(entry);
+    if (needsDeferredPaint(entry)) capturing.push(entry);
     else paintEntry(entry, t);
   }
   if (capturing.length === 0) return;
