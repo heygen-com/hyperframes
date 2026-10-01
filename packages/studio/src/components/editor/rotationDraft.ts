@@ -7,8 +7,24 @@ import {
   type StudioRotationSnapshot,
 } from "./manualEdits";
 import { getOffsetDragGsap } from "./manualOffsetDrag";
+import { splitTopLevelWhitespace } from "./manualEditsStyleHelpers";
 
-const TRAILING_TURN = /\s*rotate\(\s*-?[\d.]+(?:e[+-]?\d+)?deg\s*\)\s*$/;
+function lastRuleTransform(element: HTMLElement): string {
+  let value = "";
+  for (const sheet of Array.from(element.ownerDocument.styleSheets)) {
+    let rules: CSSStyleRule[] = [];
+    try {
+      rules = Array.from(sheet.cssRules) as CSSStyleRule[];
+    } catch {
+      // a cross-origin sheet
+    }
+    for (const rule of rules) {
+      const declared = rule.style?.getPropertyValue("transform");
+      if (declared && element.matches(rule.selectorText)) value = declared;
+    }
+  }
+  return value;
+}
 
 // ponytail: the authored transform if it moves the box, from the last matching rule in sheet order;
 // specificity, !important and @media are not weighed. Weigh them when a film's rule is missed.
@@ -17,47 +33,53 @@ function translatingTransform(element: HTMLElement): string {
   const computed = view?.getComputedStyle(element).transform ?? "none";
   const m = computed === "none" ? null : new view!.DOMMatrix(computed);
   if (!m || (m.m41 === 0 && m.m42 === 0)) return "";
-  let value = element.style.getPropertyValue("transform");
-  for (const sheet of value ? [] : Array.from(element.ownerDocument.styleSheets)) {
-    let rules: CSSRule[];
-    try {
-      rules = Array.from(sheet.cssRules);
-    } catch {
-      continue; // a cross-origin sheet
-    }
-    for (const rule of rules as CSSStyleRule[]) {
-      const declared = rule.style?.getPropertyValue("transform");
-      if (declared && element.matches(rule.selectorText)) value = declared;
-    }
-  }
+  const value = element.style.getPropertyValue("transform") || lastRuleTransform(element);
   return value === "none" ? "" : value;
 }
 
 /** Where a plain rotate draws its turn, read once at press: the element's own `rotate`, or, when its
- *  transform translates it (often the translate(-50%, -50%) centring), a trailing rotate() in that
- *  transform, so the translate is not turned with the box. `share` is what the rest already turns. */
+ *  transform translates it (often the translate(-50%, -50%) centring), a rotate() right after that
+ *  translate, so the box turns in place in screen space. `share` is what the rest already turns. */
 export interface CssRotationTarget {
   property: "rotate" | "transform";
-  prefix: string;
+  before: string;
+  after: string;
   share: number;
+  /** -1 when a mirroring `scale` property flips a turn made inside the transform. */
+  sign: number;
   /** An inline box does not transform, so the turn makes it inline-block. */
   inline: boolean;
 }
 
+const TRANSLATE = /^translate(?:3d|X|Y|Z)?\(/i;
+const OWN_TURN = /^rotate\(\s*-?[\d.]+(?:e[+-]?\d+)?deg\s*\)$/i;
+
 export function readCssRotationTarget(element: HTMLElement): CssRotationTarget {
-  const view = element.ownerDocument.defaultView;
-  const inline = view?.getComputedStyle(element).display === "inline";
+  const style = element.ownerDocument.defaultView?.getComputedStyle(element);
+  const inline = style?.display === "inline";
   const transform = translatingTransform(element);
   if (!transform) {
-    return { property: "rotate", prefix: "", share: readCssRotation(element, false), inline };
+    const share = readCssRotation(element, false);
+    return { property: "rotate", before: "", after: "", share, sign: 1, inline };
   }
-  const prefix = transform.replace(TRAILING_TURN, "");
-  const style = element.style;
-  const saved = [style.getPropertyValue("transform"), style.getPropertyPriority("transform")];
-  style.setProperty("transform", prefix || "none");
+  const parts = splitTopLevelWhitespace(transform);
+  const lead = parts.findIndex((part) => !TRANSLATE.test(part));
+  const split = lead < 0 ? parts.length : lead;
+  const rest = parts.slice(split);
+  if (OWN_TURN.test(rest[0] ?? "")) rest.shift();
+  const [before, after] = [parts.slice(0, split).join(" "), rest.join(" ")];
+  const [sx = 1, sy = sx] = splitTopLevelWhitespace(style?.getPropertyValue("scale") ?? "").map(
+    Number.parseFloat,
+  );
+  const inlineStyle = element.style;
+  const saved = [
+    inlineStyle.getPropertyValue("transform"),
+    inlineStyle.getPropertyPriority("transform"),
+  ];
+  inlineStyle.setProperty("transform", `${before} ${after}`.trim() || "none");
   const share = readCssRotation(element);
-  style.setProperty("transform", saved[0] ?? "", saved[1] ?? "");
-  return { property: "transform", prefix, share, inline };
+  inlineStyle.setProperty("transform", saved[0] ?? "", saved[1] ?? "");
+  return { property: "transform", before, after, share, sign: sx * sy < 0 ? -1 : 1, inline };
 }
 
 /** Draws `angle` where `target` says, and returns the source patches that save it as drawn. */
@@ -66,11 +88,17 @@ export function applyCssRotation(
   angle: number,
   target = readCssRotationTarget(element),
 ): Array<PatchOperation & { value: string }> {
-  const turn = `${roundTo3(angle - target.share)}deg`;
-  const value = target.property === "rotate" ? turn : `${target.prefix} rotate(${turn})`.trim();
-  const patches = [{ type: "inline-style" as const, property: target.property, value }];
-  if (target.inline)
+  const turn = `${roundTo3(target.sign * (angle - target.share))}deg`;
+  const value =
+    target.property === "rotate"
+      ? turn
+      : [target.before, `rotate(${turn})`, target.after].filter(Boolean).join(" ");
+  const patches: Array<PatchOperation & { value: string }> = [
+    { type: "inline-style", property: target.property, value },
+  ];
+  if (target.inline) {
     patches.unshift({ type: "inline-style", property: "display", value: "inline-block" });
+  }
   for (const patch of patches) element.style.setProperty(patch.property, patch.value);
   return patches;
 }

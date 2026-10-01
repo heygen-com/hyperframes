@@ -69,8 +69,10 @@ describe("rotate in a composition without GSAP", () => {
     const target = readCssRotationTarget(element);
     expect(target).toEqual({
       property: "transform",
-      prefix: "translate(-120px, -80px)",
+      before: "translate(-120px, -80px)",
+      after: "",
       share: expect.closeTo(30),
+      sign: 1,
       inline: false,
     });
     applyRotationDraft(element, 55, target);
@@ -78,10 +80,32 @@ describe("rotate in a composition without GSAP", () => {
       "translate(-120px, -80px) rotate(25deg)",
     );
     expect(element.style.getPropertyValue("rotate")).toBe("");
-    // The next rotate replaces its own trailing turn instead of stacking a second one.
+    // The next rotate replaces its own turn instead of stacking a second one.
     applyRotationDraft(element, 70, readCssRotationTarget(element));
     expect(element.style.getPropertyValue("transform")).toBe(
       "translate(-120px, -80px) rotate(40deg)",
     );
+  });
+
+  // Each case turns 25 deg with the cursor: the fold GSAP and the outline read goes up by 25, unsheared.
+  it.each([
+    ["a mirrored transform", "transform: translate(-120px, -80px) scaleX(-1);", 180],
+    ["a stretched transform", "transform: translate(-120px, -80px) scale(2, 1);", 0],
+    ["a mirroring scale property", "scale: -1 1; transform: translate(-120px, -80px);", 180],
+  ])("turns %s centred element with the cursor, in place", (_, css, base) => {
+    const window = new Window();
+    window.document.head.innerHTML = `<style>#title { ${css} }</style>`;
+    const element = window.document.createElement("h1");
+    element.id = "title";
+    window.document.body.append(element);
+    const turned = (angle: number) => (((angle % 360) + 360) % 360) % 360;
+    expect(turned(readRotationBase(element, true))).toBeCloseTo(base);
+    applyRotationDraft(element, base + 25, readCssRotationTarget(element));
+    const transform = element.style.getPropertyValue("transform");
+    expect(transform.startsWith("translate(-120px, -80px) rotate(")).toBe(true);
+    expect(turned(readRotationBase(element, true))).toBeCloseTo(base + 25);
+    const m = new window.DOMMatrix(window.getComputedStyle(element).transform);
+    expect(m.a * m.c + m.b * m.d).toBeCloseTo(0);
+    expect([m.e, m.f]).toEqual([-120, -80]);
   });
 });

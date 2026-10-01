@@ -187,8 +187,10 @@ describe("a rotate on a page that loads GSAP", () => {
     expect(handlers.startGesture("rotate", pointer(25, -20) as never)).toBe(true);
     expect(opts.gestureRef.current?.plainRotation).toEqual({
       property: "rotate",
-      prefix: "",
+      before: "",
+      after: "",
       share: 0,
+      sign: 1,
       inline: false,
     });
     expect(opts.gestureRef.current?.actualRotation).toBeCloseTo(30);
