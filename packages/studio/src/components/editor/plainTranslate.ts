@@ -8,17 +8,24 @@ type Point = { x: number; y: number };
 
 const TERM = /^(-?\d*\.?\d+(?:e[-+]?\d+)?)(px|%)$/i;
 
+const SIGN: Record<string, number> = { "+": 1, "-": -1 };
+
+function termPx(term: string | undefined, side: number): number | null {
+  const match = TERM.exec(term ?? "");
+  return match ? Number(match[1]) * (match[2] === "%" ? side / 100 : 1) : null;
+}
+
 /** px, %, or Chrome's computed `calc(P% + Lpx)`, against the border-box side; null for min()/max()/clamp(). */
 function resolveLength(value: string, side: number): number | null {
   const parts = (/^calc\((.*)\)$/.exec(value)?.[1] ?? value).split(" ");
-  let total = 0;
-  for (let i = 0; i < parts.length; i += 2) {
-    const term = TERM.exec(parts[i] ?? "");
-    const sign = i === 0 || parts[i - 1] === "+" ? 1 : parts[i - 1] === "-" ? -1 : 0;
-    if (!term || !sign) return null;
-    total += sign * Number(term[1]) * (term[2] === "%" ? side / 100 : 1);
+  if (parts.length % 2 === 0) return null;
+  let total = termPx(parts[0], side);
+  for (let i = 1; i < parts.length && total !== null; i += 2) {
+    const term = termPx(parts[i + 1], side);
+    const sign = SIGN[parts[i] ?? ""];
+    total = term === null || !sign ? null : total + sign * term;
   }
-  return parts.length % 2 === 1 ? total : null;
+  return total;
 }
 
 function borderBox(
