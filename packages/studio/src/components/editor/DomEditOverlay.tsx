@@ -10,6 +10,7 @@ import {
   type BlockedMoveState,
   type DomEditGroupPathOffsetCommit,
   type FocusableDomEditOverlay,
+  type MoveCommitOptions,
   type GestureState,
   type GroupGestureState,
   focusDomEditOverlayElement,
@@ -45,7 +46,7 @@ export {
   hasDomEditRotationChanged,
   resolveDomEditRotationGesture,
 } from "./domEditOverlayGestures";
-export type { DomEditGroupPathOffsetCommit } from "./domEditOverlayGestures";
+export type { DomEditGroupPathOffsetCommit, MoveCommitOptions } from "./domEditOverlayGestures";
 
 export interface DomEditOverlayProps {
   iframeRef: RefObject<HTMLIFrameElement | null>;
@@ -81,7 +82,7 @@ export interface DomEditOverlayProps {
   onPathOffsetCommit: (
     selection: DomEditSelection,
     next: { x: number; y: number },
-    modifiers?: { altKey?: boolean },
+    modifiers?: MoveCommitOptions,
   ) => Promise<unknown> | void;
   onGroupPathOffsetCommit: (updates: DomEditGroupPathOffsetCommit[]) => Promise<unknown> | void;
   onBoxSizeCommit: (

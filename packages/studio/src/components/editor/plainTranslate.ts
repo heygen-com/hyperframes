@@ -110,6 +110,6 @@ export function writeTranslatePx(el: HTMLElement, p: Point): void {
 }
 
 /** The position the panel shows and edits: the translate a move writes, unless GSAP positions it. */
-export function readMoveOffset(el: HTMLElement): Point {
-  return gsapWritesPosition(el) ? readStudioPathOffset(el) : readTranslatePx(el);
+export function readMoveOffset(el: HTMLElement, plainTranslate = !gsapWritesPosition(el)): Point {
+  return plainTranslate ? readTranslatePx(el) : readStudioPathOffset(el);
 }

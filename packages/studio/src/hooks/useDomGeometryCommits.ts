@@ -62,11 +62,17 @@ export function useDomGeometryCommits({
   readOnlyPreview,
 }: UseDomGeometryCommitsParams) {
   const stageElementPositionOffset = useCallback(
-    (selection: DomEditSelection, next: { x: number; y: number }, coalesceKey?: string) =>
+    (
+      selection: DomEditSelection,
+      next: { x: number; y: number },
+      plainTranslate: boolean,
+      coalesceKey?: string,
+    ) =>
       stageElementOffset(
         { commitPositionPatchToHtml, showToast, readOnlyPreview },
         selection,
         next,
+        plainTranslate,
         coalesceKey,
       ),
     [commitPositionPatchToHtml, readOnlyPreview, showToast],

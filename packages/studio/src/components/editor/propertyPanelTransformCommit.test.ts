@@ -106,3 +106,32 @@ describe("the panel's position fields on a translate Studio can't read", () => {
     expect(showToast).toHaveBeenCalledWith(UNREADABLE_TRANSLATE);
   });
 });
+
+describe("the panel's position fields", () => {
+  it("read and move an element without GSAP by its CSS translate, on the route they chose", async () => {
+    const onSetManualOffset = vi.fn();
+    const box = document.createElement("div");
+    box.style.setProperty("translate", "40px 30px");
+    const element = { id: "box", selector: "#box", element: box } as unknown as DomEditSelection;
+    const handlers = createTransformCommitHandlers({
+      element,
+      styles: {},
+      hasGsapAnimation: false,
+      gsapAnimId: null,
+      gsapKeyframes: null,
+      currentPct: 0,
+      onCommitAnimatedProperty: undefined,
+      onAddKeyframe: undefined,
+      onSetManualOffset,
+      onSetManualSize: vi.fn(),
+      onSetManualRotation: vi.fn(),
+      showToast: vi.fn(),
+    });
+    await handlers.commitManualOffset("x", "100px");
+    expect(onSetManualOffset).toHaveBeenCalledWith(
+      element,
+      { x: 100, y: 30 },
+      { plainTranslate: true },
+    );
+  });
+});

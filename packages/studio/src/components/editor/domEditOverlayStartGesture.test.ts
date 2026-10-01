@@ -43,6 +43,14 @@ function pressOptions(element: HTMLElement) {
     rafPausedRef: ref(false),
     onManualDragStartRef: ref(vi.fn()),
     onBlockedMoveRef: ref(vi.fn()),
+    onPathOffsetCommitRef: ref(vi.fn()),
+    snapGuidesRef: ref(null),
+    groupGestureRef: ref(null),
+    blockedMoveRef: ref(null),
+    setOverlayRect: vi.fn(),
+    suppressNextBoxClickRef: ref(false),
+    hoverSelectionRef: ref(null),
+    onCanvasMouseDown: vi.fn(),
   };
 }
 
@@ -81,5 +89,29 @@ describe("a drag press on a centred element without GSAP", () => {
     const style = element.getAttribute("style");
     expect(pressGesture(element)?.pathOffsetMember?.initialOffset).toEqual({ x: -120, y: -80 });
     expect(element.getAttribute("style")).toBe(style);
+  });
+});
+
+describe("a drag on an element without GSAP", () => {
+  it("drops on the route it chose at press, even if GSAP takes the element over mid-drag", () => {
+    const element = document.createElement("div");
+    element.style.setProperty("translate", "40px 30px");
+    document.body.append(element);
+    const opts = pressOptions(element);
+    const handlers = createDomEditOverlayGestureHandlers(opts as never);
+    expect(handlers.startGesture("drag", PRESS as never)).toBe(true);
+    Object.assign(element, { _gsap: { renderTransform: () => {} } });
+    const release = {
+      ...PRESS,
+      clientX: 110,
+      clientY: 70,
+      currentTarget: { releasePointerCapture() {} },
+    };
+    handlers.onPointerUp(release as never);
+    expect(opts.onPathOffsetCommitRef.current).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.anything(),
+      expect.objectContaining({ plainTranslate: true }),
+    );
   });
 });

@@ -336,6 +336,7 @@ export function createDomEditOverlayGestureHandlers(opts: UseDomEditOverlayGestu
       const updates = groupG.members.map((member) => ({
         selection: member.selection,
         next: applyManualOffsetDragCommit(member, dx, dy),
+        plainTranslate: member.plainTranslate,
       }));
       logDrag("drop", {
         pointer: `${Math.round(rawDx)},${Math.round(rawDy)}`,
@@ -476,7 +477,10 @@ export function createDomEditOverlayGestureHandlers(opts: UseDomEditOverlayGestu
         box.style.top = `${nextBoxTop}px`;
       }
       void Promise.resolve(
-        opts.onPathOffsetCommitRef.current(sel, finalOffset, { altKey: e.altKey }),
+        opts.onPathOffsetCommitRef.current(sel, finalOffset, {
+          altKey: e.altKey,
+          plainTranslate: g.pathOffsetMember.plainTranslate,
+        }),
       )
         .catch(() => {
           if (

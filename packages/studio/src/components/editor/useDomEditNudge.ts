@@ -18,6 +18,7 @@ import {
 import type {
   BlockedMoveState,
   DomEditGroupPathOffsetCommit,
+  MoveCommitOptions,
   GestureState,
   GroupGestureState,
 } from "./domEditOverlayGestures";
@@ -60,7 +61,7 @@ export interface UseDomEditNudgeParams {
     (
       s: DomEditSelection,
       n: { x: number; y: number },
-      m?: { altKey?: boolean },
+      m?: MoveCommitOptions,
     ) => Promise<unknown> | void
   >;
   onGroupPathOffsetCommitRef: RefObject<
@@ -150,11 +151,12 @@ export function useDomEditNudge(params: UseDomEditNudgeParams): { flushNudge: ()
     const updates: DomEditGroupPathOffsetCommit[] = session.members.map((member) => ({
       selection: member.selection,
       next: applyManualOffsetNudgeCommit(member, session.accum),
+      plainTranslate: member.plainTranslate,
     }));
     const p = paramsRef.current;
     const commit = session.isGroup
       ? p.onGroupPathOffsetCommitRef.current(updates)
-      : p.onPathOffsetCommitRef.current(updates[0].selection, updates[0].next);
+      : p.onPathOffsetCommitRef.current(updates[0].selection, updates[0].next, updates[0]);
     void Promise.resolve(commit)
       .catch(() => {
         for (const member of session.members) {

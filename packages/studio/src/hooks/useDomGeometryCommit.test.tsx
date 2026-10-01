@@ -210,6 +210,36 @@ describe("useDomGeometryCommit, from the package entry", () => {
     unmount();
   });
 
+  it("refuses a CSS move once GSAP has taken the element's translate, and writes nothing", async () => {
+    const calls = stubPatchServer();
+    const { element, hook, unmount } = renderHost();
+    element.style.setProperty("translate", "none");
+    Object.assign(element, { _gsap: { renderTransform: () => {} } });
+
+    await expect(
+      hook().commitPathOffset(
+        makeSelection("card", element),
+        { x: 1, y: 2 },
+        { plainTranslate: true },
+      ),
+    ).rejects.toThrow(/animation took over/);
+    expect(calls.patches).toEqual([]);
+    expect(element.style.getPropertyValue("translate")).toBe("none");
+    unmount();
+  });
+
+  it("leaves a later move's translate alone when an earlier move's save fails", async () => {
+    stubPatchServer(500);
+    const { element, hook, unmount } = renderHost();
+    element.style.setProperty("translate", "40px 30px");
+
+    const saving = hook().commitPathOffset(makeSelection("card", element), { x: 1, y: 2 });
+    element.style.setProperty("translate", "7px 8px");
+    await expect(saving).rejects.toThrow();
+    expect(element.style.getPropertyValue("translate")).toBe("7px 8px");
+    unmount();
+  });
+
   it("keeps the same commits across renders, so the overlay's handlers stay put", () => {
     stubServer();
     const { hook, rerender, unmount } = renderHost();

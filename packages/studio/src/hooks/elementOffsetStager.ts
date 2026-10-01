@@ -6,7 +6,10 @@ import {
 import { LAYER_REVEAL_PRIOR_POSITION_ATTR } from "../player/lib/timelineElementHelpers";
 import type { PatchOperation } from "../utils/sourcePatcher";
 import { translatePatch } from "../components/editor/plainTranslate";
-import { gsapWritesPosition } from "./gsapRuntimeKeyframes";
+import { gsapRendersTransform } from "./gsapRuntimeKeyframes";
+
+const GSAP_TOOK_OVER =
+  "The animation took over this layer's position during the move, so it was not saved. Reload the preview.";
 
 const ELEMENT_OFFSET_REFUSED: Record<ElementOffsetRefusal, string> = {
   anchored: "This layer is anchored from its right or bottom edge. Move it in the Code tab.",
@@ -58,17 +61,22 @@ function stagePlainTranslate(
   return { save, rollback };
 }
 
-/** Applies a move on the element itself live now: its translate when GSAP does not position it,
- *  else left/top for a shared-tween element. Throws, after a toast, when it cannot. */
+/** Applies a move on the element itself live now: its translate on the plain route, else
+ *  left/top for a shared-tween element. Throws, after a toast, when it cannot. */
 export function stageElementOffset(
   { commitPositionPatchToHtml, showToast, readOnlyPreview }: ElementOffsetStagerDeps,
   selection: DomEditSelection,
   next: { x: number; y: number },
+  plainTranslate: boolean,
   coalesceKey?: string,
 ): { save: () => Promise<void>; rollback: () => void } {
   const el = selection.element;
   if (readOnlyPreview) return { save: () => Promise.resolve(), rollback: () => undefined };
-  if (!gsapWritesPosition(el)) {
+  if (plainTranslate) {
+    if (gsapRendersTransform(el)) {
+      showToast(GSAP_TOOK_OVER, "error");
+      throw new Error(GSAP_TOOK_OVER);
+    }
     return stagePlainTranslate(commitPositionPatchToHtml, selection, next, coalesceKey);
   }
   const previous = { position: el.style.position, left: el.style.left, top: el.style.top };

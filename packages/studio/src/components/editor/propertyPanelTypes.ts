@@ -79,6 +79,7 @@ export interface PropertyPanelProps {
   onSetManualOffset: (
     element: DomEditSelection,
     next: { x: number; y: number },
+    route?: { plainTranslate: boolean },
   ) => void | Promise<void>;
   onSetManualSize: (
     element: DomEditSelection,

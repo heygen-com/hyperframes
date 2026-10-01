@@ -227,3 +227,36 @@ describe("useDomEditNudge — selection cleanup keyed on stable identity", () =>
     elementB.remove();
   });
 });
+
+describe("useDomEditNudge carries the route its press chose", () => {
+  beforeEach(() => {
+    vi.useFakeTimers();
+    __resetForTests();
+  });
+  afterEach(() => vi.useRealTimers());
+
+  it("commits an element without GSAP on the CSS route", () => {
+    const host = document.createElement("div");
+    const root = createRoot(host);
+    const element = document.createElement("div");
+    document.body.append(element);
+    const commit = vi.fn();
+    act(() => {
+      root.render(
+        React.createElement(Harness, {
+          selection: makeSelection("Dot", element),
+          onPathOffsetCommit: commit,
+        }),
+      );
+    });
+    act(() => dispatchArrowRight());
+    act(() => vi.advanceTimersByTime(CANVAS_NUDGE_COMMIT_DEBOUNCE_MS + 10));
+    expect(commit).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.anything(),
+      expect.objectContaining({ plainTranslate: true }),
+    );
+    act(() => root.unmount());
+    element.remove();
+  });
+});

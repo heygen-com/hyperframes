@@ -126,6 +126,7 @@ function mountGroupHandler({
   let pathOffsetCommit!: (
     selection: DomEditSelection,
     next: { x: number; y: number },
+    route?: { plainTranslate?: boolean },
   ) => Promise<void>;
   function Harness() {
     const editing = useGsapAwareEditing({
@@ -152,8 +153,11 @@ function mountGroupHandler({
   const root = mountReactHarness(<Harness />);
   return {
     groupCommit: (updates: DomEditGroupPathOffsetCommit[]) => groupCommit(updates),
-    pathOffsetCommit: (selection: DomEditSelection, next: { x: number; y: number }) =>
-      pathOffsetCommit(selection, next),
+    pathOffsetCommit: (
+      selection: DomEditSelection,
+      next: { x: number; y: number },
+      route?: { plainTranslate?: boolean },
+    ) => pathOffsetCommit(selection, next, route),
     root,
   };
 }
@@ -171,11 +175,41 @@ describe("useGsapAwareEditing moves of an element GSAP does not position", () =>
     });
     const box = { element: document.createElement("div"), id: "box", selector: "#box" };
     await act(() => pathOffsetCommit(box as unknown as DomEditSelection, { x: 130.25, y: 90 }));
-    expect(stageElementPositionOffset).toHaveBeenCalledWith(box, { x: 130.25, y: 90 });
+    expect(stageElementPositionOffset).toHaveBeenCalledWith(box, { x: 130.25, y: 90 }, true);
     expect(save).toHaveBeenCalledTimes(1);
     expect(gsapCommitMutation).not.toHaveBeenCalled();
     expect(makeFetchFallback).not.toHaveBeenCalled();
     expect(mocks.drag).not.toHaveBeenCalled();
+    act(() => root.unmount());
+  });
+});
+
+describe("useGsapAwareEditing keeps the route a gesture chose at press", () => {
+  it.each([
+    ["the CSS route, on an element GSAP has since taken over", true, () => gsapPositioned("div")],
+    [
+      "the GSAP route, on an element that now looks GSAP-free",
+      false,
+      () => document.createElement("div"),
+    ],
+  ])("%s", async (_, plainTranslate, makeElement) => {
+    mocks.drag.mockResolvedValue({ status: "persisted" });
+    const save = vi.fn().mockResolvedValue(undefined);
+    const stageElementPositionOffset = vi.fn(() => ({ save, rollback: vi.fn() }));
+    const { pathOffsetCommit, groupCommit, root } = mountGroupHandler({
+      gsapCommitMutation: vi.fn().mockResolvedValue(undefined),
+      makeFetchFallback: () => vi.fn().mockResolvedValue([]),
+      stageElementPositionOffset,
+    });
+    const box = {
+      element: makeElement(),
+      id: "box",
+      selector: "#box",
+    } as unknown as DomEditSelection;
+    await act(() => pathOffsetCommit(box, { x: 40, y: 20 }, { plainTranslate }));
+    await act(() => groupCommit([{ selection: box, next: { x: 40, y: 20 }, plainTranslate }]));
+    expect(stageElementPositionOffset.mock.calls.length).toBe(plainTranslate ? 2 : 0);
+    expect(mocks.drag.mock.calls.some((call) => call[0] === box)).toBe(!plainTranslate);
     act(() => root.unmount());
   });
 });
@@ -193,7 +227,7 @@ describe("useGsapAwareEditing shared-tween moves", () => {
     });
     const word = { element: gsapPositioned("span"), hfId: "w0", selector: ".w" };
     await act(() => pathOffsetCommit(word as unknown as DomEditSelection, { x: 40, y: 20 }));
-    expect(stageElementPositionOffset).toHaveBeenCalledWith(word, { x: 40, y: 20 });
+    expect(stageElementPositionOffset).toHaveBeenCalledWith(word, { x: 40, y: 20 }, false);
     expect(save).toHaveBeenCalledTimes(1);
     expect(commitMutation).not.toHaveBeenCalled();
     act(() => root.unmount());
@@ -223,8 +257,18 @@ describe("useGsapAwareEditing shared-tween moves", () => {
       ] as unknown as DomEditGroupPathOffsetCommit[]),
     );
     const groupKey = expect.stringMatching(/^group-drag:\d+$/);
-    expect(stageElementPositionOffset).toHaveBeenCalledWith(word, { x: 40, y: 20 }, groupKey);
-    expect(stageElementPositionOffset).toHaveBeenCalledWith(plain, { x: 40, y: 20 }, groupKey);
+    expect(stageElementPositionOffset).toHaveBeenCalledWith(
+      word,
+      { x: 40, y: 20 },
+      false,
+      groupKey,
+    );
+    expect(stageElementPositionOffset).toHaveBeenCalledWith(
+      plain,
+      { x: 40, y: 20 },
+      true,
+      groupKey,
+    );
     expect(mocks.drag.mock.calls.some((call) => call[0] === plain)).toBe(false);
     act(() => root.unmount());
   });
@@ -321,7 +365,7 @@ describe("useGsapAwareEditing anchored resize", () => {
     await act(() => h.resize(h.selection, { width: 300, height: 200 }, { x: -50, y: -25 }));
     const key = h.commitMutation.mock.calls[0]![2].coalesceKey;
     expect(key).toMatch(/^tx:/);
-    expect(h.elementOffset).toHaveBeenCalledWith(h.selection, { x: -50, y: -25 }, key);
+    expect(h.elementOffset).toHaveBeenCalledWith(h.selection, { x: -50, y: -25 }, true, key);
     expect(h.anchorSave.mock.invocationCallOrder[0]).toBeGreaterThan(
       h.commitMutation.mock.invocationCallOrder[0]!,
     );

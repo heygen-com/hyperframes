@@ -1,7 +1,10 @@
 import { useCallback, useMemo, useRef, useState } from "react";
 import type { GsapAnimation } from "@hyperframes/core/gsap-parser";
 import type { DomEditSelection } from "../components/editor/domEditing";
-import type { DomEditGroupPathOffsetCommit } from "../components/editor/DomEditOverlay";
+import type {
+  DomEditGroupPathOffsetCommit,
+  MoveCommitOptions,
+} from "../components/editor/DomEditOverlay";
 import { isPreviewBooted } from "../player/store/playerStore";
 import type { DomEditCommitOutcome } from "./domEditCommitRunner";
 import type { UseDomStyleCommitOptions } from "./useDomStyleCommit";
@@ -29,7 +32,7 @@ export interface DomGeometryCommits {
   commitPathOffset: (
     selection: DomEditSelection,
     next: { x: number; y: number },
-    modifiers?: { altKey?: boolean },
+    modifiers?: MoveCommitOptions,
   ) => Promise<DomEditCommitOutcome>;
   commitGroupPathOffset: (updates: DomEditGroupPathOffsetCommit[]) => Promise<DomEditCommitOutcome>;
   commitBoxSize: (

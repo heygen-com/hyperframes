@@ -1,3 +1,4 @@
+import { gsapWritesPosition } from "../../hooks/gsapRuntimeKeyframes";
 import type { DomEditSelection } from "./domEditingTypes";
 import { readStudioBoxSize } from "./manualEdits";
 import { readMoveOffset, UNREADABLE_TRANSLATE } from "./plainTranslate";
@@ -74,14 +75,16 @@ export function createTransformCommitHandlers({
       )
     )
       return;
-    const current = readMoveOffset(element.element);
+    const plainTranslate = !gsapWritesPosition(element.element);
+    const current = readMoveOffset(element.element, plainTranslate);
     if (!Number.isFinite(current.x) || !Number.isFinite(current.y))
       return void showToast?.(UNREADABLE_TRANSLATE);
     await Promise.resolve(
-      onSetManualOffset(element, {
-        x: axis === "x" ? parsed : current.x,
-        y: axis === "y" ? parsed : current.y,
-      }),
+      onSetManualOffset(
+        element,
+        { x: axis === "x" ? parsed : current.x, y: axis === "y" ? parsed : current.y },
+        { plainTranslate },
+      ),
     );
   };
 
