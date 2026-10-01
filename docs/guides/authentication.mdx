@@ -68,7 +68,7 @@ vision key is available.
 | **Voice (TTS)** | HeyGen → ElevenLabs → Kokoro | `HEYGEN_API_KEY` → `HYPERFRAMES_API_KEY` → `~/.heygen` · then `ELEVENLABS_API_KEY` | Kokoro: `pip install kokoro-onnx soundfile` |
 | **Music (BGM)** | HeyGen library → Lyria → MusicGen | HeyGen credential (above) · then `GEMINI_API_KEY` → `GOOGLE_API_KEY` | MusicGen: `pip install transformers torch soundfile numpy` |
 | **Sound effects** | HeyGen library → bundled library | HeyGen credential (above) | bundled — no deps |
-| **Capture descriptions** | OpenRouter → Gemini | `OPENROUTER_API_KEY` → `GEMINI_API_KEY` | None; optional for [website capture](/guides/product-launch-video) |
+| **Capture descriptions** | Your OpenAI-compatible endpoint → OpenRouter → Gemini | `HYPERFRAMES_VISION_*` → `OPENROUTER_API_KEY` → `GEMINI_API_KEY` | None; optional for [website capture](/guides/product-launch-video) |
 
 Run `npx hyperframes doctor` to check which local dependencies are installed.
 The media workflows run `hyperframes auth status` before generation and tell
@@ -144,6 +144,7 @@ to a shared space with `--space`.
 | `GOOGLE_APPLICATION_CREDENTIALS` / `GCS_CREDS` | Gemini TTS service-account JSON file path / injected JSON. Used when neither API key is set. |
 | `GOOGLE_CLOUD_PROJECT` / `GCLOUD_PROJECT_ID` | Gemini OAuth quota project; first set value wins, then the service account project. |
 | `OPENROUTER_API_KEY` | Capture descriptions; takes priority over Gemini for that step. |
+| `HYPERFRAMES_VISION_BASE_URL` / `HYPERFRAMES_VISION_API_KEY` / `HYPERFRAMES_VISION_MODEL` | Capture descriptions through any OpenAI-compatible vision endpoint; set all three. Takes priority over OpenRouter and Gemini. |
 
 ## Related topics
 
