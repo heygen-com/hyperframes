@@ -30,6 +30,7 @@ import type { DomEditSelection } from "../components/editor/domEditingTypes";
 import type { MutationResult } from "./gsapScriptCommitTypes";
 import { persistSdkSerialize } from "../utils/sdkCutover";
 import { applyPreviewSync, useGsapScriptCommits } from "./useGsapScriptCommits";
+import { hasStudioPendingEdits } from "../utils/studioPendingEdits";
 
 // ── applyPreviewSync (pure preview-sync decision) ────────────────────────────
 
@@ -425,6 +426,24 @@ function mockFetchResult(over: Partial<MutationResult> = {}): void {
     vi.fn(async () => ({ ok: true, json: async () => body }) as unknown as Response),
   );
 }
+
+describe("a GSAP script commit", () => {
+  it("counts as a pending edit from its call until it lands, so a quick Cmd+Z waits for it", async () => {
+    mockFetchResult();
+    const deps = renderCommitHook();
+    let committed!: Promise<unknown>;
+    act(() => {
+      committed = deps.api.commitMutation(
+        selection,
+        { type: "remove-all-keyframes", animationId: "a" },
+        { label: "Remove all keyframes" },
+      );
+    });
+    expect(hasStudioPendingEdits()).toBe(true);
+    await act(async () => void (await committed));
+    expect(hasStudioPendingEdits()).toBe(false);
+  });
+});
 
 describe("runCommit — instantPatch wiring", () => {
   it("explains a deliberate mutation that the server safely rejected as unchanged", async () => {

@@ -7,6 +7,7 @@ import { applySoftReload, extractGsapScriptText } from "../utils/gsapSoftReload"
 import type { SoftReloadResult } from "../utils/gsapSoftReload";
 import { trackStudioEvent } from "../utils/studioTelemetry";
 import { serializeStudioFileMutation } from "../utils/studioFileMutationCoordinator";
+import { trackedStudioEdit } from "../utils/studioPendingEdits";
 import {
   getStudioSaveErrorMessage,
   isStudioSaveErrorAlreadyToasted,
@@ -416,20 +417,20 @@ export function useGsapScriptCommits({ projectIdRef, activeCompPath, previewIfra
       }
       return run();
     };
-    const commit: CommitMutation = (selection, mutation, options) => {
+    const commit: CommitMutation = trackedStudioEdit((selection, mutation, options) => {
       if (!activeProjectId) return Promise.resolve();
       const file = selection.sourceFile || activeCompPath || "index.html";
       return serializeCommit(file, options.serializeKey, () =>
         runCommit(activeProjectId, activeCompPath, file, selection, mutation, options),
       );
-    };
-    commit.batch = (calls, options) => {
+    }) as CommitMutation;
+    commit.batch = trackedStudioEdit((calls: CommitMutationCall[], options: CommitMutationOptions) => {
       if (!activeProjectId) return Promise.resolve();
       const file = calls[0]?.selection.sourceFile || activeCompPath || "index.html";
       return serializeCommit(file, options.serializeKey, () =>
         runBatchCommit(activeProjectId, activeCompPath, file, calls, options),
       );
-    };
+    });
     return commit;
   }, [runCommit, runBatchCommit, activeCompPath, activeProjectId, writeProjectFile]);
   const trackGsapSaveFailure = useGsapSaveFailureTelemetry(activeCompPath);
