@@ -153,14 +153,14 @@ export function useDomEditNudge(params: UseDomEditNudgeParams): { flushNudge: ()
     if (!session) return undefined;
     sessionRef.current = null;
     if (session.timer) clearTimeout(session.timer);
-    const updates: DomEditGroupPathOffsetCommit[] = session.members.map((member) => ({
-      selection: member.selection,
-      next: applyManualOffsetNudgeCommit(member, session.accum),
-      plainTranslate: member.plainTranslate,
-    }));
     const p = paramsRef.current;
     let saved: Promise<unknown> | undefined;
     try {
+      const updates: DomEditGroupPathOffsetCommit[] = session.members.map((member) => ({
+        selection: member.selection,
+        next: applyManualOffsetNudgeCommit(member, session.accum),
+        plainTranslate: member.plainTranslate,
+      }));
       const commit = session.isGroup
         ? p.onGroupPathOffsetCommitRef.current(updates)
         : p.onPathOffsetCommitRef.current(updates[0].selection, updates[0].next, {

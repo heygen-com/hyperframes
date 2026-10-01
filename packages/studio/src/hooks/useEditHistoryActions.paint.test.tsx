@@ -13,6 +13,7 @@ import {
 import { useDomEditNudge } from "../components/editor/useDomEditNudge";
 import { DomEditProvider, useDomEditActionsContext } from "../contexts/DomEditContext";
 import { __resetForTests as resetNudgeKeys } from "../utils/canvasNudgeGate";
+import { trackedStudioEdit } from "../utils/studioPendingEdits";
 import { makeSelection } from "./domSelectionTestHarness";
 import { useEditHistoryActions } from "./useEditHistoryActions";
 import { usePersistentEditHistory } from "./usePersistentEditHistory";
@@ -259,6 +260,23 @@ it("an undo pressed while a queued save fails undoes the edit before it, file an
 
   const undone = s.actions().undo();
   await vi.waitFor(() => expect(fail).toBeTypeOf("function"));
+  fail();
+  await expect(failed).rejects.toThrow("The save failed.");
+  await act(() => undone);
+  expect(s.file()).toBe(BEFORE);
+  expect(s.box()).toBe("10px");
+});
+
+it("an undo pressed while a tracked timeline edit fails still undoes the edit before it", async () => {
+  const s = await studio();
+  await s.edit();
+  let fail!: () => void;
+  const timelineEdit = trackedStudioEdit(
+    () => new Promise<void>((_, reject) => (fail = () => reject(new Error("The save failed.")))),
+  );
+  const failed = timelineEdit();
+
+  const undone = s.actions().undo();
   fail();
   await expect(failed).rejects.toThrow("The save failed.");
   await act(() => undone);

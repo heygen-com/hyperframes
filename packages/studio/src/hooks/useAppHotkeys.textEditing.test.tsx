@@ -86,7 +86,7 @@ function Harness() {
     writeProjectFile: vi.fn(async () => undefined),
     showToast: vi.fn(),
     syncHistoryPreviewAfterApply: vi.fn(async () => undefined),
-    waitForPendingDomEditSaves: vi.fn(async () => undefined),
+    settlePendingEdits: vi.fn(async () => undefined),
     handleCopy: vi.fn(() => false),
     handlePaste: vi.fn(async () => undefined),
     handleCut: vi.fn(async () => false),

@@ -2,7 +2,7 @@
 import type { useDomEditSession } from "../hooks/useDomEditSession";
 import { useCallback, useContext, useMemo, useRef, type ReactNode } from "react";
 import { createStableContext } from "../utils/hmrStableContext";
-import { trackStudioPendingEdit } from "../utils/studioPendingEdits";
+import { trackedStudioEdit } from "../utils/studioPendingEdits";
 
 type DomEditValue = ReturnType<typeof useDomEditSession>;
 
@@ -104,12 +104,7 @@ function trackEditCommits(actions: DomEditActionsValue): DomEditActionsValue {
   const tracked: Record<string, unknown> = { ...actions };
   for (const key of Object.keys(SAVES_AN_EDIT) as Array<keyof typeof SAVES_AN_EDIT>) {
     if (!SAVES_AN_EDIT[key]) continue;
-    const commit = actions[key] as (...args: unknown[]) => unknown;
-    tracked[key] = (...args: unknown[]) => {
-      const result = commit(...args);
-      if (result instanceof Promise) trackStudioPendingEdit(result.catch(() => undefined));
-      return result;
-    };
+    tracked[key] = trackedStudioEdit(actions[key] as (...args: unknown[]) => unknown);
   }
   return tracked as unknown as DomEditActionsValue;
 }

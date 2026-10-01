@@ -73,6 +73,16 @@ export function trackStudioPendingEdit(
   return promise;
 }
 
+export function trackedStudioEdit<Args extends unknown[], R>(
+  edit: (...args: Args) => R,
+): (...args: Args) => R {
+  return (...args) => {
+    const result = edit(...args);
+    if (result instanceof Promise) trackStudioPendingEdit(result);
+    return result;
+  };
+}
+
 export async function flushStudioPendingEdits(): Promise<StudioPendingEditsDrainResult> {
   const active = focusedField();
   if (active) {
@@ -86,15 +96,16 @@ export async function flushStudioPendingEdits(): Promise<StudioPendingEditsDrain
   window.dispatchEvent(
     new CustomEvent<StudioFlushPendingEditsDetail>(STUDIO_FLUSH_PENDING_EDITS_EVENT, { detail }),
   );
+  let conflict: StudioFileConflictError | undefined;
   let firstFailure: PromiseRejectedResult | undefined;
   while (detail.promises.length > 0 || pendingEditPromises.size > 0) {
     const promises = [...detail.promises, ...pendingEditPromises];
     detail.promises = [];
-    const results = await Promise.allSettled(promises);
-    const batchFailures = inspectDrainFailures(results);
-    if (batchFailures.conflict) return { status: "conflict", error: batchFailures.conflict };
+    const batchFailures = inspectDrainFailures(await Promise.allSettled(promises));
+    conflict ??= batchFailures.conflict;
     firstFailure ??= batchFailures.firstFailure;
   }
+  if (conflict) return { status: "conflict", error: conflict };
   return firstFailure ? { status: "failed", error: firstFailure.reason } : { status: "clean" };
 }
 

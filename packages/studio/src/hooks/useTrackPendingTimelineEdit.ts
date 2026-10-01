@@ -1,5 +1,5 @@
 import { useCallback, useRef } from "react";
-import { trackStudioPendingEdit } from "../utils/studioPendingEdits";
+import { trackedStudioEdit } from "../utils/studioPendingEdits";
 
 type AsyncFn = (...args: never[]) => Promise<unknown>;
 
@@ -11,11 +11,7 @@ export function useTrackPendingTimelineEdit() {
     const key = fn as unknown as AsyncFn;
     const cached = wrappedRef.current.get(key);
     if (cached) return cached as unknown as (...args: Args) => Promise<R>;
-    const wrapped = (...args: Args): Promise<R> => {
-      const result = fn(...args);
-      trackStudioPendingEdit(result);
-      return result;
-    };
+    const wrapped = trackedStudioEdit(fn);
     wrappedRef.current.set(key, wrapped as unknown as AsyncFn);
     return wrapped;
   }, []);

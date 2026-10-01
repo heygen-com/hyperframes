@@ -51,11 +51,12 @@ it("undo waits for an edit committed before its save has written anything", asyn
   expect(drained).toBe(true);
 });
 
-it("an edit that fails does not fail the undo that waited for it", async () => {
+it("an edit that fails is waited out and reported to the drain, like every tracked edit", async () => {
   let fail!: (error: Error) => void;
   const { committed } = commitResize(new Promise<void>((_, reject) => (fail = reject)));
   const drain = flushStudioPendingEdits();
-  fail(new Error("blocked"));
+  const failure = new Error("blocked");
+  fail(failure);
   await expect(committed).rejects.toThrow("blocked");
-  await expect(drain).resolves.toEqual({ status: "clean" });
+  await expect(drain).resolves.toEqual({ status: "failed", error: failure });
 });

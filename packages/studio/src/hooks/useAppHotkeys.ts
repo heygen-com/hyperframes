@@ -85,7 +85,7 @@ interface UseAppHotkeysParams {
   showToast: (message: string, tone?: "error" | "info") => void;
   syncHistoryPreviewAfterApply: UseEditHistoryActionsOptions["syncHistoryPreviewAfterApply"];
   showHistoryRestoreNow?: UseEditHistoryActionsOptions["showHistoryRestoreNow"];
-  waitForPendingDomEditSaves: () => Promise<void>;
+  settlePendingEdits: () => Promise<void>;
   handleCopy: () => boolean;
   handlePaste: () => Promise<void>;
   handleCut: () => Promise<boolean>;
@@ -124,7 +124,7 @@ export function useAppHotkeys({
   showToast,
   syncHistoryPreviewAfterApply,
   showHistoryRestoreNow,
-  waitForPendingDomEditSaves,
+  settlePendingEdits,
   handleCopy,
   handlePaste,
   handleCut,
@@ -151,7 +151,7 @@ export function useAppHotkeys({
     showToast,
     syncHistoryPreviewAfterApply,
     showHistoryRestoreNow,
-    waitForPendingDomEditSaves,
+    waitForPendingDomEditSaves: settlePendingEdits,
     onAfterUndoRedo,
     activeCompPath,
     forceReloadSdkSession,

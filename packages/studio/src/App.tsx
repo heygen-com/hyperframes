@@ -30,6 +30,7 @@ import { useStudioSdkSessions } from "./hooks/useStudioSdkSessions";
 import { useStudioExternalFileChanges } from "./hooks/useStudioExternalFileChanges";
 import { useBlockHandlers } from "./hooks/useBlockHandlers";
 import { useAppHotkeys } from "./hooks/useAppHotkeys";
+import { trackedStudioEdit } from "./utils/studioPendingEdits";
 import { useClipboard } from "./hooks/useClipboard";
 import { deleteSelectedKeyframes } from "./hooks/timelineEditingHelpers";
 import { useCaptionDetection } from "./hooks/useCaptionDetection";
@@ -256,7 +257,7 @@ export function StudioApp({ readOnlyPreview = false, readOnlyPreviewReason }: St
     showToast,
     syncHistoryPreviewAfterApply: previewPersistence.syncHistoryPreviewAfterApply,
     showHistoryRestoreNow: previewPersistence.showHistoryRestoreNow,
-    waitForPendingDomEditSaves: previewPersistence.settlePendingEdits,
+    settlePendingEdits: previewPersistence.settlePendingEdits,
     handleCopy,
     handlePaste,
     handleCut,
@@ -315,9 +316,13 @@ export function StudioApp({ readOnlyPreview = false, readOnlyPreviewReason }: St
     readOnlyPreview,
   });
   domEditSelectionBridgeRef.current = domEditSession.domEditSelection;
-  handleDomZIndexReorderCommitRef.current = domEditSession.handleDomZIndexReorderCommit;
+  handleDomZIndexReorderCommitRef.current = trackedStudioEdit(
+    domEditSession.handleDomZIndexReorderCommit,
+  );
   clearDomSelectionRef.current = domEditSession.clearDomSelection;
-  handleDomEditElementDeleteRef.current = domEditSession.handleDomEditElementDelete;
+  handleDomEditElementDeleteRef.current = trackedStudioEdit(
+    domEditSession.handleDomEditElementDelete,
+  );
   resetKeyframesRef.current = domEditSession.handleResetSelectedElementKeyframes;
   invalidateGsapCacheRef.current = domEditSession.invalidateGsapCache;
   deleteSelectedKeyframesRef.current = () => deleteSelectedKeyframes(domEditSession);

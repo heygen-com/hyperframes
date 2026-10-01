@@ -3,7 +3,9 @@ import { describe, expect, it, vi } from "vitest";
 import {
   addStudioPendingEditFlushListener,
   flushStudioPendingEdits,
+  hasStudioPendingEdits,
   trackStudioPendingEdit,
+  trackedStudioEdit,
 } from "./studioPendingEdits";
 import { StudioFileConflictError } from "./studioSaveDiagnostics";
 
@@ -146,5 +148,50 @@ describe("studio pending edit flush", () => {
     resolvePersist();
     await flushed;
     expect(steps).toEqual(["persisted", "flushed"]);
+  });
+});
+
+describe("a drain that meets a conflict", () => {
+  it("still waits for the edits that started while it ran before it reports the conflict", async () => {
+    const conflict = new StudioFileConflictError({
+      filePath: "index.html",
+      currentVersion: "v2",
+      currentContent: "external",
+      attemptedContent: "studio",
+    });
+    let finish!: () => void;
+    let laterSaved = false;
+    trackStudioPendingEdit(
+      Promise.resolve().then(() => {
+        trackStudioPendingEdit(
+          new Promise<void>((resolve) => (finish = resolve)).then(() => (laterSaved = true)),
+        );
+        throw conflict;
+      }),
+    );
+    let drained = false;
+    const drain = flushStudioPendingEdits().then((result) => ((drained = true), result));
+    await new Promise((resolve) => setTimeout(resolve, 10));
+    expect(drained).toBe(false);
+    finish();
+    await expect(drain).resolves.toEqual({ status: "conflict", error: conflict });
+    expect(laterSaved).toBe(true);
+  });
+});
+
+describe("trackedStudioEdit", () => {
+  it("counts each call as a pending edit until it settles, and reports a failure to the drain", async () => {
+    let fail!: () => void;
+    const failure = new Error("The save failed.");
+    const edit = trackedStudioEdit(
+      () => new Promise<void>((_, reject) => (fail = () => reject(failure))),
+    );
+    const saved = edit();
+    expect(hasStudioPendingEdits()).toBe(true);
+    const drain = flushStudioPendingEdits();
+    fail();
+    await expect(saved).rejects.toThrow("The save failed.");
+    await expect(drain).resolves.toEqual({ status: "failed", error: failure });
+    expect(hasStudioPendingEdits()).toBe(false);
   });
 });

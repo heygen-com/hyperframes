@@ -16,6 +16,7 @@ vi.mock("../utils/studioTelemetry", () => ({ trackStudioEvent: vi.fn() }));
 const domDelete = vi.fn(async () => undefined);
 const historyUndo = vi.fn(async () => ({ ok: false }));
 const historyRedo = vi.fn(async () => ({ ok: false }));
+const settle = vi.fn(async () => undefined);
 let root: Root | null = null;
 let sync: ((iframe: HTMLIFrameElement | null) => void) | null = null;
 
@@ -49,7 +50,7 @@ function Harness() {
     writeProjectFile: vi.fn(async () => undefined),
     showToast: vi.fn(),
     syncHistoryPreviewAfterApply: vi.fn(async () => undefined),
-    waitForPendingDomEditSaves: vi.fn(async () => undefined),
+    settlePendingEdits: settle,
     handleCopy: vi.fn(() => false),
     handlePaste: vi.fn(() => false),
     handleCut: vi.fn(() => false),
@@ -69,6 +70,8 @@ afterEach(() => {
   domDelete.mockClear();
   historyUndo.mockClear();
   historyRedo.mockClear();
+  settle.mockReset();
+  settle.mockImplementation(async () => undefined);
   vi.mocked(trackStudioEvent).mockClear();
 });
 
@@ -120,6 +123,18 @@ describe("preview iframe hotkey forwarding", () => {
     expect(historyUndo).toHaveBeenCalledTimes(1);
     expect(trackStudioEvent).toHaveBeenCalledTimes(1);
     expect(trackStudioEvent).toHaveBeenCalledWith("keyboard_shortcut", { action: "undo" });
+  });
+
+  it("settles pending edits, failed ones included, before Cmd+Z steps the history", async () => {
+    let settled!: () => void;
+    settle.mockImplementation(
+      () => new Promise<undefined>((resolve) => (settled = () => resolve(undefined))),
+    );
+    await press(mountWithPreview(), { key: "z", ctrlKey: true });
+    expect(settle).toHaveBeenCalledTimes(1);
+    expect(historyUndo).not.toHaveBeenCalled();
+    await act(async () => settled());
+    expect(historyUndo).toHaveBeenCalledTimes(1);
   });
 
   it.each([
