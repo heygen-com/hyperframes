@@ -242,20 +242,40 @@ const previewFrames = (page) =>
     .filter((u) => u.includes("/preview"))
     .join(" ");
 
-/** Measures once the preview frames and the box have held still for STILL_MS; Studio updates both after a save. */
-// fallow-ignore-next-line complexity
+/** A hidden preview holding the target is a shadow reload not yet promoted: the visible frame is about to go stale. */
+export async function swapPending(page, selector = "#target") {
+  for (const f of page.frames().filter((f) => f.url().includes("/preview"))) {
+    const host = await f.frameElement().catch(() => null);
+    const shown = await host?.evaluate((e) => e.checkVisibility({ visibilityProperty: true }));
+    if (shown === false && (await f.$(selector).catch(() => null))) return true;
+  }
+  return false;
+}
+
+/** Restart the stillness window: a pending swap, a changed set of preview frames, or the box moved. */
+export const unsettledBy = (start, now) =>
+  start.pending ||
+  now.pending ||
+  now.frames !== start.frames ||
+  quadDistance(now.m.visible, start.m.visible) >= 0.01;
+
+/** Measures once the shown preview and the box have held still for STILL_MS; Studio updates both after a save. */
 export async function settled(ctx, timeout = 15_000) {
   const deadline = Date.now() + timeout;
-  let start = { m: await measure(ctx), frames: previewFrames(ctx.page) };
+  const read = async () => ({
+    m: await measure(ctx),
+    frames: previewFrames(ctx.page),
+    pending: await swapPending(ctx.page, ctx.selector),
+  });
+  let start = await read();
   let now = start;
   // Compared with the window's first read, so a drift too slow to show read to read still restarts it.
-  for (let since = Date.now(); Date.now() - since < STILL_MS; ) {
+  for (let since = Date.now(); start.pending || Date.now() - since < STILL_MS; ) {
     // A preview that never holds still is a Studio defect: the metrics it feeds fail, the rest still count.
     if (Date.now() > deadline) return { ...now.m, unsettled: true };
     await nextFrame(ctx.page);
-    now = { m: await measure(ctx), frames: previewFrames(ctx.page) };
-    if (now.frames !== start.frames || quadDistance(now.m.visible, start.m.visible) >= 0.01)
-      [start, since] = [now, Date.now()];
+    now = await read();
+    if (unsettledBy(start, now)) [start, since] = [now, Date.now()];
   }
   return now.m;
 }
