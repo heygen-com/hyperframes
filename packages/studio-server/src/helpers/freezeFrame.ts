@@ -41,6 +41,11 @@ export function freezeExtractArgs(src: string, mediaTime: number, output: string
   return ["-y", "-ss", String(round3(mediaTime)), "-i", src, "-frames:v", "1", output];
 }
 
+export function freezeStillFileName(clipId: string, playhead: number): string {
+  const stem = clipId.replace(/[^A-Za-z0-9_-]/g, "_").slice(0, 80) || "clip";
+  return `${stem}-${Math.round(playhead * 1000)}.png`;
+}
+
 export interface FreezeSource {
   id: string;
   src: string;

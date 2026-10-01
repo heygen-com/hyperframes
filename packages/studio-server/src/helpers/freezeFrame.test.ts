@@ -4,6 +4,7 @@ import {
   applyFreezeFrameToHtml,
   freezeExtractArgs,
   freezeFrameMediaTime,
+  freezeStillFileName,
   readFreezeSource,
 } from "./freezeFrame.js";
 
@@ -150,5 +151,14 @@ describe("applyFreezeFrameToHtml", () => {
     expect(
       applyFreezeFrameToHtml(project, { target: { id: "talk" }, playhead: 9, imageSrc: "x.png" }),
     ).toBeNull();
+  });
+});
+
+describe("freezeStillFileName", () => {
+  it("reduces a clip id to one safe filename component", () => {
+    expect(freezeStillFileName("talk", 2.5)).toBe("talk-2500.png");
+    expect(freezeStillFileName("../../etc/x", 1)).toBe("______etc_x-1000.png");
+    expect(freezeStillFileName("a\\b:c", 1)).toBe("a_b_c-1000.png");
+    expect(freezeStillFileName("", 1)).toBe("clip-1000.png");
   });
 });

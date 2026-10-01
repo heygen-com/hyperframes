@@ -1,8 +1,8 @@
 import { afterEach, describe, expect, it } from "vitest";
 import { Hono } from "hono";
-import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 import { registerFreezeFrameRoutes, type FrameExtractor } from "./freezeFrame";
 import { fileContentVersion } from "../helpers/fileVersion";
 import type { StudioApiAdapter } from "../types";
@@ -16,10 +16,11 @@ const html = `<div data-composition-id="main" data-start="0" data-duration="6">
 <video id="talk" class="clip" src="media/talk.mp4" data-start="0" data-duration="6" data-track-index="0"></video>
 </div>`;
 
-function setup(extract: FrameExtractor) {
+function setup(extract: FrameExtractor, file = { path: "index.html", html }) {
   const dir = mkdtempSync(join(tmpdir(), "hf-freeze-"));
   tempDirs.push(dir);
-  writeFileSync(join(dir, "index.html"), html);
+  mkdirSync(dirname(join(dir, file.path)), { recursive: true });
+  writeFileSync(join(dir, file.path), file.html);
   const adapter: StudioApiAdapter = {
     listProjects: () => [],
     resolveProject: async (id: string) => ({ id, dir }),
@@ -97,5 +98,31 @@ describe("freeze-frame route", () => {
     });
     expect(res.status).toBe(500);
     expect(readFileSync(join(dir, "index.html"), "utf-8")).toBe(html);
+  });
+
+  it("keeps a traversal clip id inside assets/freeze, for the ffmpeg output and the still's src", async () => {
+    const evil = html.replace('id="talk"', 'id="../../../../outside/frame"');
+    const calls: string[][] = [];
+    const { dir, post } = setup(
+      async (args) => {
+        calls.push(args);
+        return { ok: true };
+      },
+      { path: "scenes/a.html", html: evil.replace('src="media/', 'src="../media/') },
+    );
+    const res = await post({
+      path: "scenes/a.html",
+      expectedVersion: fileContentVersion(evil.replace('src="media/', 'src="../media/')),
+      target: { id: "../../../../outside/frame" },
+      playhead: 2.5,
+    });
+    const body: { imageSrc?: string; after?: string } = await res.json();
+    expect(res.status).toBe(200);
+    const output = calls[0]?.at(-1);
+    expect(output).toBe(join(dir, "assets/freeze/____________outside_frame-2500.png"));
+    expect(dirname(output ?? "")).toBe(join(dir, "assets/freeze"));
+    expect(body.imageSrc).toBe("../assets/freeze/____________outside_frame-2500.png");
+    expect(body.after).toContain('src="../assets/freeze/____________outside_frame-2500.png"');
+    expect(existsSync(join(dir, "..", "outside"))).toBe(false);
   });
 });

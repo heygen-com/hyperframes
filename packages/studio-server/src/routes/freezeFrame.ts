@@ -15,6 +15,7 @@ import {
 import {
   applyFreezeFrameToHtml,
   freezeExtractArgs,
+  freezeStillFileName,
   readFreezeSource,
   type FreezeSource,
 } from "../helpers/freezeFrame.js";
@@ -62,7 +63,7 @@ function isFreezeFrameRequest(value: unknown): value is FreezeFrameRequest {
   );
 }
 
-const toPosix = (path: string) => path.split(sep).join("/");
+const FREEZE_DIR = ["assets", "freeze"];
 
 type Failure = { error: string; status: 403 | 404 | 409 | 500 };
 
@@ -88,9 +89,13 @@ async function extractStill(
   const fileDir = dirname(absPath);
   const mediaPath = pinWithinProject(projectDir, relative(projectDir, join(fileDir, source.src)));
   if (!mediaPath) return { error: `forbidden media path: ${source.src}`, status: 403 };
-  const freezeDir = join(projectDir, "assets", "freeze");
-  const imagePath = join(freezeDir, `${source.id}-${Math.round(playhead * 1000)}.png`);
+  const freezeDir = join(projectDir, ...FREEZE_DIR);
+  const fileName = freezeStillFileName(source.id, playhead);
   mkdirWithinProject(projectDir, freezeDir);
+  const imagePath = pinWithinProject(projectDir, join(...FREEZE_DIR, fileName));
+  if (!imagePath || dirname(imagePath) !== freezeDir) {
+    return { error: `forbidden freeze path: ${fileName}`, status: 403 };
+  }
   const extracted = await extract(freezeExtractArgs(mediaPath, source.mediaTime, imagePath));
   if (!extracted.ok) {
     return {
@@ -98,7 +103,8 @@ async function extractStill(
       status: 500,
     };
   }
-  return { imageSrc: toPosix(relative(fileDir, imagePath)) };
+  const depth = relative(projectDir, fileDir).split(sep).filter(Boolean).length;
+  return { imageSrc: `${"../".repeat(depth)}${FREEZE_DIR.join("/")}/${fileName}` };
 }
 
 function writeFolded(
