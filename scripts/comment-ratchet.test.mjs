@@ -32,6 +32,18 @@ test("a JSX comment counts as comment, and code does not", () => {
   assert.equal(measure("const a = 1;\n", ".ts").comment, 0);
 });
 
+test("quotes inside a regex literal open no string, so later comments still count", () => {
+  const source = [
+    "const keys = text.match(/[\"'`]([^\"'`]+)[\"'`]/g);",
+    "// one",
+    "const half = (a + b) / 2; // two",
+    "/* three */",
+    "const n = total / count / 2;",
+    "// four",
+  ].join("\n");
+  assert.equal(measure(source, ".ts").comment, 4);
+});
+
 // 14 physical lines: a bare opener, 12 of prose, a bare closer.
 test("a docblock is measured from its opener to its closer", () => {
   const body = Array.from({ length: 12 }, (_, i) => ` * line ${i + 1}`).join("\n");

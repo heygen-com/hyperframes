@@ -150,6 +150,42 @@ function stripStrings(line) {
   return line.replace(/(["'`])(?:\\.|(?!\1)[^\\])*\1/g, (m) => " ".repeat(m.length));
 }
 
+// Index just past the literal opened at `start`, or -1 when it does not close on this line.
+function literalEnd(line, start, regex) {
+  const close = regex ? "/" : line[start];
+  let inClass = false;
+  for (let i = start + 1; i < line.length; i++) {
+    const ch = line[i];
+    if (ch === "\\") i++;
+    else if (regex && ch === "[") inClass = true;
+    else if (regex && ch === "]") inClass = false;
+    else if (ch === close && !inClass) return i + 1;
+  }
+  return -1;
+}
+
+/** stripStrings for C-like code, plus regex literals, so `/["'`]/` opens no string or template.
+ *  A `/` after a value (`a / b`, `f() / 2`) is division. Stops at the first comment. */
+function stripLiterals(line) {
+  let out = "";
+  for (let i = 0; i < line.length; ) {
+    const ch = line[i];
+    const comment = ch === "/" && (line[i + 1] === "/" || line[i + 1] === "*");
+    if (comment) return out + line.slice(i);
+    // ponytail: `return /re/` reads as division; add a keyword check if that ever hides a comment.
+    const regex = ch === "/" && !/[\w$)\]]/.test(out.trimEnd().slice(-1));
+    const end = regex || `"'\``.includes(ch) ? literalEnd(line, i, regex) : -1;
+    if (end === -1) {
+      out += ch;
+      i++;
+    } else {
+      out += " ".repeat(end - i);
+      i = end;
+    }
+  }
+  return out;
+}
+
 function scanCLike(lines) {
   const out = [];
   let inBlock = false;
@@ -177,7 +213,7 @@ function scanCLike(lines) {
         continue;
       }
       // Complete literals are blanked, so a backtick left over opens a multi-line template.
-      const code = stripStrings(rest);
+      const code = stripLiterals(rest);
       const marks = [
         [code.indexOf("//"), "line"],
         [code.indexOf("/*"), "block"],
