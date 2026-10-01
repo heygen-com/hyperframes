@@ -193,9 +193,16 @@ function CompCard({
   const name = comp.replace(/^compositions\//, "").replace(/\.html$/, "");
   const previewUrl = compositionPreviewUrl(projectId, comp);
   const thumbnailUrl = compositionCardThumbnailUrl(projectId, comp, contentRevision);
+  const timelineSessionEpoch = usePlayerStore((state) => state.timelineSessionEpoch);
   const thumbnailRequest = useMemo(
-    () => (previewBooted ? compositionThumbnailRequest(thumbnailUrl, projectId) : null),
-    [previewBooted, thumbnailUrl, projectId],
+    () =>
+      previewBooted
+        ? compositionThumbnailRequest(thumbnailUrl, projectId, {
+            sessionEpoch: timelineSessionEpoch,
+            rich: true,
+          })
+        : null,
+    [previewBooted, thumbnailUrl, projectId, timelineSessionEpoch],
   );
   const thumbnail = useThumbnailLease(thumbnailRequest);
   const thumbnailFailed = thumbnail.status === "error";

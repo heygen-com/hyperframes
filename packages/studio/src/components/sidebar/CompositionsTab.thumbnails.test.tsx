@@ -1,9 +1,11 @@
 // @vitest-environment happy-dom
 
 import { act } from "react";
+import { createRoot } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { thumbnailScheduler } from "../../player/lib/thumbnailScheduler";
 import { TIMELINE_VIEWPORT_BUDGETS } from "../../player/lib/timelineViewportBudgets";
+import { CompositionThumbnail } from "../../player/components/CompositionThumbnail";
 import { usePlayerStore } from "../../player/store/playerStore";
 import { renderPosterForNextOpen } from "../nle/PreviewPoster";
 import { mountCompositionsTab } from "./compositionsTabTestUtils";
@@ -95,6 +97,29 @@ describe("composition card thumbnails", () => {
 
     act(() => usePlayerStore.getState().setTimelineReady(false));
     expect(shown(host)).toBe("blob:frame-1");
+  });
+
+  it("share one render with the timeline's thumbnail of the same composition", () => {
+    mount();
+    const timeline = createRoot(document.body.appendChild(document.createElement("div")));
+    try {
+      act(() =>
+        timeline.render(
+          <CompositionThumbnail
+            previewUrl="/api/projects/demo/preview/comp/compositions/headline.html"
+            label=""
+            labelColor=""
+            projectId="demo"
+            sessionEpoch={usePlayerStore.getState().timelineSessionEpoch}
+            seekTime={3}
+            duration={0}
+          />,
+        ),
+      );
+      expect(renders).toHaveLength(1);
+    } finally {
+      act(() => timeline.unmount());
+    }
   });
 
   it("keep the cards and the poster render to the scheduler's cap, so Studio's own requests get a connection", async () => {
