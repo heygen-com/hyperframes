@@ -12,6 +12,10 @@ import { isCompositionTemplate } from "@hyperframes/parsers/hf-ids";
 import { findAuthoredElement, parseSavedSource } from "./authoredSource";
 import { STUDIO_EDIT_ATTRS } from "../components/editor/manualEditsSeekReapply";
 import { markScenesStale } from "../player/sceneSwap";
+import {
+  STUDIO_MANUAL_EDIT_GESTURE_ATTR,
+  STUDIO_ORIGINAL_INLINE_TRANSLATE_ATTR,
+} from "../components/editor/manualEditsTypes";
 
 type PreviewWindow = Window & {
   __player?: { seek?: (t: number) => void };
@@ -141,13 +145,36 @@ function diffRestoreDocs(prevDoc: Document, nextDoc: Document): string[] | null 
 }
 
 /** Copy every attribute from `source` onto the live `target`, dropping extras. */
-function syncElementAttributes(target: Element, source: Element): void {
+function syncElementAttributes(target: Element, source: Element, base?: Element): void {
+  const merged =
+    base && target.hasAttribute(STUDIO_MANUAL_EDIT_GESTURE_ATTR)
+      ? keepDrawn(target, source, base)
+      : source;
   for (const name of [...target.getAttributeNames()]) {
-    if (!source.hasAttribute(name)) target.removeAttribute(name);
+    if (!merged.hasAttribute(name)) target.removeAttribute(name);
   }
-  for (const name of source.getAttributeNames()) {
-    target.setAttribute(name, source.getAttribute(name) ?? "");
+  for (const name of merged.getAttributeNames()) {
+    target.setAttribute(name, merged.getAttribute(name) ?? "");
   }
+}
+
+/** `source`, plus what a gesture in progress drew on `live` since `base`, and the record its draws need. */
+function keepDrawn(live: Element, source: Element, base: Element): Element {
+  const merged = source.cloneNode(false) as Element;
+  for (const name of live.getAttributeNames()) {
+    const value = live.getAttribute(name)!;
+    const own = name === STUDIO_ORIGINAL_INLINE_TRANSLATE_ATTR && !source.hasAttribute(name);
+    if (name !== "style" && (own || value !== base.getAttribute(name)))
+      merged.setAttribute(name, value);
+  }
+  const [liveStyle, baseStyle, style] = [live, base, merged].map((el) => (el as HTMLElement).style);
+  for (const prop of new Set([...Array.from(liveStyle), ...Array.from(baseStyle)])) {
+    const value = liveStyle.getPropertyValue(prop);
+    if (value === baseStyle.getPropertyValue(prop)) continue;
+    if (value) style.setProperty(prop, value, liveStyle.getPropertyPriority(prop));
+    else style.removeProperty(prop);
+  }
+  return merged;
 }
 
 // A gesture folded into the script leaves marks on the live element that every seek would re-impose.
@@ -172,7 +199,7 @@ function hasAmbiguousGsapScriptChange(
   );
 }
 
-type RestoreTarget = { live: Element; restored: Element };
+type RestoreTarget = { live: Element; restored: Element; previous?: Element };
 type RestorePlan = { targets: RestoreTarget[]; scripted: boolean };
 
 /** Whether either side has a GSAP script, or null when its scripts rule out an in-place restore. */
@@ -196,6 +223,7 @@ function scopeTargets(
   scope: ParentNode,
   keys: string[],
   restoredByKey: Map<string, Element>,
+  previousByKey: Map<string, Element>,
 ): RestoreTarget[] | null {
   const liveByKey = identityElementMap(scope);
   if (!liveByKey) return null;
@@ -205,7 +233,7 @@ function scopeTargets(
     const restored = restoredByKey.get(key);
     // The preview rewrites a sub-composition's own root, so its attributes are not the file's.
     if (!live || !restored || live.hasAttribute("data-hf-inner-root")) return null;
-    targets.push({ live, restored });
+    targets.push({ live, restored, previous: previousByKey.get(key) });
   }
   return targets;
 }
@@ -222,9 +250,10 @@ function fileTargets(
   if (scripted === null) return null;
   const keys = diffRestoreDocs(prevDoc, nextDoc);
   const restoredByKey = identityElementMap(nextDoc);
-  if (!keys || !restoredByKey) return null;
+  const previousByKey = identityElementMap(prevDoc);
+  if (!keys || !restoredByKey || !previousByKey) return null;
   const found = liveScopes(doc, path, isActive).map((scope) =>
-    scopeTargets(scope, keys, restoredByKey),
+    scopeTargets(scope, keys, restoredByKey, previousByKey),
   );
   if (!found.length || found.includes(null)) return null;
   return { targets: (found as RestoreTarget[][]).flat(), scripted };
@@ -273,11 +302,14 @@ export function showRestoreInPlace(
   const win = iframe?.contentWindow as PreviewWindow | null;
   const plan = doc && win ? planRestoreTargets(doc, activeCompPath ?? "index.html", files) : null;
   if (!iframe || !win || !plan || plan.scripted) return null;
-  const before = plan.targets.map(({ live }) => [live, live.cloneNode(false) as Element] as const);
-  for (const { live, restored } of plan.targets) syncElementAttributes(live, restored);
+  const before = plan.targets.map(
+    ({ live, restored }) => [live, live.cloneNode(false) as Element, restored] as const,
+  );
+  for (const { live, restored, previous } of plan.targets)
+    syncElementAttributes(live, restored, previous);
   const putBack = (time: number) => {
     if (iframe.contentDocument !== doc) return false;
-    for (const [live, attributes] of before) syncElementAttributes(live, attributes);
+    for (const [live, attributes, shown] of before) syncElementAttributes(live, attributes, shown);
     return finalizeInPlace(iframe, win, time);
   };
   if (finalizeInPlace(iframe, win, currentTime)) return putBack;
@@ -338,7 +370,8 @@ export function applyUndoRestoreToPreview(
   }
   // Sync each changed element's attributes onto the live DOM from the restored
   // markup, so the runtime's seek-reapply reads the reverted values.
-  for (const target of plan.targets) syncElementAttributes(target.live, target.restored);
+  for (const target of plan.targets)
+    syncElementAttributes(target.live, target.restored, target.previous);
 
   const active = files[activeDocPath];
   const restoredScript = active ? extractGsapScriptText(active.restored) : null;

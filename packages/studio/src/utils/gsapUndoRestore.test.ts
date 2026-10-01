@@ -2,6 +2,9 @@
 
 import { describe, it, expect, vi } from "vitest";
 import { applyUndoRestoreToPreview, diffSoftReloadableRestore } from "./gsapUndoRestore";
+import { applyPatch } from "./sourcePatcher";
+import { beginStudioManualEditGesture } from "../components/editor/manualEdits";
+import { writePlainMove, writeTranslatePx } from "../components/editor/plainTranslate";
 
 // ── Bug 2: undo/redo restore soft-apply ──────────────────────────────────────
 
@@ -418,5 +421,52 @@ describe("applyUndoRestoreToPreview", () => {
     const files = { "scenes/intro.html": { previous: "a", restored: "b" } };
     expect(applyUndoRestoreToPreview(iframe, ROOT, files, 3, reloadPreview)).toBe("full");
     expect(reloadPreview).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe("an undo that lands while the layer is being dragged", () => {
+  const ROOT = "index.html";
+  const undone = `<div id="a" style="width: 120px; translate: 90px 60px" data-start="2" data-hf-studio-original-inline-translate="">t</div>`;
+  const restored = wrap(`<div id="a" style="width: 100px" data-start="1">t</div>`);
+  const files = { [ROOT]: { previous: wrap(undone), restored } };
+  const saveDrop = (el: HTMLElement, file: string) =>
+    writePlainMove(el, { x: 20, y: 110 }).reduce((html, op) => applyPatch(html, "a", op), file);
+
+  function dragging(drag: boolean) {
+    const { iframe, doc } = buildLiveIframe(undone);
+    const el = doc.getElementById("a")!;
+    if (drag) beginStudioManualEditGesture(el);
+    if (drag) writeTranslatePx(el, { x: 70, y: 110 });
+    applyUndoRestoreToPreview(iframe, ROOT, files, 3, vi.fn());
+    return el;
+  }
+
+  it("keeps the translate the drag is drawing and reverts the rest", () => {
+    const el = dragging(true);
+
+    expect(el.style.getPropertyValue("translate")).toBe("70px 110px");
+    expect(el.style.getPropertyValue("width")).toBe("100px");
+    expect(el.getAttribute("data-start")).toBe("1");
+    expect(el.hasAttribute("data-hf-studio-manual-edit-gesture")).toBe(true);
+  });
+
+  it("saves the drop onto the undone file, the same bytes as dragging the undone layer", () => {
+    const el = dragging(true);
+    const fresh = new DOMParser().parseFromString(restored, "text/html").getElementById("a")!;
+
+    const saved = saveDrop(el, restored);
+
+    expect(saved).toBe(saveDrop(fresh, restored));
+    expect(saved).toContain("width: 100px; translate: 20px 110px");
+    expect(saved).not.toContain("120px");
+  });
+
+  it("restores a layer no gesture is drawing exactly as before", () => {
+    const el = dragging(false);
+    const want = new DOMParser().parseFromString(restored, "text/html").getElementById("a")!;
+
+    expect(el.getAttributeNames().map((n) => [n, el.getAttribute(n)])).toEqual(
+      want.getAttributeNames().map((n) => [n, want.getAttribute(n)]),
+    );
   });
 });
