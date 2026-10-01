@@ -76,9 +76,11 @@ describe("quarantine", () => {
   });
 
   it("heads the comment with the accurate and smooth counts, smoothness never gating", () => {
-    const smooth = (id, ok) => ({ ...run(id), checks: { undo: true, smooth: ok } });
-    const g = gate(base, base, [smooth("a", false), smooth("b", true)], {});
-    expect(comment(g)).toContain("accurate 2 (base branch 2), smooth 1");
+    const smooth = (id, ok, drop = 0) => ({ ...run(id, drop), checks: { undo: true, smooth: ok } });
+    // c is smooth but not accurate, so it is not counted.
+    const g = gate(base, base, [smooth("a", false), smooth("b", true), smooth("c", true, 9)], {});
+    expect(comment(g)).toContain("accurate 2 (base branch 2), smooth 1 of those");
+    expect(g.headSmooth).toBeLessThanOrEqual(g.headPassing);
     expect(g.ok).toBe(true);
   });
 
