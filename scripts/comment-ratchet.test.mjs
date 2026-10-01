@@ -55,6 +55,7 @@ test("a slash after ++ or -- is division", () => {
   assert.equal(measure("const a = i++ / 2; // c\n", ".ts").comment, 1);
   assert.equal(measure("const a = i-- / 2; // c\n", ".ts").comment, 1);
   assert.equal(measure("const a = i++ / 2 + 'a/b'; // it's\n", ".ts").comment, 1);
+  assert.equal(measure("const a = i-- / 2 + 'a/b'; // it's\n", ".ts").comment, 1);
 });
 
 test("a line opening with division continued from the line above keeps its comment", () => {
