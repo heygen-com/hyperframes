@@ -107,8 +107,12 @@ export async function decodePeakMap(mediaPath: string): Promise<number[]> {
     const acc = createPeakAccumulator(PEAK_SAMPLE_RATE, PEAK_BIN_SECONDS, channels);
     proc.stdout?.on("data", (chunk: Buffer) => accumulatePeaks(acc, chunk));
     proc.on("close", (code) => {
+      if (code !== 0) {
+        reject(new Error(`ffmpeg failed decoding audio (exit ${code})`));
+        return;
+      }
       if (acc.frame === 0) {
-        reject(new Error(`ffmpeg produced no audio samples (exit ${code})`));
+        reject(new Error("ffmpeg produced no audio samples"));
         return;
       }
       resolvePromise(finishPeaks(acc));
