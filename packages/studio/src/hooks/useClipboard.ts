@@ -157,7 +157,6 @@ const HF_ID_ATTR_RE = /\bdata-hf-id\s*=\s*["']?([^"'\s>]+)/gi;
 const hfIdsInFile = (content: string) =>
   new Set(Array.from(content.matchAll(HF_ID_ATTR_RE), (match) => match[1]));
 
-/** `fromThisFile`: the element came from `content`, so a renamed copy takes its original's look, as a clip's does. */
 export function pasteElementHtml(
   content: string,
   payload: { html: string; originSelector?: string; originSelectorIndex?: number },
