@@ -23,7 +23,7 @@ import {
 import { groupMoveFloor, resolveGroupMovers } from "./timelineMultiDragPreview";
 import type { DraggedClipState, ResizingClipState } from "./timelineClipDragTypes";
 import { STUDIO_PREVIEW_FPS } from "../lib/time";
-import { clampStartIntoBounds, heldPartnerVideoBounds } from "./audioClipLink";
+import { heldAudioShiftRange, heldPartnerVideoBounds } from "./audioClipLink";
 
 /** Snap-target builder closure supplied by the hook (closes over refs + store). */
 type BuildSnapTargets = (
@@ -133,6 +133,8 @@ function resolveGroupDrag(drag: DraggedClipState, ctx: DragPreviewContext): Grou
   };
 }
 
+const SHIFT_EPSILON_S = 1e-6;
+
 /** Recompute the dragged-clip preview (move + snap + group clamp + drop placement). */
 export function computeDragPreview(
   drag: DraggedClipState,
@@ -185,12 +187,20 @@ export function computeDragPreview(
   );
   // A group moves rigidly: the grabbed clip stops where any mover would cross its host's start.
   const group = resolveGroupDrag(drag, ctx);
-  const video = heldPartnerVideoBounds(drag.element, ctx.elements, group.moving);
+  const dragKey = drag.element.key ?? drag.element.id;
+  const passengers = ctx.elements.filter(
+    (el) => (el.key ?? el.id) !== dragKey && group.moving.has(el.key ?? el.id),
+  );
+  const movers = [drag.element, ...passengers];
+  const shift = heldAudioShiftRange(movers, ctx.elements, group.moving);
+  const origin = drag.element.start;
   const floored = Math.max(snap.start, group.floor);
-  const previewStart = video
-    ? clampStartIntoBounds(floored, drag.element.duration, video)
-    : floored;
+  const previewStart = origin + Math.max(shift.min, Math.min(floored - origin, shift.max));
   const placement = resolveDropPlacement(drag, clientY, previewStart, nextMove.track, ctx, group);
+  const placedShift = placement.start - origin;
+  if (placedShift < shift.min - SHIFT_EPSILON_S || placedShift > shift.max + SHIFT_EPSILON_S) {
+    return { ...drag, started: true };
+  }
   const { track: previewTrack, insertRow } = placement;
   return {
     ...drag,

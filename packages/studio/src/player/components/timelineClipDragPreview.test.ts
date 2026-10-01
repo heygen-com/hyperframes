@@ -775,6 +775,24 @@ describe("an audio clip stays inside its partner video", () => {
     ).toBe(42);
   });
 
+  it("rejects a drop that collision placement would push outside the video", () => {
+    const a = audio();
+    const obstacle = clip("o", 1, 20, 10, 0, "audio");
+    const { drag, clientX, clientY } = horizontalDrag(a, 1.5, 10);
+    const next = computeDragPreview(drag, clientX, clientY, audioCtx([video(), a, obstacle]));
+    expect(next.previewStart).toBeGreaterThanOrEqual(10);
+    expect(next.previewStart + a.duration).toBeLessThanOrEqual(30);
+  });
+
+  it("keeps an audio carried in a multi-selection inside its video", () => {
+    const a = audio();
+    const title = clip("t", 0, 40, 4, 0, "text");
+    const { drag, clientX, clientY } = horizontalDrag(title, 0.5, 30);
+    const elements = [video(), a, title];
+    const next = computeDragPreview(drag, clientX, clientY, audioCtx(elements, ["t", "a"]));
+    expect(next.previewStart).toBe(50);
+  });
+
   const trim = (edge: "start" | "end", deltaSeconds: number, gestureKeys: string[] = []) =>
     computeResizePreview(
       {
