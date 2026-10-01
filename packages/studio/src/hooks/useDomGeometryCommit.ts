@@ -15,6 +15,7 @@ import { useDomEditPersist } from "./useDomEditPersist";
 import { useDomEditPositionPatchCommit } from "./useDomEditPositionPatchCommit";
 import { useMountEffect } from "./useMountEffect";
 import { stageElementOffset } from "./elementOffsetStager";
+import { savePlainRotation } from "./plainRotation";
 
 /**
  * Studio's `Player` must show the project, with `beginTimelineSession(projectId)` run before it
@@ -117,6 +118,11 @@ export function useDomGeometryCommit({
       ),
     [commitWithFreshQueue, showToast],
   );
+  const handleDomRotationCommit = useCallback(
+    (selection: DomEditSelection, next: { angle: number }) =>
+      savePlainRotation({ commitPositionPatchToHtml: commitWithFreshQueue }, selection, next),
+    [commitWithFreshQueue],
+  );
   const makeFetchFallback = useGsapAnimationFetchFallback(projectId);
   const trackGsapInteractionFailure = useGsapInteractionFailureTelemetry(activeCompPath, showToast);
   const {
@@ -136,6 +142,7 @@ export function useDomGeometryCommit({
     trackGsapInteractionFailure,
     stageElementPositionOffset,
     handleDomBoxSizeCommit: noDomBoxSizeRoute,
+    handleDomRotationCommit,
     commitPositionPatchToHtml: commitWithFreshQueue,
     addGsapAnimation: gsap.addGsapAnimation,
     convertToKeyframes: gsap.convertToKeyframes,

@@ -433,11 +433,20 @@ function gsapWritesChannels(el: Element, channels: string[]): boolean {
   );
 }
 
+export const ROTATION_CHANNELS: string[] = ["rotation", "rotationX", "rotationY", "rotationZ"];
+
+const gsapRendersTransform = (el: Element) =>
+  !!(el as { _gsap?: { renderTransform?: unknown } })._gsap?.renderTransform;
+
 /** GSAP owns this element's position: a tween or hold writes it, or GSAP already renders its
  *  transform (a CSS translate would then apply twice). Everything else moves by plain CSS. */
 export function gsapWritesPosition(el: Element): boolean {
-  const cache = (el as { _gsap?: { renderTransform?: unknown } })._gsap;
-  return !!cache?.renderTransform || gsapWritesChannels(el, MOVE_CHANNELS);
+  return gsapRendersTransform(el) || gsapWritesChannels(el, MOVE_CHANNELS);
+}
+
+/** `gsapWritesPosition` for a rotate: everything else turns by its own CSS `rotate`. */
+export function gsapWritesRotation(el: Element): boolean {
+  return gsapRendersTransform(el) || gsapWritesChannels(el, ROTATION_CHANNELS);
 }
 
 /** `hasNonHoldTweenForElement` for an element in hand, read from its own window's timelines. */

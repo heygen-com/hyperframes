@@ -33,7 +33,11 @@ import { setElementGsapPosition } from "../utils/elementGsap";
 import { logResize, logResizeSettle } from "../utils/resizeDebug";
 import type { DomEditGroupPathOffsetCommit } from "../components/editor/DomEditOverlay";
 import { runGestureTransaction } from "./gestureTransaction";
-import { gsapWritesPosition, hasNonHoldTweenForElement } from "./gsapRuntimeKeyframes";
+import {
+  gsapWritesPosition,
+  gsapWritesRotation,
+  hasNonHoldTweenForElement,
+} from "./gsapRuntimeKeyframes";
 import { assertGsapEditPersisted, saveMove } from "./gsapEditOutcome";
 import type { GsapAnimationFetchOptions } from "./useGsapAnimationFetchFallback";
 import type { ElementOffsetStagerDeps } from "./elementOffsetStager";
@@ -82,6 +86,7 @@ export interface UseGsapAwareEditingParams {
     next: { x: number; y: number },
     coalesceKey?: string,
   ) => { save: () => Promise<void>; rollback: () => void };
+  handleDomRotationCommit: (selection: DomEditSelection, next: { angle: number }) => Promise<void>;
   handleDomBoxSizeCommit: (
     selection: DomEditSelection,
     next: { width: number; height: number },
@@ -131,6 +136,7 @@ export function useGsapAwareEditing({
   trackGsapInteractionFailure,
   stageElementPositionOffset,
   handleDomBoxSizeCommit,
+  handleDomRotationCommit,
   commitPositionPatchToHtml,
   addGsapAnimation,
   convertToKeyframes,
@@ -457,16 +463,11 @@ export function useGsapAwareEditing({
 
   const handleGsapAwareRotationCommit = useCallback(
     async (selection: DomEditSelection, next: { angle: number }) => {
+      if (!gsapWritesRotation(selection.element)) return handleDomRotationCommit(selection, next);
       if (gsapCommitMutation) {
         try {
-          const ownedAnimations = getGsapAnimationsForSelection(selection);
-          const targetAnimations = Array.isArray(ownedAnimations)
-            ? ownedAnimations
-            : await ownedAnimations;
-          // Single source of truth for rotation too: tryGsapRotationIntercept handles
-          // tweened elements (keyframes) and static ones (a tl.set), so there's no
-          // CSS-var fallback. Selectorless/computed source rejects so the gesture
-          // transaction can restore its draft instead of reporting a false success.
+          const targetAnimations = await getGsapAnimationsForSelection(selection);
+          // A keyframe or a tl.set; a computed source rejects, so the gesture restores its draft.
           const outcome = await tryGsapRotationIntercept(
             selection,
             next.angle,
@@ -488,6 +489,7 @@ export function useGsapAwareEditing({
       makeFetchFallback,
       trackGsapInteractionFailure,
       getGsapAnimationsForSelection,
+      handleDomRotationCommit,
     ],
   );
 

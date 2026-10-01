@@ -63,11 +63,12 @@ export interface GestureState {
   actualWidth: number;
   actualHeight: number;
   actualRotation: number;
+  /** Null when GSAP owns the rotate; else what the element's scale and transform turn, read at press. */
+  plainRotationShare: number | null;
   editScaleX: number;
   editScaleY: number;
-  // Rendered-per-CSS-pixel factor of the element itself at gesture start (a GSAP
-  // scale() transform makes this > 1) — the resize draft divides by it so the box
-  // follows the cursor instead of overshooting by the live scale.
+  // Rendered px per CSS px of the element at gesture start (> 1 under a GSAP scale()); the resize
+  // draft divides by it so the box follows the cursor instead of overshooting by the live scale.
   contentScaleX: number;
   contentScaleY: number;
   // Resize anchor pinning: with a live scale transform, growing the CSS box

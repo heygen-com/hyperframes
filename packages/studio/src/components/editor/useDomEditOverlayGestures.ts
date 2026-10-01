@@ -9,21 +9,18 @@ import { type DomEditSelection } from "./domEditing";
 import {
   applyManualOffsetDragCommit,
   applyManualOffsetDragDraft,
-  applyRotationDraftViaGsap,
   endManualOffsetDragMembers,
   restoreManualOffsetDragMembers,
 } from "./manualOffsetDrag";
+import { applyRotationDraft, restoreRotationDraft } from "./rotationDraft";
 import {
   applyStudioBoxSize,
   applyStudioBoxSizeDraft,
-  applyStudioRotation,
-  applyStudioRotationDraft,
   endStudioManualEditGesture,
   isStudioManualEditGestureCurrent,
   readStudioBoxSize,
   restoreStudioBoxSize,
   restoreStudioPathOffset,
-  restoreStudioRotation,
 } from "./manualEdits";
 import {
   type GroupOverlayItem,
@@ -166,9 +163,7 @@ export function createDomEditOverlayGestureHandlers(opts: UseDomEditOverlayGestu
         actualAngle: g.actualRotation,
         snap: e.shiftKey,
       });
-      if (!applyRotationDraftViaGsap(sel.element, rotated.angle)) {
-        applyStudioRotationDraft(sel.element, rotated);
-      }
+      applyRotationDraft(sel.element, rotated.angle, g.plainRotationShare);
       return;
     }
 
@@ -421,23 +416,20 @@ export function createDomEditOverlayGestureHandlers(opts: UseDomEditOverlayGestu
         actualAngle: g.actualRotation,
         snap: e.shiftKey,
       });
-      const restoreRotation = () => {
-        // Single source of truth: snap the GSAP rotation back to the gesture's base
-        // angle; fall back to the legacy CSS-var restore when gsap is unavailable.
-        if (!applyRotationDraftViaGsap(sel.element, g.actualRotation)) {
-          restoreStudioRotation(sel.element, g.initialRotation);
-        }
-      };
+      const restoreRotation = () =>
+        restoreRotationDraft(
+          sel.element,
+          g.actualRotation,
+          g.initialRotation,
+          g.plainRotationShare !== null,
+        );
       if (!hasDomEditRotationChanged(g.actualRotation, finalRotation.angle)) {
         restoreRotation();
         endStudioManualEditGesture(sel.element, g.manualEditDragToken);
         return;
       }
-      // Keep the preview at the final angle through the GSAP channel (NOT the CSS var)
-      // while the commit lands a `tl.set`/keyframe rotation on the timeline.
-      if (!applyRotationDraftViaGsap(sel.element, finalRotation.angle)) {
-        applyStudioRotation(sel.element, finalRotation);
-      }
+      // Hold the final angle while the commit lands.
+      applyRotationDraft(sel.element, finalRotation.angle, g.plainRotationShare);
       void Promise.resolve(opts.onRotationCommitRef.current(sel, finalRotation))
         .catch((error) => {
           logGestureCommitFailure("rotate commit failed", error);
@@ -555,11 +547,12 @@ export function createDomEditOverlayGestureHandlers(opts: UseDomEditOverlayGestu
       restoreGestureOverlayRect(g);
     }
     if (g?.mode === "rotation" && sel) {
-      applyRotationDraftViaGsap(
+      restoreRotationDraft(
         sel.element,
-        g.actualRotation - (Number.parseFloat(g.initialRotation.studioRotation) || 0),
+        g.actualRotation,
+        g.initialRotation,
+        g.plainRotationShare !== null,
       );
-      restoreStudioRotation(sel.element, g.initialRotation);
       endStudioManualEditGesture(sel.element, g.manualEditDragToken);
     }
     opts.blockedMoveRef.current = null;

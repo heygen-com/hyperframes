@@ -67,3 +67,52 @@ describe("a drag press on a page that loads GSAP", () => {
     },
   );
 });
+
+describe("a rotate on a page that loads GSAP", () => {
+  it("never asks GSAP about an element it does not turn, and draws the turn as its CSS rotate", () => {
+    const getProperty = vi.fn(() => 0);
+    const set = vi.fn();
+    const element = document.createElement("div");
+    element.style.setProperty("rotate", "30deg");
+    document.body.append(element);
+    Object.assign(window, {
+      gsap: { getProperty, set },
+      __timelines: { main: { getChildren: () => [] } },
+    });
+    const selection = { element, capabilities: { canApplyManualRotation: true } };
+    const ref = <T>(current: T) => ({ current });
+    const opts = {
+      selectionRef: ref(selection as unknown as DomEditSelection),
+      overlayRectRef: ref({ left: 0, top: 0, width: 50, height: 40, editScaleX: 1, editScaleY: 1 }),
+      boxRef: ref(document.createElement("div")),
+      overlayRef: ref(null),
+      iframeRef: ref(null),
+      gestureRef: ref<GestureState | null>(null),
+      groupGestureRef: ref(null),
+      blockedMoveRef: ref(null),
+      rafPausedRef: ref(false),
+      onCanvasPointerMoveRef: ref(vi.fn()),
+    };
+    const pointer = (clientX: number, clientY: number) => ({
+      clientX,
+      clientY,
+      pointerId: 1,
+      button: 0,
+      shiftKey: false,
+      preventDefault() {},
+      stopPropagation() {},
+      currentTarget: { setPointerCapture() {} },
+    });
+
+    const handlers = createDomEditOverlayGestureHandlers(opts as never);
+    expect(handlers.startGesture("rotate", pointer(25, -20) as never)).toBe(true);
+    expect(opts.gestureRef.current?.plainRotationShare).toBe(0);
+    expect(opts.gestureRef.current?.actualRotation).toBeCloseTo(30);
+    handlers.onPointerMove(pointer(60, 20) as never);
+
+    expect(element.style.getPropertyValue("rotate")).toMatch(/deg$/);
+    expect(element.style.getPropertyValue("rotate")).not.toBe("30deg");
+    expect(getProperty).not.toHaveBeenCalled();
+    expect(set).not.toHaveBeenCalled();
+  });
+});

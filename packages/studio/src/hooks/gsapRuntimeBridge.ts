@@ -35,7 +35,11 @@ import {
   pickClosestToPlayhead,
   readGsapPositionFromIframe,
 } from "./gsapPositionDetection";
-import { hasNonHoldTweenForElement, POSITION_CHANNELS } from "./gsapRuntimeKeyframes";
+import {
+  hasNonHoldTweenForElement,
+  POSITION_CHANNELS,
+  ROTATION_CHANNELS,
+} from "./gsapRuntimeKeyframes";
 import { getAnimationsForElement } from "./gsapElementMatch";
 import {
   animationWritesAnyProperty,
@@ -46,7 +50,6 @@ import {
 export { POSITION_CHANNELS };
 const POSITION_CHANNEL_SET = new Set<string>(POSITION_CHANNELS);
 
-const ROTATION_CHANNELS: string[] = ["rotation", "rotationX", "rotationY", "rotationZ"];
 const ROTATION_CHANNEL_SET = new Set<string>(ROTATION_CHANNELS);
 
 // ── Property-group tween resolution ───────────────────────────────────────
