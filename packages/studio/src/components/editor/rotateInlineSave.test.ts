@@ -2,6 +2,7 @@
 
 import { afterEach, expect, it, vi } from "vitest";
 import { savePlainRotation } from "../../hooks/plainRotation";
+import { applyStudioRotation } from "./manualEdits";
 import type { ElementOffsetStagerDeps } from "../../hooks/elementOffsetStager";
 import type { DomEditSelection } from "./domEditing";
 import type { GestureState, UseDomEditOverlayGesturesOptions } from "./domEditOverlayGestures";
@@ -28,7 +29,7 @@ afterEach(() => {
   document.body.innerHTML = "";
 });
 
-it("saves an inline span's turn with the inline-block it was drawn with, after the draft and the hold", async () => {
+async function rotateWord(before: (word: HTMLElement) => void = () => {}) {
   const sheet = document.head.appendChild(document.createElement("style"));
   sheet.textContent = "#word { display: inline; }";
   const element = document.body.appendChild(document.createElement("span"));
@@ -79,6 +80,7 @@ it("saves an inline span's turn with the inline-block it was drawn with, after t
     onCanvasMouseDown: () => {},
     snapGuidesRef: ref(null),
   } as unknown as UseDomEditOverlayGesturesOptions;
+  before(element);
   const handlers = createDomEditOverlayGestureHandlers(opts);
 
   handlers.startGesture("rotate", evt(200, 50));
@@ -87,9 +89,23 @@ it("saves an inline span's turn with the inline-block it was drawn with, after t
   await Promise.all(saves);
 
   expect(saves).toHaveLength(1);
-  expect(commitPositionPatchToHtml.mock.calls[0]![1]).toContainEqual({
-    type: "inline-style",
-    property: "display",
-    value: "inline-block",
-  });
+  return commitPositionPatchToHtml.mock.calls[0]![1];
+}
+
+const INLINE_BLOCK = { type: "inline-style", property: "display", value: "inline-block" };
+const turnOf = (patches: Awaited<ReturnType<typeof rotateWord>>) =>
+  patches.findLast((patch) => patch.type === "inline-style" && patch.property === "rotate");
+
+it("saves an inline span's turn with the inline-block it was drawn with, after the draft and the hold", async () => {
+  expect(await rotateWord()).toContainEqual(INLINE_BLOCK);
+});
+
+it("saves inline-block and the whole turn for a word an older Studio already turned 15 deg", async () => {
+  const plain = await rotateWord();
+  document.head.innerHTML = "";
+  document.body.innerHTML = "";
+  const legacy = await rotateWord((word) => applyStudioRotation(word, { angle: 15 }));
+  expect(legacy).toContainEqual(INLINE_BLOCK);
+  const degrees = (patches: typeof plain) => Number.parseFloat(String(turnOf(patches)?.value));
+  expect(degrees(legacy)).toBe(degrees(plain) + 15);
 });

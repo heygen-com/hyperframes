@@ -21,12 +21,12 @@ export function savePlainRotation(
   if (readOnlyPreview) return Promise.resolve();
   const { element } = selection;
   const before = captureStudioRotation(element);
-  // Legacy rotation marks go in the same write, or the seek re-apply would put their angle back.
+  // Legacy marks go in the same write, or a seek puts their angle back; clearing them voids the press read.
   const patches: PatchOperation[] = element.hasAttribute(STUDIO_ROTATION_ATTR)
     ? buildClearRotationPatches(element)
     : [];
   if (patches.length) clearStudioRotation(element);
-  const drawn = applyCssRotation(element, next.angle, next.plain);
+  const drawn = applyCssRotation(element, next.angle, patches.length ? undefined : next.plain);
   patches.push(...drawn);
   const turn = drawn.at(-1)!;
   return commitPositionPatchToHtml(selection, patches, {

@@ -4,6 +4,7 @@ import React, { act } from "react";
 import { afterEach, describe, expect, it, vi, type Mock } from "vitest";
 import type { GsapAnimation } from "@hyperframes/core/gsap-parser";
 import type { DomEditSelection } from "../components/editor/domEditingTypes";
+import type { RotationCommit } from "../components/editor/rotationDraft";
 import type { DomEditGroupPathOffsetCommit } from "../components/editor/DomEditOverlay";
 import { mountReactHarness, withInlineLayoutBox } from "./domSelectionTestHarness";
 import { DomEditCropHandles } from "../components/editor/DomEditCropHandles";
@@ -136,7 +137,7 @@ function mountGroupHandler({
     next: { x: number; y: number },
     route?: { plainTranslate?: boolean },
   ) => Promise<void>;
-  let rotationCommit!: (selection: DomEditSelection, next: { angle: number }) => Promise<void>;
+  let rotationCommit!: (selection: DomEditSelection, next: RotationCommit) => Promise<void>;
   function Harness() {
     const editing = useGsapAwareEditing({
       domEditSelection: null,
@@ -169,7 +170,7 @@ function mountGroupHandler({
       next: { x: number; y: number },
       route?: { plainTranslate?: boolean },
     ) => pathOffsetCommit(selection, next, route),
-    rotationCommit: (selection: DomEditSelection, next: { angle: number }) =>
+    rotationCommit: (selection: DomEditSelection, next: RotationCommit) =>
       rotationCommit(selection, next),
     root,
   };
@@ -291,6 +292,29 @@ describe("useGsapAwareEditing rotation routing", () => {
     }
     expect(tryGsapRotationIntercept).toHaveBeenCalledTimes(1);
     expect(h.handleDomRotationCommit).not.toHaveBeenCalled();
+    act(() => h.root.unmount());
+  });
+
+  it("saves a turn the press drew as CSS by the CSS writer, even once a GSAP tween turns the element", async () => {
+    const element = document.createElement("div");
+    const h = rotate(element);
+    const tween = { vars: { rotation: 30 }, targets: () => [element] };
+    Object.assign(window, { __timelines: { main: { getChildren: () => [tween] } } });
+    const plain = {
+      property: "rotate",
+      before: "",
+      after: "",
+      share: 0,
+      sign: 1,
+      inline: false,
+    } as const;
+    try {
+      await act(() => h.rotationCommit(h.box, { angle: 55, plain }));
+    } finally {
+      delete (window as { __timelines?: unknown }).__timelines;
+    }
+    expect(h.handleDomRotationCommit).toHaveBeenCalledWith(h.box, { angle: 55, plain });
+    expect(tryGsapRotationIntercept).not.toHaveBeenCalled();
     act(() => h.root.unmount());
   });
 });
