@@ -14,7 +14,7 @@ const editorTheme = EditorView.theme({
   ".cm-activeLine": { backgroundColor: "var(--color-hover)" },
   ".cm-selectionMatch": {
     backgroundColor: "transparent",
-    outline: "1px solid var(--color-border-strong)",
+    outline: "1px solid var(--color-text-muted)",
   },
   ".cm-searchMatch": {
     backgroundColor: "transparent",
@@ -22,7 +22,7 @@ const editorTheme = EditorView.theme({
   },
   ".cm-searchMatch.cm-searchMatch-selected": {
     backgroundColor: "transparent",
-    outline: "1px solid var(--color-accent-ink)",
+    outline: "2px solid var(--color-accent-ink)",
   },
   "&.cm-focused .cm-matchingBracket, &.cm-focused .cm-nonmatchingBracket": {
     backgroundColor: "var(--color-on)",
