@@ -9,7 +9,7 @@ import {
 import type { TimelineEditCapabilities } from "./timelineEditing";
 import { isAudioTimelineElement } from "../../utils/timelineInspector";
 import { timelineClipFocusId } from "./timelineNavigationIdentity";
-import { TimelineClipFades } from "./TimelineClipFades";
+import { ClipFadesContext, TimelineClipFades, useClipFadeDraft } from "./TimelineClipFades";
 
 interface TimelineClipProps {
   el: TimelineElement;
@@ -82,6 +82,8 @@ export const TimelineClip = memo(function TimelineClip({
     "--clip-handle": theme.handleColor,
   } as CSSProperties;
   const isAudioClip = isAudioTimelineElement(el);
+  const hasFades = (isAudioClip || Boolean(el.hasAudio)) && !isGestureActor;
+  const fade = useClipFadeDraft(el);
   const clipClassName = [
     "timeline-clip",
     "absolute",
@@ -206,16 +208,21 @@ export const TimelineClip = memo(function TimelineClip({
           {startLabel}-{endLabel}s
         </span>
       )}
-      {children}
-      {/* Fade handles + ramps for anything the mixer hears — audio clips and
-          videos marked data-has-audio. They write data-fade-in/out on the clip
-          and are the timeline half of the inspector's Fade rows. */}
-      {(isAudioClip || el.hasAudio) && !isGestureActor && (
+      <ClipFadesContext.Provider value={hasFades ? fade.shape : null}>
+        {children}
+      </ClipFadesContext.Provider>
+      {/* Fade handles for anything the mixer hears: audio clips and videos marked
+          data-has-audio. They write data-fade-in/out, the timeline half of the
+          inspector's Fade rows. */}
+      {hasFades && (
         <TimelineClipFades
           el={el}
           pps={pps}
           widthPx={widthPx}
           showHandles={(isHovered || isSelected) && !isDragging}
+          focusable={isSelected}
+          hasWaveform={isAudioClip}
+          fade={fade}
         />
       )}
     </button>

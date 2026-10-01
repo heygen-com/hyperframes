@@ -45,6 +45,33 @@ describe("AudioWaveform", () => {
     ]);
   });
 
+  it("shrinks each bar to the fade's gain and keeps the cut-away part as a ghost", () => {
+    const fills: Array<[string, number, number, number, number]> = [];
+    const context = {
+      scale: vi.fn(),
+      clearRect: vi.fn(),
+      fillStyle: "",
+      fillRect: (x: number, y: number, width: number, height: number) =>
+        fills.push([String(context.fillStyle), x, y, width, height]),
+    } as unknown as CanvasRenderingContext2D;
+    const canvas = document.createElement("canvas");
+    Object.defineProperties(canvas, {
+      clientWidth: { value: 6 },
+      clientHeight: { value: 20 },
+    });
+    vi.spyOn(canvas, "getContext").mockReturnValue(context);
+    // A 1 s fade-in on a 2 s clip: the first bar's centre (0.5 s) plays at half gain.
+    drawWaveformCanvas(canvas, [1, 1], false, 0, 1, { fadeIn: 1, fadeOut: 0, duration: 2 });
+    const bars = fills.filter(([, , y, , height]) => !(y === 18 && height === 2));
+    expect(bars.map(([, x, y, width, height]) => [x, y, width, height])).toEqual([
+      [0, 0, 3, 20],
+      [0, 10, 3, 10],
+      [3, 0, 3, 20],
+    ]);
+    const alpha = (style: string) => Number(style.split(",").at(-1)?.replace(")", ""));
+    expect(alpha(bars[0][0])).toBeCloseTo(alpha(bars[1][0]) * 0.27, 2);
+  });
+
   it("leases waveform decoding with the clip's project, session, and viewport priority", () => {
     const host = document.createElement("div");
     document.body.append(host);

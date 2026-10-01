@@ -3,8 +3,8 @@
 import React, { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import type { TimelineElement } from "../store/playerStore";
-import { TimelineClipFades } from "./TimelineClipFades";
+import { usePlayerStore, type TimelineElement } from "../store/playerStore";
+import { TimelineClipFades, useClipFadeDraft } from "./TimelineClipFades";
 import { TimelineEditProvider } from "../../contexts/TimelineEditContext";
 
 (globalThis as unknown as { IS_REACT_ACT_ENVIRONMENT: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
@@ -14,7 +14,14 @@ const mounted: Root[] = [];
 afterEach(() => {
   act(() => mounted.splice(0).forEach((root) => root.unmount()));
   document.body.innerHTML = "";
+  usePlayerStore.setState({ currentTime: 0, elements: [], timelineSnapEnabled: true });
 });
+
+/** TimelineClip owns the draft; this stands in for it. */
+function Fades(props: { el: TimelineElement; showHandles: boolean; focusable?: boolean }) {
+  const fade = useClipFadeDraft(props.el);
+  return <TimelineClipFades {...props} pps={100} widthPx={props.el.duration * 100} fade={fade} />;
+}
 
 const clip: TimelineElement = {
   id: "music",
@@ -29,7 +36,12 @@ const clip: TimelineElement = {
 
 function render(
   el: TimelineElement,
-  options: { showHandles?: boolean; provide?: boolean; onClipPointerDown?: () => void } = {},
+  options: {
+    showHandles?: boolean;
+    provide?: boolean;
+    focusable?: boolean;
+    onClipPointerDown?: () => void;
+  } = {},
 ) {
   const host = document.createElement("div");
   document.body.append(host);
@@ -41,12 +53,7 @@ function render(
   // Stands in for the TimelineClip button the handles live inside.
   const node = (
     <div data-testid="clip" onPointerDown={options.onClipPointerDown}>
-      <TimelineClipFades
-        el={el}
-        pps={100}
-        widthPx={el.duration * 100}
-        showHandles={options.showHandles ?? true}
-      />
+      <Fades el={el} showHandles={options.showHandles ?? true} focusable={options.focusable} />
     </div>
   );
   act(() => {
@@ -257,12 +264,26 @@ describe("TimelineClipFades", () => {
     },
   );
 
-  it.each([0.3, 3])("pins the handles to the top corners for a %s s fade-in", (fadeIn) => {
+  it.each([
+    [0.3, "18px"],
+    [3, "288px"],
+  ])("puts the fade-in tab at the end of a %s s fade", (fadeIn, left) => {
     const { host } = render({ ...clip, fadeIn, fadeOut: 0.4 });
     const inHandle = host.querySelector<HTMLElement>('[data-testid="clip-fade-handle-in"]');
-    const fadeOut = host.querySelector<HTMLElement>('[data-testid="clip-fade-handle-out"]');
+    const outHandle = host.querySelector<HTMLElement>('[data-testid="clip-fade-handle-out"]');
+    // The 24 px box centres on the fade's end: 0.4 s out of a 1000 px clip ends at 960.
+    expect(inHandle?.style.left).toBe(left);
+    expect(outHandle?.style.left).toBe("948px");
+    const tab = inHandle?.firstElementChild as HTMLElement;
+    expect(tab.style.left).toBe("10px");
+  });
+
+  it("keeps the tab off the rounded end when there is no fade", () => {
+    const { host } = render({ ...clip, fadeIn: undefined, fadeOut: undefined });
+    const inHandle = host.querySelector<HTMLElement>('[data-testid="clip-fade-handle-in"]');
+    const outHandle = host.querySelector<HTMLElement>('[data-testid="clip-fade-handle-out"]');
     expect(inHandle?.style.left).toBe("0px");
-    expect(fadeOut?.style.left).toBe(`${1000 - 24}px`);
+    expect(outHandle?.style.left).toBe("976px");
   });
 
   it("lengthens a fade by the pointer's inward travel from wherever the press lands", () => {
@@ -283,8 +304,8 @@ describe("TimelineClipFades", () => {
 
   it("paints the handles above the clip's waveform and thumbnail layers", () => {
     const { host } = render(clip);
-    const handle = host.querySelector<HTMLElement>('[data-testid="clip-fade-handle-in"]');
-    expect(Number(handle?.style.zIndex)).toBeGreaterThan(10);
+    const layer = host.querySelector<HTMLElement>('[data-testid="clip"]')?.firstElementChild;
+    expect(Number((layer as HTMLElement).style.zIndex)).toBeGreaterThan(10);
   });
 
   it("splits a clip narrower than two targets between the handles", () => {
@@ -293,11 +314,91 @@ describe("TimelineClipFades", () => {
     const fadeOut = host.querySelector<HTMLElement>('[data-testid="clip-fade-handle-out"]');
     expect([fadeIn?.style.left, fadeIn?.style.width]).toEqual(["0px", "15px"]);
     expect([fadeOut?.style.left, fadeOut?.style.width]).toEqual(["15px", "15px"]);
-    const dot = fadeIn?.firstElementChild as HTMLElement;
-    expect(getComputedStyle(dot).width).toBe("10px");
-    // Layout is not real here; tests/e2e/fade-handles.mjs measures the box in Chrome.
-    expect(getComputedStyle(dot).flexShrink).toBe("0");
-    expect(getComputedStyle(dot).pointerEvents).toBe("none");
+    const tab = fadeIn?.firstElementChild as HTMLElement;
+    expect([tab.style.width, tab.style.height]).toEqual(["4px", "15px"]);
+    // Layout is not real here; tests/e2e/fade-handles.mjs measures the tab in Chrome.
+    expect(tab.style.pointerEvents).toBe("none");
+  });
+
+  it("snaps the fade's end to the playhead within the timeline's snap radius", () => {
+    usePlayerStore.setState({ currentTime: 4.5 });
+    const { host, onSetElementAttributeLive } = render(clip);
+    const handle = host.querySelector<HTMLElement>('[data-testid="clip-fade-handle-in"]');
+    if (!handle) throw new Error("expected a fade-in handle");
+    armCapture(handle);
+    // 146 px makes a 2.46 s fade ending at 4.46 s, 4 px from the playhead: it lands on 4.5.
+    act(() => handle.dispatchEvent(pointer("pointerdown", 100)));
+    act(() => handle.dispatchEvent(pointer("pointermove", 246)));
+    expect(onSetElementAttributeLive).toHaveBeenLastCalledWith(clip, "data-fade-in", "2.5");
+  });
+
+  it("leaves the fade unsnapped when the timeline's snapping is off", () => {
+    usePlayerStore.setState({ currentTime: 4.5, timelineSnapEnabled: false });
+    const { host, onSetElementAttributeLive } = render(clip);
+    const handle = host.querySelector<HTMLElement>('[data-testid="clip-fade-handle-in"]');
+    if (!handle) throw new Error("expected a fade-in handle");
+    armCapture(handle);
+    act(() => handle.dispatchEvent(pointer("pointerdown", 100)));
+    act(() => handle.dispatchEvent(pointer("pointermove", 246)));
+    expect(onSetElementAttributeLive).toHaveBeenLastCalledWith(clip, "data-fade-in", "2.46");
+  });
+
+  it("snaps to another clip's edge", () => {
+    usePlayerStore.setState({
+      elements: [clip, { id: "title", tag: "div", start: 6, duration: 2, track: 0 }],
+    });
+    const { host, onSetElementAttributeLive } = render(clip);
+    const handle = host.querySelector<HTMLElement>('[data-testid="clip-fade-handle-out"]');
+    if (!handle) throw new Error("expected a fade-out handle");
+    armCapture(handle);
+    // The 2 s fade-out starts at 10 s; 395 px left moves that to 6.05 s, onto the title's start.
+    act(() => handle.dispatchEvent(pointer("pointerdown", 1000)));
+    act(() => handle.dispatchEvent(pointer("pointermove", 605)));
+    expect(onSetElementAttributeLive).toHaveBeenLastCalledWith(clip, "data-fade-out", "6");
+  });
+
+  it.each([
+    [1, null],
+    [undefined, "0.5"],
+  ])("double-click on a %s s fade-in saves %s", (fadeIn, saved) => {
+    const { host, onSetElementAttributeQuiet } = render({ ...clip, fadeIn });
+    const handle = host.querySelector<HTMLElement>('[data-testid="clip-fade-handle-in"]');
+    act(() => handle?.dispatchEvent(new MouseEvent("dblclick", { bubbles: true })));
+    expect(onSetElementAttributeQuiet).toHaveBeenCalledTimes(1);
+    expect(onSetElementAttributeQuiet).toHaveBeenCalledWith(
+      { ...clip, fadeIn },
+      "data-fade-in",
+      saved,
+      "Fade in",
+    );
+  });
+
+  it.each([
+    [{ key: "ArrowRight" }, "1.1"],
+    [{ key: "ArrowRight", shiftKey: true }, "2"],
+    [{ key: "ArrowLeft" }, "0.9"],
+    [{ key: "Home" }, null],
+    [{ key: "End" }, "8"],
+  ])("saves one step per key press: %o", (init, saved) => {
+    const outer = vi.fn();
+    const { host, onSetElementAttributeQuiet } = render(clip, { focusable: true });
+    document.body.addEventListener("keydown", outer);
+    const handle = host.querySelector<HTMLElement>('[data-testid="clip-fade-handle-in"]');
+    expect(handle?.tabIndex).toBe(0);
+    act(() => {
+      handle?.dispatchEvent(new KeyboardEvent("keydown", { ...init, bubbles: true }));
+    });
+    expect(onSetElementAttributeQuiet).toHaveBeenCalledTimes(1);
+    expect(onSetElementAttributeQuiet).toHaveBeenCalledWith(clip, "data-fade-in", saved, "Fade in");
+    // The timeline's own arrow-key handling never sees a key the handle used.
+    expect(outer).not.toHaveBeenCalled();
+  });
+
+  it("keeps an unselected clip's handles out of the tab order", () => {
+    const { host } = render(clip);
+    expect(host.querySelector<HTMLElement>('[data-testid="clip-fade-handle-in"]')?.tabIndex).toBe(
+      -1,
+    );
   });
 
   it("does not let a press on the dot start the clip's own move gesture", () => {
