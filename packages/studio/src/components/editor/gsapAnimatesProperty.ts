@@ -1,4 +1,3 @@
-/** GSAP renders this element's transform, and masks its CSS translate, rotate and scale inline. */
 export const gsapRendersTransform = (el: Element) =>
   !!(el as { _gsap?: { renderTransform?: unknown } })._gsap?.renderTransform;
 

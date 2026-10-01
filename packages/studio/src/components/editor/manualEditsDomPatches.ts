@@ -128,11 +128,10 @@ const BOX_SIZE_ORIG_ATTRS: ReadonlyArray<[string, string]> = [
 export function buildBoxSizePatches(element: HTMLElement): PatchOperation[] {
   const ops: PatchOperation[] = [];
   collectInlineStyleOps(element, [STUDIO_WIDTH_PROP, STUDIO_HEIGHT_PROP], ops);
-  // GSAP's inline `scale: none` mask is not the element's CSS: saved, it would drop a stylesheet scale.
-  const owned = gsapRendersTransform(element)
+  const withoutGsapScaleMask = gsapRendersTransform(element)
     ? BOX_SIZE_STYLE_PROPS.filter((prop) => prop !== "scale")
     : BOX_SIZE_STYLE_PROPS;
-  collectInlineStyleOps(element, owned, ops);
+  collectInlineStyleOps(element, withoutGsapScaleMask, ops);
   ops.push({ type: "attribute", property: STUDIO_BOX_SIZE_ATTR, value: "true" });
   collectAttributeOps(
     element,

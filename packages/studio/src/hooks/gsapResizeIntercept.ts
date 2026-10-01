@@ -132,9 +132,10 @@ export async function tryGsapResizeIntercept(
     size,
   });
   if (!anim || isInstantHold(anim)) {
-    // A gsap.set only where the script already writes the size; otherwise it is the element's CSS.
-    if (!allKnownAnimations.some((a) => animationWritesAnyProperty(a, SIZE_PROPS)))
-      return { status: "element-size" };
+    const scriptWritesSize = allKnownAnimations.some((a) =>
+      animationWritesAnyProperty(a, SIZE_PROPS),
+    );
+    if (!scriptWritesSize) return { status: "element-size" };
     const sel = selectorFromSelection(selection) ?? writeTargetSelector(selection);
     if (!sel) return { status: "blocked", reason: "no-selector" };
     // A scale hold is not a size hold.

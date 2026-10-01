@@ -366,8 +366,7 @@ export function useGsapAwareEditing({
       });
       let anchorMove: ReturnType<typeof stageElementPositionOffset> | null = null;
       const stageCrop = prepareCropResize(selection.element);
-      let cropUndoKey: string | null = null;
-      let plainSize = false;
+      let saveSizeAfterCommits: (() => Promise<void>) | null = null;
       return runGestureTransaction({
         element: selection.element,
         label: "Resize layer",
@@ -396,13 +395,12 @@ export function useGsapAwareEditing({
                 makeFetchFallback(selection),
               );
               assertGsapEditPersisted(outcome);
-              cropUndoKey = coalesceKey;
-              plainSize = outcome.status === "element-size";
-              // What the resize actually did, not what its animations suggest
-              // it would do. An element whose scale is an instant hold has a
-              // scale-group tween and still commits width/height, so guessing
-              // from the tweens withheld an offset nobody had written and the
-              // element snapped back to its authored position on every drag.
+              saveSizeAfterCommits =
+                outcome.status === "element-size"
+                  ? () => handleDomBoxSizeCommit(selection, next, undefined, undefined, coalesceKey)
+                  : () =>
+                      saveCropResize(stageCrop, selection, commitPositionPatchToHtml, coalesceKey);
+              // What the resize did, not what its tweens suggest: a scale hold still commits a size.
               const ownsDragOffset =
                 outcome.status === "persisted" && outcome.ownsDragOffset === true;
               logResize("intercept-handled", {
@@ -439,11 +437,7 @@ export function useGsapAwareEditing({
         afterBufferedCommitsSaved: async () => {
           await anchorMove?.save();
           // Only now is the size live for every caller, drag or not.
-          if (!cropUndoKey) return;
-          // The script never sizes it: its own CSS width/height and crop, in the same undo step.
-          if (plainSize)
-            await handleDomBoxSizeCommit(selection, next, undefined, undefined, cropUndoKey);
-          else await saveCropResize(stageCrop, selection, commitPositionPatchToHtml, cropUndoKey);
+          await saveSizeAfterCommits?.();
         },
         restore: () => {
           anchorMove?.rollback();

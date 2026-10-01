@@ -45,7 +45,6 @@ export type GsapEditOutcome =
     }
   | { status: "blocked"; reason: GsapEditBlockReason; detail?: GsapEditBlockDetail }
   | { status: "element-offset" }
-  // Nothing in the script sizes the element, so the caller saves its size as its own CSS.
   | { status: "element-size" };
 
 export const GSAP_EDIT_BLOCK_COPY: Record<GsapEditBlockReason, string> = {
