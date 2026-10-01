@@ -42,18 +42,16 @@ function Overlay() {
 
 const pointer = (type: string, clientX: number, clientY: number) =>
   act(() => {
-    document
-      .querySelector("[data-overlay]")!
-      .dispatchEvent(
-        new PointerEvent(type, {
-          bubbles: true,
-          buttons: type === "pointerup" ? 0 : 1,
-          button: 0,
-          pointerId: 1,
-          clientX,
-          clientY,
-        }),
-      );
+    document.querySelector("[data-overlay]")!.dispatchEvent(
+      new PointerEvent(type, {
+        bubbles: true,
+        buttons: type === "pointerup" ? 0 : 1,
+        button: 0,
+        pointerId: 1,
+        clientX,
+        clientY,
+      }),
+    );
   });
 const escape = () => {
   const event = new KeyboardEvent("keydown", { key: "Escape", bubbles: true, cancelable: true });
@@ -99,17 +97,15 @@ it("a buttonless move back at the start does not shrink the band", () => {
   const band = () => document.querySelector<HTMLElement>("[data-band]")?.dataset.width;
   expect(band()).toBe("110");
   act(() => {
-    document
-      .querySelector("[data-overlay]")!
-      .dispatchEvent(
-        new PointerEvent("pointermove", {
-          bubbles: true,
-          pointerId: 1,
-          buttons: 0,
-          clientX: 10,
-          clientY: 10,
-        }),
-      );
+    document.querySelector("[data-overlay]")!.dispatchEvent(
+      new PointerEvent("pointermove", {
+        bubbles: true,
+        pointerId: 1,
+        buttons: 0,
+        clientX: 10,
+        clientY: 10,
+      }),
+    );
   });
   expect(band()).toBe("110");
 });

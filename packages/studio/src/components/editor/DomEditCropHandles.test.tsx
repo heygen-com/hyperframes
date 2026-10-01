@@ -35,6 +35,19 @@ function makeEl(id: string, clip: string): HTMLElement {
   return el;
 }
 
+/** Presses at the first x, moves through the rest with their buttons, and lets go where the last held move was. */
+function dragCropRight(handle: HTMLElement, pointerId: number, points: [number, number][]) {
+  const [[start], ...moves] = points;
+  const release = moves.filter(([, buttons]) => buttons & 1).at(-1)?.[0] ?? start;
+  const send = (type: string, clientX: number, buttons: number) =>
+    handle.dispatchEvent(new PointerEvent(type, { bubbles: true, pointerId, buttons, clientX }));
+  act(() => {
+    send("pointerdown", start, 1);
+    for (const [x, buttons] of moves) send("pointermove", x, buttons);
+    send("pointerup", release, 0);
+  });
+}
+
 function render(
   el: HTMLElement,
   onStyleCommit: (property: string, value: string) => Promise<unknown> | void = () => undefined,
@@ -128,23 +141,11 @@ describe("DomEditCropHandles clip lift", () => {
     const onStyleCommit = vi.fn();
     render(makeEl("a", "inset(10px)"), onStyleCommit);
     const handle = document.querySelector<HTMLButtonElement>('[aria-label="Crop right"]')!;
-    act(() => {
-      for (const [type, clientX] of [
-        ["pointerdown", 100],
-        ["pointermove", 90],
-        ["pointermove", 80],
-        ["pointerup", 80],
-      ] as const) {
-        handle.dispatchEvent(
-          new PointerEvent(type, {
-            bubbles: true,
-            buttons: type === "pointerup" ? 0 : 1,
-            pointerId: 4,
-            clientX,
-          }),
-        );
-      }
-    });
+    dragCropRight(handle, 4, [
+      [100, 1],
+      [90, 1],
+      [80, 1],
+    ]);
     expect(onStyleCommit).toHaveBeenCalledWith("clip-path", "inset(10px 30px 10px 10px)");
   });
 
@@ -152,18 +153,11 @@ describe("DomEditCropHandles clip lift", () => {
     const onStyleCommit = vi.fn();
     render(makeEl("a", "inset(10px)"), onStyleCommit);
     const handle = document.querySelector<HTMLButtonElement>('[aria-label="Crop right"]')!;
-    act(() => {
-      for (const [type, clientX, buttons] of [
-        ["pointerdown", 100, 1],
-        ["pointermove", 80, 1],
-        ["pointermove", 100, 0],
-        ["pointerup", 80, 0],
-      ] as const) {
-        handle.dispatchEvent(
-          new PointerEvent(type, { bubbles: true, pointerId: 6, buttons, clientX }),
-        );
-      }
-    });
+    dragCropRight(handle, 6, [
+      [100, 1],
+      [80, 1],
+      [100, 0],
+    ]);
     expect(onStyleCommit).toHaveBeenCalledWith("clip-path", "inset(10px 30px 10px 10px)");
   });
 
@@ -171,23 +165,11 @@ describe("DomEditCropHandles clip lift", () => {
     const a = makeEl("a", "");
     const { root } = render(a, (property, value) => void a.style.setProperty(property, value));
     const handle = document.querySelector<HTMLButtonElement>('[aria-label="Crop right"]')!;
-    act(() => {
-      for (const [type, clientX] of [
-        ["pointerdown", 100],
-        ["pointermove", 90],
-        ["pointermove", 80],
-        ["pointerup", 80],
-      ] as const) {
-        handle.dispatchEvent(
-          new PointerEvent(type, {
-            bubbles: true,
-            buttons: type === "pointerup" ? 0 : 1,
-            pointerId: 5,
-            clientX,
-          }),
-        );
-      }
-    });
+    dragCropRight(handle, 5, [
+      [100, 1],
+      [90, 1],
+      [80, 1],
+    ]);
     await act(async () => undefined);
     act(() => root.unmount());
     expect(a.style.getPropertyValue("clip-path")).toBe("inset(0px 20px 0px 0px)");
