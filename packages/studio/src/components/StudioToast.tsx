@@ -45,7 +45,6 @@ export function StudioToast({ message, tone, leaving, onDismiss }: StudioToastPr
   );
 }
 
-/** The floating card under toasts and the feedback prompt: the raised surface, tinted for an error. */
 export function toastSurface(isError: boolean): string {
   return `border shadow-popover backdrop-blur-md ${isError ? "border-danger/40 bg-raised" : "border-border bg-raised/95"}`;
 }

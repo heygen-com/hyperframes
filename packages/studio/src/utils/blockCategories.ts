@@ -7,7 +7,6 @@ import {
 export type { BlockCategory };
 export { BLOCK_CATEGORIES, resolveBlockCategory };
 
-// Category ink: the stock 400 step in dark, a darker ink of the same hue in light.
 const COLOR_MAP: Record<BlockCategory, { bg: string; text: string; dot: string }> = {
   transitions: {
     bg: "bg-blue-500/15",
