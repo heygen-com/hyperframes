@@ -11,6 +11,7 @@
 import { buildArcPath, type ArcPathConfig } from "@hyperframes/core/gsap-parser-acorn";
 import { parsePercentageKeyframes, toAbsoluteTime } from "./gsapShared";
 import { roundTo3 } from "../utils/rounding";
+import { BOX_SIZE_STYLE_PROPS } from "../components/editor/manualEditsDomPatches";
 
 /**
  * A GSAP tween's `vars` object — intentionally open: it mixes channel values
@@ -403,6 +404,80 @@ export function hasNonHoldTweenForElement(
     return false;
   }
   return !!targetEl && hasNonHoldTween(timelinesOf(iframe), targetEl, channels, compositionId);
+}
+
+// A sibling rotation/scale tween must never push a static position hold into the keyframe branch.
+export const POSITION_CHANNELS: string[] = [
+  "x",
+  "y",
+  "xPercent",
+  "yPercent",
+  "left",
+  "top",
+  // readTween reads the authored translateX/Y; GSAP normalizes them to x/y only at play time.
+  "translateX",
+  "translateY",
+];
+const MOVE_CHANNELS = [...POSITION_CHANNELS, "motionPath"];
+
+export const GSAP_TRANSFORM_KEYS = new Set(
+  "x,y,z,scale,scaleX,scaleY,xPercent,yPercent,rotation,rotationX,rotationY,skewX,skewY,transformOrigin,svgOrigin,force3D,smoothOrigin,transformPerspective,translateX,translateY,translateZ,rotate,rotationZ,rotateZ,rotateX,rotateY".split(
+    ",",
+  ),
+);
+
+/** Whether a live timeline tween or hold writes any of `channels` on `el`. Sync, no fetch. */
+function gsapWritesChannels(el: Element, channels: string[]): boolean {
+  const win = el.ownerDocument.defaultView as { __timelines?: Record<string, RuntimeTimeline> };
+  return Object.values(win?.__timelines ?? {}).some((tl) =>
+    (tl?.getChildren?.(true) ?? []).some(
+      (tween) =>
+        !!tween.vars &&
+        matchesElement(tween, el) &&
+        (channels.some((ch) => ch in tween.vars!) ||
+          keyframeVarsCarryChannel(tween.vars, channels)),
+    ),
+  );
+}
+
+// GSAP's CSSPlugin also takes rotate, rotateX/Y/Z for rotation.
+export const ROTATION_CHANNELS: string[] = [
+  ...["rotation", "rotationX", "rotationY", "rotationZ"],
+  ...["rotate", "rotateX", "rotateY", "rotateZ"],
+];
+
+const gsapRendersTransform = (el: Element) =>
+  !!(el as { _gsap?: { renderTransform?: unknown } })._gsap?.renderTransform;
+
+/** GSAP owns this element's position: a tween or hold writes it, or GSAP already renders its
+ *  transform (a CSS translate would then apply twice). Everything else moves by plain CSS. */
+export function gsapWritesPosition(el: Element): boolean {
+  return gsapRendersTransform(el) || gsapWritesChannels(el, MOVE_CHANNELS);
+}
+
+/** `gsapWritesPosition` for a rotate: everything else turns by its own CSS `rotate`. */
+export function gsapWritesRotation(el: Element): boolean {
+  return gsapRendersTransform(el) || gsapWritesChannels(el, ROTATION_CHANNELS);
+}
+
+export function gsapHoldsTranslate(el: Element): boolean {
+  const cache = (el as { _gsap?: Record<string, unknown> })._gsap;
+  return ["x", "y", "xPercent", "yPercent"].some(
+    (key) => !!Number.parseFloat(String(cache?.[key])),
+  );
+}
+
+const BOX_CHANNELS = [
+  ...BOX_SIZE_STYLE_PROPS.map((prop) =>
+    prop.replace(/-([a-z])/g, (_, c: string) => c.toUpperCase()),
+  ),
+  "scaleX",
+  "scaleY",
+];
+
+/** GSAP owns this element's box: its position, or any property the CSS box writer sets. Else a resize writes CSS. */
+export function gsapWritesBox(el: Element): boolean {
+  return gsapWritesPosition(el) || gsapWritesChannels(el, BOX_CHANNELS);
 }
 
 /** `hasNonHoldTweenForElement` for an element in hand, read from its own window's timelines. */

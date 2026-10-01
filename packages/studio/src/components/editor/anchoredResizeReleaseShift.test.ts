@@ -1,12 +1,6 @@
 // @vitest-environment jsdom
 import { afterEach, describe, expect, it } from "vitest";
-import { applyStudioBoxSize, applyStudioPathOffset, readStudioBoxSize } from "./manualEditsDom";
-import { reapplyPositionEditsAfterSeek } from "./manualEditsSeekReapply";
-import { buildBoxSizePatches, buildPathOffsetPatches } from "./manualEditsDomPatches";
-import { createManualOffsetDragMember, applyManualOffsetDragCommit } from "./manualOffsetDrag";
 import { computeNextResizeAnchor } from "./domEditResizeLocal";
-import type { PatchOperation } from "../../utils/sourcePatcher";
-import { splitTopLevelWhitespace } from "./manualEditsStyleHelpers";
 
 /**
  * Center-anchored corner resize (CapCut model): the element scales about its
@@ -37,40 +31,6 @@ import { splitTopLevelWhitespace } from "./manualEditsStyleHelpers";
 afterEach(() => {
   document.body.innerHTML = "";
 });
-
-/** Apply a built PatchOperation[] to a live element, mirroring sourcePatcher's
- * inline-style / attribute application — i.e. what the persisted source carries
- * when it is re-parsed into the DOM on the next preview load. */
-function applyPatchesToElement(el: HTMLElement, ops: PatchOperation[]): void {
-  for (const op of ops) {
-    if (op.type === "inline-style") {
-      if (op.value === null) el.style.removeProperty(op.property);
-      else el.style.setProperty(op.property, op.value);
-    } else if (op.type === "attribute") {
-      if (op.value === null) el.removeAttribute(op.property);
-      else el.setAttribute(op.property, op.value);
-    }
-  }
-}
-
-/** Net translate applied to an element, resolving the studio offset var()
- * expression to its px value so we compare the actually-rendered translation. */
-function resolvedTranslatePx(el: HTMLElement): { x: number; y: number } {
-  const raw = el.style.getPropertyValue("translate").trim();
-  if (!raw || raw === "none") return { x: 0, y: 0 };
-  const vx = Number.parseFloat(el.style.getPropertyValue("--hf-studio-offset-x")) || 0;
-  const vy = Number.parseFloat(el.style.getPropertyValue("--hf-studio-offset-y")) || 0;
-  const parts = splitTopLevelWhitespace(raw);
-  const parseAxis = (part: string, varVal: number): number => {
-    if (part && part.includes("--hf-studio-offset")) return varVal;
-    const n = Number.parseFloat(part);
-    return Number.isFinite(n) ? n : 0;
-  };
-  return {
-    x: parseAxis(parts[0] ?? "", vx),
-    y: parseAxis(parts[1] ?? "", vy),
-  };
-}
 
 describe("center-anchored corner resize — no shift after release", () => {
   it("the per-frame center anchor converges (does NOT oscillate) — the release-shift root cause", () => {
@@ -156,49 +116,5 @@ describe("center-anchored corner resize — no shift after release", () => {
         expect(pinnedCenter.y).toBeCloseTo(fixedStart.y, 9);
       }
     }
-  });
-
-  it("net translate after persist+reload equals the committed anchor offset (non-GSAP)", () => {
-    // The committed offset flows through the real apply → persist → reload chain
-    // unchanged (this hop was proved clean; the shift is upstream in the anchor
-    // loop above, not in persistence).
-    const el = document.createElement("div");
-    el.style.setProperty("width", "200px");
-    el.style.setProperty("height", "100px");
-    document.body.appendChild(el);
-
-    const anchorDx = -30;
-    const anchorDy = -18;
-    const finalSize = { width: 240, height: 130 };
-
-    applyStudioBoxSize(el, finalSize);
-    const memberResult = createManualOffsetDragMember({
-      key: "k",
-      selection: { element: el } as never,
-      element: el,
-      rect: { left: 0, top: 0, width: 240, height: 130, editScaleX: 1, editScaleY: 1 },
-    });
-    expect(memberResult.ok).toBe(true);
-    if (!memberResult.ok) return;
-
-    const finalOffset = applyManualOffsetDragCommit(memberResult.member, anchorDx, anchorDy);
-
-    applyStudioBoxSize(el, finalSize);
-    const patches = buildBoxSizePatches(el);
-    applyStudioPathOffset(el, finalOffset);
-    patches.push(...buildPathOffsetPatches(el));
-
-    expect(resolvedTranslatePx(el)).toEqual({ x: anchorDx, y: anchorDy });
-
-    // Persist → fresh element re-parsed from source → reload re-stamp.
-    const reloaded = document.createElement("div");
-    reloaded.style.setProperty("width", "200px");
-    reloaded.style.setProperty("height", "100px");
-    document.body.appendChild(reloaded);
-    applyPatchesToElement(reloaded, patches);
-    reapplyPositionEditsAfterSeek(reloaded.ownerDocument);
-
-    expect(resolvedTranslatePx(reloaded)).toEqual({ x: anchorDx, y: anchorDy });
-    expect(readStudioBoxSize(reloaded)).toEqual(finalSize);
   });
 });

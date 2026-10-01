@@ -82,6 +82,8 @@ export function captureStudioBoxSize(element: HTMLElement): StudioBoxSizeSnapsho
 export function captureStudioRotation(element: HTMLElement): StudioRotationSnapshot {
   return {
     rotate: element.style.getPropertyValue("rotate"),
+    transform: element.style.getPropertyValue("transform"),
+    display: element.style.getPropertyValue("display"),
     transformOrigin: element.style.getPropertyValue("transform-origin"),
     studioRotation: element.style.getPropertyValue(STUDIO_ROTATION_PROP),
     marker: element.getAttribute(STUDIO_ROTATION_ATTR),
@@ -263,6 +265,7 @@ function restoreOriginalTranslateProperty(element: HTMLElement): void {
 export function clearStudioPathOffset(element: HTMLElement): void {
   if (
     element.hasAttribute(STUDIO_PATH_OFFSET_ATTR) ||
+    element.hasAttribute(STUDIO_ORIGINAL_INLINE_TRANSLATE_ATTR) ||
     styleUsesStudioOffset(element.style.getPropertyValue("translate"))
   ) {
     restoreOriginalTranslateProperty(element);

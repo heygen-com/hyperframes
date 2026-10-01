@@ -2,21 +2,20 @@
  * Gesture-begin functions: startGroupDrag and startGesture.
  * These are pure "start a new gesture" operations — no draft rect updates.
  */
-import { readElementGsapNumber } from "../../utils/elementGsap";
 import { type DomEditSelection } from "./domEditing";
 import {
+  applyManualOffsetDragDraft,
   createManualOffsetDragMember,
-  readGsapRotation,
   restoreManualOffsetDragMembers,
   type ManualOffsetDragMember,
 } from "./manualOffsetDrag";
+import { readCssRotationTarget, readRotationBase } from "./rotationDraft";
 import {
   beginStudioManualEditGesture,
   captureStudioBoxSize,
   captureStudioPathOffset,
   captureStudioRotation,
   readStudioBoxSize,
-  readStudioRotation,
 } from "./manualEdits";
 import {
   type OverlayRect,
@@ -32,6 +31,7 @@ import {
   type UseDomEditOverlayGesturesOptions,
 } from "./domEditOverlayGestures";
 import { collectSnapContext, buildExcludeElements } from "./snapTargetCollection";
+import { gsapWritesRotation } from "../../hooks/gsapRuntimeKeyframes";
 import { logResize, resetResizeMoveLog } from "../../utils/resizeDebug";
 import { logDrag, readDragPositions, resetDragMoveLog } from "../../utils/dragDebug";
 
@@ -70,12 +70,13 @@ export function startGroupDrag(
       selection: item.selection,
       element: item.element,
       rect: item.rect,
+      gesture: "drag",
     });
     if (!result.ok) {
       restoreManualOffsetDragMembers(members);
       e.preventDefault();
       e.stopPropagation();
-      opts.onBlockedMoveRef.current(result.selection);
+      opts.onBlockedMoveRef.current(result.selection, result.reason);
       return false;
     }
     members.push(result.member);
@@ -151,10 +152,6 @@ export function startGesture(
     return false;
 
   const size = readStudioBoxSize(sel.element);
-  // Single-source rotation base = the live GSAP transform rotation plus any legacy
-  // `--hf-studio-rotation` CSS var (old projects), so a rotate gesture starts from the
-  // element's actual visual angle and commits an absolute angle to the timeline.
-  const rotation = { angle: readGsapRotation(sel.element) + readStudioRotation(sel.element).angle };
   // The draft writes CSS width/height, so the resize base must be the CSS
   // layout size. offsetWidth/Height are transform-free; the overlay-rect
   // fallback (rect / editScale) includes the element's own GSAP scale and
@@ -174,18 +171,6 @@ export function startGesture(
     Number.isFinite(rawContentScaleX) && rawContentScaleX > 0 ? rawContentScaleX : 1;
   const contentScaleY =
     Number.isFinite(rawContentScaleY) && rawContentScaleY > 0 ? rawContentScaleY : 1;
-  let resizeAnchor: GestureState["resizeAnchor"];
-  if (kind === "resize") {
-    const startBcr = sel.element.getBoundingClientRect();
-    resizeAnchor = {
-      anchorX: startBcr.x,
-      anchorY: startBcr.y,
-      baseGsapX: readElementGsapNumber(sel.element, "x") ?? 0,
-      baseGsapY: readElementGsapNumber(sel.element, "y") ?? 0,
-      pinX: 0,
-      pinY: 0,
-    };
-  }
   let initialPathOffset = captureStudioPathOffset(sel.element);
   let manualEditDragToken: string | undefined;
   let pathOffsetMember: ManualOffsetDragMember | undefined;
@@ -198,20 +183,19 @@ export function startGesture(
       selection: sel,
       element: sel.element,
       rect,
+      gesture: "drag",
     });
     if (!result.ok) {
-      opts.onBlockedMoveRef.current(result.selection);
+      opts.onBlockedMoveRef.current(result.selection, result.reason);
       return false;
     }
     pathOffsetMember = result.member;
     initialPathOffset = result.member.initialPathOffset;
     manualEditDragToken = result.member.gestureToken;
   } else {
-    // Center-anchored corner resize (CapCut model): the element scales about its
-    // CENTER, which stays planted. All four corners behave identically, so EVERY
-    // corner needs the manual-offset member that translates the element to re-pin
-    // its center per frame (the memberless else-branch is only a defensive fallback
-    // if member creation fails, e.g. the element can't take a manual offset).
+    // Center-anchored corner resize (CapCut model): the element scales about its planted CENTER,
+    // so every corner needs the member that re-pins the center per frame (the memberless
+    // branch is only a fallback for an element that can't take a manual offset).
     const needsAnchorOffset = kind === "resize" && sel.capabilities.canApplyManualOffset;
     if (needsAnchorOffset) {
       const result = createManualOffsetDragMember({
@@ -219,11 +203,14 @@ export function startGesture(
         selection: sel,
         element: sel.element,
         rect,
+        gesture: "resize",
       });
       if (result.ok) {
         pathOffsetMember = result.member;
         initialPathOffset = result.member.initialPathOffset;
         manualEditDragToken = result.member.gestureToken;
+        // Hold a % translate as the same px now, so a growing box can't drag it along mid-frame.
+        if (result.member.plainTranslate) applyManualOffsetDragDraft(result.member, 0, 0);
       } else {
         manualEditDragToken = beginStudioManualEditGesture(sel.element);
       }
@@ -232,6 +219,11 @@ export function startGesture(
     }
   }
 
+  // Rotation base: the angle the element shows. An element GSAP does not turn, or a plain-translate
+  // move, never asks GSAP: reading a property makes it bake the CSS into its transform.
+  const plain = !!pathOffsetMember?.plainTranslate || !gsapWritesRotation(sel.element);
+  const plainRotation = plain && kind === "rotate" ? readCssRotationTarget(sel.element) : null;
+  const rotation = { angle: readRotationBase(sel.element, plain) };
   const overlayBounds = overlayEl?.getBoundingClientRect();
   const centerX = (overlayBounds?.left ?? 0) + rect.left + rect.width / 2;
   const centerY = (overlayBounds?.top ?? 0) + rect.top + rect.height / 2;
@@ -279,11 +271,11 @@ export function startGesture(
     actualWidth,
     actualHeight,
     actualRotation: rotation.angle,
+    plainRotation,
     editScaleX: rect.editScaleX,
     editScaleY: rect.editScaleY,
     contentScaleX,
     contentScaleY,
-    resizeAnchor,
     manualEditDragToken,
     snapContext,
     resizeHandle: kind === "resize" ? (options?.resizeHandle ?? "se") : undefined,

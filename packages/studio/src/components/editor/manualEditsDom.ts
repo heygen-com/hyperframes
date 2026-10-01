@@ -253,9 +253,9 @@ function stripGsapTranslateFromTransform(element: HTMLElement): void {
 // — as the non-GSAP path does — composes ON TOP of GSAP's transform, and the
 // subsequent strip/reapply math compounds into a runaway matrix that flings the
 // element off-canvas. So for GSAP-animated elements we keep `translate: none`
-// and push the offset straight into GSAP's x/y via gsap.set; the var() offset is
-// still persisted (buildPathOffsetPatches), and GSAP re-reads it at init on
-// reload. Returns true when handled as GSAP (caller must skip the CSS path).
+// and push the offset straight into GSAP's x/y via gsap.set; the var() offset an
+// older Studio saved stays in the file, and GSAP re-reads it at init on reload.
+// Returns true when handled as GSAP (caller must skip the CSS path).
 // fallow-ignore-next-line complexity
 function applyStudioPathOffsetViaGsap(
   element: HTMLElement,
@@ -536,15 +536,5 @@ export function applyStudioRotation(element: HTMLElement, rotation: { angle: num
   element.style.setProperty(
     "rotate",
     composeStudioRotationValue(element, `var(${STUDIO_ROTATION_PROP}, 0deg)`),
-  );
-}
-
-export function applyStudioRotationDraft(element: HTMLElement, rotation: { angle: number }): void {
-  promoteInlineForTransform(element);
-  writeStudioRotationVars(element, rotation, { updateBase: false });
-  element.setAttribute(STUDIO_ROTATION_DRAFT_ATTR, "true");
-  element.style.setProperty(
-    "rotate",
-    composeStudioRotationValue(element, `${roundTo3(rotation.angle)}deg`),
   );
 }

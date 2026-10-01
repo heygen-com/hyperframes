@@ -366,6 +366,52 @@ describe("applyUndoRestoreToPreview", () => {
     expect(meta.content).toBe(content);
   });
 
+  const SUB = "compositions/sub.html";
+  const sub = (style: string, rootAttrs = "") =>
+    `<template id="sub-template"><div data-hf-id="hf-root" id="sub" data-composition-id="sub"${rootAttrs}><div ${style} data-hf-id="hf-t" id="target"></div></div></template>`;
+  const host = (style: string) =>
+    `<div data-composition-file="${SUB}" data-hf-id="hf-host"><div data-hf-inner-root="true" data-hf-authored-id="sub" data-hf-id="hf-root"><div data-hf-id="hf-t" id="target" ${style}></div></div></div>`;
+
+  it("restores a sub-composition file in place, on every host that inlines it", () => {
+    const { iframe, doc } = buildLiveIframe(
+      host(`style="clip-path: inset(0px 40px 0px 0px);"`) +
+        host(`style="clip-path: inset(0px 40px 0px 0px);"`),
+    );
+    const reloadPreview = vi.fn();
+    const files = {
+      [SUB]: { previous: sub(`style="clip-path: inset(0px 40px 0px 0px)"`), restored: sub("") },
+    };
+    expect(applyUndoRestoreToPreview(iframe, ROOT, files, 3, reloadPreview)).toBe("soft");
+    expect(reloadPreview).not.toHaveBeenCalled();
+    const targets = [...doc.querySelectorAll('[data-hf-id="hf-t"]')];
+    expect(targets.map((el) => el.getAttribute("style"))).toEqual([null, null]);
+  });
+
+  it("full-reloads a sub-composition restore that changes the file's own root", () => {
+    const { iframe } = buildLiveIframe(host(""));
+    const reloadPreview = vi.fn();
+    const files = { [SUB]: { previous: sub("", ' data-width="10"'), restored: sub("") } };
+    expect(applyUndoRestoreToPreview(iframe, ROOT, files, 3, reloadPreview)).toBe("full");
+    expect(reloadPreview).toHaveBeenCalledTimes(1);
+  });
+
+  it("full-reloads a sub-composition restore whose file has a GSAP script", () => {
+    const { iframe, doc } = buildLiveIframe(host(`style="clip-path: inset(0px 40px 0px 0px);"`));
+    const reloadPreview = vi.fn();
+    const script = `<script>gsap.timeline().to("#target", { x: 10 });</script>`;
+    const scripted = (style: string) =>
+      sub(style).replace("</div></template>", `${script}</div></template>`);
+    const files = {
+      [SUB]: {
+        previous: scripted(`style="clip-path: inset(0px 40px 0px 0px)"`),
+        restored: scripted(""),
+      },
+    };
+    expect(applyUndoRestoreToPreview(iframe, ROOT, files, 3, reloadPreview)).toBe("full");
+    expect(reloadPreview).toHaveBeenCalledTimes(1);
+    expect(doc.querySelector('[data-hf-id="hf-t"]')?.getAttribute("style")).toContain("clip-path");
+  });
+
   it("full-reloads when the restore touches a sub-comp, not the active comp", () => {
     const { iframe } = buildLiveIframe(`<div id="a">t</div>`);
     const reloadPreview = vi.fn();

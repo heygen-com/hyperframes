@@ -4,6 +4,7 @@ import React, { act } from "react";
 import { afterEach, describe, expect, it, vi, type Mock } from "vitest";
 import type { GsapAnimation } from "@hyperframes/core/gsap-parser";
 import type { DomEditSelection } from "../components/editor/domEditingTypes";
+import type { RotationCommit } from "../components/editor/rotationDraft";
 import type { DomEditGroupPathOffsetCommit } from "../components/editor/DomEditOverlay";
 import { mountReactHarness, withInlineLayoutBox } from "./domSelectionTestHarness";
 import { DomEditCropHandles } from "../components/editor/DomEditCropHandles";
@@ -22,7 +23,6 @@ const mocks = vi.hoisted(() => ({
 
 vi.mock("./gsapResizeIntercept", () => ({ tryGsapResizeIntercept: mocks.resize }));
 vi.mock("./gsapRuntimeBridge", () => ({
-  POSITION_CHANNELS: ["x", "y"],
   tryGsapDragIntercept: mocks.drag,
   tryGsapRotationIntercept: vi.fn(),
 }));
@@ -42,16 +42,24 @@ vi.mock("./useSafeGsapCommitMutation", () => ({
 }));
 
 import { useGsapAwareEditing } from "./useGsapAwareEditing";
+import { tryGsapRotationIntercept } from "./gsapRuntimeBridge";
 
 afterEach(() => {
   vi.clearAllMocks();
 });
 
+/** An element GSAP already renders the transform of, so moves take the GSAP route. */
+function gsapPositioned(tag: string): HTMLElement {
+  return Object.assign(document.createElement(tag), { _gsap: { renderTransform: () => {} } });
+}
+
 function mountResizeHandler(
   animations: GsapAnimation[],
   targetAnimations: GsapAnimation[] = animations,
+  gsapOwnsBox = true,
+  hasGsapWriter = true,
 ) {
-  const element = document.createElement("div");
+  const element = gsapOwnsBox ? gsapPositioned("div") : document.createElement("div");
   const selection = { element, id: "clip", selector: "#clip" } as unknown as DomEditSelection;
   const fallback = vi.fn().mockResolvedValue(undefined);
   const anchorSave = vi.fn().mockResolvedValue(undefined);
@@ -59,6 +67,7 @@ function mountResizeHandler(
   const elementOffset = vi.fn(() => ({ save: anchorSave, rollback: anchorRollback }));
   const commitMutation = vi.fn().mockResolvedValue(undefined);
   const commitPatch = vi.fn().mockResolvedValue(undefined);
+  const fetchAnimations = vi.fn(() => vi.fn().mockResolvedValue(targetAnimations));
   let resize:
     | ((
         selection: DomEditSelection,
@@ -72,14 +81,15 @@ function mountResizeHandler(
     const editing = useGsapAwareEditing({
       domEditSelection: selection,
       selectedGsapAnimations: animations,
-      gsapCommitMutation: commitMutation,
+      gsapCommitMutation: hasGsapWriter ? commitMutation : null,
       previewIframeRef: { current: null },
       showToast: vi.fn(),
       bumpGsapCache: vi.fn(),
-      makeFetchFallback: () => vi.fn().mockResolvedValue(targetAnimations),
+      makeFetchFallback: fetchAnimations,
       trackGsapInteractionFailure: vi.fn(),
       stageElementPositionOffset: elementOffset,
       handleDomBoxSizeCommit: fallback,
+      handleDomRotationCommit: vi.fn(),
       commitPositionPatchToHtml: commitPatch,
       addGsapAnimation: vi.fn(),
       convertToKeyframes: vi.fn(),
@@ -99,6 +109,7 @@ function mountResizeHandler(
     anchorRollback,
     commitMutation,
     commitPatch,
+    fetchAnimations,
     resize: resize!,
     property: property!,
     root,
@@ -112,13 +123,21 @@ function mountGroupHandler({
   makeFetchFallback,
   trackGsapInteractionFailure = vi.fn(),
   stageElementPositionOffset = vi.fn(),
+  handleDomRotationCommit = vi.fn(),
 }: Pick<AwareEditingParams, "gsapCommitMutation" | "makeFetchFallback"> &
-  Partial<Pick<AwareEditingParams, "trackGsapInteractionFailure" | "stageElementPositionOffset">>) {
+  Partial<
+    Pick<
+      AwareEditingParams,
+      "trackGsapInteractionFailure" | "stageElementPositionOffset" | "handleDomRotationCommit"
+    >
+  >) {
   let groupCommit!: (updates: DomEditGroupPathOffsetCommit[]) => Promise<void>;
   let pathOffsetCommit!: (
     selection: DomEditSelection,
     next: { x: number; y: number },
+    route?: { plainTranslate?: boolean },
   ) => Promise<void>;
+  let rotationCommit!: (selection: DomEditSelection, next: RotationCommit) => Promise<void>;
   function Harness() {
     const editing = useGsapAwareEditing({
       domEditSelection: null,
@@ -131,6 +150,7 @@ function mountGroupHandler({
       trackGsapInteractionFailure,
       stageElementPositionOffset,
       handleDomBoxSizeCommit: vi.fn(),
+      handleDomRotationCommit,
       commitPositionPatchToHtml: vi.fn(),
       addGsapAnimation: vi.fn(),
       convertToKeyframes: vi.fn(),
@@ -139,16 +159,165 @@ function mountGroupHandler({
     });
     groupCommit = editing.handleGsapAwareGroupPathOffsetCommit;
     pathOffsetCommit = editing.handleGsapAwarePathOffsetCommit;
+    rotationCommit = editing.handleGsapAwareRotationCommit;
     return null;
   }
   const root = mountReactHarness(<Harness />);
   return {
     groupCommit: (updates: DomEditGroupPathOffsetCommit[]) => groupCommit(updates),
-    pathOffsetCommit: (selection: DomEditSelection, next: { x: number; y: number }) =>
-      pathOffsetCommit(selection, next),
+    pathOffsetCommit: (
+      selection: DomEditSelection,
+      next: { x: number; y: number },
+      route?: { plainTranslate?: boolean },
+    ) => pathOffsetCommit(selection, next, route),
+    rotationCommit: (selection: DomEditSelection, next: RotationCommit) =>
+      rotationCommit(selection, next),
     root,
   };
 }
+
+describe("useGsapAwareEditing moves of an element GSAP does not position", () => {
+  it("saves the move on the element itself, with no GSAP write and no animation read", async () => {
+    const save = vi.fn().mockResolvedValue(undefined);
+    const stageElementPositionOffset = vi.fn(() => ({ save, rollback: vi.fn() }));
+    const gsapCommitMutation = vi.fn();
+    const makeFetchFallback = vi.fn();
+    const { pathOffsetCommit, root } = mountGroupHandler({
+      gsapCommitMutation,
+      makeFetchFallback,
+      stageElementPositionOffset,
+    });
+    const box = { element: document.createElement("div"), id: "box", selector: "#box" };
+    await act(() => pathOffsetCommit(box as unknown as DomEditSelection, { x: 130.25, y: 90 }));
+    expect(stageElementPositionOffset).toHaveBeenCalledWith(box, { x: 130.25, y: 90 }, true);
+    expect(save).toHaveBeenCalledTimes(1);
+    expect(gsapCommitMutation).not.toHaveBeenCalled();
+    expect(makeFetchFallback).not.toHaveBeenCalled();
+    expect(mocks.drag).not.toHaveBeenCalled();
+    act(() => root.unmount());
+  });
+});
+
+describe("useGsapAwareEditing keeps the route a gesture chose at press", () => {
+  it.each([
+    ["the CSS route, on an element GSAP has since taken over", true, () => gsapPositioned("div")],
+    [
+      "the GSAP route, on an element that now looks GSAP-free",
+      false,
+      () => document.createElement("div"),
+    ],
+  ])("%s", async (_, plainTranslate, makeElement) => {
+    mocks.drag.mockResolvedValue({ status: "persisted" });
+    const save = vi.fn().mockResolvedValue(undefined);
+    const stageElementPositionOffset = vi.fn(() => ({ save, rollback: vi.fn() }));
+    const { pathOffsetCommit, groupCommit, root } = mountGroupHandler({
+      gsapCommitMutation: vi.fn().mockResolvedValue(undefined),
+      makeFetchFallback: () => vi.fn().mockResolvedValue([]),
+      stageElementPositionOffset,
+    });
+    const box = {
+      element: makeElement(),
+      id: "box",
+      selector: "#box",
+    } as unknown as DomEditSelection;
+    await act(() => pathOffsetCommit(box, { x: 40, y: 20 }, { plainTranslate }));
+    await act(() => groupCommit([{ selection: box, next: { x: 40, y: 20 }, plainTranslate }]));
+    expect(stageElementPositionOffset.mock.calls.length).toBe(plainTranslate ? 2 : 0);
+    expect(mocks.drag.mock.calls.some((call) => call[0] === box)).toBe(!plainTranslate);
+    act(() => root.unmount());
+  });
+});
+
+describe("useGsapAwareEditing refuses a group GSAP took over before writing any member", () => {
+  it("writes no member when one CSS-route member has been folded since the press", async () => {
+    const stageElementPositionOffset = vi.fn(() => ({ save: vi.fn(), rollback: vi.fn() }));
+    const { groupCommit, root } = mountGroupHandler({
+      gsapCommitMutation: vi.fn().mockResolvedValue(undefined),
+      makeFetchFallback: () => vi.fn().mockResolvedValue([]),
+      stageElementPositionOffset,
+    });
+    const card = {
+      element: document.createElement("div"),
+      id: "card",
+    } as unknown as DomEditSelection;
+    const folded = Object.assign(document.createElement("div"), {
+      _gsap: { renderTransform: () => {}, x: "94px", y: "66px" },
+    });
+    const box = { element: folded, id: "box" } as unknown as DomEditSelection;
+    await expect(
+      act(() =>
+        groupCommit([
+          { selection: card, next: { x: 1, y: 2 }, plainTranslate: true },
+          { selection: box, next: { x: 1, y: 2 }, plainTranslate: true },
+        ]),
+      ),
+    ).rejects.toThrow(/animation took over/);
+    expect(stageElementPositionOffset).not.toHaveBeenCalled();
+    act(() => root.unmount());
+  });
+});
+
+describe("useGsapAwareEditing rotation routing", () => {
+  function rotate(element: HTMLElement) {
+    const handleDomRotationCommit = vi.fn().mockResolvedValue(undefined);
+    const gsapCommitMutation = vi.fn();
+    const h = mountGroupHandler({
+      gsapCommitMutation,
+      makeFetchFallback: () => vi.fn().mockResolvedValue([]),
+      handleDomRotationCommit,
+    });
+    const box = { element, id: "box", selector: "#box" } as unknown as DomEditSelection;
+    return { ...h, box, handleDomRotationCommit, gsapCommitMutation };
+  }
+
+  it("turns an element GSAP does not turn by the CSS writer, with no GSAP write", async () => {
+    const h = rotate(document.createElement("div"));
+    await act(() => h.rotationCommit(h.box, { angle: 55 }));
+    expect(h.handleDomRotationCommit).toHaveBeenCalledWith(h.box, { angle: 55 });
+    expect(tryGsapRotationIntercept).not.toHaveBeenCalled();
+    expect(h.gsapCommitMutation).not.toHaveBeenCalled();
+    act(() => h.root.unmount());
+  });
+
+  it("leaves an element a GSAP tween turns to the GSAP rotation route", async () => {
+    vi.mocked(tryGsapRotationIntercept).mockResolvedValue({ status: "persisted" });
+    const element = document.createElement("div");
+    const h = rotate(element);
+    const tween = { vars: { rotation: 30 }, targets: () => [element] };
+    Object.assign(window, { __timelines: { main: { getChildren: () => [tween] } } });
+    try {
+      await act(() => h.rotationCommit(h.box, { angle: 55 }));
+    } finally {
+      delete (window as { __timelines?: unknown }).__timelines;
+    }
+    expect(tryGsapRotationIntercept).toHaveBeenCalledTimes(1);
+    expect(h.handleDomRotationCommit).not.toHaveBeenCalled();
+    act(() => h.root.unmount());
+  });
+
+  it("saves a turn the press drew as CSS by the CSS writer, even once a GSAP tween turns the element", async () => {
+    const element = document.createElement("div");
+    const h = rotate(element);
+    const tween = { vars: { rotation: 30 }, targets: () => [element] };
+    Object.assign(window, { __timelines: { main: { getChildren: () => [tween] } } });
+    const plain = {
+      property: "rotate",
+      before: "",
+      after: "",
+      share: 0,
+      sign: 1,
+      inline: false,
+    } as const;
+    try {
+      await act(() => h.rotationCommit(h.box, { angle: 55, plain }));
+    } finally {
+      delete (window as { __timelines?: unknown }).__timelines;
+    }
+    expect(h.handleDomRotationCommit).toHaveBeenCalledWith(h.box, { angle: 55, plain });
+    expect(tryGsapRotationIntercept).not.toHaveBeenCalled();
+    act(() => h.root.unmount());
+  });
+});
 
 describe("useGsapAwareEditing shared-tween moves", () => {
   it("saves a single drag through the element's own offset", async () => {
@@ -161,15 +330,15 @@ describe("useGsapAwareEditing shared-tween moves", () => {
       makeFetchFallback: () => vi.fn().mockResolvedValue([]),
       stageElementPositionOffset,
     });
-    const word = { element: document.createElement("span"), hfId: "w0", selector: ".w" };
+    const word = { element: gsapPositioned("span"), hfId: "w0", selector: ".w" };
     await act(() => pathOffsetCommit(word as unknown as DomEditSelection, { x: 40, y: 20 }));
-    expect(stageElementPositionOffset).toHaveBeenCalledWith(word, { x: 40, y: 20 });
+    expect(stageElementPositionOffset).toHaveBeenCalledWith(word, { x: 40, y: 20 }, false);
     expect(save).toHaveBeenCalledTimes(1);
     expect(commitMutation).not.toHaveBeenCalled();
     act(() => root.unmount());
   });
 
-  it("saves a group member that shares a tween through its own offset, under the group key", async () => {
+  it("saves shared-tween and GSAP-free group members on themselves, under the group key", async () => {
     mocks.drag.mockImplementation(async (selection, _next, _a, _i, commit, _f, options) => {
       if (selection.hfId === "w0") return { status: "element-offset" };
       if (!options?.preflightOnly) await commit(selection, { type: "move" }, { label: "Move" });
@@ -182,19 +351,30 @@ describe("useGsapAwareEditing shared-tween moves", () => {
       makeFetchFallback: () => vi.fn().mockResolvedValue([]),
       stageElementPositionOffset,
     });
-    const word = { element: document.createElement("span"), hfId: "w0", selector: ".w" };
-    const box = { element: document.createElement("div"), id: "box", selector: "#box" };
+    const word = { element: gsapPositioned("span"), hfId: "w0", selector: ".w" };
+    const box = { element: gsapPositioned("div"), id: "box", selector: "#box" };
+    const plain = { element: document.createElement("div"), id: "plain", selector: "#plain" };
     await act(() =>
       groupCommit([
         { selection: word, next: { x: 40, y: 20 } },
         { selection: box, next: { x: 40, y: 20 } },
+        { selection: plain, next: { x: 40, y: 20 } },
       ] as unknown as DomEditGroupPathOffsetCommit[]),
     );
+    const groupKey = expect.stringMatching(/^group-drag:\d+$/);
     expect(stageElementPositionOffset).toHaveBeenCalledWith(
       word,
       { x: 40, y: 20 },
-      expect.stringMatching(/^group-drag:\d+$/),
+      false,
+      groupKey,
     );
+    expect(stageElementPositionOffset).toHaveBeenCalledWith(
+      plain,
+      { x: 40, y: 20 },
+      true,
+      groupKey,
+    );
+    expect(mocks.drag.mock.calls.some((call) => call[0] === plain)).toBe(false);
     act(() => root.unmount());
   });
 });
@@ -207,7 +387,7 @@ describe("useGsapAwareEditing anchored resize", () => {
     const h = mountResizeHandler([humanAnimation], [targetAnimation]);
     const target = {
       ...h.selection,
-      element: document.createElement("div"),
+      element: gsapPositioned("div"),
       id: "agent-target",
       selector: "#agent-target",
     } as DomEditSelection;
@@ -222,6 +402,36 @@ describe("useGsapAwareEditing anchored resize", () => {
       expect.any(Function),
       expect.any(Function),
     );
+    act(() => h.root.unmount());
+  });
+
+  it("resizes a box GSAP does not own through the CSS writer, with no GSAP write or fetch", async () => {
+    const h = mountResizeHandler([], [], false);
+    const restore = vi.fn();
+    await act(() =>
+      h.resize(h.selection, { width: 300, height: 200 }, { x: -50.5, y: -25 }, restore),
+    );
+    expect(h.fallback).toHaveBeenCalledWith(
+      h.selection,
+      { width: 300, height: 200 },
+      { x: -50.5, y: -25 },
+      restore,
+    );
+    expect(mocks.resize).not.toHaveBeenCalled();
+    expect(mocks.drag).not.toHaveBeenCalled();
+    expect(h.commitMutation).not.toHaveBeenCalled();
+    expect(h.fetchAnimations).not.toHaveBeenCalled();
+    act(() => h.root.unmount());
+  });
+
+  it("fails a GSAP-owned resize loudly when there is no GSAP writer, never writing CSS", async () => {
+    const h = mountResizeHandler([], [], true, false);
+    const restore = vi.fn();
+    await expect(
+      act(() => h.resize(h.selection, { width: 300, height: 200 }, undefined, restore)),
+    ).rejects.toThrow("no GSAP writer");
+    expect(h.fallback).not.toHaveBeenCalled();
+    expect(restore).toHaveBeenCalledTimes(1);
     act(() => h.root.unmount());
   });
 
@@ -260,7 +470,7 @@ describe("useGsapAwareEditing anchored resize", () => {
     await act(() => h.resize(h.selection, { width: 300, height: 200 }, { x: -50, y: -25 }));
     const key = h.commitMutation.mock.calls[0]![2].coalesceKey;
     expect(key).toMatch(/^tx:/);
-    expect(h.elementOffset).toHaveBeenCalledWith(h.selection, { x: -50, y: -25 }, key);
+    expect(h.elementOffset).toHaveBeenCalledWith(h.selection, { x: -50, y: -25 }, false, key);
     expect(h.anchorSave.mock.invocationCallOrder[0]).toBeGreaterThan(
       h.commitMutation.mock.invocationCallOrder[0]!,
     );
@@ -447,11 +657,11 @@ describe("useGsapAwareEditing anchored resize", () => {
     });
     const updates = [
       {
-        selection: { element: document.createElement("div"), id: "a", selector: "#a" },
+        selection: { element: gsapPositioned("div"), id: "a", selector: "#a" },
         next: { x: 10, y: 10 },
       },
       {
-        selection: { element: document.createElement("div"), id: "b", selector: "#b" },
+        selection: { element: gsapPositioned("div"), id: "b", selector: "#b" },
         next: { x: 10, y: 10 },
       },
     ] as unknown as DomEditGroupPathOffsetCommit[];
@@ -485,12 +695,12 @@ describe("useGsapAwareEditing anchored resize", () => {
     });
     const updates = [
       {
-        selection: { element: document.createElement("div"), id: "ok", selector: "#ok" },
+        selection: { element: gsapPositioned("div"), id: "ok", selector: "#ok" },
         next: { x: 10, y: 10 },
       },
       {
         selection: {
-          element: document.createElement("div"),
+          element: gsapPositioned("div"),
           id: "blocked",
           selector: "#blocked",
         },
@@ -526,7 +736,7 @@ describe("useGsapAwareEditing anchored resize", () => {
     });
     const updates = [
       {
-        selection: { element: document.createElement("div"), id: "a", selector: "#a" },
+        selection: { element: gsapPositioned("div"), id: "a", selector: "#a" },
         next: { x: 10, y: 10 },
       },
     ] as unknown as DomEditGroupPathOffsetCommit[];
@@ -551,11 +761,11 @@ describe("useGsapAwareEditing anchored resize", () => {
     });
     const updates = [
       {
-        selection: { element: document.createElement("div"), id: "a", selector: "#a" },
+        selection: { element: gsapPositioned("div"), id: "a", selector: "#a" },
         next: { x: 10, y: 10 },
       },
       {
-        selection: { element: document.createElement("div"), id: "b", selector: "#b" },
+        selection: { element: gsapPositioned("div"), id: "b", selector: "#b" },
         next: { x: 20, y: 20 },
       },
     ] as unknown as DomEditGroupPathOffsetCommit[];
@@ -605,6 +815,7 @@ describe("useGsapAwareEditing anchored resize", () => {
    */
   it("applies the anchor when the resize leaves the drop point to the caller", async () => {
     mocks.resize.mockResolvedValue({ status: "persisted" });
+    mocks.drag.mockResolvedValue({ status: "persisted" });
     const scale = { propertyGroup: "scale" } as GsapAnimation;
     const h = mountResizeHandler([scale]);
     await act(() => h.resize(h.selection, { width: 300, height: 200 }, { x: -50, y: -25 }));

@@ -3,7 +3,8 @@ import { memo, useMemo, useRef, useState } from "react";
 import { Move } from "../../icons/SystemIcons";
 import { InspectorHeaderActions } from "./InspectorHeaderActions";
 import { useStudioShellContext } from "../../contexts/StudioContext";
-import { readStudioBoxSize, readStudioPathOffset, readStudioRotation } from "./manualEdits";
+import { readStudioBoxSize } from "./manualEdits";
+import { readMoveOffset, readShownRotation } from "./plainTranslate";
 import {
   buildElementInfoText,
   EMPTY_STYLES,
@@ -177,8 +178,9 @@ export const PropertyPanel = memo(function PropertyPanel(props: PropertyPanelPro
     transformPerspective: 0,
   };
   // Unconditional like the hooks above: must not sit behind the `!element` return below.
+  const manualOffset = element ? readMoveOffset(element.element) : { x: 0, y: 0 };
   const { manualOffsetEditingDisabled, manualSizeEditingDisabled, manualRotationEditingDisabled } =
-    useManualEditDisabledFlags(element?.capabilities);
+    useManualEditDisabledFlags(element?.capabilities, manualOffset);
 
   if (!element) {
     return (
@@ -199,7 +201,6 @@ export const PropertyPanel = memo(function PropertyPanel(props: PropertyPanelPro
   // selection) so the Timing section shows for pure-GSAP elements with no data-start.
   const sections = resolveEditingSections(domEditSelectionToFacts(element, gsapAnimations.length));
   const showEditableSections = element.capabilities.canEditStyles && sections.style;
-  const manualOffset = readStudioPathOffset(element.element);
   const manualSize = readStudioBoxSize(element.element);
   const resolvedWidth =
     manualSize.width > 0
@@ -209,8 +210,7 @@ export const PropertyPanel = memo(function PropertyPanel(props: PropertyPanelPro
     manualSize.height > 0
       ? manualSize.height
       : (parsePxMetricValue(styles.height ?? "") ?? element.boundingBox.height);
-
-  const manualRotation = readStudioRotation(element.element);
+  const manualRotation = readShownRotation(element.element);
 
   const elStart = Number.parseFloat(element?.dataAttributes?.start ?? "0") || 0;
   const elDuration = Number.parseFloat(element?.dataAttributes?.duration ?? "1") || 0;

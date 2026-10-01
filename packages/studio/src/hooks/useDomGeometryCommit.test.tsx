@@ -16,6 +16,11 @@ vi.mock("../utils/studioTelemetry", () => ({ trackStudioEvent: vi.fn() }));
 
 const SOURCE = '<div id="card">Card</div><div id="other">Other</div>';
 
+/** GSAP already renders this element's transform, so a move takes the GSAP writer. */
+function gsapPositioned(element: HTMLElement): HTMLElement {
+  return Object.assign(element, { _gsap: { renderTransform: () => {} } });
+}
+
 /** A warm parse where only another element animates, and a GSAP writer answering `status`. */
 function stubServer(status = 200, parseStatus = 200) {
   const mutations: unknown[] = [];
@@ -116,7 +121,8 @@ describe("useDomGeometryCommit, from the package entry", () => {
       onRotationCommit: hook().commitRotation,
     };
 
-    const outcome = await overlayCommits.onPathOffsetCommit(makeSelection("card", element), {
+    const card = makeSelection("card", gsapPositioned(element));
+    const outcome = await overlayCommits.onPathOffsetCommit(card, {
       x: 40,
       y: 20,
     });
@@ -129,6 +135,132 @@ describe("useDomGeometryCommit, from the package entry", () => {
     expect(recordEdit).toHaveBeenCalledWith(
       expect.objectContaining({ files: { "index.html": { before: "BEFORE", after: "AFTER" } } }),
     );
+    unmount();
+  });
+
+  function stubPatchServer(patchStatus = 200) {
+    const calls = { urls: [] as string[], patches: [] as unknown[] };
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+        const url = String(input instanceof Request ? input.url : input);
+        calls.urls.push(url);
+        if (url.includes("/patch-element/")) calls.patches.push(JSON.parse(String(init?.body)));
+        const saved = { ok: true, changed: true, matched: true, content: "AFTER", version: "v2" };
+        const body = url.includes("/files/") ? { content: SOURCE } : saved;
+        const status = url.includes("/patch-element/") ? patchStatus : 200;
+        return new Response(JSON.stringify(body), {
+          status,
+          headers: { "content-type": "application/json" },
+        });
+      }),
+    );
+    return calls;
+  }
+
+  it("saves a GSAP-free move as its inline translate, with no GSAP script and no animation read", async () => {
+    const calls = stubPatchServer();
+    const { element, recordEdit, hook, unmount } = renderHost();
+
+    const card = makeSelection("card", element);
+    await expect(hook().commitPathOffset(card, { x: 130.5, y: 90 })).resolves.toEqual({ ok: true });
+
+    expect(element.style.getPropertyValue("translate")).toBe("130.5px 90px");
+    expect(calls.patches).toEqual([
+      expect.objectContaining({
+        operations: [
+          { type: "inline-style", property: "translate", value: "130.5px 90px" },
+          { type: "attribute", property: "data-hf-studio-original-inline-translate", value: "" },
+        ],
+      }),
+    ]);
+    expect(calls.urls.filter((url) => url.includes("gsap"))).toEqual([]);
+    expect(recordEdit).toHaveBeenCalledTimes(1);
+    unmount();
+  });
+
+  it("saves a GSAP-free resize as its inline size, with no GSAP script and no animation read", async () => {
+    const calls = stubPatchServer();
+    const { element, recordEdit, hook, unmount } = renderHost();
+
+    await expect(
+      hook().commitBoxSize(makeSelection("card", element), { width: 300, height: 90 }),
+    ).resolves.toEqual({ ok: true });
+
+    expect(element.style.getPropertyValue("width")).toBe("300px");
+    expect(calls.patches).toEqual([
+      expect.objectContaining({
+        operations: expect.arrayContaining([
+          { type: "inline-style", property: "width", value: "300px" },
+          { type: "inline-style", property: "height", value: "90px" },
+        ]),
+      }),
+    ]);
+    expect(calls.urls.filter((url) => url.includes("gsap"))).toEqual([]);
+    expect(recordEdit).toHaveBeenCalledTimes(1);
+    unmount();
+  });
+
+  it("puts a GSAP-free element's translate back when its move cannot be saved", async () => {
+    stubPatchServer(500);
+    const { element, hook, unmount } = renderHost();
+    element.style.setProperty("translate", "40px 30px");
+
+    await expect(
+      hook().commitPathOffset(makeSelection("card", element), { x: 1, y: 2 }),
+    ).rejects.toThrow();
+    expect(element.style.getPropertyValue("translate")).toBe("40px 30px");
+    unmount();
+  });
+
+  it("refuses a CSS move GSAP has folded into its x/y, writes nothing, and hands the translate back", async () => {
+    const calls = stubPatchServer();
+    const { element, hook, unmount } = renderHost();
+    element.style.setProperty("translate", "none");
+    Object.assign(element, { _gsap: { renderTransform: () => {}, x: "94px", y: "66px" } });
+    const set = vi.fn();
+    Object.assign(element.ownerDocument.defaultView!, { gsap: { set } });
+
+    await expect(
+      hook().commitPathOffset(
+        makeSelection("card", element),
+        { x: 1, y: 2 },
+        { plainTranslate: true },
+      ),
+    ).rejects.toThrow(/animation took over/);
+    delete (element.ownerDocument.defaultView as { gsap?: unknown }).gsap;
+    expect(calls.patches).toEqual([]);
+    expect(set).toHaveBeenCalledWith(element, { x: 0, y: 0, xPercent: 0, yPercent: 0 });
+    unmount();
+  });
+
+  it("saves a CSS move GSAP has only parsed, with nothing folded into its x/y", async () => {
+    const calls = stubPatchServer();
+    const { element, hook, unmount } = renderHost();
+    Object.assign(element, {
+      _gsap: { renderTransform: () => {}, x: "0px", y: "0px", xPercent: 0 },
+    });
+
+    await expect(
+      hook().commitPathOffset(
+        makeSelection("card", element),
+        { x: 1, y: 2 },
+        { plainTranslate: true },
+      ),
+    ).resolves.toEqual({ ok: true });
+    expect(calls.patches).toHaveLength(1);
+    unmount();
+  });
+
+  it("leaves a later move's translate alone when an earlier move's save fails", async () => {
+    stubPatchServer(500);
+    const { element, hook, unmount } = renderHost();
+    element.style.setProperty("translate", "40px 30px");
+
+    const saving = hook().commitPathOffset(makeSelection("card", element), { x: 1, y: 2 });
+    element.style.setProperty("translate", "7px 8px");
+    await expect(saving).rejects.toThrow();
+    expect(element.style.getPropertyValue("translate")).toBe("7px 8px");
     unmount();
   });
 
@@ -148,7 +280,7 @@ describe("useDomGeometryCommit, from the package entry", () => {
     const { element, recordEdit, hook, unmount } = renderHost({ showToast });
 
     await expect(
-      hook().commitPathOffset(makeSelection("card", element), { x: 40, y: 20 }),
+      hook().commitPathOffset(makeSelection("card", gsapPositioned(element)), { x: 40, y: 20 }),
     ).rejects.toThrow();
     expect(recordEdit).not.toHaveBeenCalled();
     expect(showToast).toHaveBeenCalledWith(expect.any(String), "error");
@@ -160,6 +292,8 @@ describe("useDomGeometryCommit, from the package entry", () => {
     const showToast = vi.fn();
     const restore = vi.fn();
     const { element, recordEdit, hook, unmount } = renderHost({ showToast });
+    // GSAP renders the card's transform, so its resize reads animations first.
+    Object.assign(element, { _gsap: { renderTransform: () => undefined } });
 
     await expect(
       hook().commitBoxSize(
@@ -204,7 +338,8 @@ describe("useDomGeometryCommit, from the package entry", () => {
     const mutations = stubServer();
     const { element, recordEdit, hook, unmount } = renderHost();
 
-    const move = hook().commitPathOffset(makeSelection("card", element), { x: 40, y: 20 });
+    const card = makeSelection("card", gsapPositioned(element));
+    const move = hook().commitPathOffset(card, { x: 40, y: 20 });
     await hook().waitForPendingSaves();
 
     expect(mutations).toHaveLength(1);
@@ -280,7 +415,8 @@ describe("useDomGeometryCommit, one word of a staggered phrase", () => {
       offsetLeft: { get: () => 100 + (Number.parseFloat(word.style.left) || 0) },
       offsetTop: { get: () => 200 + (Number.parseFloat(word.style.top) || 0) },
     });
-    return { ...makeSelection("How", word), id: undefined, selector: ".w", hfId: "hf-w0" };
+    const selection = makeSelection("How", gsapPositioned(word));
+    return { ...selection, id: undefined, selector: ".w", hfId: "hf-w0" };
   }
 
   it("saves left/top on the dragged word only and never rewrites the shared tween", async () => {

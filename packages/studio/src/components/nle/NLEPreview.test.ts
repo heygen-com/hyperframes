@@ -413,13 +413,14 @@ describe("NLEPreview", () => {
   describe("a missing poster", () => {
     const renderUrl =
       "/api/projects/timeline-edit-playground/thumbnail/index.html?t=0&output=source";
-    const fetchSpy = vi.fn(() => Promise.resolve(new Response()));
+    const fetchSpy = vi.fn((_url: string, _init?: RequestInit) => Promise.resolve(new Response()));
     beforeEach(() => {
       fetchSpy.mockClear();
       vi.stubGlobal("fetch", fetchSpy);
     });
     afterEach(() => vi.unstubAllGlobals());
 
+    const renders = () => fetchSpy.mock.calls.map(([url]) => url);
     const settle = (
       view: ReturnType<typeof renderPreview>,
       steps: Array<"ready" | "missing" | "loaded">,
@@ -437,7 +438,10 @@ describe("NLEPreview", () => {
     it("is rendered for the next open when the live frame is ready first", () => {
       const view = renderPreview();
       settle(view, ["ready", "missing"]);
-      expect(fetchSpy.mock.calls).toEqual([[renderUrl]]);
+      expect(renders()).toEqual([renderUrl]);
+      expect(fetchSpy.mock.calls[0]?.[1]?.signal, "rendered as scheduler work").toBeInstanceOf(
+        AbortSignal,
+      );
       expect(view.stage.querySelector('[data-testid="preview-poster"]')).toBeNull();
       view.cleanup();
     });
@@ -447,7 +451,7 @@ describe("NLEPreview", () => {
       settle(view, ["missing"]);
       expect(fetchSpy).not.toHaveBeenCalled();
       settle(view, ["ready", "ready"]);
-      expect(fetchSpy.mock.calls).toEqual([[renderUrl]]);
+      expect(renders()).toEqual([renderUrl]);
       view.cleanup();
     });
 
@@ -458,7 +462,7 @@ describe("NLEPreview", () => {
       settle(view, ["ready"]);
       view.render();
       settle(view, ["ready", "missing"]);
-      expect(fetchSpy.mock.calls).toEqual([[renderUrl]]);
+      expect(renders()).toEqual([renderUrl]);
       view.cleanup();
     });
   });

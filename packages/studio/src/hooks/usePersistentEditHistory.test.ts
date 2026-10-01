@@ -76,6 +76,7 @@ it("an edit Studio saved is undone and redone by the project's history, with the
   expect(undone).toEqual({
     ok: true,
     label: "Undid: Moved Title",
+    undoes: expect.any(String),
     paths: ["index.html"],
     files: { "index.html": { previous: "B", restored: "A" } },
   });
@@ -239,5 +240,50 @@ it("a step that cannot reach the server says so", async () => {
     ok: false,
     reason: "failed",
     message: "Studio could not reach its server.",
+  });
+});
+
+it("predicts a step from what this tab wrote, and not while a claim or step may have moved the history", async () => {
+  const { hook, save, readFile } = await studio();
+  save("B");
+  const claim = hook().recordEdit({
+    label: "Moved Title",
+    files: { "index.html": { before: "A", after: "B" } },
+  });
+  expect(hook().predict("undo")).toBeNull();
+  await act(() => claim);
+  const predicted = await vi.waitFor(() => {
+    const next = hook().predict("undo");
+    expect(next?.files).toEqual({ "index.html": { previous: "B", restored: "A" } });
+    return next!;
+  });
+
+  hook().noteOutsideChange();
+  expect(hook().predict("undo")).toBeNull();
+  await vi.waitFor(() => expect(hook().predict("undo")?.id).toBe(predicted.id));
+
+  const undone = hook().undo({ readFile });
+  expect(hook().predict("undo")).toBeNull();
+  expect((await act(() => undone)).undoes).toBe(predicted.id);
+  await vi.waitFor(() =>
+    expect(hook().predict("redo")?.files).toEqual({
+      "index.html": { previous: "A", restored: "B" },
+    }),
+  );
+});
+
+it("an undo taken before the view caught up with the edit still reports the preview's before and after", async () => {
+  const { hook, save, readFile } = await studio();
+  save("B");
+  const record = hook().recordEdit({
+    label: "Moved Title",
+    files: { "index.html": { before: "A", after: "B" } },
+  });
+  const undo = hook().undo;
+  await act(() => record);
+  const undone = await act(() => undo({ readFile }));
+  expect(undone).toMatchObject({
+    ok: true,
+    files: { "index.html": { previous: "B", restored: "A" } },
   });
 });

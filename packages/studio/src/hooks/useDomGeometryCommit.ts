@@ -1,7 +1,11 @@
+import type { RotationCommit } from "../components/editor/rotationDraft";
 import { useCallback, useMemo, useRef, useState } from "react";
 import type { GsapAnimation } from "@hyperframes/core/gsap-parser";
 import type { DomEditSelection } from "../components/editor/domEditing";
-import type { DomEditGroupPathOffsetCommit } from "../components/editor/DomEditOverlay";
+import type {
+  DomEditGroupPathOffsetCommit,
+  MoveCommitOptions,
+} from "../components/editor/DomEditOverlay";
 import { isPreviewBooted } from "../player/store/playerStore";
 import type { DomEditCommitOutcome } from "./domEditCommitRunner";
 import type { UseDomStyleCommitOptions } from "./useDomStyleCommit";
@@ -13,8 +17,8 @@ import { useGsapCacheVersion } from "./useGsapTweenCache";
 import { createDomEditSaveQueue } from "../utils/domEditSaveQueue";
 import { useDomEditPersist } from "./useDomEditPersist";
 import { useDomEditPositionPatchCommit } from "./useDomEditPositionPatchCommit";
+import { useDomGeometryCommits } from "./useDomGeometryCommits";
 import { useMountEffect } from "./useMountEffect";
-import { stageElementOffset } from "./elementOffsetStager";
 
 /**
  * Studio's `Player` must show the project, with `beginTimelineSession(projectId)` run before it
@@ -29,7 +33,7 @@ export interface DomGeometryCommits {
   commitPathOffset: (
     selection: DomEditSelection,
     next: { x: number; y: number },
-    modifiers?: { altKey?: boolean },
+    modifiers?: MoveCommitOptions,
   ) => Promise<DomEditCommitOutcome>;
   commitGroupPathOffset: (updates: DomEditGroupPathOffsetCommit[]) => Promise<DomEditCommitOutcome>;
   commitBoxSize: (
@@ -40,15 +44,13 @@ export interface DomGeometryCommits {
   ) => Promise<DomEditCommitOutcome>;
   commitRotation: (
     selection: DomEditSelection,
-    next: { angle: number },
+    next: RotationCommit,
   ) => Promise<DomEditCommitOutcome>;
   waitForPendingSaves: () => Promise<void>;
 }
 
 const noop = () => {};
 const NO_SELECTED_ANIMATIONS: GsapAnimation[] = [];
-// ponytail: unreachable, the GSAP writer always exists so a resize never takes the DOM route.
-const noDomBoxSizeRoute = () => Promise.reject(new Error("Resize has no DOM route here"));
 
 /**
  * Saves canvas moves, resizes and rotations through Studio's own GSAP-aware commits, for a host
@@ -107,16 +109,12 @@ export function useDomGeometryCommit({
     },
     [commitPositionPatchToHtml, queue],
   );
-  const stageElementPositionOffset = useCallback(
-    (selection: DomEditSelection, next: { x: number; y: number }, coalesceKey?: string) =>
-      stageElementOffset(
-        { commitPositionPatchToHtml: commitWithFreshQueue, showToast },
-        selection,
-        next,
-        coalesceKey,
-      ),
-    [commitWithFreshQueue, showToast],
-  );
+  const { stageElementPositionOffset, handleDomBoxSizeCommit, handleDomRotationCommit } =
+    useDomGeometryCommits({
+      showToast,
+      commitPositionPatchToHtml: commitWithFreshQueue,
+      readOnlyPreview: false,
+    });
   const makeFetchFallback = useGsapAnimationFetchFallback(projectId);
   const trackGsapInteractionFailure = useGsapInteractionFailureTelemetry(activeCompPath, showToast);
   const {
@@ -135,7 +133,8 @@ export function useDomGeometryCommit({
     makeFetchFallback,
     trackGsapInteractionFailure,
     stageElementPositionOffset,
-    handleDomBoxSizeCommit: noDomBoxSizeRoute,
+    handleDomBoxSizeCommit,
+    handleDomRotationCommit,
     commitPositionPatchToHtml: commitWithFreshQueue,
     addGsapAnimation: gsap.addGsapAnimation,
     convertToKeyframes: gsap.convertToKeyframes,

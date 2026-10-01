@@ -12,6 +12,10 @@ export type { ShortcutHint, ShortcutSection } from "./player/components/studioSh
 export { CompositionBreadcrumb } from "./components/nle/CompositionBreadcrumb";
 export type { CompositionLevel } from "./components/nle/CompositionBreadcrumb";
 export { useCompositionStack } from "./components/nle/useCompositionStack";
+export { Dock } from "./components/dock/Dock";
+export { useDockLayoutStore } from "./components/dock/dockLayoutStore";
+export type { DockController } from "./components/dock/dockLayoutStore";
+export type { PanelId } from "./components/dock/panelRegistry";
 
 // Player (preview, timeline, playback controls)
 export {
@@ -183,6 +187,9 @@ export { DomEditProvider, useDomEditSelectionContext } from "./contexts/DomEditC
 export { PreviewReadOnlyProvider } from "./components/editor/previewReadOnlyContext";
 export { ConnectedDomEditOverlay } from "./components/editor/ConnectedDomEditOverlay";
 export type { ConnectedDomEditOverlayProps } from "./components/editor/ConnectedDomEditOverlay";
+export { useDomEditZOrder } from "./components/editor/useDomEditZOrder";
+export type { DomEditZOrder } from "./components/editor/useDomEditZOrder";
+export type { ZOrderAction } from "./components/editor/canvasContextMenuZOrder";
 export type { DomEditCapabilities, DomEditSelection } from "./components/editor/domEditingTypes";
 export { useDomStyleCommit } from "./hooks/useDomStyleCommit";
 export type { UseDomStyleCommitOptions } from "./hooks/useDomStyleCommit";

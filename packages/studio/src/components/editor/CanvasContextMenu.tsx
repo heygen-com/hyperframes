@@ -16,7 +16,7 @@
  * flow, and captures the TRUE prior styles for its failure rollback.
  *
  * The prop MUST be wired at the call site to route through the full persist
- * path. ConnectedDomEditOverlay.tsx builds the per-patch PatchTargets (the selected
+ * path. useDomEditZOrder.ts builds the per-patch PatchTargets (the selected
  * element carries its full selection identity; sibling elements are iframe DOM
  * nodes, so their id / selector are derived from the node and they share the
  * selection's sourceFile) and forwards them to handleDomZIndexReorderCommit.
@@ -29,8 +29,7 @@ import type { DomEditSelection } from "./domEditing";
 import { useContextMenuDismiss } from "../../hooks/useContextMenuDismiss";
 import {
   isZOrderActionEnabled,
-  resolveCrossedNeighbor,
-  resolveZOrderChange,
+  resolveZOrderStep,
   type ZOrderAction,
   type ZOrderPatch,
 } from "./canvasContextMenuZOrder";
@@ -170,13 +169,11 @@ export const CanvasContextMenu = memo(function CanvasContextMenu({
 
   function handleZAction(action: ZAction) {
     if (!onApplyZIndex) return;
-    const patches = resolveZOrderChange(el, action);
-    if (patches === null) return;
-    // Resolve the crossed neighbor BEFORE the commit path mutates live styles —
-    // both resolvers must read the same pre-change render order. Always resolved
-    // (not only for the flash): onApplyZIndex forwards it so the host can mirror
-    // the z step into a timeline lane move.
-    const crossed = resolveCrossedNeighbor(el, action);
+    // Resolved BEFORE the commit path mutates live styles. `crossed` is always
+    // resolved (not only for the flash): the host mirrors it into a lane move.
+    const step = resolveZOrderStep(el, action);
+    if (step === null) return;
+    const { patches, crossed } = step;
     // Do NOT pre-apply styles here: handleDomZIndexReorderCommit writes the
     // live z-index (and injects position:relative for static elements) in the
     // same synchronous flow, so feedback is still instant — and it must read

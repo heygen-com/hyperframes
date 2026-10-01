@@ -44,6 +44,10 @@ const SIMULATED_CURSOR_REASON =
 
 export const ALLOWED_DELETIONS = new Map([
   [
+    "packages/studio/src/hooks/gsapTargetCache.ts",
+    "its only caller was the deleted var-offset move writer; nothing imports isElementGsapTargeted",
+  ],
+  [
     "packages/studio/src/player/components/automationGestureKeys.ts",
     "automation-lane saves now persist once per gesture through the timeline save, so no caller needs a gesture undo key",
   ],

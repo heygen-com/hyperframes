@@ -9,6 +9,96 @@ Recent HyperFrames releases, including user-facing features, fixes, and migratio
 {/* New release entries are prepended by `bun run changelog:draft <version> --write`. */}
 
 <Update
+  label="HyperFrames v0.8.104"
+  description="Released - 2026-10-01"
+  tags={["Release", "Studio"]}
+>
+Elements without GSAP now resize and rotate from where they really are, and save where you let go. A move keeps its route through the drop, and Escape keeps text you typed.
+
+## Fixes
+
+- **Studio:** A rotate without GSAP saves where you let go, nested too ([74f501321](https://github.com/heygen-com/hyperframes/commit/74f5013210e382ed9f7867e1636abf80975a55ed), [#4802](https://github.com/heygen-com/hyperframes/pull/4802)).
+- **Studio:** Escape keeps the text you typed in an in-place edit ([bb0d076c1](https://github.com/heygen-com/hyperframes/commit/bb0d076c1492f69a9a43ae9a5bebb39abc0c576e), [#4841](https://github.com/heygen-com/hyperframes/pull/4841)).
+- **Studio:** A move keeps the route it chose at press through drop and save ([2eb191910](https://github.com/heygen-com/hyperframes/commit/2eb19191032c88949604541d7a2b3593eb1c7bd7), [#4834](https://github.com/heygen-com/hyperframes/pull/4834)).
+- **Studio:** Resize an element without GSAP by its own width, height and translate ([3e011b7e5](https://github.com/heygen-com/hyperframes/commit/3e011b7e5f4dca52c4558dacea45ad4e213a3b5f), [#4805](https://github.com/heygen-com/hyperframes/pull/4805)).
+
+[View the full commit range](https://github.com/heygen-com/hyperframes/compare/v0.8.103...v0.8.104).
+</Update>
+
+<Update
+  label="HyperFrames v0.8.103"
+  description="Released - 2026-10-01"
+  tags={["Release", "Studio"]}
+>
+Fade handles in Studio are easier to grab and show a real tooltip. Layers positioned with min(), max() or clamp() move from where they really are, and projects named with a colon or # open correctly.
+
+## Fixes
+
+- **Studio:** Fade handles show a real tooltip and a 24 px target ([e3ac225a9](https://github.com/heygen-com/hyperframes/commit/e3ac225a9ce63a5dd54447d616878e3989a32701), [#4819](https://github.com/heygen-com/hyperframes/pull/4819)).
+- **Studio:** A layer with a min(), max() or clamp() translate moves from where it really is ([7880d41bc](https://github.com/heygen-com/hyperframes/commit/7880d41bc412672c908b14da8c77e40eddb508a7), [#4832](https://github.com/heygen-com/hyperframes/pull/4832)).
+- **Studio:** Open projects named with a colon and keep preview assets for names with # ([a369708fa](https://github.com/heygen-com/hyperframes/commit/a369708fa5ddd02dd538b676daa86c72b278c4eb), [#4829](https://github.com/heygen-com/hyperframes/pull/4829)).
+
+[View the full commit range](https://github.com/heygen-com/hyperframes/compare/v0.8.102...v0.8.103).
+</Update>
+
+<Update
+  label="HyperFrames v0.8.102"
+  description="Released - 2026-10-01"
+  tags={["Release", "Studio"]}
+>
+Host apps can change layer order the same way Studio's canvas menu does. Moving a layer that only fades no longer hands GSAP an element it does not position.
+
+## Features
+
+- **Studio:** Hosts can apply the canvas menu's z-order through useDomEditZOrder ([c0f2780b8](https://github.com/heygen-com/hyperframes/commit/c0f2780b8e76f3e026dd05e03a6e9f686f2f15e9), [#4793](https://github.com/heygen-com/hyperframes/pull/4793)).
+
+## Fixes
+
+- **Studio:** The properties panel no longer hands GSAP an element it does not position ([4c768186b](https://github.com/heygen-com/hyperframes/commit/4c768186b83a1c0c4eb3d310269856c7a5f28664), [#4830](https://github.com/heygen-com/hyperframes/pull/4830)).
+
+[View the full commit range](https://github.com/heygen-com/hyperframes/compare/v0.8.101...v0.8.102).
+</Update>
+
+<Update
+  label="HyperFrames v0.8.101"
+  description="Released - 2026-10-01"
+  tags={["Release", "Studio"]}
+>
+Undo and redo in Studio are faster and more exact. They show on the next frame, and one Cmd+Z in the preview takes one step. Timeline drops on an empty lane start at 0 and snap to clip edges.
+
+## Features
+
+- **Studio:** A host app can mount the dock with its own panels, storage key and width ([7719f973c](https://github.com/heygen-com/hyperframes/commit/7719f973c059f4f54ef804b32a0e5746ff6c9a2f), [#4812](https://github.com/heygen-com/hyperframes/pull/4812)).
+
+## Fixes
+
+- **Studio:** One Cmd+Z pressed inside the preview takes one undo step, not three ([f2ef034fa](https://github.com/heygen-com/hyperframes/commit/f2ef034fabedef79ae7f312703a8bb490de5af4a), [#4824](https://github.com/heygen-com/hyperframes/pull/4824)).
+- **Studio:** Start timeline drops on an empty lane at 0 and snap to clip edges ([af314cbc3](https://github.com/heygen-com/hyperframes/commit/af314cbc3d37d1fbf5e3c7ff2cb913d406384c90), [#4811](https://github.com/heygen-com/hyperframes/pull/4811)).
+- **Studio:** Undo and redo show on the next frame instead of after the server answers ([6ba35c9e3](https://github.com/heygen-com/hyperframes/commit/6ba35c9e3b7d8859c2567fca5f4cfc3d4cc43fe7), [#4798](https://github.com/heygen-com/hyperframes/pull/4798)).
+
+[View the full commit range](https://github.com/heygen-com/hyperframes/compare/v0.8.100...v0.8.101).
+</Update>
+
+<Update
+  label="HyperFrames v0.8.100"
+  description="Released - 2026-10-01"
+  tags={["Release", "Studio"]}
+>
+Moving or nudging an element in Studio is exact when it has no GSAP animation. It lands where you drop it and is saved as plain CSS, with no GSAP script added. A text edit saves to the element you edited, or tells you why it could not.
+
+## Fixes
+
+- **Studio:** A moved or nudged element without GSAP animation lands exactly where you drop it, saved as plain CSS (no GSAP script added) ([c8f848f98](https://github.com/heygen-com/hyperframes/commit/c8f848f98482362efcba337ceb35b240f89e1d7f), [#4799](https://github.com/heygen-com/hyperframes/pull/4799)).
+- **Studio:** A text edit saves to the element that was edited, or says why it could not ([c777f36d4](https://github.com/heygen-com/hyperframes/commit/c777f36d47d7fb914c7b3be4a9536ff343c4075f), [#4803](https://github.com/heygen-com/hyperframes/pull/4803)).
+
+## Internal
+
+- **Studio:** Gate edit accuracy in CI against the base branch baseline ([097250e11](https://github.com/heygen-com/hyperframes/commit/097250e11c0d891e201399016f79c484043aa800), [#4765](https://github.com/heygen-com/hyperframes/pull/4765)).
+
+[View the full commit range](https://github.com/heygen-com/hyperframes/compare/v0.8.99...v0.8.100).
+</Update>
+
+<Update
   label="HyperFrames v0.8.99"
   description="Released - 2026-09-30"
   tags={["Release", "Studio", "Core", "Parsers"]}

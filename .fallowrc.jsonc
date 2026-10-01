@@ -62,9 +62,6 @@
     "packages/studio/src/components/nle/TimelineEditorNotice.tsx",
     // Zoom hook extracted for downstream razor-blade PRs (#1330, #1331).
     "packages/studio/src/player/components/useTimelineZoom.ts",
-    // Cached O(1) GSAP target lookup, replacing O(n²) inline checks.
-    // Consumers migrate in a follow-up once useDomGeometryCommits adopts it.
-    "packages/studio/src/hooks/gsapTargetCache.ts",
     // Preview helper consumed dynamically from the studio iframe bridge.
     "packages/studio/src/hooks/gsapRuntimePreview.ts",
   ],
@@ -369,13 +366,6 @@
     {
       "file": "packages/studio/src/player/lib/timelineDOM.ts",
       "exports": ["*"],
-    },
-    // gsapTargetCache: cached O(1) GSAP target lookup, consumed by
-    // useDomEditCommits and intended to replace the local copy in
-    // useDomGeometryCommits once callers migrate.
-    {
-      "file": "packages/studio/src/hooks/gsapTargetCache.ts",
-      "exports": ["isElementGsapTargeted"],
     },
     // Re-exports from useDomEditCommits: barrel-style re-exports
     // consumed by downstream studio code.

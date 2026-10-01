@@ -33,10 +33,11 @@ type LastActive = Partial<Record<PanelZone, PanelId>>;
 
 interface DockLayoutState extends DockSnapshot {
   controller: DockController | null;
+  panels: readonly PanelId[];
   lastActive: LastActive;
   /** An activation requested before the dock mounted; Dock.Root applies it on ready. */
   pendingActivation: PanelId | null;
-  attach: (controller: DockController) => void;
+  attach: (controller: DockController, panels?: readonly PanelId[]) => void;
   detach: () => void;
   sync: (snapshot: DockSnapshot) => void;
   takePendingActivation: () => PanelId | null;
@@ -49,12 +50,13 @@ interface DockLayoutState extends DockSnapshot {
 
 export const useDockLayoutStore = create<DockLayoutState>((set, get) => ({
   controller: null,
+  panels: PANEL_IDS,
   openPanels: new Set(PANEL_IDS),
   visiblePanels: new Set(PANEL_IDS),
   activePanel: null,
   lastActive: {},
   pendingActivation: null,
-  attach: (controller) => set({ controller }),
+  attach: (controller, panels = PANEL_IDS) => set({ controller, panels }),
   detach: () => set({ controller: null, lastActive: {} }),
   sync: (snapshot) =>
     set((state) => {

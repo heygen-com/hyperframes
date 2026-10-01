@@ -71,7 +71,9 @@ function HookHost({
   element,
   previewIframeRef,
   onApplyScope,
+  projectId = "proj",
 }: {
+  projectId?: string;
   onState: (state: ReturnType<typeof useColorGradingController>) => void;
   onSetAttributeLive: (attr: string, value: string | null) => void;
   element: DomEditSelection;
@@ -79,7 +81,7 @@ function HookHost({
   onApplyScope?: ApplyScope;
 }) {
   const state = useColorGradingController({
-    projectId: "proj",
+    projectId,
     element,
     previewIframeRef,
     onSetAttributeLive,
@@ -94,6 +96,7 @@ function renderHook(
   initialElement: DomEditSelection = makeElement(),
   previewIframeRef?: React.RefObject<HTMLIFrameElement | null>,
   onApplyScope?: ApplyScope,
+  projectId?: string,
 ) {
   const host = document.createElement("div");
   document.body.append(host);
@@ -108,6 +111,7 @@ function renderHook(
           element,
           previewIframeRef,
           onApplyScope,
+          projectId,
         }),
       );
     });
@@ -761,6 +765,37 @@ describe("useColorGradingController", () => {
     expect(fetchMock).toHaveBeenCalledTimes(2);
     expect(second.getState().mediaMetadata?.color.dynamicRange).toBe("hdr");
     act(() => second.root.unmount());
+    vi.unstubAllGlobals();
+  });
+
+  it("keeps media metadata apart for 'p:a' + 'b.mp4' and 'p' + 'a:b.mp4'", async () => {
+    const video = (src: string) => {
+      const el = document.createElement("video");
+      el.setAttribute("src", src);
+      return el;
+    };
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: true,
+      json: () => Promise.resolve({ metadata: { kind: "video", color: { dynamicRange: "hdr" } } }),
+    } as unknown as Response);
+    vi.stubGlobal("fetch", fetchMock);
+    for (const [projectId, src] of [
+      ["p:a", "b.mp4"],
+      ["p", "a:b.mp4"],
+    ]) {
+      const { root } = renderHook(
+        vi.fn(),
+        makeElement({ element: video(src) }),
+        undefined,
+        undefined,
+        projectId,
+      );
+      await act(async () => {
+        await Promise.resolve();
+      });
+      act(() => root.unmount());
+    }
+    expect(fetchMock).toHaveBeenCalledTimes(2);
     vi.unstubAllGlobals();
   });
 });

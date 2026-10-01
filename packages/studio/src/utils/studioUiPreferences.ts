@@ -60,8 +60,8 @@ function getBrowserStorage(): Storage | null {
   }
 }
 
-function storageKeyFor(projectId: string | null): string {
-  return projectId ? `${STUDIO_UI_PREFERENCES_KEY}:${projectId}` : STUDIO_UI_PREFERENCES_KEY;
+function storageKeyFor(projectId: string | null, key: string): string {
+  return projectId ? `${key}:${projectId}` : key;
 }
 
 // fallow-ignore-next-line complexity
@@ -157,24 +157,26 @@ function readStorage(storage: Storage | null, key: string): StudioUiPreferences 
 export function readStudioUiPreferences(
   storage: Storage | null = getBrowserStorage(),
   projectId: string | null = null,
+  key: string = STUDIO_UI_PREFERENCES_KEY,
 ): StudioUiPreferences {
-  const scoped = readStorage(storage, storageKeyFor(projectId));
+  const scoped = readStorage(storage, storageKeyFor(projectId, key));
   if (!projectId || Object.keys(scoped).length > 0) return scoped;
-  return readStorage(storage, STUDIO_UI_PREFERENCES_KEY);
+  return readStorage(storage, key);
 }
 
 export function writeStudioUiPreferences(
   patch: StudioUiPreferences,
   storage: Storage | null = getBrowserStorage(),
   projectId: string | null = null,
+  key: string = STUDIO_UI_PREFERENCES_KEY,
 ) {
   if (!storage) return;
   try {
     const next = {
-      ...readStudioUiPreferences(storage, projectId),
+      ...readStudioUiPreferences(storage, projectId, key),
       ...patch,
     };
-    storage.setItem(storageKeyFor(projectId), JSON.stringify(next));
+    storage.setItem(storageKeyFor(projectId, key), JSON.stringify(next));
   } catch {
     /* localStorage may be unavailable or full */
   }

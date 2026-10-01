@@ -1,5 +1,10 @@
 import { useCallback, useRef, useState } from "react";
 import { buildProjectApiPath } from "../../utils/projectRouting";
+import {
+  createThumbnailKey,
+  thumbnailScheduler,
+  type ThumbnailRequest,
+} from "../../player/lib/thumbnailScheduler";
 import type { PreviewCompositionSize } from "../../utils/previewCompositionSize";
 
 /** Frame 0 as the thumbnail route last rendered it; `cachedOnly` never starts a render. */
@@ -65,7 +70,7 @@ export function usePreviewPoster(
   const renderMissingPoster = useCallback(() => {
     if (missingForRef.current !== visit || liveReadyForRef.current !== visit) return;
     missingForRef.current = null;
-    void fetch(previewPosterUrl(projectId, false)).catch(() => {});
+    renderPosterForNextOpen(projectId);
   }, [visit, projectId]);
   const onLiveReadyToShowChange = useCallback(
     (ready: boolean) => {
@@ -89,6 +94,29 @@ export function usePreviewPoster(
       renderMissingPoster();
     },
   };
+}
+
+/** Renders frame 0 under the thumbnail cap; the lease ends once the render settles. */
+export function renderPosterForNextOpen(projectId: string): void {
+  const url = previewPosterUrl(projectId, false);
+  const request: ThumbnailRequest = {
+    key: createThumbnailKey({ kind: "poster-render", url }),
+    projectId,
+    sessionEpoch: 0,
+    kind: "composition",
+    priority: "overscan",
+    discardWhenReleased: true,
+    load: async (signal) => {
+      await (await fetch(url, { signal })).arrayBuffer();
+      return { value: { kind: "image", url, aspect: 16 / 9 }, weight: 0 };
+    },
+  };
+  const settled = () => ["ready", "error"].includes(thumbnailScheduler.getSnapshot(request).status);
+  let lease: { release(): void } | null = null;
+  lease = thumbnailScheduler.acquire(request, () => {
+    if (settled()) lease?.release();
+  });
+  if (settled()) lease.release();
 }
 
 function useVisitNumber(key: string): number {

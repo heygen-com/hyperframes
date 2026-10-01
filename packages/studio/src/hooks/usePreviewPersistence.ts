@@ -8,17 +8,22 @@ import { STUDIO_MOTION_PATH } from "../components/editor/studioMotion";
 import { createDomEditSaveQueue, type DomEditSaveDrainResult } from "../utils/domEditSaveQueue";
 import {
   flushStudioPendingEdits,
+  hasStudioPendingEdits,
   type StudioPendingEditsDrainResult,
 } from "../utils/studioPendingEdits";
 import { trackStudioEvent } from "../utils/studioTelemetry";
-import { applyUndoRestoreToPreview, type UndoRestoreFile } from "../utils/gsapUndoRestore";
+import {
+  applyUndoRestoreToPreview,
+  showRestoreInPlace,
+  type RestoreFiles,
+} from "../utils/gsapUndoRestore";
 import { usePlayerStore } from "../player";
 import { syncStoredAutomationFromPreview } from "../player/lib/automationStoreSync";
 
 /** The restore payload the undo/redo preview-sync consumes (from the history store). */
 interface HistoryPreviewRestore {
   paths?: string[];
-  files?: Record<string, UndoRestoreFile>;
+  files?: RestoreFiles;
 }
 
 // ── Types ──
@@ -217,6 +222,23 @@ export function usePreviewPersistence({
     [previewIframeRef, activeCompPathRef, reloadPreview],
   );
 
+  // A restore the server has not confirmed yet: in place now, or not at all. A GSAP script re-run is not
+  // synchronous, and a pending save would land under it.
+  const showHistoryRestoreNow = useCallback(
+    (files: RestoreFiles): (() => void) | null => {
+      if (!domEditSaveQueueRef.current?.isIdle() || hasStudioPendingEdits()) return null;
+      const iframe = previewIframeRef.current;
+      const now = () => usePlayerStore.getState().currentTime;
+      const putBack = showRestoreInPlace(iframe, activeCompPathRef.current, files, now());
+      if (!putBack) return null;
+      return () => {
+        if (putBack(now())) syncStoredAutomationFromPreview(iframe?.contentDocument ?? null);
+        else void syncHistoryPreviewAfterApply({ paths: Object.keys(files) });
+      };
+    },
+    [previewIframeRef, activeCompPathRef, syncHistoryPreviewAfterApply],
+  );
+
   // ── Migrate legacy studio-motion.json ──
   // Projects that used the old JSON-file approach may still have a populated
   // `.hyperframes/studio-motion.json`. The studio no longer reads from it, but
@@ -239,5 +261,6 @@ export function usePreviewPersistence({
     applyCurrentStudioManualEditsToPreview,
     applyStudioManualEditsToPreview,
     syncHistoryPreviewAfterApply,
+    showHistoryRestoreNow,
   };
 }

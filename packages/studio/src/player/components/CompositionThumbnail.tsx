@@ -1,7 +1,11 @@
 import { memo, useMemo, type CSSProperties } from "react";
 import { useThumbnailLease } from "../../hooks/useThumbnailLease";
 import { useThumbnailStripSize } from "../../hooks/useThumbnailStripSize";
-import { createThumbnailKey, type ThumbnailPriority } from "../lib/thumbnailScheduler";
+import {
+  createThumbnailKey,
+  type ThumbnailPriority,
+  type ThumbnailRequest,
+} from "../lib/thumbnailScheduler";
 import { TIMELINE_VIEWPORT_BUDGETS } from "../lib/timelineViewportBudgets";
 import { computeThumbnailStrip, probeImageAspect } from "./thumbnailUtils";
 
@@ -85,6 +89,22 @@ export function compositionPathOfPreviewUrl(previewUrl: string): string {
   return match?.[1] ? decodeURIComponent(match[1]) : "index.html";
 }
 
+export function compositionThumbnailRequest(
+  url: string,
+  projectId: string,
+  { sessionEpoch = 0, priority = "visible", rich = false }: Partial<ThumbnailRequest> = {},
+): ThumbnailRequest {
+  return {
+    key: createThumbnailKey({ kind: "composition", url }),
+    projectId,
+    sessionEpoch,
+    kind: "composition",
+    priority,
+    rich,
+    load: (signal: AbortSignal) => loadCompositionImage(url, signal),
+  };
+}
+
 async function loadCompositionImage(url: string, signal: AbortSignal) {
   const response = await fetch(url, { signal });
   if (!response.ok) throw new Error(`Composition thumbnail failed (${response.status})`);
@@ -132,15 +152,7 @@ export const CompositionThumbnail = memo(function CompositionThumbnail({
     contentRevision,
   });
   const request = useMemo(
-    () => ({
-      key: createThumbnailKey({ kind: "composition", url }),
-      projectId,
-      sessionEpoch,
-      kind: "composition" as const,
-      priority,
-      rich: true,
-      load: (signal: AbortSignal) => loadCompositionImage(url, signal),
-    }),
+    () => compositionThumbnailRequest(url, projectId, { sessionEpoch, priority, rich: true }),
     [priority, projectId, sessionEpoch, url],
   );
   const snapshot = useThumbnailLease(request);

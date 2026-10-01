@@ -102,6 +102,9 @@ export function createProjectSignatureCache({
   };
 }
 
+const isServableProjectId = (id: string) =>
+  isValidProjectId(id) && !(process.platform === "win32" && id.includes(":"));
+
 export function createViteAdapter(
   dataDir: string,
   server: ViteDevServer,
@@ -208,7 +211,7 @@ export function createViteAdapter(
       return readdirSync(dataDir, { withFileTypes: true })
         .filter(
           (d) =>
-            isValidProjectId(d.name) &&
+            isServableProjectId(d.name) &&
             (d.isDirectory() || d.isSymbolicLink()) &&
             (existsSync(join(dataDir, d.name, "index.html")) ||
               existsSync(join(dataDir, d.name, `${d.name}.html`))),
@@ -233,7 +236,7 @@ export function createViteAdapter(
 
     // fallow-ignore-next-line complexity
     resolveProject(id: string) {
-      if (!isValidProjectId(id)) return null;
+      if (!isServableProjectId(id)) return null;
       let projectDir = resolve(dataDir, id);
       if (!isPathWithin(dataDir, projectDir)) return null;
       if (!existsSync(projectDir)) {
@@ -243,7 +246,7 @@ export function createViteAdapter(
         if (existsSync(sessionFile)) {
           try {
             const session = JSON.parse(readFileSync(sessionFile, "utf-8"));
-            if (typeof session.projectId === "string" && isValidProjectId(session.projectId)) {
+            if (typeof session.projectId === "string" && isServableProjectId(session.projectId)) {
               projectDir = resolve(dataDir, session.projectId);
               if (!isPathWithin(dataDir, projectDir)) return null;
               if (existsSync(projectDir)) {

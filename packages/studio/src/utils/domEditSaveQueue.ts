@@ -20,6 +20,7 @@ interface DomEditSaveQueueOptions {
 export interface DomEditSaveQueue {
   enqueue: <T>(save: () => Promise<T>) => Promise<T>;
   waitForIdle: () => Promise<DomEditSaveDrainResult>;
+  isIdle: () => boolean;
   reset: () => void;
   destroy: () => void;
 }
@@ -39,6 +40,7 @@ export function createDomEditSaveQueue(options: DomEditSaveQueueOptions = {}): D
   const failureThreshold = options.failureThreshold ?? DEFAULT_FAILURE_THRESHOLD;
 
   let tail = Promise.resolve();
+  let queuedCount = 0;
   let consecutiveFailures = 0;
   let breakerOpen = false;
   let drainError: unknown = null;
@@ -81,6 +83,7 @@ export function createDomEditSaveQueue(options: DomEditSaveQueueOptions = {}): D
   return {
     enqueue(save) {
       if (breakerOpen) return Promise.reject(new DomEditSaveQueueOpenError());
+      queuedCount += 1;
       const queued = tail
         .catch(() => undefined)
         .then(() => {
@@ -88,8 +91,8 @@ export function createDomEditSaveQueue(options: DomEditSaveQueueOptions = {}): D
           return run(save);
         });
       tail = queued.then(
-        () => undefined,
-        () => undefined,
+        () => void (queuedCount -= 1),
+        () => void (queuedCount -= 1),
       );
       return queued;
     },
@@ -102,6 +105,8 @@ export function createDomEditSaveQueue(options: DomEditSaveQueueOptions = {}): D
       if (drainError != null) return { status: "failed", error: drainError };
       return { status: "clean" };
     },
+
+    isIdle: () => queuedCount === 0,
 
     reset,
 

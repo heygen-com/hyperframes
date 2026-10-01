@@ -1,11 +1,4 @@
-import {
-  useEffect,
-  useRef,
-  useState,
-  type CSSProperties,
-  type KeyboardEvent,
-  type PointerEvent,
-} from "react";
+import { useEffect, useRef, useState, type CSSProperties, type PointerEvent } from "react";
 import {
   HF_AUDIO_FADE_IN_ATTR,
   HF_AUDIO_FADE_OUT_ATTR,
@@ -13,13 +6,16 @@ import {
   formatFadeSeconds,
 } from "@hyperframes/core/audio-fade";
 import type { TimelineElement } from "../store/playerStore";
+import { Tooltip } from "../../components/ui";
 import { useTimelineEditContextOptional } from "../../contexts/TimelineEditContext";
 import { releasedOutsideWindow } from "./timelinePointerRelease";
 
 type FadeEdge = "in" | "out";
 
 const HANDLE_SIZE = 10;
-const HANDLE_HIT = 16;
+const HANDLE_HIT = 24;
+const HANDLE_Z_ABOVE_CLIP_CONTENT = 30;
+const SUPPRESS_CLIP_NATIVE_TITLE = "";
 /** Pixels of pointer travel before a press on the handle counts as a drag. */
 const DRAG_THRESHOLD_PX = 2;
 
@@ -147,31 +143,38 @@ export function TimelineClipFades({ el, pps, widthPx, showHandles }: TimelineCli
     );
   };
 
-  const onHandleKeyDown = (e: KeyboardEvent<HTMLDivElement>) => {
-    const g = gesture.current;
-    if (e.key !== "Escape" || !g) return;
-    e.preventDefault();
-    gesture.current = null;
-    setDragging(null);
-    revertGesture(g);
-  };
+  useEffect(() => {
+    if (dragging === null) return;
+    const cancelOnWindowEscape = (e: KeyboardEvent) => {
+      const g = gesture.current;
+      if (e.key !== "Escape" || !g) return;
+      e.preventDefault();
+      e.stopPropagation();
+      gesture.current = null;
+      setDragging(null);
+      revertGesture(g);
+    };
+    window.addEventListener("keydown", cancelOnWindowEscape, { capture: true });
+    return () => window.removeEventListener("keydown", cancelOnWindowEscape, { capture: true });
+  });
 
   const showIn = fades.fadeIn > 0;
   const showOut = fades.fadeOut > 0;
   const handlesVisible = showHandles || dragging !== null;
   if (!showIn && !showOut && !handlesVisible) return null;
 
-  const handleStyle = (leftPx: number): CSSProperties => ({
+  const hitWidth = Math.min(HANDLE_HIT, widthPx / 2);
+  const handleStyle = (edge: FadeEdge): CSSProperties => ({
     position: "absolute",
     top: -(HANDLE_HIT - HANDLE_SIZE) / 2 + 1,
-    left: leftPx - HANDLE_HIT / 2,
-    width: HANDLE_HIT,
+    left: edge === "in" ? 0 : widthPx - hitWidth,
+    width: hitWidth,
     height: HANDLE_HIT,
     display: "flex",
     alignItems: "center",
     justifyContent: "center",
     cursor: "ew-resize",
-    zIndex: 6,
+    zIndex: HANDLE_Z_ABOVE_CLIP_CONTENT,
     opacity: handlesVisible ? 1 : 0,
     pointerEvents: handlesVisible && canEdit ? "auto" : "none",
     touchAction: "none",
@@ -191,7 +194,8 @@ export function TimelineClipFades({ el, pps, widthPx, showHandles }: TimelineCli
             height: "100%",
             pointerEvents: "none",
             zIndex: 5,
-            overflow: "visible",
+            overflow: "hidden",
+            borderRadius: "inherit",
           }}
           viewBox={`0 0 ${Math.max(widthPx, 1)} 100`}
           preserveAspectRatio="none"
@@ -245,25 +249,23 @@ export function TimelineClipFades({ el, pps, widthPx, showHandles }: TimelineCli
             direction="in"
             value={fades.fadeIn}
             max={Math.max(0, el.duration - fades.fadeOut)}
-            style={handleStyle(inPx)}
+            style={handleStyle("in")}
             dragging={dragging === "in"}
             onPointerDown={onHandlePointerDown("in")}
             onPointerMove={onHandlePointerMove}
             onPointerUp={(e) => finish(e, false)}
             onPointerCancel={(e) => finish(e, true)}
-            onKeyDown={onHandleKeyDown}
           />
           <FadeHandle
             direction="out"
             value={fades.fadeOut}
             max={Math.max(0, el.duration - fades.fadeIn)}
-            style={handleStyle(widthPx - outPx)}
+            style={handleStyle("out")}
             dragging={dragging === "out"}
             onPointerDown={onHandlePointerDown("out")}
             onPointerMove={onHandlePointerMove}
             onPointerUp={(e) => finish(e, false)}
             onPointerCancel={(e) => finish(e, true)}
-            onKeyDown={onHandleKeyDown}
           />
         </>
       )}
@@ -281,7 +283,6 @@ function FadeHandle({
   onPointerMove,
   onPointerUp,
   onPointerCancel,
-  onKeyDown,
 }: {
   direction: "in" | "out";
   value: number;
@@ -292,31 +293,31 @@ function FadeHandle({
   onPointerMove: (event: PointerEvent<HTMLDivElement>) => void;
   onPointerUp: (event: PointerEvent<HTMLDivElement>) => void;
   onPointerCancel: (event: PointerEvent<HTMLDivElement>) => void;
-  onKeyDown: (event: KeyboardEvent<HTMLDivElement>) => void;
 }) {
   const label = direction === "in" ? "Fade in" : "Fade out";
   return (
-    <div
-      role="slider"
-      tabIndex={-1}
-      aria-label={label}
-      aria-valuemin={0}
-      aria-valuemax={max}
-      aria-valuenow={value}
-      aria-valuetext={`${formatFadeSeconds(value)}s`}
-      data-testid={`clip-fade-handle-${direction}`}
-      title={`${label}: ${formatFadeSeconds(value)}s — drag to change`}
-      style={style}
-      onPointerDown={onPointerDown}
-      onPointerMove={onPointerMove}
-      onPointerUp={onPointerUp}
-      onPointerCancel={onPointerCancel}
-      onKeyDown={onKeyDown}
-      onClick={(e) => e.stopPropagation()}
-      onDoubleClick={(e) => e.stopPropagation()}
-    >
-      <FadeDot active={dragging} />
-    </div>
+    <Tooltip label={`${label} ${formatFadeSeconds(value)} s`}>
+      <div
+        role="slider"
+        tabIndex={-1}
+        aria-label={label}
+        aria-valuemin={0}
+        aria-valuemax={max}
+        aria-valuenow={value}
+        aria-valuetext={`${formatFadeSeconds(value)}s`}
+        data-testid={`clip-fade-handle-${direction}`}
+        title={SUPPRESS_CLIP_NATIVE_TITLE}
+        style={style}
+        onPointerDown={onPointerDown}
+        onPointerMove={onPointerMove}
+        onPointerUp={onPointerUp}
+        onPointerCancel={onPointerCancel}
+        onClick={(e) => e.stopPropagation()}
+        onDoubleClick={(e) => e.stopPropagation()}
+      >
+        <FadeDot active={dragging} />
+      </div>
+    </Tooltip>
   );
 }
 
@@ -326,10 +327,12 @@ function FadeDot({ active }: { active: boolean }) {
       aria-hidden="true"
       style={{
         display: "block",
+        flexShrink: 0,
+        pointerEvents: "none",
         width: HANDLE_SIZE,
         height: HANDLE_SIZE,
         borderRadius: "50%",
-        background: active ? "var(--timeline-fade-dot-active)" : "var(--clip-handle)",
+        background: "var(--timeline-fade-dot)",
         boxShadow: "0 0 0 1.5px var(--timeline-fade-dot-ring)",
         transform: active ? "scale(1.15)" : undefined,
         transition: "transform 80ms ease-out",

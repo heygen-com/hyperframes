@@ -203,7 +203,7 @@ export function useInlineTextEdit({
       }
       if (event.key === "Escape") {
         event.preventDefault();
-        cancel();
+        commit();
       }
     };
     // Clicking away keeps the work, which is what every other field in Studio
@@ -243,7 +243,7 @@ export function useInlineTextEdit({
       element.removeEventListener("dragover", onDragOver);
       element.removeEventListener("drop", onDrop);
     };
-  }, [session, commit, cancel]);
+  }, [session, commit]);
 
   // Unmount keeps the typed words, as blur does. Read through a ref so a new
   // onCommit never closes the session mid-edit.

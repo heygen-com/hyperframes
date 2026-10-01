@@ -49,10 +49,12 @@ interface ManualEditCapabilities {
  */
 export function useManualEditDisabledFlags(
   capabilities: ManualEditCapabilities | null | undefined,
+  offset = { x: 0, y: 0 },
 ) {
   const { readOnly } = useContext(PreviewReadOnlyContext);
+  const unreadable = !Number.isFinite(offset.x) || !Number.isFinite(offset.y);
   return {
-    manualOffsetEditingDisabled: !capabilities?.canApplyManualOffset || readOnly,
+    manualOffsetEditingDisabled: !capabilities?.canApplyManualOffset || readOnly || unreadable,
     manualSizeEditingDisabled: !capabilities?.canApplyManualSize || readOnly,
     manualRotationEditingDisabled: !capabilities?.canApplyManualRotation || readOnly,
   };

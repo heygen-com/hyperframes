@@ -91,7 +91,7 @@ function isGsapScript(text: string): boolean {
   );
 }
 
-export function findGsapScriptElements(doc: Document): HTMLScriptElement[] {
+export function findGsapScriptElements(doc: ParentNode): HTMLScriptElement[] {
   const results: HTMLScriptElement[] = [];
   const scripts = doc.querySelectorAll<HTMLScriptElement>("script:not([src])");
   for (const script of scripts) {

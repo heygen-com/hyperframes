@@ -1,3 +1,4 @@
+import type { RotationCommit } from "./rotationDraft";
 import { memo, useEffect, useMemo, useRef, type RefObject } from "react";
 import { type DomEditSelection } from "./domEditing";
 import type { PreviewMouseDownOptions } from "../../hooks/usePreviewInteraction";
@@ -10,6 +11,7 @@ import {
   type BlockedMoveState,
   type DomEditGroupPathOffsetCommit,
   type FocusableDomEditOverlay,
+  type MoveCommitOptions,
   type GestureState,
   type GroupGestureState,
   focusDomEditOverlayElement,
@@ -45,7 +47,7 @@ export {
   hasDomEditRotationChanged,
   resolveDomEditRotationGesture,
 } from "./domEditOverlayGestures";
-export type { DomEditGroupPathOffsetCommit } from "./domEditOverlayGestures";
+export type { DomEditGroupPathOffsetCommit, MoveCommitOptions } from "./domEditOverlayGestures";
 
 export interface DomEditOverlayProps {
   iframeRef: RefObject<HTMLIFrameElement | null>;
@@ -76,12 +78,12 @@ export interface DomEditOverlayProps {
     selection: DomEditSelection,
     options?: { revealPanel?: boolean; additive?: boolean },
   ) => void;
-  onBlockedMove: (selection: DomEditSelection) => void;
+  onBlockedMove: (selection: DomEditSelection, reason?: string) => void;
   onManualDragStart?: () => void;
   onPathOffsetCommit: (
     selection: DomEditSelection,
     next: { x: number; y: number },
-    modifiers?: { altKey?: boolean },
+    modifiers?: MoveCommitOptions,
   ) => Promise<unknown> | void;
   onGroupPathOffsetCommit: (updates: DomEditGroupPathOffsetCommit[]) => Promise<unknown> | void;
   onBoxSizeCommit: (
@@ -90,10 +92,7 @@ export interface DomEditOverlayProps {
     offset?: { x: number; y: number },
     restore?: () => void,
   ) => Promise<unknown> | void;
-  onRotationCommit: (
-    selection: DomEditSelection,
-    next: { angle: number },
-  ) => Promise<unknown> | void;
+  onRotationCommit: (selection: DomEditSelection, next: RotationCommit) => Promise<unknown> | void;
   onStyleCommit?: (property: string, value: string) => Promise<unknown> | void;
   recordingState?: GestureRecordingState;
   onToggleRecording?: () => void;
@@ -296,6 +295,7 @@ export const DomEditOverlay = memo(function DomEditOverlay({
     gestureRef,
     groupGestureRef,
     blockedMoveRef,
+    onBlockedMoveRef,
     onManualDragStartRef,
     onPathOffsetCommitRef,
     onGroupPathOffsetCommitRef,

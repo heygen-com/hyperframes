@@ -22,8 +22,8 @@
  * it, and a mismatch would otherwise pass silently against the wrong build.
  */
 import { platform, arch } from "node:os";
-import puppeteer from "puppeteer-core";
-import { resolveChromeExecutable } from "./chrome-executable.mjs";
+import { launchStudioChrome } from "./chrome-executable.mjs";
+import { gatePassed, judgeResponsiveness } from "./timeline-viewport-verdict.mjs";
 
 const STUDIO_URL = process.env.STUDIO_URL;
 const PROFILE = process.env.TIMELINE_PROFILE || "dense-short";
@@ -61,12 +61,6 @@ if (ROW_VIRTUALIZATION === "off" && ELEMENT_COUNT === 50_000) {
   process.exit(2);
 }
 
-function percentile(values, ratio) {
-  if (values.length === 0) return 0;
-  const sorted = [...values].sort((a, b) => a - b);
-  return sorted[Math.min(sorted.length - 1, Math.ceil(sorted.length * ratio) - 1)];
-}
-
 async function collectHeapBytes(client) {
   const usage = await client.send("Runtime.getHeapUsage");
   return usage.usedSize;
@@ -90,6 +84,8 @@ async function collectRun(page, injectedLongTaskMs = 0) {
       interactionP95Ms: percentileInPage(interactions, 0.95),
       frameIntervalP95Ms: percentileInPage(frameIntervals, 0.95),
       scrollSampleCount: interactions.length,
+      interactions,
+      frameIntervals,
       longestTaskMs: Math.max(0, ...longTasks),
       scrollWidth: scroller.scrollWidth,
       scrollHeight: scroller.scrollHeight,
@@ -227,17 +223,7 @@ async function measureMaximumReliableScrollWidth(page) {
   });
 }
 
-const executablePath = resolveChromeExecutable();
-if (!executablePath) {
-  console.error("No Chrome executable found; set PUPPETEER_EXECUTABLE_PATH");
-  process.exit(2);
-}
-
-const browser = await puppeteer.launch({
-  executablePath,
-  headless: true,
-  args: ["--no-sandbox", "--disable-dev-shm-usage", "--disable-gpu"],
-});
+const { browser, executablePath } = await launchStudioChrome();
 let exitCode = 1;
 try {
   const version = await browser.version();
@@ -319,10 +305,7 @@ try {
   // so a skipped budget never reads as a passed one.
   const domBudgetsApply = ROW_VIRTUALIZATION === "on";
   for (const run of runs) {
-    run.responsivenessPassed =
-      run.interactionP95Ms <= interactionLimitMs &&
-      run.frameIntervalP95Ms <= frameIntervalLimitMs &&
-      run.longestTaskMs <= longTaskLimitMs;
+    run.longTaskPassed = run.longestTaskMs <= longTaskLimitMs;
     run.timelineMounted = run.diagnostics.timelineRoots === 1;
     run.domSizePassed = domBudgetsApply
       ? run.diagnostics.mountedRows <= budgets.maxMountedRows &&
@@ -330,8 +313,13 @@ try {
         run.diagnostics.maxMountedClipRootsInOneRow <= budgets.maxMountedClipRootsPerRow &&
         run.diagnostics.mountedTimelineDescendants <= budgets.maxMountedTimelineDescendants
       : null;
-    run.passed = run.responsivenessPassed && run.timelineMounted && run.domSizePassed !== false;
+    run.passed = run.longTaskPassed && run.timelineMounted && run.domSizePassed !== false;
   }
+  const responsiveness = judgeResponsiveness(runs, {
+    samplesPerRun: budgets.scrollSamplesPerRun,
+    interactionLimitMs,
+    frameIntervalLimitMs,
+  });
 
   await page.evaluate(() => window.__studioTest.resetTimelinePerformanceFixture());
   await page.waitForFunction(
@@ -386,14 +374,9 @@ try {
     directScrollGate,
     runs,
     aggregate: {
-      interactionP95Ms: percentile(
-        runs.map((run) => run.interactionP95Ms),
-        0.95,
-      ),
-      frameIntervalP95Ms: percentile(
-        runs.map((run) => run.frameIntervalP95Ms),
-        0.95,
-      ),
+      interactionP95Ms: responsiveness.interactionP95Ms,
+      frameIntervalP95Ms: responsiveness.frameIntervalP95Ms,
+      responsivenessPassed: responsiveness.passed,
       passingRuns,
       baselineHeapBytes,
       returnedHeapBytes,
@@ -401,12 +384,15 @@ try {
     },
   };
   console.log(JSON.stringify(evidence, null, 2));
-  exitCode =
-    directScrollGate.decision === "approved" &&
-    passingRuns >= budgets.requiredPassingRuns &&
-    memoryReturned
-      ? 0
-      : 1;
+  exitCode = gatePassed({
+    directScrollApproved: directScrollGate.decision === "approved",
+    responsivenessPassed: responsiveness.passed,
+    passingRuns,
+    requiredPassingRuns: budgets.requiredPassingRuns,
+    memoryReturned,
+  })
+    ? 0
+    : 1;
 } finally {
   await browser.close();
 }

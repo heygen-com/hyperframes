@@ -18,6 +18,7 @@ import {
 import type {
   BlockedMoveState,
   DomEditGroupPathOffsetCommit,
+  MoveCommitOptions,
   GestureState,
   GroupGestureState,
 } from "./domEditOverlayGestures";
@@ -55,11 +56,12 @@ export interface UseDomEditNudgeParams {
   groupGestureRef: RefObject<GroupGestureState | null>;
   blockedMoveRef: RefObject<BlockedMoveState | null>;
   onManualDragStartRef: RefObject<(() => void) | undefined>;
+  onBlockedMoveRef: RefObject<(selection: DomEditSelection, reason?: string) => void>;
   onPathOffsetCommitRef: RefObject<
     (
       s: DomEditSelection,
       n: { x: number; y: number },
-      m?: { altKey?: boolean },
+      m?: MoveCommitOptions,
     ) => Promise<unknown> | void
   >;
   onGroupPathOffsetCommitRef: RefObject<
@@ -149,11 +151,14 @@ export function useDomEditNudge(params: UseDomEditNudgeParams): { flushNudge: ()
     const updates: DomEditGroupPathOffsetCommit[] = session.members.map((member) => ({
       selection: member.selection,
       next: applyManualOffsetNudgeCommit(member, session.accum),
+      plainTranslate: member.plainTranslate,
     }));
     const p = paramsRef.current;
     const commit = session.isGroup
       ? p.onGroupPathOffsetCommitRef.current(updates)
-      : p.onPathOffsetCommitRef.current(updates[0].selection, updates[0].next);
+      : p.onPathOffsetCommitRef.current(updates[0].selection, updates[0].next, {
+          plainTranslate: updates[0].plainTranslate,
+        });
     void Promise.resolve(commit)
       .catch(() => {
         for (const member of session.members) {
@@ -179,7 +184,7 @@ export function useDomEditNudge(params: UseDomEditNudgeParams): { flushNudge: ()
   // Build drag members for the current target set — the same member snapshot a
   // pointer drag starts from (startGesture / startGroupDrag), so the nudge
   // commit converts offsets → GSAP x/y with identical math.
-  const beginSession = (): NudgeSession | null => {
+  const beginSession = (event: KeyboardEvent): NudgeSession | "refused" | null => {
     const p = paramsRef.current;
     const groupItems = p.groupOverlayItemsRef.current;
     const isGroup = groupItems.length > 1;
@@ -189,10 +194,11 @@ export function useDomEditNudge(params: UseDomEditNudgeParams): { flushNudge: ()
     if (!targets) return null;
     const members: ManualOffsetDragMember[] = [];
     for (const target of targets) {
-      const result = createManualOffsetDragMember(target);
+      const result = createManualOffsetDragMember({ ...target, gesture: "nudge" });
       if (!result.ok) {
         restoreManualOffsetDragMembers(members);
-        return null;
+        if (!event.repeat) p.onBlockedMoveRef.current(result.selection, result.reason);
+        return "refused";
       }
       members.push(result.member);
     }
@@ -207,7 +213,8 @@ export function useDomEditNudge(params: UseDomEditNudgeParams): { flushNudge: ()
     if (shouldIgnoreNudgeKey(p, event)) return;
     const delta = resolveCanvasNudgeDelta(event);
     if (!delta) return;
-    const session = sessionRef.current ?? beginSession();
+    const session = sessionRef.current ?? beginSession(event);
+    if (session === "refused") return void event.preventDefault();
     if (!session) return;
     sessionRef.current = session;
     event.preventDefault();

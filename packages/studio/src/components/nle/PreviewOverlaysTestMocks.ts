@@ -8,6 +8,10 @@ export const iframeRef = { current: null as HTMLIFrameElement | null };
 
 vi.mock("../../contexts/StudioContext", () => ({
   useStudioShellContext: () => ({ activeCompPath: "index.html", previewIframeRef: iframeRef }),
+  useStudioShellContextOptional: () => ({
+    activeCompPath: "index.html",
+    previewIframeRef: iframeRef,
+  }),
   useStudioPlaybackContext: () => ({
     captionEditMode: previewState.captionEditMode,
     compositionLoading: false,

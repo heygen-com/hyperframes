@@ -8,6 +8,34 @@ import { roundTo3 } from "../utils/rounding";
  * it without pulling the GSAP commit graph into its module scope.
  */
 
+const cssValue = (style: CSSStyleDeclaration, prop: string) => {
+  const value = style.getPropertyValue(prop).trim();
+  return value === "none" ? "" : value;
+};
+
+// Without GSAP, the rotation GSAP will parse from the CSS `rotate`, `scale` and `transform`; with
+// `withRotate` false, only the part `scale` and `transform` draw. GSAP folds them into one transform,
+// and a list the browser rejects (e.g. `rotate: x 30deg`) leaves it only the plain transform.
+export function readCssRotation(element: HTMLElement, withRotate = true): number {
+  const view = element.ownerDocument.defaultView;
+  if (!view) return 0;
+  const style = view.getComputedStyle(element);
+  const rotate = withRotate ? cssValue(style, "rotate") : "";
+  const scale = cssValue(style, "scale");
+  const transform = cssValue(style, "transform");
+  const angle = (list: string) => {
+    if (!list) return 0;
+    const m = new view.DOMMatrix(list);
+    return (Math.atan2(m.b, m.a) * 180) / Math.PI;
+  };
+  const folded = [rotate && `rotate(${rotate})`, scale && `scale(${scale.split(/\s+/).join(",")})`];
+  try {
+    return angle([...folded, transform].join(" ").trim());
+  } catch {
+    return angle(transform);
+  }
+}
+
 /**
  * Translate a studio drag offset into absolute GSAP x/y, accounting for the
  * element's rotation and its drag-start base pose. Reads the drag-start

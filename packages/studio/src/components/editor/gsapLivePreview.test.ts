@@ -1,9 +1,14 @@
 // @vitest-environment happy-dom
-import { expect, it, vi } from "vitest";
+import { afterEach, expect, it, vi } from "vitest";
 import { createGsapLivePreview } from "./gsapLivePreview";
 import type { DomEditSelection } from "./domEditingTypes";
 import type { GsapAnimation } from "@hyperframes/parsers/gsap-parser";
 import { readGsapRuntimeValuesForPanel } from "./propertyPanelHelpers";
+
+afterEach(() => {
+  delete (window as { gsap?: unknown }).gsap;
+  delete (window as { __timelines?: unknown }).__timelines;
+});
 
 it("previews on the selected element, not an earlier same-id copy in a sub-composition", () => {
   document.body.innerHTML =
@@ -61,3 +66,43 @@ it("the panel reads GSAP values off the node the live preview moves", () => {
   });
   expect(getProperty.mock.calls[0]?.[0]).toBe(root);
 });
+
+it.each([
+  ["fades it", { opacity: 0 }, ["opacity"]],
+  ["fades it about its corner", { opacity: 0, transformOrigin: "0 0" }, ["opacity"]],
+  [
+    "moves it",
+    { x: 100 },
+    [
+      "x",
+      "y",
+      "rotation",
+      "rotationX",
+      "rotationY",
+      "rotationZ",
+      "z",
+      "scale",
+      "transformPerspective",
+      "opacity",
+    ],
+  ],
+])(
+  "the panel reads GSAP's transform only off an element GSAP positions: a tween that %s",
+  (_, vars, read) => {
+    document.body.innerHTML = '<div id="card"></div>';
+    const card = document.querySelector<HTMLElement>("#card");
+    const tween = { targets: () => [card], vars, duration: () => 1 };
+    const getProperty = vi.fn(() => 1);
+    const contentWindow = Object.assign(window, {
+      gsap: { getProperty },
+      __timelines: { main: { getChildren: () => [tween] } },
+    });
+    const selection = { id: "card", sourceFile: "index.html", element: card } as DomEditSelection;
+    const animations = [{ properties: vars }] as unknown as GsapAnimation[];
+    readGsapRuntimeValuesForPanel("anim", animations, selection, {
+      current: { contentWindow, contentDocument: document } as unknown as HTMLIFrameElement,
+    });
+    const props = getProperty.mock.calls.map((call) => (call as unknown[])[1]);
+    expect(props).toEqual(read);
+  },
+);
