@@ -230,12 +230,6 @@
       "types": "./dist/audioGain.d.ts",
       "environments": ["browser", "bun", "node"]
     },
-    "./audible-video": {
-      "source": "./src/audibleVideo.ts",
-      "runtime": "./dist/audibleVideo.js",
-      "types": "./dist/audibleVideo.d.ts",
-      "environments": ["browser", "bun", "node"]
-    },
     "./audio-fade": {
       "source": "./src/audioFade.ts",
       "runtime": "./dist/audioFade.js",
