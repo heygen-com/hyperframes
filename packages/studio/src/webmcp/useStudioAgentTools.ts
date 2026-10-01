@@ -111,7 +111,9 @@ export interface StudioAgentToolsDeps
  * a snapshot, which is what lets the list be built once and still see live
  * state. That is the whole point of the ref: see the registration note below.
  */
-export function buildStudioTools(depsRef: { readonly current: StudioAgentToolsDeps }): ModelContextTool[] {
+export function buildStudioTools(depsRef: {
+  readonly current: StudioAgentToolsDeps;
+}): ModelContextTool[] {
   /**
    * `execute` for a tool whose handler takes the caller's abort signal.
    *

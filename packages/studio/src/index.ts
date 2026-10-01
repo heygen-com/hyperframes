@@ -241,7 +241,6 @@ export { MarqueeOverlay } from "./components/editor/MarqueeOverlay";
 export type { MarqueeOverlayProps } from "./components/editor/MarqueeOverlay";
 export type { Rect as MarqueeRect } from "./utils/marqueeGeometry";
 
-// Agent tools: Studio's WebMCP tool bodies, for a host running them on its own edit session.
 export { buildStudioTools } from "./webmcp/useStudioAgentTools";
 export type { StudioAgentToolsDeps } from "./webmcp/useStudioAgentTools";
 export { collectStudioLookScene } from "./webmcp/tools/lookTools";
