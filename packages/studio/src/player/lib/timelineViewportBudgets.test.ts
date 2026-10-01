@@ -23,7 +23,7 @@ describe("timeline viewport budgets", () => {
       constrainedLongTaskLimitMs: 300,
       posterCoverageRatio: 0.9,
       supportedFixtureFallbackRatio: 0.02,
-      scrollSamplesPerRun: 21,
+      scrollSamplesPerRun: 63,
       warmupRuns: 3,
       measuredRuns: 5,
       requiredPassingRuns: 4,

@@ -99,7 +99,7 @@ export const TIMELINE_VIEWPORT_BUDGETS: Readonly<TimelineViewportBudgets> = Obje
   richPreviewP95Ms: 750,
   constrainedRichPreviewP95Ms: 1_200,
   supportedFixtureFallbackRatio: 0.02,
-  scrollSamplesPerRun: 21,
+  scrollSamplesPerRun: 63,
   warmupRuns: 3,
   measuredRuns: 5,
   requiredPassingRuns: 4,
