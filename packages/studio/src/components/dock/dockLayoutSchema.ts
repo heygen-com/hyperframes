@@ -1,5 +1,5 @@
 import type { SerializedDockview } from "dockview-react";
-import { isPanelId } from "./panelRegistry";
+import { PANEL_IDS, isPanelId, type PanelId } from "./panelRegistry";
 
 export const DOCK_PANEL_COMPONENT = "panel";
 
@@ -25,7 +25,10 @@ function hasGridShape(grid: Record<string, unknown>): boolean {
   return oriented && typeof grid.width === "number" && typeof grid.height === "number";
 }
 
-function panelsAreRegistered(panels: Record<string, unknown>): boolean {
+function panelsAreRegistered(
+  panels: Record<string, unknown>,
+  allowed: readonly PanelId[],
+): boolean {
   const ids = Object.keys(panels);
   return (
     ids.length > 0 &&
@@ -33,6 +36,7 @@ function panelsAreRegistered(panels: Record<string, unknown>): boolean {
       const state = panels[id];
       return (
         isPanelId(id) &&
+        allowed.includes(id) &&
         isRecord(state) &&
         state.id === id &&
         state.contentComponent === DOCK_PANEL_COMPONENT
@@ -51,11 +55,15 @@ function collectFloatingViews(floating: unknown, into: unknown[]): boolean {
   });
 }
 
-/** Parses a stored layout at the trust boundary; null (stale or foreign shape) means use the default preset. */
-export function parseDockLayout(value: unknown): SerializedDockview | null {
+/** Parses a stored layout at the trust boundary; null (stale or foreign shape, or a panel this
+ * dock lacks) means use the default preset. */
+export function parseDockLayout(
+  value: unknown,
+  allowed: readonly PanelId[] = PANEL_IDS,
+): SerializedDockview | null {
   if (!isRecord(value) || !isRecord(value.grid) || !isRecord(value.panels)) return null;
   const { grid, panels } = value;
-  if (!hasGridShape(grid) || !panelsAreRegistered(panels)) return null;
+  if (!hasGridShape(grid) || !panelsAreRegistered(panels, allowed)) return null;
 
   const views: unknown[] = [];
   if (!collectLeafViews(grid.root, views)) return null;

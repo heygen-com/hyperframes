@@ -57,14 +57,16 @@ let root: Root | null = null;
 function mount(
   projectId: string | null,
   titles: Partial<Record<(typeof PANEL_IDS)[number], string>> = {},
+  options: Omit<ComponentProps<typeof Dock.Root>, "projectId" | "children"> = {},
 ) {
   const host = document.createElement("div");
   document.body.append(host);
   root = createRoot(host);
   act(() => {
     root?.render(
-      <Dock.Root projectId={projectId}>
-        {PANEL_IDS.map((id) => (
+      <Dock.Root projectId={projectId} {...options}>
+        <Dock.WindowMenu />
+        {(options.panels ?? PANEL_IDS).map((id) => (
           <Dock.Panel key={id} id={id} title={titles[id]}>
             <div data-testid={`content-${id}`}>{id}</div>
           </Dock.Panel>
@@ -236,6 +238,64 @@ describe("Dock wiring", () => {
     } finally {
       Object.defineProperty(window, "innerWidth", { value: innerWidth, configurable: true });
     }
+  });
+});
+
+// A host app mounts a subset of Studio's panels under its own storage key and width.
+describe("a host's dock", () => {
+  const panels = ["preview", "timeline", "assets", "renders"] as const;
+  const hostDock = { panels, storageKey: "host-dock" };
+
+  it("builds only its panels, a side column each, and its Window menu lists only them", () => {
+    const host = mount("p1", {}, hostDock);
+    expect(useDockLayoutStore.getState().openPanels).toEqual(new Set(panels));
+    expect(useDockLayoutStore.getState().visiblePanels).toEqual(new Set(panels));
+    expect(dockApi?.getPanel("assets")?.group.id).not.toBe(dockApi?.getPanel("renders")?.group.id);
+    const menu = [...host.querySelectorAll("button")].find((b) => b.textContent === "Window");
+    act(() => menu?.click());
+    const items = [...host.querySelectorAll('[role="menuitemcheckbox"]')].map((i) => i.textContent);
+    expect(items).toEqual(["✓Preview", "✓Timeline", "✓Assets", "✓Renders"]);
+  });
+
+  it("keeps its layout alone under its own key, never in Studio's preferences", () => {
+    mount("p1", {}, hostDock);
+    act(() => useDockLayoutStore.getState().closePanel("renders"));
+    act(() => {
+      vi.advanceTimersByTime(400);
+    });
+    const stored = JSON.parse(localStorage.getItem("host-dock:p1") ?? "null");
+    expect(Object.keys(stored?.panels ?? {}).sort()).toEqual(["assets", "preview", "timeline"]);
+    expect(readStudioUiPreferences(undefined, "p1").dockLayout).toBeUndefined();
+  });
+
+  it("falls back to its default when a stored layout names a panel it lacks", () => {
+    mount("p1");
+    act(() => {
+      vi.advanceTimersByTime(400);
+    });
+    const studio = readStudioUiPreferences(undefined, "p1").dockLayout;
+    act(() => root?.unmount());
+    root = null;
+    localStorage.setItem("host-dock:p1", JSON.stringify(studio));
+    mount("p1", {}, hostDock);
+    expect(useDockLayoutStore.getState().openPanels).toEqual(new Set(panels));
+  });
+
+  it("reopens a panel beside the preview when the panel it reopens near is not in the dock", () => {
+    mount("p1", {}, hostDock);
+    act(() => useDockLayoutStore.getState().closePanel("assets"));
+    act(() => useDockLayoutStore.getState().togglePanel("assets"));
+    expect(useDockLayoutStore.getState().visiblePanels.has("assets")).toBe(true);
+  });
+
+  it("sizes its sides against its own width, not the window's", () => {
+    mount(null, {}, { ...hostDock, dockWidth: () => 700 });
+    applySideMinimums.mockClear();
+    const dockObservers = [...liveObservers].filter(({ target }) =>
+      target?.classList.contains("hf-dock"),
+    );
+    act(() => dockObservers.forEach(({ callback }) => callback()));
+    expect(applySideMinimums).toHaveBeenCalledWith(expect.anything(), 700);
   });
 });
 

@@ -13,6 +13,12 @@ export { CompositionBreadcrumb } from "./components/nle/CompositionBreadcrumb";
 export type { CompositionLevel } from "./components/nle/CompositionBreadcrumb";
 export { useCompositionStack } from "./components/nle/useCompositionStack";
 
+// Dock: the dockable panel layout, for a host that mounts a subset of Studio's panels.
+export { Dock } from "./components/dock/Dock";
+export { useDockLayoutStore } from "./components/dock/dockLayoutStore";
+export type { DockController } from "./components/dock/dockLayoutStore";
+export type { PanelId } from "./components/dock/panelRegistry";
+
 // Player (preview, timeline, playback controls)
 export {
   Player,

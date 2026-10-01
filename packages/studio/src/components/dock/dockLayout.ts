@@ -1,6 +1,6 @@
 import type { Direction, DockviewApi } from "dockview-react";
 import { DOCK_PANEL_COMPONENT } from "./dockLayoutSchema";
-import { PANEL_DEFINITIONS, isPanelId, type PanelId } from "./panelRegistry";
+import { PANEL_DEFINITIONS, PANEL_IDS, isPanelId, type PanelId } from "./panelRegistry";
 
 const MIN_PREVIEW_W = 360;
 const MIN_PREVIEW_H = 200;
@@ -8,6 +8,9 @@ const MIN_TIMELINE_H = 100;
 const MIN_SIDE_W = 200;
 const MIN_SIDE_W_FLOOR = 120;
 const DEFAULT_TIMELINE_H = 360;
+// The default side columns, first tab active; a dock without a panel leaves it out.
+const DEFAULT_LEFT = ["compositions", "assets", "code", "catalog"] as const;
+const DEFAULT_RIGHT = ["design", "layers", "renders", "variables"] as const;
 
 /** Preferred side widths; when they overflow the preview's floor the right yields first, then the left. */
 export function defaultSideWidths(viewportWidth: number) {
@@ -82,24 +85,37 @@ export function addRegisteredPanel(
   });
 }
 
-/** The default Edit layout: [library | preview | inspector] over a full-width timeline. */
-export function buildEditLayout(api: DockviewApi, viewportWidth: number) {
+/** One default side column of the panels this dock has, beside the preview; returns its active tab. */
+function addSideColumn(
+  api: DockviewApi,
+  ids: readonly PanelId[],
+  panels: readonly PanelId[],
+  direction: "left" | "right",
+) {
+  const [first, ...rest] = ids.filter((id) => panels.includes(id));
+  if (!first) return undefined;
+  addRegisteredPanel(api, first, { referencePanel: "preview", direction });
+  for (const id of rest)
+    addRegisteredPanel(api, id, { referencePanel: first, direction: "within" });
+  api.getPanel(first)?.api.setActive();
+  return first;
+}
+
+/** The default Edit layout: [library | preview | inspector] over a full-width timeline, of the
+ * panels this dock has (preview and timeline always). */
+export function buildEditLayout(
+  api: DockviewApi,
+  viewportWidth: number,
+  panels: readonly PanelId[] = PANEL_IDS,
+) {
   api.clear();
   const widths = defaultSideWidths(viewportWidth);
   addRegisteredPanel(api, "preview");
   addRegisteredPanel(api, "timeline", { referencePanel: "preview", direction: "below" });
-  addRegisteredPanel(api, "compositions", { referencePanel: "preview", direction: "left" });
-  for (const id of ["assets", "code", "catalog"] as const) {
-    addRegisteredPanel(api, id, { referencePanel: "compositions", direction: "within" });
-  }
-  addRegisteredPanel(api, "design", { referencePanel: "preview", direction: "right" });
-  for (const id of ["layers", "renders", "variables"] as const) {
-    addRegisteredPanel(api, id, { referencePanel: "design", direction: "within" });
-  }
-  api.getPanel("compositions")?.api.setActive();
-  api.getPanel("design")?.api.setActive();
+  const left = addSideColumn(api, DEFAULT_LEFT, panels, "left");
+  const right = addSideColumn(api, DEFAULT_RIGHT, panels, "right");
   applySideMinimums(api, viewportWidth);
-  api.getPanel("compositions")?.group.api.setSize({ width: widths.left });
-  api.getPanel("design")?.group.api.setSize({ width: widths.right });
+  if (left) api.getPanel(left)?.group.api.setSize({ width: widths.left });
+  if (right) api.getPanel(right)?.group.api.setSize({ width: widths.right });
   api.getPanel("timeline")?.group.api.setSize({ height: DEFAULT_TIMELINE_H });
 }
