@@ -88,4 +88,23 @@ describe("InlineTextCaret", () => {
     act(() => root.render(<InlineTextCaret session={null} iframe={iframe} />));
     expect(element.style.caretColor).toBe("red");
   });
+
+  it("stands at the end of a bold word when the caret is past it, where no box of its own is drawn", () => {
+    document.body.innerHTML = `<h1 contenteditable="true">Go <strong>bold</strong></h1>`;
+    const element = document.body.firstElementChild as HTMLElement;
+    const iframe = document.createElement("iframe");
+    document.body.append(iframe);
+    iframe.getBoundingClientRect = () =>
+      ({ left: 100, top: 50, width: window.innerWidth / 4 }) as DOMRect;
+    vi.spyOn(Range.prototype, "getClientRects").mockImplementation(function (this: Range) {
+      const rects = this.collapsed ? [] : [{ left: 300, right: 500, top: 200, height: 120 }];
+      return rects as unknown as DOMRectList;
+    });
+    element.focus();
+    window.getSelection()!.collapse(element, element.childNodes.length);
+    const session = { element, original: "", outline: "", outlineOffset: "" };
+    const caret = render(session, iframe).caret();
+    expect(caret!.style.left).toBe(`${100 + 500 / 4 - CARET_PX / 2}px`);
+    expect(caret!.style.top).toBe(`${50 + 200 / 4}px`);
+  });
 });

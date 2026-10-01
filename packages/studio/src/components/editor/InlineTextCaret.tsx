@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { createPortal } from "react-dom";
 import type { InlineTextEditSession } from "../../hooks/useInlineTextEdit";
 
 /** The drawn caret's width on screen, whatever the preview's scale. */
@@ -78,8 +79,9 @@ export function InlineTextCaret({
     };
   }, [element, iframe]);
 
-  if (!placement) return null;
-  return (
+  if (!placement || !iframe) return null;
+  // On Studio's body: a transformed ancestor in the canvas would make `fixed` relative to itself, not the viewport.
+  return createPortal(
     <div
       // Keyed on where it stands, so each move starts the blink lit, as the system caret does.
       key={`${placement.left},${placement.top}`}
@@ -93,7 +95,8 @@ export function InlineTextCaret({
         height: placement.height,
         background: placement.color,
       }}
-    />
+    />,
+    iframe.ownerDocument.body,
   );
 }
 
@@ -150,17 +153,20 @@ function caretRect(range: Range, element: HTMLElement, view: Window) {
 
 /** At an element boundary: the end of the node before, or the start of the node after (a line break's own line). */
 function besideNode(range: Range) {
-  const { startContainer: at, startOffset: offset } = range;
-  // An empty text node is a boundary too, between its siblings.
-  const text = at.nodeType === Node.TEXT_NODE;
-  const before = text ? at.previousSibling : at.childNodes[offset - 1];
-  const after = text ? at.nextSibling : at.childNodes[offset];
+  const [before, after] = neighbours(range);
   const node = before && before.nodeName !== "BR" ? before : (after ?? before);
   if (!node) return null;
   const around = range.cloneRange();
   around.selectNode(node);
   const rects = [...around.getClientRects()].filter((rect) => rect.height > 0);
-  const rect = node === before ? rects.at(-1) : rects[0];
-  if (!rect) return null;
-  return { left: node === before ? rect.right : rect.left, top: rect.top, height: rect.height };
+  const end = node === before;
+  const rect = end ? rects.at(-1) : rects[0];
+  return rect ? { left: end ? rect.right : rect.left, top: rect.top, height: rect.height } : null;
+}
+
+/** The nodes either side of a collapsed range; an empty text node is a boundary too, between its siblings. */
+function neighbours({ startContainer: at, startOffset: offset }: Range) {
+  return at.nodeType === Node.TEXT_NODE
+    ? [at.previousSibling, at.nextSibling]
+    : [at.childNodes[offset - 1] ?? null, at.childNodes[offset] ?? null];
 }

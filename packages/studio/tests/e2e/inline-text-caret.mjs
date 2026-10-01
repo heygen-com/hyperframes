@@ -22,6 +22,8 @@ const pause = (ms) => new Promise((done) => setTimeout(done, ms));
 
 /** The drawn caret's box on screen, and the box the preview's own selection maps to there. */
 async function read(page) {
+  // A selection change is told to listeners a task later.
+  await pause(150);
   const seen = await page.evaluate(() => {
     const frame = document.querySelector("hyperframes-player").shadowRoot.querySelector("iframe");
     const doc = frame.contentDocument;
@@ -76,9 +78,9 @@ const onScreen = (page, selector) =>
 
 // One press selects the element and Enter opens its text with the caret at the end: Studio's dependable way in, where
 // a double press has to survive the canvas' gesture machinery.
-async function openEdit(page, selector) {
+async function openEdit(page, selector, xFraction = 0.5) {
   const at = await onScreen(page, selector);
-  await page.mouse.click(at.x + at.w / 2, at.y + at.h / 2);
+  await page.mouse.click(at.x + at.w * xFraction, at.y + at.h / 2);
   await pause(600);
   await page.keyboard.press("Enter");
   for (let i = 0; i < 50 && !(await read(page)).caret; i++) await pause(100);
@@ -106,6 +108,9 @@ try {
 
   await openEdit(page, "#title");
   evidence.opened = await read(page);
+  evidence.toolbar = await page.evaluate(() =>
+    document.querySelector("[data-inline-text-toolbar]")?.getBoundingClientRect().toJSON(),
+  );
   check(evidence.opened.editing, "a press and Enter open the Title for editing");
   check(
     evidence.opened.caret?.width === 2,
@@ -149,7 +154,7 @@ try {
   check(!(await read(page)).caret, "no caret once the edit ends");
 
   // Enter puts the caret after the last child; past a <strong> that is an element boundary, which has no box.
-  await openEdit(page, "#mixed");
+  await openEdit(page, "#mixed", 0.1);
   evidence.boundary = await read(page);
   const bold = await onScreen(page, "#mixed strong");
   check(
@@ -161,9 +166,12 @@ try {
   await page.keyboard.press("Escape");
   await pause(500);
 
-  // The paragraph wraps onto three lines: End on the middle one stands at its end, not at the next line's start.
+  // The paragraph wraps onto three lines: End on the first one stands at its end, not at the next line's start.
   await openEdit(page, "#body");
+  // Enter opens it with the caret at the end; Ctrl+Home takes it to the first line.
+  await page.keyboard.down("Control");
   await page.keyboard.press("Home");
+  await page.keyboard.up("Control");
   const lineStart = await read(page);
   await page.keyboard.press("End");
   evidence.lineEnd = await read(page);
@@ -185,8 +193,10 @@ try {
     standsOnSelection(evidence.nextLine),
     "on the next line the caret stands where the selection is",
   );
-  // Shift+Enter at the end opens an empty line, which has no box either: the caret stands at its start.
+  // Shift+Enter at the text's end opens an empty line, which has no box either: the caret stands at its start.
+  await page.keyboard.down("Control");
   await page.keyboard.press("End");
+  await page.keyboard.up("Control");
   await page.keyboard.down("Shift");
   await page.keyboard.press("Enter");
   await page.keyboard.up("Shift");
