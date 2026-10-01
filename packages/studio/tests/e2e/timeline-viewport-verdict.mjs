@@ -9,6 +9,15 @@ export function percentile(values, ratio) {
   return sorted[Math.min(sorted.length - 1, Math.ceil(sorted.length * ratio) - 1)];
 }
 
+function assertSampleCount(expected, interactions, frameIntervals) {
+  if (expected > 0 && interactions.length === expected && frameIntervals.length === expected)
+    return;
+  throw new Error(
+    `Expected ${expected} scroll samples, measured ${interactions.length} interactions ` +
+      `and ${frameIntervals.length} frame intervals`,
+  );
+}
+
 /**
  * p95 over every measured step pooled: one run's p95 is only its 4th-worst step, so a brief runner stall failed it.
  * Throws when any run is short of samples, so a missing measurement cannot read as a fast one.
@@ -19,13 +28,7 @@ export function judgeResponsiveness(
 ) {
   const interactions = runs.flatMap((run) => run.interactions);
   const frameIntervals = runs.flatMap((run) => run.frameIntervals);
-  const expected = runs.length * samplesPerRun;
-  if (expected === 0 || interactions.length !== expected || frameIntervals.length !== expected) {
-    throw new Error(
-      `Expected ${expected} scroll samples, measured ${interactions.length} interactions ` +
-        `and ${frameIntervals.length} frame intervals`,
-    );
-  }
+  assertSampleCount(runs.length * samplesPerRun, interactions, frameIntervals);
   const interactionP95Ms = percentile(interactions, 0.95);
   const frameIntervalP95Ms = percentile(frameIntervals, 0.95);
   return {

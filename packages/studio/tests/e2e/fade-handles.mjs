@@ -1,8 +1,7 @@
 #!/usr/bin/env node
 // On a clip narrower than two fade hit boxes, each dot must still lay out at 10 x 10.
 // Flex shrinking only happens in real layout, so this measures it in Chrome.
-import puppeteer from "puppeteer-core";
-import { resolveChromeExecutable } from "./chrome-executable.mjs";
+import { launchStudioChrome } from "./chrome-executable.mjs";
 
 const STUDIO_URL = process.env.STUDIO_URL;
 const DOT_PX = 10;
@@ -12,17 +11,7 @@ if (!STUDIO_URL) {
   console.error("STUDIO_URL is required and must point at the fade-handles fixture");
   process.exit(2);
 }
-const executablePath = resolveChromeExecutable();
-if (!executablePath) {
-  console.error("No Chrome executable found; set PUPPETEER_EXECUTABLE_PATH");
-  process.exit(2);
-}
-
-const browser = await puppeteer.launch({
-  executablePath,
-  headless: true,
-  args: ["--no-sandbox", "--disable-dev-shm-usage", "--disable-gpu"],
-});
+const { browser } = await launchStudioChrome();
 const failures = [];
 let evidence = {};
 try {

@@ -22,8 +22,7 @@
  * it, and a mismatch would otherwise pass silently against the wrong build.
  */
 import { platform, arch } from "node:os";
-import puppeteer from "puppeteer-core";
-import { resolveChromeExecutable } from "./chrome-executable.mjs";
+import { launchStudioChrome } from "./chrome-executable.mjs";
 import { gatePassed, judgeResponsiveness } from "./timeline-viewport-verdict.mjs";
 
 const STUDIO_URL = process.env.STUDIO_URL;
@@ -224,17 +223,7 @@ async function measureMaximumReliableScrollWidth(page) {
   });
 }
 
-const executablePath = resolveChromeExecutable();
-if (!executablePath) {
-  console.error("No Chrome executable found; set PUPPETEER_EXECUTABLE_PATH");
-  process.exit(2);
-}
-
-const browser = await puppeteer.launch({
-  executablePath,
-  headless: true,
-  args: ["--no-sandbox", "--disable-dev-shm-usage", "--disable-gpu"],
-});
+const { browser, executablePath } = await launchStudioChrome();
 let exitCode = 1;
 try {
   const version = await browser.version();
