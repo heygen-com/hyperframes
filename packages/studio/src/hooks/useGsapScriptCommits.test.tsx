@@ -17,6 +17,7 @@ vi.mock("./gsapRuntimePatch", () => ({
 vi.mock("../utils/gsapSoftReload", () => ({
   applySoftReload: (...args: unknown[]) => applySoftReload(...args),
   extractGsapScriptText: () => "",
+  readNestedFiles: () => null,
 }));
 vi.mock("../utils/studioTelemetry", () => ({
   trackStudioEvent: (...args: unknown[]) => trackStudioEvent(...args),

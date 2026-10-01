@@ -7,6 +7,7 @@ import {
   applySoftReloadFinalization,
   extractGsapScriptText,
   findGsapScriptElements,
+  readNestedFiles,
 } from "./gsapSoftReload";
 import { isCompositionTemplate } from "@hyperframes/parsers/hf-ids";
 import { findAuthoredElement, parseSavedSource } from "./authoredSource";
@@ -324,6 +325,19 @@ export function showRestoreInPlace(
   return null;
 }
 
+// The active document's restored GSAP script when the restore changes it, which the preview re-runs.
+/** The other composition files a re-run of the restored script resets elements of; null when none. */
+export function readUndoNestedFiles(
+  iframe: HTMLIFrameElement | null,
+  activeCompPath: string | null,
+  files: RestoreFiles | undefined,
+  readFile: (path: string) => Promise<string>,
+): Promise<Map<string, string>> | null {
+  const active = files?.[activeCompPath ?? "index.html"];
+  const script = active ? extractGsapScriptText(active.restored) : null;
+  return script ? readNestedFiles(iframe, script, readFile) : null;
+}
+
 /**
  * Soft-apply an undo/redo restore to the live preview WITHOUT a full iframe
  * remount (which blanks the frame black and re-flashes the WebGL context). Eligible
@@ -358,6 +372,7 @@ export function applyUndoRestoreToPreview(
   files: RestoreFiles | undefined,
   currentTime: number,
   reload: () => void,
+  nestedFiles?: Map<string, string>,
 ): "soft" | "full" {
   // The master view carries a NULL activeCompPath but the root iframe shows
   // index.html — the codebase-wide convention (`activeCompPath || "index.html"`).
@@ -398,6 +413,7 @@ export function applyUndoRestoreToPreview(
       currentTimeOverride: currentTime,
       authoredHtml: active.restored,
       reparse,
+      nestedFiles,
     });
     if (result === "cannot-soft-reload") {
       reloadPreview();

@@ -14,9 +14,11 @@ import {
 import { trackStudioEvent } from "../utils/studioTelemetry";
 import {
   applyUndoRestoreToPreview,
+  readUndoNestedFiles,
   showRestoreInPlace,
   type RestoreFiles,
 } from "../utils/gsapUndoRestore";
+import { readProjectFileContent } from "../utils/studioFileHistory";
 import { usePlayerStore } from "../player";
 import { syncStoredAutomationFromPreview } from "../player/lib/automationStoreSync";
 
@@ -43,6 +45,7 @@ export interface UsePreviewPersistenceParams {
   activeCompPathRef: React.MutableRefObject<string | null>;
   /** Called to reload the preview after undo/redo or external file changes. */
   reloadPreview: () => void;
+  projectId?: string | null;
 }
 
 function readIframeDocument(iframe: HTMLIFrameElement): Document | null {
@@ -107,6 +110,7 @@ export function usePreviewPersistence({
   previewIframeRef,
   activeCompPathRef,
   reloadPreview,
+  projectId,
 }: UsePreviewPersistenceParams) {
   void _recordEdit;
 
@@ -204,12 +208,22 @@ export function usePreviewPersistence({
       // attributes onto the live DOM and re-runs the timeline at the SAME playhead,
       // falling back to reloadPreview for anything structural (split/delete undo),
       // multi-file, sub-comp, or a permanent soft-reload failure.
+      const reads = projectId
+        ? readUndoNestedFiles(
+            previewIframeRef.current,
+            activeCompPathRef.current,
+            restore.files,
+            (path) => readProjectFileContent(projectId, path),
+          )
+        : null;
+      const nestedFiles = reads ? await reads.catch(() => undefined) : undefined;
       const strategy = applyUndoRestoreToPreview(
         previewIframeRef.current,
         activeCompPathRef.current,
         restore.files,
         usePlayerStore.getState().currentTime,
         reloadPreview,
+        nestedFiles,
       );
       if (strategy === "full") {
         usePlayerStore.getState().setSelectedElementId(null);
@@ -221,7 +235,7 @@ export function usePreviewPersistence({
       // reload. The full path above waits for the reloaded preview to report instead.
       syncStoredAutomationFromPreview(previewIframeRef.current?.contentDocument ?? null);
     },
-    [previewIframeRef, activeCompPathRef, reloadPreview],
+    [previewIframeRef, activeCompPathRef, reloadPreview, projectId],
   );
 
   // A restore the server has not confirmed yet: in place now, or not at all. A GSAP script re-run is not
