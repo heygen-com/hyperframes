@@ -116,3 +116,24 @@ describe("absoluteLoudnessPlan", () => {
     expect(absoluteLoudnessPlan(track(-19, -10, 0)).changeDb).toBeCloseTo(3, 6);
   });
 });
+
+describe("audioTags on hostile markup", () => {
+  it("scans '<' followed by many spaces in linear time", () => {
+    const html = `${"<" + " ".repeat(50_000)}<audio id="vo" src="vo.mp3"></audio>`;
+    const started = performance.now();
+    expect(audioTags(html).map((t) => t.id)).toEqual(["vo"]);
+    expect(performance.now() - started).toBeLessThan(500);
+  });
+
+  it("scans many '<' + spaces runs in linear time", () => {
+    const html = `${("<" + " ".repeat(20)).repeat(20_000)}<audio id="vo" src="vo.mp3"></audio>`;
+    const started = performance.now();
+    expect(audioTags(html).map((t) => t.id)).toEqual(["vo"]);
+    expect(performance.now() - started).toBeLessThan(1000);
+  });
+
+  it("still reads tags written with spaces around the slash and name", () => {
+    const html = `< audio id="vo" src="vo.mp3">< / audio><a_b></a_b>`;
+    expect(audioTags(html).map((t) => t.id)).toEqual(["vo"]);
+  });
+});

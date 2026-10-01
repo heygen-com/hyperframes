@@ -149,14 +149,30 @@ function commentEnd(html: string, start: number): number {
   return end + 3;
 }
 
+const isSpaceAt = (html: string, index: number) => /\s/.test(html.charAt(index));
+const isWordAt = (html: string, index: number) => /\w/.test(html.charAt(index));
+
+function skipSpaces(html: string, index: number): number {
+  let cursor = index;
+  while (cursor < html.length && isSpaceAt(html, cursor)) cursor++;
+  return cursor;
+}
+
 function parsedStartTag(html: string, start: number): ParsedStartTag | null {
-  const match = html.slice(start).match(/^<\s*(\/?)\s*([a-z][a-z\d:-]*)\b/i);
-  if (!match) return null;
+  let cursor = skipSpaces(html, start + 1);
+  const closing = html.charAt(cursor) === "/";
+  if (closing) cursor = skipSpaces(html, cursor + 1);
+  const nameStart = cursor;
+  if (!/[a-z]/i.test(html.charAt(cursor))) return null;
+  while (/[a-z\d:-]/i.test(html.charAt(cursor + 1))) cursor++;
+  let nameEnd = cursor + 1;
+  while (nameEnd > nameStart && isWordAt(html, nameEnd - 1) === isWordAt(html, nameEnd)) nameEnd--;
+  if (nameEnd === nameStart) return null;
   return {
     start,
     end: startTagEnd(html, start),
-    closing: match[1] === "/",
-    name: match[2]?.toLowerCase() ?? "",
+    closing,
+    name: html.slice(nameStart, nameEnd).toLowerCase(),
   };
 }
 
