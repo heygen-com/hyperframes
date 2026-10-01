@@ -40,9 +40,24 @@ describe("syncStoredElementAttribute", () => {
     syncStoredElementAttribute(el(), "data-fade-in", null);
     expect(usePlayerStore.getState().elements[0]?.fadeIn).toBeUndefined();
   });
+
+  // A quick volume save left the clip at its last load's volume, so a card reopened on it read the old level.
+  it("records a saved volume, and drops it when the attribute goes", () => {
+    usePlayerStore.setState({ elements: [el({ volume: 0.5 })] });
+    syncStoredElementAttribute(el(), "data-volume", "1.5");
+    expect(usePlayerStore.getState().elements[0]?.volume).toBe(1.5);
+    syncStoredElementAttribute(el(), "data-volume", null);
+    expect(usePlayerStore.getState().elements[0]?.volume).toBeUndefined();
+  });
 });
 
 describe("syncStoredAutomationFromPreview", () => {
+  it("reads back a volume an undo restored on the preview", () => {
+    usePlayerStore.setState({ elements: [el({ volume: 1.5 })] });
+    syncStoredAutomationFromPreview(previewWith({ "data-volume": "0.5" }));
+    expect(usePlayerStore.getState().elements[0]?.volume).toBe(0.5);
+  });
+
   it("reads back a fade an undo restored on the preview", () => {
     usePlayerStore.setState({ elements: [el({ fadeOut: 2 })] });
     syncStoredAutomationFromPreview(previewWith({ "data-fade-in": "0.6" }));
