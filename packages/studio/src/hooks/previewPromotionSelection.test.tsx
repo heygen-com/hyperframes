@@ -80,30 +80,41 @@ async function promoteShadow(player: () => TimelinePlayerApi): Promise<HTMLIFram
 }
 
 describe("a shadow reload promoted without a host re-render", () => {
-  it("moves the selection to the node now on screen, so a rotate and a move draw on it", async () => {
-    const host = mountHost(true);
-    const shadow = await promoteShadow(host.player);
+  // A host stage holds both players, each with the same #title, in either order.
+  it.each([
+    ["second", true],
+    ["first", false],
+  ])(
+    "with the live preview %s on the stage, the selection, overlay, rotate and move land on it",
+    async (_, liveSecond) => {
+      const host = mountHost(true);
+      const shadow = await promoteShadow(host.player);
+      // The stage only orders the two players; nothing here needs their pages to load.
+      for (const frame of [host.live, shadow]) frame.removeAttribute("src");
+      const stage = document.body.appendChild(document.createElement("div"));
+      stage.append(...(liveSecond ? [host.live, shadow] : [shadow, host.live]));
 
-    const selection = host.selectionRef.current!;
-    expect(selection.element).toBe(titleOf(shadow));
-    const overlayNode = resolveElementForOverlay(shadow.contentDocument!, selection, null, {
-      current: null,
-    });
-    expect(overlayNode).toBe(selection.element);
+      const selection = host.selectionRef.current!;
+      expect(selection.element).toBe(titleOf(shadow));
+      const overlayNode = resolveElementForOverlay(shadow.contentDocument!, selection, null, {
+        current: null,
+      });
+      expect(overlayNode).toBe(selection.element);
 
-    const commitPositionPatchToHtml = vi.fn(async () => {});
-    await savePlainRotation({ commitPositionPatchToHtml }, selection, { angle: 30 });
-    await stageElementOffset(
-      { commitPositionPatchToHtml, showToast: vi.fn() },
-      selection,
-      { x: 10, y: 5 },
-      true,
-    ).save();
-    expect(titleOf(shadow).style.getPropertyValue("rotate")).toBe("30deg");
-    expect(titleOf(shadow).style.getPropertyValue("translate")).toBe("10px 5px");
-    expect(titleOf(host.live).getAttribute("style")).toBeNull();
-    host.unmount();
-  });
+      const commitPositionPatchToHtml = vi.fn(async () => {});
+      await savePlainRotation({ commitPositionPatchToHtml }, selection, { angle: 30 });
+      await stageElementOffset(
+        { commitPositionPatchToHtml, showToast: vi.fn() },
+        selection,
+        { x: 10, y: 5 },
+        true,
+      ).save();
+      expect(titleOf(shadow).style.getPropertyValue("rotate")).toBe("30deg");
+      expect(titleOf(shadow).style.getPropertyValue("translate")).toBe("10px 5px");
+      expect(titleOf(host.live).getAttribute("style")).toBeNull();
+      host.unmount();
+    },
+  );
 
   it("left the selection on the retired node when the session kept the host's first iframe", async () => {
     const host = mountHost(false);

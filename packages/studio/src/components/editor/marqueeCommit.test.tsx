@@ -1,9 +1,19 @@
 // @vitest-environment happy-dom
 import { act, useRef } from "react";
 import type { Root } from "react-dom/client";
-import { afterEach, beforeEach, expect, it } from "vitest";
+import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import { installReactActEnvironment, mountReactHarness } from "../../hooks/domSelectionTestHarness";
 import { useMarqueeGestures } from "./marqueeCommit";
+
+// Layout stands in for a real preview: every element is visible and sits at the band's start.
+vi.mock("./domEditingElement", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("./domEditingElement")>()),
+  isElementComputedVisible: () => true,
+}));
+vi.mock("./domEditOverlayGeometry", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("./domEditOverlayGeometry")>()),
+  toVisibleOverlayRect: () => ({ left: 10, top: 10, width: 40, height: 40 }),
+}));
 
 installReactActEnvironment();
 HTMLElement.prototype.setPointerCapture ??= () => {};
@@ -81,4 +91,62 @@ it("an escape with no band in flight still reaches the host", () => {
 
   expect(event.defaultPrevented).toBe(false);
   expect(hostEscapes).toHaveLength(1);
+});
+
+it("a reload promoted mid-band selects from the preview on screen, not the retired one", async () => {
+  const preview = () => {
+    const iframe = document.createElement("iframe");
+    const doc = document.implementation.createHTMLDocument("preview");
+    doc.body.innerHTML = '<div data-composition-id="main"><h1 id="title">Title</h1></div>';
+    Object.defineProperty(iframe, "contentDocument", { value: doc });
+    return iframe;
+  };
+  const [retired, live] = [preview(), preview()];
+  const picked: HTMLElement[][] = [];
+  const iframeRef = { current: retired as HTMLIFrameElement | null };
+  function Band() {
+    const overlayRef = useRef<HTMLDivElement>(null);
+    const marquee = useMarqueeGestures({
+      iframeRef,
+      overlayRef,
+      activeCompositionPathRef: useRef<string | null>("index.html"),
+      onMarqueeSelectRef: useRef(() => undefined),
+      resolveHits: async (elements: HTMLElement[]) => {
+        picked.push(elements);
+        return [];
+      },
+    });
+    return (
+      <div
+        ref={overlayRef}
+        data-band-overlay
+        onPointerDown={marquee.begin}
+        onPointerMove={marquee.onPointerMove}
+        onPointerUp={marquee.onPointerUp}
+      />
+    );
+  }
+  const band = mountReactHarness(<Band />);
+  const fire = (type: string, x: number, y: number) =>
+    act(() => {
+      document.querySelector("[data-band-overlay]")!.dispatchEvent(
+        new PointerEvent(type, {
+          bubbles: true,
+          button: 0,
+          pointerId: 1,
+          clientX: x,
+          clientY: y,
+        }),
+      );
+    });
+  try {
+    fire("pointerdown", 0, 0);
+    fire("pointermove", 120, 90);
+    iframeRef.current = live;
+    await act(async () => fire("pointerup", 120, 90));
+    expect(picked.at(-1)?.length).toBeGreaterThan(0);
+    for (const element of picked.at(-1)!) expect(element.ownerDocument).toBe(live.contentDocument);
+  } finally {
+    act(() => band.unmount());
+  }
 });

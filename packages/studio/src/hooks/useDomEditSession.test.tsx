@@ -9,6 +9,7 @@ import type { GsapAnimation } from "@hyperframes/core/gsap-parser";
 import type { DomEditSelection } from "../components/editor/domEditingTypes";
 import type { TimelineElement } from "../player";
 import type { UseDomEditSessionParams } from "./useDomEditSession";
+import { makeSelection } from "./domSelectionTestHarness";
 
 const styleOp = (property: string, value: string): PatchOperation => ({
   type: "inline-style",
@@ -317,32 +318,9 @@ describe("onReorderShadow source filter", () => {
 describe("bulk segment ease commits", () => {
   it("uses one ordered batch for many ids and sane paths for one or no ids", async () => {
     const { useDomEditSession } = await import("./useDomEditSession");
-    const selection: DomEditSelection = {
-      id: "hero",
-      element: document.createElement("div"),
-      label: "Hero",
-      tagName: "DIV",
-      sourceFile: "index.html",
-      compositionPath: "index.html",
-      isCompositionHost: false,
-      isInsideLockedComposition: false,
-      boundingBox: { x: 0, y: 0, width: 100, height: 100 },
-      textContent: null,
-      dataAttributes: {},
-      inlineStyles: {},
-      computedStyles: {},
-      textFields: [],
-      capabilities: {
-        canSelect: true,
-        canEditStyles: true,
-        canCrop: true,
-        canMove: true,
-        canResize: true,
-        canApplyManualOffset: true,
-        canApplyManualSize: true,
-        canApplyManualRotation: true,
-      },
-    };
+    const hero = document.createElement("div");
+    hero.id = "hero";
+    const selection = makeSelection("Hero", hero);
     domEditSelectionRef.current = selection;
     gsapCommitMutation.mockClear();
     gsapCommitMutation.batch.mockClear();

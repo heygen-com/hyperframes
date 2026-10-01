@@ -159,12 +159,12 @@ export function useMarqueeGestures<T>(deps: MarqueeGesturesDeps<T>): MarqueeGest
       const overlay = deps.overlayRef.current;
       if (!iframe || !overlay || !deps.onMarqueeSelectRef.current) return;
       const acp = deps.activeCompositionPathRef.current ?? "index.html";
-      // A reload promoted mid-marquee leaves the measured hits on the retired document.
       const cached = candidatesRef.current;
+      const measuredOnScreen = cached?.every(
+        (hit) => hit.element.ownerDocument === iframe.contentDocument,
+      );
       const candidates =
-        cached && cached.every((hit) => hit.element.ownerDocument === iframe.contentDocument)
-          ? cached
-          : collectMarqueeCandidates(iframe, overlay, acp);
+        cached && measuredOnScreen ? cached : collectMarqueeCandidates(iframe, overlay, acp);
       const elements = hitsWithin(rect, candidates).map((hit) => hit.element);
       const resolveHits = deps.resolveHits;
       const picks = resolveHits

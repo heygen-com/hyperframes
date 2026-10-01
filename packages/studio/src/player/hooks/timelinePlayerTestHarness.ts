@@ -119,7 +119,6 @@ export function attachIframeAdapter(
   return adapter;
 }
 
-/** The demo project's preview showing `body`, as the server serves it at `query`. */
 export function makePreview(body: string, query = ""): HTMLIFrameElement {
   const iframe = makeFakeIframe(makeAdapterWindow().win);
   iframe.src = `http://localhost/api/projects/demo/preview${query}`;
@@ -127,7 +126,6 @@ export function makePreview(body: string, query = ""): HTMLIFrameElement {
   return iframe;
 }
 
-/** The real player with `live` loaded as the preview on screen. */
 export function mountPlayerWithPreview(live: HTMLIFrameElement) {
   const harness = renderTimelinePlayerHarness();
   act(() => {
@@ -137,7 +135,6 @@ export function mountPlayerWithPreview(live: HTMLIFrameElement) {
   return harness;
 }
 
-/** Loads `shadow` into the player's pending shadow slot and reports it painted. */
 export async function paintShadow(getApi: () => TimelinePlayerApi, shadow: HTMLIFrameElement) {
   const slot = getApi().previewSlots.find((s) => s.role === "shadow");
   if (!slot) throw new Error("no shadow reload is pending");

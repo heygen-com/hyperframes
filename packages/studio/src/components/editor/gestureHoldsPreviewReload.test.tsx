@@ -19,29 +19,34 @@ import { STUDIO_MANUAL_EDIT_GESTURE_ATTR } from "./manualEditsTypes";
 
 (globalThis as unknown as { IS_REACT_ACT_ENVIRONMENT: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
-const layout = vi.hoisted(() => ({ group: [] as unknown[] }));
-vi.mock("./useDomEditOverlayRects", () => {
-  const rect = { left: 100, top: 100, width: 200, height: 100, editScaleX: 1, editScaleY: 1 };
-  return {
-    useDomEditOverlayRects: () => ({
+const layout = vi.hoisted(() => ({
+  group: [] as unknown[],
+  rect: { left: 100, top: 100, width: 200, height: 100, editScaleX: 1, editScaleY: 1 },
+}));
+vi.mock("./useDomEditOverlayRects", () => ({
+  useDomEditOverlayRects: () => {
+    const { rect, group } = layout;
+    const groupOverlayItemsRef = { current: group };
+    const noop = () => undefined;
+    return {
       overlayRect: rect,
       overlayRectRef: { current: rect },
-      setOverlayRect: () => undefined,
+      groupOverlayItems: group,
+      groupOverlayItemsRef,
       hoverRect: null,
-      groupOverlayItems: layout.group,
-      groupOverlayItemsRef: { current: layout.group },
-      setGroupOverlayItems: () => undefined,
       childRects: [],
-    }),
-  };
-});
+      setOverlayRect: noop,
+      setGroupOverlayItems: noop,
+    };
+  },
+}));
 vi.mock("../../utils/gsapSoftReload", async (importOriginal) => ({
   ...(await importOriginal<typeof import("../../utils/gsapSoftReload")>()),
   ensureMotionPathPluginLoaded: vi.fn(),
 }));
 
 const BOX = '[data-dom-edit-selection-box="true"]';
-const RECT = { left: 100, top: 100, width: 200, height: 100, editScaleX: 1, editScaleY: 1 };
+const RECT = layout.rect;
 const TWO_LAYERS = '<h1 id="title">Title</h1><p id="sub">Sub</p>';
 
 /** What the server serves: the file as the last commit left it. */

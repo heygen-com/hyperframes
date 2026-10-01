@@ -117,27 +117,37 @@ export function useShadowPreviewReload({
 
   // Nothing replaces the preview under a gesture. Once it ends, what it saved is newer than
   // this shadow, so a fresh one loads instead (a reload the gesture asked for already won).
-  const holdForGesture = useCallback((gen: number, liveDoc: Document) => {
-    clearTimeout(readyTimerRef.current);
-    budgetGenRef.current = null;
-    stopHoldRef.current();
-    stopHoldRef.current = afterStudioManualEditGestures(liveDoc, () => {
-      if (gen !== shadowGenRef.current) return;
-      logReload("shadow-reloaded-after-gesture", { gen });
-      const url = new URL(shadowUrlRef.current, window.location.origin);
-      url.searchParams.set("_t", String(Date.now()));
-      beginShadowReloadRef.current(url.toString());
-    });
+  const heldForGesture = useCallback(
+    (gen: number) => {
+      const liveDoc = iframeRef.current?.contentDocument;
+      if (!liveDoc || !isStudioManualEditGestureLiveIn(liveDoc)) return false;
+      clearTimeout(readyTimerRef.current);
+      budgetGenRef.current = null;
+      stopHoldRef.current();
+      stopHoldRef.current = afterStudioManualEditGestures(liveDoc, () => {
+        if (gen !== shadowGenRef.current) return;
+        logReload("shadow-reloaded-after-gesture", { gen });
+        const url = new URL(shadowUrlRef.current, window.location.origin);
+        url.searchParams.set("_t", String(Date.now()));
+        beginShadowReloadRef.current(url.toString());
+      });
+      return true;
+    },
+    [iframeRef],
+  );
+
+  const shadowReadyToPromote = useCallback((gen: number) => {
+    const shadow = shadowIframeRef.current;
+    const pending = pendingCommitRef.current;
+    const ready = pending?.gen === gen && visuallyReadyGenRef.current === gen;
+    return shadow && pending && ready && gen === shadowGenRef.current ? { shadow, pending } : null;
   }, []);
 
   const promoteWhenReady = useCallback(
     (gen: number) => {
-      const shadow = shadowIframeRef.current;
-      const pending = pendingCommitRef.current;
-      const ready = pending?.gen === gen && visuallyReadyGenRef.current === gen;
-      if (!shadow || !pending || !ready || gen !== shadowGenRef.current) return;
-      const liveDoc = iframeRef.current?.contentDocument;
-      if (liveDoc && isStudioManualEditGestureLiveIn(liveDoc)) return holdForGesture(gen, liveDoc);
+      const promotable = shadowReadyToPromote(gen);
+      if (!promotable || heldForGesture(gen)) return;
+      const { shadow, pending } = promotable;
       stopPendingShadow();
       // The live frame kept playing, stopped at the end or was seeked while the shadow loaded.
       const live = getAdapter();
@@ -159,7 +169,8 @@ export function useShadowPreviewReload({
     },
     [
       stopPendingShadow,
-      holdForGesture,
+      shadowReadyToPromote,
+      heldForGesture,
       getAdapter,
       iframeRef,
       attachIframeShortcutListeners,

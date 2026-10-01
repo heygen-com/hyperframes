@@ -173,29 +173,11 @@ export function useDomEditSession({
 
   const { version: gsapCacheVersion, bump: bumpGsapCache } = useGsapCacheVersion();
 
-  // ── GSAP script commits ──
-
   const {
     commitMutation: gsapCommitMutation,
-    updateGsapProperty,
-    updateGsapMeta,
-    deleteGsapAnimation,
-    deleteAllForSelector,
-    addGsapAnimation,
-    addGsapProperty,
-    removeGsapProperty,
-    updateGsapFromProperty,
-    addGsapFromProperty,
-    removeGsapFromProperty,
-    addKeyframe,
-    addKeyframeBatch,
-    removeKeyframe,
-    moveKeyframe,
-    resizeKeyframedTween,
-    convertToKeyframes,
-    removeAllKeyframes,
     setArcPath,
     updateArcSegment,
+    ...gsapScriptEdits
   } = useGsapScriptCommits({
     projectIdRef,
     activeCompPath,
@@ -210,8 +192,6 @@ export function useDomEditSession({
     writeProjectFile,
     forceReloadSdkSession,
   });
-
-  // ── DOM commit handlers ──
 
   const {
     resolveImportedFontAsset,
@@ -430,23 +410,7 @@ export function useDomEditSession({
     applyDomSelection,
     buildDomSelectionFromTarget,
     openSourceForSelection,
-    updateGsapProperty,
-    updateGsapMeta,
-    deleteGsapAnimation,
-    deleteAllForSelector,
-    addGsapAnimation,
-    addGsapProperty,
-    removeGsapProperty,
-    updateGsapFromProperty,
-    addGsapFromProperty,
-    removeGsapFromProperty,
-    addKeyframe,
-    addKeyframeBatch,
-    removeKeyframe,
-    moveKeyframe,
-    resizeKeyframedTween,
-    convertToKeyframes,
-    removeAllKeyframes,
+    ...gsapScriptEdits,
     handleDomManualEditsReset,
   });
   const {
@@ -492,8 +456,8 @@ export function useDomEditSession({
     handleDomBoxSizeCommit,
     handleDomRotationCommit: handleDomCssRotationCommit,
     commitPositionPatchToHtml,
-    addGsapAnimation,
-    convertToKeyframes,
+    addGsapAnimation: gsapScriptEdits.addGsapAnimation,
+    convertToKeyframes: gsapScriptEdits.convertToKeyframes,
     setArcPath,
     updateArcSegment,
   });
