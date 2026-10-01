@@ -28,12 +28,26 @@ function driftingFields(members: readonly OpenTag[]): string[] {
   }).map(({ field }) => field);
 }
 
-function groupByLink(tags: readonly OpenTag[]): Map<string, OpenTag[]> {
-  const groups = new Map<string, OpenTag[]>();
+function compositionScopeOf(tag: OpenTag, compositions: readonly OpenTag[]): number {
+  let scope = -1;
+  for (const composition of compositions) {
+    const end = composition.endIndex ?? composition.closeIndex ?? Number.POSITIVE_INFINITY;
+    const encloses = composition.index < tag.index && tag.index < end;
+    if (composition !== tag && encloses && composition.index > scope) scope = composition.index;
+  }
+  return scope;
+}
+
+function groupByLink(tags: readonly OpenTag[]): Map<string, { link: string; members: OpenTag[] }> {
+  const compositions = tags.filter((tag) => readAttr(tag.raw, "data-composition-id") !== null);
+  const groups = new Map<string, { link: string; members: OpenTag[] }>();
   for (const tag of tags) {
     const link = readAttr(tag.raw, "data-link");
     if (!link) continue;
-    groups.set(link, [...(groups.get(link) ?? []), tag]);
+    const key = `${compositionScopeOf(tag, compositions)}\u0000${link}`;
+    const group = groups.get(key) ?? { link, members: [] };
+    group.members.push(tag);
+    groups.set(key, group);
   }
   return groups;
 }
@@ -45,7 +59,7 @@ const memberLabel = (tag: OpenTag) => {
 
 export function findLinkedClipFindings(ctx: LintContext): HyperframeLintFinding[] {
   const findings: HyperframeLintFinding[] = [];
-  for (const [link, members] of groupByLink(ctx.tags)) {
+  for (const { link, members } of groupByLink(ctx.tags).values()) {
     const first = members[0];
     if (!first) continue;
     const elementId = readAttr(first.raw, "id") || undefined;

@@ -55,4 +55,28 @@ describe("setTiming on linked clips", () => {
     expect(attr(html, "hf-talk", "data-start")).toBe("4");
     expect(attr(html, "hf-talk-audio", "data-start")).toBe("4");
   });
+
+  it("keeps a link group inside its own composition when a child reuses the id", async () => {
+    const comp = await openComposition(
+      `
+<div data-hf-id="hf-stage" data-hf-root style="width:1280px;height:720px" data-duration="10">
+  <video data-hf-id="hf-v" src="talk.mp4" muted data-link="lk-1" data-start="0" data-duration="4" data-track-index="0"></video>
+  <audio data-hf-id="hf-a" src="talk.mp4" data-link="lk-1" data-start="0" data-duration="4" data-track-index="1"></audio>
+  <div data-hf-id="hf-host" data-composition-id="child" data-composition-file="child.html" data-start="0" data-duration="10" data-track-index="2">
+    <video data-hf-id="hf-cv" src="b.mp4" muted data-link="lk-1" data-start="0" data-duration="4" data-track-index="0"></video>
+    <audio data-hf-id="hf-ca" src="b.mp4" data-link="lk-1" data-start="0" data-duration="4" data-track-index="1"></audio>
+  </div>
+</div>`.trim(),
+    );
+    comp.setTiming("hf-v", { start: 2 });
+    let html = comp.serialize();
+    expect(attr(html, "hf-a", "data-start")).toBe("2");
+    expect(attr(html, "hf-cv", "data-start")).toBe("0");
+    expect(attr(html, "hf-ca", "data-start")).toBe("0");
+    comp.setTiming("hf-host/hf-cv", { start: 1 });
+    html = comp.serialize();
+    expect(attr(html, "hf-ca", "data-start")).toBe("1");
+    expect(attr(html, "hf-v", "data-start")).toBe("2");
+    expect(attr(html, "hf-a", "data-start")).toBe("2");
+  });
 });

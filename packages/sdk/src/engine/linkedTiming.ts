@@ -1,6 +1,6 @@
 import { MEDIA_LINK_ATTR } from "@hyperframes/core/media-link";
 import type { HfId } from "../types.js";
-import { escapeHfId, resolveScoped } from "./model.js";
+import { escapeHfId, isNewHostBoundary, querySelectorAllDeep, resolveScoped } from "./model.js";
 
 interface LinkMember {
   id: HfId;
@@ -12,14 +12,22 @@ function scopePrefix(id: HfId): string {
   return cut < 0 ? "" : id.slice(0, cut + 1);
 }
 
+function hostScopeOf(el: Element): Element | null {
+  for (let cur = el.parentElement; cur; cur = cur.parentElement) {
+    if (isNewHostBoundary(cur)) return cur;
+  }
+  return null;
+}
+
 /** Every element sharing `id`'s link, addressed in `id`'s scope, `id` included. */
 function linkGroup(document: Document, id: HfId): LinkMember[] {
   const el = resolveScoped(document, id);
   const link = el?.getAttribute(MEDIA_LINK_ATTR);
   if (!el || !link) return [];
-  const scope = el.closest("[data-composition-id]") ?? document;
+  const scope = hostScopeOf(el);
   const prefix = scopePrefix(id);
-  return Array.from(scope.querySelectorAll(`[${MEDIA_LINK_ATTR}="${escapeHfId(link)}"]`))
+  return querySelectorAllDeep(scope ?? document, `[${MEDIA_LINK_ATTR}="${escapeHfId(link)}"]`)
+    .filter((member) => hostScopeOf(member) === scope)
     .map((member) => member.getAttribute("data-hf-id"))
     .filter((hfId): hfId is string => Boolean(hfId))
     .map((hfId) => ({ id: `${prefix}${hfId}`, link }));

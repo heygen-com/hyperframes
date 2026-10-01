@@ -60,4 +60,14 @@ describe("linked clip rules", () => {
     const audio = `${AUDIO} data-volume="0.5" data-fade-in="1"`;
     expect(await linkFindings(`<video ${VIDEO}></video><audio ${audio}></audio>`)).toEqual([]);
   });
+
+  it("groups links per composition, so a nested composition may reuse an id", async () => {
+    const nested = `<div id="child" data-composition-id="child" data-start="0" data-duration="10">
+      <video ${VIDEO.replace('id="talk"', 'id="c-talk"').replace('data-start="2"', 'data-start="5"')}></video>
+      <audio ${AUDIO.replace('id="talk-audio"', 'id="c-audio"').replace('data-start="2"', 'data-start="5"')}></audio>
+    </div>`;
+    expect(await linkFindings(`<video ${VIDEO}></video><audio ${AUDIO}></audio>${nested}`)).toEqual(
+      [],
+    );
+  });
 });
