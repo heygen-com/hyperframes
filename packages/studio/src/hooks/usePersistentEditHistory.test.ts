@@ -243,8 +243,14 @@ it("a step that cannot reach the server says so", async () => {
   });
 });
 
-it("predicts a step from what this tab wrote, and not while a claim or step may have moved the history", async () => {
+it("predicts a step from what this tab wrote as soon as its save ends, and not while a claim or step may have moved the history", async () => {
   const { hook, save, readFile } = await studio();
+  const real = globalThis.fetch;
+  const slowView = (url: string, init?: RequestInit) =>
+    url.endsWith("/history")
+      ? new Promise((r) => setTimeout(r, 50)).then(() => real(url, init))
+      : real(url, init);
+  vi.stubGlobal("fetch", slowView);
   save("B");
   const claim = hook().recordEdit({
     label: "Moved Title",
@@ -252,11 +258,8 @@ it("predicts a step from what this tab wrote, and not while a claim or step may 
   });
   expect(hook().predict("undo")).toBeNull();
   await act(() => claim);
-  const predicted = await vi.waitFor(() => {
-    const next = hook().predict("undo");
-    expect(next?.files).toEqual({ "index.html": { previous: "B", restored: "A" } });
-    return next!;
-  });
+  const predicted = hook().predict("undo")!;
+  expect(predicted?.files).toEqual({ "index.html": { previous: "B", restored: "A" } });
 
   hook().noteOutsideChange();
   expect(hook().predict("undo")).toBeNull();
