@@ -419,6 +419,14 @@ export const POSITION_CHANNELS: string[] = [
 ];
 const MOVE_CHANNELS = [...POSITION_CHANNELS, "motionPath"];
 
+/** CSSPlugin's transform channels. Reading one folds the element's CSS translate, rotate and
+ *  scale into GSAP's own transform. */
+export const GSAP_TRANSFORM_KEYS = new Set(
+  "x,y,z,scale,scaleX,scaleY,xPercent,yPercent,rotation,rotationX,rotationY,rotationZ,rotate,rotateX,rotateY,rotateZ,skewX,skewY,translateX,translateY,translateZ,transformPerspective".split(
+    ",",
+  ),
+);
+
 /** Whether a live timeline tween or hold writes any of `channels` on `el`. Sync, no fetch. */
 function gsapWritesChannels(el: Element, channels: string[]): boolean {
   const win = el.ownerDocument.defaultView as { __timelines?: Record<string, RuntimeTimeline> };

@@ -9,6 +9,7 @@ import {
   playbackStartAttributeForElement,
   readPlaybackStartAttributes,
 } from "../../player/lib/timelineElementHelpers";
+import { GSAP_TRANSFORM_KEYS, gsapWritesPosition } from "../../hooks/gsapRuntimeKeyframes";
 
 export type {
   BackgroundRemovalProgress,
@@ -496,8 +497,10 @@ export function readGsapRuntimeValuesForPanel(
     const el = findPreviewNode(iframe.contentDocument, element);
     if (!el) return null;
     const propKeys = collectPanelPropKeys(gsapAnimations);
+    const readsTransform = gsapWritesPosition(el);
     const result: Record<string, number> = {};
     for (const prop of propKeys) {
+      if (!readsTransform && GSAP_TRANSFORM_KEYS.has(prop)) continue;
       const v = Number(gsap.getProperty(el, prop));
       if (Number.isFinite(v)) result[prop] = roundToCenti(v);
     }
