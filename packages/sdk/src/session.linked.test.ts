@@ -152,4 +152,46 @@ describe("setTiming on linked clips", () => {
     );
     expect(comp.serialize()).toBe((await openComposition(html)).serialize());
   });
+
+  describe("a duration edit whose new end would cross a linked partner's start", () => {
+    const OFFSET_HTML = LINKED_HTML.replace(
+      'data-hf-id="hf-talk-audio" src="talk.mp4" data-link="lk-1" data-start="2" data-duration="6"',
+      'data-hf-id="hf-talk-audio" src="talk.mp4" data-link="lk-1" data-start="3" data-duration="5"',
+    );
+
+    it.each([1, 0.5])("refuses duration %s atomically, before any mutation", async (duration) => {
+      const comp = await openComposition(OFFSET_HTML);
+      comp.setTiming("hf-music", { start: 1 });
+      const before = comp.serialize();
+      expect(comp.can({ type: "setTiming", target: "hf-talk", duration })).toMatchObject({
+        ok: false,
+        code: "E_LINKED_PARTNER_CROSSED",
+      });
+      expect(() => comp.setTiming("hf-talk", { duration })).toThrow(
+        /linked audio would start after the new end/i,
+      );
+      expect(comp.serialize()).toBe(before);
+      comp.undo();
+      expect(attr(comp.serialize(), "hf-music", "data-start")).toBe("0");
+      expect(comp.canUndo()).toBe(false);
+    });
+
+    it("trims the partner to the shared end while that end stays after its start", async () => {
+      const comp = await openComposition(OFFSET_HTML);
+      expect(comp.can({ type: "setTiming", target: "hf-talk", duration: 1.5 }).ok).toBe(true);
+      comp.setTiming("hf-talk", { duration: 1.5 });
+      const html = comp.serialize();
+      expect(attr(html, "hf-talk", "data-duration")).toBe("1.5");
+      expect(attr(html, "hf-talk-audio", "data-start")).toBe("3");
+      expect(attr(html, "hf-talk-audio", "data-duration")).toBe("0.5");
+    });
+
+    it("allows the same edit once the pair is unlinked", async () => {
+      const comp = await openComposition(OFFSET_HTML);
+      comp.setTiming("hf-talk", { duration: 0.5 }, { linked: false });
+      const html = comp.serialize();
+      expect(attr(html, "hf-talk", "data-duration")).toBe("0.5");
+      expect(attr(html, "hf-talk-audio", "data-duration")).toBe("5");
+    });
+  });
 });

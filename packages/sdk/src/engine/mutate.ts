@@ -298,28 +298,47 @@ function applySetTiming(
     const own = handleSetTiming(parsed, ids, timing);
     return concatResults(own, handleSetAttribute(parsed, unlink, MEDIA_LINK_ATTR, null));
   }
-  const before = new Map(
+  const plan = planLinkedTiming(parsed, ids, timing);
+  if (plan.refusal) throw new Error(plan.refusal);
+  let result = handleSetTiming(parsed, ids, timing);
+  for (const partner of plan.partners) {
+    result = concatResults(result, handleSetTiming(parsed, [partner.id], partner.timing));
+  }
+  return result;
+}
+
+type PartnerEdit = { id: HfId; timing: { start?: number; duration?: number } };
+
+function planLinkedTiming(
+  parsed: ParsedDocument,
+  ids: HfId[],
+  timing: { start?: number; duration?: number },
+): { partners: PartnerEdit[]; refusal: string | null } {
+  if (timing.start === undefined && timing.duration === undefined) {
+    return { partners: [], refusal: null };
+  }
+  const grabbedByLink = new Map(
     ids.map((id) => {
       const el = resolveScoped(parsed.document, id);
       return [el?.getAttribute(MEDIA_LINK_ATTR) ?? "", el ? readClipTiming(el) : null] as const;
     }),
   );
-  const partners =
-    op.start === undefined && op.duration === undefined
-      ? []
-      : linkedPartnerIds(parsed.document, ids);
-  const own = handleSetTiming(parsed, ids, timing);
-  let result = own;
-  for (const partner of partners) {
-    const el = resolveScoped(parsed.document, partner);
-    const grabbed = before.get(el?.getAttribute(MEDIA_LINK_ATTR) ?? "");
+  const partners: PartnerEdit[] = [];
+  for (const id of linkedPartnerIds(parsed.document, ids)) {
+    const el = resolveScoped(parsed.document, id);
+    const grabbed = grabbedByLink.get(el?.getAttribute(MEDIA_LINK_ATTR) ?? "");
     if (!el || !grabbed) continue;
-    result = concatResults(
-      result,
-      handleSetTiming(parsed, [partner], partnerTiming(grabbed, readClipTiming(el), timing)),
-    );
+    const partnerEdit = partnerTiming(grabbed, readClipTiming(el), timing);
+    if (partnerEdit.duration !== undefined && partnerEdit.duration <= 0) {
+      const tag = el.tagName.toLowerCase();
+      return {
+        partners: [],
+        refusal: `Linked ${tag} would start after the new end — unlink or trim the ${tag} first.`,
+      };
+    }
+    partners.push({ id, timing: partnerEdit });
   }
-  return result;
+  return { partners, refusal: null };
 }
 
 type ClipWindow = { start: number | null; duration: number | null };
@@ -354,8 +373,7 @@ function partnerDuration(
   const grabbedEnd = grabbedStart + (grabbed.duration ?? 0);
   const partnerEnd = (partner.start ?? 0) + (partner.duration ?? 0);
   if (Math.abs(partnerEnd - grabbedEnd) >= ALIGN_EPSILON_S) return undefined;
-  const duration = (edit.start ?? grabbedStart) + edit.duration - partnerStart;
-  return duration > 0 ? duration : undefined;
+  return (edit.start ?? grabbedStart) + edit.duration - partnerStart;
 }
 
 export function applyOp(parsed: ParsedDocument, op: EditOp): MutationResult {
@@ -1715,7 +1733,11 @@ export function validateOp(parsed: ParsedDocument, op: EditOp): CanResult {
           `Element(s) not found: ${missing.join(", ")}.`,
           "Verify the id against comp.getElements() or comp.find().",
         );
-      return CAN_OK;
+      const refusal =
+        op.type === "setTiming" && op.linked !== false
+          ? planLinkedTiming(parsed, ids, op).refusal
+          : null;
+      return refusal ? canErr("E_LINKED_PARTNER_CROSSED", refusal) : CAN_OK;
     }
     case "addElement": {
       if (op.parent !== null && resolveScoped(parsed.document, op.parent) === null)
