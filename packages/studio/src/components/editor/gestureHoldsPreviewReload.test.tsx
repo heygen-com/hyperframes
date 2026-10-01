@@ -206,7 +206,7 @@ describe("a reload during a drag", () => {
     },
   };
 
-  function drag(edit: ReturnType<(typeof edits)["move"]>) {
+  function drag(edit: { press: Element; on: Element; from: number[]; to: number[] }) {
     pointer(edit.press, "pointerdown", edit.from[0]!, edit.from[1]!);
     pointer(edit.on, "pointermove", edit.to[0]!, edit.to[1]!);
   }
