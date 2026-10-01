@@ -9,7 +9,10 @@ import { useCallback, useEffect, useRef, type RefObject } from "react";
 import { useMountEffect } from "../../hooks/useMountEffect";
 import { ownsPlainKeys } from "../../utils/typingTarget";
 import { acquireCanvasNudgeKeys } from "../../utils/canvasNudgeGate";
-import { addStudioPendingEditFlushListener } from "../../utils/studioPendingEdits";
+import {
+  addStudioPendingEditFlushListener,
+  trackStudioPendingEdit,
+} from "../../utils/studioPendingEdits";
 import type { DomEditSelection } from "./domEditing";
 import {
   type GroupOverlayItem,
@@ -44,6 +47,7 @@ interface NudgeSession {
   /** Accumulated delta of the burst, in composition px. */
   accum: { x: number; y: number };
   timer: ReturnType<typeof setTimeout> | null;
+  endPendingEdit: (saved?: Promise<unknown>) => void;
 }
 
 export interface UseDomEditNudgeParams {
@@ -160,7 +164,7 @@ export function useDomEditNudge(params: UseDomEditNudgeParams): { flushNudge: ()
       : p.onPathOffsetCommitRef.current(updates[0].selection, updates[0].next, {
           plainTranslate: updates[0].plainTranslate,
         });
-    return Promise.resolve(commit)
+    const saved = Promise.resolve(commit)
       .catch(() => {
         for (const member of session.members) {
           if (isStudioManualEditGestureCurrent(member.element, member.gestureToken)) {
@@ -169,6 +173,8 @@ export function useDomEditNudge(params: UseDomEditNudgeParams): { flushNudge: ()
         }
       })
       .finally(() => endManualOffsetDragMembers(session.members));
+    session.endPendingEdit(saved);
+    return saved;
   };
   const commitSessionRef = useRef(commitSession);
   commitSessionRef.current = commitSession;
@@ -180,6 +186,7 @@ export function useDomEditNudge(params: UseDomEditNudgeParams): { flushNudge: ()
     if (session.timer) clearTimeout(session.timer);
     restoreManualOffsetDragMembers(session.members);
     endManualOffsetDragMembers(session.members);
+    session.endPendingEdit();
   }, [params.allowCanvasMovement]);
 
   // Build drag members for the current target set — the same member snapshot a
@@ -206,7 +213,9 @@ export function useDomEditNudge(params: UseDomEditNudgeParams): { flushNudge: ()
     if (members.length === 0) return null;
     // Same side effect a drag start has (pauses preview playback).
     p.onManualDragStartRef.current?.();
-    return { members, isGroup, accum: { x: 0, y: 0 }, timer: null };
+    let endPendingEdit: NudgeSession["endPendingEdit"] = () => {};
+    trackStudioPendingEdit(new Promise<unknown>((resolve) => (endPendingEdit = resolve)));
+    return { members, isGroup, accum: { x: 0, y: 0 }, timer: null, endPendingEdit };
   };
 
   const handleKeyDown = (event: KeyboardEvent) => {

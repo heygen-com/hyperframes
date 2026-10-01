@@ -6,7 +6,7 @@ import { installReactActEnvironment, makeSelection } from "../../hooks/domSelect
 import { useDomEditNudge, type UseDomEditNudgeParams } from "./useDomEditNudge";
 import { CANVAS_NUDGE_COMMIT_DEBOUNCE_MS, CANVAS_NUDGE_STEP_PX } from "./domEditNudge";
 import { __resetForTests } from "../../utils/canvasNudgeGate";
-import { flushStudioPendingEdits } from "../../utils/studioPendingEdits";
+import { flushStudioPendingEdits, hasStudioPendingEdits } from "../../utils/studioPendingEdits";
 import type { DomEditSelection } from "./domEditing";
 import type { OverlayRect } from "./domEditOverlayGeometry";
 
@@ -318,6 +318,34 @@ describe("useDomEditNudge — undo right after a burst", () => {
     saved();
     await drain;
     expect(drained).toBe(true);
+    act(() => root.unmount());
+  });
+
+  it("counts the burst as a pending edit from its first key until its save lands", async () => {
+    __resetForTests();
+    vi.useFakeTimers();
+    const root = createRoot(document.body.appendChild(document.createElement("div")));
+    const element = document.body.appendChild(document.createElement("div"));
+    element.id = "dot-pending";
+    let saved!: () => void;
+    const commit = vi.fn(() => new Promise<void>((resolve) => (saved = resolve)));
+    act(() => {
+      root.render(
+        React.createElement(Harness, {
+          selection: makeSelection("Dot", element),
+          onPathOffsetCommit: commit,
+        }),
+      );
+    });
+    expect(hasStudioPendingEdits()).toBe(false);
+    act(() => dispatchArrowRight());
+    expect(hasStudioPendingEdits()).toBe(true);
+    act(() => vi.advanceTimersByTime(CANVAS_NUDGE_COMMIT_DEBOUNCE_MS + 10));
+    expect(commit).toHaveBeenCalledTimes(1);
+    expect(hasStudioPendingEdits()).toBe(true);
+    vi.useRealTimers();
+    saved();
+    await vi.waitFor(() => expect(hasStudioPendingEdits()).toBe(false));
     act(() => root.unmount());
   });
 });

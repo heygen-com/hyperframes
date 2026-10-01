@@ -6,82 +6,83 @@ import { trackStudioPendingEdit } from "../utils/studioPendingEdits";
 
 type DomEditValue = ReturnType<typeof useDomEditSession>;
 
-export interface DomEditActionsValue extends Pick<
-  DomEditValue,
-  | "handleTimelineElementSelect"
-  | "handlePreviewCanvasMouseDown"
-  | "handlePreviewCanvasPointerMove"
-  | "handlePreviewCanvasPointerLeave"
-  | "applyDomSelection"
-  | "clearDomSelection"
-  | "refreshDomEditSelectionFromPreview"
-  | "handleDomStyleCommit"
-  | "handleDomStyleCommitForSelection"
-  | "handleDomAttributeCommit"
-  | "handleDomAttributeLiveCommit"
-  | "handleDomAttributeQuietCommit"
-  | "handleDomHtmlAttributeCommit"
-  | "handleDomAttributesCommit"
-  | "handleDomPathOffsetCommit"
-  | "handleDomGroupPathOffsetCommit"
-  | "handleDomZIndexReorderCommit"
-  | "handleDomBoxSizeCommit"
-  | "handleDomRotationCommit"
-  | "handleDomManualEditsReset"
-  | "handleDomTextCommit"
-  | "handleDomTextCommitForSelection"
-  | "handleDomRichTextCommit"
-  | "handleDomTextFieldStyleCommit"
-  | "handleDomAddTextField"
-  | "handleDomRemoveTextField"
-  | "getGsapAnimationsForSelection"
-  | "handleAskAgent"
-  | "handleAgentModalSubmit"
-  | "handleBlockedDomMove"
-  | "handleDomManualDragStart"
-  | "handleDomEditElementDelete"
-  | "handleGroupSelection"
-  | "handleUngroupSelection"
-  | "setActiveGroupElement"
-  | "buildDomSelectionFromTarget"
-  | "buildDomSelectionForTimelineElement"
-  | "updateDomEditHoverSelection"
-  | "resolveImportedFontAsset"
-  | "setAgentModalOpen"
-  | "setAgentPromptSelectionContext"
-  | "setAgentModalAnchorPoint"
-  | "handleGsapUpdateProperty"
-  | "handleGsapUpdateMeta"
-  | "handleGsapDeleteAnimation"
-  | "handleGsapDeleteAllForElement"
-  | "handleGsapAddAnimation"
-  | "handleGsapAddProperty"
-  | "handleGsapRemoveProperty"
-  | "handleGsapUpdateFromProperty"
-  | "handleGsapAddFromProperty"
-  | "handleGsapRemoveFromProperty"
-  | "handleGsapAddKeyframe"
-  | "handleGsapAddKeyframeBatch"
-  | "handleGsapRemoveKeyframe"
-  | "handleGsapMoveKeyframeToPlayhead"
-  | "handleGsapMoveKeyframe"
-  | "handleGsapResizeKeyframedTween"
-  | "handleGsapConvertToKeyframes"
-  | "handleGsapRemoveAllKeyframes"
-  | "handleResetSelectedElementKeyframes"
-  | "commitAnimatedProperty"
-  | "commitAnimatedProperties"
-  | "handleSetArcPath"
-  | "handleUpdateArcSegment"
-  | "handleUnroll"
-  | "invalidateGsapCache"
-  | "previewIframeRef"
-  | "commitMutation"
-  | "applyMarqueeSelection"
-  | "handleUpdateKeyframeEase"
-  | "handleUpdateSegmentEase"
-  | "handleSetAllKeyframeEases"
-> {}
+const SAVES_AN_EDIT = {
+  handleTimelineElementSelect: false,
+  handlePreviewCanvasMouseDown: false,
+  handlePreviewCanvasPointerMove: false,
+  handlePreviewCanvasPointerLeave: false,
+  applyDomSelection: false,
+  clearDomSelection: false,
+  refreshDomEditSelectionFromPreview: false,
+  handleDomStyleCommit: true,
+  handleDomStyleCommitForSelection: true,
+  handleDomAttributeCommit: true,
+  handleDomAttributeLiveCommit: false,
+  handleDomAttributeQuietCommit: true,
+  handleDomHtmlAttributeCommit: true,
+  handleDomAttributesCommit: true,
+  handleDomPathOffsetCommit: true,
+  handleDomGroupPathOffsetCommit: true,
+  handleDomZIndexReorderCommit: true,
+  handleDomBoxSizeCommit: true,
+  handleDomRotationCommit: true,
+  handleDomManualEditsReset: true,
+  handleDomTextCommit: true,
+  handleDomTextCommitForSelection: true,
+  handleDomRichTextCommit: true,
+  handleDomTextFieldStyleCommit: true,
+  handleDomAddTextField: true,
+  handleDomRemoveTextField: true,
+  getGsapAnimationsForSelection: false,
+  handleAskAgent: false,
+  handleAgentModalSubmit: false,
+  handleBlockedDomMove: false,
+  handleDomManualDragStart: false,
+  handleDomEditElementDelete: true,
+  handleGroupSelection: true,
+  handleUngroupSelection: true,
+  setActiveGroupElement: false,
+  buildDomSelectionFromTarget: false,
+  buildDomSelectionForTimelineElement: false,
+  updateDomEditHoverSelection: false,
+  resolveImportedFontAsset: false,
+  setAgentModalOpen: false,
+  setAgentPromptSelectionContext: false,
+  setAgentModalAnchorPoint: false,
+  handleGsapUpdateProperty: true,
+  handleGsapUpdateMeta: true,
+  handleGsapDeleteAnimation: true,
+  handleGsapDeleteAllForElement: true,
+  handleGsapAddAnimation: true,
+  handleGsapAddProperty: true,
+  handleGsapRemoveProperty: true,
+  handleGsapUpdateFromProperty: true,
+  handleGsapAddFromProperty: true,
+  handleGsapRemoveFromProperty: true,
+  handleGsapAddKeyframe: true,
+  handleGsapAddKeyframeBatch: true,
+  handleGsapRemoveKeyframe: true,
+  handleGsapMoveKeyframeToPlayhead: true,
+  handleGsapMoveKeyframe: true,
+  handleGsapResizeKeyframedTween: true,
+  handleGsapConvertToKeyframes: true,
+  handleGsapRemoveAllKeyframes: true,
+  handleResetSelectedElementKeyframes: true,
+  commitAnimatedProperty: true,
+  commitAnimatedProperties: true,
+  handleSetArcPath: true,
+  handleUpdateArcSegment: true,
+  handleUnroll: true,
+  invalidateGsapCache: false,
+  previewIframeRef: false,
+  commitMutation: true,
+  applyMarqueeSelection: false,
+  handleUpdateKeyframeEase: true,
+  handleUpdateSegmentEase: true,
+  handleSetAllKeyframeEases: true,
+} as const satisfies Partial<Record<keyof DomEditValue, boolean>>;
+
+export interface DomEditActionsValue extends Pick<DomEditValue, keyof typeof SAVES_AN_EDIT> {}
 
 export interface DomEditSelectionValue extends Pick<
   DomEditValue,
@@ -99,62 +100,10 @@ export interface DomEditSelectionValue extends Pick<
   | "agentPromptSelectionContext"
 > {}
 
-/** Every action that saves an edit. Undo drains them, so each counts from its call, not from its first write. */
-const EDIT_COMMITS = [
-  "handleDomStyleCommit",
-  "handleDomStyleCommitForSelection",
-  "handleDomAttributeCommit",
-  "handleDomAttributeQuietCommit",
-  "handleDomHtmlAttributeCommit",
-  "handleDomAttributesCommit",
-  "handleDomPathOffsetCommit",
-  "handleDomGroupPathOffsetCommit",
-  "handleDomZIndexReorderCommit",
-  "handleDomBoxSizeCommit",
-  "handleDomRotationCommit",
-  "handleDomManualEditsReset",
-  "handleDomTextCommit",
-  "handleDomTextCommitForSelection",
-  "handleDomRichTextCommit",
-  "handleDomTextFieldStyleCommit",
-  "handleDomAddTextField",
-  "handleDomRemoveTextField",
-  "handleDomEditElementDelete",
-  "handleGroupSelection",
-  "handleUngroupSelection",
-  "handleGsapUpdateProperty",
-  "handleGsapUpdateMeta",
-  "handleGsapDeleteAnimation",
-  "handleGsapDeleteAllForElement",
-  "handleGsapAddAnimation",
-  "handleGsapAddProperty",
-  "handleGsapRemoveProperty",
-  "handleGsapUpdateFromProperty",
-  "handleGsapAddFromProperty",
-  "handleGsapRemoveFromProperty",
-  "handleGsapAddKeyframe",
-  "handleGsapAddKeyframeBatch",
-  "handleGsapRemoveKeyframe",
-  "handleGsapMoveKeyframeToPlayhead",
-  "handleGsapMoveKeyframe",
-  "handleGsapResizeKeyframedTween",
-  "handleGsapConvertToKeyframes",
-  "handleGsapRemoveAllKeyframes",
-  "handleResetSelectedElementKeyframes",
-  "commitAnimatedProperty",
-  "commitAnimatedProperties",
-  "handleSetArcPath",
-  "handleUpdateArcSegment",
-  "handleUnroll",
-  "commitMutation",
-  "handleUpdateKeyframeEase",
-  "handleUpdateSegmentEase",
-  "handleSetAllKeyframeEases",
-] as const satisfies ReadonlyArray<keyof DomEditActionsValue>;
-
 function trackEditCommits(actions: DomEditActionsValue): DomEditActionsValue {
   const tracked: Record<string, unknown> = { ...actions };
-  for (const key of EDIT_COMMITS) {
+  for (const key of Object.keys(SAVES_AN_EDIT) as Array<keyof typeof SAVES_AN_EDIT>) {
+    if (!SAVES_AN_EDIT[key]) continue;
     const commit = actions[key] as (...args: unknown[]) => unknown;
     tracked[key] = (...args: unknown[]) => {
       const result = commit(...args);
