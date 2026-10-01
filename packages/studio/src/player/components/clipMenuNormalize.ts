@@ -2,6 +2,8 @@ import { buildProjectApiPath } from "../../utils/projectRouting";
 import { resolvePreviewRelative } from "../../utils/previewRelativePath";
 import { resolveMediaPreviewUrl } from "./thumbnailUtils";
 import type { TimelineElement } from "../store/timelineElement";
+import { parseAutomation, VOLUME_TARGET } from "@hyperframes/core/audio-automation";
+import type { TimelineEditOutcome } from "../../hooks/timelineEditPermission";
 
 export interface NormalizePlan {
   targetLufs: number;
@@ -14,6 +16,26 @@ export interface NormalizePlan {
 export function clipHasSound(el: TimelineElement): boolean {
   if (el.tag === "audio") return true;
   return el.tag === "video" && el.hasAudio === true && el.muted !== true;
+}
+
+export const VOLUME_LANE_REFUSAL =
+  "This clip's volume is automated. Remove its volume automation to normalize it.";
+
+export function volumeLaneOwnsGain(el: TimelineElement): boolean {
+  if (!el.automation) return false;
+  try {
+    return parseAutomation(el.automation).lanes.some(
+      (lane) => lane.target === VOLUME_TARGET && lane.points.length > 0,
+    );
+  } catch {
+    return false;
+  }
+}
+
+export class TimelineSaveError extends Error {}
+
+export function throwUnlessSaved(outcome: TimelineEditOutcome | void): void {
+  if (outcome && outcome.status !== "saved") throw new TimelineSaveError(outcome.reason);
 }
 
 export function normalizeRequestBody(el: TimelineElement, projectRelativeSrc: string) {

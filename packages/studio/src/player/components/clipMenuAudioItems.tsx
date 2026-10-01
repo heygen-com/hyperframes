@@ -2,7 +2,15 @@ import { formatAudioGain } from "@hyperframes/core/audio-gain";
 import type { TimelineElement } from "../store/timelineElement";
 import { useTimelineEditContextOptional } from "../../contexts/TimelineEditContext";
 import { useStudioShellContextOptional } from "../../contexts/StudioContext";
-import { clipHasSound, normalizeToastText, requestNormalizePlan } from "./clipMenuNormalize";
+import {
+  clipHasSound,
+  normalizeToastText,
+  requestNormalizePlan,
+  throwUnlessSaved,
+  TimelineSaveError,
+  VOLUME_LANE_REFUSAL,
+  volumeLaneOwnsGain,
+} from "./clipMenuNormalize";
 import { isDuckableBed, readBedCarve, setDuckUnderVoice, type DuckOutcome } from "./clipMenuDuck";
 
 const ITEM_CLASS =
@@ -33,13 +41,19 @@ export function ClipMenuAudioItems({
 
   const normalize = async () => {
     onClose();
+    if (volumeLaneOwnsGain(element)) {
+      showToast(VOLUME_LANE_REFUSAL, "error");
+      return;
+    }
     try {
       const plan = await requestNormalizePlan(projectId, element);
-      await onSetElementAttributeQuiet(
-        element,
-        "data-volume",
-        formatAudioGain(plan.volume),
-        "Normalize loudness",
+      throwUnlessSaved(
+        await onSetElementAttributeQuiet(
+          element,
+          "data-volume",
+          formatAudioGain(plan.volume),
+          "Normalize loudness",
+        ),
       );
       showToast(normalizeToastText(plan), "info");
     } catch (error) {
@@ -55,10 +69,18 @@ export function ClipMenuAudioItems({
       bed,
       !ducked,
       async (attr, value) => {
-        await onSetElementAttributeQuiet(element, attr, value, "Duck under voice");
+        throwUnlessSaved(
+          await onSetElementAttributeQuiet(element, attr, value, "Duck under voice"),
+        );
       },
       onGroupClips ? (ids, groupId) => onGroupClips(ids, groupId, "Voice") : undefined,
-    ).catch((): DuckOutcome => "aborted");
+    ).catch((error: unknown): DuckOutcome | TimelineSaveError =>
+      error instanceof TimelineSaveError ? error : "aborted",
+    );
+    if (outcome instanceof TimelineSaveError) {
+      showToast(outcome.message, "error");
+      return;
+    }
     showToast(DUCK_TOAST[outcome], outcome === "aborted" ? "error" : "info");
   };
 
