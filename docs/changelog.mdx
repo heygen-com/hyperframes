@@ -9,6 +9,23 @@ Recent HyperFrames releases, including user-facing features, fixes, and migratio
 {/* New release entries are prepended by `bun run changelog:draft <version> --write`. */}
 
 <Update
+  label="HyperFrames v0.8.104"
+  description="Released - 2026-10-01"
+  tags={["Release", "Studio"]}
+>
+Elements without GSAP now resize and rotate from where they really are, and save where you let go. A move keeps its route through the drop, and Escape keeps text you typed.
+
+## Fixes
+
+- **Studio:** A rotate without GSAP saves where you let go, nested too ([74f501321](https://github.com/heygen-com/hyperframes/commit/74f5013210e382ed9f7867e1636abf80975a55ed), [#4802](https://github.com/heygen-com/hyperframes/pull/4802)).
+- **Studio:** Escape keeps the text you typed in an in-place edit ([bb0d076c1](https://github.com/heygen-com/hyperframes/commit/bb0d076c1492f69a9a43ae9a5bebb39abc0c576e), [#4841](https://github.com/heygen-com/hyperframes/pull/4841)).
+- **Studio:** A move keeps the route it chose at press through drop and save ([2eb191910](https://github.com/heygen-com/hyperframes/commit/2eb19191032c88949604541d7a2b3593eb1c7bd7), [#4834](https://github.com/heygen-com/hyperframes/pull/4834)).
+- **Studio:** Resize an element without GSAP by its own width, height and translate ([3e011b7e5](https://github.com/heygen-com/hyperframes/commit/3e011b7e5f4dca52c4558dacea45ad4e213a3b5f), [#4805](https://github.com/heygen-com/hyperframes/pull/4805)).
+
+[View the full commit range](https://github.com/heygen-com/hyperframes/compare/v0.8.103...v0.8.104).
+</Update>
+
+<Update
   label="HyperFrames v0.8.103"
   description="Released - 2026-10-01"
   tags={["Release", "Studio"]}
