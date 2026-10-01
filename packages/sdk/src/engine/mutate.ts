@@ -17,7 +17,7 @@ import type {
   JsonPatchOp,
 } from "../types.js";
 import type { ParsedDocument } from "./model.js";
-import { MEDIA_LINK_ATTR } from "@hyperframes/core/media-link";
+import { MEDIA_LINK_ATTR, linkScopeOf } from "@hyperframes/core/media-link";
 import { idsToUnlink, linkedPartnerIds } from "./linkedTiming.js";
 import {
   resolveScoped,
@@ -317,16 +317,11 @@ function planLinkedTiming(
   if (timing.start === undefined && timing.duration === undefined) {
     return { partners: [], refusal: null };
   }
-  const grabbedByLink = new Map(
-    ids.map((id) => {
-      const el = resolveScoped(parsed.document, id);
-      return [el?.getAttribute(MEDIA_LINK_ATTR) ?? "", el ? readClipTiming(el) : null] as const;
-    }),
-  );
+  const grabbedFor = grabbedBaselines(parsed, ids);
   const partners: PartnerEdit[] = [];
   for (const id of linkedPartnerIds(parsed.document, ids)) {
     const el = resolveScoped(parsed.document, id);
-    const grabbed = grabbedByLink.get(el?.getAttribute(MEDIA_LINK_ATTR) ?? "");
+    const grabbed = el ? grabbedFor(el) : undefined;
     if (!el || !grabbed) continue;
     const partnerEdit = partnerTiming(grabbed, readClipTiming(el), timing);
     if (partnerEdit.duration !== undefined && partnerEdit.duration <= 0) {
@@ -342,6 +337,25 @@ function planLinkedTiming(
 }
 
 type ClipWindow = { start: number | null; duration: number | null };
+
+function grabbedBaselines(
+  parsed: ParsedDocument,
+  ids: HfId[],
+): (partner: Element) => ClipWindow | undefined {
+  const byScope = new Map<Element | null, Map<string, ClipWindow>>();
+  for (const id of ids) {
+    const el = resolveScoped(parsed.document, id);
+    const link = el?.getAttribute(MEDIA_LINK_ATTR);
+    if (!el || !link) continue;
+    const byLink = byScope.get(linkScopeOf(el)) ?? new Map<string, ClipWindow>();
+    byLink.set(link, readClipTiming(el));
+    byScope.set(linkScopeOf(el), byLink);
+  }
+  return (partner) => {
+    const link = partner.getAttribute(MEDIA_LINK_ATTR);
+    return link ? byScope.get(linkScopeOf(partner))?.get(link) : undefined;
+  };
+}
 const ALIGN_EPSILON_S = 1e-3;
 
 /**
