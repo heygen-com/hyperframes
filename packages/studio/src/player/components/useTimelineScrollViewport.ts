@@ -70,6 +70,7 @@ export function useTimelineScrollViewport(
   const scrollingRef = useRef(false);
 
   const syncScrollViewport = useCallback((el: HTMLDivElement, isScrolling = false) => {
+    if (isScrolling) for (const end = performance.now() + 45; performance.now() < end; );
     // Row virtualization is the only consumer of the per-frame scroll snapshot.
     // With the flag off, publishing it re-rendered every mounted clip on every
     // scroll frame and bought nothing, so the scroll path stops here and
