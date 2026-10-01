@@ -1,6 +1,7 @@
 #!/usr/bin/env bun
 // Edit accuracy bench: real gestures in the built CLI Studio (build core, parsers, lint, studio-server first).
-// bun run --cwd packages/studio test:edit-accuracy -- --grid full|pr --jobs N [--shard i/n] [--filter re] [--lock path]
+// bun run --cwd packages/studio test:edit-accuracy -- --grid full|pr --jobs N [--shard i/n] [--filter re]
+//   [--lock path: the suite lock, taken per chunk] [--rerun: a confirmation run for the gate]
 import { createHash } from "node:crypto";
 import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { loadavg, tmpdir } from "node:os";
@@ -29,6 +30,8 @@ const { values: opt } = parseArgs({
     port: { type: "string", default: "5800" },
     cli: { type: "string", default: join(REPO, "packages/cli/dist/cli.js") },
     lock: { type: "string" },
+    // Marks a confirmation run of cases that regressed, so the gate keeps it out of the banked baseline.
+    rerun: { type: "boolean", default: false },
   },
 });
 const [shard, shards] = opt.shard.split("/").map(Number);
@@ -215,6 +218,7 @@ const meta = {
   studio,
   build,
   bench,
+  rerun: opt.rerun,
   grid:
     opt.grid +
     (opt.filter ? ` filter ${opt.filter}` : "") +

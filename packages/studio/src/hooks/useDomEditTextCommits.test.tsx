@@ -125,13 +125,20 @@ afterEach(() => {
 });
 
 describe("useDomEditTextCommits", () => {
-  function richTextProbe() {
-    const { iframe, element } = previewElement('<h1 id="t">Old</h1>', "t");
+  function richTextProbe(
+    html = '<h1 id="t">Old</h1>',
+    overrides: (doc: Document) => Partial<UseDomEditTextCommitsParams> = () => ({}),
+  ) {
+    const { iframe, element } = previewElement(html, "t");
     const persist = vi.fn().mockResolvedValue(undefined);
+    const showToast = vi.fn();
     const base = commitParams({
       previewIframeRef: { current: iframe },
       domEditSelection: selectionFor(element),
+      buildDomSelectionFromTarget: vi.fn(async (target: HTMLElement) => selectionFor(target)),
       persistDomEditOperations: persist,
+      showToast,
+      ...overrides(element.ownerDocument),
     });
     const captured: { hook: ReturnType<typeof useDomEditTextCommits> | null } = { hook: null };
     function Probe({ readOnlyPreview }: { readOnlyPreview: boolean }) {
@@ -143,13 +150,25 @@ describe("useDomEditTextCommits", () => {
     const save = captured.hook!.handleDomRichTextCommit;
     const commit = { element, html: "New", previousHtml: "Old" };
     element.innerHTML = "New";
-    return { root, Probe, persist, element, save: () => act(async () => save(commit)) };
+    return {
+      root,
+      Probe,
+      persist,
+      showToast,
+      element,
+      save: () => act(async () => save(commit)),
+    };
   }
 
-  it("saves in-place text while the preview is editable", async () => {
-    const { persist, save } = richTextProbe();
+  it("saves in-place text while the preview is editable, and refreshes the selection it edited", async () => {
+    const applyDomSelection = vi.fn();
+    const { persist, element, save } = richTextProbe(undefined, () => ({ applyDomSelection }));
     await save();
     expect(persist).toHaveBeenCalledTimes(1);
+    expect(applyDomSelection).toHaveBeenCalledWith(
+      expect.objectContaining({ element }),
+      expect.objectContaining({ preserveGroup: true }),
+    );
   });
 
   it("refuses in-place text once the preview turns read-only, through an earlier handler, and puts the old text back", async () => {
@@ -157,6 +176,44 @@ describe("useDomEditTextCommits", () => {
     act(() => root.render(<Probe readOnlyPreview />));
     await save();
     expect(persist).not.toHaveBeenCalled();
+    expect(element.innerHTML).toBe("Old");
+  });
+
+  it("saves the edited element, and leaves the selection alone, when the selection is another element or none", async () => {
+    for (const selected of ["card", null]) {
+      const applyDomSelection = vi.fn();
+      const { persist, element, save } = richTextProbe(
+        '<div id="card"><p id="t">Old</p></div>',
+        (doc) => ({
+          domEditSelection: selected ? selectionFor(doc.getElementById(selected)!) : null,
+          applyDomSelection,
+          buildDomSelectionFromTarget: vi.fn(async (target: HTMLElement) => ({
+            ...selectionFor(target),
+            label: "Resolved from the edited element",
+          })),
+        }),
+      );
+      await save();
+      expect(persist).toHaveBeenCalledTimes(1);
+      expect(persist.mock.calls[0]![0]).toMatchObject({
+        element,
+        label: "Resolved from the edited element",
+      });
+      expect(applyDomSelection).not.toHaveBeenCalled();
+      cleanup?.();
+      cleanup = null;
+    }
+  });
+
+  it("says so and puts the old text back when the edited text cannot be saved", async () => {
+    const error = vi.spyOn(console, "error").mockImplementation(() => {});
+    const { persist, showToast, element, save } = richTextProbe(undefined, () => ({
+      buildDomSelectionFromTarget: vi.fn(async () => null),
+    }));
+    await save();
+    expect(persist).not.toHaveBeenCalled();
+    expect(showToast).toHaveBeenCalledWith(expect.stringContaining("Couldn't save"), "error");
+    expect(error).toHaveBeenCalled();
     expect(element.innerHTML).toBe("Old");
   });
 

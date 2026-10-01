@@ -74,6 +74,7 @@ jobs:
       codex_plugin: ${{ steps.filter.outputs.codex_plugin }}
       gcp_beginframe: ${{ steps.filter.outputs.gcp_beginframe }}
       studio: ${{ steps.filter.outputs.studio }}
+      edit_accuracy: ${{ steps.filter.outputs.edit_accuracy }}
     steps:
       # Force git-based change detection instead of the pull_request REST API.
       # The API path can fail the whole workflow on transient listFiles
@@ -158,6 +159,38 @@ jobs:
               - "packages/studio-server/**"
               - "bun.lock"
               - ".github/workflows/ci.yml"
+            edit_accuracy:
+              - "packages/studio/src/**"
+              - "packages/studio-server/src/**"
+              - "packages/core/src/**"
+              - "packages/core/scripts/**"
+              - "packages/cli/src/**"
+              - "packages/player/src/**"
+              - "packages/parsers/src/**"
+              - "packages/producer/src/**"
+              - "packages/engine/src/**"
+              - "packages/lint/src/**"
+              - "packages/sdk/src/**"
+              - "packages/studio/index.html"
+              - "packages/studio/vite.config.ts"
+              - "packages/studio/public/**"
+              - "packages/cli/scripts/**"
+              - "packages/cli/tsup.config.ts"
+              - "packages/studio/package.json"
+              - "packages/cli/package.json"
+              - "packages/core/package.json"
+              - "packages/producer/package.json"
+              - "packages/engine/package.json"
+              - "packages/parsers/package.json"
+              - "packages/lint/package.json"
+              - "packages/sdk/package.json"
+              - "packages/studio-server/package.json"
+              - "packages/player/package.json"
+              - "packages/*/package-subpaths.json"
+              - "scripts/package-subpaths.mjs"
+              - "packages/studio/tests/e2e/edit-accuracy/**"
+              - "bun.lock"
+              - ".github/workflows/ci.yml"
             gcp_beginframe:
               - "packages/gcp-cloud-run/Dockerfile"
               - "packages/aws-lambda/scripts/probe-beginframe.ts"
@@ -216,6 +249,14 @@ jobs:
       - run: bash scripts/ci/install-workspace-dependencies.sh
       - run: bun run build
       - run: bun run verify:packed-manifests
+      - name: Share the built CLI with the edit accuracy shards
+        if: github.event_name == 'pull_request' && needs.changes.outputs.edit_accuracy == 'true'
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: edit-accuracy-cli
+          path: packages/cli/dist
+          if-no-files-found: error
+          retention-days: 1
 
   lint:
     name: Lint
@@ -923,6 +964,117 @@ jobs:
             /tmp/timeline-gate-*.json
             /tmp/studio-open-counts.json
           if-no-files-found: error
+
+  # Manual editing accuracy in the built Studio, gated against the base branch's baseline.json.
+  studio-edit-accuracy:
+    name: "Studio: edit accuracy (${{ matrix.shard }}/8)"
+    needs: [changes, build]
+    if: github.event_name == 'pull_request' && needs.changes.outputs.edit_accuracy == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [1, 2, 3, 4, 5, 6, 7, 8]
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: 22
+      - uses: ./.github/actions/prepare-ffmpeg-bin
+      - run: bash scripts/ci/install-workspace-dependencies.sh
+      # The bench imports producer and engine source, which need core's generated runtime files.
+      - run: bun run --cwd packages/core build
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        with:
+          name: edit-accuracy-cli
+          path: packages/cli/dist
+      # Studio and the producer both run in the engine's pinned headless shell.
+      - run: node packages/cli/dist/cli.js browser ensure
+      - name: Read the base branch's edit accuracy baseline
+        env:
+          BASE_REF: ${{ github.base_ref }}
+        run: |
+          git fetch --no-tags --depth=1 origin "$BASE_REF"
+          if ! git show FETCH_HEAD:packages/studio/tests/e2e/edit-accuracy/baseline.json > /tmp/base-edit-accuracy.json; then
+            echo '{"cases":{}}' > /tmp/base-edit-accuracy.json
+            echo "The base branch has no edit accuracy baseline yet"
+          fi
+      - name: Run this shard, then re-run twice each case whose verdict differs from the base branch
+        run: |
+          set -euo pipefail
+          bench() { bun run --cwd packages/studio test:edit-accuracy -- --grid full --jobs 2 "$@"; }
+          bench --shard "${{ matrix.shard }}/8" --out /tmp/edit-accuracy/run1
+          mapfile -t FLIPPED < <(node packages/studio/tests/e2e/edit-accuracy/ratchet.mjs flipped \
+            /tmp/base-edit-accuracy.json /tmp/edit-accuracy/run1/results.json)
+          if (( ${#FLIPPED[@]} > 0 )); then
+            FILTER="^($(IFS='|'; echo "${FLIPPED[*]}"))$"
+            for run in 2 3; do bench --filter "$FILTER" --rerun --out "/tmp/edit-accuracy/run${run}"; done
+          fi
+      - name: Upload shard evidence
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: edit-accuracy-shard-${{ matrix.shard }}
+          path: /tmp/edit-accuracy
+          if-no-files-found: error
+
+  studio-edit-accuracy-gate:
+    name: "Studio: edit accuracy gate"
+    needs: [changes, studio-edit-accuracy]
+    if: ${{ !cancelled() && github.event_name == 'pull_request' && needs.changes.outputs.edit_accuracy == 'true' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: read
+      pull-requests: write
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: 22
+      - name: Read the base branch's edit accuracy baseline
+        env:
+          BASE_REF: ${{ github.base_ref }}
+        run: |
+          git fetch --no-tags --depth=1 origin "$BASE_REF"
+          if ! git show FETCH_HEAD:packages/studio/tests/e2e/edit-accuracy/baseline.json > /tmp/base-edit-accuracy.json; then
+            echo '{"cases":{}}' > /tmp/base-edit-accuracy.json
+            echo "The base branch has no edit accuracy baseline yet"
+          fi
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        with:
+          pattern: edit-accuracy-shard-*
+          path: /tmp/edit-accuracy-shards
+      - name: Compare every run with the base branch
+        id: gate
+        # Smoothness is reported, not gated; a case fails only if it fails 2 of its 3 runs.
+        run: |
+          set +e
+          mapfile -t RESULTS < <(find /tmp/edit-accuracy-shards -name results.json | sort)
+          node packages/studio/tests/e2e/edit-accuracy/ratchet.mjs gate /tmp/base-edit-accuracy.json \
+            packages/studio/tests/e2e/edit-accuracy/baseline.json /tmp/edit-accuracy-gate "${RESULTS[@]}"
+          echo "exit_code=$?" >> "$GITHUB_OUTPUT"
+          cat /tmp/edit-accuracy-gate/comment.md >> "$GITHUB_STEP_SUMMARY" || true
+      - name: Post sticky comment
+        # Fork PRs get a read-only token; the gate below still fires.
+        continue-on-error: true
+        uses: marocchino/sticky-pull-request-comment@773744901bac0e8cbb5a0dc842800d45e9b2b405 # v2.9.4
+        with:
+          header: edit-accuracy
+          path: /tmp/edit-accuracy-gate/comment.md
+      - name: Upload the gate report and a baseline.json to bank
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: edit-accuracy-gate
+          path: /tmp/edit-accuracy-gate
+      - name: Fail if the gate failed
+        if: steps.gate.outputs.exit_code != '0'
+        run: |
+          echo "::error::Edit accuracy fell against the base branch; see the PR comment."
+          exit 1
 
   smoke-global-install:
     name: "Smoke: global install"

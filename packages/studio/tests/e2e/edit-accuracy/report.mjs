@@ -3,7 +3,7 @@ import { writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { percentile } from "./geometry.mjs";
 
-const LIMIT_PX = 0.5;
+export const LIMIT_PX = 0.5;
 // A frame over 1.5 vsyncs is dropped; raw rAF p95 stays reported so a different rule re-scores without a re-run.
 const DROPPED_FRAME_MS = 25;
 const WORK_MS = 8;
@@ -157,32 +157,33 @@ function table(summary, meta, results) {
   return lines.join("\n") + "\n";
 }
 
+/** One case as baseline.json holds it; the gate reads the same projection. */
+// fallow-ignore-next-line complexity
+export function entry(r) {
+  if (r.error) return { pass: false, error: true };
+  return {
+    pass: r.pass,
+    tracking: roundUp(r.tracking.max),
+    pressJump: roundUp(r.pressJump),
+    drop: roundUp(r.drop),
+    reload: roundUp(r.reload),
+    render: roundUp(r.render),
+    undo: r.checks.undo,
+    dropped: r.smooth.dropped,
+    controlDropped: r.smooth.control.dropped,
+    work: roundUp(r.smooth.workP95),
+    frameP95: roundUp(r.smooth.p95),
+    ...(r.unsettled.length && { unsettled: r.unsettled }),
+    ...(r.undoTimeout && { undoTimeout: r.undoTimeout }),
+    ...(r.renderError && { renderError: true }),
+  };
+}
+
 /** One line per case, so a baseline diff reads case by case. */
 function baseline(meta, results) {
   const entries = [...results]
     .sort((a, b) => a.id.localeCompare(b.id))
-    // fallow-ignore-next-line complexity
-    .map((r) => {
-      const v = r.error
-        ? { pass: false, error: true }
-        : {
-            pass: r.pass,
-            tracking: roundUp(r.tracking.max),
-            pressJump: roundUp(r.pressJump),
-            drop: roundUp(r.drop),
-            reload: roundUp(r.reload),
-            render: roundUp(r.render),
-            undo: r.checks.undo,
-            dropped: r.smooth.dropped,
-            controlDropped: r.smooth.control.dropped,
-            work: roundUp(r.smooth.workP95),
-            frameP95: roundUp(r.smooth.p95),
-            ...(r.unsettled.length && { unsettled: r.unsettled }),
-            ...(r.undoTimeout && { undoTimeout: r.undoTimeout }),
-            ...(r.renderError && { renderError: true }),
-          };
-      return `    ${JSON.stringify(r.id)}: ${JSON.stringify(v)}`;
-    });
+    .map((r) => `    ${JSON.stringify(r.id)}: ${JSON.stringify(entry(r))}`);
   return `{\n  "studio": ${JSON.stringify(meta.studio)},\n  "build": ${JSON.stringify(meta.build)},\n  "bench": ${JSON.stringify(meta.bench)},\n  "grid": ${JSON.stringify(meta.grid)},\n  "cases": {\n${entries.join(",\n")}\n  }\n}\n`;
 }
 
