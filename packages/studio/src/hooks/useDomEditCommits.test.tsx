@@ -228,7 +228,9 @@ function renderDomEditCommits(
       applyDomSelection: vi.fn(),
       clearDomSelection: vi.fn(),
       refreshDomEditSelectionFromPreview: vi.fn(),
-      buildDomSelectionFromTarget: vi.fn(async () => null),
+      buildDomSelectionFromTarget: vi.fn(async (target: HTMLElement) =>
+        target === selection.element ? selection : null,
+      ),
       onTrySdkPersist: options.onTrySdkPersist,
       readOnlyPreview: false,
     });
@@ -893,7 +895,7 @@ describe("useDomEditCommits rich-text persist handling", () => {
     }
   });
 
-  it("does not retarget a commit onto a replacement preview node", async () => {
+  it("does not retarget a commit onto a replacement preview node, and says the text was not saved", async () => {
     const fetchMock = stubPatchFetch({ ok: true, changed: true, matched: true });
     const html = '<span style="color: blue">After</span>';
     const { iframe, element } = createPreviewElement(`<div data-hf-id="hf-card">${html}</div>`);
@@ -902,6 +904,7 @@ describe("useDomEditCommits rich-text persist handling", () => {
     replacement.dataset.hfId = "hf-card";
     replacement.innerHTML = "Reloaded elsewhere";
     element.replaceWith(replacement);
+    const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
 
     try {
       await act(async () => {
@@ -914,8 +917,14 @@ describe("useDomEditCommits rich-text persist handling", () => {
 
       expect(replacement.innerHTML).toBe("Reloaded elsewhere");
       expect(fetchMock).not.toHaveBeenCalled();
-      expect(rendered.showToast).not.toHaveBeenCalled();
+      expect(rendered.showToast).toHaveBeenCalledWith(
+        expect.stringMatching(
+          /Couldn't save the text edit: the text's element is gone from the preview/,
+        ),
+        "error",
+      );
     } finally {
+      errorSpy.mockRestore();
       rendered.cleanup();
     }
   });
