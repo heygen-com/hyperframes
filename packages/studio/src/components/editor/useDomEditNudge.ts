@@ -159,22 +159,26 @@ export function useDomEditNudge(params: UseDomEditNudgeParams): { flushNudge: ()
       plainTranslate: member.plainTranslate,
     }));
     const p = paramsRef.current;
-    const commit = session.isGroup
-      ? p.onGroupPathOffsetCommitRef.current(updates)
-      : p.onPathOffsetCommitRef.current(updates[0].selection, updates[0].next, {
-          plainTranslate: updates[0].plainTranslate,
-        });
-    const saved = Promise.resolve(commit)
-      .catch(() => {
-        for (const member of session.members) {
-          if (isStudioManualEditGestureCurrent(member.element, member.gestureToken)) {
-            restoreStudioPathOffset(member.element, member.initialPathOffset);
+    let saved: Promise<unknown> | undefined;
+    try {
+      const commit = session.isGroup
+        ? p.onGroupPathOffsetCommitRef.current(updates)
+        : p.onPathOffsetCommitRef.current(updates[0].selection, updates[0].next, {
+            plainTranslate: updates[0].plainTranslate,
+          });
+      saved = Promise.resolve(commit)
+        .catch(() => {
+          for (const member of session.members) {
+            if (isStudioManualEditGestureCurrent(member.element, member.gestureToken)) {
+              restoreStudioPathOffset(member.element, member.initialPathOffset);
+            }
           }
-        }
-      })
-      .finally(() => endManualOffsetDragMembers(session.members));
-    session.endPendingEdit(saved);
-    return saved;
+        })
+        .finally(() => endManualOffsetDragMembers(session.members));
+      return saved;
+    } finally {
+      session.endPendingEdit(saved);
+    }
   };
   const commitSessionRef = useRef(commitSession);
   commitSessionRef.current = commitSession;

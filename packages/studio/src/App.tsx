@@ -256,7 +256,7 @@ export function StudioApp({ readOnlyPreview = false, readOnlyPreviewReason }: St
     showToast,
     syncHistoryPreviewAfterApply: previewPersistence.syncHistoryPreviewAfterApply,
     showHistoryRestoreNow: previewPersistence.showHistoryRestoreNow,
-    waitForPendingDomEditSaves: previewPersistence.waitForPendingDomEditSaves,
+    waitForPendingDomEditSaves: previewPersistence.settlePendingEdits,
     handleCopy,
     handlePaste,
     handleCut,

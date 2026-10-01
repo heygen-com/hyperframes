@@ -83,7 +83,7 @@ async function studio() {
       showToast: () => {},
       syncHistoryPreviewAfterApply: persistence.syncHistoryPreviewAfterApply,
       showHistoryRestoreNow: persistence.showHistoryRestoreNow,
-      waitForPendingDomEditSaves: persistence.waitForPendingDomEditSaves,
+      waitForPendingDomEditSaves: persistence.settlePendingEdits,
     });
     return null;
   }
@@ -225,16 +225,22 @@ it("an undo pressed while a nudge waits for more keys never shows the move befor
   expect(s.box()).toBe("50px");
 });
 
-it("an undo pressed while an edit's save fails undoes the edit before it, file and box alike", async () => {
+it("an undo pressed while a queued save fails undoes the edit before it, file and box alike", async () => {
   const s = await studio();
   await s.edit();
   const box = s.element("box");
   let fail!: () => void;
   const handleDomStyleCommit = vi.fn(async () => {
     box.style.left = "70px";
-    await new Promise<void>((resolve) => (fail = resolve));
-    box.style.left = "50px";
-    throw new Error("The save failed.");
+    try {
+      await s.persistence().queueDomEditSave(async () => {
+        await new Promise<void>((resolve) => (fail = resolve));
+        throw new Error("The save failed.");
+      });
+    } catch (error) {
+      box.style.left = "50px";
+      throw error;
+    }
   });
   let actions!: ReturnType<typeof useDomEditActionsContext>;
   function Canvas() {
@@ -252,6 +258,7 @@ it("an undo pressed while an edit's save fails undoes the edit before it, file a
   const failed = actions.handleDomStyleCommit("left", "70px");
 
   const undone = s.actions().undo();
+  await vi.waitFor(() => expect(fail).toBeTypeOf("function"));
   fail();
   await expect(failed).rejects.toThrow("The save failed.");
   await act(() => undone);

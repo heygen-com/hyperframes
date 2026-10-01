@@ -28,6 +28,7 @@ const REST_RECT: OverlayRect = {
 // Stable across renders on purpose: the test targets the `selection` identity
 // key specifically, so `groupSelections` must not itself be a source of churn.
 const EMPTY_GROUP_SELECTIONS: DomEditSelection[] = [];
+let flushNudge = () => {};
 
 function Harness({
   selection,
@@ -36,7 +37,7 @@ function Harness({
   selection: DomEditSelection | null;
   onPathOffsetCommit: UseDomEditNudgeParams["onPathOffsetCommitRef"]["current"];
 }) {
-  useDomEditNudge({
+  flushNudge = useDomEditNudge({
     selection,
     groupSelections: EMPTY_GROUP_SELECTIONS,
     allowCanvasMovement: true,
@@ -50,7 +51,7 @@ function Harness({
     onBlockedMoveRef: makeRef(() => {}),
     onPathOffsetCommitRef: makeRef(onPathOffsetCommit),
     onGroupPathOffsetCommitRef: makeRef(async () => {}),
-  });
+  }).flushNudge;
   return null;
 }
 
@@ -296,6 +297,7 @@ describe("useDomEditNudge carries the route its press chose", () => {
 describe("useDomEditNudge — undo right after a burst", () => {
   it("undo's drain commits a burst still inside its debounce and waits for its save", async () => {
     __resetForTests();
+    vi.useFakeTimers();
     const root = createRoot(document.body.appendChild(document.createElement("div")));
     const element = document.body.appendChild(document.createElement("div"));
     element.id = "dot-undo";
@@ -313,7 +315,9 @@ describe("useDomEditNudge — undo right after a burst", () => {
 
     let drained = false;
     const drain = flushStudioPendingEdits().then(() => (drained = true));
-    await vi.waitFor(() => expect(commit).toHaveBeenCalledTimes(1));
+    expect(commit).toHaveBeenCalledTimes(1);
+    vi.useRealTimers();
+    await new Promise((resolve) => setTimeout(resolve, 20));
     expect(drained).toBe(false);
     saved();
     await drain;
@@ -345,6 +349,31 @@ describe("useDomEditNudge — undo right after a burst", () => {
     expect(hasStudioPendingEdits()).toBe(true);
     vi.useRealTimers();
     saved();
+    await vi.waitFor(() => expect(hasStudioPendingEdits()).toBe(false));
+    act(() => root.unmount());
+  });
+});
+
+describe("useDomEditNudge — a commit that throws", () => {
+  it("still ends the burst's pending edit, so undo and export never wait on it", async () => {
+    __resetForTests();
+    const root = createRoot(document.body.appendChild(document.createElement("div")));
+    const element = document.body.appendChild(document.createElement("div"));
+    element.id = "dot-throws";
+    const commit = vi.fn(() => {
+      throw new Error("The commit threw.");
+    });
+    act(() => {
+      root.render(
+        React.createElement(Harness, {
+          selection: makeSelection("Dot", element),
+          onPathOffsetCommit: commit,
+        }),
+      );
+    });
+    act(() => dispatchArrowRight());
+    expect(hasStudioPendingEdits()).toBe(true);
+    expect(() => flushNudge()).toThrow("The commit threw.");
     await vi.waitFor(() => expect(hasStudioPendingEdits()).toBe(false));
     act(() => root.unmount());
   });
