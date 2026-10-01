@@ -22,10 +22,6 @@ export function selectClipWithLinks(
   if (expanded.size > selectedElementIds.size) state.setSelection(expanded, key);
 }
 
-/**
- * Shift/Cmd-click: toggle `key` in the selection, taking its link partners along
- * unless Alt (or Linked Selection off) singles it out. Returns the new primary.
- */
 export function toggleClipWithLinks(key: string, altKey: boolean): TimelineElement | null {
   const state = usePlayerStore.getState();
   const element = state.elements.find((el) => (el.key ?? el.id) === key);

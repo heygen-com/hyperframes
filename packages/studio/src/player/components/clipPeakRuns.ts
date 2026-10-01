@@ -48,7 +48,6 @@ export function clipPeakRuns(
   return { runs, peakDbfs: runs.length > 0 ? 20 * Math.log10(loudest) : null };
 }
 
-/** The loudest source sample, linear, in the part of the file the clip plays; null outside it. */
 export function clipSourcePeak(map: PeakMap, window: ClipSourceWindow): number | null {
   if (!(window.sourceSpan > 0) || !(map.binSeconds > 0)) return null;
   const first = Math.max(0, Math.floor(window.mediaStart / map.binSeconds));

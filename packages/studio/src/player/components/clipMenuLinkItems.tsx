@@ -22,7 +22,6 @@ const keyOf = (el: TimelineElement) => el.key ?? el.id;
 
 const tagOf = (el: TimelineElement) => el.tag.trim().toLowerCase();
 
-/** The one unlinked opposite-kind clip from the same file on another track, if exactly one exists. */
 function loneSameFilePartner(
   element: TimelineElement,
   elements: readonly TimelineElement[],
@@ -47,7 +46,6 @@ function partnerSuffix(element: TimelineElement, others: readonly TimelineElemen
   return pair === "audio+video" ? ` ${tagOf(partner)}` : "";
 }
 
-/** Link for an explicitly selected video+audio pair, else for the lone same-file partner of a sole selection. */
 function linkItem(
   element: TimelineElement,
   elements: readonly TimelineElement[],

@@ -67,10 +67,7 @@ export function setLinkInSource(
   );
 }
 
-/**
- * Link the targets under one freshly minted id. Only a pair from one source file
- * also gets that id as its sync origin, so a drifted pair shows its offset.
- */
+/** Link the targets under one fresh id, also their sync origin when they share a source file. */
 export function linkInSource(
   source: string,
   targets: readonly PatchTarget[],
@@ -262,13 +259,11 @@ export function canLinkPair(selected: readonly TimedElement[]): boolean {
   return tags.has("video") && tags.has("audio") && sameCompositionScope(a, b);
 }
 
-/** Whether the pair comes from one source file, so the link can carry a sync origin. */
 export function sharesSourceFile(selected: readonly TimedElement[]): boolean {
   const [a, b] = selected;
   return selected.length === 2 && !!a && !!b && sameAssetInScope(a, b);
 }
 
-/** Both halves put source time zero at the same timeline moment, at the same rate. */
 export function isPairInSync(a: TimedElement, b: TimedElement): boolean {
   const timing = (el: TimedElement) => ({
     start: el.start,

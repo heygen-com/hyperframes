@@ -150,7 +150,6 @@ export interface ClipToolState {
   carve: string | null;
 }
 
-/** The volume badge text, or null at 100% and on clips with no sound. */
 export function clipVolumeBadge(state: ClipToolState): string | null {
   if (state.tag !== "audio" && !state.hasSound) return null;
   if (state.muted) return "Muted";
