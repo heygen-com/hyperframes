@@ -7,6 +7,7 @@ import {
   applySoftReload,
   applySoftReloadFinalization,
   extractGsapScriptText,
+  readNestedFiles,
 } from "../utils/gsapSoftReload";
 import { furthestClipEndFromDocument } from "../player/lib/timelineElementHelpers";
 import type { RecordEditInput } from "../utils/studioFileHistory";
@@ -118,6 +119,7 @@ function syncTimingEditPreview(
   currentTime: number,
   reloadPreview: () => void,
   rebindWhenUnmutated: boolean,
+  nestedFiles: Map<string, string> | null | undefined,
 ): void {
   if (!outcome.mutated && rebindWhenUnmutated) {
     if (!rebindPreviewTiming(iframe, currentTime)) reloadPreview();
@@ -130,12 +132,15 @@ function syncTimingEditPreview(
   const result = applySoftReload(iframe, outcome.scriptText, {
     onAsyncFailure: reloadPreview,
     currentTimeOverride: currentTime,
+    authoredHtml: outcome.after,
+    nestedFiles,
   });
   if (result === "cannot-soft-reload") reloadPreview();
 }
 
 async function finishTimelineTimingFallback(input: {
   iframe: HTMLIFrameElement | null;
+  projectId: string | null;
   reloadPreview: () => void;
   gsapMutation?: () => Promise<GsapMutationStatus>;
   onGsapError: (error: unknown) => void;
@@ -160,12 +165,21 @@ async function finishTimelineTimingFallback(input: {
       return;
     }
   }
+  const { projectId } = input;
+  const reads =
+    projectId && outcome.scriptText
+      ? readNestedFiles(input.iframe, outcome.scriptText, (path) =>
+          readFileContent(projectId, path),
+        )
+      : null;
+  const nestedFiles = reads ? await reads.catch(() => null) : undefined;
   syncTimingEditPreview(
     input.iframe,
     outcome,
     usePlayerStore.getState().currentTime,
     input.reloadPreview,
     input.rebindWhenUnmutated,
+    nestedFiles,
   );
 }
 
@@ -384,7 +398,7 @@ export function sdkTimingGsapSync(
     return findTimelineScript(scripts)?.textContent ?? null;
   };
   if (timelineText(result.before) === timelineText(result.after)) return null;
-  return { mutated: true, scriptText: extractGsapScriptText(result.after) };
+  return { mutated: true, scriptText: extractGsapScriptText(result.after), after: result.after };
 }
 
 /** Timing delta a single-clip edit applies to its GSAP tweens. */
@@ -440,6 +454,7 @@ export function finishClipTimingFallback(input: {
     console.error(`[Timeline] Failed to ${edit.kind} GSAP positions`, err);
   return finishTimelineTimingFallback({
     iframe: input.iframe,
+    projectId,
     reloadPreview: input.reloadPreview,
     gsapMutation: sdkGsap
       ? () => Promise.resolve(sdkGsap)
@@ -498,6 +513,7 @@ export async function finishGroupTimingGsapFallback<C extends { element: Timelin
   if (sdkGsap) {
     await finishTimelineTimingFallback({
       iframe: input.iframe,
+      projectId: input.projectId,
       reloadPreview: input.reloadPreview,
       gsapMutation: () => Promise.resolve(sdkGsap),
       onGsapError,
@@ -507,6 +523,7 @@ export async function finishGroupTimingGsapFallback<C extends { element: Timelin
   }
   await finishTimelineTimingFallback({
     iframe: input.iframe,
+    projectId: input.projectId,
     reloadPreview: input.reloadPreview,
     gsapMutation: () =>
       foldGsapMutationIntoHistory({
@@ -519,6 +536,7 @@ export async function finishGroupTimingGsapFallback<C extends { element: Timelin
         gsapMutation: async (runOwnedMutation) => {
           let mutated = false;
           let scriptText: GsapMutationStatus["scriptText"] = null;
+          let after: string | undefined;
           for (const change of input.changes) {
             const changePath = input.resolveChangePath(change.element);
             const status = await runOwnedMutation(changePath, () =>
@@ -527,9 +545,9 @@ export async function finishGroupTimingGsapFallback<C extends { element: Timelin
             mutated = mutated || status.mutated;
             // The LAST mutation against the active comp carries the cumulative
             // rewritten script for that file.
-            if (changePath === activePath) scriptText = status.scriptText;
+            if (changePath === activePath) ({ scriptText, after } = status);
           }
-          return { mutated, scriptText: otherFileChanged ? null : scriptText };
+          return { mutated, scriptText: otherFileChanged ? null : scriptText, after };
         },
         onRollbackError: onGsapError,
       }),

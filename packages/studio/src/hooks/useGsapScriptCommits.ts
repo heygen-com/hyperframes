@@ -142,7 +142,7 @@ function refreshMutationPreview(
   options: CommitMutationOptions,
   reloadPreview: () => void,
   onCacheInvalidate: () => void,
-  nestedFiles?: Map<string, string>,
+  nestedFiles?: Map<string, string> | null,
 ): void {
   options.beforeReload?.();
   applyPreviewSync(iframe, result, options, reloadPreview, nestedFiles);
@@ -181,7 +181,7 @@ function syncCommittedGsapMutation({
   forceReloadSdkSession?: () => void;
   reloadPreview: () => void;
   onCacheInvalidate: () => void;
-  nestedFiles?: Map<string, string>;
+  nestedFiles?: Map<string, string> | null;
 }): void {
   if (result.after != null) onFileContentChanged?.(targetPath, result.after);
   // Server wrote the file; the in-memory SDK doc is now stale. Resync it so a
@@ -222,7 +222,7 @@ function softReloadOrEscalate(
   reloadPreview: () => void,
   origin: "preview_sync" | "sdk_refresh",
   authoredHtml?: string,
-  nestedFiles?: Map<string, string>,
+  nestedFiles?: Map<string, string> | null,
 ): void {
   // Seek the rebuilt timeline to the studio's own authoritative scrub position,
   // not the iframe's raw `__player.getTime()` — see the comment in
@@ -257,7 +257,7 @@ export function applyPreviewSync(
   result: MutationResult,
   options: CommitMutationOptions,
   reloadPreview: () => void,
-  nestedFiles?: Map<string, string>,
+  nestedFiles?: Map<string, string> | null,
 ): void {
   const patches = instantPatchesFor(options);
   let needsFallback = options.previewFallbackLatch?.pending === true;
@@ -361,7 +361,7 @@ export function useGsapScriptCommits({ projectIdRef, activeCompPath, previewIfra
           readSharedProjectFileContent(projectId, path),
         )
       : null;
-    const nestedFiles = reads ? await reads.catch(() => undefined) : undefined;
+    const nestedFiles = reads ? await reads.catch(() => null) : undefined;
     // The durable mutation belongs to the project captured when it was queued.
     // A later project must never receive its file state or preview refresh.
     if (!isActiveCommitTarget(projectIdRef, activeCompPathRef, projectId, compositionPath)) return;

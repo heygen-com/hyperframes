@@ -210,8 +210,8 @@ export interface SoftReloadOptions {
   /** After-write file HTML — the primary source for the authored opacity and transform restore. */
   authoredHtml?: string;
   reparse?: Element[];
-  /** Other composition files a reset element is written in, by path; see softReloadTargets. */
-  nestedFiles?: Map<string, string>;
+  /** Other composition files a reset element is written in, by path; null when one could not be read. */
+  nestedFiles?: Map<string, string> | null;
 }
 
 /**
@@ -281,6 +281,8 @@ export function applySoftReload(
   const doc = iframe.contentDocument;
   if (!win || !doc) return "cannot-soft-reload";
   if (!win.gsap || !win.__hfForceTimelineRebind) return "cannot-soft-reload";
+  // Without the file an element is written in, only a full load restores it.
+  if (options.nestedFiles === null) return "cannot-soft-reload";
 
   // Which composition(s) does this script rebuild? A soft reload re-runs ONE
   // composition's GSAP script, which re-registers its own window.__timelines[key].
@@ -322,6 +324,7 @@ export function applySoftReload(
   // once the plugin loads; the alternative (returning false) would trigger a
   // full iframe reload that destroys the very WebGL context we're preserving.
   let deferredToAsync = false;
+  let builtDom = false;
 
   // Authored-opacity resolution for the restore loop below. Three-state:
   //   "0.98" — the element's authored inline opacity
@@ -411,7 +414,14 @@ export function applySoftReload(
       }
       const s = doc.createElement("script");
       s.textContent = `(function(){${scriptText}\n})();`;
+      const ownScriptNode = 1;
+      const before = doc.body.querySelectorAll("*").length + ownScriptNode;
       doc.body.appendChild(s);
+      // A script that builds DOM builds it again on every run; only a full load starts from the file.
+      // Not seen: text-only writes, nodes put in the head or a shadow root, nodes added
+      // later, and a builder that removes its old nodes first (which needs no full load).
+      builtDom = doc.body.querySelectorAll("*").length > before;
+      if (builtDom && deferredToAsync) onAsyncFailure?.();
       finalizeSoftReload(win, currentTime);
     };
 
@@ -461,9 +471,9 @@ export function applySoftReload(
   };
 
   const run = () => runSuppressed(win, doReload);
-  // The synchronous re-run threw — the preview is now genuinely broken (target
-  // timeline killed, script not re-registered). Escalate to a full reload.
-  if (!run()) return "cannot-soft-reload";
+  // The synchronous re-run threw or built DOM a second time: the preview is now
+  // genuinely broken (no timeline, or duplicated nodes). Escalate to a full reload.
+  if (!run() || builtDom) return "cannot-soft-reload";
   // When MotionPath needs async loading, the script hasn't executed yet —
   // skip the __timelines check and report success optimistically (the script
   // WILL run on plugin load; onAsyncFailure covers the CDN-error case).

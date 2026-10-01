@@ -61,7 +61,7 @@ export function collectResetTargets(
       for (const tween of ownTweens(timelines[key] ?? {}, others)) addTweenTargets(tween, targets);
     } catch {}
   }
-  sweepOrphanedTransforms(doc, targetKeys, others, targets);
+  sweepHeldElements(doc, targetKeys, others, targets);
   return targets;
 }
 
@@ -77,27 +77,32 @@ function tweenTargetsIn(timelines: Set<unknown>): Set<Element> {
   return els;
 }
 
+function compositionRoot(doc: Document, key: string): Element | undefined {
+  return doc.querySelectorAll(`[data-composition-id="${CSS.escape(key)}"]`)[0];
+}
+
 export function compositionFile(doc: Document, targetKeys: string[]): string | null {
-  const root = targetKeys
-    .map((key) => doc.querySelectorAll(`[data-composition-id="${CSS.escape(key)}"]`)[0])
-    .find(Boolean);
+  const root = targetKeys.map((key) => compositionRoot(doc, key)).find(Boolean);
   return root?.closest("[data-composition-file]")?.getAttribute("data-composition-file") ?? null;
 }
 
-// A standalone gsap.set, or keyframes just removed, leaves a transform no timeline child shows.
-// Gate on GSAP's cache so an authored inline transform is never stripped. What another file
-// holds or another timeline animates belongs to a script this re-run does not rebuild.
-function sweepOrphanedTransforms(
+// A standalone gsap.set, or keyframes just removed, leaves GSAP state no timeline child shows.
+// The nearest composition root says whose script set it; another timeline's targets stay its own.
+function sweepHeldElements(
   doc: Document,
   targetKeys: string[],
   others: Set<unknown>,
   targets: Map<Element, Set<string>>,
 ): void {
   const elsewhere = tweenTargetsIn(others);
-  const file = compositionFile(doc, targetKeys);
-  for (const el of doc.querySelectorAll<HTMLElement>("[style*='transform']")) {
-    if (targets.has(el) || elsewhere.has(el) || authoringFile(el) !== file) continue;
-    if (el.style.transform && "_gsap" in el) targets.set(el, new Set());
+  const roots = new Set<Element | null | undefined>(targetKeys.map((k) => compositionRoot(doc, k)));
+  roots.delete(undefined);
+  for (const root of roots) {
+    for (const el of root ? [root, ...root.querySelectorAll("*")] : []) {
+      if (targets.has(el) || elsewhere.has(el) || !("_gsap" in el)) continue;
+      if (el === root || roots.has(el.parentElement?.closest("[data-composition-id]")))
+        targets.set(el, new Set());
+    }
   }
 }
 
@@ -106,7 +111,7 @@ function sweepOrphanedTransforms(
 export function fileDocs(
   ownFile: string | null,
   written: string | undefined,
-  nestedFiles: Map<string, string> | undefined,
+  nestedFiles: Map<string, string> | null | undefined,
 ): (file: string | null) => Document | null {
   const docs = new Map<string | null, Document | null>();
   return (file) => {

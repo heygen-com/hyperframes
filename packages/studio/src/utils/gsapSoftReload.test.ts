@@ -1,6 +1,6 @@
 // @vitest-environment happy-dom
 
-import { describe, it, expect, vi } from "vitest";
+import { afterEach, describe, it, expect, vi } from "vitest";
 import {
   readNestedFiles,
   applySoftReload,
@@ -132,10 +132,14 @@ describe("applySoftReload", () => {
     const container = document.createElement("div");
     container.appendChild(scriptEl);
 
+    const root = document.createElement("div");
+    root.setAttribute("data-composition-id", "root");
+    root.appendChild(orphan);
+
     const { iframe } = buildMockIframe({ gsap: { timeline: vi.fn(), set: vi.fn() } });
     (iframe as unknown as { contentDocument: unknown }).contentDocument = {
       querySelectorAll: (sel: string) =>
-        sel === "script:not([src])" ? [scriptEl] : sel === "[style*='transform']" ? [orphan] : [],
+        sel === "script:not([src])" ? [scriptEl] : sel.includes("composition-id") ? [root] : [],
       createElement: (tag: string) => document.createElement(tag),
       body: container,
       head: document.createElement("div"),
@@ -428,6 +432,8 @@ describe("ensureMotionPathPluginLoaded", () => {
 // from the parse-time stamp. Otherwise a runtime transient (the color-grading
 // hide's 0, a mid-flight tween value) becomes a permanent tween bound.
 describe("applySoftReload authored-style restore", () => {
+  afterEach(() => document.body.replaceChildren());
+
   function buildIframeWithTarget(el: Element, overrides: Record<string, unknown> = {}) {
     const scriptEl = document.createElement("script");
     scriptEl.textContent =
@@ -723,5 +729,92 @@ describe("applySoftReload authored-style restore", () => {
 
     expect(readFile).toHaveBeenCalledTimes(1);
     expect(files).toEqual(new Map([["compositions/sub.html", SUB_FILE]]));
+  });
+
+  it("escalates, touching nothing, when a nested file the reset needs could not be read", () => {
+    const el = inlinedIn("compositions/sub.html", document.createElement("div"));
+    el.style.cssText = "width: 337px; translate: none";
+    const tween = { targets: () => [el], vars: { width: 400 } };
+    const set = vi.fn();
+    const { iframe } = buildIframeWithTarget(el, {
+      gsap: { timeline: vi.fn(), set },
+      __timelines: { root: { kill: vi.fn(), getChildren: () => [tween] } },
+    });
+
+    expect(applySoftReload(iframe, SCRIPT_TEXT, { nestedFiles: null })).toBe("cannot-soft-reload");
+    expect(set).not.toHaveBeenCalled();
+    expect(el.style.cssText).toBe("width: 337px; translate: none;");
+  });
+
+  it("keeps the runtime's own inline writes: only what GSAP wrote comes back from the file", () => {
+    const el = document.createElement("div");
+    el.setAttribute("data-hf-id", "hf-1");
+    // The runtime's layout pass wrote position and a data-width size; GSAP wrote the mask and transform.
+    el.style.cssText =
+      "left: 10px; position: absolute; width: 300px; translate: none; transform: translate(50px, 0px)";
+    const tween = { targets: () => [el], vars: { x: 50 } };
+    const { iframe } = buildIframeWithTarget(el, {
+      __timelines: { root: { kill: vi.fn(), getChildren: () => [tween] } },
+    });
+    const authoredHtml = `<html><body><div data-hf-id="hf-1" style="left: 10px"></div></body></html>`;
+
+    applySoftReload(iframe, SCRIPT_TEXT, { authoredHtml });
+
+    expect(el.getAttribute("style")).toBe("left: 10px; position: absolute; width: 300px;");
+  });
+});
+
+describe("applySoftReload over a composition's own markup", () => {
+  // A live preview whose top-level timeline has no children; `_gsap` marks what a script set.
+  function reloadRoot(markup: string, held: string[]) {
+    const doc = document.implementation.createHTMLDocument("");
+    doc.body.innerHTML = `${markup}<script>${SCRIPT_TEXT}</script>`;
+    for (const id of held) Object.assign(doc.getElementById(id)!, { _gsap: {} });
+    const set = vi.fn();
+    const contentWindow = {
+      gsap: { timeline: vi.fn(), set },
+      __hfForceTimelineRebind: vi.fn(),
+      __timelines: { root: { kill: vi.fn(), getChildren: () => [] } } as Record<string, unknown>,
+      __player: { getTime: () => 0, seek: vi.fn() },
+    };
+    const iframe = { contentWindow, contentDocument: doc } as unknown as HTMLIFrameElement;
+    const cleared = () => (set.mock.calls[0]?.[0] as Element[] | undefined)?.map((el) => el.id);
+    return { doc, iframe, cleared };
+  }
+
+  it("resets an element a standalone gsap.set holds even when no inline transform is left", () => {
+    const { iframe, cleared } = reloadRoot(
+      `<div data-composition-id="root"><div id="held" style="left: 5px"></div><div id="plain"></div></div>`,
+      ["held"],
+    );
+
+    applySoftReload(iframe, SCRIPT_TEXT);
+
+    expect(cleared()).toEqual(["held"]);
+  });
+
+  it("leaves what a nested composition's script holds alone, but resets that composition's host", () => {
+    const { doc, iframe, cleared } = reloadRoot(
+      `<div data-composition-id="root"><div id="host" data-composition-id="sub">` +
+        `<div id="nested" style="transform: translate(90px, 60px)"></div></div></div>`,
+      ["host", "nested"],
+    );
+
+    applySoftReload(iframe, SCRIPT_TEXT);
+
+    expect(cleared()).toEqual(["host"]);
+    expect(doc.getElementById("nested")!.style.transform).toBe("translate(90px, 60px)");
+  });
+
+  it("reloads in full when the re-run builds its DOM a second time", () => {
+    const { doc, iframe } = reloadRoot(`<div id="root" data-composition-id="root"></div>`, []);
+    const append = doc.body.appendChild.bind(doc.body);
+    // What a script's createElement or template clone does each time it runs.
+    doc.body.appendChild = <T extends Node>(node: T): T => {
+      doc.getElementById("root")!.appendChild(doc.createElement("div"));
+      return append(node);
+    };
+
+    expect(applySoftReload(iframe, SCRIPT_TEXT)).toBe("cannot-soft-reload");
   });
 });

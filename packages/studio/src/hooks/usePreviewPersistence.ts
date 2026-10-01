@@ -216,7 +216,7 @@ export function usePreviewPersistence({
             (path) => readProjectFileContent(projectId, path),
           )
         : null;
-      const nestedFiles = reads ? await reads.catch(() => undefined) : undefined;
+      const nestedFiles = reads ? await reads.catch(() => null) : undefined;
       const strategy = applyUndoRestoreToPreview(
         previewIframeRef.current,
         activeCompPathRef.current,

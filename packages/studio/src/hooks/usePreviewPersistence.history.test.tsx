@@ -45,3 +45,79 @@ describe("undo that reloads the preview", () => {
     expect([player.elements, player.timelineReady]).toEqual([clips, true]);
   });
 });
+
+describe("undo that re-runs the top-level script over an element of a nested composition", () => {
+  const script = (width: number) =>
+    `var tl = gsap.timeline({ paused: true }); tl.to("#nwid", { width: ${width} }); window.__timelines["root"] = tl;`;
+  const page = (width: number) =>
+    `<html><body><div id="root" data-composition-id="root"></div><script>${script(width)}</script></body></html>`;
+  const SUB = `<template><div data-composition-id="sub"><div id="nwid" data-hf-id="hf-n" style="left: 40px"></div></div></template>`;
+
+  // The live preview: the top-level timeline tweened the nested element's width inline.
+  function nestedPreview() {
+    const doc = document.implementation.createHTMLDocument("");
+    doc.body.innerHTML =
+      `<div id="root" data-composition-id="root"><div data-composition-file="compositions/sub.html">` +
+      `<div id="nwid" data-hf-id="hf-n" style="left: 40px; width: 337px"></div></div></div>` +
+      `<script>${script(400)}</script>`;
+    const nwid = doc.getElementById("nwid")!;
+    const contentWindow = {
+      gsap: { timeline: vi.fn(), set: vi.fn() },
+      __hfForceTimelineRebind: vi.fn(),
+      __timelines: {
+        root: {
+          kill: vi.fn(),
+          getChildren: () => [{ targets: () => [nwid], vars: { width: 400 } }],
+        },
+      } as Record<string, unknown>,
+      __player: { getTime: () => 1, seek: vi.fn() },
+      __hfStudioManualEditsApply: vi.fn(),
+    };
+    return {
+      iframe: { contentWindow, contentDocument: doc } as unknown as HTMLIFrameElement,
+      nwid,
+    };
+  }
+
+  async function undo(fileOk: boolean) {
+    const { iframe, nwid } = nestedPreview();
+    const reloadPreview = vi.fn();
+    const fetch = vi.fn(async () => ({ ok: fileOk, json: async () => ({ content: SUB }) }));
+    vi.stubGlobal("fetch", fetch);
+    let sync: ReturnType<typeof usePreviewPersistence>["syncHistoryPreviewAfterApply"] | null =
+      null;
+    function Harness() {
+      sync = usePreviewPersistence({
+        showToast: () => {},
+        readOptionalProjectFile: async () => "",
+        writeProjectFile: async () => {},
+        recordEdit: async () => {},
+        previewIframeRef: { current: iframe },
+        activeCompPathRef: { current: "index.html" },
+        reloadPreview,
+        projectId: "p1",
+      }).syncHistoryPreviewAfterApply;
+      return null;
+    }
+    mountReactHarness(<Harness />);
+    const files = { "index.html": { previous: page(400), restored: page(450) } };
+    await act(async () => sync!({ paths: Object.keys(files), files }));
+    vi.unstubAllGlobals();
+    return { nwid, reloadPreview, fetch };
+  }
+
+  it("restores the element from its own composition file", async () => {
+    const { nwid, reloadPreview, fetch } = await undo(true);
+
+    expect(fetch).toHaveBeenCalledWith(expect.stringContaining("/files/compositions%2Fsub.html"));
+    expect(reloadPreview).not.toHaveBeenCalled();
+    expect(nwid.getAttribute("style")).toBe("left: 40px;");
+  });
+
+  it("reloads the preview in full when that file cannot be read", async () => {
+    const { nwid, reloadPreview } = await undo(false);
+
+    expect(reloadPreview).toHaveBeenCalledTimes(1);
+    expect(nwid.getAttribute("style")).toBe("left: 40px; width: 337px");
+  });
+});

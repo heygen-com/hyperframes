@@ -372,7 +372,7 @@ export function applyUndoRestoreToPreview(
   files: RestoreFiles | undefined,
   currentTime: number,
   reload: () => void,
-  nestedFiles?: Map<string, string>,
+  nestedFiles?: Map<string, string> | null,
 ): "soft" | "full" {
   // The master view carries a NULL activeCompPath but the root iframe shows
   // index.html — the codebase-wide convention (`activeCompPath || "index.html"`).
