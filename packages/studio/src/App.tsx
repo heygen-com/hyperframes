@@ -316,13 +316,10 @@ export function StudioApp({ readOnlyPreview = false, readOnlyPreviewReason }: St
     readOnlyPreview,
   });
   domEditSelectionBridgeRef.current = domEditSession.domEditSelection;
-  handleDomZIndexReorderCommitRef.current = trackedStudioEdit(
-    domEditSession.handleDomZIndexReorderCommit,
-  );
+  const { handleDomZIndexReorderCommit: zCommit, handleDomEditElementDelete: del } = domEditSession;
+  handleDomZIndexReorderCommitRef.current = trackedStudioEdit(zCommit);
   clearDomSelectionRef.current = domEditSession.clearDomSelection;
-  handleDomEditElementDeleteRef.current = trackedStudioEdit(
-    domEditSession.handleDomEditElementDelete,
-  );
+  handleDomEditElementDeleteRef.current = trackedStudioEdit(del);
   resetKeyframesRef.current = domEditSession.handleResetSelectedElementKeyframes;
   invalidateGsapCacheRef.current = domEditSession.invalidateGsapCache;
   deleteSelectedKeyframesRef.current = () => deleteSelectedKeyframes(domEditSession);
