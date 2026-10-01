@@ -1,3 +1,7 @@
+/** GSAP renders this element's transform, and masks its CSS translate, rotate and scale inline. */
+export const gsapRendersTransform = (el: Element) =>
+  !!(el as { _gsap?: { renderTransform?: unknown } })._gsap?.renderTransform;
+
 /**
  * Checks whether GSAP actively animates one or more CSS/GSAP properties on
  * the given element by inspecting all registered `__timelines`.

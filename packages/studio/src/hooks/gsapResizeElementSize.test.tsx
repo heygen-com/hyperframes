@@ -44,6 +44,8 @@ function mount(animations: GsapAnimation[]) {
     id: "target",
     _gsap: { renderTransform: () => {} },
   });
+  // GSAP's own inline mask on an element whose transform it renders.
+  element.style.setProperty("scale", "none");
   document.body.append(element);
   const gsap = { getProperty: () => 0, set: vi.fn() };
   const iframe = {
@@ -108,6 +110,7 @@ describe("resizing an element GSAP positions", () => {
         { type: "inline-style", property: "height", value: "227px" },
       ]),
     );
+    expect(patches.filter((p: { property: string }) => p.property === "scale")).toEqual([]);
     expect(options.coalesceKey).toBe(h.commitMutation.mock.calls[0]![2].coalesceKey);
     act(() => h.root.unmount());
   });

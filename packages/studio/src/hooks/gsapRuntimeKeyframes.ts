@@ -12,6 +12,7 @@ import { buildArcPath, type ArcPathConfig } from "@hyperframes/core/gsap-parser-
 import { parsePercentageKeyframes, toAbsoluteTime } from "./gsapShared";
 import { roundTo3 } from "../utils/rounding";
 import { BOX_SIZE_STYLE_PROPS } from "../components/editor/manualEditsDomPatches";
+import { gsapRendersTransform } from "../components/editor/gsapAnimatesProperty";
 
 /**
  * A GSAP tween's `vars` object — intentionally open: it mixes channel values
@@ -445,9 +446,6 @@ export const ROTATION_CHANNELS: string[] = [
   ...["rotation", "rotationX", "rotationY", "rotationZ"],
   ...["rotate", "rotateX", "rotateY", "rotateZ"],
 ];
-
-const gsapRendersTransform = (el: Element) =>
-  !!(el as { _gsap?: { renderTransform?: unknown } })._gsap?.renderTransform;
 
 /** GSAP owns this element's position: a tween or hold writes it, or GSAP already renders its
  *  transform (a CSS translate would then apply twice). Everything else moves by plain CSS. */
