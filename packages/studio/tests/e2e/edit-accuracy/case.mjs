@@ -268,15 +268,87 @@ export async function openStudio(ctx) {
   let seek = null;
   for (const deadline = Date.now() + 30_000; Date.now() < deadline; await sleep(250)) {
     seek = await ctx.page
-      .evaluate((time) => window.__editBench.call("studio_seek", { time }), PLAYHEAD)
+      .evaluate((time) => window.__editBench.call("studio_seek", { time }), ctx.playhead)
       .catch(String);
-    if (seek?.ok && seek.duration > 0 && seek.playhead === PLAYHEAD && (await findTarget(ctx.page)))
+    if (
+      seek?.ok &&
+      seek.duration > 0 &&
+      seek.playhead === ctx.playhead &&
+      (await findTarget(ctx.page))
+    )
       break;
     seek = null;
   }
   if (!seek) throw new Error("studio never reported a seekable composition");
   await sleep(1000);
   return settled(ctx);
+}
+
+async function seekTo(ctx, time) {
+  const seek = await ctx.page.evaluate(
+    (t) => window.__editBench.call("studio_seek", { time: t }),
+    time,
+  );
+  if (!seek?.ok || seek.playhead !== time)
+    throw new Error(`studio_seek ${time}: ${JSON.stringify(seek)}`);
+  return settled(ctx);
+}
+
+/** Each GSAP-animated property's value at every other keyframe time (and the box there), then back to the playhead. */
+async function readKeyframes(ctx, keys, withBox = false) {
+  const at = {};
+  for (const time of keys.times) {
+    const m = await seekTo(ctx, time);
+    const values = await ctx.handles.target.evaluate((el, props) => {
+      const gsap = el.ownerDocument.defaultView.gsap;
+      return Object.fromEntries(props.map((p) => [p, Number.parseFloat(gsap.getProperty(el, p))]));
+    }, keys.props);
+    at[time] = { values, ...(withBox && { visible: m.visible }) };
+  }
+  await seekTo(ctx, ctx.playhead);
+  return at;
+}
+
+// GSAP's own numbers (px, deg, scale): an untouched keyframe reads back exactly.
+const KEY_TOLERANCE = 0.01;
+
+/** The largest change of an animated value at a keyframe the edit was not on; NaN (unreadable) fails. */
+export function keyframeDrift(before, after) {
+  let worst = { diff: 0, time: null, prop: null };
+  for (const [time, b] of Object.entries(before))
+    for (const [prop, v] of Object.entries(b.values)) {
+      const diff = Math.abs(after[time].values[prop] - v);
+      if (!(diff <= worst.diff)) worst = { diff, time: Number(time), prop };
+    }
+  return { ...worst, pass: worst.diff <= KEY_TOLERANCE };
+}
+
+const declarations = (text = "") =>
+  Object.fromEntries(
+    text
+      .split(";")
+      .map((d) => d.split(":"))
+      .filter((d) => d.length > 1)
+      .map(([k, ...v]) => [k.trim(), v.join(":").trim()]),
+  );
+const targetCss = (html) => ({
+  rule: declarations(/#target\s*\{([^}]*)\}/.exec(html)?.[1]),
+  inline: declarations(
+    /\bstyle="([^"]*)"/.exec(/<[^>]*\bid="target"[^>]*>/.exec(html)?.[0] ?? "")?.[1],
+  ),
+});
+
+/** Plain CSS the edit wrote for a property GSAP animates: it would override or fight the timeline. */
+export function strayCss(original, saved, props) {
+  const stray = [];
+  for (const file of Object.keys(original)) {
+    const [a, b] = [targetCss(original[file]), targetCss(saved[file])];
+    for (const where of ["rule", "inline"])
+      for (const p of props)
+        if (a[where][p] !== b[where][p])
+          stray.push(`${file} ${where} ${p}: ${a[where][p] ?? "-"} -> ${b[where][p] ?? "-"}`);
+  }
+  return { pass: stray.length === 0, stray };
 }
 
 /** Puppeteer presses one key at a time: hold the modifiers around the last key. */
@@ -672,7 +744,7 @@ async function nudgeGesture(ctx, pre) {
 export async function inStudio({ browser, spec, dir, files, url, evidence }, drive) {
   const context = await browser.createBrowserContext();
   const page = await context.newPage();
-  const ctx = { page, dir, files, handles: null };
+  const ctx = { page, dir, files, handles: null, playhead: spec.playhead ?? PLAYHEAD };
   const consoleErrors = [];
   page.on("pageerror", (e) => consoleErrors.push(e.message));
   evidence.shots = {};
@@ -686,10 +758,12 @@ export async function inStudio({ browser, spec, dir, files, url, evidence }, dri
     let pre = await openStudio(ctx);
     await disableSnap(page);
     const zoom = await setZoom(ctx, spec.zoom, pre.map.toScreen(centre(pre.visible)));
+    // The animated values at the other keyframes, read before anything is selected or edited.
+    const keysBefore = spec.keys && (await readKeyframes(ctx, spec.keys));
     pre = await settled(ctx);
     await selectTarget(ctx, pre);
     pre = await settled(ctx);
-    return await drive({ ctx, page, pre, zoom, shoot, consoleErrors });
+    return await drive({ ctx, page, pre, zoom, shoot, consoleErrors, keysBefore });
   } catch (error) {
     await shoot("error").catch(() => undefined);
     throw error;
@@ -707,7 +781,7 @@ export async function runCase(args) {
 // fallow-ignore-next-line complexity
 async function measureCase(
   { spec, dir, files, evidence },
-  { ctx, page, pre, zoom, shoot, consoleErrors },
+  { ctx, page, pre, zoom, shoot, consoleErrors, keysBefore },
   control,
 ) {
   const original = readFiles(dir, files);
@@ -753,6 +827,8 @@ async function measureCase(
   await page.reload();
   const reloaded = await openStudio(ctx);
   await shoot("reloaded");
+  // From the saved file: the other keyframes keep their values, and no animated property gets plain CSS.
+  const keysAfter = spec.keys && (await readKeyframes(ctx, spec.keys, true));
   const quads = Object.fromEntries(
     Object.entries({ pre, committed, undone, redone, reloaded }).filter(([, m]) => m),
   );
@@ -793,6 +869,11 @@ async function measureCase(
     smooth: { ...drive.smooth, control },
     unsettled: Object.keys(quads).filter((k) => quads[k].unsettled),
     reloaded,
+    ...(spec.keys && {
+      keys: keyframeDrift(keysBefore, keysAfter),
+      css: strayCss(original, readFiles(dir, files), spec.keys.css),
+      keyRender: { time: spec.keys.render, visible: keysAfter[spec.keys.render].visible },
+    }),
     diag: {
       ...drive.diag,
       consoleErrors: consoleErrors.slice(0, 5),

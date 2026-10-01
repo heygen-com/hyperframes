@@ -19,6 +19,9 @@ export const METRICS = [
   "render",
   "undo",
   "text",
+  "keys",
+  "css",
+  "renderKey",
   "smooth",
 ];
 
@@ -31,6 +34,9 @@ const worstValue = {
   drop: (r) => r.drop,
   reload: (r) => r.reload,
   render: (r) => r.render ?? 0,
+  keys: (r) => r.keys?.diff ?? 0,
+  css: (r) => r.css?.stray.length ?? 0,
+  renderKey: (r) => r.renderKey ?? 0,
   undo: (r) => Math.max(r.undo.box, r.undo.redoBox ?? 0),
   smooth: (r) => r.smooth.dropped - r.smooth.control.dropped,
 };
@@ -48,7 +54,7 @@ const FED_BY = {
   committed: ["drop", "reload", "undo"],
   undone: ["undo"],
   redone: ["undo"],
-  reloaded: ["reload", "render"],
+  reloaded: ["reload", "render", "keys", "renderKey"],
 };
 const unsettledMetrics = (r) => new Set(r.unsettled.flatMap((k) => FED_BY[k]));
 
@@ -69,6 +75,11 @@ export function score(spec, r) {
     teleport: r.teleport === null || r.teleport.pass === true,
     // Text cases only: the typed word saved and shown after a reload (and a selected word stays editable).
     text: !r.text || r.text.pass,
+    // Keyframed cases only: the other keyframes keep their values, no animated property gets plain CSS,
+    // and the producer matches the preview at another keyframe too.
+    keys: !r.keys || r.keys.pass,
+    css: !r.css || r.css.pass,
+    renderKey: r.renderKey === undefined || (r.renderKey !== null && r.renderKey <= LIMIT_PX),
     drop: r.drop <= LIMIT_PX,
     reload: r.reload <= LIMIT_PX,
     render: r.render !== null && r.render <= LIMIT_PX,
@@ -194,6 +205,7 @@ export function entry(r) {
     teleport: r.checks.teleport,
     teleportPx: roundUp(r.teleport?.max ?? null),
     ...(r.text && { text: r.text.pass }),
+    ...(r.keys && { keys: r.keys.pass, css: r.css.pass, renderKey: roundUp(r.renderKey ?? null) }),
     drop: roundUp(r.drop),
     reload: roundUp(r.reload),
     render: roundUp(r.render),

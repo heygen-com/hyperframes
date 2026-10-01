@@ -62,8 +62,8 @@ const luminance = (hex) => {
   return 0.299 * r + 0.587 * g + 0.114 * b;
 };
 
-/** Renders `dir` at the playhead and measures the target's box in the frame. */
-export async function renderBox(dir, decoder) {
+/** Renders `dir` at `time` and measures the target's box in the frame. */
+export async function renderBox(dir, decoder, time = PLAYHEAD) {
   const framesDir = join(dir, ".bench-frames");
   mkdirSync(framesDir, { recursive: true });
   const server = await createFileServer({ projectDir: dir, port: 0, fps: FPS });
@@ -84,7 +84,7 @@ export async function renderBox(dir, decoder) {
       { playerReadyTimeout: 10_000 },
     );
     await initializeSession(session);
-    const { buffer } = await captureFrameToBuffer(session, 0, PLAYHEAD);
+    const { buffer } = await captureFrameToBuffer(session, 0, time);
     // Diagnostic only: a DOM rect ignores clip-path, so it cannot score a crop.
     const domRect = await session.page.evaluate(() => {
       const r = document.querySelector("#target")?.getBoundingClientRect();

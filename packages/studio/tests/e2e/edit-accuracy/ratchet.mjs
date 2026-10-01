@@ -7,7 +7,7 @@ import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { LIMIT_PX, entry, writeReport } from "./report.mjs";
 
-const GATED_PX = ["tracking", "pressJump", "drop", "reload", "render"];
+const GATED_PX = ["tracking", "pressJump", "drop", "reload", "render", "renderKey"];
 const LISTED = 30;
 
 /** Passes every gated metric; an unsettled preview fails the metrics it fed, all of them gated. */
@@ -22,6 +22,10 @@ export const accurate = (e) =>
   e.teleport !== false &&
   // A text case's edit opened, and its word saved and shown (and a word selected, for select).
   e.text !== false &&
+  // Keyframed cases: other keyframes unchanged, no stray CSS, and a measured second render.
+  e.keys !== false &&
+  e.css !== false &&
+  e.renderKey !== null &&
   GATED_PX.every((m) => !(e[m] > LIMIT_PX));
 
 /** Cases whose verdict here differs from the base branch, either way: each is re-run twice before the gate. */

@@ -71,9 +71,14 @@ const errorResult = (error, log) => ({
 const liveRoots = new Set();
 
 /** Render drift: the reloaded preview's visible box against the target's pixel box in a producer frame. */
-async function withRender(dir, decoder, { reloaded, ...measured }, evidence) {
+async function withRender(dir, decoder, { reloaded, keyRender, ...measured }, evidence, spec) {
   const expected = aabb(reloaded.visible);
-  const render = await renderBox(dir, decoder).catch((error) => ({ error }));
+  const render = await renderBox(dir, decoder, spec.playhead).catch((error) => ({ error }));
+  // A keyframed case also matches the producer at another keyframe; unmeasured counts as a failure.
+  if (keyRender) {
+    const other = await renderBox(dir, decoder, keyRender.time).catch(() => null);
+    measured.renderKey = other && boxDistance(other.box, aabb(keyRender.visible));
+  }
   // A producer failure fails render alone; the case's other metrics still count.
   if (render.error)
     return {
@@ -117,7 +122,7 @@ async function runOne(spec, browser, decoder, port) {
     });
     await stopServer(server);
     server = null;
-    result = await withRender(dir, decoder, measured, evidence);
+    result = await withRender(dir, decoder, measured, evidence, spec);
   } catch (error) {
     result = errorResult(error, log);
   } finally {

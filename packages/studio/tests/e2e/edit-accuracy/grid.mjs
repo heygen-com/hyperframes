@@ -23,6 +23,76 @@ const AXES = {
   zoom: [50, 100, 200],
 };
 
+// Timelines with keyframes at 0, 2 and 3 s on the property each animates: `css` is what that property is in CSS.
+const T = '"#target"';
+const KEYFRAMED = {
+  size: {
+    lines: [
+      `tl.to(${T}, { width: 300, height: 200, duration: 2, ease: "none" }, 0);`,
+      `tl.to(${T}, { width: 360, height: 240, duration: 1, ease: "none" }, 2);`,
+    ],
+    props: ["width", "height"],
+    css: ["width", "height"],
+  },
+  scale: {
+    lines: [
+      `tl.to(${T}, { scale: 1.25, duration: 2, ease: "none" }, 0);`,
+      `tl.to(${T}, { scale: 1.5, duration: 1, ease: "none" }, 2);`,
+    ],
+    props: ["scaleX", "scaleY"],
+    css: ["scale", "transform"],
+  },
+  spin: {
+    lines: [
+      `tl.to(${T}, { rotation: 20, duration: 2, ease: "none" }, 0);`,
+      `tl.to(${T}, { rotation: 40, duration: 1, ease: "none" }, 2);`,
+    ],
+    props: ["rotation"],
+    css: ["rotate", "transform"],
+  },
+  // A resize meets a keyframes array that also animates width.
+  keys: {
+    lines: [
+      `tl.to(${T}, { keyframes: [{ x: 60, width: 280, duration: 2, ease: "none" }, { x: 120, width: 320, duration: 1, ease: "none" }] }, 0);`,
+    ],
+    props: ["x", "width"],
+    css: ["left", "top", "translate", "transform", "width"],
+  },
+  fromto: {
+    lines: [
+      `tl.from(${T}, { x: -60, duration: 2, ease: "none" }, 0);`,
+      `tl.fromTo(${T}, { x: 0 }, { x: 60, duration: 1, ease: "none" }, 2);`,
+    ],
+    props: ["x"],
+    css: ["left", "top", "translate", "transform"],
+  },
+};
+const KEY_TIMES = [0, 2, 3];
+// On a keyframe the edit changes that keyframe; between two it adds one at the playhead.
+const AT = { on: 2, mid: 1 };
+
+function keyframedCases() {
+  return product({
+    gsap: Object.keys(KEYFRAMED),
+    placement: ["px"],
+    rotation: AXES.rotation,
+    nesting: AXES.nesting,
+    zoom: AXES.zoom,
+    gesture: GESTURES,
+    at: Object.keys(AT),
+  }).map((c) => ({
+    id: `${caseId(c)}-${c.at}`,
+    ...c,
+    playhead: AT[c.at],
+    keys: {
+      times: KEY_TIMES.filter((t) => t !== AT[c.at]),
+      props: KEYFRAMED[c.gsap].props,
+      css: KEYFRAMED[c.gsap].css,
+      render: KEY_TIMES.at(-1),
+    },
+  }));
+}
+
 const product = (axes) =>
   Object.entries(axes).reduce(
     (rows, [key, values]) => rows.flatMap((row) => values.map((v) => ({ ...row, [key]: v }))),
@@ -31,8 +101,9 @@ const product = (axes) =>
 const caseId = (c) =>
   [c.gesture, c.gsap, c.placement, `r${c.rotation}`, c.nesting, `z${c.zoom}`].join("-");
 
-/** `pr` is a smaller slice for CI; its final size is still an open decision. */
+/** `pr` is a smaller slice for CI; `keyframes` is the GSAP-animated set, kept out of `full` until it is decided. */
 export function buildGrid(kind = "full") {
+  if (kind === "keyframes") return keyframedCases();
   return (
     product({ ...AXES, gesture: GESTURES })
       // xPercent only exists through GSAP on the target itself.
@@ -74,6 +145,7 @@ function targetCss(spec) {
 
 // fallow-ignore-next-line complexity
 function gsapLines(spec) {
+  if (KEYFRAMED[spec.gsap]) return KEYFRAMED[spec.gsap].lines;
   if (spec.gsap === "idle") return [`tl.to("#other", { x: 120, duration: 4, ease: "none" }, 0);`];
   const percent = spec.placement === "xpercent" ? ", xPercent: -50, yPercent: -50" : "";
   if (spec.gsap === "hold") return [`gsap.set("#target", { x: 40, y: 20${percent} });`];
