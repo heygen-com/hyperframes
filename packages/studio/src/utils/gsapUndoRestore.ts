@@ -23,6 +23,7 @@ export interface UndoRestoreFile {
   previous: string;
   restored: string;
 }
+export type RestoreFiles = Record<string, UndoRestoreFile>;
 
 /**
  * Identity for the soft diff: `data-hf-id` when present, else `id`. Nearly
@@ -71,8 +72,9 @@ function parseRestoreSource(html: string): Document {
 // soft-reload's reach → caller full-reloads. Both identity attributes are
 // KEPT, so a change to `id`/`data-hf-id` themselves stays a residual
 // (structural) difference.
-function normalizeSoftResidual(doc: Document): void {
-  for (const el of doc.querySelectorAll(IDENTITY_SELECTOR)) {
+function normalizeSoftResidual(root: Element): void {
+  const self = root.matches(IDENTITY_SELECTOR) ? [root] : [];
+  for (const el of [...self, ...root.querySelectorAll(IDENTITY_SELECTOR)]) {
     const id = el.getAttribute("id");
     const hfId = el.getAttribute("data-hf-id");
     for (const name of [...el.getAttributeNames()]) {
@@ -81,7 +83,7 @@ function normalizeSoftResidual(doc: Document): void {
     if (id) el.setAttribute("id", id);
     if (hfId) el.setAttribute("data-hf-id", hfId);
   }
-  for (const script of findGsapScriptElements(doc)) script.textContent = "";
+  for (const script of findGsapScriptElements(root)) script.textContent = "";
 }
 
 /** Same attribute set with identical values (order-insensitive). */
@@ -112,14 +114,11 @@ export function diffSoftReloadableRestore(
   previous: string,
   restored: string,
 ): { changedElementKeys: string[] } | null {
-  let prevDoc: Document;
-  let nextDoc: Document;
-  try {
-    prevDoc = parseRestoreSource(previous);
-    nextDoc = parseRestoreSource(restored);
-  } catch {
-    return null;
-  }
+  const keys = diffRestoreDocs(parseRestoreSource(previous), parseRestoreSource(restored));
+  return keys && { changedElementKeys: keys };
+}
+
+function diffRestoreDocs(prevDoc: Document, nextDoc: Document): string[] | null {
   const prevByKey = identityElementMap(prevDoc);
   const nextByKey = identityElementMap(nextDoc);
   if (!prevByKey || !nextByKey) return null;
@@ -133,10 +132,12 @@ export function diffSoftReloadableRestore(
     if (!attributesEqual(prevEl, nextEl)) changedElementKeys.push(key);
   }
   // Confirm nothing OUTSIDE identified-element attributes and GSAP scripts changed.
-  normalizeSoftResidual(prevDoc);
-  normalizeSoftResidual(nextDoc);
-  if (prevDoc.documentElement.outerHTML !== nextDoc.documentElement.outerHTML) return null;
-  return { changedElementKeys };
+  const [prevRest, nextRest] = [prevDoc, nextDoc].map((doc) => {
+    const root = doc.documentElement.cloneNode(true) as Element;
+    normalizeSoftResidual(root);
+    return root.outerHTML;
+  });
+  return prevRest === nextRest ? changedElementKeys : null;
 }
 
 /** Copy every attribute from `source` onto the live `target`, dropping extras. */
@@ -160,14 +161,10 @@ function syncStaleEditMarks(doc: Document, restored: string): void {
   }
 }
 
-function readGsapScriptTexts(html: string): string[] {
-  const doc = new DOMParser().parseFromString(html, "text/html");
-  return findGsapScriptElements(doc).map((script) => script.textContent ?? "");
-}
-
-function hasAmbiguousGsapScriptChange(previous: string, restored: string): boolean {
-  const previousScripts = readGsapScriptTexts(previous);
-  const restoredScripts = readGsapScriptTexts(restored);
+function hasAmbiguousGsapScriptChange(
+  previousScripts: string[],
+  restoredScripts: string[],
+): boolean {
   if (previousScripts.length <= 1 && restoredScripts.length <= 1) return false;
   return (
     previousScripts.length !== restoredScripts.length ||
@@ -176,22 +173,22 @@ function hasAmbiguousGsapScriptChange(previous: string, restored: string): boole
 }
 
 type RestoreTarget = { live: Element; restored: Element };
+type RestorePlan = { targets: RestoreTarget[]; scripted: boolean };
 
-/** Whether a file, template content included, carries a GSAP script. */
-export function restoreHasGsapScript(html: string): boolean {
-  return findGsapScriptElements(parseRestoreSource(html)).length > 0;
+/** Whether either side has a GSAP script, or null when its scripts rule out an in-place restore. */
+function restoreScripted(prevDoc: Document, nextDoc: Document, isActive: boolean): boolean | null {
+  const [before, after] = [prevDoc, nextDoc].map((doc) =>
+    findGsapScriptElements(doc).map((script) => script.textContent ?? ""),
+  );
+  const scripted = before!.length > 0 || after!.length > 0;
+  // Only the active document's GSAP script can be re-run in place.
+  if (scripted && !isActive) return null;
+  return hasAmbiguousGsapScriptChange(before!, after!) ? null : scripted;
 }
 
 // The active document is the whole preview; a sub-composition lives in each host that inlines it.
-// Only the active document's GSAP script can be re-run in place.
-function liveScopes(
-  doc: Document,
-  path: string,
-  isActive: boolean,
-  file: UndoRestoreFile,
-): ParentNode[] {
+function liveScopes(doc: Document, path: string, isActive: boolean): ParentNode[] {
   if (isActive) return [doc];
-  if (restoreHasGsapScript(file.previous) || restoreHasGsapScript(file.restored)) return [];
   return Array.from(doc.querySelectorAll(`[data-composition-file="${CSS.escape(path)}"]`));
 }
 
@@ -218,35 +215,74 @@ function fileTargets(
   path: string,
   isActive: boolean,
   file: UndoRestoreFile,
-): RestoreTarget[] | null {
-  const { previous, restored } = file;
-  const scopes = liveScopes(doc, path, isActive, file);
-  const diff = diffSoftReloadableRestore(previous, restored);
-  if (!scopes.length || !diff || hasAmbiguousGsapScriptChange(previous, restored)) return null;
-  const restoredByKey = identityElementMap(parseRestoreSource(restored));
-  if (!restoredByKey) return null;
-  const targets: RestoreTarget[] = [];
-  for (const scope of scopes) {
-    const found = scopeTargets(scope, diff.changedElementKeys, restoredByKey);
-    if (!found) return null;
-    targets.push(...found);
-  }
-  return targets;
+): RestorePlan | null {
+  const prevDoc = parseRestoreSource(file.previous);
+  const nextDoc = parseRestoreSource(file.restored);
+  const scripted = restoreScripted(prevDoc, nextDoc, isActive);
+  if (scripted === null) return null;
+  const keys = diffRestoreDocs(prevDoc, nextDoc);
+  const restoredByKey = identityElementMap(nextDoc);
+  if (!keys || !restoredByKey) return null;
+  const found = liveScopes(doc, path, isActive).map((scope) =>
+    scopeTargets(scope, keys, restoredByKey),
+  );
+  if (!found.length || found.includes(null)) return null;
+  return { targets: (found as RestoreTarget[][]).flat(), scripted };
 }
 
 /** Every live element a restore changes with its restored markup, or null when it needs a reload. */
 function planRestoreTargets(
   doc: Document,
   activeDocPath: string,
-  files: Record<string, UndoRestoreFile>,
-): RestoreTarget[] | null {
-  const targets: RestoreTarget[] = [];
+  files: RestoreFiles,
+): RestorePlan | null {
+  const plan: RestorePlan = { targets: [], scripted: false };
   for (const [path, file] of Object.entries(files)) {
     const found = fileTargets(doc, path, path === activeDocPath, file);
     if (!found) return null;
-    targets.push(...found);
+    plan.targets.push(...found.targets);
+    plan.scripted ||= found.scripted;
   }
-  return targets;
+  return plan;
+}
+
+// Rebind-only finalization (no script run); plain seek + manual reapply when the runtime has no rebind hook.
+function finalizeInPlace(
+  iframe: HTMLIFrameElement,
+  win: PreviewWindow,
+  currentTime: number,
+): boolean {
+  if (applySoftReloadFinalization(iframe, currentTime)) return true;
+  try {
+    win.__player?.seek?.(currentTime);
+    win.__hfStudioManualEditsApply?.();
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+/** Shows a restore without a GSAP script in place, or nothing; returns what puts the shown elements back. */
+export function showRestoreInPlace(
+  iframe: HTMLIFrameElement | null,
+  activeCompPath: string | null,
+  files: RestoreFiles,
+  currentTime: number,
+): ((currentTime: number) => boolean) | null {
+  const doc = iframe?.contentDocument;
+  const win = iframe?.contentWindow as PreviewWindow | null;
+  const plan = doc && win ? planRestoreTargets(doc, activeCompPath ?? "index.html", files) : null;
+  if (!iframe || !win || !plan || plan.scripted) return null;
+  const before = plan.targets.map(({ live }) => [live, live.cloneNode(false) as Element] as const);
+  for (const { live, restored } of plan.targets) syncElementAttributes(live, restored);
+  const putBack = (time: number) => {
+    if (iframe.contentDocument !== doc) return false;
+    for (const [live, attributes] of before) syncElementAttributes(live, attributes);
+    return finalizeInPlace(iframe, win, time);
+  };
+  if (finalizeInPlace(iframe, win, currentTime)) return putBack;
+  putBack(currentTime);
+  return null;
 }
 
 /**
@@ -279,7 +315,7 @@ function planRestoreTargets(
 export function applyUndoRestoreToPreview(
   iframe: HTMLIFrameElement | null,
   activeCompPath: string | null,
-  files: Record<string, UndoRestoreFile> | undefined,
+  files: RestoreFiles | undefined,
   currentTime: number,
   reload: () => void,
 ): "soft" | "full" {
@@ -295,14 +331,14 @@ export function applyUndoRestoreToPreview(
   };
   const doc = iframe?.contentDocument;
   const win = iframe?.contentWindow as PreviewWindow | null;
-  const changedTargets = doc && files && win ? planRestoreTargets(doc, activeDocPath, files) : null;
-  if (!doc || !files || !win || !changedTargets) {
+  const plan = doc && files && win ? planRestoreTargets(doc, activeDocPath, files) : null;
+  if (!iframe || !doc || !files || !win || !plan) {
     reloadPreview();
     return "full";
   }
   // Sync each changed element's attributes onto the live DOM from the restored
   // markup, so the runtime's seek-reapply reads the reverted values.
-  for (const target of changedTargets) syncElementAttributes(target.live, target.restored);
+  for (const target of plan.targets) syncElementAttributes(target.live, target.restored);
 
   const active = files[activeDocPath];
   const restoredScript = active ? extractGsapScriptText(active.restored) : null;
@@ -321,16 +357,8 @@ export function applyUndoRestoreToPreview(
     return "soft";
   }
   // Script unchanged or absent — the live timelines are still valid; only the
-  // synced attributes need to take effect. Rebind-only finalization (zero
-  // script execution); plain seek + manual reapply as a degraded fallback when
-  // the runtime rebind hook is unavailable.
-  if (applySoftReloadFinalization(iframe, currentTime)) return "soft";
-  try {
-    win.__player?.seek?.(currentTime);
-    win.__hfStudioManualEditsApply?.();
-  } catch {
-    reloadPreview();
-    return "full";
-  }
-  return "soft";
+  // synced attributes need to take effect.
+  if (finalizeInPlace(iframe, win, currentTime)) return "soft";
+  reloadPreview();
+  return "full";
 }

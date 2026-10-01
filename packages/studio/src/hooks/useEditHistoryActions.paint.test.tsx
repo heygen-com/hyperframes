@@ -14,10 +14,11 @@ import { useEditHistoryActions } from "./useEditHistoryActions";
 import { usePersistentEditHistory } from "./usePersistentEditHistory";
 import { usePreviewPersistence } from "./usePreviewPersistence";
 
-const page = (left: string) =>
-  `<!doctype html><html><head></head><body><div id="root" data-composition-id="main"><div id="box" style="position: absolute; left: ${left}"></div></div></body></html>`;
+const page = (left: string, top = "0px") =>
+  `<!doctype html><html><head></head><body><div id="root" data-composition-id="main"><div id="box" style="position: absolute; left: ${left}"></div><div id="other" style="position: absolute; top: ${top}"></div></div></body></html>`;
 const BEFORE = page("10px");
 const AFTER = page("50px");
+const OUTSIDE = page("50px", "99px");
 
 const cleanup: Array<() => unknown> = [];
 let scratch = "";
@@ -85,6 +86,7 @@ async function studio() {
   await act(async () => root.render(createElement(Harness)));
   cleanup.push(() => act(() => root.unmount()));
   const box = () => iframe.contentDocument!.getElementById("box")!.style.left;
+  const other = () => iframe.contentDocument!.getElementById("other")!.style.top;
   const show = (html: string) => {
     iframe.contentDocument!.documentElement.innerHTML = new DOMParser().parseFromString(
       html,
@@ -108,6 +110,9 @@ async function studio() {
     persistence: () => persistence,
     actions: () => actions,
     box,
+    other,
+    show,
+    path,
     edit,
     file: () => readFileSync(path, "utf8"),
     reloads,
@@ -146,4 +151,16 @@ it("an undo pressed while a save is still running waits for the server instead o
   await act(() => undone);
   expect(s.file()).toBe(BEFORE);
   expect(s.box()).toBe("10px");
+});
+
+it("an undo after an outside write ends with the preview showing the file the server restored", async () => {
+  const s = await studio();
+  await s.edit();
+  writeFileSync(s.path, OUTSIDE);
+  s.show(OUTSIDE);
+
+  await act(() => s.actions().undo());
+  expect(s.file()).toBe(AFTER);
+  expect(s.other()).toBe("0px");
+  expect(s.box()).toBe("50px");
 });

@@ -155,6 +155,7 @@ export function StudioApp({ readOnlyPreview = false, readOnlyPreviewReason }: St
     previewPersistence,
     pendingTimelineEditPathRef,
     reloadPreview,
+    onOutsideChange: editHistory.noteOutsideChange,
   });
   const invalidateGsapCacheRef = useRef<() => void>(() => {});
   const invalidateGsapCache = useCallback(() => invalidateGsapCacheRef.current(), []);

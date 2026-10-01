@@ -14,8 +14,8 @@ import {
 import { trackStudioEvent } from "../utils/studioTelemetry";
 import {
   applyUndoRestoreToPreview,
-  restoreHasGsapScript,
-  type UndoRestoreFile,
+  showRestoreInPlace,
+  type RestoreFiles,
 } from "../utils/gsapUndoRestore";
 import { usePlayerStore } from "../player";
 import { syncStoredAutomationFromPreview } from "../player/lib/automationStoreSync";
@@ -23,7 +23,7 @@ import { syncStoredAutomationFromPreview } from "../player/lib/automationStoreSy
 /** The restore payload the undo/redo preview-sync consumes (from the history store). */
 interface HistoryPreviewRestore {
   paths?: string[];
-  files?: Record<string, UndoRestoreFile>;
+  files?: RestoreFiles;
 }
 
 // ── Types ──
@@ -225,24 +225,18 @@ export function usePreviewPersistence({
   // A restore the server has not confirmed yet: in place now, or not at all. A GSAP script re-run is not
   // synchronous, and a pending save would land under it.
   const showHistoryRestoreNow = useCallback(
-    (files: Record<string, UndoRestoreFile>): boolean => {
-      if (!domEditSaveQueueRef.current?.isIdle() || hasStudioPendingEdits()) return false;
-      const scripted = (f: UndoRestoreFile) =>
-        restoreHasGsapScript(f.previous) || restoreHasGsapScript(f.restored);
-      if (Object.values(files).some(scripted)) return false;
-      let refused = false;
-      applyUndoRestoreToPreview(
-        previewIframeRef.current,
-        activeCompPathRef.current,
-        files,
-        usePlayerStore.getState().currentTime,
-        () => {
-          refused = true;
-        },
-      );
-      return !refused;
+    (files: RestoreFiles): (() => void) | null => {
+      if (!domEditSaveQueueRef.current?.isIdle() || hasStudioPendingEdits()) return null;
+      const iframe = previewIframeRef.current;
+      const now = () => usePlayerStore.getState().currentTime;
+      const putBack = showRestoreInPlace(iframe, activeCompPathRef.current, files, now());
+      if (!putBack) return null;
+      return () => {
+        if (putBack(now())) syncStoredAutomationFromPreview(iframe?.contentDocument ?? null);
+        else void syncHistoryPreviewAfterApply({ paths: Object.keys(files) });
+      };
     },
-    [previewIframeRef, activeCompPathRef],
+    [previewIframeRef, activeCompPathRef, syncHistoryPreviewAfterApply],
   );
 
   // ── Migrate legacy studio-motion.json ──

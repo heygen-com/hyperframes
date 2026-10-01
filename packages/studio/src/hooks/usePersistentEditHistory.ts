@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { HistoryListItem, HistoryResult } from "@hyperframes/studio-server";
 import { studioFileContentVersion, studioWriteHeaders } from "../utils/studioFileVersion";
+import type { RestoreFiles } from "../utils/gsapUndoRestore";
 
 interface RecordEditInput {
   label: string;
@@ -18,11 +19,6 @@ export interface UsePersistentEditHistoryOptions {
   projectId: string | null;
 }
 
-interface ApplyRestoredFile {
-  previous: string;
-  restored: string;
-}
-
 interface ApplyResult {
   ok: boolean;
   /** content-mismatch: `paths` changed after the step's entry. failed: `message` says why. */
@@ -30,7 +26,8 @@ interface ApplyResult {
   message?: string;
   label?: string;
   paths?: string[];
-  files?: Record<string, ApplyRestoredFile>;
+  undoes?: string;
+  files?: RestoreFiles;
 }
 
 interface NextStep {
@@ -87,7 +84,7 @@ function createOwnHistory() {
     },
     afterOf: (id: string | undefined): Record<string, string> =>
       Object.fromEntries(Object.entries((id && own.get(id)) || {}).map(([p, f]) => [p, f.after])),
-    predict: (direction: "undo" | "redo"): Record<string, ApplyRestoredFile> | null => {
+    predict: (direction: "undo" | "redo"): { id: string; files: RestoreFiles } | null => {
       const step = next?.[direction];
       const files = step ? own.get(step.id) : undefined;
       const paths = files ? Object.keys(files) : [];
@@ -97,12 +94,11 @@ function createOwnHistory() {
         !paths.every((p) => step!.paths.includes(p))
       )
         return null;
-      return Object.fromEntries(
-        paths.map((path) => [
-          path,
-          { previous: files[path]!.after, restored: files[path]!.before },
-        ]),
-      );
+      const restore = paths.map((path) => [
+        path,
+        { previous: files[path]!.after, restored: files[path]!.before },
+      ]);
+      return { id: step!.id, files: Object.fromEntries(restore) };
     },
     clear: () => {
       own.clear();
@@ -171,7 +167,7 @@ async function restoredFiles(
   paths: readonly string[],
   previous: Record<string, string> | null,
   readFile: (path: string) => Promise<string>,
-): Promise<Record<string, ApplyRestoredFile> | undefined> {
+): Promise<RestoreFiles | undefined> {
   if (!previous || paths.some((path) => !(path in previous))) return undefined;
   const restored = await readAll(paths, readFile);
   if (!restored) return undefined;
@@ -261,6 +257,7 @@ export function usePersistentEditHistory({ projectId }: UsePersistentEditHistory
         return {
           ok: true,
           label: reply.entry.label,
+          undoes: reply.entry.undoes,
           paths: changed,
           files: await restoredFiles(
             changed,
@@ -273,6 +270,11 @@ export function usePersistentEditHistory({ projectId }: UsePersistentEditHistory
     },
     [projectId, view, refresh, own],
   );
+
+  const noteOutsideChange = useCallback(() => {
+    own.overtake();
+    void refresh();
+  }, [own, refresh]);
 
   const undo = useCallback((callbacks: ApplyCallbacks) => step("undo", callbacks), [step]);
   const redo = useCallback((callbacks: ApplyCallbacks) => step("redo", callbacks), [step]);
@@ -299,5 +301,6 @@ export function usePersistentEditHistory({ projectId }: UsePersistentEditHistory
     undo,
     redo,
     predict: own.predict,
+    noteOutsideChange,
   };
 }

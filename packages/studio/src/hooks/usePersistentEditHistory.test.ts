@@ -76,6 +76,7 @@ it("an edit Studio saved is undone and redone by the project's history, with the
   expect(undone).toEqual({
     ok: true,
     label: "Undid: Moved Title",
+    undoes: expect.any(String),
     paths: ["index.html"],
     files: { "index.html": { previous: "B", restored: "A" } },
   });
@@ -251,15 +252,23 @@ it("predicts a step from what this tab wrote, and not while a claim or step may 
   });
   expect(hook().predict("undo")).toBeNull();
   await act(() => claim);
-  await vi.waitFor(() =>
-    expect(hook().predict("undo")).toEqual({ "index.html": { previous: "B", restored: "A" } }),
-  );
+  const predicted = await vi.waitFor(() => {
+    const next = hook().predict("undo");
+    expect(next?.files).toEqual({ "index.html": { previous: "B", restored: "A" } });
+    return next!;
+  });
+
+  hook().noteOutsideChange();
+  expect(hook().predict("undo")).toBeNull();
+  await vi.waitFor(() => expect(hook().predict("undo")?.id).toBe(predicted.id));
 
   const undone = hook().undo({ readFile });
   expect(hook().predict("undo")).toBeNull();
-  await act(() => undone);
+  expect((await act(() => undone)).undoes).toBe(predicted.id);
   await vi.waitFor(() =>
-    expect(hook().predict("redo")).toEqual({ "index.html": { previous: "A", restored: "B" } }),
+    expect(hook().predict("redo")?.files).toEqual({
+      "index.html": { previous: "A", restored: "B" },
+    }),
   );
 });
 
