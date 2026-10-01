@@ -55,9 +55,11 @@ export function linkTimingMismatches(members: readonly AttributeReader[]): strin
   ).map(([, field]) => field);
 }
 
+const LINK_SCOPE_SELECTOR = "[data-composition-id], [data-composition-file]";
+
 /** The composition a link group stays inside: the nearest inline composition or file host. */
 export function linkScopeOf(el: Element): Element | null {
-  return el.parentElement?.closest("[data-composition-id], [data-composition-file]") ?? null;
+  return el.parentElement?.closest(LINK_SCOPE_SELECTOR) ?? null;
 }
 
 export function mintLinkId(taken: Iterable<string>): string {
@@ -178,8 +180,7 @@ function sharedSeconds(a: LinkTiming, b: LinkTiming): number {
 
 /** `el`'s source partner (same sync origin, other tag): most shared timeline, then nearest start. */
 function sameOriginInScope(el: PairableElement, tag: string, origin: string): Element[] {
-  const scopeOf = (node: PairableElement) =>
-    node.closest("[data-composition-id]") ?? el.ownerDocument;
+  const scopeOf = (node: PairableElement) => node.closest(LINK_SCOPE_SELECTOR) ?? el.ownerDocument;
   const scope = scopeOf(el);
   return Array.from(scope.querySelectorAll(tag)).filter(
     (candidate) =>

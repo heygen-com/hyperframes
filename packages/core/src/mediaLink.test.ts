@@ -204,13 +204,16 @@ describe("findSyncPartner", () => {
     expect(x && findSyncPartner(x)).toBeNull();
   });
 
-  it("never takes a partner from a nested composition reusing the origin", () => {
-    document.body.innerHTML = `<div data-composition-id="m">
+  it.each(['data-composition-id="child"', 'data-composition-file="child.html"'])(
+    "never takes a partner from a nested composition (%s) reusing the origin",
+    (host) => {
+      document.body.innerHTML = `<div data-composition-id="m">
       <video id="v" data-sync-origin="lk-1" data-start="0" data-duration="4"></video>
-      <div data-composition-id="child">
+      <div ${host}>
         <audio id="ca" data-sync-origin="lk-1" data-start="0" data-duration="4"></audio>
       </div></div>`;
-    const v = document.getElementById("v");
-    expect(v && findSyncPartner(v)).toBeNull();
-  });
+      const v = document.getElementById("v");
+      expect(v && findSyncPartner(v)).toBeNull();
+    },
+  );
 });
