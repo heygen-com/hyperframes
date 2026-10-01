@@ -139,6 +139,7 @@ describe("registerPreviewRoutes", () => {
       throw new Error("bundler unavailable");
     };
     registerPreviewRoutes(app, createAdapter(projectDir, { bundle }));
+    writeFileSync(join(projectDir, "index.html"), '<html><head data-theme="dark"></head></html>');
     const html = await (await app.request("http://localhost/projects/Take%20%232/preview")).text();
     expect(html).toContain('<base href="/api/projects/Take%20%232/preview/">');
   });

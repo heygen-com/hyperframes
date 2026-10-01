@@ -350,7 +350,7 @@ const previewBaseHref = (projectId: string) =>
 const withPreviewBase = (html: string, projectId: string) =>
   hasBaseElement(html)
     ? html
-    : html.replace(/<head>/i, `<head><base href="${previewBaseHref(projectId)}">`);
+    : injectTagsAtHeadStart(html, `<base href="${previewBaseHref(projectId)}">`);
 
 export function registerPreviewRoutes(api: Hono, adapter: PreviewApiAdapter): void {
   const previewCacheHeaders = (etag: string) => ({

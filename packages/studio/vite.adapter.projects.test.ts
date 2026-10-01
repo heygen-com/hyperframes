@@ -172,18 +172,25 @@ describe("Vite project resolution boundary", () => {
   );
 
   it("opens a folder named with a colon, which Windows would read as a file stream and refuses", () => {
-    const { data, adapter } = fixture();
+    const { data, sessions, adapter } = fixture();
     const id = "Customer story: Northwind";
     mkdirSync(join(data, "demo"));
     if (process.platform !== "win32") {
       mkdirSync(join(data, id));
       expect(adapter.resolveProject(id)?.id).toBe(id);
     }
+    writeFileSync(join(sessions, "alias.json"), JSON.stringify({ projectId: id }));
+    writeFileSync(
+      join(sessions, "stream.json"),
+      JSON.stringify({ projectId: "demo::$INDEX_ALLOCATION" }),
+    );
     const platform = Object.getOwnPropertyDescriptor(process, "platform")!;
     Object.defineProperty(process, "platform", { value: "win32" });
     try {
       expect(adapter.resolveProject(id)).toBeNull();
       expect(adapter.resolveProject("demo::$INDEX_ALLOCATION")).toBeNull();
+      expect(adapter.resolveProject("alias")).toBeNull();
+      expect(adapter.resolveProject("stream")).toBeNull();
     } finally {
       Object.defineProperty(process, "platform", platform);
     }
