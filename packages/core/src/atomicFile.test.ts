@@ -418,21 +418,23 @@ describe.skipIf(process.platform === "win32")("resolveWritePath", () => {
     );
   });
 
-  it("reads a link through a linked folder and .. the way the system does", () => {
-    const base = linkedFolder();
+  function linkCompThroughDotDot(base: string) {
     fs.mkdirSync(join(base, "real/a/b"), { recursive: true });
     symlinkSync(join(base, "real/a/b"), join(base, "root/x"));
-    writeFileSync(join(base, "real/a/t.html"), "old");
     symlinkSync("x/../t.html", join(base, "root/comp.html"));
+  }
+
+  it("reads a link through a linked folder and .. the way the system does", () => {
+    const base = linkedFolder();
+    linkCompThroughDotDot(base);
+    writeFileSync(join(base, "real/a/t.html"), "old");
 
     expect(resolveWritePath(join(base, "root/comp.html"))).toBe(join(base, "real/a/t.html"));
   });
 
   it("follows a dangling link through a linked folder and .. the way the system does", () => {
     const base = linkedFolder();
-    fs.mkdirSync(join(base, "real/a/b"), { recursive: true });
-    symlinkSync(join(base, "real/a/b"), join(base, "root/x"));
-    symlinkSync("x/../t.html", join(base, "root/comp.html"));
+    linkCompThroughDotDot(base);
 
     expect(resolveWritePath(join(base, "root/comp.html"))).toBe(join(base, "real/a/t.html"));
   });

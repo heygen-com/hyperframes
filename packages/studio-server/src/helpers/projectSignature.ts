@@ -102,6 +102,9 @@ function isTextContentEligible(file: string, size: number): boolean {
   );
 }
 
+const isSkippedEntry = (entry: string) =>
+  SIGNATURE_EXCLUDED_DIRS.has(entry) || isAtomicTempPath(entry);
+
 function collectProjectSignatureFiles(
   projectDir: string,
   dir: string,
@@ -115,7 +118,7 @@ function collectProjectSignatureFiles(
   }
 
   for (const entry of entries) {
-    if (SIGNATURE_EXCLUDED_DIRS.has(entry) || isAtomicTempPath(entry)) continue;
+    if (isSkippedEntry(entry)) continue;
     const file = resolve(dir, entry);
     if (!isPathWithin(projectDir, file)) continue;
     let stat: ReturnType<typeof lstatSync>;

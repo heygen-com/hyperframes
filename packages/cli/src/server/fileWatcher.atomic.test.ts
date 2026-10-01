@@ -2,19 +2,14 @@
 import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { describe, expect, it, onTestFinished, vi } from "vitest";
 import { replaceFileAtomically } from "@hyperframes/core/atomic-file";
 import { openProjectHistory } from "@hyperframes/studio-server";
 import { createProjectWatcher } from "./fileWatcher.js";
 
-const cleanup: Array<() => unknown> = [];
-afterEach(async () => {
-  for (const step of cleanup.splice(0).reverse()) await step();
-});
-
 function tempDir(prefix: string): string {
   const dir = mkdtempSync(join(tmpdir(), prefix));
-  cleanup.push(() => rmSync(dir, { recursive: true, force: true }));
+  onTestFinished(() => rmSync(dir, { recursive: true, force: true }));
   return dir;
 }
 
@@ -25,7 +20,7 @@ function watchedProject() {
   const watcher = createProjectWatcher(dir);
   const heard: string[] = [];
   watcher.addListener((path) => heard.push(path));
-  cleanup.push(() => watcher.close());
+  onTestFinished(() => watcher.close());
   return { dir, index, heard };
 }
 
@@ -52,7 +47,7 @@ describe("the project watcher, on a real file system", () => {
       historyRoot: tempDir("hf-hist-"),
       quietMs: 30,
     });
-    cleanup.push(() => history.close());
+    onTestFinished(() => history.close());
     writeFileSync(index, "<h1>Bye</h1>");
     history.noteChange("index.html");
     await vi.waitFor(() => expect(history.list()).toHaveLength(1));
