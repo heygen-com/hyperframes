@@ -2,7 +2,11 @@ import type { DomEditSelection } from "../components/editor/domEditing";
 import { captureStudioRotation, clearStudioRotation } from "../components/editor/manualEdits";
 import { buildClearRotationPatches } from "../components/editor/manualEditsDomPatches";
 import { STUDIO_ROTATION_ATTR } from "../components/editor/manualEditsTypes";
-import { applyCssRotation, restorePlainRotation } from "../components/editor/rotationDraft";
+import {
+  applyCssRotation,
+  restorePlainRotation,
+  type RotationCommit,
+} from "../components/editor/rotationDraft";
 import type { PatchOperation } from "../utils/sourcePatcher";
 import type { ElementOffsetStagerDeps } from "./elementOffsetStager";
 
@@ -12,7 +16,7 @@ let plainRotateCounter = 0;
 export function savePlainRotation(
   { commitPositionPatchToHtml, readOnlyPreview }: Omit<ElementOffsetStagerDeps, "showToast">,
   selection: DomEditSelection,
-  next: { angle: number },
+  next: RotationCommit,
 ): Promise<void> {
   if (readOnlyPreview) return Promise.resolve();
   const { element } = selection;
@@ -22,7 +26,7 @@ export function savePlainRotation(
     ? buildClearRotationPatches(element)
     : [];
   if (patches.length) clearStudioRotation(element);
-  const drawn = applyCssRotation(element, next.angle);
+  const drawn = applyCssRotation(element, next.angle, next.plain);
   patches.push(...drawn);
   const turn = drawn.at(-1)!;
   return commitPositionPatchToHtml(selection, patches, {

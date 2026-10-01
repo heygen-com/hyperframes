@@ -51,6 +51,8 @@ export interface CssRotationTarget {
   inline: boolean;
 }
 
+export type RotationCommit = { angle: number; plain?: CssRotationTarget };
+
 const TRANSLATE = /^translate(?:3d|X|Y|Z)?\(/i;
 const OWN_TURN = /^rotate\(\s*-?[\d.]+(?:e[+-]?\d+)?deg\s*\)$/i;
 

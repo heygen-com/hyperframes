@@ -1,3 +1,4 @@
+import type { RotationCommit } from "../components/editor/rotationDraft";
 import { useCallback } from "react";
 import { getDomEditTargetKey, type DomEditSelection } from "../components/editor/domEditing";
 import {
@@ -136,7 +137,7 @@ export function useDomGeometryCommits({
   );
 
   const handleDomRotationCommit = useCallback(
-    (selection: DomEditSelection, next: { angle: number }) =>
+    (selection: DomEditSelection, next: RotationCommit) =>
       savePlainRotation({ commitPositionPatchToHtml, readOnlyPreview }, selection, next),
     [commitPositionPatchToHtml, readOnlyPreview],
   );

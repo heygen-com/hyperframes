@@ -1,3 +1,4 @@
+import type { RotationCommit } from "./rotationDraft";
 import { memo, useEffect, useMemo, useRef, type RefObject } from "react";
 import { type DomEditSelection } from "./domEditing";
 import type { PreviewMouseDownOptions } from "../../hooks/usePreviewInteraction";
@@ -91,10 +92,7 @@ export interface DomEditOverlayProps {
     offset?: { x: number; y: number },
     restore?: () => void,
   ) => Promise<unknown> | void;
-  onRotationCommit: (
-    selection: DomEditSelection,
-    next: { angle: number },
-  ) => Promise<unknown> | void;
+  onRotationCommit: (selection: DomEditSelection, next: RotationCommit) => Promise<unknown> | void;
   onStyleCommit?: (property: string, value: string) => Promise<unknown> | void;
   recordingState?: GestureRecordingState;
   onToggleRecording?: () => void;

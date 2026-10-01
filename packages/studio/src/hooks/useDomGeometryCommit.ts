@@ -1,3 +1,4 @@
+import type { RotationCommit } from "../components/editor/rotationDraft";
 import { useCallback, useMemo, useRef, useState } from "react";
 import type { GsapAnimation } from "@hyperframes/core/gsap-parser";
 import type { DomEditSelection } from "../components/editor/domEditing";
@@ -43,7 +44,7 @@ export interface DomGeometryCommits {
   ) => Promise<DomEditCommitOutcome>;
   commitRotation: (
     selection: DomEditSelection,
-    next: { angle: number },
+    next: RotationCommit,
   ) => Promise<DomEditCommitOutcome>;
   waitForPendingSaves: () => Promise<void>;
 }

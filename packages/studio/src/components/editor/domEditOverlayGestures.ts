@@ -6,7 +6,7 @@ import type {
   StudioRotationSnapshot,
 } from "./manualEdits";
 import type { ManualOffsetDragMember } from "./manualOffsetDrag";
-import type { CssRotationTarget } from "./rotationDraft";
+import type { CssRotationTarget, RotationCommit } from "./rotationDraft";
 import type { GroupOverlayItem, OverlayRect } from "./domEditOverlayGeometry";
 import type { SnapContext } from "./snapTargetCollection";
 import type { SnapGuidesState } from "./SnapGuideOverlay";
@@ -268,7 +268,7 @@ export type UseDomEditOverlayGesturesOptions = {
     ) => Promise<unknown> | void
   >;
   onRotationCommitRef: RefObject<
-    (s: DomEditSelection, n: { angle: number }) => Promise<unknown> | void
+    (s: DomEditSelection, n: RotationCommit) => Promise<unknown> | void
   >;
   onCanvasPointerMoveRef: RefObject<
     (

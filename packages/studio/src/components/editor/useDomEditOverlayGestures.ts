@@ -431,7 +431,8 @@ export function createDomEditOverlayGestureHandlers(opts: UseDomEditOverlayGestu
       }
       // Hold the final angle while the commit lands.
       applyRotationDraft(sel.element, finalRotation.angle, g.plainRotation);
-      void Promise.resolve(opts.onRotationCommitRef.current(sel, finalRotation))
+      const commit = g.plainRotation ? { ...finalRotation, plain: g.plainRotation } : finalRotation;
+      void Promise.resolve(opts.onRotationCommitRef.current(sel, commit))
         .catch((error) => {
           logGestureCommitFailure("rotate commit failed", error);
           if (

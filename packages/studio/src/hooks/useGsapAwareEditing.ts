@@ -7,6 +7,7 @@
  * Extracted from useDomEditSession to isolate the GSAP intercept routing
  * from the rest of the editing orchestration.
  */
+import type { RotationCommit } from "../components/editor/rotationDraft";
 import { useCallback } from "react";
 import type { GsapAnimation } from "@hyperframes/core/gsap-parser";
 import type { DomEditSelection } from "../components/editor/domEditingTypes";
@@ -86,7 +87,7 @@ export interface UseGsapAwareEditingParams {
     plainTranslate: boolean,
     coalesceKey?: string,
   ) => { save: () => Promise<void>; rollback: () => void };
-  handleDomRotationCommit: (selection: DomEditSelection, next: { angle: number }) => Promise<void>;
+  handleDomRotationCommit: (selection: DomEditSelection, next: RotationCommit) => Promise<void>;
   handleDomBoxSizeCommit: (
     selection: DomEditSelection,
     next: { width: number; height: number },
@@ -459,8 +460,9 @@ export function useGsapAwareEditing({
   );
 
   const handleGsapAwareRotationCommit = useCallback(
-    async (selection: DomEditSelection, next: { angle: number }) => {
-      if (!gsapWritesRotation(selection.element)) return handleDomRotationCommit(selection, next);
+    async (selection: DomEditSelection, next: RotationCommit) => {
+      if (next.plain || !gsapWritesRotation(selection.element))
+        return handleDomRotationCommit(selection, next);
       if (gsapCommitMutation) {
         try {
           const targetAnimations = await getGsapAnimationsForSelection(selection);
