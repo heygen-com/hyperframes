@@ -1,7 +1,11 @@
 // @vitest-environment happy-dom
 
 import { describe, it, expect, vi } from "vitest";
-import { applyUndoRestoreToPreview, diffSoftReloadableRestore } from "./gsapUndoRestore";
+import {
+  applyUndoRestoreToPreview,
+  diffSoftReloadableRestore,
+  showRestoreInPlace,
+} from "./gsapUndoRestore";
 import { applyPatch } from "./sourcePatcher";
 import { beginStudioManualEditGesture } from "../components/editor/manualEdits";
 import { writePlainMove, writeTranslatePx } from "../components/editor/plainTranslate";
@@ -435,8 +439,9 @@ describe("an undo that lands while the layer is being dragged", () => {
   function dragging(drag: boolean) {
     const { iframe, doc } = buildLiveIframe(undone);
     const el = doc.getElementById("a")!;
-    if (drag) beginStudioManualEditGesture(el);
+    if (drag) beginStudioManualEditGesture(el, "move");
     if (drag) writeTranslatePx(el, { x: 70, y: 110 });
+    else el.style.setProperty("opacity", "0.5");
     applyUndoRestoreToPreview(iframe, ROOT, files, 3, vi.fn());
     return el;
   }
@@ -459,6 +464,65 @@ describe("an undo that lands while the layer is being dragged", () => {
     expect(saved).toBe(saveDrop(fresh, restored));
     expect(saved).toContain("width: 100px; translate: 20px 110px");
     expect(saved).not.toContain("120px");
+  });
+
+  it("keeps the box where it is when the press has not moved it yet", () => {
+    const { iframe, doc } = buildLiveIframe(undone);
+    const el = doc.getElementById("a")!;
+    beginStudioManualEditGesture(el, "move");
+
+    applyUndoRestoreToPreview(iframe, ROOT, files, 3, vi.fn());
+
+    expect(el.style.getPropertyValue("translate")).toBe("90px 60px");
+    expect(el.style.getPropertyValue("width")).toBe("100px");
+  });
+
+  it("keeps the drag's translate when the undo is shown in place", () => {
+    const { iframe, doc } = buildLiveIframe(undone);
+    const el = doc.getElementById("a")!;
+    beginStudioManualEditGesture(el, "move");
+    writeTranslatePx(el, { x: 70, y: 110 });
+
+    expect(showRestoreInPlace(iframe, ROOT, files, 3)).not.toBeNull();
+
+    expect(el.style.getPropertyValue("translate")).toBe("70px 110px");
+    expect(el.style.getPropertyValue("width")).toBe("100px");
+  });
+
+  it("keeps a drag that started after the undo was shown when the undo is put back", () => {
+    const { iframe, doc } = buildLiveIframe(undone);
+    const el = doc.getElementById("a")!;
+    const putBack = showRestoreInPlace(iframe, ROOT, files, 3)!;
+    beginStudioManualEditGesture(el, "move");
+    writeTranslatePx(el, { x: 70, y: 110 });
+
+    putBack(3);
+
+    expect(el.style.getPropertyValue("translate")).toBe("70px 110px");
+    expect(el.style.getPropertyValue("width")).toBe("120px");
+  });
+
+  it("keeps the drag's translate when the undo re-runs a GSAP script", () => {
+    const script = (extra: string) =>
+      `<script>window.__timelines["root"]=gsap.timeline();${extra}</script>`;
+    const layer = `<div id="a" data-hf-studio-path-offset="true" style="translate: 40px 30px">t</div>`;
+    const { iframe, contentWindow, doc } = buildLiveIframe(
+      `${layer}${script("tl.set('#b',{x:1});")}`,
+    );
+    Object.assign(contentWindow.gsap, { set: () => {} });
+    const el = doc.getElementById("a")!;
+    beginStudioManualEditGesture(el, "move");
+    writeTranslatePx(el, { x: 70, y: 110 });
+    const scripted = {
+      [ROOT]: {
+        previous: wrap(`<div id="a">t</div>${script("tl.set('#b',{x:1});")}`),
+        restored: wrap(`<div id="a">t</div>${script("")}`),
+      },
+    };
+
+    expect(applyUndoRestoreToPreview(iframe, ROOT, scripted, 3, vi.fn())).toBe("soft");
+
+    expect(el.style.getPropertyValue("translate")).toBe("70px 110px");
   });
 
   it("restores a layer no gesture is drawing exactly as before", () => {

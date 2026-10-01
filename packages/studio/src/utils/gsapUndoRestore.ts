@@ -12,10 +12,8 @@ import { isCompositionTemplate } from "@hyperframes/parsers/hf-ids";
 import { findAuthoredElement, parseSavedSource } from "./authoredSource";
 import { STUDIO_EDIT_ATTRS } from "../components/editor/manualEditsSeekReapply";
 import { markScenesStale } from "../player/sceneSwap";
-import {
-  STUDIO_MANUAL_EDIT_GESTURE_ATTR,
-  STUDIO_ORIGINAL_INLINE_TRANSLATE_ATTR,
-} from "../components/editor/manualEditsTypes";
+import { STUDIO_ORIGINAL_INLINE_TRANSLATE_ATTR } from "../components/editor/manualEditsTypes";
+import { studioGestureDraws } from "../components/editor/manualEditsDom";
 
 type PreviewWindow = Window & {
   __player?: { seek?: (t: number) => void };
@@ -146,10 +144,8 @@ function diffRestoreDocs(prevDoc: Document, nextDoc: Document): string[] | null 
 
 /** Copy every attribute from `source` onto the live `target`, dropping extras. */
 function syncElementAttributes(target: Element, source: Element, base?: Element): void {
-  const merged =
-    base && target.hasAttribute(STUDIO_MANUAL_EDIT_GESTURE_ATTR)
-      ? keepDrawn(target, source, base)
-      : source;
+  const draws = base && studioGestureDraws(target);
+  const merged = draws ? keepDrawn(target, source, base, draws) : source;
   for (const name of [...target.getAttributeNames()]) {
     if (!merged.hasAttribute(name)) target.removeAttribute(name);
   }
@@ -158,32 +154,43 @@ function syncElementAttributes(target: Element, source: Element, base?: Element)
   }
 }
 
-/** `source`, plus what a gesture in progress drew on `live` since `base`, and the record its draws need. */
-function keepDrawn(live: Element, source: Element, base: Element): Element {
+/** `source`, plus what a gesture in progress draws on `live` (whatever its value) or changed since `base`. */
+function keepDrawn(live: Element, source: Element, base: Element, draws: readonly string[]) {
   const merged = source.cloneNode(false) as Element;
-  for (const name of live.getAttributeNames()) {
+  const keepsMark = draws.includes("translate");
+  for (const name of live.getAttributeNames().filter((n) => n !== "style")) {
     const value = live.getAttribute(name)!;
-    const own = name === STUDIO_ORIGINAL_INLINE_TRANSLATE_ATTR && !source.hasAttribute(name);
-    if (name !== "style" && (own || value !== base.getAttribute(name)))
-      merged.setAttribute(name, value);
+    const mark = keepsMark && name === STUDIO_ORIGINAL_INLINE_TRANSLATE_ATTR;
+    if (mark || value !== base.getAttribute(name)) merged.setAttribute(name, value);
   }
-  const [liveStyle, baseStyle, style] = [live, base, merged].map((el) => (el as HTMLElement).style);
-  for (const prop of new Set([...Array.from(liveStyle), ...Array.from(baseStyle)])) {
-    const value = liveStyle.getPropertyValue(prop);
-    if (value === baseStyle.getPropertyValue(prop)) continue;
-    if (value) style.setProperty(prop, value, liveStyle.getPropertyPriority(prop));
-    else style.removeProperty(prop);
-  }
+  keepDrawnStyle(live as HTMLElement, base as HTMLElement, merged as HTMLElement, draws);
   return merged;
 }
 
+function keepDrawnStyle(
+  live: HTMLElement,
+  base: HTMLElement,
+  merged: HTMLElement,
+  draws: readonly string[],
+) {
+  const value = (prop: string) => live.style.getPropertyValue(prop);
+  const drawn = (prop: string) =>
+    draws.includes(prop) || value(prop) !== base.style.getPropertyValue(prop);
+  const props = new Set([...Array.from(live.style), ...Array.from(base.style), ...draws]);
+  for (const prop of [...props].filter(drawn)) {
+    if (value(prop))
+      merged.style.setProperty(prop, value(prop), live.style.getPropertyPriority(prop));
+    else merged.style.removeProperty(prop);
+  }
+}
+
 // A gesture folded into the script leaves marks on the live element that every seek would re-impose.
-function syncStaleEditMarks(doc: Document, restored: string): void {
-  const restoredDoc = parseSavedSource(restored);
+function syncStaleEditMarks(doc: Document, file: UndoRestoreFile): void {
+  const [restoredDoc, previousDoc] = [file.restored, file.previous].map(parseSavedSource);
   for (const live of doc.querySelectorAll(STUDIO_EDIT_ATTRS.map((attr) => `[${attr}]`).join())) {
     const source = findAuthoredElement(restoredDoc, live);
     if (source && STUDIO_EDIT_ATTRS.some((a) => live.getAttribute(a) !== source.getAttribute(a))) {
-      syncElementAttributes(live, source);
+      syncElementAttributes(live, source, findAuthoredElement(previousDoc, live) ?? undefined);
     }
   }
 }
@@ -377,7 +384,7 @@ export function applyUndoRestoreToPreview(
   const restoredScript = active ? extractGsapScriptText(active.restored) : null;
   const previousScript = active ? extractGsapScriptText(active.previous) : null;
   if (restoredScript && restoredScript !== previousScript) {
-    syncStaleEditMarks(doc, active.restored);
+    syncStaleEditMarks(doc, active);
     const result = applySoftReload(iframe, restoredScript, {
       onAsyncFailure: reloadPreview,
       currentTimeOverride: currentTime,

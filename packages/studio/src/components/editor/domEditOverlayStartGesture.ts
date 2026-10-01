@@ -219,10 +219,13 @@ export function startGesture(
         // Hold a % translate as the same px now, so a growing box can't drag it along mid-frame.
         if (result.member.plainTranslate) applyManualOffsetDragDraft(result.member, 0, 0);
       } else {
-        manualEditDragToken = beginStudioManualEditGesture(sel.element);
+        manualEditDragToken = beginStudioManualEditGesture(sel.element, "resize");
       }
     } else {
-      manualEditDragToken = beginStudioManualEditGesture(sel.element);
+      manualEditDragToken = beginStudioManualEditGesture(
+        sel.element,
+        kind === "rotate" ? "rotate" : "resize",
+      );
     }
   }
 
