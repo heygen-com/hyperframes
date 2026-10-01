@@ -177,17 +177,24 @@ function sharedSeconds(a: LinkTiming, b: LinkTiming): number {
 }
 
 /** `el`'s source partner (same sync origin, other tag): most shared timeline, then nearest start. */
+function sameOriginInScope(el: PairableElement, tag: string, origin: string): Element[] {
+  const scopeOf = (node: PairableElement) =>
+    node.closest("[data-composition-id]") ?? el.ownerDocument;
+  const scope = scopeOf(el);
+  return Array.from(scope.querySelectorAll(tag)).filter(
+    (candidate) =>
+      candidate.getAttribute(SYNC_ORIGIN_ATTR) === origin && scopeOf(candidate) === scope,
+  );
+}
+
 export function findSyncPartner(el: PairableElement): Element | null {
   const origin = el.getAttribute(SYNC_ORIGIN_ATTR);
   const tag = el.tagName.toLowerCase();
   if (!origin || (tag !== "video" && tag !== "audio")) return null;
   const partnerTag = tag === "video" ? "audio" : "video";
-  const scope = el.closest("[data-composition-id]") ?? el.ownerDocument;
   const own = readLinkTiming(el);
   let best: { el: Element; shared: number; distance: number } | null = null;
-  for (const candidate of Array.from(scope.querySelectorAll(partnerTag))) {
-    if (candidate.getAttribute(SYNC_ORIGIN_ATTR) !== origin) continue;
-    if ((candidate.closest("[data-composition-id]") ?? el.ownerDocument) !== scope) continue;
+  for (const candidate of sameOriginInScope(el, partnerTag, origin)) {
     const timing = readLinkTiming(candidate);
     const shared = sharedSeconds(own, timing);
     const distance = Math.abs(timing.start - own.start);
