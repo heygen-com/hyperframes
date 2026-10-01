@@ -211,10 +211,7 @@ const boxOf = (s, map) => {
   return { quad, size, visible: visibleQuad(quad, size, parseInset(s.clip)) };
 };
 
-/**
- * Each point a gesture moves, with where the pointer puts it: the pressed point (move; rotate's handle),
- * the corner (resize), or the outline's edge (crop, whose element must also hold still).
- */
+/** Each point a gesture moves and where the pointer puts it: press point, resize corner or crop edge. */
 // fallow-ignore-next-line complexity
 function trackers(gesture, first, p0) {
   const b = boxOf(first, first.map);
@@ -256,11 +253,7 @@ function trackers(gesture, first, p0) {
 
 const round = (v) => Math.round(v * 100) / 100;
 
-/**
- * Scores the frames from before press to settle. A frame fails when a tracked point moved more than the
- * pointer did since the previous frame, or sits where the pointer never put it (only the release point
- * once up).
- */
+/** Fails a frame whose tracked point outran the pointer or left its path; after release, the release point. */
 // fallow-ignore-next-line complexity
 export function scoreTeleport(gesture, samples) {
   const frames = samples

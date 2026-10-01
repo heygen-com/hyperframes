@@ -95,7 +95,7 @@ async function visibleCanvas(page, m) {
   return { ...v, edge: v.x1 };
 }
 
-/** Every distinct saved state in order, read on each file event; Studio replaces files atomically, so no read is torn. */
+/** Every distinct saved state in order, read on each file event; atomic replaces mean no torn read. */
 export function watchVersions(dir, files) {
   const versions = [readFiles(dir, files)];
   const record = () => {
