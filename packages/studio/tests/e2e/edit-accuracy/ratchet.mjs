@@ -39,6 +39,8 @@ const summary = (e) =>
 
 /** The gate's verdict on one case's runs: it passes when fewer than half fail. */
 const passes = (entries) => entries.filter((e) => !accurate(e)).length * 2 < entries.length;
+/** Reported, never gated: most runs had no extra dropped frame and no frame over the work budget. */
+const mostlySmooth = (entries) => entries.filter((e) => e.smooth).length * 2 > entries.length;
 
 /** One run per case that agrees with the gate's verdict, so a banked baseline.json matches the gate. */
 export function bankable(runs) {
@@ -79,8 +81,7 @@ export function gate(base, head, runs, quarantine = QUARANTINED) {
       ([id, e]) => !Object.hasOwn(quarantine, id) && accurate(e),
     ).length,
     headPassing: passing.length,
-    // Reported only: most of a case's runs had no extra dropped frame and no frame over the work budget.
-    headSmooth: cases.filter((c) => c.entries.filter((e) => e.smooth).length * 2 > c.entries.length).length,
+    headSmooth: cases.filter((c) => mostlySmooth(c.entries)).length,
     regressed: cases.filter((c) => c.basePassed && !c.passed).map((c) => c.id),
     unstable: cases
       .filter((c) => new Set(c.entries.map(accurate)).size > 1)
