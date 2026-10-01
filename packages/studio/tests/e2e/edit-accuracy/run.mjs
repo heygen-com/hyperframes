@@ -1,5 +1,5 @@
 #!/usr/bin/env bun
-// Edit accuracy bench: real gestures in the built CLI Studio (build core, parsers, lint, studio-server first).
+// Edit accuracy bench: real gestures in the built CLI Studio (build parsers, lint, studio-server and core first).
 // bun run --cwd packages/studio test:edit-accuracy -- --grid full|pr --jobs N [--shard i/n] [--filter re]
 //   [--lock path: the suite lock, taken per chunk] [--rerun: a confirmation run for the gate]
 import { createHash } from "node:crypto";
