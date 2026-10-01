@@ -72,7 +72,7 @@ export function useClipFadeDraft(el: TimelineElement) {
     () => ({ fadeIn, fadeOut, duration: el.duration }),
     [fadeIn, fadeOut, el.duration],
   );
-  return { draft, setDraft, shape };
+  return { setDraft, shape };
 }
 
 interface TimelineClipFadesProps {
@@ -86,6 +86,17 @@ interface TimelineClipFadesProps {
   /** Audio clips draw the fade in their waveform; others get the shaded wedge. */
   hasWaveform?: boolean;
   fade: ReturnType<typeof useClipFadeDraft>;
+}
+
+/** The fade length a key asks for, or null when the key is not the handle's. */
+function keyedFadeSeconds(key: string, shift: boolean, current: number, limit: number) {
+  const step = shift ? 1 : 0.1;
+  if (key === "ArrowRight" || key === "ArrowUp") return current + step;
+  if (key === "ArrowLeft" || key === "ArrowDown") return current - step;
+  if (key === "Home" || key === "Delete" || key === "Backspace") return 0;
+  if (key === "End") return limit;
+  if (key === "Enter" && current === 0) return DEFAULT_FADE_SECONDS;
+  return null;
 }
 
 /** Pill-aware y of the clip's top edge at x, so the tab rides the rounded ends. */
@@ -258,20 +269,12 @@ export function TimelineClipFades({
   };
 
   const onHandleKeyDown = (edge: FadeEdge) => (e: KeyboardEvent<HTMLDivElement>) => {
-    const current = edge === "in" ? fades.fadeIn : fades.fadeOut;
-    const step = e.shiftKey ? 1 : 0.1;
-    const next =
-      e.key === "ArrowRight" || e.key === "ArrowUp"
-        ? current + step
-        : e.key === "ArrowLeft" || e.key === "ArrowDown"
-          ? current - step
-          : e.key === "Home" || e.key === "Delete" || e.key === "Backspace"
-            ? 0
-            : e.key === "End"
-              ? limitFor(edge)
-              : e.key === "Enter" && current === 0
-                ? DEFAULT_FADE_SECONDS
-                : null;
+    const next = keyedFadeSeconds(
+      e.key,
+      e.shiftKey,
+      edge === "in" ? fades.fadeIn : fades.fadeOut,
+      limitFor(edge),
+    );
     if (next === null || !canEdit) return;
     // The timeline also listens for arrows; a handled key is the handle's alone.
     e.preventDefault();
