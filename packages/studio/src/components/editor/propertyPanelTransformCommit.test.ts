@@ -7,7 +7,7 @@ import { useManualEditDisabledFlags } from "./previewReadOnlyContext";
 import type { DomEditSelection } from "./domEditingTypes";
 import { GsapEditBlockedError } from "../../hooks/gsapEditOutcome";
 import { createTransformCommitHandlers } from "./propertyPanelTransformCommit";
-import { UNREADABLE_TRANSLATE } from "./plainTranslate";
+import { readMoveOffset, UNREADABLE_TRANSLATE } from "./plainTranslate";
 
 describe("createTransformCommitHandlers", () => {
   it.each([
@@ -68,7 +68,7 @@ describe("the panel's position fields on a translate Studio can't read", () => {
     const seen: boolean[] = [];
     function Probe({ element }: { element: HTMLElement }) {
       seen.push(
-        useManualEditDisabledFlags({ canApplyManualOffset: true } as never, element)
+        useManualEditDisabledFlags({ canApplyManualOffset: true } as never, readMoveOffset(element))
           .manualOffsetEditingDisabled,
       );
       return null;

@@ -482,14 +482,25 @@ describe("DomEditOverlay on a layer whose translate Studio can't read", () => {
     const { spies, overlay, selection } = fixture();
     selection.element.style.setProperty("translate", "abs(10% - 50px) 0px");
     fire(overlay.querySelector(BOX)!, "pointerdown");
+    const presses = [false, true, true].map(
+      (repeat) =>
+        new KeyboardEvent("keydown", {
+          key: "ArrowRight",
+          bubbles: true,
+          cancelable: true,
+          repeat,
+        }),
+    );
     act(() => {
-      window.dispatchEvent(new KeyboardEvent("keydown", { key: "ArrowRight", bubbles: true }));
+      for (const press of presses) window.dispatchEvent(press);
       vi.advanceTimersByTime(CANVAS_NUDGE_COMMIT_DEBOUNCE_MS + 10);
     });
+    // One toast for the drag and one for the whole held arrow, whose every press is swallowed.
     expect(spies.onBlockedMove.mock.calls).toEqual([
       [selection, UNREADABLE_TRANSLATE],
       [selection, UNREADABLE_TRANSLATE],
     ]);
+    expect(presses.map((press) => press.defaultPrevented)).toEqual([true, true, true]);
     expect(spies.onPathOffsetCommit).not.toHaveBeenCalled();
     expect(selection.element.style.getPropertyValue("translate")).toBe("abs(10% - 50px) 0px");
   });

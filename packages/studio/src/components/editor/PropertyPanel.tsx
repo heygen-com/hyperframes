@@ -178,8 +178,9 @@ export const PropertyPanel = memo(function PropertyPanel(props: PropertyPanelPro
     transformPerspective: 0,
   };
   // Unconditional like the hooks above: must not sit behind the `!element` return below.
+  const manualOffset = element ? readMoveOffset(element.element) : { x: 0, y: 0 };
   const { manualOffsetEditingDisabled, manualSizeEditingDisabled, manualRotationEditingDisabled } =
-    useManualEditDisabledFlags(element?.capabilities, element?.element);
+    useManualEditDisabledFlags(element?.capabilities, manualOffset);
 
   if (!element) {
     return (
@@ -200,7 +201,6 @@ export const PropertyPanel = memo(function PropertyPanel(props: PropertyPanelPro
   // selection) so the Timing section shows for pure-GSAP elements with no data-start.
   const sections = resolveEditingSections(domEditSelectionToFacts(element, gsapAnimations.length));
   const showEditableSections = element.capabilities.canEditStyles && sections.style;
-  const manualOffset = readMoveOffset(element.element);
   const manualSize = readStudioBoxSize(element.element);
   const resolvedWidth =
     manualSize.width > 0
