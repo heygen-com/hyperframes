@@ -1,18 +1,14 @@
 import type { DomEditSelection } from "../components/editor/domEditing";
-import {
-  captureStudioRotation,
-  clearStudioRotation,
-  restoreStudioRotation,
-} from "../components/editor/manualEdits";
+import { captureStudioRotation, clearStudioRotation } from "../components/editor/manualEdits";
 import { buildClearRotationPatches } from "../components/editor/manualEditsDomPatches";
 import { STUDIO_ROTATION_ATTR } from "../components/editor/manualEditsTypes";
-import { applyCssRotation } from "../components/editor/rotationDraft";
+import { applyCssRotation, restorePlainRotation } from "../components/editor/rotationDraft";
 import type { PatchOperation } from "../utils/sourcePatcher";
 import type { ElementOffsetStagerDeps } from "./elementOffsetStager";
 
 let plainRotateCounter = 0;
 
-/** GSAP does not turn the element: `next` is its whole angle, drawn and saved as its own `rotate`. */
+/** GSAP does not turn the element: `next` is its whole angle, drawn and saved as its CSS turn. */
 export function savePlainRotation(
   { commitPositionPatchToHtml, readOnlyPreview }: Omit<ElementOffsetStagerDeps, "showToast">,
   selection: DomEditSelection,
@@ -26,15 +22,16 @@ export function savePlainRotation(
     ? buildClearRotationPatches(element)
     : [];
   if (patches.length) clearStudioRotation(element);
-  applyCssRotation(element, next.angle);
-  const value = element.style.getPropertyValue("rotate");
-  patches.push({ type: "inline-style", property: "rotate", value });
+  const drawn = applyCssRotation(element, next.angle);
+  patches.push(drawn);
   return commitPositionPatchToHtml(selection, patches, {
     label: "Rotate layer",
     coalesceKey: `rotate:${++plainRotateCounter}`,
     coalesceMs: Number.POSITIVE_INFINITY,
   }).catch((error) => {
-    if (element.style.getPropertyValue("rotate") === value) restoreStudioRotation(element, before);
+    if (element.style.getPropertyValue(drawn.property) === drawn.value) {
+      restorePlainRotation(element, before);
+    }
     throw error;
   });
 }

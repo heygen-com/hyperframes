@@ -163,7 +163,7 @@ export function createDomEditOverlayGestureHandlers(opts: UseDomEditOverlayGestu
         actualAngle: g.actualRotation,
         snap: e.shiftKey,
       });
-      applyRotationDraft(sel.element, rotated.angle, g.plainRotationShare);
+      applyRotationDraft(sel.element, rotated.angle, g.plainRotation);
       return;
     }
 
@@ -422,7 +422,7 @@ export function createDomEditOverlayGestureHandlers(opts: UseDomEditOverlayGestu
           sel.element,
           g.actualRotation,
           g.initialRotation,
-          g.plainRotationShare !== null,
+          g.plainRotation !== null,
         );
       if (!hasDomEditRotationChanged(g.actualRotation, finalRotation.angle)) {
         restoreRotation();
@@ -430,7 +430,7 @@ export function createDomEditOverlayGestureHandlers(opts: UseDomEditOverlayGestu
         return;
       }
       // Hold the final angle while the commit lands.
-      applyRotationDraft(sel.element, finalRotation.angle, g.plainRotationShare);
+      applyRotationDraft(sel.element, finalRotation.angle, g.plainRotation);
       void Promise.resolve(opts.onRotationCommitRef.current(sel, finalRotation))
         .catch((error) => {
           logGestureCommitFailure("rotate commit failed", error);
@@ -555,7 +555,7 @@ export function createDomEditOverlayGestureHandlers(opts: UseDomEditOverlayGestu
         sel.element,
         g.actualRotation,
         g.initialRotation,
-        g.plainRotationShare !== null,
+        g.plainRotation !== null,
       );
       endStudioManualEditGesture(sel.element, g.manualEditDragToken);
     }

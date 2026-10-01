@@ -185,7 +185,11 @@ describe("a rotate on a page that loads GSAP", () => {
 
     const handlers = createDomEditOverlayGestureHandlers(opts as never);
     expect(handlers.startGesture("rotate", pointer(25, -20) as never)).toBe(true);
-    expect(opts.gestureRef.current?.plainRotationShare).toBe(0);
+    expect(opts.gestureRef.current?.plainRotation).toEqual({
+      property: "rotate",
+      prefix: "",
+      share: 0,
+    });
     expect(opts.gestureRef.current?.actualRotation).toBeCloseTo(30);
     handlers.onPointerMove(pointer(60, 20) as never);
 
