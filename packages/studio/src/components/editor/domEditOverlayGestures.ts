@@ -49,7 +49,6 @@ export interface GestureState {
   kind: GestureKind;
   mode: "path-offset" | "box-size" | "rotation";
   selection: DomEditSelection;
-  /** The pointer that pressed; only its moves drive the gesture. */
   pointerId: number;
   startX: number;
   startY: number;
@@ -106,8 +105,7 @@ export interface GroupGestureState {
   travelled?: boolean;
 }
 
-/** A move that drives `gesture`: its own pointer, primary button still down. Chromium also sends a buttonless move at
- * the last known point after a layout change, which a drag must not take as travel. */
+/** Only the pressing pointer's moves with its button held drive a gesture, not Chromium's buttonless resends. */
 export function movesGesture(
   gesture: { pointerId: number },
   e: { pointerId: number; buttons: number },
