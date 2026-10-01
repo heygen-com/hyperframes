@@ -344,6 +344,14 @@ export const PREVIEW_BUNDLE_OPTIONS = {
   sceneParts: true,
 } as const satisfies BundleOptions;
 
+const previewBaseHref = (projectId: string) =>
+  `/api/projects/${encodeURIComponent(projectId)}/preview/`;
+
+const withPreviewBase = (html: string, projectId: string) =>
+  hasBaseElement(html)
+    ? html
+    : html.replace(/<head>/i, `<head><base href="${previewBaseHref(projectId)}">`);
+
 export function registerPreviewRoutes(api: Hono, adapter: PreviewApiAdapter): void {
   const previewCacheHeaders = (etag: string) => ({
     "Cache-Control": "private, no-cache",
@@ -406,10 +414,7 @@ export function registerPreviewRoutes(api: Hono, adapter: PreviewApiAdapter): vo
       }
 
       // Inject <base> for relative asset resolution
-      const baseHref = `/api/projects/${project.id}/preview/`;
-      if (!hasBaseElement(bundled)) {
-        bundled = bundled.replace(/<head>/i, `<head><base href="${baseHref}">`);
-      }
+      bundled = withPreviewBase(bundled, project.id);
 
       // Also covers elements the adapter injected; ids already present are kept.
       bundled = injectStudioPreviewAugmentations(
@@ -438,7 +443,7 @@ export function registerPreviewRoutes(api: Hono, adapter: PreviewApiAdapter): vo
       // not the pre-request snapshot that may have been saved over.
       const fallback = resolveProjectMainHtml(project.dir, project.id);
       if (fallback) {
-        const fallbackHtml = ensureHfIds(fallback.html);
+        const fallbackHtml = withPreviewBase(ensureHfIds(fallback.html), project.id);
         let fallbackAugmented = injectStudioPreviewAugmentations(
           await transformPreviewHtml(fallbackHtml, adapter, project, fallback.compositionPath),
           adapter,
@@ -549,7 +554,7 @@ export function registerPreviewRoutes(api: Hono, adapter: PreviewApiAdapter): vo
     const stamped = pinSubCompHfIds(compFile, compPath);
     if (stamped === null) return c.text("not found", 404); // file removed between stat and read
 
-    const baseHref = `/api/projects/${project.id}/preview/`;
+    const baseHref = previewBaseHref(project.id);
     let html = buildSubCompositionHtml(
       project.dir,
       compPath,

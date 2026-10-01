@@ -116,6 +116,33 @@ describe("registerPreviewRoutes", () => {
     expect(authored).not.toContain('<base href="/api/projects/demo/preview/">');
   });
 
+  it("encodes the project name in <base>, so a '#' or '\"' in it keeps assets in its own folder", async () => {
+    const projectDir = createProjectDir();
+    writeFileSync(join(projectDir, "scene.html"), "<template><section></section></template>");
+    const app = new Hono();
+    registerPreviewRoutes(app, createAdapter(projectDir));
+    const baseOf = async (path: string) =>
+      /<base href="([^"]*)">/.exec(
+        await (await app.request(`http://localhost${path}`)).text(),
+      )?.[1];
+    const take = "/api/projects/Take%20%232/preview/";
+    expect(await baseOf("/projects/Take%20%232/preview")).toBe(take);
+    expect(await baseOf("/projects/Take%20%232/preview/comp/scene.html")).toBe(take);
+    expect(new URL("logo.png", `http://localhost${take}`).pathname).toBe(`${take}logo.png`);
+    expect(await baseOf("/projects/a%22b/preview")).toBe("/api/projects/a%22b/preview/");
+  });
+
+  it("keeps the encoded <base> when the bundler fails and the page is read from disk", async () => {
+    const projectDir = createProjectDir();
+    const app = new Hono();
+    const bundle = async () => {
+      throw new Error("bundler unavailable");
+    };
+    registerPreviewRoutes(app, createAdapter(projectDir, { bundle }));
+    const html = await (await app.request("http://localhost/projects/Take%20%232/preview")).text();
+    expect(html).toContain('<base href="/api/projects/Take%20%232/preview/">');
+  });
+
   it("serves the mark the runtime keys preview-only work on, ahead of the runtime script", async () => {
     const projectDir = createProjectDir();
     const app = new Hono();
