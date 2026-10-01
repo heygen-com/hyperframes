@@ -1,4 +1,5 @@
 import { StudioFileConflictError, type StudioSaveDrainResult } from "./studioSaveDiagnostics";
+import { isTypingTarget } from "./typingTarget";
 
 const STUDIO_FLUSH_PENDING_EDITS_EVENT = "hf-studio-flush-pending-edits";
 
@@ -29,10 +30,7 @@ function inspectDrainFailures(results: PromiseSettledResult<unknown>[]): {
 
 function focusedField(): HTMLElement | null {
   const active = document.activeElement;
-  return active instanceof HTMLElement &&
-    active.matches('input, textarea, select, [contenteditable="true"], [role="textbox"]')
-    ? active
-    : null;
+  return active instanceof HTMLElement && isTypingTarget(active) ? active : null;
 }
 
 export function hasStudioPendingEdits(): boolean {

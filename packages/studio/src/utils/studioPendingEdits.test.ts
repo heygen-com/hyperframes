@@ -38,6 +38,22 @@ describe("studio pending edit flush", () => {
     input.remove();
   });
 
+  it.each([
+    ["contenteditable", "plaintext-only"],
+    ["role", "combobox"],
+    ["role", "searchbox"],
+    ["role", "switch"],
+  ])("counts a focused [%s=%s] as a pending edit", (attribute, value) => {
+    const field = document.createElement("div");
+    field.setAttribute(attribute, value);
+    field.tabIndex = 0;
+    document.body.append(field);
+    field.focus();
+
+    expect(hasStudioPendingEdits()).toBe(true);
+    field.remove();
+  });
+
   it("waits for a post-blur effect to register its pending edit listener", async () => {
     const input = document.createElement("textarea");
     document.body.append(input);
