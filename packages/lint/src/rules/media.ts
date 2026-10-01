@@ -832,8 +832,6 @@ export const mediaRules: Array<(ctx: LintContext) => HyperframeLintFinding[]> = 
 
   // audio_group_carve_attr
   findAudioGroupCarveAttrFindings,
-
-  // linked_clips_out_of_sync + linked_clip_orphan
   findLinkedClipFindings,
 ];
 
