@@ -11,7 +11,6 @@ import { createPortal } from "react-dom";
 import {
   DockviewReact,
   type DockviewApi,
-  type SerializedDockview,
   type DockviewReadyEvent,
   type IDockviewPanelProps,
 } from "dockview-react";
@@ -90,7 +89,7 @@ function snapshot(api: DockviewApi): DockSnapshot {
 interface DockOptions {
   /** Which of Studio's panels this dock has; preview and timeline always. */
   panels: readonly PanelId[];
-  /** Stores the layout alone under this key (plus `:projectId`), not in Studio's preferences. */
+  /** Keeps the layout under this key (plus `:projectId`) in place of Studio's preferences. */
   storageKey?: string | undefined;
   /** The width sides are sized against. */
   dockWidth: () => number;
@@ -134,33 +133,9 @@ function createController(api: DockviewApi, options: DockOptions): DockControlle
   };
 }
 
-function readLayout(projectId: string | null, storageKey: string | undefined): unknown {
-  if (!storageKey) return readStudioUiPreferences(undefined, projectId).dockLayout;
-  try {
-    return JSON.parse(window.localStorage.getItem(layoutKey(storageKey, projectId)) ?? "null");
-  } catch {
-    return null;
-  }
-}
-
-function writeLayout(
-  projectId: string | null,
-  storageKey: string | undefined,
-  layout: SerializedDockview,
-) {
-  if (!storageKey) return writeStudioUiPreferences({ dockLayout: layout }, undefined, projectId);
-  try {
-    window.localStorage.setItem(layoutKey(storageKey, projectId), JSON.stringify(layout));
-  } catch {
-    /* localStorage may be unavailable or full */
-  }
-}
-
-const layoutKey = (storageKey: string, projectId: string | null) =>
-  projectId ? `${storageKey}:${projectId}` : storageKey;
-
 function restoreOrBuild(api: DockviewApi, projectId: string | null, options: DockOptions) {
-  const stored = parseDockLayout(readLayout(projectId, options.storageKey), options.panels);
+  const { dockLayout } = readStudioUiPreferences(undefined, projectId, options.storageKey);
+  const stored = parseDockLayout(dockLayout, options.panels);
   if (stored) {
     try {
       api.fromJSON(stored);
@@ -223,7 +198,7 @@ function Root({
       const persist = () => {
         clearTimeout(timer);
         timer = setTimeout(() => {
-          writeLayout(projectId, storageKey, api.toJSON());
+          writeStudioUiPreferences({ dockLayout: api.toJSON() }, undefined, projectId, storageKey);
         }, PERSIST_DEBOUNCE_MS);
       };
       // dockview does not fire onDidLayoutChange for add/remove/activate,

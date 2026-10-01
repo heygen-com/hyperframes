@@ -263,7 +263,7 @@ describe("a host's dock", () => {
     act(() => {
       vi.advanceTimersByTime(400);
     });
-    const stored = JSON.parse(localStorage.getItem("host-dock:p1") ?? "null");
+    const stored = readStudioUiPreferences(undefined, "p1", "host-dock").dockLayout;
     expect(Object.keys(stored?.panels ?? {}).sort()).toEqual(["assets", "preview", "timeline"]);
     expect(readStudioUiPreferences(undefined, "p1").dockLayout).toBeUndefined();
   });
@@ -276,7 +276,7 @@ describe("a host's dock", () => {
     const studio = readStudioUiPreferences(undefined, "p1").dockLayout;
     act(() => root?.unmount());
     root = null;
-    localStorage.setItem("host-dock:p1", JSON.stringify(studio));
+    localStorage.setItem("host-dock:p1", JSON.stringify({ dockLayout: studio }));
     mount("p1", {}, hostDock);
     expect(useDockLayoutStore.getState().openPanels).toEqual(new Set(panels));
   });
