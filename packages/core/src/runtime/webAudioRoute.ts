@@ -7,48 +7,13 @@ import type { RuntimeJson } from "./types";
 /**
  * Which transport may claim an `<audio>` or audible `<video>` element's output.
  *
- * `createMediaElementSource()` is the runtime's PRIMARY audio path, and it is
- * a one-way door: the node permanently reroutes the element away from its
- * native output and is cached for the element's lifetime. That matters because
- * of a spec behaviour that looks nothing like a failure — per the Web Audio
- * spec's MediaElementAudioSourceNode security section, a node built over a
- * resource that fails the CORS-cross-origin check outputs SILENCE. It does not
- * throw, so the `try/catch` around the call in `webAudioTransport.ts` never
- * fires, nothing reaches `swallow()`, and the composition plays perfectly —
- * timeline advancing, visuals animating — with no audio at all (#3458).
- *
- * The only defence is to decide BEFORE the call, which is what this module is:
- * a pure classifier, so the same verdict can be reached at media-discovery time
- * (to emit a diagnostic) and at schedule time (to actually withhold the node)
- * without those two ever drifting apart.
- *
- * That guarantee holds for every caller that routes through this classifier —
- * it is NOT a runtime-wide interception of `createMediaElementSource`. The
- * timeline transport (`webAudioTransport.ts`, via `init.ts`) always goes
- * through it; a UI surface that builds its own throwaway `AudioContext` for
- * an unrelated purpose (e.g. the asset sidebar's preview player,
- * `AudioRow.tsx`) has to call it too, and is expected to. Known gap: an
- * element playing a `MediaStream` via `srcObject` instead of `src`/`<source>`
- * has no origin for this module to judge — `routeCandidates` only reads
- * `src`-shaped attributes, so a `srcObject` element always reads as
- * `web-audio` here, correctly or not. Nothing in this codebase feeds
- * `createMediaElementSource` from a `srcObject` element today, so this is
- * recorded as a boundary rather than fixed.
- *
- * Second known gap, same shape: `corsSilenceReason` judges the RAW url string —
- * the same-origin URL the author wrote, or whatever the browser resolved into
- * `currentSrc` — not wherever a server-side redirect chain actually lands.
- * A same-origin URL that 302s to a cross-origin CDN reads as `web-audio` here
- * and gets a real `createMediaElementSource` node; whether that node is
- * silent then depends on the redirect target's CORS headers, which this
- * classifier never sees (following the chain to inspect the final response
- * would turn a pure, synchronous verdict — needed on every schedule call —
- * into an async fetch). A cross-origin URL that redirects back to same-origin
- * has the opposite miss: classified `decode-only` and sent down the fetch
- * fallback when Web Audio capture would have worked fine either way. Not
- * fixed for the same reason as `srcObject` — no caller in this codebase
- * routes media through a redirecting URL today — but worth knowing before
- * trusting this classifier's verdict for one that does.
+ * `createMediaElementSource()` is a one-way door, and over a resource that fails
+ * the CORS-cross-origin check it outputs SILENCE without throwing (#3458). So the
+ * verdict is reached BEFORE the call by this pure classifier, shared by media
+ * discovery (diagnostic) and scheduling (withholding the node). Callers that build
+ * their own `AudioContext` (e.g. `AudioRow.tsx`) must route through it too.
+ * Known gaps: `srcObject` elements always read `web-audio`, and the RAW url is
+ * judged, not a redirect chain's final target.
  */
 export type WebAudioMediaRoute =
   /** Same-origin, CORS-opted-in, or a scheme the check doesn't apply to. */
