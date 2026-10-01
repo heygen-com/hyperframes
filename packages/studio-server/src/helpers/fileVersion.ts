@@ -60,8 +60,16 @@ export function onFileOverwritten(listener: OverwriteListener): () => void {
 
 export function recordFileWriteReceipt(
   filePath: string,
-  { overwrote, ...receipt }: FileWriteReceipt & { overwrote?: string | Uint8Array },
+  {
+    overwrote,
+    path,
+    version,
+    writeToken,
+  }: Omit<FileWriteReceipt, "from"> & {
+    overwrote?: string | Uint8Array;
+  },
 ): void {
+  const receipt = { path, version, writeToken };
   const absPath = realFilePath(filePath);
   if (overwrote !== undefined)
     for (const listener of overwriteListeners) listener(absPath, receipt.version, overwrote);
