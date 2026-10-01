@@ -663,6 +663,7 @@ describe("registerFileRoutes", () => {
       });
 
     expect((await patch({ fontFaceCss: "</style><script>x</script>" })).status).toBe(400);
+    expect((await patch({ fontFaceCss: `${css} body{display:none}` })).status).toBe(400);
     expect((await patch({ fontFaceCss: css }, { id: "missing" })).status).toBe(200);
     expect(readFileSync(join(projectDir, "index.html"), "utf-8")).toBe(original);
 

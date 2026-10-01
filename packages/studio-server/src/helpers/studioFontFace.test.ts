@@ -40,6 +40,8 @@ describe("isStudioFontFaceCss", () => {
   it("takes one @font-face rule and nothing that could leave the style block", () => {
     expect(isStudioFontFaceCss(bold)).toBe(true);
     expect(isStudioFontFaceCss("body { color: red }")).toBe(false);
+    expect(isStudioFontFaceCss(`${bold} body{display:none}`)).toBe(false);
+    expect(isStudioFontFaceCss(`${bold}\n${regular}`)).toBe(false);
     expect(isStudioFontFaceCss('@font-face { src: url("x") } </style><script>')).toBe(false);
     expect(isStudioFontFaceCss(42)).toBe(false);
   });

@@ -1,7 +1,9 @@
 const FONT_STYLE_RE = /<style\b[^>]*data-hf-studio-fonts=(["'])true\1[^>]*>([\s\S]*?)<\/style>/i;
 
+const ONE_FONT_FACE_RULE = /^@font-face \{[^{}<]*\}$/;
+
 export function isStudioFontFaceCss(css: unknown): css is string {
-  return typeof css === "string" && css.startsWith("@font-face {") && !css.includes("<");
+  return typeof css === "string" && ONE_FONT_FACE_RULE.test(css);
 }
 
 /** Adds `css` to the file's Studio font block, creating the block in `<head>` the first time. */
