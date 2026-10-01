@@ -73,6 +73,7 @@ async function probeChannels(mediaPath: string): Promise<number> {
       "stream=channels",
       "-of",
       "csv=p=0",
+      "--",
       mediaPath,
     ],
     { encoding: "utf8", timeout: 30_000, windowsHide: true },
