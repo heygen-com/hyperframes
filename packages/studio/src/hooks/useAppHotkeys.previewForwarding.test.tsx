@@ -7,11 +7,15 @@ import type { DomEditSelection } from "../components/editor/domEditing";
 import { usePlayerStore } from "../player/store/playerStore";
 import { useAppHotkeys } from "./useAppHotkeys";
 import { mountReactHarness } from "./domSelectionTestHarness";
+import { trackStudioEvent } from "../utils/studioTelemetry";
+
+vi.mock("../utils/studioTelemetry", () => ({ trackStudioEvent: vi.fn() }));
 
 (globalThis as unknown as { IS_REACT_ACT_ENVIRONMENT: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
 const domDelete = vi.fn(async () => undefined);
 const historyUndo = vi.fn(async () => ({ ok: false }));
+const historyRedo = vi.fn(async () => ({ ok: false }));
 let root: Root | null = null;
 let sync: ((iframe: HTMLIFrameElement | null) => void) | null = null;
 
@@ -37,7 +41,7 @@ function Harness() {
     clearDomSelectionRef: useRef<() => void>(() => undefined),
     editHistory: {
       undo: historyUndo,
-      redo: vi.fn(async () => ({ ok: false })),
+      redo: historyRedo,
       state: { undo: [], redo: [] },
     },
     readOptionalProjectFile: vi.fn(async () => ""),
@@ -64,6 +68,8 @@ afterEach(() => {
   usePlayerStore.getState().reset();
   domDelete.mockClear();
   historyUndo.mockClear();
+  historyRedo.mockClear();
+  vi.mocked(trackStudioEvent).mockClear();
 });
 
 describe("preview iframe hotkey forwarding", () => {
@@ -90,20 +96,60 @@ describe("preview iframe hotkey forwarding", () => {
     expect(domDelete).toHaveBeenCalledTimes(1);
   });
 
-  it("takes one undo step per Cmd+Z pressed inside the preview", async () => {
+  function mountWithPreview(): Window & typeof globalThis {
     root = mountReactHarness(<Harness />);
     const iframe = document.createElement("iframe");
     document.body.append(iframe);
     act(() => sync?.(iframe));
-
     const inner = iframe.contentWindow as (Window & typeof globalThis) | null;
     if (!inner) throw new Error("expected an iframe window");
+    return inner;
+  }
+
+  async function press(inner: Window & typeof globalThis, init: KeyboardEventInit) {
     await act(async () => {
       inner.document.body.dispatchEvent(
-        new inner.KeyboardEvent("keydown", { key: "z", ctrlKey: true, bubbles: true }),
+        new inner.KeyboardEvent("keydown", { ...init, bubbles: true }),
       );
     });
+  }
+
+  it("takes one tracked undo step per Cmd+Z pressed inside the preview", async () => {
+    await press(mountWithPreview(), { key: "z", ctrlKey: true });
 
     expect(historyUndo).toHaveBeenCalledTimes(1);
+    expect(trackStudioEvent).toHaveBeenCalledTimes(1);
+    expect(trackStudioEvent).toHaveBeenCalledWith("keyboard_shortcut", { action: "undo" });
+  });
+
+  it.each([
+    ["Shift+Cmd+Z", { key: "Z", metaKey: true, shiftKey: true }],
+    ["Ctrl+Y", { key: "y", ctrlKey: true }],
+  ])("takes one tracked redo step per %s pressed inside the preview", async (_, init) => {
+    await press(mountWithPreview(), init);
+
+    expect(historyRedo).toHaveBeenCalledTimes(1);
+    expect(trackStudioEvent).toHaveBeenCalledTimes(1);
+    expect(trackStudioEvent).toHaveBeenCalledWith("keyboard_shortcut", { action: "redo" });
+  });
+
+  it("stops handling preview keys once the app unmounts", async () => {
+    root = mountReactHarness(<Harness />);
+    const iframe = document.createElement("iframe");
+    document.body.append(iframe);
+    const inner = iframe.contentWindow as (Window & typeof globalThis) | null;
+    if (!inner) throw new Error("expected an iframe window");
+    const add = vi.spyOn(inner, "addEventListener");
+    const remove = vi.spyOn(inner, "removeEventListener");
+    act(() => sync?.(iframe));
+    act(() => root?.unmount());
+    root = null;
+
+    await press(inner, { key: "z", ctrlKey: true });
+
+    expect(historyUndo).not.toHaveBeenCalled();
+    // happy-dom removes a listener whatever its capture flag; a browser does not, so pin the flag.
+    expect(add).toHaveBeenCalled();
+    expect(remove.mock.calls).toEqual(add.mock.calls);
   });
 });
