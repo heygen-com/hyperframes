@@ -1,9 +1,14 @@
 // @vitest-environment happy-dom
-import { expect, it, vi } from "vitest";
+import { afterEach, expect, it, vi } from "vitest";
 import { createGsapLivePreview } from "./gsapLivePreview";
 import type { DomEditSelection } from "./domEditingTypes";
 import type { GsapAnimation } from "@hyperframes/parsers/gsap-parser";
 import { readGsapRuntimeValuesForPanel } from "./propertyPanelHelpers";
+
+afterEach(() => {
+  delete (window as { gsap?: unknown }).gsap;
+  delete (window as { __timelines?: unknown }).__timelines;
+});
 
 it("previews on the selected element, not an earlier same-id copy in a sub-composition", () => {
   document.body.innerHTML =
@@ -64,6 +69,7 @@ it("the panel reads GSAP values off the node the live preview moves", () => {
 
 it.each([
   ["fades it", { opacity: 0 }, ["opacity"]],
+  ["fades it about its corner", { opacity: 0, transformOrigin: "0 0" }, ["opacity"]],
   [
     "moves it",
     { x: 100 },
@@ -98,7 +104,5 @@ it.each([
     });
     const props = getProperty.mock.calls.map((call) => (call as unknown[])[1]);
     expect(props).toEqual(read);
-    delete (window as { gsap?: unknown }).gsap;
-    delete (window as { __timelines?: unknown }).__timelines;
   },
 );

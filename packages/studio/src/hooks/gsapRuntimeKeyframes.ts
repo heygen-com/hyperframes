@@ -420,7 +420,7 @@ export const POSITION_CHANNELS: string[] = [
 const MOVE_CHANNELS = [...POSITION_CHANNELS, "motionPath"];
 
 export const GSAP_TRANSFORM_KEYS = new Set(
-  "x,y,z,scale,scaleX,scaleY,xPercent,yPercent,rotation,rotationX,rotationY,rotationZ,rotate,rotateX,rotateY,rotateZ,skewX,skewY,translateX,translateY,translateZ,transformPerspective".split(
+  "x,y,z,scale,scaleX,scaleY,xPercent,yPercent,rotation,rotationX,rotationY,skewX,skewY,transformOrigin,svgOrigin,force3D,smoothOrigin,transformPerspective,translateX,translateY,translateZ,rotate,rotationZ,rotateZ,rotateX,rotateY".split(
     ",",
   ),
 );
