@@ -183,8 +183,15 @@ export function restoreHasGsapScript(html: string): boolean {
 }
 
 // The active document is the whole preview; a sub-composition lives in each host that inlines it.
-function liveScopes(doc: Document, path: string, isActive: boolean): ParentNode[] {
+// Only the active document's GSAP script can be re-run in place.
+function liveScopes(
+  doc: Document,
+  path: string,
+  isActive: boolean,
+  file: UndoRestoreFile,
+): ParentNode[] {
   if (isActive) return [doc];
+  if (restoreHasGsapScript(file.previous) || restoreHasGsapScript(file.restored)) return [];
   return Array.from(doc.querySelectorAll(`[data-composition-file="${CSS.escape(path)}"]`));
 }
 
@@ -210,11 +217,10 @@ function fileTargets(
   doc: Document,
   path: string,
   isActive: boolean,
-  { previous, restored }: UndoRestoreFile,
+  file: UndoRestoreFile,
 ): RestoreTarget[] | null {
-  // Only the active document's GSAP script can be re-run in place.
-  if (!isActive && (restoreHasGsapScript(previous) || restoreHasGsapScript(restored))) return null;
-  const scopes = liveScopes(doc, path, isActive);
+  const { previous, restored } = file;
+  const scopes = liveScopes(doc, path, isActive, file);
   const diff = diffSoftReloadableRestore(previous, restored);
   if (!scopes.length || !diff || hasAmbiguousGsapScriptChange(previous, restored)) return null;
   const restoredByKey = identityElementMap(parseRestoreSource(restored));
