@@ -34,15 +34,12 @@ type FadeDraft = { edge: FadeEdge; seconds: number } | null;
 const TAB_WIDTH = 4;
 const TAB_HEIGHT = 15;
 const HANDLE_HIT = 24;
-/** The tab never sits closer than this to a clip end, so it stays on the clip's top edge. */
 const TAB_INSET = 7;
-/** Where the tab's centre sits inside its hit box; most of the box hangs into the clip. */
 const TAB_CENTER_IN_HIT = 8;
 const HANDLE_Z_ABOVE_CLIP_CONTENT = 30;
 const SUPPRESS_CLIP_NATIVE_TITLE = "";
 /** Pixels of pointer travel before a press on the handle counts as a drag. */
 const DRAG_THRESHOLD_PX = 2;
-/** Double-click on a handle with no fade, or Enter, adds this much. */
 const DEFAULT_FADE_SECONDS = 0.5;
 const SNAP_LABEL: Record<TimelineSnapType, string> = {
   playhead: "playhead",
@@ -50,7 +47,6 @@ const SNAP_LABEL: Record<TimelineSnapType, string> = {
   beat: "beat",
 };
 
-/** The fades a clip's content draws with, live during a drag; null outside a fade-capable clip. */
 export type ClipFadeShape = AudioFades & { duration: number };
 export const ClipFadesContext = createContext<ClipFadeShape | null>(null);
 
@@ -81,25 +77,32 @@ interface TimelineClipFadesProps {
   widthPx: number;
   /** Handles show on hover/selection; the ramps show whenever a fade is set. */
   showHandles: boolean;
-  /** The selected clip's handles join the tab order. */
   focusable?: boolean;
   /** Audio clips draw the fade in their waveform; others get the shaded wedge. */
   hasWaveform?: boolean;
   fade: ReturnType<typeof useClipFadeDraft>;
 }
 
-/** The fade length a key asks for, or null when the key is not the handle's. */
+type KeyedFade = (current: number, step: number, limit: number) => number | null;
+const grow: KeyedFade = (current, step) => current + step;
+const shrink: KeyedFade = (current, step) => current - step;
+const clear: KeyedFade = () => 0;
+const FADE_KEYS: Record<string, KeyedFade> = {
+  ArrowRight: grow,
+  ArrowUp: grow,
+  ArrowLeft: shrink,
+  ArrowDown: shrink,
+  Home: clear,
+  Delete: clear,
+  Backspace: clear,
+  End: (_current, _step, limit) => limit,
+  Enter: (current) => (current === 0 ? DEFAULT_FADE_SECONDS : null),
+};
+
 function keyedFadeSeconds(key: string, shift: boolean, current: number, limit: number) {
-  const step = shift ? 1 : 0.1;
-  if (key === "ArrowRight" || key === "ArrowUp") return current + step;
-  if (key === "ArrowLeft" || key === "ArrowDown") return current - step;
-  if (key === "Home" || key === "Delete" || key === "Backspace") return 0;
-  if (key === "End") return limit;
-  if (key === "Enter" && current === 0) return DEFAULT_FADE_SECONDS;
-  return null;
+  return FADE_KEYS[key]?.(current, shift ? 1 : 0.1, limit) ?? null;
 }
 
-/** Pill-aware y of the clip's top edge at x, so the tab rides the rounded ends. */
 function topEdgeY(x: number, widthPx: number, heightPx: number, radiusPx: number): number {
   const r = Math.min(radiusPx, widthPx / 2, heightPx / 2);
   const d = x < r ? r - x : x > widthPx - r ? x - (widthPx - r) : 0;
@@ -159,8 +162,9 @@ export function TimelineClipFades({
     edge === "in" ? HF_AUDIO_FADE_IN_ATTR : HF_AUDIO_FADE_OUT_ATTR;
   const attrText = (seconds: number) => (seconds > 0 ? formatFadeSeconds(seconds) : null);
   const labelFor = (edge: FadeEdge) => (edge === "in" ? "Fade in" : "Fade out");
+  const shownSeconds = (edge: FadeEdge) => (edge === "in" ? fades.fadeIn : fades.fadeOut);
   const limitFor = (edge: FadeEdge) =>
-    Math.max(0, el.duration - (edge === "in" ? authoredOut : authoredIn));
+    Math.max(0, el.duration - shownSeconds(edge === "in" ? "out" : "in"));
 
   /** Moves the fade's end onto a playhead or clip edge within the timeline's snap radius. */
   const snapSeconds = (g: NonNullable<typeof gesture.current>, seconds: number) => {
@@ -206,7 +210,7 @@ export function TimelineClipFades({
             playheadTime: store.currentTime,
             beatTimes: [],
             excludeElementKey: el.key ?? el.id,
-          })
+          }).filter(({ time }) => time > el.start + 1e-3 && time < el.start + el.duration - 1e-3)
         : [],
     };
     setDragging(edge);
@@ -250,10 +254,16 @@ export function TimelineClipFades({
     setDraft(null);
   };
 
-  /** One saved write, one undo step. */
   const commit = (edge: FadeEdge, seconds: number) => {
     setDraft({ edge, seconds });
-    void onSetElementAttributeQuiet?.(el, attrFor(edge), attrText(seconds), labelFor(edge));
+    const dropDraft = () => {
+      onRevertElementAttributeLive?.(el, attrFor(edge));
+      setDraft(null);
+    };
+    void onSetElementAttributeQuiet?.(el, attrFor(edge), attrText(seconds), labelFor(edge)).then(
+      (outcome) => outcome && outcome.status !== "saved" && dropDraft(),
+      dropDraft,
+    );
   };
 
   const finish = (e: PointerEvent<HTMLDivElement>, cancelled: boolean) => {
@@ -264,22 +274,27 @@ export function TimelineClipFades({
   };
 
   const onHandleDoubleClick = (edge: FadeEdge) => {
-    const current = edge === "in" ? authoredIn : authoredOut;
-    commit(edge, current > 0 ? 0 : Math.min(DEFAULT_FADE_SECONDS, limitFor(edge)));
+    commit(edge, shownSeconds(edge) > 0 ? 0 : Math.min(DEFAULT_FADE_SECONDS, limitFor(edge)));
   };
 
+  const keyBurst = useRef<{ edge: FadeEdge; seconds: number } | null>(null);
+  const flushKeys = () => {
+    const burst = keyBurst.current;
+    keyBurst.current = null;
+    if (burst) commit(burst.edge, burst.seconds);
+  };
+
+  // A held key previews live and saves once on release: one undo step per burst.
   const onHandleKeyDown = (edge: FadeEdge) => (e: KeyboardEvent<HTMLDivElement>) => {
-    const next = keyedFadeSeconds(
-      e.key,
-      e.shiftKey,
-      edge === "in" ? fades.fadeIn : fades.fadeOut,
-      limitFor(edge),
-    );
-    if (next === null || !canEdit) return;
-    // The timeline also listens for arrows; a handled key is the handle's alone.
+    if (gesture.current || !canEdit) return;
+    const next = keyedFadeSeconds(e.key, e.shiftKey, shownSeconds(edge), limitFor(edge));
+    if (next === null) return;
     e.preventDefault();
     e.stopPropagation();
-    commit(edge, Math.round(Math.min(limitFor(edge), Math.max(0, next)) * 100) / 100);
+    const seconds = Math.round(Math.min(limitFor(edge), Math.max(0, next)) * 100) / 100;
+    keyBurst.current = { edge, seconds };
+    setDraft({ edge, seconds });
+    onSetElementAttributeLive?.(el, attrFor(edge), attrText(seconds));
   };
 
   useEffect(() => {
@@ -309,13 +324,18 @@ export function TimelineClipFades({
     const inset = Math.min(TAB_INSET, widthPx / 2);
     return Math.min(widthPx - inset, Math.max(inset, knee));
   };
+  const boxLeft = (x: number) => Math.min(widthPx - hitWidth, Math.max(0, x - hitWidth / 2));
+  const [inX, outX] = [tabX("in"), tabX("out")];
+  const overlap = boxLeft(inX) + hitWidth > boxLeft(outX);
   const handleGeometry = (edge: FadeEdge) => {
-    const x = tabX(edge);
-    // Each hit box keeps to its own half, so on a narrow clip the two never overlap.
-    const left =
-      edge === "in"
-        ? Math.min(widthPx / 2 - hitWidth, Math.max(0, x - hitWidth / 2))
-        : Math.min(widthPx - hitWidth, Math.max(widthPx / 2, x - hitWidth / 2));
+    const x = edge === "in" ? inX : outX;
+    // Boxes that would overlap split at the midpoint between the two tabs.
+    const mid = Math.min(widthPx - hitWidth, Math.max(hitWidth, (inX + outX) / 2));
+    const left = !overlap
+      ? boxLeft(x)
+      : edge === "in"
+        ? Math.min(boxLeft(x), mid - hitWidth)
+        : Math.max(boxLeft(x), mid);
     const edgeY = topEdgeY(x, widthPx, clipBox.height, clipBox.radius);
     return { left, tabLeft: x - left, top: edgeY + 1 - TAB_CENTER_IN_HIT };
   };
@@ -382,6 +402,7 @@ export function TimelineClipFades({
             <FadeHandle
               key={edge}
               direction={edge}
+              clipName={el.label || el.id}
               value={edge === "in" ? fades.fadeIn : fades.fadeOut}
               max={Math.max(0, el.duration - (edge === "in" ? fades.fadeOut : fades.fadeIn))}
               snapLabel={dragging === edge && snapType ? SNAP_LABEL[snapType] : null}
@@ -396,7 +417,11 @@ export function TimelineClipFades({
               onPointerCancel={(e) => finish(e, true)}
               onDoubleClick={() => onHandleDoubleClick(edge)}
               onKeyDown={onHandleKeyDown(edge)}
-              onFocusChange={(on) => setFocused(on ? edge : null)}
+              onKeyUp={flushKeys}
+              onFocusChange={(on) => {
+                if (!on) flushKeys();
+                setFocused(on ? edge : null);
+              }}
             />
           );
         })}
@@ -443,6 +468,7 @@ function FadeRamp({
 
 function FadeHandle({
   direction,
+  clipName,
   value,
   max,
   snapLabel,
@@ -457,9 +483,11 @@ function FadeHandle({
   onPointerCancel,
   onDoubleClick,
   onKeyDown,
+  onKeyUp,
   onFocusChange,
 }: {
   direction: "in" | "out";
+  clipName: string;
   value: number;
   max: number;
   snapLabel: string | null;
@@ -474,6 +502,7 @@ function FadeHandle({
   onPointerCancel: (event: PointerEvent<HTMLDivElement>) => void;
   onDoubleClick: () => void;
   onKeyDown: (event: KeyboardEvent<HTMLDivElement>) => void;
+  onKeyUp: () => void;
   onFocusChange: (focused: boolean) => void;
 }) {
   const label = direction === "in" ? "Fade in" : "Fade out";
@@ -483,7 +512,7 @@ function FadeHandle({
       <div
         role="slider"
         tabIndex={focusable ? 0 : -1}
-        aria-label={label}
+        aria-label={`${label}, ${clipName}`}
         aria-valuemin={0}
         aria-valuemax={max}
         aria-valuenow={value}
@@ -503,6 +532,7 @@ function FadeHandle({
           onDoubleClick();
         }}
         onKeyDown={onKeyDown}
+        onKeyUp={onKeyUp}
         onFocus={() => onFocusChange(true)}
         onBlur={() => onFocusChange(false)}
       >

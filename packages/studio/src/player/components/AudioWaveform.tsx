@@ -23,7 +23,8 @@ export interface AudioWaveformProps {
 }
 
 const BAR_STEP = 3;
-/** The bars a fade cuts away stay visible at this share of their opacity. */
+
+export const rendersWaveform = (el: { tag: string }) => el.tag === "audio";
 const FADE_GHOST_OPACITY = 0.27;
 
 type BarGeometry = { x: number; width: number; height: number; gain: number };
@@ -37,18 +38,18 @@ function paintWaveformBars(
   amplitudes: readonly number[],
 ) {
   bars.forEach((bar, index) => {
-    const amplitude = amplitudes[index] ?? 0;
-    const opacity = loudnessToOpacity(amplitude);
+    const opacity = loudnessToOpacity(amplitudes[index] ?? 0);
     context.fillStyle = `rgb(${waveformBaselineRgb})`;
     context.fillRect(bar.x, height - 2, bar.width, 2);
-    if (bar.gain < 1) {
-      context.fillStyle = `rgba(${waveformBarRgb},${(opacity * FADE_GHOST_OPACITY).toFixed(2)})`;
-      context.fillRect(bar.x, height - bar.height, bar.width, bar.height);
-    }
+    const paint = (alpha: number, top: number, barHeight: number) => {
+      context.fillStyle = `rgba(${waveformBarRgb},${alpha.toFixed(2)})`;
+      context.fillRect(bar.x, top, bar.width, barHeight);
+    };
     const faded = bar.height * bar.gain;
-    if (faded <= 0) return;
-    context.fillStyle = `rgba(${waveformBarRgb},${opacity.toFixed(2)})`;
-    context.fillRect(bar.x, height - faded, bar.width, faded);
+    if (faded > 0) paint(opacity, height - faded, faded);
+    if (faded < bar.height) {
+      paint(opacity * FADE_GHOST_OPACITY, height - bar.height, bar.height - faded);
+    }
   });
 }
 
@@ -75,7 +76,6 @@ export function drawWaveformCanvas(
     trimEndFraction,
     Math.max(1, Math.ceil(width / BAR_STEP)),
   );
-  // Each bar shrinks to the gain heard at its centre, so the fade reads in the waveform.
   const bars = amplitudes.map((amplitude, index) => ({
     x: (index * width) / amplitudes.length,
     width: Math.max(1, width / amplitudes.length),

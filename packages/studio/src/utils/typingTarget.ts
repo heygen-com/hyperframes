@@ -37,6 +37,7 @@ const TYPING_SELECTOR = [
   // `input` and matched above. Without this row the shared Toggle would let a
   // global shortcut claim Space instead of flipping the control (KTD13).
   "[role='switch']",
+  "[role='slider']",
   ".cm-editor",
 ].join(",");
 

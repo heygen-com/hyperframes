@@ -41,6 +41,10 @@ describe("isTypingTarget", () => {
     expect(isTypingTarget(mount('<div role="combobox"></div>'))).toBe(true);
   });
 
+  it("gives a focused slider its own keys, as the native range input has them", () => {
+    expect(isTypingTarget(mount('<div role="slider" tabindex="0"></div>'))).toBe(true);
+  });
+
   it("leaves the keys alone for anything that is not being typed into", () => {
     expect(isTypingTarget(mount("<div>plain</div>"))).toBe(false);
     expect(isTypingTarget(mount("<button>press</button>"))).toBe(false);

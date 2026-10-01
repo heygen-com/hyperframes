@@ -253,14 +253,13 @@
   border-radius: var(--timeline-clip-audio-radius);
 }
 
-/* Fade handle: a slim tab at the fade's end; grows on hover and while dragged. */
 .timeline-fade-tab {
   position: absolute;
   border-radius: 2px;
   background: var(--timeline-fade-dot);
   box-shadow:
     0 0 0 1px var(--timeline-fade-dot-ring),
-    0 1px 3px rgb(0 0 0 / 0.35);
+    0 1px 3px var(--timeline-fade-dot-ring);
   transition: transform 140ms cubic-bezier(0.23, 1, 0.32, 1);
 }
 

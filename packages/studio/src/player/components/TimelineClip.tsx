@@ -10,6 +10,7 @@ import type { TimelineEditCapabilities } from "./timelineEditing";
 import { isAudioTimelineElement } from "../../utils/timelineInspector";
 import { timelineClipFocusId } from "./timelineNavigationIdentity";
 import { ClipFadesContext, TimelineClipFades, useClipFadeDraft } from "./TimelineClipFades";
+import { rendersWaveform } from "./AudioWaveform";
 
 interface TimelineClipProps {
   el: TimelineElement;
@@ -221,7 +222,7 @@ export const TimelineClip = memo(function TimelineClip({
           widthPx={widthPx}
           showHandles={(isHovered || isSelected) && !isDragging}
           focusable={isSelected}
-          hasWaveform={isAudioClip}
+          hasWaveform={rendersWaveform(el)}
           fade={fade}
         />
       )}

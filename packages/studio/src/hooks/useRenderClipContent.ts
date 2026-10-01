@@ -9,7 +9,7 @@ import {
 import type { TimelineElement } from "../player";
 import type { TimelineClipRenderContext } from "../player/components/TimelineTypes";
 import { audioPillFlags } from "../player/components/audioClipLink";
-import { AudioWaveform } from "../player/components/AudioWaveform";
+import { AudioWaveform, rendersWaveform } from "../player/components/AudioWaveform";
 import { ImageThumbnail } from "../player/components/ImageThumbnail";
 import { encodePreviewPath, resolveMediaPreviewUrl } from "../player/components/thumbnailUtils";
 import { usePlayerStore } from "../player/store/playerStore";
@@ -135,7 +135,7 @@ export function useRenderClipContent({
       // Thumbnail generation disabled (perf) -> plain clip bars. Audio still shows
       // its waveform (cheap, not a frame thumbnail). Toggle: timeline toolbar.
       if (effectiveMode === "hidden") {
-        return el.tag === "audio"
+        return rendersWaveform(el)
           ? renderAudioClip(el, pid, sessionEpoch, style.label, context, elements)
           : null;
       }
@@ -173,7 +173,7 @@ export function useRenderClipContent({
       // Audio clips — waveform visualization. Resolve these before the generic
       // activePreviewUrl thumbnail branch; audio rows need waveform data, not a
       // captured frame from the currently drilled composition preview.
-      if (el.tag === "audio") {
+      if (rendersWaveform(el)) {
         return renderAudioClip(el, pid, sessionEpoch, style.label, context, elements);
       }
 

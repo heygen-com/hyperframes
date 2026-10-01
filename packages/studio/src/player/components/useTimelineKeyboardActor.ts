@@ -22,7 +22,7 @@ function eventTarget(event: FocusEvent | KeyboardEvent): HTMLElement | null {
   // Header actions stay native Tab stops because they have no row-level shortcut.
   // The nearest interactive ancestor wins so their events never masquerade as row events.
   const target = event.target.closest<HTMLElement>(
-    "button, input, select, textarea, a[href], [contenteditable], [data-timeline-focus-id]",
+    "button, input, select, textarea, a[href], [contenteditable], [role='slider'], [data-timeline-focus-id]",
   );
   return target?.dataset.timelineFocusId && event.currentTarget.contains(target) ? target : null;
 }

@@ -5,6 +5,7 @@ import { createRoot } from "react-dom/client";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { TimelineElement } from "../store/playerStore";
 import { TimelineClip } from "./TimelineClip";
+import { ClipFadesContext } from "./TimelineClipFades";
 import type { TimelineEditCapabilities } from "./timelineEditing";
 import { defaultTimelineTheme, type TimelineTheme } from "./timelineTheme";
 
@@ -67,6 +68,43 @@ function renderClip({
 }
 
 describe("TimelineClip", () => {
+  it("hands its content the clip's fades, and none to a clip the mixer does not hear", () => {
+    const seen: unknown[] = [];
+    function Probe() {
+      seen.push(React.useContext(ClipFadesContext));
+      return null;
+    }
+    const render = (element: TimelineElement) => {
+      const host = document.createElement("div");
+      document.body.append(host);
+      const root = createRoot(host);
+      act(() => {
+        root.render(
+          <TimelineClip
+            el={element}
+            pps={100}
+            clipY={0}
+            isSelected={false}
+            isHovered={false}
+            hasCustomContent
+            capabilities={capabilities}
+            isComposition={false}
+            onHoverStart={vi.fn()}
+            onHoverEnd={vi.fn()}
+            onClick={vi.fn()}
+            onDoubleClick={vi.fn()}
+          >
+            <Probe />
+          </TimelineClip>,
+        );
+      });
+      act(() => root.unmount());
+    };
+    render({ id: "music", tag: "audio", start: 0, duration: 4, track: 0, fadeIn: 1, fadeOut: 0.5 });
+    render({ id: "title", tag: "div", start: 0, duration: 4, track: 0, fadeIn: 1 });
+    expect(seen).toEqual([{ fadeIn: 1, fadeOut: 0.5, duration: 4 }, null]);
+  });
+
   it("renders the clip label above custom content without showing default timecode", () => {
     const { host, root } = renderClip({
       element: { id: "hero", label: "Hero", tag: "div", start: 1, duration: 1, track: 0 },
