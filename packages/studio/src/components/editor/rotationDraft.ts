@@ -1,5 +1,6 @@
 import { readCssRotation } from "../../hooks/draggedGsapPosition";
 import { roundTo3 } from "../../utils/rounding";
+import type { PatchOperation } from "../../utils/sourcePatcher";
 import {
   readStudioRotation,
   restoreStudioRotation,
@@ -7,24 +8,78 @@ import {
 } from "./manualEdits";
 import { getOffsetDragGsap } from "./manualOffsetDrag";
 
-/** The element's own `rotate` that shows `angle`, less `share`, what its `scale` and `transform` turn. */
+const TRAILING_TURN = /\s*rotate\(\s*-?[\d.]+(?:e[+-]?\d+)?deg\s*\)\s*$/;
+
+// ponytail: the authored transform if it moves the box, from the last matching rule in sheet order;
+// specificity, !important and @media are not weighed. Weigh them when a film's rule is missed.
+function translatingTransform(element: HTMLElement): string {
+  const view = element.ownerDocument.defaultView;
+  const computed = view?.getComputedStyle(element).transform ?? "none";
+  const m = computed === "none" ? null : new view!.DOMMatrix(computed);
+  if (!m || (m.m41 === 0 && m.m42 === 0)) return "";
+  let value = element.style.getPropertyValue("transform");
+  for (const sheet of value ? [] : Array.from(element.ownerDocument.styleSheets)) {
+    let rules: CSSRule[];
+    try {
+      rules = Array.from(sheet.cssRules);
+    } catch {
+      continue; // a cross-origin sheet
+    }
+    for (const rule of rules as CSSStyleRule[]) {
+      const declared = rule.style?.getPropertyValue("transform");
+      if (declared && element.matches(rule.selectorText)) value = declared;
+    }
+  }
+  return value === "none" ? "" : value;
+}
+
+/** Where a plain rotate draws its turn, read once at press: the element's own `rotate`, or, when its
+ *  transform translates it (often the translate(-50%, -50%) centring), a trailing rotate() in that
+ *  transform, so the translate is not turned with the box. `share` is what the rest already turns. */
+export interface CssRotationTarget {
+  property: "rotate" | "transform";
+  prefix: string;
+  share: number;
+}
+
+export function readCssRotationTarget(element: HTMLElement): CssRotationTarget {
+  const transform = translatingTransform(element);
+  if (!transform) return { property: "rotate", prefix: "", share: readCssRotation(element, false) };
+  const prefix = transform.replace(TRAILING_TURN, "");
+  const style = element.style;
+  const inline = [style.getPropertyValue("transform"), style.getPropertyPriority("transform")];
+  style.setProperty("transform", prefix || "none");
+  const share = readCssRotation(element);
+  style.setProperty("transform", inline[0] ?? "", inline[1] ?? "");
+  return { property: "transform", prefix, share };
+}
+
+/** Draws `angle` where `target` says, and returns the source patch that saves it as drawn. */
 export function applyCssRotation(
   element: HTMLElement,
   angle: number,
-  share = readCssRotation(element, false),
-): void {
-  element.style.setProperty("rotate", `${roundTo3(angle - share)}deg`);
+  target = readCssRotationTarget(element),
+): PatchOperation & { value: string } {
+  const turn = `${roundTo3(angle - target.share)}deg`;
+  const value = target.property === "rotate" ? turn : `${target.prefix} rotate(${turn})`.trim();
+  element.style.setProperty(target.property, value);
+  return { type: "inline-style", property: target.property, value };
 }
 
-// `plainShare` is decided once, at gesture start: a number when GSAP turns nothing on the element (the
-// rotate draws its own CSS `rotate`), null for GSAP's rotation, as the commit writes it.
+/** Back to the press: the rotation snapshot and, for a plain rotate, the inline transform it drew in. */
+export function restorePlainRotation(element: HTMLElement, snapshot: StudioRotationSnapshot): void {
+  restoreStudioRotation(element, snapshot);
+  element.style.setProperty("transform", snapshot.transform);
+}
+
+// `plain`, read at press: where a turn GSAP does not own draws; null for GSAP's rotation.
 export function applyRotationDraft(
   element: HTMLElement,
   angle: number,
-  plainShare: number | null,
+  plain: CssRotationTarget | null,
 ): void {
-  const gsap = plainShare === null ? getOffsetDragGsap(element) : null;
-  if (!gsap) return applyCssRotation(element, angle, plainShare ?? undefined);
+  const gsap = plain ? null : getOffsetDragGsap(element);
+  if (!gsap) return void applyCssRotation(element, angle, plain ?? undefined);
   element.style.setProperty("rotate", "none");
   gsap.set(element, { rotation: angle });
 }
@@ -39,7 +94,8 @@ export function restoreRotationDraft(
   snapshot: StudioRotationSnapshot,
   plain: boolean,
 ): void {
-  rotationGsap(element, plain)?.set(element, {
+  if (plain) return restorePlainRotation(element, snapshot);
+  getOffsetDragGsap(element)?.set(element, {
     rotation: angle - (Number.parseFloat(snapshot.studioRotation) || 0),
   });
   restoreStudioRotation(element, snapshot);

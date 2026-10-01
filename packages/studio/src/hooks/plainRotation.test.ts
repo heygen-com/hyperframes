@@ -75,4 +75,21 @@ describe("savePlainRotation", () => {
     expect(element.style.getPropertyValue("rotate")).toBe("");
     expect(commitPositionPatchToHtml).not.toHaveBeenCalled();
   });
+
+  it("saves a transform-centred element's turn in its transform and puts it back on a failed save", async () => {
+    const element = document.createElement("div");
+    element.style.transform = "translate(-120px, -80px)";
+    const { saved, commitPositionPatchToHtml } = rotate(element, 25, {
+      save: () => Promise.reject(new Error("offline")),
+    });
+    expect(commitPositionPatchToHtml.mock.calls[0]![1]).toEqual([
+      {
+        type: "inline-style",
+        property: "transform",
+        value: "translate(-120px, -80px) rotate(25deg)",
+      },
+    ]);
+    await expect(saved).rejects.toThrow("offline");
+    expect(element.style.getPropertyValue("transform")).toBe("translate(-120px, -80px)");
+  });
 });

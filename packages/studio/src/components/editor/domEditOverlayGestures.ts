@@ -6,6 +6,7 @@ import type {
   StudioRotationSnapshot,
 } from "./manualEdits";
 import type { ManualOffsetDragMember } from "./manualOffsetDrag";
+import type { CssRotationTarget } from "./rotationDraft";
 import type { GroupOverlayItem, OverlayRect } from "./domEditOverlayGeometry";
 import type { SnapContext } from "./snapTargetCollection";
 import type { SnapGuidesState } from "./SnapGuideOverlay";
@@ -63,8 +64,8 @@ export interface GestureState {
   actualWidth: number;
   actualHeight: number;
   actualRotation: number;
-  /** Null when GSAP owns the rotate; else what the element's scale and transform turn, read at press. */
-  plainRotationShare: number | null;
+  /** Null when GSAP owns the rotate; else where its CSS turn is drawn and saved, read at press. */
+  plainRotation: CssRotationTarget | null;
   editScaleX: number;
   editScaleY: number;
   // Rendered px per CSS px of the element at gesture start (> 1 under a GSAP scale()); the resize

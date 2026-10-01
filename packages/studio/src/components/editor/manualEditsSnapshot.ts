@@ -82,6 +82,7 @@ export function captureStudioBoxSize(element: HTMLElement): StudioBoxSizeSnapsho
 export function captureStudioRotation(element: HTMLElement): StudioRotationSnapshot {
   return {
     rotate: element.style.getPropertyValue("rotate"),
+    transform: element.style.getPropertyValue("transform"),
     transformOrigin: element.style.getPropertyValue("transform-origin"),
     studioRotation: element.style.getPropertyValue(STUDIO_ROTATION_PROP),
     marker: element.getAttribute(STUDIO_ROTATION_ATTR),
