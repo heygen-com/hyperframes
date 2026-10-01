@@ -15,15 +15,11 @@ const PLAYBACK_SHORTCUT_IGNORED_SELECTOR = [
   "a[href]",
   "[role='button']",
   "[role='checkbox']",
-  "[role='combobox']",
   "[role='menuitem']",
   // Base UI's menu radio item is a `<div>`, so `button` above no longer catches it.
   "[role='menuitemradio']",
   "[role='radio']",
-  "[role='slider']",
   "[role='spinbutton']",
-  "[role='switch']",
-  "[role='textbox']",
 ].join(",");
 
 export function shouldIgnorePlaybackShortcutTarget(target: EventTarget | null): boolean {

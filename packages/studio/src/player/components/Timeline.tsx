@@ -26,7 +26,6 @@ export {
   getTimelineCanvasHeight,
   shouldShowTimelineShortcutHint,
   resolveTimelineAssetDrop,
-  shouldHandleTimelineDeleteKey,
   getDefaultDroppedTrack,
 } from "./timelineLayout";
 export { formatTimelineTickLabel, generateTicks } from "./timelineRulerGeometry";

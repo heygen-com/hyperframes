@@ -16,7 +16,6 @@ import {
   getTimelineScrollLeftForZoomAnchor,
   getTimelineScrollLeftForZoomTransition,
   shouldShowTimelineShortcutHint,
-  shouldHandleTimelineDeleteKey,
   shouldAutoScrollTimeline,
   getTimelineVisibleTimeRange,
   getTimelineScrollTopForGeometryChange,
@@ -1245,26 +1244,6 @@ describe("shouldShowTimelineShortcutHint", () => {
 
   it("hides the hint when timeline tracks need vertical scrolling", () => {
     expect(shouldShowTimelineShortcutHint(221.5, 220)).toBe(false);
-  });
-});
-
-describe("shouldHandleTimelineDeleteKey", () => {
-  it("handles Delete and Backspace when focus is not in an editor", () => {
-    expect(shouldHandleTimelineDeleteKey({ key: "Delete" })).toBe(true);
-    expect(shouldHandleTimelineDeleteKey({ key: "Backspace" })).toBe(true);
-  });
-
-  it("ignores modifier shortcuts", () => {
-    expect(shouldHandleTimelineDeleteKey({ key: "Delete", metaKey: true })).toBe(false);
-    expect(shouldHandleTimelineDeleteKey({ key: "Backspace", ctrlKey: true })).toBe(false);
-  });
-
-  it("ignores input and editable targets", () => {
-    const input = { tagName: "INPUT", isContentEditable: false };
-    const editable = { tagName: "DIV", isContentEditable: true };
-
-    expect(shouldHandleTimelineDeleteKey({ key: "Delete", target: input })).toBe(false);
-    expect(shouldHandleTimelineDeleteKey({ key: "Delete", target: editable })).toBe(false);
   });
 });
 

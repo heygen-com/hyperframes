@@ -1,3 +1,5 @@
+// @vitest-environment happy-dom
+
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import {
   toggleMainLineSlide,
@@ -14,6 +16,7 @@ import {
   removeHotspot,
   safeParseManifest,
   makeSlideshowNotesController,
+  isPanelUndoKey,
 } from "./SlideshowPanel";
 import type { SlideshowManifest } from "@hyperframes/core/slideshow";
 
@@ -516,5 +519,29 @@ describe("makeSlideshowNotesController", () => {
 
     vi.advanceTimersByTime(1000);
     expect(persist).not.toHaveBeenCalled();
+  });
+});
+
+describe("isPanelUndoKey", () => {
+  function undoFrom(html: string) {
+    document.body.innerHTML = `<div>${html}</div>`;
+    const target = document.body.firstElementChild!.firstElementChild!;
+    return { metaKey: true, ctrlKey: false, shiftKey: false, key: "z", target };
+  }
+
+  it("undoes the panel from a button or a slider", () => {
+    expect(isPanelUndoKey(undoFrom("<button>Add</button>"))).toBe(true);
+    expect(isPanelUndoKey(undoFrom('<div role="slider" tabindex="0"></div>'))).toBe(true);
+  });
+
+  it("leaves Cmd+Z to a text field, contenteditable and select included", () => {
+    expect(isPanelUndoKey(undoFrom("<input />"))).toBe(false);
+    expect(isPanelUndoKey(undoFrom('<p contenteditable="plaintext-only">Note</p>'))).toBe(false);
+    expect(isPanelUndoKey(undoFrom("<select><option>a</option></select>"))).toBe(false);
+  });
+
+  it("ignores Cmd+Shift+Z and a bare z", () => {
+    expect(isPanelUndoKey({ ...undoFrom("<button />"), shiftKey: true })).toBe(false);
+    expect(isPanelUndoKey({ ...undoFrom("<button />"), metaKey: false })).toBe(false);
   });
 });

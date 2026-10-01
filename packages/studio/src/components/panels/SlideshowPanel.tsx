@@ -21,6 +21,7 @@ import { usePlayerStore } from "../../player";
 import { useDomEditSelectionContext } from "../../contexts/DomEditContext";
 import { useFileManagerContext } from "../../contexts/FileManagerContext";
 import { generateId } from "../../utils/generateId";
+import { isTypingTarget } from "../../utils/typingTarget";
 import {
   SectionHeader,
   SlideList,
@@ -151,6 +152,13 @@ export function makeSlideshowNotesController(): NotesController {
       };
     },
   };
+}
+
+export function isPanelUndoKey(
+  e: Pick<KeyboardEvent, "metaKey" | "ctrlKey" | "shiftKey" | "key" | "target">,
+): boolean {
+  if (!(e.metaKey || e.ctrlKey) || e.shiftKey || e.key.toLowerCase() !== "z") return false;
+  return !isTypingTarget(e.target);
 }
 
 // ── Component ─────────────────────────────────────────────────────────────
@@ -416,13 +424,10 @@ export function SlideshowPanel({ scenes, onPersist, onPersistNotes }: SlideshowP
       className="flex flex-col h-full overflow-y-auto text-text-0"
       onKeyDown={(e) => {
         // In-panel undo — scoped so it never fights the app-level file undo.
-        if ((e.metaKey || e.ctrlKey) && !e.shiftKey && e.key.toLowerCase() === "z") {
-          const target = e.target instanceof HTMLElement ? e.target.tagName : "";
-          if (target === "TEXTAREA" || target === "INPUT") return;
-          e.preventDefault();
-          e.stopPropagation();
-          handleUndo();
-        }
+        if (!isPanelUndoKey(e)) return;
+        e.preventDefault();
+        e.stopPropagation();
+        handleUndo();
       }}
     >
       {persistError && (
