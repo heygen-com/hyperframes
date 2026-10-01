@@ -6,7 +6,8 @@ import {
 import { LAYER_REVEAL_PRIOR_POSITION_ATTR } from "../player/lib/timelineElementHelpers";
 import type { PatchOperation } from "../utils/sourcePatcher";
 import { translatePatch } from "../components/editor/plainTranslate";
-import { gsapRendersTransform } from "./gsapRuntimeKeyframes";
+import { gsapHoldsTranslate } from "./gsapRuntimeKeyframes";
+import { markStudioSaveErrorAlreadyToasted } from "../utils/studioSaveDiagnostics";
 
 const GSAP_TOOK_OVER =
   "The animation took over this layer's position during the move, so it was not saved.";
@@ -37,6 +38,16 @@ function settleGsapDraftAtGestureStart(el: HTMLElement): void {
   const x = Number.parseFloat(el.getAttribute("data-hf-drag-gsap-base-x") ?? "");
   const y = Number.parseFloat(el.getAttribute("data-hf-drag-gsap-base-y") ?? "");
   if (gsap && Number.isFinite(x) && Number.isFinite(y)) gsap.set(el, { x, y });
+}
+
+export function refuseGsapTakeover(
+  el: HTMLElement,
+  showToast: ElementOffsetStagerDeps["showToast"],
+) {
+  if (!gsapHoldsTranslate(el)) return;
+  gsapOf(el)?.set(el, { x: 0, y: 0, xPercent: 0, yPercent: 0 });
+  showToast(GSAP_TOOK_OVER, "error");
+  throw markStudioSaveErrorAlreadyToasted(new Error(GSAP_TOOK_OVER));
 }
 
 let plainMoveCounter = 0;
@@ -77,11 +88,7 @@ export function stageElementOffset(
   const el = selection.element;
   if (readOnlyPreview) return { save: () => Promise.resolve(), rollback: () => undefined };
   if (plainTranslate) {
-    if (gsapRendersTransform(el)) {
-      gsapOf(el)?.set(el, { clearProps: "transform" });
-      showToast(GSAP_TOOK_OVER, "error");
-      throw new Error(GSAP_TOOK_OVER);
-    }
+    refuseGsapTakeover(el, showToast);
     return stagePlainTranslate(commitPositionPatchToHtml, selection, next, coalesceKey);
   }
   const previous = { position: el.style.position, left: el.style.left, top: el.style.top };

@@ -214,6 +214,35 @@ describe("useGsapAwareEditing keeps the route a gesture chose at press", () => {
   });
 });
 
+describe("useGsapAwareEditing refuses a group GSAP took over before writing any member", () => {
+  it("writes no member when one CSS-route member has been folded since the press", async () => {
+    const stageElementPositionOffset = vi.fn(() => ({ save: vi.fn(), rollback: vi.fn() }));
+    const { groupCommit, root } = mountGroupHandler({
+      gsapCommitMutation: vi.fn().mockResolvedValue(undefined),
+      makeFetchFallback: () => vi.fn().mockResolvedValue([]),
+      stageElementPositionOffset,
+    });
+    const card = {
+      element: document.createElement("div"),
+      id: "card",
+    } as unknown as DomEditSelection;
+    const folded = Object.assign(document.createElement("div"), {
+      _gsap: { renderTransform: () => {}, x: "94px", y: "66px" },
+    });
+    const box = { element: folded, id: "box" } as unknown as DomEditSelection;
+    await expect(
+      act(() =>
+        groupCommit([
+          { selection: card, next: { x: 1, y: 2 }, plainTranslate: true },
+          { selection: box, next: { x: 1, y: 2 }, plainTranslate: true },
+        ]),
+      ),
+    ).rejects.toThrow(/animation took over/);
+    expect(stageElementPositionOffset).not.toHaveBeenCalled();
+    act(() => root.unmount());
+  });
+});
+
 describe("useGsapAwareEditing shared-tween moves", () => {
   it("saves a single drag through the element's own offset", async () => {
     mocks.drag.mockResolvedValue({ status: "element-offset" });
@@ -365,7 +394,7 @@ describe("useGsapAwareEditing anchored resize", () => {
     await act(() => h.resize(h.selection, { width: 300, height: 200 }, { x: -50, y: -25 }));
     const key = h.commitMutation.mock.calls[0]![2].coalesceKey;
     expect(key).toMatch(/^tx:/);
-    expect(h.elementOffset).toHaveBeenCalledWith(h.selection, { x: -50, y: -25 }, true, key);
+    expect(h.elementOffset).toHaveBeenCalledWith(h.selection, { x: -50, y: -25 }, false, key);
     expect(h.anchorSave.mock.invocationCallOrder[0]).toBeGreaterThan(
       h.commitMutation.mock.invocationCallOrder[0]!,
     );

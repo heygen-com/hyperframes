@@ -443,11 +443,15 @@ function gsapWritesChannels(el: Element, channels: string[]): boolean {
 /** GSAP owns this element's position: a tween or hold writes it, or GSAP already renders its
  *  transform (a CSS translate would then apply twice). Everything else moves by plain CSS. */
 export function gsapWritesPosition(el: Element): boolean {
-  return gsapRendersTransform(el) || gsapWritesChannels(el, MOVE_CHANNELS);
+  const cache = (el as { _gsap?: { renderTransform?: unknown } })._gsap;
+  return !!cache?.renderTransform || gsapWritesChannels(el, MOVE_CHANNELS);
 }
 
-export function gsapRendersTransform(el: Element): boolean {
-  return !!(el as { _gsap?: { renderTransform?: unknown } })._gsap?.renderTransform;
+export function gsapHoldsTranslate(el: Element): boolean {
+  const cache = (el as { _gsap?: Record<string, unknown> })._gsap;
+  return ["x", "y", "xPercent", "yPercent"].some(
+    (key) => !!Number.parseFloat(String(cache?.[key])),
+  );
 }
 
 const BOX_CHANNELS = [

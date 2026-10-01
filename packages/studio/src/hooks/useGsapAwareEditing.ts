@@ -38,7 +38,7 @@ import {
 } from "./gsapRuntimeKeyframes";
 import { assertGsapEditPersisted, saveMove } from "./gsapEditOutcome";
 import type { GsapAnimationFetchOptions } from "./useGsapAnimationFetchFallback";
-import type { ElementOffsetStagerDeps } from "./elementOffsetStager";
+import { refuseGsapTakeover, type ElementOffsetStagerDeps } from "./elementOffsetStager";
 import {
   prepareCropResize,
   saveCropResize,
@@ -157,7 +157,7 @@ export function useGsapAwareEditing({
       next: { x: number; y: number },
       modifiers?: MoveCommitOptions,
     ) => {
-      // A gesture carries the route its press decided; the panel and moveTo decide here.
+      // A gesture and the panel carry their route; webmcp's moveTo decides here.
       if (modifiers?.plainTranslate ?? !gsapWritesPosition(selection.element))
         return stageElementPositionOffset(selection, next, true).save();
       if (gsapCommitMutation) {
@@ -244,8 +244,10 @@ export function useGsapAwareEditing({
       // write nothing and share one in-flight parse per file, so they run together.
       const preflightResults = await Promise.allSettled(
         updates.map(async ({ selection, plainTranslate }) => {
-          if (plainTranslate ?? !gsapWritesPosition(selection.element))
+          if (plainTranslate ?? !gsapWritesPosition(selection.element)) {
+            refuseGsapTakeover(selection.element, showToast);
             return void offsetMembers.set(selection, true);
+          }
           const animations = await makeFetchFallback(selection, { failOnFetchError: true })();
           preflightAnimations.set(selection, animations);
           const outcome = await tryGsapDragIntercept(
@@ -318,6 +320,7 @@ export function useGsapAwareEditing({
       makeFetchFallback,
       trackGsapInteractionFailure,
       stageElementPositionOffset,
+      showToast,
     ],
   );
 

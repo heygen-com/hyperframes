@@ -210,11 +210,11 @@ describe("useDomGeometryCommit, from the package entry", () => {
     unmount();
   });
 
-  it("refuses a CSS move once GSAP has taken the element's translate, writes nothing, and drops GSAP's fold", async () => {
+  it("refuses a CSS move GSAP has folded into its x/y, writes nothing, and hands the translate back", async () => {
     const calls = stubPatchServer();
     const { element, hook, unmount } = renderHost();
     element.style.setProperty("translate", "none");
-    Object.assign(element, { _gsap: { renderTransform: () => {} } });
+    Object.assign(element, { _gsap: { renderTransform: () => {}, x: "94px", y: "66px" } });
     const set = vi.fn();
     Object.assign(element.ownerDocument.defaultView!, { gsap: { set } });
 
@@ -225,10 +225,27 @@ describe("useDomGeometryCommit, from the package entry", () => {
         { plainTranslate: true },
       ),
     ).rejects.toThrow(/animation took over/);
-    expect(calls.patches).toEqual([]);
-    expect(set).toHaveBeenCalledWith(element, { clearProps: "transform" });
     delete (element.ownerDocument.defaultView as { gsap?: unknown }).gsap;
-    expect(element.style.getPropertyValue("translate")).toBe("none");
+    expect(calls.patches).toEqual([]);
+    expect(set).toHaveBeenCalledWith(element, { x: 0, y: 0, xPercent: 0, yPercent: 0 });
+    unmount();
+  });
+
+  it("saves a CSS move GSAP has only parsed, with nothing folded into its x/y", async () => {
+    const calls = stubPatchServer();
+    const { element, hook, unmount } = renderHost();
+    Object.assign(element, {
+      _gsap: { renderTransform: () => {}, x: "0px", y: "0px", xPercent: 0 },
+    });
+
+    await expect(
+      hook().commitPathOffset(
+        makeSelection("card", element),
+        { x: 1, y: 2 },
+        { plainTranslate: true },
+      ),
+    ).resolves.toEqual({ ok: true });
+    expect(calls.patches).toHaveLength(1);
     unmount();
   });
 

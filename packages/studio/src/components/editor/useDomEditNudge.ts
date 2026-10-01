@@ -156,7 +156,9 @@ export function useDomEditNudge(params: UseDomEditNudgeParams): { flushNudge: ()
     const p = paramsRef.current;
     const commit = session.isGroup
       ? p.onGroupPathOffsetCommitRef.current(updates)
-      : p.onPathOffsetCommitRef.current(updates[0].selection, updates[0].next, updates[0]);
+      : p.onPathOffsetCommitRef.current(updates[0].selection, updates[0].next, {
+          plainTranslate: updates[0].plainTranslate,
+        });
     void Promise.resolve(commit)
       .catch(() => {
         for (const member of session.members) {
