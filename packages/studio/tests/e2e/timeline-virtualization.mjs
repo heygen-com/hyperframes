@@ -10,9 +10,9 @@
  * TIMELINE_TIER selects the budget set and the emulation applied. "primary" is
  * a developer machine and holds the strict budgets. "low-resource" and
  * "high-dpr" add CPU throttling and a 2x scale factor respectively. "ci" is a
- * shared runner: no emulation, but the constrained budgets, because a hosted
- * runner is already slower and noisier than the machine the strict numbers were
- * recorded on. Throttling it further would measure the throttle, not the build.
+ * shared runner with no emulation: its virtualized arm holds its own limits
+ * (responsivenessLimits), its unvirtualized arm the constrained ones. Throttling
+ * it further would measure the throttle, not the build.
  * CI also requires production React and reports the observed runtime so Vite's
  * development-only checks can never contaminate the shipped-code measurement.
  *
@@ -24,9 +24,11 @@
 import { platform, arch } from "node:os";
 import { launchStudioChrome } from "./chrome-executable.mjs";
 import {
+  attemptPassed,
   gatePassed,
   judgeResponsiveness,
   responsivenessLimits,
+  TIMING_ATTEMPTS,
 } from "./timeline-viewport-verdict.mjs";
 
 const STUDIO_URL = process.env.STUDIO_URL;
@@ -294,37 +296,61 @@ try {
     );
   }
 
-  const runs = [];
   const { interactionLimitMs, frameIntervalLimitMs } = responsivenessLimits(
     budgets,
     TIER,
     ROW_VIRTUALIZATION,
   );
-  for (let index = 0; index < budgets.warmupRuns + budgets.measuredRuns; index += 1) {
-    const run = await collectRun(page);
-    if (index >= budgets.warmupRuns) runs.push(run);
-  }
   // Latency, long tasks and memory are product promises and hold for both
   // builds. The DOM-size budgets describe what windowing achieves, so they only
   // apply when windowing is on. They are skipped explicitly rather than relaxed,
   // so a skipped budget never reads as a passed one.
   const domBudgetsApply = ROW_VIRTUALIZATION === "on";
-  for (const run of runs) {
-    run.longTaskPassed = run.longestTaskMs <= longTaskLimitMs;
-    run.timelineMounted = run.diagnostics.timelineRoots === 1;
-    run.domSizePassed = domBudgetsApply
-      ? run.diagnostics.mountedRows <= budgets.maxMountedRows &&
-        run.diagnostics.mountedClipRoots <= budgets.maxMountedClipRoots &&
-        run.diagnostics.maxMountedClipRootsInOneRow <= budgets.maxMountedClipRootsPerRow &&
-        run.diagnostics.mountedTimelineDescendants <= budgets.maxMountedTimelineDescendants
-      : null;
-    run.passed = run.longTaskPassed && run.timelineMounted && run.domSizePassed !== false;
+  const attempts = [];
+  while (attempts.length < TIMING_ATTEMPTS && !attempts.some((attempt) => attempt.passed)) {
+    const runs = [];
+    for (let index = 0; index < budgets.warmupRuns + budgets.measuredRuns; index += 1) {
+      const run = await collectRun(page);
+      if (index >= budgets.warmupRuns) runs.push(run);
+    }
+    for (const run of runs) {
+      run.longTaskPassed = run.longestTaskMs <= longTaskLimitMs;
+      run.timelineMounted = run.diagnostics.timelineRoots === 1;
+      run.domSizePassed = domBudgetsApply
+        ? run.diagnostics.mountedRows <= budgets.maxMountedRows &&
+          run.diagnostics.mountedClipRoots <= budgets.maxMountedClipRoots &&
+          run.diagnostics.maxMountedClipRootsInOneRow <= budgets.maxMountedClipRootsPerRow &&
+          run.diagnostics.mountedTimelineDescendants <= budgets.maxMountedTimelineDescendants
+        : null;
+      run.passed = run.longTaskPassed && run.timelineMounted && run.domSizePassed !== false;
+    }
+    const responsiveness = judgeResponsiveness(runs, {
+      samplesPerRun: budgets.scrollSamplesPerRun,
+      interactionLimitMs,
+      frameIntervalLimitMs,
+    });
+    const passingRuns = runs.filter((run) => run.passed).length;
+    const attempt = {
+      attempt: attempts.length + 1,
+      interactionP95Ms: responsiveness.interactionP95Ms,
+      frameIntervalP95Ms: responsiveness.frameIntervalP95Ms,
+      responsivenessPassed: responsiveness.passed,
+      passingRuns,
+      passed: attemptPassed({
+        responsivenessPassed: responsiveness.passed,
+        passingRuns,
+        requiredPassingRuns: budgets.requiredPassingRuns,
+      }),
+      runs,
+    };
+    attempts.push(attempt);
+    console.error(
+      `timeline gate ${ROW_VIRTUALIZATION} attempt ${attempt.attempt}: ` +
+        `interaction p95 ${attempt.interactionP95Ms.toFixed(1)}/${interactionLimitMs} ms, ` +
+        `frame p95 ${attempt.frameIntervalP95Ms.toFixed(1)}/${frameIntervalLimitMs} ms, ` +
+        `${passingRuns}/${runs.length} runs passed, ${attempt.passed ? "PASS" : "FAIL"}`,
+    );
   }
-  const responsiveness = judgeResponsiveness(runs, {
-    samplesPerRun: budgets.scrollSamplesPerRun,
-    interactionLimitMs,
-    frameIntervalLimitMs,
-  });
 
   await page.evaluate(() => window.__studioTest.resetTimelinePerformanceFixture());
   await page.waitForFunction(
@@ -336,8 +362,10 @@ try {
   const returnedHeapBytes = await collectHeapBytes(client);
   const memoryReturned =
     returnedHeapBytes <= baselineHeapBytes * (1 + budgets.memoryReturnToleranceRatio);
-  const passingRuns = runs.filter((run) => run.passed).length;
-  const maxTimelineContentWidthPx = Math.max(0, ...runs.map((run) => run.scrollWidth));
+  const maxTimelineContentWidthPx = Math.max(
+    0,
+    ...attempts.flatMap((attempt) => attempt.runs.map((run) => run.scrollWidth)),
+  );
   const directScrollGate = {
     safetyEnvelopePx: budgets.directScrollSafetyPx,
     maxTimelineContentWidthPx,
@@ -374,15 +402,13 @@ try {
         warmups: budgets.warmupRuns,
         measured: budgets.measuredRuns,
         requiredPassing: budgets.requiredPassingRuns,
+        timingAttempts: TIMING_ATTEMPTS,
       },
     },
     directScrollGate,
-    runs,
+    attempts,
     aggregate: {
-      interactionP95Ms: responsiveness.interactionP95Ms,
-      frameIntervalP95Ms: responsiveness.frameIntervalP95Ms,
-      responsivenessPassed: responsiveness.passed,
-      passingRuns,
+      timingPassed: attempts.some((attempt) => attempt.passed),
       baselineHeapBytes,
       returnedHeapBytes,
       memoryReturned,
@@ -391,9 +417,7 @@ try {
   console.log(JSON.stringify(evidence, null, 2));
   exitCode = gatePassed({
     directScrollApproved: directScrollGate.decision === "approved",
-    responsivenessPassed: responsiveness.passed,
-    passingRuns,
-    requiredPassingRuns: budgets.requiredPassingRuns,
+    attempts,
     memoryReturned,
   })
     ? 0

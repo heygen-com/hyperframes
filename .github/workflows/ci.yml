@@ -925,6 +925,14 @@ jobs:
             echo "### Timeline viewport gate"
             echo "- Default arm exit: ${DEFAULT_STATUS}"
             echo "- Explicitly disabled arm exit: ${DISABLED_STATUS}"
+            for arm in default disabled; do
+              node -e '
+                const e = JSON.parse(require("fs").readFileSync(process.argv[1], "utf8"));
+                const b = e.environment.appliedBudgets;
+                for (const a of e.attempts)
+                  console.log(`- ${process.argv[2]} attempt ${a.attempt}: interaction p95 ${a.interactionP95Ms.toFixed(1)}/${b.interactionP95Ms} ms, frame p95 ${a.frameIntervalP95Ms.toFixed(1)}/${b.frameIntervalP95Ms} ms, ${a.passingRuns}/${a.runs.length} runs, ${a.passed ? "pass" : "fail"}`);
+              ' "/tmp/timeline-gate-${arm}.json" "$arm" || echo "- ${arm}: no evidence"
+            done
           } >> "$GITHUB_STEP_SUMMARY"
 
           if (( DEFAULT_STATUS != 0 || DISABLED_STATUS != 0 )); then

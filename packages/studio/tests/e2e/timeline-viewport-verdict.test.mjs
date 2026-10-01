@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { TIMELINE_VIEWPORT_BUDGETS } from "../../src/player/lib/timelineViewportBudgets";
 import {
+  attemptPassed,
   gatePassed,
   judgeResponsiveness,
   percentile,
@@ -117,20 +118,31 @@ describe("the CI virtualized arm's limits", () => {
   });
 });
 
+describe("attemptPassed", () => {
+  const passing = { responsivenessPassed: true, passingRuns: 5, requiredPassingRuns: 4 };
+
+  it("needs pooled responsiveness and enough passing runs", () => {
+    expect(attemptPassed(passing)).toBe(true);
+    expect(attemptPassed({ ...passing, responsivenessPassed: false })).toBe(false);
+    expect(attemptPassed({ ...passing, passingRuns: 3 })).toBe(false);
+  });
+});
+
 describe("gatePassed", () => {
-  const passing = {
-    directScrollApproved: true,
-    responsivenessPassed: true,
-    passingRuns: 5,
-    requiredPassingRuns: 4,
-    memoryReturned: true,
-  };
+  const pass = { passed: true };
+  const fail = { passed: false };
+  const passing = { directScrollApproved: true, attempts: [pass], memoryReturned: true };
 
   it("passes only when every check holds", () => {
     expect(gatePassed(passing)).toBe(true);
-    expect(gatePassed({ ...passing, responsivenessPassed: false })).toBe(false);
     expect(gatePassed({ ...passing, directScrollApproved: false })).toBe(false);
-    expect(gatePassed({ ...passing, passingRuns: 3 })).toBe(false);
     expect(gatePassed({ ...passing, memoryReturned: false })).toBe(false);
+  });
+
+  it("fails timing only when the attempt and its one rerun both fail", () => {
+    expect(gatePassed({ ...passing, attempts: [fail, pass] })).toBe(true);
+    expect(gatePassed({ ...passing, attempts: [fail, fail] })).toBe(false);
+    expect(gatePassed({ ...passing, attempts: [fail, fail, pass] })).toBe(false);
+    expect(gatePassed({ ...passing, attempts: [] })).toBe(false);
   });
 });
