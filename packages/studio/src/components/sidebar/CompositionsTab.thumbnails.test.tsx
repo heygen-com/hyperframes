@@ -1,18 +1,12 @@
 // @vitest-environment happy-dom
 
 import { act } from "react";
-import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { thumbnailScheduler } from "../../player/lib/thumbnailScheduler";
 import { TIMELINE_VIEWPORT_BUDGETS } from "../../player/lib/timelineViewportBudgets";
 import { usePlayerStore } from "../../player/store/playerStore";
 import { renderPosterForNextOpen } from "../nle/PreviewPoster";
-import { CompositionsTab } from "./CompositionsTab";
-
-Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true });
-(
-  window as unknown as { happyDOM: { settings: { disableIframePageLoading: boolean } } }
-).happyDOM.settings.disableIframePageLoading = true;
+import { mountCompositionsTab } from "./compositionsTabTestUtils";
 
 class DecodingImage {
   onload: (() => void) | null = null;
@@ -40,7 +34,6 @@ let renders: Render[] = [];
 let inFlight = 0;
 let peak = 0;
 let frames = 0;
-let root: Root | null = null;
 
 beforeEach(() => {
   renders = [];
@@ -69,34 +62,21 @@ beforeEach(() => {
 });
 
 afterEach(() => {
-  if (root) act(() => root?.unmount());
-  root = null;
-  thumbnailScheduler.invalidateProject("demo");
   Object.assign(globalThis, { fetch: real.fetch, Image: real.Image });
   Object.assign(URL, { createObjectURL: real.create, revokeObjectURL: real.revoke });
-  document.body.innerHTML = "";
-  usePlayerStore.setState({ thumbnailRevisions: {} });
 });
 
-function mount(compositions = ["compositions/headline.html"]) {
-  const host = document.createElement("div");
-  document.body.append(host);
-  root = createRoot(host);
-  act(() => {
-    root?.render(
-      <CompositionsTab
-        projectId="demo"
-        compositions={compositions}
-        activeComposition={null}
-        onSelect={vi.fn()}
-      />,
-    );
-  });
-  return host;
-}
-
+const mount = (compositions?: string[]) => mountCompositionsTab(compositions && { compositions });
 const settle = () => act(() => new Promise((resolve) => setTimeout(resolve, 5)));
 const shown = (host: HTMLElement) => host.querySelector("img")?.getAttribute("src") ?? null;
+
+async function nextRevisionShows(host: HTMLElement, revision: string, frame: string) {
+  act(() => usePlayerStore.getState().bumpThumbnailRevisions(null));
+  expect(renders.at(-1)!.url.searchParams.get("revision")).toBe(revision);
+  renders.at(-1)!.answer();
+  await settle();
+  expect(shown(host)).toBe(frame);
+}
 
 describe("composition card thumbnails", () => {
   it("render through the thumbnail scheduler once the preview boots, and never point an image at the route", async () => {
@@ -135,17 +115,9 @@ describe("composition card thumbnails", () => {
   it("abort a stale revision's render, and free its frame when the scheduler evicts it", async () => {
     const host = mount();
     const first = renders[0]!;
-    act(() => usePlayerStore.getState().bumpThumbnailRevisions(null));
+    await nextRevisionShows(host, "1", "blob:frame-1");
     expect(first.signal.aborted).toBe(true);
-    expect(renders.at(-1)!.url.searchParams.get("revision")).toBe("1");
-
-    renders.at(-1)!.answer();
-    await settle();
-    expect(shown(host)).toBe("blob:frame-1");
-    act(() => usePlayerStore.getState().bumpThumbnailRevisions(null));
-    renders.at(-1)!.answer();
-    await settle();
-    expect(shown(host)).toBe("blob:frame-2");
+    await nextRevisionShows(host, "2", "blob:frame-2");
 
     thumbnailScheduler.invalidateProject("demo");
     expect(URL.revokeObjectURL).toHaveBeenCalledWith("blob:frame-1");
@@ -157,11 +129,6 @@ describe("composition card thumbnails", () => {
     renders[0]!.answer(500);
     await settle();
     expect(host.textContent).toContain("Preview unavailable");
-
-    act(() => usePlayerStore.getState().bumpThumbnailRevisions(null));
-    expect(renders.at(-1)!.url.searchParams.get("revision")).toBe("1");
-    renders.at(-1)!.answer();
-    await settle();
-    expect(shown(host)).toBe("blob:frame-1");
+    await nextRevisionShows(host, "1", "blob:frame-1");
   });
 });

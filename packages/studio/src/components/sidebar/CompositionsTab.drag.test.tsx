@@ -1,41 +1,12 @@
 // @vitest-environment happy-dom
 
 import { act } from "react";
-import { createRoot, type Root } from "react-dom/client";
-import { afterEach, describe, expect, it, vi } from "vitest";
-import { usePlayerStore } from "../../player/store/playerStore";
+import { describe, expect, it, vi } from "vitest";
 import { TIMELINE_COMPOSITION_MIME } from "../../utils/timelineCompositionDrop";
-import { CompositionsTab } from "./CompositionsTab";
-
-Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true });
-(
-  window as unknown as { happyDOM: { settings: { disableIframePageLoading: boolean } } }
-).happyDOM.settings.disableIframePageLoading = true;
-
-let root: Root | null = null;
-
-afterEach(() => {
-  if (root) act(() => root?.unmount());
-  root = null;
-  document.body.innerHTML = "";
-  usePlayerStore.setState({ thumbnailRevisions: {} });
-});
+import { mountCompositionsTab } from "./compositionsTabTestUtils";
 
 function mount(onSelect = vi.fn(), onAddToTimeline = vi.fn()) {
-  const host = document.createElement("div");
-  document.body.append(host);
-  root = createRoot(host);
-  act(() => {
-    root?.render(
-      <CompositionsTab
-        projectId="demo"
-        compositions={["compositions/headline.html"]}
-        activeComposition={null}
-        onSelect={onSelect}
-        onAddToTimeline={onAddToTimeline}
-      />,
-    );
-  });
+  const host = mountCompositionsTab({ onSelect, onAddToTimeline });
   const card = host.querySelector<HTMLElement>('[draggable="true"]');
   if (!card) throw new Error("composition card did not render");
   return { host, card, onSelect, onAddToTimeline };
