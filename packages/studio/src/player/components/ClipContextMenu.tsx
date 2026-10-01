@@ -19,7 +19,6 @@ function useMeasuredHeight(ref: RefObject<HTMLDivElement | null>, anchorKey: str
     const node = ref.current;
     if (!node) return;
     setHeight(node.offsetHeight);
-    // Items that read the live preview can appear after mount; follow them.
     if (typeof ResizeObserver === "undefined") return;
     const observer = new ResizeObserver(() => setHeight(node.offsetHeight));
     observer.observe(node);

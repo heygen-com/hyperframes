@@ -1,7 +1,4 @@
-/**
- * Label colours for link groups. Teal, violet, white and red are taken (visual
- * clips, audio clips, selection, the out-of-sync badge), so none appear here.
- */
+/** Link-group label colours; teal, violet, white and red belong to clips, selection and the sync badge. */
 export const LINK_LABEL_COLORS = [
   "var(--color-amber-500)",
   "var(--color-sky-400)",

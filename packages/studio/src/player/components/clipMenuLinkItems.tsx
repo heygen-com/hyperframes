@@ -15,7 +15,6 @@ const keyOf = (el: TimelineElement) => el.key ?? el.id;
 
 const tagOf = (el: TimelineElement) => el.tag.trim().toLowerCase();
 
-/** " audio"/" video" naming the lone opposite-kind partner; empty when the group is not a plain video+audio pair. */
 function partnerSuffix(element: TimelineElement, others: readonly TimelineElement[]): string {
   const partners = others.filter((el) => keyOf(el) !== keyOf(element));
   const [partner] = partners;
@@ -76,7 +75,6 @@ export function resolveLinkMenuItems(input: {
   return items;
 }
 
-/** `link` = the sound-group items; `delete` = "Delete this clip only", placed beside Delete. */
 export function ClipMenuLinkItems({
   part,
   element,
