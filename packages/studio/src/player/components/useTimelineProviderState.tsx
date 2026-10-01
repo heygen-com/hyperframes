@@ -229,6 +229,7 @@ export function useTimelineProviderState({
     scrollRef,
     ppsRef,
     trackOrderRef,
+    elementsRef: timelineElementsRef,
     rowGeometryRef,
     contentOrigin,
     onFileDrop: pinnedOnFileDrop,

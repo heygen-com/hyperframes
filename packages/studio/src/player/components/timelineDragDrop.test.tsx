@@ -4,7 +4,7 @@ import React, { act } from "react";
 import { createRoot } from "react-dom/client";
 import { afterEach, describe, expect, it, vi, type Mock } from "vitest";
 import { TIMELINE_ASSET_MIME, TIMELINE_BLOCK_MIME } from "../../utils/timelineAssetDrop";
-import { usePlayerStore } from "../store/playerStore";
+import { usePlayerStore, type TimelineElement } from "../store/playerStore";
 import { createTimelineRowGeometry } from "./timelineLayout";
 import { resolveDropInsertRow, useTimelineAssetDrop } from "./timelineDragDrop";
 import { getTimelineRowTop, TRACK_H } from "./timelineLayout";
@@ -39,10 +39,19 @@ function assetTransfer(payload: string): DropTransfer {
   };
 }
 
+// One far-off clip per lane, so a drop keeps its pointer time instead of an empty lane's 0.
+const FAR_CLIPS: TimelineElement[] = Array.from({ length: 100 }, (_, track) => ({
+  id: `far-${track}`,
+  tag: "div",
+  start: 900,
+  duration: 1,
+  track,
+}));
+
 function renderHarness(
   onAssetDrop: Mock,
   sessionEpoch = 1,
-  options: { onBlockDrop?: Mock; strict?: boolean } = {},
+  options: { onBlockDrop?: Mock; strict?: boolean; elements?: TimelineElement[] } = {},
 ) {
   const tracks = Array.from({ length: 100 }, (_, index) => index);
   const geometry = createTimelineRowGeometry(
@@ -60,6 +69,7 @@ function renderHarness(
       scrollRef: { current: scroll },
       ppsRef: { current: 40 },
       trackOrderRef: { current: tracks },
+      elementsRef: { current: options.elements ?? FAR_CLIPS },
       rowGeometryRef: { current: geometry },
       contentOrigin: 0,
       sessionEpoch: epoch,
@@ -149,8 +159,8 @@ describe("useTimelineAssetDrop", () => {
     });
 
     expect(onAssetDrop).toHaveBeenCalledTimes(1);
-    // pps=40, clientX=400 -> 10s at the pointer, not the playhead.
-    expect(onAssetDrop).toHaveBeenCalledWith("/media/hero.mp4", { start: 10, track: 100 });
+    // The appended lane is empty, so the drop starts at 0.
+    expect(onAssetDrop).toHaveBeenCalledWith("/media/hero.mp4", { start: 0, track: 100 });
     expect(view.api.isDragOver).toBe(false);
     act(() => view.root.unmount());
   });
@@ -256,6 +266,41 @@ describe("useTimelineAssetDrop", () => {
   });
 });
 
+describe("useTimelineAssetDrop start", () => {
+  function dropAt(elements: TimelineElement[], clientX: number) {
+    const onAssetDrop = vi.fn();
+    const view = renderHarness(onAssetDrop, 1, { elements });
+    const transfer = assetTransfer(JSON.stringify({ path: "assets/a.mp4" }));
+    act(() => view.api.handleAssetDragOver(dragEvent(transfer, clientX, ROW0_MID_Y)));
+    const preview = view.api.dropPreview;
+    act(() => view.api.handleAssetDrop(dragEvent(transfer, clientX, ROW0_MID_Y)));
+    act(() => view.root.unmount());
+    return { preview, committed: onAssetDrop.mock.calls[0]?.[1] };
+  }
+
+  it("starts a drop on an empty timeline at 0, in the preview and the commit", () => {
+    // pps=40, clientX=80 -> 2s at the pointer.
+    const { preview, committed } = dropAt([], 80);
+    expect(preview).toEqual({ start: 0, track: 0 });
+    expect(committed).toEqual(preview);
+  });
+
+  it("starts a drop on an empty lane at 0 while other lanes hold clips", () => {
+    const { committed } = dropAt([{ id: "c", tag: "div", start: 0, duration: 5, track: 1 }], 80);
+    expect(committed).toEqual({ start: 0, track: 0 });
+  });
+
+  it("snaps a drop within TIMELINE_SNAP_PX of a clip edge onto that edge", () => {
+    const lane: TimelineElement[] = [{ id: "c", tag: "div", start: 0, duration: 5, track: 0 }];
+    // The clip ends at x=200; 6 px past it is 5.15s, inside the 8 px radius.
+    const { preview, committed } = dropAt(lane, 206);
+    expect(preview).toEqual({ start: 5, track: 0 });
+    expect(committed).toEqual(preview);
+    // 12 px past it is outside the radius and keeps the pointer time.
+    expect(dropAt(lane, 212).committed).toEqual({ start: 5.3, track: 0 });
+  });
+});
+
 describe("resolveDropInsertRow", () => {
   const rows = [TRACK_H, TRACK_H, TRACK_H];
   it("stays on the row at the boundary between two rows", () => {
@@ -302,7 +347,7 @@ describe("useTimelineAssetDrop new-track drops", () => {
     expect(onAssetDrop).toHaveBeenCalledWith(
       "assets/a.png",
       expect.objectContaining({
-        start: 10,
+        start: 0,
         insertRow: 0,
         trackOrder: Array.from({ length: 100 }, (_, index) => index),
       }),

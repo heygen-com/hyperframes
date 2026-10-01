@@ -10,6 +10,8 @@ import {
   type TimelineRowGeometry,
 } from "./timelineLayout";
 import { resolveInsertRow } from "./timelineCollision";
+import type { TimelineElement } from "../store/playerStore";
+import { collectTimelineSnapTargets, snapTimelineTime, TIMELINE_SNAP_PX } from "./timelineSnapping";
 import type { TimelineDropCallbacks, TimelineDropPlacement } from "./timelineCallbacks";
 import {
   applyTimelineAutoScrollStep,
@@ -20,6 +22,7 @@ interface UseTimelineAssetDropOptions extends TimelineDropCallbacks {
   scrollRef: RefObject<HTMLDivElement | null>;
   ppsRef: RefObject<number>;
   trackOrderRef: RefObject<number[]>;
+  elementsRef: RefObject<readonly TimelineElement[]>;
   rowGeometryRef: RefObject<TimelineRowGeometry>;
   contentOrigin: number;
   sessionEpoch: number;
@@ -65,20 +68,36 @@ export function resolveDropInsertRow(
   return resolveInsertRow(rowFloat, trackCount);
 }
 
+/** An empty or new lane takes a drop at 0; on a lane with clips it snaps to the nearest clip edge. */
+function alignDropStart(
+  placement: TimelineDropPlacement,
+  elements: readonly TimelineElement[],
+  pixelsPerSecond: number,
+): TimelineDropPlacement {
+  const laneHasClips =
+    placement.insertRow == null && elements.some((el) => el.track === placement.track);
+  if (!laneHasClips) return { ...placement, start: 0 };
+  const targets = collectTimelineSnapTargets({ elements, playheadTime: null, beatTimes: [] });
+  const threshold = TIMELINE_SNAP_PX / Math.max(pixelsPerSecond, 1);
+  return { ...placement, start: snapTimelineTime(placement.start, targets, threshold).time };
+}
+
 function placeDrop(
   geometry: Parameters<typeof resolveTimelineAssetDrop>[0],
+  elements: readonly TimelineElement[],
   clientX: number,
   clientY: number,
   // Blocks and compositions are written by their own installers, which only take a track.
   canInsertTrack: boolean,
 ): TimelineDropPlacement {
   const placement = resolveTimelineAssetDrop(geometry, clientX, clientY);
-  if (!canInsertTrack) return placement;
   const contentY = clientY - geometry.rectTop + geometry.scrollTop;
-  const insertRow = resolveDropInsertRow(contentY, geometry.rowHeights, geometry.trackOrder.length);
-  return insertRow == null
-    ? placement
-    : { ...placement, insertRow, trackOrder: geometry.trackOrder };
+  const insertRow = canInsertTrack
+    ? resolveDropInsertRow(contentY, geometry.rowHeights, geometry.trackOrder.length)
+    : null;
+  const aimed =
+    insertRow == null ? placement : { ...placement, insertRow, trackOrder: geometry.trackOrder };
+  return alignDropStart(aimed, elements, geometry.pixelsPerSecond);
 }
 
 function invokeDropCallback(callback: () => Promise<void> | void): void {
@@ -119,13 +138,15 @@ function applyTypedJsonDrop(
 
 /**
  * Dropping an asset/file/block/composition onto the timeline places it on the row
- * and at the time it was dropped on; an asset moves to that row's nearest free time.
+ * and at the time it was dropped on (see alignDropStart); an asset moves to that row's
+ * nearest free time.
  * Supersedes the prior playhead decision (#2291); see useAddAssetAtPlayhead.
  */
 export function useTimelineAssetDrop({
   scrollRef,
   ppsRef,
   trackOrderRef,
+  elementsRef,
   rowGeometryRef,
   contentOrigin,
   onFileDrop,
@@ -197,12 +218,13 @@ export function useTimelineAssetDrop({
           rowHeights: rowGeometryRef.current.rowHeights,
           trackOrder: trackOrderRef.current,
         },
+        elementsRef.current,
         clientX,
         clientY,
         canInsertTrack,
       );
     },
-    [scrollRef, ppsRef, trackOrderRef, rowGeometryRef, contentOrigin],
+    [scrollRef, ppsRef, trackOrderRef, elementsRef, rowGeometryRef, contentOrigin],
   );
 
   const handleAssetDragOver = useCallback(
