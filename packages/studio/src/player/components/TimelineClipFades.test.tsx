@@ -200,6 +200,27 @@ describe("TimelineClipFades", () => {
     act(() => root.unmount());
   });
 
+  it.each([
+    ["in", "Fade in 0.3 s"],
+    ["out", "Fade out 0.4 s"],
+  ])(
+    "gives the fade-%s handle a 24 px target and a tooltip naming its length",
+    async (edge, text) => {
+      const { host, root } = render({ ...clip, fadeIn: 0.3, fadeOut: 0.4 });
+      const handle = host.querySelector<HTMLElement>(`[data-testid="clip-fade-handle-${edge}"]`);
+      if (!handle) throw new Error(`expected a fade-${edge} handle`);
+      expect(parseFloat(handle.style.width)).toBeGreaterThanOrEqual(24);
+      expect(parseFloat(handle.style.height)).toBeGreaterThanOrEqual(24);
+      expect(handle.getAttribute("title")).toBe("");
+      act(() => handle.focus());
+      await act(async () => {
+        await new Promise((resolve) => setTimeout(resolve, 0));
+      });
+      expect(document.querySelector('[role="tooltip"]')?.textContent).toBe(text);
+      act(() => root.unmount());
+    },
+  );
+
   it("does not let a press on the dot start the clip's own move gesture", () => {
     const outer = vi.fn();
     const { host, root } = render(clip, { onClipPointerDown: outer });

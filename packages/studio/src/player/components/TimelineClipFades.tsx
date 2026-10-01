@@ -13,13 +13,15 @@ import {
   formatFadeSeconds,
 } from "@hyperframes/core/audio-fade";
 import type { TimelineElement } from "../store/playerStore";
+import { Tooltip } from "../../components/ui";
 import { useTimelineEditContextOptional } from "../../contexts/TimelineEditContext";
 import { releasedOutsideWindow } from "./timelinePointerRelease";
 
 type FadeEdge = "in" | "out";
 
 const HANDLE_SIZE = 10;
-const HANDLE_HIT = 16;
+const HANDLE_HIT = 24;
+const SUPPRESS_CLIP_NATIVE_TITLE = "";
 /** Pixels of pointer travel before a press on the handle counts as a drag. */
 const DRAG_THRESHOLD_PX = 2;
 
@@ -296,27 +298,29 @@ function FadeHandle({
 }) {
   const label = direction === "in" ? "Fade in" : "Fade out";
   return (
-    <div
-      role="slider"
-      tabIndex={-1}
-      aria-label={label}
-      aria-valuemin={0}
-      aria-valuemax={max}
-      aria-valuenow={value}
-      aria-valuetext={`${formatFadeSeconds(value)}s`}
-      data-testid={`clip-fade-handle-${direction}`}
-      title={`${label}: ${formatFadeSeconds(value)}s — drag to change`}
-      style={style}
-      onPointerDown={onPointerDown}
-      onPointerMove={onPointerMove}
-      onPointerUp={onPointerUp}
-      onPointerCancel={onPointerCancel}
-      onKeyDown={onKeyDown}
-      onClick={(e) => e.stopPropagation()}
-      onDoubleClick={(e) => e.stopPropagation()}
-    >
-      <FadeDot active={dragging} />
-    </div>
+    <Tooltip label={`${label} ${value.toFixed(1)} s`}>
+      <div
+        role="slider"
+        tabIndex={-1}
+        aria-label={label}
+        aria-valuemin={0}
+        aria-valuemax={max}
+        aria-valuenow={value}
+        aria-valuetext={`${formatFadeSeconds(value)}s`}
+        data-testid={`clip-fade-handle-${direction}`}
+        title={SUPPRESS_CLIP_NATIVE_TITLE}
+        style={style}
+        onPointerDown={onPointerDown}
+        onPointerMove={onPointerMove}
+        onPointerUp={onPointerUp}
+        onPointerCancel={onPointerCancel}
+        onKeyDown={onKeyDown}
+        onClick={(e) => e.stopPropagation()}
+        onDoubleClick={(e) => e.stopPropagation()}
+      >
+        <FadeDot active={dragging} />
+      </div>
+    </Tooltip>
   );
 }
 
@@ -329,7 +333,7 @@ function FadeDot({ active }: { active: boolean }) {
         width: HANDLE_SIZE,
         height: HANDLE_SIZE,
         borderRadius: "50%",
-        background: active ? "var(--timeline-fade-dot-active)" : "var(--clip-handle)",
+        background: "var(--timeline-fade-dot)",
         boxShadow: "0 0 0 1.5px var(--timeline-fade-dot-ring)",
         transform: active ? "scale(1.15)" : undefined,
         transition: "transform 80ms ease-out",
