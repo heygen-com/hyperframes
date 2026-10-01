@@ -1,7 +1,11 @@
 import { buildProjectApiPath } from "../../utils/projectRouting";
-import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { useThumbnailLease } from "../../hooks/useThumbnailLease";
-import type { ThumbnailRequest, ThumbnailSnapshot } from "../../player/lib/thumbnailScheduler";
+import {
+  thumbnailScheduler,
+  type ThumbnailRequest,
+  type ThumbnailSnapshot,
+} from "../../player/lib/thumbnailScheduler";
 import {
   buildCompositionThumbnailUrl,
   compositionThumbnailRequest,
@@ -131,6 +135,19 @@ export function syncIframePlayback(iframe: HTMLIFrameElement | null, shouldPlay:
 const imageUrlOf = (snapshot: ThumbnailSnapshot) =>
   snapshot.status === "ready" && snapshot.value.kind === "image" ? snapshot.value.url : null;
 
+// A layout effect takes the old frame's lease before the passive cleanup drops the first one.
+function useLastFrame(request: ThumbnailRequest | null, snapshot: ThumbnailSnapshot) {
+  const current = imageUrlOf(snapshot);
+  const [kept, setKept] = useState<{ request: ThumbnailRequest; url: string } | null>(null);
+  if (request && current && kept?.request !== request) setKept({ request, url: current });
+  useLayoutEffect(() => {
+    if (!kept || kept.request === request) return;
+    const lease = thumbnailScheduler.acquire(kept.request, () => {});
+    return () => lease.release();
+  }, [kept, request]);
+  return current ?? kept?.url ?? null;
+}
+
 function useNearViewport<T extends Element>(): [(element: T | null) => void, boolean] {
   const [element, setElement] = useState<T | null>(null);
   const [near, setNear] = useState(false);
@@ -139,7 +156,7 @@ function useNearViewport<T extends Element>(): [(element: T | null) => void, boo
     if (typeof IntersectionObserver === "undefined") return setNear(true);
     const observer = new IntersectionObserver(
       (entries) => entries.some((entry) => entry.isIntersecting) && setNear(true),
-      { rootMargin: "200px" },
+      { root: element.closest("[data-composition-list]"), rootMargin: "200px" },
     );
     observer.observe(element);
     return () => observer.disconnect();
@@ -226,12 +243,7 @@ function CompCard({
     [previewBooted, nearViewport, thumbnailUrl, projectId, timelineSessionEpoch],
   );
   const thumbnail = useThumbnailLease(thumbnailRequest);
-  const [shownRequest, setShownRequest] = useState<ThumbnailRequest | null>(null);
-  if (thumbnail.status === "ready" && shownRequest !== thumbnailRequest) {
-    setShownRequest(thumbnailRequest);
-  }
-  const previous = useThumbnailLease(thumbnail.status === "ready" ? null : shownRequest);
-  const frameUrl = imageUrlOf(thumbnail) ?? imageUrlOf(previous);
+  const frameUrl = useLastFrame(thumbnailRequest, thumbnail);
   const thumbnailFailed = thumbnail.status === "error";
   const previewScale = resolveCompositionPreviewScale({
     cardWidth: CARD_W,
@@ -446,7 +458,7 @@ export const CompositionsTab = memo(function CompositionsTab({
   }
 
   return (
-    <div className="flex-1 overflow-y-auto">
+    <div className="flex-1 overflow-y-auto" data-composition-list>
       {compositions.map((comp) => (
         <CompCard
           key={`${projectId}:${comp}`}

@@ -21,11 +21,18 @@ class DecodingImage {
 }
 
 let autoIntersect = true;
-const observed: Array<{ element: Element; callback: IntersectionObserverCallback }> = [];
+const observed: Array<{
+  element: Element;
+  callback: IntersectionObserverCallback;
+  root?: Element | Document | null;
+}> = [];
 class ViewportObserver {
-  constructor(private readonly callback: IntersectionObserverCallback) {}
+  constructor(
+    private readonly callback: IntersectionObserverCallback,
+    private readonly options?: IntersectionObserverInit,
+  ) {}
   observe(element: Element) {
-    observed.push({ element, callback: this.callback });
+    observed.push({ element, callback: this.callback, root: this.options?.root });
     if (autoIntersect) this.enter();
   }
   enter() {
@@ -138,6 +145,7 @@ describe("composition card thumbnails", () => {
     expect(renders.map((r) => r.url.pathname)).toEqual([
       "/api/projects/demo/thumbnail/compositions/seen.html",
     ]);
+    expect(seen.root).toBe(document.querySelector("[data-composition-list]"));
   });
 
   it("keep showing the last frame, leased, until the next revision's frame is ready", async () => {
@@ -152,6 +160,40 @@ describe("composition card thumbnails", () => {
     renders.at(-1)!.answer();
     await settle();
     expect(shown(host)).toBe("blob:frame-2");
+  });
+
+  it("keep the last frame through a new revision even when the scheduler has evicted it", async () => {
+    const host = mount();
+    renders[0]!.answer();
+    await settle();
+    const fillers = Array.from({ length: 100 }, (_, i) =>
+      thumbnailScheduler.acquire(
+        {
+          key: `filler-${i}`,
+          projectId: "demo",
+          sessionEpoch: 0,
+          kind: "image",
+          priority: "visible",
+          load: async () => ({
+            value: { kind: "image", url: `blob:filler-${i}`, aspect: 1 },
+            weight: 1,
+          }),
+        },
+        () => {},
+      ),
+    );
+    while (
+      thumbnailScheduler.getDiagnostics().queued + thumbnailScheduler.getDiagnostics().active >
+      0
+    ) {
+      await settle();
+    }
+    for (const filler of fillers) filler.release();
+
+    act(() => usePlayerStore.getState().bumpThumbnailRevisions(null));
+    expect(renders.map((r) => r.url.searchParams.get("revision"))).toEqual(["0", "1"]);
+    expect(shown(host)).toBe("blob:frame-1");
+    expect(URL.revokeObjectURL).not.toHaveBeenCalledWith("blob:frame-1");
   });
 
   it("share one render with the timeline's thumbnail of the same composition", () => {

@@ -6,9 +6,6 @@
       "total.frameNavigations": 7,
       "total.requests.document": 2,
       "total.requests.thumbnail": 15
-    },
-    "raised": {
-      "total.requests.thumbnail": "#4401 shows a cached frame-0 poster while the preview boots: a cache-only ask that misses on a fresh open, then a render of that poster for the next open (+2 requests)"
     }
   }
 }
