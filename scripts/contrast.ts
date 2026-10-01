@@ -89,7 +89,6 @@ function parsePair(input: unknown): ContrastPair {
     sources: strings(row.sources),
   };
 }
-/** A theme's own pairs, or with `pairsFrom` the pairs of an earlier theme, measured in this one. */
 /** A row with `on` stands for one pair per named surface of its theme: `<id>-on-<surface>`. */
 function expandRow(row: Record<string, unknown>, surfaces: Record<string, unknown>): unknown[] {
   if (row.on === undefined) return [row];
@@ -99,6 +98,7 @@ function expandRow(row: Record<string, unknown>, surfaces: Record<string, unknow
     background: surfaces[name],
   }));
 }
+/** A theme's own pairs, or with `pairsFrom` the pairs of an earlier theme, measured in this one. */
 function themePairs(theme: Record<string, unknown>, earlier: ContrastTheme[]): ContrastPair[] {
   const surfaces = theme.surfaces === undefined ? {} : record(theme.surfaces);
   if (theme.pairsFrom === undefined)
@@ -327,7 +327,7 @@ function debtIssue(row: Measurement, baseline: ContrastBaseline): string[] {
   return changedRatioIssue(row, previous);
 }
 function changedRatioIssue(row: Measurement, previous: number): string[] {
-  if (Math.abs(row.ratio - previous) > 1e-10)
+  if (!(Math.abs(row.ratio - previous) <= 1e-10))
     return [
       `${row.id}: ratio ${row.ratio}, baseline ${previous}; bank improvements, reject regressions`,
     ];

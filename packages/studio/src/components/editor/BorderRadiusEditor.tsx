@@ -73,12 +73,7 @@ export function BorderRadiusEditor({
           viewBox={`0 0 ${PREVIEW_W} ${PREVIEW_H}`}
           className="shrink-0"
         >
-          <path
-            d={path}
-            fill="rgba(255,255,255,0.06)"
-            stroke="rgba(255,255,255,0.24)"
-            strokeWidth={1.5}
-          />
+          <path d={path} className="fill-text-0/[0.06] stroke-text-0/25" strokeWidth={1.5} />
           <circle cx={sTL} cy={sTL} r={3} fill={linked ? "#3b82f6" : "#a78bfa"} />
           <circle cx={PREVIEW_W - sTR} cy={sTR} r={3} fill={linked ? "#3b82f6" : "#a78bfa"} />
           <circle

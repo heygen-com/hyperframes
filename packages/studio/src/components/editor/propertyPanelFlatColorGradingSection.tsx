@@ -70,23 +70,20 @@ function HdrBanner({ metadata }: { metadata: MediaMetadata | null }) {
   return (
     <div
       data-flat-grade-hdr-banner="true"
-      className="rounded-md border border-amber-500/30 bg-amber-500/10 px-2.5 py-1.5 text-[10px] leading-4 text-amber-100"
+      className="rounded-md border border-amber-500/30 bg-amber-500/10 px-2.5 py-1.5 text-[10px] leading-4 text-warning-ink"
     >
       <div className="mb-0.5 flex items-center justify-between gap-2">
         <span className="font-semibold">{metadata.color.label} source</span>
-        <span className="rounded-sm bg-amber-400/20 px-1.5 py-0.5 text-[9px] font-semibold uppercase tracking-wide text-amber-100">
+        <span className="rounded-sm bg-amber-500/15 px-1.5 py-0.5 text-[9px] font-semibold uppercase tracking-wide text-warning-ink">
           SDR preview
         </span>
       </div>
-      <p className="text-amber-100/80">
+      <p className="text-text-2">
         These controls use the current SDR shader preview path. Render may stay HDR-tagged, but this
         is not true HDR color grading yet.
       </p>
       {details && (
-        <p
-          data-flat-grade-hdr-detail="true"
-          className="mt-0.5 truncate text-[9px] text-amber-100/55"
-        >
+        <p data-flat-grade-hdr-detail="true" className="mt-0.5 truncate text-[9px] text-text-muted">
           {details}
         </p>
       )}

@@ -348,7 +348,7 @@ export const StudioFeedbackCard = memo(function StudioFeedbackCard() {
               <button
                 type="button"
                 onClick={() => submit()}
-                className="h-7 shrink-0 rounded-md bg-press px-2.5 text-[11px] text-neutral-100 transition-[background-color,transform] duration-150 ease-out hover:bg-press active:scale-[0.97] motion-reduce:transition-none"
+                className="h-7 shrink-0 rounded-md bg-press px-2.5 text-[11px] text-neutral-100 transition-[background-color,transform] duration-150 ease-out hover:bg-on active:scale-[0.97] motion-reduce:transition-none"
               >
                 Send
               </button>

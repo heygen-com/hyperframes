@@ -71,8 +71,8 @@
   --color-selection: light-dark(oklch(0.5 0.13 240), #4ba3d2);
   --color-playhead: var(--color-text-0);
   --color-danger: oklch(0.56 0.19 25);
-  --color-danger-ink: light-dark(oklch(0.5 0.17 25), oklch(0.791 0.12 25));
-  --color-warning-ink: light-dark(oklch(0.5 0.12 70), oklch(82.8% 0.189 84.429));
+  --color-danger-ink: light-dark(oklch(0.45 0.17 25), oklch(0.791 0.12 25));
+  --color-warning-ink: light-dark(oklch(0.5 0.12 70), var(--color-amber-400));
   --color-on-danger: oklch(1 0 0);
   --color-media: light-dark(oklch(0.5 0.1 215), #00e3ff);
   --color-container: light-dark(oklch(0.55 0.13 70), #f5a623);

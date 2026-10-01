@@ -189,7 +189,7 @@ export const BlockParamsPanel = memo(function BlockParamsPanel({
           </div>
         )}
         {commitState.tone === "saved" && (
-          <div className="text-[10px] text-emerald-500/90" role="status">
+          <div className="text-[10px] text-accent-ink" role="status">
             Saved to {compositionPath}
           </div>
         )}

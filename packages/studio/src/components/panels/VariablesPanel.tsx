@@ -56,7 +56,7 @@ function formatIssue(issue: VariableValidationIssue): string {
 function ValidationStrip({ issues }: { issues: VariableValidationIssue[] }) {
   if (issues.length === 0) return null;
   return (
-    <div className="space-y-1 rounded-lg border border-red-900/60 bg-danger/15 p-2">
+    <div className="space-y-1 rounded-lg border border-danger/40 bg-danger/15 p-2">
       {issues.map((issue) => (
         <p key={`${issue.kind}:${issue.variableId}`} className="text-[10px] text-danger-ink">
           {formatIssue(issue)}

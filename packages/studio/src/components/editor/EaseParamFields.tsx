@@ -93,9 +93,9 @@ export function EaseBezierField({
             }
           }}
           onBlur={(event) => commit(event.currentTarget.value)}
-          className={`w-full rounded border bg-black/20 px-1.5 py-1 font-mono text-[10px] text-neutral-300 outline-hidden ${
+          className={`w-full rounded border bg-input px-1.5 py-1 font-mono text-[10px] text-neutral-300 outline-hidden ${
             error
-              ? "border-red-500/70 focus:border-red-400"
+              ? "border-danger/70 focus:border-danger"
               : "border-border focus:border-panel-accent/50"
           }`}
         />

@@ -8,7 +8,7 @@ interface SaveQueuePausedBannerProps {
 export function SaveQueuePausedBanner({ message, onRetry }: SaveQueuePausedBannerProps) {
   return (
     <div
-      className="hf-backdrop-in absolute left-1/2 top-14 z-92 flex max-w-[calc(100vw-32px)] -translate-x-1/2 items-center gap-3 rounded-md border border-red-500/30 bg-danger/15 px-4 py-2 text-[12px] font-medium text-red-100 shadow-lg shadow-black/30"
+      className="hf-backdrop-in absolute left-1/2 top-14 z-92 flex max-w-[calc(100vw-32px)] -translate-x-1/2 items-center gap-3 rounded-md border border-red-500/30 bg-red-950/85 px-4 py-2 text-[12px] font-medium text-red-100 shadow-lg shadow-black/30"
       role="alert"
     >
       <span>{message}</span>

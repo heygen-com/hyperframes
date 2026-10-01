@@ -354,7 +354,7 @@ export const AnimationCard = memo(function AnimationCard({
 
             {animation.method === "fromTo" && (
               <div className="space-y-1">
-                <p className="text-[9px] font-semibold uppercase tracking-wider text-orange-400/70">
+                <p className="text-[9px] font-semibold uppercase tracking-wider text-warning-ink">
                   From
                 </p>
                 <div className="space-y-1.5">
@@ -378,7 +378,7 @@ export const AnimationCard = memo(function AnimationCard({
                     onAdd={(prop) => onAddFromProperty?.(animation.id, prop)}
                     onOpen={() => setAddingFromProp(true)}
                     onClose={() => setAddingFromProp(false)}
-                    buttonClassName="text-[11px] font-medium text-orange-400/70 transition-colors hover:text-orange-300"
+                    buttonClassName="text-[11px] font-medium text-warning-ink transition-colors hover:text-text-0"
                   />
                 </div>
               </div>
@@ -455,7 +455,7 @@ export const AnimationCard = memo(function AnimationCard({
               <button
                 type="button"
                 onClick={() => onDeleteAnimation(animation.id)}
-                className="ml-auto text-[11px] font-medium text-danger-ink transition-colors hover:text-danger-ink"
+                className="ml-auto text-[11px] font-medium rounded-sm text-danger-ink transition-colors hover:bg-danger/15"
                 title="Remove this animation"
               >
                 Remove

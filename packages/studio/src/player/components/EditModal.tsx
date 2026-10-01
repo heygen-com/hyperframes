@@ -184,7 +184,7 @@ export function EditPopover({ rangeStart, rangeEnd, anchorX, anchorY, onClose }:
             disabled={!buildPromptCopyText(prompt)}
             className={`py-1.5 text-[11px] font-medium rounded-lg transition-all border ${
               copiedPromptOnly
-                ? "bg-green-500/20 text-green-400 border-green-500/30"
+                ? "bg-accent/15 text-accent-ink border-accent/30"
                 : "bg-neutral-800/70 text-neutral-200 border-neutral-700/50 hover:bg-neutral-800"
             } disabled:opacity-50 disabled:cursor-not-allowed`}
           >
@@ -194,7 +194,7 @@ export function EditPopover({ rangeStart, rangeEnd, anchorX, anchorY, onClose }:
             onClick={handleCopy}
             className={`py-1.5 text-[11px] font-medium rounded-lg transition-all ${
               copiedAgentPrompt
-                ? "bg-green-500/20 text-green-400 border border-green-500/30"
+                ? "bg-accent/15 text-accent-ink border border-accent/30"
                 : "bg-studio-accent/15 text-accent-ink border border-studio-accent/25 hover:bg-studio-accent/25"
             }`}
           >

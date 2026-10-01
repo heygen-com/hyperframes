@@ -77,9 +77,9 @@ export const BlocksTab = memo(function BlocksTab({ onAddBlock, onPreviewBlock }:
       {/* Block grid */}
       <div className="flex-1 overflow-y-auto min-h-0 px-2 pb-2">
         {category === "vfx" && (
-          <div className="mb-2 px-2 py-1.5 rounded-md bg-purple-500/10 border border-purple-500/20 text-[9px] text-purple-300 leading-relaxed">
+          <div className="mb-2 px-2 py-1.5 rounded-md bg-purple-500/10 border border-purple-500/20 text-[9px] text-text-2 leading-relaxed">
             VFX blocks use WebGL via HTML-in-Canvas. Enable{" "}
-            <span className="font-mono text-purple-200">chrome://flags/#html-in-canvas</span> for
+            <span className="font-mono text-text-0">chrome://flags/#html-in-canvas</span> for
             preview.
           </div>
         )}

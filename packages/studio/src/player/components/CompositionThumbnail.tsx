@@ -182,7 +182,7 @@ export const CompositionThumbnail = memo(function CompositionThumbnail({
         </div>
       )}
       {snapshot.status === "loading" && (
-        <div className="absolute inset-0 animate-pulse bg-white/[0.035]" />
+        <div className="absolute inset-0 animate-pulse bg-text-0/[0.035]" />
       )}
       {label && (
         <div className="absolute inset-y-0 left-3 z-10 flex items-center">

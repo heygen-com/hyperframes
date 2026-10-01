@@ -134,12 +134,12 @@ export function PropertyGroupHeaderRow({
       {/* Tree connector: vertical spine (top-half on the last lane) + branch tick. */}
       <span className="relative h-full w-3 shrink-0" aria-hidden="true">
         <span
-          className="absolute left-1.5 top-0 w-px bg-white/15"
+          className="absolute left-1.5 top-0 w-px bg-text-0/15"
           style={{ height: isLastLane ? "50%" : "100%" }}
         />
-        <span className="absolute left-1.5 top-1/2 h-px w-1.5 bg-white/15" />
+        <span className="absolute left-1.5 top-1/2 h-px w-1.5 bg-text-0/15" />
       </span>
-      <span className="w-[46px] shrink-0 truncate text-white" title={label}>
+      <span className="w-[46px] shrink-0 truncate text-text-0" title={label}>
         {label}
       </span>
       <PropertyGroupNavigation
@@ -243,10 +243,10 @@ export function AutomationLaneHeaderRow({
           tick at the name's own height. */}
       <span className="relative h-full w-3 shrink-0" aria-hidden="true">
         <span
-          className="absolute left-1.5 top-0 w-px bg-white/15"
+          className="absolute left-1.5 top-0 w-px bg-text-0/15"
           style={{ height: isLastLane ? "50%" : "100%" }}
         />
-        <span className="absolute left-1.5 top-1/2 h-px w-1.5 bg-white/15" />
+        <span className="absolute left-1.5 top-1/2 h-px w-1.5 bg-text-0/15" />
       </span>
       {/* Two lines: what the effect is, then which knob the envelope drives. On
           one line a band's own name was the first thing truncated in a column this

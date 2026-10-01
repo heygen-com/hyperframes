@@ -81,7 +81,7 @@ export const FfmpegRequiredNotice = memo(function FfmpegRequiredNotice({
 
       {status.command ? (
         <div className="flex items-center gap-1.5">
-          <code className="flex-1 overflow-x-auto whitespace-nowrap rounded-xs bg-black/40 px-2 py-1 text-[10px] text-panel-text-2">
+          <code className="flex-1 overflow-x-auto whitespace-nowrap rounded-xs bg-input px-2 py-1 text-[10px] text-panel-text-2">
             {status.command}
           </code>
           {/* Fixed width so swapping the label to "Copied" cannot shift the
@@ -89,7 +89,7 @@ export const FfmpegRequiredNotice = memo(function FfmpegRequiredNotice({
           <button
             type="button"
             onClick={() => void copy(status.command ?? "")}
-            className={`h-6 w-14 shrink-0 rounded-xs border border-amber-500/30 text-[10px] font-medium text-amber-200 transition-colors hover:bg-amber-500/20 active:scale-[0.98] ${FOCUS_RING}`}
+            className={`h-6 w-14 shrink-0 rounded-xs border border-amber-500/30 text-[10px] font-medium text-warning-ink transition-colors hover:bg-amber-500/20 active:scale-[0.98] ${FOCUS_RING}`}
           >
             {copied ? "Copied" : "Copy"}
           </button>
@@ -107,7 +107,7 @@ export const FfmpegRequiredNotice = memo(function FfmpegRequiredNotice({
           type="button"
           onClick={onRecheck}
           disabled={checking}
-          className={`rounded-xs py-0.5 text-[10px] font-medium text-amber-200 underline-offset-2 transition-colors hover:underline disabled:opacity-50 ${FOCUS_RING}`}
+          className={`rounded-xs py-0.5 text-[10px] font-medium text-warning-ink underline-offset-2 transition-colors hover:underline disabled:opacity-50 ${FOCUS_RING}`}
         >
           {checking ? "Checking…" : "Recheck"}
         </button>

@@ -22,7 +22,7 @@ function ClipLintDot({ element }: { element: TimelineElement }) {
   if (!lint || lint.count === 0) return null;
   return (
     <span
-      className="absolute w-1.5 h-1.5 rounded-full bg-amber-400"
+      className="absolute w-1.5 h-1.5 rounded-full bg-warning-ink"
       style={{ top: 7, right: 7 }}
       title={lint.messages.join("\n")}
     />

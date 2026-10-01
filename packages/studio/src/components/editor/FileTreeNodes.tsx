@@ -16,6 +16,7 @@ import {
   type TreeNode,
   type ContextMenuState,
   type InlineInputState,
+  DIM,
 } from "./FileTreeIcons";
 
 export type { ContextMenuState, InlineInputState };
@@ -263,7 +264,7 @@ export function InlineInput({
       style={{ paddingLeft: `${8 + depth * 12 + (isFolder ? 0 : 14)}px` }}
     >
       {isFolder ? (
-        <FolderSimple size={SZ_ICON} weight="duotone" color="#6B7280" className="shrink-0" />
+        <FolderSimple size={SZ_ICON} weight="duotone" className={`shrink-0 ${DIM}`} />
       ) : (
         <FileIcon path={value} />
       )}
@@ -279,7 +280,7 @@ export function InlineInput({
           onBlur={handleBlur}
           aria-invalid={error ? true : undefined}
           className={`w-full min-w-0 bg-neutral-800 text-neutral-200 text-xs px-1.5 py-0.5 rounded border outline-hidden ${
-            error ? "border-red-500/70" : "border-neutral-600 focus:border-[#3CE6AC]"
+            error ? "border-danger/70" : "border-neutral-600 focus:border-[#3CE6AC]"
           }`}
           spellCheck={false}
         />

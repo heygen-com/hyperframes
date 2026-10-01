@@ -109,8 +109,8 @@ export const CaptionTimeline = memo(function CaptionTimeline({
               tabIndex={0}
               aria-label={`Caption word "${seg.text}"`}
               aria-pressed={isSelected}
-              className={`absolute top-1 bottom-1 rounded flex items-center overflow-hidden cursor-pointer focus-visible:ring-1 focus-visible:ring-white outline-hidden${
-                isSelected ? " ring-1 ring-white/50 z-10" : ""
+              className={`absolute top-1 bottom-1 rounded flex items-center overflow-hidden cursor-pointer focus-visible:ring-1 focus-visible:ring-text-0 outline-hidden${
+                isSelected ? " ring-1 ring-text-0/50 z-10" : ""
               }`}
               style={{
                 left,

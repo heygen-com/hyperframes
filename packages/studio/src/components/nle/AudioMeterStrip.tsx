@@ -215,7 +215,7 @@ function useMeterLoop(
 
 function Bar({ maskRef, peakRef }: { maskRef: Ref<HTMLDivElement>; peakRef: Ref<HTMLDivElement> }) {
   return (
-    <div className="relative h-full w-[18px] overflow-hidden rounded-[2px] bg-neutral-900">
+    <div className="scheme-dark relative h-full w-[18px] overflow-hidden rounded-[2px] bg-neutral-900">
       <div
         className="absolute inset-x-0 bottom-0 bg-green-500"
         style={{ height: `${AMBER_AT * 100}%` }}
@@ -237,7 +237,7 @@ function Bar({ maskRef, peakRef }: { maskRef: Ref<HTMLDivElement>; peakRef: Ref<
       <div
         ref={peakRef}
         data-testid="meter-peak"
-        className="absolute inset-x-0 bottom-0 h-px bg-white"
+        className="absolute inset-x-0 bottom-0 h-px bg-text-0"
       />
     </div>
   );

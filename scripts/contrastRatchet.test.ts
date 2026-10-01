@@ -1,4 +1,4 @@
-// guards: packages/studio/src/styles/**
+// guards: packages/studio/src/styles/**, packages/studio/src/components/editor/FileTreeIcons.tsx
 import { readFileSync } from "node:fs";
 import { execFileSync } from "node:child_process";
 import { describe, expect, it } from "vitest";
@@ -141,6 +141,9 @@ describe("Studio colour syntax", () => {
     expect(
       verdict([{ id: "dark/label", ratio: Number.NaN, minimum: 4.5 }], {}).join("\n"),
     ).toContain("new contrast debt");
+    expect(
+      verdict([{ id: "dark/label", ratio: Number.NaN, minimum: 4.5 }], { "dark/label": 3 }),
+    ).not.toEqual([]);
   });
 });
 
@@ -190,4 +193,31 @@ describe("contrast ratchet", () => {
       `Contrast ratchet verified: ${rows.length} pairs, ${Object.keys(baseline).length} baseline debts.`,
     );
   });
+});
+
+describe("file tree icons", () => {
+  const css = read("../packages/studio/src/styles/theme.css");
+  const token = (name: string): string =>
+    css
+      .match(new RegExp(`${name}:\\s*([^;]+);`))![1]!
+      .replace(/var\((--[\w-]+)\)/g, (_, alias: string) => token(alias));
+  const inks = [
+    ...read("../packages/studio/src/components/editor/FileTreeIcons.tsx").matchAll(
+      /text-\[(light-dark\([^\]]+\))\]/g,
+    ),
+  ].map((match) => match[1]!.replaceAll("_", " "));
+
+  it.each(["light", "dark"] as const)(
+    "hold 3:1 on a row at rest, hovered and selected in %s",
+    (scheme) => {
+      const panel = parseColor(token("--color-surface"), scheme);
+      const rows = ["--color-hover", "--color-on"].map((wash) =>
+        composite(parseColor(token(wash), scheme), panel),
+      );
+      expect(inks.length).toBeGreaterThan(8);
+      for (const ink of inks)
+        for (const row of [panel, ...rows])
+          expect(contrast(parseColor(ink, scheme), row), ink).toBeGreaterThanOrEqual(3);
+    },
+  );
 });

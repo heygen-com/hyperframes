@@ -491,7 +491,7 @@ export function CurveGraph({
         </linearGradient>
       </defs>
       {[0.25, 0.5, 0.75].map((ratio) => (
-        <g key={ratio} stroke="rgba(255,255,255,0.08)" strokeWidth="0.5">
+        <g key={ratio} className="stroke-text-0/10" strokeWidth="0.5">
           <line
             x1={GRAPH_PADDING}
             y1={GRAPH_PADDING + ratio * (GRAPH_SIZE - GRAPH_PADDING * 2)}

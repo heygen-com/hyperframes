@@ -80,7 +80,7 @@ export function EaseModeToggle({
 }) {
   return (
     <div
-      className="mb-2 grid grid-cols-3 rounded-md bg-black/20 p-0.5"
+      className="mb-2 grid grid-cols-3 rounded-md bg-press p-0.5"
       role="radiogroup"
       aria-label="Ease editor mode"
     >
