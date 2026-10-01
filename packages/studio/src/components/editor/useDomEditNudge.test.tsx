@@ -124,6 +124,37 @@ describe("useDomEditNudge — selection cleanup keyed on stable identity", () =>
     element.remove();
   });
 
+  it("leaves arrows on a focused slider alone", () => {
+    const host = document.createElement("div");
+    document.body.append(host);
+    const root = createRoot(host);
+    const element = document.createElement("div");
+    element.id = "dot-a";
+    const slider = document.createElement("div");
+    slider.setAttribute("role", "slider");
+    document.body.append(element, slider);
+    const commit = vi.fn();
+    act(() => {
+      root.render(
+        React.createElement(Harness, {
+          selection: makeSelection("Dot", element),
+          onPathOffsetCommit: commit,
+        }),
+      );
+    });
+    act(() => {
+      slider.dispatchEvent(
+        new KeyboardEvent("keydown", { key: "ArrowRight", bubbles: true, cancelable: true }),
+      );
+      vi.advanceTimersByTime(CANVAS_NUDGE_COMMIT_DEBOUNCE_MS + 10);
+    });
+    expect(commit).not.toHaveBeenCalled();
+    act(() => root.unmount());
+    host.remove();
+    element.remove();
+    slider.remove();
+  });
+
   it("still flushes the burst when the selection actually changes to a different element", () => {
     const host = document.createElement("div");
     document.body.append(host);

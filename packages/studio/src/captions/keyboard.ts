@@ -1,4 +1,5 @@
 import { isEditableTarget } from "../utils/timelineDiscovery";
+import { ownsPlainKeys } from "../utils/typingTarget";
 
 const CAPTION_NUDGE_KEYS = new Set(["ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight"]);
 
@@ -9,7 +10,7 @@ export function shouldHandleCaptionNudgeKey(
   target?: EventTarget | null,
 ): boolean {
   if (event.metaKey || event.ctrlKey || event.altKey) return false;
-  if (target != null && isEditableTarget(target)) return false;
+  if (target != null && ownsPlainKeys(target)) return false;
   return CAPTION_NUDGE_KEYS.has(event.key);
 }
 

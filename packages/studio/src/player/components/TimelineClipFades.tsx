@@ -56,11 +56,7 @@ export function useClipFadeDraft(el: TimelineElement) {
   const [draft, setDraft] = useState<FadeDraft>(null);
   const authoredIn = el.fadeIn ?? 0;
   const authoredOut = el.fadeOut ?? 0;
-  const savedDraft =
-    draft !== null && draft.seconds === (draft.edge === "in" ? authoredIn : authoredOut);
-  useEffect(() => {
-    if (savedDraft) setDraft(null);
-  }, [savedDraft]);
+  useEffect(() => setDraft(null), [authoredIn, authoredOut]);
   const { fadeIn, fadeOut } = clampFadesToDuration(
     {
       fadeIn: draft?.edge === "in" ? draft.seconds : authoredIn,
@@ -260,7 +256,8 @@ export function TimelineClipFades({
     setDraft(null);
   };
 
-  const commit = (edge: FadeEdge, seconds: number) => {
+  const commit = (edge: FadeEdge, raw: number) => {
+    const seconds = Math.round(raw * 100) / 100;
     setDraft({ edge, seconds });
     const dropDraft = () => setDraft(null);
     void onSetElementAttributeQuiet?.(el, attrFor(edge), attrText(seconds), labelFor(edge)).then(
@@ -290,11 +287,14 @@ export function TimelineClipFades({
   // A held key previews live and saves once on release: one undo step per burst.
   const onHandleKeyDown = (edge: FadeEdge) => (e: KeyboardEvent<HTMLDivElement>) => {
     if (gesture.current || !canEdit) return;
-    const next = keyedFadeSeconds(e.key, e.shiftKey, currentSeconds(edge), limitFor(edge));
+    const current = currentSeconds(edge);
+    const limit = Math.max(limitFor(edge), current);
+    const next = keyedFadeSeconds(e.key, e.shiftKey, current, limit);
     if (next === null) return;
     e.preventDefault();
     e.stopPropagation();
-    const seconds = Math.round(Math.min(limitFor(edge), Math.max(0, next)) * 100) / 100;
+    const seconds = Math.round(Math.min(limit, Math.max(0, next)) * 100) / 100;
+    if (seconds === current) return;
     keyBurst.current = { edge, seconds };
     setDraft({ edge, seconds });
     onSetElementAttributeLive?.(el, attrFor(edge), attrText(seconds));
@@ -331,7 +331,8 @@ export function TimelineClipFades({
   const [inX, outX] = [tabX("in"), tabX("out")];
   const mid = (inX + outX) / 2;
   // A handle that can neither grow nor shrink is not drawn: its twin owns the spot.
-  const drawn = (edge: FadeEdge) => currentSeconds(edge) > 0 || limitFor(edge) > 0;
+  const drawn = (edge: FadeEdge) =>
+    currentSeconds(edge) > 0 || limitFor(edge) >= 0.01 || dragging === edge || focused === edge;
   const overlap = drawn("in") && drawn("out") && boxLeft(inX) + hitWidth > boxLeft(outX);
   const handleGeometry = (edge: FadeEdge) => {
     const x = edge === "in" ? inX : outX;

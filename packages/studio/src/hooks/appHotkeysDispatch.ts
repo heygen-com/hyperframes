@@ -3,7 +3,7 @@ import { usePlayerStore } from "../player";
 import type { TimelineElement } from "../player";
 import type { DomEditSelection } from "../components/editor/domEditing";
 import { useDockLayoutStore } from "../components/dock/dockLayoutStore";
-import { isTypingTarget } from "../utils/typingTarget";
+import { isTypingTarget, ownsPlainKeys } from "../utils/typingTarget";
 import { isEditableTarget } from "../utils/timelineDiscovery";
 import { shouldIgnoreHistoryShortcut } from "../utils/studioHelpers";
 import { canSplitElement } from "../utils/timelineElementSplit";
@@ -153,6 +153,7 @@ export function dispatchModifierKey(
  *  Delete arbitration between keyframes, an automation range and the clip can
  *  be asserted without standing up the whole hook. */
 export function dispatchPlainKey(event: KeyboardEvent, key: string, cb: HotkeyCallbacks): void {
+  if (ownsPlainKeys(event.target)) return;
   if (key === STUDIO_PLAIN_KEYS.fullscreen && !event.shiftKey && !event.altKey) {
     event.preventDefault();
     if (document.fullscreenElement) void document.exitFullscreen();

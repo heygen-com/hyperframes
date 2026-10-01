@@ -2,7 +2,6 @@ import { useCallback, useEffect, useRef } from "react";
 import { usePlayerStore } from "../player";
 import type { TimelineElement } from "../player";
 import type { DomEditSelection } from "../components/editor/domEditing";
-import { ownsPlainKeys } from "../utils/typingTarget";
 import { useCaptionStore } from "../captions/store";
 import {
   applyCaptionModelToIframe,
@@ -220,7 +219,7 @@ export function useAppHotkeys({
       dispatchModifierKey(event, key, cb);
       return;
     }
-    if (!ownsPlainKeys(event.target)) dispatchPlainKey(event, key, cb);
+    dispatchPlainKey(event, key, cb);
   }, []);
 
   // eslint-disable-next-line no-restricted-syntax

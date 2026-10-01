@@ -38,6 +38,12 @@ describe("shouldHandleCaptionNudgeKey", () => {
     expect(shouldHandleCaptionNudgeKey(mockKeyboardEvent("KeyL"))).toBe(false);
   });
 
+  it("ignores arrows a focused slider owns", () => {
+    const slider = document.createElement("div");
+    slider.setAttribute("role", "slider");
+    expect(shouldHandleCaptionNudgeKey(mockKeyboardEvent("ArrowUp"), slider)).toBe(false);
+  });
+
   it("ignores arrows when the event target is an editable element", () => {
     const input = document.createElement("input");
     const textarea = document.createElement("textarea");

@@ -60,6 +60,38 @@ afterEach(() => {
   });
 });
 
+describe("keys on a focused slider", () => {
+  const slider = () => {
+    const el = document.createElement("div");
+    el.setAttribute("role", "slider");
+    document.body.append(el);
+    return el;
+  };
+  const from = (target: HTMLElement, init: KeyboardEventInit) => {
+    const event = new KeyboardEvent("keydown", { ...init, bubbles: true, cancelable: true });
+    Object.defineProperty(event, "target", { value: target });
+    return event;
+  };
+
+  it("leaves Delete to the slider instead of deleting the selected clip", () => {
+    usePlayerStore.setState({
+      elements: [bgmElement],
+      selectedElementId: "bgm",
+      selectedElementIds: new Set(["bgm"]),
+    });
+    const cb = callbacks();
+    dispatchPlainKey(from(slider(), { key: "Delete" }), "delete", cb);
+    expect(cb.handleTimelineElementsDelete).not.toHaveBeenCalled();
+    expect(cb.handleTimelineElementDelete).not.toHaveBeenCalled();
+  });
+
+  it("still undoes with Cmd+Z while a slider has focus", () => {
+    const cb = callbacks();
+    dispatchModifierKey(from(slider(), { key: "z", metaKey: true }), "z", cb);
+    expect(cb.handleUndo).toHaveBeenCalledTimes(1);
+  });
+});
+
 describe("dispatchPlainKey — select leftward / rightward", () => {
   const clips = [
     { ...bgmElement, id: "early", key: "early", start: 0, track: 0 },

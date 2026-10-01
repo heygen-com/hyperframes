@@ -446,6 +446,48 @@ describe("TimelineClipFades", () => {
     expect(onSetElementAttributeQuiet).toHaveBeenCalledWith(clip, "data-fade-in", "1.1", "Fade in");
   });
 
+  it("keeps a handle drawn while it is dragged to where it can no longer move", () => {
+    // A fade-in that fills the clip next to a 2 s fade-out, as a trim leaves it.
+    const trimmed = { ...clip, fadeIn: 10, fadeOut: 2 };
+    const { host, onSetElementAttributeQuiet } = render(trimmed);
+    const handle = armedHandle(host, "out");
+    press(handle, [900], [1000]);
+    act(() => handle.dispatchEvent(pointer("pointerup", 1000)));
+    expect(onSetElementAttributeQuiet).toHaveBeenCalledWith(
+      trimmed,
+      "data-fade-out",
+      null,
+      "Fade out",
+    );
+  });
+
+  it("hides a handle with less than one 0.01 s step to move", () => {
+    const { host } = render({ ...clip, duration: 10.0333, fadeIn: 10.03, fadeOut: undefined });
+    expect(host.querySelector('[data-testid="clip-fade-handle-out"]')).toBeNull();
+  });
+
+  it("saves a double-click on a short clip as a whole hundredth", () => {
+    const short = { ...clip, duration: 0.3333, fadeIn: undefined, fadeOut: undefined };
+    const { host, onSetElementAttributeQuiet } = render(short);
+    const handle = host.querySelector<HTMLElement>('[data-testid="clip-fade-handle-in"]');
+    act(() => handle?.dispatchEvent(new MouseEvent("dblclick", { bubbles: true })));
+    expect(onSetElementAttributeQuiet).toHaveBeenCalledWith(
+      short,
+      "data-fade-in",
+      "0.33",
+      "Fade in",
+    );
+  });
+
+  it("never lets a grow key shrink a fade when the pair overruns the clip", () => {
+    const overrun = { ...clip, fadeIn: 2, fadeOut: 10 };
+    const { host, onSetElementAttributeQuiet } = render(overrun, { focusable: true });
+    const handle = host.querySelector<HTMLElement>('[data-testid="clip-fade-handle-in"]');
+    key(handle, "keydown", { key: "ArrowRight" });
+    key(handle, "keyup", { key: "ArrowRight" });
+    expect(onSetElementAttributeQuiet).not.toHaveBeenCalled();
+  });
+
   it("gives a fade that fills the clip the only handle at its end", () => {
     const { host } = render({ ...clip, fadeIn: 10, fadeOut: undefined });
     // The fade-out can neither grow nor shrink, so it does not sit on top of the fade-in's tab.
