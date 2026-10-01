@@ -71,8 +71,10 @@ describe("the keyframed grid", () => {
     );
   });
 
-  it("leaves the full grid as it was", () => {
-    expect(buildGrid("full")).toHaveLength(953);
+  it("runs in the full grid beside the 953 cases already there", () => {
+    const full = buildGrid("full").map((c) => c.id);
+    expect(full).toHaveLength(953 + grid.length);
+    expect(new Set(full).size).toBe(full.length);
   });
 });
 

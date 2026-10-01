@@ -101,7 +101,7 @@ const product = (axes) =>
 const caseId = (c) =>
   [c.gesture, c.gsap, c.placement, `r${c.rotation}`, c.nesting, `z${c.zoom}`].join("-");
 
-/** `pr` is a smaller slice for CI; `keyframes` is the GSAP-animated set, kept out of `full` until it is decided. */
+/** `pr` is a smaller slice for CI; `keyframes` is the GSAP-animated set alone, which `full` also runs. */
 export function buildGrid(kind = "full") {
   if (kind === "keyframes") return keyframedCases();
   return (
@@ -109,7 +109,7 @@ export function buildGrid(kind = "full") {
       // xPercent only exists through GSAP on the target itself.
       .filter((c) => c.placement !== "xpercent" || !["none", "idle"].includes(c.gsap))
       .map((c) => ({ id: caseId(c), ...c, other: c.gsap === "idle" }))
-      .concat(dragCases())
+      .concat(dragCases(), keyframedCases())
       .filter((c) => kind !== "pr" || (c.zoom === 100 && c.nesting === "root"))
   );
 }

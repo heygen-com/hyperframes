@@ -1013,7 +1013,7 @@ jobs:
 
   # Manual editing accuracy in the built Studio, gated against the base branch's baseline.json.
   studio-edit-accuracy:
-    name: "Studio: edit accuracy (${{ matrix.shard }}/12)"
+    name: "Studio: edit accuracy (${{ matrix.shard }}/20)"
     needs: [changes, build]
     if: github.event_name == 'pull_request' && needs.changes.outputs.edit_accuracy == 'true'
     runs-on: ubuntu-latest
@@ -1021,7 +1021,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        shard: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12]
+        shard: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20]
     steps:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
       - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
@@ -1046,7 +1046,7 @@ jobs:
         run: |
           set -euo pipefail
           bench() { bun run --cwd packages/studio test:edit-accuracy -- --grid full --jobs 2 "$@"; }
-          bench --shard "${{ matrix.shard }}/12" --out /tmp/edit-accuracy/run1
+          bench --shard "${{ matrix.shard }}/20" --out /tmp/edit-accuracy/run1
           mapfile -t FLIPPED < <(node packages/studio/tests/e2e/edit-accuracy/ratchet.mjs flipped \
             /tmp/base-edit-accuracy.json /tmp/edit-accuracy/run1/results.json)
           if (( ${#FLIPPED[@]} > 0 )); then
