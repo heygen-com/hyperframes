@@ -12,12 +12,11 @@ const good = {
   undo: true,
   dropped: 0,
   controlDropped: 0,
-  work: 3,
+  workMax: 3,
   frameP95: 20,
 };
 const run = (id, drop = 0) => ({
   id,
-  pass: false,
   tracking: { max: 0.1 },
   pressJump: 0,
   drop,
@@ -25,14 +24,14 @@ const run = (id, drop = 0) => ({
   render: 0.02,
   undo: { bytes: true, redoBytes: true, box: 0, redoBox: 0 },
   checks: { undo: true },
-  smooth: { p95: 20, dropped: 0, workP95: 3, control: { dropped: 0 } },
+  smooth: { p95: 20, dropped: 0, workMax: 3, control: { dropped: 0 } },
   unsettled: [],
 });
 const baseline = (cases) => ({ cases });
 
 describe("accurate", () => {
   it("ignores smoothness and a metric the baseline does not hold", () => {
-    expect(accurate({ ...good, dropped: 4, work: 90 })).toBe(true);
+    expect(accurate({ ...good, smooth: false, dropped: 4, workMax: 90 })).toBe(true);
     expect(accurate({ tracking: 0.1, drop: 0, reload: 0, undo: true })).toBe(true);
     expect(accurate({ ...good, pressJump: null })).toBe(true);
   });
@@ -47,7 +46,7 @@ describe("accurate", () => {
     expect(accurate({ ...good, teleport: true })).toBe(true);
     expect(accurate({ ...good, text: false })).toBe(false);
     expect(accurate({ ...good, text: true })).toBe(true);
-    expect(accurate({ pass: false, error: true })).toBe(false);
+    expect(accurate({ error: true })).toBe(false);
     expect(accurate(undefined)).toBe(false);
   });
 });
@@ -74,6 +73,13 @@ describe("quarantine", () => {
     const text = comment(gate(base, base, [run("a", 9), run("a"), run("a", 9), run("b")], q));
     expect(text).toContain("- a (fixed by #1234): fail / pass / fail, fails");
     expect(comment(gate(base, base, [run("b")], q))).toContain("- a (fixed by #1234): not run");
+  });
+
+  it("heads the comment with the accurate and smooth counts, smoothness never gating", () => {
+    const smooth = (id, ok) => ({ ...run(id), checks: { undo: true, smooth: ok } });
+    const g = gate(base, base, [smooth("a", false), smooth("b", true)], {});
+    expect(comment(g)).toContain("accurate 2 (base branch 2), smooth 1");
+    expect(g.ok).toBe(true);
   });
 
   it("names a fixing PR for every quarantined id", () => {

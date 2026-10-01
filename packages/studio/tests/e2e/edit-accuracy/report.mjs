@@ -9,6 +9,7 @@ export const UNDO_WRITE_MAX_MS = 2000;
 const lateUndo = (r) => Math.max(r.undo.ms ?? 0, r.undo.redoMs ?? 0) > UNDO_WRITE_MAX_MS;
 // A frame over 1.5 vsyncs is dropped; raw rAF p95 stays reported so a different rule re-scores without a re-run.
 const DROPPED_FRAME_MS = 25;
+/** Smooth means no main-thread frame over this, and no more dropped frames than the blank-page control. */
 const WORK_MS = 8;
 export const METRICS = [
   "tracking",
@@ -41,11 +42,11 @@ const worstValue = {
   smooth: (r) => r.smooth.dropped - r.smooth.control.dropped,
 };
 
-/** Dropped frames and main-thread ms per frame at p95, from the raw intervals and trace work a case stores. */
+/** Dropped frames and the worst frame's main-thread ms, from the raw intervals and trace work a case stores. */
 const frameBudget = (smooth) => ({
   ...smooth,
   dropped: smooth.intervals.filter((d) => d > DROPPED_FRAME_MS).length,
-  workP95: smooth.work && percentile(smooth.work, 95),
+  workMax: smooth.work && Math.max(0, ...smooth.work),
 });
 
 /** The metrics each snapshot feeds; a snapshot whose preview never held still fails them. */
@@ -64,7 +65,6 @@ export function score(spec, r) {
     return {
       ...spec,
       ...r,
-      pass: false,
       checks: Object.fromEntries(METRICS.map((m) => [m, false])),
     };
   const smooth = { ...frameBudget(r.smooth), control: frameBudget(r.smooth.control) };
@@ -92,11 +92,11 @@ export function score(spec, r) {
     // Only drops beyond the blank page's, driven the same way in the same Chrome, are the edit's.
     smooth:
       smooth.dropped <= smooth.control.dropped &&
-      smooth.workP95 !== null &&
-      smooth.workP95 <= WORK_MS,
+      smooth.workMax !== null &&
+      smooth.workMax <= WORK_MS,
   };
   for (const m of unsettledMetrics(r)) checks[m] = false;
-  return { ...spec, ...r, smooth, pass: Object.values(checks).every(Boolean), checks };
+  return { ...spec, ...r, smooth, checks };
 }
 
 const round = (v) => (typeof v === "number" ? Math.round(v * 100) / 100 : v);
@@ -109,7 +109,7 @@ const medianMax = (values) =>
 function smoothSummary(measured) {
   const s = measured.map((r) => r.smooth);
   return {
-    unknown: s.filter((x) => x.workP95 === null).length,
+    unknown: s.filter((x) => x.workMax === null).length,
     dropped: medianMax(s.map((x) => x.dropped)),
     control: medianMax(s.map((x) => x.control.dropped)),
     p95: medianMax(s.map((x) => x.p95)),
@@ -117,12 +117,12 @@ function smoothSummary(measured) {
   };
 }
 
+// Smoothness is reported, never gated, so accuracy is every other check.
+const accurateChecks = (r) => METRICS.every((m) => m === "smooth" || r.checks[m]);
+
 function summarize(results, seconds) {
-  const passing = results.filter((r) => r.pass).length;
-  // Smoothness is still ungated in CI, so the score is also shown without it.
-  const accurate = results.filter((r) =>
-    METRICS.every((m) => m === "smooth" || r.checks[m]),
-  ).length;
+  const passing = results.filter((r) => accurateChecks(r) && r.checks.smooth).length;
+  const accurate = results.filter(accurateChecks).length;
   const measured = results.filter((r) => !r.error);
   const perMetric = METRICS.map((m) => {
     const worst = measured.reduce(
@@ -169,7 +169,7 @@ function table(summary, meta, results) {
     `Every metric counts except smoothness, which is reported against the blank-page control: ${summary.perMetric.find((m) => m.metric === "smooth").pass}/${summary.total} pass it, and ${summary.passing}/${summary.total} pass everything including it.`,
     "",
     `Studio ${meta.studio} (build ${meta.build}), bench ${meta.bench}, grid \`${meta.grid}\`, ${meta.date}, ${summary.seconds}s with ${meta.jobs} jobs, ${summary.errors} harness errors, load ${meta.load}.`,
-    `Pass: tracking, press jump, teleport, drop, reload and render ≤ ${LIMIT_PX} px; undo and redo byte-identical with the box ≤ ${LIMIT_PX} px; no more frames over ${DROPPED_FRAME_MS} ms than the blank-page control, and main-thread work ≤ ${WORK_MS} ms per frame at p95.`,
+    `Pass: tracking, press jump, teleport, drop, reload and render ≤ ${LIMIT_PX} px; undo and redo byte-identical with the box ≤ ${LIMIT_PX} px; no more frames over ${DROPPED_FRAME_MS} ms than the blank-page control, and no frame over ${WORK_MS} ms of main-thread work.`,
     "",
     `Undo or redo left different bytes in ${summary.bytesDiffer.undo} undo and ${summary.bytesDiffer.redo} redo cases.`,
     `The preview never held still for 1 s within 15 s in ${summary.unsettled} cases; the metrics that snapshot feeds fail.`,
@@ -182,13 +182,13 @@ function table(summary, meta, results) {
     "|---|---|---|---|",
     ...summary.perMetric.map((m) => metricRow(m, summary.total)),
     "",
-    "| Gesture | Cases | Pass | " + METRICS.join(" | ") + " |",
+    "| Gesture | Cases | Accurate | " + METRICS.join(" | ") + " |",
     "|---|---|---|" + METRICS.map(() => "---").join("|") + "|",
   ];
   for (const g of [...new Set(results.map((r) => r.gesture))]) {
     const rs = results.filter((r) => r.gesture === g);
     lines.push(
-      `| ${g} | ${rs.length} | ${rs.filter((r) => r.pass).length} | ${METRICS.map((m) => rs.filter((r) => r.checks[m]).length).join(" | ")} |`,
+      `| ${g} | ${rs.length} | ${rs.filter(accurateChecks).length} | ${METRICS.map((m) => rs.filter((r) => r.checks[m]).length).join(" | ")} |`,
     );
   }
   return lines.join("\n") + "\n";
@@ -197,9 +197,9 @@ function table(summary, meta, results) {
 /** One case as baseline.json holds it; the gate reads the same projection. */
 // fallow-ignore-next-line complexity
 export function entry(r) {
-  if (r.error) return { pass: false, error: true };
+  if (r.error) return { error: true };
   return {
-    pass: r.pass,
+    smooth: r.checks.smooth,
     tracking: roundUp(r.tracking.max),
     pressJump: roundUp(r.pressJump),
     teleport: r.checks.teleport,
@@ -212,7 +212,7 @@ export function entry(r) {
     undo: r.checks.undo,
     dropped: r.smooth.dropped,
     controlDropped: r.smooth.control.dropped,
-    work: roundUp(r.smooth.workP95),
+    workMax: roundUp(r.smooth.workMax),
     frameP95: roundUp(r.smooth.p95),
     ...(r.unsettled.length && { unsettled: r.unsettled }),
     ...(r.undoTimeout && { undoTimeout: r.undoTimeout }),

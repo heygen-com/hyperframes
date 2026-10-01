@@ -79,6 +79,8 @@ export function gate(base, head, runs, quarantine = QUARANTINED) {
       ([id, e]) => !Object.hasOwn(quarantine, id) && accurate(e),
     ).length,
     headPassing: passing.length,
+    // Reported only: most of a case's runs had no extra dropped frame and no frame over the work budget.
+    headSmooth: cases.filter((c) => c.entries.filter((e) => e.smooth).length * 2 > c.entries.length).length,
     regressed: cases.filter((c) => c.basePassed && !c.passed).map((c) => c.id),
     unstable: cases
       .filter((c) => new Set(c.entries.map(accurate)).size > 1)
@@ -114,7 +116,7 @@ const list = (title, ids) =>
 export function comment(g) {
   return [
     "<!-- edit-accuracy -->",
-    `### Edit accuracy: ${g.headPassing} passing here, ${g.basePassing} on the base branch`,
+    `### Edit accuracy: accurate ${g.headPassing} (base branch ${g.basePassing}), smooth ${g.headSmooth}`,
     "",
     g.ok ? "The gate passes." : `The gate fails: ${g.reasons.join("; ")}.`,
     "Smoothness is reported in the artifact, not gated. A case fails only if it fails 2 of 3 runs.",
