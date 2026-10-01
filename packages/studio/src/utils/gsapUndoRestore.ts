@@ -142,7 +142,7 @@ function diffRestoreDocs(prevDoc: Document, nextDoc: Document): string[] | null 
   return prevRest === nextRest ? changedElementKeys : null;
 }
 
-/** Copy every attribute from `source` onto the live `target`, dropping extras. */
+/** Copies `source`'s attributes onto `target`; under a gesture mark it merges them (keepDrawn). */
 function syncElementAttributes(target: Element, source: Element, base?: Element): void {
   const draws = base && studioGestureDraws(target);
   const merged = draws ? keepDrawn(target, source, base, draws) : source;

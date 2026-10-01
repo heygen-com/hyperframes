@@ -40,17 +40,18 @@ import { BOX_SIZE_STYLE_PROPS } from "./manualEditsDomPatches";
 /* ── Gesture tracking ─────────────────────────────────────────────── */
 let studioManualEditGestureId = 0;
 
-export type StudioGestureDraws = "move" | "resize" | "rotate";
+export type StudioGestureDraws = "move" | "resize" | "rotate" | "edit";
 const MOVE_DRAWS = ["translate", STUDIO_OFFSET_X_PROP, STUDIO_OFFSET_Y_PROP];
 const GESTURE_DRAWS: Record<StudioGestureDraws, readonly string[]> = {
   move: MOVE_DRAWS,
   resize: [...MOVE_DRAWS, STUDIO_WIDTH_PROP, STUDIO_HEIGHT_PROP, ...BOX_SIZE_STYLE_PROPS],
   rotate: ["rotate", "transform", "transform-origin", "display", STUDIO_ROTATION_PROP],
+  edit: [],
 };
 
 export function beginStudioManualEditGesture(
   element: HTMLElement,
-  draws: StudioGestureDraws = "move",
+  draws: StudioGestureDraws,
 ): string {
   studioManualEditGestureId += 1;
   const token = `gesture-${studioManualEditGestureId}:${draws}`;

@@ -477,6 +477,17 @@ describe("an undo that lands while the layer is being dragged", () => {
     expect(el.style.getPropertyValue("width")).toBe("100px");
   });
 
+  it("reverts the translate under a gesture that draws nothing, such as a text edit", () => {
+    const { iframe, doc } = buildLiveIframe(undone);
+    const el = doc.getElementById("a")!;
+    beginStudioManualEditGesture(el, "edit");
+
+    applyUndoRestoreToPreview(iframe, ROOT, files, 3, vi.fn());
+
+    expect(el.style.getPropertyValue("translate")).toBe("");
+    expect(el.hasAttribute("data-hf-studio-manual-edit-gesture")).toBe(true);
+  });
+
   it("keeps the drag's translate when the undo is shown in place", () => {
     const { iframe, doc } = buildLiveIframe(undone);
     const el = doc.getElementById("a")!;
