@@ -1,7 +1,7 @@
 import type { Hono } from "hono";
 import { streamSSE } from "hono/streaming";
 import { existsSync, readFileSync, unlinkSync, readdirSync, statSync } from "node:fs";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 import type { StudioApiAdapter, RenderJobState } from "../types.js";
 import { VALID_CANVAS_RESOLUTIONS, type CanvasResolution } from "@hyperframes/parsers";
 import { formatRenderOutputTimestamp, parseFps } from "@hyperframes/core";
@@ -10,6 +10,24 @@ import { projectDirMissing } from "../helpers/projectDirMissing.js";
 import { isVariablesPayload, VARIABLES_PAYLOAD_ERROR } from "../helpers/variablesPayload.js";
 
 const VALID_RESOLUTIONS = new Set<string>(VALID_CANVAS_RESOLUTIONS);
+const RENDER_MIME: Record<string, string> = {
+  ".mp4": "video/mp4",
+  ".webm": "video/webm",
+  ".mov": "video/quicktime",
+};
+const RENDER_EXTENSIONS = Object.keys(RENDER_MIME);
+const RENDER_ARTIFACT_EXTENSIONS = [...RENDER_EXTENSIONS, ".meta.json"];
+
+function resolveRenderArtifacts(directories: readonly string[], jobId: string): string[] | null {
+  const artifacts = [...new Set(directories)]
+    .filter(existsSync)
+    .flatMap((directory) =>
+      RENDER_ARTIFACT_EXTENSIONS.map((extension) =>
+        resolveWithinProject(directory, `${jobId}${extension}`),
+      ),
+    );
+  return artifacts.every((path) => path !== null) ? artifacts : null;
+}
 
 function contentDispositionHeader(disposition: "inline" | "attachment", filename: string): string {
   const fallback = filename.replace(/[^\x20-\x7e]|["\\]/g, "_");
@@ -189,13 +207,6 @@ export function registerRenderRoutes(api: Hono, adapter: StudioApiAdapter): void
     return c.json({ status: job.status });
   });
 
-  const RENDER_MIME: Record<string, string> = {
-    ".mp4": "video/mp4",
-    ".webm": "video/webm",
-    ".mov": "video/quicktime",
-  };
-  const RENDER_EXTENSIONS = Object.keys(RENDER_MIME);
-
   function renderContentType(filePath: string): string {
     const ext = RENDER_EXTENSIONS.find((e) => filePath.endsWith(e));
     return (ext && RENDER_MIME[ext]) ?? "video/mp4";
@@ -241,18 +252,26 @@ export function registerRenderRoutes(api: Hono, adapter: StudioApiAdapter): void
     });
   });
 
+  async function renderDirectories(jobId: string): Promise<string[]> {
+    const outputPath = renderJobs.get(jobId)?.outputPath;
+    if (outputPath) return [dirname(outputPath)];
+
+    const projects = await adapter.listProjects();
+    return projects.map((project) => adapter.rendersDir(project));
+  }
+
   // Delete render
-  api.delete("/render/:jobId", (c) => {
+  api.delete("/render/:jobId", async (c) => {
     const { jobId } = c.req.param();
-    for (const [, state] of renderJobs) {
-      if (state.id === jobId && state.outputPath) {
-        const dir = state.outputPath.replace(/\/[^/]+$/, "");
-        for (const ext of [".mp4", ".webm", ".mov", ".meta.json"]) {
-          const fp = join(dir, `${jobId}${ext}`);
-          if (existsSync(fp)) unlinkSync(fp);
-        }
-        break;
-      }
+    if (jobId.includes("/") || jobId.includes("\\") || jobId.includes("\0")) {
+      return c.json({ error: "forbidden" }, 403);
+    }
+    const directories = await renderDirectories(jobId);
+    const artifacts = resolveRenderArtifacts(directories, jobId);
+    if (!artifacts) return c.json({ error: "forbidden" }, 403);
+
+    for (const path of artifacts) {
+      if (existsSync(path)) unlinkSync(path);
     }
     renderJobs.delete(jobId);
     return c.json({ deleted: true });
