@@ -332,8 +332,9 @@ try {
     run.passed = run.longTaskPassed && run.timelineMounted && run.domSizePassed !== false;
   }
   // Pooled over every measured step: one run's p95 is only its 4th-worst step, so a brief runner stall failed it.
-  const interactionP95Ms = percentile(runs.flatMap((run) => run.interactions), 0.95);
-  const frameIntervalP95Ms = percentile(runs.flatMap((run) => run.frameIntervals), 0.95);
+  const pooled = (key) => runs.flatMap((run) => run[key]);
+  const interactionP95Ms = percentile(pooled("interactions"), 0.95);
+  const frameIntervalP95Ms = percentile(pooled("frameIntervals"), 0.95);
   const responsivenessPassed =
     interactionP95Ms <= interactionLimitMs && frameIntervalP95Ms <= frameIntervalLimitMs;
 
