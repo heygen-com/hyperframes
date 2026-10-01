@@ -253,9 +253,9 @@ function stripGsapTranslateFromTransform(element: HTMLElement): void {
 // — as the non-GSAP path does — composes ON TOP of GSAP's transform, and the
 // subsequent strip/reapply math compounds into a runaway matrix that flings the
 // element off-canvas. So for GSAP-animated elements we keep `translate: none`
-// and push the offset straight into GSAP's x/y via gsap.set; the var() offset is
-// still persisted (buildPathOffsetPatches), and GSAP re-reads it at init on
-// reload. Returns true when handled as GSAP (caller must skip the CSS path).
+// and push the offset straight into GSAP's x/y via gsap.set; the var() offset an
+// older Studio saved stays in the file, and GSAP re-reads it at init on reload.
+// Returns true when handled as GSAP (caller must skip the CSS path).
 // fallow-ignore-next-line complexity
 function applyStudioPathOffsetViaGsap(
   element: HTMLElement,

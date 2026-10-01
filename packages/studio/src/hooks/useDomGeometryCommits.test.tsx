@@ -25,7 +25,6 @@ function mountCommits(
   let commits: ReturnType<typeof useDomGeometryCommits> | null = null;
   function Probe() {
     commits = useDomGeometryCommits({
-      previewIframeRef: { current: null },
       showToast: vi.fn(),
       commitPositionPatchToHtml,
       readOnlyPreview,
@@ -61,7 +60,6 @@ describe("useDomGeometryCommits rollback", () => {
 
     function Probe() {
       commits = useDomGeometryCommits({
-        previewIframeRef: { current: null },
         showToast: vi.fn(),
         commitPositionPatchToHtml,
         readOnlyPreview: false,
@@ -70,9 +68,6 @@ describe("useDomGeometryCommits rollback", () => {
     }
 
     act(() => root.render(<Probe />));
-    await expect(commits!.handleDomPathOffsetCommit(selection, { x: 50, y: 60 })).rejects.toBe(
-      failure,
-    );
     await expect(
       commits!.handleDomBoxSizeCommit(selection, { width: 200, height: 160 }, { x: 30, y: 40 }),
     ).rejects.toBe(failure);
@@ -89,20 +84,6 @@ describe("useDomGeometryCommits rollback", () => {
 describe("useDomGeometryCommits read-only preview", () => {
   const selectionOn = (element: HTMLElement) =>
     ({ id: element.id, selector: `#${element.id}`, element }) as unknown as DomEditSelection;
-
-  it("refuses a manual offset commit: no write, no history entry", async () => {
-    const element = document.createElement("div");
-    element.id = "ro-offset";
-    document.body.append(element);
-    applyStudioPathOffset(element, { x: 1, y: 2 });
-    const commitPositionPatchToHtml =
-      vi.fn<UseDomGeometryCommitsParams["commitPositionPatchToHtml"]>();
-    const { commits, unmount } = mountCommits(commitPositionPatchToHtml, true);
-    await commits().handleDomPathOffsetCommit(selectionOn(element), { x: 99, y: 99 });
-    expect(readStudioPathOffset(element)).toEqual({ x: 1, y: 2 });
-    expect(commitPositionPatchToHtml).not.toHaveBeenCalled();
-    unmount();
-  });
 
   it("refuses a manual box-size commit: no write, no history entry", async () => {
     const element = document.createElement("div");
@@ -129,19 +110,6 @@ describe("useDomGeometryCommits read-only preview", () => {
     await commits().handleDomRotationCommit(selectionOn(element), { angle: 350 });
     expect(readStudioRotation(element)).toEqual({ angle: 5 });
     expect(commitPositionPatchToHtml).not.toHaveBeenCalled();
-    unmount();
-  });
-
-  it("still commits an offset with the flag off", async () => {
-    const element = document.createElement("div");
-    element.id = "rw-offset";
-    document.body.append(element);
-    const commitPositionPatchToHtml = vi
-      .fn<UseDomGeometryCommitsParams["commitPositionPatchToHtml"]>()
-      .mockResolvedValue(undefined);
-    const { commits, unmount } = mountCommits(commitPositionPatchToHtml);
-    await commits().handleDomPathOffsetCommit(selectionOn(element), { x: 5, y: 6 });
-    expect(commitPositionPatchToHtml).toHaveBeenCalledTimes(1);
     unmount();
   });
 });

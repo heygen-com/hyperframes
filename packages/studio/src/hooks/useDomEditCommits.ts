@@ -271,12 +271,10 @@ export function useDomEditCommits({
 
   const {
     stageElementPositionOffset,
-    handleDomPathOffsetCommit,
     handleDomBoxSizeCommit,
     handleDomRotationCommit,
     handleDomManualEditsReset,
   } = useDomGeometryCommits({
-    previewIframeRef,
     showToast,
     commitPositionPatchToHtml,
     readOnlyPreview,
@@ -316,7 +314,6 @@ export function useDomEditCommits({
     handleDomRemoveTextField,
     stageElementPositionOffset,
     commitPositionPatchToHtml,
-    handleDomPathOffsetCommit,
     handleDomBoxSizeCommit,
     handleDomRotationCommit,
     handleDomManualEditsReset,

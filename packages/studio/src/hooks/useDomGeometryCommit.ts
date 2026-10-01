@@ -111,7 +111,6 @@ export function useDomGeometryCommit({
   );
   const { stageElementPositionOffset, handleDomBoxSizeCommit, handleDomRotationCommit } =
     useDomGeometryCommits({
-      previewIframeRef: iframeRef,
       showToast,
       commitPositionPatchToHtml: commitWithFreshQueue,
       readOnlyPreview: false,

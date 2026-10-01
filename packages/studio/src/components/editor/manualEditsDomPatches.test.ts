@@ -42,7 +42,6 @@ import {
   STUDIO_MOTION_ORIGINAL_VISIBILITY_ATTR,
 } from "./studioMotionTypes";
 import {
-  buildPathOffsetPatches,
   buildClearPathOffsetPatches,
   buildBoxSizePatches,
   buildClearBoxSizePatches,
@@ -50,7 +49,7 @@ import {
   buildMotionPatches,
   buildClearMotionPatches,
 } from "./manualEditsDomPatches";
-import { applyStudioBoxSize, applyStudioPathOffset } from "./manualEditsDom";
+import { applyStudioBoxSize } from "./manualEditsDom";
 
 /* ── helpers ── */
 
@@ -71,39 +70,7 @@ function assertClearCoversKeys(buildOps: PatchOperation[], clearOps: PatchOperat
 
 /* ── Path offset ─────────────────────────────────────────────────────────── */
 
-describe("buildPathOffsetPatches / buildClearPathOffsetPatches", () => {
-  function populatedPathEl(): HTMLElement {
-    const e = div();
-    e.style.setProperty(STUDIO_OFFSET_X_PROP, "10px");
-    e.style.setProperty(STUDIO_OFFSET_Y_PROP, "20px");
-    e.style.setProperty("translate", "10px 20px");
-    e.setAttribute(STUDIO_ORIGINAL_TRANSLATE_ATTR, "5px 10px");
-    e.setAttribute(STUDIO_ORIGINAL_INLINE_TRANSLATE_ATTR, "3px");
-    e.style.setProperty("display", "flex");
-    e.setAttribute(STUDIO_ORIGINAL_TRANSFORM_DISPLAY_ATTR, "block");
-    return e;
-  }
-
-  it("populated: captures offset styles, attrs, display, and transform-display marker in declaration order", () => {
-    const ops = buildPathOffsetPatches(populatedPathEl());
-    expect(ops).toEqual([
-      { type: "inline-style", property: STUDIO_OFFSET_X_PROP, value: "10px" },
-      { type: "inline-style", property: STUDIO_OFFSET_Y_PROP, value: "20px" },
-      { type: "inline-style", property: "translate", value: "10px 20px" },
-      { type: "attribute", property: STUDIO_PATH_OFFSET_ATTR, value: "true" },
-      { type: "attribute", property: STUDIO_ORIGINAL_TRANSLATE_ATTR, value: "5px 10px" },
-      { type: "attribute", property: STUDIO_ORIGINAL_INLINE_TRANSLATE_ATTR, value: "3px" },
-      { type: "inline-style", property: "display", value: "flex" },
-      { type: "attribute", property: STUDIO_ORIGINAL_TRANSFORM_DISPLAY_ATTR, value: "block" },
-    ]);
-  });
-
-  it("empty: bare element yields only the path-offset marker", () => {
-    expect(buildPathOffsetPatches(div())).toEqual([
-      { type: "attribute", property: STUDIO_PATH_OFFSET_ATTR, value: "true" },
-    ]);
-  });
-
+describe("buildClearPathOffsetPatches", () => {
   it("clear: restores translate from STUDIO_ORIGINAL_INLINE_TRANSLATE_ATTR and display from STUDIO_ORIGINAL_TRANSFORM_DISPLAY_ATTR", () => {
     const e = div();
     e.setAttribute(STUDIO_ORIGINAL_INLINE_TRANSLATE_ATTR, "5px");
@@ -126,11 +93,6 @@ describe("buildPathOffsetPatches / buildClearPathOffsetPatches", () => {
     e.setAttribute(STUDIO_ORIGINAL_INLINE_TRANSLATE_ATTR, "");
     const ops = buildClearPathOffsetPatches(e);
     expect(ops.find((o) => o.property === "translate")?.value).toBeNull();
-  });
-
-  it("build/clear symmetry: clear addresses every {type,property} key that build emits", () => {
-    const e = populatedPathEl();
-    assertClearCoversKeys(buildPathOffsetPatches(e), buildClearPathOffsetPatches(e));
   });
 });
 
@@ -283,52 +245,6 @@ describe("buildBoxSizePatches / buildClearBoxSizePatches", () => {
   it("build/clear symmetry: clear addresses every {type,property} key that build emits", () => {
     const e = populatedBoxEl();
     assertClearCoversKeys(buildBoxSizePatches(e), buildClearBoxSizePatches(e));
-  });
-});
-
-/* ── Combined box-size + path-offset (anchored-corner resize) ──────────────── */
-
-describe("anchored-corner combined patch: [...buildBoxSizePatches, ...buildPathOffsetPatches]", () => {
-  // NW/NE/SW resize commits size AND anchor offset in ONE persist. The two
-  // builders read the same already-mutated element and are concatenated; this
-  // is only safe if their {type,property} keys are disjoint (no builder
-  // overwrites the other's op when the source patcher applies them in order).
-  it("concatenation of both builders emits disjoint {type,property} keys (no collision)", () => {
-    const e = div();
-    applyStudioBoxSize(e, { width: 300, height: 200 });
-    applyStudioPathOffset(e, { x: 10, y: 20 });
-
-    const combined = [...buildBoxSizePatches(e), ...buildPathOffsetPatches(e)];
-    const keys = combined.map(opKey);
-    expect(new Set(keys).size, `duplicate {type,property} key in combined patch: ${keys}`).toBe(
-      keys.length,
-    );
-  });
-
-  it("combined patch carries BOTH markers so a soft-reload re-hydrates size and offset together", () => {
-    const e = div();
-    applyStudioBoxSize(e, { width: 300, height: 200 });
-    applyStudioPathOffset(e, { x: 10, y: 20 });
-
-    const combined = [...buildBoxSizePatches(e), ...buildPathOffsetPatches(e)];
-    const has = (property: string) =>
-      combined.some((op) => op.type === "attribute" && op.property === property);
-    expect(has(STUDIO_BOX_SIZE_ATTR)).toBe(true);
-    expect(has(STUDIO_PATH_OFFSET_ATTR)).toBe(true);
-  });
-
-  it("order is size-first: every box-size op precedes every path-offset op", () => {
-    const e = div();
-    applyStudioBoxSize(e, { width: 300, height: 200 });
-    applyStudioPathOffset(e, { x: 10, y: 20 });
-
-    const boxKeys = new Set(buildBoxSizePatches(e).map(opKey));
-    const combined = [...buildBoxSizePatches(e), ...buildPathOffsetPatches(e)];
-    const lastBoxIdx = combined.reduce((acc, op, i) => (boxKeys.has(opKey(op)) ? i : acc), -1);
-    const firstOffsetIdx = combined.findIndex(
-      (op) => op.type === "attribute" && op.property === STUDIO_PATH_OFFSET_ATTR,
-    );
-    expect(firstOffsetIdx).toBeGreaterThan(lastBoxIdx);
   });
 });
 
