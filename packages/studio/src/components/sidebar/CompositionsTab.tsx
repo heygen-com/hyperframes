@@ -320,7 +320,7 @@ function CompCard({
           {lintInfo && lintInfo.count > 0 && (
             <span
               aria-label={`${lintInfo.count} lint finding${lintInfo.count === 1 ? "" : "s"}`}
-              className="shrink-0 min-w-[16px] text-center rounded-full bg-amber-500/20 px-1 text-[8px] font-bold text-amber-400"
+              className="shrink-0 min-w-[16px] text-center rounded-full bg-amber-500/20 px-1 text-[8px] font-bold text-warning-ink"
             >
               {lintInfo.count}
             </span>

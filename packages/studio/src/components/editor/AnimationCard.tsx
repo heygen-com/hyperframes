@@ -455,7 +455,7 @@ export const AnimationCard = memo(function AnimationCard({
               <button
                 type="button"
                 onClick={() => onDeleteAnimation(animation.id)}
-                className="ml-auto text-[11px] font-medium text-red-400 transition-colors hover:text-red-300"
+                className="ml-auto text-[11px] font-medium text-danger-ink transition-colors hover:text-danger-ink"
                 title="Remove this animation"
               >
                 Remove

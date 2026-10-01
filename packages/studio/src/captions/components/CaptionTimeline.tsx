@@ -135,7 +135,7 @@ export const CaptionTimeline = memo(function CaptionTimeline({
 
       {/* Playhead — correlates blocks with the current frame */}
       <div
-        className="absolute top-0 bottom-0 w-px bg-white/70 pointer-events-none z-20"
+        className="absolute top-0 bottom-0 w-px bg-text-0/70 pointer-events-none z-20"
         style={{ left: playheadLeft }}
         aria-hidden="true"
       />

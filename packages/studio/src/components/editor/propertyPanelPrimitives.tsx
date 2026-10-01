@@ -234,7 +234,7 @@ export function SegmentedControl({
           aria-pressed={option.value === value}
           className={`min-w-0 truncate rounded px-2 py-[5px] text-[11px] font-medium transition-colors disabled:cursor-not-allowed ${
             option.value === value
-              ? "bg-panel-hover text-white"
+              ? "bg-panel-hover text-text-0"
               : "text-panel-text-4 hover:text-panel-text-2"
           }`}
         >

@@ -106,9 +106,9 @@ export function PromptPreviewModal({
           <button
             className={`px-4 py-1.5 rounded-lg text-xs font-medium transition-colors active:scale-[0.97] ${
               copyState === "copied"
-                ? "bg-emerald-500 text-white"
+                ? "bg-accent text-on-accent"
                 : copyState === "failed"
-                  ? "bg-red-500 text-white"
+                  ? "bg-danger text-on-danger"
                   : "bg-accent text-on-accent hover:bg-accent-hover"
             }`}
             onClick={handleCopy}

@@ -281,7 +281,9 @@ export function AudioRow({
               <span
                 role="status"
                 className={`shrink-0 text-[9px] font-medium px-1.5 py-px rounded ${
-                  copyFailed ? "text-red-400 bg-red-500/10" : "text-accent-ink bg-panel-accent/10"
+                  copyFailed
+                    ? "text-danger-ink bg-red-500/10"
+                    : "text-accent-ink bg-panel-accent/10"
                 }`}
               >
                 {copyFailed ? "Copy failed" : "Copied"}

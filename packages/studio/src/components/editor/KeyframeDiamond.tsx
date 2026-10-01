@@ -21,7 +21,7 @@ export const KeyframeDiamond = memo(function KeyframeDiamond({
   const isFilled = state === "active";
   const color = {
     active: "text-accent",
-    inactive: "text-text-muted hover:text-text-0",
+    inactive: "text-text-2 hover:text-text-0",
     ghost: "text-text-off hover:text-text-0",
   }[state];
 

@@ -307,7 +307,7 @@ export function FlatEffectsSection({
                 type="button"
                 title={`Remove ${selectedEffect.label}`}
                 onClick={() => removeEffect(selectedEffect)}
-                className="text-panel-text-4 hover:text-red-300"
+                className="text-panel-text-4 hover:text-danger-ink"
               >
                 <X size={11} />
               </button>

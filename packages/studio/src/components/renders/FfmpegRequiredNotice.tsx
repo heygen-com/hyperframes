@@ -67,7 +67,7 @@ export const FfmpegRequiredNotice = memo(function FfmpegRequiredNotice({
       className="flex flex-col gap-2 rounded-xl border border-amber-500/30 bg-amber-500/10 p-2.5"
     >
       <div className="flex flex-col gap-0.5">
-        <span className="text-[11px] font-semibold text-amber-300">
+        <span className="text-[11px] font-semibold text-warning-ink">
           {status.title ?? "FFmpeg not found"}
         </span>
         {/* text-2, not the panel's usual text-4 for secondary copy: the amber

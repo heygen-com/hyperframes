@@ -42,7 +42,7 @@ interface KeyframeDiamondContextMenuProps {
 const ITEM_CLS =
   "w-full flex items-center gap-2 px-3 py-1.5 text-xs text-neutral-200 hover:bg-neutral-800 focus-visible:bg-neutral-800 outline-hidden cursor-pointer text-left";
 const DESTRUCTIVE_ITEM_CLS =
-  "w-full flex items-center gap-2 px-3 py-1.5 text-xs text-red-400 hover:bg-neutral-800 focus-visible:bg-neutral-800 outline-hidden cursor-pointer text-left";
+  "w-full flex items-center gap-2 px-3 py-1.5 text-xs text-danger-ink hover:bg-neutral-800 focus-visible:bg-neutral-800 outline-hidden cursor-pointer text-left";
 
 export function KeyframeDiamondContextMenu({
   state,
@@ -172,7 +172,7 @@ export function KeyframeDiamondContextMenu({
       <button
         type="button"
         role="menuitem"
-        className="w-full flex items-center gap-2 px-3 py-1.5 text-xs text-red-400 hover:bg-red-950/40 focus-visible:bg-red-950/40 outline-hidden cursor-pointer text-left"
+        className="w-full flex items-center gap-2 px-3 py-1.5 text-xs text-danger-ink hover:bg-danger/25 focus-visible:bg-danger/25 outline-hidden cursor-pointer text-left"
         onClick={() => {
           onDeleteAll(state.element, state.animationId);
           onClose();

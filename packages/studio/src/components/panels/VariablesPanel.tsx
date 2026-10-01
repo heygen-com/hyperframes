@@ -56,9 +56,9 @@ function formatIssue(issue: VariableValidationIssue): string {
 function ValidationStrip({ issues }: { issues: VariableValidationIssue[] }) {
   if (issues.length === 0) return null;
   return (
-    <div className="space-y-1 rounded-lg border border-red-900/60 bg-red-950/30 p-2">
+    <div className="space-y-1 rounded-lg border border-red-900/60 bg-danger/15 p-2">
       {issues.map((issue) => (
-        <p key={`${issue.kind}:${issue.variableId}`} className="text-[10px] text-red-300">
+        <p key={`${issue.kind}:${issue.variableId}`} className="text-[10px] text-danger-ink">
           {formatIssue(issue)}
         </p>
       ))}
@@ -99,7 +99,7 @@ function VariableRow({
         </span>
         {unused && (
           <span
-            className="rounded-sm bg-amber-900/40 px-1 py-px text-[8px] text-amber-400"
+            className="rounded-sm bg-amber-500/15 px-1 py-px text-[8px] text-warning-ink"
             title="No script reads this variable"
           >
             unused

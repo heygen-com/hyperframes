@@ -98,6 +98,52 @@ describe("WCAG contrast calculation", () => {
   });
 });
 
+describe("Studio colour syntax", () => {
+  it("reads oklch, including a percentage lightness, and rejects a malformed number", () => {
+    expect(contrast(parseColor("oklch(1 0 0)"), parseColor("oklch(0% 0 none)"))).toBeCloseTo(21, 6);
+    expect(() => parseColor("oklch(0.9.1 0 0)")).toThrow("Invalid oklch");
+  });
+  it("takes light-dark's half for the scheme and scales alpha in a mix with transparent", () => {
+    const value = "light-dark(#fff, color-mix(in oklab, #000 40%, transparent))";
+    expect(parseColor(value, "light")).toEqual([1, 1, 1, 1]);
+    expect(parseColor(value, "dark")[3]).toBeCloseTo(0.4, 9);
+    expect(() => parseColor("color-mix(in srgb, #000 40%, #fff)")).toThrow("transparent");
+  });
+  it("expands a row's surfaces into pairs and lets a later theme reuse them", () => {
+    const [dark, light] = parseManifest(
+      JSON.stringify({
+        themes: [
+          {
+            id: "dark",
+            selector: ":root",
+            canvas: "--bg",
+            surfaces: { shell: ["--bg"], card: ["--bg", "--card"] },
+            pairs: [{ ...pair, on: ["shell", "card"] }],
+          },
+          {
+            id: "light",
+            selector: [":root", ".light"],
+            scheme: "light",
+            canvas: "--bg",
+            pairsFrom: "dark",
+          },
+        ],
+      }),
+    );
+    expect(dark!.pairs.map((row) => `${row.id} ${row.background.join("+")}`)).toEqual([
+      "label-on-shell --bg",
+      "label-on-card --bg+--card",
+    ]);
+    expect(light!.pairs).toBe(dark!.pairs);
+    expect(light!.selectors).toEqual([":root", ".light"]);
+  });
+  it("counts a ratio it could not measure as debt", () => {
+    expect(
+      verdict([{ id: "dark/label", ratio: Number.NaN, minimum: 4.5 }], {}).join("\n"),
+    ).toContain("new contrast debt");
+  });
+});
+
 describe("contrast ratchet", () => {
   it("reads a committed baseline using repository paths", () => {
     expect(previousBaseline({}, "HEAD")).toEqual(parseBaseline(read("contrast-baseline.json")));

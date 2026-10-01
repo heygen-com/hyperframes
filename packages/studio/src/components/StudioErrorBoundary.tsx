@@ -39,7 +39,7 @@ export class StudioErrorBoundary extends Component<Props, State> {
         <div className="mt-2 flex items-center gap-2">
           <button
             onClick={() => this.setState({ error: null })}
-            className="rounded-md bg-studio-accent px-5 py-2 text-sm font-medium text-on-accent transition-[filter] hover:brightness-110 active:scale-[0.98]"
+            className="rounded-md bg-accent px-5 py-2 text-sm font-medium text-on-accent transition-colors hover:bg-accent-hover active:scale-[0.98]"
           >
             Try again
           </button>

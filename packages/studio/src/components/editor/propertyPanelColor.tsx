@@ -133,7 +133,7 @@ function ColorSlider({
         onBlur={onInteractionEnd}
       >
         <div
-          className="pointer-events-none absolute top-1/2 h-6 w-6 -translate-x-1/2 -translate-y-1/2 rounded-full border-2 border-[white] shadow-[0_0_0_1px_rgba(0,0,0,0.85),0_6px_14px_rgba(0,0,0,0.5)]"
+          className="pointer-events-none absolute top-1/2 h-6 w-6 -translate-x-1/2 -translate-y-1/2 rounded-full border-2 border-white shadow-[0_0_0_1px_rgba(0,0,0,0.85),0_6px_14px_rgba(0,0,0,0.5)]"
           style={{ left: `${Math.max(0, Math.min(100, percent))}%`, backgroundColor: thumbColor }}
         />
       </div>
@@ -370,15 +370,15 @@ export function ColorField({
               <div className="absolute inset-0 bg-linear-to-r from-white to-transparent" />
               <div className="absolute inset-0 bg-linear-to-t from-black to-transparent" />
               <div
-                className="pointer-events-none absolute top-0 h-full w-px -translate-x-1/2 bg-[white]/70 shadow-[0_0_0_1px_rgba(0,0,0,0.45)] mix-blend-difference"
+                className="pointer-events-none absolute top-0 h-full w-px -translate-x-1/2 bg-white/70 shadow-[0_0_0_1px_rgba(0,0,0,0.45)] mix-blend-difference"
                 style={{ left: `${hsv.saturation * 100}%` }}
               />
               <div
-                className="pointer-events-none absolute left-0 h-px w-full -translate-y-1/2 bg-[white]/70 shadow-[0_0_0_1px_rgba(0,0,0,0.45)] mix-blend-difference"
+                className="pointer-events-none absolute left-0 h-px w-full -translate-y-1/2 bg-white/70 shadow-[0_0_0_1px_rgba(0,0,0,0.45)] mix-blend-difference"
                 style={{ top: `${(1 - hsv.value) * 100}%` }}
               />
               <div
-                className="pointer-events-none absolute h-6 w-6 -translate-x-1/2 -translate-y-1/2 rounded-full border-2 border-[white] shadow-[0_0_0_1px_rgba(0,0,0,0.85),0_8px_18px_rgba(0,0,0,0.45)]"
+                className="pointer-events-none absolute h-6 w-6 -translate-x-1/2 -translate-y-1/2 rounded-full border-2 border-white shadow-[0_0_0_1px_rgba(0,0,0,0.85),0_8px_18px_rgba(0,0,0,0.45)]"
                 style={{
                   left: `${hsv.saturation * 100}%`,
                   top: `${(1 - hsv.value) * 100}%`,

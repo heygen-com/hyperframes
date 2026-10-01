@@ -40,7 +40,7 @@ export const BlocksTab = memo(function BlocksTab({ onAddBlock, onPreviewBlock }:
 
   if (error) {
     return (
-      <div className="flex flex-1 items-center justify-center text-red-400 text-xs px-4 text-center">
+      <div className="flex flex-1 items-center justify-center text-danger-ink text-xs px-4 text-center">
         {error}
       </div>
     );
@@ -423,8 +423,8 @@ function BlockCard({
               title="Add to composition at current time"
               className={`flex items-center gap-1 px-3 py-1.5 rounded-md text-[10px] font-semibold transition-colors active:scale-[0.97] ${
                 addState === "failed"
-                  ? "bg-red-500 text-white"
-                  : "bg-text-0 text-bg-0 hover:bg-text-2"
+                  ? "bg-danger text-on-danger"
+                  : "bg-white text-black hover:bg-white/85"
               }`}
             >
               <svg

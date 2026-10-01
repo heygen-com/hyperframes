@@ -130,7 +130,7 @@ function EaseTypeDropdown({
         aria-expanded={open}
         aria-controls={open ? menuId : undefined}
         onClick={() => setOpen((prev) => !prev)}
-        className="flex w-full items-center gap-2 rounded-md border border-white/10 bg-black/20 px-2 py-1.5 text-left transition-colors hover:border-white/20"
+        className="flex w-full items-center gap-2 rounded-md border border-border bg-input px-2 py-1.5 text-left transition-colors hover:border-border-strong"
       >
         <MiniCurveSvg ease={ease} active size={16} />
         <span className="text-[11px] text-neutral-200">{label}</span>
@@ -151,7 +151,7 @@ function EaseTypeDropdown({
           role="menu"
           aria-label={`${MODE_LABELS[kind]} ease presets`}
           onKeyDown={handleMenuKeyDown}
-          className="absolute inset-x-0 top-full z-20 mt-1 rounded-md border border-white/10 bg-neutral-900 p-2 shadow-xl"
+          className="absolute inset-x-0 top-full z-20 mt-1 rounded-md border border-border bg-raised p-2 shadow-xl"
         >
           <EasePresetGrid
             kind={kind}
@@ -407,7 +407,7 @@ export function EaseCurveSection({
       {showGraph ? (
         <>
           <div
-            className="mx-auto overflow-hidden rounded-md border border-white/5 bg-black/20"
+            className="mx-auto overflow-hidden rounded-md border border-border bg-input"
             style={{ aspectRatio: `${SVGW} / ${SVGH}`, width: "100%", maxWidth: 230 }}
           >
             <svg

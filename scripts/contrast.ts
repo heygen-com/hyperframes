@@ -90,8 +90,21 @@ function parsePair(input: unknown): ContrastPair {
   };
 }
 /** A theme's own pairs, or with `pairsFrom` the pairs of an earlier theme, measured in this one. */
+/** A row with `on` stands for one pair per named surface of its theme: `<id>-on-<surface>`. */
+function expandRow(row: Record<string, unknown>, surfaces: Record<string, unknown>): unknown[] {
+  if (row.on === undefined) return [row];
+  return strings(row.on).map((name) => ({
+    ...row,
+    id: `${string(row.id)}-on-${name}`,
+    background: surfaces[name],
+  }));
+}
 function themePairs(theme: Record<string, unknown>, earlier: ContrastTheme[]): ContrastPair[] {
-  if (theme.pairsFrom === undefined) return array(theme.pairs).map(parsePair);
+  const surfaces = theme.surfaces === undefined ? {} : record(theme.surfaces);
+  if (theme.pairsFrom === undefined)
+    return array(theme.pairs)
+      .flatMap((row) => expandRow(record(row), surfaces))
+      .map(parsePair);
   const source = earlier.find((other) => other.id === theme.pairsFrom);
   if (!source) throw new Error(`pairsFrom names no earlier theme: ${String(theme.pairsFrom)}`);
   return source.pairs;
@@ -161,19 +174,17 @@ function callArgs(value: string, name: string): string[] | null {
   const bounds = [-1, ...topLevelCommas(call[1]!), call[1]!.length];
   return bounds.slice(1).map((end, at) => call[1]!.slice(bounds[at]! + 1, end).trim());
 }
-function lightness(value: string): number {
-  return value.endsWith("%") ? Number(value.slice(0, -1)) / 100 : Number(value);
-}
 function encode(linearValue: number): number {
   const c = Math.min(1, Math.max(0, linearValue));
   return c <= 0.0031308 ? 12.92 * c : 1.055 * c ** (1 / 2.4) - 0.055;
 }
-const OKLCH = /^([\d.]+%?)\s+([\d.]+)\s+([\d.]+|none)(?:\s*\/\s*([\d.]+%?))?$/;
+const NUM = String.raw`\d*\.?\d+`;
+const OKLCH = new RegExp(`^(${NUM}%?)\\s+(${NUM})\\s+(${NUM}|none)(?:\\s*/\\s*(${NUM}%?))?$`);
 function oklchParts(value: string): [number, number, number, number] {
   const parts = value.trim().match(OKLCH);
   if (!parts) throw new Error(`Invalid oklch color: ${value}`);
   return [
-    lightness(parts[1]!),
+    channel(parts[1]!, 1),
     Number(parts[2]),
     Number(parts[3]) || 0,
     channel(parts[4] ?? "1", 1),
@@ -306,7 +317,7 @@ export function measure(css: string, themes: ContrastTheme[]): Measurement[] {
   });
 }
 function newDebt(row: Measurement): string[] {
-  return row.ratio < row.minimum ? [`${row.id}: new contrast debt ${row.ratio}`] : [];
+  return row.ratio >= row.minimum ? [] : [`${row.id}: new contrast debt ${row.ratio}`];
 }
 function debtIssue(row: Measurement, baseline: ContrastBaseline): string[] {
   const previous = baseline[row.id];

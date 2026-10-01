@@ -356,7 +356,7 @@ describe("FlatSlider", () => {
     const fill = host.querySelector<HTMLElement>('[data-flat-slider-fill="true"]');
     expect(fill?.style.width).toBe("100%");
     const knob = host.querySelector<HTMLElement>('[data-flat-slider-knob="true"]');
-    expect(knob?.className).toContain("bg-white");
+    expect(knob?.className).toContain("bg-text-0");
     act(() => root.unmount());
   });
 

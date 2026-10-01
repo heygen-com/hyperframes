@@ -314,7 +314,7 @@ export function Transform3DCube({
           aria-label="Keyframe 3D transform"
           aria-pressed={keyframed}
           className={`absolute left-1.5 top-1.5 rounded p-0.5 hover:bg-neutral-800 ${
-            keyframed ? "text-[#5ff0bf]" : "text-neutral-500 hover:text-neutral-200"
+            keyframed ? "text-accent-ink" : "text-neutral-500 hover:text-neutral-200"
           }`}
         >
           <svg

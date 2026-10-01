@@ -139,7 +139,7 @@ export function TimelineFxPopover({
       ref={rootRef}
       role="dialog"
       aria-label="Effects"
-      className="z-200 flex flex-col overflow-hidden rounded-md border border-white/10 bg-[#1b1b1f] p-2 shadow-xl"
+      className="z-200 flex flex-col overflow-hidden rounded-md border border-border bg-raised p-2 shadow-xl"
       style={clampedStyle(anchorRect)}
       onKeyDown={onKeyDown}
       onPointerDown={(event) => event.stopPropagation()}
@@ -165,10 +165,10 @@ export function TimelineFxPopover({
           onAuditionTracked={(id) => trackPresetAuditioned(id, { trackKind })}
         />
       </div>
-      <div className="mt-2 flex shrink-0 items-center justify-between border-t border-white/10 pt-2 text-[10px] text-white/55">
+      <div className="mt-2 flex shrink-0 items-center justify-between border-t border-border pt-2 text-[10px] text-text-muted">
         <button
           type="button"
-          className="hover:text-white"
+          className="hover:text-text-0"
           onClick={() => {
             onClose();
             onOpenRack();
@@ -178,7 +178,7 @@ export function TimelineFxPopover({
         </button>
         <button
           type="button"
-          className="hover:text-white"
+          className="hover:text-text-0"
           onClick={() => {
             onClose();
             onOpenRack();

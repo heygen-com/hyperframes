@@ -38,7 +38,7 @@ function PropertyGroupNavigation({
   // target is met with a centered transparent ::before overlay instead of a
   // bigger box; focus-visible matches every other control in this header.
   const CHEVRON_BUTTON_CLASS =
-    "relative h-5 w-3 border-0 bg-transparent p-0 text-text-muted hover:text-white disabled:text-text-off " +
+    "relative h-5 w-3 border-0 bg-transparent p-0 text-text-2 hover:text-text-0 disabled:text-text-off " +
     "focus-visible:outline-solid focus-visible:outline-1 focus-visible:outline-ring " +
     "before:absolute before:left-1/2 before:top-1/2 before:h-6 before:w-6 " +
     "before:-translate-x-1/2 before:-translate-y-1/2 before:content-['']";
@@ -262,7 +262,7 @@ export function AutomationLaneHeaderRow({
         aria-label={onReveal ? `Show ${label} in the effect rack` : undefined}
         title={onReveal ? `Show ${label} in the effect rack` : label}
         disabled={!onReveal}
-        className="flex min-w-0 flex-1 flex-col justify-center rounded-sm border-0 bg-transparent p-0 text-left leading-tight enabled:hover:text-white focus-visible:outline-solid focus-visible:outline-1 focus-visible:outline-ring"
+        className="flex min-w-0 flex-1 flex-col justify-center rounded-sm border-0 bg-transparent p-0 text-left leading-tight enabled:hover:text-text-0 focus-visible:outline-solid focus-visible:outline-1 focus-visible:outline-ring"
         onPointerDown={(event) => event.stopPropagation()}
         onClick={(event) => {
           // The label column owns its click; it does not also fall through to

@@ -413,7 +413,7 @@ export function SlideshowPanel({ scenes, onPersist, onPersistNotes }: SlideshowP
 
   return (
     <div
-      className="flex flex-col h-full overflow-y-auto text-white"
+      className="flex flex-col h-full overflow-y-auto text-text-0"
       onKeyDown={(e) => {
         // In-panel undo — scoped so it never fights the app-level file undo.
         if ((e.metaKey || e.ctrlKey) && !e.shiftKey && e.key.toLowerCase() === "z") {
@@ -428,14 +428,14 @@ export function SlideshowPanel({ scenes, onPersist, onPersistNotes }: SlideshowP
       {persistError && (
         <div
           role="alert"
-          className="flex items-center justify-between gap-2 px-3 py-2 bg-red-950/40 border-b border-red-500/40"
+          className="flex items-center justify-between gap-2 px-3 py-2 bg-danger/15 border-b border-red-500/40"
         >
-          <span className="text-[11px] text-red-300">Changes not saved</span>
+          <span className="text-[11px] text-danger-ink">Changes not saved</span>
           <button
             type="button"
             disabled={retrying}
             onClick={handleRetryPersist}
-            className="px-2 py-0.5 text-[10px] rounded-sm bg-red-600 text-white enabled:hover:bg-red-500 enabled:active:scale-[0.97] disabled:opacity-50 transition-colors"
+            className="px-2 py-0.5 text-[10px] rounded-sm bg-danger text-on-danger enabled:hover:brightness-95 enabled:active:scale-[0.97] disabled:opacity-50 transition-colors"
           >
             {retrying ? "Retrying…" : "Retry"}
           </button>

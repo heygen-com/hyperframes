@@ -82,7 +82,7 @@ function ArrowLeft({ disabled }: { disabled: boolean }) {
       height="10"
       viewBox="0 0 6 10"
       fill="none"
-      className={disabled ? "text-text-off" : "text-text-muted"}
+      className={disabled ? "text-text-off" : "text-text-2"}
     >
       <path
         d="M5 1L1 5L5 9"
@@ -102,7 +102,7 @@ function ArrowRight({ disabled }: { disabled: boolean }) {
       height="10"
       viewBox="0 0 6 10"
       fill="none"
-      className={disabled ? "text-text-off" : "text-text-muted"}
+      className={disabled ? "text-text-off" : "text-text-2"}
     >
       <path
         d="M1 1L5 5L1 9"

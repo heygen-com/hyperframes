@@ -174,7 +174,7 @@ export function EditPopover({ rangeStart, rangeEnd, anchorX, anchorY, onClose }:
 
         {/* Action */}
         {copyError && (
-          <p className="px-3 pb-2 text-[10px] text-red-400" role="alert">
+          <p className="px-3 pb-2 text-[10px] text-danger-ink" role="alert">
             Copy failed — check clipboard permissions and try again.
           </p>
         )}

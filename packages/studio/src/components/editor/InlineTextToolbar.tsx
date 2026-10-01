@@ -77,7 +77,7 @@ export function InlineTextToolbar({
       data-inline-text-toolbar="true"
       role="toolbar"
       aria-label="Text formatting"
-      className="pointer-events-auto fixed z-200 flex items-center gap-1 rounded-lg border border-white/10 bg-[#15171c] p-1 shadow-[0_8px_24px_rgba(0,0,0,0.55)]"
+      className="pointer-events-auto fixed z-200 flex items-center gap-1 rounded-lg border border-border bg-raised p-1 shadow-[0_8px_24px_rgba(0,0,0,0.55)]"
       style={{
         left: placement.left,
         top: placement.top,
@@ -98,12 +98,12 @@ export function InlineTextToolbar({
       onClick={(event) => event.stopPropagation()}
     >
       <label
-        className="group relative flex h-6 w-6 cursor-pointer items-center justify-center rounded-md hover:bg-white/10"
+        className="group relative flex h-6 w-6 cursor-pointer items-center justify-center rounded-md hover:bg-hover"
         title="Text colour"
       >
         <span
           aria-hidden="true"
-          className="h-4 w-4 rounded-full border-2 border-white/25 transition-transform duration-150 group-hover:scale-110 group-active:scale-95"
+          className="h-4 w-4 rounded-full border-2 border-border-strong transition-transform duration-150 group-hover:scale-110 group-active:scale-95"
           // `background` maps a gradient to the PADDING box and then repeats it
           // to fill the border box, so the 1px border shows the strip either
           // side of the tile: the end colour on the left, the start colour on
@@ -202,7 +202,7 @@ function ToolbarToggle({
       aria-label={label}
       aria-pressed={on}
       className={`flex h-6 w-6 items-center justify-center rounded-md text-xs ${
-        on ? "bg-studio-accent/20 text-accent-ink" : "text-white/70 hover:bg-white/10"
+        on ? "bg-studio-accent/20 text-accent-ink" : "text-text-2 hover:bg-hover"
       }`}
       style={{
         fontWeight: bold ? 700 : 400,

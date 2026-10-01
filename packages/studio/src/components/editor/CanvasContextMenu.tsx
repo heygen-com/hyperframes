@@ -260,7 +260,7 @@ export const CanvasContextMenu = memo(function CanvasContextMenu({
       {hasDelete && (
         <button
           type="button"
-          className="w-full flex items-center justify-between px-3 py-1.5 text-xs text-red-400 hover:bg-neutral-800 cursor-pointer text-left"
+          className="w-full flex items-center justify-between px-3 py-1.5 text-xs text-danger-ink hover:bg-neutral-800 cursor-pointer text-left"
           onPointerDown={(e) => {
             if (e.button !== 0) return;
             e.preventDefault();

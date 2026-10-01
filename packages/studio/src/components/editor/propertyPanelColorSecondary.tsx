@@ -210,7 +210,7 @@ export function PropertyPanelColorSecondary({
             {sampling ? "Capturing frame" : "Sample color from frame"}
           </button>
           {captureError && (
-            <p role="alert" className="text-[9px] leading-4 text-red-300">
+            <p role="alert" className="text-[9px] leading-4 text-danger-ink">
               {captureError}
             </p>
           )}

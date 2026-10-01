@@ -299,7 +299,7 @@ export function DeclarationForm({
           className={VARIABLES_INPUT_CLASS}
         />
       </Field>
-      {error && <p className="text-[10px] text-red-400">{error}</p>}
+      {error && <p className="text-[10px] text-danger-ink">{error}</p>}
       <div className="flex items-center justify-end gap-2 pt-1">
         <button
           type="button"

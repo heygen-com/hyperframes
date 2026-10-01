@@ -45,7 +45,7 @@ export function FlatOverlaysSection({
     return <div className="py-4 text-center text-[10px] text-panel-text-4">Loading overlays…</div>;
   }
   if (error) {
-    return <div className="py-4 text-center text-[10px] text-red-300">{error}</div>;
+    return <div className="py-4 text-center text-[10px] text-danger-ink">{error}</div>;
   }
 
   const busy = adding !== null;

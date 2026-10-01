@@ -111,7 +111,7 @@ function FxCarveMember({
               {/* The lane is where an automated value comes from, and where it is
                   edited — saying so is the difference between a stale readout and
                   a pointer to the thing that owns it. */}
-              {automated ? <span className="text-[#3CE6AC]">A</span> : null}
+              {automated ? <span className="text-accent-ink">A</span> : null}
             </span>
           );
         })}

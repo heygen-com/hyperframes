@@ -43,7 +43,7 @@ export function GestureRecordPanelButton({
         }}
         className={`w-full flex items-center justify-center gap-2 rounded-lg py-2 text-[11px] font-medium transition-colors ${
           recording
-            ? "bg-red-500/15 text-red-400 border border-red-500/30 animate-pulse"
+            ? "bg-red-500/15 text-danger-ink border border-red-500/30 animate-pulse"
             : "bg-panel-input text-panel-text-2 hover:bg-panel-hover border border-panel-border"
         }`}
       >
@@ -77,7 +77,7 @@ export function GestureRecordBadge({
       title={label}
       className={`pointer-events-auto absolute z-20 flex h-7 w-7 items-center justify-center rounded-full border shadow-lg transition-colors ${
         recording
-          ? "border-red-400/60 bg-red-500 text-white animate-pulse"
+          ? "border-danger/60 bg-danger text-on-danger animate-pulse"
           : "border-studio-accent/60 bg-neutral-950 text-accent-ink hover:bg-neutral-900"
       }`}
       style={{

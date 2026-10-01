@@ -31,7 +31,7 @@ function CopyChip({ feedback, asset }: { feedback: CopyFeedback; asset: string }
     <span
       role="status"
       className={`shrink-0 text-[9px] font-medium px-1.5 py-px rounded ${
-        feedback.ok ? "text-accent-ink bg-panel-accent/10" : "text-red-400 bg-red-500/10"
+        feedback.ok ? "text-accent-ink bg-panel-accent/10" : "text-danger-ink bg-red-500/10"
       }`}
     >
       {feedback.ok ? "Copied" : "Copy failed"}
@@ -355,7 +355,7 @@ export function FontRow({
         }`}
       >
         <div className="w-[50px] h-[32px] rounded-sm overflow-hidden bg-neutral-900 shrink-0 flex items-center justify-center">
-          <span className="text-[9px] font-medium text-text-off">{extension}</span>
+          <span className="text-[9px] font-medium text-text-muted">{extension}</span>
         </div>
         <div className="min-w-0 flex-1">
           <span

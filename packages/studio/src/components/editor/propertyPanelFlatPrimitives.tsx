@@ -537,7 +537,7 @@ export function FlatSlider({
         <div
           data-flat-slider-knob="true"
           className={`absolute top-1/2 -translate-x-1/2 -translate-y-1/2 rounded-full ${
-            tier === "explicitCustom" ? "h-2 w-2 bg-white" : "h-[7px] w-[7px] bg-panel-text-4"
+            tier === "explicitCustom" ? "h-2 w-2 bg-text-0" : "h-[7px] w-[7px] bg-panel-text-4"
           }`}
           style={{ left: `${clampedPct}%` }}
         />

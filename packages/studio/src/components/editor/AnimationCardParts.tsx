@@ -46,7 +46,7 @@ function RemoveButton({ onClick, title }: { onClick: () => void; title: string }
     <button
       type="button"
       onClick={onClick}
-      className="relative shrink-0 rounded-sm p-1.5 text-neutral-600 transition-colors hover:bg-neutral-800 hover:text-red-400 active:scale-[0.95]"
+      className="relative shrink-0 rounded-sm p-1.5 text-neutral-600 transition-colors hover:bg-neutral-800 hover:text-danger-ink active:scale-[0.95]"
       title={title}
       aria-label={title}
     >

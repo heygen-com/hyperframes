@@ -250,7 +250,7 @@ export const CaptionAnimationPanel = memo(function CaptionAnimationPanel() {
     <div className="flex flex-col h-full min-h-0">
       {gated && (
         <div className="shrink-0 mx-3 mt-2 px-2 py-1.5 rounded-sm border border-amber-500/30 bg-amber-500/10">
-          <p className="text-2xs text-amber-300/90 leading-snug">
+          <p className="text-2xs text-warning-ink leading-snug">
             Animation editing isn&apos;t applied to playback or saved yet, so these controls are
             disabled.
           </p>

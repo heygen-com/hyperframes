@@ -75,7 +75,7 @@ export function LintModal({
           <div className="flex items-center gap-3">
             {hasIssues ? (
               <div className="w-8 h-8 rounded-full bg-red-500/10 flex items-center justify-center">
-                <WarningIcon size={18} className="text-red-400" weight="fill" />
+                <WarningIcon size={18} className="text-danger-ink" weight="fill" />
               </div>
             ) : (
               <div className="w-8 h-8 rounded-full bg-studio-accent/10 flex items-center justify-center">
@@ -107,7 +107,7 @@ export function LintModal({
               onClick={handleCopyToAgent}
               className={`px-3 py-1 text-xs font-medium rounded-lg transition-colors active:scale-[0.98] ${
                 copied
-                  ? "bg-green-600 text-white"
+                  ? "bg-accent text-on-accent"
                   : copyFailed
                     ? "bg-danger text-on-danger"
                     : "bg-accent hover:bg-accent-hover text-on-accent"
@@ -141,19 +141,19 @@ export function LintModal({
 
 function LintFindingRow({ finding, tone }: { finding: LintFinding; tone: "error" | "warning" }) {
   return (
-    <div className="py-3 border-b border-neutral-800/50 last:border-0">
+    <div className="py-3 border-b border-border last:border-0">
       <div className="flex items-start gap-2">
         <WarningIcon
           size={14}
-          className={`${tone === "error" ? "text-danger-ink" : "text-amber-400"} shrink-0 mt-0.5`}
-          weight={tone === "error" ? "fill" : "regular"}
+          className={`${tone === "error" ? "text-danger-ink" : "text-warning-ink"} shrink-0 mt-0.5`}
+          weight={tone === "error" ? "fill" : undefined}
         />
         <div className="min-w-0">
-          <p className={`text-sm ${tone === "error" ? "text-neutral-200" : "text-neutral-300"}`}>
+          <p className={`text-sm ${tone === "error" ? "text-text-0" : "text-text-2"}`}>
             {finding.message}
           </p>
           {finding.file && (
-            <p className="text-xs text-neutral-600 font-mono mt-0.5">{finding.file}</p>
+            <p className="text-xs text-text-muted font-mono mt-0.5">{finding.file}</p>
           )}
           {finding.fixHint && (
             <div className="flex items-start gap-1 mt-1.5">

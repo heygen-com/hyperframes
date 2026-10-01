@@ -173,7 +173,7 @@ export function ContextMenu({
       <div className="border-t border-neutral-700 my-1" />
       <button
         role="menuitem"
-        className="w-full flex items-center gap-2 px-3 py-1.5 text-xs text-red-400 hover:bg-red-900/30 focus-visible:bg-red-900/30 active:bg-red-900/50 outline-hidden cursor-pointer text-left"
+        className="w-full flex items-center gap-2 px-3 py-1.5 text-xs text-danger-ink hover:bg-danger/25 focus-visible:bg-danger/25 active:bg-danger/25 outline-hidden cursor-pointer text-left"
         onClick={() => {
           onDelete(state.targetPath);
           onClose();
@@ -284,7 +284,7 @@ export function InlineInput({
           spellCheck={false}
         />
         {error && (
-          <div className="mt-0.5 text-[10px] text-red-400" role="alert">
+          <div className="mt-0.5 text-[10px] text-danger-ink" role="alert">
             {error}
           </div>
         )}
@@ -350,7 +350,7 @@ export function DeleteConfirm({
         </button>
         <button
           onClick={onConfirm}
-          className="flex-1 px-2 py-1 rounded-sm bg-red-900/60 text-red-300 hover:bg-red-800/60 transition-colors"
+          className="flex-1 px-2 py-1 rounded-sm bg-danger/15 text-danger-ink hover:bg-danger/25 transition-colors"
         >
           Delete
         </button>
@@ -419,7 +419,7 @@ export const TreeFile = memo(function TreeFile({
       <span className="truncate flex-1">{node.name}</span>
       {lintInfo && lintInfo.count > 0 && (
         <span
-          className="shrink-0 min-w-[16px] rounded-full bg-amber-500/20 px-1 text-[8px] font-bold text-amber-400 text-center mr-1"
+          className="shrink-0 min-w-[16px] rounded-full bg-amber-500/20 px-1 text-[8px] font-bold text-warning-ink text-center mr-1"
           title={lintInfo.messages.join("\n")}
         >
           {lintInfo.count}
