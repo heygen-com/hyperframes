@@ -570,7 +570,29 @@ export async function controlDrag(browser, gesture) {
   }
 }
 
-/** `route`, given the press point, replaces the gesture's straight path; a `{ pause }` entry holds still. */
+/** The move Chromium resends at the last known point after a layout change: no button, capture kept. A CDP move
+ * with no button ends the capture instead, so it goes to the captured box (the mouse is pointer 1). */
+async function strayMove(page, [x, y]) {
+  const sent = await page.evaluate(
+    ([clientX, clientY]) =>
+      document.querySelector("[data-dom-edit-selection-box]")?.dispatchEvent(
+        new PointerEvent("pointermove", {
+          bubbles: true,
+          pointerId: 1,
+          pointerType: "mouse",
+          isPrimary: true,
+          buttons: 0,
+          clientX,
+          clientY,
+        }),
+      ),
+    [x, y],
+  );
+  if (sent === undefined) throw new Error("no selection box to send the stray move to");
+  await nextFrame(page);
+}
+
+/** `route`, given the press point, replaces the gesture's straight path; `{ pause }` holds still, `{ stray }` see strayMove. */
 // fallow-ignore-next-line complexity
 export async function pointerGesture(ctx, gesture, pre, route) {
   const press = await handlePoint(ctx, pre, gesture);
@@ -594,6 +616,10 @@ export async function pointerGesture(ctx, gesture, pre, route) {
   for (const p of g.path) {
     if (p.pause) {
       await sleep(p.pause);
+      continue;
+    }
+    if (p.stray) {
+      await strayMove(ctx.page, p.stray);
       continue;
     }
     await ctx.page.mouse.move(p[0], p[1]);

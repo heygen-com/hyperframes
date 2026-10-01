@@ -107,6 +107,8 @@ function frameSampler() {
     window.addEventListener(
       type,
       (e) => {
+        // The stray move case.mjs sends is not where the pointer is.
+        if (!e.isTrusted) return;
         rec.pointer = [e.clientX, e.clientY];
         // From the buttons, not the event type: a move after release is not a drag.
         rec.down = (e.buttons & 1) === 1;

@@ -199,12 +199,16 @@ describe("frameSamplerScript", () => {
     };
     runInNewContext(frameSamplerScript, page);
     const rec = window.__editBenchFrames;
-    on.pointerdown({ clientX: 1, clientY: 1, buttons: 1 });
-    on.pointermove({ clientX: 2, clientY: 1, buttons: 1 });
+    on.pointerdown({ clientX: 1, clientY: 1, buttons: 1, isTrusted: true });
+    on.pointermove({ clientX: 2, clientY: 1, buttons: 1, isTrusted: true });
     expect(rec).toMatchObject({ down: true, ups: 0 });
-    on.pointerup({ clientX: 2, clientY: 1, buttons: 0 });
-    on.pointermove({ clientX: 90, clientY: 1, buttons: 0 });
+    on.pointerup({ clientX: 2, clientY: 1, buttons: 0, isTrusted: true });
+    on.pointermove({ clientX: 90, clientY: 1, buttons: 0, isTrusted: true });
     expect(rec).toMatchObject({ down: false, ups: 1, pointer: [90, 1] });
+    on.pointermove({ clientX: 5, clientY: 5, buttons: 0, isTrusted: false });
+    expect(rec, "the bench's own stray move is not the pointer").toMatchObject({
+      pointer: [90, 1],
+    });
   });
 
   it("runs beside a page script that declares the same names, and leaves them alone", () => {
