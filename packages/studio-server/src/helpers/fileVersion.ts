@@ -5,8 +5,6 @@ export interface FileWriteReceipt {
   path: string;
   version: string;
   writeToken: string;
-  /** The version the write replaced, when the writer read it: a host can tell a write applied to the bytes it last
-   * showed from one that merged someone else's change landing just before it. */
   from?: string;
 }
 
