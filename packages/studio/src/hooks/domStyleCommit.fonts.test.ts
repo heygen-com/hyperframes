@@ -2,6 +2,7 @@
 import { expect, it } from "vitest";
 import type { DomEditSelection } from "../components/editor/domEditing";
 import type { ImportedFontAsset } from "../components/editor/fontAssets";
+import { importedFontFaceCssFor } from "../utils/studioFontHelpers";
 import { commitDomStyles, type DomStyleCommitContext } from "./domStyleCommit";
 
 const selection = (id: string): DomEditSelection =>
@@ -28,7 +29,7 @@ const poppins = (file: string, weight: string): ImportedFontAsset => ({
 });
 
 it("each font a host hands over is saved as its own face, with the weight and style it draws", async () => {
-  let html = '<html><head></head><body><h1 id="title"></h1><p id="subtitle"></p></body></html>';
+  const faces: string[] = [];
   let listed: ImportedFontAsset | null = null;
   const context: DomStyleCommitContext = {
     activeCompPath: "index.html",
@@ -39,16 +40,16 @@ it("each font a host hands over is saved as its own face, with the weight and st
     persistDomEditOperations: (async (
       _selection: DomEditSelection,
       _operations: unknown,
-      options?: { prepareContent?: (html: string, sourceFile: string) => string },
+      options?: { importedFont?: ImportedFontAsset },
     ) => {
-      html = options?.prepareContent?.(html, "index.html") ?? html;
+      if (options?.importedFont)
+        faces.push(importedFontFaceCssFor(options.importedFont, "index.html"));
     }) as unknown as DomStyleCommitContext["persistDomEditOperations"],
   };
   listed = poppins("Poppins-SemiBold.ttf", "600");
   await commitDomStyles(context, selection("title"), { "font-family": "Poppins" });
   listed = poppins("Poppins-Regular.ttf", "400");
   await commitDomStyles(context, selection("subtitle"), { "font-family": "Poppins" });
-  const faces = html.match(/@font-face[^}]*}/g) ?? [];
   expect(faces).toHaveLength(2);
   expect(faces[0]).toContain('Poppins-SemiBold.ttf"); font-weight: 600; font-style: normal;');
   expect(faces[1]).toContain('Poppins-Regular.ttf"); font-weight: 400; font-style: normal;');

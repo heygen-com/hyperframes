@@ -7,7 +7,6 @@ import type { MutableRefObject } from "react";
 import type { DomEditSelection, DomEditTextField } from "../components/editor/domEditing";
 import type { ImportedFontAsset } from "../components/editor/fontAssets";
 import { usePlayerStore } from "../player";
-import { StudioSaveHttpError } from "../utils/studioSaveDiagnostics";
 import { createDomEditSaveQueue } from "../utils/domEditSaveQueue";
 import { trackStudioEvent } from "../utils/studioTelemetry";
 import type { CutoverResult } from "../utils/sdkCutover";
@@ -1318,101 +1317,57 @@ describe("useDomEditCommits style persist handling", () => {
     }
   });
 
-  it("keeps the already-persisted patch and toasts once when the prepareContent write fails", async () => {
-    stubPatchFetch(
-      {
-        ok: true,
-        changed: true,
-        matched: true,
-        content:
-          '<!doctype html><html><head></head><body><div data-hf-id="hf-card">Card</div></body></html>',
-      },
-      '<!doctype html><html><head></head><body><div data-hf-id="hf-card">Card</div></body></html>',
-    );
-    const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
-    const { iframe, element } = createPreviewElement();
-    const selection = createSelection(element, {
-      textFields: [textField({ key: "self", value: "Card", source: "self", tagName: "div" })],
-    });
-    const rendered = renderDomEditCommits(createSelection(element), iframe, {
-      writeProjectFile: async () => {
-        throw new StudioSaveHttpError("Failed to save index.html (500)", 500);
-      },
-    });
-
-    try {
-      await act(async () => {
-        await rendered.hook.commitDomTextFields(
-          selection,
-          [textField({ key: "self", value: "Card", source: "self", tagName: "div" })],
-          {
-            importedFont: {
-              family: "Imported",
-              path: "fonts/Imported.woff2",
-              url: "/api/projects/p1/preview/fonts/Imported.woff2",
-            },
-          },
-        );
-      });
-
-      // The base patch already landed server-side before the font-face write
-      // failed, so this is recorded as a completed edit (not reverted/re-toasted
-      // as a full failure) — only the font embellishment is reported as lost.
-      expect(rendered.showToast).toHaveBeenCalledTimes(1);
-      expect(rendered.showToast).toHaveBeenCalledWith(
-        expect.stringContaining("Saved, but couldn't finish updating index.html"),
-        "error",
-      );
-      expect(rendered.showToast).toHaveBeenCalledWith(
-        expect.stringContaining("Failed to save index.html (500)"),
-        "error",
-      );
-      expect(rendered.recordEdit).toHaveBeenCalledTimes(1);
-    } finally {
-      warnSpy.mockRestore();
-      rendered.cleanup();
-    }
-  });
-
-  it("uses the patched server content as the custom-font write precondition", async () => {
-    const patchedContent =
-      '<!doctype html><html><head></head><body><div data-hf-id="hf-card">Card</div></body></html>';
-    stubPatchFetch(
-      { ok: true, changed: true, matched: true, content: patchedContent },
-      patchedContent,
-    );
-    const { iframe, element } = createPreviewElement();
-    const selection = createSelection(element, {
-      textFields: [textField({ key: "self", value: "Card", source: "self", tagName: "div" })],
-    });
-    const writeProjectFile = vi.fn(async () => {});
-    const rendered = renderDomEditCommits(selection, iframe, { writeProjectFile });
-
-    try {
-      await act(async () => {
-        await rendered.hook.commitDomTextFields(
-          selection,
-          [textField({ key: "self", value: "Card", source: "self", tagName: "div" })],
-          {
-            importedFont: {
-              family: "Imported",
-              path: "fonts/Imported.woff2",
-              url: "/api/projects/p1/preview/fonts/Imported.woff2",
-            },
-          },
-        );
-      });
-
-      expect(writeProjectFile).toHaveBeenCalledWith(
-        "index.html",
-        expect.stringContaining("@font-face"),
+  it.each(["style", "text"])(
+    "a %s edit with an imported font is one patch request that carries its @font-face",
+    async (kind) => {
+      const patchedContent =
+        '<!doctype html><html><head></head><body><div data-hf-id="hf-card">Card</div></body></html>';
+      const fetchMock = stubPatchFetch(
+        { ok: true, changed: true, matched: true, content: patchedContent },
         patchedContent,
       );
-      expect(rendered.showToast).not.toHaveBeenCalled();
-    } finally {
-      rendered.cleanup();
-    }
-  });
+      const { iframe, element } = createPreviewElement();
+      const selection = createSelection(element, {
+        textFields: [textField({ key: "self", value: "Card", source: "self", tagName: "div" })],
+      });
+      const importedFont = {
+        family: "Imported",
+        path: "fonts/Imported.woff2",
+        url: "/api/projects/p1/preview/fonts/Imported.woff2",
+      };
+      const writeProjectFile = vi.fn(async () => {});
+      const rendered = renderDomEditCommits(selection, iframe, {
+        writeProjectFile,
+        importedFontAssets: [importedFont],
+      });
+
+      try {
+        await act(async () => {
+          if (kind === "style") await rendered.hook.handleDomStyleCommit("font-family", "Imported");
+          else
+            await rendered.hook.commitDomTextFields(
+              selection,
+              [textField({ key: "self", value: "Card", source: "self", tagName: "div" })],
+              { importedFont },
+            );
+        });
+
+        const writes = fetchMock.mock.calls.filter(
+          ([, init]) => init?.method === "POST" || init?.method === "PUT",
+        );
+        expect(writes).toHaveLength(1);
+        expect(requestUrl(writes[0]![0])).toContain("/file-mutations/patch-element/index.html");
+        const body = JSON.parse(String(writes[0]![1]?.body)) as { fontFaceCss?: string };
+        expect(body.fontFaceCss).toMatch(
+          /^@font-face \{ font-family: "Imported"; src: url\("fonts\/Imported.woff2"\)/,
+        );
+        expect(writeProjectFile).not.toHaveBeenCalled();
+        expect(rendered.showToast).not.toHaveBeenCalled();
+      } finally {
+        rendered.cleanup();
+      }
+    },
+  );
 
   it("keeps a rejected patch request (HTTP error) to one toast", async () => {
     const { rendered, cleanup } = renderStyleCommitWithFetch(async (input) => {

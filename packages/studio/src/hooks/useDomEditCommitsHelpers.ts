@@ -197,26 +197,3 @@ export async function postPatchElement(
   }
   return (await response.json()) as PatchElementResponse;
 }
-
-/** Writes `prepare`'s embellishment over the server's patch; returns what the file ends up holding. */
-export async function writePreparedContent(
-  targetPath: string,
-  patchedContent: string,
-  prepare: (html: string, sourceFile: string) => string,
-  writeProjectFile: (path: string, content: string, expectedContent?: string) => Promise<void>,
-  showToast: ShowToast,
-): Promise<string> {
-  const preparedContent = prepare(patchedContent, targetPath);
-  if (preparedContent === patchedContent) return patchedContent;
-  try {
-    await writeProjectFile(targetPath, preparedContent, patchedContent);
-    return preparedContent;
-  } catch (error) {
-    // The patch already landed on disk; keep it rather than revert a committed change.
-    showToast(
-      `Saved, but couldn't finish updating ${targetPath}: ${getErrorDetail(error)}`,
-      "error",
-    );
-    return patchedContent;
-  }
-}

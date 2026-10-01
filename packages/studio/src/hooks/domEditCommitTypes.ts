@@ -1,4 +1,5 @@
 import type { DomEditSelection } from "../components/editor/domEditing";
+import type { ImportedFontAsset } from "../components/editor/fontAssets";
 import type { PatchOperation, PatchTarget } from "../utils/sourcePatcher";
 
 export interface DomEditPatchBatch {
@@ -54,7 +55,7 @@ export type PersistDomEditOperations = (
     coalesceMs?: number;
     skipRefresh?: boolean;
     deferRender?: boolean;
-    prepareContent?: (html: string, sourceFile: string) => string;
+    importedFont?: ImportedFontAsset;
     shouldSave?: () => boolean;
   },
 ) => Promise<DomEditPersistOutcome | undefined>;

@@ -89,6 +89,7 @@ import {
   type PatchOperation,
   type ElementRebase,
 } from "../helpers/sourceMutation.js";
+import { ensureStudioFontFaceCss, isStudioFontFaceCss } from "../helpers/studioFontFace.js";
 import { parseHTML } from "linkedom";
 import { ensureHfIds } from "@hyperframes/parsers/hf-ids";
 import {
@@ -2934,10 +2935,15 @@ export function registerFileRoutes(api: Hono, adapter: StudioApiAdapter): void {
     const parsed = await parseMutationBody<{
       target?: MutationTarget;
       operations?: PatchOperation[];
+      fontFaceCss?: unknown;
     }>(c);
     if ("error" in parsed) return parsed.error;
     if (!Array.isArray(parsed.body.operations) || parsed.body.operations.length === 0) {
       return c.json({ error: "target and operations required" }, 400);
+    }
+    const { fontFaceCss } = parsed.body;
+    if (fontFaceCss !== undefined && !isStudioFontFaceCss(fontFaceCss)) {
+      return c.json({ error: "fontFaceCss must be one @font-face rule" }, 400);
     }
     const unsafeFields = findUnsafeDomPatchValues(parsed.body);
     if (unsafeFields.length > 0) {
@@ -2951,11 +2957,12 @@ export function registerFileRoutes(api: Hono, adapter: StudioApiAdapter): void {
       } catch {
         return c.json({ error: "not found" }, 404);
       }
-      const { html: patched, matched } = patchElementInHtml(
-        originalContent,
-        parsed.target,
-        parsed.body.operations,
-      );
+      const element = patchElementInHtml(originalContent, parsed.target, parsed.body.operations);
+      const { matched } = element;
+      const patched =
+        matched && isStudioFontFaceCss(fontFaceCss)
+          ? ensureStudioFontFaceCss(element.html, fontFaceCss)
+          : element.html;
       if (patched === originalContent) {
         const version = fileContentVersion(originalContent);
         c.header("ETag", version);

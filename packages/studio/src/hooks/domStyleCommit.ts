@@ -4,11 +4,7 @@ import {
   isManualGeometryStyleProperty,
   normalizeDomEditStyleValue,
 } from "../utils/studioHelpers";
-import {
-  injectPreviewGoogleFont,
-  injectPreviewImportedFont,
-  ensureImportedFontFace,
-} from "../utils/studioFontHelpers";
+import { injectPreviewGoogleFont, injectPreviewImportedFont } from "../utils/studioFontHelpers";
 import {
   buildDomEditStylePatchOperation,
   findElementForSelection,
@@ -105,9 +101,7 @@ export async function commitDomStyles(
         label: "Edit layer style",
         // Inline styles are already live, so a reload would only blank the preview.
         skipRefresh: true,
-        prepareContent: importedFont
-          ? (html, sourceFile) => ensureImportedFontFace(html, importedFont, sourceFile)
-          : undefined,
+        importedFont: importedFont ?? undefined,
       }),
     shouldRevert: ownsAny,
     revert: () => {

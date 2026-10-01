@@ -1,10 +1,6 @@
 import { useCallback, useRef } from "react";
 import { normalizeDomEditStyleValue } from "../utils/studioHelpers";
-import {
-  injectPreviewGoogleFont,
-  injectPreviewImportedFont,
-  ensureImportedFontFace,
-} from "../utils/studioFontHelpers";
+import { injectPreviewGoogleFont, injectPreviewImportedFont } from "../utils/studioFontHelpers";
 import {
   buildDomEditRichTextPatchOperation,
   findElementForSelection,
@@ -354,9 +350,7 @@ export function useDomEditTextCommits({
           await persistDomEditOperations(selection, textCommit.operations, {
             label: "Edit text",
             skipRefresh: true,
-            prepareContent: importedFont
-              ? (html, sourceFile) => ensureImportedFontFace(html, importedFont, sourceFile)
-              : undefined,
+            importedFont: importedFont ?? undefined,
           });
         },
         shouldRevert: () => isLatestTextCommit(),
