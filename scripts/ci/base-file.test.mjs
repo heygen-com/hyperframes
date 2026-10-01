@@ -7,10 +7,14 @@ import { test } from "node:test";
 
 const script = join(import.meta.dirname, "base-file.sh");
 const git = (cwd, ...args) =>
-  execFileSync("git", ["-c", "user.email=t@t", "-c", "user.name=t", "-c", "commit.gpgsign=false", ...args], {
-    cwd,
-    encoding: "utf8",
-  }).trim();
+  execFileSync(
+    "git",
+    ["-c", "user.email=t@t", "-c", "user.name=t", "-c", "commit.gpgsign=false", ...args],
+    {
+      cwd,
+      encoding: "utf8",
+    },
+  ).trim();
 
 // A PR run checks out the merge commit shallowly; the base branch then moves before the gate reads its baseline.
 function raceFixture(baseline) {
@@ -48,7 +52,10 @@ function raceFixture(baseline) {
 
 test("reads the base the run measured, not the base branch tip that moved since", () => {
   const { checkout, base, out } = raceFixture('{"total":846}');
-  const log = execFileSync("bash", [script, "baseline.json", out], { cwd: checkout, encoding: "utf8" });
+  const log = execFileSync("bash", [script, "baseline.json", out], {
+    cwd: checkout,
+    encoding: "utf8",
+  });
   assert.equal(readFileSync(out, "utf8"), '{"total":846}');
   assert.match(log, new RegExp(`measured: ${base}`));
 });
