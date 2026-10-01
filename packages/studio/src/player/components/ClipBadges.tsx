@@ -36,7 +36,7 @@ function BadgeContent({ badge }: { badge: ClipBadge }) {
 }
 
 const BADGE_CLASS =
-  "timeline-clip__badge inline-flex items-center gap-0.5 rounded-[3px] border border-white/20 bg-black/55 px-1 text-[9px] leading-[14px] text-white/90 whitespace-nowrap";
+  "inline-flex items-center gap-0.5 rounded-[3px] border border-white/20 bg-black/55 px-1 text-[9px] leading-[14px] text-white/90 whitespace-nowrap";
 
 /** What is applied to a clip, read from its attributes: a link badge, then at most two more and `+N`. */
 export const ClipBadges = memo(function ClipBadges({ el }: { el: TimelineElement }) {
@@ -45,7 +45,7 @@ export const ClipBadges = memo(function ClipBadges({ el }: { el: TimelineElement
   if (visible.length === 0) return null;
   return (
     <span
-      className="timeline-clip__badges pointer-events-none absolute right-1.5 top-0.5 z-[3] flex gap-1"
+      className="pointer-events-none absolute right-1.5 top-0.5 z-[3] flex gap-1"
       data-testid="clip-badges"
     >
       {visible.map((badge) => (
