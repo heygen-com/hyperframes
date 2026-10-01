@@ -56,8 +56,6 @@ export const QUARANTINED = {
   "sequndo-none-pct-r0-root-z100": "#4853",
   "sequndo-none-px-r0-nested-z100": "#4853",
   "sequndo-none-px-r0-root-z100": "#4853",
-  "seqnudge-none-pct-r0-nested-z100": "#4857",
-  "seqnudge-none-pct-r0-root-z100": "#4857",
   "seqrepeat-none-px-r0-nested-z100": "part C (#4807 stack)",
 };
 
