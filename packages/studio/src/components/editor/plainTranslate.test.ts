@@ -20,6 +20,26 @@ describe("readTranslatePx", () => {
     expect(readTranslatePx(box(`translate: ${translate}`))).toEqual(want);
   });
 
+  it.each([
+    ["calc(50% - 20px) 0px", { x: 100, y: 0 }],
+    ["calc(50% + 20px) calc(50% - 20px)", { x: 140, y: 60 }],
+  ])("adds and subtracts the terms of %s", (translate, want) => {
+    expect(readTranslatePx(box(`translate: ${translate}`))).toEqual(want);
+  });
+
+  it.each([
+    "min(10px, 5%) 0px",
+    "calc(2 * 10px) 0px",
+    "calc(10px +) 0px",
+    "clamp(0px, 10%, 30px) 5px",
+  ])("hands %s to Chrome's own resolution and puts the element's style back", (translate) => {
+    const element = box(`translate: ${translate}; transform: rotate(5deg)`);
+    const before = element.getAttribute("style");
+    const read = readTranslatePx(element);
+    expect(Number.isFinite(read.x) && Number.isFinite(read.y)).toBe(true);
+    expect(element.getAttribute("style")).toBe(before);
+  });
+
   it("counts padding and border in the box a percent resolves against", () => {
     const element = box(
       "translate: 50% 50%; padding: 10px; border: 5px solid; box-sizing: content-box",
