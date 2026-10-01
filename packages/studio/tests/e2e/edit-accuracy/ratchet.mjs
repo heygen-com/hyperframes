@@ -50,12 +50,6 @@ export function bankable(runs) {
  * The fixing PR deletes its own ids here and re-banks them in the same PR.
  */
 export const QUARANTINED = {
-  "sequndo-none-center-r0-nested-z100": "#4853",
-  "sequndo-none-center-r0-root-z100": "#4853",
-  "sequndo-none-pct-r0-nested-z100": "#4853",
-  "sequndo-none-pct-r0-root-z100": "#4853",
-  "sequndo-none-px-r0-nested-z100": "#4853",
-  "sequndo-none-px-r0-root-z100": "#4853",
   "seqrepeat-none-px-r0-nested-z100": "part C (#4807 stack)",
 };
 
