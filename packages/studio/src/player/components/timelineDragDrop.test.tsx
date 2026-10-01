@@ -299,6 +299,17 @@ describe("useTimelineAssetDrop start", () => {
     // 12 px past it is outside the radius and keeps the pointer time.
     expect(dropAt(lane, 212).committed).toEqual({ start: 5.3, track: 0 });
   });
+
+  it("keeps the pointer time with the magnet off, and still starts an empty lane at 0", () => {
+    usePlayerStore.getState().setTimelineSnapEnabled(false);
+    try {
+      const lane: TimelineElement[] = [{ id: "c", tag: "div", start: 0, duration: 5, track: 0 }];
+      expect(dropAt(lane, 206).committed).toEqual({ start: 5.15, track: 0 });
+      expect(dropAt([], 80).committed).toEqual({ start: 0, track: 0 });
+    } finally {
+      usePlayerStore.getState().setTimelineSnapEnabled(true);
+    }
+  });
 });
 
 describe("resolveDropInsertRow", () => {

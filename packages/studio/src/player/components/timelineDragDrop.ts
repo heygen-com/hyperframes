@@ -10,7 +10,7 @@ import {
   type TimelineRowGeometry,
 } from "./timelineLayout";
 import { resolveInsertRow } from "./timelineCollision";
-import type { TimelineElement } from "../store/playerStore";
+import { usePlayerStore, type TimelineElement } from "../store/playerStore";
 import { collectTimelineSnapTargets, snapTimelineTime, TIMELINE_SNAP_PX } from "./timelineSnapping";
 import type { TimelineDropCallbacks, TimelineDropPlacement } from "./timelineCallbacks";
 import {
@@ -76,6 +76,7 @@ function alignDropStart(
   const laneHasClips =
     placement.insertRow == null && elements.some((el) => el.track === placement.track);
   if (!laneHasClips) return { ...placement, start: 0 };
+  if (!usePlayerStore.getState().timelineSnapEnabled) return placement;
   const targets = collectTimelineSnapTargets({ elements, playheadTime: null, beatTimes: [] });
   const threshold = TIMELINE_SNAP_PX / Math.max(pixelsPerSecond, 1);
   return { ...placement, start: snapTimelineTime(placement.start, targets, threshold).time };
