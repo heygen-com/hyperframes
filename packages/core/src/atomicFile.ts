@@ -13,6 +13,16 @@ const BUSY_RENAME = new Set(["EPERM", "EBUSY", "EACCES"]);
 const RENAME_RETRY_DELAYS_MS = [10, 20, 30, 40];
 const MAX_LINK_HOPS = 40;
 const TEMP_NAME_TRIES = 3;
+const TEMP_SUFFIX = /\.hf[0-9a-f]{6}\.tmp$/;
+
+/** A fresh temp sibling for a write that publishes `filePath`. 13 bytes, so a 242-byte name still fits. */
+export function atomicTempPath(filePath: string): string {
+  return `${filePath}.hf${randomBytes(3).toString("hex")}.tmp`;
+}
+
+export function isAtomicTempPath(path: string): boolean {
+  return TEMP_SUFFIX.test(path);
+}
 
 /** Replace a file only after the complete sibling temp file is written. No mode: the default one. */
 export function replaceFileAtomically(
@@ -100,8 +110,7 @@ function writeTempSibling(
   operations: SiblingFileSystem,
 ): string {
   for (let attempt = 1; ; attempt++) {
-    // Short, so a name near the filesystem's limit still fits.
-    const tempPath = `${filePath}.${randomBytes(4).toString("hex")}.tmp`;
+    const tempPath = atomicTempPath(filePath);
     try {
       operations.writeFileSync(tempPath, content, { encoding: "utf-8", mode, flag: "wx" });
       return tempPath;

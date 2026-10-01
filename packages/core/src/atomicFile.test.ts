@@ -5,18 +5,33 @@ import * as fs from "node:fs";
 import { lstatSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { createFileAtomically, replaceFileAtomically, resolveWritePath } from "./atomicFile.js";
+import {
+  atomicTempPath,
+  createFileAtomically,
+  isAtomicTempPath,
+  replaceFileAtomically,
+  resolveWritePath,
+} from "./atomicFile.js";
 
 vi.mock("node:crypto", async (importOriginal) => {
   const actual = await importOriginal<typeof import("node:crypto")>();
   return { ...actual, randomBytes: vi.fn(actual.randomBytes) };
 });
 
-/** `<file>.<8 hex>.tmp`, checked without building a regex from a path (Windows paths hold backslashes). */
+/** `<file>.hf<6 hex>.tmp`, checked without building a regex from a path (Windows paths hold backslashes). */
 function expectTempSiblingOf(tempPath: string, file: string): void {
   expect(tempPath.startsWith(`${file}.`)).toBe(true);
-  expect(tempPath.slice(file.length)).toMatch(/^\.[0-9a-f]{8}\.tmp$/);
+  expect(tempPath.slice(file.length)).toMatch(/^\.hf[0-9a-f]{6}\.tmp$/);
 }
+
+describe("isAtomicTempPath", () => {
+  it("knows the temp files it names, and no one else's", () => {
+    expect(isAtomicTempPath(atomicTempPath("/p/index.html"))).toBe(true);
+    expect(isAtomicTempPath("compositions/intro.html.hf0a1b2c.tmp")).toBe(true);
+    expect(isAtomicTempPath("foo.12345678.tmp")).toBe(false);
+    expect(isAtomicTempPath("index.html.hf0a1b2c.tmp.bak")).toBe(false);
+  });
+});
 
 describe("replaceFileAtomically", () => {
   const dirs: string[] = [];
@@ -271,21 +286,21 @@ describe("createFileAtomically", () => {
   it("takes a fresh temporary name when another writer holds one, leaving theirs alone", () => {
     const dir = tempDir();
     const file = join(dir, "index.html");
-    writeFileSync(`${file}.deadbeef.tmp`, "theirs");
-    nextTempNames("deadbeef");
+    writeFileSync(`${file}.hfdeadbe.tmp`, "theirs");
+    nextTempNames("deadbe");
 
     createFileAtomically(file, "html");
 
     expect(readFileSync(file, "utf-8")).toBe("html");
-    expect(readFileSync(`${file}.deadbeef.tmp`, "utf-8")).toBe("theirs");
+    expect(readFileSync(`${file}.hfdeadbe.tmp`, "utf-8")).toBe("theirs");
   });
 
   it("gives up after three taken temporary names without touching them", () => {
     const dir = tempDir();
     const file = join(dir, "index.html");
-    for (const name of ["00000001", "00000002", "00000003"])
-      writeFileSync(`${file}.${name}.tmp`, "theirs");
-    nextTempNames("00000001", "00000002", "00000003");
+    for (const name of ["000001", "000002", "000003"])
+      writeFileSync(`${file}.hf${name}.tmp`, "theirs");
+    nextTempNames("000001", "000002", "000003");
 
     expect(() => createFileAtomically(file, "html")).toThrow(
       expect.objectContaining({ code: "EEXIST" }),

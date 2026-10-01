@@ -1,6 +1,7 @@
 import { createHash } from "node:crypto";
 import { lstatSync, readFileSync, readdirSync } from "node:fs";
 import { extname, isAbsolute, relative, resolve, sep } from "node:path";
+import { isAtomicTempPath } from "@hyperframes/core/atomic-file";
 import type { ResolvedProject, StudioApiAdapter } from "../types.js";
 
 const SIGNATURE_TEXT_EXTENSIONS = new Set([
@@ -59,7 +60,12 @@ export const STUDIO_SIGNATURE_MANIFEST_PATHS = [
  */
 export function affectsProjectSignature(projectDir: string, changedPath: string): boolean {
   const relativePath = relative(resolve(projectDir), resolve(changedPath));
-  if (relativePath === "" || relativePath.startsWith("..") || isAbsolute(relativePath)) {
+  if (
+    relativePath === "" ||
+    relativePath.startsWith("..") ||
+    isAbsolute(relativePath) ||
+    isAtomicTempPath(relativePath)
+  ) {
     return false;
   }
   const segments = relativePath.split(sep);
@@ -109,7 +115,7 @@ function collectProjectSignatureFiles(
   }
 
   for (const entry of entries) {
-    if (SIGNATURE_EXCLUDED_DIRS.has(entry)) continue;
+    if (SIGNATURE_EXCLUDED_DIRS.has(entry) || isAtomicTempPath(entry)) continue;
     const file = resolve(dir, entry);
     if (!isPathWithin(projectDir, file)) continue;
     let stat: ReturnType<typeof lstatSync>;

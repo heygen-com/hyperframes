@@ -47,6 +47,13 @@ describe("shouldWatchProjectFile", () => {
     expect(shouldWatchProjectFile(".thumbnails/frame.jpg")).toBe(false);
     expect(shouldWatchProjectFile(".waveform-cache/peaks.json")).toBe(false);
   });
+
+  it("skips the temp file of a save in flight, but not a user's own .tmp file", () => {
+    expect(shouldWatchProjectFile("index.html.hf0a1b2c.tmp")).toBe(false);
+    expect(shouldWatchProjectFile("compositions/intro.html.hf0a1b2c.tmp")).toBe(false);
+    expect(shouldWatchProjectFile("foo.12345678.tmp")).toBe(true);
+    expect(shouldWatchProjectFile("notes.tmp")).toBe(true);
+  });
 });
 
 describe("createProjectWatcher", () => {

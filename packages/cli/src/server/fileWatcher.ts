@@ -1,5 +1,6 @@
 import { lstatSync, readdirSync, watch, type FSWatcher } from "node:fs";
 import { join, relative, sep } from "node:path";
+import { isAtomicTempPath } from "@hyperframes/core/atomic-file";
 import { affectsProjectSignature } from "@hyperframes/studio-server";
 
 export type FileChangeListener = (relativePath: string) => void;
@@ -32,7 +33,7 @@ const QUIET_MS = 30;
 const BURST_MS = 300;
 
 export function shouldWatchProjectFile(filename: string): boolean {
-  if (!filename) return false;
+  if (!filename || isAtomicTempPath(filename)) return false;
   const parts = filename.split(/[\\/]+/);
   return !parts.some((part) => WATCHER_EXCLUDED_DIRS.has(part));
 }
