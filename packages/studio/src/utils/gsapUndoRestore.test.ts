@@ -288,6 +288,25 @@ describe("applyUndoRestoreToPreview", () => {
     );
   });
 
+  it("full-reloads a style restore on a GSAP-parsed element when the file has two scripts", () => {
+    const scripts = [
+      `<script>window.__timelines["root"]=gsap.timeline().to("#a",{x:1});</script>`,
+      `<script>window.__timelines["captions"]=gsap.timeline().to("#a",{y:1});</script>`,
+    ].join("");
+    const { iframe, doc } = buildLiveIframe(`<div id="a" style="z-index: 8">t</div>${scripts}`);
+    Object.assign(doc.getElementById("a")!, { _gsap: {} });
+    const reloadPreview = vi.fn();
+    const files = {
+      [ROOT]: {
+        previous: wrap(`<div id="a" style="z-index: 8">t</div>${scripts}`),
+        restored: wrap(`<div id="a" style="z-index: 3">t</div>${scripts}`),
+      },
+    };
+
+    expect(applyUndoRestoreToPreview(iframe, ROOT, files, 3, reloadPreview)).toBe("full");
+    expect(reloadPreview).toHaveBeenCalledTimes(1);
+  });
+
   it("full-reloads a multi-file restore", () => {
     const { iframe } = buildLiveIframe(`<div id="a">t</div>`);
     const reloadPreview = vi.fn();
