@@ -851,14 +851,7 @@ jobs:
       - name: Read the base branch's work-count ceilings
         # A ceiling may not disappear, or rise without a new reason, against the branch this PR merges into.
         if: github.event_name == 'pull_request'
-        env:
-          BASE_REF: ${{ github.base_ref }}
-        run: |
-          git fetch --no-tags --depth=1 origin "$BASE_REF"
-          if ! git show FETCH_HEAD:packages/studio/tests/e2e/perf-ceilings.json > /tmp/base-perf-ceilings.json; then
-            rm -f /tmp/base-perf-ceilings.json
-            echo "The base branch has no perf-ceilings.json yet"
-          fi
+        run: bash scripts/ci/base-file.sh packages/studio/tests/e2e/perf-ceilings.json /tmp/base-perf-ceilings.json
       - name: Run both arms of the timeline viewport gate
         run: |
           set -euo pipefail
@@ -1020,14 +1013,9 @@ jobs:
       # Studio and the producer both run in the engine's pinned headless shell.
       - run: node packages/cli/dist/cli.js browser ensure
       - name: Read the base branch's edit accuracy baseline
-        env:
-          BASE_REF: ${{ github.base_ref }}
         run: |
-          git fetch --no-tags --depth=1 origin "$BASE_REF"
-          if ! git show FETCH_HEAD:packages/studio/tests/e2e/edit-accuracy/baseline.json > /tmp/base-edit-accuracy.json; then
-            echo '{"cases":{}}' > /tmp/base-edit-accuracy.json
-            echo "The base branch has no edit accuracy baseline yet"
-          fi
+          bash scripts/ci/base-file.sh packages/studio/tests/e2e/edit-accuracy/baseline.json /tmp/base-edit-accuracy.json
+          [ -f /tmp/base-edit-accuracy.json ] || echo '{"cases":{}}' > /tmp/base-edit-accuracy.json
       - name: Run this shard, then re-run twice each case whose verdict differs from the base branch
         run: |
           set -euo pipefail
@@ -1062,14 +1050,9 @@ jobs:
         with:
           node-version: 22
       - name: Read the base branch's edit accuracy baseline
-        env:
-          BASE_REF: ${{ github.base_ref }}
         run: |
-          git fetch --no-tags --depth=1 origin "$BASE_REF"
-          if ! git show FETCH_HEAD:packages/studio/tests/e2e/edit-accuracy/baseline.json > /tmp/base-edit-accuracy.json; then
-            echo '{"cases":{}}' > /tmp/base-edit-accuracy.json
-            echo "The base branch has no edit accuracy baseline yet"
-          fi
+          bash scripts/ci/base-file.sh packages/studio/tests/e2e/edit-accuracy/baseline.json /tmp/base-edit-accuracy.json
+          [ -f /tmp/base-edit-accuracy.json ] || echo '{"cases":{}}' > /tmp/base-edit-accuracy.json
       - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
         with:
           pattern: edit-accuracy-shard-*
