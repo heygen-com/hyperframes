@@ -20,7 +20,6 @@ interface HistoryFileCallbacks {
 export interface EditHistoryHandle {
   undo: (cb: HistoryFileCallbacks) => Promise<HistoryResult>;
   redo: (cb: HistoryFileCallbacks) => Promise<HistoryResult>;
-  /** The restore a step would make, when this tab already knows it. */
   predict?: (direction: "undo" | "redo") => RestoreFiles | null;
   state: {
     undo: ReadonlyArray<{ createdAt: number }>;
@@ -35,7 +34,6 @@ export interface UseEditHistoryActionsOptions {
   writeProjectFile: (path: string, content: string) => Promise<void>;
   showToast: (message: string, tone?: "error" | "info") => void;
   syncHistoryPreviewAfterApply: (restore: Pick<HistoryResult, "paths" | "files">) => Promise<void>;
-  /** Shows a restore on the live preview in this task, or returns false having touched nothing (e.g. a save is pending). */
   showHistoryRestoreNow?: (files: RestoreFiles) => boolean;
   waitForPendingDomEditSaves: () => Promise<void>;
   onAfterUndoRedo?: (restore: Pick<HistoryResult, "paths" | "files">) => void;
@@ -140,7 +138,6 @@ function swapRestore(files: RestoreFiles): RestoreFiles {
   );
 }
 
-/** The server's restore, diffed from what the preview already shows. */
 function fromShown(files: RestoreFiles | undefined, shown: RestoreFiles | null) {
   if (!files || !shown) return files;
   return Object.fromEntries(

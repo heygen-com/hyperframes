@@ -395,6 +395,23 @@ describe("applyUndoRestoreToPreview", () => {
     expect(reloadPreview).toHaveBeenCalledTimes(1);
   });
 
+  it("full-reloads a sub-composition restore whose file has a GSAP script", () => {
+    const { iframe, doc } = buildLiveIframe(host(`style="clip-path: inset(0px 40px 0px 0px);"`));
+    const reloadPreview = vi.fn();
+    const script = `<script>gsap.timeline().to("#target", { x: 10 });</script>`;
+    const scripted = (style: string) =>
+      sub(style).replace("</div></template>", `${script}</div></template>`);
+    const files = {
+      [SUB]: {
+        previous: scripted(`style="clip-path: inset(0px 40px 0px 0px)"`),
+        restored: scripted(""),
+      },
+    };
+    expect(applyUndoRestoreToPreview(iframe, ROOT, files, 3, reloadPreview)).toBe("full");
+    expect(reloadPreview).toHaveBeenCalledTimes(1);
+    expect(doc.querySelector('[data-hf-id="hf-t"]')?.getAttribute("style")).toContain("clip-path");
+  });
+
   it("full-reloads when the restore touches a sub-comp, not the active comp", () => {
     const { iframe } = buildLiveIframe(`<div id="a">t</div>`);
     const reloadPreview = vi.fn();

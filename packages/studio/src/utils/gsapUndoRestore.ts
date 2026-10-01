@@ -175,39 +175,70 @@ function hasAmbiguousGsapScriptChange(previous: string, restored: string): boole
   );
 }
 
-/**
- * Every live element a restore changes, paired with its restored markup, or null when the restore is
- * beyond an attribute sync. A file is the active document or a sub-composition the live preview
- * inlines into each `[data-composition-file]` host; only the active document's GSAP script may change.
- */
+type RestoreTarget = { live: Element; restored: Element };
+
+/** Whether a file, template content included, carries a GSAP script. */
+export function restoreHasGsapScript(html: string): boolean {
+  return findGsapScriptElements(parseRestoreSource(html)).length > 0;
+}
+
+// The active document is the whole preview; a sub-composition lives in each host that inlines it.
+function liveScopes(doc: Document, path: string, isActive: boolean): ParentNode[] {
+  if (isActive) return [doc];
+  return Array.from(doc.querySelectorAll(`[data-composition-file="${CSS.escape(path)}"]`));
+}
+
+function scopeTargets(
+  scope: ParentNode,
+  keys: string[],
+  restoredByKey: Map<string, Element>,
+): RestoreTarget[] | null {
+  const liveByKey = identityElementMap(scope);
+  if (!liveByKey) return null;
+  const targets: RestoreTarget[] = [];
+  for (const key of keys) {
+    const live = liveByKey.get(key);
+    const restored = restoredByKey.get(key);
+    // The preview rewrites a sub-composition's own root, so its attributes are not the file's.
+    if (!live || !restored || live.hasAttribute("data-hf-inner-root")) return null;
+    targets.push({ live, restored });
+  }
+  return targets;
+}
+
+function fileTargets(
+  doc: Document,
+  path: string,
+  isActive: boolean,
+  { previous, restored }: UndoRestoreFile,
+): RestoreTarget[] | null {
+  // Only the active document's GSAP script can be re-run in place.
+  if (!isActive && (restoreHasGsapScript(previous) || restoreHasGsapScript(restored))) return null;
+  const scopes = liveScopes(doc, path, isActive);
+  const diff = diffSoftReloadableRestore(previous, restored);
+  if (!scopes.length || !diff || hasAmbiguousGsapScriptChange(previous, restored)) return null;
+  const restoredByKey = identityElementMap(parseRestoreSource(restored));
+  if (!restoredByKey) return null;
+  const targets: RestoreTarget[] = [];
+  for (const scope of scopes) {
+    const found = scopeTargets(scope, diff.changedElementKeys, restoredByKey);
+    if (!found) return null;
+    targets.push(...found);
+  }
+  return targets;
+}
+
+/** Every live element a restore changes with its restored markup, or null when it needs a reload. */
 function planRestoreTargets(
   doc: Document,
   activeDocPath: string,
   files: Record<string, UndoRestoreFile>,
-): Array<{ live: Element; restored: Element }> | null {
-  const targets: Array<{ live: Element; restored: Element }> = [];
-  for (const [path, { previous, restored }] of Object.entries(files)) {
-    const isActive = path === activeDocPath;
-    const scopes: ParentNode[] = isActive
-      ? [doc]
-      : Array.from(doc.querySelectorAll(`[data-composition-file="${CSS.escape(path)}"]`));
-    const diff = diffSoftReloadableRestore(previous, restored);
-    if (!scopes.length || !diff || hasAmbiguousGsapScriptChange(previous, restored)) return null;
-    if (!isActive && extractGsapScriptText(previous) !== extractGsapScriptText(restored))
-      return null;
-    const restoredByKey = identityElementMap(parseRestoreSource(restored));
-    if (!restoredByKey) return null;
-    for (const scope of scopes) {
-      const liveByKey = identityElementMap(scope);
-      if (!liveByKey) return null;
-      for (const key of diff.changedElementKeys) {
-        const live = liveByKey.get(key);
-        const restoredEl = restoredByKey.get(key);
-        // The preview rewrites a sub-composition's own root, so its attributes are not the file's.
-        if (!live || !restoredEl || live.hasAttribute("data-hf-inner-root")) return null;
-        targets.push({ live, restored: restoredEl });
-      }
-    }
+): RestoreTarget[] | null {
+  const targets: RestoreTarget[] = [];
+  for (const [path, file] of Object.entries(files)) {
+    const found = fileTargets(doc, path, path === activeDocPath, file);
+    if (!found) return null;
+    targets.push(...found);
   }
   return targets;
 }
@@ -233,10 +264,7 @@ function planRestoreTargets(
  *        lane move, timing shift, style tweak) → NO script execution — the
  *        blink-free finalization only (seek + __hfForceTimelineRebind + manual
  *        reapply, exactly the rebindPreviewTiming path), so timing-attribute
- *        reverts refresh their visibility windows. Re-running an unchanged
- *        script here used to be the biggest undo blink source: it tore down
- *        and rebuilt live timelines (and full-reloaded whenever the script
- *        couldn't be scoped) for restores that never touched it.
+ *        reverts refresh their visibility windows.
  *
  * Returns "soft" when applied in place, "full" when it escalated to reloadPreview
  * (ineligible restore, missing target, or a permanent soft-reload failure).

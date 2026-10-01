@@ -20,7 +20,6 @@ interface DomEditSaveQueueOptions {
 export interface DomEditSaveQueue {
   enqueue: <T>(save: () => Promise<T>) => Promise<T>;
   waitForIdle: () => Promise<DomEditSaveDrainResult>;
-  /** No save is queued or running. */
   isIdle: () => boolean;
   reset: () => void;
   destroy: () => void;

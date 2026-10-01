@@ -35,7 +35,6 @@ function focusedField(): HTMLElement | null {
     : null;
 }
 
-/** An edit is still saving, or a focused field holds one a flush would commit. */
 export function hasStudioPendingEdits(): boolean {
   return pendingEditPromises.size > 0 || focusedField() !== null;
 }

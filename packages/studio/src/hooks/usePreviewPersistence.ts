@@ -12,8 +12,11 @@ import {
   type StudioPendingEditsDrainResult,
 } from "../utils/studioPendingEdits";
 import { trackStudioEvent } from "../utils/studioTelemetry";
-import { applyUndoRestoreToPreview, type UndoRestoreFile } from "../utils/gsapUndoRestore";
-import { findGsapScriptElements } from "../utils/gsapSoftReload";
+import {
+  applyUndoRestoreToPreview,
+  restoreHasGsapScript,
+  type UndoRestoreFile,
+} from "../utils/gsapUndoRestore";
 import { usePlayerStore } from "../player";
 import { syncStoredAutomationFromPreview } from "../player/lib/automationStoreSync";
 
@@ -224,8 +227,9 @@ export function usePreviewPersistence({
   const showHistoryRestoreNow = useCallback(
     (files: Record<string, UndoRestoreFile>): boolean => {
       if (!domEditSaveQueueRef.current?.isIdle() || hasStudioPendingEdits()) return false;
-      if (Object.values(files).some((f) => hasGsapScript(f.previous) || hasGsapScript(f.restored)))
-        return false;
+      const scripted = (f: UndoRestoreFile) =>
+        restoreHasGsapScript(f.previous) || restoreHasGsapScript(f.restored);
+      if (Object.values(files).some(scripted)) return false;
       let refused = false;
       applyUndoRestoreToPreview(
         previewIframeRef.current,
@@ -265,8 +269,4 @@ export function usePreviewPersistence({
     syncHistoryPreviewAfterApply,
     showHistoryRestoreNow,
   };
-}
-
-function hasGsapScript(html: string): boolean {
-  return findGsapScriptElements(new DOMParser().parseFromString(html, "text/html")).length > 0;
 }

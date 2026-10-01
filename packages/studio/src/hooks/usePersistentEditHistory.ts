@@ -52,7 +52,6 @@ const OWN_ENTRIES_KEPT = 100;
 
 type OwnFiles = Record<string, { before: string; after: string }>;
 
-/** What this tab wrote per entry id, and the steps the last refresh offered, until a claim or step overtakes it. */
 function createOwnHistory() {
   const own = new Map<string, OwnFiles>();
   let next: Record<"undo" | "redo", NextStep | null> | null = null;
@@ -77,7 +76,6 @@ function createOwnHistory() {
       if (seen === changes) next = { undo: view.back, redo: view.forward };
     },
     changes: () => changes,
-    /** An undo entry's files are the ones it undid, swapped. */
     stepped: (entry: { id: string; undoes?: string }) => {
       const undone = entry.undoes ? own.get(entry.undoes) : undefined;
       if (!undone) return;
@@ -87,7 +85,6 @@ function createOwnHistory() {
       ]);
       remember(entry.id, Object.fromEntries(swapped));
     },
-    /** What this tab last wrote to each file of an entry, which a step over it starts from. */
     afterOf: (id: string | undefined): Record<string, string> =>
       Object.fromEntries(Object.entries((id && own.get(id)) || {}).map(([p, f]) => [p, f.after])),
     predict: (direction: "undo" | "redo"): Record<string, ApplyRestoredFile> | null => {
@@ -265,8 +262,6 @@ export function usePersistentEditHistory({ projectId }: UsePersistentEditHistory
           ok: true,
           label: reply.entry.label,
           paths: changed,
-          // A step taken before the view caught up read no file first; the server only steps over
-          // an entry whose files are still as it left them, so that is where this one starts.
           files: await restoredFiles(
             changed,
             { ...own.afterOf(reply.entry.undoes), ...previous },
@@ -303,7 +298,6 @@ export function usePersistentEditHistory({ projectId }: UsePersistentEditHistory
     recordEdit,
     undo,
     redo,
-    /** The files a step would restore, from what this tab wrote, while nothing has overtaken the last refresh. */
     predict: own.predict,
   };
 }

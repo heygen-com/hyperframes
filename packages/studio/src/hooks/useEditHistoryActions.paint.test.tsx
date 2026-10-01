@@ -1,10 +1,10 @@
 // @vitest-environment happy-dom
 import { act, createElement } from "react";
 import { createRoot } from "react-dom/client";
-import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { afterEach, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import {
   createStudioApi,
   openProjectHistory,
@@ -20,26 +20,26 @@ const BEFORE = page("10px");
 const AFTER = page("50px");
 
 const cleanup: Array<() => unknown> = [];
+let scratch = "";
+beforeEach(() => {
+  scratch = mkdtempSync(join(tmpdir(), "hf-undo-paint-"));
+});
 afterEach(async () => {
   for (const step of cleanup.splice(0).reverse()) await step();
+  rmSync(scratch, { recursive: true, force: true });
   vi.unstubAllGlobals();
 });
-
-function tempDir(prefix: string): string {
-  const dir = mkdtempSync(join(tmpdir(), prefix));
-  cleanup.push(() => rmSync(dir, { recursive: true, force: true }));
-  return dir;
-}
 
 /** Studio's undo wired as App.tsx wires it, over the real history engine, with a live preview document. */
 async function studio() {
   vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
-  const dir = tempDir("hf-undo-paint-");
+  const dir = join(scratch, "project");
+  mkdirSync(dir);
   const path = join(dir, "index.html");
   writeFileSync(path, BEFORE);
   const engine = await openProjectHistory({
     projectDir: dir,
-    historyRoot: tempDir("hf-undo-paint-root-"),
+    historyRoot: join(scratch, "history"),
   });
   cleanup.push(() => engine.close());
   const api = createStudioApi({
