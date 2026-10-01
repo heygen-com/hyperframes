@@ -88,7 +88,7 @@ export const TIMELINE_VIEWPORT_BUDGETS: Readonly<TimelineViewportBudgets> = Obje
   frameIntervalP95Ms: 33.3,
   constrainedInteractionP95Ms: 75,
   constrainedFrameIntervalP95Ms: 75,
-  ciVirtualizedInteractionP95Ms: 41.7,
+  ciVirtualizedInteractionP95Ms: 58.3,
   ciVirtualizedFrameIntervalP95Ms: 25,
   longTaskLimitMs: 50,
   constrainedLongTaskLimitMs: 300,

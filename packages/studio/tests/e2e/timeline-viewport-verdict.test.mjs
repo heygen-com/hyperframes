@@ -81,13 +81,13 @@ describe("the CI virtualized arm's limits", () => {
     samplesPerRun: 63,
     ...responsivenessLimits(TIMELINE_VIEWPORT_BUDGETS, "ci", "on"),
   };
-  // Two frames is a normal step, three a dropped frame; one frame is a normal interval, two a dropped one.
+  // Two frames is a normal step, four a step two frames late; one frame is a normal interval, two a dropped one.
   const steps = (count, normal, slow) =>
     Array.from({ length: 5 }, (_, run) =>
       Array.from({ length: 63 }, (_, step) => (run * 63 + step < count ? slow : normal)),
     );
   const interactionRuns = (count) =>
-    steps(count, 33.3, 50).map((interactions) => ({
+    steps(count, 33.3, 66.7).map((interactions) => ({
       interactions,
       frameIntervals: interactions.map(() => 16.7),
     }));
@@ -97,7 +97,7 @@ describe("the CI virtualized arm's limits", () => {
       frameIntervals,
     }));
 
-  it("fails 16 of 315 steps that drop a frame and passes 15", () => {
+  it("fails 16 of 315 steps two frames late and passes 15", () => {
     expect(judgeResponsiveness(interactionRuns(16), limits).passed).toBe(false);
     expect(judgeResponsiveness(interactionRuns(15), limits).passed).toBe(true);
   });
