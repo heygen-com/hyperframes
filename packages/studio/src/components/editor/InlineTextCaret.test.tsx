@@ -1,14 +1,18 @@
 // @vitest-environment happy-dom
 
 import React, { act } from "react";
-import { createRoot } from "react-dom/client";
+import { createRoot, type Root } from "react-dom/client";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { CARET_PX, InlineTextCaret } from "./InlineTextCaret";
 import type { InlineTextEditSession } from "../../hooks/useInlineTextEdit";
 
 (globalThis as unknown as { IS_REACT_ACT_ENVIRONMENT: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
+const roots: Root[] = [];
+
 afterEach(() => {
+  // Unmount before clearing the body: the caret is portaled there, so clearing first orphans React's node.
+  act(() => roots.splice(0).forEach((root) => root.unmount()));
   document.body.innerHTML = "";
   vi.restoreAllMocks();
 });
@@ -38,6 +42,7 @@ function scene() {
 
 function render(session: InlineTextEditSession | null, iframe: HTMLIFrameElement | null) {
   const root = createRoot(document.body.appendChild(document.createElement("div")));
+  roots.push(root);
   act(() => root.render(<InlineTextCaret session={session} iframe={iframe} />));
   return { root, caret: () => document.querySelector<HTMLElement>("[data-inline-text-caret]") };
 }
