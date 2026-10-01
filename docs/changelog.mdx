@@ -9,6 +9,40 @@ Recent HyperFrames releases, including user-facing features, fixes, and migratio
 {/* New release entries are prepended by `bun run changelog:draft <version> --write`. */}
 
 <Update
+  label="HyperFrames v0.8.106"
+  description="Released - 2026-10-01"
+  tags={["Release", "Studio", "Studio Server"]}
+>
+Studio gets a theme toggle that remembers your choice, and the code editor follows it. Hand edits and undo stay correct after a preview reload, and drags drop fewer frames.
+
+## Features
+
+- **Studio Server:** A write receipt names the version the write replaced ([59bbe7f09](https://github.com/heygen-com/hyperframes/commit/59bbe7f098238598bcfdbbac843da2f71c21d6a8), [#4864](https://github.com/heygen-com/hyperframes/pull/4864)).
+- **Studio:** Paste and duplicate can keep a clip at its own time ([ce76be50c](https://github.com/heygen-com/hyperframes/commit/ce76be50c7d90e3d91575b8de1e388af9ebc4adc), [#4859](https://github.com/heygen-com/hyperframes/pull/4859)).
+- **Studio:** The code editor follows studio's light and dark theme ([e666a8a2a](https://github.com/heygen-com/hyperframes/commit/e666a8a2a37ea77e4774f50ca832cd5766ba6fec), [#4862](https://github.com/heygen-com/hyperframes/pull/4862)).
+- **Studio:** A light and dark theme toggle in the header that remembers the choice ([9f4d9e64b](https://github.com/heygen-com/hyperframes/commit/9f4d9e64b228c29833da478d6c8c50f2549179c1), [#4839](https://github.com/heygen-com/hyperframes/pull/4839)).
+- **Studio:** Fade handles ride the fade's end and the waveform shows the fade ([07af05c81](https://github.com/heygen-com/hyperframes/commit/07af05c8169dd77c23d7129231330d5662059fa2), [#4844](https://github.com/heygen-com/hyperframes/pull/4844)).
+
+## Fixes
+
+- **Studio:** A hand edit after a preview reload draws on the element now on screen ([57da627e7](https://github.com/heygen-com/hyperframes/commit/57da627e76712e53031c820950fc2512bc1bf69d), [#4856](https://github.com/heygen-com/hyperframes/pull/4856)).
+- **Studio:** The preview serves a same-size edit written right after the last one ([a9929b60e](https://github.com/heygen-com/hyperframes/commit/a9929b60ee2ee47a2b1f09f220708466ffb0863b), [#4792](https://github.com/heygen-com/hyperframes/pull/4792)).
+- **Studio:** Undo that reloads the preview keeps the timeline clips on screen ([d4176c4ce](https://github.com/heygen-com/hyperframes/commit/d4176c4ce6eee611ae5e47a45644e843101272e8), [#4790](https://github.com/heygen-com/hyperframes/pull/4790)).
+- **Studio Server:** A folder rename past an unreadable folder or file answers ok ([b6c879c4e](https://github.com/heygen-com/hyperframes/commit/b6c879c4e919290b6c7b2c6ac1dd212a95a17ac2), [#4860](https://github.com/heygen-com/hyperframes/pull/4860)).
+
+## Performance
+
+- **Studio:** Track the motion path only while a path or create ring is drawn ([44138931c](https://github.com/heygen-com/hyperframes/commit/44138931ce129af626ab30e1a68494c1621cfeda), [#4795](https://github.com/heygen-com/hyperframes/pull/4795)).
+- **Studio:** Stop font list work from landing in drag frames ([8593b01a6](https://github.com/heygen-com/hyperframes/commit/8593b01a6d0df887aa111a1d0871c42c5343fab1), [#4794](https://github.com/heygen-com/hyperframes/pull/4794)).
+
+## Internal
+
+- **Studio:** Catch teleports and multi-step edit bugs in the edit accuracy bench ([9c19327e3](https://github.com/heygen-com/hyperframes/commit/9c19327e38ef44e3d8b6c25e707a8f25d8b95aba), [#4801](https://github.com/heygen-com/hyperframes/pull/4801)).
+
+[View the full commit range](https://github.com/heygen-com/hyperframes/compare/v0.8.105...v0.8.106).
+</Update>
+
+<Update
   label="HyperFrames v0.8.105"
   description="Released - 2026-10-01"
   tags={["Release", "Studio"]}
