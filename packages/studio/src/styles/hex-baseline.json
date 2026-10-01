@@ -1,5 +1,5 @@
 {
-  "total": 238,
+  "total": 226,
   "files": {
     "packages/studio/src/captions/components/CaptionOverlay.tsx": 5,
     "packages/studio/src/captions/components/CaptionTimeline.tsx": 11,
@@ -8,9 +8,8 @@
     "packages/studio/src/captions/types.ts": 4,
     "packages/studio/src/components/TimelineToolbar.tsx": 1,
     "packages/studio/src/components/editor/ArcPathControls.tsx": 1,
-    "packages/studio/src/components/editor/BorderRadiusEditor.tsx": 8,
+    "packages/studio/src/components/editor/BorderRadiusEditor.tsx": 2,
     "packages/studio/src/components/editor/DomEditCropHandles.tsx": 1,
-    "packages/studio/src/components/editor/EaseCurveSection.tsx": 1,
     "packages/studio/src/components/editor/FileTreeIcons.tsx": 7,
     "packages/studio/src/components/editor/GestureTrailOverlay.tsx": 1,
     "packages/studio/src/components/editor/GridOverlay.tsx": 4,

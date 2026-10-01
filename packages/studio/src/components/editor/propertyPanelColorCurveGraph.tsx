@@ -477,7 +477,7 @@ export function CurveGraph({
           onSettle();
         }
       }}
-      className="mx-auto aspect-square w-full max-w-[200px] touch-none rounded-sm scheme-dark border border-panel-border-input bg-bg-0 outline-hidden focus:ring-1 focus:ring-panel-accent"
+      className="mx-auto aspect-square w-full max-w-[200px] touch-none rounded-sm scheme-dark border border-panel-border-input bg-bg-0 outline-hidden focus:ring-1 focus:ring-inset focus:ring-panel-accent"
     >
       <defs>
         <linearGradient id={`hf-hue-axis-${tab.key}`}>

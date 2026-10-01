@@ -526,10 +526,9 @@ export function EaseCurveSection({
                       cx={pt.x}
                       cy={pt.y}
                       r={hover === key || draggingRef.current === key ? 7 : 5.5}
-                      fill="#0a0a1a"
                       style={{ stroke: ACCENT }}
                       strokeWidth="2.5"
-                      className="pointer-events-none transition-[r]"
+                      className="pointer-events-none fill-input transition-[r]"
                     />
                   </g>
                 ))}

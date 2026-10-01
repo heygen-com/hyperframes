@@ -506,7 +506,9 @@ export const TreeFolder = memo(function TreeFolder({
         }}
         onDragLeave={onDragLeave}
         className={`w-full flex items-center gap-1.5 px-2.5 py-1 min-h-7 text-left text-xs text-neutral-400 hover:bg-neutral-800/30 hover:text-neutral-300 transition-colors ${
-          isDragOver ? "bg-accent/10 outline-solid outline-1 outline-accent-ink" : ""
+          isDragOver
+            ? "bg-accent/10 outline-solid outline-1 outline-accent-ink -outline-offset-1"
+            : ""
         }`}
         style={{ paddingLeft: `${8 + depth * 12}px` }}
       >
