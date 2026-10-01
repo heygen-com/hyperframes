@@ -338,15 +338,24 @@ function partnerTiming(
   const timing: { start?: number; duration?: number } = {};
   const [gStart, pStart] = [grabbed.start ?? 0, partner.start ?? 0];
   if (edit.start !== undefined) timing.start = pStart + (edit.start - gStart);
-  const endsTogether =
-    Math.abs(pStart + (partner.duration ?? 0) - (gStart + (grabbed.duration ?? 0))) <
-    ALIGN_EPSILON_S;
-  if (edit.duration !== undefined && endsTogether) {
-    const end = (edit.start ?? gStart) + edit.duration;
-    const duration = end - (timing.start ?? pStart);
-    if (duration > 0) timing.duration = duration;
-  }
+  const duration = partnerDuration(grabbed, partner, edit, timing.start ?? pStart);
+  if (duration !== undefined) timing.duration = duration;
   return timing;
+}
+
+function partnerDuration(
+  grabbed: ClipWindow,
+  partner: ClipWindow,
+  edit: { start?: number; duration?: number },
+  partnerStart: number,
+): number | undefined {
+  if (edit.duration === undefined) return undefined;
+  const grabbedStart = grabbed.start ?? 0;
+  const grabbedEnd = grabbedStart + (grabbed.duration ?? 0);
+  const partnerEnd = (partner.start ?? 0) + (partner.duration ?? 0);
+  if (Math.abs(partnerEnd - grabbedEnd) >= ALIGN_EPSILON_S) return undefined;
+  const duration = (edit.start ?? grabbedStart) + edit.duration - partnerStart;
+  return duration > 0 ? duration : undefined;
 }
 
 export function applyOp(parsed: ParsedDocument, op: EditOp): MutationResult {
