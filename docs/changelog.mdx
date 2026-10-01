@@ -9,6 +9,24 @@ Recent HyperFrames releases, including user-facing features, fixes, and migratio
 {/* New release entries are prepended by `bun run changelog:draft <version> --write`. */}
 
 <Update
+  label="HyperFrames v0.8.102"
+  description="Released - 2026-10-01"
+  tags={["Release", "Studio"]}
+>
+Host apps can change layer order the same way Studio's canvas menu does. Moving a layer that only fades no longer hands GSAP an element it does not position.
+
+## Features
+
+- **Studio:** Hosts can apply the canvas menu's z-order through useDomEditZOrder ([c0f2780b8](https://github.com/heygen-com/hyperframes/commit/c0f2780b8e76f3e026dd05e03a6e9f686f2f15e9), [#4793](https://github.com/heygen-com/hyperframes/pull/4793)).
+
+## Fixes
+
+- **Studio:** The properties panel no longer hands GSAP an element it does not position ([4c768186b](https://github.com/heygen-com/hyperframes/commit/4c768186b83a1c0c4eb3d310269856c7a5f28664), [#4830](https://github.com/heygen-com/hyperframes/pull/4830)).
+
+[View the full commit range](https://github.com/heygen-com/hyperframes/compare/v0.8.101...v0.8.102).
+</Update>
+
+<Update
   label="HyperFrames v0.8.101"
   description="Released - 2026-10-01"
   tags={["Release", "Studio"]}
