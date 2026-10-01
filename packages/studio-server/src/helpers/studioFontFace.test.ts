@@ -45,8 +45,10 @@ describe("isStudioFontFaceCss", () => {
     expect(isStudioFontFaceCss('@font-face { src: url("assets/Brand{1}.ttf"); }')).toBe(true);
     expect(isStudioFontFaceCss('@font-face { font-family: "x</style><script>"; }')).toBe(false);
     expect(isStudioFontFaceCss('@font-face { font-family: "x; } body{display:none}')).toBe(false);
-    expect(isStudioFontFaceCss('@font-face { font-family: "x\\"; } body{display:none}')).toBe(false);
-    expect(isStudioFontFaceCss('@font-face { font-family: "x\\""; } body{display:none}')).toBe(false);
+    expect(isStudioFontFaceCss('@font-face { font-family: "x\\"; } body{}')).toBe(false);
+    expect(isStudioFontFaceCss('@font-face { font-family: "x\\""; } body{}')).toBe(false);
+    expect(isStudioFontFaceCss('@font-face { font-family: "x\r} body{} "; }')).toBe(false);
+    expect(isStudioFontFaceCss("@font-face { font-family: 'x\\\f} body{} '; }")).toBe(false);
     expect(isStudioFontFaceCss('@font-face { src: url("x") } </style><script>')).toBe(false);
     expect(isStudioFontFaceCss(42)).toBe(false);
   });

@@ -666,6 +666,10 @@ describe("registerFileRoutes", () => {
     expect((await patch({ fontFaceCss: `${css} body{display:none}` })).status).toBe(400);
     const quotedBreakout = '@font-face { font-family: "x</style><script>"; }';
     expect((await patch({ fontFaceCss: quotedBreakout })).status).toBe(400);
+    for (const newline of ["\r", "\f"]) {
+      const smuggled = `@font-face { font-family: "x${newline}} body{background:red} "; }`;
+      expect((await patch({ fontFaceCss: smuggled })).status).toBe(400);
+    }
     expect((await patch({ fontFaceCss: css }, { id: "missing" })).status).toBe(200);
     expect(readFileSync(join(projectDir, "index.html"), "utf-8")).toBe(original);
 

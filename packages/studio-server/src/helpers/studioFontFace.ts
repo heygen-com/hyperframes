@@ -1,8 +1,8 @@
 const FONT_STYLE_RE = /<style\b[^>]*data-hf-studio-fonts=(["'])true\1[^>]*>([\s\S]*?)<\/style>/i;
 
-// Braces only inside quoted strings; `<` nowhere, since `</style` ends the block whatever the quoting.
+// Braces only inside quoted strings; `<` nowhere: `</style` ends the block whatever the quoting.
 const ONE_FONT_FACE_RULE =
-  /^@font-face \{(?:[^{}<"'\\]|"(?:[^"\\<\n]|\\[^<\n])*"|'(?:[^'\\<\n]|\\[^<\n])*')*\}$/;
+  /^@font-face \{(?:[^{}<"'\\]|"(?:[^"\\<\n\r\f]|\\[^<\n\r\f])*"|'(?:[^'\\<\n\r\f]|\\[^<\n\r\f])*')*\}$/;
 
 export function isStudioFontFaceCss(css: unknown): css is string {
   return typeof css === "string" && ONE_FONT_FACE_RULE.test(css);
