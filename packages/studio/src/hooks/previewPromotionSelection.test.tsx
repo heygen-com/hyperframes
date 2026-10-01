@@ -4,14 +4,13 @@ import { createRoot } from "react-dom/client";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { DomEditSelection } from "../components/editor/domEditing";
 import { resolveElementForOverlay } from "../components/editor/domEditOverlayGeometry";
-import type { UseDomEditOverlayGesturesOptions } from "../components/editor/domEditOverlayGestures";
-import { createDomEditOverlayGestureHandlers } from "../components/editor/useDomEditOverlayGestures";
 import {
-  makeAdapterWindow,
-  makeFakeIframe,
+  makePreview,
+  mountPlayerWithPreview,
+  paintShadow,
   resetPlayerStore,
+  type TimelinePlayerApi,
 } from "../player/hooks/timelinePlayerTestHarness";
-import { useTimelinePlayer } from "../player/hooks/useTimelinePlayer";
 import { announcePreviewPromoted } from "../player/sceneSwap";
 import { stageElementOffset } from "./elementOffsetStager";
 import { savePlainRotation } from "./plainRotation";
@@ -30,12 +29,7 @@ afterEach(() => {
   resetPlayerStore();
 });
 
-function previewWithTitle(query = ""): HTMLIFrameElement {
-  const iframe = makeFakeIframe(makeAdapterWindow().win);
-  iframe.src = `http://localhost/api/projects/demo/preview${query}`;
-  iframe.contentDocument!.body.innerHTML = '<h1 id="title">Title</h1>';
-  return iframe;
-}
+const previewWithTitle = (query = "") => makePreview('<h1 id="title">Title</h1>', query);
 
 const titleOf = (iframe: HTMLIFrameElement | null) =>
   iframe!.contentDocument!.getElementById("title") as HTMLElement;
@@ -43,16 +37,9 @@ const titleOf = (iframe: HTMLIFrameElement | null) =>
 const selectionOf = (element: HTMLElement) =>
   ({ element, id: "title", selector: "#title", label: "title" }) as unknown as DomEditSelection;
 
-type Player = ReturnType<typeof useTimelinePlayer>;
-
 /** A host shaped like Desktop's: it reads its iframe once and never re-renders for a reload. */
 function mountHost(followPromotions: boolean) {
   const selectionRef = { current: null as DomEditSelection | null };
-  let player: Player | null = null;
-  function PlayerHost() {
-    player = useTimelinePlayer();
-    return null;
-  }
   function Session({ host }: { host: HTMLIFrameElement }) {
     const live = useLivePreviewIframe(host);
     useDomEditPreviewSync({
@@ -71,29 +58,23 @@ function mountHost(followPromotions: boolean) {
     });
     return null;
   }
-  const playerRoot = createRoot(document.body.appendChild(document.createElement("div")));
-  act(() => playerRoot.render(React.createElement(PlayerHost)));
   const live = previewWithTitle();
-  act(() => {
-    player!.iframeRef.current = live;
-    player!.onIframeLoad();
-  });
+  const player = mountPlayerWithPreview(live);
   selectionRef.current = selectionOf(titleOf(live));
   const sessionRoot = createRoot(document.body.appendChild(document.createElement("div")));
   act(() => sessionRoot.render(React.createElement(Session, { host: live })));
-  return { player: () => player!, selectionRef, live, sessionRoot, playerRoot };
+  const unmount = () => {
+    act(() => sessionRoot.unmount());
+    act(() => player.root.unmount());
+  };
+  return { player: player.getApi, selectionRef, live, unmount };
 }
 
 /** The real shadow reload: load a shadow, report it painted, and let the player promote it. */
-async function promoteShadow(player: () => Player): Promise<HTMLIFrameElement> {
+async function promoteShadow(player: () => TimelinePlayerApi): Promise<HTMLIFrameElement> {
   act(() => player().refreshPlayer());
-  const slot = player().previewSlots.find((s) => s.role === "shadow")!;
   const shadow = previewWithTitle("?_t=1");
-  act(() => player().setShadowIframeNode(shadow));
-  await act(async () => {
-    player().onShadowIframeLoad(slot.gen);
-    player().onShadowReadyChange(slot.gen, true);
-  });
+  await paintShadow(player, shadow);
   expect(player().iframeRef.current).toBe(shadow);
   return shadow;
 }
@@ -121,16 +102,14 @@ describe("a shadow reload promoted without a host re-render", () => {
     expect(titleOf(shadow).style.getPropertyValue("rotate")).toBe("30deg");
     expect(titleOf(shadow).style.getPropertyValue("translate")).toBe("10px 5px");
     expect(titleOf(host.live).getAttribute("style")).toBeNull();
-    act(() => host.sessionRoot.unmount());
-    act(() => host.playerRoot.unmount());
+    host.unmount();
   });
 
   it("left the selection on the retired node when the session kept the host's first iframe", async () => {
     const host = mountHost(false);
     await promoteShadow(host.player);
     expect(host.selectionRef.current!.element).toBe(titleOf(host.live));
-    act(() => host.sessionRoot.unmount());
-    act(() => host.playerRoot.unmount());
+    host.unmount();
   });
 });
 
@@ -160,6 +139,23 @@ describe("useLivePreviewIframe", () => {
     act(() => probe.root.unmount());
   });
 
+  it("lands on the same iframe wrapped twice, as when a host wraps what it hands the session", () => {
+    const [a, b, c] = [0, 1, 2].map(() => document.createElement("iframe"));
+    let seen: { outer: HTMLIFrameElement | null; inner: HTMLIFrameElement | null } | null = null;
+    function Probe({ host }: { host: HTMLIFrameElement }) {
+      const outer = useLivePreviewIframe(host);
+      seen = { outer, inner: useLivePreviewIframe(outer) };
+      return null;
+    }
+    const root = createRoot(document.createElement("div"));
+    act(() => root.render(React.createElement(Probe, { host: a! })));
+    act(() => announcePreviewPromoted({ retired: a!, live: b! }));
+    expect(seen).toEqual({ outer: b, inner: b });
+    act(() => announcePreviewPromoted({ retired: b!, live: c! }));
+    expect(seen).toEqual({ outer: c, inner: c });
+    act(() => root.unmount());
+  });
+
   it("takes a new host iframe as given, and stops listening on unmount", () => {
     const [a, b, d] = [0, 1, 2].map(() => document.createElement("iframe"));
     const probe = track(a!);
@@ -169,64 +165,5 @@ describe("useLivePreviewIframe", () => {
     const remove = vi.spyOn(document, "removeEventListener");
     act(() => probe.root.unmount());
     expect(remove).toHaveBeenCalledWith("hf-preview-promoted", expect.any(Function));
-  });
-});
-
-describe("a promotion during a gesture", () => {
-  it("drops the gesture instead of saving the node that left the screen", () => {
-    const retired = previewWithTitle();
-    const element = titleOf(retired);
-    const selection = {
-      ...selectionOf(element),
-      capabilities: { canApplyManualRotation: true },
-    } as unknown as DomEditSelection;
-    const onRotationCommit = vi.fn();
-    const ref = <T,>(current: T) => ({ current });
-    const opts = {
-      overlayRef: ref(document.createElement("div")),
-      iframeRef: ref<HTMLIFrameElement | null>(retired),
-      boxRef: ref(document.createElement("div")),
-      selectionRef: ref(selection),
-      hoverSelectionRef: ref(null),
-      overlayRectRef: ref({
-        left: 0,
-        top: 0,
-        width: 200,
-        height: 100,
-        editScaleX: 1,
-        editScaleY: 1,
-      }),
-      groupOverlayItemsRef: ref([]),
-      gestureRef: ref(null),
-      groupGestureRef: ref(null),
-      blockedMoveRef: ref(null),
-      rafPausedRef: ref(false),
-      suppressNextBoxClickRef: ref(false),
-      setOverlayRect: () => {},
-      setGroupOverlayItems: () => {},
-      onRotationCommitRef: ref(onRotationCommit),
-      onCanvasPointerMoveRef: ref(() => Promise.resolve(null)),
-      onCanvasMouseDown: () => {},
-      snapGuidesRef: ref(null),
-    } as unknown as UseDomEditOverlayGesturesOptions;
-    const pointer = (clientX: number, clientY: number) =>
-      ({
-        clientX,
-        clientY,
-        pointerId: 1,
-        button: 0,
-        altKey: false,
-        shiftKey: false,
-        preventDefault() {},
-        stopPropagation() {},
-        currentTarget: { setPointerCapture() {}, releasePointerCapture() {} },
-      }) as never;
-    const handlers = createDomEditOverlayGestureHandlers(opts);
-    handlers.startGesture("rotate", pointer(200, 50));
-    handlers.onPointerMove(pointer(100, 150));
-    opts.iframeRef.current = previewWithTitle("?_t=1");
-    handlers.onPointerUp(pointer(100, 150));
-    expect(onRotationCommit).not.toHaveBeenCalled();
-    expect(opts.gestureRef.current).toBeNull();
   });
 });

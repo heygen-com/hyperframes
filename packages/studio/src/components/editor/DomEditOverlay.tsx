@@ -31,6 +31,7 @@ import { useDomEditCompositionRect } from "./useDomEditCompositionRect";
 import { CanvasContextMenu } from "./CanvasContextMenu";
 import { useInlineTextEditing } from "./useInlineTextEditing";
 import { usePreviewReadOnly } from "./previewReadOnlyContext";
+import { useMountEffect } from "../../hooks/useMountEffect";
 import type { ZOrderAction, ZOrderPatch } from "./canvasContextMenuZOrder";
 import { getPreviewTargetFromPointer } from "../../utils/studioPreviewHelpers";
 import { logSelect } from "../../utils/selectDebug";
@@ -282,6 +283,17 @@ export const DomEditOverlay = memo(function DomEditOverlay({
   useEffect(() => {
     if (readOnly) gestures.clearPointerState(selectionRef);
   }, [gestures, readOnly, selectionRef]);
+  // A gesture that loses its pointer, the window or the overlay is cancelled, so its mark goes too.
+  const cancelGestureRef = useRef(() => {});
+  cancelGestureRef.current = () => gestures.clearPointerState(selectionRef);
+  useMountEffect(() => {
+    const cancel = () => cancelGestureRef.current();
+    window.addEventListener("blur", cancel);
+    return () => {
+      window.removeEventListener("blur", cancel);
+      cancel();
+    };
+  });
 
   // Arrow-key nudge (1px, Shift = 10px) — commits through the same
   // path-offset callbacks as a drag, one undo entry per key burst.
@@ -463,6 +475,7 @@ export const DomEditOverlay = memo(function DomEditOverlay({
       onPointerLeave={() => onCanvasPointerLeaveRef.current()}
       onPointerUp={marquee.onPointerUp}
       onPointerCancel={marquee.onPointerCancel}
+      onLostPointerCapture={() => cancelGestureRef.current()}
       onContextMenu={hostInput ? undefined : handleContextMenu}
     >
       {!hostInput && hoverSelection && hoverRect && compRect.width > 0 && (

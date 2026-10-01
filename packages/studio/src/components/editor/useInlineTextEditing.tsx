@@ -44,7 +44,7 @@ export function useInlineTextEditing(
 } {
   const actions = useDomEditActionsContextOptional();
   const inlineText = useInlineTextEdit({
-    onCommit: (commit) => void actions?.handleDomRichTextCommit(commit),
+    onCommit: (commit) => actions?.handleDomRichTextCommit(commit),
     onPause: () => usePlayerStore.getState().setIsPlaying(false),
   });
   const lastPressRef = useRef<PressMark | null>(null);

@@ -336,8 +336,7 @@ export function usePopulateKeyframeCacheForFile(
     // fallow-ignore-next-line complexity
     const tryRuntimeScan = () => {
       if (runtimeScanDoneRef.current === `kf-cache:${projectId}:${sf}:${version}`) return true;
-      const iframe =
-        iframeRef?.current ?? document.querySelector<HTMLIFrameElement>("iframe[src*='/preview/']");
+      const iframe = iframeRef?.current;
       if (!iframe) return false;
       // Clip dims per element so the scan converts tween-relative keyframes to
       // clip-relative (matching the static path) instead of timeline-relative.

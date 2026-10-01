@@ -46,9 +46,30 @@ export function beginStudioManualEditGesture(element: HTMLElement): string {
   return token;
 }
 
+const GESTURE_ENDED = "hf-manual-edit-gesture-ended";
+
 export function endStudioManualEditGesture(element: HTMLElement, token?: string): void {
   if (token && element.getAttribute(STUDIO_MANUAL_EDIT_GESTURE_ATTR) !== token) return;
+  if (!element.hasAttribute(STUDIO_MANUAL_EDIT_GESTURE_ATTR)) return;
   element.removeAttribute(STUDIO_MANUAL_EDIT_GESTURE_ATTR);
+  const doc = element.ownerDocument;
+  doc.dispatchEvent(new (doc.defaultView?.Event ?? Event)(GESTURE_ENDED));
+}
+
+export function isStudioManualEditGestureLiveIn(doc: Document): boolean {
+  return doc.querySelector(`[${STUDIO_MANUAL_EDIT_GESTURE_ATTR}]`) !== null;
+}
+
+/** Runs `run` once the last gesture in `doc` ends; the returned function stops waiting. */
+export function afterStudioManualEditGestures(doc: Document, run: () => void): () => void {
+  const onEnded = () => {
+    if (isStudioManualEditGestureLiveIn(doc)) return;
+    stop();
+    run();
+  };
+  const stop = () => doc.removeEventListener(GESTURE_ENDED, onEnded);
+  doc.addEventListener(GESTURE_ENDED, onEnded);
+  return stop;
 }
 
 function isStudioManualEditGestureActive(element: HTMLElement): boolean {

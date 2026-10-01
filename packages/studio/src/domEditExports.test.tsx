@@ -10,16 +10,23 @@ import {
   useDomEditSelectionContext,
   useDomEditSession,
   useDomEditZOrder,
+  useLivePreviewIframe,
   usePreviewPersistence,
   type ConnectedDomEditOverlayProps,
   type DomEditCapabilities,
   type DomEditSelection,
   type DomEditZOrder,
+  type PreviewPromotion,
   type UseDomEditSessionParams,
   type UsePreviewPersistenceParams,
   type ZOrderAction,
 } from "@hyperframes/studio";
 import { makeSelection } from "./hooks/domSelectionTestHarness";
+import {
+  makePreview,
+  mountPlayerWithPreview,
+  paintShadow,
+} from "./player/hooks/timelinePlayerTestHarness";
 
 Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true });
 
@@ -32,6 +39,26 @@ describe("DOM editing package exports", () => {
     expectTypeOf<DomEditSelection>().toHaveProperty("capabilities");
     expectTypeOf<DomEditCapabilities>().toHaveProperty("canApplyManualOffset");
     expectTypeOf<ConnectedDomEditOverlayProps>().toHaveProperty("canvasInput");
+  });
+
+  it("gives a host the preview on screen after a real shadow reload is promoted", async () => {
+    expectTypeOf<PreviewPromotion>().toHaveProperty("live");
+    const host = makePreview("<h1>Title</h1>");
+    const player = mountPlayerWithPreview(host);
+    let live: HTMLIFrameElement | null = null;
+    function Probe() {
+      live = useLivePreviewIframe(host);
+      return null;
+    }
+    const root = createRoot(document.body.appendChild(document.createElement("div")));
+    act(() => root.render(<Probe />));
+    act(() => player.getApi().refreshPlayer());
+    const shadow = makePreview("<h1>Title</h1>", "?_t=1");
+    await paintShadow(player.getApi, shadow);
+    expect(player.getApi().iframeRef.current).toBe(shadow);
+    expect(live).toBe(shadow);
+    act(() => root.unmount());
+    act(() => player.root.unmount());
   });
 
   it("mounts the connected overlay in host mode inside a host's providers", async () => {

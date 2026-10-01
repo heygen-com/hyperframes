@@ -3,6 +3,10 @@
 
 import { useCallback, useRef, useState } from "react";
 import { useMountEffect } from "../../hooks/useMountEffect";
+import {
+  afterStudioManualEditGestures,
+  isStudioManualEditGestureLiveIn,
+} from "../../components/editor/manualEditsDom";
 import { logReload } from "../../utils/reloadDebug";
 import {
   useTimelineSyncCallbacks,
@@ -79,12 +83,16 @@ export function useShadowPreviewReload({
   // The shadow still owed a wait budget, so a hidden tab can resume it when it becomes visible.
   const budgetGenRef = useRef<number | null>(null);
   const cancelPendingLoadRef = useRef<() => void>(() => {});
+  const stopHoldRef = useRef<() => void>(() => {});
+  const shadowUrlRef = useRef("");
+  const beginShadowReloadRef = useRef<(url: string) => void>(() => {});
   const [previewSlots, setPreviewSlots] = useState<PreviewIframeSlot[]>([{ gen: 0, role: "live" }]);
 
   const stopPendingShadow = useCallback(() => {
     clearTimeout(readyTimerRef.current);
     budgetGenRef.current = null;
     cancelPendingLoadRef.current();
+    stopHoldRef.current();
     pendingCommitRef.current = null;
     visuallyReadyGenRef.current = null;
   }, []);
@@ -107,12 +115,29 @@ export function useShadowPreviewReload({
     [stopPendingShadow, isRefreshingRef, pendingSeekRef],
   );
 
+  // Nothing replaces the preview under a gesture. Once it ends, what it saved is newer than
+  // this shadow, so a fresh one loads instead (a reload the gesture asked for already won).
+  const holdForGesture = useCallback((gen: number, liveDoc: Document) => {
+    clearTimeout(readyTimerRef.current);
+    budgetGenRef.current = null;
+    stopHoldRef.current();
+    stopHoldRef.current = afterStudioManualEditGestures(liveDoc, () => {
+      if (gen !== shadowGenRef.current) return;
+      logReload("shadow-reloaded-after-gesture", { gen });
+      const url = new URL(shadowUrlRef.current, window.location.origin);
+      url.searchParams.set("_t", String(Date.now()));
+      beginShadowReloadRef.current(url.toString());
+    });
+  }, []);
+
   const promoteWhenReady = useCallback(
     (gen: number) => {
       const shadow = shadowIframeRef.current;
       const pending = pendingCommitRef.current;
       const ready = pending?.gen === gen && visuallyReadyGenRef.current === gen;
       if (!shadow || !pending || !ready || gen !== shadowGenRef.current) return;
+      const liveDoc = iframeRef.current?.contentDocument;
+      if (liveDoc && isStudioManualEditGestureLiveIn(liveDoc)) return holdForGesture(gen, liveDoc);
       stopPendingShadow();
       // The live frame kept playing, stopped at the end or was seeked while the shadow loaded.
       const live = getAdapter();
@@ -134,6 +159,7 @@ export function useShadowPreviewReload({
     },
     [
       stopPendingShadow,
+      holdForGesture,
       getAdapter,
       iframeRef,
       attachIframeShortcutListeners,
@@ -219,6 +245,7 @@ export function useShadowPreviewReload({
       stopPendingShadow();
       budgetGenRef.current = gen;
       budgetsSpentRef.current = 0;
+      shadowUrlRef.current = url;
       armReadyTimer(gen);
       setPreviewSlots((prev) => planShadowReload(prev, gen, url));
       // Thumbnails of the edit wait for the new preview instead of competing with it.
@@ -226,6 +253,7 @@ export function useShadowPreviewReload({
     },
     [stopPendingShadow, armReadyTimer],
   );
+  beginShadowReloadRef.current = beginShadowReload;
 
   // Composition switch (not an edit reload): drop any in-flight shadow.
   const resetPreviewSlots = useCallback(() => {

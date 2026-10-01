@@ -373,9 +373,6 @@ export function createDomEditOverlayGestureHandlers(opts: UseDomEditOverlayGestu
     }
     opts.gestureRef.current = null;
     opts.rafPausedRef.current = false;
-    const liveDoc = opts.iframeRef.current?.contentDocument;
-    const promotedMidGesture = !!liveDoc && sel.element.ownerDocument !== liveDoc;
-    if (promotedMidGesture) return restoreGestureOverlayRect(g);
     const movedDistance = Math.hypot(e.clientX - g.startX, e.clientY - g.startY);
 
     if (g.kind === "drag" && isTap(g, e)) {

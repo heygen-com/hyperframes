@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { onPreviewPromoted } from "../player/sceneSwap";
 
-/** The preview on screen: the host's iframe, then each shadow reload promoted in its place, re-render or not. */
+/** The one source for which preview is on screen: the host's iframe, then each reload promoted in its place. */
 export function useLivePreviewIframe(host: HTMLIFrameElement | null): HTMLIFrameElement | null {
   const [promoted, setPromoted] = useState<{ host: HTMLIFrameElement; live: HTMLIFrameElement }>();
   const live = host && promoted?.host === host ? promoted.live : host;

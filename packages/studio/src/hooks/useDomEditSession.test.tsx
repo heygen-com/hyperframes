@@ -132,26 +132,30 @@ vi.mock("./useDomEditCommits", () => ({
     };
   },
 }));
+const iframesHandedOn: Array<{ hook: string; iframe: unknown }> = [];
 vi.mock("./useDomSelection", () => ({
-  useDomSelection: () => ({
-    domEditSelection: domEditSelectionRef.current,
-    domEditGroupSelections: [],
-    domEditHoverSelection: null,
-    activeGroupElement: null,
-    domEditSelectionRef,
-    domEditGroupSelectionsRef,
-    setActiveGroupElement: vi.fn(),
-    applyDomSelection: vi.fn(),
-    clearDomSelection: vi.fn(),
-    buildDomSelectionFromTarget: vi.fn(),
-    resolveDomSelectionFromPreviewPoint: vi.fn(),
-    resolveAllDomSelectionsFromPreviewPoint: vi.fn(),
-    updateDomEditHoverSelection: vi.fn(),
-    buildDomSelectionForTimelineElement: vi.fn(),
-    handleTimelineElementSelect: vi.fn(),
-    refreshDomEditSelectionFromPreview: vi.fn(),
-    applyMarqueeSelection: vi.fn(),
-  }),
+  useDomSelection: ({ previewIframe }: { previewIframe: unknown }) => {
+    iframesHandedOn.push({ hook: "selection", iframe: previewIframe });
+    return {
+      domEditSelection: domEditSelectionRef.current,
+      domEditGroupSelections: [],
+      domEditHoverSelection: null,
+      activeGroupElement: null,
+      domEditSelectionRef,
+      domEditGroupSelectionsRef,
+      setActiveGroupElement: vi.fn(),
+      applyDomSelection: vi.fn(),
+      clearDomSelection: vi.fn(),
+      buildDomSelectionFromTarget: vi.fn(),
+      resolveDomSelectionFromPreviewPoint: vi.fn(),
+      resolveAllDomSelectionsFromPreviewPoint: vi.fn(),
+      updateDomEditHoverSelection: vi.fn(),
+      buildDomSelectionForTimelineElement: vi.fn(),
+      handleTimelineElementSelect: vi.fn(),
+      refreshDomEditSelectionFromPreview: vi.fn(),
+      applyMarqueeSelection: vi.fn(),
+    };
+  },
 }));
 vi.mock("./useAskAgentModal", () => ({
   useAskAgentModal: () => ({
@@ -208,33 +212,36 @@ vi.mock("./useGroupCommits", () => ({
   }),
 }));
 vi.mock("./useDomEditWiring", () => ({
-  useDomEditWiring: () => ({
-    onClickToSource: vi.fn(),
-    selectedGsapAnimations: [],
-    gsapMultipleTimelines: false,
-    gsapUnsupportedTimelinePattern: false,
-    trackGsapInteractionFailure: vi.fn(),
-    makeFetchFallback: vi.fn(),
-    handleGsapUpdateProperty: vi.fn(),
-    handleGsapUpdateMeta: vi.fn(),
-    handleGsapDeleteAnimation: vi.fn(),
-    handleGsapDeleteAllForElement: vi.fn(),
-    handleGsapAddAnimation: vi.fn(),
-    handleGsapAddProperty: vi.fn(),
-    handleGsapRemoveProperty: vi.fn(),
-    handleGsapUpdateFromProperty: vi.fn(),
-    handleGsapAddFromProperty: vi.fn(),
-    handleGsapRemoveFromProperty: vi.fn(),
-    handleGsapAddKeyframe: vi.fn(),
-    handleGsapAddKeyframeBatch: vi.fn(),
-    handleGsapRemoveKeyframe: vi.fn(),
-    handleGsapMoveKeyframeToPlayhead: vi.fn(),
-    handleGsapMoveKeyframe: vi.fn(),
-    handleGsapResizeKeyframedTween: vi.fn(),
-    handleGsapConvertToKeyframes: vi.fn(),
-    handleGsapRemoveAllKeyframes: vi.fn(),
-    handleResetSelectedElementKeyframes: vi.fn(),
-  }),
+  useDomEditWiring: ({ previewIframe }: { previewIframe: unknown }) => {
+    iframesHandedOn.push({ hook: "wiring", iframe: previewIframe });
+    return {
+      onClickToSource: vi.fn(),
+      selectedGsapAnimations: [],
+      gsapMultipleTimelines: false,
+      gsapUnsupportedTimelinePattern: false,
+      trackGsapInteractionFailure: vi.fn(),
+      makeFetchFallback: vi.fn(),
+      handleGsapUpdateProperty: vi.fn(),
+      handleGsapUpdateMeta: vi.fn(),
+      handleGsapDeleteAnimation: vi.fn(),
+      handleGsapDeleteAllForElement: vi.fn(),
+      handleGsapAddAnimation: vi.fn(),
+      handleGsapAddProperty: vi.fn(),
+      handleGsapRemoveProperty: vi.fn(),
+      handleGsapUpdateFromProperty: vi.fn(),
+      handleGsapAddFromProperty: vi.fn(),
+      handleGsapRemoveFromProperty: vi.fn(),
+      handleGsapAddKeyframe: vi.fn(),
+      handleGsapAddKeyframeBatch: vi.fn(),
+      handleGsapRemoveKeyframe: vi.fn(),
+      handleGsapMoveKeyframeToPlayhead: vi.fn(),
+      handleGsapMoveKeyframe: vi.fn(),
+      handleGsapResizeKeyframedTween: vi.fn(),
+      handleGsapConvertToKeyframes: vi.fn(),
+      handleGsapRemoveAllKeyframes: vi.fn(),
+      handleResetSelectedElementKeyframes: vi.fn(),
+    };
+  },
 }));
 vi.mock("./usePreviewInteraction", () => ({
   usePreviewInteraction: () => ({
@@ -599,5 +606,24 @@ describe("handleDomEditElementDelete routing", () => {
     });
     expect(handleTimelineElementsDelete).toHaveBeenCalledWith([clipA, clipB]);
     expect(handleDomEditElementsDeleteMock).not.toHaveBeenCalled();
+  });
+});
+
+describe("a shadow reload promoted without a host re-render", () => {
+  it("hands the promoted iframe to the session's selection and preview sync", async () => {
+    const { useDomEditSession } = await import("./useDomEditSession");
+    const { announcePreviewPromoted } = await import("../player/sceneSwap");
+    const [host, promoted] = [0, 1].map(() => document.createElement("iframe"));
+    function Probe() {
+      useDomEditSession(createSessionParams({ previewIframe: host! }));
+      return null;
+    }
+    const root = createRoot(document.createElement("div"));
+    act(() => root.render(<Probe />));
+    act(() => announcePreviewPromoted({ retired: host!, live: promoted! }));
+    const last = (hook: string) => iframesHandedOn.findLast((seen) => seen.hook === hook)?.iframe;
+    expect(last("selection")).toBe(promoted);
+    expect(last("wiring")).toBe(promoted);
+    act(() => root.unmount());
   });
 });
