@@ -93,7 +93,7 @@ async function runEnsure(options?: { force?: boolean }): Promise<void> {
     return;
   }
 
-  s.start("Purging cached download and re-downloading...");
+  s.start("Re-downloading the managed browser...");
 
   const downloadSpinner = clack.spinner();
   downloadSpinner.start(

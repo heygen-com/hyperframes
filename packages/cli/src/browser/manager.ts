@@ -804,8 +804,10 @@ async function downloadBrowser(options?: EnsureBrowserOptions): Promise<BrowserR
     throw new Error(`Unsupported platform: ${process.platform} ${process.arch}`);
   }
 
+  // Callers hold the install lock, so every leftover belongs to an install that was killed mid-way.
+  removeInstallLeftovers();
   // Same filesystem as CACHE_DIR so the final rename is atomic.
-  const stagingDir = join(CACHE_ROOT_DIR, `.chrome-staging-${randomUUID()}`);
+  const stagingDir = join(CACHE_ROOT_DIR, `${STAGING_PREFIX}${randomUUID()}`);
   const clearStaging = () => rmSync(stagingDir, { recursive: true, force: true });
   const runInstall = () =>
     install({
@@ -817,17 +819,14 @@ async function downloadBrowser(options?: EnsureBrowserOptions): Promise<BrowserR
     });
 
   try {
-    let staged;
-    try {
-      staged = await installWithCorruptArchiveRecovery(runInstall, clearStaging, (err) =>
-        console.warn(
-          `[hyperframes] Downloaded browser archive was corrupt (${normalizeErrorMessage(err)}); re-downloading.`,
-        ),
-      );
-    } catch (err) {
-      throw wrapDownloadFailureWithBrowserPathHint(err);
-    }
+    const staged = await installWithCorruptArchiveRecovery(runInstall, clearStaging, (err) =>
+      console.warn(
+        `[hyperframes] Downloaded browser archive was corrupt (${normalizeErrorMessage(err)}); re-downloading.`,
+      ),
+    );
     return { executablePath: moveStagedInstallIntoCache(stagingDir, staged), source: "download" };
+  } catch (err) {
+    throw wrapDownloadFailureWithBrowserPathHint(err);
   } finally {
     clearStaging();
   }
@@ -840,7 +839,7 @@ function moveStagedInstallIntoCache(
   staged: { path: string; executablePath: string },
 ): string {
   const target = join(CACHE_DIR, relative(stagingDir, staged.path));
-  const aside = join(CACHE_ROOT_DIR, `.chrome-replaced-${randomUUID()}`);
+  const aside = join(CACHE_ROOT_DIR, `${REPLACED_PREFIX}${randomUUID()}`);
   mkdirSync(dirname(target), { recursive: true });
   let replaced = false;
   try {
@@ -859,14 +858,33 @@ function moveStagedInstallIntoCache(
   return join(target, relative(staged.path, staged.executablePath));
 }
 
+const STAGING_PREFIX = ".chrome-staging-";
+const REPLACED_PREFIX = ".chrome-replaced-";
+
+// Staging and set-aside dirs outlive an install killed by a signal, since `finally` never runs.
+function removeInstallLeftovers(): boolean {
+  let names: string[];
+  try {
+    names = readdirSync(CACHE_ROOT_DIR);
+  } catch (err) {
+    if (isErrno(err, "ENOENT")) return false;
+    throw err;
+  }
+  const leftovers = names.filter(
+    (name) => name.startsWith(STAGING_PREFIX) || name.startsWith(REPLACED_PREFIX),
+  );
+  for (const name of leftovers)
+    rmSync(join(CACHE_ROOT_DIR, name), { recursive: true, force: true });
+  return leftovers.length > 0;
+}
+
 /**
- * Remove the cached Chrome download directory.
+ * Remove the cached Chrome downloads, including leftovers of interrupted installs.
  * Returns true if anything was removed.
  */
 export function clearBrowser(): boolean {
-  if (!existsSync(CACHE_DIR)) {
-    return false;
-  }
+  const removedLeftovers = removeInstallLeftovers();
+  if (!existsSync(CACHE_DIR)) return removedLeftovers;
   rmSync(CACHE_DIR, { recursive: true, force: true });
   return true;
 }
