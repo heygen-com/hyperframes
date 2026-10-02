@@ -9,14 +9,13 @@ export default defineCommand({
   args: {
     harness: {
       type: "string",
-      description: "Harness to read (claude-code); otherwise detect the current harness",
+      description:
+        "Harness to read (claude-code, codex, grok); otherwise detect the current harness",
     },
     json: { type: "boolean", description: "Print the usage and run plan as JSON", default: false },
   },
   async run({ args }) {
-    const harness =
-      args.harness ??
-      (process.env.CLAUDECODE && !process.env.CODEX_THREAD_ID ? "claude-code" : "unknown");
+    const harness = args.harness ?? detectHarness();
     const usage = await readHarnessUsage(harness);
     if (args.json) console.log(JSON.stringify(usage));
     else if (usage.status === "unknown")
@@ -28,3 +27,10 @@ export default defineCommand({
       );
   },
 });
+
+function detectHarness(): string {
+  if (process.env.CODEX_THREAD_ID) return "codex";
+  if (process.env.GROK_AGENT === "1") return "grok";
+  if (process.env.CLAUDECODE) return "claude-code";
+  return "unknown";
+}

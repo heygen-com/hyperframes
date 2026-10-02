@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { parseHarnessUsage } from "./usageBudget.js";
+import { parseHarnessUsage, parseCodexUsage, parseGrokUsage } from "./usageBudget.js";
 
 const windows = (session: number, weekly: number) =>
   JSON.stringify({
@@ -52,4 +52,85 @@ describe("harness usage run plan", () => {
       message: null,
     });
   });
+});
+
+it("maps a sole Codex weekly primary window by its duration", () => {
+  expect(
+    parseCodexUsage(
+      JSON.stringify({
+        rate_limit: {
+          primary_window: { used_percent: 85, limit_window_seconds: 604800, reset_at: 1791504000 },
+        },
+      }),
+    ),
+  ).toMatchObject({
+    status: "known",
+    harness: "codex",
+    session: null,
+    weekly: { remainingPercent: 15 },
+    remainingPercent: 15,
+    plan: "first-cut-first",
+  });
+});
+it("maps Grok weekly credits and preserves its missing session window", () => {
+  expect(
+    parseGrokUsage(
+      JSON.stringify({
+        config: {
+          currentPeriod: {
+            type: "USAGE_PERIOD_TYPE_WEEKLY",
+            start: "2026-10-01T00:00:00Z",
+            end: "2026-10-08T00:00:00Z",
+          },
+          creditUsagePercent: 90,
+        },
+      }),
+    ),
+  ).toMatchObject({
+    status: "known",
+    harness: "grok",
+    session: null,
+    weekly: { remainingPercent: 10 },
+    plan: "first-cut-first",
+  });
+});
+it("honors Grok proto JSON's omitted zero usage", () => {
+  expect(
+    parseGrokUsage(
+      JSON.stringify({
+        config: {
+          currentPeriod: {
+            type: "USAGE_PERIOD_TYPE_WEEKLY",
+            start: "2026-10-01T00:00:00Z",
+            end: "2026-10-08T00:00:00Z",
+          },
+        },
+      }),
+    ),
+  ).toMatchObject({ status: "known", remainingPercent: 100, plan: "standard" });
+});
+it.each([
+  ["codex", "{}"],
+  ["codex", '{"rate_limit":{"primary_window":{"used_percent":101}}}'],
+  [
+    "grok",
+    '{"config":{"currentPeriod":{"type":"USAGE_PERIOD_TYPE_WEEKLY","start":"bad","end":"bad"}}}',
+  ],
+])("returns unknown for invalid %s allowance", (harness, text) => {
+  expect((harness === "codex" ? parseCodexUsage(text) : parseGrokUsage(text)).status).toBe(
+    "unknown",
+  );
+});
+
+it("rejects duplicate Codex window durations instead of losing the tighter limit", () => {
+  expect(
+    parseCodexUsage(
+      JSON.stringify({
+        rate_limit: {
+          primary_window: { used_percent: 90, limit_window_seconds: 18000 },
+          secondary_window: { used_percent: 10, limit_window_seconds: 18000 },
+        },
+      }),
+    ),
+  ).toMatchObject({ status: "unknown", reason: "invalid_usage_response" });
 });

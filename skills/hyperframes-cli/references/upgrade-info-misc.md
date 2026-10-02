@@ -124,3 +124,13 @@ npx hyperframes remove-background
 These produce assets (narration audio, word-level transcripts, transparent video) that get dropped into a composition. Each may download its own model on first run.
 
 For voice selection, Whisper model rules, output format choice, and the TTS → transcript → captions chain, invoke the `media-use` skill. This skill stays focused on the dev loop.
+
+## Remaining harness usage
+
+Before starting a new video, call `npx hyperframes usage --json` once unless the workflow already recorded a usage plan. Use `--harness claude-code`, `--harness codex`, or `--harness grok` to select explicitly.
+
+Known results contain `status`, `harness`, `session`, `weekly`, `remainingPercent`, `plan`, and `message`. Each available window contains `remainingPercent` and `resetsAt`; an unavailable window is `null`. Claude Code reports its shared five-hour and weekly windows. Codex reports its shared session and weekly windows when available. Grok reports its included weekly allowance with `session: null`.
+
+At 20% remaining or less in either available window, `plan` is `first-cut-first` and `message` is the single sentence to tell the user before making the first watchable cut. Otherwise the plan is `standard` and the message is `null`. Preserve requested content, required checks, and render consent.
+
+Unknown results contain `status: "unknown"`, a token-free `reason`, `plan: "standard"`, and `message: null`. Missing, expired, unsupported, ambiguous, or unreadable logins and unavailable provider responses return unknown. Continue the normal workflow; do not guess quota. This command reads existing credentials without refreshing or rewriting them and emits no tokens or telemetry. Remaining allowance is a snapshot, not a reservation or an estimate of the next video's cost.

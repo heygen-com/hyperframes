@@ -124,7 +124,15 @@ const ALLOW = new Set([
 ]);
 
 // Files a skill workflow writes into the user's project at run time; skill docs name them bare.
-const PROJECT_FILES = new Set(["frame.md", "STORYBOARD.md", "SCRIPT.md", "_role.md"]);
+const PROJECT_FILES = new Set([
+  "frame.md",
+  "STORYBOARD.md",
+  "SCRIPT.md",
+  "BRIEF.md",
+  "storyboard.html",
+  "design.md",
+  "_role.md",
+]);
 
 // A URL, an absolute path, a `<sha>:<path>`, build output or a project file: none resolve in the tree.
 function namesSomethingElse(cited) {

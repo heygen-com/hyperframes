@@ -1,7 +1,7 @@
 import Ajv from "ajv/dist/jtd.js";
 import type { JTDDataType } from "ajv/dist/jtd.js";
 
-export const LOW_USAGE_REMAINING_PERCENT = 20;
+const LOW_USAGE_REMAINING_PERCENT = 20;
 const firstCutMessage = (percent: number) =>
   `You have about ${percent}% usage left; I'll make a first watchable cut before polishing.`;
 
@@ -22,9 +22,9 @@ export type HarnessUsage =
   | { status: "unknown"; reason: string; plan: "standard"; message: null }
   | ({
       status: "known";
-      harness: "claude-code";
-      session: UsageWindow;
-      weekly: UsageWindow;
+      harness: "claude-code" | "codex" | "grok";
+      session: UsageWindow | null;
+      weekly: UsageWindow | null;
       remainingPercent: number;
     } & ({ plan: "standard"; message: null } | { plan: "first-cut-first"; message: string }));
 
@@ -57,16 +57,122 @@ export function parseHarnessUsage(text: string): HarnessUsage {
     remainingPercent: 100 - usage.seven_day.utilization,
     resetsAt: usage.seven_day.resets_at ?? null,
   };
-  const remainingPercent = Math.min(session.remainingPercent, weekly.remainingPercent);
-  const low = remainingPercent <= LOW_USAGE_REMAINING_PERCENT;
-  const budget = {
-    status: "known",
-    harness: "claude-code",
-    session,
-    weekly,
-    remainingPercent,
-  } as const;
-  return low
+  return planUsage("claude-code", session, weekly);
+}
+
+function planUsage(
+  harness: "claude-code" | "codex" | "grok",
+  session: UsageWindow | null,
+  weekly: UsageWindow | null,
+): HarnessUsage {
+  const windows = [session, weekly].filter((window): window is UsageWindow => window !== null);
+  if (
+    !windows.length ||
+    windows.some(
+      (window) =>
+        !Number.isFinite(window.remainingPercent) ||
+        window.remainingPercent < 0 ||
+        window.remainingPercent > 100,
+    )
+  )
+    return unknownUsage("invalid_usage_response");
+  const remainingPercent = Math.min(...windows.map((window) => window.remainingPercent));
+  const budget = { status: "known", harness, session, weekly, remainingPercent } as const;
+  return remainingPercent <= LOW_USAGE_REMAINING_PERCENT
     ? { ...budget, plan: "first-cut-first", message: firstCutMessage(Math.floor(remainingPercent)) }
     : { ...budget, plan: "standard", message: null };
+}
+
+const codexWindowSchema = {
+  nullable: true,
+  properties: { used_percent: { type: "float64" } },
+  optionalProperties: {
+    limit_window_seconds: { type: "float64" },
+    reset_at: { type: "float64" },
+    reset_after_seconds: { type: "float64" },
+  },
+  additionalProperties: true,
+} as const;
+const codexSchema = {
+  properties: {
+    rate_limit: {
+      optionalProperties: {
+        primary_window: codexWindowSchema,
+        secondary_window: codexWindowSchema,
+      },
+      additionalProperties: true,
+    },
+  },
+  additionalProperties: true,
+} as const;
+const grokSchema = {
+  properties: {
+    config: {
+      properties: {
+        currentPeriod: {
+          properties: {
+            type: { type: "string" },
+            start: { type: "string" },
+            end: { type: "string" },
+          },
+          additionalProperties: true,
+        },
+      },
+      optionalProperties: { creditUsagePercent: { type: "float64" } },
+      additionalProperties: true,
+    },
+  },
+  additionalProperties: true,
+} as const;
+const parser = new Ajv();
+const parseCodex = parser.compileParser<JTDDataType<typeof codexSchema>>(codexSchema);
+const parseGrok = parser.compileParser<JTDDataType<typeof grokSchema>>(grokSchema);
+
+export function parseCodexUsage(text: string, now = Date.now()): HarnessUsage {
+  const usage = parseCodex(text);
+  if (!usage) return unknownUsage("invalid_usage_response");
+  let session: UsageWindow | null = null;
+  let weekly: UsageWindow | null = null;
+  for (const [index, raw] of [
+    usage.rate_limit.primary_window,
+    usage.rate_limit.secondary_window,
+  ].entries()) {
+    if (!raw) continue;
+    const seconds = raw.limit_window_seconds;
+    const reset =
+      raw.reset_at ??
+      (raw.reset_after_seconds === undefined ? undefined : now / 1000 + raw.reset_after_seconds);
+    if (
+      reset !== undefined &&
+      (!Number.isFinite(reset) || Math.abs(reset * 1000) > 8640000000000000)
+    )
+      return unknownUsage("invalid_usage_response");
+    const window = {
+      remainingPercent: 100 - raw.used_percent,
+      resetsAt: reset === undefined ? null : new Date(reset * 1000).toISOString(),
+    };
+    if (seconds === 18000 || (seconds === undefined && index === 0)) {
+      if (session !== null) return unknownUsage("invalid_usage_response");
+      session = window;
+    } else if (seconds === 604800 || (seconds === undefined && index === 1)) {
+      if (weekly !== null) return unknownUsage("invalid_usage_response");
+      weekly = window;
+    } else return unknownUsage("unsupported_usage_window");
+  }
+  return planUsage("codex", session, weekly);
+}
+
+export function parseGrokUsage(text: string): HarnessUsage {
+  const usage = parseGrok(text);
+  if (!usage) return unknownUsage("invalid_usage_response");
+  const period = usage.config.currentPeriod;
+  const start = Date.parse(period.start);
+  const end = Date.parse(period.end);
+  if (!Number.isFinite(start) || !Number.isFinite(end) || end <= start)
+    return unknownUsage("invalid_usage_response");
+  if (period.type !== "USAGE_PERIOD_TYPE_WEEKLY") return unknownUsage("unsupported_usage_window");
+  return planUsage("grok", null, {
+    remainingPercent: 100 - (usage.config.creditUsagePercent ?? 0),
+    resetsAt: new Date(end).toISOString(),
+  });
 }

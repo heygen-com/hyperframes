@@ -178,3 +178,13 @@ Two entries in `hyperframes --help` are not part of the authoring loop, and reac
 
 - `events` is the telemetry endpoint skills use to report their **own** invocation, ideally from a bundled script. It emits an anonymous event and exits 0 no matter what you pass it. It is not a way to read telemetry back, and an agent has no reason to call it by hand.
 - `validate`, `inspect`, and `layout` are deprecated aliases kept for old scripts. `check` is the one that is maintained, and it is what every reference in this skill assumes.
+
+## Remaining harness usage
+
+Before starting a new video, call `npx hyperframes usage --json` once unless the workflow already recorded a usage plan. Use `--harness claude-code`, `--harness codex`, or `--harness grok` to select explicitly.
+
+Known results contain `status`, `harness`, `session`, `weekly`, `remainingPercent`, `plan`, and `message`. Each available window contains `remainingPercent` and `resetsAt`; an unavailable window is `null`. Claude Code reports its shared five-hour and weekly windows. Codex reports its shared session and weekly windows when available. Grok reports its included weekly allowance with `session: null`.
+
+At 20% remaining or less in either available window, `plan` is `first-cut-first` and `message` is the single sentence to tell the user before making the first watchable cut. Otherwise the plan is `standard` and the message is `null`. Preserve requested content, required checks, and render consent.
+
+Unknown results contain `status: "unknown"`, a token-free `reason`, `plan: "standard"`, and `message: null`. Missing, expired, unsupported, ambiguous, or unreadable logins and unavailable provider responses return unknown. Continue the normal workflow; do not guess quota. This command reads existing credentials without refreshing or rewriting them and emits no tokens or telemetry. Remaining allowance is a snapshot, not a reservation or an estimate of the next video's cost.
