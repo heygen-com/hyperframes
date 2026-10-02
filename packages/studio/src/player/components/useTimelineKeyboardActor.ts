@@ -17,14 +17,17 @@ interface TimelineKeyboardActorInput {
   onDrillDown?: (element: TimelineElement) => void;
 }
 
-function eventTarget(event: FocusEvent | KeyboardEvent): HTMLElement | null {
-  if (!(event.target instanceof Element)) return null;
+export function timelineKeyboardEventTarget(
+  target: EventTarget | null,
+  container: HTMLElement,
+): HTMLElement | null {
+  if (!(target instanceof Element)) return null;
   // Header actions stay native Tab stops because they have no row-level shortcut.
   // The nearest interactive ancestor wins so their events never masquerade as row events.
-  const target = event.target.closest<HTMLElement>(
+  const nearest = target.closest<HTMLElement>(
     "button, input, select, textarea, a[href], [contenteditable], [role='slider'], [data-timeline-focus-id]",
   );
-  return target?.dataset.timelineFocusId && event.currentTarget.contains(target) ? target : null;
+  return nearest?.dataset.timelineFocusId && container.contains(nearest) ? nearest : null;
 }
 
 function viewportPageSize(
@@ -87,7 +90,8 @@ export function useTimelineKeyboardActor({
 
   const onFocus = useCallback(
     (event: FocusEvent<HTMLElement>) => {
-      const id = eventTarget(event)?.dataset.timelineFocusId;
+      const id = timelineKeyboardEventTarget(event.target, event.currentTarget)?.dataset
+        .timelineFocusId;
       if (id && id !== focusedTargetId) usePlayerStore.getState().requestTimelineFocus(id);
     },
     // ponytail: This closure must see the current id or coordinator-driven focus bumps the nonce twice.
@@ -98,7 +102,7 @@ export function useTimelineKeyboardActor({
     // One handler owns navigation, context-menu, and disclosure keyboard semantics.
     // fallow-ignore-next-line complexity
     (event: KeyboardEvent<HTMLElement>) => {
-      const targetElement = eventTarget(event);
+      const targetElement = timelineKeyboardEventTarget(event.target, event.currentTarget);
       const id = targetElement?.dataset.timelineFocusId;
       if (!targetElement || !id) return;
       const located = locateTimelineLogicalTarget(logicalRows, id);

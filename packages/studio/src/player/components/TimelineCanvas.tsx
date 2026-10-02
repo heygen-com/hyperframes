@@ -16,7 +16,9 @@ export const TimelineCanvas = memo(function TimelineCanvas() {
   const props = state.canvas;
   const { draggedClip, scrollRef, displayTrackOrder } = props;
   const draggedRowIndex =
-    draggedClip?.started === true ? displayTrackOrder.indexOf(draggedClip.previewTrack) : -1;
+    draggedClip?.started === true
+      ? (draggedClip.insertRow ?? displayTrackOrder.indexOf(draggedClip.previewTrack))
+      : -1;
   const dropTrackIndex = props.dropPreview
     ? displayTrackOrder.indexOf(props.dropPreview.track)
     : -1;
@@ -168,7 +170,7 @@ export const TimelineCanvas = memo(function TimelineCanvas() {
 
       {/* Insertion line — a new track will be inserted at this boundary on drop.
           Shown while the pointer is near a lane boundary (insert mode). */}
-      {insertLineRow != null && (
+      {insertLineRow != null && !draggedClip?.started && (
         <div
           data-testid="timeline-insert-line"
           className="absolute pointer-events-none"
@@ -211,6 +213,8 @@ export const TimelineCanvas = memo(function TimelineCanvas() {
         scrollRef={scrollRef}
         pixelsPerSecond={props.pps}
         rowHeight={draggedClipHeight}
+        rowGeometry={props.rowGeometry}
+        contentOrigin={props.contentOrigin}
         selectedElementId={props.selectedElementId}
         currentTime={props.currentTime}
         theme={props.theme}

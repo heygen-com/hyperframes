@@ -6,7 +6,12 @@ import {
 } from "./timelineGroupEditing";
 import type { TimelineElement } from "../store/playerStore";
 import { clampToHostStart } from "../store/timelineElement";
-import { getTimelineRowFromY } from "./timelineLayout";
+import {
+  CLIP_Y,
+  TRACK_H,
+  getTimelineRowGeometry,
+  type TimelineRowGeometry,
+} from "./timelineLayout";
 import { isMusicTrack, isAudioTimelineElement } from "../../utils/timelineInspector";
 import {
   TIMELINE_SNAP_PX,
@@ -38,6 +43,9 @@ export interface DragPreviewContext {
   duration: number;
   trackOrder: number[];
   rowHeights?: readonly number[];
+  rowGeometry?: TimelineRowGeometry;
+  allowedInsertRows?: ReadonlySet<number>;
+  groupTracks?: ReadonlyMap<number, readonly number[]>;
   elements: TimelineElement[];
   selectedKeys: ReadonlySet<string>;
   buildSnapTargets: BuildSnapTargets;
@@ -48,6 +56,33 @@ export interface DragPreviewContext {
    * on demand from `elements`, so the result is identical either way.
    */
   audioTracks?: ReadonlySet<number>;
+}
+
+export function createKeyboardClipDrag(
+  element: TimelineElement,
+  insertRow: number,
+  scrollLeft: number,
+  scrollTop: number,
+): DraggedClipState {
+  return {
+    pointerId: null,
+    element,
+    insertRow,
+    started: true,
+    previewStart: element.start,
+    previewTrack: element.track,
+    desiredTrack: element.track,
+    originClientX: 0,
+    originClientY: 0,
+    originScrollLeft: scrollLeft,
+    originScrollTop: scrollTop,
+    pointerClientX: 0,
+    pointerClientY: 0,
+    pointerOffsetX: 0,
+    pointerOffsetY: 0,
+    snapTime: null,
+    snapType: null,
+  };
 }
 
 /** Content-space position for the stable viewport drag actor. */
@@ -73,22 +108,42 @@ function resolveDragMaxStart(scroll: HTMLDivElement | null, pps: number, duratio
   return Math.max(duration, scroll && pps > 0 ? scroll.scrollWidth / pps : duration);
 }
 
+const INSERT_SEAM_PX = CLIP_Y;
+
+function dragRowAim(
+  drag: DraggedClipState,
+  clientY: number,
+  ctx: DragPreviewContext,
+  geometry: TimelineRowGeometry,
+) {
+  let y = clientY - (ctx.scroll?.getBoundingClientRect().top ?? 0) + (ctx.scroll?.scrollTop ?? 0);
+  if (drag.started && drag.insertRow !== null) {
+    const top = geometry.getRowTop(drag.insertRow);
+    if (y >= top - INSERT_SEAM_PX && y <= top + TRACK_H + INSERT_SEAM_PX)
+      return { rowFloat: drag.insertRow, insertRow: drag.insertRow };
+    if (y > top + TRACK_H) y -= TRACK_H;
+  }
+  const rowFloat = geometry.getRowFromY(y);
+  const boundary = Math.round(rowFloat);
+  const nearSeam = Math.abs(y - geometry.getRowTop(boundary)) <= INSERT_SEAM_PX;
+  let insertRow = nearSeam
+    ? Math.max(0, Math.min(ctx.trackOrder.length, boundary))
+    : resolveInsertRow(rowFloat, ctx.trackOrder.length);
+  if (insertRow !== null && ctx.allowedInsertRows && !ctx.allowedInsertRows.has(insertRow))
+    insertRow = null;
+  return { rowFloat, insertRow };
+}
+
 /** The drop decision for the pointer's row (see resolveZoneDropPlacement). */
 function resolveDropPlacement(
   drag: DraggedClipState,
-  clientY: number,
+  aim: ReturnType<typeof dragRowAim>,
   previewStart: number,
   desiredTrack: number,
   ctx: DragPreviewContext,
   group: GroupDrag,
 ): { track: number; insertRow: number | null; start: number } {
-  const { scroll, trackOrder, rowHeights, elements } = ctx;
-  const rowFloat = scroll
-    ? getTimelineRowFromY(
-        clientY - scroll.getBoundingClientRect().top + scroll.scrollTop,
-        rowHeights,
-      )
-    : 0;
+  const { trackOrder, elements } = ctx;
   const dragKey = drag.element.key ?? drag.element.id;
   const audioTracks =
     ctx.audioTracks ?? new Set(elements.filter(isAudioTimelineElement).map((e) => e.track));
@@ -97,7 +152,9 @@ function resolveDropPlacement(
     audioTracks,
     elements: group.obstacles,
     desiredTrack,
-    deliberateInsertRow: resolveInsertRow(rowFloat, trackOrder.length),
+    deliberateInsertRow: aim.insertRow,
+    allowedInsertRows: ctx.allowedInsertRows,
+    groupTracks: ctx.groupTracks,
     start: previewStart,
     duration: drag.element.duration,
     dragKey,
@@ -144,13 +201,12 @@ export function computeDragPreview(
 ): DraggedClipState {
   const { scroll, pps, duration, trackOrder, buildSnapTargets } = ctx;
   const dragMaxStart = resolveDragMaxStart(scroll, pps, duration);
-  const scrollTop = scroll?.scrollTop ?? drag.originScrollTop;
   const scrollRectTop = scroll?.getBoundingClientRect().top ?? 0;
-  const originRow = getTimelineRowFromY(
-    drag.originClientY - scrollRectTop + drag.originScrollTop,
-    ctx.rowHeights,
-  );
-  const currentRow = getTimelineRowFromY(clientY - scrollRectTop + scrollTop, ctx.rowHeights);
+  const geometry =
+    ctx.rowGeometry ?? getTimelineRowGeometry(ctx.rowHeights ?? ctx.trackOrder.map(() => TRACK_H));
+  const originRow = geometry.getRowFromY(drag.originClientY - scrollRectTop + drag.originScrollTop);
+  const aim = dragRowAim(drag, clientY, ctx, geometry);
+  const currentRow = aim.rowFloat;
   // resolveTimelineMove's vertical axis is row indices, which is why the pointer
   // and scroll pixels are folded into originRow/currentRow above.
   const nextMove = resolveTimelineMove(
@@ -196,7 +252,7 @@ export function computeDragPreview(
   const origin = drag.element.start;
   const floored = Math.max(snap.start, group.floor);
   const previewStart = origin + Math.max(shift.min, Math.min(floored - origin, shift.max));
-  const placement = resolveDropPlacement(drag, clientY, previewStart, nextMove.track, ctx, group);
+  const placement = resolveDropPlacement(drag, aim, previewStart, nextMove.track, ctx, group);
   const placedShift = placement.start - origin;
   if (placedShift < shift.min - SHIFT_EPSILON_S || placedShift > shift.max + SHIFT_EPSILON_S) {
     return { ...drag, started: true };

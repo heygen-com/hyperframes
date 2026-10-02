@@ -155,6 +155,7 @@ export function useTimelineProviderState({
     trackStyles,
     trackOrder,
     trackOrderRef,
+    trackInsertLayoutRef,
     laneCounts,
     rowGeometry,
     rowGeometryRef,
@@ -213,6 +214,7 @@ export function useTimelineProviderState({
     ppsRef,
     durationRef,
     trackOrderRef,
+    trackInsertLayoutRef,
     rowGeometryRef,
     onMoveElement: pinnedOnMoveElement,
     onMoveElements: pinnedOnMoveElements,
@@ -272,6 +274,13 @@ export function useTimelineProviderState({
       lastScrollLeftRef,
       contentOrigin,
     });
+  let draggedRowKey: number | undefined;
+  if (draggedClip?.started) {
+    draggedRowKey =
+      draggedClip.insertRow !== null
+        ? displayLayout.rowGeometry.rowKeys[draggedClip.insertRow]
+        : draggedClip.previewTrack;
+  }
   const timelineFocus = useTimelineLogicalFocus({
     scrollRef,
     tracks,
@@ -288,7 +297,7 @@ export function useTimelineProviderState({
     allowHorizontal: zoomMode === "manual",
     viewport,
     sessionEpoch,
-    draggedRowKey: draggedClip?.started ? draggedClip.previewTrack : undefined,
+    draggedRowKey,
     resizingElementIds,
     clipContextMenuRowKey: clipContextMenu?.element.track,
     keyframeContextMenuRowKey: kfContextMenu?.element.track,

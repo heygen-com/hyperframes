@@ -5,9 +5,11 @@ import type {
   TimelineGroupMoveChange,
 } from "./useTimelineGroupEditing";
 
+export type TimelineMoveUpdates = Pick<TimelineElement, "start" | "track"> & { audioGroup?: null };
+
 export interface TimelineMoveEdit {
   element: TimelineElement;
-  updates: Pick<TimelineElement, "start" | "track">;
+  updates: TimelineMoveUpdates;
 }
 
 interface AtomicMoveDeps {
@@ -37,6 +39,7 @@ export function persistTimelineMoveEditsAtomically(
     edits.map(({ element, updates }) => ({
       element,
       start: updates.start,
+      audioGroup: updates.audioGroup,
       // Stable track lanes: a lane is the authored data-track-index, so every
       // vertical gesture (lane-reorder AND track-insert) must persist the track;
       // z is paint order only and is synced separately. Plain horizontal moves

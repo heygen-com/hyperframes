@@ -54,7 +54,6 @@ export function TimelineLanes({
   pinnedClipIdentities,
   trackOrder,
   tracks,
-  trackStyles,
   groups,
   laneCounts,
   selectedElementId,
@@ -197,9 +196,26 @@ export function TimelineLanes({
                 actorWindows,
               )
             : els;
-          const ts = trackStyles.get(trackNum) ?? getTrackStyle("");
           const isPendingTrack =
             draggedClip?.started === true && !trackOrder.includes(trackNum) && els.length === 0;
+          if (isPendingTrack)
+            return (
+              <div
+                key={rowKey}
+                data-timeline-new-track-lane={row}
+                aria-hidden="true"
+                className={rowsVirtualized ? "absolute" : "relative"}
+                style={{
+                  top: rowsVirtualized ? rowGeometry.getRowTop(row) : undefined,
+                  marginLeft: contentOrigin,
+                  width: trackContentWidth,
+                  height: TRACK_H,
+                  border: "1px dashed var(--timeline-accent)",
+                  background: "color-mix(in srgb, var(--timeline-accent) 5%, transparent)",
+                  pointerEvents: "none",
+                }}
+              />
+            );
           const rowBackground = theme.rowBackground;
           const beatStripOnTrack = trackShowsBeatStrip(els, beatAnalysis?.beatTimes, {
             selectedElementId,
@@ -342,20 +358,6 @@ export function TimelineLanes({
                     pps={pps}
                     renderTimeRange={rowsVirtualized ? renderTimeRange : undefined}
                   />
-                )}
-                {isPendingTrack && (
-                  <div
-                    className="absolute inset-0 flex items-center"
-                    style={{
-                      paddingLeft: 16,
-                      color: ts.label,
-                      fontSize: 11,
-                      letterSpacing: "0.06em",
-                      textTransform: "uppercase",
-                    }}
-                  >
-                    New track
-                  </div>
                 )}
                 {
                   // fallow-ignore-next-line complexity

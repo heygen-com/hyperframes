@@ -238,6 +238,7 @@ export function buildTimelineMoveTimingPatch(
   start: number,
   duration: number,
   track?: number,
+  audioGroup?: null,
 ): string {
   if (!Number.isFinite(start) || !Number.isFinite(duration)) {
     console.warn(
@@ -257,6 +258,12 @@ export function buildTimelineMoveTimingPatch(
       value: formatTimelineAttributeNumber(track),
     });
   }
+  if (audioGroup === null)
+    patched = applyPatchByTarget(patched, target, {
+      type: "attribute",
+      property: "data-audio-group",
+      value: null,
+    });
   // Content-driven duration: sync data-duration to the furthest clip end read
   // from the PATCHED SOURCE (raw data-duration), so it grows if a clip moved
   // past the end and shrinks if the furthest clip moved left. Measured from the

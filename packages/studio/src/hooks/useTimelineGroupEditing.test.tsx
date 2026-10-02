@@ -4,6 +4,7 @@ import { act } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { Root } from "react-dom/client";
 import type { TimelineElement } from "../player";
+import { persistTimelineMoveEditsAtomically } from "./timelineMoveAdapter";
 import { useTimelineGroupEditing } from "./useTimelineGroupEditing";
 import { installReactActEnvironment, mountReactHarness } from "./domSelectionTestHarness";
 
@@ -72,3 +73,79 @@ describe("useTimelineGroupEditing: handleTimelineGroupMove suppressFailureToast"
     expect(showToast).toHaveBeenCalledTimes(1);
   });
 });
+
+it.each([false, true])(
+  "keeps detachment and the lane atomic, including a refused history write ($0)",
+  async (refused) => {
+    const before =
+      '<main data-composition-id="root" data-duration="4"><audio id="voice" data-start="0" data-duration="2" data-track-index="1" data-audio-group="group"></audio></main>';
+    let disk = before;
+    const failure = new Error("history refused");
+    const recordEdit = refused ? vi.fn().mockRejectedValue(failure) : vi.fn();
+    const iframe = document.createElement("iframe");
+    document.body.append(iframe);
+    iframe.contentDocument!.body.innerHTML = before;
+    const writeProjectFile = vi.fn(async (_path: string, content: string) => {
+      disk = content;
+    });
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(
+        async () =>
+          new Response(JSON.stringify({ content: disk }), {
+            headers: { "content-type": "application/json" },
+          }),
+      ),
+    );
+    let hook: ReturnType<typeof useTimelineGroupEditing>;
+    function Harness() {
+      hook = useTimelineGroupEditing({
+        activeCompPath: "index.html",
+        editQueueRef: { current: Promise.resolve() },
+        pendingTimelineEditPathRef: { current: new Set() },
+        previewIframeRef: { current: iframe },
+        projectIdRef: { current: "fixture" },
+        recordEdit,
+        writeProjectFile,
+        reloadPreview: vi.fn(),
+        showToast: vi.fn(),
+      });
+      return null;
+    }
+    const root = mountReactHarness(<Harness />);
+    try {
+      await act(async () => {
+        const moved = persistTimelineMoveEditsAtomically(
+          [
+            {
+              element: { ...el("voice", 0, 2, 1), tag: "audio", audioGroup: "group" },
+              updates: { start: 0, track: 0, audioGroup: null },
+            },
+          ],
+          "insert",
+          "track-insert",
+          { handleTimelineGroupMove: hook!.handleTimelineGroupMove },
+        );
+        if (refused) await expect(moved).rejects.toBe(failure);
+        else await moved;
+      });
+      expect(
+        iframe.contentDocument!.getElementById("voice")?.getAttribute("data-audio-group"),
+      ).toBe("group");
+      if (refused) {
+        expect(disk).toBe(before);
+        expect(writeProjectFile).toHaveBeenCalledTimes(2);
+        return;
+      }
+      expect(writeProjectFile).toHaveBeenCalledOnce();
+      expect(recordEdit).toHaveBeenCalledOnce();
+      expect(disk).not.toContain("data-audio-group");
+      expect(disk).toContain('data-track-index="0"');
+      expect(recordEdit.mock.calls[0][0].files["index.html"]).toEqual({ before, after: disk });
+    } finally {
+      act(() => root.unmount());
+      iframe.remove();
+      vi.unstubAllGlobals();
+    }
+  },
+);

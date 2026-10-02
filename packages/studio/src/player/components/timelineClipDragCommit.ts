@@ -6,12 +6,13 @@ import type { DraggedClipState } from "./useTimelineClipDrag";
 import type { ZMirrorLaneMove } from "./timelineZMirror";
 import { classifyZone } from "./timelineZones";
 import { layoutAfterTrackInsert } from "./timelineDragLanding";
+import type { TimelineTrackInsertLayout } from "./timelineTrackInsertLayout";
 import { computeStackingPatches, type StackingPatch } from "./timelineStackingSync";
 import {
   canMoveTimelineElement as canMoveElement,
   resolveExpandedHostAlias,
 } from "./timelineAuthoredMoveTarget";
-import type { TimelineMoveOperation } from "../../hooks/timelineMoveAdapter";
+import type { TimelineMoveOperation, TimelineMoveUpdates } from "../../hooks/timelineMoveAdapter";
 import {
   beginTimelineOptimisticGesture,
   isLatestTimelineOptimisticGesture,
@@ -21,7 +22,7 @@ import { refreshAfterDurableLaneMove } from "./timelineLaneMoveRefresh";
 import { authoredTrackForLane } from "./timelineAuthoredTrack";
 import { resolveGroupMovers } from "./timelineMultiDragPreview";
 
-type StartTrack = Pick<TimelineElement, "start" | "track">;
+type StartTrack = TimelineMoveUpdates;
 export interface TimelineMoveEdit {
   element: TimelineElement;
   updates: StartTrack;
@@ -37,6 +38,7 @@ export interface TimelineMoveEdit {
 export interface DragCommitDeps {
   elements: TimelineElement[];
   trackOrder: number[];
+  trackInsertLayout?: TimelineTrackInsertLayout;
   updateElement: (key: string, updates: Partial<TimelineElement>) => void;
   /** Single-clip, SDK-cutover-aware persist (pure time-moves keep this path). */
   onMoveElement?: (element: TimelineElement, updates: StartTrack) => Promise<void> | void;
@@ -123,9 +125,12 @@ export function persistMoveEdits(
   }
   const prev = edits.map((e) => ({
     key: keyOf(e.element),
-    start: e.element.start,
-    track: e.element.track,
-    authoredTrack: e.element.authoredTrack,
+    updates: {
+      start: e.element.start,
+      track: e.element.track,
+      authoredTrack: e.element.authoredTrack,
+      ...(e.updates.audioGroup === null ? { audioGroup: e.element.audioGroup } : {}),
+    },
   }));
   const revision = beginTimelineOptimisticGesture(
     updateElement,
@@ -139,9 +144,11 @@ export function persistMoveEdits(
   const applyEdit = (e: TimelineMoveEdit) => {
     const writtenTrack =
       e.persistTrack ?? (e.updates.track !== e.element.track ? e.updates.track : undefined);
+    const { audioGroup, ...timing } = e.updates;
+    const updates = audioGroup === null ? { ...timing, audioGroup: undefined } : timing;
     updateElement(
       keyOf(e.element),
-      writtenTrack == null ? e.updates : { ...e.updates, authoredTrack: writtenTrack },
+      writtenTrack == null ? updates : { ...updates, authoredTrack: writtenTrack },
     );
   };
   for (const e of edits) applyEdit(e);
@@ -170,7 +177,7 @@ export function persistMoveEdits(
     (error) => {
       for (const p of prev) {
         if (isLatestTimelineOptimisticGesture(updateElement, revision, p.key)) {
-          updateElement(p.key, { start: p.start, track: p.track, authoredTrack: p.authoredTrack });
+          updateElement(p.key, p.updates);
         }
       }
       console.error("[Timeline] Failed to persist clip edits", error);
@@ -370,7 +377,14 @@ function buildTrackInsertEdits(
     let start = src.start;
     if (normKey === editKey) start = previewStart;
     else if (multi?.keys.has(normKey)) start = multi.movedStart(src);
-    edits.push({ element: src, updates: { start, track: norm.track } });
+    edits.push({
+      element: src,
+      updates: {
+        start,
+        track: norm.track,
+        ...(normKey === editKey && src.audioGroup ? { audioGroup: null } : {}),
+      },
+    });
   }
   return { candidate, edits };
 }

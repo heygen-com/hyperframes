@@ -1,5 +1,14 @@
 import type { TimelineElement } from "../store/playerStore";
 
+/** Group headers mark the audio zone even when their member rows are collapsed. */
+export function timelineAudioRow(
+  order: number[],
+  audioTracks: ReadonlySet<number>,
+  groupTracks?: ReadonlyMap<number, readonly number[]>,
+): number {
+  return order.findIndex((track) => audioTracks.has(track) || groupTracks?.has(track));
+}
+
 /**
  * Keep a landing track inside the dragged clip's kind-zone: visual clips stay in
  * the rows ABOVE the first audio lane; audio clips stay AT/BELOW it. Prevents a
@@ -31,7 +40,10 @@ export function isInsertAllowedForZone(
   insertRow: number,
   audioRow: number,
   isAudio: boolean,
+  allowedRows?: ReadonlySet<number>,
 ): boolean {
+  if (allowedRows && !allowedRows.has(insertRow)) return false;
+  while (audioRow > 0 && allowedRows && !allowedRows.has(audioRow)) audioRow--;
   if (audioRow < 0) return true;
   return isAudio ? insertRow >= audioRow : insertRow <= audioRow;
 }
@@ -104,14 +116,15 @@ export function resolveNearestFreeStart(
   return clear ? origin : best;
 }
 
-// Where a dragged clip lands: on the aimed row of its kind, at the nearest free time there. Only an aim outside all
-// rows, or into a kind with no row yet, opens a track (`insertRow`).
+// A deliberate seam opens a track; other aims land at the nearest free time on a row of the clip's kind.
 export function resolveZoneDropPlacement(input: {
   order: number[];
   audioTracks: ReadonlySet<number>;
   elements: TimelineElement[];
   desiredTrack: number;
   deliberateInsertRow: number | null;
+  allowedInsertRows?: ReadonlySet<number>;
+  groupTracks?: ReadonlyMap<number, readonly number[]>;
   start: number;
   duration: number;
   dragKey: string;
@@ -123,24 +136,41 @@ export function resolveZoneDropPlacement(input: {
 }): { track: number; insertRow: number | null; start: number } {
   const { order, audioTracks, elements, desiredTrack, deliberateInsertRow } = input;
   const { start, duration, dragKey, isAudio, minStart } = input;
-  const audioRow = order.findIndex((t) => audioTracks.has(t));
+  const audioRow = timelineAudioRow(order, audioTracks, input.groupTracks);
 
   if (
     deliberateInsertRow !== null &&
-    isInsertAllowedForZone(deliberateInsertRow, audioRow, isAudio)
+    isInsertAllowedForZone(deliberateInsertRow, audioRow, isAudio, input.allowedInsertRows)
   ) {
     return { track: desiredTrack, insertRow: deliberateInsertRow, start };
   }
 
-  const desired = clampTrackToZone(desiredTrack, order, audioRow, isAudio);
-  const zoneTracks = order.filter((t) => audioTracks.has(t) === isAudio);
+  const members = input.groupTracks?.get(desiredTrack);
+  let aim = desiredTrack;
+  if (members) {
+    const member = order.find(
+      (track) => members.includes(track) && audioTracks.has(track) === isAudio,
+    );
+    if (member === undefined) {
+      if (!input.origin) throw new Error("Group-header drop requires the clip origin");
+      return { ...input.origin, insertRow: null };
+    }
+    aim = member;
+  }
+  const firstVisibleAudioRow = order.findIndex((track) => audioTracks.has(track));
+  const desired = clampTrackToZone(aim, order, isAudio ? firstVisibleAudioRow : audioRow, isAudio);
+  const zoneTracks = order.filter(
+    (t) => !input.groupTracks?.has(t) && audioTracks.has(t) === isAudio,
+  );
   // Only when the aim is outside the rows, or the clip's zone has no row yet.
   if (!zoneTracks.includes(desired)) {
     const desiredRow = order.indexOf(desired);
-    const insertRow =
-      desiredRow < 0
+    let insertRow =
+      desiredRow < 0 || zoneTracks.length === 0
         ? outOfRangeZoneInsertRow(order, zoneTracks, audioRow, desired)
         : desiredRow + 1;
+    while (insertRow > 0 && input.allowedInsertRows && !input.allowedInsertRows.has(insertRow))
+      insertRow--;
     return { track: desired, insertRow, start };
   }
   const origin = input.origin?.track === desired ? input.origin.start : null;

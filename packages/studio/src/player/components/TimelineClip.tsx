@@ -136,6 +136,12 @@ export const TimelineClip = memo(function TimelineClip({
       tabIndex={isGestureActor ? undefined : tabIndex}
       aria-label={`${displayLabel}, ${startLabel} to ${endLabel} seconds`}
       aria-pressed={isGestureActor ? undefined : isSelected}
+      aria-keyshortcuts={isGestureActor || !capabilities.canMove ? undefined : "Space"}
+      aria-description={
+        isGestureActor || !capabilities.canMove
+          ? undefined
+          : "Space picks up. Up and Down choose a new track. Enter drops. Escape cancels."
+      }
       className={clipClassName}
       style={style}
       title={

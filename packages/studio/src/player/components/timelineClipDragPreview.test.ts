@@ -8,7 +8,13 @@ import {
 } from "./timelineClipDragPreview";
 import type { DraggedClipState } from "./timelineClipDragTypes";
 import { commitDraggedClipMove, persistMoveEdits } from "./timelineClipDragCommit";
-import { LANE_H, RULER_H, TRACKS_TOP_PAD, TRACK_H } from "./timelineLayout";
+import {
+  LANE_H,
+  RULER_H,
+  TRACKS_TOP_PAD,
+  TRACK_H,
+  createTimelineRowGeometry,
+} from "./timelineLayout";
 import { isMultiDragPassenger } from "./timelineMultiDragPreview";
 import { resolveMultiDragPreview } from "./timelineProviderStateBuilders";
 
@@ -110,6 +116,20 @@ function horizontalDrag(
 }
 
 describe("computeDragPreview — plain horizontal drag never arms a phantom insert (BUG 1)", () => {
+  it("opens the physical seam below a zero-padding ruler and keeps it armed inside the new lane", () => {
+    const geometry = createTimelineRowGeometry([0, 1, 2], [104, 48, 48], { top: 0 });
+    const context = { ...ctx(geometry.rowHeights), rowGeometry: geometry };
+    const { drag, clientX } = horizontalDrag(moodboard, 0.5, 2);
+    const top = computeDragPreview(drag, clientX, 24, context);
+    expect(top.insertRow).toBe(0);
+    const between = computeDragPreview(drag, clientX, 128, context);
+    expect(between.insertRow).toBe(1);
+    const inside = computeDragPreview(between, clientX, 150, context);
+    expect(inside.insertRow).toBe(1);
+    const below = computeDragPreview(inside, clientX, 202, context);
+    expect(below.insertRow).toBeNull();
+  });
+
   it("dragging v-moodboard +2s while grabbing its clip body keeps it a pure time move", () => {
     const { drag, clientX, clientY } = horizontalDrag(moodboard, 0.5, 2);
     const next = computeDragPreview(drag, clientX, clientY, ctx());
@@ -470,11 +490,10 @@ describe("computeDragPreview — the ghost start is the committed start", () => 
       expect(committedStart(ghost, tag, rows)).toBe(10);
     });
 
-    it("the edge of a row is still that row, not a new track", () => {
+    it("a clip aimed at a seam opens a new track at that boundary", () => {
       for (const edge of [0.02, 0.98, 1.02]) {
         const ghost = preview(tag, rows, 2, edge);
-        expect(ghost.insertRow).toBeNull();
-        expect(ghost.previewTrack).toBe(Math.floor(edge));
+        expect(ghost.insertRow).toBe(Math.round(edge));
       }
     });
   });

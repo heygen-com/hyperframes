@@ -37,6 +37,7 @@ export interface TimelineGroupMoveChange {
   element: TimelineElement;
   start: number;
   track?: number;
+  audioGroup?: null;
 }
 
 export interface TimelineGroupResizeChange {
@@ -296,7 +297,9 @@ export function useTimelineGroupEditing({
           sdkChanges: toSdkTimingChanges(changes, (change) => ({
             start: toAuthoredStart(change.element, change.start),
           })),
-          eligible: changes.every((change) => change.track == null),
+          eligible: changes.every(
+            (change) => change.track == null && change.audioGroup === undefined,
+          ),
           needsExtension,
           label,
           coalesceKey,
@@ -315,6 +318,7 @@ export function useTimelineGroupEditing({
                   toAuthoredStart(change.element, change.start),
                   change.element.duration,
                   change.track,
+                  change.audioGroup,
                 ),
             })),
             coalesceKey,

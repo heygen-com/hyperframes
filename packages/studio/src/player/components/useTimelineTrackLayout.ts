@@ -6,6 +6,7 @@ import { elementAutomationLanes, groupAutomationLanes } from "./automationLaneDa
 import { usePlayerStore, type TimelineElement } from "../store/playerStore";
 import type { DraggedClipState } from "./timelineClipDragTypes";
 import { useTimelineTrackDerivations } from "./useTimelineTrackDerivations";
+import { buildTimelineTrackInsertLayout } from "./timelineTrackInsertLayout";
 import {
   TRACK_H,
   createTimelineRowGeometry,
@@ -246,6 +247,12 @@ export function useTimelineTrackLayout(
     useTimelineTrackDerivations(expandedElements);
   const trackOrderRef = useRef(trackOrder);
   trackOrderRef.current = trackOrder;
+  const trackInsertLayout = useMemo(
+    () => (groups.length > 0 ? buildTimelineTrackInsertLayout(trackOrder, groups) : undefined),
+    [trackOrder, groups],
+  );
+  const trackInsertLayoutRef = useRef(trackInsertLayout);
+  trackInsertLayoutRef.current = trackInsertLayout;
   const { laneCounts, rowGeometry, rowGeometryRef, rowHeights } = useTimelineRowHeights(
     tracks,
     gsapAnimations,
@@ -260,6 +267,7 @@ export function useTimelineTrackLayout(
     trackStyles,
     trackOrder,
     trackOrderRef,
+    trackInsertLayoutRef,
     laneCounts,
     rowGeometry,
     rowGeometryRef,
@@ -284,14 +292,24 @@ function useDisplayRowHeights(
 }
 
 function useDisplayTrackOrder(draggedClip: DraggedClipState | null, trackOrder: number[]) {
+  const started = draggedClip?.started === true;
+  const insertRow = draggedClip?.insertRow ?? null;
+  const previewTrack = draggedClip?.previewTrack;
   return useMemo(() => {
-    if (!draggedClip?.started || trackOrder.includes(draggedClip.previewTrack)) return trackOrder;
+    if (!started || previewTrack === undefined) return trackOrder;
+    if (insertRow !== null) {
+      const pendingKey = trackOrder.reduce((lowest, key) => Math.min(lowest, key), 0) - 1;
+      const displayOrder = [...trackOrder];
+      displayOrder.splice(insertRow, 0, pendingKey);
+      return displayOrder;
+    }
+    if (trackOrder.includes(previewTrack)) return trackOrder;
     // A group's members sit out of raw numeric order (pulled under their
     // anchor row), so a plain numeric sort here would undo that grouping the
     // moment a clip drags onto a brand-new track. Insert the new preview
     // track only relative to other REAL (integer) tracks, leaving any
     // fractional group-anchor keys exactly where grouping placed them.
-    const preview = draggedClip.previewTrack;
+    const preview = previewTrack;
     const result: number[] = [];
     let inserted = false;
     for (const key of trackOrder) {
@@ -303,7 +321,7 @@ function useDisplayTrackOrder(draggedClip: DraggedClipState | null, trackOrder: 
     }
     if (!inserted) result.push(preview);
     return result;
-  }, [draggedClip, trackOrder]);
+  }, [started, insertRow, previewTrack, trackOrder]);
 }
 
 export function useTimelineDisplayLayout(

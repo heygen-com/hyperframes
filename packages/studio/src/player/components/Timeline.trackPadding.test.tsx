@@ -149,9 +149,9 @@ describe("Timeline trackPadding", () => {
     ).find((el) => el.style.zIndex === "30" && !el.dataset.testid);
     expect(top(ghost)).toBe(`${RULER_H + TRACK_H + CLIP_Y}px`);
     pointer(window, "pointermove", RULER_H + 3 * TRACK_H + TRACK_H / 2);
-    expect(top(host.querySelector('[data-testid="timeline-insert-line"]'))).toBe(
-      `${RULER_H + 3 * TRACK_H - 0.5}px`,
-    );
+    const lane = host.querySelector<HTMLElement>("[data-timeline-new-track-lane]");
+    expect(top(lane)).toBe(`${RULER_H + 3 * TRACK_H}px`);
+    expect(lane?.style.height).toBe(`${TRACK_H}px`);
     act(() => root.unmount());
   });
 });
