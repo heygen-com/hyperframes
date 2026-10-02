@@ -12,7 +12,11 @@ import {
   canMoveTimelineElement as canMoveElement,
   resolveExpandedHostAlias,
 } from "./timelineAuthoredMoveTarget";
-import type { TimelineMoveOperation, TimelineMoveUpdates } from "../../hooks/timelineMoveAdapter";
+import type {
+  TimelineMoveOperation,
+  TimelineAtomicMoveUpdates,
+  TimelineAtomicMoveEdit,
+} from "../../hooks/timelineMoveAdapter";
 import {
   beginTimelineOptimisticGesture,
   isLatestTimelineOptimisticGesture,
@@ -22,10 +26,8 @@ import { refreshAfterDurableLaneMove } from "./timelineLaneMoveRefresh";
 import { authoredTrackForLane } from "./timelineAuthoredTrack";
 import { resolveGroupMovers } from "./timelineMultiDragPreview";
 
-type StartTrack = TimelineMoveUpdates;
-export interface TimelineMoveEdit {
-  element: TimelineElement;
-  updates: StartTrack;
+type StartTrack = TimelineAtomicMoveUpdates;
+export interface TimelineMoveEdit extends TimelineAtomicMoveEdit {
   /**
    * File-space track override for the persist. The store's `updates.track` is a
    * DISPLAY lane; when the source file's numbering is sparse (authored tracks
@@ -136,20 +138,33 @@ export function persistMoveEdits(
     updateElement,
     edits.map((edit) => keyOf(edit.element)),
   );
+  const membershipRevision = beginTimelineOptimisticGesture(
+    updateElement,
+    edits.filter((edit) => edit.updates.audioGroup === null).map((edit) => keyOf(edit.element)),
+    "membership",
+  );
   // The file write below targets `persistTrack` (authored space) when supplied,
   // or `updates.track` on a genuine lane write (track insert renumber). Mirror
   // that written value into the store's `authoredTrack` so a SECOND drag before
   // any reload resolves authored tracks from what the file now says, not stale
   // pre-edit data. Pure time-moves leave authoredTrack untouched.
-  const applyEdit = (e: TimelineMoveEdit) => {
+  const applyEdit = (e: TimelineMoveEdit, reassert = false) => {
     const writtenTrack =
       e.persistTrack ?? (e.updates.track !== e.element.track ? e.updates.track : undefined);
     const { audioGroup, ...timing } = e.updates;
-    const updates = audioGroup === null ? { ...timing, audioGroup: undefined } : timing;
-    updateElement(
-      keyOf(e.element),
-      writtenTrack == null ? updates : { ...updates, authoredTrack: writtenTrack },
-    );
+    const key = keyOf(e.element);
+    const updates: Partial<TimelineElement> = {};
+    if (!reassert || isLatestTimelineOptimisticGesture(updateElement, revision, key)) {
+      Object.assign(updates, timing, writtenTrack == null ? {} : { authoredTrack: writtenTrack });
+    }
+    if (
+      audioGroup === null &&
+      (!reassert ||
+        isLatestTimelineOptimisticGesture(updateElement, membershipRevision, key, "membership"))
+    ) {
+      updates.audioGroup = undefined;
+    }
+    if (Object.keys(updates).length) updateElement(key, updates);
   };
   for (const e of edits) applyEdit(e);
   // The store above gets DISPLAY lanes; the file below gets the authored-space
@@ -168,17 +183,21 @@ export function persistMoveEdits(
       // restore the preview manifest's pre-gesture lane. Reassert the durable
       // result after persistence, but only while this remains the latest
       // optimistic gesture so an older save can never clobber a newer drag.
-      for (const e of edits) {
-        const key = keyOf(e.element);
-        if (isLatestTimelineOptimisticGesture(updateElement, revision, key)) applyEdit(e);
-      }
+      for (const e of edits) applyEdit(e, true);
       return true;
     },
     (error) => {
       for (const p of prev) {
+        const { audioGroup, ...timing } = p.updates;
+        const updates: Partial<TimelineElement> = {};
         if (isLatestTimelineOptimisticGesture(updateElement, revision, p.key)) {
-          updateElement(p.key, p.updates);
+          Object.assign(updates, timing);
         }
+        if (
+          isLatestTimelineOptimisticGesture(updateElement, membershipRevision, p.key, "membership")
+        )
+          updates.audioGroup = audioGroup;
+        if (Object.keys(updates).length) updateElement(p.key, updates);
       }
       console.error("[Timeline] Failed to persist clip edits", error);
       return false;

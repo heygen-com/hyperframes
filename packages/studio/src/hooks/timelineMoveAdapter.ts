@@ -5,11 +5,13 @@ import type {
   TimelineGroupMoveChange,
 } from "./useTimelineGroupEditing";
 
-export type TimelineMoveUpdates = Pick<TimelineElement, "start" | "track"> & { audioGroup?: null };
+export type TimelineAtomicMoveUpdates = Pick<TimelineElement, "start" | "track"> & {
+  audioGroup?: null;
+};
 
-export interface TimelineMoveEdit {
+export interface TimelineAtomicMoveEdit {
   element: TimelineElement;
-  updates: TimelineMoveUpdates;
+  updates: TimelineAtomicMoveUpdates;
 }
 
 interface AtomicMoveDeps {
@@ -22,14 +24,14 @@ interface AtomicMoveDeps {
 export type TimelineMoveOperation = "timing" | "lane-reorder" | "track-insert";
 
 export type TimelineMoveEditsHandler = (
-  edits: TimelineMoveEdit[],
+  edits: TimelineAtomicMoveEdit[],
   coalesceKey?: string,
   operation?: TimelineMoveOperation,
   coalesceMs?: number,
 ) => Promise<void>;
 
 export function persistTimelineMoveEditsAtomically(
-  edits: TimelineMoveEdit[],
+  edits: TimelineAtomicMoveEdit[],
   coalesceKey: string | undefined,
   operation: TimelineMoveOperation,
   deps: AtomicMoveDeps,

@@ -1483,6 +1483,57 @@ describe("persistMoveEdits: a nested row dropped before its host", () => {
 });
 
 describe("persistMoveEdits convergence", () => {
+  it.each([
+    { successor: "timing", detach: false, expectedGroup: "G" },
+    { successor: "detach", detach: true, expectedGroup: undefined },
+  ])(
+    "preserves newer $successor while rolling back a refused detach",
+    async ({ detach, expectedGroup }) => {
+      let current: TimelineElement = { ...el("grouped", 0, 0, 4), audioGroup: "G" };
+      let rejectDetach!: (error: Error) => void;
+      let resolveSuccessor!: () => void;
+      const refused = new Promise<void>((_resolve, reject) => {
+        rejectDetach = reject;
+      });
+      const successor = new Promise<void>((resolve) => {
+        resolveSuccessor = resolve;
+      });
+      const updateElement = (_key: string, updates: Partial<TimelineElement>) => {
+        current = { ...current, ...updates };
+      };
+      const deps = { elements: [current], trackOrder: [0, 1], updateElement };
+      const first = persistMoveEdits(
+        [{ element: current, updates: { start: 0, track: 1, audioGroup: null } }],
+        { ...deps, onMoveElements: () => refused },
+        undefined,
+        "track-insert",
+      );
+      expect(current.audioGroup).toBeUndefined();
+      const second = persistMoveEdits(
+        [
+          {
+            element: current,
+            updates: { start: 5, track: 1, ...(detach ? { audioGroup: null } : {}) },
+          },
+        ],
+        { ...deps, onMoveElements: () => successor },
+      );
+      const consoleError = vi.spyOn(console, "error").mockImplementation(() => {});
+      try {
+        rejectDetach(new Error("save refused"));
+        await expect(first).resolves.toBe(false);
+        expect(current).toMatchObject({ start: 5, track: 1 });
+        expect(current.audioGroup).toBe(expectedGroup);
+        resolveSuccessor();
+        await expect(second).resolves.toBe(true);
+        expect(current).toMatchObject({ start: 5, track: 1 });
+        expect(current.audioGroup).toBe(expectedGroup);
+      } finally {
+        consoleError.mockRestore();
+      }
+    },
+  );
+
   it("reasserts a saved lane after a stale runtime sync", async () => {
     const clip = { ...el("headline", 2, 0.5, 4.9), authoredTrack: 2 };
     let releaseSave: (() => void) | undefined;

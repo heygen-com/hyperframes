@@ -1,12 +1,15 @@
 import type { TimelineElement } from "../store/playerStore";
 
-/** Group headers mark the audio zone even when their member rows are collapsed. */
+/** Audio member tracks mark the audio zone, including members hidden by a group header. */
 export function timelineAudioRow(
   order: number[],
   audioTracks: ReadonlySet<number>,
   groupTracks?: ReadonlyMap<number, readonly number[]>,
 ): number {
-  return order.findIndex((track) => audioTracks.has(track) || groupTracks?.has(track));
+  return order.findIndex(
+    (track) =>
+      audioTracks.has(track) || groupTracks?.get(track)?.some((member) => audioTracks.has(member)),
+  );
 }
 
 /**
@@ -148,8 +151,9 @@ export function resolveZoneDropPlacement(input: {
   const members = input.groupTracks?.get(desiredTrack);
   let aim = desiredTrack;
   if (members) {
+    const memberTracks = new Set(members);
     const member = order.find(
-      (track) => members.includes(track) && audioTracks.has(track) === isAudio,
+      (track) => memberTracks.has(track) && audioTracks.has(track) === isAudio,
     );
     if (member === undefined) {
       if (!input.origin) throw new Error("Group-header drop requires the clip origin");
@@ -158,7 +162,9 @@ export function resolveZoneDropPlacement(input: {
     aim = member;
   }
   const firstVisibleAudioRow = order.findIndex((track) => audioTracks.has(track));
-  const desired = clampTrackToZone(aim, order, isAudio ? firstVisibleAudioRow : audioRow, isAudio);
+  const desired = members
+    ? aim
+    : clampTrackToZone(aim, order, isAudio ? firstVisibleAudioRow : audioRow, isAudio);
   const zoneTracks = order.filter(
     (t) => !input.groupTracks?.has(t) && audioTracks.has(t) === isAudio,
   );

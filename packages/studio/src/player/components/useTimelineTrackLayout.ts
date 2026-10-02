@@ -335,7 +335,15 @@ export function useTimelineDisplayLayout(
     () => createTimelineRowGeometry(displayTrackOrder, displayRowHeights, rowGeometry.padding),
     [displayTrackOrder, displayRowHeights, rowGeometry.padding],
   );
+  let draggedRowKey: number | undefined;
+  if (draggedClip?.started) {
+    draggedRowKey =
+      draggedClip.insertRow !== null
+        ? displayRowGeometry.rowKeys[draggedClip.insertRow]
+        : draggedClip.previewTrack;
+  }
   return {
+    draggedRowKey,
     displayTrackOrder,
     displayRowHeights: displayRowGeometry.rowHeights,
     rowGeometry: displayRowGeometry,

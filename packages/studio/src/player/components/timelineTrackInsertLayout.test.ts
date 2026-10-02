@@ -192,3 +192,58 @@ it("creates the first visual lane above an all-audio timeline", () => {
     }),
   ).toEqual({ track: 0, insertRow: 0, start: 2 });
 });
+
+it("keeps audible-video groups in the visual zone for header drops and edge inserts", () => {
+  const order = [0, 0.5, 1, 2];
+  const layout = buildTimelineTrackInsertLayout(order, [{ anchorKey: 0.5, memberTracks: [1] }]);
+  const input = {
+    order,
+    audioTracks: new Set<number>(),
+    groupTracks: layout.groupTracks,
+    allowedInsertRows: layout.allowedRows,
+    elements: [],
+    desiredTrack: 0.5,
+    deliberateInsertRow: null,
+    start: 2,
+    duration: 1,
+    dragKey: "video",
+    isAudio: false,
+    origin: { track: 2, start: 2 },
+  };
+  expect(timelineAudioRow(order, input.audioTracks, layout.groupTracks)).toBe(-1);
+  expect(resolveZoneDropPlacement(input)).toEqual({ track: 1, insertRow: null, start: 2 });
+  expect(resolveZoneDropPlacement({ ...input, deliberateInsertRow: 3 })).toEqual({
+    track: 0.5,
+    insertRow: 3,
+    start: 2,
+  });
+});
+
+it.each([
+  { isAudio: false, target: 1 },
+  { isAudio: true, target: 3 },
+])(
+  "maps a mixed-kind group header to its first visible member of the clip kind ($isAudio)",
+  ({ isAudio, target }) => {
+    const order = [0, 0.5, 1, 3, 2];
+    const layout = buildTimelineTrackInsertLayout(order, [
+      { anchorKey: 0.5, memberTracks: [1, 3] },
+    ]);
+    expect(
+      resolveZoneDropPlacement({
+        order,
+        audioTracks: new Set([3]),
+        groupTracks: layout.groupTracks,
+        allowedInsertRows: layout.allowedRows,
+        elements: [],
+        desiredTrack: 0.5,
+        deliberateInsertRow: null,
+        start: 2,
+        duration: 1,
+        dragKey: "clip",
+        isAudio,
+        origin: { track: 2, start: 2 },
+      }),
+    ).toEqual({ track: target, insertRow: null, start: 2 });
+  },
+);

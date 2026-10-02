@@ -24,4 +24,11 @@ describe("timelineElementsChanged", () => {
     const linked = { ...clip, link: "lk-1" };
     expect(timelineElementsChanged([linked], [clip])).toBe(true);
   });
+
+  it("sees restored group membership with identical timing and lane", () => {
+    const grouped = { ...clip, audioGroup: "G" };
+    expect(timelineElementsChanged([clip], [grouped])).toBe(true);
+    expect(timelineElementsChanged([grouped], [clip])).toBe(true);
+    expect(timelineElementsChanged([grouped], [{ ...grouped }])).toBe(false);
+  });
 });

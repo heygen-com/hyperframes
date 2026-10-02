@@ -37,6 +37,7 @@ it("opens one full lane at the insertion index without changing committed tracks
       <output>
         {JSON.stringify({
           order: layout.displayTrackOrder,
+          pinned: layout.draggedRowKey,
           heights: layout.displayRowHeights,
           below: layout.rowGeometry.getRowTop(2),
         })}
@@ -46,6 +47,7 @@ it("opens one full lane at the insertion index without changing committed tracks
   act(() => root.render(<Probe active={drag} />));
   const seen = JSON.parse(host.textContent!);
   expect(seen.order).toHaveLength(4);
+  expect(seen.pinned).toBe(-1);
   expect(seen.order.filter((key: number) => order.includes(key))).toEqual(order);
   expect(order.includes(seen.order[1])).toBe(false);
   expect(seen.heights).toEqual([48, 48, 104, 48]);

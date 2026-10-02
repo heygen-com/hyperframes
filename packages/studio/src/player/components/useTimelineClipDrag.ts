@@ -61,16 +61,8 @@ interface UseTimelineClipDragInput {
   trackOrderRef: React.RefObject<number[]>;
   trackInsertLayoutRef?: React.RefObject<TimelineTrackInsertLayout | undefined>;
   rowGeometryRef?: React.RefObject<TimelineRowGeometry>;
-  onMoveElement?: (
-    element: TimelineElement,
-    updates: Pick<TimelineElement, "start" | "track">,
-  ) => Promise<void> | void;
-  onMoveElements?: (
-    edits: Array<{
-      element: TimelineElement;
-      updates: Pick<TimelineElement, "start" | "track">;
-    }>,
-  ) => Promise<void> | void;
+  onMoveElement?: TimelineEditCallbacks["onMoveElement"];
+  onMoveElements?: TimelineEditCallbacks["onMoveElements"];
   onResizeElement?: (
     element: TimelineElement,
     updates: Pick<TimelineElement, "start" | "duration" | "playbackStart">,
