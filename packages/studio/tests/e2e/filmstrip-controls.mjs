@@ -56,13 +56,17 @@ try {
     await page.keyboard.press("Escape");
     await page.waitForSelector('[role="menu"][aria-label="Clip actions"]', { hidden: true });
     await clip.hover();
-    const fadeBox = await handle.boundingBox();
+    const dragHandle = await page.waitForSelector(
+      `${selector} [data-testid="clip-fade-handle-out"]`,
+    );
+    const fadeBox = await dragHandle.boundingBox();
+    assert(fadeBox, `${kind} fade must expose its fresh target after closing FX`);
     const x = fadeBox.x + fadeBox.width / 2;
     const y = fadeBox.y + fadeBox.height / 2;
     await page.mouse.move(x, y);
     await page.mouse.down();
     await page.mouse.move(x - 40, y, { steps: 8 });
-    const preview = Number(await handle.evaluate((node) => node.getAttribute("aria-valuenow")));
+    const preview = Number(await dragHandle.evaluate((node) => node.getAttribute("aria-valuenow")));
     assert(preview > 0, `${kind} fade must preview during a pointer drag`);
     await page.mouse.up();
     const saveStatus = await page.evaluate(async () => {
@@ -74,9 +78,11 @@ try {
     await page.waitForSelector(selector, { timeout: 60_000 });
     await (await page.$(selector)).hover();
     await page.waitForFunction(
-      (selector) => Number(document.querySelector(selector)?.getAttribute("aria-valuenow")) > 0,
+      (selector, value) =>
+        Number(document.querySelector(selector)?.getAttribute("aria-valuenow")) === value,
       { timeout: 10_000 },
       `${selector} [data-testid="clip-fade-handle-out"]`,
+      preview,
     );
     if (kind === "video") {
       const currentClip = await page.$(selector);
