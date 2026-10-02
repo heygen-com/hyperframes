@@ -25,7 +25,7 @@ function writer(result?: MutationResult): CommitMutation {
 describe("GSAP gesture usage", () => {
   it("counts a multi-write add gesture once from successful writer results", async () => {
     const observed = observeGsapGesture(
-      writer({ ok: true, changed: true, mutationChanges: [true, true] }),
+      writer({ ok: true, changed: true, mutationChanges: [true] }),
     );
     const onResult = vi.fn();
     await observed.commit!(
@@ -36,7 +36,7 @@ describe("GSAP gesture usage", () => {
     await observed.commit!(selection, mutation, { label: "Add" });
     expect(trackStudioEvent).not.toHaveBeenCalled();
     expect(observed.finish()).toEqual({ ok: true, changed: true });
-    expect(onResult).toHaveBeenCalledWith({ ok: true, changed: true });
+    expect(onResult).toHaveBeenCalledWith({ ok: true, changed: true, mutationChanges: [true] });
     expect(trackStudioEvent).toHaveBeenCalledExactlyOnceWith("keyframe", { action: "add" });
   });
 
@@ -76,7 +76,7 @@ describe("GSAP gesture usage", () => {
 
   it("uses semantic insertion metadata for a replacement", async () => {
     const observed = observeGsapGesture(
-      writer({ ok: true, changed: true, mutationChanges: [true, true] }),
+      writer({ ok: true, changed: true, mutationChanges: [true] }),
     );
     await observed.commit!(
       selection,

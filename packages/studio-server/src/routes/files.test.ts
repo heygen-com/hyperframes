@@ -1518,7 +1518,7 @@ tl.fromTo("#box", { opacity: 0, x: -50 }, { opacity: 1, x: 0, duration: 1.5, eas
     const response = await postGsapMutationBatch(app, "comp.html", {
       mutations: [
         { ...add, animationId: seeded.id },
-        { type: "update-property", animationId: seeded.id, property: "duration", value: 3 },
+        { type: "update-meta", animationId: seeded.id, updates: { duration: 3 } },
       ],
     });
     expect(response.status).toBe(200);
