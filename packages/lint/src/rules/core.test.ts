@@ -90,10 +90,6 @@ describe("core rules", () => {
     const result = await lintHyperframeHtml(html);
     const finding = result.findings.find((item) => item.code === "id_requires_css_escape");
 
-    // Blocking severity: a digit-leading id breaks any bare `#${id}`
-    // selector (including inline GSAP string selectors) with a
-    // SyntaxError, silently freezing that element while the render still
-    // reports success — this can't be a mere "warning" (see #655).
     expect(finding?.severity).toBe("error");
     expect(finding?.elementId).toBe("123-frame");
     expect(finding?.fixHint).toContain("CSS.escape");
