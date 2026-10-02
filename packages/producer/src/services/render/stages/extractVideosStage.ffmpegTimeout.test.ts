@@ -89,19 +89,21 @@ describe("video extraction ffmpeg timeout threading", () => {
     capturedConfigs.splice(0);
   });
 
-  it("forwards a non-default FFMPEG_PROCESS_TIMEOUT_MS into the video extraction config", async () => {
-    await runStage(resolveConfig({ ffmpegProcessTimeout: 5_000 }));
-
-    expect(capturedConfigs).toEqual([expect.objectContaining({ ffmpegProcessTimeout: 5_000 })]);
-  });
-
-  it("forwards the default timeout unchanged when no override is configured", async () => {
-    const cfg = resolveConfig();
-
-    await runStage(cfg);
+  it("forwards every resolved extraction setting, including FFMPEG_PROCESS_TIMEOUT_MS", async () => {
+    await runStage(
+      resolveConfig({
+        ffmpegProcessTimeout: 5_000,
+        extractCacheDir: "/tmp/hf-ffmpeg-timeout-cache",
+        extractCacheMaxBytes: 1234,
+      }),
+    );
 
     expect(capturedConfigs).toEqual([
-      expect.objectContaining({ ffmpegProcessTimeout: cfg.ffmpegProcessTimeout }),
+      expect.objectContaining({
+        ffmpegProcessTimeout: 5_000,
+        extractCacheDir: "/tmp/hf-ffmpeg-timeout-cache",
+        extractCacheMaxBytes: 1234,
+      }),
     ]);
   });
 });
