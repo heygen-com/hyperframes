@@ -485,8 +485,21 @@ describe("waitForStudioChildClose", () => {
 
     await expect(waitForStudioChildClose(child, signalTarget)).resolves.toBeUndefined();
     expect(child.once).not.toHaveBeenCalled();
-    expect(signalTarget.once).toHaveBeenCalledTimes(2);
-    expect(signalTarget.off).toHaveBeenCalledTimes(2);
+    expect(signalTarget.once).toHaveBeenCalledTimes(3);
+    expect(signalTarget.off).toHaveBeenCalledTimes(3);
+  });
+
+  it("reaps the dev server when the terminal closes (SIGHUP)", async () => {
+    const signalTarget = { once: vi.fn(), off: vi.fn() };
+    const child = { exitCode: 0, signalCode: null, once: vi.fn() } as unknown as Parameters<
+      typeof waitForStudioChildClose
+    >[0];
+
+    await waitForStudioChildClose(child, signalTarget);
+
+    const hupListener = signalTarget.once.mock.calls.find(([event]) => event === "SIGHUP")?.[1];
+    expect(hupListener).toBeTypeOf("function");
+    expect(signalTarget.off).toHaveBeenCalledWith("SIGHUP", hupListener);
   });
 
   it("reaps on process exit even when stdio never emits close", async () => {
@@ -512,7 +525,7 @@ describe("waitForStudioChildClose", () => {
     exit?.();
     await waiting;
     expect(resolved).toBe(true);
-    expect(signalTarget.off).toHaveBeenCalledTimes(2);
+    expect(signalTarget.off).toHaveBeenCalledTimes(3);
   });
 });
 

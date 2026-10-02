@@ -100,9 +100,12 @@ interface EmbeddedStudioOptions extends StudioLaunchOptions {
 }
 
 type StudioChildProcess = ChildProcessByStdio<null, Readable, Readable>;
+// SIGHUP: closing the terminal must still reap the dev server, which runs in its own hidden console on Windows.
+const STUDIO_CHILD_SHUTDOWN_SIGNALS = ["SIGINT", "SIGTERM", "SIGHUP"] as const;
+type StudioShutdownSignal = (typeof STUDIO_CHILD_SHUTDOWN_SIGNALS)[number];
 interface StudioSignalTarget {
-  once(event: "SIGINT" | "SIGTERM", listener: () => void): unknown;
-  off(event: "SIGINT" | "SIGTERM", listener: () => void): unknown;
+  once(event: StudioShutdownSignal, listener: () => void): unknown;
+  off(event: StudioShutdownSignal, listener: () => void): unknown;
 }
 type ContextField = "server" | "selection" | "lint" | "capabilities";
 type CompactSelectionPayload = Pick<
@@ -1337,8 +1340,7 @@ export function waitForStudioChildClose(
   const shutdown = (): void => {
     if (child.pid) killProcessTree(child.pid);
   };
-  signalTarget.once("SIGINT", shutdown);
-  signalTarget.once("SIGTERM", shutdown);
+  for (const signal of STUDIO_CHILD_SHUTDOWN_SIGNALS) signalTarget.once(signal, shutdown);
 
   // A short-lived Vite child can exit before launch setup reaches this point.
   // ChildProcess does not replay lifecycle events to listeners attached later,
@@ -1355,8 +1357,7 @@ export function waitForStudioChildClose(
   return closed.finally(() => {
     // Signal listeners keep Bun's event loop alive even after Vite exits. Leaving
     // them registered makes `preview --stop` close the port but leak the wrapper.
-    signalTarget.off("SIGINT", shutdown);
-    signalTarget.off("SIGTERM", shutdown);
+    for (const signal of STUDIO_CHILD_SHUTDOWN_SIGNALS) signalTarget.off(signal, shutdown);
   });
 }
 
