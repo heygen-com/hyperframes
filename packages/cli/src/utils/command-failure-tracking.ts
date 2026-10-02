@@ -28,8 +28,8 @@ export function trackCommandFailures(
  *      unknown flags would bypass the leaf's guard.
  */
 function commandName(cmd: AnyCommandDef): string {
-  const meta = cmd.meta;
-  return meta && typeof meta === "object" && typeof meta.name === "string" ? meta.name : "";
+  const name = (cmd.meta as { name?: unknown } | undefined)?.name;
+  return typeof name === "string" ? name : "";
 }
 
 function wrapCommand(cmd: AnyCommandDef, path: string): AnyCommandDef {
