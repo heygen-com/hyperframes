@@ -509,100 +509,92 @@ export function useTimelineEditing({
     return [...flatMembers, ...domMembers];
   };
 
-  const stableAudioGroupAttribute = useStableHandlers(
-    {
-      ...setAudioGroupAttribute,
-      // Same two-array member lookup syncStoredGroupAttribute mirrors into
-      // (timelineAudioGroupVolume.ts): a sub-composition's group members have
-      // no flat twin, only a domClipChildren entry, so both are checked.
-      setQuiet: track(
-        guard(audioGroupMembers, setAudioGroupAttribute.setQuiet, (reason, groupId, attr) => {
-          setAudioGroupAttribute.revertLive(groupId, attr);
+  const audioGroupAttribute = {
+    ...setAudioGroupAttribute,
+    // Same two-array member lookup syncStoredGroupAttribute mirrors into
+    // (timelineAudioGroupVolume.ts): a sub-composition's group members have
+    // no flat twin, only a domClipChildren entry, so both are checked.
+    setQuiet: track(
+      guard(audioGroupMembers, setAudioGroupAttribute.setQuiet, (reason, groupId, attr) => {
+        setAudioGroupAttribute.revertLive(groupId, attr);
+        return refused(reason);
+      }),
+    ),
+  };
+  const stableAudioGroupAttribute = useStableHandlers(audioGroupAttribute, projectId);
+  const elementFxAttribute = {
+    ...setElementFxAttribute,
+    setMany: track(guard((edits) => edits.map((edit) => edit.element), setElementsAttribute)),
+    setQuiet: track(
+      guard(
+        (element) => [element],
+        setElementFxAttribute.setQuiet,
+        (reason, element, attr) => {
+          setElementFxAttribute.revertLive(element, attr);
           return refused(reason);
-        }),
+        },
       ),
-    },
-    projectId,
-  );
-  const stableElementFxAttribute = useStableHandlers(
-    {
-      ...setElementFxAttribute,
-      setMany: track(guard((edits) => edits.map((edit) => edit.element), setElementsAttribute)),
-      setQuiet: track(
-        guard(
-          (element) => [element],
-          setElementFxAttribute.setQuiet,
-          (reason, element, attr) => {
-            setElementFxAttribute.revertLive(element, attr);
-            return refused(reason);
-          },
-        ),
-      ),
-    },
-    projectId,
-  );
+    ),
+  };
+  const stableElementFxAttribute = useStableHandlers(elementFxAttribute, projectId);
   // Every write-handler is tracked here, the one place all hand edits
   // converge, so undo never races a write; canEdit gates the same point.
   // Coverage boundary: see the PR body, not every kind resolves an element.
   const trackedRazorSplit = track(
     guard((element) => withLinkPartners([element]), handleRazorSplit),
   );
-  return useStableHandlers(
-    {
-      handleTimelineElementMove: track(guard((element) => [element], handleTimelineElementMove)),
-      handleTimelineElementResize: track(
-        guard((element) => [element], handleTimelineElementResize),
+  const editing = {
+    handleTimelineElementMove: track(guard((element) => [element], handleTimelineElementMove)),
+    handleTimelineElementResize: track(guard((element) => [element], handleTimelineElementResize)),
+    handleToggleTrackHidden: track(
+      guard(
+        (trackIndex) => timelineElements.filter((el) => el.track === trackIndex),
+        handleToggleTrackHidden,
       ),
-      handleToggleTrackHidden: track(
-        guard(
-          (trackIndex) => timelineElements.filter((el) => el.track === trackIndex),
-          handleToggleTrackHidden,
-        ),
+    ),
+    handleToggleElementHidden: track(
+      guard((elementKey) => {
+        const keys = new Set(Array.isArray(elementKey) ? elementKey : [elementKey]);
+        return timelineElements.filter((el) => keys.has(el.key ?? el.id));
+      }, handleToggleElementHidden),
+    ),
+    handleAutoGroupCarveSources: track(handleAutoGroupCarveSources),
+    setAudioGroupAttribute: stableAudioGroupAttribute,
+    setElementFxAttribute: stableElementFxAttribute,
+    handleTimelineElementDelete: track(
+      guard((element) => withLinkPartners([element]), linkEditing.handleLinkedElementDelete),
+    ),
+    handleTimelineElementsDelete: track(
+      guard(withLinkPartners, linkEditing.handleLinkedElementsDelete),
+    ),
+    handleTimelineElementDeleteOnly: track(
+      guard((element) => [element], linkEditing.handleDeleteElementOnly),
+    ),
+    handleLinkEdit: track(guard(linkEditTargets, linkEditing.handleLinkEdit)),
+    handleTimelineElementSplit: trackedRazorSplit,
+    handleRazorSplit: trackedRazorSplit,
+    handleFreezeFrame: track(guard((element) => [element], handleFreezeFrame)),
+    // Same selection the handler itself splits (useRazorSplit.ts).
+    handleRazorSplitAll: track(
+      guard(
+        (splitTime) => selectSplittableElements(usePlayerStore.getState().elements, splitTime),
+        handleRazorSplitAll,
       ),
-      handleToggleElementHidden: track(
-        guard((elementKey) => {
-          const keys = new Set(Array.isArray(elementKey) ? elementKey : [elementKey]);
-          return timelineElements.filter((el) => keys.has(el.key ?? el.id));
-        }, handleToggleElementHidden),
-      ),
-      handleAutoGroupCarveSources: track(handleAutoGroupCarveSources),
-      setAudioGroupAttribute: stableAudioGroupAttribute,
-      setElementFxAttribute: stableElementFxAttribute,
-      handleTimelineElementDelete: track(
-        guard((element) => withLinkPartners([element]), linkEditing.handleLinkedElementDelete),
-      ),
-      handleTimelineElementsDelete: track(
-        guard(withLinkPartners, linkEditing.handleLinkedElementsDelete),
-      ),
-      handleTimelineElementDeleteOnly: track(
-        guard((element) => [element], linkEditing.handleDeleteElementOnly),
-      ),
-      handleLinkEdit: track(guard(linkEditTargets, linkEditing.handleLinkEdit)),
-      handleTimelineElementSplit: trackedRazorSplit,
-      handleRazorSplit: trackedRazorSplit,
-      handleFreezeFrame: track(guard((element) => [element], handleFreezeFrame)),
-      // Same selection the handler itself splits (useRazorSplit.ts).
-      handleRazorSplitAll: track(
-        guard(
-          (splitTime) => selectSplittableElements(usePlayerStore.getState().elements, splitTime),
-          handleRazorSplitAll,
-        ),
-      ),
-      handleTimelineAssetDrop: track(handleTimelineAssetDrop),
-      handleTimelineFileDrop: track(handleTimelineFileDrop),
-      handleTimelineCompositionDrop: track(handleTimelineCompositionDrop),
-      handleBlockedTimelineEdit,
-      handleTimelineGroupMove: track(
-        guard((changes) => changes.map((c) => c.element), groupEditing.handleTimelineGroupMove),
-      ),
-      handleTimelineGroupResize: track(
-        guard((changes) => changes.map((c) => c.element), groupEditing.handleTimelineGroupResize),
-      ),
-      restoreLiveLanes: (restore: Parameters<typeof setElementFxAttribute.restoreLive>[0]) => {
-        setElementFxAttribute.restoreLive(restore);
-        setAudioGroupAttribute.restoreLive(restore);
-      },
+    ),
+    handleTimelineAssetDrop: track(handleTimelineAssetDrop),
+    handleTimelineFileDrop: track(handleTimelineFileDrop),
+    handleTimelineCompositionDrop: track(handleTimelineCompositionDrop),
+    handleBlockedTimelineEdit,
+    handleTimelineGroupMove: track(
+      guard((changes) => changes.map((c) => c.element), groupEditing.handleTimelineGroupMove),
+    ),
+    handleTimelineGroupResize: track(
+      guard((changes) => changes.map((c) => c.element), groupEditing.handleTimelineGroupResize),
+    ),
+    restoreLiveLanes: (restore: Parameters<typeof setElementFxAttribute.restoreLive>[0]) => {
+      setElementFxAttribute.restoreLive(restore);
+      setAudioGroupAttribute.restoreLive(restore);
     },
-    projectId,
-  );
+  };
+  return useStableHandlers(editing, projectId);
 }
