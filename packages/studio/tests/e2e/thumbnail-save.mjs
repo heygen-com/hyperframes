@@ -23,12 +23,13 @@ const proxy = createServer((incoming, response) => {
     response.once("close", () => held.delete(response));
     return;
   }
-  forward(incoming, response, url);
+  forward(incoming, response, url.pathname + url.search);
 });
-function forward(incoming, response, url) {
+function forward(incoming, response, path) {
   const outgoing = request(
-    url,
+    backend,
     {
+      path,
       method: incoming.method,
       headers: incoming.headers,
     },
@@ -65,6 +66,18 @@ try {
   await new Promise((resolve) => proxy.listen(0, "127.0.0.1", resolve));
   const address = proxy.address();
   assert(address && typeof address !== "string");
+  const proxyStatus = await new Promise((resolve, reject) => {
+    const probe = request(
+      { hostname: "127.0.0.1", port: address.port, path: "http://127.0.0.1:1/api/projects" },
+      (response) => {
+        response.resume();
+        response.once("end", () => resolve(response.statusCode));
+      },
+    );
+    probe.once("error", reject);
+    probe.end();
+  });
+  assert.equal(proxyStatus, 200, "An absolute request target cannot replace the Studio backend");
   ({ browser } = await launchStudioChrome());
   let previous;
   let page;
