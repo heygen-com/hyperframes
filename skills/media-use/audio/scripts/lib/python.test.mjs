@@ -111,9 +111,13 @@ test("defaultProbe rejects Python 2, which prints its version to stderr", posixO
   );
 });
 
-test("defaultProbe rejects an executable that exits 0 without a Python 3 version", posixOnly, () => {
-  withStub("exit 0", (stub) => assert.equal(defaultProbe(stub, ["--version"]), false));
-});
+test(
+  "defaultProbe rejects an executable that exits 0 without a Python 3 version",
+  posixOnly,
+  () => {
+    withStub("exit 0", (stub) => assert.equal(defaultProbe(stub, ["--version"]), false));
+  },
+);
 
 test("defaultProbe rejects a command that doesn't exist", () => {
   assert.equal(defaultProbe("/nonexistent/hf-python", ["--version"]), false);
