@@ -89,44 +89,53 @@ function makeSelection(element: HTMLElement): DomEditSelection {
   };
 }
 
+function mountRecording(
+  writer: (mutation: Record<string, unknown>, options: CommitMutationOptions) => Promise<void>,
+  animations: GsapAnimation[] = [],
+  readOnlyPreview = false,
+) {
+  const iframe = document.createElement("iframe");
+  document.body.append(iframe);
+  const element = document.createElement("div");
+  element.id = "card";
+  const session = {
+    current: {
+      domEditSelection: makeSelection(element),
+      selectedGsapAnimations: animations,
+      commitMutation: writer,
+    },
+  };
+  let hook: ReturnType<typeof useGestureCommit> | null = null;
+  function Probe() {
+    hook = useGestureCommit({
+      domEditSessionRef: session,
+      previewIframeRef: { current: iframe },
+      showToast: vi.fn(),
+      isGestureRecordingRef: { current: false },
+      readOnlyPreview,
+    });
+    return null;
+  }
+  const root = mountReactHarness(<Probe />);
+  cleanup = () => act(() => root.unmount());
+  return () => {
+    if (!hook) throw new Error("hook did not initialize");
+    return hook;
+  };
+}
+
 describe("useGestureCommit", () => {
   it("coalesces property-group commits and reloads only the terminal group", async () => {
-    const iframe = document.createElement("iframe");
-    document.body.append(iframe);
-    const element = document.createElement("div");
-    element.id = "card";
-    const commitMutation = vi.fn<
+    const writer = vi.fn<
       (mutation: Record<string, unknown>, options: CommitMutationOptions) => Promise<void>
     >(async () => {});
-    const sessionRef = {
-      current: {
-        domEditSelection: makeSelection(element),
-        selectedGsapAnimations: [],
-        commitMutation,
-      },
-    };
-    const captured: { hook: ReturnType<typeof useGestureCommit> | null } = { hook: null };
-    function Probe() {
-      captured.hook = useGestureCommit({
-        domEditSessionRef: sessionRef,
-        previewIframeRef: { current: iframe },
-        showToast: vi.fn(),
-        isGestureRecordingRef: { current: false },
-        readOnlyPreview: false,
-      });
-      return null;
-    }
-    const root = mountReactHarness(<Probe />);
-    cleanup = () => act(() => root.unmount());
-    if (!captured.hook) throw new Error("hook did not initialize");
-
-    act(() => captured.hook?.handleToggleRecording());
-    act(() => captured.hook?.handleToggleRecording());
+    const hook = mountRecording(writer);
+    act(() => hook().handleToggleRecording());
+    act(() => hook().handleToggleRecording());
     await act(async () => {
-      await vi.waitFor(() => expect(commitMutation).toHaveBeenCalledTimes(2));
+      await vi.waitFor(() => expect(writer).toHaveBeenCalledTimes(2));
     });
-
-    const options = commitMutation.mock.calls.map((call) => call[1]);
+    const options = writer.mock.calls.map((call) => call[1]);
     expect(new Set(options.map((entry) => entry.coalesceKey)).size).toBe(1);
     expect(options[0]).toEqual(expect.objectContaining({ coalesceMs: Infinity, skipReload: true }));
     expect(options[0]).not.toHaveProperty("softReload");
@@ -135,31 +144,11 @@ describe("useGestureCommit", () => {
   });
 
   it("does not start a recording while the preview is read-only", () => {
-    const element = document.createElement("div");
-    const commitMutation = vi.fn(async () => {});
-    const captured: { hook: ReturnType<typeof useGestureCommit> | null } = { hook: null };
-    function Probe() {
-      captured.hook = useGestureCommit({
-        domEditSessionRef: {
-          current: {
-            domEditSelection: makeSelection(element),
-            selectedGsapAnimations: [],
-            commitMutation,
-          },
-        },
-        previewIframeRef: { current: document.createElement("iframe") },
-        showToast: vi.fn(),
-        isGestureRecordingRef: { current: false },
-        readOnlyPreview: true,
-      });
-      return null;
-    }
-    const root = mountReactHarness(<Probe />);
-    cleanup = () => act(() => root.unmount());
-
-    act(() => captured.hook?.handleToggleRecording());
+    const writer = vi.fn(async () => {});
+    const hook = mountRecording(writer, [], true);
+    act(() => hook().handleToggleRecording());
     expect(gestureRecording.startRecording).not.toHaveBeenCalled();
-    expect(commitMutation).not.toHaveBeenCalled();
+    expect(writer).not.toHaveBeenCalled();
   });
 });
 
@@ -173,8 +162,6 @@ it.each([
 ] as const)(
   "counts writer receipts once for %s",
   async (_name, method, ok, changed, count, inputMethod) => {
-    const element = document.createElement("div");
-    element.id = "card";
     const animations = method
       ? [
           {
@@ -202,28 +189,10 @@ it.each([
         options.onResult?.(result);
       },
     );
-    const captured: { hook: ReturnType<typeof useGestureCommit> | null } = { hook: null };
-    function Probe() {
-      captured.hook = useGestureCommit({
-        domEditSessionRef: {
-          current: {
-            domEditSelection: makeSelection(element),
-            selectedGsapAnimations: animations,
-            commitMutation: writer,
-          },
-        },
-        previewIframeRef: { current: document.createElement("iframe") },
-        showToast: vi.fn(),
-        isGestureRecordingRef: { current: false },
-        readOnlyPreview: false,
-      });
-      return null;
-    }
-    const root = mountReactHarness(<Probe />);
-    cleanup = () => act(() => root.unmount());
-    act(() => captured.hook?.handleToggleRecording(inputMethod));
+    const hook = mountRecording(writer, animations);
+    act(() => hook().handleToggleRecording(inputMethod));
     await act(async () => {
-      captured.hook?.handleToggleRecording();
+      hook().handleToggleRecording();
       await vi.waitFor(() => expect(writer).toHaveBeenCalled());
     });
     expect(trackStudioEvent).toHaveBeenCalledTimes(count * 2);
@@ -239,8 +208,6 @@ it.each([
 );
 
 it("keeps a pending recording isolated until its writer settles", async () => {
-  const element = document.createElement("div");
-  element.id = "card";
   let release!: () => void;
   const pending = new Promise<void>((resolve) => {
     release = resolve;
@@ -251,29 +218,11 @@ it("keeps a pending recording isolated until its writer settles", async () => {
       options.onResult?.({ ok: true, changed: true });
     },
   );
-  const captured: { hook: ReturnType<typeof useGestureCommit> | null } = { hook: null };
-  function Probe() {
-    captured.hook = useGestureCommit({
-      domEditSessionRef: {
-        current: {
-          domEditSelection: makeSelection(element),
-          selectedGsapAnimations: [],
-          commitMutation: writer,
-        },
-      },
-      previewIframeRef: { current: document.createElement("iframe") },
-      showToast: vi.fn(),
-      isGestureRecordingRef: { current: false },
-      readOnlyPreview: false,
-    });
-    return null;
-  }
-  const root = mountReactHarness(<Probe />);
-  cleanup = () => act(() => root.unmount());
-  act(() => captured.hook?.handleToggleRecording("keyboard"));
-  act(() => captured.hook?.handleToggleRecording());
+  const hook = mountRecording(writer);
+  act(() => hook().handleToggleRecording("keyboard"));
+  act(() => hook().handleToggleRecording());
   await vi.waitFor(() => expect(writer).toHaveBeenCalledTimes(1));
-  act(() => captured.hook?.handleToggleRecording("button"));
+  act(() => hook().handleToggleRecording("button"));
   expect(gestureRecording.startRecording).toHaveBeenCalledTimes(1);
   await act(async () => {
     release();
@@ -286,6 +235,6 @@ it("keeps a pending recording isolated until its writer settles", async () => {
     );
   });
   expect(gestureRecording.clearSamples).toHaveBeenCalledTimes(1);
-  act(() => captured.hook?.handleToggleRecording("button"));
+  act(() => hook().handleToggleRecording("button"));
   expect(gestureRecording.startRecording).toHaveBeenCalledTimes(2);
 });

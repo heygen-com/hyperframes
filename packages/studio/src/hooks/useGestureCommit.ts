@@ -358,18 +358,23 @@ export function useGestureCommit({
     }
   }, [gestureRecording, showToast, isGestureRecordingRef, domEditSessionRef]);
 
-  // fallow-ignore-next-line complexity
-  const handleToggleRecording = useCallback(
-    (method: "button" | "keyboard" = "button") => {
-      if (commitInFlightRef.current) return;
-      if (gestureStateRef.current === "recording") {
-        if (readOnlyPreview) {
-          cancelRecording();
-          return;
+  const armAutoStop = useCallback(
+    (elementEnd: number | undefined) => {
+      clearInterval(recordingAutoStopRef.current);
+      const autoStopAt = elementEnd ?? Infinity;
+      recordingAutoStopRef.current = setInterval(() => {
+        const { currentTime: t, duration: d } = usePlayerStore.getState();
+        const limit = Math.min(autoStopAt, d);
+        if (limit > 0 && t >= limit - 0.05) {
+          void stopAndCommitRecording();
         }
-        void stopAndCommitRecording();
-        return;
-      }
+      }, 100);
+    },
+    [stopAndCommitRecording],
+  );
+
+  const startRecording = useCallback(
+    (method: "button" | "keyboard") => {
       if (readOnlyPreview) return;
       const sel = domEditSessionRef.current.domEditSelection;
       if (!sel) {
@@ -394,26 +399,30 @@ export function useGestureCommit({
       isGestureRecordingRef.current = true;
       setGestureState("recording");
 
-      clearInterval(recordingAutoStopRef.current);
-      const autoStopAt = elementEnd ?? Infinity;
-      recordingAutoStopRef.current = setInterval(() => {
-        const { currentTime: t, duration: d } = usePlayerStore.getState();
-        const limit = Math.min(autoStopAt, d);
-        if (limit > 0 && t >= limit - 0.05) {
-          void stopAndCommitRecording();
-        }
-      }, 100);
+      armAutoStop(elementEnd);
     },
     [
       gestureRecording,
       showToast,
-      stopAndCommitRecording,
-      cancelRecording,
       previewIframeRef,
       domEditSessionRef,
       isGestureRecordingRef,
       readOnlyPreview,
+      armAutoStop,
     ],
+  );
+
+  const handleToggleRecording = useCallback(
+    (method: "button" | "keyboard" = "button") => {
+      if (commitInFlightRef.current) return;
+      if (gestureStateRef.current === "recording") {
+        if (readOnlyPreview) cancelRecording();
+        else void stopAndCommitRecording();
+        return;
+      }
+      startRecording(method);
+    },
+    [cancelRecording, readOnlyPreview, startRecording, stopAndCommitRecording],
   );
 
   return { gestureState, gestureRecording, handleToggleRecording };

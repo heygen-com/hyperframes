@@ -2,7 +2,7 @@
 
 import React, { act } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import type { GsapAnimation } from "@hyperframes/core/gsap-parser";
+import { parseGsapScript, type GsapAnimation } from "@hyperframes/core/gsap-parser";
 import type { DomEditSelection } from "../components/editor/domEditingTypes";
 import { usePlayerStore } from "../player/store/playerStore";
 import { useAnimatedPropertyCommit } from "./useAnimatedPropertyCommit";
@@ -413,13 +413,9 @@ describe("useAnimatedPropertyCommit — a size write and its crop are one undo s
 
 it("counts one add when an inspector edit first converts a flat animation", async () => {
   usePlayerStore.setState({ autoKeyframeEnabled: true, currentTime: 1 });
-  const flat = {
-    ...keyframedAnim,
-    id: "box-rotation",
-    propertyGroup: "rotation",
-    properties: { rotationX: 0 },
-    keyframes: undefined,
-  } as GsapAnimation;
+  const flat = parseGsapScript(
+    'const tl = gsap.timeline(); tl.to("#box", { rotationX: 0, duration: 2 }, 0);',
+  ).animations[0]!;
   const mutations: Record<string, unknown>[] = [];
   let commit!: Commit;
   const root = renderHookWith(

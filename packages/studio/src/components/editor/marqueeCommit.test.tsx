@@ -1,5 +1,5 @@
 // @vitest-environment happy-dom
-import { act, useRef } from "react";
+import { act, useRef, type RefObject } from "react";
 import type { Root } from "react-dom/client";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import { installReactActEnvironment, mountReactHarness } from "../../hooks/domSelectionTestHarness";
@@ -43,9 +43,33 @@ function Overlay() {
   );
 }
 
-const pointer = (type: string, clientX: number, clientY: number) =>
+function MarqueeSurface({
+  overlayRef,
+  marquee,
+}: {
+  overlayRef: RefObject<HTMLDivElement | null>;
+  marquee: ReturnType<typeof useMarqueeGestures>;
+}) {
+  return (
+    <div
+      ref={overlayRef}
+      data-band-overlay
+      onPointerDown={marquee.begin}
+      onPointerMove={marquee.onPointerMove}
+      onPointerUp={marquee.onPointerUp}
+    />
+  );
+}
+
+const pointer = (
+  type: string,
+  clientX: number,
+  clientY: number,
+  selector = "[data-overlay]",
+  shiftKey = false,
+) =>
   act(() => {
-    document.querySelector("[data-overlay]")!.dispatchEvent(
+    document.querySelector(selector)!.dispatchEvent(
       new PointerEvent(type, {
         bubbles: true,
         buttons: type === "pointerup" ? 0 : 1,
@@ -53,6 +77,7 @@ const pointer = (type: string, clientX: number, clientY: number) =>
         pointerId: 1,
         clientX,
         clientY,
+        shiftKey,
       }),
     );
   });
@@ -144,30 +169,10 @@ it("a reload promoted mid-band selects from the preview on screen, not the retir
         return [];
       },
     });
-    return (
-      <div
-        ref={overlayRef}
-        data-band-overlay
-        onPointerDown={marquee.begin}
-        onPointerMove={marquee.onPointerMove}
-        onPointerUp={marquee.onPointerUp}
-      />
-    );
+    return <MarqueeSurface overlayRef={overlayRef} marquee={marquee} />;
   }
   const band = mountReactHarness(<Band />);
-  const fire = (type: string, x: number, y: number) =>
-    act(() => {
-      document.querySelector("[data-band-overlay]")!.dispatchEvent(
-        new PointerEvent(type, {
-          bubbles: true,
-          button: 0,
-          buttons: type === "pointerup" ? 0 : 1,
-          pointerId: 1,
-          clientX: x,
-          clientY: y,
-        }),
-      );
-    });
+  const fire = (type: string, x: number, y: number) => pointer(type, x, y, "[data-band-overlay]");
   try {
     fire("pointerdown", 0, 0);
     fire("pointermove", 120, 90);
@@ -203,31 +208,11 @@ it.each([
         onMarqueeSelectRef: { current: apply },
         resolveHits: (elements: HTMLElement[]) => elements.slice(0, hits),
       });
-      return (
-        <div
-          ref={overlayRef}
-          data-receipt-overlay
-          onPointerDown={marquee.begin}
-          onPointerMove={marquee.onPointerMove}
-          onPointerUp={marquee.onPointerUp}
-        />
-      );
+      return <MarqueeSurface overlayRef={overlayRef} marquee={marquee} />;
     }
     const band = mountReactHarness(<Band />);
     const fire = (type: string, x: number, y: number) =>
-      act(() => {
-        document.querySelector("[data-receipt-overlay]")!.dispatchEvent(
-          new PointerEvent(type, {
-            bubbles: true,
-            button: 0,
-            buttons: type === "pointerup" ? 0 : 1,
-            pointerId: 1,
-            clientX: x,
-            clientY: y,
-            shiftKey: true,
-          }),
-        );
-      });
+      pointer(type, x, y, "[data-band-overlay]", true);
     try {
       fire("pointerdown", 0, 0);
       fire("pointermove", 120, 90);

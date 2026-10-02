@@ -141,6 +141,10 @@ export interface MarqueeGestures {
   onPointerCancel: () => void;
 }
 
+function trackMarqueeSelection(result: DomSelectionResult | void): void {
+  if (result?.changed && result.count > 1) trackPreviewFeatureUsed("multi_select", "drag");
+}
+
 function releaseCapture(m: MarqueeState): void {
   try {
     m.target.releasePointerCapture(m.pointerId);
@@ -183,7 +187,7 @@ export function useMarqueeGestures<T>(deps: MarqueeGesturesDeps<T>): MarqueeGest
       const applySelection = deps.onMarqueeSelectRef.current;
       if (!applySelection) return;
       const result = applySelection(picks, additive);
-      if (result?.changed && result.count > 1) trackPreviewFeatureUsed("multi_select", "drag");
+      trackMarqueeSelection(result);
     },
     [
       deps.iframeRef,
