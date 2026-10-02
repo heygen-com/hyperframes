@@ -29,10 +29,12 @@ export function sampledRgbaAlphaIsFullyOpaque(buf: Buffer): boolean | undefined 
 export async function probeInputAlphaPlane(
   videoPath: string,
   decoder: string,
+  signal?: AbortSignal,
 ): Promise<boolean | undefined> {
-  const probeDir = mkdtempSync(join(tmpdir(), "hf-alpha-probe-"));
-  const samplePath = join(probeDir, "alpha.raw");
+  let probeDir: string | undefined;
   try {
+    probeDir = mkdtempSync(join(tmpdir(), "hf-alpha-probe-"));
+    const samplePath = join(probeDir, "alpha.raw");
     const result = await runFfmpeg(
       [
         "-v",
@@ -51,22 +53,22 @@ export async function probeInputAlphaPlane(
         "rawvideo",
         samplePath,
       ],
-      { timeout: 30_000 },
+      { timeout: 30_000, signal },
     );
     if (!result.success) return undefined;
     return sampledRgbaAlphaIsFullyOpaque(readFileSync(samplePath));
   } catch {
     return undefined;
   } finally {
-    rmSync(probeDir, { recursive: true, force: true });
+    if (probeDir) rmSync(probeDir, { recursive: true, force: true });
   }
 }
 
 export function inputAlphaOpaqueWarning(src: string): string {
   return (
     `[hyperframes:render] WARNING: video src="${src}" declares an alpha channel ` +
-    "but decodes fully opaque. Transparency will not composite. If it should " +
-    "be transparent, re-export with `-pix_fmt yuva420p` and avoid remuxing " +
-    "afterward, which can drop the alpha sidecar while keeping the tag.\n"
+    "but its first frames decode fully opaque. If it should be transparent, re-export " +
+    "it with an alpha pixel format and avoid remuxing afterward, which can drop the " +
+    "alpha while keeping the tag.\n"
   );
 }

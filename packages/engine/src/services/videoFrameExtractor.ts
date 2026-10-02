@@ -1854,9 +1854,9 @@ export async function extractAllVideoFrames(
         const metadata = videoMetadata[index];
         if (!metadata?.hasAlpha || !codecMayHaveAlpha(metadata.videoCodec)) return;
         if (alphaWarnedSrcs.has(video.src)) return;
-        const opaque = await probeInputAlphaPlane(videoPath, decoderForCodec(metadata.videoCodec));
-        if (opaque !== true) return;
         alphaWarnedSrcs.add(video.src);
+        const decoder = decoderForCodec(metadata.videoCodec);
+        if ((await probeInputAlphaPlane(videoPath, decoder, signal)) !== true) return;
         process.stderr.write(inputAlphaOpaqueWarning(video.src));
       }),
     );

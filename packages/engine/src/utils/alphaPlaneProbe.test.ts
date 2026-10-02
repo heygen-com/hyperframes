@@ -62,9 +62,9 @@ describe("inputAlphaOpaqueWarning", () => {
     const line = inputAlphaOpaqueWarning("avatar.webm");
     expect(line).toContain('src="avatar.webm"');
     expect(line).toContain("declares an alpha channel");
-    expect(line).toContain("decodes fully opaque");
-    expect(line).toContain("yuva420p");
-    expect(line).toContain("alpha sidecar");
+    expect(line).toContain("first frames decode fully opaque");
+    expect(line).toContain("alpha pixel format");
+    expect(line).not.toContain("yuva420p");
     expect(line.endsWith("\n")).toBe(true);
   });
 });
