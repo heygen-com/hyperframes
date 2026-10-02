@@ -147,12 +147,11 @@ export function TimelineClipFades({
     const clip = root?.parentElement;
     if (!root || !clip) return;
     const radius = parseFloat(getComputedStyle(clip).borderTopLeftRadius) || 0;
-    const height = root.clientHeight;
-    const width = root.clientWidth;
+    const { clientHeight: height, clientWidth: width } = root;
     const fx = clip.querySelector('[data-badge="fx"]');
-    const fxRect = fx?.getBoundingClientRect();
-    const rootRect = root.getBoundingClientRect();
-    const toolsLeft = fxRect ? fxRect.left - rootRect.left : null;
+    const toolsLeft = fx
+      ? fx.getBoundingClientRect().left - root.getBoundingClientRect().left
+      : null;
     setClipBox((box) =>
       box.height === height &&
       box.width === width &&
@@ -382,12 +381,7 @@ export function TimelineClipFades({
         : [mid, Math.min(rightEdge, mid + hitWidth)];
     const edgeY = topEdgeY(x, clipWidth, clipBox.height, clipBox.radius);
     const top = edgeY + 1 - TAB_CENTER_IN_HIT;
-    return {
-      left,
-      width: right - left,
-      tabLeft: x - left,
-      top,
-    };
+    return { left, width: right - left, tabLeft: x - left, top };
   };
   const handleStyle = (geometry: { left: number; top: number; width: number }): CSSProperties => ({
     position: "absolute",

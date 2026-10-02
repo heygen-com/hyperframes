@@ -9,6 +9,7 @@ const { browser } = await launchStudioChrome();
 const evidence = [];
 try {
   const page = await browser.newPage();
+  page.setDefaultNavigationTimeout(60_000);
   await page.setViewport({ width: 1440, height: 900 });
   await page.goto(STUDIO_URL, { waitUntil: "domcontentloaded" });
   for (const kind of ["video", "audio"]) {
