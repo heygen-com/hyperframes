@@ -29,6 +29,11 @@ function durationNote(row: TimelineRow): string | false {
   }
 }
 
+function syncNote(frames: number | null): string | false {
+  if (!frames) return false;
+  return `out-of-sync=${frames > 0 ? "+" : ""}${frames}f`;
+}
+
 function details(row: TimelineRow): string {
   const lanes = row.lanes.map(
     (l) => `${l.target}[${l.points.map((p) => `${n(p.t)}:${n(p.v)}`).join(" ")}]`,
@@ -38,6 +43,7 @@ function details(row: TimelineRow): string {
     row.volume !== null && `vol=${row.volume}`,
     row.playbackRate !== null && `rate=${n(row.playbackRate)}`,
     row.audioGroup && `group=${row.audioGroup}`,
+    syncNote(row.syncOffsetFrames),
     durationNote(row),
     row.sourceFile && !row.children.length && "children=unread",
     row.laneError && `lanes unreadable: ${row.laneError}`,

@@ -8,8 +8,11 @@ import { findFFmpeg } from "../browser/ffmpeg.js";
 import { sourceTimeAt } from "@hyperframes/core";
 
 const snapshotState = vi.hoisted(() => ({
-  openSettledPage: vi.fn(async () => {
+  openSettledPage: vi.fn(async (): Promise<unknown> => {
     throw new Error("browser capture reached");
+  }),
+  seek: vi.fn(async (_page: unknown, _time: number, _options?: unknown): Promise<void> => {
+    throw new Error("seek reached");
   }),
   closeServer: vi.fn(async () => undefined),
 }));
@@ -17,6 +20,7 @@ const snapshotState = vi.hoisted(() => ({
 vi.mock("../capture/captureCompositionFrame.js", async (importOriginal) => ({
   ...(await importOriginal<typeof import("../capture/captureCompositionFrame.js")>()),
   openSettledCompositionPage: snapshotState.openSettledPage,
+  seekCompositionTimeline: snapshotState.seek,
 }));
 
 vi.mock("../utils/staticProjectServer.js", () => ({
@@ -147,6 +151,44 @@ describe("snapshot lint preflight", () => {
 
     expect(output).toContain("hyperframes snapshot <project>/compositions");
     expect(output).toContain("assets are self-contained under that directory");
+  });
+});
+
+describe("snapshot --at seeks", () => {
+  it("asks the runtime for the exact requested instant, not its 30fps grid", async () => {
+    const project = mkdtempSync(join(tmpdir(), "hf-snapshot-exact-at-"));
+    writeFileSync(
+      join(project, "index.html"),
+      `<html><body><div data-composition-id="main" data-width="1920" data-height="1080" data-start="0" data-duration="20" data-fps="29.97"><div class="clip" data-start="0" data-duration="20">Visible</div></div></body></html>`,
+    );
+    const evaluate = vi
+      .fn()
+      .mockResolvedValueOnce({ loaded: [], errored: [], unused: [] })
+      .mockResolvedValueOnce(20)
+      .mockResolvedValueOnce(true);
+    const close = vi.fn(async () => undefined);
+    snapshotState.openSettledPage.mockResolvedValueOnce({
+      browser: { close },
+      page: { evaluate },
+      renderReadyTimedOut: false,
+    });
+    snapshotState.seek.mockClear();
+    const log = vi.spyOn(console, "log").mockImplementation(() => undefined);
+
+    try {
+      await expect(
+        snapshotCommand.run?.({
+          args: { dir: project, at: "19.019018", end: false, output: join(project, "out") },
+        } as never),
+      ).rejects.toBeDefined();
+      expect(snapshotState.seek).toHaveBeenCalledWith(expect.anything(), 19.019018, {
+        exactTime: true,
+      });
+      expect(close).toHaveBeenCalled();
+    } finally {
+      log.mockRestore();
+      rmSync(project, { recursive: true, force: true });
+    }
   });
 });
 

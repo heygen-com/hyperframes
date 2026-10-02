@@ -1619,6 +1619,11 @@ describe("parseAudioElements — hidden tracks", () => {
 
     expect(parseAudioElements(html).map((track) => track.id)).toEqual(["master"]);
   });
+
+  it("does not mix a muted video that still declares data-has-audio", () => {
+    const html = `<video id="v" src="v.mp4" muted data-has-audio="true" data-start="0" data-duration="3"></video>`;
+    expect(parseAudioElements(html)).toEqual([]);
+  });
 });
 
 describe("parseAudioElements data-fx-chain", () => {

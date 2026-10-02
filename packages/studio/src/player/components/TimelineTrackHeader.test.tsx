@@ -869,6 +869,43 @@ describe("TimelineTrackHeader", () => {
       act(() => view.root.unmount());
     });
 
+    it("offers grouping on a track of audible videos, not on muted b-roll", () => {
+      const aRoll: TimelineElement = {
+        ...VOICE,
+        id: "a-roll",
+        domId: "a-roll",
+        tag: "video",
+        hasAudio: true,
+      };
+      const aRoll2: TimelineElement = { ...aRoll, id: "a-roll-2", domId: "a-roll-2" };
+      const bRoll: TimelineElement = {
+        ...aRoll,
+        id: "b-roll",
+        domId: "b-roll",
+        hasAudio: undefined,
+      };
+      const bRoll2: TimelineElement = { ...bRoll, id: "b-roll-2", domId: "b-roll-2" };
+      const opts = {
+        keyframeClip: aRoll,
+        trackElements: [aRoll, aRoll2],
+        clipCount: 2,
+        animations: [],
+        expanded: false,
+      };
+      const pointer = (host: HTMLElement) =>
+        host.querySelector<HTMLButtonElement>(
+          'button[aria-label="Effects — group these clips first"]',
+        );
+      const view = renderHeader(opts);
+      const button = pointer(view.host);
+      expect(button).not.toBeNull();
+      act(() => button?.click());
+      expect(document.body.textContent).not.toContain("can't be grouped");
+      view.rerender({ ...opts, keyframeClip: bRoll, trackElements: [bRoll, bRoll2] });
+      expect(pointer(view.host)).toBeNull();
+      act(() => view.root.unmount());
+    });
+
     // The header is a 48px column of exactly TWO lines — what the row is, then
     // what you can do to it. The group pointer used to render as a sibling of
     // both, making a third: 17 + 24 + 24 + gaps in a 48px box, which

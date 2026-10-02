@@ -25,7 +25,7 @@ jobs:
         scripts/check-comment-citations.mjs scripts/check-comment-citations.test.mjs
         scripts/comment-ratchet.mjs scripts/comment-ratchet.test.mjs
     steps:
-      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
           # The PR's own head, graded against its merge-base: not the merge preview, which would
           # charge the branch for every comment main changed since it forked.
@@ -40,7 +40,7 @@ jobs:
           for script in $COMMENT_SCRIPTS; do [ -f "pr/$script" ] || dir=base; done
           echo "CHECKS_DIR=$dir" >> "$GITHUB_ENV"
       - if: env.CHECKS_DIR == 'base'
-        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
           ref: ${{ github.event.pull_request.base.sha }}
           path: base

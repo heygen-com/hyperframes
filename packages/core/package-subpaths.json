@@ -200,6 +200,12 @@
       "types": "./dist/audioCarve.d.ts",
       "environments": ["browser", "bun", "node"]
     },
+    "./media-link": {
+      "source": "./src/mediaLink.ts",
+      "runtime": "./dist/mediaLink.js",
+      "types": "./dist/mediaLink.d.ts",
+      "environments": ["browser", "bun", "node"]
+    },
     "./audio-groups": {
       "source": "./src/audioGroups.ts",
       "runtime": "./dist/audioGroups.js",
@@ -216,6 +222,12 @@
       "source": "./src/clipFacts.ts",
       "runtime": "./dist/clipFacts.js",
       "types": "./dist/clipFacts.d.ts",
+      "environments": ["browser", "bun", "node"]
+    },
+    "./audible-video": {
+      "source": "./src/audibleVideo.ts",
+      "runtime": "./dist/audibleVideo.js",
+      "types": "./dist/audibleVideo.d.ts",
       "environments": ["browser", "bun", "node"]
     },
     "./audio-gain": {

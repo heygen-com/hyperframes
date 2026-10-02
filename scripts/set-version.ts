@@ -15,7 +15,7 @@
  */
 
 import { existsSync, readFileSync, writeFileSync } from "fs";
-import { join } from "path";
+import { join, posix } from "path";
 import { execFileSync } from "child_process";
 import { pathToFileURL } from "url";
 import { CLI_SEMVER_PATTERN } from "./cli-options.ts";
@@ -265,7 +265,7 @@ export function missingChangelogArtifacts(version: string) {
 }
 
 export function changelogArtifacts(version: string) {
-  return [join("releases", `v${version}.md`), `docs/changelog.mdx#HyperFrames v${version}`];
+  return [posix.join("releases", `v${version}.md`), `docs/changelog.mdx#HyperFrames v${version}`];
 }
 
 export function unreviewedChangelogArtifacts(version: string) {
@@ -316,10 +316,11 @@ export function docsChangelogEntryHasGeneratedTodo(content: string, marker: stri
 
 export function releaseAllowedPaths(version: string) {
   return [
-    ...PACKAGES.map((pkg) => join(pkg, "package.json")),
+    // These values are compared with Git's slash-separated path output.
+    ...PACKAGES.map((pkg) => posix.join(pkg, "package.json")),
     ...PLUGINS,
     "docs/changelog.mdx",
-    join("releases", `v${version}.md`),
+    posix.join("releases", `v${version}.md`),
   ];
 }
 

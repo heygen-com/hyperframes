@@ -37,6 +37,7 @@ export const DENSE_GEOMETRY_SEEK_OPTIONS = {
 
 export interface SeekCompositionTimelineOptions {
   fallbackToBridgeAndTimelines?: boolean;
+  exactTime?: boolean;
   waitForPreferredSeekTargetMs?: number;
   animationFrameSettle?: "race" | "double" | "none";
   waitForFontsMs?: number;
@@ -47,13 +48,14 @@ type CompositionPageFunction =
   | string
   | (() => unknown)
   | ((value: number) => unknown)
-  | ((value: number, fallbackToBridgeAndTimelines: boolean) => unknown);
+  | ((value: number, fallbackToBridgeAndTimelines: boolean, exactTime: boolean) => unknown);
 
 export interface CompositionEvaluationPage {
   evaluate(
     pageFunction: CompositionPageFunction,
     value?: number,
     fallbackToBridgeAndTimelines?: boolean,
+    exactTime?: boolean,
   ): Promise<unknown>;
 }
 
@@ -247,7 +249,7 @@ export async function seekCompositionTimeline(
   await page.evaluate(
     // Serialized into the page; the seek-target cascade must stay one function.
     // fallow-ignore-next-line complexity
-    (t: number, fallbackToBridgeAndTimelines: boolean) => {
+    (t: number, fallbackToBridgeAndTimelines: boolean, exactTime: boolean) => {
       const getProperty = (target: unknown, key: string): unknown => {
         if ((typeof target !== "object" || target === null) && typeof target !== "function") {
           return undefined;
@@ -271,7 +273,7 @@ export async function seekCompositionTimeline(
 
       // Prefer renderSeek because it also runs the runtime's data-start/data-duration
       // visibility sync; raw timeline seeks leave off-window clips visible to audits.
-      if (call(renderSeek, player, [safe])) {
+      if (call(renderSeek, player, exactTime ? [safe, { exact: true }] : [safe])) {
         // Preferred runtime target handled the seek.
       } else if (fallbackToBridgeAndTimelines && call(bridgeSeek, hf, [safe])) {
         // Producer bridge handled the seek.
@@ -294,6 +296,7 @@ export async function seekCompositionTimeline(
     },
     timeSeconds,
     options.fallbackToBridgeAndTimelines === true,
+    options.exactTime === true,
   );
 
   await page.evaluate(async () => {

@@ -453,7 +453,7 @@ async function captureSnapshots(
       for (let i = 0; i < positions.length; i++) {
         const time = positions[i]!;
 
-        await seekCompositionTimeline(page, time);
+        await seekCompositionTimeline(page, time, { exactTime: true });
 
         if (cameraExpr) await page.evaluate(cameraExpr);
 
@@ -684,7 +684,8 @@ export default defineCommand({
     },
     at: {
       type: "string",
-      description: "Comma-separated timestamps in seconds (e.g., --at 3.0,10.5,18.0)",
+      description:
+        "Comma-separated timestamps in seconds (e.g., --at 3.0,10.5,18.0). Each is captured at that exact instant, not snapped to a frame.",
     },
     timeout: {
       type: "string",

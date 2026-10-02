@@ -5,6 +5,7 @@ import {
   useMemo,
   useRef,
   type PointerEvent as ReactPointerEvent,
+  type ReactNode,
   type Ref,
   type RefObject,
 } from "react";
@@ -20,6 +21,7 @@ import type { StereoLevel } from "@hyperframes/core/runtime/levelTap";
 import { usePlayerStore } from "../../player";
 import { clampNumber } from "../../utils/studioHelpers";
 import { useAudioMetersVisible } from "../../utils/audioMeterVisibility";
+import { EXPORT_PEAK_CEILING } from "../../utils/exportPeakCeiling";
 import { useStudioShellContextOptional } from "../../contexts/StudioContext";
 import { useTimelineEditContextOptional } from "../../contexts/TimelineEditContext";
 import {
@@ -48,6 +50,24 @@ type Bars = { mask: HTMLElement | null; peak: HTMLElement | null };
 type StripBars = [Bars, Bars];
 
 const MONITOR_LABEL = "Monitor";
+
+/** The CLIP light latches at the export ceiling, stricter than RED_AT. */
+export const CLIP_LATCH_PEAK = EXPORT_PEAK_CEILING;
+
+export function stepClipLatch(latched: boolean, master: StereoLevel | undefined): boolean {
+  if (latched || !master) return latched;
+  return Math.max(master.l, master.r) >= CLIP_LATCH_PEAK;
+}
+
+function paintClipLight(el: HTMLElement | null, lit: boolean): void {
+  if (!el) return;
+  el.dataset.lit = String(lit);
+  el.style.setProperty(
+    "background-color",
+    lit ? "var(--color-red-500)" : "var(--color-neutral-800)",
+  );
+  el.style.setProperty("color", lit ? "var(--color-white)" : "var(--color-neutral-500)");
+}
 
 /** Where the fill turns amber, then red, on the same piecewise dB scale the marks use. */
 const AMBER_AT = markFraction(-6);
@@ -178,10 +198,16 @@ export function stepAndPaintStrips(
 }
 
 /** One rAF loop re-reads the hook off the live preview window, so a reloaded iframe is followed. */
+interface ClipLatch {
+  lit: boolean;
+  light: HTMLElement | null;
+}
+
 function useMeterLoop(
   strips: Strip[],
   bars: RefObject<Map<string | null, StripBars>>,
   iframeRef: RefObject<HTMLIFrameElement | null> | undefined,
+  clip: RefObject<ClipLatch>,
 ) {
   const shell = useStudioShellContextOptional();
   const previewIframeRef = iframeRef ?? shell?.previewIframeRef;
@@ -200,6 +226,11 @@ function useMeterLoop(
       last = now;
       evictGoneMeterState(state, new Set(stripsRef.current.map((s) => s.id)));
       stepAndPaintStrips(stripsRef.current, state, bars.current, levels, now, dt);
+      const lit = stepClipLatch(clip.current.lit, levels?.master);
+      if (lit !== clip.current.lit) {
+        clip.current.lit = lit;
+        paintClipLight(clip.current.light, lit);
+      }
     };
     raf = requestAnimationFrame(tick);
     return () => {
@@ -210,7 +241,29 @@ function useMeterLoop(
         // Preview iframe already gone.
       }
     };
-  }, [previewIframeRef, bars]);
+  }, [previewIframeRef, bars, clip]);
+}
+
+function ClipLight({ clip }: { clip: RefObject<ClipLatch> }) {
+  return (
+    <button
+      type="button"
+      data-testid="meter-clip-light"
+      data-lit="false"
+      title="Lights when the preview reaches −1 dBFS, the export ceiling. Click to reset."
+      ref={(el) => {
+        clip.current.light = el;
+        paintClipLight(el, clip.current.lit);
+      }}
+      onClick={() => {
+        clip.current.lit = false;
+        paintClipLight(clip.current.light, false);
+      }}
+      className="rounded-[2px] px-1 font-mono text-[9px] leading-[14px] font-bold tracking-wide"
+    >
+      CLIP
+    </button>
+  );
 }
 
 function Bar({ maskRef, peakRef }: { maskRef: Ref<HTMLDivElement>; peakRef: Ref<HTMLDivElement> }) {
@@ -341,11 +394,13 @@ function MeterStrip({
   register,
   onLive,
   onCommit,
+  clipLight,
 }: {
   strip: Strip;
   register: (id: string | null, bars: StripBars | null) => void;
   onLive: (id: string | null, volume: number) => void;
   onCommit: (id: string | null, volume: number) => void;
+  clipLight?: ReactNode;
 }) {
   const refs = [
     useRef<HTMLDivElement>(null),
@@ -364,6 +419,7 @@ function MeterStrip({
   }, [strip.id, register]);
   return (
     <div className="flex w-[104px] shrink-0 flex-col items-center gap-1 px-1.5 pt-2 pb-1">
+      {clipLight}
       <div
         className="flex min-h-0 flex-1 items-stretch gap-1.5"
         aria-label={`${strip.label} level`}
@@ -421,7 +477,8 @@ function MeterStripBody({ previewIframeRef }: AudioMeterStripProps) {
     else bars.current.delete(id);
   }).current;
   const { onLive, onCommit } = useVolumeHandlers();
-  useMeterLoop(strips, bars, previewIframeRef);
+  const clip = useRef<ClipLatch>({ lit: false, light: null });
+  useMeterLoop(strips, bars, previewIframeRef, clip);
   return (
     <div
       data-testid="audio-meter-strip"
@@ -434,6 +491,7 @@ function MeterStripBody({ previewIframeRef }: AudioMeterStripProps) {
           register={register}
           onLive={onLive}
           onCommit={onCommit}
+          clipLight={strip.id === null ? <ClipLight clip={clip} /> : undefined}
         />
       ))}
     </div>

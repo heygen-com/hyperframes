@@ -182,7 +182,10 @@ async function settle() {
 
 const fire = (target: Element, type: string, init: MouseEventInit = {}) => {
   act(() => {
-    target.dispatchEvent(new MouseEvent(type, { bubbles: true, cancelable: true, ...init }));
+    const buttons = type === "pointerdown" || type === "pointermove" ? 1 : 0;
+    target.dispatchEvent(
+      new MouseEvent(type, { bubbles: true, cancelable: true, buttons, ...init }),
+    );
   });
 };
 

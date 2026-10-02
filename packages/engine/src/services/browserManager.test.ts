@@ -182,6 +182,13 @@ describe("buildChromeArgs browser GPU mode", () => {
     expect(args).not.toContain("--use-angle=swiftshader");
   });
 
+  it.each(["darwin", "win32", "linux"] as const)(
+    "pins the capture surface to 1 device pixel per CSS pixel on %s",
+    (platform) => {
+      expect(buildChromeArgs({ ...base, platform })).toContain("--force-device-scale-factor=1");
+    },
+  );
+
   it("keeps --disable-gpu authoritative when requested", () => {
     const args = buildChromeArgs(
       { ...base, platform: "darwin" },

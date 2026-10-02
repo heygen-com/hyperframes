@@ -6,6 +6,7 @@ import type { DomEditSelection } from "../components/editor/domEditing";
 import { clearAutomationClipboard, copyRange } from "../player/components/automationClipboard";
 import { VOLUME_RANGE } from "@hyperframes/core/audio-automation";
 import type { TimelineElement } from "../player/store/timelineElement";
+import { useAudioGainDialogStore } from "../player/components/audioGainDialogStore";
 
 /** Minimal valid fixture — TimelineElement only requires these five fields. */
 const bgmElement: TimelineElement = {
@@ -472,5 +473,38 @@ describe("hotkeys with the preview read-only", () => {
     cb.domEditSelectionRef.current = { id: "card" } as DomEditSelection;
     dispatchPlainKey(press("Delete"), "delete", cb);
     expect(cb.handleDomEditElementDelete).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe("dispatchPlainKey — G opens Audio Gain", () => {
+  const video: TimelineElement = {
+    id: "b-roll",
+    key: "b-roll",
+    tag: "video",
+    start: 0,
+    duration: 4,
+    track: 1,
+  };
+
+  afterEach(() => useAudioGainDialogStore.getState().close());
+
+  it("opens the dialog for the selected clips with sound and owns the key", () => {
+    usePlayerStore.setState({
+      elements: [bgmElement, video],
+      selectedElementId: "bgm",
+      selectedElementIds: new Set(["bgm", "b-roll"]),
+    });
+    const event = press("g");
+    dispatchPlainKey(event, "g", callbacks());
+    expect(useAudioGainDialogStore.getState().targetKeys).toEqual(["bgm"]);
+    expect(event.defaultPrevented).toBe(true);
+  });
+
+  it("leaves G to the grid toggle when nothing selected has sound", () => {
+    usePlayerStore.setState({ elements: [video], selectedElementId: "b-roll" });
+    const event = press("g");
+    dispatchPlainKey(event, "g", callbacks());
+    expect(useAudioGainDialogStore.getState().targetKeys).toBeNull();
+    expect(event.defaultPrevented).toBe(false);
   });
 });

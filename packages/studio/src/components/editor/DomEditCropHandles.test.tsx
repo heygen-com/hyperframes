@@ -6,6 +6,7 @@ import type { DomEditSelection } from "./domEditing";
 import type { OverlayRect } from "./domEditOverlayGeometry";
 import { DomEditCropHandles } from "./DomEditCropHandles";
 import { isElementCropLifted } from "./domEditOverlayCrop";
+import { useCropPresetBarStore } from "./cropPresetStore";
 
 (globalThis as unknown as { IS_REACT_ACT_ENVIRONMENT: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
@@ -32,6 +33,19 @@ function makeEl(id: string, clip: string): HTMLElement {
   if (clip) el.style.setProperty("clip-path", clip);
   document.body.append(el);
   return el;
+}
+
+/** Presses at the first x, moves through the rest with their buttons, and lets go where the last held move was. */
+function dragCropRight(handle: HTMLElement, pointerId: number, points: [number, number][]) {
+  const [[start], ...moves] = points;
+  const release = moves.filter(([, buttons]) => buttons & 1).at(-1)?.[0] ?? start;
+  const send = (type: string, clientX: number, buttons: number) =>
+    handle.dispatchEvent(new PointerEvent(type, { bubbles: true, pointerId, buttons, clientX }));
+  act(() => {
+    send("pointerdown", start, 1);
+    for (const [x, buttons] of moves) send("pointermove", x, buttons);
+    send("pointerup", release, 0);
+  });
 }
 
 function render(
@@ -110,7 +124,14 @@ describe("DomEditCropHandles clip lift", () => {
     ] as const) {
       const at = { clientX: 100 + d * c.dx, clientY: 50 + d * c.dy };
       act(() =>
-        handle.dispatchEvent(new PointerEvent(type, { bubbles: true, pointerId: 3, ...at })),
+        handle.dispatchEvent(
+          new PointerEvent(type, {
+            bubbles: true,
+            buttons: type === "pointerup" ? 0 : 1,
+            pointerId: 3,
+            ...at,
+          }),
+        ),
       );
     }
     expect(onStyleCommit).not.toHaveBeenCalled();
@@ -120,16 +141,23 @@ describe("DomEditCropHandles clip lift", () => {
     const onStyleCommit = vi.fn();
     render(makeEl("a", "inset(10px)"), onStyleCommit);
     const handle = document.querySelector<HTMLButtonElement>('[aria-label="Crop right"]')!;
-    act(() => {
-      for (const [type, clientX] of [
-        ["pointerdown", 100],
-        ["pointermove", 90],
-        ["pointermove", 80],
-        ["pointerup", 80],
-      ] as const) {
-        handle.dispatchEvent(new PointerEvent(type, { bubbles: true, pointerId: 4, clientX }));
-      }
-    });
+    dragCropRight(handle, 4, [
+      [100, 1],
+      [90, 1],
+      [80, 1],
+    ]);
+    expect(onStyleCommit).toHaveBeenCalledWith("clip-path", "inset(10px 30px 10px 10px)");
+  });
+
+  it("commits where the pointer let go, not at a buttonless move back at the press point", () => {
+    const onStyleCommit = vi.fn();
+    render(makeEl("a", "inset(10px)"), onStyleCommit);
+    const handle = document.querySelector<HTMLButtonElement>('[aria-label="Crop right"]')!;
+    dragCropRight(handle, 6, [
+      [100, 1],
+      [80, 1],
+      [100, 0],
+    ]);
     expect(onStyleCommit).toHaveBeenCalledWith("clip-path", "inset(10px 30px 10px 10px)");
   });
 
@@ -137,16 +165,11 @@ describe("DomEditCropHandles clip lift", () => {
     const a = makeEl("a", "");
     const { root } = render(a, (property, value) => void a.style.setProperty(property, value));
     const handle = document.querySelector<HTMLButtonElement>('[aria-label="Crop right"]')!;
-    act(() => {
-      for (const [type, clientX] of [
-        ["pointerdown", 100],
-        ["pointermove", 90],
-        ["pointermove", 80],
-        ["pointerup", 80],
-      ] as const) {
-        handle.dispatchEvent(new PointerEvent(type, { bubbles: true, pointerId: 5, clientX }));
-      }
-    });
+    dragCropRight(handle, 5, [
+      [100, 1],
+      [90, 1],
+      [80, 1],
+    ]);
     await act(async () => undefined);
     act(() => root.unmount());
     expect(a.style.getPropertyValue("clip-path")).toBe("inset(0px 20px 0px 0px)");
@@ -162,7 +185,14 @@ describe("DomEditCropHandles clip lift", () => {
     const handle = document.querySelector<HTMLButtonElement>('[aria-label="Crop right"]')!;
     const press = (type: string, clientX: number) =>
       act(() =>
-        handle.dispatchEvent(new PointerEvent(type, { bubbles: true, pointerId: 1, clientX })),
+        handle.dispatchEvent(
+          new PointerEvent(type, {
+            bubbles: true,
+            buttons: type === "pointerup" ? 0 : 1,
+            pointerId: 1,
+            clientX,
+          }),
+        ),
       );
     press("pointerdown", 100);
     press("pointermove", 80);
@@ -270,5 +300,48 @@ describe("DomEditCropHandles leaves the corner resize dots free", () => {
     document.body.innerHTML = "";
     render(makeEl("b", ""), undefined, rectOf(29, 14));
     expect(handles().map((h) => h.label)).toEqual(["Crop top", "Crop bottom"]);
+  });
+});
+
+describe("DomEditCropHandles preset bar", () => {
+  const click = (label: string) => {
+    const button = Array.from(document.querySelectorAll<HTMLButtonElement>("button")).find(
+      (b) => b.textContent === label,
+    );
+    act(() => button?.click());
+  };
+
+  afterEach(() => useCropPresetBarStore.getState().close());
+
+  it("shows only for the clip the menu opened it for", () => {
+    const a = makeEl("a", "");
+    useCropPresetBarStore.getState().open({ id: "other" });
+    render(a);
+    expect(document.querySelector("[data-dom-edit-crop-bar]")).toBeNull();
+  });
+
+  it("commits a centred 1:1 crop, then Reset removes the clip-path", async () => {
+    const a = makeEl("a", "");
+    const commits: string[] = [];
+    useCropPresetBarStore.getState().open({ id: "a" });
+    const { root } = render(a, (_property, value) => {
+      commits.push(value);
+    });
+    click("1:1");
+    await act(async () => {});
+    expect(commits[0]).toBe("inset(0px 50px 0px 50px)");
+    click("Reset");
+    await act(async () => {});
+    expect(commits[1]).toBe("");
+    act(() => root.unmount());
+    expect(a.style.getPropertyValue("clip-path")).toBe("");
+  });
+
+  it("Done closes the bar", () => {
+    const a = makeEl("a", "");
+    useCropPresetBarStore.getState().open({ id: "a" });
+    render(a);
+    click("Done");
+    expect(useCropPresetBarStore.getState().openFor).toBeNull();
   });
 });

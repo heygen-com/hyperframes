@@ -83,13 +83,24 @@ function forEachSiblingTimeline(
   }
 }
 
+export function resolveRenderSeekTime(
+  timeSeconds: number,
+  canonicalFps: number,
+  options?: RuntimeSeekOptions,
+): number {
+  if (options?.exact === true) {
+    return Number.isFinite(timeSeconds) && timeSeconds > 0 ? timeSeconds : 0;
+  }
+  return quantizeSeekTime(timeSeconds, canonicalFps, options?.subFrameDivisions);
+}
+
 function seekTimelineDeterministically(
   timeline: RuntimeTimelineLike,
   timeSeconds: number,
   canonicalFps: number,
   options?: RuntimeSeekOptions,
 ): number {
-  const quantized = quantizeSeekTime(timeSeconds, canonicalFps, options?.subFrameDivisions);
+  const quantized = resolveRenderSeekTime(timeSeconds, canonicalFps, options);
   const suppressEvents = options?.suppressEvents === true;
   safeVoid(timeline, "pause");
   if (typeof timeline.totalTime === "function") {
@@ -248,11 +259,7 @@ export function createRuntimePlayer(deps: PlayerDeps): RuntimePlayer {
             activateSiblingTimelines(deps.getTimelineRegistry?.(), timeline);
             return seekTimelineDeterministically(timeline, timeSeconds, canonicalFps, options);
           })()
-        : quantizeSeekTime(
-            Math.max(0, Number(timeSeconds) || 0),
-            canonicalFps,
-            options?.subFrameDivisions,
-          );
+        : resolveRenderSeekTime(Math.max(0, Number(timeSeconds) || 0), canonicalFps, options);
       deps.onDeterministicSeek(quantized, options);
       deps.setIsPlaying(false);
       deps.onSyncMedia(quantized, false);

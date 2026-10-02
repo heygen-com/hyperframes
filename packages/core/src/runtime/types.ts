@@ -286,6 +286,7 @@ export type RuntimeSeekOptions = {
    * engine's sub-frame tick count so a fractional sample time survives quantization.
    */
   subFrameDivisions?: number;
+  exact?: boolean;
 };
 
 export type RuntimeTimelineChildLike = {

@@ -12,7 +12,9 @@ import { HF_AUDIO_GROUP_ATTR } from "@hyperframes/core/audio-groups";
 import {
   escapeHtmlAttribute,
   findTagByTarget,
+  applyPatchByTarget,
   readAttributeByTarget,
+  unescapeHtmlAttribute,
   type PatchOperation,
   type PatchTarget,
 } from "../../utils/sourcePatcher";
@@ -21,10 +23,17 @@ import type { CommitDomAttributeBatch } from "../../hooks/domEditCommitTypes";
 import { buildDomEditPatchTarget, type DomEditSelection } from "./domEditing";
 import { generateId } from "../../utils/generateId";
 
-const MEDIA_LINK_ATTR = "data-link";
+import {
+  MEDIA_LINK_ATTR,
+  SYNC_ORIGIN_ATTR,
+  mintLinkId as mintLinkIdFrom,
+} from "@hyperframes/core/media-link";
 const SOUND_KEPT_ON_LINKED_AUDIO_STAGE = "Background removed. Sound kept on a linked audio track.";
 
-const MOVED_SOUND_ATTRS = [
+const SOUND_NOT_KEPT_MESSAGE =
+  "Background removed, but the sound could not be kept on a linked audio track. Undo to restore the original clip.";
+
+export const MOVED_SOUND_ATTRS = [
   "data-volume",
   HF_AUDIO_FADE_IN_ATTR,
   HF_AUDIO_FADE_OUT_ATTR,
@@ -33,7 +42,7 @@ const MOVED_SOUND_ATTRS = [
   HF_AUDIO_GROUP_ATTR,
 ];
 
-const COPIED_TIMING_ATTRS = [
+export const COPIED_TIMING_ATTRS = [
   "start",
   "end",
   "duration",
@@ -86,7 +95,7 @@ export function cutoutOps(input: { isVideo: boolean; cutoutSrc: string }): Patch
   return input.isVideo ? [src, htmlAttr("muted", "true"), dataAttr("has-audio", null)] : [src];
 }
 
-function firstFreeName(base: string, taken: Set<string>): string {
+export function firstFreeName(base: string, taken: Set<string>): string {
   if (!taken.has(base)) return base;
   let n = 2;
   while (taken.has(`${base}-${n}`)) n += 1;
@@ -95,12 +104,16 @@ function firstFreeName(base: string, taken: Set<string>): string {
 
 export function mintLinkId(doc: Document): string {
   const taken = new Set<string>();
-  for (const el of Array.from(doc.querySelectorAll(`[id], [${MEDIA_LINK_ATTR}]`))) {
-    if (el.id) taken.add(el.id);
-    const link = el.getAttribute(MEDIA_LINK_ATTR);
-    if (link) taken.add(link);
+  const selector = `[id], [${MEDIA_LINK_ATTR}], [${SYNC_ORIGIN_ATTR}]`;
+  for (const el of Array.from(doc.querySelectorAll(selector))) {
+    for (const value of [
+      el.id,
+      el.getAttribute(MEDIA_LINK_ATTR),
+      el.getAttribute(SYNC_ORIGIN_ATTR),
+    ])
+      if (value) taken.add(value);
   }
-  return firstFreeName("link", taken);
+  return mintLinkIdFrom(taken);
 }
 
 function firstFreeTrackIndex(source: string): number {
@@ -112,7 +125,7 @@ function firstFreeTrackIndex(source: string): number {
   return track;
 }
 
-function splitAutomation(raw: string): { videoKeeps: string | null; audioTakes: string } {
+export function splitAutomation(raw: string): { videoKeeps: string | null; audioTakes: string } {
   let lanes: HfAutomationLane[];
   try {
     lanes = parseAutomation(raw).lanes;
@@ -127,11 +140,20 @@ function splitAutomation(raw: string): { videoKeeps: string | null; audioTakes: 
   };
 }
 
-function formatAttrs(attrs: Array<[string, string]>): string {
+export function formatAttrs(attrs: Array<[string, string]>): string {
   return attrs.map(([name, value]) => `${name}="${escapeHtmlAttribute(value)}"`).join(" ");
 }
 
-function insertBeforeTarget(source: string, target: PatchTarget, markup: string): string {
+export function readAuthoredSrc(source: string, target: PatchTarget): string {
+  const tag = findTagByTarget(source, target);
+  if (!tag) return "";
+  const own = /\bsrc=(["'])([^"']*)\1/.exec(tag.tag);
+  if (own?.[2]) return unescapeHtmlAttribute(own[2]);
+  const firstSource = /^\s*<source\b[^>]*?\bsrc=(["'])([^"']*)\1/i.exec(source.slice(tag.end + 1));
+  return firstSource?.[2] ? unescapeHtmlAttribute(firstSource[2]) : "";
+}
+
+export function insertBeforeTarget(source: string, target: PatchTarget, markup: string): string {
   const match = findTagByTarget(source, target);
   if (!match) return source;
   const lineStart = source.lastIndexOf("\n", match.start) + 1;
@@ -145,6 +167,7 @@ function insertBeforeTarget(source: string, target: PatchTarget, markup: string)
 export interface KeepSoundCutoutEdit {
   ops: PatchOperation[];
   prepareContent: (source: string) => string;
+  audioInserted: () => boolean;
 }
 
 export function buildKeepSoundCutoutEdit(input: {
@@ -155,10 +178,11 @@ export function buildKeepSoundCutoutEdit(input: {
 }): KeepSoundCutoutEdit {
   const { video, target } = input;
   const linkId = mintLinkId(video.ownerDocument);
-  const originalSrc = video.getAttribute("src") ?? "";
+  let audioInserted = false;
 
   const movedSound: Array<[string, string]> = [];
-  const ops: PatchOperation[] = [...cutoutOps({ isVideo: true, cutoutSrc: input.cutoutSrc })];
+  const cutoutSrcOp = htmlAttr("src", input.cutoutSrc);
+  const ops: PatchOperation[] = [htmlAttr("muted", "true"), dataAttr("has-audio", null)];
   for (const name of MOVED_SOUND_ATTRS) {
     const value = video.getAttribute(name);
     if (value === null) continue;
@@ -171,9 +195,13 @@ export function buildKeepSoundCutoutEdit(input: {
     movedSound.push([HF_AUDIO_AUTOMATION_ATTR, audioTakes]);
     ops.push(dataAttr(stripDataPrefix(HF_AUDIO_AUTOMATION_ATTR), videoKeeps));
   }
-  ops.push(dataAttr(stripDataPrefix(MEDIA_LINK_ATTR), linkId));
+  ops.push(
+    dataAttr(stripDataPrefix(MEDIA_LINK_ATTR), linkId),
+    dataAttr(stripDataPrefix(SYNC_ORIGIN_ATTR), linkId),
+  );
 
   const prepareContent = (source: string): string => {
+    const originalSrc = readAuthoredSrc(source, target);
     const audioId = firstFreeName(
       `${input.videoId || "video"}-audio`,
       new Set(collectHtmlIds(source)),
@@ -191,12 +219,18 @@ export function buildKeepSoundCutoutEdit(input: {
       ...timing,
       ["data-track-index", String(firstFreeTrackIndex(source))],
       [MEDIA_LINK_ATTR, linkId],
+      [SYNC_ORIGIN_ATTR, linkId],
       ...movedSound,
     ];
-    return insertBeforeTarget(source, target, `<audio ${formatAttrs(attrs)}></audio>`);
+    if (video.hasAttribute("loop")) attrs.push(["loop", ""]);
+    if (video.hasAttribute("data-hidden")) attrs.push(["data-hidden", ""]);
+    const cut = applyPatchByTarget(source, target, cutoutSrcOp);
+    const inserted = insertBeforeTarget(cut, target, `<audio ${formatAttrs(attrs)}></audio>`);
+    audioInserted = inserted !== cut;
+    return inserted;
   };
 
-  return { ops, prepareContent };
+  return { ops, prepareContent, audioInserted: () => audioInserted };
 }
 
 export interface MediaEditContext {
@@ -231,23 +265,31 @@ export async function commitCutout(
   const isVideo = isVideoSelection(ctx.element);
   const label = "Remove background";
   const keep = isVideo && keepSound;
-  const landed = keep
-    ? await commitKeepSoundCutout(ctx, cutoutSrc, label)
-    : await ctx.commit(ctx.element, cutoutOps({ isVideo, cutoutSrc }), { label });
+  if (!keep) {
+    const applied = await ctx.commit(ctx.element, cutoutOps({ isVideo, cutoutSrc }), { label });
+    if (!applied) throw new Error("Couldn't apply the cutout");
+    return "Applied cutout";
+  }
+  const { landed, soundKept } = await commitKeepSoundCutout(ctx, cutoutSrc, label);
   if (!landed) throw new Error("Couldn't apply the cutout");
-  return keep ? SOUND_KEPT_ON_LINKED_AUDIO_STAGE : "Applied cutout";
+  if (!soundKept) throw new Error(SOUND_NOT_KEPT_MESSAGE);
+  return SOUND_KEPT_ON_LINKED_AUDIO_STAGE;
 }
 
-function commitKeepSoundCutout(
+async function commitKeepSoundCutout(
   ctx: MediaEditContext,
   cutoutSrc: string,
   label: string,
-): Promise<boolean> {
+): Promise<{ landed: boolean; soundKept: boolean }> {
   const edit = buildKeepSoundCutoutEdit({
     video: ctx.element.element,
     videoId: ctx.element.id ?? null,
     target: buildDomEditPatchTarget(ctx.element),
     cutoutSrc,
   });
-  return ctx.commit(ctx.element, edit.ops, { label, prepareContent: edit.prepareContent });
+  const landed = await ctx.commit(ctx.element, edit.ops, {
+    label,
+    prepareContent: edit.prepareContent,
+  });
+  return { landed, soundKept: landed && edit.audioInserted() };
 }

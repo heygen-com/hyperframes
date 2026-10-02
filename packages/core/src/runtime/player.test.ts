@@ -709,6 +709,15 @@ describe("renderSeek sub-frame grid (issue #4010 motion blur)", () => {
     expect(timeline.time()).toBe(10 / 30);
   });
 
+  it("lands on the requested instant, off every frame grid, for an exact seek", () => {
+    const timeline = createMockTimeline();
+    const player = createRuntimePlayer(createMockDeps(timeline));
+
+    player.renderSeek(10 / 30 + 0.017, { exact: true });
+
+    expect(timeline.time()).toBe(10 / 30 + 0.017);
+  });
+
   it("suppresses timeline events on a sub-frame sample seek", () => {
     const timeline = createMockTimeline();
     const player = createRuntimePlayer(createMockDeps(timeline));

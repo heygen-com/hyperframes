@@ -307,6 +307,7 @@ describe("padOrTrimAudioToVideoFrameCount", () => {
 
     expect(result.success).toBe(true);
     expect(captured.args).toHaveLength(1);
+    expect(result).not.toHaveProperty("audioLoweredDb");
   });
 
   it("attenuates the duration-normalized artifact with AAC correction headroom", async () => {
@@ -360,6 +361,7 @@ describe("padOrTrimAudioToVideoFrameCount", () => {
 
       expect(result.success, result.error).toBe(true);
       expect(corrections).toEqual([-1.5, -2.4, -2.94]);
+      expect(result.audioLoweredDb).toBe(2.94);
     } finally {
       rmSync(dir, { recursive: true, force: true });
     }

@@ -168,6 +168,9 @@ export function registerRenderRoutes(api: Hono, adapter: StudioApiAdapter): void
             status: current.status,
             stage: current.stage,
             error: current.error,
+            ...(current.status === "complete" && current.audioLoweredDb !== undefined
+              ? { audioLoweredDb: current.audioLoweredDb }
+              : {}),
           }),
         });
         if (current.status !== "rendering") break;
@@ -300,6 +303,7 @@ export function registerRenderRoutes(api: Hono, adapter: StudioApiAdapter): void
         const metaPath = join(rendersDir, `${rid}.meta.json`);
         let status: "complete" | "failed" = "complete";
         let durationMs: number | undefined;
+        let audioLoweredDb: number | undefined;
         if (existsSync(metaPath)) {
           try {
             const meta = JSON.parse(readFileSync(metaPath, "utf-8"));
@@ -309,6 +313,7 @@ export function registerRenderRoutes(api: Hono, adapter: StudioApiAdapter): void
             // an earlier attempt left behind failed metadata.
             if (meta.status === "failed" && !existsSync(fp)) status = "failed";
             if (meta.durationMs) durationMs = meta.durationMs;
+            if (typeof meta.audioLoweredDb === "number") audioLoweredDb = meta.audioLoweredDb;
           } catch {
             /* ignore */
           }
@@ -320,6 +325,7 @@ export function registerRenderRoutes(api: Hono, adapter: StudioApiAdapter): void
           createdAt: stat.mtimeMs,
           status,
           durationMs,
+          ...(audioLoweredDb !== undefined ? { audioLoweredDb } : {}),
         };
       })
       .sort((a, b) => b.createdAt - a.createdAt);

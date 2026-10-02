@@ -206,7 +206,9 @@ it("an undo pressed while a nudge waits for more keys never shows the move befor
   const s = await studio();
   await s.edit();
   resetNudgeKeys();
+  let finish!: () => void;
   const save = vi.fn(async () => {
+    await new Promise<void>((resolve) => (finish = resolve));
     writeFileSync(s.path, NUDGED);
     await s.history().recordEdit({
       label: "Move layer",
@@ -218,11 +220,50 @@ it("an undo pressed while a nudge waits for more keys never shows the move befor
     window.dispatchEvent(new KeyboardEvent("keydown", { key: "ArrowRight", cancelable: true }));
   });
 
+  const nudge = () => s.element("box").style.getPropertyValue("translate");
+  expect(nudge()).not.toBe("");
+
   const undone = s.actions().undo();
   expect(s.box()).toBe("50px");
+  expect(nudge()).toBe("");
+  await vi.waitFor(() => expect(save).toHaveBeenCalledTimes(1));
+  expect(nudge()).toBe("");
+  finish();
   await act(() => undone);
   expect(save).toHaveBeenCalledTimes(1);
   expect(s.file()).toBe(AFTER);
+  expect(s.box()).toBe("50px");
+  expect(nudge()).toBe("");
+});
+
+it("an undo pressed while a nudge's save is queued shows the nudge undone in the key's own task", async () => {
+  const s = await studio();
+  await s.edit();
+  resetNudgeKeys();
+  let finish!: () => void;
+  const save = vi.fn(async () => {
+    await new Promise<void>((resolve) => (finish = resolve));
+    writeFileSync(s.path, NUDGED);
+    await s.history().recordEdit({
+      label: "Move layer",
+      files: { "index.html": { before: AFTER, after: NUDGED } },
+    });
+  });
+  s.mount(createElement(Nudge, { target: s.element("box"), save }));
+  act(() => {
+    window.dispatchEvent(new KeyboardEvent("keydown", { key: "ArrowRight", cancelable: true }));
+  });
+  await vi.waitFor(() => expect(save).toHaveBeenCalledTimes(1));
+  const nudge = () => s.element("box").style.getPropertyValue("translate");
+  expect(nudge()).not.toBe("");
+
+  const undone = s.actions().undo();
+  expect(nudge()).toBe("");
+  expect(s.box()).toBe("50px");
+  finish();
+  await act(() => undone);
+  expect(s.file()).toBe(AFTER);
+  expect(nudge()).toBe("");
   expect(s.box()).toBe("50px");
 });
 

@@ -234,17 +234,15 @@ export function readAttr(tagSource: string, attr: string): string | null {
 }
 
 export function hasAttrName(tagSource: string, attr: string): boolean {
-  const escaped = attr.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-  const attrs = tagSource.replace(/^<\s*[a-z][\w:-]*/i, "");
-  return new RegExp(`(?:^|\\s)${escaped}(?:\\s*=|\\s|/?>)`, "i").test(attrs);
+  return readDecodedAttr(tagSource, attr) !== null;
 }
 
-// An explicit data-has-audio is authoritative for the compiler; "false" and empty mean silent.
+// An explicit data-has-audio is authoritative for the compiler; only the exact value "true" means audible.
 export function isAudibleVideoTag(tagSource: string): boolean {
   if (hasAttrName(tagSource, "muted")) return false;
   if (!hasAttrName(tagSource, "data-has-audio")) return true;
   const declared = readAttr(tagSource, "data-has-audio");
-  return declared !== null && declared.trim().toLowerCase() !== "false";
+  return declared === "true";
 }
 
 export function mediaTimeWindow(tagSource: string): { start: number; end: number } | null {

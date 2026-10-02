@@ -1,6 +1,6 @@
 {
   "name": "@hyperframes/core",
-  "version": "0.8.106",
+  "version": "0.8.111",
   "description": "",
   "repository": {
     "type": "git",
@@ -214,6 +214,12 @@
       "import": "./src/audioCarve.ts",
       "types": "./src/audioCarve.ts"
     },
+    "./media-link": {
+      "bun": "./src/mediaLink.ts",
+      "node": "./dist/mediaLink.js",
+      "import": "./src/mediaLink.ts",
+      "types": "./src/mediaLink.ts"
+    },
     "./audio-groups": {
       "bun": "./src/audioGroups.ts",
       "node": "./dist/audioGroups.js",
@@ -231,6 +237,12 @@
       "node": "./dist/clipFacts.js",
       "import": "./src/clipFacts.ts",
       "types": "./src/clipFacts.ts"
+    },
+    "./audible-video": {
+      "bun": "./src/audibleVideo.ts",
+      "node": "./dist/audibleVideo.js",
+      "import": "./src/audibleVideo.ts",
+      "types": "./src/audibleVideo.ts"
     },
     "./audio-gain": {
       "bun": "./src/audioGain.ts",
@@ -602,6 +614,10 @@
         "import": "./dist/audioCarve.js",
         "types": "./dist/audioCarve.d.ts"
       },
+      "./media-link": {
+        "import": "./dist/mediaLink.js",
+        "types": "./dist/mediaLink.d.ts"
+      },
       "./audio-groups": {
         "import": "./dist/audioGroups.js",
         "types": "./dist/audioGroups.d.ts"
@@ -613,6 +629,10 @@
       "./clip-facts": {
         "import": "./dist/clipFacts.js",
         "types": "./dist/clipFacts.d.ts"
+      },
+      "./audible-video": {
+        "import": "./dist/audibleVideo.js",
+        "types": "./dist/audibleVideo.d.ts"
       },
       "./audio-gain": {
         "import": "./dist/audioGain.js",

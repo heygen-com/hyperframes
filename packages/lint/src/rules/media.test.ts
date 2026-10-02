@@ -2,6 +2,40 @@ import { describe, it, expect } from "vitest";
 import { lintHyperframeHtml } from "../hyperframeLinter.js";
 
 describe("media rules", () => {
+  it.each([
+    'title="an unmuted muted crossorigin clip"',
+    "title='an unmuted muted crossorigin clip'",
+  ])("does not treat words in %s as media attributes", async (tooltip) => {
+    const html = `
+<html><body>
+  <div id="root" data-composition-id="c1" data-width="1920" data-height="1080">
+    <video id="v1" ${tooltip} src="a.mp4" data-start="0" data-duration="3"></video>
+    <audio id="a1" src="a.mp4" data-start="0" data-duration="3"></audio>
+  </div>
+</body></html>`;
+    const result = await lintHyperframeHtml(html);
+    const codes = result.findings.map((finding) => finding.code);
+
+    expect(codes).toContain("video_missing_muted");
+    expect(codes).toContain("video_audio_double_source");
+    expect(codes).not.toContain("media_crossorigin_breaks_preview");
+  });
+
+  it.each(["muted", 'muted=""', 'muted="false"', "MUTED"])(
+    "keeps %s as a present Boolean attribute",
+    async (mutedAttr) => {
+      const html = `
+<html><body>
+  <div id="root" data-composition-id="c1" data-width="1920" data-height="1080">
+    <video id="v1" ${mutedAttr} src="a.mp4" data-start="0" data-duration="3"></video>
+  </div>
+</body></html>`;
+      const result = await lintHyperframeHtml(html);
+
+      expect(result.findings.some((finding) => finding.code === "video_missing_muted")).toBe(false);
+    },
+  );
+
   it("reports error for duplicate media ids", async () => {
     const html = `
 <html><body>
@@ -808,9 +842,21 @@ describe("audio_group_no_members", () => {
     expect(finding?.message).not.toContain('"music"');
   });
 
-  it("does not count video as group membership", async () => {
+  it("counts an audible video as group membership", async () => {
     const res = await lintHyperframeHtml(
-      doc(`${BUS}<video id="v" src="v.mp4" data-start="0" data-duration="5" data-audio-group="voiceover"></video>
+      doc(`${BUS}<video id="v" src="v.mp4" data-start="0" data-duration="5" data-has-audio="true" data-audio-group="voiceover"></video>
+        <audio id="s-1" src="s.wav" data-start="0" data-duration="2" data-audio-group="sfx"></audio>`),
+    );
+    expect(
+      res.findings.some(
+        (finding) => finding.code === "audio_group_no_members" && finding.elementId === "voiceover",
+      ),
+    ).toBe(false);
+  });
+
+  it("does not count a muted video as group membership", async () => {
+    const res = await lintHyperframeHtml(
+      doc(`${BUS}<video id="v" src="v.mp4" data-start="0" data-duration="5" muted data-audio-group="voiceover"></video>
         <audio id="s-1" src="s.wav" data-start="0" data-duration="2" data-audio-group="sfx"></audio>`),
     );
     expect(

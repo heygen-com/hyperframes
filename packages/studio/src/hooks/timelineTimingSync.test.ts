@@ -548,6 +548,65 @@ describe("nothing-to-rewrite timing edits rebind in place (no script re-executio
   });
 });
 
+describe("a timing edit's soft reload restores what GSAP wrote from the files", () => {
+  const script = (at: number) =>
+    `var tl = gsap.timeline({ paused: true }); tl.to("#wt", { width: 450 }, ${at}); tl.to("#nwid", { width: 400 }, ${at}); window.__timelines["root"] = tl;`;
+  const SUB = `<template><div data-composition-id="sub"><div id="nwid" data-hf-id="hf-n" style="left: 40px"></div></div></template>`;
+
+  // The live preview: the top-level timeline tweened a root element's and a nested element's width inline.
+  async function shift(fileOk: boolean) {
+    const doc = document.implementation.createHTMLDocument("");
+    doc.body.innerHTML =
+      `<div id="root" data-composition-id="root"><div id="wt" data-hf-id="hf-w" style="left: 700px; width: 366px"></div>` +
+      `<div data-composition-file="compositions/sub.html"><div id="nwid" data-hf-id="hf-n" style="left: 40px; width: 288px"></div></div></div>` +
+      `<script>${script(0)}</script>`;
+    const [wt, nwid] = [doc.getElementById("wt")!, doc.getElementById("nwid")!];
+    const contentWindow = {
+      gsap: { timeline: vi.fn(), set: vi.fn() },
+      __hfForceTimelineRebind: vi.fn(),
+      __timelines: {
+        root: {
+          kill: vi.fn(),
+          getChildren: () => [{ targets: () => [wt, nwid], vars: { width: 450 } }],
+        },
+      } as Record<string, unknown>,
+      __player: { getTime: () => 1, seek: vi.fn() },
+    };
+    const iframe = { contentWindow, contentDocument: doc } as unknown as HTMLIFrameElement;
+    const fetchMock = vi.fn(async () =>
+      fileOk ? jsonResponse({ content: SUB }) : new Response("{}", { status: 404 }),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+    const after = `<html><body><div id="root" data-composition-id="root"><div id="wt" data-hf-id="hf-w" style="left: 700px"></div></div><script>${script(1)}</script></body></html>`;
+    const reloadPreview = vi.fn();
+
+    await finishClipTimingFallback({
+      ...clipFallbackInput({ reloadPreview, recordEdit: vi.fn(async () => {}) }),
+      iframe,
+      sdkGsap: { mutated: true, scriptText: script(1), after },
+    });
+    return { wt, nwid, reloadPreview, fetchMock };
+  }
+
+  it("puts back the root element from the file it wrote and the nested one from its own file", async () => {
+    const { wt, nwid, reloadPreview, fetchMock } = await shift(true);
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      expect.stringContaining("/files/compositions%2Fsub.html"),
+    );
+    expect(reloadPreview).not.toHaveBeenCalled();
+    expect(wt.getAttribute("style")).toBe("left: 700px;");
+    expect(nwid.getAttribute("style")).toBe("left: 40px;");
+  });
+
+  it("reloads the preview in full when the nested file cannot be read", async () => {
+    const { nwid, reloadPreview } = await shift(false);
+
+    expect(reloadPreview).toHaveBeenCalledTimes(1);
+    expect(nwid.getAttribute("style")).toBe("left: 40px; width: 288px");
+  });
+});
+
 function installOwnedFileServer(
   contents: Map<string, string>,
   options: {

@@ -80,6 +80,12 @@
       "types": "./dist/helpers/proxyTranscoder.d.ts",
       "environments": ["bun", "node"]
     },
+    "./loudness": {
+      "source": "./src/helpers/loudness.ts",
+      "runtime": "./dist/helpers/loudness.js",
+      "types": "./dist/helpers/loudness.d.ts",
+      "environments": ["bun", "node"]
+    },
     "./media-proxy-preview": {
       "source": "./src/helpers/mediaProxyPreview.ts",
       "runtime": "./dist/helpers/mediaProxyPreview.js",

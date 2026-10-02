@@ -6,8 +6,7 @@
  */
 
 import { isBlockedNetworkHost } from "@hyperframes/engine";
-import { mkdirSync } from "node:fs";
-import { writeCaptureFileSync } from "./captureFile.js";
+import { ensureCaptureDirSync, writeCaptureFileSync } from "./captureFile.js";
 import { join, extname } from "node:path";
 import { createHash } from "node:crypto";
 import type { DesignTokens, DownloadedAsset } from "./types.js";
@@ -317,14 +316,14 @@ export async function downloadAssets(
 ): Promise<{ assets: DownloadedAsset[]; drops: AssetDropCounts; icons: IconManifest }> {
   options = { ...options, byteBudget: options.byteBudget ?? createCaptureDownloadBudget() };
   const assetsDir = join(outputDir, "assets");
-  mkdirSync(assetsDir, { recursive: true });
+  ensureCaptureDirSync(outputDir, assetsDir);
 
   const assets: DownloadedAsset[] = [];
   const drops = noDrops();
   const downloadedUrls = new Set<string>();
   let icons: IconManifest = emptyIconManifest();
 
-  mkdirSync(join(outputDir, "assets", "svgs"), { recursive: true });
+  ensureCaptureDirSync(outputDir, join(outputDir, "assets", "svgs"));
   const usedSvgNames = new Set<string>();
   const MAX_INLINE_SVGS = 30;
   drops["cap-reached"] += Math.max(0, tokens.svgs.length - MAX_INLINE_SVGS);
@@ -542,7 +541,7 @@ export async function downloadAndRewriteFonts(
 ): Promise<{ css: string; drops: AssetDropCounts }> {
   options = { ...options, byteBudget: options.byteBudget ?? createCaptureDownloadBudget() };
   const assetsDir = join(outputDir, "assets", "fonts");
-  mkdirSync(assetsDir, { recursive: true });
+  ensureCaptureDirSync(outputDir, assetsDir);
   const drops = noDrops();
 
   const fontUrlRegex = /url\(['"]?(https?:\/\/[^'")\s]+\.(?:woff2?|ttf|otf)[^'")\s]*?)['"]?\)/g;

@@ -197,6 +197,52 @@ describe("canvas edit commits share the file queue", () => {
     expect(project.wholeFileWrites(), "the font rides the edit's own patch").toBe(0);
   });
 
+  it("writes a batch's prepared content over the patch and saves it once", async () => {
+    const project = fakeProject();
+    const { hook, selection, toasts } = mountCanvasCommits(project);
+    project.release();
+
+    const saved = await hook.handleDomAttributeBatchCommit(
+      selection,
+      [{ type: "attribute", property: "data-note", value: "1" }],
+      {
+        label: "Edit with prepared content",
+        prepareContent: (html) => html.replace("</head>", '<meta data-prepared="1"></head>'),
+      },
+    );
+
+    expect(saved).toBe(true);
+    expect(toasts).toEqual([]);
+    expect(project.read().match(/data-prepared="1"/g)).toHaveLength(1);
+    expect(project.wholeFileWrites()).toBe(1);
+  });
+
+  it("reports a failed follow-up write as a failed commit, not as saved", async () => {
+    const project = fakeProject();
+    project.release();
+    const failing = {
+      ...project,
+      writeProjectFile: async () => {
+        throw new Error("409 conflict");
+      },
+    };
+    const { hook, selection, toasts } = mountCanvasCommits(failing);
+
+    const saved = await hook.handleDomAttributeBatchCommit(
+      selection,
+      [{ type: "attribute", property: "data-note", value: "1" }],
+      {
+        label: "Edit with prepared content",
+        prepareContent: (html) => html.replace("</head>", '<meta data-prepared="1"></head>'),
+      },
+    );
+
+    expect(saved).toBe(false);
+    expect(toasts).toHaveLength(1);
+    expect(toasts[0]).toContain("couldn't finish updating");
+    expect(project.read()).not.toContain("data-prepared");
+  });
+
   it("lands a canvas commit started while a timeline save is writing", async () => {
     const project = fakeProject();
     const { hook, toasts } = mountCanvasCommits(project);

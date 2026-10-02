@@ -26,6 +26,8 @@ import {
 import { deriveElementTiming } from "./propertyPanelFlatTimingDerivation";
 import { SPEED_PRESETS, speedPresetLane, type SpeedPresetId } from "@hyperframes/core/speed-ramp";
 import { clampNumber } from "../../utils/studioHelpers";
+import type { HfAutomation } from "@hyperframes/core/audio-automation";
+import type { LinkedSpeedCommit } from "./linkedSpeedEdits";
 
 export interface LaneBinding {
   automated: boolean;
@@ -59,6 +61,7 @@ export function useVolumeAutomation(
   element: DomEditSelection,
   currentTime: number,
   onSetAttributeQuiet: (attr: string, value: string | null) => void | Promise<void>,
+  linkedSpeed: LinkedSpeedCommit | null = null,
 ): VolumeAutomationBinding {
   // The chain is not needed to resolve a volume or rate lane: both are always valid
   // targets, so this deliberately does not parse it.
@@ -77,7 +80,22 @@ export function useVolumeAutomation(
     // playing track, while the same click on an effect parameter did not.
     void onSetAttributeQuiet(HF_AUDIO_AUTOMATION_ATTR, automationAttrValue(next) || null);
   };
-  const laneBinding = (target: string, seed: number): LaneBinding => {
+  type Edit = (current: HfAutomation) => HfAutomation;
+  const writeOwn = (edit: Edit) => write(edit(automation));
+  // Speed moves every data-link member together, so a linked clip's rate lane edits fan out.
+  const writeRate = (edit: Edit) => {
+    if (!linkedSpeed) return writeOwn(edit);
+    void linkedSpeed.commitAttribute(
+      HF_AUDIO_AUTOMATION_ATTR,
+      (raw) => automationAttrValue(edit(readPanelAutomation(raw, undefined))) || null,
+      "Edit speed",
+    );
+  };
+  const laneBinding = (
+    target: string,
+    seed: number,
+    writeLane: (edit: Edit) => void,
+  ): LaneBinding => {
     const lane = automation.lanes.find((l) => l.target === target);
     return {
       automated: lane !== undefined,
@@ -85,9 +103,9 @@ export function useVolumeAutomation(
         ? sampleAutomationLane(lane, clipTimeSec, resolveAutomationRange(target, undefined)?.scale)
         : undefined,
       // Seeded at the level the control already shows, so automating does not change it.
-      onAutomate: () => write(withSeededLane(automation, target, seed)),
-      onRemoveAutomation: () => write(withoutLane(automation, target)),
-      onCommitAt: (v: number) => write(withPointAt(automation, target, clipTimeSec, v)),
+      onAutomate: () => writeLane((a) => withSeededLane(a, target, seed)),
+      onRemoveAutomation: () => writeLane((a) => withoutLane(a, target)),
+      onCommitAt: (v: number) => writeLane((a) => withPointAt(a, target, clipTimeSec, v)),
     };
   };
   // `??` alone would let an empty `data-volume` through as Number("") === 0, so
@@ -96,9 +114,13 @@ export function useVolumeAutomation(
   const raw = element.dataAttributes?.["volume"];
   const parsed = raw ? Number(raw) : 1;
   const current = Number.isFinite(parsed) ? parsed : 1;
-  const volume = laneBinding(VOLUME_TARGET, current);
+  const volume = laneBinding(VOLUME_TARGET, current, writeOwn);
   const rateAttr = Number.parseFloat(element.dataAttributes?.["playback-rate"] ?? "");
-  const rate = laneBinding(RATE_TARGET, Number.isFinite(rateAttr) && rateAttr > 0 ? rateAttr : 1);
+  const rate = laneBinding(
+    RATE_TARGET,
+    Number.isFinite(rateAttr) && rateAttr > 0 ? rateAttr : 1,
+    writeRate,
+  );
   return {
     volumeAutomated: volume.automated,
     automatedVolumeValue: volume.automatedValue,
@@ -109,7 +131,7 @@ export function useVolumeAutomation(
       ...rate,
       canApplyPreset: elDuration > 0,
       onApplyPreset: (id) => {
-        if (elDuration > 0) write(withLane(automation, speedPresetLane(id, elDuration)));
+        if (elDuration > 0) writeRate((a) => withLane(a, speedPresetLane(id, elDuration)));
       },
     },
   };

@@ -9,6 +9,116 @@ Recent HyperFrames releases, including user-facing features, fixes, and migratio
 {/* New release entries are prepended by `bun run changelog:draft <version> --write`. */}
 
 <Update
+  label="HyperFrames v0.8.111"
+  description="Released - 2026-10-02"
+  tags={["Release", "Studio"]}
+>
+Apps that embed Studio can now repaint a still-saving move instantly when the user presses their own undo key.
+
+## Features
+
+- **Studio:** A host undo key paints a still-saving move back at once ([de13693179f](https://github.com/heygen-com/hyperframes/commit/de13693179f53c3f625b7b501f1f5fc7b083b6c9), [#4894](https://github.com/heygen-com/hyperframes/pull/4894)).
+
+[View the full commit range](https://github.com/heygen-com/hyperframes/compare/v0.8.110...v0.8.111).
+</Update>
+
+<Update
+  label="HyperFrames v0.8.110"
+  description="Released - 2026-10-02"
+  tags={["Release", "Studio"]}
+>
+Studio finishes the audio and video separation work: press G to set a clip's gain, and clip names show their speed. A hand drag now moves only with its own pointer pressed.
+
+## Features
+
+- **Studio:** Audio gain on G, speed in clip names, additive selection and partner clamp (8/8) ([70900216f](https://github.com/heygen-com/hyperframes/commit/70900216f0dab460fc16256b0d43a973fd5e519b), [#4821](https://github.com/heygen-com/hyperframes/pull/4821)).
+
+## Fixes
+
+- **Studio:** A hand drag moves only with its own pointer pressed ([6388845ac](https://github.com/heygen-com/hyperframes/commit/6388845ac9aa7b2403863cc754a32765536233dc), [#4880](https://github.com/heygen-com/hyperframes/pull/4880)).
+
+[View the full commit range](https://github.com/heygen-com/hyperframes/compare/v0.8.109...v0.8.110).
+</Update>
+
+<Update
+  label="HyperFrames v0.8.109"
+  description="Released - 2026-10-02"
+  tags={["Release", "Studio"]}
+>
+Renders dropdown options take a mouse click again, a text edited in place shows its caret in a scaled preview, and soft reloads now match the saved files. Studio also links a video to its audio and can repair clips that drift out of sync.
+
+## Features
+
+- **Studio:** Sync origin, out-of-sync repair, linked selection toggle and grouped clip menu (7/8) ([45b8e171e27](https://github.com/heygen-com/hyperframes/commit/45b8e171e2792c89cc63b4d136de41eae6194b25), [#4820](https://github.com/heygen-com/hyperframes/pull/4820)).
+- **Studio:** Link a video and its audio with data-link (6/8) ([0559be0b139](https://github.com/heygen-com/hyperframes/commit/0559be0b1398fc5240746e8668a9cf6d3bf1a5c1), [#4818](https://github.com/heygen-com/hyperframes/pull/4818)).
+
+## Fixes
+
+- **Studio:** Soft reloads restore what GSAP wrote and holds from the saved files ([b5e3ffa6a72](https://github.com/heygen-com/hyperframes/commit/b5e3ffa6a727b726b239e6bebbbcc23e6172df81), [#4871](https://github.com/heygen-com/hyperframes/pull/4871)).
+- **Studio:** Renders dropdown options take a mouse click again ([6dcc300fd2f](https://github.com/heygen-com/hyperframes/commit/6dcc300fd2f9302ee90df345bbc1748c09c3210a), [#4890](https://github.com/heygen-com/hyperframes/pull/4890)).
+- **Studio:** A text edited in place shows its caret in a scaled preview ([e205207583d](https://github.com/heygen-com/hyperframes/commit/e205207583df27baf708867260a437ff8829205c), [#4875](https://github.com/heygen-com/hyperframes/pull/4875)).
+
+[View the full commit range](https://github.com/heygen-com/hyperframes/compare/v0.8.108...v0.8.109).
+</Update>
+
+<Update
+  label="HyperFrames v0.8.108"
+  description="Released - 2026-10-02"
+  tags={["Release", "Studio", "Core"]}
+>
+Studio gets four more audio parts: audible videos in preview, clip menu presets, loudness with voice ducking, and a waveform strip with peak marks. Undo now puts a moved element back at once, and a pick made just before a reload is kept.
+
+## Features
+
+- **Studio:** Waveform strip, clip light, peak marks and video beat source (5/8) ([824e4100c63](https://github.com/heygen-com/hyperframes/commit/824e4100c636d30ac7c3036d9f5276c50e31eea4), [#4817](https://github.com/heygen-com/hyperframes/pull/4817)).
+- **Studio:** Normalize loudness and duck under voice, with a limiter report (4/8) ([9244c47328e](https://github.com/heygen-com/hyperframes/commit/9244c47328e41e59034bd9bbec293fe3f7310cf6), [#4816](https://github.com/heygen-com/hyperframes/pull/4816)).
+- **Studio:** Speed presets, voice, look, crop presets and freeze frame in the clip menu (3/8) ([000ccd426a3](https://github.com/heygen-com/hyperframes/commit/000ccd426a3ecf700eff6f449e9f5eab42d393fd), [#4815](https://github.com/heygen-com/hyperframes/pull/4815)).
+- **Core:** Audible videos in preview web audio, audio groups, meters and carve (2/8) ([3c299acc7f6](https://github.com/heygen-com/hyperframes/commit/3c299acc7f6fd7f9802e808c41a34d8593473549), [#4814](https://github.com/heygen-com/hyperframes/pull/4814)).
+
+## Fixes
+
+- **Studio:** Keep a pick made just before a reload swaps the preview frame ([c967a055fb8](https://github.com/heygen-com/hyperframes/commit/c967a055fb8cd03ba4bd7cade6da8f5b12169f7b), [#4888](https://github.com/heygen-com/hyperframes/pull/4888)).
+- **Studio:** Undo paints a move or nudge back at once while its save is still running ([880b4c41b3c](https://github.com/heygen-com/hyperframes/commit/880b4c41b3c5708bd9a4317dab687c082219d3d6), [#4877](https://github.com/heygen-com/hyperframes/pull/4877)).
+
+[View the full commit range](https://github.com/heygen-com/hyperframes/compare/v0.8.107...v0.8.108).
+</Update>
+
+<Update
+  label="HyperFrames v0.8.107"
+  description="Released - 2026-10-02"
+  tags={["Release", "Studio", "Scripts", "Core"]}
+>
+Manual editing in Studio is far more reliable: resizes, crops and drops survive undo and reload, and undo works right after an edit or during a drag. Apps that embed Studio can also run its agent tools on their own edit session, and a video's sound now stays on its clip by default.
+
+## Features
+
+- Keep a video's sound on the clip by default (1/8) ([37f30b1d06c](https://github.com/heygen-com/hyperframes/commit/37f30b1d06c41b4ef4579e456bfe6c6aeaaa0611), [#4813](https://github.com/heygen-com/hyperframes/pull/4813)).
+- **Studio:** Hosts can run Studio's agent tools on their own edit session ([7a60b97bf8c](https://github.com/heygen-com/hyperframes/commit/7a60b97bf8c2bb6a6f90956316eef8fd0de5060f), [#4882](https://github.com/heygen-com/hyperframes/pull/4882)).
+
+## Fixes
+
+- **Studio:** A failed prepared-content write is a failed commit, not saved ([396f2fbf808](https://github.com/heygen-com/hyperframes/commit/396f2fbf808640d18b968aee5ee5c0752321968e)).
+- **Studio:** Persist honors prepareContent again so audio edits keep their content step ([76c4fc7b3cf](https://github.com/heygen-com/hyperframes/commit/76c4fc7b3cf172d9e2a953a41e80004838f235a9)).
+- **Studio:** Edits on GSAP-animated layers keep their keyframes and file positions ([d4756f597c0](https://github.com/heygen-com/hyperframes/commit/d4756f597c0dbb66310c2add699de6767b23f11b), [#4869](https://github.com/heygen-com/hyperframes/pull/4869)).
+- **Studio:** Undo right after an edit undoes that edit, even before its save lands ([c3b6e55f7eb](https://github.com/heygen-com/hyperframes/commit/c3b6e55f7eb6eea845dc001889b50fc35b841d4e), [#4807](https://github.com/heygen-com/hyperframes/pull/4807)).
+- **Studio:** The timeline scroll gate catches dropped frames in the virtualized view ([21a29c2ac74](https://github.com/heygen-com/hyperframes/commit/21a29c2ac7475981f0b7fa3dc21c24dd842201e7), [#4855](https://github.com/heygen-com/hyperframes/pull/4855)).
+- **Studio:** A focused video or audio player keeps its arrow and play keys ([a59d93a027a](https://github.com/heygen-com/hyperframes/commit/a59d93a027a9105baff874886bf0462f40aa4ba8), [#4854](https://github.com/heygen-com/hyperframes/pull/4854)).
+- **Scripts:** Count comments after regex literals in the comment ratchet ([fd105807c49](https://github.com/heygen-com/hyperframes/commit/fd105807c49a7501c5043748969e5f598dca3cae), [#4879](https://github.com/heygen-com/hyperframes/pull/4879)).
+- **Studio:** An undo that lands mid-drag keeps the box under the pointer ([83035e08b81](https://github.com/heygen-com/hyperframes/commit/83035e08b81699bb257d2b79c172567c37e2724b), [#4853](https://github.com/heygen-com/hyperframes/pull/4853)).
+- **Studio:** A reload requested while a canvas save is in flight loads again once it lands ([d05344b3eed](https://github.com/heygen-com/hyperframes/commit/d05344b3eeda8aa65d2c3da0ecc8b2d2aadfb1f2), [#4874](https://github.com/heygen-com/hyperframes/pull/4874)).
+- **Studio:** A first animation in a sub-composition file runs from inside its template ([30c55694cb9](https://github.com/heygen-com/hyperframes/commit/30c55694cb992fa670a68c9a9e92e9573241cac8), [#4806](https://github.com/heygen-com/hyperframes/pull/4806)).
+- **Core:** A composition made only of a set shows it at a seek in the preview ([78e849235aa](https://github.com/heygen-com/hyperframes/commit/78e849235aa96af479004ee14c2e0f8ec10ccb9d), [#4865](https://github.com/heygen-com/hyperframes/pull/4865)).
+- A save's temp file no longer reaches Studio as an outside change ([c72b735a8c4](https://github.com/heygen-com/hyperframes/commit/c72b735a8c4a6ba627ff787760abc5136da7ee62), [#4857](https://github.com/heygen-com/hyperframes/pull/4857)).
+
+## Internal
+
+- **Studio:** Trim comments to the ratchet ([2d690968ccb](https://github.com/heygen-com/hyperframes/commit/2d690968ccb5192659132d5972afdcf2a53dab50)).
+- **Studio:** Gates read the base the run measured, and drag frames on a quiet runner ([d218cec091a](https://github.com/heygen-com/hyperframes/commit/d218cec091a7b362eacf884f8b566afcd7f62bae), [#4872](https://github.com/heygen-com/hyperframes/pull/4872)).
+
+[View the full commit range](https://github.com/heygen-com/hyperframes/compare/v0.8.106...v0.8.107).
+</Update>
+
+<Update
   label="HyperFrames v0.8.106"
   description="Released - 2026-10-01"
   tags={["Release", "Studio", "Studio Server"]}

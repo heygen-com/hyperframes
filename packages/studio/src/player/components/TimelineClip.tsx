@@ -11,6 +11,10 @@ import { isAudioTimelineElement } from "../../utils/timelineInspector";
 import { timelineClipFocusId } from "./timelineNavigationIdentity";
 import { ClipFadesContext, TimelineClipFades, useClipFadeDraft } from "./TimelineClipFades";
 import { rendersWaveform } from "./AudioWaveform";
+import { ClipBadges } from "./ClipBadges";
+import { linkLabelColor } from "./linkLabelColor";
+import { OutOfSyncBadge } from "./OutOfSyncBadge";
+import { clipSpeedSuffix } from "./clipToolAttrs";
 
 interface TimelineClipProps {
   el: TimelineElement;
@@ -65,7 +69,7 @@ export const TimelineClip = memo(function TimelineClip({
   const leftPx = el.start * pps;
   const widthPx = Math.max(el.duration * pps, 4);
   const handleOpacity = getClipHandleOpacity({ isHovered, isSelected, isDragging });
-  const displayLabel = el.label || el.id || el.tag;
+  const displayLabel = `${el.label || el.id || el.tag}${clipSpeedSuffix(el.playbackRate, el.automation)}`;
   const ladder = clipWidthLadder(widthPx);
   const showHandles = handleOpacity > 0.01 && (widthPx >= 32 || isSelected);
   const showLabel = ladder === "labeled";
@@ -82,6 +86,8 @@ export const TimelineClip = memo(function TimelineClip({
     "--clip-border-active": theme.clipBorderActive,
     "--clip-handle": theme.handleColor,
   } as CSSProperties;
+  const linkColor = linkLabelColor(el.link);
+  if (linkColor) Object.assign(themeVariables, { "--clip-link-color": linkColor });
   const isAudioClip = isAudioTimelineElement(el);
   const hasFades = (isAudioClip || Boolean(el.hasAudio)) && !isGestureActor;
   const fade = useClipFadeDraft(el);
@@ -123,6 +129,7 @@ export const TimelineClip = memo(function TimelineClip({
       data-clip-start={el.start}
       data-clip-end={el.start + el.duration}
       data-clip-hidden={el.hidden ? "true" : undefined}
+      data-link-color={linkColor ?? undefined}
       data-ladder={ladder}
       data-active={isActive ? "" : undefined}
       aria-hidden={isGestureActor ? "true" : undefined}
@@ -204,6 +211,8 @@ export const TimelineClip = memo(function TimelineClip({
         </div>
       )}
       {showLabel && <span className="timeline-clip__label">{displayLabel}</span>}
+      {showLabel && !isGestureActor && <ClipBadges el={el} onOpenMenu={onContextMenu} />}
+      {!isGestureActor && el.syncOrigin && <OutOfSyncBadge el={el} />}
       {showDefaultText && (
         <span className="timeline-clip__timecode">
           {startLabel}-{endLabel}s

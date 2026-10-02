@@ -60,9 +60,14 @@ describe("ClipContextMenu host items", () => {
     unmount();
   });
 
-  it("counts host rows and their divider when keeping the menu inside the window", () => {
+  it("keeps the menu, host rows included, inside the window by its measured height", () => {
     const innerHeight = Object.getOwnPropertyDescriptor(window, "innerHeight");
     Object.defineProperty(window, "innerHeight", { configurable: true, value: 600 });
+    const offsetHeight = vi
+      .spyOn(HTMLElement.prototype, "offsetHeight", "get")
+      .mockImplementation(function (this: HTMLElement) {
+        return this.getAttribute("role") === "menu" ? 150 : 0;
+      });
     try {
       const host = document.createElement("div");
       document.body.appendChild(host);
@@ -86,10 +91,11 @@ describe("ClipContextMenu host items", () => {
           />,
         ),
       );
-      // Four 30 px rows, two 9 px dividers and 8 px of padding end 96 px below the window.
-      expect(document.body.querySelector<HTMLElement>("[role=menu]")!.style.top).toBe("446px");
+      // 150 px measured from y 550 ends 100 px below the window, kept 8 px off its edge.
+      expect(document.body.querySelector<HTMLElement>("[role=menu]")!.style.top).toBe("442px");
       act(() => root.unmount());
     } finally {
+      offsetHeight.mockRestore();
       if (innerHeight) Object.defineProperty(window, "innerHeight", innerHeight);
     }
   });
@@ -106,7 +112,7 @@ describe("ClipContextMenu host items", () => {
   it("shows only Studio's items when the host adds none", () => {
     const { items, unmount } = renderMenu([]);
     expect(items().map((item) => item.textContent)).toEqual(["Copy⌘C", "Delete⌫"]);
-    expect(document.body.querySelectorAll(".border-t")).toHaveLength(1);
+    expect(document.body.querySelector("[role=group][aria-label=Host]")).toBeNull();
     unmount();
   });
 });

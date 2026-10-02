@@ -6,7 +6,7 @@
 import { Tooltip as BaseTooltip } from "@base-ui/react/tooltip";
 import { cloneElement, useId, useRef, useState, type ReactElement } from "react";
 import { cn } from "./cn";
-import { floatingMotion } from "./Menu";
+import { floatingMotion, POPUP_LAYER } from "./Menu";
 
 interface TooltipProps {
   label: string;
@@ -39,7 +39,7 @@ export function Tooltip({ label, children, delay = 400, side = "top" }: TooltipP
           side={side}
           sideOffset={SIDE_OFFSET}
           collisionPadding={VIEWPORT_MARGIN}
-          className="z-200"
+          className={POPUP_LAYER}
         >
           <BaseTooltip.Popup
             id={tooltipId}

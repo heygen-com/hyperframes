@@ -726,3 +726,99 @@ describe("a nested clip's drop stops at its host's start in the preview", () => 
     expect(await saved(early, 1)).toBe(1);
   });
 });
+
+describe("an audio clip stays inside its partner video", () => {
+  const video = (extra: Partial<TimelineElement> = {}) => ({
+    ...clip("v", 0, 10, 20, 1),
+    syncOrigin: "lk-1",
+    ...extra,
+  });
+  const audio = (extra: Partial<TimelineElement> = {}) => ({
+    ...clip("a", 1, 12, 8, 0, "audio"),
+    syncOrigin: "lk-1",
+    ...extra,
+  });
+  const audioCtx = (elements: TimelineElement[], selected: string[] = []) => ({
+    ...ctx(undefined, elements),
+    trackOrder: [0, 1],
+    audioTracks: new Set([1]),
+    selectedKeys: new Set(selected),
+  });
+
+  it("a drag past the video's end stops with the audio's end on it", () => {
+    const a = audio();
+    const { drag, clientX, clientY } = horizontalDrag(a, 1.5, 30);
+    const next = computeDragPreview(drag, clientX, clientY, audioCtx([video(), a]));
+    expect(next.previewStart).toBe(22);
+    expect(next.pointerClientX).toBe(drag.originClientX + 10 * PPS);
+  });
+
+  it("a drag before the video's start stops at it, linked or same-source", () => {
+    const linked = audio({ syncOrigin: undefined, link: "lk-9" });
+    const { drag, clientX, clientY } = horizontalDrag(linked, 1.5, -10);
+    const elements = [video({ syncOrigin: undefined, link: "lk-9" }), linked];
+    expect(computeDragPreview(drag, clientX, clientY, audioCtx(elements)).previewStart).toBe(10);
+  });
+
+  it("moves freely with no partner video, or when the video moves with it", () => {
+    const loose = audio({ syncOrigin: undefined });
+    const free = horizontalDrag(loose, 1.5, 30);
+    expect(
+      computeDragPreview(free.drag, free.clientX, free.clientY, audioCtx([video(), loose]))
+        .previewStart,
+    ).toBe(42);
+    const a = audio();
+    const both = horizontalDrag(a, 1.5, 30);
+    expect(
+      computeDragPreview(both.drag, both.clientX, both.clientY, audioCtx([video(), a], ["v", "a"]))
+        .previewStart,
+    ).toBe(42);
+  });
+
+  it("rejects a drop that collision placement would push outside the video", () => {
+    const a = audio();
+    const obstacle = clip("o", 1, 20, 10, 0, "audio");
+    const { drag, clientX, clientY } = horizontalDrag(a, 1.5, 10);
+    const next = computeDragPreview(drag, clientX, clientY, audioCtx([video(), a, obstacle]));
+    expect(next.previewStart).toBeGreaterThanOrEqual(10);
+    expect(next.previewStart + a.duration).toBeLessThanOrEqual(30);
+  });
+
+  it("keeps an audio carried in a multi-selection inside its video", () => {
+    const a = audio();
+    const title = clip("t", 0, 40, 4, 0, "text");
+    const { drag, clientX, clientY } = horizontalDrag(title, 0.5, 30);
+    const elements = [video(), a, title];
+    const next = computeDragPreview(drag, clientX, clientY, audioCtx(elements, ["t", "a"]));
+    expect(next.previewStart).toBe(50);
+  });
+
+  const trim = (edge: "start" | "end", deltaSeconds: number, gestureKeys: string[] = []) =>
+    computeResizePreview(
+      {
+        element: audio({ sourceDuration: 100, playbackStart: 20 }),
+        edge,
+        originClientX: 0,
+        previewStart: 12,
+        previewDuration: 8,
+        started: true,
+      },
+      deltaSeconds * 100,
+      {
+        scroll: fakeScroll(),
+        pps: 100,
+        buildSnapTargets: () => [],
+        elements: [video(), audio()],
+        gestureKeys: new Set(["a", ...gestureKeys]),
+      },
+    );
+
+  it("a trim cannot extend past the video's start or end", () => {
+    expect(trim("end", 50)).toMatchObject({ previewStart: 12, previewDuration: 18 });
+    expect(trim("start", -10)).toMatchObject({ previewStart: 10, previewDuration: 10 });
+  });
+
+  it("a trim carried by the video too is not held to the video's old span", () => {
+    expect(trim("end", 50, ["v"]).previewDuration).toBe(58);
+  });
+});

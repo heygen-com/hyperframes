@@ -31,7 +31,7 @@ function gestureHarness(gesture: Partial<GestureState> | null, group: GroupGestu
   };
   const handlers = createDomEditOverlayGestureHandlers(opts as never);
   const pointer = (clientX: number, clientY: number, shiftKey: boolean) =>
-    ({ clientX, clientY, shiftKey, altKey: false }) as never;
+    ({ clientX, clientY, shiftKey, altKey: false, pointerId: 1, buttons: 1 }) as never;
   return { opts, handlers, pointer };
 }
 
@@ -41,6 +41,7 @@ function singleDrag() {
     {
       kind: "drag",
       mode: "path-offset",
+      pointerId: 1,
       selection: { element } as unknown as DomEditSelection,
       startX: 100,
       startY: 100,
@@ -57,7 +58,13 @@ function singleDrag() {
 }
 
 const groupGesture = () =>
-  ({ startX: 100, startY: 100, originItems: [], members: [] }) as unknown as GroupGestureState;
+  ({
+    pointerId: 1,
+    startX: 100,
+    startY: 100,
+    originItems: [],
+    members: [],
+  }) as unknown as GroupGestureState;
 
 describe("shift+drag locks a move to the axis the pointer travels further on", () => {
   it("keeps a mostly horizontal single drag on its row", () => {
@@ -278,6 +285,7 @@ function singleMemberDrag() {
     {
       kind: "drag",
       mode: "path-offset",
+      pointerId: 1,
       selection,
       startX: 100,
       startY: 100,
@@ -300,7 +308,13 @@ function singleMemberDrag() {
 function groupMemberDrag() {
   const a = draggableMember("a");
   const b = draggableMember("b");
-  const group = { startX: 100, startY: 100, originItems: [], members: [a.member, b.member] };
+  const group = {
+    pointerId: 1,
+    startX: 100,
+    startY: 100,
+    originItems: [],
+    members: [a.member, b.member],
+  };
   const harness = gestureHarness(null, group as unknown as GroupGestureState);
   return { ...harness, at: () => [a.at(), b.at()] };
 }

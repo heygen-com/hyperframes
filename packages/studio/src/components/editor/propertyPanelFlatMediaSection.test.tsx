@@ -652,7 +652,12 @@ function makeHandlers() {
         ops: PatchOperation[],
         options: BatchOptions,
       ) => Promise<boolean>
-    >(async () => true),
+    >(async (_selection, _ops, options) => {
+      options.prepareContent?.(
+        '<div data-composition-id="main"><video id="s1-bg" src="assets/intro-loop.mp4" data-start="2"></video></div>',
+      );
+      return true;
+    }),
   };
 }
 
@@ -871,14 +876,14 @@ describe.each<PanelKind>(["flat", "design"])("%s panel — cutout keeps the soun
     const [selection, ops, options] = onSetAttributeBatch.mock.calls[0] ?? [];
     expect(selection).toBe(element);
     expect(ops).toEqual([
-      htmlOp("src", "assets/cut.webm"),
       htmlOp("muted", "true"),
       dataOp("has-audio", null),
       dataOp("volume", null),
-      dataOp("link", "link"),
+      dataOp("link", "lk-1"),
+      dataOp("sync-origin", "lk-1"),
     ]);
     const source =
-      '<div data-composition-id="main"><video id="s1-bg" src="assets/cut.webm" muted data-start="2" data-duration="3" data-track-index="0" data-link="link"></video></div>';
+      '<div data-composition-id="main"><video id="s1-bg" src="assets/intro-loop.mp4" muted data-start="2" data-duration="3" data-track-index="0" data-link="lk-1"></video></div>';
     const prepared = options?.prepareContent?.(source) ?? "";
     const audio = new DOMParser()
       .parseFromString(prepared, "text/html")
@@ -886,7 +891,7 @@ describe.each<PanelKind>(["flat", "design"])("%s panel — cutout keeps the soun
     expect(audio?.getAttribute("src")).toBe("assets/intro-loop.mp4");
     expect(audio?.getAttribute("data-start")).toBe("2");
     expect(audio?.getAttribute("data-duration")).toBe("3");
-    expect(audio?.getAttribute("data-link")).toBe("link");
+    expect(audio?.getAttribute("data-link")).toBe("lk-1");
     expect(audio?.getAttribute("data-volume")).toBe("0.5");
     expect(text).toContain("Background removed. Sound kept on a linked audio track.");
   });

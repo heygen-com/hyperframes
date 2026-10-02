@@ -223,7 +223,7 @@ export function usePersistentEditHistory({ projectId }: UsePersistentEditHistory
       const claimed = claimHeld(reply, label);
       if (claimed) own.remember(claimed, files);
       heldClaimRef.current = claimed && coalesceKey ? { paths, at: Date.now() } : null;
-      void refresh();
+      await refresh();
     },
     [projectId, refresh, own],
   );

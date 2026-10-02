@@ -54,6 +54,14 @@ describe("isTypingTarget", () => {
     expect(isTypingTarget(mount('<h1 contenteditable="false">Hi</h1>'))).toBe(false);
   });
 
+  it("keeps a modal dialog's buttons out of the global shortcuts", () => {
+    const host = mount('<div role="dialog" aria-modal="true"><button>OK</button></div>');
+    expect(isTypingTarget(host.querySelector("button"))).toBe(true);
+    expect(
+      isTypingTarget(mount('<div role="dialog"><button>OK</button></div>').querySelector("button")),
+    ).toBe(false);
+  });
+
   it("says no to nothing at all", () => {
     expect(isTypingTarget(null)).toBe(false);
     expect(isTypingTarget({} as EventTarget)).toBe(false);

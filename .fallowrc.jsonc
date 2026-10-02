@@ -507,6 +507,11 @@
       "packages/studio-server/src/routes/files.test.ts",
       "packages/studio-server/src/routes/render.test.ts",
       "packages/studio-server/src/routes/lint.test.ts",
+      // Studio gesture tests: pre-existing parallel overlay-option setups and arrange/assert blocks.
+      "packages/studio/src/components/editor/domEditOverlayStartGesture.test.ts",
+      "packages/studio/src/components/editor/anchoredResizeCommitFeedsOffset.test.ts",
+      "packages/studio/src/components/editor/rotateInlineSave.test.ts",
+      "packages/studio/src/hooks/useDomGeometryCommits.test.tsx",
       // extractionCache.test.ts: pre-existing parallel describe setup and publish-case arrange/assert blocks.
       "packages/engine/src/services/extractionCache.test.ts",
       "packages/studio-server/src/routes/preview.test.ts",

@@ -6,6 +6,7 @@ import { isElementComputedVisible } from "./domEditingElement";
 import { coversComposition } from "../../utils/studioPreviewHelpers";
 import { rectsOverlap, type Rect } from "../../utils/marqueeGeometry";
 import { toVisibleOverlayRect } from "./domEditOverlayGeometry";
+import { movesGesture } from "./domEditOverlayGestures";
 
 interface MarqueeState {
   startX: number;
@@ -226,10 +227,23 @@ export function useMarqueeGestures<T>(deps: MarqueeGesturesDeps<T>): MarqueeGest
       window.removeEventListener("keydown", cancelBandBeforeHostEscape, { capture: true });
   }, [cancel]);
 
+  const showCandidates = useCallback(
+    (rect: Rect) => {
+      const iframe = deps.iframeRef.current;
+      const overlay = deps.overlayRef.current;
+      if (!iframe || !overlay) return;
+      const acp = deps.activeCompositionPathRef.current ?? "index.html";
+      candidatesRef.current ??= collectMarqueeCandidates(iframe, overlay, acp);
+      setCandidateRects(hitsWithin(rect, candidatesRef.current).map((h) => h.rect));
+    },
+    [deps.overlayRef, deps.iframeRef, deps.activeCompositionPathRef],
+  );
+
   const onPointerMove = useCallback(
     (event: React.PointerEvent<HTMLDivElement>) => {
       const m = marqueeRef.current;
       if (m) {
+        if (!movesGesture(m, event)) return;
         const oRect = deps.overlayRef.current?.getBoundingClientRect();
         if (!oRect) return;
         m.currentX = event.clientX - oRect.left;
@@ -248,18 +262,12 @@ export function useMarqueeGestures<T>(deps: MarqueeGesturesDeps<T>): MarqueeGest
           height: Math.abs(m.currentY - m.startY),
         };
         setMarqueeRect(rect);
-        const iframe = deps.iframeRef.current;
-        const overlay = deps.overlayRef.current;
-        if (iframe && overlay) {
-          const acp = deps.activeCompositionPathRef.current ?? "index.html";
-          candidatesRef.current ??= collectMarqueeCandidates(iframe, overlay, acp);
-          setCandidateRects(hitsWithin(rect, candidatesRef.current).map((h) => h.rect));
-        }
+        showCandidates(rect);
         return;
       }
       deps.gestures?.onPointerMove(event);
     },
-    [deps.gestures, deps.overlayRef, deps.iframeRef, deps.activeCompositionPathRef],
+    [deps.gestures, deps.overlayRef, showCandidates],
   );
 
   const onPointerUp = useCallback(

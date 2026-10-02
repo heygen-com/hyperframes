@@ -33,6 +33,7 @@ export interface DraggedClipState {
   snapTime: number | null;
   snapType: TimelineSnapType | null;
   started: boolean;
+  altKey?: boolean;
 }
 
 export interface ResizingClipState {
@@ -63,6 +64,7 @@ export interface ResizingClipState {
     playbackStart?: number;
   }[];
   started: boolean;
+  altKey?: boolean;
 }
 
 export interface BlockedClipState {

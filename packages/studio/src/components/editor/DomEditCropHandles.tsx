@@ -15,6 +15,9 @@ import {
 } from "./domEditOverlayCrop";
 import { buildInsetClipPathSides, type ClipPathInsetSides } from "./clipPathHelpers";
 import { readCropFollowingResize } from "./cropResize";
+import { isCropBarTarget, useCropPresetBarStore } from "./cropPresetStore";
+import { CropPresetBar } from "./CropPresetBar";
+import { movesGesture } from "./domEditOverlayGestures";
 
 interface CropGestureState {
   edge: CropEdge | "move";
@@ -119,6 +122,9 @@ export function DomEditCropHandles({
     return { element, croppable: parsed !== null, insets: { top, right, bottom, left } };
   };
   const [state, setState] = useState(() => cropStateFor(selection.element));
+  const presetBarTarget = useCropPresetBarStore((s) => s.openFor);
+  const closePresetBar = useCropPresetBarStore((s) => s.close);
+  const showPresetBar = isCropBarTarget(selection.element, presetBarTarget);
 
   // Re-sync when the selection targets a different element (reselect, or an
   // undo/redo that re-keys the node).
@@ -183,7 +189,7 @@ export function DomEditCropHandles({
 
   const updateCropGesture = (event: ReactPointerEvent<HTMLElement>) => {
     const gesture = gestureRef.current;
-    if (!gesture || gesture.pointerId !== event.pointerId) return;
+    if (!gesture || !movesGesture(gesture, event)) return;
     event.preventDefault();
     event.stopPropagation();
     const local = rotateDeltaIntoFrame(
@@ -223,8 +229,19 @@ export function DomEditCropHandles({
     // the lift keeps it hidden while selected. A drag that ends where it started saves nothing.
     const value = buildInsetClipPathSides(gesture.insets, gesture.radius);
     if (value === buildInsetClipPathSides(gesture.startInsets, gesture.radius)) return;
+    commitClipPath(value);
+  };
+
+  const commitClipPath = (value: string) => {
     const commit = onStyleCommit?.("clip-path", value);
     void Promise.resolve(commit).catch(() => undefined);
+  };
+
+  const applyPresetInsets = (insets: ClipPathInsetSides | null) => {
+    const next = insets ?? { top: 0, right: 0, bottom: 0, left: 0 };
+    setState((prev) => ({ ...prev, insets: next }));
+    const radius = readCropFollowingResize(selection.element)?.radius ?? 0;
+    commitClipPath(insets === null ? "" : buildInsetClipPathSides(next, radius));
   };
 
   const cancelCropGesture = (event: ReactPointerEvent<HTMLElement>) => {
@@ -239,119 +256,131 @@ export function DomEditCropHandles({
   if (!state.croppable) return null;
 
   return (
-    <div
-      data-dom-edit-crop-frame="true"
-      className="pointer-events-none absolute"
-      style={{
-        left: frame.left,
-        top: frame.top,
-        width: frame.width,
-        height: frame.height,
-        transform: frame.angleDeg !== 0 ? `rotate(${frame.angleDeg}deg)` : undefined,
-      }}
-    >
-      {/* Dim the cropped-away area whenever the element is cropped and selected,
-          so the hidden content is visible (ghosted) without dragging. Clipped to
-          the element's own (rotated) box. */}
-      {hasCrop && (
-        <div className="pointer-events-none absolute inset-0 overflow-hidden">
-          <div
-            className="absolute"
-            style={{
-              left: cropRect.left,
-              top: cropRect.top,
-              width: cropRect.width,
-              height: cropRect.height,
-              boxShadow: "0 0 0 100000px rgba(8, 8, 12, 0.6)",
-            }}
-          />
-        </div>
-      )}
-      {/* Dashed clip outline on the crop boundary, with a rule-of-thirds grid
-          shown while dragging. */}
-      <div
-        aria-hidden="true"
-        className="pointer-events-none absolute border border-dashed border-studio-accent"
-        style={{
-          left: cropRect.left,
-          top: cropRect.top,
-          width: cropRect.width,
-          height: cropRect.height,
-        }}
-      >
-        {dragging && (
-          <>
-            <div className="absolute inset-y-0 left-1/3 w-px bg-studio-accent/40" />
-            <div className="absolute inset-y-0 left-2/3 w-px bg-studio-accent/40" />
-            <div className="absolute inset-x-0 top-1/3 h-px bg-studio-accent/40" />
-            <div className="absolute inset-x-0 top-2/3 h-px bg-studio-accent/40" />
-          </>
-        )}
-      </div>
-      {/* Reposition handle — a center circle shown only once cropped. Drag it to
-          pan the crop window (which part of the element shows) without resizing
-          the crop. It's a small, discrete target, so a body drag still MOVES. */}
-      {hasCrop && repositionSize > 0 && (
-        <button
-          type="button"
-          aria-label="Reposition crop"
-          title="Reposition crop"
-          data-dom-edit-crop-handle="true"
-          className="pointer-events-auto absolute rounded-full border-2 border-studio-accent bg-studio-accent/30 shadow-[0_0_0_1px_rgba(0,0,0,0.4)]"
-          style={{
-            left: cropRect.left + (cropRect.width - repositionSize) / 2,
-            top: cropRect.top + (cropRect.height - repositionSize) / 2,
-            width: repositionSize,
-            height: repositionSize,
-            cursor: "move",
-            touchAction: "none",
-          }}
-          onPointerDown={(event) => startCropGesture("move", event)}
-          onPointerMove={updateCropGesture}
-          onPointerUp={finishCropGesture}
-          onPointerCancel={cancelCropGesture}
+    <>
+      {showPresetBar && onStyleCommit && (
+        <CropPresetBar
+          left={frame.left + frame.width / 2}
+          top={frame.top}
+          elementWidth={width}
+          elementHeight={height}
+          onApply={applyPresetInsets}
+          onDone={closePresetBar}
         />
       )}
-      {/* Edge handles — drag a side to crop it. Positioned just OUTSIDE the crop
-          edge (via edgeHandleLayout) so they never overlap the element body:
-          dragging the body always MOVES, only a handle crops. The pill is
-          hover-revealed (or shown while dragging / once a crop exists) so the
-          resting selection chrome stays uncluttered; the hit strip is always
-          live, and the title names the affordance. */}
-      {EDGES.map((edge) => {
-        const layout = edgeHandleLayout(edge, cropRect);
-        if (!layout) return null;
-        const revealed = dragging || hasCrop || hotEdge === edge;
-        return (
+      <div
+        data-dom-edit-crop-frame="true"
+        className="pointer-events-none absolute"
+        style={{
+          left: frame.left,
+          top: frame.top,
+          width: frame.width,
+          height: frame.height,
+          transform: frame.angleDeg !== 0 ? `rotate(${frame.angleDeg}deg)` : undefined,
+        }}
+      >
+        {/* Dim the cropped-away area whenever the element is cropped and selected,
+            so the hidden content is visible (ghosted) without dragging. Clipped to
+            the element's own (rotated) box. */}
+        {hasCrop && (
+          <div className="pointer-events-none absolute inset-0 overflow-hidden">
+            <div
+              className="absolute"
+              style={{
+                left: cropRect.left,
+                top: cropRect.top,
+                width: cropRect.width,
+                height: cropRect.height,
+                boxShadow: "0 0 0 100000px rgba(8, 8, 12, 0.6)",
+              }}
+            />
+          </div>
+        )}
+        {/* Dashed clip outline on the crop boundary, with a rule-of-thirds grid
+            shown while dragging. */}
+        <div
+          aria-hidden="true"
+          className="pointer-events-none absolute border border-dashed border-studio-accent"
+          style={{
+            left: cropRect.left,
+            top: cropRect.top,
+            width: cropRect.width,
+            height: cropRect.height,
+          }}
+        >
+          {dragging && (
+            <>
+              <div className="absolute inset-y-0 left-1/3 w-px bg-studio-accent/40" />
+              <div className="absolute inset-y-0 left-2/3 w-px bg-studio-accent/40" />
+              <div className="absolute inset-x-0 top-1/3 h-px bg-studio-accent/40" />
+              <div className="absolute inset-x-0 top-2/3 h-px bg-studio-accent/40" />
+            </>
+          )}
+        </div>
+        {/* Reposition handle — a center circle shown only once cropped. Drag it to
+            pan the crop window (which part of the element shows) without resizing
+            the crop. It's a small, discrete target, so a body drag still MOVES. */}
+        {hasCrop && repositionSize > 0 && (
           <button
-            key={edge}
             type="button"
-            aria-label={`Crop ${edge}`}
-            title="Crop"
+            aria-label="Reposition crop"
+            title="Reposition crop"
             data-dom-edit-crop-handle="true"
-            className="pointer-events-auto absolute flex items-center justify-center border-0 bg-transparent p-0"
+            className="pointer-events-auto absolute rounded-full border-2 border-studio-accent bg-studio-accent/30 shadow-[0_0_0_1px_rgba(0,0,0,0.4)]"
             style={{
-              ...layout.hit,
-              cursor: layout.cursor,
+              left: cropRect.left + (cropRect.width - repositionSize) / 2,
+              top: cropRect.top + (cropRect.height - repositionSize) / 2,
+              width: repositionSize,
+              height: repositionSize,
+              cursor: "move",
               touchAction: "none",
             }}
-            onPointerEnter={() => setHotEdge(edge)}
-            onPointerLeave={() => setHotEdge((prev) => (prev === edge ? null : prev))}
-            onPointerDown={(event) => startCropGesture(edge, event)}
+            onPointerDown={(event) => startCropGesture("move", event)}
             onPointerMove={updateCropGesture}
             onPointerUp={finishCropGesture}
             onPointerCancel={cancelCropGesture}
-          >
-            <span
-              className="pointer-events-none rounded-full bg-studio-accent/90 shadow-[0_0_0_1px_rgba(0,0,0,0.4)] transition-opacity duration-100"
+          />
+        )}
+        {/* Edge handles — drag a side to crop it. Positioned just OUTSIDE the crop
+            edge (via edgeHandleLayout) so they never overlap the element body:
+            dragging the body always MOVES, only a handle crops. The pill is
+            hover-revealed (or shown while dragging / once a crop exists) so the
+            resting selection chrome stays uncluttered; the hit strip is always
+            live, and the title names the affordance. */}
+        {EDGES.map((edge) => {
+          const layout = edgeHandleLayout(edge, cropRect);
+          if (!layout) return null;
+          const revealed = dragging || hasCrop || hotEdge === edge;
+          return (
+            <button
+              key={edge}
+              type="button"
+              aria-label={`Crop ${edge}`}
+              title="Crop"
+              data-dom-edit-crop-handle="true"
+              className="pointer-events-auto absolute flex items-center justify-center border-0 bg-transparent p-0"
               style={{
-                ...layout.pill,
-                opacity: revealed ? 1 : 0,
+                ...layout.hit,
+                cursor: layout.cursor,
+                touchAction: "none",
               }}
-            />
-          </button>
-        );
-      })}
-    </div>
+              onPointerEnter={() => setHotEdge(edge)}
+              onPointerLeave={() => setHotEdge((prev) => (prev === edge ? null : prev))}
+              onPointerDown={(event) => startCropGesture(edge, event)}
+              onPointerMove={updateCropGesture}
+              onPointerUp={finishCropGesture}
+              onPointerCancel={cancelCropGesture}
+            >
+              <span
+                className="pointer-events-none rounded-full bg-studio-accent/90 shadow-[0_0_0_1px_rgba(0,0,0,0.4)] transition-opacity duration-100"
+                style={{
+                  ...layout.pill,
+                  opacity: revealed ? 1 : 0,
+                }}
+              />
+            </button>
+          );
+        })}
+      </div>
+    </>
   );
 }

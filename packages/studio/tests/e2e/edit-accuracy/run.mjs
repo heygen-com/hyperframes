@@ -71,9 +71,9 @@ const errorResult = (error, log) => ({
 const liveRoots = new Set();
 
 /** Render drift: the reloaded preview's visible box against the target's pixel box in a producer frame. */
-async function withRender(dir, decoder, { reloaded, ...measured }, evidence) {
+async function withRender(dir, decoder, { reloaded, ...measured }, evidence, time) {
   const expected = aabb(reloaded.visible);
-  const render = await renderBox(dir, decoder).catch((error) => ({ error }));
+  const render = await renderBox(dir, decoder, time).catch((error) => ({ error }));
   // A producer failure fails render alone; the case's other metrics still count.
   if (render.error)
     return {
@@ -94,6 +94,12 @@ async function withRender(dir, decoder, { reloaded, ...measured }, evidence) {
   };
 }
 
+/** A keyframed case also matches the producer at another keyframe; one it could not render stays null and fails. */
+async function renderKeyframe(dir, decoder, { time, visible }) {
+  const other = await renderBox(dir, decoder, time).catch(() => null);
+  return other && boxDistance(other.box, aabb(visible));
+}
+
 // fallow-ignore-next-line complexity
 async function runOne(spec, browser, decoder, port) {
   const started = Date.now();
@@ -107,7 +113,7 @@ async function runOne(spec, browser, decoder, port) {
   let server;
   try {
     server = await startServer(opt.cli, dir, port, log, join(root, "home"));
-    const measured = await (spec.steps ? runSequence : runCase)({
+    const { keyRender, ...measured } = await (spec.steps ? runSequence : runCase)({
       browser,
       spec,
       dir,
@@ -117,7 +123,8 @@ async function runOne(spec, browser, decoder, port) {
     });
     await stopServer(server);
     server = null;
-    result = await withRender(dir, decoder, measured, evidence);
+    result = await withRender(dir, decoder, measured, evidence, spec.playhead);
+    if (keyRender) result.renderKey = await renderKeyframe(dir, decoder, keyRender);
   } catch (error) {
     result = errorResult(error, log);
   } finally {

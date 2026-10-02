@@ -103,11 +103,11 @@ function mount(dataAttributes: Record<string, string>, alone = false, voices = 2
   return { host, onSetAttributeQuiet, onSetAttributeLive };
 }
 
-function mountGroup(memberStart: number) {
+function mountGroup(memberStart: number, memberTag: "audio" | "video" = "audio") {
   const bus = document.createElement("hf-audio-group");
   bus.id = "voiceover";
   document.body.append(bus);
-  const member = document.createElement("audio");
+  const member = document.createElement(memberTag);
   member.id = "vo-1";
   member.setAttribute("data-audio-group", "voiceover");
   member.setAttribute("data-start", String(memberStart));
@@ -646,6 +646,16 @@ describe("AudioFxGroup dynamic carve", () => {
       const host = mountGroup(10);
       hoverPreset(host);
       expect(store().requestedSeekTime).toBe(10);
+      leaveShelf(host);
+    });
+
+    it("seeks a group audition to an audible video member's span", () => {
+      act(() =>
+        usePlayerStore.setState({ isPlaying: false, currentTime: 2, requestedSeekTime: null }),
+      );
+      const host = mountGroup(7, "video");
+      hoverPreset(host);
+      expect(store().requestedSeekTime).toBe(7);
       leaveShelf(host);
     });
 
@@ -1621,7 +1631,14 @@ describe("AudioFxGroup carve by default", () => {
 describe("AudioFxGroup carve source list", () => {
   /** Mount a bed alongside tracks named however the test needs. */
   const mountWith = (
-    tracks: { id: string; src?: string; start?: string; duration?: string }[],
+    tracks: {
+      id: string;
+      src?: string;
+      start?: string;
+      duration?: string;
+      tag?: "audio" | "video";
+      muted?: boolean;
+    }[],
     bedAttrs: Record<string, string> = {},
   ) => {
     const bed = document.createElement("audio");
@@ -1629,8 +1646,9 @@ describe("AudioFxGroup carve source list", () => {
     for (const [k, v] of Object.entries(bedAttrs)) bed.setAttribute(`data-${k}`, v);
     document.body.append(bed);
     for (const t of tracks) {
-      const el = document.createElement("audio");
+      const el = document.createElement(t.tag ?? "audio");
       el.id = t.id;
+      if (t.muted) el.setAttribute("muted", "");
       if (t.src) el.setAttribute("src", t.src);
       if (t.start !== undefined) el.setAttribute("data-start", t.start);
       if (t.duration !== undefined) el.setAttribute("data-duration", t.duration);
@@ -1659,6 +1677,16 @@ describe("AudioFxGroup carve source list", () => {
     const boxes = offered.filter((el): el is HTMLInputElement => el instanceof HTMLInputElement);
     return { host, options, boxes, onSetAttributeQuiet };
   };
+
+  it("offers an audible video as a voice and never a muted one", () => {
+    const { options } = mountWith([
+      { id: "a-roll", tag: "video" },
+      { id: "b-roll", tag: "video", muted: true },
+      { id: "narration" },
+    ]);
+    expect(options).toContain("a-roll");
+    expect(options).not.toContain("b-roll");
+  });
 
   it("reads the one voice out instead of offering a picker with one entry", () => {
     // A question with one answer is not a question. It is also the common case: a

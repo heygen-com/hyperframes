@@ -1,3 +1,4 @@
+import { TimelineAudioGainOverlay } from "./AudioGainDialog";
 import { useEffect, useMemo } from "react";
 import type { TimelineElement } from "../store/playerStore";
 import { EditPopover } from "./EditModal";
@@ -222,6 +223,7 @@ export function TimelineOverlays() {
       <TimelineKeyframeMenuOverlay />
       <TimelineClipMenuOverlay />
       <TimelineGapMenuOverlay />
+      <TimelineAudioGainOverlay />
     </>
   );
 }
