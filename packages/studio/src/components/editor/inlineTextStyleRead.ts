@@ -46,8 +46,11 @@ export function readInlineStyleSpread(range: Range, property: string): string[] 
   return spread;
 }
 
-export function readFirstPaintedElement(range: Range): Element | null {
+export function readFirstPaintedElement(range: Range, property: string): Element | null {
   const covered = readCoveredInlineStyleChars(range);
   if (!covered) return null;
-  return (covered.find(({ char }) => char.trim()) ?? covered[0])?.painter ?? null;
+  const painted = covered.filter(({ char }) => char.trim());
+  const owner =
+    painted.find(({ style }) => style[property] !== undefined) ?? painted[0] ?? covered[0];
+  return owner?.painter ?? null;
 }

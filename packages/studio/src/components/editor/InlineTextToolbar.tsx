@@ -254,7 +254,7 @@ function placeOverSelection(
     colours,
     pickerColour: resolvePickerColor(
       styles.color ?? colours[0],
-      readFirstPaintedElement(range),
+      readFirstPaintedElement(range, "color"),
       DEFAULT_COLOR,
     ),
   };

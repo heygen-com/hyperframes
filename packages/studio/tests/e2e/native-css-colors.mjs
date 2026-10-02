@@ -70,23 +70,32 @@ try {
       const frame = document.createElement("iframe");
       frame.srcdoc =
         '<html style="color-scheme: dark"><body><div contenteditable="true" style="color: green">' +
-        '<span style="color: light-dark(white, red)">x</span></div></body></html>';
+        '<span style="color: light-dark(white, red)">x</span></div>' +
+        '<div contenteditable="true" style="color: green"><span style="color: light-dark(white, red)"> </span>' +
+        'x<span style="color: light-dark(white, red)">y</span></div></body></html>';
       await new Promise((loaded) => {
         frame.onload = loaded;
         document.body.append(frame);
       });
       const darkDoc = frame.contentDocument;
+      const [wholeHost, mixedHost] = darkDoc.querySelectorAll("div");
       const darkSelection = darkDoc.createRange();
-      darkSelection.selectNodeContents(darkDoc.querySelector("div"));
-      const darkAuthored = readInlineStyleSpread(darkSelection, "color")[0];
+      darkSelection.selectNodeContents(wholeHost);
+      const mixedSpans = mixedHost.querySelectorAll("span");
+      const mixedSelection = darkDoc.createRange();
+      mixedSelection.setStart(mixedSpans[0].firstChild, 0);
+      mixedSelection.setEnd(mixedSpans[1].firstChild, 1);
+      const pickFor = (selection) =>
+        resolvePickerColor(
+          readInlineStyleSpread(selection, "color")[0],
+          readFirstPaintedElement(selection, "color"),
+          "#ffffff",
+        );
       return {
         colors,
-        darkParse: parseCssColor(darkAuthored),
-        darkPicker: resolvePickerColor(
-          darkAuthored,
-          readFirstPaintedElement(darkSelection),
-          "#ffffff",
-        ),
+        darkParse: parseCssColor(readInlineStyleSpread(darkSelection, "color")[0]),
+        darkPicker: pickFor(darkSelection),
+        mixedPicker: pickFor(mixedSelection),
         picker: toColorPickerValue(getComputedStyle(element).color),
         alpha: mergeColorWithExistingAlpha("#123456", "color(srgb 0.4 0 0.6 / 0.25)"),
         gradient: insertGradientStop(gradient, 50).stops[1].color,
@@ -138,6 +147,7 @@ try {
   }
   assert.equal(results.darkParse, null, "light-dark() needs the element's colour scheme");
   assert.equal(results.darkPicker, "#ff0000", "dark-scheme light-dark() picks what it paints");
+  assert.equal(results.mixedPicker, "#ff0000", "the picker reads the element its colour came from");
   assert.equal(results.picker, "#00b9c3");
   assert.equal(results.alpha, "rgba(18, 52, 86, 0.25)");
   assert.equal(results.gradient, "#808080");

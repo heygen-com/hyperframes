@@ -752,12 +752,22 @@ describe("readFirstPaintedElement", () => {
     const range = document.createRange();
     range.selectNodeContents(host);
 
-    expect(readFirstPaintedElement(range)).toBe(host.querySelector("span"));
+    expect(readFirstPaintedElement(range, "color")).toBe(host.querySelector("span"));
   });
 
   it("skips a leading space, which paints nothing", () => {
     const host = mount(' <span style="color: red">Hello</span>');
 
-    expect(readFirstPaintedElement(rangeOver(host, 0, 6))).toBe(host.querySelector("span"));
+    expect(readFirstPaintedElement(rangeOver(host, 0, 6), "color")).toBe(
+      host.querySelector("span"),
+    );
+  });
+
+  it("names the element of the colour the swatch shows, past text with no colour of its own", () => {
+    const host = mount('<span style="color: red"> </span>x<span style="color: lime">y</span>');
+    const range = rangeOver(host, 0, 3);
+
+    expect(readInlineStyleSpread(range, "color")).toEqual(["lime"]);
+    expect(readFirstPaintedElement(range, "color")).toBe(host.querySelectorAll("span")[1]);
   });
 });
