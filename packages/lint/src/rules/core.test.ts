@@ -1085,7 +1085,7 @@ describe("core rules", () => {
       expect(finding).toBeDefined();
       expect(finding?.severity).toBe("warning");
       expect(finding?.selector).toBe(`[id="line1"]`);
-      expect(finding?.fixHint).toContain("#id");
+      expect(finding?.fixHint).toContain("`#line1`");
     });
 
     it("warns when a :where()-wrapped id selector sets a position property", async () => {
@@ -1100,6 +1100,23 @@ describe("core rules", () => {
     it("does not flag a bare #id selector, which always wins regardless of specificity", async () => {
       const result = await lintHyperframeHtml(
         comp(`.parent .row { position: absolute; left: 0; } #line1 { left: 40px; }`),
+      );
+      expect(
+        result.findings.find((f) => f.code === "id_override_reduced_specificity"),
+      ).toBeUndefined();
+    });
+
+    it("hints an escaped #id for a digit-leading id, where a bare #01-intro is invalid CSS", async () => {
+      const result = await lintHyperframeHtml(
+        comp(`.parent .row { position: absolute; left: 0; } [id="01-intro"] { left: 40px; }`),
+      );
+      const finding = result.findings.find((f) => f.code === "id_override_reduced_specificity");
+      expect(finding?.fixHint).toContain("`#\\30 1-intro`");
+    });
+
+    it("does not flag prefix-matching id selectors or !important position overrides", async () => {
+      const result = await lintHyperframeHtml(
+        comp(`[id^="line"] { top: 0; } [id*="ine"] { left: 0; } [id="line1"] { left: 40px !important; }`),
       );
       expect(
         result.findings.find((f) => f.code === "id_override_reduced_specificity"),

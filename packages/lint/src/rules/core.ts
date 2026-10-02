@@ -148,36 +148,38 @@ function selectorAliasesRuntimeHiddenStyle(selector: string): boolean {
   return unsafe;
 }
 
-const POSITION_PROPERTIES = new Set(["left", "top", "right", "bottom"]);
+const POSITION_PROPERTIES = new Set(["left", "top", "right", "bottom", "inset"]);
 
-// True when the subject targets an id only via `[id="x"]` or `:where(#x)`, which carry class-level or
-// zero specificity and so lose to a compound class rule like `.parent .row`. A bare `#id` never does.
-function idSelectorHasReducedSpecificity(selector: string): boolean {
-  let matched = false;
+// The id a subject targets only via `[id="x"]` or `:where(#x)`, which carry class-level or zero specificity
+// and so lose to a compound class rule like `.parent .row`. A bare `#id` never does.
+function reducedSpecificityId(selector: string): string | null {
+  let matched: string | null = null;
   try {
     selectorParser((root) => {
       root.each((selectorNode) => {
         const subject = rightmostCompoundNodes(selectorNode);
         if (subject.some((node) => node.type === "id")) return;
-        if (
-          subject.some(
-            (node) =>
-              (node.type === "attribute" &&
-                node.attribute.toLowerCase() === "id" &&
-                !!node.value) ||
-              (node.type === "pseudo" &&
-                node.value.toLowerCase() === ":where" &&
-                node.nodes.some((option) => option.nodes.some((inner) => inner.type === "id"))),
-          )
-        ) {
-          matched = true;
+        for (const node of subject) {
+          if (node.type === "attribute" && node.attribute.toLowerCase() === "id") {
+            if (node.operator === "=" && node.value) matched = node.value;
+          } else if (node.type === "pseudo" && node.value.toLowerCase() === ":where") {
+            const inner = node.nodes.flatMap((option) => option.nodes).find((n) => n.type === "id");
+            if (inner) matched = inner.value;
+          }
         }
       });
     }).processSync(selector);
   } catch {
-    return false;
+    return null;
   }
   return matched;
+}
+
+// `#id` with the characters a bare id selector cannot hold (a leading digit, punctuation) hex-escaped.
+function cssIdSelector(id: string): string {
+  return `#${id.replace(/[^a-zA-Z0-9_-]|^-?\d/g, (match) =>
+    Array.from(match, (char) => `\\${char.codePointAt(0)?.toString(16)} `).join(""),
+  )}`;
 }
 
 function reducedSpecificityIdFindings(
@@ -185,23 +187,26 @@ function reducedSpecificityIdFindings(
   reported: Set<string>,
 ): HyperframeLintFinding[] {
   const positionProps = rule.nodes.flatMap((node) =>
-    node.type === "decl" && POSITION_PROPERTIES.has(node.prop.toLowerCase()) ? [node.prop] : [],
+    node.type === "decl" && !node.important && POSITION_PROPERTIES.has(node.prop.toLowerCase())
+      ? [node.prop]
+      : [],
   );
   if (positionProps.length === 0) return [];
-  return resolvedRuleSelectors(rule)
-    .filter((selector) => !reported.has(selector) && idSelectorHasReducedSpecificity(selector))
-    .map((selector): HyperframeLintFinding => {
-      reported.add(selector);
-      return {
-        code: "id_override_reduced_specificity",
-        severity: "warning",
-        message: `Selector "${selector}" sets ${positionProps.join("/")} through [id=...] or :where(#id), which has class-level or zero specificity, so a compound class rule (e.g. ".parent .row") on the same element can silently win over this override.`,
-        selector,
-        fixHint:
-          "Use a bare #id selector instead; id specificity beats any selector built only from classes.",
-        snippet: truncateSnippet(rule.toString()),
-      };
+  const findings: HyperframeLintFinding[] = [];
+  for (const selector of resolvedRuleSelectors(rule)) {
+    const id = reported.has(selector) ? null : reducedSpecificityId(selector);
+    if (id === null) continue;
+    reported.add(selector);
+    findings.push({
+      code: "id_override_reduced_specificity",
+      severity: "warning",
+      message: `Selector "${selector}" sets ${positionProps.join("/")} through [id=...] or :where(#id), which has class-level or zero specificity, so a compound class rule (e.g. ".parent .row") on the same element can silently win over this override.`,
+      selector,
+      fixHint: `Use \`${cssIdSelector(id)}\` instead; id specificity beats any selector built only from classes.`,
+      snippet: truncateSnippet(rule.toString()),
     });
+  }
+  return findings;
 }
 
 function ruleForcesOpacityZero(rule: postcss.Rule): boolean {
