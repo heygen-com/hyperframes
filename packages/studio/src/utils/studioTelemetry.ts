@@ -1,3 +1,4 @@
+import { parseProjectHashRoute } from "./projectRouting";
 import { resolveStudioDistinctId } from "../telemetry/distinctId";
 import { browserTelemetryAllowed } from "../telemetry/policy";
 import { canaryEventProperties } from "../telemetry/canary";
@@ -41,6 +42,20 @@ function isEnabled(): boolean {
   return browserTelemetryAllowed();
 }
 
+function studioRouteKind(hash: string): "project" | "home" | "other" {
+  if (parseProjectHashRoute(hash)) return "project";
+  if (hash === "" || hash === "#") return "home";
+  return "other";
+}
+
+function studioRouteId(hash: string): string {
+  let id = 0x811c9dc5;
+  for (const byte of new TextEncoder().encode(hash.split("?")[0])) {
+    id = Math.imul(id ^ byte, 0x01000193);
+  }
+  return (id >>> 0).toString(16).padStart(8, "0");
+}
+
 function getSessionProperties(): EventProperties {
   return {
     studio_version: typeof __STUDIO_VERSION__ !== "undefined" ? __STUDIO_VERSION__ : "dev",
@@ -57,10 +72,9 @@ function getSessionProperties(): EventProperties {
     viewport_width: window.innerWidth,
     viewport_height: window.innerHeight,
     user_agent: navigator.userAgent,
-    // Route slug only — drop the query string, which carries the current
-    // selection (selId / selSelector are the user's own element ids/CSS
-    // selectors) and other view state we must not send to analytics.
-    url_hash: location.hash.replace(/#project\//, "").split("?")[0],
+    // Route names and query parameters are user content. Send only the route kind.
+    url_hash: studioRouteKind(location.hash),
+    url_route_id: studioRouteId(location.hash),
   };
 }
 
