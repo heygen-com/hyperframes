@@ -44,6 +44,15 @@ describe("mediaAssetIdentity", () => {
     );
     expect(mediaAssetIdentity({ src: "" })).toBeNull();
   });
+
+  it("keeps a remote url's query, since it can select a different file", () => {
+    expect(mediaAssetIdentity({ src: "https://cdn.example.com/v.mp4?id=1" })).not.toBe(
+      mediaAssetIdentity({ src: "https://cdn.example.com/v.mp4?id=2" }),
+    );
+    expect(mediaAssetIdentity({ src: "https://cdn.example.com/v.mp4?id=1#t=3" })).toBe(
+      mediaAssetIdentity({ src: "https://cdn.example.com/v.mp4?id=1" }),
+    );
+  });
 });
 
 describe("expandToLinkedMembers", () => {

@@ -6,6 +6,7 @@ type LinkedElement = Pick<TimelineElement, "id" | "key" | "link"> & LinkScoped;
 const keyOf = (element: Pick<TimelineElement, "id" | "key">) => element.key ?? element.id;
 
 const SOURCE_BASE = "https://project.invalid/";
+const SOURCE_ORIGIN = new URL(SOURCE_BASE).origin;
 
 export function mediaAssetIdentity(
   element: Pick<TimelineElement, "src" | "sourceFile">,
@@ -14,7 +15,8 @@ export function mediaAssetIdentity(
   if (!src) return null;
   try {
     const url = new URL(src, new URL(element.sourceFile ?? "index.html", SOURCE_BASE));
-    return decodeURIComponent(`${url.origin}${url.pathname}`);
+    const query = url.origin === SOURCE_ORIGIN ? "" : url.search;
+    return decodeURIComponent(`${url.origin}${url.pathname}${query}`);
   } catch {
     return null;
   }
