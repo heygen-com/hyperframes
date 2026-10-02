@@ -3324,16 +3324,12 @@ export function registerFileRoutes(api: Hono, adapter: StudioApiAdapter): void {
       return c.json({ error: "already exists" }, 409);
     }
 
+    const isDirectory = statSync(res.absPath, { throwIfNoEntry: false })?.isDirectory() ?? false;
     ensureDir(res.project.dir, newAbs);
     renameSync(res.absPath, newAbs);
 
     // Update references to the old path across all project files
-    const updatedFiles = updateReferences(
-      res.project.dir,
-      res.filePath,
-      body.newPath,
-      statSync(newAbs).isDirectory(),
-    );
+    const updatedFiles = updateReferences(res.project.dir, res.filePath, body.newPath, isDirectory);
 
     return c.json({ ok: true, path: body.newPath, updatedReferences: updatedFiles });
   });

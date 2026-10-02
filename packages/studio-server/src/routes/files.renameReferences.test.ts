@@ -211,4 +211,27 @@ describe("renaming a folder over the route", () => {
       '<img src="assets/b.png"><img src="other assets/a.png">',
     );
   });
+
+  it("moves a relative link whose target the move leaves behind, and still rewrites references", async () => {
+    const project = mkdtempSync(join(tmpdir(), "hf-rename-relink-"));
+    dirs.push(project);
+    mkdirSync(join(project, "assets"));
+    mkdirSync(join(project, "shared"));
+    writeFileSync(join(project, "shared", "logo.png"), "x");
+    symlinkSync("../shared/logo.png", join(project, "assets", "logo.png"), "file");
+    writeFileSync(join(project, "index.html"), '<img src="assets/logo.png">');
+    const adapter = {
+      resolveProject: async (id: string) => ({ id, dir: project }),
+    } as unknown as StudioApiAdapter;
+    const app = new Hono();
+    registerFileRoutes(app, adapter);
+
+    const response = await app.request("/projects/p/files/assets/logo.png", {
+      method: "PATCH",
+      body: JSON.stringify({ newPath: "logo.png" }),
+    });
+
+    expect(response.status).toBe(200);
+    expect(readFileSync(join(project, "index.html"), "utf8")).toBe('<img src="logo.png">');
+  });
 });
