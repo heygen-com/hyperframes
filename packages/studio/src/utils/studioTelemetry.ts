@@ -48,12 +48,50 @@ function studioRouteKind(hash: string): "project" | "home" | "other" {
   return "other";
 }
 
+const ROUTE_IDS_KEY = "hyperframes-studio:routeIds";
+let routeIds: Map<string, string> | undefined;
+
 function studioRouteId(hash: string): string {
-  let id = 0x811c9dc5;
-  for (const byte of new TextEncoder().encode(hash.split("?")[0])) {
-    id = Math.imul(id ^ byte, 0x01000193);
+  if (!routeIds) {
+    routeIds = new Map();
+    try {
+      // A new tab can inherit its opener's sessionStorage. A fresh navigation
+      // starts a new map; reloads and history restores retain this tab's map.
+      const navigation = performance.getEntriesByType("navigation")[0] as
+        | PerformanceNavigationTiming
+        | undefined;
+      const stored: unknown = JSON.parse(
+        navigation?.type === "navigate" ? "[]" : (sessionStorage.getItem(ROUTE_IDS_KEY) ?? "[]"),
+      );
+      if (Array.isArray(stored)) {
+        for (const entry of stored) {
+          if (
+            Array.isArray(entry) &&
+            entry.length === 2 &&
+            typeof entry[0] === "string" &&
+            typeof entry[1] === "string" &&
+            /^[0-9a-f]{8}$/.test(entry[1])
+          ) {
+            routeIds.set(entry[0], entry[1]);
+          }
+        }
+      }
+    } catch {
+      // Storage may be blocked or corrupt. Keep random IDs in memory instead.
+    }
   }
-  return (id >>> 0).toString(16).padStart(8, "0");
+  const route = hash.split("?")[0];
+  const existing = routeIds.get(route);
+  if (existing !== undefined) return existing;
+  const bytes = crypto.getRandomValues(new Uint8Array(4));
+  const id = Array.from(bytes, (byte) => byte.toString(16).padStart(2, "0")).join("");
+  routeIds.set(route, id);
+  try {
+    sessionStorage.setItem(ROUTE_IDS_KEY, JSON.stringify([...routeIds]));
+  } catch {
+    // The in-memory map still preserves equality when storage is unavailable.
+  }
+  return id;
 }
 
 function getSessionProperties(): EventProperties {

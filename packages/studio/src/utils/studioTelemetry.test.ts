@@ -26,6 +26,7 @@ describe("studioTelemetry — shared opt-out and canary properties", () => {
   beforeEach(async () => {
     policyState.allowed = true;
     localStorage.clear();
+    sessionStorage.clear();
     window.location.hash = "";
     vi.resetModules();
     vi.useFakeTimers();
@@ -38,6 +39,7 @@ describe("studioTelemetry — shared opt-out and canary properties", () => {
     window.location.hash = "";
     vi.useRealTimers();
     vi.unstubAllGlobals();
+    vi.restoreAllMocks();
   });
 
   /** Drain the queue and return the events the batch would have sent. */
@@ -116,6 +118,7 @@ describe("studioTelemetry — shared opt-out and canary properties", () => {
       expect(body).not.toContain(projectName);
       expect(body).not.toContain(encodeURIComponent(projectName));
       expect(body).not.toContain("private-element");
+      expect(body).not.toContain("7aef12cc");
       const payload = JSON.parse(body);
       expect(payload.batch).toHaveLength(4);
       for (const event of payload.batch) {
@@ -151,5 +154,46 @@ describe("studioTelemetry — shared opt-out and canary properties", () => {
     expect(ids[1]).toBe(ids[0]);
     expect(ids[2]).not.toBe(ids[0]);
     expect(ids[2]).toMatch(/^[0-9a-f]{8}$/);
+  });
+  it("reuses a route ID after reloading the same tab", async () => {
+    window.location.hash = buildProjectHash("Launch #1? v2");
+    trackStudioEvent("session_start");
+    const first = (await sentEvents())[0]?.properties as Record<string, unknown>;
+    vi.clearAllTimers();
+    vi.resetModules();
+    fetchMock.mockClear();
+    ({ trackStudioEvent } = await import("./studioTelemetry"));
+    trackStudioEvent("session_start");
+    const second = (await sentEvents())[0]?.properties as Record<string, unknown>;
+    expect(second.url_route_id).toBe(first.url_route_id);
+  });
+
+  it("assigns different random IDs to the same route in two tabs", async () => {
+    const random = vi.spyOn(crypto, "getRandomValues");
+    random.mockImplementationOnce((bytes) => {
+      (bytes as Uint8Array).set([1, 2, 3, 4]);
+      return bytes;
+    });
+    window.location.hash = buildProjectHash("Launch #1? v2");
+    trackStudioEvent("session_start");
+    const first = (await sentEvents())[0]?.properties as Record<string, unknown>;
+    // Simulate a new tab whose sessionStorage was copied from its opener.
+    vi.spyOn(performance, "getEntriesByType").mockReturnValue([
+      { type: "navigate" } as PerformanceNavigationTiming,
+    ]);
+    vi.clearAllTimers();
+    vi.resetModules();
+    fetchMock.mockClear();
+    random.mockImplementationOnce((bytes) => {
+      (bytes as Uint8Array).set([5, 6, 7, 8]);
+      return bytes;
+    });
+    ({ trackStudioEvent } = await import("./studioTelemetry"));
+    trackStudioEvent("session_start");
+    const second = (await sentEvents())[0]?.properties as Record<string, unknown>;
+    expect(first.url_route_id).toBe("01020304");
+    expect(second.url_route_id).toBe("05060708");
+    expect(second.url_route_id).not.toBe(first.url_route_id);
+    expect(random).toHaveBeenCalledTimes(2);
   });
 });
