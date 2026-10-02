@@ -6,6 +6,7 @@ import type {
 } from "./gsapScriptCommitTypes";
 import {
   keyframeUsageActions,
+  changedMutationIndices,
   primaryKeyframeAction,
   trackKeyframeUsage,
   type KeyframeUsageAction,
@@ -26,10 +27,11 @@ export function observeGsapGesture(writer: CommitMutation | null) {
         options.onResult?.(result);
         if (!result.ok || result.changed !== true) return;
         changed = true;
-        for (const call of calls) {
-          if (call.options.keyframeAction) actions.add(call.options.keyframeAction);
-          else for (const action of keyframeUsageActions([call.mutation])) actions.add(action);
-        }
+        const members = changedMutationIndices(result, calls.length).map((index) => calls[index]!);
+        for (const action of keyframeUsageActions(
+          members.map((call) => call.mutation),
+          members.map((call) => call.options.keyframeAction),
+        )) actions.add(action);
       },
     };
   };

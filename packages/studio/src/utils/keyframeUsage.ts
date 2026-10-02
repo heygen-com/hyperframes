@@ -5,9 +5,15 @@ export type KeyframeUsageAction = "add" | "convert" | "remove_all" | "reset";
 
 export function keyframeUsageActions(
   mutations: ReadonlyArray<Record<string, unknown>>,
+  semanticActions?: ReadonlyArray<KeyframeUsageAction | undefined>,
 ): Set<KeyframeUsageAction> {
   const actions = new Set<KeyframeUsageAction>();
-  for (const mutation of mutations) {
+  for (const [index, mutation] of mutations.entries()) {
+    const semanticAction = semanticActions?.[index];
+    if (semanticAction) {
+      actions.add(semanticAction);
+      continue;
+    }
     switch (mutation.type) {
       case "add-keyframe":
       case "add-with-keyframes":
@@ -34,12 +40,27 @@ export function primaryKeyframeAction(
   return (["add", "convert", "remove_all", "reset"] as const).find((action) => actions.has(action));
 }
 
+export function changedMutationIndices(result: MutationResult, count: number): number[] {
+  if (!result.ok || result.changed !== true) return [];
+  if (count === 1) return [0];
+  const changes = result.mutationChanges;
+  if (!changes || changes.length !== count || changes.some((value) => typeof value !== "boolean"))
+    return [];
+  return changes.flatMap((changed, index) => (changed ? [index] : []));
+}
+
 export function trackKeyframeCommit(
   mutations: ReadonlyArray<Record<string, unknown>>,
   result: MutationResult,
   options: CommitMutationOptions,
+  memberOptions?: ReadonlyArray<CommitMutationOptions>,
 ): void {
   if (!result.ok || result.changed !== true || options.keyframeTelemetry === false) return;
-  const action = options.keyframeAction ?? primaryKeyframeAction(keyframeUsageActions(mutations));
+  const indices = changedMutationIndices(result, mutations.length);
+  const actions = keyframeUsageActions(
+    indices.map((index) => mutations[index]!),
+    indices.map((index) => memberOptions?.[index]?.keyframeAction ?? (mutations.length === 1 ? options.keyframeAction : undefined)),
+  );
+  const action = primaryKeyframeAction(actions);
   if (action) trackKeyframeUsage(action, action === "add" ? options.keyframeProperty : undefined);
 }

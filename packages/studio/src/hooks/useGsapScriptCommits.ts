@@ -406,7 +406,7 @@ export function useGsapScriptCommits({ projectIdRef, activeCompPath, previewIfra
       mutateGsapScriptBatch(pid, targetPath, mutations),
     );
     if (!result) return;
-    trackKeyframeCommit(mutations, result, options);
+    trackKeyframeCommit(mutations, result, options, calls.map((call) => call.options));
     options.onResult?.(result);
     // Each call brings its own fast-path patch; the batch wrote them all, so the
     // preview sync applies them all rather than just the last call's.

@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { act } from "react";
+import { act, useLayoutEffect } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { GsapAnimation } from "@hyperframes/core/gsap-parser";
 import { trackStudioEvent } from "../utils/studioTelemetry";
@@ -8,6 +8,7 @@ import type { DomEditSelection } from "../components/editor/domEditing";
 import { usePlayerStore } from "../player";
 import { mountReactHarness } from "./domSelectionTestHarness";
 import type { CommitMutationOptions } from "./gsapScriptCommitTypes";
+import { useGsapAwareEditing } from "./useGsapAwareEditing";
 import { useGestureCommit } from "./useGestureCommit";
 
 vi.mock("../utils/studioTelemetry", () => ({ trackStudioEvent: vi.fn() }));
@@ -90,7 +91,11 @@ function makeSelection(element: HTMLElement): DomEditSelection {
 }
 
 function mountRecording(
-  writer: (mutation: Record<string, unknown>, options: CommitMutationOptions) => Promise<void>,
+  writer: (
+    mutation: Record<string, unknown>,
+    options: CommitMutationOptions,
+    selection?: DomEditSelection,
+  ) => Promise<void>,
   animations: GsapAnimation[] = [],
   readOnlyPreview = false,
 ) {
@@ -107,21 +112,52 @@ function mountRecording(
   };
   let hook: ReturnType<typeof useGestureCommit> | null = null;
   function Probe() {
-    hook = useGestureCommit({
+    const editing = useGsapAwareEditing({
+      domEditSelection: session.current.domEditSelection,
+      selectedGsapAnimations: session.current.selectedGsapAnimations,
+      gsapCommitMutation: (selection, mutation, options) => writer(mutation, options, selection),
+      previewIframeRef: { current: iframe },
+      showToast: vi.fn(),
+      bumpGsapCache: vi.fn(),
+      makeFetchFallback: () => vi.fn(),
+      trackGsapInteractionFailure: vi.fn(),
+      stageElementPositionOffset: vi.fn(),
+      handleDomBoxSizeCommit: vi.fn(),
+      handleDomRotationCommit: vi.fn(),
+      commitPositionPatchToHtml: vi.fn(),
+      addGsapAnimation: vi.fn(),
+      convertToKeyframes: vi.fn(),
+      setArcPath: vi.fn(),
+      updateArcSegment: vi.fn(),
+    });
+    const currentHook = useGestureCommit({
       domEditSessionRef: session,
       previewIframeRef: { current: iframe },
       showToast: vi.fn(),
       isGestureRecordingRef: { current: false },
       readOnlyPreview,
     });
+    useLayoutEffect(() => {
+      session.current.commitMutation = editing.commitMutation;
+      hook = currentHook;
+    });
     return null;
   }
   const root = mountReactHarness(<Probe />);
   cleanup = () => act(() => root.unmount());
-  return () => {
-    if (!hook) throw new Error("hook did not initialize");
-    return hook;
-  };
+  return Object.assign(
+    () => {
+      if (!hook) throw new Error("hook did not initialize");
+      return hook;
+    },
+    {
+      select: (selection: DomEditSelection, nextAnimations: GsapAnimation[]) => {
+        session.current.domEditSelection = selection;
+        session.current.selectedGsapAnimations = nextAnimations;
+        act(() => root.render(<Probe />));
+      },
+    },
+  );
 }
 
 describe("useGestureCommit", () => {
@@ -237,4 +273,57 @@ it("keeps a pending recording isolated until its writer settles", async () => {
   expect(gestureRecording.clearSamples).toHaveBeenCalledTimes(1);
   act(() => hook().handleToggleRecording("button"));
   expect(gestureRecording.startRecording).toHaveBeenCalledTimes(2);
+});
+
+it("writes one recording to its original selection after selecting another source", async () => {
+  const original = {
+    id: "original-position",
+    targetSelector: "#card",
+    propertyGroup: "position",
+    method: "set",
+    properties: { x: 0, y: 0 },
+    resolvedStart: 0,
+    position: 0,
+    duration: 0,
+  } as GsapAnimation;
+  const writer = vi.fn(
+    async (
+      _mutation: Record<string, unknown>,
+      options: CommitMutationOptions,
+      _selection?: DomEditSelection,
+    ) => {
+      options.onResult?.({ ok: true, changed: true });
+    },
+  );
+  const hook = mountRecording(writer, [original]);
+  act(() => hook().handleToggleRecording("keyboard"));
+  const other = document.createElement("div");
+  other.id = "other";
+  hook.select(
+    { ...makeSelection(other), sourceFile: "other.html", compositionPath: "other.html" },
+    [],
+  );
+  await act(async () => {
+    hook().handleToggleRecording();
+    await vi.waitFor(() => expect(trackStudioEvent).toHaveBeenCalledTimes(2));
+  });
+  expect(writer).toHaveBeenCalledExactlyOnceWith(
+    expect.objectContaining({
+      type: "replace-with-keyframes",
+      animationId: "original-position",
+      targetSelector: "#card",
+    }),
+    expect.objectContaining({ keyframeAction: "add" }),
+    expect.objectContaining({
+      id: "card",
+      sourceFile: "index.html",
+      compositionPath: "index.html",
+    }),
+  );
+  expect(trackStudioEvent).toHaveBeenCalledWith("keyframe", { action: "add" });
+  expect(trackStudioEvent).toHaveBeenCalledWith("feature_used", {
+    feature: "gesture_recording",
+    surface: "preview",
+    method: "keyboard",
+  });
 });

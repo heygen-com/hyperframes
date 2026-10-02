@@ -1496,6 +1496,44 @@ tl.fromTo("#box", { opacity: 0, x: -50 }, { opacity: 1, x: 0, duration: 1.5, eas
     expect(result.parsed.animations[0].fromProperties).toMatchObject({ opacity: 0.2, x: -25 });
   });
 
+  it("reports a no-op keyframe member separately from a changed batch member", async () => {
+    const projectDir = createProjectDir();
+    writeHtml(
+      projectDir,
+      "comp.html",
+      `<script>const tl = gsap.timeline();tl.to("#box", {keyframes: {"0%": {x: 0}, "100%": {x: 100}}, duration: 2}, 0);</script>`,
+    );
+    const app = new Hono();
+    registerFileRoutes(app, createAdapter(projectDir));
+    const anim = await getFirstAnimation(app, "comp.html");
+    const add = {
+      type: "add-keyframe",
+      animationId: anim.id,
+      percentage: 50,
+      properties: { x: 50 },
+    };
+    const seed = await postGsapMutationBatch(app, "comp.html", { mutations: [add] });
+    expect(seed.status).toBe(200);
+    const seeded = await getFirstAnimation(app, "comp.html");
+    const response = await postGsapMutationBatch(app, "comp.html", {
+      mutations: [
+        { ...add, animationId: seeded.id },
+        { type: "update-property", animationId: seeded.id, property: "duration", value: 3 },
+      ],
+    });
+    expect(response.status).toBe(200);
+    const result = (await response.json()) as {
+      changed: boolean;
+      mutationChanges: boolean[];
+      after: string;
+    };
+    expect(result).toMatchObject({ changed: true, mutationChanges: [false, true] });
+    expect(result.after).toBe(readFileSync(join(projectDir, "comp.html"), "utf-8"));
+    expect(result).toMatchObject({
+      parsed: { animations: [expect.objectContaining({ duration: 3 })] },
+    });
+  });
+
   it("conditionally restores the exact GSAP mutation output", async () => {
     const projectDir = createProjectDir();
     writeHtml(projectDir, "comp.html", "MUTATED");

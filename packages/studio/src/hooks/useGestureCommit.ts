@@ -73,6 +73,7 @@ interface GestureSessionRef {
   commitMutation?: (
     mutation: Record<string, unknown>,
     options: CommitMutationOptions,
+    selection?: DomEditSelection,
   ) => Promise<void>;
 }
 
@@ -122,6 +123,7 @@ export function useGestureCommit({
   // Capture selection at recording start so commit always targets the recorded element,
   // even if the user's selection changes mid-recording.
   const capturedSelectionRef = useRef<DomEditSelection | null>(null);
+  const capturedAnimationsRef = useRef<GsapAnimation[]>([]);
 
   // Unmount: clear auto-stop interval
   useEffect(() => () => clearInterval(recordingAutoStopRef.current), []);
@@ -214,7 +216,7 @@ export function useGestureCommit({
       if (liveSession.commitMutation) {
         const writer = liveSession.commitMutation;
         const outcome = observeGsapGesture((_selection, mutation, options) =>
-          writer(mutation, options),
+          writer(mutation, options, sel),
         );
         const commit = (mutation: Record<string, unknown>, options: CommitMutationOptions) =>
           outcome.commit!(sel, mutation, options);
@@ -228,7 +230,7 @@ export function useGestureCommit({
         const hasPositionProps = keyframes.some((kf) =>
           Object.keys(kf.properties).some((k) => classifyPropertyGroup(k) === "position"),
         );
-        const allAnims = liveSession.selectedGsapAnimations ?? [];
+        const allAnims = capturedAnimationsRef.current;
         const existingPositionTween = hasPositionProps
           ? allAnims.find(
               (a) =>
@@ -398,6 +400,7 @@ export function useGestureCommit({
       recordingStartTimeRef.current = store.currentTime;
       const elementEnd = recordingEnd(sel);
       capturedSelectionRef.current = sel;
+      capturedAnimationsRef.current = domEditSessionRef.current.selectedGsapAnimations ?? [];
       gestureRecording.startRecording(sel.element, iframe, elementEnd);
       gestureStateRef.current = "recording";
       isGestureRecordingRef.current = true;

@@ -8,6 +8,7 @@ import type { KeyframeUsageAction } from "../utils/keyframeUsage";
 export interface MutationResult {
   ok: boolean;
   changed?: boolean;
+  mutationChanges?: boolean[];
   parsed?: ParsedGsap;
   before?: string;
   after?: string;

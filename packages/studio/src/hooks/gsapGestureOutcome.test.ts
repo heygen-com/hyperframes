@@ -1,4 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import { trackKeyframeCommit } from "../utils/keyframeUsage";
 import { observeGsapGesture } from "./gsapGestureOutcome";
 import type { CommitMutation, MutationResult } from "./gsapScriptCommitTypes";
 import { trackStudioEvent } from "../utils/studioTelemetry";
@@ -23,7 +24,9 @@ function writer(result?: MutationResult): CommitMutation {
 
 describe("GSAP gesture usage", () => {
   it("counts a multi-write add gesture once from successful writer results", async () => {
-    const observed = observeGsapGesture(writer({ ok: true, changed: true }));
+    const observed = observeGsapGesture(
+      writer({ ok: true, changed: true, mutationChanges: [true, true] }),
+    );
     const onResult = vi.fn();
     await observed.commit!(
       selection,
@@ -38,7 +41,9 @@ describe("GSAP gesture usage", () => {
   });
 
   it("counts a batched insertion once", async () => {
-    const observed = observeGsapGesture(writer({ ok: true, changed: true }));
+    const observed = observeGsapGesture(
+      writer({ ok: true, changed: true, mutationChanges: [true, true] }),
+    );
     await observed.commit!.batch!(
       [
         { selection, mutation, options: { label: "Add" } },
@@ -51,7 +56,9 @@ describe("GSAP gesture usage", () => {
   });
 
   it("retains insertion metadata from an earlier member of a mixed batch", async () => {
-    const observed = observeGsapGesture(writer({ ok: true, changed: true }));
+    const observed = observeGsapGesture(
+      writer({ ok: true, changed: true, mutationChanges: [true, true] }),
+    );
     await observed.commit!.batch!(
       [
         {
@@ -68,7 +75,9 @@ describe("GSAP gesture usage", () => {
   });
 
   it("uses semantic insertion metadata for a replacement", async () => {
-    const observed = observeGsapGesture(writer({ ok: true, changed: true }));
+    const observed = observeGsapGesture(
+      writer({ ok: true, changed: true, mutationChanges: [true, true] }),
+    );
     await observed.commit!(
       selection,
       { type: "replace-with-keyframes" },
@@ -101,3 +110,30 @@ describe("GSAP gesture usage", () => {
     expect(trackStudioEvent).not.toHaveBeenCalled();
   });
 });
+
+it.each([
+  [[false, true], 0],
+  [[true, false], 1],
+  [undefined, 0],
+] as const)(
+  "attributes mixed batches only to changed members (%j)",
+  async (mutationChanges, count) => {
+    const result = {
+      ok: true,
+      changed: true,
+      mutationChanges: mutationChanges && [...mutationChanges],
+    };
+    const observed = observeGsapGesture(writer(result));
+    const mutations = [mutation, { type: "update-property" }];
+    await observed.commit!.batch!(
+      mutations.map((mutation) => ({ selection, mutation, options: { label: "Edit" } })),
+      { label: "Edit" },
+    );
+    expect(observed.finish()).toEqual({ ok: true, changed: true });
+    expect(trackStudioEvent).toHaveBeenCalledTimes(count);
+    if (count) expect(trackStudioEvent).toHaveBeenCalledWith("keyframe", { action: "add" });
+    vi.mocked(trackStudioEvent).mockClear();
+    trackKeyframeCommit(mutations, result, { label: "Edit" });
+    expect(trackStudioEvent).toHaveBeenCalledTimes(count);
+  },
+);
