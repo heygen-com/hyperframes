@@ -82,7 +82,15 @@ describe.skipIf(!HAS_FFMPEG)("probeInputAlphaPlane on real files", () => {
 
   const encode = (name: string, color: string, codecArgs: string[]): string => {
     const out = join(dir, name);
-    const args = ["-v", "error", "-f", "lavfi", "-i", `color=c=${color}:s=32x32:d=0.2,format=rgba`, ...codecArgs];
+    const args = [
+      "-v",
+      "error",
+      "-f",
+      "lavfi",
+      "-i",
+      `color=c=${color}:s=32x32:d=0.2,format=rgba`,
+      ...codecArgs,
+    ];
     const res = spawnSync(getFfmpegBinary(), [...args, "-y", out]);
     expect(res.status).toBe(0);
     return out;
