@@ -181,10 +181,8 @@ Two entries in `hyperframes --help` are not part of the authoring loop, and reac
 
 ## Remaining harness usage
 
-Before starting a new video, call `npx hyperframes usage --json` once unless the workflow already recorded a usage plan. Use `--harness claude-code`, `--harness codex`, or `--harness grok` to select explicitly.
+Run `npx hyperframes usage --json` at the start of a video workflow and again at milestones such as after drafting and before rendering. A fresh read at handoff can serve as the start read. Use `--harness claude-code`, `--harness codex`, or `--harness grok` to select explicitly.
 
-Known results contain `status`, `harness`, `session`, `weekly`, `remainingPercent`, `plan`, and `message`. Each available window contains `remainingPercent` and `resetsAt`; an unavailable window is `null`. Claude Code reports its shared five-hour and weekly windows. Codex reports its shared session and weekly windows when available. Grok reports its included weekly allowance with `session: null`.
+Known results contain `status: "known"`, `harness`, `planTier`, `session`, and `weekly`. Each available window contains `usedPercent`, `remainingPercent`, and `resetsAt`; an unavailable window is `null`. `planTier` is the readable subscription tier when available, otherwise `null`. Claude Code reports its shared five-hour and weekly windows. Codex reports its shared session and weekly windows when available. Grok reports its included weekly allowance with `session: null`.
 
-At 20% remaining or less in either available window, `plan` is `first-cut-first` and `message` is the single sentence to tell the user before making the first watchable cut. Otherwise the plan is `standard` and the message is `null`. Preserve requested content, required checks, and render consent.
-
-Unknown results contain `status: "unknown"`, a token-free `reason`, `plan: "standard"`, and `message: null`. Missing, expired, unsupported, ambiguous, or unreadable logins and unavailable provider responses return unknown. Continue the normal workflow; do not guess quota. This command reads existing credentials without refreshing or rewriting them and emits no tokens or telemetry. Remaining allowance is a snapshot, not a reservation or an estimate of the next video's cost.
+Unknown results contain `status: "unknown"` and a token-free `reason`. Missing, expired, unsupported, ambiguous, or unreadable logins and unavailable provider responses return unknown. Report the unknown state without guessing allowance. The command reads existing credentials without refreshing or rewriting them and emits no tokens or telemetry. Usage is a snapshot; it does not reserve allowance or estimate the next video's cost. Keep scope and workflow choices with the user.

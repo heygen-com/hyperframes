@@ -1,7 +1,7 @@
 import { execFile } from "node:child_process";
 import { createHash } from "node:crypto";
 import { readFile } from "node:fs/promises";
-import { homedir } from "node:os";
+import { homedir, userInfo } from "node:os";
 import { join } from "node:path";
 import { promisify } from "node:util";
 import Ajv from "ajv/dist/jtd.js";
@@ -21,6 +21,7 @@ const credentialSchema = {
       optionalProperties: {
         expiresAt: { type: "float64" },
         scopes: { elements: { type: "string" } },
+        subscriptionType: { type: "string" },
       },
       additionalProperties: true,
     },
@@ -33,7 +34,12 @@ const parseCredentials = new Ajv().compileParser<JTDDataType<typeof credentialSc
 const exec = promisify(execFile);
 
 type Harness = "claude-code" | "codex" | "grok";
-type Credential = { token: string; headers: Record<string, string>; expiresAt?: number };
+type Credential = {
+  token: string;
+  headers: Record<string, string>;
+  expiresAt?: number;
+  planTier?: string;
+};
 type Login =
   | { status: "ready"; credential: Credential }
   | { status: "unavailable"; reason: string };
@@ -86,18 +92,20 @@ async function readClaudeCandidates(configDir: string | undefined): Promise<stri
     let service = "Claude Code-credentials";
     if (configDir)
       service += `-${createHash("sha256").update(configDir.normalize("NFC")).digest("hex").slice(0, 8)}`;
-    try {
-      const { stdout } = await exec(
-        "/usr/bin/security",
-        ["find-generic-password", "-s", service, "-w"],
-        {
-          timeout: 2000,
-          maxBuffer: 1024 * 1024,
-        },
-      );
-      candidates.push(stdout);
-    } catch {
-      // An unavailable keychain leaves the credential file as the read-only fallback.
+    for (const accountArgs of [["-a", userInfo().username], []]) {
+      try {
+        const { stdout } = await exec(
+          "/usr/bin/security",
+          ["find-generic-password", "-s", service, ...accountArgs, "-w"],
+          {
+            timeout: 2000,
+            maxBuffer: 1024 * 1024,
+          },
+        );
+        candidates.push(stdout);
+      } catch {
+        // An unavailable keychain item leaves the next read-only source as fallback.
+      }
     }
   }
   try {
@@ -141,6 +149,12 @@ const parseCodexAuth =
   authParser.compileParser<JTDDataType<typeof codexAuthSchema>>(codexAuthSchema);
 const parseGrokAuth = authParser.compileParser<JTDDataType<typeof grokAuthSchema>>(grokAuthSchema);
 const parseJwt = authParser.compileParser<JTDDataType<typeof jwtSchema>>(jwtSchema);
+const grokSettingsSchema = {
+  optionalProperties: { subscription_tier_display: { type: "string", nullable: true } },
+  additionalProperties: true,
+} as const;
+const parseGrokSettings =
+  authParser.compileParser<JTDDataType<typeof grokSettingsSchema>>(grokSettingsSchema);
 
 function tokenExpiry(token: string): number | undefined {
   const parts = token.split(".");
@@ -169,6 +183,7 @@ function claudeLogin(text: string): Login {
       token: auth.accessToken.trim(),
       headers: { "anthropic-beta": "oauth-2025-04-20" },
       expiresAt: auth.expiresAt,
+      planTier: auth.subscriptionType,
     },
     Date.now(),
   );
@@ -237,16 +252,7 @@ async function requestUsage(harness: Harness, credential: Credential): Promise<H
   let response: Response;
   let body: string;
   try {
-    response = await fetch(providers[harness].url, {
-      headers: {
-        Accept: "application/json",
-        ...credential.headers,
-        Authorization: `Bearer ${credential.token}`,
-      },
-      signal: AbortSignal.timeout(5000),
-      redirect: "error",
-    });
-    body = await response.text();
+    ({ response, body } = await requestProvider(providers[harness].url, credential));
   } catch {
     return unknownUsage("usage_request_failed");
   }
@@ -259,5 +265,33 @@ async function requestUsage(harness: Harness, credential: Credential): Promise<H
       return unknownUsage("team_quota_unavailable");
     return unknownUsage(`http_${response.status}`);
   }
-  return providers[harness].parse(body);
+  const usage = providers[harness].parse(body);
+  if (usage.status === "unknown") return usage;
+  if (harness === "grok") return { ...usage, planTier: await readGrokPlanTier(credential) };
+  return { ...usage, planTier: credential.planTier ?? usage.planTier };
+}
+
+async function requestProvider(url: string, credential: Credential) {
+  const response = await fetch(url, {
+    headers: {
+      Accept: "application/json",
+      ...credential.headers,
+      Authorization: `Bearer ${credential.token}`,
+    },
+    signal: AbortSignal.timeout(5000),
+    redirect: "error",
+  });
+  return { response, body: await response.text() };
+}
+
+async function readGrokPlanTier(credential: Credential): Promise<string | null> {
+  let result: Awaited<ReturnType<typeof requestProvider>>;
+  try {
+    result = await requestProvider("https://cli-chat-proxy.grok.com/v1/settings", credential);
+  } catch {
+    // Optional subscription metadata must not discard a valid quota read.
+    return null;
+  }
+  if (!result.response.ok) return null;
+  return parseGrokSettings(result.body)?.subscription_tier_display?.trim() || null;
 }

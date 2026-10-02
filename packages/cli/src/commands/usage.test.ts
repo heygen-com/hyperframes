@@ -5,47 +5,69 @@ import { join, resolve } from "node:path";
 import { pathToFileURL } from "node:url";
 import { expect, it } from "vitest";
 
-it.each([
-  {
-    harness: "claude-code",
-    path: ".credentials.json",
-    auth: { claudeAiOauth: { accessToken: "fixture-token", scopes: ["user:profile"] } },
-    url: "https://api.anthropic.com/api/oauth/usage",
-    response: { five_hour: { utilization: 90 }, seven_day: { utilization: 20 } },
-  },
-  {
-    harness: "codex",
-    path: "auth.json",
-    auth: { tokens: { access_token: "fixture-token", account_id: "fixture-account" } },
-    url: "https://chatgpt.com/backend-api/wham/usage",
-    response: {
-      rate_limit: {
-        primary_window: { used_percent: 90, limit_window_seconds: 18000 },
-        secondary_window: { used_percent: 20, limit_window_seconds: 604800 },
-      },
-    },
-  },
-  {
-    harness: "grok",
-    path: "auth.json",
-    auth: {
-      fixture: { key: "fixture-token", auth_mode: "oidc", oidc_issuer: "https://auth.x.ai" },
-    },
-    url: "https://cli-chat-proxy.grok.com/v1/billing?format=credits",
-    response: {
-      config: {
-        currentPeriod: {
-          type: "USAGE_PERIOD_TYPE_WEEKLY",
-          start: "2026-10-01T00:00:00Z",
-          end: "2026-10-08T00:00:00Z",
+const fixtureTiers: Record<string, string> = {
+  "claude-code": "max",
+  codex: "plus",
+  grok: "SuperGrok",
+};
+
+it.each(
+  [
+    {
+      harness: "claude-code",
+      path: ".credentials.json",
+      auth: {
+        claudeAiOauth: {
+          accessToken: "fixture-token",
+          subscriptionType: "max",
+          scopes: ["user:profile"],
         },
-        creditUsagePercent: 90,
+      },
+      url: "https://api.anthropic.com/api/oauth/usage",
+      response: { five_hour: { utilization: 90 }, seven_day: { utilization: 20 } },
+    },
+    {
+      harness: "codex",
+      path: "auth.json",
+      auth: { tokens: { access_token: "fixture-token", account_id: "fixture-account" } },
+      url: "https://chatgpt.com/backend-api/wham/usage",
+      response: {
+        plan_type: "plus",
+        rate_limit: {
+          primary_window: { used_percent: 90, limit_window_seconds: 18000 },
+          secondary_window: { used_percent: 20, limit_window_seconds: 604800 },
+        },
       },
     },
-  },
-])(
-  "prints the real $harness CLI plan with one token-free request",
-  ({ harness, path, auth, url, response }) => {
+    {
+      harness: "grok",
+      path: "auth.json",
+      auth: {
+        fixture: { key: "fixture-token", auth_mode: "oidc", oidc_issuer: "https://auth.x.ai" },
+      },
+      url: "https://cli-chat-proxy.grok.com/v1/billing?format=credits",
+      response: {
+        config: {
+          currentPeriod: {
+            type: "USAGE_PERIOD_TYPE_WEEKLY",
+            start: "2026-10-01T00:00:00Z",
+            end: "2026-10-08T00:00:00Z",
+          },
+          creditUsagePercent: 90,
+        },
+      },
+    },
+  ].flatMap((fixture) =>
+    fixture.harness === "grok"
+      ? [
+          { ...fixture, settingsFail: false },
+          { ...fixture, settingsFail: true },
+        ]
+      : [{ ...fixture, settingsFail: false }],
+  ),
+)(
+  "prints the real $harness CLI usage and subscription tier without exposing tokens",
+  ({ harness, path, auth, url, response, settingsFail }) => {
     const profile = mkdtempSync(join(tmpdir(), "hf-usage-"));
     try {
       const originalAuth = JSON.stringify(auth);
@@ -58,11 +80,13 @@ it.each([
 import { appendFileSync } from "node:fs";
 globalThis.fetch = async (url, options) => {
   appendFileSync(${JSON.stringify(requests)}, JSON.stringify(String(url)) + "\\n");
-  if (String(url) !== ${JSON.stringify(url)}) throw new Error("unexpected network request");
+  const settings = ${JSON.stringify(harness)} === "grok" && String(url) === "https://cli-chat-proxy.grok.com/v1/settings";
+  if (String(url) !== ${JSON.stringify(url)} && !settings) throw new Error("unexpected network request");
   if (options.headers.Authorization !== "Bearer fixture-token") throw new Error("wrong credential");
   if (${JSON.stringify(harness)} === "codex" && options.headers["ChatGPT-Account-Id"] !== "fixture-account") throw new Error("missing account header");
   if (${JSON.stringify(harness)} === "grok" && options.headers["X-XAI-Token-Auth"] !== "xai-grok-cli") throw new Error("missing Grok header");
-  return new Response(${JSON.stringify(JSON.stringify(response))});
+  if (settings && ${JSON.stringify(settingsFail)}) return new Response("unavailable", {status:503});
+  return new Response(settings ? JSON.stringify({subscription_tier_display:"SuperGrok"}) : ${JSON.stringify(JSON.stringify(response))});
 };
 `,
       );
@@ -103,12 +127,19 @@ globalThis.fetch = async (url, options) => {
       );
       expect(JSON.parse(stdout)).toMatchObject({
         status: "known",
-        remainingPercent: 10,
-        plan: "first-cut-first",
+        planTier: settingsFail ? null : fixtureTiers[harness],
+        weekly: {
+          usedPercent: harness === "grok" ? 90 : 20,
+          remainingPercent: harness === "grok" ? 10 : 80,
+        },
       });
       expect(stdout).not.toContain("fixture-token");
       expect(readFileSync(join(profile, path), "utf8")).toBe(originalAuth);
-      expect(readFileSync(requests, "utf8").trim().split("\n")).toEqual([JSON.stringify(url)]);
+      const expectedRequests = [url];
+      if (harness === "grok") expectedRequests.push("https://cli-chat-proxy.grok.com/v1/settings");
+      expect(readFileSync(requests, "utf8").trim().split("\n")).toEqual(
+        expectedRequests.map((request) => JSON.stringify(request)),
+      );
     } finally {
       rmSync(profile, { recursive: true, force: true });
     }
@@ -182,8 +213,6 @@ it.each([
       expect(JSON.parse(stdout)).toEqual({
         status: "unknown",
         reason,
-        plan: "standard",
-        message: null,
       });
       expect(stdout).not.toContain("fixture-token");
       expect(readFileSync(authFile, "utf8")).toBe(originalAuth);

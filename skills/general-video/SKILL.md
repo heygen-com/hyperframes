@@ -12,7 +12,7 @@ description: >
 
 # General video
 
-Apply the remaining-usage plan from `/hyperframes` before optional work. When invoked directly, read `npx hyperframes usage --json` once and follow the same rule; a recorded plan does not need a second read. `first-cut-first` takes precedence over optional drafting and fan-out below, while preserving the brief and required approvals.
+Run `npx hyperframes usage --json` at the start unless the workflow just read it, then check again at milestones such as after drafting and before rendering. Read the available windows and reset times. If usage is unknown, say so without guessing allowance; keep scope and workflow choices with the user.
 
 Before relying on this workflow, run:
 

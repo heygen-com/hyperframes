@@ -16,10 +16,9 @@ description: >
 
 # HyperFrames entry point
 
-### Fit the run to remaining usage
+### Check remaining usage
 
-At the start of creation, run `npx hyperframes usage --json` once. Use its `plan` and relay its non-null `message` once; the CLI owns the threshold and wording. If the command fails, is unavailable, or returns `status: unknown`, follow the normal flow.
-For `plan: first-cut-first`, build inline with one draft, defer optional storyboard sheets, subagent fan-out and polish, then validate and render a first watchable cut before optional work. Preserve required content, checks, explicit storyboard requests and render consent; when approval is needed, request the first-cut render early. Carry this plan into the workflow handoff and `BRIEF.md`; do not re-read usage in each subagent.
+At the start of creation, run `npx hyperframes usage --json`. Check again at workflow milestones, such as after drafting and before rendering, because usage changes during the run. Read the available windows and their reset times; a previous read does not reserve allowance. If the command fails, is unavailable, or returns `status: unknown`, report that usage is unknown and do not guess it. Keep scope and workflow choices with the user.
 
 HyperFrames **renders video from HTML** — a composition is an HTML file whose DOM declares timing with `data-*` attributes, whose animation runtime is seekable, and whose media playback is owned by the framework. The full authoring contract lives in `/hyperframes-core`; read it before writing composition HTML. Brief, storyboard, review, production, dispatch, and frame-worker contracts live in this skill's `references/`.
 

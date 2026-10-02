@@ -1,10 +1,6 @@
 import Ajv from "ajv/dist/jtd.js";
 import type { JTDDataType } from "ajv/dist/jtd.js";
 
-const LOW_USAGE_REMAINING_PERCENT = 20;
-const firstCutMessage = (percent: number) =>
-  `You have about ${percent}% usage left; I'll make a first watchable cut before polishing.`;
-
 const windowSchema = {
   nullable: true,
   properties: { utilization: { type: "float64" } },
@@ -17,53 +13,42 @@ const usageSchema = {
 } as const;
 const parseUsage = new Ajv().compileParser<JTDDataType<typeof usageSchema>>(usageSchema);
 
-type UsageWindow = { remainingPercent: number; resetsAt: string | null };
+type UsageWindow = { usedPercent: number; remainingPercent: number; resetsAt: string | null };
 export type HarnessUsage =
-  | { status: "unknown"; reason: string; plan: "standard"; message: null }
-  | ({
+  | { status: "unknown"; reason: string }
+  | {
       status: "known";
       harness: "claude-code" | "codex" | "grok";
       session: UsageWindow | null;
       weekly: UsageWindow | null;
-      remainingPercent: number;
-    } & ({ plan: "standard"; message: null } | { plan: "first-cut-first"; message: string }));
+      planTier: string | null;
+    };
 
-export const unknownUsage = (reason: string): HarnessUsage => ({
-  status: "unknown",
-  reason,
-  plan: "standard",
-  message: null,
-});
+export const unknownUsage = (reason: string): HarnessUsage => ({ status: "unknown", reason });
 
 export function parseHarnessUsage(text: string): HarnessUsage {
   const usage = parseUsage(text);
-  if (!usage || usage.five_hour === null || usage.seven_day === null) {
-    return unknownUsage("invalid_usage_response");
-  }
-  for (const window of [usage.five_hour, usage.seven_day]) {
-    if (
-      !Number.isFinite(window.utilization) ||
-      window.utilization < 0 ||
-      window.utilization > 100
-    ) {
-      return unknownUsage("invalid_usage_response");
-    }
-  }
-  const session = {
-    remainingPercent: 100 - usage.five_hour.utilization,
-    resetsAt: usage.five_hour.resets_at ?? null,
+  if (!usage) return unknownUsage("invalid_usage_response");
+  const normalize = (
+    window: NonNullable<JTDDataType<typeof windowSchema>> | null,
+  ): UsageWindow | null => {
+    if (window === null) return null;
+    return {
+      usedPercent: window.utilization,
+      remainingPercent: 100 - window.utilization,
+      resetsAt: window.resets_at ?? null,
+    };
   };
-  const weekly = {
-    remainingPercent: 100 - usage.seven_day.utilization,
-    resetsAt: usage.seven_day.resets_at ?? null,
-  };
-  return planUsage("claude-code", session, weekly);
+  const session = normalize(usage.five_hour);
+  const weekly = normalize(usage.seven_day);
+  return knownUsage("claude-code", session, weekly);
 }
 
-function planUsage(
+function knownUsage(
   harness: "claude-code" | "codex" | "grok",
   session: UsageWindow | null,
   weekly: UsageWindow | null,
+  planTier: string | null = null,
 ): HarnessUsage {
   const windows = [session, weekly].filter((window): window is UsageWindow => window !== null);
   if (
@@ -76,11 +61,7 @@ function planUsage(
     )
   )
     return unknownUsage("invalid_usage_response");
-  const remainingPercent = Math.min(...windows.map((window) => window.remainingPercent));
-  const budget = { status: "known", harness, session, weekly, remainingPercent } as const;
-  return remainingPercent <= LOW_USAGE_REMAINING_PERCENT
-    ? { ...budget, plan: "first-cut-first", message: firstCutMessage(Math.floor(remainingPercent)) }
-    : { ...budget, plan: "standard", message: null };
+  return { status: "known", harness, session, weekly, planTier };
 }
 
 const codexWindowSchema = {
@@ -94,6 +75,7 @@ const codexWindowSchema = {
   additionalProperties: true,
 } as const;
 const codexSchema = {
+  optionalProperties: { plan_type: { type: "string" } },
   properties: {
     rate_limit: {
       optionalProperties: {
@@ -153,6 +135,7 @@ function normalizeCodexWindow(raw: CodexWindow, now: number): UsageWindow | null
   if (reset !== undefined && (!Number.isFinite(reset) || Math.abs(reset * 1000) > 8640000000000000))
     return null;
   return {
+    usedPercent: raw.used_percent,
     remainingPercent: 100 - raw.used_percent,
     resetsAt: reset === undefined ? null : new Date(reset * 1000).toISOString(),
   };
@@ -176,7 +159,7 @@ export function parseCodexUsage(text: string, now = Date.now()): HarnessUsage {
     if (window === null || windows[kind] !== null) return unknownUsage("invalid_usage_response");
     windows[kind] = window;
   }
-  return planUsage("codex", windows.session, windows.weekly);
+  return knownUsage("codex", windows.session, windows.weekly, usage.plan_type ?? null);
 }
 
 export function parseGrokUsage(text: string): HarnessUsage {
@@ -188,7 +171,8 @@ export function parseGrokUsage(text: string): HarnessUsage {
   if (!Number.isFinite(start) || !Number.isFinite(end) || end <= start)
     return unknownUsage("invalid_usage_response");
   if (period.type !== "USAGE_PERIOD_TYPE_WEEKLY") return unknownUsage("unsupported_usage_window");
-  return planUsage("grok", null, {
+  return knownUsage("grok", null, {
+    usedPercent: usage.config.creditUsagePercent ?? 0,
     remainingPercent: 100 - (usage.config.creditUsagePercent ?? 0),
     resetsAt: new Date(end).toISOString(),
   });
