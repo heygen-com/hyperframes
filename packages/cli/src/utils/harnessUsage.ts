@@ -144,8 +144,9 @@ const parseJwt = authParser.compileParser<JTDDataType<typeof jwtSchema>>(jwtSche
 
 function tokenExpiry(token: string): number | undefined {
   const parts = token.split(".");
-  if (parts.length !== 3) return undefined;
-  const expiry = parseJwt(Buffer.from(parts[1], "base64url").toString("utf8"))?.exp;
+  const payload = parts[1];
+  if (parts.length !== 3 || payload === undefined) return undefined;
+  const expiry = parseJwt(Buffer.from(payload, "base64url").toString("utf8"))?.exp;
   return expiry === undefined ? undefined : expiry * 1000;
 }
 
@@ -196,8 +197,10 @@ function grokLogin(text: string): Login {
     return [{ entry, token }];
   });
   if (!candidates.length) return { status: "unavailable", reason: "unsupported_auth" };
-  if (candidates.length !== 1) return { status: "unavailable", reason: "ambiguous_login" };
-  const { entry, token } = candidates[0];
+  const candidate = candidates[0];
+  if (candidates.length !== 1 || candidate === undefined)
+    return { status: "unavailable", reason: "ambiguous_login" };
+  const { entry, token } = candidate;
   const storedExpiry = entry.expires_at ?? entry.expires;
   const expiresAt =
     tokenExpiry(token) ?? (storedExpiry === undefined ? undefined : Date.parse(storedExpiry));
