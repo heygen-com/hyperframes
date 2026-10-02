@@ -19,7 +19,6 @@ import { isProcessDescendant, processIdentity } from "../utils/orphanCleanup.js"
 import { terminateProcessTree } from "../utils/processTree.js";
 import { PreviewServerPortMismatchError } from "../utils/studioSelectionClient.js";
 
-/** The detached child could not bind the explicit --port and came up elsewhere; the launcher reaps it. */
 export class PreviewPortUnavailableError extends Error {
   readonly requestedPort: number;
   readonly boundPort: number;
@@ -181,7 +180,6 @@ function matchingServer(
   return policyMatchingServers(servers, projectDir, browserGpuMode)[0] ?? null;
 }
 
-/** Same-project servers that also satisfy the requested GPU policy, if any. */
 function policyMatchingServers(
   servers: ActiveServer[],
   projectDir: string,
@@ -456,7 +454,6 @@ async function readPreviewLifecycleState(
   return { scan, stateHome, saved, scanStart, scanned };
 }
 
-/** The explicit --port that `port` fails to satisfy, or undefined; a bare launch accepts any port. */
 function unmetPreferredPort(port: number, preferredPort: number | undefined): number | undefined {
   return preferredPort !== undefined && port !== preferredPort ? preferredPort : undefined;
 }
@@ -465,7 +462,6 @@ type BackgroundPreviewResult =
   | { type: "reused"; port: number; pid: number | null; logPath: string | null }
   | { type: "started"; port: number; pid: number; logPath: string };
 
-/** Reuse result, or null to launch fresh; throws naming all `candidates` if it misses an explicit --port. */
 function reuseExistingPreview(
   reusableExisting: ActiveServer | null,
   candidates: ActiveServer[],
@@ -530,14 +526,10 @@ export async function startBackgroundPreview(
     await kill(pid);
     throw new Error(`background preview did not become ready; see ${logPath}`);
   }
-  // The child scans upward from --port and binds the first free port. An
-  // explicit --port is a promise to the caller, so a child that landed
-  // elsewhere is reaped rather than reported (or recorded) as a success.
+  // The child scans upward from --port; one that missed an explicit --port is reaped, never recorded.
   const unmet = unmetPreferredPort(server.port, dependencies.preferredPort);
   if (unmet !== undefined) {
-    // Wait for the substitute to stop answering before reporting failure, so
-    // a concurrent bare launch or --status cannot adopt a server that is
-    // already shutting down.
+    // Wait until it stops answering so a concurrent launch or --status cannot adopt a dying server.
     await kill(pid);
     if (!(await awaitServerGone(projectDir, startPort, server.port, dependencies))) {
       throw new Error(
@@ -562,7 +554,6 @@ export async function startBackgroundPreview(
   };
 }
 
-/** Polls for a same-project server that appeared after launch; null on timeout. */
 async function awaitStartedServer(
   projectDir: string,
   startPort: number,
@@ -619,7 +610,6 @@ export async function stopBackgroundPreview(
   return true;
 }
 
-/** Polls until no same-project server answers on `port`; false if it never leaves. */
 async function awaitServerGone(
   projectDir: string,
   scanStart: number,
