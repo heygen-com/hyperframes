@@ -1,5 +1,6 @@
 // @vitest-environment jsdom
 import { afterEach, describe, expect, it } from "vitest";
+import { gsap } from "gsap";
 import type { GsapAnimation } from "@hyperframes/core/gsap-parser";
 import {
   COLOR_GRADING_SOURCE_HIDDEN_ATTR,
@@ -107,5 +108,52 @@ describe("color-grading opacity truth", () => {
     const iframe = fakeIframe(el, { gsapValues: { opacity: 0.3 } });
 
     expect(readGsapProperty(iframe, "#clip", "opacity")).toBe(0.3);
+  });
+});
+
+describe("readAllAnimatedProperties with a sibling tween", () => {
+  it("leaves a sibling tween's rotation to that tween after an opacity keyframe edit", () => {
+    const el = document.createElement("div");
+    el.id = "clip";
+    document.body.appendChild(el);
+    const build = (keyframes: Record<string, Record<string, number>>) => {
+      const tl = gsap.timeline({ paused: true });
+      tl.to(el, { duration: 4, ease: "none", keyframes }, 0);
+      tl.to(el, { rotation: 90, duration: 3 }, 0);
+      return tl;
+    };
+    const live = build({ "0%": { opacity: 0 }, "100%": { opacity: 1 } });
+    live.seek(2);
+    const iframe = {
+      contentWindow: { __timelines: { main: live }, gsap },
+      contentDocument: document,
+    } as unknown as HTMLIFrameElement;
+    const anim = {
+      id: "#clip-to-0-visual",
+      targetSelector: "#clip",
+      method: "to",
+      properties: {},
+      keyframes: {
+        keyframes: [
+          { percentage: 0, properties: { opacity: 0 } },
+          { percentage: 100, properties: { opacity: 1 } },
+        ],
+      },
+    } as unknown as GsapAnimation;
+
+    // commitKeyframeProps: these values plus the edit at the playhead, and backfilled into the rest.
+    const read = readAllAnimatedProperties(iframe, "#clip", anim);
+    live.kill();
+    gsap.set(el, { clearProps: "all" });
+    const edited = build({
+      "0%": { ...read, opacity: 0 },
+      "50%": { ...read, opacity: 0.3 },
+      "100%": { ...read, opacity: 1 },
+    });
+    edited.seek(3.2);
+    edited.seek(3.5);
+
+    expect(gsap.getProperty(el, "rotation")).toBe(90);
+    edited.kill();
   });
 });
