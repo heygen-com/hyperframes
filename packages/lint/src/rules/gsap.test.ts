@@ -3056,8 +3056,29 @@ describe("SVG draw-on rules", () => {
 
     expect(finding?.severity).toBe("warning");
     expect(finding?.selector).toBe("#ring");
-    expect(finding?.fixHint).toContain("immediateRender: false");
+    expect(finding?.fixHint).toContain("every fromTo except the earliest-positioned one (at 5s)");
     expect(finding?.fixHint).toContain("gsap_timeline_set_initial_hide");
+  });
+
+  it("gsap_repeated_fromto_without_baseline: accepts the hinted shape when the later tween is authored first", async () => {
+    const html = `
+<html><body>
+  <div data-composition-id="main" data-width="1920" data-height="1080"><div id="ring"></div></div>
+  <script src="https://cdn.jsdelivr.net/npm/gsap@3/dist/gsap.min.js"></script>
+  <script>
+    window.__timelines = window.__timelines || {};
+    const tl = gsap.timeline({ paused: true });
+    tl.fromTo("#ring", { opacity: 1 }, { opacity: 0, duration: 0.5, immediateRender: false }, 10);
+    tl.fromTo("#ring", { opacity: 0 }, { opacity: 1, duration: 0.5 }, 5);
+    window.__timelines.main = tl;
+  </script>
+</body></html>`;
+    const result = await lintHyperframeHtml(html);
+    const finding = result.findings.find(
+      (candidate) => candidate.code === "gsap_repeated_fromto_without_baseline",
+    );
+
+    expect(finding).toBeUndefined();
   });
 
   it("gsap_repeated_fromto_without_baseline: accepts explicit immediateRender false", async () => {
