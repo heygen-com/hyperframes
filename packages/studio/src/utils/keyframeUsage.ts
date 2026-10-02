@@ -47,8 +47,15 @@ export function changedMutationIndices(
 ): number[] {
   if (!result.ok || result.changed !== true) return [];
   const changes = count === 1 ? [true] : result.mutationChanges;
-  if (!Array.isArray(changes) || changes.length !== count || changes.some((value) => typeof value !== "boolean")) return [];
-  return changes.flatMap((changed, index) => changed && options?.[index]?.keyframeTelemetry !== false ? [index] : []);
+  if (
+    !Array.isArray(changes) ||
+    changes.length !== count ||
+    changes.some((value) => typeof value !== "boolean")
+  )
+    return [];
+  return changes.flatMap((changed, index) =>
+    changed && options?.[index]?.keyframeTelemetry !== false ? [index] : [],
+  );
 }
 
 export function trackKeyframeCommit(
@@ -61,7 +68,11 @@ export function trackKeyframeCommit(
   const indices = changedMutationIndices(result, mutations.length, memberOptions);
   const actions = keyframeUsageActions(
     indices.map((index) => mutations[index]!),
-    indices.map((index) => memberOptions?.[index]?.keyframeAction ?? (mutations.length === 1 ? options.keyframeAction : undefined)),
+    indices.map(
+      (index) =>
+        memberOptions?.[index]?.keyframeAction ??
+        (mutations.length === 1 ? options.keyframeAction : undefined),
+    ),
   );
   const action = primaryKeyframeAction(actions);
   if (action) trackKeyframeUsage(action, action === "add" ? options.keyframeProperty : undefined);

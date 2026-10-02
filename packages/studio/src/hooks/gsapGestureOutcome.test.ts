@@ -138,16 +138,24 @@ it.each([
   },
 );
 
-
 it("excludes a suppressed preparation from mixed-batch attribution", async () => {
   const result = { ok: true, changed: true, mutationChanges: [true, false] };
   const calls = [
-    { selection, mutation: { type: "convert-to-keyframes" }, options: { label: "Prepare", keyframeTelemetry: false } },
+    {
+      selection,
+      mutation: { type: "convert-to-keyframes" },
+      options: { label: "Prepare", keyframeTelemetry: false },
+    },
     { selection, mutation, options: { label: "Add" } },
   ];
   const observed = observeGsapGesture(writer(result));
   await observed.commit!.batch!(calls, { label: "Add" });
   expect(observed.finish()).toEqual({ ok: true, changed: true });
-  trackKeyframeCommit(calls.map((call) => call.mutation), result, { label: "Add" }, calls.map((call) => call.options));
+  trackKeyframeCommit(
+    calls.map((call) => call.mutation),
+    result,
+    { label: "Add" },
+    calls.map((call) => call.options),
+  );
   expect(trackStudioEvent).not.toHaveBeenCalled();
 });
