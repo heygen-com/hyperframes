@@ -3,11 +3,11 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { Hono } from "hono";
 import { afterEach, describe, expect, it } from "vitest";
-import { registerFileRoutes, replaceReferences } from "./files";
+import { referenceRewriter, registerFileRoutes } from "./files";
 import type { StudioApiAdapter } from "../types";
 
 const rewrite = (text: string, from: string, to: string, folder: boolean) =>
-  replaceReferences(text, from, to, folder);
+  referenceRewriter(from, to, folder)(text);
 
 describe("rename references", () => {
   it("rewrites a folder where files under it are named, in every form a project writes them", () => {
@@ -66,7 +66,7 @@ describe("rename references", () => {
       to: string,
       folder: boolean,
       existing: string[],
-    ) => replaceReferences(text, from, to, folder, existing);
+    ) => referenceRewriter(from, to, folder, existing)(text);
     const folders = '<img src="other assets/a.png"> <img src="other,assets/a.png">';
     expect(
       rewriteWith(folders, "assets", "brand", true, ["other assets", "other,assets", "assets"]),
@@ -80,6 +80,19 @@ describe("rename references", () => {
         "assets/a.png).png",
       ]),
     ).toBe(files);
+  });
+
+  it("sees an existing path the match sits in the middle of, and in escaped spellings", () => {
+    const middle = '<img src="other a.png&backup.png">';
+    expect(referenceRewriter("a.png", "b.png", false, ["other a.png&backup.png"])(middle)).toBe(
+      middle,
+    );
+    const escaped = String.raw`{"path":"assets\\a.png&backup.png"} {"path":"assets\/a.png&backup.png"}`;
+    expect(
+      referenceRewriter("assets/a.png", "assets/b.png", false, ["assets/a.png&backup.png"])(
+        escaped,
+      ),
+    ).toBe(escaped);
   });
 
   it("rewrites references a bare scan could mistake: unquoted attributes, a space before a paren, srcset", () => {

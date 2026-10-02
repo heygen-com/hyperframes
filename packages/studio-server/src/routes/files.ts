@@ -681,25 +681,37 @@ function referencePattern(oldPath: string, isDirectory: boolean): RegExp {
 }
 
 // A match inside the longer path of a file or folder that exists (`a.png&b.png`, `other assets/`) is that path's.
-export function replaceReferences(
-  text: string,
+export function referenceRewriter(
   oldPath: string,
   newPath: string,
   isDirectory: boolean,
   existing: readonly string[] = [],
-): string {
-  const longer = existing.filter((path) => path.length > oldPath.length);
-  const rightward = longer.filter((path) => path.startsWith(oldPath));
-  const leftward = longer.filter((path) => path.endsWith(oldPath));
-  return text.replace(referencePattern(oldPath, isDirectory), (...args) => {
-    const [match, offset] = [args[0] as string, args.at(-3) as number];
-    const { lead } = args.at(-1) as { lead: string };
-    const at = offset + lead.length;
-    const inLonger =
-      rightward.some((path) => text.startsWith(path, at)) ||
-      leftward.some((path) => text.startsWith(path, at - (path.length - oldPath.length)));
-    return inLonger ? match : `${lead}${newPath}`;
-  });
+): (text: string) => string {
+  const pattern = referencePattern(oldPath, isDirectory);
+  const longer = existing
+    .filter((path) => path.length > oldPath.length)
+    .map((path) => ({ path, starts: occurrences(path, oldPath) }))
+    .filter(({ starts }) => starts.length > 0);
+  return (text) =>
+    text.replace(pattern, (...args) => {
+      const [match, offset] = [args[0] as string, args.at(-3) as number];
+      const { lead } = args.at(-1) as { lead: string };
+      const at = offset + lead.length;
+      const inLonger = longer.some(({ path, starts }) =>
+        starts.some((start) => {
+          const from = at - start;
+          const spelled = text.slice(from, from + path.length * 3).replace(/\\{0,2}[\\/]/g, "/");
+          return from >= 0 && spelled.startsWith(path);
+        }),
+      );
+      return inLonger ? match : `${lead}${newPath}`;
+    });
+}
+
+function occurrences(text: string, part: string): number[] {
+  const at: number[] = [];
+  for (let i = text.indexOf(part); i >= 0; i = text.indexOf(part, i + 1)) at.push(i);
+  return at;
 }
 
 function projectPaths(projectDir: string): string[] {
@@ -725,14 +737,14 @@ function updateReferences(
     /\.(html|css|js|jsx|ts|tsx|json|mjs|cjs|md|mdx)$/i.test(name),
   );
 
-  const existing = projectPaths(projectDir);
+  const rewrite = referenceRewriter(oldPath, newPath, isDirectory, projectPaths(projectDir));
   let updatedCount = 0;
   for (const file of textFiles) {
     if (!isSafePath(projectDir, file)) continue;
     const content = readableText(file);
     if (content === null) continue;
 
-    const updated = replaceReferences(content, oldPath, newPath, isDirectory, existing);
+    const updated = rewrite(content);
     if (updated !== content) {
       replaceFileAtomically(file, updated, statSync(file).mode);
       updatedCount++;
