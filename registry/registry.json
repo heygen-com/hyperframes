@@ -148,10 +148,6 @@
       "type": "hyperframes:block"
     },
     {
-      "name": "cinemagraph",
-      "type": "hyperframes:block"
-    },
-    {
       "name": "cinematic-zoom",
       "type": "hyperframes:block"
     },
