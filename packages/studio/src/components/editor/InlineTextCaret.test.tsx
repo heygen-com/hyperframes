@@ -62,6 +62,15 @@ describe("InlineTextCaret", () => {
     expect(caret!.style.background).toBe("rgb(250, 250, 250)");
   });
 
+  it("follows a pan or zoom of the preview, which moves the iframe with no event", async () => {
+    const { iframe, session } = scene();
+    const caret = render(session, iframe).caret;
+    iframe.getBoundingClientRect = () =>
+      ({ left: 140, top: 50, width: window.innerWidth / 4 }) as DOMRect;
+    await act(() => new Promise((done) => requestAnimationFrame(() => done(undefined))));
+    expect(caret()!.style.left).toBe(`${140 + 400 / 4 - CARET_PX / 2}px`);
+  });
+
   it("shows no caret while a range is selected, and again once the selection collapses", () => {
     const { iframe, session, text } = scene();
     const { caret } = render(session, iframe);

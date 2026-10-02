@@ -36,11 +36,6 @@ export function InlineTextCaret({
     const doc = element.ownerDocument;
     const view = doc.defaultView;
     const studio = iframe.ownerDocument.defaultView;
-    // The player scales the iframe by a transform when its own box resizes, which the iframe's size never shows.
-    const player =
-      iframe.getRootNode() instanceof ShadowRoot
-        ? (iframe.getRootNode() as ShadowRoot).host
-        : iframe;
     const color = caretColorOf(element);
     const ownCaret = element.style.caretColor;
     element.style.caretColor = "transparent";
@@ -52,8 +47,19 @@ export function InlineTextCaret({
     };
     const start = composition(true);
     const end = composition(false);
-    const resized = new ResizeObserver(update);
-    resized.observe(player);
+    // The preview moves by transforms (the player's scale, a pan or zoom of the stage) that fire no event: the iframe's
+    // box is checked each frame and a move re-places the caret.
+    let box = "";
+    let frame = 0;
+    const follow = () => {
+      const { left, top, width, height } = iframe.getBoundingClientRect();
+      const now = `${left},${top},${width},${height}`;
+      if (now !== box) {
+        box = now;
+        update();
+      }
+      frame = studio?.requestAnimationFrame(follow) ?? 0;
+    };
     doc.addEventListener("selectionchange", update);
     element.addEventListener("input", update);
     element.addEventListener("focus", update);
@@ -62,10 +68,9 @@ export function InlineTextCaret({
     element.addEventListener("compositionend", end);
     view?.addEventListener("resize", update);
     view?.addEventListener("scroll", update, true);
-    studio?.addEventListener("scroll", update, true);
-    update();
+    follow();
     return () => {
-      resized.disconnect();
+      studio?.cancelAnimationFrame(frame);
       doc.removeEventListener("selectionchange", update);
       element.removeEventListener("input", update);
       element.removeEventListener("focus", update);
@@ -74,7 +79,6 @@ export function InlineTextCaret({
       element.removeEventListener("compositionend", end);
       view?.removeEventListener("resize", update);
       view?.removeEventListener("scroll", update, true);
-      studio?.removeEventListener("scroll", update, true);
       element.style.caretColor = ownCaret;
     };
   }, [element, iframe]);
