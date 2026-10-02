@@ -4,8 +4,11 @@ import { join } from "node:path";
 import * as clack from "@clack/prompts";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { runCommand } from "citty";
+import { PreviewServerPortMismatchError } from "../utils/studioSelectionClient.js";
+import { PreviewPortUnavailableError } from "./previewLifecycle.js";
 import {
   default as previewCommand,
+  backgroundStartFailureCode,
   foregroundPreviewReadyPayload,
   prebuildPreview,
   handlePreviewKillAll,
@@ -366,6 +369,14 @@ describe("preview lifecycle JSON failures", () => {
       error: { code: "preview-stop-failed" },
     });
     expect(error).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    [new PreviewServerPortMismatchError(3500, []), "preview-port-mismatch"],
+    [new PreviewPortUnavailableError(3500, 3501), "preview-port-unavailable"],
+    [new Error("spawn failed"), "preview-start-failed"],
+  ])("maps a background start failure to its JSON code (%#)", (error, code) => {
+    expect(backgroundStartFailureCode(error)).toBe(code);
   });
 
   it("wraps missing-project start failures without human stderr", async () => {

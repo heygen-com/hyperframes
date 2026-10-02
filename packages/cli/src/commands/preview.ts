@@ -126,7 +126,7 @@ const DEFAULT_CONTEXT_FIELDS: ContextField[] = ["server", "selection", "lint", "
 
 const PREVIEW_PORT_MISMATCH_CODE = "preview-port-mismatch";
 
-function backgroundStartFailureCode(error: unknown): string {
+export function backgroundStartFailureCode(error: unknown): string {
   if (error instanceof PreviewServerPortMismatchError) return PREVIEW_PORT_MISMATCH_CODE;
   if (error instanceof PreviewPortUnavailableError) return "preview-port-unavailable";
   return "preview-start-failed";
