@@ -667,20 +667,18 @@ function readableText(file: string): string | null {
 
 const escapeRegExp = (text: string) => text.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 
-// A separator as a project writes it: `/`, a Windows `\`, or the same escaped in JSON (`\/`, `\\`).
-const SEPARATOR = String.raw`\\*[\\/]`;
+// `/`, a Windows `\`, or either escaped in JSON.
+const SEPARATOR = String.raw`\\{0,2}[\\/]`;
+// Only these may sit just before or after a path that is a whole reference, not part of a longer name.
+const REFERENCE_START = String.raw`(?<![^\s"'\x60(=:\[{>|;,])`;
+const FILE_END = String.raw`(?=$|["'\x60)\]}>;#?<|&\\]|,\s|\s+\d+(?:\.\d+)?[xw]\b)`;
 
-/**
- * The renamed path as a project file names it: whole, not inside a longer name. It must start a reference (not follow
- * a name character, so not `my-assets/x`), after any `./`, `../` or `/` lead (`other/./assets/x` is another path), and
- * end it: a folder is named by what is under it, never by prose; a file by a delimiter (not `a.png@2x.png`).
- * The lead is kept in the match (`lead` group) so the rewrite keeps it.
- */
+// The lead (`./`, `../`, `/`; at most four, so the scan cannot backtrack) is kept by the rewrite.
 function referencePattern(oldPath: string, isDirectory: boolean): RegExp {
   const name = oldPath.split("/").map(escapeRegExp).join(SEPARATOR);
-  const end = isDirectory ? String.raw`(?=\\*[\\/])` : String.raw`(?=$|[\s"'\x60)\]}>,;#?<|&\\])`;
+  const end = isDirectory ? `(?=${SEPARATOR})` : FILE_END;
   return new RegExp(
-    String.raw`(?<![\w./-])(?<lead>(?:\.{1,2}${SEPARATOR}|${SEPARATOR})*)${name}${end}`,
+    String.raw`${REFERENCE_START}(?<lead>(?:\.{1,2}${SEPARATOR}|${SEPARATOR}){0,4})${name}${end}`,
     "g",
   );
 }

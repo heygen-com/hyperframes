@@ -59,6 +59,23 @@ describe("rename references", () => {
     );
   });
 
+  it("takes no path that is part of a longer one: other folders, filenames holding , + or a space", () => {
+    const folders = String.raw`other\assets\a.png other\/assets\/a.png my+assets/a.png`;
+    expect(rewrite(folders, "assets", "brand", true)).toBe(folders);
+    const files = '<img src="assets/a.png,backup.png"><img src="assets/a.png old.png">';
+    expect(rewrite(files, "assets/a.png", "assets/b.png", false)).toBe(files);
+    expect(rewrite('srcset="assets/a.png 1x, assets/a.png 2x"', "assets/a.png", "x/b.png", false)).toBe(
+      'srcset="x/b.png 1x, x/b.png 2x"',
+    );
+  });
+
+  it("does not stall on a long run of backslashes", () => {
+    const text = `${"\\".repeat(200)}unrelated`;
+    const started = Date.now();
+    expect(rewrite(text, "assets", "brand", true)).toBe(text);
+    expect(Date.now() - started).toBeLessThan(500);
+  });
+
   it("does not take another folder's path whose middle matches", () => {
     const text = "other/./assets/a.png other/../assets/a.png";
     expect(rewrite(text, "assets", "brand", true)).toBe(text);
