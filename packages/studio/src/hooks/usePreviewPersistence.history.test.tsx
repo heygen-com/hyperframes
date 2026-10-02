@@ -84,6 +84,7 @@ describe("undo that re-runs the top-level script over an element of a nested com
     const reloadPreview = vi.fn();
     const fetch = vi.fn(async () => ({ ok: fileOk, json: async () => ({ content: SUB }) }));
     vi.stubGlobal("fetch", fetch);
+    usePlayerStore.getState().beginTimelineSession("p1");
     let sync: ReturnType<typeof usePreviewPersistence>["syncHistoryPreviewAfterApply"] | null =
       null;
     function Harness() {
@@ -95,7 +96,6 @@ describe("undo that re-runs the top-level script over an element of a nested com
         previewIframeRef: { current: iframe },
         activeCompPathRef: { current: "index.html" },
         reloadPreview,
-        projectId: "p1",
       }).syncHistoryPreviewAfterApply;
       return null;
     }

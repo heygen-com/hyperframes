@@ -15,7 +15,8 @@ const readNestedFiles = vi.fn<(...args: unknown[]) => unknown>(() => null);
 vi.mock("./gsapRuntimePatch", () => ({
   patchRuntimeTweenInPlace: (...args: unknown[]) => patchRuntimeTweenInPlace(...args),
 }));
-vi.mock("../utils/gsapSoftReload", () => ({
+vi.mock("../utils/gsapSoftReload", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("../utils/gsapSoftReload")>()),
   applySoftReload: (...args: unknown[]) => applySoftReload(...args),
   extractGsapScriptText: () => "",
   readNestedFiles: (...args: unknown[]) => readNestedFiles(...args),

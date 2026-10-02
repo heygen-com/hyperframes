@@ -3,7 +3,12 @@ import { findUnsafeMutationValues } from "@hyperframes/core/studio-api/finite-mu
 import { readProjectFileContent as readSharedProjectFileContent } from "../utils/studioFileHistory";
 import type { DomEditSelection } from "../components/editor/domEditingTypes";
 import { usePlayerStore } from "../player/store/playerStore";
-import { applySoftReload, extractGsapScriptText, readNestedFiles } from "../utils/gsapSoftReload";
+import {
+  applySoftReload,
+  extractGsapScriptText,
+  readNestedFiles,
+  settleNestedReads,
+} from "../utils/gsapSoftReload";
 import type { SoftReloadResult } from "../utils/gsapSoftReload";
 import { trackStudioEvent } from "../utils/studioTelemetry";
 import { serializeStudioFileMutation } from "../utils/studioFileMutationCoordinator";
@@ -356,12 +361,13 @@ export function useGsapScriptCommits({ projectIdRef, activeCompPath, previewIfra
       return;
     }
     await recordMutationEdit(targetPath, result, options);
-    const reads = result.scriptText
-      ? readNestedFiles(previewIframeRef.current, result.scriptText, (path) =>
-          readSharedProjectFileContent(projectId, path),
-        )
-      : null;
-    const nestedFiles = reads ? await reads.catch(() => null) : undefined;
+    const nestedFiles = await settleNestedReads(
+      result.scriptText
+        ? readNestedFiles(previewIframeRef.current, result.scriptText, (path) =>
+            readSharedProjectFileContent(projectId, path),
+          )
+        : null,
+    );
     // The durable mutation belongs to the project captured when it was queued.
     // A later project must never receive its file state or preview refresh.
     if (!isActiveCommitTarget(projectIdRef, activeCompPathRef, projectId, compositionPath)) return;

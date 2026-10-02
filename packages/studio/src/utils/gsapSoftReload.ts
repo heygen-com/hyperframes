@@ -484,6 +484,15 @@ export function applySoftReload(
   return verifyTimelinesPopulated(win, targetKeys) ? "applied" : "verify-failed";
 }
 
+/** Other composition files for a soft reload: undefined when none are needed, null when a read failed. */
+export type NestedFiles = Map<string, string> | null | undefined;
+
+export async function settleNestedReads(
+  reads: Promise<Map<string, string>> | null,
+): Promise<NestedFiles> {
+  return reads ? reads.catch(() => null) : undefined;
+}
+
 /**
  * Reads the composition files, other than the reloaded one, that the elements `scriptText`'s
  * re-run resets are written in; null when there are none. Read them before the soft reload.

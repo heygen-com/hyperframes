@@ -143,7 +143,6 @@ export function StudioApp({ readOnlyPreview = false, readOnlyPreviewReason }: St
     previewIframeRef,
     activeCompPathRef,
     reloadPreview: () => setRefreshKey((k) => k + 1),
-    projectId,
   });
   const externalFileChanges = useStudioExternalFileChanges({
     projectId,

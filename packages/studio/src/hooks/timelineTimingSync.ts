@@ -8,6 +8,7 @@ import {
   applySoftReloadFinalization,
   extractGsapScriptText,
   readNestedFiles,
+  settleNestedReads,
 } from "../utils/gsapSoftReload";
 import { furthestClipEndFromDocument } from "../player/lib/timelineElementHelpers";
 import type { RecordEditInput } from "../utils/studioFileHistory";
@@ -166,13 +167,13 @@ async function finishTimelineTimingFallback(input: {
     }
   }
   const { projectId } = input;
-  const reads =
+  const nestedFiles = await settleNestedReads(
     projectId && outcome.scriptText
       ? readNestedFiles(input.iframe, outcome.scriptText, (path) =>
           readFileContent(projectId, path),
         )
-      : null;
-  const nestedFiles = reads ? await reads.catch(() => null) : undefined;
+      : null,
+  );
   syncTimingEditPreview(
     input.iframe,
     outcome,

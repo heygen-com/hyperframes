@@ -325,7 +325,6 @@ export function showRestoreInPlace(
   return null;
 }
 
-// The active document's restored GSAP script when the restore changes it, which the preview re-runs.
 /** The other composition files a re-run of the restored script resets elements of; null when none. */
 export function readUndoNestedFiles(
   iframe: HTMLIFrameElement | null,
