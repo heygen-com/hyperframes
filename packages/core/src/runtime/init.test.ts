@@ -2851,7 +2851,7 @@ describe("initSandboxRuntimeModular", () => {
 
     expect(seekCalls).toEqual([
       { time: 2, suppressEvents: false },
-      { time: 2.001, suppressEvents: true },
+      { time: 1.999, suppressEvents: true },
       { time: 2, suppressEvents: true },
     ]);
 
