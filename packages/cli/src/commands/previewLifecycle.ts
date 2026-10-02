@@ -19,10 +19,7 @@ import { isProcessDescendant, processIdentity } from "../utils/orphanCleanup.js"
 import { terminateProcessTree } from "../utils/processTree.js";
 import { PreviewServerPortMismatchError } from "../utils/studioSelectionClient.js";
 
-/**
- * The detached child could not bind the explicitly requested --port and came
- * up elsewhere. The launcher reaps it rather than reporting the substitute.
- */
+/** The detached child could not bind the explicit --port and came up elsewhere; the launcher reaps it. */
 export class PreviewPortUnavailableError extends Error {
   readonly requestedPort: number;
   readonly boundPort: number;
@@ -459,10 +456,7 @@ async function readPreviewLifecycleState(
   return { scan, stateHome, saved, scanStart, scanned };
 }
 
-/**
- * The explicit --port that `port` fails to satisfy, or undefined when `port`
- * is acceptable. A bare launch has no preferred port, so any port satisfies it.
- */
+/** The explicit --port that `port` fails to satisfy, or undefined; a bare launch accepts any port. */
 function unmetPreferredPort(port: number, preferredPort: number | undefined): number | undefined {
   return preferredPort !== undefined && port !== preferredPort ? preferredPort : undefined;
 }
@@ -471,25 +465,13 @@ type BackgroundPreviewResult =
   | { type: "reused"; port: number; pid: number | null; logPath: string | null }
   | { type: "started"; port: number; pid: number; logPath: string };
 
-/**
- * Returns a reuse result when `reusableExisting` is a valid reuse candidate,
- * or `null` when the caller must fall through to a fresh launch. Throws when
- * the candidate's port conflicts with an explicit --port request rather than
- * silently substituting the wrong port; `candidates` is every policy-matching
- * same-project server the scan found, reported so the error names real
- * alternatives.
- */
+/** Reuse result, or null to launch fresh; throws naming all `candidates` if it misses an explicit --port. */
 function reuseExistingPreview(
   reusableExisting: ActiveServer | null,
   candidates: ActiveServer[],
   dependencies: LifecycleDependencies,
 ): Extract<BackgroundPreviewResult, { type: "reused" }> | null {
   if (!reusableExisting || dependencies.forceNew) return null;
-  // An explicit --port that doesn't match the reuse candidate is a conflict
-  // the caller must resolve, not a silent substitution. A bare launch has no
-  // preferred port, so reusing any project-matching server stays correct.
-  // The error lists every candidate, not just the chosen one, so the
-  // "matching ports" it reports are the ones actually running.
   const unmet = unmetPreferredPort(reusableExisting.port, dependencies.preferredPort);
   if (unmet !== undefined) throw new PreviewServerPortMismatchError(unmet, candidates);
   return {
@@ -514,10 +496,8 @@ export async function startBackgroundPreview(
   // replace that owned server before recording the replacement, otherwise the
   // single per-project ownership record would orphan the old listener.
   const candidates = policyMatchingServers(scanned, projectDir, dependencies.browserGpuMode);
-  // An explicit --port names the server to reuse: a policy-matching server
-  // already on that port satisfies the request whether or not it is the owned
-  // one, so `--port 3003` reuses the 3003 sibling instead of reporting a
-  // mismatch against the owned 3002.
+  // A policy-matching server on the explicit --port satisfies it even when it is not the owned one,
+  // so `--port 3003` reuses the 3003 sibling instead of reporting a mismatch against the owned 3002.
   const onPreferredPort =
     candidates.find((server) => server.port === dependencies.preferredPort) ?? null;
   const requestedExisting = candidates[0] ?? null;

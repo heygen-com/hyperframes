@@ -37,10 +37,7 @@ function savePreviewSession(stateHome: string): void {
   );
 }
 
-/**
- * Launch dependencies whose detached wrapper (PID 4321) brings up `server`
- * (its own PID 9876) once spawned, and takes it down again when killed.
- */
+/** Launch deps whose wrapper (PID 4321) brings up `server` (PID 9876) on spawn and takes it down on kill. */
 function reachableChildDependencies(stateHome: string, { immortal = false } = {}) {
   let spawned = false;
   let killed = false;
