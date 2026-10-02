@@ -878,10 +878,7 @@ function removeInstallLeftovers(): boolean {
   return leftovers.length > 0;
 }
 
-/**
- * Remove the cached Chrome downloads, including leftovers of interrupted installs.
- * Returns true if anything was removed.
- */
+// Deletes the managed Chrome cache and interrupted-install leftovers; true when any of them existed.
 export function clearBrowser(): boolean {
   const removedLeftovers = removeInstallLeftovers();
   if (!existsSync(CACHE_DIR)) return removedLeftovers;
