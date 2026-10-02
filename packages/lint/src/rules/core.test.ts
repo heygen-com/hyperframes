@@ -115,6 +115,12 @@ describe("core rules", () => {
       "error",
     ],
     ["a non-selector key holds it", "", 'const meta = { label: "#123-frame" };', "warning"],
+    [
+      "a hyphenated key ending in pin holds it",
+      "",
+      'const meta = { "data-pin": "#123-frame" };',
+      "warning",
+    ],
     ["only url(#id) references it", ".a { mask: url(#123-frame); }", "", "warning"],
     ["only a longer id is selected", "#123-frame-2 { opacity: 0; }", "", "warning"],
     ["getElementById looks it up", "", 'document.getElementById("123-frame");', "warning"],
