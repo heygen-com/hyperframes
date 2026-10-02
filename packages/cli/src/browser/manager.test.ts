@@ -185,7 +185,8 @@ function installPuppeteerBrowsersMock(
     }) => Promise<{ executablePath: string; path?: string }>;
   } = {},
 ) {
-  const impl = opts.installImpl ?? (async () => opts.installResult ?? { executablePath: HF_BINARY });
+  const impl =
+    opts.installImpl ?? (async () => opts.installResult ?? { executablePath: HF_BINARY });
   // Fixtures name the binary where it lands in HF_CACHE; install() really writes it under its own cacheDir.
   const stagedInstall = async (options: { buildId: string; cacheDir: string }) => {
     const result = await impl(options);
