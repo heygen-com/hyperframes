@@ -59,6 +59,7 @@ const atlas = {
 
 const spec: BlockSpec = {
   atlas: "test://atlas",
+  data: "test data",
   object: "shapes",
   projection: (fc) => geoAlbersUsa().fitSize([1000, 600], fc),
   projectionType: "geoAlbersUsa",
