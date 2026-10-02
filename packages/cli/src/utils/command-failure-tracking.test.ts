@@ -202,6 +202,18 @@ describe("trackCommandFailures: extra positionals", () => {
     },
   );
 
+  it("reports JSON under --json=true for a command that declares no json flag", async () => {
+    const bare = {
+      meta: { name: "snapshot" },
+      args: { dir: { type: "positional" } },
+      run: vi.fn(),
+    };
+    await expect(
+      runCommand(await wrap(bare as CommandDef), { rawArgs: ["a", "b", "--json=true"] }),
+    ).rejects.toThrow(CliUsageError);
+    expect(JSON.parse(logSpy.mock.calls[0]![0] as string)).toMatchObject({ ok: false });
+  });
+
   it("runs a leaf given no more positionals than it declares", async () => {
     const run = vi.fn();
     await runCommand(await wrap(leaf("lint", run)), { rawArgs: ["a", "--json"] });

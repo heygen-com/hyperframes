@@ -21,7 +21,7 @@ function declaredArgs(cmd: CommandDef<ArgsDef>): ArgsDef {
   return raw && typeof raw === "object" ? (raw as ArgsDef) : {};
 }
 
-export function usageLine(path: string, args: ArgsDef): string {
+function usageLine(path: string, args: ArgsDef): string {
   const parts = ["hyperframes", path];
   let hasOptions = false;
   for (const [name, def] of Object.entries(args)) {
