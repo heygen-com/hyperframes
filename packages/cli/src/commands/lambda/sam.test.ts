@@ -22,12 +22,7 @@ describe("locateSamTemplate", () => {
     expect(locateSamTemplate(dir)).toBe(templatePath);
   });
 
-  // Regression: this error used to tell users to "point --sam-template at
-  // your local copy" of the template -- but no --sam-template flag was ever
-  // wired up anywhere in lambda.ts/deploy.ts/destroy.ts, and the template
-  // isn't shipped in any published package either. A dead-end escape hatch.
-  // Pin the corrected, honest message so a future regression can't just
-  // restore the old lie.
+  // No --sam-template flag exists; the error must not send users to one.
   it("does not point users at the nonexistent --sam-template flag when the template is missing", () => {
     dir = mkdtempSync(join(tmpdir(), "hf-lambda-sam-missing-"));
 

@@ -60,21 +60,16 @@ export interface DeployOptions {
 }
 
 /**
- * Resolve the SAM template path relative to `repoRoot`. `hyperframes lambda
- * deploy`/`destroy` only work from a HyperFrames monorepo checkout (or
- * `HYPERFRAMES_REPO_ROOT` pointed at one) — there is no installed-package
- * fallback. The template's `CodeUri` is a path relative to this file
- * (`../../packages/aws-lambda/dist/handler.zip`), so even a copied-out
- * template wouldn't resolve to a real handler ZIP without the matching
- * monorepo layout alongside it.
+ * Resolve the SAM template path relative to `repoRoot`. No installed-package fallback: the
+ * template's `CodeUri` is relative to the monorepo, so it only works inside a checkout.
  */
 export function locateSamTemplate(repoRoot: string): string {
   const candidate = join(repoRoot, "examples", "aws-lambda", "template.yaml");
   if (!existsSync(candidate)) {
     throw new Error(
       `[lambda] SAM template not found at ${candidate}. ` +
-        `\`hyperframes lambda deploy\`/\`destroy\` require a HyperFrames monorepo checkout — ` +
-        `run from within one, or set HYPERFRAMES_REPO_ROOT to point at one.`,
+        "`hyperframes lambda deploy` needs a HyperFrames repo checkout: run it from one, " +
+        "or set HYPERFRAMES_REPO_ROOT to point at one.",
     );
   }
   return candidate;
