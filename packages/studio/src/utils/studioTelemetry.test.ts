@@ -144,7 +144,9 @@ describe("studioTelemetry — shared opt-out and canary properties", () => {
     window.location.hash = buildProjectHash("Another launch");
     trackStudioEvent("feature_used");
     const events = await sentEvents();
-    const ids = events.map((event) => (event["properties"] as Record<string, unknown>)["url_route_id"]);
+    const ids = events.map(
+      (event) => (event["properties"] as Record<string, unknown>)["url_route_id"],
+    );
     expect(ids[0]).toMatch(/^[0-9a-f]{8}$/);
     expect(ids[1]).toBe(ids[0]);
     expect(ids[2]).not.toBe(ids[0]);
