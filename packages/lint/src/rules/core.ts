@@ -180,10 +180,28 @@ function idSelectorHasReducedSpecificity(selector: string): boolean {
   return matched;
 }
 
-function rulePositionProps(rule: postcss.Rule): string[] {
-  return rule.nodes.flatMap((node) =>
+function reducedSpecificityIdFindings(
+  rule: postcss.Rule,
+  reported: Set<string>,
+): HyperframeLintFinding[] {
+  const positionProps = rule.nodes.flatMap((node) =>
     node.type === "decl" && POSITION_PROPERTIES.has(node.prop.toLowerCase()) ? [node.prop] : [],
   );
+  if (positionProps.length === 0) return [];
+  return resolvedRuleSelectors(rule)
+    .filter((selector) => !reported.has(selector) && idSelectorHasReducedSpecificity(selector))
+    .map((selector): HyperframeLintFinding => {
+      reported.add(selector);
+      return {
+        code: "id_override_reduced_specificity",
+        severity: "warning",
+        message: `Selector "${selector}" sets ${positionProps.join("/")} through [id=...] or :where(#id), which has class-level or zero specificity, so a compound class rule (e.g. ".parent .row") on the same element can silently win over this override.`,
+        selector,
+        fixHint:
+          "Use a bare #id selector instead; id specificity beats any selector built only from classes.",
+        snippet: truncateSnippet(rule.toString()),
+      };
+    });
 }
 
 function ruleForcesOpacityZero(rule: postcss.Rule): boolean {
@@ -566,25 +584,8 @@ export const coreRules: Array<(ctx: LintContext) => HyperframeLintFinding[]> = [
       }
       root.walkRules((rule) => {
         const forcesOpacityZero = ruleForcesOpacityZero(rule);
-        const positionProps = rulePositionProps(rule);
+        findings.push(...reducedSpecificityIdFindings(rule, reportedReducedIdSelectors));
         for (const selector of resolvedRuleSelectors(rule)) {
-          if (
-            positionProps.length > 0 &&
-            !reportedReducedIdSelectors.has(selector) &&
-            idSelectorHasReducedSpecificity(selector)
-          ) {
-            reportedReducedIdSelectors.add(selector);
-            findings.push({
-              code: "id_override_reduced_specificity",
-              severity: "warning",
-              message: `Selector "${selector}" sets ${positionProps.join("/")} through [id=...] or :where(#id), which has class-level or zero specificity, so a compound class rule (e.g. ".parent .row") on the same element can silently win over this override.`,
-              selector,
-              fixHint:
-                "Use a bare #id selector instead; id specificity beats any selector built only from classes.",
-              snippet: truncateSnippet(rule.toString()),
-            });
-          }
-
           const repeatedId = repeatedDescendantId(selector);
           if (repeatedId && !reportedRepeatedIds.has(repeatedId)) {
             reportedRepeatedIds.add(repeatedId);
