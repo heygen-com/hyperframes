@@ -743,6 +743,7 @@ export function createStudioServer(options: StudioServerOptions): StudioServer {
                 getElementScreenshotClip,
                 opts.selector,
                 opts.selectorIndex,
+                true,
               );
             }
             return (await page.screenshot(

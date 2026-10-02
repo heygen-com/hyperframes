@@ -207,11 +207,7 @@ export function useRenderClipContent({
         });
       }
 
-      const htmlPreviewEligible =
-        el.duration > 0 &&
-        effectiveTimelineDuration > 0 &&
-        el.duration < effectiveTimelineDuration * 0.92 &&
-        !/(backdrop|background|overlay|scrim|mask)/i.test(el.id);
+      const htmlPreviewEligible = el.duration > 0 && effectiveTimelineDuration > 0;
 
       if ((el.tag === "video" || el.tag === "img") && el.src) {
         const mediaSrc = resolveMediaPreviewUrl(el.src, pid, window.location.origin);

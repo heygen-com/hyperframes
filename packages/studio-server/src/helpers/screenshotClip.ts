@@ -5,9 +5,14 @@ export interface ScreenshotClip {
   height: number;
 }
 
+/**
+ * Runs inside the page (serialised by page.evaluate), so it stays self-contained. With `isolate`,
+ * everything but the element, its subtree and its ancestors is faded out first.
+ */
 export function getElementScreenshotClip(
   selector: string,
   selectorIndex?: number,
+  isolate = false,
 ): ScreenshotClip | undefined {
   // Guard against invalid CSS selectors (e.g. `#0` — a digit-leading id from
   // user HTML that upstream producers forgot to CSS.escape). querySelectorAll
@@ -25,6 +30,13 @@ export function getElementScreenshotClip(
   const safeIndex = Math.max(0, Math.min(matches.length - 1, Math.floor(selectorIndex ?? 0)));
   const el = matches[safeIndex] ?? null;
   if (!(el instanceof HTMLElement)) return undefined;
+  // Opacity, not visibility: a descendant cannot paint through a faded ancestor.
+  for (let node: HTMLElement = el; isolate && node.parentElement; node = node.parentElement) {
+    for (const sibling of Array.from(node.parentElement.children)) {
+      if (sibling !== node && (sibling instanceof HTMLElement || sibling instanceof SVGElement))
+        sibling.style.setProperty("opacity", "0", "important");
+    }
+  }
   const rect = el.getBoundingClientRect();
   if (rect.width < 4 || rect.height < 4) return undefined;
   const pad = 8;

@@ -280,6 +280,14 @@ describe("useRenderClipContent", () => {
     expect(isValidElement(content) && content.type).toBe(AudibleVideoClipContent);
   });
 
+  it("gives a layer spanning the whole film its own frame, whatever its id", () => {
+    usePlayerStore.setState({ thumbnailMode: "adaptive" });
+    for (const id of ["waves", "background-glyphs"]) {
+      const content = renderClipContent({ id, tag: "div", start: 0, duration: 12, track: 0 }, null);
+      expect(isValidElement(content) && content.type).toBe(CompositionThumbnail);
+    }
+  });
+
   it("passes empty labels to thumbnail content so TimelineClip owns clip names", () => {
     usePlayerStore.setState({ thumbnailMode: "adaptive" });
 

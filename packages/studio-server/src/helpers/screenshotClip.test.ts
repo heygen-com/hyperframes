@@ -51,4 +51,22 @@ describe("getElementScreenshotClip", () => {
     expect(clip?.width).toBeGreaterThan(0);
     expect(clip?.height).toBeGreaterThan(0);
   });
+
+  it("with isolate, fades every sibling on the element's ancestor path and nothing else", () => {
+    document.body.innerHTML = `
+      <div id="stage">
+        <div id="title">Title</div>
+        <svg id="star"></svg>
+        <div id="waves"><div id="frame" style="visibility: visible">.:-=</div></div>
+      </div>
+      <div id="outside"></div>`;
+    const opacity = (id: string) => document.getElementById(id)!.style.getPropertyValue("opacity");
+
+    getElementScreenshotClip("#waves");
+    expect(["title", "star", "outside"].map(opacity)).toEqual(["", "", ""]);
+
+    getElementScreenshotClip("#waves", 0, true);
+    expect(["title", "star", "outside"].map(opacity)).toEqual(["0", "0", "0"]);
+    expect(["stage", "waves", "frame"].map(opacity)).toEqual(["", "", ""]);
+  });
 });
