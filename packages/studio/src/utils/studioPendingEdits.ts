@@ -93,6 +93,7 @@ export function beginStudioPendingEdit(revert: StudioEditRevert | null) {
   return {
     settle,
     reverted: () => entry.revert === null && revert !== null,
+    // Only what `start` registers synchronously is adopted; a registration after an await is a newer edit.
     adopt<T>(start: () => T): T {
       adopting = true;
       try {
@@ -119,8 +120,7 @@ export async function flushStudioPendingEdits(): Promise<StudioPendingEditsDrain
   const active = focusedField();
   if (active) {
     active.blur();
-    // ponytail: Preserve synchronous/microtask blur commits, then cross one task boundary
-    // so React effects triggered by the blur can register their flush listener.
+    // ponytail: keep blur commits, then cross one task so effects the blur runs can add their listener.
     await Promise.resolve();
     await waitForPostBlurEffects();
   }
