@@ -72,18 +72,8 @@ function resolvedPath(path: string): string | undefined {
   }
 }
 
-/**
- * Creates `dir` inside the capture output root and returns it, refusing any directory whose real
- * path is not the one it has under the root (#4304). `writeCaptureFileSync` only guards the last
- * path entry; a directory in the path that is itself a planted symlink (`assets -> ~/somewhere`)
- * would carry the staging directory and the rename, and so a filename the captured page chose,
- * into wherever it points.
- *
- * The root is the user's own choice and is trusted as given, symlink included (`/tmp` on macOS is
- * one). Everything below it is walked one level at a time, so a planted link is caught before
- * anything is created inside its target. The check runs when a directory is created, not on every
- * write: a link swapped in afterwards by a process racing the capture is beyond what it can stop.
- */
+// Creates `dir` under the trusted capture root, refusing any directory whose real path leaves it (#4304).
+// Checked on creation, not on every write: a link swapped in later by a racing process is out of scope.
 export function ensureCaptureDirSync(root: string, dir: string): string {
   const rootPath = resolve(root);
   const target = resolve(dir);
