@@ -51,28 +51,28 @@ function studioRouteKind(hash: string): "project" | "home" | "other" {
 const ROUTE_IDS_KEY = "hyperframes-studio:routeIds";
 let routeIds: Map<string, string> | undefined;
 
-function studioRouteId(hash: string): string {
-  if (!routeIds) {
-    routeIds = new Map();
-    try {
-      const stored: unknown = JSON.parse(sessionStorage.getItem(ROUTE_IDS_KEY) ?? "[]");
-      if (Array.isArray(stored)) {
-        for (const entry of stored) {
-          if (
-            Array.isArray(entry) &&
-            entry.length === 2 &&
-            typeof entry[0] === "string" &&
-            typeof entry[1] === "string" &&
-            /^[0-9a-f]{8}$/.test(entry[1])
-          ) {
-            routeIds.set(entry[0], entry[1]);
-          }
-        }
-      }
-    } catch {
-      // Storage may be blocked or corrupt. Keep random IDs in memory instead.
-    }
+function isRouteIdEntry(entry: unknown): entry is [string, string] {
+  return (
+    Array.isArray(entry) &&
+    entry.length === 2 &&
+    typeof entry[0] === "string" &&
+    typeof entry[1] === "string" &&
+    /^[0-9a-f]{8}$/.test(entry[1])
+  );
+}
+
+function readRouteIds(): Map<string, string> {
+  try {
+    const stored: unknown = JSON.parse(sessionStorage.getItem(ROUTE_IDS_KEY) ?? "[]");
+    return new Map(Array.isArray(stored) ? stored.filter(isRouteIdEntry) : []);
+  } catch {
+    // Storage may be blocked or corrupt. Keep random IDs in memory instead.
+    return new Map();
   }
+}
+
+function studioRouteId(hash: string): string {
+  routeIds ??= readRouteIds();
   const route = hash.split("?")[0];
   const existing = routeIds.get(route);
   if (existing !== undefined) return existing;
