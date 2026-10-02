@@ -410,13 +410,14 @@ export function useGsapScriptCommits({ projectIdRef, activeCompPath, previewIfra
     if (!result) return;
     trackKeyframeCommit(mutations, result, options, calls.map((call) => call.options));
     options.onResult?.(result);
-    // Each call brings its own fast-path patch; the batch wrote them all, so the
-    // preview sync applies them all rather than just the last call's.
-    const instantPatches = calls
-      .map(({ options: callOptions }) => callOptions.instantPatch)
-      .filter((patch) => patch !== undefined);
+    // The batch wrote every call, so patch in place only when every call brought a patch; one
+    // without (a resize's size write) needs the reload, or the preview keeps the old value.
+    const instantPatches = calls.flatMap(({ options: callOptions }) =>
+      callOptions.instantPatch ? [callOptions.instantPatch] : [],
+    );
     const { instantPatch: _instantPatch, ...batchOptions } = options;
-    await finalizeSuccessfulMutation(pid, compositionPath, last.selection, last.mutation, targetPath, result, instantPatches.length > 0 ? { ...batchOptions, instantPatches } : batchOptions);
+    const allPatched = instantPatches.length === calls.length;
+    await finalizeSuccessfulMutation(pid, compositionPath, last.selection, last.mutation, targetPath, result, allPatched ? { ...batchOptions, instantPatches } : batchOptions);
   }, [showToast, finalizeSuccessfulMutation]);
 
   // Every GSAP-script commit is a read-modify-write of one file. Overlapping
