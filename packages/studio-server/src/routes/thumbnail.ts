@@ -193,7 +193,7 @@ export function registerThumbnailRoutes(api: Hono, adapter: StudioApiAdapter): v
     // Cache
     const cacheDir = join(project.dir, ".thumbnails");
     const selectorKey = selector
-      ? `_${selector.replace(/[^a-zA-Z0-9_-]+/g, "_").slice(0, 80)}_${selectorIndex ?? 0}`
+      ? `_${createHash("sha1").update(selector).digest("hex").slice(0, 16)}_${selectorIndex ?? 0}`
       : "";
     const urlVersionKey = urlVersion
       ? `_${urlVersion.replace(/[^a-zA-Z0-9_-]+/g, "_").slice(0, 32)}`

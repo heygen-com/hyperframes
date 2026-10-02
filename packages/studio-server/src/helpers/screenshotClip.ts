@@ -26,17 +26,15 @@ export function getElementScreenshotClip(
   const safeIndex = Math.max(0, Math.min(matches.length - 1, Math.floor(selectorIndex ?? 0)));
   const el = matches[safeIndex] ?? null;
   if (!(el instanceof HTMLElement)) return undefined;
-  // Opacity, not visibility, and a tagged rule so clearElementScreenshotIsolation can undo it.
+  // Opacity, not visibility; the tag keeps the prior inline opacity for clearElementScreenshotIsolation.
   const hidden = "data-hf-thumbnail-hidden";
-  if (!document.getElementById(hidden)) {
-    const style = document.createElement("style");
-    style.id = hidden;
-    style.textContent = `[${hidden}] { opacity: 0 !important; }`;
-    document.head.append(style);
-  }
   for (let node: Element = el; node.parentElement; node = node.parentElement) {
     for (const sibling of Array.from(node.parentElement.children)) {
-      if (sibling !== node) sibling.setAttribute(hidden, "");
+      const style = (sibling as HTMLElement).style;
+      if (sibling === node || !style || sibling.hasAttribute(hidden)) continue;
+      const priority = style.getPropertyPriority("opacity");
+      sibling.setAttribute(hidden, `${style.getPropertyValue("opacity")}|${priority}`);
+      style.setProperty("opacity", "0", "important");
     }
   }
   const rect = el.getBoundingClientRect();
@@ -55,7 +53,11 @@ export function getElementScreenshotClip(
 }
 
 export function clearElementScreenshotIsolation(): void {
-  for (const node of Array.from(document.querySelectorAll("[data-hf-thumbnail-hidden]"))) {
-    node.removeAttribute("data-hf-thumbnail-hidden");
+  const hidden = "data-hf-thumbnail-hidden";
+  for (const node of Array.from(document.querySelectorAll<HTMLElement>(`[${hidden}]`))) {
+    const [value = "", priority = ""] = node.getAttribute(hidden)!.split("|");
+    if (value) node.style.setProperty("opacity", value, priority);
+    else node.style.removeProperty("opacity");
+    node.removeAttribute(hidden);
   }
 }

@@ -56,7 +56,7 @@ describe("getElementScreenshotClip", () => {
   it("fades every sibling on the element's ancestor path and nothing else", () => {
     document.body.innerHTML = `
       <div id="stage">
-        <div id="title">Title</div>
+        <div id="title" style="opacity: 1 !important">Title</div>
         <svg id="star"></svg>
         <div id="waves"><div id="frame" style="visibility: visible">.:-=</div></div>
       </div>
@@ -71,5 +71,13 @@ describe("getElementScreenshotClip", () => {
     getElementScreenshotClip("#title");
     expect(["waves", "star", "outside"].every(hidden)).toBe(true);
     expect(["stage", "title"].some(hidden)).toBe(false);
+
+    clearElementScreenshotIsolation();
+    const title = document.getElementById("title")!.style;
+    expect([title.getPropertyValue("opacity"), title.getPropertyPriority("opacity")]).toEqual([
+      "1",
+      "important",
+    ]);
+    expect(document.getElementById("waves")!.getAttribute("style")).toBeNull();
   });
 });
