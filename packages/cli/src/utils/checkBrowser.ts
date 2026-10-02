@@ -110,7 +110,6 @@ interface FinishedContrast {
  * (docs/plans/2026-07-14-002-feat-transparent-media-proxies-plan.md, unit U4).
  * Best-effort: a probe or transcode failure does not fail `check`; one summary
  * line records the pre-resolve outcome before the runtime attempts playback.
- * Diagnostics go to stderr: `check --json` owns stdout for its JSON envelope.
  */
 export async function preResolveHostileMediaProxies(
   projectDir: string,
