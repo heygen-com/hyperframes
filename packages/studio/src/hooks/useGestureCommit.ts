@@ -361,6 +361,7 @@ export function useGestureCommit({
   // fallow-ignore-next-line complexity
   const handleToggleRecording = useCallback(
     (method: "button" | "keyboard" = "button") => {
+      if (commitInFlightRef.current) return;
       if (gestureStateRef.current === "recording") {
         if (readOnlyPreview) {
           cancelRecording();

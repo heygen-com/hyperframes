@@ -237,3 +237,55 @@ it.each([
     }
   },
 );
+
+it("keeps a pending recording isolated until its writer settles", async () => {
+  const element = document.createElement("div");
+  element.id = "card";
+  let release!: () => void;
+  const pending = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+  const writer = vi.fn(
+    async (_mutation: Record<string, unknown>, options: CommitMutationOptions) => {
+      await pending;
+      options.onResult?.({ ok: true, changed: true });
+    },
+  );
+  const captured: { hook: ReturnType<typeof useGestureCommit> | null } = { hook: null };
+  function Probe() {
+    captured.hook = useGestureCommit({
+      domEditSessionRef: {
+        current: {
+          domEditSelection: makeSelection(element),
+          selectedGsapAnimations: [],
+          commitMutation: writer,
+        },
+      },
+      previewIframeRef: { current: document.createElement("iframe") },
+      showToast: vi.fn(),
+      isGestureRecordingRef: { current: false },
+      readOnlyPreview: false,
+    });
+    return null;
+  }
+  const root = mountReactHarness(<Probe />);
+  cleanup = () => act(() => root.unmount());
+  act(() => captured.hook?.handleToggleRecording("keyboard"));
+  act(() => captured.hook?.handleToggleRecording());
+  await vi.waitFor(() => expect(writer).toHaveBeenCalledTimes(1));
+  act(() => captured.hook?.handleToggleRecording("button"));
+  expect(gestureRecording.startRecording).toHaveBeenCalledTimes(1);
+  await act(async () => {
+    release();
+    await vi.waitFor(() =>
+      expect(trackStudioEvent).toHaveBeenCalledWith("feature_used", {
+        feature: "gesture_recording",
+        surface: "preview",
+        method: "keyboard",
+      }),
+    );
+  });
+  expect(gestureRecording.clearSamples).toHaveBeenCalledTimes(1);
+  act(() => captured.hook?.handleToggleRecording("button"));
+  expect(gestureRecording.startRecording).toHaveBeenCalledTimes(2);
+});
