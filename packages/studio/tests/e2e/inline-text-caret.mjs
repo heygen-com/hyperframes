@@ -82,11 +82,13 @@ const onScreen = (page, selector) =>
 async function openEdit(page, selector, xFraction = 0.5) {
   for (let attempt = 0; attempt < 3; attempt++) {
     const at = await onScreen(page, selector);
-    await page.mouse.click(at.x + at.w * xFraction, at.y + at.h / 2);
+    // The last try opens it with a double press, the other way in.
+    const clickCount = attempt === 2 ? 2 : 1;
+    await page.mouse.click(at.x + at.w * xFraction, at.y + at.h / 2, { clickCount });
     await pause(600);
     if (attempt === 2 && EVIDENCE_DIR)
       await page.screenshot({ path: join(EVIDENCE_DIR, `not-opened-${selector.slice(1)}.png`) });
-    await page.keyboard.press("Enter");
+    if (clickCount === 1) await page.keyboard.press("Enter");
     for (let i = 0; i < 30; i++) if ((await read(page)).caret) return;
     await page.keyboard.press("Escape");
     await pause(500);
