@@ -82,6 +82,12 @@ function reloadOnlyLast(index: number, count: number): Partial<CommitMutationOpt
   return index === count - 1 ? { softReload: true } : { skipReload: true };
 }
 
+function recordingEnd(selection: DomEditSelection): number | undefined {
+  const start = Number.parseFloat(selection.dataAttributes?.start ?? "0") || 0;
+  const duration = Number.parseFloat(selection.dataAttributes?.duration ?? "0") || 0;
+  return duration > 0 ? start + duration : undefined;
+}
+
 let gestureRecordingCommitCounter = 0;
 
 interface UseGestureCommitParams {
@@ -390,9 +396,7 @@ export function useGestureCommit({
       const store = usePlayerStore.getState();
       recordingMethodRef.current = method;
       recordingStartTimeRef.current = store.currentTime;
-      const elStart = Number.parseFloat(sel.dataAttributes?.start ?? "0") || 0;
-      const elDur = Number.parseFloat(sel.dataAttributes?.duration ?? "0") || 0;
-      const elementEnd = elDur > 0 ? elStart + elDur : undefined;
+      const elementEnd = recordingEnd(sel);
       capturedSelectionRef.current = sel;
       gestureRecording.startRecording(sel.element, iframe, elementEnd);
       gestureStateRef.current = "recording";
