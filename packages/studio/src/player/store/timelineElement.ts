@@ -104,6 +104,8 @@ export interface TimelineText {
   fontFamily?: string;
   fontWeight?: string;
   color?: string;
+  /** The layer's own opaque background colour, when it paints one. */
+  background?: string;
 }
 
 type RowClock = Pick<
@@ -165,6 +167,7 @@ export type TimelineElementPatch = Partial<
     | "audioGroupHidden"
     | "audioGroupFxChain"
     | "audioGroupAutomation"
+    | "text"
   >
 >;
 

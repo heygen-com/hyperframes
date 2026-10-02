@@ -7,7 +7,7 @@ import {
   isVideoAudible,
   resolveMediaElement,
 } from "./timelineElementHelpers";
-import { readTimelineText } from "./timelineText";
+import { readTimelineText, sameTimelineText } from "./timelineText";
 
 describe("isVideoAudible — the compiler's data-has-audio rule", () => {
   it("explicit data-has-audio wins", () => {
@@ -72,5 +72,27 @@ describe("readTimelineText", () => {
     ).toBeUndefined();
     expect(readTimelineText(layer(`<div class="glyph"></div>`))).toBeUndefined();
     expect(readTimelineText(layer(`<section>Words</section>`))).toBeUndefined();
+  });
+
+  it("keeps a layer that paints an image as a picture, and carries a flat background colour", () => {
+    expect(
+      readTimelineText(
+        layer(`<div style="background-image: linear-gradient(red, blue)">L01</div>`),
+      ),
+    ).toBeUndefined();
+    expect(
+      readTimelineText(layer(`<div style="background-color: rgb(230, 57, 70)">Go</div>`)),
+    ).toMatchObject({
+      value: "Go",
+      background: "rgb(230, 57, 70)",
+    });
+    expect(readTimelineText(layer(`<div>Go</div>`))?.background).toBeUndefined();
+  });
+
+  it("tells a text change apart from an identical re-read", () => {
+    const text = { value: "Old", color: "rgb(0, 0, 0)" };
+    expect(sameTimelineText(text, { ...text })).toBe(true);
+    expect(sameTimelineText(text, { ...text, value: "New" })).toBe(false);
+    expect(sameTimelineText(text, undefined)).toBe(false);
   });
 });

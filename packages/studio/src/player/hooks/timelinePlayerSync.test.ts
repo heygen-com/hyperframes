@@ -31,4 +31,10 @@ describe("timelineElementsChanged", () => {
     expect(timelineElementsChanged([grouped], [clip])).toBe(true);
     expect(timelineElementsChanged([grouped], [{ ...grouped }])).toBe(false);
   });
+
+  it("sees a change to a text row's words, but not an identical re-read", () => {
+    const row = { id: "t", tag: "h1", start: 0, duration: 2, track: 0, text: { value: "Old" } };
+    expect(timelineElementsChanged([row], [{ ...row, text: { value: "Old" } }])).toBe(false);
+    expect(timelineElementsChanged([row], [{ ...row, text: { value: "New" } }])).toBe(true);
+  });
 });
