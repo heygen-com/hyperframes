@@ -52,6 +52,7 @@ function reachableChildDependencies(stateHome: string, { immortal = false } = {}
     kill: vi.fn(() => {
       killed = true;
     }),
+    isDescendant: (child: number, ancestor: number) => child === 9876 && ancestor === 4321,
     stateHome,
   };
 }
@@ -427,6 +428,7 @@ describe("background preview lifecycle", () => {
         spawned = true;
         return { pid: 4321, unref: vi.fn() };
       },
+      isDescendant: (child, ancestor) => child === 9876 && ancestor === 4321,
       stateHome,
     });
 
@@ -481,6 +483,47 @@ describe("background preview lifecycle", () => {
     ).rejects.toThrow(/did not stop after failing to bind port/);
     expect(dependencies.kill).toHaveBeenCalledExactlyOnceWith(4321);
     expect(existsSync(previewSessionPath(projectDir, stateHome))).toBe(false);
+  });
+
+  it("two launches at once each keep the server their own child started", async () => {
+    const stateHome = mkdtempSync(join(tmpdir(), "hf-preview-state-"));
+    // A's server (3002) answers only after B's (3003) has appeared, and after A's pre-launch snapshot.
+    const children: Record<number, ActiveServer & { after: number }> = {
+      4321: { ...server, port: 3002, pid: "9876", after: 3 },
+      5555: { ...server, port: 3003, pid: "7777", after: 0 },
+    };
+    const parent: Record<number, number> = { 9876: 4321, 7777: 5555 };
+    const spawnedAt = new Map<number, number>();
+    let scans = 0;
+    let secondSpawned!: () => void;
+    const secondUp = new Promise<void>((done) => (secondSpawned = done));
+    const scan = async () => {
+      scans++;
+      return [...spawnedAt]
+        .filter(([wrapper, at]) => scans - at > children[wrapper]!.after)
+        .map(([wrapper]) => children[wrapper]!);
+    };
+    const launch = (wrapper: number, sleep: () => Promise<void>, preferredPort?: number) =>
+      startBackgroundPreview(projectDir, 3002, {
+        scan,
+        spawn: () => {
+          spawnedAt.set(wrapper, scans);
+          if (wrapper === 5555) secondSpawned();
+          return { pid: wrapper, unref: vi.fn() };
+        },
+        sleep,
+        kill: vi.fn(),
+        isDescendant: (child: number, ancestor: number) => parent[child] === ancestor,
+        stateHome,
+        preferredPort,
+      });
+
+    const first = launch(4321, () => secondUp, 3002);
+    await vi.waitFor(() => expect(spawnedAt.has(4321)).toBe(true));
+    const second = launch(5555, async () => {});
+
+    await expect(first).resolves.toMatchObject({ type: "started", port: 3002, pid: 9876 });
+    await expect(second).resolves.toMatchObject({ type: "started", port: 3003, pid: 7777 });
   });
 
   it("keeps the next free port when no explicit port was requested", async () => {
