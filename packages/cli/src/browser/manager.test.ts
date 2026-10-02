@@ -21,7 +21,9 @@
  * `background-removal/manager.test.ts`) so we don't touch the real
  * `HOME` cache.
  */
-import { join, sep } from "node:path";
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { dirname, join, relative, sep } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { managedChromeVersion } from "./manager.js";
 
@@ -59,6 +61,9 @@ const TEST_LOCK_TIMINGS = {
   waitNoticeMs: 1_000,
 };
 
+// The mocked fs path set of the current test, so the install mock can stage files into it.
+let mockedPaths: Set<string> | undefined;
+
 interface FsMockOptions {
   existing: ReadonlySet<string>;
   /** map of dir path -> entries returned by readdirSync */
@@ -79,6 +84,7 @@ function installFsMocks({
   // Mutable, and returned, so tests can pre-seed a "lock already held" path or
   // assert the lock dir doesn't leak after ensureBrowser resolves.
   const paths = new Set(existing);
+  mockedPaths = paths;
   const mtimes = new Map([...existing].map((p) => [p, initialMtimeMs]));
   const contents = new Map<string, string>();
   vi.doMock("node:fs", () => ({
@@ -107,6 +113,18 @@ function installFsMocks({
           mtimes.delete(existingPath);
           contents.delete(existingPath);
         }
+      }
+    },
+    renameSync: (from: string, to: string) => {
+      const moved = [...paths].filter((p) => p === from || p.startsWith(from + sep));
+      if (moved.length === 0) {
+        const err = new Error(`ENOENT: no such file or directory, rename '${from}'`);
+        (err as NodeJS.ErrnoException).code = "ENOENT";
+        throw err;
+      }
+      for (const p of moved) {
+        paths.delete(p);
+        paths.add(to + p.slice(from.length));
       }
     },
     statSync: (p: string) => {
@@ -160,10 +178,24 @@ function installPuppeteerBrowsersMock(
     }>;
     browserPlatform?: string;
     installedInHfCacheError?: Error;
-    installResult?: { executablePath: string };
-    installImpl?: (options: { buildId: string }) => Promise<{ executablePath: string }>;
+    installResult?: { executablePath: string; path?: string };
+    installImpl?: (options: {
+      buildId: string;
+      cacheDir: string;
+    }) => Promise<{ executablePath: string; path?: string }>;
   } = {},
 ) {
+  const impl = opts.installImpl ?? (async () => opts.installResult ?? { executablePath: HF_BINARY });
+  // Fixtures name the binary where it lands in HF_CACHE; install() really writes it under its own cacheDir.
+  const stagedInstall = async (options: { buildId: string; cacheDir: string }) => {
+    const result = await impl(options);
+    if (result.path || !result.executablePath.startsWith(HF_CACHE + sep)) return result;
+    const rel = relative(HF_CACHE, result.executablePath);
+    const executablePath = join(options.cacheDir, rel);
+    const path = join(options.cacheDir, ...rel.split(sep).slice(0, 2));
+    mockedPaths?.add(path).add(executablePath);
+    return { executablePath, path };
+  };
   vi.doMock("@puppeteer/browsers", () => ({
     Browser: { CHROMEHEADLESSSHELL: "chrome-headless-shell" },
     detectBrowserPlatform: () => opts.browserPlatform ?? "linux",
@@ -175,11 +207,7 @@ function installPuppeteerBrowsersMock(
             ...browser,
           })),
         ),
-    install: vi
-      .fn()
-      .mockImplementation(
-        opts.installImpl ?? (async () => opts.installResult ?? { executablePath: HF_BINARY }),
-      ),
+    install: vi.fn().mockImplementation(stagedInstall),
   }));
 }
 
@@ -378,8 +406,9 @@ describe("findBrowser — cache resolution", () => {
     // The stale install DIR is present (extraction got partway through, e.g. an
     // ABOUT/LICENSE-only extract) even though the exe itself is missing —
     // exercises the purge-before-redownload fix, not just the redownload path.
+    const staleLeftover = join(staleInstallDir, "ABOUT");
     const paths = installFsMocks({
-      existing: new Set([HF_CACHE, staleInstallDir]),
+      existing: new Set([HF_CACHE, staleInstallDir, staleLeftover]),
     });
     installPuppeteerBrowsersMock({
       installedInHfCache: [
@@ -402,13 +431,13 @@ describe("findBrowser — cache resolution", () => {
       source: "download",
     });
     expect(warnSpy).toHaveBeenCalledWith(expect.stringContaining("Cached binary missing"));
-    // The stale directory must be gone before @puppeteer/browsers' install()
-    // sees it — otherwise install() throws "folder exists but exe missing"
-    // instead of re-extracting (the exact bug both feedback reports hit).
-    expect(paths.has(staleInstallDir)).toBe(false);
+    // The partial extract is replaced wholesale, not merged into (install() would
+    // otherwise throw "folder exists but exe missing", the bug both feedback reports hit).
+    expect(paths.has(staleLeftover)).toBe(false);
+    expect(paths.has(redownloadedBinary)).toBe(true);
   });
 
-  it("ensureBrowser({force: true}) purges the whole cache before downloading, bypassing any cache/system shortcut", async () => {
+  it("ensureBrowser({force: true}) re-downloads without purging the cache, bypassing any cache/system shortcut", async () => {
     const staleInstallDir = join(HF_CACHE, "chrome-headless-shell", "linux-131.0.6778.85");
     const downloadedBinary = join(HF_CACHE, "chrome-headless-shell", "force-downloaded");
     // A HEALTHY cached binary AND system Chrome are both present — force must
@@ -436,11 +465,47 @@ describe("findBrowser — cache resolution", () => {
       executablePath: downloadedBinary,
       source: "download",
     });
-    // clearBrowser() wipes prior contents; withInstallLock uses a sibling lock
-    // outside CACHE_DIR, so assert the purge on what was actually INSIDE it,
-    // not the directory's own existence.
-    expect(paths.has(staleInstallDir)).toBe(false);
-    expect(paths.has(HF_BINARY)).toBe(false);
+    // Only the downloaded version dir is swapped in; other cache entries stay.
+    expect(paths.has(downloadedBinary)).toBe(true);
+    expect(paths.has(HF_BINARY)).toBe(true);
+  });
+
+  it("keeps a live reader's binary valid while a concurrent --force re-downloads it", async () => {
+    const home = mkdtempSync(join(tmpdir(), "hf-browser-cache-"));
+    vi.doMock("node:os", async (importOriginal) => ({
+      ...(await importOriginal<typeof import("node:os")>()),
+      homedir: () => home,
+    }));
+    let label = "old";
+    let seenMidInstall: string | undefined;
+    let liveBinary: string | undefined;
+    installPuppeteerBrowsersMock({
+      installImpl: async ({ cacheDir, buildId }) => {
+        if (liveBinary) seenMidInstall = readFileSync(liveBinary, "utf8");
+        const path = join(cacheDir, "chrome-headless-shell", `linux-${buildId}`);
+        const executablePath = join(path, "chrome-headless-shell-linux64", "chrome-headless-shell");
+        mkdirSync(dirname(executablePath), { recursive: true });
+        writeFileSync(executablePath, label);
+        return { executablePath, path };
+      },
+    });
+    try {
+      const { ensureBrowser, CACHE_DIR } = await import("./manager.js");
+      const otherVersion = join(CACHE_DIR, "chrome-headless-shell", "linux-1.0.0", "marker");
+      mkdirSync(dirname(otherVersion), { recursive: true });
+      writeFileSync(otherVersion, "other");
+
+      liveBinary = (await ensureBrowser({ force: true })).executablePath;
+      label = "new";
+      const forced = await ensureBrowser({ force: true });
+
+      expect(seenMidInstall).toBe("old");
+      expect(forced.executablePath).toBe(liveBinary);
+      expect(readFileSync(liveBinary, "utf8")).toBe("new");
+      expect(readFileSync(otherVersion, "utf8")).toBe("other");
+    } finally {
+      rmSync(home, { recursive: true, force: true });
+    }
   });
 
   it("serializes concurrent force downloads so one purge cannot delete another installer's lock", async () => {
