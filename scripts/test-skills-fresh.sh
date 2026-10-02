@@ -7,7 +7,7 @@
 #             `npx skills add heygen-com/hyperframes` does for a real user)
 #   • CLI    → wired via a `file:` dep so `npx hyperframes` resolves to the LOCAL
 #             build, which carries this branch's packages/cli/src/capture changes.
-# It adds NO CLAUDE.md / AGENTS.md — it mirrors the plain install, nothing more.
+# It adds no AGENTS.md — it mirrors the plain install, nothing more.
 # You then launch your agent in the sandbox and type whatever request you want.
 #
 # Agents: works for Claude Code (default) and Codex. `--agent` is passed straight

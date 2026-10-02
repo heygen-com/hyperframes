@@ -289,7 +289,7 @@ export async function captureWebsiteAttempt(
     });
     ({ assets, dropped, fontDrops, extracted, tokens, animationCatalog } = postResult);
 
-    // Generate project scaffold (index.html, meta.json, CLAUDE.md)
+    // Generate project scaffold (index.html, meta.json, AGENTS.md)
     phase("scaffold", "started");
     if (!watchdog.expired()) {
       await generateProjectScaffold(

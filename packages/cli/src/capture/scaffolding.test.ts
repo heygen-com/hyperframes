@@ -69,11 +69,10 @@ describe("generateProjectScaffold metadata", () => {
       expect(fs.readFileSync(metaPath, "utf-8")).toBe(
         JSON.stringify({ id: "example.com-video", name: title || "example.com" }, null, 2),
       );
-      expect(fs.readFileSync(join(dir, "AGENTS.md"), "utf-8")).toBe(
-        fs.readFileSync(join(dir, "CLAUDE.md"), "utf-8"),
-      );
+      expect(fs.readFileSync(join(dir, "AGENTS.md"), "utf-8")).toContain("example.com");
+      expect(fs.existsSync(join(dir, "CLAUDE.md"))).toBe(false);
       expect(fs.existsSync(join(dir, "index.html"))).toBe(false);
-      expect(progress).toHaveBeenCalledWith("agent", "AGENTS.md + CLAUDE.md generated");
+      expect(progress).toHaveBeenCalledWith("agent", "AGENTS.md generated");
       expect(warnings).toEqual([]);
     },
   );
@@ -91,7 +90,7 @@ describe("generateProjectScaffold metadata", () => {
     });
     await generate();
     expect(fs.readFileSync(metaPath, "utf-8")).toBe("concurrent metadata");
-    expect(progress).toHaveBeenCalledWith("agent", "AGENTS.md + CLAUDE.md generated");
+    expect(progress).toHaveBeenCalledWith("agent", "AGENTS.md generated");
     expect(warnings).toEqual([]);
   });
 
