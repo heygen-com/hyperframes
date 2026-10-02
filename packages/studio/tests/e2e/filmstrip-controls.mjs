@@ -35,7 +35,7 @@ try {
         .sort((a, b) => a.left - b.left);
       const fxReached = [2, f.width / 2, f.width - 2].every((x) => {
         const hit = document.elementFromPoint(f.left + x, f.top + f.height / 2);
-        return hit === fx || fx.contains(hit);
+        return fx.contains(hit);
       });
       return {
         fxReached,
@@ -70,7 +70,8 @@ try {
     assert(preview > 0, `${kind} fade must preview during a pointer drag`);
     await page.mouse.up();
     const saveStatus = await page.evaluate(async () => {
-      const { flushStudioPendingEdits } = await import("/src/utils/studioPendingEdits.ts");
+      const moduleUrl = new URL("/src/utils/studioPendingEdits.ts", window.location.href);
+      const { flushStudioPendingEdits } = await import(moduleUrl.href);
       return (await flushStudioPendingEdits()).status;
     });
     assert.equal(saveStatus, "clean", `${kind} fade save must settle successfully`);
@@ -141,17 +142,22 @@ try {
             );
           },
         );
-        if (!diamond) return false;
-        const d = diamond.getBoundingClientRect();
         const fadeHit = document.elementFromPoint(f.left + f.width / 2, f.top + f.height / 2);
-        const diamondHit = document.elementFromPoint(d.left + d.width / 2, d.top + d.height / 2);
-        return (
-          (fadeHit === fade || fade.contains(fadeHit)) &&
-          (diamondHit === diamond || diamond.contains(diamondHit))
-        );
+        const result = {
+          diamondExists: Boolean(diamond),
+          fadeReached: fade.contains(fadeHit),
+          diamondReached: false,
+        };
+        if (diamond) {
+          const d = diamond.getBoundingClientRect();
+          const diamondHit = document.elementFromPoint(d.left + d.width / 2, d.top + d.height / 2);
+          result.diamondReached = diamond.contains(diamondHit);
+        }
+        return result;
       });
-      assert(
+      assert.deepEqual(
         separated,
+        { diamondExists: true, fadeReached: true, diamondReached: true },
         "middle fade and collapsed keyframe must each receive their own centre pointer",
       );
     }

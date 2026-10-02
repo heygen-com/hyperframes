@@ -373,7 +373,6 @@ export function TimelineClipFades({
   const overlap = drawn("in") && drawn("out") && boxLeft(inX) + hitWidth > boxLeft(outX);
   const handleGeometry = (edge: FadeEdge) => {
     const x = edge === "in" ? inX : outX;
-    // Boxes that would overlap meet at the midpoint between the two tabs.
     const [left, right] = !overlap
       ? [boxLeft(x), boxLeft(x) + hitWidth]
       : edge === "in"
