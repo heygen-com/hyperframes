@@ -165,10 +165,7 @@ describe("runEnvironmentChecks", () => {
     expect(result.ffmpegPath).toBeUndefined();
   });
 
-  // Regression: the "cannot start" branch used to hardcode a Windows/DLL hint
-  // on every platform instead of routing through the already platform-aware
-  // getFFmpegInstallHint(). Pin it per-platform so a future regression can't
-  // just swap back to a different unconditional string.
+  // The cannot-start hint once hardcoded Windows DLL advice on every platform.
   describe("FFmpeg cannot-start hint is platform-specific", () => {
     const realPlatform = process.platform;
 
@@ -183,8 +180,9 @@ describe("runEnvironmentChecks", () => {
       "uses getFFmpegInstallHint()'s $platform text, not a hardcoded DLL hint",
       async ({ platform, expectedHint }) => {
         Object.defineProperty(process, "platform", { value: platform, configurable: true });
-        execFileSync.mockImplementation((binaryPath: string) => {
-          if (binaryPath !== process.env.HYPERFRAMES_FFMPEG_PATH) return "ffprobe version 7.1.1\n";
+        runProcess.mockImplementation((binaryPath: string) => {
+          if (binaryPath !== process.env.HYPERFRAMES_FFMPEG_PATH)
+            return Promise.resolve({ stdout: "ffprobe version 7.1.1\n", stderr: "" });
           throw Object.assign(new Error("cannot execute binary file"), { status: 126 });
         });
 
