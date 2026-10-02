@@ -12,8 +12,8 @@ describe("fadeHandleBoxes", () => {
       clipBox: flatClip(1000),
       drawn: { in: true, out: true },
     });
-    expect(boxes.in).toEqual({ left: 88, width: 24, tabLeft: 12, top: -7 });
-    expect(boxes.out).toEqual({ left: 788, width: 24, tabLeft: 12, top: -7 });
+    expect(boxes.in).toEqual({ left: 88, width: 24, height: 24, tabLeft: 12, top: -7 });
+    expect(boxes.out).toEqual({ left: 788, width: 24, height: 24, tabLeft: 12, top: -7 });
   });
 
   it("splits two overlapping handles at the midpoint between their tabs", () => {

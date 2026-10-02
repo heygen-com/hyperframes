@@ -2,13 +2,13 @@ import { useCallback, useRef } from "react";
 import { usePlayerStore } from "../../player";
 import { useTimelineEditContextOptional } from "../../contexts/TimelineEditContext";
 import {
-  ascendingTrackOrder,
   resolveRepositionLaneMove,
   resolveZMirrorLaneMove,
   type ZMirrorAction,
   type ZMirrorLaneMove,
 } from "../../player/components/timelineZMirror";
 import type { TimelineElement } from "../../player/store/playerStore";
+import { timelineTrackOrder } from "../../player/components/timelineTrackDisplay";
 import { commitZMirrorLaneMove } from "../../player/components/timelineClipDragCommit";
 import { deriveTimelineStoreKey } from "../../player/lib/timelineElementHelpers";
 import { buildStableSelector, getSelectorIndex } from "../editor/domEditingDom";
@@ -156,7 +156,7 @@ function useMirrorLaneMoveCommit(): (
         move,
         {
           elements: els,
-          trackOrder: ascendingTrackOrder(els),
+          trackOrder: timelineTrackOrder(els),
           updateElement: (key, updates) => usePlayerStore.getState().updateElement(key, updates),
           onMoveElements,
           // NO readZIndex / onStackingPatches: see the hook doc — the lane→z

@@ -21,12 +21,12 @@ import { Tooltip } from "../../components/ui";
 import { useTimelineEditContextOptional } from "../../contexts/TimelineEditContext";
 import { releasedOutsideWindow } from "./timelinePointerRelease";
 import {
-  FADE_HANDLE_HIT,
   FADE_TAB_CENTER_IN_HIT,
   FADE_TAB_WIDTH,
   fadeHandleBoxes,
   type FadeEdge,
   type FadeHandleBox,
+  type FadeHandleClipBox,
 } from "./timelineClipFadeGeometry";
 import {
   collectTimelineSnapTargets,
@@ -132,12 +132,12 @@ export function TimelineClipFades({
   const visible =
     fades.fadeIn > 0 || fades.fadeOut > 0 || showHandles || dragging !== null || focused !== null;
   const rootRef = useRef<HTMLDivElement | null>(null);
-  const [clipBox, setClipBox] = useState<{
-    height: number;
-    width: number;
-    radius: number;
-    toolsLeft: number | null;
-  }>({ height: 0, width: 0, radius: 0, toolsLeft: null });
+  const [clipBox, setClipBox] = useState<FadeHandleClipBox>({
+    height: 0,
+    width: 0,
+    radius: 0,
+    toolsLeft: null,
+  });
   useLayoutEffect(() => {
     const root = rootRef.current;
     const clip = root?.parentElement;
@@ -362,7 +362,7 @@ export function TimelineClipFades({
     top: geometry.top,
     left: geometry.left,
     width: geometry.width,
-    height: FADE_HANDLE_HIT,
+    height: geometry.height,
     cursor: "ew-resize",
     opacity: handlesVisible ? 1 : 0,
     pointerEvents: handlesVisible && canEdit ? "auto" : "none",

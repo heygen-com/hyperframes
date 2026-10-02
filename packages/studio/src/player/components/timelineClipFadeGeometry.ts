@@ -3,7 +3,7 @@ import { CLIP_TRIM_HIT_PX } from "./timelineTheme";
 export type FadeEdge = "in" | "out";
 
 export const FADE_TAB_WIDTH = 4;
-export const FADE_HANDLE_HIT = 24;
+const FADE_HANDLE_HIT = 24;
 export const FADE_TAB_CENTER_IN_HIT = 8;
 const TAB_INSET = 7;
 
@@ -19,6 +19,7 @@ export interface FadeHandleClipBox {
 export interface FadeHandleBox {
   left: number;
   width: number;
+  height: number;
   tabLeft: number;
   top: number;
 }
@@ -68,7 +69,7 @@ export function fadeHandleBoxes(input: {
         : [mid, Math.min(rightEdge, mid + hitWidth)];
     const edgeY = topEdgeY(x, clipWidth, clipBox.height, clipBox.radius);
     const top = edgeY + 1 - FADE_TAB_CENTER_IN_HIT;
-    return { left, width: right - left, tabLeft: x - left, top };
+    return { left, width: right - left, height: FADE_HANDLE_HIT, tabLeft: x - left, top };
   };
   return { in: box("in"), out: box("out") };
 }
