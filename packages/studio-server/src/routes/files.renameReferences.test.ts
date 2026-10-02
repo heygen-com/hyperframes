@@ -114,6 +114,17 @@ describe("rename references", () => {
     expect(out).toContain('"brand/a0.png" "archive/assets/image-0.png"');
   });
 
+  it("does not multiply suffix and prefix lengths", () => {
+    const existing = Array.from(
+      { length: 200 },
+      (_, i) => `${"z".repeat(i + 1)} a/${"x".repeat(i + 1)}`,
+    );
+    const text = Array.from({ length: 3000 }, () => `"a/${"x".repeat(210)}.png"`).join("\n");
+    const started = Date.now();
+    referenceRewriter("a", "brand", true, existing)(text);
+    expect(Date.now() - started).toBeLessThan(3000);
+  });
+
   it("rewrites references a bare scan could mistake: unquoted attributes, a space before a paren, srcset", () => {
     const text =
       '<img src=assets/a.png alt="x"> url(assets/a.png ) srcset="assets/a.png 1x, assets/a.png 2x"';
@@ -150,10 +161,11 @@ describe("renaming a folder over the route", () => {
     mkdirSync(join(project, "assets"));
     mkdirSync(join(project, "assets-backup"));
     mkdirSync(join(project, "other assets"));
+    mkdirSync(join(project, "empty assets"));
     writeFileSync(join(project, "other assets", "a.png"), "x");
     writeFileSync(join(project, "assets", "a.png"), "x");
     const html =
-      '<img src="assets/a.png"><img src="assets-backup/a.png"><img src="other assets/a.png"><p>The assets folder</p>';
+      '<img src="assets/a.png"><img src="assets-backup/a.png"><img src="other assets/a.png"><a href="empty assets/">x</a><p>The assets folder</p>';
     writeFileSync(join(project, "index.html"), html);
     const adapter = {
       resolveProject: async (id: string) => ({ id, dir: project }),
@@ -168,7 +180,7 @@ describe("renaming a folder over the route", () => {
 
     expect(response.status).toBe(200);
     expect(readFileSync(join(project, "index.html"), "utf8")).toBe(
-      '<img src="brand/a.png"><img src="assets-backup/a.png"><img src="other assets/a.png"><p>The assets folder</p>',
+      '<img src="brand/a.png"><img src="assets-backup/a.png"><img src="other assets/a.png"><a href="empty assets/">x</a><p>The assets folder</p>',
     );
   });
 });

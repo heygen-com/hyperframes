@@ -19,7 +19,7 @@ import {
   readdirSync,
   type Dirent,
 } from "node:fs";
-import { resolve, dirname, join, relative, sep } from "node:path";
+import { resolve, dirname, join } from "node:path";
 import type { StudioApiAdapter } from "../types.js";
 import { isAudioFile } from "../helpers/mime.js";
 import { createFileAtomically, replaceFileAtomically } from "@hyperframes/core/atomic-file";
@@ -689,16 +689,18 @@ export function referenceRewriter(
   existing: readonly string[] = [],
 ): (text: string) => string {
   const pattern = referencePattern(oldPath, isDirectory);
-  const around = new Map<string, Set<string>>();
-  const [afterLengths, beforeLengths] = [new Set<number>(), new Set<number>()];
+  const around = new Map<string, Map<number, Set<string>>>();
+  const afterLengths = new Set<number>();
   let window = 0;
   for (const path of existing) {
     if (path.length <= oldPath.length) continue;
     for (const start of occurrences(path, oldPath)) {
       const [before, after] = [path.slice(0, start), path.slice(start + oldPath.length)];
-      (around.get(after) ?? around.set(after, new Set()).get(after)!).add(before);
+      const befores = around.get(after) ?? around.set(after, new Map()).get(after)!;
+      (befores.get(before.length) ?? befores.set(before.length, new Set()).get(before.length)!).add(
+        before,
+      );
       afterLengths.add(after.length);
-      beforeLengths.add(before.length);
       window = Math.max(window, path.length * 3);
     }
   }
@@ -714,8 +716,8 @@ export function referenceRewriter(
         const befores = tail.length >= after && around.get(tail.slice(0, after));
         return (
           befores &&
-          [...beforeLengths].some(
-            (before) => head.length >= before && befores.has(head.slice(head.length - before)),
+          [...befores].some(
+            ([length, set]) => head.length >= length && set.has(head.slice(head.length - length)),
           )
         );
       });
@@ -729,13 +731,15 @@ function occurrences(text: string, part: string): number[] {
   return at;
 }
 
-function projectPaths(projectDir: string): string[] {
-  const paths = new Set<string>();
-  for (const file of walkFiles(projectDir, () => true)) {
-    const parts = relative(projectDir, file).split(sep);
-    for (let i = 1; i <= parts.length; i++) paths.add(parts.slice(0, i).join("/"));
-  }
-  return [...paths];
+function projectPaths(dir: string, prefix = ""): string[] {
+  return readableEntries(dir).flatMap((entry) => {
+    const path = `${prefix}${entry.name}`;
+    const inside =
+      entry.isDirectory() && entry.name !== "node_modules"
+        ? projectPaths(join(dir, entry.name), `${path}/`)
+        : [];
+    return [path, ...inside];
+  });
 }
 
 /**
