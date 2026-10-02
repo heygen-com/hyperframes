@@ -958,7 +958,7 @@ jobs:
           node packages/studio/tests/e2e/perf-ratchet.mjs check \
             packages/studio/tests/e2e/perf-ceilings.json studio-open /tmp/studio-open-counts.json \
             /tmp/base-perf-ceilings.json
-      - name: Measure the fade handle tabs and click every Renders select
+      - name: Check fade handles, render selects and thumbnail connection release
         if: success() || failure()
         run: |
           set -euo pipefail
@@ -973,12 +973,14 @@ jobs:
             echo "FAIL: studio dev server did not start on port 5316"
             exit 1
           fi
-          # Both checks run even when the first fails.
+          # All checks run even when an earlier one fails.
           rc=0
           STUDIO_URL="http://localhost:5316/#project/fade-handles" \
             node packages/studio/tests/e2e/fade-handles.mjs || rc=1
           STUDIO_URL="http://localhost:5316/#project/fade-handles?tab=renders" \
             node packages/studio/tests/e2e/render-selects.mjs || rc=1
+          STUDIO_URL="http://localhost:5316/" \
+            node packages/studio/tests/e2e/thumbnail-save.mjs || rc=1
           exit "$rc"
       - name: Measure the caret of a text edited in place
         if: success() || failure()
