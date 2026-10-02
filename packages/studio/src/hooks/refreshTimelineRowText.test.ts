@@ -31,6 +31,19 @@ describe("refreshTimelineRowText", () => {
     expect(usePlayerStore.getState().elements[0]?.text?.value).toBe("New words");
   });
 
+  it("finds a row known only by its data-hf-id", () => {
+    document.body.innerHTML = `<p data-hf-id="caption-a">New</p>`;
+    usePlayerStore
+      .getState()
+      .setElements([
+        { ...row("index.html#caption-a", ""), selector: undefined, hfId: "caption-a" },
+      ]);
+
+    refreshTimelineRowText(document.querySelector("p")!);
+
+    expect(usePlayerStore.getState().elements[0]?.text?.value).toBe("New");
+  });
+
   it("finds the row in the edited layer's own composition when two share a selector", () => {
     document.body.innerHTML = `
       <div data-composition-id="a" data-composition-file="a.html"><p class="caption">A</p></div>
