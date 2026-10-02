@@ -592,7 +592,8 @@ async function strayMove(page, [x, y]) {
   await nextFrame(page);
 }
 
-/** `route`, given the press point, replaces the gesture's straight path; `{ pause }` holds still, `{ stray }` see strayMove. */
+/** `route`, given the press point, replaces the gesture's straight path.
+ * `{ pause }` holds still; `{ stray }`: see strayMove. */
 // fallow-ignore-next-line complexity
 export async function pointerGesture(ctx, gesture, pre, route) {
   const press = await handlePoint(ctx, pre, gesture);
