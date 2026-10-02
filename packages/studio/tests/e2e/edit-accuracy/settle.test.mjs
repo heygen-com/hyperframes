@@ -22,20 +22,26 @@ describe("settling on the shown preview", () => {
     expect(unsettledBy(read(false), read(false, 0.02))).toBe(true);
   });
 
+  const frame = (url, shown, holds) => ({
+    url: () => url,
+    frameElement: async () => ({ evaluate: async () => shown }),
+    $: async () => (holds ? {} : null),
+  });
+  const keys = { times: [0, 3] };
+  const page = (...frames) => ({ frames: () => frames });
+  const swapping = page(frame("/preview/a", true, true), frame("/preview/a?_t=1", false, true));
+
   it("calls a swap pending only for a hidden preview that holds the target", async () => {
-    const frame = (url, shown, holds) => ({
-      url: () => url,
-      frameElement: async () => ({ evaluate: async () => shown }),
-      $: async () => (holds ? {} : null),
-    });
-    const page = (...frames) => ({ frames: () => frames });
-    expect(await swapPending(page(frame("/preview/a", true, true)))).toBe(false);
-    expect(
-      await swapPending(
-        page(frame("/preview/a", true, true), frame("/preview/a?_t=1", false, true)),
-      ),
-    ).toBe(true);
-    expect(await swapPending(page(frame("/preview/a?_t=1", false, false)))).toBe(false);
-    expect(await swapPending(page(frame("/studio", false, true)))).toBe(false);
+    expect(await swapPending({ page: page(frame("/preview/a", true, true)), keys })).toBe(false);
+    expect(await swapPending({ page: swapping, keys })).toBe(true);
+    expect(await swapPending({ page: page(frame("/preview/a?_t=1", false, false)), keys })).toBe(
+      false,
+    );
+    expect(await swapPending({ page: page(frame("/studio", false, true)), keys })).toBe(false);
+  });
+
+  it("never waits on a swap in a case without keyframes, so its undo keeps main's timing", async () => {
+    expect(await swapPending({ page: swapping })).toBe(false);
+    expect(await swapPending({ page: swapping, keys: undefined, selector: "#other" })).toBe(false);
   });
 });

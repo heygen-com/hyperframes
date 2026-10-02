@@ -243,7 +243,9 @@ const previewFrames = (page) =>
     .join(" ");
 
 /** A hidden preview holding the target is a shadow reload not yet promoted: the visible frame is about to go stale. */
-export async function swapPending(page, selector = "#target") {
+// Keyframed cases only: waiting out the swap lands a later undo in the preview's burst of requests.
+export async function swapPending({ page, keys, selector = "#target" }) {
+  if (!keys) return false;
   for (const f of page.frames().filter((f) => f.url().includes("/preview"))) {
     const host = await f.frameElement().catch(() => null);
     const shown = await host?.evaluate((e) => e.checkVisibility({ visibilityProperty: true }));
@@ -266,7 +268,7 @@ export async function settled(ctx, timeout = 15_000) {
   const read = async () => ({
     m: await measure(ctx),
     frames: previewFrames(ctx.page),
-    pending: await swapPending(ctx.page, ctx.selector),
+    pending: await swapPending(ctx),
   });
   let start = await read();
   let now = start;
@@ -767,7 +769,14 @@ async function nudgeGesture(ctx, pre) {
 export async function inStudio({ browser, spec, dir, files, url, evidence }, drive) {
   const context = await browser.createBrowserContext();
   const page = await context.newPage();
-  const ctx = { page, dir, files, handles: null, playhead: spec.playhead ?? PLAYHEAD };
+  const ctx = {
+    page,
+    dir,
+    files,
+    handles: null,
+    playhead: spec.playhead ?? PLAYHEAD,
+    keys: spec.keys,
+  };
   const consoleErrors = [];
   page.on("pageerror", (e) => consoleErrors.push(e.message));
   evidence.shots = {};
