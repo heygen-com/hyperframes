@@ -24,10 +24,15 @@ import {
 } from "@hyperframes/core/audio-fade";
 import { usePlayerStore, type TimelineElement } from "../store/playerStore";
 import { groupInfoFor } from "./timelineGroupInfo";
-import { getTimelineElementIdentity, previewElementFinder } from "./timelineElementHelpers";
+import {
+  getTimelineElementIdentity,
+  previewElementFinder,
+  resolveMediaElement,
+} from "./timelineElementHelpers";
+import { elementVolume, parseStoredVolume } from "./storedVolume";
 
 /**
- * Re-read every element's automation, FX-chain and fade attributes from the preview
+ * Re-read every element's automation, FX-chain, fade and volume attributes from the preview
  * document, for a change that reached the DOM without going through this store.
  *
  * That is undo and redo. A soft restore patches the reverted attributes onto the
@@ -40,9 +45,9 @@ import { getTimelineElementIdentity, previewElementFinder } from "./timelineElem
  * reverted is only known by looking.
  */
 /**
- * What an element's six synced fields SHOULD read, given the preview.
+ * What an element's seven synced fields SHOULD read, given the preview.
  *
- * Its own four come off its node; the other two are its copy of what its group
+ * Its own five come off its node; the other two are its copy of what its group
  * carries. The timeline derives a group's lanes and chain from these mirrors,
  * never from the group element, and automating a group writes `data-automation`
  * on the group node through the ordinary element path, so both halves are re-read.
@@ -55,6 +60,7 @@ function syncedFields(doc: Document, element: TimelineElement, node: Element) {
     fxChain: node.getAttribute(HF_AUDIO_FX_ATTR) ?? undefined,
     fadeIn: storedFade(fades.fadeIn),
     fadeOut: storedFade(fades.fadeOut),
+    volume: elementVolume(node, resolveMediaElement(node) ?? node),
     audioGroupAutomation: group?.automation,
     audioGroupFxChain: group?.fxChain,
   };
@@ -88,9 +94,11 @@ const STORED_FIELD: Record<string, (value: string | null) => Partial<TimelineEle
   [HF_AUDIO_FX_ATTR]: (value) => ({ fxChain: value ?? undefined }),
   [HF_AUDIO_FADE_IN_ATTR]: (value) => ({ fadeIn: storedFade(readFadeSeconds(value)) }),
   [HF_AUDIO_FADE_OUT_ATTR]: (value) => ({ fadeOut: storedFade(readFadeSeconds(value)) }),
+  // A quick volume save writes no other field the store keeps: without this, a clip read its last load's volume.
+  "data-volume": (value) => ({ volume: parseStoredVolume(value) }),
 };
 
-/** Record a saved automation, FX-chain or fade value on one element's stored copy. */
+/** Record a saved automation, FX-chain, fade or volume value on one element's stored copy. */
 export function syncStoredElementAttribute(
   target: TimelineElement,
   attr: string,
