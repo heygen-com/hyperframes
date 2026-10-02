@@ -19,6 +19,22 @@ afterEach(() => {
   document.body.innerHTML = "";
 });
 
+// The runtime's element-picked message, posted by `from`.
+const picked = (from: Window | null, selector: string) =>
+  act(() => {
+    window.dispatchEvent(
+      new MessageEvent("message", {
+        source: from,
+        data: {
+          source: "hf-preview",
+          type: "element-picked",
+          elementInfo: { selector, tagName: "h1" },
+          ...runtimeProtocolMetadata(30),
+        },
+      }),
+    );
+  });
+
 // The preview page: the saved markup plus what the runtime adds to it.
 function mountPreview(mounted = ""): HTMLIFrameElement {
   const iframe = document.createElement("iframe");
@@ -61,19 +77,7 @@ function mountPicker(
   }
   root = createRoot(document.createElement("div"));
   act(() => root?.render(React.createElement(Harness)));
-  act(() => {
-    window.dispatchEvent(
-      new MessageEvent("message", {
-        source: iframe.contentWindow,
-        data: {
-          source: "hf-preview",
-          type: "element-picked",
-          elementInfo: { selector, tagName: "h1" },
-          ...runtimeProtocolMetadata(30),
-        },
-      }),
-    );
-  });
+  picked(iframe.contentWindow, selector);
   const picker = () => api as ReturnType<typeof useElementPicker>;
   return {
     picker,
@@ -172,21 +176,6 @@ describe("an edit to a picked element without an id", () => {
 });
 
 describe("a pick across a reload that swaps the preview frame", () => {
-  const picked = (from: Window | null, selector: string) =>
-    act(() => {
-      window.dispatchEvent(
-        new MessageEvent("message", {
-          source: from,
-          data: {
-            source: "hf-preview",
-            type: "element-picked",
-            elementInfo: { selector, tagName: "h1" },
-            ...runtimeProtocolMetadata(30),
-          },
-        }),
-      );
-    });
-
   function mountSwapping() {
     const live = mountPreview();
     const ref: { current: HTMLIFrameElement | null } = { current: live };

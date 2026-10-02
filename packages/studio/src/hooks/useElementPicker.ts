@@ -97,8 +97,8 @@ export function useElementPicker(
     setPickedElement(null);
   }, []);
 
-  // Every frame window this picker has heard from: a reload that swaps in a new frame between a pick and its
-  // message leaves that pick posted from the frame it was made in.
+  // Windows that posted while they were the primary preview frame: a reload that swaps in a new frame between a
+  // pick and its message leaves that pick posted from the frame it was made in.
   const shownWindows = useRef(new WeakSet<MessageEventSource>());
 
   // Listen for picker messages from the iframe
@@ -109,13 +109,13 @@ export function useElementPicker(
       const data = e.data;
       if (data?.source !== "hf-preview") return;
       if (!acceptStudioRuntimeMessage(data)) return;
-      // Accept events from either the primary iframe or the active override
+      // The primary frame, the active override, or a primary frame a reload just swapped out.
       const activeIframe = getActiveIframe();
       if (!activeIframe) return;
       if (!e.source) return;
-      if (e.source === activeIframe.contentWindow || e.source === iframeRef.current?.contentWindow)
-        shownWindows.current.add(e.source);
-      else if (!shownWindows.current.has(e.source)) return;
+      if (e.source === iframeRef.current?.contentWindow) shownWindows.current.add(e.source);
+      else if (e.source !== activeIframe.contentWindow && !shownWindows.current.has(e.source))
+        return;
 
       if (data.type === "element-picked" && data.elementInfo) {
         setPickedElement(toPickedElement(data.elementInfo, activeIframe));
