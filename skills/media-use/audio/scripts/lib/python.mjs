@@ -19,9 +19,14 @@
 
 import { spawnSync } from "node:child_process";
 
-function defaultProbe(cmd, args) {
+// Accept only an interpreter whose `--version` reports Python 3, as the CLI's
+// `validatePythonOverride()` does. Exit status alone would take a Python 2
+// `python` (or any executable that exits 0) that `doctor` rejects. Python 2
+// prints its version to stderr, so read both streams.
+export function defaultProbe(cmd, args) {
   try {
-    return spawnSync(cmd, args, { stdio: "ignore" }).status === 0;
+    const result = spawnSync(cmd, args, { encoding: "utf-8", timeout: 5000 });
+    return result.status === 0 && /Python 3/.test(`${result.stdout}${result.stderr}`);
   } catch {
     return false;
   }
@@ -33,8 +38,8 @@ function defaultProbe(cmd, args) {
  *
  * Pure except for `probe` (which runs `<cmd> … --version`); `platform`,
  * `probe` and `env` are injectable so every branch is unit-testable without
- * spawning. A `HYPERFRAMES_PYTHON` override that doesn't run falls through to
- * the PATH probe, as the CLI does. If nothing probes OK, falls back to the
+ * spawning. A `HYPERFRAMES_PYTHON` override that isn't a runnable Python 3
+ * falls through to the PATH probe, as the CLI does. If nothing probes OK, falls back to the
  * canonical name for the platform so the eventual spawn fails loudly exactly
  * as it did before — never worse.
  */

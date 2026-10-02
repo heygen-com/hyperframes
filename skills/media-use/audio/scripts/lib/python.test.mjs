@@ -1,6 +1,9 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { resolvePythonCommand, pythonInvocation } from "./python.mjs";
+import { chmodSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { defaultProbe, resolvePythonCommand, pythonInvocation } from "./python.mjs";
 
 // Regression: on Windows a standard python.org install has no `python3.exe`
 // (only `python.exe` + the `py` launcher), so `spawn("python3", …)` ENOENTs and
@@ -79,6 +82,41 @@ test("an empty HYPERFRAMES_PYTHON is ignored without being probed", () => {
   };
   assert.deepEqual(resolvePythonCommand("linux", probe, { HYPERFRAMES_PYTHON: "" }), ["python3"]);
   assert.deepEqual(seen, ["python3"]);
+});
+
+// defaultProbe must match the CLI's validatePythonOverride(): exiting 0 is not
+// enough, `--version` has to report Python 3. Stubs are shell scripts, so
+// these run on POSIX only.
+function withStub(script, fn) {
+  const dir = mkdtempSync(join(tmpdir(), "hf-python-probe-"));
+  try {
+    const stub = join(dir, "python");
+    writeFileSync(stub, `#!/bin/sh\n${script}\n`);
+    chmodSync(stub, 0o755);
+    fn(stub);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+}
+
+const posixOnly = { skip: process.platform === "win32" && "stub scripts need a POSIX shell" };
+
+test("defaultProbe accepts an interpreter reporting Python 3", posixOnly, () => {
+  withStub('echo "Python 3.12.4"', (stub) => assert.equal(defaultProbe(stub, ["--version"]), true));
+});
+
+test("defaultProbe rejects Python 2, which prints its version to stderr", posixOnly, () => {
+  withStub('echo "Python 2.7.18" >&2', (stub) =>
+    assert.equal(defaultProbe(stub, ["--version"]), false),
+  );
+});
+
+test("defaultProbe rejects an executable that exits 0 without a Python 3 version", posixOnly, () => {
+  withStub("exit 0", (stub) => assert.equal(defaultProbe(stub, ["--version"]), false));
+});
+
+test("defaultProbe rejects a command that doesn't exist", () => {
+  assert.equal(defaultProbe("/nonexistent/hf-python", ["--version"]), false);
 });
 
 test("pythonInvocation prepends the resolved prefix ahead of caller args", () => {
