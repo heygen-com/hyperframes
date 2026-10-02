@@ -128,7 +128,6 @@ export async function runHybridLayeredFrameLoop(input: HybridLoopInput): Promise
         cfg,
       );
       await initializeSession(s);
-      // The HDR video is the backdrop: composition-root backgrounds must not paint over it.
       await initTransparentBackground(s.page, { clearCompositionRoot: true });
       workerSessions.push(s);
     }

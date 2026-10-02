@@ -222,7 +222,6 @@ export async function runCaptureHdrStage(
     await initializeSession(domSession);
     assertNotAborted();
     lastBrowserConsole = domSession.browserConsoleBuffer;
-    // The HDR video is the backdrop: composition-root backgrounds must not paint over it.
     await initTransparentBackground(domSession.page, { clearCompositionRoot: true });
 
     // ── Scene detection for shader transitions ──────────────────────────
