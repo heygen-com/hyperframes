@@ -2,6 +2,7 @@ import { resolveStudioDistinctId } from "../telemetry/distinctId";
 import { browserTelemetryAllowed } from "../telemetry/policy";
 import { canaryEventProperties } from "../telemetry/canary";
 import { agentRuntimeProperty } from "../telemetry/agentRuntime";
+import { tabIdProperty } from "../telemetry/tabId";
 
 // PostHog public ingest key — write-only, safe to ship in the client bundle
 const POSTHOG_API_KEY = "phc_zjjbX0PnWxERXrMHhkEJWj9A9BhGVLRReICgsfTMmpx";
@@ -48,6 +49,9 @@ function getSessionProperties(): EventProperties {
     // and a property that only some events carry cannot answer it — the
     // breakdown silently reads as though the agent never used the rest.
     agent_runtime: agentRuntimeProperty(),
+    // Which page load this came from — distinct_id identifies the browser, not
+    // the page, so two tabs are otherwise one indistinguishable stream.
+    tab_id: tabIdProperty(),
     screen_width: window.screen?.width,
     screen_height: window.screen?.height,
     viewport_width: window.innerWidth,

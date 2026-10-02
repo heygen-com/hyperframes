@@ -51,7 +51,7 @@ export interface UseAutomationEdgeStretchInput {
   /** Pointer position as a clip-local time and a parameter value. */
   pointAt(clientX: number, clientY: number): { t: number; v: number };
   xOf(t: number): number;
-  commitPoints(points: HfAutomationLane["points"], persist: boolean): void;
+  commitPoints(points: HfAutomationLane["points"], persist: boolean, ended?: boolean): void;
   /** Clamp bound for the dragged edge. */
   duration: number;
   readOnly?: boolean | undefined;
@@ -252,9 +252,9 @@ export function useAutomationEdgeStretch({
     onHint(null);
     if (!crossed.current) return;
     crossed.current = false;
-    // A live write is a preview, so putting the snapshot back through the same
-    // channel is the whole revert — there is nothing persisted to undo.
-    commitPoints(points, false);
+    // Nothing was persisted: the snapshot goes back as the last live write, which
+    // also ends the lane's gesture so its before-value does not outlive it.
+    commitPoints(points, false, true);
     onRangeSelect?.(origin.t0, origin.t1, origin.v0, origin.v1);
   }, [drag, onHint, commitPoints, onRangeSelect]);
 

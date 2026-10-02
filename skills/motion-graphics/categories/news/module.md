@@ -11,7 +11,7 @@ Two layouts share that one highlight core — pick by aspect + whether there's a
 
 ## Source (Step 2)
 
-RWA / web search (or `hyperframes capture`) → a real article. The Director extracts the **keyword** (1–2 words / a number / a name — the hook) and, for Layout B, also a **brand logo**, a **date**, and a **person photo**. `asset_needs: { kind: news|web|image, query }` — request the logo (Wikimedia / simple-icons) and the person photo (Wikimedia) as separate asset queries. Run the person photo through `hyperframes remove-background <in> -o <out>.png` to get a transparent cutout.
+RWA / web search (or `hyperframes capture`) → a real article. The Director extracts the **keyword** (1–2 words / a number / a name — the hook) and, for Layout B, also a **brand logo**, a **date**, and a **person photo**. `asset_needs: { kind: news|web|image, query }` — request the logo (`media-use resolve --type logo`, theSVG-first) and the person photo (Wikimedia) as separate asset queries. Run the person photo through `hyperframes remove-background <in> -o <out>.png` to get a transparent cutout.
 
 ## The highlight core (shared by both layouts) — the marker-band technique
 

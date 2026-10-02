@@ -3,6 +3,8 @@ name: talking-head-recut
 description: Package an existing talking-head / interview / podcast video with timed, designed GRAPHIC OVERLAY cards — kinetic titles, lower-thirds, data callouts, quotes, side panels, picture-in-picture — synced to the transcript, on a 16:9 / 9:16 / 4:5 canvas of your choice; the clip plays untouched underneath. Trigger on "graphic overlays", "on-screen graphics", "package / dress up my video". Not plain subtitles (/embedded-captions). Unclear → /hyperframes.
 ---
 
+**Plugin installs:** Before setup or freshness commands, follow [plugin execution rules](../hyperframes/references/plugin-installation.md) when this skill is inside a HyperFrames plugin. Standalone installs keep the update instructions below.
+
 > **First, keep this skill fresh — confirm with the user before running:** `npx hyperframes skills update talking-head-recut`. A fast no-op when everything is current; otherwise it refreshes this skill plus the core domain skills it depends on before you rely on them.
 
 # Talking Head Recut
@@ -937,22 +939,13 @@ ffmpeg -y -i "$VIDEO_PATH" -c:v libx264 -crf 18 -g 30 -keyint_min 30 \
         <video
           id="bg-video"
           src="input-video.mp4"
-          muted
           playsinline
+          data-has-audio="true"
           data-start="0"
           data-duration="121.2"
           data-track-index="1"
         ></video>
       </div>
-      <!-- Preserve the source program audio while the visual video stays muted. -->
-      <audio
-        id="source-audio"
-        src="input-video.mp4"
-        data-start="0"
-        data-duration="121.2"
-        data-track-index="10"
-        data-volume="1"
-      ></audio>
 
       <!-- Layer 2: each card-host sits at the bounds dictated by its layout. -->
       <!-- IMPORTANT: every card-host MUST carry BOTH "card-host" and "clip" classes. -->
@@ -1161,7 +1154,7 @@ decides where the actual visible card sits.
 - Register one paused master timeline as `window.__timelines["talking-head-recut"]`.
 - Build timelines synchronously at page load; no `async`, `setTimeout`, Promises, or media `play()` calls.
 - Do not use `Math.random()` or `Date.now()` in render paths.
-- Do not use `repeat: -1`; calculate finite repeats from the video duration.
+- `repeat: -1` is allowed only under the finite root `data-duration`; for loops that must end earlier, calculate finite repeats from the video duration.
 - Prefer GSAP transforms and opacity (`x`, `y`, `scale`, `rotation`, `opacity`) over layout properties (`top`, `left`, `width`, `height`) for motion.
 - Animate wrappers such as `#video-wrap`, not the video element dimensions directly.
 - Avoid animating the same property on the same element from multiple timelines at the same time.
@@ -1180,11 +1173,8 @@ PRODUCER_BROWSER_GPU_MODE=hardware npx hyperframes render public \
 ```
 
 `hyperframes render <dir>` reads `<dir>/index.html` and produces the MP4.
-The canonical composition keeps the visual `<video>` muted and mounts the same
-source as the root `#source-audio` track, so the rendered MP4 preserves the
-talking-head audio without a manual remux. This uses a separate audio track
-rather than `data-has-audio="true"` so its volume and ducking remain independently
-controllable on the timeline.
+The source program audio stays on `#bg-video`, so the rendered MP4 preserves the
+talking-head audio without a manual remux.
 The flag `PRODUCER_BROWSER_GPU_MODE=hardware` (or `--browser-gpu`) is
 strongly recommended on macOS — software-only Chrome rendering times out
 on most laptops.

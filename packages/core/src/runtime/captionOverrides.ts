@@ -46,6 +46,7 @@ function parseCaptionOverridePayload(value: unknown): CaptionOverride[] {
 interface GsapTween {
   vars: Record<string, unknown>;
   startTime(): number;
+  invalidate?(): void;
 }
 
 interface GsapStatic {
@@ -61,7 +62,7 @@ interface GsapStatic {
  * vars through untouched, so this costs a declaring composition nothing at runtime.
  *
  * It exists because the fallback below has to GUESS. Classifying by colour equality breaks outright
- * when a composition's two states share a colour: every tween matches the dim baseline, and the
+ * when a composition's two states share a colour: every tween matches the rest colour, and the
  * active override is silently dropped. A declaration is the composition telling us what it built,
  * rather than us inferring it from what it happens to look like.
  */
@@ -113,104 +114,168 @@ function getOrCreateCaptionWrapper(el: HTMLElement): HTMLElement {
   return wrapper;
 }
 
-export function applyCaptionOverrides(): void {
-  const gsap = (window as unknown as { gsap?: GsapStatic }).gsap;
-  if (!gsap) return;
+const gsapOf = () => (window as unknown as { gsap?: GsapStatic }).gsap;
 
-  // Only fetch overrides if the composition has caption groups
-  if (document.querySelectorAll(".caption-group").length === 0) return;
+const fetchOverridesPayload = (): Promise<unknown> =>
+  fetch("caption-overrides.json").then((r) => (r.ok ? r.json() : null));
 
-  fetch("caption-overrides.json")
-    .then((r) => {
-      if (!r.ok) return null;
-      return r.json();
-    })
-    .then((data: unknown) => {
-      if (data === null) return;
-      const overrides = parseCaptionOverridePayload(data);
-      if (overrides.length === 0) return;
+const parseOverrides = (data: unknown): readonly CaptionOverride[] =>
+  data === null ? [] : parseCaptionOverridePayload(data);
 
-      // Build word element index for wordIndex fallback
-      const wordEls = getCaptionWordElements();
+function logInvalidOverrides(error: unknown): void {
+  const message = error instanceof Error ? error.message : String(error);
+  console.error(`[HyperFrames] Invalid caption-overrides.json: ${message}`);
+}
 
-      for (const override of overrides) {
-        let el: HTMLElement | null = null;
-        if (override.wordId) {
-          el = resolveCaptionWordElement(document.getElementById(override.wordId));
-        }
-        if (!el && override.wordIndex !== undefined) {
-          el = wordEls[override.wordIndex] ?? null;
-        }
-        if (!el) continue;
-
-        // Split into transform props (wrapper) and style props (word span)
-        const transformProps: Record<string, unknown> = {};
-        const styleProps: Record<string, unknown> = {};
-
-        if (override.x !== undefined) transformProps.x = override.x;
-        if (override.y !== undefined) transformProps.y = override.y;
-        if (override.scale !== undefined) transformProps.scale = override.scale;
-        if (override.rotation !== undefined) transformProps.rotation = override.rotation;
-        if (override.opacity !== undefined) styleProps.opacity = override.opacity;
-        if (override.fontSize !== undefined) styleProps.fontSize = `${override.fontSize}px`;
-        if (override.fontWeight !== undefined) styleProps.fontWeight = override.fontWeight;
-        if (override.fontFamily !== undefined) styleProps.fontFamily = override.fontFamily;
-
-        // Replace color values in existing GSAP tweens, classified in two layers.
-        //
-        // A tween that DECLARES its state is taken at its word. Anything undeclared falls back to
-        // colour equality against a dim reference — a guess, and the reason the declaration exists:
-        // two states sharing a colour make every tween look dim.
-        //
-        // The reference is drawn only from tweens the guess still applies to (a declared "dim" one
-        // if present, else the first undeclared one). Deriving it from a tween declared "active"
-        // would compare undeclared siblings against a colour that has explicitly said it is not the
-        // dim reference.
-        if (override.activeColor || override.dimColor) {
-          const allTweens = gsap.getTweensOf(el);
-          const colorTweens = allTweens
-            .filter((tw) => tw.vars.color !== undefined)
-            .sort((a, b) => a.startTime() - b.startTime());
-
-          const dimReference =
-            colorTweens.find((tw) => declaredCaptionState(tw) === "dim") ??
-            colorTweens.find((tw) => declaredCaptionState(tw) === undefined);
-          const dimBaseline = dimReference ? String(dimReference.vars.color) : "";
-
-          for (const tw of colorTweens) {
-            // A declaration wins over the colour guess, per tween, so a composition can declare
-            // some tweens and leave others to the fallback.
-            const state =
-              declaredCaptionState(tw) ??
-              (String(tw.vars.color) === dimBaseline ? "dim" : "active");
-            if (state === "dim") {
-              if (override.dimColor) tw.vars.color = override.dimColor;
-            } else if (override.activeColor) {
-              tw.vars.color = override.activeColor;
-            }
-          }
-
-          // Set current visible color (words start in dim state)
-          if (override.dimColor) {
-            gsap.set(el, { color: override.dimColor });
-          }
-        }
-
-        // Apply non-color style props
-        if (Object.keys(styleProps).length > 0) {
-          gsap.set(el, styleProps);
-        }
-
-        // Wrap the word in an inline-block span and apply transforms to the wrapper.
-        // This preserves all GSAP entrance/exit/karaoke animations on the inner span.
-        if (Object.keys(transformProps).length > 0) {
-          const wrapper = getOrCreateCaptionWrapper(el);
-          gsap.set(wrapper, transformProps);
-        }
-      }
-    })
+/** The page's caption overrides; empty when there are none or no GSAP to apply them with. */
+export function fetchCaptionOverrides(): Promise<readonly CaptionOverride[]> {
+  if (!gsapOf()) return Promise.resolve([]);
+  return fetchOverridesPayload()
+    .then(parseOverrides)
     .catch((error: unknown) => {
-      const message = error instanceof Error ? error.message : String(error);
-      console.error(`[HyperFrames] Invalid caption-overrides.json: ${message}`);
+      logInvalidOverrides(error);
+      return [];
     });
+}
+
+export function applyCaptionOverrides(
+  within?: readonly Element[],
+  beforeRewrite?: () => void,
+): Promise<void> {
+  if (!gsapOf()) return Promise.resolve();
+  // Only fetch overrides if the composition has caption groups
+  if (document.querySelectorAll(".caption-group").length === 0) return Promise.resolve();
+  return fetchOverridesPayload()
+    .then((data) => applyFetchedCaptionOverrides(parseOverrides(data), within, beforeRewrite))
+    .catch(logInvalidOverrides);
+}
+
+function findOverrideTarget(override: CaptionOverride, wordEls: HTMLElement[]): HTMLElement | null {
+  const byId = override.wordId
+    ? resolveCaptionWordElement(document.getElementById(override.wordId))
+    : null;
+  return byId ?? (override.wordIndex !== undefined ? (wordEls[override.wordIndex] ?? null) : null);
+}
+
+function definedProps(override: CaptionOverride, keys: (keyof CaptionOverride)[]) {
+  return Object.fromEntries(
+    keys.filter((key) => override[key] !== undefined).map((key) => [key, override[key]]),
+  );
+}
+
+// The colour the browser paints on `el` with `color` inline, so any spelling compares equal.
+// An empty `color` reads the stylesheet colour past whatever GSAP has rendered inline.
+function paintedColor(el: HTMLElement, color: string): string {
+  const inline = el.style.color;
+  el.style.color = color;
+  const painted = getComputedStyle(el).color;
+  el.style.color = inline;
+  return painted;
+}
+
+// What the word shows before it is spoken: its first colour tween's start colour (a fromTo()),
+// else its stylesheet colour.
+function restColorOf(el: HTMLElement, colorTweens: GsapTween[]): string {
+  const startAt = colorTweens[0]?.vars.startAt as { color?: unknown } | undefined;
+  return paintedColor(el, startAt?.color === undefined ? "" : String(startAt.color));
+}
+
+// A declaration wins, per tween; otherwise a tween back to the word's rest colour is dim.
+// `painted` caches resolutions for one apply: tween colours repeat, and each forces a style recalc.
+function tweenState(
+  tw: GsapTween,
+  el: HTMLElement,
+  rest: string,
+  painted: Map<string, string>,
+): "dim" | "active" {
+  const declared = declaredCaptionState(tw);
+  if (declared) return declared;
+  const color = String(tw.vars.color);
+  // var() and currentColor resolve per word, so only plain colours are shared.
+  if (/var\(|currentcolor/i.test(color)) return paintedColor(el, color) === rest ? "dim" : "active";
+  if (!painted.has(color)) painted.set(color, paintedColor(el, color));
+  return painted.get(color) === rest ? "dim" : "active";
+}
+
+// What the invalidated tweens re-read their start from, wherever the playhead has been. A from()
+// recorded its own start, and a word with no colour tween keeps its classes' colours.
+function restPaintOf(
+  override: CaptionOverride,
+  colorTweens: GsapTween[],
+  rest: string,
+): string | undefined {
+  if (override.dimColor) return override.dimColor;
+  if (colorTweens.length === 0 || colorTweens.some((tw) => tw.vars.runBackwards)) return undefined;
+  return rest;
+}
+
+function rewriteColorTweens(
+  gsap: GsapStatic,
+  el: HTMLElement,
+  override: CaptionOverride,
+  painted: Map<string, string>,
+): void {
+  const colorTweens = gsap
+    .getTweensOf(el)
+    .filter((tw) => tw.vars.color !== undefined)
+    .sort((a, b) => a.startTime() - b.startTime());
+  const rest = restColorOf(el, colorTweens);
+
+  for (const tw of colorTweens) {
+    const state = tweenState(tw, el, rest, painted);
+    const color = state === "dim" ? override.dimColor : override.activeColor;
+    if (color) tw.vars.color = color;
+    // Each re-reads its start from the word as repainted below, rewritten or not.
+    // A from() re-read that way would end on that colour instead.
+    if (!tw.vars.runBackwards) tw.invalidate?.();
+  }
+
+  const restPaint = restPaintOf(override, colorTweens, rest);
+  if (restPaint) gsap.set(el, { color: restPaint });
+}
+
+function applyWordOverride(
+  gsap: GsapStatic,
+  el: HTMLElement,
+  override: CaptionOverride,
+  painted: Map<string, string>,
+): void {
+  // Split into transform props (wrapper) and style props (word span)
+  const transformProps = definedProps(override, ["x", "y", "scale", "rotation"]);
+  const styleProps = definedProps(override, ["opacity", "fontWeight", "fontFamily"]);
+  if (override.fontSize !== undefined) styleProps.fontSize = `${override.fontSize}px`;
+
+  if (override.activeColor || override.dimColor) rewriteColorTweens(gsap, el, override, painted);
+
+  // Apply non-color style props
+  if (Object.keys(styleProps).length > 0) {
+    gsap.set(el, styleProps);
+  }
+
+  // Wrap the word in an inline-block span and apply transforms to the wrapper.
+  // This preserves all GSAP entrance/exit/karaoke animations on the inner span.
+  if (Object.keys(transformProps).length > 0) {
+    const wrapper = getOrCreateCaptionWrapper(el);
+    gsap.set(wrapper, transformProps);
+  }
+}
+
+export function applyFetchedCaptionOverrides(
+  overrides: readonly CaptionOverride[],
+  within?: readonly Element[],
+  beforeRewrite: () => void = () => {},
+): void {
+  const gsap = gsapOf();
+  if (!gsap || overrides.length === 0) return;
+  beforeRewrite();
+
+  // Build word element index for wordIndex fallback
+  const wordEls = getCaptionWordElements();
+  const painted = new Map<string, string>();
+
+  for (const override of overrides) {
+    const el = findOverrideTarget(override, wordEls);
+    if (!el || (within && !within.some((root) => root.contains(el)))) continue;
+    applyWordOverride(gsap, el, override, painted);
+  }
 }

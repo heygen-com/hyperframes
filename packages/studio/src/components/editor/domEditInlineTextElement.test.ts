@@ -30,6 +30,13 @@ describe("canEditElementTextInline", () => {
     expect(canEditElementTextInline(element)).toBe(true);
   });
 
+  it("opens styled copy whose formatting comes from another window", () => {
+    const element = mount("<h1>a <strong>bold</strong></h1>");
+    // happy-dom shares classes across windows; drop this window's HTMLElement as a foreign realm would.
+    Object.setPrototypeOf(element.firstElementChild, Element.prototype);
+    expect(canEditElementTextInline(element)).toBe(true);
+  });
+
   it("keeps out an element with a structural child, which the panel edits field by field", () => {
     expect(canEditElementTextInline(mount("<div><h1>a</h1><p>b</p></div>"))).toBe(false);
   });

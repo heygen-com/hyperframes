@@ -2,11 +2,13 @@ import { describe, it, expect, vi } from "vitest";
 import {
   calculateOptimalWorkers,
   computeWorkerSizing,
+  createPoolFailureHandler,
   distributeFrames,
   expectedFramesForTask,
   flagSilentWorkerExits,
   formatWorkerFailure,
   isFfmpegInfrastructureFailure,
+  isPoolFatalWorkerFailure,
   selectVerifySampleIndicesForTask,
   selectWorkerDiagnostics,
   shouldDisableBrowserPoolForParallelWorker,
@@ -17,6 +19,7 @@ import {
   type WorkerResult,
 } from "./parallelCoordinator.js";
 import type { EngineConfig } from "../config.js";
+import { CaptureFailure } from "./captureFailure.js";
 
 describe("parallel worker phase deadline", () => {
   it("fails a wedged operation with phase and browser diagnostics before the aggregate watchdog", async () => {
@@ -510,5 +513,99 @@ describe("isFfmpegInfrastructureFailure", () => {
     expect(isFfmpegInfrastructureFailure(undefined)).toBe(false);
     expect(isFfmpegInfrastructureFailure("psnr broken")).toBe(false);
     expect(isFfmpegInfrastructureFailure(42)).toBe(false);
+  });
+});
+
+describe("isPoolFatalWorkerFailure", () => {
+  const failure = (kind: CaptureFailure["kind"]) => new CaptureFailure({ kind, message: kind });
+
+  it("keeps the disk path's tolerance: transient deaths are retried per worker, not pool-fatal", () => {
+    expect(isPoolFatalWorkerFailure(failure("transient_browser"), false)).toBe(false);
+    expect(isPoolFatalWorkerFailure(failure("protocol_timeout"), false)).toBe(false);
+    expect(isPoolFatalWorkerFailure(failure("cancelled"), false)).toBe(false);
+    expect(isPoolFatalWorkerFailure(failure("authoring"), false)).toBe(true);
+    expect(isPoolFatalWorkerFailure(failure("io"), false)).toBe(true);
+  });
+
+  it("makes every non-cancelled failure pool-fatal on the streaming path", () => {
+    // No per-worker retry exists there; the dead worker's frames are gone and
+    // its peers would otherwise park until the watchdog relabels the death.
+    expect(isPoolFatalWorkerFailure(failure("transient_browser"), true)).toBe(true);
+    expect(isPoolFatalWorkerFailure(failure("protocol_timeout"), true)).toBe(true);
+    expect(isPoolFatalWorkerFailure(failure("authoring"), true)).toBe(true);
+    // Cancelled means the pool is already aborting: nothing to propagate.
+    expect(isPoolFatalWorkerFailure(failure("cancelled"), true)).toBe(false);
+  });
+});
+
+describe("createPoolFailureHandler", () => {
+  const fatal = () => new CaptureFailure({ kind: "transient_browser", message: "Target closed" });
+
+  it("delivers the original failure to the hook before the peers are aborted", () => {
+    const peerController = new AbortController();
+    const seen: Array<{ failure: CaptureFailure; abortedYet: boolean }> = [];
+    const handler = createPoolFailureHandler({
+      streaming: true,
+      peerController,
+      hooks: {
+        onWorkerFailure: (failure) =>
+          seen.push({ failure, abortedYet: peerController.signal.aborted }),
+      },
+    });
+    const failure = fatal();
+    handler.onFailure(failure);
+    expect(seen).toHaveLength(1);
+    expect(seen[0]?.failure).toBe(failure);
+    expect(seen[0]?.abortedYet).toBe(false);
+    expect(peerController.signal.aborted).toBe(true);
+    expect(peerController.signal.reason).toBe(failure);
+    expect(handler.firstFatalFailure()).toBe(failure);
+  });
+
+  it("still aborts the peers when the hook throws, and keeps the classified failure", () => {
+    const peerController = new AbortController();
+    const handler = createPoolFailureHandler({
+      streaming: true,
+      peerController,
+      hooks: {
+        onWorkerFailure: () => {
+          throw new Error("hook exploded");
+        },
+      },
+    });
+    const failure = fatal();
+    expect(() => handler.onFailure(failure)).not.toThrow();
+    expect(peerController.signal.aborted).toBe(true);
+    expect(peerController.signal.reason).toBe(failure);
+    expect(handler.firstFatalFailure()).toBe(failure);
+  });
+
+  it("ignores every failure after the first, which owns the abort reason", () => {
+    const peerController = new AbortController();
+    const hook = vi.fn();
+    const handler = createPoolFailureHandler({
+      streaming: true,
+      peerController,
+      hooks: { onWorkerFailure: hook },
+    });
+    const first = fatal();
+    handler.onFailure(first);
+    handler.onFailure(fatal());
+    expect(hook).toHaveBeenCalledTimes(1);
+    expect(peerController.signal.reason).toBe(first);
+  });
+
+  it("leaves the peers running for a cancellation on the streaming path", () => {
+    const peerController = new AbortController();
+    const hook = vi.fn();
+    const handler = createPoolFailureHandler({
+      streaming: true,
+      peerController,
+      hooks: { onWorkerFailure: hook },
+    });
+    handler.onFailure(new CaptureFailure({ kind: "cancelled", message: "aborted" }));
+    expect(hook).not.toHaveBeenCalled();
+    expect(peerController.signal.aborted).toBe(false);
+    expect(handler.firstFatalFailure()).toBeUndefined();
   });
 });

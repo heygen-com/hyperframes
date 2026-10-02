@@ -69,6 +69,20 @@ describe("classifyCaptureFailure", () => {
     expect(Object.isFrozen(failure.workerDiagnostics[0]?.lines)).toBe(true);
   });
 
+  it("classifies a broken encoder pipe as io, not authoring", () => {
+    // The streaming encoder's stdin write fails this way when ffmpeg dies
+    // first. Bucketed as authoring, PostHog blamed the composition for a host
+    // event and the cohort could not be root-caused.
+    for (const code of ["EPIPE", "EOF", "ECONNRESET"]) {
+      const withCode = Object.assign(new Error(`write ${code}`), { code });
+      expect(classifyCaptureFailure(withCode).kind).toBe("io");
+      // Flattened through a worker-pool message boundary the code is lost;
+      // the message alone must still classify.
+      expect(classifyCaptureFailure(new Error(`[Parallel] write ${code}`)).kind).toBe("io");
+    }
+    expect(classifyCaptureFailure(new Error("write to EPIPEline")).kind).toBe("authoring");
+  });
+
   it("classifies repeated operation text in linear time", () => {
     const repeatedCopy = "copy".repeat(25_000);
 

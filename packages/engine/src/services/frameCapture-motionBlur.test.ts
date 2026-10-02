@@ -28,13 +28,14 @@ interface RecordedSeek {
   time: number;
   suppressEvents?: boolean;
   subFrameDivisions?: number;
+  exact?: boolean;
 }
 
 function installPageGlobals(seeks: RecordedSeek[]): void {
   const root = globalThis as Record<string, unknown>;
   root.window = {
     __hf: {
-      seek: (time: number, options?: { suppressEvents?: boolean; subFrameDivisions?: number }) => {
+      seek: (time: number, options?: Omit<RecordedSeek, "time">) => {
         seeks.push({ time, ...options });
       },
     },
@@ -172,6 +173,23 @@ describe("sub-frame accumulation reaches the page with distinct sample times", (
     expect(vi.mocked(pageScreenshotCapture)).toHaveBeenCalledTimes(1);
     expect(seeks).toHaveLength(1);
     expect(seeks[0]).toEqual({ time: 10 / 30 });
+  });
+});
+
+describe("frame export keeps its frame grid (issue #4430)", () => {
+  // `exact` is the snapshot-only opt-out of the runtime's seek quantization. Export must
+  // never send it, or frames would land between grid points instead of on them.
+  it("never asks for an exact seek with motion blur off", async () => {
+    await captureFrameToBuffer(makeSession({ motionBlur: undefined }), 10, 10 / 30);
+
+    expect(seeks).toEqual([{ time: 10 / 30 }]);
+  });
+
+  it("never asks for an exact seek on any motion-blur sample", async () => {
+    await captureFrameToBuffer(makeSession(), 10, 10 / 30);
+
+    expect(seeks.length).toBeGreaterThan(1);
+    expect(seeks.every((s) => !("exact" in s))).toBe(true);
   });
 });
 

@@ -1,28 +1,28 @@
 ---
 title: "Animated Bar Chart"
 description: "A compact data card with deterministic bar growth and value callouts."
+mode: "frame"
 ---
 
+import { CatalogDetail, CatalogSlot } from "/snippets/catalog-detail.jsx";
 import { InstallCommand } from "/snippets/install-command.jsx";
 
-## Install
+<CatalogDetail
+  previewSrc="/public/catalog/components/animated-bar-chart.json"
+  compositionId="animated-bar-chart"
+  compositionSrc="compositions/components/animated-bar-chart.html"
+  title="Animated Bar Chart"
+  description="A compact data card with deterministic bar growth and value callouts."
+  variables={[]}
+  meta={{"category":"Data","badge":"Stable","codeLines":98}}
+  attribution={{"path":"registry/components/animated-bar-chart","tags":["data"]}}
+  hasCode
+  rawUrl="https://raw.githubusercontent.com/heygen-com/hyperframes/main/registry/components/animated-bar-chart/animated-bar-chart.html"
+>
 
-<InstallCommand command="npx hyperframes add animated-bar-chart" item="animated-bar-chart" />
+<CatalogSlot slot="code">
 
-That writes one file: `compositions/components/animated-bar-chart.html`.
-
-<iframe
-  className="w-full aspect-video rounded-xl border-0 bg-zinc-100 dark:bg-zinc-800"
-  title="animated-bar-chart preview"
-  loading="lazy"
-  srcDoc={`<!doctype html><html><head><meta charset="utf-8"><style>html,body{margin:0;height:100%;overflow:hidden;background:transparent}hyperframes-player{display:block;width:100%;height:100%}</style><script src="https://cdn.jsdelivr.net/npm/@hyperframes/player@latest/dist/hyperframes-player.global.js"><\/script></head><body><script>fetch("/public/catalog/components/animated-bar-chart.json").then(function(r){return r.json()}).then(function(d){var p=document.createElement("hyperframes-player");p.setAttribute("srcdoc",d.html);p.setAttribute("controls","");p.setAttribute("autoplay","");p.setAttribute("loop","");p.setAttribute("muted","");p.setAttribute("poster","https://static.heygen.ai/hyperframes-oss/docs/images/catalog/components/animated-bar-chart.png");document.body.appendChild(p)});<\/script></body></html>`}
-/>
-
-## Source
-
-<Accordion title="animated-bar-chart.html">
-
-```html
+```html animated-bar-chart.html
 <!--
   Animated Bar Chart - catalog component for HyperFrames.
 
@@ -123,11 +123,25 @@ That writes one file: `compositions/components/animated-bar-chart.html`.
 -->
 ```
 
-</Accordion>
+</CatalogSlot>
 
-## Usage
+<CatalogSlot slot="install">
 
-Open `compositions/components/animated-bar-chart.html` and paste its contents into your composition. See the comment header in the file for timeline integration guidance.
+<InstallCommand command="npx hyperframes add animated-bar-chart" item="animated-bar-chart" />
+
+That writes one file: `compositions/components/animated-bar-chart.html`.
+
+</CatalogSlot>
+
+<CatalogSlot slot="docs">
+
+## Paste it into your composition
+
+Open `compositions/components/animated-bar-chart.html` and copy what is inside into your own composition.
+The file opens with a comment header that walks you through it.
+
+A component has no size or duration of its own. It takes both from the composition
+you paste it into.
 
 {/* hf:generated-footer */}
 
@@ -138,3 +152,7 @@ Tagged `data`.
 - [Browse the complete Catalog](/catalog)
 - [Add assets and Catalog items in Studio](/studio/assets-and-blocks)
 - [Build a richer composition](/go-further)
+
+</CatalogSlot>
+
+</CatalogDetail>

@@ -17,6 +17,12 @@ export const DEFAULT_PREVIEW_ZOOM: PreviewZoomState = {
 const ZOOM_SENSITIVITY = 0.007;
 const MAX_DELTA = 10;
 
+export const isFitZoom = (zoomPercent: number) => Math.abs(zoomPercent - 100) < 0.5;
+
+export function isPreviewAtFit(state: PreviewZoomState): boolean {
+  return isFitZoom(state.zoomPercent) && Math.abs(state.panX) < 0.1 && Math.abs(state.panY) < 0.1;
+}
+
 export function toDomPrecision(value: number): number {
   return Math.round(value * 10000) / 10000;
 }
@@ -161,4 +167,31 @@ export function resolvePreviewWheelPan(input: {
     zoomPercent: clampPreviewZoomPercent(input.state.zoomPercent),
     ...pan,
   };
+}
+
+export interface PreviewVisibleRegion {
+  left: number;
+  top: number;
+  width: number;
+  height: number;
+}
+
+export function resolvePreviewVisibleRegion(input: {
+  state: PreviewZoomState;
+  viewportWidth: number;
+  viewportHeight: number;
+  contentWidth: number;
+  contentHeight: number;
+}): PreviewVisibleRegion {
+  const scale = clampPreviewZoomPercent(input.state.zoomPercent) / 100;
+  const axis = (pan: number, view: number, content: number): [number, number] => {
+    const size = content * scale;
+    if (!(size > 0)) return [0, 1];
+    const at = (edge: number) => Math.min(1, Math.max(0, (edge - pan + size / 2) / size));
+    const start = at(-view / 2);
+    return [start, at(view / 2) - start];
+  };
+  const [left, width] = axis(input.state.panX, input.viewportWidth, input.contentWidth);
+  const [top, height] = axis(input.state.panY, input.viewportHeight, input.contentHeight);
+  return { left, top, width, height };
 }

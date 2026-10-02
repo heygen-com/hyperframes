@@ -1,10 +1,12 @@
 import { describe, it, expect } from "vitest";
+import type { TimelineElement } from "../store/playerStore";
 import {
-  clampGroupMoveDelta,
+  groupMoveFloor,
   isMultiDragActive,
   isMultiDragPassenger,
   multiDragDeltaSeconds,
   multiDragPassengerOffsetPx,
+  resolveGroupMovers,
   type MultiDragPreviewInput,
 } from "./timelineMultiDragPreview";
 
@@ -92,36 +94,45 @@ describe("multiDragPassengerOffsetPx (rigid: every passenger shares the delta)",
   });
 });
 
-describe("clampGroupMoveDelta (rigid group move)", () => {
-  it("passes a rightward delta through unchanged (no right wall)", () => {
-    expect(clampGroupMoveDelta(3, [2, 5, 9])).toBe(3);
-    expect(clampGroupMoveDelta(1000, [0, 4])).toBe(1000);
+const at = (id: string, start: number, locked = false): TimelineElement => ({
+  id,
+  key: id,
+  tag: "video",
+  start,
+  duration: 1,
+  track: 0,
+  domId: id,
+  ...(locked ? { timelineLocked: true } : {}),
+});
+
+describe("groupMoveFloor (rigid group move)", () => {
+  it("lets the grabbed clip go as far left as the leftmost mover allows, and no further", () => {
+    expect(groupMoveFloor(at("g", 10), [at("g", 10), at("p", 1), at("q", 4)])).toBe(9);
+    expect(groupMoveFloor(at("g", 5), [at("g", 5), at("p", 8)])).toBe(0); // the grabbed clip is leftmost
   });
 
-  it("passes a leftward delta through when no member would cross 0", () => {
-    // Leftmost member at 5, moving left by 3 → 2 ≥ 0, so unclamped.
-    expect(clampGroupMoveDelta(-3, [5, 8, 12])).toBe(-3);
+  it("forbids any leftward move once a mover sits at 0", () => {
+    expect(groupMoveFloor(at("g", 3), [at("g", 3), at("p", 0)])).toBe(3);
   });
 
-  it("clamps a leftward delta so the leftmost member stops exactly at 0", () => {
-    // Leftmost at 2 → the furthest left the group can move is -2 (that member → 0).
-    // A pointer asking for -5 is clamped to -2: the grabbed clip stops with the
-    // formation instead of out-running it.
-    expect(clampGroupMoveDelta(-5, [2, 6, 10])).toBe(-2);
+  it("stops a nested mover at its host composition's start, and a lone clip at its own host", () => {
+    const nested = { ...at("p", 3), parentCompositionStart: 2 };
+    expect(groupMoveFloor(at("g", 10), [at("g", 10), nested])).toBe(9);
+    expect(groupMoveFloor(nested, [])).toBe(2);
+  });
+});
+
+describe("resolveGroupMovers (the clips a group drag moves)", () => {
+  const elements = [at("g", 5), at("p", 2), at("locked", 0, true), at("other", 1)];
+
+  it("is every selected clip that can move, never a locked one or an unselected one", () => {
+    const movers = resolveGroupMovers(elements, new Set(["g", "p", "locked"]), "g");
+    expect(movers?.map((e) => e.id)).toEqual(["g", "p"]);
   });
 
-  it("is bounded by the MOST-constrained (leftmost) member, not the grabbed one", () => {
-    // Grabbed clip is at 10; a passenger at 1 is the constraint. Max left = -1.
-    expect(clampGroupMoveDelta(-8, [10, 1, 4])).toBe(-1);
-  });
-
-  it("already-at-0 member forbids any leftward move", () => {
-    expect(clampGroupMoveDelta(-4, [0, 3, 7])).toBe(0);
-    // rightward still allowed
-    expect(clampGroupMoveDelta(2, [0, 3, 7])).toBe(2);
-  });
-
-  it("returns the raw delta for an empty formation", () => {
-    expect(clampGroupMoveDelta(-9, [])).toBe(-9);
+  it("is null when the grabbed clip is not part of a multi-selection", () => {
+    expect(resolveGroupMovers(elements, new Set(["g"]), "g")).toBeNull();
+    expect(resolveGroupMovers(elements, new Set(["p", "other"]), "g")).toBeNull();
+    expect(resolveGroupMovers(elements, undefined, "g")).toBeNull();
   });
 });

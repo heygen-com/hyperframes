@@ -29,10 +29,12 @@ const STYLE_SELECTOR = "style";
 const SCRIPT_SELECTOR = "script";
 
 /**
- * `<head>` links both paths hoist into the host document. Stylesheets carry
+ * Links both paths hoist into the host document. Stylesheets carry
  * webfonts a composition's CSS depends on; preconnects are their latency hint.
  */
 const HOISTED_LINK_SELECTOR = 'link[rel="stylesheet"], link[rel="preconnect"]';
+
+export const EXTRACTED_COMPOSITION_ASSET_SELECTOR = `${STYLE_SELECTOR}, ${SCRIPT_SELECTOR}, ${HOISTED_LINK_SELECTOR}`;
 
 /**
  * The compiler's nesting cap, enforced against the ancestry chain rather than a
@@ -131,7 +133,7 @@ export interface CompositionAssemblyPlan<TElement extends AssemblyAttributed> {
    */
   scriptSources: TElement[];
 
-  /** `<head>` links to hoist into the host document. */
+  /** Head and content links to hoist into the host document. */
   linkSources: TElement[];
 
   /**
@@ -189,7 +191,10 @@ export function planCompositionAssembly<TElement extends AssemblyAttributed>(
       ...toArray(assetHead?.querySelectorAll(SCRIPT_SELECTOR)),
       ...toArray(contentNode.querySelectorAll(SCRIPT_SELECTOR)),
     ],
-    linkSources: toArray(head?.querySelectorAll(HOISTED_LINK_SELECTOR)),
+    linkSources: [
+      ...toArray(head?.querySelectorAll(HOISTED_LINK_SELECTOR)),
+      ...toArray(contentNode.querySelectorAll(HOISTED_LINK_SELECTOR)),
+    ],
     variableDefaultCarriers: [documentElement, innerRoot].filter(
       (carrier): carrier is TElement => carrier != null,
     ),

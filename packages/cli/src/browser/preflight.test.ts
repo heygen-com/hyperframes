@@ -7,6 +7,7 @@ import {
   checkDisk,
   extractMajorVersion,
   parseToolVersion,
+  resolveRenderBrowser,
   runEnvironmentChecks,
 } from "./preflight.js";
 import * as manager from "./manager.js";
@@ -161,8 +162,38 @@ describe("runEnvironmentChecks", () => {
     });
     expect(ffmpeg?.detail).toContain(process.execPath);
     expect(ffmpeg?.detail).toContain("3221225781");
-    expect(ffmpeg?.hint).toContain("working 64-bit FFmpeg build");
     expect(result.ffmpegPath).toBeUndefined();
+  });
+
+  // Windows DLL advice only on Windows; elsewhere the platform install hint.
+  describe("FFmpeg cannot-start hint is platform-specific", () => {
+    const realPlatform = process.platform;
+
+    afterEach(() => {
+      Object.defineProperty(process, "platform", { value: realPlatform, configurable: true });
+    });
+
+    it.each([
+      { platform: "darwin" as const, expectedHint: "brew install ffmpeg" },
+      { platform: "sunos" as const, expectedHint: "https://ffmpeg.org/download.html" },
+      {
+        platform: "win32" as const,
+        expectedHint: "Install a working 64-bit FFmpeg build with all required runtime DLLs.",
+      },
+    ])("gives the $platform cannot-start hint", async ({ platform, expectedHint }) => {
+      Object.defineProperty(process, "platform", { value: platform, configurable: true });
+      runProcess.mockImplementation((binaryPath: string) => {
+        if (binaryPath !== process.env.HYPERFRAMES_FFMPEG_PATH)
+          return Promise.resolve({ stdout: "ffprobe version 7.1.1\n", stderr: "" });
+        throw Object.assign(new Error("cannot execute binary file"), { status: 126 });
+      });
+
+      const result = await runEnvironmentChecks();
+      const ffmpeg = result.outcomes.find((outcome) => outcome.name === "FFmpeg");
+
+      expect(ffmpeg?.title).toBe("FFmpeg cannot start");
+      expect(ffmpeg?.hint).toBe(expectedHint);
+    });
   });
 
   it("validates an explicit browser path without needing browser discovery", async () => {
@@ -177,6 +208,7 @@ describe("runEnvironmentChecks", () => {
       versionMajor: 7,
     });
     expect(result.browserVersionMajor).toBe(7);
+    expect(result.browserInstall).toMatchObject({ pathAscii: true });
   });
 
   it("reports Chrome as not found (no throw) when browser discovery throws on a corrupt cache", async () => {
@@ -319,6 +351,23 @@ describe("runEnvironmentChecks — Chrome shared libraries (Linux/WSL)", () => {
 
     const result = await runEnvironmentChecks({ includeBrowser: true });
     expect(result.outcomes.find((o) => o.name === "Chrome")).toMatchObject({ ok: true });
+  });
+
+  it("resolveRenderBrowser returns the browser the render check found", async () => {
+    vi.spyOn(manager, "findBrowser").mockResolvedValue({
+      executablePath: process.execPath,
+      source: "system",
+    });
+    await expect(resolveRenderBrowser()).resolves.toMatchObject({
+      executablePath: process.execPath,
+    });
+  });
+
+  it("resolveRenderBrowser refuses with the Chrome check's own message when none resolves", async () => {
+    vi.spyOn(manager, "findBrowser").mockResolvedValue(undefined);
+    await expect(resolveRenderBrowser()).rejects.toThrow(
+      /Chrome not found: Chrome Headless Shell is required.*npx hyperframes browser ensure/,
+    );
   });
 });
 

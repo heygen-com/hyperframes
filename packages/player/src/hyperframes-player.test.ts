@@ -5,7 +5,7 @@ import { formatTime, formatSpeed, SPEED_PRESETS } from "./controls.js";
 // new stopMedia / muted tests repeat this `Object.defineProperty(... { get })`
 // shape; routing through a named helper keeps the per-test bodies focused on
 // the actual assertion.
-function stubIframeContentDocument(iframe: HTMLIFrameElement, doc: Document): void {
+function stubIframeContentDocument(iframe: HTMLIFrameElement, doc: Document | null): void {
   Object.defineProperty(iframe, "contentDocument", {
     configurable: true,
     get: () => doc,
@@ -131,6 +131,9 @@ describe("HyperframesPlayer parent-frame media", () => {
     seek: (t: number) => void;
     _audioOwner?: "runtime" | "parent";
     _promoteToParentProxy?: () => void;
+    _ready?: boolean;
+    _assetsReady?: boolean;
+    _parentTickRaf?: number | null;
   };
 
   let player: PlayerElement;
@@ -254,6 +257,23 @@ describe("HyperframesPlayer parent-frame media", () => {
 
     player.pause();
     expect(mockAudio.pause).toHaveBeenCalled();
+  });
+
+  it("hands audio back to the iframe and pauses the proxy as soon as the source changes", () => {
+    player.setAttribute("audio-src", "https://cdn.example.com/narration.mp3");
+    document.body.appendChild(player);
+    player._promoteToParentProxy?.();
+    player._ready = true;
+    player._assetsReady = true;
+    player.play();
+    expect(player._parentTickRaf).not.toBeNull();
+    mockAudio.pause.mockClear();
+
+    player.setAttribute("src", "next-composition.html");
+
+    expect(player._audioOwner).toBe("runtime");
+    expect(mockAudio.pause).toHaveBeenCalled();
+    expect(player._parentTickRaf).toBeNull();
   });
 
   function dispatchAutoplayBlockedFromPlayerFrame(player: HTMLElement): HTMLMediaElement {
@@ -461,10 +481,11 @@ describe("HyperframesPlayer parent-frame media", () => {
       windowAdd.mock.calls.filter(([eventName]) => eventName === "message").length -
         windowRemove.mock.calls.filter(([eventName]) => eventName === "message").length,
     ).toBe(1);
+    // The one load listener is added in the constructor, before these spies.
     expect(
       iframeAdd.mock.calls.filter(([eventName]) => eventName === "load").length -
         iframeRemove.mock.calls.filter(([eventName]) => eventName === "load").length,
-    ).toBe(1);
+    ).toBe(0);
   });
 
   it("returns parent-media ownership to the runtime after reconnect", () => {
@@ -726,14 +747,14 @@ describe("HyperframesPlayer media MutationObserver scoping", () => {
     expect(observedTargets).not.toContain(fakeDoc.body);
     // Subtree is still required — sub-composition media can be deeply nested
     // inside the host (e.g. wrapper div around the `<audio>`).
-    // Attribute observation on "preload" is required so the player creates
-    // parent proxies just-in-time when the preloader promotes a clip.
+    // Attribute observation on "preload" and "src" is required so the player creates
+    // parent proxies when the preloader promotes a clip, and follows a re-pointed one.
     for (const call of observeSpy.mock.calls) {
       expect(call[1]).toEqual({
         childList: true,
         subtree: true,
         attributes: true,
-        attributeFilter: ["preload"],
+        attributeFilter: ["preload", "src"],
       });
     }
   });
@@ -1146,6 +1167,29 @@ describe("HyperframesPlayer seek() sync path", () => {
     expect(post).not.toHaveBeenCalled();
   });
 
+  it("fires durationchange when a ready composition replaces its timeline", () => {
+    const makeTimeline = (duration: number): TimelineStub => ({
+      duration: vi.fn(() => duration),
+      time: vi.fn(() => 0),
+      seek: vi.fn(),
+      play: vi.fn(),
+      pause: vi.fn(),
+    });
+    const timelines = { main: makeTimeline(5) };
+    stubContentWindow({ __timelines: timelines, postMessage: vi.fn() });
+    const durations: number[] = [];
+    player.addEventListener("durationchange", (event) => {
+      durations.push((event as CustomEvent<{ duration: number }>).detail.duration);
+    });
+
+    player.seek(1);
+    (player as unknown as { _ready: boolean })._ready = true;
+    timelines.main = makeTimeline(8);
+    player.seek(6);
+
+    expect(durations).toEqual([8]);
+  });
+
   it("plays and pauses same-origin __timelines when no runtime bridge exists", () => {
     const timeline: TimelineStub = {
       duration: vi.fn(() => 5),
@@ -1331,11 +1375,14 @@ describe("HyperframesPlayer loop end-state handling", () => {
   type PlayerInternal = HTMLElement & {
     iframe: HTMLIFrameElement;
     play: () => void;
+    pause: () => void;
     seek: (timeInSeconds: number) => void;
     loop: boolean;
     _duration: number;
     _currentTime: number;
     _paused: boolean;
+    _ready: boolean;
+    _assetsReady: boolean;
     _onMessage: (event: MessageEvent) => void;
   };
 
@@ -1381,6 +1428,7 @@ describe("HyperframesPlayer loop end-state handling", () => {
     expect(seek).toHaveBeenCalledWith(0);
     expect(play).toHaveBeenCalled();
     expect(player._paused).toBe(false);
+    expect(player._currentTime).toBe(0);
   });
 
   it("fires ended and stays paused when a non-looping composition posts its final paused state", () => {
@@ -1408,6 +1456,142 @@ describe("HyperframesPlayer loop end-state handling", () => {
     expect(play).not.toHaveBeenCalled();
     expect(ended).toHaveBeenCalledTimes(1);
     expect(player._paused).toBe(true);
+  });
+
+  function postState(frame: number, isPlaying: boolean, currentTime?: number, ended = false) {
+    player._onMessage(
+      new MessageEvent("message", {
+        source: frameWindow,
+        data: { source: "hf-preview", type: "state", frame, currentTime, ended, isPlaying },
+      }),
+    );
+  }
+
+  // 4.97 s at 30 fps is 149.1 frames: the runtime posts frame 149 both at its end and
+  // on a pause just before it. Its `ended` flag tells the two apart, and the player's
+  // length can sit a float step past the runtime's end (0.48 + 4.49 here).
+  it("ends a film when the runtime reports its end, even a float step short of the length", () => {
+    const ended = vi.fn();
+    player.addEventListener("ended", ended);
+    player.loop = false;
+    player._duration = 0.48 + 4.49;
+    player._paused = false;
+
+    postState(149, true, 4.96);
+    expect(ended).not.toHaveBeenCalled();
+
+    postState(149, false, 4.97, true);
+    expect(ended).toHaveBeenCalledTimes(1);
+    expect(player._currentTime).toBe(player._duration);
+  });
+
+  it("takes a length under a second from the runtime and ends there", () => {
+    const ended = vi.fn();
+    player.addEventListener("ended", ended);
+    player.loop = false;
+    player._onMessage(
+      new MessageEvent("message", {
+        source: frameWindow,
+        data: { source: "hf-preview", type: "timeline", durationSeconds: 0.2, durationInFrames: 6 },
+      }),
+    );
+    expect(player._duration).toBe(0.2);
+    player._paused = false;
+
+    postState(6, false, 0.2, true);
+
+    expect(ended).toHaveBeenCalledTimes(1);
+    expect(player._currentTime).toBe(0.2);
+  });
+
+  it("loops a film whose length falls between two frames", () => {
+    const seek = vi.spyOn(player, "seek");
+    player.loop = true;
+    player._duration = 4.97;
+    player._paused = false;
+
+    postState(149, false, 4.97, true);
+
+    expect(seek).toHaveBeenCalledWith(0);
+    expect(player._paused).toBe(false);
+  });
+
+  it("keeps a pause the runtime marks as not ended, even at exactly the length", () => {
+    const ended = vi.fn();
+    const seek = vi.spyOn(player, "seek");
+    player.addEventListener("ended", ended);
+    player._duration = 4.97;
+
+    for (const loop of [false, true]) {
+      player.loop = loop;
+      player._paused = false;
+      postState(149, false, 4.97, false);
+
+      expect(ended).not.toHaveBeenCalled();
+      expect(seek).not.toHaveBeenCalled();
+      expect(player._paused).toBe(true);
+    }
+  });
+
+  it("ends or loops a film the runtime plays past the length without ever reporting its end", () => {
+    const ended = vi.fn();
+    const seek = vi.spyOn(player, "seek");
+    player.addEventListener("ended", ended);
+    player._duration = 1;
+
+    player.loop = true;
+    player._paused = false;
+    postState(31, true, 1.02, false);
+    expect(seek).toHaveBeenCalledWith(0);
+
+    player.loop = false;
+    player._paused = false;
+    postState(31, true, 1.02, false);
+    expect(ended).toHaveBeenCalledTimes(1);
+  });
+
+  it("leaves a film paused at its end alone when the runtime keeps reporting the end", () => {
+    const ended = vi.fn();
+    const seek = vi.spyOn(player, "seek");
+    player.addEventListener("ended", ended);
+    player.loop = true;
+    player._duration = 4.97;
+    player._paused = true;
+
+    postState(149, false, 4.97, true);
+
+    expect(ended).not.toHaveBeenCalled();
+    expect(seek).not.toHaveBeenCalled();
+    expect(player._paused).toBe(true);
+  });
+
+  it("keeps a pause from inside the composition on the last frame", () => {
+    const ended = vi.fn();
+    const seek = vi.spyOn(player, "seek");
+    player.addEventListener("ended", ended);
+    player.loop = true;
+    player._duration = 4.97;
+    player._paused = false;
+
+    postState(149, false, 4.95);
+
+    expect(ended).not.toHaveBeenCalled();
+    expect(seek).not.toHaveBeenCalled();
+    expect(player._paused).toBe(true);
+    expect(player._currentTime).toBe(4.95);
+  });
+
+  it("resumes where a host pause on the last frame left it", () => {
+    player._duration = 4.97;
+    player._paused = false;
+    player.pause();
+    postState(149, false, 4.95);
+    const seek = vi.spyOn(player, "seek");
+
+    player.play();
+
+    expect(seek).not.toHaveBeenCalled();
+    expect(player._currentTime).toBe(4.95);
   });
 
   it("play() seeks to 0 and replays when called after the video has ended", () => {
@@ -1457,6 +1641,26 @@ describe("HyperframesPlayer loop end-state handling", () => {
     player.play();
 
     expect(seek).not.toHaveBeenCalled();
+    expect(player._paused).toBe(false);
+  });
+
+  it("rewinds and keeps playing when an ended listener calls play", () => {
+    const seek = vi.spyOn(player, "seek");
+    player._ready = true;
+    player._assetsReady = true;
+    player._duration = 4;
+    player._paused = false;
+    player.addEventListener("ended", () => player.play(), { once: true });
+
+    player._onMessage(
+      new MessageEvent("message", {
+        source: frameWindow,
+        data: { source: "hf-preview", type: "state", frame: 120, isPlaying: false },
+      }),
+    );
+
+    expect(seek).toHaveBeenCalledWith(0);
+    expect(player._currentTime).toBe(0);
     expect(player._paused).toBe(false);
   });
 
@@ -2013,8 +2217,19 @@ describe("HyperframesPlayer runtime ready handshake", () => {
     ready: boolean;
     duration: number;
     paused: boolean;
+    compositionWidth: number;
+    compositionHeight: number;
+    scenes: Array<{ id: string; start: number; duration: number }>;
     iframe: HTMLIFrameElement;
+    play: () => void;
+    pause: () => void;
+    seek: (t: number) => void;
     _onMessage: (event: MessageEvent) => void;
+    _onProbeReady: (r: {
+      duration: number;
+      adapter: { kind: string; getDuration: () => number };
+      compositionSize: { width: number; height: number } | null;
+    }) => void;
     _onIframeLoad: () => void;
     _runtimeBridgeReady: boolean;
   }
@@ -2030,7 +2245,7 @@ describe("HyperframesPlayer runtime ready handshake", () => {
     });
   }
 
-  function timelineMessage(durationInFrames = 120) {
+  function timelineMessage(durationInFrames = 120, extra: Record<string, unknown> = {}) {
     return new MessageEvent("message", {
       source: frameWindow,
       data: {
@@ -2038,7 +2253,15 @@ describe("HyperframesPlayer runtime ready handshake", () => {
         type: "timeline",
         durationInFrames,
         scenes: [],
+        ...extra,
       },
+    });
+  }
+
+  function stageSizeMessage(width: number, height: number) {
+    return new MessageEvent("message", {
+      source: frameWindow,
+      data: { source: "hf-preview", type: "stage-size", width, height },
     });
   }
 
@@ -2098,6 +2321,31 @@ describe("HyperframesPlayer runtime ready handshake", () => {
       action: "set-playback-rate",
       playbackRate: 1.25,
     });
+  });
+
+  it("replays low-power-idle as a slow idle heartbeat, and a normal one without it", () => {
+    postSpy.mockClear();
+    player._onMessage(readyMessage());
+    expect(findControlCalls("set-idle-heartbeat")[0]?.[0]).toMatchObject({ slow: false });
+
+    player.setAttribute("low-power-idle", "");
+    postSpy.mockClear();
+    player._onMessage(readyMessage());
+    expect(findControlCalls("set-idle-heartbeat")[0]?.[0]).toMatchObject({
+      action: "set-idle-heartbeat",
+      slow: true,
+    });
+  });
+
+  it("sends low-power-idle to a ready runtime as soon as it changes", () => {
+    player._onMessage(readyMessage());
+    postSpy.mockClear();
+    player.setAttribute("low-power-idle", "");
+    expect(findControlCalls("set-idle-heartbeat")[0]?.[0]).toMatchObject({ slow: true });
+
+    postSpy.mockClear();
+    player.removeAttribute("low-power-idle");
+    expect(findControlCalls("set-idle-heartbeat")[0]?.[0]).toMatchObject({ slow: false });
   });
 
   it("keeps runtime WebAudio media enabled outside slideshow embeds", () => {
@@ -2193,16 +2441,222 @@ describe("HyperframesPlayer runtime ready handshake", () => {
   });
 
   it("treats a cross-origin runtime timeline message as player ready", () => {
-    const readyEvents: Array<{ duration: number }> = [];
+    const readyEvents: unknown[] = [];
     player.addEventListener("ready", (event) => {
-      readyEvents.push((event as CustomEvent<{ duration: number }>).detail);
+      readyEvents.push((event as CustomEvent).detail);
     });
 
     player._onMessage(timelineMessage(120));
 
     expect(player.ready).toBe(true);
     expect(player.duration).toBe(4);
-    expect(readyEvents).toEqual([{ duration: 4 }]);
+    expect(readyEvents).toEqual([{ duration: 4, compositionWidth: 1920, compositionHeight: 1080 }]);
+  });
+
+  it("reports the picture size in ready and as public properties", () => {
+    const readyEvents: unknown[] = [];
+    player.addEventListener("ready", (event) => {
+      readyEvents.push((event as CustomEvent).detail);
+    });
+
+    player._onMessage(timelineMessage(120, { compositionWidth: 1080, compositionHeight: 1920 }));
+
+    expect(readyEvents).toEqual([{ duration: 4, compositionWidth: 1080, compositionHeight: 1920 }]);
+    expect(player.compositionWidth).toBe(1080);
+    expect(player.compositionHeight).toBe(1920);
+  });
+
+  it("reports the picture size in ready on the same-origin probe path", () => {
+    const readyEvents: unknown[] = [];
+    player.addEventListener("ready", (event) => {
+      readyEvents.push((event as CustomEvent).detail);
+    });
+
+    player._onProbeReady({
+      duration: 5,
+      adapter: { kind: "runtime", getDuration: () => 5 },
+      compositionSize: { width: 1080, height: 1350 },
+    });
+
+    expect(readyEvents).toEqual([{ duration: 5, compositionWidth: 1080, compositionHeight: 1350 }]);
+  });
+
+  it("fires a timeline message's events only after the whole message is applied", () => {
+    const seen: string[] = [];
+    const state = () =>
+      `ready=${player.ready} d=${player.duration} ` +
+      `${player.compositionWidth}x${player.compositionHeight} scenes=${player.scenes.length}`;
+    for (const type of ["resize", "scenes", "durationchange", "ready"]) {
+      player.addEventListener(type, () => seen.push(`${type}: ${state()}`));
+    }
+
+    player._onMessage(
+      timelineMessage(120, {
+        compositionWidth: 1080,
+        compositionHeight: 1920,
+        scenes: [{ id: "a", start: 0, duration: 4 }],
+      }),
+    );
+    seen.push("--");
+    player._onMessage(
+      timelineMessage(180, {
+        compositionWidth: 1280,
+        compositionHeight: 720,
+        scenes: [
+          { id: "a", start: 0, duration: 4 },
+          { id: "b", start: 4, duration: 2 },
+        ],
+      }),
+    );
+
+    expect(seen).toEqual([
+      "resize: ready=true d=4 1080x1920 scenes=1",
+      "ready: ready=true d=4 1080x1920 scenes=1",
+      "scenes: ready=true d=4 1080x1920 scenes=1",
+      "--",
+      "resize: ready=true d=6 1280x720 scenes=2",
+      "durationchange: ready=true d=6 1280x720 scenes=2",
+      "scenes: ready=true d=6 1280x720 scenes=2",
+    ]);
+  });
+
+  it("keeps ready ahead of the events it causes on an opaque-origin timeline", () => {
+    stubIframeContentDocument(player.iframe, null);
+    player.setAttribute("autoplay", "");
+    const seen: string[] = [];
+    for (const type of ["ready", "assetsready", "play"]) {
+      player.addEventListener(type, () => seen.push(type));
+    }
+
+    player._onMessage(timelineMessage(120));
+
+    expect(seen).toEqual(["ready", "assetsready", "play"]);
+  });
+
+  it("fires an event a ready listener raises after the rest of the update", () => {
+    stubIframeContentDocument(player.iframe, null);
+    player.setAttribute("autoplay", "");
+    const seen: string[] = [];
+    for (const type of ["ready", "assetsready", "play", "pause"]) {
+      player.addEventListener(type, () => seen.push(type));
+    }
+    player.addEventListener("ready", () => player.pause(), { once: true });
+
+    player._onMessage(timelineMessage(120));
+
+    // Autoplay is decided after `ready`'s listeners.
+    expect(seen).toEqual(["ready", "assetsready", "pause", "play"]);
+    expect(player.paused).toBe(false);
+  });
+
+  it("keeps autoplay when a ready listener seeks", () => {
+    stubIframeContentDocument(player.iframe, null);
+    player.setAttribute("autoplay", "");
+    player.addEventListener("ready", () => player.seek(1), { once: true });
+
+    player._onMessage(timelineMessage(120));
+
+    expect(player.paused).toBe(false);
+    expect(findControlCalls("play")).toHaveLength(1);
+  });
+
+  it("applies a message a listener delivers inside the update after the first one's events", () => {
+    const seen: string[] = [];
+    for (const type of ["ready", "durationchange", "scenes"]) {
+      player.addEventListener(type, () => seen.push(`${type} d=${player.duration}`));
+    }
+    player.addEventListener("ready", () => player._onMessage(timelineMessage(180)), { once: true });
+
+    player._onMessage(timelineMessage(120));
+
+    expect(seen).toEqual(["ready d=4", "scenes d=6", "durationchange d=6", "scenes d=6"]);
+  });
+
+  it("runs the rest of an update's events when a listener throws", () => {
+    stubIframeContentDocument(player.iframe, null);
+    const seen: string[] = [];
+    player.addEventListener("ready", () => {
+      throw new Error("listener failed");
+    });
+    player.addEventListener("assetsready", () => seen.push("assetsready"));
+
+    expect(() => player._onMessage(timelineMessage(120))).toThrow("listener failed");
+    expect(seen).toEqual(["assetsready"]);
+  });
+
+  it("keeps raising events after an action throws inside an update", () => {
+    stubIframeContentDocument(player.iframe, null);
+    player.setAttribute("autoplay", "");
+    vi.spyOn(player, "play").mockImplementationOnce(() => {
+      throw new Error("play failed");
+    });
+    expect(() => player._onMessage(timelineMessage(120))).toThrow("play failed");
+    const durations: number[] = [];
+    player.addEventListener("durationchange", (event) => {
+      durations.push((event as CustomEvent<{ duration: number }>).detail.duration);
+    });
+
+    player._onMessage(timelineMessage(180));
+
+    expect(durations).toEqual([6]);
+  });
+
+  it("fires the probe path's resize only once ready is set", () => {
+    const seen: string[] = [];
+    player.addEventListener("resize", () => seen.push(`resize ready=${player.ready}`));
+
+    player._onProbeReady({
+      duration: 5,
+      adapter: { kind: "runtime", getDuration: () => 5 },
+      compositionSize: { width: 1080, height: 1350 },
+    });
+
+    expect(seen).toEqual(["resize ready=true"]);
+  });
+
+  it("warns when the same-origin probe readies a zero-size player", () => {
+    const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => undefined);
+
+    player._onProbeReady({
+      duration: 5,
+      adapter: { kind: "runtime", getDuration: () => 5 },
+      compositionSize: { width: 1080, height: 1920 },
+    });
+
+    const rescaleWarnings = warnSpy.mock.calls.filter((call) =>
+      String(call[0]).includes("rescale no-op after ready"),
+    );
+    expect(rescaleWarnings).toHaveLength(1);
+  });
+
+  it("fires resize only when the picture size changes", () => {
+    const sizes: unknown[] = [];
+    player.addEventListener("resize", (event) => {
+      sizes.push((event as unknown as CustomEvent).detail);
+    });
+
+    player._onMessage(timelineMessage(120, { compositionWidth: 1080, compositionHeight: 1920 }));
+    player._onMessage(stageSizeMessage(1080, 1920));
+    player._onMessage(stageSizeMessage(1280, 720));
+
+    expect(sizes).toEqual([
+      { compositionWidth: 1080, compositionHeight: 1920 },
+      { compositionWidth: 1280, compositionHeight: 720 },
+    ]);
+  });
+
+  it("fires durationchange when the duration changes after ready, not at ready", () => {
+    const durations: number[] = [];
+    player.addEventListener("durationchange", (event) => {
+      durations.push((event as CustomEvent<{ duration: number }>).detail.duration);
+    });
+
+    player._onMessage(timelineMessage(120));
+    player._onMessage(timelineMessage(120));
+    player._onMessage(timelineMessage(180));
+
+    expect(durations).toEqual([6]);
+    expect(player.duration).toBe(6);
   });
 
   it("honors autoplay after cross-origin runtime timeline readiness", async () => {
@@ -2537,6 +2991,678 @@ describe("HyperframesPlayer composition dimension attributes", () => {
   });
 });
 
+describe("HyperframesPlayer video mode", () => {
+  type VideoPlayer = HTMLElement & {
+    play: () => void;
+    pause: () => void;
+    seek: (t: number) => void;
+    currentTime: number;
+    duration: number;
+    paused: boolean;
+    ready: boolean;
+    muted: boolean;
+    volume: number;
+    playbackRate: number;
+    iframeElement: HTMLIFrameElement;
+    _onIframeLoad: () => void;
+  };
+
+  const FILM = "https://cdn.example.com/film.mp4";
+  let player: VideoPlayer;
+  let playSpy: MockInstance<HTMLMediaElement["play"]>;
+  let frames: FrameRequestCallback[];
+
+  function createPlayer(attrs: Record<string, string>): VideoPlayer {
+    const el = document.createElement("hyperframes-player") as VideoPlayer;
+    for (const [name, value] of Object.entries(attrs)) el.setAttribute(name, value);
+    document.body.appendChild(el);
+    return el;
+  }
+
+  function videoOf(el: VideoPlayer): HTMLVideoElement {
+    const video = el.shadowRoot?.querySelector("video");
+    if (!video) throw new Error("no <video> in the player");
+    return video;
+  }
+
+  function setMedia(video: HTMLMediaElement, props: Record<string, unknown>) {
+    for (const [name, value] of Object.entries(props)) {
+      Object.defineProperty(video, name, { configurable: true, writable: true, value });
+    }
+  }
+
+  function loadMetadata(video: HTMLVideoElement, duration = 6, width = 1080, height = 1920) {
+    setMedia(video, { duration, videoWidth: width, videoHeight: height });
+    video.dispatchEvent(new Event("durationchange"));
+    video.dispatchEvent(new Event("loadedmetadata"));
+  }
+
+  function flushFrame() {
+    const frame = frames.shift();
+    if (!frame) throw new Error("no animation frame queued");
+    frame(performance.now());
+  }
+
+  beforeEach(async () => {
+    await import("./hyperframes-player.js");
+    // Like a browser, play() and pause() flip `paused` at once; their events come later, if at all.
+    playSpy = vi
+      .spyOn(HTMLMediaElement.prototype, "play")
+      .mockImplementation(function (this: HTMLMediaElement) {
+        setMedia(this, { paused: false });
+        return Promise.resolve();
+      });
+    vi.spyOn(HTMLMediaElement.prototype, "pause").mockImplementation(
+      function (this: HTMLMediaElement) {
+        setMedia(this, { paused: true });
+      },
+    );
+    vi.spyOn(HTMLMediaElement.prototype, "load").mockImplementation(() => undefined);
+    frames = [];
+    vi.spyOn(window, "requestAnimationFrame").mockImplementation((callback) => {
+      frames.push(callback);
+      return frames.length;
+    });
+    player = createPlayer({ type: "video/mp4", src: FILM });
+  });
+
+  afterEach(() => {
+    document.body.innerHTML = "";
+    vi.restoreAllMocks();
+  });
+
+  it("plays a video file in a <video playsinline>, not in the composition iframe", () => {
+    const video = videoOf(player);
+
+    expect(video.getAttribute("src")).toBe(FILM);
+    expect(video.playsInline).toBe(true);
+    expect(player.iframeElement.src).not.toContain("film.mp4");
+    expect(player.iframeElement.hidden).toBe(true);
+  });
+
+  it("keeps a composition player free of any <video>", () => {
+    const composition = createPlayer({ src: "https://cdn.example.com/index.html" });
+
+    expect(composition.shadowRoot?.querySelector("video")).toBeNull();
+    expect(composition.iframeElement.src).toContain("index.html");
+  });
+
+  it("fires ready with the video's duration and size", () => {
+    const readies: unknown[] = [];
+    player.addEventListener("ready", (event) => readies.push((event as CustomEvent).detail));
+
+    loadMetadata(videoOf(player));
+
+    expect(readies).toEqual([{ duration: 6, compositionWidth: 1080, compositionHeight: 1920 }]);
+    expect(player.ready).toBe(true);
+  });
+
+  it("fires the video's first resize with the player already ready", () => {
+    const seen: string[] = [];
+    player.addEventListener("resize", () =>
+      seen.push(`resize ready=${player.ready} d=${player.duration}`),
+    );
+
+    loadMetadata(videoOf(player));
+
+    expect(seen).toEqual(["resize ready=true d=6"]);
+  });
+
+  it("stays ready when the hidden iframe finishes loading", () => {
+    loadMetadata(videoOf(player));
+
+    player._onIframeLoad();
+
+    expect(player.ready).toBe(true);
+    expect(player.duration).toBe(6);
+  });
+
+  it("drives the video with play, pause and seek", () => {
+    const video = videoOf(player);
+    loadMetadata(video);
+
+    player.play();
+    expect(playSpy).toHaveBeenCalledTimes(1);
+    expect(player.paused).toBe(false);
+
+    player.seek(2.5);
+    expect(video.currentTime).toBe(2.5);
+    expect(player.currentTime).toBe(2.5);
+    expect(player.paused).toBe(true);
+    expect(HTMLMediaElement.prototype.pause).toHaveBeenCalled();
+  });
+
+  it("reports time while playing and fires ended at the end", () => {
+    const video = videoOf(player);
+    loadMetadata(video);
+    const times: number[] = [];
+    let ended = 0;
+    player.addEventListener("timeupdate", (event) =>
+      times.push((event as CustomEvent<{ currentTime: number }>).detail.currentTime),
+    );
+    player.addEventListener("ended", () => ended++);
+
+    player.play();
+    setMedia(video, { currentTime: 6 });
+    flushFrame();
+
+    expect(times).toEqual([6]);
+    expect(ended).toBe(1);
+    expect(player.paused).toBe(true);
+  });
+
+  it("restarts at the end with loop instead of firing ended", () => {
+    const video = videoOf(player);
+    loadMetadata(video);
+    player.setAttribute("loop", "");
+    let ended = 0;
+    player.addEventListener("ended", () => ended++);
+
+    player.play();
+    setMedia(video, { currentTime: 6 });
+    flushFrame();
+
+    expect(ended).toBe(0);
+    expect(video.currentTime).toBe(0);
+    expect(playSpy).toHaveBeenCalledTimes(2);
+    expect(player.paused).toBe(false);
+  });
+
+  it("fires error at once with the video's error code", () => {
+    const video = videoOf(player);
+    const errors: unknown[] = [];
+    player.addEventListener("error", (event) =>
+      errors.push((event as unknown as CustomEvent).detail),
+    );
+
+    setMedia(video, { error: { code: 4, message: "Format not supported" } });
+    video.dispatchEvent(new Event("error"));
+
+    expect(errors).toEqual([{ message: "Format not supported", code: 4 }]);
+  });
+
+  it("fires durationchange and resize when the video changes after ready", () => {
+    const video = videoOf(player);
+    loadMetadata(video);
+    const seen: string[] = [];
+    player.addEventListener("durationchange", (event) =>
+      seen.push(`duration ${(event as CustomEvent<{ duration: number }>).detail.duration}`),
+    );
+    player.addEventListener("resize", () => seen.push("resize"));
+
+    setMedia(video, { duration: 8, videoWidth: 1920, videoHeight: 1080 });
+    video.dispatchEvent(new Event("durationchange"));
+    video.dispatchEvent(new Event("resize"));
+
+    expect(seen).toEqual(["duration 8", "resize"]);
+  });
+
+  it("mirrors muted and volume onto the video", () => {
+    const video = videoOf(player);
+
+    player.muted = true;
+    player.volume = 0.25;
+
+    expect(video.muted).toBe(true);
+    expect(video.volume).toBe(0.25);
+  });
+
+  it("plays on ready with autoplay", () => {
+    const autoplay = createPlayer({ type: "video/mp4", src: FILM, autoplay: "", muted: "" });
+
+    loadMetadata(videoOf(autoplay));
+
+    expect(playSpy).toHaveBeenCalledTimes(1);
+    expect(autoplay.paused).toBe(false);
+  });
+
+  it("reports a blocked play and lands paused", async () => {
+    loadMetadata(videoOf(player));
+    playSpy.mockRejectedValueOnce(new DOMException("blocked", "NotAllowedError"));
+    const errors: unknown[] = [];
+    player.addEventListener("playbackerror", (event) =>
+      errors.push((event as CustomEvent<{ source: string }>).detail.source),
+    );
+
+    player.play();
+    await Promise.resolve();
+    await Promise.resolve();
+
+    expect(errors).toEqual(["video"]);
+    expect(player.paused).toBe(true);
+  });
+
+  it("ignores a play interrupted by pause", async () => {
+    loadMetadata(videoOf(player));
+    playSpy.mockRejectedValueOnce(new DOMException("interrupted", "AbortError"));
+    const errors: unknown[] = [];
+    player.addEventListener("playbackerror", (event) => errors.push(event));
+
+    player.play();
+    await Promise.resolve();
+    await Promise.resolve();
+
+    expect(errors).toEqual([]);
+  });
+
+  it("stops the composition probe when a composition player switches to video", () => {
+    vi.useFakeTimers();
+    try {
+      const switching = createPlayer({ src: "https://cdn.example.com/index.html" });
+      const errors: unknown[] = [];
+      switching.addEventListener("error", (event) => errors.push(event));
+      switching._onIframeLoad();
+
+      switching.setAttribute("type", "video/mp4");
+      vi.advanceTimersByTime(10_000);
+
+      expect(errors).toEqual([]);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("keeps the playback rate across a new src", () => {
+    player.playbackRate = 2;
+
+    player.setAttribute("src", "https://cdn.example.com/other.mp4");
+
+    expect(videoOf(player).defaultPlaybackRate).toBe(2);
+    expect(videoOf(player).playbackRate).toBe(2);
+  });
+
+  it("leaves a playing video alone when a shader or sandbox option changes", () => {
+    const video = videoOf(player);
+    loadMetadata(video);
+    player.seek(3);
+
+    player.setAttribute("shader-capture-scale", "2");
+    player.setAttribute("sandbox-origin", "");
+
+    expect(player.currentTime).toBe(3);
+    expect(player.ready).toBe(true);
+  });
+
+  it("follows a pause the page did not ask for, but not the one at the end", () => {
+    const video = videoOf(player);
+    loadMetadata(video);
+    const pauses: Event[] = [];
+    player.addEventListener("pause", (event) => pauses.push(event));
+
+    player.play();
+    setMedia(video, { paused: true, ended: true });
+    video.dispatchEvent(new Event("pause"));
+    expect(player.paused).toBe(false);
+
+    setMedia(video, { ended: false });
+    video.dispatchEvent(new Event("pause"));
+    expect(player.paused).toBe(true);
+    expect(pauses).toHaveLength(1);
+  });
+
+  it("ignores a pause event that lands after the player played again", () => {
+    const video = videoOf(player);
+    loadMetadata(video);
+    player.play();
+    player.seek(2);
+    player.play();
+    player.pause();
+    player.play();
+    const pauses: Event[] = [];
+    player.addEventListener("pause", (event) => pauses.push(event));
+
+    video.dispatchEvent(new Event("pause"));
+
+    expect(player.paused).toBe(false);
+    expect(pauses).toEqual([]);
+  });
+
+  it("follows a play the page did not ask for, but not a stale one", () => {
+    const video = videoOf(player);
+    loadMetadata(video);
+    player.play();
+    player.pause();
+    video.dispatchEvent(new Event("play"));
+    expect(player.paused).toBe(true);
+
+    const plays: Event[] = [];
+    player.addEventListener("play", (event) => plays.push(event));
+    setMedia(video, { paused: false });
+    video.dispatchEvent(new Event("play"));
+
+    expect(player.paused).toBe(false);
+    expect(plays).toHaveLength(1);
+  });
+
+  it("reads the paused frame from the video, not the last clock sample", () => {
+    const withControls = createPlayer({ type: "video/mp4", src: FILM, controls: "" });
+    const video = videoOf(withControls);
+    loadMetadata(video);
+    withControls.play();
+    setMedia(video, { currentTime: 2.37 });
+
+    withControls.pause();
+
+    expect(withControls.currentTime).toBe(2.37);
+    expect(withControls.shadowRoot?.textContent).toContain("0:02 / 0:06");
+  });
+
+  it("switches from a playing video to a composition paused", () => {
+    const withControls = createPlayer({ type: "video/mp4", src: FILM, controls: "" });
+    loadMetadata(videoOf(withControls));
+    withControls.play();
+
+    withControls.removeAttribute("type");
+
+    expect(withControls.paused).toBe(true);
+    expect(withControls.shadowRoot?.querySelector('[aria-label="Play"]')).not.toBeNull();
+  });
+
+  it("reports a load failure after play as error only", async () => {
+    const video = videoOf(player);
+    let reject: (error: unknown) => void = () => {};
+    playSpy.mockImplementationOnce(() => new Promise((_resolve, fail) => (reject = fail)));
+    const seen: string[] = [];
+    for (const type of ["pause", "error", "playbackerror"]) {
+      player.addEventListener(type, () => seen.push(type));
+    }
+    loadMetadata(video);
+    player.play();
+
+    video.dispatchEvent(new Event("error"));
+    reject(new DOMException("no supported source", "NotSupportedError"));
+    await Promise.resolve();
+    await Promise.resolve();
+
+    expect(seen).toEqual(["pause", "error"]);
+  });
+
+  it("reports a blocked play once when the page already paused", async () => {
+    loadMetadata(videoOf(player));
+    playSpy.mockRejectedValueOnce(new DOMException("blocked", "NotAllowedError"));
+    const seen: string[] = [];
+    for (const type of ["pause", "playbackerror"]) {
+      player.addEventListener(type, () => seen.push(type));
+    }
+
+    player.play();
+    player.pause();
+    await Promise.resolve();
+    await Promise.resolve();
+
+    expect(seen).toEqual(["pause", "playbackerror"]);
+  });
+
+  it("ignores a blocked play that lands after the video was removed", async () => {
+    let reject: (error: unknown) => void = () => {};
+    playSpy.mockImplementationOnce(() => new Promise((_resolve, fail) => (reject = fail)));
+    loadMetadata(videoOf(player));
+    player.play();
+    const seen: Event[] = [];
+    player.addEventListener("playbackerror", (event) => seen.push(event));
+
+    player.removeAttribute("type");
+    reject(new DOMException("blocked", "NotAllowedError"));
+    await Promise.resolve();
+    await Promise.resolve();
+
+    expect(seen).toEqual([]);
+  });
+
+  it("ignores a composition's late runtime message once it plays a video", () => {
+    window.dispatchEvent(
+      new MessageEvent("message", {
+        source: player.iframeElement.contentWindow,
+        data: { source: "hf-preview", type: "timeline", durationInFrames: 120, scenes: [] },
+      }),
+    );
+
+    expect(player.ready).toBe(false);
+    expect(player.duration).toBe(0);
+  });
+
+  it("gives srcdoc precedence over a video src", () => {
+    loadMetadata(videoOf(player));
+    player.play();
+
+    player.setAttribute("srcdoc", "<p>composition</p>");
+
+    expect(player.shadowRoot?.querySelector("video")).toBeNull();
+    expect(player.iframeElement.hidden).toBe(false);
+    expect(player.iframeElement.getAttribute("srcdoc")).toContain("composition");
+  });
+
+  it("plays the video src once srcdoc is removed", () => {
+    const both = createPlayer({ type: "video/mp4", src: FILM, srcdoc: "<p>composition</p>" });
+    expect(both.shadowRoot?.querySelector("video")).toBeNull();
+
+    both.removeAttribute("srcdoc");
+    loadMetadata(videoOf(both));
+    both.play();
+
+    expect(videoOf(both).getAttribute("src")).toBe(FILM);
+    expect(playSpy).toHaveBeenCalledTimes(1);
+    expect(both.paused).toBe(false);
+  });
+
+  it("reads the video type without regard to case or padding", () => {
+    const upper = createPlayer({ type: " Video/MP4 ", src: FILM });
+
+    expect(videoOf(upper).getAttribute("src")).toBe(FILM);
+  });
+
+  it("fires timeupdate with the exact frame before pause", () => {
+    const video = videoOf(player);
+    loadMetadata(video);
+    player.play();
+    setMedia(video, { currentTime: 2.37 });
+    const seen: string[] = [];
+    player.addEventListener("timeupdate", (event) =>
+      seen.push(`timeupdate ${(event as CustomEvent<{ currentTime: number }>).detail.currentTime}`),
+    );
+    player.addEventListener("pause", () => seen.push("pause"));
+
+    player.pause();
+
+    expect(seen).toEqual(["timeupdate 2.37", "pause"]);
+  });
+
+  it("starts paused when srcdoc replaces a playing video", () => {
+    loadMetadata(videoOf(player));
+    player.play();
+
+    player.setAttribute("srcdoc", "<p>composition</p>");
+
+    expect(player.paused).toBe(true);
+  });
+
+  it("autoplays the video once srcdoc is removed from a playing composition", () => {
+    const both = createPlayer({
+      type: "video/mp4",
+      src: FILM,
+      srcdoc: "<p>composition</p>",
+      autoplay: "",
+      muted: "",
+    });
+    both.play();
+
+    both.removeAttribute("srcdoc");
+    loadMetadata(videoOf(both));
+
+    expect(playSpy).toHaveBeenCalledTimes(1);
+    expect(both.paused).toBe(false);
+  });
+
+  it("keeps a srcdoc composition when type changes under it", () => {
+    const both = createPlayer({ type: "video/mp4", src: FILM, srcdoc: "<p>composition</p>" });
+    window.dispatchEvent(
+      new MessageEvent("message", {
+        source: both.iframeElement.contentWindow,
+        data: { source: "hf-preview", type: "timeline", durationInFrames: 120, scenes: [] },
+      }),
+    );
+    expect(both.ready).toBe(true);
+
+    both.removeAttribute("type");
+
+    expect(both.ready).toBe(true);
+  });
+
+  it("shows a new src as paused at the start in the controls", () => {
+    const withControls = createPlayer({ type: "video/mp4", src: FILM, controls: "" });
+    const video = videoOf(withControls);
+    loadMetadata(video);
+    withControls.play();
+    withControls.seek(3);
+    withControls.play();
+    expect(withControls.shadowRoot?.textContent).toContain("0:03 / 0:06");
+
+    // As in a browser, the new source has no duration until its metadata loads.
+    setMedia(video, { duration: Number.NaN });
+    withControls.setAttribute("src", "https://cdn.example.com/other.mp4");
+
+    const playButton = withControls.shadowRoot?.querySelector('[aria-label="Play"]');
+    expect(playButton).not.toBeNull();
+    expect(withControls.shadowRoot?.textContent).toContain("0:00 / 0:00");
+    expect(withControls.duration).toBe(0);
+  });
+
+  it("stops playing when the video fails", () => {
+    const video = videoOf(player);
+    loadMetadata(video);
+    player.play();
+
+    video.dispatchEvent(new Event("error"));
+
+    expect(player.paused).toBe(true);
+  });
+
+  it("removes the video when the player leaves the page and brings it back on return", () => {
+    player.remove();
+    expect(player.shadowRoot?.querySelector("video")).toBeNull();
+    expect(player.iframeElement.hidden).toBe(false);
+
+    document.body.appendChild(player);
+    expect(videoOf(player).getAttribute("src")).toBe(FILM);
+  });
+
+  it("goes back to a composition when the video type is removed", () => {
+    player.removeAttribute("type");
+
+    expect(player.shadowRoot?.querySelector("video")).toBeNull();
+    expect(player.iframeElement.hidden).toBe(false);
+    expect(player.iframeElement.src).toContain("film.mp4");
+  });
+});
+
+// Video mode must leave a player without a video type exactly as it was.
+describe("HyperframesPlayer composition behaviour outside video mode", () => {
+  type CompositionPlayer = HTMLElement & {
+    play: () => void;
+    pause: () => void;
+    currentTime: number;
+    paused: boolean;
+    iframeElement: HTMLIFrameElement;
+    _currentTime: number;
+    _directTimelineAdapter: unknown;
+  };
+  const COMPOSITION = "composition.html";
+
+  function createPlayer(attrs: Record<string, string>): CompositionPlayer {
+    const el = document.createElement("hyperframes-player") as CompositionPlayer;
+    for (const [name, value] of Object.entries(attrs)) el.setAttribute(name, value);
+    document.body.appendChild(el);
+    return el;
+  }
+
+  beforeEach(async () => {
+    await import("./hyperframes-player.js");
+  });
+
+  afterEach(() => {
+    document.body.innerHTML = "";
+    vi.restoreAllMocks();
+  });
+
+  it("does not reset paused when a composition src changes", () => {
+    const player = createPlayer({ src: COMPOSITION });
+    player.play();
+
+    player.setAttribute("src", "other-composition.html");
+
+    expect(player.paused).toBe(false);
+  });
+
+  it("keeps the last clock sample when a direct timeline pauses", () => {
+    const player = createPlayer({ src: COMPOSITION });
+    player._directTimelineAdapter = {
+      duration: () => 6,
+      time: () => 2.37,
+      seek: () => {},
+      play: () => {},
+      pause: () => {},
+    };
+    player._currentTime = 1;
+    const updates: Event[] = [];
+    player.addEventListener("timeupdate", (event) => updates.push(event));
+
+    player.pause();
+
+    expect(player.currentTime).toBe(1);
+    expect(updates).toEqual([]);
+  });
+
+  it("does not reload src when srcdoc is removed", () => {
+    const player = createPlayer({ src: COMPOSITION, srcdoc: "<p>composition</p>" });
+    player.iframeElement.setAttribute("src", "about:blank#kept");
+
+    player.removeAttribute("srcdoc");
+
+    expect(player.iframeElement.getAttribute("src")).toBe("about:blank#kept");
+  });
+});
+
+describe("HyperframesPlayer click-to-play", () => {
+  type ClickPlayer = HTMLElement & {
+    play: () => void;
+    pause: () => void;
+    disableClickToPlay: boolean;
+  };
+
+  let player: ClickPlayer;
+
+  beforeEach(async () => {
+    await import("./hyperframes-player.js");
+    player = document.createElement("hyperframes-player") as ClickPlayer;
+    document.body.appendChild(player);
+  });
+
+  afterEach(() => {
+    player.remove();
+    vi.restoreAllMocks();
+  });
+
+  it("plays on a click by default", () => {
+    const play = vi.spyOn(player, "play").mockImplementation(() => undefined);
+
+    player.click();
+
+    expect(play).toHaveBeenCalledTimes(1);
+  });
+
+  it("leaves clicks to the host with disable-click-to-play", () => {
+    const play = vi.spyOn(player, "play").mockImplementation(() => undefined);
+    const pause = vi.spyOn(player, "pause").mockImplementation(() => undefined);
+
+    player.disableClickToPlay = true;
+    player.click();
+
+    expect(player.hasAttribute("disable-click-to-play")).toBe(true);
+    expect(play).not.toHaveBeenCalled();
+    expect(pause).not.toHaveBeenCalled();
+  });
+});
+
 describe("HyperframesPlayer retained runtime data", () => {
   interface RuntimeDataPlayer extends HTMLElement {
     iframeElement: HTMLIFrameElement;
@@ -2789,12 +3915,19 @@ describe("HyperframesPlayer asset-ready gate", () => {
     _pendingPlay: boolean;
     _paused: boolean;
     assetsReady: boolean;
+    painted: boolean;
     _waitForAssetsReady(doc: Document | null): void;
     _onIframeLoad(): void;
     play(): void;
     pause(): void;
     seek(timeInSeconds: number): void;
-    shaderLoader: { showAssetsLoading(): void };
+    shaderLoader: {
+      showAssetsLoading(): void;
+      hide(): void;
+      update(status: { loading: boolean; ready: boolean }, mode: string): void;
+    };
+    _settleAssetsReady(generation: number): void;
+    assetsLoadingUi: "player" | "none";
   };
 
   beforeEach(async () => {
@@ -2822,6 +3955,201 @@ describe("HyperframesPlayer asset-ready gate", () => {
     doc.body.appendChild(video);
     return { doc, video };
   }
+
+  const post = (player: PlayerInternal, data: Record<string, unknown>) =>
+    (player as unknown as { _onMessage(e: MessageEvent): void })._onMessage({
+      source: player.iframe.contentWindow,
+      data: { source: "hf-preview", ...data },
+    } as unknown as MessageEvent);
+
+  it("ignores its iframe's blank-document load that arrives before it is connected", () => {
+    const player = document.createElement("hyperframes-player") as PlayerInternal & {
+      probe: { start(): void };
+    };
+    const start = vi.spyOn(player.probe, "start");
+    // Mid-insertion the element already reads as connected; connectedCallback has not run yet.
+    Object.defineProperty(player, "isConnected", { get: () => true, configurable: true });
+
+    player.iframe.dispatchEvent(new Event("load"));
+
+    expect(start).not.toHaveBeenCalled();
+  });
+
+  it("handles its iframe's load before a host's load listener runs", async () => {
+    const player = document.createElement("hyperframes-player") as PlayerInternal & {
+      _readyDocument: Document | null;
+    };
+    const readyAtHostLoad: boolean[] = [];
+    player.iframe.addEventListener("load", () => readyAtHostLoad.push(player._ready));
+    document.body.appendChild(player);
+    await vi.waitFor(() => expect(readyAtHostLoad).toHaveLength(1));
+    player._ready = true;
+    player._readyDocument = document.implementation.createHTMLDocument("previous document");
+
+    player.iframe.dispatchEvent(new Event("load"));
+
+    expect(readyAtHostLoad[1]).toBe(false);
+    player.remove();
+  });
+
+  it("paints a document before its load when nothing first-frame is pending", async () => {
+    const player = await createConnectedPlayer();
+    player._ready = false;
+    const doc = player.iframe.contentDocument!;
+    Object.defineProperty(doc, "readyState", { get: () => "interactive", configurable: true });
+    const holdLoad = (e: Event) => e.stopImmediatePropagation();
+    doc.defaultView!.addEventListener("load", holdLoad, { capture: true });
+    try {
+      post(player, { type: "timeline", durationInFrames: 60 });
+
+      await vi.waitFor(() => expect(player.painted).toBe(true));
+    } finally {
+      doc.defaultView!.removeEventListener("load", holdLoad, { capture: true });
+      delete (doc as { readyState?: unknown }).readyState;
+      player.remove();
+    }
+  });
+
+  it("stays unpainted for first-frame media a script adds before the document's load", async () => {
+    const player = await createConnectedPlayer();
+    player._ready = false;
+    const doc = player.iframe.contentDocument!;
+    let readyState: DocumentReadyState = "interactive";
+    Object.defineProperty(doc, "readyState", { get: () => readyState, configurable: true });
+    post(player, { type: "timeline", durationInFrames: 60 });
+
+    const video = doc.createElement("video");
+    video.setAttribute("data-start", "0");
+    Object.defineProperty(video, "readyState", { value: 0, configurable: true });
+    doc.body.appendChild(video);
+    readyState = "complete";
+    doc.defaultView!.dispatchEvent(new Event("load"));
+    player._onIframeLoad();
+    await new Promise((resolve) => setTimeout(resolve, 300));
+
+    expect(player._ready).toBe(true);
+    expect(player.assetsReady).toBe(false);
+    expect(player.painted).toBe(false);
+    delete (doc as { readyState?: unknown }).readyState;
+    player.remove();
+  });
+
+  it("holds an opaque-origin composition until its runtime posts assets-ready", async () => {
+    const player = await createConnectedPlayer();
+    player._ready = false;
+    Object.defineProperty(player.iframe, "contentDocument", { get: () => null });
+    post(player, { type: "timeline", durationInFrames: 60, assetsReady: false });
+    expect(player.assetsReady).toBe(false);
+
+    post(player, { type: "assets-ready", timedOut: false });
+    expect(player.assetsReady).toBe(true);
+
+    player.remove();
+  });
+
+  it("keeps a queued play across the iframe load event while the runtime still reports assets pending", async () => {
+    const player = await createConnectedPlayer();
+    player._ready = false;
+    Object.defineProperty(player.iframe, "contentDocument", { get: () => null });
+    post(player, { type: "timeline", durationInFrames: 60, assetsReady: false });
+    player.play();
+    expect(player._pendingPlay).toBe(true);
+
+    player._onIframeLoad();
+    post(player, { type: "assets-ready", timedOut: false });
+
+    expect(player.assetsReady).toBe(true);
+    expect(player._ready).toBe(true);
+    expect(player._pendingPlay).toBe(false);
+    expect(player._paused).toBe(false);
+
+    player.remove();
+  });
+
+  it("drops a queued play when an assetsready listener pauses", async () => {
+    const player = await createConnectedPlayer();
+    player._ready = false;
+    Object.defineProperty(player.iframe, "contentDocument", { get: () => null });
+    post(player, { type: "timeline", durationInFrames: 60, assetsReady: false });
+    player.play();
+    const seen: string[] = [];
+    for (const type of ["assetsready", "play", "pause"]) {
+      player.addEventListener(type, () => seen.push(type));
+    }
+    player.addEventListener("assetsready", () => player.pause(), { once: true });
+
+    post(player, { type: "assets-ready", timedOut: false });
+
+    expect(seen).toEqual(["assetsready", "pause"]);
+    expect(player._paused).toBe(true);
+
+    player.remove();
+  });
+
+  it("stays ready when a late iframe load follows a settled opaque-origin wait", async () => {
+    const player = await createConnectedPlayer();
+    player._ready = false;
+    Object.defineProperty(player.iframe, "contentDocument", { get: () => null });
+    post(player, { type: "timeline", durationInFrames: 60, assetsReady: false });
+    post(player, { type: "assets-ready", timedOut: false });
+    expect(player._ready).toBe(true);
+
+    player._onIframeLoad();
+
+    expect(player._ready).toBe(true);
+    expect(player.assetsReady).toBe(true);
+    player.play();
+    expect(player._paused).toBe(false);
+
+    player.remove();
+  });
+
+  it("keeps a same-origin handshake when that document's load event arrives after ready", async () => {
+    const player = await createConnectedPlayer();
+    player._ready = false;
+    const doc = document.implementation.createHTMLDocument("composition");
+    Object.defineProperty(player.iframe, "contentDocument", { get: () => doc, configurable: true });
+    post(player, { type: "timeline", durationInFrames: 60 });
+    await vi.waitFor(() => expect(player.assetsReady).toBe(true));
+
+    const settled = vi.fn();
+    player.addEventListener("assetsready", settled);
+    player._onIframeLoad();
+    await new Promise((resolve) => setTimeout(resolve, 50));
+
+    expect(player._ready).toBe(true);
+    expect(player.assetsReady).toBe(true);
+    expect(settled).not.toHaveBeenCalled();
+
+    const next = document.implementation.createHTMLDocument("next composition");
+    Object.defineProperty(player.iframe, "contentDocument", { get: () => next });
+    player._onIframeLoad();
+    expect(player._ready).toBe(false);
+
+    player.remove();
+  });
+
+  it("does not wait on an opaque-origin runtime that already settled its assets", async () => {
+    const player = await createConnectedPlayer();
+    player._ready = false;
+    Object.defineProperty(player.iframe, "contentDocument", { get: () => null });
+    post(player, { type: "timeline", durationInFrames: 60, assetsReady: true });
+
+    expect(player.assetsReady).toBe(true);
+
+    player.remove();
+  });
+
+  it("does not wait on an opaque-origin runtime that never announced the capability", async () => {
+    const player = await createConnectedPlayer();
+    player._ready = false;
+    Object.defineProperty(player.iframe, "contentDocument", { get: () => null });
+    post(player, { type: "timeline", durationInFrames: 60 });
+
+    expect(player.assetsReady).toBe(true);
+
+    player.remove();
+  });
 
   it("settles immediately for a cross-origin composition (doc === null)", async () => {
     const player = await createConnectedPlayer();
@@ -2851,6 +4179,67 @@ describe("HyperframesPlayer asset-ready gate", () => {
     expect(showSpy).not.toHaveBeenCalled();
 
     player.remove();
+  });
+
+  it("fires painted only after the raised loader has faded out, not at assetsready", async () => {
+    const player = await createConnectedPlayer();
+    const { doc, video } = createStalledVideoDoc();
+    stubIframeContentDocument(player.iframe, doc);
+    const events: string[] = [];
+    player.addEventListener("assetsready", () => events.push("assetsready"));
+    player.addEventListener("painted", () => events.push("painted"));
+
+    player._waitForAssetsReady(doc);
+    await new Promise((resolve) => setTimeout(resolve, 160));
+    expect(player.hasAttribute("assets-loading")).toBe(true);
+    expect(player.painted).toBe(false);
+
+    video.dispatchEvent(new Event("canplay"));
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(events).toEqual(["assetsready"]);
+    expect(player.painted).toBe(false);
+
+    await new Promise((resolve) => setTimeout(resolve, 500));
+    expect(events).toEqual(["assetsready", "painted"]);
+    expect(player.painted).toBe(true);
+
+    player._waitForAssetsReady(doc);
+    expect(player.painted).toBe(false);
+
+    player.remove();
+  });
+
+  it("fires painted right after assetsready when no loader was ever raised", async () => {
+    const player = await createConnectedPlayer();
+    const painted = vi.fn();
+    player.addEventListener("painted", painted);
+
+    player._waitForAssetsReady(null);
+
+    expect(player.assetsReady).toBe(true);
+    expect(player.painted).toBe(true);
+    expect(painted).toHaveBeenCalledTimes(1);
+
+    player.remove();
+  });
+
+  it("dispatches painted once for the current generation when settles share a loader fade", async () => {
+    vi.useFakeTimers();
+    try {
+      const player = await createConnectedPlayer();
+      const painted = vi.fn();
+      player.addEventListener("painted", painted);
+      player.shaderLoader.showAssetsLoading();
+
+      player._waitForAssetsReady(null);
+      player._waitForAssetsReady(null);
+      await vi.runOnlyPendingTimersAsync();
+
+      expect(painted).toHaveBeenCalledTimes(1);
+      player.remove();
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it("defers play() until a pending video settles, then plays and clears the overlay attribute", async () => {
@@ -2883,6 +4272,142 @@ describe("HyperframesPlayer asset-ready gate", () => {
     expect(player.hasAttribute("assets-loading")).toBe(false);
     expect(player._pendingPlay).toBe(false);
     expect(playSpy).toHaveBeenCalledTimes(1);
+
+    player.remove();
+  });
+
+  it("keeps a play queued before a same-origin iframe load and starts it once the wait settles", async () => {
+    const player = await createConnectedPlayer();
+    const { doc, video } = createStalledVideoDoc();
+    stubIframeContentDocument(player.iframe, doc);
+    const playSpy = vi.fn();
+    player.addEventListener("play", playSpy);
+
+    // First ready's asset wait, a play() while it is pending, then the document's own load event.
+    player._waitForAssetsReady(doc);
+    player.play();
+    expect(player._pendingPlay).toBe(true);
+    player._onIframeLoad();
+    post(player, { type: "timeline", durationInFrames: 60 });
+    video.dispatchEvent(new Event("canplay"));
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    expect(player.assetsReady).toBe(true);
+    expect(player._paused).toBe(false);
+    expect(playSpy).toHaveBeenCalledTimes(1);
+
+    player.remove();
+  });
+
+  it("drops a queued play when the host points the player at a different composition", async () => {
+    const player = await createConnectedPlayer();
+    const { doc } = createStalledVideoDoc();
+    stubIframeContentDocument(player.iframe, doc);
+
+    player._waitForAssetsReady(doc);
+    player.play();
+    expect(player._pendingPlay).toBe(true);
+    player.setAttribute("srcdoc", "<p>another composition</p>");
+
+    expect(player._pendingPlay).toBe(false);
+
+    player.remove();
+  });
+
+  it("keeps a queued play through a shader-options reload of the same composition", async () => {
+    const player = await createConnectedPlayer();
+    const { doc } = createStalledVideoDoc();
+    stubIframeContentDocument(player.iframe, doc);
+
+    player._waitForAssetsReady(doc);
+    player.play();
+    player.setAttribute("shader-loading", "player");
+
+    expect(player._pendingPlay).toBe(true);
+
+    player.remove();
+  });
+
+  it("never raises the loading card with assets-loading-ui=none, and still reports every asset event", async () => {
+    const player = await createConnectedPlayer();
+    player.setAttribute("assets-loading-ui", "none");
+    const { doc, video } = createStalledVideoDoc();
+    stubIframeContentDocument(player.iframe, doc);
+    const showSpy = vi.spyOn(player.shaderLoader, "showAssetsLoading");
+    const events: string[] = [];
+    player.addEventListener("assetsready", () => events.push("assetsready"));
+    player.addEventListener("painted", () => events.push("painted"));
+
+    player._waitForAssetsReady(doc);
+    await new Promise((resolve) => setTimeout(resolve, 160));
+    expect(player.hasAttribute("assets-loading")).toBe(true);
+    expect(showSpy).not.toHaveBeenCalled();
+
+    video.dispatchEvent(new Event("canplay"));
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(events).toEqual(["assetsready", "painted"]);
+    expect(player.hasAttribute("assets-loading")).toBe(false);
+
+    player.remove();
+  });
+
+  it("hides a loading card already up when assets-loading-ui switches to none", async () => {
+    const player = await createConnectedPlayer();
+    const { doc } = createStalledVideoDoc();
+    stubIframeContentDocument(player.iframe, doc);
+    const showSpy = vi.spyOn(player.shaderLoader, "showAssetsLoading");
+    const hideSpy = vi.spyOn(player.shaderLoader, "hide");
+    expect(player.assetsLoadingUi).toBe("player");
+
+    player._waitForAssetsReady(doc);
+    await new Promise((resolve) => setTimeout(resolve, 160));
+    expect(showSpy).toHaveBeenCalledTimes(1);
+    player.assetsLoadingUi = "none";
+
+    expect(player.getAttribute("assets-loading-ui")).toBe("none");
+    expect(hideSpy).toHaveBeenCalled();
+
+    player.remove();
+  });
+
+  it("keeps a shader load drawn over the loading card when assets-loading-ui switches to none", async () => {
+    const player = await createConnectedPlayer();
+    const { doc } = createStalledVideoDoc();
+    stubIframeContentDocument(player.iframe, doc);
+
+    player._waitForAssetsReady(doc);
+    await new Promise((resolve) => setTimeout(resolve, 160));
+    player.shaderLoader.update({ loading: true, ready: false }, "player");
+    player.assetsLoadingUi = "none";
+
+    const loader = player.shadowRoot?.querySelector(".hfp-shader-loader");
+    expect(loader?.classList.contains("hfp-visible")).toBe(true);
+    expect(loader?.getAttribute("aria-label")).toBe("Preparing scene transitions");
+
+    player.remove();
+  });
+
+  it("leaves a shader load on screen when assets settle, and reports painted once it is gone", async () => {
+    const player = await createConnectedPlayer();
+    const { doc, video } = createStalledVideoDoc();
+    stubIframeContentDocument(player.iframe, doc);
+    const events: string[] = [];
+    player.addEventListener("assetsready", () => events.push("assetsready"));
+    player.addEventListener("painted", () => events.push("painted"));
+
+    player._waitForAssetsReady(doc);
+    await new Promise((resolve) => setTimeout(resolve, 160));
+    player.shaderLoader.update({ loading: true, ready: false }, "player");
+    video.dispatchEvent(new Event("canplay"));
+    await new Promise((resolve) => setTimeout(resolve, 450));
+
+    const loader = player.shadowRoot?.querySelector(".hfp-shader-loader");
+    expect(loader?.classList.contains("hfp-visible")).toBe(true);
+    expect(events).toEqual(["assetsready"]);
+
+    player.shaderLoader.update({ loading: false, ready: true }, "player");
+    await new Promise((resolve) => setTimeout(resolve, 450));
+    expect(events).toEqual(["assetsready", "painted"]);
 
     player.remove();
   });

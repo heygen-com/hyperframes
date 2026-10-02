@@ -3,6 +3,7 @@ import { readRuntimeKeyframes } from "../../hooks/gsapRuntimeKeyframes";
 import { isElementVisibleForOverlay } from "./domEditOverlayGeometry";
 import { buildMotionPathGeometry, type MotionPathGeometry } from "./motionPathGeometry";
 import { subscribeOverlayFrame } from "./overlayFrameLoop";
+import { usePlayerStore } from "../../player/store/playerStore";
 
 type Rect = { left: number; top: number; width: number; height: number };
 
@@ -114,6 +115,8 @@ export function useMotionPathData(
   // Perspective magnification (1/m44) of the selected element — applied to the
   // path's offset points so depth (translateZ) elements' paths track on screen.
   const [pScale, setPScale] = useState(1);
+  const armed = usePlayerStore((s) => s.motionPathArmed);
+  const drawn = geometry !== null || armed;
 
   useEffect(() => {
     if (!selector) {
@@ -122,6 +125,7 @@ export function useMotionPathData(
       return;
     }
     setHome(null);
+    if (!drawn) return;
     const tick = () => {
       const el = iframeRef.current;
       if (el) {
@@ -155,7 +159,7 @@ export function useMotionPathData(
       }
     };
     return subscribeOverlayFrame(tick);
-  }, [selector, iframeRef]);
+  }, [selector, iframeRef, drawn]);
 
   useEffect(() => {
     if (!selector) {

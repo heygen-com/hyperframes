@@ -1,42 +1,28 @@
 ---
 title: "HeyGen Avatar Promo Card"
 description: "A portrait HeyGen offer card pairs a moving avatar mosaic with bold promotional typography and a branded callout"
+mode: "frame"
 ---
 
+import { CatalogDetail, CatalogSlot } from "/snippets/catalog-detail.jsx";
 import { InstallCommand } from "/snippets/install-command.jsx";
 
-## Install
+<CatalogDetail
+  previewSrc="/public/catalog/blocks/heygen-avatar-promo-card.json"
+  compositionId="heygen-avatar-promo-card"
+  compositionSrc="compositions/heygen-avatar-promo-card.html"
+  title="HeyGen Avatar Promo Card"
+  description="A portrait HeyGen offer card pairs a moving avatar mosaic with bold promotional typography and a branded callout"
+  variables={[{"id":"brandLogo","type":"image","role":"content","label":"Brand logo","description":"Horizontal transparent wordmark used in the header and belt.","default":"assets/heygen-logo.svg"},{"id":"titleLine1","type":"string","role":"content","label":"Headline line 1","description":"First headline line.","default":"Your avatar,"},{"id":"titleLine2","type":"string","role":"content","label":"Headline line 2","description":"Second headline line.","default":"by HeyGen."},{"id":"subhead","type":"string","role":"content","label":"Subhead","description":"Supporting line under the headline.","default":"AI video, camera-free."},{"id":"pill1","type":"string","role":"content","label":"Pill 1","description":"First feature pill.","default":"4K AVATARS"},{"id":"pill2","type":"string","role":"content","label":"Pill 2","description":"Second feature pill.","default":"NO CAMERA NEEDED"},{"id":"offerValue","type":"string","role":"content","label":"Offer value","description":"Large offer value in the light tile.","default":"25%"},{"id":"offerSuffix","type":"string","role":"content","label":"Offer suffix","description":"Large offer suffix in the adjacent light tile.","default":"OFF"},{"id":"codeLabel","type":"string","role":"content","label":"Promo code label","description":"Small label above the promo code.","default":"CODE"},{"id":"promoPrefix","type":"string","role":"content","label":"Promo code prefix","description":"Accent-colored promo-code prefix.","default":"GEN"},{"id":"promoSuffix","type":"string","role":"content","label":"Promo code suffix","description":"Light promo-code suffix.","default":"25"},{"id":"canvasColor","type":"color","role":"style","label":"Canvas color","description":"Main card background.","default":"#eaf6fa"},{"id":"inkColor","type":"color","role":"style","label":"Ink color","description":"Primary headline, pill, and offer ink.","default":"#0a1418"},{"id":"mutedInkColor","type":"color","role":"style","label":"Muted ink color","description":"Subhead ink.","default":"#47545b"},{"id":"accentColor","type":"color","role":"style","label":"Accent color","description":"Brand accent used by tiles and promo-code prefix.","default":"#00c3ff"},{"id":"lightTileColor","type":"color","role":"style","label":"Light tile color","description":"Light belt-tile surface.","default":"#f7fcfe"},{"id":"darkTileColor","type":"color","role":"style","label":"Dark tile color","description":"Dark belt-tile surface.","default":"#0b1215"}]}
+  meta={{"duration":10,"width":1080,"height":1920,"category":"Showcases","badge":"Stable","codeLines":426}}
+  attribution={{"author":"HeyGen","path":"registry/blocks/heygen-avatar-promo-card","tags":["showcase","avatar","promotion","vertical"]}}
+  hasCode
+  rawUrl="https://raw.githubusercontent.com/heygen-com/hyperframes/main/registry/blocks/heygen-avatar-promo-card/heygen-avatar-promo-card.html"
+>
 
-<InstallCommand command="npx hyperframes add heygen-avatar-promo-card" item="heygen-avatar-promo-card" />
+<CatalogSlot slot="code">
 
-That writes `compositions/heygen-avatar-promo-card.html`, plus 15 supporting files under `assets/` and `assets/fonts/`.
-
-<video className="w-full aspect-video rounded-xl object-cover bg-zinc-100 dark:bg-zinc-800" src="https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/heygen-avatar-promo-card.mp4" poster="https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/heygen-avatar-promo-card.png" autoPlay muted loop playsInline />
-
-## Add it to your video
-
-It runs for 10 seconds at 1080×1920. Paste this into your composition:
-
-```html index.html
-<div
-  data-composition-id="heygen-avatar-promo-card"
-  data-composition-src="compositions/heygen-avatar-promo-card.html"
-  data-start="0"
-  data-duration="10"
-  data-track-index="1"
-  data-width="1080"
-  data-height="1920"
-></div>
-```
-
-Move it in time with `data-start`. Put it on a different timeline row with
-`data-track-index`. See [data attributes](/concepts/data-attributes) for the rest.
-
-## Source
-
-<Accordion title="heygen-avatar-promo-card.html">
-
-```html
+```html heygen-avatar-promo-card.html
 <!doctype html>
 <html
   lang="en"
@@ -465,7 +451,36 @@ Move it in time with `data-start`. Put it on a different timeline row with
 </html>
 ```
 
-</Accordion>
+</CatalogSlot>
+
+<CatalogSlot slot="install">
+
+<InstallCommand command="npx hyperframes add heygen-avatar-promo-card" item="heygen-avatar-promo-card" />
+
+That writes `compositions/heygen-avatar-promo-card.html`, plus 15 supporting files under `assets/` and `assets/fonts/`.
+
+</CatalogSlot>
+
+<CatalogSlot slot="docs">
+
+## Add it to your video
+
+It runs for 10 seconds at 1080×1920. Paste this into your composition:
+
+```html index.html
+<div
+  data-composition-id="heygen-avatar-promo-card"
+  data-composition-src="compositions/heygen-avatar-promo-card.html"
+  data-start="0"
+  data-duration="10"
+  data-track-index="1"
+  data-width="1080"
+  data-height="1920"
+></div>
+```
+
+Move it in time with `data-start`. Put it on a different timeline row with
+`data-track-index`. See [data attributes](/concepts/data-attributes) for the rest.
 
 {/* hf:generated-footer */}
 
@@ -478,3 +493,7 @@ Created by HeyGen.
 - [Browse the complete Catalog](/catalog)
 - [Add assets and Catalog items in Studio](/studio/assets-and-blocks)
 - [Build a richer composition](/go-further)
+
+</CatalogSlot>
+
+</CatalogDetail>

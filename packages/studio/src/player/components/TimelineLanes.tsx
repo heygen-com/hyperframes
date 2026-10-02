@@ -17,7 +17,7 @@ import {
 } from "./useTimelineTrackLayout";
 import { trackDisplayNumber, trackDisplaySuffix } from "./timelineTrackDisplay";
 import { clipTimingStart } from "../../hooks/gsapShared";
-import { getTimelineEditCapabilities } from "./timelineEditing";
+import { useTimelineClipCapabilities } from "./timelineReadOnly";
 import { CLIP_Y, TRACK_H } from "./timelineLayout";
 import { usePlayerStore } from "../store/playerStore";
 import { isMultiDragPassenger, multiDragPassengerOffsetPx } from "./timelineMultiDragPreview";
@@ -32,6 +32,8 @@ import { queryTimelineClipIndex } from "../lib/timelineClipIndex";
 import { getTimelineElementIdentity } from "../lib/timelineElementHelpers";
 import { timelineClipFocusId } from "./timelineNavigationIdentity";
 import { useTimelineKeyboardActor } from "./useTimelineKeyboardActor";
+import { TimelineTransitionOverlays } from "./TimelineTransitionOverlays";
+import { deriveTimelineTransitionSeamsByTrack } from "./timelineTransitionSeams";
 
 export function TimelineLanes({
   pps,
@@ -39,6 +41,7 @@ export function TimelineLanes({
   contentGutter,
   trackContentWidth,
   theme,
+  showAudioEffects,
   displayTrackOrder,
   rowGeometry,
   virtualRows,
@@ -59,6 +62,7 @@ export function TimelineLanes({
   hoveredClip,
   draggedClip,
   draggedElement,
+  snapGuide,
   multiDragPreview,
   blockedClipRef,
   suppressClickRef,
@@ -73,7 +77,6 @@ export function TimelineLanes({
   setResizingClip,
   setDraggedClip,
   setSelectedElementId,
-  shiftClickClipRef,
   getPreviewElement,
   getTrackStyle,
   keyframeCache,
@@ -103,17 +106,18 @@ export function TimelineLanes({
   const { collapsedGroupIds, expandedLaneOwnerIds, toggleGroupExpanded, toggleLaneOwnerExpanded } =
     useTimelineGroupDisclosure();
   const automationLanes = useAutomationLanes();
+  const getClipCapabilities = useTimelineClipCapabilities();
+  const transitionSeamsByTrack = useMemo(
+    () =>
+      deriveTimelineTransitionSeamsByTrack(tracks.flatMap(([, els]) => els.map(getPreviewElement))),
+    [getPreviewElement, tracks],
+  );
   // A group's automation clock is COMPOSITION time (groups doc §1.3), so its
   // synthetic lane element spans the whole composition rather than a clip.
   const compositionDuration = usePlayerStore((s) => s.duration);
   useAutomationSelectionKeyboard({ lanes: automationLanes });
-  const { logicalRowsByTrack, groupByAnchor } = useTimelineLaneRowIndexes(logicalRows, groups);
-  // Which tracks are group MEMBERS, so their headers can render the level-2
-  // nesting their `aria-level` already reports.
-  const groupMemberTracks = useMemo(
-    () => new Set(groups.flatMap((group) => group.memberTracks)),
-    [groups],
-  );
+  const rowIndexes = useTimelineLaneRowIndexes(logicalRows, groups);
+  const { logicalRowsByTrack, groupByAnchor, groupMemberTracks } = rowIndexes;
   const {
     toggleRowExpanded: toggleRowExpandedTracked,
     toggleClipExpanded: toggleClipExpandedTracked,
@@ -128,9 +132,8 @@ export function TimelineLanes({
     focusedTargetId,
     rowGeometry,
     scrollRef,
-    onToggleRow: (row) => {
-      if (row.elementId) toggleClipExpandedTracked(row.elementId);
-    },
+    onToggleRow: (row) => row.elementId && toggleClipExpandedTracked(row.elementId),
+    onDrillDown,
   });
   return (
     <div
@@ -163,6 +166,7 @@ export function TimelineLanes({
                 virtualized={rowsVirtualized}
                 contentOrigin={contentOrigin}
                 theme={theme}
+                showAudioEffects={showAudioEffects}
                 rovingTargetId={keyboard.rovingTargetId}
                 collapsedGroupIds={collapsedGroupIds}
                 expandedLaneOwnerIds={expandedLaneOwnerIds}
@@ -196,11 +200,7 @@ export function TimelineLanes({
           const ts = trackStyles.get(trackNum) ?? getTrackStyle("");
           const isPendingTrack =
             draggedClip?.started === true && !trackOrder.includes(trackNum) && els.length === 0;
-          // All lanes use the same uniform color — no alternating stripes.
           const rowBackground = theme.rowBackground;
-          // The beat-dot strip occupies the top of this track's lane (active track,
-          // or the music track when nothing is selected). When shown, keyframe
-          // diamonds shrink + drop to the bottom half so they don't collide with it.
           const beatStripOnTrack = trackShowsBeatStrip(els, beatAnalysis?.beatTimes, {
             selectedElementId,
             isMusicTrack,
@@ -222,8 +222,6 @@ export function TimelineLanes({
           // property lanes are showing. Undefined means "fill the row", which is
           // right only while it is collapsed and the row is nothing but bar.
           const clipBarHeight = rowExpanded ? TRACK_H - 2 * CLIP_Y : undefined;
-          // The clips whose envelopes this row draws, at their dragged positions.
-          // Once per row, not once per clip in the map below.
           const automationElements = els.map(getPreviewElement);
           // Minted here because this is the only place that sees BOTH ends of
           // the disclosure: the caret in the sticky header and the diamond lanes
@@ -293,6 +291,7 @@ export function TimelineLanes({
                 isAudioTrack={isAudioTrack}
                 isGroupMember={groupMemberTracks.has(trackNum)}
                 theme={theme}
+                showAudioEffects={showAudioEffects}
                 onToggleClipExpanded={() => {
                   const keys = els.map(getTimelineElementIdentity);
                   if (keys.length > 0) toggleRowExpandedTracked(keys);
@@ -331,11 +330,7 @@ export function TimelineLanes({
                   beatTimes={beatAnalysis?.beatTimes}
                   beatStrengths={beatAnalysis?.beatStrengths}
                   pps={pps}
-                  highlightTime={
-                    draggedClip?.started && draggedClip.snapType === "beat"
-                      ? draggedClip.snapTime
-                      : null
-                  }
+                  highlightTime={snapGuide?.type === "beat" ? snapGuide.time : null}
                   renderTimeRange={rowsVirtualized ? renderTimeRange : undefined}
                 />
                 {/* Beat dots on the active track (the one holding the selection),
@@ -357,7 +352,6 @@ export function TimelineLanes({
                       fontSize: 11,
                       letterSpacing: "0.06em",
                       textTransform: "uppercase",
-                      opacity: 0.5,
                     }}
                   >
                     New track
@@ -373,7 +367,7 @@ export function TimelineLanes({
                     // diamonds on their own bar instead.
                     const isTrackKeyframeClip = elementKey === keyframeClipKey;
                     const showsLanes = isTrackKeyframeClip && rowExpanded;
-                    const capabilities = getTimelineEditCapabilities(el);
+                    const capabilities = getClipCapabilities(el);
                     const isSelected =
                       selectedElementId === elementKey || selectedElementIds.has(elementKey);
                     const isComposition = !!el.compositionSrc;
@@ -409,7 +403,6 @@ export function TimelineLanes({
                         onRazorSplit,
                         onRazorSplitAll,
                         blockedClipRef,
-                        shiftClickClipRef,
                         suppressClickRef,
                         scrollRef,
                         setShowPopover,
@@ -556,6 +549,14 @@ export function TimelineLanes({
                     );
                   })
                 }
+                <TimelineTransitionOverlays
+                  seams={transitionSeamsByTrack.get(trackNum) ?? []}
+                  rowElements={draggedClip?.started ? [] : automationElements}
+                  rowBackground={rowBackground}
+                  pixelsPerSecond={pps}
+                  rowHeight={rowHeight}
+                  clipBarHeight={clipBarHeight}
+                />
                 {/* The automation lanes belong to the ROW, so they are mounted
                     here rather than under the active clip's property lanes.
                     Hanging off that clip meant selecting a sibling moved the

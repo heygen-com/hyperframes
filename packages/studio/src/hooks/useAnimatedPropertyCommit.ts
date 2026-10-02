@@ -431,8 +431,12 @@ export function useAnimatedPropertyCommit(deps: CommitAnimatedPropertyDeps) {
   const commitAnimatedProperties = useCallback(
     // This is the single routing boundary for set, keyframe, whole-tween, and first-group writes.
     // fallow-ignore-next-line complexity
-    async (selection: DomEditSelection, props: Record<string, number | string>): Promise<void> => {
-      if (!gsapCommitMutation) return;
+    async (
+      selection: DomEditSelection,
+      props: Record<string, number | string>,
+      commit: CommitMutation | null = gsapCommitMutation,
+    ): Promise<void> => {
+      if (!commit) return;
       const propEntries = Object.entries(props);
       if (propEntries.length === 0) return;
       const primaryProp = propEntries[0]![0];
@@ -490,7 +494,7 @@ export function useAnimatedPropertyCommit(deps: CommitAnimatedPropertyDeps) {
               ),
               pct,
               iframe,
-              { commitMutation: gsapCommitMutation },
+              { commitMutation: commit },
               `Edit ${primaryProp} (whole animation)`,
             );
             return;
@@ -503,7 +507,7 @@ export function useAnimatedPropertyCommit(deps: CommitAnimatedPropertyDeps) {
             primaryProp,
             selector,
             iframe,
-            gsapCommitMutation,
+            commit,
           );
           return;
         }
@@ -515,13 +519,7 @@ export function useAnimatedPropertyCommit(deps: CommitAnimatedPropertyDeps) {
         // must update the position set AND create a size set atomically rather
         // than contaminating the first set with a foreign property group.
         if (!elementHasKeyframes) {
-          await commitStaticSet(
-            selection,
-            propEntries,
-            selector,
-            selectedGsapAnimations,
-            gsapCommitMutation,
-          );
+          await commitStaticSet(selection, propEntries, selector, selectedGsapAnimations, commit);
           return;
         }
 
@@ -534,7 +532,7 @@ export function useAnimatedPropertyCommit(deps: CommitAnimatedPropertyDeps) {
             propEntries,
             selector,
             selectedGsapAnimations,
-            gsapCommitMutation,
+            commit,
           );
           return;
         }
@@ -566,7 +564,7 @@ export function useAnimatedPropertyCommit(deps: CommitAnimatedPropertyDeps) {
                   { percentage: 0, properties: { ...newProps, _auto: 1 } },
                   { percentage: pct, properties: newProps },
                 ];
-          await gsapCommitMutation(
+          await commit(
             selection,
             {
               type: "add-with-keyframes",

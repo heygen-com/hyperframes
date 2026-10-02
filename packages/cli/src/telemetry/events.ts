@@ -1,3 +1,4 @@
+import type { BrowserInstallFacts } from "../browser/installFacts.js";
 import { redactTelemetryString, type OutputResolutionIssueKind } from "@hyperframes/core";
 import type { SubTimelineWaitOutcome } from "@hyperframes/engine";
 import { FEEDBACK_RATING_SCALE } from "../utils/feedbackRating.js";
@@ -5,6 +6,7 @@ import type { CatalogUsage } from "../utils/catalogUsage.js";
 import { flush, shouldTrack, trackEvent } from "./client.js";
 import { readConfig } from "./config.js";
 import { getPowerState } from "./system.js";
+import { CliRuntimeError } from "../utils/commandResult.js";
 
 // Power state is volatile (a laptop docks/undocks mid-session), so it is
 // sampled per render event rather than cached with SystemMeta. Attached to
@@ -99,6 +101,15 @@ export interface RenderObservabilityTelemetryPayload {
   /** Non-DE parallel-streaming router outcome ("screenshot" | "beginframe" —
    * routed; "eligible_off" — would route but the kill switch is off). */
   captureParallelStream?: string;
+  /** Chrome memory from the engine sampler (Phase −1, long-form render plan). */
+  captureChromeBrowserRssPeakMb?: number;
+  captureChromeRendererRssPeakMb?: number;
+  captureChromeRssLastMb?: number;
+  captureChromeGpuProcessSeenLastSample?: boolean;
+  captureChromeMemorySamples?: number;
+  captureCapturePath?: string;
+  captureSegmentIndex?: number;
+  captureSegmentRetries?: number;
   observabilityExtractVideoCount?: number;
   observabilityExtractedVideoCount?: number;
   observabilityExtractTotalFrames?: number;
@@ -171,6 +182,14 @@ function renderObservabilityEventProperties(props: RenderObservabilityTelemetryP
     de_fallback_frame_index: props.captureDeFallbackFrameIndex,
     de_fallback_threshold_db: props.captureDeFallbackThresholdDb,
     capture_parallel_stream: props.captureParallelStream,
+    chrome_browser_rss_peak_mb: props.captureChromeBrowserRssPeakMb,
+    chrome_renderer_rss_peak_mb: props.captureChromeRendererRssPeakMb,
+    chrome_rss_last_mb: props.captureChromeRssLastMb,
+    gpu_process_seen_last_sample: props.captureChromeGpuProcessSeenLastSample,
+    chrome_memory_samples: props.captureChromeMemorySamples,
+    capture_path: props.captureCapturePath,
+    segment_index: props.captureSegmentIndex,
+    segment_retries: props.captureSegmentRetries,
     observability_extract_video_count: props.observabilityExtractVideoCount,
     observability_extracted_video_count: props.observabilityExtractedVideoCount,
     observability_extract_total_frames: props.observabilityExtractTotalFrames,
@@ -221,12 +240,17 @@ function renderOutputShapeEventProperties(props: RenderOutputShapeTelemetryPaylo
 export interface RenderEnvironmentTelemetryPayload {
   ffmpegVersionMajor?: number;
   browserVersionMajor?: number;
+  browserInstall?: BrowserInstallFacts;
 }
 
 function renderEnvironmentEventProperties(props: RenderEnvironmentTelemetryPayload) {
   return {
     ffmpeg_version_major: props.ffmpegVersionMajor,
     browser_version_major: props.browserVersionMajor,
+    browser_build: props.browserInstall?.build,
+    browser_path_ascii: props.browserInstall?.pathAscii,
+    browser_path_length: props.browserInstall?.pathLength,
+    browser_path_drive: props.browserInstall?.drive,
   };
 }
 
@@ -361,6 +385,15 @@ export function trackRenderComplete(
     hasLut?: boolean;
     rootBodyMismatch?: boolean;
     rootBodyDeltaPxBucket?: string;
+    // `data-vfx-chain` facts from the same static scan (Task 1.5's kernel-cost
+    // measurement's producer-side counterpart). Undefined on render paths
+    // with no capture session, same as the composition-element fields above.
+    /** Host count — one per `data-vfx-chain` attribute occurrence, regardless of its chain's node count. */
+    vfxHostCount?: number;
+    /** Strongest enabled node's capture across every host ("none" | "self" | "backdrop", max). */
+    vfxCapture?: string;
+    /** Sorted unique def ids across every enabled node in every chain, comma-joined. */
+    vfxTypes?: string;
     deShortBand?: string;
     deParallelRouter?: string;
     dePreRouterWorkers?: number;
@@ -401,6 +434,14 @@ export function trackRenderComplete(
     capturePeakMs?: number;
     // Resource usage
     peakMemoryMb?: number;
+    // Aggregate Chrome memory (RenderPerfSummary.chromeMemory); overrides the
+    // live observability values when both are present, because the live ones
+    // are only the last session's and the aggregate covers every worker.
+    chromeBrowserRssPeakMb?: number;
+    chromeRendererRssPeakMb?: number;
+    chromeRssLastMb?: number;
+    chromeGpuProcessSeenLastSample?: boolean;
+    chromeMemorySamples?: number;
     memoryFreeMb?: number;
     tmpPeakBytes?: number;
     // Per-stage timings (subset of RenderPerfSummary.stages)
@@ -438,6 +479,14 @@ export function trackRenderComplete(
       // studioRenderTelemetry.ts never populates drawElement, so without the
       // fallback the explicit key still wins the spread with an undefined.
       ...renderObservabilityEventProperties(props),
+      chrome_browser_rss_peak_mb:
+        props.chromeBrowserRssPeakMb ?? props.captureChromeBrowserRssPeakMb,
+      chrome_renderer_rss_peak_mb:
+        props.chromeRendererRssPeakMb ?? props.captureChromeRendererRssPeakMb,
+      chrome_rss_last_mb: props.chromeRssLastMb ?? props.captureChromeRssLastMb,
+      gpu_process_seen_last_sample:
+        props.chromeGpuProcessSeenLastSample ?? props.captureChromeGpuProcessSeenLastSample,
+      chrome_memory_samples: props.chromeMemorySamples ?? props.captureChromeMemorySamples,
       duration_ms: props.durationMs,
       fps: props.fps,
       quality: props.quality,
@@ -464,6 +513,9 @@ export function trackRenderComplete(
       begin_frame_no_damage_frames: props.beginFrameNoDamageFrames,
       begin_frame_has_damage_frames: props.beginFrameHasDamageFrames,
       de_capture_mode: props.deCaptureMode,
+      vfx_host_count: props.vfxHostCount,
+      vfx_capture: props.vfxCapture,
+      vfx_types: props.vfxTypes,
       de_compile_gate: props.deCompileGate,
       de_clamp_reason: props.deClampReason,
       de_worker_inversion: directOrCapture(props.deWorkerInversion, props.captureDeWorkerInversion),
@@ -742,11 +794,13 @@ export function trackRegistryItemAdded(props: {
   item: string;
   itemType: string;
   requested: boolean;
+  source: "cli" | "studio";
 }): void {
   trackEvent("registry_item_added", {
     item: props.item,
     item_type: props.itemType,
     requested: props.requested,
+    source: props.source,
   });
 }
 
@@ -871,18 +925,30 @@ export function trackFigmaImport(props: {
   });
 }
 
-// Report why a command failed before it exits non-zero. cli_command_result
-// records the failure but not the reason; this fills that gap via cli_error so
-// command failures are diagnosable. Enqueues synchronously — the process `exit`
-// handler flushes it. Drop this into any command's failure path.
-export function trackCommandFailure(command: string, err: unknown): void {
-  const error = err instanceof Error ? err : new Error(String(err));
+const reportedFailures = new WeakSet<object>();
+
+// Report why a command failed: cli_command_result records the failure, not the reason. Every
+// command-failure report goes through here. Enqueues synchronously; the `exit` handler flushes it.
+export function trackCommandFailure(
+  command: string,
+  err: unknown,
+  overrides: { error_name?: string; endpoint?: string } = {},
+): void {
+  // A CliRuntimeError wraps the failure it presented; report that failure, and only once.
+  let failure = err;
+  while (failure instanceof CliRuntimeError && failure.cause !== undefined) failure = failure.cause;
+  if (typeof failure === "object" && failure !== null) {
+    if (reportedFailures.has(failure)) return;
+    reportedFailures.add(failure);
+  }
+  const error = failure instanceof Error ? failure : new Error(String(failure));
   trackCliError({
-    error_name: error.name,
+    error_name: overrides.error_name ?? error.name,
     error_message: error.message,
     stack_trace: error.stack,
     command,
     kind: "command_error",
+    endpoint: overrides.endpoint,
   });
 }
 
@@ -911,6 +977,10 @@ export function trackCompareSheet(props: {
     total: props.total,
     render_ready_timed_out: props.renderReadyTimedOut,
   });
+}
+
+export function trackHistoryAction(props: { action: string; via: "preview" | "direct" }): void {
+  trackEvent("cli_history", props);
 }
 
 // A skills install was skipped because a required prerequisite binary is

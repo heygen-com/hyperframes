@@ -1,3 +1,7 @@
+import { timeAtSourceTime, type RateSpec } from "../speedRamp.js";
+import { MEDIA_HARD_SYNC_SECONDS } from "./media.js";
+import { playRangeHoldTime } from "./protocol.js";
+
 export type TransportClockSnapshot = {
   time: number;
   playing: boolean;
@@ -11,6 +15,8 @@ export type AudioClockSource =
       el: HTMLMediaElement;
       compositionStart: number;
       mediaStart: number;
+      /** The clip's rate lane; a constant rate is read from `el.playbackRate`. */
+      rate?: RateSpec;
     }
   | {
       currentTimeSeconds: number;
@@ -19,16 +25,21 @@ export type AudioClockSource =
 /** GSAP's own `lagSmoothing` default — see the PR body for why this clock needs its own copy. */
 const STALL_THRESHOLD_MS = 500;
 const STALL_ADJUSTED_LAG_MS = 33;
+const HAVE_FUTURE_DATA = 3;
 
 export class TransportClock {
   private _baseTime = 0;
   private _playStartMs: number | null = null;
   private _rate = 1;
   private _duration = Infinity;
+  private _playStart = 0;
+  private _playEnd = Infinity;
+  private _playHold = Infinity;
   private _nowMs: () => number;
   private _audioSource: AudioClockSource | null = null;
   /** Wall-clock time of the last `now()` read while playing; null while paused. */
   private _lastReadMs: number | null = null;
+  private _lastNow = 0;
 
   constructor(opts?: {
     initialTime?: number;
@@ -54,20 +65,15 @@ export class TransportClock {
       if ("currentTimeSeconds" in this._audioSource) {
         audioTime = this._audioSource.currentTimeSeconds;
       } else {
-        const { el, compositionStart, mediaStart } = this._audioSource;
-        if (!el.paused && Number.isFinite(el.currentTime)) {
-          audioTime =
-            ((el.currentTime - mediaStart) / (el.playbackRate > 0 ? el.playbackRate : 1)) *
-              this._rate +
-            compositionStart;
-        }
+        audioTime = this._elementTimeNeverBehind(this._audioSource);
       }
       if (audioTime !== null) {
+        const t = Math.min(audioTime, this.getEnd());
+        this._baseTime = Math.max(0, t);
+        this._playStartMs = this._nowMs();
         this._lastReadMs = null;
-        if (Number.isFinite(this._duration) && audioTime >= this._duration) {
-          return this._duration;
-        }
-        return Math.max(0, audioTime);
+        this._lastNow = this._baseTime;
+        return this._baseTime;
       }
     }
 
@@ -75,10 +81,25 @@ export class TransportClock {
     this._applyStallCorrection();
     const elapsed = (this._nowMs() - this._playStartMs) / 1000;
     const t = this._baseTime + elapsed * this._rate;
-    if (Number.isFinite(this._duration) && t >= this._duration) {
-      return this._duration;
-    }
-    return Math.max(0, t);
+    this._lastNow = Math.max(0, Math.min(t, this.getEnd()));
+    return this._lastNow;
+  }
+
+  private _elementTimeNeverBehind(
+    source: Extract<AudioClockSource, { el: HTMLMediaElement }>,
+  ): number | null {
+    const { el, compositionStart, mediaStart, rate } = source;
+    if (el.paused || !Number.isFinite(el.currentTime)) return null;
+    if (el.seeking) return this._lastNow;
+    const spec = rate ?? 1;
+    const time = timeAtSourceTime(spec, el.currentTime - mediaStart) + compositionStart;
+    return time >= this._lastNow ? time : this._heldTimeWhenBehind(el, this._lastNow - time, spec);
+  }
+
+  private _heldTimeWhenBehind(el: HTMLMediaElement, behind: number, spec: RateSpec): number | null {
+    if (el.loop && behind > timeAtSourceTime(spec, el.duration) / 2) return null;
+    const buffering = el.readyState < HAVE_FUTURE_DATA;
+    return buffering || behind <= MEDIA_HARD_SYNC_SECONDS ? this._lastNow : null;
   }
 
   /** Folds a >500ms gap since the last read into `_playStartMs` so it's never reported as played time. */
@@ -96,8 +117,9 @@ export class TransportClock {
 
   play(): boolean {
     if (this._playStartMs !== null) return false;
-    if (Number.isFinite(this._duration) && this._baseTime >= this._duration) return false;
+    if (this._baseTime >= this.getEnd()) return false;
     this._playStartMs = this._nowMs();
+    this._lastNow = this._baseTime;
     // Not a stall: the gap since the clock was last read (possibly a long
     // paused idle) says nothing about lost playback time, since none was
     // playing. `_applyStallCorrection` treats null as "nothing to compare
@@ -118,6 +140,7 @@ export class TransportClock {
       ? Math.max(0, Math.min(timeSeconds, this._duration))
       : Math.max(0, timeSeconds);
     this._baseTime = clamped;
+    this._lastNow = clamped;
     if (this._playStartMs !== null) {
       this._playStartMs = this._nowMs();
       // Same reasoning as `play()`: the seek itself, not any elapsed gap
@@ -155,6 +178,25 @@ export class TransportClock {
     return this._duration;
   }
 
+  setPlayRange(start: number, end: number | null, fps: number): void {
+    this._playStart = Number.isFinite(start) && start > 0 ? start : 0;
+    this._playEnd = end !== null && Number.isFinite(end) && end > this._playStart ? end : Infinity;
+    this._playHold = playRangeHoldTime(this._playStart, this._playEnd, fps);
+  }
+
+  getPlayStart(): number {
+    return this._playStart;
+  }
+
+  getEnd(): number {
+    return Math.min(this._duration, this._playEnd);
+  }
+
+  /** Where a stop parks: the film's end, or a range's last frame, since the moment is [start, end). */
+  getStopTime(): number {
+    return this._playEnd < this._duration ? this._playHold : this.getEnd();
+  }
+
   attachAudioSource(source: AudioClockSource): void {
     this._audioSource = source;
   }
@@ -168,6 +210,11 @@ export class TransportClock {
       this._lastReadMs = null;
     }
     this._audioSource = null;
+  }
+
+  /** The element the playhead currently follows, if the source is one. */
+  audioElement(): HTMLMediaElement | null {
+    return this._audioSource && "el" in this._audioSource ? this._audioSource.el : null;
   }
 
   hasAudioSource(): boolean {
@@ -194,6 +241,7 @@ export class TransportClock {
   }
 
   reachedEnd(): boolean {
-    return Number.isFinite(this._duration) && this.now() >= this._duration;
+    const time = this.now();
+    return time >= this.getEnd() || (this._playStartMs === null && time >= this.getStopTime());
   }
 }

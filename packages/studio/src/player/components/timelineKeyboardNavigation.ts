@@ -49,6 +49,7 @@ export interface TimelineLogicalItem {
   elementId: string;
   /** The item's time anchor. Clips use their midpoint; ease controls use the segment midpoint. */
   time: number;
+  element?: TimelineElement;
   keyframeTarget?: TimelineKeyframeTarget;
 }
 
@@ -113,6 +114,7 @@ function clipItems(rowId: string, elements: readonly TimelineElement[]): Timelin
         rowId,
         elementId: id,
         time: element.start + element.duration / 2,
+        element,
       };
     });
 }

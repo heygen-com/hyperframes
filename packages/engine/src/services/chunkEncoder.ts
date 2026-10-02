@@ -31,6 +31,7 @@ import {
 } from "../utils/gpuEncoder.js";
 import { type HdrTransfer, getHdrEncoderColorParams } from "../utils/hdr.js";
 import { withEvenDimensionPad } from "../utils/evenDimensions.js";
+import { SDR_CAPTURE_TO_BT709_FILTER } from "../utils/sdrCaptureColor.js";
 import { formatFfmpegError, isExternalFfmpegInterruption, runFfmpeg } from "../utils/runFfmpeg.js";
 import { extractAudioMetadata } from "../utils/ffprobe.js";
 import { type Fps, fpsToFfmpegArg, fpsToNumber } from "@hyperframes/core";
@@ -446,34 +447,31 @@ export function buildEncoderArgs(
       );
     }
 
-    // Range conversion: Chrome's full-range RGB → limited/TV range.
+    // Range conversion: Chrome's full-range capture → limited/TV range; SDR also
+    // converts to the BT.709 matrix it is tagged with.
+    const sdrFilter = options.hdr ? undefined : SDR_CAPTURE_TO_BT709_FILTER;
+    const captureFilter = sdrFilter ?? "scale=in_range=pc:out_range=tv";
     if (gpuEncoder === "vaapi") {
       // vaapi already runs `format=nv12,hwupload`; the nv12 conversion aligns
-      // odd dimensions before upload, so only prepend the range conversion.
+      // odd dimensions before upload, so only prepend the colour conversion.
       const vfIdx = args.indexOf("-vf");
       if (vfIdx !== -1) {
-        args[vfIdx + 1] = `scale=in_range=pc:out_range=tv,${args[vfIdx + 1]}`;
+        args[vfIdx + 1] = `${captureFilter},${args[vfIdx + 1]}`;
       }
     } else if (shouldUseGpu) {
       // nvenc/videotoolbox/qsv/amf feed software frames straight to the HW
-      // encoder with no `-vf`. They hit the same "height not divisible by 2"
-      // abort as libx264 on an odd-sized 4:2:0 canvas, so pad odd dimensions
-      // up to even on the software side before the encode.
-      const vf = withEvenDimensionPad("", pixelFormat, options.width, options.height);
+      // encoder. They hit the same "height not divisible by 2" abort as
+      // libx264 on an odd-sized 4:2:0 canvas, so pad odd dimensions up to even
+      // on the software side before the encode.
+      const vf = withEvenDimensionPad(sdrFilter ?? "", pixelFormat, options.width, options.height);
       if (vf) args.push("-vf", vf);
     } else {
-      // Range conversion: Chrome screenshots are full-range RGB.
       // The scale filter handles both 8-bit and 10-bit correctly. Pad odd
       // dimensions up to even so libx264/libx265 (4:2:0) don't abort with
       // "height not divisible by 2" on an odd-sized composition canvas.
       args.push(
         "-vf",
-        withEvenDimensionPad(
-          "scale=in_range=pc:out_range=tv",
-          pixelFormat,
-          options.width,
-          options.height,
-        ),
+        withEvenDimensionPad(captureFilter, pixelFormat, options.width, options.height),
       );
     }
 
@@ -562,6 +560,71 @@ export async function encodeFramesFromDir(
     durationMs: Date.now() - startTime,
     framesEncoded: frameCount,
     fileSize,
+  };
+}
+
+export function buildConcatArgs(concatListPath: string, outputPath: string): string[] {
+  const args = ["-f", "concat", "-safe", "0", "-i", concatListPath, "-c", "copy"];
+  // The concat demuxer does not carry per-input container metadata into the
+  // output, so provenance is re-asserted on the concatenated file.
+  appendRenderProvenanceArgs(args, outputPath);
+  args.push("-y", outputPath);
+  return args;
+}
+
+/**
+ * Sequence rather than a timestamp: two lists written in the same millisecond
+ * into one directory would otherwise collide, and a concat that reads another
+ * render's list produces a silently wrong video rather than an error.
+ */
+let concatListSeq = 0;
+
+function writeConcatList(dir: string, inputPaths: readonly string[]): string {
+  concatListSeq += 1;
+  const listPath = join(dir, `concat-list-${process.pid}-${concatListSeq}.txt`);
+  const body = inputPaths.map((p) => `file '${p.replace(/'/g, "'\\''")}'`).join("\n");
+  writeFileSync(listPath, body, "utf-8");
+  return listPath;
+}
+
+/**
+ * Stream-copy `inputPaths` (closed-GOP, same codec/params) into one file.
+ * Used by the in-process chunked encode and by segmented capture.
+ *
+ * `externalInterruption` distinguishes an ffmpeg killed from outside (SIGTERM
+ * / SIGKILL from a supervisor or OOM killer) from a genuine encode error;
+ * callers map it to a retryable failure reason.
+ */
+export async function concatVideoFiles(
+  inputPaths: readonly string[],
+  outputPath: string,
+  signal?: AbortSignal,
+  config?: Partial<Pick<EngineConfig, "ffmpegEncodeTimeout">>,
+): Promise<{ success: true } | { success: false; error: string; externalInterruption: boolean }> {
+  const [firstInput] = inputPaths;
+  if (firstInput === undefined) {
+    return { success: false, error: "concatVideoFiles: no inputs", externalInterruption: false };
+  }
+  mkdirSync(dirname(outputPath), { recursive: true });
+  // The list lives with the inputs, not with the output: concurrent encodes
+  // get their own chunk directory but can share an output directory.
+  // The list is left on disk deliberately: it is removed with the work dir,
+  // and `--debug` keeps both so a bad concat can be reproduced from its list.
+  const listPath = writeConcatList(dirname(firstInput), inputPaths);
+  const encodeTimeout = config?.ffmpegEncodeTimeout ?? DEFAULT_CONFIG.ffmpegEncodeTimeout;
+  const result = await runFfmpeg(buildConcatArgs(listPath, outputPath), {
+    signal,
+    timeout: encodeTimeout,
+  });
+  if (result.success) return { success: true };
+  return {
+    success: false,
+    error: appendEncodeTimeoutMessage(
+      `Chunk concat failed: ${result.stderr.slice(-400)}`,
+      result.terminationReason === "deadline",
+      encodeTimeout,
+    ),
+    externalInterruption: isExternalFfmpegInterruption(result),
   };
 }
 
@@ -657,31 +720,7 @@ export async function encodeFramesChunkedConcat(
     chunkPaths.push(chunkPath);
   }
 
-  const concatListPath = join(chunkDir, "concat-list.txt");
-  const concatInput = chunkPaths.map((path) => `file '${path.replace(/'/g, "'\\''")}'`).join("\n");
-  writeFileSync(concatListPath, concatInput, "utf-8");
-
-  const concatArgs = ["-f", "concat", "-safe", "0", "-i", concatListPath, "-c", "copy"];
-  // The concat demuxer does not carry per-chunk container metadata into the
-  // output, so the chunks' provenance is dropped here even though every chunk
-  // carries it. Re-assert on the concatenated file: for a no-audio mov/webm
-  // this is the last container write, since mux is skipped and applyFaststart
-  // only copies those two formats.
-  appendRenderProvenanceArgs(concatArgs, outputPath);
-  concatArgs.push("-y", outputPath);
-  const encodeTimeout = config?.ffmpegEncodeTimeout ?? DEFAULT_CONFIG.ffmpegEncodeTimeout;
-  const concatProcessResult = await runFfmpeg(concatArgs, { signal, timeout: encodeTimeout });
-  const concatResult = {
-    success: concatProcessResult.success,
-    error: concatProcessResult.success
-      ? undefined
-      : appendEncodeTimeoutMessage(
-          `Chunk concat failed: ${concatProcessResult.stderr.slice(-400)}`,
-          concatProcessResult.terminationReason === "deadline",
-          encodeTimeout,
-        ),
-  };
-
+  const concatResult = await concatVideoFiles(chunkPaths, outputPath, signal, config);
   if (!concatResult.success) {
     return {
       success: false,
@@ -690,9 +729,7 @@ export async function encodeFramesChunkedConcat(
       framesEncoded: 0,
       fileSize: 0,
       error: concatResult.error,
-      failureReason: isExternalFfmpegInterruption(concatProcessResult)
-        ? "external_interruption"
-        : undefined,
+      failureReason: concatResult.externalInterruption ? "external_interruption" : undefined,
     };
   }
 

@@ -191,3 +191,71 @@ describe("useVolumeAutomation", () => {
     expect(writtenAutomation(onSetAttributeQuiet).lanes[0].points[0].v).toBe(1);
   });
 });
+
+describe("useVolumeAutomation speed lane", () => {
+  const rateLane = JSON.stringify({
+    version: 1,
+    lanes: [
+      {
+        target: "rate",
+        points: [
+          { t: 0, v: 1 },
+          { t: 4, v: 4 },
+        ],
+      },
+    ],
+  });
+
+  it("seeds a rate lane at the clip's constant rate so automating does not change the speed", () => {
+    const { binding, onSetAttributeQuiet } = bind({ "playback-rate": "2" });
+    binding.rate.onAutomate();
+    expect(writtenAutomation(onSetAttributeQuiet).lanes).toEqual([
+      { target: "rate", points: [{ t: 0, v: 2 }] },
+    ]);
+  });
+
+  it("reports the lane's geometric value at the playhead", () => {
+    // 1x to 4x over 4s: halfway is 2x, not the linear 2.5x
+    const { binding } = bind({ automation: rateLane, start: "0", duration: "4" }, 2);
+    expect(binding.rate.automated).toBe(true);
+    expect(binding.rate.automatedValue).toBeCloseTo(2, 5);
+  });
+
+  it("writes a keyframe on the rate lane and leaves the volume lane alone", () => {
+    const both = JSON.stringify({
+      version: 1,
+      lanes: [
+        { target: "volume", points: [{ t: 0, v: 0.5 }] },
+        { target: "rate", points: [{ t: 0, v: 1 }] },
+      ],
+    });
+    const { binding, onSetAttributeQuiet } = bind(
+      { automation: both, start: "0", duration: "4" },
+      2,
+    );
+    binding.rate.onCommitAt(3);
+    const lanes = writtenAutomation(onSetAttributeQuiet).lanes;
+    expect(lanes.find((l: { target: string }) => l.target === "volume").points).toEqual([
+      { t: 0, v: 0.5 },
+    ]);
+    expect(lanes.find((l: { target: string }) => l.target === "rate").points).toContainEqual({
+      t: 2,
+      v: 3,
+    });
+  });
+
+  it("stretches a preset over the clip's duration", () => {
+    const { binding, onSetAttributeQuiet } = bind({ start: "0", duration: "8" });
+    binding.rate.onApplyPreset("flash-out");
+    const lane = writtenAutomation(onSetAttributeQuiet).lanes[0];
+    expect(lane.target).toBe("rate");
+    expect(lane.points.at(-1).t).toBe(8);
+  });
+
+  it("offers no preset while the clip has no known duration, and writes nothing", () => {
+    const { binding, onSetAttributeQuiet } = bind({ start: "0" });
+    expect(binding.rate.canApplyPreset).toBe(false);
+    binding.rate.onApplyPreset("flash-out");
+    expect(onSetAttributeQuiet).not.toHaveBeenCalled();
+  });
+});

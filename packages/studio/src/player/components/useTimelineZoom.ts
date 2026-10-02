@@ -1,4 +1,5 @@
 // fallow-ignore-file dead-code
+import { useCallback } from "react";
 import { usePlayerStore, type ZoomMode } from "../store/playerStore";
 
 export interface TimelineZoomState {
@@ -13,6 +14,13 @@ export function useTimelineZoom(): TimelineZoomState {
   const zoomMode = usePlayerStore((s) => s.zoomMode);
   const manualZoomPercent = usePlayerStore((s) => s.manualZoomPercent);
   const setZoomMode = usePlayerStore((s) => s.setZoomMode);
-  const setManualZoomPercent = usePlayerStore((s) => s.setManualZoomPercent);
+  const setStorePercent = usePlayerStore((s) => s.setManualZoomPercent);
+  const setManualZoomPercent = useCallback(
+    (percent: number) => {
+      usePlayerStore.setState((s) => ({ userZoomCount: s.userZoomCount + 1 }));
+      setStorePercent(percent);
+    },
+    [setStorePercent],
+  );
   return { zoomMode, manualZoomPercent, setZoomMode, setManualZoomPercent };
 }

@@ -8,7 +8,7 @@ type AnyCommandDef = CommandDef<any>;
 /**
  * Wrap a lazy command loader so leaf commands and nested subcommands share the
  * unknown-flag guard. Errors propagate unchanged to the executable boundary,
- * which is the sole command-failure telemetry reporter.
+ * which reports them.
  */
 export function trackCommandFailures(
   load: () => Promise<AnyCommandDef>,

@@ -61,6 +61,7 @@ export interface DomEditCapabilities {
   canApplyManualSize: boolean;
   canApplyManualRotation: boolean;
   reasonIfDisabled?: string;
+  commitCheckPending?: boolean;
 }
 
 export interface DomEditTextField {

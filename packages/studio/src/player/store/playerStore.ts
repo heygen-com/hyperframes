@@ -2,7 +2,6 @@ import { create } from "zustand";
 import { attachPlayerStoreDevHandle } from "./playerStoreDevHandle";
 import { nextSelectionSet, revealTargetsSelection } from "./playerStoreSelection";
 import type { MusicBeatAnalysis } from "@hyperframes/core/beats";
-import type { GsapAnimation } from "@hyperframes/core/gsap-parser";
 import type { BeatEditState } from "../../utils/beatEditing";
 import type { ClipManifestClip } from "../lib/playbackTypes";
 import {
@@ -11,7 +10,7 @@ import {
   type TimelineTimeDisplayMode,
 } from "../../utils/studioUiPreferences";
 import { clampTimelineZoomPercent, computePinnedZoomPercent } from "../components/timelineZoom";
-import { createKeyframeSlice, type KeyframeCacheEntry, type KeyframeSlice } from "./keyframeSlice";
+import { createKeyframeSlice, type KeyframeSlice } from "./keyframeSlice";
 import {
   createAutomationSelectionSlice,
   type AutomationSelectionSlice,
@@ -19,10 +18,13 @@ import {
 import { createEditingModeSlice, type EditingModeSlice } from "./editingModeSlice";
 import { createTimelineFocusRequest, type TimelineFocusRequest } from "./timelineFocusState";
 import { createThumbnailSlice, type ThumbnailSlice } from "./thumbnailSlice";
-import { createPlaybackReadinessSlice, resetPlaybackReadinessState } from "./readinessSlice";
-
+import { createPlaybackReadinessSlice } from "./readinessSlice";
+import { createRangeSelectionSlice, type RangeSelectionSlice } from "./rangeSelectionSlice";
+import { createTimelineResetState } from "./timelineResetState";
 export type { KeyframeCacheEntry } from "./keyframeSlice";
 export { liveTime } from "./liveTime";
+import { liveTime } from "./liveTime";
+export { createTimelineResetState };
 
 import type {
   TimelineElement,
@@ -59,7 +61,8 @@ type PlayerStoreSlices = KeyframeSlice &
   AutomationSelectionSlice &
   ThumbnailSlice &
   EditingModeSlice &
-  ReturnType<typeof createPlaybackReadinessSlice>;
+  ReturnType<typeof createPlaybackReadinessSlice> &
+  RangeSelectionSlice;
 interface PlayerState extends PlayerStoreSlices {
   isPlaying: boolean;
   currentTime: number;
@@ -80,6 +83,7 @@ interface PlayerState extends PlayerStoreSlices {
   zoomMode: ZoomMode;
   /** Timeline zoom percent relative to the fit width when in manual mode */
   manualZoomPercent: number;
+  userZoomCount: number;
   /**
    * Bumped on every live z-index edit (handleDomZIndexReorderCommit apply AND
    * rollback). Flashless z commits (skipReload) never reload the iframe or
@@ -94,6 +98,8 @@ interface PlayerState extends PlayerStoreSlices {
 
   activeTool: TimelineTool;
   setActiveTool: (tool: TimelineTool) => void;
+  selectLeftward: () => void;
+  selectRightward: () => void;
 
   /** Tween-relative percentage of the last-clicked keyframe diamond. Operations
    *  (drag, resize, rotate) target this instead of recomputing from playhead. */
@@ -248,49 +254,15 @@ interface BeatHistoryEntry {
   label: string;
 }
 
-export function createTimelineResetState() {
-  return {
-    isPlaying: false,
-    currentTime: 0,
-    duration: 0,
-    ...resetPlaybackReadinessState(),
-    beatDragging: false,
-    elements: [],
-    selectedElementId: null,
-    zEditVersion: 0,
-    inPoint: null,
-    outPoint: null,
-    activeTool: "select" as const,
-    activeKeyframePct: null,
-    motionPathArmed: false,
-    motionPathCreateAvailable: false,
-    selectedKeyframes: new Set<string>(),
-    // Ephemeral like every other selection here. A range surviving a project
-    // switch can match a same-keyed clip in the new project and redirect a
-    // paste through `sel.elementKey === paste.elementKey` to a stale t0.
-    automationSelection: null,
-    expandedClipIds: new Set<string>(),
-    // Per-composition: ids from comp A match nothing in B, silencing all of it.
-    collapsedGroupIds: new Set<string>(),
-    expandedLaneOwnerIds: new Set<string>(),
-    focusedEaseSegment: null,
-    revealedAudioFxTarget: null,
-    selectedElementIds: new Set<string>(),
-    requestedSeekTime: null,
-    lintFindingsByElement: new Map<string, { count: number; messages: string[] }>(),
-    timelineFocus: null,
-    keyframeCache: new Map<string, KeyframeCacheEntry>(),
-    gsapAnimations: new Map<string, GsapAnimation[]>(),
-    beatAnalysis: null,
-    beatEdits: null,
-    beatUndo: [],
-    beatRedo: [],
-    beatPersist: null,
-    clipManifest: null,
-    clipParentMap: new Map<string, string>(),
-    domClipChildren: [],
-    subCompositionHostState: new Map<string, SubCompositionHostState>(),
-  };
+/** Selects like the marquee: the primary first, so its resets run, then the whole set. */
+function selectAroundPlayhead(
+  state: PlayerState,
+  keep: (el: TimelineElement, playhead: number) => boolean,
+): void {
+  const playhead = state.isPlaying ? liveTime.latest() : state.currentTime;
+  const ids = state.elements.filter((el) => keep(el, playhead)).map((el) => el.key ?? el.id);
+  state.setSelectedElementId(ids[0] ?? null);
+  state.setSelectedElementIds(new Set(ids));
 }
 
 export const usePlayerStore = create<PlayerState>((set, get) => ({
@@ -308,6 +280,7 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
   loopEnabled: false,
   zoomMode: "fit",
   manualZoomPercent: 100,
+  userZoomCount: 0,
   zEditVersion: 0,
   timelinePps: 100,
   timelineFitPps: 100,
@@ -316,6 +289,8 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
 
   activeTool: "select",
   setActiveTool: (tool) => set({ activeTool: tool }),
+  selectLeftward: () => selectAroundPlayhead(get(), (el, t) => el.start < t),
+  selectRightward: () => selectAroundPlayhead(get(), (el, t) => el.start + el.duration > t),
 
   ...createKeyframeSlice(set, () => ({
     timelineProjectId: get().timelineProjectId,
@@ -325,6 +300,7 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
 
   ...createAutomationSelectionSlice(set),
   ...createEditingModeSlice(set),
+  ...createRangeSelectionSlice(),
   ...createPlaybackReadinessSlice(set),
 
   activeKeyframePct: null,
@@ -593,3 +569,32 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
 }));
 
 attachPlayerStoreDevHandle(usePlayerStore);
+
+export function isPreviewBooted(projectId: string): boolean {
+  const { previewBooted, timelineProjectId } = usePlayerStore.getState();
+  return previewBooted && timelineProjectId === projectId;
+}
+
+/** True once projectId's live preview has booted, false once another project replaces it.
+ * Open-time work the first frame does not need (server parses, lint) waits on it. */
+export function whenPreviewBooted(projectId: string): Promise<boolean> {
+  const openedFrom = usePlayerStore.getState().timelineProjectId;
+  let seen = false;
+  const settle = (state: PlayerState): boolean | null => {
+    if (state.timelineProjectId === projectId) {
+      seen = true;
+      return state.previewBooted ? true : null;
+    }
+    return seen || state.timelineProjectId !== openedFrom ? false : null;
+  };
+  return new Promise((resolve) => {
+    const now = settle(usePlayerStore.getState());
+    if (now !== null) return resolve(now);
+    const stop = usePlayerStore.subscribe((state) => {
+      const result = settle(state);
+      if (result === null) return;
+      stop();
+      resolve(result);
+    });
+  });
+}

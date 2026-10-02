@@ -88,16 +88,48 @@
         <script src="https://cdn.jsdelivr.net/npm/gsap@3.14.2/dist/gsap.min.js"></script>
         <script>
           (function () {
+            /* SHUTTER_SNIPPET_START */
             if (!window._hfMbUid) window._hfMbUid = 0;
             if (!window._hfMbAttached) window._hfMbAttached = new WeakSet();
+            if (!window._hfMbSkipped) window._hfMbSkipped = new WeakSet();
+            if (!window._hfMbProxies) window._hfMbProxies = new WeakSet();
+            if (!window._hfMbTimeline) window._hfMbTimeline = new WeakMap();
+            if (!window._hfMbWarned) window._hfMbWarned = new WeakSet();
 
-            // Shutter length is measured in frames, so the snippet must know the
-            // composition frame rate: explicit option, else the root's data-fps, else 30.
-            function resolveFps(optionFps) {
+            // The declarative form. A copy of a target must not carry it, or the copy is swept
+            // as a target of its own; the group's own marker is `data-hf-motion-blur-group`.
+            var SWEEP_ATTR = "data-hf-motion-blur";
+            // About eight seconds. Long enough for an asynchronously mounted sub-composition, short
+            // enough that a page with a genuine mistake in it reports before anyone stops watching.
+            var POLL_MS = 32;
+            var POLL_TICKS = 250;
+            var SWEEP_SELECTOR = "[" + SWEEP_ATTR + "]";
+            var OPTION_KEYS = ["shutterAngle", "shutterPhase", "samplesPerFrame", "fps"];
+
+            // A copy is a deep clone, so the attribute rides along on the root AND on every marked
+            // descendant. Any one left behind is swept as a target of its own, which clones again.
+            var COPY_STRIP = [SWEEP_ATTR, "data-composition-id", "data-fps"];
+
+            function stripAttrs(el) {
+              for (var a = 0; a < COPY_STRIP.length; a++) el.removeAttribute(COPY_STRIP[a]);
+            }
+
+            function stripCopyAttrs(root) {
+              stripAttrs(root);
+              var inner = root.querySelectorAll("[" + COPY_STRIP.join("],[") + "]");
+              for (var i = 0; i < inner.length; i++) stripAttrs(inner[i]);
+            }
+
+            // Shutter length is measured in frames, so the snippet must know the composition
+            // frame rate: explicit option, else the target's OWN root, else the first root in
+            // the document, else 30. The target's root is what makes two compositions on one
+            // page read their own data-fps instead of sharing the first one written.
+            function resolveFps(optionFps, target) {
               var explicit = Number(optionFps);
               if (explicit > 0) return explicit;
 
-              var root = document.querySelector("[data-composition-id][data-fps]");
+              var scoped = target ? target.closest("[data-composition-id][data-fps]") : null;
+              var root = scoped || document.querySelector("[data-composition-id][data-fps]");
               var rootFps = root ? Number(root.getAttribute("data-fps")) : 0;
               if (rootFps > 0) return rootFps;
 
@@ -167,8 +199,6 @@
               var samples = Number.isFinite(requestedSamples)
                 ? Math.max(2, Math.min(64, Math.round(requestedSamples)))
                 : 16;
-              var fps = resolveFps(opts.fps);
-
               var items = Array.isArray(selector) ? selector : [selector];
               var targets = items.reduce(function (acc, s) {
                 if (typeof s === "string") {
@@ -223,53 +253,91 @@
                 return value && value !== "none" ? "perspective(" + value + ") " : "";
               }
 
-              var state = targets
-                .filter(function (el) {
-                  // One group per element. A second call on the same element would stack a
-                  // second set of copies over the first and double the ink, so the first
-                  // call owns it.
-                  if (window._hfMbAttached.has(el)) return false;
-                  window._hfMbAttached.add(el);
-                  return true;
-                })
-                .map(function (el) {
-                  var group = document.createElement("div");
-                  group.setAttribute("data-hf-motion-blur", "hf-mb-" + window._hfMbUid++);
-                  group.style.cssText =
-                    "position:absolute;left:0;top:0;width:0;height:0;isolation:isolate;pointer-events:none;display:none;";
+              function attachOne(el) {
+                var group = document.createElement("div");
+                group.setAttribute("data-hf-motion-blur-group", "hf-mb-" + window._hfMbUid++);
+                group.style.cssText =
+                  "position:absolute;left:0;top:0;width:0;height:0;isolation:isolate;pointer-events:none;display:none;";
 
-                  var clones = [];
-                  for (var k = 0; k < copies; k++) {
-                    var clone = el.cloneNode(true);
-                    clone.removeAttribute("id");
-                    clones.push(clone);
-                    group.appendChild(clone);
+                var clones = [];
+                for (var k = 0; k < copies; k++) {
+                  var clone = el.cloneNode(true);
+                  clone.removeAttribute("id");
+                  stripCopyAttrs(clone);
+                  clones.push(clone);
+                  group.appendChild(clone);
+                }
+                var s = {
+                  el: el,
+                  group: group,
+                  clones: clones,
+                  samples: [],
+                  perspective: "",
+                  watch: null,
+                };
+
+                // Resolved styles and the parent's perspective are px once read, so a
+                // container-relative element needs them again when its box changes. Per frame
+                // that would walk the whole subtree once per copy; on resize it costs nothing
+                // on a fixed-size render and keeps a live preview honest.
+                function snapshot() {
+                  var styles = resolvedStyles(el, []);
+                  s.perspective = parentPerspective(el);
+                  for (var c = 0; c < clones.length; c++) {
+                    paintResolvedStyles(clones[c], styles, { i: 0 });
+                    clones[c].style.position = "absolute";
+                    clones[c].style.margin = "0";
+                    clones[c].style.opacity = alpha;
+                    clones[c].style.mixBlendMode = "plus-lighter";
                   }
-                  el.parentNode.insertBefore(group, el);
+                }
 
-                  var s = { el: el, group: group, clones: clones, samples: [], perspective: "" };
+                // Snapshot BEFORE the group enters the page, so a throw in the style walk leaves
+                // nothing behind: the record the rollback needs does not exist until it returns.
+                snapshot();
+                el.parentNode.insertBefore(group, el);
+                if (typeof ResizeObserver === "function") {
+                  s.watch = new ResizeObserver(snapshot);
+                  s.watch.observe(el);
+                }
+                return s;
+              }
 
-                  // Resolved styles and the parent's perspective are px once read, so a
-                  // container-relative element needs them again when its box changes. Per frame
-                  // that would walk the whole subtree once per copy; on resize it costs nothing
-                  // on a fixed-size render and keeps a live preview honest.
-                  function snapshot() {
-                    var styles = resolvedStyles(el, []);
-                    s.perspective = parentPerspective(el);
-                    for (var c = 0; c < clones.length; c++) {
-                      paintResolvedStyles(clones[c], styles, { i: 0 });
-                      clones[c].style.position = "absolute";
-                      clones[c].style.margin = "0";
-                      clones[c].style.opacity = alpha;
-                      clones[c].style.mixBlendMode = "plus-lighter";
-                    }
-                  }
+              var state = [];
+              // Every element this call marked. A throw inside `attachOne` never returns its
+              // record, so `state` alone cannot give the marks back.
+              var claimed = [];
+              try {
+                for (var q = 0; q < targets.length; q++) {
+                  var candidate = targets[q];
+                  // One group per element, whether a second call names it or one call names it
+                  // twice: a second set of copies over the first would double the ink. Marked
+                  // BEFORE the copies go in: inserting them runs custom-element reactions
+                  // synchronously, and one that registers a timeline re-enters the write trap.
+                  if (window._hfMbAttached.has(candidate)) continue;
+                  window._hfMbAttached.add(candidate);
+                  window._hfMbTimeline.set(candidate, tl);
+                  claimed.push(candidate);
+                  state.push(attachOne(candidate));
+                }
+              } catch (e) {
+                unmark(claimed);
+                discard(state);
+                throw e;
+              }
+              // Nothing to blur means nothing to seek: a tracker here would run the whole sample
+              // loop every frame over an empty set.
+              if (state.length === 0) return;
 
-                  snapshot();
-                  if (typeof ResizeObserver === "function")
-                    new ResizeObserver(snapshot).observe(el);
-                  return s;
-                });
+              // One seek loop drives the whole call, so the window is ONE length, and it belongs
+              // to the composition of an element this call actually attached.
+              var fps = resolveFps(opts.fps, state[0].el);
+              for (var d = 1; d < state.length; d++) {
+                if (resolveFps(opts.fps, state[d].el) === fps) continue;
+                var line = "one call cannot blur compositions at different frame rates; using ";
+                console.warn("[motion-blur] " + line + fps, state[d].el);
+                break;
+              }
 
               function readTransform(el) {
                 var cs = getComputedStyle(el);
@@ -356,24 +424,245 @@
               // seeking GSAP from inside its own render reads stale tween state, while the microtask
               // runs after the seek returns and before the frame is captured or painted.
               var _proxy = { t: 0 };
-              tl.to(
-                _proxy,
-                {
-                  t: 1,
-                  duration: Math.max(tl.duration(), 0.1),
-                  ease: "none",
-                  onUpdate: function () {
-                    if (scheduled) return;
-                    scheduled = true;
-                    Promise.resolve().then(function () {
-                      scheduled = false;
-                      applyShutter();
-                    });
+              try {
+                tl.to(
+                  _proxy,
+                  {
+                    t: 1,
+                    duration: Math.max(tl.duration(), 0.1),
+                    ease: "none",
+                    onUpdate: function () {
+                      if (scheduled) return;
+                      scheduled = true;
+                      Promise.resolve().then(function () {
+                        scheduled = false;
+                        applyShutter();
+                      });
+                    },
                   },
-                },
-                0,
-              );
+                  0,
+                );
+              } catch (e) {
+                unmark(claimed);
+                discard(state);
+                throw e;
+              }
             };
+
+            // An empty attribute means defaults; anything else is a JSON options object. A value that
+            // is not an options object is skipped loudly rather than read as defaults, because a typo
+            // in it would otherwise render as a silently unblurred element.
+            function sweepOptions(el) {
+              var text = (el.getAttribute(SWEEP_ATTR) || "").trim();
+              if (text === "") return {};
+              var parsed = null;
+              try {
+                parsed = JSON.parse(text);
+              } catch (e) {
+                return refuse(el, "is not JSON: " + text);
+              }
+              // `null`, a number and a string all parse. None of them is a set of options.
+              if (parsed === null || typeof parsed !== "object" || Array.isArray(parsed)) {
+                return refuse(el, "is not a JSON object: " + text);
+              }
+              var bad = unknownKey(parsed);
+              if (bad !== null) return refuse(el, "names no such option: " + bad);
+              var wrong = nonNumber(parsed);
+              if (wrong !== null) return refuse(el, "needs a number for " + wrong);
+              return parsed;
+            }
+
+            // A misspelled key is the likeliest typo in a JSON object, and reading it as
+            // defaults is the silent no-op this attribute exists to remove.
+            function unknownKey(parsed) {
+              for (var key in parsed) {
+                if (OPTION_KEYS.indexOf(key) < 0) return key;
+              }
+              return null;
+            }
+
+            // A key with a value the shutter cannot use is the same silent no-op as a key it does
+            // not know: a non-numeric angle hides the smear, a non-numeric phase parks every copy
+            // at the timeline's start. JSON gives real numbers, so anything else is a typo.
+            function nonNumber(parsed) {
+              for (var i = 0; i < OPTION_KEYS.length; i++) {
+                var held = parsed[OPTION_KEYS[i]];
+                if (held === undefined) continue;
+                if (typeof held !== "number" || !Number.isFinite(held)) return OPTION_KEYS[i];
+              }
+              return null;
+            }
+
+            // A throw partway through an attach leaves an element blurred by nothing, so the copies
+            // go too, along with the observer that would otherwise keep walking a detached subtree
+            // on every resize of an element nothing blurs.
+            // The mark is what a second trigger reads, so it is the first thing to give back.
+            function unmark(els) {
+              for (var i = 0; i < els.length; i++) {
+                window._hfMbAttached.delete(els[i]);
+                window._hfMbTimeline.delete(els[i]);
+              }
+            }
+
+            function discard(state) {
+              for (var i = 0; i < state.length; i++) {
+                var s = state[i];
+                if (s.watch !== null) s.watch.disconnect();
+                if (s.group.parentNode !== null) s.group.parentNode.removeChild(s.group);
+              }
+            }
+
+            function refuse(el, why) {
+              window._hfMbSkipped.add(el);
+              console.warn("[motion-blur] " + SWEEP_ATTR + " " + why, el);
+              return null;
+            }
+
+            // An element belongs to the nearest composition above it, so a sub-composition's
+            // targets follow that sub-composition's own timeline.
+            function compositionOf(el) {
+              var host = el.closest("[data-composition-id]");
+              return host ? host.getAttribute("data-composition-id") : null;
+            }
+
+            // Anything else registered on the container is somebody else's bookkeeping: a
+            // timeline is the thing this snippet can seek and extend.
+            function isTimeline(value) {
+              return !!value && typeof value.time === "function" && typeof value.to === "function";
+            }
+
+            // Attached, or skipped as unparseable. Both are terminal, so a later trigger must not
+            // report or attach the element twice.
+            function handled(el) {
+              return window._hfMbAttached.has(el) || window._hfMbSkipped.has(el);
+            }
+
+            // The timeline registered for an element's own composition, or null. Read from the
+            // registry rather than taken from whoever wrote it, so every trigger agrees.
+            function timelineFor(el) {
+              var id = compositionOf(el);
+              if (id === null) return null;
+              var registry = window.__timelines;
+              var found = registry ? registry[id] : null;
+              return isTimeline(found) ? found : null;
+            }
+
+            // A marked element whose parent is not an Element has no target above it: the parent
+            // of a root is the Document, which has no `closest`.
+            function nestedInTarget(el) {
+              var parent = el.parentNode;
+              if (parent === null || typeof parent.closest !== "function") return false;
+              return parent.closest(SWEEP_SELECTOR) !== null;
+            }
+
+            // One owner of attaching one element. Answers whether the element still needs a trigger.
+            function claim(el) {
+              var tl = timelineFor(el);
+              if (handled(el)) {
+                var owner = window._hfMbTimeline.get(el);
+                // Re-registering a key with a DIFFERENT timeline leaves the copies driven by the one
+                // nobody seeks, which renders sharp and says nothing. Report it rather than guess.
+                var changed = tl !== null && owner !== undefined && owner !== tl;
+                if (changed && !window._hfMbWarned.has(el)) {
+                  window._hfMbWarned.add(el);
+                  console.warn(
+                    "[motion-blur] a second timeline registered for this element; the copies still follow the first",
+                    el,
+                  );
+                }
+                return true;
+              }
+              // Its group would be inserted into the live outer element, so the outer target's
+              // style replay would walk a subtree its cursor no longer matches.
+              if (nestedInTarget(el)) {
+                refuse(el, "cannot blur a target inside another target; blur one of them");
+                return true;
+              }
+              var opts = sweepOptions(el);
+              if (opts === null) return true;
+              if (tl === null) return false;
+              window.attachMotionBlur(el, tl, opts);
+              return true;
+            }
+
+            // Returns the elements still waiting for their composition to register a timeline.
+            // The trap below runs this INSIDE the author's registration statement, so one bad
+            // target must not abort the rest of their composition script.
+            function sweep() {
+              var pending = [];
+              document.querySelectorAll(SWEEP_SELECTOR).forEach(function (el) {
+                try {
+                  if (!claim(el)) pending.push(el);
+                } catch (e) {
+                  window._hfMbSkipped.add(el);
+                  console.warn("[motion-blur] could not blur this element: " + e, el);
+                }
+              });
+              return pending;
+            }
+
+            // Registering a timeline is the moment the author has finished building it, so trapping
+            // the write attaches before the renderer captures a frame. A microtask would be too
+            // early: it runs before the next `<script>` tag.
+            function registrationProxy(container) {
+              var proxy = new Proxy(container, {
+                set: function (target, key, value) {
+                  target[key] = value;
+                  if (typeof key === "string") sweep();
+                  return true;
+                },
+              });
+              window._hfMbProxies.add(proxy);
+              return proxy;
+            }
+
+            function hookRegistration() {
+              var held = window.__timelines;
+              Object.defineProperty(window, "__timelines", {
+                configurable: true,
+                enumerable: true,
+                get: function () {
+                  return held;
+                },
+                set: function (value) {
+                  var container = !!value && typeof value === "object";
+                  var fresh = container && !window._hfMbProxies.has(value);
+                  held = fresh ? registrationProxy(value) : value;
+                  if (fresh) sweep();
+                },
+              });
+              // A container assigned before this snippet ran is replayed through the setter, so a
+              // timeline already registered on it is swept too.
+              if (held !== undefined) window.__timelines = held;
+            }
+
+            // The trap above cannot see every registration: the runtime owns the registry object,
+            // wraps it per sub-composition, and mounts nested compositions asynchronously. So the
+            // registry is also POLLED, which needs no cooperation from whoever writes it.
+            function poll(ticks) {
+              var pending = sweep();
+              // The WHOLE budget, every time. Stopping the first tick nothing is pending kills the
+              // poll one tick into an ordinary page, which is before a late composition arrives.
+              if (ticks > 0) {
+                setTimeout(function () {
+                  poll(ticks - 1);
+                }, POLL_MS);
+                return;
+              }
+              if (pending.length === 0) return;
+              var count = pending.length + " element(s) carry " + SWEEP_ATTR;
+              console.warn(
+                "[motion-blur] " + count + ", and no composition registered a timeline for them",
+                pending,
+              );
+            }
+
+            if (!window._hfMbHooked) {
+              window._hfMbHooked = true;
+              hookRegistration();
+              poll(POLL_TICKS);
+            }
+            /* SHUTTER_SNIPPET_END */
           })();
         </script>
         <script>

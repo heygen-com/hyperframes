@@ -5,7 +5,11 @@ import {
   paintAndIdleReadinessInput,
   scanPendingCompositionAssets,
   settleCompositionReadiness,
+  settleFirstFrameCompositionReadiness,
 } from "./compositionReadiness.js";
+import { createRuntimeStartTimeResolver } from "./runtime/startResolver.js";
+import { STUDIO_PREVIEW_MARK_META } from "./studioPreviewMark.js";
+import { isRuntimeElementVisibleAt } from "./runtime/timeline.js";
 
 function docWith(bodyHtml: string): Document {
   const doc = document.implementation.createHTMLDocument("");
@@ -63,6 +67,45 @@ describe("scanPendingCompositionAssets", () => {
     const scan = scanPendingCompositionAssets(docWith('<img src="a.png">'));
     expect(scan.pendingImages).toHaveLength(1);
   });
+
+  it("scopes first-frame scans to assets active at t=0", () => {
+    const doc = docWith(
+      '<img id="first" data-start="0" data-duration="5" src="first.png">' +
+        '<video id="later" data-start="30" data-duration="5" src="later.mp4"></video>',
+    );
+    const scan = scanPendingCompositionAssets(doc, { scope: "first-frame" });
+
+    expect(scan.pendingImages.map((image) => image.id)).toEqual(["first"]);
+    expect(scan.pendingMedia.map((media) => media.id)).toEqual([]);
+  });
+
+  it("keeps untimed media in the first-frame scan", () => {
+    const doc = docWith('<video id="untimed" src="video.mp4"></video>');
+
+    const scan = scanPendingCompositionAssets(doc, { scope: "first-frame" });
+
+    expect(scan.pendingMedia.map((media) => media.id)).toEqual(["untimed"]);
+  });
+
+  it("keeps nested timing decisions aligned with the runtime visibility owner", () => {
+    const doc = docWith(
+      '<section data-start="30" data-duration="5"><video id="nested" src="later.mp4"></video></section>',
+    );
+    const nested = doc.querySelector<HTMLElement>("#nested")!;
+    const resolver = createRuntimeStartTimeResolver({ documentRef: doc });
+    const runtimeDecision = isRuntimeElementVisibleAt(doc.querySelector("section")!, {
+      currentTime: 0,
+      compositionDuration: Number.POSITIVE_INFINITY,
+      canonicalFps: 30,
+      exportRenderSeek: false,
+      timelineRegistry: {},
+      resolver,
+    });
+
+    expect(scanPendingCompositionAssets(doc, { scope: "first-frame" }).pendingMedia).toEqual([]);
+    expect(runtimeDecision).toBe(false);
+    expect(nested.closest("[data-start]")).not.toBeNull();
+  });
 });
 
 describe("mediaReadinessInput", () => {
@@ -95,6 +138,82 @@ describe("mediaReadinessInput", () => {
     // synchronously via the el.error check.
     expect(result).toEqual({ timedOut: false });
     vi.useRealTimers();
+  });
+
+  it("does not wait for a later first-frame video", async () => {
+    const doc = docWith(
+      '<img id="first" data-start="0" data-duration="5" src="first.png">' +
+        '<video id="later" data-start="30" data-duration="5" src="later.mp4"></video>',
+    );
+    const image = doc.querySelector<HTMLImageElement>("#first")!;
+    Object.defineProperty(image, "complete", { value: false });
+    let resolveImage!: () => void;
+    image.decode = () => new Promise<void>((resolve) => (resolveImage = resolve));
+    const pending = mediaReadinessInput(doc, new AbortController().signal, {
+      scope: "first-frame",
+    });
+
+    expect(pending).not.toBeNull();
+    resolveImage();
+    await expect(pending).resolves.toBeUndefined();
+  });
+
+  it("waits for later media in the default full scan", async () => {
+    const doc = docWith(
+      '<img id="first" data-start="0" data-duration="5" src="first.png">' +
+        '<video id="later" data-start="30" data-duration="5" src="later.mp4"></video>',
+    );
+    const image = doc.querySelector<HTMLImageElement>("#first")!;
+    const video = doc.querySelector<HTMLVideoElement>("#later")!;
+    Object.defineProperty(image, "complete", { value: false });
+    image.decode = () => Promise.resolve();
+    Object.defineProperty(video, "readyState", { value: 0, configurable: true });
+    const pending = mediaReadinessInput(doc, new AbortController().signal, { scope: "all" });
+
+    let settled = false;
+    pending?.then(() => {
+      settled = true;
+    });
+    await flushMicrotasks();
+    expect(settled).toBe(false);
+    video.dispatchEvent(new Event("canplay"));
+    await expect(pending).resolves.toBeUndefined();
+  });
+
+  it("waits on a later clip in Studio's preview only once the runtime has set it to buffer", () => {
+    const html =
+      '<video id="deferred" data-start="30" data-duration="5" preload="none" src="a.mp4"></video>' +
+      '<video id="untrimmed" data-start="30" preload="metadata" src="b.mp4"></video>' +
+      '<video id="due" data-start="30" data-duration="5" preload="auto" src="c.mp4"></video>';
+    const preview = docWith(html);
+    preview.head
+      .appendChild(preview.createElement("meta"))
+      .setAttribute("name", STUDIO_PREVIEW_MARK_META);
+    const plain = docWith(html);
+    const ids = (doc: Document) =>
+      scanPendingCompositionAssets(doc, { scope: "all" }).pendingMedia.map((el) => el.id);
+
+    expect(ids(preview)).toEqual(["due"]);
+    expect(ids(plain)).toEqual(["deferred", "untrimmed", "due"]);
+  });
+
+  it("waits on a later scene's image in the full scan unless it is lazy", () => {
+    const doc = docWith(
+      '<div data-start="30" data-duration="5"><img id="later" src="later.png">' +
+        '<img id="lazy" loading="LAZY" src="lazy.png"></div>',
+    );
+    for (const image of doc.querySelectorAll("img")) {
+      Object.defineProperty(image, "complete", { value: false });
+      image.decode = vi.fn().mockResolvedValue(undefined);
+    }
+    const later = doc.querySelector<HTMLImageElement>("#later")!;
+    const lazy = doc.querySelector<HTMLImageElement>("#lazy")!;
+
+    expect(scanPendingCompositionAssets(doc, { scope: "all" }).pendingImages).toEqual([later]);
+    expect(scanPendingCompositionAssets(doc, { scope: "first-frame" }).pendingImages).toEqual([]);
+    expect(mediaReadinessInput(doc, new AbortController().signal, { scope: "all" })).not.toBeNull();
+    expect(later.decode).toHaveBeenCalled();
+    expect(lazy.decode).not.toHaveBeenCalled();
   });
 });
 
@@ -168,6 +287,16 @@ function startPaintAndIdleTracking(signal: AbortSignal = new AbortController().s
 describe("paintAndIdleReadinessInput", () => {
   it("returns null for a document with no view (nothing to observe)", () => {
     expect(paintAndIdleReadinessInput(docWith(""), new AbortController().signal)).toBeNull();
+  });
+
+  it("settles on a host whose requestAnimationFrame calls back synchronously", async () => {
+    let ts = 0;
+    const win = { requestAnimationFrame: (cb: (t: number) => void) => (cb((ts += 16)), 1) };
+    const doc = { defaultView: win } as unknown as Document;
+
+    await expect(
+      paintAndIdleReadinessInput(doc, new AbortController().signal),
+    ).resolves.toBeUndefined();
   });
 
   it("waits for first paint, then two consecutive quiet frame gaps", async () => {
@@ -257,6 +386,69 @@ describe("paintAndIdleReadinessInput", () => {
 });
 
 describe("settleCompositionReadiness", () => {
+  it("does not wait for a later video through the public first-frame path", async () => {
+    const doc = docWith(
+      '<img id="first" data-start="0" data-duration="5" src="first.png">' +
+        '<video id="later" data-start="30" data-duration="5" src="later.mp4"></video>',
+    );
+    const image = doc.querySelector<HTMLImageElement>("#first")!;
+    const video = doc.querySelector<HTMLVideoElement>("#later")!;
+    Object.defineProperty(image, "complete", { value: false });
+    let resolveImage!: () => void;
+    image.decode = () => new Promise<void>((resolve) => (resolveImage = resolve));
+    let resolveFonts!: () => void;
+    Object.defineProperty(doc, "fonts", {
+      configurable: true,
+      value: {
+        status: "loading",
+        ready: new Promise<void>((resolve) => (resolveFonts = resolve)),
+      },
+    });
+    Object.defineProperty(video, "readyState", { value: 0, configurable: true });
+
+    let result: { timedOut: boolean } | undefined;
+    settleFirstFrameCompositionReadiness(
+      doc,
+      (settled) => {
+        result = settled;
+      },
+      { timeoutMs: 50 },
+    );
+
+    await flushMicrotasks();
+    await new Promise((resolve) => setTimeout(resolve, 5));
+    expect(result).toBeUndefined();
+    resolveImage();
+    await flushMicrotasks();
+    expect(result).toBeUndefined();
+    resolveFonts();
+    await flushMicrotasks();
+    expect(result).toEqual({ timedOut: false });
+  });
+
+  it("keeps the explicit full-scan path waiting for a later video", async () => {
+    const doc = docWith(
+      '<img id="first" data-start="0" data-duration="5" src="first.png">' +
+        '<video id="later" data-start="30" data-duration="5" src="later.mp4"></video>',
+    );
+    const image = doc.querySelector<HTMLImageElement>("#first")!;
+    const video = doc.querySelector<HTMLVideoElement>("#later")!;
+    Object.defineProperty(image, "complete", { value: true });
+    Object.defineProperty(video, "readyState", { value: 0, configurable: true });
+
+    let result: { timedOut: boolean } | undefined;
+    settleCompositionReadiness(
+      doc,
+      (settled) => {
+        result = settled;
+      },
+      { scope: "all", timeoutMs: 1 },
+    );
+
+    await new Promise((resolve) => setTimeout(resolve, 5));
+    expect(result).toEqual({ timedOut: true });
+  });
+
   it("defaults to media, compute and paint-and-idle together", async () => {
     vi.useFakeTimers();
     const { win, fireFrame } = docWithFakeWindow(false);

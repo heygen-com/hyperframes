@@ -1,0 +1,1465 @@
+---
+title: "Canopy Part Title"
+description: "Leaves sweep through the frame and part to reveal the headline."
+mode: "frame"
+---
+
+import { CatalogDetail, CatalogSlot } from "/snippets/catalog-detail.jsx";
+import { InstallCommand } from "/snippets/install-command.jsx";
+
+<CatalogDetail
+  previewSrc="/public/catalog/blocks/canopy-part-title.json"
+  compositionId="canopy-part-title"
+  compositionSrc="compositions/canopy-part-title/canopy-part-title.html"
+  title="Canopy Part Title"
+  description="Leaves sweep through the frame and part to reveal the headline."
+  variables={[{"id":"headline1","type":"string","label":"Headline 1","default":"Understory"},{"id":"headline2","type":"string","label":"Headline 2","default":"Move slowly"},{"id":"font","type":"string","label":"Headline font","default":"Helvetica"},{"id":"fontWeight","type":"number","label":"Font weight","default":900,"min":100,"max":900,"step":100},{"id":"fontSize","type":"number","label":"Font size (1 = auto-fit)","default":1,"min":0.3,"max":2,"step":0.01},{"id":"letterSpacing","type":"number","label":"Letter spacing (em)","default":0.01,"min":-0.2,"max":1,"step":0.01},{"id":"background","type":"color","label":"Background","default":"#020805"},{"id":"leafCount","type":"number","label":"Leaves per sweep","default":170,"min":40,"max":320,"step":1},{"id":"stayCount","type":"number","label":"Leaves left behind","default":5,"min":0,"max":20,"step":1},{"id":"sweepSpeed","type":"number","label":"Sweep speed","default":1,"min":0.3,"max":3,"step":0.05},{"id":"retainedBreeze","type":"number","label":"Retained leaf breeze","default":1,"min":0,"max":2,"step":0.05}]}
+  meta={{"duration":12,"width":1920,"height":1080,"category":"3D motion","badge":"Stable","codeLines":1394}}
+  attribution={{"path":"registry/blocks/canopy-part-title","tags":["3d-motion","title-card","leaves","organic","depth-of-field","two-headlines","sweep"]}}
+  hasCode
+  rawUrl="https://raw.githubusercontent.com/heygen-com/hyperframes/main/registry/blocks/canopy-part-title/canopy-part-title.html"
+>
+
+<CatalogSlot slot="code">
+
+```html canopy-part-title.html
+<!doctype html>
+<html
+  lang="en"
+  data-composition-variables='[{"id":"headline1","type":"string","label":"Headline 1","default":"Understory"},{"id":"headline2","type":"string","label":"Headline 2","default":"Move slowly"},{"id":"font","type":"string","label":"Headline font","default":"Helvetica"},{"id":"fontWeight","type":"number","label":"Font weight","default":900,"min":100,"max":900,"step":100},{"id":"fontSize","type":"number","label":"Font size (1 = auto-fit)","default":1,"min":0.3,"max":2,"step":0.01},{"id":"letterSpacing","type":"number","label":"Letter spacing (em)","default":0.01,"min":-0.2,"max":1,"step":0.01},{"id":"background","type":"color","label":"Background","default":"#020805"},{"id":"leafCount","type":"number","label":"Leaves per sweep","default":170,"min":40,"max":320,"step":1},{"id":"stayCount","type":"number","label":"Leaves left behind","default":5,"min":0,"max":20,"step":1},{"id":"sweepSpeed","type":"number","label":"Sweep speed","default":1,"min":0.3,"max":3,"step":0.05},{"id":"retainedBreeze","type":"number","label":"Retained leaf breeze","default":1,"min":0,"max":2,"step":0.05}]'
+>
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=1920, height=1080" />
+    <title>canopy-part-title</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin="" />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Gelasio:wght@500;600&display=swap"
+      rel="stylesheet"
+    />
+    <script src="https://cdn.jsdelivr.net/npm/gsap@3.14.2/dist/gsap.min.js"></script>
+    <style>
+      * {
+        margin: 0;
+        padding: 0;
+        box-sizing: border-box;
+      }
+      html,
+      body {
+        margin: 0;
+        width: 1920px;
+        height: 1080px;
+        overflow: hidden;
+        background: #020805;
+      }
+      #cpt-root {
+        position: relative;
+        width: 1920px;
+        height: 1080px;
+        overflow: hidden;
+      }
+      #cpt-scene {
+        position: absolute;
+        inset: 0;
+      }
+      /* Full-frame background paint on a child, never on the composition root.
+         Plain flat colour — driven by the `background` variable, no gradients. */
+      #cpt-bg {
+        position: absolute;
+        inset: 0;
+        background: #020805;
+      }
+      #cpt-canvas {
+        position: absolute;
+        inset: 0;
+        width: 100%;
+        height: 100%;
+        display: block;
+      }
+      #cpt-fontload {
+        position: absolute;
+        opacity: 0;
+        pointer-events: none;
+        font-family: Gelasio, Georgia, serif;
+      }
+    </style>
+  </head>
+  <body>
+    <div
+      data-hf-id="hf-idkp"
+      id="cpt-root"
+      data-composition-id="canopy-part-title"
+      data-start="0"
+      data-duration="12"
+      data-width="1920"
+      data-height="1080"
+    >
+      <section
+        data-hf-id="hf-wrn4"
+        id="cpt-scene"
+        class="clip"
+        data-start="0"
+        data-duration="12"
+        data-track-index="1"
+      >
+        <div
+          style="font-family: &quot;Alan Sans&quot;, ui-sans-serif, system-ui, sans-serif"
+          data-hf-id="hf-bank"
+          id="cpt-bg"
+        ></div>
+      </section>
+      <div data-hf-id="hf-p1fl" id="cpt-fontload" aria-hidden="true">
+        <span data-hf-id="hf-grhl" style="font-weight: 500">Aa</span
+        ><span data-hf-id="hf-7bxm" style="font-weight: 600">Aa</span>
+      </div>
+    </div>
+
+    <!-- Seeded layout + master timeline. Runs synchronously before the Three module so
+         the timeline exists the moment the page is scriptable. Zero Math.random. -->
+    <script>
+      (function () {
+        "use strict";
+        window.__timelines = window.__timelines || {};
+        /* Studio's variables parser fails on any composition with a <canvas>
+         in its MARKUP — created at runtime instead (identical for render). */
+        (function () {
+          var c = document.createElement("canvas");
+          c.id = "cpt-canvas";
+          c.width = 1920;
+          c.height = 1080;
+          document.getElementById("cpt-scene").appendChild(c);
+        })();
+
+        var V = Object.fromEntries(
+          JSON.parse(
+            document
+              .querySelector("[data-composition-variables]")
+              .getAttribute("data-composition-variables"),
+          ).map((e) => [e.id, e.default]),
+        );
+        try {
+          if (window.__hyperframes && window.__hyperframes.getVariables)
+            V = Object.assign(V, window.__hyperframes.getVariables() || {});
+        } catch (e) {
+          /* corrupt declarations must not blank the composition */
+        }
+        var LEAF_COUNT = Math.max(40, Math.min(320, Number(V.leafCount) || 170));
+        var STAY_COUNT = Math.max(
+          0,
+          Math.min(
+            20,
+            Math.round(
+              V.stayCount === undefined || !isFinite(Number(V.stayCount)) ? 5 : Number(V.stayCount),
+            ),
+          ),
+        );
+        var SPEED = Math.max(0.3, Math.min(3, Number(V.sweepSpeed) || 1));
+        var DUR = 12;
+
+        function mulberry32(seed) {
+          return function () {
+            seed |= 0;
+            seed = (seed + 0x6d2b79f5) | 0;
+            var t = Math.imul(seed ^ (seed >>> 15), 1 | seed);
+            t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+            return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+          };
+        }
+
+        /* V1's opening sweep plus a separate depth-lift batch. Each batch has
+           exactly stayCount leaves reserved for edge rest slots. The lift
+           carries the opening's remaining edge leaves past the camera. */
+        var rand = mulberry32(0x6a756e67);
+        var TEXT_HALF_W = 8.2,
+          TEXT_HALF_H = 2.0;
+
+        function buildBatch(batchIndex) {
+          var out = [];
+          for (var i = 0; i < LEAF_COUNT; i++) {
+            var kindRoll = rand();
+            var kind =
+              kindRoll < 0.22
+                ? "monstera"
+                : kindRoll < 0.42
+                  ? "alocasia"
+                  : kindRoll < 0.68
+                    ? "lance"
+                    : kindRoll < 0.89
+                      ? "calathea"
+                      : "fern";
+            /* Stayers are chosen AFTER the batch is built (exactly stayCount of
+               them, scattered) — here every leaf just gets wind-seed rest values
+               and a LOW flight band: in front of the text plane but pushed away
+               from the camera so the depth of field leaves most leaves sharp. */
+            var stayer = false;
+            var y0 = (rand() * 2 - 1) * 3.6 - 0.5;
+            var restX = (rand() * 2 - 1) * 9.2;
+            var restY = y0;
+            var restRZ = rand() * Math.PI * 2;
+            out.push({
+              batch: batchIndex,
+              kind: kind,
+              stayer: stayer,
+              z: -4.6 + rand() * 3.0,
+              xStart: -12.5 - rand() * 5.5,
+              xEnd: 12.5 + rand() * 5.0,
+              restX: restX,
+              restY: restY,
+              restRZ: restRZ,
+              y0: y0,
+              delay: rand() * 0.5,
+              delay2: 0, // filled for batch-1 stayers below
+              bobAmp: 0.3 + rand() * 0.65,
+              bobN: 1.1 + rand() * 1.6,
+              spin: (rand() < 0.5 ? -1 : 1) * (1.6 + rand() * 3.0),
+              phase: rand() * Math.PI * 2,
+              rotation: rand() * Math.PI * 2,
+              tiltX: (rand() - 0.5) * 0.42,
+              tiltY: (rand() - 0.5) * 0.58,
+              widthMul: 0.83 + rand() * 0.34,
+              lengthMul: 0.86 + rand() * 0.25,
+              scale: (0.62 + rand() * 0.85) * 0.56 * 1.9,
+            });
+          }
+          return out;
+        }
+
+        /* Exactly STAY_COUNT leaves per batch stay behind, scattered at seeded
+           random positions anywhere in frame EXCEPT the headline band — never
+           lined up along the top and bottom. */
+        function pickStayers(batch) {
+          var placed = 0,
+            guard = 0;
+          while (placed < STAY_COUNT && guard++ < 600) {
+            var idx = Math.floor(rand() * batch.length) % batch.length;
+            var sp = batch[idx];
+            if (sp.stayer) continue;
+            var rx,
+              ry,
+              tries = 0;
+            do {
+              rx = (rand() * 2 - 1) * 8.6;
+              ry = (rand() * 2 - 1) * 4.3;
+              tries++;
+            } while (
+              tries < 30 &&
+              Math.abs(ry) < TEXT_HALF_H + 0.7 &&
+              Math.abs(rx) < TEXT_HALF_W + 0.8
+            );
+            sp.stayer = true;
+            sp.restX = rx;
+            sp.restY = ry;
+            if (Math.abs(rx) > TEXT_HALF_W + 0.8 && Math.abs(ry) < TEXT_HALF_H + 1.4) {
+              sp.restRZ = ((rx > 0 ? -1 : 1) * Math.PI) / 2 + (rand() - 0.5) * 0.7;
+            } else if (ry >= 0) {
+              sp.restRZ = (rand() - 0.5) * 0.8;
+            } else {
+              sp.restRZ = Math.PI + (rand() - 0.5) * 0.8;
+            }
+            placed++;
+          }
+        }
+
+        var batch1 = buildBatch(1);
+        var batch2 = buildBatch(2);
+        pickStayers(batch1);
+        pickStayers(batch2);
+        // Sweep-away order for batch-1 stayers: left-most leave first.
+        batch1.forEach(function (s) {
+          s.delay2 = ((s.restX + 16) / 32) * 0.5 + rand() * 0.14;
+        });
+        // Independent seed: V1's opening geometry/seed sequence is unchanged.
+        var liftRand = mulberry32(0x6c696674);
+        batch2.forEach(function (s, i) {
+          s.liftX = (liftRand() * 2 - 1) * 7.8;
+          s.liftY = -5.2 + liftRand() * 5.8;
+          s.liftZ = -7 + liftRand() * 4.9;
+          s.liftDelay = liftRand() * 0.28;
+          s.depthResponse = Math.max(0.25, Math.min(1, (s.liftZ + 7) / 14 + 0.55));
+          // Keep final foliage outside the headline, including its full leaf extent.
+          if (s.stayer) {
+            var a = i * 2.399963;
+            s.restX = Math.sin(a) * 8.5;
+            s.restY = (i % 2 ? 1 : -1) * 5.5;
+            s.restRZ = i % 2 ? 0 : Math.PI;
+          }
+        });
+        window.__cptBatches = [batch1, batch2];
+
+        var DUST_COUNT = 800;
+        var dustHome = new Array(DUST_COUNT * 3);
+        var dustSeeds = new Array(DUST_COUNT);
+        for (var d = 0; d < DUST_COUNT; d++) {
+          dustHome[d * 3] = (rand() * 2 - 1) * 10;
+          dustHome[d * 3 + 1] = (rand() * 2 - 1) * 6;
+          dustHome[d * 3 + 2] = rand() * 12 - 5;
+          dustSeeds[d] = rand();
+        }
+        window.__cptDust = { home: dustHome, seeds: dustSeeds };
+
+        // Separate per-leaf seeds leave the approved sweep/lift layout untouched.
+        // Different periods and phases avoid a shared rocking or looping beat.
+        [batch1, batch2].forEach(function (batch, batchIndex) {
+          batch.forEach(function (s, i) {
+            if (!s.stayer) return;
+            var breezeRand = mulberry32(0x62726565 ^ ((batchIndex + 1) * 104729 + i * 7919));
+            s.breeze = {
+              phase: breezeRand() * Math.PI * 2,
+              phase2: breezeRand() * Math.PI * 2,
+              phase3: breezeRand() * Math.PI * 2,
+              rate: 0.55 + breezeRand() * 0.45,
+              driftX: 0.22 + breezeRand() * 0.24,
+              driftY: 0.28 + breezeRand() * 0.28,
+              driftZ: 0.35 + breezeRand() * 0.45,
+              depth: (breezeRand() - 0.5) * 1.3,
+              tiltX: 0.07 + breezeRand() * 0.1,
+              tiltY: 0.1 + breezeRand() * 0.14,
+              roll: 0.12 + breezeRand() * 0.14,
+              turn: (breezeRand() < 0.5 ? -1 : 1) * (0.012 + breezeRand() * 0.022),
+              arrival: breezeRand() * 0.16,
+            };
+          });
+        });
+
+        /* Masters tweened by the timeline; all per-leaf motion is a closed-form
+           function of these plus each leaf's seeded constants. */
+        var state = { sw1: 0, sw2: 0 };
+        window.__cptState = state;
+
+        // Keep the existing speed parameter; finite holds absorb the slack.
+        var d1 = Math.max(1.2, Math.min(6.0, 3.2 / SPEED));
+        var s2 = Math.max(0.4 + d1 + 0.9, 5.2);
+        var d2 = Math.max(1.2, Math.min(3.2 / SPEED, DUR - s2 - 1.8));
+        window.__cptWindows = { d1: d1, s2: s2, d2: d2 };
+
+        var tl = gsap.timeline({ paused: true });
+        tl.addLabel("opening", 0)
+          .addLabel("headline-1", 0.4 + d1)
+          .addLabel("canopy-lift", s2)
+          .addLabel("headline-2", s2 + d2)
+          .addLabel("final-hold", 10.5);
+        tl.fromTo(
+          "#cpt-scene",
+          { opacity: 0 },
+          { opacity: 1, duration: 0.35, ease: "power1.out" },
+          0.05,
+        );
+        // Imperceptible 1.5px drift on the bg plate (same colour as the body
+        // behind it) so the layout sweep sees DOM geometry advance under seek.
+        tl.fromTo("#cpt-bg", { y: 0 }, { y: 1.5, duration: 12, ease: "none" }, 0);
+        tl.to(state, { sw1: 1, duration: d1, ease: "none" }, 0.4);
+        tl.to(state, { sw2: 1, duration: d2, ease: "none" }, s2);
+        tl.to(state, { sw2: 1, duration: 0.01 }, DUR - 0.01); // pin timeline length to DUR
+
+        tl.eventCallback("onUpdate", function () {
+          if (window.__cptRender) window.__cptRender(tl.time());
+        });
+
+        window.__timelines["canopy-part-title"] = tl;
+      })();
+    </script>
+
+    <script type="importmap">
+      { "imports": { "three": "https://cdn.jsdelivr.net/npm/three@0.170.0/build/three.module.js" } }
+    </script>
+    <script type="module">
+      import * as THREE from "three";
+      import { EffectComposer } from "https://cdn.jsdelivr.net/npm/three@0.170.0/examples/jsm/postprocessing/EffectComposer.js";
+      import { RenderPass } from "https://cdn.jsdelivr.net/npm/three@0.170.0/examples/jsm/postprocessing/RenderPass.js";
+      import { BokehPass } from "https://cdn.jsdelivr.net/npm/three@0.170.0/examples/jsm/postprocessing/BokehPass.js";
+
+      const W = 1920,
+        H = 1080,
+        DUR = 12;
+      let V = Object.fromEntries(
+        JSON.parse(
+          document
+            .querySelector("[data-composition-variables]")
+            .getAttribute("data-composition-variables"),
+        ).map((e) => [e.id, e.default]),
+      );
+      try {
+        if (window.__hyperframes && window.__hyperframes.getVariables)
+          V = Object.assign(V, window.__hyperframes.getVariables() || {});
+      } catch (e) {
+        /* corrupt declarations must not blank the composition */
+      }
+      const HEADLINE1 = String(V.headline1 ?? "Understory");
+      const HEADLINE2 = String(V.headline2 ?? "MOVE SLOWLY");
+      /* Headline typography is a PARAMETER — never a Design-panel edit. Any
+         Google Fonts family name works; falls back through Gelasio/serif
+         while (or if never) loading. */
+      const FONT = (String(V.font || "Gelasio").trim() || "Gelasio").replace(/["']/g, "");
+      const FONT_WEIGHT = Math.max(
+        100,
+        Math.min(
+          900,
+          Math.round(
+            isFinite(Number(V.fontWeight)) && Number(V.fontWeight) ? Number(V.fontWeight) : 500,
+          ),
+        ),
+      );
+      /* fontSize is a multiplier on the auto-fitted size (0.3-2); letterSpacing
+         is in em (fraction of the font size, may be negative). */
+      const FONT_SIZE = Math.max(
+        0.3,
+        Math.min(
+          2,
+          isFinite(Number(V.fontSize)) && Number(V.fontSize) > 0 ? Number(V.fontSize) : 1,
+        ),
+      );
+      const LETTER_SP = Math.max(
+        -0.2,
+        Math.min(1, isFinite(Number(V.letterSpacing)) ? Number(V.letterSpacing) : 0.1),
+      );
+      const FONT_STACK = '"' + FONT + '", Gelasio, Georgia, serif';
+      if (!/^(Helvetica|Arial|Gelasio|Georgia|serif|sans-serif|monospace)$/i.test(FONT)) {
+        const fl = document.createElement("link");
+        fl.rel = "stylesheet";
+        fl.href =
+          "https://fonts.googleapis.com/css2?family=" +
+          encodeURIComponent(FONT).replace(/%20/g, "+") +
+          ":wght@" +
+          FONT_WEIGHT +
+          "&display=swap";
+        document.head.appendChild(fl);
+      }
+      const BG = String(V.background || "#020805");
+      const RETAINED_BREEZE = Math.max(
+        0,
+        Math.min(2, Number.isFinite(Number(V.retainedBreeze)) ? Number(V.retainedBreeze) : 1),
+      );
+      const state = window.__cptState;
+
+      // Fixed experiment parameters (the source's tuned defaults), baked in.
+      const WIND_SPEED = 1.06;
+      const WIND_STRENGTH = 2.5;
+      const TURBULENCE = 0.8;
+      const TEXT_Z = -5.0;
+      const BACKDROP_Z = -7.5;
+      const CAM_DIST = 13.6;
+
+      const clamp = THREE.MathUtils.clamp;
+      const smoothstep = (a, b, x) => {
+        const t = clamp((x - a) / (b - a), 0, 1);
+        return t * t * (3 - 2 * t);
+      };
+      function hash2(x, y, seed) {
+        let n = Math.imul(x + seed * 1013, 374761393) + Math.imul(y - seed * 79, 668265263);
+        n = n ^ (n >>> 13);
+        n = Math.imul(n, 1274126177);
+        return ((n ^ (n >>> 16)) >>> 0) / 4294967295;
+      }
+
+      document.getElementById("cpt-bg").style.background = BG;
+      document.body.style.background = BG;
+
+      const renderer = new THREE.WebGLRenderer({
+        canvas: document.getElementById("cpt-canvas"),
+        antialias: true,
+        powerPreference: "high-performance",
+        alpha: false,
+      });
+      renderer.setSize(W, H, false);
+      renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
+      renderer.outputColorSpace = THREE.SRGBColorSpace;
+      renderer.toneMapping = THREE.ACESFilmicToneMapping;
+      renderer.toneMappingExposure = 1.8;
+      renderer.shadowMap.enabled = true;
+      renderer.shadowMap.type = THREE.PCFShadowMap;
+
+      const scene = new THREE.Scene();
+      const bgColor = new THREE.Color(BG);
+      scene.background = bgColor.clone();
+      scene.fog = new THREE.FogExp2(bgColor.clone(), 0.008);
+
+      const camera = new THREE.PerspectiveCamera(41, W / H, 0.1, 40);
+      camera.position.set(0, 0.15, 12.1);
+      camera.lookAt(0, 0, -1.5);
+
+      const composer = new EffectComposer(renderer);
+      composer.setSize(W, H);
+      // Copy only colour; retain the scene depth for the sharp headline pass.
+      composer.copyPass.material.depthTest = false;
+      composer.copyPass.material.depthWrite = false;
+      composer.addPass(new RenderPass(scene, camera));
+      const bokehPass = new BokehPass(scene, camera, {
+        focus: 16.4,
+        aperture: 0.0016,
+        maxblur: 0.0055,
+      });
+      composer.addPass(bokehPass);
+
+      const hemi = new THREE.HemisphereLight(0x9fc09b, 0x061009, 2);
+      scene.add(hemi);
+      const sun = new THREE.DirectionalLight(new THREE.Color("#ece5ff"), 8.5);
+      sun.position.set(-13.3, 8.5, 9);
+      sun.target.position.set(0, -1, -3);
+      sun.castShadow = true;
+      sun.shadow.mapSize.set(2048, 2048);
+      sun.shadow.camera.left = -20;
+      sun.shadow.camera.right = 20;
+      sun.shadow.camera.top = 20 * 0.73;
+      sun.shadow.camera.bottom = -20 * 0.73;
+      sun.shadow.camera.near = 0.5;
+      sun.shadow.camera.far = 28;
+      sun.shadow.bias = 0.00105;
+      sun.shadow.normalBias = 0.0525;
+      sun.shadow.radius = 2.5;
+      scene.add(sun, sun.target);
+      const fill = new THREE.DirectionalLight(new THREE.Color("#00bd03"), 9.55);
+      fill.position.set(-11.8, 4.2, 5.2);
+      fill.target.position.set(0.7, 1, -2);
+      scene.add(fill, fill.target);
+
+      /* Plain flat backdrop in the variable colour (unlit so it stays flat), with a
+         shadow-only catcher just in front for leaf contact shadows. */
+      const wall = new THREE.Mesh(
+        new THREE.PlaneGeometry(68, 44),
+        new THREE.MeshBasicMaterial({ color: bgColor.clone(), fog: false }),
+      );
+      wall.position.z = BACKDROP_Z;
+      scene.add(wall);
+      const catcher = new THREE.Mesh(
+        new THREE.PlaneGeometry(68, 44),
+        new THREE.ShadowMaterial({ opacity: 0.28 }),
+      );
+      catcher.position.z = BACKDROP_Z + 0.05;
+      catcher.receiveShadow = true;
+      scene.add(catcher);
+
+      // ---- Procedural leaf species textures (ported verbatim from the experiment).
+      const palettes = {
+        monstera: [
+          [22, 77, 46],
+          [79, 128, 70],
+          [170, 184, 104],
+        ],
+        alocasia: [
+          [18, 55, 43],
+          [57, 104, 73],
+          [190, 206, 149],
+        ],
+        lance: [
+          [15, 74, 42],
+          [53, 126, 65],
+          [145, 172, 84],
+        ],
+        calathea: [
+          [32, 58, 39],
+          [82, 117, 72],
+          [195, 178, 126],
+        ],
+        fern: [
+          [20, 73, 39],
+          [64, 126, 65],
+          [158, 176, 88],
+        ],
+      };
+
+      function leafWidth(kind, y) {
+        const s = Math.max(0, Math.sin(Math.PI * y));
+        if (kind === "lance" || kind === "fern") return Math.pow(s, 1.28) * (0.66 + y * 0.12);
+        if (kind === "alocasia") return Math.pow(s, 0.62) * (0.88 + 0.16 * (1 - y));
+        if (kind === "calathea") return Math.pow(s, 0.82) * 0.78;
+        return Math.pow(s, 0.55) * (0.82 + 0.15 * y);
+      }
+
+      function makeLeafTexture(kind, seed) {
+        const w = 384,
+          h = 768;
+        const colorCanvas = document.createElement("canvas");
+        const bumpCanvas = document.createElement("canvas");
+        colorCanvas.width = bumpCanvas.width = w;
+        colorCanvas.height = bumpCanvas.height = h;
+        const colorCtx = colorCanvas.getContext("2d");
+        const bumpCtx = bumpCanvas.getContext("2d");
+        const colorImage = colorCtx.createImageData(w, h);
+        const bumpImage = bumpCtx.createImageData(w, h);
+        const p = palettes[kind];
+
+        for (let py = 0; py < h; py++) {
+          const y = py / (h - 1);
+          const width = leafWidth(kind, y);
+          for (let px = 0; px < w; px++) {
+            const x = (px / (w - 1) - 0.5) * 2;
+            const nx = Math.abs(x) / Math.max(0.001, width);
+            let signed = 1 - nx;
+            let inside = signed > -0.015 && y > 0.008 && y < 0.996;
+
+            if (inside && kind === "monstera") {
+              const ax = Math.abs(x);
+              const side = x < 0 ? -1 : 1;
+              for (let k = 0; k < 6; k++) {
+                const jitter = (hash2(k, seed, 44) - 0.5) * 0.034;
+                const root = 0.205 + k * 0.083 + jitter;
+                const inner = 0.23 + k * 0.022 + (hash2(k, seed, 51) - 0.5) * 0.026;
+                const curve =
+                  root + (ax - inner) * (0.14 + k * 0.012) + Math.sin((ax + k) * 13.0) * 0.008;
+                const slotWidth =
+                  (0.009 + k * 0.0018) * smoothstep(inner, Math.max(inner + 0.11, width), ax);
+                if (ax > inner && Math.abs(y - curve) < slotWidth && ax < width * 1.025)
+                  inside = false;
+                if (k < 4) {
+                  const cx = side * (0.225 + k * 0.052 + (hash2(k, seed, 61) - 0.5) * 0.025);
+                  const cy = 0.31 + k * 0.105 + (hash2(k, seed, 71) - 0.5) * 0.025;
+                  const rx = 0.026 + k * 0.003;
+                  const ry = 0.038 + k * 0.005;
+                  const skewY = y - cy - (x - cx) * side * 0.26;
+                  const hole = (x - cx) ** 2 / (rx * rx) + skewY ** 2 / (ry * ry) < 1;
+                  if (hole) inside = false;
+                }
+              }
+            }
+            if (inside && kind === "alocasia" && y < 0.105) {
+              const notch = Math.abs(x) < 0.15 * (1 - y / 0.105);
+              if (notch) inside = false;
+            }
+
+            const i = (py * w + px) * 4;
+            if (!inside) {
+              colorImage.data[i + 3] = 0;
+              bumpImage.data[i] = bumpImage.data[i + 1] = bumpImage.data[i + 2] = 112;
+              bumpImage.data[i + 3] = 255;
+              continue;
+            }
+
+            const n0 = hash2(px >> 2, py >> 2, seed);
+            const n1 = hash2(px >> 4, py >> 4, seed + 17);
+            const middle = Math.exp(-Math.abs(x) * (kind === "lance" ? 28 : 35));
+            const veinFreq = kind === "lance" ? 12 : 8.5;
+            const ribWave = Math.abs(((y * veinFreq + Math.abs(x) * 1.85) % 1) - 0.5);
+            const sideVein = Math.exp(-ribWave * 46) * smoothstep(0.04, 0.82, Math.abs(x));
+            const edge = smoothstep(0, 0.16, signed);
+            const stripe =
+              kind === "calathea" ? 0.5 + 0.5 * Math.cos(y * 58 + Math.abs(x) * 10) : 0;
+            const mottling = (n0 - 0.5) * 0.16 + (n1 - 0.5) * 0.12 + stripe * 0.08;
+            const light = clamp(
+              0.42 + y * 0.12 + mottling + middle * 0.34 + sideVein * 0.16 - (1 - edge) * 0.27,
+              0,
+              1,
+            );
+            const dry = hash2(px >> 3, py >> 3, seed + 90) > 0.978 ? 0.16 : 0;
+
+            const c0 = p[0],
+              c1 = p[1],
+              c2 = p[2];
+            const t = smoothstep(0.08, 0.9, light);
+            const hi = smoothstep(0.56, 1, t);
+            for (let ch = 0; ch < 3; ch++) {
+              const low = c0[ch] + (c1[ch] - c0[ch]) * t;
+              const val =
+                low + (c2[ch] - low) * hi * 0.58 + dry * (ch === 0 ? 56 : ch === 1 ? 35 : 10);
+              colorImage.data[i + ch] = clamp(val, 0, 255);
+            }
+            colorImage.data[i + 3] = clamp(edge * 390, 0, 255);
+
+            const bump = clamp(
+              112 + (n0 - 0.5) * 22 + middle * 100 + sideVein * 52 - (1 - edge) * 18,
+              0,
+              255,
+            );
+            bumpImage.data[i] = bumpImage.data[i + 1] = bumpImage.data[i + 2] = bump;
+            bumpImage.data[i + 3] = 255;
+          }
+        }
+
+        colorCtx.putImageData(colorImage, 0, 0);
+        bumpCtx.putImageData(bumpImage, 0, 0);
+        const map = new THREE.CanvasTexture(colorCanvas);
+        map.colorSpace = THREE.SRGBColorSpace;
+        map.anisotropy = Math.min(8, renderer.capabilities.getMaxAnisotropy());
+        const bump = new THREE.CanvasTexture(bumpCanvas);
+        bump.anisotropy = map.anisotropy;
+        return { map, bump };
+      }
+
+      const textureLoader = new THREE.TextureLoader();
+      const [photoSurface, photoNormal] = await Promise.all([
+        textureLoader.loadAsync("assets/leaf-surface-color.webp"),
+        textureLoader.loadAsync("assets/leaf-surface-normal.webp"),
+      ]);
+      photoSurface.colorSpace = THREE.SRGBColorSpace;
+      photoSurface.wrapS = photoSurface.wrapT = THREE.RepeatWrapping;
+      photoSurface.repeat.set(2.4, 4.8);
+      photoNormal.wrapS = photoNormal.wrapT = THREE.RepeatWrapping;
+      photoNormal.repeat.set(2.4, 4.8);
+
+      const kinds = ["monstera", "alocasia", "lance", "calathea", "fern"];
+      const textureSets = Object.fromEntries(
+        kinds.map((kind, i) => [kind, makeLeafTexture(kind, i * 31 + 7)]),
+      );
+      const materials = {};
+      const shaderMaterials = [];
+
+      for (const [index, kind] of kinds.entries()) {
+        const tex = textureSets[kind];
+        const material = new THREE.MeshPhysicalMaterial({
+          map: tex.map,
+          bumpMap: tex.bump,
+          bumpScale: (kind === "monstera" ? 0.065 : 0.045) * 2.5,
+          normalMap: photoNormal,
+          normalScale: new THREE.Vector2(0.35, 0.35),
+          alphaTest: 0.42,
+          side: THREE.DoubleSide,
+          roughness: 0.5626,
+          metalness: 0,
+          clearcoat: 0.5256,
+          clearcoatRoughness: 0.4274,
+          thickness: 0,
+          transmission: 0.015,
+          sheen: 0.24,
+          sheenColor: new THREE.Color(kind === "calathea" ? 0xc6a68d : 0x7da06a),
+          sheenRoughness: 0.8,
+          emissive: new THREE.Color(0x06140a),
+          emissiveIntensity: 0.18,
+          shadowSide: THREE.DoubleSide,
+        });
+        // Transmission and ordinary passes can compile separate shader variants.
+        // All variants share one time uniform, including a late first compilation.
+        material.userData.timeUniform = { value: 0 };
+        material.onBeforeCompile = (shader) => {
+          shader.uniforms.uTime = material.userData.timeUniform;
+          shader.uniforms.uWindStrength = { value: WIND_STRENGTH };
+          shader.uniforms.uTurbulence = { value: TURBULENCE };
+          shader.uniforms.uShapeNoise = { value: 2.5 };
+          shader.uniforms.uTextureNoise = { value: 2 };
+          shader.uniforms.uPhotoTexture = { value: 1.5 };
+          shader.uniforms.uPhotoSurface = { value: photoSurface };
+          shader.vertexShader = shader.vertexShader
+            .replace(
+              "#include <common>",
+              `#include <common>
+              uniform float uTime;
+              uniform float uWindStrength;
+              uniform float uTurbulence;
+              uniform float uShapeNoise;
+            `,
+            )
+            .replace(
+              "#include <begin_vertex>",
+              `
+              vec3 transformed = vec3(position);
+              float root = pow(uv.y, 1.28);
+              float worldPhase = dot(modelMatrix[3].xyz, vec3(0.71, 1.13, 0.43)) + ${index.toFixed(1)};
+              vec2 worldXY = modelMatrix[3].xy;
+              float gustCell = sin(uTime * 0.23 + worldXY.x * 0.42 + sin(worldXY.y * 0.37 + uTime * 0.11));
+              float localGust = pow(max(0.0, gustCell), 3.6);
+              float breath = sin(uTime * 0.46 + worldPhase) * 0.20 + sin(uTime * 1.17 + worldPhase * 1.7) * 0.07 + localGust * 0.62;
+              float flutter = (sin(uTime * 2.7 + uv.y * 8.0 + worldPhase * 2.2) * 0.012 + localGust * sin(uv.y * 11.0 + worldPhase) * 0.038) * uTurbulence;
+              float edgeNoise = sin(uv.y * 31.0 + worldPhase * 4.1) * pow(abs(uv.x - 0.5) * 2.0, 2.4) * 0.022 * uShapeNoise;
+              transformed.x += (breath * 0.075 * uWindStrength + flutter + edgeNoise) * root;
+              transformed.z += breath * 0.12 * root * uWindStrength + flutter * root * 0.8 + edgeNoise;
+              transformed.z += (1.0 - pow(abs(uv.x - 0.5) * 2.0, 1.65)) * 0.075;
+            `,
+            );
+          shader.fragmentShader = shader.fragmentShader
+            .replace(
+              "#include <common>",
+              `#include <common>
+              uniform float uTextureNoise;
+              uniform float uPhotoTexture;
+              uniform sampler2D uPhotoSurface;`,
+            )
+            .replace(
+              "#include <map_fragment>",
+              `#include <map_fragment>
+              float leafNoise = fract(sin(dot(vMapUv * vec2(311.7, 917.3), vec2(12.9898, 78.233))) * 43758.5453);
+              diffuseColor.rgb *= 1.0 + (leafNoise - 0.5) * 0.18 * uTextureNoise;
+              vec3 photographedSurface = texture2D(uPhotoSurface, vMapUv * vec2(2.4, 4.8)).rgb;
+              diffuseColor.rgb *= mix(vec3(1.0), photographedSurface * 1.24, clamp(uPhotoTexture, 0.0, 1.0) * 0.26);
+            `,
+            );
+          material.userData.shader = shader;
+        };
+        material.customProgramCacheKey = () => `cpt-leaf-wind-photo-v6-${index}`;
+        materials[kind] = material;
+        shaderMaterials.push(material);
+      }
+
+      const geometryCache = new Map();
+      function leafGeometry(width, length) {
+        const key = `${width.toFixed(2)}-${length.toFixed(2)}`;
+        if (geometryCache.has(key)) return geometryCache.get(key);
+        const geo = new THREE.PlaneGeometry(width, length, 12, 22);
+        geo.translate(0, length * 0.5, 0);
+        const position = geo.attributes.position;
+        const uv = geo.attributes.uv;
+        for (let i = 0; i < position.count; i++) {
+          const across = position.getX(i) / (width * 0.5);
+          const along = uv.getY(i);
+          const arch = (1 - Math.pow(Math.abs(across), 1.62)) * Math.sin(Math.PI * along);
+          const twist = across * (along - 0.22);
+          const edgeRipple =
+            Math.sin(along * Math.PI * 5.4 + across * 2.1) * Math.pow(Math.abs(across), 2.2);
+          position.setZ(
+            i,
+            arch * length * 0.052 + twist * length * 0.038 + edgeRipple * length * 0.012,
+          );
+        }
+        position.needsUpdate = true;
+        geo.computeVertexNormals();
+        geometryCache.set(key, geo);
+        return geo;
+      }
+
+      const DIMS = {
+        monstera: [2.05, 2.7],
+        alocasia: [1.92, 2.85],
+        lance: [0.68, 3.45],
+        calathea: [1.36, 3.05],
+        fern: [0.46, 1.5],
+      };
+      const leaves = [];
+      for (const batch of window.__cptBatches) {
+        for (const spec of batch) {
+          const dims = DIMS[spec.kind];
+          if (spec.batch === 2) {
+            // Start the entire leaf below the camera frustum, including its
+            // tip, wind deformation and the small camera orbit. Its identity
+            // persists: the lift carries it into view rather than spawning it.
+            const reach =
+              Math.hypot(dims[0] * spec.widthMul * 0.5, dims[1] * spec.lengthMul) * spec.scale;
+            spec.liftStartY =
+              -Math.tan(THREE.MathUtils.degToRad(camera.fov * 0.5)) * (CAM_DIST - spec.liftZ) -
+              reach -
+              2;
+          }
+          const group = new THREE.Group();
+          const mesh = new THREE.Mesh(
+            leafGeometry(dims[0] * spec.widthMul, dims[1] * spec.lengthMul),
+            materials[spec.kind],
+          );
+          mesh.castShadow = true;
+          mesh.receiveShadow = spec.z < 4.8;
+          group.add(mesh);
+          group.visible = false;
+          group.position.set(spec.xStart, spec.y0, spec.z);
+          group.scale.setScalar(spec.scale);
+          group.rotation.set(spec.tiltX, spec.tiltY, spec.rotation);
+          scene.add(group);
+          leaves.push({ group, spec });
+        }
+      }
+
+      /* ---- The headlines live IN the scene, behind the leaf band, so foliage
+         genuinely occludes them. Reveal is a wipe uniform that tracks the sweep's
+         trailing edge — the visible edge always sits under the dense part of the
+         band, so the type reads as uncovered by the passing leaves, never faded. */
+      function headlineTexture(text) {
+        // Enough source detail for the headline at both 1x and 2x output density.
+        const c = document.createElement("canvas");
+        c.width = 4096;
+        c.height = 1024;
+        const g = c.getContext("2d");
+        g.clearRect(0, 0, c.width, c.height);
+        g.textAlign = "center";
+        g.textBaseline = "middle";
+        let size = 380;
+        const applyFont = () => {
+          g.font = `${FONT_WEIGHT} ${size}px ${FONT_STACK}`;
+          g.letterSpacing = `${Math.round(size * LETTER_SP)}px`;
+        };
+        applyFont();
+        let tw = g.measureText(text).width;
+        if (tw > 3760) {
+          size = Math.floor((size * 3760) / tw);
+          applyFont();
+        }
+        /* User size multiplier rides on top of the auto-fit. */
+        size = Math.round(size * FONT_SIZE);
+        applyFont();
+        g.shadowColor = "rgba(0,0,0,0.5)";
+        g.shadowBlur = 30;
+        g.shadowOffsetY = 8;
+        g.fillStyle = "#e4eedb";
+        g.fillText(text, c.width / 2 + Math.round(size * LETTER_SP * 0.5), c.height / 2 + 16);
+        const t = new THREE.CanvasTexture(c);
+        t.colorSpace = THREE.SRGBColorSpace;
+        t.anisotropy = 16;
+        return t;
+      }
+
+      function headlinePlane(text, second = false) {
+        const mat = new THREE.MeshBasicMaterial({
+          map: headlineTexture(text),
+          transparent: true,
+          toneMapped: false,
+          fog: false,
+          depthWrite: false,
+        });
+        const uniforms = { uIn: { value: -0.05 }, uOut: { value: -0.05 }, uLift: { value: -0.05 } };
+        mat.onBeforeCompile = (shader) => {
+          shader.uniforms.uIn = uniforms.uIn;
+          shader.uniforms.uOut = uniforms.uOut;
+          shader.uniforms.uLift = uniforms.uLift;
+          shader.fragmentShader = shader.fragmentShader
+            .replace(
+              "#include <common>",
+              "#include <common>\nuniform float uIn;\nuniform float uOut;\nuniform float uLift;",
+            )
+            .replace(
+              "#include <map_fragment>",
+              `#include <map_fragment>
+              float eIn = uIn + sin(vMapUv.y * 43.0) * 0.012;
+              float eOut = uOut + sin(vMapUv.y * 37.0 + 2.0) * 0.012;
+              float vis = smoothstep(eIn + 0.02, eIn - 0.02, vMapUv.x) * smoothstep(eOut - 0.02, eOut + 0.02, vMapUv.x);
+              float lifted = smoothstep(uLift - 0.08, uLift + 0.08, vMapUv.y);
+              diffuseColor.a *= vis * ${second ? "(1.0 - lifted)" : "lifted"};`,
+            );
+        };
+        mat.customProgramCacheKey = () => "cpt-headline-lift-" + second;
+        const mesh = new THREE.Mesh(new THREE.PlaneGeometry(16.4, 4.1), mat);
+        mesh.position.set(0, 0.15, TEXT_Z);
+        mesh.renderOrder = 2;
+        // Exclude type from the bokeh colour/depth passes. Its alpha edges must
+        // not be blurred using the discontinuous text/backdrop depth samples.
+        mesh.layers.set(1);
+        scene.add(mesh);
+        return {
+          mesh,
+          mat,
+          uniforms,
+          retex: (t2) => {
+            const previous = mat.map;
+            mat.map = headlineTexture(t2);
+            previous.dispose();
+            mat.needsUpdate = true;
+          },
+        };
+      }
+
+      const plane1 = headlinePlane(HEADLINE1);
+      const plane2 = headlinePlane(HEADLINE2, true);
+
+      // ---- Glow motes (drift is a pure function of seed and t).
+      const DUST_COUNT = 800;
+      const dustHome = Float32Array.from(window.__cptDust.home);
+      const dustSeeds = Float32Array.from(window.__cptDust.seeds);
+      const dustPositions = dustHome.slice();
+      const dustGeo = new THREE.BufferGeometry();
+      dustGeo.setAttribute("position", new THREE.BufferAttribute(dustPositions, 3));
+      dustGeo.setAttribute("seed", new THREE.BufferAttribute(dustSeeds, 1));
+      const moteCanvas = document.createElement("canvas");
+      moteCanvas.width = moteCanvas.height = 64;
+      const moteCtx = moteCanvas.getContext("2d");
+      const moteGradient = moteCtx.createRadialGradient(32, 32, 0, 32, 32, 31);
+      moteGradient.addColorStop(0, "rgba(255,255,232,1)");
+      moteGradient.addColorStop(0.16, "rgba(224,255,202,.92)");
+      moteGradient.addColorStop(0.5, "rgba(180,228,160,.28)");
+      moteGradient.addColorStop(1, "rgba(140,205,125,0)");
+      moteCtx.fillStyle = moteGradient;
+      moteCtx.fillRect(0, 0, 64, 64);
+      const moteSprite = new THREE.CanvasTexture(moteCanvas);
+      moteSprite.colorSpace = THREE.SRGBColorSpace;
+      const dustMat = new THREE.PointsMaterial({
+        color: new THREE.Color("#daf9b4"),
+        map: moteSprite,
+        size: 0.1,
+        transparent: true,
+        opacity: 0.55,
+        depthWrite: false,
+        blending: THREE.AdditiveBlending,
+      });
+      const dust = new THREE.Points(dustGeo, dustMat);
+      scene.add(dust);
+
+      // BokehPass depth prepass with alpha-aware materials (ported from the experiment).
+      const dofDepthMaterials = new Map();
+      function depthMaterialFor(source) {
+        const key = source.uuid;
+        if (dofDepthMaterials.has(key)) return dofDepthMaterials.get(key);
+        const depth = new THREE.MeshDepthMaterial({
+          depthPacking: THREE.RGBADepthPacking,
+          map: source.map || null,
+          alphaTest: source.alphaTest || 0.5,
+          side: source.side,
+          depthTest: true,
+          depthWrite: true,
+        });
+        dofDepthMaterials.set(key, depth);
+        return depth;
+      }
+      bokehPass.render = function (activeRenderer, writeBuffer, readBuffer) {
+        const swapped = [];
+        const dustVisible = dust.visible;
+        dust.visible = false;
+        this.scene.traverse((object) => {
+          if (!object.isMesh) return;
+          swapped.push([object, object.material]);
+          object.material = depthMaterialFor(object.material);
+        });
+        try {
+          activeRenderer.setRenderTarget(this.renderTargetDepth);
+          activeRenderer.clear();
+          activeRenderer.render(this.scene, this.camera);
+        } finally {
+          for (const [object, material] of swapped) object.material = material;
+          dust.visible = dustVisible;
+        }
+        this.uniforms.tColor.value = readBuffer.texture;
+        this.uniforms.tDepth.value = this.renderTargetDepth.texture;
+        activeRenderer.setRenderTarget(writeBuffer);
+        if (this.clear) activeRenderer.clear();
+        this.fsQuad.render(activeRenderer);
+
+        // Bring the blurred foliage back without clearing the ORIGINAL colour
+        // pass's depth. That depth includes the leaves' alpha cutouts and wind
+        // deformation, so the unblurred headline still sits behind the canopy.
+        const copy = composer.copyPass;
+        copy.renderToScreen = false;
+        const background = scene.background;
+        const autoClear = activeRenderer.autoClear;
+        const layers = camera.layers.mask;
+        const shadowAutoUpdate = activeRenderer.shadowMap.autoUpdate;
+        try {
+          scene.background = null;
+          activeRenderer.autoClear = false;
+          activeRenderer.shadowMap.autoUpdate = false;
+          copy.render(activeRenderer, readBuffer, writeBuffer);
+          camera.layers.set(1);
+          activeRenderer.render(scene, camera);
+        } finally {
+          scene.background = background;
+          activeRenderer.autoClear = autoClear;
+          activeRenderer.shadowMap.autoUpdate = shadowAutoUpdate;
+          camera.layers.mask = layers;
+        }
+        // Keep the existing colour pipeline for both foliage and typography.
+        copy.renderToScreen = this.renderToScreen;
+        copy.render(activeRenderer, writeBuffer, readBuffer);
+      };
+
+      const cameraTarget = new THREE.Vector3(0, 0, -1.5);
+      const cameraOffset = new THREE.Vector3();
+      const cameraOrbit = new THREE.Euler(0, 0, 0, "YXZ");
+      const degToRad = THREE.MathUtils.degToRad;
+      const DJ = 0.5;
+
+      function motionClock(t) {
+        const end = window.__cptWindows.s2 + window.__cptWindows.d2;
+        const duration = Math.max(0.1, 10.5 - end);
+        const p = clamp((t - end) / duration, 0, 1);
+        return t <= end ? t : end + duration * (p - (p * p) / 2);
+      }
+
+      function openingWind(spec, t) {
+        const wt = motionClock(t) * WIND_SPEED;
+        const gust = Math.sin(wt * 0.23 + spec.restX * 0.42 + Math.sin(spec.y0 * 0.37 + wt * 0.11));
+        const sway =
+          (Math.sin(wt * 0.46 + spec.phase) * 0.011 +
+            Math.sin(wt * 0.58 + spec.y0 * 0.74) * 0.007 +
+            Math.max(0, gust) ** 3.6 * 0.03) *
+          WIND_STRENGTH;
+        return [sway, Math.sin(wt * 0.31 + spec.phase) * 0.02];
+      }
+
+      // Sample the authored incoming path, including its actual rotation/wind.
+      // Only retained leaves use this path; the passing leaf wall stays intact.
+      function retainedSweepPose(s, t) {
+        const w = window.__cptWindows;
+        if (s.batch === 2) {
+          const p = clamp(clamp((t - w.s2) / w.d2, 0, 1) * 1.28 - s.liftDelay, 0, 1);
+          const lift = smoothstep(0, 0.58, p),
+            seat = smoothstep(0.38, 1, p);
+          return [
+            THREE.MathUtils.lerp(s.liftX, s.restX, seat),
+            THREE.MathUtils.lerp(s.liftY, s.restY, seat) -
+              (s.liftY - s.liftStartY) * (1 - smoothstep(0, 0.42, p)),
+            THREE.MathUtils.lerp(s.liftZ, s.z, lift),
+            s.tiltX + seat * 3.6 * Math.sin(s.phase),
+            s.tiltY + seat * 3.6 * Math.cos(s.phase * 1.7),
+            THREE.MathUtils.lerp(s.rotation, s.restRZ, seat),
+          ];
+        }
+        const p = clamp(clamp((t - 0.4) / w.d1, 0, 1) * 1.5 - s.delay, 0, 1);
+        const pe = 1 - Math.pow(1 - p, 3);
+        const rz = s.rotation + pe * s.spin * 0.55;
+        const turn =
+          ((((s.restRZ - rz + Math.PI) % (2 * Math.PI)) + 2 * Math.PI) % (2 * Math.PI)) - Math.PI;
+        const [wind, roll] = openingWind(s, t);
+        return [
+          s.xStart + (s.restX - s.xStart) * pe,
+          s.y0 +
+            (s.restY - s.y0) * pe +
+            Math.sin(pe * Math.PI * 1.4 + s.phase) * s.bobAmp * (1 - pe) * 0.8 +
+            wind * 0.14,
+          s.z,
+          s.tiltX + wind,
+          s.tiltY + wind * 0.65,
+          rz + turn * smoothstep(0.55, 1, pe) + roll,
+        ];
+      }
+
+      function retainedIdlePose(spec, t, handoff) {
+        const b = spec.breeze,
+          age = t - handoff.start,
+          a = age * b.rate;
+        const pose = handoff.center.slice();
+        if (spec.batch === 1) {
+          const [wind, roll] = openingWind(spec, t);
+          pose[1] += wind * 0.14;
+          pose[3] += wind;
+          pose[4] += wind * 0.65;
+          pose[5] += roll;
+        }
+        const floatX = Math.sin(a + b.phase) * 0.72 + Math.sin(a * 0.613 + b.phase2) * 0.28;
+        const floatY = Math.sin(a * 0.79 + b.phase2) * 0.76 + Math.sin(a * 1.137 + b.phase3) * 0.24;
+        const floatZ = Math.sin(a * 0.53 + b.phase3);
+        const offsets = [
+          b.driftX * floatX,
+          b.driftY * floatY,
+          b.depth + b.driftZ * floatZ,
+          b.tiltX * Math.sin(a * 0.67 + b.phase2),
+          b.tiltY * Math.sin(a * 0.47 + b.phase3),
+          b.roll * floatX + b.turn * age,
+        ];
+        return pose.map((v, i) => v + RETAINED_BREEZE * offsets[i]);
+      }
+
+      // Join while each leaf still has momentum, before its old stop point.
+      // Quintic Hermite correction matches position, velocity AND acceleration
+      // at both ends. The moving breeze target is present throughout settling;
+      // there is no idle timer, zero-velocity rest, or later amplitude fade-in.
+      for (const { spec: s } of leaves) {
+        if (!s.stayer) continue;
+        const w = window.__cptWindows,
+          first = s.batch === 1;
+        const rate = first ? 1.5 / w.d1 : 1.28 / w.d2;
+        const progress = (first ? 0.64 : 0.78) + s.breeze.arrival * 0.12;
+        const start = (first ? 0.4 : w.s2) + (progress + (first ? s.delay : s.liftDelay)) / rate;
+        const end = first ? 0.4 + w.d1 : w.s2 + w.d2;
+        const center = retainedSweepPose(s, end);
+        const incoming = retainedSweepPose(s, start);
+        if (first) {
+          const [wind, roll] = openingWind(s, end);
+          center[1] -= wind * 0.14;
+          center[3] -= wind;
+          center[4] -= wind * 0.65;
+          center[5] -= roll;
+        }
+        for (let i = 3; i < 6; i++)
+          center[i] += Math.round((incoming[i] - center[i]) / (2 * Math.PI)) * 2 * Math.PI;
+        const h = (s.handoff = { start, duration: (first ? 0.52 : 0.48) / rate, center });
+        const dt = 0.001;
+        const delta = (time) =>
+          retainedSweepPose(s, time).map((v, i) => v - retainedIdlePose(s, time, h)[i]);
+        const a = delta(start - dt),
+          b = delta(start),
+          c = delta(start + dt);
+        h.correction = b.map((v, i) => [
+          v,
+          (c[i] - a[i]) / (2 * dt),
+          (c[i] - 2 * v + a[i]) / (dt * dt),
+        ]);
+      }
+
+      function applyRetainedMotion(group, spec, t) {
+        const h = spec.handoff;
+        if (!h || !group.visible) return;
+        if (t < h.start) {
+          // Use the same unrounded clock on both sides of the handoff; GSAP's
+          // rounded scalar writes must not introduce a tiny boundary jump.
+          const incoming = retainedSweepPose(spec, t);
+          group.position.set(incoming[0], incoming[1], incoming[2]);
+          group.rotation.set(incoming[3], incoming[4], incoming[5]);
+          return;
+        }
+        const pose = retainedIdlePose(spec, t, h);
+        const u = clamp((t - h.start) / h.duration, 0, 1);
+        const u2 = u * u,
+          u3 = u2 * u,
+          u4 = u3 * u,
+          u5 = u4 * u;
+        const p = 1 - 10 * u3 + 15 * u4 - 6 * u5;
+        const v = u - 6 * u3 + 8 * u4 - 3 * u5;
+        const a = (u2 - 3 * u3 + 3 * u4 - u5) / 2;
+        for (let i = 0; i < 6; i++) {
+          const c = h.correction[i];
+          pose[i] += c[0] * p + c[1] * h.duration * v + c[2] * h.duration * h.duration * a;
+        }
+        if (spec.batch === 1) {
+          // Carry the current floating pose into takeoff, never pull it back
+          // to a rest slot. Quintic lift starts with zero added speed/acceleration.
+          const m = clamp((t - window.__cptWindows.s2) / window.__cptWindows.d2, 0, 1);
+          const q = clamp(m * 1.5 - spec.delay2 * 0.4, 0, 1);
+          const lift = q * q * q * (10 + q * (-15 + 6 * q));
+          pose[1] += lift * 6;
+          pose[2] += lift * 34;
+          pose[5] += lift * spec.spin * 0.55;
+        }
+        group.position.set(pose[0], pose[1], pose[2]);
+        group.rotation.set(pose[3], pose[4], pose[5]);
+      }
+
+      let disposed = false;
+      function renderAt(t) {
+        if (disposed) return;
+        t = clamp(t, 0, DUR);
+        const settleTime = window.__cptWindows.s2 + window.__cptWindows.d2;
+        const settleDuration = Math.max(0.1, 10.5 - settleTime);
+        const settleProgress = clamp((t - settleTime) / settleDuration, 0, 1);
+        const motionTime =
+          t <= settleTime
+            ? t
+            : settleTime +
+              settleDuration * (settleProgress - (settleProgress * settleProgress) / 2);
+        const wt = motionTime * WIND_SPEED;
+        const m1 = state.sw1;
+        const m2 = state.sw2;
+
+        for (const { group, spec } of leaves) {
+          // Depth lift: emerge from the backdrop, cross the type plane,
+          // rise through the focal range, then pass the camera (source exitDistance=34).
+          // No lateral sweep, frame history, pointer force, or accumulated physics.
+          if (spec.batch === 2) {
+            const p = clamp(m2 * 1.28 - spec.liftDelay, 0, 1);
+            // At p=0 it is already below frame; at p=1 passers are behind
+            // the camera. No visibility/opacity switch at either boundary.
+            group.visible = true;
+            const entry = smoothstep(0, 0.42, p);
+            const lift = smoothstep(0, 0.58, p);
+            const exit = smoothstep(0.38, 1, p);
+            const seat = smoothstep(0.38, 1, p);
+            const z = spec.stayer
+              ? THREE.MathUtils.lerp(spec.liftZ, spec.z, lift)
+              : spec.liftZ + lift * 8 * spec.depthResponse + exit * 34;
+            const orbit = exit * 1.15;
+            const x = spec.stayer
+              ? THREE.MathUtils.lerp(spec.liftX, spec.restX, seat)
+              : spec.liftX + Math.cos(spec.phase + p * 1.3) * orbit;
+            const liftedY = spec.stayer
+              ? THREE.MathUtils.lerp(spec.liftY, spec.restY, seat)
+              : spec.liftY + lift * 2.2 + exit * 3.8;
+            const y = liftedY - (spec.liftY - spec.liftStartY) * (1 - entry);
+            group.position.set(x, y, z);
+            group.rotation.set(
+              spec.tiltX + exit * 3.6 * Math.sin(spec.phase),
+              spec.tiltY + exit * 3.6 * Math.cos(spec.phase * 1.7),
+              spec.stayer
+                ? THREE.MathUtils.lerp(spec.rotation, spec.restRZ, seat)
+                : spec.rotation + exit * 3.6 * 0.55,
+            );
+            continue;
+          }
+          const m = spec.batch === 1 ? m1 : m2;
+          const p = clamp(m * (1 + DJ) - spec.delay, 0, 1);
+          if (p <= 0.0005) {
+            group.visible = false;
+            continue;
+          }
+          group.visible = true;
+
+          // Analytic wind sway, always applied (scaled up once settled).
+          const gustCell = Math.sin(
+            wt * 0.23 + spec.restX * 0.42 + Math.sin(spec.y0 * 0.37 + wt * 0.11),
+          );
+          const localGust = Math.max(0, gustCell) ** 3.6;
+          const slowWind =
+            (Math.sin(wt * 0.46 + spec.phase) * 0.011 +
+              Math.sin(wt * 0.58 + spec.y0 * 0.74) * 0.007 +
+              localGust * 0.03) *
+            WIND_STRENGTH;
+
+          let x,
+            y,
+            rz,
+            z = spec.z;
+          if (!spec.stayer) {
+            const pe = p * p * (3 - 2 * p);
+            x = spec.xStart + (spec.xEnd - spec.xStart) * pe;
+            y = spec.y0 + Math.sin(pe * Math.PI * spec.bobN + spec.phase) * spec.bobAmp;
+            rz = spec.rotation + pe * spec.spin;
+          } else {
+            const pe = 1 - Math.pow(1 - p, 3);
+            x = spec.xStart + (spec.restX - spec.xStart) * pe;
+            y =
+              spec.y0 +
+              (spec.restY - spec.y0) * pe +
+              Math.sin(pe * Math.PI * 1.4 + spec.phase) * spec.bobAmp * (1 - pe) * 0.8;
+            const travelRz = spec.rotation + pe * spec.spin * 0.55;
+            const seat = smoothstep(0.55, 1, pe);
+            const dRz =
+              ((((spec.restRZ - travelRz + Math.PI) % (2 * Math.PI)) + 2 * Math.PI) %
+                (2 * Math.PI)) -
+              Math.PI;
+            rz = travelRz + dRz * seat;
+            if (spec.batch === 1 && m2 > 0) {
+              // Existing edge leaves join the same upward depth current.
+              const q = clamp(m2 * 1.5 - spec.delay2 * 0.4, 0, 1);
+              const qe = smoothstep(0, 1, q);
+              z += qe * 34;
+              y += qe * 6;
+              rz += qe * spec.spin * 0.55;
+            }
+          }
+
+          group.position.set(x, y + slowWind * 0.14, z);
+          group.rotation.set(
+            spec.tiltX + slowWind,
+            spec.tiltY + slowWind * 0.65,
+            rz + Math.sin(wt * 0.31 + spec.phase) * 0.02,
+          );
+        }
+
+        // The background/camera can settle while retained leaves keep breathing
+        // through the final hold. Use absolute t, never accumulated frame deltas.
+        for (const { group, spec } of leaves) applyRetainedMotion(group, spec, t);
+
+        /* Reveal wipes, derived from the sweep masters. Tuned so the visible wipe
+           edge stays inside the dense part of the leaf band (verified visually). */
+        plane1.uniforms.uIn.value = clamp((m1 - 0.3) / 0.52, 0, 1) * 1.1 - 0.05;
+        plane1.uniforms.uOut.value = -0.05;
+        plane2.uniforms.uIn.value = 1.05;
+        plane1.uniforms.uLift.value = smoothstep(0.25, 0.43, m2) * 1.3 - 0.15;
+        plane2.uniforms.uLift.value = smoothstep(0.4, 0.62, m2) * 1.3 - 0.15;
+        // Source experiment DOF at lift peak; return to V1's crisp hold.
+        const lens = smoothstep(0.05, 0.28, m2) * (1 - smoothstep(0.72, 1, m2));
+        bokehPass.uniforms.aperture.value = 0.0016 + lens * 0.0005;
+        bokehPass.uniforms.maxblur.value = 0.0055 + lens * 0.0035;
+        plane2.uniforms.uOut.value = -0.05;
+
+        for (const material of shaderMaterials) {
+          material.userData.timeUniform.value = wt;
+        }
+
+        for (let i = 0; i < DUST_COUNT; i++) {
+          const o = i * 3;
+          const s = dustSeeds[i];
+          dustPositions[o] = dustHome[o] + Math.sin(wt * 0.19 + s * 18) * 0.36;
+          dustPositions[o + 1] = dustHome[o + 1] + Math.cos(wt * 0.14 + s * 27) * 0.38;
+          dustPositions[o + 2] = dustHome[o + 2] + Math.sin(wt * 0.11 + s * 41) * 0.4;
+        }
+        dustGeo.attributes.position.needsUpdate = true;
+
+        const swayX = Math.sin(motionTime * 0.31) * 0.6 + Math.sin(motionTime * 0.127 + 2.1) * 0.5;
+        const swayY = Math.sin(motionTime * 0.083 + 1.7) * 0.7;
+        cameraOrbit.set(degToRad(-swayY), degToRad(swayX), 0, "YXZ");
+        cameraOffset.set(0, 0.15, CAM_DIST).applyEuler(cameraOrbit);
+        camera.position.copy(cameraTarget).add(cameraOffset);
+        camera.lookAt(cameraTarget);
+        dust.rotation.x = degToRad(-swayY) * 0.6;
+        dust.rotation.y = degToRad(swayX) * 0.6;
+
+        composer.render();
+      }
+
+      function onSeek(event) {
+        const time = clamp(Number(event.detail?.time) || 0, 0, DUR);
+        const timeline = window.__timelines["canopy-part-title"];
+        timeline.totalTime(time, true);
+        renderAt(time);
+      }
+      window.addEventListener("hf-seek", onSeek);
+      window.__cptInstance = {
+        dispose() {
+          if (disposed) return;
+          disposed = true;
+          window.removeEventListener("hf-seek", onSeek);
+          const resources = new Set();
+          scene.traverse((object) => {
+            if (object.geometry) resources.add(object.geometry);
+            for (const mat of [object.material].flat().filter(Boolean)) {
+              resources.add(mat);
+              for (const value of Object.values(mat)) if (value?.isTexture) resources.add(value);
+            }
+          });
+          for (const mat of dofDepthMaterials.values()) resources.add(mat);
+          for (const resource of resources) resource.dispose();
+          bokehPass.dispose();
+          composer.dispose();
+          renderer.dispose();
+          renderer.forceContextLoss();
+          window.__cptRender = null;
+        },
+      };
+      window.__cptRender = renderAt;
+
+      const tl = window.__timelines["canopy-part-title"];
+      // Compile every leaf material before the first time sample. Hidden leaves
+      // otherwise compile on their first visible seek with uTime=0, making that
+      // frame differ from a later seek to the same time.
+      for (const { group } of leaves) group.visible = true;
+      renderer.compile(scene, camera);
+      renderAt(0);
+      renderAt(window.__hfThreeTime ?? (tl ? tl.time() : 0));
+      /* Draw across the timeline and flush the GPU before ready, so shader links
+         and texture uploads land in the readiness gate, not the first visible frames. */
+      async function warmGpu() {
+        const dur = tl ? tl.duration() : 0;
+        for (const f of [0.25, 0.5, 0.75]) {
+          await new Promise((resolve) => setTimeout(resolve, 0));
+          renderAt(dur * f);
+        }
+        renderAt(tl ? tl.time() : 0);
+        renderer.getContext().finish();
+      }
+      window.__hf = window.__hf || {};
+      window.__hf.buildReady = window.__hf.buildReady || {};
+      if (document.fonts && document.fonts.ready) {
+        window.__cptReady = Promise.all([
+          document.fonts.load(`${FONT_WEIGHT} 100px "${FONT}"`).catch(() => {}),
+          document.fonts.ready,
+        ])
+          .then(() => {
+            if (disposed) return;
+            plane1.retex(HEADLINE1);
+            plane2.retex(HEADLINE2);
+            renderAt(tl ? tl.time() : 0);
+            return warmGpu();
+          })
+          .catch(() => {});
+        window.__hf.buildReady["canopy-part-title"] = window.__cptReady;
+      } else {
+        window.__hf.buildReady["canopy-part-title"] = warmGpu();
+      }
+    </script>
+  </body>
+</html>
+```
+
+</CatalogSlot>
+
+<CatalogSlot slot="install">
+
+<InstallCommand command="npx hyperframes add canopy-part-title" item="canopy-part-title" />
+
+That writes `compositions/canopy-part-title/canopy-part-title.html`, plus 3 supporting files under `compositions/canopy-part-title/assets/` and `compositions/canopy-part-title/`.
+
+</CatalogSlot>
+
+<CatalogSlot slot="docs">
+
+## Add it to your video
+
+It runs for 12 seconds at 1920×1080. Paste this into your composition:
+
+```html index.html
+<div
+  data-composition-id="canopy-part-title"
+  data-composition-src="compositions/canopy-part-title/canopy-part-title.html"
+  data-start="0"
+  data-duration="12"
+  data-track-index="1"
+  data-width="1920"
+  data-height="1080"
+></div>
+```
+
+Move it in time with `data-start`. Put it on a different timeline row with
+`data-track-index`. See [data attributes](/concepts/data-attributes) for the rest.
+
+{/* hf:generated-footer */}
+
+Tagged `3d-motion` `title-card` `leaves` `organic` `depth-of-field` `two-headlines` `sweep`.
+
+## Related topics
+
+- [Browse the complete Catalog](/catalog)
+- [Add assets and Catalog items in Studio](/studio/assets-and-blocks)
+- [Build a richer composition](/go-further)
+
+</CatalogSlot>
+
+</CatalogDetail>

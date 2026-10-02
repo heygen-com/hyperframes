@@ -1,0 +1,66 @@
+---
+title: "Speed ramps"
+sidebarTitle: "Speed ramps"
+description: "Change a clip's playback speed over time with a rate lane in data-automation. One curve drives the preview, the render and Studio."
+---
+
+A speed ramp changes how fast a `<video>` or `<audio>` clip plays while it
+plays: slow into a beat, fast out of it. It is a `rate` lane in
+[`data-automation`](/reference/audio-effects#the-four-attributes), the same
+attribute that carries volume envelopes.
+
+```html
+<video
+  src="clip.mp4"
+  data-start="0"
+  data-duration="4"
+  data-track-index="0"
+  data-automation='{"version":1,"lanes":[{"target":"rate","points":[{"t":0,"v":1},{"t":2,"v":4},{"t":4,"v":0.5}]}]}'
+></video>
+```
+
+## The lane
+
+| Field | Meaning |
+| --- | --- |
+| `target` | `"rate"` |
+| `points[].t` | Seconds from the start of the clip, not from the start of the composition |
+| `points[].v` | Speed multiplier. `1` is normal, `2` is twice as fast. Clamped to `0.1` to `10` |
+| `points[].curve` | Optional, `-1` to `1`. Bends the segment leaving this point |
+
+Speed moves between points on a logarithmic scale, so going from `0.5` to `2`
+passes through `1` at the midpoint. A lane wins over the constant
+`data-playback-rate` on the same element. Without a lane, the constant applies.
+
+## What stays the same everywhere
+
+The source frame shown at each moment comes from one function, `sourceTimeAt`,
+which the preview and the renderer both use, so the render shows the frames the
+preview showed. Set `data-duration` on the clip to fix how long it holds the
+timeline; without it the length follows from the source and the speed.
+
+Pitch is kept. The preview leaves the browser's default pitch correction on.
+The render time-stretches audio in short constant-speed slices (a quarter
+second, coarser on clips longer than a minute), which approximates the curve
+while keeping pitch, so the sound follows the ramp closely rather than exactly.
+
+## Presets
+
+Studio's **Speed preset** menu draws a ready curve over the clip: Montage,
+Hero, Bullet, Jump cut, Flash in and Flash out. An agent can write the same
+points by hand.
+
+## Editing in Studio
+
+Select a clip and open its Media section. The **Speed** slider sets the
+constant rate. The **A** toggle next to it automates speed, which shows a rate
+lane on the clip in the timeline that you edit like the volume lane.
+
+## Limits
+
+- Only `<video>` and `<audio>` clips carry a rate lane.
+- Speeds outside `0.1` to `10` are clamped.
+- The viewer's own transport speed is a separate control that multiplies with
+  the clip's speed, and it is narrower: the Studio speed menu offers `0.25` to
+  `2`, the player's menu offers up to `4`, and the runtime clamps a transport
+  request to `0.1` to `5`.

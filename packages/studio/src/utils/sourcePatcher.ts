@@ -3,7 +3,7 @@
  * Handles inline style updates, attribute changes, and text content.
  */
 
-function escapeRegex(s: string): string {
+export function escapeRegex(s: string): string {
   return s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
 
@@ -12,7 +12,7 @@ function escapeStyleAttributeValue(value: string, quote: string): string {
 }
 
 /** Escape a string for safe use inside a double-quoted HTML attribute. */
-function escapeHtmlAttribute(value: string): string {
+export function escapeHtmlAttribute(value: string): string {
   return value
     .replace(/&/g, "&amp;")
     .replace(/"/g, "&quot;")
@@ -21,7 +21,7 @@ function escapeHtmlAttribute(value: string): string {
 }
 
 /** Reverse escapeHtmlAttribute so callers get the original value. */
-function unescapeHtmlAttribute(value: string): string {
+export function unescapeHtmlAttribute(value: string): string {
   return value
     .replace(/&quot;/g, '"')
     .replace(/&lt;/g, "<")
@@ -420,7 +420,7 @@ function findMatchingClosingTagIndex(html: string, tagName: string, contentStart
   return -1;
 }
 
-const HTML_BOOLEAN_ATTRIBUTES = new Set([
+export const HTML_BOOLEAN_ATTRIBUTES = new Set([
   "loop",
   "muted",
   "autoplay",

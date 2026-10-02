@@ -1,47 +1,28 @@
 ---
 title: "ChatGPT Exchange"
 description: "A portrait ChatGPT-style exchange types and sends a prompt, streams an answer, assembles a comparison table, and scrolls back through the result"
+mode: "frame"
 ---
 
+import { CatalogDetail, CatalogSlot } from "/snippets/catalog-detail.jsx";
 import { InstallCommand } from "/snippets/install-command.jsx";
 
-## Install
+<CatalogDetail
+  previewSrc="/public/catalog/blocks/chatgpt-exchange.json"
+  compositionId="chatgpt-exchange"
+  compositionSrc="compositions/chatgpt-exchange.html"
+  title="ChatGPT Exchange"
+  description="A portrait ChatGPT-style exchange types and sends a prompt, streams an answer, assembles a comparison table, and scrolls back through the result"
+  variables={[{"id":"prompt","type":"string","role":"content","label":"User prompt","description":"Prompt typed into ChatGPT; keep close to the original length.","default":"Hey what&#39;s the best tool for ai avatars"},{"id":"intro1","type":"string","role":"content","label":"Answer introduction 1","description":"First streamed answer paragraph.","default":"It really depends on what you&#39;re trying to do, because “AI avatars” has split into a few different categories."},{"id":"intro2","type":"string","role":"content","label":"Answer introduction 2","description":"Second streamed answer paragraph.","default":"For **most creators and marketers**, here&#39;s how I&#39;d rank them today:"},{"id":"tableHeadUse","type":"string","role":"content","label":"Table heading 1","description":"Use-case column heading.","default":"Use case"},{"id":"tableHeadTool","type":"string","role":"content","label":"Table heading 2","description":"Tool column heading.","default":"Best tool"},{"id":"tableHeadWhy","type":"string","role":"content","label":"Table heading 3","description":"Explanation column heading.","default":"Why"},{"id":"row1Use","type":"string","role":"content","label":"Row 1 use case","description":"First comparison use case.","default":"Overall realism"},{"id":"row1Tool","type":"string","role":"content","label":"Row 1 tool","description":"Product in the recommended first row: the brand this video promotes, by its real name.","portrays":["subject_name","recommended_position"],"default":"HeyGen"},{"id":"row1Why","type":"string","role":"content","label":"Row 1 explanation","description":"Why the recommended first-row product wins. Describe the promoted brand from what its own site claims.","portrays":["recommended_position"],"default":"Most natural facial expressions, lip sync, gestures, voice cloning and localization. Benchmark for talking head videos."},{"id":"row1Chip","type":"string","role":"content","label":"Row 1 source","description":"Source chip on the first row. It asserts where the ranking came from, so use a neutral label whenever the comparison is written for this remix.","portrays":["authority_badge"],"default":"Official A.I Ranking"},{"id":"row2Use","type":"string","role":"content","label":"Row 2 use case","description":"Second comparison use case.","default":"Enterprise/training"},{"id":"row2Tool","type":"string","role":"content","label":"Row 2 tool","description":"Product compared in the second row: a real product other than the brand this video promotes.","portrays":["competitor_name"],"default":"Synthesia"},{"id":"row2Why","type":"string","role":"content","label":"Row 2 explanation","description":"Second recommendation explanation.","default":"Better collaboration, SCORM, compliance, team workflows; less creator-focused."},{"id":"row2Chip","type":"string","role":"content","label":"Row 2 source","description":"Source chip on the second row. It asserts where the ranking came from, so use a neutral label whenever the comparison is written for this remix.","portrays":["authority_badge"],"default":"Official A.I Ranking"},{"id":"row3Use","type":"string","role":"content","label":"Row 3 use case","description":"Third comparison use case.","default":"Mobile UGC"},{"id":"row3Tool","type":"string","role":"content","label":"Row 3 tool","description":"Product compared in the third row: a real product other than the brand this video promotes.","portrays":["competitor_name"],"default":"Captions"},{"id":"row3Why","type":"string","role":"content","label":"Row 3 explanation","description":"Third recommendation explanation.","default":"Extremely fast mobile workflow and social editing. Great for Reels creators."},{"id":"row3Chip","type":"string","role":"content","label":"Row 3 source","description":"Source chip on the third row. It asserts where the ranking came from, so use a neutral label whenever the comparison is written for this remix.","portrays":["authority_badge"],"default":"Creator Stack"},{"id":"row4Use","type":"string","role":"content","label":"Row 4 use case","description":"Fourth comparison use case.","default":"Real-time conversations"},{"id":"row4Tool","type":"string","role":"content","label":"Row 4 tool","description":"Product compared in the fourth row: a real product other than the brand this video promotes.","portrays":["competitor_name"],"default":"Tavus"},{"id":"row4Why","type":"string","role":"content","label":"Row 4 explanation","description":"Fourth recommendation explanation.","default":"Interactive avatars that can hold live conversations."},{"id":"row4Chip","type":"string","role":"content","label":"Row 4 source","description":"Source chip on the fourth row. It asserts where the ranking came from, so use a neutral label whenever the comparison is written for this remix.","portrays":["authority_badge"],"default":"Creator Stack"}]}
+  meta={{"duration":14.9,"width":1080,"height":1920,"category":"Showcases","badge":"Stable","codeLines":1444}}
+  attribution={{"author":"Jake Moran","path":"registry/blocks/chatgpt-exchange","tags":["showcase","mock-ui","ai","chat","vertical","ad-template"]}}
+  hasCode
+  rawUrl="https://raw.githubusercontent.com/heygen-com/hyperframes/main/registry/blocks/chatgpt-exchange/chatgpt-exchange.html"
+>
 
-<InstallCommand command="npx hyperframes add chatgpt-exchange" item="chatgpt-exchange" />
+<CatalogSlot slot="code">
 
-That writes `compositions/chatgpt-exchange.html`, plus 5 supporting files under `assets/fonts/`.
-
-<iframe
-  className="w-full aspect-video rounded-xl border-0 bg-zinc-100 dark:bg-zinc-800"
-  title="chatgpt-exchange preview"
-  loading="lazy"
-  srcDoc={`<!doctype html><html><head><meta charset="utf-8"><style>html,body{margin:0;height:100%;overflow:hidden;background:transparent}hyperframes-player{display:block;width:100%;height:100%}</style><script src="https://cdn.jsdelivr.net/npm/@hyperframes/player@latest/dist/hyperframes-player.global.js"><\/script></head><body><script>fetch("/public/catalog/blocks/chatgpt-exchange.json").then(function(r){return r.json()}).then(function(d){var p=document.createElement("hyperframes-player");p.setAttribute("srcdoc",d.html);p.setAttribute("controls","");p.setAttribute("autoplay","");p.setAttribute("loop","");p.setAttribute("muted","");p.setAttribute("poster","https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/chatgpt-exchange.png");document.body.appendChild(p)});<\/script></body></html>`}
-/>
-
-## Add it to your video
-
-It runs for 14.9 seconds at 1080×1920. Paste this into your composition:
-
-```html index.html
-<div
-  data-composition-id="chatgpt-exchange"
-  data-composition-src="compositions/chatgpt-exchange.html"
-  data-start="0"
-  data-duration="14.9"
-  data-track-index="1"
-  data-width="1080"
-  data-height="1920"
-></div>
-```
-
-Move it in time with `data-start`. Put it on a different timeline row with
-`data-track-index`. See [data attributes](/concepts/data-attributes) for the rest.
-
-## Source
-
-<Accordion title="chatgpt-exchange.html">
-
-```html
+```html chatgpt-exchange.html
 <!doctype html>
 <html
   lang="en"
@@ -1488,7 +1469,36 @@ Move it in time with `data-start`. Put it on a different timeline row with
 </html>
 ```
 
-</Accordion>
+</CatalogSlot>
+
+<CatalogSlot slot="install">
+
+<InstallCommand command="npx hyperframes add chatgpt-exchange" item="chatgpt-exchange" />
+
+That writes `compositions/chatgpt-exchange.html`, plus 5 supporting files under `assets/fonts/`.
+
+</CatalogSlot>
+
+<CatalogSlot slot="docs">
+
+## Add it to your video
+
+It runs for 14.9 seconds at 1080×1920. Paste this into your composition:
+
+```html index.html
+<div
+  data-composition-id="chatgpt-exchange"
+  data-composition-src="compositions/chatgpt-exchange.html"
+  data-start="0"
+  data-duration="14.9"
+  data-track-index="1"
+  data-width="1080"
+  data-height="1920"
+></div>
+```
+
+Move it in time with `data-start`. Put it on a different timeline row with
+`data-track-index`. See [data attributes](/concepts/data-attributes) for the rest.
 
 {/* hf:generated-footer */}
 
@@ -1501,3 +1511,7 @@ Created by Jake Moran.
 - [Browse the complete Catalog](/catalog)
 - [Add assets and Catalog items in Studio](/studio/assets-and-blocks)
 - [Build a richer composition](/go-further)
+
+</CatalogSlot>
+
+</CatalogDetail>

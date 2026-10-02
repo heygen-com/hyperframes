@@ -1,5 +1,8 @@
 export type AuthoredTimingValue = string | number | null | undefined;
 
+export const AUTHORED_DURATION_ATTR = "data-hf-authored-duration";
+export const AUTHORED_END_ATTR = "data-hf-authored-end";
+
 export interface RawAuthoredTiming {
   start?: AuthoredTimingValue;
   duration?: AuthoredTimingValue;

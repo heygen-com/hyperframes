@@ -21,7 +21,7 @@ import { enabledAudioFxNodes, type HfAudioFxChain } from "@hyperframes/core/audi
 import { serializeAutomation, type HfAutomation } from "@hyperframes/core/audio-automation";
 import { acquireBrowser } from "./browserManager.js";
 import { createEnvelopeWalker } from "./audioVolumeEnvelope.js";
-import { riffChunks } from "./wavChunks.js";
+import { riffChunks, wavFormatTag } from "./wavChunks.js";
 import type { AudioVolumeKeyframe } from "./audioMixer.types.js";
 
 export class AudioFxRenderError extends Error {
@@ -57,7 +57,9 @@ function readWavChunks(buf: Buffer): {
   let data: Buffer | undefined;
   for (const { id, body, size } of riffChunks(buf)) {
     if (id === "fmt ") {
-      head.format = buf.readUInt16LE(body);
+      const format = wavFormatTag(buf, body, size);
+      if (format === null) throw new AudioFxRenderError("Invalid or unsupported WAV format header");
+      head.format = format;
       head.channels = buf.readUInt16LE(body + 2);
       head.sampleRate = buf.readUInt32LE(body + 4);
       head.bits = buf.readUInt16LE(body + 14);

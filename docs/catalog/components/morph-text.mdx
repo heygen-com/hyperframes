@@ -1,28 +1,28 @@
 ---
 title: "Morph Text"
 description: "Gooey text morph — cycles through an editable word list using SVG threshold + GSAP-driven blur for a fluid, satisfying transition effect"
+mode: "frame"
 ---
 
+import { CatalogDetail, CatalogSlot } from "/snippets/catalog-detail.jsx";
 import { InstallCommand } from "/snippets/install-command.jsx";
 
-## Install
+<CatalogDetail
+  previewSrc="/public/catalog/components/morph-text.json"
+  compositionId="morph-text"
+  compositionSrc="compositions/components/morph-text.html"
+  title="Morph Text"
+  description="Gooey text morph — cycles through an editable word list using SVG threshold + GSAP-driven blur for a fluid, satisfying transition effect"
+  variables={[]}
+  meta={{"category":"Typography & Text","badge":"Stable","codeLines":234}}
+  attribution={{"path":"registry/components/morph-text","tags":["text","text-effect","typography","morph","gooey","kinetic","animation"]}}
+  hasCode
+  rawUrl="https://raw.githubusercontent.com/heygen-com/hyperframes/main/registry/components/morph-text/morph-text.html"
+>
 
-<InstallCommand command="npx hyperframes add morph-text" item="morph-text" />
+<CatalogSlot slot="code">
 
-That writes one file: `compositions/components/morph-text.html`.
-
-<iframe
-  className="w-full aspect-video rounded-xl border-0 bg-zinc-100 dark:bg-zinc-800"
-  title="morph-text preview"
-  loading="lazy"
-  srcDoc={`<!doctype html><html><head><meta charset="utf-8"><style>html,body{margin:0;height:100%;overflow:hidden;background:transparent}hyperframes-player{display:block;width:100%;height:100%}</style><script src="https://cdn.jsdelivr.net/npm/@hyperframes/player@latest/dist/hyperframes-player.global.js"><\/script></head><body><script>fetch("/public/catalog/components/morph-text.json").then(function(r){return r.json()}).then(function(d){var p=document.createElement("hyperframes-player");p.setAttribute("srcdoc",d.html);p.setAttribute("controls","");p.setAttribute("autoplay","");p.setAttribute("loop","");p.setAttribute("muted","");document.body.appendChild(p)});<\/script></body></html>`}
-/>
-
-## Source
-
-<Accordion title="morph-text.html">
-
-```html
+```html morph-text.html
 <!doctype html>
 <html lang="en">
   <head>
@@ -259,13 +259,24 @@ That writes one file: `compositions/components/morph-text.html`.
 </html>
 ```
 
-</Accordion>
+</CatalogSlot>
 
-## Usage
+<CatalogSlot slot="install">
 
-Open `compositions/components/morph-text.html` and paste its contents into your composition.
+<InstallCommand command="npx hyperframes add morph-text" item="morph-text" />
 
-Edit the `<ol id="morph-words">` list to change the statements that cycle through. Each `<li>` accepts `data-font` (CSS font-family) and `data-color` (hex) attributes. Adjust `data-morph-speed` (seconds per transition) and `data-morph-pause` (hold time) on the root element.
+That writes one file: `compositions/components/morph-text.html`.
+
+</CatalogSlot>
+
+<CatalogSlot slot="docs">
+
+## Paste it into your composition
+
+Open `compositions/components/morph-text.html` and copy what is inside into your own composition.
+
+A component has no size or duration of its own. It takes both from the composition
+you paste it into.
 
 {/* hf:generated-footer */}
 
@@ -276,3 +287,7 @@ Tagged `text` `text-effect` `typography` `morph` `gooey` `kinetic` `animation`.
 - [Browse the complete Catalog](/catalog)
 - [Add assets and Catalog items in Studio](/studio/assets-and-blocks)
 - [Build a richer composition](/go-further)
+
+</CatalogSlot>
+
+</CatalogDetail>

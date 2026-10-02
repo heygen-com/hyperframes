@@ -32,6 +32,7 @@ describe("shouldAttemptPeriodicTimelineBind", () => {
         isPlaying: true,
         hasCapturedTimeline: true,
         currentTimeSeconds: PLAY_REBIND_HOLD_SECONDS - 0.001,
+        playingPollDue: true,
       }),
     ).toBe(false);
     expect(
@@ -40,6 +41,7 @@ describe("shouldAttemptPeriodicTimelineBind", () => {
         isPlaying: true,
         hasCapturedTimeline: true,
         currentTimeSeconds: PLAY_REBIND_HOLD_SECONDS,
+        playingPollDue: true,
       }),
     ).toBe(true);
   });
@@ -51,7 +53,21 @@ describe("shouldAttemptPeriodicTimelineBind", () => {
         isPlaying: true,
         hasCapturedTimeline: false,
         currentTimeSeconds: 0,
+        playingPollDue: true,
       }),
     ).toBe(true);
+  });
+
+  it("checks on the poll timer, not the frame counter, while playing", () => {
+    const playing = {
+      tick: TIMELINE_REBIND_INTERVAL_FRAMES,
+      isPlaying: true,
+      hasCapturedTimeline: true,
+      currentTimeSeconds: PLAY_REBIND_HOLD_SECONDS,
+    };
+    expect(shouldAttemptPeriodicTimelineBind(playing)).toBe(false);
+    expect(shouldAttemptPeriodicTimelineBind({ ...playing, tick: 7, playingPollDue: true })).toBe(
+      true,
+    );
   });
 });

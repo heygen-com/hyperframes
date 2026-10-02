@@ -27,6 +27,16 @@
     return Math.round(value * 100) / 100;
   }
 
+  function horizontalOverflow(subject, container, tolerance) {
+    if (subject.width <= container.width + tolerance) return null;
+    const overflow = overflowFor(subject, container, tolerance);
+    if (!overflow) return null;
+    const horizontal = {};
+    if (overflow.left != null) horizontal.left = overflow.left;
+    if (overflow.right != null) horizontal.right = overflow.right;
+    return Object.keys(horizontal).length > 0 ? horizontal : null;
+  }
+
   function overflowFor(subject, container, tolerance, vTolerance) {
     // Horizontal axis uses `tolerance`; vertical axis uses `vTolerance` (defaults to the same).
     // A separate vertical tolerance lets text overflow checks absorb glyph ink that exceeds a
@@ -461,19 +471,55 @@
     };
   }
 
-  // An ancestor (up to and including `stopAt`) that clips its overflow makes any
-  // text spilling past it invisible — that clipping IS the layout mechanism
-  // (odometer/ticker reels, masked windows), not a defect to report.
-  function clippedByAncestor(element, stopAt) {
-    for (let current = element; current; current = current.parentElement) {
-      if (current !== element && clipsOverflow(getComputedStyle(current))) return true;
-      if (current === stopAt) break;
-    }
-    return false;
+  function horizontalTextMetrics(element, style) {
+    if (style.writingMode && style.writingMode !== "horizontal-tb") return null;
+    const context = document.createElement("canvas").getContext("2d");
+    if (!context) return null;
+    context.font = `${style.fontStyle} ${style.fontWeight} ${style.fontSize} ${style.fontFamily}`;
+    let text = textContentFor(element, true);
+    if (style.textTransform === "uppercase") text = text.toUpperCase();
+    if (style.textTransform === "lowercase") text = text.toLowerCase();
+    const metrics = context.measureText(text);
+    return metrics.fontBoundingBoxAscent + metrics.fontBoundingBoxDescent > 0 ? metrics : null;
+  }
+
+  function intersectsTextWindow(rect, clip, tolerance) {
+    return (
+      Math.min(rect.right, clip.right) - Math.max(rect.left, clip.left) > tolerance &&
+      Math.min(rect.bottom, clip.bottom) - Math.max(rect.top, clip.top) > tolerance
+    );
+  }
+
+  function visibleTextLineRects(element, rects, style, clip, tolerance) {
+    const metrics = horizontalTextMetrics(element, style);
+    const fontHeight = metrics ? metrics.fontBoundingBoxAscent + metrics.fontBoundingBoxDescent : 0;
+    const lineHeight = parsePx(style.lineHeight) || fontHeight;
+    return rects.flatMap((rect) => {
+      if (!metrics) return intersectsTextWindow(rect, clip, tolerance) ? [rect] : [];
+      const scale = rect.height / fontHeight;
+      const inkTop =
+        rect.top + (metrics.fontBoundingBoxAscent - metrics.actualBoundingBoxAscent) * scale;
+      const inkBottom =
+        rect.bottom - (metrics.fontBoundingBoxDescent - metrics.actualBoundingBoxDescent) * scale;
+      const ink = { ...rect, top: inkTop, bottom: inkBottom };
+      if (!intersectsTextWindow(ink, clip, tolerance)) return [];
+      // Negative leading belongs outside the used line box. Font metrics scale
+      // with the Range rect, so zoomed cards retain the same clipping decision.
+      const inset = Math.max(0, (rect.height - lineHeight * scale) / 2);
+      return [
+        toRect({
+          ...rect,
+          top: rect.top + inset,
+          bottom: rect.bottom - inset,
+          height: rect.height - 2 * inset,
+        }),
+      ];
+    });
   }
 
   function textOverflowIssues(element, root, rootRect, time, tolerance, clippedIssue) {
-    const textRect = textRectFor(element, true);
+    const lineRects = textClientRects(element, true).map(toRect);
+    const textRect = unionRects(lineRects);
     if (!textRect) return [];
     const text = textContentFor(element, true);
     const selector = selectorFor(element);
@@ -481,32 +527,26 @@
 
     const container = nearestConstraint(element, root, rootRect);
     const containerRect = container === root ? rootRect : toRect(container.getBoundingClientRect());
-    // Glyph ink (ascenders / descenders / accents / heavy display faces) routinely exceeds a
-    // snug line-height box by a few px, proportional to font size. When the constraining box
-    // does NOT clip, that vertical spill is normal typography — it shows in the padding, nothing
-    // is hidden — not a layout defect (it false-flagged caption words). Allow a font-metric
-    // vertical tolerance there; keep it tight when the box actually clips (a real cut-off) and
-    // always tight horizontally (too-wide text is a real wrap/legibility issue).
     const elementStyle = getComputedStyle(element);
     const containerClips = clipsOverflow(
       container === root ? getComputedStyle(root) : getComputedStyle(container),
     );
+    const visibleTextRect = containerClips
+      ? unionRects(visibleTextLineRects(element, lineRects, elementStyle, containerRect, tolerance))
+      : textRect;
     const verticalTolerance = containerClips
       ? tolerance
       : Math.max(tolerance, parsePx(elementStyle.fontSize) * 0.2);
-    const containerOverflow = overflowFor(textRect, containerRect, tolerance, verticalTolerance);
+    const containerOverflow = visibleTextRect
+      ? overflowFor(visibleTextRect, containerRect, tolerance, verticalTolerance)
+      : null;
     const billedAsClippedText =
       container === element &&
       clippedIssue != null &&
       containerOverflow != null &&
       containerOverflow.left == null &&
       containerOverflow.top == null;
-    if (
-      containerOverflow &&
-      !billedAsClippedText &&
-      !hasTextClipOptOut(element) &&
-      !clippedByAncestor(element, container)
-    ) {
+    if (containerOverflow && !billedAsClippedText && !hasTextClipOptOut(element)) {
       const style = elementStyle;
       issues.push({
         code: "text_box_overflow",
@@ -516,11 +556,11 @@
         containerSelector: selectorFor(container),
         text,
         message: "Text extends outside its nearest visual/container box.",
-        rect: textRect,
+        rect: visibleTextRect,
         containerRect,
         overflow: containerOverflow,
         fixHint: textOverflowFixHint(
-          textRect,
+          visibleTextRect,
           containerRect,
           containerOverflow,
           parsePx(style.fontSize),
@@ -550,20 +590,40 @@
     return issues;
   }
 
+  function isNowrapTextChild(child) {
+    if (!isVisibleElement(child) || hasAllowOverflowFlag(child)) return false;
+    if (getComputedStyle(child).whiteSpace !== "nowrap") return false;
+    return (child.textContent || "").trim().length > 0;
+  }
+
+  function hasNowrapTextChild(element) {
+    return Array.from(element.children).some(isNowrapTextChild);
+  }
+
   function containerOverflowIssues(root, time, tolerance) {
     const issues = [];
     const containers = Array.from(root.querySelectorAll("*")).filter((element) => {
       if (!isVisibleElement(element) || hasAllowOverflowFlag(element)) return false;
       const style = getComputedStyle(element);
-      return clipsOverflow(style) || element.hasAttribute("data-layout-boundary");
+      return (
+        clipsOverflow(style) ||
+        element.hasAttribute("data-layout-boundary") ||
+        hasNowrapTextChild(element)
+      );
     });
 
     for (const container of containers) {
+      const style = getComputedStyle(container);
+      const checksEveryChild =
+        clipsOverflow(style) || container.hasAttribute("data-layout-boundary");
       const containerRect = toRect(container.getBoundingClientRect());
       for (const child of Array.from(container.children)) {
         if (!isVisibleElement(child) || hasAllowOverflowFlag(child)) continue;
+        if (!checksEveryChild && !isNowrapTextChild(child)) continue;
         const childRect = toRect(child.getBoundingClientRect());
-        const overflow = overflowFor(childRect, containerRect, tolerance);
+        const overflow = checksEveryChild
+          ? overflowFor(childRect, containerRect, tolerance)
+          : horizontalOverflow(childRect, containerRect, tolerance);
         if (!overflow) continue;
         issues.push({
           code: "container_overflow",
@@ -571,7 +631,9 @@
           time,
           selector: selectorFor(child),
           containerSelector: selectorFor(container),
-          message: "Element extends outside a clipping layout container.",
+          message: checksEveryChild
+            ? "Element extends outside a clipping layout container."
+            : "Nowrap text is wider than its container.",
           rect: childRect,
           containerRect,
           overflow,
@@ -911,7 +973,7 @@
   }
 
   function hasAllowOcclusionFlag(element) {
-    return !!element.closest("[data-layout-allow-occlusion]");
+    return element.hasAttribute("data-layout-allow-occlusion");
   }
 
   // A foreign element is one painted independently of the text — not the text
@@ -1242,6 +1304,121 @@
     return issues;
   }
 
+  // Pixels drawn into a <canvas> have no DOM box, so text the frame edge cuts is invisible to
+  // canvas_overflow. Read a thin band just inside each covered frame edge and count sharp steps.
+  const CANVAS_EDGE_STEP = 96;
+  const CANVAS_EDGE_MIN_STEPS = 2;
+  // Monospace and bitmap glyph cells end in a gap, so the outermost column alone can read empty.
+  const CANVAS_EDGE_BAND_PX = 4;
+
+  function coveredFrameEdges(rect, rootRect, tolerance) {
+    const top = Math.max(rect.top, rootRect.top);
+    const bottom = Math.min(rect.bottom, rootRect.bottom);
+    const left = Math.max(rect.left, rootRect.left);
+    const right = Math.min(rect.right, rootRect.right);
+    if (bottom - top < CANVAS_EDGE_BAND_PX || right - left < CANVAS_EDGE_BAND_PX) return [];
+    const band = CANVAS_EDGE_BAND_PX;
+    const rows = { y: top, height: bottom - top, width: band, vertical: true };
+    const cols = { x: left, width: right - left, height: band, vertical: false };
+    const edges = [];
+    if (rect.left <= rootRect.left + tolerance) edges.push({ side: "left", x: left, ...rows });
+    if (rect.right >= rootRect.right - tolerance)
+      edges.push({ side: "right", x: right - band, ...rows });
+    if (rect.top <= rootRect.top + tolerance) edges.push({ side: "top", y: top, ...cols });
+    if (rect.bottom >= rootRect.bottom - tolerance)
+      edges.push({ side: "bottom", y: bottom - band, ...cols });
+    return edges;
+  }
+
+  // Draw the band into a scratch canvas (never getContext on the film's own canvas, which would
+  // claim it as 2D). A WebGL canvas without preserveDrawingBuffer reads blank: no finding.
+  function canvasEdgeBand(canvas, rect, edge) {
+    const scaleX = canvas.width / rect.width;
+    const scaleY = canvas.height / rect.height;
+    const off = document.createElement("canvas");
+    off.width = Math.max(1, Math.round(edge.width * scaleX));
+    off.height = Math.max(1, Math.round(edge.height * scaleY));
+    const ctx = off.getContext("2d");
+    if (!ctx) return null;
+    const sx = Math.max(0, Math.floor((edge.x - rect.left) * scaleX));
+    const sy = Math.max(0, Math.floor((edge.y - rect.top) * scaleY));
+    ctx.drawImage(canvas, sx, sy, off.width, off.height, 0, 0, off.width, off.height);
+    return {
+      data: ctx.getImageData(0, 0, off.width, off.height).data,
+      width: off.width,
+      height: off.height,
+    };
+  }
+
+  // Collapse the band across its thickness (brightest wins), then count steps along the edge:
+  // luma over black plus alpha, compared two pixels back so anti-aliased glyph edges still step.
+  function sharpSteps(band, vertical) {
+    const length = vertical ? band.height : band.width;
+    const thickness = vertical ? band.width : band.height;
+    const levels = [];
+    for (let along = 0; along < length; along++) {
+      let luma = 0;
+      let alpha = 0;
+      for (let across = 0; across < thickness; across++) {
+        const i = 4 * (vertical ? along * band.width + across : across * band.width + along);
+        const a = band.data[i + 3];
+        const l =
+          (0.299 * band.data[i] + 0.587 * band.data[i + 1] + 0.114 * band.data[i + 2]) * (a / 255);
+        luma = Math.max(luma, l);
+        alpha = Math.max(alpha, a);
+      }
+      levels.push([luma, alpha]);
+    }
+    let steps = 0;
+    for (let i = 2; i < levels.length; i++) {
+      const [luma, alpha] = levels[i];
+      const [backLuma, backAlpha] = levels[i - 2];
+      if (Math.max(Math.abs(luma - backLuma), Math.abs(alpha - backAlpha)) < CANVAS_EDGE_STEP)
+        continue;
+      steps++;
+      i += 2;
+    }
+    return steps;
+  }
+
+  function canvasEdgeHasContent(canvas, rect, edge) {
+    try {
+      const band = canvasEdgeBand(canvas, rect, edge);
+      return !!band && sharpSteps(band, edge.vertical) >= CANVAS_EDGE_MIN_STEPS;
+    } catch {
+      return false;
+    }
+  }
+
+  // ponytail: maps through the bounding box, exact for scale and translate; a rotated or skewed
+  // canvas reads the wrong pixels. Add a matrix inverse if that bites.
+  function canvasEdgeIssues(root, rootRect, time, tolerance) {
+    const issues = [];
+    for (const canvas of Array.from(root.querySelectorAll("canvas"))) {
+      if (!isVisibleElement(canvas) || hasAllowOverflowFlag(canvas)) continue;
+      if (!canvas.width || !canvas.height) continue;
+      const rect = toRect(canvas.getBoundingClientRect());
+      if (!rect.width || !rect.height) continue;
+      const sides = coveredFrameEdges(rect, rootRect, tolerance)
+        .filter((edge) => canvasEdgeHasContent(canvas, rect, edge))
+        .map((edge) => edge.side);
+      if (sides.length === 0) continue;
+      issues.push({
+        code: "canvas_content_at_edge",
+        severity: "warning",
+        time,
+        selector: selectorFor(canvas),
+        containerSelector: selectorFor(root),
+        message: `Canvas content touches the frame edge (${sides.join(", ")}).`,
+        rect,
+        containerRect: rootRect,
+        fixHint:
+          "Keep drawn text inside the visible part of the canvas, or mark intentional full-bleed art with data-layout-allow-overflow.",
+      });
+    }
+    return issues;
+  }
+
   // Soft prior only — the counterfactual attach test (below) is what makes detachment a finding.
   const CONNECTOR_NAME = /\b(conn(ector)?|arrow|edge|link|flow|wire)\b/i;
   const CONNECTOR_SKIP_CONTAINERS = "defs, marker, clipPath, mask, symbol, pattern";
@@ -1259,7 +1436,7 @@
     );
   }
 
-  /** Raw `d`-space endpoints (no CTM) — the mapping authors use when they paste screen coords into `d`. */
+  // Raw `d`-space endpoints (no CTM), as authors paste screen coords into `d`, plus the path length.
   function pathUserEndpoints(path) {
     if (typeof path.getTotalLength !== "function" || typeof path.getPointAtLength !== "function") {
       return null;
@@ -1273,7 +1450,7 @@
     if (!Number.isFinite(total) || total <= 0) return null;
     const start = path.getPointAtLength(0);
     const end = path.getPointAtLength(total);
-    return { start: { x: start.x, y: start.y }, end: { x: end.x, y: end.y } };
+    return { start: { x: start.x, y: start.y }, end: { x: end.x, y: end.y }, total };
   }
 
   // Screen endpoints via getScreenCTM (viewBox, preserveAspectRatio, group transforms).
@@ -1325,85 +1502,97 @@
     return { compact, painted };
   }
 
-  // Flag only the documented bug: rendered endpoints miss, but user-space-as-screen would attach.
-  function connectorDetachmentIssues(root, rootRect, time) {
-    const issues = [];
-    let anchors = null;
-    // Attach near-miss tolerance (screen px). Separate from the closed-glyph chord floor.
-    const threshold = Math.max(32, Math.min(rootRect.width, rootRect.height) * 0.02);
-    const MIN_CONNECTOR_CHORD_PX = 8;
+  // Attach near-miss tolerance (screen px) for both connector findings; not the glyph chord floor.
+  function connectorAttachThreshold(rootRect) {
+    return Math.max(32, Math.min(rootRect.width, rootRect.height) * 0.02);
+  }
+
+  // The one connector enumeration for connector_detached and connector_orphan. Skips dash-hidden
+  // shafts; reports `painted` for callers to gate on, and `chord`, the rendered span in screen px.
+  function* connectorShafts(root) {
     for (const svg of Array.from(root.querySelectorAll("svg"))) {
       if (!isVisibleElement(svg)) continue;
       for (const path of Array.from(svg.querySelectorAll("path"))) {
         if (path.closest(CONNECTOR_SKIP_CONTAINERS)) continue;
         if (!isConnectorPath(svg, path)) continue;
         const user = pathUserEndpoints(path);
+        if (!user || shaftDashHidden(path, user.total)) continue;
         const rendered = pathScreenEndpoints(svg, path, user);
-        if (!user || !rendered) continue;
-        // Closed/glyph paths collapse to one point — compare in screen px (not user units).
-        const renderedChord = Math.hypot(
+        if (!rendered) continue;
+        const chord = Math.hypot(
           rendered.end.x - rendered.start.x,
           rendered.end.y - rendered.start.y,
         );
-        if (renderedChord < MIN_CONNECTOR_CHORD_PX) continue;
-        if (anchors === null) anchors = connectorAnchorRects(root, rootRect);
-        if (anchors.compact.length < 2) return issues;
-        // Stable DOM identity across painted (inside) and compact (near-miss) tiers.
-        const attachmentKey = (point) => {
-          for (const anchor of anchors.painted) {
-            if (!anchor.element.contains(svg) && distanceToRect(point, anchor.rect) === 0) {
-              return anchor.element;
-            }
-          }
-          for (const anchor of anchors.compact) {
-            if (distanceToRect(point, anchor.rect) <= threshold) return anchor.element;
-          }
-          return null;
-        };
-        const attached = (point) => attachmentKey(point) !== null;
-        // Half-attached as drawn is allowed; only full render-miss proceeds.
-        if (attached(rendered.start) || attached(rendered.end)) continue;
-        // Paste-into-`d` bug: both raw endpoints land on distinct anchors as screen pixels.
-        const userStartKey = attachmentKey(user.start);
-        const userEndKey = attachmentKey(user.end);
-        const pasteBug = Boolean(userStartKey && userEndKey && userStartKey !== userEndKey);
-        // Guessed marked shaft: both frames miss. Same-anchor grazes attach in user-space
-        // and must stay skipped. Name-only decorative flow/arrow paths stay skipped.
-        // 80px keeps short marker glyphs (chevrons, tips) out.
-        const markedMiss =
-          renderedChord >= 80 &&
-          !userStartKey &&
-          !userEndKey &&
-          (path.hasAttribute("marker-start") || path.hasAttribute("marker-end"));
-        if (!pasteBug && !markedMiss) continue;
-        const gap = Math.round(
-          Math.min(
-            Math.min(...anchors.compact.map((a) => distanceToRect(rendered.start, a.rect))),
-            Math.min(...anchors.compact.map((a) => distanceToRect(rendered.end, a.rect))),
-          ),
-        );
-        issues.push({
-          code: "connector_detached",
-          severity: "warning",
-          time,
-          selector: selectorFor(path),
-          containerSelector: selectorFor(svg),
-          message: pasteBug
-            ? `Connector path endpoints render ${gap}px from the nearest anchorable element, but the path's user-space coordinates would attach if read as screen pixels — screen/viewport numbers were likely written into SVG \`d\` without inverting the CTM.`
-            : `Connector path endpoints render ${gap}px from the nearest anchorable element — a marked shaft that meets no node.`,
-          rect: toRect({
-            left: Math.min(rendered.start.x, rendered.end.x),
-            top: Math.min(rendered.start.y, rendered.end.y),
-            right: Math.max(rendered.start.x, rendered.end.x),
-            bottom: Math.max(rendered.start.y, rendered.end.y),
-            width: Math.abs(rendered.end.x - rendered.start.x),
-            height: Math.abs(rendered.end.y - rendered.start.y),
-          }),
-          fixHint: pasteBug
-            ? "Convert measured screen coordinates into the SVG's user space (subtract the SVG rect / invert getScreenCTM) before writing path `d`, and keep the SVG a direct child of the stage."
-            : "Measure the settled node boxes and write `d` in the SVG's user space (invert getScreenCTM), or grow a layout-owned shaft from the source node.",
-        });
+        yield { svg, path, user, rendered, chord, painted: shaftIsPainted(path) };
       }
+    }
+  }
+
+  // Flag only the documented bug: rendered endpoints miss, but user-space-as-screen would attach.
+  function connectorDetachmentIssues(root, rootRect, time) {
+    const issues = [];
+    let anchors = null;
+    const threshold = connectorAttachThreshold(rootRect);
+    const MIN_CONNECTOR_CHORD_PX = 8;
+    for (const { svg, path, user, rendered, chord } of connectorShafts(root)) {
+      if (chord < MIN_CONNECTOR_CHORD_PX) continue;
+      if (anchors === null) anchors = connectorAnchorRects(root, rootRect);
+      if (anchors.compact.length < 2) return issues;
+      // Stable DOM identity across painted (inside) and compact (near-miss) tiers.
+      const attachmentKey = (point) => {
+        for (const anchor of anchors.painted) {
+          if (!anchor.element.contains(svg) && distanceToRect(point, anchor.rect) === 0) {
+            return anchor.element;
+          }
+        }
+        for (const anchor of anchors.compact) {
+          if (distanceToRect(point, anchor.rect) <= threshold) return anchor.element;
+        }
+        return null;
+      };
+      const attached = (point) => attachmentKey(point) !== null;
+      // Half-attached as drawn is allowed; only full render-miss proceeds.
+      if (attached(rendered.start) || attached(rendered.end)) continue;
+      // Paste-into-`d` bug: both raw endpoints land on distinct anchors as screen pixels.
+      const userStartKey = attachmentKey(user.start);
+      const userEndKey = attachmentKey(user.end);
+      const pasteBug = Boolean(userStartKey && userEndKey && userStartKey !== userEndKey);
+      // Guessed marked shaft: both frames miss. Same-anchor grazes attach in user-space
+      // and must stay skipped. Name-only decorative flow/arrow paths stay skipped.
+      // 80px keeps short marker glyphs (chevrons, tips) out.
+      const markedMiss =
+        chord >= 80 &&
+        !userStartKey &&
+        !userEndKey &&
+        (path.hasAttribute("marker-start") || path.hasAttribute("marker-end"));
+      if (!pasteBug && !markedMiss) continue;
+      const gap = Math.round(
+        Math.min(
+          Math.min(...anchors.compact.map((a) => distanceToRect(rendered.start, a.rect))),
+          Math.min(...anchors.compact.map((a) => distanceToRect(rendered.end, a.rect))),
+        ),
+      );
+      issues.push({
+        code: "connector_detached",
+        severity: "warning",
+        time,
+        selector: selectorFor(path),
+        containerSelector: selectorFor(svg),
+        message: pasteBug
+          ? `Connector path endpoints render ${gap}px from the nearest anchorable element, but the path's user-space coordinates would attach if read as screen pixels — screen/viewport numbers were likely written into SVG \`d\` without inverting the CTM.`
+          : `Connector path endpoints render ${gap}px from the nearest anchorable element — a marked shaft that meets no node.`,
+        rect: toRect({
+          left: Math.min(rendered.start.x, rendered.end.x),
+          top: Math.min(rendered.start.y, rendered.end.y),
+          right: Math.max(rendered.start.x, rendered.end.x),
+          bottom: Math.max(rendered.start.y, rendered.end.y),
+          width: Math.abs(rendered.end.x - rendered.start.x),
+          height: Math.abs(rendered.end.y - rendered.start.y),
+        }),
+        fixHint: pasteBug
+          ? "Convert measured screen coordinates into the SVG's user space (subtract the SVG rect / invert getScreenCTM) before writing path `d`, and keep the SVG a direct child of the stage."
+          : "Measure the settled node boxes and write `d` in the SVG's user space (invert getScreenCTM), or grow a layout-owned shaft from the source node.",
+      });
     }
     return issues;
   }
@@ -1421,19 +1610,58 @@
     return opacityChain(path) >= 0.2;
   }
 
-  function shaftDashHidden(path) {
-    if (typeof path.getTotalLength !== "function") return false;
-    let total;
-    try {
-      total = path.getTotalLength();
-    } catch {
-      return false;
-    }
-    if (!Number.isFinite(total) || total <= 0) return false;
+  // True when the visible dash window [offset, offset + length] sits in one gap (an unstarted
+  // draw-on), allowing 10% overlap. Zero-length dashes paint only with a round or square linecap.
+  function shaftDashHidden(path, total) {
     const style = getComputedStyle(path);
-    const offset = Number.parseFloat(style.strokeDashoffset || "0");
-    const dash = Number.parseFloat(String(style.strokeDasharray || "").split(/[\s,]+/)[0] || "0");
-    return offset >= total * 0.9 && dash >= total * 0.9;
+    const dashes = dashArrayLengths(style.strokeDasharray, path);
+    if (dashes === null) return false;
+    const dotsPaint = (style.strokeLinecap || "butt") !== "butt";
+    const dashPaints = (index) => index % 2 === 0 && (dashes[index] > 0 || dotsPaint);
+    if (!dashes.some((_, index) => dashPaints(index))) return true; // only butt-capped dots
+    const period = dashes.reduce((sum, length) => sum + length, 0);
+    if (total > period) return false; // a full period of dash paints — call it visible
+    const offset = dashLength(style.strokeDashoffset, path); // unparseable reads as 0
+    const start = Number.isFinite(offset) ? ((offset % period) + period) % period : 0;
+    const end = start + total;
+    let painted = 0;
+    let segmentStart = 0;
+    // Two periods cover any window that starts inside the first.
+    for (let i = 0; i < dashes.length * 2; i++) {
+      const segmentEnd = segmentStart + dashes[i % dashes.length];
+      if (dashPaints(i % dashes.length)) {
+        if (segmentStart >= start && segmentEnd <= end) return false;
+        painted += Math.max(0, Math.min(segmentEnd, end) - Math.max(segmentStart, start));
+      }
+      segmentStart = segmentEnd;
+    }
+    return painted <= total * 0.1;
+  }
+
+  // Computed `stroke-dasharray` as an even-length list of user-unit lengths, or null when the
+  // stroke is solid: `none`, an all-zero list, or any negative/unparseable entry (which the spec
+  // renders as `none`). Odd lists repeat, per spec.
+  function dashArrayLengths(value, path) {
+    const text = String(value || "none").trim();
+    if (text === "none") return null;
+    const lengths = text.split(/[\s,]+/).map((token) => dashLength(token, path));
+    if (lengths.some((length) => !Number.isFinite(length) || length < 0)) return null;
+    if (lengths.every((length) => length === 0)) return null;
+    return lengths.length % 2 === 0 ? lengths : lengths.concat(lengths);
+  }
+
+  // One dash length in user units. Computed lengths are already px; a percentage is relative to
+  // the normalised diagonal of the owning SVG viewport (viewBox when set, else the layout box).
+  function dashLength(token, path) {
+    const text = String(token).trim();
+    const value = Number.parseFloat(text);
+    if (!Number.isFinite(value) || !text.endsWith("%")) return value;
+    const svg = path.ownerSVGElement;
+    if (!svg) return NaN;
+    const box = svg.viewBox && svg.viewBox.baseVal;
+    const { width, height } =
+      box && box.width > 0 && box.height > 0 ? box : svg.getBoundingClientRect();
+    return (value / 100) * (Math.hypot(width, height) / Math.SQRT2);
   }
 
   function connectorEndpointCandidates(root, rootRect) {
@@ -1456,57 +1684,45 @@
   function connectorOrphanIssues(root, rootRect, time) {
     const issues = [];
     let candidates = null;
-    const threshold = Math.max(32, Math.min(rootRect.width, rootRect.height) * 0.02);
-    for (const svg of Array.from(root.querySelectorAll("svg"))) {
-      if (!isVisibleElement(svg)) continue;
-      for (const path of Array.from(svg.querySelectorAll("path"))) {
-        if (path.closest(CONNECTOR_SKIP_CONTAINERS)) continue;
-        if (!isConnectorPath(svg, path)) continue;
-        if (!shaftIsPainted(path) || shaftDashHidden(path)) continue;
-        const user = pathUserEndpoints(path);
-        const rendered = pathScreenEndpoints(svg, path, user);
-        if (!user || !rendered) continue;
-        const renderedChord = Math.hypot(
-          rendered.end.x - rendered.start.x,
-          rendered.end.y - rendered.start.y,
-        );
-        if (renderedChord < 80) continue;
-        if (candidates === null) candidates = connectorEndpointCandidates(root, rootRect);
-        const dark = [];
-        for (const point of [rendered.start, rendered.end]) {
-          let best = null;
-          let attached = false;
-          for (const candidate of candidates) {
-            const gap = distanceToRect(point, candidate.rect);
-            if (gap > threshold) continue;
-            if (isVisibleElement(candidate.element)) {
-              attached = true;
-              break;
-            }
-            if (best === null || gap < best.gap) best = { gap, candidate };
+    const threshold = connectorAttachThreshold(rootRect);
+    for (const { svg, path, rendered, chord, painted } of connectorShafts(root)) {
+      if (!painted) continue;
+      if (chord < 80) continue;
+      if (candidates === null) candidates = connectorEndpointCandidates(root, rootRect);
+      const dark = [];
+      for (const point of [rendered.start, rendered.end]) {
+        let best = null;
+        let attached = false;
+        for (const candidate of candidates) {
+          const gap = distanceToRect(point, candidate.rect);
+          if (gap > threshold) continue;
+          if (isVisibleElement(candidate.element)) {
+            attached = true;
+            break;
           }
-          if (!attached && best !== null) dark.push(best.candidate);
+          if (best === null || gap < best.gap) best = { gap, candidate };
         }
-        if (dark.length === 0) continue;
-        issues.push({
-          code: "connector_orphan",
-          severity: "warning",
-          time,
-          selector: selectorFor(path),
-          containerSelector: selectorFor(svg),
-          message: `Connector shaft is visible while ${dark.length === 2 ? "both endpoints are" : `its endpoint ${selectorFor(dark[0].element)} is`} not on stage.`,
-          rect: toRect({
-            left: Math.min(rendered.start.x, rendered.end.x),
-            top: Math.min(rendered.start.y, rendered.end.y),
-            right: Math.max(rendered.start.x, rendered.end.x),
-            bottom: Math.max(rendered.start.y, rendered.end.y),
-            width: Math.abs(rendered.end.x - rendered.start.x),
-            height: Math.abs(rendered.end.y - rendered.start.y),
-          }),
-          fixHint:
-            "Show the shaft only after both ends are on, and hide it with the earlier exit. Do not give the line its own clock.",
-        });
+        if (!attached && best !== null) dark.push(best.candidate);
       }
+      if (dark.length === 0) continue;
+      issues.push({
+        code: "connector_orphan",
+        severity: "warning",
+        time,
+        selector: selectorFor(path),
+        containerSelector: selectorFor(svg),
+        message: `Connector shaft is visible while ${dark.length === 2 ? "both endpoints are" : `its endpoint ${selectorFor(dark[0].element)} is`} not on stage.`,
+        rect: toRect({
+          left: Math.min(rendered.start.x, rendered.end.x),
+          top: Math.min(rendered.start.y, rendered.end.y),
+          right: Math.max(rendered.start.x, rendered.end.x),
+          bottom: Math.max(rendered.start.y, rendered.end.y),
+          width: Math.abs(rendered.end.x - rendered.start.x),
+          height: Math.abs(rendered.end.y - rendered.start.y),
+        }),
+        fixHint:
+          "Show the shaft only after both ends are on, and hide it with the earlier exit. Do not give the line its own clock.",
+      });
     }
     return issues;
   }
@@ -1614,6 +1830,7 @@
     const escaped = escapedContainerIssues(root, time);
     issues.push(...escaped.issues);
     issues.push(...panelOutOfCanvasIssues(root, rootRect, time, tolerance, escaped.flagged));
+    issues.push(...canvasEdgeIssues(root, rootRect, time, tolerance));
     issues.push(...connectorDetachmentIssues(root, rootRect, time));
     issues.push(...connectorOrphanIssues(root, rootRect, time));
     return issues;

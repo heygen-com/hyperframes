@@ -7,6 +7,7 @@
  */
 import type { InferenceSession, Tensor } from "onnxruntime-node";
 import type sharpType from "sharp";
+import { loadOptionalPackage } from "../utils/optionalPackages.js";
 import { ensureModel, selectProviders, type Device, type ModelId } from "./manager.js";
 
 const INPUT_SIZE = 320;
@@ -52,9 +53,8 @@ export interface CreateSessionOptions {
   onProgress?: (message: string) => void;
 }
 
-// onnxruntime-node and sharp are optional native modules — their platform
-// binaries don't install everywhere. Surface an actionable error instead of a
-// raw "Cannot find module" when one can't load.
+// sharp is an optional native module — its platform binary doesn't install
+// everywhere. Surface an actionable error instead of a raw "Cannot find module".
 async function loadNative<T>(name: string, load: () => Promise<T>): Promise<T> {
   try {
     return await load();
@@ -67,11 +67,11 @@ async function loadNative<T>(name: string, load: () => Promise<T>): Promise<T> {
 }
 
 export async function createSession(options: CreateSessionOptions = {}): Promise<Session> {
-  const ort = (await loadNative(
-    "onnxruntime-node",
-    () => import("onnxruntime-node"),
-  )) as unknown as OrtModule;
   const sharp = (await loadNative("sharp", () => import("sharp"))).default as Sharp;
+  const ort = (await loadOptionalPackage(
+    "onnxruntime-node",
+    "background removal",
+  )) as unknown as OrtModule;
 
   const choice = selectProviders(options.device ?? "auto");
   const path = await ensureModel(options.model, { onProgress: options.onProgress });

@@ -17,6 +17,8 @@
  * style) and apply the returned `StackingPatch[]` however they persist styles.
  */
 
+import { spansOverlap } from "@hyperframes/core/clip-facts";
+
 /** Minimal element view this module reasons over. */
 export interface StackingElement {
   /** Stable identity (TimelineElement.key ?? id). */
@@ -69,8 +71,6 @@ export interface StackingPatch {
   zIndex: number;
 }
 
-const EPS = 1e-6;
-
 /**
  * Canonical paint-scope key: leaf z-indexes are comparable only within the same
  * source document and CSS stacking context. The ONLY place this normalization
@@ -90,17 +90,17 @@ export function samePaintScope(
 /**
  * Two clips overlap in time when their half-open [start, end) intervals intersect.
  *
- * NOTE the `- EPS`: this DELIBERATELY diverges from `timeRangesOverlap`'s exact
+ * NOTE the float slack: this DELIBERATELY diverges from `timeRangesOverlap`'s exact
  * strict-`<` (timelineCollision.ts). A boolean collision decision is idempotent, so
  * exact `<` is fine there; here the result drives a VISIBLE stacking re-lane, so the
- * epsilon guards against float fuzz (e.g. 5.0000001 vs 5) spuriously overlapping two
+ * epsilon guards against float fuzz (e.g. 19.8 + 6.4 vs 26.2) spuriously overlapping two
  * abutting clips and shuffling lanes. The two are intended to differ, not align.
  */
 function overlapsInTime(
   a: Pick<StackingElement, "start" | "duration">,
   b: Pick<StackingElement, "start" | "duration">,
 ): boolean {
-  return a.start < b.start + b.duration - EPS && b.start < a.start + a.duration - EPS;
+  return spansOverlap(a.start, a.start + a.duration, b.start, b.start + b.duration);
 }
 
 /**

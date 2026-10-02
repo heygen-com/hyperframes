@@ -1,7 +1,8 @@
 import { describe, expect, it } from "vitest";
 import { parseHTML } from "linkedom";
-import { inlineSubCompositions } from "./inlineSubCompositions";
+import { ensureExternalLinkTag, inlineSubCompositions } from "./inlineSubCompositions";
 import { readDeclaredDefaults, parseHostVariableValues } from "../runtime/getVariables";
+import { JSDOM } from "jsdom";
 
 // Fixtures reference GSAP CDN but are never loaded in a real browser — resolveHtml is mocked.
 
@@ -68,6 +69,26 @@ describe("inlineSubCompositions – #ID selector scoping divergence", () => {
     expect(result.scripts).toHaveLength(0);
   });
 
+  it("hoists stylesheet and preconnect links from a bare fragment", () => {
+    const document = makeHostDocument("intro");
+    const host = document.querySelector('[data-composition-src="intro.html"]')!;
+    const result = inlineSubCompositions(document, [host], {
+      resolveHtml: () => `<link rel="stylesheet" href="theme.css">
+<link rel="preconnect" href="https://fonts.example" crossorigin>
+<link rel="icon" href="favicon.ico">
+<div data-composition-id="intro"><link rel="stylesheet" href="nested.css"><link rel="icon" href="keep.ico"><div class="title">Hello</div></div>`,
+      parseHtml: (html) => parseHTML(html).document,
+    });
+
+    expect(result.externalLinks).toEqual([
+      { href: "theme.css", rel: "stylesheet", crossorigin: undefined },
+      { href: "https://fonts.example", rel: "preconnect", crossorigin: "" },
+      { href: "nested.css", rel: "stylesheet", crossorigin: undefined },
+    ]);
+    expect(host.querySelectorAll('link[rel="stylesheet"]')).toHaveLength(0);
+    expect(host.querySelectorAll('link[rel="icon"]')).toHaveLength(1);
+  });
+
   it("passes the failure reason through to onMissingComposition", () => {
     const document = makeHostDocument("intro");
     const host = document.querySelector('[data-composition-src="intro.html"]')!;
@@ -104,7 +125,7 @@ describe("inlineSubCompositions – #ID selector scoping divergence", () => {
 
     // CSS was scoped: #intro selectors should be rewritten to use
     // data-hf-authored-id attribute selector so they still resolve.
-    const scopedCss = result.styles.join("\n");
+    const scopedCss = result.styles.map((style) => style.css).join("\n");
     expect(scopedCss).toContain('[data-hf-authored-id="intro"]');
     expect(scopedCss).not.toContain("#intro");
   });
@@ -120,7 +141,7 @@ describe("inlineSubCompositions – #ID selector scoping divergence", () => {
 
     // The CSS scoper rewrites `#intro` to `[data-hf-authored-id="intro"]`
     // so that the selector resolves against the flattened structure.
-    const scopedCss = result.styles.join("\n");
+    const scopedCss = result.styles.map((style) => style.css).join("\n");
     expect(scopedCss).toContain('[data-hf-authored-id="intro"]');
     expect(scopedCss).toContain('[data-hf-authored-id="intro"] .title');
   });
@@ -162,7 +183,9 @@ describe("inlineSubCompositions – #ID selector scoping divergence", () => {
 
     expect(host.getAttribute("data-composition-id")).toBe("captions-comp");
     expect(host.querySelector('[data-composition-id="captions"]')).not.toBeNull();
-    expect(result.styles.join("\n")).toContain('[data-composition-id="captions-comp"]');
+    expect(result.styles.map((style) => style.css).join("\n")).toContain(
+      '[data-composition-id="captions-comp"]',
+    );
     const wrappedScript = result.scripts.join("\n");
     expect(wrappedScript).toContain('var __hfCompId = "captions"');
     expect(wrappedScript).toContain('var __hfTimelineCompId = "captions-comp"');
@@ -198,7 +221,7 @@ describe("inlineSubCompositions – #ID selector scoping divergence", () => {
     expect(authoredRoot).not.toBeNull();
 
     // CSS is still rewritten to use the attribute selector.
-    const scopedCss = result.styles.join("\n");
+    const scopedCss = result.styles.map((style) => style.css).join("\n");
     expect(scopedCss).toContain('[data-hf-authored-id="intro"]');
   });
 
@@ -244,7 +267,7 @@ describe("inlineSubCompositions – #ID selector scoping divergence", () => {
     const wrapper = host.querySelector("[data-hf-inner-root]");
     expect(wrapper?.getAttribute("data-composition-id")).toBe("scoped-text");
 
-    const scopedCss = result.styles.join("\n");
+    const scopedCss = result.styles.map((style) => style.css).join("\n");
     expect(scopedCss).toContain("display: flex");
   });
 
@@ -341,7 +364,7 @@ describe("inlineSubCompositions – #ID selector scoping divergence", () => {
     ]);
   });
 
-  it("deduplicates link hrefs across multiple sub-compositions", () => {
+  it("emits one link for the same link in two sub-compositions", () => {
     const subComp = `<!doctype html>
 <html><head>
   <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Montserrat:wght@800">
@@ -363,10 +386,10 @@ describe("inlineSubCompositions – #ID selector scoping divergence", () => {
       parseHtml: (html) => parseHTML(html).document,
     });
 
-    expect(result.externalLinks).toHaveLength(1);
-    expect(result.externalLinks[0]!.href).toBe(
-      "https://fonts.googleapis.com/css2?family=Montserrat:wght@800",
-    );
+    for (const link of result.externalLinks) ensureExternalLinkTag(document, link);
+    expect(
+      [...document.head.querySelectorAll("link")].map((el) => el.getAttribute("href")),
+    ).toEqual(["https://fonts.googleapis.com/css2?family=Montserrat:wght@800"]);
   });
 
   it("propagates data-timeline-locked from inner root to host element", () => {
@@ -425,7 +448,7 @@ describe("inlineSubCompositions – #ID selector scoping divergence", () => {
     expect(host.getAttribute("data-composition-id")).toBe("intro");
     expect(host.getAttribute("data-hf-authored-id")).toBe("intro");
 
-    const scopedCss = result.styles.join("\n");
+    const scopedCss = result.styles.map((style) => style.css).join("\n");
 
     // Root-only selector: must be compound
     expect(scopedCss).toMatch(/\[data-composition-id="intro"\]\[data-hf-authored-id="intro"\]/);
@@ -670,9 +693,402 @@ describe("inlineSubCompositions – sub-composition asset paths", () => {
   it("rewrites sibling refs in markup, hoisted CSS, and inline styles", () => {
     const { document, result } = inlineFrame();
     expect(document.querySelector("img")?.getAttribute("src")).toBe("design/styleframes/frame.png");
-    expect(result.styles.join("\n")).toContain("design/styleframes/frame.png");
+    expect(result.styles.map((style) => style.css).join("\n")).toContain(
+      "design/styleframes/frame.png",
+    );
     expect(document.querySelector("[style]")?.getAttribute("style")).toContain(
       "design/styleframes/frame.png",
     );
+  });
+});
+
+/**
+ * Mirror of the bundler's runtime-id assignment (`assignBundledRuntimeCompositionIds`
+ * in htmlBundler.ts): a host whose authored composition id appears more than
+ * once gets a document-unique `<id>__hf<n>` runtime id. Reproduced here rather
+ * than imported because htmlBundler.ts statically imports esbuild, which
+ * refuses to load inside a jsdom test realm on Windows.
+ */
+function assignTestRuntimeCompositionIds(
+  hosts: Element[],
+): Map<Element, { authoredCompositionId: string | null; runtimeCompositionId: string | null }> {
+  const counts = new Map<string, number>();
+  for (const host of hosts) {
+    const id = host.getAttribute("data-composition-id");
+    if (id) counts.set(id, (counts.get(id) ?? 0) + 1);
+  }
+  const seen = new Map<string, number>();
+  const identities = new Map<
+    Element,
+    { authoredCompositionId: string | null; runtimeCompositionId: string | null }
+  >();
+  for (const host of hosts) {
+    const authored = host.getAttribute("data-composition-id");
+    if (!authored) {
+      identities.set(host, { authoredCompositionId: null, runtimeCompositionId: null });
+      continue;
+    }
+    let runtime = authored;
+    if ((counts.get(authored) ?? 0) > 1) {
+      const index = (seen.get(authored) ?? 0) + 1;
+      seen.set(authored, index);
+      runtime = `${authored}__hf${index}`;
+      host.setAttribute("data-hf-original-composition-id", authored);
+      host.setAttribute("data-composition-id", runtime);
+    }
+    identities.set(host, { authoredCompositionId: authored, runtimeCompositionId: runtime });
+  }
+  return identities;
+}
+
+/** Inline `hostEntries` (each pointing at a source in `sources`) into one
+ *  bundler-shaped document with runtime composition ids assigned. */
+function inlineScenes(
+  sources: Record<string, string>,
+  hostEntries: Array<{ compId: string; src: string }>,
+) {
+  const hostsMarkup = hostEntries
+    .map(
+      ({ compId, src }, i) =>
+        `<div data-composition-id="${compId}" data-composition-src="${src}"
+              data-start="0" data-duration="4" data-track-index="${i}"></div>`,
+    )
+    .join("\n");
+  const { document } = parseHTML(`<!DOCTYPE html>
+<html><body>
+  <div data-composition-id="main">${hostsMarkup}</div>
+</body></html>`);
+  const hosts = Array.from(document.querySelectorAll("[data-composition-src]"));
+  const hostIdentityMap = assignTestRuntimeCompositionIds(hosts);
+  const result = inlineSubCompositions(document, hosts, {
+    resolveHtml: (src) => sources[src] ?? null,
+    parseHtml: (html) => parseHTML(html).document,
+    hostIdentityMap,
+  });
+  return { document, result };
+}
+
+describe("inlineSubCompositions – #3490 nested SVG id collisions", () => {
+  // Same shape as the issue repro: a composition-scoped clipPath, a <use>
+  // target, and a CSS filter, all hardcoded ids a catalog block or a scene
+  // author has no reason to think are unsafe to repeat.
+  function svgScene(compId: string, color: string): string {
+    return `<!DOCTYPE html><html><body><div id="${compId}" data-composition-id="${compId}" data-width="100" data-height="100">
+      <svg width="0" height="0">
+        <clipPath id="clip"><rect width="10" height="10"/></clipPath>
+        <symbol id="shape"><circle r="5" fill="${color}"/></symbol>
+        <filter id="fx"><feFlood flood-color="${color}"/></filter>
+      </svg>
+      <g class="clipped" clip-path="url(#clip)"><use class="shape" href="#shape"></use></g>
+      <div class="fx-target" style="filter:url(#fx)"></div>
+      <style>#${compId} .fx-target { filter: url(#fx); }</style>
+    </div></body></html>`;
+  }
+
+  it("gives two sibling scenes reusing #clip/#shape/#fx distinct, non-colliding ids", () => {
+    const { document, result } = inlineScenes(
+      { "scene-a.html": svgScene("scene-a", "red"), "scene-b.html": svgScene("scene-b", "blue") },
+      [
+        { compId: "scene-a", src: "scene-a.html" },
+        { compId: "scene-b", src: "scene-b.html" },
+      ],
+    );
+
+    // Exactly one "clip" survives verbatim (the first instance keeps its
+    // authored id) and no id repeats across the two scenes — the exact
+    // document-order collision the browser resolves incorrectly before this
+    // fix.
+    const allIds = Array.from(document.querySelectorAll("[id]")).map((el) => el.getAttribute("id"));
+    expect(allIds.filter((id) => id === "clip")).toHaveLength(1);
+    expect(new Set(allIds).size).toBe(allIds.length);
+
+    const [gA, gB] = Array.from(document.querySelectorAll("g.clipped"));
+    const [useA, useB] = Array.from(document.querySelectorAll("use.shape"));
+    const [fxA, fxB] = Array.from(document.querySelectorAll(".fx-target"));
+
+    const clipA = gA!.getAttribute("clip-path");
+    const clipB = gB!.getAttribute("clip-path");
+    expect(clipA).toMatch(/^url\(#.*clip\)$/);
+    expect(clipA).not.toBe(clipB);
+
+    const hrefA = useA!.getAttribute("href");
+    const hrefB = useB!.getAttribute("href");
+    expect(hrefA).toMatch(/^#.*shape$/);
+    expect(hrefA).not.toBe(hrefB);
+
+    // <use>/clip-path must resolve to the id actually declared in THIS
+    // scene's <svg>, not merely to a unique-looking string.
+    const clipAId = clipA!.slice("url(#".length, -1);
+    const shapeAId = hrefA!.slice(1);
+    expect(document.getElementById(clipAId)?.closest("svg")).toBeTruthy();
+    expect(document.getElementById(shapeAId)?.closest("svg")).toBeTruthy();
+
+    const styleFxA = fxA!.getAttribute("style");
+    const styleFxB = fxB!.getAttribute("style");
+    expect(styleFxA).not.toBe(styleFxB);
+
+    // The CSS text (`<style>#scene-a .fx-target { filter: url(#fx) }`)
+    // extracted alongside the DOM (never re-injected by this shared function
+    // — that is the caller's job) must resolve to the SAME renamed id the
+    // element attribute above did, or the two diverge and the rule stops
+    // matching once inlined.
+    const styles = result.styles.map((style) => style.css).join("\n");
+    const fxAId = styleFxA!.match(/url\(#([^)]+)\)/)?.[1];
+    expect(fxAId).toBeTruthy();
+    expect(styles).toContain(`filter: url(#${fxAId})`);
+  });
+
+  it("disambiguates the same catalog block used twice in one scene", () => {
+    const block = svgScene("block", "green");
+    const { document } = inlineScenes({ "block.html": block }, [
+      { compId: "block", src: "block.html" },
+      { compId: "block", src: "block.html" },
+    ]);
+
+    const uses = Array.from(document.querySelectorAll("use.shape"));
+    expect(uses).toHaveLength(2);
+    const hrefs = uses.map((u) => u.getAttribute("href"));
+    expect(hrefs[0]).not.toBe(hrefs[1]);
+    expect(new Set(hrefs).size).toBe(2);
+
+    // Each <use> must still resolve within the merged document.
+    for (const href of hrefs) {
+      const id = href!.slice(1);
+      expect(document.getElementById(id)).toBeTruthy();
+    }
+  });
+
+  it("records the authored id on the renamed (second) instance only", () => {
+    // Mirrors #646: an author's own script calling
+    // document.getElementById('shape') from inside its composition must
+    // still find its element after this module renames the real id — the
+    // scoped shim falls back to data-hf-authored-id.
+    const { document } = inlineScenes(
+      { "scene-a.html": svgScene("scene-a", "red"), "scene-b.html": svgScene("scene-b", "blue") },
+      [
+        { compId: "scene-a", src: "scene-a.html" },
+        { compId: "scene-b", src: "scene-b.html" },
+      ],
+    );
+    const sceneARoot = document.querySelector('[data-composition-id="scene-a"]')!;
+    const sceneBRoot = document.querySelector('[data-composition-id="scene-b"]')!;
+    expect(sceneARoot.querySelector('[data-hf-authored-id="shape"]')).toBeNull();
+    expect(sceneARoot.querySelector("symbol")!.getAttribute("id")).toBe("shape");
+    const authoredMatch = sceneBRoot.querySelector('[data-hf-authored-id="shape"]');
+    expect(authoredMatch).toBeTruthy();
+    expect(authoredMatch).toBe(sceneBRoot.querySelector("symbol"));
+  });
+});
+
+describe("inlineSubCompositions – renamed SVG ids stay reachable from author scripts", () => {
+  // These tests execute the compiled, scoped scripts inside a real jsdom
+  // window built from the assembled document — the same thing the browser
+  // does — so they exercise the selector runtime in compositionScoping.ts,
+  // not just the DOM rewrite.
+  function scriptedScene(compId: string, script: string, extra = ""): string {
+    return `<!DOCTYPE html><html><body><div id="${compId}" data-composition-id="${compId}" data-width="100" data-height="100">
+      <svg class="art" width="0" height="0">
+        <path id="shape" d="M0,0 L10,10"/>
+        <use class="ref" href="#shape"></use>
+      </svg>
+      ${extra}
+      <script>${script}</script>
+    </div></body></html>`;
+  }
+
+  function inlineAndBoot(
+    sources: Record<string, string>,
+    hostEntries: Array<{ compId: string; src: string }>,
+    fakeGsap?: (window: Window & typeof globalThis) => unknown,
+  ) {
+    const { document, result } = inlineScenes(sources, hostEntries);
+    const dom = new JSDOM(document.toString(), { runScripts: "outside-only" });
+    const window = dom.window as unknown as Window & typeof globalThis & Record<string, unknown>;
+    window.__captured = {};
+    if (fakeGsap) (window as Record<string, unknown>).gsap = fakeGsap(window);
+    for (const script of result.scripts) window.eval(script);
+    return { window, result, captured: window.__captured as Record<string, unknown> };
+  }
+
+  it("single composition: native and script references to the same element both keep resolving", () => {
+    const { window, captured } = inlineAndBoot(
+      {
+        "scene.html": scriptedScene(
+          "scene",
+          `var svg = document.querySelector("svg.art");
+           window.__captured.viaDocument = document.querySelector("#shape");
+           window.__captured.viaElement = svg.querySelector("#shape");
+           window.__captured.byId = document.getElementById("shape");
+           window.__captured.all = document.querySelectorAll("#shape").length;`,
+        ),
+      },
+      [{ compId: "scene", src: "scene.html" }],
+    );
+    const path = window.document.querySelector("path")!;
+    // Ids are byte-for-byte untouched: no collision, no rename, no shim.
+    expect(path.getAttribute("id")).toBe("shape");
+    expect(path.hasAttribute("data-hf-authored-id")).toBe(false);
+    expect(window.document.querySelector("use")!.getAttribute("href")).toBe("#shape");
+    expect((window as Record<string, unknown>).__hfRenamedIdSelectorShim).toBeUndefined();
+    expect(captured.viaDocument).toBe(path);
+    expect(captured.viaElement).toBe(path);
+    expect(captured.byId).toBe(path);
+    expect(captured.all).toBe(1);
+  });
+
+  it("two colliding compositions: native refs point at their own element and each script still finds its own", () => {
+    const probe = `var svg = document.querySelector("svg.art");
+      window.__captured[__hfProbeName] = {
+        viaDocument: document.querySelector("#shape"),
+        viaElement: svg.querySelector("#shape"),
+        viaElementAll: svg.querySelectorAll("#shape").length,
+        byId: document.getElementById("shape"),
+        gsapTargets: gsap.to(["#shape", ".ref"], {}),
+        toArray: gsap.utils.toArray("#shape"),
+      };`;
+    const { window, captured } = inlineAndBoot(
+      {
+        "scene-a.html": scriptedScene("scene-a", `var __hfProbeName = "a"; ${probe}`),
+        "scene-b.html": scriptedScene("scene-b", `var __hfProbeName = "b"; ${probe}`),
+      },
+      [
+        { compId: "scene-a", src: "scene-a.html" },
+        { compId: "scene-b", src: "scene-b.html" },
+      ],
+      () => ({
+        to: (targets: unknown) => targets,
+        utils: { toArray: (targets: unknown) => targets },
+      }),
+    );
+    const [rootA, rootB] = Array.from(
+      window.document.querySelectorAll(
+        '[data-composition-id="scene-a"], [data-composition-id="scene-b"]',
+      ),
+    );
+    const pathA = rootA!.querySelector("path")!;
+    const pathB = rootB!.querySelector("path")!;
+
+    // DOM: A keeps the authored id, B is renamed and its <use> follows.
+    expect(pathA.getAttribute("id")).toBe("shape");
+    expect(pathB.getAttribute("id")).not.toBe("shape");
+    expect(pathB.getAttribute("data-hf-authored-id")).toBe("shape");
+    expect(rootA!.querySelector("use")!.getAttribute("href")).toBe("#shape");
+    expect(rootB!.querySelector("use")!.getAttribute("href")).toBe(`#${pathB.getAttribute("id")}`);
+
+    // Scripts: every lookup form resolves to the element of ITS OWN scene.
+    const a = captured.a as Record<string, unknown>;
+    const b = captured.b as Record<string, unknown>;
+    expect(a.viaDocument).toBe(pathA);
+    expect(a.viaElement).toBe(pathA);
+    expect(a.byId).toBe(pathA);
+    expect(b.viaDocument).toBe(pathB);
+    expect(b.viaElement).toBe(pathB);
+    expect(b.viaElementAll).toBe(1);
+    expect(b.byId).toBe(pathB);
+    // GSAP selector arrays resolve string entries through the scoped lookup.
+    expect(a.gsapTargets).toEqual([pathA, rootA!.querySelector("use.ref")]);
+    expect(b.gsapTargets).toEqual([pathB, rootB!.querySelector("use.ref")]);
+    expect(a.toArray).toEqual([pathA]);
+    expect(b.toArray).toEqual([pathB]);
+    expect((window as Record<string, unknown>).__hfRenamedIdSelectorShim).toBe(true);
+  });
+
+  it("escaped CSS id: a styled element that is also natively referenced keeps its rule after rename", () => {
+    function fxScene(compId: string): string {
+      return `<!DOCTYPE html><html><body><div id="${compId}" data-composition-id="${compId}" data-width="100" data-height="100">
+        <svg width="0" height="0"><filter id="fx.1"><feFlood flood-color="red"/></filter></svg>
+        <rect class="target" filter="url(#fx.1)"></rect>
+        <style>#fx\\.1 { color: red; } .target { filter: url(#fx.1); }</style>
+        <script>window.__captured[${JSON.stringify(compId)}] = document.querySelector("#fx\\\\.1");</script>
+      </div></body></html>`;
+    }
+    const { window, result, captured } = inlineAndBoot(
+      { "scene-a.html": fxScene("scene-a"), "scene-b.html": fxScene("scene-b") },
+      [
+        { compId: "scene-a", src: "scene-a.html" },
+        { compId: "scene-b", src: "scene-b.html" },
+      ],
+    );
+    const [rootA, rootB] = Array.from(
+      window.document.querySelectorAll(
+        '[data-composition-id="scene-a"], [data-composition-id="scene-b"]',
+      ),
+    );
+    const filterA = rootA!.querySelector("filter")!;
+    const filterB = rootB!.querySelector("filter")!;
+    expect(filterA.getAttribute("id")).toBe("fx.1");
+    expect(filterB.getAttribute("id")).toBe("scene-b--fx.1");
+    expect(rootB!.querySelector("rect")!.getAttribute("filter")).toBe("url(#scene-b--fx.1)");
+
+    // Scene B's stylesheet was rewritten with a VALID escaped selector and a
+    // matching url(); scene A's is untouched.
+    const [cssA, cssB] = result.styles.map((style) => style.css);
+    expect(cssA).toContain(String.raw`#fx\.1`);
+    expect(cssA).toContain("url(#fx.1)");
+    expect(cssB).toContain(String.raw`#scene-b--fx\.1`);
+    expect(cssB).toContain("url(#scene-b--fx.1)");
+    expect(cssB).not.toContain(String.raw`#fx\.1`);
+
+    // The rewritten selector actually matches the renamed element in a real
+    // selector engine.
+    const ruleSelector = /(\[data-composition-id="scene-b"\][^{]*#scene-b--fx\\\.1)\s*\{/.exec(
+      cssB!,
+    )?.[1];
+    expect(ruleSelector).toBeTruthy();
+    expect(window.document.querySelector(ruleSelector!)).toBe(filterB);
+
+    // And the author's own escaped selector still resolves through the
+    // scoped document proxy in both scenes.
+    expect(captured["scene-a"]).toBe(filterA);
+    expect(captured["scene-b"]).toBe(filterB);
+  });
+});
+
+describe("SVG namespacing compatibility on current compiler", () => {
+  it.each([false, true])(
+    "preserves inherited native references and child styles (shadow=%s)",
+    (shadow) => {
+      const parent = `<div data-composition-id="parent"><svg><linearGradient id="paint"><stop stop-color="red"/></linearGradient><rect fill="url(#paint)"/></svg>
+      <div data-composition-id="child" data-composition-src="child.html"></div></div>`;
+      const child = `<div data-composition-id="child"><svg>${shadow ? '<linearGradient id="paint"><stop stop-color="green"/></linearGradient>' : ""}<rect class="child-paint" fill="url(#paint)"/></svg>
+      <style media="screen" title="child">.child-paint { fill: url(#paint) }</style></div>`;
+      const { document } = parseHTML(
+        '<html><body><div data-composition-id="parent" data-composition-src="parent.html"></div><svg><linearGradient id="paint"><stop stop-color="blue"/></linearGradient></svg></body></html>',
+      );
+      const result = inlineSubCompositions(
+        document,
+        [...document.querySelectorAll("[data-composition-src]")],
+        {
+          resolveHtml: (src) => (src === "parent.html" ? parent : child),
+          parseHtml: (html) => parseHTML(html).document,
+        },
+      );
+      const rect = document.querySelector(".child-paint")!;
+      const id = rect.getAttribute("fill")!.slice(5, -1);
+      expect(document.getElementById(id)!.querySelector("stop")!.getAttribute("stop-color")).toBe(
+        shadow ? "green" : "red",
+      );
+      expect(result.styles[0]).toEqual({
+        css: expect.stringContaining(`url(#${id})`),
+        media: "screen",
+        title: "child",
+      });
+    },
+  );
+
+  it("initializes selector compatibility for module-only compositions", () => {
+    const scene = (
+      id: string,
+    ) => `<div data-composition-id="${id}"><svg><path id="shape"/><use href="#shape"/></svg>
+      <script type="module">window.moduleHit = document.querySelector('[data-composition-id="b"]').querySelector('#shape').id;</script></div>`;
+    const { document, result } = inlineScenes({ "a.html": scene("a"), "b.html": scene("b") }, [
+      { compId: "a", src: "a.html" },
+      { compId: "b", src: "b.html" },
+    ]);
+    expect(result.scripts).toHaveLength(0);
+    const dom = new JSDOM(document.toString(), { runScripts: "outside-only" });
+    for (const script of result.moduleScripts) dom.window.eval(script);
+    expect(dom.window.moduleHit).toBe("b--shape");
+    dom.window.close();
   });
 });

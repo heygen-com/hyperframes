@@ -1,12 +1,13 @@
 // @vitest-environment node
-import { mkdtempSync, mkdirSync, writeFileSync } from "node:fs";
+import { mkdtempSync, mkdirSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { describe, expect, it } from "vitest";
-import { buildSubCompositionHtml } from "./subComposition";
+import { describe, expect, it, onTestFinished } from "vitest";
+import { buildSubCompositionHtml, hasBaseElement } from "./subComposition";
 
 function makeTempProject(files: Record<string, string>): string {
   const dir = mkdtempSync(join(tmpdir(), "hf-subcomp-preview-"));
+  onTestFinished(() => rmSync(dir, { recursive: true, force: true }));
   for (const [rel, content] of Object.entries(files)) {
     const full = join(dir, rel);
     mkdirSync(join(full, ".."), { recursive: true });
@@ -16,6 +17,20 @@ function makeTempProject(files: Record<string, string>): string {
 }
 
 describe("buildSubCompositionHtml", () => {
+  it("adds the preview base even when the project head's script mentions a <base>", () => {
+    const dir = makeTempProject({
+      "index.html": `<!doctype html><html><head><script>if (0) document.write('<base href="../">');</script></head><body></body></html>`,
+      "compositions/scene.html": `<div data-composition-id="scene" data-width="320" data-height="180"></div>`,
+    });
+    const html = buildSubCompositionHtml(
+      dir,
+      "compositions/scene.html",
+      "/api/runtime.js",
+      "/api/projects/demo/preview/",
+    );
+    expect(html).toContain('<base href="/api/projects/demo/preview/">');
+  });
+
   it("handles full HTML document compositions without nesting <html> in <body>", () => {
     const dir = makeTempProject({
       "index.html": `<!doctype html>
@@ -74,6 +89,26 @@ describe("buildSubCompositionHtml", () => {
     expect(html).toContain('name="viewport"');
     // <html lang="en"> attribute forwarded to the output
     expect(html).toContain('lang="en"');
+  });
+
+  it("keeps an installed block's <html> variables though a marker comment precedes the doctype", () => {
+    const dir = makeTempProject({
+      "index.html": `<!doctype html>
+<html><head></head><body></body></html>`,
+      "compositions/blk.html": `<!-- hyperframes-registry-item: blk -->
+<!doctype html>
+<html lang="en" data-composition-variables='[{"id":"image1","type":"image","default":"assets/blk/one.jpg"}]'>
+  <body>
+    <div id="root" data-composition-id="blk" data-width="1920" data-height="1080"></div>
+  </body>
+</html>`,
+    });
+
+    const html = buildSubCompositionHtml(dir, "compositions/blk.html", "/api/runtime.js", "/p/");
+
+    const body = html!.indexOf("<body");
+    expect(html!.slice(0, body)).toContain("data-composition-variables=");
+    expect(html!.slice(body)).not.toContain("<html");
   });
 
   it("handles raw fragment compositions (no template, no full document)", () => {
@@ -414,5 +449,21 @@ describe("buildSubCompositionHtml", () => {
     );
 
     expect(html).toContain('src="assets/logo.png"');
+  });
+});
+
+describe("hasBaseElement", () => {
+  it("counts a real <base> element and nothing that only mentions one", () => {
+    expect(hasBaseElement(`<head><base href="/cdn/"></head>`)).toBe(true);
+    expect(hasBaseElement(`<head><BASE HREF="/cdn/"></head>`)).toBe(true);
+    for (const html of [
+      `<head><script>document.write('<base href="../">')</script></head>`,
+      `<head><script >x = "<base>";</script ></head>`,
+      `<head><!-- <base href="x"> --></head>`,
+      `<head><template><base href="t"></template></head>`,
+      `<head><basefont></head>`,
+    ]) {
+      expect(hasBaseElement(html)).toBe(false);
+    }
   });
 });

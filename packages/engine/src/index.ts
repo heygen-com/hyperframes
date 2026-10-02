@@ -74,13 +74,19 @@ export {
 } from "./services/systemMemory.js";
 
 // ── Browser management ─────────────────────────────────────────────────────────
+export { chromeMajorCeiling } from "./services/chromeHostCeiling.js";
 export {
   acquireBrowser,
+  setHostHandlesSigint,
   releaseBrowser,
   drainBrowserPool,
+  closeBrowserPool,
   resolveHeadlessShellPath,
   resolveBrowserGpuMode,
   buildChromeArgs,
+  compositionRequiresWebGpu,
+  assertWebGpuAdapterAvailable,
+  WebGpuUnavailableError,
   ENABLE_BROWSER_POOL,
   BrowserLeasePool,
   type BuildChromeArgsOptions,
@@ -136,6 +142,10 @@ export {
   type CaptureFailureKind,
   type CaptureWorkerDiagnostic,
 } from "./services/captureFailure.js";
+export {
+  createChromeMemorySampler,
+  type ChromeMemoryStats,
+} from "./services/chromeMemorySampler.js";
 
 // ── Screenshot (BeginFrame) ─────────────────────────────────────────────────────
 export {
@@ -158,6 +168,8 @@ export {
 export {
   buildEncoderArgs,
   encodeFramesFromDir,
+  buildConcatArgs,
+  concatVideoFiles,
   encodeFramesChunkedConcat,
   muxVideoWithAudio,
   applyFaststart,
@@ -220,10 +232,13 @@ export {
   type VideoFrameFormat,
   VIDEO_FRAME_FORMATS,
   isVideoFrameFormat,
+  EXTRACT_CACHE_MIN_AGE_MS,
 } from "./services/videoFrameExtractor.js";
+export { directorySizeBytes, gcExtractionCache } from "./services/extractionCache.js";
 
 export {
   resolveReferencedStart,
+  resolveReferencedDuration,
   type RefResolverEl,
   type RefResolverDoc,
 } from "./services/referenceResolver.js";
@@ -257,6 +272,7 @@ export {
   executeParallelCapture,
   mergeWorkerFrames,
   getSystemResources,
+  shouldDisableBrowserPoolForParallelWorker,
   type WorkerTask,
   type WorkerResult,
   type WorkerSizing,

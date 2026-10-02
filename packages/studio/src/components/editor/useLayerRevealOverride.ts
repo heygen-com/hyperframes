@@ -271,12 +271,13 @@ export function restoreLiftedElement(element: HTMLElement, lift: RevealLift): vo
     }
     return;
   }
+  const positionStillLifted = element.hasAttribute(LAYER_REVEAL_PRIOR_POSITION_ATTR);
   element.removeAttribute(LAYER_REVEAL_PRIOR_Z_ATTR);
   element.removeAttribute(LAYER_REVEAL_PRIOR_POSITION_ATTR);
   if (element.style.zIndex === LAYER_REVEAL_LIFT_Z) {
     restoreInline(element, "z-index", lift.priors.zIndex);
   }
-  if (lift.positionLifted && element.style.position === "relative") {
+  if (lift.positionLifted && positionStillLifted && element.style.position === "relative") {
     restoreInline(element, "position", lift.priors.position);
   }
 }

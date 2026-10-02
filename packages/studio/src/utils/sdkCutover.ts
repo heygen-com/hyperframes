@@ -7,12 +7,12 @@ import { patchOpsToSdkEditOps } from "./sdkOpMapping";
 import { recordResolverParity, recordAnimationResolverParity } from "./sdkResolverShadow";
 import {
   isResolverDisagreement,
+  sdkCutoverIneligibleReason,
   shouldDeclineTextCutoverForTarget,
-  shouldUseSdkCutover,
 } from "./sdkCutoverEligibility";
 import {
-  asCutoverError,
   declinedCutover,
+  failedCutover,
   persistSdkCandidateMutation,
   type CutoverDeps,
   type CutoverOptions,
@@ -45,12 +45,13 @@ function sdkFamilyEnabled(family: StudioSdkOperationFamily): boolean {
 
 function trackCutoverResult(
   result: CutoverResult,
+  family: StudioSdkOperationFamily,
   context: { hfId?: string | null; opCount: number },
 ): void {
   if (result.status === "committed") {
-    trackStudioEvent("sdk_cutover_success", context);
+    trackStudioEvent("sdk_cutover_success", { ...context, family });
   } else if (result.status === "failed") {
-    trackStudioEvent("sdk_cutover_failed", { ...context, error: result.error.message });
+    failedCutover(result.error, family, context);
   }
 }
 
@@ -81,11 +82,14 @@ export async function sdkCutoverPersist(
   deps: CutoverDeps,
   options?: CutoverOptions,
 ): Promise<CutoverResult> {
-  if (!shouldUseSdkCutover(sdkFamilyEnabled("dom"), !!sdkSession, selection.hfId, ops))
-    return declinedCutover("ineligible_operation", "dom");
+  // Name WHICH eligibility check failed: on v0.8.47 this one string covered 26 of
+  // 30 dom declines. The two below aren't properties of the batch, so they differ.
+  if (!sdkFamilyEnabled("dom")) return declinedCutover("feature_disabled", "dom");
   if (!sdkSession) return declinedCutover("session_unavailable", "dom");
   const hfId = selection.hfId;
-  if (!hfId) return declinedCutover("target_unaddressable", "dom");
+  const ineligible = sdkCutoverIneligibleReason(hfId, ops);
+  // `!hfId` is already a reason; testing it again narrows the type for the rest.
+  if (ineligible || !hfId) return declinedCutover(ineligible ?? "target_unaddressable", "dom");
   const target = sdkSession.getElement(hfId);
   if (!target)
     return declinedCutover("target_not_found", "dom", isResolverDisagreement(sdkSession, hfId));
@@ -103,7 +107,7 @@ export async function sdkCutoverPersist(
     },
     options,
   );
-  trackCutoverResult(result, { hfId, opCount: ops.length });
+  trackCutoverResult(result, "dom", { hfId, opCount: ops.length });
   return result;
 }
 
@@ -145,12 +149,10 @@ export async function sdkTimingPersist(
       options,
       serializedBefore,
     );
-    trackCutoverResult(result, { hfId, opCount: 1 });
+    trackCutoverResult(result, "timing", { hfId, opCount: 1 });
     return result;
   } catch (error) {
-    const failed = { status: "failed", error: asCutoverError(error) } as const;
-    trackStudioEvent("sdk_cutover_failed", { hfId, error: failed.error.message });
-    return failed;
+    return failedCutover(error, "timing", { hfId, opCount: 1 });
   }
 }
 
@@ -199,24 +201,22 @@ export async function sdkTimingBatchPersist(
       serializedBefore,
     );
     if (result.status === "failed") {
-      trackStudioEvent("sdk_cutover_failed", {
+      return failedCutover(result.error, "timing", {
         hfId: changes[0]?.hfId ?? null,
-        error: result.error.message,
+        opCount: changes.length,
       });
-      return result;
     }
     trackStudioEvent("sdk_cutover_success", {
       hfId: changes[0]?.hfId ?? null,
       opCount: changes.length,
+      family: "timing",
     });
     return result;
   } catch (error) {
-    const failed = { status: "failed", error: asCutoverError(error) } as const;
-    trackStudioEvent("sdk_cutover_failed", {
+    return failedCutover(error, "timing", {
       hfId: changes[0]?.hfId ?? null,
-      error: failed.error.message,
+      opCount: changes.length,
     });
-    return failed;
   }
 }
 
@@ -318,15 +318,13 @@ async function dispatchGsapOpAndPersist(
       serializedBefore,
     );
     if (result.status === "committed") {
-      trackStudioEvent("sdk_cutover_success", { opCount: 1 });
+      trackStudioEvent("sdk_cutover_success", { opCount: 1, family });
     } else if (result.status === "failed") {
-      trackStudioEvent("sdk_cutover_failed", { error: result.error.message });
+      return failedCutover(result.error, family, { opCount: 1 });
     }
     return result;
   } catch (error) {
-    const failed = { status: "failed", error: asCutoverError(error) } as const;
-    trackStudioEvent("sdk_cutover_failed", { error: failed.error.message });
-    return failed;
+    return failedCutover(error, family, { opCount: 1 });
   }
 }
 
@@ -592,6 +590,6 @@ export async function sdkDeletePersist(
     (session) => session.removeElement(hfId),
     { label: "Delete element" },
   );
-  trackCutoverResult(result, { hfId, opCount: 1 });
+  trackCutoverResult(result, "lifecycle", { hfId, opCount: 1 });
   return result;
 }

@@ -3,6 +3,7 @@
 import React, { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { MockResizeObserver, reportResize } from "../../hooks/resizeObserverTestUtils";
 import { thumbnailScheduler } from "../lib/thumbnailScheduler";
 import { buildCompositionThumbnailUrl, CompositionThumbnail } from "./CompositionThumbnail";
 
@@ -10,12 +11,6 @@ Object.defineProperty(globalThis, "IS_REACT_ACT_ENVIRONMENT", {
   configurable: true,
   value: true,
 });
-
-class MockResizeObserver {
-  observe() {}
-  disconnect() {}
-  unobserve() {}
-}
 
 class MockImage {
   static instances: MockImage[] = [];
@@ -87,9 +82,6 @@ describe("buildCompositionThumbnailUrl", () => {
 
     expect(buildCompositionThumbnailUrl(base)).not.toContain("output=");
     expect(buildCompositionThumbnailUrl({ ...base, output: "source" })).toContain("output=source");
-    expect(buildCompositionThumbnailUrl({ ...base, output: "storyboard" })).toContain(
-      "output=storyboard",
-    );
   });
 
   it("includes the persisted content revision in the cache identity", () => {
@@ -140,6 +132,52 @@ describe("CompositionThumbnail", () => {
     const tiles = [...host.querySelectorAll("img")];
     expect(tiles.length).toBeGreaterThan(0);
     expect(tiles.every((tile) => !tile.classList.contains("hidden"))).toBe(true);
+    // Pictures read untinted by default, like video filmstrips; the theme tokens own any dimming.
+    expect(
+      tiles.every((tile) => tile.style.opacity === "var(--timeline-composition-thumbnail-opacity)"),
+    ).toBe(true);
+    expect(tiles[0]?.parentElement?.parentElement?.style.mixBlendMode).toBe(
+      "var(--timeline-composition-thumbnail-blend)",
+    );
+  });
+
+  it.each([
+    { name: "a wide", width: 2700, height: 1000, tileWidth: 108 },
+    { name: "a square", width: 1000, height: 1000, tileWidth: 48 },
+    { name: "a portrait", width: 1080, height: 1920, tileWidth: 48 },
+  ])(
+    "shows $name picture whole at the clip's measured height",
+    async ({ width, height, tileWidth }) => {
+      Object.defineProperty(host, "clientWidth", { configurable: true, value: 500 });
+      Object.defineProperty(host, "clientHeight", { configurable: true, value: 40 });
+      const probe = await renderThumbnail();
+
+      await act(async () => {
+        probe.naturalWidth = width;
+        probe.naturalHeight = height;
+        probe.onload?.();
+        await new Promise((resolve) => setTimeout(resolve, 0));
+      });
+
+      const img = host.querySelector("img")!;
+      expect(img.parentElement?.style.width).toBe(`${tileWidth}px`);
+      // A tile held at its minimum width letterboxes the picture instead of cropping it.
+      expect(img.classList.contains("object-contain")).toBe(true);
+    },
+  );
+
+  it("re-tiles at the height the resize observer reports", async () => {
+    const probe = await renderThumbnail();
+    await act(async () => {
+      probe.naturalWidth = 2700;
+      probe.naturalHeight = 1000;
+      probe.onload?.();
+      await new Promise((resolve) => setTimeout(resolve, 0));
+    });
+
+    act(() => reportResize(500, 40));
+
+    expect(host.querySelector("img")?.parentElement?.style.width).toBe("108px");
   });
 
   it("aborts its scheduled off-DOM image probe when unmounted", async () => {

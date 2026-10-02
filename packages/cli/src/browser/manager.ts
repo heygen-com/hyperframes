@@ -14,6 +14,7 @@ import {
 import { basename } from "node:path";
 import { homedir } from "node:os";
 import { join } from "node:path";
+import { chromeMajorCeiling, exceedsChromeCeiling } from "@hyperframes/engine/chrome-host-ceiling";
 import { normalizeErrorMessage } from "../utils/errorMessage.js";
 import { runRenderSetupWorker } from "../utils/cancellableProcess.js";
 
@@ -47,6 +48,14 @@ async function loadPuppeteerBrowsers(): Promise<PuppeteerBrowsers> {
 // Deliberately Beta, not Canary. 153.0.8000.0 measured identical to this build
 // on every probe variant, so crossing a major buys nothing measurable.
 const CHROME_VERSION = "152.0.7977.30";
+// Last headless-shell milestone that launches on macOS 12 (Darwin < 22); Chrome 151 dropped it.
+// Measured: this build exposes canvas.drawElementImage under --enable-features=CanvasDrawElement.
+const MACOS_12_CHROME_VERSION = "150.0.7871.124";
+
+/** The one place that decides which build HyperFrames installs and matches in its own cache. */
+function managedChromeVersion(): string {
+  return chromeMajorCeiling() === undefined ? CHROME_VERSION : MACOS_12_CHROME_VERSION;
+}
 const CACHE_ROOT_DIR = join(homedir(), ".cache", "hyperframes");
 const CACHE_DIR = join(homedir(), ".cache", "hyperframes", "chrome");
 // Puppeteer's managed cache — where `@puppeteer/browsers install
@@ -244,10 +253,10 @@ export interface EnsureBrowserOptions {
   // arbitrary version, doesn't get updated in lockstep with this codebase).
   // Rendering behavior should not vary with whatever Chrome happens to be
   // sitting on the machine: it's the version we've actually tested against,
-  // and the one that implements `canvas.drawElementImage` (Dev/Canary-only —
-  // Stable doesn't have it, so system Chrome used to crash drawElement-
-  // eligible renders outright; HF#2060). `HYPERFRAMES_BROWSER_PATH` still
-  // wins over this — an explicit override is still an explicit override.
+  // and the one known to implement `canvas.drawElementImage`. A build without
+  // it no longer crashes (the engine probes and falls back to screenshot
+  // capture), it just renders slower. `HYPERFRAMES_BROWSER_PATH` still wins
+  // over this — an explicit override is still an explicit override.
   preferManagedChrome?: boolean;
   signal?: AbortSignal;
 }
@@ -383,7 +392,7 @@ async function findFromHyperframesCache(): Promise<CacheLookupResult> {
   const match = installed.find(
     (b) =>
       b.browser === Browser.CHROMEHEADLESSSHELL &&
-      b.buildId === CHROME_VERSION &&
+      b.buildId === managedChromeVersion() &&
       b.platform === hostPlatform,
   );
   if (match && existsSync(match.executablePath)) {
@@ -500,7 +509,9 @@ function findFromPuppeteerCache(): BrowserResult | undefined {
   } catch {
     return undefined;
   }
+  const ceiling = chromeMajorCeiling();
   for (const version of versions) {
+    if (exceedsChromeCeiling(version, ceiling)) continue;
     // Same shape as `resolveHeadlessShellPath` in engine/browserManager.ts —
     // keep them aligned. If puppeteer ever changes the on-disk layout the two
     // need to move together.
@@ -804,7 +815,7 @@ function wrapDownloadFailureWithBrowserPathHint(cause: unknown): Error {
   const original = normalizeErrorMessage(cause);
   const example = browserPathHintForPlatform();
   const message =
-    `Failed to download chrome-headless-shell ${CHROME_VERSION}: ${original}\n\n` +
+    `Failed to download chrome-headless-shell ${managedChromeVersion()}: ${original}\n\n` +
     `Point hyperframes at an already-installed Chrome/Chromium instead:\n\n` +
     `  export HYPERFRAMES_BROWSER_PATH="${example}"\n\n` +
     `Then re-run your command. Any Chrome build works for the screenshot ` +
@@ -830,7 +841,7 @@ async function downloadBrowser(options?: EnsureBrowserOptions): Promise<BrowserR
     install({
       cacheDir: CACHE_DIR,
       browser: Browser.CHROMEHEADLESSSHELL,
-      buildId: CHROME_VERSION,
+      buildId: managedChromeVersion(),
       platform,
       downloadProgressCallback: options?.onProgress,
     });
@@ -871,4 +882,4 @@ export function isLinuxArm(): boolean {
   return process.platform === "linux" && process.arch === "arm64";
 }
 
-export { CHROME_VERSION, CACHE_DIR };
+export { CACHE_DIR, managedChromeVersion };

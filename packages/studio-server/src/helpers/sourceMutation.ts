@@ -1,5 +1,6 @@
 import { parseHTML } from "linkedom";
 import { removeElementWithGsapCascade } from "@hyperframes/parsers";
+import { readMediaOffsetSeconds, readPlaybackRate } from "@hyperframes/parsers/media-duration";
 import postcss from "postcss";
 import selectorParser from "postcss-selector-parser";
 import { isAllowedHtmlAttribute, isSafeAttributeValue } from "@hyperframes/core/html-attr-safety";
@@ -11,6 +12,7 @@ import {
   walkCompositionDescendants,
 } from "@hyperframes/parsers/hf-ids";
 import { readClipTiming, writeClipTiming } from "@hyperframes/core/composition-contract";
+import { relinkSplitHalves } from "@hyperframes/core/media-link";
 import { parseStyleDecls, patchStyleAttrString } from "./sourceStyleMutation.js";
 
 export interface SourceMutationTarget {
@@ -20,7 +22,11 @@ export interface SourceMutationTarget {
   selectorIndex?: number;
 }
 
-function parseSourceDocument(source: string): { document: Document; wrappedFragment: boolean } {
+export function parseSourceDocument(raw: string): {
+  document: Document;
+  wrappedFragment: boolean;
+} {
+  const source = ensureHfIds(raw);
   const hasDocumentShell = /<!doctype|<html[\s>]/i.test(source);
   if (hasDocumentShell) {
     return { document: parseHTML(source).document, wrappedFragment: false };
@@ -108,7 +114,10 @@ function findByHfId(document: Document, hfId: string): Element | null {
   }
 }
 
-function findTargetElement(document: Document, target: SourceMutationTarget): Element | null {
+export function findTargetElement(
+  document: Document,
+  target: SourceMutationTarget,
+): Element | null {
   if (target.hfId) {
     const el = findByHfId(document, target.hfId);
     if (el) return el;
@@ -140,6 +149,21 @@ export function removeElementFromHtml(source: string, target: SourceMutationTarg
 export function isHTMLElement(el: Node): el is HTMLElement {
   const HTMLEl = el.ownerDocument?.defaultView?.HTMLElement;
   return HTMLEl ? el instanceof HTMLEl : el.nodeType === 1 && "style" in el;
+}
+
+export function dedupeClonedCompositionId(document: Document, clone: Element): void {
+  const compositionId = clone.getAttribute("data-composition-id");
+  if (!compositionId) return;
+  const usedCompositionIds = new Set(
+    querySelectorAllWithTemplates(document, "[data-composition-id]").map((node) =>
+      node.getAttribute("data-composition-id"),
+    ),
+  );
+  const base = `${compositionId}-split`;
+  let nextCompositionId = base;
+  let suffix = 2;
+  while (usedCompositionIds.has(nextCompositionId)) nextCompositionId = `${base}-${suffix++}`;
+  clone.setAttribute("data-composition-id", nextCompositionId);
 }
 
 export interface PatchOperation {
@@ -205,6 +229,7 @@ export function patchElementInHtml(
   const el = findTargetElement(document, target);
   if (!el || !isHTMLElement(el)) return { html: source, matched: false };
   const htmlEl = el;
+  const originalHtml = wrappedFragment ? document.body.innerHTML || "" : document.toString();
 
   const resolved: ResolvedPatchOperation[] = [];
   for (const op of operations) {
@@ -266,10 +291,9 @@ export function patchElementInHtml(
     }
   }
 
-  return {
-    html: wrappedFragment ? document.body.innerHTML || "" : document.toString(),
-    matched: true,
-  };
+  const html = wrappedFragment ? document.body.innerHTML || "" : document.toString();
+  if (html === originalHtml) return { html: source, matched: true };
+  return { html: ensureHfIds(html), matched: true };
 }
 
 export function probeElementInSource(source: string, target: SourceMutationTarget): boolean {
@@ -357,19 +381,7 @@ export function splitElementInHtml(
   const clone = el.cloneNode(true);
   if (!isHTMLElement(clone)) return { html: source, matched: false, newId: null };
   clone.setAttribute("id", newId);
-  const compositionId = clone.getAttribute("data-composition-id");
-  if (compositionId) {
-    const usedCompositionIds = new Set(
-      Array.from(document.querySelectorAll("[data-composition-id]"), (node) =>
-        node.getAttribute("data-composition-id"),
-      ),
-    );
-    const base = `${compositionId}-split`;
-    let nextCompositionId = base;
-    let suffix = 2;
-    while (usedCompositionIds.has(nextCompositionId)) nextCompositionId = `${base}-${suffix++}`;
-    clone.setAttribute("data-composition-id", nextCompositionId);
-  }
+  dedupeClonedCompositionId(document, clone);
   clone.removeAttribute("data-hf-id");
   // Descendants carry their own data-hf-id; leaving them duplicates the id of
   // every nested node (e.g. an inner <span>), so strip them on the clone too.
@@ -392,12 +404,15 @@ export function splitElementInHtml(
           ? "data-media-start"
           : null;
   if (playbackStartAttr) {
+    const readAttr = (name: string) => el.getAttribute(name);
+    const authoredTrim = el.getAttribute(playbackStartAttr);
     const currentTrim =
-      parseFloat(el.getAttribute(playbackStartAttr) ?? "") || fallbackTiming?.playbackStart || 0;
-    const rateRaw = parseFloat(el.getAttribute("data-playback-rate") ?? "");
-    const rate =
-      Number.isFinite(rateRaw) && rateRaw > 0 ? rateRaw : (fallbackTiming?.playbackRate ?? 1);
-    el.setAttribute(playbackStartAttr, String(Math.round(currentTrim * 1000) / 1000));
+      authoredTrim !== null
+        ? readMediaOffsetSeconds(readAttr)
+        : (fallbackTiming?.playbackStart ?? 0);
+    const rate = readPlaybackRate(readAttr, fallbackTiming?.playbackRate);
+    if (authoredTrim === null || Number(authoredTrim) !== currentTrim)
+      el.setAttribute(playbackStartAttr, String(Math.round(currentTrim * 1000) / 1000));
     clone.setAttribute(
       playbackStartAttr,
       String(Math.round((currentTrim + firstDuration * rate) * 1000) / 1000),
@@ -685,4 +700,18 @@ export function unwrapElementsFromHtml(
     members,
     groupCenter,
   };
+}
+
+/** After a cut, give each linked group's right halves their own `data-link` and `data-sync-origin`. */
+export function relinkSplitHalvesInHtml(source: string, rightHalfIds: readonly string[]): string {
+  const { document, wrappedFragment } = parseSourceDocument(source);
+  const carriesPairing = (id: string) => {
+    const el = document.getElementById(id);
+    return Boolean(el?.hasAttribute("data-link") || el?.hasAttribute("data-sync-origin"));
+  };
+  if (!rightHalfIds.some(carriesPairing)) {
+    return source;
+  }
+  relinkSplitHalves(document, rightHalfIds);
+  return wrappedFragment ? document.body.innerHTML || "" : document.toString();
 }

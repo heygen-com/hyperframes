@@ -1,28 +1,28 @@
 ---
 title: "Emoji Pop"
 description: "Emoji integration with stroked text and horizontal squeeze entrance"
+mode: "frame"
 ---
 
+import { CatalogDetail, CatalogSlot } from "/snippets/catalog-detail.jsx";
 import { InstallCommand } from "/snippets/install-command.jsx";
 
-## Install
+<CatalogDetail
+  previewSrc="/public/catalog/components/caption-emoji-pop.json"
+  compositionId="caption-emoji-pop"
+  compositionSrc="compositions/components/caption-emoji-pop.html"
+  title="Emoji Pop"
+  description="Emoji integration with stroked text and horizontal squeeze entrance"
+  variables={[]}
+  meta={{"category":"Captions","badge":"Stable","codeLines":467}}
+  attribution={{"path":"registry/components/caption-emoji-pop","tags":["captions","caption-style","emoji","social"]}}
+  hasCode
+  rawUrl="https://raw.githubusercontent.com/heygen-com/hyperframes/main/registry/components/caption-emoji-pop/caption-emoji-pop.html"
+>
 
-<InstallCommand command="npx hyperframes add caption-emoji-pop" item="caption-emoji-pop" />
+<CatalogSlot slot="code">
 
-That writes one file: `compositions/components/caption-emoji-pop.html`.
-
-<iframe
-  className="w-full aspect-video rounded-xl border-0 bg-zinc-100 dark:bg-zinc-800"
-  title="caption-emoji-pop preview"
-  loading="lazy"
-  srcDoc={`<!doctype html><html><head><meta charset="utf-8"><style>html,body{margin:0;height:100%;overflow:hidden;background:transparent}hyperframes-player{display:block;width:100%;height:100%}</style><script src="https://cdn.jsdelivr.net/npm/@hyperframes/player@latest/dist/hyperframes-player.global.js"><\/script></head><body><script>fetch("/public/catalog/components/caption-emoji-pop.json").then(function(r){return r.json()}).then(function(d){var p=document.createElement("hyperframes-player");p.setAttribute("srcdoc",d.html);p.setAttribute("controls","");p.setAttribute("autoplay","");p.setAttribute("loop","");p.setAttribute("muted","");p.setAttribute("poster","https://static.heygen.ai/hyperframes-oss/docs/images/catalog/components/caption-emoji-pop.png");document.body.appendChild(p)});<\/script></body></html>`}
-/>
-
-## Source
-
-<Accordion title="caption-emoji-pop.html">
-
-```html
+```html caption-emoji-pop.html
 <!doctype html>
 <html lang="en">
   <head>
@@ -492,11 +492,24 @@ That writes one file: `compositions/components/caption-emoji-pop.html`.
 </html>
 ```
 
-</Accordion>
+</CatalogSlot>
 
-## Usage
+<CatalogSlot slot="install">
 
-Open `compositions/components/caption-emoji-pop.html` and paste its contents into your composition. See the comment header in the file for detailed instructions.
+<InstallCommand command="npx hyperframes add caption-emoji-pop" item="caption-emoji-pop" />
+
+That writes one file: `compositions/components/caption-emoji-pop.html`.
+
+</CatalogSlot>
+
+<CatalogSlot slot="docs">
+
+## Paste it into your composition
+
+Open `compositions/components/caption-emoji-pop.html` and copy what is inside into your own composition.
+
+A component has no size or duration of its own. It takes both from the composition
+you paste it into.
 
 {/* hf:generated-footer */}
 
@@ -507,3 +520,7 @@ Tagged `captions` `caption-style` `emoji` `social`.
 - [Browse the complete Catalog](/catalog)
 - [Add assets and Catalog items in Studio](/studio/assets-and-blocks)
 - [Build a richer composition](/go-further)
+
+</CatalogSlot>
+
+</CatalogDetail>

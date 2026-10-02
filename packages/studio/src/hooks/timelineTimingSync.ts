@@ -3,14 +3,31 @@
 // edit's undo history, and swapping the rewritten script into the live preview
 // without a full iframe reload when possible.
 import { type TimelineElement, usePlayerStore } from "../player/store/playerStore";
-import { applySoftReload, applySoftReloadFinalization } from "../utils/gsapSoftReload";
+import {
+  applySoftReload,
+  applySoftReloadFinalization,
+  extractGsapScriptText,
+  readNestedFiles,
+  settleNestedReads,
+} from "../utils/gsapSoftReload";
 import { furthestClipEndFromDocument } from "../player/lib/timelineElementHelpers";
 import type { RecordEditInput } from "../utils/studioFileHistory";
 import { patchDocumentRootDuration } from "./timelineEditingGsap";
-import { studioWriteHeaders } from "../utils/studioFileVersion";
-
-class GsapPreviewConvergenceError extends Error {}
-class GsapOwnershipProtocolError extends GsapPreviewConvergenceError {}
+import {
+  GsapOwnershipProtocolError,
+  GsapPreviewConvergenceError,
+  postGsapMutation,
+  requireGsapOwnershipProtocol,
+  rollbackOwnedMutation,
+  type GsapMutationStatus,
+} from "./gsapMutationClient";
+import type { CutoverResult } from "../utils/sdkEditTransaction";
+import { findTimelineScript } from "@hyperframes/core/gsap-parser-acorn";
+import { walkCompositionDescendants } from "@hyperframes/parsers/hf-ids";
+import {
+  serializeStudioFileMutations,
+  type StudioProjectFileWriter,
+} from "../utils/studioFileMutationCoordinator";
 
 export async function readFileContent(projectId: string, targetPath: string): Promise<string> {
   if (targetPath.includes("\0") || targetPath.includes("..")) {
@@ -27,51 +44,6 @@ export async function readFileContent(projectId: string, targetPath: string): Pr
     throw new Error(`Missing file contents for ${targetPath}`);
   }
   return data.content;
-}
-
-/** Verify rollback ownership support before any GSAP mutation can land. */
-async function requireGsapOwnershipProtocol(projectId: string): Promise<void> {
-  const response = await fetch(
-    `/api/projects/${encodeURIComponent(projectId)}/gsap-mutation-capabilities`,
-  );
-  if (!response.ok) {
-    throw new GsapOwnershipProtocolError("Server does not support owned GSAP mutations");
-  }
-  const body = await response.json().catch(() => null);
-  if (!isRecord(body) || body.atomicOwnershipPairs !== true) {
-    throw new GsapOwnershipProtocolError("Invalid GSAP mutation capability response");
-  }
-}
-
-/** Atomically restore one GSAP mutation only while its exact output still owns
- * the file. The server performs compare + write synchronously, eliminating the
- * client GET→PUT window that could overwrite a successor edit. */
-async function rollbackOwnedMutation(
-  projectId: string,
-  targetPath: string,
-  expected: string,
-  restore: string,
-): Promise<"restored" | "conflict"> {
-  if (targetPath.includes("\0") || targetPath.includes("..")) {
-    throw new Error(`Unsafe path: ${targetPath}`);
-  }
-  const response = await fetch(
-    `/api/projects/${encodeURIComponent(projectId)}/gsap-mutation-rollback/${encodeURIComponent(targetPath)}`,
-    {
-      method: "POST",
-      // Deliberately unclaimed: a rollback runs because a mutation did not
-      // converge, so let the restored file reload the preview.
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ expected, restore }),
-    },
-  );
-  if (!response.ok) {
-    throw new Error(`Failed to restore ${targetPath}`);
-  }
-  const result = (await response.json()) as { restored?: unknown; conflict?: unknown };
-  if (result.restored === true && result.conflict === false) return "restored";
-  if (result.restored === false && result.conflict === true) return "conflict";
-  throw new Error(`Invalid restore response for ${targetPath}`);
 }
 
 /** Best-effort live-iframe wrapper for patchDocumentRootDuration (see timelineEditingGsap). */
@@ -100,79 +72,6 @@ export function captureDurationRollback(iframe: HTMLIFrameElement | null): () =>
     usePlayerStore.getState().setDuration(previousDuration);
     patchIframeRootDuration(iframe, previousDuration);
   };
-}
-
-/**
- * The bits of the server GSAP-mutation response the timeline edit path needs.
- * `scriptText` is the rewritten root GSAP script — feeding it to `applySoftReload`
- * swaps the runtime timeline in place (no iframe reload = no all-clips flash). Null
- * when the endpoint didn't return one (older server, or a multi-script comp the
- * soft path can't scope) — the caller then full-reloads when `mutated`, or
- * rebinds the runtime timing in place when nothing was rewritten (see
- * syncTimingEditPreview).
- */
-export type GsapMutationStatus = {
-  mutated: boolean;
-  scriptText: string | null;
-  /** Atomic whole-file ownership pair returned by the mutation endpoint. */
-  before?: string;
-  after?: string;
-};
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null;
-}
-
-function readMutationStatus(value: unknown): GsapMutationStatus {
-  if (
-    !isRecord(value) ||
-    typeof value.mutated !== "boolean" ||
-    typeof value.before !== "string" ||
-    typeof value.after !== "string" ||
-    value.mutated !== (value.before !== value.after) ||
-    ("changed" in value && value.changed !== value.mutated)
-  ) {
-    throw new GsapOwnershipProtocolError("Invalid owned GSAP mutation response");
-  }
-  return {
-    mutated: value.mutated,
-    scriptText: typeof value.scriptText === "string" ? value.scriptText : null,
-    before: value.before,
-    after: value.after,
-  };
-}
-
-function readMutationError(value: unknown, fallback: string): string {
-  if (isRecord(value) && typeof value.error === "string") return value.error;
-  return fallback;
-}
-
-async function postGsapMutation(
-  projectId: string,
-  filePath: string,
-  mutation: Record<string, unknown>,
-  fallback: string,
-): Promise<GsapMutationStatus> {
-  let response: Response;
-  try {
-    response = await fetch(
-      `/api/projects/${encodeURIComponent(projectId)}/gsap-mutations/${encodeURIComponent(filePath)}`,
-      {
-        method: "POST",
-        headers: { "Content-Type": "application/json", ...studioWriteHeaders() },
-        body: JSON.stringify(mutation),
-      },
-    );
-  } catch (error) {
-    throw new GsapPreviewConvergenceError(`${fallback}: mutation outcome unknown`, {
-      cause: error,
-    });
-  }
-  const body: unknown = await response.json().catch(() => null);
-  if (!response.ok) {
-    throw new GsapPreviewConvergenceError(readMutationError(body, fallback));
-  }
-  return readMutationStatus(body);
 }
 
 /** Re-derive live timing windows without re-executing composition scripts.
@@ -221,6 +120,7 @@ function syncTimingEditPreview(
   currentTime: number,
   reloadPreview: () => void,
   rebindWhenUnmutated: boolean,
+  nestedFiles: Map<string, string> | null | undefined,
 ): void {
   if (!outcome.mutated && rebindWhenUnmutated) {
     if (!rebindPreviewTiming(iframe, currentTime)) reloadPreview();
@@ -233,12 +133,15 @@ function syncTimingEditPreview(
   const result = applySoftReload(iframe, outcome.scriptText, {
     onAsyncFailure: reloadPreview,
     currentTimeOverride: currentTime,
+    authoredHtml: outcome.after,
+    nestedFiles,
   });
   if (result === "cannot-soft-reload") reloadPreview();
 }
 
 async function finishTimelineTimingFallback(input: {
   iframe: HTMLIFrameElement | null;
+  projectId: string | null;
   reloadPreview: () => void;
   gsapMutation?: () => Promise<GsapMutationStatus>;
   onGsapError: (error: unknown) => void;
@@ -263,12 +166,21 @@ async function finishTimelineTimingFallback(input: {
       return;
     }
   }
+  const { projectId } = input;
+  const nestedFiles = await settleNestedReads(
+    projectId && outcome.scriptText
+      ? readNestedFiles(input.iframe, outcome.scriptText, (path) =>
+          readFileContent(projectId, path),
+        )
+      : null,
+  );
   syncTimingEditPreview(
     input.iframe,
     outcome,
     usePlayerStore.getState().currentTime,
     input.reloadPreview,
     input.rebindWhenUnmutated,
+    nestedFiles,
   );
 }
 
@@ -341,7 +253,7 @@ async function rollbackAfterFailure(
 // The ledger, reverse rollback, final ownership check, and history fold are one
 // transaction; extracting phases would obscure which function owns convergence.
 // fallow-ignore-next-line complexity
-async function foldGsapMutationIntoHistory(input: {
+async function foldGsapMutationInQueue(input: {
   projectId: string;
   label: string;
   coalesceKey?: string;
@@ -399,7 +311,6 @@ async function foldGsapMutationIntoHistory(input: {
       if (Object.keys(files).length > 0) {
         await input.recordEdit({
           label: input.label,
-          kind: "timeline",
           coalesceKey: input.coalesceKey,
           coalesceMs: GSAP_HISTORY_COALESCE_MS,
           files,
@@ -410,6 +321,18 @@ async function foldGsapMutationIntoHistory(input: {
     }
   }
   return status;
+}
+
+// The mutations, the ownership read and any rollback hold every touched file's queue.
+function foldGsapMutationIntoHistory(
+  input: Parameters<typeof foldGsapMutationInQueue>[0] & {
+    writeFile: StudioProjectFileWriter;
+    paths: readonly string[];
+  },
+): Promise<GsapMutationStatus> {
+  return serializeStudioFileMutations(input.writeFile, input.paths, () =>
+    foldGsapMutationInQueue(input),
+  );
 }
 
 /**
@@ -464,6 +387,21 @@ export async function scaleGsapPositions(
   );
 }
 
+/** The GSAP sync a committed SDK timing write made, or null when its timeline script is unchanged. */
+export function sdkTimingGsapSync(
+  result: Extract<CutoverResult, { status: "committed" }>,
+): GsapMutationStatus | null {
+  const timelineText = (html: string) => {
+    const scripts: Element[] = [];
+    walkCompositionDescendants(new DOMParser().parseFromString(html, "text/html"), (el) => {
+      if (el.tagName.toLowerCase() === "script") scripts.push(el);
+    });
+    return findTimelineScript(scripts)?.textContent ?? null;
+  };
+  if (timelineText(result.before) === timelineText(result.after)) return null;
+  return { mutated: true, scriptText: extractGsapScriptText(result.after), after: result.after };
+}
+
 /** Timing delta a single-clip edit applies to its GSAP tweens. */
 export type SingleClipGsapEdit =
   | { kind: "shift"; delta: number }
@@ -492,9 +430,11 @@ export function finishClipTimingFallback(input: {
   label: string;
   coalesceKey?: string;
   recordEdit: (edit: RecordEditInput) => Promise<void>;
+  writeProjectFile: StudioProjectFileWriter;
   edit: SingleClipGsapEdit;
+  sdkGsap?: GsapMutationStatus | null;
 }): Promise<void> {
-  const { projectId, targetPath, domId, edit } = input;
+  const { projectId, targetPath, domId, edit, sdkGsap } = input;
   const timingChanged =
     edit.kind === "shift"
       ? edit.delta !== 0
@@ -515,11 +455,15 @@ export function finishClipTimingFallback(input: {
     console.error(`[Timeline] Failed to ${edit.kind} GSAP positions`, err);
   return finishTimelineTimingFallback({
     iframe: input.iframe,
+    projectId,
     reloadPreview: input.reloadPreview,
-    gsapMutation:
-      timingChanged && domId && projectId
+    gsapMutation: sdkGsap
+      ? () => Promise.resolve(sdkGsap)
+      : timingChanged && domId && projectId
         ? () =>
             foldGsapMutationIntoHistory({
+              writeFile: input.writeProjectFile,
+              paths: [targetPath],
               projectId,
               label: input.label,
               coalesceKey: input.coalesceKey,
@@ -553,22 +497,39 @@ export async function finishGroupTimingGsapFallback<C extends { element: Timelin
   errorLabel: string;
   coalesceKey?: string;
   recordEdit: (edit: RecordEditInput) => Promise<void>;
+  writeProjectFile: StudioProjectFileWriter;
   activeCompPath: string | null;
   changes: readonly C[];
   resolveChangePath: (element: TimelineElement) => string;
   /** Per-change GSAP mutation; return null to skip a change with no timing delta. */
   mutateChange: (change: C, changePath: string) => Promise<GsapMutationStatus> | null;
+  sdkGsap?: GsapMutationStatus | null;
 }): Promise<void> {
   const activePath = input.activeCompPath || "index.html";
   const otherFileChanged = input.changes.some(
     (change) => input.resolveChangePath(change.element) !== activePath,
   );
   const onGsapError = (err: unknown) => console.error(`[Timeline] ${input.errorLabel}`, err);
+  const { sdkGsap } = input;
+  if (sdkGsap) {
+    await finishTimelineTimingFallback({
+      iframe: input.iframe,
+      projectId: input.projectId,
+      reloadPreview: input.reloadPreview,
+      gsapMutation: () => Promise.resolve(sdkGsap),
+      onGsapError,
+      rebindWhenUnmutated: !otherFileChanged,
+    });
+    return;
+  }
   await finishTimelineTimingFallback({
     iframe: input.iframe,
+    projectId: input.projectId,
     reloadPreview: input.reloadPreview,
     gsapMutation: () =>
       foldGsapMutationIntoHistory({
+        writeFile: input.writeProjectFile,
+        paths: input.changes.map((change) => input.resolveChangePath(change.element)),
         projectId: input.projectId,
         label: input.label,
         coalesceKey: input.coalesceKey,
@@ -576,6 +537,7 @@ export async function finishGroupTimingGsapFallback<C extends { element: Timelin
         gsapMutation: async (runOwnedMutation) => {
           let mutated = false;
           let scriptText: GsapMutationStatus["scriptText"] = null;
+          let after: string | undefined;
           for (const change of input.changes) {
             const changePath = input.resolveChangePath(change.element);
             const status = await runOwnedMutation(changePath, () =>
@@ -584,9 +546,9 @@ export async function finishGroupTimingGsapFallback<C extends { element: Timelin
             mutated = mutated || status.mutated;
             // The LAST mutation against the active comp carries the cumulative
             // rewritten script for that file.
-            if (changePath === activePath) scriptText = status.scriptText;
+            if (changePath === activePath) ({ scriptText, after } = status);
           }
-          return { mutated, scriptText: otherFileChanged ? null : scriptText };
+          return { mutated, scriptText: otherFileChanged ? null : scriptText, after };
         },
         onRollbackError: onGsapError,
       }),

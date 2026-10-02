@@ -9,19 +9,19 @@
   "height": 720,
   "ssim_threshold": 0.95,
   "validation": {
-    "measured_mean_ssim": 0.985,
-    "measured_min_ssim": 0.963,
-    "measured_p05_ssim": 0.966,
-    "measured_p95_ssim": 0.999,
-    "measured_at": "2026-04-27",
-    "measured_against": "remotion@4.0 (PNG output, BT.709) vs hyperframes@0.4.15-alpha.1",
-    "notes": "Spring → back.out(1.4) translation came out cleaner than expected; mean 0.985 leaves substantial headroom over 0.95."
+    "measured_mean_ssim": 0.986,
+    "measured_min_ssim": 0.964,
+    "measured_p05_ssim": 0.967,
+    "measured_p95_ssim": 1,
+    "measured_at": "2026-09-18",
+    "measured_against": "remotion@4.0 (PNG output, BT.709) vs hyperframes@0.7.71 (sub-composition fixtures)",
+    "notes": "Spring → back.out(1.4) translation came out cleaner than expected; mean 0.986 leaves substantial headroom over 0.95."
   },
   "translation_notes": [
     "spring({damping:12, stiffness:100, mass:1}) → back.out(1.4) over 0.7s. Spring overshoot+settle and back.out's overshoot+settle have similar shape; budget ~0.02 SSIM for the late-tail curvature mismatch (validated lower than predicted in spec; original notes overestimated drift).",
-    "<Sequence from durationInFrames> → wrapping div with data-start/data-duration in seconds and explicit gsap.set(opacity, 0/1) at scene boundaries to crossfade in/out cleanly",
+    "<Sequence from durationInFrames> → a sub-composition host with data-start/data-duration in seconds; the scene's own file uses local time and explicit gsap.set(opacity, 0/1) at its boundaries to crossfade in/out cleanly",
     "<Audio src volume> → <audio data-start data-duration data-volume>",
-    "<Img src={staticFile('x')}> → <img src='assets/x'>; setup.sh copies the asset into both fixture trees",
+    "<Img src={staticFile('x')}> → <img src='assets/x'> (`../assets/x` inside the scene sub-composition file); setup.sh copies the asset into both fixture trees",
     "interpolate with default linear easing → ease:'none' in GSAP",
     "Fonts again rely on system Helvetica/Arial; ~0.015 SSIM cost from AA differences"
   ],

@@ -32,6 +32,8 @@ export interface TimelineLike {
   time: () => number;
   duration: () => number;
   isActive: () => boolean;
+  labels?: Record<string, number>;
+  getLabels?: () => Record<string, number>;
 }
 
 export interface ClipManifestClip extends RuntimeTimelineClipIdentity {
@@ -60,11 +62,13 @@ export type IframeWindow = Window & {
   __timeline?: TimelineLike;
   __timelines?: Record<string, TimelineLike>;
   __clipManifest?: ClipManifest;
+  __hfWaitForSeekCompletion?: () => Promise<void>;
   /** Declared runtime-side in core's window.d.ts, which this package cannot see.
    *  Every member stays optional and is optional-called, so a runtime that
    *  predates the hook degrades to a no-op instead of throwing. */
   __hf?: {
     leasePausedMedia?: (el: HTMLMediaElement) => void;
     releasePausedMedia?: (el: HTMLMediaElement) => void;
+    setLoopStart?: (seconds: number | null) => void;
   };
 };

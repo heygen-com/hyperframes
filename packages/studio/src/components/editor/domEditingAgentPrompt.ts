@@ -28,9 +28,10 @@ export interface AgentPromptElementInfo {
 
 const GUARDRAIL_LINES = [
   "Guardrails:",
-  "- Make a targeted change to this element only.",
-  "- Preserve the rest of the composition and its timing.",
-  "- Do not modify other elements' data-* attributes or positioning.",
+  "- Make a targeted change to this element only, unless the request is a timeline edit.",
+  "- Preserve the rest of the composition and its timing, except what a timeline edit changes.",
+  "- Do not modify other elements' data-* attributes or positioning, except where the requested timeline edit requires it (split, retime, reorder, copy a group, swap media).",
+  "- For timeline edits (trim, split, speed, volume, copy, swap), follow the creator-editing-recipes reference of the hyperframes-core skill and use its exact attribute forms.",
   "- Prefer existing inline styles or existing CSS rules for this element over adding unrelated selectors.",
 ];
 
@@ -96,6 +97,7 @@ export function buildElementAgentPrompt({
   selectionContext,
   userInstruction,
   sourceFilePath,
+  timeline,
 }: {
   selection: DomEditSelection;
   currentTime: number;
@@ -103,6 +105,8 @@ export function buildElementAgentPrompt({
   selectionContext?: string;
   userInstruction?: string;
   sourceFilePath?: string;
+  /** The `formatTimelineBlock` text; omitted or empty when the timeline has no clips. */
+  timeline?: string;
 }): string {
   const displayedSourceFile = sourceFilePath?.trim() || selection.sourceFile;
   const info: AgentPromptElementInfo = {
@@ -135,6 +139,8 @@ export function buildElementAgentPrompt({
   }
 
   lines.push(...buildElementDetailLines(info));
+
+  if (timeline) lines.push("", timeline);
 
   if (tagSnippet) {
     lines.push("", "Target HTML:", tagSnippet);

@@ -1,10 +1,11 @@
 // fallow-ignore-file complexity
 import { execFileSync } from "node:child_process";
-import { existsSync, readFileSync, mkdirSync, unlinkSync } from "node:fs";
+import { existsSync, readFileSync, mkdirSync, rmSync, statSync, unlinkSync } from "node:fs";
 import { join, extname } from "node:path";
 import { tmpdir } from "node:os";
 import { randomUUID } from "node:crypto";
 import { findFFmpeg, findFFprobe, getFFmpegInstallHint } from "../browser/ffmpeg.js";
+import { stoppedByCancelSignal } from "../utils/renderCancellation.js";
 import { ensureWhisper, ensureModel, hasFFmpeg, DEFAULT_MODEL } from "./manager.js";
 
 /**
@@ -158,7 +159,7 @@ export function resolveAudioPreparationTimeoutMs(durationSeconds: number | null)
   );
 }
 
-function getMediaDurationSeconds(filePath: string): number | null {
+export function getMediaDurationSeconds(filePath: string): number | null {
   try {
     const ffprobePath = findFFprobe();
     if (!ffprobePath) return null;
@@ -183,11 +184,10 @@ function getMediaDurationSeconds(filePath: string): number | null {
   }
 }
 
-function getPreparedWavDurationSeconds(wavPath: string): number | null {
+/** A prepared WAV is 16 kHz mono s16, so its size gives the length (the header adds a few ms). */
+export function getPreparedWavDurationSeconds(wavPath: string): number | null {
   try {
-    const dataChunk = findWavDataChunk(readFileSync(wavPath));
-    if (!dataChunk) return null;
-    return dataChunk.size / (16_000 * 2);
+    return statSync(wavPath).size / (16_000 * 2);
   } catch {
     return null;
   }
@@ -299,6 +299,27 @@ function tempWavPath(): string {
   return join(tmpdir(), `hyperframes-audio-${process.pid}-${randomUUID()}.wav`);
 }
 
+function runFfmpeg(ffmpegPath: string, args: string[], output: string, timeout: number): void {
+  try {
+    execFileSync(ffmpegPath, ["-nostats", "-hide_banner", ...args, "-y", output], {
+      stdio: ["ignore", "ignore", "pipe"],
+      maxBuffer: 64 * 1024 * 1024,
+      timeout,
+    });
+  } catch (err) {
+    rmSync(output, { force: true });
+    const stop = err as { code?: string; signal?: string; stderr?: Buffer };
+    // A code means Node stopped it; ffmpeg traps Ctrl-C and says so (exit 255 is EPERM too on 7+).
+    if (stop.code) throw err;
+    const said = String(stop.stderr ?? "").trim();
+    const cancelled = /Exiting normally, received signal/.test(said) || stoppedByCancelSignal(stop);
+    const reason = said.split("\n").at(-1) || (err as Error).message;
+    // stderr: the command shows its last lines, where ffmpeg names the cause above its summary line.
+    const failure = new Error(`ffmpeg failed: ${reason}`, { cause: err });
+    throw Object.assign(failure, { cancelled, stderr: said });
+  }
+}
+
 /**
  * Extract audio from a video file as 16kHz mono WAV (whisper requirement).
  */
@@ -310,15 +331,27 @@ function extractAudio(videoPath: string): string {
     );
   }
   const wavPath = tempWavPath();
-  execFileSync(
+  runFfmpeg(
     ffmpegPath,
-    ["-i", videoPath, "-vn", "-ar", "16000", "-ac", "1", "-f", "wav", "-y", wavPath],
-    {
-      stdio: "ignore",
-      timeout: resolveAudioPreparationTimeoutMs(getMediaDurationSeconds(videoPath)),
-    },
+    ["-i", videoPath, "-vn", "-ar", "16000", "-ac", "1", "-f", "wav"],
+    wavPath,
+    resolveAudioPreparationTimeoutMs(getMediaDurationSeconds(videoPath)),
   );
   return wavPath;
+}
+
+interface AudioStream {
+  codec_type?: string;
+  codec_name?: string;
+  sample_rate?: string;
+  channels?: number;
+}
+
+/** 16-bit PCM only: sherpa-onnx cannot read 24-bit WAV, so anything else goes through ffmpeg. */
+export function isPcm16kMono(stream: AudioStream | undefined): boolean {
+  return (
+    stream?.codec_name === "pcm_s16le" && stream.sample_rate === "16000" && stream.channels === 1
+  );
 }
 
 /**
@@ -333,15 +366,8 @@ function isWav16kMono(filePath: string): boolean {
       ["-v", "quiet", "-print_format", "json", "-show_streams", "--", filePath],
       { encoding: "utf-8", timeout: 10_000 },
     );
-    const parsed: {
-      streams?: {
-        codec_type?: string;
-        sample_rate?: string;
-        channels?: number;
-      }[];
-    } = JSON.parse(raw);
-    const audio = parsed.streams?.find((s) => s.codec_type === "audio");
-    return audio?.sample_rate === "16000" && audio?.channels === 1;
+    const parsed: { streams?: AudioStream[] } = JSON.parse(raw);
+    return isPcm16kMono(parsed.streams?.find((s) => s.codec_type === "audio"));
   } catch {
     return false;
   }
@@ -361,13 +387,11 @@ function prepareAudio(audioPath: string): string {
     throw new Error(`ffmpeg is required to prepare audio. Install: ${getFFmpegInstallHint()}`);
   }
   const wavPath = tempWavPath();
-  execFileSync(
+  runFfmpeg(
     ffmpegPath,
-    ["-i", audioPath, "-ar", "16000", "-ac", "1", "-f", "wav", "-y", wavPath],
-    {
-      stdio: "ignore",
-      timeout: resolveAudioPreparationTimeoutMs(getMediaDurationSeconds(audioPath)),
-    },
+    ["-i", audioPath, "-ar", "16000", "-ac", "1", "-f", "wav"],
+    wavPath,
+    resolveAudioPreparationTimeoutMs(getMediaDurationSeconds(audioPath)),
   );
   return wavPath;
 }
@@ -395,6 +419,23 @@ export function initialModelForLanguage(model: string, language?: string): strin
   return model;
 }
 
+export function prepareWav(inputPath: string, onProgress?: (message: string) => void): string {
+  if (isAudioFile(inputPath)) {
+    onProgress?.("Preparing audio...");
+    return prepareAudio(inputPath);
+  }
+  if (isVideoFile(inputPath)) {
+    if (!hasFFmpeg()) {
+      throw new Error(
+        `ffmpeg is required to extract audio from video. Install: ${getFFmpegInstallHint()}`,
+      );
+    }
+    onProgress?.("Extracting audio from video...");
+    return extractAudio(inputPath);
+  }
+  throw new Error(`Unsupported file type: ${extname(inputPath).toLowerCase()}`);
+}
+
 /**
  * Transcribe an audio or video file and save transcript.json to the output directory.
  */
@@ -417,23 +458,7 @@ export async function transcribe(
   });
 
   // 3. Prepare audio
-  let wavPath: string;
-  const ext = extname(inputPath).toLowerCase();
-
-  if (isAudioFile(inputPath)) {
-    options?.onProgress?.("Preparing audio...");
-    wavPath = prepareAudio(inputPath);
-  } else if (isVideoFile(inputPath)) {
-    if (!hasFFmpeg()) {
-      throw new Error(
-        `ffmpeg is required to extract audio from video. Install: ${getFFmpegInstallHint()}`,
-      );
-    }
-    options?.onProgress?.("Extracting audio from video...");
-    wavPath = extractAudio(inputPath);
-  } else {
-    throw new Error(`Unsupported file type: ${ext}`);
-  }
+  const wavPath = prepareWav(inputPath, options?.onProgress);
 
   // 4. Detect language and ensure correct model
   let effectiveModel = model;
@@ -544,14 +569,9 @@ export async function transcribe(
 // Timeout error discoverability
 // ---------------------------------------------------------------------------
 
-// Node's `execFileSync` kills the child with SIGTERM when its `timeout` option
-// fires, so the resulting Error carries `signal === "SIGTERM"`. On some platforms
-// / Node versions `code === "ETIMEDOUT"` is also set. Match either signal so we
-// don't miss a timeout on a platform we haven't validated.
+// execFileSync's own timeout sets code ETIMEDOUT (and SIGTERM); a bare SIGTERM is someone stopping it.
 export function isWhisperTimeoutError(err: unknown): boolean {
-  if (!(err instanceof Error)) return false;
-  const record = err as { signal?: unknown; code?: unknown };
-  return record.signal === "SIGTERM" || record.code === "ETIMEDOUT";
+  return err instanceof Error && (err as { code?: unknown }).code === "ETIMEDOUT";
 }
 
 export interface WrapWhisperTimeoutOptions {

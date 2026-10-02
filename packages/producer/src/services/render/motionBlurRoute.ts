@@ -24,6 +24,10 @@ import type { CapturePlan } from "./capturePlan.js";
 const UNSUPPORTED_REASON: Record<CapturePlan["kind"], string | null> = {
   sdr_streaming: null,
   sdr_disk: null,
+  // Segmented capture runs the same per-frame capture loop as sdr_streaming;
+  // only the encoder lifetime and the frame range differ, and neither is
+  // visible to sub-frame accumulation.
+  sdr_segmented: null,
   // Named for HDR but reached by shader transitions with no HDR content at all
   // (`shouldUseLayeredComposite`), so the reason must not blame HDR for a composition
   // that has none.

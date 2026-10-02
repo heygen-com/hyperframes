@@ -258,7 +258,9 @@ describe("TimelineClipDiamonds", () => {
     const selectedDiamond = host.querySelector<HTMLButtonElement>('button[title="60%"]');
     expect(playheadDiamond?.dataset.keyframeAtPlayhead).toBe("true");
     expect(playheadDiamond?.dataset.keyframeSelected).toBe("false");
-    expect(playheadDiamond?.querySelector("path:last-child")?.getAttribute("fill")).toBe("#a3a3a3");
+    expect(playheadDiamond?.querySelector("path:last-child")?.getAttribute("fill")).toBe(
+      "var(--timeline-diamond-muted)",
+    );
     expect(playheadDiamond?.querySelector('path[stroke="#4ba3d2"]')).not.toBeNull();
     expect(selectedDiamond?.dataset.keyframeAtPlayhead).toBe("false");
     expect(selectedDiamond?.dataset.keyframeSelected).toBe("true");

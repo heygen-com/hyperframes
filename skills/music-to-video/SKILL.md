@@ -3,6 +3,8 @@ name: music-to-video
 description: "Turn a music track (an audio file, a video to pull audio from, or a track generated from a mood brief) into a beat-synced video — lyric video, slideshow, or kinetic promo. The music drives all pacing; any user-supplied images/videos are cut onto the same beat grid, and a complete video needs zero assets. Narrated pieces → the input-matched workflow (see /hyperframes). Unclear → /hyperframes."
 ---
 
+**Plugin installs:** Before setup or freshness commands, follow [plugin execution rules](../hyperframes/references/plugin-installation.md) when this skill is inside a HyperFrames plugin. Standalone installs keep the update instructions below.
+
 > **First, keep this skill fresh — confirm with the user before running:** `npx hyperframes skills update music-to-video`. A fast no-op when everything is current; otherwise it refreshes this skill plus the core domain skills it depends on before you rely on them.
 
 # music-to-video — one music-grounded, beat-synced video workflow
@@ -98,7 +100,7 @@ node <SKILL_DIR>/scripts/validate-plan.mjs --storyboard "$PROJECT_DIR/STORYBOARD
   --audiomap "$PROJECT_DIR/audiomap.json" --templates <SKILL_DIR>/references/templates
 ```
 
-Fix every `✗` (hard errors: duration mismatch, frames not tiling the track, a missing `src`); warnings are best-effort. Then show the user a frame-by-frame summary and iterate until they approve. In autonomous mode this is a checkpoint gate: post the summary as a heads-up and proceed (the `validate-plan.mjs` pass is a quality gate and still blocks).
+Fix every `✗` (hard errors: duration mismatch, frames not tiling the track, a missing `src`); warnings are best-effort. Then present the frame-by-frame summary in chat as a proposal (`../hyperframes/references/review-loop.md` § 1) and iterate on the user's replies until they approve; for `storyboard: yes`, also write it as `storyboard.html` (`../hyperframes-creative/references/storyboard-recipe.md` § 3) for them to open. In autonomous mode this is a checkpoint gate: post the summary as a heads-up and proceed (the `validate-plan.mjs` pass is a quality gate and still blocks).
 
 **Gate:** `frame.md` is a verbatim preset copy; `validate-plan.mjs` exits 0; the user approved the plan (autonomous: the summary was posted as a heads-up).
 
@@ -202,7 +204,7 @@ music-to-video/
   references/   frame-skeleton.md · planning.md · storyboard-format.md
                 template-catalog.md · motion-primitive-catalog.md · montage.md
                 templates/<id>/          { index.html (+ assets/ · program.json) }  ← L1 catalog impls
-                motion-primitives/<id>/  { index.html } (+ ../assets/gsap.min.js shared by recipes) ← L0 catalog impls
+                motion-primitives/<id>/  { index.html (mounts the scene), scene.html (the sub-composition) } (+ ../assets/gsap.min.js shared by recipes) ← L0 catalog impls
   scripts/      analyze-beatgrid.py · assemble-index.mjs · validate-plan.mjs · stage-assets.mjs · lib/storyboard.mjs
   sub-agents/   frame-worker.md   ← the one subagent (one per frame)
 ```

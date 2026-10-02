@@ -5,6 +5,8 @@
  * without pulling in gsapParser (which depends on recast / @babel/parser).
  */
 
+import type { GsapAnimation } from "./gsapSerialize.js";
+
 export const SUPPORTED_PROPS = [
   // 2D Transforms
   "x",
@@ -67,6 +69,22 @@ for (const [group, props] of Object.entries(PROPERTY_GROUPS) as [
   ReadonlySet<string>,
 ][]) {
   for (const p of props) PROP_TO_GROUP.set(p, group);
+}
+
+type PositionWrite = Pick<
+  GsapAnimation,
+  "propertyGroup" | "properties" | "fromProperties" | "keyframes"
+>;
+
+/** A position write that sets x or y. An xPercent/yPercent centring set never duplicates one. */
+export function isXYPositionWrite(a: PositionWrite): boolean {
+  const xy = (props?: Record<string, unknown>) => !!props && ("x" in props || "y" in props);
+  return (
+    a.propertyGroup === "position" &&
+    (xy(a.properties) ||
+      xy(a.fromProperties) ||
+      !!a.keyframes?.keyframes.some((k) => xy(k.properties)))
+  );
 }
 
 export function classifyPropertyGroup(prop: string): PropertyGroupName {

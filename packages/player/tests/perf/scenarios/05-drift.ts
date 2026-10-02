@@ -53,7 +53,7 @@
  */
 
 import type { Browser, Frame, Page } from "puppeteer-core";
-import { loadHostPage, percentile } from "../runner.ts";
+import { loadHostPage, waitForPlayerAssetsReady, percentile } from "../runner.ts";
 import type { Metric } from "../perf-gate.ts";
 
 export type DriftScenarioOpts = {
@@ -126,6 +126,7 @@ async function runOnce(
   try {
     const page = await ctx.newPage();
     const { duration } = await loadHostPage(page, opts.origin, { fixture });
+    await waitForPlayerAssetsReady(page);
     const requiredDurationSec = PLAYBACK_DURATION_MS / 1000;
     if (duration < requiredDurationSec) {
       throw new Error(

@@ -4,7 +4,7 @@
  */
 
 import { arch, cpus, platform, totalmem } from "node:os";
-import { fpsToNumber } from "@hyperframes/core";
+import { fpsToNumber, type HfVfxCapture } from "@hyperframes/core";
 import type {
   CapturePerfSummary,
   StaticVerificationOutcome,
@@ -108,6 +108,12 @@ export interface DrawElementPerfInput {
   /** Authored root data-width/height vs. the scaffold's html/body CSS size; absent when either is undetectable. */
   rootBodyMismatch?: boolean;
   rootBodyDeltaPxBucket?: "0" | "1-10" | "11-50" | "51+";
+  /** `data-vfx-chain` host count from the same static scan. Only set when the source above is "static". */
+  vfxHostCount?: number;
+  /** Strongest enabled node's capture across every host (`chainCapture`, max: backdrop > self > none). Undefined when vfxHostCount is 0. */
+  vfxCapture?: HfVfxCapture;
+  /** Sorted unique def ids across every enabled node in every chain, comma-joined ("" when vfxHostCount is 0). */
+  vfxTypes?: string;
   /** Short-comp band decision when the band was DECISIVE: "applied" (inverts once HF_DE_SHORT_BAND_ROUTE is on; counterfactual in the baseline release) | "skipped_elements" (element ceiling was the only blocker); unset when the band could not have affected this render. */
   shortBand?: "applied" | "skipped_elements" | "unmeasured";
   parallelRouter?: "routed" | "reverted";
@@ -165,6 +171,9 @@ function aggregateDrawElement(
     hasLut: de.hasLut,
     rootBodyMismatch: de.rootBodyMismatch,
     rootBodyDeltaPxBucket: de.rootBodyDeltaPxBucket,
+    vfxHostCount: de.vfxHostCount,
+    vfxCapture: de.vfxCapture,
+    vfxTypes: de.vfxTypes,
     shortBand: de.shortBand,
     parallelRouter: de.parallelRouter ?? "none",
     preRouterWorkers: de.preRouterWorkers,
@@ -186,6 +195,30 @@ function aggregateDrawElement(
     boundaryFrames: perfs.reduce((sum, p) => sum + (p.deBoundaryFrames ?? 0), 0),
     ncprFallbacks: perfs.reduce((sum, p) => sum + (p.deNcprFallbacks ?? 0), 0),
     frameTimeouts: perfs.reduce((sum, p) => sum + (p.deFrameTimeouts ?? 0), 0),
+  };
+}
+
+function maxDefined(values: Array<number | undefined>): number | undefined {
+  const present = values.filter((v): v is number => typeof v === "number");
+  return present.length > 0 ? Math.max(...present) : undefined;
+}
+
+/**
+ * Chrome memory across capture sessions: max of per-session peaks, sum of the
+ * last samples. Sessions that never produced a reading are excluded so
+ * `samples: 0` cannot be published alongside another worker's real peaks.
+ */
+function aggregateChromeMemory(perfs: CapturePerfSummary[]): RenderPerfSummary["chromeMemory"] {
+  const sampled = perfs.filter((p) => (p.chromeMemorySamples ?? 0) > 0);
+  if (sampled.length === 0) return undefined;
+  return {
+    browserRssPeakMb: maxDefined(sampled.map((p) => p.chromeBrowserRssPeakMb)),
+    rendererRssPeakMb: maxDefined(sampled.map((p) => p.chromeRendererRssPeakMb)),
+    // Last samples are per session; summing approximates the whole fleet's
+    // footprint at the end of capture (workers run concurrently).
+    rssLastMb: sampled.reduce((sum, p) => sum + (p.chromeRssLastMb ?? 0), 0),
+    gpuProcessSeenLastSample: sampled.some((p) => p.chromeGpuProcessSeenLastSample === true),
+    samples: sampled.reduce((sum, p) => sum + (p.chromeMemorySamples ?? 0), 0),
   };
 }
 
@@ -357,6 +390,7 @@ export function buildRenderPerfSummary(input: {
     peakRssMb: Math.round(input.peakRssBytes / (1024 * 1024)),
     peakHeapUsedMb: Math.round(input.peakHeapUsedBytes / (1024 * 1024)),
     staticDedup: aggregateDedup(input.dedupPerfs),
+    chromeMemory: aggregateChromeMemory(input.dedupPerfs),
     beginFrameReuse: aggregateBeginFrameReuse(input.dedupPerfs),
     drawElement: aggregateDrawElement(
       input.dedupPerfs,

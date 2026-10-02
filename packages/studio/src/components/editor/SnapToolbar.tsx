@@ -1,39 +1,14 @@
 import { memo, useCallback, useEffect, useRef, useState } from "react";
-import { MagnetStraight, GridFour, Path } from "@phosphor-icons/react";
-import { readStudioUiPreferences, writeStudioUiPreferences } from "../../utils/studioUiPreferences";
+import { MagnetStraight, GridFour, Path, Ruler, FrameCorners } from "@phosphor-icons/react";
 import { usePlayerStore } from "../../player/store/playerStore";
-
-const SNAP_DEFAULTS = {
-  snapEnabled: true,
-  gridVisible: false,
-  gridSpacing: 50,
-  snapToGrid: false,
-};
+import { usePreviewOverlayContext } from "./PreviewOverlayProvider";
+import { ownsPlainKeys } from "../../utils/typingTarget";
 
 // fallow-ignore-next-line complexity
-function readSnapPrefs() {
-  const prefs = readStudioUiPreferences();
-  return {
-    snapEnabled: prefs.snapEnabled ?? SNAP_DEFAULTS.snapEnabled,
-    gridVisible: prefs.gridVisible ?? SNAP_DEFAULTS.gridVisible,
-    gridSpacing: prefs.gridSpacing ?? SNAP_DEFAULTS.gridSpacing,
-    snapToGrid: prefs.snapToGrid ?? SNAP_DEFAULTS.snapToGrid,
-  };
-}
-
-interface SnapToolbarProps {
-  onSnapChange?: (prefs: {
-    snapEnabled: boolean;
-    gridVisible: boolean;
-    gridSpacing: number;
-    snapToGrid: boolean;
-  }) => void;
-}
-
-// fallow-ignore-next-line complexity
-export const SnapToolbar = memo(function SnapToolbar({ onSnapChange }: SnapToolbarProps) {
-  const [prefs, setPrefs] = useState(readSnapPrefs);
+export const SnapToolbar = memo(function SnapToolbar() {
   const [gridPopoverOpen, setGridPopoverOpen] = useState(false);
+  const { state, actions } = usePreviewOverlayContext();
+  const { snapPrefs: prefs, rulerVisible, safeMarginsVisible } = state;
   // Motion-path "set destination" toggle — shown only when the selected element
   // can take a path; arms a single canvas click to place it (MotionPathOverlay).
   const motionPathCreateAvailable = usePlayerStore((s) => s.motionPathCreateAvailable);
@@ -44,14 +19,9 @@ export const SnapToolbar = memo(function SnapToolbar({ onSnapChange }: SnapToolb
 
   const updatePrefs = useCallback(
     (patch: Partial<typeof prefs>) => {
-      setPrefs((prev) => {
-        const next = { ...prev, ...patch };
-        writeStudioUiPreferences(patch);
-        onSnapChange?.(next);
-        return next;
-      });
+      actions.setSnapPrefs(patch);
     },
-    [onSnapChange],
+    [actions],
   );
 
   const toggleSnap = useCallback(() => {
@@ -66,22 +36,20 @@ export const SnapToolbar = memo(function SnapToolbar({ onSnapChange }: SnapToolb
     // fallow-ignore-next-line complexity
     const handleKeyDown = (e: KeyboardEvent) => {
       if (e.defaultPrevented) return;
-      const t = e.target;
-      if (t instanceof HTMLInputElement || t instanceof HTMLTextAreaElement) return;
-      if (t instanceof HTMLElement && t.isContentEditable) return;
-      if (t instanceof HTMLIFrameElement) return;
+      if (ownsPlainKeys(e.target)) return;
+      if (e.target instanceof HTMLIFrameElement) return;
       if (e.key === "s" && !e.metaKey && !e.ctrlKey && !e.altKey) {
         e.preventDefault();
-        updatePrefs({ snapEnabled: !readSnapPrefs().snapEnabled });
+        updatePrefs({ snapEnabled: !prefs.snapEnabled });
       }
       if (e.key === "g" && !e.metaKey && !e.ctrlKey && !e.altKey) {
         e.preventDefault();
-        updatePrefs({ gridVisible: !readSnapPrefs().gridVisible });
+        updatePrefs({ gridVisible: !prefs.gridVisible });
       }
     };
     document.addEventListener("keydown", handleKeyDown);
     return () => document.removeEventListener("keydown", handleKeyDown);
-  }, [updatePrefs]);
+  }, [prefs.gridVisible, prefs.snapEnabled, updatePrefs]);
 
   useEffect(() => {
     if (!gridPopoverOpen) return;
@@ -96,7 +64,7 @@ export const SnapToolbar = memo(function SnapToolbar({ onSnapChange }: SnapToolb
 
   return (
     <div
-      className="absolute top-2 right-2 z-50 flex items-center gap-1"
+      className="pointer-events-auto absolute top-2 right-2 z-50 flex items-center gap-1"
       onPointerDown={(e) => e.stopPropagation()}
     >
       {motionPathCreateAvailable && (
@@ -104,7 +72,7 @@ export const SnapToolbar = memo(function SnapToolbar({ onSnapChange }: SnapToolb
           type="button"
           className={`rounded-md p-1.5 transition-colors active:scale-[0.95] ${
             motionPathArmed
-              ? "bg-studio-accent/20 text-studio-accent"
+              ? "bg-studio-accent/20 text-accent-ink"
               : "bg-black/40 text-white/60 hover:bg-black/60 hover:text-white/80"
           }`}
           onClick={() => setMotionPathArmed(!motionPathArmed)}
@@ -116,11 +84,37 @@ export const SnapToolbar = memo(function SnapToolbar({ onSnapChange }: SnapToolb
           <Path size={16} weight={motionPathArmed ? "fill" : "regular"} />
         </button>
       )}
+      {(
+        [
+          ["rulerVisible", "Ruler", Ruler],
+          ["safeMarginsVisible", "Safe margins", FrameCorners],
+        ] as const
+      ).map(([key, label, Icon]) => {
+        const visible = key === "rulerVisible" ? rulerVisible : safeMarginsVisible;
+        const toggle = key === "rulerVisible" ? actions.toggleRulers : actions.toggleSafeMargins;
+        return (
+          <button
+            key={key}
+            type="button"
+            className={`rounded-md p-1.5 transition-colors active:scale-[0.95] ${
+              visible
+                ? "bg-studio-accent/20 text-accent-ink"
+                : "bg-black/40 text-white/60 hover:bg-black/60 hover:text-white/80"
+            }`}
+            onClick={toggle}
+            title={`${label} ${visible ? "on" : "off"}`}
+            aria-label={`Toggle ${label.toLowerCase()}`}
+            aria-pressed={visible}
+          >
+            <Icon size={16} weight={visible ? "fill" : "regular"} />
+          </button>
+        );
+      })}
       <button
         type="button"
         className={`rounded-md p-1.5 transition-colors active:scale-[0.95] ${
           prefs.snapEnabled
-            ? "bg-studio-accent/20 text-studio-accent"
+            ? "bg-studio-accent/20 text-accent-ink"
             : "bg-black/40 text-white/60 hover:bg-black/60 hover:text-white/80"
         }`}
         onClick={toggleSnap}
@@ -136,7 +130,7 @@ export const SnapToolbar = memo(function SnapToolbar({ onSnapChange }: SnapToolb
           type="button"
           className={`rounded-md p-1.5 transition-colors active:scale-[0.95] ${
             prefs.gridVisible
-              ? "bg-studio-accent/20 text-studio-accent"
+              ? "bg-studio-accent/20 text-accent-ink"
               : "bg-black/40 text-white/60 hover:bg-black/60 hover:text-white/80"
           }`}
           onClick={toggleGrid}
@@ -155,7 +149,7 @@ export const SnapToolbar = memo(function SnapToolbar({ onSnapChange }: SnapToolb
         </button>
         <button
           type="button"
-          className="absolute -right-0.5 -bottom-0.5 rounded p-0.5 text-white/50 hover:text-white/90 bg-black/50"
+          className="absolute -right-0.5 -bottom-0.5 rounded-sm p-0.5 text-white/50 hover:text-white/90 bg-black/50"
           onClick={() => setGridPopoverOpen((v) => !v)}
           title="Grid options"
           aria-label="Grid options"
@@ -169,7 +163,7 @@ export const SnapToolbar = memo(function SnapToolbar({ onSnapChange }: SnapToolb
         {gridPopoverOpen && (
           <div
             ref={popoverRef}
-            className="absolute right-0 top-full mt-1 rounded-lg bg-neutral-800 border border-neutral-700 p-3 shadow-xl min-w-[180px]"
+            className="absolute right-0 top-full mt-1 rounded-lg bg-raised border border-border p-3 shadow-xl min-w-[180px]"
           >
             <label className="flex items-center justify-between text-xs text-white/80 mb-2">
               <span>Grid spacing</span>
@@ -185,7 +179,7 @@ export const SnapToolbar = memo(function SnapToolbar({ onSnapChange }: SnapToolb
                     updatePrefs({ gridSpacing: val });
                   }
                 }}
-                className="w-16 rounded bg-neutral-900 border border-neutral-600 px-1.5 py-0.5 text-xs text-white text-right tabular-nums outline-none focus:border-studio-accent"
+                className="w-16 rounded-sm bg-neutral-900 border border-neutral-600 px-1.5 py-0.5 text-xs text-white text-right tabular-nums outline-hidden focus:border-studio-accent"
               />
             </label>
             <label className="flex items-center gap-2 text-xs text-white/80 cursor-pointer">

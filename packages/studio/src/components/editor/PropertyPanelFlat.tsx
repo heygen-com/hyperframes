@@ -5,6 +5,7 @@ import { DesignPanelInputProvider } from "../../contexts/DesignPanelInputContext
 import { slugifyDesignInput } from "../../utils/designInputTracking";
 import { isTextEditableSelection } from "./domEditing";
 import type { PropertyPanelFlatProps } from "./propertyPanelFlatProps";
+import { useLinkedSpeedCommit, withLinkedPlaybackRate } from "./linkedSpeedEdits";
 import { formatPxMetricValue } from "./propertyPanelHelpers";
 import { audioFxSummary } from "./audioFxSummary";
 import { resolveAudioGroups } from "@hyperframes/core/audio-groups";
@@ -61,7 +62,6 @@ export function PropertyPanelFlat({
   clipboardCopied,
   onCopyElementInfo,
   projectId,
-  projectDir,
   assets,
   previewIframeRef,
   onClearSelection,
@@ -73,8 +73,6 @@ export function PropertyPanelFlat({
   onSetAttributeLive,
   onSetAttributeQuiet,
   onApplyColorGradingScope,
-  onSetHtmlAttribute,
-  onRemoveBackground,
   onSetText,
   onSetTextFieldStyle,
   onPreviewTextFieldStyle,
@@ -130,6 +128,7 @@ export function PropertyPanelFlat({
   onUpdateKeyframeEase,
   onUpdateSegmentEase,
   onSetAllKeyframeEases,
+  ...forwardedProps
 }: PropertyPanelFlatProps) {
   // PropertyPanel keys this component by selection, so the default is per element.
   const [openGroupId, setOpenGroupId] = useState<string>(() =>
@@ -291,10 +290,12 @@ export function PropertyPanelFlat({
   const showMotionEffects = gsapEffectHandlers !== null && !audioSelection;
   const showMotionGroup = showMotionTiming || showMotionEffects;
 
+  const linkedSpeed = useLinkedSpeedCommit(element, forwardedProps.onSetAttributeBatch);
   const volumeAutomation = useVolumeAutomation(
     element,
     currentTime,
     onSetAttributeQuiet ?? onSetAttributeLive,
+    linkedSpeed,
   );
 
   // The group this clip belongs to, if any — the Audio FX summary reads
@@ -502,13 +503,12 @@ export function PropertyPanelFlat({
       summary: element.tagName,
       content: (
         <FlatMediaSection
-          projectDir={projectDir}
+          {...forwardedProps}
+          projectId={projectId}
           element={element}
           styles={styles}
           onSetStyle={onSetStyle}
-          onSetAttribute={onSetAttribute}
-          onSetHtmlAttribute={onSetHtmlAttribute}
-          onRemoveBackground={onRemoveBackground}
+          onSetAttribute={withLinkedPlaybackRate(onSetAttribute, linkedSpeed)}
           {...volumeAutomation}
         />
       ),

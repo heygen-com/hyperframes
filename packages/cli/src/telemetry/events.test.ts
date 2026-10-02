@@ -1,4 +1,5 @@
 import { describe, expect, it, vi, beforeEach } from "vitest";
+import { CliRuntimeError } from "../utils/commandResult.js";
 
 const trackEvent = vi.fn();
 const flush = vi.fn(() => Promise.resolve());
@@ -396,6 +397,34 @@ describe("render telemetry events", () => {
     expect(props.browser_version_major).toBe(118);
   });
 
+  it("carries the browser install path facts on both render events, never the path", () => {
+    const browserInstall = {
+      build: "152.0.7928.2",
+      pathAscii: false,
+      pathLength: "200_to_259",
+      drive: "windows_other",
+    } as const;
+    trackRenderComplete({
+      durationMs: 1,
+      fps: 30,
+      quality: "draft",
+      docker: false,
+      gpu: false,
+      browserInstall,
+    });
+    trackRenderError({ fps: 30, quality: "draft", docker: false, browserInstall });
+    for (const call of trackEvent.mock.calls) {
+      const props = call[1] as Record<string, unknown>;
+      expect(props).toMatchObject({
+        browser_build: "152.0.7928.2",
+        browser_path_ascii: false,
+        browser_path_length: "200_to_259",
+        browser_path_drive: "windows_other",
+      });
+      expect(Object.keys(props)).not.toContain("browser_path");
+    }
+  });
+
   it("omits toolchain majors on a Docker render", () => {
     trackRenderComplete({ durationMs: 1, fps: 30, quality: "draft", docker: true, gpu: false });
     const props = trackEvent.mock.calls[0]?.[1] as Record<string, unknown>;
@@ -560,6 +589,48 @@ describe("render telemetry events", () => {
     expect(props.has_lut).toBe(false);
   });
 
+  it("carries the vfx chain scan's node count, capture class, and def types", () => {
+    trackRenderComplete({
+      durationMs: 1000,
+      fps: 30,
+      quality: "high",
+      docker: false,
+      gpu: false,
+      vfxHostCount: 2,
+      vfxCapture: "self",
+      vfxTypes: "displacement-map,wave-warp",
+    });
+    const props = trackEvent.mock.calls[0]?.[1] as Record<string, unknown>;
+    expect(props.vfx_host_count).toBe(2);
+    expect(props.vfx_capture).toBe("self");
+    expect(props.vfx_types).toBe("displacement-map,wave-warp");
+  });
+
+  it("reports a zero node count and empty types rather than dropping the properties", () => {
+    trackRenderComplete({
+      durationMs: 1000,
+      fps: 30,
+      quality: "high",
+      docker: false,
+      gpu: false,
+      vfxHostCount: 0,
+      vfxTypes: "",
+    });
+    const props = trackEvent.mock.calls[0]?.[1] as Record<string, unknown>;
+    expect(props.vfx_host_count).toBe(0);
+    expect(props.vfx_types).toBe("");
+    // No vfx-chain host means chainCapture never ran — undefined, not "none".
+    expect(props.vfx_capture).toBeUndefined();
+  });
+
+  it("omits the vfx fields entirely when the caller never resolved them", () => {
+    trackRenderComplete({ durationMs: 1000, fps: 30, quality: "high", docker: false, gpu: false });
+    const props = trackEvent.mock.calls[0]?.[1] as Record<string, unknown>;
+    expect(props.vfx_host_count).toBeUndefined();
+    expect(props.vfx_capture).toBeUndefined();
+    expect(props.vfx_types).toBeUndefined();
+  });
+
   // emitStudioRenderComplete never resolves perfSummary.drawElement, only the
   // observability capture fields (captureAudioCount/captureRootBodyMismatch/etc),
   // so these must fall back to the capture value or a studio render reports none
@@ -678,6 +749,89 @@ describe("render telemetry events", () => {
       }),
       undefined,
     );
+  });
+
+  it("maps Chrome memory and capture path observability onto render_error", () => {
+    trackRenderError({
+      fps: 30,
+      quality: "draft",
+      docker: false,
+      captureChromeBrowserRssPeakMb: 210,
+      captureChromeRendererRssPeakMb: 1900,
+      captureChromeRssLastMb: 2400,
+      captureChromeGpuProcessSeenLastSample: true,
+      captureChromeMemorySamples: 42,
+      captureCapturePath: "streaming",
+      captureSegmentIndex: 3,
+      captureSegmentRetries: 1,
+    });
+
+    expect(trackEvent).toHaveBeenCalledWith(
+      "render_error",
+      expect.objectContaining({
+        chrome_browser_rss_peak_mb: 210,
+        chrome_renderer_rss_peak_mb: 1900,
+        chrome_rss_last_mb: 2400,
+        gpu_process_seen_last_sample: true,
+        chrome_memory_samples: 42,
+        capture_path: "streaming",
+        segment_index: 3,
+        segment_retries: 1,
+      }),
+      undefined,
+    );
+  });
+
+  it("prefers the aggregate Chrome memory over the live sample on render_complete", () => {
+    // The live observability values are the last session's; the perf summary
+    // aggregates every worker. On success both are present and the aggregate
+    // must win, or a multi-worker render reports one worker's peak as the
+    // fleet's.
+    trackRenderComplete({
+      durationMs: 1000,
+      fps: 30,
+      quality: "draft",
+      docker: false,
+      gpu: false,
+      captureChromeBrowserRssPeakMb: 100,
+      captureChromeRendererRssPeakMb: 800,
+      captureChromeRssLastMb: 900,
+      captureChromeMemorySamples: 5,
+      chromeBrowserRssPeakMb: 210,
+      chromeRendererRssPeakMb: 1900,
+      chromeRssLastMb: 2400,
+      chromeGpuProcessSeenLastSample: true,
+      chromeMemorySamples: 42,
+    });
+
+    const props = trackEvent.mock.calls[0]?.[1] as Record<string, unknown>;
+    expect(props).toMatchObject({
+      chrome_browser_rss_peak_mb: 210,
+      chrome_renderer_rss_peak_mb: 1900,
+      chrome_rss_last_mb: 2400,
+      gpu_process_seen_last_sample: true,
+      chrome_memory_samples: 42,
+    });
+  });
+
+  it("falls back to the live Chrome memory sample when no aggregate exists", () => {
+    trackRenderComplete({
+      durationMs: 1000,
+      fps: 30,
+      quality: "draft",
+      docker: false,
+      gpu: false,
+      captureChromeBrowserRssPeakMb: 100,
+      captureChromeMemorySamples: 5,
+      captureCapturePath: "disk",
+    });
+
+    const props = trackEvent.mock.calls[0]?.[1] as Record<string, unknown>;
+    expect(props).toMatchObject({
+      chrome_browser_rss_peak_mb: 100,
+      chrome_memory_samples: 5,
+      capture_path: "disk",
+    });
   });
 
   it("carries the DE parallel-router/inversion cohort on render_error (hard failure, not just self-verify revert)", () => {
@@ -994,6 +1148,39 @@ describe("trackCommandFailure", () => {
         // stack_trace is asserted (redacted) in the trackCliError suite; the
         // raw err.stack no longer matches once paths are stripped.
       }),
+    );
+  });
+
+  it("reports the same error once, however many places report it", () => {
+    const err = new Error("not a project");
+    trackCommandFailure("info", err);
+    trackCommandFailure("info", err);
+
+    expect(trackEvent).toHaveBeenCalledTimes(1);
+  });
+
+  it("reports the failure a CliRuntimeError carries, through every wrapper, once", () => {
+    const cause = new Error("not a project");
+    const inner = new CliRuntimeError("Command failed", { exitCode: 1, cause });
+    trackCommandFailure("figma:asset", inner);
+    trackCommandFailure("figma", new CliRuntimeError("x", { exitCode: 1, cause: inner }));
+
+    expect(trackEvent).toHaveBeenCalledTimes(1);
+    expect(trackEvent).toHaveBeenCalledWith(
+      "cli_error",
+      expect.objectContaining({ error_message: "not a project" }),
+    );
+  });
+
+  it("takes a caller's error name and endpoint", () => {
+    trackCommandFailure("figma:asset", new Error("No token"), {
+      error_name: "NO_TOKEN",
+      endpoint: "images",
+    });
+
+    expect(trackEvent).toHaveBeenCalledWith(
+      "cli_error",
+      expect.objectContaining({ error_name: "NO_TOKEN", endpoint: "images" }),
     );
   });
 

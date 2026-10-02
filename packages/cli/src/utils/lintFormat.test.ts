@@ -1,7 +1,10 @@
-import { describe, expect, it } from "vitest";
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { describe, expect, it, onTestFinished } from "vitest";
 import type { HyperframeLintFinding } from "@hyperframes/core/lint";
 import { formatLintFindings, formatLintStartupMessage } from "./lintFormat.js";
-import type { ProjectLintResult } from "./lintProject.js";
+import { lintProject, type ProjectLintResult } from "./lintProject.js";
 
 function finding(
   severity: HyperframeLintFinding["severity"],
@@ -237,5 +240,33 @@ describe("formatLintStartupMessage", () => {
     const lines = formatLintStartupMessage(result, { kind: "verbose" });
     expect(lines).toEqual(formatLintFindings(result));
     expect(lines.length).toBeGreaterThan(1);
+  });
+});
+
+it("prints source coordinates for a single-file finding", () => {
+  const result = project([
+    { file: "index.html", findings: [finding("error", { line: 5, column: 3 })] },
+  ]);
+  expect(formatLintFindings(result)[0]).toContain("index.html:5:3");
+});
+
+describe("formatLintFindings on a real project", () => {
+  it("labels a draft section's missing image with the draft, not index.html", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "hf-lint-format-draft-"));
+    onTestFinished(() => rmSync(dir, { recursive: true, force: true }));
+    mkdirSync(join(dir, "compositions"));
+    writeFileSync(
+      join(dir, "index.html"),
+      `<html><body><div data-composition-id="main" data-width="1920" data-height="1080"><div data-composition-src="compositions/draft.html" data-composition-id="draft" data-start="0" data-duration="5"></div></div></body></html>`,
+    );
+    writeFileSync(
+      join(dir, "compositions", "draft.html"),
+      `<html><body><div data-composition-id="draft" data-width="1920" data-height="1080"><img src="../assets/missing.png" /></div></body></html>`,
+    );
+
+    const lines = formatLintFindings(await lintProject(dir));
+
+    const line = lines.find((l) => l.includes("missing.png"));
+    expect(line).toContain("[compositions/draft.html]");
   });
 });

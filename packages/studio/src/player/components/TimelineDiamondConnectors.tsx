@@ -203,7 +203,7 @@ function SegmentEaseControl({
         // for that overlay the button keeps its 16x16 hit area, which is WCAG's
         // target-spacing exception: the neighbouring diamonds are themselves the
         // reason it cannot grow, and stealing their clicks is the worse failure.
-        className={`absolute flex items-center justify-center rounded ${restingVisible ? "opacity-40" : "opacity-0"} transition-opacity hover:opacity-100 group-hover:opacity-100 focus-visible:opacity-100 ${roomForFullTarget ? "before:absolute before:left-1/2 before:top-1/2 before:h-6 before:w-6 before:-translate-x-1/2 before:-translate-y-1/2 before:content-['']" : ""}`}
+        className={`absolute flex items-center justify-center rounded-sm ${restingVisible ? "opacity-40" : "opacity-0"} transition-opacity hover:opacity-100 group-hover:opacity-100 focus-visible:opacity-100 ${roomForFullTarget ? "before:absolute before:left-1/2 before:top-1/2 before:h-6 before:w-6 before:-translate-x-1/2 before:-translate-y-1/2 before:content-['']" : ""}`}
         style={{
           left: "50%",
           top: "50%",
@@ -213,8 +213,8 @@ function SegmentEaseControl({
           zIndex: 3,
           pointerEvents: "auto",
           padding: 0,
-          border: "1px solid rgba(255, 255, 255, 0.14)",
-          background: "#171717",
+          border: "1px solid var(--timeline-diamond-border)",
+          background: "var(--timeline-diamond-bg)",
           cursor: "pointer",
         }}
         onPointerDown={(e) => {

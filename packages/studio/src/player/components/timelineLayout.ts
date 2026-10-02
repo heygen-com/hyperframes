@@ -55,22 +55,20 @@ export function getTimelineLaneTop(laneIndex: number): number {
   return TRACK_H + Math.max(0, Math.trunc(laneIndex)) * LANE_H;
 }
 /**
- * Collapsed-row characterization value for the new-track INSERT band. Runtime
- * hit-testing uses getTimelineInsertBoundaryBand with the concrete row height.
- */
-export const INSERT_BOUNDARY_BAND = CLIP_Y / TRACK_H;
-/**
- * Breathing room INSIDE the scroll area (CapCut-style), threaded through every
- * track-row y computation via {@link getTimelineRowTop} — never inline a magic
- * offset; a track row's top is always ruler + top pad + cumulative row heights.
+ * Default breathing room INSIDE the scroll area (CapCut-style). A host overrides
+ * it per Timeline; rows always read TimelineRowGeometry.padding, never these.
  *
- * - TRACKS_TOP_PAD: empty space between the (sticky) ruler and the first track
- *   (~half a track height) so the first clip isn't jammed under the ruler.
- * - TRACKS_BOTTOM_PAD: empty space below the last track (~1.5 track heights),
- *   enough to comfortably drag a clip into the void to create a new bottom lane.
+ * - TRACKS_TOP_PAD: empty space between the (sticky) ruler and the first track,
+ *   just enough that the first clip isn't jammed under the ruler.
+ * - TRACKS_BOTTOM_PAD: one empty track below the last, drawn as a ghost lane;
+ *   dropping a clip or file there creates a new bottom track.
  */
-export const TRACKS_TOP_PAD = 50;
-export const TRACKS_BOTTOM_PAD = Math.round(TRACK_H * 1.5);
+export const TRACKS_TOP_PAD = 8;
+export const TRACKS_BOTTOM_PAD = TRACK_H;
+export interface TimelineTrackPadding {
+  top?: number;
+  bottom?: number;
+}
 /**
  * Breathing room LEFT of t=0 (CapCut-style), inside the scroll content — the
  * horizontal sibling of TRACKS_TOP_PAD: empty lane surface between the sticky
@@ -120,12 +118,17 @@ function validRowHeight(height: number | undefined): number {
   return height;
 }
 
+function validPad(pad: number | undefined, fallback: number): number {
+  return pad !== undefined && Number.isFinite(pad) ? Math.max(0, pad) : fallback;
+}
+
 export interface TimelineRowGeometry {
   readonly rowKeys: readonly number[];
   readonly rowHeights: readonly number[];
   /** Cumulative row boundaries, including the final bottom boundary. */
   readonly rowOffsets: readonly number[];
   readonly rowsHeight: number;
+  readonly padding: Readonly<Required<TimelineTrackPadding>>;
   readonly canvasHeight: number;
   getRowIndex(rowKey: number): number;
   getRowHeight(row: number): number;
@@ -146,7 +149,10 @@ const EMPTY_ROW_HEIGHTS: readonly number[] = Object.freeze([]);
 export function createTimelineRowGeometry(
   rowKeys: readonly number[],
   rowHeights: readonly number[],
+  padding: TimelineTrackPadding = {},
 ): TimelineRowGeometry {
+  const topPad = validPad(padding.top, TRACKS_TOP_PAD);
+  const bottomPad = validPad(padding.bottom, TRACKS_BOTTOM_PAD);
   const heights = Object.freeze(rowHeights.map(validRowHeight));
   const keys = Object.freeze(
     heights.map((_, row) => {
@@ -170,7 +176,7 @@ export function createTimelineRowGeometry(
     return (offsets[wholeRow] ?? 0) + (row - wholeRow) * getRowHeight(wholeRow);
   };
   const getRowFromY = (contentY: number) => {
-    const y = contentY - RULER_H - TRACKS_TOP_PAD;
+    const y = contentY - RULER_H - topPad;
     if (heights.length === 0) return y / TRACK_H;
     if (y < 0) return y / getRowHeight(0);
     const rowsHeight = offsets[heights.length] ?? 0;
@@ -193,10 +199,11 @@ export function createTimelineRowGeometry(
     rowHeights: heights,
     rowOffsets: offsets,
     rowsHeight: offsets.at(-1) ?? 0,
-    canvasHeight: RULER_H + TRACKS_TOP_PAD + (offsets.at(-1) ?? 0) + TRACKS_BOTTOM_PAD,
+    padding: Object.freeze({ top: topPad, bottom: bottomPad }),
+    canvasHeight: RULER_H + topPad + (offsets.at(-1) ?? 0) + bottomPad,
     getRowIndex: (rowKey) => rowIndexByKey.get(rowKey) ?? -1,
     getRowHeight,
-    getRowTop: (row) => RULER_H + TRACKS_TOP_PAD + getRowOffset(row),
+    getRowTop: (row) => RULER_H + topPad + getRowOffset(row),
     getRowFromY,
     getRowPositionFromY: (contentY) => {
       const rowFloat = getRowFromY(contentY);
@@ -209,7 +216,7 @@ export function createTimelineRowGeometry(
   return frozenGeometry;
 }
 
-/** Compatibility accessor; repeated calls for one height-array reuse one snapshot. */
+/** Compatibility accessor: a geometry's own rowHeights resolves back to it, pads included. */
 export function getTimelineRowGeometry(rowHeights: readonly number[]): TimelineRowGeometry {
   const cached = rowGeometryCache.get(rowHeights);
   if (cached) return cached;
@@ -233,10 +240,6 @@ export function getTimelineRowHeight(
   return validRowHeight(rowHeights[row]);
 }
 
-function getTimelineRowOffset(row: number, rowHeights: readonly number[]): number {
-  return getTimelineRowGeometry(rowHeights).getRowTop(row) - RULER_H - TRACKS_TOP_PAD;
-}
-
 /**
  * The y (content-space) of the top edge of track ROW index `row` (0 = first
  * displayed lane). The single source of truth for row->y: the ruler height plus
@@ -248,7 +251,7 @@ export function getTimelineRowTop(
   row: number,
   rowHeights: readonly number[] = EMPTY_ROW_HEIGHTS,
 ): number {
-  return RULER_H + TRACKS_TOP_PAD + getTimelineRowOffset(row, rowHeights);
+  return getTimelineRowGeometry(rowHeights).getRowTop(row);
 }
 
 /**
@@ -263,17 +266,6 @@ export function getTimelineRowFromY(
   return getTimelineRowGeometry(rowHeights).getRowFromY(contentY);
 }
 
-export function getTimelineRowPositionFromY(
-  contentY: number,
-  rowHeights: readonly number[] = EMPTY_ROW_HEIGHTS,
-): { rowFloat: number; row: number; fraction: number; rowHeight: number } {
-  return getTimelineRowGeometry(rowHeights).getRowPositionFromY(contentY);
-}
-
-/** Fractional insert band for the concrete row under a pointer. */
-export function getTimelineInsertBoundaryBand(rowHeight: number): number {
-  return CLIP_Y / validRowHeight(rowHeight);
-}
 /**
  * While a clip drag is live, the rendered timeline extends this far past the
  * ghost's end so the right-edge auto-scroll zone always has room to keep
@@ -281,57 +273,51 @@ export function getTimelineInsertBoundaryBand(rowHeight: number): number {
  * rendered width (see Timeline.tsx displayContentWidth).
  */
 export const DRAG_EXTEND_MARGIN_PX = 160;
-/**
- * The rendered timeline always spans at least this many seconds of ruler +
- * track lanes, even when the composition is shorter — the empty space on the
- * right is a real, drag/drop-enabled surface (clips can be moved into it; the
- * composition grows on commit, content-driven). In fit mode the fit pps is
- * derived against this floor, so a 10s comp renders as ~1/6 of the viewport
- * with 60s of ruler after it.
- */
+/** The span the timeline maps while the composition's duration is unknown or 0. */
 export const MIN_TIMELINE_EXTENT_S = 60;
 /**
  * Fit-mode headroom (CapCut-style): "fit" maps `duration * 1.2` — not the bare
  * duration — onto the viewport, so the composition ends at ~83% of the width
  * and the trailing ~17% stays empty ruler + droppable lane surface (room to
  * drag clips past the current end without first zooming out). Applied ONLY
- * inside {@link getTimelineFitPps}, the single fit-pps source, so the ruler,
- * lanes, playhead, marquee, and drag math all inherit it consistently. Manual
+ * inside {@link getTimelineFitSpan}, which fit pps and the drawn width share, so
+ * the ruler, lanes, playhead, marquee, and drag math inherit it. Manual
  * zoom percentages stay defined relative to this fit basis (100% == fit).
  */
 export const FIT_ZOOM_HEADROOM = 1.2;
 
 /* ── Tick generation ──────────────────────────────────────────────── */
 /* ── Width / duration derivation ──────────────────────────────────── */
+/** Seconds the timeline maps: the composition plus FIT_ZOOM_HEADROOM, or the floor while its duration is unknown. */
+function getTimelineFitSpan(effectiveDuration: number): number {
+  return Number.isFinite(effectiveDuration) && effectiveDuration > 0
+    ? effectiveDuration * FIT_ZOOM_HEADROOM
+    : MIN_TIMELINE_EXTENT_S;
+}
+
 /**
  * Fit-mode pixels-per-second: fill the viewport with the composition plus
  * FIT_ZOOM_HEADROOM trailing headroom (CapCut-style — the comp never slams
- * into the right edge), and never map fewer than MIN_TIMELINE_EXTENT_S
- * seconds onto it — a short comp takes a fraction of the width and the
- * remaining ruler runs to 1:00.
- * Manual zoom multiplies this base, so the floor only anchors the default.
+ * into the right edge). Manual zoom multiplies this base.
  */
 export function getTimelineFitPps(
   viewportWidth: number,
   effectiveDuration: number,
   contentOrigin: number,
 ): number {
-  const safeDuration =
-    Number.isFinite(effectiveDuration) && effectiveDuration > 0 ? effectiveDuration : 0;
-  const span = Math.max(safeDuration * FIT_ZOOM_HEADROOM, MIN_TIMELINE_EXTENT_S);
   if (!Number.isFinite(viewportWidth) || viewportWidth <= contentOrigin) return 100;
-  return (viewportWidth - contentOrigin - 2) / span;
+  return (viewportWidth - contentOrigin - 2) / getTimelineFitSpan(effectiveDuration);
 }
 
 /**
  * The rendered timeline extent in px. Always covers, whichever is largest:
- * the actual clip content, the visible viewport (no dead black after short
+ * the visible viewport (no dead black after short
  * content — CapCut-style), a live drag or resize ghost plus the auto-scroll
- * margin (drag/trim-to-extend), and the MIN_TIMELINE_EXTENT_S floor. Only the
+ * margin (drag/trim-to-extend), and the fit span at this zoom. Only the
  * RENDERED extent grows; clip positions/durations are untouched.
  */
 export function getTimelineDisplayContentWidth(input: {
-  trackContentWidth: number;
+  effectiveDuration: number;
   viewportWidth: number;
   contentOrigin: number;
   pps: number;
@@ -340,11 +326,10 @@ export function getTimelineDisplayContentWidth(input: {
 }): number {
   const safePps = Number.isFinite(input.pps) ? Math.max(input.pps, 0) : 0;
   return Math.max(
-    input.trackContentWidth,
     input.viewportWidth - input.contentOrigin - 2,
     input.dragGhostEndPx ?? 0,
     input.resizeGhostEndPx ?? 0,
-    MIN_TIMELINE_EXTENT_S * safePps,
+    getTimelineFitSpan(input.effectiveDuration) * safePps,
   );
 }
 
@@ -507,9 +492,8 @@ export function getTimelinePlaybackFollowScrollLeft(input: {
 }
 
 export function getTimelineCanvasHeight(rowHeights: readonly number[]): number {
-  // RULER_H + top pad + lanes + bottom pad. The old TIMELINE_SCROLL_BUFFER is
-  // subsumed by TRACKS_BOTTOM_PAD (which is larger), so the drag-into-void space
-  // below the last lane is real scrollable surface, not a hidden buffer.
+  // RULER_H + top pad + lanes + bottom pad, read from the geometry's padding.
+  // The drag-into-void space below the last lane is real scrollable surface.
   return getTimelineRowGeometry(rowHeights).canvasHeight;
 }
 
@@ -520,34 +504,6 @@ export function shouldShowTimelineShortcutHint(
 ): boolean {
   if (!Number.isFinite(scrollHeight) || !Number.isFinite(clientHeight)) return true;
   return scrollHeight - clientHeight <= 1;
-}
-
-export function shouldHandleTimelineDeleteKey(input: {
-  key: string;
-  metaKey?: boolean;
-  ctrlKey?: boolean;
-  altKey?: boolean;
-  target?: EventTarget | null;
-}): boolean {
-  if (input.key !== "Delete" && input.key !== "Backspace") return false;
-  if (input.metaKey || input.ctrlKey || input.altKey) return false;
-  const target =
-    input.target && typeof input.target === "object"
-      ? (input.target as {
-          tagName?: string;
-          isContentEditable?: boolean;
-          closest?: (selector: string) => Element | null;
-        })
-      : null;
-  if (target) {
-    const tag = target.tagName?.toLowerCase() ?? "";
-    if (target.isContentEditable) return false;
-    if (["input", "textarea", "select"].includes(tag)) return false;
-    if (typeof target.closest === "function" && target.closest("[contenteditable='true']")) {
-      return false;
-    }
-  }
-  return true;
 }
 
 /* ── Asset drop ───────────────────────────────────────────────────── */

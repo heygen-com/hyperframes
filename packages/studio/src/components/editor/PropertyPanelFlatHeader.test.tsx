@@ -38,7 +38,7 @@ describe("PropertyPanelFlatHeader", () => {
     expect(host.textContent).toContain("Mono Label");
     expect(host.textContent).toContain(".mono-label · div");
     const icon = host.querySelector('[data-flat-header-icon="true"]');
-    expect(icon?.className).toContain("text-panel-accent");
+    expect(icon?.className).toContain("text-accent-ink");
     act(() => root.unmount());
   });
 

@@ -2,7 +2,6 @@ import {
   closeSync,
   existsSync,
   fstatSync,
-  mkdtempSync,
   openSync,
   readSync,
   readdirSync,
@@ -13,6 +12,7 @@ import { basename, dirname, extname, join, resolve } from "node:path";
 import { HLS_MASTER_PLAYLIST, HLS_VIDEO_PLAYLIST } from "@hyperframes/engine";
 import { extractMediaMetadata } from "../../utils/ffprobe.js";
 import type { RenderOutputFormat } from "./renderFormat.js";
+import { TRANSACTION_BACKUP, createOwnedRenderDir } from "./renderDirOwner.js";
 
 export type ArtifactKind = "file" | "directory";
 
@@ -145,7 +145,7 @@ function createSiblingTransactionDirectory(destination: string): string {
   // mkdtemp reserves the directory atomically and creates it with private
   // permissions. Keeping it beside the destination preserves same-filesystem
   // rename semantics without exposing predictable files in a shared temp dir.
-  return mkdtempSync(join(parent, `.${stem}.hf-transaction-`));
+  return createOwnedRenderDir(join(parent, `.${stem}.hf-transaction-`));
 }
 
 function assertReadableNonEmptyFile(path: string): void {
@@ -271,7 +271,7 @@ export class ArtifactTransaction {
     this.destinationPath = resolve(destinationPath);
     this.transactionDirectory = createSiblingTransactionDirectory(this.destinationPath);
     this.stagingPath = join(this.transactionDirectory, basename(this.destinationPath));
-    this.backupPath = join(this.transactionDirectory, "backup");
+    this.backupPath = join(this.transactionDirectory, TRANSACTION_BACKUP);
     this.durationProbe = durationProbe;
   }
 

@@ -17,22 +17,15 @@ export const TRACK_GAP_EPSILON_S = 1e-3;
 
 const keyOf = (e: TimelineElement) => e.key ?? e.id;
 
-/**
- * The lane's time ORIGIN — the earliest start a clip on this lane may take.
- * 0 for ordinary lanes; for a lane of expanded sub-comp children (post-
- * collision-fix a lane is always single-origin) it is the children's host
- * window start (`expandedParentStart`): display times are host-absolute, so
- * compacting toward absolute 0 would drag a child BEFORE its host's window
- * and persist a wrong (even negative) local time.
- */
-export function laneGapFloor(elements: readonly TimelineElement[]): number {
-  return Math.max(0, ...elements.map((e) => e.expandedParentStart ?? 0));
+/** The lane's time ORIGIN — the earliest start a clip on this lane may take. */
+export function laneGapFloor(_elements: readonly TimelineElement[]): number {
+  return 0;
 }
 export const round3 = (v: number) => Math.round(v * 1000) / 1000;
 const endOf = (e: TimelineElement) => e.start + e.duration;
 
 /** Lane clips sorted by start (key as a deterministic tie-break). */
-function sortedLaneClips(elements: readonly TimelineElement[]): TimelineElement[] {
+export function sortedLaneClips(elements: readonly TimelineElement[]): TimelineElement[] {
   return [...elements].sort((a, b) => a.start - b.start || keyOf(a).localeCompare(keyOf(b)));
 }
 

@@ -101,6 +101,8 @@ export interface RenderCommandArgs {
   "browser-timeout"?: string;
   "protocol-timeout"?: string;
   "player-ready-timeout"?: string;
+  resume?: boolean;
+  "keep-segments"?: boolean;
   "low-memory-mode"?: boolean;
   "experimental-fast-capture"?: boolean;
   "frames-cache-dir"?: string;
@@ -142,6 +144,10 @@ export interface RenderPlan {
   quiet: boolean;
   lintVerbose: boolean;
   debug: boolean;
+  /** Segmented capture: reuse a prior run's validated segments. */
+  resumeSegments: boolean;
+  /** Segmented capture: keep the segment directory after success. */
+  keepSegments: boolean;
   bestEffort: boolean;
   batchJson: boolean;
   effectiveQuiet: boolean;
@@ -537,6 +543,8 @@ export function createRenderPlan(args: RenderCommandArgs, now = new Date()): Ren
     quiet,
     lintVerbose: args["lint-verbose"] ?? false,
     debug: args.debug ?? false,
+    resumeSegments: args.resume ?? false,
+    keepSegments: args["keep-segments"] ?? false,
     bestEffort: args["best-effort"] ?? true,
     batchJson,
     effectiveQuiet: quiet || (batchPath != null && batchJson),

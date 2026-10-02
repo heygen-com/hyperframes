@@ -1,4 +1,5 @@
 import type { TimelineElement } from "../player";
+import { toAuthoredStart } from "../player/store/timelineElement";
 import type { RecordEditInput } from "../hooks/timelineEditingHelpers";
 import { buildPatchTarget } from "./timelineElementSplit";
 import { serializeStudioFileMutations } from "./studioFileMutationCoordinator";
@@ -61,12 +62,11 @@ function buildCutTarget(
   target: CutTarget["target"],
   splitTime: number,
 ): CutTarget {
-  const basis = element.expandedParentStart;
   return {
     target,
     ...(element.domId ? { originalId: element.domId } : {}),
-    splitTime: basis === undefined ? splitTime : Math.max(0, splitTime - basis),
-    elementStart: basis === undefined ? element.start : element.start - basis,
+    splitTime: Math.max(0, toAuthoredStart(element, splitTime)),
+    elementStart: toAuthoredStart(element, element.start),
     elementDuration: element.duration,
     ...(element.playbackStart != null ? { playbackStart: element.playbackStart } : {}),
     ...(element.playbackRate != null ? { playbackRate: element.playbackRate } : {}),
@@ -181,7 +181,7 @@ export function runAtomicCutTransaction(input: RunAtomicCutInput): Promise<Atomi
       result.files.map((file) => [file.path, { before: file.before, after: file.after }]),
     );
     try {
-      await input.recordEdit({ label: input.label, kind: "timeline", files: snapshots });
+      await input.recordEdit({ label: input.label, files: snapshots });
     } catch (error) {
       try {
         await rollbackUnrecordedCut(result.files, input.writeProjectFile);

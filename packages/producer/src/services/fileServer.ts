@@ -410,7 +410,7 @@ const RENDER_SEEK_OFFSET_FRACTION = Math.max(
   Math.min(0.95, Number(process.env.PRODUCER_RUNTIME_RENDER_SEEK_OFFSET_FRACTION || 0.5)),
 );
 
-function resolveRenderFpsConfig(fps: Fps | undefined): {
+export function resolveRenderFpsConfig(fps: Fps | undefined): {
   value: number;
   source: "render-options" | "default";
   fallbackReason?: "missing" | "invalid";

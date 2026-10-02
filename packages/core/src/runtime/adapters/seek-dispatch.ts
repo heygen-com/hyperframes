@@ -49,7 +49,21 @@ function dispatch(time: number): void {
     accepting = false;
   }
   if (pending.length === 0) return;
-  const completion = Promise.all(pending)
+  registerSeekCompletion(Promise.all(pending));
+}
+
+/**
+ * Join `promise` to the seek-completion barrier: `waitForSeekCompletion` will
+ * not resolve until it settles, and its rejection (the first one) becomes the
+ * barrier's.
+ *
+ * Exported because the `"hf-seek"` event's synchronous `waitUntil()` is not
+ * the only asynchronous seek work a frame can owe. `runtime/vfx.ts` registers
+ * its preview-side capture here, so the CLI seek paths that already await this
+ * barrier wait for a `self` chain's paint instead of racing it.
+ */
+export function registerSeekCompletion(promise: Promise<unknown>): void {
+  const completion = promise
     .then<SeekCompletionResult>(() => ({ status: "fulfilled" }))
     .catch<SeekCompletionResult>((reason: unknown) => ({ status: "rejected", reason }));
   _pendingCompletions.add(completion);

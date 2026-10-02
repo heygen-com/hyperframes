@@ -10,6 +10,15 @@ import {
 
 let dirs: string[] = [];
 
+// Fixed, monotonically increasing mtime stamps: two `new Date()` calls taken
+// moments apart can round to the same value on a coarse-mtime filesystem.
+const CLOCK_START = new Date(2024, 0, 1).getTime();
+let clockTicks = 0;
+function nextStamp(): Date {
+  clockTicks += 1;
+  return new Date(CLOCK_START + clockTicks * 10_000);
+}
+
 function tmpRepoRoot(): string {
   const dir = mkdtempSync(join(tmpdir(), "hf-workspace-build-check-"));
   dirs.push(dir);
@@ -40,11 +49,9 @@ function writeBuiltPackage(
       join(pkgDir, "src", "generated", "audio-fx-runtime-inline.ts"),
     );
   }
-  // dist strictly newer than every src file so a fresh build never reads as
-  // stale — explicit timestamps, not write order, since two writeFileSync
-  // calls can land within the same JS Date.now() tick.
-  const past = new Date(Date.now() - 10_000);
-  const now = new Date();
+  // dist strictly newer than every src file so a fresh build never reads as stale.
+  const past = nextStamp();
+  const now = nextStamp();
   for (const file of srcFiles) utimesSync(file, past, past);
   utimesSync(join(pkgDir, "dist", "index.js"), now, now);
 }
@@ -74,7 +81,8 @@ describe("checkStudioWorkspaceBuild", () => {
     const repoRoot = tmpRepoRoot();
     writeAllBuilt(repoRoot);
     const parsersSrc = join(repoRoot, "packages", "parsers", "src", "index.ts");
-    utimesSync(parsersSrc, new Date(), new Date());
+    const touchedAt = nextStamp();
+    utimesSync(parsersSrc, touchedAt, touchedAt);
 
     const problems = checkStudioWorkspaceBuild(repoRoot);
 
@@ -85,7 +93,8 @@ describe("checkStudioWorkspaceBuild", () => {
     const repoRoot = tmpRepoRoot();
     writeAllBuilt(repoRoot);
     const parsersSrc = join(repoRoot, "packages", "parsers", "src", "index.ts");
-    utimesSync(parsersSrc, new Date(), new Date());
+    const touchedAt = nextStamp();
+    utimesSync(parsersSrc, touchedAt, touchedAt);
     process.env[SKIP_STALE_CHECK_ENV] = "1";
 
     expect(checkStudioWorkspaceBuild(repoRoot)).toEqual([]);

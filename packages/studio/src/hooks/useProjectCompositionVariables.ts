@@ -1,12 +1,10 @@
 import { useCallback, useEffect, useState } from "react";
 import { openComposition, type Composition, type CompositionVariable } from "@hyperframes/sdk";
 import { persistSdkSerialize } from "../utils/sdkCutover";
-import type { EditHistoryKind } from "../utils/editHistory";
 
-/** Records an edit into the studio's undo history (label + kind + per-file before/after). */
+/** Records an edit into the studio's undo history (label + per-file before/after). */
 export type RecordEditFn = (entry: {
   label: string;
-  kind: EditHistoryKind;
   files: Record<string, { before: string; after: string }>;
 }) => Promise<void>;
 
@@ -53,7 +51,7 @@ async function readGroup(
  * full parse, so large projects don't pay N openComposition calls.
  */
 export function useProjectCompositionVariables(
-  fileTree: string[],
+  compositionPaths: string[],
   excludePath: string | null,
   readProjectFile: (path: string) => Promise<string>,
   refreshKey: unknown,
@@ -62,7 +60,7 @@ export function useProjectCompositionVariables(
 
   useEffect(() => {
     let cancelled = false;
-    const htmlFiles = fileTree.filter((p) => p.endsWith(".html") && p !== excludePath);
+    const htmlFiles = compositionPaths.filter((p) => p !== excludePath);
 
     void (async () => {
       const out: CompositionVariableGroup[] = [];
@@ -77,7 +75,7 @@ export function useProjectCompositionVariables(
       cancelled = true;
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [fileTree, excludePath, readProjectFile, refreshKey]);
+  }, [compositionPaths, excludePath, readProjectFile, refreshKey]);
 
   return groups;
 }

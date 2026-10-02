@@ -1,8 +1,21 @@
 import { buildProjectApiPath } from "../../utils/projectRouting";
-import { memo, useCallback, useEffect, useRef, useState } from "react";
-import { buildCompositionThumbnailUrl } from "../../player/components/CompositionThumbnail";
+import { memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { useThumbnailLease } from "../../hooks/useThumbnailLease";
+import {
+  thumbnailScheduler,
+  type ThumbnailRequest,
+  type ThumbnailSnapshot,
+} from "../../player/lib/thumbnailScheduler";
+import {
+  buildCompositionThumbnailUrl,
+  compositionThumbnailRequest,
+  resolveThumbnailSeekTime,
+  THUMBNAIL_SEEK_TIME_SECONDS,
+} from "../../player/components/CompositionThumbnail";
 import { setPreviewMediaMuted } from "../../player/lib/timelineIframeHelpers";
 import { usePlayerStore } from "../../player/store/playerStore";
+import { thumbnailRevisionOf } from "../../player/store/thumbnailSlice";
+import { encodePreviewPath } from "../../player/components/thumbnailUtils";
 import { TIMELINE_COMPOSITION_MIME } from "../../utils/timelineCompositionDrop";
 import { Tooltip } from "../ui/Tooltip";
 
@@ -22,7 +35,6 @@ interface CompositionsTabProps {
 const DEFAULT_PREVIEW_STAGE = { width: 1920, height: 1080 };
 const CARD_W = 80;
 const CARD_H = 45;
-const THUMBNAIL_SEEK_TIME_SECONDS = 3;
 const THUMBNAIL_PLAYBACK_SYNC_ATTEMPTS = 10;
 
 type PreviewWindow = Window & {
@@ -53,17 +65,22 @@ export function resolveCompositionPreviewScale(input: {
   return Math.min(scaleX, scaleY);
 }
 
-export function resolveThumbnailSeekTime(durationSeconds: number | null | undefined): number {
-  if (
-    Number.isFinite(durationSeconds) &&
-    durationSeconds != null &&
-    durationSeconds > 0 &&
-    durationSeconds < THUMBNAIL_SEEK_TIME_SECONDS
-  ) {
-    return durationSeconds / 2;
-  }
+function compositionPreviewUrl(projectId: string, comp: string): string {
+  return buildProjectApiPath(projectId, `/preview/comp/${encodePreviewPath(comp)}`);
+}
 
-  return THUMBNAIL_SEEK_TIME_SECONDS;
+export function compositionCardThumbnailUrl(
+  projectId: string,
+  comp: string,
+  contentRevision: number,
+): string {
+  return buildCompositionThumbnailUrl({
+    previewUrl: compositionPreviewUrl(projectId, comp),
+    seekTime: THUMBNAIL_SEEK_TIME_SECONDS,
+    duration: 0,
+    origin: window.location.origin,
+    contentRevision,
+  });
 }
 
 function parsePositiveNumber(value: string | null): number | null {
@@ -115,6 +132,38 @@ export function syncIframePlayback(iframe: HTMLIFrameElement | null, shouldPlay:
   }
 }
 
+const imageUrlOf = (snapshot: ThumbnailSnapshot) =>
+  snapshot.status === "ready" && snapshot.value.kind === "image" ? snapshot.value.url : null;
+
+// A layout effect takes the old frame's lease before the passive cleanup drops the first one.
+function useLastFrame(request: ThumbnailRequest | null, snapshot: ThumbnailSnapshot) {
+  const current = imageUrlOf(snapshot);
+  const [kept, setKept] = useState<{ request: ThumbnailRequest; url: string } | null>(null);
+  if (request && current && kept?.request !== request) setKept({ request, url: current });
+  useLayoutEffect(() => {
+    if (!kept || kept.request === request) return;
+    const lease = thumbnailScheduler.acquire(kept.request, () => {});
+    return () => lease.release();
+  }, [kept, request]);
+  return current ?? kept?.url ?? null;
+}
+
+function useNearViewport<T extends Element>(): [(element: T | null) => void, boolean] {
+  const [element, setElement] = useState<T | null>(null);
+  const [near, setNear] = useState(false);
+  useEffect(() => {
+    if (!element || near) return;
+    if (typeof IntersectionObserver === "undefined") return setNear(true);
+    const observer = new IntersectionObserver(
+      (entries) => entries.some((entry) => entry.isIntersecting) && setNear(true),
+      { root: element.closest("[data-composition-list]"), rootMargin: "200px" },
+    );
+    observer.observe(element);
+    return () => observer.disconnect();
+  }, [element, near]);
+  return [setElement, near];
+}
+
 function CompCard({
   projectId,
   comp,
@@ -126,6 +175,7 @@ function CompCard({
   lintInfo,
   onAddToTimeline,
   contentRevision,
+  previewBooted,
 }: {
   projectId: string;
   comp: string;
@@ -137,11 +187,11 @@ function CompCard({
   lintInfo?: { count: number; messages: string[] };
   onAddToTimeline?: () => void;
   contentRevision: number;
+  previewBooted: boolean;
 }) {
   const [hovered, setHovered] = useState(false);
   const [stageSize, setStageSize] = useState(DEFAULT_PREVIEW_STAGE);
   const [livePreviewLoaded, setLivePreviewLoaded] = useState(false);
-  const [failedThumbnailUrl, setFailedThumbnailUrl] = useState<string | null>(null);
   const iframeRef = useRef<HTMLIFrameElement | null>(null);
   const hoverTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const syncTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -178,15 +228,23 @@ function CompCard({
     setLivePreviewLoaded(false);
   };
   const name = comp.replace(/^compositions\//, "").replace(/\.html$/, "");
-  const previewUrl = buildProjectApiPath(projectId, `/preview/comp/${comp}`);
-  const thumbnailUrl = buildCompositionThumbnailUrl({
-    previewUrl,
-    seekTime: THUMBNAIL_SEEK_TIME_SECONDS,
-    duration: 0,
-    origin: window.location.origin,
-    contentRevision,
-  });
-  const thumbnailFailed = failedThumbnailUrl === thumbnailUrl;
+  const previewUrl = compositionPreviewUrl(projectId, comp);
+  const thumbnailUrl = compositionCardThumbnailUrl(projectId, comp, contentRevision);
+  const [thumbnailBox, nearViewport] = useNearViewport<HTMLDivElement>();
+  const timelineSessionEpoch = usePlayerStore((state) => state.timelineSessionEpoch);
+  const thumbnailRequest = useMemo(
+    () =>
+      previewBooted && nearViewport
+        ? compositionThumbnailRequest(thumbnailUrl, projectId, {
+            sessionEpoch: timelineSessionEpoch,
+            rich: true,
+          })
+        : null,
+    [previewBooted, nearViewport, thumbnailUrl, projectId, timelineSessionEpoch],
+  );
+  const thumbnail = useThumbnailLease(thumbnailRequest);
+  const frameUrl = useLastFrame(thumbnailRequest, thumbnail);
+  const thumbnailFailed = thumbnail.status === "error";
   const previewScale = resolveCompositionPreviewScale({
     cardWidth: CARD_W,
     cardHeight: CARD_H,
@@ -238,25 +296,26 @@ function CompCard({
       }}
       onPointerEnter={handleEnter}
       onPointerLeave={handleLeave}
-      className={`group/card w-full select-none text-left px-2 py-1.5 flex items-center gap-2.5 transition-colors cursor-grab active:cursor-grabbing outline-none focus-visible:bg-neutral-800/60 ${
+      className={`group/card w-full select-none text-left px-2 py-1.5 flex items-center gap-2.5 transition-colors cursor-grab active:cursor-grabbing outline-hidden focus-visible:bg-neutral-800/60 ${
         isActive
           ? "bg-studio-accent/10 border-l-2 border-studio-accent"
           : "border-l-2 border-transparent hover:bg-neutral-800/50"
       }`}
     >
-      <div className="w-20 h-[45px] rounded overflow-hidden bg-neutral-900 flex-shrink-0 relative">
+      <div
+        ref={thumbnailBox}
+        className="w-20 h-[45px] rounded-sm overflow-hidden bg-neutral-900 shrink-0 relative"
+      >
         {thumbnailFailed ? (
           <div className="absolute inset-0 flex items-center justify-center px-1 text-center text-[8px] leading-tight text-neutral-600">
             Preview unavailable
           </div>
-        ) : (
+        ) : !frameUrl ? null : (
           <img
-            src={thumbnailUrl}
+            src={frameUrl}
             alt=""
             draggable={false}
-            loading="lazy"
             decoding="async"
-            onError={() => setFailedThumbnailUrl(thumbnailUrl)}
             className={`absolute inset-0 h-full w-full object-contain transition-opacity ${
               livePreviewLoaded ? "opacity-0" : "opacity-100"
             }`}
@@ -314,7 +373,7 @@ function CompCard({
           {lintInfo && lintInfo.count > 0 && (
             <span
               aria-label={`${lintInfo.count} lint finding${lintInfo.count === 1 ? "" : "s"}`}
-              className="flex-shrink-0 min-w-[16px] text-center rounded-full bg-amber-500/20 px-1 text-[8px] font-bold text-amber-400"
+              className="shrink-0 min-w-[16px] text-center rounded-full bg-amber-500/20 px-1 text-[8px] font-bold text-warning-ink"
             >
               {lintInfo.count}
             </span>
@@ -331,7 +390,7 @@ function CompCard({
             event.stopPropagation();
             onAddToTimeline();
           }}
-          className="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded text-neutral-600 opacity-0 transition-[color,background-color,opacity] hover:bg-neutral-800 hover:text-studio-accent group-hover/card:opacity-100 group-focus-within/card:opacity-100 focus:opacity-100"
+          className="flex h-8 w-8 shrink-0 items-center justify-center rounded-sm text-neutral-600 opacity-0 transition-[color,background-color,opacity] hover:bg-neutral-800 hover:text-accent-ink group-hover/card:opacity-100 group-focus-within/card:opacity-100 focus:opacity-100"
         >
           <span aria-hidden="true">+</span>
         </button>
@@ -349,10 +408,10 @@ function CompCard({
             // h-6 w-6 = the 24x24 WCAG 2.2 (2.5.8) minimum target; the 14px glyph
             // is unchanged, only the box grows. The sibling "+" button is h-8 w-8,
             // so the card row already has the room.
-            className={`flex h-6 w-6 flex-shrink-0 items-center justify-center rounded transition-colors ${
+            className={`flex h-6 w-6 shrink-0 items-center justify-center rounded transition-colors ${
               isRendering
                 ? "text-neutral-600 cursor-not-allowed"
-                : "text-neutral-600 hover:text-studio-accent hover:bg-neutral-800"
+                : "text-neutral-600 hover:text-accent-ink hover:bg-neutral-800"
             }`}
           >
             <svg
@@ -388,7 +447,8 @@ export const CompositionsTab = memo(function CompositionsTab({
   isRendering,
   lintFindingsByFile,
 }: CompositionsTabProps) {
-  const contentRevision = usePlayerStore((state) => state.thumbnailContentRevision);
+  const thumbnailRevisions = usePlayerStore((state) => state.thumbnailRevisions);
+  const previewBooted = usePlayerStore((state) => state.previewBooted);
   if (compositions.length === 0) {
     return (
       <div className="flex-1 flex items-center justify-center px-4">
@@ -398,7 +458,7 @@ export const CompositionsTab = memo(function CompositionsTab({
   }
 
   return (
-    <div className="flex-1 overflow-y-auto">
+    <div className="flex-1 overflow-y-auto" data-composition-list>
       {compositions.map((comp) => (
         <CompCard
           key={`${projectId}:${comp}`}
@@ -411,7 +471,8 @@ export const CompositionsTab = memo(function CompositionsTab({
           onAddToTimeline={onAddToTimeline ? () => onAddToTimeline(comp) : undefined}
           isRendering={isRendering}
           lintInfo={lintFindingsByFile?.get(comp)}
-          contentRevision={contentRevision}
+          contentRevision={thumbnailRevisionOf(thumbnailRevisions, comp)}
+          previewBooted={previewBooted}
         />
       ))}
     </div>

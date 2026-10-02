@@ -81,7 +81,7 @@ describe("FlatColorGradingAccessory", () => {
     const dot = host.querySelector('[data-flat-grade-status-dot="true"]');
     expect(dot).not.toBeNull();
     expect(dot?.getAttribute("title")).toBe("Shader active");
-    expect(dot?.className).toContain("bg-emerald-400");
+    expect(dot?.className).toContain("bg-accent");
     act(() => root.unmount());
   });
 

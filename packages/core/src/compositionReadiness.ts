@@ -1,3 +1,8 @@
+import { createRuntimeStartTimeResolver } from "./runtime/startResolver.js";
+import { isRuntimeElementVisibleAt } from "./runtime/timeline.js";
+import type { RuntimeTimelineLike } from "./runtime/types.js";
+import { STUDIO_PREVIEW_MARK_META } from "./studioPreviewMark.js";
+
 /** A composition is "ready" once every declared input settles, not just once
  * its duration is known. Each input returns null (nothing to wait on) or a
  * promise that resolves once it settles, and must stop its own pending work
@@ -12,6 +17,14 @@ export interface PendingCompositionAssets {
   pendingMedia: HTMLMediaElement[];
   pendingImages: HTMLImageElement[];
   fontsLoading: boolean;
+}
+
+export type CompositionReadinessScope = "all" | "first-frame";
+
+export const FIRST_FRAME_READINESS_SCOPE: CompositionReadinessScope = "first-frame";
+
+export interface CompositionReadinessOptions {
+  scope?: CompositionReadinessScope;
 }
 
 // HTMLMediaElement.HAVE_FUTURE_DATA per spec, used as a literal because not
@@ -37,12 +50,84 @@ export function isRealmHtmlMediaElement(node: Node): node is HTMLMediaElement {
   return node instanceof HTMLMediaElement;
 }
 
+function isTimedElement(element: Element): boolean {
+  return element.hasAttribute("data-start") || element.hasAttribute("data-track-index");
+}
+
+function isActiveAtFirstFrame(
+  element: Element,
+  resolver: ReturnType<typeof createRuntimeStartTimeResolver>,
+  timelineRegistry: Record<string, RuntimeTimelineLike | undefined>,
+): boolean {
+  let current: Element | null = element;
+  while (current) {
+    if (isTimedElement(current)) {
+      if (
+        !isRuntimeElementVisibleAt(current as HTMLElement, {
+          currentTime: 0,
+          compositionDuration: Number.POSITIVE_INFINITY,
+          canonicalFps: 30,
+          exportRenderSeek: false,
+          timelineRegistry,
+          resolver,
+        })
+      )
+        return false;
+    }
+    current = current.parentElement;
+  }
+  return true;
+}
+
+function shouldIncludeAsset(
+  element: Element,
+  scope: CompositionReadinessScope,
+  resolver: ReturnType<typeof createRuntimeStartTimeResolver>,
+  timelineRegistry: Record<string, RuntimeTimelineLike | undefined>,
+): boolean {
+  if (scope === "all") return true;
+  return isActiveAtFirstFrame(element, resolver, timelineRegistry);
+}
+
 /** One DOM pass for every declared-media asset not yet ready. */
-export function scanPendingCompositionAssets(doc: Document): PendingCompositionAssets {
+export function scanPendingCompositionAssets(
+  doc: Document,
+  { scope = "all" }: CompositionReadinessOptions = {},
+): PendingCompositionAssets {
+  const runtimeWindow = doc.defaultView as
+    | (Window & {
+        __timelines?: Record<string, import("./runtime/types").RuntimeTimelineLike | undefined>;
+      })
+    | null;
+  const resolver = createRuntimeStartTimeResolver({
+    documentRef: doc,
+    timelineRegistry: runtimeWindow?.__timelines,
+    includeAuthoredTimingAttrs: true,
+  });
+  // Studio's preview buffers a clip off the first frame only once it comes due, as with a lazy image.
+  const defersMedia = doc.querySelector(`meta[name="${STUDIO_PREVIEW_MARK_META}"]`) !== null;
   const pendingMedia = Array.from(doc.querySelectorAll("video, audio"))
     .filter(isRealmHtmlMediaElement)
+    .filter((el) =>
+      shouldIncludeAsset(
+        el,
+        defersMedia && el.preload !== "auto" ? FIRST_FRAME_READINESS_SCOPE : scope,
+        resolver,
+        runtimeWindow?.__timelines ?? {},
+      ),
+    )
     .filter((el) => el.readyState < HAVE_FUTURE_DATA);
-  const pendingImages = Array.from(doc.querySelectorAll("img")).filter((img) => !img.complete);
+  // A lazy image off the first frame loads only once shown, so no scope can wait on it.
+  const pendingImages = Array.from(doc.querySelectorAll("img"))
+    .filter((img) =>
+      shouldIncludeAsset(
+        img,
+        img.getAttribute("loading")?.toLowerCase() === "lazy" ? FIRST_FRAME_READINESS_SCOPE : scope,
+        resolver,
+        runtimeWindow?.__timelines ?? {},
+      ),
+    )
+    .filter((img) => !img.complete);
   const fontsLoading = doc.fonts?.status === "loading";
   return { pendingMedia, pendingImages, fontsLoading };
 }
@@ -82,8 +167,12 @@ function collectPendingCompositionAssets(
 
 /** Declared-media readiness input: waits on the composition's own video,
  * audio, image and font-face loads. */
-export function mediaReadinessInput(doc: Document, signal: AbortSignal): Promise<void> | null {
-  const scan = scanPendingCompositionAssets(doc);
+export function mediaReadinessInput(
+  doc: Document,
+  signal: AbortSignal,
+  { scope = "all" }: CompositionReadinessOptions = {},
+): Promise<void> | null {
+  const scan = scanPendingCompositionAssets(doc, { scope });
   if (scan.pendingMedia.length === 0 && scan.pendingImages.length === 0 && !scan.fontsLoading) {
     return null;
   }
@@ -96,7 +185,8 @@ const RENDER_READY_POLL_MS = 50;
 // file lives under src/runtime — excluded from this package's own build
 // program (see tsconfig.json) — so it isn't visible here. Same flag, declared
 // locally instead of depending on a global merge from outside this file's scope.
-interface RuntimeReadinessWindow extends Window {
+// `__hf` is omitted from Window so the runtime program's strict shape can't conflict with `unknown`.
+interface RuntimeReadinessWindow extends Omit<Window, "__hf"> {
   __renderReady?: boolean;
   // __renderReady is only ever set by init.ts, which always sets __hf
   // first (`window.__hf = window.__hf || {}`) — a doc with no __hf can
@@ -160,15 +250,18 @@ function nextAnimationFrame(win: Window, signal: AbortSignal): Promise<number> {
       resolve(-1);
       return;
     }
-    const id = win.requestAnimationFrame((ts) => {
-      signal.removeEventListener("abort", onAbort);
-      resolve(ts);
-    });
+    let id = 0;
     const onAbort = () => {
       win.cancelAnimationFrame?.(id);
       resolve(-1);
     };
     signal.addEventListener("abort", onAbort, { once: true });
+    // A host whose rAF calls back synchronously reaches onAbort in the
+    // callback, so it must already be declared above.
+    id = win.requestAnimationFrame((ts) => {
+      signal.removeEventListener("abort", onAbort);
+      resolve(ts);
+    });
   });
 }
 
@@ -212,10 +305,13 @@ export interface CompositionReadinessResult {
 export function settleCompositionReadiness(
   doc: Document,
   onSettled: (result: CompositionReadinessResult) => void,
-  opts: { inputs?: CompositionReadinessInput[]; timeoutMs?: number } = {},
+  opts: CompositionReadinessOptions & {
+    inputs?: CompositionReadinessInput[];
+    timeoutMs?: number;
+  } = {},
 ): void {
   const inputs = opts.inputs ?? [
-    mediaReadinessInput,
+    (inputDoc, signal) => mediaReadinessInput(inputDoc, signal, { scope: opts.scope }),
     computeReadinessInput,
     paintAndIdleReadinessInput,
   ];
@@ -241,5 +337,22 @@ export function settleCompositionReadiness(
     clearTimeout(timeoutId);
     controller.abort();
     onSettled({ timedOut: result === "timed-out" });
+  });
+}
+
+export function settleFirstFrameCompositionReadiness(
+  doc: Document,
+  onSettled: (result: CompositionReadinessResult) => void,
+  opts: Omit<
+    CompositionReadinessOptions & {
+      inputs?: CompositionReadinessInput[];
+      timeoutMs?: number;
+    },
+    "scope"
+  > = {},
+): void {
+  settleCompositionReadiness(doc, onSettled, {
+    ...opts,
+    scope: FIRST_FRAME_READINESS_SCOPE,
   });
 }

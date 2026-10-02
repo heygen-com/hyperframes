@@ -261,3 +261,46 @@ describe("usePlaybackKeyboard — mute & loop shortcuts (#905)", () => {
     expect(usePlayerStore.getState().loopEnabled).toBe(false);
   });
 });
+
+describe("usePlaybackKeyboard — a focused native player owns its keys", () => {
+  const KEYS = [
+    { code: "ArrowLeft", key: "ArrowLeft" },
+    { code: "ArrowRight", key: "ArrowRight" },
+    { code: "Space", key: " " },
+    { code: "KeyJ", key: "j" },
+    { code: "KeyK", key: "k" },
+    { code: "KeyL", key: "l" },
+  ];
+
+  it.each(["video", "audio"])(
+    "leaves the timeline alone while a <%s controls> has focus",
+    (tag) => {
+      const { dispatch, spies } = setupHook();
+      const player = document.createElement(tag);
+      player.setAttribute("controls", "");
+      document.body.append(player);
+      const before = usePlayerStore.getState().currentTime;
+      for (const init of KEYS) {
+        const event = keydown(init);
+        Object.defineProperty(event, "target", { value: player });
+        dispatch(event);
+        expect(event.defaultPrevented, init.code).toBe(false);
+      }
+      expect(spies.seek).not.toHaveBeenCalled();
+      expect(spies.play).not.toHaveBeenCalled();
+      expect(spies.playBackward).not.toHaveBeenCalled();
+      expect(spies.pause).not.toHaveBeenCalled();
+      expect(usePlayerStore.getState().currentTime).toBe(before);
+    },
+  );
+
+  it("still steps the timeline from a player without controls", () => {
+    const { dispatch } = setupHook();
+    const video = document.createElement("video");
+    document.body.append(video);
+    const event = keydown({ code: "ArrowRight", key: "ArrowRight" });
+    Object.defineProperty(event, "target", { value: video });
+    dispatch(event);
+    expect(event.defaultPrevented).toBe(true);
+  });
+});

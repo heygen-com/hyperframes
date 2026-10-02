@@ -6,6 +6,7 @@ import { installReactActEnvironment, makeSelection } from "../../hooks/domSelect
 import { useDomEditNudge, type UseDomEditNudgeParams } from "./useDomEditNudge";
 import { CANVAS_NUDGE_COMMIT_DEBOUNCE_MS, CANVAS_NUDGE_STEP_PX } from "./domEditNudge";
 import { __resetForTests } from "../../utils/canvasNudgeGate";
+import { flushStudioPendingEdits, hasStudioPendingEdits } from "../../utils/studioPendingEdits";
 import type { DomEditSelection } from "./domEditing";
 import type { OverlayRect } from "./domEditOverlayGeometry";
 
@@ -27,6 +28,7 @@ const REST_RECT: OverlayRect = {
 // Stable across renders on purpose: the test targets the `selection` identity
 // key specifically, so `groupSelections` must not itself be a source of churn.
 const EMPTY_GROUP_SELECTIONS: DomEditSelection[] = [];
+let flushNudge = () => {};
 
 function Harness({
   selection,
@@ -35,7 +37,7 @@ function Harness({
   selection: DomEditSelection | null;
   onPathOffsetCommit: UseDomEditNudgeParams["onPathOffsetCommitRef"]["current"];
 }) {
-  useDomEditNudge({
+  flushNudge = useDomEditNudge({
     selection,
     groupSelections: EMPTY_GROUP_SELECTIONS,
     allowCanvasMovement: true,
@@ -46,9 +48,10 @@ function Harness({
     groupGestureRef: makeRef(null),
     blockedMoveRef: makeRef(null),
     onManualDragStartRef: makeRef(() => {}),
+    onBlockedMoveRef: makeRef(() => {}),
     onPathOffsetCommitRef: makeRef(onPathOffsetCommit),
     onGroupPathOffsetCommitRef: makeRef(async () => {}),
-  });
+  }).flushNudge;
   return null;
 }
 
@@ -121,6 +124,37 @@ describe("useDomEditNudge — selection cleanup keyed on stable identity", () =>
     act(() => root.unmount());
     host.remove();
     element.remove();
+  });
+
+  it("leaves arrows on a focused slider alone", () => {
+    const host = document.createElement("div");
+    document.body.append(host);
+    const root = createRoot(host);
+    const element = document.createElement("div");
+    element.id = "dot-a";
+    const slider = document.createElement("div");
+    slider.setAttribute("role", "slider");
+    document.body.append(element, slider);
+    const commit = vi.fn();
+    act(() => {
+      root.render(
+        React.createElement(Harness, {
+          selection: makeSelection("Dot", element),
+          onPathOffsetCommit: commit,
+        }),
+      );
+    });
+    act(() => {
+      slider.dispatchEvent(
+        new KeyboardEvent("keydown", { key: "ArrowRight", bubbles: true, cancelable: true }),
+      );
+      vi.advanceTimersByTime(CANVAS_NUDGE_COMMIT_DEBOUNCE_MS + 10);
+    });
+    expect(commit).not.toHaveBeenCalled();
+    act(() => root.unmount());
+    host.remove();
+    element.remove();
+    slider.remove();
   });
 
   it("still flushes the burst when the selection actually changes to a different element", () => {
@@ -224,5 +258,168 @@ describe("useDomEditNudge — selection cleanup keyed on stable identity", () =>
     host.remove();
     elementA.remove();
     elementB.remove();
+  });
+});
+
+describe("useDomEditNudge — a focused native player owns the arrow keys", () => {
+  beforeEach(() => {
+    vi.useFakeTimers();
+    __resetForTests();
+  });
+  let root: ReturnType<typeof createRoot> | null = null;
+  afterEach(() => {
+    act(() => root?.unmount());
+    root = null;
+    document.body.innerHTML = "";
+    vi.useRealTimers();
+  });
+
+  it.each(["video", "audio"])(
+    "does not nudge the selection while a <%s controls> has focus",
+    (tag) => {
+      root = createRoot(document.body.appendChild(document.createElement("div")));
+      const element = document.body.appendChild(document.createElement("div"));
+      element.id = "dot";
+      const player = document.body.appendChild(document.createElement(tag));
+      player.setAttribute("controls", "");
+      const commit = vi.fn();
+      act(() => {
+        root?.render(
+          React.createElement(Harness, {
+            selection: makeSelection("Dot", element),
+            onPathOffsetCommit: commit,
+          }),
+        );
+      });
+      const event = new KeyboardEvent("keydown", {
+        key: "ArrowRight",
+        bubbles: true,
+        cancelable: true,
+      });
+      act(() => {
+        player.dispatchEvent(event);
+        vi.advanceTimersByTime(CANVAS_NUDGE_COMMIT_DEBOUNCE_MS + 10);
+      });
+      expect(event.defaultPrevented).toBe(false);
+      expect(commit).not.toHaveBeenCalled();
+    },
+  );
+});
+
+describe("useDomEditNudge carries the route its press chose", () => {
+  beforeEach(() => {
+    vi.useFakeTimers();
+    __resetForTests();
+  });
+  afterEach(() => vi.useRealTimers());
+
+  it("commits an element without GSAP on the CSS route", () => {
+    const host = document.createElement("div");
+    const root = createRoot(host);
+    const element = document.createElement("div");
+    document.body.append(element);
+    const commit = vi.fn();
+    act(() => {
+      root.render(
+        React.createElement(Harness, {
+          selection: makeSelection("Dot", element),
+          onPathOffsetCommit: commit,
+        }),
+      );
+    });
+    act(() => dispatchArrowRight());
+    act(() => vi.advanceTimersByTime(CANVAS_NUDGE_COMMIT_DEBOUNCE_MS + 10));
+    expect(commit).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.anything(),
+      expect.objectContaining({ plainTranslate: true }),
+    );
+    act(() => root.unmount());
+    element.remove();
+  });
+});
+
+describe("useDomEditNudge — undo right after a burst", () => {
+  it("undo's drain commits a burst still inside its debounce and waits for its save", async () => {
+    __resetForTests();
+    vi.useFakeTimers();
+    const root = createRoot(document.body.appendChild(document.createElement("div")));
+    const element = document.body.appendChild(document.createElement("div"));
+    element.id = "dot-undo";
+    let saved!: () => void;
+    const commit = vi.fn(() => new Promise<void>((resolve) => (saved = resolve)));
+    act(() => {
+      root.render(
+        React.createElement(Harness, {
+          selection: makeSelection("Dot", element),
+          onPathOffsetCommit: commit,
+        }),
+      );
+    });
+    act(() => dispatchArrowRight());
+
+    let drained = false;
+    const drain = flushStudioPendingEdits().then(() => (drained = true));
+    expect(commit).toHaveBeenCalledTimes(1);
+    vi.useRealTimers();
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    expect(drained).toBe(false);
+    saved();
+    await drain;
+    expect(drained).toBe(true);
+    act(() => root.unmount());
+  });
+
+  it("counts the burst as a pending edit from its first key until its save lands", async () => {
+    __resetForTests();
+    vi.useFakeTimers();
+    const root = createRoot(document.body.appendChild(document.createElement("div")));
+    const element = document.body.appendChild(document.createElement("div"));
+    element.id = "dot-pending";
+    let saved!: () => void;
+    const commit = vi.fn(() => new Promise<void>((resolve) => (saved = resolve)));
+    act(() => {
+      root.render(
+        React.createElement(Harness, {
+          selection: makeSelection("Dot", element),
+          onPathOffsetCommit: commit,
+        }),
+      );
+    });
+    expect(hasStudioPendingEdits()).toBe(false);
+    act(() => dispatchArrowRight());
+    expect(hasStudioPendingEdits()).toBe(true);
+    act(() => vi.advanceTimersByTime(CANVAS_NUDGE_COMMIT_DEBOUNCE_MS + 10));
+    expect(commit).toHaveBeenCalledTimes(1);
+    expect(hasStudioPendingEdits()).toBe(true);
+    vi.useRealTimers();
+    saved();
+    await vi.waitFor(() => expect(hasStudioPendingEdits()).toBe(false));
+    act(() => root.unmount());
+  });
+});
+
+describe("useDomEditNudge — a commit that throws", () => {
+  it("still ends the burst's pending edit, so undo and export never wait on it", async () => {
+    __resetForTests();
+    const root = createRoot(document.body.appendChild(document.createElement("div")));
+    const element = document.body.appendChild(document.createElement("div"));
+    element.id = "dot-throws";
+    const commit = vi.fn(() => {
+      throw new Error("The commit threw.");
+    });
+    act(() => {
+      root.render(
+        React.createElement(Harness, {
+          selection: makeSelection("Dot", element),
+          onPathOffsetCommit: commit,
+        }),
+      );
+    });
+    act(() => dispatchArrowRight());
+    expect(hasStudioPendingEdits()).toBe(true);
+    expect(() => flushNudge()).toThrow("The commit threw.");
+    await vi.waitFor(() => expect(hasStudioPendingEdits()).toBe(false));
+    act(() => root.unmount());
   });
 });

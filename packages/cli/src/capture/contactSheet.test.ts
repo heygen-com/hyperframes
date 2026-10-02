@@ -1,4 +1,12 @@
-import { existsSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import {
+  existsSync,
+  lstatSync,
+  mkdtempSync,
+  readFileSync,
+  rmSync,
+  symlinkSync,
+  writeFileSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import sharp from "sharp";
@@ -14,20 +22,12 @@ function tempDir(): string {
 }
 
 describe("createContactSheet", () => {
-  // Sharp on Windows CI runners exercises a native-binary fork per operation
-  // and the runner's I/O throughput varies with concurrent-job pressure. The
-  // default 20s ceiling has landed just-over the wall clock repeatedly (see
-  // PR #2492's earlier lightweighting attempt); the actual work here — two
-  // 16×9 PNG writes + one contact-sheet composite + one metadata probe —
-  // is milliseconds of compute, so the extra ceiling only absorbs runner
-  // I/O jitter, it does not hide a real slowdown.
   it("writes PNG output when the output path uses a .png extension", async () => {
     const dir = tempDir();
     try {
       const a = join(dir, "a.png");
       const b = join(dir, "b.png");
       const out = join(dir, "sheet.png");
-      console.time("sharp.toFile(a)");
       await sharp({
         create: {
           width: 16,
@@ -38,8 +38,6 @@ describe("createContactSheet", () => {
       })
         .png()
         .toFile(a);
-      console.timeEnd("sharp.toFile(a)");
-      console.time("sharp.toFile(b)");
       await sharp({
         create: {
           width: 16,
@@ -50,9 +48,7 @@ describe("createContactSheet", () => {
       })
         .png()
         .toFile(b);
-      console.timeEnd("sharp.toFile(b)");
 
-      console.time("createContactSheet");
       await createContactSheet([a, b], out, {
         cols: 2,
         cellWidth: 16,
@@ -60,15 +56,53 @@ describe("createContactSheet", () => {
         labels: ["A", "B"],
         maxImages: 2,
       });
-      console.timeEnd("createContactSheet");
 
-      console.time("sharp(out).metadata()");
+      // format alone would pass even if the SVG label overlay silently drew
+      // nothing (e.g. Fontconfig misconfigured): the label band (default
+      // padding=4, labelH=26 in contactSheet.ts) must contain pixels that
+      // aren't the label background (#1a1a1a), not just an empty rect.
+      const { data, info } = await sharp(out).raw().toBuffer({ resolveWithObject: true });
+      let nonBackgroundPixels = 0;
+      for (let y = 4; y < 30; y++) {
+        for (let x = 0; x < info.width; x++) {
+          const i = (y * info.width + x) * info.channels;
+          if (data[i] !== 26 || data[i + 1] !== 26 || data[i + 2] !== 26) nonBackgroundPixels++;
+        }
+      }
+      expect(nonBackgroundPixels).toBeGreaterThan(0);
       await expect(sharp(out).metadata()).resolves.toMatchObject({ format: "png" });
-      console.timeEnd("sharp(out).metadata()");
     } finally {
       rmSync(dir, { recursive: true, force: true });
     }
   }, 60_000);
+
+  it.skipIf(process.platform === "win32")(
+    "replaces a pre-planted symlink at the sheet path instead of writing through it",
+    async () => {
+      const dir = tempDir();
+      try {
+        const image = join(dir, "a.png");
+        const victim = join(dir, "victim.txt");
+        const out = join(dir, "contact-sheet.jpg");
+        await sharp({
+          create: { width: 16, height: 9, channels: 3, background: { r: 255, g: 0, b: 0 } },
+        })
+          .png()
+          .toFile(image);
+        writeFileSync(victim, "do not touch");
+        symlinkSync(victim, out);
+
+        await createContactSheet([image], out, { cellWidth: 16, maxImages: 1 });
+
+        expect(readFileSync(victim, "utf8")).toBe("do not touch");
+        await expect(sharp(out).metadata()).resolves.toMatchObject({ format: "jpeg" });
+        expect(lstatSync(out).isSymbolicLink()).toBe(false);
+      } finally {
+        rmSync(dir, { recursive: true, force: true });
+      }
+    },
+    60_000,
+  );
 });
 
 describe("contact-sheet capture budget", () => {

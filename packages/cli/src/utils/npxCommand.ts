@@ -3,15 +3,30 @@ export type NpxCommand = {
   args: string[];
 };
 
+/** npm installs `name` as a `.cmd` shim on Windows; invoke it through cmd.exe
+ * instead of relying on child_process to resolve or execute the shim, or on
+ * `shell: true` with hand-rolled argument quoting. */
+function buildCmdShimCommand(
+  name: string,
+  args: readonly string[],
+  platform: NodeJS.Platform,
+): NpxCommand {
+  if (platform === "win32") {
+    return { command: "cmd.exe", args: ["/d", "/s", "/c", `${name}.cmd`, ...args] };
+  }
+  return { command: name, args: [...args] };
+}
+
 export function buildNpxCommand(
   args: readonly string[],
   platform: NodeJS.Platform = process.platform,
 ): NpxCommand {
-  if (platform === "win32") {
-    // npm installs npx as a .cmd shim on Windows; invoke it through cmd.exe
-    // instead of relying on child_process to resolve or execute the shim.
-    return { command: "cmd.exe", args: ["/d", "/s", "/c", "npx.cmd", ...args] };
-  }
+  return buildCmdShimCommand("npx", args, platform);
+}
 
-  return { command: "npx", args: [...args] };
+export function buildNpmCommand(
+  args: readonly string[],
+  platform: NodeJS.Platform = process.platform,
+): NpxCommand {
+  return buildCmdShimCommand("npm", args, platform);
 }

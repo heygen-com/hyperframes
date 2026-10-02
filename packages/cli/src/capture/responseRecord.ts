@@ -1,4 +1,4 @@
-import { writeFileSync } from "node:fs";
+import { writeCaptureFileSync } from "./captureFile.js";
 import { join } from "node:path";
 
 /**
@@ -24,7 +24,7 @@ export interface CaptureResponseRecord {
 
 /** Writes the record into an already-created `extracted/` directory. */
 export function writeResponseRecord(extractedDir: string, record: CaptureResponseRecord): void {
-  writeFileSync(
+  writeCaptureFileSync(
     join(extractedDir, RESPONSE_RECORD_FILENAME),
     JSON.stringify(record, null, 2),
     "utf-8",

@@ -67,11 +67,6 @@ describe("isMainTrackElement", () => {
   it("is false for an audio clip even on track 0 (audio-only project has no main track)", () => {
     expect(isMainTrackElement(el("m", "audio", 0))).toBe(false);
   });
-
-  it("is false for an inline-expanded sub-composition child on track 0", () => {
-    const child: TimelineElement = { ...el("c", "video", 0), expandedParentStart: 4 };
-    expect(isMainTrackElement(child)).toBe(false);
-  });
 });
 
 describe("normalizeToZones — CapCut-stable lanes follow the track-index (never z)", () => {
@@ -171,6 +166,24 @@ describe("normalizeToZones — CapCut-stable lanes follow the track-index (never
 });
 
 describe("normalizeToZones — legacy overlap spill (display-only, deterministic)", () => {
+  it("keeps a labelled transition pair on one row", () => {
+    const transitionLabel = "hf:transition:outgoing:incoming:crossfade";
+    const out = normalizeToZones([
+      { ...zClip("outgoing", 0, 2.5, 0, 0), transitionLabel },
+      { ...zClip("incoming", 2, 2.5, 0, 0), transitionLabel },
+    ]);
+    expect(trackOf(out, "outgoing")).toBe(0);
+    expect(trackOf(out, "incoming")).toBe(0);
+  });
+
+  it("still splits an unlabelled overlap", () => {
+    const out = normalizeToZones([
+      zClip("outgoing", 0, 2.5, 0, 0),
+      zClip("incoming", 2, 2.5, 0, 0),
+    ]);
+    expect(trackOf(out, "outgoing")).not.toBe(trackOf(out, "incoming"));
+  });
+
   it("splits time-overlapping SAME-track clips onto adjacent sub-lanes (no visible overlap)", () => {
     // a [0,5), b [2,7) overlaps a, c [6,9) sequential — all authored on track 1.
     // The editor forbids per-track overlap, but a legacy file can carry it; the

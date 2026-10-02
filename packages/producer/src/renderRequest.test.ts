@@ -181,6 +181,7 @@ describe("RenderRequest", () => {
       {},
       { ...value.options.engineConfig, protocolTimeout: "forever" },
       { ...value.options.engineConfig, browserGpuMode: "turbo" },
+      { ...value.options.engineConfig, streamingEncodeDurationCapEnabled: "true" },
     ]) {
       expect(() =>
         parseRenderRequest({ ...value, options: { ...value.options, engineConfig } }),
@@ -191,6 +192,7 @@ describe("RenderRequest", () => {
       {},
       { ...value.options.engineConfig, protocolTimeout: "forever" },
       { ...value.options.engineConfig, browserGpuMode: "turbo" },
+      { ...value.options.engineConfig, streamingEncodeDurationCapEnabled: "true" },
     ]) {
       const distributed = distributedConfigFromRequest(value);
       (distributed as { engineConfig: unknown }).engineConfig = engineConfig;
@@ -341,5 +343,27 @@ describe("RenderRequest", () => {
         "Distributed render does not support gif",
       );
     });
+  });
+});
+
+describe("segmented resume flags", () => {
+  it("carries resumeSegments and keepSegments from the request into the render config", () => {
+    const req = createRenderRequest({
+      projectDir: "/project",
+      outputPath: "/output/video.mp4",
+      engineConfig: { ...DEFAULT_CONFIG },
+      options: {
+        fps: { num: 30, den: 1 },
+        quality: "high",
+        format: "mp4",
+        gifLoop: 0,
+        strictness: "best-effort",
+        resumeSegments: true,
+        keepSegments: true,
+      },
+    });
+    const config = renderConfigFromRequest(req);
+    expect(config.resumeSegments).toBe(true);
+    expect(config.keepSegments).toBe(true);
   });
 });

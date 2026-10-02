@@ -3,6 +3,8 @@ name: hyperframes-core
 description: The HyperFrames composition contract — build one renderable project. Use for composition structure, the `data-*` timing attributes, `class="clip"`, tracks, sub-compositions, variables, framework-owned media playback, deterministic-render rules, and validation. Read before writing composition HTML.
 ---
 
+**Plugin installs:** Before setup or freshness commands, follow [plugin execution rules](../hyperframes/references/plugin-installation.md) when this skill is inside a HyperFrames plugin. Standalone installs keep the update instructions below.
+
 # HyperFrames Core
 
 **Agent pitfalls (read first):**
@@ -18,18 +20,18 @@ This skill is the **technical contract** — how to build one hyperframes projec
 
 ## References
 
-| File                                    | Read it to…                                                                                               |
-| --------------------------------------- | --------------------------------------------------------------------------------------------------------- |
-| `references/minimal-composition.md`     | start from the smallest renderable composition skeleton                                                   |
-| `references/composition-patterns.md`    | choose monolithic vs modular; structure a modular `index.html`; pick a sub-comp archetype                 |
-| `references/data-attributes.md`         | look up any `data-*` (root / clip / sub-comp host / legacy aliases); use `class="clip"`                   |
-| `references/tracks-and-clips.md`        | understand what `data-track-index` does (and does not) control, z-index, time a clip relative to another  |
-| `references/creator-editing-recipes.md` | copy truthful cut/trim/reorder/retime/freeze/camera/mask/crossfade/audio editing recipes and their limits |
-| `references/sub-compositions.md`        | wire a sub-composition (host attrs, `<template>`, per-instance vars) and animate inside it                |
-| `references/variables-and-media.md`     | declare variables; place `<video>`/`<audio>`, set volume, trim                                            |
-| `references/determinism-rules.md`       | build a seekable timeline; determinism bans; layout / text fit                                            |
-| `references/full-screen-motion.md`      | author full-frame motion with shared backgrounds                                                          |
-| `references/tailwind.md`                | work in a Tailwind v4 project (`init --tailwind`; runtime contract differs from Studio's v3)              |
+| File                                    | Read it to…                                                                                                                                                         |
+| --------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `references/minimal-composition.md`     | start from the smallest renderable composition skeleton                                                                                                             |
+| `references/composition-patterns.md`    | choose monolithic vs modular; structure a modular `index.html`; pick a sub-comp archetype                                                                           |
+| `references/data-attributes.md`         | look up any `data-*` (root / clip / sub-comp host / legacy aliases); use `class="clip"`                                                                             |
+| `references/tracks-and-clips.md`        | understand what `data-track-index` does (and does not) control, z-index, time a clip relative to another; list every track and clip with `npx hyperframes timeline` |
+| `references/creator-editing-recipes.md` | copy truthful cut/trim/reorder/retime/freeze/camera/mask/crossfade/audio editing recipes and their limits                                                           |
+| `references/sub-compositions.md`        | wire a sub-composition (host attrs, `<template>`, per-instance vars) and animate inside it                                                                          |
+| `references/variables-and-media.md`     | declare variables; place `<video>`/`<audio>`, set volume, trim                                                                                                      |
+| `references/determinism-rules.md`       | build a seekable timeline; determinism bans; layout / text fit                                                                                                      |
+| `references/full-screen-motion.md`      | author full-frame motion with shared backgrounds                                                                                                                    |
+| `references/tailwind.md`                | work in a Tailwind v4 project (`init --tailwind`; runtime contract differs from Studio's v3)                                                                        |
 
 For animation runtime specifics (GSAP API, Lottie, Three.js, etc.) go to `hyperframes-animation` → `adapters/<runtime>.md`.
 
@@ -71,7 +73,7 @@ A lint **error** also switches off the layout and contrast audits: `check` then 
 
 Surfaced here; full rationale in the linked reference. Do not violate:
 
-- No render-time clocks / unseeded `Math.random` / network / input-state; no `repeat: -1` (use a finite count). → `determinism-rules.md`
+- No render-time clocks / unseeded `Math.random` / network / input-state; `repeat: -1` only under a finite root `data-duration` (export clips to it — otherwise use a finite count). → `determinism-rules.md`
 - Never tween `display`, `visibility`, or `autoAlpha` on a `.clip` element. The framework owns clip visibility, and `lint` rejects it (`gsap_animates_clip_element`). Animate a child instead. → `determinism-rules.md`
 - No `<br>` in body text; transformed elements must be block-level + sized; pulsing absolute decoratives need peak clearance. → `determinism-rules.md`
 - `<video>`/`<audio>` are found by a flat document query, so the framework seeks and decodes them at **any nesting depth** (including inside a sub-comp `<template>` or wrapper). One hard limit: `lint` errors if a `<video data-start>` sits inside another **plain** element that also has `data-start`, and the failure is real (wrong source frames, then the clip vanishes mid-slot), so put the timing on the wrapper or on the video, never both. Sub-composition hosts are exempt: media inside a sub-composition renders correctly. The other caveat is timelines, not placement: a sub-comp timeline can't animate host-root elements. → `variables-and-media.md`
@@ -81,8 +83,10 @@ Surfaced here; full rationale in the linked reference. Do not violate:
 ## Editing existing compositions
 
 - Read the files first. Preserve unrelated timing, tracks, IDs, variables, media paths.
+- To know what is on a project's timeline (tracks, clips, starts, ends, what plays), run `npx hyperframes timeline [--json]` instead of reading `index.html` and every sub-composition file.
 - Match existing composition IDs and timeline keys.
 - Adding a clip: set its `data-start`/`data-duration` intentionally against the clips around it. `data-track-index` is a Studio display lane, not a timing constraint, so it does not need to be free.
+- A clip that ends past the root `data-duration` is cut off: extend the root `data-duration` to the clip's end in the same edit (`lint` warns `clip_ends_past_root_duration`).
 - `data-hidden` on any composition element hides it in BOTH preview and render, overriding its time window; it is non-destructive/reversible and toggled by Studio's timeline eye icon.
 - Adding a sub-composition: verify its internal `data-composition-id` before wiring the host.
 

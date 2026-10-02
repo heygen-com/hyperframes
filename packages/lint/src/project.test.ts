@@ -269,6 +269,20 @@ describe("missing_or_empty_sub_composition", () => {
     expect(finding?.message).toContain("does not exist");
   });
 
+  it("errors, instead of crashing, when the referenced sub-composition is a folder", async () => {
+    const project = makeProject(htmlWithSubComp("compositions/scene-title"), {});
+    mkdirSync(join(project, "compositions", "scene-title"));
+    writeFileSync(join(project, "compositions", "scene-title", "index.html"), validSubCompHtml());
+    const { results } = await lintProject(project);
+    const finding = results
+      .flatMap((r) => r.result.findings)
+      .find((f) => f.code === "missing_or_empty_sub_composition");
+
+    expect(finding?.message).toContain("compositions/scene-title");
+    expect(finding?.message).toContain("a folder, not an HTML file");
+    expect(finding?.fixHint).toContain('"compositions/scene-title/index.html"');
+  });
+
   it("errors when the referenced sub-composition file has content but no data-composition-id root", async () => {
     const { finding, totalErrors } = await lintSubComp("compositions/scene-title.html", {
       "scene-title.html": "<!doctype html><html><body><p>TODO: scene content</p></body></html>",
@@ -663,6 +677,46 @@ describe("video_media_start_at_or_past_eof", () => {
   });
 });
 
+describe("missing asset findings name the file that references them", () => {
+  it("points a draft section's missing image, audio and mask at the draft, not the film", async () => {
+    const project = makeProject(
+      `<html><body>
+  <div data-composition-id="main" data-width="1920" data-height="1080" data-start="0" data-duration="10">
+    <img src="assets/missing-in-film.png" />
+    <div data-composition-src="compositions/draft.html" data-composition-id="draft" data-start="0" data-duration="5"></div>
+  </div>
+</body></html>`,
+      {
+        "draft.html": `<!doctype html><html><body>
+  <div data-composition-id="draft" data-width="1920" data-height="1080">
+    <style>.masked { mask-image: url(../assets/missing-mask.png); }</style>
+    <img src="../assets/missing-in-draft.png" />
+    <audio src="../assets/missing-in-draft.mp3" data-start="0" data-duration="5"></audio>
+  </div>
+</body></html>`,
+      },
+    );
+
+    const { results } = await lintProject(project);
+    const fileOf = (code: string, name: string) =>
+      results
+        .flatMap((entry) => entry.result.findings)
+        .find((finding) => finding.code === code && finding.message.includes(name))?.file;
+
+    const draft = join(project, "compositions", "draft.html");
+    expect(fileOf("missing_local_asset", "missing-in-draft.png")).toBe(draft);
+    expect(fileOf("audio_src_not_found", "missing-in-draft.mp3")).toBe(draft);
+    expect(fileOf("texture_mask_asset_not_found", "missing-mask.png")).toBe(draft);
+    expect(fileOf("missing_local_asset", "missing-in-film.png")).toBe(join(project, "index.html"));
+    const entryOf = (name: string) =>
+      results.find((entry) => entry.result.findings.some((f) => f.message.includes(name)))?.file;
+    expect(entryOf("missing-in-draft.png")).toBe("compositions/draft.html");
+    expect(entryOf("missing-in-draft.mp3")).toBe("compositions/draft.html");
+    expect(entryOf("missing-mask.png")).toBe("compositions/draft.html");
+    expect(entryOf("missing-in-film.png")).toBe("index.html");
+  });
+});
+
 describe("audio_src_not_found with templating tokens", () => {
   // A src carrying an unresolved templating placeholder is late-bound before render,
   // so the static linter cannot resolve it to a file and must not report it missing.
@@ -689,6 +743,21 @@ describe("audio_src_not_found with templating tokens", () => {
 
   it("still flags a genuinely missing local audio file", async () => {
     expect(await hasAudioSrcNotFound(audioProject("audio/missing.mp3"))).toBe(true);
+  });
+
+  it("accepts an existing audio file addressed the way the renderer resolves it", async () => {
+    for (const src of [
+      "audio/bed.mp3",
+      "/audio/bed.mp3",
+      "../audio/bed.mp3",
+      "audio/bed.mp3?v=2",
+      "audio/bed.mp3#t=5",
+    ]) {
+      const project = audioProject(src);
+      mkdirSync(join(project, "audio"), { recursive: true });
+      writeFileSync(join(project, "audio", "bed.mp3"), "");
+      expect(await hasAudioSrcNotFound(project)).toBe(false);
+    }
   });
 });
 
@@ -763,5 +832,53 @@ describe("templating tokens are checked on the raw src, before cleanAssetUrl", (
       ),
     );
     expect(c.has("missing_local_asset")).toBe(true);
+  });
+});
+
+describe("audio-aware project rules", () => {
+  const composition = (body: string) => validHtml().replace("></div>", `>${body}</div>`);
+  const codesFor = async (html: string, files: string[] = []) => {
+    const project = makeProject(html);
+    for (const file of files) writeFileSync(join(project, file), "x");
+    const { results } = await lintProject(project);
+    return results.flatMap((result) => result.result.findings.map((f) => f.code));
+  };
+  const video = (attrs: string, start = 0) =>
+    `<video id="v${start}${attrs.length}" src="a.mp4" data-start="${start}" data-duration="5" data-track-index="0" ${attrs}></video>`;
+
+  describe("duplicate_audio_track", () => {
+    it("warns when audible videos overlap on one track", async () => {
+      const codes = await codesFor(
+        composition(video('data-has-audio="true"', 0) + video('data-has-audio="true"', 2)),
+      );
+      expect(codes).toContain("duplicate_audio_track");
+    });
+
+    it("stays quiet when one of the overlapping videos is muted", async () => {
+      const codes = await codesFor(
+        composition(video('data-has-audio="true"', 0) + video("muted", 2)),
+      );
+      expect(codes).not.toContain("duplicate_audio_track");
+    });
+
+    it("stays quiet when an overlapping video is explicitly non-audible", async () => {
+      const codes = await codesFor(
+        composition(video('data-has-audio="true"', 0) + video('data-has-audio="false"', 2)),
+      );
+      expect(codes).not.toContain("duplicate_audio_track");
+    });
+  });
+
+  describe("audio_file_without_element", () => {
+    const audibleRoll = video('data-has-audio="true"');
+    it("does not claim silence when an audible video carries the sound", async () => {
+      const codes = await codesFor(composition(audibleRoll), ["audio.mp3"]);
+      expect(codes).not.toContain("audio_file_without_element");
+    });
+
+    it("still warns when the only video is muted", async () => {
+      const codes = await codesFor(composition(video("muted")), ["audio.mp3"]);
+      expect(codes).toContain("audio_file_without_element");
+    });
   });
 });

@@ -1,11 +1,12 @@
 import type { Hono } from "hono";
 import { streamSSE } from "hono/streaming";
-import { existsSync, readFileSync, mkdirSync, unlinkSync, readdirSync, statSync } from "node:fs";
+import { existsSync, readFileSync, unlinkSync, readdirSync, statSync } from "node:fs";
 import { join } from "node:path";
 import type { StudioApiAdapter, RenderJobState } from "../types.js";
 import { VALID_CANVAS_RESOLUTIONS, type CanvasResolution } from "@hyperframes/parsers";
 import { formatRenderOutputTimestamp, parseFps } from "@hyperframes/core";
-import { resolveWithinProject } from "../helpers/safePath.js";
+import { folderGone, mkdirWithinProject, resolveWithinProject } from "../helpers/safePath.js";
+import { projectDirMissing } from "../helpers/projectDirMissing.js";
 import { isVariablesPayload, VARIABLES_PAYLOAD_ERROR } from "../helpers/variablesPayload.js";
 
 const VALID_RESOLUTIONS = new Set<string>(VALID_CANVAS_RESOLUTIONS);
@@ -105,6 +106,7 @@ export function registerRenderRoutes(api: Hono, adapter: StudioApiAdapter): void
       // resolveWithinProject dereferences symlinks, so an in-project symlink
       // pointing outside the root can't smuggle the render target out.
       if (!resolveWithinProject(project.dir, body.composition)) {
+        if (folderGone(project.dir)) return projectDirMissing(c);
         return c.json({ error: "composition path must be within the project directory" }, 400);
       }
       composition = body.composition;
@@ -123,7 +125,7 @@ export function registerRenderRoutes(api: Hono, adapter: StudioApiAdapter): void
     const now = new Date();
     const jobId = `${project.id}_${formatRenderOutputTimestamp(now)}`;
     const rendersDir = adapter.rendersDir(project);
-    if (!existsSync(rendersDir)) mkdirSync(rendersDir, { recursive: true });
+    mkdirWithinProject(project.dir, rendersDir);
     const ext = FORMAT_EXT[format] ?? ".mp4";
     const outputPath = join(rendersDir, `${jobId}${ext}`);
 
@@ -166,6 +168,9 @@ export function registerRenderRoutes(api: Hono, adapter: StudioApiAdapter): void
             status: current.status,
             stage: current.stage,
             error: current.error,
+            ...(current.status === "complete" && current.audioLoweredDb !== undefined
+              ? { audioLoweredDb: current.audioLoweredDb }
+              : {}),
           }),
         });
         if (current.status !== "rendering") break;
@@ -298,6 +303,7 @@ export function registerRenderRoutes(api: Hono, adapter: StudioApiAdapter): void
         const metaPath = join(rendersDir, `${rid}.meta.json`);
         let status: "complete" | "failed" = "complete";
         let durationMs: number | undefined;
+        let audioLoweredDb: number | undefined;
         if (existsSync(metaPath)) {
           try {
             const meta = JSON.parse(readFileSync(metaPath, "utf-8"));
@@ -307,6 +313,7 @@ export function registerRenderRoutes(api: Hono, adapter: StudioApiAdapter): void
             // an earlier attempt left behind failed metadata.
             if (meta.status === "failed" && !existsSync(fp)) status = "failed";
             if (meta.durationMs) durationMs = meta.durationMs;
+            if (typeof meta.audioLoweredDb === "number") audioLoweredDb = meta.audioLoweredDb;
           } catch {
             /* ignore */
           }
@@ -318,6 +325,7 @@ export function registerRenderRoutes(api: Hono, adapter: StudioApiAdapter): void
           createdAt: stat.mtimeMs,
           status,
           durationMs,
+          ...(audioLoweredDb !== undefined ? { audioLoweredDb } : {}),
         };
       })
       .sort((a, b) => b.createdAt - a.createdAt);

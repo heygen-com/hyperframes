@@ -15,6 +15,7 @@ export interface ShaderLoaderElements {
   title: HTMLSpanElement;
   detail: HTMLDivElement;
   transitionValue: HTMLSpanElement;
+  transitionRow: HTMLDivElement;
   frameLabel: HTMLSpanElement;
   frameValue: HTMLSpanElement;
   frameRow: HTMLDivElement;
@@ -119,6 +120,7 @@ export function createShaderLoader(): ShaderLoaderElements {
     title: titleText,
     detail,
     transitionValue: transitionStatus.value,
+    transitionRow: transitionStatus.row,
     frameLabel: frameStatus.label,
     frameValue: frameStatus.value,
     frameRow: frameStatus.row,

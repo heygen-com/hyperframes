@@ -116,6 +116,21 @@ export async function executeRenderPlan(
     reportVariableIssues(issues, { strict: plan.strictVariables, quiet: plan.quiet });
   }
 
+  const options = renderOptionsFromPlan(plan, browserPath, variables);
+  const execute = plan.useDocker ? dependencies.renderDocker : dependencies.renderLocal;
+  await execute(plan.project.dir, plan.outputPath, options, cancellation);
+}
+
+/**
+ * The plan -> RenderOptions hop for a single render. Pure and exported so the
+ * flags that cross it are pinned by a test: `--resume` / `--keep-segments`
+ * were once dropped exactly here and nothing but a manual gate noticed.
+ */
+export function renderOptionsFromPlan(
+  plan: RenderPlan,
+  browserPath: string | undefined,
+  variables: RenderOptions["variables"],
+): RenderOptions {
   const options: RenderOptions = {
     fps: plan.fps,
     quality: plan.quality,
@@ -139,6 +154,8 @@ export async function executeRenderPlan(
     quiet: plan.quiet,
     browserPath,
     debug: plan.debug,
+    resumeSegments: plan.resumeSegments,
+    keepSegments: plan.keepSegments,
     bestEffort: plan.bestEffort,
     variables,
     entryFile: plan.entryFile,
@@ -155,8 +172,7 @@ export async function executeRenderPlan(
     options.pageSideCompositing = plan.pageSideCompositing;
     options.experimentalFastCapture = plan.experimentalFastCapture;
   }
-  const execute = plan.useDocker ? dependencies.renderDocker : dependencies.renderLocal;
-  await execute(plan.project.dir, plan.outputPath, options, cancellation);
+  return options;
 }
 
 function assertRenderActive(cancellation?: RenderCancellationScope): void {
@@ -343,6 +359,8 @@ async function executeBatchRender(
     protocolTimeout: plan.protocolTimeout,
     playerReadyTimeout: plan.playerReadyTimeout,
     debug: plan.debug,
+    resumeSegments: plan.resumeSegments,
+    keepSegments: plan.keepSegments,
     bestEffort: plan.bestEffort,
     exitAfterComplete: false,
     throwOnError: true,

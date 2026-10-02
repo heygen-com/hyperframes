@@ -123,21 +123,44 @@ export function isResolverDisagreement(session: Composition, hfId: string): bool
   }
 }
 
+/**
+ * Why a batch cannot take the SDK cutover path, or null when it can.
+ *
+ * `ineligible_operation` used to be a single decline reason covering all of
+ * these, which made the post-flip telemetry unactionable — a structural edit the
+ * SDK has no vocabulary for (expected and permanent) was indistinguishable from
+ * a reserved-attribute decline (narrow, and possibly worth fixing). The order
+ * mirrors `shouldUseSdkCutover`'s conjunction, so the first failing check names
+ * the reason.
+ */
+export type SdkCutoverIneligibleReason =
+  | "target_unaddressable"
+  | "no_ops"
+  | "unsupported_op_type"
+  | "child_scoped_op"
+  | "reserved_attribute"
+  | "unsafe_html_attribute";
+
+export function sdkCutoverIneligibleReason(
+  hfId: string | null | undefined,
+  ops: PatchOperation[],
+): SdkCutoverIneligibleReason | null {
+  if (!hfId) return "target_unaddressable";
+  if (ops.length === 0) return "no_ops";
+  if (!ops.every((o) => CUTOVER_OP_TYPES.has(o.type))) return "unsupported_op_type";
+  if (hasChildScopedOp(ops)) return "child_scoped_op";
+  if (ops.some(mapsToReservedAttr)) return "reserved_attribute";
+  if (hasUnsafeHtmlAttributeOp(ops)) return "unsafe_html_attribute";
+  return null;
+}
+
 export function shouldUseSdkCutover(
   flagEnabled: boolean,
   hasSession: boolean,
   hfId: string | null | undefined,
   ops: PatchOperation[],
 ): boolean {
-  return (
-    flagEnabled &&
-    hasSession &&
-    !!hfId &&
-    ops.length > 0 &&
-    ops.every((o) => CUTOVER_OP_TYPES.has(o.type)) &&
-    // SDK edit ops target only the element hfId; child-scoped patch ops need the server path.
-    !hasChildScopedOp(ops) &&
-    !ops.some(mapsToReservedAttr) &&
-    !hasUnsafeHtmlAttributeOp(ops)
-  );
+  // Derived from the reason function so the two can never disagree about which
+  // batches are eligible.
+  return flagEnabled && hasSession && sdkCutoverIneligibleReason(hfId, ops) === null;
 }

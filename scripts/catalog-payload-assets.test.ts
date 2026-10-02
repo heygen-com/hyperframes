@@ -109,6 +109,22 @@ describe("processAssets", () => {
     assert.ok(!existsSync(join(out.dir, "scene.glb")));
   });
 
+  it("embeds a script as a data URI when no inliner owns the item", () => {
+    const dir = project({ "lib/a.js": "var a=1;" });
+    const result = processAssets(`<script src="lib/a.js"></script>`, dir, target());
+
+    assert.match(result.html, /src="data:text\/javascript;base64,/);
+    assert.deepEqual(result.unresolved, []);
+  });
+
+  it("leaves a script tag untouched when the caller's inliner owns it", () => {
+    const dir = project({ "lib/a.js": "var a=1;" });
+    const result = processAssets(`<script src="lib/a.js"></script>`, dir, target(), true);
+
+    assert.equal(result.html, `<script src="lib/a.js"></script>`);
+    assert.deepEqual(result.unresolved, ["lib/a.js"]);
+  });
+
   it("gives the same output twice, so regeneration writes no new bytes", () => {
     const dir = project({ "a.png": Buffer.from([0x01]) });
     const first = processAssets(`<img src="a.png">`, dir, target());

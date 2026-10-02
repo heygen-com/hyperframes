@@ -6,7 +6,6 @@
  */
 
 import type { DomEditSelection } from "../components/editor/domEditingTypes";
-import type { EditHistoryKind } from "../utils/editHistory";
 import type { TimelineElement } from "../player";
 import { findMatchingTimelineElementId } from "../utils/studioHelpers";
 
@@ -14,7 +13,6 @@ import { findMatchingTimelineElementId } from "../utils/studioHelpers";
  *  supplies it. */
 export interface RecordEditInput {
   label: string;
-  kind: EditHistoryKind;
   coalesceKey?: string;
   files: Record<string, { before: string; after: string }>;
 }

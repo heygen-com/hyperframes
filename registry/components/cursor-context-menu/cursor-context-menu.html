@@ -1,0 +1,562 @@
+<!doctype html>
+<!--
+  Context Menu Cursor (actor primitive), mountable sub-composition
+
+  concept: an arrow glides to a file in a folder window and right-clicks it; a context
+  menu blooms from the tip (flipping left or up when it would leave the frame), the
+  hover highlight follows the item under the tip as the cursor travels down, it clicks
+  the chosen item, the menu collapses back toward the tip and the action happens:
+  Duplicate adds a copy, Rename opens the name for editing, Move to Trash removes the
+  file, anything else confirms with a toast.
+
+  mount contract: loaded by a host through data-composition-src; only <template> is
+  cloned. #root fills the host clip (inset:0) and draws its own folder window.
+
+  variables:
+    items (string)  menu items, comma separated
+    pick (number)   index of the item the cursor chooses
+    tone (light|dark)
+
+  envelope (default 3.9s): glide 0-0.5s, right-click 0.7s, menu 0.77s, travel
+  1.2-1.65s, click 1.85s, action 2.15s, step aside 2.75-3.15s, hold. Shorter durations
+  compress every beat evenly.
+-->
+<html
+  lang="en"
+  data-composition-id="cursor-context-menu"
+  data-composition-duration="3.9"
+  data-composition-variables='[
+    { "id": "items", "type": "string", "role": "content", "label": "Menu items", "default": "Open,Rename,Duplicate,Share,Move to Trash" },
+    { "id": "pick", "type": "number", "role": "content", "label": "Chosen item (0 = first)", "default": 2, "min": 0, "max": 9, "step": 1 },
+    { "id": "tone", "type": "enum", "role": "style", "label": "Tone", "default": "light", "options": [ { "value": "light", "label": "Light" }, { "value": "dark", "label": "Dark" } ] }
+  ]'
+>
+  <head>
+    <meta charset="UTF-8" />
+    <title>Context Menu Cursor</title>
+  </head>
+  <body>
+    <template>
+      <style>
+        #root {
+          position: absolute;
+          inset: 0;
+          overflow: hidden;
+          container-type: size;
+          font-family: var(--font-body, Inter, system-ui, sans-serif);
+          --cm-accent: #0a84ff;
+          --cm-win: #ffffff;
+          --cm-card: #f4f5f9;
+          --cm-ink: #121522;
+          --cm-dim: #7a8093;
+          --cm-menu: #ffffff;
+          --cm-thumb: #e7e9ee;
+          --cm-line: rgba(18, 21, 34, 0.08);
+        }
+        #root[data-tone="dark"] {
+          --cm-win: #171a23;
+          --cm-card: #222632;
+          --cm-ink: #eef0f7;
+          --cm-dim: #8d93a6;
+          --cm-menu: #262a37;
+          --cm-thumb: #2c303c;
+          --cm-line: rgba(255, 255, 255, 0.09);
+        }
+        .cm-stage {
+          position: absolute;
+          inset: 0;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+        }
+        .cm-window {
+          position: relative;
+          width: 64cqw;
+          border-radius: 1.4cqw;
+          background: var(--cm-win);
+          box-shadow:
+            0 2.4cqw 6cqw rgba(8, 12, 28, 0.35),
+            0 0 0 1px var(--cm-line);
+        }
+        .cm-bar {
+          display: flex;
+          align-items: center;
+          gap: 0.6cqw;
+          height: 4.4cqw;
+          padding: 0 1.8cqw;
+          border-bottom: 1px solid var(--cm-line);
+          font-size: 1.35cqw;
+          font-weight: 650;
+          color: var(--cm-ink);
+        }
+        .cm-dot {
+          width: 0.8cqw;
+          height: 0.8cqw;
+          border-radius: 50%;
+          background: var(--cm-line);
+        }
+        .cm-bar span {
+          margin-left: 1cqw;
+        }
+        .cm-grid {
+          position: relative;
+          display: grid;
+          grid-template-columns: repeat(3, 1fr);
+          gap: 1.6cqw;
+          padding: 2cqw;
+        }
+        .cm-file {
+          position: relative;
+          padding: 0.8cqw;
+          border-radius: 1cqw;
+          background: var(--cm-card);
+          box-shadow: 0 0 0 0.16cqw transparent;
+        }
+        .cm-file.is-on {
+          box-shadow: 0 0 0 0.16cqw var(--cm-accent);
+        }
+        .cm-thumb {
+          height: 8.4cqw;
+          border-radius: 0.7cqw;
+          overflow: hidden;
+          background: var(--cm-thumb);
+          color: var(--cm-dim);
+        }
+        .cm-thumb svg {
+          display: block;
+          width: 100%;
+          height: 100%;
+        }
+        .cm-name {
+          margin-top: 0.8cqw;
+          font-size: 1.4cqw;
+          font-weight: 600;
+          color: var(--cm-ink);
+          white-space: nowrap;
+        }
+        .cm-name.is-edit {
+          box-shadow: 0 0 0 0.14cqw var(--cm-accent);
+          border-radius: 0.3cqw;
+        }
+        .cm-name.is-edit b {
+          font-weight: 600;
+          background: color-mix(in srgb, var(--cm-accent) 30%, transparent);
+        }
+        .cm-meta {
+          margin-top: 0.3cqw;
+          font-size: 1.1cqw;
+          color: var(--cm-dim);
+        }
+        .cm-menu {
+          position: absolute;
+          left: 0;
+          top: 0;
+          width: 19cqw;
+          padding: 0.55cqw;
+          border-radius: 0.9cqw;
+          background: var(--cm-menu);
+          box-shadow:
+            0 1.2cqw 3cqw rgba(8, 12, 28, 0.3),
+            0 0 0 1px var(--cm-line);
+          opacity: 0;
+          will-change: transform, opacity;
+        }
+        .cm-item {
+          position: relative;
+          height: 3.3cqw;
+          padding: 0 1.1cqw;
+          line-height: 3.3cqw;
+          border-radius: 0.55cqw;
+          font-size: 1.5cqw;
+          color: var(--cm-ink);
+        }
+        .cm-item.is-hover {
+          background: var(--cm-accent);
+          color: #ffffff;
+        }
+        .cm-sep {
+          height: 1px;
+          margin: 0.4cqw 0.6cqw;
+          background: var(--cm-line);
+        }
+        .cm-toast {
+          position: absolute;
+          left: 50%;
+          bottom: 5cqh;
+          padding: 1cqw 1.8cqw;
+          border-radius: 99px;
+          background: #15182a;
+          color: #ffffff;
+          font-size: 1.3cqw;
+          font-weight: 600;
+          opacity: 0;
+          white-space: nowrap;
+        }
+        .cm-cursor {
+          position: absolute;
+          left: 0;
+          top: 0;
+          transform-origin: 0 0;
+          filter: drop-shadow(0 3px 4px rgba(0, 0, 0, 0.3));
+          will-change: transform;
+        }
+        .cm-cursor path {
+          fill: #ffffff;
+          stroke: #141414;
+          stroke-width: 1.4;
+          stroke-linejoin: round;
+        }
+      </style>
+
+      <div id="root" data-composition-id="cursor-context-menu" data-duration="3.9">
+        <div class="cm-stage">
+          <div class="cm-window">
+            <div class="cm-bar">
+              <i class="cm-dot"></i><i class="cm-dot"></i><i class="cm-dot"></i
+              ><span>Launch assets</span>
+            </div>
+            <div class="cm-grid" id="cm-grid"></div>
+          </div>
+        </div>
+        <div class="cm-menu" id="cm-menu"></div>
+        <div class="cm-toast" id="cm-toast"></div>
+        <svg class="cm-cursor" id="cm-cursor" viewBox="0 0 24 24" aria-hidden="true">
+          <path d="M5 3 L5 19 L9 15 L12 22 L15 20.5 L11.5 14 L18 14 Z" />
+        </svg>
+      </div>
+
+      <script>
+        (function () {
+          "use strict";
+
+          var html = document.documentElement;
+          var root = document.getElementById("root");
+          var grid = document.getElementById("cm-grid");
+          var menu = document.getElementById("cm-menu");
+          var toast = document.getElementById("cm-toast");
+          var cursor = document.getElementById("cm-cursor");
+
+          var DEFAULTS = {};
+          try {
+            JSON.parse(html.getAttribute("data-composition-variables") || "[]").forEach(
+              function (variable) {
+                DEFAULTS[variable.id] = variable.default;
+              },
+            );
+          } catch (error) {
+            /* malformed declaration falls back to the inline defaults below */
+          }
+          var scopedVariables = {};
+          try {
+            if (window.__hyperframes && typeof window.__hyperframes.getVariables === "function") {
+              scopedVariables = window.__hyperframes.getVariables() || {};
+            }
+          } catch (error) {
+            /* no scoped variables API in this context */
+          }
+          var vars = Object.assign({}, DEFAULTS, window.__hfVariables || {}, scopedVariables);
+
+          // Hardcoded: the compositor rewrites the wrapper's attributes on mount.
+          var compositionId = "cursor-context-menu";
+          var duration = Math.max(
+            0.001,
+            parseFloat(
+              root.dataset.duration || html.getAttribute("data-composition-duration") || "3.9",
+            ),
+          );
+          root.setAttribute("data-tone", vars.tone === "dark" ? "dark" : "light");
+          var labels = String(vars.items || DEFAULTS.items || "Open")
+            .split(",")
+            .map(function (s) {
+              return s.trim();
+            })
+            .filter(Boolean);
+          if (!labels.length) labels = ["Open"];
+          var pick = Math.max(0, Math.min(labels.length - 1, Math.round(Number(vars.pick) || 0)));
+
+          // Thumbnails are drawn in a 206x100 box, the aspect of a grid cell.
+          var THUMBS = {
+            pdf:
+              '<rect x="72" y="8" width="62" height="86" rx="1.5" fill="#000" opacity=".06"/>' +
+              '<rect x="72" y="7" width="62" height="86" rx="1.5" fill="#fff"/>' +
+              '<rect x="79" y="15" width="30" height="4.5" rx="1" fill="#1d2130"/>' +
+              '<rect x="79" y="22.5" width="20" height="2.2" rx="1" fill="#9aa0ad"/>' +
+              '<rect x="79" y="30" width="22" height="3" rx="1.5" fill="#0a84ff"/>' +
+              '<rect x="88" y="35" width="26" height="3" rx="1.5" fill="#34c759"/>' +
+              '<rect x="97" y="40" width="20" height="3" rx="1.5" fill="#ff9f0a"/>' +
+              '<rect x="108" y="45" width="19" height="3" rx="1.5" fill="#0a84ff"/>' +
+              '<g fill="#d5d8de"><rect x="79" y="54" width="48" height="2" rx="1"/>' +
+              '<rect x="79" y="59" width="45" height="2" rx="1"/><rect x="79" y="64" width="48" height="2" rx="1"/>' +
+              '<rect x="79" y="69" width="40" height="2" rx="1"/><rect x="79" y="74" width="47" height="2" rx="1"/>' +
+              '<rect x="79" y="79" width="28" height="2" rx="1"/></g>',
+            video:
+              '<rect width="206" height="100" fill="#12141b"/>' +
+              '<path d="M86 0 H120 L156 70 H50 Z" fill="#fff" opacity=".05"/>' +
+              '<rect y="70" width="206" height="30" fill="#1b1e27"/>' +
+              '<ellipse cx="103" cy="73" rx="48" ry="3.5" fill="#000" opacity=".5"/>' +
+              '<rect x="72" y="29" width="62" height="40" rx="2.5" fill="#2a2f3b"/>' +
+              '<rect x="75" y="32" width="56" height="34" rx="1" fill="#0e2a52"/>' +
+              '<rect x="79" y="36" width="18" height="2.5" rx="1" fill="#fff" opacity=".9"/>' +
+              '<rect x="79" y="40.5" width="12" height="1.6" rx=".8" fill="#fff" opacity=".45"/>' +
+              '<path d="M64 69 H142 L147 73 H59 Z" fill="#3a404d"/>' +
+              '<circle cx="103" cy="49" r="10" fill="#000" fill-opacity=".5" stroke="#fff" stroke-width="1.2"/>' +
+              '<path d="M99.5 44 L108.5 49 L99.5 54 Z" fill="#fff"/>' +
+              '<rect x="174" y="83" width="25" height="11" rx="2.5" fill="#000" opacity=".72"/>' +
+              '<text x="186.5" y="91" font-size="7.5" font-weight="600" fill="#fff" text-anchor="middle">2:14</text>',
+            md:
+              '<rect x="16" y="8" width="174" height="100" rx="1.5" fill="#fff"/>' +
+              '<g font-family="ui-monospace,Menlo,Consolas,monospace" font-size="6.4" fill="#4a5060">' +
+              '<text x="24" y="21" fill="#1d2130" font-weight="700"># Pricing notes</text>' +
+              '<text x="24" y="34">- Starter: $12 / seat</text>' +
+              '<text x="24" y="44">- Pro: $29 / seat</text>' +
+              '<text x="24" y="54">- Team: $79 / seat</text>' +
+              '<text x="24" y="67" fill="#8a90a0">&gt; Annual billing: 2 months free</text>' +
+              '<text x="24" y="80" fill="#1d2130" font-weight="700">## Open questions</text>' +
+              '<text x="24" y="92">- EU VAT on seat add-ons?</text></g>',
+            jpg:
+              '<defs><linearGradient id="cm-sky" x1="0" y1="0" x2="0" y2="1">' +
+              '<stop offset="0" stop-color="#7db8ea"/><stop offset="1" stop-color="#e3f1fb"/></linearGradient>' +
+              '<linearGradient id="cm-lake" x1="0" y1="0" x2="0" y2="1">' +
+              '<stop offset="0" stop-color="#6d9cc4"/><stop offset="1" stop-color="#2f5d85"/></linearGradient></defs>' +
+              '<rect width="206" height="62" fill="url(#cm-sky)"/>' +
+              '<circle cx="160" cy="20" r="7" fill="#fffbe8"/>' +
+              '<path d="M0 58 L22 36 L38 46 L64 20 L88 44 L104 34 L128 52 L150 30 L176 48 L192 38 L206 46 V62 H0 Z" fill="#9db3c9"/>' +
+              '<path d="M64 20 L57 27 L61 25.5 L64 28 L67.5 25.5 L71 27 Z M150 30 L144 36 L148 34.5 L151 37 L154.5 34.5 L158.7 36 Z" fill="#fff"/>' +
+              '<path d="M0 62 V50 C20 46 36 54 58 52 C84 50 100 58 124 56 C150 54 176 50 206 54 V62 Z" fill="#4c7a5a"/>' +
+              '<rect y="62" width="206" height="38" fill="url(#cm-lake)"/>' +
+              '<path d="M122 70 H150 M134 76 H168 M112 84 H132" stroke="#fff" stroke-opacity=".35"/>' +
+              '<path d="M86 74 Q100 79 116 74 Z" fill="#c8553d"/>' +
+              '<g fill="#23402f"><path d="M6 100 L15 60 L24 100 Z"/><path d="M19 100 L29 50 L39 100 Z"/>' +
+              '<path d="M35 100 L42 70 L49 100 Z"/></g>',
+            wav: (function () {
+              // Speech-like waveform: words (sin lobes) with short pauses between them.
+              var bars = "";
+              for (var i = 0; i < 46; i++) {
+                var h =
+                  3 +
+                  44 * Math.abs(Math.sin(i * 0.55)) * (0.55 + 0.45 * Math.abs(Math.sin(i * 1.7)));
+                bars +=
+                  '<rect x="' +
+                  (13 + i * 4) +
+                  '" y="' +
+                  (50 - h / 2) +
+                  '" width="2.4" height="' +
+                  h +
+                  '" rx="1.2"/>';
+              }
+              return '<g fill="currentColor">' + bars + "</g>";
+            })(),
+          };
+          var FILES = [
+            ["Q3 roadmap", "pdf", "1.2 MB &middot; PDF"],
+            ["Launch film v4", "mp4", "2.4 GB &middot; Video"],
+            ["Pricing notes", "md", "18 KB &middot; Text"],
+            ["Team offsite", "jpg", "4.8 MB &middot; Image"],
+            ["Voiceover final", "wav", "38 MB &middot; Audio"],
+            ["Launch film v4 copy", "mp4", "2.4 GB &middot; Video"],
+          ];
+          var TARGET = 1;
+          var cards = FILES.map(function (f) {
+            var card = document.createElement("div");
+            card.className = "cm-file";
+            card.innerHTML =
+              '<div class="cm-thumb"><svg viewBox="0 0 206 100" preserveAspectRatio="xMidYMid slice">' +
+              THUMBS[f[1] === "mp4" ? "video" : f[1]] +
+              "</svg></div>" +
+              '<div class="cm-name">' +
+              f[0] +
+              "." +
+              f[1] +
+              '</div><div class="cm-meta">' +
+              f[2] +
+              "</div>";
+            grid.appendChild(card);
+            return card;
+          });
+          var copy = cards[5];
+          var targetName = cards[TARGET].querySelector(".cm-name");
+          var rows = labels.map(function (label, i) {
+            if (i > 0 && i === labels.length - 1 && /trash|delete/i.test(label)) {
+              var sep = document.createElement("div");
+              sep.className = "cm-sep";
+              menu.appendChild(sep);
+            }
+            var row = document.createElement("div");
+            row.className = "cm-item";
+            row.textContent = label;
+            menu.appendChild(row);
+            return row;
+          });
+          var action = /duplicate/i.test(labels[pick])
+            ? "duplicate"
+            : /rename/i.test(labels[pick])
+              ? "rename"
+              : /trash|delete/i.test(labels[pick])
+                ? "trash"
+                : "toast";
+          toast.textContent = labels[pick] + " · " + FILES[TARGET][0] + "." + FILES[TARGET][1];
+
+          var W = root.clientWidth || 1920;
+          var H = root.clientHeight || 1080;
+          var u = W / 1920;
+          var ARROW = 64 * u;
+          cursor.style.width = cursor.style.height = ARROW + "px";
+          cursor.style.left = (-5 / 24) * ARROW + "px";
+          cursor.style.top = (-3 / 24) * ARROW + "px";
+
+          // Layout-space offsets, which ignore any transform a host puts on the player.
+          function offsetIn(el) {
+            var x = 0;
+            var y = 0;
+            while (el && el !== root) {
+              x += el.offsetLeft;
+              y += el.offsetTop;
+              el = el.offsetParent;
+            }
+            return { x: x, y: y };
+          }
+
+          var squeeze = Math.min(1, duration / 3.9);
+          var T = {
+            glide: 0.5,
+            rclick: 0.7,
+            bloom: 0.77,
+            travel0: 1.2,
+            travel1: 1.65,
+            click: 1.85,
+            collapse: 2.03,
+            act: 2.15,
+            away0: 2.75,
+            away1: 3.15,
+          };
+          for (var key in T) T[key] *= squeeze;
+
+          var bloomEase = gsap.parseEase("expo.out");
+          var easeInOut = gsap.parseEase("power2.inOut");
+          var easeOut = gsap.parseEase("power3.out");
+          var springBack = gsap.parseEase("back.out(2.5)");
+          function seg(t, a, b) {
+            return Math.max(0, Math.min(1, (t - a) / (b - a)));
+          }
+          function lerp(a, b, k) {
+            return { x: a.x + (b.x - a.x) * k, y: a.y + (b.y - a.y) * k };
+          }
+          // Right-click: press, a short hold, then a release that overshoots a touch.
+          function press(t, at, depth) {
+            var d = 0.05 * squeeze;
+            if (t < at || t > at + d * 5) return 1;
+            if (t < at + d) return 1 - depth * seg(t, at, at + d);
+            if (t < at + d * 1.8) return 1 - depth;
+            return 1 - depth + depth * springBack(seg(t, at + d * 1.8, at + d * 5));
+          }
+
+          function render(t) {
+            var tc = offsetIn(cards[TARGET]);
+            var cw = cards[TARGET].offsetWidth;
+            var ch = cards[TARGET].offsetHeight;
+            var anchor = { x: tc.x + cw * 0.62, y: tc.y + ch * 0.42 };
+
+            // Open right and down from the tip, flipping on the side that would leave the frame.
+            var mw = menu.offsetWidth;
+            var mh = menu.offsetHeight;
+            var left = anchor.x + mw + 6 * u > W - 24 * u;
+            var up = anchor.y + mh + 6 * u > H - 24 * u;
+            var mx = left ? anchor.x - mw - 6 * u : anchor.x + 6 * u;
+            var my = up ? anchor.y - mh - 6 * u : anchor.y + 6 * u;
+            menu.style.transformOrigin = (left ? "100%" : "0") + " " + (up ? "100%" : "0");
+
+            var open = seg(t, T.bloom, T.bloom + 0.22 * squeeze);
+            var shut = seg(t, T.collapse, T.collapse + 0.14 * squeeze);
+            var menuScale = 0.95 + 0.05 * bloomEase(open) - 0.03 * shut;
+            menu.style.opacity = String(Math.min(1, open * 3) * (1 - shut));
+            menu.style.transform = "translate(" + mx + "px," + my + "px) scale(" + menuScale + ")";
+            rows.forEach(function (row, i) {
+              var k = easeOut(
+                seg(t, T.bloom + i * 0.025 * squeeze, T.bloom + (i * 0.025 + 0.16) * squeeze),
+              );
+              row.style.opacity = String(k);
+              row.style.transform = "translateY(" + (1 - k) * -4 * u + "px)";
+            });
+
+            var itemPoint = {
+              x: mx + mw * 0.34,
+              y: my + rows[pick].offsetTop + rows[pick].offsetHeight * 0.55,
+            };
+            var start = { x: -0.06 * W, y: 1.1 * H };
+            // Rest just below the window so the cursor never covers the result.
+            var win = grid.parentNode;
+            var aside = {
+              x: itemPoint.x + (left ? -1 : 1) * 160 * u,
+              y: Math.min(H - 80 * u, offsetIn(win).y + win.offsetHeight + 36 * u),
+            };
+            var p;
+            if (t < T.glide) p = lerp(start, anchor, easeOut(seg(t, 0, T.glide)));
+            else if (t < T.travel0) p = anchor;
+            else if (t < T.travel1)
+              p = lerp(anchor, itemPoint, easeInOut(seg(t, T.travel0, T.travel1)));
+            else if (t < T.away0) p = itemPoint;
+            else p = lerp(itemPoint, aside, easeInOut(seg(t, T.away0, T.away1)));
+
+            // The highlight is whichever row sits under the tip; it blinks once on the click.
+            var live = open > 0.6 && shut === 0 && p.x > mx && p.x < mx + mw;
+            var blink = t > T.click + 0.06 * squeeze && t < T.click + 0.12 * squeeze;
+            rows.forEach(function (row) {
+              var top = my + row.offsetTop;
+              var hit = live && p.y >= top && p.y < top + row.offsetHeight;
+              row.classList.toggle("is-hover", hit && !blink);
+            });
+
+            var done = t >= T.act;
+            var k = easeOut(seg(t, T.act, T.act + 0.32 * squeeze));
+            cards[TARGET].classList.toggle(
+              "is-on",
+              t >= T.rclick && !(done && action === "duplicate"),
+            );
+            copy.classList.toggle("is-on", done && action === "duplicate");
+            var showCopy = action === "duplicate" ? k : 0;
+            copy.style.opacity = String(showCopy);
+            copy.style.transform =
+              "translateY(" +
+              (1 - showCopy) * 18 * u +
+              "px) scale(" +
+              (0.94 + 0.06 * showCopy) +
+              ")";
+            var gone = action === "trash" ? k : 0;
+            cards[TARGET].style.opacity = String(1 - gone);
+            cards[TARGET].style.transform = "scale(" + (1 - 0.08 * gone) + ")";
+            var editing = done && action === "rename";
+            targetName.classList.toggle("is-edit", editing);
+            targetName.innerHTML = editing
+              ? "<b>" + FILES[TARGET][0] + "</b>." + FILES[TARGET][1]
+              : FILES[TARGET][0] + "." + FILES[TARGET][1];
+            var showToast = action === "toast" ? k : 0;
+            toast.style.opacity = String(showToast);
+            toast.style.transform = "translate(-50%," + (1 - showToast) * 20 * u + "px)";
+
+            var s = press(t, T.rclick, 0.1) * press(t, T.click, 0.12);
+            cursor.style.transform = "translate(" + p.x + "px," + p.y + "px) scale(" + s + ")";
+          }
+
+          var clock = { t: 0 };
+          var tl = gsap.timeline({ paused: true });
+          tl.to(
+            clock,
+            {
+              t: duration,
+              duration: duration,
+              ease: "none",
+              onUpdate: function () {
+                render(clock.t);
+              },
+            },
+            0,
+          );
+          render(0);
+          tl.seek(0);
+          window.__timelines = window.__timelines || {};
+          window.__timelines[compositionId] = tl;
+        })();
+      </script>
+    </template>
+  </body>
+</html>

@@ -61,7 +61,7 @@ HyperFrames is stricter than vanilla GSAP. Animate only:
 - **Compositor-cheap**: `opacity`, `x`, `y`, `scale`, `scaleX`, `scaleY`, `rotation`, `rotationX`, `rotationY`, `skewX`, `skewY`, `transformOrigin`
 - **Visual fills**: `color`, `backgroundColor`, `borderColor`, `borderRadius`
 - **CSS variables**: `"--hue": 180` etc.
-- **Media `volume`** (on `<audio>` / `<video>`): animate for fades/ducking, e.g. `tl.to("#bgm", { volume: 0, duration: 1 }, "outro")`. The runtime probes these keyframes from the timeline and drives them in both preview and render (they match). This sets the _author_ volume; `data-volume` is the static baseline when no tween touches the element.
+- **Media `volume`** (on `<audio>` / `<video>`): do not tween it for fades or ducking; use the `data-automation` volume lane (`creator-editing-recipes.md` in `hyperframes-core`). A lane wins over a tween on the same element.
 - **DOM text `innerText`** (for numeric counters): tween it directly, e.g. `tl.to(el, { innerText: 100, snap: { innerText: 1 } })` — `snap` keeps it integer; the GSAP inspector recognizes it as a counter. Equivalent to the `onUpdate`-proxy form in `../rules/counting-dynamic-scale.md`; prefer that proxy form for locale formatting (`toLocaleString`) or suffix logic, and pair it with a separate transform-scale tween when the number should grow.
 
 **Avoid** (use the transform alias instead):
@@ -96,7 +96,7 @@ HyperFrames is stricter than vanilla GSAP. Animate only:
 - Use both `svgOrigin` and `transformOrigin` on the same SVG element.
 - Chain animations with `delay` when a timeline can sequence them.
 - Create tweens before the DOM exists.
-- Use infinite `repeat: -1` in HyperFrames compositions — use finite repeat counts computed from the visible duration.
+- Use infinite `repeat: -1` without a finite root `data-duration` (with one, export clips to that window); when a loop must end before the composition does, use a finite repeat count computed from the visible duration.
 
 ## Credits And References
 

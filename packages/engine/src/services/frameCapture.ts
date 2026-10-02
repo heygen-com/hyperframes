@@ -42,6 +42,8 @@ import {
   buildChromeArgs,
   resolveBrowserGpuMode,
   resolveHeadlessShellPath,
+  compositionRequiresWebGpu,
+  assertWebGpuAdapterAvailable,
   type BrowserLease,
   type CaptureMode,
 } from "./browserManager.js";
@@ -82,6 +84,12 @@ import type {
 } from "../types.js";
 import { cloneCaptureWarnings } from "./captureWarning.js";
 import { installMediaRenderIdBridge } from "./mediaRenderIdBridge.js";
+import {
+  createChromeMemorySampler,
+  type ChromeMemorySampler,
+  type ChromePids,
+} from "./chromeMemorySampler.js";
+import { sampleProcessRss } from "../utils/processRss.js";
 export { isMemoryExhaustionError, isTransientBrowserError } from "./captureFailure.js";
 
 export type { CaptureOptions, CaptureResult, CaptureBufferResult, CapturePerfSummary };
@@ -97,6 +105,8 @@ export interface CaptureSession {
   options: CaptureOptions;
   serverUrl: string;
   outputDir: string;
+  /** The composition served at `serverUrl` declares `data-requires-webgpu`. */
+  requiresWebGpu?: boolean;
   onBeforeCapture: BeforeCaptureHook | null;
   isInitialized: boolean;
   /**
@@ -112,6 +122,8 @@ export interface CaptureSession {
   lastFrameAbsoluteIndex?: number;
   /** Count of frames served from a reused buffer (dedup telemetry). */
   staticDedupCount?: number;
+  /** Live Chrome memory sampler; started in initializeSession, stopped in closeCaptureSession. */
+  chromeMemory?: ChromeMemorySampler;
   /**
    * Resolved sub-frame motion-blur plan, or undefined when off. Set once by
    * `resolveSessionMotionBlur` at the end of initialization, where the capture mode has
@@ -155,6 +167,13 @@ export interface CaptureSession {
   scriptLoadFailures: string[];
   /** Outcome of the sub-composition timeline wait: ready | timeout | script_failure. */
   subTimelineWaitOutcome?: SubTimelineWaitOutcome;
+  /**
+   * Composition ids still unregistered when the timeline wait gave up. Already
+   * computed for the stderr warning; kept on the session so the STRUCTURED
+   * warning can name them too — a programmatic caller reads `warnings`, not
+   * our console output.
+   */
+  pendingTimelineIds?: string[];
   /** Structured readiness warnings surfaced to the producer's render policy. */
   warnings: CaptureWarning[];
   initTelemetry?: {
@@ -660,6 +679,8 @@ export const LOCKED_WARMUP_TICKS = 60;
 export interface WarmupTickState {
   running: boolean;
   ticks: number;
+  /** Set when session init fails: stops the loop in either mode, since a closed page fails every tick. */
+  cancelled?: boolean;
 }
 
 export interface WarmupTickOptions {
@@ -775,12 +796,25 @@ export function prepareBeginFrameTimeline(
   };
 }
 
+/** Runs BeginFrame session setup; a failure stops the warm-up loop, which would otherwise tick forever. */
+export async function cancelWarmupOnError<T>(
+  state: WarmupTickState,
+  setup: () => Promise<T>,
+): Promise<T> {
+  try {
+    return await setup();
+  } catch (error) {
+    state.cancelled = true;
+    throw error;
+  }
+}
+
 export async function driveWarmupTicks(
   options: WarmupTickOptions,
   state: WarmupTickState,
 ): Promise<void> {
   const sleep = options.sleep ?? realSleep;
-  while (true) {
+  while (!state.cancelled) {
     if (options.lockWarmupTicks) {
       // Locked mode exits on the iteration count, ignoring `state.running` —
       // the caller flips `running=false` after page-readiness but we keep
@@ -919,8 +953,8 @@ async function initDrawElementOrTransparentBackground(
       }
     }
     // Capability gate: `canvas.drawElementImage` is an unlaunched Blink feature
-    // that only exists on recent Dev/Canary Chrome builds (~151+); it is absent
-    // from Stable and from most pinned/system Chrome installs. The
+    // that only exists on recent Chrome builds (150+ behind a flag); it is absent
+    // from Stable and from most system Chrome installs. The
     // `--enable-features=CanvasDrawElement` flag no-ops silently on a build that
     // doesn't implement it, so without this probe the first drawElementImage()
     // call throws `TypeError: ... is not a function` deep inside the capture
@@ -943,7 +977,7 @@ async function initDrawElementOrTransparentBackground(
       console.log(
         `[engine] fast capture: falling back to ${session.launchCaptureMode} capture — ` +
           "this Chrome build does not implement canvas.drawElementImage (Dev/Canary-only " +
-          "feature, ~151+); run `hyperframes browser ensure --force` to fetch a supported " +
+          "feature); run `hyperframes browser ensure --force` to fetch a supported " +
           "build, or set HYPERFRAMES_BROWSER_PATH to one.",
       );
       await routeToFallback();
@@ -1250,8 +1284,18 @@ export async function createCaptureSession(
     !drawElementTransparent
       ? "beginframe"
       : "screenshot";
+  // Callers that already have the HTML pass options.requiresWebGpu; others
+  // fall back to fetching the server about to be navigated to anyway. A
+  // fetch failure defaults to false — the real page.goto moments later
+  // still fails loudly if the server is actually down.
+  const requiresWebGpu =
+    options.requiresWebGpu ??
+    (await fetch(`${serverUrl}/index.html`, { signal: AbortSignal.timeout(5_000) })
+      .then((res) => res.text())
+      .then(compositionRequiresWebGpu)
+      .catch(() => false));
   const chromeArgs = buildChromeArgs(
-    { width: options.width, height: options.height, captureMode: preMode },
+    { width: options.width, height: options.height, captureMode: preMode, requiresWebGpu },
     { ...config, browserGpuMode: resolvedGpuMode },
   );
 
@@ -1264,6 +1308,7 @@ export async function createCaptureSession(
     onBeforeCapture,
     config,
     useDrawElement,
+    requiresWebGpu,
   });
 }
 
@@ -1275,6 +1320,7 @@ interface CaptureSessionConstructionInput {
   onBeforeCapture: BeforeCaptureHook | null;
   config?: Partial<EngineConfig>;
   useDrawElement: boolean;
+  requiresWebGpu?: boolean;
 }
 
 async function constructCaptureSessionWithRollback(
@@ -1328,6 +1374,7 @@ async function constructCaptureSession(
     onBeforeCapture,
     config,
     useDrawElement,
+    requiresWebGpu,
     onPageCreated,
   } = input;
   const { browser, captureMode } = browserLease;
@@ -1452,6 +1499,7 @@ async function constructCaptureSession(
     serverUrl,
     outputDir,
     onBeforeCapture,
+    requiresWebGpu,
     isInitialized: false,
     browserConsoleBuffer: [],
     scriptLoadFailures: [],
@@ -1704,6 +1752,9 @@ export async function pollSubCompositionTimelines(
   // is cut to `scriptFailureGraceMs` from its start.
   getScriptLoadFailures?: () => readonly string[],
   scriptFailureGraceMs: number = 2_000,
+  // Reports the composition ids still unregistered at bail time, so the caller
+  // can put them in the structured warning as well as in stderr.
+  onPending?: (ids: readonly string[]) => void,
 ): Promise<SubTimelineWaitOutcome> {
   // Hosts may opt out of the timeline wait with `data-no-timeline` —
   // compositions driven purely by CSS animations / rAF (the render-compat
@@ -1762,7 +1813,7 @@ export async function pollSubCompositionTimelines(
   // reason — a script-failure bail used to skip this entirely, so a render
   // with multiple sub-compositions only named the failed script URL(s), not
   // which composition(s) it was still waiting on (review).
-  const missing = await page.evaluate(`(function() {
+  const evaluated = await page.evaluate(`(function() {
     var hosts = document.querySelectorAll("[data-composition-id]");
     var timelines = window.__timelines || {};
     var m = [];
@@ -1771,8 +1822,15 @@ export async function pollSubCompositionTimelines(
       var id = hosts[i].getAttribute("data-composition-id");
       if (id && !timelines[id]) m.push(id);
     }
-    return m.join(", ");
+    return m;
   })()`);
+  // This block exists to BUILD A WARNING, so it must never be the thing that
+  // throws. `page.evaluate` is loosely typed, and a caller that stubs it (or a
+  // runtime that returns nothing here) would turn a blind `as string[]` cast
+  // into a TypeError on the diagnostic path. Normalise instead of asserting.
+  const pendingIds = Array.isArray(evaluated) ? evaluated.map((id) => String(id)) : [];
+  onPending?.(pendingIds);
+  const missing = pendingIds.join(", ");
   if (scriptFailureBail) {
     console.warn(`[FrameCapture] Composition(s) still waiting on the failed script: ${missing}.`);
   } else {
@@ -1949,10 +2007,12 @@ function recordCaptureWarnings(session: CaptureSession, warnings: readonly Captu
   }
 }
 
-function recordSubTimelineWarning(session: CaptureSession, timeoutMs: number): void {
+export function recordSubTimelineWarning(session: CaptureSession, timeoutMs: number): void {
   if (session.subTimelineWaitOutcome === "ready" || !session.subTimelineWaitOutcome) return;
   const scriptFailure = session.subTimelineWaitOutcome === "script_failure";
   const hasRuntimeErrors = session.scriptLoadFailures.some((f) => f.startsWith("runtime-error:"));
+  const pending = session.pendingTimelineIds ?? [];
+  const pendingSuffix = pending.length > 0 ? ` (still unregistered: ${pending.join(", ")})` : "";
   recordCaptureWarnings(session, [
     {
       code: scriptFailure ? "sub_timeline_script_failure" : "sub_timeline_readiness_timeout",
@@ -1960,8 +2020,16 @@ function recordSubTimelineWarning(session: CaptureSession, timeoutMs: number): v
         ? hasRuntimeErrors
           ? `A sub-composition script threw during execution — timeline registration never arrived (${session.scriptLoadFailures.join(", ")})`
           : `A sub-composition timeline script failed to load (${session.scriptLoadFailures.join(", ")})`
-        : `Sub-composition timelines did not become ready within ${timeoutMs}ms`,
-      details: { timeoutMs, sources: [...session.scriptLoadFailures] },
+        : `Sub-composition timelines did not become ready within ${timeoutMs}ms${pendingSuffix}. ` +
+          `This can be intentional: a composition driven by CSS animations or rAF never registers ` +
+          `window.__timelines[id], and marking its host with data-no-timeline skips the wait entirely. ` +
+          `Otherwise, a composition that sets up asynchronously must register window.__timelines[id] ` +
+          `once setup completes.`,
+      details: {
+        timeoutMs,
+        sources: [...session.scriptLoadFailures],
+        pendingCompositionIds: [...pending],
+      },
     },
   ]);
 }
@@ -2243,6 +2311,7 @@ export async function initializeSession(session: CaptureSession): Promise<void> 
       );
       throw error;
     }
+    await assertWebGpuAdapterAvailable(page, session.requiresWebGpu ?? false);
   };
 
   if (session.captureMode === "screenshot") {
@@ -2267,6 +2336,10 @@ export async function initializeSession(session: CaptureSession): Promise<void> 
       pageReadyTimeout,
       undefined,
       () => session.scriptLoadFailures,
+      undefined,
+      (ids) => {
+        session.pendingTimelineIds = [...ids];
+      },
     );
     logInitPhase(`pollSubCompositionTimelines complete (${session.subTimelineWaitOutcome})`);
     recordSubTimelineWarning(session, pageReadyTimeout);
@@ -2404,91 +2477,93 @@ export async function initializeSession(session: CaptureSession): Promise<void> 
   warmupLoopPromise.catch(() => {});
   logInitPhase("warmup loop started");
 
-  await gotoEntryPage();
-  logInitPhase("page.goto complete");
+  await cancelWarmupOnError(warmupState, async () => {
+    await gotoEntryPage();
+    logInitPhase("page.goto complete");
 
-  // Flush the GSAP proxy queue synchronously. In BeginFrame mode the rAF-based
-  // batch drain runs on the warmup loop's 33ms ticks — for tween-heavy
-  // compositions this is the dominant init cost. Flushing synchronously
-  // eliminates the wait entirely.
-  await page.evaluate(`window.__hfFlushSync?.()`);
-  logInitPhase("GSAP proxy flush complete");
+    // Flush the GSAP proxy queue synchronously. In BeginFrame mode the rAF-based
+    // batch drain runs on the warmup loop's 33ms ticks — for tween-heavy
+    // compositions this is the dominant init cost. Flushing synchronously
+    // eliminates the wait entirely.
+    await page.evaluate(`window.__hfFlushSync?.()`);
+    logInitPhase("GSAP proxy flush complete");
 
-  // Poll for window.__hf readiness using manual evaluate loop (waitForFunction
-  // uses rAF polling internally, which won't fire in beginFrame mode).
-  const pageReadyTimeout = session.config?.playerReadyTimeout ?? DEFAULT_CONFIG.playerReadyTimeout;
-  try {
+    // Poll for window.__hf readiness using manual evaluate loop (waitForFunction
+    // uses rAF polling internally, which won't fire in beginFrame mode).
+    const pageReadyTimeout =
+      session.config?.playerReadyTimeout ?? DEFAULT_CONFIG.playerReadyTimeout;
     await pollHfReady(page, pageReadyTimeout);
     logInitPhase("pollHfReady complete");
-  } catch (err) {
-    warmupState.running = false;
-    throw err;
-  }
 
-  session.subTimelineWaitOutcome = await pollSubCompositionTimelines(
-    page,
-    pageReadyTimeout,
-    undefined,
-    () => session.scriptLoadFailures,
-  );
-  logInitPhase(`pollSubCompositionTimelines complete (${session.subTimelineWaitOutcome})`);
-  recordSubTimelineWarning(session, pageReadyTimeout);
-
-  await applyVideoMetadataHints(page, session.options.videoMetadataHints);
-  logInitPhase("applyVideoMetadataHints complete");
-
-  // Run independent readiness checks in parallel — videos, images, fonts,
-  // and Tailwind don't depend on each other's completion.
-  const bfSkipVideoIds = session.options.skipReadinessVideoIds ?? [];
-  const [bfVideosReady] = await Promise.all([
-    pollVideosReady(page, bfSkipVideoIds, pageReadyTimeout),
-    pollImagesReady(page, pageReadyTimeout).then(async (ready) => {
-      if (!ready) {
-        const failedImages = await page.evaluate(() => {
-          return Array.from(document.querySelectorAll("img"))
-            .filter((img) => {
-              const ie = img as HTMLImageElement;
-              const src = ie.getAttribute("src") || "";
-              if (!src || src.startsWith("data:")) return false;
-              return !(ie.complete && ie.naturalWidth > 0);
-            })
-            .map((img) => (img as HTMLImageElement).src || img.getAttribute("src") || "(no src)")
-            .join(", ");
-        });
-        console.warn(
-          `[FrameCapture] Some image elements did not load within ${pageReadyTimeout}ms: ${failedImages}. ` +
-            `Continuing render — affected images may appear blank/missing in early frames.`,
-        );
-      }
-      await decodeAllImages(page);
-      return ready;
-    }),
-    page.evaluate(`document.fonts?.ready`),
-    waitForOptionalTailwindReady(page, pageReadyTimeout),
-  ]);
-  logInitPhase("media + fonts + tailwind ready");
-
-  if (!bfVideosReady) {
-    const failedVideos = await page.evaluate((skipIdList: readonly string[]) => {
-      const skip = new Set(skipIdList);
-      return Array.from(document.querySelectorAll("video"))
-        .filter((v) => !skip.has(v.id))
-        .filter((v) => (v as HTMLVideoElement).readyState < 2 && !(v as HTMLVideoElement).error)
-        .map((v) => (v as HTMLVideoElement).src || v.getAttribute("src") || "(no src)")
-        .join(", ");
-    }, bfSkipVideoIds);
-    console.warn(
-      `[FrameCapture] Some video elements did not decode within ${pageReadyTimeout}ms: ${failedVideos}. ` +
-        `Continuing render — affected videos will appear as blank/black frames.`,
+    session.subTimelineWaitOutcome = await pollSubCompositionTimelines(
+      page,
+      pageReadyTimeout,
+      undefined,
+      () => session.scriptLoadFailures,
+      undefined,
+      (ids) => {
+        session.pendingTimelineIds = [...ids];
+      },
     );
-  }
-  recordCaptureWarnings(
-    session,
-    await collectMediaReadinessWarnings(page, bfSkipVideoIds, pageReadyTimeout),
-  );
-  await recordLiveMapWarning(session, page);
+    logInitPhase(`pollSubCompositionTimelines complete (${session.subTimelineWaitOutcome})`);
+    recordSubTimelineWarning(session, pageReadyTimeout);
 
-  await recordSessionInitTelemetry(session, initStart);
+    await applyVideoMetadataHints(page, session.options.videoMetadataHints);
+    logInitPhase("applyVideoMetadataHints complete");
+
+    // Run independent readiness checks in parallel — videos, images, fonts,
+    // and Tailwind don't depend on each other's completion.
+    const bfSkipVideoIds = session.options.skipReadinessVideoIds ?? [];
+    const [bfVideosReady] = await Promise.all([
+      pollVideosReady(page, bfSkipVideoIds, pageReadyTimeout),
+      pollImagesReady(page, pageReadyTimeout).then(async (ready) => {
+        if (!ready) {
+          const failedImages = await page.evaluate(() => {
+            return Array.from(document.querySelectorAll("img"))
+              .filter((img) => {
+                const ie = img as HTMLImageElement;
+                const src = ie.getAttribute("src") || "";
+                if (!src || src.startsWith("data:")) return false;
+                return !(ie.complete && ie.naturalWidth > 0);
+              })
+              .map((img) => (img as HTMLImageElement).src || img.getAttribute("src") || "(no src)")
+              .join(", ");
+          });
+          console.warn(
+            `[FrameCapture] Some image elements did not load within ${pageReadyTimeout}ms: ${failedImages}. ` +
+              `Continuing render — affected images may appear blank/missing in early frames.`,
+          );
+        }
+        await decodeAllImages(page);
+        return ready;
+      }),
+      page.evaluate(`document.fonts?.ready`),
+      waitForOptionalTailwindReady(page, pageReadyTimeout),
+    ]);
+    logInitPhase("media + fonts + tailwind ready");
+
+    if (!bfVideosReady) {
+      const failedVideos = await page.evaluate((skipIdList: readonly string[]) => {
+        const skip = new Set(skipIdList);
+        return Array.from(document.querySelectorAll("video"))
+          .filter((v) => !skip.has(v.id))
+          .filter((v) => (v as HTMLVideoElement).readyState < 2 && !(v as HTMLVideoElement).error)
+          .map((v) => (v as HTMLVideoElement).src || v.getAttribute("src") || "(no src)")
+          .join(", ");
+      }, bfSkipVideoIds);
+      console.warn(
+        `[FrameCapture] Some video elements did not decode within ${pageReadyTimeout}ms: ${failedVideos}. ` +
+          `Continuing render — affected videos will appear as blank/black frames.`,
+      );
+    }
+    recordCaptureWarnings(
+      session,
+      await collectMediaReadinessWarnings(page, bfSkipVideoIds, pageReadyTimeout),
+    );
+    await recordLiveMapWarning(session, page);
+
+    await recordSessionInitTelemetry(session, initStart);
+  });
 
   // Stop warmup, then drain the loop in BOTH modes before any further
   // BeginFrame on this session (drawElement init, the render-frame commit tick
@@ -3839,6 +3914,79 @@ async function captureFrameSurface(
 function finalizeSessionInit(session: CaptureSession): void {
   session.motionBlur = resolveSessionMotionBlur(session);
   session.isInitialized = true;
+  startChromeMemorySampler(session);
+}
+
+/** Shape of one `SystemInfo.getProcessInfo` row; only the fields we read. */
+export interface CdpProcessInfoRow {
+  type: string;
+  id: number;
+  cpuTime: number;
+}
+
+/** Group Chrome child pids by role. `browser` comes from puppeteer, not CDP. */
+export function classifyChromeProcesses(
+  browserPid: number | undefined,
+  processInfo: readonly CdpProcessInfoRow[],
+): ChromePids {
+  const renderers: number[] = [];
+  const gpu: number[] = [];
+  for (const row of processInfo) {
+    if (row.type === "renderer") renderers.push(row.id);
+    else if (row.type === "GPU") gpu.push(row.id);
+  }
+  return browserPid === undefined ? { renderers, gpu } : { browser: browserPid, renderers, gpu };
+}
+
+/** The slice of a CDP session `readChromePids` needs. */
+interface ProcessInfoCdpSession {
+  send(method: "SystemInfo.getProcessInfo"): Promise<{
+    processInfo: readonly CdpProcessInfoRow[];
+  }>;
+  detach(): Promise<void>;
+}
+
+/**
+ * Chrome pids for one browser. `SystemInfo.getProcessInfo` is served ONLY by
+ * the browser target — a page-target session rejects with "is only supported
+ * on the browser target", which the sampler would swallow into a permanently
+ * empty reading. Hence the explicit browser-session factory.
+ */
+export async function readChromePids(
+  browserPid: number | undefined,
+  createBrowserCdpSession: () => Promise<ProcessInfoCdpSession>,
+): Promise<ChromePids> {
+  const cdp = await createBrowserCdpSession();
+  try {
+    const info = await cdp.send("SystemInfo.getProcessInfo");
+    return classifyChromeProcesses(browserPid, info.processInfo);
+  } finally {
+    await cdp.detach().catch(() => {});
+  }
+}
+
+const CHROME_MEMORY_SAMPLE_MS_DEFAULT = 2_000;
+
+function resolveChromeMemorySampleMs(): number {
+  const raw = process.env.HF_CHROME_MEMORY_SAMPLE_MS;
+  const parsed = raw === undefined ? Number.NaN : Number(raw);
+  return Number.isFinite(parsed) && parsed >= 250 ? parsed : CHROME_MEMORY_SAMPLE_MS_DEFAULT;
+}
+
+function startChromeMemorySampler(session: CaptureSession): void {
+  if (session.chromeMemory) return;
+  if (process.env.HF_CHROME_MEMORY_SAMPLER === "false") return;
+  const sampler = createChromeMemorySampler({
+    intervalMs: resolveChromeMemorySampleMs(),
+    onSample: session.options.onMemorySample,
+    sampleRss: (pids) => sampleProcessRss(pids),
+    getPids: () =>
+      readChromePids(session.browser.process()?.pid, () =>
+        session.browser.target().createCDPSession(),
+      ),
+  });
+  session.chromeMemory = sampler;
+  sampler.start();
 }
 
 /** Choose how many samples this frame gets when the plan is adaptive: the floor with
@@ -4437,6 +4585,12 @@ export async function discardWarmupCapture(
 }
 
 export async function closeCaptureSession(session: CaptureSession): Promise<void> {
+  if (session.chromeMemory) {
+    session.chromeMemory.stop();
+    // One last sample so the summary reflects the session's end state, not a
+    // point up to `intervalMs` earlier. Best effort; the page may be gone.
+    await session.chromeMemory.sampleOnce();
+  }
   // Realized static-dedup telemetry: how much the cache actually helped this
   // render (vs the prediction logged at arm time). Both capture paths
   // (sequential orchestrator + parallel workers) close their session here, so
@@ -4734,6 +4888,11 @@ export function getCapturePerfSummary(session: CaptureSession): CapturePerfSumma
     beginFrameHasDamage: session.beginFrameHasDamageCount,
     captureMode: session.captureMode,
     gpuRenderer: session.gpuRenderer,
+    chromeBrowserRssPeakMb: session.chromeMemory?.stats().browserRssPeakMb,
+    chromeRendererRssPeakMb: session.chromeMemory?.stats().rendererRssPeakMb,
+    chromeRssLastMb: session.chromeMemory?.stats().rssLastMb,
+    chromeGpuProcessSeenLastSample: session.chromeMemory?.stats().gpuProcessSeenLastSample,
+    chromeMemorySamples: session.chromeMemory?.stats().samples,
     deGateReason: session.deGateReason,
     deFallbackTrigger: session.deFallbackTrigger,
     deWorkerEncode: session.workerEncodeEnabled ?? false,

@@ -12,6 +12,7 @@
 import { HF_AUDIO_FX_ATTR } from "./audioFx.js";
 import { AUDIO_GROUP_RENDER_ID_ATTR, MEDIA_RENDER_ID_ATTR } from "./compiler/mediaRenderIds.js";
 import { HF_AUDIO_AUTOMATION_ATTR } from "./audioAutomation.js";
+import { isAudibleVideoElement } from "./audibleVideo.js";
 
 export const HF_AUDIO_GROUP_TAG = "hf-audio-group";
 export const HF_AUDIO_GROUP_ATTR = "data-audio-group";
@@ -129,7 +130,11 @@ export function isMemberGroupHidden(
 
 export function resolveAudioGroups(root: ParentNode): HfAudioGroup[] {
   const membersByGroup = new Map<string, string[]>();
-  for (const member of root.querySelectorAll(`audio[${HF_AUDIO_GROUP_ATTR}]`)) {
+  const candidates = root.querySelectorAll(
+    `audio[${HF_AUDIO_GROUP_ATTR}], video[${HF_AUDIO_GROUP_ATTR}]`,
+  );
+  for (const member of candidates) {
+    if (!isGroupableMember(member)) continue;
     // The render-stamped instance key when the compiler has been through
     // (`assignMediaRenderIds`), else the author id. An author id is unique only
     // per composition FILE, so a sub-composition declaring a bus AND its members
@@ -195,8 +200,8 @@ export function resolveCarveSourceIds(doc: Document, ids: readonly string[]): st
   return out;
 }
 
-/** The group an audio member belongs to, or null. Membership is audio-only in
- * v1, matching `resolveAudioGroups` and the render mixer; video and group-bus
+/** The group an audio or audible-video member belongs to, or null, matching
+ * `resolveAudioGroups` and the render mixer; muted video and group-bus
  * attributes are inert.
  *
  * Tolerant of objects that only partially implement `Element` (test doubles
@@ -204,9 +209,14 @@ export function resolveCarveSourceIds(doc: Document, ids: readonly string[]): st
  * `getAttribute` simply has no group, mirroring `readChain`'s style in
  * `runtime/audioFx.ts`. */
 export function audioGroupOf(el: Element): string | null {
-  if (typeof el.tagName !== "string" || el.tagName.toLowerCase() !== "audio") return null;
-  if (typeof el.getAttribute !== "function") return null;
+  if (typeof el.tagName !== "string" || typeof el.getAttribute !== "function") return null;
+  if (!isGroupableMember(el)) return null;
   return el.getAttribute(HF_AUDIO_GROUP_ATTR) || null;
+}
+
+function isGroupableMember(el: Element): boolean {
+  if (el.tagName.toLowerCase() === "audio") return true;
+  return typeof el.hasAttribute === "function" && isAudibleVideoElement(el);
 }
 
 /**

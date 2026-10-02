@@ -89,7 +89,7 @@ export const TimelineGestureOverlay = memo(function TimelineGestureOverlay({
               getTrackStyle(element.tag),
               renderClipContent,
               renderClipOverlay,
-              { priority: "interaction", rich: true },
+              { priority: "interaction", rich: false },
             )}
           </TimelineClip>
         </div>

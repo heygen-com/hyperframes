@@ -87,7 +87,7 @@ function Fader({
       <div className="relative h-[74px] w-full">
         <span className="pointer-events-none absolute inset-x-0 top-1/2 h-px bg-panel-border-input" />
         <span
-          className="pointer-events-none absolute left-1/2 w-[3px] -translate-x-1/2 rounded-sm bg-panel-accent"
+          className="pointer-events-none absolute left-1/2 w-[3px] -translate-x-1/2 rounded-xs bg-panel-accent"
           style={
             // `value`, not `band.gain`: mid-drag across zero the fill would
             // otherwise keep pointing the way it started.
@@ -95,7 +95,7 @@ function Fader({
           }
         />
         <input
-          className="hf-fx-eq-fader absolute left-1/2 h-[19px] w-[74px] -translate-x-1/2 -translate-y-1/2 rotate-[-90deg] cursor-ns-resize appearance-none bg-transparent"
+          className="hf-fx-eq-fader absolute left-1/2 h-[19px] w-[74px] -translate-x-1/2 -translate-y-1/2 -rotate-90 cursor-ns-resize appearance-none bg-transparent"
           style={{ top: "50%" }}
           type="range"
           min={-HF_AUDIO_EQ_RANGE_DB}
@@ -115,7 +115,7 @@ function Fader({
       </span>
       <span
         className={`hf-fx-eq-value font-mono text-[9px] tabular-nums ${
-          moved ? "text-panel-accent" : "text-panel-text-2"
+          moved ? "text-accent-ink" : "text-panel-text-2"
         }`}
       >
         {moved ? shown(value) : "0"}
@@ -160,7 +160,7 @@ export function FxEqModule({
         <span className="font-mono text-[9px] text-panel-text-2">{bands.length}-band</span>
         <button
           type="button"
-          className="hf-fx-remove px-1 text-[11px] text-panel-text-2 hover:text-panel-danger"
+          className="hf-fx-remove px-1 text-[11px] text-panel-text-2 hover:text-danger-ink"
           aria-label="Remove Tone"
           disabled={disabled}
           onClick={onRemove}

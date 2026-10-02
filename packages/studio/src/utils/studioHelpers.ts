@@ -22,13 +22,6 @@ export type RightPanelTab =
   | "block-params"
   | "slideshow"
   | "variables";
-export type RightInspectorPane = "layers" | "design";
-
-export interface RightInspectorPanes {
-  layers: boolean;
-  design: boolean;
-}
-
 export interface AgentModalAnchorPoint {
   x: number;
   y: number;
@@ -119,11 +112,21 @@ export function shouldIgnoreHistoryShortcut(target: EventTarget | null): boolean
   return isTypingTarget(target);
 }
 
-export function getHistoryShortcutLabel(action: "undo" | "redo"): string {
+function getHistoryShortcutLabel(action: "undo" | "redo"): string {
   const isMac =
     typeof navigator !== "undefined" && /Mac|iPhone|iPad|iPod/i.test(navigator.platform);
   const modifier = isMac ? "Cmd" : "Ctrl";
   return action === "undo" ? `${modifier}+Z` : `${modifier}+Shift+Z`;
+}
+
+/** The Undo / Redo tooltip: the shortcut always, the last action's name when there is one. */
+export function historyTooltipLabel(
+  action: "undo" | "redo",
+  lastAction: string | null | undefined,
+): string {
+  const shortcut = getHistoryShortcutLabel(action);
+  const verb = action === "undo" ? "Undo" : "Redo";
+  return lastAction ? `${verb} ${lastAction} (${shortcut})` : `${verb} (${shortcut})`;
 }
 
 export type ElementMatchSelection = Pick<
@@ -372,6 +375,41 @@ export async function resolveDroppedAssetDuration(
   media.src = "";
   media.load();
   return duration;
+}
+
+export function mediaMetadataUrl(projectId: string, assetPath: string): string {
+  return `/api/projects/${encodeURIComponent(projectId)}/media/metadata?path=${encodeURIComponent(assetPath)}`;
+}
+
+/** Dropped video audio stream from the metadata endpoint. Failure answers false so the drop still lands muted. */
+export async function resolveDroppedAssetHasAudio(
+  projectId: string,
+  assetPath: string,
+  kind: TimelineAssetKind,
+): Promise<boolean> {
+  if (kind !== "video") return false;
+  return (await resolveAssetHasAudio(projectId, assetPath)) === true;
+}
+
+function isPlainRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null;
+}
+
+/** An asset's audio stream from the metadata endpoint: null when the probe can't tell. */
+export async function resolveAssetHasAudio(
+  projectId: string,
+  assetPath: string,
+): Promise<boolean | null> {
+  try {
+    const response = await fetch(mediaMetadataUrl(projectId, assetPath));
+    if (!response.ok) return null;
+    const data: unknown = await response.json();
+    const metadata = isPlainRecord(data) ? data.metadata : undefined;
+    const hasAudio = isPlainRecord(metadata) ? metadata.hasAudio : undefined;
+    return typeof hasAudio === "boolean" ? hasAudio : null;
+  } catch {
+    return null;
+  }
 }
 
 export async function resolveDroppedAssetDimensions(

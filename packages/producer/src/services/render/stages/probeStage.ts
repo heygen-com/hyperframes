@@ -35,6 +35,7 @@ import {
   type CaptureSession,
   type EngineConfig,
   closeCaptureSession,
+  compositionRequiresWebGpu,
   createCaptureSession,
   deriveBeginFrameProbeTimeTicks,
   getCompositionDuration,
@@ -306,416 +307,408 @@ export async function runProbeStage(input: ProbeStageInput): Promise<ProbeStageR
     hasInsertedMedia,
   });
 
-  if (needsBrowser) {
-    const reasons = [];
-    if (composition.duration <= 0) reasons.push("root duration unknown");
-    if (compiled.unresolvedCompositions.length > 0)
-      reasons.push(`${compiled.unresolvedCompositions.length} unresolved composition(s)`);
-    if (hasAutoStart) reasons.push("auto-start video(s)");
-    if (hasScriptedAudio) reasons.push("scripted audio volume");
-    if (hasInsertedMedia) reasons.push("runtime-created or source-mutated media");
-    if (hasVariableMedia) reasons.push("variable-bound media source(s)");
-
-    log.info("Launching browser for composition probe...", {
-      reasons,
-    });
-
-    fileServer = await createFileServer({
-      projectDir,
-      compiledDir: join(workDir, "compiled"),
-      port: 0,
-      preHeadScripts: [VIRTUAL_TIME_SHIM],
-      fps: job.config.fps,
-    });
-    assertNotAborted();
-
-    // Motion blur averages the sub-frame samples pixel by pixel, so the frames have to be
-    // captured losslessly even when the output container wants no alpha. This is the one
-    // place a render picks its capture format; the encoder reads the result rather than
-    // re-deriving it, so the two cannot disagree about what is on disk.
-    const motionBlur = job.config.motionBlur;
-    const captureFormat = resolveCaptureImageFormat({ needsAlpha, motionBlur });
-    const captureOpts: CaptureOptions = {
-      width,
-      height,
-      fps: job.config.fps,
-      format: captureFormat,
-      quality: captureFormat === "png" ? undefined : 80,
-      variables: job.config.variables,
-      deviceScaleFactor,
-      motionBlur,
-    };
-
-    const PROBE_MAX_ATTEMPTS = 2;
-    for (let attempt = 1; attempt <= PROBE_MAX_ATTEMPTS; attempt++) {
-      const attemptStart = Date.now();
-      try {
-        log.info("Creating capture session...", { attempt, maxAttempts: PROBE_MAX_ATTEMPTS });
-        probeSession = await createCaptureSession(
-          fileServer.url,
-          join(workDir, "probe"),
-          captureOpts,
-          null,
-          probeCfg,
-        );
-        log.info("Waiting for composition to initialize...", { attempt });
-        const heartbeat = setInterval(() => {
-          const elapsed = ((Date.now() - attemptStart) / 1000).toFixed(1);
-          log.info(`Still waiting for browser initialization... (${elapsed}s elapsed)`);
-        }, 30_000);
-        try {
-          await initializeSession(probeSession);
-        } finally {
-          clearInterval(heartbeat);
-        }
-      } catch (err) {
-        const isTransient = isTransientBrowserError(err);
-        const errMsg = err instanceof Error ? err.message : String(err);
-        log.warn("Browser probe attempt failed", {
-          attempt,
-          maxAttempts: PROBE_MAX_ATTEMPTS,
-          isTransient,
-          error: errMsg,
-          elapsedMs: Date.now() - attemptStart,
-        });
-
-        if (probeSession) {
-          try {
-            await closeCaptureSession(probeSession);
-          } catch (closeErr) {
-            log.warn("Failed to close crashed probe session", {
-              error: closeErr instanceof Error ? closeErr.message : String(closeErr),
-            });
-          }
-          probeSession = null;
-        }
-
-        if (isTransient && attempt < PROBE_MAX_ATTEMPTS) {
-          log.info("Retrying with a fresh browser session...", {
-            attempt: attempt + 1,
-            maxAttempts: PROBE_MAX_ATTEMPTS,
-          });
-          assertNotAborted();
-          continue;
-        }
-        throw err;
-      }
-      log.info("Composition ready", {
-        attempt,
-        initMs: Date.now() - attemptStart,
-      });
-      break;
-    }
-    assertNotAborted();
-    // After the retry loop, probeSession is guaranteed non-null (the loop
-    // either breaks with a valid session or throws on the last attempt).
-    if (!probeSession) {
-      throw new Error("Browser probe completed without a capture session");
-    }
-    lastBrowserConsole = probeSession.browserConsoleBuffer;
-
-    // BeginFrame liveness probe. On SwiftShader, heavy-layer compositions
-    // (multi-group nested opacity caption animations — style-N prod comps)
-    // stall the FIRST BeginFrame indefinitely (tested to 30 min). The
-    // auto-worker calibration catches this via its capped protocol timeout,
-    // but renders with explicit `--workers N` skip calibration and would
-    // hang for the full protocol timeout. One bounded BeginFrame here gives
-    // ground truth for every render that probes a browser: on stall,
-    // relaunch the probe session in screenshot mode and tell the sequencer
-    // (via `beginFrameStalled`) to route the whole render through
-    // screenshot capture — the path the baseline already uses for these
-    // comps. Healthy comps pay one extra composited frame (<1s on GPU, a
-    // few seconds on SwiftShader).
-    if (probeSession.launchCaptureMode === "beginframe") {
-      const probeTimeoutMs =
-        Number(process.env.PRODUCER_BEGINFRAME_PROBE_TIMEOUT_MS) > 0
-          ? Number(process.env.PRODUCER_BEGINFRAME_PROBE_TIMEOUT_MS)
-          : 30_000;
-      const livenessStart = Date.now();
-      // Tick inside the post-warmup cushion: warmup < probe < first capture
-      // keeps the session's BeginFrame frameTimeTicks monotonic.
-      const probeTick = deriveBeginFrameProbeTimeTicks(
-        probeSession.beginFrameTimeTicks,
-        probeSession.beginFrameIntervalMs,
-      );
-      const alive = await probeBeginFrameLiveness(
-        probeSession.page,
-        probeTimeoutMs,
-        probeTick,
-        probeSession.beginFrameIntervalMs,
-      );
-      assertNotAborted();
-      if (alive) {
-        log.info("BeginFrame liveness probe passed", {
-          probeMs: Date.now() - livenessStart,
-        });
-      } else {
-        beginFrameStalled = true;
-        log.warn(
-          "[Render] BeginFrame liveness probe timed out — this composition stalls " +
-            "BeginFrame on this host (SwiftShader heavy-layer pattern). Relaunching " +
-            "the probe browser in screenshot capture mode; the render will use " +
-            "screenshot capture throughout.",
-          { probeTimeoutMs },
-        );
-        lastBrowserConsole = probeSession.browserConsoleBuffer;
-        await closeCaptureSession(probeSession).catch(() => {});
-        probeSession = await createCaptureSession(
-          fileServer.url,
-          join(workDir, "probe-screenshot"),
-          captureOpts,
-          null,
-          { ...probeCfg, forceScreenshot: true },
-        );
-        await initializeSession(probeSession);
-        assertNotAborted();
-        lastBrowserConsole = probeSession.browserConsoleBuffer;
-      }
-    }
-
-    // Bind the session only after the BeginFrame fallback, which may close the
-    // original browser and replace it with a screenshot-mode session. Every
-    // downstream probe must use the live replacement rather than the closed
-    // session captured before the fallback.
-    const session = probeSession;
-
-    // Discover root composition duration
-    if (composition.duration <= 0) {
-      log.info("Discovering composition duration...");
-      const discoveredDuration = await getCompositionDuration(session);
-      assertNotAborted();
-      log.info("Probed composition duration from browser", {
-        discoveredDuration,
-        staticDuration: compiled.staticDuration,
-      });
-      composition.duration = discoveredDuration;
-    } else {
-      log.info("Using static duration from data-duration attribute", {
-        duration: composition.duration,
-      });
-    }
-
-    // Resolve unresolved composition durations via window.__timelines
-    if (compiled.unresolvedCompositions.length > 0) {
-      const resolutions = await resolveCompositionDurations(
-        session.page,
-        compiled.unresolvedCompositions,
-      );
-      assertNotAborted();
-      if (resolutions.length > 0) {
-        compiled = await recompileWithResolutions(
-          compiled,
-          resolutions,
-          projectDir,
-          join(workDir, "downloads"),
-        );
-        assertNotAborted();
-        // Update composition metadata with re-parsed media
-        composition.videos = compiled.videos;
-        composition.audios = compiled.audios;
-        composition.images = compiled.images;
-        writeCompiledArtifacts(compiled, workDir, Boolean(job.config.debug));
-      }
-    }
-
-    // Discover media elements from browser DOM (catches dynamically-set src)
-    log.info("Discovering media assets from browser DOM...");
-    const browserMedia = await discoverMediaFromBrowser(session.page);
-    assertNotAborted();
-    if (browserMedia.length > 0) {
-      const existingVideoIds = new Set(composition.videos.map((v) => v.id));
-      const existingAudioIds = new Set(composition.audios.map((a) => a.id));
-      const existingImageIds = new Set(composition.images.map((image) => image.id));
-
-      pruneMutedBrowserMedia(composition, browserMedia, existingAudioIds);
-
-      for (const el of browserMedia) {
-        if (!el.src || el.src === "about:blank") continue;
-        if (el.muted && el.tagName === "audio") continue;
-
-        // Convert absolute localhost URLs back to relative paths
-        let src = el.src;
-        if (fileServer && src.startsWith(fileServer.url)) {
-          src = src.slice(fileServer.url.length).replace(/^\//, "");
-        }
-
-        if (el.tagName === "video") {
-          // fallow-ignore-next-line code-duplication
-          if (existingVideoIds.has(el.id)) {
-            // Reconcile to browser/runtime media metadata (runtime src can differ from static HTML).
-            const existing = composition.videos.find((v) => v.id === el.id);
-            if (existing) {
-              const sourceChanged = existing.src !== src;
-              if (sourceChanged) {
-                existing.src = src;
-              }
-              const projectedEnd = projectBrowserEndToCompositionTimeline(
-                existing.start,
-                el.start,
-                resolveBrowserMediaEnd(el.start, el.end, el.duration),
-              );
-              existing.end = reconcileBrowserMediaEnd(
-                existing.end,
-                projectedEnd,
-                sourceChanged,
-                el.durationInferred,
-              );
-              if (
-                el.mediaStart > 0 &&
-                (existing.mediaStart <= 0 ||
-                  Math.abs(existing.mediaStart - el.mediaStart) > BROWSER_MEDIA_EPSILON)
-              ) {
-                existing.mediaStart = el.mediaStart;
-              }
-              if (el.hasAudio && !el.muted && !existing.hasAudio) {
-                existing.hasAudio = true;
-              }
-              if (el.loop && !existing.loop) {
-                existing.loop = true;
-              }
-            }
-          } else {
-            // New video discovered from browser
-            composition.videos.push({
-              id: el.id,
-              src,
-              start: el.start,
-              end: resolveBrowserMediaEnd(el.start, el.end, el.duration),
-              mediaStart: el.mediaStart,
-              loop: el.loop,
-              hasAudio: el.hasAudio && !el.muted,
-            });
-            existingVideoIds.add(el.id);
-          }
-        } else if (el.tagName === "audio") {
-          // fallow-ignore-next-line code-duplication
-          if (existingAudioIds.has(el.id)) {
-            const existing = composition.audios.find((a) => a.id === el.id);
-            if (existing) {
-              const sourceChanged = existing.src !== src;
-              if (sourceChanged) {
-                existing.src = src;
-              }
-              const projectedEnd = projectBrowserEndToCompositionTimeline(
-                existing.start,
-                el.start,
-                resolveBrowserMediaEnd(el.start, el.end, el.duration),
-              );
-              existing.end = reconcileBrowserMediaEnd(
-                existing.end,
-                projectedEnd,
-                sourceChanged,
-                el.durationInferred,
-              );
-              if (
-                el.mediaStart > 0 &&
-                (existing.mediaStart <= 0 ||
-                  Math.abs(existing.mediaStart - el.mediaStart) > BROWSER_MEDIA_EPSILON)
-              ) {
-                existing.mediaStart = el.mediaStart;
-              }
-              if (
-                el.volume > 0 &&
-                Math.abs((existing.volume ?? 1) - el.volume) > BROWSER_MEDIA_EPSILON
-              ) {
-                existing.volume = el.volume;
-              }
-            }
-          } else {
-            composition.audios.push({
-              id: el.id,
-              src,
-              start: el.start,
-              end: resolveBrowserMediaEnd(el.start, el.end, el.duration),
-              mediaStart: el.mediaStart,
-              layer: 0,
-              volume: el.volume,
-              type: "audio",
-            });
-            existingAudioIds.add(el.id);
-          }
-        } else if (el.tagName === "image") {
-          if (existingImageIds.has(el.id)) {
-            const existing = composition.images.find((image) => image.id === el.id);
-            if (existing) {
-              existing.src = src;
-              const runtimeEnd = resolveBrowserMediaEnd(el.start, el.end, el.duration);
-              const projectedEnd = projectBrowserEndToCompositionTimeline(
-                existing.start,
-                el.start,
-                runtimeEnd,
-              );
-              if (
-                projectedEnd > existing.start &&
-                Math.abs(existing.end - projectedEnd) > BROWSER_MEDIA_EPSILON
-              ) {
-                existing.end = projectedEnd;
-              }
-            }
-          } else {
-            composition.images.push({
-              id: el.id,
-              src,
-              start: el.start,
-              end: resolveBrowserMediaEnd(el.start, el.end, el.duration),
-            });
-            existingImageIds.add(el.id);
-          }
-        }
-      }
-    }
-
-    if (composition.audios.length > 0) {
-      log.info("Discovering audio volume automation...", {
-        audioCount: composition.audios.length,
-      });
-      const automation = await discoverAudioVolumeAutomationFromTimeline(
-        session.page,
-        composition.audios.map((audio) => audio.id),
-        composition.duration,
-        fpsToNumber(job.config.fps),
-      );
-      assertNotAborted();
-      if (automation.length > 0) {
-        const byId = new Map(automation.map((entry) => [entry.id, entry.keyframes]));
-        for (const audio of composition.audios) {
-          const keyframes = byId.get(audio.id);
-          if (!keyframes || keyframes.length === 0) continue;
-          audio.volumeKeyframes = keyframes;
-          log.info(`[Probe] Runtime audio volume automation: ${audio.id}`, {
-            keyframeCount: keyframes.length,
-          });
-        }
-      }
-    }
-
-    // Runtime video discovery: for videos with auto-injected timing (data-hf-auto-start),
-    // seek the GSAP timeline to find actual scene visibility windows and override start/end.
-    if (composition.videos.length > 0) {
-      log.info("Discovering video visibility windows...", {
-        videoCount: composition.videos.length,
-      });
-      const visibilityWindows = await discoverVideoVisibilityFromTimeline(
-        session.page,
-        composition.duration,
-      );
-      assertNotAborted();
-
-      for (const win of visibilityWindows) {
-        const video = composition.videos.find((v) => v.id === win.videoId);
-        if (!video) continue;
-        if (win.visibleStart >= 0 && win.visibleEnd > win.visibleStart) {
-          video.start = win.visibleStart;
-          video.end = win.visibleEnd;
-          log.info(
-            `[Probe] Runtime video discovery: ${video.id} visible ${win.visibleStart.toFixed(2)}s–${win.visibleEnd.toFixed(2)}s`,
-          );
-        }
-      }
-    }
-  }
-
   try {
+    if (needsBrowser) {
+      const reasons = [];
+      if (composition.duration <= 0) reasons.push("root duration unknown");
+      if (compiled.unresolvedCompositions.length > 0)
+        reasons.push(`${compiled.unresolvedCompositions.length} unresolved composition(s)`);
+      if (hasAutoStart) reasons.push("auto-start video(s)");
+      if (hasScriptedAudio) reasons.push("scripted audio volume");
+      if (hasInsertedMedia) reasons.push("runtime-created or source-mutated media");
+      if (hasVariableMedia) reasons.push("variable-bound media source(s)");
+
+      log.info("Launching browser for composition probe...", {
+        reasons,
+      });
+
+      fileServer = await createFileServer({
+        projectDir,
+        compiledDir: join(workDir, "compiled"),
+        port: 0,
+        preHeadScripts: [VIRTUAL_TIME_SHIM],
+        fps: job.config.fps,
+      });
+      assertNotAborted();
+
+      // Motion blur averages the sub-frame samples pixel by pixel, so the frames have to be
+      // captured losslessly even when the output container wants no alpha. This is the one
+      // place a render picks its capture format; the encoder reads the result rather than
+      // re-deriving it, so the two cannot disagree about what is on disk.
+      const motionBlur = job.config.motionBlur;
+      const captureFormat = resolveCaptureImageFormat({ needsAlpha, motionBlur });
+      const captureOpts: CaptureOptions = {
+        width,
+        height,
+        fps: job.config.fps,
+        format: captureFormat,
+        quality: captureFormat === "png" ? undefined : 80,
+        variables: job.config.variables,
+        deviceScaleFactor,
+        motionBlur,
+        requiresWebGpu: compositionRequiresWebGpu(compiled.html),
+      };
+
+      const PROBE_MAX_ATTEMPTS = 2;
+      for (let attempt = 1; attempt <= PROBE_MAX_ATTEMPTS; attempt++) {
+        const attemptStart = Date.now();
+        try {
+          log.info("Creating capture session...", { attempt, maxAttempts: PROBE_MAX_ATTEMPTS });
+          probeSession = await createCaptureSession(
+            fileServer.url,
+            join(workDir, "probe"),
+            captureOpts,
+            null,
+            probeCfg,
+          );
+          log.info("Waiting for composition to initialize...", { attempt });
+          const heartbeat = setInterval(() => {
+            const elapsed = ((Date.now() - attemptStart) / 1000).toFixed(1);
+            log.info(`Still waiting for browser initialization... (${elapsed}s elapsed)`);
+          }, 30_000);
+          try {
+            await initializeSession(probeSession);
+          } finally {
+            clearInterval(heartbeat);
+          }
+        } catch (err) {
+          const isTransient = isTransientBrowserError(err);
+          const errMsg = err instanceof Error ? err.message : String(err);
+          log.warn("Browser probe attempt failed", {
+            attempt,
+            maxAttempts: PROBE_MAX_ATTEMPTS,
+            isTransient,
+            error: errMsg,
+            elapsedMs: Date.now() - attemptStart,
+          });
+
+          if (probeSession) {
+            try {
+              await closeCaptureSession(probeSession);
+            } catch (closeErr) {
+              log.warn("Failed to close crashed probe session", {
+                error: closeErr instanceof Error ? closeErr.message : String(closeErr),
+              });
+            }
+            probeSession = null;
+          }
+
+          if (isTransient && attempt < PROBE_MAX_ATTEMPTS) {
+            log.info("Retrying with a fresh browser session...", {
+              attempt: attempt + 1,
+              maxAttempts: PROBE_MAX_ATTEMPTS,
+            });
+            assertNotAborted();
+            continue;
+          }
+          throw err;
+        }
+        log.info("Composition ready", {
+          attempt,
+          initMs: Date.now() - attemptStart,
+        });
+        break;
+      }
+      assertNotAborted();
+      // After the retry loop, probeSession is guaranteed non-null (the loop
+      // either breaks with a valid session or throws on the last attempt).
+      if (!probeSession) {
+        throw new Error("Browser probe completed without a capture session");
+      }
+      lastBrowserConsole = probeSession.browserConsoleBuffer;
+
+      // One bounded BeginFrame: on SwiftShader some heavy-layer comps stall the first one indefinitely, and
+      // `--workers N` renders skip the calibration that catches it. On a stall, relaunch in screenshot mode and set
+      // `beginFrameStalled` so the whole render captures by screenshot; healthy comps pay one extra frame.
+      if (probeSession.launchCaptureMode === "beginframe") {
+        const probeTimeoutMs =
+          Number(process.env.PRODUCER_BEGINFRAME_PROBE_TIMEOUT_MS) > 0
+            ? Number(process.env.PRODUCER_BEGINFRAME_PROBE_TIMEOUT_MS)
+            : 30_000;
+        const livenessStart = Date.now();
+        // Tick inside the post-warmup cushion: warmup < probe < first capture
+        // keeps the session's BeginFrame frameTimeTicks monotonic.
+        const probeTick = deriveBeginFrameProbeTimeTicks(
+          probeSession.beginFrameTimeTicks,
+          probeSession.beginFrameIntervalMs,
+        );
+        const alive = await probeBeginFrameLiveness(
+          probeSession.page,
+          probeTimeoutMs,
+          probeTick,
+          probeSession.beginFrameIntervalMs,
+        );
+        assertNotAborted();
+        if (alive) {
+          log.info("BeginFrame liveness probe passed", {
+            probeMs: Date.now() - livenessStart,
+          });
+        } else {
+          beginFrameStalled = true;
+          log.warn(
+            "[Render] BeginFrame liveness probe timed out — this composition stalls " +
+              "BeginFrame on this host (SwiftShader heavy-layer pattern). Relaunching " +
+              "the probe browser in screenshot capture mode; the render will use " +
+              "screenshot capture throughout.",
+            { probeTimeoutMs },
+          );
+          lastBrowserConsole = probeSession.browserConsoleBuffer;
+          await closeCaptureSession(probeSession).catch(() => {});
+          probeSession = await createCaptureSession(
+            fileServer.url,
+            join(workDir, "probe-screenshot"),
+            captureOpts,
+            null,
+            { ...probeCfg, forceScreenshot: true },
+          );
+          await initializeSession(probeSession);
+          assertNotAborted();
+          lastBrowserConsole = probeSession.browserConsoleBuffer;
+        }
+      }
+
+      // Bind the session only after the BeginFrame fallback, which may close the
+      // original browser and replace it with a screenshot-mode session. Every
+      // downstream probe must use the live replacement rather than the closed
+      // session captured before the fallback.
+      const session = probeSession;
+
+      // Discover root composition duration
+      if (composition.duration <= 0) {
+        log.info("Discovering composition duration...");
+        const discoveredDuration = await getCompositionDuration(session);
+        assertNotAborted();
+        log.info("Probed composition duration from browser", {
+          discoveredDuration,
+          staticDuration: compiled.staticDuration,
+        });
+        composition.duration = discoveredDuration;
+      } else {
+        log.info("Using static duration from data-duration attribute", {
+          duration: composition.duration,
+        });
+      }
+
+      // Resolve unresolved composition durations via window.__timelines
+      if (compiled.unresolvedCompositions.length > 0) {
+        const resolutions = await resolveCompositionDurations(
+          session.page,
+          compiled.unresolvedCompositions,
+        );
+        assertNotAborted();
+        if (resolutions.length > 0) {
+          compiled = await recompileWithResolutions(
+            compiled,
+            resolutions,
+            projectDir,
+            join(workDir, "downloads"),
+          );
+          assertNotAborted();
+          // Update composition metadata with re-parsed media
+          composition.videos = compiled.videos;
+          composition.audios = compiled.audios;
+          composition.images = compiled.images;
+          writeCompiledArtifacts(compiled, workDir, Boolean(job.config.debug));
+        }
+      }
+
+      // Discover media elements from browser DOM (catches dynamically-set src)
+      log.info("Discovering media assets from browser DOM...");
+      const browserMedia = await discoverMediaFromBrowser(session.page);
+      assertNotAborted();
+      if (browserMedia.length > 0) {
+        const existingVideoIds = new Set(composition.videos.map((v) => v.id));
+        const existingAudioIds = new Set(composition.audios.map((a) => a.id));
+        const existingImageIds = new Set(composition.images.map((image) => image.id));
+
+        pruneMutedBrowserMedia(composition, browserMedia, existingAudioIds);
+
+        for (const el of browserMedia) {
+          if (!el.src || el.src === "about:blank") continue;
+          if (el.muted && el.tagName === "audio") continue;
+
+          // Convert absolute localhost URLs back to relative paths
+          let src = el.src;
+          if (fileServer && src.startsWith(fileServer.url)) {
+            src = src.slice(fileServer.url.length).replace(/^\//, "");
+          }
+
+          if (el.tagName === "video") {
+            // fallow-ignore-next-line code-duplication
+            if (existingVideoIds.has(el.id)) {
+              // Reconcile to browser/runtime media metadata (runtime src can differ from static HTML).
+              const existing = composition.videos.find((v) => v.id === el.id);
+              if (existing) {
+                const sourceChanged = existing.src !== src;
+                if (sourceChanged) {
+                  existing.src = src;
+                }
+                const projectedEnd = projectBrowserEndToCompositionTimeline(
+                  existing.start,
+                  el.start,
+                  resolveBrowserMediaEnd(el.start, el.end, el.duration),
+                );
+                existing.end = reconcileBrowserMediaEnd(
+                  existing.end,
+                  projectedEnd,
+                  sourceChanged,
+                  el.durationInferred,
+                );
+                if (
+                  el.mediaStart > 0 &&
+                  (existing.mediaStart <= 0 ||
+                    Math.abs(existing.mediaStart - el.mediaStart) > BROWSER_MEDIA_EPSILON)
+                ) {
+                  existing.mediaStart = el.mediaStart;
+                }
+                if (el.hasAudio && !el.muted && !existing.hasAudio) {
+                  existing.hasAudio = true;
+                }
+                if (el.loop && !existing.loop) {
+                  existing.loop = true;
+                }
+              }
+            } else {
+              // New video discovered from browser
+              composition.videos.push({
+                id: el.id,
+                src,
+                start: el.start,
+                end: resolveBrowserMediaEnd(el.start, el.end, el.duration),
+                mediaStart: el.mediaStart,
+                loop: el.loop,
+                hasAudio: el.hasAudio && !el.muted,
+              });
+              existingVideoIds.add(el.id);
+            }
+          } else if (el.tagName === "audio") {
+            // fallow-ignore-next-line code-duplication
+            if (existingAudioIds.has(el.id)) {
+              const existing = composition.audios.find((a) => a.id === el.id);
+              if (existing) {
+                const sourceChanged = existing.src !== src;
+                if (sourceChanged) {
+                  existing.src = src;
+                }
+                const projectedEnd = projectBrowserEndToCompositionTimeline(
+                  existing.start,
+                  el.start,
+                  resolveBrowserMediaEnd(el.start, el.end, el.duration),
+                );
+                existing.end = reconcileBrowserMediaEnd(
+                  existing.end,
+                  projectedEnd,
+                  sourceChanged,
+                  el.durationInferred,
+                );
+                if (
+                  el.mediaStart > 0 &&
+                  (existing.mediaStart <= 0 ||
+                    Math.abs(existing.mediaStart - el.mediaStart) > BROWSER_MEDIA_EPSILON)
+                ) {
+                  existing.mediaStart = el.mediaStart;
+                }
+                if (
+                  el.volume > 0 &&
+                  Math.abs((existing.volume ?? 1) - el.volume) > BROWSER_MEDIA_EPSILON
+                ) {
+                  existing.volume = el.volume;
+                }
+              }
+            } else {
+              composition.audios.push({
+                id: el.id,
+                src,
+                start: el.start,
+                end: resolveBrowserMediaEnd(el.start, el.end, el.duration),
+                mediaStart: el.mediaStart,
+                layer: 0,
+                volume: el.volume,
+                type: "audio",
+              });
+              existingAudioIds.add(el.id);
+            }
+          } else if (el.tagName === "image") {
+            if (existingImageIds.has(el.id)) {
+              const existing = composition.images.find((image) => image.id === el.id);
+              if (existing) {
+                existing.src = src;
+                const runtimeEnd = resolveBrowserMediaEnd(el.start, el.end, el.duration);
+                const projectedEnd = projectBrowserEndToCompositionTimeline(
+                  existing.start,
+                  el.start,
+                  runtimeEnd,
+                );
+                if (
+                  projectedEnd > existing.start &&
+                  Math.abs(existing.end - projectedEnd) > BROWSER_MEDIA_EPSILON
+                ) {
+                  existing.end = projectedEnd;
+                }
+              }
+            } else {
+              composition.images.push({
+                id: el.id,
+                src,
+                start: el.start,
+                end: resolveBrowserMediaEnd(el.start, el.end, el.duration),
+              });
+              existingImageIds.add(el.id);
+            }
+          }
+        }
+      }
+
+      if (composition.audios.length > 0) {
+        log.info("Discovering audio volume automation...", {
+          audioCount: composition.audios.length,
+        });
+        const automation = await discoverAudioVolumeAutomationFromTimeline(
+          session.page,
+          composition.audios.map((audio) => audio.id),
+          composition.duration,
+          fpsToNumber(job.config.fps),
+        );
+        assertNotAborted();
+        if (automation.length > 0) {
+          const byId = new Map(automation.map((entry) => [entry.id, entry.keyframes]));
+          for (const audio of composition.audios) {
+            const keyframes = byId.get(audio.id);
+            if (!keyframes || keyframes.length === 0) continue;
+            audio.volumeKeyframes = keyframes;
+            log.info(`[Probe] Runtime audio volume automation: ${audio.id}`, {
+              keyframeCount: keyframes.length,
+            });
+          }
+        }
+      }
+
+      // Runtime video discovery: for videos with auto-injected timing (data-hf-auto-start),
+      // seek the GSAP timeline to find actual scene visibility windows and override start/end.
+      if (composition.videos.length > 0) {
+        log.info("Discovering video visibility windows...", {
+          videoCount: composition.videos.length,
+        });
+        const visibilityWindows = await discoverVideoVisibilityFromTimeline(
+          session.page,
+          composition.duration,
+        );
+        assertNotAborted();
+
+        for (const win of visibilityWindows) {
+          const video = composition.videos.find((v) => v.id === win.videoId);
+          if (!video) continue;
+          if (win.visibleStart >= 0 && win.visibleEnd > win.visibleStart) {
+            video.start = win.visibleStart;
+            video.end = win.visibleEnd;
+            log.info(
+              `[Probe] Runtime video discovery: ${video.id} visible ${win.visibleStart.toFixed(2)}s–${win.visibleEnd.toFixed(2)}s`,
+            );
+          }
+        }
+      }
+    }
+
     await preflightCompositionAssetMediaTypes({
       projectDir,
       compiledDir: join(workDir, "compiled"),
@@ -728,8 +721,8 @@ export async function runProbeStage(input: ProbeStageInput): Promise<ProbeStageR
     assertNotAborted();
   } catch (error) {
     // The orchestrator only takes ownership after this stage returns. Until
-    // then, any post-browser validation failure must release both resources
-    // here or a deterministic user error strands Chrome and its file server.
+    // then any failure, a cancel included, must release both resources here
+    // or it strands Chrome and its file server.
     if (probeSession) {
       try {
         await closeCaptureSession(probeSession);

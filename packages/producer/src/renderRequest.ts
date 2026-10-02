@@ -41,6 +41,10 @@ export interface RenderRequestOptions {
   workers?: number;
   useGpu?: boolean;
   debug?: boolean;
+  /** Segmented capture: reuse segments recorded in a matching manifest. */
+  resumeSegments?: boolean;
+  /** Segmented capture: keep the segment directory after a successful render. */
+  keepSegments?: boolean;
   strictness?: RenderConfig["strictness"];
   entryFile?: string;
   crf?: number;

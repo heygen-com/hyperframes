@@ -92,6 +92,8 @@ import { bytesToMb } from "../telemetry/system.js";
 import { VERSION } from "../version.js";
 import { isDevMode } from "../utils/env.js";
 import { buildDockerRunArgs, resolveDockerPlatform } from "../utils/dockerRunArgs.js";
+import { createStderrTail, DockerRenderExitError } from "../utils/dockerStderrTail.js";
+import type { BrowserInstallFacts } from "../browser/installFacts.js";
 import { normalizeErrorMessage } from "../utils/errorMessage.js";
 import { runEnvironmentChecks } from "../browser/preflight.js";
 import {
@@ -324,8 +326,10 @@ export default defineCommand({
       description:
         "Run shader transitions on a page-side WebGL canvas inside Chrome " +
         "instead of the Node-side layered blend. ~6× faster for SDR " +
-        "shader-transition renders. HDR/alpha/video content auto-disables. " +
-        "Use --no-page-side-compositing to force the layered path.",
+        "shader-transition renders. Used for mp4, hls and gif output without " +
+        "HDR content; for mp4 and hls it usually turns off under --experimental-fast-capture. " +
+        "webm and mov output take the layered path. --no-page-side-compositing forces " +
+        "the layered path for mp4 and hls; gif always uses the page-side canvas.",
       default: true,
     },
     "browser-timeout": {
@@ -354,6 +358,22 @@ export default defineCommand({
         "Timeout in ms for the composition player to become ready. " +
         "Increase for complex compositions on slow hardware. Default: 45000 (45 s). " +
         "Env: PRODUCER_PLAYER_READY_TIMEOUT_MS.",
+    },
+    resume: {
+      type: "boolean",
+      description:
+        "Segmented capture only (HF_SEGMENTED_CAPTURE=true): reuse segments a " +
+        "previous run of the same composition and settings already finished, " +
+        "recorded in renders/.hf-segments/<hash>/segments.json. Each reused " +
+        "segment is re-validated before it is skipped.",
+      default: false,
+    },
+    "keep-segments": {
+      type: "boolean",
+      description:
+        "Segmented capture only: keep renders/.hf-segments/<hash> after a " +
+        "successful render instead of deleting it.",
+      default: false,
     },
     "low-memory-mode": {
       type: "boolean",
@@ -453,6 +473,7 @@ export interface RenderOptions {
   /** Major FFmpeg/Chrome version from local preflight (telemetry only); absent on Docker renders. */
   ffmpegVersionMajor?: number;
   browserVersionMajor?: number;
+  browserInstall?: BrowserInstallFacts;
   /** HLS target segment length in seconds; ignored unless `format` is `"hls"`. */
   hlsSegmentSeconds?: number;
   workers?: number;
@@ -470,6 +491,10 @@ export interface RenderOptions {
   videoFrameFormat?: VideoFrameFormat;
   quiet: boolean;
   debug?: boolean;
+  /** Segmented capture: reuse a prior run's validated segments. */
+  resumeSegments?: boolean;
+  /** Segmented capture: keep the segment directory after success. */
+  keepSegments?: boolean;
   bestEffort?: boolean;
   browserPath?: string;
   variables?: Record<string, unknown>;
@@ -808,13 +833,18 @@ async function renderDocker(
 
   try {
     await new Promise<void>((resolvePromise, reject) => {
+      const stderrTail = createStderrTail();
+      // stderr is piped so the failure can name its cause; it is still echoed live.
       const child = spawn("docker", dockerArgs, {
-        // When quiet, still show stderr so container errors surface
-        stdio: options.quiet ? ["pipe", "pipe", "inherit"] : "inherit",
+        stdio: options.quiet ? ["pipe", "pipe", "pipe"] : ["inherit", "inherit", "pipe"],
+      });
+      child.stderr?.on("data", (chunk: Buffer) => {
+        process.stderr.write(chunk);
+        stderrTail.push(chunk.toString());
       });
       child.on("close", (code) => {
         if (code === 0) resolvePromise();
-        else reject(new Error(`Docker render exited with code ${code}`));
+        else reject(new DockerRenderExitError(code, stderrTail.tail()));
       });
       child.on("error", (err) => reject(err));
     });
@@ -920,6 +950,7 @@ async function executeLocalRender(
     ...options,
     ffmpegVersionMajor: preflight.ffmpegVersionMajor,
     browserVersionMajor: preflight.browserVersionMajor,
+    browserInstall: preflight.browserInstall,
   };
   cancellation.checkAncestors();
   cancellation.signal.throwIfAborted();
@@ -1009,7 +1040,8 @@ async function executeLocalRender(
 
   const startTime = Date.now();
   const logger = createRenderTelemetryLogger(
-    producer.createConsoleLogger?.(options.debug ? "debug" : "info") ?? createNoopProducerLogger(),
+    producer.createConsoleLogger?.(options.debug ? "debug" : options.quiet ? "warn" : "info") ??
+      createNoopProducerLogger(),
   );
 
   const engineConfig = producer.resolveConfig({
@@ -1049,6 +1081,8 @@ async function executeLocalRender(
       outputResolution: options.outputResolution,
       outputResolutionAspectAgnostic: options.outputResolutionAspectAgnostic,
       debug: options.debug,
+      resumeSegments: options.resumeSegments,
+      keepSegments: options.keepSegments,
       strictness: options.bestEffort === false ? "strict" : "best-effort",
     },
   });
@@ -1183,6 +1217,7 @@ function renderEnvironmentTelemetryPayload(
   return {
     ffmpegVersionMajor: options.ffmpegVersionMajor,
     browserVersionMajor: options.browserVersionMajor,
+    browserInstall: options.browserInstall,
   };
 }
 
@@ -1617,6 +1652,8 @@ const KNOWN_STAGE_CODES: Readonly<Record<string, string>> = {
 export function normalizeStageCode(stage: string): string {
   const known = KNOWN_STAGE_CODES[stage];
   if (known) return known;
+  // The producer's "Starting browsers (k/n ready)" carries live counts; keep one code for it.
+  if (stage.startsWith("Starting browsers")) return "starting_browsers";
   const slug = stage
     .trim()
     .toLowerCase()
@@ -1751,6 +1788,11 @@ function trackRenderMetrics(
     catalogUsage: options.catalogUsage,
     ...renderOutputShapeTelemetryPayload(options),
     ...renderEnvironmentTelemetryPayload(options),
+    chromeBrowserRssPeakMb: perf?.chromeMemory?.browserRssPeakMb,
+    chromeRendererRssPeakMb: perf?.chromeMemory?.rendererRssPeakMb,
+    chromeRssLastMb: perf?.chromeMemory?.rssLastMb,
+    chromeGpuProcessSeenLastSample: perf?.chromeMemory?.gpuProcessSeenLastSample,
+    chromeMemorySamples: perf?.chromeMemory?.samples,
     staticDedupEnabled: perf?.staticDedup?.enabled,
     staticDedupArmed: perf?.staticDedup?.armed,
     staticDedupSkipReason: perf?.staticDedup?.skipReason,
@@ -1759,6 +1801,9 @@ function trackRenderMetrics(
     beginFrameNoDamageFrames: perf?.beginFrameReuse?.noDamageFrames,
     beginFrameHasDamageFrames: perf?.beginFrameReuse?.hasDamageFrames,
     deCaptureMode: perf?.drawElement?.mode,
+    vfxHostCount: perf?.drawElement?.vfxHostCount,
+    vfxCapture: perf?.drawElement?.vfxCapture,
+    vfxTypes: perf?.drawElement?.vfxTypes,
     deCompileGate: perf?.drawElement?.compileGate,
     deClampReason: perf?.drawElement?.clampReason,
     deWorkerInversion: perf?.drawElement?.workerInversion,
