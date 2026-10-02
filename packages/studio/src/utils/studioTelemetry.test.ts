@@ -177,10 +177,8 @@ describe("studioTelemetry — shared opt-out and canary properties", () => {
     window.location.hash = buildProjectHash("Launch #1? v2");
     trackStudioEvent("session_start");
     const first = (await sentEvents())[0]?.properties as Record<string, unknown>;
-    // Simulate a new tab whose sessionStorage was copied from its opener.
-    vi.spyOn(performance, "getEntriesByType").mockReturnValue([
-      { type: "navigate" } as PerformanceNavigationTiming,
-    ]);
+    // A second independent tab has its own sessionStorage and module instance.
+    sessionStorage.clear();
     vi.clearAllTimers();
     vi.resetModules();
     fetchMock.mockClear();

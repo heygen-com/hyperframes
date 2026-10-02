@@ -55,14 +55,7 @@ function studioRouteId(hash: string): string {
   if (!routeIds) {
     routeIds = new Map();
     try {
-      // A new tab can inherit its opener's sessionStorage. A fresh navigation
-      // starts a new map; reloads and history restores retain this tab's map.
-      const navigation = performance.getEntriesByType("navigation")[0] as
-        | PerformanceNavigationTiming
-        | undefined;
-      const stored: unknown = JSON.parse(
-        navigation?.type === "navigate" ? "[]" : (sessionStorage.getItem(ROUTE_IDS_KEY) ?? "[]"),
-      );
+      const stored: unknown = JSON.parse(sessionStorage.getItem(ROUTE_IDS_KEY) ?? "[]");
       if (Array.isArray(stored)) {
         for (const entry of stored) {
           if (
