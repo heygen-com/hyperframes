@@ -119,7 +119,10 @@
   --timeline-clip-audio-muted-bg: rgb(72, 74, 78);
   --timeline-clip-selection: light-dark(#0f766e, rgba(255, 255, 255, 0.85));
   --timeline-clip-selection-highlight: rgb(255 255 255 / 0.55);
-  --timeline-clip-radius: 8px;
+  --timeline-clip-radius: 12px;
+  --timeline-clip-band-height: 15px;
+  --timeline-clip-band-bg: rgb(12 12 14);
+  --timeline-clip-hover-duration: 60ms;
   --timeline-clip-audio-radius: 21px;
   --timeline-clip-highlight: rgb(255 255 255 / 0.08);
   --timeline-clip-shadow: 0 2px 6px rgb(0 0 0 / 0.3);

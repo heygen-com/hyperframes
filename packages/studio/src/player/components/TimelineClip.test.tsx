@@ -133,14 +133,14 @@ describe("TimelineClip", () => {
     act(() => root.unmount());
   });
 
-  it("drops the label chip under 60px even when the clip is selected", () => {
+  it("keeps the name band under 60px even when the clip is selected", () => {
     const { host, root } = renderClip({
       element: { id: "fx", label: "FX", tag: "div", start: 0, duration: 1, track: 0 },
       pps: 59,
       isSelected: true,
     });
 
-    expect(host.querySelector(".timeline-clip__label")).toBeNull();
+    expect(host.querySelector(".timeline-clip__label")?.textContent).toBe("FX");
     expect(host.querySelector(".timeline-clip__timecode")).toBeNull();
     expect(host.querySelector(".timeline-clip")?.getAttribute("data-ladder")).toBe("picture");
 
@@ -166,7 +166,7 @@ describe("TimelineClip", () => {
       pps: 23,
       isSelected: true,
     });
-    expect(frame.host.querySelector(".timeline-clip__label")).toBeNull();
+    expect(frame.host.querySelector(".timeline-clip__label")?.textContent).toBe("City");
     expect(frame.host.querySelector(".timeline-clip")?.getAttribute("data-ladder")).toBe("frame");
     act(() => frame.root.unmount());
   });

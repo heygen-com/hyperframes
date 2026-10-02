@@ -45,7 +45,7 @@ export const ClipBadges = memo(function ClipBadges({ el }: { el: TimelineElement
   if (visible.length === 0) return null;
   return (
     <span
-      className="pointer-events-none absolute right-1.5 top-0.5 z-[3] flex gap-1"
+      className="pointer-events-none absolute right-1.5 top-0.5 z-[3] flex max-w-[calc(100%-12px)] gap-1 overflow-hidden"
       data-testid="clip-badges"
     >
       {visible.map((badge) => (

@@ -160,6 +160,35 @@
     var(--timeline-clip-shadow);
 }
 
+.timeline-clip:not(.is-audio) {
+  border-width: 0;
+}
+
+.timeline-clip__content {
+  border-radius: inherit;
+}
+
+.timeline-clip:not(.is-audio) .timeline-clip__content {
+  top: var(--timeline-clip-band-height);
+  border-top-left-radius: 0;
+  border-top-right-radius: 0;
+}
+
+.timeline-clip::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: 7;
+  border-radius: inherit;
+  background: var(--timeline-clip-chip-text);
+  opacity: 0;
+  pointer-events: none;
+}
+
+.timeline-clip.is-hovered::after {
+  opacity: 0.1;
+}
+
 .timeline-transition {
   position: absolute;
   width: 0;
@@ -304,24 +333,10 @@
   border-color: var(--clip-border-hover);
 }
 
-.timeline-clip.is-selected {
-  outline: 1.5px solid var(--timeline-clip-selection);
-  outline-offset: -1.5px;
-}
-
-.timeline-clip.is-selected::after {
-  content: "";
-  position: absolute;
-  inset: 0;
-  z-index: 4;
-  border-radius: inherit;
-  box-shadow: inset 0 0 0 1px var(--timeline-clip-selection-highlight);
-  pointer-events: none;
-}
-
+.timeline-clip.is-selected,
 .timeline-clip[data-active].is-selected {
-  outline: 1.5px solid var(--timeline-clip-selection);
-  outline-offset: -1.5px;
+  outline: 1px solid var(--timeline-clip-selection);
+  outline-offset: 0;
 }
 
 .timeline-clip.is-dragging {
@@ -351,6 +366,22 @@
   white-space: nowrap;
 }
 
+.timeline-clip:not(.is-audio) .timeline-clip__label {
+  z-index: 0;
+  top: 0;
+  left: 0;
+  width: 100%;
+  max-width: 100%;
+  height: var(--timeline-clip-band-height);
+  padding: 0 min(6px, 25%);
+  border-radius: inherit;
+  border-bottom-left-radius: 0;
+  border-bottom-right-radius: 0;
+  background: var(--timeline-clip-band-bg);
+  font-weight: 600;
+  line-height: var(--timeline-clip-band-height);
+}
+
 /* Link groups share a label colour on the border and the name chip. */
 .timeline-clip[data-link-color] {
   border-color: var(--clip-link-color);
@@ -358,7 +389,7 @@
 
 .timeline-clip[data-link-color] .timeline-clip__label {
   box-shadow: inset 3px 0 0 var(--clip-link-color);
-  padding-left: 8px;
+  padding-left: min(8px, 25%);
 }
 
 .timeline-clip.is-audio .timeline-clip__label {
@@ -383,7 +414,11 @@
 
 @media (prefers-reduced-motion: no-preference) {
   .timeline-clip {
-    transition: background-color 120ms ease-out;
+    transition: background-color var(--timeline-clip-hover-duration) ease-out;
+  }
+
+  .timeline-clip::after {
+    transition: opacity var(--timeline-clip-hover-duration) ease-out;
   }
 
   .timeline-clip__handle-bar {

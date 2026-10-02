@@ -1,5 +1,4 @@
-import { memo, type ReactNode } from "react";
-import type { TimelineElement } from "../store/playerStore";
+import { memo } from "react";
 import type { TimelineTheme } from "./timelineTheme";
 import { getRenderedTimelineElement } from "./timelineTheme";
 import { TimelineClip } from "./TimelineClip";
@@ -9,7 +8,7 @@ import { getTimelineDragOverlayPosition } from "./timelineClipDragPreview";
 import type { DraggedClipState } from "./timelineClipDragTypes";
 import type { TrackVisualStyle } from "./timelineIcons";
 import { isTimelineClipActive } from "./useTimelineActiveClips";
-import type { TimelineClipRenderContext } from "./TimelineTypes";
+import type { TimelineProps } from "./TimelineTypes";
 
 interface TimelineGestureOverlayProps {
   drag: DraggedClipState | null;
@@ -20,12 +19,8 @@ interface TimelineGestureOverlayProps {
   currentTime: number;
   theme: TimelineTheme;
   getTrackStyle: (tag: string) => TrackVisualStyle;
-  renderClipContent?: (
-    element: TimelineElement,
-    style: { clip: string; label: string },
-    context: TimelineClipRenderContext,
-  ) => ReactNode;
-  renderClipOverlay?: (element: TimelineElement) => ReactNode;
+  renderClipContent?: TimelineProps["renderClipContent"];
+  renderClipOverlay?: TimelineProps["renderClipOverlay"];
 }
 
 /** Stable canvas child that owns the live drag actor independently of source rows. */
