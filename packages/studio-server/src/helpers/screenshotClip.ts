@@ -26,14 +26,14 @@ export function getElementScreenshotClip(
   const safeIndex = Math.max(0, Math.min(matches.length - 1, Math.floor(selectorIndex ?? 0)));
   const el = matches[safeIndex] ?? null;
   if (!(el instanceof HTMLElement)) return undefined;
-  // Opacity, not visibility; the tag keeps the prior inline opacity for clearElementScreenshotIsolation.
-  const hidden = "data-hf-thumbnail-hidden";
+  // Opacity, not visibility; each prior inline opacity is kept for clearElementScreenshotIsolation.
+  const page = window as Window & { __hfThumbnailFaded?: [CSSStyleDeclaration, string, string][] };
+  const faded = (page.__hfThumbnailFaded ??= []);
   for (let node: Element = el; node.parentElement; node = node.parentElement) {
     for (const sibling of Array.from(node.parentElement.children)) {
       const style = (sibling as HTMLElement).style;
-      if (sibling === node || !style || sibling.hasAttribute(hidden)) continue;
-      const priority = style.getPropertyPriority("opacity");
-      sibling.setAttribute(hidden, `${style.getPropertyValue("opacity")}|${priority}`);
+      if (sibling === node || !style) continue;
+      faded.push([style, style.getPropertyValue("opacity"), style.getPropertyPriority("opacity")]);
       style.setProperty("opacity", "0", "important");
     }
   }
@@ -53,11 +53,10 @@ export function getElementScreenshotClip(
 }
 
 export function clearElementScreenshotIsolation(): void {
-  const hidden = "data-hf-thumbnail-hidden";
-  for (const node of Array.from(document.querySelectorAll<HTMLElement>(`[${hidden}]`))) {
-    const [value = "", priority = ""] = node.getAttribute(hidden)!.split("|");
-    if (value) node.style.setProperty("opacity", value, priority);
-    else node.style.removeProperty("opacity");
-    node.removeAttribute(hidden);
+  const page = window as Window & { __hfThumbnailFaded?: [CSSStyleDeclaration, string, string][] };
+  for (const [style, value, priority] of (page.__hfThumbnailFaded ?? []).reverse()) {
+    if (value) style.setProperty("opacity", value, priority);
+    else style.removeProperty("opacity");
   }
+  page.__hfThumbnailFaded = [];
 }

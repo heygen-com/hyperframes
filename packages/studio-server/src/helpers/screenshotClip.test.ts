@@ -60,7 +60,8 @@ describe("getElementScreenshotClip", () => {
         <svg id="star"></svg>
         <div id="waves"><div id="frame" style="visibility: visible">.:-=</div></div>
       </div>
-      <div id="outside"></div>`;
+      <div id="outside" style="--alpha: 1; opacity: var(--alpha, 0|1)"></div>`;
+    const outside = document.getElementById("outside")!.style.getPropertyValue("opacity");
     const hidden = (id: string) => getComputedStyle(document.getElementById(id)!).opacity === "0";
 
     getElementScreenshotClip("#waves");
@@ -78,6 +79,7 @@ describe("getElementScreenshotClip", () => {
       "1",
       "important",
     ]);
-    expect(document.getElementById("waves")!.getAttribute("style")).toBeNull();
+    expect(document.getElementById("waves")!.style.getPropertyValue("opacity")).toBe("");
+    expect(document.getElementById("outside")!.style.getPropertyValue("opacity")).toBe(outside);
   });
 });

@@ -740,22 +740,16 @@ export function createStudioServer(options: StudioServerOptions): StudioServer {
             await new Promise((r) => setTimeout(r, 200));
             await reapplyStudioManualEditsToThumbnailPage(page);
             if (opts.signal.aborted) return null;
-            let clip: ScreenshotClip | undefined;
-            if (opts.selector) {
-              clip = await page.evaluate(
-                getElementScreenshotClip,
-                opts.selector,
-                opts.selectorIndex,
-              );
-            }
             try {
+              const clip: ScreenshotClip | undefined = opts.selector
+                ? await page.evaluate(getElementScreenshotClip, opts.selector, opts.selectorIndex)
+                : undefined;
               return (await page.screenshot(
                 opts.format === "png"
                   ? { type: "png", ...(clip ? { clip } : {}) }
                   : { type: "jpeg", quality: 80, ...(clip ? { clip } : {}) },
               )) as Buffer;
             } finally {
-              // thumbnailPages reuses this page for the next capture.
               if (opts.selector) await page.evaluate(clearElementScreenshotIsolation);
             }
           },
