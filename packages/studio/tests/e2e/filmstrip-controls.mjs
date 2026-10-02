@@ -86,6 +86,39 @@ try {
     );
     if (kind === "video") {
       const currentClip = await page.$(selector);
+      const disclosureSelector = "button[aria-controls][aria-expanded]";
+      await page.waitForFunction(
+        (selector, disclosureSelector) =>
+          document
+            .querySelector(selector)
+            ?.closest("[data-timeline-row]")
+            ?.querySelector(disclosureSelector),
+        { timeout: 10_000 },
+        selector,
+        disclosureSelector,
+      );
+      const disclosureHandle = await currentClip.evaluateHandle(
+        (node, disclosureSelector) =>
+          node.closest("[data-timeline-row]").querySelector(disclosureSelector),
+        disclosureSelector,
+      );
+      const disclosure = disclosureHandle.asElement();
+      assert(disclosure, "video must expose its keyframe lane disclosure");
+      if ((await disclosure.evaluate((node) => node.getAttribute("aria-expanded"))) === "true") {
+        await disclosure.click();
+      }
+      await page.waitForFunction(
+        (selector, disclosureSelector) =>
+          document
+            .querySelector(selector)
+            ?.closest("[data-timeline-row]")
+            ?.querySelector(disclosureSelector)
+            ?.getAttribute("aria-expanded") === "false",
+        {},
+        selector,
+        disclosureSelector,
+      );
+      await currentClip.hover();
       const fadeIn = await currentClip.$('[data-testid="clip-fade-handle-in"]');
       await fadeIn.focus();
       for (let step = 0; step < 10; step++) await page.keyboard.press("ArrowRight");
