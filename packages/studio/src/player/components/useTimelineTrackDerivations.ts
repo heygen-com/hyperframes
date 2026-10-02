@@ -170,7 +170,8 @@ function groupTimelineTracks(
   return { tracks, groups, trackGroupOf };
 }
 
-/** The timeline's rows top to bottom, as drawn: tracks by number, each audio group's anchor row with its members under it. */
+/** The timeline's rows top to bottom, as drawn: tracks by number, each audio group's anchor
+ *  row with its members under it. */
 function timelineDisplayTracks(
   elements: readonly TimelineElement[],
   collapsedGroupIds: ReadonlySet<string>,
