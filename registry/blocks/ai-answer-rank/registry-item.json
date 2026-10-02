@@ -117,6 +117,11 @@
       "path": "ai-answer-rank.html",
       "target": "compositions/ai-answer-rank.html",
       "type": "hyperframes:composition"
+    },
+    {
+      "path": "TEMPLATE.md",
+      "target": "TEMPLATE.md",
+      "type": "hyperframes:asset"
     }
   ]
 }
