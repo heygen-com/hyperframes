@@ -27,7 +27,7 @@ export function observeGsapGesture(writer: CommitMutation | null) {
         options.onResult?.(result);
         if (!result.ok || result.changed !== true) return;
         changed = true;
-        const members = changedMutationIndices(result, calls.length).map((index) => calls[index]!);
+        const members = changedMutationIndices(result, calls.length, calls.map((call) => call.options)).map((index) => calls[index]!);
         for (const action of keyframeUsageActions(
           members.map((call) => call.mutation),
           members.map((call) => call.options.keyframeAction),

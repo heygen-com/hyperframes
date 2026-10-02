@@ -40,13 +40,15 @@ export function primaryKeyframeAction(
   return (["add", "convert", "remove_all", "reset"] as const).find((action) => actions.has(action));
 }
 
-export function changedMutationIndices(result: MutationResult, count: number): number[] {
+export function changedMutationIndices(
+  result: MutationResult,
+  count: number,
+  options?: ReadonlyArray<Pick<CommitMutationOptions, "keyframeTelemetry">>,
+): number[] {
   if (!result.ok || result.changed !== true) return [];
-  if (count === 1) return [0];
-  const changes = result.mutationChanges;
-  if (!changes || changes.length !== count || changes.some((value) => typeof value !== "boolean"))
-    return [];
-  return changes.flatMap((changed, index) => (changed ? [index] : []));
+  const changes = count === 1 ? [true] : result.mutationChanges;
+  if (!Array.isArray(changes) || changes.length !== count || changes.some((value) => typeof value !== "boolean")) return [];
+  return changes.flatMap((changed, index) => changed && options?.[index]?.keyframeTelemetry !== false ? [index] : []);
 }
 
 export function trackKeyframeCommit(
@@ -56,7 +58,7 @@ export function trackKeyframeCommit(
   memberOptions?: ReadonlyArray<CommitMutationOptions>,
 ): void {
   if (!result.ok || result.changed !== true || options.keyframeTelemetry === false) return;
-  const indices = changedMutationIndices(result, mutations.length);
+  const indices = changedMutationIndices(result, mutations.length, memberOptions);
   const actions = keyframeUsageActions(
     indices.map((index) => mutations[index]!),
     indices.map((index) => memberOptions?.[index]?.keyframeAction ?? (mutations.length === 1 ? options.keyframeAction : undefined)),
