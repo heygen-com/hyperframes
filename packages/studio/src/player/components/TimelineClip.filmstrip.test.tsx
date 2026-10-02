@@ -98,14 +98,16 @@ describe("Filmstrip clips", () => {
     );
   });
 
-  it("keeps fallback lint warnings above the name band without a picture renderer", () => {
+  it("keeps fallback lint warnings clear of the name band and menu badge", () => {
     usePlayerStore
       .getState()
       .setLintFindingsByElement(new Map([["clip", { count: 1, messages: ["Lint warning"] }]]));
     const host = render("div", {}, false);
     const name = host.querySelector(".timeline-clip__label");
-    const warning = host.querySelector('[title="Lint warning"]');
+    const warning = host.querySelector<HTMLElement>('[title="Lint warning"]');
     expect(warning).not.toBeNull();
+    expect(warning?.style.bottom).toBe("7px");
+    expect(warning?.style.top).toBe("");
     expect(
       (name?.compareDocumentPosition(warning!) ?? 0) & Node.DOCUMENT_POSITION_FOLLOWING,
     ).toBeTruthy();
