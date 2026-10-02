@@ -97,9 +97,7 @@ export function useElementPicker(
     setPickedElement(null);
   }, []);
 
-  // Windows that posted while they were the primary preview frame: a reload that swaps in a new frame between a
-  // pick and its message leaves that pick posted from the frame it was made in.
-  const shownWindows = useRef(new WeakSet<MessageEventSource>());
+  const windowsThatWerePrimary = useRef(new WeakSet<MessageEventSource>());
 
   // Listen for picker messages from the iframe
   useMountEffect(() => {
@@ -113,8 +111,12 @@ export function useElementPicker(
       const activeIframe = getActiveIframe();
       if (!activeIframe) return;
       if (!e.source) return;
-      if (e.source === iframeRef.current?.contentWindow) shownWindows.current.add(e.source);
-      else if (e.source !== activeIframe.contentWindow && !shownWindows.current.has(e.source))
+      if (e.source === iframeRef.current?.contentWindow)
+        windowsThatWerePrimary.current.add(e.source);
+      else if (
+        e.source !== activeIframe.contentWindow &&
+        !windowsThatWerePrimary.current.has(e.source)
+      )
         return;
 
       if (data.type === "element-picked" && data.elementInfo) {
