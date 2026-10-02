@@ -501,7 +501,7 @@ const cpuUs = (e, a, b) =>
 /** Main-thread CPU ms inside each frame interval, on the thread that ran the end mark; null when unknown. */
 function mainThreadPerFrame({ frames, mark, trace }) {
   const anchor = trace.find((e) => e.name === TRACE_MARK && e.cat.includes("user_timing"));
-  if (!anchor) return { work: null, untimedOutside: 0 };
+  if (!anchor) return { work: null, untimedOutside: 0, unknown: "no end mark in the trace" };
   const toTrace = (ms) => anchor.ts + (ms - mark) * 1000;
   const [from, to] = [toTrace(frames[0]), toTrace(frames.at(-1))];
   // A task cut by the trace's start or end has no thread time; outside the frames it adds nothing anyway.
@@ -509,7 +509,16 @@ function mainThreadPerFrame({ frames, mark, trace }) {
   const tasks = all.filter((e) => e.ts < to && e.ts + e.dur > from);
   const untimedOutside = all.filter((e) => e.tdur === undefined && !tasks.includes(e)).length;
   // Without the mark or thread CPU time the work is unknown, which fails smoothness alone.
-  if (tasks.some((e) => e.tdur === undefined)) return { work: null, untimedOutside };
+  const untimed = tasks.filter((e) => e.tdur === undefined);
+  if (untimed.length) {
+    const [first] = untimed;
+    const at = `${first.name} ${first.dur} us at ${Math.round((first.ts - from) / 1000)} ms`;
+    return {
+      work: null,
+      untimedOutside,
+      unknown: `${untimed.length} untimed task(s) in the frames, first ${at}`,
+    };
+  }
   const work = frames.slice(1).map((t, i) => {
     const [a, b] = [toTrace(frames[i]), toTrace(t)];
     return tasks.reduce((sum, e) => sum + cpuUs(e, a, b), 0) / 1000;
@@ -521,7 +530,7 @@ const hundredth = (v) => Math.round(v * 100) / 100;
 
 export function smoothness(rec) {
   const intervals = rec.frames.slice(1).map((t, i) => t - rec.frames[i]);
-  const { work, untimedOutside } = mainThreadPerFrame(rec);
+  const { work, untimedOutside, unknown } = mainThreadPerFrame(rec);
   return {
     p95: percentile(intervals, 95),
     frames: intervals.length,
@@ -529,6 +538,7 @@ export function smoothness(rec) {
     intervals: intervals.map(hundredth),
     work: work && work.map(hundredth),
     untimedOutside,
+    ...(unknown && { unknown }),
   };
 }
 

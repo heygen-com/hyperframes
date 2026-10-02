@@ -119,6 +119,12 @@ function mergeSmooth(parts) {
     intervals,
     work: parts.every((s) => s.work) ? parts.flatMap((s) => s.work) : null,
     untimedOutside: parts.reduce((n, s) => n + s.untimedOutside, 0),
+    ...(parts.some((s) => s.unknown) && {
+      unknown: parts
+        .map((s) => s.unknown)
+        .filter(Boolean)
+        .join("; "),
+    }),
   };
 }
 

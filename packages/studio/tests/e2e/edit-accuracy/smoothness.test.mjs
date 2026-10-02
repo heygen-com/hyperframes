@@ -17,5 +17,8 @@ describe("smoothness work per frame", () => {
   it("leaves the work unknown when a task inside the frames lacks thread time", () => {
     const s = smoothness(rec([task(960_000, 4_000)]));
     expect(s.work).toBeNull();
+    expect(s.unknown).toMatch(
+      /^1 untimed task\(s\) in the frames, first RunTask 4000 us at 10 ms$/,
+    );
   });
 });
