@@ -269,9 +269,12 @@ export function useAppHotkeys({
     [],
   );
 
-  return useStableHandlers({
-    handleUndo,
-    handleRedo,
-    syncPreviewHotkeys,
-  }, projectId);
+  return useStableHandlers(
+    {
+      handleUndo,
+      handleRedo,
+      syncPreviewHotkeys,
+    },
+    projectId,
+  );
 }

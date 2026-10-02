@@ -1,7 +1,12 @@
 import { useRef } from "react";
 
 type Handler = (...args: never[]) => unknown;
-type Epoch = { scope: unknown; latest: object; wrappers: Map<string, Handler>; previous: object | null };
+type Epoch = {
+  scope: unknown;
+  latest: object;
+  wrappers: Map<string, Handler>;
+  previous: object | null;
+};
 
 // The same object while its non-function fields are unchanged, and one identity per function field calling the
 // latest one; a new `scope` (the project) starts new identities, and a wrapper kept from before calls its own scope's.
