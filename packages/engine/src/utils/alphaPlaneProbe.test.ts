@@ -1,5 +1,15 @@
-import { describe, expect, it } from "vitest";
-import { inputAlphaOpaqueWarning, sampledRgbaAlphaIsFullyOpaque } from "./alphaPlaneProbe.js";
+import { spawnSync } from "node:child_process";
+import { mkdtempSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { decoderForCodec } from "../services/videoFrameExtractor.js";
+import {
+  inputAlphaOpaqueWarning,
+  probeInputAlphaPlane,
+  sampledRgbaAlphaIsFullyOpaque,
+} from "./alphaPlaneProbe.js";
+import { getFfmpegBinary } from "./ffmpegBinaries.js";
 
 const BYTES_PER_FRAME = 8 * 8 * 4; // 256 — one 8x8 rgba frame
 
@@ -56,5 +66,42 @@ describe("inputAlphaOpaqueWarning", () => {
     expect(line).toContain("yuva420p");
     expect(line).toContain("alpha sidecar");
     expect(line.endsWith("\n")).toBe(true);
+  });
+});
+
+const HAS_FFMPEG = spawnSync(getFfmpegBinary(), ["-version"], { encoding: "utf-8" }).status === 0;
+
+describe.skipIf(!HAS_FFMPEG)("probeInputAlphaPlane on real files", () => {
+  let dir: string;
+  beforeAll(() => {
+    dir = mkdtempSync(join(tmpdir(), "hf-alpha-probe-test-"));
+  });
+  afterAll(() => {
+    rmSync(dir, { recursive: true, force: true });
+  });
+
+  const encode = (name: string, color: string, codecArgs: string[]): string => {
+    const out = join(dir, name);
+    const args = ["-v", "error", "-f", "lavfi", "-i", `color=c=${color}:s=32x32:d=0.2,format=rgba`, ...codecArgs];
+    const res = spawnSync(getFfmpegBinary(), [...args, "-y", out]);
+    expect(res.status).toBe(0);
+    return out;
+  };
+  const vp9 = ["-c:v", "libvpx-vp9", "-pix_fmt", "yuva420p"];
+  const prores = ["-c:v", "prores_ks", "-profile:v", "4", "-pix_fmt", "yuva444p10le"];
+
+  it("reports a VP9 input whose alpha is all opaque", async () => {
+    const file = encode("opaque.webm", "red", vp9);
+    expect(await probeInputAlphaPlane(file, decoderForCodec("vp9"))).toBe(true);
+  });
+
+  it("does not flag a VP9 input that is really transparent", async () => {
+    const file = encode("clear.webm", "red@0.0", vp9);
+    expect(await probeInputAlphaPlane(file, decoderForCodec("vp9"))).toBe(false);
+  });
+
+  it("probes ProRes 4444 with its own decoder, not the VP9 one", async () => {
+    const file = encode("opaque.mov", "red", prores);
+    expect(await probeInputAlphaPlane(file, decoderForCodec("prores"))).toBe(true);
   });
 });

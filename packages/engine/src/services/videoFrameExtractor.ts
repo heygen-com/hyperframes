@@ -1845,15 +1845,7 @@ export async function extractAllVideoFrames(
   const sdrToHdrTransfers: Array<HdrTransfer | undefined> = resolvedVideos.map(() => undefined);
   breakdown.hdrProbeMs = Date.now() - phase2ProbeStart;
 
-  // Phase 2a: warn when a video input declares alpha but its decoded alpha
-  // plane is uniformly opaque. `alpha_mode=1` is container metadata that can
-  // outlive the alpha it describes — a remux can drop the BlockAdditional
-  // sidecar while keeping the tag — so a file can promise transparency it no
-  // longer contains and then composite as a solid rectangle with no way for
-  // the user to know their file, not the renderer, is the problem
-  // (heygen-com/hyperframes#3220 / #3226). Warning only, never an error: an
-  // opaque video used as a full-frame background is legitimate, and an
-  // inconclusive probe stays silent.
+  // Warning only: an opaque video used as a full-frame background is legitimate.
   const alphaWarnedSrcs = new Set<string>();
   if (resolvedVideos.length > 0) {
     await Promise.all(
@@ -1862,7 +1854,7 @@ export async function extractAllVideoFrames(
         const metadata = videoMetadata[index];
         if (!metadata?.hasAlpha || !codecMayHaveAlpha(metadata.videoCodec)) return;
         if (alphaWarnedSrcs.has(video.src)) return;
-        const opaque = await probeInputAlphaPlane(videoPath);
+        const opaque = await probeInputAlphaPlane(videoPath, decoderForCodec(metadata.videoCodec));
         if (opaque !== true) return;
         alphaWarnedSrcs.add(video.src);
         process.stderr.write(inputAlphaOpaqueWarning(video.src));
