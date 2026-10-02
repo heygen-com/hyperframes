@@ -139,6 +139,43 @@ export function requireSnapshotFfmpeg(ffmpegPath: string | undefined): string {
   );
 }
 
+interface SnapshotCompositePage {
+  evaluate<T>(callback: () => T): Promise<Awaited<T>>;
+  screenshot(options: {
+    type: "jpeg";
+    quality: number;
+    clip: { x: number; y: number; width: number; height: number };
+  }): Promise<Uint8Array>;
+}
+
+/** Recapture canvas composites once the decoded video overlays have been injected. */
+export async function recaptureSnapshotComposite(page: SnapshotCompositePage): Promise<void> {
+  const hasPageComposite = await page.evaluate(async () => {
+    const runtimeWindow = window as Window & {
+      __hf_page_composite_prepare?: () => Promise<boolean>;
+      __hf_page_composite_resolve?: () => boolean;
+    };
+    if (typeof runtimeWindow.__hf_page_composite_resolve !== "function") return false;
+    await runtimeWindow.__hf_page_composite_prepare?.();
+    return true;
+  });
+  if (hasPageComposite) {
+    // The 1×1 screenshot forces Chrome to publish updated subtree paint records
+    // after injection, so resolve can consume them without a fixed delay.
+    await page.screenshot({
+      type: "jpeg",
+      quality: 1,
+      clip: { x: 0, y: 0, width: 1, height: 1 },
+    });
+    await page.evaluate(() => {
+      const runtimeWindow = window as Window & {
+        __hf_page_composite_resolve?: () => boolean;
+      };
+      runtimeWindow.__hf_page_composite_resolve?.();
+    });
+  }
+}
+
 /**
  * Extract a single frame from a video file at `timeSeconds` via FFmpeg.
  * Used to work around Chrome-headless's inability to reliably seek
@@ -594,6 +631,8 @@ async function captureSnapshots(
             );
           }
         }
+
+        await recaptureSnapshotComposite(page);
 
         const timeLabel = formatSnapshotTimestamp(time);
         const index = String(i).padStart(2, "0");

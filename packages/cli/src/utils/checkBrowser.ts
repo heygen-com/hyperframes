@@ -121,7 +121,7 @@ export async function preResolveHostileMediaProxies(
   try {
     codecMap = await scanProjectMediaCodecMap(projectDir, [{ html }]);
   } catch (err) {
-    console.info(
+    console.error(
       `[hyperframes] media proxy pre-resolve: scan failed (${normalizeErrorMessage(err)})`,
     );
     return;
@@ -142,7 +142,7 @@ export async function preResolveHostileMediaProxies(
     ),
   );
   const failed = results.filter((result) => result.status === "rejected").length;
-  console.info(
+  console.error(
     `[hyperframes] media proxy pre-resolve: ${results.length - failed}/${results.length} ready, ${failed} failed (${Date.now() - startedAt}ms)`,
   );
 }
@@ -434,6 +434,7 @@ async function hasNoTimelineDeclaration(page: Page): Promise<boolean> {
 }
 
 async function injectAuditScripts(page: Page, contrast: boolean): Promise<void> {
+  await page.addScriptTag({ content: loadBrowserScript("motion-signature.browser.js") });
   await page.addScriptTag({ content: loadBrowserScript("layout-audit.browser.js") });
   await page.addScriptTag({ content: loadBrowserScript("motion-sample.browser.js") });
   if (contrast) {

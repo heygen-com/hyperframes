@@ -1,4 +1,4 @@
-import { failCommand } from "../utils/commandResult.js";
+import { failCommand, failUsage } from "../utils/commandResult.js";
 import { defineCommand } from "citty";
 import type { Example } from "./_examples.js";
 
@@ -490,6 +490,18 @@ export default defineCommand({
     const projectDir = resolve(args.dir ?? process.cwd());
     const json = args.json === true;
     const skipClipboard = args.clipboard === false;
+
+    // citty binds only the first positional to `name`; the rest land in `args._` and were silently dropped.
+    const extra = args._.slice(1);
+    if (extra.length > 0) {
+      const msg =
+        `add installs one item or tag per invocation. Got extra argument${extra.length === 1 ? "" : "s"}: ` +
+        `${extra.join(", ")}. Run add once per item, or pass a single tag to install every item tagged with it.`;
+      if (json) console.log(JSON.stringify({ ok: false, error: msg }));
+      else console.error(c.error(msg));
+      failUsage();
+    }
+
     const hasConfigBefore = existsSync(projectConfigPath(projectDir));
 
     // Try single item first. If it fails, check if the name matches a tag.

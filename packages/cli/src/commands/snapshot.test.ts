@@ -35,6 +35,7 @@ import snapshotCommand, {
   computeSnapshotTimes,
   formatSnapshotTimestamp,
   parseZoomScale,
+  recaptureSnapshotComposite,
   requireSnapshotFfmpeg,
   resolveSnapshotVideoClipStart,
   resolveSnapshotVideoFrameTime,
@@ -515,5 +516,58 @@ describe("requireSnapshotFfmpeg", () => {
 
   it("preserves the resolved FFmpeg executable", () => {
     expect(requireSnapshotFfmpeg("C:\\tools\\ffmpeg.exe")).toBe("C:\\tools\\ffmpeg.exe");
+  });
+});
+
+describe("snapshot composite recapture", () => {
+  it.each([false, true])("recaptures only when a resolver exists: %s", async (hasResolver) => {
+    const order: string[] = [];
+    const runtimeWindow = {
+      __hf_page_composite_prepare: vi.fn(async () => {
+        order.push("prepare");
+        return true;
+      }),
+      __hf_page_composite_resolve: hasResolver
+        ? vi.fn(() => {
+            order.push("resolve");
+            return true;
+          })
+        : undefined,
+    };
+    vi.stubGlobal("window", runtimeWindow);
+    try {
+      await recaptureSnapshotComposite({
+        async evaluate<T>(callback: () => T): Promise<Awaited<T>> {
+          return await callback();
+        },
+        async screenshot(options) {
+          expect(options).toEqual({
+            type: "jpeg",
+            quality: 1,
+            clip: { x: 0, y: 0, width: 1, height: 1 },
+          });
+          order.push("paint");
+          return new Uint8Array();
+        },
+      });
+      expect(order).toEqual(hasResolver ? ["prepare", "paint", "resolve"] : []);
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+
+  it("places recapture after frame injection and visibility sync, before final capture", () => {
+    const source = readFileSync(new URL("./snapshot.ts", import.meta.url), "utf8");
+    const injection = source.indexOf("await injectVideoFramesBatch(page, updates)");
+    const visibility = source.indexOf("await syncVideoFrameVisibility(", injection);
+    const recapture = source.indexOf("await recaptureSnapshotComposite(page)", visibility);
+    const finalCapture = source.indexOf(
+      'page.screenshot({ path: framePath, type: "png"',
+      recapture,
+    );
+    expect(injection).toBeGreaterThan(-1);
+    expect(visibility).toBeGreaterThan(injection);
+    expect(recapture).toBeGreaterThan(visibility);
+    expect(finalCapture).toBeGreaterThan(recapture);
   });
 });

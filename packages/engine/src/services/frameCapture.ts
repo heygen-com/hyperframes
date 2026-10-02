@@ -1486,7 +1486,7 @@ async function constructCaptureSession(
 
   // Transparent-background setup is intentionally NOT done here. Chrome resets
   // the default-background-color override on navigation, and the
-  // `[data-composition-id]{background:transparent}` stylesheet that
+  // `html,body{background:transparent}` stylesheet that
   // `initTransparentBackground` injects must land in a real `document.head`.
   // See `initializeSession()` below — it calls `initTransparentBackground` for
   // PNG captures after `page.goto(...)` and the `window.__hf` readiness poll.

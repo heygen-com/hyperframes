@@ -1,11 +1,12 @@
 import { describe, expect, it, vi, beforeEach, afterEach } from "vitest";
+import { parseArgs as parseCittyArgs, type ArgsDef } from "citty";
 import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { RegistryItem, RegistryManifest } from "@hyperframes/core";
 import { lintHyperframeHtml } from "@hyperframes/lint";
 import type { RunAddResult } from "./add.js";
-import {
+import addCommand, {
   AddError,
   buildSnippet,
   compositionRootId,
@@ -16,6 +17,7 @@ import {
   tagAddJson,
 } from "./add.js";
 import { trackRegistryItemAdded } from "../telemetry/events.js";
+import { CliUsageError } from "../utils/commandResult.js";
 
 // Assert the emitted payload rather than the transport: `shouldTrack()` is
 // already false under test (dev mode / no PostHog key), so a real call would
@@ -519,6 +521,49 @@ describe("variable values in the snippet", () => {
     expect(() => parseVariableValues("not json")).toThrow(/JSON object/);
     expect(() => parseVariableValues("[1,2]")).toThrow(/JSON object/);
     expect(parseVariableValues(undefined)).toBeNull();
+  });
+});
+
+describe("add command run() — extra positional arguments", () => {
+  let dir: string;
+  let errorSpy: ReturnType<typeof vi.spyOn>;
+
+  beforeEach(() => {
+    dir = tmp();
+    errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+  });
+
+  afterEach(() => {
+    errorSpy.mockRestore();
+    vi.unstubAllGlobals();
+    rmSync(dir, { recursive: true, force: true });
+  });
+
+  async function runCommand(args: Record<string, unknown>): Promise<void> {
+    await (addCommand.run as (ctx: { args: Record<string, unknown> }) => Promise<void>)({ args });
+  }
+
+  it("rejects `add a --dir <dir> b c` under real citty parsing, before any registry call", async () => {
+    const fetchSpy = vi.fn();
+    vi.stubGlobal("fetch", fetchSpy);
+
+    const parsed = parseCittyArgs(["a", "--dir", dir, "b", "c"], addCommand.args as ArgsDef);
+    expect(parsed._).toEqual(["a", "b", "c"]);
+
+    await expect(runCommand(parsed as unknown as Record<string, unknown>)).rejects.toThrow(
+      CliUsageError,
+    );
+    expect(fetchSpy).not.toHaveBeenCalled();
+    expect(errorSpy.mock.calls.flat().join(" ")).toContain("extra arguments: b, c");
+  });
+
+  it("does not fire on a normal single-item invocation", async () => {
+    mockFetch();
+    writeRegistryConfig(dir);
+
+    await expect(
+      runCommand({ name: "my-block", _: ["my-block"], dir, clipboard: false, json: true }),
+    ).resolves.toBeUndefined();
   });
 });
 
