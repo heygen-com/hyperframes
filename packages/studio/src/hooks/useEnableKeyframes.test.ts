@@ -314,7 +314,7 @@ describe("applyArcKeyframeAtPlayhead", () => {
         ],
         ease: "none",
       },
-      { label: "Add keyframe", softReload: true },
+      { label: "Add keyframe", softReload: true, keyframeAction: "add" },
     );
   });
 
@@ -336,7 +336,7 @@ describe("applyArcKeyframeAtPlayhead", () => {
         duration: 10,
         keyframes: expect.arrayContaining([{ percentage: 25, properties: { x: 25, y: 25 } }]),
       }),
-      { label: "Add keyframe", softReload: true },
+      { label: "Add keyframe", softReload: true, keyframeAction: "add" },
     );
   });
 });

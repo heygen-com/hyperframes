@@ -262,3 +262,22 @@ describe("preview field and key gesture counting", () => {
     act(() => root.unmount());
   });
 });
+
+it("counts a changed field when click-away dismisses it before blur", () => {
+  const { root } = renderToolbar();
+  act(() => document.querySelector<HTMLButtonElement>('[aria-label="Grid options"]')!.click());
+  const input = document.querySelector<HTMLInputElement>('input[type="number"]')!;
+  act(() => input.focus());
+  act(() => {
+    Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")!.set!.call(input, "230");
+    input.dispatchEvent(new Event("input", { bubbles: true }));
+  });
+  act(() => document.body.dispatchEvent(new MouseEvent("mousedown", { bubbles: true })));
+  expect(document.querySelector('input[type="number"]')).toBeNull();
+  expect(trackStudioEvent).toHaveBeenCalledExactlyOnceWith("feature_used", {
+    feature: "grid_spacing",
+    surface: "preview",
+    method: "field",
+  });
+  act(() => root.unmount());
+});

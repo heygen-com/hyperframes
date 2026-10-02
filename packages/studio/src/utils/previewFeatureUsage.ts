@@ -10,6 +10,7 @@ export type PreviewFeature =
   | "z_order"
   | "text_edit"
   | "motion_path"
+  | "gesture_recording"
   | "snapping"
   | "grid"
   | "grid_spacing"

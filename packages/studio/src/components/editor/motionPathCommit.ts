@@ -19,7 +19,7 @@ function motionPathCommitOptions(label: string, method: PreviewMethod): CommitMu
     label,
     softReload: true,
     onResult: (result) => {
-      if (result.ok && result.changed !== false) trackPreviewFeatureUsed("motion_path", method);
+      if (result.ok && result.changed === true) trackPreviewFeatureUsed("motion_path", method);
     },
   };
 }

@@ -18,6 +18,15 @@ export const SnapToolbar = memo(function SnapToolbar() {
   const popoverRef = useRef<HTMLDivElement>(null);
   const gridButtonRef = useRef<HTMLButtonElement>(null);
   const gridSpacingAtFocus = useRef<number | null>(null);
+  const currentGridSpacing = useRef(prefs.gridSpacing);
+  currentGridSpacing.current = prefs.gridSpacing;
+  const settleGridSpacing = useCallback(() => {
+    const previous = gridSpacingAtFocus.current;
+    gridSpacingAtFocus.current = null;
+    if (previous !== null && previous !== currentGridSpacing.current)
+      trackPreviewFeatureUsed("grid_spacing", "field");
+  }, []);
+  useEffect(() => settleGridSpacing, [settleGridSpacing]);
 
   const updatePrefs = useCallback(
     (patch: Partial<typeof prefs>) => {
@@ -62,11 +71,12 @@ export const SnapToolbar = memo(function SnapToolbar() {
     const handleClickOutside = (e: MouseEvent) => {
       const target = e.target as Node;
       if (popoverRef.current?.contains(target) || gridButtonRef.current?.contains(target)) return;
+      settleGridSpacing();
       setGridPopoverOpen(false);
     };
     document.addEventListener("mousedown", handleClickOutside);
     return () => document.removeEventListener("mousedown", handleClickOutside);
-  }, [gridPopoverOpen]);
+  }, [gridPopoverOpen, settleGridSpacing]);
 
   return (
     <div
@@ -145,6 +155,7 @@ export const SnapToolbar = memo(function SnapToolbar() {
           onClick={toggleGrid}
           onContextMenu={(e) => {
             e.preventDefault();
+            if (gridPopoverOpen) settleGridSpacing();
             setGridPopoverOpen((v) => !v);
           }}
           title={
@@ -159,7 +170,10 @@ export const SnapToolbar = memo(function SnapToolbar() {
         <button
           type="button"
           className="absolute -right-0.5 -bottom-0.5 rounded-sm p-0.5 text-white/50 hover:text-white/90 bg-black/50"
-          onClick={() => setGridPopoverOpen((v) => !v)}
+          onClick={() => {
+            if (gridPopoverOpen) settleGridSpacing();
+            setGridPopoverOpen((v) => !v);
+          }}
           title="Grid options"
           aria-label="Grid options"
           aria-expanded={gridPopoverOpen}
@@ -185,12 +199,7 @@ export const SnapToolbar = memo(function SnapToolbar() {
                 onFocus={() => {
                   gridSpacingAtFocus.current = prefs.gridSpacing;
                 }}
-                onBlur={() => {
-                  const previous = gridSpacingAtFocus.current;
-                  gridSpacingAtFocus.current = null;
-                  if (previous !== null && previous !== prefs.gridSpacing)
-                    trackPreviewFeatureUsed("grid_spacing", "field");
-                }}
+                onBlur={settleGridSpacing}
                 onKeyDown={(e) => {
                   if (e.key === "Enter") e.currentTarget.blur();
                 }}

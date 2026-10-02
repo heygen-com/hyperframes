@@ -1,11 +1,16 @@
 // @vitest-environment jsdom
 import { act } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
+import type { GsapAnimation } from "@hyperframes/core/gsap-parser";
+import { trackStudioEvent } from "../utils/studioTelemetry";
+import { trackKeyframeCommit } from "../utils/keyframeUsage";
 import type { DomEditSelection } from "../components/editor/domEditing";
 import { usePlayerStore } from "../player";
 import { mountReactHarness } from "./domSelectionTestHarness";
 import type { CommitMutationOptions } from "./gsapScriptCommitTypes";
 import { useGestureCommit } from "./useGestureCommit";
+
+vi.mock("../utils/studioTelemetry", () => ({ trackStudioEvent: vi.fn() }));
 
 const gestureRecording = vi.hoisted(() => ({
   startRecording: vi.fn(),
@@ -157,3 +162,78 @@ describe("useGestureCommit", () => {
     expect(commitMutation).not.toHaveBeenCalled();
   });
 });
+
+it.each([
+  ["new mixed-property recording", undefined, true, true, 1, "button"],
+  ["keyboard recording", undefined, true, true, 1, "keyboard"],
+  ["static hold replacement", "set", true, true, 1, "button"],
+  ["overlapping tween replacement", "to", true, true, 1, "button"],
+  ["unchanged recording", undefined, true, false, 0, "button"],
+  ["refused recording", undefined, false, true, 0, "button"],
+] as const)(
+  "counts writer receipts once for %s",
+  async (_name, method, ok, changed, count, inputMethod) => {
+    const element = document.createElement("div");
+    element.id = "card";
+    const animations = method
+      ? [
+          {
+            id: "card-position",
+            targetSelector: "#card",
+            propertyGroup: "position",
+            method,
+            properties: { x: 0, y: 0 },
+            resolvedStart: 0,
+            position: 0,
+            duration: method === "set" ? 0 : 2,
+            keyframes: {
+              keyframes: [
+                { percentage: 0, properties: { x: 0 } },
+                { percentage: 100, properties: { x: 100 } },
+              ],
+            },
+          } as unknown as GsapAnimation,
+        ]
+      : [];
+    const writer = vi.fn(
+      async (mutation: Record<string, unknown>, options: CommitMutationOptions) => {
+        const result = { ok, changed };
+        trackKeyframeCommit([mutation], result, options);
+        options.onResult?.(result);
+      },
+    );
+    const captured: { hook: ReturnType<typeof useGestureCommit> | null } = { hook: null };
+    function Probe() {
+      captured.hook = useGestureCommit({
+        domEditSessionRef: {
+          current: {
+            domEditSelection: makeSelection(element),
+            selectedGsapAnimations: animations,
+            commitMutation: writer,
+          },
+        },
+        previewIframeRef: { current: document.createElement("iframe") },
+        showToast: vi.fn(),
+        isGestureRecordingRef: { current: false },
+        readOnlyPreview: false,
+      });
+      return null;
+    }
+    const root = mountReactHarness(<Probe />);
+    cleanup = () => act(() => root.unmount());
+    act(() => captured.hook?.handleToggleRecording(inputMethod));
+    await act(async () => {
+      captured.hook?.handleToggleRecording();
+      await vi.waitFor(() => expect(writer).toHaveBeenCalled());
+    });
+    expect(trackStudioEvent).toHaveBeenCalledTimes(count * 2);
+    if (count) {
+      expect(trackStudioEvent).toHaveBeenCalledWith("keyframe", { action: "add" });
+      expect(trackStudioEvent).toHaveBeenCalledWith("feature_used", {
+        feature: "gesture_recording",
+        surface: "preview",
+        method: inputMethod,
+      });
+    }
+  },
+);

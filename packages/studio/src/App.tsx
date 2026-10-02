@@ -266,7 +266,7 @@ export function StudioApp({ readOnlyPreview = false, readOnlyPreviewReason }: St
     onUngroupSelection: () => domEditSessionRef.current.handleUngroupSelection(),
     activeCompPath,
     forceReloadSdkSession: sdkHandle.forceReload,
-    onToggleRecording: () => handleToggleRecordingRef.current(),
+    onToggleRecording: () => handleToggleRecordingRef.current("keyboard"),
     readOnlyPreview,
   });
   const domEditSession = useDomEditSession({
@@ -355,7 +355,7 @@ export function StudioApp({ readOnlyPreview = false, readOnlyPreviewReason }: St
     resetErrors: resetConsoleErrors,
   } = useConsoleErrorCapture(previewIframe);
   const fileDrop = useGlobalFileDrop(timelineEditing.handleTimelineFileDrop);
-  const handleToggleRecordingRef = useRef<() => void>(() => {});
+  const handleToggleRecordingRef = useRef<(method?: "button" | "keyboard") => void>(() => {});
   const domEditSessionRef = useRef(domEditSession);
   domEditSessionRef.current = domEditSession;
   const { gestureState, gestureRecording, handleToggleRecording } = useGestureCommit({

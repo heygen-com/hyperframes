@@ -11,6 +11,8 @@ import { usePlayerStore } from "../player";
 import type { DomEditSelection } from "../components/editor/domEditing";
 import type { GsapAnimation } from "@hyperframes/core/gsap-parser";
 import type { CommitMutationOptions } from "./gsapScriptCommitTypes";
+import { trackPreviewEditResult } from "../utils/previewFeatureUsage";
+import { observeGsapGesture } from "./gsapGestureOutcome";
 import { roundTo3 } from "../utils/rounding";
 import { classifyPropertyGroup } from "@hyperframes/core/gsap-parser";
 import { isInstantHold, idSelector, writeTargetSelector, tweenTargetsElement } from "./gsapShared";
@@ -93,7 +95,7 @@ interface UseGestureCommitParams {
 export interface UseGestureCommitResult {
   gestureState: "idle" | "recording";
   gestureRecording: ReturnType<typeof useGestureRecording>;
-  handleToggleRecording: () => void;
+  handleToggleRecording: (method?: "button" | "keyboard") => void;
 }
 
 // fallow-ignore-next-line complexity
@@ -108,6 +110,7 @@ export function useGestureCommit({
   const [gestureState, setGestureState] = useState<"idle" | "recording">("idle");
   const gestureStateRef = useRef<"idle" | "recording">("idle");
   const recordingAutoStopRef = useRef<ReturnType<typeof setInterval>>(undefined);
+  const recordingMethodRef = useRef<"button" | "keyboard">("button");
   const recordingStartTimeRef = useRef(0);
   const commitInFlightRef = useRef(false);
   // Capture selection at recording start so commit always targets the recorded element,
@@ -203,6 +206,12 @@ export function useGestureCommit({
         return;
       }
       if (liveSession.commitMutation) {
+        const writer = liveSession.commitMutation;
+        const outcome = observeGsapGesture((_selection, mutation, options) =>
+          writer(mutation, options),
+        );
+        const commit = (mutation: Record<string, unknown>, options: CommitMutationOptions) =>
+          outcome.commit!(sel, mutation, options);
         const recStart = recordingStartTimeRef.current;
         const rawKeyframes = sortedPcts.map((pct) => ({
           percentage: pct,
@@ -225,7 +234,7 @@ export function useGestureCommit({
           if (isInstantHold(existingPositionTween)) {
             // An instant hold is not a tween to merge into — replace it with the
             // recorded motion (which already starts from the held position).
-            await liveSession.commitMutation(
+            await commit(
               {
                 type: "replace-with-keyframes",
                 animationId: existingPositionTween.id,
@@ -234,7 +243,7 @@ export function useGestureCommit({
                 duration: roundTo3(duration),
                 keyframes,
               },
-              { label: "Gesture recording (replace set)", softReload: true },
+              { label: "Gesture recording (replace set)", softReload: true, keyframeAction: "add" },
             );
           } else {
             const tweenStart = existingPositionTween.resolvedStart ?? 0;
@@ -271,7 +280,7 @@ export function useGestureCommit({
 
               const merged = [...preserved, ...mapped].sort((a, b) => a.percentage - b.percentage);
 
-              await liveSession.commitMutation(
+              await commit(
                 {
                   type: "replace-with-keyframes",
                   animationId: existingPositionTween.id,
@@ -283,7 +292,7 @@ export function useGestureCommit({
                   duration: tweenDur,
                   keyframes: merged,
                 },
-                { label: "Gesture recording (merge)", softReload: true },
+                { label: "Gesture recording (merge)", softReload: true, keyframeAction: "add" },
               );
             } else {
               // Emit one tween per property group so a mixed-prop gesture (e.g.
@@ -291,7 +300,7 @@ export function useGestureCommit({
               // tween that the position-only drag intercept can't edit.
               const keyframeGroups = partitionKeyframesByGroup(keyframes);
               for (const [index, groupKfs] of keyframeGroups.entries()) {
-                await liveSession.commitMutation(
+                await commit(
                   {
                     type: "add-with-keyframes",
                     targetSelector: writeSelector,
@@ -317,7 +326,7 @@ export function useGestureCommit({
           // No existing tween — same per-group split as the new-range branch above.
           const keyframeGroups = partitionKeyframesByGroup(keyframes);
           for (const [index, groupKfs] of keyframeGroups.entries()) {
-            await liveSession.commitMutation(
+            await commit(
               {
                 type: "add-with-keyframes",
                 targetSelector: writeSelector,
@@ -335,6 +344,7 @@ export function useGestureCommit({
             );
           }
         }
+        trackPreviewEditResult("gesture_recording", recordingMethodRef.current, outcome.finish());
       }
       showToast(`Recorded ${sortedPcts.length} keyframes`, "info");
     } catch (err) {
@@ -349,57 +359,61 @@ export function useGestureCommit({
   }, [gestureRecording, showToast, isGestureRecordingRef, domEditSessionRef]);
 
   // fallow-ignore-next-line complexity
-  const handleToggleRecording = useCallback(() => {
-    if (gestureStateRef.current === "recording") {
-      if (readOnlyPreview) {
-        cancelRecording();
+  const handleToggleRecording = useCallback(
+    (method: "button" | "keyboard" = "button") => {
+      if (gestureStateRef.current === "recording") {
+        if (readOnlyPreview) {
+          cancelRecording();
+          return;
+        }
+        void stopAndCommitRecording();
         return;
       }
-      void stopAndCommitRecording();
-      return;
-    }
-    if (readOnlyPreview) return;
-    const sel = domEditSessionRef.current.domEditSelection;
-    if (!sel) {
-      showToast("Select an element first", "error");
-      return;
-    }
-    const iframe = previewIframeRef.current;
-    if (!iframe) {
-      showToast("Preview not ready — try again", "error");
-      return;
-    }
-
-    const store = usePlayerStore.getState();
-    recordingStartTimeRef.current = store.currentTime;
-    const elStart = Number.parseFloat(sel.dataAttributes?.start ?? "0") || 0;
-    const elDur = Number.parseFloat(sel.dataAttributes?.duration ?? "0") || 0;
-    const elementEnd = elDur > 0 ? elStart + elDur : undefined;
-    capturedSelectionRef.current = sel;
-    gestureRecording.startRecording(sel.element, iframe, elementEnd);
-    gestureStateRef.current = "recording";
-    isGestureRecordingRef.current = true;
-    setGestureState("recording");
-
-    clearInterval(recordingAutoStopRef.current);
-    const autoStopAt = elementEnd ?? Infinity;
-    recordingAutoStopRef.current = setInterval(() => {
-      const { currentTime: t, duration: d } = usePlayerStore.getState();
-      const limit = Math.min(autoStopAt, d);
-      if (limit > 0 && t >= limit - 0.05) {
-        void stopAndCommitRecording();
+      if (readOnlyPreview) return;
+      const sel = domEditSessionRef.current.domEditSelection;
+      if (!sel) {
+        showToast("Select an element first", "error");
+        return;
       }
-    }, 100);
-  }, [
-    gestureRecording,
-    showToast,
-    stopAndCommitRecording,
-    cancelRecording,
-    previewIframeRef,
-    domEditSessionRef,
-    isGestureRecordingRef,
-    readOnlyPreview,
-  ]);
+      const iframe = previewIframeRef.current;
+      if (!iframe) {
+        showToast("Preview not ready — try again", "error");
+        return;
+      }
+
+      const store = usePlayerStore.getState();
+      recordingMethodRef.current = method;
+      recordingStartTimeRef.current = store.currentTime;
+      const elStart = Number.parseFloat(sel.dataAttributes?.start ?? "0") || 0;
+      const elDur = Number.parseFloat(sel.dataAttributes?.duration ?? "0") || 0;
+      const elementEnd = elDur > 0 ? elStart + elDur : undefined;
+      capturedSelectionRef.current = sel;
+      gestureRecording.startRecording(sel.element, iframe, elementEnd);
+      gestureStateRef.current = "recording";
+      isGestureRecordingRef.current = true;
+      setGestureState("recording");
+
+      clearInterval(recordingAutoStopRef.current);
+      const autoStopAt = elementEnd ?? Infinity;
+      recordingAutoStopRef.current = setInterval(() => {
+        const { currentTime: t, duration: d } = usePlayerStore.getState();
+        const limit = Math.min(autoStopAt, d);
+        if (limit > 0 && t >= limit - 0.05) {
+          void stopAndCommitRecording();
+        }
+      }, 100);
+    },
+    [
+      gestureRecording,
+      showToast,
+      stopAndCommitRecording,
+      cancelRecording,
+      previewIframeRef,
+      domEditSessionRef,
+      isGestureRecordingRef,
+      readOnlyPreview,
+    ],
+  );
 
   return { gestureState, gestureRecording, handleToggleRecording };
 }

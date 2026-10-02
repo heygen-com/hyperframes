@@ -3,10 +3,16 @@ import { afterEach, expect, it, vi } from "vitest";
 import type { GsapAnimation } from "@hyperframes/core/gsap-parser";
 import type { DomEditSelection } from "../components/editor/domEditingTypes";
 import { usePlayerStore } from "../player/store/playerStore";
+import { observeGsapGesture } from "./gsapGestureOutcome";
+import { trackStudioEvent } from "../utils/studioTelemetry";
+import type { CommitMutation } from "./gsapScriptCommitTypes";
 import { computeCurrentPercentage } from "./gsapDragCommit";
 import { tryGsapResizeIntercept } from "./gsapResizeIntercept";
 
+vi.mock("../utils/studioTelemetry", () => ({ trackStudioEvent: vi.fn() }));
+
 afterEach(() => {
+  vi.clearAllMocks();
   vi.restoreAllMocks();
   usePlayerStore.setState({ currentTime: 0, activeKeyframePct: null });
 });
@@ -552,4 +558,31 @@ it("hands the size to the element's CSS when its only tween is a fade", async ()
 
   expect(handled).toEqual({ status: "element-size" });
   expect(commitMutation).not.toHaveBeenCalled();
+});
+
+it.each([
+  [5, 1],
+  [0.5, 1],
+  [0.2, 0],
+])("counts scale resize insertion at %ss", async (time, count) => {
+  const el = makeGradedElement();
+  const iframe = fakeIframe(el, { scale: 1, scaleX: 1, scaleY: 1 });
+  usePlayerStore.setState({ currentTime: time, activeKeyframePct: null });
+  const writer: CommitMutation = async (_selection, _mutation, options) => {
+    options.onResult?.({ ok: true, changed: true });
+  };
+  const outcome = observeGsapGesture(writer);
+  const result = await tryGsapResizeIntercept(
+    { id: "clip", selector: "#clip", element: el } as DomEditSelection,
+    { width: 700, height: 400 },
+    [keyframedScaleFixture()],
+    iframe,
+    outcome.commit!,
+  );
+  expect(result.status).toBe("persisted");
+  outcome.finish();
+  expect(trackStudioEvent).toHaveBeenCalledTimes(count);
+  if (count) expect(trackStudioEvent).toHaveBeenCalledWith("keyframe", { action: "add" });
+  el.remove();
+  document.querySelector("#__hf_color_grading_clip")?.remove();
 });

@@ -165,7 +165,7 @@ describe("motion path usage at the writer", () => {
       method: "drag",
     });
   });
-  it.each([undefined, { ok: true, changed: false }, { ok: false, changed: true }])(
+  it.each([undefined, { ok: true }, { ok: true, changed: false }, { ok: false, changed: true }])(
     "does not count absent or unsuccessful results (%j)",
     async (result) => {
       const commit: CommitFn = async (_mutation, options) => {

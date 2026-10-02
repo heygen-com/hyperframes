@@ -541,6 +541,7 @@ export async function tryGsapResizeIntercept(
           ? `Resize (extended to ${ct.toFixed(2)}s)`
           : `Resize (keyframe ${Math.round(((ct - newStart) / newDuration) * 1000) / 10}%)`,
         softReload: true,
+        ...(!collidingKf ? { keyframeAction: "add" as const } : {}),
       },
     );
     return { status: "persisted", ownsDragOffset: await finalizeScaleResizeCommit() };
