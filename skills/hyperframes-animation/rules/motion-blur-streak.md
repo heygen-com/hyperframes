@@ -104,7 +104,22 @@ tl.to(blurProxy, { v: 0, duration: 0.35, ease: "power4.out", onUpdate: writeBlur
 
 ## Per-Frame-Driven Carve-In (baked tracks)
 
-When the element is not tweened but **driven** — a tracked insert or callout riding a baked per-frame track, a title matched to camera shake — there is no move window to share. The envelope becomes a per-frame function of the track's own delta, computed in the same `onUpdate` that applies the position:
+When the element is not tweened but **driven** — a tracked insert or callout riding a baked per-frame track, a title matched to camera shake — there is no move window to share. The envelope becomes a per-frame function of the track's own delta, computed in the same `onUpdate` that applies the position.
+
+One element per transform, so no write clobbers another:
+
+```html
+<!-- .track: position + any fade, the only element either touches -->
+<div class="track">
+  <!-- ×2, the lead's box -->
+  <div class="streak-ghost" aria-hidden="true" data-layout-allow-overlap></div>
+  <!-- Path A only: rotate onto the travel axis; same box as .lead so both rotate about one center -->
+  <div class="blur-wrap" style="filter: url(#streak)">
+    <!-- counter-rotate only; no GSAP transform tweens on it -->
+    <div class="lead">…</div>
+  </div>
+</div>
+```
 
 ```js
 // inside the frame-lookup driver (an ease:"none" proxy → frames[i]); TRACK.x / TRACK.y are baked arrays
@@ -113,14 +128,14 @@ const dx = TRACK.x[j] - TRACK.x[j - 1];
 const dy = TRACK.y[j] - TRACK.y[j - 1];
 const speed = Math.hypot(dx, dy); // px per frame
 const angle = (Math.atan2(dy, dx) * 180) / Math.PI; // the streak axis IS the travel direction
+track.style.transform = `translate(${TRACK.x[i]}px, ${TRACK.y[i]}px)`;
 
 // Path B, driven form (the default here): text-free silhouette clones trail the lead along −delta.
 const base = speed > TRAIL_GATE ? Math.min(TRAIL_MAX, TRAIL_K * speed) : 0;
-const leadOpacity = parseFloat(gsap.getProperty(lead, "opacity")); // slaved: a fading lead fades its trail
 ghost1.style.transform = `translate(${-dx * 0.25}px, ${-dy * 0.25}px)`;
 ghost2.style.transform = `translate(${-dx * 0.5}px, ${-dy * 0.5}px)`;
-ghost1.style.opacity = String(base * leadOpacity);
-ghost2.style.opacity = String(base * 0.5 * leadOpacity);
+ghost1.style.opacity = String(base); // a fade on .track multiplies in; never read another tween's value
+ghost2.style.opacity = String(base * 0.5);
 
 // Path A, driven form: rotate a filter wrapper onto the travel axis, blur along X only, counter-rotate the content.
 const sigma = speed > TRAIL_GATE ? Math.min(SIGMA_MAX, 0.5 * speed) : 0;
@@ -132,7 +147,7 @@ blurNode.setAttribute("stdDeviation", `${sigma} 0`);
 Three deltas from the tweened recipe:
 
 - **Ghosts are text-free silhouettes** — the lead's box, border, radius and fill with **no content** (`aria-hidden="true"`, `data-layout-allow-overlap`). A 25–50%-opacity clone reads as shape; a clone carrying the text reads as a duplicate element, and content-free clones give the layout and contrast checkers nothing to flag.
-- **Velocity-gated, not window-shaped** — the trail exists only above `TRAIL_GATE` px/frame and scales with speed (`min(TRAIL_MAX, TRAIL_K × speed)`): a slow drift shows nothing, a whip shows a 180°-shutter smear. It is slaved to the lead's own opacity so an entrance or exit fade takes the trail with it.
+- **Velocity-gated, not window-shaped** — the trail exists only above `TRAIL_GATE` px/frame and scales with speed (`min(TRAIL_MAX, TRAIL_K × speed)`): a slow drift shows nothing, a whip shows a 180°-shutter smear. Fade `.track`, never `.lead`: group opacity takes the trail with it, and the ghost opacity stays a pure function of the frame index whatever order frames are seeked in.
 - **Axis from the baked delta** — `atan2(dy, dx)` per frame; the streak follows the track around corners with nothing to seed at setup.
 
 **Which path for a driven subtree.** Path B is the default: it costs no filter raster (a full filter region re-rasterizes every frame under per-frame drive), its clones carry no text so the layout and contrast checkers see nothing new, and it degrades to nothing when the track is still. Path A in the driven form is legitimate when a true blur is the look. Both forms measured deterministic on the reference host (2026-09-08: single-card 120-frame and three-card 450-frame drives of each path, hardware-GL and software lanes, every double render bit-identical) — but a per-frame-driven filter is the first thing to re-measure on a new host: keep the double-render frame-hash comparison (`--format png-sequence` twice) in the pipeline rather than trusting one clean run. One earlier build (2026-08) observed 1-LSB `feGaussianBlur` jitter under per-frame load and shipped Path B for that reason.
@@ -165,7 +180,7 @@ Three deltas from the tweened recipe:
 - Dwell ≥1 s sharp after the snap; a streak landing at the last beat reads as "flashed and gone".
 - Heavy element on a solid field — thin type (< ~120px / 800 weight) or a busy backdrop swallows the smear.
 - `overflow: hidden` on the scene — the smear / furthest ghost extends past the resting position during travel.
-- Driven form: clones are text-free silhouettes (`aria-hidden`, `data-layout-allow-overlap`), opacity slaved to the lead, axis from the baked delta; nothing is seeded at setup except the structural frame-0 state.
+- Driven form: clones are text-free silhouettes (`aria-hidden`, `data-layout-allow-overlap`) inside the faded `.track`, axis from the baked delta; nothing is seeded at setup except the structural frame-0 state.
 
 ## See also
 
