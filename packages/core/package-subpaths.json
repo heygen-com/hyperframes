@@ -284,6 +284,12 @@
       "types": "./dist/runtime/clipTree.d.ts",
       "environments": ["browser", "bun", "node"]
     },
+    "./runtime/dom-realm": {
+      "source": "./src/runtime/domRealm.ts",
+      "runtime": "./dist/runtime/domRealm.js",
+      "types": "./dist/runtime/domRealm.d.ts",
+      "environments": ["browser", "bun", "node"]
+    },
     "./runtime/custom-ease": {
       "source": "./src/runtime/customEase.ts",
       "runtime": "./dist/runtime/customEase.js",

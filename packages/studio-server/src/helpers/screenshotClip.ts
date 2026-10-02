@@ -5,10 +5,7 @@ export interface ScreenshotClip {
   height: number;
 }
 
-/**
- * Runs inside the page (serialised by page.evaluate), so it stays self-contained. Everything but
- * the element, its subtree and its ancestors is faded out first, so the clip shows that layer alone.
- */
+// Serialised by page.evaluate, so self-contained; fades everything but the element's own branch.
 export function getElementScreenshotClip(
   selector: string,
   selectorIndex?: number,
@@ -29,8 +26,7 @@ export function getElementScreenshotClip(
   const safeIndex = Math.max(0, Math.min(matches.length - 1, Math.floor(selectorIndex ?? 0)));
   const el = matches[safeIndex] ?? null;
   if (!(el instanceof HTMLElement)) return undefined;
-  // Opacity, not visibility: a descendant cannot paint through a faded ancestor. A tagged rule, not
-  // inline style, so clearElementScreenshotIsolation can undo it on a page that is reused.
+  // Opacity, not visibility, and a tagged rule so clearElementScreenshotIsolation can undo it.
   const hidden = "data-hf-thumbnail-hidden";
   if (!document.getElementById(hidden)) {
     const style = document.createElement("style");
@@ -58,7 +54,6 @@ export function getElementScreenshotClip(
   };
 }
 
-/** Undoes getElementScreenshotClip's fading. Self-contained for page.evaluate as well. */
 export function clearElementScreenshotIsolation(): void {
   for (const node of Array.from(document.querySelectorAll("[data-hf-thumbnail-hidden]"))) {
     node.removeAttribute("data-hf-thumbnail-hidden");
