@@ -23,8 +23,8 @@ import {
   getInlineStyles,
   getSelectorIndex,
   getSourceFileForElement,
+  isEditableTextLeaf,
   isHtmlElement,
-  isTextBearingTag,
 } from "./domEditingDom";
 import {
   findElementForSelection,
@@ -34,10 +34,6 @@ import {
 import { isCompositionRootLayer } from "./domEditingRootLayer";
 import { withSelectorIndexPass } from "../../utils/sourceScopedSelectorIndex";
 import { type DomEditLayerWalkCache, readDomEditLayerWalkEntry } from "./domEditLayerWalkCache";
-
-export function isEditableTextLeaf(el: HTMLElement): boolean {
-  return isTextBearingTag(el.tagName.toLowerCase()) && el.children.length === 0;
-}
 
 function sameTagChildIndex(el: HTMLElement): number {
   let index = 0;

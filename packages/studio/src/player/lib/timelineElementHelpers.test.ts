@@ -5,6 +5,7 @@ import {
   applyMediaMetadataFromElement,
   getTimelineElementSelector,
   isVideoAudible,
+  readTimelineText,
   resolveMediaElement,
 } from "./timelineElementHelpers";
 
@@ -46,5 +47,30 @@ describe("preview nodes built in another realm", () => {
     const entry = { id: "v", tag: "div", start: 0, duration: 4, track: 0 } as TimelineElement;
     applyMediaMetadataFromElement(entry, el);
     expect(entry.sourceDuration).toBe(12);
+  });
+});
+
+describe("readTimelineText", () => {
+  function layer(html: string): Element {
+    document.body.innerHTML = html;
+    return document.body.firstElementChild!;
+  }
+
+  it("reads a text layer's words, collapsed to one line, with its font and colour", () => {
+    const text = readTimelineText(
+      layer(`<h1 style="font-family: Georgia; font-weight: 700; color: rgb(255, 0, 0)">
+        Ship <span>it</span>
+      </h1>`),
+    );
+    expect(text).toMatchObject({ value: "Ship it", fontWeight: "700", color: "rgb(255, 0, 0)" });
+    expect(text?.fontFamily).toContain("Georgia");
+  });
+
+  it("leaves a layer that holds anything but text, or no words, to its picture", () => {
+    expect(
+      readTimelineText(layer(`<div><div>Title</div><div><i></i></div></div>`)),
+    ).toBeUndefined();
+    expect(readTimelineText(layer(`<div class="glyph"></div>`))).toBeUndefined();
+    expect(readTimelineText(layer(`<section>Words</section>`))).toBeUndefined();
   });
 });
