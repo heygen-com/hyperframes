@@ -78,12 +78,31 @@ const onScreen = (page, selector) =>
 
 // One press selects the element and Enter opens its text with the caret at the end: Studio's dependable way in, where
 // a double press has to survive the canvas' gesture machinery.
+// A press can land while the last commit still reloads the preview, so a text that does not open is tried again.
 async function openEdit(page, selector, xFraction = 0.5) {
-  const at = await onScreen(page, selector);
-  await page.mouse.click(at.x + at.w * xFraction, at.y + at.h / 2);
-  await pause(600);
-  await page.keyboard.press("Enter");
-  for (let i = 0; i < 50 && !(await read(page)).caret; i++) await pause(100);
+  for (let attempt = 0; attempt < 3; attempt++) {
+    const at = await onScreen(page, selector);
+    await page.mouse.click(at.x + at.w * xFraction, at.y + at.h / 2);
+    await pause(600);
+    await page.keyboard.press("Enter");
+    for (let i = 0; i < 30; i++) if ((await read(page)).caret) return;
+    await page.keyboard.press("Escape");
+    await pause(500);
+  }
+}
+
+/** Presses `keys` (modifiers first, held around the last) and reads once the caret has moved, or after 2 s. */
+async function key(page, ...keys) {
+  const was = (await read(page)).caret;
+  const last = keys.pop();
+  for (const held of keys) await page.keyboard.down(held);
+  await page.keyboard.press(last);
+  for (const held of keys.reverse()) await page.keyboard.up(held);
+  const deadline = Date.now() + 2000;
+  let now = await read(page);
+  while (Date.now() < deadline && now.caret?.left === was?.left && now.caret?.top === was?.top)
+    now = await read(page);
+  return now;
 }
 
 const standsOnSelection = ({ caret, expected }) =>
@@ -169,12 +188,8 @@ try {
   // The paragraph wraps onto three lines: End on the first one stands at its end, not at the next line's start.
   await openEdit(page, "#body");
   // Enter opens it with the caret at the end; Ctrl+Home takes it to the first line.
-  await page.keyboard.down("Control");
-  await page.keyboard.press("Home");
-  await page.keyboard.up("Control");
-  const lineStart = await read(page);
-  await page.keyboard.press("End");
-  evidence.lineEnd = await read(page);
+  const lineStart = await key(page, "Control", "Home");
+  evidence.lineEnd = await key(page, "End");
   check(
     standsOnSelection(evidence.lineEnd),
     "at a wrapped line's end the caret stands where the selection is",
@@ -183,8 +198,7 @@ try {
     Math.abs(evidence.lineEnd.caret?.top - lineStart.caret?.top) <= NEAR_PX,
     "End keeps the caret on its line",
   );
-  await page.keyboard.press("ArrowDown");
-  evidence.nextLine = await read(page);
+  evidence.nextLine = await key(page, "ArrowDown");
   check(
     evidence.nextLine.caret?.top > evidence.lineEnd.caret?.top,
     "ArrowDown moves the caret down a line",
@@ -194,13 +208,8 @@ try {
     "on the next line the caret stands where the selection is",
   );
   // Shift+Enter at the text's end opens an empty line, which has no box either: the caret stands at its start.
-  await page.keyboard.down("Control");
-  await page.keyboard.press("End");
-  await page.keyboard.up("Control");
-  await page.keyboard.down("Shift");
-  await page.keyboard.press("Enter");
-  await page.keyboard.up("Shift");
-  evidence.emptyLine = await read(page);
+  await key(page, "Control", "End");
+  evidence.emptyLine = await key(page, "Shift", "Enter");
   const body = await onScreen(page, "#body");
   check(
     evidence.emptyLine.caret?.top > evidence.nextLine.caret?.top &&
