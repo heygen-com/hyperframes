@@ -73,6 +73,7 @@ function tryApplyBeatHistory(
 // ── Types ──
 
 interface UseAppHotkeysParams {
+  projectId?: string | null;
   handleTimelineElementsDelete: (elements: TimelineElement[]) => Promise<void>;
   handleLinkEdit?: LinkShortcutCallbacks["handleLinkEdit"];
   handleTimelineElementDeleteOnly?: LinkShortcutCallbacks["handleTimelineElementDeleteOnly"];
@@ -118,6 +119,7 @@ interface UseAppHotkeysParams {
 // ── Hook ──
 
 export function useAppHotkeys({
+  projectId,
   handleTimelineElementsDelete,
   handleLinkEdit,
   handleTimelineElementDeleteOnly,
@@ -271,5 +273,5 @@ export function useAppHotkeys({
     handleUndo,
     handleRedo,
     syncPreviewHotkeys,
-  });
+  }, projectId);
 }

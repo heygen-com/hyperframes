@@ -20,7 +20,7 @@ afterEach(() => {
 
 function renderStable(seen: Result[]) {
   function Probe({ count, base }: { count: number; base: number }) {
-    seen.push(useStableHandlers({ count, read: () => base }));
+    seen.push(useStableHandlers({ count, read: () => base }, "project"));
     return null;
   }
   root = createRoot(document.createElement("div"));
@@ -66,7 +66,7 @@ describe("useStableHandlers", () => {
   it("gives a new object when a key is swapped for another with the same value", () => {
     const seen: Record<string, unknown>[] = [];
     function Keys({ name }: { name: string }) {
-      seen.push(useStableHandlers({ [name]: undefined }));
+      seen.push(useStableHandlers({ [name]: undefined }, "project"));
       return null;
     }
     root = createRoot(document.createElement("div"));

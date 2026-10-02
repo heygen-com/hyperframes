@@ -67,5 +67,5 @@ export function usePanelLayout(initialState?: InitialPanelLayoutState) {
     store.setZoneVisible("right", !collapsed);
   }, []);
 
-  return useStableHandlers({ rightCollapsed, setRightCollapsed, rightPanelTab, setRightPanelTab });
+  return useStableHandlers({ rightCollapsed, setRightCollapsed, rightPanelTab, setRightPanelTab }, null);
 }

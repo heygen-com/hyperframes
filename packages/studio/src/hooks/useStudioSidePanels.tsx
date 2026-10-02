@@ -7,9 +7,10 @@ import { useStableHandlers } from "./useStableHandlers";
 export function useStudioSidePanels(
   left: ComponentProps<typeof StudioLeftPanels>,
   right: ComponentProps<typeof StudioRightPanels>,
+  projectId: string | null,
 ) {
-  const stableLeft = useStableHandlers(left);
-  const stableRight = useStableHandlers(right);
+  const stableLeft = useStableHandlers(left, projectId);
+  const stableRight = useStableHandlers(right, projectId);
   return useMemo(
     () => (
       <>

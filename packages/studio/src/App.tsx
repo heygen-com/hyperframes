@@ -187,6 +187,7 @@ export function StudioApp({ readOnlyPreview = false, readOnlyPreviewReason }: St
   } = useTimelineAddAtPlayhead(
     timelineEditing.handleTimelineAssetDrop,
     timelineEditing.handleTimelineCompositionDrop,
+    projectId,
   );
   const blockHandlersResult = useBlockHandlers({
     projectId,
@@ -241,6 +242,7 @@ export function StudioApp({ readOnlyPreview = false, readOnlyPreviewReason }: St
     waitForPendingDomEditSaves: previewPersistence.waitForPendingDomEditSaves,
   });
   const appHotkeys = useAppHotkeys({
+    projectId,
     handleTimelineElementsDelete: timelineEditing.handleTimelineElementsDelete,
     handleLinkEdit: timelineEditing.handleLinkEdit,
     handleTimelineElementDeleteOnly: timelineEditing.handleTimelineElementDeleteOnly,
@@ -365,6 +367,7 @@ export function StudioApp({ readOnlyPreview = false, readOnlyPreviewReason }: St
   const domEditSessionRef = useRef(domEditSession);
   domEditSessionRef.current = domEditSession;
   const { gestureState, gestureRecording, handleToggleRecording } = useGestureCommit({
+    projectId,
     domEditSessionRef,
     previewIframeRef,
     showToast,
@@ -490,6 +493,7 @@ export function StudioApp({ readOnlyPreview = false, readOnlyPreviewReason }: St
       onAutoGroupCarveSources: timelineEditing.handleAutoGroupCarveSources,
       onAddMediaOverlay: handleAddMediaOverlay,
     },
+    projectId,
   );
   if (resolving || waitingForServer || !projectId)
     return <StudioSplash waiting={waitingForServer} />;

@@ -84,6 +84,7 @@ function reloadOnlyLast(index: number, count: number): Partial<CommitMutationOpt
 let gestureRecordingCommitCounter = 0;
 
 interface UseGestureCommitParams {
+  projectId?: string | null;
   domEditSessionRef: React.MutableRefObject<GestureSessionRef>;
   previewIframeRef: React.RefObject<HTMLIFrameElement | null>;
   showToast: (message: string, tone?: "error" | "info") => void;
@@ -99,6 +100,7 @@ export interface UseGestureCommitResult {
 
 // fallow-ignore-next-line complexity
 export function useGestureCommit({
+  projectId,
   domEditSessionRef,
   previewIframeRef,
   showToast,
@@ -402,5 +404,5 @@ export function useGestureCommit({
     readOnlyPreview,
   ]);
 
-  return useStableHandlers({ gestureState, gestureRecording, handleToggleRecording });
+  return useStableHandlers({ gestureState, gestureRecording, handleToggleRecording }, projectId);
 }

@@ -5,7 +5,7 @@ type Epoch = { scope: unknown; latest: object; wrappers: Map<string, Handler>; p
 
 // The same object while its non-function fields are unchanged, and one identity per function field calling the
 // latest one; a new `scope` (the project) starts new identities, and a wrapper kept from before calls its own scope's.
-export function useStableHandlers<T extends object>(value: T, scope?: unknown): T {
+export function useStableHandlers<T extends object>(value: T, scope: unknown): T {
   const epoch = useRef<Epoch | null>(null);
   if (!epoch.current || !Object.is(epoch.current.scope, scope))
     epoch.current = { scope, latest: value, wrappers: new Map(), previous: null };
