@@ -1,5 +1,6 @@
-import { beforeEach, describe, expect, it, vi } from "vitest";
-import type { CommandDef } from "citty";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { runCommand, type CommandDef } from "citty";
+import { CliUsageError } from "./commandResult.js";
 
 const trackCommandFailure = vi.fn();
 vi.mock("../telemetry/events.js", () => ({
@@ -120,6 +121,85 @@ describe("trackCommandFailures", () => {
     if (!subLoader) throw new Error("expected a wrapped 'render' subcommand loader");
     const leaf = await subLoader();
     await expect((leaf.run as () => Promise<unknown>)()).rejects.toBe(boom);
+  });
+});
+
+describe("trackCommandFailures: extra positionals", () => {
+  const leaf = (name: string, run = vi.fn()): CommandDef =>
+    ({
+      meta: { name },
+      args: {
+        dir: { type: "positional", required: false },
+        json: { type: "boolean", default: false },
+      },
+      run,
+    }) as CommandDef;
+  const wrap = (cmd: CommandDef) => trackCommandFailures(() => Promise.resolve(cmd))();
+  let errorSpy: ReturnType<typeof vi.spyOn>;
+  let logSpy: ReturnType<typeof vi.spyOn>;
+
+  beforeEach(() => {
+    errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+    logSpy = vi.spyOn(console, "log").mockImplementation(() => {});
+  });
+
+  afterEach(() => {
+    errorSpy.mockRestore();
+    logSpy.mockRestore();
+  });
+
+  it("rejects a leaf's extra positional, naming it and the usage line, before run()", async () => {
+    const run = vi.fn();
+    await expect(
+      runCommand(await wrap(leaf("render", run)), { rawArgs: ["./proj", "out.mp4"] }),
+    ).rejects.toThrow(CliUsageError);
+    expect(run).not.toHaveBeenCalled();
+    expect(errorSpy.mock.calls.flat().join("\n")).toBe(
+      "Unexpected extra argument for hyperframes render: out.mp4\nUsage: hyperframes render [DIR] [OPTIONS]",
+    );
+  });
+
+  it("reports the rejection as JSON on stdout under --json", async () => {
+    await expect(
+      runCommand(await wrap(leaf("lint")), { rawArgs: ["a", "b", "--json"] }),
+    ).rejects.toThrow(CliUsageError);
+    expect(JSON.parse(logSpy.mock.calls[0]![0] as string)).toEqual({
+      ok: false,
+      error:
+        "Unexpected extra argument for hyperframes lint: b\nUsage: hyperframes lint [DIR] [OPTIONS]",
+    });
+  });
+
+  it("runs a leaf given no more positionals than it declares", async () => {
+    const run = vi.fn();
+    await runCommand(await wrap(leaf("lint", run)), { rawArgs: ["a", "--json"] });
+    expect(run).toHaveBeenCalledOnce();
+  });
+
+  it("names a nested subcommand by its full path", async () => {
+    const group = {
+      meta: { name: "cloud" },
+      subCommands: { get: leaf("get") },
+      run: vi.fn(),
+    } as CommandDef;
+    await expect(runCommand(await wrap(group), { rawArgs: ["get", "id1", "id2"] })).rejects.toThrow(
+      /hyperframes cloud get: id2\nUsage: hyperframes cloud get \[DIR\]/,
+    );
+  });
+
+  it("lets an opted-out command read extra positionals", async () => {
+    const run = vi.fn();
+    await runCommand(await wrap(leaf("compare", run)), { rawArgs: ["a", "b", "c"] });
+    expect(run).toHaveBeenCalledOnce();
+  });
+
+  it("does not count the subcommand name against the group citty also runs", async () => {
+    const run = vi.fn();
+    const sub = vi.fn();
+    const group = { meta: { name: "auth" }, subCommands: { status: leaf("status", sub) }, run };
+    await runCommand(await wrap(group as CommandDef), { rawArgs: ["status", "--json"] });
+    expect(sub).toHaveBeenCalledOnce();
+    expect(run).toHaveBeenCalledOnce();
   });
 });
 

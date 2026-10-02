@@ -1,5 +1,5 @@
 import { describe, expect, it, vi, beforeEach, afterEach } from "vitest";
-import { parseArgs as parseCittyArgs, type ArgsDef } from "citty";
+import { runCommand as runCittyCommand, type CommandDef } from "citty";
 import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -18,6 +18,7 @@ import addCommand, {
 } from "./add.js";
 import { trackRegistryItemAdded } from "../telemetry/events.js";
 import { CliUsageError } from "../utils/commandResult.js";
+import { trackCommandFailures } from "../utils/command-failure-tracking.js";
 
 // Assert the emitted payload rather than the transport: `shouldTrack()` is
 // already false under test (dev mode / no PostHog key), so a real call would
@@ -539,22 +540,20 @@ describe("add command run() — extra positional arguments", () => {
     rmSync(dir, { recursive: true, force: true });
   });
 
-  async function runCommand(args: Record<string, unknown>): Promise<void> {
-    await (addCommand.run as (ctx: { args: Record<string, unknown> }) => Promise<void>)({ args });
+  async function runWrapped(rawArgs: string[]): Promise<void> {
+    const cmd = await trackCommandFailures(() => Promise.resolve(addCommand as CommandDef))();
+    await runCittyCommand(cmd, { rawArgs });
   }
 
-  it("rejects `add a --dir <dir> b c` under real citty parsing, before any registry call", async () => {
+  it("rejects `add a --dir <dir> b c` through the CLI wrapper, before any registry call", async () => {
     const fetchSpy = vi.fn();
     vi.stubGlobal("fetch", fetchSpy);
 
-    const parsed = parseCittyArgs(["a", "--dir", dir, "b", "c"], addCommand.args as ArgsDef);
-    expect(parsed._).toEqual(["a", "b", "c"]);
-
-    await expect(runCommand(parsed as unknown as Record<string, unknown>)).rejects.toThrow(
-      CliUsageError,
-    );
+    await expect(runWrapped(["a", "--dir", dir, "b", "c"])).rejects.toThrow(CliUsageError);
     expect(fetchSpy).not.toHaveBeenCalled();
-    expect(errorSpy.mock.calls.flat().join(" ")).toContain("extra arguments: b, c");
+    expect(errorSpy.mock.calls.flat().join(" ")).toContain(
+      "Unexpected extra arguments for hyperframes add: b, c",
+    );
   });
 
   it("does not fire on a normal single-item invocation", async () => {
@@ -562,7 +561,7 @@ describe("add command run() — extra positional arguments", () => {
     writeRegistryConfig(dir);
 
     await expect(
-      runCommand({ name: "my-block", _: ["my-block"], dir, clipboard: false, json: true }),
+      runWrapped(["my-block", "--dir", dir, "--no-clipboard", "--json"]),
     ).resolves.toBeUndefined();
   });
 });
