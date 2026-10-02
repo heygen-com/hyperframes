@@ -1,18 +1,16 @@
 // @vitest-environment happy-dom
 
 import React, { act } from "react";
-import { createRoot, type Root } from "react-dom/client";
 import { afterEach, describe, expect, it } from "vitest";
+import { cleanupMounted, trackedRoot } from "../ui/mountHost.testHelpers";
 import { InlineTextToolbar, swatchBackground } from "./InlineTextToolbar";
 import type { InlineTextEditSession } from "../../hooks/useInlineTextEdit";
 
 (globalThis as unknown as { IS_REACT_ACT_ENVIRONMENT: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
-const roots: Root[] = [];
-
 afterEach(() => {
   // Unmount before clearing the body: the bar is portaled there, so clearing first orphans React's node.
-  act(() => roots.splice(0).forEach((root) => root.unmount()));
+  cleanupMounted();
   document.body.innerHTML = "";
 });
 
@@ -37,8 +35,7 @@ function scene(html: string) {
 function render(session: InlineTextEditSession | null, iframe: HTMLIFrameElement | null) {
   const host = document.createElement("div");
   document.body.append(host);
-  const root = createRoot(host);
-  roots.push(root);
+  const root = trackedRoot(host);
   act(() => root.render(<InlineTextToolbar session={session} iframe={iframe} />));
   return { host, root, rerender: () => act(() => root.render(<div />)) };
 }
@@ -125,8 +122,7 @@ describe("InlineTextToolbar", () => {
     // these are the handlers that would deselect the element.
     const host = document.createElement("div");
     document.body.append(host);
-    const root = createRoot(host);
-    roots.push(root);
+    const root = trackedRoot(host);
     act(() =>
       root.render(
         <div

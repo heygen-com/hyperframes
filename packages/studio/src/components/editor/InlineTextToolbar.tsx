@@ -73,7 +73,6 @@ export function InlineTextToolbar({
   if (!placement || !iframe) return null;
   const styles = placement.styles;
 
-  // On Studio's body: a transformed ancestor in the canvas would make `fixed` relative to itself, not the viewport.
   return createPortal(
     <div
       data-inline-text-toolbar="true"

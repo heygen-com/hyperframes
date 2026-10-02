@@ -61,6 +61,20 @@ async function read(page) {
   };
 }
 
+/** The character before the caret, on Studio's screen: its right edge is where a line's end stands. */
+const charBefore = (page) =>
+  page.evaluate(() => {
+    const frame = document.querySelector("hyperframes-player").shadowRoot.querySelector("iframe");
+    const box = frame.getBoundingClientRect();
+    const scale = box.width / frame.contentWindow.innerWidth;
+    const { anchorNode, anchorOffset } = frame.contentDocument.getSelection();
+    const range = frame.contentDocument.createRange();
+    range.setStart(anchorNode, anchorOffset - 1);
+    range.setEnd(anchorNode, anchorOffset);
+    const rect = [...range.getClientRects()][0];
+    return { right: box.left + rect.right * scale, top: box.top + rect.top * scale };
+  });
+
 /** Where an element of the composition stands on Studio's screen. */
 const onScreen = (page, selector) =>
   page.evaluate((selector) => {
@@ -78,34 +92,46 @@ const onScreen = (page, selector) =>
 
 // One press selects the element and Enter opens its text with the caret at the end: Studio's dependable way in, where
 // a double press has to survive the canvas' gesture machinery.
-// A press can land while the last commit still reloads the preview, so a text that does not open is tried again.
+/** Presses the text open, by a press and Enter or by a double press, and says whether its caret came. */
+async function tryOpen(page, selector, xFraction, clickCount) {
+  const at = await onScreen(page, selector);
+  await page.mouse.click(at.x + at.w * xFraction, at.y + at.h / 2, { clickCount });
+  await pause(600);
+  if (clickCount === 1) await page.keyboard.press("Enter");
+  for (let i = 0; i < 30; i++) if ((await read(page)).caret) return true;
+  return false;
+}
+
+// A press can land while the last commit still reloads the preview: twice by press and Enter, then a double press.
 async function openEdit(page, selector, xFraction = 0.5) {
-  for (let attempt = 0; attempt < 3; attempt++) {
-    const at = await onScreen(page, selector);
-    // The last try opens it with a double press, the other way in.
-    const clickCount = attempt === 2 ? 2 : 1;
-    await page.mouse.click(at.x + at.w * xFraction, at.y + at.h / 2, { clickCount });
-    await pause(600);
-    if (attempt === 2 && EVIDENCE_DIR)
-      await page.screenshot({ path: join(EVIDENCE_DIR, `not-opened-${selector.slice(1)}.png`) });
-    if (clickCount === 1) await page.keyboard.press("Enter");
-    for (let i = 0; i < 30; i++) if ((await read(page)).caret) return;
+  for (const clickCount of [1, 1, 2]) {
+    if (await tryOpen(page, selector, xFraction, clickCount)) return;
+    await shot(page, `not-opened-${selector.slice(1)}`);
     await page.keyboard.press("Escape");
     await pause(500);
   }
 }
 
-/** Presses `keys` (modifiers first, held around the last) and reads once the caret has moved, or after 2 s. */
+const shot = (page, name) =>
+  EVIDENCE_DIR ? page.screenshot({ path: join(EVIDENCE_DIR, `${name}.png`) }) : null;
+
+/** Holds every key but the last, presses the last, and lets go in reverse. */
+async function chord(page, keys) {
+  const held = keys.slice(0, -1);
+  for (const each of held) await page.keyboard.down(each);
+  await page.keyboard.press(keys.at(-1));
+  for (const each of held.reverse()) await page.keyboard.up(each);
+}
+
+const spot = (caret) => (caret ? `${caret.left},${caret.top}` : "none");
+
+/** Presses `keys` and reads once the caret has moved, or after 2 s. */
 async function key(page, ...keys) {
-  const was = (await read(page)).caret;
-  const last = keys.pop();
-  for (const held of keys) await page.keyboard.down(held);
-  await page.keyboard.press(last);
-  for (const held of keys.reverse()) await page.keyboard.up(held);
+  const was = spot((await read(page)).caret);
+  await chord(page, keys);
   const deadline = Date.now() + 2000;
   let now = await read(page);
-  while (Date.now() < deadline && now.caret?.left === was?.left && now.caret?.top === was?.top)
-    now = await read(page);
+  while (Date.now() < deadline && spot(now.caret) === was) now = await read(page);
   return now;
 }
 
@@ -198,20 +224,23 @@ try {
   await page.keyboard.press("Escape");
   await pause(500);
 
-  // The paragraph wraps onto three lines. End's spot at a soft wrap is also the next line's start, and the DOM does not
-  // say which side the browser's caret is on, so the drawn caret stands with the selection there: at the next line.
+  // The paragraph wraps onto three lines. End's spot at a soft wrap is also the next line's start: the caret keeps the
+  // side End gave it and stands at the end of the first line, after its last character.
   await openEdit(page, "#body");
   // Enter opens it with the caret at the end; Ctrl+Home takes it to the first line.
   const lineStart = await key(page, "Control", "Home");
   evidence.lineEnd = await key(page, "End");
+  const lastChar = await charBefore(page);
   check(
-    standsOnSelection(evidence.lineEnd),
-    "at a wrapped line's end the caret stands where the selection is",
+    Math.abs(evidence.lineEnd.caret?.top - lineStart.caret?.top) <= NEAR_PX &&
+      Math.abs(evidence.lineEnd.caret?.left + evidence.lineEnd.caret?.width / 2 - lastChar.right) <=
+        NEAR_PX,
+    `End keeps the caret at its line's end: ${JSON.stringify(evidence.lineEnd.caret)} for ${JSON.stringify(lastChar)}`,
   );
   evidence.nextLine = await key(page, "ArrowDown");
   check(
-    evidence.nextLine.caret?.top > lineStart.caret?.top,
-    "ArrowDown moves the caret down off the first line",
+    evidence.nextLine.caret?.top > evidence.lineEnd.caret?.top,
+    "ArrowDown moves the caret down a line",
   );
   check(
     standsOnSelection(evidence.nextLine),

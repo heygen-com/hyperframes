@@ -1,18 +1,16 @@
 // @vitest-environment happy-dom
 
 import React, { act } from "react";
-import { createRoot, type Root } from "react-dom/client";
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { cleanupMounted, trackedRoot } from "../ui/mountHost.testHelpers";
 import { CARET_PX, InlineTextCaret } from "./InlineTextCaret";
 import type { InlineTextEditSession } from "../../hooks/useInlineTextEdit";
 
 (globalThis as unknown as { IS_REACT_ACT_ENVIRONMENT: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
-const roots: Root[] = [];
-
 afterEach(() => {
   // Unmount before clearing the body: the caret is portaled there, so clearing first orphans React's node.
-  act(() => roots.splice(0).forEach((root) => root.unmount()));
+  cleanupMounted();
   document.body.innerHTML = "";
   vi.restoreAllMocks();
 });
@@ -41,8 +39,7 @@ function scene() {
 }
 
 function render(session: InlineTextEditSession | null, iframe: HTMLIFrameElement | null) {
-  const root = createRoot(document.body.appendChild(document.createElement("div")));
-  roots.push(root);
+  const root = trackedRoot(document.body.appendChild(document.createElement("div")));
   act(() => root.render(<InlineTextCaret session={session} iframe={iframe} />));
   return { root, caret: () => document.querySelector<HTMLElement>("[data-inline-text-caret]") };
 }
@@ -69,6 +66,33 @@ describe("InlineTextCaret", () => {
       ({ left: 140, top: 50, width: window.innerWidth / 4 }) as DOMRect;
     await act(() => new Promise((done) => requestAnimationFrame(() => done(undefined))));
     expect(caret()!.style.left).toBe(`${140 + 400 / 4 - CARET_PX / 2}px`);
+  });
+
+  it("after End at a soft wrap the caret stands at the earlier line's end; after Home, at the next line's start", () => {
+    const { element, iframe, session } = scene();
+    // A collapsed range at a wrap point has the next line's box; the character before it ends the earlier line.
+    vi.spyOn(Range.prototype, "getClientRects").mockImplementation(function (this: Range) {
+      return (this.collapsed
+        ? [{ left: 0, top: 320, height: 120 }]
+        : [{ left: 300, right: 400, top: 200, height: 120 }]) as unknown as DOMRectList;
+    });
+    const caret = render(session, iframe).caret;
+    const press = (key: string) => {
+      act(() => void element.dispatchEvent(new KeyboardEvent("keydown", { key })));
+      fire(document, "selectionchange");
+    };
+    press("End");
+    expect([caret()!.style.left, caret()!.style.top]).toEqual([
+      `${100 + 400 / 4 - CARET_PX / 2}px`,
+      `${50 + 200 / 4}px`,
+    ]);
+    press("Shift");
+    expect(caret()!.style.top, "a modifier alone keeps the side").toBe(`${50 + 200 / 4}px`);
+    press("Home");
+    expect([caret()!.style.left, caret()!.style.top]).toEqual([
+      `${100 - CARET_PX / 2}px`,
+      `${50 + 320 / 4}px`,
+    ]);
   });
 
   it("shows no caret while a range is selected, and again once the selection collapses", () => {

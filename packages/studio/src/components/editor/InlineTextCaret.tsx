@@ -40,7 +40,15 @@ export function InlineTextCaret({
     const ownCaret = element.style.caretColor;
     element.style.caretColor = "transparent";
     let composing = false;
-    const update = () => setPlacement(composing ? null : placeAtCaret(element, iframe, color));
+    let side: CaretSide = "after";
+    const update = () =>
+      setPlacement(composing ? null : placeAtCaret(element, iframe, color, side));
+    // The DOM has no side for a soft-wrap point (one line's end is the next one's start): the key that moved there
+    // says which, as CodeMirror and ProseMirror keep it.
+    const onKey = ({ key }: KeyboardEvent) => {
+      if (!MODIFIERS.has(key)) side = SIDE_OF_KEY[key] ?? "after";
+    };
+    const onPress = () => void (side = "after");
     const composition = (on: boolean) => () => {
       composing = on;
       update();
@@ -61,6 +69,8 @@ export function InlineTextCaret({
       frame = studio?.requestAnimationFrame(follow) ?? 0;
     };
     doc.addEventListener("selectionchange", update);
+    element.addEventListener("keydown", onKey);
+    element.addEventListener("pointerdown", onPress);
     element.addEventListener("input", update);
     element.addEventListener("focus", update);
     element.addEventListener("blur", update);
@@ -72,6 +82,8 @@ export function InlineTextCaret({
     return () => {
       studio?.cancelAnimationFrame(frame);
       doc.removeEventListener("selectionchange", update);
+      element.removeEventListener("keydown", onKey);
+      element.removeEventListener("pointerdown", onPress);
       element.removeEventListener("input", update);
       element.removeEventListener("focus", update);
       element.removeEventListener("blur", update);
@@ -113,10 +125,20 @@ function caretColorOf(element: HTMLElement): string {
 
 /** Where the caret stands on Studio's screen, or null when there is none to draw: a range selected, the text not
  * focused, or the selection outside it. */
+type CaretSide = "before" | "after";
+const MODIFIERS = new Set(["Shift", "Control", "Alt", "Meta"]);
+const SIDE_OF_KEY: Record<string, CaretSide> = {
+  End: "before",
+  ArrowRight: "before",
+  Home: "after",
+  ArrowLeft: "after",
+};
+
 function placeAtCaret(
   element: HTMLElement,
   iframe: HTMLIFrameElement,
   color: string,
+  side: CaretSide,
 ): CaretPlacement | null {
   const doc = element.ownerDocument;
   const view = doc.defaultView;
@@ -125,7 +147,7 @@ function placeAtCaret(
   if (!doc.hasFocus() || !element.contains(doc.activeElement)) return null;
   const range = selection.getRangeAt(0);
   if (!element.contains(range.startContainer)) return null;
-  const rect = caretRect(range, element, view);
+  const rect = (side === "before" && endOfCharBefore(range)) || caretRect(range, element, view);
   // The composition is drawn scaled into the iframe's box: the same mapping the toolbar uses.
   const box = iframe.getBoundingClientRect();
   const scale = view.innerWidth ? box.width / view.innerWidth : 1;
@@ -153,6 +175,18 @@ function caretRect(range: Range, element: HTMLElement, view: Window) {
     top: box.top + (Number.parseFloat(style.paddingTop) || 0),
     height: line,
   };
+}
+
+/** The right edge of the character just before a collapsed range in a text node: where a caret that came from
+ * before a soft-wrap point stands, at the end of the earlier line. */
+function endOfCharBefore({ startContainer: at, startOffset: offset }: Range) {
+  if (at.nodeType !== Node.TEXT_NODE || offset === 0) return null;
+  const char = at.ownerDocument!.createRange();
+  char.setStart(at, offset - 1);
+  char.setEnd(at, offset);
+  // A trailing space at a wrap has a box on each line; the earlier line's comes first.
+  const rect = [...char.getClientRects()].find((each) => each.height > 0);
+  return rect ? { left: rect.right, top: rect.top, height: rect.height } : null;
 }
 
 /** At an element boundary: the end of the node before, or the start of the node after (a line break's own line). */
