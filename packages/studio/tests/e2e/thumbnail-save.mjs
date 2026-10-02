@@ -71,7 +71,7 @@ try {
       {
         hostname: "127.0.0.1",
         port: address.port,
-        path: "http://127.0.0.1:1/api/projects",
+        path: "http://127.0.0.1:1/",
         signal: AbortSignal.timeout(5000),
       },
       (response) => {
