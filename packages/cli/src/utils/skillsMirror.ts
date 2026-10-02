@@ -32,6 +32,7 @@ import {
   rmSync,
   statSync,
   symlinkSync,
+  unlinkSync,
 } from "node:fs";
 import { homedir } from "node:os";
 import { basename, dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
@@ -238,6 +239,23 @@ function mirrorInto(
 }
 
 /**
+ * Unlink symlinks an earlier mirror left in `targetDir` (they resolve to the same source skill).
+ * Real dirs and Windows copies carry no ownership proof, so they stay.
+ */
+function removeMirrorLinks(targetDir: string, source: string, skills: string[]): void {
+  for (const skill of skills) {
+    const targetSkill = join(targetDir, skill);
+    try {
+      if (!lstatSync(targetSkill).isSymbolicLink()) continue;
+      if (realpathSync(targetSkill) !== realpathSync(join(source, skill))) continue;
+      unlinkSync(targetSkill);
+    } catch {
+      // absent or dangling: nothing of ours to remove
+    }
+  }
+}
+
+/**
  * Mirror the global Claude store into every installed agent's global skills
  * dir. Best-effort and idempotent: a no-op when the store is absent, and per
  * skill failures (permissions, races) don't abort the rest.
@@ -283,7 +301,11 @@ export function mirrorGlobalSkills(opts: {
   for (const { agent, base, sub } of AGENT_GLOBAL_DIRS) {
     const targetDir = join(bases[base], ...sub.split("/").filter(Boolean));
     if (targetDir === source || targetDir === universalStore) continue; // install-owned
-    if (UNIVERSAL_STORE_READERS.has(agent)) continue; // already reads the universal store (#3294)
+    if (UNIVERSAL_STORE_READERS.has(agent)) {
+      // Already reads the universal store (#3294); drop links an older version mirrored here.
+      removeMirrorLinks(targetDir, source, skills);
+      continue;
+    }
     if (!existsSync(dirname(targetDir))) continue; // agent not installed (no marker)
     const attempt = mirrorInto(targetDir, source, skills, platform, () =>
       targetSafety(targetDir, resolvedProtectedPaths),

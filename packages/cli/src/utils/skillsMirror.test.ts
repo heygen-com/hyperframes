@@ -277,6 +277,31 @@ describe("mirrorGlobalSkills", () => {
     expect(readFileSync(join(existing, "SKILL.md"), "utf8")).toBe("# locally managed\n");
   });
 
+  it("removes Codex links an earlier mirror created and keeps the user's own entries", () => {
+    const home = makeHome();
+    seedStore(home, ["hyperframes", "media-use"]);
+    const codexSkills = join(home, ".codex", "skills");
+    mkdirSync(join(codexSkills, ".system"), { recursive: true });
+    mkdirSync(join(codexSkills, "my-skill"), { recursive: true });
+    // What main's mirror wrote: a relative link back into the Claude store.
+    symlinkSync(
+      join("..", "..", ".claude", "skills", "hyperframes"),
+      join(codexSkills, "hyperframes"),
+    );
+    // Same skill name, but the user's own link to somewhere else.
+    const userCopy = join(home, "my-media-use");
+    mkdirSync(userCopy);
+    symlinkSync(userCopy, join(codexSkills, "media-use"));
+
+    mirrorGlobalSkills({ skills: ["hyperframes", "media-use"], home, platform: "linux", env: ENV });
+
+    expect(existsSync(join(codexSkills, "hyperframes"))).toBe(false);
+    expect(realpathSync(join(codexSkills, "media-use"))).toBe(realpathSync(userCopy));
+    expect(existsSync(join(codexSkills, ".system"))).toBe(true);
+    expect(existsSync(join(codexSkills, "my-skill"))).toBe(true);
+    expect(existsSync(join(home, ".claude", "skills", "hyperframes", "SKILL.md"))).toBe(true);
+  });
+
   // Pi natively discovers BOTH ~/.pi/agent/skills and the universal
   // ~/.agents/skills (pi's packages/coding-agent/docs/skills.md#locations).
   // A mirrored per-agent copy collides with the universal one and Pi skips
