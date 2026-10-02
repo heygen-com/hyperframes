@@ -165,7 +165,7 @@ describe("runEnvironmentChecks", () => {
     expect(result.ffmpegPath).toBeUndefined();
   });
 
-  // The cannot-start hint once hardcoded Windows DLL advice on every platform.
+  // Windows DLL advice only on Windows; elsewhere the platform install hint.
   describe("FFmpeg cannot-start hint is platform-specific", () => {
     const realPlatform = process.platform;
 
@@ -176,24 +176,24 @@ describe("runEnvironmentChecks", () => {
     it.each([
       { platform: "darwin" as const, expectedHint: "brew install ffmpeg" },
       { platform: "sunos" as const, expectedHint: "https://ffmpeg.org/download.html" },
-    ])(
-      "uses getFFmpegInstallHint()'s $platform text, not a hardcoded DLL hint",
-      async ({ platform, expectedHint }) => {
-        Object.defineProperty(process, "platform", { value: platform, configurable: true });
-        runProcess.mockImplementation((binaryPath: string) => {
-          if (binaryPath !== process.env.HYPERFRAMES_FFMPEG_PATH)
-            return Promise.resolve({ stdout: "ffprobe version 7.1.1\n", stderr: "" });
-          throw Object.assign(new Error("cannot execute binary file"), { status: 126 });
-        });
-
-        const result = await runEnvironmentChecks();
-        const ffmpeg = result.outcomes.find((outcome) => outcome.name === "FFmpeg");
-
-        expect(ffmpeg?.title).toBe("FFmpeg cannot start");
-        expect(ffmpeg?.hint).toBe(expectedHint);
-        expect(ffmpeg?.hint).not.toContain("DLL");
+      {
+        platform: "win32" as const,
+        expectedHint: "Install a working 64-bit FFmpeg build with all required runtime DLLs.",
       },
-    );
+    ])("gives the $platform cannot-start hint", async ({ platform, expectedHint }) => {
+      Object.defineProperty(process, "platform", { value: platform, configurable: true });
+      runProcess.mockImplementation((binaryPath: string) => {
+        if (binaryPath !== process.env.HYPERFRAMES_FFMPEG_PATH)
+          return Promise.resolve({ stdout: "ffprobe version 7.1.1\n", stderr: "" });
+        throw Object.assign(new Error("cannot execute binary file"), { status: 126 });
+      });
+
+      const result = await runEnvironmentChecks();
+      const ffmpeg = result.outcomes.find((outcome) => outcome.name === "FFmpeg");
+
+      expect(ffmpeg?.title).toBe("FFmpeg cannot start");
+      expect(ffmpeg?.hint).toBe(expectedHint);
+    });
   });
 
   it("validates an explicit browser path without needing browser discovery", async () => {
