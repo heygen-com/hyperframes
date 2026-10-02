@@ -487,12 +487,13 @@ export function useDomSelection({
     // fallow-ignore-next-line complexity
     (selections: DomEditSelection[], additive: boolean) => {
       logSelect("marquee", { hits: selections.length, additive });
-      if (selections.length === 0) {
-        if (!additive) applyDomSelection(null, { revealPanel: false });
-        return { changed: false, count: 0 };
-      }
       const current = domEditSelectionRef.current;
       const currentGroup = domEditGroupSelectionsRef.current;
+      if (selections.length === 0) {
+        const count = seedDomEditGroupWithSelection(currentGroup, current).length;
+        if (!additive) applyDomSelection(null, { revealPanel: false });
+        return { changed: !additive && count > 0, count: additive ? count : 0 };
+      }
       let nextGroup: DomEditSelection[];
       if (additive) {
         nextGroup = seedDomEditGroupWithSelection(currentGroup, current);

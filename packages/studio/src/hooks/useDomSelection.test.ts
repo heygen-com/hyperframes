@@ -348,6 +348,14 @@ it("reports unchanged marquee membership and one new additive member", () => {
       receipt = harness.current().applyMarqueeSelection([card, chip], true);
     });
     expect(receipt).toEqual({ changed: false, count: 2 });
+    act(() => {
+      receipt = harness.current().applyMarqueeSelection([], true);
+    });
+    expect(receipt).toEqual({ changed: false, count: 2 });
+    act(() => {
+      receipt = harness.current().applyMarqueeSelection([], false);
+    });
+    expect(receipt).toEqual({ changed: true, count: 0 });
   } finally {
     harness.cleanup();
   }
