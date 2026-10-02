@@ -334,3 +334,21 @@ describe("useDomSelection", () => {
     harness.cleanup();
   });
 });
+
+it("reports unchanged marquee membership and one new additive member", () => {
+  const { harness, card, chip } = renderCardAndChip();
+  try {
+    act(() => harness.current().applyDomSelection(card));
+    let receipt!: ReturnType<ReturnType<typeof useDomSelection>["applyMarqueeSelection"]>;
+    act(() => {
+      receipt = harness.current().applyMarqueeSelection([chip], true);
+    });
+    expect(receipt).toEqual({ changed: true, count: 2 });
+    act(() => {
+      receipt = harness.current().applyMarqueeSelection([card, chip], true);
+    });
+    expect(receipt).toEqual({ changed: false, count: 2 });
+  } finally {
+    harness.cleanup();
+  }
+});

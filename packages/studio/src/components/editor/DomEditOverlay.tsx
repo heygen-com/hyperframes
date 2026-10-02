@@ -1,3 +1,4 @@
+import type { DomSelectionResult } from "../../hooks/useDomSelectionTypes";
 import type { RotationCommit } from "./rotationDraft";
 import { memo, useEffect, useMemo, useRef, type RefObject } from "react";
 import { type DomEditSelection } from "./domEditing";
@@ -98,7 +99,10 @@ export interface DomEditOverlayProps {
   onStyleCommit?: (property: string, value: string) => Promise<unknown> | void;
   recordingState?: GestureRecordingState;
   onToggleRecording?: () => void;
-  onMarqueeSelect?: (selections: DomEditSelection[], additive: boolean) => void;
+  onMarqueeSelect?: (
+    selections: DomEditSelection[],
+    additive: boolean,
+  ) => DomSelectionResult | void;
   /**
    * Delete the selected canvas element.
    * Wire to handleDomEditElementDelete from useDomEditActionsContext —

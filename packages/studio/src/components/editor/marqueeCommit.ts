@@ -1,3 +1,4 @@
+import type { DomSelectionResult } from "../../hooks/useDomSelectionTypes";
 import { trackPreviewFeatureUsed } from "../../utils/previewFeatureUsage";
 // fallow-ignore-file code-duplication
 import { useCallback, useEffect, useRef, useState } from "react";
@@ -114,7 +115,9 @@ export interface MarqueeGesturesDeps<T = DomEditSelection> {
   iframeRef: React.RefObject<HTMLIFrameElement | null>;
   overlayRef: React.RefObject<HTMLDivElement | null>;
   activeCompositionPathRef: React.RefObject<string | null>;
-  onMarqueeSelectRef: React.RefObject<((selections: T[], additive: boolean) => void) | undefined>;
+  onMarqueeSelectRef: React.RefObject<
+    ((selections: T[], additive: boolean) => DomSelectionResult | void) | undefined
+  >;
   /** Turns the elements a drag touched into picks; without it, Studio's edit selections. */
   resolveHits?: (elements: HTMLElement[]) => T[] | Promise<T[]>;
   selectionRef?: React.RefObject<DomEditSelection | null>;
@@ -179,8 +182,8 @@ export function useMarqueeGestures<T>(deps: MarqueeGesturesDeps<T>): MarqueeGest
         : ((await resolveDomEditSelections(elements, acp)) as T[]);
       const applySelection = deps.onMarqueeSelectRef.current;
       if (!applySelection) return;
-      applySelection(picks, additive);
-      if (picks.length > 1) trackPreviewFeatureUsed("multi_select", "drag");
+      const result = applySelection(picks, additive);
+      if (result?.changed && result.count > 1) trackPreviewFeatureUsed("multi_select", "drag");
     },
     [
       deps.iframeRef,

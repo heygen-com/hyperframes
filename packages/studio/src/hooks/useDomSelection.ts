@@ -489,7 +489,7 @@ export function useDomSelection({
       logSelect("marquee", { hits: selections.length, additive });
       if (selections.length === 0) {
         if (!additive) applyDomSelection(null, { revealPanel: false });
-        return;
+        return { changed: false, count: 0 };
       }
       const current = domEditSelectionRef.current;
       const currentGroup = domEditGroupSelectionsRef.current;
@@ -507,11 +507,17 @@ export function useDomSelection({
         }
       }
       const nextSelection = additive && current ? current : selections[0];
+      const previous = seedDomEditGroupWithSelection(currentGroup, current);
+      const changed =
+        previous.length !== nextGroup.length ||
+        nextGroup.some((selection) => !domEditSelectionInGroup(previous, selection)) ||
+        !domEditSelectionsTargetSame(current, nextSelection);
       domEditSelectionRef.current = nextSelection;
       domEditGroupSelectionsRef.current = nextGroup;
       setDomEditSelection(nextSelection);
       setDomEditGroupSelections(nextGroup);
       announceTimelineSelection(nextGroup, nextSelection, true);
+      return { changed, count: nextGroup.length };
     },
     [applyDomSelection, announceTimelineSelection],
   );
