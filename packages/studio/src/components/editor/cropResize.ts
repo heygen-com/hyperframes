@@ -1,8 +1,7 @@
 import type { PatchOperation } from "../../utils/sourcePatcher";
 import type { CommitMutation } from "../../hooks/gsapScriptCommitTypes";
 import type { DomEditSelection } from "./domEditingTypes";
-import { gsapWritesChannels } from "../../hooks/gsapRuntimeKeyframes";
-import { elementHasNonHoldTween } from "../../hooks/gsapRuntimeKeyframes";
+import { elementHasNonHoldTween, gsapWritesChannels } from "../../hooks/gsapRuntimeKeyframes";
 import { buildInsetClipPathSides, type ParsedInsetClipPathSides } from "./clipPathHelpers";
 import { hasCropInsets, readElementCropInsets } from "./domEditOverlayCrop";
 import { forgetStudioBoxSizeDraftBase, readStudioBoxSizeDraftBase } from "./manualEditsDom";
