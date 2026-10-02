@@ -258,7 +258,7 @@ export async function generateThumbnail(opts: GenerateThumbnailOptions): Promise
     if (opts.signal.aborted) return null;
     await prepareThumbnailPage(page, opts);
     const clip = opts.selector
-      ? await page.evaluate(getElementScreenshotClip, opts.selector, opts.selectorIndex, true)
+      ? await page.evaluate(getElementScreenshotClip, opts.selector, opts.selectorIndex)
       : undefined;
     if (opts.signal.aborted) return null;
     return await captureThumbnail(page, opts.format, clip);
