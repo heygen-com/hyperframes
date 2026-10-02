@@ -52,7 +52,7 @@ export const popupSurface = cn(
   "data-[preview-state=open]:opacity-100 data-[preview-state=open]:scale-100",
 );
 
-/** Every floating list, menu, popover and tooltip sits on this layer: above panel chrome, below a modal. */
+/** Every floating list, menu, popover and tooltip sits on this layer, above panel chrome and modals. */
 export const POPUP_LAYER = "z-200";
 
 const menuPopup = cn(popupSurface, "min-w-36 p-1 shadow-menu");

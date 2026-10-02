@@ -27,12 +27,14 @@ try {
       continue;
     }
     // A click before Studio settles is dropped, so press until the list says it is open.
-    for (let tries = 0; tries < 10; tries += 1) {
+    const open = `${trigger(label)}[aria-expanded="true"]`;
+    for (let tries = 0; tries < 10 && !(await page.$(open)); tries += 1) {
       await page.click(trigger(label));
-      const opened = await page
-        .waitForSelector(`${trigger(label)}[aria-expanded="true"]`, { timeout: 1_000 })
-        .catch(() => null);
-      if (opened) break;
+      await page.waitForSelector(open, { timeout: 1_000 }).catch(() => null);
+    }
+    if (!(await page.$(open))) {
+      failures.push(`${label}: the list never opened`);
+      continue;
     }
     await page.waitForFunction(() =>
       [...document.querySelectorAll('[role="option"]')].some((el) => el.checkVisibility()),

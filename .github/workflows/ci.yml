@@ -973,10 +973,13 @@ jobs:
             echo "FAIL: studio dev server did not start on port 5316"
             exit 1
           fi
+          # Both checks run even when the first fails.
+          rc=0
           STUDIO_URL="http://localhost:5316/#project/fade-handles" \
-            node packages/studio/tests/e2e/fade-handles.mjs
+            node packages/studio/tests/e2e/fade-handles.mjs || rc=1
           STUDIO_URL="http://localhost:5316/#project/fade-handles?tab=renders" \
-            node packages/studio/tests/e2e/render-selects.mjs
+            node packages/studio/tests/e2e/render-selects.mjs || rc=1
+          exit "$rc"
       - name: Measure the caret of a text edited in place
         if: success() || failure()
         run: |
