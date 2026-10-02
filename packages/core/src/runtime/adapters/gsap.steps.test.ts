@@ -35,4 +35,28 @@ describe("gsap adapter on a step", () => {
     film.adapter.seek({ time: 2.5 });
     expect(film.calls()).toBe(1);
   });
+
+  it("applies a set at 0 on a timeline that has not moved yet", () => {
+    const intro = document.body.appendChild(document.createElement("div"));
+    const timeline = gsap.timeline({ paused: true });
+    timeline.set(intro, { display: "block" }, 0).to(intro, { opacity: 0, duration: 1 }, 1);
+    intro.style.display = "none";
+    createGsapAdapter({ getTimeline: () => timeline as unknown as RuntimeTimelineLike }).seek({
+      time: 0,
+    });
+    expect(intro.style.display).toBe("block");
+  });
+
+  it("restores a value changed outside the timeline when seeking 0 again", () => {
+    const box = document.body.appendChild(document.createElement("div"));
+    const timeline = gsap.timeline({ paused: true });
+    timeline.fromTo(box, { x: 10 }, { x: 100, duration: 1 }, 0);
+    const adapter = createGsapAdapter({
+      getTimeline: () => timeline as unknown as RuntimeTimelineLike,
+    });
+    adapter.seek({ time: 0 });
+    gsap.set(box, { x: 999 });
+    adapter.seek({ time: 0 });
+    expect(gsap.getProperty(box, "x")).toBe(10);
+  });
 });

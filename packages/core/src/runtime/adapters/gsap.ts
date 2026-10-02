@@ -5,14 +5,14 @@ type GsapAdapterDeps = {
 };
 
 /**
- * Re-renders a timeline already moved to `t`, arriving from just below: GSAP applies zero-duration
- * steps that share a time in authored order only on a forward arrival. Both moves are silent.
+ * Re-renders a timeline already moved to `t`, silently. It arrives from just below, since GSAP
+ * applies same-time zero-duration steps in authored order only going forward; at 0 it comes from above.
  */
 export function rerenderGsapTimelineAt(
   timeline: { totalTime: (time: number, suppressEvents?: boolean) => unknown },
   t: number,
 ): void {
-  timeline.totalTime(Math.max(0, t - 0.001), true);
+  timeline.totalTime(t >= 0.001 ? t - 0.001 : t + 0.001, true);
   timeline.totalTime(t, true);
 }
 
