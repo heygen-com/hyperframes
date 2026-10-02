@@ -62,7 +62,25 @@ async function readClaudeUsage(): Promise<HarnessUsage> {
     ].some((key) => process.env[key])
   )
     return unknownUsage("unsupported_auth");
-  const configDir = process.env.CLAUDE_CONFIG_DIR;
+  const candidates = await readClaudeCandidates(process.env.CLAUDE_CONFIG_DIR);
+  let reason = "no_subscription_login";
+  for (const text of candidates) {
+    const login = claudeLogin(text);
+    if (login.status === "unavailable") {
+      reason = login.reason;
+      continue;
+    }
+    const usage = await requestUsage("claude-code", login.credential);
+    if (usage.status === "unknown" && ["http_401", "http_403"].includes(usage.reason)) {
+      reason = usage.reason;
+      continue;
+    }
+    return usage;
+  }
+  return unknownUsage(reason);
+}
+
+async function readClaudeCandidates(configDir: string | undefined): Promise<string[]> {
   const candidates: string[] = [];
   if (process.platform === "darwin") {
     let service = "Claude Code-credentials";
@@ -89,21 +107,7 @@ async function readClaudeUsage(): Promise<HarnessUsage> {
   } catch {
     // No login file is normal for API-key and unsupported harness sessions.
   }
-  let reason = "no_subscription_login";
-  for (const text of candidates) {
-    const login = claudeLogin(text);
-    if (login.status === "unavailable") {
-      reason = login.reason;
-      continue;
-    }
-    const usage = await requestUsage("claude-code", login.credential);
-    if (usage.status === "unknown" && ["http_401", "http_403"].includes(usage.reason)) {
-      reason = usage.reason;
-      continue;
-    }
-    return usage;
-  }
-  return unknownUsage(reason);
+  return candidates;
 }
 
 const authParser = new Ajv();

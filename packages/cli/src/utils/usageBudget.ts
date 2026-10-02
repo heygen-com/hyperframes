@@ -128,38 +128,55 @@ const parser = new Ajv();
 const parseCodex = parser.compileParser<JTDDataType<typeof codexSchema>>(codexSchema);
 const parseGrok = parser.compileParser<JTDDataType<typeof grokSchema>>(grokSchema);
 
+type CodexWindow = NonNullable<JTDDataType<typeof codexWindowSchema>>;
+
+function codexWindowKind(
+  seconds: number | undefined,
+  index: number,
+): "session" | "weekly" | "unknown" {
+  switch (seconds) {
+    case 18000:
+      return "session";
+    case 604800:
+      return "weekly";
+    case undefined:
+      return index === 0 ? "session" : "weekly";
+    default:
+      return "unknown";
+  }
+}
+
+function normalizeCodexWindow(raw: CodexWindow, now: number): UsageWindow | null {
+  const reset =
+    raw.reset_at ??
+    (raw.reset_after_seconds === undefined ? undefined : now / 1000 + raw.reset_after_seconds);
+  if (reset !== undefined && (!Number.isFinite(reset) || Math.abs(reset * 1000) > 8640000000000000))
+    return null;
+  return {
+    remainingPercent: 100 - raw.used_percent,
+    resetsAt: reset === undefined ? null : new Date(reset * 1000).toISOString(),
+  };
+}
+
 export function parseCodexUsage(text: string, now = Date.now()): HarnessUsage {
   const usage = parseCodex(text);
   if (!usage) return unknownUsage("invalid_usage_response");
-  let session: UsageWindow | null = null;
-  let weekly: UsageWindow | null = null;
+  const windows: { session: UsageWindow | null; weekly: UsageWindow | null } = {
+    session: null,
+    weekly: null,
+  };
   for (const [index, raw] of [
     usage.rate_limit.primary_window,
     usage.rate_limit.secondary_window,
   ].entries()) {
     if (!raw) continue;
-    const seconds = raw.limit_window_seconds;
-    const reset =
-      raw.reset_at ??
-      (raw.reset_after_seconds === undefined ? undefined : now / 1000 + raw.reset_after_seconds);
-    if (
-      reset !== undefined &&
-      (!Number.isFinite(reset) || Math.abs(reset * 1000) > 8640000000000000)
-    )
-      return unknownUsage("invalid_usage_response");
-    const window = {
-      remainingPercent: 100 - raw.used_percent,
-      resetsAt: reset === undefined ? null : new Date(reset * 1000).toISOString(),
-    };
-    if (seconds === 18000 || (seconds === undefined && index === 0)) {
-      if (session !== null) return unknownUsage("invalid_usage_response");
-      session = window;
-    } else if (seconds === 604800 || (seconds === undefined && index === 1)) {
-      if (weekly !== null) return unknownUsage("invalid_usage_response");
-      weekly = window;
-    } else return unknownUsage("unsupported_usage_window");
+    const kind = codexWindowKind(raw.limit_window_seconds, index);
+    if (kind === "unknown") return unknownUsage("unsupported_usage_window");
+    const window = normalizeCodexWindow(raw, now);
+    if (window === null || windows[kind] !== null) return unknownUsage("invalid_usage_response");
+    windows[kind] = window;
   }
-  return planUsage("codex", session, weekly);
+  return planUsage("codex", windows.session, windows.weekly);
 }
 
 export function parseGrokUsage(text: string): HarnessUsage {

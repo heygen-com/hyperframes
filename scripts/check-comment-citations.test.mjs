@@ -69,10 +69,9 @@ test("a cited file that does not exist fails", (t) => {
 
 test("a bare project file a skill workflow writes is not this repo's to resolve", (t) => {
   const { failures } = checkSubject(t, {
-    "skills/demo/references/visual-design.md": [
-      "Enrich `STORYBOARD.md` from `frame.md`, `BRIEF.md`, `design.md` and `storyboard.html`.",
-      "",
-    ].join("\n"),
+    "skills/demo/references/visual-design.md": ["Read `BRIEF.md` and `storyboard.html`.", ""].join(
+      "\n",
+    ),
   });
   assert.deepEqual(failures, []);
 });
