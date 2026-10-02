@@ -1,17 +1,7 @@
 // fallow-ignore-file code-duplication
-// Real-Chromium pins for motion-signature.browser.js. The happy-dom suite
-// (motion-signature.browser.test.ts) mocks getComputedStyle, so it asserts the
-// classifier's control flow against a fake; this suite asserts the same
-// branches against the platform — Blink's attr() substitution in computed
-// pseudo content, unsubstituted counter(), display:none and
-// content-visibility:hidden subtrees, opt-outs on a measured scope, clip-path,
-// and form control state — using the exact scripts `hyperframes check` injects.
-// Skipped when no Chrome/Chromium binary is available without downloading. On
-// Windows the suite is opt-in (HYPERFRAMES_BROWSER_TESTS=1): in the shared
-// Windows package test lane the launch of the runner's Chrome did not complete
-// within the package hookTimeout (cause not established; no other suite in this
-// package launches a browser), and the suite already runs on Linux CI, where
-// the runner's Chrome is found as a system browser.
+// Real-Chromium pins for motion-signature.browser.js: the happy-dom suite fakes getComputedStyle, this one
+// asserts the same branches against Blink, using the exact scripts `hyperframes check` injects.
+// Skipped without a local Chrome; opt-in on Windows (HYPERFRAMES_BROWSER_TESTS=1), where its launch timed out.
 import { existsSync, readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -624,13 +614,8 @@ describe.skipIf(!RUNS_CHROMIUM)("motion-signature.browser in Chromium", () => {
     expect(afterPseudo.sweep).not.toBe(afterText.sweep);
   });
 
-  // The only counter consumers are the hidden pseudo-elements (::marker,
-  // ::after) of a host that skips its contents; a static painted counter
-  // `shown` exists so the host's hidden counter-increment has a consumed name
-  // to reach for. Nothing the host declares or paints may enter the signature:
-  // its child is not visible for motion-sample, a change of the countdown
-  // owner is not motion, and a change of the hidden ::after's counter-increment
-  // is not motion either (the pseudo box does not exist).
+  // The only counter consumers are hidden pseudo-elements of a host that skips its contents; `shown` gives
+  // the host's hidden counter-increment a consumed name. Nothing the host declares or paints may count as motion.
   it("ignores a counter reachable only through a skipped host's hidden pseudo-elements", async () => {
     await load(
       composition(

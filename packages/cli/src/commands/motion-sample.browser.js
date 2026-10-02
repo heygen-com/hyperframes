@@ -4,11 +4,9 @@
 // scope it returns a bucketed signature of all visible elements, so the Node-side
 // evaluator can detect frozen windows by comparing signatures across frames.
 (function () {
-  // Visibility, opacity, and the liveness signature all come from the shared
-  // motion classifier so this sampler and the frozen-sweep guard can never
-  // disagree on what counts as motion (see motion-signature.browser.js).
-  // Resolved at install, checked at call: addScriptTag resolves on load, so an
-  // install-time throw would only surface as a page error and an opaque
+  // Visibility, opacity and the liveness signature come from the shared classifier
+  // (motion-signature.browser.js), so this sampler and the frozen-sweep guard agree on what moves.
+  // Resolved at install, checked at call: an install-time throw would only surface as an opaque
   // "__hyperframesMotionSample is not a function" from the driver's evaluate.
   const shared = window.__hyperframesMotionSignature;
 

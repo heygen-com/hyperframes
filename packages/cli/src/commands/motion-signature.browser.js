@@ -1,39 +1,7 @@
-// Shared "what counts as motion" classifier for the two seek-time samplers.
-// Injected via page.addScriptTag BEFORE layout-audit.browser.js and
-// motion-sample.browser.js (see checkBrowser.ts injectAuditScripts and
-// layout.ts); both consume it through window.__hyperframesMotionSignature.
-//
-// Two Node-side decisions compare per-sample signatures of the composition:
-//   - the frozen-sweep guard (#U10, checkPipeline.ts detectSweepStatic) reads
-//     window.__hyperframesLayoutGeometry once per layout-grid seek and fails
-//     the run with sweep_static when every sample is byte-identical;
-//   - keepsMoving liveness (motionAudit.ts) reads motion-sample's liveness
-//     signature per motion sample and reports motion_frozen on long runs of
-//     identical signatures.
-// They meet in one decision (a motion_frozen finding suppresses sweep_static),
-// so the set of channels that count as motion MUST be identical for both —
-// otherwise a composition one sampler accepts as live is rejected as frozen
-// by the other. This module is that single owner. The only sanctioned
-// difference is quantization: liveness buckets position to 2px and opacity to
-// 0.08 so the motion RFC's "moves ≥2px / opacity ≥0.08" thresholds fall out of
-// bucketing, while the sweep guard wants exact (0.01) rounding because it asks
-// whether the seek moved anything at all.
-//
-// Adding a channel (e.g. SVG stroke-dasharray/dashoffset): append one reader
-// `(element, ctx) => string` to BOX_CHANNELS (reads the element's own box,
-// including a control's widget type and checked state) or CONTENT_CHANNELS (reads what the
-// element's contents paint — text, pseudo content, control values, media
-// pixels — which `content-visibility: hidden` skips). `ctx`
-// carries the element's computed style, its ::before/::after styles, its
-// inherited opacity, and the quantize flag. A reader returns a string that is
-// equal between two samples iff that channel did not visibly change; return ""
-// for elements the channel does not apply to so ordinary compositions gain no
-// payload.
-//
-// Signatures are a single opaque string per sample (not a structured array):
-// Node only ever needs equality, never per-element diffing. Textual channels
-// are hashed (FNV-1a, length-delimited fields) so raw composition text never
-// leaves the page and per-sample payloads stay compact.
+// Shared "what counts as motion" classifier, injected before layout-audit.browser.js and motion-sample.browser.js.
+// The frozen-sweep guard (sweep_static) and keepsMoving liveness (motion_frozen) meet in one decision, so both
+// must count the same channels as motion; only quantization differs (liveness buckets 2px and 0.08 opacity).
+// A channel reader returns a string equal across samples iff it did not visibly change, "" when it does not apply.
 (function () {
   const IGNORE_TAGS = new Set(["SCRIPT", "STYLE", "TEMPLATE", "NOSCRIPT", "META", "LINK"]);
   const MEDIA_TAGS = new Set(["CANVAS", "VIDEO", "IMG"]);
@@ -47,14 +15,9 @@
   const COUNTER_FUNCTION = /counters?\(\s*([^\s,)]+)/g;
   const IMPLICIT_MARKER_CONTENT = "counter(list-item)";
   const LIST_ITEM_DISPLAY = /\blist-item\b/;
-  // Whether an element sits inside skipped contents (content-visibility:
-  // hidden, or auto while off-screen) is not on its own computed style; only
-  // the platform knows. RENDERED_BOX asks "does this element have a rendered
-  // box" (false for display:none, display:contents, and skipped contents);
-  // PAINTED adds the opacity/visibility properties and is the option set
-  // layout-audit.browser.js isVisibleElement uses on its opacity-floor path.
-  // happy-dom has no checkVisibility, so both callers keep a computed-style
-  // fallback.
+  // Whether an element sits inside skipped contents is not on its computed style; only checkVisibility knows.
+  // PAINTED_OPTIONS matches layout-audit.browser.js isVisibleElement's opacity-floor path. happy-dom lacks
+  // checkVisibility, so callers keep a computed-style fallback.
   const RENDERED_BOX_OPTIONS = { contentVisibilityAuto: true };
   const PAINTED_OPTIONS = {
     opacityProperty: true,
@@ -65,15 +28,9 @@
   // no pseudo box exists, so nothing it declares (content, counter-*) paints.
   const NO_BOX = Object.freeze({ display: "none" });
   const SKIPPED_PSEUDO = Object.freeze({ before: NO_BOX, after: NO_BOX });
-  // content-visibility only skips contents where size containment applies
-  // (css-contain-2): not on non-atomic inline boxes, display:contents, table
-  // boxes and internal table boxes, or the inline ruby container and internal
-  // ruby boxes. Such a host paints everything. The guard mirrors Chromium (152)
-  // where it parts ways with that list, since the platform's behaviour is what
-  // decides what paints: a table-cell host does skip its contents, and a
-  // table-caption host does not (the spec would have it the other way round
-  // for both). Replaced elements (MEDIA_TAGS) are atomic even at
-  // display:inline.
+  // content-visibility skips contents only where size containment applies (css-contain-2); hosts matching this
+  // paint everything. It mirrors Chromium 152 where that differs from the spec: a table-cell host skips, a
+  // table-caption host does not. Replaced elements (MEDIA_TAGS) are atomic even at display:inline.
   const NOT_CONTAINABLE_DISPLAY =
     /^(inline( list-item)?|contents|table|inline-table|table-(?!cell$)[a-z-]+|ruby[a-z-]*)$/;
 
@@ -109,17 +66,9 @@
     );
   }
 
-  // Visibility floor: checkVisibility (as layout-audit.browser.js
-  // isVisibleElement's opacity-floor path; its default path skips it and so
-  // cannot see skipped contents), then display/visibility, then inherited
-  // opacity, then a non-empty box. Kept local rather than shared because
-  // layout-audit is also installed and tested on its own; this module owns the
-  // decision for both motion samplers. The author opt-out (data-layout-ignore /
-  // data-layout-check=ignore) is NOT applied here: motion-sample reports this
-  // bit for explicitly asserted selectors, and an assertion naming an element
-  // outranks a layout-audit opt-out. compositionSignature applies the opt-out
-  // itself (see there). clip-path is not probed either; it is a channel, so a
-  // clip-path wipe over a static box counts as motion directly.
+  // Kept local rather than shared with layout-audit, which is installed and tested on its own. The author
+  // opt-out is not applied: an asserted selector outranks it, and compositionSignature applies it itself.
+  // clip-path is a channel, not a visibility probe, so a wipe over a static box counts as motion.
   // fallow-ignore-next-line complexity
   function isVisibleElement(element, style, opacity) {
     if (IGNORE_TAGS.has(element.tagName)) return false;
@@ -239,14 +188,8 @@
     return before || after ? hashFields([before, after]) : "";
   }
 
-  // Pixel-only media motion (a 2D/WebGL canvas repainting, a playing video, or
-  // an equal-size opaque <img> src swap) moves no geometry and no opacity, so
-  // it is invisible to every DOM-state channel. Downsample each visible media
-  // element to 8x8 and fold its pixels in. Tainted, zero-sized, or unreadable
-  // media hashes to a constant — no worse than DOM-state-only detection and
-  // never a new false negative for DOM-motion compositions. Media inside
-  // iframes is intentionally outside this signature: it lives in a separate
-  // document, and cross-origin frames are inaccessible under SOP.
+  // Pixel-only media motion (canvas repaint, playing video, same-size <img> swap) is invisible to DOM channels,
+  // so fold in an 8x8 downsample. Unreadable media hashes to a constant; iframe media is a separate document.
   // fallow-ignore-next-line complexity
   function mediaPixelChannel(element) {
     if (!MEDIA_TAGS.has(element.tagName)) return "";
@@ -290,28 +233,12 @@
   const ELEMENT_CHANNELS = [...BOX_CHANNELS, ...CONTENT_CHANNELS];
 
   // --- Composition-level counter channel ------------------------------------
-  //
-  // Counter declarations often live on zero-box owners (or on ancestors of the
-  // composition root) while some pseudo-element paints the value, so counter
-  // state is a composition-level channel over every element that generates a
-  // box — not just the visible ones. Two guards keep a decoy counter from
-  // making a frozen composition read as live: a display:none subtree generates
-  // no boxes and therefore cannot feed any painted counter(), and only
-  // declarations that NAME a counter some generated content actually paints
-  // are folded in — a varying counter nobody renders is not motion. The gate
-  // is name-level, not scope-level: a same-named owner that cannot reach the
-  // consumer in the box tree still counts, which is accepted for a guard whose
-  // job is catching frozen timelines, not defeating deliberate authors.
-  // visibility:hidden and zero-box owners stay in as owners: they generate
-  // boxes, their counters propagate to visible descendants/siblings, and their
-  // own absolutely-positioned pseudo-elements can paint. <ol start> / <li
-  // value> are not surfaced in computed counter-* and stay invisible here.
+  // Counter declarations often live on zero-box owners while a pseudo-element elsewhere paints the value, so
+  // every box-generating element is an owner, but only declarations naming a painted counter fold in.
+  // The gate is by name, not scope: enough for catching frozen timelines. <ol start> and <li value> are missed.
 
-  // Generated content of one box owner that reaches the screen: the host has
-  // a paintable inherited opacity and paints its contents, and the pseudo box
-  // itself is not hidden. A list-item box also paints its ::marker
-  // (counter(list-item) when the marker content is `normal`). The caller has
-  // already excluded opted-out hosts and hosts whose contents are skipped.
+  // Generated content of one box owner that reaches the screen, including a list-item's ::marker.
+  // Callers have already excluded opted-out hosts and hosts whose contents are skipped.
   function markerContent(element, style) {
     if (isHiddenStyle(style) || !LIST_ITEM_DISPLAY.test(style.display)) return "";
     return cssValue(getComputedStyle(element, "::marker").content) || IMPLICIT_MARKER_CONTENT;
@@ -375,31 +302,18 @@
     return parts;
   }
 
-  // One signature of everything under `root` (root included — a composition
-  // whose only textual motion is a direct text node of the root still moves)
-  // that a viewer could see change between two seeks. `options.quantize`
-  // selects liveness bucketing (see header). Elements under an author opt-out
-  // inside the root (data-layout-ignore / data-layout-check=ignore) — typically
-  // a decorative layer that may animate off the seeked timeline — are neither
-  // signed nor allowed to consume counters: they must not prove that the
-  // timeline advanced. They remain counter owners, since their boxes still
-  // propagate. The root itself is always measured (see isOptedOut).
+  // One signature of everything under `root`, root included, that a viewer could see change between seeks.
+  // Opted-out elements inside the root may animate off the timeline, so they are neither signed nor counter
+  // consumers, but stay counter owners; the root itself is always measured.
   // fallow-ignore-next-line complexity
   function compositionSignature(root, options) {
     if (!root) return "";
     const quantize = !!(options && options.quantize);
     const parts = [];
     const boxOwners = [];
-    // Unrendered elements (display:none subtrees, skipped contents) paint
-    // nothing and cannot feed a painted counter(). The platform decides where it
-    // can; the fallback is display:none and content-visibility:hidden hosts,
-    // propagated to descendants. display:contents has no box of its own but its
-    // pseudo-elements and children render, so it stays an owner — except as
-    // the child of a host that skips its contents, where its pseudo-elements
-    // paint nothing either. The platform check cannot tell that from an
-    // ordinary display:contents host (both have no box), so the parent's
-    // skipsContents verdict decides; a display:contents child of an off-screen
-    // `auto` host is not caught (see below).
+    // Unrendered elements paint nothing and feed no counter(). A display:contents child of a skipping host
+    // paints nothing either, which checkVisibility cannot tell from an ordinary one, so the parent's
+    // skipsContents verdict decides. A display:contents child of an off-screen `auto` host is missed.
     const unrenderedBelow = new Set();
     const skippedHosts = new Set();
     for (const element of [root, ...root.querySelectorAll("*")]) {
@@ -415,14 +329,8 @@
         unrenderedBelow.add(element);
         continue;
       }
-      // A host that skips its contents paints its box but none of its contents.
-      // Its counter-* declarations stay in: in Chromium a skipped host's
-      // counter-increment / counter-set still reach a sibling's painted
-      // counter() (counter-reset does not; keeping it is an over-count accepted
-      // for a guard). An `auto` host that is currently off-screen skips its
-      // contents too but is not detected here; its boxed descendants are pruned
-      // by the platform check above, while its own direct text / pseudo content
-      // and a display:contents child's pseudo content would still be signed.
+      // A skipping host paints its box but not its contents. Its counter-* stay in: in Chromium its
+      // increment and set still reach a sibling's painted counter(). Off-screen `auto` hosts are missed.
       const skipped = skipsContents(element, style);
       if (skipped) skippedHosts.add(element);
       if (skipped && !platformDecides) unrenderedBelow.add(element);

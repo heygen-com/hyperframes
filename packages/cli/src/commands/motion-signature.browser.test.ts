@@ -48,11 +48,8 @@ function keyFor(element: Element): string {
   return element.id || element.tagName.toLowerCase();
 }
 
-// A per-element fake `getComputedStyle`: each element reports ONLY its own
-// declared style, exactly like the real platform (a child of a display:none
-// parent still computes display:block). Any ancestor awareness — hidden
-// subtrees, counter owners above the root — must therefore come from the
-// classifier under test, which is what pins those branches.
+// A per-element fake getComputedStyle: each element reports only its own declared style, like the platform,
+// so ancestor awareness (hidden subtrees, counter owners above the root) must come from the classifier.
 function installFixture({ rects, styles = {}, pseudo = {} }: Fixture): void {
   vi.spyOn(window, "getComputedStyle").mockImplementation((element, pseudoElement) => {
     const key = keyFor(element as Element);
@@ -143,12 +140,7 @@ describe("motion-signature.browser media and geometry channels", () => {
     expect(collect()).not.toBe(before);
   });
 
-  // PRINFRA-666: an equal-size, equal-position opaque <img> src/visibility
-  // swap (the authoring pattern for a paused-GSAP-cursor-driven "reveal
-  // frame N of a still sequence" composition) moves no geometry and no
-  // opacity, so it was invisible to the fingerprint and false-positived
-  // sweep_static — mediaPixelHash already existed for exactly this pixel-only
-  // motion class, it just wasn't applied to img.
+  // An equal-size opaque <img> swap moves no geometry or opacity; only the media pixel channel sees it.
   it("changes the sweep fingerprint when a same-size opaque img is swapped", () => {
     document.body.innerHTML = `
       <div id="root" data-composition-id="main" data-width="640" data-height="360">
@@ -166,12 +158,8 @@ describe("motion-signature.browser media and geometry channels", () => {
     expect(collect()).not.toBe(before);
   });
 
-  // Opacity-reveal fixture (CLI feedback digest 2026-07-14): code-typing style
-  // scenes reveal pre-laid-out characters via opacity only — no geometry ever
-  // moves. The sweep fingerprint must treat that as motion, both while a glyph
-  // fades (opacity value changes) and when it crosses the 0.2 visibility floor
-  // (element enters the signature); otherwise `check` misfires `sweep_static`
-  // and authors reach for geometry hacks (a slow host y-drift) to pass.
+  // Opacity-only reveals (code-typing scenes) must count as motion both mid-fade and when a glyph crosses
+  // the 0.2 visibility floor; otherwise `check` misfires sweep_static.
   it("changes the sweep fingerprint when text reveals via opacity alone", () => {
     document.body.innerHTML = `
       <div id="root" data-composition-id="main" data-width="640" data-height="360">
