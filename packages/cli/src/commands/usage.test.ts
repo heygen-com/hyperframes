@@ -2,6 +2,7 @@ import { execFileSync } from "node:child_process";
 import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
+import { pathToFileURL } from "node:url";
 import { expect, it } from "vitest";
 
 it.each([
@@ -52,7 +53,7 @@ it.each([
       const requests = join(profile, "requests.jsonl");
       const preload = join(profile, "transport.mjs");
       writeFileSync(
-        preload,
+        pathToFileURL(preload).href,
         `
 import { appendFileSync } from "node:fs";
 globalThis.fetch = async (url, options) => {
@@ -86,7 +87,7 @@ globalThis.fetch = async (url, options) => {
           "--import",
           "tsx",
           "--import",
-          preload,
+          pathToFileURL(preload).href,
           resolve("src/cli.ts"),
           "usage",
           "--harness",
@@ -156,7 +157,7 @@ it.each([
       const preload = join(profile, "transport.mjs");
       const requests = join(profile, "requests.jsonl");
       writeFileSync(
-        preload,
+        pathToFileURL(preload).href,
         `import {writeFileSync} from "node:fs"; globalThis.fetch = async () => {writeFileSync(${JSON.stringify(requests)}, "unexpected"); throw new Error("unexpected network request");};`,
       );
       const stdout = execFileSync(
@@ -165,7 +166,7 @@ it.each([
           "--import",
           "tsx",
           "--import",
-          preload,
+          pathToFileURL(preload).href,
           resolve("src/cli.ts"),
           "usage",
           "--harness",
