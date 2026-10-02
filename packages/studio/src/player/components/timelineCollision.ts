@@ -67,9 +67,8 @@ function outOfRangeZoneInsertRow(
   audioRow: number,
   desired: number,
 ): number {
-  // No lane of this kind yet: fall to the split (audioRow) or the very top.
-  // A visual-only timeline has audioRow -1 (top); an all-audio one has it at 0.
-  if (zoneTracks.length === 0) return audioRow < 0 ? 0 : audioRow;
+  // An empty audio zone opens below visual rows; an empty visual zone opens above audio.
+  if (zoneTracks.length === 0) return audioRow < 0 ? order.length : audioRow;
   // zoneTracks preserves `order` sequence, so its ends map to the zone boundary
   // rows: above the zone's min lane → its top boundary, else its bottom.
   const zoneTop = order.indexOf(zoneTracks[0]);
