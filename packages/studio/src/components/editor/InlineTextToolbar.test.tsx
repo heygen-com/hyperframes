@@ -51,6 +51,19 @@ function selectAll(element: HTMLElement) {
   });
 }
 
+function selectAt(element: HTMLElement, top: number) {
+  const range = document.createRange();
+  range.selectNodeContents(element);
+  range.getBoundingClientRect = () =>
+    ({ left: 20, top, width: 100, height: 10 }) as unknown as DOMRect;
+  const selection = document.getSelection()!;
+  act(() => {
+    selection.removeAllRanges();
+    selection.addRange(range);
+    document.dispatchEvent(new Event("selectionchange"));
+  });
+}
+
 function toolbarIn(host: HTMLElement): HTMLElement | null {
   return host.ownerDocument.querySelector<HTMLElement>('[data-inline-text-toolbar="true"]');
 }
@@ -208,16 +221,7 @@ describe("InlineTextToolbar", () => {
   it("places itself over the selection, mapped out of the scaled composition", () => {
     const { element, session, iframe } = scene("hello world");
     const { host } = render(session, iframe);
-    const range = document.createRange();
-    range.selectNodeContents(element);
-    range.getBoundingClientRect = () =>
-      ({ left: 20, top: 40, width: 100, height: 10 }) as unknown as DOMRect;
-    const selection = document.getSelection()!;
-    act(() => {
-      selection.removeAllRanges();
-      selection.addRange(range);
-      document.dispatchEvent(new Event("selectionchange"));
-    });
+    selectAt(element, 40);
 
     const toolbar = toolbarIn(host)!;
     // Frame at 100,50; scale 400/innerWidth; centre of the range, above it.
@@ -229,16 +233,7 @@ describe("InlineTextToolbar", () => {
     const { element, session, iframe } = scene("hello world");
     iframe.getBoundingClientRect = () => ({ left: 0, top: 0, width: 400 }) as DOMRect;
     const { host } = render(session, iframe);
-    const range = document.createRange();
-    range.selectNodeContents(element);
-    range.getBoundingClientRect = () =>
-      ({ left: 20, top: 0, width: 100, height: 10 }) as unknown as DOMRect;
-    const selection = document.getSelection()!;
-    act(() => {
-      selection.removeAllRanges();
-      selection.addRange(range);
-      document.dispatchEvent(new Event("selectionchange"));
-    });
+    selectAt(element, 0);
 
     const toolbar = toolbarIn(host)!;
     const scale = 400 / window.innerWidth;

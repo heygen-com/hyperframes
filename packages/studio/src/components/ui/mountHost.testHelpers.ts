@@ -6,7 +6,6 @@ import { createRoot, type Root } from "react-dom/client";
 let mounted: { root: Root; host: HTMLElement } | null = null;
 const tracked: Root[] = [];
 
-/** A root on `host` that `cleanupMounted` also unmounts, for a test that renders more than one. */
 export function trackedRoot(host: HTMLElement): Root {
   const root = createRoot(host);
   tracked.push(root);

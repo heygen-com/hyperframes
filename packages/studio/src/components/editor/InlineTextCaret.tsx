@@ -137,13 +137,9 @@ function placeAtCaret(
   color: string,
   side: CaretSide,
 ): CaretPlacement | null {
-  const doc = element.ownerDocument;
-  const view = doc.defaultView;
-  const selection = view?.getSelection();
-  if (!view || !selection || selection.rangeCount === 0 || !selection.isCollapsed) return null;
-  if (!doc.hasFocus() || !element.contains(doc.activeElement)) return null;
-  const range = selection.getRangeAt(0);
-  if (!element.contains(range.startContainer)) return null;
+  const view = element.ownerDocument.defaultView;
+  const range = view ? caretRange(element, view) : null;
+  if (!view || !range) return null;
   const rect = (side === "before" && endOfCharBefore(range)) || caretRect(range, element, view);
   // The composition is drawn scaled into the iframe's box: the same mapping the toolbar uses.
   const box = iframe.getBoundingClientRect();
@@ -172,6 +168,16 @@ function caretRect(range: Range, element: HTMLElement, view: Window) {
     top: box.top + (Number.parseFloat(style.paddingTop) || 0),
     height: line,
   };
+}
+
+/** The collapsed selection inside the focused `element`, or null. */
+function caretRange(element: HTMLElement, view: Window): Range | null {
+  const doc = element.ownerDocument;
+  const selection = view.getSelection();
+  if (!selection || selection.rangeCount === 0 || !selection.isCollapsed) return null;
+  if (!doc.hasFocus() || !element.contains(doc.activeElement)) return null;
+  const range = selection.getRangeAt(0);
+  return element.contains(range.startContainer) ? range : null;
 }
 
 /** The right edge of the character just before a collapsed range in a text node: where a caret that came from

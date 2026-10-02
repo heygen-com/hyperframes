@@ -4,7 +4,6 @@ import { createRequire } from "node:module";
 import { readFileSync } from "node:fs";
 import path from "node:path";
 import React, { act } from "react";
-import { createRoot, type Root } from "react-dom/client";
 import { compile } from "tailwindcss";
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -21,33 +20,15 @@ import { Toggle } from "./Toggle";
 import { isTypingTarget } from "../../utils/typingTarget";
 import { shouldIgnorePlaybackShortcutTarget } from "../../player/lib/playbackShortcuts";
 import { __resetDesignInputThrottle, trackDesignInput } from "../../utils/designInputTracking";
+import { cleanupMounted, mountHost as render } from "./mountHost.testHelpers";
 
 (globalThis as unknown as { IS_REACT_ACT_ENVIRONMENT: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
-
-let mounted: { root: Root; host: HTMLElement } | null = null;
-
-function render(element: React.ReactElement): HTMLElement {
-  const host = document.createElement("div");
-  document.body.append(host);
-  const root = createRoot(host);
-  mounted = { root, host };
-  act(() => root.render(element));
-  return host;
-}
-
-function unmount() {
-  if (!mounted) return;
-  const { root, host } = mounted;
-  mounted = null;
-  act(() => root.unmount());
-  host.remove();
-}
 
 beforeEach(() => {
   trackStudioEvent.mockReset();
   __resetDesignInputThrottle();
 });
-afterEach(unmount);
+afterEach(cleanupMounted);
 
 /** Base UI moves focus a task later than React renders; happy-dom is no faster. */
 const settle = () => act(async () => void (await new Promise((r) => setTimeout(r, 0))));
