@@ -71,23 +71,27 @@ it("maps Codex windows by duration and exposes its reported plan tier", () => {
     weekly: { usedPercent: 85, remainingPercent: 15, resetsAt: "1970-01-01T01:00:00.000Z" },
   });
 });
-it("preserves an absent Codex session window and unavailable plan tier", () => {
-  expect(
-    parseCodexUsage(
-      JSON.stringify({
-        rate_limit: {
-          primary_window: { used_percent: 85, limit_window_seconds: 604800 },
-        },
-      }),
-    ),
-  ).toEqual({
-    status: "known",
-    harness: "codex",
-    planTier: null,
-    session: null,
-    weekly: { usedPercent: 85, remainingPercent: 15, resetsAt: null },
-  });
-});
+it.each([undefined, null])(
+  "preserves an absent Codex session window and unavailable plan tier: %s",
+  (planTier) => {
+    expect(
+      parseCodexUsage(
+        JSON.stringify({
+          plan_type: planTier,
+          rate_limit: {
+            primary_window: { used_percent: 85, limit_window_seconds: 604800 },
+          },
+        }),
+      ),
+    ).toEqual({
+      status: "known",
+      harness: "codex",
+      planTier: null,
+      session: null,
+      weekly: { usedPercent: 85, remainingPercent: 15, resetsAt: null },
+    });
+  },
+);
 it("converts Codex relative resets using the supplied observation time", () => {
   expect(
     parseCodexUsage(

@@ -75,7 +75,7 @@ const codexWindowSchema = {
   additionalProperties: true,
 } as const;
 const codexSchema = {
-  optionalProperties: { plan_type: { type: "string" } },
+  optionalProperties: { plan_type: { type: "string", nullable: true } },
   properties: {
     rate_limit: {
       optionalProperties: {

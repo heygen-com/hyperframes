@@ -57,17 +57,33 @@ it.each(
         },
       },
     },
-  ].flatMap((fixture) =>
-    fixture.harness === "grok"
-      ? [
-          { ...fixture, settingsFail: false },
-          { ...fixture, settingsFail: true },
-        ]
-      : [{ ...fixture, settingsFail: false }],
-  ),
+  ].flatMap((fixture) => {
+    if (fixture.harness === "grok")
+      return [
+        { ...fixture, settingsFail: false, missingTier: false },
+        { ...fixture, settingsFail: true, missingTier: false },
+      ];
+    if (fixture.harness === "claude-code")
+      return [
+        { ...fixture, settingsFail: false, missingTier: false },
+        {
+          ...fixture,
+          settingsFail: false,
+          missingTier: true,
+          auth: {
+            claudeAiOauth: {
+              accessToken: "fixture-token",
+              subscriptionType: null,
+              scopes: ["user:profile"],
+            },
+          },
+        },
+      ];
+    return [{ ...fixture, settingsFail: false, missingTier: false }];
+  }),
 )(
   "prints the real $harness CLI usage and subscription tier without exposing tokens",
-  ({ harness, path, auth, url, response, settingsFail }) => {
+  ({ harness, path, auth, url, response, settingsFail, missingTier }) => {
     const profile = mkdtempSync(join(tmpdir(), "hf-usage-"));
     try {
       const originalAuth = JSON.stringify(auth);
@@ -127,7 +143,7 @@ globalThis.fetch = async (url, options) => {
       );
       expect(JSON.parse(stdout)).toMatchObject({
         status: "known",
-        planTier: settingsFail ? null : fixtureTiers[harness],
+        planTier: settingsFail || missingTier ? null : fixtureTiers[harness],
         weekly: {
           usedPercent: harness === "grok" ? 90 : 20,
           remainingPercent: harness === "grok" ? 10 : 80,

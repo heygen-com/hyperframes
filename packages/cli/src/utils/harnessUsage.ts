@@ -21,7 +21,7 @@ const credentialSchema = {
       optionalProperties: {
         expiresAt: { type: "float64" },
         scopes: { elements: { type: "string" } },
-        subscriptionType: { type: "string" },
+        subscriptionType: { type: "string", nullable: true },
       },
       additionalProperties: true,
     },
@@ -183,7 +183,7 @@ function claudeLogin(text: string): Login {
       token: auth.accessToken.trim(),
       headers: { "anthropic-beta": "oauth-2025-04-20" },
       expiresAt: auth.expiresAt,
-      planTier: auth.subscriptionType,
+      planTier: auth.subscriptionType ?? undefined,
     },
     Date.now(),
   );
