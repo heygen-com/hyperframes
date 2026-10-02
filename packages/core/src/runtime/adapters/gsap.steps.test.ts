@@ -29,7 +29,7 @@ describe("gsap adapter on a step", () => {
     expect(film.shown()).toEqual([false, true, false]);
   });
 
-  it("fires a call on the step once", () => {
+  it("fires a call on the step once when seeking onto it twice", () => {
     const film = steppedFilm();
     film.adapter.seek({ time: 2.5 });
     film.adapter.seek({ time: 2.5 });
