@@ -363,7 +363,7 @@ export const coreRules: Array<(ctx: LintContext) => HyperframeLintFinding[]> = [
         code: "id_requires_css_escape",
         severity: used ? "error" : "warning",
         message: used
-          ? `id="${id}" starts with a digit, and the selector \`#${id}\` used in this composition throws a SyntaxError at runtime.`
+          ? `id="${id}" starts with a digit, and the selector \`#${id}\` used in this composition is invalid: querySelector and GSAP throw a SyntaxError, and CSS drops the rule.`
           : `id="${id}" starts with a digit, so the common selector \`#${id}\` throws a SyntaxError in querySelector().`,
         elementId: id,
         fixHint:
