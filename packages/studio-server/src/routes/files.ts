@@ -17,6 +17,7 @@ import {
   fstatSync,
   renameSync,
   readdirSync,
+  realpathSync,
   type Dirent,
 } from "node:fs";
 import { resolve, dirname, join } from "node:path";
@@ -731,15 +732,29 @@ function occurrences(text: string, part: string): number[] {
   return at;
 }
 
-function projectPaths(dir: string, prefix = ""): string[] {
+function projectPaths(
+  root: string,
+  dir = root,
+  prefix = "",
+  ancestors: ReadonlySet<string> = new Set(),
+): string[] {
   return readableEntries(dir).flatMap((entry) => {
-    const path = `${prefix}${entry.name}`;
-    const inside =
-      entry.isDirectory() && entry.name !== "node_modules"
-        ? projectPaths(join(dir, entry.name), `${path}/`)
-        : [];
-    return [path, ...inside];
+    const [path, full] = [`${prefix}${entry.name}`, join(dir, entry.name)];
+    const real = entry.name === "node_modules" ? null : directoryReal(entry, full);
+    if (real === null || ancestors.has(real) || !isSafePath(root, full)) return [path];
+    return [path, ...projectPaths(root, full, `${path}/`, new Set([...ancestors, real]))];
   });
+}
+
+// A directory's real path, through a link, or null for anything else: aliases are paths too.
+function directoryReal(entry: Dirent, full: string): string | null {
+  try {
+    return entry.isDirectory() || (entry.isSymbolicLink() && statSync(full).isDirectory())
+      ? realpathSync(full)
+      : null;
+  } catch {
+    return null;
+  }
 }
 
 /**

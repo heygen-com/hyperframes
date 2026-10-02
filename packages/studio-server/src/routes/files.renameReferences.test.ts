@@ -1,4 +1,4 @@
-import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { Hono } from "hono";
@@ -181,6 +181,34 @@ describe("renaming a folder over the route", () => {
     expect(response.status).toBe(200);
     expect(readFileSync(join(project, "index.html"), "utf8")).toBe(
       '<img src="brand/a.png"><img src="assets-backup/a.png"><img src="other assets/a.png"><a href="empty assets/">x</a><p>The assets folder</p>',
+    );
+  });
+
+  it("leaves a path reached through a linked folder alone", async () => {
+    const project = mkdtempSync(join(tmpdir(), "hf-rename-link-"));
+    dirs.push(project);
+    mkdirSync(join(project, "assets"));
+    mkdirSync(join(project, "shared"));
+    writeFileSync(join(project, "assets", "a.png"), "x");
+    writeFileSync(join(project, "shared", "a.png"), "y");
+    symlinkSync(join(project, "shared"), join(project, "other assets"), "dir");
+    writeFileSync(
+      join(project, "index.html"),
+      '<img src="assets/a.png"><img src="other assets/a.png">',
+    );
+    const adapter = {
+      resolveProject: async (id: string) => ({ id, dir: project }),
+    } as unknown as StudioApiAdapter;
+    const app = new Hono();
+    registerFileRoutes(app, adapter);
+
+    await app.request("/projects/p/files/assets/a.png", {
+      method: "PATCH",
+      body: JSON.stringify({ newPath: "assets/b.png" }),
+    });
+
+    expect(readFileSync(join(project, "index.html"), "utf8")).toBe(
+      '<img src="assets/b.png"><img src="other assets/a.png">',
     );
   });
 });
