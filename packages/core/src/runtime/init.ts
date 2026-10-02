@@ -8,7 +8,7 @@ import { STUDIO_PREVIEW_LAZY_ATTR, STUDIO_PREVIEW_UPCOMING_ATTR } from "../studi
 import { initRuntimeAnalytics, emitAnalyticsEvent } from "./analytics";
 import { injectCompositionCssVariables } from "./getVariables";
 import { createCssAdapter } from "./adapters/css";
-import { createGsapAdapter } from "./adapters/gsap";
+import { createGsapAdapter, rerenderGsapTimelineAt } from "./adapters/gsap";
 import { createAnimeJsAdapter } from "./adapters/animejs";
 import { createLottieAdapter } from "./adapters/lottie";
 import { createThreeAdapter } from "./adapters/three";
@@ -4360,11 +4360,8 @@ export function initSandboxRuntimeModular(): void {
         if (typeof tl.totalTime === "function") {
           tl.totalTime(tlSeekTime, suppressEvents);
           if (!suppressEvents && !hasZeroDurationCallbackTween(tl)) {
-            // Preserve GSAP's forced-render nudge for root timelines without
-            // firing callbacks a second time. The first seek is the only
-            // eventful one; the follow-up nudges only refresh computed styles.
-            tl.totalTime(tlSeekTime + 0.001, true);
-            tl.totalTime(tlSeekTime, true);
+            // The first seek is the only eventful one; the re-render only refreshes styles.
+            rerenderGsapTimelineAt({ totalTime: tl.totalTime.bind(tl) }, tlSeekTime);
           }
         } else {
           tl.seek(tlSeekTime, suppressEvents);
