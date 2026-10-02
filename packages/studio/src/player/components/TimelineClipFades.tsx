@@ -135,14 +135,24 @@ export function TimelineClipFades({
   const visible =
     fades.fadeIn > 0 || fades.fadeOut > 0 || showHandles || dragging !== null || focused !== null;
   const rootRef = useRef<HTMLDivElement | null>(null);
-  const [clipBox, setClipBox] = useState({ height: 0, radius: 0 });
+  const [clipBox, setClipBox] = useState<{
+    height: number;
+    radius: number;
+    toolsBottom: number | null;
+  }>({ height: 0, radius: 0, toolsBottom: null });
   useLayoutEffect(() => {
     const clip = rootRef.current?.parentElement;
     if (!clip) return;
     const radius = parseFloat(getComputedStyle(clip).borderTopLeftRadius) || 0;
     const height = clip.clientHeight;
+    const fx = clip.querySelector('[data-badge="fx"]');
+    const toolsBottom = fx
+      ? fx.getBoundingClientRect().bottom - clip.getBoundingClientRect().top
+      : null;
     setClipBox((box) =>
-      box.height === height && box.radius === radius ? box : { height, radius },
+      box.height === height && box.radius === radius && box.toolsBottom === toolsBottom
+        ? box
+        : { height, radius, toolsBottom },
     );
   }, [widthPx, visible]);
 
@@ -357,7 +367,13 @@ export function TimelineClipFades({
         ? [Math.max(0, mid - hitWidth), mid]
         : [mid, Math.min(widthPx, mid + hitWidth)];
     const edgeY = topEdgeY(x, widthPx, clipBox.height, clipBox.radius);
-    return { left, width: right - left, tabLeft: x - left, top: edgeY + 1 - TAB_CENTER_IN_HIT };
+    const top = edgeY + 1 - TAB_CENTER_IN_HIT;
+    return {
+      left,
+      width: right - left,
+      tabLeft: x - left,
+      top: clipBox.toolsBottom === null ? top : Math.max(top, clipBox.toolsBottom),
+    };
   };
   const handleStyle = (geometry: { left: number; top: number; width: number }): CSSProperties => ({
     position: "absolute",
