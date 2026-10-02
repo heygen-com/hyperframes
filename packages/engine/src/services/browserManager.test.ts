@@ -182,10 +182,6 @@ describe("buildChromeArgs browser GPU mode", () => {
     expect(args).not.toContain("--use-angle=swiftshader");
   });
 
-  // HiDPI hosts (Retina macOS, scaled Windows) rasterize the compositor
-  // surface at 2x, and capture reads that surface — so without this flag a
-  // 1920x1080 composition encoded to a 3840x2160 file. Swept over every
-  // platform because the surface scale, not the platform, is the defect.
   it.each(["darwin", "win32", "linux"] as const)(
     "pins the capture surface to 1 device pixel per CSS pixel on %s",
     (platform) => {
