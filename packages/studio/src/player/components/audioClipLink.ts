@@ -15,8 +15,8 @@ export function mediaAssetIdentity(
   if (!src) return null;
   try {
     const url = new URL(src, new URL(element.sourceFile ?? "index.html", SOURCE_BASE));
-    const query = url.origin === SOURCE_ORIGIN ? "" : url.search;
-    return `${url.origin}${decodeURIComponent(url.pathname)}${query}`;
+    if (url.origin !== SOURCE_ORIGIN) return `${url.origin}${url.pathname}${url.search}`;
+    return decodeURIComponent(`${url.origin}${url.pathname}`);
   } catch {
     return null;
   }

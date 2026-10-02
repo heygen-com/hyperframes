@@ -52,6 +52,9 @@ describe("mediaAssetIdentity", () => {
     expect(mediaAssetIdentity({ src: "https://cdn.example.com/v.mp4?clip=a%26x=b" })).not.toBe(
       mediaAssetIdentity({ src: "https://cdn.example.com/v.mp4?clip=a&x=b" }),
     );
+    expect(mediaAssetIdentity({ src: "https://cdn.example.com/v.mp4%3Fclip=a" })).not.toBe(
+      mediaAssetIdentity({ src: "https://cdn.example.com/v.mp4?clip=a" }),
+    );
     expect(mediaAssetIdentity({ src: "https://cdn.example.com/v.mp4?id=1#t=3" })).toBe(
       mediaAssetIdentity({ src: "https://cdn.example.com/v.mp4?id=1" }),
     );
