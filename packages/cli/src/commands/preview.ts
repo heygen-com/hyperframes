@@ -100,7 +100,6 @@ interface EmbeddedStudioOptions extends StudioLaunchOptions {
 }
 
 type StudioChildProcess = ChildProcessByStdio<null, Readable, Readable>;
-// SIGHUP: closing the terminal must still reap the dev server, which runs in its own hidden console on Windows.
 const STUDIO_CHILD_SHUTDOWN_SIGNALS = ["SIGINT", "SIGTERM", "SIGHUP"] as const;
 type StudioShutdownSignal = (typeof STUDIO_CHILD_SHUTDOWN_SIGNALS)[number];
 interface StudioSignalTarget {
