@@ -19,7 +19,7 @@ import {
   readdirSync,
   type Dirent,
 } from "node:fs";
-import { resolve, dirname, join } from "node:path";
+import { resolve, dirname, join, relative, sep } from "node:path";
 import type { StudioApiAdapter } from "../types.js";
 import { isAudioFile } from "../helpers/mime.js";
 import { createFileAtomically, replaceFileAtomically } from "@hyperframes/core/atomic-file";
@@ -667,13 +667,10 @@ function readableText(file: string): string | null {
 
 const escapeRegExp = (text: string) => text.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 
-// `/`, a Windows `\`, or either escaped in JSON.
 const SEPARATOR = String.raw`\\{0,2}[\\/]`;
-// Only these may sit just before or after a path that is a whole reference, not part of a longer name.
-const REFERENCE_START = String.raw`(?<![^\s"'\x60(=:\[{>|;,])`;
-const FILE_END = String.raw`(?=$|["'\x60)\]}>;#?<|&\\]|,\s|\s+\d+(?:\.\d+)?[xw]\b)`;
+const REFERENCE_START = String.raw`(?<![\w./\\+-])`;
+const FILE_END = String.raw`(?![\w-]|\.\w)`;
 
-// The lead (`./`, `../`, `/`; at most four, so the scan cannot backtrack) is kept by the rewrite.
 function referencePattern(oldPath: string, isDirectory: boolean): RegExp {
   const name = oldPath.split("/").map(escapeRegExp).join(SEPARATOR);
   const end = isDirectory ? `(?=${SEPARATOR})` : FILE_END;
@@ -683,17 +680,35 @@ function referencePattern(oldPath: string, isDirectory: boolean): RegExp {
   );
 }
 
-/** `text` with each reference to the renamed path pointing at `newPath` (the path's lead kept). */
+// A match inside the longer path of a file or folder that exists (`a.png&b.png`, `other assets/`) is that path's.
 export function replaceReferences(
   text: string,
   oldPath: string,
   newPath: string,
   isDirectory: boolean,
+  existing: readonly string[] = [],
 ): string {
-  return text.replace(
-    referencePattern(oldPath, isDirectory),
-    (...match) => `${(match.at(-1) as { lead: string }).lead}${newPath}`,
-  );
+  const longer = existing.filter((path) => path.length > oldPath.length);
+  const rightward = longer.filter((path) => path.startsWith(oldPath));
+  const leftward = longer.filter((path) => path.endsWith(oldPath));
+  return text.replace(referencePattern(oldPath, isDirectory), (...args) => {
+    const [match, offset] = [args[0] as string, args.at(-3) as number];
+    const { lead } = args.at(-1) as { lead: string };
+    const at = offset + lead.length;
+    const inLonger =
+      rightward.some((path) => text.startsWith(path, at)) ||
+      leftward.some((path) => text.startsWith(path, at - (path.length - oldPath.length)));
+    return inLonger ? match : `${lead}${newPath}`;
+  });
+}
+
+function projectPaths(projectDir: string): string[] {
+  const paths = new Set<string>();
+  for (const file of walkFiles(projectDir, () => true)) {
+    const parts = relative(projectDir, file).split(sep);
+    for (let i = 1; i <= parts.length; i++) paths.add(parts.slice(0, i).join("/"));
+  }
+  return [...paths];
 }
 
 /**
@@ -710,13 +725,14 @@ function updateReferences(
     /\.(html|css|js|jsx|ts|tsx|json|mjs|cjs|md|mdx)$/i.test(name),
   );
 
+  const existing = projectPaths(projectDir);
   let updatedCount = 0;
   for (const file of textFiles) {
     if (!isSafePath(projectDir, file)) continue;
     const content = readableText(file);
     if (content === null) continue;
 
-    const updated = replaceReferences(content, oldPath, newPath, isDirectory);
+    const updated = replaceReferences(content, oldPath, newPath, isDirectory, existing);
     if (updated !== content) {
       replaceFileAtomically(file, updated, statSync(file).mode);
       updatedCount++;

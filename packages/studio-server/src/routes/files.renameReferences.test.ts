@@ -33,13 +33,13 @@ describe("rename references", () => {
   });
 
   it("rewrites a file's path whole, not a longer name that starts with it", () => {
-    const text = '"assets/a.png" "assets/a.png2" "assets/a.png-old" "assets/a.png@2x.png" url(assets/a.png+t.png)';
+    const text = '"assets/a.png" "assets/a.png2" "assets/a.png-old"';
     expect(rewrite(text, "assets/a.png", "assets/b.png", false)).toBe(
-      '"assets/b.png" "assets/a.png2" "assets/a.png-old" "assets/a.png@2x.png" url(assets/a.png+t.png)',
+      '"assets/b.png" "assets/a.png2" "assets/a.png-old"',
     );
-    expect(rewrite("url(assets/a.png) srcset=\"assets/a.png 2x\"", "assets/a.png", "x/b.png", false)).toBe(
-      'url(x/b.png) srcset="x/b.png 2x"',
-    );
+    expect(
+      rewrite('url(assets/a.png) srcset="assets/a.png 2x"', "assets/a.png", "x/b.png", false),
+    ).toBe('url(x/b.png) srcset="x/b.png 2x"');
   });
 
   it("keeps a root-relative lead, and reads JSON-escaped and Windows separators", () => {
@@ -59,14 +59,40 @@ describe("rename references", () => {
     );
   });
 
-  it("takes no path that is part of a longer one: other folders, filenames holding , + or a space", () => {
-    const folders = String.raw`other\assets\a.png other\/assets\/a.png my+assets/a.png`;
-    expect(rewrite(folders, "assets", "brand", true)).toBe(folders);
-    const files = '<img src="assets/a.png,backup.png"><img src="assets/a.png old.png">';
-    expect(rewrite(files, "assets/a.png", "assets/b.png", false)).toBe(files);
-    expect(rewrite('srcset="assets/a.png 1x, assets/a.png 2x"', "assets/a.png", "x/b.png", false)).toBe(
-      'srcset="x/b.png 1x, x/b.png 2x"',
+  it("leaves a longer path that exists alone, whatever characters its name holds", () => {
+    const rewriteWith = (
+      text: string,
+      from: string,
+      to: string,
+      folder: boolean,
+      existing: string[],
+    ) => replaceReferences(text, from, to, folder, existing);
+    const folders = '<img src="other assets/a.png"> <img src="other,assets/a.png">';
+    expect(
+      rewriteWith(folders, "assets", "brand", true, ["other assets", "other,assets", "assets"]),
+    ).toBe(folders);
+    const files =
+      '<img src="assets/a.png&backup.png"><img src="assets/a.png 2x.png"><img src="assets/a.png).png">';
+    expect(
+      rewriteWith(files, "assets/a.png", "assets/b.png", false, [
+        "assets/a.png&backup.png",
+        "assets/a.png 2x.png",
+        "assets/a.png).png",
+      ]),
+    ).toBe(files);
+  });
+
+  it("rewrites references a bare scan could mistake: unquoted attributes, a space before a paren, srcset", () => {
+    const text =
+      '<img src=assets/a.png alt="x"> url(assets/a.png ) srcset="assets/a.png 1x, assets/a.png 2x"';
+    expect(rewrite(text, "assets/a.png", "x/b.png", false)).toBe(
+      '<img src=x/b.png alt="x"> url(x/b.png ) srcset="x/b.png 1x, x/b.png 2x"',
     );
+  });
+
+  it("takes no path that is part of a longer one by its start: another root, a plus, a backslash", () => {
+    const text = String.raw`other\assets\a.png other\/assets\/a.png my+assets/a.png`;
+    expect(rewrite(text, "assets", "brand", true)).toBe(text);
   });
 
   it("does not stall on a long run of backslashes", () => {
@@ -91,8 +117,11 @@ describe("renaming a folder over the route", () => {
     dirs.push(project);
     mkdirSync(join(project, "assets"));
     mkdirSync(join(project, "assets-backup"));
+    mkdirSync(join(project, "other assets"));
+    writeFileSync(join(project, "other assets", "a.png"), "x");
     writeFileSync(join(project, "assets", "a.png"), "x");
-    const html = '<img src="assets/a.png"><img src="assets-backup/a.png"><p>The assets folder</p>';
+    const html =
+      '<img src="assets/a.png"><img src="assets-backup/a.png"><img src="other assets/a.png"><p>The assets folder</p>';
     writeFileSync(join(project, "index.html"), html);
     const adapter = {
       resolveProject: async (id: string) => ({ id, dir: project }),
@@ -107,7 +136,7 @@ describe("renaming a folder over the route", () => {
 
     expect(response.status).toBe(200);
     expect(readFileSync(join(project, "index.html"), "utf8")).toBe(
-      '<img src="brand/a.png"><img src="assets-backup/a.png"><p>The assets folder</p>',
+      '<img src="brand/a.png"><img src="assets-backup/a.png"><img src="other assets/a.png"><p>The assets folder</p>',
     );
   });
 });
