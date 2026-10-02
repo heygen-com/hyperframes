@@ -243,9 +243,7 @@ const previewFrames = (page) =>
     .join(" ");
 
 /** A hidden preview holding the target is a shadow reload not yet promoted: the visible frame is about to go stale. */
-// Keyframed cases only: waiting out the swap lands a later undo in the preview's burst of requests.
-export async function swapPending({ page, keys, selector = "#target" }) {
-  if (!keys) return false;
+async function hiddenTarget(page, selector = "#target") {
   for (const f of page.frames().filter((f) => f.url().includes("/preview"))) {
     const host = await f.frameElement().catch(() => null);
     const shown = await host?.evaluate((e) => e.checkVisibility({ visibilityProperty: true }));
@@ -253,6 +251,9 @@ export async function swapPending({ page, keys, selector = "#target" }) {
   }
   return false;
 }
+
+// Keyframed cases only: waiting out the swap lands a later undo in the preview's burst of requests.
+export const swapPending = (ctx) => Boolean(ctx.keys) && hiddenTarget(ctx.page, ctx.selector);
 
 /** Restart the stillness window: a pending swap, a changed set of preview frames, or the box moved. */
 export const unsettledBy = (start, now) =>
