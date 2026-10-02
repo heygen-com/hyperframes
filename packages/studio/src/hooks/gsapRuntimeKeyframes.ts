@@ -428,7 +428,6 @@ export const GSAP_TRANSFORM_KEYS = new Set(
 );
 
 /** Whether a live timeline tween or hold writes any of `channels` on `el`. Sync, no fetch. */
-/** A tween or set on `el` writes one of `channels`, as a top-level var or in any keyframe form. */
 export function gsapWritesChannels(el: Element, channels: string[]): boolean {
   const win = el.ownerDocument.defaultView as { __timelines?: Record<string, RuntimeTimeline> };
   return Object.values(win?.__timelines ?? {}).some((tl) =>
