@@ -494,50 +494,39 @@ function topLevelTasks(trace, { pid, tid }) {
   return tops;
 }
 
-// Thread CPU time, spread evenly over the task, so a loaded machine descheduling the thread does not count as work.
+// Thread CPU time, spread evenly over the task, so a descheduled thread does not count; untimed tasks count wall time.
 const cpuUs = (e, a, b) =>
-  (Math.max(0, Math.min(b, e.ts + e.dur) - Math.max(a, e.ts)) * e.tdur) / (e.dur || 1);
+  (Math.max(0, Math.min(b, e.ts + e.dur) - Math.max(a, e.ts)) * (e.tdur ?? e.dur)) / (e.dur || 1);
 
 /** Main-thread CPU ms inside each frame interval, on the thread that ran the end mark; null when unknown. */
 function mainThreadPerFrame({ frames, mark, trace }) {
   const anchor = trace.find((e) => e.name === TRACE_MARK && e.cat.includes("user_timing"));
-  if (!anchor) return { work: null, untimedOutside: 0, unknown: "no end mark in the trace" };
+  // Without the mark the work is unknown, which fails smoothness alone.
+  if (!anchor) return { work: null, wallTimed: 0, unknown: "no end mark in the trace" };
   const toTrace = (ms) => anchor.ts + (ms - mark) * 1000;
   const [from, to] = [toTrace(frames[0]), toTrace(frames.at(-1))];
-  // A task cut by the trace's start or end has no thread time; outside the frames it adds nothing anyway.
-  const all = topLevelTasks(trace, anchor);
-  const tasks = all.filter((e) => e.ts < to && e.ts + e.dur > from);
-  const untimedOutside = all.filter((e) => e.tdur === undefined && !tasks.includes(e)).length;
-  // Without the mark or thread CPU time the work is unknown, which fails smoothness alone.
-  const untimed = tasks.filter((e) => e.tdur === undefined);
-  if (untimed.length) {
-    const [first] = untimed;
-    const at = `${first.name} ${first.dur} us at ${Math.round((first.ts - from) / 1000)} ms`;
-    return {
-      work: null,
-      untimedOutside,
-      unknown: `${untimed.length} untimed task(s) in the frames, first ${at}`,
-    };
-  }
+  const tasks = topLevelTasks(trace, anchor);
+  const inFrames = (e) => e.ts < to && e.ts + e.dur > from;
+  const wallTimed = tasks.filter((e) => e.tdur === undefined && inFrames(e)).length;
   const work = frames.slice(1).map((t, i) => {
     const [a, b] = [toTrace(frames[i]), toTrace(t)];
     return tasks.reduce((sum, e) => sum + cpuUs(e, a, b), 0) / 1000;
   });
-  return { work, untimedOutside };
+  return { work, wallTimed };
 }
 
 const hundredth = (v) => Math.round(v * 100) / 100;
 
 export function smoothness(rec) {
   const intervals = rec.frames.slice(1).map((t, i) => t - rec.frames[i]);
-  const { work, untimedOutside, unknown } = mainThreadPerFrame(rec);
+  const { work, wallTimed, unknown } = mainThreadPerFrame(rec);
   return {
     p95: percentile(intervals, 95),
     frames: intervals.length,
     longTasks: rec.long.length,
     intervals: intervals.map(hundredth),
     work: work && work.map(hundredth),
-    untimedOutside,
+    wallTimed,
     ...(unknown && { unknown }),
   };
 }

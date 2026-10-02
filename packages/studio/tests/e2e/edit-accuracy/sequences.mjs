@@ -118,7 +118,7 @@ function mergeSmooth(parts) {
     longTasks: parts.reduce((n, s) => n + s.longTasks, 0),
     intervals,
     work: parts.every((s) => s.work) ? parts.flatMap((s) => s.work) : null,
-    untimedOutside: parts.reduce((n, s) => n + s.untimedOutside, 0),
+    wallTimed: parts.reduce((n, s) => n + s.wallTimed, 0),
     ...(parts.some((s) => s.unknown) && {
       unknown: parts
         .map((s) => s.unknown)
