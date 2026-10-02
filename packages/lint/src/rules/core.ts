@@ -96,7 +96,6 @@ function addUnescapedDigitIds(selector: string, ids: Set<string>): void {
   }
 }
 
-// Selector sinks: query/GSAP calls, gsap.utils.toArray, and ScrollTrigger trigger/endTrigger/pin values.
 const SELECTOR_CALL_PATTERN =
   /(?:\.(?:querySelector(?:All)?|closest|matches|to|from|fromTo|set|toArray)\s*\(|\b(?:trigger|endTrigger|pin|scrollTrigger)["']?\s*:)\s*(["'`])((?:\\.|(?!\1)[^\\])*)\1/g;
 
