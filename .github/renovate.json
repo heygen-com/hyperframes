@@ -16,6 +16,10 @@
   },
   "packageRules": [
     {
+      "matchDepTypes": ["engines", "peerDependencies"],
+      "rangeStrategy": "widen"
+    },
+    {
       "matchUpdateTypes": ["minor", "patch"],
       "matchDepTypes": ["devDependencies"],
       "groupName": "dev dependencies (non-major)"
