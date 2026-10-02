@@ -3485,11 +3485,7 @@ interface CtmTranslate {
   f: number;
 }
 
-// happy-dom has no SVG geometry APIs; endpoints come from the path's `d`, the CTM is a pure translate.
-/**
- * `SVGGeometryElement.pathLength.baseVal` as the DOM computes it: a finite SVG number (one
- * trailing comma allowed); anything else (unset, `1.`, `Infinity`, hex, garbage) reads as 0.
- */
+// `pathLength.baseVal` as the DOM computes it: a finite SVG number, else 0 (unset, `1.`, `Infinity`, hex).
 function domPathLength(attr: string | null): number {
   if (attr === null) return 0;
   const svgNumber = /^\s*[+-]?(?:\d+(?:\.\d+)?|\.\d+)(?:[eE][+-]?\d+)?(?:\s*,)?\s*$/.test(attr);
@@ -3497,6 +3493,7 @@ function domPathLength(attr: string | null): number {
   return Number.isFinite(parsed) ? parsed : 0;
 }
 
+// happy-dom has no SVG geometry APIs; endpoints come from the path's `d`, the CTM is a pure translate.
 function installConnectorGeometry(translate: CtmTranslate, root: ParentNode = document): void {
   const matrix = { a: 1, b: 0, c: 0, d: 1, e: translate.e, f: translate.f };
   const prop = { configurable: true, writable: true };
