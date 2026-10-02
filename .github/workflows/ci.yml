@@ -958,7 +958,7 @@ jobs:
           node packages/studio/tests/e2e/perf-ratchet.mjs check \
             packages/studio/tests/e2e/perf-ceilings.json studio-open /tmp/studio-open-counts.json \
             /tmp/base-perf-ceilings.json
-      - name: Measure the fade handle tabs on a narrow clip
+      - name: Measure the fade handle tabs and click every Renders select
         if: success() || failure()
         run: |
           set -euo pipefail
@@ -975,6 +975,8 @@ jobs:
           fi
           STUDIO_URL="http://localhost:5316/#project/fade-handles" \
             node packages/studio/tests/e2e/fade-handles.mjs
+          STUDIO_URL="http://localhost:5316/#project/fade-handles?tab=renders" \
+            node packages/studio/tests/e2e/render-selects.mjs
       - name: Measure the caret of a text edited in place
         if: success() || failure()
         run: |

@@ -6,7 +6,7 @@
 import { Select as BaseSelect } from "@base-ui/react/select";
 import { cn } from "./cn";
 import { fieldBase } from "./Input";
-import { floatingMotion } from "./Menu";
+import { floatingMotion, POPUP_LAYER } from "./Menu";
 import type { PreviewState } from "./Button";
 
 export interface SelectOption {
@@ -77,7 +77,7 @@ export function Select({
       </BaseSelect.Trigger>
 
       <BaseSelect.Portal>
-        <BaseSelect.Positioner sideOffset={4} alignItemWithTrigger={false}>
+        <BaseSelect.Positioner sideOffset={4} alignItemWithTrigger={false} className={POPUP_LAYER}>
           <BaseSelect.Popup
             className={cn(
               "min-w-[var(--anchor-width)] rounded-md border border-border bg-surface py-1 shadow-menu",
