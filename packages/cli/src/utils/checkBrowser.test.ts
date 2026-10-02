@@ -615,10 +615,7 @@ describe("preResolveHostileMediaProxies", () => {
     );
   });
 
-  // PRINFRA-648: `check --json` promises a pure JSON envelope on stdout. The
-  // pre-resolve summary used to go through `console.info` (stdout), so any
-  // project with HEVC/ProRes/AV1 media broke `JSON.parse(stdout)` downstream.
-  // Every diagnostic this helper emits must land on stderr and never stdout.
+  // `check --json` stdout must stay pure JSON, so these lines belong on stderr.
   it("writes the pre-resolve summary to stderr and leaves stdout untouched", async () => {
     const projectDir = mkProjectDir();
     mocks.scanProjectMediaCodecMap.mockResolvedValue({
