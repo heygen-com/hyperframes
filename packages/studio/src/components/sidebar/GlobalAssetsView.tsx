@@ -39,27 +39,65 @@ export function globalAssetRows(records: GlobalAssetRecord[], query = ""): Globa
     }));
 }
 
+type GlobalAssetsLoad =
+  | { status: "loading" }
+  | { status: "failed" }
+  | { status: "loaded"; records: GlobalAssetRecord[] };
+
 export function GlobalAssetsView({ searchQuery }: { searchQuery: string }) {
-  const [records, setRecords] = useState<GlobalAssetRecord[] | null>(null);
+  const [load, setLoad] = useState<GlobalAssetsLoad>({ status: "loading" });
+  const [attempt, setAttempt] = useState(0);
   useEffect(() => {
     let cancelled = false;
     fetch("/api/assets/global")
-      .then((r) => (r.ok ? r.json() : { assets: [] }))
+      .then((r) => {
+        if (!r.ok) throw new Error(`GET /api/assets/global responded ${r.status}`);
+        return r.json();
+      })
       .then((d) => {
-        if (!cancelled) setRecords(Array.isArray(d.assets) ? d.assets : []);
+        if (!cancelled) {
+          setLoad({ status: "loaded", records: Array.isArray(d.assets) ? d.assets : [] });
+        }
       })
       .catch(() => {
-        if (!cancelled) setRecords([]);
+        if (!cancelled) setLoad({ status: "failed" });
       });
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [attempt]);
 
-  const rows = useMemo(() => globalAssetRows(records ?? [], searchQuery), [records, searchQuery]);
+  const rows = useMemo(
+    () => (load.status === "loaded" ? globalAssetRows(load.records, searchQuery) : []),
+    [load, searchQuery],
+  );
 
-  if (records === null) {
+  if (load.status === "loading") {
     return <p className="px-4 py-3 text-[11px] text-panel-text-5">Loading global assets…</p>;
+  }
+  if (load.status === "failed") {
+    return (
+      <div className="px-4 py-3 flex flex-col items-start gap-2">
+        <p className="text-[11px] text-panel-text-5">Couldn't load the global asset cache.</p>
+        <button
+          type="button"
+          onClick={() => {
+            setLoad({ status: "loading" });
+            setAttempt((n) => n + 1);
+          }}
+          className="px-2.5 py-1 text-[11px] font-medium rounded-md bg-panel-input text-panel-text-3 hover:text-panel-text-1 active:scale-[0.98] transition-colors"
+        >
+          Try again
+        </button>
+      </div>
+    );
+  }
+  if (rows.length === 0 && load.records.length > 0) {
+    return (
+      <p className="px-4 py-3 text-[11px] text-panel-text-5">
+        No global assets match &ldquo;{searchQuery}&rdquo;
+      </p>
+    );
   }
   if (rows.length === 0) {
     return (
