@@ -140,8 +140,8 @@ export function TimelineClipFades({
     height: number;
     width: number;
     radius: number;
-    tools: { left: number; bottom: number } | null;
-  }>({ height: 0, width: 0, radius: 0, tools: null });
+    toolsLeft: number | null;
+  }>({ height: 0, width: 0, radius: 0, toolsLeft: null });
   useLayoutEffect(() => {
     const root = rootRef.current;
     const clip = root?.parentElement;
@@ -152,17 +152,14 @@ export function TimelineClipFades({
     const fx = clip.querySelector('[data-badge="fx"]');
     const fxRect = fx?.getBoundingClientRect();
     const rootRect = root.getBoundingClientRect();
-    const tools = fxRect
-      ? { left: fxRect.left - rootRect.left, bottom: fxRect.bottom - rootRect.top }
-      : null;
+    const toolsLeft = fxRect ? fxRect.left - rootRect.left : null;
     setClipBox((box) =>
       box.height === height &&
       box.width === width &&
       box.radius === radius &&
-      box.tools?.bottom === tools?.bottom &&
-      box.tools?.left === tools?.left
+      box.toolsLeft === toolsLeft
         ? box
-        : { height, width, radius, tools },
+        : { height, width, radius, toolsLeft },
     );
   }, [widthPx, visible]);
 
@@ -352,17 +349,20 @@ export function TimelineClipFades({
   const handlesVisible = showHandles || dragging !== null || focused !== null;
   if (!visible) return null;
 
-  const clipWidth = clipBox.tools === null ? widthPx : clipBox.width;
-  const edgeInset = clipBox.tools === null ? 0 : CLIP_TRIM_HIT_PX;
-  const hitWidth = Math.min(HANDLE_HIT, clipWidth / 2);
+  const clipWidth = clipBox.toolsLeft === null ? widthPx : clipBox.width;
+  const edgeInset = clipBox.toolsLeft === null ? 0 : CLIP_TRIM_HIT_PX;
+  // Reserve FX horizontally so fades keep their top-edge lane above compact keyframe centres.
+  const rightEdge =
+    clipBox.toolsLeft === null ? clipWidth : Math.min(clipWidth - edgeInset, clipBox.toolsLeft);
+  const hitWidth = Math.min(HANDLE_HIT, (rightEdge - edgeInset) / 2);
   const tabX = (edge: FadeEdge) => {
     const knee = edge === "in" ? inPx : clipWidth - outPx;
-    const tabInset = edgeInset === 0 ? TAB_INSET : edgeInset + TAB_WIDTH;
-    const inset = Math.min(tabInset, clipWidth / 2);
-    return Math.min(clipWidth - inset, Math.max(inset, knee));
+    const tabInset = edgeInset === 0 ? TAB_INSET : TAB_WIDTH;
+    const inset = Math.min(tabInset, (rightEdge - edgeInset) / 2);
+    return Math.min(rightEdge - inset, Math.max(edgeInset + inset, knee));
   };
   const boxLeft = (x: number) =>
-    Math.min(clipWidth - edgeInset - hitWidth, Math.max(edgeInset, x - hitWidth / 2));
+    Math.min(rightEdge - hitWidth, Math.max(edgeInset, x - hitWidth / 2));
   const [inX, outX] = [tabX("in"), tabX("out")];
   const mid = (inX + outX) / 2;
   // A handle with no 0.01 s step to move is not drawn, unless in use: its twin owns the spot.
@@ -379,35 +379,22 @@ export function TimelineClipFades({
       ? [boxLeft(x), boxLeft(x) + hitWidth]
       : edge === "in"
         ? [Math.max(edgeInset, mid - hitWidth), mid]
-        : [mid, Math.min(clipWidth - edgeInset, mid + hitWidth)];
+        : [mid, Math.min(rightEdge, mid + hitWidth)];
     const edgeY = topEdgeY(x, clipWidth, clipBox.height, clipBox.radius);
     const top = edgeY + 1 - TAB_CENTER_IN_HIT;
-    const overlapsFx = clipBox.tools !== null && right > clipBox.tools.left;
-    const targetTop =
-      overlapsFx && clipBox.tools !== null ? Math.max(top, clipBox.tools.bottom) : top;
-    const height =
-      clipBox.tools === null
-        ? HANDLE_HIT
-        : Math.min(HANDLE_HIT, Math.max(0, clipBox.height - targetTop));
     return {
       left,
       width: right - left,
       tabLeft: x - left,
-      top: targetTop,
-      height,
+      top,
     };
   };
-  const handleStyle = (geometry: {
-    left: number;
-    top: number;
-    width: number;
-    height: number;
-  }): CSSProperties => ({
+  const handleStyle = (geometry: { left: number; top: number; width: number }): CSSProperties => ({
     position: "absolute",
     top: geometry.top,
     left: geometry.left,
     width: geometry.width,
-    height: geometry.height,
+    height: HANDLE_HIT,
     cursor: "ew-resize",
     opacity: handlesVisible ? 1 : 0,
     pointerEvents: handlesVisible && canEdit ? "auto" : "none",

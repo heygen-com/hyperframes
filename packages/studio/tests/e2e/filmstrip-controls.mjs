@@ -38,14 +38,14 @@ try {
       });
       return {
         fxReached,
-        fadeBelowFx: h.top >= f.bottom,
+        fadeClearFx: h.right <= f.left || h.top >= f.bottom,
         fadeInsideClip: h.bottom <= c.bottom,
         trimClear: trims.length === 2 && h.left >= trims[0].right && h.right <= trims[1].left,
         fadeHitHeight: h.height,
       };
     });
     assert(geometry.fxReached, `${kind} FX must receive the pointer across its full width`);
-    assert(geometry.fadeBelowFx, `${kind} fade target must clear FX`);
+    assert(geometry.fadeClearFx, `${kind} fade target must clear FX`);
     assert(geometry.fadeInsideClip, `${kind} fade target must stay inside its clip`);
     assert(geometry.trimClear, `${kind} fade target must clear trim grips`);
     assert(geometry.fadeHitHeight >= 15, `${kind} fade target must fit its visible tab`);
@@ -91,7 +91,7 @@ try {
         const fade = node.querySelector('[data-testid="clip-fade-handle-in"]');
         const f = fade.getBoundingClientRect();
         const clip = node.getBoundingClientRect();
-        const diamond = [...document.querySelectorAll('[data-keyframe-percentage="50"]')].find(
+        const diamond = [...document.querySelectorAll('button[aria-label*="keyframe at"]')].find(
           (d) => {
             const r = d.getBoundingClientRect();
             return (
