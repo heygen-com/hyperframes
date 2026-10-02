@@ -1,6 +1,14 @@
 import { appendFileSync, writeFileSync } from "node:fs";
 
 const env = process.env;
+function checkCredentials(headers) {
+  if (headers.Authorization !== "Bearer fixture-token") throw new Error("wrong credential");
+  if (env.HF_USAGE_HARNESS === "codex" && headers["ChatGPT-Account-Id"] !== "fixture-account")
+    throw new Error("missing account header");
+  if (env.HF_USAGE_HARNESS === "grok" && headers["X-XAI-Token-Auth"] !== "xai-grok-cli")
+    throw new Error("missing Grok header");
+}
+
 globalThis.fetch = async (url, options) => {
   if (env.HF_USAGE_FORBID_REQUESTS === "true") {
     writeFileSync(env.HF_USAGE_REQUESTS, "unexpected");
@@ -11,14 +19,7 @@ globalThis.fetch = async (url, options) => {
     env.HF_USAGE_HARNESS === "grok" &&
     String(url) === "https://cli-chat-proxy.grok.com/v1/settings";
   if (String(url) !== env.HF_USAGE_URL && !settings) throw new Error("unexpected network request");
-  if (options.headers.Authorization !== "Bearer fixture-token") throw new Error("wrong credential");
-  if (
-    env.HF_USAGE_HARNESS === "codex" &&
-    options.headers["ChatGPT-Account-Id"] !== "fixture-account"
-  )
-    throw new Error("missing account header");
-  if (env.HF_USAGE_HARNESS === "grok" && options.headers["X-XAI-Token-Auth"] !== "xai-grok-cli")
-    throw new Error("missing Grok header");
+  checkCredentials(options.headers);
   if (settings && env.HF_USAGE_SETTINGS_FAIL === "true")
     return new Response("unavailable", { status: 503 });
   return new Response(
