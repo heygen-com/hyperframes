@@ -24,7 +24,7 @@ function SpeakerGlyph({ muted }: { muted: boolean }) {
 const BADGE_CLASS =
   "timeline-clip__badge inline-flex items-center gap-0.5 rounded-[3px] border bg-black/55 px-1 text-[9px] leading-[14px] whitespace-nowrap";
 const FX_ON = "border-white/40 text-white font-semibold";
-const FX_OFF = "border-white/10 text-white/35";
+const FX_OFF = "border-white/10 text-white/60";
 
 /** Premiere's fx badge — grey with no effects, white with any; hover lists them, click opens the clip menu. */
 export const ClipBadges = memo(function ClipBadges({
