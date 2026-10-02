@@ -67,7 +67,8 @@ export function fadeHandleBoxes(input: {
         ? [Math.max(edgeInset, mid - hitWidth), mid]
         : [mid, Math.min(rightEdge, mid + hitWidth)];
     const edgeY = topEdgeY(x, clipWidth, clipBox.height, clipBox.radius);
-    return { left, width: right - left, tabLeft: x - left, top: edgeY + 1 - FADE_TAB_CENTER_IN_HIT };
+    const top = edgeY + 1 - FADE_TAB_CENTER_IN_HIT;
+    return { left, width: right - left, tabLeft: x - left, top };
   };
   return { in: box("in"), out: box("out") };
 }
