@@ -16,6 +16,15 @@ export const ACCEPTS_EXTRA_POSITIONALS = new Set([
 // Free-text commands: their last positional takes every remaining word (`tts hello world`).
 export const JOINS_EXTRA_POSITIONALS = new Set(["catalog", "tts"]);
 
+const EXTRA_POSITIONAL_HINTS: Record<string, string> = {
+  add: "Run add once per item, or pass a single tag to install every item tagged with it.",
+};
+
+// citty parses `--json` on every command (`--json=1` as "1"); after `--` it is a positional.
+function wantsJson(value: unknown): boolean {
+  return value === true || (typeof value === "string" && value !== "false" && value !== "0");
+}
+
 function declaredArgs(cmd: CommandDef<ArgsDef>): ArgsDef {
   const raw = cmd.args;
   return raw && typeof raw === "object" ? (raw as ArgsDef) : {};
@@ -41,7 +50,6 @@ export function resolveExtraPositionals(
   cmd: CommandDef<ArgsDef>,
   path: string,
   parsed: Record<string, unknown> | undefined,
-  rawArgs: string[],
 ): void {
   if (ACCEPTS_EXTRA_POSITIONALS.has(path)) return;
   const args = declaredArgs(cmd);
@@ -61,9 +69,9 @@ export function resolveExtraPositionals(
   const plural = extra.length === 1 ? "" : "s";
   const message =
     `Unexpected extra argument${plural} for hyperframes ${path}: ${extra.join(", ")}\n` +
-    `Usage: ${usageLine(path, args)}`;
-  if (parsed?.json === true || rawArgs.some((tok) => tok === "--json" || tok === "--json=true"))
-    console.log(JSON.stringify({ ok: false, error: message }));
+    `Usage: ${usageLine(path, args)}` +
+    (EXTRA_POSITIONAL_HINTS[path] ? `\n${EXTRA_POSITIONAL_HINTS[path]}` : "");
+  if (wantsJson(parsed?.json)) console.log(JSON.stringify({ ok: false, error: message }));
   else console.error(message);
   // Telemetry reads the thrown message: the command path and a count, never the arguments.
   throw new CliUsageError(

@@ -196,7 +196,7 @@ describe("trackCommandFailures: extra positionals", () => {
     const def = (await (load as () => Promise<{ default: unknown }>)()).default;
     const cmd = (typeof def === "function" ? await def() : def) as CommandDef;
     const parsed: Record<string, unknown> = { _: ["one", "two", "three"] };
-    expect(() => resolveExtraPositionals(cmd, path as string, parsed, [])).not.toThrow();
+    expect(() => resolveExtraPositionals(cmd, path as string, parsed)).not.toThrow();
   });
 
   it("rejects a leaf's extra positional, naming it and the usage line, before run()", async () => {
@@ -250,6 +250,20 @@ describe("trackCommandFailures: extra positionals", () => {
       expect(run.mock.calls[0]![0].args.dir).toBe("lower third");
     },
   );
+
+  it("reads JSON mode from the parsed flag: --json=1 without a declared flag, not after --", async () => {
+    const bare = { meta: { name: "docs" }, args: { topic: { type: "positional" } }, run: vi.fn() };
+    await expect(
+      runCommand(await wrap(bare as CommandDef), { rawArgs: ["a", "b", "--json=1"] }),
+    ).rejects.toThrow(CliUsageError);
+    expect(JSON.parse(logSpy.mock.calls[0]![0] as string)).toMatchObject({ ok: false });
+    logSpy.mockClear();
+    await expect(
+      runCommand(await wrap(bare as CommandDef), { rawArgs: ["a", "b", "--", "--json"] }),
+    ).rejects.toThrow(CliUsageError);
+    expect(logSpy).not.toHaveBeenCalled();
+    expect(errorSpy.mock.calls.flat().join("\n")).toContain("hyperframes docs: b, --json");
+  });
 
   it("reports JSON under --json=true for a command that declares no json flag", async () => {
     const bare = {

@@ -1,4 +1,4 @@
-import { failCommand } from "../utils/commandResult.js";
+import { failCommand, failUsage } from "../utils/commandResult.js";
 import { isTextFile } from "../utils/textFile.js";
 // fallow-ignore-file code-duplication
 import { defineCommand } from "citty";
@@ -91,6 +91,10 @@ export default defineCommand({
     }
 
     // ── Resolve input text ────────────────────────────────────────────
+    if (args["text-file"] && args.input) {
+      console.error(c.error("Pass text to speak or --text-file, not both."));
+      failUsage();
+    }
     const input = args["text-file"] ?? args.input;
     if (!input) {
       console.error(c.error("Provide text to speak, or use --list to see available voices."));

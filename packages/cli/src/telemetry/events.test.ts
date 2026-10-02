@@ -1138,7 +1138,7 @@ describe("trackCommandFailure", () => {
     >[0];
     let thrown: unknown;
     try {
-      resolveExtraPositionals(cmd, "render", { _: ["./p", "Jane", "555-0100"] }, []);
+      resolveExtraPositionals(cmd, "render", { _: ["./p", "Jane", "555-0100"] });
     } catch (error) {
       thrown = error;
     }

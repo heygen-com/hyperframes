@@ -3,6 +3,7 @@ import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { assertKnownFlags } from "../utils/reject-unknown-flags.js";
+import { CliUsageError } from "../utils/commandResult.js";
 
 const synthesizeMock = vi.fn().mockResolvedValue({
   durationSeconds: 1,
@@ -41,5 +42,17 @@ describe("tts command", () => {
       expect.stringMatching(/speech\.wav$/),
       expect.objectContaining({ lang: "en-us" }),
     );
+  });
+
+  it("rejects text words together with --text-file instead of dropping the words", async () => {
+    const input = join(dir, "script.txt");
+    writeFileSync(input, "From the file\n");
+    const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+
+    await expect(
+      ttsCommand.run!({ args: { "text-file": input, input: "hello world" } } as never),
+    ).rejects.toThrow(CliUsageError);
+    expect(synthesizeMock).not.toHaveBeenCalled();
+    expect(errorSpy.mock.calls.flat().join(" ")).toContain("not both");
   });
 });

@@ -554,6 +554,7 @@ describe("add command run() — extra positional arguments", () => {
     expect(errorSpy.mock.calls.flat().join(" ")).toContain(
       "Unexpected extra arguments for hyperframes add: b, c",
     );
+    expect(errorSpy.mock.calls.flat().join(" ")).toContain("Run add once per item");
   });
 
   it("does not fire on a normal single-item invocation", async () => {

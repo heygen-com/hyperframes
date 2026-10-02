@@ -61,7 +61,7 @@ function wrapCommand(cmd: AnyCommandDef, path: string): AnyCommandDef {
         Object.prototype.hasOwnProperty.call(cmd.subCommands, firstPositional);
       if (!delegatesToSub) assertKnownFlags(cmd, rawArgs);
       // Groups read `args._[0]` to pick fallback help, so only leaves get the count check.
-      if (!cmd.subCommands) resolveExtraPositionals(cmd, path, ctx?.args, rawArgs);
+      if (!cmd.subCommands) resolveExtraPositionals(cmd, path, ctx?.args);
       return await run(ctx);
     };
   }
