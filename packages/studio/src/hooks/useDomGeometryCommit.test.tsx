@@ -146,7 +146,14 @@ describe("useDomGeometryCommit, from the package entry", () => {
         const url = String(input instanceof Request ? input.url : input);
         calls.urls.push(url);
         if (url.includes("/patch-element/")) calls.patches.push(JSON.parse(String(init?.body)));
-        const saved = { ok: true, changed: true, matched: true, content: "AFTER", version: "v2" };
+        const saved = {
+          ok: true,
+          changed: true,
+          matched: true,
+          path: "index.html",
+          content: "AFTER",
+          version: "v2",
+        };
         const body = url.includes("/files/") ? { content: SOURCE } : saved;
         const status = url.includes("/patch-element/") ? patchStatus : 200;
         return new Response(JSON.stringify(body), {
@@ -399,7 +406,14 @@ describe("useDomGeometryCommit, one word of a staggered phrase", () => {
               headers: { "content-type": "application/json" },
             });
           }
-          return json({ ok: true, changed: true, matched: true, content: "AFTER", version: "v2" });
+          return json({
+            ok: true,
+            changed: true,
+            matched: true,
+            path: "index.html",
+            content: "AFTER",
+            version: "v2",
+          });
         }
         if (url.includes("/api/projects/p1/gsap-mutations/")) {
           calls.gsapMutations.push(JSON.parse(String(init?.body)));
@@ -429,6 +443,7 @@ describe("useDomGeometryCommit, one word of a staggered phrase", () => {
 
     await expect(hook().commitPathOffset(selection, { x: 40, y: 20 })).resolves.toEqual({
       ok: true,
+      changed: true,
     });
 
     expect(calls.gsapMutations).toHaveLength(0);
@@ -458,6 +473,7 @@ describe("useDomGeometryCommit, one word of a staggered phrase", () => {
     ]);
     await expect(hook().commitPathOffset(selection, { x: 40, y: 20 })).resolves.toEqual({
       ok: true,
+      changed: true,
     });
 
     expect(calls.patches).toHaveLength(2);

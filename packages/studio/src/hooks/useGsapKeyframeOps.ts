@@ -355,7 +355,10 @@ export function useGsapKeyframeOps({
       const targetPath = selection.sourceFile || activeCompPath || "index.html";
       // A class/descendant selector can resolve a live element whose selection
       // deliberately has no id. The cache is still keyed by that DOM id.
-      const cacheElementId = selection.id || selection.element?.id;
+      const clearCache = () => {
+        const cacheElementId = selection.id || selection.element?.id;
+        if (cacheElementId) clearKeyframeCacheForElement(targetPath, cacheElementId);
+      };
       if (sdkSession && sdkDeps) {
         const handled = await sdkGsapRemoveAllKeyframesPersist(
           targetPath,
@@ -365,7 +368,7 @@ export function useGsapKeyframeOps({
           { label: "Remove all keyframes" },
         );
         if (cutoverCommittedOrThrow(handled)) {
-          if (cacheElementId) clearKeyframeCacheForElement(targetPath, cacheElementId);
+          clearCache();
           const changed = handled.before !== handled.after;
           if (changed && telemetry) trackKeyframeUsage(action);
           return changed;
@@ -384,10 +387,8 @@ export function useGsapKeyframeOps({
           // before it makes failed saves lie, while waiting for the reload leaves
           // stale diamonds visible during the source round-trip.
           onResult: (result) => {
-            changed = result.ok && result.changed !== false;
-            if (changed && cacheElementId) {
-              clearKeyframeCacheForElement(targetPath, cacheElementId);
-            }
+            changed = result.ok && result.changed === true;
+            if (changed) clearCache();
           },
         },
       );

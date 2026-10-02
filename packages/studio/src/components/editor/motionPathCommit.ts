@@ -14,10 +14,7 @@ export type CommitFn = (
 
 const NEW_PATH_DURATION = 1.5;
 
-export function motionPathCommitOptions(
-  label: string,
-  method: PreviewMethod,
-): CommitMutationOptions {
+function motionPathCommitOptions(label: string, method: PreviewMethod): CommitMutationOptions {
   return {
     label,
     softReload: true,

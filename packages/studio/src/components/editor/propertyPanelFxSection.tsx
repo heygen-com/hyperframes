@@ -217,19 +217,13 @@ export function FxSection({
         ...chain,
         nodes: chain.nodes.map((n, i) => (slots.has(i) ? { ...n, presetAmount: amount } : n)),
       };
-      if (persist) mutate(next.nodes, "preset-amount", "slider");
+      if (persist) mutate(next.nodes);
       else onChainPreview?.(next);
     },
     [chain, mutate, onChainPreview],
   );
 
-  /**
-   * Take a preset back out whole, lanes and all.
-   *
-   * Same contract as removing one node — an orphaned lane keeps driving a
-   * parameter that is no longer in the graph, and with ids minted lowest-free
-   * the next effect added inherits it.
-   */
+  // Remove the run and its lanes together so new nodes cannot inherit orphaned automation.
   const removeRun = useCallback(
     (items: { node: HfAudioFxNode; i: number }[], presetId?: string) => {
       // Remove node and preset automation together before replacing the chain.
@@ -452,6 +446,7 @@ export function FxSection({
     return () => {
       trackPresetAutomated(presetId, true, { trackKind });
       onAutomatePreset(presetId, amount);
+      trackInput("button", "automate-preset");
     };
   };
 
@@ -460,7 +455,10 @@ export function FxSection({
     presetId: string | undefined,
   ): (() => void) | undefined => {
     if (!presetId || !onRemovePresetAutomation || !presetAutomated.has(presetId)) return undefined;
-    return () => onRemovePresetAutomation(presetId);
+    return () => {
+      onRemovePresetAutomation(presetId);
+      trackInput("button", "remove-preset-automation");
+    };
   };
 
   return (

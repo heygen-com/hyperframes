@@ -1,3 +1,4 @@
+import type { CommitMutationOptions, MutationResult } from "../hooks/gsapScriptCommitTypes";
 import { trackStudioEvent } from "./studioTelemetry";
 
 export type KeyframeUsageAction = "add" | "convert" | "remove_all" | "reset";
@@ -27,10 +28,18 @@ export function trackKeyframeUsage(action: KeyframeUsageAction, property?: strin
   trackStudioEvent("keyframe", property === undefined ? { action } : { action, property });
 }
 
-export function trackKeyframeMutations(
+export function primaryKeyframeAction(
+  actions: ReadonlySet<KeyframeUsageAction>,
+): KeyframeUsageAction | undefined {
+  return (["add", "convert", "remove_all", "reset"] as const).find((action) => actions.has(action));
+}
+
+export function trackKeyframeCommit(
   mutations: ReadonlyArray<Record<string, unknown>>,
-  property?: string,
+  result: MutationResult,
+  options: CommitMutationOptions,
 ): void {
-  for (const action of keyframeUsageActions(mutations))
-    trackKeyframeUsage(action, action === "add" ? property : undefined);
+  if (!result.ok || result.changed !== true || options.keyframeTelemetry === false) return;
+  const action = options.keyframeAction ?? primaryKeyframeAction(keyframeUsageActions(mutations));
+  if (action) trackKeyframeUsage(action, action === "add" ? options.keyframeProperty : undefined);
 }

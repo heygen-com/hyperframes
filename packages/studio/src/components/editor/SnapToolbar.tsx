@@ -17,6 +17,7 @@ export const SnapToolbar = memo(function SnapToolbar() {
   const setMotionPathArmed = usePlayerStore((s) => s.setMotionPathArmed);
   const popoverRef = useRef<HTMLDivElement>(null);
   const gridButtonRef = useRef<HTMLButtonElement>(null);
+  const gridSpacingAtFocus = useRef<number | null>(null);
 
   const updatePrefs = useCallback(
     (patch: Partial<typeof prefs>) => {
@@ -44,12 +45,12 @@ export const SnapToolbar = memo(function SnapToolbar() {
       if (e.key === "s" && !e.metaKey && !e.ctrlKey && !e.altKey) {
         e.preventDefault();
         updatePrefs({ snapEnabled: !prefs.snapEnabled });
-        trackPreviewFeatureUsed("snapping", "keyboard");
+        if (!e.repeat) trackPreviewFeatureUsed("snapping", "keyboard");
       }
       if (e.key === "g" && !e.metaKey && !e.ctrlKey && !e.altKey) {
         e.preventDefault();
         updatePrefs({ gridVisible: !prefs.gridVisible });
-        trackPreviewFeatureUsed("grid", "keyboard");
+        if (!e.repeat) trackPreviewFeatureUsed("grid", "keyboard");
       }
     };
     document.addEventListener("keydown", handleKeyDown);
@@ -181,6 +182,18 @@ export const SnapToolbar = memo(function SnapToolbar() {
                 max={500}
                 step={10}
                 value={prefs.gridSpacing}
+                onFocus={() => {
+                  gridSpacingAtFocus.current = prefs.gridSpacing;
+                }}
+                onBlur={() => {
+                  const previous = gridSpacingAtFocus.current;
+                  gridSpacingAtFocus.current = null;
+                  if (previous !== null && previous !== prefs.gridSpacing)
+                    trackPreviewFeatureUsed("grid_spacing", "field");
+                }}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter") e.currentTarget.blur();
+                }}
                 onChange={(e) => {
                   const val = Number.parseInt(e.target.value, 10);
                   if (
@@ -190,7 +203,6 @@ export const SnapToolbar = memo(function SnapToolbar() {
                     val !== prefs.gridSpacing
                   ) {
                     updatePrefs({ gridSpacing: val });
-                    trackPreviewFeatureUsed("grid_spacing", "field");
                   }
                 }}
                 className="w-16 rounded-sm bg-neutral-900 border border-neutral-600 px-1.5 py-0.5 text-xs text-white text-right tabular-nums outline-hidden focus:border-studio-accent"

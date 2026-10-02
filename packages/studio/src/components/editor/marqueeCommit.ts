@@ -19,6 +19,16 @@ interface MarqueeState {
   target: Element;
 }
 
+function currentMarqueeCandidates(
+  cached: MarqueeHit[] | null,
+  iframe: HTMLIFrameElement,
+  overlay: HTMLDivElement,
+  path: string,
+): MarqueeHit[] {
+  if (cached?.every((hit) => hit.element.ownerDocument === iframe.contentDocument)) return cached;
+  return collectMarqueeCandidates(iframe, overlay, path);
+}
+
 const MARQUEE_THRESHOLD_PX = 4;
 
 interface MarqueeHit {
@@ -161,12 +171,7 @@ export function useMarqueeGestures<T>(deps: MarqueeGesturesDeps<T>): MarqueeGest
       const overlay = deps.overlayRef.current;
       if (!iframe || !overlay || !deps.onMarqueeSelectRef.current) return;
       const acp = deps.activeCompositionPathRef.current ?? "index.html";
-      const cached = candidatesRef.current;
-      const measuredOnScreen = cached?.every(
-        (hit) => hit.element.ownerDocument === iframe.contentDocument,
-      );
-      const candidates =
-        cached && measuredOnScreen ? cached : collectMarqueeCandidates(iframe, overlay, acp);
+      const candidates = currentMarqueeCandidates(candidatesRef.current, iframe, overlay, acp);
       const elements = hitsWithin(rect, candidates).map((hit) => hit.element);
       const resolveHits = deps.resolveHits;
       const picks = resolveHits

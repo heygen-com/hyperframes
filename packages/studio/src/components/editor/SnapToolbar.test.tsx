@@ -1,3 +1,4 @@
+import { trackStudioEvent } from "../../utils/studioTelemetry";
 // @vitest-environment happy-dom
 
 import React, { act, useRef } from "react";
@@ -184,7 +185,6 @@ describe("SnapToolbar ruler and safe-margin toggles", () => {
 });
 
 vi.mock("../../utils/studioTelemetry", () => ({ trackStudioEvent: vi.fn() }));
-import { trackStudioEvent } from "../../utils/studioTelemetry";
 beforeEach(() => vi.clearAllMocks());
 describe("preview setting usage", () => {
   it.each([
@@ -208,6 +208,54 @@ describe("preview setting usage", () => {
     act(() => document.dispatchEvent(new KeyboardEvent("keydown", { key: "g", bubbles: true })));
     expect(trackStudioEvent).toHaveBeenCalledExactlyOnceWith("feature_used", {
       feature: "grid",
+      surface: "preview",
+      method: "keyboard",
+    });
+    act(() => root.unmount());
+  });
+});
+
+describe("preview field and key gesture counting", () => {
+  it("counts a grid spacing edit once when the field settles", () => {
+    const { root } = renderToolbar();
+    act(() => document.querySelector<HTMLButtonElement>('[aria-label="Grid options"]')!.click());
+    const input = document.querySelector<HTMLInputElement>('input[type="number"]')!;
+    const setter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")!.set!;
+    act(() => input.focus());
+    for (const value of ["20", "200"]) {
+      act(() => {
+        setter.call(input, value);
+        input.dispatchEvent(new Event("input", { bubbles: true }));
+      });
+    }
+    expect(trackStudioEvent).not.toHaveBeenCalled();
+    act(() => input.blur());
+    expect(trackStudioEvent).toHaveBeenCalledExactlyOnceWith("feature_used", {
+      feature: "grid_spacing",
+      surface: "preview",
+      method: "field",
+    });
+    act(() => root.unmount());
+  });
+  it("counts snap-to-grid through its committed checkbox", () => {
+    const { root } = renderToolbar();
+    act(() => document.querySelector<HTMLButtonElement>('[aria-label="Grid options"]')!.click());
+    act(() => document.querySelector<HTMLInputElement>('input[type="checkbox"]')!.click());
+    expect(trackStudioEvent).toHaveBeenCalledExactlyOnceWith("feature_used", {
+      feature: "snap_to_grid",
+      surface: "preview",
+      method: "button",
+    });
+    act(() => root.unmount());
+  });
+  it.each(["s", "g"])("does not count auto-repeat as another %s key gesture", (key) => {
+    const { root } = renderToolbar();
+    act(() => document.dispatchEvent(new KeyboardEvent("keydown", { key, bubbles: true })));
+    act(() =>
+      document.dispatchEvent(new KeyboardEvent("keydown", { key, repeat: true, bubbles: true })),
+    );
+    expect(trackStudioEvent).toHaveBeenCalledExactlyOnceWith("feature_used", {
+      feature: key === "s" ? "snapping" : "grid",
       surface: "preview",
       method: "keyboard",
     });

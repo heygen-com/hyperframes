@@ -10,8 +10,7 @@ import { refuseGsapTakeover } from "./elementOffsetStager";
 import { tryGsapDragIntercept } from "./gsapRuntimeBridge";
 import { assertGsapEditPersisted } from "./gsapEditOutcome";
 
-// Distinct coalesceKey per group drag so consecutive group drags don't fold
-// into one another's undo entry (module-local counter, not Date.now()).
+// A distinct key keeps consecutive group drags in separate undo entries.
 let groupDragCommitCounter = 0;
 
 function firstPreflightFailure(
@@ -42,24 +41,16 @@ export function useGsapAwareGroupMove({
   | "stageElementPositionOffset"
   | "showToast"
 >) {
-  // Multi-select (group) drag: each member takes the single drag's writer, so a member GSAP
-  // does not position is saved on itself and the rest go through the GSAP intercept.
   const handleGsapAwareGroupPathOffsetCommit = useCallback(
     async (
       updates: DomEditGroupPathOffsetCommit[],
     ): Promise<import("../utils/previewFeatureUsage").GeometryCommitResult> => {
       const writes = observeGsapGesture(gsapCommitMutation);
       const writer = writes.commit;
-      if (!writer || updates.length === 0) return { ok: true, changed: false };
-      let domChanged = false;
-      // A group drag is ONE user action: fold every member's position write into
-      // a single undo entry by forcing a shared coalesceKey (infinite window, so
-      // it survives the N sequential server round-trips) onto each commit —
-      // otherwise each member records its own entry and it takes N presses to undo.
+      if (!writer) return { ok: true, changed: false };
+      // One coalesce key across slow writes keeps the group drag in one undo entry.
       const coalesceKey = `group-drag:${++groupDragCommitCounter}`;
-      // Members are written one at a time, and a re-render re-runs the script with the OLD
-      // position of every member not yet written, so they snap back until their own write
-      // lands. The drafts are already on screen: hold the render until the last member.
+      // Hold the render until every member is saved, or unwritten members snap back.
       let renderOnCommit = false;
       const previewFallbackLatch = { pending: false };
       const withGroupOptions = (options: CommitMutationOptions): CommitMutationOptions => ({
@@ -69,9 +60,7 @@ export function useGsapAwareGroupMove({
         deferPreviewSync: !renderOnCommit,
         previewFallbackLatch,
       });
-      // Every member writes the same file. Queue their mutations and send them as
-      // ONE request instead of one round trip per member: the server reads, parses
-      // and writes the composition once, and the preview patches once.
+      // Batch members in the same file to avoid repeating its read, parse, write and preview patch.
       const queued: CommitMutationCall[] = [];
       const flushQueued = async () => {
         if (queued.length === 0) return;
@@ -141,7 +130,7 @@ export function useGsapAwareGroupMove({
             plain,
             coalesceKey,
           ).save();
-          domChanged ||= result?.changed === true;
+          writes.recordDomResult(result);
           continue;
         }
         try {
@@ -168,7 +157,7 @@ export function useGsapAwareGroupMove({
       }
       try {
         await flushQueued();
-        return writes.finish(domChanged);
+        return writes.finish();
       } catch (error) {
         // The aggregate write has no uniquely failing member; do not misattribute
         // its telemetry to whichever member happened to be last in the array.

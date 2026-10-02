@@ -50,6 +50,23 @@ describe("GSAP gesture usage", () => {
     expect(trackStudioEvent).toHaveBeenCalledExactlyOnceWith("keyframe", { action: "add" });
   });
 
+  it("retains insertion metadata from an earlier member of a mixed batch", async () => {
+    const observed = observeGsapGesture(writer({ ok: true, changed: true }));
+    await observed.commit!.batch!(
+      [
+        {
+          selection,
+          mutation: { type: "replace-with-keyframes" },
+          options: { label: "Extend", keyframeAction: "add" },
+        },
+        { selection, mutation: { type: "update-keyframe" }, options: { label: "Update" } },
+      ],
+      { label: "Update" },
+    );
+    observed.finish();
+    expect(trackStudioEvent).toHaveBeenCalledExactlyOnceWith("keyframe", { action: "add" });
+  });
+
   it("uses semantic insertion metadata for a replacement", async () => {
     const observed = observeGsapGesture(writer({ ok: true, changed: true }));
     await observed.commit!(
@@ -61,7 +78,7 @@ describe("GSAP gesture usage", () => {
     expect(trackStudioEvent).toHaveBeenCalledExactlyOnceWith("keyframe", { action: "add" });
   });
 
-  it.each([undefined, { ok: true, changed: false }, { ok: false, changed: true }])(
+  it.each([undefined, { ok: true }, { ok: true, changed: false }, { ok: false, changed: true }])(
     "does not count resolution without a changed successful write (%j)",
     async (result) => {
       const observed = observeGsapGesture(writer(result));

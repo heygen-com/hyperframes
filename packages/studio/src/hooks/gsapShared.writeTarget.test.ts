@@ -6,6 +6,10 @@ import type { DomEditSelection } from "../components/editor/domEditingTypes";
 import { buildStableSelector, getSelectorIndex } from "../components/editor/domEditingDom";
 import { resolveSelectorElementIds, tweenTargetsElement, writeTargetSelector } from "./gsapShared";
 import { commitKeyframeAtTimeImpl } from "./gsapKeyframeCommit";
+import { trackStudioEvent } from "../utils/studioTelemetry";
+import { trackKeyframeCommit } from "../utils/keyframeUsage";
+import type { CommitMutation } from "./gsapScriptCommitTypes";
+vi.mock("../utils/studioTelemetry", () => ({ trackStudioEvent: vi.fn() }));
 import { promoteSetToKeyframes } from "./useEnableKeyframes";
 
 afterEach(() => {
@@ -286,4 +290,20 @@ describe("commitKeyframeAtTimeImpl — no one-element target", () => {
 
     expect(commitMutation).not.toHaveBeenCalled();
   });
+});
+
+it("counts a keyframe-at-time conversion and insertion as one add gesture", async () => {
+  vi.clearAllMocks();
+  const el = document.createElement("div");
+  el.id = "target";
+  document.body.append(el);
+  const selection = selectionFor(el);
+  const animations = parseGsapScript(
+    'const tl = gsap.timeline(); tl.to("#target", {x:100,duration:4},0);',
+  ).animations;
+  const commit: CommitMutation = async (_selection, mutation, options) => {
+    trackKeyframeCommit([mutation], { ok: true, changed: true }, options);
+  };
+  await commitKeyframeAtTimeImpl(selection, 1, animations, { x: 25 }, commit);
+  expect(trackStudioEvent).toHaveBeenCalledExactlyOnceWith("keyframe", { action: "add" });
 });

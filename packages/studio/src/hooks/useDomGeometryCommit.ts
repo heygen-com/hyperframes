@@ -158,14 +158,12 @@ export function useDomGeometryCommit({
         throw new Error(refusal);
       }
       const run = commit();
-      let changed = false;
       pending.add(run);
       try {
-        changed = (await run)?.changed === true;
+        return { ok: true, changed: (await run)?.changed === true };
       } finally {
         pending.delete(run);
       }
-      return { ok: true, changed };
     },
     [pending, showToast],
   );

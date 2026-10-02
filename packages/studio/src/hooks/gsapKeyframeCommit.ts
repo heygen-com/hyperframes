@@ -4,23 +4,14 @@ import { absoluteToPercentageForAnimation, findTweenAtTime } from "../utils/glob
 import { PROPERTY_DEFAULTS, selectorFromSelection, writeTargetSelector } from "./gsapShared";
 import { roundToCenti } from "../utils/rounding";
 
-type CommitFn = (
-  selection: DomEditSelection,
-  mutation: Record<string, unknown>,
-  options: {
-    label: string;
-    coalesceKey?: string;
-    softReload?: boolean;
-    skipReload?: boolean;
-  },
-) => Promise<void>;
+import type { CommitMutation } from "./gsapScriptCommitTypes";
 
 export async function commitKeyframeAtTimeImpl(
   selection: DomEditSelection,
   absoluteTime: number,
   animations: GsapAnimation[],
   properties: Record<string, number | string>,
-  commitMutation: CommitFn,
+  commitMutation: CommitMutation,
 ): Promise<void> {
   // Matching an authored tween is a string compare against what the author
   // wrote, so it keeps using the selection's own selector; the NEW tween below
@@ -38,7 +29,7 @@ export async function commitKeyframeAtTimeImpl(
       await commitMutation(
         selection,
         { type: "convert-to-keyframes", animationId: tween.id },
-        { label: "Convert to keyframes", skipReload: true },
+        { label: "Convert to keyframes", keyframeTelemetry: false, skipReload: true },
       );
     }
 

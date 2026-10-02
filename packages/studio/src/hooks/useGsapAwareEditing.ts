@@ -27,7 +27,6 @@ import {
 import type { CommitMutation, CommitMutationOptions } from "./gsapScriptCommitTypes";
 import { setElementGsapPosition } from "../utils/elementGsap";
 import { logResize, logResizeSettle } from "../utils/resizeDebug";
-import type { DomEditGroupPathOffsetCommit } from "../components/editor/DomEditOverlay";
 import type { MoveCommitOptions } from "../components/editor/domEditOverlayGestures";
 import { runGestureTransaction } from "./gestureTransaction";
 import {
@@ -168,12 +167,11 @@ export function useGsapAwareEditing({
             makeFetchFallback(selection),
             modifiers,
           );
-          let domChanged = false;
           await saveMove(outcome, async () => {
             const result = await stageElementPositionOffset(selection, next, false).save();
-            domChanged = result?.changed === true;
+            writes.recordDomResult(result);
           });
-          return writes.finish(domChanged);
+          return writes.finish();
         } catch (error) {
           trackGsapInteractionFailure(error, selection, "drag", "Move animated layer");
           throw error;
@@ -207,7 +205,6 @@ export function useGsapAwareEditing({
       restore: () => void = () => undefined,
     ) => {
       const writes = observeGsapGesture(gsapCommitMutation);
-      let domChanged = false;
       if (!gsapWritesBox(selection.element)) {
         const result = await handleDomBoxSizeCommit(selection, next, offset, restore);
         return writes.finish(result?.changed === true);
@@ -241,6 +238,27 @@ export function useGsapAwareEditing({
       let anchorMove: ReturnType<typeof stageElementPositionOffset> | null = null;
       const stageCrop = prepareCropResize(selection.element);
       let cropUndoKey: string | null = null;
+      const saveResizeAnchor = async (
+        ownsDragOffset: boolean,
+        commitMutation: CommitMutation,
+        coalesceKey: string,
+      ) => {
+        if (offset && !ownsDragOffset) {
+          const dragOutcome = await tryGsapDragIntercept(
+            selection,
+            offset,
+            targetAnimations,
+            previewIframeRef.current,
+            commitMutation,
+            makeFetchFallback(selection),
+          );
+          // Saved after the size, under its undo key, so the two are one step.
+          await saveMove(dragOutcome, async () => {
+            const plain = !gsapWritesPosition(selection.element);
+            anchorMove = stageElementPositionOffset(selection, offset, plain, coalesceKey);
+          });
+        }
+      };
       await runGestureTransaction({
         element: selection.element,
         label: "Resize layer",
@@ -278,7 +296,7 @@ export function useGsapAwareEditing({
                   undefined,
                   coalesceKey,
                 );
-                domChanged ||= result?.changed === true;
+                writes.recordDomResult(result);
               } else cropUndoKey = coalesceKey;
               // What the resize did, not what its tweens suggest: a scale hold still commits a size.
               const ownsDragOffset =
@@ -290,21 +308,7 @@ export function useGsapAwareEditing({
               });
               // A resize that moved the element itself has already written
               // where it landed. Everything else leaves the anchor to the drag.
-              if (offset && !ownsDragOffset) {
-                const dragOutcome = await tryGsapDragIntercept(
-                  selection,
-                  offset,
-                  targetAnimations,
-                  previewIframeRef.current,
-                  commitMutation,
-                  makeFetchFallback(selection),
-                );
-                // Saved after the size, under its undo key, so the two are one step.
-                await saveMove(dragOutcome, async () => {
-                  const plain = !gsapWritesPosition(selection.element);
-                  anchorMove = stageElementPositionOffset(selection, offset, plain, coalesceKey);
-                });
-              }
+              await saveResizeAnchor(ownsDragOffset, commitMutation, coalesceKey);
               logResizeSettle(selection.element, ownsDragOffset ? "gsap-scale" : "gsap-size");
               return;
             } catch (error) {
@@ -316,7 +320,7 @@ export function useGsapAwareEditing({
         },
         afterBufferedCommitsSaved: async () => {
           const anchorResult = await anchorMove?.save();
-          domChanged ||= anchorResult?.changed === true;
+          writes.recordDomResult(anchorResult);
           // Only now is the size live for every caller, drag or not.
           if (cropUndoKey) {
             const cropResult = await saveCropResize(
@@ -325,7 +329,7 @@ export function useGsapAwareEditing({
               commitPositionPatchToHtml,
               cropUndoKey,
             );
-            domChanged ||= cropResult?.changed === true;
+            writes.recordDomResult(cropResult);
           }
         },
         restore: () => {
@@ -334,7 +338,7 @@ export function useGsapAwareEditing({
         },
         skipPixelAssert: hasLivePositionTween,
       });
-      return writes.finish(domChanged);
+      return writes.finish();
     },
     [
       handleDomBoxSizeCommit,

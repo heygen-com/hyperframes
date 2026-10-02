@@ -104,10 +104,20 @@ export function FxNodeParams({
         onUpdate(index, { params: next });
       }}
       automatedKeys={automatedKeysOf(node, def.params, automatedTargets)}
-      onAutomate={nodeId && onAutomateParam ? (key) => onAutomateParam(nodeId, key) : undefined}
+      onAutomate={
+        nodeId && onAutomateParam
+          ? (key) => {
+              onAutomateParam(nodeId, key);
+              trackInput("button", "automate-param");
+            }
+          : undefined
+      }
       onRemoveAutomation={
         nodeId && onRemoveParamAutomation
-          ? (key) => onRemoveParamAutomation(nodeId, key)
+          ? (key) => {
+              onRemoveParamAutomation(nodeId, key);
+              trackInput("button", "remove-param-automation");
+            }
           : undefined
       }
     />

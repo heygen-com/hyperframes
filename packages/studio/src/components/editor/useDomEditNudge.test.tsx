@@ -1,3 +1,4 @@
+import { trackStudioEvent } from "../../utils/studioTelemetry";
 // @vitest-environment happy-dom
 import React, { act } from "react";
 import { createRoot } from "react-dom/client";
@@ -425,7 +426,6 @@ describe("useDomEditNudge — a commit that throws", () => {
 });
 
 vi.mock("../../utils/studioTelemetry", () => ({ trackStudioEvent: vi.fn() }));
-import { trackStudioEvent } from "../../utils/studioTelemetry";
 describe("nudge usage", () => {
   beforeEach(() => {
     vi.clearAllMocks();
