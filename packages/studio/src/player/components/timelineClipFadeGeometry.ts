@@ -31,9 +31,8 @@ function topEdgeY(x: number, widthPx: number, heightPx: number, radiusPx: number
 }
 
 /**
- * Where the fade-in and fade-out handles sit on a clip `widthPx` wide: each centred on its fade's
- * end and kept inside the clip, left of its tools. Two drawn handles that would overlap split at
- * the midpoint between their tabs.
+ * Where the fade handles sit on a clip `widthPx` wide: each centred on its fade's end, inside the
+ * clip and left of its tools; two drawn handles that would overlap split at the midpoint.
  */
 export function fadeHandleBoxes(input: {
   widthPx: number;
