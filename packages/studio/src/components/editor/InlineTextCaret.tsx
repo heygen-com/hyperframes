@@ -123,16 +123,13 @@ function caretColorOf(element: HTMLElement): string {
   return style.caretColor && style.caretColor !== "auto" ? style.caretColor : style.color;
 }
 
-/** Where the caret stands on Studio's screen, or null when there is none to draw: a range selected, the text not
- * focused, or the selection outside it. */
 type CaretSide = "before" | "after";
 const MODIFIERS = new Set(["Shift", "Control", "Alt", "Meta"]);
-const SIDE_OF_KEY: Record<string, CaretSide> = {
-  End: "before",
-  ArrowRight: "before",
-  Home: "after",
-  ArrowLeft: "after",
-};
+// Only End leaves Chrome's own caret at the earlier line's end; an arrow onto a wrap point lands on the next line.
+const SIDE_OF_KEY: Record<string, CaretSide> = { End: "before" };
+
+/** Where the caret stands on Studio's screen, or null when there is none to draw: a range selected, the text not
+ * focused, or the selection outside it. */
 
 function placeAtCaret(
   element: HTMLElement,
@@ -182,7 +179,9 @@ function caretRect(range: Range, element: HTMLElement, view: Window) {
 function endOfCharBefore({ startContainer: at, startOffset: offset }: Range) {
   if (at.nodeType !== Node.TEXT_NODE || offset === 0) return null;
   const char = at.ownerDocument!.createRange();
-  char.setStart(at, offset - 1);
+  // An emoji's second half alone has no box: take the whole pair.
+  const low = /[\uDC00-\uDFFF]/.test((at as Text).data[offset - 1] ?? "");
+  char.setStart(at, offset - (low && offset > 1 ? 2 : 1));
   char.setEnd(at, offset);
   // A trailing space at a wrap has a box on each line; the earlier line's comes first.
   const rect = [...char.getClientRects()].find((each) => each.height > 0);

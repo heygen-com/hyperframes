@@ -90,8 +90,8 @@ export function InlineTextToolbar({
       // The default, because a press anywhere in Studio moves the focus, and
       // moving it out of the text collapses the selection being styled.
       //
-      // The propagation, because this renders inside the canvas overlay: a
-      // press that reaches the canvas is read as a click on the composition,
+      // The propagation, because React bubbles it through the canvas overlay
+      // that renders this bar: a press that reaches the canvas is read as a click on the composition,
       // which deselects the element and commits the edit out from under the
       // button that was just pressed.
       onPointerDown={swallow}
