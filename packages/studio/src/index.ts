@@ -143,6 +143,8 @@ export type {
 // A host's own waitForPendingDomEditSaves must also call this, or undo/redo
 // can race a write still in flight (see useTrackPendingTimelineEdit.ts).
 export { flushStudioPendingEdits } from "./utils/studioPendingEdits";
+// A host's own Cmd+Z calls this first so a move still saving jumps back at once, as Studio's undo does.
+export { revertNewestStudioPendingEdit } from "./utils/studioPendingEdits";
 export type { StudioPendingEditsDrainResult } from "./utils/studioPendingEdits";
 export type {
   CanEditTimelineElement,
