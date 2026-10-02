@@ -1,22 +1,12 @@
 /**
- * bake-map-geometry — project the map blocks' geography at AUTHORING time.
+ * bake-map-geometry: project the map blocks' geography at authoring time, so each block
+ * paints and registers its timeline synchronously with no network access at render.
  *
- * The map blocks used to `fetch()` topojson from a CDN inside the composition and
- * build their GSAP timeline in the `.then()` callback. That breaks two contracts at
- * once: renders depend on the network at capture time, and `window.__timelines[id]`
- * is registered late, so the engine's sub-composition timeline poll waits on it
- * (up to the full 45 s player-ready timeout when the fetch is slow or blocked).
- *
- * This script downloads each atlas ONCE, projects it with the exact projection the
- * block used at runtime, simplifies it to what 1080p can show, and writes the
- * resulting SVG path data between the `BEGIN MAP_GEOMETRY` / `END MAP_GEOMETRY`
- * markers of the block's script. The block then paints synchronously and registers
- * its timeline synchronously. The projection's scale/translate are baked alongside so
- * blocks that still project points at runtime (city bubbles, flow arcs, graticule)
- * reconstruct the SAME projection with `d3.geoX().scale(s).translate(t)`.
- *
- * The spliced block is run through oxfmt before it is written or compared, so the
- * repo's `format:check` and this script's `--check` agree on the same bytes.
+ * Downloads each pinned atlas once, projects it exactly as the block's runtime d3
+ * projection would, simplifies it for 1080p, and splices the SVG path data plus the
+ * projection's scale/translate between the BEGIN/END MAP_GEOMETRY markers. Blocks that
+ * still project points at runtime rebuild the same projection from those numbers.
+ * Output goes through oxfmt, so `--check` and `format:check` agree on the same bytes.
  *
  * Usage:
  *   bun scripts/catalog/bake-map-geometry.ts            # all map blocks
@@ -81,7 +71,7 @@ export interface BakedGeometry {
 }
 
 export interface BlockSpec {
-  /** Pinned atlas URL — the same file the block used to fetch at render time. */
+  /** Pinned atlas URL the block's geometry is baked from. */
   atlas: string;
   /** Who made the underlying data and under what licence; printed in the baked block. */
   data: string;
