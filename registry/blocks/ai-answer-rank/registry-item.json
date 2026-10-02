@@ -1,0 +1,122 @@
+{
+  "$schema": "https://hyperframes.heygen.com/schema/registry-item.json",
+  "name": "ai-answer-rank",
+  "type": "hyperframes:block",
+  "title": "AI Answer Rank",
+  "description": "Is your brand in the AI answer? A question types into a chat card, the assistant answers with a ranked list of three picks, then re-ranks: the promoted brand slides into its slot, the picks below step down, and the brand row lands with the one accent highlight and a check. For answer-engine and AI-visibility marketing",
+  "tags": ["mock-ui", "ai", "chat", "ranking", "list", "marketing", "ad-template", "square"],
+  "author": "Tugra Avci",
+  "dimensions": {
+    "width": 1080,
+    "height": 1080
+  },
+  "duration": 9,
+  "variables": [
+    {
+      "id": "prompt",
+      "type": "string",
+      "role": "content",
+      "label": "Prompt",
+      "description": "The question typed into the user bubble. Up to about 60 characters keeps it on one or two lines.",
+      "default": "What's the best CRM for a small team?"
+    },
+    {
+      "id": "lead",
+      "type": "string",
+      "role": "content",
+      "label": "Answer lead-in",
+      "description": "The assistant line above the ranked list.",
+      "default": "Here are the top picks:"
+    },
+    {
+      "id": "rowA",
+      "type": "string",
+      "role": "content",
+      "label": "Pick 1",
+      "description": "First pick in the original answer: a product other than the brand this video promotes.",
+      "portrays": ["competitor_name"],
+      "default": "Brand A"
+    },
+    {
+      "id": "rowB",
+      "type": "string",
+      "role": "content",
+      "label": "Pick 2",
+      "description": "Second pick in the original answer: a product other than the brand this video promotes.",
+      "portrays": ["competitor_name"],
+      "default": "Brand B"
+    },
+    {
+      "id": "rowC",
+      "type": "string",
+      "role": "content",
+      "label": "Pick 3",
+      "description": "Third pick in the original answer. It drops out of the top three when the brand lands.",
+      "portrays": ["competitor_name"],
+      "default": "Brand C"
+    },
+    {
+      "id": "brand",
+      "type": "string",
+      "role": "content",
+      "label": "Brand",
+      "description": "The brand this video promotes, by its real name. It slides into the answer and takes the highlight.",
+      "portrays": ["subject_name"],
+      "default": "Your brand"
+    },
+    {
+      "id": "brandRank",
+      "type": "enum",
+      "role": "content",
+      "label": "Brand rank",
+      "description": "The slot the brand lands in. Picks at and below it step down one place.",
+      "portrays": ["recommended_position"],
+      "default": "1",
+      "options": [
+        {
+          "value": "1",
+          "label": "1st"
+        },
+        {
+          "value": "2",
+          "label": "2nd"
+        },
+        {
+          "value": "3",
+          "label": "3rd"
+        }
+      ]
+    },
+    {
+      "id": "accent",
+      "type": "color",
+      "role": "style",
+      "label": "Accent",
+      "description": "Highlight, monogram and check on the brand row, the one accent element.",
+      "default": "#16a34a"
+    },
+    {
+      "id": "ink",
+      "type": "color",
+      "role": "style",
+      "label": "Ink",
+      "description": "Text colour; every placeholder surface is this ink at an alpha step.",
+      "default": "#18181b"
+    },
+    {
+      "id": "ground",
+      "type": "color",
+      "role": "style",
+      "label": "Ground",
+      "description": "Chat card surface; the page around it is the ground tinted toward the ink.",
+      "default": "#fcfcfb"
+    }
+  ],
+  "files": [
+    {
+      "path": "ai-answer-rank.html",
+      "target": "compositions/ai-answer-rank.html",
+      "type": "hyperframes:composition"
+    }
+  ]
+}
