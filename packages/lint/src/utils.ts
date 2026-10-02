@@ -44,7 +44,7 @@ export const WINDOW_TIMELINE_ASSIGN_PATTERN =
 export const INVALID_SCRIPT_CLOSE_PATTERN = /<script[^>]*>[\s\S]*?<\s*\/\s*script(?!>)/i;
 
 const TIMELINE_REGISTRY_KEY_PATTERN =
-  /window\.__timelines(?:\[\s*["']([^"']+)["']\s*\]|\.\s*([A-Za-z_$][\w$]*))\s*=/g;
+  /window\.__timelines(?:\[\s*["']([^"']+)["']\s*\]|\.\s*([A-Za-z_$][\w$]*))\s*(?:\?\?|\|\||&&)?=/g;
 
 // The `window.__timelines = { ... }` object-literal body (group 1), captured so its
 // `key: value` entries can be scanned for registered keys.

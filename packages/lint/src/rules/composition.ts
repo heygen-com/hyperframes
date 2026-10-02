@@ -73,7 +73,7 @@ const HEAVY_OVERLAY_CSS_PATTERN =
   /(?:filter\s*:[^;}]*\bblur\s*\()|(?:clip-path\s*:(?!\s*(?:none|inherit|initial|unset)\b)\s*[^;}]+)|(?:radial-gradient\s*\()/i;
 const INLINE_STYLE_DISPLAY_NONE_PATTERN = /(?:^|;)\s*display\s*:\s*none\b/i;
 const COMPUTED_TIMELINE_REGISTRATION_PATTERN =
-  /window\.__timelines\s*\[(?!\s*["'])\s*[^\r\n\]]+\]\s*=/;
+  /window\.__timelines\s*\[(?!\s*["'])(?:[^\r\n[\]]|\[[^\r\n\]]*\])+\]\s*(?:\?\?|\|\||&&)?=/;
 
 function readTagTiming(rawTag: string) {
   return readClipTiming({ getAttribute: (name) => readAttr(rawTag, name) });
@@ -568,6 +568,32 @@ function hasComputedTimelineRegistration(scripts: readonly ExtractedBlock[]): bo
   );
 }
 
+// A mounted source registers its own timeline.
+function mountsSource(tag: OpenTag): boolean {
+  return Boolean(
+    readAttr(tag.raw, "data-composition-src") || readAttr(tag.raw, "data-composition-file"),
+  );
+}
+
+function missingTimelineFinding(
+  tag: OpenTag,
+  compositionId: string,
+  isRoot: boolean,
+): HyperframeLintFinding {
+  return {
+    code: "missing_data_no_timeline",
+    severity: "warning",
+    message: isRoot
+      ? "This composition has no `window.__timelines` registration but is missing `data-no-timeline`. The producer polls for timeline registration for up to 45 seconds before timing out, adding 45 s to every render."
+      : `Composition host "${compositionId}" has neither a matching \`window.__timelines\` registration nor \`data-no-timeline\`. The producer waits up to 45 seconds for every \`data-composition-id\` before rendering.`,
+    elementId: readAttr(tag.raw, "id") || undefined,
+    fixHint: isRoot
+      ? 'Add `data-no-timeline` to the root element to skip the poll: `<div data-composition-id="..." data-no-timeline ...>`.'
+      : "If this is a static section, use a plain `id` instead of `data-composition-id`, or add `data-no-timeline`. Otherwise, register its timeline or mount it with `data-composition-src`.",
+    snippet: truncateSnippet(tag.raw),
+  };
+}
+
 export const compositionRules: Array<(ctx: LintContext) => HyperframeLintFinding[]> = [
   // duplicate_composition_id catches meta-tag/root collisions that create duplicate composition entries.
   ({ tags }) => {
@@ -939,35 +965,14 @@ export const compositionRules: Array<(ctx: LintContext) => HyperframeLintFinding
     const registeredIds = new Set(
       scripts.flatMap((script) => extractTimelineRegistryKeys(stripJsComments(script.content))),
     );
-    const findings: HyperframeLintFinding[] = [];
-
-    for (const tag of tags) {
+    return tags.flatMap((tag) => {
       const compositionId = readDecodedAttr(tag.raw, "data-composition-id");
-      if (!compositionId || registeredIds.has(compositionId)) continue;
-      if (readDecodedAttr(tag.raw, "data-no-timeline") !== null) continue;
-
+      if (!compositionId || registeredIds.has(compositionId)) return [];
       const isRoot = tag.index === rootTag.index;
-      if (isRoot && options.isSubComposition) continue;
-      if (!isRoot && isInsideInertTemplate(tag, tags)) continue;
-      if (readAttr(tag.raw, "data-composition-src") || readAttr(tag.raw, "data-composition-file")) {
-        continue;
-      }
-
-      findings.push({
-        code: "missing_data_no_timeline",
-        severity: "warning",
-        message: isRoot
-          ? "This composition has no `window.__timelines` registration but is missing `data-no-timeline`. The producer polls for timeline registration for up to 45 seconds before timing out, adding 45 s to every render."
-          : `Composition host "${compositionId}" has neither a matching \`window.__timelines\` registration nor \`data-no-timeline\`. The producer waits up to 45 seconds for every \`data-composition-id\` before rendering.`,
-        elementId: readAttr(tag.raw, "id") || undefined,
-        fixHint: isRoot
-          ? 'Add `data-no-timeline` to the root element to skip the poll: `<div data-composition-id="..." data-no-timeline ...>`.'
-          : "If this is a static section, use a plain `id` instead of `data-composition-id`, or add `data-no-timeline`. Otherwise, register its timeline or mount it with `data-composition-src`.",
-        snippet: truncateSnippet(tag.raw),
-      });
-    }
-
-    return findings;
+      if (isRoot ? options.isSubComposition : isInsideInertTemplate(tag, tags)) return [];
+      if (readDecodedAttr(tag.raw, "data-no-timeline") !== null || mountsSource(tag)) return [];
+      return [missingTimelineFinding(tag, compositionId, isRoot)];
+    });
   },
 
   // negative_z_index
