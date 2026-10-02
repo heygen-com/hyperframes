@@ -54,14 +54,13 @@ export function canEditElementTextInline(element: HTMLElement | null): boolean {
 }
 
 function hasOnlyFormattingChildren(element: HTMLElement): boolean {
-  const HTMLElementClass = element.ownerDocument.defaultView?.HTMLElement;
-  if (!HTMLElementClass) return false;
   for (const child of Array.from(element.children)) {
     if (!isRichTextFormattingTag(child.tagName)) return false;
-    if (!(child instanceof HTMLElementClass)) return false;
+    // Not instanceof: the preview's nodes can carry another window's prototypes.
+    if (child.namespaceURI !== "http://www.w3.org/1999/xhtml") return false;
     // Formatting nests, and a structural child hidden inside a span is still
     // structural.
-    if (!hasOnlyFormattingChildren(child)) return false;
+    if (!hasOnlyFormattingChildren(child as HTMLElement)) return false;
   }
   return true;
 }
