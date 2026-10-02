@@ -1008,7 +1008,6 @@ function collectCssOpacityZeroSelectors(
 
 // ── GSAP rules ─────────────────────────────────────────────────────────────
 
-// fallow-ignore-next-line complexity
 // ── gsap_timeline_registered_behind_network_fetch ────────────────────────────
 // Render-time network requests a composition script can hang its timeline on.
 const NETWORK_FETCH_PATTERN =
@@ -1114,19 +1113,10 @@ function isAwaited(src: string, index: number): boolean {
   return /\bawait\s*\(*\s*$/.test(src.slice(Math.max(0, index - 32), index));
 }
 
-// The timeline is built and registered inside the continuation of a render-time
-// network request (fetch / d3.json / axios for topojson, CSV, remote JSON…). Two
-// contracts break at once: the render depends on the network at capture time, and
-// window.__timelines[id] arrives only when the request resolves, so the engine's
-// sub-composition timeline poll waits on it — up to the full player-ready timeout when
-// the request is slow, offline, or blocked. Data a composition needs must be inline
-// (baked at authoring time) so the timeline is registered synchronously.
-//
-// "Inside the continuation" is checked structurally: the registration sits within the
-// parentheses of a `.then(` / `.catch(` / `.finally(` chained onto the request, or
-// after an `await`ed request inside the same block. A request that is merely earlier
-// in the script — telemetry, a helper that is never called, an awaited
-// `document.fonts.ready` — with a synchronous registration after it is not this bug.
+// A timeline registered inside a render-time request's continuation makes the render need the
+// network and stalls the engine's sub-composition poll until the request resolves. Checked
+// structurally: inside a .then/.catch/.finally chained onto the request, or after an awaited
+// request in the same block. An unrelated earlier request with a synchronous registration passes.
 export const gsapTimelineRegisteredBehindNetworkFetch: LintRule<LintContext> = ({ scripts }) => {
   const findings: HyperframeLintFinding[] = [];
   for (const script of scripts) {
@@ -1164,6 +1154,7 @@ export const gsapTimelineRegisteredBehindNetworkFetch: LintRule<LintContext> = (
   return findings;
 };
 
+// fallow-ignore-next-line complexity
 export const gsapRules: LintRule<LintContext>[] = [
   // gsap_undefined_css_variable
   async ({ tags, styles, scripts }) => {
