@@ -2,6 +2,8 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { reapplyPositionEditsAfterSeek } from "./manualEditsSeekReapply";
 import {
+  STUDIO_OFFSET_X_PROP,
+  STUDIO_OFFSET_Y_PROP,
   STUDIO_PATH_OFFSET_ATTR,
   STUDIO_ROTATION_ATTR,
   STUDIO_ROTATION_PROP,
@@ -12,6 +14,29 @@ describe("reapplyPositionEditsAfterSeek", () => {
   afterEach(() => {
     document.body.innerHTML = "";
     vi.restoreAllMocks();
+  });
+
+  it("keeps an old offset off an element GSAP moves by object-of-arrays keyframes, not off its neighbour", () => {
+    const offset = `${STUDIO_OFFSET_X_PROP}: 300px; ${STUDIO_OFFSET_Y_PROP}: 100px; translate: none`;
+    document.body.innerHTML = ["moved", "still"]
+      .map((id) => `<div id="${id}" ${STUDIO_PATH_OFFSET_ATTR}="true" style="${offset}"></div>`)
+      .join("");
+    const moved = document.getElementById("moved") as HTMLElement;
+    const tween = { targets: () => [moved], vars: { keyframes: { x: [0, 200] } } };
+    const win = window as unknown as { __timelines?: unknown; gsap?: unknown };
+    const gsap = { set: vi.fn(), getProperty: () => 0 };
+    Object.assign(win, { __timelines: { main: { getChildren: () => [tween] } }, gsap });
+    try {
+      reapplyPositionEditsAfterSeek(document);
+    } finally {
+      delete win.__timelines;
+      delete win.gsap;
+    }
+
+    expect(moved.style.getPropertyValue("translate")).toBe("none");
+    expect(gsap.set).not.toHaveBeenCalled();
+    const still = document.getElementById("still") as HTMLElement;
+    expect(still.style.getPropertyValue("translate")).toContain(STUDIO_OFFSET_X_PROP);
   });
 
   it("does no per-edit work on a film Studio never edited", () => {

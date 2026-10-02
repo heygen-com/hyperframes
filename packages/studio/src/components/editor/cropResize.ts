@@ -1,7 +1,7 @@
 import type { PatchOperation } from "../../utils/sourcePatcher";
 import type { CommitMutation } from "../../hooks/gsapScriptCommitTypes";
 import type { DomEditSelection } from "./domEditingTypes";
-import { gsapAnimatesProperty } from "./gsapAnimatesProperty";
+import { gsapWritesChannels } from "../../hooks/gsapRuntimeKeyframes";
 import { elementHasNonHoldTween } from "../../hooks/gsapRuntimeKeyframes";
 import { buildInsetClipPathSides, type ParsedInsetClipPathSides } from "./clipPathHelpers";
 import { hasCropInsets, readElementCropInsets } from "./domEditOverlayCrop";
@@ -21,7 +21,7 @@ type Follows = Record<keyof Box, boolean>;
 
 /** Per axis, whether a crop follows a resize: not when GSAP drives the clip or tweens that axis's size. */
 function cropFollows(element: HTMLElement): Follows {
-  const clip = gsapAnimatesProperty(element, "clipPath");
+  const clip = gsapWritesChannels(element, ["clipPath"]);
   return {
     width: !clip && !elementHasNonHoldTween(element, ["width"]),
     height: !clip && !elementHasNonHoldTween(element, ["height"]),

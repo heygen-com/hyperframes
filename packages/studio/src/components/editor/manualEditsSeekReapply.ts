@@ -12,7 +12,7 @@ import {
 import { applyStudioBoxSize, applyStudioPathOffset, applyStudioRotation } from "./manualEditsDom";
 import { applyStudioMotionFromDom } from "./studioMotion";
 import { STUDIO_MOTION_ATTR, STUDIO_MOTION_TIMELINE_ID } from "./studioMotionTypes";
-import { gsapAnimatesProperty } from "./gsapAnimatesProperty";
+import { gsapWritesChannels } from "../../hooks/gsapRuntimeKeyframes";
 
 function queryStudioElements(doc: Document, attr: string): HTMLElement[] {
   const ctor = doc.defaultView?.HTMLElement;
@@ -35,7 +35,7 @@ function queryStudioElements(doc: Document, attr: string): HTMLElement[] {
 function reapplyPathOffsets(doc: Document): void {
   for (const el of queryStudioElements(doc, STUDIO_PATH_OFFSET_ATTR)) {
     // Unlike size below, the offset channels add up: applying both doubles the move.
-    if (gsapAnimatesProperty(el, "x", "y")) continue;
+    if (gsapWritesChannels(el, ["x", "y"])) continue;
     const x = el.style.getPropertyValue(STUDIO_OFFSET_X_PROP);
     const y = el.style.getPropertyValue(STUDIO_OFFSET_Y_PROP);
     if (!x && !y) continue;
