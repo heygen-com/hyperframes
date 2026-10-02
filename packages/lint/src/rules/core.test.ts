@@ -1106,6 +1106,15 @@ describe("core rules", () => {
       ).toBeUndefined();
     });
 
+    it("does not flag a compound that also carries a bare #id, or a nested rule's position", async () => {
+      const result = await lintHyperframeHtml(
+        comp(`#line1[id="line1"] { left: 40px; } [id="root"] { color: red; .row { left: 0; } }`),
+      );
+      expect(
+        result.findings.find((f) => f.code === "id_override_reduced_specificity"),
+      ).toBeUndefined();
+    });
+
     it("does not flag an attribute selector on id for a non-position property", async () => {
       const result = await lintHyperframeHtml(comp(`[id="line1"] { color: red; }`));
       expect(
