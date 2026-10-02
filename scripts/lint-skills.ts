@@ -528,6 +528,23 @@ function lintFile(filePath: string): Violation[] {
 // Main
 // ---------------------------------------------------------------------------
 
+type Report = (file: string, violations: LineViolation[]) => void;
+
+/** Doc cross-references and registry snapshots for every markdown file; returns the snapshot count. */
+function lintMarkdownFiles(paths: string[], knownItems: Set<string>, report: Report): number {
+  let snapshotsChecked = 0;
+  for (const path of paths) {
+    const content = readFileSync(path, "utf-8");
+    const file = relative(process.cwd(), path);
+    report(file, lintDocRefs(path, content));
+    const found = lintRegistryItemRefs(content, knownItems);
+    if (found === null) continue;
+    snapshotsChecked++;
+    report(file, found);
+  }
+  return snapshotsChecked;
+}
+
 function main(): void {
   const skillsDirs = SKILLS_DIRS.filter((dir) =>
     statSync(dir, { throwIfNoEntry: false })?.isDirectory(),
@@ -539,12 +556,12 @@ function main(): void {
   }
 
   let totalViolations = 0;
-  const report = (file: string, violations: LineViolation[]): void => {
+  const report: Report = (file, violations) => {
     for (const v of violations) {
       console.error(`${file}:${v.line}: ${v.message}`);
       console.error(`  ${v.text}\n`);
-      totalViolations++;
     }
+    totalViolations += violations.length;
   };
 
   for (const file of files) {
@@ -553,16 +570,7 @@ function main(): void {
 
   const knownItems = registryItemNames();
   const markdownFiles = skillsDirs.flatMap(collectMarkdownFiles);
-  let snapshotsChecked = 0;
-  for (const path of markdownFiles) {
-    const content = readFileSync(path, "utf-8");
-    const file = relative(process.cwd(), path);
-    report(file, lintDocRefs(path, content));
-    const found = lintRegistryItemRefs(content, knownItems);
-    if (found === null) continue;
-    snapshotsChecked++;
-    report(file, found);
-  }
+  const snapshotsChecked = lintMarkdownFiles(markdownFiles, knownItems, report);
 
   if (totalViolations > 0) {
     console.error(`\n${totalViolations} skill lint error(s) found.`);
