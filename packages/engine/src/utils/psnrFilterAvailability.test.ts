@@ -116,6 +116,25 @@ describe("isPsnrFilterAvailable", () => {
     await expect(isPsnrFilterAvailable()).resolves.toBe(false);
   });
 
+  it("answers any filter name from one shared `ffmpeg -filters` probe", async () => {
+    const { execFile, calls } = createExecFileSpy({
+      kind: "ok",
+      stdout: [
+        "Filters:",
+        "  T.. psnr             VV->V      Calculate the PSNR between two video streams.",
+        "  .SC zscale           V->V       Apply resizing, colorspace and bit depth conversion.",
+      ].join("\n"),
+    });
+    vi.doMock("node:child_process", () => ({ execFile }));
+
+    const { isFfmpegFilterAvailable, isPsnrFilterAvailable } =
+      await import("./psnrFilterAvailability.js");
+    await expect(isFfmpegFilterAvailable("zscale")).resolves.toBe(true);
+    await expect(isFfmpegFilterAvailable("libplacebo")).resolves.toBe(false);
+    await expect(isPsnrFilterAvailable()).resolves.toBe(true);
+    expect(calls).toHaveLength(1);
+  });
+
   it("returns false when the ffmpeg binary is missing (ENOENT from execFile)", async () => {
     const { execFile } = createExecFileSpy({ kind: "enoent" });
     vi.doMock("node:child_process", () => ({ execFile }));

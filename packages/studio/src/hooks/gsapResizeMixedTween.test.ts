@@ -163,6 +163,5 @@ it("leaves the drag offset to the caller when it commits size, not scale", async
     async () => [scaleHold],
   );
 
-  expect(outcome.status).toBe("persisted");
-  expect(outcome.status === "persisted" && outcome.ownsDragOffset).not.toBe(true);
+  expect(outcome.status).toBe("element-size");
 });

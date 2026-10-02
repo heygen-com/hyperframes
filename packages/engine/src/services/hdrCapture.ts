@@ -23,6 +23,7 @@ import type { Page, Browser, PuppeteerNode } from "puppeteer-core";
 import { existsSync, readdirSync } from "fs";
 import { join } from "path";
 import { homedir } from "os";
+import { sigintLaunchOptions } from "./browserManager.js";
 
 // ── PQ (SMPTE 2084) OETF ─────────────────────────────────────────────────────
 
@@ -282,6 +283,7 @@ export async function launchHdrBrowser(
   }
 
   const browser = await ppt.launch({
+    ...sigintLaunchOptions(),
     headless: false,
     executablePath: chromePath,
     args: buildHdrChromeArgs(width, height),

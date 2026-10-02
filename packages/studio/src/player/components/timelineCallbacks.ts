@@ -1,5 +1,6 @@
 // fallow-ignore-file code-duplication
 // fallow-ignore-file dead-code
+import type { TimelineEditOutcome } from "../../hooks/timelineEditPermission";
 import type { TimelineElement } from "../store/playerStore";
 import type { TimelineMoveOperation } from "../../hooks/timelineMoveAdapter";
 import type { BlockedTimelineEditIntent } from "./timelineEditing";
@@ -14,20 +15,20 @@ export interface TimelinePropertyGroupKeyframeToggle {
   remove: boolean;
 }
 
+/** Where an outside drop lands; `insertRow` opens a new track at that row boundary of `trackOrder`. */
+export type TimelineDropPlacement = { start: number; track: number } & (
+  | { insertRow?: null; trackOrder?: undefined }
+  | { insertRow: number; trackOrder: readonly number[] }
+);
+
 /**
  * Shared callback signatures for timeline editing operations.
  * Used by NLELayout, Timeline, and any component that passes through
  * the standard set of timeline mutation handlers.
  */
 export interface TimelineDropCallbacks {
-  onFileDrop?: (
-    files: File[],
-    placement?: { start: number; track: number },
-  ) => Promise<void> | void;
-  onAssetDrop?: (
-    assetPath: string,
-    placement: { start: number; track: number },
-  ) => Promise<void> | void;
+  onFileDrop?: (files: File[], placement?: TimelineDropPlacement) => Promise<void> | void;
+  onAssetDrop?: (assetPath: string, placement: TimelineDropPlacement) => Promise<void> | void;
   onBlockDrop?: (
     blockName: string,
     placement: { start: number; track: number },
@@ -37,6 +38,14 @@ export interface TimelineDropCallbacks {
     placement: { start: number; track: number },
   ) => Promise<void> | void;
 }
+
+export type TimelineLinkEdit =
+  | { kind: "unlink"; elements: readonly TimelineElement[] }
+  | { kind: "link"; elements: readonly TimelineElement[] }
+  | { kind: "detach"; element: TimelineElement }
+  | { kind: "merge"; video: TimelineElement; audio: TimelineElement }
+  | { kind: "move-into-sync"; element: TimelineElement; start: number }
+  | { kind: "slip-into-sync"; element: TimelineElement; mediaStart: number };
 
 export interface TimelineEditCallbacks {
   onMoveElement?: (
@@ -83,13 +92,14 @@ export interface TimelineEditCallbacks {
   ) => Promise<void> | void;
   /** B7's bus strip: live-write the group's own attribute while dragging. */
   onSetAudioGroupAttributeLive?: (groupId: string, attr: string, value: string | null) => void;
+  onRevertAudioGroupAttributeLive?: (groupId: string, attr: string) => void;
   /** ...and persist one undo entry on release. */
   onSetAudioGroupAttributeQuiet?: (
     groupId: string,
     attr: string,
     value: string | null,
     label: string,
-  ) => Promise<void>;
+  ) => Promise<TimelineEditOutcome | void>;
   /** C1's ungrouped-track FX pointer: "Group these clips" — write
    *  `data-audio-group` on every one of them, atomically. Same shape B6's
    *  carve auto-grouping uses. */
@@ -105,16 +115,27 @@ export interface TimelineEditCallbacks {
     attr: string,
     value: string | null,
   ) => void;
+  onRevertElementAttributeLive?: (element: TimelineElement, attr: string) => void;
   onSetElementAttributeQuiet?: (
     element: TimelineElement,
     attr: string,
     value: string | null,
     label: string,
-  ) => Promise<void>;
+  ) => Promise<TimelineEditOutcome | void>;
+  /** One attribute on several clips, saved as one undo step. */
+  onSetElementsAttributeQuiet?: (
+    edits: ReadonlyArray<{ element: TimelineElement; value: string | null }>,
+    attr: string,
+    label: string,
+  ) => Promise<TimelineEditOutcome | void>;
   onBlockedEditAttempt?: (element: TimelineElement, intent: BlockedTimelineEditIntent) => void;
+  onLinkEdit?: (edit: TimelineLinkEdit) => Promise<void> | void;
+  onDeleteElementOnly?: (element: TimelineElement) => Promise<void> | void;
   onSplitElement?: (element: TimelineElement, splitTime: number) => Promise<void> | void;
   onRazorSplit?: (element: TimelineElement, splitTime: number) => Promise<void> | void;
   onRazorSplitAll?: (splitTime: number) => Promise<void> | void;
+  onFreezeFrame?: (element: TimelineElement, time: number) => Promise<void> | void;
+  onNotice?: (message: string, tone?: "error" | "info") => void;
   onDeleteKeyframe?: (elementId: string, keyframe: TimelineKeyframeTarget) => void;
   onDeleteAllKeyframes?: (element: TimelineElement, animationId?: string) => void;
   onMoveKeyframeToPlayhead?: (element: TimelineElement, keyframe: TimelineKeyframeTarget) => void;

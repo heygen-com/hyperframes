@@ -12,7 +12,8 @@ const { trackStudioEditBlocked, trackStudioSaveFailure } = vi.hoisted(() => ({
   trackStudioEditBlocked: vi.fn(),
   trackStudioSaveFailure: vi.fn(),
 }));
-vi.mock("../utils/studioSaveDiagnostics", () => ({
+vi.mock("../utils/studioSaveDiagnostics", async (importOriginal) => ({
+  ...(await importOriginal<object>()),
   trackStudioEditBlocked,
   trackStudioSaveFailure,
 }));

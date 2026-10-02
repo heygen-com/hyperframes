@@ -7,3 +7,9 @@ export {
   PAGE_COMPOSITOR_BUILD_CANARY,
   PAGE_COMPOSITOR_CANVAS_ID,
 } from "./engineModePageComposite.js";
+export {
+  playSeamTransitionLoop,
+  type SeamTransitionFrameSource,
+  type SeamTransitionLoopHandle,
+  type SeamTransitionLoopOptions,
+} from "./seamTransitionLoop.js";

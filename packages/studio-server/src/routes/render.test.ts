@@ -456,6 +456,41 @@ describe("GET /projects/:id/renders/file/* — path safety", () => {
     tmpDirs.length = 0;
   });
 
+  it("serves non-Latin-1 filenames with RFC 6266 content dispositions", async () => {
+    const filename = "測試.mp4";
+    const { app, rendersDir } = buildApp();
+    const outputPath = join(rendersDir, filename);
+    writeFileSync(outputPath, "render-bytes");
+
+    const listResponse = await app.request("http://localhost/projects/demo/renders");
+    expect(listResponse.status).toBe(200);
+    const jobId = encodeURIComponent(filename.replace(/\.mp4$/, ""));
+    const expectedFilename = `filename="__.mp4"; filename*=UTF-8''${encodeURIComponent(filename)}`;
+    const responses = [
+      {
+        response: await app.request(`http://localhost/render/${jobId}/view`),
+        disposition: "inline",
+      },
+      {
+        response: await app.request(`http://localhost/render/${jobId}/download`),
+        disposition: "attachment",
+      },
+      {
+        response: await app.request(
+          `http://localhost/projects/demo/renders/file/${encodeURIComponent(filename)}`,
+        ),
+        disposition: "inline",
+      },
+    ];
+
+    for (const { response, disposition } of responses) {
+      expect(response.status).toBe(200);
+      const header = response.headers.get("Content-Disposition");
+      expect(header).toBe(`${disposition}; ${expectedFilename}`);
+      expect(header).toMatch(/^[\x20-\x7e]+$/);
+    }
+  });
+
   it("serves a render file that lives inside rendersDir", async () => {
     const { app, rendersDir } = buildApp();
     writeFileSync(join(rendersDir, "demo.mp4"), "render-bytes");
@@ -723,6 +758,64 @@ describe("POST /projects/:id/render — variables forwarding", () => {
         expect(res.status).toBe(400);
       }
       expect(spy).not.toHaveBeenCalled();
+    } finally {
+      cleanup();
+    }
+  });
+});
+
+describe("audioLoweredDb — the limiter's attenuation reaches the host", () => {
+  async function completedJobProgress(audioLoweredDb: number | undefined): Promise<string> {
+    const spy = vi.fn();
+    const { adapter, rendersDir } = createAdapter(spy);
+    const baseStartRender = adapter.startRender.bind(adapter);
+    adapter.startRender = (opts) => {
+      const state = baseStartRender(opts);
+      state.status = "complete";
+      state.progress = 100;
+      if (audioLoweredDb !== undefined) state.audioLoweredDb = audioLoweredDb;
+      return state;
+    };
+    const app = new Hono();
+    registerRenderRoutes(app, adapter);
+    try {
+      const started = await app.request("http://localhost/projects/demo/render", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ fps: 30, quality: "standard", format: "mp4" }),
+      });
+      const { jobId } = (await started.json()) as { jobId: string };
+      return await (await app.request(`http://localhost/render/${jobId}/progress`)).text();
+    } finally {
+      rmSync(rendersDir, { recursive: true, force: true });
+    }
+  }
+
+  it("carries audioLoweredDb in the complete progress event", async () => {
+    const body = await completedJobProgress(1.44);
+    expect(body).toContain('"status":"complete"');
+    expect(body).toContain('"audioLoweredDb":1.44');
+  });
+
+  it("omits it when the limiter did not engage", async () => {
+    expect(await completedJobProgress(undefined)).not.toContain("audioLoweredDb");
+  });
+
+  it("lists it on the render record from the sidecar, and omits it otherwise", async () => {
+    const { app, rendersDir, cleanup } = buildApp(vi.fn());
+    try {
+      writeFileSync(join(rendersDir, "loud.mp4"), "x");
+      writeFileSync(
+        join(rendersDir, "loud.meta.json"),
+        JSON.stringify({ status: "complete", audioLoweredDb: 1.44 }),
+      );
+      writeFileSync(join(rendersDir, "quiet.mp4"), "x");
+      writeFileSync(join(rendersDir, "quiet.meta.json"), JSON.stringify({ status: "complete" }));
+      const { renders } = (await (
+        await app.request("http://localhost/projects/demo/renders")
+      ).json()) as { renders: Array<{ id: string; audioLoweredDb?: number }> };
+      expect(renders.find((r) => r.id === "loud")?.audioLoweredDb).toBe(1.44);
+      expect(renders.find((r) => r.id === "quiet")).not.toHaveProperty("audioLoweredDb");
     } finally {
       cleanup();
     }

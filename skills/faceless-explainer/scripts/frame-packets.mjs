@@ -7,7 +7,7 @@
 
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
-import * as core from "../../hyperframes/scripts/lib/frame-packets-core.mjs";
+import * as core from "./lib/frame-packets-core.mjs";
 
 const SKILL_DIR = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const CONFIG = {

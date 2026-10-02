@@ -23,7 +23,9 @@
  */
 import { join, sep } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { CHROME_VERSION } from "./manager.js";
+import { managedChromeVersion } from "./manager.js";
+
+const CHROME_VERSION = managedChromeVersion();
 
 // Use `path.join` so the fake paths line up with whatever separator Node's
 // real `path.join` produces in `manager.ts` on the host running the test
@@ -63,13 +65,22 @@ interface FsMockOptions {
   dirs?: Record<string, string[]>;
   touchError?: Error;
   initialMtimeMs?: number;
+  /** what node:os reports; defaults to a Linux host */
+  osHost?: { platform: string; release: string };
 }
 
-function installFsMocks({ existing, dirs, touchError, initialMtimeMs = 0 }: FsMockOptions) {
+function installFsMocks({
+  existing,
+  dirs,
+  touchError,
+  initialMtimeMs = 0,
+  osHost = { platform: "linux", release: "24.0.0" },
+}: FsMockOptions) {
   // Mutable, and returned, so tests can pre-seed a "lock already held" path or
   // assert the lock dir doesn't leak after ensureBrowser resolves.
   const paths = new Set(existing);
   const mtimes = new Map([...existing].map((p) => [p, initialMtimeMs]));
+  const contents = new Map<string, string>();
   vi.doMock("node:fs", () => ({
     existsSync: (p: string) => paths.has(p),
     readdirSync: (p: string) => {
@@ -94,6 +105,7 @@ function installFsMocks({ existing, dirs, touchError, initialMtimeMs = 0 }: FsMo
         if (existingPath === p || existingPath.startsWith(p + sep)) {
           paths.delete(existingPath);
           mtimes.delete(existingPath);
+          contents.delete(existingPath);
         }
       }
     },
@@ -114,10 +126,24 @@ function installFsMocks({ existing, dirs, touchError, initialMtimeMs = 0 }: FsMo
       }
       mtimes.set(p, mtime.getTime());
     },
+    writeFileSync: (p: string, value: string) => {
+      paths.add(p);
+      contents.set(p, value);
+    },
+    readFileSync: (p: string) => {
+      const value = contents.get(p);
+      if (value === undefined) {
+        const err = new Error(`ENOENT: no such file or directory, read '${p}'`);
+        (err as NodeJS.ErrnoException).code = "ENOENT";
+        throw err;
+      }
+      return value;
+    },
   }));
   vi.doMock("node:os", () => ({
     homedir: () => FAKE_HOME,
-    platform: () => "linux",
+    platform: () => osHost.platform,
+    release: () => osHost.release,
     arch: () => "x64",
   }));
   return paths;
@@ -135,7 +161,7 @@ function installPuppeteerBrowsersMock(
     browserPlatform?: string;
     installedInHfCacheError?: Error;
     installResult?: { executablePath: string };
-    installImpl?: () => Promise<{ executablePath: string }>;
+    installImpl?: (options: { buildId: string }) => Promise<{ executablePath: string }>;
   } = {},
 ) {
   vi.doMock("@puppeteer/browsers", () => ({
@@ -175,8 +201,14 @@ describe("findBrowser — cache resolution", () => {
     // Force Linux for the system-fallback warning assertions. The
     // `Object.defineProperty` dance is needed because `process.platform` is a
     // getter on Node — direct assignment is silently a no-op.
-    Object.defineProperty(process, "platform", { value: "linux", configurable: true });
-    Object.defineProperty(process, "arch", { value: "x64", configurable: true });
+    Object.defineProperty(process, "platform", {
+      value: "linux",
+      configurable: true,
+    });
+    Object.defineProperty(process, "arch", {
+      value: "x64",
+      configurable: true,
+    });
     delete process.env["HYPERFRAMES_BROWSER_PATH"];
     delete process.env["PRODUCER_HEADLESS_SHELL_PATH"];
     installChildProcessMocks();
@@ -184,8 +216,14 @@ describe("findBrowser — cache resolution", () => {
 
   afterEach(() => {
     vi.useRealTimers();
-    Object.defineProperty(process, "platform", { value: origPlatform, configurable: true });
-    Object.defineProperty(process, "arch", { value: origArch, configurable: true });
+    Object.defineProperty(process, "platform", {
+      value: origPlatform,
+      configurable: true,
+    });
+    Object.defineProperty(process, "arch", {
+      value: origArch,
+      configurable: true,
+    });
     vi.restoreAllMocks();
     vi.doUnmock("node:fs");
     vi.doUnmock("node:os");
@@ -200,7 +238,11 @@ describe("findBrowser — cache resolution", () => {
     installFsMocks({ existing: new Set([HF_CACHE, HF_BINARY]) });
     installPuppeteerBrowsersMock({
       installedInHfCache: [
-        { browser: "chrome-headless-shell", executablePath: HF_BINARY, buildId: CHROME_VERSION },
+        {
+          browser: "chrome-headless-shell",
+          executablePath: HF_BINARY,
+          buildId: CHROME_VERSION,
+        },
       ],
     });
 
@@ -211,7 +253,10 @@ describe("findBrowser — cache resolution", () => {
   });
 
   it("hides the Windows console used by the where lookup", async () => {
-    Object.defineProperty(process, "platform", { value: "win32", configurable: true });
+    Object.defineProperty(process, "platform", {
+      value: "win32",
+      configurable: true,
+    });
     installFsMocks({ existing: new Set() });
     installPuppeteerBrowsersMock();
     const execSync = vi.fn((command: string) =>
@@ -222,7 +267,10 @@ describe("findBrowser — cache resolution", () => {
     const { findBrowser } = await import("./manager.js");
     const result = await findBrowser();
 
-    expect(result).toEqual({ executablePath: "C:\\Chrome\\chrome.exe", source: "system" });
+    expect(result).toEqual({
+      executablePath: "C:\\Chrome\\chrome.exe",
+      source: "system",
+    });
     expect(execSync).toHaveBeenCalledWith(
       "where google-chrome",
       expect.objectContaining({ windowsHide: true }),
@@ -230,7 +278,10 @@ describe("findBrowser — cache resolution", () => {
   });
 
   it("finds Chrome in the standard Windows Program Files location", async () => {
-    Object.defineProperty(process, "platform", { value: "win32", configurable: true });
+    Object.defineProperty(process, "platform", {
+      value: "win32",
+      configurable: true,
+    });
     const windowsChrome = join(
       "C:\\Program Files",
       "Google",
@@ -243,7 +294,10 @@ describe("findBrowser — cache resolution", () => {
 
     const { findSystemBrowser } = await import("./manager.js");
 
-    expect(findSystemBrowser()).toEqual({ executablePath: windowsChrome, source: "system" });
+    expect(findSystemBrowser()).toEqual({
+      executablePath: windowsChrome,
+      source: "system",
+    });
   });
 
   it("does not resolve to a hyperframes-cache build from an older CHROME_VERSION pin", async () => {
@@ -254,7 +308,11 @@ describe("findBrowser — cache resolution", () => {
     installFsMocks({ existing: new Set([HF_CACHE, HF_BINARY, SYSTEM_CHROME]) });
     installPuppeteerBrowsersMock({
       installedInHfCache: [
-        { browser: "chrome-headless-shell", executablePath: HF_BINARY, buildId: "131.0.6778.85" },
+        {
+          browser: "chrome-headless-shell",
+          executablePath: HF_BINARY,
+          buildId: "131.0.6778.85",
+        },
       ],
     });
 
@@ -266,8 +324,14 @@ describe("findBrowser — cache resolution", () => {
   });
 
   it("ignores a current-version HyperFrames cache entry for another platform", async () => {
-    Object.defineProperty(process, "platform", { value: "darwin", configurable: true });
-    Object.defineProperty(process, "arch", { value: "arm64", configurable: true });
+    Object.defineProperty(process, "platform", {
+      value: "darwin",
+      configurable: true,
+    });
+    Object.defineProperty(process, "arch", {
+      value: "arm64",
+      configurable: true,
+    });
     const macArm64Binary = join(
       HF_CACHE,
       "chrome-headless-shell",
@@ -275,7 +339,9 @@ describe("findBrowser — cache resolution", () => {
       "chrome-headless-shell-mac-arm64",
       "chrome-headless-shell",
     );
-    installFsMocks({ existing: new Set([HF_CACHE, HF_BINARY, macArm64Binary]) });
+    installFsMocks({
+      existing: new Set([HF_CACHE, HF_BINARY, macArm64Binary]),
+    });
     installPuppeteerBrowsersMock({
       browserPlatform: "mac_arm",
       installedInHfCache: [
@@ -312,7 +378,9 @@ describe("findBrowser — cache resolution", () => {
     // The stale install DIR is present (extraction got partway through, e.g. an
     // ABOUT/LICENSE-only extract) even though the exe itself is missing —
     // exercises the purge-before-redownload fix, not just the redownload path.
-    const paths = installFsMocks({ existing: new Set([HF_CACHE, staleInstallDir]) });
+    const paths = installFsMocks({
+      existing: new Set([HF_CACHE, staleInstallDir]),
+    });
     installPuppeteerBrowsersMock({
       installedInHfCache: [
         {
@@ -329,7 +397,10 @@ describe("findBrowser — cache resolution", () => {
     const { findBrowser } = await import("./manager.js");
     const result = await findBrowser();
 
-    expect(result).toEqual({ executablePath: redownloadedBinary, source: "download" });
+    expect(result).toEqual({
+      executablePath: redownloadedBinary,
+      source: "download",
+    });
     expect(warnSpy).toHaveBeenCalledWith(expect.stringContaining("Cached binary missing"));
     // The stale directory must be gone before @puppeteer/browsers' install()
     // sees it — otherwise install() throws "folder exists but exe missing"
@@ -349,7 +420,11 @@ describe("findBrowser — cache resolution", () => {
     });
     installPuppeteerBrowsersMock({
       installedInHfCache: [
-        { browser: "chrome-headless-shell", executablePath: HF_BINARY, path: staleInstallDir },
+        {
+          browser: "chrome-headless-shell",
+          executablePath: HF_BINARY,
+          path: staleInstallDir,
+        },
       ],
       installResult: { executablePath: downloadedBinary },
     });
@@ -357,7 +432,10 @@ describe("findBrowser — cache resolution", () => {
     const { ensureBrowser } = await import("./manager.js");
     const result = await ensureBrowser({ force: true });
 
-    expect(result).toEqual({ executablePath: downloadedBinary, source: "download" });
+    expect(result).toEqual({
+      executablePath: downloadedBinary,
+      source: "download",
+    });
     // clearBrowser() wipes prior contents; withInstallLock uses a sibling lock
     // outside CACHE_DIR, so assert the purge on what was actually INSIDE it,
     // not the directory's own existence.
@@ -367,7 +445,9 @@ describe("findBrowser — cache resolution", () => {
 
   it("serializes concurrent force downloads so one purge cannot delete another installer's lock", async () => {
     const downloadedBinary = join(HF_CACHE, "chrome-headless-shell", "force-downloaded");
-    const paths = installFsMocks({ existing: new Set([CACHE_ROOT, HF_CACHE, HF_BINARY]) });
+    const paths = installFsMocks({
+      existing: new Set([CACHE_ROOT, HF_CACHE, HF_BINARY]),
+    });
     let activeInstalls = 0;
     let maxActiveInstalls = 0;
     installPuppeteerBrowsersMock({
@@ -414,7 +494,10 @@ describe("findBrowser — cache resolution", () => {
     const { ensureBrowser } = await import("./manager.js");
     const result = await ensureBrowser();
 
-    expect(result).toEqual({ executablePath: downloadedBinary, source: "download" });
+    expect(result).toEqual({
+      executablePath: downloadedBinary,
+      source: "download",
+    });
     expect(paths.has(HF_LOCK)).toBe(false);
   });
 
@@ -567,7 +650,10 @@ describe("findBrowser — cache resolution", () => {
     const { findBrowser } = await import("./manager.js");
     const result = await findBrowser();
 
-    expect(result).toEqual({ executablePath: PUPPETEER_BINARY, source: "cache" });
+    expect(result).toEqual({
+      executablePath: PUPPETEER_BINARY,
+      source: "cache",
+    });
   });
 
   it.each([
@@ -604,8 +690,14 @@ describe("findBrowser — cache resolution", () => {
   ])(
     "selects only the host-compatible cached shell on $hostPlatform/$hostArch when every platform is present",
     async ({ hostPlatform, hostArch, expectedDirectory, expectedExecutable }) => {
-      Object.defineProperty(process, "platform", { value: hostPlatform, configurable: true });
-      Object.defineProperty(process, "arch", { value: hostArch, configurable: true });
+      Object.defineProperty(process, "platform", {
+        value: hostPlatform,
+        configurable: true,
+      });
+      Object.defineProperty(process, "arch", {
+        value: hostArch,
+        configurable: true,
+      });
       const version = "host-148.0.7778.97";
       const candidates = [
         ["chrome-headless-shell-linux64", "chrome-headless-shell"],
@@ -627,7 +719,10 @@ describe("findBrowser — cache resolution", () => {
       const { findBrowser } = await import("./manager.js");
       const result = await findBrowser();
 
-      expect(result).toEqual({ executablePath: expectedBinary, source: "cache" });
+      expect(result).toEqual({
+        executablePath: expectedBinary,
+        source: "cache",
+      });
     },
   );
 
@@ -637,8 +732,14 @@ describe("findBrowser — cache resolution", () => {
   ])(
     "does not select a foreign cached shell on unsupported $hostPlatform/$hostArch",
     async ({ hostPlatform, hostArch }) => {
-      Object.defineProperty(process, "platform", { value: hostPlatform, configurable: true });
-      Object.defineProperty(process, "arch", { value: hostArch, configurable: true });
+      Object.defineProperty(process, "platform", {
+        value: hostPlatform,
+        configurable: true,
+      });
+      Object.defineProperty(process, "arch", {
+        value: hostArch,
+        configurable: true,
+      });
       const version = "host-148.0.7778.97";
       const binaries = [
         join(PUPPETEER_CACHE, version, "chrome-headless-shell-linux64", "chrome-headless-shell"),
@@ -686,7 +787,9 @@ describe("findBrowser — cache resolution", () => {
     );
     installFsMocks({
       existing: new Set([PUPPETEER_CACHE, PUPPETEER_BINARY, olderBinary]),
-      dirs: { [PUPPETEER_CACHE]: ["linux-131.0.6778.85", "linux-148.0.7778.97"] },
+      dirs: {
+        [PUPPETEER_CACHE]: ["linux-131.0.6778.85", "linux-148.0.7778.97"],
+      },
     });
     installPuppeteerBrowsersMock();
 
@@ -712,7 +815,9 @@ describe("findBrowser — cache resolution", () => {
       existing: new Set([PUPPETEER_CACHE, PUPPETEER_BINARY, linux99Binary]),
       // Intentionally list the entries in an order that would expose the bug
       // under naive `.sort().reverse()` (which puts `linux-99...` first).
-      dirs: { [PUPPETEER_CACHE]: ["linux-99.0.6533.123", "linux-148.0.7778.97"] },
+      dirs: {
+        [PUPPETEER_CACHE]: ["linux-99.0.6533.123", "linux-148.0.7778.97"],
+      },
     });
     installPuppeteerBrowsersMock();
 
@@ -809,7 +914,10 @@ describe("findBrowser — cache resolution", () => {
     // macOS Chrome still works fine for the screenshot path and the perf
     // claims around BeginFrame are Linux-only — keep the warning Linux-scoped
     // so darwin users don't get spammed about a "fix" that doesn't apply.
-    Object.defineProperty(process, "platform", { value: "darwin", configurable: true });
+    Object.defineProperty(process, "platform", {
+      value: "darwin",
+      configurable: true,
+    });
     const darwinChrome = "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome";
     installFsMocks({ existing: new Set([darwinChrome]) });
     vi.doMock("@puppeteer/browsers", () => ({
@@ -933,8 +1041,14 @@ describe("downloadBrowser — install failure surfaces HYPERFRAMES_BROWSER_PATH 
   });
 
   afterEach(() => {
-    Object.defineProperty(process, "platform", { value: origPlatform, configurable: true });
-    Object.defineProperty(process, "arch", { value: origArch, configurable: true });
+    Object.defineProperty(process, "platform", {
+      value: origPlatform,
+      configurable: true,
+    });
+    Object.defineProperty(process, "arch", {
+      value: origArch,
+      configurable: true,
+    });
     vi.restoreAllMocks();
     vi.doUnmock("node:fs");
     vi.doUnmock("node:os");
@@ -969,8 +1083,14 @@ describe("downloadBrowser — install failure surfaces HYPERFRAMES_BROWSER_PATH 
   ])(
     "rethrows a non-corrupt install failure with an HYPERFRAMES_BROWSER_PATH hint and preserves the original via cause ($label)",
     async ({ platform, arch, expectedPathHint }) => {
-      Object.defineProperty(process, "platform", { value: platform, configurable: true });
-      Object.defineProperty(process, "arch", { value: arch, configurable: true });
+      Object.defineProperty(process, "platform", {
+        value: platform,
+        configurable: true,
+      });
+      Object.defineProperty(process, "arch", {
+        value: arch,
+        configurable: true,
+      });
 
       // No cache, no system Chrome — forces the download-of-last-resort path
       // that ends in @puppeteer/browsers install().
@@ -1042,5 +1162,160 @@ describe("@puppeteer/browsers pin (HF#2103 extractor-hang regression guard)", ()
     const deps = pkg.dependencies ?? {};
     expect(deps["extract-zip"]).toBeUndefined();
     expect(deps["yauzl"]).toBeUndefined();
+  });
+});
+
+describe("browser resolution on macOS 12 (Darwin < 22)", () => {
+  const MAC_12 = { platform: "darwin", release: "21.6.0" };
+  const MAC_13 = { platform: "darwin", release: "22.1.0" };
+  const OLD_BUILD = "150.0.7871.124";
+  const MAC_HF_BINARY = join(HF_CACHE, "chrome-headless-shell", "mac-x", "chrome-headless-shell");
+  const macPuppeteerBinary = (dir: string) =>
+    join(PUPPETEER_CACHE, dir, "chrome-headless-shell-mac-x64", "chrome-headless-shell");
+
+  const origPlatform = process.platform;
+  const origArch = process.arch;
+
+  beforeEach(() => {
+    vi.resetModules();
+    delete process.env["HYPERFRAMES_BROWSER_PATH"];
+    delete process.env["PRODUCER_HEADLESS_SHELL_PATH"];
+    installChildProcessMocks();
+    Object.defineProperty(process, "platform", {
+      value: "darwin",
+      configurable: true,
+    });
+    Object.defineProperty(process, "arch", {
+      value: "x64",
+      configurable: true,
+    });
+  });
+
+  afterEach(() => {
+    Object.defineProperty(process, "platform", {
+      value: origPlatform,
+      configurable: true,
+    });
+    Object.defineProperty(process, "arch", {
+      value: origArch,
+      configurable: true,
+    });
+    vi.unstubAllEnvs();
+    vi.doUnmock("node:fs");
+    vi.doUnmock("node:os");
+    vi.doUnmock("node:child_process");
+    vi.doUnmock("@puppeteer/browsers");
+  });
+
+  it.each([
+    { host: MAC_12, expected: OLD_BUILD },
+    { host: MAC_13, expected: "152.0.7977.30" },
+  ])("downloads $expected on $host.release", async ({ host, expected }) => {
+    installFsMocks({ existing: new Set(), osHost: host });
+    const install = vi.fn(async () => ({ executablePath: MAC_HF_BINARY }));
+    installPuppeteerBrowsersMock({
+      installImpl: install,
+      browserPlatform: "mac",
+    });
+    const { ensureBrowser } = await import("./manager.js");
+
+    await ensureBrowser({ preferManagedChrome: true });
+
+    expect(install).toHaveBeenCalledWith(expect.objectContaining({ buildId: expected }));
+  });
+
+  it("ignores a cached newer managed build on macOS 12", async () => {
+    installFsMocks({
+      existing: new Set([HF_CACHE, MAC_HF_BINARY]),
+      osHost: MAC_12,
+    });
+    installPuppeteerBrowsersMock({
+      browserPlatform: "mac",
+      installedInHfCache: [
+        {
+          browser: "chrome-headless-shell",
+          executablePath: MAC_HF_BINARY,
+          buildId: "152.0.7977.30",
+        },
+      ],
+    });
+    const { findBrowser } = await import("./manager.js");
+
+    await expect(findBrowser()).resolves.toBeUndefined();
+  });
+
+  it("uses the cached macOS 12 build on macOS 12", async () => {
+    installFsMocks({
+      existing: new Set([HF_CACHE, MAC_HF_BINARY]),
+      osHost: MAC_12,
+    });
+    installPuppeteerBrowsersMock({
+      browserPlatform: "mac",
+      installedInHfCache: [
+        {
+          browser: "chrome-headless-shell",
+          executablePath: MAC_HF_BINARY,
+          buildId: OLD_BUILD,
+        },
+      ],
+    });
+    const { findBrowser } = await import("./manager.js");
+
+    await expect(findBrowser()).resolves.toEqual({
+      executablePath: MAC_HF_BINARY,
+      source: "cache",
+    });
+  });
+
+  it("skips a puppeteer-cache build newer than 150 on macOS 12 but keeps 150", async () => {
+    installFsMocks({
+      existing: new Set([
+        PUPPETEER_CACHE,
+        macPuppeteerBinary("mac-152.0.7977.30"),
+        macPuppeteerBinary("mac-150.0.7871.124"),
+      ]),
+      dirs: { [PUPPETEER_CACHE]: ["mac-152.0.7977.30", "mac-150.0.7871.124"] },
+      osHost: MAC_12,
+    });
+    installPuppeteerBrowsersMock({ browserPlatform: "mac" });
+    const { findBrowser } = await import("./manager.js");
+
+    await expect(findBrowser()).resolves.toEqual({
+      executablePath: macPuppeteerBinary("mac-150.0.7871.124"),
+      source: "cache",
+    });
+  });
+
+  it("keeps the newest puppeteer-cache build on macOS 13", async () => {
+    installFsMocks({
+      existing: new Set([
+        PUPPETEER_CACHE,
+        macPuppeteerBinary("mac-152.0.7977.30"),
+        macPuppeteerBinary("mac-150.0.7871.124"),
+      ]),
+      dirs: { [PUPPETEER_CACHE]: ["mac-152.0.7977.30", "mac-150.0.7871.124"] },
+      osHost: MAC_13,
+    });
+    installPuppeteerBrowsersMock({ browserPlatform: "mac" });
+    const { findBrowser } = await import("./manager.js");
+
+    await expect(findBrowser()).resolves.toEqual({
+      executablePath: macPuppeteerBinary("mac-152.0.7977.30"),
+      source: "cache",
+    });
+  });
+
+  it("lets HYPERFRAMES_BROWSER_PATH win on macOS 12", async () => {
+    const envBinary = join("/", "opt", "my-chrome");
+    vi.stubEnv("HYPERFRAMES_BROWSER_PATH", envBinary);
+    installFsMocks({ existing: new Set([envBinary]), osHost: MAC_12 });
+    installPuppeteerBrowsersMock({ browserPlatform: "mac" });
+    const { ensureBrowser } = await import("./manager.js");
+
+    await expect(ensureBrowser({ preferManagedChrome: true })).resolves.toEqual({
+      executablePath: envBinary,
+      source: "env",
+    });
+    vi.unstubAllEnvs();
   });
 });

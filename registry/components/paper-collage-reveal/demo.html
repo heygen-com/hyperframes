@@ -1,0 +1,197 @@
+<!doctype html>
+<!--
+  paper-collage-reveal demo. This standalone composition mounts the
+  primitive FULL-BLEED through data-composition-src, 7 scraps and scatter
+  spread to prove the non-default variable path, and slots a documentary
+  title card (type over a topographic contour drawing) so the reveal
+  uncovers real content rather than the bare token card the primitive falls
+  back to.
+-->
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=1920, height=1080" />
+    <title>Paper Collage Reveal Demo</title>
+    <style>
+      * {
+        margin: 0;
+        padding: 0;
+        box-sizing: border-box;
+      }
+      html,
+      body {
+        width: 1920px;
+        height: 1080px;
+        overflow: hidden;
+        background: #111318;
+      }
+      #root {
+        --bg: #111318;
+        --fg: #f2ede2;
+        --surface: #fffdf8;
+        --accent-2: #b98a4e;
+        position: relative;
+        width: 1920px;
+        height: 1080px;
+        overflow: hidden;
+        background: var(--bg);
+      }
+      .mount-bleed {
+        position: absolute;
+        inset: 0;
+        container-type: size;
+        overflow: hidden;
+      }
+      .demo-card {
+        position: absolute;
+        inset: 0;
+        overflow: hidden;
+        background: #16241d;
+        color: #efe7d6;
+      }
+      .demo-topo {
+        position: absolute;
+        inset: 0;
+      }
+      .demo-topo path {
+        fill: none;
+        stroke: #c8a86b;
+        stroke-opacity: 0.3;
+        stroke-width: 1.5;
+      }
+      .demo-topo .demo-topo-index {
+        stroke-opacity: 0.55;
+        stroke-width: 2.25;
+      }
+      .demo-peak {
+        position: absolute;
+        left: 1402px;
+        top: 412px;
+        display: flex;
+        align-items: center;
+        gap: 14px;
+        font-family: Inter, sans-serif;
+        font-size: 20px;
+        font-weight: 500;
+        letter-spacing: 0.04em;
+        color: #c8a86b;
+      }
+      .demo-peak::before {
+        content: "";
+        width: 12px;
+        height: 12px;
+        border: 2px solid currentColor;
+        transform: rotate(45deg);
+      }
+      .demo-copy {
+        position: absolute;
+        left: 160px;
+        bottom: 150px;
+      }
+      .demo-eyebrow {
+        font-family: Inter, sans-serif;
+        font-size: 24px;
+        font-weight: 600;
+        letter-spacing: 0.16em;
+        text-transform: uppercase;
+        color: #c8a86b;
+      }
+      .demo-title {
+        margin-top: 36px;
+        font-family: "EB Garamond", serif;
+        font-size: 160px;
+        font-weight: 500;
+        line-height: 0.95;
+        letter-spacing: -0.015em;
+      }
+      .demo-meta {
+        display: flex;
+        gap: 56px;
+        width: 760px;
+        margin-top: 52px;
+        padding-top: 28px;
+        border-top: 1px solid rgba(239, 231, 214, 0.28);
+        font-family: Inter, sans-serif;
+        font-size: 26px;
+        font-weight: 500;
+        color: rgba(239, 231, 214, 0.72);
+      }
+    </style>
+  </head>
+  <body>
+    <template data-slot="paper-collage-reveal-content">
+      <div class="demo-card">
+        <div class="demo-topo" id="demo-topo"></div>
+        <div class="demo-peak">Slættaratindur 880 m</div>
+        <div class="demo-copy">
+          <p class="demo-eyebrow">Field Notes · Episode 03</p>
+          <h1 class="demo-title">Forty days<br />on the Faroes</h1>
+          <p class="demo-meta"><span>A film by Maren Holm</span><span>18 min</span></p>
+        </div>
+      </div>
+    </template>
+
+    <div
+      id="root"
+      data-composition-id="paper-collage-reveal-demo"
+      data-start="0"
+      data-width="1920"
+      data-height="1080"
+      data-duration="2.6"
+      data-fps="30"
+    >
+      <div
+        id="paper-collage-reveal-mount"
+        class="mount-bleed clip"
+        data-composition-id="paper-collage-reveal"
+        data-composition-src="./paper-collage-reveal.html"
+        data-variable-values='{"panels":7,"tone":"mixed","spread":"scatter"}'
+        data-start="0"
+        data-duration="2.6"
+        data-track-index="0"
+        data-width="1920"
+        data-height="1080"
+      ></div>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/gsap@3.14.2/dist/gsap.min.js"></script>
+    <script>
+      (function () {
+        // Contour lines of one summit: nested closed rings whose radius
+        // wanders with a few fixed sines, so the drawing is deterministic.
+        function contours() {
+          var paths = "";
+          for (var k = 0; k < 16; k += 1) {
+            var d = "";
+            for (var a = 0; a <= 120; a += 1) {
+              var th = (a / 120) * Math.PI * 2;
+              var r =
+                (34 + k * 46) *
+                (1 +
+                  0.2 * Math.sin(2 * th + 0.6 + k * 0.09) +
+                  0.1 * Math.sin(3 * th + 1.9 - k * 0.07) +
+                  0.05 * Math.sin(5 * th + k * 0.35));
+              d +=
+                (a ? "L" : "M") +
+                (1390 + r * Math.cos(th)).toFixed(1) +
+                " " +
+                (420 + r * 0.82 * Math.sin(th)).toFixed(1);
+            }
+            paths +=
+              '<path d="' + d + 'Z"' + (k % 5 === 4 ? ' class="demo-topo-index"' : "") + "/>";
+          }
+          return '<svg width="1920" height="1080" viewBox="0 0 1920 1080">' + paths + "</svg>";
+        }
+        // Elements inside an inert <template> are not in the live document,
+        // so they must be reached through the template's own content
+        // fragment, never document.getElementById.
+        document
+          .querySelector('template[data-slot="paper-collage-reveal-content"]')
+          .content.getElementById("demo-topo").innerHTML = contours();
+
+        window.__timelines = window.__timelines || {};
+        window.__timelines["paper-collage-reveal-demo"] = gsap.timeline({ paused: true });
+      })();
+    </script>
+  </body>
+</html>

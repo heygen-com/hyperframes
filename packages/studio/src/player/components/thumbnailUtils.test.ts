@@ -3,43 +3,44 @@ import {
   computeThumbnailStrip,
   encodePreviewPath,
   resolveMediaPreviewUrl,
-  THUMBNAIL_CLIP_HEIGHT,
+  quantizeThumbnailFrameCount,
 } from "./thumbnailUtils";
 
 describe("computeThumbnailStrip", () => {
   it("sizes tiles by aspect ratio at the clip height", () => {
-    const { frameW } = computeThumbnailStrip(500, 16 / 9);
-    expect(frameW).toBe(Math.round(THUMBNAIL_CLIP_HEIGHT * (16 / 9)));
+    expect(computeThumbnailStrip(500, 16 / 9, 40).frameW).toBe(71);
+    expect(computeThumbnailStrip(500, 2.7, 40).frameW).toBe(108);
   });
 
   it("repeats tiles to cover the container width", () => {
-    const { frameW, frameCount } = computeThumbnailStrip(500, 1);
-    expect(frameW).toBe(THUMBNAIL_CLIP_HEIGHT);
-    expect(frameCount).toBe(Math.ceil(500 / THUMBNAIL_CLIP_HEIGHT));
+    const { frameW, frameCount } = computeThumbnailStrip(500, 1, 40);
+    expect(frameW).toBe(40);
+    expect(frameCount).toBe(13);
     expect(frameCount * frameW).toBeGreaterThanOrEqual(500);
   });
 
-  it("returns one tile when the container width is unknown", () => {
-    expect(computeThumbnailStrip(0, 16 / 9).frameCount).toBe(1);
-    expect(computeThumbnailStrip(-10, 16 / 9).frameCount).toBe(1);
+  it("paints tiles across the full clip past the shared visible-frame budget", () => {
+    expect(computeThumbnailStrip(14_400, 16 / 9, 40).frameCount).toBeGreaterThan(33);
+  });
+
+  it("returns one tile until the container is measured", () => {
+    expect(computeThumbnailStrip(0, 16 / 9, 40).frameCount).toBe(1);
+    expect(computeThumbnailStrip(-10, 16 / 9, 40).frameCount).toBe(1);
+    expect(computeThumbnailStrip(500, 16 / 9, 0).frameCount).toBe(1);
   });
 
   it("falls back to 16:9 for degenerate aspects", () => {
-    const expected = Math.round(THUMBNAIL_CLIP_HEIGHT * (16 / 9));
-    expect(computeThumbnailStrip(300, 0).frameW).toBe(expected);
-    expect(computeThumbnailStrip(300, -2).frameW).toBe(expected);
-    expect(computeThumbnailStrip(300, Number.NaN).frameW).toBe(expected);
-    expect(computeThumbnailStrip(300, Number.POSITIVE_INFINITY).frameW).toBe(expected);
+    const expected = Math.round(40 * (16 / 9));
+    expect(computeThumbnailStrip(300, 0, 40).frameW).toBe(expected);
+    expect(computeThumbnailStrip(300, -2, 40).frameW).toBe(expected);
+    expect(computeThumbnailStrip(300, Number.NaN, 40).frameW).toBe(expected);
+    expect(computeThumbnailStrip(300, Number.POSITIVE_INFINITY, 40).frameW).toBe(expected);
   });
 
   it("never returns a zero-width tile (avoids divide-by-zero repeat counts)", () => {
-    const { frameW, frameCount } = computeThumbnailStrip(300, 0.001);
+    const { frameW, frameCount } = computeThumbnailStrip(300, 0.001, 40);
     expect(frameW).toBeGreaterThanOrEqual(1);
     expect(Number.isFinite(frameCount)).toBe(true);
-  });
-
-  it("honors a custom clip height", () => {
-    expect(computeThumbnailStrip(300, 2, 40).frameW).toBe(80);
   });
 
   it("keeps narrow tiles above a caller-owned minimum", () => {
@@ -47,6 +48,18 @@ describe("computeThumbnailStrip", () => {
       frameW: 48,
       frameCount: 7,
     });
+  });
+});
+
+describe("quantizeThumbnailFrameCount", () => {
+  it("uses doubling buckets and never exceeds the 4K geometry ceiling", () => {
+    expect(quantizeThumbnailFrameCount(5)).toBe(8);
+    expect(quantizeThumbnailFrameCount(32)).toBe(32);
+    expect(quantizeThumbnailFrameCount(34)).toBe(33);
+  });
+
+  it("caps decode requests at the shared visible-frame budget", () => {
+    expect(quantizeThumbnailFrameCount(124)).toBe(33);
   });
 });
 

@@ -1,0 +1,8 @@
+{
+  "name": "Transparency Regression — Composition Root Background",
+  "description": "Asserts that an author-painted background on the composition root itself (not html/body) survives into alpha-carrying output instead of being force-cleared. Exercised by `tsx src/transparency-test.ts`, NOT by the standard regression harness (which compares against a golden MP4).",
+  "tags": ["transparency", "alpha", "smoke"],
+  "renderConfig": {
+    "fps": 30
+  }
+}

@@ -1,6 +1,7 @@
 import {
   chmodSync,
   lstatSync,
+  mkdirSync,
   mkdtempSync,
   readFileSync,
   readdirSync,
@@ -201,6 +202,23 @@ describe("cloud/download", () => {
         expect(readFileSync(target)).toEqual(Buffer.from([value]));
       }
       expect(readdirSync(dir).sort()).toEqual(["alias.mp4", "target.mp4"]);
+    },
+  );
+
+  it.skipIf(process.platform === "win32")(
+    "follows a relative output link inside a linked folder to the real target",
+    async () => {
+      mkdirSync(join(dir, "real/deep/sub"), { recursive: true });
+      mkdirSync(join(dir, "root"));
+      symlinkSync(join(dir, "real/deep/sub"), join(dir, "root/sub"));
+      symlinkSync("../target.mp4", join(dir, "real/deep/sub/alias.mp4"));
+
+      await downloadToFile("https://example/x", join(dir, "root/sub/alias.mp4"), {
+        fetchImpl: makeBytesFetch(new Uint8Array([7])),
+      });
+
+      expect(readFileSync(join(dir, "real/deep/target.mp4"))).toEqual(Buffer.from([7]));
+      expect(readdirSync(join(dir, "root")).sort()).toEqual(["sub"]);
     },
   );
 });

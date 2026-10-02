@@ -51,7 +51,7 @@ function CompositionSection({
               <span className="truncate text-[10px] font-medium text-neutral-300">
                 {decl.label}
               </span>
-              <span className="rounded bg-neutral-800 px-1 py-px font-mono text-[8px] text-neutral-500">
+              <span className="rounded-sm bg-neutral-800 px-1 py-px font-mono text-[8px] text-neutral-500">
                 {decl.type}
               </span>
               <span className="ml-auto flex items-center gap-1">
@@ -85,7 +85,7 @@ function CompositionSection({
 }
 
 export function VariablesOtherCompositions({
-  fileTree,
+  compositionPaths,
   excludePath,
   refreshKey,
   readProjectFile,
@@ -93,8 +93,8 @@ export function VariablesOtherCompositions({
   recordEdit,
   reloadPreview,
 }: {
-  fileTree: string[];
-  excludePath: string;
+  compositionPaths: string[];
+  excludePath: string | null;
   refreshKey: unknown;
   readProjectFile: (path: string) => Promise<string>;
   writeProjectFile: (path: string, content: string) => Promise<void>;
@@ -103,7 +103,7 @@ export function VariablesOtherCompositions({
 }) {
   const [selfRefresh, setSelfRefresh] = useState(0);
   const groups = useProjectCompositionVariables(
-    fileTree,
+    compositionPaths,
     excludePath,
     readProjectFile,
     `${refreshKey}:${selfRefresh}`,

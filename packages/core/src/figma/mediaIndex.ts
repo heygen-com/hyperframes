@@ -1,7 +1,7 @@
 /**
  * Regenerate .media/index.md — the agent-readable inventory table — after a
  * figma import, exactly the way media-use does after a resolve. Both writers
- * regenerate the SAME file from the full manifest (all writers' rows), so the
+ * regenerate the SAME file from the manifest's current rows (all writers'), so the
  * output format AND row selection here must stay byte-identical with
  * skills/media-use/scripts/lib/index-gen.mjs — including rendering every
  * JSON-parseable row (no shape filtering), or the file would flip-flop
@@ -78,9 +78,11 @@ export function generateIndexContent(records: IndexRow[]): string {
   return lines.join("\n") + "\n";
 }
 
-/** Rebuild index.md from EVERY writer's manifest rows (media-use + figma). */
+/** Rebuild index.md from every writer's rows (media-use + figma), newest record per path. */
 export function regenerateIndex(projectDir: string): string {
-  const records = readJsonlValues(manifestPath(projectDir)).filter(isRow);
+  const rows = readJsonlValues(manifestPath(projectDir)).filter(isRow);
+  const last = new Map(rows.map((row, index) => [row.path, index]));
+  const records = rows.filter((row, index) => !row.path || last.get(row.path) === index);
   const content = generateIndexContent(records);
   const p = indexPath(projectDir);
   mkdirSync(dirname(p), { recursive: true });

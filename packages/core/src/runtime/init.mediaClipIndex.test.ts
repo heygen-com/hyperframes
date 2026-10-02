@@ -204,6 +204,26 @@ describe("per-seek media clip index", () => {
     expect(mediaSpy.visits[0]!).toBe(16);
   });
 
+  it("visits a clip whose float-sum start is the same instant as the seek, as the full pass does", () => {
+    const seekOntoFloatSumStart = (disableNarrowing: boolean) => {
+      mediaSpy.disableNarrowing = disableNarrowing;
+      document.body.innerHTML = `<div data-composition-id="main" data-root="true" data-start="0">
+        <video id="late" data-start="${19.8 + 0.1}" data-duration="5" data-playback-start="3"></video></div>`;
+      Object.defineProperty(document.querySelector("video"), "duration", { value: 10 });
+      window.__timelines = { main: createMockTimeline(30) };
+      initSandboxRuntimeModular();
+      window.__player!.seek(19.8);
+      window.__player!.seek(19.9);
+      const state = mediaState();
+      window.__hfRuntimeTeardown?.();
+      return state;
+    };
+
+    const indexed = seekOntoFloatSumStart(false);
+    expect(indexed).toEqual(seekOntoFloatSumStart(true));
+    expect(indexed[0]).toMatchObject({ currentTime: 3 });
+  });
+
   it("re-derives the index when a clip is moved on the timeline", () => {
     mountClips(16);
     initSandboxRuntimeModular();

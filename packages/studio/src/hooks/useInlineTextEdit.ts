@@ -1,5 +1,12 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { sanitizeRichTextChildren } from "@hyperframes/core/rich-text-sanitize";
+import { usePreviewReadOnly } from "../components/editor/previewReadOnlyContext";
+import { trackStudioPendingEdit } from "../utils/studioPendingEdits";
+import {
+  beginStudioManualEditGesture,
+  endStudioManualEditGesture,
+  countStudioManualEditSave,
+} from "../components/editor/manualEditsDom";
 
 /**
  * Editing an element's text where it sits, in the composition itself.
@@ -42,6 +49,8 @@ export interface InlineTextEditSession {
   outline: string;
   /** The element's own outline offset, restored with the outline. */
   outlineOffset: string;
+  /** Holds the preview on screen while the edit is open. */
+  gesture?: string;
 }
 
 /** The live markup to persist and the session snapshot to restore on failure. */
@@ -85,10 +94,11 @@ export function useInlineTextEdit({
   onPause,
 }: {
   /** Where the edited text goes. The caller owns persistence. */
-  onCommit: (commit: InlineTextEditCommit) => void;
+  onCommit: (commit: InlineTextEditCommit) => unknown;
   /** Stop playback, so the element is not animating under the caret. */
   onPause?: () => void;
 }): InlineTextEditControls {
+  const readOnly = usePreviewReadOnly();
   const [session, setSession] = useState<InlineTextEditSession | null>(null);
   // The teardown reads this rather than the state, so an exit path that runs
   // before React re-renders still sees the element it has to clean up.
@@ -104,6 +114,7 @@ export function useInlineTextEdit({
       framesRef.current = null;
     }
     openRef.current = null;
+    endStudioManualEditGesture(open.element, open.gesture);
     setSession(null);
     // An element removed from the document mid-session is not an error, it is
     // just nothing left to clean up.
@@ -123,13 +134,14 @@ export function useInlineTextEdit({
 
   const start = useCallback(
     (element: HTMLElement, caretAt?: { x: number; y: number }): boolean => {
-      if (openRef.current) return false;
+      if (openRef.current || readOnly) return false;
 
       const open = {
         element,
         original: element.innerHTML,
         outline: element.style.outline,
         outlineOffset: element.style.outlineOffset,
+        gesture: beginStudioManualEditGesture(element, "edit"),
       };
       // Drawn on the element itself, not in Studio's overlay above it. This is
       // the only mark that says the caret is in the TEXT rather than the
@@ -156,7 +168,7 @@ export function useInlineTextEdit({
       framesRef.current = raf ?? null;
       return true;
     },
-    [onPause],
+    [onPause, readOnly],
   );
 
   const commit = useCallback(() => {
@@ -166,10 +178,16 @@ export function useInlineTextEdit({
     // saved rather than something the server will quietly cut down.
     sanitizeRichTextChildren(open.element);
     const html = open.element.innerHTML;
-    teardown();
-    // After teardown, so the commit path's own resync does not fight an
-    // element that is still editable.
-    onCommit({ element: open.element, html, previousHtml: open.original });
+    // Counted and pending before the edit closes, so a reload waits for the save, not the mark.
+    let save: (saving: unknown) => void = () => {};
+    trackStudioPendingEdit(new Promise((resolve) => (save = resolve)));
+    const commitText = () => {
+      teardown();
+      // After teardown, so the commit path's own resync does not fight an
+      // element that is still editable.
+      return onCommit({ element: open.element, html, previousHtml: open.original });
+    };
+    save(countStudioManualEditSave(open.element, commitText));
   }, [onCommit, teardown]);
 
   const cancel = useCallback(() => {
@@ -178,6 +196,13 @@ export function useInlineTextEdit({
     if (open.element.isConnected) open.element.innerHTML = open.original;
     teardown();
   }, [teardown]);
+
+  // Read-only can be enabled while an edit is already open. Close that
+  // session as a cancellation so the preview cannot keep committing through
+  // the now-disabled editing surface.
+  useEffect(() => {
+    if (readOnly && openRef.current) cancel();
+  }, [cancel, readOnly]);
 
   // The keys belong to the element, not to the document: the element lives in
   // the preview's own document, so a listener on Studio's would never see them.
@@ -194,7 +219,7 @@ export function useInlineTextEdit({
       }
       if (event.key === "Escape") {
         event.preventDefault();
-        cancel();
+        commit();
       }
     };
     // Clicking away keeps the work, which is what every other field in Studio
@@ -234,17 +259,13 @@ export function useInlineTextEdit({
       element.removeEventListener("dragover", onDragOver);
       element.removeEventListener("drop", onDrop);
     };
-  }, [session, commit, cancel]);
+  }, [session, commit]);
 
-  // Navigation can remove the overlay while the opening frame is pending.
-  // Teardown is the single owner of cancelling that frame and restoring the
-  // composition node, so unmount closes through the same path as every exit.
-  useEffect(
-    () => () => {
-      teardown();
-    },
-    [teardown],
-  );
+  // Unmount keeps the typed words, as blur does. Read through a ref so a new
+  // onCommit never closes the session mid-edit.
+  const commitRef = useRef(commit);
+  commitRef.current = commit;
+  useEffect(() => () => commitRef.current(), []);
 
   return { session, start, commit, cancel };
 }

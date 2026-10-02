@@ -196,7 +196,6 @@
           width: 50px;
           height: 50px;
           border-radius: 50%;
-          transform: translate(-50%, -50%) scale(0);
           z-index: 50;
           opacity: 0;
           pointer-events: none;
@@ -249,6 +248,10 @@
       (function () {
         var tl = gsap.timeline({ paused: true });
         var t = 0;
+
+        // Own the full transform via GSAP from the start (not CSS), so the
+        // later scale tween below doesn't clobber the centering it never tracked.
+        gsap.set("#morph-circle", { xPercent: -50, yPercent: -50, scale: 0 });
 
         // === TITLE CARD (3s) ===
         tl.to("#title-label", { opacity: 1, y: 0, duration: 0.4, ease: "power2.out" }, t + 0.3);

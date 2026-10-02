@@ -1,5 +1,6 @@
 import { useCallback, useRef, useState, type RefObject } from "react";
 import { TIMELINE_BLOCK_MIME } from "../../utils/timelineAssetDrop";
+import { usePreviewReadOnly } from "../editor/previewReadOnlyContext";
 
 interface UsePreviewBlockDropOptions {
   portrait?: boolean;
@@ -67,8 +68,9 @@ export function usePreviewBlockDrop({
   portrait,
   compositionSize,
   stageRef,
-  onBlockDrop,
+  onBlockDrop: onBlockDropProp,
 }: UsePreviewBlockDropOptions) {
+  const onBlockDrop = usePreviewReadOnly() ? undefined : onBlockDropProp;
   const [isDragOver, setIsDragOver] = useState(false);
   // dragenter/dragleave fire for every internal element boundary; a depth
   // counter keeps the drop indicator steady instead of flickering.

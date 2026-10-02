@@ -103,15 +103,13 @@ Showcase compositions grouping multiple CSS / GSAP transition styles by family. 
 
 WebGPU + html-in-canvas frosted-glass surfaces. **Require Brave / Chrome canary** with WebGPU enabled — set `PRODUCER_HEADLESS_SHELL_PATH` to point at the browser; engine auto-passes `--enable-unsafe-webgpu`. See `/hyperframes-animation` → `adapters/typegpu.md`.
 
-| Name                          | Description                                                                             |
-| ----------------------------- | --------------------------------------------------------------------------------------- |
-| `ios26-liquid-glass`          | 3D iPhone (GLTF) + iOS 26 home screen, glass app icons, shader wallpaper, notifications |
-| `macos-tahoe-liquid-glass`    | 3D MacBook (GLTF) + macOS Tahoe-style desktop, glass menu bar, Finder, dock             |
-| `liquid-glass-widgets`        | Frosted stat cards, showcase panel, pill chips over aurora shader                       |
-| `liquid-glass-notification`   | Frosted notification cards floating over aurora shader                                  |
-| `liquid-glass-context-menu`   | Frosted context-menu panel drifting over aurora shader                                  |
-| `liquid-glass-media-controls` | Frosted media-control panels spreading over aurora shader                               |
-| `vfx-liquid-glass`            | Bare VFX composition shell for liquid-glass effects                                     |
+| Name                        | Description                                                                             |
+| --------------------------- | --------------------------------------------------------------------------------------- |
+| `ios26-liquid-glass`        | 3D iPhone (GLTF) + iOS 26 home screen, glass app icons, shader wallpaper, notifications |
+| `macos-tahoe-liquid-glass`  | 3D MacBook (GLTF) + macOS Tahoe-style desktop, glass menu bar, Finder, dock             |
+| `liquid-glass-widgets`      | Frosted stat cards, showcase panel, pill chips over aurora shader                       |
+| `liquid-glass-notification` | Frosted notification cards floating over aurora shader                                  |
+| `vfx-liquid-glass`          | Bare VFX composition shell for liquid-glass effects                                     |
 
 #### VFX (6)
 
@@ -179,24 +177,11 @@ Platform-recognizable UI overlays. Stamp on top of a beat or use as a beat close
 
 A code/terminal window that **types a code or shell session per-character**. Theme = visual chrome only; structure, wiring, and install are identical across all 24 — pick one by name, wire it like any block (`data-composition-id` + `data-start` + `data-track-index`, see `wiring-blocks.md`). Two chrome families:
 
-**VS Code workbench (12)** — full editor chrome (activity bar, sidebar, tabs, integrated terminal, status bar). Theme variants: `code-snippet-dark-2026`, `code-snippet-dark-modern`, `code-snippet-dark-plus`, `code-snippet-light-2026`, `code-snippet-light-modern`, `code-snippet-light-plus`, `code-snippet-high-contrast`, `code-snippet-high-contrast-light`, `code-snippet-monokai`, `code-snippet-solarized-light`, `code-snippet-visual-studio-dark`, `code-snippet-visual-studio-light`.
-
 **Apple Terminal (12)** — macOS Terminal.app window typing a shell session. Profile = window colors:
 
-| Name                                         | Look                                     |
-| -------------------------------------------- | ---------------------------------------- |
-| `code-snippet-apple-terminal-basic`          | White bg, black text                     |
-| `code-snippet-apple-terminal-clear-dark`     | Semi-transparent dark bg                 |
-| `code-snippet-apple-terminal-clear-light`    | Semi-transparent light bg                |
-| `code-snippet-apple-terminal-grass`          | Black bg, green text                     |
-| `code-snippet-apple-terminal-homebrew`       | Black bg, bright green text, lime cursor |
-| `code-snippet-apple-terminal-man-page`       | Pale yellow bg, black text               |
-| `code-snippet-apple-terminal-novel`          | Warm parchment bg, dark brown text       |
-| `code-snippet-apple-terminal-ocean`          | Deep blue bg, white text                 |
-| `code-snippet-apple-terminal-pro`            | Black bg, grey text, lime cursor         |
-| `code-snippet-apple-terminal-red-sands`      | Deep red bg, sandy text                  |
-| `code-snippet-apple-terminal-silver-aerogel` | Dark grey bg, white text                 |
-| `code-snippet-apple-terminal-solid-colors`   | Deep purple bg, white text               |
+| Name                              | Look                             |
+| --------------------------------- | -------------------------------- |
+| `code-snippet-apple-terminal-pro` | Black bg, grey text, lime cursor |
 
 #### Code Animations (9)
 
@@ -204,14 +189,13 @@ The richer, motion-first counterpart to the static `code-snippet-*` window theme
 
 **DOM / text reveal (6):**
 
-| Name                  | Description                                                                                                                |
-| --------------------- | -------------------------------------------------------------------------------------------------------------------------- |
-| `code-typing`         | Token-streamed typing reveal, caret tracks the frontier (no CSS animation) — live-coding on screen                         |
-| `code-diff`           | An edit shown as a colored diff: removed lines collapse red, added expand green — before/after at line level               |
-| `code-morph`          | One snippet transforms into another, tokens glide between positions (Shiki Magic Move) — a refactor / one state to another |
-| `code-highlight`      | A highlight band sweeps a target line while surrounding context dims — spotlight one line                                  |
-| `code-scroll`         | Camera scrolls a long file to center + spotlight a target line — walk through a real module                                |
-| `code-snippet-flight` | Discrete snippets fly in from the side and assemble into a stacked program (block-level FLIP)                              |
+| Name             | Description                                                                                                                |
+| ---------------- | -------------------------------------------------------------------------------------------------------------------------- |
+| `code-typing`    | Token-streamed typing reveal, caret tracks the frontier (no CSS animation) — live-coding on screen                         |
+| `code-diff`      | An edit shown as a colored diff: removed lines collapse red, added expand green — before/after at line level               |
+| `code-morph`     | One snippet transforms into another, tokens glide between positions (Shiki Magic Move) — a refactor / one state to another |
+| `code-highlight` | A highlight band sweeps a target line while surrounding context dims — spotlight one line                                  |
+| `code-scroll`    | Camera scrolls a long file to center + spotlight a target line — walk through a real module                                |
 
 **GPU / WebGL hero reveals (3):** heavier, for a title-card / hero code moment.
 

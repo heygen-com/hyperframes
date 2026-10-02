@@ -16,15 +16,14 @@
 import {
   chmodSync,
   createWriteStream,
-  lstatSync,
   mkdirSync,
   mkdtempSync,
-  readlinkSync,
   renameSync,
   rmSync,
   statSync,
 } from "node:fs";
-import { dirname, join, resolve } from "node:path";
+import { dirname, join } from "node:path";
+import { resolveWritePath } from "@hyperframes/core/atomic-file";
 import { pipeline } from "node:stream/promises";
 
 export interface DownloadOptions {
@@ -69,7 +68,8 @@ export async function downloadToFile(
   const total = totalHeader ? Number.parseInt(totalHeader, 10) : undefined;
   const totalOpt = total !== undefined && Number.isFinite(total) ? total : undefined;
 
-  const destination = resolveDownloadDestination(destPath);
+  // Writes through a caller-selected symlink, as before.
+  const destination = resolveWritePath(destPath);
   const previous = statSync(destination, { throwIfNoEntry: false });
   const stage = mkdtempSync(join(dirname(destination), ".hf-download-"));
   const stagedFile = join(stage, "download");
@@ -103,14 +103,4 @@ export async function downloadToFile(
     rmSync(stage, { recursive: true, force: true });
   }
   return { path: destPath, bytes };
-}
-
-/** Preserve the existing behavior of writing through a caller-selected symlink. */
-function resolveDownloadDestination(destPath: string): string {
-  let destination = resolve(destPath);
-  for (let hops = 0; hops < 40; hops++) {
-    if (!lstatSync(destination, { throwIfNoEntry: false })?.isSymbolicLink()) return destination;
-    destination = resolve(dirname(destination), readlinkSync(destination));
-  }
-  throw new Error(`Too many symbolic links in download destination: ${destPath}`);
 }

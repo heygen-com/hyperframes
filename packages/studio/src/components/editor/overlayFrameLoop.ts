@@ -25,6 +25,8 @@
  * the next couple of hundred milliseconds, and no further event is dispatched
  * while it does.
  */
+import { usePlayerStore } from "../../player/store/playerStore";
+
 const AWAKE_MS = 400;
 /** How often a parked loop runs one frame anyway, in case a wake was missed. */
 export const IDLE_POLL_MS = 250;
@@ -35,6 +37,7 @@ let frameId: number | null = null;
 let idleTimerId: ReturnType<typeof setTimeout> | null = null;
 let awakeUntil = 0;
 let listenersAttached = false;
+let stopBootWake: (() => void) | null = null;
 
 /** Wake sources. All passive reads; none of them can be cancelled by us. */
 const WINDOW_EVENTS = [
@@ -111,6 +114,9 @@ function runFrame(): void {
   // it — and a shared loop makes that failure four overlays wide plus the
   // idle-poll safety net, permanently, rather than one overlay's own problem.
   schedule();
+  // Nothing to track until the live preview boots, and a poll before then forces layout
+  // on a document that is still loading, on the thread the boot runs on.
+  if (!usePlayerStore.getState().previewBooted) return;
   for (const subscriber of subscribers) {
     try {
       subscriber();
@@ -137,6 +143,27 @@ function schedule(): void {
   }, IDLE_POLL_MS);
 }
 
+/** Longest idle slice, so input that arrives during one waits at most this long for its frame. */
+export const IDLE_SLICE_MS = 3;
+
+/**
+ * Runs `step` in idle slices once no input has woken the loop for AWAKE_MS, so it never shares a gesture's
+ * frames. `step` works while `timeLeft()` is positive and returns true when it has finished.
+ */
+export function runWhenInputIdle(step: (timeLeft: () => number) => boolean): void {
+  const wait = awakeUntil - performance.now();
+  if (wait > 0) {
+    setTimeout(() => runWhenInputIdle(step), wait);
+    return;
+  }
+  const idle = window.requestIdleCallback ?? ((callback: () => void) => setTimeout(callback, 0));
+  idle(() => {
+    const end = performance.now() + IDLE_SLICE_MS;
+    if (performance.now() < awakeUntil || !step(() => end - performance.now()))
+      runWhenInputIdle(step);
+  });
+}
+
 /** Something moved, or might have. Run frames at full rate for a moment. */
 export function requestOverlayFrames(): void {
   awakeUntil = performance.now() + AWAKE_MS;
@@ -154,6 +181,9 @@ function attachListeners(): void {
     window.addEventListener(type, requestOverlayFrames, { capture: true, passive: true });
   }
   window.addEventListener("message", onPreviewMessage, { capture: true, passive: true });
+  stopBootWake = usePlayerStore.subscribe((state, prev) => {
+    if (state.previewBooted && !prev.previewBooted) requestOverlayFrames();
+  });
 }
 
 function detachListeners(): void {
@@ -163,6 +193,8 @@ function detachListeners(): void {
     window.removeEventListener(type, requestOverlayFrames, { capture: true });
   }
   window.removeEventListener("message", onPreviewMessage, { capture: true });
+  stopBootWake?.();
+  stopBootWake = null;
 }
 
 /**

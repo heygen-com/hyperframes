@@ -181,13 +181,13 @@ describe("TimelineFxButton", () => {
       <TimelineFxButton
         variant="group-pointer"
         clipCount={2}
-        refusal="Video audio can't be grouped yet — only audio clips can join a group."
+        refusal="This track can't be grouped."
         onGroupClips={onGroupClips}
       />,
     );
     act(() => byTextButton(host, "FX")?.click());
     const dialog = document.querySelector('[role="dialog"]');
-    expect(dialog?.textContent).toContain("Video audio can't be grouped yet");
+    expect(dialog?.textContent).toContain("This track can't be grouped");
     expect(document.querySelector('input[aria-label="Group name"]')).toBeNull();
     expect(
       Array.from(document.body.querySelectorAll("button")).some((b) => b.textContent === "Group"),

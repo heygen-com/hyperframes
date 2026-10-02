@@ -539,11 +539,17 @@ function copyFixtureSupportFiles(suite: TestSuite, tempRoot: string): void {
 
 // ── FFmpeg Utilities ─────────────────────────────────────────────────────────
 
-function runFfmpeg(args: string[], label: string): { stdout: Buffer; stderr: string } {
+function runFfmpeg(
+  args: string[],
+  label: string,
+  cwd?: string,
+): { stdout: Buffer; stderr: string } {
   const result = spawnSync("ffmpeg", args, {
+    cwd,
     stdio: ["ignore", "pipe", "pipe"],
     maxBuffer: 256 * 1024 * 1024,
     encoding: "buffer",
+    windowsHide: true,
   });
   const stderr = result.stderr.toString("utf-8");
   if (result.status !== 0) {
@@ -581,6 +587,8 @@ function extractFrameAsImage(
 export function frameIndexForCheckpoint(checkpointSec: number, fps: number): number {
   return Math.max(0, Math.round(checkpointSec * fps));
 }
+
+const STATS_FILE_NAME = "psnr.log";
 
 /**
  * PSNR for a set of frame indices, in a single ffmpeg pass.
@@ -628,12 +636,8 @@ export function psnrAtFrames(
   if (wanted.length === 0) return new Map();
 
   const statsDir = mkdtempSync(join(tmpdir(), "hf-psnr-"));
-  const statsFile = join(statsDir, "psnr.log");
+  const statsFile = join(statsDir, STATS_FILE_NAME);
   try {
-    // ffmpeg treats `:` and `\` in filter option values as syntax, so a temp
-    // path containing either would break the filtergraph. mkdtemp under
-    // tmpdir() does not produce those on POSIX, but escape defensively.
-    const escaped = statsFile.replace(/\\/g, "\\\\").replace(/:/g, "\\:");
     const selectExpr = wanted.map((frame) => `eq(n\\,${frame})`).join("+");
     const stream = (index: number, label: string) =>
       `[${index}:v]select='${selectExpr}',settb=1/1,setpts=N[${label}]`;
@@ -643,9 +647,9 @@ export function psnrAtFrames(
         "-loglevel",
         "error",
         "-i",
-        renderedVideo,
+        resolve(renderedVideo),
         "-i",
-        snapshotVideo,
+        resolve(snapshotVideo),
         "-filter_complex",
         // shortest=1:repeatlast=0 makes framesync stop at the first stream to
         // end instead of holding its last frame. Without them, an input that
@@ -656,12 +660,14 @@ export function psnrAtFrames(
         // [0,15,45] emit 3 rows under the defaults (row 3 comparing frame 45
         // against a repeated frame 15, 16.65 dB) and 2 rows with these set.
         `${stream(0, "rv")};${stream(1, "gv")};` +
-          `[rv][gv]psnr=shortest=1:repeatlast=0:stats_file=${escaped}`,
+          `[rv][gv]psnr=shortest=1:repeatlast=0:stats_file=${STATS_FILE_NAME}`,
         "-f",
         "null",
         "-",
       ],
       "Checkpoint PSNR",
+      // A bare name in cwd keeps every path out of the filtergraph and its escaping rules.
+      statsDir,
     );
 
     const values: number[] = [];

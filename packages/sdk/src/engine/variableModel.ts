@@ -1,8 +1,8 @@
 /**
  * Shared helpers for the composition variable JSON model
  * (`data-composition-variables`). The declaration-carrying element is resolved
- * by the caller (`declarationElement` in model.ts): `<html>` for full-document
- * comps, the composition root div for wrapped template/fragment comps.
+ * by the caller (`declarationElement` in model.ts): the composition root when it
+ * declares or the comp is a wrapped template/fragment, else `<html>`.
  *
  * Single source for the parse → find-by-id → read/write/clear logic so the
  * forward-mutation path (engine/mutate.ts) and the patch-replay path
@@ -93,9 +93,9 @@ export function writeVariableDeclaration(
 }
 
 /**
- * Remove a variable declaration by id. Drops the whole attribute when the
- * last declaration is removed (an empty `[]` is noise in authored HTML).
- * No-ops (returns false) when the attribute or the entry is absent.
+ * Remove a variable declaration by id. Drops the attribute from `<html>` with the
+ * last declaration; any other element keeps `[]` so it still owns the declarations
+ * (undo and later declares land back on it). No-ops when the attribute or entry is absent.
  */
 export function removeVariableDeclarationEntry(declEl: Element | null, id: string): boolean {
   const decls = readDecls(declEl);
@@ -103,7 +103,7 @@ export function removeVariableDeclarationEntry(declEl: Element | null, id: strin
   const idx = indexOfId(decls.arr, id);
   if (idx < 0) return false;
   decls.arr.splice(idx, 1);
-  if (decls.arr.length === 0) {
+  if (decls.arr.length === 0 && decls.declEl === decls.declEl.ownerDocument?.documentElement) {
     decls.declEl.removeAttribute("data-composition-variables");
   } else {
     decls.declEl.setAttribute("data-composition-variables", JSON.stringify(decls.arr));

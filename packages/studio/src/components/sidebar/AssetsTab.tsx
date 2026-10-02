@@ -177,7 +177,7 @@ function EmptyState({
         fill="none"
         stroke="currentColor"
         strokeWidth="1.5"
-        className="text-neutral-700"
+        className="text-text-off"
       >
         <path
           d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"
@@ -331,7 +331,7 @@ export const AssetsTab = memo(function AssetsTab({
       : [activeFilter as MediaCategory].filter((c) => categorized[c].length > 0);
   return (
     <div
-      className={`flex-1 flex flex-col min-h-0 transition-colors ${dragOver ? "bg-studio-accent/[0.05]" : ""}`}
+      className={`flex-1 flex flex-col min-h-0 transition-colors ${dragOver ? "bg-studio-accent/5" : ""}`}
       onDragOver={(e) => {
         e.preventDefault();
         setDragOver(true);
@@ -340,7 +340,7 @@ export const AssetsTab = memo(function AssetsTab({
       onDrop={handleDrop}
     >
       {/* Header — matches design panel Section pattern */}
-      <div className="px-4 pt-2.5 pb-1.5 flex-shrink-0">
+      <div className="px-4 pt-2.5 pb-1.5 shrink-0">
         {/* Scope toggle */}
         <div className="flex gap-1 mb-2.5 p-0.5 rounded-md bg-panel-input">
           {(["local", "global"] as const).map((m) => (
@@ -349,7 +349,7 @@ export const AssetsTab = memo(function AssetsTab({
               onClick={() => setViewMode(m)}
               className={`flex-1 px-2 py-1 text-[11px] font-medium rounded transition-colors ${
                 viewMode === m
-                  ? "bg-panel-accent/15 text-panel-accent"
+                  ? "bg-panel-accent/15 text-accent-ink"
                   : "text-panel-text-3 hover:text-panel-text-1"
               }`}
             >
@@ -396,7 +396,7 @@ export const AssetsTab = memo(function AssetsTab({
               aria-pressed={activeFilter === "all"}
               className={`px-2.5 py-1 text-[11px] font-medium rounded-md transition-colors active:scale-[0.98] ${
                 activeFilter === "all"
-                  ? "bg-panel-accent/15 text-panel-accent"
+                  ? "bg-panel-accent/15 text-accent-ink"
                   : "bg-panel-input text-panel-text-3 hover:text-panel-text-1"
               }`}
             >
@@ -410,7 +410,7 @@ export const AssetsTab = memo(function AssetsTab({
                   aria-pressed={activeFilter === cat}
                   className={`px-2.5 py-1 text-[11px] font-medium rounded-md transition-colors active:scale-[0.98] ${
                     activeFilter === cat
-                      ? "bg-panel-accent/15 text-panel-accent"
+                      ? "bg-panel-accent/15 text-accent-ink"
                       : "bg-panel-input text-panel-text-3 hover:text-panel-text-1"
                   }`}
                 >
@@ -425,7 +425,7 @@ export const AssetsTab = memo(function AssetsTab({
                   onClick={() => setUsageFilter(usageFilter === "used" ? "all" : "used")}
                   className={`px-2.5 py-1 text-[11px] font-medium rounded-md transition-colors ${
                     usageFilter === "used"
-                      ? "bg-panel-accent/15 text-panel-accent"
+                      ? "bg-panel-accent/15 text-accent-ink"
                       : "bg-panel-input text-panel-text-3 hover:text-panel-text-1"
                   }`}
                 >
@@ -435,7 +435,7 @@ export const AssetsTab = memo(function AssetsTab({
                   onClick={() => setUsageFilter(usageFilter === "unused" ? "all" : "unused")}
                   className={`px-2.5 py-1 text-[11px] font-medium rounded-md transition-colors ${
                     usageFilter === "unused"
-                      ? "bg-panel-accent/15 text-panel-accent"
+                      ? "bg-panel-accent/15 text-accent-ink"
                       : "bg-panel-input text-panel-text-3 hover:text-panel-text-1"
                   }`}
                 >

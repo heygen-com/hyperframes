@@ -35,10 +35,13 @@ import { formatFfmpegError, isExternalFfmpegInterruption } from "../utils/runFfm
 import { getFfmpegBinary } from "../utils/ffmpegBinaries.js";
 import { getHdrEncoderColorParams } from "../utils/hdr.js";
 import { withEvenDimensionPad } from "../utils/evenDimensions.js";
+import { SDR_CAPTURE_TO_BT709_FILTER, SDR_RGB_TO_BT709_FILTER } from "../utils/sdrCaptureColor.js";
 import { DEFAULT_CONFIG, type EngineConfig } from "../config.js";
 import { fpsToFfmpegArg, fpsToNumber, type Fps } from "@hyperframes/core";
 import { appendVp9CpuUsedArg } from "./vp9Options.js";
 import { appendRenderProvenanceArgs } from "../utils/renderProvenance.js";
+
+import { appendLockedGopArgs, lockedGopCodecParams, resolveLockedGopSize } from "./chunkEncoder.js";
 
 // Re-export EncoderOptions so callers can reference the type via this module.
 export type { EncoderOptions } from "./chunkEncoder.types.js";
@@ -154,6 +157,16 @@ export interface StreamingEncoderOptions {
   hdr?: { transfer: import("../utils/hdr.js").HdrTransfer };
   /** When set, use rawvideo input instead of image2pipe. For HDR PQ-encoded frames. */
   rawInputFormat?: "rgb48le";
+  /**
+   * Force an IDR keyframe every `gopSize` frames. Set by the HLS format so
+   * `-f hls -c copy` can cut segments on exact time boundaries — the segmenter
+   * only splits at keyframes the encoder already emitted. Default `false`
+   * leaves the arg list byte-identical. libx264 / libx265 only (GPU encoders,
+   * VP9 and ProRes ignore it); see `EncoderOptions.lockGopForChunkConcat`.
+   */
+  lockGopForChunkConcat?: boolean;
+  /** Required when `lockGopForChunkConcat` is `true`. Frames per GOP. */
+  gopSize?: number;
 }
 
 export interface StreamingEncoderResult {
@@ -320,11 +333,18 @@ export function buildStreamingArgs(
       if (bitrate) args.push("-b:v", bitrate);
       else args.push("-crf", String(quality));
 
+      // Same closed-GOP lock as chunkEncoder.buildEncoderArgs, so the HLS
+      // packager can cut `-c copy` segments on exact keyframe boundaries.
+      const lockedGop = resolveLockedGopSize(options);
+      if (lockedGop !== null) appendLockedGopArgs(args, lockedGop);
+
       // Mirrors chunkEncoder: disable B-frames for h264 so PTS == DTS, no
       // negative DTS at stream start. Without this, files freeze on the
       // first frame in VS Code preview, several browsers, and some HW
       // decoders. See chunkEncoder.buildEncoderArgs for the full reasoning.
-      if (codec === "h264") {
+      // h265 also gets `-bf 0` under a locked GOP: B-frame reordering across
+      // a segment boundary brings the same negative-DTS hazard back at every seam.
+      if (codec === "h264" || lockedGop !== null) {
         args.push("-bf", "0");
       }
 
@@ -338,10 +358,11 @@ export function buildStreamingArgs(
         options.rawInputFormat && options.hdr
           ? getHdrEncoderColorParams(options.hdr.transfer).x265ColorParams
           : "colorprim=bt709:transfer=bt709:colormatrix=bt709";
+      const gopParams = lockedGop !== null ? `:${lockedGopCodecParams(codec, lockedGop)}` : "";
       if (preset === "ultrafast") {
-        args.push(xParamsFlag, `aq-mode=3:${colorParams}`);
+        args.push(xParamsFlag, `aq-mode=3:${colorParams}${gopParams}`);
       } else {
-        args.push(xParamsFlag, `aq-mode=3:aq-strength=0.8:deblock=1,1:${colorParams}`);
+        args.push(xParamsFlag, `aq-mode=3:aq-strength=0.8:deblock=1,1:${colorParams}${gopParams}`);
       }
       // Apple devices require hvc1 tag for HEVC playback (default hev1 won't open in QuickTime)
       if (codec === "h265") {
@@ -393,38 +414,24 @@ export function buildStreamingArgs(
       );
     }
 
-    // Video filter for range/color conversion.
-    // Raw HDR input (from WebGPU pipeline) is already PQ-encoded — no conversion needed.
-    // Chrome screenshots need full→TV range conversion.
-    if (options.rawInputFormat) {
+    // Raw HDR input (from WebGPU pipeline) is already PQ-encoded, so only SDR gets a
+    // conversion: raw sRGB or Chrome's BT.601 JPEG screenshots to BT.709 limited range.
+    const sdrFilter = options.rawInputFormat
+      ? SDR_RGB_TO_BT709_FILTER
+      : SDR_CAPTURE_TO_BT709_FILTER;
+    if (options.rawInputFormat && options.hdr) {
       // No filter needed — PQ data goes straight to encoder
     } else if (gpuEncoder === "vaapi") {
       // vaapi already runs `format=nv12,hwupload`; the nv12 conversion aligns
-      // odd dimensions before upload, so only prepend the range conversion.
+      // odd dimensions before upload, so only prepend the colour conversion.
       const vfIdx = args.indexOf("-vf");
       if (vfIdx !== -1) {
-        args[vfIdx + 1] = `scale=in_range=pc:out_range=tv,${args[vfIdx + 1]}`;
+        args[vfIdx + 1] = `${sdrFilter},${args[vfIdx + 1]}`;
       }
-    } else if (shouldUseGpu) {
-      // nvenc/videotoolbox/qsv/amf feed software frames straight to the HW
-      // encoder with no `-vf`. They hit the same "height not divisible by 2"
-      // abort as libx264 on an odd-sized 4:2:0 canvas, so pad odd dimensions
-      // up to even on the software side before the encode.
-      const vf = withEvenDimensionPad("", pixelFormat, options.width, options.height);
-      if (vf) args.push("-vf", vf);
     } else {
-      // Range conversion: Chrome screenshots are full-range RGB. Pad odd
-      // dimensions up to even so libx264/libx265 (4:2:0) don't abort with
-      // "height not divisible by 2" on an odd-sized composition canvas.
-      args.push(
-        "-vf",
-        withEvenDimensionPad(
-          "scale=in_range=pc:out_range=tv",
-          pixelFormat,
-          options.width,
-          options.height,
-        ),
-      );
+      // Pad odd dimensions up to even so 4:2:0 encoders (software and
+      // nvenc/videotoolbox/qsv/amf) don't abort with "height not divisible by 2".
+      args.push("-vf", withEvenDimensionPad(sdrFilter, pixelFormat, options.width, options.height));
     }
 
     // Fixed timescale for consistent A/V timing across platforms.
@@ -521,11 +528,20 @@ export async function spawnStreamingEncoder(
       const closePromise = once(ffmpeg, "close", { signal: abortController.signal }).then(
         () => "exit" as const,
       );
-      const racePromise = Promise.race([drainPromise, closePromise]).catch((err: unknown) => {
+      const racePromise = Promise.race([drainPromise, closePromise]).catch(async (err: unknown) => {
         if (err instanceof Error && err.name === "AbortError") {
           return "exit" as const;
         }
-        throw err;
+        // `once(stdin, "drain")` rejects with the stream's own error when
+        // ffmpeg's read end closes first — a bare `write EPIPE` (darwin/
+        // linux) or `write EOF` (win32). Rethrowing it here made that the
+        // render error, with ffmpeg's exit code and stderr discarded, so a
+        // parked write observed the same death uninformatively that an
+        // unparked one reports through `getExitError()`. Wait for the exit
+        // to settle so the caller's `ensureFrameWritten` reads the reason,
+        // then report the exit like the `close` race does.
+        await exitPromise;
+        return "exit" as const;
       });
 
       if (managed.isSettled || exitStatus !== "running") {

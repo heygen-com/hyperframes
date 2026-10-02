@@ -1,5 +1,6 @@
 // fallow-ignore-file code-duplication
 import { parseHTML } from "linkedom";
+import { ensureHfIds } from "@hyperframes/parsers/hf-ids";
 import { describe, expect, it } from "vitest";
 import {
   removeElementFromHtml,
@@ -80,7 +81,7 @@ describe("removeElementFromHtml", () => {
   it("supports fragment html by returning updated body markup", () => {
     const html = `<div id="photo"></div><div id="rest"></div>`;
 
-    expect(removeElementFromHtml(html, { id: "photo" })).toBe(`<div id="rest"></div>`);
+    expect(removeElementFromHtml(html, { id: "photo" })).toBe(ensureHfIds(`<div id="rest"></div>`));
   });
 });
 
@@ -104,6 +105,28 @@ describe("patchElementInHtml", () => {
     expect(matched).toBe(true);
     expect(result).toMatch(/color:\s*red/);
     expect(result).toContain('id="hero"');
+  });
+
+  it("keeps a lowercase doctype byte-identical for a no-op patch", () => {
+    const source = '<!doctype html><html><body><div id="hero" data-start="0"></div></body></html>';
+
+    const { html, matched } = patchElementInHtml(source, { id: "hero" }, [
+      { type: "attribute", property: "start", value: "0" },
+    ]);
+
+    expect(matched).toBe(true);
+    expect(html).toBe(source);
+  });
+
+  it("stamps the composition root before returning patched bytes", () => {
+    const source = '<div data-composition-id="main"><div id="hero">Hello</div></div>';
+    const { html: result, matched } = patchElementInHtml(source, { id: "hero" }, [
+      { type: "text-content", property: "textContent", value: "Updated" },
+    ]);
+
+    expect(matched).toBe(true);
+    expect(result).toContain("Updated");
+    expect(result).toMatch(/<div data-hf-id="hf-[a-z0-9]+" data-composition-id="main"/);
   });
 
   it("patches a 4-side clip-path inset inline style", () => {

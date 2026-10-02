@@ -1,11 +1,12 @@
 // fallow-ignore-file code-duplication
-import { useCallback, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import type { DomEditSelection } from "./domEditing";
 import { collectDomEditLayerItems, resolveDomEditSelection } from "./domEditingLayers";
 import { isElementComputedVisible } from "./domEditingElement";
 import { coversComposition } from "../../utils/studioPreviewHelpers";
 import { rectsOverlap, type Rect } from "../../utils/marqueeGeometry";
 import { toVisibleOverlayRect } from "./domEditOverlayGeometry";
+import { movesGesture } from "./domEditOverlayGestures";
 
 interface MarqueeState {
   startX: number;
@@ -14,6 +15,7 @@ interface MarqueeState {
   currentY: number;
   pointerId: number;
   pastThreshold: boolean;
+  target: Element;
 }
 
 const MARQUEE_THRESHOLD_PX = 4;
@@ -80,14 +82,13 @@ function hitsWithin(rect: Rect, candidates: MarqueeHit[]): MarqueeHit[] {
   return candidates.filter((candidate) => rectsOverlap(rect, candidate.rect));
 }
 
-async function runMarqueeIntersection(
-  rect: Rect,
-  candidates: MarqueeHit[],
+async function resolveDomEditSelections(
+  elements: HTMLElement[],
   activeCompositionPath: string,
 ): Promise<DomEditSelection[]> {
   const isMasterView = !activeCompositionPath || activeCompositionPath === "index.html";
   const hits: DomEditSelection[] = [];
-  for (const { element } of hitsWithin(rect, candidates)) {
+  for (const element of elements) {
     const sel = await resolveDomEditSelection(element, {
       activeCompositionPath,
       isMasterView,
@@ -98,23 +99,48 @@ async function runMarqueeIntersection(
   return hits;
 }
 
-interface MarqueeGesturesDeps {
+export interface MarqueeGesturesDeps<T = DomEditSelection> {
   iframeRef: React.RefObject<HTMLIFrameElement | null>;
   overlayRef: React.RefObject<HTMLDivElement | null>;
   activeCompositionPathRef: React.RefObject<string | null>;
-  onMarqueeSelectRef: React.RefObject<
-    ((selections: DomEditSelection[], additive: boolean) => void) | undefined
-  >;
-  selectionRef: React.RefObject<DomEditSelection | null>;
-  gestures: {
+  onMarqueeSelectRef: React.RefObject<((selections: T[], additive: boolean) => void) | undefined>;
+  /** Turns the elements a drag touched into picks; without it, Studio's edit selections. */
+  resolveHits?: (elements: HTMLElement[]) => T[] | Promise<T[]>;
+  selectionRef?: React.RefObject<DomEditSelection | null>;
+  /** Studio's pointer handling, for the events that are not part of a marquee. */
+  gestures?: {
     onPointerMove: (event: React.PointerEvent<HTMLDivElement>) => void;
     onPointerUp: (event: React.PointerEvent<HTMLDivElement>) => void;
     clearPointerState: (ref: React.RefObject<DomEditSelection | null>) => void;
   };
 }
 
+export interface MarqueeGestures {
+  marqueeRect: Rect | null;
+  candidateRects: Rect[];
+  /** Starts a marquee at this press; the host has decided it landed on empty canvas. */
+  begin: (event: React.PointerEvent<HTMLElement>) => void;
+  /** Drops an active marquee without selecting anything. */
+  cancel: () => void;
+  onPointerMove: (event: React.PointerEvent<HTMLDivElement>) => void;
+  onPointerUp: (event: React.PointerEvent<HTMLDivElement>) => void;
+  onPointerCancel: () => void;
+}
+
+function releaseCapture(m: MarqueeState): void {
+  try {
+    m.target.releasePointerCapture(m.pointerId);
+  } catch {
+    /* already released */
+  }
+}
+
+export function useMarqueeGestures(deps: MarqueeGesturesDeps): MarqueeGestures;
+export function useMarqueeGestures<T>(
+  deps: MarqueeGesturesDeps<T> & Required<Pick<MarqueeGesturesDeps<T>, "resolveHits">>,
+): MarqueeGestures;
 // fallow-ignore-next-line complexity
-export function useMarqueeGestures(deps: MarqueeGesturesDeps) {
+export function useMarqueeGestures<T>(deps: MarqueeGesturesDeps<T>): MarqueeGestures {
   const marqueeRef = useRef<MarqueeState | null>(null);
   const [marqueeRect, setMarqueeRect] = useState<Rect | null>(null);
   // Live "candidate" highlight: the elements the marquee currently touches,
@@ -134,17 +160,90 @@ export function useMarqueeGestures(deps: MarqueeGesturesDeps) {
       const overlay = deps.overlayRef.current;
       if (!iframe || !overlay || !deps.onMarqueeSelectRef.current) return;
       const acp = deps.activeCompositionPathRef.current ?? "index.html";
-      const candidates = candidatesRef.current ?? collectMarqueeCandidates(iframe, overlay, acp);
-      const hits = await runMarqueeIntersection(rect, candidates, acp);
-      deps.onMarqueeSelectRef.current(hits, additive);
+      const cached = candidatesRef.current;
+      const measuredOnScreen = cached?.every(
+        (hit) => hit.element.ownerDocument === iframe.contentDocument,
+      );
+      const candidates =
+        cached && measuredOnScreen ? cached : collectMarqueeCandidates(iframe, overlay, acp);
+      const elements = hitsWithin(rect, candidates).map((hit) => hit.element);
+      const resolveHits = deps.resolveHits;
+      const picks = resolveHits
+        ? await resolveHits(elements)
+        : ((await resolveDomEditSelections(elements, acp)) as T[]);
+      deps.onMarqueeSelectRef.current?.(picks, additive);
     },
-    [deps.iframeRef, deps.overlayRef, deps.onMarqueeSelectRef, deps.activeCompositionPathRef],
+    [
+      deps.iframeRef,
+      deps.overlayRef,
+      deps.onMarqueeSelectRef,
+      deps.activeCompositionPathRef,
+      deps.resolveHits,
+    ],
+  );
+
+  const reset = useCallback(() => {
+    marqueeRef.current = null;
+    setMarqueeRect(null);
+    setCandidateRects([]);
+    candidatesRef.current = null;
+  }, []);
+
+  const begin = useCallback(
+    (event: React.PointerEvent<HTMLElement>) => {
+      const oRect = deps.overlayRef.current?.getBoundingClientRect();
+      if (!oRect) return;
+      event.currentTarget.setPointerCapture(event.pointerId);
+      const x = event.clientX - oRect.left;
+      const y = event.clientY - oRect.top;
+      marqueeRef.current = {
+        startX: x,
+        startY: y,
+        currentX: x,
+        currentY: y,
+        pointerId: event.pointerId,
+        pastThreshold: false,
+        target: event.currentTarget,
+      };
+    },
+    [deps.overlayRef],
+  );
+
+  const cancel = useCallback(() => {
+    if (!marqueeRef.current) return;
+    releaseCapture(marqueeRef.current);
+    reset();
+  }, [reset]);
+
+  useEffect(() => {
+    const cancelBandBeforeHostEscape = (e: KeyboardEvent) => {
+      if (e.key !== "Escape" || !marqueeRef.current) return;
+      e.preventDefault();
+      e.stopPropagation();
+      cancel();
+    };
+    window.addEventListener("keydown", cancelBandBeforeHostEscape, { capture: true });
+    return () =>
+      window.removeEventListener("keydown", cancelBandBeforeHostEscape, { capture: true });
+  }, [cancel]);
+
+  const showCandidates = useCallback(
+    (rect: Rect) => {
+      const iframe = deps.iframeRef.current;
+      const overlay = deps.overlayRef.current;
+      if (!iframe || !overlay) return;
+      const acp = deps.activeCompositionPathRef.current ?? "index.html";
+      candidatesRef.current ??= collectMarqueeCandidates(iframe, overlay, acp);
+      setCandidateRects(hitsWithin(rect, candidatesRef.current).map((h) => h.rect));
+    },
+    [deps.overlayRef, deps.iframeRef, deps.activeCompositionPathRef],
   );
 
   const onPointerMove = useCallback(
     (event: React.PointerEvent<HTMLDivElement>) => {
       const m = marqueeRef.current;
       if (m) {
+        if (!movesGesture(m, event)) return;
         const oRect = deps.overlayRef.current?.getBoundingClientRect();
         if (!oRect) return;
         m.currentX = event.clientX - oRect.left;
@@ -163,30 +262,19 @@ export function useMarqueeGestures(deps: MarqueeGesturesDeps) {
           height: Math.abs(m.currentY - m.startY),
         };
         setMarqueeRect(rect);
-        const iframe = deps.iframeRef.current;
-        const overlay = deps.overlayRef.current;
-        if (iframe && overlay) {
-          const acp = deps.activeCompositionPathRef.current ?? "index.html";
-          candidatesRef.current ??= collectMarqueeCandidates(iframe, overlay, acp);
-          setCandidateRects(hitsWithin(rect, candidatesRef.current).map((h) => h.rect));
-        }
+        showCandidates(rect);
         return;
       }
-      deps.gestures.onPointerMove(event);
+      deps.gestures?.onPointerMove(event);
     },
-    [deps.gestures, deps.overlayRef, deps.iframeRef, deps.activeCompositionPathRef],
+    [deps.gestures, deps.overlayRef, showCandidates],
   );
 
   const onPointerUp = useCallback(
     (event: React.PointerEvent<HTMLDivElement>) => {
       const m = marqueeRef.current;
       if (m) {
-        marqueeRef.current = null;
-        try {
-          (event.currentTarget as HTMLElement).releasePointerCapture(m.pointerId);
-        } catch {
-          /* already released */
-        }
+        releaseCapture(m);
         if (m.pastThreshold) {
           commitMarquee(
             {
@@ -200,26 +288,26 @@ export function useMarqueeGestures(deps: MarqueeGesturesDeps) {
         } else {
           deps.onMarqueeSelectRef.current?.([], false);
         }
-        setMarqueeRect(null);
-        setCandidateRects([]);
-        candidatesRef.current = null;
+        reset();
         return;
       }
-      deps.gestures.onPointerUp(event);
+      deps.gestures?.onPointerUp(event);
     },
-    [deps.gestures, commitMarquee, deps.onMarqueeSelectRef],
+    [deps.gestures, commitMarquee, deps.onMarqueeSelectRef, reset],
   );
 
   const onPointerCancel = useCallback(() => {
-    if (marqueeRef.current) {
-      marqueeRef.current = null;
-      setMarqueeRect(null);
-      setCandidateRects([]);
-      candidatesRef.current = null;
-      return;
-    }
-    deps.gestures.clearPointerState(deps.selectionRef);
-  }, [deps.gestures, deps.selectionRef]);
+    if (marqueeRef.current) return cancel();
+    if (deps.selectionRef) deps.gestures?.clearPointerState(deps.selectionRef);
+  }, [deps.gestures, deps.selectionRef, cancel]);
 
-  return { marqueeRef, marqueeRect, candidateRects, onPointerMove, onPointerUp, onPointerCancel };
+  return {
+    marqueeRect,
+    candidateRects,
+    begin,
+    cancel,
+    onPointerMove,
+    onPointerUp,
+    onPointerCancel,
+  };
 }

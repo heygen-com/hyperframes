@@ -1,19 +1,13 @@
 import { spawn } from "node:child_process";
 import { createHash, randomUUID } from "node:crypto";
-import {
-  existsSync,
-  mkdirSync,
-  realpathSync,
-  renameSync,
-  statSync,
-  unlinkSync,
-  utimesSync,
-} from "node:fs";
+import { existsSync, renameSync, statSync, unlinkSync, utimesSync } from "node:fs";
 import { basename, dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
+import { hdrToSdrToneMapFilter } from "@hyperframes/core";
 import { findFfBinary } from "@hyperframes/parsers/ff-binaries";
-import { probeMediaMetadata } from "./mediaMetadata.js";
+import { probeFirstFrameColour, probeMediaMetadata } from "./mediaMetadata.js";
 import { cleanupProxyCache } from "./proxyCache.js";
 import { PROXY_VARIANT_CONFIG, type ProxyVariant } from "./mediaCodecMap.js";
+import { mkdirWithinProject, realpath, realProjectRoot } from "./safePath.js";
 
 /**
  * Transcodes browser-hostile local video sources (HEVC, ProRes, ...) into a
@@ -32,9 +26,9 @@ import { PROXY_VARIANT_CONFIG, type ProxyVariant } from "./mediaCodecMap.js";
  * entry still lands for the next request.
  */
 
-export const PROXY_PARAMS_VERSION = "v4";
+export const PROXY_PARAMS_VERSION = "v5";
 
-const CACHE_DIR_NAME = ".transcode-cache";
+export const CACHE_DIR_NAME = ".transcode-cache";
 
 function boundedEnvInteger(name: string, fallback: number, min: number, max: number): number {
   const raw = process.env[name]?.trim();
@@ -52,6 +46,8 @@ const MAX_QUEUED_TRANSCODES = boundedEnvInteger("HYPERFRAMES_PROXY_MAX_QUEUE", 8
 const STDERR_TAIL_MAX_CHARS = 4000;
 export const TRANSCODE_TIMEOUT_MS = 15 * 60 * 1000;
 const FAILURE_CACHE_TTL_MS = 60 * 1000;
+export const PROXY_PENDING_RETRY_AFTER_SECONDS = 2;
+const ENVIRONMENT_FAILURE_TTL_MS = 5 * PROXY_PENDING_RETRY_AFTER_SECONDS * 1000;
 const MAX_FAILURE_CACHE_ENTRIES = 128;
 export const DEFAULT_PROXY_WAIT_TIMEOUT_MS = 2 * 60 * 1000;
 
@@ -68,7 +64,7 @@ export class ProxyTranscodeError extends Error {
 }
 
 /** "ffmpeg isn't installed" — an environment condition, not a per-source
- * failure, so it is deliberately NOT remembered by the negative cache below
+ * failure, so the negative cache below keeps it only briefly
  * (installing ffmpeg mid-session must recover without a server restart). */
 class FfmpegUnavailableError extends ProxyTranscodeError {
   constructor() {
@@ -158,8 +154,8 @@ function canonicalizeProxySource(
     throw new ProxySourceOutsideProjectError();
   }
 
-  const canonicalProjectDir = realpathSync(projectDir);
-  const canonicalSourcePath = realpathSync(absoluteSourcePath);
+  const canonicalProjectDir = realProjectRoot(projectDir);
+  const canonicalSourcePath = realpath(absoluteSourcePath);
   const canonicalRelativePath = relative(canonicalProjectDir, canonicalSourcePath);
   const sourceIsInsideCanonicalProject =
     canonicalRelativePath !== ".." &&
@@ -276,7 +272,7 @@ function markCacheEntryUsed(cachePath: string): void {
 // requests for a broken asset rethrow instantly instead of respawning ffmpeg
 // on every retry the browser makes.
 interface RememberedFailure {
-  error: ProxyTranscodeError;
+  error: unknown;
   expiresAt: number;
 }
 
@@ -308,9 +304,13 @@ function ensureHdrFilters(ffmpegPath: string): Promise<void> {
   return promise;
 }
 
-function rememberFailure(cachePath: string, error: ProxyTranscodeError): void {
+function rememberFailure(cachePath: string, error: unknown): void {
+  const ttlMs =
+    error instanceof FfmpegUnavailableError || error instanceof FfmpegMissingFilterError
+      ? ENVIRONMENT_FAILURE_TTL_MS
+      : FAILURE_CACHE_TTL_MS;
   failedTranscodes.delete(cachePath);
-  failedTranscodes.set(cachePath, { error, expiresAt: Date.now() + FAILURE_CACHE_TTL_MS });
+  failedTranscodes.set(cachePath, { error, expiresAt: Date.now() + ttlMs });
   while (failedTranscodes.size > MAX_FAILURE_CACHE_ENTRIES) {
     const oldest = failedTranscodes.keys().next().value;
     if (oldest === undefined) break;
@@ -334,21 +334,21 @@ async function runFfmpeg(
   if (!ffmpegPath) {
     throw new FfmpegUnavailableError();
   }
-  // The HDR tonemap filters discard alpha. VP8 is the alpha-preserving proxy
-  // variant, so retain its source color values instead of making it opaque.
-  if (metadata.color.isHdr && variant !== "vp8") await ensureHdrFilters(ffmpegPath);
+  const keepsAlpha = variant === "vp8";
+  const { hdrTransfer } = metadata.color;
+  const toneMap = (hdrTransfer === "pq" || hdrTransfer === "hlg") && !keepsAlpha;
+  if (toneMap) await ensureHdrFilters(ffmpegPath);
+  const firstFrame = toneMap ? await probeFirstFrameColour(sourcePath) : {};
   const evenScale = "scale=trunc(iw/2)*2:trunc(ih/2)*2";
-  const pixelFormat = variant === "vp8" ? "yuva420p" : "yuv420p";
-  const videoFilter =
-    metadata.color.isHdr && variant !== "vp8"
-      ? [
-          "zscale=t=linear:npl=100",
-          "tonemap=hable:desat=0",
-          "zscale=p=bt709:t=bt709:m=bt709:r=tv",
-          evenScale,
-          `format=${pixelFormat}`,
-        ].join(",")
-      : [evenScale, `format=${pixelFormat}`].join(",");
+  const pixelFormat = keepsAlpha ? "yuva420p" : "yuv420p";
+  // The tone map ends in RGB; older ffmpeg (seen on 5.1) converts it with BT.601 unless the matrix is named.
+  const videoFilter = toneMap
+    ? [
+        hdrToSdrToneMapFilter(metadata.color, firstFrame),
+        `${evenScale}:out_color_matrix=bt709:out_range=tv`,
+        `format=${pixelFormat}`,
+      ].join(",")
+    : [evenScale, `format=${pixelFormat}`].join(",");
 
   return new Promise((resolvePromise, reject) => {
     const commonArgs = ["-y", "-i", sourcePath, "-vf", videoFilter];
@@ -440,6 +440,7 @@ async function runFfmpeg(
 }
 
 async function transcodeToCache(
+  projectDir: string,
   absoluteSourcePath: string,
   cachePath: string,
   variant: ProxyVariant,
@@ -450,7 +451,7 @@ async function transcodeToCache(
     if (existsSync(cachePath)) return cachePath;
 
     const cacheDir = dirname(cachePath);
-    mkdirSync(cacheDir, { recursive: true });
+    mkdirWithinProject(projectDir, cacheDir);
     const tempPath = join(cacheDir, `.tmp-${randomUUID()}-${basename(cachePath)}`);
     try {
       await runFfmpeg(absoluteSourcePath, tempPath, variant);
@@ -465,6 +466,16 @@ async function transcodeToCache(
   } finally {
     releaseSlot();
   }
+}
+
+let settledProxyCount = 0;
+
+/** Null while a copy for this project is being made; otherwise a mark that moves when any copy finishes. */
+export function proxyActivityMark(projectDir: string): string | null {
+  if (!existsSync(projectDir)) return String(settledProxyCount);
+  const cacheDir = join(realpath(projectDir), CACHE_DIR_NAME) + sep;
+  for (const cachePath of inFlight.keys()) if (cachePath.startsWith(cacheDir)) return null;
+  return String(settledProxyCount);
 }
 
 /**
@@ -497,21 +508,14 @@ export async function resolveProxy(
   const existing = inFlight.get(cachePath);
   if (existing) return existing;
 
-  const promise = transcodeToCache(source.sourcePath, cachePath, variant)
+  const promise = transcodeToCache(source.projectDir, source.sourcePath, cachePath, variant)
     .catch((err: unknown) => {
-      if (
-        err instanceof ProxyTranscodeError &&
-        !(err instanceof FfmpegUnavailableError) &&
-        !(err instanceof FfmpegMissingFilterError) &&
-        !(err instanceof ProxyCapacityError) &&
-        !(err instanceof ProxySourceOutsideProjectError)
-      ) {
-        rememberFailure(cachePath, err);
-      }
+      if (!(err instanceof ProxyCapacityError)) rememberFailure(cachePath, err);
       throw err;
     })
     .finally(() => {
       inFlight.delete(cachePath);
+      settledProxyCount += 1;
     });
   inFlight.set(cachePath, promise);
   return promise;

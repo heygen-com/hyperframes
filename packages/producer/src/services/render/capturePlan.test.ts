@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  capturePathForPlanKind,
   createCapturePlan,
   drawElementVerificationFailure,
   replanAfterFailure,
@@ -50,6 +51,49 @@ describe("CapturePlan", () => {
 
     expect(next).toMatchObject({ kind: "sdr_disk", workerCount: 1, forceScreenshot: false });
     expect(initial.kind).toBe("sdr_streaming");
+  });
+
+  it("retries interleaved parallel streaming at one worker, never N contiguous", () => {
+    // The non-DE router's plan: N workers, interleaved, default routing.
+    const routed = createCapturePlan({
+      workerCount: 4,
+      forceScreenshot: false,
+      forceParallelStream: true,
+      useStreamingEncode: true,
+      useLayeredComposite: false,
+      usePageSideCompositing: false,
+      hasHdrContent: false,
+      needsAlpha: false,
+    });
+    expect(routed).toMatchObject({
+      kind: "sdr_streaming",
+      forceParallelStream: true,
+      routing: { kind: "default" },
+    });
+    const next = replanAfterFailure(routed, { kind: "capture_failure", memoryExhaustion: false });
+    // Not `workerCount: 4, forceParallelStream: false` — that is contiguous
+    // streaming, the serialising shape interleaving exists to avoid.
+    expect(next).toMatchObject({
+      kind: "sdr_streaming",
+      workerCount: 1,
+      forceParallelStream: false,
+      forceScreenshot: true,
+    });
+
+    // A plan that was never interleaved keeps its worker count on retry.
+    const plain = createCapturePlan({
+      workerCount: 4,
+      forceScreenshot: false,
+      forceParallelStream: false,
+      useStreamingEncode: true,
+      useLayeredComposite: false,
+      usePageSideCompositing: false,
+      hasHdrContent: false,
+      needsAlpha: false,
+    });
+    expect(
+      replanAfterFailure(plain, { kind: "capture_failure", memoryExhaustion: false }).workerCount,
+    ).toBe(4);
   });
 
   it("makes page-side compositing force screenshot capture", () => {
@@ -372,5 +416,76 @@ describe("CapturePlan", () => {
     expect(() => replanAfterFailure(disk, { kind: "streaming_unavailable" })).toThrow(
       "Cannot apply streaming_unavailable to sdr_disk",
     );
+  });
+});
+
+describe("sdr_segmented capture plan", () => {
+  const segmented = {
+    workerCount: 1,
+    forceScreenshot: false,
+    forceParallelStream: false,
+    useStreamingEncode: true,
+    useLayeredComposite: false,
+    usePageSideCompositing: false,
+    hasHdrContent: false,
+    needsAlpha: false,
+    useSegmentedCapture: true,
+  };
+
+  it("selects segmented capture for streaming-eligible renders at any worker count", () => {
+    const plan = createCapturePlan(segmented);
+    expect(plan).toMatchObject({
+      kind: "sdr_segmented",
+      workerCount: 1,
+      forceParallelStream: false,
+    });
+    expect(Object.isFrozen(plan)).toBe(true);
+    // Phase 2d: several workers each own a segment and an encoder.
+    expect(createCapturePlan({ ...segmented, workerCount: 3 })).toMatchObject({
+      kind: "sdr_segmented",
+      workerCount: 3,
+      forceParallelStream: false,
+    });
+  });
+
+  it("loses to the layered route but not to the single-encoder streaming flag", () => {
+    // useStreamingEncode answers "one encoder for the whole render", which a
+    // segmented render never wants — it goes false for multi-worker, and
+    // requiring it here would silently drop those renders onto the disk path.
+    // Viability is decided by shouldSegmentCapture before this is set.
+    expect(createCapturePlan({ ...segmented, useStreamingEncode: false }).kind).toBe(
+      "sdr_segmented",
+    );
+    expect(createCapturePlan({ ...segmented, useLayeredComposite: true }).kind).toBe("hdr_layered");
+  });
+
+  it("reports its own capture path", () => {
+    expect(capturePathForPlanKind("sdr_segmented")).toBe("segmented");
+  });
+
+  it("falls back from segmented to plain streaming when the encoder is unavailable", () => {
+    const initial = createCapturePlan(segmented);
+    const next = replanAfterFailure(initial, { kind: "streaming_unavailable" });
+    expect(next.kind).toBe("sdr_streaming");
+    // The input plan is never mutated.
+    expect(initial.kind).toBe("sdr_segmented");
+  });
+
+  it("keeps segmenting but drops to screenshot after a drawElement failure", () => {
+    const next = replanAfterFailure(createCapturePlan(segmented), {
+      kind: "draw_element_capture",
+    });
+    expect(next).toMatchObject({ kind: "sdr_segmented", forceScreenshot: true });
+  });
+
+  it("drops segmentation after a plain capture failure instead of throwing", () => {
+    // Until Phase 2c adds per-segment retry, the whole render retries; it must
+    // reach a plan rather than the "cannot apply" throw that guards the
+    // non-streaming kinds.
+    const next = replanAfterFailure(createCapturePlan(segmented), {
+      kind: "capture_failure",
+      memoryExhaustion: false,
+    });
+    expect(next).toMatchObject({ kind: "sdr_streaming", forceScreenshot: true });
   });
 });

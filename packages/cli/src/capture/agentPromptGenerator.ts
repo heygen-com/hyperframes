@@ -10,7 +10,8 @@
  * product-launch-video skill — this file points agents there.
  */
 
-import { writeFileSync, readdirSync, existsSync } from "node:fs";
+import { readdirSync, existsSync } from "node:fs";
+import { writeCaptureFileSync } from "./captureFile.js";
 import { join } from "node:path";
 import type { DesignTokens } from "./types.js";
 import type { AnimationCatalog } from "./animationCataloger.js";
@@ -52,9 +53,9 @@ export function generateAgentPrompt(
   _detectedLibraries?: string[],
 ): void {
   const prompt = buildPrompt(outputDir, url, tokens, hasScreenshot, hasLottie, hasShaders);
-  writeFileSync(join(outputDir, "AGENTS.md"), prompt, "utf-8");
-  writeFileSync(join(outputDir, "CLAUDE.md"), prompt, "utf-8");
-  writeFileSync(join(outputDir, ".cursorrules"), prompt, "utf-8");
+  writeCaptureFileSync(join(outputDir, "AGENTS.md"), prompt, "utf-8");
+  writeCaptureFileSync(join(outputDir, "CLAUDE.md"), prompt, "utf-8");
+  writeCaptureFileSync(join(outputDir, ".cursorrules"), prompt, "utf-8");
 }
 
 // fallow-ignore-next-line complexity

@@ -1,0 +1,115 @@
+import { spawnSync } from "node:child_process";
+import { mkdtempSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { decoderForCodec } from "../services/videoFrameExtractor.js";
+import {
+  inputAlphaOpaqueWarning,
+  probeInputAlphaPlane,
+  sampledRgbaAlphaIsFullyOpaque,
+} from "./alphaPlaneProbe.js";
+import { getFfmpegBinary } from "./ffmpegBinaries.js";
+
+const BYTES_PER_FRAME = 8 * 8 * 4; // 256 — one 8x8 rgba frame
+
+/** Build a raw rgba sample where the alpha byte of every pixel is `alpha`. */
+function sample(alpha: number, frameCount: number): Buffer {
+  const buf = Buffer.alloc(BYTES_PER_FRAME * frameCount, 0);
+  for (let i = 3; i < buf.length; i += 4) {
+    buf[i] = alpha;
+  }
+  return buf;
+}
+
+describe("sampledRgbaAlphaIsFullyOpaque", () => {
+  it("returns true when every alpha byte in a single frame is 255", () => {
+    expect(sampledRgbaAlphaIsFullyOpaque(sample(255, 1))).toBe(true);
+  });
+
+  it("returns true across a multi-frame sample (2 and 3 frames)", () => {
+    expect(sampledRgbaAlphaIsFullyOpaque(sample(255, 2))).toBe(true);
+    expect(sampledRgbaAlphaIsFullyOpaque(sample(255, 3))).toBe(true);
+  });
+
+  it("returns false when any pixel shows full transparency", () => {
+    const buf = sample(255, 1);
+    buf[3] = 0; // first pixel's alpha
+    expect(sampledRgbaAlphaIsFullyOpaque(buf)).toBe(false);
+  });
+
+  it("returns false when any pixel shows partial transparency", () => {
+    const buf = sample(255, 2);
+    buf[3 + 4 * 10] = 254; // partial alpha on the 11th pixel
+    expect(sampledRgbaAlphaIsFullyOpaque(buf)).toBe(false);
+  });
+
+  it("returns undefined for an empty sample (inconclusive, not a warning)", () => {
+    expect(sampledRgbaAlphaIsFullyOpaque(Buffer.alloc(0))).toBeUndefined();
+  });
+
+  it("returns undefined for a byte count that is not a whole-frame multiple", () => {
+    expect(sampledRgbaAlphaIsFullyOpaque(Buffer.alloc(BYTES_PER_FRAME - 1))).toBeUndefined();
+  });
+
+  it("returns undefined for an oversized sample beyond the 3-frame ceiling", () => {
+    expect(sampledRgbaAlphaIsFullyOpaque(Buffer.alloc(BYTES_PER_FRAME * 4))).toBeUndefined();
+  });
+});
+
+describe("inputAlphaOpaqueWarning", () => {
+  it("names the offending file and carries the re-export remedy", () => {
+    const line = inputAlphaOpaqueWarning("avatar.webm");
+    expect(line).toContain('src="avatar.webm"');
+    expect(line).toContain("declares an alpha channel");
+    expect(line).toContain("first frames decode fully opaque");
+    expect(line).toContain("alpha pixel format");
+    expect(line).not.toContain("yuva420p");
+    expect(line.endsWith("\n")).toBe(true);
+  });
+});
+
+const HAS_FFMPEG = spawnSync(getFfmpegBinary(), ["-version"], { encoding: "utf-8" }).status === 0;
+
+describe.skipIf(!HAS_FFMPEG)("probeInputAlphaPlane on real files", () => {
+  let dir: string;
+  beforeAll(() => {
+    dir = mkdtempSync(join(tmpdir(), "hf-alpha-probe-test-"));
+  });
+  afterAll(() => {
+    rmSync(dir, { recursive: true, force: true });
+  });
+
+  const encode = (name: string, color: string, codecArgs: string[]): string => {
+    const out = join(dir, name);
+    const args = [
+      "-v",
+      "error",
+      "-f",
+      "lavfi",
+      "-i",
+      `color=c=${color}:s=32x32:d=0.2,format=rgba`,
+      ...codecArgs,
+    ];
+    const res = spawnSync(getFfmpegBinary(), [...args, "-y", out]);
+    expect(res.status).toBe(0);
+    return out;
+  };
+  const vp9 = ["-c:v", "libvpx-vp9", "-pix_fmt", "yuva420p"];
+  const prores = ["-c:v", "prores_ks", "-profile:v", "4", "-pix_fmt", "yuva444p10le"];
+
+  it("reports a VP9 input whose alpha is all opaque", async () => {
+    const file = encode("opaque.webm", "red", vp9);
+    expect(await probeInputAlphaPlane(file, decoderForCodec("vp9"))).toBe(true);
+  });
+
+  it("does not flag a VP9 input that is really transparent", async () => {
+    const file = encode("clear.webm", "red@0.0", vp9);
+    expect(await probeInputAlphaPlane(file, decoderForCodec("vp9"))).toBe(false);
+  });
+
+  it("probes ProRes 4444 with its own decoder, not the VP9 one", async () => {
+    const file = encode("opaque.mov", "red", prores);
+    expect(await probeInputAlphaPlane(file, decoderForCodec("prores"))).toBe(true);
+  });
+});

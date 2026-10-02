@@ -1,0 +1,118 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <script src="https://cdn.jsdelivr.net/npm/gsap@3.14.2/dist/gsap.min.js"></script>
+    <style>
+      *,
+      *::before,
+      *::after {
+        box-sizing: border-box;
+      }
+
+      html,
+      body,
+      #starfield-demo {
+        width: 1920px;
+        height: 1080px;
+        margin: 0;
+        overflow: hidden;
+      }
+
+      #starfield-demo-backdrop {
+        position: absolute;
+        inset: 0;
+        background: #07080b;
+      }
+
+      #starfield-demo-title {
+        position: absolute;
+        inset: 0;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        font-family: Inter, system-ui, sans-serif;
+        text-align: center;
+        -webkit-font-smoothing: antialiased;
+      }
+
+      #starfield-demo-title h1 {
+        margin: 0;
+        font-size: 144px;
+        font-weight: 600;
+        letter-spacing: -0.04em;
+        line-height: 1;
+        color: #f4f4f5;
+      }
+
+      #starfield-demo-title p {
+        margin: 24px 0 0;
+        font-size: 40px;
+        font-weight: 400;
+        letter-spacing: -0.01em;
+        color: #a1a1aa;
+      }
+
+      #starfield-demo-title time {
+        margin-top: 40px;
+        font-size: 24px;
+        font-weight: 500;
+        letter-spacing: 0.02em;
+        color: #71717a;
+      }
+
+      #starfield-demo-overlay {
+        position: absolute;
+        inset: 0;
+      }
+    </style>
+  </head>
+  <body>
+    <div
+      id="starfield-demo"
+      data-composition-id="starfield-demo"
+      data-start="0"
+      data-duration="6"
+      data-width="1920"
+      data-height="1080"
+    >
+      <div
+        id="starfield-demo-backdrop"
+        class="clip"
+        data-start="0"
+        data-duration="6"
+        data-track-index="0"
+      ></div>
+      <div
+        id="starfield-demo-title"
+        class="clip"
+        data-start="0"
+        data-duration="6"
+        data-track-index="1"
+      >
+        <h1>Northstar</h1>
+        <p>Offline maps for the backcountry</p>
+        <time datetime="2026-10-14">October 14, 2026</time>
+      </div>
+      <div
+        id="starfield-demo-overlay"
+        data-composition-id="starfield"
+        data-composition-src="starfield.html"
+        data-start="0"
+        data-duration="6"
+        data-track-index="2"
+        data-variable-values='{"density":"dense"}'
+        data-width="1920"
+        data-height="1080"
+      ></div>
+    </div>
+
+    <script>
+      window.__timelines = window.__timelines || {};
+      var tl = gsap.timeline({ paused: true });
+      tl.to({}, { duration: 6, ease: "none" }, 0);
+      window.__timelines["starfield-demo"] = tl;
+    </script>
+  </body>
+</html>

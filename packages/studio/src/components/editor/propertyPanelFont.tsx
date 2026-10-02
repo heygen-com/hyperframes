@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import {
   googleFontStylesheetUrl,
   POPULAR_GOOGLE_FONT_FAMILIES,
@@ -19,6 +19,7 @@ import {
   type LocalFontData,
 } from "./propertyPanelHelpers";
 import { useTrackDesignInput } from "../../contexts/DesignPanelInputContext";
+import { runWhenInputIdle } from "./overlayFrameLoop";
 
 /* ------------------------------------------------------------------ */
 /*  Font helper functions                                              */
@@ -117,6 +118,62 @@ function loadImportedFontStylesheet(asset: ImportedFontAsset): void {
   document.head.appendChild(style);
 }
 
+type FontLists = {
+  loaded: boolean;
+  google: readonly string[];
+  googleKeys: ReadonlySet<string>;
+  installed: string[];
+};
+
+let fontLists: FontLists = {
+  loaded: false,
+  google: POPULAR_GOOGLE_FONT_FAMILIES,
+  googleKeys: new Set(POPULAR_GOOGLE_FONT_FAMILIES.map((f) => f.toLowerCase())),
+  installed: [],
+};
+let fontListsRequest: Promise<void> | null = null;
+const fontListListeners = new Set<() => void>();
+
+async function fetchFontList(url: string): Promise<string[]> {
+  const data = (await (await fetch(url)).json()) as { fonts?: unknown };
+  if (!Array.isArray(data.fonts)) throw new Error(`${url} returned no font list`);
+  return data.fonts as string[];
+}
+
+function loadFontLists(): void {
+  if (fontLists.loaded) return;
+  fontListsRequest ??= Promise.all([
+    fetchFontList("/api/fonts"),
+    fetchFontList("/api/fonts/google"),
+  ])
+    .then(([installed, google]) => {
+      const names = google.concat(POPULAR_GOOGLE_FONT_FAMILIES);
+      const families: string[] = [];
+      const googleKeys = new Set<string>();
+      let next = 0;
+      runWhenInputIdle((timeLeft) => {
+        while (next < names.length && timeLeft() > 0) {
+          const batch = names.slice(next, next + 200);
+          next += batch.length;
+          families.push(...uniqueFontFamilies(batch, googleKeys));
+        }
+        if (next < names.length) return false;
+        fontLists = { loaded: true, google: families, googleKeys, installed };
+        for (const listener of fontListListeners) listener();
+        return true;
+      });
+    })
+    .catch(() => {
+      fontListsRequest = null;
+    });
+}
+
+function subscribeFontLists(listener: () => void): () => void {
+  fontListListeners.add(listener);
+  loadFontLists();
+  return () => fontListListeners.delete(listener);
+}
+
 /* ------------------------------------------------------------------ */
 /*  FontFamilyField                                                    */
 /* ------------------------------------------------------------------ */
@@ -146,9 +203,8 @@ export function FontFamilyField({
   const [activeIndex, setActiveIndex] = useState(-1);
   const [localFonts, setLocalFonts] = useState<string[]>([]);
   const [localFontData, setLocalFontData] = useState<LocalFontData[]>([]);
-  const [googleFonts, setGoogleFonts] = useState<string[]>(() => [...POPULAR_GOOGLE_FONT_FAMILIES]);
+  const lists = useSyncExternalStore(subscribeFontLists, () => fontLists);
   const [loadingLocalFonts, setLoadingLocalFonts] = useState(false);
-  const [loadingGoogleFonts, setLoadingGoogleFonts] = useState(false);
   const [importingFonts, setImportingFonts] = useState(false);
   const [fontNotice, setFontNotice] = useState<string | null>(null);
   const canQueryLocalFonts =
@@ -175,46 +231,18 @@ export function FontFamilyField({
   }, [open]);
 
   useEffect(() => {
-    let cancelled = false;
-    void fetch("/api/fonts")
-      .then((r) => (r.ok ? r.json() : null))
-      .then((data: { fonts?: string[] } | null) => {
-        if (cancelled || !Array.isArray(data?.fonts)) return;
-        setLocalFonts((cur) => uniqueFontFamilies([...cur, ...data.fonts!]));
-      })
-      .catch(() => undefined);
-    return () => {
-      cancelled = true;
-    };
-  }, []);
+    if (open) loadFontLists();
+  }, [open]);
 
   useEffect(() => {
-    let cancelled = false;
-    setLoadingGoogleFonts(true);
-    void fetch("/api/fonts/google")
-      .then((r) => (r.ok ? r.json() : null))
-      .then((data: { fonts?: string[] } | null) => {
-        if (cancelled || !Array.isArray(data?.fonts)) return;
-        setGoogleFonts(uniqueFontFamilies([...data.fonts!, ...POPULAR_GOOGLE_FONT_FAMILIES]));
-      })
-      .catch(() => undefined)
-      .finally(() => {
-        if (!cancelled) setLoadingGoogleFonts(false);
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, []);
-
-  useEffect(() => {
-    if (googleFonts.some((f) => f.toLowerCase() === currentFamily.toLowerCase())) {
+    if (lists.googleKeys.has(currentFamily.toLowerCase())) {
       loadGoogleFontStylesheet(currentFamily);
     }
     const imported = importedFonts.find(
       (f) => f.family.toLowerCase() === currentFamily.toLowerCase(),
     );
     if (imported) loadImportedFontStylesheet(imported);
-  }, [currentFamily, googleFonts, importedFonts]);
+  }, [currentFamily, lists, importedFonts]);
 
   const loadBrowserLocalFonts = async () => {
     if (!canQueryLocalFonts || !window.queryLocalFonts) {
@@ -276,25 +304,21 @@ export function FontFamilyField({
   );
 
   const options = useMemo(() => {
+    if (!open) return [];
     const documentFonts = collectDocumentFontFamilies();
-    const googleSet = new Set(googleFonts.map((f) => f.toLowerCase()));
-    const taggedLocal = localFonts.map(
-      (family): FontOption => ({
-        family,
-        source: googleSet.has(family.toLowerCase()) ? "Google" : "Local",
-      }),
-    );
     return sortFontOptions(
       uniqueFontOptions([
         { family: currentFamily, source: "Current" },
         ...documentFonts.map((f): FontOption => ({ family: f, source: "Document" })),
         ...projectFontAssets,
-        ...googleFonts.map((f): FontOption => ({ family: f, source: "Google" })),
-        ...taggedLocal,
+        ...lists.google.map((f): FontOption => ({ family: f, source: "Google" })),
+        ...[...lists.installed, ...localFonts].map(
+          (f): FontOption => ({ family: f, source: "Local" }),
+        ),
         ...DEFAULT_FONT_FAMILIES.map((f): FontOption => ({ family: f, source: "System" })),
       ]),
     );
-  }, [currentFamily, googleFonts, localFonts, projectFontAssets]);
+  }, [open, currentFamily, lists, localFonts, projectFontAssets]);
 
   const filteredOptions = useMemo(() => {
     const matches = options.filter((o) => fontMatchesQuery(o.family, query));
@@ -391,7 +415,7 @@ export function FontFamilyField({
           type="text"
           value={query}
           disabled={disabled}
-          placeholder={loadingGoogleFonts ? "Loading Google Fonts..." : "Search fonts"}
+          placeholder={lists.loaded ? "Search fonts" : "Loading Google Fonts..."}
           onChange={(e) => {
             setQuery(e.target.value);
             setActiveIndex(-1);
@@ -425,14 +449,14 @@ export function FontFamilyField({
           role="combobox"
           aria-expanded={open}
           aria-autocomplete="list"
-          className="min-w-0 rounded-lg border border-neutral-800 bg-neutral-900 px-2.5 py-2 text-[11px] font-medium text-neutral-100 outline-none placeholder:text-neutral-600 focus:border-neutral-600"
+          className="min-w-0 rounded-lg border border-neutral-800 bg-neutral-900 px-2.5 py-2 text-[11px] font-medium text-neutral-100 outline-hidden placeholder:text-neutral-600 focus:border-neutral-600"
         />
         {canQueryLocalFonts && (
           <button
             type="button"
             disabled={disabled || loadingLocalFonts}
             onClick={loadBrowserLocalFonts}
-            className="rounded-lg border border-neutral-700 bg-neutral-900 px-2.5 text-[10px] font-medium text-neutral-400 transition-colors hover:border-neutral-600 hover:text-neutral-100 disabled:cursor-not-allowed disabled:text-neutral-700"
+            className="rounded-lg border border-neutral-700 bg-neutral-900 px-2.5 text-[10px] font-medium text-neutral-400 transition-colors hover:border-neutral-600 hover:text-neutral-100 disabled:cursor-not-allowed disabled:text-text-off"
           >
             {loadingLocalFonts ? "..." : "Local"}
           </button>
@@ -441,7 +465,7 @@ export function FontFamilyField({
           type="button"
           disabled={disabled || importingFonts || !onImportFonts}
           onClick={() => fontInputRef.current?.click()}
-          className="rounded-lg border border-neutral-700 bg-neutral-900 px-2.5 text-[10px] font-medium text-neutral-400 transition-colors hover:border-neutral-600 hover:text-neutral-100 disabled:cursor-not-allowed disabled:text-neutral-700"
+          className="rounded-lg border border-neutral-700 bg-neutral-900 px-2.5 text-[10px] font-medium text-neutral-400 transition-colors hover:border-neutral-600 hover:text-neutral-100 disabled:cursor-not-allowed disabled:text-text-off"
         >
           {importingFonts ? "..." : "Import"}
         </button>
@@ -487,12 +511,12 @@ export function FontFamilyField({
                   {option.family}
                 </span>
                 {renderAliasFor(option.family) && (
-                  <span className="flex-shrink-0 text-[9px] text-neutral-500">
+                  <span className="shrink-0 text-[9px] text-neutral-500">
                     → {renderAliasFor(option.family)}
                   </span>
                 )}
               </span>
-              <span className="flex-shrink-0 text-[9px] uppercase tracking-[0.14em] text-neutral-600">
+              <span className="shrink-0 text-[9px] uppercase tracking-[0.14em] text-neutral-600">
                 {option.source}
               </span>
             </button>
@@ -524,7 +548,7 @@ export function FontFamilyField({
             height="10"
             viewBox="0 0 10 10"
             fill="currentColor"
-            className="flex-shrink-0 text-panel-text-5"
+            className="shrink-0 text-panel-text-5"
           >
             <path d="M2 3l3 4 3-4z" />
           </svg>
@@ -549,7 +573,7 @@ export function FontFamilyField({
         >
           {currentFamily}
         </span>
-        <span className="flex-shrink-0 text-[10px] uppercase tracking-[0.14em] text-neutral-600">
+        <span className="shrink-0 text-[10px] uppercase tracking-[0.14em] text-neutral-600">
           Font
         </span>
       </button>

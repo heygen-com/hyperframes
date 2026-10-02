@@ -511,3 +511,16 @@ export function isZOrderActionEnabled(
 ): boolean {
   return resolveZOrderChange(target, action, options) !== null;
 }
+
+/**
+ * One z-order step: the patches plus the sibling it crosses, both read from the
+ * same pre-change render order. Null when the action is a no-op.
+ */
+export function resolveZOrderStep(
+  target: HTMLElement,
+  action: ZOrderAction,
+): { patches: ZOrderPatch[]; crossed: HTMLElement | null } | null {
+  const patches = resolveZOrderChange(target, action);
+  if (patches === null) return null;
+  return { patches, crossed: resolveCrossedNeighbor(target, action) };
+}

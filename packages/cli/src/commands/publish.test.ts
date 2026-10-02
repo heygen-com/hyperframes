@@ -90,6 +90,13 @@ describe("publish default-entry preflight", () => {
     expect(output).not.toContain("hyperframes publish <project>/compositions");
     expect(output).toContain("publish accepts project directories, not individual HTML files");
   });
+
+  it("prints the full finding on a default-entry-mismatch abort even without --lint-verbose", async () => {
+    const output = await runEntryMismatch("compositions/brand/index.html");
+
+    expect(output).toContain("blank_root_with_standalone_composition");
+    expect(output).not.toContain("run with --lint-verbose for full output");
+  });
 });
 
 describe("publish visibility messaging", () => {

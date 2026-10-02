@@ -82,11 +82,11 @@ function ArrowLeft({ disabled }: { disabled: boolean }) {
       height="10"
       viewBox="0 0 6 10"
       fill="none"
-      style={{ opacity: disabled ? 0.25 : 1 }}
+      className={disabled ? "text-text-off" : "text-text-2"}
     >
       <path
         d="M5 1L1 5L5 9"
-        stroke="#a3a3a3"
+        stroke="currentColor"
         strokeWidth="1.4"
         strokeLinecap="round"
         strokeLinejoin="round"
@@ -102,11 +102,11 @@ function ArrowRight({ disabled }: { disabled: boolean }) {
       height="10"
       viewBox="0 0 6 10"
       fill="none"
-      style={{ opacity: disabled ? 0.25 : 1 }}
+      className={disabled ? "text-text-off" : "text-text-2"}
     >
       <path
         d="M1 1L5 5L1 9"
-        stroke="#a3a3a3"
+        stroke="currentColor"
         strokeWidth="1.4"
         strokeLinecap="round"
         strokeLinejoin="round"

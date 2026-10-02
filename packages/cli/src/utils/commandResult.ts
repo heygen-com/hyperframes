@@ -34,9 +34,9 @@ export class CliRuntimeError extends Error {
 
   constructor(
     message = "Command failed",
-    options: { exitCode?: number; presented?: boolean } = {},
+    options: { exitCode?: number; presented?: boolean; cause?: unknown } = {},
   ) {
-    super(message);
+    super(message, options.cause === undefined ? undefined : { cause: options.cause });
     this.name = "CliRuntimeError";
     this.result = {
       exitCode: options.exitCode ?? 1,
@@ -57,8 +57,8 @@ export class CliResultSignal extends Error {
   }
 }
 
-export function failCommand(exitCode = 1): never {
-  throw new CliRuntimeError("Command failed", { exitCode, presented: true });
+export function failCommand(exitCode = 1, cause?: unknown): never {
+  throw new CliRuntimeError("Command failed", { exitCode, presented: true, cause });
 }
 
 export function failUsage(exitCode = 1): never {

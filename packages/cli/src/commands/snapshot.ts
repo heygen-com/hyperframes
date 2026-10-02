@@ -14,6 +14,14 @@ import {
   seekCompositionTimeline,
   type ZoomTarget,
 } from "../capture/captureCompositionFrame.js";
+import {
+  isClipVisibleAt,
+  isInClipWindow,
+  readElementRateSpec,
+  sourceTimeAt,
+  timeAtSourceTime,
+  type RateSpec,
+} from "@hyperframes/core";
 import { resolveProject } from "../utils/project.js";
 import {
   definitiveEntryMismatchComposition,
@@ -27,6 +35,7 @@ import { c } from "../ui/colors.js";
 import { findFFmpeg, getFFmpegInstallHint } from "../browser/ffmpeg.js";
 import { parseAngle, type Camera } from "./motionShotLayout.js";
 import type { Example } from "./_examples.js";
+import { loadOptionalPackage } from "../utils/optionalPackages.js";
 import { resolveLocalBrowserGpuMode, type BrowserGpuMode } from "../browser/gpuPolicy.js";
 
 // Runs IN THE BROWSER (serialized into page.evaluate). Tilt the whole stage so
@@ -73,28 +82,24 @@ export function formatSnapshotTimestamp(time: number): string {
   return `${Number(time.toFixed(3))}s`;
 }
 
-/** Keep an exact clip-end snapshot aligned with the renderer's inclusive media
- * window. This intentionally differs from the live player's exclusive-end
- * visibility so an explicit end-boundary review does not become blank. FFmpeg
- * cannot decode at a source's exclusive duration, so sample one nominal 30fps
- * frame inside the source. This also clamps clips whose configured media window
- * extends beyond the source. An infinite clip duration intentionally never
- * enters the end-boundary branch. */
+/** Shows media by the runtime's visibility rule. A clip held at the composition end, or past the end of a source
+ * shorter than its slot, samples one nominal 30fps frame inside the source; FFmpeg has no frame at or past its end. */
 export function resolveSnapshotVideoFrameTime(input: {
   globalTime: number;
   clipStart: number;
   clipDuration: number;
   relativeTime: number;
   sourceDuration: number;
+  compositionDuration: number;
 }): number | null {
-  const { globalTime, clipStart, clipDuration, relativeTime, sourceDuration } = input;
+  const { globalTime, clipStart, clipDuration, sourceDuration, compositionDuration } = input;
   const clipEnd = clipStart + clipDuration;
-  const clipEndTolerance = 1e-9;
-  if (globalTime < clipStart || globalTime > clipEnd + clipEndTolerance || relativeTime < 0)
-    return null;
-
-  const atClipEnd = Math.abs(globalTime - clipEnd) <= clipEndTolerance;
-  if (!atClipEnd) return relativeTime;
+  if (!isClipVisibleAt(globalTime, clipStart, clipEnd, compositionDuration)) return null;
+  const relativeTime =
+    globalTime < clipStart ? Math.max(0, input.relativeTime) : input.relativeTime;
+  if (relativeTime < 0) return null;
+  const pastSource = sourceDuration > 0 && relativeTime >= sourceDuration;
+  if (isInClipWindow(globalTime, clipStart, clipEnd) && !pastSource) return relativeTime;
 
   const sourceEnd = sourceDuration > 0 ? sourceDuration : relativeTime;
   return Math.max(0, Math.min(relativeTime, sourceEnd - 1 / 30));
@@ -109,16 +114,22 @@ export function resolveSnapshotVideoClipStart(input: {
   return input.runtimeResolvedStart ?? input.authoredStart;
 }
 
-/** Match runtime/render timing: authored data-playback-rate wins over the
- * browser default, then the effective rate is clamped to the supported range. */
-export function resolveSnapshotVideoPlaybackRate(input: {
+/** Match runtime/render timing: a `rate` lane in data-automation wins, then the authored
+ * data-playback-rate, then the browser default, all through the runtime's own reader. */
+export function resolveSnapshotVideoRateSpec(input: {
   authoredRate: string | undefined;
+  authoredAutomation?: string | undefined;
   defaultRate: number;
-}): number {
+}): RateSpec {
   const authoredRate = Number.parseFloat(input.authoredRate ?? "");
-  const rawRate =
-    Number.isFinite(authoredRate) && authoredRate > 0 ? authoredRate : input.defaultRate;
-  return Number.isFinite(rawRate) && rawRate > 0 ? Math.max(0.1, Math.min(5, rawRate)) : 1;
+  const attrs: Record<string, string | undefined> = {
+    "data-playback-rate":
+      Number.isFinite(authoredRate) && authoredRate > 0
+        ? input.authoredRate
+        : String(input.defaultRate),
+    "data-automation": input.authoredAutomation,
+  };
+  return readElementRateSpec({ getAttribute: (name) => attrs[name] ?? null });
 }
 
 export function requireSnapshotFfmpeg(ffmpegPath: string | undefined): string {
@@ -128,16 +139,54 @@ export function requireSnapshotFfmpeg(ffmpegPath: string | undefined): string {
   );
 }
 
+interface SnapshotCompositePage {
+  evaluate<T>(callback: () => T): Promise<Awaited<T>>;
+  screenshot(options: {
+    type: "jpeg";
+    quality: number;
+    clip: { x: number; y: number; width: number; height: number };
+  }): Promise<Uint8Array>;
+}
+
+/** Recapture canvas composites once the decoded video overlays have been injected. */
+export async function recaptureSnapshotComposite(page: SnapshotCompositePage): Promise<void> {
+  const hasPageComposite = await page.evaluate(async () => {
+    const runtimeWindow = window as Window & {
+      __hf_page_composite_prepare?: () => Promise<boolean>;
+      __hf_page_composite_resolve?: () => boolean;
+    };
+    if (typeof runtimeWindow.__hf_page_composite_resolve !== "function") return false;
+    await runtimeWindow.__hf_page_composite_prepare?.();
+    return true;
+  });
+  if (hasPageComposite) {
+    // The 1×1 screenshot forces Chrome to publish updated subtree paint records
+    // after injection, so resolve can consume them without a fixed delay.
+    await page.screenshot({
+      type: "jpeg",
+      quality: 1,
+      clip: { x: 0, y: 0, width: 1, height: 1 },
+    });
+    await page.evaluate(() => {
+      const runtimeWindow = window as Window & {
+        __hf_page_composite_resolve?: () => boolean;
+      };
+      runtimeWindow.__hf_page_composite_resolve?.();
+    });
+  }
+}
+
 /**
  * Extract a single frame from a video file at `timeSeconds` via FFmpeg.
  * Used to work around Chrome-headless's inability to reliably seek
  * <video> elements during snapshot capture.
  */
-async function extractVideoFrameToBuffer(
+export async function extractVideoFrameToBuffer(
   videoPath: string,
   timeSeconds: number,
   useVp9AlphaDecoder = false,
   accurateSeek = false,
+  holdLastFrame = false,
 ): Promise<Buffer | null> {
   const tmp = mkdtempSync(join(tmpdir(), "hf-snapshot-frame-"));
   const outPath = join(tmp, "frame.png");
@@ -151,6 +200,7 @@ async function extractVideoFrameToBuffer(
     if (useVp9AlphaDecoder) {
       args.push("-c:v", "libvpx-vp9");
     }
+    const decoderArgs = [...args];
     const seek = ["-ss", String(Math.max(0, timeSeconds))];
     args.push(
       ...(accurateSeek ? ["-i", videoPath, ...seek] : [...seek, "-i", videoPath]),
@@ -161,7 +211,16 @@ async function extractVideoFrameToBuffer(
       "-y",
       outPath,
     );
-    const result = await runFfmpegOnce(ffmpegPath, args, FFMPEG_EXTRACT_TIMEOUT_MS);
+    let result = await runFfmpegOnce(ffmpegPath, args, FFMPEG_EXTRACT_TIMEOUT_MS);
+    if (holdLastFrame && result.code === 0 && !result.timedOut && !existsSync(outPath)) {
+      // Past the last frame's timestamp FFmpeg writes nothing; decode the final second and keep its last frame.
+      const tail = ["-sseof", "-1", "-i", videoPath, "-update", "1", "-q:v", "2", "-y", outPath];
+      result = await runFfmpegOnce(
+        ffmpegPath,
+        [...decoderArgs, ...tail],
+        FFMPEG_EXTRACT_TIMEOUT_MS,
+      );
+    }
     if (result.code !== 0 || result.timedOut || !existsSync(outPath)) return null;
     return readFileSync(outPath);
   } finally {
@@ -431,7 +490,7 @@ async function captureSnapshots(
       for (let i = 0; i < positions.length; i++) {
         const time = positions[i]!;
 
-        await seekCompositionTimeline(page, time);
+        await seekCompositionTimeline(page, time, { exactTime: true });
 
         if (cameraExpr) await page.evaluate(cameraExpr);
 
@@ -453,6 +512,7 @@ async function captureSnapshots(
                 src: v.currentSrc || v.src,
                 authoredStart,
                 authoredRate: v.dataset.playbackRate,
+                authoredAutomation: v.dataset.automation,
                 defaultRate: v.defaultPlaybackRate,
                 runtimeResolvedStart:
                   runtimeResolvedStart !== undefined && Number.isFinite(runtimeResolvedStart)
@@ -466,15 +526,19 @@ async function captureSnapshots(
               };
             });
           });
+          const compositionDuration = duration;
           const active = candidates.flatMap((candidate) => {
             const start = resolveSnapshotVideoClipStart(candidate);
-            const playbackRate = resolveSnapshotVideoPlaybackRate(candidate);
+            const playbackRate = resolveSnapshotVideoRateSpec(candidate);
             const duration =
               candidate.authoredDuration ??
               (candidate.srcDuration > 0
-                ? Math.max(0, (candidate.srcDuration - candidate.mediaStart) / playbackRate)
+                ? Math.max(
+                    0,
+                    timeAtSourceTime(playbackRate, candidate.srcDuration - candidate.mediaStart),
+                  )
                 : Number.POSITIVE_INFINITY);
-            let relTime = (time - start) * playbackRate + candidate.mediaStart;
+            let relTime = sourceTimeAt(playbackRate, time - start) + candidate.mediaStart;
             if (
               candidate.loop &&
               candidate.srcDuration > candidate.mediaStart &&
@@ -491,6 +555,7 @@ async function captureSnapshots(
               clipDuration: duration,
               relativeTime: relTime,
               sourceDuration: candidate.srcDuration,
+              compositionDuration,
             });
             return frameTime === null
               ? []
@@ -534,6 +599,8 @@ async function captureSnapshots(
               ffmpegInput,
               Math.max(0, v.relTime),
               useVp9AlphaDecoder,
+              false,
+              v.srcDuration > 0 && v.relTime >= v.srcDuration - 1,
             );
             if (!png) continue;
             updates.push({
@@ -564,6 +631,8 @@ async function captureSnapshots(
             );
           }
         }
+
+        await recaptureSnapshotComposite(page);
 
         const timeLabel = formatSnapshotTimestamp(time);
         const index = String(i).padStart(2, "0");
@@ -654,7 +723,8 @@ export default defineCommand({
     },
     at: {
       type: "string",
-      description: "Comma-separated timestamps in seconds (e.g., --at 3.0,10.5,18.0)",
+      description:
+        "Comma-separated timestamps in seconds (e.g., --at 3.0,10.5,18.0). Each is captured at that exact instant, not snapped to a frame.",
     },
     timeout: {
       type: "string",
@@ -834,7 +904,7 @@ export default defineCommand({
             console.log(`   ${c.dim("--describe: GEMINI_API_KEY not set, skipping")}`);
           } else if (paths.length > 0) {
             console.log(`   ${c.dim("Describing frames with Gemini vision...")}`);
-            const { GoogleGenAI } = await import("@google/genai");
+            const { GoogleGenAI } = await loadOptionalPackage("@google/genai", "--describe");
             const ai = new GoogleGenAI({ apiKey: geminiKey });
             const model = process.env.HYPERFRAMES_GEMINI_MODEL || "gemini-3.1-flash-lite-preview";
             const customQuestion =
@@ -915,7 +985,7 @@ export default defineCommand({
           }
         } catch (descErr) {
           const msg = normalizeErrorMessage(descErr);
-          console.log(`   ${c.dim(`--describe failed: ${msg.slice(0, 80)}`)}`);
+          console.log(`   ${c.dim(`--describe failed: ${msg}`)}`);
         }
       }
     } catch (err) {

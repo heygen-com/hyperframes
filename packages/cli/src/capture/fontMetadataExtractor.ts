@@ -17,7 +17,8 @@
  * aggregation. See FontsManifest type for shape.
  */
 
-import { readdirSync, readFileSync, writeFileSync, existsSync } from "node:fs";
+import { readdirSync, readFileSync, existsSync } from "node:fs";
+import { writeCaptureFileSync } from "./captureFile.js";
 import { join } from "node:path";
 import * as fontkit from "fontkit";
 import type { Font, FontCollection } from "fontkit";
@@ -139,7 +140,7 @@ export function extractFontMetadata(fontsDir: string, outputPath: string): Fonts
     },
   };
 
-  writeFileSync(outputPath, JSON.stringify(manifest, null, 2), "utf-8");
+  writeCaptureFileSync(outputPath, JSON.stringify(manifest, null, 2), "utf-8");
   return manifest;
 }
 

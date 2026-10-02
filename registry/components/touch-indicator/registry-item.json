@@ -3,8 +3,8 @@
   "name": "touch-indicator",
   "type": "hyperframes:component",
   "title": "Touch Indicator",
-  "description": "A translucent contact-circle gesture actor for mobile UI scenes: it touches the glass, causes a same-frame response, and lifts. Tap or swipe, picked by variable.",
-  "tags": ["motion-primitive", "mobile", "gesture", "touch", "pointer"],
+  "description": "A translucent contact-circle gesture actor for mobile UI scenes: it touches the glass on the frame the host target responds, then lifts. Tap or swipe, picked by variable.",
+  "tags": ["cursor", "motion-primitive", "mobile", "gesture", "touch", "pointer"],
   "variables": [
     {
       "id": "gesture",

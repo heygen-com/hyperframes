@@ -16,7 +16,11 @@
  * silently discarded for every component in the catalog.
  */
 
-import { isCompositionVariable, type CompositionVariable } from "@hyperframes/core/variables";
+import {
+  isCompositionVariable,
+  validateVariables,
+  type CompositionVariable,
+} from "@hyperframes/core/variables";
 
 export interface ApplyResult {
   /** The source with defaults rewritten. Unchanged when nothing applied. */
@@ -27,6 +31,14 @@ export interface ApplyResult {
   unknown: string[];
   /** Ids declared but given a value the declaration does not allow. */
   invalid: { id: string; reason: string }[];
+}
+
+/** `--vars` values the item's declaration cannot take; the install writes nothing. */
+export class InvalidVariableValuesError extends Error {
+  constructor(readonly invalid: { id: string; reason: string }[]) {
+    super(`--vars refused: ${invalid.map(({ id, reason }) => `${id}: ${reason}`).join("; ")}`);
+    this.name = "InvalidVariableValuesError";
+  }
 }
 
 const ATTR = "data-composition-variables";
@@ -52,23 +64,6 @@ function encode(json: string, quote: string): string {
   return quote === "'" ? json.replace(/'/g, "&#39;") : json.replace(/"/g, "&quot;");
 }
 
-function optionValues(decl: CompositionVariable): string[] | null {
-  return decl.type === "enum" ? decl.options.map((option) => option.value) : null;
-}
-
-/**
- * Reject a value the declaration cannot represent, rather than writing it.
- *
- * A bad enum falls back to the default at runtime and warns, so writing one
- * here would produce a file that renders as if the value had been ignored --
- * which is the exact failure this function exists to remove.
- */
-function rejectEnum(decl: CompositionVariable, value: unknown): string | null {
-  const options = optionValues(decl);
-  if (!options) return null;
-  return options.includes(String(value)) ? null : `not one of ${options.join(", ")}`;
-}
-
 function rejectNumber(decl: CompositionVariable, value: unknown): string | null {
   if (decl.type !== "number") return null;
   const n = typeof value === "number" ? value : Number(value);
@@ -78,8 +73,15 @@ function rejectNumber(decl: CompositionVariable, value: unknown): string | null 
   return null;
 }
 
+// Refuse what the runtime would ignore. Numbers keep their own check (string input, min/max);
+// every other type goes through the runtime's validator.
 function reject(decl: CompositionVariable, value: unknown): string | null {
-  return rejectEnum(decl, value) ?? rejectNumber(decl, value);
+  if (decl.type === "number") return rejectNumber(decl, value);
+  const [issue] = validateVariables({ [decl.id]: value }, [decl]);
+  if (!issue) return null;
+  if (issue.kind === "enum-out-of-range") return `not one of ${issue.allowed.join(", ")}`;
+  if (issue.kind === "type-mismatch") return `expected ${issue.expected}, got ${issue.actual}`;
+  return null;
 }
 
 export function applyVariableDefaults(
@@ -116,7 +118,7 @@ export function applyVariableDefaults(
   const applied: string[] = [];
   const invalid: { id: string; reason: string }[] = [];
   const byId = new Map(declared.map((decl) => [decl.id, decl]));
-  const updated = new Map<string, string | number>();
+  const updated = new Map<string, unknown>();
 
   for (const [id, value] of Object.entries(values)) {
     const decl = byId.get(id);
@@ -129,7 +131,7 @@ export function applyVariableDefaults(
     // The declaration's own type decides how the value is stored. A number
     // written as the string "76" would trip the composition's guard and fall
     // back, which looks exactly like the value being ignored.
-    updated.set(id, decl.type === "number" ? Number(value) : String(value));
+    updated.set(id, decl.type === "number" ? Number(value) : value);
     applied.push(id);
   }
 

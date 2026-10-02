@@ -166,6 +166,16 @@ describe("audio group render ids", () => {
     expect(d.querySelector("audio")?.getAttribute(AUDIO_GROUP_RENDER_ID_ATTR)).toBe("vo");
   });
 
+  it("stamps an audible video member and skips a muted one", () => {
+    const d = doc(`<hf-audio-group id="vo"></hf-audio-group>
+      <video id="v" src="a.mp4" data-has-audio="true" data-audio-group="vo"></video>
+      <video id="m" src="b.mp4" muted data-audio-group="vo"></video>`);
+    assignMediaRenderIds(d);
+    const [audible, muted] = [...d.querySelectorAll("video")];
+    expect(audible?.getAttribute(AUDIO_GROUP_RENDER_ID_ATTR)).toBe("vo");
+    expect(muted?.hasAttribute(AUDIO_GROUP_RENDER_ID_ATTR)).toBe(false);
+  });
+
   it("leaves a member alone when no bus element declares its group", () => {
     const d = doc(`<audio id="a" src="a.wav" data-audio-group="ghost"></audio>`);
     assignMediaRenderIds(d);

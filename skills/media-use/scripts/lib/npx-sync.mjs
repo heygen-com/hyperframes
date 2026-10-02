@@ -1,5 +1,18 @@
 import { existsSync } from "node:fs";
-import { resolveSpawnCommand } from "../../audio/scripts/lib/tts.mjs";
+import { dirname, join } from "node:path";
+
+function resolveNpxCliPath(env, pathExists) {
+  const npmExecPath = env.npm_execpath;
+  const nodeExecPath = env.npm_node_execpath || process.execPath;
+  if (npmExecPath) {
+    const fileName = npmExecPath.replace(/\\/g, "/").split("/").pop()?.toLowerCase();
+    const candidate =
+      fileName === "npx-cli.js" ? npmExecPath : join(dirname(npmExecPath), "npx-cli.js");
+    if (pathExists(candidate)) return candidate;
+  }
+  const besideNode = join(dirname(nodeExecPath), "node_modules", "npm", "bin", "npx-cli.js");
+  return pathExists(besideNode) ? besideNode : null;
+}
 
 // Sync-spawn analog of the audio engine's spawnP, for execFileSync call sites
 // that must hard-fail (rather than fall through to another provider) when npx
@@ -18,7 +31,20 @@ export function resolveNpxInvocation(
   env = process.env,
   pathExists = existsSync,
 ) {
-  const resolved = resolveSpawnCommand("npx", argv, opts, platform, env, pathExists);
+  const resolved =
+    platform !== "win32"
+      ? { cmd: "npx", args: argv, opts: { stdio: "ignore", ...opts } }
+      : (() => {
+          const nodeExecPath = env.npm_node_execpath || process.execPath;
+          const npxCliPath = resolveNpxCliPath(env, pathExists);
+          return npxCliPath
+            ? {
+                cmd: nodeExecPath,
+                args: [npxCliPath, ...argv.map((arg) => String(arg))],
+                opts: { stdio: "ignore", windowsHide: true, ...opts },
+              }
+            : null;
+        })();
   if (!resolved) {
     // npx-on-win32 with no resolvable npx-cli.js — same terminal condition
     // spawnP warns about, surfaced as a throw for callers with no fallback.

@@ -1,9 +1,10 @@
 import { strict as assert } from "node:assert";
 import { test } from "node:test";
-import { mkdtempSync, rmSync, existsSync } from "node:fs";
+import { mkdtempSync, mkdirSync, readFileSync, rmSync, existsSync, writeFileSync } from "node:fs";
 import { join, dirname } from "node:path";
 import { tmpdir } from "node:os";
 import { fileURLToPath } from "node:url";
+import { recordInManifest } from "./lib/media-record.mjs";
 import { resolveSfx } from "./lib/sfx.mjs";
 
 // Proves the relocated engine (skills/media-use/audio/) still resolves its
@@ -43,6 +44,82 @@ test("an unknown cue is reported, not fatal", async () => {
     });
     assert.equal(sfx.length, 0);
     assert.ok(anomalies.some((a) => /not in bundled library/.test(a)));
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test("a person's own file under a bundled name survives, and the cue gets the next free name", async () => {
+  const dir = mkdtempSync(join(tmpdir(), "mu-audio-"));
+  try {
+    const own = join(dir, "assets", "sfx", "whoosh.mp3");
+    mkdirSync(dirname(own), { recursive: true });
+    writeFileSync(own, "the person's own whoosh");
+    const resolve = () =>
+      resolveSfx({
+        cues: [{ id: "1", name: "whoosh" }],
+        heygenOK: false,
+        hyperframesDir: dir,
+        sfxLibDir,
+      });
+
+    const first = await resolve();
+    const second = await resolve();
+
+    assert.equal(readFileSync(own, "utf8"), "the person's own whoosh");
+    assert.deepEqual(
+      [first, second].map(({ sfx }) => [sfx[0].file, sfx[0].source]),
+      [
+        ["assets/sfx/whoosh-2.mp3", "local"],
+        ["assets/sfx/whoosh-2.mp3", "local"],
+      ],
+    );
+    assert.deepEqual(
+      readFileSync(join(dir, "assets/sfx/whoosh-2.mp3")),
+      readFileSync(join(sfxLibDir, "whoosh.mp3")),
+    );
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test("two effects never share a file when one's name is taken by the person, run after run", async () => {
+  const dir = mkdtempSync(join(tmpdir(), "mu-audio-"));
+  try {
+    mkdirSync(join(dir, "assets", "sfx"), { recursive: true });
+    writeFileSync(join(dir, "assets", "sfx", "glitch.mp3"), "the person's own glitch");
+    const realFetch = globalThis.fetch;
+    globalThis.fetch = async (url) => {
+      const query = new URL(url).searchParams.get("query");
+      if (query)
+        return Response.json({ data: [{ audio_url: `https://sound.test/${query}`, score: 0.6 }] });
+      return new Response(`bytes of ${new URL(url).pathname}`);
+    };
+    const run = async (names) => {
+      const { sfx } = await resolveSfx({
+        cues: names.map((name, index) => ({ id: String(index), name })),
+        heygenOK: true,
+        headers: {},
+        hyperframesDir: dir,
+        sfxLibDir,
+      });
+      const files = sfx.map(({ file }) => file);
+      recordInManifest(
+        dir,
+        [...new Set(files)].map((path) => ({ path, type: "sfx", source: "search" })),
+      );
+      return files;
+    };
+    try {
+      assert.deepEqual(await run(["glitch"]), ["assets/sfx/glitch-2.mp3"]);
+      assert.deepEqual(await run(["glitch", "glitch 2", "glitch"]), [
+        "assets/sfx/glitch-2.mp3",
+        "assets/sfx/glitch-2-2.mp3",
+        "assets/sfx/glitch-2.mp3",
+      ]);
+    } finally {
+      globalThis.fetch = realFetch;
+    }
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }

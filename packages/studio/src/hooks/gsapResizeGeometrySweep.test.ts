@@ -238,7 +238,9 @@ async function runCase(testCase: Case): Promise<string[]> {
     async () => animations,
   );
 
-  const { scale, size } = committed(commitMutation.mock.calls);
+  const { scale, size: written } = committed(commitMutation.mock.calls);
+  const size =
+    outcome.status === "element-size" ? { w: testCase.drop.w, h: testCase.drop.h } : written;
   const settled = renderRect(
     { box: size ?? testCase.box, pos: { ...live.pos }, scale: scale ?? testCase.liveScale },
     testCase.rotation,

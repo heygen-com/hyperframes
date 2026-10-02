@@ -15,7 +15,7 @@ Three terms describe different concerns. Do not substitute one for another.
 | Term         | Values                          | Owns                                                                                          |
 | ------------ | ------------------------------- | --------------------------------------------------------------------------------------------- |
 | `flow`       | `automation` or `companion`     | Who drives execution. `companion` always executes in `/general-video`.                        |
-| `storyboard` | `yes` or `no`                   | Whether the live board is used for plan and layout review.                                    |
+| `storyboard` | `yes` or `no`                   | Whether the plan and layouts are reviewed before building (`review-loop.md`).                 |
 | `mode`       | `collaborative` or `autonomous` | How later preference and checkpoint gates behave. The user never chooses this label directly. |
 
 Derive `mode` once from the confirmed run shape:
@@ -50,9 +50,9 @@ Autonomous mode never silently drops a required capability. If the selected work
 
 Rendering remains user-gated in both modes. After checks pass, collaborative runs ask “render now, or what changes?” Autonomous runs ask “preview first, or render?” Render only after the answer.
 
-### Studio comments
+### Checkpoint feedback
 
-Checkpoint feedback may arrive in chat or in `.hyperframes/frame-comments.json` (format: `storyboard-format.md`). When the user replies to a checkpoint, read that file before interpreting the chat reply. Apply only the named frame changes, delete the comments file after handling it, and re-present the affected frames. A board submission does not notify the agent, so tell the user to reply in chat after submitting comments.
+Checkpoint feedback arrives as a chat reply. Apply only the frames it names and re-present them.
 
 Autonomous is not silent: replace absorbed questions with visible decisions and short reasons. Every autonomous visual or video delivery names the final preview or rendered artifact as applicable, reports the actual duration for a time-based deliverable, and includes a contact sheet or snapshot sheet plus relevant frame identifiers when available. For multi-scene work, use scene midpoints; for a single-scene piece, use one or more proof times. This gives the user a review surface even though intermediate checkpoints did not pause.
 
@@ -60,18 +60,18 @@ Autonomous is not silent: replace absorbed questions with visible decisions and 
 
 Ask only fields used by the selected route. Route entries identify their must-have questions and deferred questions. Values inferred or derived by policy are stated in the brief, not asked.
 
-| Field         | Meaning                                              | Policy                                                                                                                                              |
-| ------------- | ---------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `flow`        | Who drives execution                                 | Ask at the end of intent capture when the route supports both flows. An autonomous signal answers it.                                               |
-| `storyboard`  | Whether to review on the live board                  | Ask before `flow` when the route supports a board. A storyboard request answers it.                                                                 |
-| `destination` | Where the video will play                            | Infer from the request. Ask only when unknown and the answer changes aspect, type scale, or composition.                                            |
-| `aspect`      | Canvas size                                          | Derive from destination: social feed → `1080x1080`; TikTok/Reels/Shorts → `1080x1920`; YouTube/website/desktop → `1920x1080`. State the derivation. |
-| `length`      | Target duration                                      | Let the workflow recommend a range supported by the material; include the reason.                                                                   |
-| `language`    | Narration and caption language                       | Use the user's language and state it.                                                                                                               |
-| `audience`    | Who will watch                                       | Infer when clear. Ask only when a different answer changes the story or terminology.                                                                |
-| `message`     | The one thing the video must communicate             | Derive and echo one sentence. Do not storyboard until this is clear.                                                                                |
-| `angle`       | Route-specific story shape                           | Recommend one route-defined option with a reason.                                                                                                   |
-| `narration`   | `yes`, `minimal`, or `no`, plus route-specific modes | Follow the selected route.                                                                                                                          |
+| Field         | Meaning                                                        | Policy                                                                                                                                              |
+| ------------- | -------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `flow`        | Who drives execution                                           | Ask at the end of intent capture when the route supports both flows. An autonomous signal answers it.                                               |
+| `storyboard`  | Whether to review the plan and layout sketches before building | Ask before `flow` when the route supports a storyboard. A storyboard request answers it.                                                            |
+| `destination` | Where the video will play                                      | Infer from the request. Ask only when unknown and the answer changes aspect, type scale, or composition.                                            |
+| `aspect`      | Canvas size                                                    | Derive from destination: social feed → `1080x1080`; TikTok/Reels/Shorts → `1080x1920`; YouTube/website/desktop → `1920x1080`. State the derivation. |
+| `length`      | Target duration                                                | Let the workflow recommend a range supported by the material; include the reason.                                                                   |
+| `language`    | Narration and caption language                                 | Use the user's language and state it.                                                                                                               |
+| `audience`    | Who will watch                                                 | Infer when clear. Ask only when a different answer changes the story or terminology.                                                                |
+| `message`     | The one thing the video must communicate                       | Derive and echo one sentence. Do not storyboard until this is clear.                                                                                |
+| `angle`       | Route-specific story shape                                     | Recommend one route-defined option with a reason.                                                                                                   |
+| `narration`   | `yes`, `minimal`, or `no`, plus route-specific modes           | Follow the selected route.                                                                                                                          |
 
 ### Remembered defaults
 

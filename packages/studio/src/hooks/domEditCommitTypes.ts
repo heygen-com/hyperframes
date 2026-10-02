@@ -1,4 +1,5 @@
 import type { DomEditSelection } from "../components/editor/domEditing";
+import type { ImportedFontAsset } from "../components/editor/fontAssets";
 import type { PatchOperation, PatchTarget } from "../utils/sourcePatcher";
 
 export interface DomEditPatchBatch {
@@ -53,7 +54,16 @@ export type PersistDomEditOperations = (
     coalesceKey?: string;
     coalesceMs?: number;
     skipRefresh?: boolean;
+    deferRender?: boolean;
+    importedFont?: ImportedFontAsset;
     prepareContent?: (html: string, sourceFile: string) => string;
     shouldSave?: () => boolean;
   },
 ) => Promise<DomEditPersistOutcome | undefined>;
+
+/** Several data-* and HTML attribute ops on one element as ONE persist and ONE undo entry. */
+export type CommitDomAttributeBatch = (
+  selection: DomEditSelection,
+  operations: PatchOperation[],
+  options: { label: string; prepareContent?: (html: string) => string },
+) => Promise<boolean>;

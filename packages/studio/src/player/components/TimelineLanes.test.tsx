@@ -14,6 +14,16 @@ import { usePlayerStore, type TimelineElement } from "../store/playerStore";
 import type { MultiDragPreviewInput } from "./timelineMultiDragPreview";
 import type { TimelineEditCallbacks } from "./timelineCallbacks";
 import type { DraggedClipState, BlockedClipState } from "./useTimelineClipDrag";
+import * as transitionSeams from "./timelineTransitionSeams";
+
+vi.mock("./timelineTransitionSeams", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("./timelineTransitionSeams")>();
+  return {
+    ...actual,
+    deriveTimelineTransitionSeams: vi.fn(actual.deriveTimelineTransitionSeams),
+    deriveTimelineTransitionSeamsByTrack: vi.fn(actual.deriveTimelineTransitionSeamsByTrack),
+  };
+});
 
 (globalThis as unknown as { IS_REACT_ACT_ENVIRONMENT: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
@@ -70,7 +80,16 @@ interface RenderLanesOptions {
   draggedClip?: DraggedClipState | null;
   onToggleTrackHidden?: TimelineEditCallbacks["onToggleTrackHidden"];
   onContextMenuLane?: (e: React.MouseEvent, track: number, time: number) => void;
+  hoveredClip?: string | null;
+  renderClipContent?: React.ComponentProps<typeof TimelineLanes>["renderClipContent"];
+  snapGuide?: { time: number; type: "beat" | "clip-edge" | "playhead" } | null;
+  withoutSelectHandler?: boolean;
 }
+
+const selectHandlerFor = (
+  options: RenderLanesOptions,
+  handler: (element: TimelineElement | null) => void,
+) => (options.withoutSelectHandler ? undefined : handler);
 
 function renderLanes(options: RenderLanesOptions = {}): {
   host: HTMLDivElement;
@@ -135,9 +154,11 @@ function renderLanes(options: RenderLanesOptions = {}): {
           laneCounts={laneCounts}
           selectedElementId={null}
           selectedElementIds={next.selectedElementIds ?? new Set()}
-          hoveredClip={null}
+          hoveredClip={next.hoveredClip ?? null}
+          renderClipContent={next.renderClipContent}
           draggedClip={next.draggedClip ?? null}
           draggedElement={null}
+          snapGuide={next.snapGuide ?? null}
           multiDragPreview={next.multiDragPreview ?? null}
           blockedClipRef={createRef<BlockedClipState | null>()}
           suppressClickRef={{ current: false }}
@@ -148,7 +169,6 @@ function renderLanes(options: RenderLanesOptions = {}): {
           setResizingClip={vi.fn()}
           setDraggedClip={vi.fn()}
           setSelectedElementId={setSelectedElementId}
-          shiftClickClipRef={createRef()}
           getPreviewElement={(el) => el}
           getTrackStyle={getTrackStyle}
           gsapAnimations={gsapAnimations}
@@ -159,7 +179,7 @@ function renderLanes(options: RenderLanesOptions = {}): {
           onTogglePropertyGroupKeyframe={vi.fn()}
           onResizeElement={vi.fn()}
           onMoveElement={vi.fn()}
-          onSelectElement={onSelectElement}
+          onSelectElement={selectHandlerFor(next, onSelectElement)}
           onRazorSplit={vi.fn()}
           onRazorSplitAll={vi.fn()}
         />,
@@ -175,6 +195,36 @@ function visibilityLabels(host: HTMLElement): (string | null)[] {
     button.getAttribute("aria-label"),
   );
 }
+
+/** The beat guide's own highlight div, keyed by the green glow every other beat lacks. */
+function beatHighlight(host: HTMLElement): HTMLElement | undefined {
+  return Array.from(host.querySelectorAll("div")).find((div) =>
+    (div.style.boxShadow ?? "").includes("34,197,94"),
+  );
+}
+
+describe("TimelineLanes beat guide", () => {
+  it("draws the beat highlight from snapGuide, not from the stale draggedClip prop", () => {
+    const view = renderLanes({
+      elements: [element("clip-a", TRACK_A)],
+      snapGuide: { time: 1.5, type: "beat" },
+    });
+
+    expect(beatHighlight(view.host)?.style.left).toBe("150px");
+    act(() => view.root.unmount());
+  });
+
+  it("clears the highlight once the trim it belonged to ends", () => {
+    const view = renderLanes({
+      elements: [element("clip-a", TRACK_A)],
+      snapGuide: { time: 1.5, type: "beat" },
+    });
+    view.rerender({ elements: [element("clip-a", TRACK_A)], snapGuide: null });
+
+    expect(beatHighlight(view.host)).toBeUndefined();
+    act(() => view.root.unmount());
+  });
+});
 
 describe("TimelineLanes track numbering", () => {
   // Screen readers literally announced "Hide track 0.16666666666666666".
@@ -392,6 +442,129 @@ describe("TimelineLanes selection", () => {
 
     expect(view.setSelectedElementId).toHaveBeenCalledWith(selected.id);
     expect(view.onSelectElement).toHaveBeenCalledWith(selected);
+    act(() => view.root.unmount());
+  });
+
+  it.each([["shiftKey"], ["metaKey"], ["ctrlKey"]])(
+    "%s-click adds a clip to the selection instead of replacing it",
+    (modifier) => {
+      const first = element("clip-a", TRACK_A);
+      const second = element("clip-b", TRACK_B);
+      usePlayerStore.getState().setElements([first, second]);
+      usePlayerStore.getState().setSelection([first.id], first.id);
+      const view = renderLanes({ elements: [first, second] });
+      const clipB = view.host.querySelector('[data-el-id="clip-b"]');
+      const click = (init: MouseEventInit) =>
+        act(() => clipB?.dispatchEvent(new MouseEvent("click", { bubbles: true, ...init })));
+
+      click({ [modifier]: true });
+      expect(usePlayerStore.getState().selectedElementIds).toEqual(new Set(["clip-a", "clip-b"]));
+      expect(view.setSelectedElementId).not.toHaveBeenCalled();
+      expect(view.onSelectElement).toHaveBeenLastCalledWith(second);
+
+      click({ [modifier]: true });
+      expect(usePlayerStore.getState().selectedElementIds).toEqual(new Set(["clip-a"]));
+      expect(view.onSelectElement).toHaveBeenLastCalledWith(first);
+      act(() => view.root.unmount());
+    },
+  );
+  it("Cmd-click adds a clip in a host that passes no onSelectElement", () => {
+    const first = element("clip-a", TRACK_A);
+    const second = element("clip-b", TRACK_B);
+    usePlayerStore.getState().setElements([first, second]);
+    usePlayerStore.getState().setSelection([first.id], first.id);
+    const view = renderLanes({ elements: [first, second], withoutSelectHandler: true });
+    act(() =>
+      view.host
+        .querySelector('[data-el-id="clip-b"]')
+        ?.dispatchEvent(new MouseEvent("click", { bubbles: true, metaKey: true })),
+    );
+    expect(usePlayerStore.getState().selectedElementIds).toEqual(new Set(["clip-a", "clip-b"]));
+    act(() => view.root.unmount());
+  });
+});
+
+describe("TimelineLanes clip thumbnails", () => {
+  it("keeps thumbnail content inside a selected clip", () => {
+    const selected = element("clip-a", TRACK_A);
+    const view = renderLanes({
+      elements: [selected],
+      selectedElementIds: new Set([selected.id]),
+      renderClipContent: () => <div className="absolute inset-0 bg-neutral-900" data-thumbnail />,
+    });
+
+    const clip = view.host.querySelector('[data-el-id="clip-a"]');
+    expect(clip?.classList.contains("is-selected")).toBe(true);
+    expect(clip?.querySelector("[data-thumbnail]")).not.toBeNull();
+    act(() => view.root.unmount());
+  });
+
+  it("asks for the same frames at rest, hovered and selected", () => {
+    const rich: unknown[] = [];
+    const renderClipContent = vi.fn(
+      (_el: TimelineElement, _style: unknown, context: { rich: boolean }) => {
+        rich.push(context.rich);
+        return null;
+      },
+    );
+    const elements = [element("clip-a", TRACK_A)];
+    const view = renderLanes({ elements, renderClipContent });
+    view.rerender({ elements, renderClipContent, hoveredClip: "clip-a" });
+    view.rerender({ elements, renderClipContent, selectedElementIds: new Set(["clip-a"]) });
+    expect(new Set(rich)).toEqual(new Set([false]));
+    act(() => view.root.unmount());
+  });
+});
+
+describe("TimelineLanes clip joins", () => {
+  const at = (id: string, start: number, duration: number): TimelineElement => ({
+    ...element(id, TRACK_A),
+    start,
+    duration,
+  });
+
+  it("draws one row-coloured hairline where clips touch, and leaves the clips where they are", () => {
+    const view = renderLanes({
+      elements: [at("clip-a", 0, 2), at("clip-b", 2, 1.5), at("clip-c", 4, 1)],
+    });
+
+    const joins = view.host.querySelectorAll<HTMLElement>("[data-timeline-clip-join]");
+    expect(joins).toHaveLength(1);
+    expect(joins[0]?.style.left).toBe("200px");
+    expect(joins[0]?.style.width).toBe("1px");
+    expect(joins[0]?.style.background).toBe(defaultTimelineTheme.rowBackground);
+    const clipB = view.host.querySelector<HTMLElement>('[data-el-id="clip-b"]');
+    expect(clipB?.style.left).toBe("200px");
+    expect(clipB?.style.width).toBe("150px");
+    act(() => view.root.unmount());
+  });
+
+  it("draws no join while a clip is being moved, since the moved clip is drawn elsewhere", () => {
+    const clipA = at("clip-a", 0, 2);
+    const view = renderLanes({
+      elements: [clipA, at("clip-b", 2, 1.5)],
+      draggedClip: { element: clipA, started: true } as DraggedClipState,
+    });
+
+    expect(view.host.querySelectorAll("[data-timeline-clip-join]")).toHaveLength(0);
+    act(() => view.root.unmount());
+  });
+});
+
+describe("TimelineLanes transition seams", () => {
+  it("derives transition seams once for every row, not once per row", () => {
+    const derivations = [
+      transitionSeams.deriveTimelineTransitionSeams,
+      transitionSeams.deriveTimelineTransitionSeamsByTrack,
+    ].map((derive) => vi.mocked(derive));
+    for (const derive of derivations) derive.mockClear();
+
+    const view = renderLanes({
+      elements: [element("clip-a", 0), element("clip-b", TRACK_A), element("clip-c", TRACK_B)],
+    });
+
+    expect(view.host.querySelectorAll("[data-timeline-row]").length).toBeGreaterThanOrEqual(3);
+    expect(derivations.reduce((calls, derive) => calls + derive.mock.calls.length, 0)).toBe(1);
     act(() => view.root.unmount());
   });
 });

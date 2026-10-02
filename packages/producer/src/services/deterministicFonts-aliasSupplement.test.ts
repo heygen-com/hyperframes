@@ -16,11 +16,17 @@
  * so they are hermetic.
  */
 
-import { afterAll, beforeAll, describe, expect, it } from "bun:test";
+import { afterAll, beforeAll, beforeEach, describe, expect, it } from "bun:test";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { EMBEDDED_FONT_DATA } from "./fontData.generated.js";
+import { _clearGoogleFontCssCacheForTests } from "./deterministicFonts.js";
+
+// The Google Fonts CSS cache is process-lifetime and keyed by URL; several
+// tests here request the same family, so a leftover entry from an earlier
+// test would silently skip this test's own fetchImpl.
+beforeEach(() => _clearGoogleFontCssCacheForTests());
 
 let cacheDir: string;
 let prevCacheEnv: string | undefined;

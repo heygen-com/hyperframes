@@ -12,6 +12,14 @@ export function installReactActEnvironment(): void {
   });
 }
 
+export function withInlineLayoutBox<T extends HTMLElement>(el: T): T {
+  Object.defineProperties(el, {
+    offsetWidth: { get: () => Number.parseFloat(el.style.width) || 0 },
+    offsetHeight: { get: () => Number.parseFloat(el.style.height) || 0 },
+  });
+  return el;
+}
+
 /** Mount a React element into a fresh detached host and return its root. */
 export function mountReactHarness(node: React.ReactElement): Root {
   const host = document.createElement("div");

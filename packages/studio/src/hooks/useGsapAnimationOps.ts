@@ -1,4 +1,8 @@
 import { useCallback } from "react";
+import {
+  serializeStudioFileMutation,
+  type StudioProjectFileWriter,
+} from "../utils/studioFileMutationCoordinator";
 import type { Composition } from "@hyperframes/sdk";
 import type { DomEditSelection } from "../components/editor/domEditingTypes";
 import { roundTo3 } from "../utils/rounding";
@@ -27,6 +31,7 @@ interface GsapAnimationOpsParams extends SdkAnimationDeps {
   commitMutation: CommitMutation;
   commitMutationSafely: SafeGsapCommitMutation;
   showToast: (message: string, tone?: "error" | "info") => void;
+  writeProjectFile?: StudioProjectFileWriter;
 }
 
 export function useGsapAnimationOps({
@@ -37,6 +42,7 @@ export function useGsapAnimationOps({
   showToast,
   sdkSession,
   sdkDeps,
+  writeProjectFile,
 }: GsapAnimationOpsParams) {
   const updateGsapMeta = useCallback(
     async (
@@ -122,13 +128,17 @@ export function useGsapAnimationOps({
         const pid = projectIdRef.current;
         const targetPath = selection.sourceFile || activeCompPath || "index.html";
         if (!pid) return;
-        const assigned = await assignGsapTargetAutoIdIfNeeded({
-          projectId: pid,
-          targetPath,
-          selection,
-          autoId,
-          showToast,
-        });
+        const assign = () =>
+          assignGsapTargetAutoIdIfNeeded({
+            projectId: pid,
+            targetPath,
+            selection,
+            autoId,
+            showToast,
+          });
+        const assigned = await (writeProjectFile
+          ? serializeStudioFileMutation(writeProjectFile, targetPath, assign)
+          : assign());
         if (!assigned) return;
       }
 
@@ -181,7 +191,15 @@ export function useGsapAnimationOps({
         { label: `Add GSAP ${method} animation`, softReload: true },
       );
     },
-    [activeCompPath, commitMutation, projectIdRef, showToast, sdkSession, sdkDeps],
+    [
+      activeCompPath,
+      commitMutation,
+      projectIdRef,
+      showToast,
+      sdkSession,
+      sdkDeps,
+      writeProjectFile,
+    ],
   );
 
   type KeyframeEntry = {

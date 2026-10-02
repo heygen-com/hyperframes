@@ -221,9 +221,8 @@ export function registerCaptionIframe(ref: React.RefObject<HTMLIFrameElement | n
 
 /**
  * True when the caption preview iframe is mounted AND visible. The caption
- * store's isEditMode stays true while the preview is merely hidden (e.g.
- * storyboard view), so hotkeys must not route ⌘Z to the caption stack unless
- * the user can actually see the captions the undo would change.
+ * store's isEditMode stays true while the preview is merely hidden, so hotkeys must not
+ * route ⌘Z to the caption stack unless the user can see the captions the undo would change.
  */
 export function isCaptionPreviewVisible(): boolean {
   const iframe = registeredIframe?.current;

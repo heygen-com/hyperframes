@@ -6,11 +6,13 @@ import type {
   StudioRotationSnapshot,
 } from "./manualEdits";
 import type { ManualOffsetDragMember } from "./manualOffsetDrag";
+import type { CssRotationTarget, RotationCommit } from "./rotationDraft";
 import type { GroupOverlayItem, OverlayRect } from "./domEditOverlayGeometry";
 import type { SnapContext } from "./snapTargetCollection";
 import type { SnapGuidesState } from "./SnapGuideOverlay";
 import type { PreviewMouseDownOptions } from "../../hooks/usePreviewInteraction";
 import { logSelect } from "../../utils/selectDebug";
+import { roundTo3 } from "../../utils/rounding";
 
 export type GestureKind = "drag" | "resize" | "rotate";
 
@@ -18,6 +20,20 @@ export type GestureKind = "drag" | "resize" | "rotate";
 export type ResizeHandle = "nw" | "ne" | "sw" | "se";
 
 export const BLOCKED_MOVE_THRESHOLD_PX = 4;
+
+export interface AxisLockedDelta {
+  dx: number;
+  dy: number;
+  lockedAxis?: "x" | "y";
+}
+
+export function lockDragToDominantAxis(dx: number, dy: number, shiftKey: boolean): AxisLockedDelta {
+  if (!shiftKey) return { dx, dy };
+  return Math.abs(dx) >= Math.abs(dy)
+    ? { dx, dy: 0, lockedAxis: "y" }
+    : { dx: 0, dy, lockedAxis: "x" };
+}
+
 const ROTATION_COMMIT_EPSILON_DEGREES = 0.05;
 const ROTATION_SNAP_DEGREES = 15;
 /**
@@ -33,6 +49,7 @@ export interface GestureState {
   kind: GestureKind;
   mode: "path-offset" | "box-size" | "rotation";
   selection: DomEditSelection;
+  pointerId: number;
   startX: number;
   startY: number;
   centerX: number;
@@ -48,31 +65,19 @@ export interface GestureState {
   actualWidth: number;
   actualHeight: number;
   actualRotation: number;
+  /** Null when GSAP owns the rotate; else where its CSS turn is drawn and saved, read at press. */
+  plainRotation: CssRotationTarget | null;
   editScaleX: number;
   editScaleY: number;
-  // Rendered-per-CSS-pixel factor of the element itself at gesture start (a GSAP
-  // scale() transform makes this > 1) — the resize draft divides by it so the box
-  // follows the cursor instead of overshooting by the live scale.
+  // Rendered px per CSS px of the element at gesture start (> 1 under a GSAP scale()); the resize
+  // draft divides by it so the box follows the cursor instead of overshooting by the live scale.
   contentScaleX: number;
   contentScaleY: number;
-  // Resize anchor pinning: with a live scale transform, growing the CSS box
-  // shifts the rendered box (scaling happens around the element center), so the
-  // un-dragged corner creeps during the draft. The move handler measures the
-  // gesture-start top-left drift each frame and counters it through the GSAP
-  // position channel; the pin accumulates so the correction converges.
-  // Present only on resize gestures.
-  resizeAnchor?: {
-    anchorX: number;
-    anchorY: number;
-    baseGsapX: number;
-    baseGsapY: number;
-    pinX: number;
-    pinY: number;
-  };
   manualEditDragToken?: string;
   snapContext?: SnapContext;
   lastSnappedDx?: number;
   lastSnappedDy?: number;
+  travelled?: boolean;
   /** Corner the resize gesture grabbed (resize gestures only). */
   resizeHandle?: ResizeHandle;
   /** Last anchoring translation applied during a corner resize (overlay px). */
@@ -89,6 +94,7 @@ export interface GestureState {
 }
 
 export interface GroupGestureState {
+  pointerId: number;
   startX: number;
   startY: number;
   originItems: GroupOverlayItem[];
@@ -96,13 +102,21 @@ export interface GroupGestureState {
   snapContext?: SnapContext;
   lastSnappedDx?: number;
   lastSnappedDy?: number;
+  travelled?: boolean;
+}
+
+/** Only the pressing pointer's moves with its button held drive a gesture, not Chromium's buttonless resends. */
+export function movesGesture(
+  gesture: { pointerId: number },
+  e: { pointerId: number; buttons: number },
+): boolean {
+  return e.pointerId === gesture.pointerId && (e.buttons & 1) === 1;
 }
 
 export interface BlockedMoveState {
   pointerId: number;
   startX: number;
   startY: number;
-  notified: boolean;
 }
 
 export type FocusableDomEditOverlay = {
@@ -182,10 +196,6 @@ function normalizeAngleDelta(delta: number): number {
   return ((((delta + 180) % 360) + 360) % 360) - 180;
 }
 
-function roundAngle(angle: number): number {
-  return Math.round(angle * 10) / 10;
-}
-
 export function resolveDomEditRotationGesture(input: {
   centerX: number;
   centerY: number;
@@ -208,7 +218,7 @@ export function resolveDomEditRotationGesture(input: {
   return {
     angle: input.snap
       ? Math.round(angle / ROTATION_SNAP_DEGREES) * ROTATION_SNAP_DEGREES
-      : roundAngle(angle),
+      : roundTo3(angle),
   };
 }
 
@@ -220,9 +230,15 @@ export function hasDomEditRotationChanged(initialAngle: number, nextAngle: numbe
 // These live here (rather than in DomEditOverlay.tsx or useDomEditOverlayGestures.ts)
 // to break circular imports between those files.
 
+export interface MoveCommitOptions {
+  altKey?: boolean;
+  plainTranslate?: boolean;
+}
+
 export interface DomEditGroupPathOffsetCommit {
   selection: DomEditSelection;
   next: { x: number; y: number };
+  plainTranslate?: boolean;
 }
 
 // Refs are stable across renders; values are read via .current.
@@ -241,17 +257,17 @@ export type UseDomEditOverlayGesturesOptions = {
   suppressNextBoxClickRef: RefObject<boolean>;
   setOverlayRect: (next: OverlayRect | null) => void;
   setGroupOverlayItems: (next: GroupOverlayItem[]) => void;
-  onBlockedMoveRef: RefObject<(selection: DomEditSelection) => void>;
+  onBlockedMoveRef: RefObject<(selection: DomEditSelection, reason?: string) => void>;
   onManualDragStartRef: RefObject<(() => void) | undefined>;
   onPathOffsetCommitRef: RefObject<
     (
       s: DomEditSelection,
       n: { x: number; y: number },
-      m?: { altKey?: boolean },
-    ) => Promise<void> | void
+      m?: MoveCommitOptions,
+    ) => Promise<unknown> | void
   >;
   onGroupPathOffsetCommitRef: RefObject<
-    (updates: DomEditGroupPathOffsetCommit[]) => Promise<void> | void
+    (updates: DomEditGroupPathOffsetCommit[]) => Promise<unknown> | void
   >;
   onBoxSizeCommitRef: RefObject<
     (
@@ -259,10 +275,10 @@ export type UseDomEditOverlayGesturesOptions = {
       n: { width: number; height: number },
       offset?: { x: number; y: number },
       restore?: () => void,
-    ) => Promise<void> | void
+    ) => Promise<unknown> | void
   >;
   onRotationCommitRef: RefObject<
-    (s: DomEditSelection, n: { angle: number }) => Promise<void> | void
+    (s: DomEditSelection, n: RotationCommit) => Promise<unknown> | void
   >;
   onCanvasPointerMoveRef: RefObject<
     (

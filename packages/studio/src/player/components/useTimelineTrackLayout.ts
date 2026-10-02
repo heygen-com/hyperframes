@@ -1,7 +1,7 @@
 import { useMemo, useRef } from "react";
 import type { GsapAnimation } from "@hyperframes/core/gsap-parser";
 import { animationLaneGroups } from "./TimelinePropertyLanes";
-import { isAudioTimelineElement } from "../../utils/timelineInspector";
+import { isAudioOrVideoTimelineElement } from "../../utils/timelineInspector";
 import { elementAutomationLanes, groupAutomationLanes } from "./automationLaneData";
 import { usePlayerStore, type TimelineElement } from "../store/playerStore";
 import type { DraggedClipState } from "./timelineClipDragTypes";
@@ -10,6 +10,7 @@ import {
   TRACK_H,
   createTimelineRowGeometry,
   type TimelineRowGeometry,
+  type TimelineTrackPadding,
   trackHeights,
   type TimelineTrackHeightClip,
 } from "./timelineLayout";
@@ -44,14 +45,15 @@ export function trackShowsBeatStrip(
 }
 
 /**
- * Automation lanes on one clip, or 0 for anything that is not audio.
+ * Automation lanes on one clip.
  *
- * An audio clip can be worth expanding without carrying a single tween, so this
- * counts toward whether a track has anything to disclose. A function rather than
- * a map so every caller reads the same cached parse and none can drift.
+ * A clip can be worth expanding without carrying a single tween, so this counts
+ * toward whether a track has anything to disclose. Gated on
+ * `isAudioOrVideoTimelineElement`, matching `groupAutomationLanes`. A function
+ * rather than a map so every caller reads the same cached parse and none can drift.
  */
 function automationLaneCountOf(element: TimelineElement): number {
-  return isAudioTimelineElement(element) ? elementAutomationLanes(element).length : 0;
+  return isAudioOrVideoTimelineElement(element) ? elementAutomationLanes(element).length : 0;
 }
 
 /**
@@ -163,7 +165,10 @@ function useTimelineRowHeights(
   selectedElementId: string | null,
   selectedElementIds: ReadonlySet<string>,
   groups: readonly TimelineTrackGroupInfo[],
+  trackPadding: TimelineTrackPadding | undefined,
 ) {
+  const padTop = trackPadding?.top;
+  const padBottom = trackPadding?.bottom;
   const expandedClipIds = usePlayerStore((s) => s.expandedClipIds);
   const expandedLaneOwnerIds = usePlayerStore((s) => s.expandedLaneOwnerIds);
   const { laneCounts, rowGeometry } = useMemo(() => {
@@ -206,9 +211,12 @@ function useTimelineRowHeights(
       rowGeometry: createTimelineRowGeometry(
         tracks.map(([track]) => track),
         rowHeights,
+        { top: padTop, bottom: padBottom },
       ),
     };
   }, [
+    padTop,
+    padBottom,
     expandedClipIds,
     expandedLaneOwnerIds,
     gsapAnimations,
@@ -232,6 +240,7 @@ export function useTimelineTrackLayout(
   gsapAnimations: Map<string, GsapAnimation[]>,
   selectedElementId: string | null,
   selectedElementIds: ReadonlySet<string>,
+  trackPadding?: TimelineTrackPadding,
 ) {
   const { tracks, trackStyles, trackOrder, groups, trackGroupOf } =
     useTimelineTrackDerivations(expandedElements);
@@ -243,6 +252,7 @@ export function useTimelineTrackLayout(
     selectedElementId,
     selectedElementIds,
     groups,
+    trackPadding,
   );
 
   return {
@@ -304,8 +314,8 @@ export function useTimelineDisplayLayout(
   const displayTrackOrder = useDisplayTrackOrder(draggedClip, trackOrder);
   const displayRowHeights = useDisplayRowHeights(displayTrackOrder, rowGeometry);
   const displayRowGeometry = useMemo(
-    () => createTimelineRowGeometry(displayTrackOrder, displayRowHeights),
-    [displayTrackOrder, displayRowHeights],
+    () => createTimelineRowGeometry(displayTrackOrder, displayRowHeights, rowGeometry.padding),
+    [displayTrackOrder, displayRowHeights, rowGeometry.padding],
   );
   return {
     displayTrackOrder,

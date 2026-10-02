@@ -171,7 +171,7 @@ describe("handleRuntimeMessage timeline ready", () => {
 
     handleRuntimeMessage(timelineEvent(120, frameWindow), frameWindow, callbacks);
 
-    expect(callbacks.onRuntimeTimelineReady).toHaveBeenCalledWith(4);
+    expect(callbacks.onRuntimeTimelineReady).toHaveBeenCalledWith(4, undefined);
   });
 
   it.each([
@@ -191,6 +191,7 @@ describe("handleRuntimeMessage timeline ready", () => {
     expect(callbacks.setRuntimeFps).toHaveBeenCalledWith(expect.closeTo(fps, 6));
     expect(callbacks.onRuntimeTimelineReady).toHaveBeenCalledWith(
       expect.closeTo(expectedSeconds, 6),
+      undefined,
     );
   });
 
@@ -209,7 +210,7 @@ describe("handleRuntimeMessage timeline ready", () => {
       callbacks,
     );
 
-    expect(callbacks.onRuntimeTimelineReady).toHaveBeenCalledWith(4.25);
+    expect(callbacks.onRuntimeTimelineReady).toHaveBeenCalledWith(4.25, undefined);
     expect(callbacks.setCompositionSize).toHaveBeenCalledWith(1080, 1920);
   });
 
@@ -239,5 +240,32 @@ describe("handleRuntimeMessage timeline ready", () => {
     handleRuntimeMessage(timelineEvent(Infinity, frameWindow), frameWindow, callbacks);
 
     expect(callbacks.onRuntimeTimelineReady).not.toHaveBeenCalled();
+  });
+});
+
+describe("handleRuntimeMessage assets-ready", () => {
+  const frame = {};
+  const send = (callbacks: MessageHandlerCallbacks, data: Record<string, unknown>) =>
+    handleRuntimeMessage(
+      { source: frame, data: { source: "hf-preview", ...data } } as unknown as MessageEvent,
+      frame as Window,
+      callbacks,
+    );
+
+  it("reports whether the runtime has settled its assets on its timeline", () => {
+    const callbacks = makeCallbacks();
+    send(callbacks, { type: "timeline", durationInFrames: 60, assetsReady: false });
+    send(callbacks, { type: "timeline", durationInFrames: 60, assetsReady: true });
+    send(callbacks, { type: "timeline", durationInFrames: 60 });
+    expect(callbacks.onRuntimeTimelineReady).toHaveBeenNthCalledWith(1, 2, false);
+    expect(callbacks.onRuntimeTimelineReady).toHaveBeenNthCalledWith(2, 2, true);
+    expect(callbacks.onRuntimeTimelineReady).toHaveBeenNthCalledWith(3, 2, undefined);
+  });
+
+  it("forwards the runtime's assets-ready result", () => {
+    const callbacks = makeCallbacks();
+    callbacks.onRuntimeAssetsReady = vi.fn();
+    send(callbacks, { type: "assets-ready", timedOut: true });
+    expect(callbacks.onRuntimeAssetsReady).toHaveBeenCalledWith(true);
   });
 });

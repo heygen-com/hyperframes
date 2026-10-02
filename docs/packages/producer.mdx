@@ -63,6 +63,7 @@ const job = createRenderJob({
 | `mov` | Transparent ProRes 4444 for an editor | AAC |
 | `gif` | Small silent previews | None |
 | `png-sequence` | Lossless frames for another pipeline | AAC sidecar when needed |
+| `hls` | VOD streaming from a playlist directory | AAC rendition |
 
 HDR output is available for MP4 through `hdrMode`. Transparent formats render
 in SDR because HDR and alpha are not one supported output path.
@@ -77,6 +78,27 @@ const job = createRenderJob({
 ```
 
 See [HDR rendering](/guides/hdr) for the source and delivery constraints.
+
+### HLS
+
+`format: "hls"` writes an HLS VOD stream into `outputPath`, which is a
+directory: `master.m3u8`, `video.m3u8` and `video_NNNNN.ts`, plus `audio.m3u8`
+and `audio_NNNNN.ts` when the composition has audio. The encode is the same
+H.264 + AAC as MP4 — the packaging pass only stream-copies it into segments.
+
+```ts
+const job = createRenderJob({
+  fps: 30,
+  format: "hls",
+  hlsSegmentSeconds: 4,
+});
+```
+
+Segments are exactly `hlsSegmentSeconds` long except the last, because the
+encoder GOP is locked to `round(fps × hlsSegmentSeconds)` frames so every
+segment starts on a keyframe. HLS is SDR only (`hdrMode: "force-hdr"` is
+rejected), refuses GPU encoding (GPU encoders ignore the keyframe lock), and is
+not available in distributed rendering, Lambda, or Cloud Run.
 
 ## Cancel a render
 

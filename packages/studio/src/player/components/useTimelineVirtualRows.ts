@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, type RefObject } from "react";
 import { defaultRangeExtractor, useVirtualizer, type Range } from "@tanstack/react-virtual";
 import { TIMELINE_VIEWPORT_BUDGETS } from "../lib/timelineViewportBudgets";
 import type { TimelineScrollViewportSnapshot } from "./useTimelineScrollViewport";
-import { RULER_H, TRACKS_TOP_PAD, type TimelineRowGeometry } from "./timelineLayout";
+import { RULER_H, type TimelineRowGeometry } from "./timelineLayout";
 
 export interface TimelineVirtualRow {
   readonly index: number;
@@ -84,7 +84,7 @@ export function useTimelineVirtualRows({
     getItemKey,
     overscan: TIMELINE_VIEWPORT_BUDGETS.rowOverscanPerSide,
     rangeExtractor,
-    scrollMargin: RULER_H + TRACKS_TOP_PAD,
+    scrollMargin: RULER_H + rowGeometry.padding.top,
     initialRect: { width: viewport.clientWidth, height: viewport.clientHeight },
     initialOffset,
   });

@@ -164,6 +164,21 @@ describe("waapi adapter", () => {
     expect(getAnimations).toHaveBeenCalledTimes(1);
   });
 
+  it("seek takes new animations from the pass's shared page list instead of scanning", () => {
+    const existing = makeAnimation();
+    const getAnimations = setAnimations([existing]);
+    const adapter = createWaapiAdapter();
+    adapter.discover();
+    getAnimations.mockClear();
+
+    const late = makeAnimation();
+    adapter.seek({ time: 0.5, pageAnimations: () => [existing, late] as unknown as Animation[] });
+
+    expect(getAnimations).not.toHaveBeenCalled();
+    expect(existing.currentTime).toBe(500);
+    expect(late.pause).toHaveBeenCalled();
+  });
+
   it("tracks WAAPI animations created after an empty discover via Element.animate", () => {
     const getAnimations = setAnimations([]);
 

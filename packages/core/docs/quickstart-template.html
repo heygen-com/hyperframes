@@ -73,7 +73,7 @@
                            (higher = in front, clips on same track cannot overlap)
 
       REQUIRED on <video>:
-        muted            — framework manages audio via separate <audio> element
+        data-has-audio="true" — keep the clip's own sound (no muted); silent footage: muted
         playsinline      — prevents fullscreen on mobile
 
       REQUIRED:
@@ -82,7 +82,7 @@
       DO NOT:
         - Call video.play(), video.pause(), or set video.currentTime in scripts
         - Toggle visibility in scripts
-        - Use the video element for audio (use a separate <audio> element)
+        - Add muted to a video whose sound should play
     -->
       <video
         id="el-video"
@@ -91,7 +91,7 @@
         data-duration="10"
         data-track-index="0"
         src="my-video.mp4"
-        muted
+        data-has-audio="true"
         playsinline
       ></video>
 
@@ -117,7 +117,8 @@
       ════════════════════════════════════════════════════
 
       Audio is invisible — no class="clip" needed (no visual to hide).
-      Use a separate <audio> element even if the source is the same .mp4 file.
+      Use <audio> for music, voiceover, or replacement sound. A video with sound
+      keeps it on the <video> (data-has-audio="true").
       The framework syncs audio playback to the timeline position.
 
       Optional: data-volume="0.5" (0-1, default 1)
@@ -128,7 +129,7 @@
         data-duration="15"
         data-track-index="1"
         data-volume="0.8"
-        src="my-video.mp4"
+        src="my-music.mp3"
       ></audio>
 
       <!--

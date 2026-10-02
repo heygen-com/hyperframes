@@ -379,6 +379,7 @@ export function resolveSnapAdjustment(input: {
   disabled: boolean;
   /** Set when the gesture has not travelled far enough for snapping yet. */
   disabledForTravel?: boolean;
+  lockedAxis?: "x" | "y";
 }): SnapResult {
   if (input.disabled || input.disabledForTravel || input.threshold <= 0) {
     return DISABLED_RESULT(input.proposedDx, input.proposedDy);
@@ -407,8 +408,8 @@ export function resolveSnapAdjustment(input: {
     input.threshold,
   );
 
-  const bestX = pickBest(xCandidates);
-  const bestY = pickBest(yCandidates);
+  const bestX = input.lockedAxis === "x" ? null : pickBest(xCandidates);
+  const bestY = input.lockedAxis === "y" ? null : pickBest(yCandidates);
   const adjustedDx = input.proposedDx + (bestX?.adjustment ?? 0);
   const adjustedDy = input.proposedDy + (bestY?.adjustment ?? 0);
 

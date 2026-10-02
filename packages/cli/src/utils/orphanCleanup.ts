@@ -1,90 +1,32 @@
-import { execFileSync, execSync } from "node:child_process";
+// fallow-ignore-file code-duplication
+import { execFileSync } from "node:child_process";
 import { readFileSync } from "node:fs";
+import { runRenderSetupWorker } from "./cancellableProcess.js";
+import { terminateProcessTree, windowsProcessTreeKillArgs } from "./processTree.js";
+
+export { windowsProcessTreeKillArgs };
 
 /**
- * Find and kill orphaned Chrome processes from previous crashed sessions.
- * Targets both chrome-headless-shell (production/CI) and Google Chrome
- * launched by Puppeteer (dev mode). Puppeteer Chrome is identified by the
- * `puppeteer_dev_chrome_profile` marker in its user-data-dir argument.
- *
- * An orphan is a process whose PPID=1 (reparented to init/launchd after
- * its parent died). We kill the orphan's entire subtree so child helper
- * processes (GPU, renderer, network, etc.) are also cleaned up.
- *
- * Scoped to the current user via `pgrep -u` to avoid touching other
- * users' processes on shared machines.
- *
- * Returns the count of killed process trees.
+ * Kill orphaned Chrome processes (PPID 1: their parent died) left by crashed sessions, headless shell or
+ * Puppeteer's Chrome (`puppeteer_dev_chrome_profile`), with their helper subtrees. Only the current user's
+ * processes are read. Returns the count of killed process trees.
  */
 export function killOrphanedProcesses(): number {
   if (process.platform === "win32") return 0;
 
-  let killed = 0;
-
-  for (const name of ["chrome-headless-shell", "chrome_headless_shell"]) {
-    killed += killOrphansByName(name);
-  }
-
-  killed += killOrphansByName("puppeteer_dev_chrome_profile");
-
-  return killed;
+  return killOrphansMatching([
+    "chrome-headless-shell",
+    "chrome_headless_shell",
+    "puppeteer_dev_chrome_profile",
+  ]);
 }
 
-/**
- * Kill an entire process tree rooted at `pid`. Walks descendants
- * depth-first so children are killed before parents, preventing
- * re-adoption races.
- *
- * Windows uses taskkill's tree mode because pgrep/ps are unavailable there.
- *
- * `signal` is honoured on POSIX only. The Windows path always passes `/F`, so a
- * caller asking for SIGTERM gets a forced tree kill with no grace period, while
- * the same call on POSIX gets 500 ms to flush and exit. That is deliberate —
- * `taskkill` without `/F` posts WM_CLOSE, which a console process is free to
- * ignore, and leaving a preview server alive is the worse failure here. Do not
- * pass SIGTERM expecting a clean shutdown on Windows.
- */
+export async function killOrphanedProcessesForRender(signal: AbortSignal): Promise<number> {
+  return runRenderSetupWorker<number>("orphan-cleanup", {}, { signal, timeoutMs: 15_000 });
+}
+
 export function killProcessTree(pid: number, signal: NodeJS.Signals = "SIGTERM"): void {
-  if (process.platform === "win32") {
-    try {
-      execFileSync("taskkill", windowsProcessTreeKillArgs(pid), {
-        stdio: "ignore",
-        timeout: 5000,
-        windowsHide: true,
-      });
-    } catch {
-      // Process already exited or taskkill could not inspect it.
-    }
-    return;
-  }
-
-  const descendants = getDescendants(pid);
-  const allPids = [...descendants.reverse(), pid];
-
-  for (const p of allPids) {
-    try {
-      process.kill(p, signal);
-    } catch {
-      // Already exited.
-    }
-  }
-
-  // Escalate to SIGKILL after a short grace period for any survivors.
-  if (signal !== "SIGKILL") {
-    setTimeout(() => {
-      for (const p of allPids) {
-        try {
-          process.kill(p, "SIGKILL");
-        } catch {
-          // Already exited.
-        }
-      }
-    }, 500).unref();
-  }
-}
-
-export function windowsProcessTreeKillArgs(pid: number): string[] {
-  return ["/PID", String(pid), "/T", "/F"];
+  void terminateProcessTree(pid, { signal }).catch(() => undefined);
 }
 
 /**
@@ -136,7 +78,92 @@ export function processIdentity(pid: number): string | null {
 
 type ParentPidLookup = (pid: number) => number | null;
 
-function processParentPid(pid: number): number | null {
+export interface ProcessAncestor {
+  pid: number;
+  identity: string;
+}
+
+interface ProcessRecord extends ProcessAncestor {
+  parentPid: number;
+}
+
+function recordsToAncestors(pid: number, records: readonly ProcessRecord[]): ProcessAncestor[] {
+  const byPid = new Map(records.map((record) => [record.pid, record]));
+  const ancestors: ProcessAncestor[] = [];
+  const visited = new Set<number>([pid]);
+  let current = pid;
+
+  for (let depth = 0; depth < 64; depth++) {
+    const parent = byPid.get(current)?.parentPid;
+    if (parent === undefined || parent <= 1 || visited.has(parent)) break;
+    visited.add(parent);
+    const ancestor = byPid.get(parent);
+    if (!ancestor) break;
+    ancestors.push({ pid: ancestor.pid, identity: ancestor.identity });
+    current = parent;
+  }
+
+  return ancestors;
+}
+
+/**
+ * Capture an off-Linux ancestor chain in one process-table lookup. This keeps
+ * the birth token attached to every tracked PID without a PowerShell/ps spawn
+ * for each ancestor.
+ */
+export function processAncestorSnapshot(pid: number): ProcessAncestor[] {
+  if (!Number.isInteger(pid) || pid <= 0 || process.platform === "linux") return [];
+  try {
+    if (process.platform === "win32") {
+      const output = execFileSync(
+        "powershell.exe",
+        [
+          "-NoProfile",
+          "-NonInteractive",
+          "-Command",
+          'Get-CimInstance Win32_Process | ForEach-Object { "$($_.ProcessId) $($_.ParentProcessId) $($_.CreationDate.ToFileTimeUtc())" }',
+        ],
+        { encoding: "utf8", timeout: 2000, stdio: ["pipe", "pipe", "ignore"], windowsHide: true },
+      );
+      const records = output
+        .split(/\r?\n/)
+        .map((line) => line.trim().split(/\s+/))
+        .map(([processId, parentProcessId, creationDate]) => ({
+          pid: Number(processId),
+          parentPid: Number(parentProcessId),
+          identity: creationDate ? `windows:${creationDate}` : "",
+        }))
+        .filter(
+          (record): record is ProcessRecord =>
+            Number.isInteger(record.pid) &&
+            record.pid > 0 &&
+            Number.isInteger(record.parentPid) &&
+            record.parentPid > 0 &&
+            record.identity !== "",
+        );
+      return recordsToAncestors(pid, records);
+    }
+
+    const output = execFileSync("ps", ["-axo", "pid=,ppid=,lstart="], {
+      encoding: "utf8",
+      timeout: 2000,
+    });
+    const records = output
+      .split(/\r?\n/)
+      .map((line) => line.match(/^\s*(\d+)\s+(\d+)\s+(.+)$/))
+      .filter((match): match is RegExpMatchArray => match !== null)
+      .map(([, processId, parentProcessId, started]) => ({
+        pid: Number(processId),
+        parentPid: Number(parentProcessId),
+        identity: `posix:${started?.trim() ?? ""}`,
+      }));
+    return recordsToAncestors(pid, records);
+  } catch {
+    return [];
+  }
+}
+
+export function processParentPid(pid: number): number | null {
   try {
     const output =
       process.platform === "win32"
@@ -191,76 +218,27 @@ export function isProcessDescendant(
   return false;
 }
 
-function getDescendants(pid: number): number[] {
-  let children: number[];
+/** One process-table read: a spawn per candidate PID cost half a second before `preview` listened. */
+function killOrphansMatching(markers: readonly string[]): number {
+  const uid = process.getuid?.();
+  const owner = uid === undefined ? ["-A"] : ["-U", String(uid)];
+  let table: string;
   try {
-    const raw = execSync(`pgrep -P ${pid}`, {
-      encoding: "utf-8",
-      timeout: 2000,
-    }).trim();
-    if (!raw) return [];
-    children = raw
-      .split("\n")
-      .map((s) => parseInt(s, 10))
-      .filter((n) => !isNaN(n) && n > 0);
-  } catch {
-    return [];
-  }
-  const all: number[] = [];
-  for (const child of children) {
-    all.push(child);
-    all.push(...getDescendants(child));
-  }
-  return all;
-}
-
-function killOrphansByName(processName: string): number {
-  const uid = getUid();
-  const userFlag = uid !== null ? `-u ${uid} ` : "";
-  let pids: number[];
-  try {
-    const raw = execSync(`pgrep ${userFlag}-f ${processName}`, {
+    table = execFileSync("ps", [...owner, "-ww", "-o", "pid=,ppid=,args="], {
       encoding: "utf-8",
       timeout: 3000,
-    }).trim();
-    if (!raw) return 0;
-    pids = raw
-      .split("\n")
-      .map((s) => parseInt(s, 10))
-      .filter((n) => !isNaN(n) && n > 0);
+    });
   } catch {
     return 0;
   }
 
   let killed = 0;
-  for (const pid of pids) {
-    if (!isOrphan(pid)) continue;
-    killProcessTree(pid);
+  for (const line of table.split("\n")) {
+    const match = line.match(/^\s*(\d+)\s+(\d+)\s+(.*)$/);
+    if (!match || match[2] !== "1") continue;
+    if (!markers.some((marker) => match[3]!.includes(marker))) continue;
+    killProcessTree(Number(match[1]));
     killed++;
   }
   return killed;
-}
-
-let _cachedUid: string | null | undefined;
-
-function getUid(): string | null {
-  if (_cachedUid !== undefined) return _cachedUid;
-  try {
-    _cachedUid = execSync("id -u", { encoding: "utf-8", timeout: 1000 }).trim();
-  } catch {
-    _cachedUid = null;
-  }
-  return _cachedUid;
-}
-
-function isOrphan(pid: number): boolean {
-  try {
-    const ppid = execSync(`ps -p ${pid} -o ppid=`, {
-      encoding: "utf-8",
-      timeout: 2000,
-    }).trim();
-    return ppid === "1";
-  } catch {
-    return false;
-  }
 }

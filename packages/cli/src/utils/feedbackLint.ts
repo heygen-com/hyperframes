@@ -34,6 +34,14 @@ export const COMPOSITION_STRUCTURE_RATING_CEILING = 7;
 
 const REPRO_MARKER = "REPRO COMMAND:";
 const STRUCTURE_MARKER = "COMPOSITION_STRUCTURE:";
+const FEEDBACK_PACKET_MARKERS = [
+  REPRO_MARKER,
+  "EXPECTED / ACTUAL:",
+  "EXACT ERROR:",
+  "OUTCOME:",
+  "WORKAROUND:",
+  STRUCTURE_MARKER,
+] as const;
 
 export interface FeedbackLintInput {
   rating: number;
@@ -56,7 +64,7 @@ export interface FeedbackLintWarning {
  *  2. Comment missing / empty — no check. `feedback --rating 6` with no
  *     comment is a valid quick vote; the maintainer sees rating drift without
  *     the reporter having to synthesize a fake repro.
- *  3. Comment present + rating < 10 + no `REPRO COMMAND:` — warn.
+ *  3. Comment present + rating < 10 + no non-empty `REPRO COMMAND:` body — warn.
  *  4. Comment present + rating ≤ 7 + visual-defect keyword + no
  *     `COMPOSITION_STRUCTURE:` — warn (in addition to any #3 warning).
  */
@@ -72,11 +80,11 @@ export function lintFeedbackComment(input: FeedbackLintInput): FeedbackLintWarni
   const upperTrimmed = trimmed.toUpperCase();
   const warnings: FeedbackLintWarning[] = [];
 
-  if (!upperTrimmed.includes(REPRO_MARKER)) {
+  if (!hasReproCommandBody(trimmed)) {
     warnings.push({
       code: "missing-repro-command",
       message: [
-        `Comment on a ${rating}/${FEEDBACK_RATING_SCALE} report is missing a "${REPRO_MARKER}" block —`,
+        `Comment on a ${rating}/${FEEDBACK_RATING_SCALE} report is missing a non-empty "${REPRO_MARKER}" block —`,
         "maintainers can't rerun the failure from a symptom summary alone.",
         "See `references/preview-render.md` → feedback for the required packet shape.",
       ].join(" "),
@@ -100,6 +108,33 @@ export function lintFeedbackComment(input: FeedbackLintInput): FeedbackLintWarni
   }
 
   return warnings;
+}
+
+/**
+ * A marker is useful only when it carries a command. Accept the command on the
+ * marker line or on the next non-empty line, but do not let the next packet
+ * section masquerade as the command body.
+ */
+function hasReproCommandBody(comment: string): boolean {
+  const lines = comment.split(/\r?\n/);
+
+  return lines.some((line, index) => {
+    const markerIndex = line.toUpperCase().indexOf(REPRO_MARKER);
+    if (markerIndex === -1) return false;
+
+    const inlineBody = line.slice(markerIndex + REPRO_MARKER.length).trim();
+    if (inlineBody) return !startsWithFeedbackPacketMarker(inlineBody);
+
+    const nextContentLine = lines.slice(index + 1).find((candidate) => candidate.trim());
+    if (!nextContentLine) return false;
+
+    return !startsWithFeedbackPacketMarker(nextContentLine.trimStart());
+  });
+}
+
+function startsWithFeedbackPacketMarker(value: string): boolean {
+  const upperValue = value.toUpperCase();
+  return FEEDBACK_PACKET_MARKERS.some((marker) => upperValue.startsWith(marker));
 }
 
 // Compile once. Word-boundary at both sides prevents "black" matching

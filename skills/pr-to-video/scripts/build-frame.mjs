@@ -48,6 +48,8 @@ import {
   stagePresetFonts,
 } from "./lib/font-faces.mjs";
 
+import { stageCapturedFonts } from "./lib/captured-fonts.mjs";
+
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const argv = process.argv.slice(2);
 const flag = (name, def) => {
@@ -464,10 +466,12 @@ if (brandFonts.length) {
   const ranked = [...fams].sort((a, b) => normFontName(b).length - normFontName(a).length);
   const famOf = (f) =>
     fams.length === 1 ? fams[0] : ranked.find((x) => normFontName(f).includes(normFontName(x)));
-  let staged = 0;
+  const captured = stageCapturedFonts(hyperframesDir, fams);
+  fontFaces.push(...captured.faces);
+  let staged = captured.faces.length;
   for (const { d, f } of files) {
     const fam = famOf(f);
-    if (!fam) continue;
+    if (!fam || captured.families.has(fam.toLowerCase())) continue;
     const face = stageFontFile({
       family: fam,
       srcPath: join(d, f),

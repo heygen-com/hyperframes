@@ -1,6 +1,6 @@
 import { execFileSync } from "node:child_process";
 import { describe, expect, it } from "vitest";
-import { buildNpxCommand } from "./npxCommand.js";
+import { buildNpmCommand, buildNpxCommand } from "./npxCommand.js";
 
 describe("buildNpxCommand", () => {
   it.each([
@@ -26,4 +26,17 @@ describe("buildNpxCommand", () => {
 
     expect(version).toMatch(/^\d+\.\d+\.\d+/);
   }, 60_000);
+});
+
+describe("buildNpmCommand", () => {
+  it.each([
+    ["linux", "npm", ["--version"]],
+    ["darwin", "npm", ["--version"]],
+    ["win32", "cmd.exe", ["/d", "/s", "/c", "npm.cmd", "--version"]],
+  ] as const)("builds the %s npm invocation", (platform, expectedCommand, expectedArgs) => {
+    expect(buildNpmCommand(["--version"], platform)).toEqual({
+      command: expectedCommand,
+      args: expectedArgs,
+    });
+  });
 });

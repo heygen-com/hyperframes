@@ -42,16 +42,14 @@ import {
   STUDIO_MOTION_ORIGINAL_VISIBILITY_ATTR,
 } from "./studioMotionTypes";
 import {
-  buildPathOffsetPatches,
   buildClearPathOffsetPatches,
   buildBoxSizePatches,
   buildClearBoxSizePatches,
-  buildRotationPatches,
   buildClearRotationPatches,
   buildMotionPatches,
   buildClearMotionPatches,
 } from "./manualEditsDomPatches";
-import { applyStudioBoxSize, applyStudioPathOffset } from "./manualEditsDom";
+import { applyStudioBoxSize } from "./manualEditsDom";
 
 /* ── helpers ── */
 
@@ -72,39 +70,7 @@ function assertClearCoversKeys(buildOps: PatchOperation[], clearOps: PatchOperat
 
 /* ── Path offset ─────────────────────────────────────────────────────────── */
 
-describe("buildPathOffsetPatches / buildClearPathOffsetPatches", () => {
-  function populatedPathEl(): HTMLElement {
-    const e = div();
-    e.style.setProperty(STUDIO_OFFSET_X_PROP, "10px");
-    e.style.setProperty(STUDIO_OFFSET_Y_PROP, "20px");
-    e.style.setProperty("translate", "10px 20px");
-    e.setAttribute(STUDIO_ORIGINAL_TRANSLATE_ATTR, "5px 10px");
-    e.setAttribute(STUDIO_ORIGINAL_INLINE_TRANSLATE_ATTR, "3px");
-    e.style.setProperty("display", "flex");
-    e.setAttribute(STUDIO_ORIGINAL_TRANSFORM_DISPLAY_ATTR, "block");
-    return e;
-  }
-
-  it("populated: captures offset styles, attrs, display, and transform-display marker in declaration order", () => {
-    const ops = buildPathOffsetPatches(populatedPathEl());
-    expect(ops).toEqual([
-      { type: "inline-style", property: STUDIO_OFFSET_X_PROP, value: "10px" },
-      { type: "inline-style", property: STUDIO_OFFSET_Y_PROP, value: "20px" },
-      { type: "inline-style", property: "translate", value: "10px 20px" },
-      { type: "attribute", property: STUDIO_PATH_OFFSET_ATTR, value: "true" },
-      { type: "attribute", property: STUDIO_ORIGINAL_TRANSLATE_ATTR, value: "5px 10px" },
-      { type: "attribute", property: STUDIO_ORIGINAL_INLINE_TRANSLATE_ATTR, value: "3px" },
-      { type: "inline-style", property: "display", value: "flex" },
-      { type: "attribute", property: STUDIO_ORIGINAL_TRANSFORM_DISPLAY_ATTR, value: "block" },
-    ]);
-  });
-
-  it("empty: bare element yields only the path-offset marker", () => {
-    expect(buildPathOffsetPatches(div())).toEqual([
-      { type: "attribute", property: STUDIO_PATH_OFFSET_ATTR, value: "true" },
-    ]);
-  });
-
+describe("buildClearPathOffsetPatches", () => {
   it("clear: restores translate from STUDIO_ORIGINAL_INLINE_TRANSLATE_ATTR and display from STUDIO_ORIGINAL_TRANSFORM_DISPLAY_ATTR", () => {
     const e = div();
     e.setAttribute(STUDIO_ORIGINAL_INLINE_TRANSLATE_ATTR, "5px");
@@ -127,11 +93,6 @@ describe("buildPathOffsetPatches / buildClearPathOffsetPatches", () => {
     e.setAttribute(STUDIO_ORIGINAL_INLINE_TRANSLATE_ATTR, "");
     const ops = buildClearPathOffsetPatches(e);
     expect(ops.find((o) => o.property === "translate")?.value).toBeNull();
-  });
-
-  it("build/clear symmetry: clear addresses every {type,property} key that build emits", () => {
-    const e = populatedPathEl();
-    assertClearCoversKeys(buildPathOffsetPatches(e), buildClearPathOffsetPatches(e));
   });
 });
 
@@ -287,93 +248,9 @@ describe("buildBoxSizePatches / buildClearBoxSizePatches", () => {
   });
 });
 
-/* ── Combined box-size + path-offset (anchored-corner resize) ──────────────── */
-
-describe("anchored-corner combined patch: [...buildBoxSizePatches, ...buildPathOffsetPatches]", () => {
-  // NW/NE/SW resize commits size AND anchor offset in ONE persist. The two
-  // builders read the same already-mutated element and are concatenated; this
-  // is only safe if their {type,property} keys are disjoint (no builder
-  // overwrites the other's op when the source patcher applies them in order).
-  it("concatenation of both builders emits disjoint {type,property} keys (no collision)", () => {
-    const e = div();
-    applyStudioBoxSize(e, { width: 300, height: 200 });
-    applyStudioPathOffset(e, { x: 10, y: 20 });
-
-    const combined = [...buildBoxSizePatches(e), ...buildPathOffsetPatches(e)];
-    const keys = combined.map(opKey);
-    expect(new Set(keys).size, `duplicate {type,property} key in combined patch: ${keys}`).toBe(
-      keys.length,
-    );
-  });
-
-  it("combined patch carries BOTH markers so a soft-reload re-hydrates size and offset together", () => {
-    const e = div();
-    applyStudioBoxSize(e, { width: 300, height: 200 });
-    applyStudioPathOffset(e, { x: 10, y: 20 });
-
-    const combined = [...buildBoxSizePatches(e), ...buildPathOffsetPatches(e)];
-    const has = (property: string) =>
-      combined.some((op) => op.type === "attribute" && op.property === property);
-    expect(has(STUDIO_BOX_SIZE_ATTR)).toBe(true);
-    expect(has(STUDIO_PATH_OFFSET_ATTR)).toBe(true);
-  });
-
-  it("order is size-first: every box-size op precedes every path-offset op", () => {
-    const e = div();
-    applyStudioBoxSize(e, { width: 300, height: 200 });
-    applyStudioPathOffset(e, { x: 10, y: 20 });
-
-    const boxKeys = new Set(buildBoxSizePatches(e).map(opKey));
-    const combined = [...buildBoxSizePatches(e), ...buildPathOffsetPatches(e)];
-    const lastBoxIdx = combined.reduce((acc, op, i) => (boxKeys.has(opKey(op)) ? i : acc), -1);
-    const firstOffsetIdx = combined.findIndex(
-      (op) => op.type === "attribute" && op.property === STUDIO_PATH_OFFSET_ATTR,
-    );
-    expect(firstOffsetIdx).toBeGreaterThan(lastBoxIdx);
-  });
-});
-
 /* ── Rotation ────────────────────────────────────────────────────────────── */
 
-describe("buildRotationPatches / buildClearRotationPatches", () => {
-  function populatedRotEl(): HTMLElement {
-    const e = div();
-    e.style.setProperty(STUDIO_ROTATION_PROP, "45");
-    e.style.setProperty("rotate", "45deg");
-    e.style.setProperty("transform-origin", "left center");
-    e.style.setProperty("display", "block");
-    e.setAttribute(STUDIO_ORIGINAL_ROTATE_ATTR, "0deg");
-    e.setAttribute(STUDIO_ORIGINAL_INLINE_ROTATE_ATTR, "0deg");
-    e.setAttribute(STUDIO_ORIGINAL_ROTATION_TRANSFORM_ORIGIN_ATTR, "center center");
-    e.setAttribute(STUDIO_ORIGINAL_TRANSFORM_DISPLAY_ATTR, "flex");
-    return e;
-  }
-
-  it("populated: captures rotation styles, attrs, and transform-display marker in declaration order", () => {
-    const ops = buildRotationPatches(populatedRotEl());
-    expect(ops).toEqual([
-      { type: "inline-style", property: STUDIO_ROTATION_PROP, value: "45" },
-      { type: "inline-style", property: "rotate", value: "45deg" },
-      { type: "inline-style", property: "transform-origin", value: "left center" },
-      { type: "inline-style", property: "display", value: "block" },
-      { type: "attribute", property: STUDIO_ROTATION_ATTR, value: "true" },
-      { type: "attribute", property: STUDIO_ORIGINAL_ROTATE_ATTR, value: "0deg" },
-      { type: "attribute", property: STUDIO_ORIGINAL_INLINE_ROTATE_ATTR, value: "0deg" },
-      {
-        type: "attribute",
-        property: STUDIO_ORIGINAL_ROTATION_TRANSFORM_ORIGIN_ATTR,
-        value: "center center",
-      },
-      { type: "attribute", property: STUDIO_ORIGINAL_TRANSFORM_DISPLAY_ATTR, value: "flex" },
-    ]);
-  });
-
-  it("empty: bare element yields only the rotation marker", () => {
-    expect(buildRotationPatches(div())).toEqual([
-      { type: "attribute", property: STUDIO_ROTATION_ATTR, value: "true" },
-    ]);
-  });
-
+describe("buildClearRotationPatches", () => {
   it("clear: restores rotate and transform-origin from orig attrs, nulls draft attr", () => {
     const e = div();
     e.setAttribute(STUDIO_ORIGINAL_INLINE_ROTATE_ATTR, "30deg");
@@ -404,11 +281,6 @@ describe("buildRotationPatches / buildClearRotationPatches", () => {
     e.setAttribute(STUDIO_ORIGINAL_INLINE_ROTATE_ATTR, "");
     const ops = buildClearRotationPatches(e);
     expect(ops.find((o) => o.property === "rotate")?.value).toBeNull();
-  });
-
-  it("build/clear symmetry: clear addresses every {type,property} key that build emits", () => {
-    const e = populatedRotEl();
-    assertClearCoversKeys(buildRotationPatches(e), buildClearRotationPatches(e));
   });
 });
 

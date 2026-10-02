@@ -5,6 +5,7 @@
 // ---------------------------------------------------------------------------
 
 import { agentRuntimeProperty } from "./agentRuntime";
+import { tabIdProperty } from "./tabId";
 
 export interface BrowserSystemMeta {
   user_agent: string;
@@ -17,6 +18,8 @@ export interface BrowserSystemMeta {
   studio_version: string;
   /** Which coding agent is driving this Studio, or null when a person is. */
   agent_runtime: string;
+  /** One id per page load. distinct_id identifies a browser, not a page. */
+  tab_id: string;
 }
 
 const EMPTY_META: BrowserSystemMeta = {
@@ -29,6 +32,7 @@ const EMPTY_META: BrowserSystemMeta = {
   is_mobile: false,
   studio_version: "dev",
   agent_runtime: "none",
+  tab_id: "unknown",
 };
 
 let cached: BrowserSystemMeta | null = null;
@@ -54,6 +58,8 @@ export function getBrowserSystemMeta(): BrowserSystemMeta {
     // Same value the `studio:*` transport attaches, from the same accessor —
     // two families that disagreed here would split every agent breakdown.
     agent_runtime: agentRuntimeProperty(),
+    // Same shared module as the `studio:*` transport, for the same reason.
+    tab_id: tabIdProperty(),
   };
   return cached;
 }

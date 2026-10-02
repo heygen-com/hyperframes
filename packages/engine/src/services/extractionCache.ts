@@ -58,16 +58,10 @@ export const COMPLETE_SENTINEL = ".hf-complete";
 export const GC_MARKER = ".hf-last-gc";
 
 /**
- * Current schema version. Bump when the cache-contents invariant changes.
- * v2 -> v3: one-pass VFR extraction (-fps_mode cfr) replaces the two-pass
- * VFR-to-CFR re-encode, changing frame contents for VFR sources under
- * identical key tuples. Without the bump, warm v2 entries (two-pass frames)
- * would keep being served across the deploy boundary.
- * v3 -> v4: the target fps identity is the exact FFmpeg argument instead of
- * a JavaScript number. This invalidates entries created after rational NTSC
- * rates had already been rounded to a decimal.
+ * Current schema version. Bump it whenever extraction writes different frames for the same key,
+ * or warm entries keep serving the old frames across a deploy. Each bump's commit says why.
  */
-export const SCHEMA_PREFIX = "hfcache-v4-";
+export const SCHEMA_PREFIX = "hfcache-v6-";
 
 /** Truncated hex chars of SHA-256 used for the entry directory name. */
 const KEY_HEX_CHARS = 16;
@@ -281,16 +275,35 @@ export function publishCacheEntry(entry: CacheEntry, partialDir: string): CacheP
 }
 
 /**
- * Update the LRU clock for a complete cache entry. Misses and filesystem
- * races are harmless: the caller can still use the entry it already found.
+ * Update the LRU clock for the cache entry directory at `dir`. Misses and
+ * filesystem races are harmless: the caller can still use the entry it already
+ * found. Takes a directory rather than a `CacheEntry` so a reader holding only
+ * a frame path can renew the clock with `dirname(framePath)`.
+ *
+ * Touches both signals `gcExtractionCache` reads, since which one is
+ * authoritative depends on the entry's state: `collectGcEntry` ages out a
+ * `.partial-*` writer dir by the DIRECTORY's own mtime before the sentinel is
+ * even considered, while a published (complete) entry is read by its
+ * `COMPLETE_SENTINEL` mtime. Touching only the sentinel would silently fail
+ * to renew a still-open partial dir a render depends on.
  */
-export function touchCacheEntry(entry: CacheEntry): void {
+export function touchCacheDir(dir: string): void {
+  const now = new Date();
   try {
-    const now = new Date();
-    utimesSync(join(entry.dir, COMPLETE_SENTINEL), now, now);
+    utimesSync(dir, now, now);
   } catch {
     // Best effort LRU touch.
   }
+  try {
+    utimesSync(join(dir, COMPLETE_SENTINEL), now, now);
+  } catch {
+    // Best effort LRU touch.
+  }
+}
+
+/** Update the LRU clock for a complete cache entry. See `touchCacheDir`. */
+export function touchCacheEntry(entry: CacheEntry): void {
+  touchCacheDir(entry.dir);
 }
 
 /**
@@ -323,7 +336,7 @@ function isPartialChild(name: string): boolean {
   return name.includes(".partial-");
 }
 
-function directorySizeBytes(path: string): number {
+export function directorySizeBytes(path: string): number {
   try {
     const stat = lstatSync(path);
     if (!stat.isDirectory()) return stat.size;
@@ -381,11 +394,12 @@ function collectGcEntry(
   now: number,
   minAgeMs: number,
   stats: GcStats,
+  remove: (dir: string) => void,
 ): GcEntry | null {
   try {
     const dirStat = statSync(dir);
     if (isPartialChild(name) && now - dirStat.mtimeMs >= minAgeMs) {
-      removeDir(dir);
+      remove(dir);
       stats.agedPartialsRemoved += 1;
       return null;
     }
@@ -432,16 +446,21 @@ export function gcSweepDue(rootDir: string, maxAgeMs: number): boolean {
   }
 }
 
-export function gcExtractionCache(
-  rootDir: string,
-  opts: { maxBytes: number; minAgeMs: number },
-): GcStats {
-  const stats: GcStats = { evictedEntries: 0, evictedBytes: 0, agedPartialsRemoved: 0 };
+function markGcSweep(rootDir: string): void {
   try {
     writeFileSync(join(rootDir, GC_MARKER), "", "utf-8");
   } catch {
     // Unwritable root: the sweep below will no-op on the same root anyway.
   }
+}
+
+export function gcExtractionCache(
+  rootDir: string,
+  opts: { maxBytes: number; minAgeMs: number; dryRun?: boolean },
+): GcStats {
+  const stats: GcStats = { evictedEntries: 0, evictedBytes: 0, agedPartialsRemoved: 0 };
+  const remove = opts.dryRun ? () => {} : removeDir;
+  if (!opts.dryRun) markGcSweep(rootDir);
   try {
     const now = Date.now();
     const entries: GcEntry[] = [];
@@ -453,6 +472,7 @@ export function gcExtractionCache(
         now,
         opts.minAgeMs,
         stats,
+        remove,
       );
       if (entry) entries.push(entry);
     }
@@ -464,7 +484,7 @@ export function gcExtractionCache(
     for (const entry of entries) {
       // ponytail: age-based liveness guard, not a lock; a render longer than minAge with a full cache could lose entries mid-read - acceptable, next render re-extracts.
       if (entry.ageMs < opts.minAgeMs) continue;
-      removeDir(entry.dir);
+      remove(entry.dir);
       stats.evictedEntries += 1;
       stats.evictedBytes += entry.size;
       totalBytes -= entry.size;

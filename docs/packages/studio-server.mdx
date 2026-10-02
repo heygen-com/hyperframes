@@ -45,12 +45,24 @@ A `StudioApiAdapter` supplies:
 Use the interface exported by your installed version as the exact contract. It
 changes as Studio gains capabilities.
 
+`bundle(projectDir, options)` must pass `options` through to `bundleToSingleHtml`,
+spread over your own options. The preview sets `stampHfIds` there so each element
+is served with the id its source file mints. If a host drops it, a composition
+the bundler inlines can be served with ids that a later save does not mint.
+
+```ts
+bundle: (dir, options) => bundleToSingleHtml(dir, { runtime: "inline", ...options }),
+```
+
 ## Other entry points
 
 | Import | Purpose |
 | --- | --- |
 | `@hyperframes/studio-server/source-mutation` | Apply guarded changes to composition source |
 | `@hyperframes/studio-server/screenshot-clip` | Calculate element screenshot geometry |
+| `@hyperframes/studio-server/safe-path` | Resolve paths inside a project and walk its files, without the server |
+| `@hyperframes/studio-server/hf-ids` | Stamp stable element ids into a project's HTML, without the server |
+| `@hyperframes/studio-server/history` | Open a project's undo history, without the server |
 | `@hyperframes/studio-server/manual-edits-render-script` | Reapply Studio manual edits during render |
 | `@hyperframes/studio-server/studio-motion-render-script` | Reapply Studio motion edits during render |
 | `@hyperframes/studio-server/draft-markers` | Work with draft gesture markers |

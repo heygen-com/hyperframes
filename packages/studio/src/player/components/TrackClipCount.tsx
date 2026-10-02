@@ -9,7 +9,7 @@ export function TrackClipCount({ clipCount }: { clipCount: number }) {
     <span
       aria-label={`${clipCount} clips`}
       title={`${clipCount} clips`}
-      className="shrink-0 rounded-full bg-white/10 px-1 text-[9px] leading-[14px] tabular-nums text-white/55"
+      className="shrink-0 rounded-full bg-hover px-1 text-[9px] leading-[14px] tabular-nums text-text-muted"
     >
       {clipCount}
     </span>

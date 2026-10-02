@@ -22,10 +22,10 @@ export function createWaapiAdapter(): RuntimeDeterministicAdapter {
     }
   >();
 
-  const snapshotAnimations = () => {
+  const snapshotAnimations = (read = () => document.getAnimations()) => {
     if (!document.getAnimations) return [];
     try {
-      return document.getAnimations();
+      return read();
     } catch {
       return [];
     }
@@ -154,7 +154,7 @@ export function createWaapiAdapter(): RuntimeDeterministicAdapter {
       // After an empty discover, skip the per-frame global scan until authored
       // code creates a WAAPI animation via Element.animate (hooked above).
       if (!didDiscover || animations.size > 0) {
-        trackAnimations(snapshotAnimations(), didDiscover ? timeMs : 0);
+        trackAnimations(snapshotAnimations(ctx.pageAnimations), didDiscover ? timeMs : 0);
       }
       for (const animation of animations) {
         const baseline = didDiscover
@@ -176,9 +176,9 @@ export function createWaapiAdapter(): RuntimeDeterministicAdapter {
         }
       }
     },
-    pause: () => {
+    pause: (ctx) => {
       if (!didDiscover) {
-        trackAnimations(snapshotAnimations(), lastSeekTimeMs);
+        trackAnimations(snapshotAnimations(ctx?.pageAnimations), lastSeekTimeMs);
       }
       for (const animation of animations) {
         try {

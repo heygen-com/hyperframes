@@ -1,21 +1,50 @@
 import { createHash, randomUUID } from "node:crypto";
+import { realFilePath } from "./safePath.js";
 
 export interface FileWriteReceipt {
   path: string;
   version: string;
   writeToken: string;
+  from?: string;
 }
 
 interface StoredReceipt extends FileWriteReceipt {
   recordedAt: number;
 }
 
+type OverwriteListener = (absPath: string, version: string, overwrote: string | Uint8Array) => void;
+
 const RECEIPT_TTL_MS = 10_000;
 const receipts = new Map<string, StoredReceipt[]>();
+const overwriteListeners = new Set<OverwriteListener>();
 
 /** Strong content version used as both the JSON version and HTTP ETag. */
 export function fileContentVersion(content: string | Uint8Array): string {
-  return `"sha256:${createHash("sha256").update(content).digest("hex")}"`;
+  return hashVersion(createHash("sha256").update(content).digest("hex"));
+}
+
+/** The version a deletion's receipt is kept under: a deleted file has no bytes to hash. */
+export const DELETED_VERSION = '"deleted"';
+
+export function hashVersion(hex: string): string {
+  return `"sha256:${hex}"`;
+}
+
+/** The sha256 a version names, or undefined when it is not a content version. */
+export function hashOfVersion(version: string): string | undefined {
+  return /^"sha256:([0-9a-f]{64})"$/.exec(version)?.[1];
+}
+
+/** A validator from a file's inode, change time and size, or null while the change is under three
+ * seconds old. Change time, not mtime: copy tools (`cp -p`, rsync, robocopy) set mtime back but not
+ * ctime, which Node reads from NTFS ChangeTime on Windows. A same-size rewrite within one tick keeps
+ * both, so only a settled file is tagged. */
+export function settledFileTag(
+  stat: { ino: number; ctimeMs: number; size: number },
+  now = Date.now(),
+): string | null {
+  if (now - stat.ctimeMs < 3000) return null;
+  return [stat.ino, stat.ctimeMs, stat.size].map((n) => n.toString(36)).join("-");
 }
 
 export function createWriteToken(requestToken?: string): string {
@@ -23,13 +52,47 @@ export function createWriteToken(requestToken?: string): string {
   return token && token.length <= 200 ? token : randomUUID();
 }
 
-export function recordFileWriteReceipt(absPath: string, receipt: FileWriteReceipt): void {
+/** Hears the bytes each API write replaced, so a project history can keep a save it never saw. */
+export function onFileOverwritten(listener: OverwriteListener): () => void {
+  overwriteListeners.add(listener);
+  return () => overwriteListeners.delete(listener);
+}
+
+export function recordFileWriteReceipt(
+  filePath: string,
+  {
+    overwrote,
+    path,
+    version,
+    writeToken,
+  }: Omit<FileWriteReceipt, "from"> & {
+    overwrote?: string | Uint8Array;
+  },
+): void {
+  const receipt = { path, version, writeToken };
+  const absPath = realFilePath(filePath);
+  if (overwrote !== undefined)
+    for (const listener of overwriteListeners) listener(absPath, receipt.version, overwrote);
   const now = Date.now();
+  for (const [path, list] of receipts) {
+    const live = list.filter((entry) => now - entry.recordedAt < RECEIPT_TTL_MS);
+    if (live.length > 0) receipts.set(path, live);
+    else receipts.delete(path);
+  }
+  const from = overwrote === undefined ? undefined : fileContentVersion(overwrote);
+  receipts.set(absPath, [
+    ...(receipts.get(absPath) ?? []),
+    { ...receipt, ...(from && { from }), recordedAt: now },
+  ]);
+}
+
+export function clearFileWriteReceipt(filePath: string, version: string, writeToken: string): void {
+  const absPath = realFilePath(filePath);
   const current = (receipts.get(absPath) ?? []).filter(
-    (entry) => now - entry.recordedAt < RECEIPT_TTL_MS,
+    (entry) => entry.version !== version || entry.writeToken !== writeToken,
   );
-  current.push({ ...receipt, recordedAt: now });
-  receipts.set(absPath, current);
+  if (current.length > 0) receipts.set(absPath, current);
+  else receipts.delete(absPath);
 }
 
 /**
@@ -41,9 +104,16 @@ export function recordFileWriteReceipt(absPath: string, receipt: FileWriteReceip
  * TTL removes a receipt.
  */
 export function identifyFileWrite(
-  absPath: string,
+  filePath: string,
   expectedVersion: string,
 ): FileWriteReceipt | null {
+  const receipt = newestReceipt(realFilePath(filePath), expectedVersion);
+  if (!receipt) return null;
+  const { path, version, writeToken, from } = receipt;
+  return { path, version, writeToken, ...(from && { from }) };
+}
+
+function newestReceipt(absPath: string, expectedVersion: string): StoredReceipt | undefined {
   const now = Date.now();
   const current = (receipts.get(absPath) ?? []).filter(
     (entry) => now - entry.recordedAt < RECEIPT_TTL_MS,
@@ -58,9 +128,7 @@ export function identifyFileWrite(
   for (let i = current.length - 1; i >= 0 && !receipt; i -= 1) {
     if (current[i]?.version === expectedVersion) receipt = current[i];
   }
-  if (!receipt) return null;
-  const { path, version, writeToken } = receipt;
-  return { path, version, writeToken };
+  return receipt;
 }
 
 /**

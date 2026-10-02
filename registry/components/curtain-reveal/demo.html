@@ -1,0 +1,106 @@
+<!doctype html>
+<!--
+  curtain-reveal demo. This standalone composition mounts the primitive
+  FULL-BLEED through data-composition-src, burgundy with the pelmet off to
+  prove the non-default variable path, and slots a title card so the
+  curtains part onto a real announcement rather than the bare token card
+  the primitive falls back to.
+-->
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=1920, height=1080" />
+    <title>Curtain Reveal Demo</title>
+    <style>
+      * {
+        margin: 0;
+        padding: 0;
+        box-sizing: border-box;
+      }
+      html,
+      body {
+        width: 1920px;
+        height: 1080px;
+        overflow: hidden;
+        background: #060607;
+      }
+      #root {
+        position: relative;
+        width: 1920px;
+        height: 1080px;
+        overflow: hidden;
+        background: #060607;
+      }
+      .mount-bleed {
+        position: absolute;
+        inset: 0;
+        container-type: size;
+        overflow: hidden;
+      }
+      .demo-card {
+        position: absolute;
+        inset: 0;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        gap: 36px;
+        padding-bottom: 80px;
+        background: #111318;
+        font-family: Inter, system-ui, sans-serif;
+        color: #f7f1e8;
+      }
+      .demo-eyebrow {
+        font-size: 30px;
+        font-weight: 500;
+        letter-spacing: 0.2em;
+        text-transform: uppercase;
+        color: rgba(247, 232, 212, 0.7);
+      }
+      .demo-title {
+        font-size: 232px;
+        font-weight: 600;
+        line-height: 0.9;
+        letter-spacing: -0.04em;
+        font-kerning: normal;
+      }
+    </style>
+  </head>
+  <body>
+    <template data-slot="curtain-reveal-stage">
+      <div class="demo-card">
+        <p class="demo-eyebrow">Now announcing</p>
+        <h1 class="demo-title">Aurora 2</h1>
+      </div>
+    </template>
+
+    <div
+      id="root"
+      data-composition-id="curtain-reveal-demo"
+      data-start="0"
+      data-width="1920"
+      data-height="1080"
+      data-duration="2.4"
+      data-fps="30"
+    >
+      <div
+        id="curtain-reveal-mount"
+        class="mount-bleed clip"
+        data-composition-id="curtain-reveal"
+        data-composition-src="./curtain-reveal.html"
+        data-variable-values='{"tone":"burgundy","pelmet":"off","spotlight":"on"}'
+        data-start="0"
+        data-duration="2.4"
+        data-track-index="0"
+        data-width="1920"
+        data-height="1080"
+      ></div>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/gsap@3.14.2/dist/gsap.min.js"></script>
+    <script>
+      window.__timelines = window.__timelines || {};
+      window.__timelines["curtain-reveal-demo"] = gsap.timeline({ paused: true });
+    </script>
+  </body>
+</html>

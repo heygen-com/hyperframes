@@ -66,27 +66,29 @@ document.getElementById("title").textContent = title;
 
 The one real constraint is about **timelines, not media placement**: a sub-composition timeline **cannot reach or animate host elements** — neither `document.querySelector("#host-id")` nor a gsap selector string (`tl.to("#host-id", …)`) resolves across the boundary; a sub-comp timeline only drives its own subtree. So if a media element lives at the host root, **its per-scene motion (scale/opacity/morph/tilt/breathing) must be authored on the MAIN timeline in `index.html`, at GLOBAL time** (scene-local time + the scene slot's `data-start`). Keeping the media inside the scene sub-comp instead lets that sub-comp's own timeline animate it with scene-local time. For 3D tilt without a perspective parent, use gsap `transformPerspective` on the element. See `composition-patterns.md` archetype B.
 
-Video elements must be muted and inline. Audio must be a separate `<audio>` element, even when it uses the same source file.
+A video with sound keeps it on the `<video>` (`data-has-audio="true"`, no `muted`). Use a separate `<audio>` for music, voiceover, replacement audio, J/L cuts, or audio detached in Studio. Silent footage and b-roll: `muted`.
 
 ```html
 <video
   id="a-roll"
   class="clip"
   src="assets/demo.mp4"
+  playsinline
+  data-has-audio="true"
   data-start="0"
   data-duration="12"
   data-track-index="0"
-  muted
-  playsinline
+  data-volume="1"
 ></video>
 
+<!-- Separate <audio> only for other sound: music, voiceover, replacement audio. -->
 <audio
-  id="a-roll-audio"
-  src="assets/demo.mp4"
+  id="music"
+  src="assets/bed.mp3"
   data-start="0"
   data-duration="12"
-  data-track-index="10"
-  data-volume="1"
+  data-track-index="2"
+  data-volume="0.4"
 ></audio>
 ```
 
@@ -99,8 +101,8 @@ Video elements must be muted and inline. Audio must be a separate `<audio>` elem
 - **Sub-compositions are exempt and work.** A `<video>`/`<audio>` inside a sub-composition renders identically to one at the host root, because a composition host propagates its offset. Only plain timed wrappers (a `<section data-start>` around a `<video data-start>`) break.
 - **Never** add `crossorigin` to `<video>`/`<audio>`. `lint` rejects it unconditionally (`media_crossorigin_breaks_preview`, error) because a media host without `Access-Control-Allow-Origin` then fails silently in preview while renders still work, hiding the bug. There is no suppression, so this holds even for the canvas/WebGL/WebAudio readback case.
 - **Every `<audio>` needs an `id`.** The mixer selects `audio[id][src]`, so an id-less `<audio>` is never mixed and the render is **silent**. `lint` catches it as `media_missing_id`.
-- Audio always lives on a separate `<audio>` element — even if its source file is the same as a `<video>`. The `<video>` is muted; the `<audio>` carries sound.
-- For volume fades/ducking, animate `volume` on the timeline (`tl.to("#bgm", { volume: 0, duration: 1 }, "outro")`) rather than swapping `data-volume`. The runtime probes the timeline's volume keyframes and applies them identically in preview and render; `data-volume` is the static baseline for elements no tween touches. A tween's values REPLACE that baseline rather than scaling it, so on a clip whose gain is not `1` you scale the tween's targets instead (`{ volume: 1.95 }`, not `{ volume: 1 }`) — `lint` warns with `audio_volume_tween_overrides_gain` when the two disagree.
+- A video's own sound stays on the `<video>` (`data-has-audio="true"`, no `muted`). Add a separate `<audio>` only for other sound (music, voiceover, replacement audio, J/L cuts) and mute the video it replaces.
+- For volume fades and ducking, use the `data-automation` volume lane; the exact form is in `creator-editing-recipes.md`. `data-volume` is the static baseline. A timeline `volume` tween is ignored when a lane is present.
 
 For media duration: `<video>` and `<audio>` can omit `data-duration` if the media's intrinsic length is known and you want the full clip. Otherwise provide `data-duration` explicitly.
 

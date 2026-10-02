@@ -3,6 +3,7 @@
 import { describe, expect, it, vi } from "vitest";
 import {
   coversComposition,
+  getAllPreviewTargetsFromPointer,
   getPreviewTargetFromPointer,
   pauseStudioPreviewPlayback,
 } from "./studioPreviewHelpers";
@@ -138,6 +139,34 @@ describe("getPreviewTargetFromPointer", () => {
     doc.elementsFromPoint = () => [headline, mask, block, scene];
 
     expect(getPreviewTargetFromPointer(iframe, 80, 64, "index.html")).toBe(headline);
+    iframe.remove();
+  });
+
+  it("hit-tests without adding styles to the preview document", () => {
+    const { iframe, doc } = createPreviewIframe();
+    doc.body.innerHTML = `<main data-composition-id="scene"><h1 id="headline">Title</h1></main>`;
+    const scene = doc.querySelector<HTMLElement>("main")!;
+    const headline = doc.getElementById("headline")!;
+    stubRect(iframe, domRect(0, 0, 400, 300));
+    stubRect(scene, domRect(0, 0, 400, 300));
+    stubRect(headline, domRect(40, 40, 160, 48));
+    const stylesAtHitTest: number[] = [];
+    doc.elementsFromPoint = () => {
+      stylesAtHitTest.push(doc.querySelectorAll("style").length + doc.adoptedStyleSheets.length);
+      return [headline, scene];
+    };
+    // First call runs the once-per-document inheritance probe, a body mutation.
+    expect(getPreviewTargetFromPointer(iframe, 80, 64, "index.html")).toBe(headline);
+    const observer = new MutationObserver(() => {});
+    observer.observe(doc, { subtree: true, childList: true, attributes: true });
+
+    expect(getPreviewTargetFromPointer(iframe, 80, 64, "index.html")).toBe(headline);
+    expect(getAllPreviewTargetsFromPointer(iframe, 80, 64, "index.html")).toEqual([headline]);
+    const mutations = observer.takeRecords();
+    observer.disconnect();
+
+    expect(stylesAtHitTest).toEqual([0, 0, 0]);
+    expect(mutations).toEqual([]);
     iframe.remove();
   });
 

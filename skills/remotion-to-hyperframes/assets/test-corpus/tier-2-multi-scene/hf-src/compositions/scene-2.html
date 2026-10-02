@@ -1,0 +1,35 @@
+<template id="scene-2-template">
+  <div data-composition-id="scene-2" data-width="1280" data-height="720" data-duration="2">
+    <style>
+      .scene {
+        position: absolute;
+        inset: 0;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        opacity: 0;
+      }
+      .square {
+        width: 200px;
+        height: 200px;
+        opacity: 0;
+        transform: scale(0.8);
+      }
+    </style>
+    <div class="scene">
+      <img class="square" src="../assets/square.png" alt="" />
+    </div>
+    <script>
+      // Scene 2 (2-4s, local 0-2s): opacity 0->1 over 0.5s, scale 0.8->1.0 over 2s, both linear.
+      const tl = gsap.timeline({ paused: true });
+      const scene = document.querySelector(".scene");
+      const square = scene.querySelector(".square");
+      tl.set(scene, { opacity: 1 }, 0);
+      tl.to(square, { opacity: 1, duration: 0.5, ease: "none" }, 0);
+      tl.to(square, { scale: 1.0, duration: 2.0, ease: "none" }, 0);
+      tl.set(scene, { opacity: 0 }, 2);
+      window.__timelines = window.__timelines || {};
+      window.__timelines["scene-2"] = tl;
+    </script>
+  </div>
+</template>

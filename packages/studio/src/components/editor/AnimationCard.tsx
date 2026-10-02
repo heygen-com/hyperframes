@@ -172,7 +172,7 @@ export const AnimationCard = memo(function AnimationCard({
     return (
       <div className="border-b border-neutral-800 pb-2">
         <div className="flex items-center gap-2 py-1.5">
-          <span className="rounded bg-neutral-800 px-1.5 py-0.5 text-[10px] font-medium text-neutral-400">
+          <span className="rounded-sm bg-neutral-800 px-1.5 py-0.5 text-[10px] font-medium text-neutral-400">
             Position
           </span>
           <span className="text-[11px] text-neutral-500">
@@ -201,7 +201,7 @@ export const AnimationCard = memo(function AnimationCard({
         className="flex w-full items-center gap-2 py-1.5 active:scale-[0.99]"
       >
         <span
-          className="rounded bg-panel-accent/10 px-1.5 py-0.5 text-[10px] font-semibold text-panel-accent"
+          className="rounded-sm bg-panel-accent/10 px-1.5 py-0.5 text-[10px] font-semibold text-accent-ink"
           title={METHOD_TOOLTIPS[animation.method]}
         >
           {methodLabel}
@@ -226,7 +226,7 @@ export const AnimationCard = memo(function AnimationCard({
           height="10"
           viewBox="0 0 10 10"
           fill="currentColor"
-          className={`flex-shrink-0 transition-transform ${flat ? "text-panel-text-5" : "text-neutral-500"} ${expanded ? "" : "-rotate-90"}`}
+          className={`shrink-0 transition-transform ${flat ? "text-panel-text-5" : "text-neutral-500"} ${expanded ? "" : "-rotate-90"}`}
         >
           <path d="M2 3l3 4 3-4z" />
         </svg>
@@ -262,7 +262,7 @@ export const AnimationCard = memo(function AnimationCard({
                   setCopied(true);
                   setTimeout(() => setCopied(false), 1500);
                 }}
-                className="flex-shrink-0 rounded px-1.5 py-0.5 text-[9px] font-medium text-neutral-500 transition-colors hover:bg-neutral-800 hover:text-neutral-300"
+                className="shrink-0 rounded-sm px-1.5 py-0.5 text-[9px] font-medium text-neutral-500 transition-colors hover:bg-neutral-800 hover:text-neutral-300"
                 title="Copy description to clipboard — paste into agent prompts"
               >
                 {copied ? "Copied" : "Copy"}
@@ -354,7 +354,7 @@ export const AnimationCard = memo(function AnimationCard({
 
             {animation.method === "fromTo" && (
               <div className="space-y-1">
-                <p className="text-[9px] font-semibold uppercase tracking-wider text-orange-400/70">
+                <p className="text-[9px] font-semibold uppercase tracking-wider text-warning-ink">
                   From
                 </p>
                 <div className="space-y-1.5">
@@ -378,14 +378,14 @@ export const AnimationCard = memo(function AnimationCard({
                     onAdd={(prop) => onAddFromProperty?.(animation.id, prop)}
                     onOpen={() => setAddingFromProp(true)}
                     onClose={() => setAddingFromProp(false)}
-                    buttonClassName="text-[11px] font-medium text-orange-400/70 transition-colors hover:text-orange-300"
+                    buttonClassName="text-[11px] font-medium text-warning-ink transition-colors hover:text-text-0"
                   />
                 </div>
               </div>
             )}
 
             {animation.method === "fromTo" && Object.keys(animation.properties).length > 0 && (
-              <p className="text-[9px] font-semibold uppercase tracking-wider text-panel-accent/70">
+              <p className="text-[9px] font-semibold uppercase tracking-wider text-accent-ink">
                 To
               </p>
             )}
@@ -455,7 +455,7 @@ export const AnimationCard = memo(function AnimationCard({
               <button
                 type="button"
                 onClick={() => onDeleteAnimation(animation.id)}
-                className="ml-auto text-[11px] font-medium text-red-400 transition-colors hover:text-red-300"
+                className="ml-auto text-[11px] font-medium rounded-sm text-danger-ink transition-colors hover:bg-danger/15"
                 title="Remove this animation"
               >
                 Remove

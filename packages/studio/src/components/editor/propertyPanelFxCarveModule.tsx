@@ -111,7 +111,7 @@ function FxCarveMember({
               {/* The lane is where an automated value comes from, and where it is
                   edited — saying so is the difference between a stale readout and
                   a pointer to the thing that owns it. */}
-              {automated ? <span className="text-[#3CE6AC]">A</span> : null}
+              {automated ? <span className="text-accent-ink">A</span> : null}
             </span>
           );
         })}
@@ -338,7 +338,7 @@ function CarveSourceRow({
     <div className="hf-fx-row flex min-h-6 items-center gap-2">
       {/* Wraps like every other name in this column (see FxParamRow) — one
           truncating row beside wrapping ones reads as a rendering bug. */}
-      <span className="hf-fx-label w-[86px] flex-shrink-0 break-words text-[10px] leading-tight text-panel-text-2">
+      <span className="hf-fx-label w-[86px] shrink-0 wrap-break-word text-[10px] leading-tight text-panel-text-2">
         Listen to
       </span>
       {soleVoice ? (

@@ -109,8 +109,8 @@ export const CaptionTimeline = memo(function CaptionTimeline({
               tabIndex={0}
               aria-label={`Caption word "${seg.text}"`}
               aria-pressed={isSelected}
-              className={`absolute top-1 bottom-1 rounded flex items-center overflow-hidden cursor-pointer focus-visible:ring-1 focus-visible:ring-white outline-none${
-                isSelected ? " ring-1 ring-white/50 z-10" : ""
+              className={`absolute top-1 bottom-1 rounded flex items-center overflow-hidden cursor-pointer focus-visible:ring-1 focus-visible:ring-text-0 outline-hidden${
+                isSelected ? " ring-1 ring-text-0/50 z-10" : ""
               }`}
               style={{
                 left,
@@ -135,7 +135,7 @@ export const CaptionTimeline = memo(function CaptionTimeline({
 
       {/* Playhead — correlates blocks with the current frame */}
       <div
-        className="absolute top-0 bottom-0 w-px bg-white/70 pointer-events-none z-20"
+        className="absolute top-0 bottom-0 w-px bg-text-0/70 pointer-events-none z-20"
         style={{ left: playheadLeft }}
         aria-hidden="true"
       />

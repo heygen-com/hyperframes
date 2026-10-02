@@ -1,21 +1,44 @@
-import { memo, useCallback, useEffect, useRef, useState, type RefObject } from "react";
+import {
+  readPreviewCompositionSize,
+  type PreviewCompositionSize,
+} from "../../utils/previewCompositionSize";
+import {
+  memo,
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useRef,
+  useState,
+  type RefObject,
+} from "react";
 import { Player } from "../../player";
+import type { PreviewIframeSlot } from "../../player/hooks/useTimelineSyncCallbacks";
 import {
   DEFAULT_PREVIEW_ZOOM,
   canStartPreviewPan,
   clampPreviewPan,
   clampPreviewZoomPercent,
+  isPreviewAtFit,
   ownsPreviewPanTarget,
   resolvePreviewWheelPan,
   resolvePreviewWheelZoom,
   toDomPrecision,
   type PreviewZoomState,
 } from "./previewZoom";
-import { readStudioUiPreferences, writeStudioUiPreferences } from "../../utils/studioUiPreferences";
+import { RULER_GUTTER_PX, usePreviewGuidesStore } from "../editor/previewGuidesStore";
+import { PreviewZoomOverlay, usePreviewNavigator } from "./PreviewZoomOverlay";
+import { usePreviewFirstFrameTelemetry } from "../../player/hooks/usePreviewFirstFrameTelemetry";
+import { PreviewPoster, usePreviewPoster } from "./PreviewPoster";
 interface NLEPreviewProps {
   projectId: string;
   iframeRef: RefObject<HTMLIFrameElement | null>;
   onIframeLoad: () => void;
+  previewSlots: PreviewIframeSlot[];
+  onShadowIframeLoad: (gen: number) => void;
+  onShadowReadyChange: (gen: number, ready: boolean) => void;
+  onShadowError: (gen: number, message: string) => void;
+  setShadowIframeNode: (node: HTMLIFrameElement | null) => void;
+  resetPreviewSlots: () => void;
   onCompositionLoadingChange?: (loading: boolean) => void;
   portrait?: boolean;
   directUrl?: string;
@@ -23,6 +46,8 @@ interface NLEPreviewProps {
   onStageRef?: (ref: React.RefObject<HTMLDivElement | null>) => void;
   /** Reports the authored composition size measured from the loaded preview. */
   onCompositionSizeChange?: (size: PreviewCompositionSize | null) => void;
+  /** Draws the picture edge to edge in this box, without Studio's inset band. */
+  fillBox?: boolean;
 }
 
 export function getPreviewPlayerKey({
@@ -37,61 +62,28 @@ export function getPreviewPlayerKey({
 
 const ZOOM_HUD_TIMEOUT_MS = 1200;
 const ZOOM_SETTLE_MS = 200;
-const PREVIEW_STAGE_INSET_PX = 16;
+const PREVIEW_STAGE_INSET_PX = 8;
 
-interface PreviewCompositionSize {
-  width: number;
-  height: number;
-}
-
-function isPreviewAtFit(state: PreviewZoomState): boolean {
-  return (
-    Math.abs(state.zoomPercent - 100) < 0.5 &&
-    Math.abs(state.panX) < 0.1 &&
-    Math.abs(state.panY) < 0.1
-  );
-}
-
-function loadInitialZoom(): PreviewZoomState {
-  const stored = readStudioUiPreferences().previewZoom;
-  return stored
-    ? {
-        zoomPercent: clampPreviewZoomPercent(stored.zoomPercent),
-        panX: stored.panX,
-        panY: stored.panY,
-      }
-    : DEFAULT_PREVIEW_ZOOM;
-}
-
-// fallow-ignore-next-line complexity
-function readPreviewCompositionSize(
-  iframe: HTMLIFrameElement | null,
-): PreviewCompositionSize | null {
-  try {
-    const doc = iframe?.contentDocument;
-    const root =
-      doc?.querySelector("[data-composition-id][data-width][data-height]") ??
-      doc?.querySelector("[data-width][data-height]");
-    if (!root) return null;
-    const width = Number.parseInt(root.getAttribute("data-width") ?? "", 10);
-    const height = Number.parseInt(root.getAttribute("data-height") ?? "", 10);
-    if (!Number.isFinite(width) || width <= 0 || !Number.isFinite(height) || height <= 0) {
-      return null;
-    }
-    return { width, height };
-  } catch {
-    return null;
-  }
-}
+// clip-path as well as visibility: the player's loading overlay sets its own
+// visibility:visible and would otherwise paint over the live frame.
+const SHADOW_IFRAME_STYLE: React.CSSProperties = {
+  position: "absolute",
+  inset: 0,
+  visibility: "hidden",
+  clipPath: "inset(100%)",
+  pointerEvents: "none",
+};
 
 export function resolvePreviewStageSize(
   viewportWidth: number,
   viewportHeight: number,
   compositionSize: PreviewCompositionSize | null,
   portrait: boolean | undefined,
+  gutterPx = 0,
+  insetPx = PREVIEW_STAGE_INSET_PX,
 ): { width: number; height: number } {
-  const availableWidth = Math.max(0, viewportWidth - PREVIEW_STAGE_INSET_PX);
-  const availableHeight = Math.max(0, viewportHeight - PREVIEW_STAGE_INSET_PX);
+  const availableWidth = Math.max(0, viewportWidth - 2 * (insetPx + gutterPx));
+  const availableHeight = Math.max(0, viewportHeight - 2 * (insetPx + gutterPx));
   const aspectRatio =
     compositionSize && compositionSize.width > 0 && compositionSize.height > 0
       ? compositionSize.width / compositionSize.height
@@ -120,12 +112,19 @@ export const NLEPreview = memo(function NLEPreview({
   projectId,
   iframeRef,
   onIframeLoad,
+  previewSlots,
+  onShadowIframeLoad,
+  onShadowReadyChange,
+  onShadowError,
+  setShadowIframeNode,
+  resetPreviewSlots,
   onCompositionLoadingChange,
   portrait,
   directUrl,
   suppressLoadingOverlay,
   onStageRef,
   onCompositionSizeChange,
+  fillBox,
 }: NLEPreviewProps) {
   const activeKey = getPreviewPlayerKey({ projectId, directUrl });
   const viewportRef = useRef<HTMLDivElement>(null);
@@ -134,11 +133,25 @@ export const NLEPreview = memo(function NLEPreview({
   useEffect(() => {
     onStageRef?.(stageRef);
   }, [onStageRef]);
+
+  // Composition switch: drop any in-flight shadow reload (skipped on first mount).
+  const previousActiveKeyRef = useRef(activeKey);
+  useEffect(() => {
+    if (previousActiveKeyRef.current === activeKey) return;
+    previousActiveKeyRef.current = activeKey;
+    resetPreviewSlots();
+  }, [activeKey, resetPreviewSlots]);
+
+  const liveGenRef = useRef<number | null>(null);
+  const reportPreviewFirstFrame = usePreviewFirstFrameTelemetry(previewSlots);
   const [compositionSize, setCompositionSize] = useState<PreviewCompositionSize | null>(null);
+  const poster = usePreviewPoster(projectId, activeKey, directUrl);
+  const gutterPx = usePreviewGuidesStore((s) => (s.rulerVisible ? RULER_GUTTER_PX : 0));
+  const insetPx = fillBox ? 0 : PREVIEW_STAGE_INSET_PX;
   const [stageSize, setStageSize] = useState(() => resolvePreviewStageSize(0, 0, null, portrait));
 
-  const zoomRef = useRef<PreviewZoomState>(loadInitialZoom());
-  const [settledZoom, setSettledZoom] = useState<PreviewZoomState>(() => zoomRef.current);
+  const zoomRef = useRef<PreviewZoomState>(DEFAULT_PREVIEW_ZOOM);
+  const [settledZoom, setSettledZoom] = useState<PreviewZoomState>(DEFAULT_PREVIEW_ZOOM);
   const hudRef = useRef<HTMLDivElement>(null);
   const hudTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const settleTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -164,14 +177,23 @@ export const NLEPreview = memo(function NLEPreview({
 
     const updateStageSize = () => {
       const rect = viewport.getBoundingClientRect();
-      setStageSize(resolvePreviewStageSize(rect.width, rect.height, compositionSize, portrait));
+      setStageSize(
+        resolvePreviewStageSize(
+          rect.width,
+          rect.height,
+          compositionSize,
+          portrait,
+          gutterPx,
+          insetPx,
+        ),
+      );
     };
 
     updateStageSize();
     const observer = new ResizeObserver(updateStageSize);
     observer.observe(viewport);
     return () => observer.disconnect();
-  }, [compositionSize, portrait]);
+  }, [compositionSize, portrait, gutterPx, insetPx]);
 
   const onCompositionSizeChangeRef = useRef(onCompositionSizeChange);
   onCompositionSizeChangeRef.current = onCompositionSizeChange;
@@ -200,14 +222,33 @@ export const NLEPreview = memo(function NLEPreview({
   const stageSizeRef = useRef(stageSize);
   stageSizeRef.current = stageSize;
 
-  const writeTransform = useCallback((state: PreviewZoomState) => {
-    const stage = stageRef.current;
-    if (!stage) return;
-    const s = toDomPrecision(state.zoomPercent / 100);
-    const px = toDomPrecision(state.panX);
-    const py = toDomPrecision(state.panY);
-    stage.style.transform = `translate3d(${px}px, ${py}px, 0) scale(${s})`;
-  }, []);
+  const { draw: drawNavigator, setRegion: setNavigatorRegion } = usePreviewNavigator(
+    viewportRef,
+    stageSize,
+    zoomRef,
+  );
+  const writeTransform = useCallback(
+    (state: PreviewZoomState) => {
+      const stage = stageRef.current;
+      if (!stage) return;
+      const s = toDomPrecision(state.zoomPercent / 100);
+      const px = toDomPrecision(state.panX);
+      const py = toDomPrecision(state.panY);
+      stage.style.transform = `translate3d(${px}px, ${py}px, 0) scale(${s})`;
+      drawNavigator(state);
+    },
+    [drawNavigator],
+  );
+
+  const zoomProjectRef = useRef(projectId);
+  // Before paint, so the next project never shows a frame at the previous one's zoom.
+  useLayoutEffect(() => {
+    if (zoomProjectRef.current === projectId) return;
+    zoomProjectRef.current = projectId;
+    zoomRef.current = DEFAULT_PREVIEW_ZOOM;
+    writeTransform(DEFAULT_PREVIEW_ZOOM);
+    setSettledZoom(DEFAULT_PREVIEW_ZOOM);
+  }, [projectId, writeTransform]);
 
   const applyTransform = useCallback(
     (next: PreviewZoomState, showHud: boolean) => {
@@ -237,7 +278,6 @@ export const NLEPreview = memo(function NLEPreview({
       settleTimerRef.current = setTimeout(() => {
         zoomingRef.current = false;
         const final = zoomRef.current;
-        writeStudioUiPreferences({ previewZoom: final });
         setSettledZoom((prev) =>
           prev.zoomPercent === final.zoomPercent &&
           prev.panX === final.panX &&
@@ -272,9 +312,8 @@ export const NLEPreview = memo(function NLEPreview({
 
   const applyInitialZoom = useCallback(() => {
     const z = zoomRef.current;
-    if (Math.abs(z.zoomPercent - 100) > 0.5 || Math.abs(z.panX) > 0.1 || Math.abs(z.panY) > 0.1) {
-      // A pan persisted on a large window can restore the composition mostly
-      // off-screen in a smaller one; clamp against the current viewport first.
+    if (!isPreviewAtFit(z)) {
+      // A composition reload can bring a different frame size than the pan was made on; clamp first.
       const viewport = viewportRef.current;
       const rect = viewport?.getBoundingClientRect();
       const sz = stageSizeRef.current;
@@ -293,6 +332,18 @@ export const NLEPreview = memo(function NLEPreview({
       writeTransform(zoomRef.current);
     }
   }, [writeTransform]);
+
+  // A promotion does not re-fire Player.onLoad: re-sync the local iframe ref, size and zoom.
+  useEffect(() => {
+    const live = previewSlots.find((slot) => slot.role === "live");
+    if (!live || live.gen === liveGenRef.current) return;
+    const isPromotion = liveGenRef.current !== null;
+    liveGenRef.current = live.gen;
+    if (!isPromotion) return;
+    previewIframeRef.current = iframeRef.current;
+    updateCompositionSizeFromPreview();
+    applyInitialZoom();
+  }, [previewSlots, iframeRef, updateCompositionSizeFromPreview, applyInitialZoom]);
 
   useEffect(() => {
     const viewport = viewportRef.current;
@@ -437,11 +488,14 @@ export const NLEPreview = memo(function NLEPreview({
     <div className="flex flex-col h-full min-h-0">
       <div
         ref={viewportRef}
-        className="relative flex-1 flex items-center justify-center p-2 overflow-hidden min-h-0 outline-none focus:ring-1 focus:ring-studio-accent/40 bg-neutral-950"
+        className="relative flex-1 flex items-center justify-center overflow-hidden min-h-0 outline-hidden focus:ring-1 focus:ring-studio-accent/40 bg-[var(--studio-preview-bg,var(--color-neutral-950))]"
         tabIndex={0}
         aria-label="Composition preview"
       >
-        <div className="absolute inset-2 flex items-center justify-center pointer-events-none">
+        <div
+          className="absolute flex items-center justify-center pointer-events-none"
+          style={{ inset: insetPx }}
+        >
           <div
             ref={stageRef}
             className="relative shrink-0 pointer-events-auto"
@@ -464,44 +518,73 @@ export const NLEPreview = memo(function NLEPreview({
                 style={{ position: "absolute", inset: 0, zIndex: 0 }}
               />
             )}
-            <Player
-              key={activeKey}
-              ref={setPreviewIframeRef}
-              projectId={directUrl ? undefined : projectId}
-              directUrl={directUrl}
-              onLoad={() => {
-                updateCompositionSizeFromPreview();
-                onIframeLoad();
-                applyInitialZoom();
-              }}
-              onCompositionLoadingChange={onCompositionLoadingChange}
-              portrait={portrait}
-              suppressLoadingOverlay={suppressLoadingOverlay}
-              style={
-                directUrl?.includes("/components/")
-                  ? { position: "absolute", inset: 0, zIndex: 1 }
-                  : undefined
-              }
-            />
+            {previewSlots.map((slot) =>
+              slot.role === "live" ? (
+                <Player
+                  key={`${activeKey}-${slot.gen}`}
+                  ref={setPreviewIframeRef}
+                  projectId={directUrl ? undefined : projectId}
+                  directUrl={directUrl}
+                  onLoad={() => {
+                    updateCompositionSizeFromPreview();
+                    onIframeLoad();
+                    applyInitialZoom();
+                  }}
+                  onCompositionLoadingChange={onCompositionLoadingChange}
+                  onReadyToShowChange={poster.onLiveReadyToShowChange}
+                  onPreviewError={poster.onPreviewError}
+                  onPainted={(details) => reportPreviewFirstFrame(slot, details)}
+                  portrait={portrait}
+                  suppressLoadingOverlay={suppressLoadingOverlay}
+                  style={
+                    directUrl?.includes("/components/")
+                      ? { position: "absolute", inset: 0, zIndex: 1 }
+                      : undefined
+                  }
+                />
+              ) : (
+                // Loads hidden behind the live slot until promoted.
+                <Player
+                  key={`${activeKey}-${slot.gen}`}
+                  ref={setShadowIframeNode}
+                  directUrl={slot.url}
+                  onLoad={() => onShadowIframeLoad(slot.gen)}
+                  onReadyToShowChange={(ready) => onShadowReadyChange(slot.gen, ready)}
+                  onPainted={(details) => reportPreviewFirstFrame(slot, details)}
+                  onPreviewError={(message) => onShadowError(slot.gen, message)}
+                  portrait={portrait}
+                  suppressLoadingOverlay
+                  style={SHADOW_IFRAME_STYLE}
+                />
+              ),
+            )}
+            {poster.mountPoster && (
+              <PreviewPoster
+                key={activeKey}
+                projectId={projectId}
+                hidden={poster.hidePoster}
+                onSize={(size) => setCompositionSize((prev) => prev ?? size)}
+                onLoaded={poster.onPosterLoaded}
+                onMissing={poster.onPosterMissing}
+              />
+            )}
           </div>
         </div>
         <div
           ref={hudRef}
-          className="pointer-events-none absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 z-50 rounded-lg px-4 py-2 text-sm font-mono tabular-nums text-white/90 bg-black/60 backdrop-blur-sm shadow-lg"
+          className="pointer-events-none absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 z-50 rounded-lg px-4 py-2 text-sm font-mono tabular-nums text-white/90 bg-black/60 backdrop-blur-xs shadow-lg"
           style={{ opacity: 0, transition: "opacity 200ms ease-in" }}
           aria-live="polite"
         />
-        {!isPreviewAtFit(settledZoom) && (
-          <button
-            type="button"
-            className="absolute bottom-3 right-3 z-50 rounded-md px-2.5 py-1 text-xs font-medium text-white/80 bg-black/50 backdrop-blur-sm hover:bg-black/70 hover:text-white transition-colors"
-            onClick={() => applyZoom(DEFAULT_PREVIEW_ZOOM)}
-            aria-label="Reset zoom to fit"
-            data-testid="preview-reset-zoom"
-          >
-            {Math.round(settledZoom.zoomPercent)}% — Reset
-          </button>
-        )}
+        <PreviewZoomOverlay
+          zoom={settledZoom}
+          stageSize={stageSize}
+          onFit={() => {
+            applyZoom(DEFAULT_PREVIEW_ZOOM);
+            viewportRef.current?.focus();
+          }}
+          navigatorRegionRef={setNavigatorRegion}
+        />
       </div>
     </div>
   );

@@ -1,5 +1,9 @@
 import { composeElementTransform, type PlanarTransformOps } from "./domEditOverlayTransform";
-import { parseInsetClipPathSides, type ClipPathInsetSides } from "./clipPathHelpers";
+import {
+  parseInsetClipPathSides,
+  type ClipPathInsetSides,
+  type ParsedInsetClipPathSides,
+} from "./clipPathHelpers";
 
 export type CropEdge = "top" | "right" | "bottom" | "left";
 
@@ -29,21 +33,67 @@ export function cropRectFromInsets(
   };
 }
 
-/**
- * Current inset crop of an element (inline first, computed fallback).
- * Zeros = no clip (croppable, nothing cropped yet). `null` = the element
- * carries a clip-path this tool cannot represent (circle/polygon/non-px
- * inset) — croppers must not lift, edit, or restore it, or the clip gets
- * silently replaced or destroyed on deselect.
- */
-export function readElementCropInsets(
-  element: HTMLElement,
-): (ClipPathInsetSides & { radius: number }) | null {
+// A selected croppable element shows uncropped so the crop UI can dim what is cut away. A rule keyed on its
+// identity does that, so the element's own clip-path stays the one record undo, redo and panel edits rewrite.
+const cropLifts = new WeakMap<HTMLElement, { rule: HTMLStyleElement; sheetClip?: string }>();
+
+function liftSelector(element: HTMLElement): string | null {
+  const quote = (value: string) => `"${value.replace(/["\\]/g, "\\$&")}"`;
+  const hfId = element.getAttribute("data-hf-id");
+  if (hfId) return `[data-hf-id=${quote(hfId)}]`;
+  return element.id ? `[id=${quote(element.id)}]` : null;
+}
+
+export function liftElementCrop(element: HTMLElement): void {
+  const selector = liftSelector(element);
+  if (!selector || cropLifts.has(element)) return;
+  const doc = element.ownerDocument;
+  const rule = doc.createElement("style");
+  rule.textContent = `${selector}{clip-path:none!important}`;
+  (doc.head ?? doc.documentElement).append(rule);
+  cropLifts.set(element, { rule });
+}
+
+export function dropElementCropLift(element: HTMLElement): void {
+  cropLifts.get(element)?.rule.remove();
+  cropLifts.delete(element);
+}
+
+export function isElementCropLifted(element: HTMLElement): boolean {
+  return cropLifts.has(element);
+}
+
+const computedClipPath = (element: HTMLElement) =>
+  element.ownerDocument.defaultView?.getComputedStyle(element).clipPath.trim() || "";
+
+/** The element's clip-path, inline first, then the stylesheet's as it is without the lift. */
+function readElementClipPath(element: HTMLElement): string {
   const inline = element.style.getPropertyValue("clip-path").trim();
-  const value =
-    inline || element.ownerDocument.defaultView?.getComputedStyle(element).clipPath.trim() || "";
+  const lift = cropLifts.get(element);
+  if (inline || !lift) return inline || computedClipPath(element);
+  // Only inline writes happen while selected, so the stylesheet's clip is read once per lift.
+  if (lift.sheetClip === undefined) {
+    const { parentNode, nextSibling } = lift.rule;
+    lift.rule.remove();
+    lift.sheetClip = computedClipPath(element);
+    parentNode?.insertBefore(lift.rule, nextSibling);
+  }
+  return lift.sheetClip;
+}
+
+/** Zeros = no clip yet. `null` = a clip this tool cannot represent (circle/polygon/non-px inset):
+ *  croppers must not lift, edit, or restore it, or deselect silently replaces or destroys it. */
+function parseCropClipPath(value: string): ParsedInsetClipPathSides | null {
   if (!value || value === "none") return { top: 0, right: 0, bottom: 0, left: 0, radius: 0 };
   return parseInsetClipPathSides(value);
+}
+
+export function readElementCropInsets(element: HTMLElement): ParsedInsetClipPathSides | null {
+  return parseCropClipPath(readElementClipPath(element));
+}
+
+export function hasCropInsets(insets: ClipPathInsetSides): boolean {
+  return insets.top > 0 || insets.right > 0 || insets.bottom > 0 || insets.left > 0;
 }
 
 export interface CropInsetDragInput {
@@ -117,8 +167,8 @@ export function hugRectForElement(
   rect: CropScreenRect & { editScaleX: number; editScaleY: number },
   element: HTMLElement,
 ): CropScreenRect {
-  const insets = readElementCropInsets(element);
-  // Uneditable clip (null) can't be hugged — show the full element rect.
+  const insets = isElementCropLifted(element) ? null : readElementCropInsets(element);
+  // Uneditable or lifted clip — show the full element rect.
   if (!insets || (insets.top <= 0 && insets.right <= 0 && insets.bottom <= 0 && insets.left <= 0))
     return rect;
   return cropRectFromInsets(rect, insets, rect.editScaleX, rect.editScaleY);
