@@ -191,7 +191,7 @@ test("the shipped code-editorial preset stages its six licensed faces plus their
   assert.match(frameMd, /@font-face\{font-family:"EB Garamond";font-weight:400/);
   assert.match(frameMd, /@font-face\{font-family:"Inter";font-weight:700/);
   assert.match(frameMd, /@font-face\{font-family:"JetBrains Mono";font-weight:400/);
-  assert.doesNotMatch(frameMd, /fonts\.googleapis\.com/);
+  assert.equal(frameMd.includes("fonts.googleapis.com"), false);
 });
 
 test("fontFamiliesNamed reads every family in a ramp once", () => {
