@@ -100,7 +100,7 @@ export function StudioApp({ readOnlyPreview = false, readOnlyPreviewReason }: St
     rightCollapsed: initialUrlStateRef.current.rightCollapsed,
     rightPanelTab: initialUrlStateRef.current.rightPanelTab,
   });
-  const editHistory = useStableHandlers(usePersistentEditHistory({ projectId }));
+  const editHistory = useStableHandlers(usePersistentEditHistory({ projectId }), projectId);
   const handleDomZIndexReorderCommitRef = useRef<TimelineZIndexReorderCommit | null>(null);
   const pendingTimelineEditPathRef = useRef(new Set<string>());
   const isGestureRecordingRef = useRef(false);
@@ -111,7 +111,7 @@ export function StudioApp({ readOnlyPreview = false, readOnlyPreviewReason }: St
     recordEdit: editHistory.recordEdit,
     setRefreshKey,
   });
-  const fileManager = useStableHandlers(fileManagerResult);
+  const fileManager = useStableHandlers(fileManagerResult, projectId);
   const masterCompPath = useMemo(
     () => resolveMasterCompositionPath(fileManager.compositions),
     [fileManager.compositions],
@@ -136,7 +136,7 @@ export function StudioApp({ readOnlyPreview = false, readOnlyPreviewReason }: St
   );
   const activeCompPathRef = useRef(activeCompPath);
   activeCompPathRef.current = activeCompPath;
-  const renderQueue = useStableHandlers(useRenderQueue(projectId, activeCompPathRef));
+  const renderQueue = useStableHandlers(useRenderQueue(projectId, activeCompPathRef), projectId);
   const previewPersistenceResult = usePreviewPersistence({
     showToast,
     readOptionalProjectFile: fileManager.readOptionalProjectFile,
@@ -146,7 +146,7 @@ export function StudioApp({ readOnlyPreview = false, readOnlyPreviewReason }: St
     activeCompPathRef,
     reloadPreview: () => setRefreshKey((k) => k + 1),
   });
-  const previewPersistence = useStableHandlers(previewPersistenceResult);
+  const previewPersistence = useStableHandlers(previewPersistenceResult, projectId);
   const externalFileChanges = useStudioExternalFileChanges({
     projectId,
     activeCompPath,
@@ -212,7 +212,7 @@ export function StudioApp({ readOnlyPreview = false, readOnlyPreviewReason }: St
     handleTimelineBlockDrop,
     handleAddMediaOverlay,
     handlePreviewBlockDrop,
-  } = useStableHandlers(blockHandlersResult);
+  } = useStableHandlers(blockHandlersResult, projectId);
   const dismissBlockParams = useCallback(() => setActiveBlockParams(null), [setActiveBlockParams]);
   const setRightPanelTab = useDismissingTabSetter(panelLayout.setRightPanelTab, dismissBlockParams);
   const layout = useMemo(
@@ -313,7 +313,7 @@ export function StudioApp({ readOnlyPreview = false, readOnlyPreviewReason }: St
     handleTimelineElementsDelete: timelineEditing.handleTimelineElementsDelete,
     readOnlyPreview,
   });
-  const domEditSession = useStableHandlers(domEditSessionResult);
+  const domEditSession = useStableHandlers(domEditSessionResult, projectId);
   domEditSelectionBridgeRef.current = domEditSession.domEditSelection;
   const { handleDomZIndexReorderCommit: zCommit, handleDomEditElementDelete: del } = domEditSession;
   handleDomZIndexReorderCommitRef.current = trackedStudioEdit(zCommit);
@@ -347,14 +347,14 @@ export function StudioApp({ readOnlyPreview = false, readOnlyPreviewReason }: St
     effectiveTimelineDuration,
   });
   const compositionDimensions = useCompositionDimensions(previewIframeRef);
-  const lint = useStableHandlers(useLintModal(projectId, refreshKey));
+  const lint = useStableHandlers(useLintModal(projectId, refreshKey), projectId);
   const frameCaptureResult = useFrameCapture({
     projectId,
     activeCompPath,
     showToast,
     waitForPendingDomEditSaves: previewPersistence.waitForPendingDomEditSaves,
   });
-  const frameCapture = useStableHandlers(frameCaptureResult);
+  const frameCapture = useStableHandlers(frameCaptureResult, projectId);
   const {
     consoleErrors,
     setConsoleErrors,

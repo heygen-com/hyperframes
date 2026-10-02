@@ -520,7 +520,7 @@ export function useTimelineEditing({
         return refused(reason);
       }),
     ),
-  });
+  }, projectId);
   const stableElementFxAttribute = useStableHandlers({
     ...setElementFxAttribute,
     setMany: track(guard((edits) => edits.map((edit) => edit.element), setElementsAttribute)),
@@ -534,7 +534,7 @@ export function useTimelineEditing({
         },
       ),
     ),
-  });
+  }, projectId);
   // Every write-handler is tracked here, the one place all hand edits
   // converge, so undo never races a write; canEdit gates the same point.
   // Coverage boundary: see the PR body, not every kind resolves an element.
@@ -593,5 +593,5 @@ export function useTimelineEditing({
       setElementFxAttribute.restoreLive(restore);
       setAudioGroupAttribute.restoreLive(restore);
     },
-  });
+  }, projectId);
 }

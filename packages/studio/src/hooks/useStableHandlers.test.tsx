@@ -47,4 +47,31 @@ describe("useStableHandlers", () => {
     expect(seen[1]!.count).toBe(2);
     expect(seen[1]!.read).toBe(seen[0]!.read);
   });
+
+  it("keeps a wrapper from an earlier scope calling that scope's handler", () => {
+    const seen: { write: () => string }[] = [];
+    function Scoped({ project }: { project: string }) {
+      seen.push(useStableHandlers({ write: () => project }, project));
+      return null;
+    }
+    root = createRoot(document.createElement("div"));
+    act(() => root!.render(<Scoped project="a" />));
+    const kept = seen[0]!.write;
+    act(() => root!.render(<Scoped project="b" />));
+    expect(kept()).toBe("a");
+    expect(seen[1]!.write).not.toBe(kept);
+    expect(seen[1]!.write()).toBe("b");
+  });
+
+  it("gives a new object when a key is swapped for another with the same value", () => {
+    const seen: Record<string, unknown>[] = [];
+    function Keys({ name }: { name: string }) {
+      seen.push(useStableHandlers({ [name]: undefined }));
+      return null;
+    }
+    root = createRoot(document.createElement("div"));
+    act(() => root!.render(<Keys name="old" />));
+    act(() => root!.render(<Keys name="fresh" />));
+    expect(Object.keys(seen[1]!)).toEqual(["fresh"]);
+  });
 });

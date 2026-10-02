@@ -38,5 +38,5 @@ export function useStudioSdkSessions(
   useEffect(() => {
     usePreviewVariablesStore.getState().setValues(null);
   }, [projectId, activeCompPath]);
-  return { sdkHandle: useStableHandlers(sdkHandle), editFlowSdkSession };
+  return { sdkHandle: useStableHandlers(sdkHandle, projectId), editFlowSdkSession };
 }
