@@ -170,12 +170,37 @@ function groupTimelineTracks(
   return { tracks, groups, trackGroupOf };
 }
 
+/** The timeline's rows top to bottom, as drawn: tracks by number, each audio group's anchor row with its members under it. */
+function timelineDisplayTracks(
+  elements: readonly TimelineElement[],
+  collapsedGroupIds: ReadonlySet<string>,
+) {
+  const byTrack = new Map<number, TimelineElement[]>();
+  for (const el of elements) {
+    const list = byTrack.get(el.track) ?? [];
+    list.push(el);
+    byTrack.set(el.track, list);
+  }
+  const rawTracks = Array.from(byTrack.entries()).sort(([a], [b]) => a - b);
+  const grouped = groupTimelineTracks(rawTracks, collapsedGroupIds);
+  return { ...grouped, trackOrder: grouped.tracks.map(([trackNum]) => trackNum) };
+}
+
+/**
+ * The track number of each timeline row, top to bottom: pass the player store's `elements` and
+ * `collapsedGroupIds`. A group's anchor row is its first member's track minus 0.5.
+ */
+export function displayTrackOrder(
+  elements: readonly TimelineElement[],
+  collapsedGroupIds: ReadonlySet<string>,
+): number[] {
+  return timelineDisplayTracks(elements, collapsedGroupIds).trackOrder;
+}
+
 /**
  * Per-render track derivations Timeline.tsx feeds the canvas/lanes: the lane →
  * clip grouping (`tracks`, group-aware order), per-lane visual styles, the
- * matching `trackOrder`, and audio-group membership. Extracted from
- * Timeline.tsx as a cohesive unit (600-line studio cap); each memo keys on the
- * expanded display element set exactly as before.
+ * matching `trackOrder`, and audio-group membership.
  */
 export function useTimelineTrackDerivations(expandedElements: TimelineElement[]): {
   tracks: [number, TimelineElement[]][];
@@ -184,20 +209,10 @@ export function useTimelineTrackDerivations(expandedElements: TimelineElement[])
   groups: TimelineTrackGroupInfo[];
   trackGroupOf: Map<number, TimelineTrackGroupInfo>;
 } {
-  const rawTracks = useMemo(() => {
-    const map = new Map<number, TimelineElement[]>();
-    for (const el of expandedElements) {
-      const list = map.get(el.track) ?? [];
-      list.push(el);
-      map.set(el.track, list);
-    }
-    return Array.from(map.entries()).sort(([a], [b]) => a - b);
-  }, [expandedElements]);
-
   const collapsedGroupIds = usePlayerStore((s) => s.collapsedGroupIds);
-  const { tracks, groups, trackGroupOf } = useMemo(
-    () => groupTimelineTracks(rawTracks, collapsedGroupIds),
-    [rawTracks, collapsedGroupIds],
+  const { tracks, groups, trackGroupOf, trackOrder } = useMemo(
+    () => timelineDisplayTracks(expandedElements, collapsedGroupIds),
+    [expandedElements, collapsedGroupIds],
   );
 
   const trackStyles = useMemo(() => {
@@ -207,8 +222,6 @@ export function useTimelineTrackDerivations(expandedElements: TimelineElement[])
     }
     return map;
   }, [tracks]);
-
-  const trackOrder = useMemo(() => tracks.map(([trackNum]) => trackNum), [tracks]);
 
   return { tracks, trackStyles, trackOrder, groups, trackGroupOf };
 }

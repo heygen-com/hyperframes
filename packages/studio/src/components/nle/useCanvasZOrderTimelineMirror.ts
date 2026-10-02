@@ -2,7 +2,7 @@ import { useCallback, useRef } from "react";
 import { usePlayerStore } from "../../player";
 import { useTimelineEditContextOptional } from "../../contexts/TimelineEditContext";
 import {
-  displayTrackOrder,
+  ascendingTrackOrder,
   resolveRepositionLaneMove,
   resolveZMirrorLaneMove,
   type ZMirrorAction,
@@ -156,7 +156,7 @@ function useMirrorLaneMoveCommit(): (
         move,
         {
           elements: els,
-          trackOrder: displayTrackOrder(els),
+          trackOrder: ascendingTrackOrder(els),
           updateElement: (key, updates) => usePlayerStore.getState().updateElement(key, updates),
           onMoveElements,
           // NO readZIndex / onStackingPatches: see the hook doc — the lane→z

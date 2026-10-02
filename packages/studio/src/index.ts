@@ -62,6 +62,13 @@ export { TimelineProvider, useTimelineContext } from "./player/components/Timeli
 export type { TimelineTheme } from "./player/components/timelineTheme";
 export { TRACK_H } from "./player/components/timelineLayout";
 export type { TimelineTrackPadding } from "./player/components/timelineLayout";
+export { displayTrackOrder } from "./player/components/useTimelineTrackDerivations";
+export { fadeHandleBoxes } from "./player/components/timelineClipFadeGeometry";
+export type {
+  FadeEdge,
+  FadeHandleBox,
+  FadeHandleClipBox,
+} from "./player/components/timelineClipFadeGeometry";
 
 // Clip content thumbnails: used by a host rendering its own timeline lane.
 export { AudioWaveform } from "./player/components/AudioWaveform";

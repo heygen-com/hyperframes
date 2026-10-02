@@ -111,10 +111,9 @@ function expandedChildAllowedLanes(
   );
 }
 
-/** Ascending unique display lanes of `elements` — identical to how Timeline.tsx
- *  builds `trackOrder`, so `insertRow` indexes the same boundary space. Exported
- *  so the mirror wiring can hand commitZMirrorLaneMove the matching trackOrder. */
-export function displayTrackOrder(elements: TimelineElement[]): number[] {
+/** Ascending unique lanes of `elements`, the space `insertRow` indexes here; not the
+ *  timeline's drawn row order, which groups audio (`displayTrackOrder`). */
+export function ascendingTrackOrder(elements: TimelineElement[]): number[] {
   return [...new Set(elements.map((el) => el.track))].sort((a, b) => a - b);
 }
 
@@ -146,8 +145,8 @@ export function resolveZMirrorLaneMove(input: ZMirrorInput): ZMirrorLaneMove {
   const referenceLane = resolveReferenceLane(input, overlapSet, up);
   if (referenceLane == null) return null;
 
-  const order = displayTrackOrder(elements);
-  const visualLanes = displayTrackOrder(elements.filter((el) => classifyZone(el) === "visual"));
+  const order = ascendingTrackOrder(elements);
+  const visualLanes = ascendingTrackOrder(elements.filter((el) => classifyZone(el) === "visual"));
   const refIdx = visualLanes.indexOf(referenceLane);
   if (refIdx === -1) return null; // reference is not a visual lane — no mirror
 
@@ -251,8 +250,8 @@ export function resolveRepositionLaneMove(input: ZRepositionInput): ZMirrorLaneM
   }
   if (aboveLane == null && belowLane == null) return null;
 
-  const order = displayTrackOrder(elements);
-  const visualLanes = displayTrackOrder(elements.filter((el) => classifyZone(el) === "visual"));
+  const order = ascendingTrackOrder(elements);
+  const visualLanes = ascendingTrackOrder(elements.filter((el) => classifyZone(el) === "visual"));
   const allowedLanes = expandedChildAllowedLanes(element, elements);
   const args = {
     elements,

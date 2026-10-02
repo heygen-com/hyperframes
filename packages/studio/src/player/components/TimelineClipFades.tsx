@@ -20,7 +20,14 @@ import { usePlayerStore, type TimelineElement } from "../store/playerStore";
 import { Tooltip } from "../../components/ui";
 import { useTimelineEditContextOptional } from "../../contexts/TimelineEditContext";
 import { releasedOutsideWindow } from "./timelinePointerRelease";
-import { CLIP_TRIM_HIT_PX } from "./timelineTheme";
+import {
+  FADE_HANDLE_HIT,
+  FADE_TAB_CENTER_IN_HIT,
+  FADE_TAB_WIDTH,
+  fadeHandleBoxes,
+  type FadeEdge,
+  type FadeHandleBox,
+} from "./timelineClipFadeGeometry";
 import {
   collectTimelineSnapTargets,
   snapTimelineTime,
@@ -29,14 +36,9 @@ import {
   type TimelineSnapType,
 } from "./timelineSnapping";
 
-type FadeEdge = "in" | "out";
 type FadeDraft = { edge: FadeEdge; seconds: number } | null;
 
-const TAB_WIDTH = 4;
 const TAB_HEIGHT = 15;
-const HANDLE_HIT = 24;
-const TAB_INSET = 7;
-const TAB_CENTER_IN_HIT = 8;
 const HANDLE_Z_ABOVE_CLIP_CONTENT = 30;
 const SUPPRESS_CLIP_NATIVE_TITLE = "";
 /** Pixels of pointer travel before a press on the handle counts as a drag. */
@@ -101,12 +103,6 @@ const FADE_KEYS: Record<string, KeyedFade> = {
 
 function keyedFadeSeconds(key: string, shift: boolean, current: number, limit: number) {
   return FADE_KEYS[key]?.(current, shift ? 1 : 0.1, limit) ?? null;
-}
-
-function topEdgeY(x: number, widthPx: number, heightPx: number, radiusPx: number): number {
-  const r = Math.min(radiusPx, widthPx / 2, heightPx / 2);
-  const d = x < r ? r - x : x > widthPx - r ? x - (widthPx - r) : 0;
-  return d > 0 ? r - Math.sqrt(Math.max(0, r * r - d * d)) : 0;
 }
 
 /** Slim tabs at each fade's end that drag `data-fade-in` / `data-fade-out`. */
@@ -348,46 +344,25 @@ export function TimelineClipFades({
   const handlesVisible = showHandles || dragging !== null || focused !== null;
   if (!visible) return null;
 
-  const clipWidth = clipBox.toolsLeft === null ? widthPx : clipBox.width;
-  const edgeInset = clipBox.toolsLeft === null ? 0 : CLIP_TRIM_HIT_PX;
-  // Reserve FX horizontally so fades keep their top-edge lane above compact keyframe centres.
-  const rightEdge =
-    clipBox.toolsLeft === null ? clipWidth : Math.min(clipWidth - edgeInset, clipBox.toolsLeft);
-  const hitWidth = Math.min(HANDLE_HIT, (rightEdge - edgeInset) / 2);
-  const tabX = (edge: FadeEdge) => {
-    const knee = edge === "in" ? inPx : clipWidth - outPx;
-    const tabInset = edgeInset === 0 ? TAB_INSET : TAB_WIDTH;
-    const inset = Math.min(tabInset, (rightEdge - edgeInset) / 2);
-    return Math.min(rightEdge - inset, Math.max(edgeInset + inset, knee));
-  };
-  const boxLeft = (x: number) =>
-    Math.min(rightEdge - hitWidth, Math.max(edgeInset, x - hitWidth / 2));
-  const [inX, outX] = [tabX("in"), tabX("out")];
-  const mid = (inX + outX) / 2;
   // A handle with no 0.01 s step to move is not drawn, unless in use: its twin owns the spot.
   const drawn = (edge: FadeEdge) =>
     currentSeconds(edge) > 0 ||
     Math.round(limitFor(edge) * 100) >= 1 ||
     dragging === edge ||
     focused === edge;
-  const overlap = drawn("in") && drawn("out") && boxLeft(inX) + hitWidth > boxLeft(outX);
-  const handleGeometry = (edge: FadeEdge) => {
-    const x = edge === "in" ? inX : outX;
-    const [left, right] = !overlap
-      ? [boxLeft(x), boxLeft(x) + hitWidth]
-      : edge === "in"
-        ? [Math.max(edgeInset, mid - hitWidth), mid]
-        : [mid, Math.min(rightEdge, mid + hitWidth)];
-    const edgeY = topEdgeY(x, clipWidth, clipBox.height, clipBox.radius);
-    const top = edgeY + 1 - TAB_CENTER_IN_HIT;
-    return { left, width: right - left, tabLeft: x - left, top };
-  };
-  const handleStyle = (geometry: { left: number; top: number; width: number }): CSSProperties => ({
+  const handleBoxes = fadeHandleBoxes({
+    widthPx,
+    inPx,
+    outPx,
+    clipBox,
+    drawn: { in: drawn("in"), out: drawn("out") },
+  });
+  const handleStyle = (geometry: FadeHandleBox): CSSProperties => ({
     position: "absolute",
     top: geometry.top,
     left: geometry.left,
     width: geometry.width,
-    height: HANDLE_HIT,
+    height: FADE_HANDLE_HIT,
     cursor: "ew-resize",
     opacity: handlesVisible ? 1 : 0,
     pointerEvents: handlesVisible && canEdit ? "auto" : "none",
@@ -440,7 +415,7 @@ export function TimelineClipFades({
       )}
       {canEdit &&
         (["in", "out"] as const).filter(drawn).map((edge) => {
-          const geometry = handleGeometry(edge);
+          const geometry = handleBoxes[edge];
           return (
             <FadeHandle
               key={edge}
@@ -451,7 +426,7 @@ export function TimelineClipFades({
               snapLabel={dragging === edge && snapType ? SNAP_LABEL[snapType] : null}
               style={handleStyle(geometry)}
               tabLeft={geometry.tabLeft}
-              tabTop={TAB_CENTER_IN_HIT - TAB_HEIGHT / 2}
+              tabTop={FADE_TAB_CENTER_IN_HIT - TAB_HEIGHT / 2}
               focusable={focusable}
               dragging={dragging === edge}
               onPointerDown={onHandlePointerDown(edge)}
@@ -583,9 +558,9 @@ function FadeHandle({
           aria-hidden="true"
           className="timeline-fade-tab"
           style={{
-            left: tabLeft - TAB_WIDTH / 2,
+            left: tabLeft - FADE_TAB_WIDTH / 2,
             top: tabTop,
-            width: TAB_WIDTH,
+            width: FADE_TAB_WIDTH,
             height: TAB_HEIGHT,
             pointerEvents: "none",
           }}
