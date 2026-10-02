@@ -83,6 +83,44 @@ function repeatedDescendantId(selector: string): string | null {
   return repeated;
 }
 
+// Unescaped `#<digit...>` id selectors: what querySelector and GSAP reject. `#\31 -x` is valid and skipped.
+function addUnescapedDigitIds(selector: string, ids: Set<string>): void {
+  try {
+    selectorParser((root) => {
+      root.walkIds((node) => {
+        if (/^#\d/.test(node.toString().trim())) ids.add(node.value);
+      });
+    }).processSync(selector);
+  } catch {
+    // An unparseable selector targets nothing we can name.
+  }
+}
+
+const SELECTOR_CALL_PATTERN =
+  /\.(?:querySelector(?:All)?|closest|matches|to|from|fromTo|set)\s*\(\s*(["'`])((?:\\.|(?!\1)[^\\])*)\1/g;
+
+function digitIdsTargetedBySelectors(
+  styles: LintContext["styles"],
+  scripts: LintContext["scripts"],
+): Set<string> {
+  const ids = new Set<string>();
+  for (const style of styles) {
+    try {
+      postcss.parse(style.content).walkRules((rule) => {
+        for (const selector of rule.selectors) addUnescapedDigitIds(selector, ids);
+      });
+    } catch {
+      // css_parse_error reports this block.
+    }
+  }
+  for (const script of scripts) {
+    for (const match of stripJsComments(script.content).matchAll(SELECTOR_CALL_PATTERN)) {
+      addUnescapedDigitIds(match[2] ?? "", ids);
+    }
+  }
+  return ids;
+}
+
 function resolvedRuleSelectors(rule: postcss.Rule): string[] {
   let ancestor: postcss.AnyNode | undefined = rule.parent;
   while (ancestor && ancestor.type !== "rule") ancestor = ancestor.parent;
@@ -313,15 +351,20 @@ function describeRootDimensionsDrift(
 
 export const coreRules: Array<(ctx: LintContext) => HyperframeLintFinding[]> = [
   // id_requires_css_escape
-  ({ tags }) => {
+  ({ tags, styles, scripts }) => {
     const findings: HyperframeLintFinding[] = [];
+    let targeted: Set<string> | undefined;
     for (const tag of tags) {
       const id = readAttr(tag.raw, "id");
       if (!id || !/^\d/.test(id)) continue;
+      targeted ??= digitIdsTargetedBySelectors(styles, scripts);
+      const used = targeted.has(id);
       findings.push({
         code: "id_requires_css_escape",
-        severity: "error",
-        message: `id="${id}" starts with a digit, so the common selector \`#${id}\` throws a SyntaxError in querySelector() — any script relying on it (including GSAP string selectors) silently stops running from that point on.`,
+        severity: used ? "error" : "warning",
+        message: used
+          ? `id="${id}" starts with a digit, and the selector \`#${id}\` used in this composition throws a SyntaxError at runtime.`
+          : `id="${id}" starts with a digit, so the common selector \`#${id}\` throws a SyntaxError in querySelector().`,
         elementId: id,
         fixHint:
           "Rename the id to start with a letter (recommended), or build selectors with `#${CSS.escape(id)}` at runtime.",

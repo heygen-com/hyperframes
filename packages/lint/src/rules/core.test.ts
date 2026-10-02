@@ -78,19 +78,41 @@ describe("core rules", () => {
     ).toBeUndefined();
   });
 
-  it("errors when an id starts with a digit and is unsafe in a hash selector", async () => {
+  it.each([
+    ["no selector uses it", "", "", "warning"],
+    ["a CSS rule targets it", "#123-frame { opacity: 0; }", "", "error"],
+    ["a GSAP string targets it", "", 'gsap.to("#123-frame", { x: 1 });', "error"],
+    ["querySelector targets it", "", 'document.querySelector(".a #123-frame");', "error"],
+    ["only url(#id) references it", ".a { mask: url(#123-frame); }", "", "warning"],
+    ["only a longer id is selected", "#123-frame-2 { opacity: 0; }", "", "warning"],
+    ["getElementById looks it up", "", 'document.getElementById("123-frame");', "warning"],
+    ["the CSS selector is escaped", "#\\31 23-frame { opacity: 0; }", "", "warning"],
+    [
+      "the script selector is escaped",
+      "",
+      'document.querySelector("#\\\\31 23-frame");',
+      "warning",
+    ],
+    [
+      "CSS.escape builds the selector",
+      "",
+      'document.querySelector(`#${CSS.escape("123-frame")}`);',
+      "warning",
+    ],
+  ])("rates a digit-leading id by selector use: %s", async (_case, css, js, severity) => {
     const html = `
 <html><body>
   <div data-composition-id="c1" data-width="1920" data-height="1080">
+    <style>${css}</style>
     <div id="123-frame"></div>
   </div>
-  <script>window.__timelines = {};</script>
+  <script>window.__timelines = {}; ${js}</script>
 </body></html>`;
 
     const result = await lintHyperframeHtml(html);
     const finding = result.findings.find((item) => item.code === "id_requires_css_escape");
 
-    expect(finding?.severity).toBe("error");
+    expect(finding?.severity).toBe(severity);
     expect(finding?.elementId).toBe("123-frame");
     expect(finding?.fixHint).toContain("CSS.escape");
   });
