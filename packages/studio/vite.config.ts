@@ -11,6 +11,7 @@ import {
 } from "node:fs";
 import { join, resolve } from "node:path";
 import { readNodeRequestBody } from "./vite.request-body.js";
+import { bindNodeRequestSignal } from "./vite.request-signal.js";
 import { watch } from "chokidar";
 import { createProjectSignatureCache, createViteAdapter } from "./vite.adapter";
 import { previewConfigPayload } from "./vite.preview-config";
@@ -226,6 +227,7 @@ function devProjectApi(): Plugin {
       // API middleware
       server.middlewares.use(async (req, res, next) => {
         if (!req.url?.startsWith("/api/")) return next();
+        const requestSignal = bindNodeRequestSignal(res);
         try {
           const api = await getApi();
           const url = new URL(req.url, `http://${req.headers.host}`);
@@ -243,6 +245,7 @@ function devProjectApi(): Plugin {
             method: req.method,
             headers,
             body,
+            signal: requestSignal.signal,
           });
           const response = await api.fetch(fetchReq);
           await bridgeHonoResponse(response, res);
@@ -252,6 +255,8 @@ function devProjectApi(): Plugin {
             res.writeHead(500, { "Content-Type": "application/json" });
             res.end(JSON.stringify({ error: "Internal server error" }));
           }
+        } finally {
+          requestSignal.dispose();
         }
       });
 

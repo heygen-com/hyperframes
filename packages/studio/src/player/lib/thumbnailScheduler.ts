@@ -117,6 +117,7 @@ export class ThumbnailScheduler {
   private nextSequence = 1;
   private scrolling = false;
   private previewReloading = false;
+  private pageHidden = false;
   private cacheBytes = 0;
   private waveformCacheBytes = 0;
   private readonly activeByBucket = { video: 0, composition: 0, general: 0 };
@@ -226,9 +227,25 @@ export class ThumbnailScheduler {
     }
     for (const entry of this.entries.values()) {
       if (entry.state !== "loading" || entry.request.kind !== "composition") continue;
-      entry.preempted = true;
-      entry.controller?.abort();
+      this.preempt(entry);
     }
+  }
+
+  setPageHidden(hidden: boolean): void {
+    if (this.pageHidden === hidden) return;
+    this.pageHidden = hidden;
+    if (!hidden) {
+      this.pump();
+      return;
+    }
+    for (const entry of this.entries.values()) {
+      if (entry.state === "loading") this.preempt(entry);
+    }
+  }
+
+  private preempt(entry: ThumbnailEntry): void {
+    entry.preempted = true;
+    entry.controller?.abort();
   }
 
   /** Evict project cache entries that are no longer owned by mounted consumers. */
@@ -269,6 +286,7 @@ export class ThumbnailScheduler {
   }
 
   private pump(): void {
+    if (this.pageHidden) return;
     const queued = Array.from(this.entries.values())
       .filter((entry) => entry.state === "queued" && entry.leases.size > 0)
       .sort((left, right) => {

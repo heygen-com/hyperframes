@@ -7,7 +7,11 @@ import { StudioErrorBoundary } from "./components/StudioErrorBoundary";
 import { readIconTokens } from "./styles/iconTokens";
 import { trackStudioEvent } from "./utils/studioTelemetry";
 import { prefetchPreviewForHash } from "./utils/previewPrefetch";
+import { bindThumbnailPageLifecycle } from "./player/lib/thumbnailPageLifecycle";
 import "./styles/studio.css";
+
+const unbindThumbnailPageLifecycle = bindThumbnailPageLifecycle(window, document);
+import.meta.hot?.dispose(unbindThumbnailPageLifecycle);
 
 prefetchPreviewForHash(window.location.hash);
 window.addEventListener("hashchange", () => prefetchPreviewForHash(window.location.hash));
