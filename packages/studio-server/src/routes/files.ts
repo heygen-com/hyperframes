@@ -665,14 +665,33 @@ function readableText(file: string): string | null {
   }
 }
 
+const escapeRegExp = (text: string) => text.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+
+/**
+ * The renamed path as a project file names it: whole, not inside a longer name. Not preceded by a path character
+ * (`my-assets/x`, `other/assets/x`; `./` and `../` are fine), not followed by a name character (`assets-backup`);
+ * a folder is named by what is under it, so its path is followed by `/`, never by prose.
+ */
+export function referencePattern(oldPath: string, isDirectory: boolean): RegExp {
+  const before = String.raw`(?:(?<![\w./-])|(?<=(?<![\w-])\.{1,2}/))`;
+  const after = isDirectory ? "(?=/)" : String.raw`(?![\w-]|\.\w)`;
+  return new RegExp(`${before}${escapeRegExp(oldPath)}${after}`, "g");
+}
+
 /**
  * After a rename, update all references to the old path in project files.
- * Scans HTML, CSS, JS, and JSON files for the old filename/path and replaces.
+ * Scans HTML, CSS, JS, and JSON files for the old path and replaces it where it names that path.
  */
-function updateReferences(projectDir: string, oldPath: string, newPath: string): number {
+function updateReferences(
+  projectDir: string,
+  oldPath: string,
+  newPath: string,
+  isDirectory: boolean,
+): number {
   const textFiles = walkFiles(projectDir, (name) =>
     /\.(html|css|js|jsx|ts|tsx|json|mjs|cjs|md|mdx)$/i.test(name),
   );
+  const pattern = referencePattern(oldPath, isDirectory);
 
   let updatedCount = 0;
   for (const file of textFiles) {
@@ -680,11 +699,7 @@ function updateReferences(projectDir: string, oldPath: string, newPath: string):
     const content = readableText(file);
     if (content === null) continue;
 
-    // Only replace full relative paths — never bare filenames, which can
-    // corrupt unrelated content (e.g. "logo.png" inside "my-logo.png").
-    if (!content.includes(oldPath)) continue;
-
-    const updated = content.split(oldPath).join(newPath);
+    const updated = content.replace(pattern, () => newPath);
     if (updated !== content) {
       replaceFileAtomically(file, updated, statSync(file).mode);
       updatedCount++;
@@ -3234,7 +3249,12 @@ export function registerFileRoutes(api: Hono, adapter: StudioApiAdapter): void {
     renameSync(res.absPath, newAbs);
 
     // Update references to the old path across all project files
-    const updatedFiles = updateReferences(res.project.dir, res.filePath, body.newPath);
+    const updatedFiles = updateReferences(
+      res.project.dir,
+      res.filePath,
+      body.newPath,
+      statSync(newAbs).isDirectory(),
+    );
 
     return c.json({ ok: true, path: body.newPath, updatedReferences: updatedFiles });
   });
