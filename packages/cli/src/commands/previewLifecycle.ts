@@ -490,6 +490,19 @@ function reuseExistingPreview(
   };
 }
 
+// The scan only covers scanStart..+MAX_PORT_SCAN-1; an explicit --port outside it is probed directly.
+async function addPreferredPortServer(
+  scanned: ActiveServer[],
+  scanStart: number,
+  dependencies: LifecycleDependencies,
+): Promise<void> {
+  const preferred = dependencies.preferredPort;
+  if (preferred === undefined) return;
+  if (preferred >= scanStart && preferred < scanStart + MAX_PORT_SCAN) return;
+  const server = await (dependencies.probe ?? activeServerOnPort)(preferred);
+  if (server) scanned.push(server);
+}
+
 export async function startBackgroundPreview(
   projectDir: string,
   startPort: number,
@@ -500,15 +513,7 @@ export async function startBackgroundPreview(
     startPort,
     dependencies,
   );
-  const preferred = dependencies.preferredPort;
-  // The scan only covers scanStart..+MAX_PORT_SCAN-1; an explicit --port outside it is probed directly.
-  if (
-    preferred !== undefined &&
-    (preferred < scanStart || preferred >= scanStart + MAX_PORT_SCAN)
-  ) {
-    const onPreferred = await (dependencies.probe ?? activeServerOnPort)(preferred);
-    if (onPreferred) scanned.push(onPreferred);
-  }
+  await addPreferredPortServer(scanned, scanStart, dependencies);
   // Always inspect a saved custom port first. `--force-new --port <new>` must
   // replace that owned server before recording the replacement, otherwise the
   // single per-project ownership record would orphan the old listener.
