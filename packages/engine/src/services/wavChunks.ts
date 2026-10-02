@@ -1,15 +1,4 @@
-/**
- * The RIFF chunk walk, which two WAV readers in this directory each had a copy
- * of: `audioFxRender`'s `readWavChunks` and `audioVolumeEnvelope`'s
- * `parseWavLayout`.
- *
- * Only the walk is shared. What the two do with the chunks is genuinely
- * different — one wants a slice of the payload and lets the decoder judge the
- * format, the other wants offsets to edit in place and refuses anything that is
- * not 16-bit PCM — and folding those together would mean picking one behaviour
- * for each difference, in the parser every render's audio passes through. So
- * this yields chunks and holds no policy at all.
- */
+/** Shared RIFF chunk traversal and WAV format-tag resolution. */
 
 export interface RiffChunk {
   /** Four ASCII characters: `fmt `, `data`, `LIST`, `fact`, … */
@@ -35,4 +24,25 @@ export function* riffChunks(buffer: Buffer): Generator<RiffChunk> {
     yield { id, body: offset + 8, size };
     offset += 8 + size + (size % 2);
   }
+}
+
+const EXTENSIBLE_FORMATS = new Map([
+  ["0100000000001000800000aa00389b71", 1],
+  ["0300000000001000800000aa00389b71", 3],
+]);
+
+/** Resolve WAVE_FORMAT_EXTENSIBLE only for the full PCM and IEEE-float GUIDs. */
+function extensibleFormatTag(fmt: Buffer): number | null {
+  const extraSize = fmt.readUInt16LE(16);
+  if (extraSize < 22 || 18 + extraSize > fmt.length) return null;
+  return EXTENSIBLE_FORMATS.get(fmt.toString("hex", 24, 40)) ?? null;
+}
+
+/** Canonical codec tag, or null for a truncated or unsupported extensible header. */
+export function wavFormatTag(buffer: Buffer, body: number, size: number): number | null {
+  const fmt = buffer.subarray(body, body + size);
+  if (fmt.length < 16) return null;
+  const tag = fmt.readUInt16LE(0);
+  if (tag !== 0xfffe) return tag;
+  return fmt.length < 40 ? null : extensibleFormatTag(fmt);
 }

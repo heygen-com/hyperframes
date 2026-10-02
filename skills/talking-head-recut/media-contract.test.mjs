@@ -16,20 +16,9 @@ function readAttribute(tag, attribute) {
   return match[1];
 }
 
-test("canonical composition preserves source audio as a root media track", () => {
+test("canonical composition keeps the source program audio on the video", () => {
   const video = findTag("video", "bg-video");
-  const audio = findTag("audio", "source-audio");
-
-  assert.match(video, /\bmuted\b/);
-  assert.match(
-    skill,
-    /<\/div>\s*<!-- Preserve the source program audio[\s\S]*?<audio\b[^>]*\bid="source-audio"[^>]*>[\s\S]*?<\/audio>/,
-  );
-  assert.equal(readAttribute(audio, "src"), readAttribute(video, "src"));
-  assert.equal(readAttribute(audio, "data-start"), readAttribute(video, "data-start"));
-  assert.equal(readAttribute(audio, "data-duration"), readAttribute(video, "data-duration"));
-  assert.notEqual(
-    readAttribute(audio, "data-track-index"),
-    readAttribute(video, "data-track-index"),
-  );
+  assert.doesNotMatch(video, /\bmuted\b/);
+  assert.equal(readAttribute(video, "data-has-audio"), "true");
+  assert.doesNotMatch(skill, /<audio\b[^>]*\bid="source-audio"/);
 });

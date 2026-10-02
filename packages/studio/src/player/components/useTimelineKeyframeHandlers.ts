@@ -93,6 +93,7 @@ interface TimelineKeyframeRetimeCoordinator {
    * is a viewport-wide question, not a per-keyframe one.
    */
   latest: PendingTimelineKeyframeRetime | null;
+  cancelActive: () => void;
 }
 
 type TimelineRetimePointerEvent = Pick<
@@ -115,6 +116,7 @@ function getRetimeCoordinator(owner: EventTarget): TimelineKeyframeRetimeCoordin
     preview: null,
     previewListeners: new Set(),
     latest: null,
+    cancelActive: () => {},
   };
   keyframeRetimeCoordinators.set(owner, coordinator);
   return coordinator;
@@ -186,6 +188,10 @@ export interface TimelineKeyframeRetimeHandle {
  * Starts a keyframe retime on the stable timeline viewport. The row/button is
  * only an entry point: window listeners own the gesture through virtualization.
  */
+export function cancelTimelineKeyframeRetime(viewport: HTMLElement | null): void {
+  if (viewport) keyframeRetimeCoordinators.get(viewport)?.cancelActive();
+}
+
 export function beginTimelineKeyframeRetime(
   input: TimelineKeyframeRetimeInput,
 ): TimelineKeyframeRetimeHandle {
@@ -256,6 +262,7 @@ export function beginTimelineKeyframeRetime(
     teardownListeners: null,
   };
   coordinator.actor = actor;
+  coordinator.cancelActive = () => cancel(actor);
 
   const matchesPointer = (event: TimelineRetimePointerEvent) =>
     actor.pointerId === null || event.pointerId === actor.pointerId;

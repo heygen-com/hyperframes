@@ -1,0 +1,79 @@
+{
+  "$schema": "https://hyperframes.heygen.com/schema/registry-item.json",
+  "name": "orbit-card",
+  "type": "hyperframes:block",
+  "title": "Orbit Card",
+  "description": "A single feature card orbits a dot sphere on approved Blender camera motion.",
+  "tags": ["3d-motion", "cards", "feature-reveal", "dots", "orbit", "blender-motion", "sphere"],
+  "dimensions": {
+    "width": 1920,
+    "height": 1080
+  },
+  "duration": 10,
+  "files": [
+    {
+      "path": "orbit-card.html",
+      "target": "compositions/orbit-card/orbit-card.html",
+      "type": "hyperframes:composition"
+    },
+    {
+      "path": "assets/Archivo-LICENSE.txt",
+      "target": "compositions/orbit-card/assets/Archivo-LICENSE.txt",
+      "type": "hyperframes:asset"
+    },
+    {
+      "path": "assets/Three-LICENSE.txt",
+      "target": "compositions/orbit-card/assets/Three-LICENSE.txt",
+      "type": "hyperframes:asset"
+    },
+    {
+      "path": "assets/archivo-regular.ttf",
+      "target": "compositions/orbit-card/assets/archivo-regular.ttf",
+      "type": "hyperframes:asset"
+    },
+    {
+      "path": "assets/archivo-semibold.ttf",
+      "target": "compositions/orbit-card/assets/archivo-semibold.ttf",
+      "type": "hyperframes:asset"
+    },
+    {
+      "path": "assets/gsap-3.14.2.min.js",
+      "target": "compositions/orbit-card/assets/gsap-3.14.2.min.js",
+      "type": "hyperframes:asset"
+    },
+    {
+      "path": "assets/GSAP-NOTICE.txt",
+      "target": "compositions/orbit-card/assets/GSAP-NOTICE.txt",
+      "type": "hyperframes:asset"
+    },
+    {
+      "path": "assets/orbit-motion.js",
+      "target": "compositions/orbit-card/assets/orbit-motion.js",
+      "type": "hyperframes:asset"
+    },
+    {
+      "path": "assets/orbit-scene.js",
+      "target": "compositions/orbit-card/assets/orbit-scene.js",
+      "type": "hyperframes:asset"
+    },
+    {
+      "path": "assets/three.core.min.js",
+      "target": "compositions/orbit-card/assets/three.core.min.js",
+      "type": "hyperframes:asset"
+    },
+    {
+      "path": "assets/three.module.min.js",
+      "target": "compositions/orbit-card/assets/three.module.min.js",
+      "type": "hyperframes:asset"
+    },
+    {
+      "path": "SKILL.md",
+      "target": "compositions/orbit-card/SKILL.md",
+      "type": "hyperframes:asset"
+    }
+  ],
+  "preview": {
+    "video": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/orbit-card.mp4",
+    "poster": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/orbit-card.png"
+  }
+}

@@ -25,6 +25,8 @@
  * fix scene footage.
  */
 
+import { AUDIBLE_VIDEO_QUALIFIER } from "../audibleVideo.js";
+
 export const MEDIA_RENDER_ID_ATTR = "data-hf-render-id";
 
 /**
@@ -141,7 +143,7 @@ function assignAudioGroupRenderIds(document: DocumentLike, taken: Set<string>): 
   if (busesById.size === 0) return;
 
   for (const member of document.querySelectorAll(
-    "audio[data-audio-group]",
+    `audio[data-audio-group], video[data-audio-group]${AUDIBLE_VIDEO_QUALIFIER}`,
   ) as Iterable<ScopedElementLike>) {
     const groupId = member.getAttribute("data-audio-group");
     const buses = groupId ? busesById.get(groupId) : undefined;

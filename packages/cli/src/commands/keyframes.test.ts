@@ -1,11 +1,24 @@
-import { existsSync, linkSync, mkdtempSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import {
+  existsSync,
+  linkSync,
+  mkdtempSync,
+  mkdirSync,
+  readFileSync,
+  rmSync,
+  writeFileSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { beforeAll, describe, expect, it } from "vitest";
+import { beforeAll, describe, expect, it, onTestFinished } from "vitest";
 import type { ArgsDef } from "citty";
 import { ensureDOMParser } from "../utils/dom.js";
 import keyframesCommand from "./keyframes.js";
-import { collectShotSelectors, resolveScope, surfaceComposition } from "./keyframes.js";
+import {
+  collectCompositions,
+  collectShotSelectors,
+  resolveScope,
+  surfaceComposition,
+} from "./keyframes.js";
 import { ensureShotOutputDir } from "./motionShot.js";
 
 // citty types `args` as Resolvable<ArgsDef> (object | promise | thunk); this
@@ -28,6 +41,7 @@ const wrap = (script: string) =>
 describe("keyframes direct composition scope", () => {
   it("keeps the project root and passes the nested HTML entry to --shot", () => {
     const projectDir = mkdtempSync(join(tmpdir(), "hf-keyframes-target-"));
+    onTestFinished(() => rmSync(projectDir, { recursive: true, force: true }));
     const compositionsDir = join(projectDir, "compositions");
     mkdirSync(compositionsDir);
     writeFileSync(join(projectDir, "index.html"), wrap(""));
@@ -44,6 +58,7 @@ describe("keyframes direct composition scope", () => {
 describe("keyframes shot output", () => {
   it("rejects an output path that would overwrite the composition source", () => {
     const projectDir = mkdtempSync(join(tmpdir(), "hf-keyframes-shot-source-"));
+    onTestFinished(() => rmSync(projectDir, { recursive: true, force: true }));
     const sourcePath = join(projectDir, "index.html");
     writeFileSync(sourcePath, wrap(""));
 
@@ -55,6 +70,7 @@ describe("keyframes shot output", () => {
 
   it("rejects an existing output alias that refers to the composition source", () => {
     const projectDir = mkdtempSync(join(tmpdir(), "hf-keyframes-shot-alias-"));
+    onTestFinished(() => rmSync(projectDir, { recursive: true, force: true }));
     const sourcePath = join(projectDir, "index.html");
     const aliasPath = join(projectDir, "shot.png");
     writeFileSync(sourcePath, wrap(""));
@@ -67,6 +83,7 @@ describe("keyframes shot output", () => {
 
   it("creates a missing parent directory before writing --shot", () => {
     const projectDir = mkdtempSync(join(tmpdir(), "hf-keyframes-shot-dir-"));
+    onTestFinished(() => rmSync(projectDir, { recursive: true, force: true }));
     const outputDir = join(projectDir, "nested", "proofs");
     ensureShotOutputDir(join(outputDir, "shot.png"));
     expect(existsSync(outputDir)).toBe(true);
@@ -352,5 +369,19 @@ describe("--layout strip help text", () => {
     const description = layoutArgDescription();
     expect(description).toContain("SVG");
     expect(description.toLowerCase()).toContain("only when");
+  });
+});
+
+describe("keyframes project compositions", () => {
+  it("skips a data-composition-src that points at a folder instead of crashing", () => {
+    const dir = mkdtempSync(join(tmpdir(), "hf-keyframes-folder-src-"));
+    onTestFinished(() => rmSync(dir, { recursive: true, force: true }));
+    mkdirSync(join(dir, "compositions", "intro"), { recursive: true });
+    writeFileSync(
+      join(dir, "index.html"),
+      `<!doctype html><html><body><div data-composition-id="main" data-duration="4"><div data-composition-id="intro" data-composition-src="compositions/intro"></div></div></body></html>`,
+    );
+
+    expect(collectCompositions(join(dir, "index.html"))).toHaveLength(1);
   });
 });

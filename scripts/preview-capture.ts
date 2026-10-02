@@ -14,6 +14,7 @@ import {
   createCaptureSession,
   initializeSession,
   getCompositionDuration,
+  closeCaptureSession,
 } from "../packages/producer/src/index.js";
 
 const FPS = { num: 30, den: 1 } as const;
@@ -49,8 +50,9 @@ export async function openOpaqueCapture(params: {
   mkdirSync(framesDir, { recursive: true });
 
   const fileServer = await createFileServer({ projectDir: params.projectDir, port: 0, fps: FPS });
+  let session: OpaqueCapture["session"] | undefined;
   try {
-    const session = await createCaptureSession(fileServer.url, framesDir, {
+    session = await createCaptureSession(fileServer.url, framesDir, {
       width: params.width,
       height: params.height,
       fps: FPS,
@@ -67,9 +69,11 @@ export async function openOpaqueCapture(params: {
     }
     return { fileServer, session, duration };
   } catch (error) {
-    // The session never reached the caller, so nothing else will close the
-    // server this function opened.
+    // Neither handle reached the caller, so nothing else will close them. A session
+    // left open keeps its Chrome child alive and the process never exits.
     fileServer.close();
+    // The error being thrown is the one to report, not a failure to close after it.
+    if (session) await closeCaptureSession(session).catch(() => undefined);
     throw error;
   }
 }

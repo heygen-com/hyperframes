@@ -6,7 +6,12 @@ import {
   SNAP_THRESHOLD_PX,
 } from "./snapEngine";
 import { applyManualOffsetDragDraft } from "./manualOffsetDrag";
-import type { GroupGestureState, UseDomEditOverlayGesturesOptions } from "./domEditOverlayGestures";
+import {
+  lockDragToDominantAxis,
+  type AxisLockedDelta,
+  type GroupGestureState,
+  type UseDomEditOverlayGesturesOptions,
+} from "./domEditOverlayGestures";
 import type { GroupOverlayItem } from "./domEditOverlayGeometry";
 import {
   findNonRigidMembers,
@@ -33,7 +38,7 @@ export function createGroupDragMover(
   const snapGroupDelta = (
     groupG: GroupGestureState,
     e: React.PointerEvent<HTMLDivElement>,
-    proposed: { dx: number; dy: number },
+    proposed: AxisLockedDelta,
   ) => {
     const sc = groupG.snapContext;
     if (!sc?.snapEnabled || sc.targets.length === 0) return proposed;
@@ -52,6 +57,7 @@ export function createGroupDragMover(
       gridEdges: sc.gridEdges ?? undefined,
       threshold: SNAP_THRESHOLD_PX,
       disabled: e.altKey,
+      lockedAxis: proposed.lockedAxis,
     });
     const movingRect = {
       ...groupBounds,
@@ -75,10 +81,11 @@ export function createGroupDragMover(
       lastGesture = groupG;
       lastGroupPositions = {};
     }
-    const { dx, dy } = snapGroupDelta(groupG, e, {
-      dx: e.clientX - groupG.startX,
-      dy: e.clientY - groupG.startY,
-    });
+    const { dx, dy } = snapGroupDelta(
+      groupG,
+      e,
+      lockDragToDominantAxis(e.clientX - groupG.startX, e.clientY - groupG.startY, e.shiftKey),
+    );
     groupG.lastSnappedDx = dx;
     groupG.lastSnappedDy = dy;
 

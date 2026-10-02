@@ -136,4 +136,14 @@ describe("PlainTrackHeader", () => {
     expect(labelOf(view.host)).toBe("Hide track 1");
     view.unmount();
   });
+
+  it("truncates long names and keeps the full name in the tooltip", () => {
+    const name = "A-very-long-unbroken-clip-name-for-the-timeline";
+    const view = renderHeader({ trackLabel: name });
+    const label = view.host.querySelector("span[title]");
+    expect(label?.className).toContain("truncate");
+    expect(label?.className).not.toContain("wrap-break-word");
+    expect(label?.getAttribute("title")).toBe(name);
+    view.unmount();
+  });
 });

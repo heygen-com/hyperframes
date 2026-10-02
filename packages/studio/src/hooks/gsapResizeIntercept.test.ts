@@ -180,11 +180,15 @@ it("reuses the ownership parse instead of fetching a resolved size group twice",
   );
 });
 
-it("blocks when runtime size motion exists but the authored tween cannot be resolved", async () => {
+function makeBoxSelection(): { el: HTMLElement; selection: DomEditSelection } {
   const el = document.createElement("div");
   el.id = "box";
   document.body.append(el);
-  const selection = { id: "box", selector: "#box", element: el } as DomEditSelection;
+  return { el, selection: { id: "box", selector: "#box", element: el } as DomEditSelection };
+}
+
+it("blocks when runtime size motion exists but the authored tween cannot be resolved", async () => {
+  const { el, selection } = makeBoxSelection();
   const liveSizeTween = {
     targets: () => [el],
     vars: { width: 300, duration: 1 },
@@ -199,7 +203,42 @@ it("blocks when runtime size motion exists but the authored tween cannot be reso
 
   await expect(
     tryGsapResizeIntercept(selection, { width: 344, height: 344 }, [], iframe, commitMutation),
-  ).resolves.toEqual({ status: "blocked", reason: "source-uneditable" });
+  ).resolves.toEqual({
+    status: "blocked",
+    reason: "source-uneditable",
+    detail: "live-resize-no-source-tween",
+  });
+  expect(commitMutation).not.toHaveBeenCalled();
+});
+
+it("blocks a tween with no positive duration instead of committing into it", async () => {
+  const { selection } = makeBoxSelection();
+  // A zero-duration `from` is not an instant hold (those are `set`/`to`), so it
+  // reaches the duration check: a resize has no timeline position to land on.
+  const zeroDurationTween = {
+    id: "#box-size",
+    targetSelector: "#box",
+    propertyGroup: "size",
+    method: "from",
+    position: 0,
+    duration: 0,
+    properties: { width: 150, height: 150 },
+  } as unknown as GsapAnimation;
+  const commitMutation = vi.fn();
+
+  await expect(
+    tryGsapResizeIntercept(
+      selection,
+      { width: 344, height: 344 },
+      [zeroDurationTween],
+      null,
+      commitMutation,
+    ),
+  ).resolves.toEqual({
+    status: "blocked",
+    reason: "source-uneditable",
+    detail: "zero-duration-tween",
+  });
   expect(commitMutation).not.toHaveBeenCalled();
 });
 
@@ -481,4 +520,36 @@ it("does not move a statically positioned element when a scale resize lands", as
   }
   // And the live element ends on the drop point, not a drag away from it.
   expect(el.getBoundingClientRect().x).toBeCloseTo(603.3, 0);
+});
+
+function titleSelection(): DomEditSelection {
+  const el = document.createElement("h1");
+  el.id = "title";
+  document.body.append(el);
+  return { id: "title", selector: "#title", element: el } as DomEditSelection;
+}
+
+it("hands the size to the element's CSS when its only tween is a fade", async () => {
+  const fade = {
+    id: "#title-to-0-visual",
+    targetSelector: "#title",
+    propertyGroup: "visual",
+    method: "to",
+    properties: { opacity: 0.5 },
+    position: 0,
+    resolvedStart: 0,
+    duration: 10,
+  } as unknown as GsapAnimation;
+  const commitMutation = vi.fn();
+
+  const handled = await tryGsapResizeIntercept(
+    titleSelection(),
+    { width: 424, height: 237 },
+    [fade],
+    null,
+    commitMutation,
+  );
+
+  expect(handled).toEqual({ status: "element-size" });
+  expect(commitMutation).not.toHaveBeenCalled();
 });

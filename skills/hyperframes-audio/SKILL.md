@@ -13,6 +13,8 @@ description: >
   `/hyperframes-core`.
 ---
 
+**Plugin installs:** Before setup or freshness commands, follow [plugin execution rules](../hyperframes/references/plugin-installation.md) when this skill is inside a HyperFrames plugin. Standalone installs keep the update instructions below.
+
 # HyperFrames Audio
 
 A mix is a set of relationships, not a stack of processors. Two tracks that each
@@ -32,10 +34,11 @@ crossfade envelopes, track gain/track volume, volume and effect automation,
 ducking/voiceover carve, and the effect chain. `/media-use` owns sourcing,
 generation, and preprocessing.
 
-Constant `data-playback-rate` (`0.1..5`) is render-safe for picture and
+Constant `data-playback-rate` (`0.1..10`) is render-safe for picture and
 pitch-preserved sound when matching audio/video elements use the same timing,
-source offset, and rate. Source speed ramps are not supported because there is
-no rate envelope; preprocess a derived synchronized asset. HyperFrames does not
+source offset, and rate. A speed ramp is a `rate` lane in `data-automation`
+(see `docs/reference/speed-ramps`); it wins over the constant and keeps pitch
+in preview and render. HyperFrames does not
 provide automatic waveform sync or drift correction.
 For copyable cut/crossfade/retime recipes, use `/hyperframes-core` → `references/creator-editing-recipes.md`.
 

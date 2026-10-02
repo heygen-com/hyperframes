@@ -38,6 +38,12 @@ describe("shouldHandleCaptionNudgeKey", () => {
     expect(shouldHandleCaptionNudgeKey(mockKeyboardEvent("KeyL"))).toBe(false);
   });
 
+  it("ignores arrows a focused slider owns", () => {
+    const slider = document.createElement("div");
+    slider.setAttribute("role", "slider");
+    expect(shouldHandleCaptionNudgeKey(mockKeyboardEvent("ArrowUp"), slider)).toBe(false);
+  });
+
   it("ignores arrows when the event target is an editable element", () => {
     const input = document.createElement("input");
     const textarea = document.createElement("textarea");
@@ -46,5 +52,11 @@ describe("shouldHandleCaptionNudgeKey", () => {
     expect(shouldHandleCaptionNudgeKey(mockKeyboardEvent("ArrowUp"), textarea)).toBe(false);
     expect(shouldHandleCaptionNudgeKey(mockKeyboardEvent("ArrowUp"), div)).toBe(true);
     expect(shouldHandleCaptionNudgeKey(mockKeyboardEvent("ArrowUp"), null)).toBe(true);
+  });
+
+  it.each(["video", "audio"])("leaves the arrows to a focused <%s controls>", (tag) => {
+    const player = document.createElement(tag);
+    player.setAttribute("controls", "");
+    expect(shouldHandleCaptionNudgeKey(mockKeyboardEvent("ArrowRight"), player)).toBe(false);
   });
 });

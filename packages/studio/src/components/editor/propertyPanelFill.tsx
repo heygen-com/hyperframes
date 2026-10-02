@@ -1,6 +1,6 @@
 import { buildProjectApiPath } from "../../utils/projectRouting";
 import { useMemo, useRef, useState } from "react";
-import { Plus, RotateCcw, X } from "../../icons/SystemIcons";
+import { Plus, X } from "../../icons/SystemIcons";
 import {
   buildDefaultGradientModel,
   insertGradientStop,
@@ -8,6 +8,7 @@ import {
   serializeGradient,
   type GradientModel,
 } from "./gradientValue";
+import { ReverseGradientIcon } from "../icons/ReverseGradientIcon";
 import { IMAGE_EXT } from "../../utils/mediaTypes";
 import { FIELD, LABEL, RESPONSIVE_GRID } from "./propertyPanelHelpers";
 import {
@@ -130,10 +131,10 @@ export function ImageFillField({
             className={`inline-flex h-7 max-w-full items-center gap-1.5 rounded-lg border border-neutral-700 bg-neutral-950 px-2.5 text-[11px] font-medium text-neutral-300 transition-colors ${
               disabled || uploading
                 ? "cursor-not-allowed text-neutral-600"
-                : "cursor-pointer hover:border-neutral-600 hover:text-white"
+                : "cursor-pointer hover:border-neutral-600 hover:text-text-0"
             }`}
           >
-            <Plus size={12} className="flex-shrink-0" />
+            <Plus size={12} className="shrink-0" />
             <span className="truncate">{uploading ? "Uploading…" : "Upload image"}</span>
           </button>
           <input
@@ -150,7 +151,7 @@ export function ImageFillField({
           />
         </div>
         {uploadError && (
-          <div className="text-[10px] text-red-400" role="alert">
+          <div className="text-[10px] text-danger-ink" role="alert">
             {uploadError}
           </div>
         )}
@@ -178,7 +179,7 @@ export function ImageFillField({
                   }
                   onCommit(`url("${toProjectRootAssetPath(next)}")`);
                 }}
-                className="min-w-0 w-full appearance-none bg-transparent text-[11px] font-medium text-neutral-100 outline-none disabled:cursor-not-allowed disabled:text-neutral-600"
+                className="min-w-0 w-full appearance-none bg-transparent text-[11px] font-medium text-neutral-100 outline-hidden disabled:cursor-not-allowed disabled:text-neutral-600"
               >
                 <option value="">None</option>
                 {imageAssets.map((asset) => (
@@ -288,7 +289,7 @@ export function GradientField({
                   position: Math.max(0, Math.min(100, Math.round(stop.position + delta))),
                 });
               }}
-              className="absolute top-1/2 h-4 w-4 -translate-y-1/2 cursor-ew-resize rounded-full border-2 border-white/90 shadow-[0_0_0_1px_rgba(0,0,0,0.35)] outline-none focus-visible:ring-2 focus-visible:ring-studio-accent"
+              className="absolute top-1/2 h-4 w-4 -translate-y-1/2 cursor-ew-resize rounded-full border-2 border-white/90 shadow-[0_0_0_1px_rgba(0,0,0,0.35)] outline-hidden focus-visible:ring-2 focus-visible:ring-studio-accent"
               style={{
                 left: `calc(${stop.position}% - 8px)`,
                 backgroundColor: stop.color,
@@ -339,7 +340,7 @@ export function GradientField({
                 track("toggle", "Repeat gradient");
                 patch({ repeating: e.target.checked });
               }}
-              className="h-4 w-4 rounded border-neutral-700 bg-neutral-950 text-panel-accent focus:ring-panel-accent"
+              className="h-4 w-4 rounded-sm border-neutral-700 bg-neutral-950 text-accent-ink focus:ring-panel-accent"
             />
             Repeat
           </label>
@@ -356,9 +357,9 @@ export function GradientField({
                 })),
               });
             }}
-            className="inline-flex h-7 items-center gap-1.5 rounded-lg border border-neutral-700 bg-neutral-950 px-2.5 text-[11px] font-medium text-neutral-300 transition-colors hover:border-neutral-600 hover:text-white disabled:cursor-not-allowed disabled:text-neutral-600"
+            className="inline-flex h-7 items-center gap-1.5 rounded-lg border border-neutral-700 bg-neutral-950 px-2.5 text-[11px] font-medium text-neutral-300 transition-colors hover:border-neutral-600 hover:text-text-0 disabled:cursor-not-allowed disabled:text-neutral-600"
           >
-            <RotateCcw size={12} />
+            <ReverseGradientIcon size={16} />
             Reverse
           </button>
         </div>
@@ -441,7 +442,7 @@ export function GradientField({
             disabled={disabled || parsed.stops.length >= 6}
             onClick={() => addStop()}
             title={parsed.stops.length >= 6 ? "Maximum 6 stops" : "Add a gradient stop"}
-            className="inline-flex h-7 items-center gap-1.5 rounded-lg border border-neutral-700 bg-neutral-950 px-2.5 text-[11px] font-medium text-neutral-300 transition-colors hover:border-neutral-600 hover:text-white active:scale-[0.98] disabled:cursor-not-allowed disabled:text-neutral-600"
+            className="inline-flex h-7 items-center gap-1.5 rounded-lg border border-neutral-700 bg-neutral-950 px-2.5 text-[11px] font-medium text-neutral-300 transition-colors hover:border-neutral-600 hover:text-text-0 active:scale-[0.98] disabled:cursor-not-allowed disabled:text-neutral-600"
           >
             <Plus size={12} />
             Add stop
@@ -473,7 +474,7 @@ export function GradientField({
                 type="button"
                 disabled={disabled || parsed.stops.length <= 2}
                 onClick={() => removeStop(index)}
-                className="mt-[22px] flex h-10 items-center justify-center rounded-lg border border-neutral-700 bg-neutral-950 text-neutral-400 transition-colors hover:border-neutral-600 hover:text-white disabled:cursor-not-allowed disabled:text-neutral-700"
+                className="mt-[22px] flex h-10 items-center justify-center rounded-lg border border-neutral-700 bg-neutral-950 text-neutral-400 transition-colors hover:border-neutral-600 hover:text-text-0 disabled:cursor-not-allowed disabled:text-text-off"
                 aria-label={`Remove stop ${index + 1}`}
               >
                 <X size={12} />

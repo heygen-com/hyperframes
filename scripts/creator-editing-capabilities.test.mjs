@@ -96,7 +96,8 @@ test("keyframes states truthful creator capabilities and ownership boundaries", 
   );
   assert.match(keyframes, /non-timed|non-clip/);
   assert.match(keyframes, /wrapper inside the clip|inner.*wrapper/i);
-  assert.match(keyframes, /speed ramps?[\s\S]{0,300}(not supported|preprocess)/i);
+  assert.match(keyframes, /speed ramps?[\s\S]{0,80}`rate` lane in `data-automation`/i);
+  assert.match(keyframes, /speed ramps?[\s\S]{0,220}wins over the constant/i);
   assert.match(keyframes, /arbitrary mid-source freeze[\s\S]{0,300}(not supported|preprocess)/i);
   assert.doesNotMatch(keyframes, /keyframe(?:d|ing)?\s+(?:the\s+)?data-playback-rate/i);
 });
@@ -132,7 +133,8 @@ test("audio skill owns placed-track fades, automation, ducking, and effects", as
     files.audio,
   );
   assert.match(audio, /constant.*playback rate|data-playback-rate/i);
-  assert.match(audio, /speed ramps?[\s\S]{0,220}(not supported|preprocess)/i);
+  assert.match(audio, /speed ramps?[\s\S]{0,80}`rate` lane in `data-automation`/i);
+  assert.match(audio, /speed ramps?[\s\S]{0,220}wins over the constant/i);
 });
 
 test("WebAudio scheduling combines per-element and global transport playback rates", async () => {
@@ -178,7 +180,7 @@ test("core and general-video author temporal edits as duplicated source-range cl
         /data-media-start[\s\S]{0,120}data-duration/i,
         /data-start/,
         /hard cut[\s\S]{0,100}trim[\s\S]{0,100}splice[\s\S]{0,100}reorder/i,
-        /separate(?:ly)? authored audio[\s\S]{0,180}(identical|same)[\s\S]{0,100}(range|timing)/i,
+        /sound stays on the clip[\s\S]{0,160}data-has-audio/i,
       ],
       surface,
     );
@@ -237,7 +239,7 @@ test("creator editing recipes are copyable, owned, mathematical, and limitation-
       /data-playback-rate/,
       /consumed source\s*=\s*timeline duration\s*[×*]\s*rate/i,
       /natural timeline duration\s*=\s*remaining source\s*\/\s*rate/i,
-      /separate audio track/i,
+      /separate `?<audio>`?[\s\S]{0,160}(J\/L cut|replacement audio|voiceover|music)/i,
       /final-source[\s\S]{0,100}subcomp[\s\S]{0,100}visual pose/i,
       /arbitrary mid-source[\s\S]{0,120}preprocess/i,
       /distinct tracks[\s\S]{0,120}overlap[\s\S]{0,120}opposing/i,
@@ -286,7 +288,7 @@ test("crossfade and volume recipes contain executable opposing envelopes", async
       /gsap\.timeline\(\{\s*paused:\s*true\s*\}\)/,
       /window\.__timelines/,
       /autoAlpha|opacity/,
-      /<audio[\s\S]*<audio/,
+      /data-has-audio="true"[\s\S]*data-has-audio="true"/,
       /data-automation='/,
     ],
     "crossfade recipe",
@@ -316,8 +318,7 @@ test("natural media duration is rate-scaled across every preview surface", async
   }
 });
 
-// fallow-ignore-next-line complexity
-test("every temporal source-range recipe includes matching audio markup", async () => {
+test("every temporal source-range recipe keeps sound on the video", async () => {
   const recipes = await read(files.editingRecipes);
   for (const name of [
     "Hard cut",
@@ -329,21 +330,17 @@ test("every temporal source-range recipe includes matching audio markup", async 
     const start = recipes.indexOf(`## ${name}`);
     const next = recipes.indexOf("## ", start + 3);
     const section = recipes.slice(start, next < 0 ? recipes.length : next);
-    const videos = [...section.matchAll(/<video[\s\S]*?<\/video>/g)].map((m) => m[0]);
-    const audios = [...section.matchAll(/<audio[\s\S]*?<\/audio>/g)].map((m) => m[0]);
-    assert.ok(
-      videos.length > 0 && audios.length >= videos.length,
-      `${name}: matching audio missing`,
-    );
+    const videos = [...section.matchAll(/<video\b[^>]*>/g)].map((m) => m[0]);
+    assert.ok(videos.length > 0, `${name}: no video markup`);
     for (const video of videos) {
-      for (const attr of ["src", "data-start", "data-duration", "data-media-start"]) {
-        const value = video.match(new RegExp(`${attr}="([^"]+)"`))?.[1];
-        assert.ok(
-          value && audios.some((audio) => audio.includes(`${attr}="${value}"`)),
-          `${name}: audio mismatch ${attr}`,
-        );
-      }
+      assert.match(video, /data-has-audio="true"/, `${name}: video must keep its sound`);
+      assert.doesNotMatch(video, /\bmuted\b/, `${name}: video must not be muted`);
     }
+    assert.doesNotMatch(
+      section,
+      /<audio\b/,
+      `${name}: no duplicate <audio> for the video's own sound`,
+    );
   }
 });
 

@@ -167,6 +167,13 @@ describe("hasNonHoldTweenForElement — strict live-tween existence (drag stale-
     expect(hasNonHoldTweenForElement(fakeIframe(el, [liveTween]), "#puck-b")).toBe(true);
   });
 
+  it("true when the tween sits in a later timeline (a soft reload re-adds main last)", () => {
+    const iframe = fakeIframe(el, []);
+    const win = iframe.contentWindow as unknown as { __timelines: Record<string, unknown> };
+    win.__timelines.main = { getChildren: () => [liveTween] };
+    expect(hasNonHoldTweenForElement(iframe, "#puck-b")).toBe(true);
+  });
+
   it("false when only a zero-duration hold/set remains (post delete-all)", () => {
     expect(hasNonHoldTweenForElement(fakeIframe(el, [holdSet]), "#puck-b")).toBe(false);
   });

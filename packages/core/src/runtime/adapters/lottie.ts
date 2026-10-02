@@ -49,7 +49,20 @@ import { swallow } from "../diagnostics";
  * via the global `lottie` object, so compositions that call
  * `lottie.loadAnimation(...)` without manually registering still work.
  */
-export function createLottieAdapter(): RuntimeDeterministicAdapter {
+export function createLottieAdapter(params?: {
+  resolveStartSeconds?: (element: Element) => number;
+}): RuntimeDeterministicAdapter {
+  const compositionStartSeconds = (anim: unknown): number => {
+    const el = lottieElement(anim);
+    const composition =
+      el && typeof (el as Element).closest === "function"
+        ? (el as Element).closest("[data-composition-id]")
+        : null;
+    return composition && params?.resolveStartSeconds ? params.resolveStartSeconds(composition) : 0;
+  };
+  const secondsIntoComposition = (anim: unknown, pageTime: number): number =>
+    Math.max(0, pageTime - compositionStartSeconds(anim));
+
   return {
     name: "lottie",
 
@@ -78,17 +91,27 @@ export function createLottieAdapter(): RuntimeDeterministicAdapter {
     },
 
     seek: (ctx) => {
-      const time = Math.max(0, Number(ctx.time) || 0);
+      const pageTime = Math.max(0, Number(ctx.time) || 0);
       const instances = (window as LottieWindow).__hfLottie;
       if (!instances || instances.length === 0) return;
 
       for (const anim of instances) {
         try {
+          const time = secondsIntoComposition(anim, pageTime);
+          const loops = anim.loop === true;
           if (isLottieWebAnimation(anim)) {
             // lottie-web: AnimationItem
             // goToAndStop(value, isFrame) — isFrame=true means frame number, false means time in ms
-            // We use isFrame=false and pass time in ms for precision.
-            anim.goToAndStop(time * 1000, false);
+            // lottie-web draws nothing past the file's end, so a loop wraps and a finished one-shot
+            // holds its last frame; both seek by whole-file frame number to avoid float drift.
+            const frame = time * anim.frameRate;
+            if (anim.totalFrames > 0 && loops) {
+              anim.goToAndStop(wrapFrame(frame, anim.totalFrames), true);
+            } else if (anim.totalFrames > 0 && frame >= anim.totalFrames) {
+              anim.goToAndStop(anim.totalFrames - 1, true);
+            } else {
+              anim.goToAndStop(time * 1000, false);
+            }
           } else if (isDotLottiePlayer(anim)) {
             // @lottiefiles/dotlottie-web: DotLottie
             // .seek(frame) — frame is 0-100 percentage OR frame number depending on version
@@ -97,7 +120,8 @@ export function createLottieAdapter(): RuntimeDeterministicAdapter {
               // dotlottie-web v2+: direct frame setter
               const totalFrames = anim.totalFrames ?? 0;
               const fps = anim.frameRate ?? 30;
-              const frame = time * fps;
+              const frame =
+                loops && totalFrames > 0 ? wrapFrame(time * fps, totalFrames) : time * fps;
               if (totalFrames > 0) {
                 anim.setCurrentRawFrameValue(Math.min(frame, totalFrames - 1));
               }
@@ -105,7 +129,10 @@ export function createLottieAdapter(): RuntimeDeterministicAdapter {
               // dotlottie-web v1: seek(percentage 0-100)
               const duration = anim.duration ?? 0;
               if (Number.isFinite(duration) && duration > 0) {
-                const percentage = Math.min(100, (time / duration) * 100);
+                const percentage = Math.min(
+                  100,
+                  ((loops ? time % duration : time) / duration) * 100,
+                );
                 anim.seek(percentage);
               }
             }
@@ -140,30 +167,54 @@ export function createLottieAdapter(): RuntimeDeterministicAdapter {
       // Just let them be garbage collected naturally.
     },
 
-    getInferredDurationSeconds: () => {
-      const instances = (window as LottieWindow).__hfLottie;
-      if (!instances || instances.length === 0) return null;
-      let maxSeconds = 0;
-      let sawAny = false;
-      for (const anim of instances) {
-        let seconds: number | null = null;
-        try {
-          seconds = inferAnimationDurationSeconds(anim);
-        } catch (err) {
-          // ignore per-animation failures — keep going for other instances
-          swallow("runtime.adapters.lottie.site4", err);
-        }
-        if (seconds == null) continue;
-        sawAny = true;
-        maxSeconds = Math.max(maxSeconds, seconds);
-      }
-      // Not-yet-loaded animations report totalFrames=0 — return null (not 0)
-      // so the caller doesn't treat "still loading" as "genuinely zero
-      // duration". A later discover cycle will pick up the real value once
-      // the JSON has loaded.
-      return sawAny ? maxSeconds : null;
-    },
+    getInferredDurationSeconds: () => latestInstanceEnd((_, length) => length),
+
+    // Plays from its composition's start, as seek anchors it; a removed scene's instance stays registered.
+    getAnimationCycleEndSeconds: () =>
+      latestInstanceEnd((anim, length) =>
+        (lottieElement(anim) as Node | undefined)?.isConnected === false
+          ? null
+          : compositionStartSeconds(anim) + length,
+      ),
   };
+}
+
+/** Max of `endOf(instance, its length)` over registered instances; null skips an instance. */
+function latestInstanceEnd(
+  endOf: (anim: LottieWebAnimation | DotLottiePlayer, length: number) => number | null,
+): number | null {
+  const instances = (window as LottieWindow).__hfLottie;
+  if (!instances || instances.length === 0) return null;
+  let maxSeconds = 0;
+  let sawAny = false;
+  for (const anim of instances) {
+    let end: number | null = null;
+    try {
+      const length = inferAnimationDurationSeconds(anim);
+      end = length == null ? null : endOf(anim, length);
+    } catch (err) {
+      // ignore per-animation failures — keep going for other instances
+      swallow("runtime.adapters.lottie.site4", err);
+    }
+    if (end == null) continue;
+    sawAny = true;
+    maxSeconds = Math.max(maxSeconds, end);
+  }
+  // Not-yet-loaded animations report totalFrames=0 — return null (not 0)
+  // so the caller doesn't treat "still loading" as "genuinely zero
+  // duration". A later discover cycle will pick up the real value once
+  // the JSON has loaded.
+  return sawAny ? maxSeconds : null;
+}
+
+function lottieElement(anim: unknown): unknown {
+  return isLottieWebAnimation(anim) ? anim.wrapper : (anim as DotLottiePlayer).canvas;
+}
+
+/** `frame` wrapped into [0, total); a float hair under a whole cycle is the next cycle's first frame. */
+function wrapFrame(frame: number, total: number): number {
+  const wrapped = frame % total;
+  return total - wrapped < 1e-6 ? 0 : wrapped;
 }
 
 /** A finite, positive number in seconds derived from a frame count + rate, or null. */
@@ -225,6 +276,8 @@ interface LottieWebAnimation {
   goToAndPlay: (value: number, isFrame: boolean) => void;
   totalFrames: number;
   frameRate: number;
+  loop?: boolean | number;
+  wrapper?: unknown;
 }
 
 interface LottieWebGlobal {
@@ -240,6 +293,8 @@ interface DotLottiePlayer {
   totalFrames?: number;
   frameRate?: number;
   duration?: number;
+  loop?: boolean;
+  canvas?: unknown;
 }
 
 interface LottieWindow extends Window {

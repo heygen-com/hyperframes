@@ -1,9 +1,14 @@
-import { describe, expect, it } from "vitest";
+import { existsSync, mkdirSync, mkdtempSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { describe, expect, it, onTestFinished, vi } from "vitest";
+import { consumeCommandResult } from "../../utils/commandResult.js";
 import {
   MAX_VIDEO_BYTES,
   VIDEO_CONTENT_TYPE_RE,
   findFilenameCollision,
   pickManifestEntry,
+  runVideoMode,
   safeFilename,
   type ManifestEntry,
 } from "./video.js";
@@ -159,4 +164,45 @@ describe("findFilenameCollision", () => {
     const collisions = findFilenameCollision(manifest, manifest[0]!);
     expect(collisions.every((c) => c.index !== 0)).toBe(true);
   });
+});
+
+describe("runVideoMode", () => {
+  // Creating symlinks needs elevated rights on Windows.
+  it.skipIf(process.platform === "win32").each([
+    { layout: "capture output", manifestDir: "extracted", planted: "assets" },
+    { layout: "W2H project", manifestDir: "capture/extracted", planted: "capture" },
+  ])(
+    "refuses to download through a planted $planted symlink in a $layout (#4304)",
+    async ({ manifestDir, planted }) => {
+      const root = mkdtempSync(join(tmpdir(), "hf-video-mode-"));
+      onTestFinished(() => rmSync(root, { recursive: true, force: true }));
+      const projectDir = join(root, "project");
+      const outside = join(root, "outside");
+      mkdirSync(projectDir);
+      mkdirSync(outside);
+      symlinkSync(outside, join(projectDir, planted));
+      mkdirSync(join(projectDir, manifestDir), { recursive: true });
+      writeFileSync(
+        join(projectDir, manifestDir, "video-manifest.json"),
+        JSON.stringify([ENTRY(0)]),
+      );
+      const fetchMock = vi.fn(async () => {
+        throw new Error("no network in tests");
+      });
+      vi.stubGlobal("fetch", fetchMock);
+      vi.spyOn(console, "log").mockImplementation(() => {});
+      const error = vi.spyOn(console, "error").mockImplementation(() => {});
+      onTestFinished(() => {
+        vi.unstubAllGlobals();
+        vi.restoreAllMocks();
+      });
+
+      await runVideoMode({ project: projectDir, index: "0" });
+
+      expect(consumeCommandResult().exitCode).toBe(1);
+      expect(String(error.mock.calls[0]?.[0])).toContain("resolves outside the capture directory");
+      expect(fetchMock).not.toHaveBeenCalled();
+      expect(existsSync(join(outside, planted === "assets" ? "videos" : "assets"))).toBe(false);
+    },
+  );
 });

@@ -1,19 +1,8 @@
-import {
-  lstatSync,
-  chmodSync,
-  mkdirSync,
-  mkdtempSync,
-  realpathSync,
-  renameSync,
-  rmSync,
-  writeFileSync,
-} from "node:fs";
+import { lstatSync, chmodSync, mkdtempSync, renameSync, rmSync, writeFileSync } from "node:fs";
 import { basename, dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
+import { mkdirWithinProject, realpath } from "@hyperframes/core";
 
-export function registryRoot(directory: string): string {
-  mkdirSync(directory, { recursive: true });
-  return realpathSync(directory);
-}
+export { realProjectRoot as registryRoot } from "@hyperframes/core";
 
 export function registryTargetPath(root: string, target: string): string {
   const parts = target.split(/[\\/]/);
@@ -21,7 +10,7 @@ export function registryTargetPath(root: string, target: string): string {
   let path = root;
   for (const part of parts) {
     path = join(path, part);
-    if (lstatSync(path, { throwIfNoEntry: false })) path = realpathSync(path);
+    if (lstatSync(path, { throwIfNoEntry: false })) path = realpath(path);
     assertContained(root, path);
   }
   return path;
@@ -53,8 +42,8 @@ export function publishRegistryFile(
   bytes: Uint8Array | string,
 ): string {
   const path = registryTargetPath(root, target);
-  mkdirSync(dirname(path), { recursive: true });
-  const parent = realpathSync(dirname(path));
+  mkdirWithinProject(root, dirname(path));
+  const parent = realpath(dirname(path));
   assertContained(root, parent);
   const destination = resolve(parent, basename(path));
   const stage = mkdtempSync(join(parent, ".hf-install-"));

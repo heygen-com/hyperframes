@@ -18,6 +18,7 @@ import { validRegistryName, validRegistryManifest, validRegistryItem } from "./v
  */
 
 import { join, basename } from "node:path";
+import { mkdirSync } from "node:fs";
 import { homedir } from "node:os";
 import {
   ITEM_TYPE_DIRS,
@@ -88,6 +89,7 @@ function isFresh<T>(entry: CacheEntry<T>): boolean {
 
 function writeCache<T>(path: string, data: T): void {
   try {
+    mkdirSync(CACHE_DIR, { recursive: true });
     const root = registryRoot(CACHE_DIR);
     const entry: CacheEntry<T> = { fetchedAt: Date.now(), data };
     publishRegistryFile(root, basename(path), JSON.stringify(entry));

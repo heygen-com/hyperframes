@@ -1,3 +1,4 @@
+// fallow-ignore-file code-duplication
 // @vitest-environment happy-dom
 import { act } from "react";
 import { createRoot } from "react-dom/client";
@@ -73,9 +74,93 @@ describe("external file change coordinator", () => {
       onAcceptedPersistedFileChange: () => order.push("thumbnail"),
       reloadPreview: () => order.push("preview"),
       reloadSdkSession: () => order.push("sdk"),
+      refreshFileTree: () => {
+        order.push("tree");
+      },
     });
     await act(async () => handler?.({ path: "index.html", content: "external", version: "v2" }));
-    expect(order).toEqual(["drain", "thumbnail", "preview", "sdk"]);
+    expect(order).toEqual(["drain", "thumbnail", "preview", "sdk", "tree"]);
+    expect(captured.handle?.blocked).toBeNull();
+  });
+
+  // The file tree (useFileTree) is only ever refreshed from Studio's own file
+  // operations (create/delete/rename/upload) — never on an external change.
+  // Without this call, an agent removing or replacing a composition updates
+  // the preview and the SDK session but leaves the listing stale forever.
+  it("refreshes the file tree on an accepted external change", async () => {
+    const refreshFileTree = vi.fn();
+    await mountCoordinator({ refreshFileTree });
+    await act(async () => handler?.({ path: "index.html", content: "external", version: "v2" }));
+    expect(refreshFileTree).toHaveBeenCalledOnce();
+  });
+
+  it("refreshes the file tree but not Preview for a file the preview never loaded", async () => {
+    const order: string[] = [];
+    await mountCoordinator({
+      reloadPreview: () => order.push("preview"),
+      reloadSdkSession: () => order.push("sdk"),
+      refreshFileTree: () => {
+        order.push("tree");
+      },
+    });
+    await act(async () =>
+      handler?.({ path: "notes.md", content: "notes", version: "v1", affectsPreview: false }),
+    );
+    expect(order).toEqual(["sdk", "tree"]);
+  });
+
+  it("still reloads Preview when a notes change replaces a waiting film change", async () => {
+    let release = () => {};
+    const inFlight = new Promise<void>((resolve) => (release = resolve));
+    const reloadPreview = vi.fn();
+    const reloadSdkSession = vi.fn();
+    const onAcceptedPersistedFileChange = vi.fn();
+    let drains = 0;
+    await mountCoordinator({
+      reloadPreview,
+      reloadSdkSession,
+      onAcceptedPersistedFileChange,
+      drainPendingChanges: async () => {
+        if (drains++ === 0) await inFlight;
+        return { status: "clean" as const };
+      },
+    });
+    await act(async () => handler?.({ path: "index.html", content: "a", version: "v1" }));
+    await act(async () =>
+      handler?.({
+        path: "scene.html",
+        content: "b",
+        version: "v2",
+        affectedCompositions: ["scene.html"],
+      }),
+    );
+    await act(async () =>
+      handler?.({ path: "notes.md", content: "c", version: "v3", affectsPreview: false }),
+    );
+    await act(async () => release());
+    expect(reloadPreview).toHaveBeenCalledTimes(2);
+    expect(reloadSdkSession).toHaveBeenLastCalledWith("scene.html");
+    expect(onAcceptedPersistedFileChange).toHaveBeenLastCalledWith("scene.html", ["scene.html"]);
+  });
+
+  it("does not refresh the tree for a suppressed self-write echo", async () => {
+    const refreshFileTree = vi.fn();
+    await mountCoordinator({ refreshFileTree });
+    markStudioWriteToken("studio-write-1");
+    await act(async () =>
+      handler?.({
+        path: "index.html",
+        content: "studio",
+        version: "v2",
+        writeToken: "studio-write-1",
+      }),
+    );
+    expect(refreshFileTree).not.toHaveBeenCalled();
+  });
+
+  it("is optional — an accepted change with no refreshFileTree collaborator does not throw", async () => {
+    const { captured } = await mountCoordinator({ refreshFileTree: undefined });
+    await act(async () => handler?.({ path: "index.html", content: "external", version: "v2" }));
     expect(captured.handle?.blocked).toBeNull();
   });
 
@@ -103,7 +188,7 @@ describe("external file change coordinator", () => {
     expect(reloadPreview).not.toHaveBeenCalled();
     expect(reloadSdkSession).not.toHaveBeenCalled();
     expect(onAcceptedPersistedFileChange).toHaveBeenCalledOnce();
-    expect(onAcceptedPersistedFileChange).toHaveBeenCalledWith("index.html");
+    expect(onAcceptedPersistedFileChange).toHaveBeenCalledWith("index.html", null);
   });
 
   it("accepts a matching content echo without a write token and suppresses every reload", async () => {
@@ -124,7 +209,7 @@ describe("external file change coordinator", () => {
     );
 
     expect(onAcceptedPersistedFileChange).toHaveBeenCalledOnce();
-    expect(onAcceptedPersistedFileChange).toHaveBeenCalledWith("index.html");
+    expect(onAcceptedPersistedFileChange).toHaveBeenCalledWith("index.html", null);
     expect(drainPendingChanges).not.toHaveBeenCalled();
     expect(reloadPreview).not.toHaveBeenCalled();
     expect(reloadSdkSession).not.toHaveBeenCalled();
@@ -344,7 +429,34 @@ describe("external file change coordinator", () => {
 
       expect(drainPendingChanges).not.toHaveBeenCalled();
       expect(reloadPreview).not.toHaveBeenCalled();
-      expect(onAcceptedPersistedFileChange).toHaveBeenCalledWith("index.html");
+      expect(onAcceptedPersistedFileChange).toHaveBeenCalledWith("index.html", null);
+    });
+
+    it("hands the server's affected compositions to the thumbnail refresh", async () => {
+      const onAcceptedPersistedFileChange = vi.fn();
+      await mountCoordinator({ onAcceptedPersistedFileChange });
+
+      await act(async () =>
+        handler?.(
+          sseDelivery({
+            path: "compositions/scene-a.html",
+            version: "v3",
+            affectedCompositions: ["index.html", "compositions/scene-a.html"],
+          }),
+        ),
+      );
+      await act(async () =>
+        handler?.(
+          sseDelivery({ path: "assets/logo.svg", version: "v4", affectedCompositions: "all" }),
+        ),
+      );
+
+      expect(onAcceptedPersistedFileChange).toHaveBeenNthCalledWith(
+        1,
+        "compositions/scene-a.html",
+        ["index.html", "compositions/scene-a.html"],
+      );
+      expect(onAcceptedPersistedFileChange).toHaveBeenNthCalledWith(2, "assets/logo.svg", null);
     });
 
     it("reloads once when one watcher event reaches two subscribers", async () => {
@@ -374,6 +486,61 @@ describe("external file change coordinator", () => {
       await act(async () => handler?.(new MessageEvent("file-change", { data: "not json" })));
 
       expect(reloadPreview).not.toHaveBeenCalled();
+    });
+  });
+
+  // `/api/events` is one connection per SERVER (CLI host), not per project — a
+  // tab left open from a `preview` run whose port was later reused by a
+  // different project's `preview` shares this stream with it. Both projects
+  // commonly use the same default composition path, so without the filter a
+  // stale tab reloads its preview and re-reads its own composition on every
+  // save the OTHER project makes.
+  describe("cross-project deliveries on a shared connection", () => {
+    it("ignores a delivery whose projectId does not match this tab's", async () => {
+      const drainPendingChanges = vi.fn(async () => ({ status: "clean" as const }));
+      const reloadPreview = vi.fn();
+      const reloadSdkSession = vi.fn();
+      await mountCoordinator({ drainPendingChanges, reloadPreview, reloadSdkSession });
+
+      await act(async () =>
+        handler?.({
+          path: "index.html",
+          content: "other project",
+          version: "v9",
+          projectId: "project-b",
+        }),
+      );
+
+      expect(drainPendingChanges).not.toHaveBeenCalled();
+      expect(reloadPreview).not.toHaveBeenCalled();
+      expect(reloadSdkSession).not.toHaveBeenCalled();
+    });
+
+    it("still reloads for a delivery whose projectId matches this tab's", async () => {
+      const reloadPreview = vi.fn();
+      await mountCoordinator({ reloadPreview });
+
+      await act(async () =>
+        handler?.({
+          path: "index.html",
+          content: "same project",
+          version: "v9",
+          projectId: "project-a",
+        }),
+      );
+
+      expect(reloadPreview).toHaveBeenCalledOnce();
+    });
+
+    it("still reloads when projectId is absent (older server, one release of skew)", async () => {
+      const reloadPreview = vi.fn();
+      await mountCoordinator({ reloadPreview });
+
+      await act(async () =>
+        handler?.({ path: "index.html", content: "no project id", version: "v9" }),
+      );
+
+      expect(reloadPreview).toHaveBeenCalledOnce();
     });
   });
 });

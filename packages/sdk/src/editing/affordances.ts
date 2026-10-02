@@ -58,5 +58,12 @@ export function resolveElementAffordances(
     hasEditableText: modelEl?.text != null,
     hasTimingStart: modelEl ? modelEl.start != null : liveEl.hasAttribute("data-start"),
     animationCount: modelEl?.animationIds.length ?? 0,
+    hasAudio: isAudibleVideo(liveEl),
   });
+}
+
+function isAudibleVideo(el: HTMLElement): boolean {
+  if (el.tagName.toLowerCase() !== "video" || el.hasAttribute("muted")) return false;
+  const hasAudio = el.getAttribute("data-has-audio");
+  return hasAudio === null || hasAudio === "true";
 }

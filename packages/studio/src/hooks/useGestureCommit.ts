@@ -87,6 +87,7 @@ interface UseGestureCommitParams {
   previewIframeRef: React.RefObject<HTMLIFrameElement | null>;
   showToast: (message: string, tone?: "error" | "info") => void;
   isGestureRecordingRef: React.MutableRefObject<boolean>;
+  readOnlyPreview: boolean;
 }
 
 export interface UseGestureCommitResult {
@@ -101,6 +102,7 @@ export function useGestureCommit({
   previewIframeRef,
   showToast,
   isGestureRecordingRef,
+  readOnlyPreview,
 }: UseGestureCommitParams): UseGestureCommitResult {
   const gestureRecording = useGestureRecording();
   const [gestureState, setGestureState] = useState<"idle" | "recording">("idle");
@@ -114,6 +116,20 @@ export function useGestureCommit({
 
   // Unmount: clear auto-stop interval
   useEffect(() => () => clearInterval(recordingAutoStopRef.current), []);
+
+  const cancelRecording = useCallback(() => {
+    clearInterval(recordingAutoStopRef.current);
+    gestureRecording.stopRecording();
+    gestureRecording.clearSamples();
+    gestureStateRef.current = "idle";
+    isGestureRecordingRef.current = false;
+    capturedSelectionRef.current = null;
+    setGestureState("idle");
+  }, [gestureRecording, isGestureRecordingRef]);
+
+  useEffect(() => {
+    if (readOnlyPreview && gestureStateRef.current === "recording") cancelRecording();
+  }, [cancelRecording, readOnlyPreview]);
 
   // fallow-ignore-next-line complexity
   const stopAndCommitRecording = useCallback(async () => {
@@ -335,9 +351,14 @@ export function useGestureCommit({
   // fallow-ignore-next-line complexity
   const handleToggleRecording = useCallback(() => {
     if (gestureStateRef.current === "recording") {
+      if (readOnlyPreview) {
+        cancelRecording();
+        return;
+      }
       void stopAndCommitRecording();
       return;
     }
+    if (readOnlyPreview) return;
     const sel = domEditSessionRef.current.domEditSelection;
     if (!sel) {
       showToast("Select an element first", "error");
@@ -373,9 +394,11 @@ export function useGestureCommit({
     gestureRecording,
     showToast,
     stopAndCommitRecording,
+    cancelRecording,
     previewIframeRef,
     domEditSessionRef,
     isGestureRecordingRef,
+    readOnlyPreview,
   ]);
 
   return { gestureState, gestureRecording, handleToggleRecording };

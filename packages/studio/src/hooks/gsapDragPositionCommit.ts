@@ -1,4 +1,5 @@
 import type { GsapAnimation } from "@hyperframes/core/gsap-parser";
+import { PROPERTY_GROUPS } from "@hyperframes/parsers/gsap-constants";
 import type { DomEditSelection } from "../components/editor/domEditingTypes";
 import { usePlayerStore } from "../player/store/playerStore";
 import { resolveTweenStart, resolveTweenDuration } from "../utils/globalTimeCompiler";
@@ -179,7 +180,11 @@ async function commitFlatViaKeyframes(
   if (runtime && ts !== null) {
     const { gsapLib, el, mainTl } = runtime;
     const draggedValues: Record<string, number> = {};
-    for (const key of Object.keys(properties)) {
+    const channelsTheClearWipes = new Set([
+      ...Object.keys(properties),
+      ...PROPERTY_GROUPS.position,
+    ]);
+    for (const key of channelsTheClearWipes) {
       const v = Number(gsapLib.getProperty(el, key));
       if (Number.isFinite(v)) draggedValues[key] = v;
     }

@@ -78,9 +78,8 @@ describe("canSplitElementAt", () => {
     ).toBe(false);
   });
 
-  it("rejects locked and implicit elements while allowing identified compositions", () => {
+  it("rejects locked elements while allowing identified compositions", () => {
     expect(canSplitElementAt(element({ timelineLocked: true }), 3)).toBe(false);
-    expect(canSplitElementAt(element({ timingSource: "implicit" }), 3)).toBe(false);
     expect(
       canSplitElementAt(
         element({ kind: "composition", compositionSrc: "child.html", playbackRate: 2 }),

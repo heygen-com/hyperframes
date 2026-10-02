@@ -86,6 +86,11 @@ export function isImageElement(value: unknown): value is HTMLImageElement {
   return isHtmlTag(value, "img");
 }
 
+/** `<canvas>`, from any realm. Mirrors `instanceof HTMLCanvasElement`. */
+export function isCanvasElement(value: unknown): value is HTMLCanvasElement {
+  return isHtmlTag(value, "canvas");
+}
+
 /** `<style>`, from any realm. Mirrors `instanceof HTMLStyleElement`. */
 export function isStyleElement(value: unknown): value is HTMLStyleElement {
   return isHtmlTag(value, "style");

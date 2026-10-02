@@ -9,20 +9,10 @@
  */
 const path = require("path");
 const fs = require("fs");
-const os = require("os");
 const cp = require("child_process");
 
-function hfRoot() {
-  const roots = [
-    process.env.HYPERFRAMES_ROOT,
-    path.resolve(__dirname, "..", "..", ".."),
-    path.join(os.homedir(), "Downloads", "hyperframes"),
-  ].filter(Boolean);
-  for (const r of roots)
-    if (fs.existsSync(path.join(r, "packages", "cli", "dist", "cli.js"))) return r;
-  console.error("[transcribe] hyperframes CLI not found — set HYPERFRAMES_ROOT");
-  process.exit(3);
-}
+const { hfCli } = require("./hf-cli.cjs");
+
 function ensureSource(project) {
   const src = path.join(project, "source.mp4");
   if (fs.existsSync(src)) return src;
@@ -153,7 +143,9 @@ function main() {
     process.exit(2);
   }
   const audio = path.join(project, "audio.mp3");
-  if (!fs.existsSync(audio))
+  // A stray audio.mp3 in the project makes lint call the render silent; only remove one this run made.
+  const audioIsScratch = !fs.existsSync(audio);
+  if (audioIsScratch)
     cp.execFileSync(
       "ffmpeg",
       ["-y", "-i", src, "-vn", "-acodec", "libmp3lame", "-q:a", "2", audio],
@@ -247,7 +239,7 @@ function main() {
 
   if (!words) {
     // run hyperframes Whisper → writes a flat word array to <dir>/transcript.json
-    const cli = path.join(hfRoot(), "packages", "cli", "dist", "cli.js");
+    const cli = hfCli();
     const args = ["transcribe", audio, "-d", project, "--json", "--model", model];
     if (language) args.push("--language", language);
     let info = {};
@@ -270,7 +262,8 @@ function main() {
         end: w.end ?? w.t1,
         type: "word",
       }));
-    engine = `whisper.cpp(${model})`;
+    // Under the default --engine auto the CLI may have run Parakeet; it reports which.
+    engine = info.engine === "parakeet" ? `parakeet(${info.model})` : `whisper.cpp(${model})`;
   }
 
   // Tail-hallucination guard: drop words whisper placed entirely inside a terminal
@@ -289,6 +282,8 @@ function main() {
       words = keep;
     }
   }
+
+  if (audioIsScratch) fs.rmSync(audio, { force: true });
 
   const text = words
     .map((w) => w.text)

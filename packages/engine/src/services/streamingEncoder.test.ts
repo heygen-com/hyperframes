@@ -12,8 +12,9 @@
 
 import { validJpeg } from "./__fixtures__/jpeg.js";
 
+import { spawnSync } from "child_process";
 import { EventEmitter } from "events";
-import { mkdtempSync } from "fs";
+import { mkdtempSync, rmSync } from "fs";
 import { tmpdir } from "os";
 import { basename, join } from "path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -24,6 +25,7 @@ import {
   type StreamingEncoderOptions,
 } from "./streamingEncoder.js";
 import { DEFAULT_HDR10_MASTERING } from "../utils/hdr.js";
+import { SDR_CAPTURE_TO_BT709_FILTER } from "../utils/sdrCaptureColor.js";
 
 const baseHdrPq: StreamingEncoderOptions = {
   fps: { num: 30, den: 1 },
@@ -167,13 +169,13 @@ describe("buildStreamingArgs", () => {
       expect(args[args.indexOf("-color_primaries:v") + 1]).toBe("bt709");
       expect(args[args.indexOf("-colorspace:v") + 1]).toBe("bt709");
       expect(args[args.indexOf("-color_range") + 1]).toBe("tv");
-      expect(args[args.indexOf("-vf") + 1]).toBe("scale=in_range=pc:out_range=tv");
+      expect(args[args.indexOf("-vf") + 1]).toBe(SDR_CAPTURE_TO_BT709_FILTER);
     });
 
     it("adds the pad after range conversion for odd SDR output dimensions", () => {
       const args = buildStreamingArgs({ ...baseSdr, height: 1081 }, "/tmp/out.mp4");
       expect(args[args.indexOf("-vf") + 1]).toBe(
-        "scale=in_range=pc:out_range=tv,pad=ceil(iw/2)*2:ceil(ih/2)*2",
+        `${SDR_CAPTURE_TO_BT709_FILTER},pad=ceil(iw/2)*2:ceil(ih/2)*2`,
       );
     });
   });
@@ -340,27 +342,84 @@ describe("buildStreamingArgs", () => {
       expect(h265Args[h265Args.indexOf("-qp_i") + 1]).toBe("23");
     });
 
-    // 4:2:0 HW encode aborts on odd dims just like libx264, and these paths
-    // feed software frames straight to the encoder with no `-vf`, so the
-    // even-dim pad (and only the pad, not the SW range scale) must be added.
-    it("pads odd dimensions (no range scale) for non-VAAPI GPU encoding", () => {
+    // 4:2:0 HW encode aborts on odd dims just like libx264, so the pad follows the colour conversion.
+    it("converts to BT.709 and pads odd dimensions for non-VAAPI GPU encoding", () => {
       for (const gpu of ["nvenc", "videotoolbox", "qsv", "amf"] as const) {
         const args = buildStreamingArgs({ ...baseGpu, height: 1081 }, "/tmp/out.mp4", gpu);
         const vfIdx = args.indexOf("-vf");
-        expect(args[vfIdx + 1]).toBe("pad=ceil(iw/2)*2:ceil(ih/2)*2");
-        expect(args[vfIdx + 1]).not.toContain("scale=in_range");
+        expect(args[vfIdx + 1]).toBe(
+          `${SDR_CAPTURE_TO_BT709_FILTER},pad=ceil(iw/2)*2:ceil(ih/2)*2`,
+        );
       }
     });
 
     it("does not require the pad filter for even GPU output dimensions", () => {
       const args = buildStreamingArgs(baseGpu, "/tmp/out.mp4", "videotoolbox");
-      expect(args).not.toContain("-vf");
+      expect(args[args.indexOf("-vf") + 1]).toBe(SDR_CAPTURE_TO_BT709_FILTER);
     });
 
     it("prepends range conversion to VAAPI chain (nv12 covers even-dim)", () => {
       const args = buildStreamingArgs(baseGpu, "/tmp/out.mp4", "vaapi");
       const vfIdx = args.indexOf("-vf");
-      expect(args[vfIdx + 1]).toBe("scale=in_range=pc:out_range=tv,format=nv12,hwupload");
+      expect(args[vfIdx + 1]).toBe(`${SDR_CAPTURE_TO_BT709_FILTER},format=nv12,hwupload`);
+    });
+  });
+
+  // The HLS format locks the GOP so `-f hls -c copy` can cut segments on
+  // exact time boundaries. Every other format must keep the old arg list.
+  describe("lockGopForChunkConcat", () => {
+    it("omits closed-GOP args by default", () => {
+      const args = buildStreamingArgs(baseSdr, "/tmp/out.mp4");
+      expect(args).not.toContain("-g");
+      expect(args).not.toContain("-keyint_min");
+      expect(args).not.toContain("-sc_threshold");
+      expect(args).not.toContain("-force_key_frames");
+      const paramIdx = args.indexOf("-x264-params");
+      expect(args[paramIdx + 1]).not.toContain("open-gop=0");
+    });
+
+    it("emits closed-GOP args and x264-params for libx264", () => {
+      const args = buildStreamingArgs(
+        { ...baseSdr, lockGopForChunkConcat: true, gopSize: 120 },
+        "/tmp/out.mp4",
+      );
+      expect(args[args.indexOf("-g") + 1]).toBe("120");
+      expect(args[args.indexOf("-keyint_min") + 1]).toBe("120");
+      expect(args[args.indexOf("-sc_threshold") + 1]).toBe("0");
+      expect(args[args.indexOf("-force_key_frames") + 1]).toBe("expr:eq(mod(n,120),0)");
+      const paramIdx = args.indexOf("-x264-params");
+      expect(args[paramIdx + 1]).toContain("scenecut=0");
+      expect(args[paramIdx + 1]).toContain("open-gop=0");
+      expect(args[paramIdx + 1]).toContain("repeat-headers=1");
+      expect(args[paramIdx + 1]).toContain("aq-strength=0.8");
+      expect(args[args.indexOf("-bf") + 1]).toBe("0");
+    });
+
+    it("emits keyint in x265-params and disables B-frames for libx265", () => {
+      const args = buildStreamingArgs(
+        {
+          ...baseSdr,
+          codec: "h265",
+          lockGopForChunkConcat: true,
+          gopSize: 90,
+        },
+        "/tmp/out.mp4",
+      );
+      expect(args[args.indexOf("-g") + 1]).toBe("90");
+      expect(getX265ParamsValue(args)).toContain("keyint=90");
+      expect(getX265ParamsValue(args)).toContain("min-keyint=90");
+      expect(args[args.indexOf("-bf") + 1]).toBe("0");
+    });
+
+    it("throws on a missing or invalid gopSize", () => {
+      for (const bad of [undefined, 0, -10, NaN, Infinity]) {
+        expect(() =>
+          buildStreamingArgs(
+            { ...baseSdr, lockGopForChunkConcat: true, gopSize: bad as number | undefined },
+            "/tmp/out.mp4",
+          ),
+        ).toThrow(/lockGopForChunkConcat=true requires a positive integer gopSize/);
+      }
     });
   });
 });
@@ -893,6 +952,44 @@ describe("spawnStreamingEncoder lifecycle and cleanup", () => {
     expect(result.success).toBe(false);
   });
 
+  it("writeFrame resolves false with the exit reason readable when stdin errors while parked on drain", async () => {
+    // This is the field `write EPIPE`: ffmpeg dies while the writer waits for
+    // back-pressure to clear. Node's once(stdin,"drain") rejects with the
+    // stream error, which used to escape writeFrame as the render error and
+    // bury ffmpeg's exit code and stderr.
+    const { spawn, calls } = createSpawnSpy();
+    vi.resetModules();
+    vi.doMock("child_process", () => ({ spawn }));
+
+    const { spawnStreamingEncoder } = await import("./streamingEncoder.js");
+    const dir = mkdtempSync(join(tmpdir(), "se-drain-epipe-"));
+    const encoder = await spawnStreamingEncoder(join(dir, "out.mp4"), baseOptions);
+
+    const proc = calls[0]!.proc;
+    proc.stdin.write = (_chunk: Buffer): boolean => false;
+    proc.stderr.emit("data", Buffer.from("x264 [error]: malformed input\n"));
+
+    const writePromise = encoder.writeFrame(validJpeg);
+    await Promise.resolve();
+    expect(proc.stdin.listenerCount("drain")).toBe(1);
+
+    // stdin errors first; the child's close lands a tick later, as it does
+    // in the field (the OS closes the pipe before Node delivers `close`).
+    proc.stdin.emit("error", Object.assign(new Error("write EPIPE"), { code: "EPIPE" }));
+    setTimeout(() => proc.emit("close", 1), 5);
+
+    // Resolves, never rejects — and by the time it does, the exit has settled
+    // so ensureFrameWritten can read the reason synchronously.
+    await expect(writePromise).resolves.toBe(false);
+    expect(encoder.getExitStatus()).toBe("error");
+    expect(encoder.getExitError()).toMatch(/code 1/);
+    expect(encoder.getExitError()).toContain("malformed input");
+    expect(proc.stdin.listenerCount("drain")).toBe(0);
+
+    const result = await encoder.close();
+    expect(result.success).toBe(false);
+  });
+
   it("writeFrame resolves false when close fires after write returns false before await attaches listeners", async () => {
     const { spawn, calls } = createSpawnSpy();
     vi.resetModules();
@@ -1034,3 +1131,81 @@ describe("createFrameReorderBuffer abort (interleaved parallel drain)", () => {
     await expect(buf.waitForFrame(1)).resolves.toBeUndefined();
   });
 });
+
+describe.skipIf(spawnSync("ffmpeg", ["-version"]).status !== 0)(
+  "buildStreamingArgs raw SDR colour",
+  () => {
+    // ffmpeg 7 and older convert raw RGB with the BT.601 matrix unless told otherwise.
+    it("delivers raw sRGB frames in the BT.709 the mp4 is tagged with", () => {
+      const dir = mkdtempSync(join(tmpdir(), "se-raw-sdr-"));
+      const rgbAt = (
+        inputFormat: string[],
+        source: string,
+        decode: string,
+        x: number,
+        stdin?: Buffer,
+      ): number[] => [
+        ...spawnSync(
+          "ffmpeg",
+          [
+            "-v",
+            "error",
+            ...inputFormat,
+            "-i",
+            source,
+            "-vf",
+            `${decode}format=rgb24,crop=1:1:${x}:8`,
+            "-frames:v",
+            "1",
+            "-f",
+            "rawvideo",
+            "-",
+          ],
+          { input: stdin },
+        ).stdout,
+      ];
+      try {
+        const frame = spawnSync("ffmpeg", [
+          "-v",
+          "error",
+          "-f",
+          "lavfi",
+          "-i",
+          "color=c=0xC83C28:s=64x16,format=rgb24,drawbox=x=31:y=0:w=33:h=16:c=0x0000FE:t=fill",
+          "-frames:v",
+          "1",
+          "-pix_fmt",
+          "rgb48le",
+          "-f",
+          "rawvideo",
+          "-",
+        ]).stdout;
+        const out = join(dir, "out.mp4");
+        const args = buildStreamingArgs(
+          {
+            ...baseSdr,
+            width: 64,
+            height: 16,
+            preset: "ultrafast",
+            quality: 0,
+            rawInputFormat: "rgb48le",
+          },
+          out,
+        );
+        expect(spawnSync("ffmpeg", args, { input: frame }).status).toBe(0);
+
+        const rawInput = ["-f", "rawvideo", "-pix_fmt", "rgb48le", "-s", "64x16"];
+        // x=8 is flat colour; x=32 sits one pixel inside the blue edge.
+        for (const x of [8, 32]) {
+          const source = rgbAt(rawInput, "-", "", x, frame);
+          const delivered = rgbAt([], out, "scale=in_color_matrix=bt709:in_range=tv,", x);
+          expect([source.length, delivered.length]).toEqual([3, 3]);
+          const worst = Math.max(...delivered.map((v, i) => Math.abs(v - source[i]!)));
+          expect(worst, `x=${x}: source ${source} delivered ${delivered}`).toBeLessThanOrEqual(2);
+        }
+      } finally {
+        rmSync(dir, { recursive: true, force: true });
+      }
+    }, 30_000);
+  },
+);

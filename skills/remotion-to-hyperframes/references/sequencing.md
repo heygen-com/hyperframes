@@ -1,7 +1,7 @@
 # Sequencing translation: Sequence, Series, Composition root
 
-How Remotion's nested `Sequence` tree maps to HF's flat `data-start` /
-`data-duration` markup with a single paused GSAP timeline.
+How Remotion's nested `Sequence` tree maps to one sub-composition host per
+scene in the root, each with its own paused GSAP timeline in local time.
 
 ## The core idea
 
@@ -11,8 +11,9 @@ component to the window `[F, F+D]`. HF doesn't have a per-element
 "current frame" — there's a single composition seek time and the
 runtime hides/shows elements based on their `data-start` / `data-duration`.
 
-Result: the nested tree flattens into a list of siblings on the same
-parent, each with their own time window.
+Result: the nested tree flattens into a list of scene hosts on the same
+parent, each with its own time window; each scene's content lives in its
+own sub-composition file.
 
 ## `<Composition>` → root `#stage`
 
@@ -57,7 +58,7 @@ playback; missing it triggers a lint warning).
 `AbsoluteFill` is just a styled div in Remotion. Translate to a div with
 `position:absolute; inset:0` and copy through any other style props.
 
-## `<Sequence>` → time-windowed div
+## `<Sequence>` → sub-composition host
 
 ```tsx
 <Sequence from={0} durationInFrames={90}>
@@ -65,15 +66,42 @@ playback; missing it triggers a lint warning).
 </Sequence>
 ```
 
+The root `#stage` only holds a host per scene; the scene's markup, styles
+and timeline live in their own sub-composition file, so the Studio timeline
+gets one readable row per scene and the lint has no nested structure to flag.
+
 ```html
-<div data-start="0" data-duration="3" data-track-index="0">
-  <!-- TitleCard children inlined -->
-</div>
+<!-- index.html -->
+<div
+  id="scene-1"
+  class="clip"
+  data-composition-id="scene-1"
+  data-composition-src="compositions/scene-1.html"
+  data-start="0"
+  data-duration="3"
+  data-track-index="0"
+></div>
+```
+
+```html
+<!-- compositions/scene-1.html: TitleCard children inlined, timeline keyed "scene-1", local time starts at 0 -->
+<template id="scene-1-template">
+  <div data-composition-id="scene-1" data-width="1280" data-height="720" data-duration="3">
+    <!-- TitleCard children -->
+    <script>
+      const tl = gsap.timeline({ paused: true });
+      window.__timelines["scene-1"] = tl;
+    </script>
+  </div>
+</template>
 ```
 
 Convert frames to seconds: `from/fps`, `durationInFrames/fps`. Pick a
 `data-track-index` per parallel rendering layer (background = 0,
 overlays = 1, audio = 2, etc.). Sequential scenes can share an index.
+Inside the sub-composition, time is local: a tween that started at `F/fps`
+in the root starts at `0` here. Asset paths are relative to the
+sub-composition file (`../assets/x.png`).
 
 ## Nested `<Sequence>` flattens
 
@@ -89,13 +117,17 @@ Remotion adds offsets when sequences nest:
 
 The inner sequence's effective window is `[60+30, 60+30+60] = [90, 150]`.
 
-Translate by computing the sum and emitting one HF div with the resolved
-window:
+Translate by computing the sum and emitting one host with the resolved
+window; the scene's children go in its sub-composition file:
 
 ```html
-<div data-start="3" data-duration="2" data-track-index="0">
-  <!-- ImageScene children -->
-</div>
+<div
+  data-composition-id="image-scene"
+  data-composition-src="compositions/image-scene.html"
+  data-start="3"
+  data-duration="2"
+  data-track-index="0"
+></div>
 ```
 
 ## `<Series>` → siblings with sequential offsets
@@ -115,19 +147,40 @@ window:
 ```
 
 Each `Sequence.Sequence` lives in the next time slot. Emit siblings
-with `data-start` accumulating:
+with `data-start` accumulating (each host mounts its scene file):
 
 ```html
-<div data-start="0" data-duration="2" data-track-index="0">A</div>
-<div data-start="2" data-duration="4" data-track-index="0">B</div>
-<div data-start="6" data-duration="3" data-track-index="0">C</div>
+<div
+  data-composition-id="a"
+  data-composition-src="compositions/a.html"
+  data-start="0"
+  data-duration="2"
+  data-track-index="0"
+></div>
+<div
+  data-composition-id="b"
+  data-composition-src="compositions/b.html"
+  data-start="2"
+  data-duration="4"
+  data-track-index="0"
+></div>
+<div
+  data-composition-id="c"
+  data-composition-src="compositions/c.html"
+  data-start="6"
+  data-duration="3"
+  data-track-index="0"
+></div>
 ```
 
 ## Crossfading scene boundaries
 
 Remotion `<Sequence>` shows/hides at hard boundaries by default. HF does
 the same — but if your composition needs a smooth fade between scenes,
-you have to drive opacity explicitly with GSAP at the boundary:
+you have to drive opacity explicitly with GSAP at the boundary. A scene can
+hard-cut itself with `gsap.set` at its local end (the corpus fixtures do). A
+fade between two scenes goes on the scene hosts from the root timeline, since
+a scene's own timeline only sees its own file:
 
 ```js
 const tl = gsap.timeline({ paused: true });

@@ -5,6 +5,7 @@ import { DesignPanelInputProvider } from "../../contexts/DesignPanelInputContext
 import { slugifyDesignInput } from "../../utils/designInputTracking";
 import { isTextEditableSelection } from "./domEditing";
 import type { PropertyPanelFlatProps } from "./propertyPanelFlatProps";
+import { useLinkedSpeedCommit, withLinkedPlaybackRate } from "./linkedSpeedEdits";
 import { formatPxMetricValue } from "./propertyPanelHelpers";
 import { audioFxSummary } from "./audioFxSummary";
 import { resolveAudioGroups } from "@hyperframes/core/audio-groups";
@@ -61,7 +62,6 @@ export function PropertyPanelFlat({
   clipboardCopied,
   onCopyElementInfo,
   projectId,
-  projectDir,
   assets,
   previewIframeRef,
   onClearSelection,
@@ -73,8 +73,6 @@ export function PropertyPanelFlat({
   onSetAttributeLive,
   onSetAttributeQuiet,
   onApplyColorGradingScope,
-  onSetHtmlAttribute,
-  onRemoveBackground,
   onSetText,
   onSetTextFieldStyle,
   onPreviewTextFieldStyle,
@@ -130,6 +128,7 @@ export function PropertyPanelFlat({
   onUpdateKeyframeEase,
   onUpdateSegmentEase,
   onSetAllKeyframeEases,
+  ...forwardedProps
 }: PropertyPanelFlatProps) {
   // PropertyPanel keys this component by selection, so the default is per element.
   const [openGroupId, setOpenGroupId] = useState<string>(() =>
@@ -285,17 +284,19 @@ export function PropertyPanelFlat({
         }
       : null;
   const audioSelection = isAudioDomElement(element.element);
-  // Handlers being wired is necessary but not sufficient: App.tsx always passes
-  // them, so this alone showed the tween editor for every selection — including
-  // an `<audio>` clip and an `<hf-audio-group>` bus, neither of which has a
-  // transform, an opacity or a box for a tween to move. Gated on the TAG, not on
-  // `sections.animation` (`animationCount > 0`): a div with no tweens yet must
-  // still offer "+ Add", so "has none" and "can have none" are different
-  // questions and only the second one belongs here.
+  // Gated on the tag, not `sections.animation` (`animationCount > 0`): an audio
+  // clip/bus has no tween to move, but a fresh div with no tweens yet must
+  // still offer "+ Add" — "has none" and "can have none" differ.
   const showMotionEffects = gsapEffectHandlers !== null && !audioSelection;
   const showMotionGroup = showMotionTiming || showMotionEffects;
 
-  const volumeAutomation = useVolumeAutomation(element, onSetAttributeQuiet ?? onSetAttributeLive);
+  const linkedSpeed = useLinkedSpeedCommit(element, forwardedProps.onSetAttributeBatch);
+  const volumeAutomation = useVolumeAutomation(
+    element,
+    currentTime,
+    onSetAttributeQuiet ?? onSetAttributeLive,
+    linkedSpeed,
+  );
 
   // The group this clip belongs to, if any — the Audio FX summary reads
   // "in Voiceover" for a member (see `audioFxSummary`). Membership lives on the
@@ -502,13 +503,12 @@ export function PropertyPanelFlat({
       summary: element.tagName,
       content: (
         <FlatMediaSection
-          projectDir={projectDir}
+          {...forwardedProps}
+          projectId={projectId}
           element={element}
           styles={styles}
           onSetStyle={onSetStyle}
-          onSetAttribute={onSetAttribute}
-          onSetHtmlAttribute={onSetHtmlAttribute}
-          onRemoveBackground={onRemoveBackground}
+          onSetAttribute={withLinkedPlaybackRate(onSetAttribute, linkedSpeed)}
           {...volumeAutomation}
         />
       ),

@@ -6,7 +6,7 @@
  */
 
 import { isBlockedNetworkHost } from "@hyperframes/engine";
-import { writeFileSync, mkdirSync } from "node:fs";
+import { ensureCaptureDirSync, writeCaptureFileSync } from "./captureFile.js";
 import { join, extname } from "node:path";
 import { createHash } from "node:crypto";
 import type { DesignTokens, DownloadedAsset } from "./types.js";
@@ -206,7 +206,7 @@ async function fetchAndInspectIcon(
   if (!ext) return null;
 
   const file = `assets/${stem}${ext}`;
-  writeFileSync(join(outputDir, file), buffer);
+  writeCaptureFileSync(join(outputDir, file), buffer);
   const verdict = await classifyIcon(buffer, ext);
   return {
     buffer,
@@ -235,7 +235,7 @@ function promoteHeadline(
   if (!chosen) return null;
 
   const file = `assets/favicon${extname(chosen.file)}`;
-  writeFileSync(join(outputDir, file), bytesByFile.get(chosen.file)!);
+  writeCaptureFileSync(join(outputDir, file), bytesByFile.get(chosen.file)!);
   manifest.headline = {
     file,
     source: chosen.file,
@@ -316,14 +316,14 @@ export async function downloadAssets(
 ): Promise<{ assets: DownloadedAsset[]; drops: AssetDropCounts; icons: IconManifest }> {
   options = { ...options, byteBudget: options.byteBudget ?? createCaptureDownloadBudget() };
   const assetsDir = join(outputDir, "assets");
-  mkdirSync(assetsDir, { recursive: true });
+  ensureCaptureDirSync(outputDir, assetsDir);
 
   const assets: DownloadedAsset[] = [];
   const drops = noDrops();
   const downloadedUrls = new Set<string>();
   let icons: IconManifest = emptyIconManifest();
 
-  mkdirSync(join(outputDir, "assets", "svgs"), { recursive: true });
+  ensureCaptureDirSync(outputDir, join(outputDir, "assets", "svgs"));
   const usedSvgNames = new Set<string>();
   const MAX_INLINE_SVGS = 30;
   drops["cap-reached"] += Math.max(0, tokens.svgs.length - MAX_INLINE_SVGS);
@@ -346,7 +346,7 @@ export async function downloadAssets(
     const name = `${finalSlug}.svg`;
     const localPath = `assets/svgs/${name}`;
     try {
-      writeFileSync(join(outputDir, localPath), svgFile, "utf-8");
+      writeCaptureFileSync(join(outputDir, localPath), svgFile, "utf-8");
       assets.push({ url: "", localPath, type: "svg" });
     } catch {
       drops.unavailable++;
@@ -472,7 +472,7 @@ export async function downloadAssets(
         const name = `${slug}${ext}`;
         usedNames.add(slug);
         const localPath = `assets/${name}`;
-        writeFileSync(join(outputDir, localPath), buffer);
+        writeCaptureFileSync(join(outputDir, localPath), buffer);
         assets.push({ url, localPath, type: "image" });
         imgIdx++;
       } catch {
@@ -501,7 +501,7 @@ export async function downloadAssets(
           drops["size-floor"]++;
         } else {
           const localPath = `assets/og-image${ext}`;
-          writeFileSync(join(outputDir, localPath), buffer);
+          writeCaptureFileSync(join(outputDir, localPath), buffer);
           assets.push({ url: tokens.ogImage, localPath, type: "image" });
         }
       }
@@ -541,7 +541,7 @@ export async function downloadAndRewriteFonts(
 ): Promise<{ css: string; drops: AssetDropCounts }> {
   options = { ...options, byteBudget: options.byteBudget ?? createCaptureDownloadBudget() };
   const assetsDir = join(outputDir, "assets", "fonts");
-  mkdirSync(assetsDir, { recursive: true });
+  ensureCaptureDirSync(outputDir, assetsDir);
   const drops = noDrops();
 
   const fontUrlRegex = /url\(['"]?(https?:\/\/[^'")\s]+\.(?:woff2?|ttf|otf)[^'")\s]*?)['"]?\)/g;
@@ -614,7 +614,7 @@ export async function downloadAndRewriteFonts(
         const filename = captureFontFilename(fontUrl, extension, usedFontNames);
         const localPath = join(assetsDir, filename);
         const relativePath = `assets/fonts/${filename}`;
-        writeFileSync(localPath, buffer);
+        writeCaptureFileSync(localPath, buffer);
         rewritten = rewritten.split(fontUrl).join(relativePath);
       } else {
         drops.unavailable++;

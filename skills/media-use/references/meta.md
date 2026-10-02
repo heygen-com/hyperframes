@@ -9,7 +9,7 @@ HyperFrames owns media _playback_; media-use owns everything else. Each row is e
 | HyperFrames gap                            | media-use owns it via                                                                                                                                                                                                                                                               |
 | ------------------------------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | Audio-only, no image/icon                  | `resolve --type image\|icon` (heygen asset search)                                                                                                                                                                                                                                  |
-| No third-party brand logos                 | `resolve --type logo` (svgl → simple-icons → GitHub org avatar → domain favicon)                                                                                                                                                                                                    |
+| No third-party brand logos                 | `resolve --type logo` (theSVG → GitHub org avatar → domain favicon)                                                                                                                                                                                                                 |
 | No voice / audio generation                | `resolve --type voice` (HeyGen TTS free-usage path; optional local Kokoro) + the audio engine (`audio/scripts/audio.mjs`)                                                                                                                                                           |
 | Scattered/duplicated audio engine          | one consolidated engine under `audio/` (hyperframes-media retired)                                                                                                                                                                                                                  |
 | No agent media-ops (cut/reframe/transform) | `references/operations.md` + `resolve --from` to register outputs                                                                                                                                                                                                                   |
@@ -26,7 +26,7 @@ HyperFrames owns media _playback_; media-use owns everything else. Each row is e
 Use `resolve --stats` for a local, shareable report over the current project's `.media/` manifest, the global `~/.media/` cache, and local resolve misses. Human output is compact; add `--json` for a single machine-readable object, and `--days N` to window timestamped records.
 
 ```bash
-node <SKILL_DIR>/scripts/resolve.mjs --stats --project . --days 7
+npx hyperframes media-use resolve --stats --project . --days 7
 # media-use stats
 # total resolves: 12
 # misses: 2

@@ -44,9 +44,9 @@ didn't specify trim.
 <Audio src={staticFile("music.wav")} volume={(f) => interpolate(f, [0, 30], [0, 1])} />
 ```
 
-HF supports static `data-volume` only for now. Volume ramps need to be
-applied to the audio file at translation time (with ffmpeg `afade`) or the
-ramp is dropped with a translation note.
+Volume ramps become a `data-automation` volume lane on the `<audio>`
+(form in `hyperframes-core/references/creator-editing-recipes.md`); `data-volume`
+is the static baseline.
 
 ### Trim / playbackRate
 
@@ -70,14 +70,25 @@ ramp is dropped with a translation note.
 ## `<Video>` and `<OffthreadVideo>`
 
 ```tsx
-<Video src={staticFile("intro.mp4")} muted playsInline />
-<OffthreadVideo src={staticFile("intro.mp4")} muted />
+<Video src={staticFile("intro.mp4")} playsInline />
+<OffthreadVideo src={staticFile("intro.mp4")} />
 ```
 
 ```html
+<!-- intro.mp4 has an audio stream -->
 <video
-  muted
   playsinline
+  data-has-audio="true"
+  data-start="0"
+  data-duration="5"
+  data-track-index="0"
+  src="assets/intro.mp4"
+></video>
+
+<!-- intro.mp4 is silent (or the Remotion element is muted) -->
+<video
+  playsinline
+  muted
   data-start="0"
   data-duration="5"
   data-track-index="0"
@@ -89,8 +100,14 @@ ramp is dropped with a translation note.
 rendering. HF runs in headless Chrome already, so the off-thread variant
 collapses to a regular `<video>`.
 
-`muted` and `playsinline` are required for the runtime to autoplay
-(browser policy). Always emit them.
+`playsinline` is required for the runtime to autoplay (browser policy); always
+emit it. Check the source file for an audio stream first:
+`ffprobe -v error -select_streams a -show_entries stream=codec_type -of csv=p=0 <file>`
+(non-empty output means it has audio). Remotion `<Video>` maps to
+`<video playsinline>` + `data-has-audio="true"` only when the file has an audio
+stream and the Remotion source does not set `muted` or `volume={0}`; otherwise
+emit `muted`. Silent b-roll with `data-has-audio="true"` aborts the render
+(`ASSET_MEDIA_TYPE_MISMATCH`).
 
 ## `<Img>`
 

@@ -6,7 +6,8 @@
  */
 
 import sharp, { type OverlayOptions } from "sharp";
-import { readdirSync, readFileSync, writeFileSync, unlinkSync, existsSync } from "node:fs";
+import { readdirSync, readFileSync, unlinkSync, existsSync } from "node:fs";
+import { writeCaptureFileSync } from "./captureFile.js";
 import { join, extname, basename, dirname } from "node:path";
 
 interface ContactSheetOptions {
@@ -106,11 +107,13 @@ export async function createContactSheet(
     },
   }).composite(overlays);
 
-  if (extname(outputPath).toLowerCase() === ".png") {
-    await sheet.png().toFile(outputPath);
-  } else {
-    await sheet.jpeg({ quality }).toFile(outputPath);
-  }
+  // Encode to a buffer and write through the capture writer rather than
+  // `toFile`, which opens the path itself and would follow a planted link.
+  const encoded =
+    extname(outputPath).toLowerCase() === ".png"
+      ? await sheet.png().toBuffer()
+      : await sheet.jpeg({ quality }).toBuffer();
+  writeCaptureFileSync(outputPath, encoded);
 
   return outputPath;
 }
@@ -326,7 +329,7 @@ export async function createSvgContactSheet(
         .flatten({ background: { r: 245, g: 245, b: 245 } })
         .png()
         .toBuffer();
-      writeFileSync(tmpPath, thumb);
+      writeCaptureFileSync(tmpPath, thumb);
       tmpPaths.push(tmpPath);
       labels.push(svgFileNames[i]!.replace(".svg", ""));
     } catch {

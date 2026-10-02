@@ -1,5 +1,15 @@
-import { planCompositionAssembly } from "../compiler/compositionAssembly";
-import { scopeCssToComposition, wrapScopedCompositionScript } from "../compiler/compositionScoping";
+import {
+  planCompositionAssembly,
+  EXTRACTED_COMPOSITION_ASSET_SELECTOR,
+} from "../compiler/compositionAssembly";
+import {
+  scopeCssToComposition,
+  scopedModulePrelude,
+  wrapScopedCompositionScript,
+} from "../compiler/compositionScoping";
+import { parseImportMap } from "../compiler/importMaps";
+import { hasSameLink } from "../compiler/scriptRuns";
+import { parseLayoutDimension } from "./compositionDimension";
 import { markFlattenedInnerRoot } from "./flattenedRoot";
 import {
   applyCssVariables,
@@ -193,7 +203,7 @@ function resetCompositionHost(host: Element) {
  * inline-template path, and mutating it would leave a remount with no styles.
  */
 function stripExtractedCompositionAssets(node: ParentNode): void {
-  for (const el of Array.from(node.querySelectorAll("style, script"))) {
+  for (const el of Array.from(node.querySelectorAll(EXTRACTED_COMPOSITION_ASSET_SELECTOR))) {
     el.remove();
   }
 }
@@ -201,10 +211,10 @@ function stripExtractedCompositionAssets(node: ParentNode): void {
 function prepareFlattenedInnerRoot(innerRoot: HTMLElement): HTMLElement {
   const prepared = document.importNode(innerRoot, true) as HTMLElement;
   markFlattenedInnerRoot(prepared);
-  const w = prepared.getAttribute("data-width");
-  const h = prepared.getAttribute("data-height");
-  prepared.style.width = w ? `${w}px` : "100%";
-  prepared.style.height = h ? `${h}px` : "100%";
+  const w = parseLayoutDimension(prepared.getAttribute("data-width"));
+  const h = parseLayoutDimension(prepared.getAttribute("data-height"));
+  prepared.style.width = w === null ? "100%" : `${w}px`;
+  prepared.style.height = h === null ? "100%" : `${h}px`;
   return prepared;
 }
 
@@ -448,10 +458,10 @@ async function mountCompositionContent(params: {
     if (!rawHref) continue;
     const href = params.compositionUrl ? new URL(rawHref, params.compositionUrl).href : rawHref;
     if (params.compositionUrl && isSameDocumentUrl(href, params.compositionUrl)) continue;
-    if (document.head.querySelector(`link[href="${CSS.escape(href)}"]`)) continue;
     const clonedLink = link.cloneNode(true);
     if (!isLinkElement(clonedLink)) continue;
     clonedLink.href = href;
+    if (hasSameLink(document.head, clonedLink)) continue;
     document.head.appendChild(clonedLink);
     params.injectedLinks.push(clonedLink);
   }
@@ -533,6 +543,7 @@ async function mountCompositionContent(params: {
     params.host.appendChild(mountedContent);
   } else {
     params.host.innerHTML = params.fallbackBodyInnerHtml;
+    stripExtractedCompositionAssets(params.host);
   }
 
   // Stash the per-instance variables BEFORE running scripts. The scoped
@@ -552,8 +563,19 @@ async function mountCompositionContent(params: {
     injectedScript.async = false;
     if (scriptPayload.kind === "external") {
       injectedScript.src = scriptPayload.src;
+    } else if (scriptPayload.type.toLowerCase() === "importmap") {
+      const map = parseImportMap(scriptPayload.content, (url) =>
+        resolveScriptSourceUrl(url, params.compositionUrl),
+      );
+      injectedScript.textContent = map ? JSON.stringify(map) : scriptPayload.content;
     } else if (scriptPayload.type.toLowerCase() === "module") {
-      injectedScript.textContent = scriptPayload.content;
+      const prelude = scriptPayload.scopeCompositionId
+        ? scopedModulePrelude(
+            runtimeScopeCompositionId || scriptPayload.scopeCompositionId,
+            params.compositionUrl?.href,
+          )
+        : "";
+      injectedScript.textContent = prelude + scriptPayload.content;
     } else if (scriptPayload.scopeCompositionId) {
       injectedScript.textContent = wrapScopedCompositionScript(
         scriptPayload.content,
@@ -562,6 +584,7 @@ async function mountCompositionContent(params: {
         runtimeScopeSelector,
         runtimeScopeCompositionId || scriptPayload.scopeCompositionId,
         authoredRootId,
+        params.compositionUrl?.href,
       );
     } else {
       injectedScript.textContent = `(function(){${scriptPayload.content}})();`;

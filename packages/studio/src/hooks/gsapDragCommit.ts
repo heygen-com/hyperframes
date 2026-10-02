@@ -10,7 +10,7 @@ import {
 } from "../components/editor/manualEditsTypes";
 import { usePlayerStore } from "../player/store/playerStore";
 import { resolveTweenStart, resolveTweenDuration } from "../utils/globalTimeCompiler";
-import { roundTo3 } from "../utils/rounding";
+import { roundTo3, roundToLayoutPx } from "../utils/rounding";
 import { computeElementPercentage, writeTargetSelector } from "./gsapShared";
 import { computeDraggedGsapPosition } from "./draggedGsapPosition";
 import type { RuntimeTweenChange } from "./gsapRuntimePatch";
@@ -29,6 +29,7 @@ export interface GsapDragCommitCallbacks {
     options: {
       label: string;
       coalesceKey?: string;
+      coalesceMs?: number;
       softReload?: boolean;
       skipReload?: boolean;
       beforeReload?: () => void;
@@ -135,7 +136,7 @@ export async function materializeIfDynamic(
   void iframe;
   void commitMutation;
   void selection;
-  throw new GsapEditBlockedError("source-uneditable");
+  throw new GsapEditBlockedError("source-uneditable", "geometry-unresolved-source");
 }
 
 // ── Drag → GSAP position math ──────────────────────────────────────────────
@@ -272,14 +273,9 @@ export async function commitStaticGsapRotation(
 }
 
 /**
- * Commit a STATIC element resize as a `tl.set("#el",{width,height})` — the
- * single-source size channel for elements with no size animation (mirrors
- * `commitStaticGsapPosition`). Use this instead of a single-stop `keyframes`
- * tween: one keyframe at the playhead % renders NaN/0 at every other frame, so
- * the element collapses/disappears (worst when resized off the 0% mark). A `set`
- * holds the size at all times. Re-resizing an element that already has a size
- * `set` UPDATES it in place with one `update-properties`; a new element
- * gets one `add` with `method:"set"`.
+ * A static resize as `tl.set("#el",{width,height})`, only where the script already writes the size
+ * (else it is CSS). A set, not a one-stop keyframe tween, which renders NaN/0 off its keyframe.
+ * Updates an existing size set in place, else adds one.
  */
 export async function commitStaticGsapSize(
   selection: DomEditSelection,
@@ -288,8 +284,8 @@ export async function commitStaticGsapSize(
   existingSet: GsapAnimation | null,
   callbacks: GsapDragCommitCallbacks,
 ): Promise<void> {
-  const width = Math.round(size.width);
-  const height = Math.round(size.height);
+  const width = roundToLayoutPx(size.width);
+  const height = roundToLayoutPx(size.height);
   if (existingSet) {
     await callbacks.commitMutation(
       selection,
@@ -319,7 +315,7 @@ export async function commitStaticGsapSize(
 
 /** Rounded `n` when it's a positive finite number, else `fallback`. */
 function positiveOr(n: number, fallback: number): number {
-  return Number.isFinite(n) && n > 0 ? Math.round(n) : fallback;
+  return Number.isFinite(n) && n > 0 ? roundToLayoutPx(n) : fallback;
 }
 
 /**
@@ -365,8 +361,8 @@ export async function commitKeyframedSizeFromResize(
   const td = resolveTweenDuration(animatedTween);
   if (!(td > 0)) return false;
 
-  const newW = Math.round(size.width);
-  const newH = Math.round(size.height);
+  const newW = roundToLayoutPx(size.width);
+  const newH = roundToLayoutPx(size.height);
   const prior = resolvePriorSize(sizeSet, selection.element, newW, newH);
 
   const ct = usePlayerStore.getState().currentTime;

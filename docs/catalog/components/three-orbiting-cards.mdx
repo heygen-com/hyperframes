@@ -1,28 +1,28 @@
 ---
 title: "Three Orbiting Cards"
 description: "A Three.js-powered orbit scene driven by a paused GSAP timeline for deterministic renders."
+mode: "frame"
 ---
 
+import { CatalogDetail, CatalogSlot } from "/snippets/catalog-detail.jsx";
 import { InstallCommand } from "/snippets/install-command.jsx";
 
-## Install
+<CatalogDetail
+  previewSrc="/public/catalog/components/three-orbiting-cards.json"
+  compositionId="three-orbiting-cards"
+  compositionSrc="compositions/components/three-orbiting-cards.html"
+  title="Three Orbiting Cards"
+  description="A Three.js-powered orbit scene driven by a paused GSAP timeline for deterministic renders."
+  variables={[]}
+  meta={{"category":"Motion Primitives","badge":"Stable","codeLines":117}}
+  attribution={{"path":"registry/components/three-orbiting-cards","tags":["video-primitive","three-js","webgl","hyperframes-native"]}}
+  hasCode
+  rawUrl="https://raw.githubusercontent.com/heygen-com/hyperframes/main/registry/components/three-orbiting-cards/three-orbiting-cards.html"
+>
 
-<InstallCommand command="npx hyperframes add three-orbiting-cards" item="three-orbiting-cards" />
+<CatalogSlot slot="code">
 
-That writes one file: `compositions/components/three-orbiting-cards.html`.
-
-<iframe
-  className="w-full aspect-video rounded-xl border-0 bg-zinc-100 dark:bg-zinc-800"
-  title="three-orbiting-cards preview"
-  loading="lazy"
-  srcDoc={`<!doctype html><html><head><meta charset="utf-8"><style>html,body{margin:0;height:100%;overflow:hidden;background:transparent}hyperframes-player{display:block;width:100%;height:100%}</style><script src="https://cdn.jsdelivr.net/npm/@hyperframes/player@latest/dist/hyperframes-player.global.js"><\/script></head><body><script>fetch("/public/catalog/components/three-orbiting-cards.json").then(function(r){return r.json()}).then(function(d){var p=document.createElement("hyperframes-player");p.setAttribute("srcdoc",d.html);p.setAttribute("controls","");p.setAttribute("autoplay","");p.setAttribute("loop","");p.setAttribute("muted","");p.setAttribute("poster","https://static.heygen.ai/hyperframes-oss/docs/images/catalog/components/three-orbiting-cards.png");document.body.appendChild(p)});<\/script></body></html>`}
-/>
-
-## Source
-
-<Accordion title={`three-orbiting-cards.html`}>
-
-```html
+```html three-orbiting-cards.html
 <!--
   Three Orbiting Cards - advanced HyperFrames primitive.
 
@@ -142,11 +142,25 @@ That writes one file: `compositions/components/three-orbiting-cards.html`.
 </script>
 ```
 
-</Accordion>
+</CatalogSlot>
 
-## Usage
+<CatalogSlot slot="install">
 
-Open `compositions/components/three-orbiting-cards.html` and paste its contents into your composition. The comment header describes the timeline integration and any optional dependency setup.
+<InstallCommand command="npx hyperframes add three-orbiting-cards" item="three-orbiting-cards" />
+
+That writes one file: `compositions/components/three-orbiting-cards.html`.
+
+</CatalogSlot>
+
+<CatalogSlot slot="docs">
+
+## Paste it into your composition
+
+Open `compositions/components/three-orbiting-cards.html` and copy what is inside into your own composition.
+The file opens with a comment header that walks you through it.
+
+A component has no size or duration of its own. It takes both from the composition
+you paste it into.
 
 {/* hf:generated-footer */}
 
@@ -157,3 +171,7 @@ Tagged `video-primitive` `three-js` `webgl` `hyperframes-native`.
 - [Browse the complete Catalog](/catalog)
 - [Add assets and Catalog items in Studio](/studio/assets-and-blocks)
 - [Build a richer composition](/go-further)
+
+</CatalogSlot>
+
+</CatalogDetail>

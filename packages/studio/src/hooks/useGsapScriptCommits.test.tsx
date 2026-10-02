@@ -10,13 +10,16 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 const patchRuntimeTweenInPlace = vi.fn<(...args: unknown[]) => boolean>();
 const applySoftReload = vi.fn<(...args: unknown[]) => string>();
 const trackStudioEvent = vi.fn();
+const readNestedFiles = vi.fn<(...args: unknown[]) => unknown>(() => null);
 
 vi.mock("./gsapRuntimePatch", () => ({
   patchRuntimeTweenInPlace: (...args: unknown[]) => patchRuntimeTweenInPlace(...args),
 }));
-vi.mock("../utils/gsapSoftReload", () => ({
+vi.mock("../utils/gsapSoftReload", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("../utils/gsapSoftReload")>()),
   applySoftReload: (...args: unknown[]) => applySoftReload(...args),
   extractGsapScriptText: () => "",
+  readNestedFiles: (...args: unknown[]) => readNestedFiles(...args),
 }));
 vi.mock("../utils/studioTelemetry", () => ({
   trackStudioEvent: (...args: unknown[]) => trackStudioEvent(...args),
@@ -30,6 +33,7 @@ import type { DomEditSelection } from "../components/editor/domEditingTypes";
 import type { MutationResult } from "./gsapScriptCommitTypes";
 import { persistSdkSerialize } from "../utils/sdkCutover";
 import { applyPreviewSync, useGsapScriptCommits } from "./useGsapScriptCommits";
+import { hasStudioPendingEdits } from "../utils/studioPendingEdits";
 
 // ── applyPreviewSync (pure preview-sync decision) ────────────────────────────
 
@@ -363,6 +367,7 @@ let cleanup: (() => void) | null = null;
 function renderCommitHook(
   options: {
     writeProjectFile?: (path: string, content: string) => Promise<void>;
+    iframe?: HTMLIFrameElement;
   } = {},
 ) {
   const reloadPreview = vi.fn();
@@ -377,7 +382,7 @@ function renderCommitHook(
     captured.api = useGsapScriptCommits({
       projectIdRef: { current: "proj-1" },
       activeCompPath: "index.html",
-      previewIframeRef: { current: FAKE_IFRAME },
+      previewIframeRef: { current: options.iframe ?? FAKE_IFRAME },
       editHistory: { recordEdit },
       reloadPreview,
       onCacheInvalidate,
@@ -425,6 +430,24 @@ function mockFetchResult(over: Partial<MutationResult> = {}): void {
     vi.fn(async () => ({ ok: true, json: async () => body }) as unknown as Response),
   );
 }
+
+describe("a GSAP script commit", () => {
+  it("counts as a pending edit from its call until it lands, so a quick Cmd+Z waits for it", async () => {
+    mockFetchResult();
+    const deps = renderCommitHook();
+    let committed!: Promise<unknown>;
+    act(() => {
+      committed = deps.api.commitMutation(
+        selection,
+        { type: "remove-all-keyframes", animationId: "a" },
+        { label: "Remove all keyframes" },
+      );
+    });
+    expect(hasStudioPendingEdits()).toBe(true);
+    await act(async () => void (await committed));
+    expect(hasStudioPendingEdits()).toBe(false);
+  });
+});
 
 describe("runCommit — instantPatch wiring", () => {
   it("explains a deliberate mutation that the server safely rejected as unchanged", async () => {
@@ -559,11 +582,89 @@ describe("runCommit — instantPatch wiring", () => {
     patchRuntimeTweenInPlace.mockReset();
     applySoftReload.mockReset();
     trackStudioEvent.mockReset();
+    readNestedFiles.mockReset().mockReturnValue(null);
   });
   afterEach(() => {
     cleanup?.();
     cleanup = null;
     vi.unstubAllGlobals();
+  });
+
+  const NESTED_SCRIPT = 'window.__timelines["root"] = tl;';
+  const SUB = `<template><div data-composition-id="sub"><div id="nwid" style="left: 40px"></div></div></template>`;
+
+  // A preview whose top-level timeline tweens an element written in a nested composition file.
+  function nestedPreview(): HTMLIFrameElement {
+    const doc = document.implementation.createHTMLDocument("");
+    doc.body.innerHTML = `<div data-composition-id="root"><div data-composition-file="compositions/sub.html"><div id="nwid"></div></div></div>`;
+    const nwid = doc.getElementById("nwid")!;
+    const tween = { targets: () => [nwid], vars: { width: 400 } };
+    return {
+      contentDocument: doc,
+      contentWindow: { __timelines: { root: { getChildren: () => [tween] } } },
+    } as unknown as HTMLIFrameElement;
+  }
+
+  // The mutation endpoint answers the commit; the files endpoint serves the nested file, or fails.
+  function mockServer(fileOk: boolean): ReturnType<typeof vi.fn> {
+    const body = {
+      ok: true,
+      changed: true,
+      before: "BEFORE",
+      after: "AFTER",
+      scriptText: NESTED_SCRIPT,
+    };
+    const fetch = vi.fn(async (url: string) =>
+      url.includes("/files/")
+        ? ({ ok: fileOk, json: async () => ({ content: SUB }) } as unknown as Response)
+        : ({ ok: true, json: async () => body } as unknown as Response),
+    );
+    vi.stubGlobal("fetch", fetch);
+    return fetch;
+  }
+
+  async function useRealNestedRead() {
+    const actual =
+      await vi.importActual<typeof import("../utils/gsapSoftReload")>("../utils/gsapSoftReload");
+    readNestedFiles.mockImplementation((...args) =>
+      actual.readNestedFiles(...(args as Parameters<typeof actual.readNestedFiles>)),
+    );
+  }
+
+  it("hands the soft reload the nested composition file it read for a reset element", async () => {
+    await useRealNestedRead();
+    applySoftReload.mockReturnValue("applied");
+    const fetch = mockServer(true);
+    const deps = renderCommitHook({ iframe: nestedPreview() });
+
+    await act(async () => {
+      await deps.api.commitMutation(selection, { x: 10 }, { label: "drag", softReload: true });
+    });
+
+    expect(fetch).toHaveBeenCalledWith(expect.stringContaining("/files/compositions%2Fsub.html"));
+    expect(applySoftReload).toHaveBeenCalledWith(
+      expect.anything(),
+      NESTED_SCRIPT,
+      expect.objectContaining({ nestedFiles: new Map([["compositions/sub.html", SUB]]) }),
+    );
+  });
+
+  it("reloads the preview in full when that nested file cannot be read", async () => {
+    await useRealNestedRead();
+    applySoftReload.mockReturnValue("cannot-soft-reload");
+    mockServer(false);
+    const deps = renderCommitHook({ iframe: nestedPreview() });
+
+    await act(async () => {
+      await deps.api.commitMutation(selection, { x: 10 }, { label: "drag", softReload: true });
+    });
+
+    expect(applySoftReload).toHaveBeenCalledWith(
+      expect.anything(),
+      NESTED_SCRIPT,
+      expect.objectContaining({ nestedFiles: null }),
+    );
+    expect(deps.reloadPreview).toHaveBeenCalledTimes(1);
   });
 
   it("instantPatch succeeds: persists, invalidates cache, NO reload", async () => {

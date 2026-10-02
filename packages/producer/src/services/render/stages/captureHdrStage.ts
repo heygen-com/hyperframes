@@ -222,7 +222,7 @@ export async function runCaptureHdrStage(
     await initializeSession(domSession);
     assertNotAborted();
     lastBrowserConsole = domSession.browserConsoleBuffer;
-    await initTransparentBackground(domSession.page);
+    await initTransparentBackground(domSession.page, { clearCompositionRoot: true });
 
     // ── Scene detection for shader transitions ──────────────────────────
     const transitionMeta: HdrTransitionMeta[] = await domSession.page.evaluate(() => {

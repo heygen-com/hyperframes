@@ -10,6 +10,7 @@ import {
   addAnimationToScript,
   addKeyframeToScript,
   convertToKeyframesFromScript,
+  copyAnimationsInScript,
   removeAnimationFromScript,
   removeKeyframeFromScript,
   updateAnimationInScript,
@@ -443,5 +444,94 @@ window.__timelines["t"] = tl;`;
     const reparsed = parseGsapScript(result).animations[0];
     expect(reparsed.keyframes).toBeTruthy();
     expect(reparsed.global).toBeFalsy();
+  });
+});
+
+describe("copyAnimationsInScript", () => {
+  const script = `\
+gsap.set("#goodbye", { rotation: 4 });
+var tl = gsap.timeline({ paused: true });
+tl.from("#goodbye", { opacity: 0, y: 40, ease: EASE }, 1);
+tl.to("#title", { opacity: 0.5, duration: 10 });
+function pop(sel) { tl.to(sel, { scale: 1.2 }, 2); }
+pop("#goodbye");
+window.__timelines["t"] = tl;`;
+
+  it("adds each tween on the original for the copy, moved by the delta, with its own argument text", () => {
+    const result = copyAnimationsInScript(script, "#goodbye", "#goodbye-2", 3);
+    expect(result).toContain(`tl.from("#goodbye-2", { opacity: 0, y: 40, ease: EASE }, 4);`);
+    expect(result).toContain(`gsap.set("#goodbye-2", { rotation: 4 });\nvar tl`);
+    const copies = parseGsapScriptAcorn(result)?.animations.filter(
+      (a) => a.targetSelector === "#goodbye-2" && a.method !== "set",
+    );
+    expect(copies?.map((a) => a.position)).toEqual([4]);
+    // The original lines are left as they were; the tween's copy ends the timeline's block.
+    expect(result.replace(/\n?.*goodbye-2.*/g, "")).toBe(script.replace(/\n?.*goodbye-2.*/g, ""));
+    expect(
+      result.endsWith(`= tl;\ntl.from("#goodbye-2", { opacity: 0, y: 40, ease: EASE }, 4);`),
+    ).toBe(true);
+  });
+
+  it("copies no tween whose start is not a number, rather than guess it", () => {
+    const unsure = `var tl = gsap.timeline();
+tl.to("#title", { x: 1, duration: 2 });
+tl.from("#goodbye", { opacity: 0 });
+tl.addLabel("end");
+tl.to("#goodbye", { x: 2 }, "end");`;
+    expect(copyAnimationsInScript(unsure, "#goodbye", "#goodbye-2", 3)).toBe(unsure);
+  });
+
+  it("keeps the copy in the block that declares the timeline", () => {
+    const guarded = `if (window.gsap) {
+  const tl = gsap.timeline();
+  tl.from("#goodbye", { opacity: 0 }, 1);
+  window.__timelines["main"] = tl;
+}`;
+    expect(copyAnimationsInScript(guarded, "#goodbye", "#goodbye-2", 3)).toContain(
+      `  window.__timelines["main"] = tl;\n  tl.from("#goodbye-2", { opacity: 0 }, 4);\n}`,
+    );
+  });
+
+  it("copies no tween inside a callback or a guard, which may never run", () => {
+    const deferred = `var tl = gsap.timeline();
+el.addEventListener("click", () => tl.to("#goodbye", { x: 1 }, 1));
+window.go && tl.from("#goodbye", { opacity: 0 }, 1);
+tl.call(() => tl.to("#goodbye", { y: 1 }, 1));
+tl.to("#title", { x: 1 }, 0).from("#goodbye", { opacity: 0 }, 2);`;
+    const result = copyAnimationsInScript(deferred, "#goodbye", "#goodbye-2", 3);
+    expect(result.match(/goodbye-2/g)).toEqual(["goodbye-2"]);
+    expect(result).toContain(`tl.from("#goodbye-2", { opacity: 0 }, 5);`);
+  });
+
+  it("copies no set that is the bare body of an if or an else", () => {
+    const guarded = `var tl = gsap.timeline();
+if (window.go) gsap.set("#goodbye", { x: 9 });
+else gsap.set("#goodbye", { x: 1 });`;
+    expect(copyAnimationsInScript(guarded, "#goodbye", "#goodbye-2", 3)).toBe(guarded);
+  });
+
+  it("puts the copy before the block's return", () => {
+    const built = `function build() {
+  const tl = gsap.timeline();
+  tl.from("#goodbye", { opacity: 0, stagger: 0.1 }, 1);
+  return tl;
+}`;
+    expect(copyAnimationsInScript(built, "#goodbye", "#goodbye-2", 3)).toContain(
+      `  tl.from("#goodbye-2", { opacity: 0, stagger: 0.1 }, 4);\n  return tl;`,
+    );
+  });
+
+  it("puts a set's copy right after it, where what it reads is defined", () => {
+    const late = `const tl = gsap.timeline();
+const X = 40;
+gsap.set("#goodbye", { x: X });
+tl.from("#goodbye", { opacity: 0 }, 1);`;
+    expect(copyAnimationsInScript(late, "#goodbye", "#goodbye-2", 3)).toContain(
+      `gsap.set("#goodbye", { x: X });\ngsap.set("#goodbye-2", { x: X });`,
+    );
+  });
+
+  it("leaves the script as it was when nothing targets the original", () => {
+    expect(copyAnimationsInScript(script, "#tag", "#tag-2", 3)).toBe(script);
   });
 });

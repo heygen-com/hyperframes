@@ -34,5 +34,10 @@ export function useTimelineLaneRowIndexes(
     [groups],
   );
 
-  return { logicalRowsByTrack, groupByAnchor };
+  const groupMemberTracks = useMemo(
+    () => new Set(groups.flatMap((group) => group.memberTracks)),
+    [groups],
+  );
+
+  return { logicalRowsByTrack, groupByAnchor, groupMemberTracks };
 }

@@ -9,6 +9,8 @@
  * transition between variants.
  */
 
+import type { CapturePath } from "./observability.js";
+
 export type CapturePlanTarget = Readonly<{
   kind: "sdr_streaming" | "sdr_disk";
   workerCount: number;
@@ -49,7 +51,39 @@ export interface HdrLayeredCapturePlan extends CapturePlanBase {
   readonly forceParallelStream: false;
 }
 
-export type CapturePlan = SdrStreamingCapturePlan | SdrDiskCapturePlan | HdrLayeredCapturePlan;
+/**
+ * Long-form capture (spec §5 Phase 2): the frame range is split into
+ * closed-GOP segments, each streamed into its own encoder and concat-copied,
+ * so scratch is encoded video and a crash costs one segment.
+ */
+export interface SdrSegmentedCapturePlan extends CapturePlanBase {
+  readonly kind: "sdr_segmented";
+  readonly forceParallelStream: false;
+}
+
+export type CapturePlan =
+  | SdrStreamingCapturePlan
+  | SdrDiskCapturePlan
+  | HdrLayeredCapturePlan
+  | SdrSegmentedCapturePlan;
+
+/**
+ * Telemetry name for the stage a plan runs on. Exhaustive over `CapturePlan`,
+ * so a new plan kind fails to compile until it declares its capture path
+ * rather than silently reporting the wrong one.
+ */
+export function capturePathForPlanKind(kind: CapturePlan["kind"]): CapturePath {
+  switch (kind) {
+    case "sdr_streaming":
+      return "streaming";
+    case "sdr_disk":
+      return "disk";
+    case "hdr_layered":
+      return "hdr_layered";
+    case "sdr_segmented":
+      return "segmented";
+  }
+}
 
 export interface CreateCapturePlanInput {
   workerCount: number;
@@ -60,6 +94,8 @@ export interface CreateCapturePlanInput {
   usePageSideCompositing: boolean;
   hasHdrContent: boolean;
   needsAlpha: boolean;
+  /** Opt in to segmented capture; honoured only for single-worker streaming renders. */
+  useSegmentedCapture?: boolean;
   routing?: CaptureRouting;
 }
 
@@ -160,6 +196,16 @@ export function createCapturePlan(input: CreateCapturePlanInput): CapturePlan {
       forceParallelStream: false,
     });
   }
+  // Checked before `useStreamingEncode`, which answers a question segmented
+  // capture does not ask: that flag is about ONE encoder for the whole render
+  // and so goes false for multi-worker, while a segmented render gives every
+  // worker its own. Whether streaming is viable at all is settled by the
+  // caller's predicate (`shouldSegmentCapture`) before this is ever true.
+  // forceParallelStream stays false for the same reason: the interleaved
+  // single-encoder writer has nothing to do here.
+  if (input.useSegmentedCapture === true) {
+    return Object.freeze({ ...base, kind: "sdr_segmented", forceParallelStream: false });
+  }
   if (input.useStreamingEncode) {
     return Object.freeze({ ...base, kind: "sdr_streaming" });
   }
@@ -172,7 +218,32 @@ function revertedRouting(routing: CaptureRouting): CaptureRouting {
 }
 
 /** Pure, exhaustive capture fallback transition. The input plan is never mutated. */
+/**
+ * Segmented capture keeps segmenting through a drawElement failure (only the
+ * capture engine changes) but drops to a plain streaming render for anything
+ * else: no encoder means no per-segment encoder either, and until Phase 2c
+ * adds per-segment retry a capture failure has to retry the whole render.
+ */
+function replanSegmentedAfterFailure(
+  plan: SdrSegmentedCapturePlan,
+  failure: CapturePlanFailure,
+): CapturePlan {
+  const keepSegmenting =
+    failure.kind === "draw_element_verification" || failure.kind === "draw_element_capture";
+  return createCapturePlan({
+    ...plan,
+    forceScreenshot: keepSegmenting || failure.kind === "capture_failure",
+    useStreamingEncode: true,
+    useLayeredComposite: false,
+    useSegmentedCapture: keepSegmenting,
+    forceParallelStream: false,
+    routing: revertedRouting(plan.routing),
+  });
+}
+
 export function replanAfterFailure(plan: CapturePlan, failure: CapturePlanFailure): CapturePlan {
+  // Before the sdr_streaming guard below, which would otherwise throw.
+  if (plan.kind === "sdr_segmented") return replanSegmentedAfterFailure(plan, failure);
   // Disk-path drawElement self-verification (parallel disk workers under the
   // explicit fast-capture opt-in) can also trip — the retry stays on the disk
   // path but forces the screenshot baseline.
@@ -208,11 +279,19 @@ export function replanAfterFailure(plan: CapturePlan, failure: CapturePlanFailur
   // low-resource target. It is also the viable choice when disk, rather than
   // RAM, makes the preferred fallback impossible — for any routing kind
   // (see drawElementVerificationFailure for when that flag is populated).
+  // An interleaved parallel-streaming plan (the non-DE router's shape) never
+  // retries at N workers. With forceParallelStream off, N workers means
+  // contiguous-chunk streaming, where worker k+1's first frame waits for ALL
+  // of worker k's: throughput serialises to roughly one worker while N Chrome
+  // processes run, and the no-progress watchdog can re-trip on the same
+  // render. Single-worker streaming is the fully hardened path — typed stall,
+  // init-excluded clock, routing-independent retry — so that is the target.
+  const retryAtOneWorker = isMemoryExhaustion || plan.forceParallelStream;
   const fallback =
     plan.routing.kind === "default"
       ? {
           kind: plan.kind,
-          workerCount: isMemoryExhaustion ? 1 : plan.workerCount,
+          workerCount: retryAtOneWorker ? 1 : plan.workerCount,
           forceParallelStream: false,
         }
       : isMemoryExhaustion || diskFallbackUnavailable

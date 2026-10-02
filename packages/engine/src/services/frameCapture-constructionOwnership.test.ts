@@ -41,7 +41,13 @@ describe("createCaptureSession construction ownership", () => {
         createCaptureSession(
           "http://127.0.0.1:3000",
           outputDir,
-          { width: 320, height: 180, fps: { num: 30, den: 1 }, format: "jpeg" },
+          {
+            width: 320,
+            height: 180,
+            fps: { num: 30, den: 1 },
+            format: "jpeg",
+            requiresWebGpu: false,
+          },
           null,
           {
             browserGpuMode: "software",
@@ -83,7 +89,13 @@ describe("createCaptureSession construction ownership", () => {
         createCaptureSession(
           "http://127.0.0.1:3000",
           outputDir,
-          { width: 320, height: 180, fps: { num: 30, den: 1 }, format: "jpeg" },
+          {
+            width: 320,
+            height: 180,
+            fps: { num: 30, den: 1 },
+            format: "jpeg",
+            requiresWebGpu: false,
+          },
           null,
           {
             browserGpuMode: "software",
@@ -129,7 +141,13 @@ describe("createCaptureSession construction ownership", () => {
         createCaptureSession(
           "http://127.0.0.1:3000",
           outputDir,
-          { width: 320, height: 180, fps: { num: 30, den: 1 }, format: "jpeg" },
+          {
+            width: 320,
+            height: 180,
+            fps: { num: 30, den: 1 },
+            format: "jpeg",
+            requiresWebGpu: false,
+          },
           null,
           {
             browserGpuMode: "software",

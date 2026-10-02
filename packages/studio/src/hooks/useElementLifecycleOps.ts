@@ -3,7 +3,7 @@ import { useCallback } from "react";
 import { usePlayerStore } from "../player";
 import {
   readProjectFileContent,
-  saveProjectFilesWithHistory,
+  saveServerRewriteWithHistory,
   type DomEditCommitBaseParams,
 } from "../utils/studioFileHistory";
 import { createStudioSaveHttpError } from "../utils/studioSaveDiagnostics";
@@ -56,7 +56,7 @@ let zReorderGestureSeq = 0;
  * fold can only ever merge records of the SAME gesture.
  *
  * Exported as THE single implementation of the key: the canvas z-order wiring
- * (PreviewOverlays) mints it once per gesture and passes the same instance to
+ * (ConnectedDomEditOverlay) mints it once per gesture and passes the same instance to
  * both the z persist and the timeline lane mirror (useCanvasZOrderTimelineMirror)
  * so editHistory folds the z write and the track write into one undo entry —
  * recomputing the key per record would silently split the undo.
@@ -111,8 +111,6 @@ export function useElementLifecycleOps({
         (candidate) => (candidate.sourceFile || activeCompPath || "index.html") === targetPath,
       );
       try {
-        const originalContent = await readProjectFileContent(pid, targetPath);
-
         const patchTargets = sameFile.map((member) => buildDomEditPatchTarget(member));
         if (patchTargets.some((t) => !t.id && !t.selector && !t.hfId)) {
           throw new Error("Selected element has no patchable target");
@@ -125,6 +123,7 @@ export function useElementLifecycleOps({
           .map((member) => member.hfId)
           .filter((hfId): hfId is string => Boolean(hfId));
         if (onTrySdkDelete && hfIds.length === sameFile.length) {
+          const originalContent = await readProjectFileContent(pid, targetPath);
           let allHandled = true;
           for (const hfId of hfIds) {
             // The SDK owns the document it edits, so every member is removed
@@ -150,28 +149,41 @@ export function useElementLifecycleOps({
         // cost a round trip and a rewrite of the file EACH, and a canvas
         // selection runs to hundreds of members — the file ended up correct, but
         // only after long enough that Delete looked like it had done nothing.
-        const removeResponse = await fetch(
-          buildProjectApiPath(
-            pid,
-            `/file-mutations/remove-elements/${encodeURIComponent(targetPath)}`,
-          ),
-          {
-            method: "POST",
-            headers: { "Content-Type": "application/json", ...studioWriteHeaders() },
-            body: JSON.stringify({ targets: patchTargets }),
+        const deleted = await saveServerRewriteWithHistory({
+          projectId: pid,
+          path: targetPath,
+          label: "Delete element",
+          writeFile: writeProjectFile,
+          recordEdit: editHistory.recordEdit,
+          rewrite: async (originalContent) => {
+            const removeResponse = await fetch(
+              buildProjectApiPath(
+                pid,
+                `/file-mutations/remove-elements/${encodeURIComponent(targetPath)}`,
+              ),
+              {
+                method: "POST",
+                headers: { "Content-Type": "application/json", ...studioWriteHeaders() },
+                body: JSON.stringify({ targets: patchTargets }),
+              },
+            );
+            if (!removeResponse.ok) {
+              throw await createStudioSaveHttpError(
+                removeResponse,
+                `Failed to delete element from ${targetPath}`,
+              );
+            }
+            const removeData = (await removeResponse.json()) as {
+              changed?: boolean;
+              content?: string;
+            };
+            if (!removeData.changed) return null;
+            return {
+              disk: typeof removeData.content === "string" ? removeData.content : originalContent,
+            };
           },
-        );
-        if (!removeResponse.ok) {
-          throw await createStudioSaveHttpError(
-            removeResponse,
-            `Failed to delete element from ${targetPath}`,
-          );
-        }
-        const removeData = (await removeResponse.json()) as {
-          changed?: boolean;
-          content?: string;
-        };
-        if (!removeData.changed) {
+        });
+        if (!deleted) {
           // A member the file no longer holds simply does not match, which is
           // normal for one nested inside another member already removed. Nothing
           // matching at all means the preview is describing a document the file
@@ -180,20 +192,6 @@ export function useElementLifecycleOps({
           showToast("Nothing to delete, the preview was out of date. Try again.");
           return domEditCommitDeclined("preview-stale");
         }
-        const patchedContent =
-          typeof removeData.content === "string" ? removeData.content : originalContent;
-        await saveProjectFilesWithHistory({
-          projectId: pid,
-          label: "Delete element",
-          kind: "timeline",
-          files: { [targetPath]: patchedContent },
-          readFile: async () => originalContent,
-          // remove-element already wrote the removal, so disk holds THAT — not
-          // the content read at the top. Undo still goes back to the original.
-          diskContent: { [targetPath]: patchedContent },
-          writeFile: writeProjectFile,
-          recordEdit: editHistory.recordEdit,
-        });
 
         clearDomSelection();
         usePlayerStore.getState().setSelectedElementId(null);
@@ -389,15 +387,7 @@ export function useElementLifecycleOps({
     [commitDomEditPatchBatches, onReorderShadow],
   );
 
-  const handleDomEditElementDelete = useCallback(
-    async (selection: DomEditSelection) => {
-      await handleDomEditElementsDelete([selection]);
-    },
-    [handleDomEditElementsDelete],
-  );
-
   return {
-    handleDomEditElementDelete,
     handleDomEditElementsDelete,
     handleDomZIndexReorderCommit,
   };

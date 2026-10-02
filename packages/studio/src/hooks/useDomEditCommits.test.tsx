@@ -7,7 +7,6 @@ import type { MutableRefObject } from "react";
 import type { DomEditSelection, DomEditTextField } from "../components/editor/domEditing";
 import type { ImportedFontAsset } from "../components/editor/fontAssets";
 import { usePlayerStore } from "../player";
-import { StudioSaveHttpError } from "../utils/studioSaveDiagnostics";
 import { createDomEditSaveQueue } from "../utils/domEditSaveQueue";
 import { trackStudioEvent } from "../utils/studioTelemetry";
 import type { CutoverResult } from "../utils/sdkCutover";
@@ -42,6 +41,7 @@ interface RenderDomEditCommitsOptions {
   onTrySdkPersist?: () => Promise<CutoverResult>;
   queueDomEditSave?: <T>(save: () => Promise<T>) => Promise<T>;
   projectIdRef?: MutableRefObject<string | null>;
+  readOnlyPreview?: boolean;
 }
 
 type FetchHandler = (
@@ -228,8 +228,11 @@ function renderDomEditCommits(
       applyDomSelection: vi.fn(),
       clearDomSelection: vi.fn(),
       refreshDomEditSelectionFromPreview: vi.fn(),
-      buildDomSelectionFromTarget: vi.fn(async () => null),
+      buildDomSelectionFromTarget: vi.fn(async (target: HTMLElement) =>
+        target === selection.element ? selection : null,
+      ),
       onTrySdkPersist: options.onTrySdkPersist,
+      readOnlyPreview: options.readOnlyPreview ?? false,
     });
     return null;
   }
@@ -263,98 +266,100 @@ describe("useDomEditCommits z-index reorder persistence", () => {
     document.body.replaceChildren();
   });
 
-  it("persists an N-element reorder with one batch POST, one undo entry, and NO iframe reload", async () => {
-    const original =
-      '<div id="a" style="z-index: 1"></div><div id="b" style="z-index: 2"></div><div id="c" style="z-index: 3"></div>';
-    const after =
-      '<div id="a" style="z-index: 3"></div><div id="b" style="z-index: 2"></div><div id="c" style="z-index: 1"></div>';
-    const fetchMock = vi.fn(
-      async (
-        input: Parameters<typeof fetch>[0],
-        _init?: Parameters<typeof fetch>[1],
-      ): Promise<Response> => {
-        const url = requestUrl(input);
-        if (url.endsWith("/file-mutations/patch-element-batches")) {
-          return jsonResponse({
-            durable: true,
-            files: [
-              {
-                sourceFile: "index.html",
-                changed: true,
-                matched: [true, true, true],
-                before: original,
-                after,
-              },
-            ],
-          });
-        }
-        throw new Error(`Unexpected fetch: ${url}`);
-      },
-    );
-    vi.stubGlobal("fetch", fetchMock);
-    const { iframe, element } = createPreviewElement(
-      '<div data-hf-id="hf-card"></div><div id="b"></div><div id="c"></div>',
-    );
-    element.id = "a";
-    const elements = [
-      element,
-      iframe.contentDocument!.getElementById("b")!,
-      iframe.contentDocument!.getElementById("c")!,
-    ];
-    const rendered = renderDomEditCommits(createSelection(element), iframe);
+  it.each([false, true])(
+    "persists an N-element reorder with one batch POST, one undo entry, and NO iframe reload (read-only preview %s: the timeline's z sync stays editable)",
+    async (readOnlyPreview) => {
+      const original =
+        '<div id="a" style="z-index: 1"></div><div id="b" style="z-index: 2"></div><div id="c" style="z-index: 3"></div>';
+      const after =
+        '<div id="a" style="z-index: 3"></div><div id="b" style="z-index: 2"></div><div id="c" style="z-index: 1"></div>';
+      const fetchMock = vi.fn(
+        async (
+          input: Parameters<typeof fetch>[0],
+          _init?: Parameters<typeof fetch>[1],
+        ): Promise<Response> => {
+          const url = requestUrl(input);
+          if (url.endsWith("/file-mutations/patch-element-batches")) {
+            return jsonResponse({
+              durable: true,
+              files: [
+                {
+                  sourceFile: "index.html",
+                  changed: true,
+                  matched: [true, true, true],
+                  before: original,
+                  after,
+                },
+              ],
+            });
+          }
+          throw new Error(`Unexpected fetch: ${url}`);
+        },
+      );
+      vi.stubGlobal("fetch", fetchMock);
+      const { iframe, element } = createPreviewElement(
+        '<div data-hf-id="hf-card"></div><div id="b"></div><div id="c"></div>',
+      );
+      element.id = "a";
+      const elements = [
+        element,
+        iframe.contentDocument!.getElementById("b")!,
+        iframe.contentDocument!.getElementById("c")!,
+      ];
+      const rendered = renderDomEditCommits(createSelection(element), iframe, { readOnlyPreview });
 
-    try {
-      await act(async () => {
-        await rendered.hook.handleDomZIndexReorderCommit(
-          elements.map((item, index) => ({
-            element: item,
-            zIndex: 3 - index,
-            id: item.id,
-            sourceFile: "index.html",
-          })),
-          "z-reorder:test",
+      try {
+        await act(async () => {
+          await rendered.hook.handleDomZIndexReorderCommit(
+            elements.map((item, index) => ({
+              element: item,
+              zIndex: 3 - index,
+              id: item.id,
+              sourceFile: "index.html",
+            })),
+            "z-reorder:test",
+          );
+        });
+
+        const batchPosts = fetchMock.mock.calls.filter(([input]) =>
+          requestUrl(input).endsWith("/file-mutations/patch-element-batches"),
         );
-      });
-
-      const batchPosts = fetchMock.mock.calls.filter(([input]) =>
-        requestUrl(input).endsWith("/file-mutations/patch-element-batches"),
-      );
-      const singlePosts = fetchMock.mock.calls.filter(([input]) =>
-        requestUrl(input).includes("/file-mutations/patch-elements-batch/"),
-      );
-      expect(batchPosts).toHaveLength(1);
-      expect(singlePosts).toHaveLength(0);
-      expect(JSON.parse(String(batchPosts[0]?.[1]?.body))).toEqual({
-        batches: [
-          {
-            sourceFile: "index.html",
-            patches: expect.arrayContaining([
-              expect.objectContaining({ target: expect.objectContaining({ id: "a" }) }),
-              expect.objectContaining({ target: expect.objectContaining({ id: "b" }) }),
-              expect.objectContaining({ target: expect.objectContaining({ id: "c" }) }),
-            ]),
-          },
-        ],
-      });
-      expect(rendered.recordEdit).toHaveBeenCalledTimes(1);
-      expect(rendered.recordEdit).toHaveBeenCalledWith({
-        label: "Reorder layers",
-        kind: "manual",
-        coalesceKey: "z-reorder:test",
-        // Unbounded per-gesture fold window (keys are unique per gesture):
-        // the z entry and its mirror/lane counterpart fold across the server
-        // round-trip that separates them.
-        coalesceMs: Number.POSITIVE_INFINITY,
-        files: { "index.html": { before: original, after } },
-      });
-      // FIX: a z-only reorder must NOT remount the preview iframe ("the blink").
-      // The live DOM + store already hold the final state and the server matched
-      // every style-only patch, so the reload is provably redundant.
-      expect(rendered.reloadPreview).not.toHaveBeenCalled();
-    } finally {
-      rendered.cleanup();
-    }
-  });
+        const singlePosts = fetchMock.mock.calls.filter(([input]) =>
+          requestUrl(input).includes("/file-mutations/patch-elements-batch/"),
+        );
+        expect(batchPosts).toHaveLength(1);
+        expect(singlePosts).toHaveLength(0);
+        expect(JSON.parse(String(batchPosts[0]?.[1]?.body))).toEqual({
+          batches: [
+            {
+              sourceFile: "index.html",
+              patches: expect.arrayContaining([
+                expect.objectContaining({ target: expect.objectContaining({ id: "a" }) }),
+                expect.objectContaining({ target: expect.objectContaining({ id: "b" }) }),
+                expect.objectContaining({ target: expect.objectContaining({ id: "c" }) }),
+              ]),
+            },
+          ],
+        });
+        expect(rendered.recordEdit).toHaveBeenCalledTimes(1);
+        expect(rendered.recordEdit).toHaveBeenCalledWith({
+          label: "Reorder layers",
+          coalesceKey: "z-reorder:test",
+          // Unbounded per-gesture fold window (keys are unique per gesture):
+          // the z entry and its mirror/lane counterpart fold across the server
+          // round-trip that separates them.
+          coalesceMs: Number.POSITIVE_INFINITY,
+          files: { "index.html": { before: original, after } },
+        });
+        // FIX: a z-only reorder must NOT remount the preview iframe ("the blink").
+        // The live DOM + store already hold the final state and the server matched
+        // every style-only patch, so the reload is provably redundant.
+        expect(rendered.reloadPreview).not.toHaveBeenCalled();
+      } finally {
+        rendered.cleanup();
+      }
+    },
+  );
 
   it("falls back to reloading when the server response omits matched[]", async () => {
     // Without a matched[] confirmation the persist can't be proven in sync with
@@ -893,7 +898,7 @@ describe("useDomEditCommits rich-text persist handling", () => {
     }
   });
 
-  it("does not retarget a commit onto a replacement preview node", async () => {
+  it("does not retarget a commit onto a replacement preview node, and says the text was not saved", async () => {
     const fetchMock = stubPatchFetch({ ok: true, changed: true, matched: true });
     const html = '<span style="color: blue">After</span>';
     const { iframe, element } = createPreviewElement(`<div data-hf-id="hf-card">${html}</div>`);
@@ -902,6 +907,7 @@ describe("useDomEditCommits rich-text persist handling", () => {
     replacement.dataset.hfId = "hf-card";
     replacement.innerHTML = "Reloaded elsewhere";
     element.replaceWith(replacement);
+    const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
 
     try {
       await act(async () => {
@@ -914,8 +920,14 @@ describe("useDomEditCommits rich-text persist handling", () => {
 
       expect(replacement.innerHTML).toBe("Reloaded elsewhere");
       expect(fetchMock).not.toHaveBeenCalled();
-      expect(rendered.showToast).not.toHaveBeenCalled();
+      expect(rendered.showToast).toHaveBeenCalledWith(
+        expect.stringMatching(
+          /Couldn't save the text edit: the text's element is gone from the preview/,
+        ),
+        "error",
+      );
     } finally {
+      errorSpy.mockRestore();
       rendered.cleanup();
     }
   });
@@ -1204,7 +1216,12 @@ describe("useDomEditCommits style persist handling", () => {
     const fetchMock = stubPatchFetch({ ok: true, changed: true, matched: true });
     const { iframe, element } = createPreviewElement();
     const rendered = renderDomEditCommits(createSelection(element), iframe, {
-      onTrySdkPersist: async () => ({ status: "committed", version: "sdk-version-2" }),
+      onTrySdkPersist: async () => ({
+        status: "committed",
+        version: "sdk-version-2",
+        before: "",
+        after: "",
+      }),
     });
 
     try {
@@ -1252,8 +1269,15 @@ describe("useDomEditCommits style persist handling", () => {
 
       const secondCommit = rendered.hook.handleDomStyleCommit("color", "green");
       await flushAsyncWork();
-      expect(patchCount).toBe(2);
+      // The newer commit waits for the older one in the file's queue.
+      expect(patchCount).toBe(1);
 
+      firstPatch.reject(new Error("server rejected blue"));
+      await firstCommit;
+      expect(element.style.getPropertyValue("color")).toBe("green");
+
+      await flushAsyncWork();
+      expect(patchCount).toBe(2);
       secondPatch.resolve(
         jsonResponse({
           ok: true,
@@ -1263,10 +1287,6 @@ describe("useDomEditCommits style persist handling", () => {
         }),
       );
       await secondCommit;
-      expect(element.style.getPropertyValue("color")).toBe("green");
-
-      firstPatch.reject(new Error("server rejected blue"));
-      await firstCommit;
 
       expect(element.style.getPropertyValue("color")).toBe("green");
     } finally {
@@ -1297,101 +1317,57 @@ describe("useDomEditCommits style persist handling", () => {
     }
   });
 
-  it("keeps the already-persisted patch and toasts once when the prepareContent write fails", async () => {
-    stubPatchFetch(
-      {
-        ok: true,
-        changed: true,
-        matched: true,
-        content:
-          '<!doctype html><html><head></head><body><div data-hf-id="hf-card">Card</div></body></html>',
-      },
-      '<!doctype html><html><head></head><body><div data-hf-id="hf-card">Card</div></body></html>',
-    );
-    const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
-    const { iframe, element } = createPreviewElement();
-    const selection = createSelection(element, {
-      textFields: [textField({ key: "self", value: "Card", source: "self", tagName: "div" })],
-    });
-    const rendered = renderDomEditCommits(createSelection(element), iframe, {
-      writeProjectFile: async () => {
-        throw new StudioSaveHttpError("Failed to save index.html (500)", 500);
-      },
-    });
-
-    try {
-      await act(async () => {
-        await rendered.hook.commitDomTextFields(
-          selection,
-          [textField({ key: "self", value: "Card", source: "self", tagName: "div" })],
-          {
-            importedFont: {
-              family: "Imported",
-              path: "fonts/Imported.woff2",
-              url: "/api/projects/p1/preview/fonts/Imported.woff2",
-            },
-          },
-        );
-      });
-
-      // The base patch already landed server-side before the font-face write
-      // failed, so this is recorded as a completed edit (not reverted/re-toasted
-      // as a full failure) — only the font embellishment is reported as lost.
-      expect(rendered.showToast).toHaveBeenCalledTimes(1);
-      expect(rendered.showToast).toHaveBeenCalledWith(
-        expect.stringContaining("Saved, but couldn't finish updating index.html"),
-        "error",
-      );
-      expect(rendered.showToast).toHaveBeenCalledWith(
-        expect.stringContaining("Failed to save index.html (500)"),
-        "error",
-      );
-      expect(rendered.recordEdit).toHaveBeenCalledTimes(1);
-    } finally {
-      warnSpy.mockRestore();
-      rendered.cleanup();
-    }
-  });
-
-  it("uses the patched server content as the custom-font write precondition", async () => {
-    const patchedContent =
-      '<!doctype html><html><head></head><body><div data-hf-id="hf-card">Card</div></body></html>';
-    stubPatchFetch(
-      { ok: true, changed: true, matched: true, content: patchedContent },
-      patchedContent,
-    );
-    const { iframe, element } = createPreviewElement();
-    const selection = createSelection(element, {
-      textFields: [textField({ key: "self", value: "Card", source: "self", tagName: "div" })],
-    });
-    const writeProjectFile = vi.fn(async () => {});
-    const rendered = renderDomEditCommits(selection, iframe, { writeProjectFile });
-
-    try {
-      await act(async () => {
-        await rendered.hook.commitDomTextFields(
-          selection,
-          [textField({ key: "self", value: "Card", source: "self", tagName: "div" })],
-          {
-            importedFont: {
-              family: "Imported",
-              path: "fonts/Imported.woff2",
-              url: "/api/projects/p1/preview/fonts/Imported.woff2",
-            },
-          },
-        );
-      });
-
-      expect(writeProjectFile).toHaveBeenCalledWith(
-        "index.html",
-        expect.stringContaining("@font-face"),
+  it.each(["style", "text"])(
+    "a %s edit with an imported font is one patch request that carries its @font-face",
+    async (kind) => {
+      const patchedContent =
+        '<!doctype html><html><head></head><body><div data-hf-id="hf-card">Card</div></body></html>';
+      const fetchMock = stubPatchFetch(
+        { ok: true, changed: true, matched: true, content: patchedContent },
         patchedContent,
       );
-      expect(rendered.showToast).not.toHaveBeenCalled();
-    } finally {
-      rendered.cleanup();
-    }
-  });
+      const { iframe, element } = createPreviewElement();
+      const selection = createSelection(element, {
+        textFields: [textField({ key: "self", value: "Card", source: "self", tagName: "div" })],
+      });
+      const importedFont = {
+        family: "Imported",
+        path: "fonts/Imported.woff2",
+        url: "/api/projects/p1/preview/fonts/Imported.woff2",
+      };
+      const writeProjectFile = vi.fn(async () => {});
+      const rendered = renderDomEditCommits(selection, iframe, {
+        writeProjectFile,
+        importedFontAssets: [importedFont],
+      });
+
+      try {
+        await act(async () => {
+          if (kind === "style") await rendered.hook.handleDomStyleCommit("font-family", "Imported");
+          else
+            await rendered.hook.commitDomTextFields(
+              selection,
+              [textField({ key: "self", value: "Card", source: "self", tagName: "div" })],
+              { importedFont },
+            );
+        });
+
+        const writes = fetchMock.mock.calls.filter(
+          ([, init]) => init?.method === "POST" || init?.method === "PUT",
+        );
+        expect(writes).toHaveLength(1);
+        expect(requestUrl(writes[0]![0])).toContain("/file-mutations/patch-element/index.html");
+        const body = JSON.parse(String(writes[0]![1]?.body)) as { fontFaceCss?: string };
+        expect(body.fontFaceCss).toMatch(
+          /^@font-face \{ font-family: "Imported"; src: url\("fonts\/Imported.woff2"\)/,
+        );
+        expect(writeProjectFile).not.toHaveBeenCalled();
+        expect(rendered.showToast).not.toHaveBeenCalled();
+      } finally {
+        rendered.cleanup();
+      }
+    },
+  );
 
   it("keeps a rejected patch request (HTTP error) to one toast", async () => {
     const { rendered, cleanup } = renderStyleCommitWithFetch(async (input) => {
@@ -1698,17 +1674,143 @@ describe("useDomEditCommits attribute persist handling", () => {
     try {
       // Older commit's persist stays pending (captures previousValue=null); the
       // newer commit captures previousValue="first-value" (the older commit's
-      // optimistic apply) and succeeds before the older one rejects. Without the
+      // optimistic apply) and is still queued when the older one rejects. Without the
       // per-key version guard, the stale rejection would revert to the older
       // commit's own previousValue (null) and stomp the newer commit's value.
       const firstCommit = rendered.hook.handleDomHtmlAttributeCommit("muted", "first-value");
       await act(async () => {
-        await rendered.hook.handleDomHtmlAttributeCommit("muted", "second-value");
+        const secondCommit = rendered.hook.handleDomHtmlAttributeCommit("muted", "second-value");
+        first.reject(new Error("stale request failed"));
+        await firstCommit;
+        await secondCommit;
       });
-      first.reject(new Error("stale request failed"));
-      await firstCommit;
 
       expect(element.getAttribute("muted")).toBe("second-value");
+    } finally {
+      rendered.cleanup();
+    }
+  });
+});
+
+describe("useDomEditCommits attribute batch commit", () => {
+  beforeEach(() => {
+    ensureCssEscape();
+    vi.clearAllMocks();
+    vi.unstubAllGlobals();
+    document.body.replaceChildren();
+  });
+
+  const original = '<video data-hf-id="hf-card" data-has-audio="true"></video>';
+  const patched = '<video data-hf-id="hf-card" muted></video>';
+  const mute = [
+    { type: "html-attribute" as const, property: "muted", value: "true" },
+    { type: "attribute" as const, property: "has-audio", value: null },
+  ];
+
+  it("sends mixed html and data attribute ops in ONE patch and ONE undo entry", async () => {
+    const fetchMock = stubPatchFetch(
+      {
+        ok: true,
+        changed: true,
+        matched: true,
+        content: patched,
+        path: "index.html",
+        version: "v2",
+      },
+      original,
+    );
+    const { iframe, element } = createPreviewElement(original);
+    const rendered = renderDomEditCommits(createSelection(element, { tagName: "video" }), iframe);
+
+    try {
+      let ok = false;
+      await act(async () => {
+        ok = await rendered.hook.handleDomAttributeBatchCommit(
+          createSelection(element, { tagName: "video" }),
+          mute,
+          { label: "Edit muted" },
+        );
+      });
+
+      const patches = fetchMock.mock.calls.filter(([input]) =>
+        requestUrl(input).includes("/file-mutations/patch-element/"),
+      );
+      expect(ok).toBe(true);
+      expect(patches).toHaveLength(1);
+      const body = JSON.parse(String(patches[0]?.[1]?.body));
+      expect(body.operations).toEqual(mute);
+      expect(rendered.recordEdit).toHaveBeenCalledTimes(1);
+      expect(rendered.recordEdit).toHaveBeenCalledWith(
+        expect.objectContaining({
+          files: { "index.html": { before: original, after: patched } },
+        }),
+      );
+      expect(rendered.reloadPreview).toHaveBeenCalledTimes(1);
+      expect(element.hasAttribute("muted")).toBe(true);
+      expect(element.hasAttribute("data-has-audio")).toBe(false);
+    } finally {
+      rendered.cleanup();
+    }
+  });
+
+  it("folds a document-level prepareContent into the same single undo entry", async () => {
+    stubPatchFetch(
+      {
+        ok: true,
+        changed: true,
+        matched: true,
+        content: patched,
+        path: "index.html",
+        version: "v2",
+      },
+      original,
+    );
+    const writes: string[] = [];
+    const { iframe, element } = createPreviewElement(original);
+    const rendered = renderDomEditCommits(createSelection(element), iframe, {
+      writeProjectFile: async (_path, content) => {
+        writes.push(content);
+      },
+    });
+    const withSibling = `<audio id="a"></audio>${patched}`;
+
+    try {
+      await act(async () => {
+        await rendered.hook.handleDomAttributeBatchCommit(createSelection(element), mute, {
+          label: "Remove background",
+          prepareContent: () => withSibling,
+        });
+      });
+
+      expect(writes).toEqual([withSibling]);
+      expect(rendered.recordEdit).toHaveBeenCalledTimes(1);
+      expect(rendered.recordEdit).toHaveBeenCalledWith(
+        expect.objectContaining({
+          label: "Remove background",
+          files: { "index.html": { before: original, after: withSibling } },
+        }),
+      );
+    } finally {
+      rendered.cleanup();
+    }
+  });
+
+  it("reverts every op in the batch and reports failure when the patch rejects", async () => {
+    stubPatchFetch(new Error("network down"), original);
+    const { iframe, element } = createPreviewElement(original);
+    const rendered = renderDomEditCommits(createSelection(element), iframe);
+
+    try {
+      let ok = true;
+      await act(async () => {
+        ok = await rendered.hook.handleDomAttributeBatchCommit(createSelection(element), mute, {
+          label: "Edit muted",
+        });
+      });
+
+      expect(ok).toBe(false);
+      expect(element.hasAttribute("muted")).toBe(false);
+      expect(element.getAttribute("data-has-audio")).toBe("true");
     } finally {
       rendered.cleanup();
     }

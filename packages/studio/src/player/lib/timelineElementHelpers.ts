@@ -2,7 +2,7 @@
  * Low-level helpers for building and identifying TimelineElement objects.
  *
  * Covers: duration reading, media-element metadata extraction, selector/key/
- * identity builders, DOM node lookup, and implicit layer detection. These are
+ * identity builders, and DOM node lookup. These are
  * intentionally dependency-free (no store, no hooks) so they can be used in
  * both the React hook and test environments.
  */
@@ -12,6 +12,13 @@ import type { ClipManifestClip } from "./playbackTypes";
 import { isFinitePositive } from "./playbackAdapter";
 import { getSourceScopedSelectorIndex } from "../../utils/sourceScopedSelectorIndex";
 import { HF_AUDIO_GROUP_TAG } from "@hyperframes/core/audio-groups";
+import { readElementFades } from "@hyperframes/core/audio-fade";
+import { elementVolume } from "./storedVolume";
+import {
+  type AttrReader,
+  clampPlaybackRate,
+  readMediaOffsetSeconds,
+} from "@hyperframes/parsers/media-duration";
 
 // ---------------------------------------------------------------------------
 // Layer-reveal lift transparency
@@ -77,18 +84,8 @@ function readDurationAttribute(el: Element | null | undefined): number {
   return isFinitePositive(duration) ? duration : 0;
 }
 
-function normalizePlaybackRate(raw: number): number {
-  return Number.isFinite(raw) && raw > 0 ? Math.max(0.1, Math.min(5, raw)) : 1;
-}
-
 export function isTimelineIgnoredElement(el: Element): boolean {
-  // An `<hf-audio-group>` is a mixer bus, not a clip: it carries the group's
-  // label, fader, mute and FX chain, has no timing of its own, and is drawn as
-  // a GROUP ROW by the group derivation. Left in, the implicit-layer fallback
-  // also gave it an ordinary full-duration track — so a grouped composition
-  // showed "Voiceover • 0.0s – 12.0s" as a phantom clip directly above the real
-  // group header. Harmless-looking, but that row is draggable and trimmable,
-  // and writing timing onto the bus is meaningless.
+  // An `<hf-audio-group>` is a mixer bus with no timing of its own, drawn as a group row, never a clip.
   if (el.tagName.toLowerCase() === HF_AUDIO_GROUP_TAG) return true;
   return Boolean(
     el.closest(
@@ -151,36 +148,116 @@ function isHtmlElement(el: Element): el is HTMLElement {
   return typeof HtmlElementCtor !== "undefined" && el instanceof HtmlElementCtor;
 }
 
+function isCompositionHost(el: Element): boolean {
+  return (
+    el.hasAttribute("data-composition-id") ||
+    el.hasAttribute("data-composition-src") ||
+    el.hasAttribute("data-composition-file")
+  );
+}
+
 export function resolveMediaElement(el: Element): HTMLMediaElement | HTMLImageElement | null {
   const win = el.ownerDocument.defaultView ?? window;
   const MediaElementCtor = win.HTMLMediaElement ?? globalThis.HTMLMediaElement;
   const ImageElementCtor = win.HTMLImageElement ?? globalThis.HTMLImageElement;
   if (el instanceof MediaElementCtor || el instanceof ImageElementCtor) return el;
+  // A composition's media belongs to its own timeline, not the clip's: its length would cap a trim.
+  if (isCompositionHost(el)) return null;
   const candidate = el.querySelector("video, audio, img");
   return candidate instanceof MediaElementCtor || candidate instanceof ImageElementCtor
     ? candidate
     : null;
 }
 
+/** The in-point as playback reads it, and the attribute holding it; empty when neither is authored. */
+export function readPlaybackStartAttributes(
+  getAttr: AttrReader,
+): Pick<TimelineElement, "playbackStart" | "playbackStartAttr"> {
+  const playbackStartAttr =
+    getAttr("data-playback-start") != null
+      ? "playback-start"
+      : getAttr("data-media-start") != null
+        ? "media-start"
+        : undefined;
+  return playbackStartAttr
+    ? { playbackStart: readMediaOffsetSeconds(getAttr), playbackStartAttr }
+    : {};
+}
+
+export function playbackStartAttributeForElement(
+  element: Pick<TimelineElement, "kind" | "playbackStartAttr">,
+): "data-media-start" | "data-playback-start" {
+  return element.playbackStartAttr === "playback-start" || element.kind === "composition"
+    ? "data-playback-start"
+    : "data-media-start";
+}
+
 function applyPlaybackMetadataFromElement(entry: TimelineElement, el: Element): void {
-  const playbackStartValue = el.getAttribute("data-playback-start");
-  const legacyMediaStartValue = el.getAttribute("data-media-start");
-  const mediaStartValue = playbackStartValue ?? legacyMediaStartValue;
-  if (mediaStartValue != null) {
-    const playbackStart = parseFloat(mediaStartValue);
-    if (Number.isFinite(playbackStart)) entry.playbackStart = playbackStart;
-  }
-  if (playbackStartValue != null) entry.playbackStartAttr = "playback-start";
-  else if (legacyMediaStartValue != null) entry.playbackStartAttr = "media-start";
+  Object.assign(
+    entry,
+    readPlaybackStartAttributes((n) => el.getAttribute(n)),
+  );
 
   const authoredPlaybackRate = Number.parseFloat(el.getAttribute("data-playback-rate") ?? "");
   if (Number.isFinite(authoredPlaybackRate) && authoredPlaybackRate > 0) {
-    entry.playbackRate = normalizePlaybackRate(authoredPlaybackRate);
+    entry.playbackRate = clampPlaybackRate(authoredPlaybackRate);
   }
+}
+
+/** Sets or clears an optional field, so a re-parse after the attribute is removed drops it. */
+function setOptional<K extends keyof TimelineElement>(
+  entry: TimelineElement,
+  key: K,
+  value: TimelineElement[K] | undefined,
+): void {
+  if (value === undefined) delete entry[key];
+  else entry[key] = value;
+}
+
+/** The compiler's rule (timingCompiler): explicit data-has-audio wins; otherwise an unmuted <video> is audible. */
+export function isVideoAudible(opts: {
+  tag: string;
+  hasAudioAttr: string | null | undefined;
+  muted: boolean;
+}): boolean {
+  if (opts.hasAudioAttr === "true") return true;
+  if (opts.hasAudioAttr === "false" || opts.hasAudioAttr === "") return false;
+  return opts.tag.toLowerCase() === "video" && !opts.muted;
+}
+
+export function isAudibleVideoNode(el: Element): boolean {
+  if (el.tagName.toLowerCase() !== "video" || el.hasAttribute("muted")) return false;
+  return isVideoAudible({
+    tag: "video",
+    hasAudioAttr: el.getAttribute("data-has-audio"),
+    muted: false,
+  });
+}
+
+/** What the mixer gets: the compiler's `data-has-audio` rule, muted and volume. */
+function applyAudioMetadataFromElement(entry: TimelineElement, el: Element): void {
+  const media = resolveMediaElement(el) ?? el;
+  const muted = el.hasAttribute("muted") || media.hasAttribute("muted");
+  const sound = isVideoAudible({
+    tag: el.tagName,
+    hasAudioAttr: el.getAttribute("data-has-audio"),
+    muted,
+  });
+  setOptional(entry, "hasAudio", sound ? true : undefined);
+  setOptional(entry, "muted", muted ? true : undefined);
+  setOptional(entry, "volume", elementVolume(el, media));
+}
+
+function applyFadeMetadataFromElement(entry: TimelineElement, el: Element): void {
+  const fades = readElementFades(el);
+  setOptional(entry, "fadeIn", fades.fadeIn > 0 ? fades.fadeIn : undefined);
+  setOptional(entry, "fadeOut", fades.fadeOut > 0 ? fades.fadeOut : undefined);
 }
 
 export function applyMediaMetadataFromElement(entry: TimelineElement, el: Element): void {
   applyPlaybackMetadataFromElement(entry, el);
+  applyAudioMetadataFromElement(entry, el);
+  applyFadeMetadataFromElement(entry, el);
 
   const mediaEl = resolveMediaElement(el);
   if (!mediaEl) return;
@@ -202,7 +279,7 @@ export function applyMediaMetadataFromElement(entry: TimelineElement, el: Elemen
 
   const playbackRate = mediaEl.defaultPlaybackRate;
   if (entry.playbackRate == null && Number.isFinite(playbackRate) && playbackRate > 0) {
-    entry.playbackRate = normalizePlaybackRate(playbackRate);
+    entry.playbackRate = clampPlaybackRate(playbackRate);
   }
 }
 
@@ -221,37 +298,6 @@ export function getTimelineElementDisplayLabel(input: {
   if (id) return id;
   const tag = input.tag?.trim().toLowerCase();
   return tag ? `${tag} clip` : "Timeline clip";
-}
-
-const IMPLICIT_TIMELINE_LAYER_SKIP_TAGS = new Set([
-  "base",
-  "link",
-  "meta",
-  "noscript",
-  "script",
-  "style",
-  "template",
-]);
-
-function humanizeTimelineIdentifier(value: string): string {
-  return value
-    .trim()
-    .replace(/[_-]+/g, " ")
-    .replace(/\s+/g, " ")
-    .replace(/\b\w/g, (match) => match.toUpperCase());
-}
-
-export function getImplicitTimelineLayerLabel(el: HTMLElement): string {
-  const explicitLabel =
-    el.getAttribute("data-timeline-label") ??
-    el.getAttribute("data-label") ??
-    el.getAttribute("aria-label");
-  if (explicitLabel?.trim()) return explicitLabel.trim();
-  if (el.id.trim()) return humanizeTimelineIdentifier(el.id);
-  const classes = el.className.split(/\s+/).filter(Boolean);
-  const className = classes.find((value) => value !== "clip") ?? classes[0];
-  if (className) return humanizeTimelineIdentifier(className);
-  return getTimelineElementDisplayLabel({ tag: el.tagName });
 }
 
 // ---------------------------------------------------------------------------
@@ -392,6 +438,14 @@ export function deriveTimelineStoreKey(params: {
   return buildTimelineElementKey({ id: "", fallbackIndex: 0, ...params });
 }
 
+/**
+ * {@link deriveTimelineStoreKey} for a caller that already has a DOM id in
+ * hand (e.g. one it just minted), so the undefined branch never applies.
+ */
+export function deriveTimelineStoreKeyForDomId(domId: string, sourceFile?: string): string {
+  return deriveTimelineStoreKey({ domId, sourceFile })!;
+}
+
 // ---------------------------------------------------------------------------
 // DOM node querying
 // ---------------------------------------------------------------------------
@@ -427,14 +481,83 @@ function nodeMatchesManifestClip(node: Element, clip: ClipManifestClip): boolean
   });
 }
 
-function findTimelineDomNode(doc: Document, id: string): Element | null {
-  return (
-    doc.getElementById(id) ??
-    doc.querySelector(`[data-hf-id="${CSS.escape(id)}"]`) ??
-    doc.querySelector(`[data-composition-id="${CSS.escape(id)}"]`) ??
-    doc.querySelector(`.${CSS.escape(id)}`) ??
-    null
-  );
+/** Whether `node` sits in the composition the clip was read from, the chain the runtime records outermost first
+ * (`resolveNearestCompositionContext` in core's runtime/timeline.ts). A clip without that scope accepts any node. */
+function nodeInClipScope(node: Element, clip: ClipManifestClip): boolean {
+  const scope = clip.compositionAncestors;
+  if (!scope) return true;
+  const ids: string[] = [];
+  for (let cursor = node.parentElement; cursor; cursor = cursor.parentElement) {
+    const id = cursor.getAttribute("data-composition-id");
+    if (id) ids.unshift(id);
+  }
+  return ids.length === scope.length && ids.every((id, index) => id === scope[index]);
+}
+
+/** The first match in the clip's composition across `selectors`; a lone match stands only when none is in scope, as a
+ * healed host can stale the clip's chain for a pass. An id can repeat in a sub-composition earlier in the document. */
+function findInClipScope(
+  doc: Document,
+  clip: ClipManifestClip,
+  selectors: string[],
+): Element | null {
+  let lone: Element | null = null;
+  for (const selector of selectors) {
+    const nodes = Array.from(doc.querySelectorAll(selector));
+    const scoped = nodes.find((node) => nodeInClipScope(node, clip));
+    if (scoped) return scoped;
+    if (nodes.length === 1) lone ??= nodes[0];
+  }
+  return lone;
+}
+
+export type PreviewTarget = Pick<TimelineElement, "hfId" | "domId" | "id" | "sourceFile">;
+
+/** Finds a row's preview element by `data-hf-id`, then id, preferring one in the row's own file: both repeat across
+ * files. Indexes the document once, so a pass over every row costs one scan. */
+export function previewElementFinder(
+  doc: Document,
+  selector = "[data-hf-id], [id]",
+): (target: PreviewTarget) => Element | null {
+  const byKey = new Map<string, Element[]>();
+  const add = (key: string, node: Element) => {
+    const nodes = byKey.get(key);
+    if (nodes) nodes.push(node);
+    else byKey.set(key, [node]);
+  };
+  for (const node of doc.querySelectorAll(selector)) {
+    const hfId = node.getAttribute("data-hf-id");
+    const id = node.getAttribute("id");
+    if (hfId) add(`hf:${hfId}`, node);
+    if (id) add(`id:${id}`, node);
+  }
+  return (target) => {
+    const matches = [
+      ...((target.hfId && byKey.get(`hf:${target.hfId}`)) || []),
+      ...(byKey.get(`id:${target.domId ?? target.id}`) ?? []),
+    ];
+    return (
+      matches.find((node) => getTimelineElementSourceFile(node) === target.sourceFile) ??
+      matches[0] ??
+      null
+    );
+  };
+}
+
+export function findClipElementById(doc: Document, clip: ClipManifestClip): Element | null {
+  if (!clip.id) return null;
+  const first = doc.getElementById(clip.id);
+  if (!first || nodeInClipScope(first, clip)) return first;
+  return findInClipScope(doc, clip, [`[id="${CSS.escape(clip.id)}"]`]);
+}
+
+function findTimelineDomNode(doc: Document, clip: ClipManifestClip): Element | null {
+  if (!clip.id) return null;
+  const first = doc.getElementById(clip.id);
+  if (first && nodeInClipScope(first, clip)) return first;
+  const id = CSS.escape(clip.id);
+  const byOtherKeys = [`[data-hf-id="${id}"]`, `[data-composition-id="${id}"]`, `.${id}`];
+  return findInClipScope(doc, clip, first ? [`[id="${id}"]`, ...byOtherKeys] : byOtherKeys);
 }
 
 export function findTimelineDomNodeForClip(
@@ -444,7 +567,7 @@ export function findTimelineDomNodeForClip(
   usedNodes = new Set<Element>(),
   getCandidates = () => getTimelineDomNodes(doc),
 ): Element | null {
-  const byIdentity = clip.id ? findTimelineDomNode(doc, clip.id) : null;
+  const byIdentity = findTimelineDomNode(doc, clip);
   if (byIdentity && !usedNodes.has(byIdentity) && nodeMatchesClipTag(byIdentity, clip))
     return byIdentity;
 
@@ -466,18 +589,4 @@ export function createTimelineDomNodeResolver(doc: Document) {
     if (node) usedNodes.add(node);
     return node;
   };
-}
-
-// ---------------------------------------------------------------------------
-// Implicit layer detection
-// ---------------------------------------------------------------------------
-
-export function isImplicitTimelineLayerCandidate(root: Element, el: Element): el is HTMLElement {
-  if (!isHtmlElement(el)) return false;
-  if (isTimelineIgnoredElement(el)) return false;
-  if (el.parentElement !== root) return false;
-  const tagName = el.tagName.toLowerCase();
-  if (IMPLICIT_TIMELINE_LAYER_SKIP_TAGS.has(tagName)) return false;
-  if (el.hasAttribute("data-start") || el.hasAttribute("data-track-index")) return false;
-  return Boolean(getTimelineElementSelector(el));
 }

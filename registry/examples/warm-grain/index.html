@@ -125,24 +125,16 @@
         </script>
       </div>
 
-      <!-- A-Roll Video (muted — audio is separate) -->
+      <!-- A-roll keeps its own sound -->
       <video
         id="a-roll"
         src="__VIDEO_SRC__"
-        muted
         playsinline
+        data-has-audio="true"
         data-start="0"
         data-duration="__VIDEO_DURATION__"
         data-track-index="0"
       ></video>
-      <audio
-        id="a-roll-audio"
-        src="__VIDEO_SRC__"
-        data-start="0"
-        data-duration="__VIDEO_DURATION__"
-        data-track-index="5"
-        data-volume="1"
-      ></audio>
 
       <!-- Compositions -->
       <div
@@ -167,6 +159,7 @@
 
       <div
         id="captions-layer"
+        data-track-kind="captions"
         class="comp-layer"
         data-composition-id="captions"
         data-composition-src="compositions/captions.html"

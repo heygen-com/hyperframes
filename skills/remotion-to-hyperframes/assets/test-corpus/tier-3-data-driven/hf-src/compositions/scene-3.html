@@ -1,0 +1,55 @@
+<template id="scene-3-template">
+  <div data-composition-id="scene-3" data-width="1280" data-height="720" data-duration="3">
+    <style>
+      .scene {
+        position: absolute;
+        inset: 0;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        opacity: 0;
+      }
+      .scene-3 .outro-wrap {
+        position: relative;
+        display: inline-block;
+        opacity: 0;
+      }
+      .scene-3 .outro-text {
+        font-size: 80px;
+        font-weight: 600;
+      }
+      .scene-3 .outro-underline {
+        position: absolute;
+        left: 0;
+        bottom: -8px;
+        width: 100%;
+        height: 6px;
+        background: #fbbf24;
+        border-radius: 3px;
+        transform: scaleX(0);
+        transform-origin: left center;
+      }
+    </style>
+    <div class="scene scene-3">
+      <div class="outro-wrap">
+        <div class="outro-text">thanks for watching</div>
+        <div class="outro-underline"></div>
+      </div>
+    </div>
+    <script>
+      // Remotion: <Sequence 210..300> OutroScene.
+      const tl = gsap.timeline({ paused: true });
+      const scene = document.querySelector(".scene-3");
+      tl.set(scene, { opacity: 1 }, 0);
+      tl.to(scene.querySelector(".outro-wrap"), { opacity: 1, duration: 0.4, ease: "none" }, 0);
+      // interpolate(frame, [10,40], [0,1]) for the underline -> starts 0.333s, 1s long
+      tl.to(
+        scene.querySelector(".outro-underline"),
+        { scaleX: 1, duration: 1.0, ease: "none" },
+        0.333,
+      );
+      window.__timelines = window.__timelines || {};
+      window.__timelines["scene-3"] = tl;
+    </script>
+  </div>
+</template>

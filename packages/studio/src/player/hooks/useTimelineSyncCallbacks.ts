@@ -8,15 +8,17 @@
  *  - onIframeLoad             — orchestrates initializeAdapter with a message-based fallback
  */
 
-import { useCallback } from "react";
+import { useCallback, useRef } from "react";
 import { liveTime, usePlayerStore } from "../store/playerStore";
 import type { TimelineElement } from "../store/playerStore";
 import type { PlaybackAdapter, IframeWindow } from "../lib/playbackTypes";
 import { readTimelineDurationFromDocument } from "../lib/timelineDOM";
 import { buildMissingCompositionElements } from "../lib/timelineIframeHelpers";
 import { acceptedRuntimeMessageFps } from "../lib/runtimeProtocol";
+import { useLinkedClipPreferences } from "../../utils/linkedClipPreferences";
 import {
   buildTimelineElementsFromClips,
+  syncManifestTimeline,
   clipTreeParentMap,
   collectSubCompositionDomChildren,
   collectSubCompositionHostState,
@@ -26,14 +28,13 @@ import {
   sanitizeDurationSeconds,
   seekAdapterToRestorePoint,
   syncAdapterDuration,
-  withImplicitDomLayers,
   type RuntimeTimelineMessage,
 } from "./timelineSyncHydration";
 
 // Re-exported for the tests and callers that have always imported it from here.
 export { resolveReloadSeekTime } from "./timelineSyncHydration";
 
-interface UseTimelineSyncCallbacksParams {
+export interface UseTimelineSyncCallbacksParams {
   iframeRef: React.RefObject<HTMLIFrameElement | null>;
   probeIntervalRef: React.MutableRefObject<ReturnType<typeof setInterval> | undefined>;
   pendingSeekRef: React.MutableRefObject<number | null>;
@@ -42,10 +43,23 @@ interface UseTimelineSyncCallbacksParams {
   syncTimelineElements: (elements: TimelineElement[], nextDuration?: number) => void;
   setDuration: (v: number) => void;
   setCurrentTime: (v: number) => void;
-  setTimelineReady: (v: boolean) => void;
+  requestTimelineReady: (doc: Document | null) => void;
   setIsPlaying: (v: boolean) => void;
   attachIframeShortcutListeners: () => void;
   applyPreviewAudioState: () => void;
+  /**
+   * Fires once the restore-seek is issued and owns when `commit` (the store hydration) runs.
+   * The default reveals the iframe and commits at once; a shadow reload defers it to promotion.
+   */
+  onAdapterReady?: (
+    iframe: HTMLIFrameElement | null,
+    context: number | undefined,
+    commit: () => void,
+  ) => void;
+  /** False when the load for `context` was superseded: it must then cause no side effects. */
+  isCurrent?: (context?: number) => boolean;
+  /** Fires when no adapter appeared within the wait window. */
+  onLoadGiveUp?: (context?: number) => void;
 }
 
 /**
@@ -62,16 +76,52 @@ interface UseTimelineSyncCallbacksParams {
  * resets currentTime on project switch. Invariant: an edit NEVER moves the
  * playhead (the clamp below is the one sanctioned move — content shrank past it).
  */
-/**
- * Undo the `visibility: hidden` that refreshPlayer sets across a full reload.
- * Safe to call when the iframe was never hidden (idempotent no-op). Every reload
- * completion + failure path funnels through here so the preview can never get
- * stuck invisible.
- */
+/** Undo a hidden `visibility` on an iframe; idempotent no-op otherwise. */
 export function revealIframe(iframe: HTMLIFrameElement | null): void {
   if (iframe && iframe.style.visibility === "hidden") {
     iframe.style.visibility = "";
   }
+}
+
+function revealAndCommit(
+  iframe: HTMLIFrameElement | null,
+  _context: number | undefined,
+  commit: () => void,
+): void {
+  revealIframe(iframe);
+  commit();
+}
+
+export type PreviewIframeRole = "live" | "shadow";
+
+export interface PreviewIframeSlot {
+  gen: number;
+  role: PreviewIframeRole;
+  url?: string;
+}
+
+/** Queue a hidden shadow slot for the reload URL, replacing any earlier unpromoted shadow. */
+export function planShadowReload(
+  slots: PreviewIframeSlot[],
+  nextGen: number,
+  url: string,
+): PreviewIframeSlot[] {
+  const live = slots.find((slot) => slot.role === "live");
+  return live ? [live, { gen: nextGen, role: "shadow", url }] : [{ gen: nextGen, role: "live" }];
+}
+
+/** Drop any pending shadow; the live slot (and its key) is untouched. */
+export function planShadowDiscard(slots: PreviewIframeSlot[]): PreviewIframeSlot[] {
+  return slots.filter((slot) => slot.role === "live");
+}
+
+/** Atomically make the ready shadow the only (live) slot; a stale readyGen is a no-op. */
+export function planShadowPromotion(
+  slots: PreviewIframeSlot[],
+  readyGen: number,
+): PreviewIframeSlot[] {
+  const ready = slots.find((slot) => slot.gen === readyGen && slot.role === "shadow");
+  return ready ? [{ ...ready, role: "live" }] : slots;
 }
 
 /**
@@ -106,17 +156,18 @@ export function useTimelineSyncCallbacks({
   syncTimelineElements,
   setDuration,
   setCurrentTime,
-  setTimelineReady,
+  requestTimelineReady,
   setIsPlaying,
   attachIframeShortcutListeners,
   applyPreviewAudioState,
+  onAdapterReady = revealAndCommit,
+  isCurrent,
+  onLoadGiveUp,
 }: UseTimelineSyncCallbacksParams) {
   // Convert a runtime timeline message (from iframe postMessage) into TimelineElements
   const processTimelineMessage = useCallback(
     (data: RuntimeTimelineMessage) => {
-      if (!data.clips || data.clips.length === 0) {
-        return;
-      }
+      if (!data.clips) return;
 
       usePlayerStore.getState().setClipManifest(data.clips);
 
@@ -146,18 +197,18 @@ export function useTimelineSyncCallbacks({
       // at the authored root `data-duration` so a runtime that measures only the
       // furthest clip end (shorter than the authored window) can't leave a stale,
       // too-short total in the transport (the "0:44/0:40" bug).
+      const fps = acceptedRuntimeMessageFps(data);
+      useLinkedClipPreferences.getState().setCompositionFps(fps);
       const newDuration = resolveTimelineTotalDuration({
-        manifestDurationSeconds: data.durationInFrames / acceptedRuntimeMessageFps(data),
+        manifestDurationSeconds: data.durationInFrames / fps,
         authoredRootDurationSeconds: readTimelineDurationFromDocument(iframeDoc),
       });
-      const timelineEls = withImplicitDomLayers(
+      syncManifestTimeline(
         els,
-        iframeDoc,
-        newDuration > 0 ? newDuration : usePlayerStore.getState().duration,
+        newDuration,
+        usePlayerStore.getState().duration,
+        syncTimelineElements,
       );
-      if (timelineEls.length > 0) {
-        syncTimelineElements(timelineEls, newDuration > 0 ? newDuration : undefined);
-      }
     },
     [iframeRef, syncTimelineElements],
   );
@@ -187,91 +238,122 @@ export function useTimelineSyncCallbacks({
     } catch {}
   }, [iframeRef, syncTimelineElements]);
 
-  const initializeAdapter = useCallback(() => {
-    const adapter = getAdapter();
-    if (!adapter || adapter.getDuration() <= 0) return false;
+  const initializeAdapter = useCallback(
+    (context?: number) => {
+      if (isCurrent && !isCurrent(context)) return true;
+      const adapter = getAdapter();
+      if (!adapter || adapter.getDuration() <= 0) return false;
 
-    adapter.pause();
-    const startTime = seekAdapterToRestorePoint(adapter, pendingSeekRef);
-    // The correct frame is now rendered — reveal the iframe that refreshPlayer hid
-    // for the reload, so the user sees the restored frame directly (never the raw
-    // all-clips DOM). Cleared unconditionally: any later failure path must not leave
-    // the preview stuck invisible.
-    revealIframe(iframeRef.current);
-    // Keep non-React listeners such as the capture link and time display in sync
-    // with the initial adapter seek on iframe load.
-    liveTime.notify(startTime);
-    syncAdapterDuration(adapter, setDuration);
-    setCurrentTime(startTime);
-    if (!isRefreshingRef.current) {
-      setTimelineReady(true);
-    }
-    isRefreshingRef.current = false;
-    setIsPlaying(false);
+      adapter.pause();
+      const startTime = seekAdapterToRestorePoint(adapter, pendingSeekRef);
+      const commit = () => {
+        // Keep non-React listeners such as the time display in sync
+        // with the initial adapter seek on iframe load.
+        liveTime.notify(startTime);
+        syncAdapterDuration(adapter, setDuration);
+        setCurrentTime(startTime);
+        if (!isRefreshingRef.current) {
+          // Enables Play from actual play-readiness, not just a known duration —
+          // a click before this resolves used to start the timeline with media,
+          // images or fonts still loading and never recover.
+          requestTimelineReady(safeContentDocument(iframeRef.current));
+        }
+        isRefreshingRef.current = false;
+        setIsPlaying(false);
 
-    hydrateTimelineFromPreview({
-      iframe: iframeRef.current,
-      adapter,
+        hydrateTimelineFromPreview({
+          iframe: iframeRef.current,
+          adapter,
+          processTimelineMessage,
+          enrichMissingCompositions,
+          applyPreviewAudioState,
+          attachIframeShortcutListeners,
+          syncTimelineElements,
+        });
+      };
+      onAdapterReady(iframeRef.current, context, commit);
+      return true;
+    },
+    [
+      getAdapter,
+      setDuration,
+      setCurrentTime,
+      requestTimelineReady,
+      setIsPlaying,
       processTimelineMessage,
       enrichMissingCompositions,
-      applyPreviewAudioState,
-      attachIframeShortcutListeners,
       syncTimelineElements,
-    });
-    return true;
-  }, [
-    getAdapter,
-    setDuration,
-    setCurrentTime,
-    setTimelineReady,
-    setIsPlaying,
-    processTimelineMessage,
-    enrichMissingCompositions,
-    syncTimelineElements,
-    attachIframeShortcutListeners,
-    applyPreviewAudioState,
-    iframeRef,
-    isRefreshingRef,
-    pendingSeekRef,
-  ]);
+      attachIframeShortcutListeners,
+      applyPreviewAudioState,
+      onAdapterReady,
+      isCurrent,
+      iframeRef,
+      isRefreshingRef,
+      pendingSeekRef,
+    ],
+  );
 
-  const onIframeLoad = useCallback(() => {
-    applyPreviewAudioState();
-    if (probeIntervalRef.current) clearInterval(probeIntervalRef.current);
+  // Drops the previous load's readiness listener so a superseded load cannot settle later.
+  const stopWaitingRef = useRef<(() => void) | null>(null);
 
-    // Fast path: adapter already available (in-place reloads, cached compositions)
-    if (initializeAdapter()) return;
+  const onIframeLoad = useCallback(
+    (context?: number) => {
+      const loadedDoc = safeContentDocument(iframeRef.current);
+      if (loadedDoc) usePlayerStore.getState().markPreviewLoadStep(loadedDoc);
+      applyPreviewAudioState();
+      if (probeIntervalRef.current) clearInterval(probeIntervalRef.current);
+      stopWaitingRef.current?.();
+      stopWaitingRef.current = null;
 
-    // The runtime posts "state" or "timeline" messages once ready.
-    // Listen for those instead of polling.
-    const iframe = iframeRef.current;
-    let settled = false;
+      // Fast path: adapter already available (in-place reloads, cached compositions)
+      if (initializeAdapter(context)) return;
 
-    const trySettle = () => {
-      if (settled) return;
-      if (initializeAdapter()) {
-        settled = true;
+      // The runtime posts "state" or "timeline" messages once ready.
+      // Listen for those instead of polling.
+      const iframe = iframeRef.current;
+      let settled = false;
+      let retryFrame = 0;
+      const stopWaiting = () => {
         window.removeEventListener("message", onMessage);
-        if (probeIntervalRef.current) clearInterval(probeIntervalRef.current);
-      }
-    };
+        cancelAnimationFrame(retryFrame);
+      };
 
-    const onMessage = (e: MessageEvent) => {
-      if (isPreviewReadinessMessage(e, iframe)) trySettle();
-    };
-    window.addEventListener("message", onMessage);
+      const trySettle = () => {
+        if (settled) return;
+        if (initializeAdapter(context)) {
+          settled = true;
+          stopWaiting();
+          if (probeIntervalRef.current) clearInterval(probeIntervalRef.current);
+          return;
+        }
+        cancelAnimationFrame(retryFrame);
+        retryFrame = requestAnimationFrame(trySettle);
+      };
 
-    // Safety net: if no message arrives within 5s, try one last time then give up.
-    probeIntervalRef.current = setTimeout(() => {
-      if (!settled) {
-        trySettle();
-      }
-      window.removeEventListener("message", onMessage);
-      // Never leave the preview stuck invisible if the runtime never settled
-      // (initializeAdapter reveals on success; this covers the give-up case).
-      revealIframe(iframeRef.current);
-    }, 5000) as unknown as ReturnType<typeof setInterval>;
-  }, [initializeAdapter, iframeRef, probeIntervalRef, applyPreviewAudioState]);
+      const onMessage = (e: MessageEvent) => {
+        if (isPreviewReadinessMessage(e, iframe)) trySettle();
+      };
+      window.addEventListener("message", onMessage);
+      stopWaitingRef.current = stopWaiting;
+
+      // Safety net: if no message arrives within 5s, try one last time then give up.
+      probeIntervalRef.current = setTimeout(() => {
+        if (!settled) {
+          trySettle();
+        }
+        stopWaiting();
+        if (!settled) onLoadGiveUp?.(context);
+        revealIframe(iframeRef.current);
+      }, 5000) as unknown as ReturnType<typeof setInterval>;
+    },
+    [initializeAdapter, iframeRef, probeIntervalRef, applyPreviewAudioState, onLoadGiveUp],
+  );
+
+  const cancelPendingLoad = useCallback(() => {
+    if (probeIntervalRef.current) clearInterval(probeIntervalRef.current);
+    stopWaitingRef.current?.();
+    stopWaitingRef.current = null;
+  }, [probeIntervalRef]);
 
   // Stable refs so mount-effect closures always call the latest version
   const processTimelineMessageRef = { current: processTimelineMessage };
@@ -284,5 +366,6 @@ export function useTimelineSyncCallbacks({
     enrichMissingCompositionsRef,
     initializeAdapter,
     onIframeLoad,
+    cancelPendingLoad,
   };
 }

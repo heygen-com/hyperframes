@@ -6,6 +6,8 @@ import {
   buildDomEditPatchTarget,
   buildTextFieldChildLocator,
   readHfId,
+  liveLayerElement,
+  domEditSelectionToFacts,
 } from "./domEditingLayers";
 import type { DomEditTextField } from "./domEditingTypes";
 
@@ -303,5 +305,51 @@ describe("collectDomEditLayerItems selector-index cost", () => {
   it("resolves a shared selector once per walk, not once per element", () => {
     expect(classSelectorQueries(48)).toBe(classSelectorQueries(12));
     expect(classSelectorQueries(12)).toBe(1);
+  });
+});
+
+describe("liveLayerElement", () => {
+  it("finds a replaced layer again in its own file when a sub-composition repeats its id", () => {
+    document.body.innerHTML =
+      '<div data-composition-id="main">' +
+      '<div data-composition-id="strip" data-composition-src="compositions/strip.html">' +
+      '<div id="card-1">strip</div></div><div id="card-1">root</div></div>';
+    const stale = document.createElement("div");
+    const layer = {
+      key: "index.html:card-1:0",
+      element: stale,
+      label: "card-1",
+      tagName: "div",
+      depth: 0,
+      childCount: 0,
+      id: "card-1",
+      sourceFile: "index.html",
+    };
+
+    expect(liveLayerElement(layer, document, "index.html").textContent).toBe("root");
+    expect(
+      liveLayerElement({ ...layer, sourceFile: "compositions/strip.html" }, document, "index.html")
+        .textContent,
+    ).toBe("strip");
+  });
+});
+
+describe("domEditSelectionToFacts hasAudio", () => {
+  async function factsFor(html: string) {
+    document.body.innerHTML = html;
+    const node = document.body.firstElementChild;
+    if (!(node instanceof HTMLElement)) throw new Error("expected element");
+    const selection = await resolveDomEditSelection(node, opts);
+    document.body.innerHTML = "";
+    if (!selection) throw new Error("expected selection");
+    return domEditSelectionToFacts(selection);
+  }
+
+  it("is true for an unmuted video, false for muted or data-has-audio=false", async () => {
+    expect((await factsFor(`<video id="v1"></video>`)).hasAudio).toBe(true);
+    expect((await factsFor(`<video id="v2" data-has-audio="true"></video>`)).hasAudio).toBe(true);
+    expect((await factsFor(`<video id="v3" muted></video>`)).hasAudio).toBe(false);
+    expect((await factsFor(`<video id="v4" data-has-audio="false"></video>`)).hasAudio).toBe(false);
+    expect((await factsFor(`<div id="d1"></div>`)).hasAudio).toBe(false);
   });
 });

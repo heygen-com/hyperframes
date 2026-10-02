@@ -1,0 +1,1048 @@
+<!doctype html>
+<!--
+  Marquee Select Cursor (actor primitive), mountable sub-composition
+
+  concept: a photo library grid. The cursor presses on empty space and drags a
+  translucent selection rectangle; each tile selects (ring, inset, check badge pop) on
+  the exact frame the rectangle first touches it, and a pill counts the selection up.
+
+  mount contract: loaded by a host through data-composition-src; only <template> is
+  cloned. #root fills the host clip and letterboxes a 1920x1080 library inside it.
+
+  variables:
+    accent (color)                              rectangle, rings, badges and pill
+    start_x, start_y, end_x, end_y (% of board) where the drag presses and releases
+    pill_label (string)                         the word after the count
+
+  envelope (default 3.4s): arrive 0-0.5s, press 0.62s, drag 0.7-2.1s, release 2.1s,
+  step aside, exit in the last 0.6s. Shorter durations compress every beat evenly.
+-->
+<html
+  lang="en"
+  data-composition-id="cursor-marquee-select"
+  data-composition-duration="3.4"
+  data-composition-variables='[
+    { "id": "accent", "type": "color", "role": "style", "label": "Accent", "default": "#0a84ff" },
+    { "id": "start_x", "type": "number", "role": "layout", "label": "Drag start X", "default": 20.5, "min": 0, "max": 100, "step": 0.5, "unit": "%" },
+    { "id": "start_y", "type": "number", "role": "layout", "label": "Drag start Y", "default": 25.5, "min": 0, "max": 100, "step": 0.5, "unit": "%" },
+    { "id": "end_x", "type": "number", "role": "layout", "label": "Drag end X", "default": 57, "min": 0, "max": 100, "step": 0.5, "unit": "%" },
+    { "id": "end_y", "type": "number", "role": "layout", "label": "Drag end Y", "default": 52, "min": 0, "max": 100, "step": 0.5, "unit": "%" },
+    { "id": "pill_label", "type": "string", "role": "content", "label": "Pill label", "default": "selected" }
+  ]'
+>
+  <head>
+    <meta charset="UTF-8" />
+    <title>Marquee Select Cursor</title>
+  </head>
+  <body>
+    <template>
+      <style>
+        #root {
+          position: absolute;
+          inset: 0;
+          overflow: hidden;
+          isolation: isolate;
+          font-family: var(--font-body, Inter, system-ui, sans-serif);
+          --ms-accent: #0a84ff;
+        }
+        .ms-stage {
+          position: absolute;
+          left: 0;
+          top: 0;
+          width: 1920px;
+          height: 1080px;
+          transform-origin: 0 0;
+        }
+        .ms-panel {
+          position: absolute;
+          left: 360px;
+          top: 150px;
+          width: 1200px;
+          height: 788px;
+          border-radius: 32px;
+          background: #ffffff;
+          box-shadow:
+            0 40px 120px rgba(8, 10, 30, 0.35),
+            0 0 0 1px rgba(15, 18, 40, 0.06);
+        }
+        .ms-title {
+          position: absolute;
+          left: 56px;
+          top: 44px;
+          font-size: 34px;
+          font-weight: 700;
+          letter-spacing: -0.02em;
+          color: #12141f;
+        }
+        .ms-sub {
+          position: absolute;
+          left: 56px;
+          top: 90px;
+          font-size: 19px;
+          color: #6b7085;
+        }
+        .ms-pill {
+          position: absolute;
+          right: 56px;
+          top: 48px;
+          padding: 10px 20px;
+          border-radius: 999px;
+          font-size: 20px;
+          font-weight: 650;
+          color: #ffffff;
+          background: var(--ms-accent);
+          opacity: 0;
+          transform-origin: 100% 50%;
+          font-variant-numeric: tabular-nums;
+        }
+        .ms-tile {
+          position: absolute;
+          width: 250px;
+          height: 160px;
+          border-radius: 16px;
+          will-change: transform;
+        }
+        .ms-photo {
+          position: absolute;
+          inset: 0;
+          border-radius: inherit;
+          overflow: hidden;
+        }
+        .ms-photo svg {
+          display: block;
+          width: 100%;
+          height: 100%;
+        }
+        .ms-photo::after {
+          content: "";
+          position: absolute;
+          inset: 0;
+          border-radius: inherit;
+          box-shadow:
+            inset 0 0 0 1px rgba(0, 0, 0, 0.08),
+            inset 0 0 40px rgba(0, 0, 0, 0.16);
+        }
+        .ms-name {
+          position: absolute;
+          left: 0;
+          top: 168px;
+          font-size: 15px;
+          line-height: 18px;
+          color: #6b7085;
+        }
+        .ms-ring {
+          position: absolute;
+          inset: -7px;
+          border-radius: 22px;
+          border: 4px solid var(--ms-accent);
+          opacity: 0;
+        }
+        .ms-check {
+          position: absolute;
+          left: 12px;
+          top: 12px;
+          width: 34px;
+          height: 34px;
+          border-radius: 50%;
+          background: var(--ms-accent);
+          box-shadow: 0 0 0 3px #ffffff;
+          opacity: 0;
+        }
+        .ms-check svg {
+          width: 100%;
+          height: 100%;
+          fill: none;
+          stroke: #ffffff;
+          stroke-width: 2.6;
+          stroke-linecap: round;
+          stroke-linejoin: round;
+        }
+        .ms-rect {
+          position: absolute;
+          inset: 0;
+          opacity: 0;
+          z-index: 15;
+        }
+        /* Fill scales both ways; each edge scales along its length only, so it stays 1px. */
+        .ms-rect > div {
+          position: absolute;
+          left: 0;
+          top: 0;
+          transform-origin: 0 0;
+          background: color-mix(in srgb, var(--ms-accent), #000 22%);
+        }
+        .ms-rect .ms-fill {
+          width: 100px;
+          height: 100px;
+          background: color-mix(in srgb, var(--ms-accent) 20%, transparent);
+        }
+        .ms-rect .ms-h {
+          width: 100px;
+          height: 1px;
+        }
+        .ms-rect .ms-v {
+          width: 1px;
+          height: 100px;
+        }
+        .ms-cursor {
+          position: absolute;
+          left: 0;
+          top: 0;
+          filter: drop-shadow(0 3px 4px rgba(0, 0, 0, 0.3));
+          will-change: transform;
+          z-index: 20;
+        }
+      </style>
+
+      <div id="root" data-composition-id="cursor-marquee-select" data-duration="3.4">
+        <div class="ms-stage" id="ms-stage">
+          <div class="ms-panel">
+            <div class="ms-title">Summer shoot</div>
+            <div class="ms-sub">12 photos, edited yesterday</div>
+            <div class="ms-pill" id="ms-pill"></div>
+          </div>
+          <div id="ms-grid"></div>
+          <div class="ms-rect" id="ms-rect">
+            <div class="ms-fill"></div>
+            <div class="ms-h"></div>
+            <div class="ms-h"></div>
+            <div class="ms-v"></div>
+            <div class="ms-v"></div>
+          </div>
+          <div class="ms-cursor" id="ms-cursor" aria-hidden="true">
+            <svg viewBox="0 0 24 24" width="100%" height="100%">
+              <path
+                d="M5 3 L5 19 L9 15 L12 22 L15 20.5 L11.5 14 L18 14 Z"
+                fill="#ffffff"
+                stroke="#141414"
+                stroke-width="1.4"
+                stroke-linejoin="round"
+              />
+            </svg>
+          </div>
+        </div>
+      </div>
+
+      <script>
+        (function () {
+          "use strict";
+
+          var html = document.documentElement;
+          var root = document.getElementById("root");
+          var $ = function (id) {
+            return document.getElementById(id);
+          };
+
+          var DEFAULTS = {};
+          try {
+            JSON.parse(html.getAttribute("data-composition-variables") || "[]").forEach(
+              function (variable) {
+                DEFAULTS[variable.id] = variable.default;
+              },
+            );
+          } catch (error) {
+            /* malformed declaration falls back to the inline defaults below */
+          }
+          var scopedVariables = {};
+          try {
+            if (window.__hyperframes && typeof window.__hyperframes.getVariables === "function") {
+              scopedVariables = window.__hyperframes.getVariables() || {};
+            }
+          } catch (error) {
+            /* no scoped variables API in this context */
+          }
+          var vars = Object.assign({}, DEFAULTS, window.__hfVariables || {}, scopedVariables);
+
+          function num(value, fallback) {
+            var n = Number(value);
+            return Math.max(0, Math.min(100, isFinite(n) ? n : fallback));
+          }
+
+          // Hardcoded: the compositor rewrites the wrapper's attributes on mount.
+          var compositionId = "cursor-marquee-select";
+          var duration = Math.max(
+            0.001,
+            parseFloat(
+              root.dataset.duration || html.getAttribute("data-composition-duration") || "3.4",
+            ),
+          );
+          if (vars.accent) root.style.setProperty("--ms-accent", String(vars.accent));
+          var pillLabel = String(vars.pill_label || "selected");
+
+          var W = root.clientWidth || 1920;
+          var H = root.clientHeight || 1080;
+          var fit = Math.min(W / 1920, H / 1080);
+          $("ms-stage").style.transform =
+            "translate(" +
+            (W - 1920 * fit) / 2 +
+            "px," +
+            (H - 1080 * fit) / 2 +
+            "px) scale(" +
+            fit +
+            ")";
+
+          // Each photo is a 250x160 SVG scene; gradient ids are unique per scene.
+          function grad(id, colors) {
+            var stops = "";
+            for (var i = 0; i < colors.length; i++) {
+              stops +=
+                '<stop offset="' + i / (colors.length - 1) + '" stop-color="' + colors[i] + '"/>';
+            }
+            return '<linearGradient id="' + id + '" x2="0" y2="1">' + stops + "</linearGradient>";
+          }
+          function each(n, fn) {
+            var out = "";
+            for (var i = 0; i < n; i++) out += fn(i);
+            return out;
+          }
+          function frond(x, y, tx, ty, bend) {
+            var mx = (x + tx) / 2;
+            var my = (y + ty) / 2;
+            var dx = ty - y;
+            var dy = x - tx;
+            return (
+              '<path d="M' +
+              x +
+              " " +
+              y +
+              " Q" +
+              (mx + dx * bend) +
+              " " +
+              (my + dy * bend) +
+              " " +
+              tx +
+              " " +
+              ty +
+              " Q" +
+              (mx + dx * bend * 0.3) +
+              " " +
+              (my + dy * bend * 0.3) +
+              " " +
+              x +
+              " " +
+              y +
+              'Z"/>'
+            );
+          }
+          function boat(x, y, w, hull) {
+            var shape =
+              "M" +
+              x +
+              " " +
+              y +
+              " H" +
+              (x + w) +
+              " L" +
+              (x + w - 9) +
+              " " +
+              (y + 10) +
+              " H" +
+              (x + 7) +
+              "Z";
+            return (
+              '<path d="' +
+              shape +
+              '" fill="' +
+              hull +
+              '"/>' +
+              '<path d="' +
+              shape +
+              '" fill="' +
+              hull +
+              '" opacity=".28" transform="translate(0 ' +
+              (2 * y + 20) +
+              ') scale(1 -1)"/>' +
+              '<rect x="' +
+              (x + w * 0.3) +
+              '" y="' +
+              (y - 8) +
+              '" width="' +
+              w * 0.32 +
+              '" height="8" rx="1.5" fill="#f4f1ea"/>' +
+              '<rect x="' +
+              (x + w * 0.62) +
+              '" y="' +
+              (y - 40) +
+              '" width="1.4" height="40" fill="#3b3b3b"/>'
+            );
+          }
+          var SCENES = [
+            [
+              "beach-sunset.jpg",
+              "<defs>" +
+                grad("msBeSky", ["#34406e", "#b4607a", "#f39a5c", "#ffd59a"]) +
+                grad("msBeSea", ["#f0a070", "#7c5a7c", "#3a3f6a"]) +
+                grad("msBeSand", ["#e9c59b", "#c38e62"]) +
+                "</defs>" +
+                '<rect width="250" height="96" fill="url(#msBeSky)"/>' +
+                '<circle cx="168" cy="90" r="28" fill="#ffd9a0" opacity=".3"/>' +
+                '<circle cx="168" cy="90" r="15" fill="#fff3d6"/>' +
+                '<rect y="94" width="250" height="40" fill="url(#msBeSea)"/>' +
+                each(6, function (i) {
+                  return (
+                    '<rect x="' +
+                    (154 + i * 2) +
+                    '" y="' +
+                    (98 + i * 4.5) +
+                    '" width="' +
+                    (28 - i * 4) +
+                    '" height="1.6" rx=".8" fill="#ffe2b0" opacity="' +
+                    (0.85 - i * 0.12) +
+                    '"/>'
+                  );
+                }) +
+                '<path d="M0 126 Q70 114 140 121 T250 117 V160 H0Z" fill="url(#msBeSand)"/>' +
+                '<path d="M0 126 Q70 114 140 121 T250 117" fill="none" stroke="#fff4e0" stroke-width="1.4" opacity=".7"/>' +
+                '<path d="M44 160 Q48 112 32 72" fill="none" stroke="#2a1d24" stroke-width="4" stroke-linecap="round"/>' +
+                '<g fill="#2a1d24">' +
+                frond(32, 72, -4, 84, 0.25) +
+                frond(32, 72, 2, 54, -0.3) +
+                frond(32, 72, 36, 46, -0.3) +
+                frond(32, 72, 66, 58, -0.25) +
+                frond(32, 72, 64, 88, -0.2) +
+                frond(32, 72, 12, 96, 0.2) +
+                "</g>",
+            ],
+            [
+              "mountain-lake.jpg",
+              "<defs>" +
+                grad("msLkSky", ["#86b8dc", "#dcebf3"]) +
+                grad("msLkWater", ["#6d91a8", "#2a4a60"]) +
+                "</defs>" +
+                '<rect width="250" height="100" fill="url(#msLkSky)"/>' +
+                '<g id="msLkRange"><path d="M0 92 L30 60 L52 74 L88 32 L118 66 L140 52 L176 82 L205 46 L250 78 V100 H0Z" fill="#8398ad"/>' +
+                '<path d="M88 32 L77 46 L85 44 L91 50 L98 43 L104 50Z M205 46 L195 57 L203 55 L209 61 L216 56Z" fill="#f4f8fb"/>' +
+                '<path d="M0 100 L40 76 L70 90 L110 70 L150 94 L190 78 L250 96 V100 H0Z" fill="#4d6477"/></g>' +
+                '<rect y="100" width="250" height="60" fill="url(#msLkWater)"/>' +
+                '<use href="#msLkRange" transform="translate(0 200) scale(1 -1)" opacity=".3"/>' +
+                '<g fill="#22382c">' +
+                each(42, function (i) {
+                  var h = 6 + ((i * 7) % 5) * 1.8;
+                  return (
+                    '<path d="M' +
+                    i * 6 +
+                    " 102 L" +
+                    (i * 6 + 3) +
+                    " " +
+                    (102 - h) +
+                    " L" +
+                    (i * 6 + 6) +
+                    ' 102Z"/>'
+                  );
+                }) +
+                "</g>" +
+                each(5, function (i) {
+                  return (
+                    '<rect x="' +
+                    ((20 + i * 67) % 200) +
+                    '" y="' +
+                    (114 + i * 9) +
+                    '" width="44" height="1" fill="#ffffff" opacity=".22"/>'
+                  );
+                }),
+            ],
+            [
+              "city-night.jpg",
+              "<defs>" +
+                grad("msCtSky", ["#080c20", "#18244a", "#2c3a5e"]) +
+                "</defs>" +
+                '<rect width="250" height="160" fill="url(#msCtSky)"/>' +
+                [
+                  [0, 34, 110],
+                  [30, 26, 78],
+                  [54, 40, 124],
+                  [92, 28, 92],
+                  [118, 44, 140],
+                  [160, 30, 84],
+                  [188, 36, 116],
+                  [222, 30, 96],
+                ]
+                  .map(function (b, bi) {
+                    var top = 132 - b[2];
+                    var out =
+                      '<rect x="' +
+                      b[0] +
+                      '" y="' +
+                      top +
+                      '" width="' +
+                      b[1] +
+                      '" height="' +
+                      b[2] +
+                      '" fill="' +
+                      (bi % 2 ? "#18213f" : "#111931") +
+                      '"/>';
+                    for (var r = 0; r < Math.floor((b[2] - 10) / 9); r++) {
+                      for (var c = 0; c < Math.floor((b[1] - 6) / 7); c++) {
+                        if ((bi * 31 + r * 7 + c * 13) % 5 < 2) {
+                          out +=
+                            '<rect x="' +
+                            (b[0] + 4 + c * 7) +
+                            '" y="' +
+                            (top + 6 + r * 9) +
+                            '" width="3.5" height="5" fill="#ffcf7a" opacity="' +
+                            (0.55 + ((r + c) % 3) * 0.2) +
+                            '"/>';
+                        }
+                      }
+                    }
+                    return out;
+                  })
+                  .join("") +
+                '<rect y="132" width="250" height="28" fill="#0b0f1e"/>' +
+                '<rect y="141" width="250" height="1.4" fill="#ff5a48" opacity=".75"/>' +
+                '<rect x="40" y="145" width="160" height="1" fill="#ff8a6a" opacity=".45"/>' +
+                '<rect y="152" width="250" height="1.6" fill="#fff4dc" opacity=".7"/>',
+            ],
+            [
+              "morning-coffee.jpg",
+              '<rect width="250" height="160" fill="#8a5b3b"/>' +
+                each(6, function (i) {
+                  return (
+                    '<rect x="' +
+                    (i * 42 + 20) +
+                    '" width="1.2" height="160" fill="#633d25" opacity=".6"/>' +
+                    '<path d="M' +
+                    (i * 42 + 6) +
+                    ' 0 q5 40 0 80 t0 80" fill="none" stroke="#a87752" stroke-width="1.2" opacity=".35"/>'
+                  );
+                }) +
+                '<circle cx="124" cy="88" r="56" fill="#000000" opacity=".2"/>' +
+                '<circle cx="118" cy="82" r="54" fill="#f2eee8"/>' +
+                '<circle cx="118" cy="82" r="42" fill="#e6e0d6"/>' +
+                '<rect x="148" y="73" width="28" height="14" rx="7" fill="#fbfaf7"/>' +
+                '<circle cx="118" cy="80" r="38" fill="#fbfaf7"/>' +
+                '<circle cx="118" cy="80" r="31" fill="#5a331c"/>' +
+                '<circle cx="118" cy="80" r="26" fill="#9a6236"/>' +
+                '<path d="M118 94 C99 81 103 66 112 67 C115 67 118 70 118 73 C118 70 121 67 124 67 C133 66 137 81 118 94Z" fill="#f1e1c8"/>' +
+                '<g transform="rotate(-35 72 118)" fill="#cfd3d8"><ellipse cx="72" cy="112" rx="5" ry="8"/><rect x="70.5" y="118" width="3" height="30" rx="1.5"/></g>' +
+                '<circle cx="212" cy="36" r="17" fill="#c68646"/>' +
+                '<g fill="#4a2a16"><circle cx="206" cy="30" r="2.4"/><circle cx="217" cy="34" r="2"/><circle cx="210" cy="43" r="2.2"/><circle cx="220" cy="42" r="1.6"/></g>',
+            ],
+            [
+              "forest-path.jpg",
+              "<defs>" +
+                grad("msFoSky", ["#eef3d6", "#b4cc88"]) +
+                "</defs>" +
+                '<rect width="250" height="160" fill="url(#msFoSky)"/>' +
+                '<g fill="#9aae7a" opacity=".8">' +
+                each(9, function (i) {
+                  return (
+                    '<rect x="' +
+                    (8 + i * 29 + (i % 2) * 6) +
+                    '" width="' +
+                    (3 + (i % 3)) +
+                    '" height="160"/>'
+                  );
+                }) +
+                "</g>" +
+                '<path d="M150 0 H176 L122 160 H94Z M198 0 H210 L170 160 H152Z" fill="#fffbe6" opacity=".22"/>' +
+                '<g fill="#3a2d21"><rect x="16" width="13" height="160"/><rect x="58" width="7" height="160"/><rect x="178" width="9" height="160"/><rect x="214" width="16" height="160"/></g>' +
+                '<path d="M0 0 H250 V24 Q222 40 196 27 Q170 44 142 29 Q116 46 90 29 Q62 42 36 27 Q16 38 0 30Z" fill="#577f38"/>' +
+                '<path d="M0 108 Q125 98 250 108 V160 H0Z" fill="#4b7532"/>' +
+                '<path d="M119 102 H131 L180 160 H70Z" fill="#c7a472"/>' +
+                '<path d="M119 102 L70 160 H82 L121 102Z" fill="#a8865a"/>' +
+                '<g fill="#3a5f27">' +
+                each(6, function (i) {
+                  var x = i < 3 ? 10 + i * 20 : 186 + (i - 3) * 22;
+                  return (
+                    '<path d="M' +
+                    x +
+                    " 160 Q" +
+                    (x + 6) +
+                    " 136 " +
+                    (x + 16) +
+                    " 132 Q" +
+                    (x + 10) +
+                    " 142 " +
+                    (x + 12) +
+                    ' 160Z"/>'
+                  );
+                }) +
+                "</g>",
+            ],
+            [
+              "aurora.jpg",
+              "<defs>" +
+                grad("msAuSky", ["#040a18", "#0b2033", "#12374a"]) +
+                '<linearGradient id="msAuBand" x2="0" y2="1"><stop offset="0" stop-color="#b6ffe0" stop-opacity=".95"/><stop offset=".45" stop-color="#2fe39a" stop-opacity=".8"/><stop offset="1" stop-color="#14a37c" stop-opacity="0"/></linearGradient>' +
+                '<filter id="msAuBlur" x="-20%" y="-40%" width="140%" height="180%"><feGaussianBlur stdDeviation="3"/></filter></defs>' +
+                '<rect width="250" height="160" fill="url(#msAuSky)"/>' +
+                '<g fill="#ffffff">' +
+                each(34, function (i) {
+                  return (
+                    '<circle cx="' +
+                    ((i * 73.3) % 250).toFixed(1) +
+                    '" cy="' +
+                    ((i * 41.7) % 84).toFixed(1) +
+                    '" r="' +
+                    (i % 4 ? 0.6 : 1.1) +
+                    '" opacity=".8"/>'
+                  );
+                }) +
+                "</g>" +
+                '<g filter="url(#msAuBlur)"><path d="M-10 74 C40 22 90 60 130 30 S210 8 260 36 L260 62 C210 34 170 62 130 54 S40 54 -10 96Z" fill="url(#msAuBand)"/>' +
+                '<path d="M20 40 C70 10 120 36 170 16 S230 12 260 20 L260 30 C220 24 180 40 150 34 S70 30 20 52Z" fill="#6fe6ff" opacity=".35"/></g>' +
+                '<path d="M0 124 L34 102 L60 114 L96 88 L130 112 L170 96 L206 116 L250 104 V160 H0Z" fill="#06101a"/>' +
+                '<rect y="128" width="250" height="32" fill="#0a1a26"/>' +
+                '<ellipse cx="120" cy="140" rx="90" ry="4" fill="#2fe39a" opacity=".25" filter="url(#msAuBlur)"/>' +
+                '<g fill="#03080e">' +
+                each(9, function (i) {
+                  var x = i < 5 ? i * 11 - 4 : 196 + (i - 5) * 14;
+                  var h = 18 + ((i * 5) % 4) * 5;
+                  return (
+                    '<path d="M' +
+                    x +
+                    " 132 L" +
+                    (x + 6) +
+                    " " +
+                    (132 - h) +
+                    " L" +
+                    (x + 12) +
+                    ' 132Z"/>'
+                  );
+                }) +
+                "</g>",
+            ],
+            [
+              "desert-dunes.jpg",
+              "<defs>" +
+                grad("msDeSky", ["#5a9ed5", "#bcd9ec", "#f3e0c0"]) +
+                "</defs>" +
+                '<rect width="250" height="160" fill="url(#msDeSky)"/>' +
+                '<circle cx="196" cy="30" r="18" fill="#fff8e6" opacity=".35"/>' +
+                '<circle cx="196" cy="30" r="8" fill="#fffaf0"/>' +
+                '<path d="M0 94 Q50 78 100 90 T200 84 T250 88 V160 H0Z" fill="#e4b27b"/>' +
+                '<path d="M0 160 V124 Q70 96 130 98 Q190 102 250 120 V160Z" fill="#dc9a57"/>' +
+                '<path d="M130 98 Q190 102 250 120 V160 H214 Q172 128 130 98Z" fill="#b1672f"/>' +
+                '<path d="M0 160 V142 Q80 126 160 138 T250 136 V160Z" fill="#ebb67d"/>' +
+                '<g fill="none" stroke="#c98a52" stroke-width="1" opacity=".55">' +
+                each(4, function (i) {
+                  return (
+                    '<path d="M' +
+                    (10 + i * 12) +
+                    " " +
+                    (150 + i * 3) +
+                    " Q" +
+                    (80 + i * 10) +
+                    " " +
+                    (140 + i * 3) +
+                    " " +
+                    (150 + i * 8) +
+                    " " +
+                    (150 + i * 3) +
+                    '"/>'
+                  );
+                }) +
+                "</g>",
+            ],
+            [
+              "window-portrait.jpg",
+              "<defs>" +
+                grad("msWpWin", ["#fbf4e6", "#dfe8ee"]) +
+                "</defs>" +
+                '<rect width="250" height="160" fill="#2b2622"/>' +
+                '<rect x="40" y="18" width="120" height="120" fill="url(#msWpWin)"/>' +
+                '<path d="M40 112 Q70 100 100 108 T160 104 V138 H40Z" fill="#c8d5c2"/>' +
+                '<g fill="#2b2622"><rect x="98" y="18" width="4" height="120"/><rect x="40" y="76" width="120" height="4"/></g>' +
+                '<rect x="37" y="15" width="126" height="126" fill="none" stroke="#1d1916" stroke-width="6"/>' +
+                '<rect x="30" y="138" width="140" height="6" fill="#3a332d"/>' +
+                '<path d="M40 144 H160 L204 160 H18Z" fill="#fbf4e6" opacity=".12"/>' +
+                '<g fill="#15120f"><path d="M94 160 C96 122 110 106 128 102 C146 106 160 122 162 160Z"/>' +
+                '<rect x="122" y="84" width="12" height="22"/><ellipse cx="128" cy="72" rx="15" ry="18"/>' +
+                '<circle cx="136" cy="54" r="7"/></g>' +
+                '<path d="M114 64 A15 18 0 0 1 124 54" fill="none" stroke="#fff3dc" stroke-width="1.2" opacity=".6"/>' +
+                '<path d="M200 160 L203 132 H225 L228 160Z" fill="#7a4e34"/>' +
+                '<g fill="#3d5838">' +
+                each(5, function (i) {
+                  return (
+                    '<ellipse cx="214" cy="116" rx="5" ry="18" transform="rotate(' +
+                    (i * 22 - 44) +
+                    ' 214 132)"/>'
+                  );
+                }) +
+                "</g>",
+            ],
+            [
+              "harbor-boats.jpg",
+              "<defs>" +
+                grad("msHbSky", ["#a6d2ea", "#e9f4f9"]) +
+                grad("msHbSea", ["#3a84ae", "#1d5780"]) +
+                "</defs>" +
+                '<rect width="250" height="92" fill="url(#msHbSky)"/>' +
+                '<path d="M0 64 Q60 44 120 58 T250 52 V80 H0Z" fill="#8cae98"/>' +
+                [
+                  "#e4572e",
+                  "#f3c14b",
+                  "#f7f1e3",
+                  "#3d7ea6",
+                  "#e98a3a",
+                  "#f7f1e3",
+                  "#c0392b",
+                  "#f3c14b",
+                  "#6fa8a0",
+                ]
+                  .map(function (c, i) {
+                    var x = i * 28;
+                    var h = 16 + ((i * 5) % 3) * 3;
+                    return (
+                      '<rect x="' +
+                      x +
+                      '" y="' +
+                      (86 - h) +
+                      '" width="27" height="' +
+                      h +
+                      '" fill="' +
+                      c +
+                      '"/><path d="M' +
+                      x +
+                      " " +
+                      (86 - h) +
+                      " L" +
+                      (x + 13.5) +
+                      " " +
+                      (78 - h) +
+                      " L" +
+                      (x + 27) +
+                      " " +
+                      (86 - h) +
+                      'Z" fill="#7a3b2a"/>' +
+                      '<rect x="' +
+                      (x + 6) +
+                      '" y="' +
+                      (90 - h) +
+                      '" width="4" height="5" fill="#2d2a2a" opacity=".55"/>' +
+                      '<rect x="' +
+                      (x + 17) +
+                      '" y="' +
+                      (90 - h) +
+                      '" width="4" height="5" fill="#2d2a2a" opacity=".55"/>'
+                    );
+                  })
+                  .join("") +
+                '<rect y="86" width="250" height="6" fill="#9b8f80"/>' +
+                '<rect y="92" width="250" height="68" fill="url(#msHbSea)"/>' +
+                boat(18, 112, 66, "#d64533") +
+                boat(104, 124, 74, "#f4f0e6") +
+                boat(190, 106, 52, "#f2b632") +
+                '<g fill="#ffffff" opacity=".25">' +
+                each(8, function (i) {
+                  return (
+                    '<rect x="' +
+                    ((i * 83) % 230) +
+                    '" y="' +
+                    (98 + i * 7) +
+                    '" width="26" height="1"/>'
+                  );
+                }) +
+                "</g>",
+            ],
+            [
+              "poppy-closeup.jpg",
+              "<defs>" +
+                grad("msPpBg", ["#7aa34c", "#2c4b23"]) +
+                '<filter id="msPpBlur" x="-50%" y="-50%" width="200%" height="200%"><feGaussianBlur stdDeviation="3"/></filter></defs>' +
+                '<rect width="250" height="160" fill="url(#msPpBg)"/>' +
+                '<g fill="#d2e8a2" opacity=".18">' +
+                each(7, function (i) {
+                  return (
+                    '<circle cx="' +
+                    ((i * 97 + 20) % 250) +
+                    '" cy="' +
+                    ((i * 53 + 18) % 150) +
+                    '" r="' +
+                    (12 + ((i * 7) % 4) * 5) +
+                    '"/>'
+                  );
+                }) +
+                "</g>" +
+                '<g filter="url(#msPpBlur)" fill="#d9412e" opacity=".45"><circle cx="30" cy="40" r="11"/><circle cx="222" cy="120" r="14"/></g>' +
+                '<path d="M142 160 Q136 130 128 96" fill="none" stroke="#4e7a2c" stroke-width="5"/>' +
+                '<g fill="#b91d15"><ellipse cx="100" cy="62" rx="40" ry="30" transform="rotate(-20 100 62)"/><ellipse cx="152" cy="60" rx="40" ry="30" transform="rotate(20 152 60)"/></g>' +
+                '<g fill="#e6382a"><ellipse cx="106" cy="88" rx="38" ry="27" transform="rotate(14 106 88)"/><ellipse cx="148" cy="86" rx="38" ry="27" transform="rotate(-14 148 86)"/></g>' +
+                '<g fill="none" stroke="#8e1410" stroke-width="1" opacity=".35"><path d="M126 78 Q100 90 80 104"/><path d="M126 78 Q152 92 172 102"/><path d="M126 70 Q104 52 82 44"/><path d="M126 70 Q150 50 170 42"/></g>' +
+                '<circle cx="126" cy="74" r="12" fill="#231f16"/>' +
+                '<g fill="#17130e">' +
+                each(16, function (i) {
+                  var a = (i * Math.PI) / 8;
+                  return (
+                    '<circle cx="' +
+                    (126 + Math.cos(a) * 16).toFixed(1) +
+                    '" cy="' +
+                    (74 + Math.sin(a) * 16).toFixed(1) +
+                    '" r="1.8"/>'
+                  );
+                }) +
+                "</g>" +
+                '<circle cx="126" cy="74" r="6" fill="#71803c"/>',
+            ],
+            [
+              "snow-peak.jpg",
+              "<defs>" +
+                grad("msSnSky", ["#2567b2", "#7fb4e3", "#d7e9f6"]) +
+                "</defs>" +
+                '<rect width="250" height="160" fill="url(#msSnSky)"/>' +
+                '<path d="M0 112 L36 86 L62 98 L92 80 L118 104 L190 92 L220 76 L250 94 V160 H0Z" fill="#9db6cd"/>' +
+                '<path d="M30 160 L96 70 L110 78 L128 26 L150 64 L162 58 L232 160Z" fill="#56687a"/>' +
+                '<path d="M128 26 L110 78 L96 70 L80 94 L100 90 L112 104 L124 84 L128 112 L136 80 L150 64Z" fill="#f7fbff"/>' +
+                '<path d="M128 26 L150 64 L162 58 L182 92 L166 86 L150 100 L140 78 L136 80Z" fill="#c7d7e8"/>' +
+                '<g fill="#ffffff" opacity=".7"><ellipse cx="54" cy="124" rx="62" ry="9"/><ellipse cx="196" cy="128" rx="70" ry="8"/><ellipse cx="120" cy="134" rx="80" ry="7"/></g>' +
+                '<path d="M0 142 Q90 126 250 148 V160 H0Z" fill="#eef4fa"/>' +
+                '<path d="M0 142 Q90 126 250 148" fill="none" stroke="#b9cde2" stroke-width="1.5"/>',
+            ],
+            [
+              "market-stall.jpg",
+              '<rect width="250" height="160" fill="#3b2a1f"/>' +
+                '<rect width="250" height="34" fill="#f6efe2"/>' +
+                '<g fill="#d7322b">' +
+                each(10, function (i) {
+                  return (
+                    '<rect x="' +
+                    i * 25 +
+                    '" width="12.5" height="34"/><path d="M' +
+                    i * 25 +
+                    ' 34 a12.5 8 0 0 0 25 0Z"/>'
+                  );
+                }) +
+                "</g>" +
+                '<rect y="40" width="250" height="8" fill="#000000" opacity=".22"/>' +
+                [
+                  [8, 88, "#f0902a"],
+                  [88, 88, "#f4d23c"],
+                  [168, 88, "#cf2f2a"],
+                  [8, 138, "#7db13a"],
+                  [88, 138, "#e0402f"],
+                  [168, 138, "#3f5a2a"],
+                ]
+                  .map(function (c) {
+                    var x = c[0];
+                    var top = c[1];
+                    var out = "";
+                    for (var k = 0; k < 11; k++) {
+                      var row = k < 6 ? 0 : 1;
+                      var cx = x + 9 + (row ? 6 + (k - 6) * 12 : k * 12);
+                      var cy = top - 5 - row * 9;
+                      out +=
+                        '<circle cx="' +
+                        cx +
+                        '" cy="' +
+                        cy +
+                        '" r="6.5" fill="' +
+                        c[2] +
+                        '"/>' +
+                        '<circle cx="' +
+                        (cx - 2) +
+                        '" cy="' +
+                        (cy - 2) +
+                        '" r="1.8" fill="#ffffff" opacity=".35"/>';
+                    }
+                    return (
+                      out +
+                      '<rect x="' +
+                      x +
+                      '" y="' +
+                      top +
+                      '" width="74" height="' +
+                      (c[1] === 88 ? 34 : 22) +
+                      '" fill="#a8743f"/><rect x="' +
+                      x +
+                      '" y="' +
+                      (top + 10) +
+                      '" width="74" height="1.4" fill="#7e5329"/><rect x="' +
+                      (x + 26) +
+                      '" y="' +
+                      (top + 3) +
+                      '" width="22" height="7" rx="1" fill="#f4efe4"/>'
+                    );
+                  })
+                  .join(""),
+            ],
+          ];
+          var TILE_W = 250;
+          var TILE_H = 160;
+          var GAP_X = 30;
+          var GAP_Y = 48;
+          var LEFT = 415;
+          var TOP = 280;
+          var grid = $("ms-grid");
+          var CHECK = '<svg viewBox="0 0 24 24"><path d="M6.5 12.5l3.6 3.6L17.5 8.5"/></svg>';
+          var tiles = SCENES.map(function (p, i) {
+            var box = {
+              x: LEFT + (i % 4) * (TILE_W + GAP_X),
+              y: TOP + Math.floor(i / 4) * (TILE_H + GAP_Y),
+            };
+            var el = document.createElement("div");
+            el.className = "ms-tile";
+            el.style.cssText = "left:" + box.x + "px;top:" + box.y + "px";
+            el.innerHTML =
+              '<div class="ms-ring"></div><div class="ms-photo"><svg viewBox="0 0 250 160" preserveAspectRatio="xMidYMid slice">' +
+              p[1] +
+              '</svg></div><div class="ms-check">' +
+              CHECK +
+              '</div><div class="ms-name">' +
+              p[0] +
+              "</div>";
+            grid.appendChild(el);
+            return {
+              box: box,
+              photo: el.querySelector(".ms-photo"),
+              ring: el.querySelector(".ms-ring"),
+              check: el.querySelector(".ms-check"),
+            };
+          });
+
+          var s = Math.min(1, duration / 3.4);
+          var T_ARRIVE = 0.5 * s;
+          var T_PRESS = 0.62 * s;
+          var T_DRAG = 0.7 * s;
+          var T_RELEASE = 2.1 * s;
+          var T_DRIFT = 2.2 * s;
+          var T_EXIT = duration - 0.6 * s;
+
+          var easeArrive = gsap.parseEase("power3.out");
+          var easeDrag = gsap.parseEase("power2.out");
+          var easeExit = gsap.parseEase("power3.in");
+          var easePop = gsap.parseEase("back.out(2.4)");
+          function clamp01(u) {
+            return u < 0 ? 0 : u > 1 ? 1 : u;
+          }
+          function arc(p0, p1, bend, u) {
+            var cx = (p0.x + p1.x) / 2 - (p1.y - p0.y) * bend;
+            var cy = (p0.y + p1.y) / 2 + (p1.x - p0.x) * bend;
+            var v = 1 - u;
+            return {
+              x: v * v * p0.x + 2 * v * u * cx + u * u * p1.x,
+              y: v * v * p0.y + 2 * v * u * cy + u * u * p1.y,
+            };
+          }
+
+          var A = {
+            x: (num(vars.start_x, 20.5) / 100) * 1920,
+            y: (num(vars.start_y, 25.5) / 100) * 1080,
+          };
+          var B = { x: (num(vars.end_x, 57) / 100) * 1920, y: (num(vars.end_y, 52) / 100) * 1080 };
+          var START = { x: 2060, y: 1220 };
+          var ASIDE = { x: B.x + 120, y: B.y + 110 };
+          // Family arrow: 64px at 1920 wide, in stage units so the stage's fit scale cancels out.
+          var ARROW = (64 * (W / 1920)) / fit;
+          var TIP = { x: (5 / 24) * ARROW, y: (3 / 24) * ARROW };
+
+          function pointerAt(t) {
+            if (t <= T_ARRIVE) return arc(START, A, 0.16, easeArrive(clamp01(t / T_ARRIVE)));
+            if (t <= T_DRAG) return A;
+            if (t <= T_RELEASE)
+              return arc(A, B, 0.06, easeDrag((t - T_DRAG) / (T_RELEASE - T_DRAG)));
+            if (t <= T_DRIFT) return B;
+            if (t <= T_EXIT)
+              return arc(B, ASIDE, 0.1, easeArrive(clamp01((t - T_DRIFT) / (0.4 * s))));
+            return arc(ASIDE, START, -0.1, easeExit(clamp01((t - T_EXIT) / (duration - T_EXIT))));
+          }
+          function rectAt(t) {
+            var p = pointerAt(Math.min(t, T_RELEASE));
+            return {
+              x0: Math.min(A.x, p.x),
+              y0: Math.min(A.y, p.y),
+              x1: Math.max(A.x, p.x),
+              y1: Math.max(A.y, p.y),
+            };
+          }
+          function touches(r, b) {
+            return r.x1 >= b.x && r.x0 <= b.x + TILE_W && r.y1 >= b.y && r.y0 <= b.y + TILE_H;
+          }
+
+          // The first frame the rectangle touches each tile, found by walking the drag path.
+          var FPS = 240;
+          tiles.forEach(function (tile) {
+            tile.at = Infinity;
+            for (var f = Math.ceil(T_DRAG * FPS); f <= Math.ceil(T_RELEASE * FPS); f++) {
+              if (touches(rectAt(f / FPS), tile.box)) {
+                tile.at = f / FPS;
+                break;
+              }
+            }
+          });
+
+          var rect = $("ms-rect");
+          var rectParts = rect.children;
+          var cursor = $("ms-cursor");
+          cursor.style.width = cursor.style.height = ARROW + "px";
+          var pill = $("ms-pill");
+
+          function render(t) {
+            var r = rectAt(t);
+            var dragging = t >= T_DRAG && t < T_RELEASE;
+            var rectAlpha =
+              t < T_DRAG
+                ? 0
+                : dragging
+                  ? clamp01((t - T_DRAG) / 0.06)
+                  : 1 - clamp01((t - T_RELEASE) / (0.18 * s));
+            rect.style.opacity = rectAlpha.toFixed(3);
+            var sx = Math.max(0.001, (r.x1 - r.x0) / 100).toFixed(4);
+            var sy = Math.max(0.001, (r.y1 - r.y0) / 100).toFixed(4);
+            var at = function (x, y) {
+              return "translate(" + x.toFixed(2) + "px," + y.toFixed(2) + "px) ";
+            };
+            rectParts[0].style.transform = at(r.x0, r.y0) + "scale(" + sx + "," + sy + ")";
+            rectParts[1].style.transform = at(r.x0, r.y0) + "scaleX(" + sx + ")";
+            rectParts[2].style.transform = at(r.x0, r.y1 - 1) + "scaleX(" + sx + ")";
+            rectParts[3].style.transform = at(r.x0, r.y0) + "scaleY(" + sy + ")";
+            rectParts[4].style.transform = at(r.x1 - 1, r.y0) + "scaleY(" + sy + ")";
+
+            var count = 0;
+            var firstAt = Infinity;
+            tiles.forEach(function (tile) {
+              var on = t >= tile.at && touches(r, tile.box);
+              var u = on ? clamp01((t - tile.at) / 0.24) : 0;
+              if (on) count++;
+              if (on) firstAt = Math.min(firstAt, tile.at);
+              tile.ring.style.opacity = clamp01(u * 2).toFixed(3);
+              tile.photo.style.transform =
+                "scale(" + (1 - 0.06 * clamp01(u * 1.6)).toFixed(4) + ")";
+              tile.check.style.opacity = clamp01(u * 3).toFixed(3);
+              tile.check.style.transform = "scale(" + (0.5 + 0.5 * easePop(u)).toFixed(4) + ")";
+            });
+
+            var pillU = count > 0 ? clamp01((t - firstAt) / 0.22) : 0;
+            pill.textContent = count + " " + pillLabel;
+            pill.style.opacity = pillU.toFixed(3);
+            pill.style.transform = "scale(" + (0.94 + 0.06 * easePop(pillU)).toFixed(4) + ")";
+
+            var p = pointerAt(t);
+            var press =
+              t >= T_PRESS && t < T_PRESS + 0.2 * s
+                ? 1 - 0.1 * Math.sin(Math.PI * clamp01((t - T_PRESS) / (0.2 * s)))
+                : 1;
+            cursor.style.transformOrigin = TIP.x + "px " + TIP.y + "px";
+            cursor.style.transform =
+              "translate(" +
+              (p.x - TIP.x).toFixed(2) +
+              "px," +
+              (p.y - TIP.y).toFixed(2) +
+              "px) scale(" +
+              press.toFixed(4) +
+              ")";
+          }
+
+          var clock = { t: 0 };
+          var tl = gsap.timeline({ paused: true });
+          tl.to(
+            clock,
+            {
+              t: duration,
+              duration: duration,
+              ease: "none",
+              onUpdate: function () {
+                render(clock.t);
+              },
+            },
+            0,
+          );
+          render(0);
+          tl.seek(0);
+          window.__timelines = window.__timelines || {};
+          window.__timelines[compositionId] = tl;
+        })();
+      </script>
+    </template>
+  </body>
+</html>

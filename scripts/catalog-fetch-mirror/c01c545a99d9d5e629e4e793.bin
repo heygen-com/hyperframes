@@ -1,0 +1,70 @@
+@font-face {
+  font-family: 'JetBrains Mono';
+  font-style: italic;
+  font-weight: 400;
+  src: url(https://fonts.gstatic.com/l/font?kit=tDbp2o-flEEny0FZhsfKu5WU4xD-IQ-PuZJJXxfpAO-LfjGbsVNLG7DGdF6OZ1Pcwgknk-6tfcOETEf8ZjwZ1qeKZyczFtihI9cRfe3jgtqPvZ4GM8lUiwZSvOUprKTX7OrGHXbmC0dn1P1cMJ_TofiX3A1d0GPVKlYpbZwlpRwMOH5ilHuu3bpJuIwk3XNMxaDDqyh-HEXqRJEO_FrwSUc&skey=74ed26de24979d51&v=v24) format('woff2');
+  unicode-range: U+a, U+20-23, U+25-7d, U+2014, U+203a, U+2304, U+25c7;
+}
+@font-face {
+  font-family: 'JetBrains Mono';
+  font-style: italic;
+  font-weight: 700;
+  src: url(https://fonts.gstatic.com/l/font?kit=tDbp2o-flEEny0FZhsfKu5WU4xD-IQ-PuZJJXxfpAO-LfjGbsVNLG7DGdF6OZ1Pcwgknk-6tfcOETEf8ZjwZ1qeKZyczFtihI9cRfe3jgtqPvZ4GM8lUiwZSvOUprKTX7OrGHXbmC0dn1P1cMJ_TofiX3A1d0GPVKlYpbZwlpRwMOH5ilHuu3bpJuIwk3XNMxaDDqyh-HEXqRJEO_FrwSUc&skey=74ed26de24979d51&v=v24) format('woff2');
+  unicode-range: U+a, U+20-23, U+25-7d, U+2014, U+203a, U+2304, U+25c7;
+}
+@font-face {
+  font-family: 'JetBrains Mono';
+  font-style: normal;
+  font-weight: 100;
+  src: url(https://fonts.gstatic.com/l/font?kit=tDbV2o-flEEny0FZhsfKu5WU4yD5MQaPTXC-7jDdIsxmG1S4kI2wqibvTm6_HSTI8hUSo9elLPWZU1qfAlh9usvmC0NXcrzdX6ttGYmH5rbj0fJiV60wlxpOoMENiID7wMbqOVLCL3tb6MF4FLv3jdS78Cl59EfJNtbKnRvDeJbp1veZfg&skey=48ad01c60053c2ae&v=v24) format('woff2');
+  unicode-range: U+a, U+20-23, U+25-7d, U+2014, U+203a, U+2304, U+25c7;
+}
+@font-face {
+  font-family: 'JetBrains Mono';
+  font-style: normal;
+  font-weight: 200;
+  src: url(https://fonts.gstatic.com/l/font?kit=tDbV2o-flEEny0FZhsfKu5WU4yD5MQaPTXC-7jDdIsxmG1S4kI2wqibvTm6_HSTI8hUSo9elLPWZU1qfAlh9usvmC0NXcrzdX6ttGYmH5rbj0fJiV60wlxpOoMENiID7wMbqOVLCL3tb6MF4FLv3jdS78Cl59EfJNtbKnRvDeJbp1veZfg&skey=48ad01c60053c2ae&v=v24) format('woff2');
+  unicode-range: U+a, U+20-23, U+25-7d, U+2014, U+203a, U+2304, U+25c7;
+}
+@font-face {
+  font-family: 'JetBrains Mono';
+  font-style: normal;
+  font-weight: 300;
+  src: url(https://fonts.gstatic.com/l/font?kit=tDbV2o-flEEny0FZhsfKu5WU4yD5MQaPTXC-7jDdIsxmG1S4kI2wqibvTm6_HSTI8hUSo9elLPWZU1qfAlh9usvmC0NXcrzdX6ttGYmH5rbj0fJiV60wlxpOoMENiID7wMbqOVLCL3tb6MF4FLv3jdS78Cl59EfJNtbKnRvDeJbp1veZfg&skey=48ad01c60053c2ae&v=v24) format('woff2');
+  unicode-range: U+a, U+20-23, U+25-7d, U+2014, U+203a, U+2304, U+25c7;
+}
+@font-face {
+  font-family: 'JetBrains Mono';
+  font-style: normal;
+  font-weight: 400;
+  src: url(https://fonts.gstatic.com/l/font?kit=tDbV2o-flEEny0FZhsfKu5WU4yD5MQaPTXC-7jDdIsxmG1S4kI2wqibvTm6_HSTI8hUSo9elLPWZU1qfAlh9usvmC0NXcrzdX6ttGYmH5rbj0fJiV60wlxpOoMENiID7wMbqOVLCL3tb6MF4FLv3jdS78Cl59EfJNtbKnRvDeJbp1veZfg&skey=48ad01c60053c2ae&v=v24) format('woff2');
+  unicode-range: U+a, U+20-23, U+25-7d, U+2014, U+203a, U+2304, U+25c7;
+}
+@font-face {
+  font-family: 'JetBrains Mono';
+  font-style: normal;
+  font-weight: 500;
+  src: url(https://fonts.gstatic.com/l/font?kit=tDbV2o-flEEny0FZhsfKu5WU4yD5MQaPTXC-7jDdIsxmG1S4kI2wqibvTm6_HSTI8hUSo9elLPWZU1qfAlh9usvmC0NXcrzdX6ttGYmH5rbj0fJiV60wlxpOoMENiID7wMbqOVLCL3tb6MF4FLv3jdS78Cl59EfJNtbKnRvDeJbp1veZfg&skey=48ad01c60053c2ae&v=v24) format('woff2');
+  unicode-range: U+a, U+20-23, U+25-7d, U+2014, U+203a, U+2304, U+25c7;
+}
+@font-face {
+  font-family: 'JetBrains Mono';
+  font-style: normal;
+  font-weight: 600;
+  src: url(https://fonts.gstatic.com/l/font?kit=tDbV2o-flEEny0FZhsfKu5WU4yD5MQaPTXC-7jDdIsxmG1S4kI2wqibvTm6_HSTI8hUSo9elLPWZU1qfAlh9usvmC0NXcrzdX6ttGYmH5rbj0fJiV60wlxpOoMENiID7wMbqOVLCL3tb6MF4FLv3jdS78Cl59EfJNtbKnRvDeJbp1veZfg&skey=48ad01c60053c2ae&v=v24) format('woff2');
+  unicode-range: U+a, U+20-23, U+25-7d, U+2014, U+203a, U+2304, U+25c7;
+}
+@font-face {
+  font-family: 'JetBrains Mono';
+  font-style: normal;
+  font-weight: 700;
+  src: url(https://fonts.gstatic.com/l/font?kit=tDbV2o-flEEny0FZhsfKu5WU4yD5MQaPTXC-7jDdIsxmG1S4kI2wqibvTm6_HSTI8hUSo9elLPWZU1qfAlh9usvmC0NXcrzdX6ttGYmH5rbj0fJiV60wlxpOoMENiID7wMbqOVLCL3tb6MF4FLv3jdS78Cl59EfJNtbKnRvDeJbp1veZfg&skey=48ad01c60053c2ae&v=v24) format('woff2');
+  unicode-range: U+a, U+20-23, U+25-7d, U+2014, U+203a, U+2304, U+25c7;
+}
+@font-face {
+  font-family: 'JetBrains Mono';
+  font-style: normal;
+  font-weight: 800;
+  src: url(https://fonts.gstatic.com/l/font?kit=tDbV2o-flEEny0FZhsfKu5WU4yD5MQaPTXC-7jDdIsxmG1S4kI2wqibvTm6_HSTI8hUSo9elLPWZU1qfAlh9usvmC0NXcrzdX6ttGYmH5rbj0fJiV60wlxpOoMENiID7wMbqOVLCL3tb6MF4FLv3jdS78Cl59EfJNtbKnRvDeJbp1veZfg&skey=48ad01c60053c2ae&v=v24) format('woff2');
+  unicode-range: U+a, U+20-23, U+25-7d, U+2014, U+203a, U+2304, U+25c7;
+}

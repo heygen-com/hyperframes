@@ -204,13 +204,13 @@ export function PropertyPanelColorSecondary({
                 setSampling(false);
               }
             }}
-            className="flex min-h-7 items-center gap-1.5 text-[10px] font-medium text-panel-accent hover:text-panel-accent/80 disabled:opacity-50"
+            className="flex min-h-7 items-center gap-1.5 text-[10px] font-medium text-accent-ink hover:text-accent-ink/80 disabled:opacity-50"
           >
             <Eyedropper size={12} />
             {sampling ? "Capturing frame" : "Sample color from frame"}
           </button>
           {captureError && (
-            <p role="alert" className="text-[9px] leading-4 text-red-300">
+            <p role="alert" className="text-[9px] leading-4 text-danger-ink">
               {captureError}
             </p>
           )}
@@ -221,7 +221,7 @@ export function PropertyPanelColorSecondary({
                   type="button"
                   aria-pressed={!showMatte}
                   onClick={() => setShowMatte(false)}
-                  className={!showMatte ? "text-panel-accent" : "text-panel-text-4"}
+                  className={!showMatte ? "text-accent-ink" : "text-panel-text-4"}
                 >
                   Source
                 </button>
@@ -229,7 +229,7 @@ export function PropertyPanelColorSecondary({
                   type="button"
                   aria-pressed={showMatte}
                   onClick={() => setShowMatte(true)}
-                  className={showMatte ? "text-panel-accent" : "text-panel-text-4"}
+                  className={showMatte ? "text-accent-ink" : "text-panel-text-4"}
                 >
                   Selection matte
                 </button>

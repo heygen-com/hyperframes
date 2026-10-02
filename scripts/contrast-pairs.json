@@ -1,0 +1,533 @@
+{
+  "themes": [
+    {
+      "id": "dark",
+      "selector": "@theme static",
+      "canvas": "--timeline-shell-bg",
+      "pairs": [
+        {
+          "id": "ruler-ticks",
+          "foreground": "--timeline-tick-text",
+          "background": ["--timeline-shell-bg"],
+          "role": "text",
+          "minimum": 4.5,
+          "sources": [
+            "packages/studio/src/player/components/TimelineRuler.tsx:105",
+            "packages/studio/src/player/components/TimelineRuler.tsx:133"
+          ]
+        },
+        {
+          "id": "group-secondary-label",
+          "foreground": "--timeline-text-secondary",
+          "background": ["--timeline-gutter-bg"],
+          "role": "text",
+          "minimum": 4.5,
+          "sources": [
+            "packages/studio/src/player/components/TimelineLayerGroupHeader.tsx:62",
+            "packages/studio/src/player/components/TimelineLayerGroupHeader.tsx:86"
+          ]
+        },
+        {
+          "id": "pending-track-label",
+          "foreground": "--timeline-track-label",
+          "background": ["--timeline-row-bg"],
+          "role": "text",
+          "minimum": 4.5,
+          "sources": [
+            "packages/studio/src/player/components/TimelineLanes.tsx:270",
+            "packages/studio/src/player/components/TimelineLanes.tsx:353",
+            "packages/studio/src/player/components/TimelineLanes.tsx:357"
+          ]
+        },
+        {
+          "id": "clip-label",
+          "foreground": "--timeline-clip-chip-text",
+          "background": ["--timeline-row-bg", "--timeline-clip-bg", "--timeline-clip-chip-bg"],
+          "role": "text",
+          "minimum": 4.5,
+          "sources": [
+            "packages/studio/src/styles/components.css:155",
+            "packages/studio/src/styles/components.css:238"
+          ]
+        },
+        {
+          "id": "audio-clip-label",
+          "foreground": "--timeline-clip-chip-text",
+          "background": [
+            "--timeline-row-bg",
+            "--timeline-clip-audio-bg",
+            "--timeline-clip-chip-audio-bg"
+          ],
+          "role": "text",
+          "minimum": 4.5,
+          "sources": [
+            "packages/studio/src/styles/components.css:182",
+            "packages/studio/src/styles/components.css:252"
+          ]
+        },
+        {
+          "id": "clip-timecode",
+          "foreground": "--timeline-tick-text",
+          "background": ["--timeline-row-bg", "--timeline-clip-bg"],
+          "role": "text",
+          "minimum": 4.5,
+          "sources": [
+            "packages/studio/src/styles/components.css:155",
+            "packages/studio/src/styles/components.css:257"
+          ]
+        },
+        {
+          "id": "active-clip-timecode",
+          "foreground": "--timeline-tick-text",
+          "background": ["--timeline-row-bg", "--timeline-clip-bg", "--timeline-clip-bg-active"],
+          "role": "text",
+          "minimum": 4.5,
+          "sources": [
+            "packages/studio/src/styles/components.css:155",
+            "packages/studio/src/styles/components.css:165",
+            "packages/studio/src/styles/components.css:257"
+          ]
+        },
+        {
+          "id": "clip-border-exterior",
+          "foreground": "--timeline-clip-border",
+          "background": ["--timeline-row-bg"],
+          "role": "graphic",
+          "minimum": 3,
+          "sources": [
+            "packages/studio/src/styles/components.css:155",
+            "packages/studio/src/styles/components.css:156",
+            "packages/studio/src/player/components/TimelineLanes.tsx:270"
+          ],
+          "paintBacking": ["--timeline-row-bg", "--timeline-clip-bg"]
+        },
+        {
+          "id": "active-border-exterior",
+          "foreground": "--timeline-clip-border-active",
+          "background": ["--timeline-row-bg"],
+          "role": "graphic",
+          "minimum": 3,
+          "sources": [
+            "packages/studio/src/styles/components.css:155",
+            "packages/studio/src/styles/components.css:171",
+            "packages/studio/src/player/components/TimelineLanes.tsx:270"
+          ],
+          "paintBacking": ["--timeline-row-bg", "--timeline-clip-bg"]
+        },
+        {
+          "id": "selected-outline",
+          "foreground": "--timeline-clip-selection",
+          "background": ["--timeline-row-bg"],
+          "role": "graphic",
+          "minimum": 3,
+          "sources": [
+            "packages/studio/src/styles/components.css:203",
+            "packages/studio/src/player/components/TimelineLanes.tsx:270"
+          ]
+        },
+        {
+          "id": "selected-handle",
+          "foreground": "--timeline-handle",
+          "background": ["--timeline-row-bg", "--timeline-clip-bg"],
+          "role": "graphic",
+          "minimum": 3,
+          "sources": [
+            "packages/studio/src/player/components/TimelineClip.tsx:160",
+            "packages/studio/src/player/components/TimelineClip.tsx:161",
+            "packages/studio/src/player/components/timelineTheme.ts:86",
+            "packages/studio/src/styles/components.css:155"
+          ],
+          "opacity": 0.82
+        },
+        {
+          "id": "active-selected-handle",
+          "foreground": "--timeline-handle",
+          "background": ["--timeline-row-bg", "--timeline-clip-bg", "--timeline-clip-bg-active"],
+          "role": "graphic",
+          "minimum": 3,
+          "sources": [
+            "packages/studio/src/player/components/TimelineClip.tsx:160",
+            "packages/studio/src/player/components/TimelineClip.tsx:161",
+            "packages/studio/src/player/components/timelineTheme.ts:86",
+            "packages/studio/src/styles/components.css:155",
+            "packages/studio/src/styles/components.css:165",
+            "packages/studio/src/styles/components.css:175"
+          ],
+          "opacity": 0.82
+        },
+        {
+          "id": "hovered-handle",
+          "foreground": "--timeline-handle",
+          "background": ["--timeline-row-bg", "--timeline-clip-bg-hover"],
+          "role": "graphic",
+          "minimum": 3,
+          "sources": [
+            "packages/studio/src/player/components/TimelineClip.tsx:160",
+            "packages/studio/src/player/components/TimelineClip.tsx:161",
+            "packages/studio/src/player/components/timelineTheme.ts:87",
+            "packages/studio/src/styles/components.css:195"
+          ],
+          "opacity": 0.76
+        },
+        {
+          "id": "active-hovered-handle",
+          "foreground": "--timeline-handle",
+          "background": [
+            "--timeline-row-bg",
+            "--timeline-clip-bg-hover",
+            "--timeline-clip-bg-active"
+          ],
+          "role": "graphic",
+          "minimum": 3,
+          "sources": [
+            "packages/studio/src/player/components/TimelineClip.tsx:160",
+            "packages/studio/src/player/components/TimelineClip.tsx:161",
+            "packages/studio/src/player/components/timelineTheme.ts:87",
+            "packages/studio/src/styles/components.css:195",
+            "packages/studio/src/styles/components.css:165",
+            "packages/studio/src/styles/components.css:175"
+          ],
+          "opacity": 0.76
+        },
+        {
+          "id": "dragging-handle",
+          "foreground": "--timeline-handle",
+          "background": ["--timeline-row-bg", "--timeline-clip-bg-dragging"],
+          "role": "graphic",
+          "minimum": 3,
+          "sources": [
+            "packages/studio/src/player/components/TimelineClip.tsx:160",
+            "packages/studio/src/player/components/TimelineClip.tsx:161",
+            "packages/studio/src/player/components/timelineTheme.ts:85",
+            "packages/studio/src/styles/components.css:213"
+          ],
+          "opacity": 0.95
+        },
+        {
+          "id": "active-dragging-handle",
+          "foreground": "--timeline-handle",
+          "background": [
+            "--timeline-row-bg",
+            "--timeline-clip-bg-dragging",
+            "--timeline-clip-bg-active"
+          ],
+          "role": "graphic",
+          "minimum": 3,
+          "sources": [
+            "packages/studio/src/player/components/TimelineClip.tsx:160",
+            "packages/studio/src/player/components/TimelineClip.tsx:161",
+            "packages/studio/src/player/components/timelineTheme.ts:85",
+            "packages/studio/src/styles/components.css:213",
+            "packages/studio/src/styles/components.css:165",
+            "packages/studio/src/styles/components.css:175"
+          ],
+          "opacity": 0.95
+        },
+        {
+          "id": "quiet-waveform",
+          "foreground": "--timeline-waveform-bar-rgb",
+          "background": ["--timeline-row-bg", "--timeline-clip-audio-bg"],
+          "role": "graphic",
+          "minimum": 3,
+          "sources": [
+            "packages/studio/src/styles/components.css:182",
+            "packages/studio/src/styles/components.css:165",
+            "packages/studio/src/player/components/AudioWaveform.tsx:139",
+            "packages/studio/src/player/components/AudioWaveform.tsx:145"
+          ],
+          "opacity": 0.64,
+          "format": "rgb-channels"
+        },
+        {
+          "id": "active-quiet-waveform",
+          "foreground": "--timeline-waveform-bar-rgb",
+          "background": [
+            "--timeline-row-bg",
+            "--timeline-clip-audio-bg",
+            "--timeline-clip-bg-active"
+          ],
+          "role": "graphic",
+          "minimum": 3,
+          "sources": [
+            "packages/studio/src/styles/components.css:182",
+            "packages/studio/src/styles/components.css:165",
+            "packages/studio/src/player/components/AudioWaveform.tsx:139",
+            "packages/studio/src/player/components/AudioWaveform.tsx:145"
+          ],
+          "opacity": 0.64,
+          "format": "rgb-channels"
+        },
+        {
+          "id": "quiet-muted-waveform",
+          "foreground": "--timeline-waveform-muted-rgb",
+          "background": ["--timeline-row-bg", "--timeline-clip-audio-muted-bg"],
+          "role": "graphic",
+          "minimum": 3,
+          "sources": [
+            "packages/studio/src/styles/components.css:198",
+            "packages/studio/src/player/components/AudioWaveform.tsx:144"
+          ],
+          "opacity": 0.64,
+          "format": "rgb-channels"
+        },
+        {
+          "id": "dock-tab-label",
+          "foreground": "--color-text-2",
+          "background": ["--panel-strip-bg"],
+          "role": "text",
+          "minimum": 4.5,
+          "sources": [
+            "packages/studio/src/components/dock/dock.css:13",
+            "packages/studio/src/components/dock/dock.css:15"
+          ]
+        },
+        {
+          "id": "dock-shown-tab-label",
+          "foreground": "--color-text-1",
+          "background": ["--panel-card-bg"],
+          "role": "text",
+          "minimum": 4.5,
+          "sources": [
+            "packages/studio/src/components/dock/dock.css:12",
+            "packages/studio/src/components/dock/dock.css:14"
+          ]
+        },
+        {
+          "id": "dock-hovered-tab-label",
+          "foreground": "--color-text-1",
+          "background": ["--panel-strip-bg", "--panel-tab-bg-hover"],
+          "role": "text",
+          "minimum": 4.5,
+          "sources": [
+            "packages/studio/src/components/dock/dock.css:100",
+            "packages/studio/src/components/dock/dock.css:102"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "chrome-dark",
+      "selector": "@theme static",
+      "canvas": "--color-bg-0",
+      "pairs": [
+        {
+          "id": "secondary-text",
+          "foreground": "--color-text-2",
+          "role": "text",
+          "minimum": 4.5,
+          "sources": ["packages/studio/src/styles/theme.css"],
+          "on": [
+            "shell",
+            "panel",
+            "raised",
+            "field",
+            "panel-hover",
+            "raised-hover",
+            "panel-pressed",
+            "panel-on",
+            "panel-on-hover"
+          ]
+        },
+        {
+          "id": "muted-text",
+          "foreground": "--color-text-muted",
+          "role": "text",
+          "minimum": 4.5,
+          "sources": ["packages/studio/src/styles/theme.css"],
+          "on": [
+            "shell",
+            "panel",
+            "raised",
+            "field",
+            "panel-hover",
+            "raised-hover",
+            "panel-pressed",
+            "panel-on"
+          ]
+        },
+        {
+          "id": "accent-text",
+          "foreground": "--color-accent-ink",
+          "role": "text",
+          "minimum": 4.5,
+          "sources": ["packages/studio/src/styles/theme.css"],
+          "on": [
+            "shell",
+            "panel",
+            "raised",
+            "field",
+            "panel-hover",
+            "raised-hover",
+            "panel-pressed",
+            "panel-on",
+            "panel-on-hover",
+            "raised-on-hover"
+          ]
+        },
+        {
+          "id": "danger-text",
+          "foreground": "--color-danger-ink",
+          "role": "text",
+          "minimum": 4.5,
+          "sources": ["packages/studio/src/styles/theme.css"],
+          "on": [
+            "shell",
+            "panel",
+            "raised",
+            "field",
+            "panel-hover",
+            "raised-hover",
+            "panel-pressed"
+          ]
+        },
+        {
+          "id": "disabled-text",
+          "foreground": "--color-text-off",
+          "role": "graphic",
+          "minimum": 3,
+          "sources": ["packages/studio/src/styles/theme.css"],
+          "on": ["shell", "panel", "raised", "field"]
+        },
+        {
+          "id": "warning-text",
+          "foreground": "--color-warning-ink",
+          "role": "text",
+          "minimum": 4.5,
+          "sources": ["packages/studio/src/styles/theme.css"],
+          "on": [
+            "shell",
+            "panel",
+            "raised",
+            "field",
+            "panel-hover",
+            "raised-hover",
+            "panel-pressed"
+          ]
+        },
+        {
+          "id": "focus-ring",
+          "foreground": "--color-ring",
+          "role": "graphic",
+          "minimum": 3,
+          "sources": ["packages/studio/src/styles/theme.css"],
+          "on": ["shell", "panel", "raised"]
+        },
+        {
+          "id": "on-accent",
+          "foreground": "--color-on-accent",
+          "background": ["--color-accent"],
+          "role": "text",
+          "minimum": 4.5,
+          "sources": ["packages/studio/src/styles/theme.css"]
+        },
+        {
+          "id": "on-accent-hover",
+          "foreground": "--color-on-accent",
+          "background": ["--color-accent-hover"],
+          "role": "text",
+          "minimum": 4.5,
+          "sources": ["packages/studio/src/styles/theme.css"]
+        },
+        {
+          "id": "on-danger",
+          "foreground": "--color-on-danger",
+          "background": ["--color-danger"],
+          "role": "text",
+          "minimum": 4.5,
+          "sources": ["packages/studio/src/styles/theme.css"]
+        },
+        {
+          "id": "code-keyword",
+          "foreground": "--color-code-keyword",
+          "role": "text",
+          "minimum": 4.5,
+          "sources": ["packages/studio/src/components/editor/studioCodeTheme.ts"],
+          "on": ["panel", "panel-hover", "panel-on", "panel-hover-on"]
+        },
+        {
+          "id": "code-name",
+          "foreground": "--color-code-name",
+          "role": "text",
+          "minimum": 4.5,
+          "sources": ["packages/studio/src/components/editor/studioCodeTheme.ts"],
+          "on": ["panel", "panel-hover", "panel-on", "panel-hover-on"]
+        },
+        {
+          "id": "code-function",
+          "foreground": "--color-code-function",
+          "role": "text",
+          "minimum": 4.5,
+          "sources": ["packages/studio/src/components/editor/studioCodeTheme.ts"],
+          "on": ["panel", "panel-hover", "panel-on", "panel-hover-on"]
+        },
+        {
+          "id": "code-constant",
+          "foreground": "--color-code-constant",
+          "role": "text",
+          "minimum": 4.5,
+          "sources": ["packages/studio/src/components/editor/studioCodeTheme.ts"],
+          "on": ["panel", "panel-hover", "panel-on", "panel-hover-on"]
+        },
+        {
+          "id": "code-type",
+          "foreground": "--color-code-type",
+          "role": "text",
+          "minimum": 4.5,
+          "sources": ["packages/studio/src/components/editor/studioCodeTheme.ts"],
+          "on": ["panel", "panel-hover", "panel-on", "panel-hover-on"]
+        },
+        {
+          "id": "code-operator",
+          "foreground": "--color-code-operator",
+          "role": "text",
+          "minimum": 4.5,
+          "sources": ["packages/studio/src/components/editor/studioCodeTheme.ts"],
+          "on": ["panel", "panel-hover", "panel-on", "panel-hover-on"]
+        },
+        {
+          "id": "code-comment",
+          "foreground": "--color-code-comment",
+          "role": "text",
+          "minimum": 4.5,
+          "sources": ["packages/studio/src/components/editor/studioCodeTheme.ts"],
+          "on": ["panel", "panel-hover", "panel-on", "panel-hover-on"]
+        },
+        {
+          "id": "code-string",
+          "foreground": "--color-code-string",
+          "role": "text",
+          "minimum": 4.5,
+          "sources": ["packages/studio/src/components/editor/studioCodeTheme.ts"],
+          "on": ["panel", "panel-hover", "panel-on", "panel-hover-on"]
+        }
+      ],
+      "surfaces": {
+        "shell": ["--color-bg-0"],
+        "panel": ["--color-surface"],
+        "raised": ["--color-raised"],
+        "field": ["--color-input"],
+        "panel-hover": ["--color-surface", "--color-hover"],
+        "raised-hover": ["--color-raised", "--color-hover"],
+        "panel-pressed": ["--color-surface", "--color-press"],
+        "panel-on": ["--color-surface", "--color-on"],
+        "panel-on-hover": ["--color-surface", "--color-on-hover"],
+        "raised-on-hover": ["--color-raised", "--color-on-hover"],
+        "panel-hover-on": ["--color-surface", "--color-hover", "--color-on"]
+      }
+    },
+    {
+      "id": "chrome-light",
+      "selector": ["@theme static", ":root[data-theme=\"paper\"]"],
+      "scheme": "light",
+      "canvas": "--color-bg-0",
+      "pairsFrom": "chrome-dark"
+    },
+    {
+      "id": "timeline-light",
+      "selector": ["@theme static", ":root[data-theme=\"paper\"]"],
+      "scheme": "light",
+      "canvas": "--timeline-shell-bg",
+      "pairsFrom": "dark"
+    }
+  ]
+}

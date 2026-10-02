@@ -1,4 +1,5 @@
 import { probeSourceElement } from "./probeSourceElement";
+import { isAudibleVideoNode } from "../../player/lib/timelineElementHelpers";
 import type { PatchOperation } from "../../utils/sourcePatcher";
 import {
   resolveEditingAffordances,
@@ -248,6 +249,7 @@ export function domEditSelectionToFacts(
     hasEditableText: selection.textFields.length > 0,
     hasTimingStart: selection.dataAttributes.start != null,
     animationCount,
+    hasAudio: isAudibleVideoNode(selection.element),
   };
 }
 
@@ -489,6 +491,15 @@ export function collectDomEditLayerItems(
     for (const el of groupScopedLayerRoots(root, options.activeGroupElement ?? null)) visit(el, 0);
   });
   return items;
+}
+
+export function liveLayerElement(
+  layer: DomEditLayerItem,
+  doc: Document | null | undefined,
+  activeCompositionPath: string | null,
+): HTMLElement {
+  if (layer.element.isConnected || !doc) return layer.element;
+  return findElementForSelection(doc, layer, activeCompositionPath) ?? layer.element;
 }
 
 // ─── Patch operations ────────────────────────────────────────────────────────

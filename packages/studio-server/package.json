@@ -1,6 +1,6 @@
 {
   "name": "@hyperframes/studio-server",
-  "version": "0.8.40",
+  "version": "0.8.111",
   "repository": {
     "type": "git",
     "url": "https://github.com/heygen-com/hyperframes",
@@ -26,6 +26,24 @@
       "node": "./dist/helpers/screenshotClip.js",
       "import": "./src/helpers/screenshotClip.ts",
       "types": "./src/helpers/screenshotClip.ts"
+    },
+    "./safe-path": {
+      "bun": "./src/helpers/safePath.ts",
+      "node": "./dist/helpers/safePath.js",
+      "import": "./src/helpers/safePath.ts",
+      "types": "./src/helpers/safePath.ts"
+    },
+    "./hf-ids": {
+      "bun": "./src/helpers/hfIdPersist.ts",
+      "node": "./dist/helpers/hfIdPersist.js",
+      "import": "./src/helpers/hfIdPersist.ts",
+      "types": "./src/helpers/hfIdPersist.ts"
+    },
+    "./history": {
+      "bun": "./src/history/index.ts",
+      "node": "./dist/history/index.js",
+      "import": "./src/history/index.ts",
+      "types": "./src/history/index.ts"
     },
     "./manual-edits-render-script": {
       "bun": "./src/helpers/manualEditsRenderScript.ts",
@@ -69,6 +87,12 @@
       "import": "./src/helpers/proxyTranscoder.ts",
       "types": "./src/helpers/proxyTranscoder.ts"
     },
+    "./loudness": {
+      "bun": "./src/helpers/loudness.ts",
+      "node": "./dist/helpers/loudness.js",
+      "import": "./src/helpers/loudness.ts",
+      "types": "./src/helpers/loudness.ts"
+    },
     "./media-proxy-preview": {
       "bun": "./src/helpers/mediaProxyPreview.ts",
       "node": "./dist/helpers/mediaProxyPreview.js",
@@ -87,6 +111,18 @@
       "./screenshot-clip": {
         "import": "./dist/helpers/screenshotClip.js",
         "types": "./dist/helpers/screenshotClip.d.ts"
+      },
+      "./safe-path": {
+        "import": "./dist/helpers/safePath.js",
+        "types": "./dist/helpers/safePath.d.ts"
+      },
+      "./hf-ids": {
+        "import": "./dist/helpers/hfIdPersist.js",
+        "types": "./dist/helpers/hfIdPersist.d.ts"
+      },
+      "./history": {
+        "import": "./dist/history/index.js",
+        "types": "./dist/history/index.d.ts"
       },
       "./manual-edits-render-script": {
         "import": "./dist/helpers/manualEditsRenderScript.js",
@@ -116,6 +152,10 @@
         "import": "./dist/helpers/proxyTranscoder.js",
         "types": "./dist/helpers/proxyTranscoder.d.ts"
       },
+      "./loudness": {
+        "import": "./dist/helpers/loudness.js",
+        "types": "./dist/helpers/loudness.d.ts"
+      },
       "./media-proxy-preview": {
         "import": "./dist/helpers/mediaProxyPreview.js",
         "types": "./dist/helpers/mediaProxyPreview.d.ts"
@@ -139,7 +179,8 @@
     "hono": "^4.0.0",
     "linkedom": "^0.18.12",
     "postcss": "^8.5.8",
-    "postcss-selector-parser": "^7.1.2"
+    "postcss-selector-parser": "^7.1.2",
+    "sharp": "^0.35.0"
   },
   "devDependencies": {
     "@types/node": "^25.0.10",

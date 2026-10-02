@@ -260,9 +260,10 @@ export function usePreviewInteraction({
   }, [updateDomEditHoverSelection]);
 
   const handleBlockedDomMove = useCallback(
-    (selection: DomEditSelection) => {
+    (selection: DomEditSelection, reason?: string) => {
       showToast(
-        selection.capabilities.reasonIfDisabled ??
+        reason ??
+          selection.capabilities.reasonIfDisabled ??
           "This element can't be adjusted directly from the preview.",
         "info",
       );

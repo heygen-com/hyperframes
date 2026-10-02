@@ -260,9 +260,17 @@ describe("groupAutomationLanes", () => {
     expect(groups.map((g) => g.entries.length)).toEqual([1, 1]);
   });
 
-  it("ignores clips that are not audio, the way the reserved height does", () => {
-    const video = el({ id: "titles", key: "titles", tag: "div", automation: lanesOf("volume") });
-    expect(groupAutomationLanes([video])).toEqual([]);
+  it("draws lanes for a video element, matching the reserved height", () => {
+    // A <video>'s volume can be automated from the property panel same as an
+    // audio clip's; gating this on `isAudioTimelineElement` alone hid every
+    // keyframe the panel wrote for a video clip.
+    const video = el({ id: "titles", key: "titles", tag: "video", automation: lanesOf("volume") });
+    expect(groupAutomationLanes([video]).map((g) => g.key)).toEqual(["Volume"]);
+  });
+
+  it("ignores a clip that is neither audio nor video, the way the reserved height does", () => {
+    const div = el({ id: "titles", key: "titles", tag: "div", automation: lanesOf("volume") });
+    expect(groupAutomationLanes([div])).toEqual([]);
   });
 
   it("skips a target that does not resolve against its clip's chain", () => {

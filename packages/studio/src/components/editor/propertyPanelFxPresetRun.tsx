@@ -189,7 +189,7 @@ export function FxPresetRun({
         </button>
         <button
           type="button"
-          className="hf-fx-preset-run-remove px-1 font-mono text-[11px] text-panel-text-2 hover:text-red-400 disabled:opacity-40"
+          className="hf-fx-preset-run-remove px-1 font-mono text-[11px] text-panel-text-2 hover:text-danger-ink disabled:opacity-40"
           title={`Remove ${preset.label}`}
           disabled={disabled}
           onClick={onRemoveRun}

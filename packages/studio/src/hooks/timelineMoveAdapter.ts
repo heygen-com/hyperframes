@@ -1,3 +1,4 @@
+import { useCallback } from "react";
 import type { TimelineElement } from "../player";
 import type {
   TimelineGroupCommitOptions,
@@ -43,5 +44,17 @@ export function persistTimelineMoveEditsAtomically(
       track: operation === "timing" ? undefined : updates.track,
     })),
     { coalesceKey, coalesceMs },
+  );
+}
+
+export function useTimelineMoveEditsHandler(
+  handleTimelineGroupMove: AtomicMoveDeps["handleTimelineGroupMove"],
+): TimelineMoveEditsHandler {
+  return useCallback(
+    async (edits, coalesceKey, operation: TimelineMoveOperation = "timing", coalesceMs) => {
+      const deps = { handleTimelineGroupMove };
+      await persistTimelineMoveEditsAtomically(edits, coalesceKey, operation, deps, coalesceMs);
+    },
+    [handleTimelineGroupMove],
   );
 }

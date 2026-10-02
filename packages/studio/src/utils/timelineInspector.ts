@@ -34,17 +34,39 @@ export function isAudioTimelineElement(
   return Boolean(element.src && AUDIO_SOURCE_EXT_RE.test(element.src));
 }
 
+/** The two tags the property panel lets you put a volume automation lane on.
+ * Single owner: `groupAutomationLanes`, `automationLaneCountOf` and
+ * `TimelineAutomationLaneSlot`'s clip filter all have to agree on this set. */
+export function isAudioOrVideoTimelineElement(
+  element: Pick<TimelineElement, "tag" | "src"> | null | undefined,
+): boolean {
+  if (!element) return false;
+  return isAudioTimelineElement(element) || element.tag.trim().toLowerCase() === "video";
+}
+
+type MusicSourceFacts = Pick<TimelineElement, "tag" | "src" | "hasAudio" | "muted">;
+
+/** Can carry the music: an audio clip, or a video whose own sound plays. Lane zoning is unaffected. */
+export function isMusicSourceElement(element: MusicSourceFacts): boolean {
+  if (isAudioTimelineElement(element)) return true;
+  return (
+    element.tag.trim().toLowerCase() === "video" &&
+    element.hasAudio === true &&
+    element.muted !== true
+  );
+}
+
 /** True for the music track: an audio element with data-timeline-role="music",
  *  or — when no role is set — an id matching the music regex. Voiceover/other
  *  audio (explicit non-music role) is excluded. */
 export function isMusicTrack(
   element:
-    | Pick<TimelineElement, "tag" | "src" | "id" | "domId" | "timelineRole">
+    | Pick<TimelineElement, "tag" | "src" | "id" | "domId" | "timelineRole" | "hasAudio" | "muted">
     | null
     | undefined,
 ): boolean {
   if (!element) return false;
-  if (!isAudioTimelineElement(element)) return false;
+  if (!isMusicSourceElement(element)) return false;
   if (element.timelineRole === "music") return true;
   if (element.timelineRole && element.timelineRole !== "music") return false;
   const id = element.domId ?? element.id ?? "";
@@ -65,7 +87,7 @@ export function isMusicTrack(
 export function resolveBeatSourceTrack(
   elements: readonly Pick<
     TimelineElement,
-    "tag" | "src" | "id" | "domId" | "timelineRole" | "duration"
+    "tag" | "src" | "id" | "domId" | "timelineRole" | "duration" | "hasAudio" | "muted"
   >[],
 ): { element: (typeof elements)[number]; isFallback: boolean } | null {
   const explicit = elements.find(isMusicTrack);
@@ -75,7 +97,7 @@ export function resolveBeatSourceTrack(
   // like "sfx" or "voiceover" to avoid triggering beat analysis on those).
   let best: (typeof elements)[number] | null = null;
   for (const el of elements) {
-    if (!isAudioTimelineElement(el)) continue;
+    if (!isMusicSourceElement(el)) continue;
     if (el.timelineRole && el.timelineRole !== "music") continue;
     if (!best || el.duration > best.duration) best = el;
   }

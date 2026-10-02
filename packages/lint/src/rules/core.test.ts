@@ -19,6 +19,24 @@ ${rootContent}
 </html>`;
 }
 
+/** A portrait root inside a document whose scaffold copies of the resolution
+ *  are supplied by the caller, so they can be aligned or left stale. */
+function portraitCompositionWithScaffold(bodyCss: string, viewportContent: string): string {
+  return `
+<html>
+<head>
+  <meta name="viewport" content="${viewportContent}" />
+  <style>
+    html, body { ${bodyCss} overflow: hidden; }
+  </style>
+</head>
+<body>
+  <div id="root" data-composition-id="c1" data-width="1080" data-height="1920"></div>
+  <script>window.__timelines = {};</script>
+</body>
+</html>`;
+}
+
 describe("core rules", () => {
   it("does not lint scripts embedded inside an iframe srcdoc attribute", async () => {
     const html = `
@@ -60,19 +78,41 @@ describe("core rules", () => {
     ).toBeUndefined();
   });
 
-  it("warns when an id starts with a digit and is unsafe in a hash selector", async () => {
+  it.each([
+    ["no selector uses it", "", "", "warning"],
+    ["a CSS rule targets it", "#123-frame { opacity: 0; }", "", "error"],
+    ["a GSAP string targets it", "", 'gsap.to("#123-frame", { x: 1 });', "error"],
+    ["querySelector targets it", "", 'document.querySelector(".a #123-frame");', "error"],
+    ["only url(#id) references it", ".a { mask: url(#123-frame); }", "", "warning"],
+    ["only a longer id is selected", "#123-frame-2 { opacity: 0; }", "", "warning"],
+    ["getElementById looks it up", "", 'document.getElementById("123-frame");', "warning"],
+    ["the CSS selector is escaped", "#\\31 23-frame { opacity: 0; }", "", "warning"],
+    [
+      "the script selector is escaped",
+      "",
+      'document.querySelector("#\\\\31 23-frame");',
+      "warning",
+    ],
+    [
+      "CSS.escape builds the selector",
+      "",
+      'document.querySelector(`#${CSS.escape("123-frame")}`);',
+      "warning",
+    ],
+  ])("rates a digit-leading id by selector use: %s", async (_case, css, js, severity) => {
     const html = `
 <html><body>
   <div data-composition-id="c1" data-width="1920" data-height="1080">
+    <style>${css}</style>
     <div id="123-frame"></div>
   </div>
-  <script>window.__timelines = {};</script>
+  <script>window.__timelines = {}; ${js}</script>
 </body></html>`;
 
     const result = await lintHyperframeHtml(html);
     const finding = result.findings.find((item) => item.code === "id_requires_css_escape");
 
-    expect(finding?.severity).toBe("warning");
+    expect(finding?.severity).toBe(severity);
     expect(finding?.elementId).toBe("123-frame");
     expect(finding?.fixHint).toContain("CSS.escape");
   });
@@ -113,6 +153,114 @@ describe("core rules", () => {
     const finding = result.findings.find((f) => f.code === "root_missing_dimensions");
     expect(finding).toBeDefined();
     expect(finding?.severity).toBe("error");
+  });
+
+  it("reports root_dimensions_mismatch when html/body CSS and the viewport meta are still the scaffolded landscape size", async () => {
+    // GH#4001: the root is edited to portrait without `hyperframes init
+    // --resolution`, the only thing that otherwise keeps the scaffold's copies
+    // of the resolution in sync. The stale landscape body (overflow: hidden)
+    // then clips the correctly-sized root at its old height.
+    const html = portraitCompositionWithScaffold(
+      "width: 1920px; height: 1080px;",
+      "width=1920, height=1080",
+    );
+    const result = await lintHyperframeHtml(html);
+    const finding = result.findings.find((f) => f.code === "root_dimensions_mismatch");
+    expect(finding).toBeDefined();
+    expect(finding?.severity).toBe("warning");
+    expect(finding?.message).toContain("html/body CSS is 1920x1080");
+    expect(finding?.message).toContain("the viewport meta is 1920x1080");
+  });
+
+  it("reads a stale html/body size authored height-before-width", async () => {
+    const html = portraitCompositionWithScaffold(
+      "height: 1080px; width: 1920px;",
+      "width=1080, height=1920",
+    );
+    const result = await lintHyperframeHtml(html);
+    const finding = result.findings.find((f) => f.code === "root_dimensions_mismatch");
+    expect(finding?.message).toContain("html/body CSS is 1920x1080");
+    expect(finding?.message).not.toContain("viewport");
+  });
+
+  it("does not report root_dimensions_mismatch when the scaffold agrees with the root", async () => {
+    const html = portraitCompositionWithScaffold(
+      "width: 1080px; height: 1920px;",
+      "width=1080, height=1920",
+    );
+    const result = await lintHyperframeHtml(html);
+    expect(result.findings.find((f) => f.code === "root_dimensions_mismatch")).toBeUndefined();
+  });
+
+  it("does not report root_dimensions_mismatch for a sub-composition fragment with no html/body/viewport to compare", async () => {
+    const html = `<div data-composition-id="c1" data-width="1080" data-height="1920"></div>`;
+    const result = await lintHyperframeHtml(html);
+    expect(result.findings.find((f) => f.code === "root_dimensions_mismatch")).toBeUndefined();
+  });
+
+  it("does not report root_dimensions_mismatch for a full sub-composition document whose own viewport meta disagrees with its root", async () => {
+    // Matches the hf2550 flowchart-vertical fixture's shape: a full standalone
+    // document mounted as a sub-composition. See the rule's comment in core.ts
+    // for why its own <meta viewport> never reaches the rendering document.
+    const html = `
+<!doctype html>
+<html>
+<head>
+  <meta name="viewport" content="width=1440, height=2560" />
+</head>
+<body>
+  <div id="root" data-composition-id="c1" data-width="1080" data-height="1920"></div>
+  <script>window.__timelines = {};</script>
+</body>
+</html>`;
+    const result = await lintHyperframeHtml(html, { isSubComposition: true });
+    expect(result.findings.find((f) => f.code === "root_dimensions_mismatch")).toBeUndefined();
+  });
+
+  it("still reports root_dimensions_mismatch for the same shape linted as a top-level composition, with no-clipping-risk wording since there is no html/body CSS block at all", async () => {
+    const html = `
+<!doctype html>
+<html>
+<head>
+  <meta name="viewport" content="width=1440, height=2560" />
+</head>
+<body>
+  <div id="root" data-composition-id="c1" data-width="1080" data-height="1920"></div>
+  <script>window.__timelines = {};</script>
+</body>
+</html>`;
+    const result = await lintHyperframeHtml(html);
+    const finding = result.findings.find((f) => f.code === "root_dimensions_mismatch");
+    expect(finding).toBeDefined();
+    // No html/body CSS block is present here at all (the real hf2550 fixture
+    // shape) -- distinct from the "present and matching" case covered below --
+    // so the "absent" and "matches" cases of describeSizeMismatch must both
+    // route to the same no-clipping-risk wording, not just the "matches" one.
+    expect(finding?.message).not.toContain("clips");
+    expect(finding?.message.toLowerCase()).toContain("no effect on capture");
+  });
+
+  it("uses no-clipping-risk wording when only the viewport meta disagrees and html/body CSS matches the root", async () => {
+    const html = portraitCompositionWithScaffold(
+      "width: 1080px; height: 1920px;",
+      "width=1440, height=2560",
+    );
+    const result = await lintHyperframeHtml(html);
+    const finding = result.findings.find((f) => f.code === "root_dimensions_mismatch");
+    expect(finding).toBeDefined();
+    expect(finding?.message).toContain("the viewport meta is 1440x2560");
+    expect(finding?.message).not.toContain("clips");
+    expect(finding?.message.toLowerCase()).toContain("no effect on capture");
+  });
+
+  it("keeps the body-clipping wording when html/body CSS itself disagrees with the root", async () => {
+    const html = portraitCompositionWithScaffold(
+      "width: 1920px; height: 1080px;",
+      "width=1080, height=1920",
+    );
+    const result = await lintHyperframeHtml(html);
+    const finding = result.findings.find((f) => f.code === "root_dimensions_mismatch");
+    expect(finding?.message).toContain("clips");
   });
 
   it("accepts body as the composition root", async () => {
@@ -938,6 +1086,80 @@ describe("core rules", () => {
 
       expect(
         result.findings.find((item) => item.code === "runtime_hidden_style_opacity"),
+      ).toBeUndefined();
+    });
+  });
+
+  describe("id_override_reduced_specificity", () => {
+    const comp = (css: string) => `
+<html><head><style>${css}</style></head><body>
+  <div id="root" data-composition-id="main" data-width="1920" data-height="1080">
+    <div class="parent"><div id="line1" class="row">text</div></div>
+  </div>
+  <script>window.__timelines = { main: gsap.timeline({ paused: true }) };</script>
+</body></html>`;
+
+    it("warns when an attribute selector on id sets a position property", async () => {
+      const result = await lintHyperframeHtml(
+        comp(`.parent .row { position: absolute; left: 0; } [id="line1"] { left: 40px; }`),
+      );
+      const finding = result.findings.find((f) => f.code === "id_override_reduced_specificity");
+      expect(finding).toBeDefined();
+      expect(finding?.severity).toBe("warning");
+      expect(finding?.selector).toBe(`[id="line1"]`);
+      expect(finding?.fixHint).toContain("`#line1`");
+    });
+
+    it("warns when a :where()-wrapped id selector sets a position property", async () => {
+      const result = await lintHyperframeHtml(
+        comp(`.parent .row { position: absolute; top: 0; } :where(#line1) { top: 20px; }`),
+      );
+      const finding = result.findings.find((f) => f.code === "id_override_reduced_specificity");
+      expect(finding).toBeDefined();
+      expect(finding?.selector).toBe(`:where(#line1)`);
+    });
+
+    it("does not flag a bare #id selector, which always wins regardless of specificity", async () => {
+      const result = await lintHyperframeHtml(
+        comp(`.parent .row { position: absolute; left: 0; } #line1 { left: 40px; }`),
+      );
+      expect(
+        result.findings.find((f) => f.code === "id_override_reduced_specificity"),
+      ).toBeUndefined();
+    });
+
+    it("hints an escaped #id for a digit-leading id, where a bare #01-intro is invalid CSS", async () => {
+      const result = await lintHyperframeHtml(
+        comp(`.parent .row { position: absolute; left: 0; } [id="01-intro"] { left: 40px; }`),
+      );
+      const finding = result.findings.find((f) => f.code === "id_override_reduced_specificity");
+      expect(finding?.fixHint).toContain("`#\\30 1-intro`");
+    });
+
+    it("does not flag prefix-matching id selectors or !important position overrides", async () => {
+      const result = await lintHyperframeHtml(
+        comp(
+          `[id^="line"] { top: 0; } [id*="ine"] { left: 0; } [id="line1"] { left: 40px !important; }`,
+        ),
+      );
+      expect(
+        result.findings.find((f) => f.code === "id_override_reduced_specificity"),
+      ).toBeUndefined();
+    });
+
+    it("does not flag a compound that also carries a bare #id, or a nested rule's position", async () => {
+      const result = await lintHyperframeHtml(
+        comp(`#line1[id="line1"] { left: 40px; } [id="root"] { color: red; .row { left: 0; } }`),
+      );
+      expect(
+        result.findings.find((f) => f.code === "id_override_reduced_specificity"),
+      ).toBeUndefined();
+    });
+
+    it("does not flag an attribute selector on id for a non-position property", async () => {
+      const result = await lintHyperframeHtml(comp(`[id="line1"] { color: red; }`));
+      expect(
+        result.findings.find((f) => f.code === "id_override_reduced_specificity"),
       ).toBeUndefined();
     });
   });

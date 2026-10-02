@@ -7,8 +7,8 @@
 
 import type { Page } from "puppeteer-core";
 import { isDegradableEvaluateTimeoutError } from "./captureTimeout.js";
-import { writeFileSync, mkdirSync } from "node:fs";
 import { join } from "node:path";
+import { ensureCaptureDirSync, writeCaptureFileSync } from "./captureFile.js";
 
 /**
  * Capture viewport screenshots covering the entire page height.
@@ -92,7 +92,7 @@ export async function captureFullPagePlate(
     // than something silently wrong.
     const produced = pngHeight(buffer);
     if (produced != null && produced > MAX_PLATE_HEIGHT_PX) return null;
-    writeFileSync(join(screenshotsDir, "full-page.png"), buffer);
+    writeCaptureFileSync(join(screenshotsDir, "full-page.png"), buffer);
     return "screenshots/full-page.png";
   } finally {
     // A page that broke mid-capture will fail this too; letting that escape would replace the
@@ -117,7 +117,7 @@ export async function captureScrollScreenshots(
   budget: { remainingMs?: () => number } = {},
 ): Promise<string[]> {
   const screenshotsDir = join(outputDir, "screenshots");
-  mkdirSync(screenshotsDir, { recursive: true });
+  ensureCaptureDirSync(outputDir, screenshotsDir);
 
   const MAX_SCREENSHOTS = 20;
   const filePaths: string[] = [];
@@ -245,7 +245,7 @@ export async function captureScrollScreenshots(
       const filePath = join(screenshotsDir, filename);
       if ((budget.remainingMs?.() ?? 1) <= 0) break;
       const buffer = await page.screenshot({ type: "png" });
-      writeFileSync(filePath, buffer);
+      writeCaptureFileSync(filePath, buffer);
       filePaths.push(`screenshots/${filename}`);
     }
 

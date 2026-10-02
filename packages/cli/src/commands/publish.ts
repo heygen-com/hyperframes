@@ -11,7 +11,7 @@ import {
   hasDefinitiveEntryMismatch,
   lintProject,
 } from "../utils/lintProject.js";
-import { formatLintFindings } from "../utils/lintFormat.js";
+import { formatLintStartupMessage } from "../utils/lintFormat.js";
 import {
   buildPublishFileMap,
   publishProjectArchive,
@@ -35,6 +35,7 @@ export const examples: Example[] = [
   ["Publish to a shared team space", "hyperframes publish --space <space-id>"],
   ["Skip the consent prompt (scripts)", "hyperframes publish --yes"],
   ["Skip baking H.264 proxies for browser-hostile video codecs", "hyperframes publish --no-proxy"],
+  ["Show full lint findings instead of the summary line", "hyperframes publish --lint-verbose"],
 ];
 
 /** Extract a project id from a published URL (with or without scheme, query, or hash) or accept a bare id. */
@@ -84,6 +85,11 @@ export default defineCommand({
       description:
         "Bake H.264 proxies for browser-hostile video codecs (e.g. HEVC) into the published archive. Default: on, unless disabled via hyperframes.json media.autoProxy. Pass --no-proxy to skip.",
     },
+    "lint-verbose": {
+      type: "boolean",
+      description: "Show full lint findings before publishing (default: a one-line summary)",
+      default: false,
+    },
   },
   async run({ args }) {
     const rawArg = args.dir;
@@ -91,12 +97,18 @@ export default defineCommand({
     const indexPath = join(dir, "index.html");
     if (existsSync(indexPath)) {
       const lintResult = await lintProject(dir);
+      const definitiveEntryMismatch = hasDefinitiveEntryMismatch(lintResult);
       if (lintResult.totalErrors > 0 || lintResult.totalWarnings > 0) {
         console.log();
-        for (const line of formatLintFindings(lintResult)) console.log(line);
+        const verbose = Boolean(args["lint-verbose"]) || definitiveEntryMismatch;
+        for (const line of formatLintStartupMessage(
+          lintResult,
+          verbose ? { kind: "verbose" } : { kind: "summary" },
+        ))
+          console.log(line);
         console.log();
       }
-      if (hasDefinitiveEntryMismatch(lintResult)) {
+      if (definitiveEntryMismatch) {
         const candidate = definitiveEntryMismatchComposition(lintResult);
         console.log(c.error("  Aborting publish because the default index.html entry is blank."));
         if (candidate && posix.basename(candidate) === "index.html") {
