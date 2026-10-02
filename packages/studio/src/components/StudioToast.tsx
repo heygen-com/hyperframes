@@ -46,5 +46,5 @@ export function StudioToast({ message, tone, leaving, onDismiss }: StudioToastPr
 }
 
 export function toastSurface(isError: boolean): string {
-  return `border shadow-popover backdrop-blur-md ${isError ? "border-danger/40 bg-raised" : "border-border bg-raised/95"}`;
+  return `border shadow-popover bg-raised ${isError ? "border-danger/40" : "border-border"}`;
 }
