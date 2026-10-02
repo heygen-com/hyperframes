@@ -437,19 +437,6 @@ export async function addToProject(
   return { result, item: itemForInstall };
 }
 
-// ── Extra-positional-argument guard ─────────────────────────────────────────
-// One item or tag per invocation is the contract — a tag is the bulk path.
-// citty binds only the FIRST positional token to `name`; every token after it
-// still lands in `args._` but was never read here, so `add a b c` behaved
-// exactly like `add a` — same exit code, same output, `b` and `c` never
-// installed and never mentioned.
-export function formatExtraPositionalsError(extra: string[]): string {
-  return (
-    `add installs one item or tag per invocation. Got extra argument${extra.length === 1 ? "" : "s"}: ${extra.join(", ")}. ` +
-    "Run add once per item, or pass a single tag to install every item tagged with it."
-  );
-}
-
 // ── Command ─────────────────────────────────────────────────────────────────
 
 export default defineCommand({
@@ -504,9 +491,12 @@ export default defineCommand({
     const json = args.json === true;
     const skipClipboard = args.clipboard === false;
 
-    const extraPositionals = args._.slice(1);
-    if (extraPositionals.length > 0) {
-      const msg = formatExtraPositionalsError(extraPositionals);
+    // citty binds only the first positional to `name`; the rest land in `args._` and were silently dropped.
+    const extra = args._.slice(1);
+    if (extra.length > 0) {
+      const msg =
+        `add installs one item or tag per invocation. Got extra argument${extra.length === 1 ? "" : "s"}: ` +
+        `${extra.join(", ")}. Run add once per item, or pass a single tag to install every item tagged with it.`;
       if (json) console.log(JSON.stringify({ ok: false, error: msg }));
       else console.error(c.error(msg));
       failUsage();

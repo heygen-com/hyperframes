@@ -11,7 +11,6 @@ import addCommand, {
   buildSnippet,
   compositionRootId,
   describeInstallFailure,
-  formatExtraPositionalsError,
   parseVariableValues,
   remapTarget,
   runAdd,
@@ -295,17 +294,6 @@ describe("add command pure helpers", () => {
       expect(buildSnippet(EXAMPLE_ITEM, "index.html")).toBe("");
     });
   });
-
-  describe("formatExtraPositionalsError", () => {
-    it("names every extra argument, singular wording for one", () => {
-      expect(formatExtraPositionalsError(["b"])).toContain("extra argument: b");
-    });
-
-    it("names every extra argument, plural wording for more than one", () => {
-      const msg = formatExtraPositionalsError(["b", "c"]);
-      expect(msg).toContain("extra arguments: b, c");
-    });
-  });
 });
 
 describe("runAdd (integration, mocked registry)", () => {
@@ -551,41 +539,22 @@ describe("add command run() — extra positional arguments", () => {
     rmSync(dir, { recursive: true, force: true });
   });
 
-  // citty binds only the first positional to `name`; `_` carries every
-  // positional token exactly as citty itself would populate it.
   async function runCommand(args: Record<string, unknown>): Promise<void> {
     await (addCommand.run as (ctx: { args: Record<string, unknown> }) => Promise<void>)({ args });
   }
 
-  it("rejects `add <a> <b> <c>`, naming the dropped arguments and touching no registry", async () => {
+  it("rejects `add a --dir <dir> b c` under real citty parsing, before any registry call", async () => {
     const fetchSpy = vi.fn();
     vi.stubGlobal("fetch", fetchSpy);
 
-    await expect(
-      runCommand({ name: "a", _: ["a", "b", "c"], dir, clipboard: true }),
-    ).rejects.toThrow(CliUsageError);
-
-    // Failing fast means no partial install either: `a` never touches the
-    // registry, so an invalid multi-name invocation can't half-succeed and
-    // leave the project in a state that depends on install order.
-    expect(fetchSpy).not.toHaveBeenCalled();
-    expect(errorSpy.mock.calls.flat().join(" ")).toContain("b, c");
-  });
-
-  it("rejects extra positionals under real citty parsing, with a flag interleaved", async () => {
-    const fetchSpy = vi.fn();
-    vi.stubGlobal("fetch", fetchSpy);
-
-    // `add a --dir <dir> b`: exercises citty's own parser rather than a
-    // hand-built args object, proving `_` really does exclude the `--dir`
-    // flag and its value while still keeping both positional tokens.
-    const parsed = parseCittyArgs(["a", "--dir", dir, "b"], addCommand.args as ArgsDef);
-    expect(parsed._).toEqual(["a", "b"]);
+    const parsed = parseCittyArgs(["a", "--dir", dir, "b", "c"], addCommand.args as ArgsDef);
+    expect(parsed._).toEqual(["a", "b", "c"]);
 
     await expect(runCommand(parsed as unknown as Record<string, unknown>)).rejects.toThrow(
       CliUsageError,
     );
     expect(fetchSpy).not.toHaveBeenCalled();
+    expect(errorSpy.mock.calls.flat().join(" ")).toContain("extra arguments: b, c");
   });
 
   it("does not fire on a normal single-item invocation", async () => {
