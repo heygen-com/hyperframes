@@ -150,6 +150,15 @@ function selectorAliasesRuntimeHiddenStyle(selector: string): boolean {
 
 const POSITION_PROPERTIES = new Set(["left", "top", "right", "bottom", "inset"]);
 
+function weakIdOf(node: selectorParser.Node): string | null {
+  if (node.type === "attribute" && node.attribute.toLowerCase() === "id") {
+    return node.operator === "=" && node.value ? node.value : null;
+  }
+  if (node.type !== "pseudo" || node.value.toLowerCase() !== ":where") return null;
+  const inner = node.nodes.flatMap((option) => option.nodes).find((n) => n.type === "id");
+  return inner ? inner.value : null;
+}
+
 // The id a subject targets only via `[id="x"]` or `:where(#x)`, which carry class-level or zero specificity
 // and so lose to a compound class rule like `.parent .row`. A bare `#id` never does.
 function reducedSpecificityId(selector: string): string | null {
@@ -159,14 +168,7 @@ function reducedSpecificityId(selector: string): string | null {
       root.each((selectorNode) => {
         const subject = rightmostCompoundNodes(selectorNode);
         if (subject.some((node) => node.type === "id")) return;
-        for (const node of subject) {
-          if (node.type === "attribute" && node.attribute.toLowerCase() === "id") {
-            if (node.operator === "=" && node.value) matched = node.value;
-          } else if (node.type === "pseudo" && node.value.toLowerCase() === ":where") {
-            const inner = node.nodes.flatMap((option) => option.nodes).find((n) => n.type === "id");
-            if (inner) matched = inner.value;
-          }
-        }
+        for (const node of subject) matched = weakIdOf(node) ?? matched;
       });
     }).processSync(selector);
   } catch {
