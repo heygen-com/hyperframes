@@ -14,17 +14,29 @@ on:
       ref:
         description: Commit, branch or tag to measure
         default: main
+      filter:
+        description: Case ids to run (a regular expression)
+        default: "^(move|resize|rotate|crop)-(none|tween)-px-r0-root-z100$"
+      grid:
+        description: The grid the ids come from (pr or full)
+        default: pr
   pull_request:
     paths:
       - ".github/workflows/studio-drag-frames.yml"
 
 jobs:
   drag-frames:
-    name: "Studio: drag frames"
+    name: "Studio: drag frames (run ${{ matrix.run }})"
     runs-on: ubuntu-latest
     timeout-minutes: 60
+    strategy:
+      fail-fast: false
+      matrix:
+        run: [1, 2, 3, 4, 5]
     env:
       BENCH_REF: ${{ inputs.ref || 'main' }}
+      BENCH_FILTER: ${{ inputs.filter || '^(move|resize|rotate|crop)-(none|tween)-px-r0-root-z100$' }}
+      BENCH_GRID: ${{ inputs.grid || 'pr' }}
     steps:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
         with:
@@ -40,17 +52,14 @@ jobs:
       - run: bash scripts/ci/install-workspace-dependencies.sh
       - run: bun run build
       - run: node packages/cli/dist/cli.js browser ensure
-      - name: Run the drag cases five times
+      - name: Run the drag cases
         working-directory: packages/studio
         run: |
           set -euo pipefail
           echo "Measuring $(git rev-parse HEAD)"
-          for n in 1 2 3 4 5; do
-            bun tests/e2e/edit-accuracy/run.mjs --grid pr \
-              --filter '^(move|resize|rotate|crop)-(none|tween)-px-r0-root-z100$' \
-              --jobs 1 --port 5961 --cli "$GITHUB_WORKSPACE/packages/cli/dist/cli.js" \
-              --out "$RUNNER_TEMP/drag-frames/run-$n"
-          done
+          bun tests/e2e/edit-accuracy/run.mjs --grid "$BENCH_GRID" --filter "$BENCH_FILTER" \
+            --jobs 1 --port 5961 --cli "$GITHUB_WORKSPACE/packages/cli/dist/cli.js" \
+            --out "$RUNNER_TEMP/drag-frames/run-${{ matrix.run }}"
       - name: Require a quiet box (the blank page dropped no frame)
         run: |
           # shellcheck disable=SC2016 # the backticks are JavaScript template strings
@@ -70,7 +79,7 @@ jobs:
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         if: always()
         with:
-          name: studio-drag-frames
+          name: studio-drag-frames-${{ matrix.run }}
           path: ${{ runner.temp }}/drag-frames
           if-no-files-found: error
           retention-days: 30
