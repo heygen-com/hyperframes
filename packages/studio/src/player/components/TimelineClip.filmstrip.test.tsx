@@ -75,6 +75,7 @@ describe("Filmstrip clips", () => {
     const name = host.querySelector(".timeline-clip__label");
     const picture = host.querySelector(".timeline-clip__content");
     expect(name?.textContent).toBe("City");
+    expect(picture).not.toBeNull();
     expect(picture?.querySelector("img")).not.toBeNull();
     expect(css).toMatch(/--timeline-clip-band-height:\s*15px;/);
     expect(css).toMatch(
