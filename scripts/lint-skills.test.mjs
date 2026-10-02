@@ -184,16 +184,8 @@ test("registry refs: single-word ids are a KNOWN blind spot, not an accident", (
   assert.deepEqual(lintRegistryItemRefs(doc, KNOWN), []);
 });
 
-// ---------------------------------------------------------------------------
-// Cross-references between skill docs
-// ---------------------------------------------------------------------------
-//
-// Fixtures are real files in a temp directory because the rule's whole job is
-// to ask the filesystem whether a target exists. Layout:
-//
-//   <root>/skill/SKILL.md            "# Setup", "## Providers", "## Providers"
-//   <root>/skill/references/a.md     <- the file under test (returned path)
-//   <root>/skill/examples/demo.html
+// Cross-references: real temp files, since the rule asks the filesystem. Layout: skill/SKILL.md (headings
+// "# Setup", "## Providers" twice), skill/references/a.md (the file under test), skill/examples/demo.html.
 
 function refFixture() {
   const root = mkdtempSync(join(tmpdir(), "lint-skills-refs-"));

@@ -328,36 +328,9 @@ export function lintRegistryItemRefs(content: string, known: Set<string>): LineV
   });
 }
 
-// ---------------------------------------------------------------------------
-// Cross-references between skill docs
-// ---------------------------------------------------------------------------
-//
-// Skill docs point at each other with relative paths: `[text](../foo.md)`,
-// `[id]: ../foo.md`, or a backticked `../foo.md` in prose. Nothing used to fail
-// when such a path was wrong — typically `../` climbing one level too far from
-// a `references/` or `sub-agents/` subdirectory, or a file that moved — and an
-// agent following the doc hit a read error and improvised. This check resolves
-// every checked target against the referencing file's own directory and
-// requires it to exist. When the target carries a `#anchor` and is a Markdown
-// file, the anchor must match a GitHub-style heading slug in that file
-// (lowercase, punctuation stripped, spaces → `-`, duplicates suffixed `-1`,
-// `-2`, …). Same-file `#anchor` links are checked against the file itself.
-//
-// Skipped on purpose: URLs with a scheme (`https:`, `mailto:`, …), absolute
-// paths, anything inside a fenced code block, and template-ish targets that
-// carry `{`, `}`, `*`, `$`, `<`, or `>` (`rules/<id>.md`).
-//
-// Markdown links and reference definitions have one resolution rule (relative
-// to the file), so every relative target is checked. Backticked prose paths
-// are checked only when they are explicitly relative (`./` or `../`) and point
-// at a doc or example composition (`.md` / `.html`). A leading `./` or `../`
-// is an unambiguous statement of "relative to this file", and a doc that uses
-// it to mean "relative to the skill root" is exactly the defect this rule
-// exists to catch. Bare backticked paths (`references/foo.md`) are NOT
-// checked: measured on the current tree, most are skill-root shorthand, name a
-// file in another skill, or describe a project artifact the skill writes at
-// runtime (`assets/index.md`), and checking them would flag roughly 200 lines
-// that are not wrong. That is a KNOWN false-negative blind spot, deliberately.
+// Cross-references between skill docs: relative link targets, and backticked `./` or `../` .md/.html paths, must
+// resolve from the referencing file; `#anchor`s into .md files must match a GitHub heading slug. Bare backticked
+// paths (`references/foo.md`) are skill-root shorthand and deliberately unchecked.
 
 interface DocRef {
   line: number;
@@ -555,40 +528,6 @@ function lintFile(filePath: string): Violation[] {
 // Main
 // ---------------------------------------------------------------------------
 
-interface Reporter {
-  report: (file: string, violations: LineViolation[]) => void;
-  total: () => number;
-}
-
-function createReporter(): Reporter {
-  let total = 0;
-  return {
-    report(file, violations) {
-      for (const v of violations) {
-        console.error(`${file}:${v.line}: ${v.message}`);
-        console.error(`  ${v.text}\n`);
-        total++;
-      }
-    },
-    total: () => total,
-  };
-}
-
-/** Doc cross-references and registry snapshots for every markdown file; returns the snapshot count. */
-function lintMarkdownFiles(paths: string[], knownItems: Set<string>, reporter: Reporter): number {
-  let snapshotsChecked = 0;
-  for (const path of paths) {
-    const content = readFileSync(path, "utf-8");
-    const file = relative(process.cwd(), path);
-    reporter.report(file, lintDocRefs(path, content));
-    const found = lintRegistryItemRefs(content, knownItems);
-    if (found === null) continue;
-    snapshotsChecked++;
-    reporter.report(file, found);
-  }
-  return snapshotsChecked;
-}
-
 function main(): void {
   const skillsDirs = SKILLS_DIRS.filter((dir) =>
     statSync(dir, { throwIfNoEntry: false })?.isDirectory(),
@@ -599,17 +538,34 @@ function main(): void {
     process.exit(0);
   }
 
-  const reporter = createReporter();
+  let totalViolations = 0;
+  const report = (file: string, violations: LineViolation[]): void => {
+    for (const v of violations) {
+      console.error(`${file}:${v.line}: ${v.message}`);
+      console.error(`  ${v.text}\n`);
+      totalViolations++;
+    }
+  };
+
   for (const file of files) {
-    reporter.report(relative(process.cwd(), file), lintFile(file));
+    report(relative(process.cwd(), file), lintFile(file));
   }
 
   const knownItems = registryItemNames();
   const markdownFiles = skillsDirs.flatMap(collectMarkdownFiles);
-  const snapshotsChecked = lintMarkdownFiles(markdownFiles, knownItems, reporter);
+  let snapshotsChecked = 0;
+  for (const path of markdownFiles) {
+    const content = readFileSync(path, "utf-8");
+    const file = relative(process.cwd(), path);
+    report(file, lintDocRefs(path, content));
+    const found = lintRegistryItemRefs(content, knownItems);
+    if (found === null) continue;
+    snapshotsChecked++;
+    report(file, found);
+  }
 
-  if (reporter.total() > 0) {
-    console.error(`\n${reporter.total()} skill lint error(s) found.`);
+  if (totalViolations > 0) {
+    console.error(`\n${totalViolations} skill lint error(s) found.`);
     process.exit(1);
   }
   console.log(
@@ -617,10 +573,8 @@ function main(): void {
   );
 }
 
-// Only run when executed directly (`tsx scripts/lint-skills.ts`). The test file
-// imports the exported checkers, and a red tree must not exit the test runner.
-// argv[1] is realpath'd because the ESM loader realpaths import.meta.url; without
-// it a symlinked checkout (macOS /tmp) would skip main() and exit 0 silently.
+// Tests import the checkers, so main() runs only as the entry point. argv[1] is realpath'd to match import.meta.url,
+// which the ESM loader realpaths; otherwise a symlinked checkout would skip main() and exit 0.
 function isEntryPoint(): boolean {
   const entry = process.argv[1];
   if (!entry) return false;
