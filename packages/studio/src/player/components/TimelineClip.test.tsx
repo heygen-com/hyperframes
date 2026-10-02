@@ -127,7 +127,7 @@ describe("TimelineClip", () => {
       element: { id: "hero", label: "Hero", tag: "div", start: 1, duration: 1, track: 0 },
     });
 
-    expect(host.querySelector(".timeline-clip__label")?.textContent).toBe("Hero");
+    expect(host.querySelector(".timeline-clip__name")?.textContent).toBe("Hero");
     expect(host.querySelector(".timeline-clip__timecode")).toBeNull();
 
     act(() => root.unmount());
@@ -145,7 +145,7 @@ describe("TimelineClip", () => {
         playbackRate: 1.5,
       },
     });
-    expect(fast.host.querySelector(".timeline-clip__label")?.textContent).toBe("Hero [150%]");
+    expect(fast.host.querySelector(".timeline-clip__name")?.textContent).toBe("Hero [150%]");
     act(() => fast.root.unmount());
     const automation = JSON.stringify({
       version: 1,
@@ -170,7 +170,7 @@ describe("TimelineClip", () => {
         automation,
       },
     });
-    expect(ramp.host.querySelector(".timeline-clip__label")?.textContent).toBe("Hero [ramp]");
+    expect(ramp.host.querySelector(".timeline-clip__name")?.textContent).toBe("Hero [ramp]");
     act(() => ramp.root.unmount());
   });
 
@@ -181,7 +181,7 @@ describe("TimelineClip", () => {
       isSelected: true,
     });
 
-    expect(host.querySelector(".timeline-clip__label")?.textContent).toBe("FX");
+    expect(host.querySelector(".timeline-clip__name")?.textContent).toBe("FX");
     expect(host.querySelector(".timeline-clip__timecode")).toBeNull();
     expect(host.querySelector(".timeline-clip")?.getAttribute("data-ladder")).toBe("picture");
 
@@ -193,7 +193,7 @@ describe("TimelineClip", () => {
       element: { id: "wide", label: "City", tag: "video", start: 0, duration: 1, track: 0 },
       pps: 200,
     });
-    expect(labeled.host.querySelector(".timeline-clip__label")?.textContent).toBe("City");
+    expect(labeled.host.querySelector(".timeline-clip__name")?.textContent).toBe("City");
     expect(labeled.host.querySelector(".timeline-clip")?.getAttribute("data-ladder")).toBe(
       "labeled",
     );
@@ -207,7 +207,7 @@ describe("TimelineClip", () => {
       pps: 23,
       isSelected: true,
     });
-    expect(frame.host.querySelector(".timeline-clip__label")?.textContent).toBe("City");
+    expect(frame.host.querySelector(".timeline-clip__name")?.textContent).toBe("City");
     expect(frame.host.querySelector(".timeline-clip")?.getAttribute("data-ladder")).toBe("frame");
     act(() => frame.root.unmount());
   });

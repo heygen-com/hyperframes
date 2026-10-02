@@ -72,7 +72,7 @@ function render(tag: string, overrides: Partial<TimelineElement> = {}, picture =
 describe("Filmstrip clips", () => {
   it.each(["video", "img"])("reserves a 15px name band above %s pictures", (tag) => {
     const host = render(tag);
-    const name = host.querySelector(".timeline-clip__label");
+    const name = host.querySelector(".timeline-clip__name");
     const picture = host.querySelector(".timeline-clip__content");
     expect(name?.textContent).toBe("City");
     expect(picture).not.toBeNull();
@@ -93,6 +93,10 @@ describe("Filmstrip clips", () => {
     expect(badges?.classList.contains("z-[3]")).toBe(true);
     expect(badges?.classList.contains("max-w-[calc(100%-12px)]")).toBe(true);
     expect(badges?.classList.contains("overflow-hidden")).toBe(true);
+    expect(badges?.parentElement?.classList.contains("timeline-clip__label")).toBe(true);
+    expect(css).toMatch(
+      /\.timeline-clip:not\(\.is-audio\) \.timeline-clip__name\s*\{[^}]*flex:\s*1;[^}]*min-width:\s*0;[^}]*overflow:\s*hidden;/,
+    );
     expect(css).toMatch(
       /\.timeline-clip:not\(\.is-audio\) \.timeline-clip__label\s*\{[^}]*z-index:\s*0;/,
     );
@@ -102,12 +106,13 @@ describe("Filmstrip clips", () => {
     usePlayerStore
       .getState()
       .setLintFindingsByElement(new Map([["clip", { count: 1, messages: ["Lint warning"] }]]));
-    const host = render("div", {}, false);
-    const name = host.querySelector(".timeline-clip__label");
+    const host = render("div", { duration: 0.3 }, false);
+    const name = host.querySelector(".timeline-clip__name");
     const warning = host.querySelector<HTMLElement>('[title="Lint warning"]');
     expect(warning).not.toBeNull();
     expect(warning?.style.bottom).toBe("7px");
     expect(warning?.style.top).toBe("");
+    expect(css).toMatch(/\.timeline-clip__timecode\s*\{[^}]*right:\s*16px;/);
     expect(
       (name?.compareDocumentPosition(warning!) ?? 0) & Node.DOCUMENT_POSITION_FOLLOWING,
     ).toBeTruthy();
@@ -120,7 +125,7 @@ describe("Filmstrip clips", () => {
     "keeps the name band without badge targets on a narrow visual clip (%ss)",
     (duration) => {
       const host = render("video", { duration, hasAudio: true, volume: 1.8 });
-      expect(host.querySelector(".timeline-clip__label")?.textContent).toBe("City");
+      expect(host.querySelector(".timeline-clip__name")?.textContent).toBe("City");
       expect(host.querySelector('[data-testid="clip-badges"]')).toBeNull();
       expect(css).toMatch(/padding:\s*0 min\(6px,\s*25%\);/);
       expect(css).toMatch(/padding-left:\s*min\(8px,\s*25%\);/);

@@ -91,6 +91,10 @@ export const TimelineClip = memo(function TimelineClip({
   if (linkColor) Object.assign(themeVariables, { "--clip-link-color": linkColor });
   const hasFades = (isAudioClip || Boolean(el.hasAudio)) && !isGestureActor;
   const fade = useClipFadeDraft(el);
+  const badges =
+    ladder === "labeled" && !isGestureActor ? (
+      <ClipBadges el={el} onOpenMenu={onContextMenu} />
+    ) : null;
   const clipClassName = [
     "timeline-clip",
     "absolute",
@@ -210,8 +214,13 @@ export const TimelineClip = memo(function TimelineClip({
           />
         </div>
       )}
-      {showLabel && <span className="timeline-clip__label">{displayLabel}</span>}
-      {ladder === "labeled" && !isGestureActor && <ClipBadges el={el} onOpenMenu={onContextMenu} />}
+      {showLabel && (
+        <span className="timeline-clip__label">
+          <span className="timeline-clip__name">{displayLabel}</span>
+          {!isAudioClip && badges}
+        </span>
+      )}
+      {isAudioClip && badges}
       {!isGestureActor && el.syncOrigin && <OutOfSyncBadge el={el} />}
       {showDefaultText && (
         <span className="timeline-clip__timecode">

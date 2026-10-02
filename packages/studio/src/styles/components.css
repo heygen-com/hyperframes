@@ -367,12 +367,14 @@
 }
 
 .timeline-clip:not(.is-audio) .timeline-clip__label {
+  display: flex;
   z-index: 0;
   top: 0;
   left: 0;
   width: 100%;
   max-width: 100%;
   height: var(--timeline-clip-band-height);
+  overflow: visible;
   padding: 0 min(6px, 25%);
   border-radius: inherit;
   border-bottom-left-radius: 0;
@@ -380,6 +382,20 @@
   background: var(--timeline-clip-band-bg);
   font-weight: 600;
   line-height: var(--timeline-clip-band-height);
+}
+
+.timeline-clip:not(.is-audio) .timeline-clip__name {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.timeline-clip:not(.is-audio) .timeline-clip__label [data-testid="clip-badges"] {
+  position: static;
+  flex-shrink: 0;
+  max-width: 100%;
+  margin-top: 2px;
 }
 
 /* Link groups share a label colour on the border and the name chip. */
@@ -402,6 +418,7 @@
   position: absolute;
   bottom: 6px;
   left: 12px;
+  right: 16px;
   overflow: hidden;
   color: var(--timeline-tick-text);
   font-family: var(--font-mono);
