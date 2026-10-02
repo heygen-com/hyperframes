@@ -60,10 +60,7 @@
         display: inline-block;
         transform-origin: var(--hf-swing-origin, 50% 0%);
         transform: rotate(
-          calc(
-            var(--hf-swing-angle, 0) * var(--hf-swing-dir, 1) *
-              var(--hf-swing-max, 34deg)
-          )
+          calc(var(--hf-swing-angle, 0) * var(--hf-swing-dir, 1) * var(--hf-swing-max, 34deg))
         );
       }
       .hf-catalog-pendulum-swing__body {
@@ -159,8 +156,7 @@
         // inside an exponential decay (the damping). It is normalised so the
         // tween still lands exactly upright (angle 0) at the end, and rotation
         // stays sub-pixel under the seek-by-frame capture engine.
-        const swingSettle = (p) =>
-          1 - Math.exp(-2.3 * p) * Math.cos(3.5 * Math.PI * p);
+        const swingSettle = (p) => 1 - Math.exp(-2.3 * p) * Math.cos(3.5 * Math.PI * p);
         tl.fromTo(
           ".hf-catalog-pendulum-swing",
           { "--hf-swing-angle": 1 },

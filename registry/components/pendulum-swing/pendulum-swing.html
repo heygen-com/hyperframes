@@ -55,10 +55,7 @@
        decide the reach and the side. */
     transform-origin: var(--hf-swing-origin, 50% 0%);
     transform: rotate(
-      calc(
-        var(--hf-swing-angle, 0) * var(--hf-swing-dir, 1) *
-          var(--hf-swing-max, 34deg)
-      )
+      calc(var(--hf-swing-angle, 0) * var(--hf-swing-dir, 1) * var(--hf-swing-max, 34deg))
     );
   }
   .hf-catalog-pendulum-swing__body {
