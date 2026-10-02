@@ -97,6 +97,10 @@ export function useElementPicker(
     setPickedElement(null);
   }, []);
 
+  // Every frame window this picker has heard from: a reload that swaps in a new frame between a pick and its
+  // message leaves that pick posted from the frame it was made in.
+  const shownWindows = useRef(new WeakSet<MessageEventSource>());
+
   // Listen for picker messages from the iframe
   useMountEffect(() => {
     // One guard per message field, then one branch per message type.
@@ -108,8 +112,10 @@ export function useElementPicker(
       // Accept events from either the primary iframe or the active override
       const activeIframe = getActiveIframe();
       if (!activeIframe) return;
-      if (e.source !== activeIframe.contentWindow && e.source !== iframeRef.current?.contentWindow)
-        return;
+      if (!e.source) return;
+      if (e.source === activeIframe.contentWindow || e.source === iframeRef.current?.contentWindow)
+        shownWindows.current.add(e.source);
+      else if (!shownWindows.current.has(e.source)) return;
 
       if (data.type === "element-picked" && data.elementInfo) {
         setPickedElement(toPickedElement(data.elementInfo, activeIframe));

@@ -170,3 +170,52 @@ describe("an edit to a picked element without an id", () => {
     expect(synced).toEqual([]);
   });
 });
+
+describe("a pick across a reload that swaps the preview frame", () => {
+  const picked = (from: Window | null, selector: string) =>
+    act(() => {
+      window.dispatchEvent(
+        new MessageEvent("message", {
+          source: from,
+          data: {
+            source: "hf-preview",
+            type: "element-picked",
+            elementInfo: { selector, tagName: "h1" },
+            ...runtimeProtocolMetadata(30),
+          },
+        }),
+      );
+    });
+
+  function mountSwapping() {
+    const live = mountPreview();
+    const ref: { current: HTMLIFrameElement | null } = { current: live };
+    let api: ReturnType<typeof useElementPicker> | null = null;
+    function Harness() {
+      api = useElementPicker(ref);
+      return null;
+    }
+    root = createRoot(document.createElement("div"));
+    act(() => root?.render(React.createElement(Harness)));
+    return { live, ref, picker: () => api as ReturnType<typeof useElementPicker> };
+  }
+
+  it("keeps a pick posted by the frame it was made in after a new frame took its place", () => {
+    const { live, ref, picker } = mountSwapping();
+    picked(live.contentWindow, "h1");
+    act(() => picker().clearPick());
+    // The reload promotes its frame before the old frame's pick message is handled.
+    const old = live.contentWindow;
+    ref.current = mountPreview();
+    live.remove();
+    picked(old, "h1.next");
+    expect(picker().pickedElement?.selector).toBe("h1.next");
+  });
+
+  it("still ignores a frame it never showed", () => {
+    const { picker } = mountSwapping();
+    const stranger = mountPreview();
+    picked(stranger.contentWindow, "h1");
+    expect(picker().pickedElement).toBeNull();
+  });
+});
