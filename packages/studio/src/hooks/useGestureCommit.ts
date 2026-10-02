@@ -14,6 +14,7 @@ import type { CommitMutationOptions } from "./gsapScriptCommitTypes";
 import { roundTo3 } from "../utils/rounding";
 import { classifyPropertyGroup } from "@hyperframes/core/gsap-parser";
 import { isInstantHold, idSelector, writeTargetSelector, tweenTargetsElement } from "./gsapShared";
+import { useStableHandlers } from "./useStableHandlers";
 
 type RecordedKeyframe = {
   percentage: number;
@@ -401,5 +402,5 @@ export function useGestureCommit({
     readOnlyPreview,
   ]);
 
-  return { gestureState, gestureRecording, handleToggleRecording };
+  return useStableHandlers({ gestureState, gestureRecording, handleToggleRecording });
 }

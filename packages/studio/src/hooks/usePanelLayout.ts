@@ -3,6 +3,7 @@ import type { RightPanelTab } from "../utils/studioHelpers";
 import { trackStudioEvent } from "../utils/studioTelemetry";
 import { useDockLayoutStore, visiblePanelInZone } from "../components/dock/dockLayoutStore";
 import { PANEL_DEFINITIONS, type PanelId } from "../components/dock/panelRegistry";
+import { useStableHandlers } from "./useStableHandlers";
 
 export interface InitialPanelLayoutState {
   rightCollapsed?: boolean | null;
@@ -66,5 +67,5 @@ export function usePanelLayout(initialState?: InitialPanelLayoutState) {
     store.setZoneVisible("right", !collapsed);
   }, []);
 
-  return { rightCollapsed, setRightCollapsed, rightPanelTab, setRightPanelTab };
+  return useStableHandlers({ rightCollapsed, setRightCollapsed, rightPanelTab, setRightPanelTab });
 }

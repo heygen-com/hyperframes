@@ -15,6 +15,7 @@ import {
   type EditHistoryHandle,
   type UseEditHistoryActionsOptions,
 } from "./useEditHistoryActions";
+import { useStableHandlers } from "./useStableHandlers";
 
 function iframeContentWindow(iframe: HTMLIFrameElement | null): Window | null {
   try {
@@ -266,9 +267,9 @@ export function useAppHotkeys({
     [],
   );
 
-  return {
+  return useStableHandlers({
     handleUndo,
     handleRedo,
     syncPreviewHotkeys,
-  };
+  });
 }

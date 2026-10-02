@@ -9,7 +9,7 @@ import type { useToast } from "../hooks/useToast";
 
 type LintFindings = ComponentProps<typeof LintModal>["findings"];
 
-export interface StudioOverlaysProps {
+interface StudioOverlaysProps {
   projectId: string;
   projectDir?: string | null;
   lintModal: LintFindings | null;

@@ -9,7 +9,7 @@ import { InspectorIcon } from "./icons/InspectorIcon";
 import { HyperframesLogo } from "./ui/HyperframesLogo";
 import { ShowThemeToggle, ThemeToggle } from "./ThemeToggle";
 
-export interface StudioHeaderProps {
+interface StudioHeaderProps {
   captureFrameHref: string;
   captureFrameFilename: string;
   handleCaptureFrameClick: (event: MouseEvent<HTMLAnchorElement>) => void;

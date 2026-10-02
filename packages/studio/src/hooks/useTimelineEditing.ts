@@ -541,7 +541,7 @@ export function useTimelineEditing({
   const trackedRazorSplit = track(
     guard((element) => withLinkPartners([element]), handleRazorSplit),
   );
-  return {
+  return useStableHandlers({
     handleTimelineElementMove: track(guard((element) => [element], handleTimelineElementMove)),
     handleTimelineElementResize: track(guard((element) => [element], handleTimelineElementResize)),
     handleToggleTrackHidden: track(
@@ -593,5 +593,5 @@ export function useTimelineEditing({
       setElementFxAttribute.restoreLive(restore);
       setAudioGroupAttribute.restoreLive(restore);
     },
-  };
+  });
 }
