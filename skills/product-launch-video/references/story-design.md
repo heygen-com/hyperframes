@@ -2,7 +2,7 @@
 
 Step 3 of the product-launch flow. Output: `STORYBOARD.md` (the narrative plan, one frame per beat) and `SCRIPT.md` (the locked spoken narration).
 
-This step decides **what the video says, in what order, and how each beat is said** — and it says each beat in the SHAPE of a proven script. It does not design layout, composition, or motion (that is Step 4). For exact file syntax follow `../hyperframes/references/storyboard-format.md` and `../hyperframes/references/script-format.md`.
+This step decides **what the video says, in what order, and how each beat is said** — and it says each beat in the SHAPE of a proven script. It does not design layout, composition, or motion (that is Step 4). For exact file syntax follow `../../hyperframes/references/storyboard-format.md` and `../../hyperframes/references/script-format.md`.
 
 ## What story design produces
 
@@ -64,7 +64,7 @@ One clear job per beat — never "more benefits" or "another feature." Beat `typ
 
 `hook | pain_point | product_intro | feature_showcase | benefit_highlight | social_proof | branding | cta`
 
-The opening 3–5s needs ONE hook that creates tension, curiosity, or desire — a shocking stat, pain validation, a rhetorical question, direct address, an imagine/future-pace, a category announcement, or visual spectacle. Never open with generic company description. Per `../hyperframes-creative/references/story-spine.md`: the hook speaks the viewer's outcome language (what they gain, never a feature list), and the promise (`message`) lands by beat 2 — features after that are its evidence.
+The opening 3–5s needs ONE hook that creates tension, curiosity, or desire — a shocking stat, pain validation, a rhetorical question, direct address, an imagine/future-pace, a category announcement, or visual spectacle. Never open with generic company description. Per `../../hyperframes-creative/references/story-spine.md`: the hook speaks the viewer's outcome language (what they gain, never a feature list), and the promise (`message`) lands by beat 2 — features after that are its evidence.
 
 A UI demo is usually a SEQUENCE of 3+ consecutive `feature_showcase` / `benefit_highlight` beats on the same surface (input → response → result → benefit), not one isolated frame.
 
@@ -78,13 +78,13 @@ For each beat, look up its **role** in the script bank below, find the blueprint
 - **Vary the shapes across the video.** Reaching for the same blueprint every beat re-creates the sameness this exists to avoid. `kinetic-type-beats` is the workhorse (6 roles) — lean on it, but not everywhere.
 - **Write each VO as discrete cues, not one run-on breath.** Step 5 reveals each on-screen piece _when the voiceover names it_ (the anti-PowerPoint mechanism — `motion-language.md` Part 2). A line with clear phrase boundaries — "Content, sentiment, engagement — in one place" — hands the shot its reveal cadence for free; a single long clause leaves the frame nothing to pace to. The bank patterns are already cue-segmented — keep that rhythm.
 
-Step 3 only TAGS the candidate id and writes the shaped VO. Step 4 (visual design) picks and instantiates the blueprint into a time-coded shot; it may override or drop a Step 3 candidate. The full menu with picking guidance lives in `../hyperframes-animation/blueprints-index.md`.
+Step 3 only TAGS the candidate id and writes the shaped VO. Step 4 (visual design) picks and instantiates the blueprint into a time-coded shot; it may override or drop a Step 3 candidate. The full menu with picking guidance lives in `../../hyperframes-animation/blueprints-index.md`.
 
 ---
 
 ## The script bank — what each beat's VO sounds like
 
-> Proven product-launch clips, each reversed into the one spoken line it implies. Grouped by **role → blueprint**. Real product names kept (swap in your own). Draft your beat's VO in the SHAPE of the matching pattern. Kept 1:1 with the role declarations in `../hyperframes-animation/blueprints-index.md` — when a blueprint gains a role there, add its script shape here.
+> Proven product-launch clips, each reversed into the one spoken line it implies. Grouped by **role → blueprint**. Real product names kept (swap in your own). Draft your beat's VO in the SHAPE of the matching pattern. Kept 1:1 with the role declarations in `../../hyperframes-animation/blueprints-index.md` — when a blueprint gains a role there, add its script shape here.
 
 ### HOOK
 

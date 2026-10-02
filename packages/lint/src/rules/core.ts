@@ -257,6 +257,44 @@ function ruleForcesOpacityZero(rule: postcss.Rule): boolean {
   return forcesOpacityZero;
 }
 
+const CSS_TRANSITION_PROPERTY_PATTERN = /^(?:-webkit-)?transition(?:-[a-z][a-z-]*)?$/i;
+const TRANSITION_NONE_PROPERTIES = new Set(["transition", "transition-property"]);
+const TRANSITION_TIME_PROPERTIES = new Set([
+  "transition",
+  "transition-duration",
+  "transition-delay",
+]);
+
+// All-zero times (the reduced-motion / render-lock reset) never run on the browser clock.
+function hasNonZeroTime(value: string): boolean {
+  const times = value.match(/[+-]?(?:\d*\.)?\d+m?s\b/g) ?? [];
+  return value.includes("var(") || times.some((time) => Number.parseFloat(time) !== 0);
+}
+
+function isSeekUnsafeTransition(declaration: postcss.Declaration): boolean {
+  const property = declaration.prop.trim().toLowerCase();
+  if (!CSS_TRANSITION_PROPERTY_PATTERN.test(property)) return false;
+
+  const name = property.replace(/^-webkit-/, "");
+  const value = declaration.value.trim().toLowerCase();
+  if (value === "none" && TRANSITION_NONE_PROPERTIES.has(name)) return false;
+  return !TRANSITION_TIME_PROPERTIES.has(name) || hasNonZeroTime(value);
+}
+
+function cssTransitionFinding(
+  declaration: postcss.Declaration,
+  details: Pick<HyperframeLintFinding, "selector" | "elementId" | "snippet">,
+): HyperframeLintFinding {
+  return {
+    code: "css_transition_used",
+    severity: "warning",
+    message: `CSS declaration \`${declaration.prop}: ${declaration.value}\` runs on the browser clock and cannot be seeked deterministically across render workers.`,
+    fixHint:
+      "Keep the class or attribute swap for state; put the visual change on the paused GSAP timeline.",
+    ...details,
+  };
+}
+
 function isStudioTimelineElement(tag: { raw: string; name: string }): boolean {
   if (["script", "style", "link", "meta", "template", "noscript"].includes(tag.name)) {
     return false;
@@ -605,6 +643,55 @@ export const coreRules: Array<(ctx: LintContext) => HyperframeLintFinding[]> = [
         });
       }
     }
+    return findings;
+  },
+
+  // css_transition_used
+  ({ styles, tags }) => {
+    const findings: HyperframeLintFinding[] = [];
+
+    for (const style of styles) {
+      if (!/transition/i.test(style.content)) continue;
+      let root: postcss.Root;
+      try {
+        root = postcss.parse(style.content);
+      } catch {
+        // The CSS syntax rule reports malformed style blocks separately.
+        continue;
+      }
+      root.walkDecls((declaration) => {
+        if (!isSeekUnsafeTransition(declaration)) return;
+        const selector =
+          declaration.parent?.type === "rule" ? declaration.parent.selector : undefined;
+        findings.push(
+          cssTransitionFinding(declaration, {
+            selector,
+            snippet: truncateSnippet(declaration.toString()),
+          }),
+        );
+      });
+    }
+
+    for (const tag of tags) {
+      const inlineStyle = readDecodedAttr(tag.raw, "style");
+      if (!inlineStyle || !/transition/i.test(inlineStyle)) continue;
+      let root: postcss.Root;
+      try {
+        root = postcss.parse(inlineStyle);
+      } catch {
+        continue;
+      }
+      root.walkDecls((declaration) => {
+        if (!isSeekUnsafeTransition(declaration)) return;
+        findings.push(
+          cssTransitionFinding(declaration, {
+            elementId: readDecodedAttr(tag.raw, "id") || undefined,
+            snippet: truncateSnippet(tag.raw),
+          }),
+        );
+      });
+    }
+
     return findings;
   },
 
