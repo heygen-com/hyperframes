@@ -85,16 +85,17 @@ export default defineCommand({
   },
   // fallow-ignore-next-line complexity
   async run({ args }) {
+    if (args["text-file"] && args.input) {
+      console.error(c.error("Pass text to speak or --text-file, not both."));
+      failUsage();
+    }
+
     // ── List voices mode ──────────────────────────────────────────────
     if (args.list) {
       return listVoices(args.json);
     }
 
     // ── Resolve input text ────────────────────────────────────────────
-    if (args["text-file"] && args.input) {
-      console.error(c.error("Pass text to speak or --text-file, not both."));
-      failUsage();
-    }
     const input = args["text-file"] ?? args.input;
     if (!input) {
       console.error(c.error("Provide text to speak, or use --list to see available voices."));

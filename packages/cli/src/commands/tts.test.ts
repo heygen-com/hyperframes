@@ -44,6 +44,16 @@ describe("tts command", () => {
     );
   });
 
+  it("rejects text words with --text-file even under --list", async () => {
+    const input = join(dir, "script.txt");
+    writeFileSync(input, "From the file\n");
+    vi.spyOn(console, "error").mockImplementation(() => {});
+
+    await expect(
+      ttsCommand.run!({ args: { "text-file": input, input: "hello", list: true } } as never),
+    ).rejects.toThrow(CliUsageError);
+  });
+
   it("rejects text words together with --text-file instead of dropping the words", async () => {
     const input = join(dir, "script.txt");
     writeFileSync(input, "From the file\n");
