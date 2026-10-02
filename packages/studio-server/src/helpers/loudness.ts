@@ -468,6 +468,7 @@ export async function measureAudio(
     encoding: "utf8",
     maxBuffer: 16 * 1024 * 1024,
     timeout: FFMPEG_TIMEOUT_MS,
+    windowsHide: true,
   });
   return parseEbur128Summary(result.stderr);
 }
