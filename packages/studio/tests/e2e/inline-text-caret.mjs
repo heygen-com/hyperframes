@@ -131,9 +131,6 @@ try {
 
   await openEdit(page, "#title");
   evidence.opened = await read(page);
-  evidence.toolbar = await page.evaluate(() =>
-    document.querySelector("[data-inline-text-toolbar]")?.getBoundingClientRect().toJSON(),
-  );
   check(evidence.opened.editing, "a press and Enter open the Title for editing");
   check(
     evidence.opened.caret?.width === 2,
@@ -156,6 +153,18 @@ try {
   await page.keyboard.up("Shift");
   evidence.selecting = await read(page);
   check(!evidence.selecting.caret, "no caret while a range is selected");
+  // The style bar shows for a range; it is fixed too, so a transformed canvas would put it off the text.
+  evidence.toolbar = await page.evaluate(() =>
+    document.querySelector("[data-inline-text-toolbar]")?.getBoundingClientRect().toJSON(),
+  );
+  const picked = await onScreen(page, "#title");
+  check(
+    evidence.toolbar &&
+      evidence.toolbar.right > picked.x &&
+      evidence.toolbar.left < picked.x + picked.w &&
+      Math.abs(evidence.toolbar.bottom - picked.y) < 120,
+    `the style bar stands by the selected text: ${JSON.stringify(evidence.toolbar)} for ${JSON.stringify(picked)}`,
+  );
   await page.keyboard.press("ArrowRight");
   evidence.collapsedAgain = await read(page);
   check(

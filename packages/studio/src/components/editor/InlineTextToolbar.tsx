@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
+import { createPortal } from "react-dom";
 import { applyInlineStyle } from "./inlineTextStyleRange";
 import { readInlineStyle, readInlineStyleSpread } from "./inlineTextStyleRead";
 import { parseCssColor, toHexColor } from "./colorValue";
@@ -69,10 +70,11 @@ export function InlineTextToolbar({
     [session, refresh],
   );
 
-  if (!placement) return null;
+  if (!placement || !iframe) return null;
   const styles = placement.styles;
 
-  return (
+  // On Studio's body: a transformed ancestor in the canvas would make `fixed` relative to itself, not the viewport.
+  return createPortal(
     <div
       data-inline-text-toolbar="true"
       role="toolbar"
@@ -147,7 +149,8 @@ export function InlineTextToolbar({
         on={styles["text-decoration-line"] === "underline"}
         onToggle={(on) => apply({ "text-decoration-line": on ? "underline" : null })}
       />
-    </div>
+    </div>,
+    iframe.ownerDocument.body,
   );
 }
 
