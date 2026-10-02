@@ -1,3 +1,4 @@
+import type { DomEditPersistOutcome } from "./domEditCommitTypes";
 import type { RotationCommit } from "../components/editor/rotationDraft";
 import { useCallback } from "react";
 import { getDomEditTargetKey, type DomEditSelection } from "../components/editor/domEditing";
@@ -39,7 +40,7 @@ export interface UseDomGeometryCommitsParams {
       skipRefresh?: boolean;
       deferRender?: boolean;
     },
-  ) => Promise<void>;
+  ) => Promise<DomEditPersistOutcome | undefined>;
   readOnlyPreview: boolean;
 }
 
@@ -73,7 +74,7 @@ export function useDomGeometryCommits({
       restore?: () => void,
       undoKey?: string,
     ) => {
-      if (readOnlyPreview) return Promise.resolve();
+      if (readOnlyPreview) return Promise.resolve(undefined);
       const element = selection.element;
       const beforeSize = captureStudioBoxSize(element);
       const beforeOffset = captureStudioPathOffset(element);

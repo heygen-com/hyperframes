@@ -1,4 +1,5 @@
 import type { TimelineEditOutcome } from "../../hooks/timelineEditPermission";
+import { trackKeyframeUsage } from "../../utils/keyframeUsage";
 import { useCallback, useMemo } from "react";
 import type { GsapAnimation } from "@hyperframes/core/gsap-parser";
 import type { TimelineElement } from "../../player";
@@ -259,7 +260,12 @@ export function useTimelineEditCallbacks({
           if (!selection) return;
           // Serial: each removal rewrites the same source file, so dispatching
           // them together would have the later writes read a pre-edit document.
-          for (const anim of anims) await handleGsapRemoveAllKeyframes(anim.id, selection);
+          let changed = false;
+          for (const anim of anims) {
+            const result = await handleGsapRemoveAllKeyframes(anim.id, selection, false);
+            changed = result || changed;
+          }
+          if (changed) trackKeyframeUsage("remove_all");
         });
       },
       onDeleteKeyframe: (elId, keyframe) => {

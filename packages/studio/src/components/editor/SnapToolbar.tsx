@@ -1,3 +1,4 @@
+import { trackPreviewFeatureUsed } from "../../utils/previewFeatureUsage";
 import { memo, useCallback, useEffect, useRef, useState } from "react";
 import { MagnetStraight, GridFour, Path, Ruler, FrameCorners } from "@phosphor-icons/react";
 import { usePlayerStore } from "../../player/store/playerStore";
@@ -26,10 +27,12 @@ export const SnapToolbar = memo(function SnapToolbar() {
 
   const toggleSnap = useCallback(() => {
     updatePrefs({ snapEnabled: !prefs.snapEnabled });
+    trackPreviewFeatureUsed("snapping", "button");
   }, [prefs.snapEnabled, updatePrefs]);
 
   const toggleGrid = useCallback(() => {
     updatePrefs({ gridVisible: !prefs.gridVisible });
+    trackPreviewFeatureUsed("grid", "button");
   }, [prefs.gridVisible, updatePrefs]);
 
   useEffect(() => {
@@ -41,10 +44,12 @@ export const SnapToolbar = memo(function SnapToolbar() {
       if (e.key === "s" && !e.metaKey && !e.ctrlKey && !e.altKey) {
         e.preventDefault();
         updatePrefs({ snapEnabled: !prefs.snapEnabled });
+        trackPreviewFeatureUsed("snapping", "keyboard");
       }
       if (e.key === "g" && !e.metaKey && !e.ctrlKey && !e.altKey) {
         e.preventDefault();
         updatePrefs({ gridVisible: !prefs.gridVisible });
+        trackPreviewFeatureUsed("grid", "keyboard");
       }
     };
     document.addEventListener("keydown", handleKeyDown);
@@ -101,7 +106,10 @@ export const SnapToolbar = memo(function SnapToolbar() {
                 ? "bg-studio-accent/20 text-accent-ink"
                 : "bg-black/40 text-white/60 hover:bg-black/60 hover:text-white/80"
             }`}
-            onClick={toggle}
+            onClick={() => {
+              toggle();
+              trackPreviewFeatureUsed(key === "rulerVisible" ? "ruler" : "safe_margins", "button");
+            }}
             title={`${label} ${visible ? "on" : "off"}`}
             aria-label={`Toggle ${label.toLowerCase()}`}
             aria-pressed={visible}
@@ -175,8 +183,14 @@ export const SnapToolbar = memo(function SnapToolbar() {
                 value={prefs.gridSpacing}
                 onChange={(e) => {
                   const val = Number.parseInt(e.target.value, 10);
-                  if (Number.isFinite(val) && val >= 10 && val <= 500) {
+                  if (
+                    Number.isFinite(val) &&
+                    val >= 10 &&
+                    val <= 500 &&
+                    val !== prefs.gridSpacing
+                  ) {
                     updatePrefs({ gridSpacing: val });
+                    trackPreviewFeatureUsed("grid_spacing", "field");
                   }
                 }}
                 className="w-16 rounded-sm bg-neutral-900 border border-neutral-600 px-1.5 py-0.5 text-xs text-white text-right tabular-nums outline-hidden focus:border-studio-accent"
@@ -186,7 +200,10 @@ export const SnapToolbar = memo(function SnapToolbar() {
               <input
                 type="checkbox"
                 checked={prefs.snapToGrid}
-                onChange={() => updatePrefs({ snapToGrid: !prefs.snapToGrid })}
+                onChange={() => {
+                  updatePrefs({ snapToGrid: !prefs.snapToGrid });
+                  trackPreviewFeatureUsed("snap_to_grid", "button");
+                }}
                 className="accent-studio-accent"
               />
               <span>Snap to grid</span>

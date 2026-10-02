@@ -1,3 +1,4 @@
+import type { DomEditPersistOutcome } from "../../hooks/domEditCommitTypes";
 import type { PatchOperation } from "../../utils/sourcePatcher";
 import type { CommitMutation } from "../../hooks/gsapScriptCommitTypes";
 import type { DomEditSelection } from "./domEditingTypes";
@@ -95,7 +96,7 @@ type PatchCommit = (
   selection: DomEditSelection,
   patches: PatchOperation[],
   options: { label: string; coalesceKey: string; coalesceMs?: number },
-) => Promise<void>;
+) => Promise<DomEditPersistOutcome | undefined>;
 
 /** Stage the crop and save it under the resize's undo key, taking it back off the element if that fails. */
 export async function saveCropResize(
@@ -103,11 +104,11 @@ export async function saveCropResize(
   selection: DomEditSelection,
   commit: PatchCommit,
   coalesceKey: string,
-): Promise<void> {
+): Promise<DomEditPersistOutcome | undefined> {
   const crop = stage();
   if (!crop) return;
   try {
-    await commit(selection, [crop.patch], {
+    return await commit(selection, [crop.patch], {
       label: "Resize layer",
       coalesceKey,
       coalesceMs: Number.POSITIVE_INFINITY,

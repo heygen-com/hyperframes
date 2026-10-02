@@ -1,3 +1,4 @@
+import type { GeometryCommitResult } from "../utils/previewFeatureUsage";
 import type { RotationCommit } from "../components/editor/rotationDraft";
 import { useCallback, useMemo, useRef, useState } from "react";
 import type { GsapAnimation } from "@hyperframes/core/gsap-parser";
@@ -67,7 +68,7 @@ export function useDomGeometryCommit({
 }: UseDomGeometryCommitOptions): DomGeometryCommits {
   const projectIdRef = useRef(projectId);
   projectIdRef.current = projectId;
-  const pending = useRef(new Set<Promise<void>>()).current;
+  const pending = useRef(new Set<Promise<GeometryCommitResult | undefined>>()).current;
   const editHistory = useMemo(() => ({ recordEdit }), [recordEdit]);
   const reload = useCallback(
     () => (reloadPreview ? reloadPreview() : iframeRef.current?.contentWindow?.location.reload()),
@@ -142,7 +143,10 @@ export function useDomGeometryCommit({
     updateArcSegment: gsap.updateArcSegment,
   });
   const saved = useCallback(
-    async (commit: () => Promise<void>, restore = noop): Promise<DomEditCommitOutcome> => {
+    async (
+      commit: () => Promise<GeometryCommitResult | undefined>,
+      restore = noop,
+    ): Promise<DomEditCommitOutcome> => {
       const refusal = !projectIdRef.current
         ? "No project is open"
         : !isPreviewBooted(projectIdRef.current)
@@ -154,13 +158,14 @@ export function useDomGeometryCommit({
         throw new Error(refusal);
       }
       const run = commit();
+      let changed = false;
       pending.add(run);
       try {
-        await run;
+        changed = (await run)?.changed === true;
       } finally {
         pending.delete(run);
       }
-      return { ok: true };
+      return { ok: true, changed };
     },
     [pending, showToast],
   );

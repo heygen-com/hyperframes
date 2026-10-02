@@ -1,3 +1,6 @@
+import { useGsapAwareGroupMove } from "./useGsapAwareGroupMove";
+import { observeGsapGesture } from "./gsapGestureOutcome";
+import type { DomEditPersistOutcome } from "./domEditCommitTypes";
 /**
  * GSAP-aware move/resize/rotation wrappers that intercept geometry commits
  * for animated elements and route them through script mutation instead of
@@ -21,11 +24,7 @@ import {
   useGsapSaveFailureTelemetry,
   useSafeGsapCommitMutation,
 } from "./useSafeGsapCommitMutation";
-import type {
-  CommitMutation,
-  CommitMutationCall,
-  CommitMutationOptions,
-} from "./gsapScriptCommitTypes";
+import type { CommitMutation, CommitMutationOptions } from "./gsapScriptCommitTypes";
 import { setElementGsapPosition } from "../utils/elementGsap";
 import { logResize, logResizeSettle } from "../utils/resizeDebug";
 import type { DomEditGroupPathOffsetCommit } from "../components/editor/DomEditOverlay";
@@ -40,28 +39,12 @@ import {
 } from "./gsapRuntimeKeyframes";
 import { assertGsapEditPersisted, saveMove } from "./gsapEditOutcome";
 import type { GsapAnimationFetchOptions } from "./useGsapAnimationFetchFallback";
-import { refuseGsapTakeover, type ElementOffsetStagerDeps } from "./elementOffsetStager";
+import { type ElementOffsetStagerDeps } from "./elementOffsetStager";
 import {
   prepareCropResize,
   saveCropResize,
   writeSizeWithCrop,
 } from "../components/editor/cropResize";
-
-// Distinct coalesceKey per group drag so consecutive group drags don't fold
-// into one another's undo entry (module-local counter, not Date.now()).
-let groupDragCommitCounter = 0;
-
-function firstPreflightFailure(
-  results: PromiseSettledResult<void>[],
-  updates: DomEditGroupPathOffsetCommit[],
-): { error: unknown; selection: DomEditSelection } | null {
-  for (const [index, result] of results.entries()) {
-    if (result.status !== "rejected") continue;
-    const selection = updates[index]?.selection;
-    if (selection) return { error: result.reason, selection };
-  }
-  return null;
-}
 
 export interface UseGsapAwareEditingParams {
   domEditSelection: DomEditSelection | null;
@@ -86,15 +69,18 @@ export interface UseGsapAwareEditingParams {
     next: { x: number; y: number },
     plainTranslate: boolean,
     coalesceKey?: string,
-  ) => { save: () => Promise<void>; rollback: () => void };
-  handleDomRotationCommit: (selection: DomEditSelection, next: RotationCommit) => Promise<void>;
+  ) => { save: () => Promise<DomEditPersistOutcome | undefined>; rollback: () => void };
+  handleDomRotationCommit: (
+    selection: DomEditSelection,
+    next: RotationCommit,
+  ) => Promise<DomEditPersistOutcome | undefined>;
   handleDomBoxSizeCommit: (
     selection: DomEditSelection,
     next: { width: number; height: number },
     offset?: { x: number; y: number },
     restore?: () => void,
     undoKey?: string,
-  ) => Promise<void>;
+  ) => Promise<DomEditPersistOutcome | undefined>;
   commitPositionPatchToHtml: ElementOffsetStagerDeps["commitPositionPatchToHtml"];
   // GSAP script commit ops (from useGsapScriptCommits)
   addGsapAnimation: (
@@ -162,10 +148,12 @@ export function useGsapAwareEditing({
       next: { x: number; y: number },
       modifiers?: MoveCommitOptions,
     ) => {
-      // A gesture and the panel carry their route; webmcp's moveTo decides here.
-      if (modifiers?.plainTranslate ?? !gsapWritesPosition(selection.element))
-        return stageElementPositionOffset(selection, next, true).save();
-      if (gsapCommitMutation) {
+      const writes = observeGsapGesture(gsapCommitMutation);
+      if (modifiers?.plainTranslate ?? !gsapWritesPosition(selection.element)) {
+        const result = await stageElementPositionOffset(selection, next, true).save();
+        return writes.finish(result?.changed === true);
+      }
+      if (writes.commit) {
         try {
           const ownedAnimations = getGsapAnimationsForSelection(selection);
           const targetAnimations = Array.isArray(ownedAnimations)
@@ -176,11 +164,16 @@ export function useGsapAwareEditing({
             next,
             targetAnimations,
             previewIframeRef.current,
-            gsapCommitMutation,
+            writes.commit,
             makeFetchFallback(selection),
             modifiers,
           );
-          await saveMove(outcome, () => stageElementPositionOffset(selection, next, false).save());
+          let domChanged = false;
+          await saveMove(outcome, async () => {
+            const result = await stageElementPositionOffset(selection, next, false).save();
+            domChanged = result?.changed === true;
+          });
+          return writes.finish(domChanged);
         } catch (error) {
           trackGsapInteractionFailure(error, selection, "drag", "Move animated layer");
           throw error;
@@ -197,137 +190,14 @@ export function useGsapAwareEditing({
     ],
   );
 
-  // Multi-select (group) drag: each member takes the single drag's writer, so a member GSAP
-  // does not position is saved on itself and the rest go through the GSAP intercept.
-  const handleGsapAwareGroupPathOffsetCommit = useCallback(
-    async (updates: DomEditGroupPathOffsetCommit[]) => {
-      if (!gsapCommitMutation || updates.length === 0) return;
-      // A group drag is ONE user action: fold every member's position write into
-      // a single undo entry by forcing a shared coalesceKey (infinite window, so
-      // it survives the N sequential server round-trips) onto each commit —
-      // otherwise each member records its own entry and it takes N presses to undo.
-      const coalesceKey = `group-drag:${++groupDragCommitCounter}`;
-      // Members are written one at a time, and a re-render re-runs the script with the OLD
-      // position of every member not yet written, so they snap back until their own write
-      // lands. The drafts are already on screen: hold the render until the last member.
-      let renderOnCommit = false;
-      const previewFallbackLatch = { pending: false };
-      const withGroupOptions = (options: CommitMutationOptions): CommitMutationOptions => ({
-        ...options,
-        coalesceKey,
-        coalesceMs: Number.POSITIVE_INFINITY,
-        deferPreviewSync: !renderOnCommit,
-        previewFallbackLatch,
-      });
-      // Every member writes the same file. Queue their mutations and send them as
-      // ONE request instead of one round trip per member: the server reads, parses
-      // and writes the composition once, and the preview patches once.
-      const queued: CommitMutationCall[] = [];
-      const flushQueued = async () => {
-        if (queued.length === 0) return;
-        const calls = queued.splice(0, queued.length);
-        if (!gsapCommitMutation.batch) {
-          for (const call of calls) {
-            await gsapCommitMutation(call.selection, call.mutation, call.options);
-          }
-          return;
-        }
-        await gsapCommitMutation.batch(calls, {
-          ...(calls.at(-1)?.options ?? { label: "Move animated layer (group)" }),
-          label: "Move animated layer (group)",
-        });
-      };
-      const coalescedCommit: typeof gsapCommitMutation = (selection, mutation, options) => {
-        queued.push({ selection, mutation, options: withGroupOptions(options) });
-        return Promise.resolve();
-      };
-      const preflightAnimations = new Map<DomEditSelection, GsapAnimation[]>();
-      // Members saved on themselves, each with its route: true for its CSS translate.
-      const offsetMembers = new Map<DomEditSelection, boolean>();
-      // Editability is user-atomic: prove every member can be written before the first source
-      // mutation, so a blocked member never leaves earlier siblings partially moved. Preflights
-      // write nothing and share one in-flight parse per file, so they run together.
-      const preflightResults = await Promise.allSettled(
-        updates.map(async ({ selection, plainTranslate }) => {
-          if (plainTranslate ?? !gsapWritesPosition(selection.element)) {
-            refuseGsapTakeover(selection.element, showToast);
-            return void offsetMembers.set(selection, true);
-          }
-          const animations = await makeFetchFallback(selection, { failOnFetchError: true })();
-          preflightAnimations.set(selection, animations);
-          const outcome = await tryGsapDragIntercept(
-            selection,
-            { x: 0, y: 0 },
-            animations,
-            previewIframeRef.current,
-            coalescedCommit,
-            undefined,
-            { preflightOnly: true, group: true },
-          );
-          if (outcome.status === "element-offset") offsetMembers.set(selection, false);
-          assertGsapEditPersisted(outcome);
-        }),
-      );
-      const preflightFailure = firstPreflightFailure(preflightResults, updates);
-      if (preflightFailure) {
-        trackGsapInteractionFailure(
-          preflightFailure.error,
-          preflightFailure.selection,
-          "drag",
-          "Move animated layer (group)",
-        );
-        throw preflightFailure.error;
-      }
-      const lastScriptWrite = updates.findLastIndex(
-        ({ selection }) => !offsetMembers.has(selection),
-      );
-      for (const [index, { selection, next }] of updates.entries()) {
-        renderOnCommit = index === lastScriptWrite;
-        const plain = offsetMembers.get(selection);
-        if (plain !== undefined) {
-          await stageElementPositionOffset(selection, next, plain, coalesceKey).save();
-          continue;
-        }
-        try {
-          const outcome = await tryGsapDragIntercept(
-            selection,
-            next,
-            preflightAnimations.get(selection) ?? [],
-            previewIframeRef.current,
-            coalescedCommit,
-            // The intercept re-reads the file to resolve a stale or shared tween.
-            // Anything already queued has to be on disk before that read, or it
-            // resolves against a file missing writes it is about to build on.
-            async () => {
-              await flushQueued();
-              return makeFetchFallback(selection, { fresh: true })();
-            },
-            { preflightPassed: true },
-          );
-          assertGsapEditPersisted(outcome);
-        } catch (error) {
-          trackGsapInteractionFailure(error, selection, "drag", "Move animated layer (group)");
-          throw error;
-        }
-      }
-      try {
-        await flushQueued();
-      } catch (error) {
-        // The aggregate write has no uniquely failing member; do not misattribute
-        // its telemetry to whichever member happened to be last in the array.
-        trackGsapInteractionFailure(error, null, "drag", "Move animated layer (group)");
-        throw error;
-      }
-    },
-    [
-      gsapCommitMutation,
-      previewIframeRef,
-      makeFetchFallback,
-      trackGsapInteractionFailure,
-      stageElementPositionOffset,
-      showToast,
-    ],
-  );
+  const handleGsapAwareGroupPathOffsetCommit = useGsapAwareGroupMove({
+    gsapCommitMutation,
+    previewIframeRef,
+    makeFetchFallback,
+    trackGsapInteractionFailure,
+    stageElementPositionOffset,
+    showToast,
+  });
 
   const handleGsapAwareBoxSizeCommit = useCallback(
     async (
@@ -336,8 +206,12 @@ export function useGsapAwareEditing({
       offset?: { x: number; y: number },
       restore: () => void = () => undefined,
     ) => {
-      if (!gsapWritesBox(selection.element))
-        return handleDomBoxSizeCommit(selection, next, offset, restore);
+      const writes = observeGsapGesture(gsapCommitMutation);
+      let domChanged = false;
+      if (!gsapWritesBox(selection.element)) {
+        const result = await handleDomBoxSizeCommit(selection, next, offset, restore);
+        return writes.finish(result?.changed === true);
+      }
       let targetAnimations: GsapAnimation[];
       try {
         const ownedAnimations = getGsapAnimationsForSelection(selection);
@@ -367,7 +241,7 @@ export function useGsapAwareEditing({
       let anchorMove: ReturnType<typeof stageElementPositionOffset> | null = null;
       const stageCrop = prepareCropResize(selection.element);
       let cropUndoKey: string | null = null;
-      return runGestureTransaction({
+      await runGestureTransaction({
         element: selection.element,
         label: "Resize layer",
         settle: () => {
@@ -383,8 +257,8 @@ export function useGsapAwareEditing({
           setElementGsapPosition(selection.element, newX, newY);
         },
         persist: async (commit, coalesceKey) => {
-          if (gsapCommitMutation) {
-            const commitMutation = commit(gsapCommitMutation);
+          if (writes.commit) {
+            const commitMutation = commit(writes.commit);
             try {
               const outcome = await tryGsapResizeIntercept(
                 selection,
@@ -396,9 +270,16 @@ export function useGsapAwareEditing({
               );
               assertGsapEditPersisted(outcome);
               // Saved before the buffered GSAP writes, so their reload stays the gesture's last render.
-              if (outcome.status === "element-size")
-                await handleDomBoxSizeCommit(selection, next, undefined, undefined, coalesceKey);
-              else cropUndoKey = coalesceKey;
+              if (outcome.status === "element-size") {
+                const result = await handleDomBoxSizeCommit(
+                  selection,
+                  next,
+                  undefined,
+                  undefined,
+                  coalesceKey,
+                );
+                domChanged ||= result?.changed === true;
+              } else cropUndoKey = coalesceKey;
               // What the resize did, not what its tweens suggest: a scale hold still commits a size.
               const ownsDragOffset =
                 outcome.status === "persisted" && outcome.ownsDragOffset === true;
@@ -434,10 +315,17 @@ export function useGsapAwareEditing({
           throw new Error("Resize of a GSAP-owned box has no GSAP writer");
         },
         afterBufferedCommitsSaved: async () => {
-          await anchorMove?.save();
+          const anchorResult = await anchorMove?.save();
+          domChanged ||= anchorResult?.changed === true;
           // Only now is the size live for every caller, drag or not.
           if (cropUndoKey) {
-            await saveCropResize(stageCrop, selection, commitPositionPatchToHtml, cropUndoKey);
+            const cropResult = await saveCropResize(
+              stageCrop,
+              selection,
+              commitPositionPatchToHtml,
+              cropUndoKey,
+            );
+            domChanged ||= cropResult?.changed === true;
           }
         },
         restore: () => {
@@ -446,6 +334,7 @@ export function useGsapAwareEditing({
         },
         skipPixelAssert: hasLivePositionTween,
       });
+      return writes.finish(domChanged);
     },
     [
       handleDomBoxSizeCommit,
@@ -461,9 +350,12 @@ export function useGsapAwareEditing({
 
   const handleGsapAwareRotationCommit = useCallback(
     async (selection: DomEditSelection, next: RotationCommit) => {
-      if (next.plain || !gsapWritesRotation(selection.element))
-        return handleDomRotationCommit(selection, next);
-      if (gsapCommitMutation) {
+      const writes = observeGsapGesture(gsapCommitMutation);
+      if (next.plain || !gsapWritesRotation(selection.element)) {
+        const result = await handleDomRotationCommit(selection, next);
+        return writes.finish(result?.changed === true);
+      }
+      if (writes.commit) {
         try {
           const targetAnimations = await getGsapAnimationsForSelection(selection);
           // A keyframe or a tl.set; a computed source rejects, so the gesture restores its draft.
@@ -472,10 +364,11 @@ export function useGsapAwareEditing({
             next.angle,
             targetAnimations,
             previewIframeRef.current,
-            gsapCommitMutation,
+            writes.commit,
             makeFetchFallback(selection),
           );
           assertGsapEditPersisted(outcome);
+          return writes.finish();
         } catch (error) {
           trackGsapInteractionFailure(error, selection, "rotation", "Rotate animated layer");
           throw error;
@@ -564,7 +457,7 @@ export function useGsapAwareEditing({
   );
 
   const commitMutation = useCallback(
-    async (mutation: Record<string, unknown>, options: { label: string; softReload?: boolean }) => {
+    async (mutation: Record<string, unknown>, options: CommitMutationOptions) => {
       if (!domEditSelection) return;
       // Return (await) the safe-commit chain so consumers that `await
       // session.commitMutation(...)` (gesture recording, enable-keyframes) run

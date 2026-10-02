@@ -590,6 +590,63 @@ describe("runCommit — instantPatch wiring", () => {
     vi.unstubAllGlobals();
   });
 
+  it.each([
+    ["add-keyframe", "add"],
+    ["add-with-keyframes", "add"],
+    ["convert-to-keyframes", "convert"],
+    ["remove-all-keyframes", "remove_all"],
+  ])("counts %s only after a changed durable write", async (type, action) => {
+    mockFetchResult();
+    const deps = renderCommitHook();
+    await deps.api.commitMutation(
+      selection,
+      { type, properties: { text: "private-content" } },
+      { label: "Edit" },
+    );
+    expect(trackStudioEvent.mock.calls.filter(([event]) => event === "keyframe")).toEqual([
+      ["keyframe", { action }],
+    ]);
+  });
+
+  it("counts reset with its explicit action and suppresses intermediate writes", async () => {
+    mockFetchResult();
+    const deps = renderCommitHook();
+    await deps.api.commitMutation(
+      selection,
+      { type: "convert-to-keyframes" },
+      { label: "Convert", keyframeTelemetry: false },
+    );
+    await deps.api.commitMutation(
+      selection,
+      { type: "remove-all-keyframes" },
+      { label: "Reset", keyframeAction: "reset" },
+    );
+    expect(trackStudioEvent.mock.calls.filter(([event]) => event === "keyframe")).toEqual([
+      ["keyframe", { action: "reset" }],
+    ]);
+  });
+
+  it("does not count a successful unchanged keyframe write", async () => {
+    mockFetchResult({ changed: false });
+    const deps = renderCommitHook();
+    await deps.api.commitMutation(selection, { type: "add-keyframe" }, { label: "Add" });
+    expect(trackStudioEvent.mock.calls.filter(([event]) => event === "keyframe")).toEqual([]);
+  });
+
+  it("does not count a failed write that skipReload suppresses", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => ({ ok: false, status: 500 })),
+    );
+    const deps = renderCommitHook();
+    await deps.api.commitMutation(
+      selection,
+      { type: "add-keyframe" },
+      { label: "Add", skipReload: true },
+    );
+    expect(trackStudioEvent.mock.calls.filter(([event]) => event === "keyframe")).toEqual([]);
+  });
+
   const NESTED_SCRIPT = 'window.__timelines["root"] = tl;';
   const SUB = `<template><div data-composition-id="sub"><div id="nwid" style="left: 40px"></div></div></template>`;
 

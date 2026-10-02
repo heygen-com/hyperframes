@@ -94,7 +94,7 @@ export type DomEditCommitDeclineReason =
   | "persist-failed";
 
 export type DomEditCommitOutcome =
-  | { ok: true; persistence?: DomEditPersistOutcome }
+  | { ok: true; persistence?: DomEditPersistOutcome; changed?: boolean }
   | { ok: false; reason: DomEditCommitDeclineReason };
 
 export function domEditCommitDeclined(reason: DomEditCommitDeclineReason): DomEditCommitOutcome {

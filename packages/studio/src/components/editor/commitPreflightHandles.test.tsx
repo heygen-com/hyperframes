@@ -287,7 +287,7 @@ describe("handles follow what Studio would commit", () => {
       { x: 0, y: 0 },
       commitList,
       preview,
-      vi.fn(),
+      vi.fn(async () => undefined),
       undefined,
       preflightOnly,
     );
@@ -401,7 +401,7 @@ describe("handles follow what Studio would commit", () => {
       { x: 0, y: 0 },
       [stagger],
       preview,
-      vi.fn(),
+      vi.fn(async () => undefined),
       undefined,
       groupPreflight,
     );

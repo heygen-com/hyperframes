@@ -1,3 +1,5 @@
+import type { CommitMutationOptions } from "../../hooks/gsapScriptCommitTypes";
+import { trackPreviewFeatureUsed, type PreviewMethod } from "../../utils/previewFeatureUsage";
 /**
  * Commit helpers for the motion-path overlay. Each maps a canvas gesture to a
  * GSAP source mutation routed through the (selection-bound) commit facade, which
@@ -7,10 +9,23 @@ import type { MotionNodeRef } from "./motionPathGeometry";
 
 export type CommitFn = (
   mutation: Record<string, unknown>,
-  options: { label: string; softReload?: boolean },
+  options: CommitMutationOptions,
 ) => Promise<void>;
 
 const NEW_PATH_DURATION = 1.5;
+
+export function motionPathCommitOptions(
+  label: string,
+  method: PreviewMethod,
+): CommitMutationOptions {
+  return {
+    label,
+    softReload: true,
+    onResult: (result) => {
+      if (result.ok && result.changed !== false) trackPreviewFeatureUsed("motion_path", method);
+    },
+  };
+}
 
 export function commitNode(
   ref: MotionNodeRef,
@@ -23,10 +38,10 @@ export function commitNode(
     ref.type === "keyframe"
       ? { type: "update-keyframe", animationId, percentage: ref.pct, properties: { x, y } }
       : { type: "update-motion-path-point", animationId, pointIndex: ref.index, x, y };
-  return commit(mutation, {
-    label: ref.type === "keyframe" ? "Move keyframe" : "Move waypoint",
-    softReload: true,
-  });
+  return commit(
+    mutation,
+    motionPathCommitOptions(ref.type === "keyframe" ? "Move keyframe" : "Move waypoint", "drag"),
+  );
 }
 
 export function commitAddWaypoint(
@@ -38,7 +53,7 @@ export function commitAddWaypoint(
 ): Promise<void> {
   return commit(
     { type: "add-motion-path-point", animationId, index, x, y },
-    { label: "Add waypoint", softReload: true },
+    motionPathCommitOptions("Add waypoint", "button"),
   );
 }
 
@@ -54,7 +69,7 @@ export function commitAddKeyframe(
   // at that pct) and converts a flat tween to keyframes form when needed.
   return commit(
     { type: "add-keyframe", animationId, percentage, properties: { x, y } },
-    { label: "Add keyframe", softReload: true },
+    motionPathCommitOptions("Add keyframe", "button"),
   );
 }
 
@@ -65,7 +80,7 @@ export function commitRemoveWaypoint(
 ): Promise<void> {
   return commit(
     { type: "remove-motion-path-point", animationId, index },
-    { label: "Remove waypoint", softReload: true },
+    motionPathCommitOptions("Remove waypoint", "button"),
   );
 }
 
@@ -78,6 +93,6 @@ export function commitCreatePath(
 ): Promise<void> {
   return commit(
     { type: "add-motion-path", targetSelector, position, duration: NEW_PATH_DURATION, x, y },
-    { label: "Create motion path", softReload: true },
+    motionPathCommitOptions("Create motion path", "button"),
   );
 }

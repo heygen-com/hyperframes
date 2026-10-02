@@ -104,8 +104,10 @@ export interface UseDomEditWiringParams {
     animId: string,
     resolvedFromValues?: Record<string, number | string>,
   ) => Promise<void>;
-  removeAllKeyframes: (sel: DomEditSelection, animId: string) => Promise<void>;
-  handleDomManualEditsReset: (sel: DomEditSelection) => Promise<void>;
+  removeAllKeyframes: Parameters<typeof useGsapSelectionHandlers>[0]["removeAllKeyframes"];
+  handleDomManualEditsReset: (
+    sel: DomEditSelection,
+  ) => Promise<void | import("./domEditCommitTypes").DomEditPersistOutcome>;
 }
 
 // fallow-ignore-next-line complexity

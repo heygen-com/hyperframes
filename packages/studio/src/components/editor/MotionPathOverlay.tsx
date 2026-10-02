@@ -1,3 +1,5 @@
+import { observeGsapGesture } from "../../hooks/gsapGestureOutcome";
+import { trackPreviewEditResult } from "../../utils/previewFeatureUsage";
 import { scopedElementKey } from "../../hooks/gsapKeyframeCacheHelpers";
 import { memo, useEffect, useRef, useState, type RefObject } from "react";
 import type { DomEditSelection } from "./domEditing";
@@ -382,15 +384,18 @@ export const MotionPathOverlay = memo(function MotionPathOverlay({
       selection &&
       !usePlayerStore.getState().autoKeyframeEnabled
     ) {
+      const writes = observeGsapGesture((_sel, mutation, options) =>
+        commitMutation(mutation, options),
+      );
       void commitWholePropertyOffset(
         selection,
         anim,
         { x, y },
         d.ref.pct,
         iframeRef.current,
-        { commitMutation: (_sel, mutation, options) => commitMutation(mutation, options) },
+        { commitMutation: writes.commit! },
         "Move animation path",
-      );
+      ).then(() => trackPreviewEditResult("motion_path", "drag", writes.finish()));
     } else {
       void commitNode(d.ref, x, y, animId, commitMutation);
     }

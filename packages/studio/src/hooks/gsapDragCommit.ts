@@ -13,7 +13,7 @@ import { resolveTweenStart, resolveTweenDuration } from "../utils/globalTimeComp
 import { roundTo3, roundToLayoutPx } from "../utils/rounding";
 import { computeElementPercentage, writeTargetSelector } from "./gsapShared";
 import { computeDraggedGsapPosition } from "./draggedGsapPosition";
-import type { RuntimeTweenChange } from "./gsapRuntimePatch";
+import type { CommitMutation } from "./gsapScriptCommitTypes";
 import { isGestureTransactionCommit, runGestureTransaction } from "./gestureTransaction";
 import { setPatchFromUpdateProperty } from "./gsapDragStaticSetHelpers";
 import { GsapEditBlockedError } from "./gsapEditOutcome";
@@ -23,25 +23,7 @@ export {
   findSizeSetAnimation,
 } from "./gsapDragStaticSetHelpers";
 export interface GsapDragCommitCallbacks {
-  commitMutation: (
-    selection: DomEditSelection,
-    mutation: Record<string, unknown>,
-    options: {
-      label: string;
-      coalesceKey?: string;
-      coalesceMs?: number;
-      softReload?: boolean;
-      skipReload?: boolean;
-      beforeReload?: () => void;
-      /**
-       * Value-only fast path: when set, `runCommit` patches the changed tween in
-       * the preview runtime in place (instant, no re-run) and only falls back to
-       * the soft reload if the patch can't be safely applied. Attached only to
-       * value-only `set` commits; structural/keyframe commits omit it.
-       */
-      instantPatch?: { selector: string; change: RuntimeTweenChange };
-    },
-  ) => Promise<void>;
+  commitMutation: CommitMutation;
   fetchAnimations?: () => Promise<GsapAnimation[]>;
 }
 

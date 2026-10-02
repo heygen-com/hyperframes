@@ -127,7 +127,7 @@ describe("useDomGeometryCommit, from the package entry", () => {
       y: 20,
     });
 
-    expect(outcome).toEqual({ ok: true });
+    expect(outcome).toEqual({ ok: true, changed: true });
     expect(mutations).toEqual([
       expect.objectContaining({ type: "add", targetSelector: "#card", method: "set" }),
     ]);
@@ -163,7 +163,10 @@ describe("useDomGeometryCommit, from the package entry", () => {
     const { element, recordEdit, hook, unmount } = renderHost();
 
     const card = makeSelection("card", element);
-    await expect(hook().commitPathOffset(card, { x: 130.5, y: 90 })).resolves.toEqual({ ok: true });
+    await expect(hook().commitPathOffset(card, { x: 130.5, y: 90 })).resolves.toEqual({
+      ok: true,
+      changed: true,
+    });
 
     expect(element.style.getPropertyValue("translate")).toBe("130.5px 90px");
     expect(calls.patches).toEqual([
@@ -185,7 +188,7 @@ describe("useDomGeometryCommit, from the package entry", () => {
 
     await expect(
       hook().commitBoxSize(makeSelection("card", element), { width: 300, height: 90 }),
-    ).resolves.toEqual({ ok: true });
+    ).resolves.toEqual({ ok: true, changed: true });
 
     expect(element.style.getPropertyValue("width")).toBe("300px");
     expect(calls.patches).toEqual([
@@ -247,7 +250,7 @@ describe("useDomGeometryCommit, from the package entry", () => {
         { x: 1, y: 2 },
         { plainTranslate: true },
       ),
-    ).resolves.toEqual({ ok: true });
+    ).resolves.toEqual({ ok: true, changed: true });
     expect(calls.patches).toHaveLength(1);
     unmount();
   });

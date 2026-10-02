@@ -79,7 +79,7 @@ describe("DOM editing package exports", () => {
     front.id = "front";
     parent.append(back, front);
     document.body.append(parent);
-    const commitZ = vi.fn(() => Promise.resolve());
+    const commitZ = vi.fn(async () => ({ durable: true, changed: true }));
     const session = {
       handleDomZIndexReorderCommit: commitZ,
     } as unknown as Parameters<typeof DomEditProvider>[0]["value"];
@@ -106,6 +106,11 @@ describe("DOM editing package exports", () => {
     expect(commitZ).not.toHaveBeenCalled();
     await act(async () => {
       expect(zOrder?.apply(sel, toFront)).toBe(true);
+    });
+    expect(trackStudioEvent).toHaveBeenCalledWith("feature_used", {
+      feature: "z_order",
+      surface: "preview",
+      method: "button",
     });
     expect(commitZ).toHaveBeenCalledTimes(1);
     expect(commitZ).toHaveBeenCalledWith(
@@ -159,3 +164,6 @@ describe("DOM editing package exports", () => {
     await act(async () => root.unmount());
   });
 });
+
+vi.mock("./utils/studioTelemetry", () => ({ trackStudioEvent: vi.fn() }));
+import { trackStudioEvent } from "./utils/studioTelemetry";

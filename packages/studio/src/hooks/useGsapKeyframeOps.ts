@@ -1,3 +1,4 @@
+import { trackKeyframeUsage } from "../utils/keyframeUsage";
 // fallow-ignore-file code-duplication
 // Add/remove operation-family transaction shapes stay parallel until SDK graduation.
 import { useCallback } from "react";
@@ -139,10 +140,14 @@ export function useGsapKeyframeOps({
                 coalesceKey: `gsap:${animationId}:kf:${percentage}`,
               },
             );
-            if (cutoverCommittedOrThrow(handled)) return;
+            if (cutoverCommittedOrThrow(handled)) {
+              if (handled.before !== handled.after) trackKeyframeUsage("add", property);
+              return;
+            }
           }
           await commitMutation(selection, mutation, {
             label: `Add keyframe at ${percentage}%`,
+            keyframeProperty: property,
             softReload: true,
           });
         },
@@ -172,7 +177,11 @@ export function useGsapKeyframeOps({
           sdkDeps,
           toSdkPersistOptions(`Add keyframe at ${percentage}%`, commitOverrides),
         );
-        if (cutoverCommittedOrThrow(handled)) return;
+        if (cutoverCommittedOrThrow(handled)) {
+          if (handled.before !== handled.after && commitOverrides?.keyframeTelemetry !== false)
+            trackKeyframeUsage("add");
+          return;
+        }
       }
       return commitMutation(
         selection,
@@ -319,7 +328,11 @@ export function useGsapKeyframeOps({
           sdkDeps,
           toSdkPersistOptions("Convert to keyframes", commitOverrides),
         );
-        if (cutoverCommittedOrThrow(handled)) return;
+        if (cutoverCommittedOrThrow(handled)) {
+          if (handled.before !== handled.after && commitOverrides.keyframeTelemetry !== false)
+            trackKeyframeUsage("convert");
+          return;
+        }
       }
       return commitMutation(
         selection,
@@ -333,7 +346,12 @@ export function useGsapKeyframeOps({
   );
 
   const removeAllKeyframes = useCallback(
-    async (selection: DomEditSelection, animationId: string) => {
+    async (
+      selection: DomEditSelection,
+      animationId: string,
+      action: "remove_all" | "reset" = "remove_all",
+      telemetry = true,
+    ): Promise<boolean> => {
       const targetPath = selection.sourceFile || activeCompPath || "index.html";
       // A class/descendant selector can resolve a live element whose selection
       // deliberately has no id. The cache is still keyed by that DOM id.
@@ -348,25 +366,32 @@ export function useGsapKeyframeOps({
         );
         if (cutoverCommittedOrThrow(handled)) {
           if (cacheElementId) clearKeyframeCacheForElement(targetPath, cacheElementId);
-          return;
+          const changed = handled.before !== handled.after;
+          if (changed && telemetry) trackKeyframeUsage(action);
+          return changed;
         }
       }
+      let changed = false;
       await commitMutationSafely(
         selection,
         { type: "remove-all-keyframes", animationId },
         {
           label: "Remove all keyframes",
+          keyframeAction: action,
+          keyframeTelemetry: telemetry,
           softReload: true,
           // The committed result is the single success boundary: clearing
           // before it makes failed saves lie, while waiting for the reload leaves
           // stale diamonds visible during the source round-trip.
           onResult: (result) => {
-            if (result.changed !== false && cacheElementId) {
+            changed = result.ok && result.changed !== false;
+            if (changed && cacheElementId) {
               clearKeyframeCacheForElement(targetPath, cacheElementId);
             }
           },
         },
       );
+      return changed;
     },
     [commitMutationSafely, activeCompPath, sdkSession, sdkDeps],
   );

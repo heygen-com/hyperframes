@@ -1,3 +1,4 @@
+import { trackPreviewEditResult, type PreviewMethod } from "../../utils/previewFeatureUsage";
 import { useEffect, useRef, useState, type PointerEvent as ReactPointerEvent } from "react";
 import type { DomEditSelection } from "./domEditing";
 import { type OverlayRect, RESIZE_HANDLE_HIT_PX } from "./domEditOverlayGeometry";
@@ -229,19 +230,21 @@ export function DomEditCropHandles({
     // the lift keeps it hidden while selected. A drag that ends where it started saves nothing.
     const value = buildInsetClipPathSides(gesture.insets, gesture.radius);
     if (value === buildInsetClipPathSides(gesture.startInsets, gesture.radius)) return;
-    commitClipPath(value);
+    commitClipPath(value, "drag");
   };
 
-  const commitClipPath = (value: string) => {
+  const commitClipPath = (value: string, method: PreviewMethod) => {
     const commit = onStyleCommit?.("clip-path", value);
-    void Promise.resolve(commit).catch(() => undefined);
+    void Promise.resolve(commit)
+      .then((result) => trackPreviewEditResult("crop", method, result))
+      .catch(() => undefined);
   };
 
   const applyPresetInsets = (insets: ClipPathInsetSides | null) => {
     const next = insets ?? { top: 0, right: 0, bottom: 0, left: 0 };
     setState((prev) => ({ ...prev, insets: next }));
     const radius = readCropFollowingResize(selection.element)?.radius ?? 0;
-    commitClipPath(insets === null ? "" : buildInsetClipPathSides(next, radius));
+    commitClipPath(insets === null ? "" : buildInsetClipPathSides(next, radius), "button");
   };
 
   const cancelCropGesture = (event: ReactPointerEvent<HTMLElement>) => {

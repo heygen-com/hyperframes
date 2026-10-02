@@ -1,3 +1,4 @@
+import { trackPreviewFeatureUsed } from "../../utils/previewFeatureUsage";
 // fallow-ignore-file code-duplication
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { DomEditSelection } from "./domEditing";
@@ -171,7 +172,10 @@ export function useMarqueeGestures<T>(deps: MarqueeGesturesDeps<T>): MarqueeGest
       const picks = resolveHits
         ? await resolveHits(elements)
         : ((await resolveDomEditSelections(elements, acp)) as T[]);
-      deps.onMarqueeSelectRef.current?.(picks, additive);
+      const applySelection = deps.onMarqueeSelectRef.current;
+      if (!applySelection) return;
+      applySelection(picks, additive);
+      if (picks.length > 1) trackPreviewFeatureUsed("multi_select", "drag");
     },
     [
       deps.iframeRef,

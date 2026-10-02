@@ -1,3 +1,4 @@
+import type { DomEditPersistOutcome } from "./domEditCommitTypes";
 import { getDomEditTargetKey, type DomEditSelection } from "../components/editor/domEditing";
 import {
   applyElementPositionOffset,
@@ -23,7 +24,7 @@ export interface ElementOffsetStagerDeps {
     selection: DomEditSelection,
     patches: PatchOperation[],
     options: { label: string; coalesceKey: string; coalesceMs?: number },
-  ) => Promise<void>;
+  ) => Promise<DomEditPersistOutcome | undefined>;
   showToast: (message: string, tone?: "error" | "info") => void;
   readOnlyPreview?: boolean;
 }
@@ -59,7 +60,7 @@ function stagePlainTranslate(
   selection: DomEditSelection,
   next: { x: number; y: number },
   coalesceKey?: string,
-): { save: () => Promise<void>; rollback: () => void } {
+): { save: () => Promise<DomEditPersistOutcome | undefined>; rollback: () => void } {
   const el = selection.element;
   const before = captureStudioPathOffset(el);
   const patches = writePlainMove(el, next);
@@ -85,9 +86,9 @@ export function stageElementOffset(
   next: { x: number; y: number },
   plainTranslate: boolean,
   coalesceKey?: string,
-): { save: () => Promise<void>; rollback: () => void } {
+): { save: () => Promise<DomEditPersistOutcome | undefined>; rollback: () => void } {
   const el = selection.element;
-  if (readOnlyPreview) return { save: () => Promise.resolve(), rollback: () => undefined };
+  if (readOnlyPreview) return { save: () => Promise.resolve(undefined), rollback: () => undefined };
   if (plainTranslate) {
     refuseGsapTakeover(el, showToast);
     return stagePlainTranslate(commitPositionPatchToHtml, selection, next, coalesceKey);

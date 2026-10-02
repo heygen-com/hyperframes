@@ -1,3 +1,4 @@
+import { useTrackDesignInput } from "../../contexts/DesignPanelInputContext";
 /**
  * One effect in the FX rack: its header controls, and its knobs when open.
  *
@@ -246,6 +247,7 @@ export function FxNodeRow({
   onPreview,
   trackKind,
 }: FxNodeRowProps) {
+  const trackInput = useTrackDesignInput();
   const registryDef = getAudioFxDef(node.type);
   const def = useMemo(() => (registryDef ? plainDef(registryDef) : null), [registryDef]);
   const primary = registryDef ? primaryParamOf(registryDef) : null;
@@ -306,6 +308,7 @@ export function FxNodeRow({
         onToggleBypass={() => {
           trackNodeBypassed(node.type, !bypassed, { trackKind });
           onUpdate(index, { enabled: bypassed });
+          trackInput("toggle", "effect-bypass");
         }}
         onMove={(delta) => onMove(index, delta)}
         onRemove={() => onRemove(index)}

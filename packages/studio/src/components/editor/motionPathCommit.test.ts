@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { describe, it, expect, vi } from "vitest";
+import { beforeEach, describe, it, expect, vi } from "vitest";
 import type { GsapAnimation } from "@hyperframes/parsers/gsap-parser";
 import { editableAnimationId } from "./motionPathSelection";
 import {
@@ -147,4 +147,32 @@ describe("commitCreatePath", () => {
       expect.objectContaining({ softReload: true }),
     );
   });
+});
+
+vi.mock("../../utils/studioTelemetry", () => ({ trackStudioEvent: vi.fn() }));
+import { trackStudioEvent } from "../../utils/studioTelemetry";
+import type { CommitFn } from "./motionPathCommit";
+beforeEach(() => vi.clearAllMocks());
+describe("motion path usage at the writer", () => {
+  it("counts a changed drag once without coordinates or target ids", async () => {
+    const commit: CommitFn = async (_mutation, options) => {
+      options.onResult?.({ ok: true, changed: true });
+    };
+    await commitNode({ type: "keyframe", pct: 50 }, 120, 30, "private-target", commit);
+    expect(trackStudioEvent).toHaveBeenCalledExactlyOnceWith("feature_used", {
+      feature: "motion_path",
+      surface: "preview",
+      method: "drag",
+    });
+  });
+  it.each([undefined, { ok: true, changed: false }, { ok: false, changed: true }])(
+    "does not count absent or unsuccessful results (%j)",
+    async (result) => {
+      const commit: CommitFn = async (_mutation, options) => {
+        if (result) options.onResult?.(result);
+      };
+      await commitAddWaypoint("private-target", 1, 20, 40, commit);
+      expect(trackStudioEvent).not.toHaveBeenCalled();
+    },
+  );
 });

@@ -299,3 +299,24 @@ describe("a refused move's toast", () => {
     ]);
   });
 });
+
+vi.mock("../utils/studioTelemetry", () => ({ trackStudioEvent: vi.fn() }));
+import { trackStudioEvent } from "../utils/studioTelemetry";
+it("counts additive preview selection only after resolving a hit", async () => {
+  vi.mocked(trackStudioEvent).mockClear();
+  const selection = makeSelection("Card", document.createElement("div"));
+  const applyDomSelection = vi.fn();
+  const { canvas, cleanup } = renderHarness({
+    previewIframe: createPreviewIframe(vi.fn()),
+    resolveDomSelectionFromPreviewPoint: vi.fn(async () => selection),
+    applyDomSelection,
+  });
+  await dispatchMouseDown(canvas, { shiftKey: true });
+  expect(applyDomSelection).toHaveBeenCalledWith(selection, { additive: true });
+  expect(trackStudioEvent).toHaveBeenCalledExactlyOnceWith("feature_used", {
+    feature: "multi_select",
+    surface: "preview",
+    method: "button",
+  });
+  cleanup();
+});

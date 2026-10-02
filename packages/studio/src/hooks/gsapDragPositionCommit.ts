@@ -81,7 +81,12 @@ async function extendTweenAndAddKeyframe(
       duration: roundTo3(newDuration),
       keyframes: remappedKfs,
     },
-    { label: `Move layer (extended keyframe)`, softReload: true, beforeReload },
+    {
+      label: `Move layer (extended keyframe)`,
+      keyframeAction: "add",
+      softReload: true,
+      beforeReload,
+    },
   );
 }
 
@@ -339,7 +344,12 @@ export async function commitGsapPositionFromDrag(
         keyframes: temporalKeyframes,
         ease: "none",
       },
-      { label: "Move layer (new keyframe)", softReload: true, beforeReload: restoreOffset },
+      {
+        label: "Move layer (new keyframe)",
+        keyframeAction: "add",
+        softReload: true,
+        beforeReload: restoreOffset,
+      },
     );
     return;
   }
@@ -449,7 +459,12 @@ export async function commitGsapPositionFromDrag(
         existingPosAnim
           ? { type: "replace-with-keyframes", animationId: existingPosAnim.id, ...baseKf }
           : { type: "add-with-keyframes", ...baseKf },
-        { label: "Move layer (from extended)", softReload: true, beforeReload: restoreOffset },
+        {
+          label: "Move layer (from extended)",
+          keyframeAction: "add",
+          softReload: true,
+          beforeReload: restoreOffset,
+        },
       );
     } else {
       const coalesceKey = `gsap:convert-drag:${anim.id}`;

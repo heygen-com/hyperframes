@@ -1,3 +1,4 @@
+import { useTrackDesignInput } from "../../contexts/DesignPanelInputContext";
 /**
  * The FX section for an audio element: the chain, plus the voiceover carve.
  *
@@ -120,13 +121,17 @@ export function FxSection({
   // could only name a source it must not.
   const showCarve = !carvedAgainstBy && (sourceOptions.length > 0 || carve !== null);
 
+  const trackInput = useTrackDesignInput();
   const [adding, setAdding] = useState(false);
   const [picking, setPicking] = useState(false);
   const [openNode, setOpenNode] = useState<number | null>(0);
 
   const mutate = useCallback(
-    (nodes: HfAudioFxNode[]) => onChainChange({ ...chain, nodes }),
-    [chain, onChainChange],
+    (nodes: HfAudioFxNode[], input?: string, control = "button") => {
+      onChainChange({ ...chain, nodes });
+      if (input) trackInput(control, input);
+    },
+    [chain, onChainChange, trackInput],
   );
 
   // Dragging a knob previews without persisting; releasing it commits once.
@@ -156,7 +161,7 @@ export function FxSection({
       // old chain back over the write that just landed is a race the author
       // hears as the preset arriving and then leaving again.
       clearAudition();
-      mutate(next.nodes);
+      mutate(next.nodes, "apply-preset");
       // Land on the first node the preset wrote, so the author can hear what
       // arrived and immediately see what it is made of.
       setOpenNode(next.nodes.findIndex((n) => n.fromPreset === id));
@@ -169,7 +174,7 @@ export function FxSection({
     (job: HfAudioFxJob) => {
       clearAudition();
       trackNodeAdded(job.type, "job", job.id, { trackKind });
-      mutate(withJob(chain, job).nodes);
+      mutate(withJob(chain, job).nodes, "add-job");
       setOpenNode(chain.nodes.length);
       setAdding(false);
     },
@@ -180,7 +185,7 @@ export function FxSection({
     (type: string) => {
       clearAudition();
       trackNodeAdded(type, "effect", null, { trackKind });
-      mutate(withEffect(chain, type).nodes);
+      mutate(withEffect(chain, type).nodes, "add-effect");
       setOpenNode(chain.nodes.length);
       setAdding(false);
     },
@@ -212,7 +217,7 @@ export function FxSection({
         ...chain,
         nodes: chain.nodes.map((n, i) => (slots.has(i) ? { ...n, presetAmount: amount } : n)),
       };
-      if (persist) mutate(next.nodes);
+      if (persist) mutate(next.nodes, "preset-amount", "slider");
       else onChainPreview?.(next);
     },
     [chain, mutate, onChainPreview],
@@ -227,17 +232,15 @@ export function FxSection({
    */
   const removeRun = useCallback(
     (items: { node: HfAudioFxNode; i: number }[], presetId?: string) => {
-      // One call, not a loop: every write is computed from the same snapshot and
-      // replaces the whole attribute, so a loop kept only its last write and left
-      // the other nodes' lanes behind as orphans. The preset id goes with it —
-      // the `fx.preset.<id>` amount lane belongs to the preset, not to any node,
-      // so nothing else would ever collect it, and re-applying the preset later
-      // resurrected the old ramp.
+      // Remove node and preset automation together before replacing the chain.
       const ids = items.map(({ node }) => node.id).filter((id): id is string => Boolean(id));
       if (ids.length > 0 || presetId) onRemoveNodesAutomation?.(ids, presetId);
       if (presetId) trackPresetRemoved(presetId, { trackKind });
       const slots = new Set(items.map((item) => item.i));
-      mutate(chain.nodes.filter((_, i) => !slots.has(i)));
+      mutate(
+        chain.nodes.filter((_, i) => !slots.has(i)),
+        "remove-preset",
+      );
       setOpenNode(null);
     },
     [chain.nodes, mutate, onRemoveNodesAutomation, trackKind],
@@ -254,7 +257,10 @@ export function FxSection({
       const removedId = removed?.id;
       if (removedId) onRemoveNodeAutomation?.(removedId);
       if (removed) trackNodeRemoved(removed.type, nodeOrigin(removed), { trackKind });
-      mutate(chain.nodes.filter((_, i) => i !== index));
+      mutate(
+        chain.nodes.filter((_, i) => i !== index),
+        "remove-effect",
+      );
       setOpenNode(null);
     },
     [chain.nodes, mutate, onRemoveNodeAutomation, trackKind],
@@ -372,7 +378,7 @@ export function FxSection({
     clearAudition();
     const { chain: next, eqId } = addAudioEq(chain);
     trackNodeAdded("eq", "eq", null, { trackKind });
-    mutate(next.nodes);
+    mutate(next.nodes, "add-eq");
     setOpenEq(eqId);
     setAdding(false);
   }, [chain, mutate, clearAudition, trackKind]);
@@ -386,20 +392,18 @@ export function FxSection({
   );
   const commitEqBand = useCallback(
     (eqId: string, band: string, gain: number) =>
-      mutate(setAudioEqBandGain(chain, eqId, band, gain).nodes),
+      mutate(setAudioEqBandGain(chain, eqId, band, gain).nodes, "eq-gain", "slider"),
     [chain, mutate],
   );
   const removeEq = useCallback(
     (eqId: string) => {
-      // Batched for the same reason as `removeRun` — this loop had the identical
-      // last-write-wins bug and was only unreachable because an EQ band row
-      // offers no automation toggle today.
+      // Remove the EQ automation in one write.
       const ids = chain.nodes
         .filter((node) => node.fromEq === eqId)
         .map((node) => node.id)
         .filter((id): id is string => Boolean(id));
       if (ids.length > 0) onRemoveNodesAutomation?.(ids);
-      mutate(removeAudioEq(chain, eqId).nodes);
+      mutate(removeAudioEq(chain, eqId).nodes, "remove-eq");
     },
     [chain, mutate, onRemoveNodesAutomation],
   );
@@ -412,7 +416,7 @@ export function FxSection({
       const [moved] = next.splice(index, 1);
       next.splice(target, 0, moved!);
       if (moved) trackNodeMoved(moved.type, delta < 0 ? "up" : "down", { trackKind });
-      mutate(next);
+      mutate(next, "move-effect");
       setOpenNode(target);
     },
     [chain.nodes, mutate, trackKind],

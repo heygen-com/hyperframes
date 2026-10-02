@@ -305,6 +305,7 @@ describe("Reset after a plain move puts the author's translate back", () => {
       async (_selection, patches) => {
         project.history.push(project.file);
         project.file = patches.reduce((html, op) => applyPatch(html, "layer", op), project.file);
+        return undefined;
       },
     );
     const selection = { id: "layer", selector: "#layer", element } as unknown as DomEditSelection;

@@ -160,6 +160,21 @@ describe("useDomEditTextCommits", () => {
     };
   }
 
+  it.each([true, false])(
+    "counts in-place text only after a changed write (%s)",
+    async (changed) => {
+      vi.mocked(trackStudioEvent).mockClear();
+      const { persist, save } = richTextProbe();
+      persist.mockResolvedValue({ changed, sourceFile: "private.html", version: "v2" });
+      await save();
+      expect(vi.mocked(trackStudioEvent).mock.calls).toEqual(
+        changed
+          ? [["feature_used", { feature: "text_edit", surface: "preview", method: "field" }]]
+          : [],
+      );
+    },
+  );
+
   it("saves in-place text while the preview is editable, and refreshes the selection it edited", async () => {
     const applyDomSelection = vi.fn();
     const { persist, element, save } = richTextProbe(undefined, () => ({ applyDomSelection }));
@@ -464,3 +479,6 @@ describe("useDomEditTextCommits", () => {
     expect(agentElement.textContent).toBe("Edited");
   });
 });
+
+vi.mock("../utils/studioTelemetry", () => ({ trackStudioEvent: vi.fn() }));
+import { trackStudioEvent } from "../utils/studioTelemetry";

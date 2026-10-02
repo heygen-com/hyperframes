@@ -389,7 +389,7 @@ async function commitKeyframeProps(
         duration: roundTo3(newDuration),
         keyframes: remapped,
       },
-      { label: `Edit ${primaryProp} (extended keyframe)`, softReload: true },
+      { label: `Edit ${primaryProp} (extended keyframe)`, keyframeAction: "add", softReload: true },
     );
     return;
   }

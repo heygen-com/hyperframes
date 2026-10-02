@@ -1,3 +1,4 @@
+import { trackPreviewEditResult } from "../../utils/previewFeatureUsage";
 /**
  * Canvas arrow-key nudge for DomEditOverlay: arrows move the selected
  * element(s) 1 composition px, Shift = 10. Each keypress previews through the
@@ -173,6 +174,7 @@ export function useDomEditNudge(params: UseDomEditNudgeParams): { flushNudge: ()
         for (const member of session.members)
           restoreStudioPathOffset(member.element, member.initialPathOffset);
       saved = Promise.resolve(commit)
+        .then((result) => trackPreviewEditResult("nudge", "keyboard", result))
         .catch(() => {
           for (const member of session.members) {
             if (isStudioManualEditGestureCurrent(member.element, member.gestureToken)) {

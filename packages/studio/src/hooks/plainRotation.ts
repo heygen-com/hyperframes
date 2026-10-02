@@ -1,3 +1,4 @@
+import type { DomEditPersistOutcome } from "./domEditCommitTypes";
 import type { DomEditSelection } from "../components/editor/domEditing";
 import { captureStudioRotation, clearStudioRotation } from "../components/editor/manualEdits";
 import { buildClearRotationPatches } from "../components/editor/manualEditsDomPatches";
@@ -17,8 +18,8 @@ export function savePlainRotation(
   { commitPositionPatchToHtml, readOnlyPreview }: Omit<ElementOffsetStagerDeps, "showToast">,
   selection: DomEditSelection,
   next: RotationCommit,
-): Promise<void> {
-  if (readOnlyPreview) return Promise.resolve();
+): Promise<DomEditPersistOutcome | undefined> {
+  if (readOnlyPreview) return Promise.resolve(undefined);
   const { element } = selection;
   const before = captureStudioRotation(element);
   // Legacy marks go in the same write, or a seek puts their angle back; clearing them voids the press read.

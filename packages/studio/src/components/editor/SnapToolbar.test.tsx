@@ -2,7 +2,7 @@
 
 import React, { act, useRef } from "react";
 import { createRoot } from "react-dom/client";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { useAppHotkeys } from "../../hooks/useAppHotkeys";
 import { usePlayerStore } from "../../player/store/playerStore";
 import type { DomEditSelection } from "./domEditing";
@@ -179,6 +179,38 @@ describe("SnapToolbar ruler and safe-margin toggles", () => {
     expect(button()?.getAttribute("aria-pressed")).toBe("true");
     const stored = window.localStorage.getItem("hf-studio-ui-preferences") ?? "{}";
     expect(JSON.parse(stored)[key]).toBe(true);
+    act(() => root.unmount());
+  });
+});
+
+vi.mock("../../utils/studioTelemetry", () => ({ trackStudioEvent: vi.fn() }));
+import { trackStudioEvent } from "../../utils/studioTelemetry";
+beforeEach(() => vi.clearAllMocks());
+describe("preview setting usage", () => {
+  it.each([
+    ["Toggle snap", "snapping"],
+    ["Toggle grid", "grid"],
+    ["Toggle ruler", "ruler"],
+    ["Toggle safe margins", "safe_margins"],
+  ])("counts the %s button without setting values", (label, feature) => {
+    const { root } = renderToolbar();
+    const button = document.querySelector<HTMLButtonElement>(`[aria-label="${label}"]`)!;
+    act(() => button.click());
+    expect(trackStudioEvent).toHaveBeenCalledExactlyOnceWith("feature_used", {
+      feature,
+      surface: "preview",
+      method: "button",
+    });
+    act(() => root.unmount());
+  });
+  it("counts keyboard grid toggling once", () => {
+    const { root } = renderToolbar();
+    act(() => document.dispatchEvent(new KeyboardEvent("keydown", { key: "g", bubbles: true })));
+    expect(trackStudioEvent).toHaveBeenCalledExactlyOnceWith("feature_used", {
+      feature: "grid",
+      surface: "preview",
+      method: "keyboard",
+    });
     act(() => root.unmount());
   });
 });

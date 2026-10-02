@@ -1787,3 +1787,33 @@ describe("voiceover carve visibility", () => {
     expect(carveBlock(host)).toBeTruthy();
   });
 });
+
+vi.mock("../../utils/studioTelemetry", () => ({ trackStudioEvent: vi.fn() }));
+import { trackStudioEvent } from "../../utils/studioTelemetry";
+import { __resetDesignInputThrottle } from "../../utils/designInputTracking";
+import { DesignPanelInputProvider } from "../../contexts/DesignPanelInputContext";
+describe("custom FX inspector input usage", () => {
+  it.each([
+    [".hf-fx-bypass", "toggle", "effect-bypass"],
+    ['.hf-fx-move[title="Move down"]', "button", "move-effect"],
+    [".hf-fx-remove", "button", "remove-effect"],
+  ])("tracks %s through design_input once", (selector, control, name) => {
+    vi.mocked(trackStudioEvent).mockClear();
+    __resetDesignInputThrottle();
+    const onChainChange = vi.fn();
+    const { host, root } = renderInto(
+      <DesignPanelInputProvider ui="flat" section="media">
+        <FxSection chain={chainOf("lowpass", "gain")} onChainChange={onChainChange} />
+      </DesignPanelInputProvider>,
+    );
+    click(host.querySelector(selector));
+    expect(onChainChange).toHaveBeenCalledTimes(1);
+    expect(
+      vi.mocked(trackStudioEvent).mock.calls.filter(([event]) => event === "design_input"),
+    ).toEqual([["design_input", { ui: "flat", section: "media", control, name }]]);
+    expect(vi.mocked(trackStudioEvent).mock.calls.some(([event]) => event === "feature_used")).toBe(
+      false,
+    );
+    act(() => root.unmount());
+  });
+});

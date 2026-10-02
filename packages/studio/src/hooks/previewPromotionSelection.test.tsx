@@ -101,7 +101,7 @@ describe("a shadow reload promoted without a host re-render", () => {
       });
       expect(overlayNode).toBe(selection.element);
 
-      const commitPositionPatchToHtml = vi.fn(async () => {});
+      const commitPositionPatchToHtml = vi.fn(async () => undefined);
       await savePlainRotation({ commitPositionPatchToHtml }, selection, { angle: 30 });
       await stageElementOffset(
         { commitPositionPatchToHtml, showToast: vi.fn() },

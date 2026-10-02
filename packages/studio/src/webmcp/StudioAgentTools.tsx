@@ -31,13 +31,13 @@ type ResizeCommit = (
   next: { width: number; height: number },
   offset?: { x: number; y: number },
   restore?: () => void,
-) => Promise<void>;
+) => Promise<void | import("../utils/previewFeatureUsage").GeometryCommitResult>;
 
 export function resizeSelectionFromAgent(
   selection: DomEditSelection,
   next: { width: number; height: number },
   commit: ResizeCommit,
-): Promise<void> {
+): Promise<void | import("../utils/previewFeatureUsage").GeometryCommitResult> {
   const previous = captureStudioBoxSize(selection.element);
   applyStudioBoxSizeDraft(selection.element, next);
   return commit(selection, next, undefined, () => {
