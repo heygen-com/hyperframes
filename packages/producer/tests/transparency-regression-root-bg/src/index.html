@@ -2,15 +2,7 @@
 <html>
   <head>
     <style>
-      /*
-        body carries NO authored background here — only the composition
-        root div does. This isolates the regression: initTransparentBackground
-        used to force `[data-composition-id]` (this div) to transparent along
-        with html/body, silently dropping an author's intentionally-painted
-        root background from alpha output. body's own (unpainted, browser
-        default) background is still expected to clear, same as always — only
-        the root's OWN authored background must survive.
-      */
+      /* Only the composition root paints a background; body stays unpainted. */
       body {
         margin: 0;
       }

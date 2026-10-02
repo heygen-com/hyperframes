@@ -177,10 +177,7 @@ describe("pageContentExceedsCaptureHeight", () => {
 });
 
 describe("initTransparentBackground", () => {
-  // Fakes a Page whose evaluate() runs the given function directly against a
-  // real linkedom document (swapped into globalThis, mirroring the pattern
-  // used below for injectVideoFramesBatch), plus a CDP session stub so
-  // getCdpSession() resolves without a real page.createCDPSession() call.
+  // evaluate() runs against a linkedom document in globalThis; the cached CDP stub skips createCDPSession().
   function makeFakePageWithDom() {
     const { document } = parseHTML("<html><body></body></html>");
     const send = vi.fn().mockResolvedValue({});

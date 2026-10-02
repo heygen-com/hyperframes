@@ -866,15 +866,6 @@ async function waitForCloseWithTimeout(promise: Promise<unknown>): Promise<boole
 }
 
 /**
- * Which elements this session's transparent-background stylesheet clears.
- * Only an HDR layered DOM session opts into clearing the composition root's
- * own authored background — see `CaptureOptions.clearCompositionRootBackground`.
- */
-function transparentBackgroundOptions(session: CaptureSession): { clearCompositionRoot: boolean } {
-  return { clearCompositionRoot: session.options.clearCompositionRootBackground ?? false };
-}
-
-/**
  * Post-readiness capture-surface init, shared by the screenshot and BeginFrame
  * init paths (called after the page is fully ready). When `useDrawElement` is
  * set, detect SwiftShader and route: transparent+SwiftShader falls back to
@@ -944,7 +935,7 @@ async function initDrawElementOrTransparentBackground(
     async function routeToFallback(): Promise<void> {
       session.captureMode = session.launchCaptureMode;
       if (transparent) {
-        await initTransparentBackground(session.page, transparentBackgroundOptions(session));
+        await initTransparentBackground(session.page);
       }
       // Static-frame dedup is capture-mode-independent (the serial path reuses
       // lastFrameBuffer regardless of how the frame was captured) and lossless
@@ -1142,7 +1133,7 @@ async function initDrawElementOrTransparentBackground(
       await finalizeDrawElementInit(session, page, logInitPhase, { transparent, forceDE });
     }
   } else if (session.options.format === "png") {
-    await initTransparentBackground(session.page, transparentBackgroundOptions(session));
+    await initTransparentBackground(session.page);
   }
 }
 
@@ -1173,7 +1164,7 @@ async function finalizeDrawElementInit(
   }
   await injectDrawElementCanvas(page, session.options.width, session.options.height);
   if (transparent) {
-    await initTransparentBackground(session.page, transparentBackgroundOptions(session));
+    await initTransparentBackground(session.page);
   }
   session.captureMode = "drawelement";
   session.drawElementReady = true;
@@ -3295,9 +3286,7 @@ export async function createStaticVerificationPage(session: CaptureSession): Pro
       page.evaluate(`document.fonts?.ready`),
       waitForOptionalTailwindReady(page, pageReadyTimeout),
     ]);
-    if (session.options.format === "png") {
-      await initTransparentBackground(page, transparentBackgroundOptions(session));
-    }
+    if (session.options.format === "png") await initTransparentBackground(page);
     return page;
   } catch (error) {
     await page.close().catch(() => {});

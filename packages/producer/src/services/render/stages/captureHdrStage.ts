@@ -208,7 +208,7 @@ export async function runCaptureHdrStage(
   const domSession = await createCaptureSession(
     fileServer.url,
     framesDir,
-    { ...buildCaptureOptions(), clearCompositionRootBackground: true },
+    buildCaptureOptions(),
     createRenderVideoFrameInjector(),
     hdrCfg,
   );
@@ -222,15 +222,7 @@ export async function runCaptureHdrStage(
     await initializeSession(domSession);
     assertNotAborted();
     lastBrowserConsole = domSession.browserConsoleBuffer;
-    // initializeSession() only sets up the transparent background itself when
-    // session.options.format === "png" — true for an alpha-carrying final
-    // output, but this session's own capture format is "jpeg" whenever the
-    // FINAL render doesn't itself need alpha (e.g. a plain HDR MP4/HEVC
-    // output with no alpha channel), which is the common case for this
-    // stage. clearCompositionRootBackground on its own is not enough to
-    // guarantee initTransparentBackground ran — call it explicitly here so
-    // the HDR video layer is always the backdrop, regardless of the final
-    // output's own format.
+    // The HDR video is the backdrop: composition-root backgrounds must not paint over it.
     await initTransparentBackground(domSession.page, { clearCompositionRoot: true });
 
     // ── Scene detection for shader transitions ──────────────────────────

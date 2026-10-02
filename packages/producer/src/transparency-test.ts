@@ -45,10 +45,8 @@ const TRANSPARENT_X = 10; // expected fully transparent
 const TRANSPARENT_Y = 10;
 const OPAQUE_X = 100; // inside the 50–150 red card
 const OPAQUE_Y = 100;
-// transparency-regression-root-bg: same 200x200 canvas + 50-150 red card, but
-// the composition ROOT div (not html/body) also paints rgb(0,0,255) across
-// the whole frame. (10,10) sits outside the card but inside the root — it
-// must decode as opaque blue, not transparent, in alpha-carrying output.
+// Root-bg fixture: same canvas and red card, but the composition root paints rgb(0,0,255) full-frame,
+// so (10,10) must decode opaque blue in alpha output.
 const ROOT_BG_X = 10;
 const ROOT_BG_Y = 10;
 
@@ -216,9 +214,6 @@ async function runRootBackgroundCheck(workRoot: string): Promise<void> {
   const framePng = join(outDir, "frame-0.png");
   await extractFirstFrameFromWebm(outPath, framePng);
   const decoded = decodePng(readFileSync(framePng));
-  // The composition root's own rgb(0,0,255) background must survive into the
-  // alpha output — this is the exact case that used to get force-cleared to
-  // transparent by initTransparentBackground's stylesheet.
   assertAlphaPixel(decoded, ROOT_BG_X, ROOT_BG_Y, "opaque-blue", "root-bg");
   assertAlphaPixel(decoded, OPAQUE_X, OPAQUE_Y, "opaque-red", "root-bg");
   console.log("[root-bg] PASS — composition root background preserved in alpha output");

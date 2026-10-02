@@ -279,42 +279,15 @@ export async function captureScreenshotWithAlpha(
 }
 
 /**
- * Set the page background to transparent once for a session that captures
- * alpha (`format: "png"`).
- *
- * Call this once after session initialization. Then use captureAlphaPng() per
- * frame instead of captureScreenshotWithAlpha() to skip the per-frame CDP
- * background override round-trips.
- *
- * NOTE on the injected stylesheet: `Emulation.setDefaultBackgroundColorOverride`
- * only replaces the *default* page background. Compositions almost always set
- * `html { background: ... }` / `body { background: ... }`, which paint over
- * the override — we always force those two to transparent regardless of mode.
- *
- * Composition-id-bearing elements (`[data-composition-id]` — the top-level
- * composition root, and any nested sub-composition root) are different: for a
- * plain alpha export (MOV/ProRes4444, webm+alpha) an author's own background
- * painted on one of these is real, intentional content that must survive into
- * the output — clearing it silently drops it (see #822). But in HDR two-pass
- * layered compositing, the HDR video itself is the backdrop and the DOM pass
- * must contribute only foreground UI pixels, so these backgrounds have to be
- * cleared there or they paint over the HDR content underneath. `options`
- * makes each call site state which case it is; there's no safe shared default.
- *
- * Idempotent, but NOT append-once: calling this again on the same page
- * rewrites the existing stylesheet's rule rather than skipping, so a later
- * call always wins even when it passes a different `clearCompositionRoot`.
- * This matters because `initializeSession()`'s own internal call only fires
- * when this session's OWN capture format is `"png"` — an HDR-layered DOM
- * session commonly captures `"jpeg"` (the final output doesn't itself need
- * alpha), so its caller must also call this explicitly, since the internal
- * call may not fire at all.
+ * Make the page transparent for alpha capture, then use captureAlphaPng() per frame. html/body always clear;
+ * [data-composition-id] roots (nested too) keep their background unless clearCompositionRoot (HDR layered pass).
+ * A repeat call rewrites the rule, so the last call wins.
  */
 const TRANSPARENT_BG_STYLE_ID = "__hf_transparent_bg__";
 
 export async function initTransparentBackground(
   page: Page,
-  options: { clearCompositionRoot: boolean },
+  { clearCompositionRoot = false }: { clearCompositionRoot?: boolean } = {},
 ): Promise<void> {
   const client = await getCdpSession(page);
   await client.send("Emulation.setDefaultBackgroundColorOverride", {
@@ -332,7 +305,7 @@ export async function initTransparentBackground(
       style.textContent = `${selector}{background:transparent !important;background-color:transparent !important;background-image:none !important;}`;
     },
     TRANSPARENT_BG_STYLE_ID,
-    options.clearCompositionRoot,
+    clearCompositionRoot,
   );
 }
 
