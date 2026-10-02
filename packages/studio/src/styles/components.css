@@ -368,7 +368,7 @@
 
 .timeline-clip:not(.is-audio) .timeline-clip__label {
   display: flex;
-  z-index: 0;
+  z-index: auto;
   top: 0;
   left: 0;
   width: 100%;

@@ -1,6 +1,7 @@
 import { memo, type CSSProperties, type ReactNode } from "react";
 import type { TimelineElement } from "../store/playerStore";
 import {
+  CLIP_TRIM_HIT_PX,
   clipWidthLadder,
   defaultTimelineTheme,
   getClipHandleOpacity,
@@ -164,7 +165,7 @@ export const TimelineClip = memo(function TimelineClip({
             left: 0,
             top: 0,
             bottom: 0,
-            width: 14,
+            width: CLIP_TRIM_HIT_PX,
             cursor: "col-resize",
             zIndex: 4,
           }}
@@ -194,7 +195,7 @@ export const TimelineClip = memo(function TimelineClip({
             right: 0,
             top: 0,
             bottom: 0,
-            width: 14,
+            width: CLIP_TRIM_HIT_PX,
             cursor: "col-resize",
             zIndex: 4,
           }}

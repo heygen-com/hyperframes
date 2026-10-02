@@ -1,5 +1,7 @@
 import type { TimelineElement } from "../store/playerStore";
 
+export const CLIP_TRIM_HIT_PX = 14;
+
 export interface TimelineTrackStyle {
   clip: string;
   accent: string;

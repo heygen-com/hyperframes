@@ -44,7 +44,7 @@ export const ClipBadges = memo(function ClipBadges({
   };
   return (
     <span
-      className="pointer-events-none absolute right-1.5 top-0.5 z-[3] flex max-w-[calc(100%-12px)] gap-1 overflow-hidden"
+      className="pointer-events-none absolute right-1.5 top-0.5 z-[31] flex max-w-[calc(100%-12px)] gap-1 overflow-hidden"
       data-testid="clip-badges"
     >
       {volume && (

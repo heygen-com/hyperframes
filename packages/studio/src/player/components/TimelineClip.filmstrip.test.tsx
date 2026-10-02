@@ -90,7 +90,7 @@ describe("Filmstrip clips", () => {
     const host = render("video", { hasAudio: true, volume: 1.8 });
     expect(host.querySelector('[data-badge="volume"]')?.textContent).toBe("180%");
     const badges = host.querySelector('[data-testid="clip-badges"]');
-    expect(badges?.classList.contains("z-[3]")).toBe(true);
+    expect(badges?.classList.contains("z-[31]")).toBe(true);
     expect(badges?.classList.contains("max-w-[calc(100%-12px)]")).toBe(true);
     expect(badges?.classList.contains("overflow-hidden")).toBe(true);
     expect(badges?.parentElement?.classList.contains("timeline-clip__label")).toBe(true);
@@ -98,7 +98,7 @@ describe("Filmstrip clips", () => {
       /\.timeline-clip:not\(\.is-audio\) \.timeline-clip__name\s*\{[^}]*flex:\s*1;[^}]*min-width:\s*0;[^}]*overflow:\s*hidden;/,
     );
     expect(css).toMatch(
-      /\.timeline-clip:not\(\.is-audio\) \.timeline-clip__label\s*\{[^}]*z-index:\s*0;/,
+      /\.timeline-clip:not\(\.is-audio\) \.timeline-clip__label\s*\{[^}]*z-index:\s*auto;/,
     );
   });
 
@@ -117,7 +117,7 @@ describe("Filmstrip clips", () => {
       (name?.compareDocumentPosition(warning!) ?? 0) & Node.DOCUMENT_POSITION_FOLLOWING,
     ).toBeTruthy();
     expect(css).toMatch(
-      /\.timeline-clip:not\(\.is-audio\) \.timeline-clip__label\s*\{[^}]*z-index:\s*0;/,
+      /\.timeline-clip:not\(\.is-audio\) \.timeline-clip__label\s*\{[^}]*z-index:\s*auto;/,
     );
   });
 
