@@ -244,7 +244,6 @@ export interface CheckBrowserResult {
   contrastPassed: number;
   screenshots: CheckScreenshot[];
   timings: CheckTimings;
-  /** True when no browser session ran (lint blocked or crashed, or the browser check threw). */
   skipped: boolean;
 }
 
@@ -266,7 +265,6 @@ export interface CheckSection<T extends CheckFinding = CheckFinding> {
 export interface CheckReport {
   ok: boolean;
   strict: boolean;
-  /** True when the browser sections below are empty because no session ran, not because it found nothing. */
   browserSkipped: boolean;
   lint: CheckSection & { filesScanned: number };
   runtime: CheckSection;
