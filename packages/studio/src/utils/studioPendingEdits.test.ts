@@ -281,16 +281,17 @@ describe("a pending edit whose start throws", () => {
 describe("the package's public revert", () => {
   it("lets a host's own undo key paint a still-saving move back at once", async () => {
     const { revertNewestStudioPendingEdit: hostRevert } = await import("../index");
-    const box = { left: "120px" };
-    const edit = beginStudioPendingEdit(() => {
-      box.left = "0px";
-      return () => void (box.left = "120px");
-    });
-    const putBack = hostRevert();
-    expect(box.left).toBe("0px");
-    putBack?.();
-    expect(box.left).toBe("120px");
-    edit.settle();
-    await flushStudioPendingEdits();
+    let left = "120px";
+    const edit = beginStudioPendingEdit(() => ((left = "0px"), () => void (left = "120px")));
+    try {
+      const putBack = hostRevert();
+      expect(left).toBe("0px");
+      expect(hostRevert()).toBeNull();
+      putBack?.();
+      expect(left).toBe("120px");
+    } finally {
+      edit.settle();
+      await flushStudioPendingEdits();
+    }
   });
 });
