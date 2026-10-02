@@ -1,3 +1,6 @@
+import { mkdtempSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { runCommand, type CommandDef } from "citty";
 import { CliUsageError } from "./commandResult.js";
@@ -159,7 +162,7 @@ describe("trackCommandFailures: extra positionals", () => {
     );
   });
 
-  it.each(["--json", "--json=true"])(
+  it.each(["--json", "--json=true", "--json=1"])(
     "reports the rejection as JSON on stdout under %s",
     async (flag) => {
       await expect(
@@ -172,6 +175,16 @@ describe("trackCommandFailures: extra positionals", () => {
       });
     },
   );
+
+  it("rejects instead of joining when the first word names a file", async () => {
+    const run = vi.fn();
+    const file = join(mkdtempSync(join(tmpdir(), "hf-join-")), "script.txt");
+    writeFileSync(file, "hello");
+    await expect(
+      runCommand(await wrap(leaf("tts", run)), { rawArgs: [file, "extra"] }),
+    ).rejects.toThrow(/extra argument for hyperframes tts: extra/);
+    expect(run).not.toHaveBeenCalled();
+  });
 
   it.each(["catalog", "tts"])(
     "joins %s's trailing words into its last positional",

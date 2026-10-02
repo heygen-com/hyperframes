@@ -1,3 +1,4 @@
+import { existsSync } from "node:fs";
 import type { ArgsDef, CommandDef } from "citty";
 import { CliUsageError } from "./commandResult.js";
 
@@ -49,8 +50,10 @@ export function resolveExtraPositionals(
   const extra = given.slice(positionals.length);
   if (extra.length === 0) return;
   const last = positionals.at(-1)?.[0];
-  if (parsed && last && JOINS_EXTRA_POSITIONALS.has(path)) {
-    parsed[last] = given.slice(positionals.length - 1).join(" ");
+  const words = given.slice(positionals.length - 1);
+  // A first word naming a file (`tts script.txt extra`) is a path, not free text: reject the rest.
+  if (parsed && last && JOINS_EXTRA_POSITIONALS.has(path) && !existsSync(words[0]!)) {
+    parsed[last] = words.join(" ");
     return;
   }
 
@@ -58,7 +61,7 @@ export function resolveExtraPositionals(
   const message =
     `Unexpected extra argument${plural} for hyperframes ${path}: ${extra.join(", ")}\n` +
     `Usage: ${usageLine(path, args)}`;
-  if (rawArgs.some((tok) => tok === "--json" || tok === "--json=true"))
+  if (parsed?.json === true || rawArgs.some((tok) => tok === "--json" || tok === "--json=true"))
     console.log(JSON.stringify({ ok: false, error: message }));
   else console.error(message);
   throw new CliUsageError(message, { presented: true });
