@@ -162,7 +162,9 @@ function idSelectorHasReducedSpecificity(selector: string): boolean {
         if (
           subject.some(
             (node) =>
-              (node.type === "attribute" && node.attribute.toLowerCase() === "id" && !!node.value) ||
+              (node.type === "attribute" &&
+                node.attribute.toLowerCase() === "id" &&
+                !!node.value) ||
               (node.type === "pseudo" &&
                 node.value.toLowerCase() === ":where" &&
                 node.nodes.some((option) => option.nodes.some((inner) => inner.type === "id"))),
