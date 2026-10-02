@@ -667,15 +667,35 @@ function readableText(file: string): string | null {
 
 const escapeRegExp = (text: string) => text.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 
+// A separator as a project writes it: `/`, a Windows `\`, or the same escaped in JSON (`\/`, `\\`).
+const SEPARATOR = String.raw`\\*[\\/]`;
+
 /**
- * The renamed path as a project file names it: whole, not inside a longer name. Not preceded by a path character
- * (`my-assets/x`, `other/assets/x`; `./` and `../` are fine), not followed by a name character (`assets-backup`);
- * a folder is named by what is under it, so its path is followed by `/`, never by prose.
+ * The renamed path as a project file names it: whole, not inside a longer name. It must start a reference (not follow
+ * a name character, so not `my-assets/x`), after any `./`, `../` or `/` lead (`other/./assets/x` is another path), and
+ * end it: a folder is named by what is under it, never by prose; a file by a delimiter (not `a.png@2x.png`).
+ * The lead is kept in the match (`lead` group) so the rewrite keeps it.
  */
-export function referencePattern(oldPath: string, isDirectory: boolean): RegExp {
-  const before = String.raw`(?:(?<![\w./-])|(?<=(?<![\w-])\.{1,2}/))`;
-  const after = isDirectory ? "(?=/)" : String.raw`(?![\w-]|\.\w)`;
-  return new RegExp(`${before}${escapeRegExp(oldPath)}${after}`, "g");
+function referencePattern(oldPath: string, isDirectory: boolean): RegExp {
+  const name = oldPath.split("/").map(escapeRegExp).join(SEPARATOR);
+  const end = isDirectory ? String.raw`(?=\\*[\\/])` : String.raw`(?=$|[\s"'\x60)\]}>,;#?<|&\\])`;
+  return new RegExp(
+    String.raw`(?<![\w./-])(?<lead>(?:\.{1,2}${SEPARATOR}|${SEPARATOR})*)${name}${end}`,
+    "g",
+  );
+}
+
+/** `text` with each reference to the renamed path pointing at `newPath` (the path's lead kept). */
+export function replaceReferences(
+  text: string,
+  oldPath: string,
+  newPath: string,
+  isDirectory: boolean,
+): string {
+  return text.replace(
+    referencePattern(oldPath, isDirectory),
+    (...match) => `${(match.at(-1) as { lead: string }).lead}${newPath}`,
+  );
 }
 
 /**
@@ -691,7 +711,6 @@ function updateReferences(
   const textFiles = walkFiles(projectDir, (name) =>
     /\.(html|css|js|jsx|ts|tsx|json|mjs|cjs|md|mdx)$/i.test(name),
   );
-  const pattern = referencePattern(oldPath, isDirectory);
 
   let updatedCount = 0;
   for (const file of textFiles) {
@@ -699,7 +718,7 @@ function updateReferences(
     const content = readableText(file);
     if (content === null) continue;
 
-    const updated = content.replace(pattern, () => newPath);
+    const updated = replaceReferences(content, oldPath, newPath, isDirectory);
     if (updated !== content) {
       replaceFileAtomically(file, updated, statSync(file).mode);
       updatedCount++;

@@ -3,11 +3,11 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { Hono } from "hono";
 import { afterEach, describe, expect, it } from "vitest";
-import { referencePattern, registerFileRoutes } from "./files";
+import { registerFileRoutes, replaceReferences } from "./files";
 import type { StudioApiAdapter } from "../types";
 
 const rewrite = (text: string, from: string, to: string, folder: boolean) =>
-  text.replace(referencePattern(from, folder), () => to);
+  replaceReferences(text, from, to, folder);
 
 describe("rename references", () => {
   it("rewrites a folder where files under it are named, in every form a project writes them", () => {
@@ -33,14 +33,35 @@ describe("rename references", () => {
   });
 
   it("rewrites a file's path whole, not a longer name that starts with it", () => {
-    expect(
-      rewrite(
-        '"assets/a.png" "assets/a.png2" "assets/a.png-old"',
-        "assets/a.png",
-        "assets/b.png",
-        false,
-      ),
-    ).toBe('"assets/b.png" "assets/a.png2" "assets/a.png-old"');
+    const text = '"assets/a.png" "assets/a.png2" "assets/a.png-old" "assets/a.png@2x.png" url(assets/a.png+t.png)';
+    expect(rewrite(text, "assets/a.png", "assets/b.png", false)).toBe(
+      '"assets/b.png" "assets/a.png2" "assets/a.png-old" "assets/a.png@2x.png" url(assets/a.png+t.png)',
+    );
+    expect(rewrite("url(assets/a.png) srcset=\"assets/a.png 2x\"", "assets/a.png", "x/b.png", false)).toBe(
+      'url(x/b.png) srcset="x/b.png 2x"',
+    );
+  });
+
+  it("keeps a root-relative lead, and reads JSON-escaped and Windows separators", () => {
+    const text = [
+      '<img src="/assets/a.png">',
+      "url(/assets/a.png)",
+      '{"src":"assets\\/a.png"}',
+      '{"path":"assets\\\\a.png"}',
+    ].join("\n");
+    expect(rewrite(text, "assets", "brand", true)).toBe(
+      [
+        '<img src="/brand/a.png">',
+        "url(/brand/a.png)",
+        '{"src":"brand\\/a.png"}',
+        '{"path":"brand\\\\a.png"}',
+      ].join("\n"),
+    );
+  });
+
+  it("does not take another folder's path whose middle matches", () => {
+    const text = "other/./assets/a.png other/../assets/a.png";
+    expect(rewrite(text, "assets", "brand", true)).toBe(text);
   });
 });
 
