@@ -1514,12 +1514,8 @@ describe("layout-audit.browser coordinate-frame findings", () => {
     expect(runAudit().filter((issue) => issue.code === "connector_detached")).toEqual([]);
   });
 
-  // The dash gate reads the whole pattern: only a stroke whose visible window sits inside one
-  // gap is hidden. Dashed patterns, a bare `0` (renders solid) and `none` all paint; a
-  // zero-length dash paints only as a round/square cap (`0 4` is dotted with round caps and
-  // invisible with the default butt cap). Path length is 100 (installConnectorGeometry);
-  // `50 100` at offset 40 leaves exactly 10% painted — the tolerance boundary — while offset 30
-  // shows 20% and fires.
+  // Hidden only when the visible window sits in one gap; a zero-length dash paints only with a
+  // round/square cap. Path length is 100, so `50 100` at offset 40 is the 10% boundary.
   it.each([
     { dasharray: "0 4", offset: "0", count: 0 },
     { dasharray: "0 4", offset: "0", linecap: "round", count: 1 },
