@@ -68,9 +68,15 @@ try {
   assert(address && typeof address !== "string");
   const proxyStatus = await new Promise((resolve, reject) => {
     const probe = request(
-      { hostname: "127.0.0.1", port: address.port, path: "http://127.0.0.1:1/api/projects" },
+      {
+        hostname: "127.0.0.1",
+        port: address.port,
+        path: "http://127.0.0.1:1/api/projects",
+        signal: AbortSignal.timeout(5000),
+      },
       (response) => {
         response.resume();
+        response.once("error", reject);
         response.once("end", () => resolve(response.statusCode));
       },
     );
