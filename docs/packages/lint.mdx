@@ -116,6 +116,8 @@ Detected issues include:
   reachable from timeline callbacks (`gsap_callback_dom_measurement`), and
   non-deterministic values like `gsap.utils.random()` / `"random(...)"`
   (`non_deterministic_code`)
+- CSS `transition` declarations, which run on the browser clock and restart on a cold
+  render worker (`css_transition_used`, a warning); `none` and all-zero durations are allowed
 - SVG draw-on pitfalls: GSAP `strokeDasharray` writes on elements whose CSS declares a
   multi-component `stroke-dasharray` (`svg_drawon_css_dasharray_conflict`),
   `getTotalLength()` on paths with no `d` yet (`svg_measure_before_path_d`), and

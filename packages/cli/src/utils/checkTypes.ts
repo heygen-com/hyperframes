@@ -244,6 +244,7 @@ export interface CheckBrowserResult {
   contrastPassed: number;
   screenshots: CheckScreenshot[];
   timings: CheckTimings;
+  skipped: boolean;
 }
 
 /** The seek-grid audit loop, injected into checkBrowser so it never imports checkPipeline back. */
@@ -264,6 +265,7 @@ export interface CheckSection<T extends CheckFinding = CheckFinding> {
 export interface CheckReport {
   ok: boolean;
   strict: boolean;
+  browserSkipped: boolean;
   lint: CheckSection & { filesScanned: number };
   runtime: CheckSection;
   layout: CheckSection<AnchoredLayoutIssue> & {

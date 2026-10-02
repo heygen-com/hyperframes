@@ -821,6 +821,70 @@ describe("core rules", () => {
     expect(finding).toBeUndefined();
   });
 
+  describe("css_transition_used", () => {
+    it.each([
+      ["transition", "opacity 0.5s ease"],
+      ["transition-duration", "0.5s"],
+      ["transition-delay", "100ms"],
+      ["transition-property", "opacity"],
+      ["-webkit-transition", "opacity 0.5s ease"],
+      ["-webkit-transition-duration", "0.5s"],
+      ["transition", "opacity 0s linear 1s"],
+      ["transition-duration", "0s, .2s"],
+      ["transition-duration", "var(--speed)"],
+    ])("warns for %s declarations in style blocks", async (property, value) => {
+      const result = await lintHyperframeHtml(
+        compositionWithBodyPrefix(`<style>.card { ${property}: ${value}; }</style>`),
+      );
+      const finding = result.findings.find((item) => item.code === "css_transition_used");
+
+      expect(finding).toMatchObject({ severity: "warning", selector: ".card" });
+      expect(finding?.message).toContain(property);
+      expect(finding?.fixHint).toContain("paused GSAP timeline");
+    });
+
+    it("warns for an inline transition and identifies its element", async () => {
+      const result = await lintHyperframeHtml(
+        compositionWithBodyPrefix(
+          "",
+          '<div id="card" style="transition: opacity 0.5s ease"></div>',
+        ),
+      );
+      const finding = result.findings.find((item) => item.code === "css_transition_used");
+
+      expect(finding).toMatchObject({ severity: "warning", elementId: "card" });
+      expect(finding?.snippet).toContain('id="card"');
+    });
+
+    it.each([
+      ["transition", "none"],
+      ["transition-property", "none"],
+      ["-webkit-transition", "none"],
+      ["-webkit-transition-property", "NONE"],
+      ["transition-duration", "0s"],
+      ["transition-delay", "0ms, 0s"],
+      ["-webkit-transition-duration", "0s"],
+      ["transition", "opacity 0s ease 0s"],
+    ])("allows %s: %s", async (property, value) => {
+      const result = await lintHyperframeHtml(
+        compositionWithBodyPrefix(`<style>.card { ${property}: ${value} !important; }</style>`),
+      );
+
+      expect(result.findings.find((item) => item.code === "css_transition_used")).toBeUndefined();
+    });
+
+    it("ignores custom properties that contain transition in their name", async () => {
+      const result = await lintHyperframeHtml(
+        compositionWithBodyPrefix(
+          '<div id="card" style="--transition-speed: 0.5s"></div>',
+          "<style>.card { --transition-easing: ease; opacity: 1; }</style>",
+        ),
+      );
+
+      expect(result.findings.find((item) => item.code === "css_transition_used")).toBeUndefined();
+    });
+  });
+
   describe("non_deterministic_code", () => {
     it("gives randomness guidance for crypto and clock guidance for wall time", async () => {
       const result = await lintHyperframeHtml(`<html><body>

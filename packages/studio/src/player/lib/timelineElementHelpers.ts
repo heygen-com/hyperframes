@@ -13,6 +13,7 @@ import { isFinitePositive } from "./playbackAdapter";
 import { getSourceScopedSelectorIndex } from "../../utils/sourceScopedSelectorIndex";
 import { HF_AUDIO_GROUP_TAG } from "@hyperframes/core/audio-groups";
 import { readElementFades } from "@hyperframes/core/audio-fade";
+import { elementVolume } from "./storedVolume";
 import {
   type AttrReader,
   clampPlaybackRate,
@@ -213,13 +214,6 @@ function setOptional<K extends keyof TimelineElement>(
   else entry[key] = value;
 }
 
-function readVolume(el: Element, media: Element): number | undefined {
-  const volume = Number.parseFloat(
-    el.getAttribute("data-volume") ?? media.getAttribute("data-volume") ?? "",
-  );
-  return Number.isFinite(volume) ? volume : undefined;
-}
-
 /** The compiler's rule (timingCompiler): explicit data-has-audio wins; otherwise an unmuted <video> is audible. */
 export function isVideoAudible(opts: {
   tag: string;
@@ -251,7 +245,7 @@ function applyAudioMetadataFromElement(entry: TimelineElement, el: Element): voi
   });
   setOptional(entry, "hasAudio", sound ? true : undefined);
   setOptional(entry, "muted", muted ? true : undefined);
-  setOptional(entry, "volume", readVolume(el, media));
+  setOptional(entry, "volume", elementVolume(el, media));
 }
 
 function applyFadeMetadataFromElement(entry: TimelineElement, el: Element): void {
