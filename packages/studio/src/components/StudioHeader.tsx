@@ -1,4 +1,4 @@
-import { useContext, type MouseEvent } from "react";
+import { memo, useContext, type MouseEvent } from "react";
 import { Camera } from "../icons/SystemIcons";
 import { useStudioShellContext } from "../contexts/StudioContext";
 import { usePanelLayoutContext } from "../contexts/PanelLayoutContext";
@@ -35,7 +35,7 @@ export function shouldOpenInspector(
 }
 
 // fallow-ignore-next-line complexity
-export function StudioHeader({
+export const StudioHeader = memo(function StudioHeader({
   captureFrameHref,
   captureFrameFilename,
   handleCaptureFrameClick,
@@ -184,4 +184,4 @@ export function StudioHeader({
       </div>
     </div>
   );
-}
+});

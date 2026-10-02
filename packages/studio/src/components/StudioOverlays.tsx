@@ -1,4 +1,4 @@
-import type { ComponentProps } from "react";
+import { memo, type ComponentProps } from "react";
 import { LintModal } from "./LintModal";
 import { AskAgentModal } from "./AskAgentModal";
 import { StudioToast } from "./StudioToast";
@@ -28,7 +28,7 @@ export interface StudioOverlaysProps {
  * `App.tsx` to keep the shell within the studio's 600-line decomposition budget.
  */
 // fallow-ignore-next-line complexity
-export function StudioOverlays({
+export const StudioOverlays = memo(function StudioOverlays({
   projectId,
   projectDir,
   lintModal,
@@ -91,4 +91,4 @@ export function StudioOverlays({
       </div>
     </>
   );
-}
+});

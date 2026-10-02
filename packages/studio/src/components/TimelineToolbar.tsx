@@ -1,4 +1,4 @@
-import { useEffect, useRef } from "react";
+import { memo, useEffect, useRef } from "react";
 import {
   ArrowsOutLineHorizontal,
   Image,
@@ -141,7 +141,7 @@ function useKeyframeToggle(session?: DomEditSessionSlice) {
 }
 
 // fallow-ignore-next-line complexity
-export function TimelineToolbar({
+export const TimelineToolbar = memo(function TimelineToolbar({
   domEditSession,
   onSplitElement,
   history,
@@ -558,4 +558,4 @@ export function TimelineToolbar({
       </div>
     </div>
   );
-}
+});

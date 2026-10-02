@@ -1,4 +1,4 @@
-import { useCallback, type ReactNode } from "react";
+import { memo, useCallback, type ReactNode } from "react";
 import { PreviewPane } from "./nle/PreviewPane";
 import { TimelinePane } from "./nle/TimelinePane";
 import { PreviewOverlays } from "./nle/PreviewOverlays";
@@ -81,7 +81,7 @@ export interface EditorShellProps extends TimelineEditCallbackDeps {
 // The dockable shell: every panel lives in one Dock, arranged by the user's
 // saved layout. Owns the shared player + composition-stack state via
 // NLEProvider so every panel shares one player.
-export function EditorShell({
+export const EditorShell = memo(function EditorShell({
   panels,
   timelineToolbar,
   renderClipContent,
@@ -228,7 +228,7 @@ export function EditorShell({
       </div>
     </PreviewReadOnlyProvider>
   );
-}
+});
 
 interface EditorShellBodyProps {
   panels: ReactNode;

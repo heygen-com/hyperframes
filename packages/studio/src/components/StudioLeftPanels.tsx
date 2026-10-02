@@ -1,4 +1,4 @@
-import { useCallback, type ReactNode } from "react";
+import { memo, useCallback, type ReactNode } from "react";
 import { SourceEditor } from "./editor/SourceEditor";
 import { FileTree } from "./editor/FileTree";
 import { MediaPreview } from "./MediaPreview";
@@ -36,7 +36,7 @@ function PanelColumn({ footer, children }: { footer: ReactNode; children: ReactN
 }
 
 // fallow-ignore-next-line complexity
-export function StudioLeftPanels({
+export const StudioLeftPanels = memo(function StudioLeftPanels({
   onSelectComposition,
   onAddBlock,
   onPreviewBlock,
@@ -159,7 +159,7 @@ export function StudioLeftPanels({
       </Dock.Panel>
     </>
   );
-}
+});
 
 function CodeBody({
   projectId,
