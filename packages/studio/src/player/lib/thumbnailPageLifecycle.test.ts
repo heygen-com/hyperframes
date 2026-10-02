@@ -6,12 +6,17 @@ import {
   type ThumbnailLoadedResult,
 } from "./thumbnailScheduler";
 
+function mountLifetime() {
+  const scheduler = new ThumbnailScheduler();
+  const page = new EventTarget();
+  const document = Object.assign(new EventTarget(), { hidden: false });
+  const unbind = bindThumbnailPageLifecycle(page, document, scheduler);
+  return { scheduler, page, document, unbind };
+}
+
 describe("thumbnail document lifetime", () => {
   it("cancels every active thumbnail kind on pagehide and resumes retained leases", async () => {
-    const scheduler = new ThumbnailScheduler();
-    const page = new EventTarget();
-    const document = Object.assign(new EventTarget(), { hidden: false });
-    const unbind = bindThumbnailPageLifecycle(page, document, scheduler);
+    const { scheduler, page, unbind } = mountLifetime();
     const signals: AbortSignal[] = [];
     const kinds = ["composition", "image", "video", "waveform"] as const;
     const requests = kinds.map((kind): ThumbnailRequest => {
@@ -63,10 +68,7 @@ describe("thumbnail document lifetime", () => {
   });
 
   it("holds new jobs while away and preserves a preview reload hold on pageshow", async () => {
-    const scheduler = new ThumbnailScheduler();
-    const page = new EventTarget();
-    const document = Object.assign(new EventTarget(), { hidden: false });
-    const unbind = bindThumbnailPageLifecycle(page, document, scheduler);
+    const { scheduler, page, document, unbind } = mountLifetime();
     const started: string[] = [];
     const make = (kind: "composition" | "image"): ThumbnailRequest => ({
       key: kind,
@@ -98,10 +100,7 @@ describe("thumbnail document lifetime", () => {
   });
 
   it("removes the lifecycle listeners when unbound", () => {
-    const scheduler = new ThumbnailScheduler();
-    const page = new EventTarget();
-    const document = Object.assign(new EventTarget(), { hidden: false });
-    const unbind = bindThumbnailPageLifecycle(page, document, scheduler);
+    const { scheduler, page, unbind } = mountLifetime();
     unbind();
     page.dispatchEvent(new Event("pagehide"));
     let started = false;

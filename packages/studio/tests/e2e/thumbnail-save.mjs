@@ -23,8 +23,11 @@ const proxy = createServer((incoming, response) => {
     response.once("close", () => held.delete(response));
     return;
   }
+  forward(incoming, response, url);
+});
+function forward(incoming, response, url) {
   const outgoing = request(
-    new URL(incoming.url ?? "/", backend),
+    url,
     {
       method: incoming.method,
       headers: incoming.headers,
@@ -44,7 +47,7 @@ const proxy = createServer((incoming, response) => {
     if (!response.writableEnded) outgoing.destroy();
   });
   incoming.pipe(outgoing);
-});
+}
 const pause = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 async function waitFor(predicate, message, bound = 15_000) {
   const deadline = Date.now() + bound;
