@@ -267,8 +267,10 @@ if (brandColors.length && presetColors.length) {
       // MUST precede the accent checks: a preset's red "negative" is often its 2nd-most-chromatic
       // color and would otherwise be claimed as accent2 and recolored to the brand hue.
       next = val;
-    else if (val === pr.accent) next = br.accent; // primary accent → the EXACT brand color
-    else if (pr.accent2 !== pr.accent && val === pr.accent2) next = br.accent2; // exact 2nd accent
+    else if (val === pr.accent)
+      next = br.accent; // primary accent → the EXACT brand color
+    else if (pr.accent2 !== pr.accent && val === pr.accent2)
+      next = br.accent2; // exact 2nd accent
     else if (!ph) {
       // rgba()/rgb() tint → repaint its rgb with the brand accent, keep alpha (a neutral
       // overlay is kept). A non-color non-hex value (var(), named) falls through unchanged.
