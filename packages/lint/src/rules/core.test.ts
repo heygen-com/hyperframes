@@ -114,6 +114,37 @@ describe("core rules", () => {
       'gsap.to(".box", { scrollTrigger: "#123-frame" });',
       "error",
     ],
+    [
+      "a ScrollTrigger scroller targets it",
+      "",
+      'ScrollTrigger.create({ trigger: ".a", scroller: "#123-frame" });',
+      "error",
+    ],
+    [
+      "a ScrollTrigger pinnedContainer targets it",
+      "",
+      'ScrollTrigger.create({ trigger: ".a", pinnedContainer: "#123-frame" });',
+      "error",
+    ],
+    [
+      "a ScrollTrigger pinSpacer targets it",
+      "",
+      'ScrollTrigger.create({ trigger: ".a", pinSpacer: "#123-frame" });',
+      "error",
+    ],
+    [
+      "a quoted ScrollTrigger key targets it",
+      "",
+      'ScrollTrigger.create({ "trigger": "#123-frame" });',
+      "error",
+    ],
+    [
+      "a $-prefixed key ending in pin holds it",
+      "",
+      'const meta = { $pin: "#123-frame" };',
+      "warning",
+    ],
+    ["a key ending in pin holds it", "", 'const meta = { spin: "#123-frame" };', "warning"],
     ["a non-selector key holds it", "", 'const meta = { label: "#123-frame" };', "warning"],
     [
       "a hyphenated key ending in pin holds it",
