@@ -12,10 +12,8 @@
 // the first that actually runs. `py` is the launcher, so it needs a `-3` arg to
 // select Python 3 — hence candidates are argv PREFIXES, not bare names.
 //
-// `HYPERFRAMES_PYTHON` wins over the PATH probe, matching the CLI's
-// `findPython()`. The documented setup on PEP 668 systems (Homebrew Python) is
-// a venv pointed to by that variable; without honouring it here, `doctor`
-// reports MusicGen installed while BGM silently disables itself (#4614).
+// `HYPERFRAMES_PYTHON` (the documented PEP 668 venv setup) wins over the PATH probe, matching
+// the CLI's `findPython()`; ignoring it made BGM silently disable itself (#4614).
 
 import { spawnSync } from "node:child_process";
 
@@ -36,12 +34,10 @@ export function defaultProbe(cmd, args) {
  * Pick the argv prefix that launches Python 3 on this platform.
  * Returns e.g. `["python3"]`, `["python"]`, or `["py", "-3"]`.
  *
- * Pure except for `probe` (which runs `<cmd> … --version`); `platform`,
- * `probe` and `env` are injectable so every branch is unit-testable without
- * spawning. A `HYPERFRAMES_PYTHON` override that isn't a runnable Python 3
- * falls through to the PATH probe, as the CLI does. If nothing probes OK, falls back to the
- * canonical name for the platform so the eventual spawn fails loudly exactly
- * as it did before — never worse.
+ * Pure except for `probe` (which runs `<cmd> … --version`); `platform`, `probe`
+ * and `env` are injectable so every branch is unit-testable without spawning.
+ * If nothing probes OK, falls back to the canonical name for the platform so
+ * the eventual spawn fails loudly exactly as it did before — never worse.
  */
 export function resolvePythonCommand(
   platform = process.platform,
