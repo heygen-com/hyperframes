@@ -1617,13 +1617,12 @@
     const style = getComputedStyle(path);
     const dashes = dashArrayLengths(style.strokeDasharray, path);
     if (dashes === null) return false;
+    const authored = path.pathLength?.baseVal; // SVGAnimatedNumber; 0 when unset or unparseable
+    if (authored === 0 && path.hasAttribute("pathLength")) return false;
     const dotsPaint = (style.strokeLinecap || "butt") !== "butt";
     const dashPaints = (index) => index % 2 === 0 && (dashes[index] > 0 || dotsPaint);
     if (!dashes.some((_, index) => dashPaints(index))) return true; // only butt-capped dots
     const period = dashes.reduce((sum, dash) => sum + dash, 0);
-    const authored = path.pathLength?.baseVal; // SVGAnimatedNumber; 0 when unset or unparseable
-    // A present `pathLength` that resolves to 0 zeroes the dash scale, so the stroke paints solid.
-    if (authored === 0 && path.hasAttribute("pathLength")) return false;
     const length = authored > 0 ? authored : total;
     const offset = dashLength(style.strokeDashoffset, path); // unparseable reads as 0
     // Wrap into [0, period); adding the period only to negatives keeps `0.9 % 2` exact.

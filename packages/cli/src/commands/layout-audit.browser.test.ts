@@ -1539,6 +1539,7 @@ describe("layout-audit.browser coordinate-frame findings", () => {
     { dasharray: "1", offset: "0.5", pathLength: 1, count: 1 },
     { dasharray: "0.1 0.9", offset: "0", pathLength: 1, linecap: "round", count: 1 },
     { dasharray: "100", offset: "100", pathLength: 0, count: 1 },
+    { dasharray: "0 4", offset: "0", pathLength: 0, count: 1 },
   ])(
     "stroke-dasharray $dasharray, dashoffset $offset, linecap $linecap, pathLength $pathLength → $count connector_detached",
     ({ dasharray, offset, linecap, pathLength, count }) => {
