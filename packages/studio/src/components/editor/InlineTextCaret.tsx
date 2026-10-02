@@ -13,10 +13,8 @@ interface CaretPlacement {
 }
 
 /**
- * The caret of a text edited in place, drawn in Studio's document at screen size.
- *
- * The composition is drawn at its own size and shown scaled, so the browser's 1 px caret shrinks below a pixel and
- * cannot be seen. This one follows the real selection, and the browser's own is made transparent meanwhile.
+ * The caret of a text edited in place, drawn at screen size: the preview is scaled, so the browser's 1 px caret
+ * shrinks below a pixel. This one follows the real selection; the browser's own is transparent meanwhile.
  */
 export function InlineTextCaret({
   session,
@@ -141,7 +139,6 @@ function placeAtCaret(
   const range = view ? caretRange(element, view) : null;
   if (!view || !range) return null;
   const rect = (side === "before" && endOfCharBefore(range)) || caretRect(range, element, view);
-  // The composition is drawn scaled into the iframe's box: the same mapping the toolbar uses.
   const box = iframe.getBoundingClientRect();
   const scale = view.innerWidth ? box.width / view.innerWidth : 1;
   return {
@@ -170,7 +167,6 @@ function caretRect(range: Range, element: HTMLElement, view: Window) {
   };
 }
 
-/** The collapsed selection inside the focused `element`, or null. */
 function caretRange(element: HTMLElement, view: Window): Range | null {
   const doc = element.ownerDocument;
   const selection = view.getSelection();
