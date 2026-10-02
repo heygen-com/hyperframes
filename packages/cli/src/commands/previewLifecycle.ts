@@ -34,7 +34,6 @@ type SpawnPreview = (
     detached: boolean;
     stdio: ["ignore", number, number];
     env: NodeJS.ProcessEnv;
-    windowsHide: boolean;
   },
 ) => SpawnResult;
 
@@ -212,12 +211,8 @@ function spawnDetachedPreview(
       buildBackgroundPreviewArgs(dependencies.argv ?? process.argv.slice(1)),
       {
         detached: true,
-        // windowsHide's CREATE_NO_WINDOW doesn't reach a child whose stdio
-        // inherits a raw fd (logFd), but DETACHED_PROCESS already leaves this
-        // one without a console; the flag is kept for consistency.
         stdio: ["ignore", logFd, logFd],
         env: process.env,
-        windowsHide: true,
       },
     );
   } finally {
