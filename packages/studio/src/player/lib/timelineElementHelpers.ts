@@ -8,12 +8,7 @@
  */
 
 import type { TimelineElement } from "../store/playerStore";
-import type { TimelineText } from "../store/timelineElement";
-import {
-  getCuratedComputedStyles,
-  isEditableTextLeaf,
-  isTextBearingTag,
-} from "../../components/editor/domEditingDom";
+import { readTimelineText } from "./timelineText";
 import type { ClipManifestClip } from "./playbackTypes";
 import { isFinitePositive } from "./playbackAdapter";
 import { getSourceScopedSelectorIndex } from "../../utils/sourceScopedSelectorIndex";
@@ -249,23 +244,6 @@ function applyFadeMetadataFromElement(entry: TimelineElement, el: Element): void
   const fades = readElementFades(el);
   setOptional(entry, "fadeIn", fades.fadeIn > 0 ? fades.fadeIn : undefined);
   setOptional(entry, "fadeOut", fades.fadeOut > 0 ? fades.fadeOut : undefined);
-}
-
-/** A layer that is only text (a text tag whose children are all text leaves): its words and look. */
-export function readTimelineText(el: Element): TimelineText | undefined {
-  if (!isHtmlElement(el) || !isTextBearingTag(el.localName)) return undefined;
-  const children = Array.from(el.children);
-  if (!children.every((child) => isHtmlElement(child) && isEditableTextLeaf(child)))
-    return undefined;
-  const value = el.textContent?.replace(/\s+/g, " ").trim();
-  if (!value) return undefined;
-  const style = getCuratedComputedStyles(el);
-  return {
-    value,
-    fontFamily: style["font-family"],
-    fontWeight: style["font-weight"],
-    color: style.color,
-  };
 }
 
 export function applyMediaMetadataFromElement(entry: TimelineElement, el: Element): void {

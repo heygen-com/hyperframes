@@ -5,9 +5,9 @@ import {
   applyMediaMetadataFromElement,
   getTimelineElementSelector,
   isVideoAudible,
-  readTimelineText,
   resolveMediaElement,
 } from "./timelineElementHelpers";
+import { readTimelineText } from "./timelineText";
 
 describe("isVideoAudible — the compiler's data-has-audio rule", () => {
   it("explicit data-has-audio wins", () => {
