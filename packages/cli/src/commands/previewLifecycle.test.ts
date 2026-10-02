@@ -87,7 +87,21 @@ describe("background preview lifecycle", () => {
         "--open",
         "--json",
       ]),
-    ).toEqual(["/opt/hyperframes/cli.js", "preview", projectDir, "--foreground", "--no-open"]);
+    ).toEqual([
+      "/opt/hyperframes/cli.js",
+      "preview",
+      projectDir,
+      "--foreground",
+      "--no-open",
+      "--force-new",
+    ]);
+  });
+
+  it("makes the detached child start its own server, never reuse a sibling launch's", () => {
+    const args = buildBackgroundPreviewArgs(["cli.js", "preview", projectDir, "--force-new"]);
+
+    expect(args.filter((arg) => arg === "--force-new")).toHaveLength(1);
+    expect(args.at(-1)).toBe("--force-new");
   });
 
   it("reuses an already-running server for the same project", async () => {

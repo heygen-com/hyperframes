@@ -279,9 +279,10 @@ export function buildBackgroundPreviewArgs(argv: string[]): string[] {
       !arg.startsWith("--foreground=") &&
       arg !== "--open" &&
       arg !== "--no-open" &&
+      arg !== "--force-new" &&
       arg !== "--json",
   );
-  return [...filtered, "--foreground", "--no-open"];
+  return [...filtered, "--foreground", "--no-open", "--force-new"];
 }
 
 export async function readBackgroundPreviewStatus(
