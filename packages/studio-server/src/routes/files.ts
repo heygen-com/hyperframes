@@ -681,6 +681,7 @@ function referencePattern(oldPath: string, isDirectory: boolean): RegExp {
 }
 
 // A match inside the longer path of a file or folder that exists (`a.png&b.png`, `other assets/`) is that path's.
+// Existing paths are indexed by the text after the old path, then the text before it, so a match costs a few lookups.
 export function referenceRewriter(
   oldPath: string,
   newPath: string,
@@ -688,22 +689,36 @@ export function referenceRewriter(
   existing: readonly string[] = [],
 ): (text: string) => string {
   const pattern = referencePattern(oldPath, isDirectory);
-  const longer = existing
-    .filter((path) => path.length > oldPath.length)
-    .map((path) => ({ path, starts: occurrences(path, oldPath) }))
-    .filter(({ starts }) => starts.length > 0);
+  const around = new Map<string, Set<string>>();
+  const [afterLengths, beforeLengths] = [new Set<number>(), new Set<number>()];
+  let window = 0;
+  for (const path of existing) {
+    if (path.length <= oldPath.length) continue;
+    for (const start of occurrences(path, oldPath)) {
+      const [before, after] = [path.slice(0, start), path.slice(start + oldPath.length)];
+      (around.get(after) ?? around.set(after, new Set()).get(after)!).add(before);
+      afterLengths.add(after.length);
+      beforeLengths.add(before.length);
+      window = Math.max(window, path.length * 3);
+    }
+  }
+  const normalized = (text: string) => text.replace(/\\{0,2}[\\/]/g, "/");
   return (text) =>
     text.replace(pattern, (...args) => {
       const [match, offset] = [args[0] as string, args.at(-3) as number];
       const { lead } = args.at(-1) as { lead: string };
       const at = offset + lead.length;
-      const inLonger = longer.some(({ path, starts }) =>
-        starts.some((start) => {
-          const from = at - start;
-          const spelled = text.slice(from, from + path.length * 3).replace(/\\{0,2}[\\/]/g, "/");
-          return from >= 0 && spelled.startsWith(path);
-        }),
-      );
+      const head = normalized(text.slice(Math.max(0, at - window), at));
+      const tail = normalized(text.slice(offset + match.length, offset + match.length + window));
+      const inLonger = [...afterLengths].some((after) => {
+        const befores = tail.length >= after && around.get(tail.slice(0, after));
+        return (
+          befores &&
+          [...beforeLengths].some(
+            (before) => head.length >= before && befores.has(head.slice(head.length - before)),
+          )
+        );
+      });
       return inLonger ? match : `${lead}${newPath}`;
     });
 }

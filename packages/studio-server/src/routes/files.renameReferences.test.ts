@@ -95,6 +95,25 @@ describe("rename references", () => {
     ).toBe(escaped);
   });
 
+  it("compares escaped spellings by their text, not by offsets", () => {
+    const text = String.raw`"dir\/other a.png&backup.png" "dir\\other a.png&backup.png"`;
+    expect(referenceRewriter("a.png", "b.png", false, ["dir/other a.png&backup.png"])(text)).toBe(
+      text,
+    );
+  });
+
+  it("stays fast with thousands of existing paths and references", () => {
+    const existing = Array.from({ length: 5000 }, (_, i) => `archive/assets/image-${i}.png`);
+    const text = Array.from(
+      { length: 5000 },
+      (_, i) => `"assets/a${i}.png" "archive/assets/image-${i}.png"`,
+    ).join("\n");
+    const started = Date.now();
+    const out = referenceRewriter("assets", "brand", true, existing)(text);
+    expect(Date.now() - started).toBeLessThan(2000);
+    expect(out).toContain('"brand/a0.png" "archive/assets/image-0.png"');
+  });
+
   it("rewrites references a bare scan could mistake: unquoted attributes, a space before a paren, srcset", () => {
     const text =
       '<img src=assets/a.png alt="x"> url(assets/a.png ) srcset="assets/a.png 1x, assets/a.png 2x"';
