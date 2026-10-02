@@ -187,7 +187,9 @@ describe("trackCommandFailures: extra positionals", () => {
     [
       "skills update",
       async () => ({
-        default: (await import("../commands/skills.js")).default.subCommands!.update,
+        default: (
+          (await import("../commands/skills.js")).default.subCommands as Record<string, unknown>
+        ).update,
       }),
     ],
   ])("lets the real %s command read several positionals", async (path, load) => {
