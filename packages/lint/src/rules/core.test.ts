@@ -1116,7 +1116,9 @@ describe("core rules", () => {
 
     it("does not flag prefix-matching id selectors or !important position overrides", async () => {
       const result = await lintHyperframeHtml(
-        comp(`[id^="line"] { top: 0; } [id*="ine"] { left: 0; } [id="line1"] { left: 40px !important; }`),
+        comp(
+          `[id^="line"] { top: 0; } [id*="ine"] { left: 0; } [id="line1"] { left: 40px !important; }`,
+        ),
       );
       expect(
         result.findings.find((f) => f.code === "id_override_reduced_specificity"),
