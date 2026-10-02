@@ -420,7 +420,10 @@ async function collectGridSamples(
       const layoutIssues = await driver.collectLayout(time, options.tolerance, options.layout);
       collected.layoutIssues.push(...layoutIssues);
       issuesAtTime.push(...layoutIssues);
-      collected.layoutStateSignatures.push({ time, signature: await driver.collectLayoutGeometry() });
+      collected.layoutStateSignatures.push({
+        time,
+        signature: await driver.collectLayoutGeometry(),
+      });
       collected.rotationSamples.push(...(await driver.collectRotationSample(time)));
       collected.indicatorFrames.push(await driver.collectOffPivotRotationSample(time));
     }
