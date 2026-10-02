@@ -29,7 +29,7 @@ import {
 import { proxyActivityMark } from "../helpers/proxyTranscoder.js";
 import { PREVIEW_CAPTURE_PARAM } from "./preview.js";
 
-const THUMBNAIL_CACHE_VERSION = "v4";
+const THUMBNAIL_CACHE_VERSION = "v5";
 const THUMBNAIL_MAX_OUTPUT_WIDTH = 240;
 const THUMBNAIL_MAX_OUTPUT_HEIGHT = 135;
 const THUMBNAIL_CACHE_MAX_BYTES = 512 * 1024 * 1024;

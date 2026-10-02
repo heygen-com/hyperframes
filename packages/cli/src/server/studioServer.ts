@@ -63,7 +63,10 @@ import {
   historyCache,
 } from "@hyperframes/studio-server";
 import { resolveAutoProxy } from "../utils/projectConfig.js";
-import { getElementScreenshotClip } from "@hyperframes/studio-server/screenshot-clip";
+import {
+  clearElementScreenshotIsolation,
+  getElementScreenshotClip,
+} from "@hyperframes/studio-server/screenshot-clip";
 import type { ScreenshotClip } from "@hyperframes/studio-server/screenshot-clip";
 import type { RenderJob } from "@hyperframes/producer";
 import { isWithinProjectRoot } from "@hyperframes/parsers/asset-resolution";
@@ -745,11 +748,16 @@ export function createStudioServer(options: StudioServerOptions): StudioServer {
                 opts.selectorIndex,
               );
             }
-            return (await page.screenshot(
-              opts.format === "png"
-                ? { type: "png", ...(clip ? { clip } : {}) }
-                : { type: "jpeg", quality: 80, ...(clip ? { clip } : {}) },
-            )) as Buffer;
+            try {
+              return (await page.screenshot(
+                opts.format === "png"
+                  ? { type: "png", ...(clip ? { clip } : {}) }
+                  : { type: "jpeg", quality: 80, ...(clip ? { clip } : {}) },
+              )) as Buffer;
+            } finally {
+              // thumbnailPages reuses this page for the next capture.
+              if (opts.selector) await page.evaluate(clearElementScreenshotIsolation);
+            }
           },
         );
       } catch (err) {

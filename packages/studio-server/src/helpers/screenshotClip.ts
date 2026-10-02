@@ -29,11 +29,18 @@ export function getElementScreenshotClip(
   const safeIndex = Math.max(0, Math.min(matches.length - 1, Math.floor(selectorIndex ?? 0)));
   const el = matches[safeIndex] ?? null;
   if (!(el instanceof HTMLElement)) return undefined;
-  // Opacity, not visibility: a descendant cannot paint through a faded ancestor.
-  for (let node: HTMLElement = el; node.parentElement; node = node.parentElement) {
+  // Opacity, not visibility: a descendant cannot paint through a faded ancestor. A tagged rule, not
+  // inline style, so clearElementScreenshotIsolation can undo it on a page that is reused.
+  const hidden = "data-hf-thumbnail-hidden";
+  if (!document.getElementById(hidden)) {
+    const style = document.createElement("style");
+    style.id = hidden;
+    style.textContent = `[${hidden}] { opacity: 0 !important; }`;
+    document.head.append(style);
+  }
+  for (let node: Element = el; node.parentElement; node = node.parentElement) {
     for (const sibling of Array.from(node.parentElement.children)) {
-      if (sibling !== node && (sibling instanceof HTMLElement || sibling instanceof SVGElement))
-        sibling.style.setProperty("opacity", "0", "important");
+      if (sibling !== node) sibling.setAttribute(hidden, "");
     }
   }
   const rect = el.getBoundingClientRect();
@@ -49,4 +56,11 @@ export function getElementScreenshotClip(
     width: Math.max(1, Math.min(rect.width + pad * 2, maxWidth)),
     height: Math.max(1, Math.min(rect.height + pad * 2, maxHeight)),
   };
+}
+
+/** Undoes getElementScreenshotClip's fading. Self-contained for page.evaluate as well. */
+export function clearElementScreenshotIsolation(): void {
+  for (const node of Array.from(document.querySelectorAll("[data-hf-thumbnail-hidden]"))) {
+    node.removeAttribute("data-hf-thumbnail-hidden");
+  }
 }

@@ -504,6 +504,10 @@ describe("createStudioServer shutdown", () => {
 });
 
 describe("Studio thumbnail capture", () => {
+  // The thumbnail browser lease is module-wide; without a shutdown the next test inherits this one's fake.
+  afterEach(async () => {
+    await server?.shutdown();
+  });
   function fakePageBrowser(onEvaluate = () => {}) {
     const screenshot = vi.fn(async () => Buffer.from("jpeg"));
     const evaluate = vi.fn(async () => onEvaluate());
@@ -522,7 +526,7 @@ describe("Studio thumbnail capture", () => {
       browser: { connected: true, newPage: async () => page, on: () => {} },
       release: async () => {},
     });
-    return { screenshot };
+    return { screenshot, evaluate };
   }
   const opts = (dir: string, signal = new AbortController().signal) => ({
     project: { id: "demo", dir, title: "demo" },
@@ -550,6 +554,20 @@ describe("Studio thumbnail capture", () => {
       server.adapter.generateThumbnail?.(opts(dir, aborting.signal)),
     ).resolves.toBeNull();
     expect(screenshot).toHaveBeenCalledTimes(1);
+  });
+
+  it("undoes a row's isolation after its screenshot, since the page is reused", async () => {
+    const { screenshot, evaluate } = fakePageBrowser();
+    const dir = tmpProject();
+    server = createStudioServer({ projectDir: dir });
+    await server.adapter.generateThumbnail?.({ ...opts(dir), selector: "#title" });
+    const clears = evaluate.mock.calls.flatMap((call, i) =>
+      ((call as unknown[])[0] as { name?: string }).name === "clearElementScreenshotIsolation"
+        ? [evaluate.mock.invocationCallOrder[i]!]
+        : [],
+    );
+    expect(clears).toHaveLength(1);
+    expect(clears[0]).toBeGreaterThan(screenshot.mock.invocationCallOrder[0]!);
   });
 
   it("reuses the cached project signature instead of walking the project per thumbnail", async () => {

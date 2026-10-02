@@ -1,8 +1,9 @@
 import { afterEach, describe, expect, it } from "vitest";
-import { getElementScreenshotClip } from "./screenshotClip";
+import { clearElementScreenshotIsolation, getElementScreenshotClip } from "./screenshotClip";
 
 afterEach(() => {
   document.body.innerHTML = "";
+  document.head.innerHTML = "";
 });
 
 describe("getElementScreenshotClip", () => {
@@ -60,10 +61,15 @@ describe("getElementScreenshotClip", () => {
         <div id="waves"><div id="frame" style="visibility: visible">.:-=</div></div>
       </div>
       <div id="outside"></div>`;
-    const opacity = (id: string) => document.getElementById(id)!.style.getPropertyValue("opacity");
+    const hidden = (id: string) => getComputedStyle(document.getElementById(id)!).opacity === "0";
 
     getElementScreenshotClip("#waves");
-    expect(["title", "star", "outside"].map(opacity)).toEqual(["0", "0", "0"]);
-    expect(["stage", "waves", "frame"].map(opacity)).toEqual(["", "", ""]);
+    expect(["title", "star", "outside"].every(hidden)).toBe(true);
+    expect(["stage", "waves", "frame"].some(hidden)).toBe(false);
+
+    clearElementScreenshotIsolation();
+    getElementScreenshotClip("#title");
+    expect(["waves", "star", "outside"].every(hidden)).toBe(true);
+    expect(["stage", "title"].some(hidden)).toBe(false);
   });
 });
