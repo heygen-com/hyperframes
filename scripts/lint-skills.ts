@@ -330,7 +330,7 @@ export function lintRegistryItemRefs(content: string, known: Set<string>): LineV
 
 // Cross-references between skill docs: relative link targets, and backticked `./` or `../` .md/.html paths, must
 // resolve from the referencing file; `#anchor`s into .md files must match a GitHub heading slug. Bare backticked
-// paths (`references/foo.md`) are skill-root shorthand and deliberately unchecked.
+// paths like `references/<name>.md` are skill-root shorthand and deliberately unchecked.
 
 interface DocRef {
   line: number;
@@ -366,7 +366,7 @@ function docRefsInLine(line: string, lineNumber: number): DocRef[] {
   // Inline code is stripped before scanning for link syntax so a doc that
   // *documents* `[text](path)` is not read as linking to `path`.
   const prose = line.replace(INLINE_CODE_SPAN, "");
-  // One violation per dead target per line: [`../x.md`](../x.md) names it twice.
+  // One violation per dead target per line: a link whose text is the backticked target names it twice.
   const targets = new Set([...backtickTargets(line), ...proseTargets(prose)]);
   const text = line.trim();
   return [...targets].map((target) => ({ line: lineNumber, target, text }));

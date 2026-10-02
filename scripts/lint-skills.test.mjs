@@ -269,9 +269,9 @@ test("doc refs: backticked relative .md path to a missing file is a violation", 
 });
 
 test("doc refs: bare backticked paths are a KNOWN blind spot, not an accident", () => {
-  // `references/foo.md` without a leading ./ or ../ is skill-root shorthand,
+  // A bare `references/<name>.md` without a leading ./ or ../ is skill-root shorthand,
   // another skill's file, or a runtime artifact more often than a file-relative
-  // path. Pinned so the tradeoff is visible in code. See lint-skills.ts header.
+  // path. Pinned so the tradeoff is visible in code. See the cross-reference note in lint-skills.ts.
   const file = refFixture();
   assert.deepEqual(lintDocRefs(file, "Read `references/does-not-exist.md`.\n"), []);
 });
