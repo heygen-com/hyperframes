@@ -1,5 +1,5 @@
 import type { CommandDef } from "citty";
-import { assertNoExtraPositionals } from "./reject-extra-positionals.js";
+import { resolveExtraPositionals } from "./reject-extra-positionals.js";
 import { assertKnownFlags } from "./reject-unknown-flags.js";
 
 // citty types subcommands as `CommandDef<any>` (SubCommandsDef); mirror that so
@@ -17,6 +17,11 @@ export function trackCommandFailures(
   return () => load().then((cmd) => wrapCommand(cmd, commandName(cmd)));
 }
 
+function commandName(cmd: AnyCommandDef): string {
+  const name = (cmd.meta as { name?: unknown } | undefined)?.name;
+  return typeof name === "string" ? name : "";
+}
+
 /**
  * Wrap a resolved command's `run` (assert flags and positional count) AND
  * recursively wrap every entry in its `subCommands`. Two HF#2033 fixes live
@@ -27,11 +32,6 @@ export function trackCommandFailures(
  *      `lambda/*`, `capture/*`, `skills`). Without it, a nested command's
  *      unknown flags would bypass the leaf's guard.
  */
-function commandName(cmd: AnyCommandDef): string {
-  const name = (cmd.meta as { name?: unknown } | undefined)?.name;
-  return typeof name === "string" ? name : "";
-}
-
 function wrapCommand(cmd: AnyCommandDef, path: string): AnyCommandDef {
   const run = cmd.run;
   // Nothing to wrap (no run, no nested subcommands) — preserve identity.
@@ -61,7 +61,7 @@ function wrapCommand(cmd: AnyCommandDef, path: string): AnyCommandDef {
         Object.prototype.hasOwnProperty.call(cmd.subCommands, firstPositional);
       if (!delegatesToSub) assertKnownFlags(cmd, rawArgs);
       // Groups read `args._[0]` to pick fallback help, so only leaves get the count check.
-      if (!cmd.subCommands) assertNoExtraPositionals(cmd, path, ctx?.args, rawArgs);
+      if (!cmd.subCommands) resolveExtraPositionals(cmd, path, ctx?.args, rawArgs);
       return await run(ctx);
     };
   }

@@ -14,8 +14,12 @@ import { fileURLToPath } from "node:url";
 
 export function repoRoot(): string {
   const override = process.env.HYPERFRAMES_REPO_ROOT;
-  if (override && existsSync(resolve(override, "packages", "aws-lambda", "package.json"))) {
-    return override;
+  if (override) {
+    if (existsSync(resolve(override, "packages", "aws-lambda", "package.json"))) return override;
+    throw new Error(
+      `[hyperframes lambda] HYPERFRAMES_REPO_ROOT=${override} is not a hyperframes checkout ` +
+        "(no packages/aws-lambda/package.json there). Point it at the repo root, or unset it.",
+    );
   }
   let dir = dirname(fileURLToPath(import.meta.url));
   for (let depth = 0; depth < 12; depth++) {

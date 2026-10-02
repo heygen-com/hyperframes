@@ -159,16 +159,28 @@ describe("trackCommandFailures: extra positionals", () => {
     );
   });
 
-  it("reports the rejection as JSON on stdout under --json", async () => {
-    await expect(
-      runCommand(await wrap(leaf("lint")), { rawArgs: ["a", "b", "--json"] }),
-    ).rejects.toThrow(CliUsageError);
-    expect(JSON.parse(logSpy.mock.calls[0]![0] as string)).toEqual({
-      ok: false,
-      error:
-        "Unexpected extra argument for hyperframes lint: b\nUsage: hyperframes lint [DIR] [OPTIONS]",
-    });
-  });
+  it.each(["--json", "--json=true"])(
+    "reports the rejection as JSON on stdout under %s",
+    async (flag) => {
+      await expect(
+        runCommand(await wrap(leaf("lint")), { rawArgs: ["a", "b", flag] }),
+      ).rejects.toThrow(CliUsageError);
+      expect(JSON.parse(logSpy.mock.calls[0]![0] as string)).toEqual({
+        ok: false,
+        error:
+          "Unexpected extra argument for hyperframes lint: b\nUsage: hyperframes lint [DIR] [OPTIONS]",
+      });
+    },
+  );
+
+  it.each(["catalog", "tts"])(
+    "joins %s's trailing words into its last positional",
+    async (name) => {
+      const run = vi.fn();
+      await runCommand(await wrap(leaf(name, run)), { rawArgs: ["lower", "third", "--json"] });
+      expect(run.mock.calls[0]![0].args.dir).toBe("lower third");
+    },
+  );
 
   it("runs a leaf given no more positionals than it declares", async () => {
     const run = vi.fn();

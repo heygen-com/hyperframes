@@ -12,6 +12,9 @@ export const ACCEPTS_EXTRA_POSITIONALS = new Set([
   "timeline set",
 ]);
 
+// Free-text commands: their last positional takes every remaining word (`tts hello world`).
+export const JOINS_EXTRA_POSITIONALS = new Set(["catalog", "tts"]);
+
 function declaredArgs(cmd: CommandDef<ArgsDef>): ArgsDef {
   const raw = cmd.args;
   return raw && typeof raw === "object" ? (raw as ArgsDef) : {};
@@ -32,24 +35,31 @@ export function usageLine(path: string, args: ArgsDef): string {
   return parts.join(" ");
 }
 
-/** Throw a usage error naming every positional beyond the ones `cmd` declares. */
-export function assertNoExtraPositionals(
+/** Join a free-text command's trailing words, else throw a usage error naming the extras. */
+export function resolveExtraPositionals(
   cmd: CommandDef<ArgsDef>,
   path: string,
-  parsed: { _?: unknown } | undefined,
+  parsed: Record<string, unknown> | undefined,
   rawArgs: string[],
 ): void {
   if (ACCEPTS_EXTRA_POSITIONALS.has(path)) return;
   const args = declaredArgs(cmd);
-  const slots = Object.values(args).filter((def) => def.type === "positional").length;
-  const extra = (Array.isArray(parsed?._) ? parsed._ : []).slice(slots).map(String);
+  const positionals = Object.entries(args).filter(([, def]) => def.type === "positional");
+  const given = (Array.isArray(parsed?._) ? parsed._ : []).map(String);
+  const extra = given.slice(positionals.length);
   if (extra.length === 0) return;
+  const last = positionals.at(-1)?.[0];
+  if (parsed && last && JOINS_EXTRA_POSITIONALS.has(path)) {
+    parsed[last] = given.slice(positionals.length - 1).join(" ");
+    return;
+  }
 
   const plural = extra.length === 1 ? "" : "s";
   const message =
     `Unexpected extra argument${plural} for hyperframes ${path}: ${extra.join(", ")}\n` +
     `Usage: ${usageLine(path, args)}`;
-  if (rawArgs.includes("--json")) console.log(JSON.stringify({ ok: false, error: message }));
+  if (rawArgs.some((tok) => tok === "--json" || tok === "--json=true"))
+    console.log(JSON.stringify({ ok: false, error: message }));
   else console.error(message);
   throw new CliUsageError(message, { presented: true });
 }

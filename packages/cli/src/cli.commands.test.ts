@@ -2,6 +2,11 @@ import { readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
+import type { CommandDef } from "citty";
+import {
+  ACCEPTS_EXTRA_POSITIONALS,
+  JOINS_EXTRA_POSITIONALS,
+} from "./utils/reject-extra-positionals.js";
 
 const cliSource = readFileSync(join(dirname(fileURLToPath(import.meta.url)), "cli.ts"), "utf8");
 const helpSource = readFileSync(join(dirname(fileURLToPath(import.meta.url)), "help.ts"), "utf8");
@@ -13,6 +18,21 @@ function commandLoaderBlock(): string {
 }
 
 describe("CLI command registration", () => {
+  it.each([...ACCEPTS_EXTRA_POSITIONALS, ...JOINS_EXTRA_POSITIONALS])(
+    "names a real command in the extra-positional lists: %s",
+    async (path) => {
+      const [top, ...subs] = path.split(" ");
+      expect(commandLoaderBlock()).toMatch(new RegExp(`\\b${top}:\\s*\\(\\)\\s*=>`));
+      let cmd = ((await import(`./commands/${top}.js`)) as { default: CommandDef }).default;
+      expect(cmd.meta).toMatchObject({ name: top });
+      for (const sub of subs) {
+        const entry = (cmd.subCommands as Record<string, unknown>)[sub!];
+        cmd = (typeof entry === "function" ? await entry() : entry) as CommandDef;
+        expect(cmd, `${path} resolves to a subcommand`).toBeTruthy();
+      }
+    },
+  );
+
   it("registers keyframes as the only keyframe inspection command", () => {
     const loaders = commandLoaderBlock();
 
