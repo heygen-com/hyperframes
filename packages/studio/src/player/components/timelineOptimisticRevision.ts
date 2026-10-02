@@ -1,7 +1,6 @@
 import type { TimelineElement } from "../store/playerStore";
 
 type UpdateElement = (key: string, updates: Partial<TimelineElement>) => void;
-// Timing-only gestures must not take ownership of an earlier membership write.
 type RevisionScope = "timing" | "membership";
 const revisionsByUpdater = new WeakMap<UpdateElement, Map<RevisionScope, Map<string, number>>>();
 
